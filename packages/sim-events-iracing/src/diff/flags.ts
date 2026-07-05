@@ -28,20 +28,23 @@
  * suppressed when `StartGo` is set — a standing/rolling race-start go is owned
  * by the start-light family (issue #480); restarts (no `StartGo`) still fire.
  *
- * Checkered deferral (issue #771): iRacing raises the `Checkered` bit for the
- * entire field the moment the session ends (qualifying clock expires, race
- * leader finishes) — often most of a lap before the player takes the flag,
- * and observed behavior shows the flag ahead of a car's crossing even for
- * the winner. So the checkered raise is held until the player's own scored
- * S/F crossing (a `LapCompleted` increment) — including for the winner,
- * whose deferral resolves seconds later right at the line. It still fires
- * immediately when the player isn't in the car or crossings can't be
- * tracked (never hold a callout hostage to missing data), when the player
- * is already parked in the pits in a non-race session (no crossing is
- * coming), and — as a safety net for any timing where the bit instead
- * lands at/after the race leader's scored crossing — via the winner grace
- * ({@link FLAG_CROSS_GRACE_MS}, gated on leading the race per the canonical
- * live order, which `handleTick` passes in as `playerIsLeader`).
+ * Checkered deferral (issue #771) — qualifying and race only: iRacing raises
+ * the `Checkered` bit for the entire field the moment the session ends
+ * (qualifying clock expires, race leader finishes) — often most of a lap
+ * before the player takes the flag, and observed behavior shows the flag
+ * ahead of a car's crossing even for the winner. So the checkered raise is
+ * held until the player's own scored S/F crossing (a `LapCompleted`
+ * increment) — including for the winner, whose deferral resolves seconds
+ * later right at the line. Practice/testing speaks IMMEDIATELY at the raise:
+ * the flag there just means the session is over, with no flag-taking lap.
+ * The deferral also falls back to immediate when the player isn't in the
+ * car or crossings can't be tracked (never hold a callout hostage to
+ * missing data), when the player is already parked in the pits in
+ * qualifying (no crossing is coming), and — as a safety net for any timing
+ * where the bit instead lands at/after the race leader's scored crossing —
+ * via the winner grace ({@link FLAG_CROSS_GRACE_MS}, gated on leading the
+ * race per the canonical live order, which `handleTick` passes in as
+ * `playerIsLeader`).
  *
  * Two-stage white (issue #772) — RACE sessions only: iRacing shows the
  * White to the whole field while the LEADER is still ~5–10 s from starting
@@ -218,6 +221,7 @@ export function diffFlags(
   emit: EmitFn,
   isRaceSession = false,
   playerIsLeader = false,
+  isPracticeSession = false,
 ): void {
   const sessionFlags = telemetry.SessionFlags ?? 0;
   const { flags: current, yellowScope, anyYellow } = resolveActiveFlags(sessionFlags);
@@ -334,20 +338,28 @@ export function diffFlags(
         case "checkered": {
           // Deferral (issue #771) — iRacing raises the bit for the whole
           // field at once; hold the callout until the player takes the flag
-          // at the line. Immediate when the player isn't in the car,
-          // crossings can't be tracked (never hold a callout hostage to
-          // missing data), the player is already in the pits in a non-race
-          // session (parked in the box at the end of quali/practice — the
-          // common case; no crossing is ever coming), or the player's own
-          // finish raised the flag (`leaderTookTheLine` — race-gated, and a
-          // same-tick crossing counts only for the leader too, since a
-          // mid-pack car crossing on the raise tick is scored for one more
-          // lap). In a race, a car on pit road at the raise still defers —
-          // it finishes by crossing the line.
+          // at the line. Practice/testing speaks IMMEDIATELY: the flag there
+          // just means the session is over — there is no flag-taking lap,
+          // so waiting for a crossing would only delay the news. Also
+          // immediate when the player isn't in the car, crossings can't be
+          // tracked (never hold a callout hostage to missing data), the
+          // player is already in the pits in qualifying (parked in the box
+          // at expiry — the common case; no crossing is ever coming), or
+          // the player's own finish raised the flag (`leaderTookTheLine` —
+          // race-gated, and a same-tick crossing counts only for the leader
+          // too, since a mid-pack car crossing on the raise tick is scored
+          // for one more lap). In a race, a car on pit road at the raise
+          // still defers — it finishes by crossing the line.
           const parkedInPits =
             !isRaceSession && (telemetry.OnPitRoad === true || telemetry.PlayerCarInPitStall === true);
 
-          if (telemetry.IsOnTrack !== true || lapCompleted === null || parkedInPits || leaderTookTheLine) {
+          if (
+            isPracticeSession ||
+            telemetry.IsOnTrack !== true ||
+            lapCompleted === null ||
+            parkedInPits ||
+            leaderTookTheLine
+          ) {
             emit({ event: "flag.checkered.raised", data: {} });
           } else {
             state.checkeredPendingCross = true;
@@ -389,7 +401,7 @@ export function diffFlags(
   // the player's next scored S/F crossing; immediately when the player
   // leaves the car (tow / garage — they will never take the flag, so speak
   // now rather than never); or, outside a race, when they drive into the
-  // pits (an in-lap after the quali/practice checkered ends their session —
+  // pits (an in-lap after the qualifying checkered ends their session —
   // a race car in the pits still finishes by crossing the line, so races
   // keep waiting). If the bit drops while still pending (cool-down rolling
   // into the next session's grid), the stale fire dies silently — the flag
