@@ -19,7 +19,7 @@
     "src/*.h"
   ],
   "devDependencies": {
-    "@types/node": "25.9.1",
+    "@types/node": "26.1.0",
     "node-addon-api": "8.8.0",
     "node-gyp": "12.3.0",
     "rimraf": "6.1.3",
