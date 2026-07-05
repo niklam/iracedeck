@@ -30,15 +30,18 @@
  *
  * Checkered deferral (issue #771): iRacing raises the `Checkered` bit for the
  * entire field the moment the session ends (qualifying clock expires, race
- * leader finishes) — often most of a lap before the player takes the flag. So
- * the checkered raise is held until the player's own scored S/F crossing (a
- * `LapCompleted` increment). It still fires immediately when the player isn't
- * in the car or crossings can't be tracked (never hold a callout hostage to
- * missing data), when the player is already parked in the pits in a non-race
- * session (no crossing is coming), and when the player's own finish is what
- * raised the flag (the race winner — their crossing lands within
- * {@link FLAG_CROSS_GRACE_MS} of the bit while they lead the race per the
- * canonical live order, which `handleTick` passes in as `playerIsLeader`).
+ * leader finishes) — often most of a lap before the player takes the flag,
+ * and observed behavior shows the flag ahead of a car's crossing even for
+ * the winner. So the checkered raise is held until the player's own scored
+ * S/F crossing (a `LapCompleted` increment) — including for the winner,
+ * whose deferral resolves seconds later right at the line. It still fires
+ * immediately when the player isn't in the car or crossings can't be
+ * tracked (never hold a callout hostage to missing data), when the player
+ * is already parked in the pits in a non-race session (no crossing is
+ * coming), and — as a safety net for any timing where the bit instead
+ * lands at/after the race leader's scored crossing — via the winner grace
+ * ({@link FLAG_CROSS_GRACE_MS}, gated on leading the race per the canonical
+ * live order, which `handleTick` passes in as `playerIsLeader`).
  */
 import type { FlagScope } from "@iracedeck/event-bus";
 import { Flags, hasFlag, type TelemetryData } from "@iracedeck/iracing-sdk";
@@ -66,18 +69,22 @@ export const YELLOW_CLEARED_HOLD_MS = 3000;
 export const FURLED_DEBOUNCE_MS = 1000;
 
 /**
- * Winner grace window (ms) for the checkered deferral (issue #771). When the
- * PLAYER's own finish is what ends the race, the `Checkered` bit rises on —
- * or a frame or two after — their scored crossing; waiting for the NEXT
- * crossing would delay the callout by a whole cool-down lap. A raise landing
- * within this window of the player's latest crossing, while the player leads
- * a RACE (per the canonical live order — see `.claude/rules/race-positions.md`
- * — passed in by `handleTick`), is the player taking the flag and speaks
- * immediately. The leader guard keeps a mid-pack car that crossed just before
- * the leader finished (about to be lapped at the line) from an early call —
- * that car is scored for one more lap; and the race guard keeps the grace out
- * of qualifying, where the clock (not anyone's crossing) raises the flag and
- * a provisional-pole crossing just before expiry still earns a final lap.
+ * Winner grace window (ms) for the checkered deferral (issue #771). iRacing
+ * generally shows the checkered BEFORE a car reaches the line — even for the
+ * winner — so the normal winner path is the deferral itself: the raise
+ * pends and the callout fires at their crossing moments later. This grace
+ * is a SAFETY NET for any timing where the bit instead lands on — or a
+ * frame or two after — the race leader's scored crossing (waiting for the
+ * NEXT crossing would then delay the winner's call by a whole cool-down
+ * lap): a raise landing within this window of the player's latest crossing,
+ * while the player leads a RACE (per the canonical live order — see
+ * `.claude/rules/race-positions.md` — passed in by `handleTick`), speaks
+ * immediately. The leader guard keeps a mid-pack car that crossed just
+ * before the raise (about to be lapped at the line) from an early call —
+ * that car is scored for one more lap; and the race guard keeps the grace
+ * out of qualifying, where the clock (not anyone's crossing) raises the
+ * flag and a provisional-pole crossing just before expiry still earns a
+ * final lap.
  */
 export const FLAG_CROSS_GRACE_MS = 1000;
 
