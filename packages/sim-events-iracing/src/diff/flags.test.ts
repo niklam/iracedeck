@@ -415,6 +415,18 @@ describe("diffFlags — checkered deferral (issue #771)", () => {
     expect(after.events.filter(checkered)).toHaveLength(0);
   });
 
+  it("practice: emits immediately at the raise even while on track mid-lap", () => {
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+    diffFlags(state, liveTick(0, { LapCompleted: 5 }), T0, () => {}, false, false, true);
+
+    const { events, emit } = collect();
+    diffFlags(state, liveTick(Flags.Checkered, { LapCompleted: 5 }), T0 + 100, emit, false, false, true);
+
+    expect(events.filter(checkered)).toHaveLength(1);
+    expect(state.checkeredPendingCross).toBe(false);
+  });
+
   it("winner: a crossing on the raise tick while leading a race emits immediately", () => {
     const state = createInitialState();
     state.flagStateInitialized = true;
