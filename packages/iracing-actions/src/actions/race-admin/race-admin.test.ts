@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { buildAdminCommand, buildAdminCommandPrefix, resolveDriverTarget } from "./race-admin-commands.js";
 import { getModesByOptgroup, RACE_ADMIN_MODE_META, RACE_ADMIN_MODES } from "./race-admin-modes.js";
-import { resolveSelectedCar, resolveSlotCar } from "./race-admin-selector.js";
+import { availableProfilesForDevice, resolveSelectedCar, resolveSlotCar } from "./race-admin-selector.js";
 import { generateRaceAdminSvg, RaceAdmin } from "./race-admin.js";
 
 // Mock SDK
@@ -854,6 +854,17 @@ describe("RaceAdmin", () => {
       await action.onKeyDown(makeSelectorKeyDown({ ...selectorSettings, selectorTargetProfile: "iRaceDeck Gone" }));
 
       expect(requestProfileSwitch).toHaveBeenCalledWith("dev-1", "iRaceDeck Race Admin Per Car XL", 0);
+    });
+
+    it("stores the selection but skips the switch when the device ships no per-car profile", async () => {
+      vi.mocked(availableProfilesForDevice).mockReturnValueOnce([]);
+      const action = new RaceAdmin();
+      await action.onKeyDown(makeSelectorKeyDown(selectorSettings));
+
+      expect(updateGlobalSettings).toHaveBeenCalledWith({
+        _raceAdminSelectedCar: { carIdx: 5, carNumber: "24" },
+      });
+      expect(requestProfileSwitch).not.toHaveBeenCalled();
     });
 
     function makeSelectorAppear(id: string, column: number, row: number, settings: Record<string, unknown>) {

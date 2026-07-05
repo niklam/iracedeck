@@ -2,7 +2,6 @@ import {
   assembleIcon,
   CommonSettings,
   ConnectionStateAwareAction,
-  deviceProfileName,
   getGlobalBorderSettings,
   getGlobalColors,
   getGlobalGraphicSettings,
@@ -229,8 +228,16 @@ export class SwitchProfile extends ConnectionStateAwareAction<SwitchProfileSetti
     const stored = settings.profile || PROFILE_NAMES.default;
     const profile =
       resolveProfileNameForDevice(stored, ev.action.deviceType, availableProfilesForDevice(ev.action.deviceType)) ??
-      defaultProfileForDevice(ev.action.deviceType) ??
-      deviceProfileName(stored, ev.action.deviceType);
+      defaultProfileForDevice(ev.action.deviceType);
+
+    // No bundled profile resolves at all (a device we ship nothing for):
+    // switching to a guessed name could only fail in the app and would pollute
+    // the Back-to-previous history with a name that doesn't exist.
+    if (!profile) {
+      this.logger.warn(`No bundled profile available for device ${ev.action.deviceId ?? "(unknown)"}; ignoring press`);
+
+      return;
+    }
 
     this.logger.info("Switch Profile triggered");
     this.logger.debug(`Switching device ${ev.action.deviceId ?? "(unknown)"} to profile "${profile}"`);

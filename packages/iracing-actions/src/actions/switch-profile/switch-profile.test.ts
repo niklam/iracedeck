@@ -302,6 +302,17 @@ describe("SwitchProfile", () => {
       expect(requestProfileSwitch).toHaveBeenCalledWith("dev-1", "iRaceDeck Default XL", 0);
     });
 
+    it("does not switch at all when the device ships no bundled profiles", async () => {
+      const action = new SwitchProfile();
+
+      await action.onKeyDown({
+        action: keyAction({ deviceType: 99 }),
+        payload: { settings: { profile: "iRaceDeck Default" } },
+      } as never);
+
+      expect(requestProfileSwitch).not.toHaveBeenCalled();
+    });
+
     it("walks back with the device's Default profile as fallback in Back-to-previous mode (#762)", async () => {
       const action = new SwitchProfile();
 

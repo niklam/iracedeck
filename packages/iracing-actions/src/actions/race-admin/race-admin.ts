@@ -693,12 +693,23 @@ export class RaceAdmin extends ConnectionStateAwareAction<RaceAdminSettings> {
     const available = availableProfilesForDevice(ev.action.deviceType);
     const targetProfile =
       resolveProfileNameForDevice(stored, ev.action.deviceType, available) ??
-      resolveProfileNameForDevice(DEFAULT_SELECTOR_TARGET_PROFILE, ev.action.deviceType, available) ??
-      stored;
+      resolveProfileNameForDevice(DEFAULT_SELECTOR_TARGET_PROFILE, ev.action.deviceType, available);
 
     this.logger.info("Admin target car selected");
     this.logger.debug(`Selected CarIdx ${car.carIdx} (#${car.carNumber}); switching to "${targetProfile}"`);
     updateGlobalSettings({ [SELECTED_CAR_KEY]: { carIdx: car.carIdx, carNumber: car.carNumber } });
+
+    // The selection is stored either way, but with no per-car profile bundled
+    // for this device a switch to a guessed name could only fail in the app —
+    // skip it rather than pollute the profile history (#753).
+    if (!targetProfile) {
+      this.logger.warn(
+        `No bundled per-car profile available for device ${ev.action.deviceId ?? "(unknown)"}; car selected without a profile switch`,
+      );
+
+      return;
+    }
+
     // Page 0 so re-entering the selector's own profile always starts the
     // page-count learning from a known page (#754).
     await requestProfileSwitch(ev.action.deviceId, targetProfile, 0);
