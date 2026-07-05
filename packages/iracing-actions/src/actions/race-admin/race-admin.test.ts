@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { buildAdminCommand, buildAdminCommandPrefix, resolveDriverTarget } from "./race-admin-commands.js";
 import { getModesByOptgroup, RACE_ADMIN_MODE_META, RACE_ADMIN_MODES } from "./race-admin-modes.js";
-import { resolveSelectedCar, resolveSlotCar } from "./race-admin-selector.js";
+import { availableProfilesForDevice, resolveSelectedCar, resolveSlotCar } from "./race-admin-selector.js";
 import { generateRaceAdminSvg, RaceAdmin } from "./race-admin.js";
 
 // Mock SDK
@@ -29,7 +29,11 @@ vi.mock("@iracedeck/iracing-sdk", () => ({
 vi.mock("./race-admin-selector.js", () => ({
   SELECTED_CAR_KEY: "_raceAdminSelectedCar",
   DEFAULT_SELECTOR_TARGET_PROFILE: "iRaceDeck Race Admin Per Car",
-  availableProfilesForDevice: vi.fn(() => ["iRaceDeck Race Admin Cars", "iRaceDeck Race Admin Per Car"]),
+  availableProfilesForDevice: vi.fn(() => ["iRaceDeck Race Admin Cars XL", "iRaceDeck Race Admin Per Car XL"]),
+  deviceProfileEntries: vi.fn(() => [
+    { name: "iRaceDeck Race Admin Cars XL", label: "iRaceDeck Race Admin Cars" },
+    { name: "iRaceDeck Race Admin Per Car XL", label: "iRaceDeck Race Admin Per Car" },
+  ]),
   parseSelectorPage: (raw: string | undefined) => {
     const n = Number(raw);
 
@@ -161,6 +165,24 @@ vi.mock("@iracedeck/deck-core", () => ({
 
       return schema;
     },
+  },
+  // Minimal reimplementation of the #753 profile-name helpers (the real ones
+  // are covered by deck-core's own device-profiles tests).
+  deviceProfileName: (name: string, deviceType: number | undefined): string => {
+    if (name.endsWith(" XL") || name.endsWith(" SD")) return name;
+
+    return deviceType === 2 ? `${name} XL` : name;
+  },
+  resolveProfileNameForDevice: (
+    name: string,
+    deviceType: number | undefined,
+    availableNames: readonly string[],
+  ): string | undefined => {
+    if (availableNames.includes(name)) return name;
+
+    const suffixed = deviceType === 2 && !name.endsWith(" XL") ? `${name} XL` : name;
+
+    return availableNames.includes(suffixed) ? suffixed : undefined;
   },
   ConnectionStateAwareAction: class MockConnectionStateAwareAction {
     logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
@@ -796,9 +818,19 @@ describe("RaceAdmin", () => {
       expect(updateGlobalSettings).toHaveBeenCalledWith({
         _raceAdminSelectedCar: { carIdx: 5, carNumber: "24" },
       });
-      // Page 0: the target profile always opens on its first page (#754).
-      expect(requestProfileSwitch).toHaveBeenCalledWith("dev-1", "iRaceDeck Race Admin Per Car", 0);
+      // The stored legacy display name resolves to the device's manifest name
+      // (#753). Page 0: the target profile always opens on its first page (#754).
+      expect(requestProfileSwitch).toHaveBeenCalledWith("dev-1", "iRaceDeck Race Admin Per Car XL", 0);
       expect(mockSendMessage).not.toHaveBeenCalled();
+    });
+
+    it("passes a stored device-suffixed manifest name through unchanged (#753)", async () => {
+      const action = new RaceAdmin();
+      await action.onKeyDown(
+        makeSelectorKeyDown({ ...selectorSettings, selectorTargetProfile: "iRaceDeck Race Admin Cars XL" }),
+      );
+
+      expect(requestProfileSwitch).toHaveBeenCalledWith("dev-1", "iRaceDeck Race Admin Cars XL", 0);
     });
 
     it("does nothing when the pressed slot is empty", async () => {
@@ -814,7 +846,25 @@ describe("RaceAdmin", () => {
       const action = new RaceAdmin();
       await action.onKeyDown(makeSelectorKeyDown({ ...selectorSettings, selectorTargetProfile: "  " }));
 
-      expect(requestProfileSwitch).toHaveBeenCalledWith("dev-1", "iRaceDeck Race Admin Per Car", 0);
+      expect(requestProfileSwitch).toHaveBeenCalledWith("dev-1", "iRaceDeck Race Admin Per Car XL", 0);
+    });
+
+    it("falls back to the default per-car profile when the stored name has no variant here (#753)", async () => {
+      const action = new RaceAdmin();
+      await action.onKeyDown(makeSelectorKeyDown({ ...selectorSettings, selectorTargetProfile: "iRaceDeck Gone" }));
+
+      expect(requestProfileSwitch).toHaveBeenCalledWith("dev-1", "iRaceDeck Race Admin Per Car XL", 0);
+    });
+
+    it("stores the selection but skips the switch when the device ships no per-car profile", async () => {
+      vi.mocked(availableProfilesForDevice).mockReturnValueOnce([]);
+      const action = new RaceAdmin();
+      await action.onKeyDown(makeSelectorKeyDown(selectorSettings));
+
+      expect(updateGlobalSettings).toHaveBeenCalledWith({
+        _raceAdminSelectedCar: { carIdx: 5, carNumber: "24" },
+      });
+      expect(requestProfileSwitch).not.toHaveBeenCalled();
     });
 
     function makeSelectorAppear(id: string, column: number, row: number, settings: Record<string, unknown>) {
@@ -937,7 +987,7 @@ describe("RaceAdmin", () => {
       expect(mockSendMessage).not.toHaveBeenCalled();
     });
 
-    it("pushes the device profile list for the Target Profile dropdown on appear (select-car only)", async () => {
+    it("pushes the device profile entries for the Target Profile dropdown on appear (select-car only)", async () => {
       const action = new RaceAdmin();
       const ev = {
         action: { id: "ctx-sel", deviceId: "dev-1", deviceType: 2, setSettings: vi.fn(async () => {}) },
@@ -949,18 +999,24 @@ describe("RaceAdmin", () => {
       const setSettings = (ev as { action: { setSettings: ReturnType<typeof vi.fn> } }).action.setSettings;
       expect(setSettings).toHaveBeenCalledWith(
         expect.objectContaining({
-          _deviceProfiles: ["iRaceDeck Race Admin Cars", "iRaceDeck Race Admin Per Car"],
+          _deviceProfiles: [
+            { name: "iRaceDeck Race Admin Cars XL", label: "iRaceDeck Race Admin Cars" },
+            { name: "iRaceDeck Race Admin Per Car XL", label: "iRaceDeck Race Admin Per Car" },
+          ],
         }),
       );
 
-      // Second appear with the list already stored: no redundant write (echo-loop guard).
+      // Second appear with the entries already stored: no redundant write (echo-loop guard).
       setSettings.mockClear();
       const ev2 = {
         action: { id: "ctx-sel", deviceId: "dev-1", deviceType: 2, setSettings },
         payload: {
           settings: {
             ...selectorSettings,
-            _deviceProfiles: ["iRaceDeck Race Admin Cars", "iRaceDeck Race Admin Per Car"],
+            _deviceProfiles: [
+              { name: "iRaceDeck Race Admin Cars XL", label: "iRaceDeck Race Admin Cars" },
+              { name: "iRaceDeck Race Admin Per Car XL", label: "iRaceDeck Race Admin Per Car" },
+            ],
           },
           coordinates: { column: 1, row: 0 },
         },

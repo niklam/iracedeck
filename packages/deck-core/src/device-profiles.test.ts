@@ -3,13 +3,18 @@ import { describe, expect, it } from "vitest";
 import {
   DEVICE_SPECS,
   DEVICE_SUPPORT,
+  deviceProfileName,
   DeviceType,
   getDeviceSpec,
   getDeviceSupport,
   isDeviceSupported,
+  PROFILE_DEVICE_SUFFIXES,
   PROFILE_NAMES,
   PROFILE_NAV_ACTIONS,
   PROFILE_TARGET_DEVICES,
+  profileDeviceSuffix,
+  profileDisplayName,
+  resolveProfileNameForDevice,
   shipsBundledProfiles,
 } from "./device-profiles.js";
 
@@ -107,6 +112,105 @@ describe("profile templates", () => {
     });
     expect(PROFILE_NAV_ACTIONS.openChild).toBe("com.elgato.streamdeck.profile.openchild");
     expect(PROFILE_NAV_ACTIONS.backToParent).toBe("com.elgato.streamdeck.profile.backtoparent");
+  });
+});
+
+describe("profile device suffixes (#753)", () => {
+  it("codifies the device-name suffix for every profile-capable device", () => {
+    expect(profileDeviceSuffix(DeviceType.StreamDeck)).toBe("SD");
+    expect(profileDeviceSuffix(DeviceType.StreamDeckMini)).toBe("Mini");
+    expect(profileDeviceSuffix(DeviceType.StreamDeckXL)).toBe("XL");
+    expect(profileDeviceSuffix(DeviceType.StreamDeckPlus)).toBe("Plus");
+    expect(profileDeviceSuffix(DeviceType.StreamDeckNeo)).toBe("Neo");
+    expect(profileDeviceSuffix(DeviceType.Galleon100SD)).toBe("Corsair Galleon");
+    expect(profileDeviceSuffix(DeviceType.StreamDeckPlusXL)).toBe("Plus XL");
+  });
+
+  it("has a suffix for exactly the target and candidate devices", () => {
+    for (const type of ALL_TYPES) {
+      const status = DEVICE_SUPPORT[type].profileTemplates;
+      const expectSuffix = status === "target" || status === "candidate";
+      expect(profileDeviceSuffix(type) !== undefined, `${DEVICE_SPECS[type].name} suffix vs ${status}`).toBe(
+        expectSuffix,
+      );
+    }
+  });
+
+  it("returns undefined for unknown device ids", () => {
+    expect(profileDeviceSuffix(99)).toBeUndefined();
+    expect(profileDeviceSuffix(-1)).toBeUndefined();
+  });
+
+  it("keeps the suffixes unique", () => {
+    const suffixes = Object.values(PROFILE_DEVICE_SUFFIXES);
+    expect(new Set(suffixes).size).toBe(suffixes.length);
+  });
+});
+
+describe("deviceProfileName", () => {
+  it("appends the device suffix to a display name", () => {
+    expect(deviceProfileName("iRaceDeck Default", DeviceType.StreamDeckXL)).toBe("iRaceDeck Default XL");
+    expect(deviceProfileName("iRaceDeck Default", DeviceType.StreamDeck)).toBe("iRaceDeck Default SD");
+    expect(deviceProfileName("iRaceDeck Race Admin Per Car", DeviceType.StreamDeckPlusXL)).toBe(
+      "iRaceDeck Race Admin Per Car Plus XL",
+    );
+  });
+
+  it("keeps an already-suffixed name unchanged (idempotent)", () => {
+    expect(deviceProfileName("iRaceDeck Default XL", DeviceType.StreamDeckXL)).toBe("iRaceDeck Default XL");
+    expect(deviceProfileName("iRaceDeck Default XL", DeviceType.StreamDeck)).toBe("iRaceDeck Default XL");
+  });
+
+  it("returns the name unchanged when the device has no suffix", () => {
+    expect(deviceProfileName("iRaceDeck Default", DeviceType.StreamDeckStudio)).toBe("iRaceDeck Default");
+    expect(deviceProfileName("iRaceDeck Default", undefined)).toBe("iRaceDeck Default");
+    expect(deviceProfileName("iRaceDeck Default", 99)).toBe("iRaceDeck Default");
+  });
+});
+
+describe("profileDisplayName", () => {
+  it("strips a trailing device suffix from a manifest name", () => {
+    expect(profileDisplayName("iRaceDeck Default XL")).toBe("iRaceDeck Default");
+    expect(profileDisplayName("iRaceDeck Default SD")).toBe("iRaceDeck Default");
+    expect(profileDisplayName("iRaceDeck Replay Corsair Galleon")).toBe("iRaceDeck Replay");
+  });
+
+  it("strips the longest matching suffix ('Plus XL', not 'XL')", () => {
+    expect(profileDisplayName("iRaceDeck Race Admin Cars Plus XL")).toBe("iRaceDeck Race Admin Cars");
+  });
+
+  it("returns a display (legacy, unsuffixed) name unchanged", () => {
+    expect(profileDisplayName("iRaceDeck Default")).toBe("iRaceDeck Default");
+    expect(profileDisplayName("iRaceDeck Race Admin Per Car")).toBe("iRaceDeck Race Admin Per Car");
+  });
+});
+
+describe("resolveProfileNameForDevice", () => {
+  const available = ["iRaceDeck Default XL", "iRaceDeck Replay XL"];
+
+  it("returns an exact manifest-name match as-is", () => {
+    expect(resolveProfileNameForDevice("iRaceDeck Replay XL", DeviceType.StreamDeckXL, available)).toBe(
+      "iRaceDeck Replay XL",
+    );
+  });
+
+  it("resolves a legacy/display name to the device-suffixed variant", () => {
+    expect(resolveProfileNameForDevice("iRaceDeck Default", DeviceType.StreamDeckXL, available)).toBe(
+      "iRaceDeck Default XL",
+    );
+  });
+
+  it("resolves a name suffixed for another device to this device's variant", () => {
+    expect(resolveProfileNameForDevice("iRaceDeck Default SD", DeviceType.StreamDeckXL, available)).toBe(
+      "iRaceDeck Default XL",
+    );
+  });
+
+  it("returns undefined when the profile has no variant for this device", () => {
+    expect(resolveProfileNameForDevice("iRaceDeck Chat", DeviceType.StreamDeckXL, available)).toBeUndefined();
+    expect(resolveProfileNameForDevice("iRaceDeck Default", DeviceType.StreamDeck, available)).toBeUndefined();
+    expect(resolveProfileNameForDevice("iRaceDeck Default", undefined, available)).toBeUndefined();
+    expect(resolveProfileNameForDevice("", DeviceType.StreamDeckXL, available)).toBeUndefined();
   });
 });
 

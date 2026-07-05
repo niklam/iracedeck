@@ -18,7 +18,9 @@
  * ```
  *
  * Attributes:
- * - `profile`: bundled profile name (matches the manifest `Profiles[].Name`).
+ * - `profile`: bundled profile template's display name (no device suffix); the
+ *   Elgato adapter resolves the pressing device's manifest name by appending
+ *   its suffix (#753). An exact manifest name also works (passed through).
  * - `label`: button text (defaults to the profile name).
  */
 

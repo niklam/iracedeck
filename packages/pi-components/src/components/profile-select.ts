@@ -2,11 +2,14 @@
 /**
  * Profile Select dropdown for the Switch Profile action's Property Inspector.
  *
- * A `<select>` bound to a per-action setting holding the chosen profile name. The
- * options are the bundled profiles available for THIS action's device, which the
- * action computes (data/profiles.json filtered by the action's device type) and
- * pushes into a second per-action setting as a JSON string array of names. An
- * empty selection means "no profile chosen yet".
+ * A `<select>` bound to a per-action setting holding the chosen profile's
+ * manifest name. The options are the bundled profiles available for THIS
+ * action's device, which the action computes (data/profiles.json filtered by
+ * the action's device type) and pushes into a second per-action setting as
+ * `{ name, label }` entries — the device-suffixed manifest name plus the clean
+ * display label, so the dropdown never shows device suffixes (#753). Legacy
+ * pre-#753 pushes were plain string arrays; those still render (name as
+ * label). An empty selection means "no profile chosen yet".
  *
  * Usage:
  * ```html
@@ -16,9 +19,10 @@
  * ```
  *
  * Attributes:
- * - setting: per-action setting storing the selected profile name (default: `profile`).
- * - profiles: per-action setting holding the available profile names as a JSON
- *   string array (default: `_deviceProfiles`).
+ * - setting: per-action setting storing the selected profile's manifest name
+ *   (default: `profile`).
+ * - profiles: per-action setting holding the available profile entries as JSON
+ *   (default: `_deviceProfiles`).
  * - placeholder: label for the empty option (default: `Select a profile…`).
  * - previous-label: when present, renders an extra "back to previous profile"
  *   option with this label, stored as the `__previous` sentinel (must match
@@ -29,6 +33,12 @@
  *   not rendered at all — every choice does something. The default is
  *   display-only (never persisted); the action's own fallback keeps the press
  *   behavior in sync.
+ *
+ * Saved values and the `default` attribute are matched against option VALUES
+ * first and option LABELS second — so a legacy persisted display name (or a
+ * display-name `default` like `iRaceDeck Default`) selects its device-suffixed
+ * option without being re-persisted; the action's press-time resolution keeps
+ * the behavior in sync (#753).
  */
 
 let styleInjected = false;
@@ -39,8 +49,18 @@ const DEFAULT_PLACEHOLDER = "Select a profile…";
 const EMPTY_VALUE = "";
 const PREVIOUS_VALUE = "__previous";
 
-/** Normalize a `profiles` setting value (JSON string array, or already an array) to string names. */
-export function parseProfileNames(value: unknown): string[] {
+/** A dropdown option: the profile's manifest name plus its display label (#753). */
+export interface ProfileEntry {
+  name: string;
+  label: string;
+}
+
+/**
+ * Normalize a `profiles` setting value (JSON string, or already an array) to
+ * `{ name, label }` entries. Accepts the #753 entry objects and the legacy
+ * plain-string shape (name doubles as the label); anything else is dropped.
+ */
+export function parseProfileEntries(value: unknown): ProfileEntry[] {
   let arr: unknown = value;
 
   if (typeof value === "string") {
@@ -55,7 +75,21 @@ export function parseProfileNames(value: unknown): string[] {
 
   if (!Array.isArray(arr)) return [];
 
-  return arr.filter((n): n is string => typeof n === "string" && n !== "");
+  const entries: ProfileEntry[] = [];
+
+  for (const item of arr) {
+    if (typeof item === "string") {
+      if (item) entries.push({ name: item, label: item });
+    } else if (typeof item === "object" && item !== null) {
+      const { name, label } = item as Record<string, unknown>;
+
+      if (typeof name === "string" && name) {
+        entries.push({ name, label: typeof label === "string" && label ? label : name });
+      }
+    }
+  }
+
+  return entries;
 }
 
 export class ProfileSelect extends HTMLElement {
@@ -138,12 +172,12 @@ export class ProfileSelect extends HTMLElement {
     this.saveToStreamDeck = save;
 
     window.SDPIComponents.useSettings(profilesKey, (value: string) => {
-      this.renderOptions(parseProfileNames(value));
+      this.renderOptions(parseProfileEntries(value));
       this.applySavedValue();
     });
   }
 
-  private renderOptions(names: string[]): void {
+  private renderOptions(entries: ProfileEntry[]): void {
     if (!this.select) return;
 
     this.select.replaceChildren();
@@ -166,23 +200,37 @@ export class ProfileSelect extends HTMLElement {
       this.select.appendChild(prevOption);
     }
 
-    for (const name of names) {
+    for (const entry of entries) {
       const opt = document.createElement("option");
-      opt.value = name;
-      opt.textContent = name;
+      opt.value = entry.name;
+      opt.textContent = entry.label;
       this.select.appendChild(opt);
     }
+  }
+
+  /**
+   * The option value matching `name` — by value first, then by display label
+   * (a legacy persisted display name, or a display-name `default`, selects its
+   * device-suffixed option, #753). The empty placeholder option never matches.
+   */
+  private optionValueFor(name: string): string | undefined {
+    const options = Array.from(this.select?.options ?? []);
+    const byValue = options.find((opt) => opt.value !== EMPTY_VALUE && opt.value === name);
+
+    return (byValue ?? options.find((opt) => opt.value !== EMPTY_VALUE && opt.textContent === name))?.value;
   }
 
   private applySavedValue(): void {
     if (!this.select) return;
 
-    const has = (value: string) => Array.from(this.select!.options).some((opt) => opt.value === value);
+    if (this.savedValue !== EMPTY_VALUE) {
+      const match = this.optionValueFor(this.savedValue);
 
-    if (has(this.savedValue) && this.savedValue !== EMPTY_VALUE) {
-      this.select.value = this.savedValue;
+      if (match !== undefined) {
+        this.select.value = match;
 
-      return;
+        return;
+      }
     }
 
     // An empty setting — or a saved profile not among this device's options
@@ -192,7 +240,7 @@ export class ProfileSelect extends HTMLElement {
     // this device arrives), and the action's own fallback keeps the press
     // behavior in sync. Without a default, fall back to the placeholder.
     const fallback = this.getAttribute("default");
-    this.select.value = fallback && has(fallback) ? fallback : EMPTY_VALUE;
+    this.select.value = (fallback ? this.optionValueFor(fallback) : undefined) ?? EMPTY_VALUE;
   }
 }
 

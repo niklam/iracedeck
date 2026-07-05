@@ -1,18 +1,42 @@
 [
   {
-    "name": "iRaceDeck Default",
-    "deviceType": 2
+    "name": "iRaceDeck Default XL",
+    "deviceType": 2,
+    "displayName": "iRaceDeck Default"
   },
   {
-    "name": "iRaceDeck Replay",
-    "deviceType": 2
+    "name": "iRaceDeck Replay XL",
+    "deviceType": 2,
+    "displayName": "iRaceDeck Replay"
   },
   {
-    "name": "iRaceDeck Race Admin Cars",
-    "deviceType": 2
+    "name": "iRaceDeck Race Admin Cars XL",
+    "deviceType": 2,
+    "displayName": "iRaceDeck Race Admin Cars"
   },
   {
-    "name": "iRaceDeck Race Admin Per Car",
-    "deviceType": 2
+    "name": "iRaceDeck Race Admin Per Car XL",
+    "deviceType": 2,
+    "displayName": "iRaceDeck Race Admin Per Car"
+  },
+  {
+    "name": "iRaceDeck Default SD",
+    "deviceType": 0,
+    "displayName": "iRaceDeck Default"
+  },
+  {
+    "name": "iRaceDeck Replay SD",
+    "deviceType": 0,
+    "displayName": "iRaceDeck Replay"
+  },
+  {
+    "name": "iRaceDeck Race Admin Cars SD",
+    "deviceType": 0,
+    "displayName": "iRaceDeck Race Admin Cars"
+  },
+  {
+    "name": "iRaceDeck Race Admin Per Car SD",
+    "deviceType": 0,
+    "displayName": "iRaceDeck Race Admin Per Car"
   }
 ]

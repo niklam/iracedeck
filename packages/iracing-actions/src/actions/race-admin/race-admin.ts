@@ -28,6 +28,7 @@ import {
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
+  resolveProfileNameForDevice,
   resolveTitleSettings,
   updateGlobalSettings,
 } from "@iracedeck/deck-core";
@@ -73,6 +74,7 @@ import { RACE_ADMIN_MODE_META, RACE_ADMIN_MODES, type RaceAdminMode } from "./ra
 import {
   availableProfilesForDevice,
   DEFAULT_SELECTOR_TARGET_PROFILE,
+  deviceProfileEntries,
   generateSelectorSvg,
   pageStartSlot,
   parseSelectorPage,
@@ -95,8 +97,24 @@ import {
  */
 export const SELECTOR_COUNT_SETTLE_MS = 500;
 
-function arraysEqual(a: readonly string[], b: readonly string[]): boolean {
-  return a.length === b.length && a.every((v, i) => v === b[i]);
+/** Whether a persisted `_deviceProfiles` value already equals the entries we'd push. */
+function profileEntriesEqual(
+  current: readonly unknown[],
+  entries: readonly { name: string; label: string }[],
+): boolean {
+  return (
+    current.length === entries.length &&
+    current.every((value, i) => {
+      const entry = entries[i];
+
+      return (
+        typeof value === "object" &&
+        value !== null &&
+        (value as { name: string }).name === entry.name &&
+        (value as { label: string }).label === entry.label
+      );
+    })
+  );
 }
 
 // ── Settings Schema ─────────────────────────────────────────────
@@ -119,12 +137,17 @@ const RaceAdminSettings = CommonSettings.extend({
   // and silently reset the button to the default "yellow" mode.
   selectorPage: z.string().default("0"),
   // Bundled profile to switch to after a car is picked ("" = the default).
+  // May hold a device-suffixed manifest name, a legacy pre-#753 unsuffixed
+  // name, or a name suffixed for another device — resolved at press time.
   selectorTargetProfile: z.string().default(DEFAULT_SELECTOR_TARGET_PROFILE),
   /**
    * Runtime-populated list of profiles available for this button's device,
-   * pushed for the Target Profile PI dropdown. Not user-editable.
+   * pushed for the Target Profile PI dropdown as `{ name, label }` entries
+   * (manifest name + clean display label, #753). Plain strings are the legacy
+   * pre-#753 shape, tolerated so old persisted settings still parse. Not
+   * user-editable.
    */
-  _deviceProfiles: z.array(z.string()).optional(),
+  _deviceProfiles: z.array(z.union([z.string(), z.object({ name: z.string(), label: z.string() })])).optional(),
 });
 
 type RaceAdminSettings = z.infer<typeof RaceAdminSettings>;
@@ -633,14 +656,14 @@ export class RaceAdmin extends ConnectionStateAwareAction<RaceAdminSettings> {
   ): Promise<void> {
     if (settings.mode !== "select-car") return;
 
-    const available = availableProfilesForDevice(ev.action.deviceType);
+    const entries = deviceProfileEntries(ev.action.deviceType);
     const raw = (ev.payload.settings ?? {}) as Record<string, unknown>;
-    const current = Array.isArray(raw._deviceProfiles) ? (raw._deviceProfiles as string[]) : [];
+    const current = Array.isArray(raw._deviceProfiles) ? (raw._deviceProfiles as unknown[]) : [];
 
-    if (arraysEqual(current, available)) return;
+    if (profileEntriesEqual(current, entries)) return;
 
     try {
-      await ev.action.setSettings({ ...raw, _deviceProfiles: available });
+      await ev.action.setSettings({ ...raw, _deviceProfiles: entries });
     } catch (err) {
       this.logger.warn(`Failed to push device profiles: ${err instanceof Error ? err.message : err}`);
     }
@@ -662,11 +685,31 @@ export class RaceAdmin extends ConnectionStateAwareAction<RaceAdminSettings> {
 
     // A cleared PI textfield persists "" (bypassing the Zod default) — fall
     // back to the bundled per-car profile, mirroring SwitchProfile's guard.
-    const targetProfile = settings.selectorTargetProfile.trim() || DEFAULT_SELECTOR_TARGET_PROFILE;
+    // The stored name is then resolved to this device's manifest name (#753):
+    // an exact match passes through, a legacy pre-#753 name maps to this
+    // device's variant, and a name with no variant here falls back to the
+    // default per-car profile resolved the same way.
+    const stored = settings.selectorTargetProfile.trim() || DEFAULT_SELECTOR_TARGET_PROFILE;
+    const available = availableProfilesForDevice(ev.action.deviceType);
+    const targetProfile =
+      resolveProfileNameForDevice(stored, ev.action.deviceType, available) ??
+      resolveProfileNameForDevice(DEFAULT_SELECTOR_TARGET_PROFILE, ev.action.deviceType, available);
 
     this.logger.info("Admin target car selected");
     this.logger.debug(`Selected CarIdx ${car.carIdx} (#${car.carNumber}); switching to "${targetProfile}"`);
     updateGlobalSettings({ [SELECTED_CAR_KEY]: { carIdx: car.carIdx, carNumber: car.carNumber } });
+
+    // The selection is stored either way, but with no per-car profile bundled
+    // for this device a switch to a guessed name could only fail in the app —
+    // skip it rather than pollute the profile history (#753).
+    if (!targetProfile) {
+      this.logger.warn(
+        `No bundled per-car profile available for device ${ev.action.deviceId ?? "(unknown)"}; car selected without a profile switch`,
+      );
+
+      return;
+    }
+
     // Page 0 so re-entering the selector's own profile always starts the
     // page-count learning from a known page (#754).
     await requestProfileSwitch(ev.action.deviceId, targetProfile, 0);

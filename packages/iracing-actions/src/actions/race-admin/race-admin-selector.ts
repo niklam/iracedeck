@@ -47,14 +47,17 @@ import profilesData from "../data/profiles.json" with { type: "json" };
  */
 export const SELECTED_CAR_KEY = "_raceAdminSelectedCar" as const;
 
-/** The profile a select-car press switches to when none is configured. */
+/**
+ * The profile a select-car press switches to when none is configured, as a
+ * DISPLAY name — resolved to the pressing device's manifest name (device
+ * suffix appended) at press time (#753).
+ */
 export const DEFAULT_SELECTOR_TARGET_PROFILE = "iRaceDeck Race Admin Per Car" as const;
 
 /**
- * Bundled profile names available for a device type, read from the generated
- * `data/profiles.json` (mirrors the manifest). Feeds the Target Profile
- * dropdown's `_deviceProfiles` list; same shape as the Switch Profile action's
- * helper of the same name.
+ * Bundled profile (manifest) names available for a device type, read from the
+ * generated `data/profiles.json` (mirrors the manifest). Same shape as the
+ * Switch Profile action's helper of the same name.
  *
  * @internal Exported for testing
  */
@@ -62,6 +65,20 @@ export function availableProfilesForDevice(deviceType: number | undefined): stri
   if (deviceType === undefined) return [];
 
   return profilesData.filter((p) => p.deviceType === deviceType).map((p) => p.name);
+}
+
+/**
+ * The `_deviceProfiles` entries pushed for the Target Profile PI dropdown:
+ * each available manifest name paired with its clean display label, so the
+ * dropdown never shows device suffixes (#753). Same shape as the Switch
+ * Profile action's helper of the same name.
+ *
+ * @internal Exported for testing
+ */
+export function deviceProfileEntries(deviceType: number | undefined): { name: string; label: string }[] {
+  if (deviceType === undefined) return [];
+
+  return profilesData.filter((p) => p.deviceType === deviceType).map((p) => ({ name: p.name, label: p.displayName }));
 }
 
 /** The shared admin target persisted under `SELECTED_CAR_KEY`. */

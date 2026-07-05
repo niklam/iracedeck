@@ -543,7 +543,7 @@ On a multi-page selector, the plugin learns how many car keys each page holds as
 
 #### Setting: Target Profile
 
-The bundled profile to switch to after a car is picked, chosen from the profiles available for this device. Leaving it unset uses **iRaceDeck Race Admin Per Car**.
+The bundled profile to switch to after a car is picked, chosen from the profiles available for this device. Leaving it unset uses the bundled **iRaceDeck Race Admin Per Car** profile for this device.
 
 ## Shared settings
 

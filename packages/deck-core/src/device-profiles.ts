@@ -294,6 +294,93 @@ export const PROFILE_TARGET_DEVICES: readonly DeviceType[] = [
   DeviceType.StreamDeckPlusXL,
 ];
 
+/**
+ * Device-name suffix used in bundled profile file / manifest names (issue #753).
+ *
+ * A bundled `.streamDeckProfile` is named `<display name> <suffix>` (e.g.
+ * `iRaceDeck Default XL`) so one file can exist per (template × device), while
+ * the user-facing name inside the bundle stays the clean display name. Rule:
+ * devices named "Stream Deck …" use the latter part (`Plus` spelled out for
+ * `+`); the classic Stream Deck, whose latter part is empty, uses `SD`. Only
+ * devices that can ship profiles (`target` / `candidate`) get a suffix.
+ */
+export const PROFILE_DEVICE_SUFFIXES: Partial<Record<DeviceType, string>> = {
+  [DeviceType.StreamDeck]: "SD",
+  [DeviceType.StreamDeckMini]: "Mini",
+  [DeviceType.StreamDeckXL]: "XL",
+  [DeviceType.StreamDeckPlus]: "Plus",
+  [DeviceType.StreamDeckNeo]: "Neo",
+  [DeviceType.Galleon100SD]: "Corsair Galleon",
+  [DeviceType.StreamDeckPlusXL]: "Plus XL",
+};
+
+/**
+ * Known suffixes longest-first, so stripping `iRaceDeck Default Plus XL` takes
+ * `Plus XL` — never the shorter `XL`.
+ */
+const SUFFIXES_LONGEST_FIRST: readonly string[] = Object.values(PROFILE_DEVICE_SUFFIXES).sort(
+  (a, b) => b.length - a.length,
+);
+
+/** The profile-name device suffix for a device type, or `undefined` when it has none. */
+export function profileDeviceSuffix(type: number): string | undefined {
+  return PROFILE_DEVICE_SUFFIXES[type as DeviceType];
+}
+
+/**
+ * Display name of a bundled profile: the manifest/file name with its trailing
+ * device suffix stripped (longest suffix first). A name without a known suffix
+ * — a display name, or a legacy pre-#753 manifest name — is returned unchanged.
+ */
+export function profileDisplayName(name: string): string {
+  for (const suffix of SUFFIXES_LONGEST_FIRST) {
+    if (name.endsWith(` ${suffix}`)) {
+      return name.slice(0, -(suffix.length + 1));
+    }
+  }
+
+  return name;
+}
+
+/**
+ * Device-suffixed manifest/file name for a profile on a device: `<name>
+ * <suffix>`. Idempotent — a name already carrying a known device suffix is
+ * returned unchanged (even for a different device), and so is the name when
+ * the device type is unknown or has no suffix.
+ */
+export function deviceProfileName(name: string, deviceType: number | undefined): string {
+  if (profileDisplayName(name) !== name) {
+    return name;
+  }
+
+  const suffix = deviceType === undefined ? undefined : profileDeviceSuffix(deviceType);
+
+  return suffix ? `${name} ${suffix}` : name;
+}
+
+/**
+ * Resolve a stored profile name against a device's available manifest names
+ * (issue #753). An exact match wins; otherwise the name is normalized to its
+ * display name and re-suffixed for this device — which maps both legacy
+ * pre-#753 names (`iRaceDeck Default`) and names persisted on another device
+ * (`iRaceDeck Default SD`) to this device's variant. Returns `undefined` when
+ * the profile has no variant among `availableNames`; the caller picks the
+ * fallback (typically the device's Default profile).
+ */
+export function resolveProfileNameForDevice(
+  name: string,
+  deviceType: number | undefined,
+  availableNames: readonly string[],
+): string | undefined {
+  if (availableNames.includes(name)) {
+    return name;
+  }
+
+  const suffixed = deviceProfileName(profileDisplayName(name), deviceType);
+
+  return availableNames.includes(suffixed) ? suffixed : undefined;
+}
+
 /** Built-in Elgato navigation actions used inside profiles (folder pages). See the profiles rule. */
 export const PROFILE_NAV_ACTIONS = {
   /** Enter a child folder page; `Settings.ProfileUUID` points at the child page. */
