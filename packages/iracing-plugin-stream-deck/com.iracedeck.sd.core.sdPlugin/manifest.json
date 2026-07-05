@@ -203,6 +203,7 @@
         "Encoder"
       ],
       "Encoder": {
+        "Icon": "imgs/actions/fuel-service/dial",
         "layout": "layouts/fuel-service.json",
         "TriggerDescription": {
           "Rotate": "Adjust fuel to add",
@@ -412,31 +413,15 @@
       "Name": "Setup Brakes",
       "UUID": "com.iracedeck.sd.core.setup-brakes",
       "Icon": "imgs/actions/setup-brakes/icon",
-      "Tooltip": "Brake adjustments (ABS, brake bias, peak bias, engine braking)",
+      "Tooltip": "Brake adjustments (ABS, brake bias, peak bias, engine braking); on a dial: adjust one brake setting, press to toggle ABS",
       "PropertyInspectorPath": "ui/setup-brakes.html",
-      "Controllers": [
-        "Keypad"
-      ],
-      "States": [
-        {
-          "Image": "imgs/actions/setup-brakes/key",
-          "TitleAlignment": "bottom",
-          "FontSize": 14
-        }
-      ]
-    },
-    {
-      "Name": "Setup Brakes Dial",
-      "UUID": "com.iracedeck.sd.core.setup-brakes-dial",
-      "Icon": "imgs/actions/setup-brakes-dial/icon",
-      "Tooltip": "Adjust a brake setting with a dial (brake bias, peak bias, bias fine, brake misc, engine braking, ABS)",
-      "PropertyInspectorPath": "ui/setup-brakes-dial.html",
       "Controllers": [
         "Keypad",
         "Encoder"
       ],
       "Encoder": {
-        "layout": "layouts/setup-brakes-dial.json",
+        "Icon": "imgs/actions/setup-brakes/dial",
+        "layout": "layouts/setup-brakes.json",
         "TriggerDescription": {
           "Rotate": "Adjust the selected brake setting",
           "Push": "Configured action (default: toggle ABS)",
@@ -445,7 +430,7 @@
       },
       "States": [
         {
-          "Image": "imgs/actions/setup-brakes-dial/key",
+          "Image": "imgs/actions/setup-brakes/key",
           "TitleAlignment": "bottom",
           "FontSize": 14
         }

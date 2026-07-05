@@ -189,7 +189,6 @@ export default defineConfig({
               items: [
                 { slug: "docs/actions/car-setup/setup-aero" },
                 { slug: "docs/actions/car-setup/setup-brakes" },
-                { slug: "docs/actions/car-setup/setup-brakes-dial" },
                 { slug: "docs/actions/car-setup/setup-chassis" },
                 { slug: "docs/actions/car-setup/setup-engine" },
                 { slug: "docs/actions/car-setup/setup-fuel" },

@@ -26,7 +26,7 @@
 
 ## Features
 
-**32 actions** with **268+ modes** across 8 categories:
+**31 actions** with **262+ modes** across 8 categories:
 
 | Category                | Actions | Modes | Examples                                                              |
 | ----------------------- | ------- | ----- | --------------------------------------------------------------------- |
@@ -36,7 +36,7 @@
 | **View & Camera**       | 5       | 89    | FOV, replay, camera controls, broadcast tools                         |
 | **Media**               | 1       | 7     | Video recording, screenshots                                          |
 | **Pit Service**         | 3       | 15    | Fuel (button and dial), tires, compounds, tearoff, fast repair        |
-| **Car Setup**           | 8       | 50    | Brakes, chassis, aero, engine, fuel mix, hybrid/ERS, traction control |
+| **Car Setup**           | 7       | 44    | Brakes (button and dial), chassis, aero, engine, fuel mix, hybrid/ERS, traction control |
 | **Communication**       | 2       | 34    | Chat, macros, whisper, reply, race admin commands                     |
 
 **Key highlights:**
@@ -114,7 +114,7 @@ packages/
 
 | Package                           | Role                                                                                      |
 | --------------------------------- | ----------------------------------------------------------------------------------------- |
-| `@iracedeck/iracing-actions`              | All 32 action implementations, platform-agnostic                                          |
+| `@iracedeck/iracing-actions`              | All 31 action implementations, platform-agnostic                                          |
 | `@iracedeck/deck-core`            | Base classes, types, keyboard service, icon templates, global settings                    |
 | `@iracedeck/deck-adapter-elgato`  | Bridges the Elgato SDK to deck-core's `IDeckPlatformAdapter` interface                    |
 | `@iracedeck/deck-adapter-mirabox` | Bridges the Mirabox VSD Craft WebSocket protocol to deck-core                             |

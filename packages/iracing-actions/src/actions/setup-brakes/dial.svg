@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+  <!-- Default dial (Encoder.Icon) image: just the action name on two lines (#775). -->
+  <rect x="0" y="0" width="72" height="72" rx="8" fill="#3a2a1a"/>
+  <text x="36" y="32" text-anchor="middle" fill="#ffffff" font-family="Arial, sans-serif" font-size="13" font-weight="bold">SETUP</text>
+  <text x="36" y="48" text-anchor="middle" fill="#ffffff" font-family="Arial, sans-serif" font-size="13" font-weight="bold">BRAKES</text>
+</svg>

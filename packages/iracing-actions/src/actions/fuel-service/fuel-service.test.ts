@@ -207,6 +207,7 @@ vi.mock("@iracedeck/deck-core", async () => {
     renderIconTemplate: vi.fn((_template: string, data: Record<string, string>) => {
       return `<svg>${data.titleContent || ""}${data.iconContent || ""}${data.mainLabel || ""}${data.subLabel || ""}</svg>`;
     }),
+    escapeXml: (str: string) => str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"),
     svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
   };
 });
@@ -256,7 +257,7 @@ function fakeDialEvent(actionId: string, settings: Record<string, unknown> = {})
       isKey: () => false,
       isDial: () => true,
       setTitle: vi.fn(),
-      setImage: vi.fn(),
+      setImage: vi.fn().mockResolvedValue(undefined),
       setSettings: vi.fn().mockResolvedValue(undefined),
       setFeedback: vi.fn().mockResolvedValue(undefined),
       setFeedbackLayout: vi.fn().mockResolvedValue(undefined),

@@ -125,7 +125,6 @@ import {
   SESSION_INFO_UUID,
   SessionInfo,
   SETUP_AERO_UUID,
-  SETUP_BRAKES_DIAL_UUID,
   SETUP_BRAKES_UUID,
   SETUP_CHASSIS_UUID,
   SETUP_ENGINE_UUID,
@@ -134,7 +133,6 @@ import {
   SETUP_TRACTION_UUID,
   SetupAero,
   SetupBrakes,
-  SetupBrakesDial,
   SetupChassis,
   SetupEngine,
   SetupFuel,
@@ -797,7 +795,6 @@ adapter.registerAction(REPLAY_TRANSPORT_UUID, new ReplayTransport(adapter.create
 adapter.registerAction(SESSION_INFO_UUID, new SessionInfo(adapter.createLogger("SessionInfo")));
 adapter.registerAction(SETUP_AERO_UUID, new SetupAero(adapter.createLogger("SetupAero")));
 adapter.registerAction(SETUP_BRAKES_UUID, new SetupBrakes(adapter.createLogger("SetupBrakes")));
-adapter.registerAction(SETUP_BRAKES_DIAL_UUID, new SetupBrakesDial(adapter.createLogger("SetupBrakesDial")));
 adapter.registerAction(SETUP_CHASSIS_UUID, new SetupChassis(adapter.createLogger("SetupChassis")));
 adapter.registerAction(SETUP_ENGINE_UUID, new SetupEngine(adapter.createLogger("SetupEngine")));
 adapter.registerAction(SETUP_FUEL_UUID, new SetupFuel(adapter.createLogger("SetupFuel")));

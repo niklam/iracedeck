@@ -34,6 +34,7 @@ import type { SessionInfo, TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 
 import { borderColorForState, type ToggleState } from "../../icons/status-bar.js";
+import { renderDialNameIcon } from "../../shared/dial-name-icon.js";
 import type { FuelPipeline } from "./fuel-pipeline.js";
 import {
   type DialGestureSlot,
@@ -644,9 +645,10 @@ export function renderStripCanvasSvg(
 
   // When a gesture slot needs the autofuel key binding but it's unset, dim the
   // slot and draw the centered #612 warning triangle over it (same convention
-  // as Setup Brakes Dial's strip box).
+  // as Setup Brakes' strip box). The 200×100 canvas recenters + rescales the
+  // 144-authored glyph (#775).
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100" width="200" height="100">${
-    bindingMissing ? applyBindingWarning(content) : content
+    bindingMissing ? applyBindingWarning(content, { width: 200, height: 100 }) : content
   }</svg>`;
 }
 
@@ -732,6 +734,14 @@ export class FuelDialSurface {
     const ctx = this.ensureContext(action, settings);
     // Seed the dialed value from current pit fuel request on appear.
     this.seedFromTelemetry(ctx, true);
+
+    // The deck-app image for the dial: just the action name (#775). Without
+    // this the app falls back to keypad iconography for the dial slot.
+    action
+      .setImage(renderDialNameIcon({ line1: "FUEL", line2: "SERVICE", backgroundColor: "#3a2a2a" }))
+      .catch((err) => {
+        this.host.logger.debug(`Dial name icon push failed: ${String(err)}`);
+      });
 
     // Start the periodic display refresh so the bar + value track live burn.
     this.startDisplayTimer(ctx);
