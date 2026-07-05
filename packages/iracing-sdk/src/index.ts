@@ -128,9 +128,12 @@ export { hasPitLimiter, hasVisor, hasWipers, isLiveOnTrack, isPostRace, isPreGre
 // Session info utilities
 export {
   type CameraGroup,
+  type CarNumberTargetClass,
+  classifyCarNumberTarget,
   getCameraGroupsFromSessionInfo,
   getCarNumberFromSessionInfo,
   getCarNumberRawFromSessionInfo,
+  getPlayerCarNumberFromSessionInfo,
   getAllCarNumbers,
 } from "./session-utils.js";
 

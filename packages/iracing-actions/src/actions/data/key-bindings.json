@@ -78,7 +78,31 @@
     { "id": "headlightFlash", "label": "Headlight Flash", "default": "", "setting": "carControlHeadlightFlash" },
     { "id": "pushToPass", "label": "Push To Pass", "default": "", "setting": "carControlPushToPass" },
     { "id": "drs", "label": "DRS", "default": "", "setting": "carControlDrs" },
-    { "id": "tearOffVisor", "label": "Tear Off Visor", "default": "", "setting": "carControlTearOffVisor" }
+    { "id": "tearOffVisor", "label": "Tear Off Visor", "default": "", "setting": "carControlTearOffVisor" },
+    {
+      "id": "handbrake",
+      "label": "Handbrake",
+      "default": "",
+      "setting": "carControlHandbrake"
+    },
+    {
+      "id": "secondClutch",
+      "label": "Second Clutch",
+      "default": "",
+      "setting": "carControlSecondClutch"
+    },
+    {
+      "id": "secondUpShift",
+      "label": "Second Up Shift",
+      "default": "",
+      "setting": "carControlSecondUpShift"
+    },
+    {
+      "id": "secondDownShift",
+      "label": "Second Down Shift",
+      "default": "",
+      "setting": "carControlSecondDownShift"
+    }
   ],
   "viewAdjustment": [
     { "id": "fovIncrease", "label": "FOV Increase", "default": "]", "setting": "viewAdjustFovIncrease" },

@@ -282,7 +282,8 @@ export { BORDER_DEFAULTS };
 /**
  * Resolves border settings by merging per-action overrides, global settings, and icon defaults.
  *
- * Resolution chain: actionOverrides → globalBorderSettings → icon <desc> border defaults → BORDER_DEFAULTS
+ * Resolution chain: actionOverrides → globalBorderSettings (skipped for fields in the icon's
+ * border `locked` array, issue #755) → icon <desc> border defaults → BORDER_DEFAULTS
  *
  * @param graphicSvg - SVG template string with optional <desc> border metadata
  * @param globalBorderSettings - Plugin-level global border settings
@@ -296,16 +297,18 @@ export function resolveBorderSettings(
   stateColor?: string,
 ): ResolvedBorderSettings {
   const iconDefaults = parseIconBorderDefaults(graphicSvg);
+  const locked = new Set(iconDefaults.locked ?? []);
 
   const resolve = <T>(
     actionVal: T | undefined,
     globalVal: T | "default" | undefined,
     iconDefault: T | undefined,
     fallback: T,
+    field?: string,
   ): T => {
     if (actionVal !== undefined) return actionVal;
 
-    if (globalVal !== undefined && globalVal !== "default") return globalVal as T;
+    if (!(field && locked.has(field)) && globalVal !== undefined && globalVal !== "default") return globalVal as T;
 
     if (iconDefault !== undefined) return iconDefault;
 
@@ -319,25 +322,40 @@ export function resolveBorderSettings(
       globalBorderSettings.borderColor,
       iconDefaults.borderColor,
       BORDER_DEFAULTS.borderColor,
+      "color",
     );
 
   return {
-    enabled: resolve(actionOverrides?.enabled, globalBorderSettings.enabled, undefined, BORDER_DEFAULTS.enabled),
+    enabled: resolve(
+      actionOverrides?.enabled,
+      globalBorderSettings.enabled,
+      iconDefaults.enabled,
+      BORDER_DEFAULTS.enabled,
+      "enabled",
+    ),
     borderWidth: resolve(
       actionOverrides?.borderWidth,
       globalBorderSettings.borderWidth,
       undefined,
       BORDER_DEFAULTS.borderWidth,
+      "borderWidth",
     ),
     borderColor,
     glowEnabled:
       __FEATURE_BORDER_GLOW__ &&
-      resolve(actionOverrides?.glowEnabled, globalBorderSettings.glowEnabled, undefined, BORDER_DEFAULTS.glowEnabled),
+      resolve(
+        actionOverrides?.glowEnabled,
+        globalBorderSettings.glowEnabled,
+        iconDefaults.glowEnabled,
+        BORDER_DEFAULTS.glowEnabled,
+        "glowEnabled",
+      ),
     glowWidth: resolve(
       actionOverrides?.glowWidth,
       globalBorderSettings.glowWidth,
       undefined,
       BORDER_DEFAULTS.glowWidth,
+      "glowWidth",
     ),
   };
 }

@@ -19,8 +19,9 @@ import type { SimEventName, SimEventOf } from "@iracedeck/event-bus";
 export const WEIGHT = {
   /**
    * Terse, time-sensitive callouts that must never defer or preempt — they
-   * play only when the bus is idle and drop otherwise (e.g. the pit-box
-   * count-in, issue #646). Pair with `queueable: false`.
+   * play only when the bus is idle and drop otherwise. Pair with
+   * `queueable: false`. (The pit-box count-in originally sat here per #646;
+   * #758 moved it above CHATTER so it wins the bus over the readback.)
    */
   TRANSIENT: 5,
   /**
@@ -116,6 +117,31 @@ export type Scenario = {
    * freshness comes from var resolvers reading live state at speak time.
    */
   queueable?: boolean;
+  /**
+   * When an `interrupt` cuts this queueable fire mid-playback, remember how
+   * far it got and CONTINUE from the interrupted clip at idle-replay instead
+   * of re-firing from the top (`true`; issue #758). The replay re-expands the
+   * sequence first: an unchanged expansion resumes at the interrupted clip
+   * (re-keying the radio frame with the open tick when one was already
+   * opened); a changed expansion — the snapshot moved on while stashed —
+   * falls back to a full fresh replay, preserving the #481 freshness
+   * guarantee. Requires `queueable: true` (validated at load time). Because
+   * the resume decision re-expands the sequence, `if:` predicates of a
+   * resumable scenario must be side-effect-free, and pool draws may differ
+   * between expansions (forcing the full-replay path) — best suited to
+   * deterministic sequences like the pit-service readback.
+   */
+  resumable?: boolean;
+  /**
+   * After this fire finishes, hold the bus's pending replay for N ms instead
+   * of draining it immediately (issue #758). A scenario that arrives in a
+   * train of related fires (e.g. the pit-box count-in marks, ~1 s apart)
+   * declares this so a fire it displaced doesn't stutter back into the gaps
+   * between its family-mates — the hold re-arms after each mark and the
+   * displaced fire plays once the train has been quiet for the window. A new
+   * fire taking the bus cancels the hold; it re-arms when that fire finishes.
+   */
+  pendingHoldMs?: number;
   /** Minimum ms between successive fires of this scenario id. */
   cooldown?: number;
   /**

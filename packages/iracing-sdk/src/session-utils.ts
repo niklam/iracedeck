@@ -9,6 +9,58 @@ interface DriverEntry {
   CarNumber: string;
   CarNumberRaw: number;
   CarIsPaceCar?: number;
+  IsSpectator?: number;
+  UserName?: string;
+  CarIsAI?: number;
+}
+
+/**
+ * What a car-number target refers to in the current session:
+ * - `"user"` — a car with a human driver (a connected iRacing user)
+ * - `"ai"` — an AI car or the pace car (no user behind it)
+ * - `"unknown"` — no car with that number in the session
+ */
+export type CarNumberTargetClass = "user" | "ai" | "unknown";
+
+/**
+ * The player's own (display) car number, cleaned to digits with leading zeros
+ * preserved — resolved via `DriverInfo.DriverCarIdx`. `null` when session info
+ * is missing or the player has no numbered car entry.
+ */
+export function getPlayerCarNumberFromSessionInfo(sessionInfo: unknown): string | null {
+  const driverInfo = (sessionInfo as Record<string, unknown>)?.DriverInfo as Record<string, unknown> | undefined;
+  const playerCarIdx = driverInfo?.DriverCarIdx;
+
+  if (typeof playerCarIdx !== "number" || playerCarIdx < 0) return null;
+
+  return getCarNumberFromSessionInfo(sessionInfo, playerCarIdx);
+}
+
+/**
+ * Classify a car-number target against the current session's driver list.
+ *
+ * User-management admin commands (`!admin`, `!nadmin`, per-driver `!chat` /
+ * `!nchat`, `!remove`) act on *users*, and iRacing's failure mode for a target
+ * that matches no user (an AI car, or a number not in the session) has been
+ * observed to apply the command to the SENDER instead (issue #747) — so
+ * callers refuse to dispatch such commands unless the target classifies as
+ * `"user"`.
+ *
+ * Matching uses the same digit-cleaned, leading-zero-preserving convention as
+ * `getCarNumberFromSessionInfo` (`"04"` and `"4"` are distinct numbers).
+ */
+export function classifyCarNumberTarget(sessionInfo: unknown, carNumber: string): CarNumberTargetClass {
+  const target = carNumber.replace(/[^0-9]/g, "");
+
+  if (!target) return "unknown";
+
+  const driverInfo = (sessionInfo as Record<string, unknown>)?.DriverInfo as Record<string, unknown> | undefined;
+  const drivers = driverInfo?.Drivers as DriverEntry[] | undefined;
+  const driver = drivers?.find((d) => d.CarNumber?.replace(/[^0-9]/g, "") === target);
+
+  if (!driver) return "unknown";
+
+  return driver.CarIsAI === 1 || driver.CarIsPaceCar === 1 ? "ai" : "user";
 }
 
 /**
@@ -50,31 +102,41 @@ export function getCarNumberRawFromSessionInfo(sessionInfo: unknown, carIdx: num
 }
 
 /**
- * Get all car numbers from session info, optionally excluding the pace car.
+ * Get all car numbers from session info, optionally excluding the pace car
+ * and/or spectators.
  *
  * @param sessionInfo - The iRacing session info object
  * @param excludePaceCar - Whether to exclude the pace car (default: false)
- * @returns Array of { carIdx, carNumber, carNumberRaw } sorted by car number ascending
+ * @param excludeSpectators - Whether to exclude spectator entries (`IsSpectator === 1`, default: false)
+ * @returns Array of { carIdx, carNumber, carNumberRaw, userName } sorted by car number ascending
  */
 export function getAllCarNumbers(
   sessionInfo: unknown,
   excludePaceCar = false,
-): Array<{ carIdx: number; carNumber: string; carNumberRaw: number }> {
+  excludeSpectators = false,
+): Array<{ carIdx: number; carNumber: string; carNumberRaw: number; userName: string }> {
   const driverInfo = (sessionInfo as Record<string, unknown>)?.DriverInfo as Record<string, unknown> | undefined;
   const drivers = driverInfo?.Drivers as DriverEntry[] | undefined;
 
   if (!drivers) return [];
 
-  const result: Array<{ carIdx: number; carNumber: string; carNumberRaw: number }> = [];
+  const result: Array<{ carIdx: number; carNumber: string; carNumberRaw: number; userName: string }> = [];
 
   for (const driver of drivers) {
     if (excludePaceCar && driver.CarIsPaceCar === 1) continue;
+
+    if (excludeSpectators && driver.IsSpectator === 1) continue;
 
     const cleaned = driver.CarNumber.replace(/[^0-9]/g, "");
 
     if (cleaned.length === 0) continue;
 
-    result.push({ carIdx: driver.CarIdx, carNumber: cleaned, carNumberRaw: driver.CarNumberRaw });
+    result.push({
+      carIdx: driver.CarIdx,
+      carNumber: cleaned,
+      carNumberRaw: driver.CarNumberRaw,
+      userName: driver.UserName ?? "",
+    });
   }
 
   result.sort((a, b) => Number(a.carNumber) - Number(b.carNumber));

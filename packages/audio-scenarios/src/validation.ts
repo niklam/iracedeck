@@ -34,6 +34,17 @@ export function validateScenario(
     errors.push(`weight must be a finite number (got ${String(s.weight)})`);
   }
 
+  // Resume semantics (issue #758): only an interrupt-cut QUEUEABLE fire is
+  // ever stashed for idle-replay, so `resumable` without `queueable` would be
+  // a silent no-op — surface the mismatch at load time.
+  if (s.resumable === true && s.queueable !== true) {
+    errors.push("resumable requires queueable: true (only a queueable fire is stashed for idle-replay)");
+  }
+
+  if (s.pendingHoldMs !== undefined && (!Number.isFinite(s.pendingHoldMs) || s.pendingHoldMs < 0)) {
+    errors.push(`pendingHoldMs must be a non-negative number (got ${String(s.pendingHoldMs)})`);
+  }
+
   walk(resolved, s.base, new Set([s.id]));
 
   return errors;

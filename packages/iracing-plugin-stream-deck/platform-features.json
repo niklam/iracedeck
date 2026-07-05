@@ -6,6 +6,7 @@
   },
   "features": {
     "borderGlow": true,
-    "dialFeedback": true
+    "dialFeedback": true,
+    "profiles": true
   }
 }

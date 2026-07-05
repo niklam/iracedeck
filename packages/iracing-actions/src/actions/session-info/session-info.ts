@@ -24,7 +24,12 @@ import {
   type TelemetryData,
   TrackWetness,
 } from "@iracedeck/iracing-sdk";
-import { getLivePosition, getStartingGridPosition } from "@iracedeck/sim-events-iracing";
+import {
+  FUEL_LAP_HISTORY_CAP,
+  getFuelStats,
+  getLivePosition,
+  getStartingGridPosition,
+} from "@iracedeck/sim-events-iracing";
 import z from "zod";
 
 import sessionInfoTemplate from "../../../icons/session-info.svg";
@@ -46,7 +51,7 @@ const LITERS_PER_GALLON = 3.78541;
 
 const SessionInfoSettings = CommonSettings.extend({
   mode: z
-    .enum(["incidents", "time-remaining", "laps", "position", "fuel", "flags", "track-wetness"])
+    .enum(["incidents", "time-remaining", "laps", "position", "fuel", "flags", "track-wetness", "laps-to-empty"])
     .default("incidents"),
   fontSize: z.preprocess(
     (val) => (val === "" || val === null || val === undefined ? undefined : val),
@@ -58,6 +63,20 @@ const SessionInfoSettings = CommonSettings.extend({
     .transform((val) => val === true || val === "true")
     .default(false),
   fuelFormat: z.enum(["amount", "percentage"]).default("amount"),
+  // Fuel consumption sub-modes (issue #465): "now" is the pre-existing tank
+  // level display; "lastLap" / "avgN" read the translator's validated fuel lap
+  // history via getFuelStats(). fuelLapWindow rounds + clamps instead of
+  // validating hard — a hand-typed decimal (the PI number box doesn't
+  // step-round) or an out-of-range persisted value must not fail the whole
+  // settings parse, which would silently reset the action to its defaults.
+  fuelSubMode: z.enum(["now", "lastLap", "avgN"]).default("now"),
+  fuelLapWindow: z.preprocess(
+    (val) => (val === "" || val === null || val === undefined ? undefined : val),
+    z.coerce
+      .number()
+      .transform((val) => Math.min(FUEL_LAP_HISTORY_CAP, Math.max(1, Math.round(val))))
+      .catch(5),
+  ),
   blankWhenNoFlag: z
     .union([z.boolean(), z.string()])
     .transform((val) => val === true || val === "true")
@@ -90,16 +109,19 @@ export function formatSessionTime(seconds: number): string {
 /**
  * @internal Exported for testing
  *
- * Formats a fuel amount for display. Respects the player's DisplayUnits setting.
+ * Formats a fuel amount for display. Respects the player's DisplayUnits
+ * setting. Tank-level readings use the default 1 decimal; the per-lap
+ * consumption sub-modes pass 2 — a tenth of a liter (let alone a tenth of a
+ * gallon) is too coarse for stint planning.
  */
-export function formatFuelAmount(fuelLevel: number, displayUnits: number | undefined): string {
+export function formatFuelAmount(fuelLevel: number, displayUnits: number | undefined, decimals = 1): string {
   if (displayUnits === DisplayUnits.English) {
     const gallons = fuelLevel / LITERS_PER_GALLON;
 
-    return `${gallons.toFixed(1)} gal`;
+    return `${gallons.toFixed(decimals)} gal`;
   }
 
-  return `${fuelLevel.toFixed(1)} L`;
+  return `${fuelLevel.toFixed(decimals)} L`;
 }
 
 /**
@@ -246,13 +268,24 @@ export function generateSessionInfoSvg(
     position: "POSITION",
     fuel: "FUEL",
     flags: "FLAGS",
+    "laps-to-empty": "LAPS TO\nEMPTY",
   };
   // Track-wetness uses the live state name as its title so the icon shows the
-  // current state in one line. All other modes use a fixed category label.
-  const actionDefaultTitle =
-    settings.mode === "track-wetness"
-      ? trackWetnessLabel(trackWetnessState)
-      : (titleLabels[settings.mode] ?? "INCIDENTS");
+  // current state in one line. The fuel consumption sub-modes carry their own
+  // labels so a glance tells which number the key is showing. All other modes
+  // use a fixed category label.
+  let actionDefaultTitle: string;
+
+  if (settings.mode === "track-wetness") {
+    actionDefaultTitle = trackWetnessLabel(trackWetnessState);
+  } else if (settings.mode === "fuel" && settings.fuelSubMode === "lastLap") {
+    actionDefaultTitle = "LAST LAP";
+  } else if (settings.mode === "fuel" && settings.fuelSubMode === "avgN") {
+    actionDefaultTitle = `AVG ${settings.fuelLapWindow} ${settings.fuelLapWindow === 1 ? "LAP" : "LAPS"}`;
+  } else {
+    actionDefaultTitle = titleLabels[settings.mode] ?? "INCIDENTS";
+  }
+
   const valueFontSizeNum = settings.fontSize !== undefined ? settings.fontSize * 2 : 28;
   const valueFontSize = String(valueFontSizeNum);
   const valueY = String(88 + (valueFontSizeNum - 44) / 3);
@@ -434,7 +467,13 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
 
       if (settings.mode === "position") return settings.positionShowTotal ? "P-/-" : "P-";
 
-      if (settings.mode === "fuel") return settings.fuelFormat === "percentage" ? "--%" : "-- L";
+      if (settings.mode === "fuel") {
+        if (settings.fuelSubMode !== "now") return "--";
+
+        return settings.fuelFormat === "percentage" ? "--%" : "-- L";
+      }
+
+      if (settings.mode === "laps-to-empty") return "--";
 
       if (settings.mode === "flags") return settings.blankWhenNoFlag ? "" : "--";
 
@@ -525,6 +564,20 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
     }
 
     if (settings.mode === "fuel") {
+      // Consumption sub-modes (issue #465) read the translator's validated
+      // fuel lap history. Only VALID laps ever surface here, so an invalid
+      // latest lap (pit stop, tow) keeps showing the last valid value instead
+      // of flickering to "--" mid-stint. The percentage format only applies to
+      // the tank-level "now" display — consumption is always an amount.
+      if (settings.fuelSubMode === "lastLap" || settings.fuelSubMode === "avgN") {
+        const stats = getFuelStats(settings.fuelLapWindow);
+        const value = settings.fuelSubMode === "lastLap" ? stats.lastLap : stats.avg;
+
+        if (value === null) return "--";
+
+        return formatFuelAmount(value, telemetry.DisplayUnits, 2);
+      }
+
       if (settings.fuelFormat === "percentage") {
         const pct = telemetry.FuelLevelPct;
 
@@ -538,6 +591,20 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
       if (level === undefined) return "-- L";
 
       return formatFuelAmount(level, telemetry.DisplayUnits);
+    }
+
+    // Laps to empty (issue #748): live tank level ÷ the same validated mean
+    // the avgN sub-mode displays, so the two keys always agree. Deliberately
+    // NOT the conservative max-of-recent-laps the fuel warning thresholds use
+    // — a pessimistic variant would be a setting, never a silent difference.
+    // Both operands are liters, so the ratio needs no DisplayUnits handling.
+    if (settings.mode === "laps-to-empty") {
+      const stats = getFuelStats(settings.fuelLapWindow);
+      const level = telemetry.FuelLevel;
+
+      if (stats.avg === null || level === undefined) return "--";
+
+      return (level / stats.avg).toFixed(2);
     }
 
     if (settings.mode === "flags") {

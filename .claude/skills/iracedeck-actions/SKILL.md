@@ -9,7 +9,7 @@ description: Use when looking up Stream Deck actions, sub-actions, modes, catego
 
 Complete action definitions: `docs/reference/actions.json`
 
-This skill file documents **31 actions with 291 modes** using a detailed per-mode count (the totals in the category table below). The user-facing website (`packages/website/src/content/docs/`) uses a coarser counting convention and shows a lower total (**260 modes**) — treat the website as the source of truth for user-facing copy and this skill file as the detailed inventory. `docs/reference/actions.json` has not yet been re-synced to the per-mode counting convention; treat it as a detailed inventory of individual mode values that is occasionally out of date.
+This skill file documents **31 actions with 297 modes** using a detailed per-mode count (the totals in the category table below). The user-facing website (`packages/website/src/content/docs/`) uses a coarser counting convention and shows a lower total (**257 modes**) — treat the website as the source of truth for user-facing copy and this skill file as the detailed inventory. `docs/reference/actions.json` has not yet been re-synced to the per-mode counting convention; treat it as a detailed inventory of individual mode values that is occasionally out of date.
 
 Each action entry:
 ```json
@@ -49,15 +49,15 @@ When asked about actions or controls:
 
 | Category | Actions | Modes | Description |
 |----------|---------|-------|-------------|
-| Display & Session | 2 | 8 | Live session data: incidents, laps, position, fuel, flags, track wetness |
-| Driving Controls | 6 | 31 | AI spotter, audio (incl. Race Engineer & Radar volume), black boxes, look direction, car control, pit crew (Race Engineer toggle + radar) |
+| Display & Session | 2 | 9 | Live session data: incidents, laps, position, fuel, laps to empty, flags, track wetness |
+| Driving Controls | 6 | 35 | AI spotter, audio (incl. Race Engineer & Radar volume), black boxes, look direction, car control, pit crew (Race Engineer toggle + radar) |
 | Cockpit & Interface | 5 | 35 | Wipers, force feedback, splits & reference, telemetry, UI toggles |
 | View & Camera | 5 | 88 | FOV, replay, camera controls, broadcast tools |
 | Media | 1 | 7 | Video recording, screenshots, texture management |
 | Pit Service | 3 | 15 | Fuel (keypad modes + a Stream Deck+ dial surface, #759), tires, compounds, tearoff, fast repair |
 | Car Setup | 7 | 73 | Brakes (button and dial surface, #730/#775), chassis, aero, engine, fuel mix, hybrid/ERS, traction control — adjustment modes plus live-display "View …" sub-modes; each View sub-mode also supports dual-press (tap = configured direction, long-press = opposite) so one key both shows the value and adjusts it (#540) |
-| Communication | 2 | 34 | Chat, macros (15), whisper, toggle, reply, race admin commands |
-| **Total** | **31** | **291** | |
+| Communication | 2 | 35 | Chat, macros (15), whisper, toggle, reply, race admin commands, car selector |
+| **Total** | **31** | **297** | |
 
 Mode counts reflect the PI Mode/Setting dropdown choices documented in each action page. Directional variants (Increase/Decrease) are treated as a single mode with a Direction sub-setting, matching the per-mode website format. Legacy replay actions (Replay Transport, Replay Speed, Replay Navigation) and Camera Cycle (Legacy) still exist in the plugin manifest for backward compatibility but are not counted as documented actions.
 
@@ -67,7 +67,7 @@ Mode counts reflect the PI Mode/Setting dropdown choices documented in each acti
 
 | Action | Modes | Mode values |
 |--------|-------|-------------|
-| Session Info | 7 | incidents, time-remaining, laps, position, fuel, flags, track-wetness |
+| Session Info | 8 | incidents, time-remaining, laps, position, fuel (Fuel Value sub-modes: current level / used last lap / average per lap over a configurable 1–20 lap window; #465), laps-to-empty (live tank level ÷ the same 1–20-lap average, two decimals, `--` until a clean lap exists; #748), flags, track-wetness |
 | Telemetry Display | 1 | template (Mustache-driven display, no Mode dropdown; templates also support `{{= expr }}` expressions — arithmetic, comparisons, ternary, round/floor/ceil/abs/min/max — #192) |
 
 ### Driving Controls
@@ -78,7 +78,7 @@ Mode counts reflect the PI Mode/Setting dropdown choices documented in each acti
 | Audio Controls | 5 | push-to-talk (hold), voice-chat (with volume-up/down/mute action), master (with volume-up/down action), race-engineer (with volume-up/down action; steps global raceEngineerVolume ±5, respects the master enable gate), radar (with volume-up/down action; steps global radarVolume ±5). The race-engineer/radar categories control iRaceDeck's own audio buses directly (no keyboard binding). One action for BOTH surfaces (#782, `encoder: true`, `Controllers: ["Keypad","Encoder"]` on Elgato only — Mirabox/Ulanzi are Keypad-only per #786). **Dial** (settings under the `dial` root; PI branches per `actionInfo.payload.controller`): `dial.category` picks what rotation adjusts — voice-chat/master tap the iRacing volume bindings once per detent (capped at 5 per event; iRacing exposes no volume state, so the self-drawn touch strip shows category identity only), race-engineer/radar step the 0–100 globals by 5 per detent with a live level bar + value on the strip (dimmed OFF when the feature gate is off; refreshed on global-settings changes, throttled ≤10/s). `dial.pressAction` (default none): push-to-talk holds `audioControlsPushToTalk` for the press duration (red ON AIR band while held; release also fires on willDisappear), mute-unmute taps `audioVoiceChatMute` for voice-chat or toggles the Pit Crew feature gate for race-engineer/radar via the shared `audio-toggles.ts` pathway (ack clips included) — not offered for master (iRacing has no master-mute keybind). Strip layout `layouts/audio-controls.json` (full-canvas `box` pixmap); strip + trigger descriptions are Elgato-only (`__FEATURE_DIAL_FEEDBACK__`). |
 | Black Box Selector | 3 | direct (with 11 Black Box options), next, previous |
 | Look Direction | 4 | look-left, look-right, look-up, look-down (all hold pattern) |
-| Car Control | 10 | pit-speed-limiter (telemetry-aware), push-to-pass (telemetry-aware), drs (telemetry-aware), headlight-flash (hold), tear-off-visor, ignition, starter (hold), enter-exit-tow (hold, telemetry-aware, session-context icon/color/label when out of car: Test/Practice/Qualify/Grid/Race, red background in-car, per-state auto-hold options for exit/reset/tow), escape (hardcoded ESC, auto-hold option), pause-sim |
+| Car Control | 14 | pit-speed-limiter (telemetry-aware), push-to-pass (telemetry-aware), drs (telemetry-aware), headlight-flash (hold), tear-off-visor, ignition, starter (hold), enter-exit-tow (hold, telemetry-aware, session-context icon/color/label when out of car: Test/Practice/Qualify/Grid/Race, red background in-car, per-state auto-hold options for exit/reset/tow), escape (hardcoded ESC, auto-hold option), pause-sim, handbrake (hold), second-clutch (hold), second-up-shift, second-down-shift (backup driver inputs, #183 — no default iRacing bindings) |
 | Pit Crew | 2 | race-engineer (Race Engineer Toggle — flips the engineer voice gate on/off), radar (toggles the directional proximity tick loop). The radar-volume mode moved to the Audio Controls action (#590) — hidden from the Pit Crew Mode dropdown but kept functional so existing buttons keep working. The Spotter is NOT a mode — it's a Race Engineer voice callout family (spoken side-awareness — "car left", "three wide", "clear"), gated by the Race Engineer master (`pitCrewRaceEngineerEnabled`) plus two PI opt-ins `calloutEnabledSpotterCars` + `calloutEnabledSpotterStillThere` (both default on); issue #651. |
 
 ### Cockpit & Interface
@@ -132,7 +132,7 @@ Mode counts reflect the PI Mode/Setting dropdown choices documented in each acti
 | Action | Modes | Mode values |
 |--------|-------|-------------|
 | Chat | 7 | send-message, macro (1-15), reply, whisper (keyboard), toggle (keyboard), open-chat, cancel (`respond-pm` is a hidden alias of `reply` retained for backward compatibility — not exposed in the PI dropdown) |
-| Race Admin | 27 | yellow, black-flag, dq-driver, show-dqs-field, show-dqs-driver, clear-penalties, clear-all, wave-around, eol, pit-close, pit-open, pace-laps, single/double-file-restart, advance-session, grid-set, grid-start, track-state, grant/revoke-admin, remove-driver, enable/disable-chat (all/driver), message-all, rc-message |
+| Race Admin | 28 | yellow, black-flag, dq-driver, show-dqs-field, show-dqs-driver, clear-penalties, clear-all, wave-around, eol, pit-close, pit-open, pace-laps, single/double-file-restart, advance-session, grid-set, grid-start, track-state, grant/revoke-admin, remove-driver, enable/disable-chat (all/driver), message-all, rc-message, select-car (Elgato-only car selector: auto-fills a car per key, stores the shared admin target). Driver Target adds a `selected-car` option that acts on that shared target. |
 
 ## Control Patterns
 

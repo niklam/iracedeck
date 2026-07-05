@@ -260,6 +260,16 @@ export type RaceStartSnapshot = RaceStartConditions & {
  * any mid-session post-pit-exit lap. Neither is a timed attempt, so an
  * incident there shouldn't fire the "this lap will be invalidated" line.
  *
+ * `lapCounted` is the beyond-counted-laps detector (issue #776). In a
+ * lap-limited qualifying iRacing lets the driver keep circulating after
+ * their counted laps are done — on those extra laps the raw
+ * `SessionLapsRemainEx` reads 0 (not even the current lap remains), which
+ * the `lapsRemaining` clamp would otherwise collapse into the same `0` the
+ * final counted lap reports. `false` means the current lap is not a counted
+ * attempt at all, so an incident invalidates nothing and the whole callout
+ * stays silent. Time-limited sessions and missing telemetry report `true`
+ * (don't punish missing data).
+ *
  * Sim-agnostic: any future translator can populate the same shape.
  */
 export type QualifyingInvalidationSnapshot = {
@@ -269,6 +279,7 @@ export type QualifyingInvalidationSnapshot = {
   lapLimited: boolean;
   lapCompleted: number;
   lapStartedFromPits: boolean;
+  lapCounted: boolean;
 };
 
 /**
@@ -324,6 +335,13 @@ export type SimEventMap = {
   "flag.checkered.raised": SimEvent<"flag.checkered.raised", EmptySimEventPayload>;
   "flag.black.raised": SimEvent<"flag.black.raised", EmptySimEventPayload>;
   "flag.white.raised": SimEvent<"flag.white.raised", EmptySimEventPayload>;
+  /**
+   * The player crosses the start/finish line while the white flag is flying
+   * — the start of THEIR last lap (issue #772). The raise above is the
+   * heads-up ("about to start the final lap"); this is the definitive
+   * "this is the last lap" moment. Fired once per white episode.
+   */
+  "flag.white-last-lap.raised": SimEvent<"flag.white-last-lap.raised", EmptySimEventPayload>;
   "flag.red.raised": SimEvent<"flag.red.raised", EmptySimEventPayload>;
   /**
    * Track-debris flag (`Flags.Debris`). Persistent until the flag drops;

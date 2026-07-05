@@ -148,15 +148,22 @@ vi.mock("@iracedeck/deck-core", () => ({
     glowWidth: 18,
   })),
   resolveGraphicSettings: vi.fn(() => ({ scale: 1 })),
-  resolveTitleSettings: vi.fn((_svg: unknown, _global: unknown, _overrides: unknown, defaultTitle?: string) => ({
-    showTitle: true,
-    showGraphics: true,
-    titleText: defaultTitle ?? "",
-    bold: true,
-    fontSize: 18,
-    position: "bottom" as const,
-    customPosition: 0,
-  })),
+  resolveTitleSettings: vi.fn(
+    (
+      _svg: unknown,
+      _global: unknown,
+      overrides: { titleText?: string; showTitle?: boolean } | undefined,
+      defaultTitle?: string,
+    ) => ({
+      showTitle: overrides?.showTitle ?? true,
+      showGraphics: true,
+      titleText: overrides?.titleText || defaultTitle || "",
+      bold: true,
+      fontSize: 18,
+      position: "bottom" as const,
+      customPosition: 0,
+    }),
+  ),
   assembleIcon: vi.fn(
     ({ graphicSvg, title }: { graphicSvg: string; colors: unknown; title: { titleText: string } }) => {
       const encoded = encodeURIComponent(`<svg>${graphicSvg}${title?.titleText ?? ""}</svg>`);
@@ -171,7 +178,7 @@ vi.mock("@iracedeck/deck-core", () => ({
       .replace(/<desc>[\s\S]*?<\/desc>/, "")
       .trim(),
   ),
-  generateTitleText: vi.fn(() => ""),
+  generateTitleText: vi.fn((opts: { text?: string }) => (opts?.text ? `<text>${opts.text}</text>` : "")),
   ICON_BASE_TEMPLATE: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144"><rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>{{graphicContent}}{{titleContent}}</svg>`,
   parseSvgViewBox: vi.fn((svg: string) => {
     const match = svg.match(/<svg[^>]*viewBox="([^"]+)"/);
@@ -439,6 +446,19 @@ describe("CameraControls", () => {
           generateCameraControlsSvg({ target: "cycle-driving", direction: "previous" }),
         );
         expect(decoded).toContain("driving-previous");
+      });
+
+      it("should thread titleOverrides into the cycle-camera grid label", () => {
+        mockGetGlobalSettings.mockReturnValue({});
+        const decoded = decodeURIComponent(
+          generateCameraControlsSvg({
+            target: "cycle-camera",
+            direction: "next",
+            titleOverrides: { titleText: "CUSTOM CAM" },
+          }),
+        );
+        expect(decoded).toContain("CUSTOM CAM");
+        expect(decoded).not.toContain("CYCLE CAM");
       });
     });
 
@@ -739,6 +759,28 @@ describe("CameraControls", () => {
       const result1 = generateCycleCameraGridSvg(["Nose", "Cockpit"], "next");
       const result2 = generateCycleCameraGridSvg(["Chase", "TV1"], "next");
       expect(result1).not.toBe(result2);
+    });
+
+    it("should render custom Title Text from titleOverrides in the grid label", () => {
+      const decoded = decodeURIComponent(
+        generateCycleCameraGridSvg(["Nose", "Cockpit"], "next", undefined, { titleText: "MY CAM" }),
+      );
+      expect(decoded).toContain("MY CAM");
+      expect(decoded).not.toContain("CYCLE CAM");
+    });
+
+    it("should omit the grid label when titleOverrides hides the title", () => {
+      const decoded = decodeURIComponent(
+        generateCycleCameraGridSvg(["Nose", "Cockpit"], "next", undefined, { showTitle: false }),
+      );
+      expect(decoded).not.toContain("CYCLE CAM");
+    });
+
+    it("should apply titleOverrides on the static fallback icon (no groups with icons)", () => {
+      const decoded = decodeURIComponent(
+        generateCycleCameraGridSvg(["NonExistent"], "next", undefined, { titleText: "FALLBACK" }),
+      );
+      expect(decoded).toContain("FALLBACK");
     });
   });
 });

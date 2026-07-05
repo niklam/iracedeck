@@ -104,6 +104,41 @@ export type TranslatorState = {
    * neither event.
    */
   furledAnnounced: boolean;
+  /**
+   * Previous-tick `LapCompleted`, for detecting the player's start/finish
+   * crossings inside the flag diff (issue #771). `null` until a valid value
+   * has been observed.
+   */
+  flagLastLapCompleted: number | null;
+  /**
+   * Timestamp (ms) of the player's most recent scored S/F crossing (a
+   * `LapCompleted` increment) as seen by the flag diff (issue #771). `0`
+   * when no crossing has been observed yet. Drives the winner grace window
+   * (`FLAG_CROSS_GRACE_MS`): the leader's own finish CAUSES the checkered
+   * bit to rise, possibly a tick or two after their crossing was scored.
+   */
+  flagLastCrossedAt: number;
+  /**
+   * True while a raised checkered is being held back until the player takes
+   * the flag at the S/F line (issue #771). iRacing raises the `Checkered`
+   * bit for the whole field the moment the session ends, which can be most
+   * of a lap before the player reaches the line.
+   */
+  checkeredPendingCross: boolean;
+  /**
+   * True once `flag.white-last-lap.raised` has fired for the current white
+   * episode (issue #772) — the player's S/F crossing under the white flag,
+   * the start of THEIR last lap. Re-arms when the White bit drops.
+   */
+  whiteLastLapFired: boolean;
+  /**
+   * Timestamp (ms) the white-flag heads-up (`flag.white.raised`) was emitted
+   * for the current white episode (issue #772); `0` when none was (fresh
+   * state, or the leader skip replaced it with the last-lap line). Drives
+   * the `WHITE_LAST_LAP_MIN_GAP_MS` guard so a close follower's crossing
+   * can't preempt the still-playing heads-up. Reset when the bit drops.
+   */
+  whiteRaisedAt: number;
 
   // ── Rolling-start pace laps (issue #657) ────────────────────────────────
   /**
@@ -126,8 +161,25 @@ export type TranslatorState = {
    * completion crossing sits at ~1 — the `>= 0.5` fire guard separates them.
    */
   paceLapAccrued: number;
-  /** Previous-tick `LapDistPct`, for the per-tick forward-distance delta. */
+  /** Previous-tick lap-distance of the tracked car, for the per-tick forward-distance delta. */
   paceLapLastDistPct: number;
+  /**
+   * `CarIdx` of the car whose S/F crossings the pace-lap diff is tracking
+   * THIS tick (issue #773): the PACE CAR whenever its telemetry is usable,
+   * `null` to track the player's own `LapDistPct` instead. The pace car
+   * crosses S/F — committing the field to another pace lap — before the
+   * player does, so the cue keys on its crossing whenever possible; a
+   * telemetry blip or a pit-lane peel-off flips to the player (with a
+   * baseline re-anchor) and flips back when the pace car's data returns.
+   */
+  paceLapSourceCarIdx: number | null;
+  /**
+   * The pace car's `CarIdx` as resolved from session YAML at the formation's
+   * entry edge (issue #773), `null` when unresolvable. Kept separate from
+   * `paceLapSourceCarIdx` so a mid-parade downgrade to the player can
+   * re-acquire the pace car when its telemetry returns valid.
+   */
+  paceLapPaceCarIdx: number | null;
   /**
    * Once-per-formation latch for `flag.one-pace-lap-to-go.raised`. Set when the
    * cue fires; cleared (with the rest of the pace-lap state) on any
@@ -432,6 +484,9 @@ export type TranslatorState = {
   fuelHistory: number[];
   fuelFiredThresholds: Set<number>;
   lastLapsRemaining: number | null;
+  // NOTE: the validated fuel lap history (issue #465) deliberately does NOT
+  // live here — it's the instance-level `FuelLapTracker` (see `fuel-laps.ts`)
+  // so replay/garage state wipes and session changes don't destroy it.
 
   // ── Lifecycle ───────────────────────────────────────────────────────────
   // `driver.firstOnTrack` is tracked on the translator instance, not here —
@@ -530,12 +585,19 @@ export function createInitialState(): TranslatorState {
     yellowClearPendingSince: null,
     furledPendingAt: 0,
     furledAnnounced: false,
+    flagLastLapCompleted: null,
+    flagLastCrossedAt: 0,
+    checkeredPendingCross: false,
+    whiteLastLapFired: false,
+    whiteRaisedAt: 0,
 
     paceLapInitialized: false,
     lastTickInParadeLaps: false,
     paceLapArmed: false,
     paceLapAccrued: 0,
     paceLapLastDistPct: 0,
+    paceLapSourceCarIdx: null,
+    paceLapPaceCarIdx: null,
     onePaceLapToGoFired: false,
 
     rollingStartInitialized: false,

@@ -307,5 +307,50 @@ export {
   type PlatformFeatures,
 } from "./plugin-config.js";
 
-// Version-check / changelog opener (issue #680)
-export { CHANGELOG_BASE_URL, buildChangelogUrl, runVersionCheck, shouldOpenChangelog } from "./version-check.js";
+// Version-check / changelog opener (issues #680, #742)
+export {
+  buildChangelogUrl,
+  CHANGELOG_BASE_URL,
+  CHANGELOG_NOTIFICATION_POLICIES,
+  type ChangelogDecision,
+  type ChangelogNotificationPolicy,
+  MONTHLY_WINDOW_MS,
+  resolveChangelogDecision,
+  runVersionCheck,
+  shouldOpenChangelog,
+} from "./version-check.js";
+
+// Device + profile reference (issues #736, #753)
+export {
+  DEVICE_SPECS,
+  DEVICE_SUPPORT,
+  deviceProfileName,
+  DeviceType,
+  getDeviceSpec,
+  getDeviceSupport,
+  isDeviceSupported,
+  PROFILE_DEVICE_SUFFIXES,
+  profileDeviceSuffix,
+  profileDisplayName,
+  PROFILE_NAMES,
+  PROFILE_NAV_ACTIONS,
+  PROFILE_TARGET_DEVICES,
+  resolveProfileNameForDevice,
+  shipsBundledProfiles,
+  type DeviceControlSupport,
+  type DeviceSpec,
+  type DeviceSupport,
+  type ProfileTemplate,
+  type ProfileTemplateStatus,
+} from "./device-profiles.js";
+
+// Profile switcher singleton (issue #736)
+export {
+  _resetProfileSwitcher,
+  initProfileSwitcher,
+  isProfileSwitcherInitialized,
+  notifyProfileVisible,
+  requestProfileSwitch,
+  requestProfileSwitchBack,
+  type ProfileSwitcher,
+} from "./profile-switcher.js";

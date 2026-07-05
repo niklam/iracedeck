@@ -164,6 +164,8 @@ const FLAG_CLIP_NAMES = [
   "white-qualifying-01",
   "white-race-01",
   "white-race-02",
+  "white-last-lap-01",
+  "white-last-lap-02",
   "red-01",
   "black-01",
   "checkered-practice-01",
@@ -509,6 +511,14 @@ const FLAG_FIRES: ReadonlyArray<{
     event: "flag.white.raised",
     data: {} as SimEventMap["flag.white.raised"]["data"],
     expectedClipFragment: "white-",
+  },
+  // Stage 2 of the two-stage white (issue #772) — a second scenario riding
+  // the SAME "white" opt-in, so disabling the white callout silences both.
+  {
+    id: "white",
+    event: "flag.white-last-lap.raised",
+    data: {} as SimEventMap["flag.white-last-lap.raised"]["data"],
+    expectedClipFragment: "white-last-lap-",
   },
   {
     id: "red",

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <!-- Neutral pre-render key face (#754): shown by the Stream Deck app until
+       the plugin's first setImage lands, so page flips don't flash the Race
+       Admin artwork on dynamically rendered keys. -->
+  <rect width="144" height="144" fill="#000000"/>
+</svg>

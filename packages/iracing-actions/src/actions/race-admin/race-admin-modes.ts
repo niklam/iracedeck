@@ -1,7 +1,9 @@
 /**
  * Race Admin Mode Definitions
  *
- * All 27 subcommands with metadata for command building, PI visibility, and icon rendering.
+ * All 28 modes with metadata for command building, PI visibility, and icon
+ * rendering: 27 admin chat commands plus the select-car car selector (#732),
+ * which has no chat command (its `command` is empty).
  */
 
 export const RACE_ADMIN_MODES = [
@@ -35,6 +37,8 @@ export const RACE_ADMIN_MODES = [
   "disable-chat-driver",
   "message-all",
   "rc-message",
+  // Car Selection
+  "select-car",
 ] as const;
 
 export type RaceAdminMode = (typeof RACE_ADMIN_MODES)[number];
@@ -44,6 +48,22 @@ export interface RaceAdminModeMeta {
   command: string;
   /** Whether the command requires a driver target. */
   needsDriver: boolean;
+  /**
+   * Whether the driver target must be a human USER (not just a car). iRacing's
+   * user-management commands (`!admin`, `!nadmin`, per-driver `!chat`/`!nchat`,
+   * `!remove`) have been observed to apply to the SENDER when the target
+   * matches no user — e.g. an AI car (issue #747: revoking admin on an AI car
+   * revoked the host's own admin and ended the session). Dispatch refuses
+   * these modes unless the target classifies as a user. Omitted (falsy) for
+   * car-targeted race-control commands, which are valid against AI cars.
+   */
+  targetsUser?: boolean;
+  /**
+   * Whether the command must never be aimed at the sender's OWN car. Revoking
+   * your own admin (`!nadmin` on yourself) can end the session you're hosting
+   * — an easy slip with the viewed-car or selected-car targets (#747).
+   */
+  refusesSelfTarget?: boolean;
   /** Whether the command accepts an optional [message] parameter with mustache templates. */
   hasMessage: boolean;
   /** Whether the message parameter is required (e.g., /all, /rc). */
@@ -270,6 +290,7 @@ export const RACE_ADMIN_MODE_META: Record<RaceAdminMode, RaceAdminModeMeta> = {
   "grant-admin": {
     command: "!admin",
     needsDriver: true,
+    targetsUser: true,
     hasMessage: true,
     messageRequired: false,
     extraSettings: [],
@@ -281,6 +302,8 @@ export const RACE_ADMIN_MODE_META: Record<RaceAdminMode, RaceAdminModeMeta> = {
   "revoke-admin": {
     command: "!nadmin",
     needsDriver: true,
+    targetsUser: true,
+    refusesSelfTarget: true,
     hasMessage: true,
     messageRequired: false,
     extraSettings: [],
@@ -292,6 +315,7 @@ export const RACE_ADMIN_MODE_META: Record<RaceAdminMode, RaceAdminModeMeta> = {
   "remove-driver": {
     command: "!remove",
     needsDriver: true,
+    targetsUser: true,
     hasMessage: true,
     messageRequired: false,
     extraSettings: [],
@@ -314,6 +338,7 @@ export const RACE_ADMIN_MODE_META: Record<RaceAdminMode, RaceAdminModeMeta> = {
   "enable-chat-driver": {
     command: "!chat",
     needsDriver: true,
+    targetsUser: true,
     hasMessage: false,
     messageRequired: false,
     extraSettings: [],
@@ -336,6 +361,7 @@ export const RACE_ADMIN_MODE_META: Record<RaceAdminMode, RaceAdminModeMeta> = {
   "disable-chat-driver": {
     command: "!nchat",
     needsDriver: true,
+    targetsUser: true,
     hasMessage: false,
     messageRequired: false,
     extraSettings: [],
@@ -365,6 +391,22 @@ export const RACE_ADMIN_MODE_META: Record<RaceAdminMode, RaceAdminModeMeta> = {
     displayName: "Race Control Message",
     mainLabel: "MSG",
     subLabel: "RC",
+  },
+
+  // ── Car Selection ─────────────────────────────────────────────
+  // Not a chat command: this mode auto-populates a car button from live session
+  // data and, on press, stores the car's CarIdx as the shared admin target and
+  // switches to the per-car commands profile (issue #732, Elgato-only).
+  "select-car": {
+    command: "",
+    needsDriver: false,
+    hasMessage: false,
+    messageRequired: false,
+    extraSettings: ["car-selector-section"],
+    optgroup: "Car Selection",
+    displayName: "Select Car (Admin Target)",
+    mainLabel: "SELECT",
+    subLabel: "CAR",
   },
 };
 

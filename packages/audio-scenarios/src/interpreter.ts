@@ -20,6 +20,14 @@
  *   - Same-`family` fires replace each other wholesale regardless of weight.
  *   - `acquireFocus`/`releaseFocus` raise a per-bus weight floor: while held,
  *     only fires at or above it (or the owner's own) play.
+ *   - A `resumable` queueable fire cut by an `interrupt` stashes its expanded
+ *     ops + position; the idle-replay re-expands and, when the expansion is
+ *     unchanged, continues from the interrupted clip (re-keying the radio
+ *     frame) instead of re-firing from the top (issue #758). A changed
+ *     expansion falls back to a full fresh replay (#481 freshness).
+ *   - A finishing fire with `pendingHoldMs` delays the pending drain by that
+ *     window, so a train of fires (count-in marks) doesn't let the displaced
+ *     line stutter back into its gaps (issue #758).
  *
  * Channel routing for clip steps:
  *   - Paths matching the manifest's walkie-talkie ticks go on the SFX channel.
@@ -91,6 +99,21 @@ type PendingFire = {
   id: string;
   event: SimEventOf<SimEventName> | null;
   weight: number;
+  /**
+   * Present when an `interrupt` cut a `resumable` fire mid-playback: the
+   * fire's full expanded ops and the index of the op that was in flight when
+   * it was cut. The idle-replay uses this to continue from the interrupted
+   * clip instead of re-firing from the top (issue #758).
+   */
+  resume?: ResumeState;
+};
+
+/** Where an interrupted resumable fire left off, for continuation at idle-replay. */
+type ResumeState = {
+  /** The interrupted fire's FULL original expansion. */
+  ops: ExecOp[];
+  /** Index of the op that was in flight when the fire was cut. */
+  index: number;
 };
 
 /**
@@ -105,6 +128,13 @@ type BusState = {
   activeFire: ActiveFire | null;
   /** Exclusive-focus floor (issue #652); non-owner fires need weight above `floor`. */
   focus: { ownerId: string; floor: number } | null;
+  /**
+   * Armed by `finishFire` when the finished scenario declares `pendingHoldMs`
+   * and a pending fire is waiting: the drain runs when the timer expires
+   * instead of immediately. Cancelled when a new fire takes the bus (it
+   * re-arms at that fire's finish) and by `stopAll` (issue #758).
+   */
+  pendingHoldTimer: ReturnType<typeof setTimeout> | null;
 };
 
 type ActiveFire = {
@@ -114,6 +144,16 @@ type ActiveFire = {
   weight: number;
   ops: ExecOp[];
   index: number;
+  /**
+   * Source mapping back to the fire's FULL original expansion, so a resumed
+   * fire that is cut AGAIN can stash its position in the original expansion
+   * rather than in the resumed tail (issue #758). For a fresh fire,
+   * `sourceOps === ops` with `sourceStart === prerollCount === 0`; for a
+   * resumed fire, `ops` is `[re-open tick?] + sourceOps.slice(sourceStart)`.
+   */
+  sourceOps: ExecOp[];
+  sourceStart: number;
+  prerollCount: number;
   cancelled: boolean;
   pauseTimer: ReturnType<typeof setTimeout> | null;
   /**
@@ -344,6 +384,7 @@ class ScenarioEngine implements IScenarioEngine {
     for (const state of this.busState.values()) {
       this.cancelActiveFire(state);
       state.pending = null;
+      this.clearPendingHold(state);
       // Release any held focus floor too, so it can't outlive the reset and
       // block every later callout on re-enable (issue #652 review).
       state.focus = null;
@@ -443,10 +484,13 @@ class ScenarioEngine implements IScenarioEngine {
 
   // ── Firing pipeline ──
 
-  private attemptFire(entry: CompiledScenario, event: SimEventOf<SimEventName> | null): void {
+  private attemptFire(entry: CompiledScenario, event: SimEventOf<SimEventName> | null, resume?: ResumeState): void {
     const now = Date.now();
 
-    if (entry.raw.cooldown && entry.lastFireAt > 0 && now - entry.lastFireAt < entry.raw.cooldown) return;
+    // A resume is a continuation of a fire that already passed (and stamped)
+    // the cooldown — re-checking it here would drop the tail of an
+    // interrupted line (issue #758).
+    if (!resume && entry.raw.cooldown && entry.lastFireAt > 0 && now - entry.lastFireAt < entry.raw.cooldown) return;
 
     const bus = entry.raw.bus;
     const state = this.getBusState(bus);
@@ -460,7 +504,7 @@ class ScenarioEngine implements IScenarioEngine {
     const focus = state.focus;
 
     if (focus !== null && entry.raw.focusOwner !== focus.ownerId && weight < focus.floor) {
-      this.queueOrDrop(entry, event, weight, state, `below focus floor (${focus.ownerId})`);
+      this.queueOrDrop(entry, event, weight, state, `below focus floor (${focus.ownerId})`, resume);
 
       return;
     }
@@ -493,14 +537,15 @@ class ScenarioEngine implements IScenarioEngine {
         return;
       } else {
         // Equal or lower weight: can't take the bus now.
-        this.queueOrDrop(entry, event, weight, state, "bus busy");
+        this.queueOrDrop(entry, event, weight, state, "bus busy", resume);
 
         return;
       }
     }
 
-    entry.lastFireAt = now;
-    this.executeFire(entry, event);
+    if (!resume) entry.lastFireAt = now;
+
+    this.executeFire(entry, event, resume);
   }
 
   /** Defer a fire for idle-replay when `queueable`, otherwise drop it. */
@@ -510,9 +555,10 @@ class ScenarioEngine implements IScenarioEngine {
     weight: number,
     state: BusState,
     reason: string,
+    resume?: ResumeState,
   ): void {
     if (entry.raw.queueable === true) {
-      this.setPending(entry.raw.id, event, weight, state, `deferred (${reason})`);
+      this.setPending(entry.raw.id, event, weight, state, `deferred (${reason})`, resume);
     } else {
       this.logger.debug(`Scenario "${entry.raw.id}" dropped (${reason})`);
     }
@@ -528,9 +574,10 @@ class ScenarioEngine implements IScenarioEngine {
     weight: number,
     state: BusState,
     reason: string,
+    resume?: ResumeState,
   ): void {
     if (state.pending === null || weight >= state.pending.weight) {
-      state.pending = { id, event, weight };
+      state.pending = { id, event, weight, resume };
       this.logger.debug(`Scenario "${id}" pending — ${reason}`);
     } else {
       this.logger.debug(`Scenario "${id}" dropped — lower weight than queued "${state.pending.id}"`);
@@ -543,10 +590,11 @@ class ScenarioEngine implements IScenarioEngine {
 
     if (!active || !running || running.raw.queueable !== true) return;
 
-    this.setPending(active.id, active.event, active.weight, state, "stashed (preempted)");
+    const resume = running.raw.resumable === true ? buildResumeState(active) : undefined;
+    this.setPending(active.id, active.event, active.weight, state, "stashed (preempted)", resume);
   }
 
-  private executeFire(entry: CompiledScenario, event: SimEventOf<SimEventName> | null): void {
+  private executeFire(entry: CompiledScenario, event: SimEventOf<SimEventName> | null, resume?: ResumeState): void {
     const ctx: ScenarioContext = {
       event,
       telemetry: event?.telemetry ?? null,
@@ -555,10 +603,10 @@ class ScenarioEngine implements IScenarioEngine {
       vars: {},
     };
 
-    let ops: ExecOp[];
+    let expanded: ExecOp[];
 
     try {
-      ops = this.expandSequence(
+      expanded = this.expandSequence(
         entry.resolvedSequence,
         entry.raw.base,
         entry.raw.channel,
@@ -573,14 +621,34 @@ class ScenarioEngine implements IScenarioEngine {
       return;
     }
 
-    if (ops.length === 0) {
+    if (expanded.length === 0) {
       this.logger.debug(`Scenario "${entry.raw.id}" expanded to empty sequence; skipping`);
 
       return;
     }
 
+    // Resume from an interrupt cut (issue #758): when the fresh expansion is
+    // unchanged from the stashed one, continue from the interrupted clip
+    // (re-keying the radio frame when it was already opened). A changed
+    // expansion means the underlying state moved on while stashed — resuming
+    // would speak a stale tail, so fall back to the full fresh replay (the
+    // #481 freshness guarantee).
+    let ops = expanded;
+    let sourceStart = 0;
+    let prerollCount = 0;
+
+    if (resume && resume.index > 0 && resume.index < expanded.length && opsEqual(expanded, resume.ops)) {
+      const preroll = this.reopenPreroll(expanded, resume.index);
+      ops = [...preroll, ...expanded.slice(resume.index)];
+      sourceStart = resume.index;
+      prerollCount = preroll.length;
+    }
+
     const bus = entry.raw.bus;
     const state = this.getBusState(bus);
+    // A fire is taking the bus — a pending hold armed at the previous fire's
+    // finish is obsolete; it re-arms when this fire finishes.
+    this.clearPendingHold(state);
     state.playingId = entry.raw.id;
     state.activeFire = {
       id: entry.raw.id,
@@ -588,16 +656,41 @@ class ScenarioEngine implements IScenarioEngine {
       weight: entry.raw.weight ?? DEFAULT_WEIGHT,
       ops,
       index: 0,
+      sourceOps: expanded,
+      sourceStart,
+      prerollCount,
       cancelled: false,
       pauseTimer: null,
       usedChannels: collectUsedChannels(ops),
       event,
     };
 
-    this.logger.info(`Playing scenario "${entry.raw.id}"`);
+    if (sourceStart > 0) {
+      this.logger.info(`Resuming scenario "${entry.raw.id}"`);
+      this.logger.debug(`Resumed at op ${sourceStart}/${expanded.length}`);
+    } else {
+      this.logger.info(`Playing scenario "${entry.raw.id}"`);
+    }
+
     this.logger.debug(`Ops (${ops.length}): ${ops.map(opLabel).join(" | ")}`);
 
     this.stepNext(state);
+  }
+
+  /**
+   * When the portion delivered before the cut had opened the walkie-talkie
+   * frame, the resumed tail re-keys with the open tick so it doesn't restart
+   * cold mid-sentence — unless the tail itself begins with the open tick.
+   */
+  private reopenPreroll(expanded: ExecOp[], resumeIndex: number): ExecOp[] {
+    const openTick = this.manifest.ticks.open;
+    const frameWasOpened = expanded.slice(0, resumeIndex).some((op) => op.kind === "play" && op.path === openTick);
+    const first = expanded[resumeIndex];
+    const resumesWithTick = first.kind === "play" && first.path === openTick;
+
+    if (!frameWasOpened || resumesWithTick) return [];
+
+    return [{ kind: "play", channel: AudioChannel.SFX, path: openTick }];
   }
 
   /** Advance to the next op in the given bus's active fire. */
@@ -668,7 +761,31 @@ class ScenarioEngine implements IScenarioEngine {
 
     if (state.activeFire?.id === scenarioId) state.activeFire = null;
 
+    // A finishing fire in a train of related fires (count-in marks) holds the
+    // pending drain for its declared window, so the displaced line doesn't
+    // stutter back into the gaps between the train's members (issue #758).
+    const holdMs = this.scenarios.get(scenarioId)?.raw.pendingHoldMs ?? 0;
+
+    if (state.pending !== null && holdMs > 0) {
+      this.clearPendingHold(state);
+      this.logger.debug(`Pending drain held for ${holdMs} ms after "${scenarioId}"`);
+      state.pendingHoldTimer = setTimeout(() => {
+        state.pendingHoldTimer = null;
+        this.drainPending(state);
+      }, holdMs);
+
+      return;
+    }
+
     this.drainPending(state);
+  }
+
+  /** Cancel an armed pending-hold timer (no-op when none is armed). */
+  private clearPendingHold(state: BusState): void {
+    if (state.pendingHoldTimer === null) return;
+
+    clearTimeout(state.pendingHoldTimer);
+    state.pendingHoldTimer = null;
   }
 
   /**
@@ -682,6 +799,8 @@ class ScenarioEngine implements IScenarioEngine {
    * the frozen event payload.
    */
   private drainPending(state: BusState): void {
+    this.clearPendingHold(state);
+
     const pending = state.pending;
     state.pending = null;
 
@@ -692,7 +811,7 @@ class ScenarioEngine implements IScenarioEngine {
     if (!entry?.enabled) return;
 
     this.logger.debug(`Replaying pending scenario "${pending.id}"`);
-    this.attemptFire(entry, pending.event);
+    this.attemptFire(entry, pending.event, pending.resume);
   }
 
   /**
@@ -723,7 +842,7 @@ class ScenarioEngine implements IScenarioEngine {
     let state = this.busState.get(bus);
 
     if (!state) {
-      state = { playingId: null, pending: null, activeFire: null, focus: null };
+      state = { playingId: null, pending: null, activeFire: null, focus: null, pendingHoldTimer: null };
       this.busState.set(bus, state);
     }
 
@@ -862,6 +981,42 @@ class ScenarioEngine implements IScenarioEngine {
 
     return pool.clips[idx];
   }
+}
+
+/**
+ * Capture where an interrupted fire left off, mapped back to its ORIGINAL
+ * expansion via the fire's source fields — so a resumed fire that is cut
+ * again still stashes an absolute position, not one relative to its tail
+ * (issue #758). `active.index` points one past the op in flight; the resume
+ * replays that op from its start.
+ */
+function buildResumeState(active: ActiveFire): ResumeState | undefined {
+  const playIndex = Math.max(0, active.index - 1);
+  const sourceIndex = active.sourceStart + Math.max(0, playIndex - active.prerollCount);
+
+  if (sourceIndex >= active.sourceOps.length) return undefined;
+
+  return { ops: active.sourceOps, index: sourceIndex };
+}
+
+/** Element-wise equality of two expanded op lists (plain data, no functions). */
+function opsEqual(a: readonly ExecOp[], b: readonly ExecOp[]): boolean {
+  if (a.length !== b.length) return false;
+
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i];
+    const y = b[i];
+
+    if (x.kind !== y.kind) return false;
+
+    if (x.kind === "play" && y.kind === "play" && (x.path !== y.path || x.channel !== y.channel)) return false;
+
+    if (x.kind === "ambient" && y.kind === "ambient" && x.action !== y.action) return false;
+
+    if (x.kind === "pause" && y.kind === "pause" && x.ms !== y.ms) return false;
+  }
+
+  return true;
 }
 
 function opLabel(op: ExecOp): string {

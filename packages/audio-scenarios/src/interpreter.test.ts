@@ -570,8 +570,11 @@ describe("scheduling (weights)", () => {
     expect(paths).toEqual(["pit-crew/greeting/a.mp3", "pit-crew/reminder/fuel.mp3"]);
   });
 
-  // ── #646: a "transient" count-in must drop when busy, never defer; the
-  //    higher-weight readback (interrupt) cancels a running count-in. ──
+  // ── Engine semantics from #646: a TRANSIENT non-queueable fire drops when
+  //    busy, and a higher-weight interrupt fire cancels a running lower-weight
+  //    one. (#758 reversed the CATALOG pairing — the count-in now outranks the
+  //    readback — but these weight-model rules are unchanged; the synthetic
+  //    ids below just keep the original names.) ──
 
   it("drops a transient fire when the bus is busy (never defers) — issue #646", () => {
     engine.defineScenario({
@@ -827,6 +830,297 @@ describe("scheduling (weights)", () => {
     const paths = audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
     expect(paths).toEqual(["pit-crew/greeting/a.mp3", "pit-crew/reminder/fuel.mp3"]);
     expect(whereCalls).toBe(1);
+  });
+});
+
+// ─── Resume + pending hold (issue #758) ─────────────────────────────────────
+
+describe("resume from interruption (issue #758)", () => {
+  /** Line under test: queueable so an interrupt stashes it for idle-replay. */
+  function defineLine(extra: Partial<{ resumable: boolean; cooldown: number }> = {}): void {
+    engine.defineScenario({
+      id: "test.line",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: WEIGHT.CHATTER,
+      queueable: true,
+      sequence: ["pit-crew/greeting/a.mp3", "pit-crew/greeting/b.mp3", "pit-crew/reminder/tires.mp3"],
+      ...extra,
+    });
+  }
+
+  /** Higher-weight interrupter that cuts the line mid-clip. */
+  function defineCutter(): void {
+    engine.defineScenario({
+      id: "test.cutter",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: WEIGHT.NORMAL,
+      interrupt: true,
+      sequence: ["pit-crew/reminder/fuel.mp3"],
+    });
+  }
+
+  function voicePaths(): string[] {
+    return audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
+  }
+
+  it("resumes a resumable fire from the interrupted clip, not from the top", () => {
+    defineLine({ resumable: true });
+    defineCutter();
+
+    engine.fire("test.line"); // a in flight
+    audio._triggerChannelEnd(AudioChannel.Voice); // a done → b in flight
+    engine.fire("test.cutter"); // cuts b
+    flushVoiceAndSfx(audio);
+
+    // The resume replays the cut clip (b) then continues — a is NOT replayed.
+    expect(voicePaths()).toEqual([
+      "pit-crew/greeting/a.mp3",
+      "pit-crew/greeting/b.mp3",
+      "pit-crew/reminder/fuel.mp3",
+      "pit-crew/greeting/b.mp3",
+      "pit-crew/reminder/tires.mp3",
+    ]);
+  });
+
+  it("replays a non-resumable queueable fire from the top after an interrupt cut", () => {
+    defineLine(); // no resumable
+    defineCutter();
+
+    engine.fire("test.line");
+    audio._triggerChannelEnd(AudioChannel.Voice);
+    engine.fire("test.cutter");
+    flushVoiceAndSfx(audio);
+
+    expect(voicePaths()).toEqual([
+      "pit-crew/greeting/a.mp3",
+      "pit-crew/greeting/b.mp3",
+      "pit-crew/reminder/fuel.mp3",
+      "pit-crew/greeting/a.mp3",
+      "pit-crew/greeting/b.mp3",
+      "pit-crew/reminder/tires.mp3",
+    ]);
+  });
+
+  it("re-opens the radio frame with the open tick when the cut portion had opened one", () => {
+    engine.defineScenario({
+      id: "test.line",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: WEIGHT.CHATTER,
+      queueable: true,
+      resumable: true,
+      sequence: [
+        "/sfx/IRD-tick-open.mp3",
+        "pit-crew/greeting/a.mp3",
+        "pit-crew/greeting/b.mp3",
+        "/sfx/IRD-tick-close.mp3",
+      ],
+    });
+    defineCutter();
+
+    engine.fire("test.line"); // tick-open (SFX) in flight
+    audio._triggerChannelEnd(AudioChannel.SFX); // a (Voice) in flight
+    engine.fire("test.cutter"); // cuts a
+    flushVoiceAndSfx(audio);
+
+    expect(audio._played.map((p) => p.path)).toEqual([
+      "sfx/IRD-tick-open.mp3",
+      "pit-crew/greeting/a.mp3",
+      "pit-crew/reminder/fuel.mp3",
+      // Resume: the frame was opened before the cut, so it re-keys with the
+      // open tick, then continues from the interrupted clip.
+      "sfx/IRD-tick-open.mp3",
+      "pit-crew/greeting/a.mp3",
+      "pit-crew/greeting/b.mp3",
+      "sfx/IRD-tick-close.mp3",
+    ]);
+  });
+
+  it("falls back to a full fresh replay when the expansion changed while stashed", () => {
+    // Freshness guard (issue #481): the readback re-reads its snapshot at
+    // replay. When the re-expansion differs from the stashed ops, resuming
+    // mid-sentence would speak a stale tail — replay in full instead.
+    let variant = "a";
+    engine.defineScenario({
+      id: "test.line",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: WEIGHT.CHATTER,
+      queueable: true,
+      resumable: true,
+      sequence: [
+        {
+          if: () => variant === "a",
+          then: ["pit-crew/greeting/a.mp3"],
+          else: ["pit-crew/greeting/b.mp3"],
+        },
+        "pit-crew/reminder/tires.mp3",
+      ],
+    });
+    defineCutter();
+
+    engine.fire("test.line"); // a in flight
+    audio._triggerChannelEnd(AudioChannel.Voice); // tires in flight
+    engine.fire("test.cutter"); // cuts tires
+    variant = "b"; // state moves on while stashed
+    flushVoiceAndSfx(audio);
+
+    expect(voicePaths()).toEqual([
+      "pit-crew/greeting/a.mp3",
+      "pit-crew/reminder/tires.mp3",
+      "pit-crew/reminder/fuel.mp3",
+      // Full fresh replay — new branch, from the top.
+      "pit-crew/greeting/b.mp3",
+      "pit-crew/reminder/tires.mp3",
+    ]);
+  });
+
+  it("does not re-check the cooldown when resuming (a resume is a continuation)", () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(1000);
+    defineLine({ resumable: true, cooldown: 60000 });
+    defineCutter();
+
+    engine.fire("test.line");
+    audio._triggerChannelEnd(AudioChannel.Voice); // b in flight
+    engine.fire("test.cutter"); // cuts b
+    flushVoiceAndSfx(audio);
+
+    // Still within the cooldown window, but the resume must play anyway.
+    expect(voicePaths()).toEqual([
+      "pit-crew/greeting/a.mp3",
+      "pit-crew/greeting/b.mp3",
+      "pit-crew/reminder/fuel.mp3",
+      "pit-crew/greeting/b.mp3",
+      "pit-crew/reminder/tires.mp3",
+    ]);
+
+    now.mockRestore();
+  });
+
+  it("a resumed fire cut again stashes its position in the original expansion", () => {
+    defineLine({ resumable: true });
+    defineCutter();
+
+    engine.fire("test.line"); // a in flight
+    audio._triggerChannelEnd(AudioChannel.Voice); // b in flight
+    engine.fire("test.cutter"); // first cut at b
+    audio._triggerChannelEnd(AudioChannel.Voice); // cutter done → resume: b in flight
+    engine.fire("test.cutter"); // second cut, again at b
+    flushVoiceAndSfx(audio);
+
+    expect(voicePaths()).toEqual([
+      "pit-crew/greeting/a.mp3",
+      "pit-crew/greeting/b.mp3",
+      "pit-crew/reminder/fuel.mp3",
+      "pit-crew/greeting/b.mp3",
+      "pit-crew/reminder/fuel.mp3",
+      // Second resume still continues from b — not from the top.
+      "pit-crew/greeting/b.mp3",
+      "pit-crew/reminder/tires.mp3",
+    ]);
+  });
+});
+
+describe("pending hold (issue #758)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function defineHolder(): void {
+    engine.defineScenario({
+      id: "test.holder",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: WEIGHT.NORMAL,
+      pendingHoldMs: 2000,
+      sequence: ["pit-crew/reminder/fuel.mp3"],
+    });
+  }
+
+  function defineLine(): void {
+    engine.defineScenario({
+      id: "test.line",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: WEIGHT.CHATTER,
+      queueable: true,
+      sequence: ["pit-crew/greeting/a.mp3"],
+    });
+  }
+
+  function voicePaths(): string[] {
+    return audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
+  }
+
+  it("holds the pending drain for pendingHoldMs after the holding fire finishes", () => {
+    defineHolder();
+    defineLine();
+
+    engine.fire("test.holder"); // fuel in flight
+    engine.fire("test.line"); // deferred behind it
+    audio._triggerChannelEnd(AudioChannel.Voice); // holder finishes → hold armed
+
+    expect(voicePaths()).toEqual(["pit-crew/reminder/fuel.mp3"]);
+
+    vi.advanceTimersByTime(1999);
+    expect(voicePaths()).toEqual(["pit-crew/reminder/fuel.mp3"]);
+
+    vi.advanceTimersByTime(1);
+    expect(voicePaths()).toEqual(["pit-crew/reminder/fuel.mp3", "pit-crew/greeting/a.mp3"]);
+  });
+
+  it("a new fire within the hold cancels it and re-arms at that fire's finish", () => {
+    defineHolder();
+    defineLine();
+
+    engine.fire("test.holder");
+    engine.fire("test.line"); // pending
+    audio._triggerChannelEnd(AudioChannel.Voice); // hold armed
+
+    vi.advanceTimersByTime(1000);
+    engine.fire("test.holder"); // bus idle → plays immediately, hold cancelled
+    audio._triggerChannelEnd(AudioChannel.Voice); // hold re-armed from now
+
+    vi.advanceTimersByTime(1999);
+    expect(voicePaths()).toEqual(["pit-crew/reminder/fuel.mp3", "pit-crew/reminder/fuel.mp3"]);
+
+    vi.advanceTimersByTime(1);
+    expect(voicePaths()).toEqual([
+      "pit-crew/reminder/fuel.mp3",
+      "pit-crew/reminder/fuel.mp3",
+      "pit-crew/greeting/a.mp3",
+    ]);
+  });
+
+  it("finishes immediately (no hold) when nothing is pending", () => {
+    defineHolder();
+
+    engine.fire("test.holder");
+    audio._triggerChannelEnd(AudioChannel.Voice);
+
+    // Bus idles right away — a fresh fire plays without waiting for the hold.
+    engine.fire("test.holder");
+    expect(voicePaths()).toEqual(["pit-crew/reminder/fuel.mp3", "pit-crew/reminder/fuel.mp3"]);
+  });
+
+  it("stopAll clears an armed hold along with the pending fire", () => {
+    defineHolder();
+    defineLine();
+
+    engine.fire("test.holder");
+    engine.fire("test.line"); // pending
+    audio._triggerChannelEnd(AudioChannel.Voice); // hold armed
+
+    engine.stopAll();
+    vi.advanceTimersByTime(5000);
+
+    expect(voicePaths()).toEqual(["pit-crew/reminder/fuel.mp3"]);
   });
 });
 

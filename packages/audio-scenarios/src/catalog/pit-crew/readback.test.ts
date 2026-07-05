@@ -17,10 +17,13 @@ import { AudioChannel } from "@iracedeck/audio-service";
 import type { IEventBus, PitReadbackSnapshot, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
 import { type FlagCalloutId, type PitReadbackCalloutId, registerPitCrew } from "./index.js";
+import { PIT_BOX_PENDING_HOLD_MS } from "./pit-box.js";
 import { _resetRadarEngine } from "./radar-engine.js";
+import { buildPitReadbackScenarios } from "./readback.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
 
 const mockSessionType = vi.fn(() => "Race");
@@ -235,6 +238,15 @@ const OTHER_CLIP_NAMES = [
   "voice/luca/damage/repair-needed-01.mp3",
   "voice/luca/damage/repair-needed-02.mp3",
   "voice/luca/damage/repair-needed-03.mp3",
+  // Pit-box count-in pool clips (issue #600). Same rationale as the damage
+  // clips above — and the #758 interruption/resume tests fire these marks
+  // against a playing readback.
+  "voice/luca/pit-box/five-01.mp3",
+  "voice/luca/pit-box/four-01.mp3",
+  "voice/luca/pit-box/three-01.mp3",
+  "voice/luca/pit-box/two-01.mp3",
+  "voice/luca/pit-box/one-01.mp3",
+  "voice/luca/pit-box/pit-now-01.mp3",
 ];
 
 const manifest: AudioAssetsManifest = {
@@ -797,5 +809,84 @@ describe("pit readback scenarios", () => {
       // snapshot and reported "tires-all".
       expect(readbackPaths).toContain("tires-fronts.mp3");
     });
+  });
+});
+
+// Issue #758 (reverses #646): the pit-box count-in outranks the readback and
+// cuts it immediately; the readback never interrupts a count-in; the
+// interrupted readback resumes from the interrupted clip once the count-in is
+// done (after the marks' pending-hold window), not from the top.
+describe("count-in priority over the readback (issue #758)", () => {
+  it("declares the readback queueable + resumable and never interrupting", () => {
+    for (const s of buildPitReadbackScenarios(() => null)) {
+      expect(s.weight).toBe(WEIGHT.CHATTER);
+      expect(s.queueable).toBe(true);
+      expect(s.resumable).toBe(true);
+      expect(s.interrupt).not.toBe(true);
+    }
+  });
+
+  it("a count-in mark cuts the playing readback, which resumes at the interrupted clip", () => {
+    currentSnapshot = snap({
+      fuel: { queued: true },
+      tires: { lf: true, rf: true, lr: true, rr: true },
+      limiterEngaged: true,
+    });
+
+    bus.publishEvent("pitService.readbackRequested", { reason: "entry" });
+    audio._triggerChannelEnd(AudioChannel.SFX); // tick-open done → opener-entry
+    audio._triggerChannelEnd(AudioChannel.Voice); // opener done → fuel-on in flight
+
+    bus.publishEvent("pitBox.countdown", { mark: "two" }); // cuts fuel-on
+    audio._triggerChannelEnd(AudioChannel.Voice); // mark finishes → hold armed
+
+    expect(voicePaths()).toEqual([
+      `voice/${VOICE}/pit-readback/opener-entry.mp3`,
+      `voice/${VOICE}/pit-readback/fuel-on.mp3`,
+      `voice/${VOICE}/pit-box/two-01.mp3`,
+    ]);
+
+    // The resume waits out the marks' pending-hold window.
+    vi.advanceTimersByTime(PIT_BOX_PENDING_HOLD_MS);
+    flush(audio);
+
+    // Resumed from the interrupted clip: fuel-on replays, then the rest —
+    // the opener is NOT spoken a second time.
+    expect(voicePaths()).toEqual([
+      `voice/${VOICE}/pit-readback/opener-entry.mp3`,
+      `voice/${VOICE}/pit-readback/fuel-on.mp3`,
+      `voice/${VOICE}/pit-box/two-01.mp3`,
+      `voice/${VOICE}/pit-readback/fuel-on.mp3`,
+      `voice/${VOICE}/pit-readback/tires-all.mp3`,
+    ]);
+  });
+
+  it("a readback fired during a count-in defers (never cuts) and replays in full after the hold", () => {
+    currentSnapshot = snap({
+      fuel: { queued: true },
+      tires: { lf: true, rf: true, lr: true, rr: true },
+      limiterEngaged: true,
+    });
+
+    bus.publishEvent("pitBox.countdown", { mark: "five" }); // five-01 in flight
+    bus.publishEvent("pitService.readbackRequested", { reason: "entry" }); // must defer
+
+    expect(voicePaths()).toEqual([`voice/${VOICE}/pit-box/five-01.mp3`]);
+
+    audio._triggerChannelEnd(AudioChannel.Voice); // mark finishes → hold armed
+
+    // Still held — the readback must not start in the gap between marks.
+    expect(voicePaths()).toEqual([`voice/${VOICE}/pit-box/five-01.mp3`]);
+
+    vi.advanceTimersByTime(PIT_BOX_PENDING_HOLD_MS);
+    flush(audio);
+
+    // Full replay from the top (it never started, so there is nothing to resume).
+    expect(voicePaths()).toEqual([
+      `voice/${VOICE}/pit-box/five-01.mp3`,
+      `voice/${VOICE}/pit-readback/opener-entry.mp3`,
+      `voice/${VOICE}/pit-readback/fuel-on.mp3`,
+      `voice/${VOICE}/pit-readback/tires-all.mp3`,
+    ]);
   });
 });

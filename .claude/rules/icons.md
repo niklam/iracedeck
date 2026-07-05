@@ -110,6 +110,19 @@ Icons can declare title fields as `"locked"` in their `<desc>` title metadata to
 - Supported lockable fields: `showTitle`, `showGraphics`, `bold`, `fontSize`, `position`, `customPosition`
 - Omitting `"locked"` or using `[]` means all title fields are globally overridable (backward compatible)
 
+### Locked border fields (#755)
+
+Icons can likewise declare border fields as `"locked"` in their `<desc>` border metadata to protect them from the global border defaults:
+
+```json
+{"colors":{...},"border":{"enabled":false,"glowEnabled":false,"locked":["enabled","glowEnabled"]}}
+```
+
+- Locked border fields skip the global border defaults step — they use the icon default unless the user sets a per-action override (the Border Overrides PI section still wins)
+- Use it for keys whose design must stay border-less even when the user enables plugin-wide borders — e.g. the Switch Profile icons and the Race Admin car-selector template, where a border+glow around a page of big car numbers defeats the clean look
+- Supported lockable fields: `enabled`, `borderWidth`, `color`, `glowEnabled`, `glowWidth`; icon `<desc>` defaults exist for `enabled`, `glowEnabled`, and `color`
+- Omitting `"locked"` or using `[]` means all border fields are globally overridable (backward compatible)
+
 ### Never use a leading newline in title text
 
 Do not prefix `title.text` with `\n` to "push" the artwork upward — the empty leading line still counts as a full line in `calculateYPositions` / `computeGraphicArea`, which shrinks the available graphic area from the bottom and pushes the art up by ~11 px (the center of the available area moves from y=60.5 to y=49.7).
@@ -147,7 +160,7 @@ Actions where icon content changes at runtime based on telemetry (e.g., tire col
 
 All dynamic templates include `{{borderDefs}}` (inside `<defs>`) and `{{borderContent}}` (after the background rect) placeholders. Actions must call `resolveBorderSettings(...)` then `generateBorderParts(...)` to obtain `borderDefs` and `borderContent` strings, and pass them when calling `renderIconTemplate()`. Pass `borderDefs: ""` and `borderContent: ""` if border is not used.
 
-Current dynamic templates: `car-control-pit-limiter.svg`, `session-info.svg`, `tire-service.svg`, `telemetry-display.svg`.
+Current dynamic templates: `car-control-pit-limiter.svg`, `session-info.svg`, `tire-service.svg`, `telemetry-display.svg`, `race-admin-car-selector.svg` (the #732 selector's big-number key).
 
 ## Design Specs
 

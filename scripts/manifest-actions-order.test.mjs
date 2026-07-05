@@ -19,13 +19,11 @@ const manifests = allPluginManifestRelPaths(repoRoot);
 // unambiguous (no two distinct allowed names compare equal).
 const byName = (a, b) => a.localeCompare(b, "en", { sensitivity: "base" });
 
-// Actions that intentionally ship on a subset of plugins are excluded from the
-// cross-plugin same-set check below; every OTHER action must appear on all
-// plugins so a forgotten registration fails loudly. Currently empty: since the
-// Fuel Service (#759) and Setup Brakes (#775) merges there is no standalone
-// dial-only action left — dual-surface actions register everywhere and only
-// their Controllers differ, which this check doesn't compare.
-const PLATFORM_SPECIFIC_ACTIONS = new Set([]);
+// Actions intentionally shipped on a single ecosystem (e.g. Elgato-only profile
+// switching, #736 — profiles are an Elgato SDK feature with no Mirabox/Ulanzi
+// equivalent). Excluded from the cross-manifest parity check below so the shared
+// action set is still enforced while a platform-specific action can exist.
+const ECOSYSTEM_SPECIFIC_ACTIONS = new Set(["Switch Profile"]);
 
 function actionNames(manifestRelPath) {
   const manifest = JSON.parse(readFileSync(join(repoRoot, manifestRelPath), "utf-8"));
@@ -60,14 +58,14 @@ describe("plugin manifest action lists", () => {
     expect(collisions).toEqual([]);
   });
 
-  // Every plugin must expose the same SHARED action set; adding an action to one
-  // manifest but forgetting another (the documented cross-plugin sync rule) would
-  // otherwise ship a device silently missing — or solely carrying — that action.
-  // The intentionally platform-specific dial actions are excluded (see above).
+  // Every plugin must expose the same action set; adding an action to one manifest
+  // but forgetting another (the documented cross-plugin sync rule) would otherwise
+  // ship a device silently missing — or solely carrying — that action.
   it.each(manifests)("exposes the same shared action set as the other plugin manifests: %s", (manifestRelPath) => {
-    const sharedNames = (path) =>
-      [...new Set(actionNames(path))].filter((name) => !PLATFORM_SPECIFIC_ACTIONS.has(name)).sort(byName);
+    const shared = (names) => [...new Set(names)].filter((n) => !ECOSYSTEM_SPECIFIC_ACTIONS.has(n)).sort(byName);
+    const reference = shared(actionNames(manifests[0]));
+    const names = shared(actionNames(manifestRelPath));
 
-    expect(sharedNames(manifestRelPath)).toEqual(sharedNames(manifests[0]));
+    expect(names).toEqual(reference);
   });
 });

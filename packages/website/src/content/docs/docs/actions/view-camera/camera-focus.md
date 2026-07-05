@@ -11,7 +11,7 @@ Camera Controls combines camera group selection, camera cycling, and focus targe
 
 ## Modes
 
-Select the mode from the **Target** dropdown in the Property Inspector.
+Select the mode from the **Mode** dropdown in the Property Inspector.
 
 ### Change Camera
 

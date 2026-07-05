@@ -20,21 +20,23 @@ import {
   type WillDisappearEvent,
 } from "@elgato/streamdeck";
 import type { JsonObject } from "@elgato/utils";
-import type {
-  DeckFeedbackPayload,
-  DeckTriggerDescription,
-  IDeckActionContext,
-  IDeckActionHandler,
-  IDeckDialDownEvent,
-  IDeckDialRotateEvent,
-  IDeckDialUpEvent,
-  IDeckDidReceiveSettingsEvent,
-  IDeckKeyDownEvent,
-  IDeckKeyUpEvent,
-  IDeckPlatformAdapter,
-  IDeckTouchTapEvent,
-  IDeckWillAppearEvent,
-  IDeckWillDisappearEvent,
+import {
+  type DeckFeedbackPayload,
+  type DeckTriggerDescription,
+  deviceProfileName,
+  type IDeckActionContext,
+  type IDeckActionHandler,
+  type IDeckDialDownEvent,
+  type IDeckDialRotateEvent,
+  type IDeckDialUpEvent,
+  type IDeckDidReceiveSettingsEvent,
+  type IDeckKeyDownEvent,
+  type IDeckKeyUpEvent,
+  type IDeckPlatformAdapter,
+  type IDeckTouchTapEvent,
+  type IDeckWillAppearEvent,
+  type IDeckWillDisappearEvent,
+  requestProfileSwitch,
 } from "@iracedeck/deck-core";
 import type { ILogger } from "@iracedeck/logger";
 
@@ -47,6 +49,7 @@ class ElgatoActionContext implements IDeckActionContext {
   constructor(
     private readonly sdAction: {
       id: string;
+      device?: { id: string; type: number };
       setImage(dataUri: string): Promise<void>;
       setTitle(title: string): Promise<void>;
       setSettings(settings: unknown): Promise<void>;
@@ -60,11 +63,21 @@ class ElgatoActionContext implements IDeckActionContext {
         touch?: string;
         longTouch?: string;
       }): Promise<void>;
+      /** Present on KeyAction only (dials have no warning indicator). */
+      showAlert?(): Promise<void>;
     },
   ) {}
 
   get id(): string {
     return this.sdAction.id;
+  }
+
+  get deviceId(): string | undefined {
+    return this.sdAction.device?.id;
+  }
+
+  get deviceType(): number | undefined {
+    return this.sdAction.device?.type;
   }
 
   async setImage(dataUri: string): Promise<void> {
@@ -98,6 +111,10 @@ class ElgatoActionContext implements IDeckActionContext {
   async setTriggerDescription(descriptions: DeckTriggerDescription): Promise<void> {
     if (this.sdAction.setTriggerDescription) await this.sdAction.setTriggerDescription(descriptions);
   }
+
+  async showAlert(): Promise<void> {
+    await this.sdAction.showAlert?.();
+  }
 }
 
 /**
@@ -107,6 +124,7 @@ class ElgatoActionContext implements IDeckActionContext {
 function wrapEvent<T>(ev: {
   action: {
     id: string;
+    device?: { id: string; type: number };
     setImage(dataUri: string): Promise<void>;
     setTitle(title: string): Promise<void>;
     setSettings(settings: unknown): Promise<void>;
@@ -207,7 +225,43 @@ function wrapTouchTapEvent<T>(ev: TouchTapEvent<T & JsonObject>): IDeckTouchTapE
  * Implements IDeckPlatformAdapter by delegating to the Elgato SDK.
  */
 export class ElgatoPlatformAdapter implements IDeckPlatformAdapter {
-  constructor(private readonly sd: typeof StreamDeck) {}
+  constructor(private readonly sd: typeof StreamDeck) {
+    // Route "Stream Deck Profiles" settings-accordion button presses — sent from
+    // the Property Inspector via `sendToPlugin` — to `switchToProfile`, targeting
+    // the device whose PI is open (`ev.action.device.id`). Profiles are
+    // Elgato-only, so only this adapter wires it; the non-Elgato adapters
+    // implement `switchToProfile` as a no-op and never receive this message.
+    this.sd.ui.onSendToPlugin((ev) => {
+      this.handleSendToPlugin(ev.action.device.id, ev.action.device.type, ev.payload);
+    });
+  }
+
+  /**
+   * Handle a Property Inspector `sendToPlugin` payload. Currently only the
+   * `switchToProfile` command is recognised; anything else is ignored.
+   */
+  private handleSendToPlugin(deviceId: string, deviceType: number | undefined, payload: unknown): void {
+    if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
+      return;
+    }
+
+    const message = payload as { event?: unknown; profile?: unknown; page?: unknown };
+
+    if (message.event !== "switchToProfile") {
+      return;
+    }
+
+    // The "Stream Deck Profiles" accordion sends clean display names (one row
+    // per template); resolve to the pressing device's manifest name by
+    // appending its suffix (#753). Idempotent for already-suffixed names.
+    const profile = typeof message.profile === "string" ? deviceProfileName(message.profile, deviceType) : undefined;
+    const page = typeof message.page === "number" ? message.page : undefined;
+
+    // Route through the deck-core switcher singleton (not this.switchToProfile
+    // directly) so the switch is recorded in the per-device profile history and
+    // the Switch Profile "Back to previous" mode can walk back to it (#762).
+    void requestProfileSwitch(deviceId, profile, page);
+  }
 
   onDidReceiveGlobalSettings(callback: (settings: unknown) => void): void {
     this.sd.settings.onDidReceiveGlobalSettings((ev: { settings: unknown }) => {
@@ -312,6 +366,15 @@ export class ElgatoPlatformAdapter implements IDeckPlatformAdapter {
    */
   async openUrl(url: string): Promise<void> {
     await this.sd.system.openUrl(url);
+  }
+
+  /**
+   * Switch a device to a bundled profile via the Elgato SDK. When the profile
+   * isn't installed yet the Stream Deck app prompts the user to install it —
+   * this is how iRaceDeck's bundled profiles get installed and updated.
+   */
+  async switchToProfile(deviceId: string, profile?: string, page?: number): Promise<void> {
+    await this.sd.profiles.switchToProfile(deviceId, profile, page);
   }
 
   connect(): void {

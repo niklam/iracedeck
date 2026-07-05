@@ -40,6 +40,13 @@ import { type ILogger, silentLogger } from "@iracedeck/logger";
 
 import { diffDamage } from "./diff/damage.js";
 import { diffFlags } from "./diff/flags.js";
+import {
+  computeFuelStats,
+  createFuelLapTracker,
+  diffFuelLaps,
+  type FuelLapTracker,
+  type FuelStats,
+} from "./diff/fuel-laps.js";
 import { diffFuel } from "./diff/fuel.js";
 import { diffIncidents } from "./diff/incidents.js";
 import { diffLaps } from "./diff/laps.js";
@@ -118,6 +125,16 @@ type TranslatorInstance = {
    * Cleared by `handleDisconnect` so a reconnect re-checks.
    */
   freshConnectFireChecked: boolean;
+  /**
+   * Validated per-lap fuel consumption history (issue #465). Instance-level
+   * — NOT `TranslatorState` — so the replay guard's per-tick state wipes and
+   * `resetPerSessionState` don't destroy the accumulated stats: garage visits
+   * (replay-mode ticks) keep the data visible for fuel planning, and a
+   * session change only arms `pendingSessionWipe`, which `diffFuelLaps`
+   * executes on the first live-in-car tick of the new session. Fully reset by
+   * `handleDisconnect`. Read via `getFuelStats()`.
+   */
+  fuelLaps: FuelLapTracker;
 };
 
 let instance: TranslatorInstance | null = null;
@@ -149,6 +166,7 @@ export function initializeSimEventsIracing(
     firstOnTrackSeeded: false,
     firstOnTrackFired: false,
     freshConnectFireChecked: false,
+    fuelLaps: createFuelLapTracker(),
   };
 
   instance = self;
@@ -200,6 +218,26 @@ export function getTrackDirection(): TrackDirection {
   const sessionInfo = (instance?.controller.getSessionInfo() ?? null) as Record<string, unknown> | null;
 
   return resolveTrackDirection(sessionInfo);
+}
+
+/**
+ * Rolling fuel consumption statistics over the validated per-lap fuel history
+ * (issue #465): the most recent valid lap's usage, the mean over the last
+ * `windowLaps` valid laps, and how many laps actually contributed. Values are
+ * liters — callers handle `DisplayUnits` formatting. Returns empty stats
+ * (`samples: 0`) when the translator isn't initialized or no valid laps have
+ * been recorded yet. Backed by `diffFuelLaps`, which gates out refuel /
+ * out-lap / in-lap / towed laps so the average never ingests garbage.
+ *
+ * The history survives replay/garage visits and stays readable after a
+ * session change until the driver is back in the car (deferred wipe) — so the
+ * previous session's consumption remains available for garage fuel planning.
+ * Only a disconnect (or the diff's Lap-decrease fence) clears it immediately.
+ */
+export function getFuelStats(windowLaps: number): FuelStats {
+  if (!instance) return { lastLap: null, avg: null, samples: 0 };
+
+  return computeFuelStats(instance.fuelLaps.history, windowLaps);
 }
 
 /**
@@ -574,6 +612,14 @@ const UNLIMITED_LAPS = 32767;
  *     pit-lane diff (set true on `pitLane.exited`) and the lifecycle diff
  *     (cleared on `lap.started`). Covers both the session out-lap and any
  *     mid-session post-pit-exit lap.
+ *   - `lapCounted` (issue #776) = whether the current lap is still a counted
+ *     attempt. In a lap-limited qualifying the driver commonly keeps
+ *     circulating after the counted laps are done; there `SessionLapsRemainEx`
+ *     reads 0 — a value the `lapsRemaining` clamp collapses into the same `0`
+ *     the final counted lap (raw 1) reports. This flag preserves the
+ *     distinction: `false` only when the session is lap-limited AND the raw
+ *     reading says not even the current lap remains. Time-limited sessions
+ *     and a missing reading report `true` (don't punish missing data).
  *
  * Read at fire time (same deferred-snapshot rationale as
  * {@link getReadbackSnapshot}) so a callout that gets queued behind another
@@ -585,6 +631,7 @@ export function getQualifyingInvalidationSnapshot(): QualifyingInvalidationSnaps
   const telemetry = instance.latestTelemetry;
   const sessionInfo = instance.controller.getSessionInfo() as Record<string, unknown> | null;
   const lapsTotal = telemetry.SessionLapsTotal ?? 0;
+  const lapLimited = lapsTotal > 0 && lapsTotal < UNLIMITED_LAPS;
   const rawLapsRemaining =
     typeof telemetry.SessionLapsRemainEx === "number" && telemetry.SessionLapsRemainEx >= 0
       ? telemetry.SessionLapsRemainEx
@@ -594,9 +641,10 @@ export function getQualifyingInvalidationSnapshot(): QualifyingInvalidationSnaps
     sessionType: classifyLapSessionType(resolveSessionType(sessionInfo, telemetry)),
     sessionNum: typeof telemetry.SessionNum === "number" ? telemetry.SessionNum : undefined,
     lapsRemaining: rawLapsRemaining !== undefined ? Math.max(0, rawLapsRemaining - 1) : undefined,
-    lapLimited: lapsTotal > 0 && lapsTotal < UNLIMITED_LAPS,
+    lapLimited,
     lapCompleted: typeof telemetry.LapCompleted === "number" ? telemetry.LapCompleted : 0,
     lapStartedFromPits: instance.state.lapStartedFromPits,
+    lapCounted: !lapLimited || rawLapsRemaining === undefined || rawLapsRemaining > 0,
   };
 }
 
@@ -687,6 +735,25 @@ export function getLiveRacePositions(): number[] | null {
   if (!instance || !instance.latestTelemetry) return null;
 
   return calculateFrozenRacePositions(instance.state, instance.latestTelemetry);
+}
+
+/**
+ * Whether the player currently LEADS the race per the canonical live order
+ * (issue #771 — the winner grace on the checkered deferral). Consumes the
+ * same frozen calculation as {@link getLivePosition} per
+ * `.claude/rules/race-positions.md`; the official `PlayerCarPosition` is the
+ * fallback only when the player's slot can't be read from the live order
+ * (no car index yet / not classified).
+ */
+function resolvePlayerIsLeader(self: TranslatorInstance, telemetry: TelemetryData, playerCarIdx: number): boolean {
+  if (playerCarIdx >= 0) {
+    const positions = calculateFrozenRacePositions(self.state, telemetry);
+    const position = positions[playerCarIdx] ?? 0;
+
+    if (position > 0) return position === 1;
+  }
+
+  return telemetry.PlayerCarPosition === 1;
 }
 
 /**
@@ -795,6 +862,10 @@ function handleDisconnect(self: TranslatorInstance): void {
   // Re-arm the fresh-connect session.changed synthesis so a reconnect into a
   // session re-checks the SessionState gate (issues #568, #668).
   self.freshConnectFireChecked = false;
+  // The fuel lap history survives replays and session changes, but a
+  // disconnect means the sim is gone — reset it fully so a later reconnect
+  // seeds cleanly (issue #465).
+  self.fuelLaps = createFuelLapTracker();
 }
 
 /**
@@ -829,6 +900,31 @@ function handleDisconnect(self: TranslatorInstance): void {
  * invalidate via `resolvePitSpeedLimit`'s `${TrackID}|${SessionNum}` cache key
  * and need no reset here.
  */
+/**
+ * Wipe `TranslatorState` for a replay-mode transition (both edges — entering
+ * and leaving replay), preserving the checkered-deferral cluster (issue
+ * #771): a checkered held for the player's S/F crossing must survive a
+ * replay glance mid-deferral, or the callout is silently lost — the flag
+ * diff's post-wipe re-seed sees the `Checkered` bit already set and never
+ * re-emits. The flag seed deliberately leaves these fields alone. A genuine
+ * session change still clears them (`resetPerSessionState` wipes without
+ * preservation), so a pending checkered can't leak into the next session.
+ */
+function wipeStateForReplay(self: TranslatorInstance): void {
+  const preservedFlagDeferrals = {
+    checkeredPendingCross: self.state.checkeredPendingCross,
+    flagLastCrossedAt: self.state.flagLastCrossedAt,
+    // The white two-stage latch + raise timestamp (issue #772): a replay
+    // glance during the last lap must not replay the last-lap line (latch)
+    // nor drop the heads-up gap guard (timestamp).
+    whiteLastLapFired: self.state.whiteLastLapFired,
+    whiteRaisedAt: self.state.whiteRaisedAt,
+  };
+
+  self.state = createInitialState();
+  Object.assign(self.state, preservedFlagDeferrals);
+}
+
 function resetPerSessionState(self: TranslatorInstance, telemetry: TelemetryData): void {
   if (self.state.radarState !== "clear") {
     publish(
@@ -850,6 +946,12 @@ function resetPerSessionState(self: TranslatorInstance, telemetry: TelemetryData
   Object.assign(self.state, preservedLifecycle);
 
   self.firstOnTrackFired = false;
+
+  // Fuel lap history (issue #465): don't wipe here — the previous session's
+  // consumption stays readable while the driver sits in the garage planning
+  // fuel. `diffFuelLaps` executes the wipe on the first live-in-car tick of
+  // the new session.
+  self.fuelLaps.pendingSessionWipe = true;
 }
 
 /**
@@ -1062,15 +1164,20 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
         );
       }
 
-      self.state = createInitialState();
+      wipeStateForReplay(self);
       self.lastTickInReplay = true;
+      // Fuel lap history (issue #465): survives the wipe (it lives on the
+      // instance), but telemetry will have jumped by the time live ticks
+      // resume — a garage visit moves the car, fuel, and lap counter — so the
+      // open segment must re-anchor as partial on the first tick back.
+      self.fuelLaps.resumePartial = true;
     }
 
     return;
   }
 
   if (self.lastTickInReplay) {
-    self.state = createInitialState();
+    wipeStateForReplay(self);
     self.lastTickInReplay = false;
   }
 
@@ -1123,7 +1230,26 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   );
   diffLimiter(self.state, telemetry, pitSpeedLimitMps, now, emit);
   diffPitLane(self.state, telemetry, trackType, now, emit);
-  diffFlags(self.state, telemetry, now, emit);
+  // Checkered deferral (issue #771): the leader guard on the winner grace
+  // consumes the canonical live order (`.claude/rules/race-positions.md`),
+  // falling back to the official position only when no live order exists —
+  // the same read `getLivePosition()` serves between ticks (the freeze
+  // tracking is updated further down this tick, so the anchors are at most
+  // one tick stale here, which the leader check tolerates). Leader
+  // resolution is gated on race sessions — the winner grace it feeds is
+  // race-only, so non-race ticks skip the frozen-order computation.
+  // Practice-like sessions (Practice / Testing — the classifyLapSessionType
+  // convention) are flagged so the checkered speaks immediately at the
+  // raise there.
+  diffFlags(
+    self.state,
+    telemetry,
+    now,
+    emit,
+    isRaceSession,
+    isRaceSession && resolvePlayerIsLeader(self, telemetry, playerCarIdx),
+    sessionType.includes("Practice") || sessionType.includes("Testing"),
+  );
   // Start-light gantry + numeric pre-start countdown (issue #480). Sits beside
   // diffFlags (after the replay guard) and reads the already-resolved
   // `sessionInfo` for the standing-start / AI-race gates.
@@ -1199,6 +1325,22 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // `DriverInfo.DriverPitTrkPct`. Runs after the track-length resolution above.
   diffPitBoxCountdown(self.state, telemetry, resolvePitBoxTrkPct(sessionInfo), trackLengthMeters, emit);
   diffFuel(self.state, telemetry, isRaceSession, emit);
+
+  // Validated per-lap fuel history (issue #465) — tracker-only, no events.
+  // Deliberately NOT race-gated: consumption stats are just as useful on a
+  // practice long run. Read via `getFuelStats()`. The `replayOnlySession`
+  // gate matters even after the main replay guard (the diffPitsOpen
+  // precedent, #655): a paused / frame-scrubbed replay reads
+  // `IsReplayPlaying === false` while `SimMode === "replay"`, and feeding
+  // that replay-timeline telemetry into the tracker would record bogus laps
+  // or trip the session-restart fence on a backward scrub. Treat those ticks
+  // as a gap instead, like any other replay visit.
+  if (replayOnlySession) {
+    self.fuelLaps.resumePartial = true;
+  } else {
+    diffFuelLaps(self.fuelLaps, telemetry);
+  }
+
   diffRadar(self.state, telemetry, emit);
   diffTrackWetness(self.state, telemetry, emit);
 

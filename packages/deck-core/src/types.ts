@@ -16,6 +16,17 @@ import type { DeckFeedbackPayload } from "./feedback-types.js";
 export interface IDeckActionContext {
   /** Unique identifier for this action instance */
   readonly id: string;
+  /**
+   * Id of the device this action instance is on. Optional — only platforms that
+   * expose it populate it (Elgato does; used for profile switching, #736).
+   */
+  readonly deviceId?: string;
+  /**
+   * Elgato `DeviceType` of the device this action instance is on (see
+   * `device-profiles.ts`). Optional — populated by adapters that expose it
+   * (Elgato); used to filter device-specific bundled profiles.
+   */
+  readonly deviceType?: number;
   /** Set the button/key image */
   setImage(dataUri: string): Promise<void>;
   /** Set the button/key title text */
@@ -41,6 +52,13 @@ export interface IDeckActionContext {
    * unsupported.
    */
   setTriggerDescription(descriptions: DeckTriggerDescription): Promise<void>;
+  /**
+   * Briefly flash the host's warning indicator on the key (Elgato: the yellow
+   * warning triangle). Optional — adapters whose host has no equivalent omit
+   * it; callers invoke via `action.showAlert?.()`. Used for refused actions
+   * that would otherwise be silent no-ops (e.g. the #747 AI-target guard).
+   */
+  showAlert?(): Promise<void>;
 }
 
 /**
@@ -144,4 +162,15 @@ export interface IDeckPlatformAdapter {
   onDialRotate(callback: () => void): void;
   /** Start the platform connection */
   connect(): void;
+  /**
+   * Switch the given device to a bundled profile distributed with the plugin.
+   *
+   * Profiles are an Elgato Stream Deck concept: the Elgato adapter delegates to
+   * `streamDeck.profiles.switchToProfile`, which prompts the user to install the
+   * profile when it isn't installed yet — the mechanism that installs/updates
+   * bundled profiles. Non-Elgato adapters (Mirabox, Ulanzi) have no profile
+   * system and implement this as a no-op. Omitting `profile` returns to the
+   * device's default profile; `page` optionally selects a page within it.
+   */
+  switchToProfile(deviceId: string, profile?: string, page?: number): Promise<void>;
 }

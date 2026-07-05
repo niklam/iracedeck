@@ -1,8 +1,15 @@
-import { buildTemplateContext, resolveTemplate } from "@iracedeck/iracing-sdk";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { requestProfileSwitch, updateGlobalSettings } from "@iracedeck/deck-core";
+import {
+  buildTemplateContext,
+  classifyCarNumberTarget,
+  getPlayerCarNumberFromSessionInfo,
+  resolveTemplate,
+} from "@iracedeck/iracing-sdk";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { buildAdminCommand, buildAdminCommandPrefix, resolveDriverTarget } from "./race-admin-commands.js";
 import { getModesByOptgroup, RACE_ADMIN_MODE_META, RACE_ADMIN_MODES } from "./race-admin-modes.js";
+import { availableProfilesForDevice, resolveSelectedCar, resolveSlotCar } from "./race-admin-selector.js";
 import { generateRaceAdminSvg, RaceAdmin } from "./race-admin.js";
 
 // Mock SDK
@@ -10,8 +17,46 @@ import { generateRaceAdminSvg, RaceAdmin } from "./race-admin.js";
 vi.mock("@iracedeck/iracing-sdk", () => ({
   getCarNumberFromSessionInfo: vi.fn(),
   getAllCarNumbers: vi.fn(() => []),
+  classifyCarNumberTarget: vi.fn(() => "user"),
+  getPlayerCarNumberFromSessionInfo: vi.fn(() => null),
   buildTemplateContext: vi.fn(() => ({ display: {}, raw: {} })),
   resolveTemplate: vi.fn((template: string) => template),
+}));
+
+// The session-touching selector helpers are mocked (unit-tested in
+// race-admin-selector.test.ts); the pure slot-math helpers keep their real
+// logic so the lifecycle tests exercise genuine ordinal/paging behavior (#754).
+vi.mock("./race-admin-selector.js", () => ({
+  SELECTED_CAR_KEY: "_raceAdminSelectedCar",
+  DEFAULT_SELECTOR_TARGET_PROFILE: "iRaceDeck Race Admin Per Car",
+  availableProfilesForDevice: vi.fn(() => ["iRaceDeck Race Admin Cars XL", "iRaceDeck Race Admin Per Car XL"]),
+  deviceProfileEntries: vi.fn(() => [
+    { name: "iRaceDeck Race Admin Cars XL", label: "iRaceDeck Race Admin Cars" },
+    { name: "iRaceDeck Race Admin Per Car XL", label: "iRaceDeck Race Admin Per Car" },
+  ]),
+  parseSelectorPage: (raw: string | undefined) => {
+    const n = Number(raw);
+
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+  },
+  selectorOrdinal: (self: { column: number; row: number }, keys: readonly { column: number; row: number }[]): number =>
+    keys.filter((k) => k.row < self.row || (k.row === self.row && k.column < self.column)).length,
+  pageStartSlot: (page: number, counts: ReadonlyMap<number, number>): number | null => {
+    let start = 0;
+
+    for (let p = 0; p < page; p++) {
+      const count = counts.get(p);
+
+      if (count === undefined || count <= 0) return null;
+
+      start += count;
+    }
+
+    return start;
+  },
+  resolveSlotCar: vi.fn(() => ({ carIdx: 5, carNumber: "24", lastName: "Doe" })),
+  resolveSelectedCar: vi.fn(() => null),
+  generateSelectorSvg: vi.fn((car: { carNumber: string } | null) => `data:selector,${car?.carNumber ?? ""}`),
 }));
 
 // Mock all icon imports
@@ -107,7 +152,7 @@ const mockSendKeyCombination = vi.fn(async () => true);
 // vi.hoisted so the object-returning factory is initialized before the hoisted
 // vi.mock("@iracedeck/deck-core") factory references it.
 const { mockGetGlobalSettings } = vi.hoisted(() => ({
-  mockGetGlobalSettings: vi.fn(() => ({ chatOpenToPasteDelayMs: 10 })),
+  mockGetGlobalSettings: vi.fn((): Record<string, unknown> => ({ chatOpenToPasteDelayMs: 10 })),
 }));
 
 vi.mock("@iracedeck/deck-core", () => ({
@@ -121,6 +166,24 @@ vi.mock("@iracedeck/deck-core", () => ({
       return schema;
     },
   },
+  // Minimal reimplementation of the #753 profile-name helpers (the real ones
+  // are covered by deck-core's own device-profiles tests).
+  deviceProfileName: (name: string, deviceType: number | undefined): string => {
+    if (name.endsWith(" XL") || name.endsWith(" SD")) return name;
+
+    return deviceType === 2 ? `${name} XL` : name;
+  },
+  resolveProfileNameForDevice: (
+    name: string,
+    deviceType: number | undefined,
+    availableNames: readonly string[],
+  ): string | undefined => {
+    if (availableNames.includes(name)) return name;
+
+    const suffixed = deviceType === 2 && !name.endsWith(" XL") ? `${name} XL` : name;
+
+    return availableNames.includes(suffixed) ? suffixed : undefined;
+  },
   ConnectionStateAwareAction: class MockConnectionStateAwareAction {
     logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
     sdkController = {
@@ -131,6 +194,7 @@ vi.mock("@iracedeck/deck-core", () => ({
     };
     updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
+    updateKeyImage = vi.fn();
     setRegenerateCallback = vi.fn();
     async onWillAppear(_ev: unknown): Promise<void> {}
     async onWillDisappear(_ev: unknown): Promise<void> {}
@@ -141,6 +205,9 @@ vi.mock("@iracedeck/deck-core", () => ({
     camera: { switchNum: vi.fn(() => true) },
   })),
   getClipboard: vi.fn(() => ({ setClipboardText: mockSetClipboardText })),
+  getDeviceSpec: vi.fn(() => ({ grid: [8, 4] as const })),
+  requestProfileSwitch: vi.fn(async () => {}),
+  updateGlobalSettings: vi.fn(),
   getGlobalSettings: mockGetGlobalSettings,
   getKeyboard: vi.fn(() => ({ sendKeyCombination: mockSendKeyCombination })),
   generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
@@ -184,8 +251,8 @@ describe("RaceAdmin", () => {
   // ── Mode Definitions ────────────────────────────────────────
 
   describe("RACE_ADMIN_MODES", () => {
-    it("should have 27 modes", () => {
-      expect(RACE_ADMIN_MODES).toHaveLength(27);
+    it("should have 28 modes", () => {
+      expect(RACE_ADMIN_MODES).toHaveLength(28);
     });
 
     it("should have metadata for every mode", () => {
@@ -198,12 +265,13 @@ describe("RaceAdmin", () => {
       }
     });
 
-    it("should have 3 optgroups", () => {
+    it("should have 4 optgroups", () => {
       const groups = getModesByOptgroup();
-      expect(groups.size).toBe(3);
+      expect(groups.size).toBe(4);
       expect(groups.has("Race Control")).toBe(true);
       expect(groups.has("Session Management")).toBe(true);
       expect(groups.has("Driver & Chat Management")).toBe(true);
+      expect(groups.has("Car Selection")).toBe(true);
     });
 
     it("should have correct mode counts per optgroup", () => {
@@ -211,6 +279,7 @@ describe("RaceAdmin", () => {
       expect(groups.get("Race Control")).toHaveLength(14);
       expect(groups.get("Session Management")).toHaveLength(4);
       expect(groups.get("Driver & Chat Management")).toHaveLength(9);
+      expect(groups.get("Car Selection")).toHaveLength(1);
     });
   });
 
@@ -260,6 +329,18 @@ describe("RaceAdmin", () => {
       expect(result).toBeNull();
     });
 
+    it("should return the shared selected car number when driverTarget is selected-car", () => {
+      const meta = RACE_ADMIN_MODE_META["black-flag"];
+      const result = resolveDriverTarget({ ...baseSettings, driverTarget: "selected-car" }, null, meta, "24");
+      expect(result).toBe("24");
+    });
+
+    it("should return null when driverTarget is selected-car but nothing is selected", () => {
+      const meta = RACE_ADMIN_MODE_META["black-flag"];
+      const result = resolveDriverTarget({ ...baseSettings, driverTarget: "selected-car" }, null, meta, null);
+      expect(result).toBeNull();
+    });
+
     it("should return null for modes that do not need a driver", () => {
       const meta = RACE_ADMIN_MODE_META["yellow"];
       const result = resolveDriverTarget(baseSettings, "42", meta);
@@ -306,6 +387,18 @@ describe("RaceAdmin", () => {
       const settings = { ...baseSettings, driverTarget: "specific" as const, carNumber: "7" };
       const result = buildAdminCommand("dq-driver", settings, null, mockSdkController as never);
       expect(result).toBe("!dq #7");
+    });
+
+    it("should build commands with driver target (selected car)", () => {
+      const settings = { ...baseSettings, driverTarget: "selected-car" as const };
+      const result = buildAdminCommand("dq-driver", settings, null, mockSdkController as never, "24");
+      expect(result).toBe("!dq #24");
+    });
+
+    it("should return null for selected-car when nothing is selected", () => {
+      const settings = { ...baseSettings, driverTarget: "selected-car" as const };
+      const result = buildAdminCommand("dq-driver", settings, null, mockSdkController as never, null);
+      expect(result).toBeNull();
     });
 
     it("should return null when required driver is missing", () => {
@@ -477,6 +570,25 @@ describe("RaceAdmin", () => {
       const yellowSvg = generateRaceAdminSvg("yellow", defaultSettings);
       const pitCloseSvg = generateRaceAdminSvg("pit-close", defaultSettings);
       expect(yellowSvg).not.toBe(pitCloseSvg);
+    });
+
+    it("should render the dynamic selector icon for select-car mode", () => {
+      const settings = { ...defaultSettings, mode: "select-car" as const };
+      expect(generateRaceAdminSvg("select-car", settings, { carNumber: "24", lastName: "Doe" })).toBe(
+        "data:selector,24",
+      );
+    });
+
+    it("should show the resolved car number on the selected-car target", () => {
+      const settings = { ...defaultSettings, driverTarget: "selected-car" as const };
+      const decoded = decodeURIComponent(generateRaceAdminSvg("black-flag", settings, { carNumber: "24" }));
+      expect(decoded).toContain("#24");
+    });
+
+    it("should show NO CAR on the selected-car target when nothing is selected", () => {
+      const settings = { ...defaultSettings, driverTarget: "selected-car" as const };
+      const decoded = decodeURIComponent(generateRaceAdminSvg("black-flag", settings, null));
+      expect(decoded).toContain("NO CAR");
     });
   });
 
@@ -657,6 +769,386 @@ describe("RaceAdmin", () => {
       expect(mockSendMessage).toHaveBeenCalledTimes(1);
       expect(mockSendMessage).toHaveBeenCalledWith("!dq #42");
       expect(mockSetClipboardText).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── Car Selector: select-car mode + selected-car target (#732) ──
+
+  describe("RaceAdmin car selector", () => {
+    const selectorSettings = {
+      mode: "select-car" as const,
+      driverTarget: "type-in-chat" as const,
+      carNumber: "",
+      message: "",
+      penaltyType: "time",
+      penaltyValue: "30",
+      paceLapsOperation: "+",
+      paceLapsValue: "1",
+      gridSetMinutes: "5",
+      trackStatePercent: "50",
+      selectorPage: "0",
+      selectorTargetProfile: "iRaceDeck Race Admin Per Car",
+    };
+
+    function makeSelectorKeyDown(
+      settings: Record<string, unknown>,
+      coordinates: { column: number; row: number } = { column: 1, row: 0 },
+    ) {
+      return {
+        action: { id: "ctx-sel", deviceId: "dev-1", deviceType: 2, setSettings: vi.fn(async () => {}) },
+        payload: { settings, coordinates },
+      } as never;
+    }
+
+    // The selector-helper mocks are re-stubbed here; mockReset in afterEach
+    // restores the factory implementations so nothing leaks past this block.
+    beforeEach(() => {
+      vi.mocked(resolveSlotCar).mockReturnValue({ carIdx: 5, carNumber: "24", lastName: "Doe" });
+    });
+
+    afterEach(() => {
+      vi.mocked(resolveSlotCar).mockReset();
+      vi.mocked(resolveSelectedCar).mockReset();
+    });
+
+    it("stores the selected car (CarIdx + number) and switches to the per-car profile on press", async () => {
+      const action = new RaceAdmin();
+      await action.onKeyDown(makeSelectorKeyDown(selectorSettings));
+
+      expect(updateGlobalSettings).toHaveBeenCalledWith({
+        _raceAdminSelectedCar: { carIdx: 5, carNumber: "24" },
+      });
+      // The stored legacy display name resolves to the device's manifest name
+      // (#753). Page 0: the target profile always opens on its first page (#754).
+      expect(requestProfileSwitch).toHaveBeenCalledWith("dev-1", "iRaceDeck Race Admin Per Car XL", 0);
+      expect(mockSendMessage).not.toHaveBeenCalled();
+    });
+
+    it("passes a stored device-suffixed manifest name through unchanged (#753)", async () => {
+      const action = new RaceAdmin();
+      await action.onKeyDown(
+        makeSelectorKeyDown({ ...selectorSettings, selectorTargetProfile: "iRaceDeck Race Admin Cars XL" }),
+      );
+
+      expect(requestProfileSwitch).toHaveBeenCalledWith("dev-1", "iRaceDeck Race Admin Cars XL", 0);
+    });
+
+    it("does nothing when the pressed slot is empty", async () => {
+      vi.mocked(resolveSlotCar).mockReturnValue(null);
+      const action = new RaceAdmin();
+      await action.onKeyDown(makeSelectorKeyDown(selectorSettings));
+
+      expect(updateGlobalSettings).not.toHaveBeenCalled();
+      expect(requestProfileSwitch).not.toHaveBeenCalled();
+    });
+
+    it("falls back to the default per-car profile when the target profile is cleared", async () => {
+      const action = new RaceAdmin();
+      await action.onKeyDown(makeSelectorKeyDown({ ...selectorSettings, selectorTargetProfile: "  " }));
+
+      expect(requestProfileSwitch).toHaveBeenCalledWith("dev-1", "iRaceDeck Race Admin Per Car XL", 0);
+    });
+
+    it("falls back to the default per-car profile when the stored name has no variant here (#753)", async () => {
+      const action = new RaceAdmin();
+      await action.onKeyDown(makeSelectorKeyDown({ ...selectorSettings, selectorTargetProfile: "iRaceDeck Gone" }));
+
+      expect(requestProfileSwitch).toHaveBeenCalledWith("dev-1", "iRaceDeck Race Admin Per Car XL", 0);
+    });
+
+    it("stores the selection but skips the switch when the device ships no per-car profile", async () => {
+      vi.mocked(availableProfilesForDevice).mockReturnValueOnce([]);
+      const action = new RaceAdmin();
+      await action.onKeyDown(makeSelectorKeyDown(selectorSettings));
+
+      expect(updateGlobalSettings).toHaveBeenCalledWith({
+        _raceAdminSelectedCar: { carIdx: 5, carNumber: "24" },
+      });
+      expect(requestProfileSwitch).not.toHaveBeenCalled();
+    });
+
+    function makeSelectorAppear(id: string, column: number, row: number, settings: Record<string, unknown>) {
+      return {
+        action: { id, deviceId: "dev-1", deviceType: 2, setSettings: vi.fn(async () => {}) },
+        payload: { settings: { ...settings }, coordinates: { column, row } },
+      } as never;
+    }
+
+    it("assigns slots by row-major ordinal among the visible select-car keys — any placement, corners included (#754)", async () => {
+      const action = new RaceAdmin();
+      // Two keys: the top-left corner (no longer reserved) and one mid-grid.
+      await action.onWillAppear(makeSelectorAppear("ctx-a", 0, 0, selectorSettings));
+      await action.onWillAppear(makeSelectorAppear("ctx-b", 4, 2, selectorSettings));
+      vi.mocked(resolveSlotCar).mockClear();
+
+      await action.onKeyDown({
+        action: { id: "ctx-b", deviceId: "dev-1", deviceType: 2, setSettings: vi.fn(async () => {}) },
+        payload: { settings: { ...selectorSettings }, coordinates: { column: 4, row: 2 } },
+      } as never);
+
+      expect(vi.mocked(resolveSlotCar).mock.lastCall?.[1]).toBe(1);
+    });
+
+    it("offsets a later page by the learned key counts of the earlier pages — uneven counts included (#754)", async () => {
+      const action = new RaceAdmin();
+      // Page 0 has two keys; page 1's first key must start at slot 2.
+      await action.onWillAppear(makeSelectorAppear("ctx-a", 1, 0, selectorSettings));
+      await action.onWillAppear(makeSelectorAppear("ctx-b", 2, 0, selectorSettings));
+      await action.onWillAppear(makeSelectorAppear("ctx-p1", 0, 0, { ...selectorSettings, selectorPage: "1" }));
+      vi.mocked(resolveSlotCar).mockClear();
+
+      await action.onKeyDown({
+        action: { id: "ctx-p1", deviceId: "dev-1", deviceType: 2, setSettings: vi.fn(async () => {}) },
+        payload: { settings: { ...selectorSettings, selectorPage: "1" }, coordinates: { column: 0, row: 0 } },
+      } as never);
+
+      expect(vi.mocked(resolveSlotCar).mock.lastCall?.[1]).toBe(2);
+    });
+
+    it("re-records the old page when a key's Selector Page setting changes", async () => {
+      const action = new RaceAdmin();
+      await action.onWillAppear(makeSelectorAppear("ctx-a", 1, 0, selectorSettings));
+      await action.onWillAppear(makeSelectorAppear("ctx-b", 2, 0, selectorSettings));
+      // PI edit moves ctx-b to page 1: page 0 now holds one key, so ctx-b's
+      // page-1 slot must start at 1, not at the stale count of 2.
+      await action.onDidReceiveSettings(makeSelectorAppear("ctx-b", 2, 0, { ...selectorSettings, selectorPage: "1" }));
+      vi.mocked(resolveSlotCar).mockClear();
+
+      await action.onKeyDown({
+        action: { id: "ctx-b", deviceId: "dev-1", deviceType: 2, setSettings: vi.fn(async () => {}) },
+        payload: { settings: { ...selectorSettings, selectorPage: "1" }, coordinates: { column: 2, row: 0 } },
+      } as never);
+
+      expect(vi.mocked(resolveSlotCar).mock.lastCall?.[1]).toBe(1);
+    });
+
+    it("forgets a page's count when its last key moves away (later pages blank until revisited)", async () => {
+      const action = new RaceAdmin();
+      await action.onWillAppear(makeSelectorAppear("ctx-a", 1, 0, selectorSettings));
+      await action.onWillAppear(makeSelectorAppear("ctx-p1", 0, 0, { ...selectorSettings, selectorPage: "1" }));
+      // ctx-a was page 0's only key; moving it to page 2 must forget page 0's
+      // count rather than leave the stale 1 behind.
+      await action.onDidReceiveSettings(makeSelectorAppear("ctx-a", 1, 0, { ...selectorSettings, selectorPage: "2" }));
+      vi.mocked(resolveSlotCar).mockClear();
+
+      await action.onKeyDown({
+        action: { id: "ctx-p1", deviceId: "dev-1", deviceType: 2, setSettings: vi.fn(async () => {}) },
+        payload: { settings: { ...selectorSettings, selectorPage: "1" }, coordinates: { column: 0, row: 0 } },
+      } as never);
+
+      expect(vi.mocked(resolveSlotCar).mock.lastCall?.[1]).toBeNull();
+    });
+
+    it("resolves no car while an earlier page's key count is unknown (#754)", async () => {
+      const action = new RaceAdmin();
+      // Page 1 key appears without page 0 ever having been visited.
+      await action.onWillAppear(makeSelectorAppear("ctx-p1", 0, 0, { ...selectorSettings, selectorPage: "1" }));
+      vi.mocked(resolveSlotCar).mockClear();
+
+      await action.onKeyDown({
+        action: { id: "ctx-p1", deviceId: "dev-1", deviceType: 2, setSettings: vi.fn(async () => {}) },
+        payload: { settings: { ...selectorSettings, selectorPage: "1" }, coordinates: { column: 0, row: 0 } },
+      } as never);
+
+      expect(vi.mocked(resolveSlotCar).mock.lastCall?.[1]).toBeNull();
+    });
+
+    it("still selects a car when Selector Page holds non-numeric text (settings parse must not reset)", async () => {
+      const action = new RaceAdmin();
+      await action.onKeyDown(makeSelectorKeyDown({ ...selectorSettings, selectorPage: "p1" }));
+
+      // The press must stay a selection — NOT fall back to the default
+      // "yellow" mode and throw a real caution flag.
+      expect(updateGlobalSettings).toHaveBeenCalledWith({
+        _raceAdminSelectedCar: { carIdx: 5, carNumber: "24" },
+      });
+      expect(mockSendMessage).not.toHaveBeenCalled();
+    });
+
+    it("dispatches a command against the shared selected car for the selected-car target", async () => {
+      vi.mocked(resolveSelectedCar).mockReturnValueOnce("24");
+
+      const action = new RaceAdmin();
+      await action.onKeyDown(
+        makeSelectorKeyDown({ ...selectorSettings, mode: "dq-driver", driverTarget: "selected-car" }),
+      );
+
+      expect(mockSendMessage).toHaveBeenCalledWith("!dq #24");
+    });
+
+    it("does not dispatch when the stored selection is stale or missing", async () => {
+      vi.mocked(resolveSelectedCar).mockReturnValueOnce(null);
+
+      const action = new RaceAdmin();
+      await action.onKeyDown(
+        makeSelectorKeyDown({ ...selectorSettings, mode: "dq-driver", driverTarget: "selected-car" }),
+      );
+
+      expect(mockSendMessage).not.toHaveBeenCalled();
+    });
+
+    it("pushes the device profile entries for the Target Profile dropdown on appear (select-car only)", async () => {
+      const action = new RaceAdmin();
+      const ev = {
+        action: { id: "ctx-sel", deviceId: "dev-1", deviceType: 2, setSettings: vi.fn(async () => {}) },
+        payload: { settings: { ...selectorSettings }, coordinates: { column: 1, row: 0 } },
+      } as never;
+
+      await action.onWillAppear(ev);
+
+      const setSettings = (ev as { action: { setSettings: ReturnType<typeof vi.fn> } }).action.setSettings;
+      expect(setSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          _deviceProfiles: [
+            { name: "iRaceDeck Race Admin Cars XL", label: "iRaceDeck Race Admin Cars" },
+            { name: "iRaceDeck Race Admin Per Car XL", label: "iRaceDeck Race Admin Per Car" },
+          ],
+        }),
+      );
+
+      // Second appear with the entries already stored: no redundant write (echo-loop guard).
+      setSettings.mockClear();
+      const ev2 = {
+        action: { id: "ctx-sel", deviceId: "dev-1", deviceType: 2, setSettings },
+        payload: {
+          settings: {
+            ...selectorSettings,
+            _deviceProfiles: [
+              { name: "iRaceDeck Race Admin Cars XL", label: "iRaceDeck Race Admin Cars" },
+              { name: "iRaceDeck Race Admin Per Car XL", label: "iRaceDeck Race Admin Per Car" },
+            ],
+          },
+          coordinates: { column: 1, row: 0 },
+        },
+      } as never;
+      await action.onWillAppear(ev2);
+      expect(setSettings).not.toHaveBeenCalled();
+    });
+
+    it("does not push the profile list for non-selector modes", async () => {
+      const action = new RaceAdmin();
+      const ev = {
+        action: { id: "ctx-cmd", deviceId: "dev-1", deviceType: 2, setSettings: vi.fn(async () => {}) },
+        payload: {
+          settings: { ...selectorSettings, mode: "yellow", driverTarget: "viewed-car" },
+          coordinates: { column: 1, row: 0 },
+        },
+      } as never;
+
+      await action.onWillAppear(ev);
+
+      expect((ev as { action: { setSettings: ReturnType<typeof vi.fn> } }).action.setSettings).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── User-target guard: AI / unknown targets (#747) ──────────
+
+  describe("RaceAdmin user-management target guard", () => {
+    const baseSettings = {
+      mode: "revoke-admin" as const,
+      driverTarget: "specific" as const,
+      carNumber: "7",
+      message: "",
+      penaltyType: "time",
+      penaltyValue: "30",
+      paceLapsOperation: "+",
+      paceLapsValue: "1",
+      gridSetMinutes: "5",
+      trackStatePercent: "50",
+    };
+
+    function makeEvent(settings: Record<string, unknown>) {
+      return {
+        action: { id: "ctx-guard", showAlert: vi.fn(async () => {}), setSettings: vi.fn(async () => {}) },
+        payload: { settings },
+      } as never;
+    }
+
+    // clearAllMocks keeps implementations, so restore the factory default
+    // ("user") after each test to avoid leaking a stubbed classification.
+    afterEach(() => {
+      vi.mocked(classifyCarNumberTarget).mockReset();
+      vi.mocked(getPlayerCarNumberFromSessionInfo).mockReset();
+    });
+
+    it("refuses a user-management command aimed at an AI car and flashes the key alert", async () => {
+      vi.mocked(classifyCarNumberTarget).mockReturnValue("ai");
+      const action = new RaceAdmin();
+      const ev = makeEvent(baseSettings);
+
+      await action.onKeyDown(ev);
+
+      expect(mockSendMessage).not.toHaveBeenCalled();
+      expect((ev as { action: { showAlert: ReturnType<typeof vi.fn> } }).action.showAlert).toHaveBeenCalledTimes(1);
+    });
+
+    it("refuses a user-management command aimed at a number not in the session", async () => {
+      vi.mocked(classifyCarNumberTarget).mockReturnValue("unknown");
+      const action = new RaceAdmin();
+
+      await action.onKeyDown(makeEvent(baseSettings));
+
+      expect(mockSendMessage).not.toHaveBeenCalled();
+    });
+
+    it("dispatches normally when the target is a human user's car", async () => {
+      vi.mocked(classifyCarNumberTarget).mockReturnValue("user");
+      const action = new RaceAdmin();
+
+      await action.onKeyDown(makeEvent(baseSettings));
+
+      expect(mockSendMessage).toHaveBeenCalledWith("!nadmin #7");
+    });
+
+    it("does not guard car-targeted race-control commands (valid against AI cars)", async () => {
+      vi.mocked(classifyCarNumberTarget).mockReturnValue("ai");
+      const action = new RaceAdmin();
+
+      await action.onKeyDown(makeEvent({ ...baseSettings, mode: "black-flag", penaltyType: "drivethrough" }));
+
+      expect(mockSendMessage).toHaveBeenCalledWith("!black #7 D");
+      expect(classifyCarNumberTarget).not.toHaveBeenCalled();
+    });
+
+    it("refuses revoke-admin aimed at the sender's own car", async () => {
+      vi.mocked(getPlayerCarNumberFromSessionInfo).mockReturnValue("7");
+      const action = new RaceAdmin();
+      const ev = makeEvent(baseSettings); // revoke-admin, target #7
+
+      await action.onKeyDown(ev);
+
+      expect(mockSendMessage).not.toHaveBeenCalled();
+      expect((ev as { action: { showAlert: ReturnType<typeof vi.fn> } }).action.showAlert).toHaveBeenCalledTimes(1);
+    });
+
+    it("revoke-admin still dispatches against someone else's car", async () => {
+      vi.mocked(getPlayerCarNumberFromSessionInfo).mockReturnValue("42");
+      const action = new RaceAdmin();
+
+      await action.onKeyDown(makeEvent(baseSettings)); // target #7, own car #42
+
+      expect(mockSendMessage).toHaveBeenCalledWith("!nadmin #7");
+    });
+
+    it("grant-admin on the sender's own car is not blocked (only revoke refuses self)", async () => {
+      vi.mocked(getPlayerCarNumberFromSessionInfo).mockReturnValue("7");
+      const action = new RaceAdmin();
+
+      await action.onKeyDown(makeEvent({ ...baseSettings, mode: "grant-admin" }));
+
+      expect(mockSendMessage).toHaveBeenCalledWith("!admin #7");
+    });
+
+    it("flags exactly revoke-admin as refusesSelfTarget", () => {
+      const flagged = RACE_ADMIN_MODES.filter((m) => RACE_ADMIN_MODE_META[m].refusesSelfTarget === true);
+      expect(flagged).toEqual(["revoke-admin"]);
+    });
+
+    it("flags exactly the five user-management modes as targetsUser", () => {
+      const flagged = RACE_ADMIN_MODES.filter((m) => RACE_ADMIN_MODE_META[m].targetsUser === true);
+      expect([...flagged].sort()).toEqual(
+        ["disable-chat-driver", "enable-chat-driver", "grant-admin", "remove-driver", "revoke-admin"].sort(),
+      );
     });
   });
 

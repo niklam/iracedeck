@@ -354,6 +354,16 @@ export class VSDPlatformAdapter implements IDeckPlatformAdapter {
     this.client.openUrl(url);
   }
 
+  /**
+   * No-op: Stream Deck profiles are an Elgato-only concept and the Stream Dock
+   * host has no profile system. The "Stream Deck Profiles" settings accordion is
+   * hidden on this platform (via the `profiles` feature flag), so this is never
+   * reached in practice; it exists to satisfy `IDeckPlatformAdapter`.
+   */
+  async switchToProfile(_deviceId: string, _profile?: string, _page?: number): Promise<void> {
+    // no-op
+  }
+
   connect(): void {
     this.client.connect();
   }

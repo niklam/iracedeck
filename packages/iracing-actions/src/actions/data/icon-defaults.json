@@ -175,6 +175,11 @@
     "graphic1Color": "#ffffff",
     "borderColor": "#714474"
   },
+  "switch-profile": {
+    "backgroundColor": "#2a3a4a",
+    "textColor": "#ffffff",
+    "graphic1Color": "#ffffff"
+  },
   "telemetry-control": {
     "backgroundColor": "#3a2a3a",
     "textColor": "#ffffff",
@@ -229,6 +234,10 @@
     "backgroundColor": "#3a2a2a",
     "textColor": "#ffffff",
     "graphic1Color": "#ffffff"
+  },
+  "race-admin-car-selector": {
+    "backgroundColor": "#000000",
+    "textColor": "#ffffff"
   },
   "session-info": {
     "backgroundColor": "#2a3444",

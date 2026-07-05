@@ -307,7 +307,7 @@
       ],
       "States": [
         {
-          "Image": "imgs/actions/race-admin/key",
+          "Image": "imgs/blank-key",
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
@@ -548,6 +548,23 @@
       ]
     },
     {
+      "Name": "Switch Profile",
+      "UUID": "com.iracedeck.sd.core.switch-profile",
+      "Icon": "imgs/actions/switch-profile/icon",
+      "Tooltip": "Switch your Stream Deck to a bundled iRaceDeck profile",
+      "PropertyInspectorPath": "ui/switch-profile.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/actions/switch-profile/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
       "Name": "Telemetry Control",
       "UUID": "com.iracedeck.sd.core.telemetry-control",
       "Icon": "imgs/actions/telemetry-control/icon",
@@ -662,5 +679,55 @@
       "iRacingSim64DX11.exe"
     ]
   },
+  "Profiles": [
+    {
+      "Name": "iRaceDeck Default XL",
+      "DeviceType": 2,
+      "AutoInstall": true,
+      "DontAutoSwitchWhenInstalled": false
+    },
+    {
+      "Name": "iRaceDeck Replay XL",
+      "DeviceType": 2,
+      "AutoInstall": true,
+      "DontAutoSwitchWhenInstalled": true
+    },
+    {
+      "Name": "iRaceDeck Race Admin Cars XL",
+      "DeviceType": 2,
+      "AutoInstall": true,
+      "DontAutoSwitchWhenInstalled": true
+    },
+    {
+      "Name": "iRaceDeck Race Admin Per Car XL",
+      "DeviceType": 2,
+      "AutoInstall": true,
+      "DontAutoSwitchWhenInstalled": true
+    },
+    {
+      "Name": "iRaceDeck Default SD",
+      "DeviceType": 0,
+      "AutoInstall": true,
+      "DontAutoSwitchWhenInstalled": false
+    },
+    {
+      "Name": "iRaceDeck Replay SD",
+      "DeviceType": 0,
+      "AutoInstall": true,
+      "DontAutoSwitchWhenInstalled": true
+    },
+    {
+      "Name": "iRaceDeck Race Admin Cars SD",
+      "DeviceType": 0,
+      "AutoInstall": true,
+      "DontAutoSwitchWhenInstalled": true
+    },
+    {
+      "Name": "iRaceDeck Race Admin Per Car SD",
+      "DeviceType": 0,
+      "AutoInstall": true,
+      "DontAutoSwitchWhenInstalled": true
+    }
+  ],
   "UUID": "com.iracedeck.sd.core"
 }

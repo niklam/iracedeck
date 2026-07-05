@@ -101,7 +101,11 @@ export type FuelServiceMode = (typeof FUEL_SERVICE_MODES)[number];
 export const FuelServiceSettings = CommonSettings.extend({
   mode: z.enum(FUEL_SERVICE_MODES).default("toggle-fuel-fill"),
   amount: z.preprocess(commaToDot, z.coerce.number().min(0).default(1)),
-  unit: FuelUnit.default("auto"),
+  // .catch maps an unknown persisted unit — e.g. a value written into a shared
+  // profile by a newer version — to auto instead of failing the whole parse,
+  // which would discard the stored mode and render the key as toggle-fuel-fill
+  // (the same hardening master applies for 2.0's "auto" on its side).
+  unit: FuelUnit.default("auto").catch("auto"),
   dial: DialSettings,
 });
 

@@ -68,6 +68,7 @@ import {
   initializeSDK,
   initializeSimHub,
   initPluginConfig,
+  initProfileSwitcher,
   onGlobalSettingsChange,
   type PluginConfig,
   resolveActiveDriverName,
@@ -140,6 +141,8 @@ import {
   SetupTraction,
   SPLITS_DELTA_CYCLE_UUID,
   SplitsDeltaCycle,
+  SWITCH_PROFILE_UUID,
+  SwitchProfile,
   TELEMETRY_CONTROL_UUID,
   TELEMETRY_DISPLAY_UUID,
   TelemetryControl,
@@ -671,13 +674,19 @@ onGlobalSettingsChange((settings) => {
     // passthrough `_lastSeenVersion` key and persists the running version.
     // No-op for pre-release builds and same/older versions; opens the
     // browser via the Elgato SDK. `type` is the connected device's type id
-    // (best-effort), omitted when no device is connected yet.
+    // (best-effort), omitted when no device is connected yet. The
+    // `changelogNotification` preference (issue #742) decides whether a due
+    // changelog opens, is recorded silently, or stays pending (monthly
+    // window, anchored on the passthrough `_lastChangelogOpenedAt` key).
     void runVersionCheck({
       currentVersion: getPluginVersion(),
       lastSeenVersion: typeof s._lastSeenVersion === "string" ? s._lastSeenVersion : undefined,
+      policy: settings.changelogNotification,
+      lastOpenedAt: typeof s._lastChangelogOpenedAt === "number" ? s._lastChangelogOpenedAt : undefined,
       ecosystem: getPluginPlatform(),
       deviceType: [...streamDeck.devices].find((d) => d.isConnected)?.type,
       persist: (version) => updateGlobalSettings({ _lastSeenVersion: version }),
+      persistOpenedAt: (timestamp) => updateGlobalSettings({ _lastChangelogOpenedAt: timestamp }),
       openUrl: (url) => adapter.openUrl(url),
       logger: adapter.createLogger("VersionCheck"),
     });
@@ -801,6 +810,7 @@ adapter.registerAction(SETUP_FUEL_UUID, new SetupFuel(adapter.createLogger("Setu
 adapter.registerAction(SETUP_HYBRID_UUID, new SetupHybrid(adapter.createLogger("SetupHybrid")));
 adapter.registerAction(SETUP_TRACTION_UUID, new SetupTraction(adapter.createLogger("SetupTraction")));
 adapter.registerAction(SPLITS_DELTA_CYCLE_UUID, new SplitsDeltaCycle(adapter.createLogger("SplitsDeltaCycle")));
+adapter.registerAction(SWITCH_PROFILE_UUID, new SwitchProfile(adapter.createLogger("SwitchProfile")));
 adapter.registerAction(TELEMETRY_CONTROL_UUID, new TelemetryControl(adapter.createLogger("TelemetryControl")));
 adapter.registerAction(TELEMETRY_DISPLAY_UUID, new TelemetryDisplay(adapter.createLogger("TelemetryDisplay")));
 adapter.registerAction(TIRE_SERVICE_UUID, new TireService(adapter.createLogger("TireService")));
@@ -809,6 +819,13 @@ adapter.registerAction(VIEW_ADJUSTMENT_UUID, new ViewAdjustment(adapter.createLo
 
 // Initialize global settings listener BEFORE connect - handlers must be registered first
 initGlobalSettings(adapter, adapter.createLogger("GlobalSettings"));
+
+// Wire profile switching (Elgato-only) for the Switch Profile action and the
+// "Stream Deck Profiles" settings buttons (#736)
+initProfileSwitcher(
+  (deviceId, profile, page) => adapter.switchToProfile(deviceId, profile, page),
+  adapter.createLogger("ProfileSwitcher"),
+);
 
 // Initialize SimHub AFTER global settings so health check uses configured host/port
 initializeSimHub(adapter.createLogger("SimHub"));

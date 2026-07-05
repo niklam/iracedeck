@@ -163,13 +163,19 @@
       },
       {
         "name": "white-race-01",
-        "text": "White flag.",
-        "seed": 3
+        "text": "White flag. <break time=\"0.3s\" /> We're about to start the final lap."
       },
       {
         "name": "white-race-02",
-        "text": "White flag and the final lap... Let's make it count.",
-        "seed": 7
+        "text": "White flag is out. <break time=\"0.3s\" /> Final lap coming up."
+      },
+      {
+        "name": "white-last-lap-01",
+        "text": "This is the last lap. <break time=\"0.3s\" /> Give it everything."
+      },
+      {
+        "name": "white-last-lap-02",
+        "text": "Final lap now. <break time=\"0.3s\" /> Make it count."
       },
       {
         "name": "yellow-local-01",

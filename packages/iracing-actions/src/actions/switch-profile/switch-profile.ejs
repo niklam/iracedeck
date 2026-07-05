@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <%- include('head-common') %>
+  </head>
+  <body>
+    <%- include('section-header', { title: 'Action Settings' }) %>
+
+    <%# The `default` attribute must match PROFILE_NAMES.default in deck-core (the
+        action's press-time fallback). It can't be imported here — PI templates can
+        only require() from the shared data dir — and a divergence would be
+        display-only, since the action's own fallback drives the press behavior.
+        It's a display name: the component matches it against the option labels,
+        which are the suffix-free displayNames pushed via _deviceProfiles (#753). %>
+    <sdpi-item label="Profile">
+      <ird-profile-select setting="profile" profiles="_deviceProfiles" previous-label="Back to previous" default="iRaceDeck Default"></ird-profile-select>
+    </sdpi-item>
+    <div class="ird-supporting-text">
+      Pressing the button switches your Stream Deck to the selected iRaceDeck profile —
+      iRaceDeck Default unless you pick another. The list shows the profiles available for
+      this device; the Stream Deck app asks to install a profile the first time you switch
+      to it. "Back to previous" returns to the profile you came from.
+    </div>
+
+    <sdpi-item label="Placed in profile">
+      <ird-profile-select setting="hostProfile" profiles="_deviceProfiles" placeholder="Not in a bundled profile"></ird-profile-select>
+    </sdpi-item>
+    <div class="ird-supporting-text">
+      If this key lives inside a bundled iRaceDeck profile, select that profile here. It
+      lets the plugin know which profile is on screen, so "Back to previous" can find its
+      way back — Stream Deck offers no other way to tell. Leave unset for keys in your own
+      profiles.
+    </div>
+
+    <%- include('title-overrides') %>
+    <%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/icon-defaults.json')['switch-profile'] }) %>
+    <%- include('border-overrides', { defaults: require('./data/icon-defaults.json')['switch-profile'] }) %>
+    <%- include('graphic-overrides') %>
+    <%- include('common-settings') %>
+
+    <%- include('section-header', { title: 'Global Settings' }) %>
+
+    <%- include('global-title-defaults') %>
+    <%- include('global-color-defaults') %>
+    <%- include('global-border-defaults') %>
+    <%- include('global-graphic-defaults') %>
+    <%- include('global-flag-flash') %>
+    <%- include('global-common-settings') %>
+
+    <%- include('docs-link') %>
+
+    <%- include('version') %>
+  </body>
+</html>

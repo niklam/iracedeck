@@ -28,6 +28,11 @@
               "description": "Class (default) or overall race position, optionally shows total cars (scoped to class or full field)"
             },
             { "value": "fuel", "label": "Fuel", "description": "Fuel level as amount or percentage" },
+            {
+              "value": "laps-to-empty",
+              "label": "Laps to Empty",
+              "description": "Laps the current tank will last — live fuel level divided by the average per-lap consumption over the configurable 1-20 lap window"
+            },
             { "value": "flags", "label": "Flags", "description": "Active race flags with colors and pulsing" },
             {
               "value": "track-wetness",
@@ -136,7 +141,11 @@
             { "value": "starter", "label": "Starter", "controlType": "hold" },
             { "value": "enter-exit-tow", "label": "Enter/Exit/Tow", "controlType": "hold", "telemetryAware": true },
             { "value": "escape", "label": "Escape", "controlType": "hold" },
-            { "value": "pause-sim", "label": "Pause Sim" }
+            { "value": "pause-sim", "label": "Pause Sim" },
+            { "value": "handbrake", "label": "Handbrake", "controlType": "hold" },
+            { "value": "second-clutch", "label": "Second Clutch", "controlType": "hold" },
+            { "value": "second-up-shift", "label": "Second Up Shift" },
+            { "value": "second-down-shift", "label": "Second Down Shift" }
           ]
         },
         {

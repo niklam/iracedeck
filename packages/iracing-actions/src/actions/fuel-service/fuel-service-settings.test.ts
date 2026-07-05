@@ -86,6 +86,16 @@ describe("fuel-service settings", () => {
       expect(parseFuelServiceSettings({ mode: "add-fuel", unit: "auto" }).unit).toBe("auto");
     });
 
+    it("keeps the stored mode when the persisted unit is unknown, coercing the unit to auto", () => {
+      // A shared profile written by a newer version may carry a unit this build
+      // doesn't know; that must not discard the whole settings object.
+      const parsed = parseFuelServiceSettings({ mode: "reduce-fuel", amount: "5", unit: "stone" });
+
+      expect(parsed.mode).toBe("reduce-fuel");
+      expect(parsed.amount).toBe(5);
+      expect(parsed.unit).toBe("auto");
+    });
+
     it("replaces a decimal comma in the amount", () => {
       expect(parseFuelServiceSettings({ mode: "add-fuel", amount: "2,5" }).amount).toBe(2.5);
     });
