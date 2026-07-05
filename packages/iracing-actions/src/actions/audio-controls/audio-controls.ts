@@ -36,6 +36,7 @@ import {
   type AudioControlsSettings,
   parseAudioControlsSettings,
 } from "./audio-controls-settings.js";
+import { AudioDialSurface } from "./audio-dial-surface.js";
 
 // Re-export for test back-compat (@internal, tests import from this path).
 export { AUDIO_CONTROLS_GLOBAL_KEYS };
@@ -43,17 +44,14 @@ export { AUDIO_CONTROLS_GLOBAL_KEYS };
 type AudioCategory = "push-to-talk" | "voice-chat" | "master" | "race-engineer" | "radar";
 type AudioAction = "volume-up" | "volume-down" | "mute";
 
-/** Categories that support mute */
-const MUTE_CATEGORIES: Set<AudioCategory> = new Set(["voice-chat"]);
-
 /**
  * Categories that adjust iRaceDeck's own internal audio buses (Race Engineer
  * voice, Radar ticks) rather than sending keyboard shortcuts to iRacing.
  * These step a global setting and apply it to the audio engine directly via
  * the shared {@link stepRaceEngineerVolume} / {@link stepRadarVolume} helpers,
  * so they have no entry in {@link AUDIO_CONTROLS_GLOBAL_KEYS} and no keyboard
- * binding. Dial/encoder control for them is intentionally out of scope for
- * now (issue #590) — the dial handlers no-op for these categories.
+ * binding. Dial/encoder control for them lives in the dial surface (#782),
+ * which steps the same globals via the signed multi-step helpers.
  */
 const INTERNAL_VOLUME_CATEGORIES: Set<AudioCategory> = new Set(["race-engineer", "radar"]);
 
@@ -122,15 +120,33 @@ export function generateAudioControlsSvg(settings: AudioControlsSettings, bindin
 
 /**
  * Audio Controls Action
- * Provides volume and mute controls for voice chat and master audio
- * categories via keyboard shortcuts.
+ * One action, two surfaces (#782): on a keypad button it provides volume and
+ * mute controls for the iRacing (voice chat, master) and iRaceDeck (Race
+ * Engineer, Radar) audio categories; on a dial/knob it routes every event to
+ * the {@link AudioDialSurface} (rotate = volume, press = PTT / Mute–Unmute).
  */
 export const AUDIO_CONTROLS_UUID = "com.iracedeck.sd.core.audio-controls" as const;
 
 export class AudioControls extends ConnectionStateAwareAction<AudioControlsSettings> {
+  /** The dial half of the action; all IDeck dial events route here (#782). */
+  private readonly dialSurface = new AudioDialSurface({
+    logger: this.logger,
+    tapBinding: (settingKey) => this.tapBinding(settingKey),
+    holdBinding: (actionId, settingKey) => this.holdBinding(actionId, settingKey),
+    releaseBinding: (actionId) => this.releaseBinding(actionId),
+    isBindingMissing: (keys) => this.isBindingMissing(keys),
+  });
+
   override async onWillAppear(ev: IDeckWillAppearEvent<AudioControlsSettings>): Promise<void> {
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
+
+    if (ev.action.isDial()) {
+      await this.dialSurface.willAppear(ev.action, settings);
+
+      return;
+    }
+
     const activeKey = this.resolveGlobalKey(settings.category, settings.action);
 
     if (activeKey) {
@@ -143,6 +159,13 @@ export class AudioControls extends ConnectionStateAwareAction<AudioControlsSetti
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<AudioControlsSettings>): Promise<void> {
     await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
+
+    if (ev.action.isDial()) {
+      await this.dialSurface.didReceiveSettings(ev.action, settings);
+
+      return;
+    }
+
     const activeKey = this.resolveGlobalKey(settings.category, settings.action);
 
     if (activeKey) {
@@ -183,56 +206,23 @@ export class AudioControls extends ConnectionStateAwareAction<AudioControlsSetti
   }
 
   override async onWillDisappear(ev: IDeckWillDisappearEvent<AudioControlsSettings>): Promise<void> {
+    await this.dialSurface.willDisappear(ev.action.id);
     await this.releaseBinding(ev.action.id);
     await super.onWillDisappear(ev);
   }
 
-  override async onDialDown(ev: IDeckDialDownEvent<AudioControlsSettings>): Promise<void> {
-    this.logger.info("Dial down received");
+  override async onDialRotate(ev: IDeckDialRotateEvent<AudioControlsSettings>): Promise<void> {
     const settings = this.parseSettings(ev.payload.settings);
+    await this.dialSurface.rotate(ev.action, settings, ev.payload.ticks);
+  }
 
-    if (settings.category === "push-to-talk") {
-      const settingKey = this.resolveGlobalKey(settings.category, settings.action);
-
-      if (!settingKey) {
-        this.logger.warn("No global key mapping for push-to-talk");
-
-        return;
-      }
-
-      await this.holdBinding(ev.action.id, settingKey);
-    } else if (INTERNAL_VOLUME_CATEGORIES.has(settings.category)) {
-      // Dial control for the internal-volume categories is out of scope for
-      // now (issue #590) — the press does nothing.
-      return;
-    } else if (MUTE_CATEGORIES.has(settings.category)) {
-      await this.executeControl(settings.category, "mute");
-    } else {
-      await this.executeControl(settings.category, settings.action);
-    }
+  override async onDialDown(ev: IDeckDialDownEvent<AudioControlsSettings>): Promise<void> {
+    const settings = this.parseSettings(ev.payload.settings);
+    await this.dialSurface.down(ev.action, settings);
   }
 
   override async onDialUp(ev: IDeckDialUpEvent<AudioControlsSettings>): Promise<void> {
-    const settings = this.parseSettings(ev.payload.settings);
-
-    if (settings.category === "push-to-talk") {
-      this.logger.info("Dial up received");
-      await this.releaseBinding(ev.action.id);
-    }
-  }
-
-  override async onDialRotate(ev: IDeckDialRotateEvent<AudioControlsSettings>): Promise<void> {
-    const settings = this.parseSettings(ev.payload.settings);
-
-    // Push-to-talk has no volume axis; the internal-volume categories
-    // (Race Engineer / Radar) defer dial support to a follow-up (issue #590).
-    if (settings.category === "push-to-talk" || INTERNAL_VOLUME_CATEGORIES.has(settings.category)) {
-      return;
-    }
-
-    this.logger.info("Dial rotated");
-    const audioAction: AudioAction = ev.payload.ticks > 0 ? "volume-up" : "volume-down";
-    await this.executeControl(settings.category, audioAction);
+    await this.dialSurface.up(ev.action.id);
   }
 
   private parseSettings(settings: unknown): AudioControlsSettings {
