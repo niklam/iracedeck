@@ -1,6 +1,5 @@
 import {
   assembleIcon,
-  CommonSettings,
   ConnectionStateAwareAction,
   getGlobalBorderSettings,
   getGlobalColors,
@@ -30,9 +29,16 @@ import radarVolumeUpIconSvg from "@iracedeck/icons/audio-controls/radar-volume-u
 import voiceChatMuteIconSvg from "@iracedeck/icons/audio-controls/voice-chat-mute.svg";
 import voiceChatVolumeDownIconSvg from "@iracedeck/icons/audio-controls/voice-chat-volume-down.svg";
 import voiceChatVolumeUpIconSvg from "@iracedeck/icons/audio-controls/voice-chat-volume-up.svg";
-import z from "zod";
 
 import { stepRaceEngineerVolume, stepRadarVolume } from "../../audio/audio-volume.js";
+import {
+  AUDIO_CONTROLS_GLOBAL_KEYS,
+  type AudioControlsSettings,
+  parseAudioControlsSettings,
+} from "./audio-controls-settings.js";
+
+// Re-export for test back-compat (@internal, tests import from this path).
+export { AUDIO_CONTROLS_GLOBAL_KEYS };
 
 type AudioCategory = "push-to-talk" | "voice-chat" | "master" | "race-engineer" | "radar";
 type AudioAction = "volume-up" | "volume-down" | "mute";
@@ -84,27 +90,6 @@ const AUDIO_CONTROLS_TITLES: Record<string, string> = {
   "radar-volume-up": "VOL UP\nRADAR",
   "radar-volume-down": "VOL DOWN\nRADAR",
 };
-
-/**
- * @internal Exported for testing
- *
- * Mapping from category + action to global settings keys.
- */
-export const AUDIO_CONTROLS_GLOBAL_KEYS: Record<string, string> = {
-  "push-to-talk": "audioControlsPushToTalk",
-  "voice-chat-volume-up": "audioVoiceChatVolumeUp",
-  "voice-chat-volume-down": "audioVoiceChatVolumeDown",
-  "voice-chat-mute": "audioVoiceChatMute",
-  "master-volume-up": "audioMasterVolumeUp",
-  "master-volume-down": "audioMasterVolumeDown",
-};
-
-const AudioControlsSettings = CommonSettings.extend({
-  category: z.enum(["push-to-talk", "voice-chat", "master", "race-engineer", "radar"]).default("push-to-talk"),
-  action: z.enum(["volume-up", "volume-down", "mute"]).default("volume-up"),
-});
-
-type AudioControlsSettings = z.infer<typeof AudioControlsSettings>;
 
 /**
  * @internal Exported for testing
@@ -251,9 +236,7 @@ export class AudioControls extends ConnectionStateAwareAction<AudioControlsSetti
   }
 
   private parseSettings(settings: unknown): AudioControlsSettings {
-    const parsed = AudioControlsSettings.safeParse(settings);
-
-    return parsed.success ? parsed.data : AudioControlsSettings.parse({});
+    return parseAudioControlsSettings(settings);
   }
 
   /**
