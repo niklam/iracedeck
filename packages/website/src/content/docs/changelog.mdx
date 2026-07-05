@@ -9,6 +9,14 @@ import ChangelogLeadIn from "../../components/ChangelogLeadIn.astro";
 
 Release notes for each version of iRaceDeck. The newest release is listed first. For installation help, see the [installation guide](/docs/getting-started/installation/); to grab the latest build, head to the [downloads page](/downloads/).
 
+## 1.23.1
+
+_Unreleased_
+
+**Bug Fixes**
+
+- Fuel Service keys no longer fall back to the Toggle Fuel Fill (“REFUEL”) icon and behavior when their stored settings contain a fuel unit this version doesn't know — such as the `auto` unit written by iRaceDeck 2.0 pre-release builds sharing the same profiles. The unknown unit is now read as liters and the key's selected mode is kept.
+
 ## 1.23.0
 
 _2026-06-30_

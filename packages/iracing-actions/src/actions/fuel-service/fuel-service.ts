@@ -125,7 +125,10 @@ const FuelServiceSettings = CommonSettings.extend({
     (val) => (typeof val === "string" ? val.replace(",", ".") : val),
     z.coerce.number().min(0).default(1),
   ),
-  unit: FuelUnit.default("l"),
+  // .catch maps unknown persisted values — notably "auto" written by release/2.0
+  // builds into shared profiles — to liters instead of failing the whole parse,
+  // which would discard the stored mode and render the key as toggle-fuel-fill.
+  unit: FuelUnit.default("l").catch("l"),
 });
 
 type FuelServiceSettings = z.infer<typeof FuelServiceSettings>;
