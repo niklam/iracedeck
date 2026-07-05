@@ -1367,7 +1367,7 @@
   },
   "setup-brakes-dial": {
     "_meta": {
-      "modeSetting": "setting"
+      "modeSetting": "dial.setting"
     },
     "brake-bias": {
       "method": "keybind",

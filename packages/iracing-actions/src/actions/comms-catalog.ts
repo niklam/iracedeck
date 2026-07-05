@@ -343,12 +343,14 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     "engine-braking": dir("setupBrakesEngineBrakingIncrease", "setupBrakesEngineBrakingDecrease"),
   }),
 
-  // Setup Brakes Dial reuses the Setup Brakes bindings. Its rotation modes turn
-  // either way and have no `direction` setting, so each requires BOTH the
-  // increase AND decrease keys (like the view-* modes); the ABS-toggle press
+  // The dial surface of the merged Setup Brakes action (#775) — consumed only by
+  // the dial section of setup-brakes.ejs. It can't share the keypad map above:
+  // the same mode names carry different descriptors per surface (keypad
+  // `brake-bias` is direction-keyed via `dir`, dial rotation requires BOTH keys
+  // via `pair` since the dial has no `direction` setting). The ABS-toggle press
   // gesture is a single keybind. View modes and ABS Toggle as a rotation mode
   // are intentionally absent.
-  "setup-brakes-dial": entry("setting", {
+  "setup-brakes-dial": entry("dial.setting", {
     "brake-bias": pair("setupBrakesBrakeBiasIncrease", "setupBrakesBrakeBiasDecrease"),
     "brake-bias-fine": pair("setupBrakesBrakeBiasFineIncrease", "setupBrakesBrakeBiasFineDecrease"),
     "peak-brake-bias": pair("setupBrakesPeakBrakeBiasIncrease", "setupBrakesPeakBrakeBiasDecrease"),

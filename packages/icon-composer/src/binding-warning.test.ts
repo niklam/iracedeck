@@ -56,6 +56,18 @@ describe("binding-warning glyph", () => {
     // Apex at x=72 (horizontal center) keeps the glyph centered.
     expect(BINDING_WARNING_GLYPH).toContain("72,42");
   });
+
+  it("returns the bare glyph for an explicit 144x144 canvas", () => {
+    expect(bindingWarningSvg({ width: 144, height: 144 })).toBe(BINDING_WARNING_GLYPH);
+  });
+
+  it("recenters and rescales the glyph for the 200x100 dial touch strip (#775)", () => {
+    const out = bindingWarningSvg({ width: 200, height: 100 });
+
+    // Scaled by the smaller side (100/144) and centered: tx = (200 - 100) / 2.
+    expect(out).toContain('transform="translate(50, 0) scale(0.6944)"');
+    expect(out).toContain(BINDING_WARNING_GLYPH);
+  });
 });
 
 describe("dimForBindingWarning", () => {
@@ -81,6 +93,12 @@ describe("applyBindingWarning", () => {
 
   it("still draws the warning when there is no artwork", () => {
     expect(applyBindingWarning("")).toBe(BINDING_WARNING_GLYPH);
+  });
+
+  it("forwards the canvas so non-square targets get a centered glyph", () => {
+    const out = applyBindingWarning("<rect/>", { width: 200, height: 100 });
+
+    expect(out).toContain("translate(50, 0)");
   });
 });
 

@@ -1,7 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none" stroke="#ffffff">
-  <!-- Brake disc -->
-  <circle cx="10" cy="10" r="7" stroke-width="1.5"/>
-  <circle cx="10" cy="10" r="3" stroke-width="1"/>
-  <!-- Dial indicator tick -->
-  <line x1="10" y1="3" x2="10" y2="6" stroke-width="1.4" stroke-linecap="round"/>
-</svg>

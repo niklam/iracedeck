@@ -13,7 +13,7 @@ For a visual walkthrough of how these packages fit together and how data flows f
 
 | Package                                 | Description                                                                             |
 | --------------------------------------- | --------------------------------------------------------------------------------------- |
-| `@iracedeck/iracing-plugin-stream-deck` | The main Stream Deck plugin — all 32 actions, Property Inspector UI, and icon rendering |
+| `@iracedeck/iracing-plugin-stream-deck` | The main Stream Deck plugin — all 31 actions, Property Inspector UI, and icon rendering |
 | `@iracedeck/iracing-plugin-mirabox`     | The Mirabox plugin — the same actions for Mirabox / VSD Craft devices                   |
 | `@iracedeck/iracing-plugin-ulanzi`      | The Ulanzi Deck plugin — the same actions for Ulanzi Deck devices                       |
 | `@iracedeck/iracing-sdk`                | TypeScript SDK for reading iRacing telemetry and session data via shared memory         |

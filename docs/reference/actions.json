@@ -602,8 +602,10 @@
           "id": "com.iracedeck.sd.core.setup-brakes",
           "name": "Setup Brakes",
           "file": "setup-brakes.ts",
-          "encoder": false,
-          "settingsKeys": ["setting", "direction"],
+          "encoder": true,
+          "telemetryAware": true,
+          "settingsKeys": ["setting", "direction", "dial.setting"],
+          "description": "One brake action for both surfaces (#775). On a KEYPAD button the Setting dropdown picks one of the modes below (six live-telemetry View sub-modes with optional dual-press, seven adjustments with a Direction setting); everything taps the shared setupBrakes* key bindings. On a DIAL (Elgato Encoder / Mirabox Knob; Ulanzi encoder via the $UA1 layout) the action is the former Setup Brakes Dial (#730), with settings under the dial root: dial.setting picks one brake value — brake bias, brake bias fine, peak brake bias, brake misc, engine braking, or ABS adjust — and turning steps it via the same increase/decrease bindings (clockwise increases; both directions must be bound). The live telemetry value (dcBrakeBias/dcBrakeBiasFine/dcPeakBrakeBias/dcBrakeMisc/dcEngineBraking/dcABS) renders as a self-drawn color-coded dash box — a short label (BB/BBF/PEAK/MISC/ENG/ABS) plus a large number, no % sign — on the touch strip (a single full-cell pixmap, Elgato only). Press gestures — dial.pressAction (default Toggle ABS), dial.longPressAction (default None), plus the Elgato-only dial.tapAction / dial.longTouchAction (default None for VR safety) — each over {Toggle ABS, None}; Toggle ABS taps the setupBrakesAbsToggle binding. Press vs long-press is classified at dialUp; turning while pressed adjusts the value and fires no press gesture. No View modes on the dial (the display shows the value) and no ABS Toggle rotation mode. Dial logic lives in setup-brakes-dial-surface.ts behind a host interface (the Fuel Service pattern). The PI branches per controller (actionInfo.payload.controller): keypad instances see the Setting/Direction/dual-press and appearance sections, dial instances the dial settings; the Related Key Bindings section is shared. Communication: key bindings on both surfaces.",
           "modes": [
             { "setting": "view-brake-bias", "label": "View Brake Bias", "controlType": "view" },
             { "setting": "view-brake-bias-fine", "label": "View Brake Bias Fine", "controlType": "view" },
@@ -625,23 +627,6 @@
             { "setting": "engine-braking", "direction": "increase", "label": "Engine Braking Increase" },
             { "setting": "engine-braking", "direction": "decrease", "label": "Engine Braking Decrease" }
           ]
-        },
-        {
-          "id": "com.iracedeck.sd.core.setup-brakes-dial",
-          "name": "Setup Brakes Dial",
-          "file": "setup-brakes-dial.ts",
-          "encoder": true,
-          "telemetryAware": true,
-          "settingsKeys": ["setting"],
-          "modes": [
-            { "setting": "brake-bias", "label": "Brake Bias", "controlType": "dial" },
-            { "setting": "brake-bias-fine", "label": "Brake Bias Fine", "controlType": "dial" },
-            { "setting": "peak-brake-bias", "label": "Peak Brake Bias", "controlType": "dial" },
-            { "setting": "brake-misc", "label": "Brake Misc", "controlType": "dial" },
-            { "setting": "engine-braking", "label": "Engine Braking", "controlType": "dial" },
-            { "setting": "abs-adjust", "label": "ABS Adjust", "controlType": "dial" }
-          ],
-          "description": "Stream Deck+ dial (Elgato only) that adjusts one brake setup value chosen by the Setting dropdown — brake bias, brake bias fine, peak brake bias, brake misc, engine braking, or ABS adjust. Turning steps the value via the shared Setup Brakes increase/decrease key bindings (clockwise increases); the live telemetry value (dcBrakeBias/dcBrakeBiasFine/dcPeakBrakeBias/dcBrakeMisc/dcEngineBraking/dcABS) renders as a self-drawn color-coded dash box — a short label (BB/BBF/PEAK/MISC/ENG/ABS) plus a large number, no bar and no % sign — on the touch strip (a single full-cell pixmap) and as the keypad icon. Press runs a configurable gesture — Push (default Toggle ABS), Long Press (default None), plus the Elgato-only Tap Display and Long Touch (default None) — each over {Toggle ABS, None}; Toggle ABS taps the setupBrakesAbsToggle binding. Turning while pressed adjusts the value and fires no press gesture. No View modes (the dial shows the value) and no ABS Toggle rotation mode. On a plain keypad a press runs the Push gesture. Communication: key bindings (the Setup Brakes increase/decrease bindings for rotation; setupBrakesAbsToggle for the gesture)."
         },
         {
           "id": "com.iracedeck.sd.core.setup-chassis",
