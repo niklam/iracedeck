@@ -295,6 +295,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   flag("Yellow Cleared", "flag.yellow.cleared"),
   flag("Green", "flag.green.raised"),
   flag("White", "flag.white.raised"),
+  flag("White — Last Lap Started", "flag.white-last-lap.raised"),
   flag("Checkered", "flag.checkered.raised"),
   flag("Blue", "flag.blue.raised"),
   flag("Black", "flag.black.raised"),

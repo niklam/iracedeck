@@ -79,6 +79,12 @@ export const POOLS: Readonly<Record<string, readonly string[]>> = {
     "voice/{voice}/flags/white-race-01.mp3",
     "voice/{voice}/flags/white-race-02.mp3",
   ],
+  // Stage 2 of the two-stage white (issue #772) — the player crosses S/F
+  // under the white flag and starts THEIR last lap.
+  "flag-white-last-lap": [
+    "voice/{voice}/flags/white-last-lap-01.mp3",
+    "voice/{voice}/flags/white-last-lap-02.mp3",
+  ],
   "flag-checkered-practice": ["voice/{voice}/flags/checkered-practice-01.mp3"],
   "flag-checkered-qualifying": ["voice/{voice}/flags/checkered-qualifying-01.mp3"],
   "flag-checkered-race": ["voice/{voice}/flags/checkered-race-01.mp3"],

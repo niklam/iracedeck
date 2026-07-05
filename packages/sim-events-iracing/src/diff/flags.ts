@@ -37,6 +37,14 @@
  * missing data), and when the player's own finish is what raised the flag
  * (the winner — their crossing lands within {@link FLAG_CROSS_GRACE_MS} of
  * the bit while they hold P1).
+ *
+ * Two-stage white (issue #772): the White bit rises when the LEADER starts
+ * the final lap — well before the player reaches the line. The raise stays
+ * the heads-up (`flag.white.raised`, "about to start the final lap"), and a
+ * second event (`flag.white-last-lap.raised`) fires at the player's own S/F
+ * crossing under the flag — the start of THEIR last lap. When the player IS
+ * the leader (their crossing raised the bit), the heads-up is skipped and
+ * only the last-lap event fires.
  */
 import type { FlagScope } from "@iracedeck/event-bus";
 import { Flags, hasFlag, type TelemetryData } from "@iracedeck/iracing-sdk";
@@ -195,6 +203,7 @@ export function diffFlags(state: TranslatorState, telemetry: TelemetryData, now:
     state.flagLastLapCompleted = lapCompleted;
     state.flagLastCrossedAt = 0;
     state.checkeredPendingCross = false;
+    state.whiteLastLapFired = false;
 
     return;
   }
@@ -205,6 +214,18 @@ export function diffFlags(state: TranslatorState, telemetry: TelemetryData, now:
   if (lapCompleted !== null) state.flagLastLapCompleted = lapCompleted;
 
   if (crossedThisTick) state.flagLastCrossedAt = now;
+
+  // The player's own crossing is what raised a flag this tick: either the
+  // crossing landed on the raise tick itself, or it was scored within the
+  // grace window while the player holds P1 (the leader's crossing CAUSES the
+  // white/checkered bit to rise, possibly a tick or two later — see
+  // FLAG_CROSS_GRACE_MS). Consumed by the checkered deferral (issue #771)
+  // and the white two-stage split (issue #772).
+  const tookTheLine =
+    crossedThisTick ||
+    (state.flagLastCrossedAt !== 0 &&
+      now - state.flagLastCrossedAt <= FLAG_CROSS_GRACE_MS &&
+      telemetry.PlayerCarPosition === 1);
 
   // New "raised" transitions
   for (const flag of current) {
@@ -241,28 +262,35 @@ export function diffFlags(state: TranslatorState, telemetry: TelemetryData, now:
           emit({ event: "flag.red.raised", data: {} });
           break;
         case "white":
-          emit({ event: "flag.white.raised", data: {} });
+          // Two-stage white (issue #772): the raise is the heads-up
+          // ("about to start the final lap"); the player's S/F crossing
+          // under the flag is the definitive last-lap call. When the
+          // player's own crossing raised the flag (the leader starting the
+          // final lap), skip the heads-up and speak the last-lap line
+          // directly — playing both back-to-back would preempt one
+          // mid-sentence.
+          if (tookTheLine) {
+            emit({ event: "flag.white-last-lap.raised", data: {} });
+            state.whiteLastLapFired = true;
+          } else {
+            emit({ event: "flag.white.raised", data: {} });
+          }
+
           break;
-        case "checkered": {
+        case "checkered":
           // Deferral (issue #771) — iRacing raises the bit for the whole
           // field at once; hold the callout until the player takes the flag
           // at the line. Immediate when the player isn't in the car or
-          // crossings can't be tracked, when the crossing landed this very
-          // tick, or when the player's own finish raised the flag (the
-          // winner grace — see FLAG_CROSS_GRACE_MS).
-          const wonAtTheLine =
-            state.flagLastCrossedAt !== 0 &&
-            now - state.flagLastCrossedAt <= FLAG_CROSS_GRACE_MS &&
-            telemetry.PlayerCarPosition === 1;
-
-          if (telemetry.IsOnTrack !== true || lapCompleted === null || crossedThisTick || wonAtTheLine) {
+          // crossings can't be tracked, or when the player's own finish
+          // raised the flag (`tookTheLine` — same-tick crossing or the
+          // winner grace window).
+          if (telemetry.IsOnTrack !== true || lapCompleted === null || tookTheLine) {
             emit({ event: "flag.checkered.raised", data: {} });
           } else {
             state.checkeredPendingCross = true;
           }
 
           break;
-        }
         case "debris":
           emit({ event: "flag.debris.raised", data: {} });
           break;
@@ -307,6 +335,19 @@ export function diffFlags(state: TranslatorState, telemetry: TelemetryData, now:
       emit({ event: "flag.checkered.raised", data: {} });
       state.checkeredPendingCross = false;
     }
+  }
+
+  // Last-lap start (issue #772): the player crosses S/F while the white flag
+  // is flying — the start of THEIR last lap. Latched once per white episode;
+  // the latch re-arms when the flag drops (the checkered replaces it at the
+  // finish, so a later crossing under checkered speaks the checkered line,
+  // not this one). The raise-tick leader case above already latched, so it
+  // can't double-fire here.
+  if (!current.has("white")) {
+    state.whiteLastLapFired = false;
+  } else if (!state.whiteLastLapFired && crossedThisTick) {
+    emit({ event: "flag.white-last-lap.raised", data: {} });
+    state.whiteLastLapFired = true;
   }
 
   // Yellow cleared transition (issue #671 — validated clear). The drop edge

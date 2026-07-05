@@ -324,6 +324,13 @@ export type SimEventMap = {
   "flag.checkered.raised": SimEvent<"flag.checkered.raised", EmptySimEventPayload>;
   "flag.black.raised": SimEvent<"flag.black.raised", EmptySimEventPayload>;
   "flag.white.raised": SimEvent<"flag.white.raised", EmptySimEventPayload>;
+  /**
+   * The player crosses the start/finish line while the white flag is flying
+   * — the start of THEIR last lap (issue #772). The raise above is the
+   * heads-up ("about to start the final lap"); this is the definitive
+   * "this is the last lap" moment. Fired once per white episode.
+   */
+  "flag.white-last-lap.raised": SimEvent<"flag.white-last-lap.raised", EmptySimEventPayload>;
   "flag.red.raised": SimEvent<"flag.red.raised", EmptySimEventPayload>;
   /**
    * Track-debris flag (`Flags.Debris`). Persistent until the flag drops;

@@ -161,6 +161,20 @@ const WHITE: Scenario = {
   when: { event: "flag.white.raised" },
 };
 
+// Stage 2 of the two-stage white (issue #772): the player crosses S/F while
+// the white flag flies — the start of THEIR last lap. Race-only on the
+// scenario `where:` (the diff emits in every session type so the event stays
+// harness-firable; in practice/qualifying the single raise-time callout
+// already covers "session ends after this lap"). Shares `family: "flag"`, so
+// when the player IS the leader the diff skips the heads-up entirely rather
+// than letting this fire preempt it mid-sentence. Rides the same
+// `calloutEnabledFlagWhite` opt-in as the raise (a stage of the same callout,
+// the #572 modifier precedent).
+const WHITE_LAST_LAP: Scenario = {
+  ...flagScenario("white-last-lap", ["pool:flag-white-last-lap"]),
+  when: { event: "flag.white-last-lap.raised", where: () => raceOnly() },
+};
+
 const RED: Scenario = {
   ...flagScenario("red", ["pool:flag-red"]),
   when: { event: "flag.red.raised" },
@@ -393,6 +407,7 @@ export const FLAG_ALERTS: readonly Scenario[] = [
   GREEN,
   BLUE,
   WHITE,
+  WHITE_LAST_LAP,
   RED,
   BLACK,
   CHECKERED,

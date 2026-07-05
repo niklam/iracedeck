@@ -149,6 +149,8 @@ const FLAG_CLIP_NAMES = [
   "white-qualifying-01",
   "white-race-01",
   "white-race-02",
+  "white-last-lap-01",
+  "white-last-lap-02",
   "red-01",
   "black-01",
   "checkered-practice-01",
@@ -244,8 +246,8 @@ function findScenario(id: string): (typeof FLAG_ALERTS)[number] {
 }
 
 describe("FLAG_ALERTS structure", () => {
-  it("defines 22 scenarios", () => {
-    expect(FLAG_ALERTS).toHaveLength(22);
+  it("defines 23 scenarios", () => {
+    expect(FLAG_ALERTS).toHaveLength(23);
   });
 
   it("exposes a stable list of ids", () => {
@@ -256,6 +258,7 @@ describe("FLAG_ALERTS structure", () => {
       "pit-crew.flag-green",
       "pit-crew.flag-blue",
       "pit-crew.flag-white",
+      "pit-crew.flag-white-last-lap",
       "pit-crew.flag-red",
       "pit-crew.flag-black",
       "pit-crew.flag-checkered",
@@ -586,6 +589,30 @@ describe("FLAG_ALERTS white session-type branch", () => {
   });
 });
 
+describe("FLAG_ALERTS white last-lap (issue #772)", () => {
+  it("plays a last-lap clip when the player crosses S/F under the white flag in a race", () => {
+    bus.publishEvent("flag.white-last-lap.raised", {});
+    flush(audio);
+
+    const played = voiceClipsPlayed();
+    expect(
+      played.includes("voice/luca/flags/white-last-lap-01.mp3") ||
+        played.includes("voice/luca/flags/white-last-lap-02.mp3"),
+    ).toBe(true);
+  });
+
+  it.each([{ sessionType: "Practice" }, { sessionType: "Open Qualify" }, { sessionType: "Lone Qualify" }])(
+    "stays silent in a $sessionType session (race-only stage)",
+    ({ sessionType }) => {
+      mockSessionType.mockReturnValue(sessionType);
+      bus.publishEvent("flag.white-last-lap.raised", {});
+      flush(audio);
+
+      expect(voiceClipsPlayed()).toEqual([]);
+    },
+  );
+});
+
 describe("FLAG_ALERTS checkered session-type branch", () => {
   it.each([
     { sessionType: "Race", expected: "voice/luca/flags/checkered-race-01.mp3" },
@@ -735,6 +762,7 @@ describe("FLAG_POOL_NAMES", () => {
       "flag-white-practice",
       "flag-white-qualifying",
       "flag-white-race",
+      "flag-white-last-lap",
       "flag-checkered-practice",
       "flag-checkered-qualifying",
       "flag-checkered-race",
