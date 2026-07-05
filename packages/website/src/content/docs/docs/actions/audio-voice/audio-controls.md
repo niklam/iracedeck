@@ -7,7 +7,7 @@ sidebar:
     variant: tip
 ---
 
-Quick access to audio levels: hold push-to-talk, raise / lower / mute iRacing voice chat volume, raise / lower the iRacing master volume, and adjust iRaceDeck's own **Race Engineer** voice and **Radar** tick levels — all without navigating menus. Placed on a Stream Deck+ dial or Mirabox knob, it becomes a volume dial: rotate to adjust the selected audio, press to talk or mute — see [On a dial](#on-a-dial).
+Quick access to audio levels: hold push-to-talk, raise / lower / mute iRacing voice chat volume, raise / lower the iRacing master volume, and adjust iRaceDeck's own **Race Engineer** voice and **Radar** tick levels — all without navigating menus. Placed on a Stream Deck+ dial, it becomes a volume dial: rotate to adjust the selected audio, press to talk or mute — see [On a dial](#on-a-dial).
 
 The Mode dropdown is split into two groups:
 
@@ -110,7 +110,7 @@ Adjust iRaceDeck's own proximity **Radar** tick level — the same level as the 
 
 ## On a dial
 
-Placed on a Stream Deck+ dial (or a Mirabox knob), Audio Controls becomes a volume dial: rotating adjusts the selected audio category, and the press is configurable as **Push to Talk** or **Mute / Unmute**. The Property Inspector automatically shows the dial settings below (instead of the keypad Mode settings) when the instance sits on a dial.
+Placed on a Stream Deck+ dial, Audio Controls becomes a volume dial: rotating adjusts the selected audio category, and the press is configurable as **Push to Talk** or **Mute / Unmute**. The Property Inspector automatically shows the dial settings below (instead of the keypad Mode settings) when the instance sits on a dial.
 
 Rotate the dial to adjust the volume of the category selected in the **Volume** setting. For **Voice Chat** and **Master**, each detent taps the matching iRacing volume key binding — iRacing steps its volume a fixed amount per press, and it exposes no current volume state, so the touch strip shows the category name only (there is no level to display; this is an iRacing limitation, not a missing feature). For **Race Engineer** and **Radar**, each detent steps iRaceDeck's own level by 5% — and because these levels are iRaceDeck's, the touch strip shows a **live level bar** with the current value, updating immediately when the level changes anywhere (the dial itself, the keypad buttons, the Pit Crew sliders). When the Race Engineer or Radar feature is disabled, the bar dims and reads **OFF**.
 
@@ -126,7 +126,8 @@ While **Push to Talk** is held, the strip's top band turns red and reads **ON AI
 #### Controls
 
 - **Elgato Stream Deck+** — dial rotation, press, and the touchscreen level display.
-- **Mirabox** — knob rotation and press. There is no touchscreen, so there is no level display; rotate and press work the same.
+
+Dials are currently Stream Deck+ only — the action can't be placed on Mirabox knobs or Ulanzi dials yet (see [Dials](/docs/features/dials/)).
 
 #### Setting: Volume
 

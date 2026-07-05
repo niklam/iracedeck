@@ -371,7 +371,7 @@ Dial support is being rebuilt (#681); the Fuel Service dial surface (`fuel-servi
 
 ### Manifest
 
-Declare both controllers and a custom touch layout. Elgato gets an `Encoder` block; Mirabox declares the knob with no block and no touch strip:
+Declare both controllers and a custom touch layout **on the Elgato manifest only** — the Mirabox and Ulanzi manifests stay `"Controllers": ["Keypad"]` for dial-capable actions (#786: dial support there is withheld until verified on real hardware; see `.claude/rules/encoders-and-touchscreen.md` for the shapes to restore when re-enabling):
 
 ```jsonc
 // Elgato (com.iracedeck.sd.core.sdPlugin/manifest.json)
@@ -381,8 +381,8 @@ Declare both controllers and a custom touch layout. Elgato gets an `Encoder` blo
   "TriggerDescription": { "Rotate": "Adjust fuel to add", "Push": "Toggle / clear / fill fueling", "Touch": "Toggle / clear / fill fueling" }
 }
 
-// Mirabox (separate manifest) — no Encoder/Knob block, no touch strip
-"Controllers": ["Keypad", "Knob"]
+// Mirabox and Ulanzi (separate manifests) — Keypad only, no dial declaration (#786)
+"Controllers": ["Keypad"]
 ```
 
 The custom layout JSON is committed under `<sdPlugin>/layouts/*.json` (Elgato only). Item `key`s (e.g. `title`, `value`, `bar`) are exactly what `setFeedback` addresses — a `bar`/`gbar` item takes a number or object, a `text` item a string, and a `pixmap` item a data-URI string (the Fuel Service dial draws its whole slot as one `pixmap`). See `packages/iracing-plugin-stream-deck/com.iracedeck.sd.core.sdPlugin/layouts/fuel-service.json`.

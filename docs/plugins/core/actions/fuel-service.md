@@ -1,6 +1,6 @@
 # Fuel Service
 
-Manages fuel pit stop settings from a keypad button or a dial (#759). On a **keypad button** the Mode setting picks the operation: toggle fueling, add/reduce/set fuel amounts, clear fuel, toggle autofuel, and adjust lap margins. On a **Stream Deck+ dial** (or Mirabox knob) the same action is the fuel dial: a bare turn sets the pit-stop fuel with a live touch-strip readout, and five configurable gesture slots (Push, Long Press, Push + Turn, Tap Display, Long Touch) each run a fuel action.
+Manages fuel pit stop settings from a keypad button or a dial (#759). On a **keypad button** the Mode setting picks the operation: toggle fueling, add/reduce/set fuel amounts, clear fuel, toggle autofuel, and adjust lap margins. On a **Stream Deck+ dial** the same action is the fuel dial: a bare turn sets the pit-stop fuel with a live touch-strip readout, and five configurable gesture slots (Push, Long Press, Push + Turn, Tap Display, Long Touch) each run a fuel action.
 
 ## Properties
 
@@ -32,7 +32,7 @@ iRacing banks whole liters via the pit command, so the computed target is rounde
 
 Holding the button repeats the action roughly every 250 ms (the `pit.fuel` broadcast is effectively instant, so the interval alone sets the cadence).
 
-### Dial (Stream Deck+ / Mirabox knob)
+### Dial (Stream Deck+)
 
 The dial surface is **modal**, and the mode is read from live telemetry on every event — it is never a stored setting:
 
@@ -46,7 +46,7 @@ The **Toggle Autofuel** gesture taps `fuelServiceToggleAutofuel` to flip between
   - **Target Amount** — the dialed value is the desired **total** after the stop, kept a whole integer in the displayed unit. The amount to add (`target − current`, rounded up so you never finish under target) is sent to iRacing (`pit.fuel`) and is **recomputed continuously as fuel burns**, with the request updated whenever the whole-unit amount changes. The recompute and re-send only happen **while fueling is on** — when fueling is off the fuel amount is **not** updated (rotating still plans the new target; turning fueling on, or pressing, sends it). The readout shows `→ <target>` (e.g. `→ 65 L`).
 - **Rotate (autofuel mode)**: Adjusts the autofuel lap margin (see above).
 - **Push** (short press, fires on `dialUp`): Runs the configured **Push** action. Default **Toggle Fueling**.
-- **Long Press** (held dial button past the **Long-press threshold** — the global setting, default 500 ms — with no turn, fires on `dialUp`): Runs the configured **Long Press** action. Default **Toggle Autofuel** (blind-safe for VR). Available on all platforms.
+- **Long Press** (held dial button past the **Long-press threshold** — the global setting, default 500 ms — with no turn, fires on `dialUp`): Runs the configured **Long Press** action. Default **Toggle Autofuel** (blind-safe for VR).
 - **Push + Turn** (a pressed rotation): Dispatches the configured bidirectional pair (clockwise → `cw` action, counter-clockwise → `ccw`). Offers **Full / No Fuel** (CW fills the tank to full, CCW empties it — no fuel) or **None** (default).
 - Press, long-press, and push+turn are classified at `dialUp` (a duration comparison, with a guard so a push+turn pre-empts both press actions) — there is no mid-hold timer.
 - The touch-strip slot carries a top **status band**: green `REFUEL: ON` / red `REFUEL: OFF` in manual mode, `AUTOFUEL: ON` / `AUTOFUEL: OFF` in autofuel mode, and a gray `AUTOFUEL: N/A` when autofuel is engaged but unavailable (`REFUEL: N/A` when the state is unknown).
@@ -59,14 +59,9 @@ The **Toggle Autofuel** gesture taps `fuelServiceToggleAutofuel` to flip between
 - **Tap Display** (touch-strip tap): Runs the configured **Tap Display** action (independent of the dial-button Push action). Default **None** (VR safety); the readout still shows.
 - **Long Touch** (touch-strip long tap): Runs the configured **Long Touch** action. Default **None** (VR safety).
 
-### Platform differences (dial)
+### Platform availability (dial)
 
-| Controller                 | Rotate | Push + Turn | Touchscreen (Tap Display / Long Touch) | Push | Long Press                                                            |
-| -------------------------- | ------ | ----------- | -------------------------------------- | ---- | --------------------------------------------------------------------- |
-| Elgato Stream Deck+        | Yes    | Yes         | Yes                                    | Yes  | Yes                                                                   |
-| Mirabox knob               | Yes    | Yes         | No                                     | Yes  | Yes (degrades to a short press if the knob reports release instantly) |
-
-On Ulanzi the action is registered keypad-only until Ulanzi dial support is validated.
+The dial surface is **Elgato Stream Deck+ only** (#786): the Mirabox and Ulanzi manifests declare no dial controllers, so the action registers keypad-only there until knob/dial input is verified on real hardware (`docs/reference/stream-deck-plus-encoders.md` §8).
 
 ## Settings
 
@@ -199,6 +194,6 @@ A dial instance has no keypad icon — its display is the self-drawn 200×100 to
 
 - All fuel values go through the iRacing SDK (`pit.fuel` / `pit.clearFuel`) — the former `#fuel` chat macros are gone, so nothing opens the chat window and sends are effectively instant. Both surfaces share one fuel-request pipeline, so "the request was deliberately cleared" is tracked action-wide (a dial's continuous top-up never re-arms fueling that a button just cleared, and vice versa).
 - `pit.fuel(0)` means "keep the existing amount" to iRacing, so an intended zero request is sent as 1 L followed by `pit.clearFuel`.
-- Press, long-press, and push+turn on the dial are classified at `dialUp` (a duration comparison plus a rotate guard), with no mid-hold timer — so they work on every platform. If a particular knob reports release instantly, the hold simply degrades to a short press; the Long Press default (Toggle Autofuel) and the touch-slot defaults (None) are chosen so this degradation is harmless.
+- Press, long-press, and push+turn on the dial are classified at `dialUp` (a duration comparison plus a rotate guard), with no mid-hold timer. If a dial reports release instantly, the hold simply degrades to a short press; the Long Press default (Toggle Autofuel) and the touch-slot defaults (None) are chosen so this degradation is harmless.
 - The Tap Display and Long Touch settings are hidden on Mirabox, which has no plugin touch strip.
 - The touch slots default to **None** for VR drivers who cannot see the touch strip — the dial and presses still work, and the readout still renders.
