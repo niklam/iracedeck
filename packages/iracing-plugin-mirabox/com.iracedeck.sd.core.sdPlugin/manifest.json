@@ -404,10 +404,11 @@
       "Name": "Setup Brakes",
       "UUID": "com.iracedeck.sd.core.setup-brakes",
       "Icon": "imgs/actions/setup-brakes/icon",
-      "Tooltip": "Brake adjustments (ABS, brake bias, peak bias, engine braking)",
+      "Tooltip": "Brake adjustments (ABS, brake bias, peak bias, engine braking); on a knob: adjust one brake setting, press to toggle ABS",
       "PropertyInspectorPath": "ui/setup-brakes.html",
       "Controllers": [
-        "Keypad"
+        "Keypad",
+        "Knob"
       ],
       "States": [
         {

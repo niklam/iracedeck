@@ -644,7 +644,7 @@ export function renderStripCanvasSvg(
 
   // When a gesture slot needs the autofuel key binding but it's unset, dim the
   // slot and draw the centered #612 warning triangle over it (same convention
-  // as Setup Brakes Dial's strip box).
+  // as Setup Brakes' strip box).
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100" width="200" height="100">${
     bindingMissing ? applyBindingWarning(content) : content
   }</svg>`;

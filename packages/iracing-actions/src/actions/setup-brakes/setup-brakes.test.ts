@@ -3,6 +3,7 @@
 import { getDualPressDirections } from "@iracedeck/deck-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { parseSetupBrakesSettings } from "./setup-brakes-settings.js";
 import { generateSetupBrakesSvg, SETUP_BRAKES_GLOBAL_KEYS } from "./setup-brakes.js";
 import { SetupBrakes } from "./setup-brakes.js";
 
@@ -52,133 +53,160 @@ vi.mock("@iracedeck/icons/setup-brakes/engine-braking-decrease.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">engine-braking-decrease {{mainLabel}} {{subLabel}}</svg>',
 }));
 
-vi.mock("@iracedeck/deck-core", () => ({
-  CommonSettings: {
-    extend: (_fields: unknown) => {
-      // Return a mock Zod-like schema
-      const schema = {
-        parse: (data: Record<string, unknown>) => ({ ...data }),
-        safeParse: (data: Record<string, unknown>) => ({ success: true, data: { ...data } }),
-      };
+vi.mock("@iracedeck/deck-core", async () => {
+  const { z } = await import("zod");
 
-      return schema;
+  return {
+    CommonSettings: {
+      // REAL zod semantics for the extended settings schema (defaults, the `dial`
+      // prefault, enum validation) — only the CommonSettings base fields are absent.
+      extend: (shape: never) => z.object(shape).passthrough(),
     },
-    parse: (data: Record<string, unknown>) => ({ ...data }),
-    safeParse: (data: Record<string, unknown>) => ({ success: true, data: { ...data } }),
-  },
-  ConnectionStateAwareAction: class MockConnectionStateAwareAction {
-    logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
-    sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn(), getCurrentTelemetry: vi.fn() };
-    updateConnectionState = vi.fn();
-    setKeyImage = vi.fn();
-    setRegenerateCallback = vi.fn();
-    updateKeyImage = vi.fn().mockResolvedValue(true);
-    tapBinding = mockTapBinding;
-    holdBinding = vi.fn().mockResolvedValue(undefined);
-    releaseBinding = vi.fn().mockResolvedValue(undefined);
-    setActiveBinding = vi.fn();
-    isActiveBindingMissing = vi.fn(() => false);
-    isBindingMissing = vi.fn(() => false);
-    async onWillAppear() {}
-    async onDidReceiveSettings() {}
-    async onWillDisappear() {}
-  },
-  DualPressTracker: class MockDualPressTracker {
-    recordKeyDown = vi.fn();
-    computeOutcome = vi.fn(() => undefined);
-    clear = vi.fn();
-    hasPending = vi.fn(() => false);
-  },
-  getDualPressThresholdMs: vi.fn(() => 500),
-  getDualPressDirections: vi.fn(() => "tap-increases"),
-  formatKeyBinding: vi.fn((b: { key: string; modifiers: string[] }) => {
-    if (b.modifiers?.length) {
-      return `${b.modifiers.join("+")}+${b.key}`;
-    }
-
-    return b.key;
-  }),
-  generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
-  generateTitleText: vi.fn(({ text, fill }: { text: string; fill: string }) => {
-    if (!text) return "";
-
-    return `<text fill="${fill}">${text}</text>`;
-  }),
-  renderIconTemplate: vi.fn((_template: string, data: Record<string, string>) => {
-    return `<svg>${data.value ?? ""} ${data.titleContent ?? ""}</svg>`;
-  }),
-  svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
-  getGlobalBorderSettings: vi.fn(() => ({})),
-  getGlobalColors: vi.fn(() => ({})),
-  getGlobalGraphicSettings: vi.fn(() => ({})),
-  getGlobalSettings: vi.fn(() => ({})),
-  getKeyboard: vi.fn(() => ({
-    sendKeyCombination: vi.fn().mockResolvedValue(true),
-  })),
-  LogLevel: { Info: 2 },
-  parseBinding: vi.fn(),
-  parseKeyBinding: vi.fn(),
-  isSimHubBinding: vi.fn(
-    (v: unknown) => v !== null && typeof v === "object" && (v as Record<string, unknown>).type === "simhub",
-  ),
-  isSimHubInitialized: vi.fn(() => false),
-  getSimHub: vi.fn(() => ({
-    startRole: vi.fn().mockResolvedValue(true),
-    stopRole: vi.fn().mockResolvedValue(true),
-  })),
-  getGlobalTitleSettings: vi.fn(() => ({})),
-  resolveIconColors: vi.fn((_svg, _global, _overrides) => ({})),
-  resolveBorderSettings: vi.fn((_svg: unknown, _global: unknown, _overrides?: unknown, _stateColor?: string) => ({
-    enabled: false,
-    borderWidth: 7,
-    borderColor: "#00aaff",
-    glowEnabled: true,
-    glowWidth: 18,
-  })),
-  resolveGraphicSettings: vi.fn(() => ({ scale: 1 })),
-  resolveTitleSettings: vi.fn((_svg: unknown, _global: unknown, _overrides: unknown, defaultTitle?: string) => ({
-    showTitle: true,
-    showGraphics: true,
-    titleText: defaultTitle ?? "",
-    bold: true,
-    fontSize: 18,
-    position: "bottom" as const,
-    customPosition: 0,
-  })),
-  applyBindingWarning: vi.fn((content: string) => `${content}<warn/>`),
-  assembleIcon: vi.fn(
-    ({
-      graphicSvg,
-      title,
-      bindingMissing,
-    }: {
-      graphicSvg: string;
-      colors: unknown;
-      title: { titleText: string };
-      bindingMissing?: boolean;
+    ConnectionStateAwareAction: class MockConnectionStateAwareAction {
+      logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+      sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn(), getCurrentTelemetry: vi.fn() };
+      updateConnectionState = vi.fn();
+      setKeyImage = vi.fn();
+      setRegenerateCallback = vi.fn();
+      updateKeyImage = vi.fn().mockResolvedValue(true);
+      tapBinding = mockTapBinding;
+      holdBinding = vi.fn().mockResolvedValue(undefined);
+      releaseBinding = vi.fn().mockResolvedValue(undefined);
+      setActiveBinding = vi.fn();
+      isActiveBindingMissing = vi.fn(() => false);
+      isBindingMissing = vi.fn(() => false);
+      async onWillAppear() {}
+      async onDidReceiveSettings() {}
+      async onWillDisappear() {}
+    },
+    DualPressTracker: class MockDualPressTracker {
+      recordKeyDown = vi.fn();
+      computeOutcome = vi.fn(() => undefined);
+      clear = vi.fn();
+      hasPending = vi.fn(() => false);
+    },
+    getDualPressThresholdMs: vi.fn(() => 500),
+    getDualPressDirections: vi.fn(() => "tap-increases"),
+    // Shared dial-gesture release classifier (used by the dial surface).
+    classifyDialRelease: (args: {
+      pressStartMs: number;
+      nowMs: number;
+      rotatedWhilePressed: boolean;
+      thresholdMs?: number;
     }) => {
-      const warn = bindingMissing ? "<warn/>" : "";
-      const encoded = encodeURIComponent(`<svg>${graphicSvg}${title?.titleText ?? ""}${warn}</svg>`);
+      if (args.rotatedWhilePressed) return "push-turn";
 
-      return `data:image/svg+xml,${encoded}`;
+      return args.nowMs - args.pressStartMs >= (args.thresholdMs ?? 500) ? "long" : "short";
     },
-  ),
-}));
+    formatKeyBinding: vi.fn((b: { key: string; modifiers: string[] }) => {
+      if (b.modifiers?.length) {
+        return `${b.modifiers.join("+")}+${b.key}`;
+      }
 
-/** Create a minimal fake event with the given action ID and settings. */
+      return b.key;
+    }),
+    generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
+    generateTitleText: vi.fn(({ text, fill }: { text: string; fill: string }) => {
+      if (!text) return "";
+
+      return `<text fill="${fill}">${text}</text>`;
+    }),
+    renderIconTemplate: vi.fn((_template: string, data: Record<string, string>) => {
+      return `<svg>${data.value ?? ""} ${data.titleContent ?? ""}</svg>`;
+    }),
+    svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
+    getGlobalBorderSettings: vi.fn(() => ({})),
+    getGlobalColors: vi.fn(() => ({})),
+    getGlobalGraphicSettings: vi.fn(() => ({})),
+    getGlobalSettings: vi.fn(() => ({})),
+    getKeyboard: vi.fn(() => ({
+      sendKeyCombination: vi.fn().mockResolvedValue(true),
+    })),
+    LogLevel: { Info: 2 },
+    parseBinding: vi.fn(),
+    parseKeyBinding: vi.fn(),
+    isSimHubBinding: vi.fn(
+      (v: unknown) => v !== null && typeof v === "object" && (v as Record<string, unknown>).type === "simhub",
+    ),
+    isSimHubInitialized: vi.fn(() => false),
+    getSimHub: vi.fn(() => ({
+      startRole: vi.fn().mockResolvedValue(true),
+      stopRole: vi.fn().mockResolvedValue(true),
+    })),
+    getGlobalTitleSettings: vi.fn(() => ({})),
+    resolveIconColors: vi.fn((_svg, _global, _overrides) => ({})),
+    resolveBorderSettings: vi.fn((_svg: unknown, _global: unknown, _overrides?: unknown, _stateColor?: string) => ({
+      enabled: false,
+      borderWidth: 7,
+      borderColor: "#00aaff",
+      glowEnabled: true,
+      glowWidth: 18,
+    })),
+    resolveGraphicSettings: vi.fn(() => ({ scale: 1 })),
+    resolveTitleSettings: vi.fn((_svg: unknown, _global: unknown, _overrides: unknown, defaultTitle?: string) => ({
+      showTitle: true,
+      showGraphics: true,
+      titleText: defaultTitle ?? "",
+      bold: true,
+      fontSize: 18,
+      position: "bottom" as const,
+      customPosition: 0,
+    })),
+    applyBindingWarning: vi.fn((content: string) => `${content}<warn/>`),
+    assembleIcon: vi.fn(
+      ({
+        graphicSvg,
+        title,
+        bindingMissing,
+      }: {
+        graphicSvg: string;
+        colors: unknown;
+        title: { titleText: string };
+        bindingMissing?: boolean;
+      }) => {
+        const warn = bindingMissing ? "<warn/>" : "";
+        const encoded = encodeURIComponent(`<svg>${graphicSvg}${title?.titleText ?? ""}${warn}</svg>`);
+
+        return `data:image/svg+xml,${encoded}`;
+      },
+    ),
+  };
+});
+
+/** Full parsed settings for the icon-generation helpers (real-zod defaults applied). */
+function svgSettings(raw: Record<string, unknown>) {
+  return parseSetupBrakesSettings(raw);
+}
+
+/** Create a minimal fake keypad event with the given action ID and settings. */
 function fakeEvent(actionId: string, settings: Record<string, unknown> = {}) {
   return {
-    action: { id: actionId, setTitle: vi.fn(), setImage: vi.fn() },
+    action: { id: actionId, isKey: () => true, isDial: () => false, setTitle: vi.fn(), setImage: vi.fn() },
     payload: { settings },
   };
 }
 
-/** Create a minimal fake dial rotate event. */
-function fakeDialRotateEvent(actionId: string, settings: Record<string, unknown>, ticks: number) {
+/** Create a minimal fake dial (encoder) event. */
+function fakeDialEvent(actionId: string, settings: Record<string, unknown> = {}) {
   return {
-    action: { id: actionId, setTitle: vi.fn(), setImage: vi.fn() },
-    payload: { settings, ticks },
+    action: {
+      id: actionId,
+      isKey: () => false,
+      isDial: () => true,
+      setTitle: vi.fn(),
+      setImage: vi.fn(),
+      setFeedback: vi.fn().mockResolvedValue(undefined),
+      setTriggerDescription: vi.fn().mockResolvedValue(undefined),
+    },
+    payload: { settings },
   };
+}
+
+/** Create a minimal fake dial rotate event (dial context). */
+function fakeDialRotateEvent(actionId: string, settings: Record<string, unknown>, ticks: number) {
+  const ev = fakeDialEvent(actionId, settings);
+
+  return { action: ev.action, payload: { settings, ticks, pressed: false } };
 }
 
 describe("SetupBrakes", () => {
@@ -246,19 +274,19 @@ describe("SetupBrakes", () => {
 
   describe("generateSetupBrakesSvg", () => {
     it("should generate a valid data URI for abs-toggle", () => {
-      const result = generateSetupBrakesSvg({ setting: "abs-toggle", direction: "increase" });
+      const result = generateSetupBrakesSvg(svgSettings({ setting: "abs-toggle", direction: "increase" }));
 
       expect(result).toContain("data:image/svg+xml");
     });
 
     it("should generate a valid data URI for brake-bias", () => {
-      const result = generateSetupBrakesSvg({ setting: "brake-bias", direction: "increase" });
+      const result = generateSetupBrakesSvg(svgSettings({ setting: "brake-bias", direction: "increase" }));
 
       expect(result).toContain("data:image/svg+xml");
     });
 
     it("should generate a valid data URI for engine-braking", () => {
-      const result = generateSetupBrakesSvg({ setting: "engine-braking", direction: "increase" });
+      const result = generateSetupBrakesSvg(svgSettings({ setting: "engine-braking", direction: "increase" }));
 
       expect(result).toContain("data:image/svg+xml");
     });
@@ -277,35 +305,35 @@ describe("SetupBrakes", () => {
 
       for (const setting of settings) {
         for (const direction of directions) {
-          const result = generateSetupBrakesSvg({ setting, direction });
+          const result = generateSetupBrakesSvg(svgSettings({ setting, direction }));
           expect(result).toContain("data:image/svg+xml");
         }
       }
     });
 
     it("should produce different icons for different settings", () => {
-      const absToggle = generateSetupBrakesSvg({ setting: "abs-toggle", direction: "increase" });
-      const brakeBias = generateSetupBrakesSvg({ setting: "brake-bias", direction: "increase" });
+      const absToggle = generateSetupBrakesSvg(svgSettings({ setting: "abs-toggle", direction: "increase" }));
+      const brakeBias = generateSetupBrakesSvg(svgSettings({ setting: "brake-bias", direction: "increase" }));
 
       expect(absToggle).not.toBe(brakeBias);
     });
 
     it("should produce different icons for increase vs decrease on directional controls", () => {
-      const increase = generateSetupBrakesSvg({ setting: "brake-bias", direction: "increase" });
-      const decrease = generateSetupBrakesSvg({ setting: "brake-bias", direction: "decrease" });
+      const increase = generateSetupBrakesSvg(svgSettings({ setting: "brake-bias", direction: "increase" }));
+      const decrease = generateSetupBrakesSvg(svgSettings({ setting: "brake-bias", direction: "decrease" }));
 
       expect(increase).not.toBe(decrease);
     });
 
     it("should produce same icon for non-directional controls regardless of direction", () => {
-      const increase = generateSetupBrakesSvg({ setting: "abs-toggle", direction: "increase" });
-      const decrease = generateSetupBrakesSvg({ setting: "abs-toggle", direction: "decrease" });
+      const increase = generateSetupBrakesSvg(svgSettings({ setting: "abs-toggle", direction: "increase" }));
+      const decrease = generateSetupBrakesSvg(svgSettings({ setting: "abs-toggle", direction: "decrease" }));
 
       expect(increase).toBe(decrease);
     });
 
     it("should include correct labels for abs-toggle", () => {
-      const result = generateSetupBrakesSvg({ setting: "abs-toggle", direction: "increase" });
+      const result = generateSetupBrakesSvg(svgSettings({ setting: "abs-toggle", direction: "increase" }));
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("ABS");
@@ -313,7 +341,7 @@ describe("SetupBrakes", () => {
     });
 
     it("should include correct labels for brake-bias increase", () => {
-      const result = generateSetupBrakesSvg({ setting: "brake-bias", direction: "increase" });
+      const result = generateSetupBrakesSvg(svgSettings({ setting: "brake-bias", direction: "increase" }));
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("BRAKE BIAS");
@@ -321,7 +349,7 @@ describe("SetupBrakes", () => {
     });
 
     it("should include correct labels for brake-bias decrease", () => {
-      const result = generateSetupBrakesSvg({ setting: "brake-bias", direction: "decrease" });
+      const result = generateSetupBrakesSvg(svgSettings({ setting: "brake-bias", direction: "decrease" }));
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("BRAKE BIAS");
@@ -329,7 +357,7 @@ describe("SetupBrakes", () => {
     });
 
     it("should include correct labels for brake-bias-fine increase", () => {
-      const result = generateSetupBrakesSvg({ setting: "brake-bias-fine", direction: "increase" });
+      const result = generateSetupBrakesSvg(svgSettings({ setting: "brake-bias-fine", direction: "increase" }));
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("BIAS FINE");
@@ -337,7 +365,7 @@ describe("SetupBrakes", () => {
     });
 
     it("should include correct labels for engine-braking decrease", () => {
-      const result = generateSetupBrakesSvg({ setting: "engine-braking", direction: "decrease" });
+      const result = generateSetupBrakesSvg(svgSettings({ setting: "engine-braking", direction: "decrease" }));
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("ENG BRAKE");
@@ -378,10 +406,7 @@ describe("SetupBrakes", () => {
 
       for (const [setting, directions] of Object.entries(expectedLabels)) {
         for (const [direction, labels] of Object.entries(directions)) {
-          const result = generateSetupBrakesSvg({
-            setting: setting as any,
-            direction: direction as any,
-          });
+          const result = generateSetupBrakesSvg(svgSettings({ setting, direction }));
           const decoded = decodeURIComponent(result);
 
           expect(decoded).toContain(labels.line1);
@@ -440,12 +465,6 @@ describe("SetupBrakes", () => {
       expect(mockTapBinding).toHaveBeenCalledWith("setupBrakesBrakeMiscDecrease");
     });
 
-    it("should call tapGlobalBinding on dialDown", async () => {
-      await action.onDialDown(fakeEvent("action-1", { setting: "abs-toggle" }) as any);
-
-      expect(mockTapBinding).toHaveBeenCalledWith("setupBrakesAbsToggle");
-    });
-
     it("should call tapGlobalBinding even when no key binding is configured", async () => {
       await action.onKeyDown(fakeEvent("action-1", { setting: "abs-toggle" }) as any);
 
@@ -459,41 +478,58 @@ describe("SetupBrakes", () => {
     });
   });
 
-  describe("encoder behavior", () => {
+  describe("dial surface routing (#775)", () => {
     let action: SetupBrakes;
 
     beforeEach(() => {
       action = new SetupBrakes();
     });
 
-    it("should call tapGlobalBinding for increase on clockwise rotation", async () => {
-      await action.onDialRotate(
-        fakeDialRotateEvent("action-1", { setting: "brake-bias", direction: "increase" }, 1) as any,
-      );
+    it("routes rotation to dial.setting, not the keypad setting", async () => {
+      // The keypad half is bound to engine-braking; the dial half to brake-bias.
+      const settings = { setting: "engine-braking", dial: { setting: "brake-bias" } };
+
+      await action.onDialRotate(fakeDialRotateEvent("dial-1", settings, 1) as any);
 
       expect(mockTapBinding).toHaveBeenCalledWith("setupBrakesBrakeBiasIncrease");
     });
 
-    it("should call tapGlobalBinding for decrease on counter-clockwise rotation", async () => {
-      await action.onDialRotate(
-        fakeDialRotateEvent("action-1", { setting: "brake-bias", direction: "increase" }, -1) as any,
-      );
+    it("taps the decrease binding on a counter-clockwise turn", async () => {
+      await action.onDialRotate(fakeDialRotateEvent("dial-1", { dial: { setting: "brake-bias" } }, -1) as any);
 
       expect(mockTapBinding).toHaveBeenCalledWith("setupBrakesBrakeBiasDecrease");
     });
 
-    it("should call tapGlobalBinding for engine-braking rotation", async () => {
-      await action.onDialRotate(
-        fakeDialRotateEvent("action-1", { setting: "engine-braking", direction: "increase" }, 2) as any,
-      );
+    it("fires nothing on dial down; the press gesture fires on dial up", async () => {
+      const settings = { dial: { setting: "brake-bias", pressAction: "toggle-abs" } };
+      const ev = fakeDialEvent("dial-1", settings);
 
-      expect(mockTapBinding).toHaveBeenCalledWith("setupBrakesEngineBrakingIncrease");
-    });
-
-    it("should ignore rotation for non-directional controls (abs-toggle)", async () => {
-      await action.onDialRotate(fakeDialRotateEvent("action-1", { setting: "abs-toggle" }, 1) as any);
+      await action.onDialDown(ev as any);
 
       expect(mockTapBinding).not.toHaveBeenCalled();
+
+      await action.onDialUp(ev as any);
+
+      expect(mockTapBinding).toHaveBeenCalledWith("setupBrakesAbsToggle");
+    });
+
+    it("renders the touch strip but no key image or active binding for a dial instance", async () => {
+      const ev = fakeDialEvent("dial-1", { dial: { setting: "brake-bias" } });
+
+      await action.onWillAppear(ev as any);
+
+      expect(ev.action.setFeedback).toHaveBeenCalled();
+      expect((action as any).setKeyImage).not.toHaveBeenCalled();
+      expect((action as any).setActiveBinding).not.toHaveBeenCalled();
+    });
+
+    it("pushes no touch-strip feedback for a keypad instance", async () => {
+      const ev = fakeEvent("key-1", { setting: "brake-bias" });
+
+      await action.onWillAppear(ev as any);
+
+      expect((action as any).setKeyImage).toHaveBeenCalled();
+      expect((action as any).setActiveBinding).toHaveBeenCalledWith("setupBrakesBrakeBiasIncrease");
     });
   });
 
@@ -517,10 +553,8 @@ describe("SetupBrakes", () => {
       expect(svg).toContain("56.0%");
     });
 
-    it("does not call tapBinding when a View setting is pressed", async () => {
+    it("does not call tapBinding when a View setting is pressed on a keypad", async () => {
       await action.onKeyDown(fakeEvent("action-1", { setting: "view-brake-bias" }) as any);
-      await action.onDialDown(fakeEvent("action-1", { setting: "view-brake-bias" }) as any);
-      await action.onDialRotate(fakeDialRotateEvent("action-1", { setting: "view-brake-bias" }, 1) as any);
 
       expect(mockTapBinding).not.toHaveBeenCalled();
     });

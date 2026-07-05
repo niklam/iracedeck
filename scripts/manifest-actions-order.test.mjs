@@ -19,15 +19,13 @@ const manifests = allPluginManifestRelPaths(repoRoot);
 // unambiguous (no two distinct allowed names compare equal).
 const byName = (a, b) => a.localeCompare(b, "en", { sensitivity: "base" });
 
-// Dial actions are intentionally platform-specific — a plugin-drawable dial
-// display isn't available on every host — so they ship on a subset of plugins
-// (Setup Brakes Dial on Stream Deck only; Ulanzi carries no dial-capable action
-// while its dial support is unbuilt — Fuel Service is registered there as
-// keypad-only, which the same-set check tolerates since Controllers aren't
-// compared). They're excluded from the cross-plugin same-set check below; every
-// OTHER action must still appear on all plugins so a forgotten registration
-// fails loudly.
-const PLATFORM_SPECIFIC_ACTIONS = new Set(["Setup Brakes Dial"]);
+// Actions that intentionally ship on a subset of plugins are excluded from the
+// cross-plugin same-set check below; every OTHER action must appear on all
+// plugins so a forgotten registration fails loudly. Currently empty: since the
+// Fuel Service (#759) and Setup Brakes (#775) merges there is no standalone
+// dial-only action left — dual-surface actions register everywhere and only
+// their Controllers differ, which this check doesn't compare.
+const PLATFORM_SPECIFIC_ACTIONS = new Set([]);
 
 function actionNames(manifestRelPath) {
   const manifest = JSON.parse(readFileSync(join(repoRoot, manifestRelPath), "utf-8"));
