@@ -78,7 +78,6 @@
             { "category": "voice-chat", "action": "mute", "label": "Voice Chat Mute" },
             { "category": "master", "action": "volume-up", "label": "Master Volume Up" },
             { "category": "master", "action": "volume-down", "label": "Master Volume Down" },
-            { "category": "master", "action": "mute", "label": "Master Mute" },
             { "category": "race-engineer", "action": "volume-up", "label": "Race Engineer Volume Up" },
             { "category": "race-engineer", "action": "volume-down", "label": "Race Engineer Volume Down" },
             { "category": "radar", "action": "volume-up", "label": "Radar Volume Up" },
