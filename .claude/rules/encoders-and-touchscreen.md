@@ -4,11 +4,11 @@ How Stream Deck+ dials and the LCD touch strip work, what Mirabox knobs actually
 
 ## Current state (rebuild begun, #681)
 
-The dial-support rebuild (planned in #640) **has begun**. The **Fuel Service dial surface** (`fuel-service` — the former standalone `fuel-dial` action, merged into Fuel Service in #759 with its dial logic in `fuel-service/fuel-dial-surface.ts`) is the first and reference consumer:
+The dial-support rebuild (planned in #640) **has begun**. The **Fuel Service dial surface** (`fuel-service` — the former standalone `fuel-dial` action, merged into Fuel Service in #759 with its dial logic in `fuel-service/fuel-dial-surface.ts`) is the first and reference consumer; **Audio Controls** (#782, `audio-controls/audio-dial-surface.ts` — volume rotation with a live Race Engineer/Radar level bar, press as push-to-talk or mute/unmute) follows the same shape:
 
 - **Elgato** declares `"Controllers": ["Keypad", "Encoder"]` (one action, both surfaces; #759) with an `Encoder` block whose `layout` points at a committed custom touch layout (`layouts/fuel-service.json`, a single full-canvas 200×100 `box` pixmap the action draws itself) and a `TriggerDescription` for Rotate/Push/Touch.
 - **Mirabox** declares `"Controllers": ["Keypad", "Knob"]` with **no** `Encoder`/`Knob` config block and **no** touch strip (per the Mirabox findings below).
-- A dual-surface action branches every lifecycle/input handler on `ev.action.isDial()` and routes dial events to a dedicated surface module (Fuel Service routes to `FuelDialSurface`; Setup Brakes Dial handles both surfaces in one class). When the PI must show different settings per surface, read `actionInfo.payload.controller` via sdpi's `getConnectionInfo()` and toggle sections, defaulting to the keypad view (see `fuel-service.ejs`, #759).
+- A dual-surface action branches every lifecycle/input handler on `ev.action.isDial()` and routes dial events to a dedicated surface module (Fuel Service routes to `FuelDialSurface`, Audio Controls to `AudioDialSurface` (#782); Setup Brakes Dial handles both surfaces in one class). When the PI must show different settings per surface, read `actionInfo.payload.controller` via sdpi's `getConnectionInfo()` and toggle sections, defaulting to the keypad view (see `fuel-service.ejs`, #759).
 
 There is no longer a blanket prohibition on dial manifests — **follow the rules below and use the Fuel Service dial surface as the reference** when adding a dial-capable action. The "Encoder Support" section in `.claude/rules/stream-deck-actions.md` points here for the per-action mechanics.
 

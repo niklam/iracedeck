@@ -68,8 +68,9 @@
           "id": "com.iracedeck.sd.core.audio-controls",
           "name": "Audio Controls",
           "file": "audio-controls.ts",
-          "encoder": false,
+          "encoder": true,
           "settingsKeys": ["category", "action"],
+          "description": "One audio action for both surfaces (#782). On a KEYPAD button the category/action settings pick one of the modes below. On a DIAL (Elgato Encoder / Mirabox Knob / Ulanzi Encoder) the action is a volume dial (settings under the dial root): dial.category picks what rotation adjusts — voice-chat / master tap the iRacing volume key bindings once per detent (capped per event; iRacing exposes no volume state, so the touch strip shows category identity only), race-engineer / radar step iRaceDeck's own 0-100 levels by 5 per detent with a live level bar + value on the touch strip (dimmed OFF state when the feature gate is disabled). dial.pressAction (default none) picks the press: push-to-talk holds audioControlsPushToTalk for the press duration (red ON AIR band while held), mute-unmute taps audioVoiceChatMute for voice-chat or toggles the Pit Crew feature gate for race-engineer / radar (shared toggle pathway, ack clips included; not offered for master — iRacing has no master-mute keybind). The strip render is Elgato-only (dial feedback flag); Mirabox/Ulanzi get rotate + press. The PI branches per controller (actionInfo.payload.controller).",
           "modes": [
             { "category": "push-to-talk", "label": "Push to Talk" },
             { "category": "voice-chat", "action": "volume-up", "label": "Voice Chat Volume Up" },
