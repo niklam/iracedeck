@@ -12,13 +12,24 @@
  * S/F crossing that COMPLETES the first full pace lap (= the start of the final
  * lap on a 2-lap rolling formation), while the green is not yet held.
  *
+ * **The PACE CAR's crossing, not the player's (issue #773).** The pace car
+ * leads the field, so it crosses S/F — and commits everyone to another lap —
+ * noticeably before the player does, especially from the mid/back of a long
+ * grid. The crossing tracked is therefore the pace car's
+ * (`CarIdxLapDistPct[paceCarIdx]`, resolved from `DriverInfo.PaceCarIdx` /
+ * `CarIsPaceCar` at the formation's entry edge), with the player's own
+ * `LapDistPct` as the fallback whenever the pace car can't be resolved or its
+ * per-car telemetry is invalid — missing data must never silence the cue.
+ *
  * **Distinguishing the completion crossing from the grid release.** The grid
  * release also crosses S/F as the field is let go into `ParadeLaps`. Both
  * crossings have the green un-held, so the discriminator is how far the car has
  * driven: the release crossing sits at ~0 lap accrued since entering
  * `ParadeLaps`; the first-pace-lap completion sits at ~1. The `>= 0.5` accrued
  * guard separates them robustly, regardless of where the `Warmup→ParadeLaps`
- * state flip lands relative to the line.
+ * state flip lands relative to the line. The same guard holds for the pace
+ * car: iRacing stages it near the S/F straight (pit exit area), so its
+ * release crossing also sits well under half a lap accrued.
  *
  * **Rolling-only / 1-lap.** Standing starts never enter `ParadeLaps` and are
  * additionally guarded on `resolveStandingStart`, so the cue is rolling-only. A
@@ -54,6 +65,50 @@ export const PACE_LAP_SF_WRAP_THRESHOLD = 0.5;
  */
 export const PACE_LAP_MIN_ACCRUED = 0.5;
 
+/** A usable lap-distance fraction: finite and non-negative (`-1` = invalid). */
+function isValidDist(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+
+/**
+ * Resolve the pace car's `CarIdx` from session YAML (issue #773). Prefers the
+ * direct `DriverInfo.PaceCarIdx` field, falls back to scanning
+ * `DriverInfo.Drivers` for `CarIsPaceCar === 1`, and returns `null` when
+ * neither resolves — the caller then tracks the player instead.
+ *
+ * @internal Exported for testing.
+ */
+export function resolvePaceCarIdx(sessionInfo: Record<string, unknown> | null): number | null {
+  const driverInfo = sessionInfo?.DriverInfo as Record<string, unknown> | undefined;
+
+  const direct = driverInfo?.PaceCarIdx;
+
+  if (typeof direct === "number" && Number.isInteger(direct) && direct >= 0) return direct;
+
+  const drivers = driverInfo?.Drivers;
+
+  if (Array.isArray(drivers)) {
+    for (const driver of drivers as Array<Record<string, unknown> | null>) {
+      if (driver?.CarIsPaceCar === 1 && typeof driver.CarIdx === "number" && driver.CarIdx >= 0) {
+        return driver.CarIdx;
+      }
+    }
+  }
+
+  return null;
+}
+
+/** The tracked car's lap-distance fraction for this tick — pace car or player. */
+function readTrackedDist(state: TranslatorState, telemetry: TelemetryData): unknown {
+  if (state.paceLapSourceCarIdx !== null) {
+    const perCar = telemetry.CarIdxLapDistPct;
+
+    return Array.isArray(perCar) ? perCar[state.paceLapSourceCarIdx] : undefined;
+  }
+
+  return telemetry.LapDistPct;
+}
+
 export function diffPaceLaps(
   state: TranslatorState,
   telemetry: TelemetryData,
@@ -79,11 +134,40 @@ export function diffPaceLaps(
     state.paceLapAccrued = 0;
     state.onePaceLapToGoFired = false;
     state.lastTickInParadeLaps = false;
+    state.paceLapSourceCarIdx = null;
 
     return;
   }
 
-  const lapDistPct = telemetry.LapDistPct;
+  // On the (potential) entry tick, pick the crossing source for this formation
+  // (issue #773): the pace car when it resolves AND reports a valid distance
+  // this tick, the player otherwise. Decided once at the entry edge so the
+  // accrual never mixes two cars' positions.
+  if (!state.lastTickInParadeLaps) {
+    const paceCarIdx = resolvePaceCarIdx(sessionInfo);
+    const perCar = telemetry.CarIdxLapDistPct;
+
+    state.paceLapSourceCarIdx =
+      paceCarIdx !== null && Array.isArray(perCar) && isValidDist(perCar[paceCarIdx]) ? paceCarIdx : null;
+  }
+
+  let lapDistPct = readTrackedDist(state, telemetry);
+
+  // Mid-parade loss of the pace car's telemetry — switch to the player and
+  // re-anchor the baseline at the player's position, WITHOUT folding a delta
+  // across the source jump (which could read as a phantom S/F wrap). Accrued
+  // distance carries over: both cars measure distance driven since the
+  // formation started, and the 0.5-lap guard tolerates the small offset.
+  if (state.paceLapSourceCarIdx !== null && state.lastTickInParadeLaps && !isValidDist(lapDistPct)) {
+    const playerDist = telemetry.LapDistPct;
+
+    if (isValidDist(playerDist)) {
+      state.paceLapSourceCarIdx = null;
+      state.paceLapLastDistPct = playerDist;
+    }
+
+    return;
+  }
 
   // Need a valid, finite, non-negative lap distance to track crossings. `NaN`
   // passes `typeof === "number"` (and `NaN < 0` is false), so check
@@ -92,7 +176,7 @@ export function diffPaceLaps(
   // `lastTickInParadeLaps` here: on the entry tick that would consume the entry
   // edge and the diff would never arm — leave it so the next valid tick is still
   // seen as the `*→ParadeLaps` entry.
-  if (typeof lapDistPct !== "number" || !Number.isFinite(lapDistPct) || lapDistPct < 0) {
+  if (!isValidDist(lapDistPct)) {
     return;
   }
 

@@ -30,6 +30,7 @@ _Unreleased_
 - The Race Engineer's pit-box countdown now takes priority over the pit-service readback: a countdown mark cuts the readback instead of being silently dropped while it plays, and the interrupted readback resumes from where it left off once the countdown is done — so you always hear the countdown on your approach to the box.
 - Camera Controls' **Cycle Camera** mode now applies your custom Title Text to the button instead of always showing "CYCLE CAM", and its mode selector is now labeled **Mode** (it was mislabeled **Target**).
 - Race Admin's driver-management commands — Grant Admin, Revoke Admin, Enable/Mute Chat for a driver, and Remove Driver — now refuse to send when the target is an AI car, the pace car, or a car number that isn't in the session (the key flashes a warning instead). iRacing applies these commands to *you* when the target isn't a real user, which could revoke your own admin and end your session. Revoke Admin additionally refuses your own car, so you can't accidentally revoke your own admin. Race-control commands (black flag, EOL, DQ, and the rest) still work against AI cars as before.
+- During a rolling-start formation, the Race Engineer's “one pace lap to go” call now fires when the pace car crosses the start/finish line — the moment the field is committed to another pace lap — instead of when your own car reaches the line, so you hear it as the final pace lap actually begins rather than seconds later from the mid or back of the grid.
 
 ## 1.23.0
 

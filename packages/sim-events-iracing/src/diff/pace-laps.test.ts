@@ -10,13 +10,17 @@ import { Flags, SessionState, type TelemetryData } from "@iracedeck/iracing-sdk"
 import { describe, expect, it } from "vitest";
 
 import { createInitialState, type TranslatorState } from "../state.js";
-import { diffPaceLaps } from "./pace-laps.js";
+import { diffPaceLaps, resolvePaceCarIdx } from "./pace-laps.js";
 import type { PendingEvent } from "./types.js";
 
 /** Rolling start (StandingStart not set). */
 const ROLLING: Record<string, unknown> | null = null;
 /** Standing start. */
 const STANDING: Record<string, unknown> = { WeekendInfo: { WeekendOptions: { StandingStart: 1 } } };
+/** Rolling start with a resolvable pace car at CarIdx 0 (issue #773). */
+const ROLLING_PACE: Record<string, unknown> = {
+  DriverInfo: { PaceCarIdx: 0, Drivers: [{ CarIdx: 0, CarIsPaceCar: 1 }, { CarIdx: 1 }] },
+};
 
 const FORMATION_FLAGS = Flags.OneLapToGreen; // iRacing holds this through the parade
 
@@ -26,9 +30,15 @@ function feed(
   sessionState: number,
   lapDistPct: number,
   sessionFlags: number = FORMATION_FLAGS,
+  carIdxLapDistPct?: Array<number | undefined>,
 ): PendingEvent[] {
   const events: PendingEvent[] = [];
-  const telemetry = { SessionState: sessionState, LapDistPct: lapDistPct, SessionFlags: sessionFlags } as TelemetryData;
+  const telemetry = {
+    SessionState: sessionState,
+    LapDistPct: lapDistPct,
+    SessionFlags: sessionFlags,
+    ...(carIdxLapDistPct !== undefined ? { CarIdxLapDistPct: carIdxLapDistPct } : {}),
+  } as unknown as TelemetryData;
   diffPaceLaps(state, telemetry, sessionInfo, (e) => events.push(e));
 
   return events;
@@ -197,5 +207,91 @@ describe("diffPaceLaps", () => {
     feed(state, ROLLING, SessionState.ParadeLaps, 0.99);
     const events = feed(state, ROLLING, SessionState.ParadeLaps, 0.02);
     expect(events).toEqual([ONE_PACE_LAP]);
+  });
+});
+
+describe("diffPaceLaps — pace car crossing source (issue #773)", () => {
+  it("fires at the PACE CAR's completion crossing, before the player reaches the line", () => {
+    const state = createInitialState();
+    feed(state, ROLLING_PACE, SessionState.Warmup, 0.5, FORMATION_FLAGS, [0.98, 0.94]);
+    feed(state, ROLLING_PACE, SessionState.ParadeLaps, 0.94, FORMATION_FLAGS, [0.98, 0.94]); // entry — tracks car 0
+    expect(state.paceLapSourceCarIdx).toBe(0);
+
+    // The pace car wraps its release crossing at ~0 accrued — suppressed.
+    feed(state, ROLLING_PACE, SessionState.ParadeLaps, 0.96, FORMATION_FLAGS, [0.02, 0.96]);
+    // Both drive a pace lap; the pace car reaches S/F first.
+    feed(state, ROLLING_PACE, SessionState.ParadeLaps, 0.5, FORMATION_FLAGS, [0.6, 0.5]);
+    feed(state, ROLLING_PACE, SessionState.ParadeLaps, 0.9, FORMATION_FLAGS, [0.99, 0.9]);
+
+    // Pace car crosses S/F (player still at 0.95) — the cue fires HERE.
+    const paceCross = feed(state, ROLLING_PACE, SessionState.ParadeLaps, 0.95, FORMATION_FLAGS, [0.03, 0.95]);
+    expect(paceCross).toEqual([ONE_PACE_LAP]);
+
+    // The player's own later crossing adds nothing.
+    const playerCross = feed(state, ROLLING_PACE, SessionState.ParadeLaps, 0.02, FORMATION_FLAGS, [0.08, 0.02]);
+    expect(playerCross).toEqual([]);
+  });
+
+  it("resolves the pace car from the Drivers scan when PaceCarIdx is absent", () => {
+    const sessionInfo: Record<string, unknown> = {
+      DriverInfo: { Drivers: [{ CarIdx: 3 }, { CarIdx: 7, CarIsPaceCar: 1 }] },
+    };
+    const state = createInitialState();
+    const perCar: Array<number | undefined> = [];
+    perCar[7] = 0.9;
+    feed(state, sessionInfo, SessionState.Warmup, 0.5, FORMATION_FLAGS, perCar);
+    feed(state, sessionInfo, SessionState.ParadeLaps, 0.3, FORMATION_FLAGS, perCar);
+
+    expect(state.paceLapSourceCarIdx).toBe(7);
+  });
+
+  it("tracks the player when no pace car resolves (PaceCarIdx -1, no flagged driver)", () => {
+    const sessionInfo: Record<string, unknown> = { DriverInfo: { PaceCarIdx: -1, Drivers: [{ CarIdx: 0 }] } };
+    const state = createInitialState();
+    feed(state, sessionInfo, SessionState.Warmup, 0.5);
+    feed(state, sessionInfo, SessionState.ParadeLaps, 0.3);
+    expect(state.paceLapSourceCarIdx).toBeNull();
+
+    feed(state, sessionInfo, SessionState.ParadeLaps, 0.99);
+    const events = feed(state, sessionInfo, SessionState.ParadeLaps, 0.02);
+    expect(events).toEqual([ONE_PACE_LAP]);
+  });
+
+  it("tracks the player when the pace car resolves but reports no valid distance at entry", () => {
+    const state = createInitialState();
+    feed(state, ROLLING_PACE, SessionState.Warmup, 0.5, FORMATION_FLAGS, [-1, 0.3]);
+    feed(state, ROLLING_PACE, SessionState.ParadeLaps, 0.3, FORMATION_FLAGS, [-1, 0.3]);
+
+    expect(state.paceLapSourceCarIdx).toBeNull();
+    expect(state.paceLapArmed).toBe(true);
+  });
+
+  it("switches to the player mid-parade when the pace car's telemetry goes invalid — no phantom wrap", () => {
+    const state = createInitialState();
+    feed(state, ROLLING_PACE, SessionState.Warmup, 0.5, FORMATION_FLAGS, [0.3, 0.1]);
+    feed(state, ROLLING_PACE, SessionState.ParadeLaps, 0.1, FORMATION_FLAGS, [0.3, 0.1]); // entry — pace car
+    expect(state.paceLapSourceCarIdx).toBe(0);
+    feed(state, ROLLING_PACE, SessionState.ParadeLaps, 0.3, FORMATION_FLAGS, [0.9, 0.3]); // accrued 0.6
+
+    // Pace car telemetry drops out. The naive 0.9 → 0.35 source jump would
+    // read as an S/F wrap with enough accrued to fire — the switch must
+    // re-anchor on the player without folding a delta instead.
+    const switchTick = feed(state, ROLLING_PACE, SessionState.ParadeLaps, 0.35, FORMATION_FLAGS, [-1, 0.35]);
+    expect(switchTick).toEqual([]);
+    expect(state.paceLapSourceCarIdx).toBeNull();
+    expect(state.onePaceLapToGoFired).toBe(false);
+
+    // The player finishes the pace lap — accrued carries over, the cue fires.
+    feed(state, ROLLING_PACE, SessionState.ParadeLaps, 0.99, FORMATION_FLAGS, [-1, 0.99]);
+    const events = feed(state, ROLLING_PACE, SessionState.ParadeLaps, 0.02, FORMATION_FLAGS, [-1, 0.02]);
+    expect(events).toEqual([ONE_PACE_LAP]);
+  });
+
+  it("resolvePaceCarIdx prefers PaceCarIdx, falls back to the scan, and returns null otherwise", () => {
+    expect(resolvePaceCarIdx({ DriverInfo: { PaceCarIdx: 2 } })).toBe(2);
+    expect(resolvePaceCarIdx({ DriverInfo: { PaceCarIdx: -1, Drivers: [{ CarIdx: 5, CarIsPaceCar: 1 }] } })).toBe(5);
+    expect(resolvePaceCarIdx({ DriverInfo: { PaceCarIdx: -1, Drivers: [{ CarIdx: 5 }] } })).toBeNull();
+    expect(resolvePaceCarIdx(null)).toBeNull();
+    expect(resolvePaceCarIdx({})).toBeNull();
   });
 });

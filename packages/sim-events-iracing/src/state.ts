@@ -126,8 +126,16 @@ export type TranslatorState = {
    * completion crossing sits at ~1 — the `>= 0.5` fire guard separates them.
    */
   paceLapAccrued: number;
-  /** Previous-tick `LapDistPct`, for the per-tick forward-distance delta. */
+  /** Previous-tick lap-distance of the tracked car, for the per-tick forward-distance delta. */
   paceLapLastDistPct: number;
+  /**
+   * `CarIdx` of the car whose S/F crossings the pace-lap diff tracks (issue
+   * #773): the PACE CAR when it resolves from session YAML at the formation's
+   * entry edge, `null` to track the player's own `LapDistPct` instead. The
+   * pace car crosses S/F — committing the field to another pace lap — before
+   * the player does, so the cue keys on its crossing whenever possible.
+   */
+  paceLapSourceCarIdx: number | null;
   /**
    * Once-per-formation latch for `flag.one-pace-lap-to-go.raised`. Set when the
    * cue fires; cleared (with the rest of the pace-lap state) on any
@@ -539,6 +547,7 @@ export function createInitialState(): TranslatorState {
     paceLapArmed: false,
     paceLapAccrued: 0,
     paceLapLastDistPct: 0,
+    paceLapSourceCarIdx: null,
     onePaceLapToGoFired: false,
 
     rollingStartInitialized: false,
