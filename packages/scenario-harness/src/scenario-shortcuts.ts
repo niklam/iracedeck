@@ -114,7 +114,10 @@ function pitStatus(id: string, label: string, target: PitSvStatus, description?:
 function qualifyingInvalidation(
   id: string,
   label: string,
-  snapshot: Omit<QualifyingInvalidationSnapshot, "lapStartedFromPits"> & { lapStartedFromPits?: boolean },
+  snapshot: Omit<QualifyingInvalidationSnapshot, "lapStartedFromPits" | "lapCounted"> & {
+    lapStartedFromPits?: boolean;
+    lapCounted?: boolean;
+  },
   options: { description?: string; incidentType?: string; delta?: number } = {},
 ): ScenarioShortcut {
   return {
@@ -124,7 +127,7 @@ function qualifyingInvalidation(
     description: options.description,
     event: "incident.occurred",
     data: { delta: options.delta ?? 1, type: options.incidentType ?? "off-track" },
-    qualifyingInvalidationSnapshot: { lapStartedFromPits: false, ...snapshot },
+    qualifyingInvalidationSnapshot: { lapStartedFromPits: false, lapCounted: true, ...snapshot },
   };
 }
 
@@ -440,7 +443,8 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   // event, so a single click drives both the snapshot setup and the
   // `incident.occurred` fire. Together they cover every code path through the
   // scenario: out-of-laps, counted-singular, counted-plural, plenty fallback,
-  // time-limited (core only), session gating, and the per-lap latch.
+  // time-limited (core only), session gating, the per-lap latch, the
+  // pit-exit-lap suppression, and the beyond-counted-laps suppression (#776).
   qualifyingInvalidation(
     "lap-limited-3-laps-left",
     "Off-Track — 3 laps left",
@@ -510,6 +514,22 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     {
       description:
         "Lap began at pit exit (lapStartedFromPits=true) — should produce no audio. Covers both the session out-lap and any mid-session post-pit-exit lap: neither is a timed attempt.",
+    },
+  ),
+  qualifyingInvalidation(
+    "beyond-counted-laps-silent",
+    "Off-Track beyond counted laps (silent)",
+    {
+      sessionType: "qualifying",
+      sessionNum: 1,
+      lapsRemaining: 0,
+      lapLimited: true,
+      lapCompleted: 4,
+      lapCounted: false,
+    },
+    {
+      description:
+        "Lap 3+ of a 2-lap qualifying (lapCounted=false, issue #776) — the driver kept circulating after the counted attempts were done, so nothing is invalidated and no audio plays. Contrast with the out-of-laps shortcut, which is the FINAL counted lap (lapCounted=true).",
     },
   ),
 

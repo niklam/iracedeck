@@ -159,6 +159,7 @@ function snap(overrides: Partial<QualifyingInvalidationSnapshot> = {}): Qualifyi
     // overrides where it matters.
     lapCompleted: 1,
     lapStartedFromPits: false,
+    lapCounted: true,
     ...overrides,
   };
 }
@@ -252,6 +253,14 @@ describe("checkAndUpdateQualifyingLatch (unit)", () => {
     // same lap with the flag flipped to false counts as a fresh fire.
     expect(checkAndUpdateQualifyingLatch(snap({ lapCompleted: 4, lapStartedFromPits: false }))).toBe(true);
   });
+
+  it("returns false on a lap beyond the counted attempts and does not arm the latch", () => {
+    expect(checkAndUpdateQualifyingLatch(snap({ lapCompleted: 3, lapCounted: false }))).toBe(false);
+    // The suppression path must not pollute the latch — the same composite
+    // key with the flag flipped counts as a fresh fire (mirrors the
+    // pit-exit-lap invariant above).
+    expect(checkAndUpdateQualifyingLatch(snap({ lapCompleted: 3, lapCounted: true }))).toBe(true);
+  });
 });
 
 describe("qualifying-invalidation scenario — tail branches", () => {
@@ -332,6 +341,42 @@ describe("qualifying-invalidation scenario — pit-exit lap suppression", () => 
     fire(snap({ lapCompleted: 4, lapStartedFromPits: false, lapsRemaining: 1 }));
     expect(hasClip("/qualifying-invalidation/invalidated-01.mp3")).toBe(true);
     expect(hasClip("/qualifying-invalidation/1-lap-left-01.mp3")).toBe(true);
+  });
+});
+
+describe("qualifying-invalidation scenario — beyond-counted-laps suppression (issue #776)", () => {
+  it("stays fully silent on an extra lap after the counted attempts are done", () => {
+    // Lap 3 of a 2-lap qualifying: the raw SessionLapsRemainEx hit 0, so the
+    // translator reports lapsRemaining 0 AND lapCounted false. The lap was
+    // never a timed attempt — nothing is invalidated, nothing is spoken.
+    fire(snap({ lapCompleted: 3, lapsRemaining: 0, lapCounted: false }));
+
+    expect(voicePaths()).toEqual([]);
+  });
+
+  it("keeps the out-of-laps tail on the final counted lap", () => {
+    // Lap 2 of 2 (raw SessionLapsRemainEx = 1): still a counted attempt, and
+    // after this invalidated lap nothing remains — the out-of-laps tail is
+    // exactly right here and must survive the #776 suppression.
+    fire(snap({ lapCompleted: 2, lapsRemaining: 0, lapCounted: true }));
+
+    expect(hasClip("/qualifying-invalidation/invalidated-01.mp3")).toBe(true);
+    expect(hasClip("/qualifying-invalidation/out-of-laps-01.mp3")).toBe(true);
+  });
+
+  it("suppresses every extra lap, not just the first", () => {
+    // The user's exact report: out-of-laps speaks once on the final counted
+    // lap, then the driver keeps circulating — each extra lap re-arms the
+    // per-lap latch, so without the lapCounted gate every extra lap's first
+    // incident would replay the callout.
+    fire(snap({ lapCompleted: 2, lapsRemaining: 0, lapCounted: true }));
+    expect(hasClip("/qualifying-invalidation/out-of-laps-01.mp3")).toBe(true);
+    audio._played.length = 0;
+
+    fire(snap({ lapCompleted: 3, lapsRemaining: 0, lapCounted: false }));
+    fire(snap({ lapCompleted: 4, lapsRemaining: 0, lapCounted: false }));
+
+    expect(voicePaths()).toEqual([]);
   });
 });
 

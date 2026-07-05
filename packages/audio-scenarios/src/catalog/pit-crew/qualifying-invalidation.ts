@@ -11,6 +11,12 @@
  *   lapsRemaining >= 6      → "We still have plenty of laps left…"
  *   !lapLimited (time-qual) → core line only (no tail)
  *
+ * The whole callout is suppressed — no core line, no tail — on laps that
+ * aren't timed attempts: pit-exit laps (`lapStartedFromPits`) and laps beyond
+ * the driver's counted attempts (`lapCounted === false`, issue #776 — lap 3+
+ * of a 2-lap qualifying, where iRacing lets the driver keep circulating but
+ * nothing is invalidated by an incident).
+ *
  * Each per-N clip carries its own full sentence with a unique tail line, so
  * the scenario is just a pool lookup keyed on `lapsRemaining` — no var
  * resolver, no singular/plural switch, no composed prosody chain. The trade-off
@@ -18,7 +24,8 @@
  *
  * Snapshot-at-fire-time (lap-time / session-start pattern): the plugin caches
  * a snapshot of `{ sessionType, sessionNum, lapsRemaining, lapLimited,
- * lapCompleted }` from the most recent telemetry tick. The `where:` predicate
+ * lapCompleted, lapStartedFromPits, lapCounted }` from the most recent
+ * telemetry tick. The `where:` predicate
  * reads the snapshot to gate on qualifying + per-lap latch; the per-clip `if`
  * branches read it again at sequence-expansion time. A deferred replay
  * therefore speaks the live snapshot when it actually fires — not whatever was
@@ -88,11 +95,13 @@ export function resetQualifyingInvalidationLatch(): void {
  * that hasn't been announced yet. Returns false on any lap that started from
  * pit exit (`lapStartedFromPits === true`) — that includes the session
  * out-lap (it began when the driver exited the pit box) AND any mid-session
- * post-pit-exit lap. Neither is a timed attempt, so an incident there doesn't
- * waste anything. Side-effect: updates the latch on a positive answer so
- * subsequent incidents on the same lap return `false`. The latch is NOT
- * touched on the suppression paths, so a subsequent valid flying-lap
- * incident still triggers cleanly.
+ * post-pit-exit lap — and on any lap beyond the counted attempts
+ * (`lapCounted === false`, issue #776), where the driver keeps circulating
+ * after their qualifying laps are done. None of these is a timed attempt, so
+ * an incident there doesn't waste anything. Side-effect: updates the latch
+ * on a positive answer so subsequent incidents on the same lap return
+ * `false`. The latch is NOT touched on the suppression paths, so a
+ * subsequent valid flying-lap incident still triggers cleanly.
  *
  * @internal Exported for tests.
  */
@@ -105,6 +114,14 @@ export function checkAndUpdateQualifyingLatch(snapshot: QualifyingInvalidationSn
   // while the driver is still on that same lap, and self-clears when
   // `LapCompleted` advances at S/F.
   if (snapshot.lapStartedFromPits) return false;
+
+  // Beyond the counted laps (issue #776) — the driver kept circulating after
+  // their counted qualifying attempts were done (lap 3+ of a 2-lap
+  // qualifying). Nothing is invalidated on such a lap, so the whole callout
+  // stays silent. Strict `=== false` so a snapshot missing the flag (an
+  // untyped producer omitting the field) fails open to the callout rather
+  // than going silent on missing data.
+  if (snapshot.lapCounted === false) return false;
 
   if (
     lastAnnounced !== null &&

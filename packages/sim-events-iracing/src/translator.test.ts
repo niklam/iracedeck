@@ -30,6 +30,7 @@ import {
   getLatestTelemetry,
   getLivePosition,
   getLiveRacePositions,
+  getQualifyingInvalidationSnapshot,
   getRaceStartConditions,
   getSessionStartConditions,
   getStartingGridPosition,
@@ -2244,6 +2245,95 @@ describe("sim-events-iracing translator", () => {
       controller.__tick(telemetry({ Lap: 1 }));
 
       expect(handler).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("qualifying-invalidation snapshot (issues #567 / #776)", () => {
+    const QUAL_SESSION_INFO = {
+      SessionInfo: { Sessions: [{ SessionType: "Lone Qualify" }] },
+    };
+
+    function qualController(): MockController {
+      const controller = createMockController();
+      controller.__setSessionInfo(QUAL_SESSION_INFO);
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      return controller;
+    }
+
+    it("returns null before any telemetry tick", () => {
+      qualController();
+
+      expect(getQualifyingInvalidationSnapshot()).toBeNull();
+    });
+
+    it("reports a counted flying lap with attempts remaining after the current one", () => {
+      const controller = qualController();
+
+      // 2-lap qualifying, first flying lap: iRacing counts the current lap
+      // as remaining (SessionLapsRemainEx = 2), the snapshot contract is
+      // "attempts AFTER the current invalidated lap" → 1.
+      controller.__tick(telemetry({ SessionLapsTotal: 2, SessionLapsRemainEx: 2, LapCompleted: 1 }));
+
+      expect(getQualifyingInvalidationSnapshot()).toEqual({
+        sessionType: "qualifying",
+        sessionNum: 0,
+        lapsRemaining: 1,
+        lapLimited: true,
+        lapCompleted: 1,
+        lapStartedFromPits: false,
+        lapCounted: true,
+      });
+    });
+
+    it("keeps the final counted lap counted with lapsRemaining 0", () => {
+      const controller = qualController();
+
+      // 2-lap qualifying, second flying lap (SessionLapsRemainEx = 1): a
+      // real attempt with nothing left after it — the out-of-laps case.
+      controller.__tick(telemetry({ SessionLapsTotal: 2, SessionLapsRemainEx: 1, LapCompleted: 2 }));
+
+      expect(getQualifyingInvalidationSnapshot()).toMatchObject({
+        lapsRemaining: 0,
+        lapCounted: true,
+      });
+    });
+
+    it("flags a lap beyond the counted attempts as not counted (issue #776)", () => {
+      const controller = qualController();
+
+      // Lap 3 of a 2-lap qualifying: SessionLapsRemainEx hit 0 — not even
+      // the current lap is a counted attempt. Before #776 this collapsed
+      // into lapsRemaining 0 (indistinguishable from the final counted lap).
+      controller.__tick(telemetry({ SessionLapsTotal: 2, SessionLapsRemainEx: 0, LapCompleted: 3 }));
+
+      expect(getQualifyingInvalidationSnapshot()).toMatchObject({
+        lapsRemaining: 0,
+        lapCounted: false,
+      });
+    });
+
+    it("treats time-limited qualifying as counted", () => {
+      const controller = qualController();
+
+      // 32767 is iRacing's "unlimited" sentinel → time-limited session.
+      controller.__tick(telemetry({ SessionLapsTotal: 32767, SessionLapsRemainEx: 32767, LapCompleted: 4 }));
+
+      expect(getQualifyingInvalidationSnapshot()).toMatchObject({
+        lapLimited: false,
+        lapCounted: true,
+      });
+    });
+
+    it("treats missing SessionLapsRemainEx as counted (don't punish missing data)", () => {
+      const controller = qualController();
+
+      controller.__tick(telemetry({ SessionLapsTotal: 2, SessionLapsRemainEx: -1, LapCompleted: 1 }));
+
+      expect(getQualifyingInvalidationSnapshot()).toMatchObject({
+        lapsRemaining: undefined,
+        lapCounted: true,
+      });
     });
   });
 
