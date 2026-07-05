@@ -78,117 +78,114 @@ vi.mock("@iracedeck/icons/fuel-service/lap-margin-decrease.svg", () => ({
   default: "<svg>lap-margin-decrease-icon</svg>",
 }));
 
-vi.mock("@iracedeck/deck-core", () => ({
-  CommonSettings: {
-    extend: () => {
-      const defaults = { mode: "toggle-fuel-fill", amount: 1, unit: "l" };
-      const schema = {
-        parse: (data: Record<string, unknown>) => ({ ...defaults, ...data }),
-        safeParse: (data: Record<string, unknown>) => ({ success: true, data: { ...defaults, ...data } }),
-      };
+vi.mock("@iracedeck/deck-core", async () => {
+  const { default: z } = await import("zod");
 
-      return schema;
+  return {
+    CommonSettings: {
+      // Build a real Zod schema over the action's own fields so tests exercise the
+      // actual parse/fallback behavior (the CommonSettings base fields are not
+      // needed by these tests).
+      extend: (fields: Parameters<typeof z.object>[0]) => z.object(fields),
     },
-    parse: (data: Record<string, unknown>) => ({ ...data }),
-    safeParse: (data: Record<string, unknown>) => ({ success: true, data: { ...data } }),
-  },
-  ConnectionStateAwareAction: class MockConnectionStateAwareAction {
-    logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
-    sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn(), getCurrentTelemetry: vi.fn() };
-    updateConnectionState = vi.fn();
-    setKeyImage = vi.fn();
-    setRegenerateCallback = vi.fn();
-    updateKeyImage = vi.fn().mockResolvedValue(true);
-    tapBinding = mockTapBinding;
-    holdBinding = vi.fn().mockResolvedValue(undefined);
-    releaseBinding = vi.fn().mockResolvedValue(undefined);
-    setActiveBinding = vi.fn();
-    isActiveBindingMissing = vi.fn(() => false);
-    isBindingMissing = vi.fn(() => false);
-    async onWillAppear() {}
-    async onDidReceiveSettings() {}
-    async onWillDisappear() {}
-  },
-  formatKeyBinding: vi.fn((b: { key: string; modifiers: string[] }) => {
-    if (b.modifiers?.length) {
-      return `${b.modifiers.join("+")}+${b.key}`;
-    }
-
-    return b.key;
-  }),
-  getCommands: mockGetCommands,
-  generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
-  getGlobalBorderSettings: vi.fn(() => ({})),
-  getGlobalColors: vi.fn(() => ({})),
-  getGlobalGraphicSettings: vi.fn(() => ({})),
-  getGlobalSettings: mockGetGlobalSettings,
-  getKeyboard: vi.fn(() => ({
-    sendKeyCombination: vi.fn().mockResolvedValue(true),
-    pressKeyCombination: vi.fn().mockResolvedValue(true),
-    releaseKeyCombination: vi.fn().mockResolvedValue(true),
-  })),
-  LogLevel: { Info: 2 },
-  parseBinding: mockParseKeyBinding,
-  parseKeyBinding: mockParseKeyBinding,
-  isSimHubBinding: vi.fn(
-    (v: unknown) => v !== null && typeof v === "object" && (v as Record<string, unknown>).type === "simhub",
-  ),
-  isSimHubInitialized: vi.fn(() => false),
-  getSimHub: vi.fn(() => ({
-    startRole: vi.fn().mockResolvedValue(true),
-    stopRole: vi.fn().mockResolvedValue(true),
-  })),
-  fuelToDisplayUnits: vi.fn((liters: number, displayUnits: number | undefined) => {
-    // 0 = English (gallons), 1 = Metric (liters)
-    if (displayUnits === 1) return liters;
-
-    return liters * 0.264172;
-  }),
-  getGlobalTitleSettings: vi.fn(() => ({})),
-  resolveBorderSettings: vi.fn((_svg: unknown, _global: unknown, _overrides?: unknown, _stateColor?: string) => ({
-    enabled: false,
-    borderWidth: 7,
-    borderColor: "#00aaff",
-    glowEnabled: true,
-    glowWidth: 18,
-  })),
-  resolveGraphicSettings: vi.fn(() => ({ scale: 1 })),
-  resolveTitleSettings: vi.fn((_svg: unknown, _global: unknown, _overrides: unknown, defaultTitle?: string) => ({
-    showTitle: true,
-    showGraphics: true,
-    titleText: defaultTitle ?? "",
-    bold: true,
-    fontSize: 18,
-    position: "bottom" as const,
-    customPosition: 0,
-  })),
-  applyBindingWarning: vi.fn((content: string) => `${content}<warn/>`),
-  assembleIcon: vi.fn(
-    ({
-      graphicSvg,
-      title,
-      bindingMissing,
-    }: {
-      graphicSvg: string;
-      colors: unknown;
-      title: { titleText: string };
-      bindingMissing?: boolean;
-    }) => {
-      const warn = bindingMissing ? "<warn/>" : "";
-      const encoded = encodeURIComponent(`<svg>${graphicSvg}${title?.titleText ?? ""}${warn}</svg>`);
-
-      return `data:image/svg+xml,${encoded}`;
+    ConnectionStateAwareAction: class MockConnectionStateAwareAction {
+      logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+      sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn(), getCurrentTelemetry: vi.fn() };
+      updateConnectionState = vi.fn();
+      setKeyImage = vi.fn();
+      setRegenerateCallback = vi.fn();
+      updateKeyImage = vi.fn().mockResolvedValue(true);
+      tapBinding = mockTapBinding;
+      holdBinding = vi.fn().mockResolvedValue(undefined);
+      releaseBinding = vi.fn().mockResolvedValue(undefined);
+      setActiveBinding = vi.fn();
+      isActiveBindingMissing = vi.fn(() => false);
+      isBindingMissing = vi.fn(() => false);
+      async onWillAppear() {}
+      async onDidReceiveSettings() {}
+      async onWillDisappear() {}
     },
-  ),
-  resolveIconColors: vi.fn((_svg: string, _global: unknown, _overrides: unknown) => ({
-    graphic1Color: "#ffffff",
-  })),
-  generateTitleText: vi.fn((opts: { text: string }) => `<text>${opts.text}</text>`),
-  renderIconTemplate: vi.fn((_template: string, data: Record<string, string>) => {
-    return `<svg>${data.titleContent || ""}${data.iconContent || ""}${data.mainLabel || ""}${data.subLabel || ""}</svg>`;
-  }),
-  svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
-}));
+    formatKeyBinding: vi.fn((b: { key: string; modifiers: string[] }) => {
+      if (b.modifiers?.length) {
+        return `${b.modifiers.join("+")}+${b.key}`;
+      }
+
+      return b.key;
+    }),
+    getCommands: mockGetCommands,
+    generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
+    getGlobalBorderSettings: vi.fn(() => ({})),
+    getGlobalColors: vi.fn(() => ({})),
+    getGlobalGraphicSettings: vi.fn(() => ({})),
+    getGlobalSettings: mockGetGlobalSettings,
+    getKeyboard: vi.fn(() => ({
+      sendKeyCombination: vi.fn().mockResolvedValue(true),
+      pressKeyCombination: vi.fn().mockResolvedValue(true),
+      releaseKeyCombination: vi.fn().mockResolvedValue(true),
+    })),
+    LogLevel: { Info: 2 },
+    parseBinding: mockParseKeyBinding,
+    parseKeyBinding: mockParseKeyBinding,
+    isSimHubBinding: vi.fn(
+      (v: unknown) => v !== null && typeof v === "object" && (v as Record<string, unknown>).type === "simhub",
+    ),
+    isSimHubInitialized: vi.fn(() => false),
+    getSimHub: vi.fn(() => ({
+      startRole: vi.fn().mockResolvedValue(true),
+      stopRole: vi.fn().mockResolvedValue(true),
+    })),
+    fuelToDisplayUnits: vi.fn((liters: number, displayUnits: number | undefined) => {
+      // 0 = English (gallons), 1 = Metric (liters)
+      if (displayUnits === 1) return liters;
+
+      return liters * 0.264172;
+    }),
+    getGlobalTitleSettings: vi.fn(() => ({})),
+    resolveBorderSettings: vi.fn((_svg: unknown, _global: unknown, _overrides?: unknown, _stateColor?: string) => ({
+      enabled: false,
+      borderWidth: 7,
+      borderColor: "#00aaff",
+      glowEnabled: true,
+      glowWidth: 18,
+    })),
+    resolveGraphicSettings: vi.fn(() => ({ scale: 1 })),
+    resolveTitleSettings: vi.fn((_svg: unknown, _global: unknown, _overrides: unknown, defaultTitle?: string) => ({
+      showTitle: true,
+      showGraphics: true,
+      titleText: defaultTitle ?? "",
+      bold: true,
+      fontSize: 18,
+      position: "bottom" as const,
+      customPosition: 0,
+    })),
+    applyBindingWarning: vi.fn((content: string) => `${content}<warn/>`),
+    assembleIcon: vi.fn(
+      ({
+        graphicSvg,
+        title,
+        bindingMissing,
+      }: {
+        graphicSvg: string;
+        colors: unknown;
+        title: { titleText: string };
+        bindingMissing?: boolean;
+      }) => {
+        const warn = bindingMissing ? "<warn/>" : "";
+        const encoded = encodeURIComponent(`<svg>${graphicSvg}${title?.titleText ?? ""}${warn}</svg>`);
+
+        return `data:image/svg+xml,${encoded}`;
+      },
+    ),
+    resolveIconColors: vi.fn((_svg: string, _global: unknown, _overrides: unknown) => ({
+      graphic1Color: "#ffffff",
+    })),
+    generateTitleText: vi.fn((opts: { text: string }) => `<text>${opts.text}</text>`),
+    renderIconTemplate: vi.fn((_template: string, data: Record<string, string>) => {
+      return `<svg>${data.titleContent || ""}${data.iconContent || ""}${data.mainLabel || ""}${data.subLabel || ""}</svg>`;
+    }),
+    svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
+  };
+});
 
 /** Create a minimal fake event with the given action ID and settings. */
 function fakeEvent(actionId: string, settings: Record<string, unknown> = {}) {
@@ -467,6 +464,41 @@ describe("FuelService", () => {
 
       expect(mockTapBinding).toHaveBeenCalledWith("fuelServiceToggleAutofuel");
       expect(mockPitClearFuel).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("settings written by a 2.0 pre-release build", () => {
+    // release/2.0 builds persist unit:"auto" into shared Stream Deck profiles.
+    // Parsing must tolerate that value (mapping it to liters) instead of
+    // discarding the whole settings object — otherwise every contaminated key
+    // falls back to the default toggle-fuel-fill mode.
+    let action: FuelService;
+
+    beforeEach(() => {
+      action = new FuelService();
+      mockGetGlobalSettings.mockReturnValue({ enableFuelingOnChange: true });
+    });
+
+    it("keeps the stored mode when unit is 'auto'", async () => {
+      const ev = fakeEvent("action-1", {
+        addedWithVersion: "2.0.0-alpha.2",
+        amount: "5",
+        mode: "reduce-fuel",
+        unit: "auto",
+      });
+
+      await action.onWillAppear(ev as any);
+
+      const setKeyImage = (action as any).setKeyImage;
+      expect(setKeyImage).toHaveBeenCalled();
+      const svg = decodeURIComponent(setKeyImage.mock.calls[0][1]);
+      expect(svg).toContain("reduce-fuel-icon");
+    });
+
+    it("treats unit 'auto' as liters when sending the macro", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { amount: "5", mode: "reduce-fuel", unit: "auto" }) as any);
+
+      expect(mockSendMessage).toHaveBeenCalledWith("#fuel -5l$");
     });
   });
 
