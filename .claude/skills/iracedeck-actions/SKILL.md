@@ -9,7 +9,7 @@ description: Use when looking up Stream Deck actions, sub-actions, modes, catego
 
 Complete action definitions: `docs/reference/actions.json`
 
-This skill file documents **32 actions with 298 modes** using a detailed per-mode count (the totals in the category table below). The user-facing website (`packages/website/src/content/docs/`) uses a coarser counting convention and shows a lower total (**266 modes**) — treat the website as the source of truth for user-facing copy and this skill file as the detailed inventory. `docs/reference/actions.json` has not yet been re-synced to the per-mode counting convention; treat it as a detailed inventory of individual mode values that is occasionally out of date.
+This skill file documents **32 actions with 299 modes** using a detailed per-mode count (the totals in the category table below). The user-facing website (`packages/website/src/content/docs/`) uses a coarser counting convention and shows a lower total (**267 modes**) — treat the website as the source of truth for user-facing copy and this skill file as the detailed inventory. `docs/reference/actions.json` has not yet been re-synced to the per-mode counting convention; treat it as a detailed inventory of individual mode values that is occasionally out of date.
 
 Each action entry:
 ```json
@@ -50,13 +50,13 @@ When asked about actions or controls:
 | Display & Session | 2 | 9 | Live session data: incidents, laps, position, fuel, laps to empty, flags, track wetness |
 | Driving Controls | 6 | 35 | AI spotter, audio (incl. Race Engineer & Radar volume), black boxes, look direction, car control, pit crew (Race Engineer toggle + radar) |
 | Cockpit & Interface | 5 | 35 | Wipers, force feedback, splits & reference, telemetry, UI toggles |
-| View & Camera | 5 | 88 | FOV, replay, camera controls, broadcast tools |
+| View & Camera | 5 | 89 | FOV, replay, camera controls, broadcast tools |
 | Media | 1 | 7 | Video recording, screenshots, texture management |
 | Pit Service | 3 | 15 | Fuel, tires, compounds, tearoff, fast repair |
 | Car Setup | 7 | 73 | Brakes, chassis, aero, engine, fuel mix, hybrid/ERS, traction control — adjustment modes plus live-display "View …" sub-modes; each View sub-mode also supports dual-press (tap = configured direction, long-press = opposite) so one key both shows the value and adjusts it (#540) |
 | Communication | 2 | 35 | Chat, macros (15), whisper, toggle, reply, race admin commands, car selector |
 | Stream Deck | 1 | 1 | Switch Profile — switch to a bundled iRaceDeck profile or back to the previous one (Elgato-only, no iRacing command) |
-| **Total** | **32** | **298** | |
+| **Total** | **32** | **299** | |
 
 Mode counts reflect the PI Mode/Setting dropdown choices documented in each action page. Directional variants (Increase/Decrease) are treated as a single mode with a Direction sub-setting, matching the per-mode website format. Legacy replay actions (Replay Transport, Replay Speed, Replay Navigation) and Camera Cycle (Legacy) still exist in the plugin manifest for backward compatibility but are not counted as documented actions.
 
@@ -96,7 +96,7 @@ Mode counts reflect the PI Mode/Setting dropdown choices documented in each acti
 |--------|-------|-------------|
 | View Adjustment | 5 | fov (+/-), horizon (+/-), driver-height (+/-), recenter-vr, ui-size (+/-) |
 | Replay Control | 27 | play/pause, play-backward, stop, FF, rewind, slow-mo, slow-mo-rewind (FF/RW + slow-mo modes share a configurable Step Rate that walks the speed ladder per press), frame +/-, speed +/-, set-speed, speed-display, session next/prev, lap next/prev, incident next/prev, jump to beginning/live/my car, jump-to-fastest-lap (target: Viewed Car / Always my car; session-scoped; no clean-lap filter; no dial support), next/prev car, next/prev car number |
-| Camera Controls | 12 | change-camera, cycle (camera / sub-camera / car / driving), focus (your car / leader / incident / most exciting), switch (by position / car number), set-camera-state |
+| Camera Controls | 13 | change-camera, cycle (camera / sub-camera / car / driving), focus (your car / leader / incident / most exciting), switch (by position / car number), set-camera-state, focus-select-car (Elgato-only: opens the iRaceDeck Car Selector profile with a focus intent; car presses focus the camera and stay on the grid) |
 | Camera Editor Adjustments | 15 | latitude, longitude, altitude, yaw, pitch, fov-zoom, key-step, vanish-x, vanish-y, blimp-radius, blimp-velocity, mic-gain (all +/-), auto-set-mic-gain, f-number (+/-), focus-depth (+/-) |
 | Camera Editor Controls | 30 | Open Camera Tool, 14 toggles (key accel/10x, parabolic mic, temp edits, dampening, zoom, beyond fence, in cockpit, mouse nav, pitch/roll gyro, limit shot range, show camera, shot selection, manual focus), cycle position/aim type, acquire start/end, camera CRUD (insert/remove/copy/paste), group CRUD (copy/paste), track/car save/load |
 

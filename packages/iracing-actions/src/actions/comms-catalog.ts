@@ -496,7 +496,9 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
       "rc-message",
     ]),
     // Navigation only (#732) — stores the shared admin target and switches
-    // profile; no iRacing command and nothing to configure.
+    // profile; no iRacing command and nothing to configure. With a pending
+    // focus intent (#790, set by Camera Controls' focus-select-car mode), the
+    // press instead issues a `camera.switchNum` API call and stays on the grid.
     "select-car": keybindFixed(),
   }),
 };

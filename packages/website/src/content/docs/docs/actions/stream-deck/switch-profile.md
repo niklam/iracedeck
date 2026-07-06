@@ -37,6 +37,6 @@ Only needed when a Switch Profile key lives **inside** a bundled iRaceDeck profi
 ## Key icon
 
 - **iRaceDeck Default** shows a clean, title-less iRaceDeck logo.
-- Other profiles show their own artwork with the profile name as the key label (the `iRaceDeck` prefix is dropped — e.g. `REPLAY`, `RACE ADMIN CARS`).
+- Other profiles show their own artwork with the profile name as the key label (the `iRaceDeck` prefix is dropped — e.g. `REPLAY`, `CAR SELECTOR`).
 - **Back to previous** shows a back chevron with no label.
 - Switch Profile keys stay border-less even when plugin-wide [borders](/docs/features/border-indicator/) are enabled; a per-key border override in this key's settings still applies.

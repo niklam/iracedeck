@@ -3,7 +3,7 @@ title: Camera Controls
 description: Cycle cameras, change camera groups, and focus on specific targets with a single button or dial.
 sidebar:
   badge:
-    text: "12 modes"
+    text: "13 modes"
     variant: tip
 ---
 
@@ -164,6 +164,23 @@ Focus the camera on the car the iRacing director rates as most exciting in the m
 #### Settings
 
 - No additional settings
+
+---
+
+### Focus Car (pick from grid)
+
+Opens the [iRaceDeck Car Selector](/docs/features/stream-deck-profiles/) profile with one key per car in the session, then focuses the camera on whichever car you press. You stay on the grid so you can hop from car to car — the key of the car you're currently watching shows a highlight ring — and the grid's Back key returns you to the profile you came from. Pairs well with the Replay profile for directing camera focus during a replay or broadcast.
+
+#### Details
+
+- **Method:** iRacing API — the camera switch
+- **Dial:** No rotation support
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** No
+
+#### Setting: Selector Profile
+
+Which bundled profile to open when the key is pressed. Defaults to **iRaceDeck Car Selector**. The dropdown lists the profiles available for this device. **Elgato Stream Deck only** — this mode does nothing on Mirabox or Ulanzi Deck, which have no profile system.
 
 ---
 

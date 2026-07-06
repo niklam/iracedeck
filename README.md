@@ -26,14 +26,14 @@
 
 ## Features
 
-**32 actions** with **264+ modes** across 9 categories, with Stream Deck+ dial rotation support on most modes:
+**32 actions** with **265+ modes** across 9 categories, with Stream Deck+ dial rotation support on most modes:
 
 | Category                | Actions | Modes | Examples                                                              |
 | ----------------------- | ------- | ----- | --------------------------------------------------------------------- |
 | **Display & Session**   | 2       | 8     | Incidents, laps, position, fuel, laps to empty, flags                 |
 | **Driving Controls**    | 6       | 32    | AI spotter, audio (incl. Race Engineer & Radar volume), black box cycling, look direction, car control, pit crew |
 | **Cockpit & Interface** | 5       | 34    | Wipers, FFB, splits & reference, telemetry, UI toggles                |
-| **View & Camera**       | 5       | 89    | FOV, replay, camera controls, broadcast tools                         |
+| **View & Camera**       | 5       | 90    | FOV, replay, camera controls, broadcast tools                         |
 | **Media**               | 1       | 7     | Video recording, screenshots                                          |
 | **Pit Service**         | 3       | 15    | Fuel, tires, compounds, tearoff, fast repair                          |
 | **Car Setup**           | 7       | 44    | Brakes, chassis, aero, engine, fuel mix, hybrid/ERS, traction control |

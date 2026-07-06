@@ -20,7 +20,7 @@ On other Stream Deck models, iRaceDeck's other actions work normally — there a
 
 - **iRaceDeck Default** — the everyday racing layout: pit service (fuel, tires, quick actions), chat macros, black box selection, the Race Engineer, and folders leading to more. It is the profile a fresh [Switch Profile](/docs/actions/stream-deck/switch-profile/) key targets, and the hub the other profiles come back to.
 - **iRaceDeck Replay** — built for watching replays and broadcasts: replay playback controls and camera-focus keys across multiple pages.
-- **iRaceDeck Race Admin Cars** — the race-control car selector: pages of [Select Car](/docs/actions/communication/race-admin/#select-car-admin-target) keys that fill themselves with the cars in the current session.
+- **iRaceDeck Car Selector** — a generic pick-a-car grid with two uses: as the race-control car selector, pages of [Select Car](/docs/actions/communication/race-admin/#select-car-admin-target) keys that fill themselves with the cars in the current session; and, opened from the Replay profile by [Camera Controls'](/docs/actions/view-camera/camera-focus/) **Focus Car (pick from grid)** mode, a camera director — press a car to focus on it and stay on the grid to hop car to car.
 - **iRaceDeck Race Admin Per Car** — the admin command page the car selector switches to: [Race Admin](/docs/actions/communication/race-admin/) commands set to the **Selected Car** target, so every key acts on the car you picked.
 
 ## Installing a profile
