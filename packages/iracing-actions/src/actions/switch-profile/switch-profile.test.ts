@@ -1,6 +1,7 @@
 import { notifyProfileVisible, requestProfileSwitch, requestProfileSwitchBack } from "@iracedeck/deck-core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { _resetSelectIntents, getSelectIntent, setSelectIntent } from "../../shared/car-select-intent.js";
 import {
   availableProfilesForDevice,
   defaultProfileForDevice,
@@ -67,6 +68,7 @@ vi.mock("@iracedeck/deck-core", () => {
   };
 
   return {
+    CAR_SELECTOR_PROFILE: "iRaceDeck Car Selector",
     CommonSettings: {
       extend: () => ({
         parse: (d: Record<string, unknown>) => ({ ...d }),
@@ -384,6 +386,52 @@ describe("SwitchProfile", () => {
       await action.onWillAppear({ action: keyAction(), payload: { settings: {} } } as never);
 
       expect(notifyProfileVisible).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("car-select intent clearing (#790)", () => {
+    beforeEach(() => {
+      _resetSelectIntents();
+    });
+
+    afterEach(() => {
+      _resetSelectIntents();
+    });
+
+    it("clears the pressing device's intent on every press", async () => {
+      setSelectIntent("dev-9", { action: "focus-camera" });
+      const action = new SwitchProfile();
+
+      await action.onKeyDown({
+        action: keyAction({ deviceId: "dev-9" }),
+        payload: { settings: { profile: "iRaceDeck Replay XL" } },
+      } as never);
+
+      expect(getSelectIntent("dev-9")).toBeUndefined();
+    });
+
+    it("clears the intent when a non-selector host profile reports visible", async () => {
+      setSelectIntent("dev-9", { action: "focus-camera" });
+      const action = new SwitchProfile();
+
+      await action.onWillAppear({
+        action: keyAction({ deviceId: "dev-9" }),
+        payload: { settings: { hostProfile: "iRaceDeck Replay" } },
+      } as never);
+
+      expect(getSelectIntent("dev-9")).toBeUndefined();
+    });
+
+    it("keeps the intent when the Car Selector profile itself reports visible", async () => {
+      setSelectIntent("dev-9", { action: "focus-camera" });
+      const action = new SwitchProfile();
+
+      await action.onWillAppear({
+        action: keyAction({ deviceId: "dev-9" }),
+        payload: { settings: { hostProfile: "iRaceDeck Car Selector" } },
+      } as never);
+
+      expect(getSelectIntent("dev-9")).toEqual({ action: "focus-camera" });
     });
   });
 });
