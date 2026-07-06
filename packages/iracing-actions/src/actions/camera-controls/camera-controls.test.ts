@@ -131,6 +131,9 @@ vi.mock("@iracedeck/deck-core", () => ({
     setKeyImage = vi.fn();
     setRegenerateCallback = vi.fn();
     updateKeyImage = vi.fn();
+    async onWillAppear(_ev: unknown): Promise<void> {}
+    async onWillDisappear(_ev: unknown): Promise<void> {}
+    async onDidReceiveSettings(_ev: unknown): Promise<void> {}
   },
   getCommands: vi.fn(() => ({
     camera: {
@@ -826,12 +829,29 @@ describe("CameraControls", () => {
       } as never;
     }
 
+    function makeWillAppearEvent(settings: Record<string, unknown>) {
+      return {
+        action: {
+          id: "ctx-1",
+          deviceId: "dev-1",
+          deviceType: 2,
+          setSettings: vi.fn(async () => {}),
+          setTitle: vi.fn(async () => {}),
+        },
+        payload: { settings },
+      } as never;
+    }
+
     beforeEach(() => {
       _resetSelectIntents();
     });
 
     afterEach(() => {
       _resetSelectIntents();
+      // Restore the default implementation — a test below overrides this with
+      // mockReturnValue (not mockReturnValueOnce), which otherwise leaks into
+      // every later test since the top-level beforeEach only calls clearAllMocks.
+      vi.mocked(resolveProfileNameForDevice).mockImplementation((name: string) => `${name} XL`);
     });
 
     it("sets the focus intent and switches to the Car Selector profile on page 0", async () => {
@@ -859,10 +879,60 @@ describe("CameraControls", () => {
       expect(getSelectIntent("dev-1")).toBeUndefined();
     });
 
-    it("generates an icon for the new target", () => {
-      const svg = generateCameraControlsSvg({ target: "focus-select-car" });
+    it("uses the focus-select-car icon, not the focus-your-car fallback", () => {
+      const decoded = decodeURIComponent(generateCameraControlsSvg({ target: "focus-select-car" }));
 
-      expect(svg).toContain("data:image/svg+xml");
+      // Distinctive content from the mocked focus-select-car.svg module (see
+      // the vi.mock near the top of this file) — proves the mode is actually
+      // wired into FOCUS_ICONS/FOCUS_TITLES rather than silently falling back.
+      expect(decoded).toContain("focus-select-car");
+      expect(decoded).toContain("PICK CAR");
+      expect(decoded).toContain("FOCUS");
+      // Must NOT contain the focus-your-car fallback's distinctive content.
+      expect(decoded).not.toContain("focus-your-car");
+      expect(decoded).not.toContain("YOUR CAR");
+    });
+
+    describe("pushDeviceProfiles", () => {
+      it("pushes the device-filtered profile entries on appear when none are stored", async () => {
+        const action = new CameraControls();
+        const ev = makeWillAppearEvent(focusSelectSettings);
+
+        await action.onWillAppear(ev);
+
+        const setSettings = (ev as { action: { setSettings: ReturnType<typeof vi.fn> } }).action.setSettings;
+
+        expect(setSettings).toHaveBeenCalledWith(
+          expect.objectContaining({
+            _deviceProfiles: [{ name: "iRaceDeck Car Selector XL", label: "iRaceDeck Car Selector" }],
+          }),
+        );
+      });
+
+      it("does not push device profiles when they already match (echo-loop guard)", async () => {
+        const action = new CameraControls();
+        const ev = makeWillAppearEvent({
+          ...focusSelectSettings,
+          _deviceProfiles: [{ name: "iRaceDeck Car Selector XL", label: "iRaceDeck Car Selector" }],
+        });
+
+        await action.onWillAppear(ev);
+
+        const setSettings = (ev as { action: { setSettings: ReturnType<typeof vi.fn> } }).action.setSettings;
+
+        expect(setSettings).not.toHaveBeenCalled();
+      });
+
+      it("does not push device profiles for a different target", async () => {
+        const action = new CameraControls();
+        const ev = makeWillAppearEvent({ ...focusSelectSettings, target: "focus-your-car" });
+
+        await action.onWillAppear(ev);
+
+        const setSettings = (ev as { action: { setSettings: ReturnType<typeof vi.fn> } }).action.setSettings;
+
+        expect(setSettings).not.toHaveBeenCalled();
+      });
     });
   });
 });
