@@ -37,15 +37,23 @@ import profilesData from "../data/profiles.json" with { type: "json" };
 
 /**
  * Internal passthrough global-settings key holding the currently selected admin
- * target as a `{ carIdx, carNumber }` record. Follows the `_`-prefixed
- * convention for shared internal state (like `_warnings` / `_lastSeenVersion`)
- * — no schema field. The car number is stored alongside the CarIdx as a
- * staleness guard: CarIdx assignments are session-scoped while global settings
- * persist across sessions, so a reader must treat the selection as void when
- * the CarIdx no longer resolves to the stored number (see
- * `resolveSelectedCar`).
+ * target as a `{ carIdx, carNumber }` record (renamed from
+ * `_raceAdminSelectedCar` in #790 — the selector is now a generic pick-a-car
+ * surface). Follows the `_`-prefixed convention for shared internal state
+ * (like `_warnings` / `_lastSeenVersion`) — no schema field. The car number is
+ * stored alongside the CarIdx as a staleness guard: CarIdx assignments are
+ * session-scoped while global settings persist across sessions, so a reader
+ * must treat the selection as void when the CarIdx no longer resolves to the
+ * stored number (see `resolveSelectedCar`). Focus-intent presses never write
+ * it — only the admin (no-intent) press does.
  */
-export const SELECTED_CAR_KEY = "_raceAdminSelectedCar" as const;
+export const SELECTED_CAR_KEY = "_selectedCar" as const;
+
+/**
+ * Pre-#790 name of {@link SELECTED_CAR_KEY}. Read as a fallback (never
+ * written) so an in-flight selection survives a mid-session plugin upgrade.
+ */
+export const LEGACY_SELECTED_CAR_KEY = "_raceAdminSelectedCar" as const;
 
 /**
  * The profile a select-car press switches to when none is configured, as a

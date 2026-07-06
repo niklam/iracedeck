@@ -6,6 +6,7 @@ import {
   DEFAULT_SELECTOR_TARGET_PROFILE,
   deviceProfileEntries,
   generateSelectorSvg,
+  LEGACY_SELECTED_CAR_KEY,
   pageStartSlot,
   parseSelectedCar,
   parseSelectorPage,
@@ -69,8 +70,9 @@ describe("race-admin-selector", () => {
   });
 
   describe("SELECTED_CAR_KEY", () => {
-    it("is the passthrough global key", () => {
-      expect(SELECTED_CAR_KEY).toBe("_raceAdminSelectedCar");
+    it("uses the generic selection key with the legacy key exported for fallback", () => {
+      expect(SELECTED_CAR_KEY).toBe("_selectedCar");
+      expect(LEGACY_SELECTED_CAR_KEY).toBe("_raceAdminSelectedCar");
     });
 
     it("defaults the target profile to the bundled per-car profile", () => {

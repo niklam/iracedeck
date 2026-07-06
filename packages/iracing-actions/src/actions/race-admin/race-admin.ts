@@ -76,6 +76,7 @@ import {
   DEFAULT_SELECTOR_TARGET_PROFILE,
   deviceProfileEntries,
   generateSelectorSvg,
+  LEGACY_SELECTED_CAR_KEY,
   pageStartSlot,
   parseSelectorPage,
   resolveSelectedCar,
@@ -721,7 +722,8 @@ export class RaceAdmin extends ConnectionStateAwareAction<RaceAdminSettings> {
    * (session changed — CarIdx assignments are session-scoped).
    */
   private resolveSelectedCarNumber(): string | null {
-    const raw = (getGlobalSettings() as Record<string, unknown>)[SELECTED_CAR_KEY];
+    const settings = getGlobalSettings() as Record<string, unknown>;
+    const raw = settings[SELECTED_CAR_KEY] ?? settings[LEGACY_SELECTED_CAR_KEY];
 
     return resolveSelectedCar(raw, (carIdx) =>
       getCarNumberFromSessionInfo(this.sdkController.getSessionInfo(), carIdx),

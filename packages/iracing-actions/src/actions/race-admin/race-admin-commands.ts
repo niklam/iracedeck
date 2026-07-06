@@ -30,7 +30,7 @@ export interface RaceAdminSettings {
  * `driverTarget === "type-in-chat"` before calling `buildAdminCommand`.
  *
  * `selectedCarNumber` is the car number resolved from the shared admin target
- * (`_raceAdminSelectedCar` CarIdx → current session number); the caller resolves
+ * (`SELECTED_CAR_KEY` CarIdx → current session number); the caller resolves
  * it because this function has no session access. It's `null` when nothing is
  * selected or the selected car is no longer in the session.
  *

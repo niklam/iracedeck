@@ -1,4 +1,4 @@
-import { requestProfileSwitch, updateGlobalSettings } from "@iracedeck/deck-core";
+import { getGlobalSettings, requestProfileSwitch, updateGlobalSettings } from "@iracedeck/deck-core";
 import {
   buildTemplateContext,
   classifyCarNumberTarget,
@@ -27,7 +27,8 @@ vi.mock("@iracedeck/iracing-sdk", () => ({
 // race-admin-selector.test.ts); the pure slot-math helpers keep their real
 // logic so the lifecycle tests exercise genuine ordinal/paging behavior (#754).
 vi.mock("./race-admin-selector.js", () => ({
-  SELECTED_CAR_KEY: "_raceAdminSelectedCar",
+  SELECTED_CAR_KEY: "_selectedCar",
+  LEGACY_SELECTED_CAR_KEY: "_raceAdminSelectedCar",
   DEFAULT_SELECTOR_TARGET_PROFILE: "iRaceDeck Race Admin Per Car",
   availableProfilesForDevice: vi.fn(() => ["iRaceDeck Race Admin Cars XL", "iRaceDeck Race Admin Per Car XL"]),
   deviceProfileEntries: vi.fn(() => [
@@ -816,7 +817,7 @@ describe("RaceAdmin", () => {
       await action.onKeyDown(makeSelectorKeyDown(selectorSettings));
 
       expect(updateGlobalSettings).toHaveBeenCalledWith({
-        _raceAdminSelectedCar: { carIdx: 5, carNumber: "24" },
+        _selectedCar: { carIdx: 5, carNumber: "24" },
       });
       // The stored legacy display name resolves to the device's manifest name
       // (#753). Page 0: the target profile always opens on its first page (#754).
@@ -862,7 +863,7 @@ describe("RaceAdmin", () => {
       await action.onKeyDown(makeSelectorKeyDown(selectorSettings));
 
       expect(updateGlobalSettings).toHaveBeenCalledWith({
-        _raceAdminSelectedCar: { carIdx: 5, carNumber: "24" },
+        _selectedCar: { carIdx: 5, carNumber: "24" },
       });
       expect(requestProfileSwitch).not.toHaveBeenCalled();
     });
@@ -960,7 +961,7 @@ describe("RaceAdmin", () => {
       // The press must stay a selection — NOT fall back to the default
       // "yellow" mode and throw a real caution flag.
       expect(updateGlobalSettings).toHaveBeenCalledWith({
-        _raceAdminSelectedCar: { carIdx: 5, carNumber: "24" },
+        _selectedCar: { carIdx: 5, carNumber: "24" },
       });
       expect(mockSendMessage).not.toHaveBeenCalled();
     });
@@ -985,6 +986,33 @@ describe("RaceAdmin", () => {
       );
 
       expect(mockSendMessage).not.toHaveBeenCalled();
+    });
+
+    it("reads the legacy _raceAdminSelectedCar key when _selectedCar is absent", async () => {
+      const legacyRecord = { carIdx: 7, carNumber: "42" };
+      vi.mocked(getGlobalSettings).mockReturnValueOnce({ _raceAdminSelectedCar: legacyRecord } as never);
+
+      const action = new RaceAdmin();
+      await action.onKeyDown(
+        makeSelectorKeyDown({ ...selectorSettings, mode: "dq-driver", driverTarget: "selected-car" }),
+      );
+
+      expect(resolveSelectedCar).toHaveBeenCalledWith(legacyRecord, expect.any(Function));
+    });
+
+    it("prefers _selectedCar over the legacy key when both exist", async () => {
+      const newRecord = { carIdx: 3, carNumber: "11" };
+      vi.mocked(getGlobalSettings).mockReturnValueOnce({
+        _selectedCar: newRecord,
+        _raceAdminSelectedCar: { carIdx: 7, carNumber: "42" },
+      } as never);
+
+      const action = new RaceAdmin();
+      await action.onKeyDown(
+        makeSelectorKeyDown({ ...selectorSettings, mode: "dq-driver", driverTarget: "selected-car" }),
+      );
+
+      expect(resolveSelectedCar).toHaveBeenCalledWith(newRecord, expect.any(Function));
     });
 
     it("pushes the device profile entries for the Target Profile dropdown on appear (select-car only)", async () => {
