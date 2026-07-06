@@ -919,6 +919,30 @@
           ]
         }
       ]
+    },
+    {
+      "name": "Stream Deck",
+      "actions": [
+        {
+          "id": "com.iracedeck.sd.core.switch-profile",
+          "name": "Switch Profile",
+          "file": "switch-profile.ts",
+          "encoder": false,
+          "settingsKey": "profile",
+          "modes": [
+            {
+              "value": "(profile name)",
+              "label": "Switch to a bundled profile",
+              "description": "The dropdown is populated with the bundled iRaceDeck profiles available for this device; defaults to iRaceDeck Default. Elgato Stream Deck only."
+            },
+            {
+              "value": "__previous",
+              "label": "Back to previous",
+              "description": "Return to the profile you came from, walking back through visited iRaceDeck profiles and ending at iRaceDeck Default"
+            }
+          ]
+        }
+      ]
     }
   ]
 }

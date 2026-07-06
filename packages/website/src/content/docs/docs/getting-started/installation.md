@@ -84,6 +84,8 @@ You can also install iRaceDeck directly from within UlanziStudio via the [iRaceD
 
 ## After Installation
 
-Drag any iRaceDeck action onto your device profile. Most actions have a **mode** dropdown in the Property Inspector (the settings panel on the right) that lets you choose what the button does.
+On Elgato Stream Deck devices, the fastest way to a full iRacing layout is switching to one of the bundled [Stream Deck Profiles](/docs/features/stream-deck-profiles/) — ready-made pages of iRaceDeck actions for supported devices.
+
+Or build your own: drag any iRaceDeck action onto your device profile. Most actions have a **mode** dropdown in the Property Inspector (the settings panel on the right) that lets you choose what the button does.
 
 For actions that use keyboard shortcuts (like black box selection or camera controls), you can customize the key bindings in each action's Property Inspector to match your iRacing configuration. See [Key Bindings](/docs/features/key-bindings/) for more details.

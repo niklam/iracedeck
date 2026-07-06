@@ -26,7 +26,7 @@
 
 ## Features
 
-**31 actions** with **263+ modes** across 8 categories, with Stream Deck+ dial rotation support on most modes:
+**32 actions** with **264+ modes** across 9 categories, with Stream Deck+ dial rotation support on most modes:
 
 | Category                | Actions | Modes | Examples                                                              |
 | ----------------------- | ------- | ----- | --------------------------------------------------------------------- |
@@ -38,6 +38,7 @@
 | **Pit Service**         | 3       | 15    | Fuel, tires, compounds, tearoff, fast repair                          |
 | **Car Setup**           | 7       | 44    | Brakes, chassis, aero, engine, fuel mix, hybrid/ERS, traction control |
 | **Communication**       | 2       | 34    | Chat, macros, whisper, reply, race admin commands                     |
+| **Stream Deck**         | 1       | 1     | Switch to bundled iRaceDeck profiles (Elgato only)                    |
 
 **Key highlights:**
 
