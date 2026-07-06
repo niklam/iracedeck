@@ -688,7 +688,9 @@ export class RaceAdmin extends ConnectionStateAwareAction<RaceAdminSettings> {
   /**
    * select-car press: resolve the car occupying this key's slot, store its
    * CarIdx as the shared admin target, and switch to the per-car commands
-   * profile. An empty slot is a no-op.
+   * profile. An empty slot is a no-op. With a pending focus intent for the
+   * key's device the press instead focuses the camera on the car and stays on
+   * the grid (see executeFocusSelect, #790).
    */
   private async executeSelect(ev: IDeckKeyDownEvent<RaceAdminSettings>, settings: RaceAdminSettings): Promise<void> {
     const car = resolveSlotCar(this.sdkController.getSessionInfo(), this.selectorSlot(ev.action.id));
