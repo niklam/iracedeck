@@ -62,11 +62,13 @@ import yellowIconSvg from "@iracedeck/icons/race-admin/yellow.svg";
 import {
   classifyCarNumberTarget,
   getCarNumberFromSessionInfo,
+  getCarNumberRawFromSessionInfo,
   getPlayerCarNumberFromSessionInfo,
   type TelemetryData,
 } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
+import { getSelectIntent } from "../../shared/car-select-intent.js";
 import { IconUpdateThrottle } from "../../shared/icon-update-throttle.js";
 import { migrateUseViewedCarToDriverTarget } from "./migrate-use-viewed-car.js";
 import { buildAdminCommand, buildAdminCommandPrefix, resolveDriverTarget } from "./race-admin-commands.js";
@@ -85,6 +87,7 @@ import {
   type SelectorDisplayCar,
   type SelectorKeyPosition,
   selectorOrdinal,
+  type SlotCar,
 } from "./race-admin-selector.js";
 
 /**
@@ -684,6 +687,17 @@ export class RaceAdmin extends ConnectionStateAwareAction<RaceAdminSettings> {
       return;
     }
 
+    // A pending focus intent (set by the entry key that opened the selector,
+    // #790) redefines the press: focus the camera on this car and stay on the
+    // grid — no selection write, no profile switch. The admin flow below is
+    // the no-intent default, so plain navigation into the selector behaves
+    // exactly as before.
+    if (getSelectIntent(ev.action.deviceId)?.action === "focus-camera") {
+      await this.executeFocusSelect(ev, car);
+
+      return;
+    }
+
     // A cleared PI textfield persists "" (bypassing the Zod default) — fall
     // back to the bundled per-car profile, mirroring SwitchProfile's guard.
     // The stored name is then resolved to this device's manifest name (#753):
@@ -714,6 +728,36 @@ export class RaceAdmin extends ConnectionStateAwareAction<RaceAdminSettings> {
     // Page 0 so re-entering the selector's own profile always starts the
     // page-count learning from a known page (#754).
     await requestProfileSwitch(ev.action.deviceId, targetProfile, 0);
+  }
+
+  /**
+   * Focus the replay/live camera on a picked car (#790): resolve the car's raw
+   * number and switch the camera to it, keeping the current camera group
+   * (group 0 / camera 0 — the Replay Control driver-walk precedent). Failures
+   * alert on the key and change nothing.
+   */
+  private async executeFocusSelect(ev: IDeckKeyDownEvent<RaceAdminSettings>, car: SlotCar): Promise<void> {
+    const sessionInfo = this.sdkController.getSessionInfo();
+    const carNumberRaw = sessionInfo ? getCarNumberRawFromSessionInfo(sessionInfo, car.carIdx) : null;
+
+    if (carNumberRaw === null) {
+      this.logger.warn("Focus select: car number not found in session info");
+      await ev.action.showAlert?.();
+
+      return;
+    }
+
+    const success = getCommands().camera.switchNum(carNumberRaw, 0, 0);
+
+    if (!success) {
+      this.logger.warn("Focus select: camera switch failed");
+      await ev.action.showAlert?.();
+
+      return;
+    }
+
+    this.logger.info("Camera focused on selected car");
+    this.logger.debug(`Focused CarIdx ${car.carIdx} (#${car.carNumber})`);
   }
 
   /**

@@ -2,11 +2,13 @@ import { getGlobalSettings, requestProfileSwitch, updateGlobalSettings } from "@
 import {
   buildTemplateContext,
   classifyCarNumberTarget,
+  getCarNumberRawFromSessionInfo,
   getPlayerCarNumberFromSessionInfo,
   resolveTemplate,
 } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { _resetSelectIntents, setSelectIntent } from "../../shared/car-select-intent.js";
 import { buildAdminCommand, buildAdminCommandPrefix, resolveDriverTarget } from "./race-admin-commands.js";
 import { getModesByOptgroup, RACE_ADMIN_MODE_META, RACE_ADMIN_MODES } from "./race-admin-modes.js";
 import { availableProfilesForDevice, resolveSelectedCar, resolveSlotCar } from "./race-admin-selector.js";
@@ -16,6 +18,7 @@ import { generateRaceAdminSvg, RaceAdmin } from "./race-admin.js";
 // Mock iracing-sdk
 vi.mock("@iracedeck/iracing-sdk", () => ({
   getCarNumberFromSessionInfo: vi.fn(),
+  getCarNumberRawFromSessionInfo: vi.fn(() => 24),
   getAllCarNumbers: vi.fn(() => []),
   classifyCarNumberTarget: vi.fn(() => "user"),
   getPlayerCarNumberFromSessionInfo: vi.fn(() => null),
@@ -149,6 +152,7 @@ const mockSendMessage = vi.fn(async () => true);
 const mockBeginChat = vi.fn(() => true);
 const mockSetClipboardText = vi.fn(() => true);
 const mockSendKeyCombination = vi.fn(async () => true);
+const mockCameraSwitchNum = vi.fn(() => true);
 // Small default open→paste delay so the real-timer tests below resolve quickly.
 // vi.hoisted so the object-returning factory is initialized before the hoisted
 // vi.mock("@iracedeck/deck-core") factory references it.
@@ -203,7 +207,7 @@ vi.mock("@iracedeck/deck-core", () => ({
   },
   getCommands: vi.fn(() => ({
     chat: { sendMessage: mockSendMessage, beginChat: mockBeginChat },
-    camera: { switchNum: vi.fn(() => true) },
+    camera: { switchNum: mockCameraSwitchNum },
   })),
   getClipboard: vi.fn(() => ({ setClipboardText: mockSetClipboardText })),
   getDeviceSpec: vi.fn(() => ({ grid: [8, 4] as const })),
@@ -1066,6 +1070,77 @@ describe("RaceAdmin", () => {
       await action.onWillAppear(ev);
 
       expect((ev as { action: { setSettings: ReturnType<typeof vi.fn> } }).action.setSettings).not.toHaveBeenCalled();
+    });
+
+    describe("focus-camera intent (#790)", () => {
+      beforeEach(() => {
+        _resetSelectIntents();
+      });
+
+      // Mirrors makeSelectorKeyDown (same ctx id / device / grid position) but
+      // also wires a showAlert spy so the failure-path tests can assert on it.
+      function makeFocusKeyDown(showAlert: ReturnType<typeof vi.fn>) {
+        return {
+          action: { id: "ctx-sel", deviceId: "dev-1", deviceType: 2, setSettings: vi.fn(async () => {}), showAlert },
+          payload: { settings: selectorSettings, coordinates: { column: 1, row: 0 } },
+        } as never;
+      }
+
+      function makeFocusAction(): RaceAdmin {
+        const action = new RaceAdmin();
+        // A focus-camera dispatch only proceeds past the sessionInfo guard when
+        // session info is present — the default mock's getSessionInfo() is null.
+        action.sdkController.getSessionInfo = vi.fn(() => ({}) as never);
+
+        return action;
+      }
+
+      it("focuses the camera on the slot car and stays on the grid", async () => {
+        setSelectIntent("dev-1", { action: "focus-camera" });
+        const action = makeFocusAction();
+        const showAlert = vi.fn(async () => {});
+
+        await action.onKeyDown(makeFocusKeyDown(showAlert));
+
+        expect(mockCameraSwitchNum).toHaveBeenCalledWith(24, 0, 0);
+        expect(updateGlobalSettings).not.toHaveBeenCalled();
+        expect(requestProfileSwitch).not.toHaveBeenCalled();
+      });
+
+      it("without an intent the press stores the selection and switches (legacy path)", async () => {
+        const action = makeFocusAction();
+        const showAlert = vi.fn(async () => {});
+
+        await action.onKeyDown(makeFocusKeyDown(showAlert));
+
+        expect(updateGlobalSettings).toHaveBeenCalledWith({ _selectedCar: { carIdx: 5, carNumber: "24" } });
+        expect(requestProfileSwitch).toHaveBeenCalled();
+        expect(mockCameraSwitchNum).not.toHaveBeenCalled();
+      });
+
+      it("alerts and does nothing when the camera switch fails", async () => {
+        setSelectIntent("dev-1", { action: "focus-camera" });
+        mockCameraSwitchNum.mockReturnValueOnce(false);
+        const action = makeFocusAction();
+        const showAlert = vi.fn(async () => {});
+
+        await action.onKeyDown(makeFocusKeyDown(showAlert));
+
+        expect(showAlert).toHaveBeenCalled();
+        expect(updateGlobalSettings).not.toHaveBeenCalled();
+      });
+
+      it("alerts when the car number cannot be resolved to a raw number", async () => {
+        setSelectIntent("dev-1", { action: "focus-camera" });
+        vi.mocked(getCarNumberRawFromSessionInfo).mockReturnValueOnce(null);
+        const action = makeFocusAction();
+        const showAlert = vi.fn(async () => {});
+
+        await action.onKeyDown(makeFocusKeyDown(showAlert));
+
+        expect(mockCameraSwitchNum).not.toHaveBeenCalled();
+        expect(showAlert).toHaveBeenCalled();
+      });
     });
   });
 
