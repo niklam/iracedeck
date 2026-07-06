@@ -3,7 +3,7 @@ title: Actions Overview
 description: All iRaceDeck actions organized by category
 ---
 
-iRaceDeck provides 31 actions with 265 modes for iRacing, organized into 9 categories.
+iRaceDeck provides 32 actions with 266 modes for iRacing, organized into 10 categories.
 
 ## Categories
 
@@ -18,6 +18,7 @@ iRaceDeck provides 31 actions with 265 modes for iRacing, organized into 9 categ
 | [Pit Service](/docs/actions/pit-service/pit-quick-actions/) | 3 | 15 | Fuel, tires, compounds, tearoff, fast repair |
 | [Car Setup](/docs/actions/car-setup/setup-aero/) | 7 | 44 | Brakes, chassis, aero, engine, fuel mix, hybrid/ERS, traction |
 | [Communication](/docs/actions/communication/chat/) | 2 | 35 | Chat, macros, whisper, reply, race admin commands and car selector |
+| [Stream Deck](/docs/actions/stream-deck/switch-profile/) | 1 | 1 | Switch between bundled iRaceDeck profiles (Elgato Stream Deck only) |
 
 ## How Actions Work
 
