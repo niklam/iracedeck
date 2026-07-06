@@ -26,7 +26,7 @@
 
 ### Selection intent — in-memory, per device
 
-A new shared module `packages/iracing-actions/src/actions/car-select-intent.ts` holds a `Map<deviceId, SelectIntent>` with `SelectIntent = { action: "focus-camera" }` (extensible record). All actions run in one plugin process, so no persistence is needed.
+A new shared module `packages/iracing-actions/src/shared/car-select-intent.ts` (the package's existing cross-action shared-code home) holds a `Map<deviceId, SelectIntent>` with `SelectIntent = { action: "focus-camera" }` (extensible record). All actions run in one plugin process, so no persistence is needed.
 
 **Deliberately in-memory, not a `_`-prefixed global setting:** a restart can never resurrect a stale intent, nothing transient lands in persisted settings, and multi-device setups stay independent.
 
@@ -57,15 +57,17 @@ So a stored `iRaceDeck Race Admin Cars XL` (or the bare legacy display name) res
 ### Bundles to re-author/re-export in the Stream Deck app (manual)
 
 1. **Car Selector** (SD, XL): internal name renamed; host-profile markers updated to the new name; export as `iRaceDeck Car Selector SD/XL.streamDeckProfile`.
-2. **Default** (SD, XL, Plus XL): Switch Profile key retargeted to the new name.
-3. **Replay** (SD, XL, Plus XL): add the new Camera Controls focus-entry key.
+2. **Default** (SD, XL): Switch Profile key retargeted to the new name.
+3. **Replay** (SD, XL): add the new Camera Controls focus-entry key.
+
+(SD and XL only — the manifest currently registers no Plus XL bundles.)
 4. Update `manifest.json` `Profiles[]` to the new file names; run `pnpm generate:action-profiles`.
 
 ## Code changes by package
 
 - **`deck-core/device-profiles.ts`** — legacy alias map + resolution, tests in `device-profiles.test.ts`.
 - **`iracing-actions/race-admin/`** — key rename with read fallback; press dispatch: focus intent → resolve slot car → `camera.switchNum`, no selection write, no profile switch; no intent → legacy path. `generateSelectorSvg` gains a `highlighted` input (border highlight); the action compares each slot car's `carIdx` to telemetry `CamCarIdx` on its existing tick-driven re-render while a focus intent is active.
-- **`iracing-actions/camera-controls/`** — new mode `focus-select-car` ("Focus Car — pick from grid"): PI `ird-profile-select` target (default display name `iRaceDeck Car Selector`), Elgato-gated via the `profiles` platform feature flag (same as select-car); press sets the intent and calls `requestProfileSwitch(deviceId, <resolved name>, 0)`; mode icon; comms-catalog entry (`api`) + `pnpm generate:action-comms`.
+- **`iracing-actions/camera-controls/`** — new mode `focus-select-car` ("Focus Car (pick from grid)"): PI `ird-profile-select` target (default display name `iRaceDeck Car Selector`), Elgato-gated via the `profiles` platform feature flag (same as select-car); press sets the intent and calls `requestProfileSwitch(deviceId, <resolved name>, 0)`; mode icon. **No comms-catalog entry** — the camera-focus action is intentionally absent from `comms-catalog.ts` (it issues no keybind/chat commands and carries no `ird-binding-status` line), so the new mode stays out too.
 - **`iracing-actions/switch-profile/`** — clear the pressing device's intent on every press; `PROFILE_ICONS` adds `"iRaceDeck Car Selector"` (icon file renamed `race-admin-cars.svg` → `car-selector.svg`) and keeps the legacy display name mapped to the same icon for old keys.
 - **New** `iracing-actions/src/actions/car-select-intent.ts` — set/get/clear per device.
 
