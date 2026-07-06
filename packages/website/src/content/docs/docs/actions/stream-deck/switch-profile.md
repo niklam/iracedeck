@@ -22,7 +22,7 @@ This action sends no iRacing command — it's pure Stream Deck navigation.
 
 - With a profile selected, the key switches your Stream Deck to it, always landing on the profile's first page. If the profile isn't installed yet, the Stream Deck app asks to install it first.
 - With **Back to previous** selected, the key returns to the profile you came from — restoring the page you left — walking back through the iRaceDeck profiles you visited and ending at **iRaceDeck Default** when there's nowhere further back.
-- A key with no profile selected behaves as **iRaceDeck Default**, so a Switch Profile key is never a dead key.
+- On devices with bundled profiles, a key with no profile selected behaves as **iRaceDeck Default**, so a Switch Profile key is never a dead key.
 
 ## Settings
 

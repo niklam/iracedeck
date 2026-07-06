@@ -137,7 +137,7 @@ Mode counts reflect the PI Mode/Setting dropdown choices documented in each acti
 
 | Action | Modes | Mode values |
 |--------|-------|-------------|
-| Switch Profile | 1 | single behavior, no Mode dropdown (#736) — the Profile setting picks a bundled profile to switch to (default iRaceDeck Default) or "Back to previous" (walks the per-device history of visited iRaceDeck profiles, ending at the device's Default); a "Placed in profile" marker setting (#762) keeps the back-history correct for keys inside bundled profiles. Elgato-only, keypad-only, no iRacing command; forward switches land on page 1. |
+| Switch Profile | 1 | single behavior, no Mode dropdown (#736) — the Profile setting picks a bundled profile to switch to (default iRaceDeck Default) or "Back to previous" (walks the per-device history of visited iRaceDeck profiles, ending at the device's Default); a "Placed in profile" marker setting (#762) keeps the back-history correct for keys inside bundled profiles. Elgato-only, keypad-only, no iRacing command; forward switches land on the first page (page index 0). |
 
 ## Control Patterns
 
