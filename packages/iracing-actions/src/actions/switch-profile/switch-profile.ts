@@ -20,10 +20,10 @@ import {
   resolveProfileNameForDevice,
   resolveTitleSettings,
 } from "@iracedeck/deck-core";
+import carSelectorIconSvg from "@iracedeck/icons/switch-profile/car-selector.svg";
 import chatIconSvg from "@iracedeck/icons/switch-profile/chat.svg";
 import defaultIconSvg from "@iracedeck/icons/switch-profile/default.svg";
 import previousIconSvg from "@iracedeck/icons/switch-profile/previous.svg";
-import raceAdminCarsIconSvg from "@iracedeck/icons/switch-profile/race-admin-cars.svg";
 import raceAdminPerCarIconSvg from "@iracedeck/icons/switch-profile/race-admin-per-car.svg";
 import replayIconSvg from "@iracedeck/icons/switch-profile/replay.svg";
 import z from "zod";
@@ -48,7 +48,9 @@ export const PREVIOUS_PROFILE_VALUE = "__previous" as const;
 const PROFILE_ICONS: Record<string, string> = {
   "iRaceDeck Replay": replayIconSvg,
   "iRaceDeck Chat": chatIconSvg,
-  "iRaceDeck Race Admin Cars": raceAdminCarsIconSvg,
+  "iRaceDeck Car Selector": carSelectorIconSvg,
+  // Legacy display name (pre-#790 rename) — old persisted keys keep their icon.
+  "iRaceDeck Race Admin Cars": carSelectorIconSvg,
   "iRaceDeck Race Admin Per Car": raceAdminPerCarIconSvg,
   [PREVIOUS_PROFILE_VALUE]: previousIconSvg,
 };
@@ -92,7 +94,8 @@ type SwitchProfileSettings = z.infer<typeof SwitchProfileSettings>;
  * renders as one line.
  */
 const PROFILE_TITLES: Record<string, string> = {
-  "iRaceDeck Race Admin Cars": "RACE ADMIN\nCARS",
+  "iRaceDeck Car Selector": "CAR\nSELECTOR",
+  "iRaceDeck Race Admin Cars": "CAR\nSELECTOR",
   "iRaceDeck Race Admin Per Car": "RACE ADMIN\nPER CAR",
 };
 

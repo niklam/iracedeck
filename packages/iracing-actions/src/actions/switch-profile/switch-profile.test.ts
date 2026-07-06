@@ -14,6 +14,7 @@ import {
 vi.mock("@iracedeck/icons/switch-profile/replay.svg", () => ({ default: "<svg>REPLAY</svg>" }));
 vi.mock("@iracedeck/icons/switch-profile/chat.svg", () => ({ default: "<svg>CHAT</svg>" }));
 vi.mock("@iracedeck/icons/switch-profile/default.svg", () => ({ default: "<svg>DEFAULT</svg>" }));
+vi.mock("@iracedeck/icons/switch-profile/car-selector.svg", () => ({ default: "<svg>CAR SELECTOR</svg>" }));
 
 vi.mock("../data/profiles.json", () => ({
   default: [
@@ -136,11 +137,16 @@ describe("SwitchProfile", () => {
       expect(profileTitle("iRaceDeck Replay Plus XL")).toBe("REPLAY");
     });
 
-    it("wraps the long Race Admin profile titles onto two lines, suffixed or not", () => {
-      expect(profileTitle("iRaceDeck Race Admin Cars")).toBe("RACE ADMIN\nCARS");
+    it("wraps the long Car Selector / Race Admin Per Car profile titles onto two lines, suffixed or not", () => {
+      expect(profileTitle("iRaceDeck Car Selector")).toBe("CAR\nSELECTOR");
       expect(profileTitle("iRaceDeck Race Admin Per Car")).toBe("RACE ADMIN\nPER CAR");
-      expect(profileTitle("iRaceDeck Race Admin Cars XL")).toBe("RACE ADMIN\nCARS");
+      expect(profileTitle("iRaceDeck Car Selector XL")).toBe("CAR\nSELECTOR");
       expect(profileTitle("iRaceDeck Race Admin Per Car Plus XL")).toBe("RACE ADMIN\nPER CAR");
+    });
+
+    it("renders the same two-line title for the legacy Race Admin Cars name (pre-#790 rename)", () => {
+      expect(profileTitle("iRaceDeck Race Admin Cars")).toBe("CAR\nSELECTOR");
+      expect(profileTitle("iRaceDeck Race Admin Cars XL")).toBe("CAR\nSELECTOR");
     });
 
     it("shows no title for the default profile — the logo speaks for itself (#755)", () => {
@@ -194,6 +200,18 @@ describe("SwitchProfile", () => {
 
     it("uses the chat icon for a Chat profile", () => {
       expect(generateSwitchProfileSvg(settings("iRaceDeck Chat"))).toBe("assembled:<svg>CHAT</svg>");
+    });
+
+    it("uses the car-selector icon for the Car Selector profile, with or without a device suffix (#790)", () => {
+      expect(generateSwitchProfileSvg(settings("iRaceDeck Car Selector"))).toBe("assembled:<svg>CAR SELECTOR</svg>");
+      expect(generateSwitchProfileSvg(settings("iRaceDeck Car Selector XL"))).toBe("assembled:<svg>CAR SELECTOR</svg>");
+    });
+
+    it("renders the car-selector artwork for the legacy Race Admin Cars name", () => {
+      expect(generateSwitchProfileSvg(settings("iRaceDeck Race Admin Cars"))).toBe("assembled:<svg>CAR SELECTOR</svg>");
+      expect(generateSwitchProfileSvg(settings("iRaceDeck Race Admin Cars XL"))).toBe(
+        "assembled:<svg>CAR SELECTOR</svg>",
+      );
     });
 
     it("falls back to the iRaceDeck icon for Default, unknown, or no selection", () => {

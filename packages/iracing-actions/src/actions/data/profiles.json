@@ -10,9 +10,9 @@
     "displayName": "iRaceDeck Replay"
   },
   {
-    "name": "iRaceDeck Race Admin Cars XL",
+    "name": "iRaceDeck Car Selector XL",
     "deviceType": 2,
-    "displayName": "iRaceDeck Race Admin Cars"
+    "displayName": "iRaceDeck Car Selector"
   },
   {
     "name": "iRaceDeck Race Admin Per Car XL",
@@ -30,9 +30,9 @@
     "displayName": "iRaceDeck Replay"
   },
   {
-    "name": "iRaceDeck Race Admin Cars SD",
+    "name": "iRaceDeck Car Selector SD",
     "deviceType": 0,
-    "displayName": "iRaceDeck Race Admin Cars"
+    "displayName": "iRaceDeck Car Selector"
   },
   {
     "name": "iRaceDeck Race Admin Per Car SD",
