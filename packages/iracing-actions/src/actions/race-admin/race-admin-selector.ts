@@ -254,11 +254,24 @@ function carDisplayContent(car: SelectorDisplayCar, textColor: string): string {
  *
  * @internal Exported for testing
  */
-export function generateSelectorSvg(car: SelectorDisplayCar | null, settings: SelectorRenderSettings): string {
+export function generateSelectorSvg(
+  car: SelectorDisplayCar | null,
+  settings: SelectorRenderSettings,
+  highlighted = false,
+): string {
   const colors = resolveIconColors(selectorTemplate, getGlobalColors(), settings.colorOverrides);
   const textColor = colors.textColor;
 
-  const numberContent = car ? carDisplayContent(car, textColor) : "";
+  // Focused-car highlight (#790): while a focus intent is active, the key
+  // whose car the camera is on renders a green ring — the grid doubles as a
+  // "who am I watching" display. Drawn inside the number layer so themes and
+  // the border pipeline are unaffected. Safe SVG Tiny 1.2 features only.
+  const highlightContent =
+    highlighted && car
+      ? `<rect x="6" y="6" width="132" height="132" rx="20" fill="none" stroke="#2ecc71" stroke-width="8"/>\n    `
+      : "";
+
+  const numberContent = highlightContent + (car ? carDisplayContent(car, textColor) : "");
 
   const resolvedTitle = resolveTitleSettings(selectorTemplate, getGlobalTitleSettings(), settings.titleOverrides, "");
   const titleContent =

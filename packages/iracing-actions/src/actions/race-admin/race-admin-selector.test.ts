@@ -273,5 +273,21 @@ describe("race-admin-selector", () => {
       const decoded = decodeURIComponent(generateSelectorSvg(null, {}));
       expect(decoded).not.toMatch(/<text/);
     });
+
+    it("renders a highlight ring when highlighted", () => {
+      const svg = decodeURIComponent(
+        generateSelectorSvg({ carNumber: "24", lastName: "Doe" }, {}, true).replace("data:image/svg+xml,", ""),
+      );
+
+      expect(svg).toContain('stroke="#2ecc71"');
+    });
+
+    it("renders no highlight ring by default", () => {
+      const svg = decodeURIComponent(
+        generateSelectorSvg({ carNumber: "24", lastName: "Doe" }, {}).replace("data:image/svg+xml,", ""),
+      );
+
+      expect(svg).not.toContain('stroke="#2ecc71"');
+    });
   });
 });

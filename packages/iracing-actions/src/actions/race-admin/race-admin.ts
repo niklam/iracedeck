@@ -201,11 +201,12 @@ export function generateRaceAdminSvg(
   mode: RaceAdminMode,
   settings: RaceAdminSettings,
   resolvedCar: SelectorDisplayCar | null = null,
+  highlighted = false,
 ): string {
   // The select-car mode renders a dynamic selector icon; the resolved car is
   // the one occupying this button's slot (null → blank black key).
   if (mode === "select-car") {
-    return generateSelectorSvg(resolvedCar, settings);
+    return generateSelectorSvg(resolvedCar, settings, highlighted);
   }
 
   const meta = RACE_ADMIN_MODE_META[mode];
@@ -243,6 +244,8 @@ export const RACE_ADMIN_UUID = "com.iracedeck.sd.core.race-admin" as const;
 export class RaceAdmin extends ConnectionStateAwareAction<RaceAdminSettings> {
   private activeContexts = new Map<string, RaceAdminSettings>();
   private viewedCarNumbers = new Map<string, string | null>();
+  /** CamCarIdx from the latest tick per context (−1 = unknown), for the focus highlight (#790). */
+  private camCarIdxByContext = new Map<string, number>();
   private typeInChatInFlight = new Set<string>();
   /** Per-context grid position, device, and selector page for the select-car slot math (#754). */
   private selectorContexts = new Map<
@@ -267,9 +270,9 @@ export class RaceAdmin extends ConnectionStateAwareAction<RaceAdminSettings> {
    */
   private lastDynamicCar = new Map<string, string | null>();
 
-  /** Stable dedupe key for a resolved display car. */
-  private static displayCarKey(car: SelectorDisplayCar | null): string | null {
-    return car ? `${car.carNumber} ${car.lastName ?? ""}` : null;
+  /** Stable dedupe key for a resolved display car + highlight state. */
+  private static displayCarKey(car: SelectorDisplayCar | null, highlighted = false): string | null {
+    return car ? `${car.carNumber} ${car.lastName ?? ""}|${highlighted ? 1 : 0}` : null;
   }
   /** Caps live icon re-renders (select-car / selected-car) at ~10 Hz. */
   private readonly imageThrottle = new IconUpdateThrottle();
@@ -329,6 +332,7 @@ export class RaceAdmin extends ConnectionStateAwareAction<RaceAdminSettings> {
     this.sdkController.unsubscribe(ev.action.id);
     this.activeContexts.delete(ev.action.id);
     this.viewedCarNumbers.delete(ev.action.id);
+    this.camCarIdxByContext.delete(ev.action.id);
     this.typeInChatInFlight.delete(ev.action.id);
     const ctx = this.selectorContexts.get(ev.action.id);
     this.selectorContexts.delete(ev.action.id);
@@ -526,12 +530,20 @@ export class RaceAdmin extends ConnectionStateAwareAction<RaceAdminSettings> {
     // telemetry tick re-renders instead of matching a stale cache entry.
     this.lastDynamicCar.delete(ev.action.id);
     const car = this.resolveIconCar(ev.action.id, settings);
-    const svg = generateRaceAdminSvg(settings.mode, settings, car);
+    const highlighted = this.selectorHighlighted(ev.action.id, settings, car);
+    const svg = generateRaceAdminSvg(settings.mode, settings, car, highlighted);
     await this.setKeyImage(ev, svg);
-    this.lastDynamicCar.set(ev.action.id, RaceAdmin.displayCarKey(car));
-    this.setRegenerateCallback(ev.action.id, () =>
-      generateRaceAdminSvg(settings.mode, settings, this.resolveIconCar(ev.action.id, settings)),
-    );
+    this.lastDynamicCar.set(ev.action.id, RaceAdmin.displayCarKey(car, highlighted));
+    this.setRegenerateCallback(ev.action.id, () => {
+      const currentCar = this.resolveIconCar(ev.action.id, settings);
+
+      return generateRaceAdminSvg(
+        settings.mode,
+        settings,
+        currentCar,
+        this.selectorHighlighted(ev.action.id, settings, currentCar),
+      );
+    });
   }
 
   // ── Car Selector (issue #732) ───────────────────────────────
@@ -794,6 +806,28 @@ export class RaceAdmin extends ConnectionStateAwareAction<RaceAdminSettings> {
   }
 
   /**
+   * Whether this select-car key should render the focused-car highlight
+   * (#790): a focus intent is pending for the key's device AND the camera is
+   * currently on this key's car. Always false for non-selector modes, empty
+   * slots, and cars without a known CarIdx.
+   */
+  private selectorHighlighted(contextId: string, settings: RaceAdminSettings, car: SelectorDisplayCar | null): boolean {
+    if (settings.mode !== "select-car" || !car) return false;
+
+    const carIdx = (car as Partial<SlotCar>).carIdx;
+
+    if (typeof carIdx !== "number") return false;
+
+    const deviceId = this.selectorContexts.get(contextId)?.deviceId;
+
+    if (getSelectIntent(deviceId)?.action !== "focus-camera") return false;
+
+    const camCarIdx = this.camCarIdxByContext.get(contextId) ?? -1;
+
+    return camCarIdx >= 0 && camCarIdx === carIdx;
+  }
+
+  /**
    * Re-render the icon for dynamic modes (select-car and the selected-car
    * target) as the live field changes. No-op for static modes; throttled, and
    * deduped on the RESOLVED car number before any SVG assembly — a selector
@@ -817,11 +851,12 @@ export class RaceAdmin extends ConnectionStateAwareAction<RaceAdminSettings> {
       if (!current) return;
 
       const car = this.resolveIconCar(contextId, current);
-      const key = RaceAdmin.displayCarKey(car);
+      const highlighted = this.selectorHighlighted(contextId, current, car);
+      const key = RaceAdmin.displayCarKey(car, highlighted);
 
       if (this.lastDynamicCar.has(contextId) && this.lastDynamicCar.get(contextId) === key) return;
 
-      const svg = generateRaceAdminSvg(current.mode, current, car);
+      const svg = generateRaceAdminSvg(current.mode, current, car, highlighted);
       await this.updateKeyImage(contextId, svg);
       // Record only after the image update succeeded — a rejection above
       // leaves the cache unset so the next tick retries.
@@ -833,6 +868,7 @@ export class RaceAdmin extends ConnectionStateAwareAction<RaceAdminSettings> {
 
   private updateViewedCar(contextId: string, telemetry: TelemetryData | null): void {
     const camCarIdx = (telemetry?.CamCarIdx as number) ?? -1;
+    this.camCarIdxByContext.set(contextId, camCarIdx);
 
     if (camCarIdx < 0) {
       this.viewedCarNumbers.set(contextId, null);

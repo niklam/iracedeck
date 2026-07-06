@@ -11,7 +11,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { _resetSelectIntents, setSelectIntent } from "../../shared/car-select-intent.js";
 import { buildAdminCommand, buildAdminCommandPrefix, resolveDriverTarget } from "./race-admin-commands.js";
 import { getModesByOptgroup, RACE_ADMIN_MODE_META, RACE_ADMIN_MODES } from "./race-admin-modes.js";
-import { availableProfilesForDevice, resolveSelectedCar, resolveSlotCar } from "./race-admin-selector.js";
+import {
+  availableProfilesForDevice,
+  generateSelectorSvg,
+  resolveSelectedCar,
+  resolveSlotCar,
+} from "./race-admin-selector.js";
 import { generateRaceAdminSvg, RaceAdmin } from "./race-admin.js";
 
 // Mock SDK
@@ -60,7 +65,10 @@ vi.mock("./race-admin-selector.js", () => ({
   },
   resolveSlotCar: vi.fn(() => ({ carIdx: 5, carNumber: "24", lastName: "Doe" })),
   resolveSelectedCar: vi.fn(() => null),
-  generateSelectorSvg: vi.fn((car: { carNumber: string } | null) => `data:selector,${car?.carNumber ?? ""}`),
+  generateSelectorSvg: vi.fn(
+    (car: { carNumber: string } | null, _settings: unknown, highlighted?: boolean) =>
+      `data:selector,${car?.carNumber ?? ""},${highlighted ? "H" : ""}`,
+  ),
 }));
 
 // Mock all icon imports
@@ -580,7 +588,7 @@ describe("RaceAdmin", () => {
     it("should render the dynamic selector icon for select-car mode", () => {
       const settings = { ...defaultSettings, mode: "select-car" as const };
       expect(generateRaceAdminSvg("select-car", settings, { carNumber: "24", lastName: "Doe" })).toBe(
-        "data:selector,24",
+        "data:selector,24,",
       );
     });
 
@@ -1077,6 +1085,10 @@ describe("RaceAdmin", () => {
         _resetSelectIntents();
       });
 
+      afterEach(() => {
+        _resetSelectIntents();
+      });
+
       // Mirrors makeSelectorKeyDown (same ctx id / device / grid position) but
       // also wires a showAlert spy so the failure-path tests can assert on it.
       function makeFocusKeyDown(showAlert: ReturnType<typeof vi.fn>) {
@@ -1140,6 +1152,22 @@ describe("RaceAdmin", () => {
 
         expect(mockCameraSwitchNum).not.toHaveBeenCalled();
         expect(showAlert).toHaveBeenCalled();
+      });
+
+      it("highlights the key whose car the camera is on while the intent is active", async () => {
+        setSelectIntent("dev-1", { action: "focus-camera" });
+        const action = new RaceAdmin();
+
+        await action.onWillAppear(makeSelectorAppear("ctx-sel", 1, 0, selectorSettings));
+
+        const telemetryCallback = action["sdkController"].subscribe.mock.calls[0][1];
+        await telemetryCallback({ CamCarIdx: 5 });
+
+        expect(generateSelectorSvg).toHaveBeenLastCalledWith(
+          expect.objectContaining({ carIdx: 5 }),
+          expect.anything(),
+          true,
+        );
       });
     });
   });
