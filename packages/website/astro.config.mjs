@@ -115,6 +115,7 @@ export default defineConfig({
           items: [
             { slug: "docs/features/communication-methods" },
             { slug: "docs/features/key-bindings" },
+            { slug: "docs/features/stream-deck-profiles" },
             { slug: "docs/features/flags-overlay" },
             { slug: "docs/features/focus-iracing-window" },
             { slug: "docs/features/icon-colors" },
@@ -201,6 +202,10 @@ export default defineConfig({
                 { slug: "docs/actions/communication/chat" },
                 { slug: "docs/actions/communication/race-admin" },
               ],
+            },
+            {
+              label: "Stream Deck",
+              items: [{ slug: "docs/actions/stream-deck/switch-profile" }],
             },
           ],
         },

@@ -43,9 +43,9 @@ The manifest `Profiles[].DeviceType` field and the runtime `device.type` use the
 
 `PROFILE_TARGET_DEVICES` is the ordered `target` list. When a device graduates from `candidate` to `target`, update `DEVICE_SUPPORT` **and** `PROFILE_TARGET_DEVICES` together (the test enforces they match).
 
-## The three bundled templates
+## The bundled templates
 
-`PROFILE_NAMES`: **iRaceDeck Default**, **iRaceDeck Pit Actions**, **iRaceDeck Replay**. Each target device needs its **own** profile file (one `Profiles[]` entry carries exactly one `DeviceType`), so the full set is 3 templates × 3 devices — one device-suffixed file each, per the naming scheme below.
+Four templates are registered and shipped: **iRaceDeck Default**, **iRaceDeck Replay**, **iRaceDeck Race Admin Cars**, **iRaceDeck Race Admin Per Car** — currently for the classic Stream Deck and the XL only (8 `Profiles[]` entries; the `+ XL` target device has no registered profiles yet). `PROFILE_NAMES` additionally defines **iRaceDeck Pit Actions**, which is not registered or shipped. Each target device needs its **own** profile file (one `Profiles[]` entry carries exactly one `DeviceType`) — one device-suffixed file each, per the naming scheme below.
 
 ## Profile naming — device-suffixed files, clean user-facing names (#753)
 
