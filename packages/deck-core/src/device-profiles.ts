@@ -284,6 +284,23 @@ export const PROFILE_NAMES = {
   replay: "iRaceDeck Replay",
 } as const;
 
+/**
+ * Display name of the generic car-selector profile (issue #790) — the renamed
+ * `iRaceDeck Race Admin Cars`. Exported so consumers (Camera Controls' focus
+ * entry mode, Switch Profile's marker check) share one source of truth.
+ */
+export const CAR_SELECTOR_PROFILE = "iRaceDeck Car Selector" as const;
+
+/**
+ * Legacy display name → current display name (issue #790). Consulted by
+ * `resolveProfileNameForDevice` after suffix-stripping, so names persisted by
+ * older installs (bare or suffixed for any device) keep resolving after a
+ * bundled profile is renamed.
+ */
+const LEGACY_PROFILE_NAMES: Record<string, string> = {
+  "iRaceDeck Race Admin Cars": CAR_SELECTOR_PROFILE,
+};
+
 /** A bundled profile template key. */
 export type ProfileTemplate = keyof typeof PROFILE_NAMES;
 
@@ -363,9 +380,11 @@ export function deviceProfileName(name: string, deviceType: number | undefined):
  * (issue #753). An exact match wins; otherwise the name is normalized to its
  * display name and re-suffixed for this device — which maps both legacy
  * pre-#753 names (`iRaceDeck Default`) and names persisted on another device
- * (`iRaceDeck Default SD`) to this device's variant. Returns `undefined` when
- * the profile has no variant among `availableNames`; the caller picks the
- * fallback (typically the device's Default profile).
+ * (`iRaceDeck Default SD`) to this device's variant. Legacy display names
+ * renamed since the value was persisted are mapped through `LEGACY_PROFILE_NAMES`
+ * (#790). Returns `undefined` when the profile has no variant among
+ * `availableNames`; the caller picks the fallback (typically the device's
+ * Default profile).
  */
 export function resolveProfileNameForDevice(
   name: string,
@@ -376,7 +395,9 @@ export function resolveProfileNameForDevice(
     return name;
   }
 
-  const suffixed = deviceProfileName(profileDisplayName(name), deviceType);
+  const display = profileDisplayName(name);
+  const canonical = LEGACY_PROFILE_NAMES[display] ?? display;
+  const suffixed = deviceProfileName(canonical, deviceType);
 
   return availableNames.includes(suffixed) ? suffixed : undefined;
 }
