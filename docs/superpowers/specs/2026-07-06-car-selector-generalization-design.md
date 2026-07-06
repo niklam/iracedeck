@@ -89,9 +89,15 @@ No new action UUID; plugin `manifest.json` action entries unchanged (only the El
 
 ## Artifacts to update (same PR)
 
-- Rules: `.claude/rules/profiles-and-devices.md` (names, flows), `.claude/rules/global-settings.md` (`_selectedCar` reference).
-- Docs: Race Admin + Camera Controls action docs; website action pages; changelog entry (`changelog.mdx`, in-development section).
-- Skills: `iracedeck-actions` (new Camera Controls mode).
+- Rules: `.claude/rules/profiles-and-devices.md` (profile name in the bundled-templates list, selector flows), `.claude/rules/global-settings.md` (`_selectedCar` reference).
+- Website (PR #789 added pages that reference the old profile name — all must follow the rename):
+  - `docs/features/stream-deck-profiles.md` — bundled-profiles list entry for the selector profile.
+  - `docs/actions/stream-deck/switch-profile.md` — key-icon label example (`RACE ADMIN CARS`).
+  - `docs/actions/communication/race-admin.md` — Select Car mode + the "run race control on one car at a time" workflow.
+  - Camera Controls action page — the new focus mode.
+  - Changelog entry (`changelog.mdx`, in-development section).
+- Count sync for the new Camera Controls mode (+1 mode): `docs/actions/overview.md`, `index.mdx` stats row, `README.md` features table, `.claude/skills/iracedeck-actions/SKILL.md`, `docs/reference/actions.json`.
+- Skills: `iracedeck-actions` (new Camera Controls mode + profile rename in the Stream Deck / Race Admin rows).
 
 ## Manual validation (cannot be unit-tested)
 
