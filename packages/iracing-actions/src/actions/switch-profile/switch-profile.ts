@@ -30,7 +30,10 @@ import replayIconSvg from "@iracedeck/icons/switch-profile/replay.svg";
 import z from "zod";
 
 import { clearSelectIntent } from "../../shared/car-select-intent.js";
+import { profileEntriesEqual, type ProfileEntry } from "../../shared/profile-entries.js";
 import profilesData from "../data/profiles.json" with { type: "json" };
+
+export type { ProfileEntry };
 
 /**
  * Sentinel `profile` value for the "Back to previous" mode: instead of a named
@@ -130,12 +133,6 @@ export function availableProfilesForDevice(deviceType: number | undefined): stri
   return profilesData.filter((p) => p.deviceType === deviceType).map((p) => p.name);
 }
 
-/** A `_deviceProfiles` entry: manifest name + clean display label (#753). */
-export interface ProfileEntry {
-  name: string;
-  label: string;
-}
-
 /**
  * @internal Exported for testing. The `_deviceProfiles` entries pushed for the
  * PI dropdown: each available manifest name paired with its clean display
@@ -170,23 +167,6 @@ export function generateSwitchProfileSvg(settings: SwitchProfileSettings): strin
   const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
 
   return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic });
-}
-
-/** Whether a persisted `_deviceProfiles` value already equals the entries we'd push. */
-function profileEntriesEqual(current: readonly unknown[], entries: readonly ProfileEntry[]): boolean {
-  return (
-    current.length === entries.length &&
-    current.every((value, i) => {
-      const entry = entries[i];
-
-      return (
-        typeof value === "object" &&
-        value !== null &&
-        (value as ProfileEntry).name === entry.name &&
-        (value as ProfileEntry).label === entry.label
-      );
-    })
-  );
 }
 
 /**

@@ -70,6 +70,7 @@ import z from "zod";
 
 import { getSelectIntent } from "../../shared/car-select-intent.js";
 import { IconUpdateThrottle } from "../../shared/icon-update-throttle.js";
+import { profileEntriesEqual } from "../../shared/profile-entries.js";
 import { migrateUseViewedCarToDriverTarget } from "./migrate-use-viewed-car.js";
 import { buildAdminCommand, buildAdminCommandPrefix, resolveDriverTarget } from "./race-admin-commands.js";
 import { RACE_ADMIN_MODE_META, RACE_ADMIN_MODES, type RaceAdminMode } from "./race-admin-modes.js";
@@ -100,26 +101,6 @@ import {
  * @internal Exported for testing
  */
 export const SELECTOR_COUNT_SETTLE_MS = 500;
-
-/** Whether a persisted `_deviceProfiles` value already equals the entries we'd push. */
-function profileEntriesEqual(
-  current: readonly unknown[],
-  entries: readonly { name: string; label: string }[],
-): boolean {
-  return (
-    current.length === entries.length &&
-    current.every((value, i) => {
-      const entry = entries[i];
-
-      return (
-        typeof value === "object" &&
-        value !== null &&
-        (value as { name: string }).name === entry.name &&
-        (value as { label: string }).label === entry.label
-      );
-    })
-  );
-}
 
 // ── Settings Schema ─────────────────────────────────────────────
 

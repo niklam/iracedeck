@@ -74,6 +74,7 @@ import {
 import z from "zod";
 
 import { setSelectIntent } from "../../shared/car-select-intent.js";
+import { profileEntriesEqual } from "../../shared/profile-entries.js";
 import { availableProfilesForDevice, deviceProfileEntries } from "../race-admin/race-admin-selector.js";
 import { migrateFocusOnExitingToMostExciting } from "./migrate-focus-on-exiting.js";
 
@@ -589,26 +590,6 @@ export function generateCycleCameraGridSvg(
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144"><g filter="url(#activity-state)"><rect x="0" y="0" width="144" height="144" fill="${bgColor}"/>${thumbnails}${label}</g></svg>`;
 
   return svgToDataUri(svg);
-}
-
-/** Whether a persisted `_deviceProfiles` value already equals the entries we'd push. */
-function profileEntriesEqual(
-  current: readonly unknown[],
-  entries: readonly { name: string; label: string }[],
-): boolean {
-  return (
-    current.length === entries.length &&
-    current.every((value, i) => {
-      const entry = entries[i];
-
-      return (
-        typeof value === "object" &&
-        value !== null &&
-        (value as { name: string }).name === entry.name &&
-        (value as { label: string }).label === entry.label
-      );
-    })
-  );
 }
 
 // --- Camera group subset helpers ---
