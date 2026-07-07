@@ -171,6 +171,20 @@ Sub-1-minute laps skip the minute clip — *"That was your best lap yet. Thirty-
 
 On the final lap of a race the best-lap callout is suppressed — the race-end result takes the floor instead.
 
+## Qualifying Lap Invalidation
+
+When you pick up an incident during a qualifying lap — an off-track, contact, anything iRacing counts — the Race Engineer tells you right away that the lap is gone: *"This lap will be invalidated."* In a lap-limited qualifying he follows up with how many attempts remain after this one:
+
+- **Out of laps** — *"We're out of qualifying laps, so that's it for now."* (the incident happened on your final counted lap)
+- **1–5 laps left** — a per-count line with its own encouragement, e.g. *"One lap left. Make sure to have a flying start for the last lap."* or *"Two laps left. Take a breath, reset, and go again."*
+- **6 or more** — *"We still have plenty of laps left. Take your time to settle in."*
+
+In a time-limited qualifying only the core line plays — a lap count would be meaningless there.
+
+Multiple incidents on the same lap collapse into a single callout. The engineer also stays quiet on laps that aren't timed attempts: the out-lap (and any lap that started from pit exit), and the extra laps after your counted attempts are done — in a lap-limited qualifying iRacing lets you keep circulating once your attempts are used up, but an incident there invalidates nothing, so nothing is announced.
+
+Toggle it from **Race Engineer Callouts → Qualifying → Lap invalidated**. Race and practice sessions never fire this callout.
+
 ## Position Change (qualifying + race)
 
 After each completed lap in qualifying or race, the engineer announces your current position when it changed since the previous lap.
@@ -303,6 +317,10 @@ Under **Lap Time**, one callout is toggleable, enabled by default:
 Under **Position**, one callout is toggleable, enabled by default:
 
 - **Position changed** — the qualifying / race per-lap callout that fires when your effective position changes (improvement, worsening, or first-fix), plus the qualifying-only pole call and hold-position status. Disabling this silences only the per-change announcement; the every-3-laps race-status callout below stays independent.
+
+Under **Qualifying**, one callout is toggleable, enabled by default (see [Qualifying Lap Invalidation](#qualifying-lap-invalidation) above for the full behavior):
+
+- **Lap invalidated** — the *"This lap will be invalidated."* announcement (plus the laps-remaining tail) the engineer plays when you pick up an incident on a counted qualifying lap. Disabling this doesn't change how iRacing scores the lap — it only silences the announcement.
 
 Under **Race**, three callouts are toggleable, all enabled by default:
 
