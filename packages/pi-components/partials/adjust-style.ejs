@@ -5,94 +5,96 @@
 //   viewModes    — View-mode values (get the Display Style select instead)
 // Both style selects bind the SAME `keyStyle` setting; visibility picks which
 // one applies to the current mode. `legacy` doubles as the View "Default".
+// Both selects persist to the same `keyStyle` setting with disjoint option sets
+// (beyond `legacy`), so after a mode-category switch the visible select may hold
+// a value from the other set and render blank. This is cosmetic: action code
+// treats any style that doesn't apply to the current mode as `legacy`/default
+// (renderPairedIconOrNull returns null), so consumers MUST keep that fallback.
 %>
 <sdpi-item label="Key Style" id="adjust-style-item" class="hidden">
-	<sdpi-select id="adjust-style-select" setting="keyStyle" default="legacy">
-		<option value="legacy">Legacy (arrows)</option>
-		<optgroup label="Value on this key (2-key pairs)">
-			<option value="split">Split — value + big +/−</option>
-			<option value="corner-badge">Corner badge</option>
-			<option value="ghost">Ghost +/−</option>
-			<option value="edge-chevrons">Edge chevrons</option>
-			<option value="joined-pill">Joined pill</option>
-		</optgroup>
-		<optgroup label="No value (3-key groups)">
-			<option value="big-glyph">Big +/−</option>
-			<option value="big-chevron">Big chevrons</option>
-			<option value="pill-end">Pill end</option>
-		</optgroup>
-	</sdpi-select>
+  <sdpi-select id="adjust-style-select" setting="keyStyle" default="legacy">
+    <option value="legacy">Legacy (arrows)</option>
+    <optgroup label="Value on this key (2-key pairs)">
+      <option value="split">Split — value + big +/−</option>
+      <option value="corner-badge">Corner badge</option>
+      <option value="ghost">Ghost +/−</option>
+      <option value="edge-chevrons">Edge chevrons</option>
+      <option value="joined-pill">Joined pill</option>
+    </optgroup>
+    <optgroup label="No value (3-key groups)">
+      <option value="big-glyph">Big +/−</option>
+      <option value="big-chevron">Big chevrons</option>
+      <option value="pill-end">Pill end</option>
+    </optgroup>
+  </sdpi-select>
 </sdpi-item>
 <sdpi-item label="Display Style" id="adjust-view-style-item" class="hidden">
-	<sdpi-select id="adjust-view-style-select" setting="keyStyle" default="legacy">
-		<option value="legacy">Default</option>
-		<option value="pill-middle-horizontal">Pill middle — horizontal</option>
-		<option value="pill-middle-vertical">Pill middle — vertical</option>
-	</sdpi-select>
+  <sdpi-select id="adjust-view-style-select" setting="keyStyle" default="legacy">
+    <option value="legacy">Default</option>
+    <option value="pill-middle-horizontal">Pill middle — horizontal</option>
+    <option value="pill-middle-vertical">Pill middle — vertical</option>
+  </sdpi-select>
 </sdpi-item>
 <sdpi-item label="Position in Pair" id="adjust-position-item" class="hidden">
-	<sdpi-select setting="pairPosition" default="auto">
-		<option value="auto">Auto (from direction)</option>
-		<option value="left">Left</option>
-		<option value="right">Right</option>
-		<option value="top">Top</option>
-		<option value="bottom">Bottom</option>
-	</sdpi-select>
+  <sdpi-select setting="pairPosition" default="auto">
+    <option value="auto">Auto (from direction)</option>
+    <option value="left">Left</option>
+    <option value="right">Right</option>
+    <option value="top">Top</option>
+    <option value="bottom">Bottom</option>
+  </sdpi-select>
 </sdpi-item>
 <div class="ird-supporting-text" id="adjust-style-help">
-	Place two keys with opposite directions next to each other — or three with a View key in the middle. Both keys show the live value; hold a key to keep stepping.
+  Place two keys with opposite directions next to each other — or three with a View key in the middle. Both keys show the live value; hold a key to keep stepping.
 </div>
 
 <script>
-	(function () {
-		const PAIRED_MODES = <%- JSON.stringify(pairedModes) %>;
-		const VIEW_MODES = <%- JSON.stringify(viewModes) %>;
-		const POSITION_AWARE = ["edge-chevrons", "joined-pill", "pill-end", "big-chevron"];
+  (function () {
+    const PAIRED_MODES = <%- JSON.stringify(pairedModes) %>;
+    const VIEW_MODES = <%- JSON.stringify(viewModes) %>;
+    const POSITION_AWARE = ["edge-chevrons", "joined-pill", "pill-end", "big-chevron"];
 
-		function updateAdjustStyleVisibility() {
-			const mode = document.getElementById("<%= modeSelectId %>")?.value || "";
-			const styleItem = document.getElementById("adjust-style-item");
-			const viewStyleItem = document.getElementById("adjust-view-style-item");
-			const positionItem = document.getElementById("adjust-position-item");
-			const help = document.getElementById("adjust-style-help");
+    function updateAdjustStyleVisibility() {
+      const mode = document.getElementById("<%= modeSelectId %>")?.value || "";
+      const styleItem = document.getElementById("adjust-style-item");
+      const viewStyleItem = document.getElementById("adjust-view-style-item");
+      const positionItem = document.getElementById("adjust-position-item");
+      const help = document.getElementById("adjust-style-help");
 
-			const isPaired = PAIRED_MODES.includes(mode);
-			const isView = VIEW_MODES.includes(mode);
-			styleItem?.classList.toggle("hidden", !isPaired);
-			viewStyleItem?.classList.toggle("hidden", !isView);
-			help?.classList.toggle("hidden", !isPaired && !isView);
+      const isPaired = PAIRED_MODES.includes(mode);
+      const isView = VIEW_MODES.includes(mode);
+      styleItem?.classList.toggle("hidden", !isPaired);
+      viewStyleItem?.classList.toggle("hidden", !isView);
+      help?.classList.toggle("hidden", !isPaired && !isView);
 
-			const style = document.getElementById(isView ? "adjust-view-style-select" : "adjust-style-select")?.value || "legacy";
-			positionItem?.classList.toggle("hidden", !(isPaired && POSITION_AWARE.includes(style)));
-		}
+      const style = document.getElementById(isView ? "adjust-view-style-select" : "adjust-style-select")?.value || "legacy";
+      positionItem?.classList.toggle("hidden", !(isPaired && POSITION_AWARE.includes(style)));
+    }
 
-		async function initAdjustStyle() {
-			await customElements.whenDefined("sdpi-select");
-			updateAdjustStyleVisibility();
+    async function initAdjustStyle() {
+      await customElements.whenDefined("sdpi-select");
+      updateAdjustStyleVisibility();
 
-			for (const id of ["<%= modeSelectId %>", "adjust-style-select", "adjust-view-style-select"]) {
-				const el = document.getElementById(id);
-				el?.addEventListener("change", updateAdjustStyleVisibility);
-				el?.addEventListener("input", updateAdjustStyleVisibility);
-			}
+      for (const id of ["<%= modeSelectId %>", "adjust-style-select", "adjust-view-style-select"]) {
+        const el = document.getElementById(id);
+        el?.addEventListener("change", updateAdjustStyleVisibility);
+        el?.addEventListener("input", updateAdjustStyleVisibility);
+      }
 
-			// Polling fallback — sdpi-select events can be unreliable.
-			let last = "";
-			setInterval(() => {
-				const mode = document.getElementById("<%= modeSelectId %>")?.value || "";
-				const style = document.getElementById("adjust-style-select")?.value || "";
-				const key = mode + "|" + style;
-				if (key !== last) {
-					last = key;
-					updateAdjustStyleVisibility();
-				}
-			}, 100);
-		}
+      // Polling fallback — sdpi-select events can be unreliable.
+      let last = "";
+      setInterval(() => {
+        const mode = document.getElementById("<%= modeSelectId %>")?.value || "";
+        const style = document.getElementById("adjust-style-select")?.value || "";
+        const key = mode + "|" + style;
+        if (key !== last) {
+          last = key;
+          updateAdjustStyleVisibility();
+        }
+      }, 100);
+    }
 
-		if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", initAdjustStyle);
-		else initAdjustStyle();
-	})();
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", initAdjustStyle);
+    else initAdjustStyle();
+  })();
 </script>
-<style>
-	.hidden { display: none !important; }
-</style>
