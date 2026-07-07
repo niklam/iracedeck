@@ -3,6 +3,7 @@ import {
   ConnectionStateAwareAction,
   DualPressTracker,
   getDualPressDirections,
+  getDualPressThresholdMs,
   getGlobalBorderSettings,
   getGlobalColors,
   getGlobalGraphicSettings,
@@ -38,11 +39,17 @@ import peakBrakeBiasIncreaseIconSvg from "@iracedeck/icons/setup-brakes/peak-bra
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 
 import {
-  formatViewValue,
-  generateSetupViewSvg,
-  getAdjustmentModeForView,
-  isViewSetting,
-} from "../../shared/setup-view.js";
+  ADJUST_REPEAT_INTERVAL_MS,
+  ADJUST_REPEAT_SAFETY_MS,
+  hasPairedValueSource,
+  pairedKeyNeedsTelemetry,
+  renderPairedIconOrNull,
+  seedFreshKeyStyle,
+  telemetryMemoValue,
+} from "../../shared/adjust-styles.js";
+import { IconUpdateThrottle } from "../../shared/icon-update-throttle.js";
+import { RepeatController } from "../../shared/repeat-controller.js";
+import { generateSetupViewSvg, getAdjustmentModeForView, isViewSetting } from "../../shared/setup-view.js";
 import { SetupBrakesDialSurface } from "./setup-brakes-dial-surface.js";
 import {
   parseSetupBrakesSettings,
@@ -190,6 +197,12 @@ export class SetupBrakes extends ConnectionStateAwareAction<SetupBrakesSettings>
   /** Per-context key-down timestamps for dual-press dispatch on View sub-modes (#540). */
   private readonly dualPress = new DualPressTracker();
 
+  /** Hold-to-repeat for paired-style directional keys (always on, spec 2026-07-07). */
+  private readonly repeat = new RepeatController(this.logger);
+
+  /** Coalesces telemetry-driven re-renders to ≤ 10/s per key (issue #493 pattern). */
+  private readonly iconThrottle = new IconUpdateThrottle();
+
   /**
    * The dial half of the action; all IDeck dial events route here. No
    * `setActiveBinding` is delegated — readiness state is one value per
@@ -236,6 +249,15 @@ export class SetupBrakes extends ConnectionStateAwareAction<SetupBrakesSettings>
       return;
     }
 
+    // One-shot default seeding (spec 2026-07-07): a never-configured key gets
+    // the modern `split` style; keys with any persisted settings stay legacy.
+    const seeded = seedFreshKeyStyle(ev.payload.settings);
+
+    if (seeded) {
+      await ev.action.setSettings(seeded);
+      settings = this.parseSettings(seeded);
+    }
+
     this.activeContexts.set(ev.action.id, settings);
     this.applyActiveBinding(settings);
     await this.updateDisplay(ev, settings);
@@ -245,7 +267,7 @@ export class SetupBrakes extends ConnectionStateAwareAction<SetupBrakesSettings>
     this.sdkController.subscribe(ev.action.id, (telemetry) => {
       const stored = this.activeContexts.get(ev.action.id);
 
-      if (stored && isViewSetting(stored.setting)) {
+      if (stored && (isViewSetting(stored.setting) || pairedKeyNeedsTelemetry(stored))) {
         void this.updateDisplayFromTelemetry(ev.action.id, telemetry, stored);
       }
     });
@@ -257,6 +279,8 @@ export class SetupBrakes extends ConnectionStateAwareAction<SetupBrakesSettings>
     this.activeContexts.delete(ev.action.id);
     this.lastRenderedValue.delete(ev.action.id);
     this.dualPress.clear(ev.action.id);
+    this.repeat.clear(ev.action.id);
+    this.iconThrottle.clear(ev.action.id);
     await super.onWillDisappear(ev);
   }
 
@@ -274,6 +298,7 @@ export class SetupBrakes extends ConnectionStateAwareAction<SetupBrakesSettings>
     // Bust the memo cache so the next tick re-renders even if the new mode happens to
     // resolve to the same display string as the previous mode.
     this.lastRenderedValue.delete(ev.action.id);
+    this.repeat.clear(ev.action.id);
     this.applyActiveBinding(settings);
     await this.updateDisplay(ev, settings);
   }
@@ -292,10 +317,28 @@ export class SetupBrakes extends ConnectionStateAwareAction<SetupBrakesSettings>
     }
 
     this.logger.info("Key down received");
+
+    // Hold-to-repeat for paired-style keys: arm SYNCHRONOUSLY before the first
+    // execute so a racing keyUp always finds timers to clear (fuel-service pattern).
+    if (settings.keyStyle !== "legacy" && hasPairedValueSource(settings.setting)) {
+      const { setting, direction } = settings;
+      this.repeat.onKeyDown(ev.action.id, {
+        holdMs: getDualPressThresholdMs(),
+        intervalMs: ADJUST_REPEAT_INTERVAL_MS,
+        safetyMs: ADJUST_REPEAT_SAFETY_MS,
+        execute: async () => {
+          await this.executeSetting(setting as SetupBrakesAdjustSetting, direction);
+
+          return true;
+        },
+      });
+    }
+
     await this.executeSetting(settings.setting, settings.direction);
   }
 
   override async onKeyUp(ev: IDeckKeyUpEvent<SetupBrakesSettings>): Promise<void> {
+    this.repeat.onKeyUp(ev.action.id);
     const settings = this.parseSettings(ev.payload.settings);
 
     if (!isViewSetting(settings.setting) || !settings.dualPressEnabled) {
@@ -440,9 +483,10 @@ export class SetupBrakes extends ConnectionStateAwareAction<SetupBrakesSettings>
   ): Promise<void> {
     const svgDataUri = this.renderIcon(settings);
 
-    if (isViewSetting(settings.setting)) {
-      const telemetry = this.sdkController.getCurrentTelemetry();
-      this.lastRenderedValue.set(ev.action.id, formatViewValue(settings.setting, telemetry));
+    const memo = telemetryMemoValue(settings, this.sdkController.getCurrentTelemetry());
+
+    if (memo !== null) {
+      this.lastRenderedValue.set(ev.action.id, memo);
     }
 
     await ev.action.setTitle("");
@@ -452,6 +496,21 @@ export class SetupBrakes extends ConnectionStateAwareAction<SetupBrakesSettings>
 
   private renderIcon(settings: SetupBrakesSettings): string {
     const bindingMissing = this.computeBindingMissing(settings);
+
+    const paired = renderPairedIconOrNull({
+      setting: settings.setting,
+      direction: settings.direction,
+      keyStyle: settings.keyStyle,
+      pairPosition: settings.pairPosition,
+      telemetry: this.sdkController.getCurrentTelemetry(),
+      colorSourceSvg: brakeBiasIncreaseIconSvg,
+      colorOverrides: settings.colorOverrides,
+      titleOverrides: settings.titleOverrides,
+      borderOverrides: settings.borderOverrides,
+      bindingMissing,
+    });
+
+    if (paired) return paired;
 
     if (isViewSetting(settings.setting)) {
       return generateSetupViewSvg({
@@ -473,22 +532,17 @@ export class SetupBrakes extends ConnectionStateAwareAction<SetupBrakesSettings>
     telemetry: TelemetryData | null,
     settings: SetupBrakesSettings,
   ): Promise<void> {
-    if (!isViewSetting(settings.setting)) return;
+    const memo = telemetryMemoValue(settings, telemetry);
 
-    const value = formatViewValue(settings.setting, telemetry);
+    if (memo === null) return;
 
-    if (this.lastRenderedValue.get(contextId) === value) return;
+    if (this.lastRenderedValue.get(contextId) === memo) return;
 
-    this.lastRenderedValue.set(contextId, value);
-    const svgDataUri = generateSetupViewSvg({
-      viewId: settings.setting,
-      telemetry,
-      colorSourceSvg: brakeBiasIncreaseIconSvg,
-      colorOverrides: settings.colorOverrides,
-      titleOverrides: settings.titleOverrides,
-      borderOverrides: settings.borderOverrides,
-      bindingMissing: this.computeBindingMissing(settings),
+    this.lastRenderedValue.set(contextId, memo);
+    this.iconThrottle.schedule(contextId, async () => {
+      const stored = this.activeContexts.get(contextId);
+
+      if (stored) await this.updateKeyImage(contextId, this.renderIcon(stored));
     });
-    await this.updateKeyImage(contextId, svgDataUri);
   }
 }

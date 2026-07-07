@@ -11,6 +11,8 @@
 import { CommonSettings } from "@iracedeck/deck-core";
 import z from "zod";
 
+import { adjustStyleSettingsFields } from "../../shared/adjust-styles.js";
+
 /**
  * @internal Exported for testing
  *
@@ -136,6 +138,7 @@ export const SetupBrakesSettings = CommonSettings.extend({
     ])
     .default("brake-bias"),
   direction: z.enum(["increase", "decrease"]).default("increase"),
+  ...adjustStyleSettingsFields,
   /**
    * Dual-press opt-in for View sub-modes (issue #540). When `true` (default),
    * a View key fires the global tap direction on a short press and the

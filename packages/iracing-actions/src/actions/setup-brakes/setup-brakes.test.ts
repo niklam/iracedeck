@@ -677,4 +677,15 @@ describe("SetupBrakes", () => {
       expect(tracker.clear).toHaveBeenCalledWith("action-1");
     });
   });
+
+  describe("paired key styles", () => {
+    it("parses keyStyle/pairPosition with defaults and catch-degradation", () => {
+      const parsed = parseSetupBrakesSettings({ setting: "brake-bias" });
+      expect(parsed.keyStyle).toBe("legacy");
+      expect(parsed.pairPosition).toBe("auto");
+      const degraded = parseSetupBrakesSettings({ setting: "brake-bias", keyStyle: "hologram" });
+      expect(degraded.keyStyle).toBe("legacy");
+      expect(degraded.setting).toBe("brake-bias"); // catch keeps the rest of the parse alive
+    });
+  });
 });
