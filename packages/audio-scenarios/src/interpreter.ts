@@ -21,13 +21,16 @@
  *   - `acquireFocus`/`releaseFocus` raise a per-bus weight floor: while held,
  *     only fires at or above it (or the owner's own) play.
  *   - A `resumable` queueable fire cut by an `interrupt` stashes its expanded
- *     ops + position; the idle-replay re-expands and, when the expansion is
- *     unchanged, continues from the interrupted clip (re-keying the radio
- *     frame) instead of re-firing from the top (issue #758). A changed
- *     expansion falls back to a full fresh replay (#481 freshness).
- *   - A finishing fire with `pendingHoldMs` delays the pending drain by that
- *     window, so a train of fires (count-in marks) doesn't let the displaced
- *     line stutter back into its gaps (issue #758).
+ *     ops + position in a DEDICATED per-bus slot (separate from `pending`, so a
+ *     later higher-weight fire claiming `pending` can't evict it); the
+ *     idle-replay re-expands and, when the expansion is unchanged, continues
+ *     from the interrupted clip (re-keying the radio frame) instead of
+ *     re-firing from the top (issue #758). A changed expansion falls back to a
+ *     full fresh replay (#481 freshness). `pending` drains before the stash.
+ *   - A finishing fire with `pendingHoldMs` delays the bus's next drain (a
+ *     pending fire or a stashed resume) by that window, so a train of fires
+ *     (count-in marks) doesn't let the displaced line stutter back into its
+ *     gaps (issue #758).
  *
  * Channel routing for clip steps:
  *   - Paths matching the manifest's walkie-talkie ticks go on the SFX channel.
@@ -125,6 +128,15 @@ type BusState = {
   playingId: string | null;
   /** Single highest-weight fire waiting to play when the bus next idles. */
   pending: PendingFire | null;
+  /**
+   * An interrupt-cut `resumable` fire held for continuation when the bus next
+   * idles (issue #758). Kept SEPARATE from `pending` so a transient
+   * higher-weight fire claiming the pending slot can't evict it: the reported
+   * "no pit readback" bug was the stashed readback (CHATTER) being overwritten
+   * in the single `pending` slot by a NORMAL pit-status / toggle callout that
+   * fired while a count-in mark played. Drained only when `pending` is empty.
+   */
+  resumeStash: PendingFire | null;
   activeFire: ActiveFire | null;
   /** Exclusive-focus floor (issue #652); non-owner fires need weight above `floor`. */
   focus: { ownerId: string; floor: number } | null;
@@ -344,12 +356,16 @@ class ScenarioEngine implements IScenarioEngine {
 
         if (wasActive) this.cancelActiveFire(state);
 
+        // Drop a stashed resume for this id too, so a disabled scenario can't
+        // resume later (issue #758).
+        if (state.resumeStash?.id === scenarioId) state.resumeStash = null;
+
         if (state.pending?.id === scenarioId) {
           state.pending = null;
         } else if (wasActive && state.playingId === null) {
           // Disabling the in-flight scenario idled the bus — play whatever was
           // waiting behind it rather than stranding it (issue #652 review).
-          this.drainPending(state);
+          this.drainBus(state);
         }
       }
     }
@@ -384,6 +400,7 @@ class ScenarioEngine implements IScenarioEngine {
     for (const state of this.busState.values()) {
       this.cancelActiveFire(state);
       state.pending = null;
+      state.resumeStash = null;
       this.clearPendingHold(state);
       // Release any held focus floor too, so it can't outlive the reset and
       // block every later callout on re-enable (issue #652 review).
@@ -406,7 +423,7 @@ class ScenarioEngine implements IScenarioEngine {
     this.logger.debug(`Focus released on bus ${bus} by "${ownerId}"`);
 
     // A fire deferred while below the floor may now be playable.
-    if (state.playingId === null) this.drainPending(state);
+    if (state.playingId === null) this.drainBus(state);
   }
 
   // ── Event wiring ──
@@ -496,6 +513,20 @@ class ScenarioEngine implements IScenarioEngine {
     const state = this.getBusState(bus);
     const weight = entry.raw.weight ?? DEFAULT_WEIGHT;
 
+    // Family preemption reaches a stashed resume too: a fresher same-family
+    // fire supersedes an interrupt-stashed family-mate just as it replaces an
+    // in-flight one, so a readback refire doesn't leave the earlier stash to
+    // resume as a duplicate (issue #758). Skipped for a resume itself — the
+    // stash slot is already cleared by the time `drainBus` re-fires it.
+    if (!resume && state.resumeStash !== null && entry.raw.family !== undefined) {
+      const stashed = this.scenarios.get(state.resumeStash.id);
+
+      if (stashed?.raw.family === entry.raw.family) {
+        state.resumeStash = null;
+        this.logger.debug(`Stashed resume for "${stashed.raw.id}" superseded by same-family "${entry.raw.id}"`);
+      }
+    }
+
     // Exclusive-focus floor (issue #652): while an owner holds the bus, a
     // non-owner fire BELOW the floor is blocked. The owner's own fires
     // (matching `focusOwner`) always pass; fires AT OR ABOVE the floor break
@@ -557,11 +588,23 @@ class ScenarioEngine implements IScenarioEngine {
     reason: string,
     resume?: ResumeState,
   ): void {
-    if (entry.raw.queueable === true) {
-      this.setPending(entry.raw.id, event, weight, state, `deferred (${reason})`, resume);
-    } else {
+    if (entry.raw.queueable !== true) {
       this.logger.debug(`Scenario "${entry.raw.id}" dropped (${reason})`);
+
+      return;
     }
+
+    if (resume) {
+      // A resume that still can't take the bus (e.g. blocked by a focus floor
+      // at drain time) goes BACK to its own protected stash, never the
+      // competitive `pending` slot — so it stays un-evictable (issue #758).
+      state.resumeStash = { id: entry.raw.id, event, weight, resume };
+      this.logger.debug(`Scenario "${entry.raw.id}" re-stashed for resume (${reason})`);
+
+      return;
+    }
+
+    this.setPending(entry.raw.id, event, weight, state, `deferred (${reason})`);
   }
 
   /**
@@ -574,10 +617,9 @@ class ScenarioEngine implements IScenarioEngine {
     weight: number,
     state: BusState,
     reason: string,
-    resume?: ResumeState,
   ): void {
     if (state.pending === null || weight >= state.pending.weight) {
-      state.pending = { id, event, weight, resume };
+      state.pending = { id, event, weight };
       this.logger.debug(`Scenario "${id}" pending — ${reason}`);
     } else {
       this.logger.debug(`Scenario "${id}" dropped — lower weight than queued "${state.pending.id}"`);
@@ -590,8 +632,23 @@ class ScenarioEngine implements IScenarioEngine {
 
     if (!active || !running || running.raw.queueable !== true) return;
 
-    const resume = running.raw.resumable === true ? buildResumeState(active) : undefined;
-    this.setPending(active.id, active.event, active.weight, state, "stashed (preempted)", resume);
+    if (running.raw.resumable === true) {
+      // A resumable fire is stashed in its OWN slot, separate from the
+      // competitive `pending` slot, so a later higher-weight fire that claims
+      // `pending` (a NORMAL callout waiting behind a count-in mark) can't evict
+      // it (issue #758). It resumes once the bus is idle and nothing is pending.
+      state.resumeStash = {
+        id: active.id,
+        event: active.event,
+        weight: active.weight,
+        resume: buildResumeState(active),
+      };
+      this.logger.debug(`Scenario "${active.id}" stashed for resume (preempted)`);
+
+      return;
+    }
+
+    this.setPending(active.id, active.event, active.weight, state, "stashed (preempted)");
   }
 
   private executeFire(entry: CompiledScenario, event: SimEventOf<SimEventName> | null, resume?: ResumeState): void {
@@ -762,22 +819,23 @@ class ScenarioEngine implements IScenarioEngine {
     if (state.activeFire?.id === scenarioId) state.activeFire = null;
 
     // A finishing fire in a train of related fires (count-in marks) holds the
-    // pending drain for its declared window, so the displaced line doesn't
-    // stutter back into the gaps between the train's members (issue #758).
+    // bus's next drain — a pending fire OR a stashed resume — for its declared
+    // window, so the displaced line doesn't stutter back into the gaps between
+    // the train's members (issue #758).
     const holdMs = this.scenarios.get(scenarioId)?.raw.pendingHoldMs ?? 0;
 
-    if (state.pending !== null && holdMs > 0) {
+    if ((state.pending !== null || state.resumeStash !== null) && holdMs > 0) {
       this.clearPendingHold(state);
-      this.logger.debug(`Pending drain held for ${holdMs} ms after "${scenarioId}"`);
+      this.logger.debug(`Bus drain held for ${holdMs} ms after "${scenarioId}"`);
       state.pendingHoldTimer = setTimeout(() => {
         state.pendingHoldTimer = null;
-        this.drainPending(state);
+        this.drainBus(state);
       }, holdMs);
 
       return;
     }
 
-    this.drainPending(state);
+    this.drainBus(state);
   }
 
   /** Cancel an armed pending-hold timer (no-op when none is armed). */
@@ -789,29 +847,42 @@ class ScenarioEngine implements IScenarioEngine {
   }
 
   /**
-   * Play the pending fire (if any) now that the bus is idle. The fire replays
-   * unconditionally — its `where:` is NOT re-evaluated. Some `where:`
-   * predicates commit a side effect as their last gate (e.g. the position
-   * readout claims a shared cooldown via `tryClaimPositionAnnouncement()`,
-   * issues #574/#555); re-running them on replay would fail the already-made
-   * claim and silently drop the callout. Freshness is preserved instead by the
-   * var resolvers, which read live state at `executeFire` time rather than from
-   * the frozen event payload.
+   * Play whatever is waiting now that the bus is idle: the competitive
+   * `pending` fire first (a fresh higher-weight fire that was waiting for the
+   * bus, or a deferred queueable callout), then — only when nothing is pending
+   * — resume an interrupt-stashed `resumeStash` fire. Holding the resume in its
+   * own slot is what stops a transient higher-weight fire from evicting a
+   * stashed resumable line (issue #758).
+   *
+   * Either fire replays unconditionally — its `where:` is NOT re-evaluated.
+   * Some `where:` predicates commit a side effect as their last gate (e.g. the
+   * position readout claims a shared cooldown via
+   * `tryClaimPositionAnnouncement()`, issues #574/#555); re-running them on
+   * replay would fail the already-made claim and silently drop the callout.
+   * Freshness is preserved instead by the var resolvers, which read live state
+   * at `executeFire` time rather than from the frozen event payload.
    */
-  private drainPending(state: BusState): void {
+  private drainBus(state: BusState): void {
     this.clearPendingHold(state);
 
-    const pending = state.pending;
-    state.pending = null;
+    let next: PendingFire | null = null;
 
-    if (!pending) return;
+    if (state.pending !== null) {
+      next = state.pending;
+      state.pending = null;
+    } else if (state.resumeStash !== null) {
+      next = state.resumeStash;
+      state.resumeStash = null;
+    }
 
-    const entry = this.scenarios.get(pending.id);
+    if (!next) return;
+
+    const entry = this.scenarios.get(next.id);
 
     if (!entry?.enabled) return;
 
-    this.logger.debug(`Replaying pending scenario "${pending.id}"`);
-    this.attemptFire(entry, pending.event, pending.resume);
+    this.logger.debug(`Replaying scenario "${next.id}"`);
+    this.attemptFire(entry, next.event, next.resume);
   }
 
   /**
@@ -842,7 +913,14 @@ class ScenarioEngine implements IScenarioEngine {
     let state = this.busState.get(bus);
 
     if (!state) {
-      state = { playingId: null, pending: null, activeFire: null, focus: null, pendingHoldTimer: null };
+      state = {
+        playingId: null,
+        pending: null,
+        resumeStash: null,
+        activeFire: null,
+        focus: null,
+        pendingHoldTimer: null,
+      };
       this.busState.set(bus, state);
     }
 

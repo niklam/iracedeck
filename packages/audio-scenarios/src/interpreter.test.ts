@@ -1021,6 +1021,101 @@ describe("resume from interruption (issue #758)", () => {
       "pit-crew/reminder/tires.mp3",
     ]);
   });
+
+  // Issue #758 regression: a resumable fire stashed by an interrupt must NOT
+  // be evicted from the bus when an unrelated higher-weight fire claims the
+  // pending slot while the interrupter is still playing. Before the dedicated
+  // resume stash, the stashed line lived in the single `pending` slot and a
+  // higher-weight "waiting for the bus" fire overwrote it via setPending — so
+  // the interrupted line was silently lost. In production this is exactly the
+  // pit-service readback (CHATTER) cut by a count-in mark, then displaced by a
+  // NORMAL pit-status / toggle callout that fires while the mark plays.
+  it("keeps a stashed resumable fire when a higher-weight fire claims the pending slot", () => {
+    defineLine({ resumable: true }); // CHATTER, queueable, resumable: [a, b, tires]
+
+    // Count-in-style interrupter: outranks the line and cuts it, never queued.
+    engine.defineScenario({
+      id: "test.mark",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: 30,
+      interrupt: true,
+      queueable: false,
+      sequence: ["pit-crew/reminder/fuel.mp3"],
+    });
+
+    // Routine NORMAL callout: outranks the mark but waits for it (no interrupt),
+    // so it claims the pending slot while the mark is still on the bus.
+    engine.defineScenario({
+      id: "test.waiter",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: WEIGHT.NORMAL,
+      sequence: ["pit-crew/reminder/autofuel.mp3"],
+    });
+
+    engine.fire("test.line"); // a in flight
+    audio._triggerChannelEnd(AudioChannel.Voice); // b in flight
+    engine.fire("test.mark"); // cuts b → line stashed (resume at b); fuel in flight
+    engine.fire("test.waiter"); // NORMAL > mark, no interrupt → claims pending
+    flushVoiceAndSfx(audio);
+
+    // The waiter plays when the mark finishes, then the stashed line RESUMES
+    // from b — it survives the pending-slot contention.
+    expect(voicePaths()).toEqual([
+      "pit-crew/greeting/a.mp3",
+      "pit-crew/greeting/b.mp3", // cut here
+      "pit-crew/reminder/fuel.mp3", // mark
+      "pit-crew/reminder/autofuel.mp3", // waiter takes the pending slot
+      "pit-crew/greeting/b.mp3", // line resumes from the interrupted clip
+      "pit-crew/reminder/tires.mp3", // line tail
+    ]);
+  });
+
+  // Family preemption reaches the stash too: a fresher same-family fire
+  // supersedes an interrupt-stashed family-mate, so a readback refire while an
+  // earlier readback is stashed does not resume the earlier one as a duplicate
+  // tail (issue #758).
+  it("supersedes a stashed resume when a same-family fire fires (no duplicate)", () => {
+    engine.defineScenario({
+      id: "test.readback",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: WEIGHT.CHATTER,
+      queueable: true,
+      resumable: true,
+      family: "readback",
+      sequence: ["pit-crew/greeting/a.mp3", "pit-crew/greeting/b.mp3", "pit-crew/reminder/tires.mp3"],
+    });
+    // Count-in-style mark from a DIFFERENT family: cuts the readback and stashes it.
+    engine.defineScenario({
+      id: "test.mark",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: 30,
+      interrupt: true,
+      queueable: false,
+      family: "pit-box",
+      sequence: ["pit-crew/reminder/fuel.mp3"],
+    });
+
+    engine.fire("test.readback"); // a in flight
+    audio._triggerChannelEnd(AudioChannel.Voice); // b in flight
+    engine.fire("test.mark"); // cuts b → readback stashed (resume at b); fuel in flight
+    engine.fire("test.readback"); // fresh same-family fire supersedes the stash
+    flushVoiceAndSfx(audio);
+
+    // Mark plays, then the fresh readback plays from the TOP once — the
+    // superseded stash does NOT resume its tail a second time.
+    expect(voicePaths()).toEqual([
+      "pit-crew/greeting/a.mp3", // first readback
+      "pit-crew/greeting/b.mp3", // cut
+      "pit-crew/reminder/fuel.mp3", // mark
+      "pit-crew/greeting/a.mp3", // fresh readback, from the top
+      "pit-crew/greeting/b.mp3",
+      "pit-crew/reminder/tires.mp3",
+    ]);
+  });
 });
 
 describe("pending hold (issue #758)", () => {

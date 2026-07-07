@@ -889,4 +889,39 @@ describe("count-in priority over the readback (issue #758)", () => {
       `voice/${VOICE}/pit-readback/tires-all.mp3`,
     ]);
   });
+
+  // Issue #758 regression: on a real stop, NORMAL-weight callouts (pit-status
+  // positioning, toggle confirmations) fire while a count-in mark is on the
+  // bus. Such a callout wins the bus over the mark (weight 50 > 30) but waits
+  // for it (no interrupt), claiming the pending slot. The readback — stashed by
+  // the mark's interrupt — must survive that contention and still resume, not
+  // be silently dropped ("no pit readback at all").
+  it("survives a NORMAL callout that fires while a count-in mark is playing", () => {
+    currentSnapshot = snap({
+      fuel: { queued: true },
+      tires: { lf: true, rf: true, lr: true, rr: true },
+      limiterEngaged: true,
+    });
+
+    // Readback starts playing at pit entry.
+    bus.publishEvent("pitService.readbackRequested", { reason: "entry" });
+    audio._triggerChannelEnd(AudioChannel.SFX); // tick-open done → opener-entry
+    audio._triggerChannelEnd(AudioChannel.Voice); // opener done → fuel-on in flight
+
+    // A count-in mark cuts the readback (stashed with resume) and is now playing.
+    bus.publishEvent("pitBox.countdown", { mark: "two" });
+
+    // While the mark is still on the bus, a routine fuel-toggle confirmation
+    // (NORMAL weight, no interrupt) fires and claims the pending slot.
+    bus.publishEvent("pitService.toggled", { service: "fuel", on: true });
+
+    // Drain the mark's pending-hold window and everything after.
+    vi.advanceTimersByTime(PIT_BOX_PENDING_HOLD_MS);
+    flush(audio);
+
+    // The readback's remaining service content is still spoken.
+    const readbackPaths = voicePaths().filter((p) => p.includes("/pit-readback/"));
+    expect(readbackPaths).toContain(`voice/${VOICE}/pit-readback/fuel-on.mp3`);
+    expect(readbackPaths).toContain(`voice/${VOICE}/pit-readback/tires-all.mp3`);
+  });
 });
