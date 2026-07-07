@@ -517,6 +517,11 @@
             { "value": "focus-on-leader", "label": "Focus on Leader" },
             { "value": "focus-on-incident", "label": "Focus on Incident" },
             { "value": "focus-on-most-exciting", "label": "Focus on Most Exciting" },
+            {
+              "value": "focus-select-car",
+              "label": "Focus Car (pick from grid)",
+              "description": "Opens the iRaceDeck Car Selector profile with a focus intent — pressing a car key focuses the camera on that car and stays on the grid (Elgato Stream Deck only)."
+            },
             { "value": "switch-by-position", "label": "Switch by Position" },
             { "value": "switch-by-car-number", "label": "Switch by Car Number" },
             { "value": "set-camera-state", "label": "Set Camera State" }

@@ -520,7 +520,7 @@ Required. Supports template variables.
 
 ### Select Car (Admin Target)
 
-**Elgato Stream Deck only.** Turns a key into a self-populating car button for a race-control car selector. It auto-fills with one car from the live session and, when pressed, remembers that car as the shared **admin target** and switches to your per-car commands profile. Combine it with the bundled [**iRaceDeck Race Admin Cars**](/docs/features/stream-deck-profiles/) selector profile and any command mode set to the **Selected Car** target (see **Shared settings**) so a whole page of admin commands acts on the car you picked — instead of hand-building a page per car number. The selection is per-session: when a new session starts (car numbers reshuffle), a stale selection is voided rather than silently pointing at a different driver.
+**Elgato Stream Deck only.** Turns a key into a self-populating car button for a race-control car selector. It auto-fills with one car from the live session and, when pressed, remembers that car as the shared **admin target** and switches to your per-car commands profile. Combine it with the bundled [**iRaceDeck Car Selector**](/docs/features/stream-deck-profiles/) selector profile and any command mode set to the **Selected Car** target (see **Shared settings**) so a whole page of admin commands acts on the car you picked — instead of hand-building a page per car number. The selection is per-session: when a new session starts (car numbers reshuffle), a stale selection is voided rather than silently pointing at a different driver.
 
 This mode sends no iRacing command itself; it's navigation plus shared state.
 
@@ -595,7 +595,7 @@ Every `[message]` parameter supports [template variables](/docs/features/templat
 
 **Run race control on one car at a time (Elgato Stream Deck only):**
 
-1. Switch your Stream Deck to the bundled **iRaceDeck Race Admin Cars** profile — from the [Stream Deck Profiles](/docs/features/stream-deck-profiles/) section in any action's settings, or with a [Switch Profile](/docs/actions/stream-deck/switch-profile/) key. The Stream Deck app asks to install the profile the first time you switch to it.
+1. Switch your Stream Deck to the bundled **iRaceDeck Car Selector** profile — from the [Stream Deck Profiles](/docs/features/stream-deck-profiles/) section in any action's settings, or with a [Switch Profile](/docs/actions/stream-deck/switch-profile/) key. The Stream Deck app asks to install the profile the first time you switch to it.
 2. The selector fills its keys with the cars in the session, sorted by car number — one big car number per key with the driver's name below. Use the page keys to reach larger fields. Press the car you need to act on.
 3. Your Stream Deck switches to the **iRaceDeck Race Admin Per Car** profile, where every command key — black flag, end-of-line, disqualify, clear penalties, wave around, and the rest — uses the **Selected Car** target and acts on the car you picked.
 4. When you're done with that car, the profile's back key (a [Switch Profile](/docs/actions/stream-deck/switch-profile/) key set to **Back to previous**) returns you to the car selector to pick the next one.

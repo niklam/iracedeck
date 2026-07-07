@@ -1,8 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { requestProfileSwitch, resolveProfileNameForDevice } from "@iracedeck/deck-core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { _resetSelectIntents, getSelectIntent } from "../../shared/car-select-intent.js";
 import {
   CAMERA_GROUP_MAP,
   CAMERA_GROUPS_SETTING_KEY,
+  CameraControls,
   computeGridPositions,
   DEFAULT_CAMERA_GROUPS,
   DEFAULT_ENABLED_GROUPS,
@@ -88,6 +91,16 @@ vi.mock("@iracedeck/icons/camera-focus/switch-by-car-number.svg", () => ({
 vi.mock("@iracedeck/icons/camera-focus/set-camera-state.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">set-camera-state {{mainLabel}} {{subLabel}}</svg>',
 }));
+vi.mock("@iracedeck/icons/camera-focus/focus-select-car.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">focus-select-car {{mainLabel}} {{subLabel}}</svg>',
+}));
+
+// focus-select-car (#790): the Race Admin car selector's device-filtered
+// profile helpers, reused verbatim to open the selector for this device.
+vi.mock("../race-admin/race-admin-selector.js", () => ({
+  availableProfilesForDevice: vi.fn(() => ["iRaceDeck Car Selector XL"]),
+  deviceProfileEntries: vi.fn(() => [{ name: "iRaceDeck Car Selector XL", label: "iRaceDeck Car Selector" }]),
+}));
 
 vi.mock("@iracedeck/iracing-sdk", () => ({
   getCameraGroupsFromSessionInfo: vi.fn(() => []),
@@ -118,6 +131,9 @@ vi.mock("@iracedeck/deck-core", () => ({
     setKeyImage = vi.fn();
     setRegenerateCallback = vi.fn();
     updateKeyImage = vi.fn();
+    async onWillAppear(_ev: unknown): Promise<void> {}
+    async onWillDisappear(_ev: unknown): Promise<void> {}
+    async onDidReceiveSettings(_ev: unknown): Promise<void> {}
   },
   getCommands: vi.fn(() => ({
     camera: {
@@ -133,6 +149,10 @@ vi.mock("@iracedeck/deck-core", () => ({
       focusOnMostExciting: vi.fn(() => true),
     },
   })),
+  // focus-select-car (#790)
+  CAR_SELECTOR_PROFILE: "iRaceDeck Car Selector",
+  requestProfileSwitch: vi.fn(),
+  resolveProfileNameForDevice: vi.fn((name: string) => `${name} XL`),
   generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
   getGlobalBorderSettings: vi.fn(() => ({})),
   getGlobalColors: vi.fn(() => ({})),
@@ -781,6 +801,138 @@ describe("CameraControls", () => {
         generateCycleCameraGridSvg(["NonExistent"], "next", undefined, { titleText: "FALLBACK" }),
       );
       expect(decoded).toContain("FALLBACK");
+    });
+  });
+
+  describe("focus-select-car mode (#790)", () => {
+    const focusSelectSettings = {
+      target: "focus-select-car" as const,
+      direction: "next" as const,
+      position: 1,
+      carNumber: 0,
+      cameraState: 0,
+      cameraGroup: 9,
+      focusSelectorProfile: "iRaceDeck Car Selector",
+    };
+
+    function makeKeyDownEvent(settings: Record<string, unknown>) {
+      return {
+        action: { id: "ctx-1", deviceId: "dev-1", deviceType: 2, setSettings: vi.fn(async () => {}) },
+        payload: { settings },
+      } as never;
+    }
+
+    function makeDialDownEvent(settings: Record<string, unknown>) {
+      return {
+        action: { id: "ctx-1", deviceId: "dev-1", deviceType: 2, setSettings: vi.fn(async () => {}) },
+        payload: { settings },
+      } as never;
+    }
+
+    function makeWillAppearEvent(settings: Record<string, unknown>) {
+      return {
+        action: {
+          id: "ctx-1",
+          deviceId: "dev-1",
+          deviceType: 2,
+          setSettings: vi.fn(async () => {}),
+          setTitle: vi.fn(async () => {}),
+        },
+        payload: { settings },
+      } as never;
+    }
+
+    beforeEach(() => {
+      _resetSelectIntents();
+    });
+
+    afterEach(() => {
+      _resetSelectIntents();
+      // Restore the default implementation — a test below overrides this with
+      // mockReturnValue (not mockReturnValueOnce), which otherwise leaks into
+      // every later test since the top-level beforeEach only calls clearAllMocks.
+      vi.mocked(resolveProfileNameForDevice).mockImplementation((name: string) => `${name} XL`);
+    });
+
+    it("sets the focus intent and switches to the Car Selector profile on page 0", async () => {
+      const action = new CameraControls();
+      await action.onKeyDown(makeKeyDownEvent(focusSelectSettings));
+
+      expect(getSelectIntent("dev-1")).toEqual({ action: "focus-camera" });
+      expect(requestProfileSwitch).toHaveBeenCalledWith("dev-1", "iRaceDeck Car Selector XL", 0);
+    });
+
+    it("does not set an intent when no selector profile resolves for the device", async () => {
+      vi.mocked(resolveProfileNameForDevice).mockReturnValue(undefined);
+      const action = new CameraControls();
+      await action.onKeyDown(makeKeyDownEvent(focusSelectSettings));
+
+      expect(getSelectIntent("dev-1")).toBeUndefined();
+      expect(requestProfileSwitch).not.toHaveBeenCalled();
+    });
+
+    it("ignores dial presses for focus-select-car", async () => {
+      const action = new CameraControls();
+      await action.onDialDown(makeDialDownEvent(focusSelectSettings));
+
+      expect(requestProfileSwitch).not.toHaveBeenCalled();
+      expect(getSelectIntent("dev-1")).toBeUndefined();
+    });
+
+    it("uses the focus-select-car icon, not the focus-your-car fallback", () => {
+      const decoded = decodeURIComponent(generateCameraControlsSvg({ target: "focus-select-car" }));
+
+      // Distinctive content from the mocked focus-select-car.svg module (see
+      // the vi.mock near the top of this file) — proves the mode is actually
+      // wired into FOCUS_ICONS/FOCUS_TITLES rather than silently falling back.
+      expect(decoded).toContain("focus-select-car");
+      expect(decoded).toContain("PICK CAR");
+      expect(decoded).toContain("FOCUS");
+      // Must NOT contain the focus-your-car fallback's distinctive content.
+      expect(decoded).not.toContain("focus-your-car");
+      expect(decoded).not.toContain("YOUR CAR");
+    });
+
+    describe("pushDeviceProfiles", () => {
+      it("pushes the device-filtered profile entries on appear when none are stored", async () => {
+        const action = new CameraControls();
+        const ev = makeWillAppearEvent(focusSelectSettings);
+
+        await action.onWillAppear(ev);
+
+        const setSettings = (ev as { action: { setSettings: ReturnType<typeof vi.fn> } }).action.setSettings;
+
+        expect(setSettings).toHaveBeenCalledWith(
+          expect.objectContaining({
+            _deviceProfiles: [{ name: "iRaceDeck Car Selector XL", label: "iRaceDeck Car Selector" }],
+          }),
+        );
+      });
+
+      it("does not push device profiles when they already match (echo-loop guard)", async () => {
+        const action = new CameraControls();
+        const ev = makeWillAppearEvent({
+          ...focusSelectSettings,
+          _deviceProfiles: [{ name: "iRaceDeck Car Selector XL", label: "iRaceDeck Car Selector" }],
+        });
+
+        await action.onWillAppear(ev);
+
+        const setSettings = (ev as { action: { setSettings: ReturnType<typeof vi.fn> } }).action.setSettings;
+
+        expect(setSettings).not.toHaveBeenCalled();
+      });
+
+      it("does not push device profiles for a different target", async () => {
+        const action = new CameraControls();
+        const ev = makeWillAppearEvent({ ...focusSelectSettings, target: "focus-your-car" });
+
+        await action.onWillAppear(ev);
+
+        const setSettings = (ev as { action: { setSettings: ReturnType<typeof vi.fn> } }).action.setSettings;
+
+        expect(setSettings).not.toHaveBeenCalled();
+      });
     });
   });
 });

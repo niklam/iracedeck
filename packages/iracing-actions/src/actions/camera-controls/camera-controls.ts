@@ -1,5 +1,6 @@
 import {
   assembleIcon,
+  CAR_SELECTOR_PROFILE,
   CommonSettings,
   ConnectionStateAwareAction,
   extractGraphicContent,
@@ -18,9 +19,11 @@ import {
   type IDeckWillDisappearEvent,
   parseSvgViewBox,
   renderIconTemplate,
+  requestProfileSwitch,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
+  resolveProfileNameForDevice,
   resolveTitleSettings,
   svgToDataUri,
 } from "@iracedeck/deck-core";
@@ -37,6 +40,7 @@ import subCameraPreviousSvg from "@iracedeck/icons/camera-cycle/sub-camera-previ
 import focusOnIncidentSvg from "@iracedeck/icons/camera-focus/focus-on-incident.svg";
 import focusOnLeaderSvg from "@iracedeck/icons/camera-focus/focus-on-leader.svg";
 import focusOnMostExcitingSvg from "@iracedeck/icons/camera-focus/focus-on-most-exciting.svg";
+import focusSelectCarSvg from "@iracedeck/icons/camera-focus/focus-select-car.svg";
 import focusYourCarSvg from "@iracedeck/icons/camera-focus/focus-your-car.svg";
 import setCameraStateSvg from "@iracedeck/icons/camera-focus/set-camera-state.svg";
 import switchByCarNumberSvg from "@iracedeck/icons/camera-focus/switch-by-car-number.svg";
@@ -69,6 +73,9 @@ import {
 } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
+import { setSelectIntent } from "../../shared/car-select-intent.js";
+import { profileEntriesEqual } from "../../shared/profile-entries.js";
+import { availableProfilesForDevice, deviceProfileEntries } from "../race-admin/race-admin-selector.js";
 import { migrateFocusOnExitingToMostExciting } from "./migrate-focus-on-exiting.js";
 
 // --- Target types ---
@@ -80,6 +87,7 @@ const FOCUS_TARGET_VALUES = [
   "focus-on-leader",
   "focus-on-incident",
   "focus-on-most-exciting",
+  "focus-select-car",
   "switch-by-position",
   "switch-by-car-number",
   "set-camera-state",
@@ -154,6 +162,16 @@ const CameraControlsSettings = CommonSettings.extend({
   cameraState: z.coerce.number().int().min(0).default(0),
   // Change-camera-specific
   cameraGroup: z.coerce.number().int().min(1).max(20).default(9),
+  // focus-select-car (#790): the profile the press switches to. May hold a
+  // device-suffixed manifest name, a legacy name, or a name suffixed for
+  // another device — resolved at press time.
+  focusSelectorProfile: z.string().default(CAR_SELECTOR_PROFILE),
+  /**
+   * Runtime-populated list of profiles available for this button's device,
+   * pushed for the PI dropdown as `{ name, label }` entries (#753 shape).
+   * Not user-editable.
+   */
+  _deviceProfiles: z.array(z.union([z.string(), z.object({ name: z.string(), label: z.string() })])).optional(),
 });
 
 type CameraControlsSettings = z.infer<typeof CameraControlsSettings>;
@@ -256,6 +274,7 @@ const FOCUS_ICONS: Record<string, string> = {
   "focus-on-leader": focusOnLeaderSvg,
   "focus-on-incident": focusOnIncidentSvg,
   "focus-on-most-exciting": focusOnMostExcitingSvg,
+  "focus-select-car": focusSelectCarSvg,
   "switch-by-position": switchByPositionSvg,
   "switch-by-car-number": switchByCarNumberSvg,
   "set-camera-state": setCameraStateSvg,
@@ -266,6 +285,7 @@ const FOCUS_TITLES: Record<string, string> = {
   "focus-on-leader": "FOCUS\nLEADER",
   "focus-on-incident": "FOCUS\nINCIDENT",
   "focus-on-most-exciting": "MOST\nEXCITING",
+  "focus-select-car": "FOCUS\nPICK CAR",
   "switch-by-position": "SWITCH\nPOSITION",
   "switch-by-car-number": "SWITCH\nCAR #",
   "set-camera-state": "SET\nCAM STATE",
@@ -700,6 +720,7 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
     await this.persistMigratedSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
+    await this.pushDeviceProfiles(ev, settings);
     await this.updateDisplay(ev, settings);
 
     this.sdkController.subscribe(ev.action.id, () => {
@@ -724,6 +745,7 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
     this.lastDisplayedGroup.delete(ev.action.id);
+    await this.pushDeviceProfiles(ev, settings);
     await this.updateDisplay(ev, settings);
     this.updateCycleIcon(ev.action.id);
   }
@@ -731,6 +753,12 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
   override async onKeyDown(ev: IDeckKeyDownEvent<CameraControlsSettings>): Promise<void> {
     this.logger.info("Key down received");
     const settings = this.parseSettings(ev.payload.settings);
+
+    if (settings.target === "focus-select-car") {
+      await this.executeFocusSelectCar(ev, settings);
+
+      return;
+    }
 
     if (isCycleTarget(settings.target)) {
       this.executeCycle(settings.target, settings.direction, settings.cameraGroupSubset);
@@ -744,6 +772,8 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
   override async onDialDown(ev: IDeckDialDownEvent<CameraControlsSettings>): Promise<void> {
     this.logger.info("Dial down received");
     const settings = this.parseSettings(ev.payload.settings);
+
+    if (settings.target === "focus-select-car") return;
 
     if (isCycleTarget(settings.target)) {
       this.executeCycle(settings.target, settings.direction, settings.cameraGroupSubset);
@@ -938,6 +968,62 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
         this.logger.debug(`Result: ${success}, state: ${settings.cameraState}`);
         break;
       }
+    }
+  }
+
+  /**
+   * focus-select-car press (#790): arm the per-device focus intent and open
+   * the Car Selector profile — each car press there focuses the camera and
+   * stays on the grid; the grid's Back key returns here. The intent is only
+   * set when a selector profile actually resolves for this device, so a
+   * device without bundled profiles never carries a dangling intent.
+   */
+  private async executeFocusSelectCar(
+    ev: IDeckKeyDownEvent<CameraControlsSettings>,
+    settings: CameraControlsSettings,
+  ): Promise<void> {
+    const stored = settings.focusSelectorProfile.trim() || CAR_SELECTOR_PROFILE;
+    const available = availableProfilesForDevice(ev.action.deviceType);
+    const profile =
+      resolveProfileNameForDevice(stored, ev.action.deviceType, available) ??
+      resolveProfileNameForDevice(CAR_SELECTOR_PROFILE, ev.action.deviceType, available);
+
+    if (!profile) {
+      this.logger.warn(
+        `No car-selector profile available for device ${ev.action.deviceId ?? "(unknown)"}; ignoring press`,
+      );
+
+      return;
+    }
+
+    setSelectIntent(ev.action.deviceId, { action: "focus-camera" });
+    this.logger.info("Focus car selector opened");
+    this.logger.debug(`Switching device ${ev.action.deviceId ?? "(unknown)"} to profile "${profile}"`);
+    // Page 0: named switches always open a profile on its first page (#754).
+    await requestProfileSwitch(ev.action.deviceId, profile, 0);
+  }
+
+  /**
+   * Push the device-filtered profile list for the focus-select-car PI dropdown
+   * (guarded against the setSettings→onDidReceiveSettings echo loop by only
+   * writing on change — the Switch Profile pattern).
+   */
+  private async pushDeviceProfiles(
+    ev: IDeckWillAppearEvent<CameraControlsSettings> | IDeckDidReceiveSettingsEvent<CameraControlsSettings>,
+    settings: CameraControlsSettings,
+  ): Promise<void> {
+    if (settings.target !== "focus-select-car") return;
+
+    const entries = deviceProfileEntries(ev.action.deviceType);
+    const raw = (ev.payload.settings ?? {}) as Record<string, unknown>;
+    const current = Array.isArray(raw._deviceProfiles) ? (raw._deviceProfiles as unknown[]) : [];
+
+    if (profileEntriesEqual(current, entries)) return;
+
+    try {
+      await ev.action.setSettings({ ...raw, _deviceProfiles: entries });
+    } catch (err) {
+      this.logger.warn(`Failed to push device profiles: ${err instanceof Error ? err.message : err}`);
     }
   }
 

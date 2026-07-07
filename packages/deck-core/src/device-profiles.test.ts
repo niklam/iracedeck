@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  CAR_SELECTOR_PROFILE,
   DEVICE_SPECS,
   DEVICE_SUPPORT,
   deviceProfileName,
@@ -211,6 +212,31 @@ describe("resolveProfileNameForDevice", () => {
     expect(resolveProfileNameForDevice("iRaceDeck Default", DeviceType.StreamDeck, available)).toBeUndefined();
     expect(resolveProfileNameForDevice("iRaceDeck Default", undefined, available)).toBeUndefined();
     expect(resolveProfileNameForDevice("", DeviceType.StreamDeckXL, available)).toBeUndefined();
+  });
+
+  it("maps the legacy Race Admin Cars name to the renamed Car Selector profile", () => {
+    const availableRenamed = ["iRaceDeck Car Selector XL", "iRaceDeck Race Admin Per Car XL"];
+
+    // Bare legacy display name (pre-#753 persisted value)
+    expect(resolveProfileNameForDevice("iRaceDeck Race Admin Cars", DeviceType.StreamDeckXL, availableRenamed)).toBe(
+      "iRaceDeck Car Selector XL",
+    );
+    // Legacy name suffixed for this device
+    expect(resolveProfileNameForDevice("iRaceDeck Race Admin Cars XL", DeviceType.StreamDeckXL, availableRenamed)).toBe(
+      "iRaceDeck Car Selector XL",
+    );
+    // Legacy name suffixed for ANOTHER device still resolves to this device's variant
+    expect(resolveProfileNameForDevice("iRaceDeck Race Admin Cars SD", DeviceType.StreamDeckXL, availableRenamed)).toBe(
+      "iRaceDeck Car Selector XL",
+    );
+    // The new name resolves normally
+    expect(resolveProfileNameForDevice("iRaceDeck Car Selector", DeviceType.StreamDeckXL, availableRenamed)).toBe(
+      "iRaceDeck Car Selector XL",
+    );
+  });
+
+  it("exports the Car Selector display name", () => {
+    expect(CAR_SELECTOR_PROFILE).toBe("iRaceDeck Car Selector");
   });
 });
 

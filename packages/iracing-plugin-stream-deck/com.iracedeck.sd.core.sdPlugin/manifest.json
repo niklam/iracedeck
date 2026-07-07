@@ -901,7 +901,7 @@
       "DontAutoSwitchWhenInstalled": true
     },
     {
-      "Name": "iRaceDeck Race Admin Cars XL",
+      "Name": "iRaceDeck Car Selector XL",
       "DeviceType": 2,
       "AutoInstall": true,
       "DontAutoSwitchWhenInstalled": true
@@ -925,7 +925,7 @@
       "DontAutoSwitchWhenInstalled": true
     },
     {
-      "Name": "iRaceDeck Race Admin Cars SD",
+      "Name": "iRaceDeck Car Selector SD",
       "DeviceType": 0,
       "AutoInstall": true,
       "DontAutoSwitchWhenInstalled": true
@@ -933,6 +933,30 @@
     {
       "Name": "iRaceDeck Race Admin Per Car SD",
       "DeviceType": 0,
+      "AutoInstall": true,
+      "DontAutoSwitchWhenInstalled": true
+    },
+    {
+      "Name": "iRaceDeck Default Plus XL",
+      "DeviceType": 13,
+      "AutoInstall": true,
+      "DontAutoSwitchWhenInstalled": false
+    },
+    {
+      "Name": "iRaceDeck Replay Plus XL",
+      "DeviceType": 13,
+      "AutoInstall": true,
+      "DontAutoSwitchWhenInstalled": true
+    },
+    {
+      "Name": "iRaceDeck Car Selector Plus XL",
+      "DeviceType": 13,
+      "AutoInstall": true,
+      "DontAutoSwitchWhenInstalled": true
+    },
+    {
+      "Name": "iRaceDeck Race Admin Per Car Plus XL",
+      "DeviceType": 13,
       "AutoInstall": true,
       "DontAutoSwitchWhenInstalled": true
     }

@@ -1,21 +1,29 @@
-import { requestProfileSwitch, updateGlobalSettings } from "@iracedeck/deck-core";
+import { getGlobalSettings, requestProfileSwitch, updateGlobalSettings } from "@iracedeck/deck-core";
 import {
   buildTemplateContext,
   classifyCarNumberTarget,
+  getCarNumberRawFromSessionInfo,
   getPlayerCarNumberFromSessionInfo,
   resolveTemplate,
 } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { _resetSelectIntents, setSelectIntent } from "../../shared/car-select-intent.js";
 import { buildAdminCommand, buildAdminCommandPrefix, resolveDriverTarget } from "./race-admin-commands.js";
 import { getModesByOptgroup, RACE_ADMIN_MODE_META, RACE_ADMIN_MODES } from "./race-admin-modes.js";
-import { availableProfilesForDevice, resolveSelectedCar, resolveSlotCar } from "./race-admin-selector.js";
+import {
+  availableProfilesForDevice,
+  generateSelectorSvg,
+  resolveSelectedCar,
+  resolveSlotCar,
+} from "./race-admin-selector.js";
 import { generateRaceAdminSvg, RaceAdmin } from "./race-admin.js";
 
 // Mock SDK
 // Mock iracing-sdk
 vi.mock("@iracedeck/iracing-sdk", () => ({
   getCarNumberFromSessionInfo: vi.fn(),
+  getCarNumberRawFromSessionInfo: vi.fn(() => 24),
   getAllCarNumbers: vi.fn(() => []),
   classifyCarNumberTarget: vi.fn(() => "user"),
   getPlayerCarNumberFromSessionInfo: vi.fn(() => null),
@@ -27,7 +35,8 @@ vi.mock("@iracedeck/iracing-sdk", () => ({
 // race-admin-selector.test.ts); the pure slot-math helpers keep their real
 // logic so the lifecycle tests exercise genuine ordinal/paging behavior (#754).
 vi.mock("./race-admin-selector.js", () => ({
-  SELECTED_CAR_KEY: "_raceAdminSelectedCar",
+  SELECTED_CAR_KEY: "_selectedCar",
+  LEGACY_SELECTED_CAR_KEY: "_raceAdminSelectedCar",
   DEFAULT_SELECTOR_TARGET_PROFILE: "iRaceDeck Race Admin Per Car",
   availableProfilesForDevice: vi.fn(() => ["iRaceDeck Race Admin Cars XL", "iRaceDeck Race Admin Per Car XL"]),
   deviceProfileEntries: vi.fn(() => [
@@ -56,7 +65,10 @@ vi.mock("./race-admin-selector.js", () => ({
   },
   resolveSlotCar: vi.fn(() => ({ carIdx: 5, carNumber: "24", lastName: "Doe" })),
   resolveSelectedCar: vi.fn(() => null),
-  generateSelectorSvg: vi.fn((car: { carNumber: string } | null) => `data:selector,${car?.carNumber ?? ""}`),
+  generateSelectorSvg: vi.fn(
+    (car: { carNumber: string } | null, _settings: unknown, highlighted?: boolean) =>
+      `data:selector,${car?.carNumber ?? ""},${highlighted ? "H" : ""}`,
+  ),
 }));
 
 // Mock all icon imports
@@ -148,6 +160,7 @@ const mockSendMessage = vi.fn(async () => true);
 const mockBeginChat = vi.fn(() => true);
 const mockSetClipboardText = vi.fn(() => true);
 const mockSendKeyCombination = vi.fn(async () => true);
+const mockCameraSwitchNum = vi.fn(() => true);
 // Small default open→paste delay so the real-timer tests below resolve quickly.
 // vi.hoisted so the object-returning factory is initialized before the hoisted
 // vi.mock("@iracedeck/deck-core") factory references it.
@@ -202,7 +215,7 @@ vi.mock("@iracedeck/deck-core", () => ({
   },
   getCommands: vi.fn(() => ({
     chat: { sendMessage: mockSendMessage, beginChat: mockBeginChat },
-    camera: { switchNum: vi.fn(() => true) },
+    camera: { switchNum: mockCameraSwitchNum },
   })),
   getClipboard: vi.fn(() => ({ setClipboardText: mockSetClipboardText })),
   getDeviceSpec: vi.fn(() => ({ grid: [8, 4] as const })),
@@ -575,7 +588,7 @@ describe("RaceAdmin", () => {
     it("should render the dynamic selector icon for select-car mode", () => {
       const settings = { ...defaultSettings, mode: "select-car" as const };
       expect(generateRaceAdminSvg("select-car", settings, { carNumber: "24", lastName: "Doe" })).toBe(
-        "data:selector,24",
+        "data:selector,24,",
       );
     });
 
@@ -816,7 +829,7 @@ describe("RaceAdmin", () => {
       await action.onKeyDown(makeSelectorKeyDown(selectorSettings));
 
       expect(updateGlobalSettings).toHaveBeenCalledWith({
-        _raceAdminSelectedCar: { carIdx: 5, carNumber: "24" },
+        _selectedCar: { carIdx: 5, carNumber: "24" },
       });
       // The stored legacy display name resolves to the device's manifest name
       // (#753). Page 0: the target profile always opens on its first page (#754).
@@ -862,7 +875,7 @@ describe("RaceAdmin", () => {
       await action.onKeyDown(makeSelectorKeyDown(selectorSettings));
 
       expect(updateGlobalSettings).toHaveBeenCalledWith({
-        _raceAdminSelectedCar: { carIdx: 5, carNumber: "24" },
+        _selectedCar: { carIdx: 5, carNumber: "24" },
       });
       expect(requestProfileSwitch).not.toHaveBeenCalled();
     });
@@ -960,7 +973,7 @@ describe("RaceAdmin", () => {
       // The press must stay a selection — NOT fall back to the default
       // "yellow" mode and throw a real caution flag.
       expect(updateGlobalSettings).toHaveBeenCalledWith({
-        _raceAdminSelectedCar: { carIdx: 5, carNumber: "24" },
+        _selectedCar: { carIdx: 5, carNumber: "24" },
       });
       expect(mockSendMessage).not.toHaveBeenCalled();
     });
@@ -985,6 +998,33 @@ describe("RaceAdmin", () => {
       );
 
       expect(mockSendMessage).not.toHaveBeenCalled();
+    });
+
+    it("reads the legacy _raceAdminSelectedCar key when _selectedCar is absent", async () => {
+      const legacyRecord = { carIdx: 7, carNumber: "42" };
+      vi.mocked(getGlobalSettings).mockReturnValueOnce({ _raceAdminSelectedCar: legacyRecord } as never);
+
+      const action = new RaceAdmin();
+      await action.onKeyDown(
+        makeSelectorKeyDown({ ...selectorSettings, mode: "dq-driver", driverTarget: "selected-car" }),
+      );
+
+      expect(resolveSelectedCar).toHaveBeenCalledWith(legacyRecord, expect.any(Function));
+    });
+
+    it("prefers _selectedCar over the legacy key when both exist", async () => {
+      const newRecord = { carIdx: 3, carNumber: "11" };
+      vi.mocked(getGlobalSettings).mockReturnValueOnce({
+        _selectedCar: newRecord,
+        _raceAdminSelectedCar: { carIdx: 7, carNumber: "42" },
+      } as never);
+
+      const action = new RaceAdmin();
+      await action.onKeyDown(
+        makeSelectorKeyDown({ ...selectorSettings, mode: "dq-driver", driverTarget: "selected-car" }),
+      );
+
+      expect(resolveSelectedCar).toHaveBeenCalledWith(newRecord, expect.any(Function));
     });
 
     it("pushes the device profile entries for the Target Profile dropdown on appear (select-car only)", async () => {
@@ -1038,6 +1078,97 @@ describe("RaceAdmin", () => {
       await action.onWillAppear(ev);
 
       expect((ev as { action: { setSettings: ReturnType<typeof vi.fn> } }).action.setSettings).not.toHaveBeenCalled();
+    });
+
+    describe("focus-camera intent (#790)", () => {
+      beforeEach(() => {
+        _resetSelectIntents();
+      });
+
+      afterEach(() => {
+        _resetSelectIntents();
+      });
+
+      // Mirrors makeSelectorKeyDown (same ctx id / device / grid position) but
+      // also wires a showAlert spy so the failure-path tests can assert on it.
+      function makeFocusKeyDown(showAlert: ReturnType<typeof vi.fn>) {
+        return {
+          action: { id: "ctx-sel", deviceId: "dev-1", deviceType: 2, setSettings: vi.fn(async () => {}), showAlert },
+          payload: { settings: selectorSettings, coordinates: { column: 1, row: 0 } },
+        } as never;
+      }
+
+      function makeFocusAction(): RaceAdmin {
+        const action = new RaceAdmin();
+        // A focus-camera dispatch only proceeds past the sessionInfo guard when
+        // session info is present — the default mock's getSessionInfo() is null.
+        action.sdkController.getSessionInfo = vi.fn(() => ({}) as never);
+
+        return action;
+      }
+
+      it("focuses the camera on the slot car and stays on the grid", async () => {
+        setSelectIntent("dev-1", { action: "focus-camera" });
+        const action = makeFocusAction();
+        const showAlert = vi.fn(async () => {});
+
+        await action.onKeyDown(makeFocusKeyDown(showAlert));
+
+        expect(mockCameraSwitchNum).toHaveBeenCalledWith(24, 0, 0);
+        expect(updateGlobalSettings).not.toHaveBeenCalled();
+        expect(requestProfileSwitch).not.toHaveBeenCalled();
+      });
+
+      it("without an intent the press stores the selection and switches (legacy path)", async () => {
+        const action = makeFocusAction();
+        const showAlert = vi.fn(async () => {});
+
+        await action.onKeyDown(makeFocusKeyDown(showAlert));
+
+        expect(updateGlobalSettings).toHaveBeenCalledWith({ _selectedCar: { carIdx: 5, carNumber: "24" } });
+        expect(requestProfileSwitch).toHaveBeenCalled();
+        expect(mockCameraSwitchNum).not.toHaveBeenCalled();
+      });
+
+      it("alerts and does nothing when the camera switch fails", async () => {
+        setSelectIntent("dev-1", { action: "focus-camera" });
+        mockCameraSwitchNum.mockReturnValueOnce(false);
+        const action = makeFocusAction();
+        const showAlert = vi.fn(async () => {});
+
+        await action.onKeyDown(makeFocusKeyDown(showAlert));
+
+        expect(showAlert).toHaveBeenCalled();
+        expect(updateGlobalSettings).not.toHaveBeenCalled();
+      });
+
+      it("alerts when the car number cannot be resolved to a raw number", async () => {
+        setSelectIntent("dev-1", { action: "focus-camera" });
+        vi.mocked(getCarNumberRawFromSessionInfo).mockReturnValueOnce(null);
+        const action = makeFocusAction();
+        const showAlert = vi.fn(async () => {});
+
+        await action.onKeyDown(makeFocusKeyDown(showAlert));
+
+        expect(mockCameraSwitchNum).not.toHaveBeenCalled();
+        expect(showAlert).toHaveBeenCalled();
+      });
+
+      it("highlights the key whose car the camera is on while the intent is active", async () => {
+        setSelectIntent("dev-1", { action: "focus-camera" });
+        const action = new RaceAdmin();
+
+        await action.onWillAppear(makeSelectorAppear("ctx-sel", 1, 0, selectorSettings));
+
+        const telemetryCallback = action["sdkController"].subscribe.mock.calls[0][1];
+        await telemetryCallback({ CamCarIdx: 5 });
+
+        expect(generateSelectorSvg).toHaveBeenLastCalledWith(
+          expect.objectContaining({ carIdx: 5 }),
+          expect.anything(),
+          true,
+        );
+      });
     });
   });
 

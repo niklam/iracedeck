@@ -1,6 +1,7 @@
 import { notifyProfileVisible, requestProfileSwitch, requestProfileSwitchBack } from "@iracedeck/deck-core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { _resetSelectIntents, getSelectIntent, setSelectIntent } from "../../shared/car-select-intent.js";
 import {
   availableProfilesForDevice,
   defaultProfileForDevice,
@@ -14,11 +15,13 @@ import {
 vi.mock("@iracedeck/icons/switch-profile/replay.svg", () => ({ default: "<svg>REPLAY</svg>" }));
 vi.mock("@iracedeck/icons/switch-profile/chat.svg", () => ({ default: "<svg>CHAT</svg>" }));
 vi.mock("@iracedeck/icons/switch-profile/default.svg", () => ({ default: "<svg>DEFAULT</svg>" }));
+vi.mock("@iracedeck/icons/switch-profile/car-selector.svg", () => ({ default: "<svg>CAR SELECTOR</svg>" }));
 
 vi.mock("../data/profiles.json", () => ({
   default: [
     { name: "iRaceDeck Default XL", deviceType: 2, displayName: "iRaceDeck Default" },
     { name: "iRaceDeck Replay XL", deviceType: 2, displayName: "iRaceDeck Replay" },
+    { name: "iRaceDeck Car Selector XL", deviceType: 2, displayName: "iRaceDeck Car Selector" },
     { name: "iRaceDeck Pit Actions Mini", deviceType: 1, displayName: "iRaceDeck Pit Actions" },
   ],
 }));
@@ -53,6 +56,12 @@ vi.mock("@iracedeck/deck-core", () => {
     return suffix ? `${name} ${suffix}` : name;
   };
 
+  // Legacy display name → current display name (#790), mirroring
+  // LEGACY_PROFILE_NAMES in the real device-profiles.ts.
+  const LEGACY_PROFILE_NAMES: Record<string, string> = {
+    "iRaceDeck Race Admin Cars": "iRaceDeck Car Selector",
+  };
+
   const resolveProfileNameForDevice = (
     name: string,
     deviceType: number | undefined,
@@ -60,12 +69,15 @@ vi.mock("@iracedeck/deck-core", () => {
   ): string | undefined => {
     if (availableNames.includes(name)) return name;
 
-    const suffixed = deviceProfileName(profileDisplayName(name), deviceType);
+    const display = profileDisplayName(name);
+    const canonical = LEGACY_PROFILE_NAMES[display] ?? display;
+    const suffixed = deviceProfileName(canonical, deviceType);
 
     return availableNames.includes(suffixed) ? suffixed : undefined;
   };
 
   return {
+    CAR_SELECTOR_PROFILE: "iRaceDeck Car Selector",
     CommonSettings: {
       extend: () => ({
         parse: (d: Record<string, unknown>) => ({ ...d }),
@@ -136,11 +148,16 @@ describe("SwitchProfile", () => {
       expect(profileTitle("iRaceDeck Replay Plus XL")).toBe("REPLAY");
     });
 
-    it("wraps the long Race Admin profile titles onto two lines, suffixed or not", () => {
-      expect(profileTitle("iRaceDeck Race Admin Cars")).toBe("RACE ADMIN\nCARS");
+    it("wraps the long Car Selector / Race Admin Per Car profile titles onto two lines, suffixed or not", () => {
+      expect(profileTitle("iRaceDeck Car Selector")).toBe("CAR\nSELECTOR");
       expect(profileTitle("iRaceDeck Race Admin Per Car")).toBe("RACE ADMIN\nPER CAR");
-      expect(profileTitle("iRaceDeck Race Admin Cars XL")).toBe("RACE ADMIN\nCARS");
+      expect(profileTitle("iRaceDeck Car Selector XL")).toBe("CAR\nSELECTOR");
       expect(profileTitle("iRaceDeck Race Admin Per Car Plus XL")).toBe("RACE ADMIN\nPER CAR");
+    });
+
+    it("renders the same two-line title for the legacy Race Admin Cars name (pre-#790 rename)", () => {
+      expect(profileTitle("iRaceDeck Race Admin Cars")).toBe("CAR\nSELECTOR");
+      expect(profileTitle("iRaceDeck Race Admin Cars XL")).toBe("CAR\nSELECTOR");
     });
 
     it("shows no title for the default profile — the logo speaks for itself (#755)", () => {
@@ -155,7 +172,11 @@ describe("SwitchProfile", () => {
 
   describe("availableProfilesForDevice", () => {
     it("filters the generated profiles by device type, returning manifest names", () => {
-      expect(availableProfilesForDevice(2)).toEqual(["iRaceDeck Default XL", "iRaceDeck Replay XL"]);
+      expect(availableProfilesForDevice(2)).toEqual([
+        "iRaceDeck Default XL",
+        "iRaceDeck Replay XL",
+        "iRaceDeck Car Selector XL",
+      ]);
       expect(availableProfilesForDevice(1)).toEqual(["iRaceDeck Pit Actions Mini"]);
       expect(availableProfilesForDevice(99)).toEqual([]);
     });
@@ -170,6 +191,7 @@ describe("SwitchProfile", () => {
       expect(deviceProfileEntries(2)).toEqual([
         { name: "iRaceDeck Default XL", label: "iRaceDeck Default" },
         { name: "iRaceDeck Replay XL", label: "iRaceDeck Replay" },
+        { name: "iRaceDeck Car Selector XL", label: "iRaceDeck Car Selector" },
       ]);
       expect(deviceProfileEntries(undefined)).toEqual([]);
     });
@@ -196,6 +218,18 @@ describe("SwitchProfile", () => {
       expect(generateSwitchProfileSvg(settings("iRaceDeck Chat"))).toBe("assembled:<svg>CHAT</svg>");
     });
 
+    it("uses the car-selector icon for the Car Selector profile, with or without a device suffix (#790)", () => {
+      expect(generateSwitchProfileSvg(settings("iRaceDeck Car Selector"))).toBe("assembled:<svg>CAR SELECTOR</svg>");
+      expect(generateSwitchProfileSvg(settings("iRaceDeck Car Selector XL"))).toBe("assembled:<svg>CAR SELECTOR</svg>");
+    });
+
+    it("renders the car-selector artwork for the legacy Race Admin Cars name", () => {
+      expect(generateSwitchProfileSvg(settings("iRaceDeck Race Admin Cars"))).toBe("assembled:<svg>CAR SELECTOR</svg>");
+      expect(generateSwitchProfileSvg(settings("iRaceDeck Race Admin Cars XL"))).toBe(
+        "assembled:<svg>CAR SELECTOR</svg>",
+      );
+    });
+
     it("falls back to the iRaceDeck icon for Default, unknown, or no selection", () => {
       expect(generateSwitchProfileSvg(settings("iRaceDeck Default"))).toBe("assembled:<svg>DEFAULT</svg>");
       expect(generateSwitchProfileSvg(settings("iRaceDeck Default XL"))).toBe("assembled:<svg>DEFAULT</svg>");
@@ -220,6 +254,7 @@ describe("SwitchProfile", () => {
           _deviceProfiles: [
             { name: "iRaceDeck Default XL", label: "iRaceDeck Default" },
             { name: "iRaceDeck Replay XL", label: "iRaceDeck Replay" },
+            { name: "iRaceDeck Car Selector XL", label: "iRaceDeck Car Selector" },
           ],
         }),
       );
@@ -233,6 +268,7 @@ describe("SwitchProfile", () => {
             _deviceProfiles: [
               { name: "iRaceDeck Default XL", label: "iRaceDeck Default" },
               { name: "iRaceDeck Replay XL", label: "iRaceDeck Replay" },
+              { name: "iRaceDeck Car Selector XL", label: "iRaceDeck Car Selector" },
             ],
           },
         },
@@ -255,6 +291,7 @@ describe("SwitchProfile", () => {
           _deviceProfiles: [
             { name: "iRaceDeck Default XL", label: "iRaceDeck Default" },
             { name: "iRaceDeck Replay XL", label: "iRaceDeck Replay" },
+            { name: "iRaceDeck Car Selector XL", label: "iRaceDeck Car Selector" },
           ],
         }),
       );
@@ -366,6 +403,76 @@ describe("SwitchProfile", () => {
       await action.onWillAppear({ action: keyAction(), payload: { settings: {} } } as never);
 
       expect(notifyProfileVisible).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("car-select intent clearing (#790)", () => {
+    beforeEach(() => {
+      _resetSelectIntents();
+    });
+
+    afterEach(() => {
+      _resetSelectIntents();
+    });
+
+    it("clears the pressing device's intent on every press", async () => {
+      setSelectIntent("dev-9", { action: "focus-camera" });
+      const action = new SwitchProfile();
+
+      await action.onKeyDown({
+        action: keyAction({ deviceId: "dev-9" }),
+        payload: { settings: { profile: "iRaceDeck Replay XL" } },
+      } as never);
+
+      expect(getSelectIntent("dev-9")).toBeUndefined();
+    });
+
+    it("clears the intent when a non-selector host profile reports visible", async () => {
+      setSelectIntent("dev-9", { action: "focus-camera" });
+      const action = new SwitchProfile();
+
+      await action.onWillAppear({
+        action: keyAction({ deviceId: "dev-9" }),
+        payload: { settings: { hostProfile: "iRaceDeck Replay" } },
+      } as never);
+
+      expect(getSelectIntent("dev-9")).toBeUndefined();
+    });
+
+    it("keeps the intent when the Car Selector profile itself reports visible", async () => {
+      setSelectIntent("dev-9", { action: "focus-camera" });
+      const action = new SwitchProfile();
+
+      await action.onWillAppear({
+        action: keyAction({ deviceId: "dev-9" }),
+        payload: { settings: { hostProfile: "iRaceDeck Car Selector" } },
+      } as never);
+
+      expect(getSelectIntent("dev-9")).toEqual({ action: "focus-camera" });
+    });
+
+    it("keeps the intent when a legacy unsuffixed marker resolves to the Car Selector profile via the alias (#790)", async () => {
+      setSelectIntent("dev-9", { action: "focus-camera" });
+      const action = new SwitchProfile();
+
+      await action.onWillAppear({
+        action: keyAction({ deviceId: "dev-9" }),
+        payload: { settings: { hostProfile: "iRaceDeck Race Admin Cars" } },
+      } as never);
+
+      expect(getSelectIntent("dev-9")).toEqual({ action: "focus-camera" });
+    });
+
+    it("keeps the intent when a legacy device-suffixed marker resolves to the Car Selector profile via the alias (#790)", async () => {
+      setSelectIntent("dev-9", { action: "focus-camera" });
+      const action = new SwitchProfile();
+
+      await action.onWillAppear({
+        action: keyAction({ deviceId: "dev-9" }),
+        payload: { settings: { hostProfile: "iRaceDeck Race Admin Cars XL" } },
+      } as never);
+
+      expect(getSelectIntent("dev-9")).toEqual({ action: "focus-camera" });
     });
   });
 });

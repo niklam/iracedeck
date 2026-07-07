@@ -1,5 +1,6 @@
 import {
   assembleIcon,
+  CAR_SELECTOR_PROFILE,
   CommonSettings,
   ConnectionStateAwareAction,
   getGlobalBorderSettings,
@@ -20,15 +21,19 @@ import {
   resolveProfileNameForDevice,
   resolveTitleSettings,
 } from "@iracedeck/deck-core";
+import carSelectorIconSvg from "@iracedeck/icons/switch-profile/car-selector.svg";
 import chatIconSvg from "@iracedeck/icons/switch-profile/chat.svg";
 import defaultIconSvg from "@iracedeck/icons/switch-profile/default.svg";
 import previousIconSvg from "@iracedeck/icons/switch-profile/previous.svg";
-import raceAdminCarsIconSvg from "@iracedeck/icons/switch-profile/race-admin-cars.svg";
 import raceAdminPerCarIconSvg from "@iracedeck/icons/switch-profile/race-admin-per-car.svg";
 import replayIconSvg from "@iracedeck/icons/switch-profile/replay.svg";
 import z from "zod";
 
+import { clearSelectIntent } from "../../shared/car-select-intent.js";
+import { profileEntriesEqual, type ProfileEntry } from "../../shared/profile-entries.js";
 import profilesData from "../data/profiles.json" with { type: "json" };
+
+export type { ProfileEntry };
 
 /**
  * Sentinel `profile` value for the "Back to previous" mode: instead of a named
@@ -48,7 +53,9 @@ export const PREVIOUS_PROFILE_VALUE = "__previous" as const;
 const PROFILE_ICONS: Record<string, string> = {
   "iRaceDeck Replay": replayIconSvg,
   "iRaceDeck Chat": chatIconSvg,
-  "iRaceDeck Race Admin Cars": raceAdminCarsIconSvg,
+  "iRaceDeck Car Selector": carSelectorIconSvg,
+  // Legacy display name (pre-#790 rename) — old persisted keys keep their icon.
+  "iRaceDeck Race Admin Cars": carSelectorIconSvg,
   "iRaceDeck Race Admin Per Car": raceAdminPerCarIconSvg,
   [PREVIOUS_PROFILE_VALUE]: previousIconSvg,
 };
@@ -92,7 +99,8 @@ type SwitchProfileSettings = z.infer<typeof SwitchProfileSettings>;
  * renders as one line.
  */
 const PROFILE_TITLES: Record<string, string> = {
-  "iRaceDeck Race Admin Cars": "RACE ADMIN\nCARS",
+  "iRaceDeck Car Selector": "CAR\nSELECTOR",
+  "iRaceDeck Race Admin Cars": "CAR\nSELECTOR",
   "iRaceDeck Race Admin Per Car": "RACE ADMIN\nPER CAR",
 };
 
@@ -123,12 +131,6 @@ export function availableProfilesForDevice(deviceType: number | undefined): stri
   if (deviceType === undefined) return [];
 
   return profilesData.filter((p) => p.deviceType === deviceType).map((p) => p.name);
-}
-
-/** A `_deviceProfiles` entry: manifest name + clean display label (#753). */
-export interface ProfileEntry {
-  name: string;
-  label: string;
 }
 
 /**
@@ -167,23 +169,6 @@ export function generateSwitchProfileSvg(settings: SwitchProfileSettings): strin
   return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic });
 }
 
-/** Whether a persisted `_deviceProfiles` value already equals the entries we'd push. */
-function profileEntriesEqual(current: readonly unknown[], entries: readonly ProfileEntry[]): boolean {
-  return (
-    current.length === entries.length &&
-    current.every((value, i) => {
-      const entry = entries[i];
-
-      return (
-        typeof value === "object" &&
-        value !== null &&
-        (value as ProfileEntry).name === entry.name &&
-        (value as ProfileEntry).label === entry.label
-      );
-    })
-  );
-}
-
 /**
  * Switch Profile Action (Elgato-only, #736)
  *
@@ -205,6 +190,11 @@ export class SwitchProfile extends ConnectionStateAwareAction<SwitchProfileSetti
   }
 
   override async onKeyDown(ev: IDeckKeyDownEvent<SwitchProfileSettings>): Promise<void> {
+    // Any profile navigation invalidates a pending car-selection intent
+    // (#790): leaving the selector, or entering it via plain navigation,
+    // must never leave a stale focus intent behind.
+    clearSelectIntent(ev.action.deviceId);
+
     const settings = this.parseSettings(ev.payload.settings);
 
     // Back to previous: walk back by name through the plugin's profile history,
@@ -270,14 +260,22 @@ export class SwitchProfile extends ConnectionStateAwareAction<SwitchProfileSetti
       // The bundled profiles carry clean (unsuffixed) marker values; resolve to
       // this device's manifest name so the history holds switchable names
       // (#753). An unresolvable marker is reported as stored.
-      notifyProfileVisible(
-        ev.action.deviceId,
+      const visibleProfile =
         resolveProfileNameForDevice(
           settings.hostProfile,
           ev.action.deviceType,
           availableProfilesForDevice(ev.action.deviceType),
-        ) ?? settings.hostProfile,
-      );
+        ) ?? settings.hostProfile;
+
+      notifyProfileVisible(ev.action.deviceId, visibleProfile);
+
+      // Safety net for the car-selection intent (#790): a marker key reporting
+      // any profile OTHER than the Car Selector means the user left the grid
+      // through a path that didn't go through a Switch Profile press (manual
+      // app-side navigation) — drop the pending intent.
+      if (profileDisplayName(visibleProfile) !== CAR_SELECTOR_PROFILE) {
+        clearSelectIntent(ev.action.deviceId);
+      }
     }
 
     await this.updateDisplay(ev, settings);

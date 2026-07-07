@@ -37,15 +37,23 @@ import profilesData from "../data/profiles.json" with { type: "json" };
 
 /**
  * Internal passthrough global-settings key holding the currently selected admin
- * target as a `{ carIdx, carNumber }` record. Follows the `_`-prefixed
- * convention for shared internal state (like `_warnings` / `_lastSeenVersion`)
- * — no schema field. The car number is stored alongside the CarIdx as a
- * staleness guard: CarIdx assignments are session-scoped while global settings
- * persist across sessions, so a reader must treat the selection as void when
- * the CarIdx no longer resolves to the stored number (see
- * `resolveSelectedCar`).
+ * target as a `{ carIdx, carNumber }` record (renamed from
+ * `_raceAdminSelectedCar` in #790 — the selector is now a generic pick-a-car
+ * surface). Follows the `_`-prefixed convention for shared internal state
+ * (like `_warnings` / `_lastSeenVersion`) — no schema field. The car number is
+ * stored alongside the CarIdx as a staleness guard: CarIdx assignments are
+ * session-scoped while global settings persist across sessions, so a reader
+ * must treat the selection as void when the CarIdx no longer resolves to the
+ * stored number (see `resolveSelectedCar`). Focus-intent presses never write
+ * it — only the admin (no-intent) press does.
  */
-export const SELECTED_CAR_KEY = "_raceAdminSelectedCar" as const;
+export const SELECTED_CAR_KEY = "_selectedCar" as const;
+
+/**
+ * Pre-#790 name of {@link SELECTED_CAR_KEY}. Read as a fallback (never
+ * written) so an in-flight selection survives a mid-session plugin upgrade.
+ */
+export const LEGACY_SELECTED_CAR_KEY = "_raceAdminSelectedCar" as const;
 
 /**
  * The profile a select-car press switches to when none is configured, as a
@@ -246,11 +254,24 @@ function carDisplayContent(car: SelectorDisplayCar, textColor: string): string {
  *
  * @internal Exported for testing
  */
-export function generateSelectorSvg(car: SelectorDisplayCar | null, settings: SelectorRenderSettings): string {
+export function generateSelectorSvg(
+  car: SelectorDisplayCar | null,
+  settings: SelectorRenderSettings,
+  highlighted = false,
+): string {
   const colors = resolveIconColors(selectorTemplate, getGlobalColors(), settings.colorOverrides);
   const textColor = colors.textColor;
 
-  const numberContent = car ? carDisplayContent(car, textColor) : "";
+  // Focused-car highlight (#790): while a focus intent is active, the key
+  // whose car the camera is on renders a green ring — the grid doubles as a
+  // "who am I watching" display. Drawn inside the number layer so themes and
+  // the border pipeline are unaffected. Safe SVG Tiny 1.2 features only.
+  const highlightContent =
+    highlighted && car
+      ? `<rect x="6" y="6" width="132" height="132" rx="20" fill="none" stroke="#2ecc71" stroke-width="8"/>\n    `
+      : "";
+
+  const numberContent = highlightContent + (car ? carDisplayContent(car, textColor) : "");
 
   const resolvedTitle = resolveTitleSettings(selectorTemplate, getGlobalTitleSettings(), settings.titleOverrides, "");
   const titleContent =

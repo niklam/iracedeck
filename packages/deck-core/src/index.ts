@@ -297,8 +297,9 @@ export {
   shouldOpenChangelog,
 } from "./version-check.js";
 
-// Device + profile reference (issues #736, #753)
+// Device + profile reference (issues #736, #753, #790)
 export {
+  CAR_SELECTOR_PROFILE,
   DEVICE_SPECS,
   DEVICE_SUPPORT,
   deviceProfileName,

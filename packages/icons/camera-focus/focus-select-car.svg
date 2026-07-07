@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 68 68" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"FOCUS\nPICK CAR"},"border":{"color":"#5a6a7a"}}</desc>
+
+    <rect x="4" y="4" width="26" height="26" rx="5" fill="none" stroke="{{graphic1Color}}" stroke-width="4"/>
+    <rect x="38" y="4" width="26" height="26" rx="5" fill="none" stroke="{{graphic1Color}}" stroke-width="4"/>
+    <rect x="4" y="38" width="26" height="26" rx="5" fill="none" stroke="{{graphic1Color}}" stroke-width="4"/>
+    <rect x="38" y="38" width="26" height="26" rx="5" fill="{{graphic1Color}}" stroke="none"/>
+    <circle cx="51" cy="51" r="15" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
+
+</svg>
