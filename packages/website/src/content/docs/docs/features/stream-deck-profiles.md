@@ -13,6 +13,7 @@ Profiles are built separately for each Stream Deck model, and not every model ha
 
 - **Stream Deck** — the classic 15-key model
 - **Stream Deck XL** — the 32-key model
+- **Stream Deck + XL** — the 36-key model with dials
 
 On other Stream Deck models, iRaceDeck's other actions work normally — there are just no bundled profiles to switch to yet. A [Switch Profile](/docs/actions/stream-deck/switch-profile/) key or a **Switch** press in the settings does nothing on those devices.
 

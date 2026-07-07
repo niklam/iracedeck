@@ -45,7 +45,7 @@ The manifest `Profiles[].DeviceType` field and the runtime `device.type` use the
 
 ## The bundled templates
 
-Four templates are registered and shipped: **iRaceDeck Default**, **iRaceDeck Replay**, **iRaceDeck Car Selector**, **iRaceDeck Race Admin Per Car** — currently for the classic Stream Deck and the XL only (8 `Profiles[]` entries; the `+ XL` target device has no registered profiles yet). `PROFILE_NAMES` additionally defines **iRaceDeck Pit Actions**, which is not registered or shipped. Each target device needs its **own** profile file (one `Profiles[]` entry carries exactly one `DeviceType`) — one device-suffixed file each, per the naming scheme below.
+Four templates are registered and shipped: **iRaceDeck Default**, **iRaceDeck Replay**, **iRaceDeck Car Selector**, **iRaceDeck Race Admin Per Car** — for all three target devices: the classic Stream Deck, the XL, and the + XL (12 `Profiles[]` entries). `PROFILE_NAMES` additionally defines **iRaceDeck Pit Actions**, which is not registered or shipped. Each target device needs its **own** profile file (one `Profiles[]` entry carries exactly one `DeviceType`) — one device-suffixed file each, per the naming scheme below.
 
 ## Profile naming — device-suffixed files, clean user-facing names (#753)
 
