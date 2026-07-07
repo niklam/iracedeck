@@ -1,6 +1,6 @@
 {
   "name": "@iracedeck/audio-native",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "description": "Native Node.js addon for miniaudio-based multi-channel audio mixer",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

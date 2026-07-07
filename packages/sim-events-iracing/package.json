@@ -1,6 +1,6 @@
 {
   "name": "@iracedeck/sim-events-iracing",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "description": "iRacing telemetry translator. Diffs sdkController ticks against previous state and publishes semantic events on @iracedeck/event-bus.",
   "type": "module",
   "main": "dist/index.js",
