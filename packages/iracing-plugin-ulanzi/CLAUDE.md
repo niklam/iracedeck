@@ -7,23 +7,20 @@ Mirrors the structure of `@iracedeck/iracing-plugin-mirabox` but targets Ulanzi 
 ## Key Differences from iracing-plugin-mirabox
 
 - Uses `UlanziPlatformAdapter` instead of `VSDPlatformAdapter`.
-- **Action UUIDs reused verbatim.** UlanziStudio only requires a 4-segment main-service UUID and doesn't validate the prefix, so the plugin uses the canonical `com.iracedeck.sd.core` UUID (the same one the Elgato/Mirabox plugins use) and registers actions under their `com.iracedeck.sd.core.*` UUIDs directly — no remapping, exactly like Mirabox. The manifest declares the same UUIDs.
-- Manifest is the Ulanzi format: `Type:"JavaScript"`, `CodePath:"bin/plugin.js"`, `UUID:"com.iracedeck.sd.core"`, per-action `States:[{Image}]`, and `Controllers:["Keypad"]` for **every** action — dial declarations were removed in #786 until dial input is verified on Ulanzi hardware (when re-enabling, a dial-capable action declares `Controllers:["Keypad","Encoder"]` plus `Encoder:{layout:"$UA1"}`; `"Knob"` (Mirabox) → `"Encoder"`). The Stream-Dock-293S `"Information"` controller has no Ulanzi equivalent and is dropped (Session Info / Telemetry Display become Keypad-only). No top-level `PropertyInspectorPath` (not in the Ulanzi manifest schema) — plugin-global settings are reached through each action's PI.
+- Manifest is the Ulanzi format: `Type:"JavaScript"`, `CodePath:"bin/plugin.js"`, `UUID:"com.iracedeck.sd.core"` (canonical UUIDs reused verbatim — see *Folder / UUID naming* below), per-action `States:[{Image}]`, and `Controllers:["Keypad"]` for **every** action — dial declarations were removed in #786 until dial input is verified on Ulanzi hardware (when re-enabling, a dial-capable action declares `Controllers:["Keypad","Encoder"]` plus `Encoder:{layout:"$UA1"}`; `"Knob"` (Mirabox) → `"Encoder"`). The Stream-Dock-293S `"Information"` controller has no Ulanzi equivalent and is dropped (Session Info / Telemetry Display become Keypad-only). No top-level `PropertyInspectorPath` (not in the Ulanzi manifest schema) — plugin-global settings are reached through each action's PI.
 - **PI connection bridge.** Ulanzi's PI does not call `connectElgatoStreamDeckSocket` and speaks its own URL-param + `cmd` WebSocket protocol, so the rollup injects `ulanzi-pi-bridge.js` (from `@iracedeck/pi-components`) before `sdpi-components.js` into every generated PI HTML. The bridge monkeypatches `window.WebSocket` and translates frames both ways, so the shared `sdpi-components`/`ird-*` PI stack works unchanged. (Mirabox/VSD needs no bridge — its host mimics the Elgato PI socket.)
 - No `stripHtmlLangPlugin` — UlanziStudio renders PI HTML in QWebEngineView (Chromium), which accepts `<html lang>`.
-- No `pack:plugin` script, but CI **does** package the Ulanzi plugin with `@elgato/cli pack` (the same tool as the other two plugins — it accepts the `.ulanziPlugin` folder and preserves the inner folder name). A committed `.sdignore` in the plugin folder strips native-module build cruft (~41 MB → ~7 MB), and the cli's `undefined.streamDeckPlugin` output is renamed to `com.ulanzi.iracedeck.ulanziPlugin.zip`. CI builds the monorepo once, then packs each plugin (into its own `-o` subdir, since Stream Deck and Mirabox share a UUID and would otherwise collide). See `.github/workflows/release-pack.yml`.
 
 PI framework (web components, EJS partials, compile plugin, `sdpi-components.js`) comes from `@iracedeck/pi-components`, the same shared package Elgato/Mirabox consume. Per-action PI templates, static icons, and template data come from `@iracedeck/iracing-actions`. The `rollup.config.mjs` imports `piTemplatePlugin`, `partialsDir`, and `browserDir` from `@iracedeck/pi-components/build`, copies per-action `icon.svg`/`key.svg` into `com.ulanzi.iracedeck.ulanziPlugin/imgs/actions/<name>/`, and the plugin-level branding icons in `imgs/plugin/` are copied from `iracing-plugin-stream-deck` until a dedicated branding package lands.
 
 ## Folder / UUID naming
 
 - Plugin folder: `com.ulanzi.iracedeck.ulanziPlugin` — installed into `…/UlanziDeck/Plugins/` (the user/third-party plugin dir; `…/System/Plugins/` holds first-party ones). The `*.ulanziPlugin` suffix is what UlanziStudio scans for; the `com.ulanzi.<name>.ulanziPlugin` form matches the installed first-party plugins (obsstudio, lightmaster). Folder name and manifest UUID are independent (the installed plugins' folders and UUIDs differ), so the folder keeps the host's install convention while the UUID is iRaceDeck's own.
-- Manifest `UUID`: `com.iracedeck.sd.core` (== `PLUGIN_UUID` in `@iracedeck/deck-adapter-ulanzi`; the same UUID the Elgato/Mirabox plugins use — UlanziStudio only checks for 4 dot-segments, not the prefix).
-- Action UUIDs: `com.iracedeck.sd.core.<action>` (the canonical iRaceDeck UUIDs, declared verbatim).
+- Manifest `UUID`: `com.iracedeck.sd.core` (== `PLUGIN_UUID` in `@iracedeck/deck-adapter-ulanzi`) with action UUIDs `com.iracedeck.sd.core.<action>` — the same canonical UUIDs the Elgato/Mirabox plugins use, declared verbatim with no remapping. UlanziStudio only checks for 4 dot-segments, not the prefix.
 
 ## Manifest maintenance
 
-`com.ulanzi.iracedeck.ulanziPlugin/manifest.json` is committed and hand-maintained, mirroring the Mirabox action set with the Ulanzi transform above. When adding/removing an action, update this manifest alongside the Elgato and Mirabox manifests, keeping the `Actions` array alphabetical by display `Name` (the host renders them in array order). `scripts/manifest-actions-order.test.mjs` enforces that all three manifests stay sorted, duplicate-free, and in sync. (A throwaway transform script — `scripts/local/gen-ulanzi-manifest.mjs`, gitignored — bootstrapped the initial file from the Mirabox manifest.)
+`com.ulanzi.iracedeck.ulanziPlugin/manifest.json` is committed and hand-maintained, mirroring the Mirabox action set with the Ulanzi transform above. When adding/removing an action, update this manifest alongside the Elgato and Mirabox manifests, keeping the `Actions` array alphabetical by display `Name` (the host renders them in array order). `scripts/manifest-actions-order.test.mjs` discovers every plugin manifest dynamically and enforces sorted order, name uniqueness, and cross-manifest action-set parity — ecosystem-specific actions (`ECOSYSTEM_SPECIFIC_ACTIONS`, currently the Elgato-only "Switch Profile") are exempt from the parity check only. (A throwaway transform script — `scripts/local/gen-ulanzi-manifest.mjs`, gitignored — bootstrapped the initial file from the Mirabox manifest.)
 
 ## Build
 
@@ -31,11 +28,21 @@ PI framework (web components, EJS partials, compile plugin, `sdpi-components.js`
 pnpm build  # Rollup → com.ulanzi.iracedeck.ulanziPlugin/bin/plugin.js, then npm install in bin/
 ```
 
+## Packaging
+
+No local `pack:plugin` script; CI packages the Ulanzi plugin in `.github/workflows/release-pack.yml` (the same workflow that packs the other two plugins) with `@elgato/cli pack` — it accepts the `.ulanziPlugin` folder and preserves the inner folder name. A committed `.sdignore` in the plugin folder strips native-module build cruft (~41 MB → ~7 MB), and the cli's `undefined.streamDeckPlugin` output is renamed to `com.ulanzi.iracedeck.ulanziPlugin.zip`. CI builds the monorepo once, then packs each plugin into its own `-o` subdir (Stream Deck and Mirabox share a UUID and would otherwise collide).
+
+## Dev deploy / test
+
+There is no `link:ulanzi` script — the root `package.json` only has `*:stream-deck` and `*:mirabox` link/relink entries. To test a dev build, build the plugin (or run its watcher), then manually copy (or symlink) the built `com.ulanzi.iracedeck.ulanziPlugin` folder into UlanziStudio's plugins directory, `%APPDATA%\Ulanzi\UlanziDeck\Plugins\`, and restart UlanziStudio.
+
+**Native-module lock gotcha:** while UlanziStudio (or Stream Deck) is running, it locks the native `iracing_native.node`, so a full `pnpm build` fails with EPERM. Quit the host app before building, or rebuild only the changed TypeScript packages.
+
 ## Validation status
 
 Validated live in UlanziDeck (the desktop host): the plugin loads, the WebSocket connects (handshake + argv layout `address port language`), the global-settings read/write round-trips, the PI bridge drives `sdpi-components`, the **SVG data-URI icons render**, and key presses dispatch to actions. The earlier known-unknowns (manifest format, the 4-segment UUID, the wire protocol, the PI bridge, SVG passthrough) are therefore confirmed, not deferred.
 
-Still to exercise on a physical device: dial input end-to-end (the manifest declares no `Encoder` controllers until this is verified — #786), D200X dial custom feedback layouts (no SDK `setFeedback` method — rich dial-slot display is deferred), Keypad-vs-Encoder detection at `add` (defaults to Keypad), and per-device behaviour across D200 / D200H / Dial / D200X. None block the build.
+Still to exercise on a physical device: dial input end-to-end (the manifest declares no `Encoder` controllers until this is verified — #786), D200X dial custom feedback layouts (no SDK `setFeedback` method — rich dial-slot display is deferred), Keypad-vs-Encoder detection at `add` (defaults to Keypad), and per-device behaviour across the four supported device models. None block the build.
 
 ## Window Focus
 

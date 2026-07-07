@@ -1,6 +1,6 @@
 # @iracedeck/audio-assets
 
-Voice lines for the Race Engineer + the ElevenLabs TTS generator that produces them.
+Voice lines for the Race Engineer, the radio sound effects (`sfx/`), and the ElevenLabs TTS generator that produces the voice clips.
 
 See `.claude/rules/race-engineer-callouts.md` for the end-to-end "how to add a callout" walkthrough that includes this package; the notes below cover the audio-assets-only mechanics.
 
@@ -18,6 +18,18 @@ Each entry:
 - `text` — the spoken line; `<break time="0.3s" />` inserts a natural pause.
 - `seed` (optional) — fixed integer for reproducible prosody across regenerations. **On new entries, omit it** (the generator schema defaults an omitted seed to `1`) or set it explicitly to `"seed": 1` — never author a new entry with an arbitrary or random-looking seed. The seed only selects which take ElevenLabs produces, so a random default has no benefit and makes the value look meaningful when it isn't. Bump the seed deliberately (2, 3, …) only when the generated clip doesn't sound right and you want a different take. The seed feeds the entry hash, so changing it re-cuts just that clip.
 - `previous_request_ids` / `next_request_ids` (optional) — IDs of clips that semantically precede/follow this one; biases ElevenLabs toward continuous prosody. Either a `<group>/<entry-name>` reference (resolved per-voice at generate time) or a raw ElevenLabs request id.
+
+## What ships is not the committed mp3 — the build-time radio filter
+
+The committed `voice/**/*.mp3` files are the **dry TTS source clips**, not what plugins play. At plugin build time every voice clip is processed through ffmpeg with `RADIO_ENGINEER_FILTER` (`src/presets.mjs`): a 250–3500 Hz bandpass + 8 dB pre-gain into a `tanh` soft-clip, then a brick-wall limiter — plus a re-encode to 16 kHz mono 32 kbps (`ENCODE_ARGS` in `src/build/index.mjs`). So a clip always sounds different in-plugin than the source mp3 — that difference is this pipeline, not a generation problem.
+
+Processed outputs are cached under `.cache/<pipeline-hash>/`, where the hash embeds the filter chain + encode args — editing the preset (or the encode args) automatically invalidates every processed clip; per-file invalidation is mtime-based. This package's own `pnpm build` (`src/build/prebuild.mjs`) exists solely to warm that cache before the parallel plugin builds run, so each plugin's Rollup copy step (`processAndCopyAudioAssets`) only ever reads cache files instead of racing over the same ffmpeg writes (contention rationale documented in `src/build/index.mjs`).
+
+Consumer surface (`package.json` exports): `./build` (`processAndCopyAudioAssets` / `processAndCopyAudioAssetsPlugin` / `prebuildAudioAssetCache` / `wipeProcessedCache`, used by the plugin Rollup configs and the scenario harness), `./presets` (`RADIO_ENGINEER_FILTER`), and `./manifest.json` (the runtime manifest).
+
+## Sound effects (`sfx/`)
+
+`sfx/` holds the non-voice assets: the walkie-talkie tick-open/close pair, the ambient pit loop, and the radar proximity tones (`sfx/radar/`). They're consumed by `@iracedeck/audio-scenarios` — the radio frame (`radio-frame.ts`), the PI background-volume test (`background-test.ts`), and the radar engine (`radar-engine.ts`). Deliberately **not** radio-filtered at build time: everything outside `voice/` is copied into the plugin output unchanged (see `src/presets.mjs`), so the ticks and tones stay clean.
 
 ## Key parity across voices
 
@@ -47,7 +59,7 @@ pnpm --filter @iracedeck/audio-assets generate:dry-run --group <group-name>
 pnpm --filter @iracedeck/audio-assets generate --voice default --group acknowledgment
 ```
 
-Requires `ELEVENLABS_API_KEY` in `.env.local` (auto-loaded from repo root).
+Requires `ELEVENLABS_API_KEY` in `.env.local` at the repo root (falls back to `.env`; both auto-loaded).
 
 See `README.md` for the full CLI flag reference.
 

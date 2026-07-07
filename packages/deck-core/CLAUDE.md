@@ -6,19 +6,19 @@ Platform-agnostic core interfaces, base classes, and utilities for deck device p
 
 ### Platform Abstraction (`types.ts`)
 
-- `IDeckActionContext` — Handle to a single action instance. Wraps `id`, `setImage`, `setTitle`, `setSettings`, `isKey`, optional `showAlert?()` (flashes the host's warning indicator where supported — Elgato keys only), and (for Stream Deck+ dials) `isDial()`, `setFeedback(feedback)`, `setFeedbackLayout(layout)`. `setFeedback`/`setFeedbackLayout` no-op on platforms/controllers without a plugin-drawable touch strip (e.g. Mirabox).
-- `IDeckEvent<T>` and variants (`IDeckKeyDownEvent`, `IDeckWillAppearEvent`, etc.) — Platform-neutral events. Dial/touch variants: `IDeckDialRotateEvent` (carries signed `ticks`), `IDeckDialDownEvent`, `IDeckDialUpEvent`, and `IDeckTouchTapEvent` (carries `tapPos: [x, y]` and `hold: boolean`).
+- `IDeckActionContext` — Handle to a single action instance. Wraps `id`, optional `deviceId?`/`deviceType?` (populated by adapters that expose them — Elgato; used for profile switching, #736), `setImage`, `setTitle`, `setSettings`, `isKey`, optional `showAlert?()` (flashes the host's warning indicator where supported — Elgato keys only), and (for Stream Deck+ dials) `isDial()`, `setFeedback(feedback)`, `setFeedbackLayout(layout)`, `setTriggerDescription(descriptions)` (takes a `DeckTriggerDescription`). `setFeedback`/`setFeedbackLayout`/`setTriggerDescription` no-op on platforms/controllers without a plugin-drawable touch strip (e.g. Mirabox).
+- `IDeckEvent<T>` and variants (`IDeckKeyDownEvent`, `IDeckWillAppearEvent`, etc.) — Platform-neutral events. Dial/touch variants: `IDeckDialRotateEvent` (carries signed `ticks` and `pressed: boolean` — whether the dial button was held during rotation, the basis of push+turn), `IDeckDialDownEvent`, `IDeckDialUpEvent`, and `IDeckTouchTapEvent` (carries `tapPos: [x, y]` and `hold: boolean`).
 - `IDeckActionHandler<T>` — Interface for action lifecycle handlers (includes `onDialRotate`/`onDialDown`/`onDialUp`/`onTouchTap`).
 - `IDeckPlatformAdapter` — Interface that platform adapters implement (Elgato, VSDinside, etc.)
 
 ### Encoder Touch-Strip Feedback (`feedback-types.ts`)
 
-- `DeckFeedbackPayload` — Platform-neutral Stream Deck+ touch-strip ("touch strip") feedback payload, keyed by the layout item's `key`. Each value is either a primitive shorthand (`number` for bar/gbar fill, `string` for text/pixmap source) or a partial item override (`DeckFeedbackBarItem` / `DeckFeedbackTextItem` / `DeckFeedbackPixmapItem`) for mutable visual properties. Passed to `IDeckActionContext.setFeedback`. Platforms without a plugin-drawable touch strip (Mirabox) ignore it. Reference consumer: the Fuel Service dial surface (`fuel-service/fuel-dial-surface.ts`).
+- `DeckFeedbackPayload` — Platform-neutral Stream Deck+ touch-strip feedback payload passed to `IDeckActionContext.setFeedback`, keyed by layout item `key`; values are primitive shorthands or partial item overrides (`DeckFeedbackBarItem` / `DeckFeedbackTextItem` / `DeckFeedbackPixmapItem`). Details + platform caveats in `.claude/rules/encoders-and-touchscreen.md`.
 
 ### Base Classes
 
 - `BaseAction<T>` — Abstract base with SVG image management, flag overlay, inactive state tracking. Accepts logger via constructor. Implements `IDeckActionHandler<T>`.
-- `ConnectionStateAwareAction<T>` — Extends `BaseAction` with automatic iRacing connection tracking via `sdkController`.
+- `ConnectionStateAwareAction<T>` — Extends `BaseAction` with automatic iRacing connection tracking via `sdkController`. Also home of the binding-dispatch delegates: `setActiveBinding`, `tapBinding`, `holdBinding`, `releaseBinding`, and `isBindingMissing` (per-context missing-binding check — prefer it over the shared `isActiveBindingMissing()`).
 
 ### Icon Assembly (re-exported from `@iracedeck/icon-composer`)
 
@@ -32,19 +32,29 @@ deck-core adds global settings readers on top of the pure functions:
 ### Shared Utilities
 
 - `common-settings.ts` — `CommonSettings` Zod schema (flagsOverlay, colorOverrides, titleOverrides, borderOverrides, graphicOverrides)
+- `migrate-legacy-action.ts` — `migrateLegacyActionToMode` settings-migration helper
 - `global-settings.ts` — Plugin-level global settings manager (takes `IDeckPlatformAdapter`)
 - `app-monitor.ts` — iRacing process detection (takes `IDeckPlatformAdapter`)
 - `sdk-singleton.ts` — iRacing SDK singleton (`initializeSDK`, `getController`, `getCommands`)
 - `keyboard-service.ts` — Keyboard singleton (`initializeKeyboard`, `getKeyboard`)
+- `clipboard-service.ts` — Clipboard singleton with injected writer (`initializeClipboard`, `getClipboard`); mirrors the keyboard-service DI pattern
+- `simhub-service.ts` — SimHub Control Mapper singleton (`initializeSimHub`, `getSimHub`) plus the reachability API (`isSimHubReachable`, `onSimHubReachabilityChange`)
 - `icon-template.ts` — SVG template rendering and color resolution (delegates to `@iracedeck/icon-composer`)
 - `overlay-utils.ts` — SVG overlay utilities (inactive state, data URI conversion)
 - `key-binding-utils.ts` — Key binding parsing and formatting
+- `comm-descriptor.ts` — The #612 per-mode `CommDescriptor` types + `keybind` / `keybindBy` / `keybindKeys` / `keybindFixed` helpers, consumed by iracing-actions' `comms-catalog.ts`
+- `dial-gesture.ts` — Shared dial-gesture convention: `classifyDialRelease` (release-time press classifier, `DIAL_LONG_PRESS_THRESHOLD_MS`) plus `resolvePairedAction` / `DirectionalPair` (Push+Turn pair dispatch); see `.claude/rules/encoders-and-touchscreen.md`
 - `keyboard-types.ts` — Keyboard type definitions
 - `scan-code-map.ts` — PS/2 scan code mapping
 - `iracing-hotkeys.ts` — iRacing hotkey presets
 - `unit-conversion.ts` — Fuel unit conversion utilities
-- `version-check.ts` — Startup version-upgrade detection + changelog opener (`shouldOpenChangelog`, `resolveChangelogDecision`, `buildChangelogUrl`, `runVersionCheck`), gated by the `changelogNotification` policy (always/features/monthly/never, issue #742); see `.claude/rules/global-settings.md`
-- `device-profiles.ts` — Stream Deck device + profile reference (issues #736, #753): the `DeviceType` enum, `DEVICE_SPECS` (keys/grid/dials/touch), `DEVICE_SUPPORT` (iRaceDeck control + profile-template policy), `PROFILE_NAMES` / `PROFILE_TARGET_DEVICES` / `PROFILE_NAV_ACTIONS`, lookup helpers, and the device-suffixed profile-name scheme (`PROFILE_DEVICE_SUFFIXES`, `profileDeviceSuffix`, `deviceProfileName`, `profileDisplayName`, `resolveProfileNameForDevice`). Canonical device-data source — pairs with `.claude/rules/profiles-and-devices.md` (Elgato-only)
+- `fuel-telemetry.ts` — Shared `isFuelFillOn` / `isAutofuelActive` / `isAutofuelEnabled` telemetry readers used by both Fuel Service surfaces (keypad + dial)
+- `setup-warning.ts` + `setup-warning-constants.ts` — Setup-name mismatch warning (#625): `evaluateSetupWarning`, pattern helpers (`compileSetupWarningPattern`, `setupNameMatchesPattern`, `validateSetupWarningPatterns`), and the warning-id/setting-key constants (kept in a dependency-free leaf module)
+- `version-check.ts` — Startup version-upgrade detection + changelog opener (`shouldOpenChangelog`, `resolveChangelogDecision`, `buildChangelogUrl`, `runVersionCheck`; #680, #742); full behavior in `.claude/rules/global-settings.md`
+- `device-profiles.ts` — Canonical Stream Deck device + profile reference (#736, #753, #790): `DeviceType`, `DEVICE_SPECS`, `DEVICE_SUPPORT`, `PROFILE_NAMES` / `PROFILE_TARGET_DEVICES` / `PROFILE_NAV_ACTIONS`, `CAR_SELECTOR_PROFILE`, `shipsBundledProfiles`, lookup helpers, and the device-suffixed profile-name helpers (`PROFILE_DEVICE_SUFFIXES`, `profileDeviceSuffix`, `deviceProfileName`, `profileDisplayName`, `resolveProfileNameForDevice`); details in `.claude/rules/profiles-and-devices.md` (Elgato-only)
+- `profile-switcher.ts` — Profile-switch singleton (#736): `requestProfileSwitch`, `requestProfileSwitchBack`, `notifyProfileVisible` — the layer above the adapters' `switchToProfile`; a safe no-op where unregistered (non-Elgato)
+
+**Not in deck-core:** `initWindowFocus` / `focusIRacingIfEnabled` live in each plugin's own `src/shared/window-focus.ts` module — import them from there, never from `@iracedeck/deck-core` (some rules-file snippets show a deck-core import; that's wrong).
 
 ## Build
 
@@ -59,6 +69,7 @@ Pure TypeScript library, no Rollup needed. Outputs ESM with declarations.
 - `@iracedeck/icon-composer` — Pure icon assembly functions (zero-dependency)
 - `@iracedeck/iracing-sdk` — For telemetry types and SDK controller
 - `@iracedeck/logger` — For `ILogger` interface
+- `semver` — Version comparison for the startup version-check (`version-check.ts`)
 - `zod` — For settings schemas
 
 Note: `keyboard-service.ts` dynamically imports `keysender` at runtime (Windows-only native module). The types are defined locally to avoid a compile-time dependency.

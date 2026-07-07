@@ -4,9 +4,11 @@ Core Stream Deck plugin for iRaceDeck. Registers actions from `@iracedeck/iracin
 
 Action implementations live in `packages/iracing-actions/src/actions/<action-name>/`, with one folder per action. Shared utilities (base actions, keyboard service, global settings, icon templates, etc.) live in `packages/deck-core/src/`. Actions import from `@iracedeck/deck-core`. The `src/shared/index.ts` in this package re-exports from `@iracedeck/deck-core` and `@iracedeck/deck-adapter-elgato` for backward compatibility.
 
-Each action folder is self-contained: `<name>.ts`, `<name>.test.ts`, `<name>.ejs` (PI template), and `icon.svg` / `key.svg` (static icons) all live side-by-side. Shared template data (`icon-defaults.json`, `key-bindings.json`, `docs-urls.json`) lives in `packages/iracing-actions/src/actions/data/`. The plugin-global Property Inspector template lives in `packages/iracing-actions/src/actions/settings/`.
+Each action folder is self-contained: `<name>.ts`, `<name>.test.ts`, `<name>.ejs` (PI template), and `icon.svg` / `key.svg` (static icons) all live side-by-side. Shared template data (`icon-defaults.json`, `key-bindings.json`, `docs-urls.json`, the generated `action-comms.json` and `profiles.json`) lives in `packages/iracing-actions/src/actions/data/`. The plugin-global Property Inspector template lives in `packages/iracing-actions/src/actions/settings/`.
 
 The PI framework — browser web components (`pi-components.js`), EJS partials, the Rollup EJS compile plugin, and the vendored `sdpi-components.js` — lives in `@iracedeck/pi-components`. This plugin's `rollup.config.mjs` consumes it via `import { piTemplatePlugin, partialsDir, browserDir } from "@iracedeck/pi-components/build"`, passes `packages/iracing-actions/src/actions/` as the templates root, copies per-action `icon.svg` / `key.svg` into `com.iracedeck.sd.core.sdPlugin/imgs/actions/<name>/`, and copies the browser assets into `com.iracedeck.sd.core.sdPlugin/ui/` — all at build time.
+
+Committed custom touch layouts for dial-capable actions live under `com.iracedeck.sd.core.sdPlugin/layouts/` (currently `audio-controls.json`, `fuel-service.json`, `setup-brakes.json`).
 
 ## Adding a New Action
 
@@ -18,35 +20,27 @@ Replace `{action-name}` with the kebab-case name (e.g., `my-action`) and `{Actio
 
 #### 1. Action source — `packages/iracing-actions/src/actions/{action-name}/{action-name}.ts`
 
+Mirror `splits-delta-cycle.ts` — the binding-dispatch pattern (never direct keyboard access):
+
 ```typescript
 import {
   assembleIcon,
   CommonSettings,
   ConnectionStateAwareAction,
-  formatKeyBinding,
   getGlobalBorderSettings,
   getGlobalColors,
   getGlobalGraphicSettings,
-  getGlobalSettings,
   getGlobalTitleSettings,
-  getKeyboard,
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
   type IDeckWillAppearEvent,
-  type IDeckWillDisappearEvent,
-  type KeyBindingValue,
-  type KeyboardKey,
-  type KeyboardModifier,
-  type KeyCombination,
-  parseKeyBinding,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
   resolveTitleSettings,
 } from "@iracedeck/deck-core";
-import z from "zod";
-
 import defaultIconSvg from "@iracedeck/icons/{action-name}/default.svg";
+import z from "zod";
 
 // Settings schema (use CommonSettings directly if no action-specific settings)
 const {ActionName}Settings = CommonSettings.extend({
@@ -63,12 +57,12 @@ export const GLOBAL_KEY_NAME = "{camelCaseCategory}{CamelCaseBinding}";
 /**
  * @internal Exported for testing
  */
-export function generate{ActionName}Svg(settings: {ActionName}Settings): string {
+export function generate{ActionName}Svg(settings: {ActionName}Settings, bindingMissing = false): string {
   const colors = resolveIconColors(defaultIconSvg, getGlobalColors(), settings.colorOverrides);
   const title = resolveTitleSettings(defaultIconSvg, getGlobalTitleSettings(), settings.titleOverrides);
   const border = resolveBorderSettings(defaultIconSvg, getGlobalBorderSettings(), settings.borderOverrides);
   const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
-  return assembleIcon({ graphicSvg: defaultIconSvg, colors, title, border, graphic });
+  return assembleIcon({ graphicSvg: defaultIconSvg, colors, title, border, graphic, bindingMissing });
 }
 
 /**
@@ -78,104 +72,46 @@ export function generate{ActionName}Svg(settings: {ActionName}Settings): string 
 export const {ACTION_NAME}_UUID = "com.iracedeck.sd.core.{action-name}" as const;
 
 export class {ActionName} extends ConnectionStateAwareAction<{ActionName}Settings> {
-  // Logger is injected via constructor — no need to declare a logger field.
-  // The base class receives it: constructor(logger: ILogger)
-
-  // Required lifecycle handlers: onWillAppear, onWillDisappear,
-  // onDidReceiveSettings, onKeyDown
-  // IMPORTANT: Call super.onWillAppear(ev) and super.onDidReceiveSettings(ev)
-  // as the first line in those handlers (required for flag overlay and CommonSettings).
-  // See splits-delta-cycle.ts for the full pattern.
+  // Logger is injected via constructor (from plugin.ts) — no logger field needed.
   //
-  // In updateDisplay, after setKeyImage, register the regenerate callback:
-  //   await this.setKeyImage(ev, svgDataUri);
-  //   this.setRegenerateCallback(ev.action.id, () => generate{ActionName}Svg(settings));
+  // Lifecycle (see splits-delta-cycle.ts for the full implementation):
+  // - onWillAppear / onDidReceiveSettings: call super FIRST, parse settings with
+  //   safeParse, declare the required binding via this.setActiveBinding(key),
+  //   then update the display.
+  // - onKeyDown: execute the binding via await this.tapBinding(key). Use
+  //   holdBinding/releaseBinding for hold-style actions (see
+  //   .claude/rules/keyboard-shortcuts.md). Never call getKeyboard() in actions.
+  // - updateDisplay: compute the per-context missing-binding flag (#612) and
+  //   register the regenerate callback:
+  //     const svg = generate{ActionName}Svg(settings, this.isBindingMissing(key));
+  //     await this.setKeyImage(ev, svg);
+  //     this.setRegenerateCallback(ev.action.id, () =>
+  //       generate{ActionName}Svg(settings, this.isBindingMissing(key)));
 }
 ```
 
-Key requirements:
-- Import from `@iracedeck/deck-core` (NOT `@elgato/streamdeck` or `../shared/index.js`)
-- Extend `ConnectionStateAwareAction`
-- Export a UUID constant (e.g., `{ACTION_NAME}_UUID`) — no `@action` decorator
-- Logger is injected via constructor (from `plugin.ts`), not created in the action
-- Event types use `IDeck` prefix: `IDeckWillAppearEvent<T>`, `IDeckKeyDownEvent<T>`, etc.
-- Parse settings with Zod's `safeParse` (never throw on invalid settings)
-- Export constants and icon generation functions with `@internal` JSDoc for testing
-- Use `parseKeyBinding()` / `formatKeyBinding()` from `@iracedeck/deck-core`
-- Subscribe to SDK controller in `onWillAppear`, unsubscribe in `onWillDisappear`
-- Implement `onDidReceiveSettings` to respond to PI changes
-- Logging: `info` for events (no params), `debug` for details (with params)
+Full requirements (base class, UUID export, event types, Zod usage, super calls, logging) are in `.claude/rules/stream-deck-actions.md`; binding execution rules are in `.claude/rules/keyboard-shortcuts.md`.
 
 #### 2. Unit tests — `packages/iracing-actions/src/actions/{action-name}/{action-name}.test.ts`
 
-Must mock `@iracedeck/deck-core` before importing. Test exported constants and SVG generation:
-
-```typescript
-vi.mock("@iracedeck/deck-core", () => ({
-  CommonSettings: {
-    extend: (_fields: unknown) => {
-      const schema = {
-        parse: (data: Record<string, unknown>) => ({ ...data }),
-        safeParse: (data: Record<string, unknown>) => ({ success: true, data: { ...data } }),
-      };
-      return schema;
-    },
-    parse: (data: Record<string, unknown>) => ({ ...data }),
-    safeParse: (data: Record<string, unknown>) => ({ success: true, data: { ...data } }),
-  },
-  ConnectionStateAwareAction: class MockConnectionStateAwareAction {
-    logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
-    sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn() };
-    updateConnectionState = vi.fn();
-    setKeyImage = vi.fn();
-    setRegenerateCallback = vi.fn();
-  },
-  formatKeyBinding: vi.fn((b: { key: string; modifiers: string[] }) =>
-    b.modifiers?.length ? `${b.modifiers.join("+")}+${b.key}` : b.key),
-  getGlobalColors: vi.fn(() => ({})),
-  getGlobalSettings: vi.fn(() => ({})),
-  getKeyboard: vi.fn(() => ({
-    sendKeyCombination: vi.fn().mockResolvedValue(true),
-  })),
-  LogLevel: { Info: 2 },
-  parseKeyBinding: vi.fn(),
-  resolveIconColors: vi.fn((_svg, _global, _overrides) => ({})),
-  renderIconTemplate: vi.fn((_t, data) => `<svg>${data.mainLabel || ""}${data.subLabel || ""}</svg>`),
-  svgToDataUri: vi.fn((svg) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
-}));
-```
-
-See `packages/iracing-actions/src/actions/splits-delta-cycle/splits-delta-cycle.test.ts` for the full pattern.
+Must mock `@iracedeck/deck-core` before importing — the canonical mock block (including the binding-dispatch stubs `setActiveBinding` / `tapBinding` / `holdBinding` / `releaseBinding`) is in `.claude/rules/testing.md`. Actions that pass `bindingMissing` into icon generation must additionally stub `isBindingMissing` on the mock `ConnectionStateAwareAction`. See `packages/iracing-actions/src/actions/splits-delta-cycle/splits-delta-cycle.test.ts` for the full pattern.
 
 #### 3. Icon SVGs — `packages/icons/{action-name}/*.svg`
 
-Standalone 144x144 SVGs with Mustache label placeholders and `<desc>` color metadata. One file per variant (e.g., `next.svg`, `previous.svg`, `default.svg`):
+Standalone icons are **graphic snippets**: the `viewBox` is trimmed to the artwork's exact extent (variable per icon), and the file contains **only artwork** plus `<desc>` metadata — no background rect, no fixed canvas, no label/text placeholders. Background, title text, border, centering, and scaling are composed at render time by `assembleIcon()`. One file per variant (e.g., `next.svg`, `previous.svg`, `default.svg`):
 
 ```svg
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#BACKGROUND","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
-  <g filter="url(#activity-state)">
-    <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
-
-    <!-- Icon content area: y=18 to y=86 -->
-    <!-- ... artwork using {{graphic1Color}} for strokes/fills ... -->
-
-    <!-- Labels -->
-    <text x="72" y="116" text-anchor="middle" dominant-baseline="central"
-          fill="{{textColor}}" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
-    <text x="72" y="138" text-anchor="middle" dominant-baseline="central"
-          fill="{{textColor}}" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 60">
+  <desc>{"colors":{"backgroundColor":"#412244","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"TO START\nRESET"},"border":{"color":"#714474"}}</desc>
+  <!-- Artwork only, coordinates spanning the viewBox,
+       using {{graphic1Color}} for colorizable strokes/fills -->
 </svg>
 ```
 
-- The `<desc>` element contains a JSON object mapping color slot names to their default hex values. This metadata is used by `resolveIconColors()` and by `scripts/generate-icon-defaults.mjs`.
-- Background rect uses `{{backgroundColor}}` (no `rx` attribute — corners are handled by Stream Deck)
-- Text elements use `{{textColor}}` instead of hardcoded `#ffffff`
-- Graphic elements use `{{graphic1Color}}` (or `{{graphic2Color}}` if needed)
-- Background color must be unique per action (check existing actions to avoid duplicates)
-- All coordinates doubled from 72x72 (Stream Deck downscales as needed)
-- Placeholders: `{{mainLabel}}` (bold), `{{subLabel}}` (smaller)
+- The `<desc>` JSON declares the default colors per slot, plus optional `locked` slots and `title` / `border` defaults — read by `resolveIconColors()` / `resolveTitleSettings()` / `resolveBorderSettings()` and by `scripts/generate-icon-defaults.mjs`.
+- Author at 144x144-reference stroke weight (4–5px main, 2–3px details) regardless of the trimmed viewBox size — the render-time scaler keeps proportions.
+- Background color should be distinct per action; the default title lives in `<desc>` (never with a leading `\n`).
+- Full format, color palette, and design rules: `.claude/rules/icons.md` and `.claude/rules/key-icon-types.md`. Real example: `packages/icons/splits-delta-cycle/active-reset-run.svg`.
 
 #### 4. Category icon — `packages/iracing-actions/src/actions/{action-name}/icon.svg`
 
@@ -189,7 +125,7 @@ Standalone 144x144 SVGs with Mustache label placeholders and `<desc>` color meta
 
 #### 5. Key icon — `packages/iracing-actions/src/actions/{action-name}/key.svg`
 
-72x72, full color. Default button appearance on Stream Deck. Same structure as icon template but with static content (no Mustache placeholders, no `activity-state` filter):
+72x72, full color, static content (no Mustache placeholders). Default button appearance shown in the Stream Deck app before the action renders its own image:
 
 ```svg
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
@@ -202,7 +138,7 @@ Standalone 144x144 SVGs with Mustache label placeholders and `<desc>` color meta
 
 #### 6. PI template — `packages/iracing-actions/src/actions/{action-name}/{action-name}.ejs`
 
-Property Inspector template. For actions with only global key bindings:
+Match the include set of the reference `splits-delta-cycle/splits-delta-cycle.ejs`:
 
 ```ejs
 <!doctype html>
@@ -211,30 +147,46 @@ Property Inspector template. For actions with only global key bindings:
     <%- include('head-common') %>
   </head>
   <body>
+    <%- include('section-header', { title: 'Action Settings' }) %>
+
+    <sdpi-item label="Mode">
+      <sdpi-select id="mode-select" setting="mode" default="...">
+        <option value="...">...</option>
+      </sdpi-select>
+    </sdpi-item>
+
+    <% var __comms = require('./data/action-comms.json')['{action-name}']; %>
+    <ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
+
+    <!-- other action-specific sdpi-items here -->
+
+    <%- include('title-overrides') %>
+    <%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/icon-defaults.json')['{action-name}'] }) %>
+    <%- include('border-overrides', { defaults: require('./data/icon-defaults.json')['{action-name}'] }) %>
+    <%- include('graphic-overrides') %>
+    <%- include('common-settings') %>
+
+    <%- include('section-header', { title: 'Global Settings' }) %>
+
     <%- include('global-key-bindings', {
       keyBindings: require('./data/key-bindings.json').{camelCaseCategory}
     }) %>
+    <%- include('global-title-defaults') %>
+    <%- include('global-color-defaults') %>
+    <%- include('global-border-defaults') %>
+    <%- include('global-graphic-defaults') %>
+    <%- include('global-flag-flash') %>
+    <%- include('global-common-settings') %>
+
+    <%- include('docs-link') %>
+    <%- include('version') %>
   </body>
 </html>
 ```
 
-For actions with per-action settings, add `sdpi-item` elements before the key bindings include. See `splits-delta-cycle/splits-delta-cycle.ejs` or `car-control/car-control.ejs` for examples.
-
-`require('./data/...')` in templates resolves relative to the shared data directory at `packages/iracing-actions/src/actions/data/` (the EJS compile plugin rewrites the base path so templates don't need to know their own nesting depth).
-
-Every action PI template must include the color-overrides, border-overrides, graphic-overrides, and common-settings partials. Place them between action-specific settings and global sections:
-```ejs
-<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/icon-defaults.json')['{action-name}'] }) %>
-<%- include('border-overrides', { defaults: require('./data/icon-defaults.json')['{action-name}'] }) %>
-<%- include('graphic-overrides') %>
-<%- include('common-settings') %>
-```
-The color-overrides partial adds per-action color customization controls. The border-overrides partial adds per-action border settings (enable, width, color). The graphic-overrides partial adds per-action graphic scale settings (Inherit/Icon Default/Override). The common-settings partial adds the "Flags Overlay" checkbox and any future common settings.
-
-For the global sections, also include `global-graphic-defaults` after `global-border-defaults`:
-```ejs
-<%- include('global-graphic-defaults') %>
-```
+- The `ird-binding-status` line under the Mode selector is **mandatory** for any action with a comms-catalog entry (#612, see step 10). Always `<%=` (HTML-escaped) for the `comms` attribute, never `<%-`.
+- `require('./data/...')` resolves relative to `packages/iracing-actions/src/actions/data/` regardless of nesting depth.
+- Partial reference, shared CSS classes, and the conditional show/hide pattern for mode-dependent settings: `.claude/rules/pi-templates.md` and `.claude/rules/stream-deck-actions.md` (the reference `.ejs` has a working conditional-visibility script).
 
 ### Files to modify
 
@@ -256,9 +208,9 @@ import { {ACTION_NAME}_UUID, {ActionName} } from "@iracedeck/iracing-actions";
 adapter.registerAction({ACTION_NAME}_UUID, new {ActionName}(adapter.createLogger("{ActionName}")));
 ```
 
-#### 7b. Register in Mirabox plugin — `packages/iracing-plugin-mirabox/src/plugin.ts`
+#### 7b. Register in the Mirabox and Ulanzi plugins
 
-Same pattern as above — import from `@iracedeck/iracing-actions` and register via the VSD adapter. Maintain alphabetical order. The manifest at `packages/iracing-plugin-mirabox/com.iracedeck.sd.core.sdPlugin/manifest.json` must also be updated.
+Same pattern as above in **both** `packages/iracing-plugin-mirabox/src/plugin.ts` and `packages/iracing-plugin-ulanzi/src/plugin.ts` — import from `@iracedeck/iracing-actions` and register via each platform adapter. Maintain alphabetical order. Their manifests must also be updated: `packages/iracing-plugin-mirabox/com.iracedeck.sd.core.sdPlugin/manifest.json` and `packages/iracing-plugin-ulanzi/com.ulanzi.iracedeck.ulanziPlugin/manifest.json`.
 
 #### 8. Declare in manifest — `com.iracedeck.sd.core.sdPlugin/manifest.json`
 
@@ -282,24 +234,23 @@ Add entry to the `Actions` array:
 }
 ```
 
-- Most actions are Keypad-only — use `"Controllers": ["Keypad"]` with no `Encoder` block. A **dial-capable** action may instead declare `"Controllers": ["Keypad", "Encoder"]` with an `Encoder` block (a `layout` pointing at a committed custom touch layout under `<sdPlugin>/layouts/*.json`, plus a `TriggerDescription`). `fuel-service` is the reference (#759) — see its manifest entry and `com.iracedeck.sd.core.sdPlugin/layouts/fuel-service.json`, and `.claude/rules/encoders-and-touchscreen.md` for the action-side mechanics and gating rules.
+- Most actions are Keypad-only — use `"Controllers": ["Keypad"]` with no `Encoder` block. A **dial-capable** action may instead declare `"Controllers": ["Keypad", "Encoder"]` with an `Encoder` block (a `layout` pointing at a committed custom touch layout under `<sdPlugin>/layouts/` — currently audio-controls, fuel-service, and setup-brakes — plus a `TriggerDescription`). `fuel-service` is the reference (#759). The Mirabox and Ulanzi manifests stay `["Keypad"]` for dial-capable actions (#786). See `.claude/rules/encoders-and-touchscreen.md` for the action-side mechanics and gating rules.
 
 #### 9. Add key bindings — `packages/iracing-actions/src/actions/data/key-bindings.json`
 
-Add a new category with binding entries:
+Add a new category with binding entries — field reference in `.claude/rules/pi-templates.md` §"Key Bindings JSON Format". The `setting` value is the flat global setting key and **must match** what the action passes to `setActiveBinding` / `tapBinding`.
 
-```json
-"{camelCaseCategory}": [
-  { "id": "activate", "label": "Activate", "default": "Ctrl+Shift+1", "setting": "{camelCaseCategory}Activate" }
-]
+#### 10. Add comms catalog entry — `packages/iracing-actions/src/actions/comms-catalog.ts` (#612)
+
+Add one `CommDescriptor` per mode (api / chat / keybind — use the `keybind` / `keybindBy` / `keybindKeys` / `keybindFixed` helpers), then regenerate the JSON the PI reads:
+
+```bash
+pnpm generate:action-comms
 ```
 
-- `id`: camelCase identifier within the category
-- `label`: Human-readable name shown in PI
-- `default`: Default key combination (use `""` if no default)
-- `setting`: Flat global setting key — **must match** what the action reads via `getGlobalSettings()`
+A freshness test (`comms-catalog.test.ts`) fails if the committed `data/action-comms.json` drifts from the catalog, and a cross-check requires every keybind key to exist in `key-bindings.json`. Together with the `ird-binding-status` line (step 6) and the `bindingMissing` icon flag (step 1), this is the mandatory #612 wiring — details in `.claude/rules/stream-deck-actions.md` §"Per-Mode Communication Method & Binding Status". Display-only actions that issue no iRacing command get no entry and no status line.
 
-#### 10. Add documentation URL — `packages/iracing-actions/src/actions/data/docs-urls.json`
+#### 11. Add documentation URL — `packages/iracing-actions/src/actions/data/docs-urls.json`
 
 Add an entry mapping the template name to its documentation page:
 
@@ -307,11 +258,11 @@ Add an entry mapping the template name to its documentation page:
 "{action-name}": "https://iracedeck.com/docs/actions/{category}/{action-name}/"
 ```
 
-The `{category}` must match the website docs directory (e.g., `driving`, `cockpit`, `pit-service`, `car-setup`, `view-camera`, `communication`, `media`, `display-session`).
+The `{category}` must match the website docs directory — check the existing entries in `docs-urls.json` for the current category names.
 
 ### Watch mode
 
-Before running a manual build, ask the user if they have `pnpm watch:stream-deck` running. When watch mode is active it monitors file changes and automatically rebuilds and applies them to Stream Deck, so no manual build step is needed.
+Before running a manual build, ask the user if they have `pnpm watch:stream-deck` running. It runs `rollup -c -w --watch.onEnd="streamdeck restart com.iracedeck.sd.core"`, so every rebuild is applied and the plugin is restarted in the Stream Deck app automatically — no manual build or restart step. Beyond source files, the `watch-externals` rollup plugin watches `manifest.json`, `platform-features.json` (and `feature-flags.local.json` if present), and the icon SVG trees — but flag *values* are captured at watcher startup, so restart the watcher after changing a flag file (see `.claude/rules/platform-feature-flags.md`).
 
 If the user is not running watch mode, suggest they start it in a separate terminal with `pnpm watch:stream-deck`.
 
@@ -322,11 +273,12 @@ After implementation, verify all pass before committing:
 ```bash
 pnpm lint:fix    # Auto-fix lint issues
 pnpm format:fix  # Auto-fix formatting
-pnpm test        # All tests pass
+pnpm test        # All tests pass (includes the comms-catalog freshness test)
 pnpm build       # Build succeeds (skip if watch mode is running)
 ```
 
 If icons were added or modified, also run:
+
 ```bash
 node scripts/generate-icon-previews.mjs
 node scripts/generate-icon-defaults.mjs
@@ -335,11 +287,11 @@ node scripts/generate-icon-defaults.mjs
 **Also update the actions reference** when adding, removing, or modifying actions:
 - `docs/reference/actions.json` — add/update the action entry with all modes
 - `.claude/skills/iracedeck-actions/SKILL.md` — update category overview and per-category tables
-- All plugin packages — registration in `plugin.ts` and manifest for both `iracing-plugin-stream-deck` and `iracing-plugin-mirabox`
+- All plugin packages — registration in `plugin.ts` and manifest for `iracing-plugin-stream-deck`, `iracing-plugin-mirabox`, **and** `iracing-plugin-ulanzi`
 
 ## Telemetry-Aware Icons
 
-Some actions update their icon based on live iRacing telemetry (4Hz updates via `sdkController`). Use this pattern when an action's visual state depends on telemetry data.
+Some actions update their icon based on live iRacing telemetry via an `sdkController` subscription. The controller polls every 10 ms and dedupes on iRacing's `SessionTick`, so subscriber callbacks fire once per iRacing telemetry frame (~60 Hz; see `packages/iracing-sdk/src/SDKController.ts`, #493). Use this pattern when an action's visual state depends on telemetry data.
 
 ### Available telemetry
 
@@ -396,7 +348,7 @@ this.lastState.delete(ev.action.id);
 Key points:
 - `updateKeyImage(contextId, svg)` updates without needing the event object (for telemetry callbacks)
 - `getCurrentTelemetry()` on `sdkController` for initial display in `updateDisplay`
-- State caching prevents re-rendering every 250ms tick when nothing changed
+- State caching prevents re-rendering on every ~60 Hz frame when nothing changed; for values that legitimately change every frame (RPM, speed), throttle renders with the shared helper in `packages/iracing-actions/src/shared/icon-update-throttle.ts` (#493)
 - Update `activeContexts` in both `onWillAppear` and `onDidReceiveSettings`
 
 ### Telemetry-aware reference implementations

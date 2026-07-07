@@ -1,6 +1,6 @@
 # @iracedeck/iracing-actions
 
-All 31 platform-agnostic iRaceDeck action classes. These actions contain no platform-specific code — they import from `@iracedeck/deck-core` and are registered by platform-specific entry points (e.g., `iracing-plugin-stream-deck/src/plugin.ts`).
+The platform-agnostic iRaceDeck action classes — one folder per action under `src/actions/`. Actions contain no platform-specific code — they import from `@iracedeck/deck-core` and are registered by each plugin's entry point (`iracing-plugin-stream-deck`, `iracing-plugin-mirabox`, and `iracing-plugin-ulanzi`, each in its `src/plugin.ts`).
 
 ## Package Structure
 
@@ -14,32 +14,45 @@ src/
       <action-name>.ejs                  # Property Inspector template
       icon.svg                           # Category icon (20x20)
       key.svg                            # Key icon (72x72)
-    race-admin/                          # Same layout plus helpers
-      race-admin-commands.ts             # Helper (no action class)
-      race-admin-modes.ts                # Helper (no action class)
-      race-admin-selector.ts             # Helper (no action class) — #732 car-selector slot math + icon
+    race-admin/                          # Same layout plus non-action helper modules
+                                         # (commands, modes, #732 selector slot math + icon,
+                                         # #491 useViewedCar settings migration)
+    comms-catalog.ts                     # Authoritative per-(action, mode) comms source (#612)
     data/                                # Shared template data
+      action-comms.json                  # GENERATED from comms-catalog.ts
+      docs-urls.json
       icon-defaults.json
       key-bindings.json
-      docs-urls.json
+      profiles.json                      # GENERATED bundled-profile registry (pnpm generate:action-profiles)
     settings/                            # Plugin-global PI template
       settings.ejs
+  audio/                                 # Shared audio helpers: Race Engineer/Radar feature-gate
+                                         # toggles + voice-sequence player (audio-toggles), bus
+                                         # volume steppers (audio-volume)
+  icons/                                 # status-bar: tri-state (on/off/na) toggle indication shared
+                                         # by status bars, state borders, and dial bar styling
+  shared/                                # Cross-action utilities (see below)
 icons/                                   # Dynamic SVG templates (telemetry-driven)
-  car-control-pit-limiter.svg
-  race-admin-car-selector.svg
-  session-info.svg
-  telemetry-display.svg
-  tire-service.svg
 ```
+
+`src/shared/` holds cross-action utilities:
+
+- `car-select-intent.ts` — per-device intent deciding what a selector car-key press means (admin target vs camera focus, #790)
+- `dial-name-icon.ts` — plain two-line action-name image that dual-surface actions push for dial contexts (#775)
+- `icon-update-throttle.ts` — per-context throttle + trailing-edge coalescer for telemetry-driven `setKeyImage` bursts (#493)
+- `profile-entries.ts` — shared `_deviceProfiles` PI-dropdown entry building + echo-loop change guard (#790)
+- `repeat-controller.ts` — long-press hold-to-repeat timing controller
+- `setup-view.ts` — registry, formatters, and render helper for the setup actions' "View …" sub-modes (#541)
+
+The top-level `icons/` directory holds one 144x144 runtime template per dynamic-icon action (content rendered from live telemetry) — see the directory for the current set and `.claude/rules/icons.md` for the template format.
 
 ## Action Pattern
 
-Each action file exports:
-1. A **UUID constant** (e.g., `export const SPLITS_DELTA_CYCLE_UUID = "com.iracedeck.sd.core.splits-delta-cycle" as const`)
-2. An **action class** extending `ConnectionStateAwareAction` from `@iracedeck/deck-core`
-3. Optionally, **`@internal` exported functions/constants** for testing (icon generation, global key names)
+See `.claude/rules/stream-deck-actions.md` for the full requirements (UUID constant, `ConnectionStateAwareAction`, `CommonSettings`, icon assembly, super calls, settings handlers).
 
-Actions receive their logger via constructor injection (from `BaseAction`). No `@action` decorator, no `@elgato/streamdeck` imports.
+## Comms Catalog (#612)
+
+`src/actions/comms-catalog.ts` (in this package) is the authoritative record of how every (action, mode) talks to iRacing — API, key binding, or chat. After editing it, run `pnpm generate:action-comms` from the repo root to regenerate `data/action-comms.json`; a freshness test (`comms-catalog.test.ts`) fails when the committed JSON drifts from the catalog, and a cross-check verifies every keybind key exists in `key-bindings.json`. The full wiring (PI status line, icon overlay) is in `.claude/rules/stream-deck-actions.md` §"Per-Mode Communication Method & Binding Status".
 
 ## Build
 
@@ -53,15 +66,15 @@ The `iracing-plugin-stream-deck` Rollup config includes:
 ## Tests
 
 ```bash
-# From monorepo root
-pnpm test --filter @iracedeck/iracing-actions
+# From monorepo root — scope by path (the root `test` script is `vitest run`)
+pnpm test packages/iracing-actions
 
-# Or run specific test
+# Or run a specific test file
 npx vitest run packages/iracing-actions/src/actions/splits-delta-cycle/splits-delta-cycle.test.ts
 ```
 
-Tests mock `@iracedeck/deck-core` (not `@elgato/streamdeck`). The mock `ConnectionStateAwareAction` provides a logger, `sdkController`, `setKeyImage`, `setRegenerateCallback`, and lifecycle stubs.
+Tests mock `@iracedeck/deck-core` (not `@elgato/streamdeck`) — the canonical mock is in `.claude/rules/testing.md`. Binding-aware actions additionally stub `isBindingMissing` on the mock `ConnectionStateAwareAction` (see `splits-delta-cycle/splits-delta-cycle.test.ts`).
 
 ## Adding a New Action
 
-See `packages/iracing-plugin-stream-deck/CLAUDE.md` for the full step-by-step guide. The action source file and PI template (`<name>.ejs`) stay in this package alongside the action code; action registration and `manifest.json` entries are done in each plugin package (`packages/iracing-plugin-stream-deck/src/plugin.ts` and `packages/iracing-plugin-mirabox/src/plugin.ts`).
+See `packages/iracing-plugin-stream-deck/CLAUDE.md` for the full step-by-step guide. The action source file and PI template (`<name>.ejs`) stay in this package alongside the action code; action registration and `manifest.json` entries are done in every plugin package (`iracing-plugin-stream-deck`, `iracing-plugin-mirabox`, and `iracing-plugin-ulanzi` — each `src/plugin.ts` plus its manifest).

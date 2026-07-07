@@ -11,23 +11,27 @@ Mirabox adapter that implements `IDeckPlatformAdapter` from `@iracedeck/deck-cor
 - **`WillDisappearEvent` special case** — Same as Elgato adapter: provides no-op stubs for `setImage`/`setTitle`
 - **`createLogger(scope)`** — `createConsoleLogger()` from `@iracedeck/logger`, additionally teed to `<plugin>/log/<YYYY.M.D>.log` (via `file-logger.ts`) when a log directory is passed to the constructor (`new VSDPlatformAdapter(logger?, logDir?)`, issue #609). The Stream Dock host discards plugin stdout, so the file is what the "Enable debug logging" toggle captures for support. Console and file share the live `logLevel` (`setLogLevel`).
 - **Broadcast callbacks** — `onKeyDown`, `onDialDown`, `onDialRotate` fire before per-action handlers (for window focus)
-- **Controller tracking** — Tracks `Keypad` vs `Knob` per context from `willAppear` events. `isKey()` is true for `Keypad`; `isDial()` is true for `Knob` (and `Encoder`).
+- **Controller tracking** — Tracks the controller type (`Keypad` / `Encoder` / `Knob` / `Information`) per context from `willAppear` events. `isKey()` is true for `Keypad` **and** `Information` (the Stream Dock 293S read-only info area updates via `setImage`); `isDial()` is true for `Knob` and `Encoder`.
+- **`dialRotate` carries `pressed` natively** — Mirabox's C++ SDK sends `pressed` on rotate frames (rotate-while-held is not Elgato-only); the adapter defaults it to `false` when a frame omits it.
 - **No touch strip** — `setFeedback`/`setFeedbackLayout` are **no-ops** (the Stream Dock protocol has no plugin-drawable touch strip; update knob icons via `setImage`), and there is **no touch-tap input** (`onTouchTap` is never delivered). Dial actions branch on `__FEATURE_DIAL_FEEDBACK__` so this code path is stripped from the Mirabox bundle. See `.claude/rules/encoders-and-touchscreen.md`.
+- **`switchToProfile` is a no-op** — Stream Deck profiles are Elgato-only and the Stream Dock host has no profile system. The PI "Stream Deck Profiles" accordion is hidden on this platform via the `profiles` feature flag (`packages/iracing-plugin-mirabox/platform-features.json`), so the method exists only to satisfy `IDeckPlatformAdapter`.
 
 ## VSD Craft WebSocket Protocol
 
-VSD Craft passes connection parameters via `process.argv`:
+VSD Craft passes connection parameters via `process.argv`; `parseConnectionParams` reads:
 - `argv[3]` = WebSocket port
 - `argv[5]` = plugin UUID
 - `argv[7]` = registration event name
-- `argv[9]` = JSON info (includes `application.language`)
 
-The protocol uses the same event names as Elgato (`willAppear`, `keyDown`, `setImage`, etc.) with minor differences documented in the VSDinside porting guides.
+`argv[9]` (JSON info, includes `application.language`) exists in the protocol but is never parsed.
+
+The protocol uses the same event names as Elgato (`willAppear`, `keyDown`, `setImage`, etc.); the knob/touch-strip differences are documented in `docs/reference/stream-deck-plus-encoders.md` (which links Mirabox's own porting guide).
 
 ## Also Contains
 
-- `VSDClient` — Low-level WebSocket client for the VSD Craft protocol
+- `VSDClient` — Low-level WebSocket client for the VSD Craft protocol. `connect()` dynamically imports `ws` (avoids bundling issues) and auto-fires `requestGlobalSettings()` on open. Default `onClose` is `process.exit(0)` — the plugin process terminates when the host closes the socket.
 - `file-logger.ts` — `FileSink` (per-day `<dir>/<YYYY.M.D>.log` appender, unpadded month/day to match the host's `log/` convention) + `withFileSink` (tees an `ILogger` to the sink under the same live level gate)
+- Public exports (`src/index.ts`) — besides `VSDPlatformAdapter` and `VSDClient`: `parseConnectionParams` and the types `VSDConnectionParams`, `VSDEvent`, `VSDEventHandler`
 
 ## Build
 

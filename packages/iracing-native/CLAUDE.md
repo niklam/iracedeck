@@ -2,12 +2,15 @@
 
 Native Node.js addon (C++/N-API) for iRacing SDK integration and keyboard input.
 
+Over half of the native exports are the SDK data-access half — `startup`, `shutdown`, `isConnected`, `getHeader`, `getData`, `waitForData`, `getSessionInfoStr`, `getVarHeaderEntry`, `varNameToIndex`, `broadcastMsg` — consumed only through `@iracedeck/iracing-sdk` and not documented individually here. The window/keyboard/clipboard/elevation/chat functions documented below are the parts consumed directly by plugins and `deck-core` services (chat is also wrapped by `iracing-sdk`'s `ChatCommand`).
+
 ## Cross-Platform Architecture
 
 The package detects the platform at module load time and behaves accordingly:
 
 - **Windows (`win32`)**: Loads the native `.node` addon via `createRequire()`. If the addon is missing (e.g., fresh clone without `node-gyp rebuild`), falls back to the mock.
 - **Other platforms**: Skips native addon loading entirely and uses `IRacingNativeMock`.
+- **Force mock**: setting `IRACEDECK_MOCK=1` in the environment or creating a `.mock` file in the process cwd (the sdPlugin folder) forces the mock even on Windows — the same lever as `audio-native`.
 
 The `IRacingNative` class delegates every method call to either `addon` (native) or `IRacingNativeMock`. Consumers never need to know which is active.
 
@@ -16,6 +19,10 @@ The `IRacingNative` class delegates every method call to either `addon` (native)
 The `build` script (`scripts/build.mjs`) is platform-aware:
 - On Windows: runs `node-gyp rebuild` then `tsc`
 - On macOS/Linux: runs `tsc` only (skips native compilation)
+
+A `node-gyp rebuild` failure is treated as recoverable **only** when it is a file-lock error (`EBUSY`/`EPERM`/"in use"-style message — a running Stream Deck / deck host app holding the DLL) **and** an existing `build/Release/iracing_native.node` is present to reuse; any other failure rethrows so real build regressions surface. The script is deliberately kept in sync with `audio-native`'s copy — change both together.
+
+The `install` script in `package.json` is a no-op `echo`, so `pnpm install` never triggers node-gyp — building the addon is explicit-only via `pnpm build`.
 
 ### Mock implementation
 
@@ -47,8 +54,7 @@ Brings the iRacing simulator window (`"iRacing.com Simulator"`) to the foregroun
 
 Used by the window focus service when the `focusIRacingWindow` global setting is enabled. Called before every action to ensure inputs reach iRacing.
 
-### Internal helper: `focusIRacingWindow()` (static C++)
-Uses `FindWindowA(NULL, "iRacing.com Simulator")` to locate the window, checks if it is already focused via `GetForegroundWindow()`, and uses `AttachThreadInput` to temporarily attach the current thread to the foreground thread before calling `SetForegroundWindow`. Polls for up to 1000ms (100 iterations × 10ms) to confirm the focus change took effect.
+Internally, a static C++ helper does the `FindWindowA(NULL, "iRacing.com Simulator")` lookup and the 1000ms (100 × 10ms) focus-confirmation poll.
 
 ## Keyboard Input Functions
 
@@ -65,8 +71,7 @@ All functions accept an array of PS/2 scan codes (modifiers first, then main key
 ### `sendScanKeyUp(scanCodes: number[])`
 **Release only** — releases each scan code in reverse order without pressing. No sleep. Should be called after `sendScanKeyDown()` to release held keys.
 
-### Internal helper: `sendScanKey(scanCode, isDown)`
-Static C++ function used by all three public functions. Sends a single key event via `SendInput()`. Derives `wVk` from scan code using `MapVirtualKeyW()` for compatibility.
+All three delegate to a static C++ `sendScanKey(scanCode, isDown)` that sends one key event via `SendInput()`, deriving `wVk` from the scan code with `MapVirtualKeyW()` for compatibility.
 
 ## Clipboard Functions
 
