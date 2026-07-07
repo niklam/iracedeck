@@ -152,7 +152,7 @@ await getKeyboard().releaseKeyCombination(combination);    // release
 ## Plugin Setup for Keyboard Support
 
 When using `getKeyboard()` in a plugin, you MUST:
-1. Import `initializeKeyboard` and `initWindowFocus` from `@iracedeck/deck-core`
+1. Import `initializeKeyboard` from `@iracedeck/deck-core`; `initWindowFocus` and `focusIRacingIfEnabled` are **per-plugin** modules (each plugin's `src/shared/window-focus.ts`, imported via `./shared/index.js`) — they do NOT live in deck-core
 2. Call `initializeKeyboard()` before registering actions
 3. Call `initWindowFocus()` to set up window focusing
 4. Register `focusIRacingIfEnabled()` listeners on the adapter before registering actions
@@ -160,8 +160,9 @@ When using `getKeyboard()` in a plugin, you MUST:
 ```typescript
 // plugin.ts
 import { ElgatoPlatformAdapter } from "@iracedeck/deck-adapter-elgato";
-import { focusIRacingIfEnabled, initializeKeyboard, initWindowFocus } from "@iracedeck/deck-core";
+import { initializeKeyboard } from "@iracedeck/deck-core";
 import { IRacingNative } from "@iracedeck/iracing-native";
+import { focusIRacingIfEnabled, initWindowFocus } from "./shared/index.js";
 
 const adapter = new ElgatoPlatformAdapter(streamDeck);
 const native = new IRacingNative();

@@ -148,7 +148,6 @@ import { getAudio, initializeAudio } from "@iracedeck/audio-service";
 import { MY_ACTION_UUID, MyAction } from "@iracedeck/iracing-actions";
 import { ElgatoPlatformAdapter } from "@iracedeck/deck-adapter-elgato";
 import {
-  focusIRacingIfEnabled,
   getController,
   initAppMonitor,
   initGlobalSettings,
@@ -156,11 +155,12 @@ import {
   initializeKeyboard,
   initializeSDK,
   initializeSimHub,
-  initWindowFocus,
 } from "@iracedeck/deck-core";
 import { initializeEventBus } from "@iracedeck/event-bus";
 import { IRacingNative } from "@iracedeck/iracing-native";
 import { initializeSimEventsIracing } from "@iracedeck/sim-events-iracing";
+// Per-plugin module — NOT in deck-core (each plugin has its own src/shared/window-focus.ts)
+import { focusIRacingIfEnabled, initWindowFocus } from "./shared/index.js";
 
 // 1. Create the Elgato platform adapter
 const adapter = new ElgatoPlatformAdapter(streamDeck);
@@ -188,9 +188,10 @@ initializeKeyboard(
   (scanCodes) => native.sendScanKeyUp(scanCodes),      // release only (key release)
 );
 
-// 7. Initialize audio engine for pit engineer voice playback
+// 7. Initialize audio engine for pit engineer voice playback.
+//    Third arg = base path of the bundled audio assets (the plugin's assets/audio dir).
 const audioNative = new AudioNative();
-initializeAudio(adapter.createLogger("Audio"), audioNative);
+initializeAudio(adapter.createLogger("Audio"), audioNative, join(__binDir, "..", "assets", "audio"));
 getAudio().init();
 
 // 8. Initialize window focus service
@@ -225,7 +226,8 @@ adapter.connect();
 - All init calls must be BEFORE `adapter.connect()` (handlers must register first)
 - `initializeEventBus()` must come before any publisher (e.g. `initializeSimEventsIracing`) or subscriber (actions via `getEventBus().subscribe(...)`)
 - `initializeSimEventsIracing()` must come after `initializeSDK()` (requires `getController()`) and after `initializeEventBus()`; it's the only package that reads `sdkController` ticks on behalf of action consumers
-- `initializeAudio()` creates the audio service singleton; `getAudio().init()` starts the miniaudio engine. Both must be called before actions that use audio (e.g., Pit Engineer)
+- `initializeAudio()` creates the audio service singleton (third argument = audio-assets base path); `getAudio().init()` starts the miniaudio engine. Both must be called before actions that use audio (e.g., Pit Engineer)
+- `initWindowFocus` / `focusIRacingIfEnabled` come from the plugin's own `src/shared/window-focus.ts` (via `./shared/index.js`), not from `@iracedeck/deck-core`
 - `initializeSimHub()` must come AFTER `initGlobalSettings()` (reads host/port from settings)
 - `initializeBindingDispatcher()` must come AFTER `initGlobalSettings()`, `initializeKeyboard()`, and `initializeSimHub()`
 - Actions are imported from `@iracedeck/iracing-actions` and registered via `adapter.registerAction(UUID, handler)`

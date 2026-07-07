@@ -12,8 +12,9 @@
  *
  * While a car is alongside the engine holds an exclusive-focus floor
  * (`WEIGHT.SAFETY`) on `AudioBus.Voice` so routine chatter is held back while
- * safety-band callouts (flags) still break through, and runs a ~4 s
- * "still there" reminder loop. It reads `getTrackDirection()` to swap road
+ * safety-band callouts (flags) still break through, and runs a "still there"
+ * reminder loop (default 3 s, user-configurable 1–10 s via the
+ * `spotterStillThereSeconds` global setting). It reads `getTrackDirection()` to swap road
  * (left/right) terminology for oval (inside/outside) terminology.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";

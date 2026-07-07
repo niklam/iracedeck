@@ -206,5 +206,5 @@ Each helper takes `TelemetryData | null` and returns `false` for `null`. Add new
 |------|------|
 | `packages/iracing-native/src/defines.ts` | `TelemetryData` interface, enums, bitfield definitions |
 | `packages/iracing-sdk/src/IRacingSDK.ts` | Parses telemetry from shared memory buffer |
-| `packages/iracing-sdk/src/SDKController.ts` | 4Hz update loop, subscription management |
-| `packages/iracing-sdk/src/telemetry-snapshot.ts` | CLI tool to capture live telemetry (`--vars=Speed,Gear`) |
+| `packages/iracing-sdk/src/SDKController.ts` | 10 ms polling loop deduped on iRacing's `SessionTick` (#493), subscription management |
+| `packages/iracing-sdk/src/cli/telemetry-snapshot.ts` | CLI tool to capture live telemetry (`--vars=Speed,Gear`); formatting utils in `src/snapshot.ts` |
