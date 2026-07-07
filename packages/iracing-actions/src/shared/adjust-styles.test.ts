@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { dataUriToSvg } from "@iracedeck/deck-core";
+import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
 import {
@@ -15,6 +16,19 @@ import {
   styleShowsValue,
   telemetryMemoValue,
 } from "./adjust-styles.js";
+import { renderAdjustStyleSvg } from "./adjust-styles.js";
+
+vi.mock("@iracedeck/deck-core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@iracedeck/deck-core")>();
+
+  return {
+    ...actual,
+    getGlobalColors: () => ({}),
+    getGlobalTitleSettings: () => ({}),
+    getGlobalBorderSettings: () => ({}),
+    getGlobalGraphicSettings: () => ({}),
+  };
+});
 
 const Schema = z.object(adjustStyleSettingsFields);
 
@@ -113,5 +127,68 @@ describe("telemetry wiring helpers", () => {
     expect(telemetryMemoValue({ setting: "brake-bias", keyStyle: "split" }, telemetry)).toBe("54.0%");
     expect(telemetryMemoValue({ setting: "brake-bias", keyStyle: "legacy" }, telemetry)).toBeNull();
     expect(telemetryMemoValue({ setting: "brake-bias", keyStyle: "big-glyph" }, telemetry)).toBeNull();
+  });
+});
+
+/**
+ * Decode the data URI back to raw SVG for content assertions. `svgToDataUri`
+ * (packages/icon-composer/src/svg-utils.ts) actually emits
+ * `data:image/svg+xml;base64,...` — not the plain URI-encoded form the brief
+ * sketched — so this delegates to the real `dataUriToSvg` counterpart instead
+ * of a hand-rolled `decodeURIComponent` that would silently no-op on base64.
+ */
+function decode(dataUri: string): string {
+  return dataUriToSvg(dataUri);
+}
+
+const BASE = {
+  direction: "increase",
+  pairPosition: "auto",
+  value: "54.0",
+  label: "BRAKE BIAS",
+} as const;
+
+describe("renderAdjustStyleSvg — value-showing styles", () => {
+  it("corner-badge renders value, label, and an accent badge with the direction glyph", () => {
+    const svg = decode(renderAdjustStyleSvg({ ...BASE, style: "corner-badge" }));
+    expect(svg).toContain(">54.0</text>");
+    expect(svg).toContain("BRAKE BIAS");
+    expect(svg).toContain('circle cx="119" cy="25"');
+    expect(svg).toContain("#f1c40f");
+    expect(svg).toContain(">+</text>");
+  });
+
+  it("split renders label top, value middle, big glyph bottom; decrease shows a minus", () => {
+    const svg = decode(renderAdjustStyleSvg({ ...BASE, style: "split", direction: "decrease" }));
+    expect(svg).toContain(">54.0</text>");
+    expect(svg).toContain(">−</text>");
+  });
+
+  it("ghost renders a translucent glyph behind a full-size value", () => {
+    const svg = decode(renderAdjustStyleSvg({ ...BASE, style: "ghost" }));
+    expect(svg).toContain('opacity="0.2"');
+    expect(svg).toContain(">54.0</text>");
+  });
+
+  it("edge-chevrons places chevrons on the resolved edge, pointing in the direction of change", () => {
+    // increase + auto → right edge, pointing right (x grows along the polyline)
+    const inc = decode(renderAdjustStyleSvg({ ...BASE, style: "edge-chevrons" }));
+    expect(inc).toContain('points="114,52 130,72 114,92"');
+    // decrease + auto → left edge, pointing left
+    const dec = decode(renderAdjustStyleSvg({ ...BASE, style: "edge-chevrons", direction: "decrease" }));
+    expect(dec).toContain('points="30,52 14,72 30,92"');
+  });
+
+  it("renders the null placeholder and applies the binding warning overlay", () => {
+    const svg = decode(renderAdjustStyleSvg({ ...BASE, style: "split", value: null, bindingMissing: true }));
+    expect(svg).toContain("---");
+    // dimmed content wrapper from applyBindingWarning — BINDING_WARNING_DIM_OPACITY
+    // in packages/icon-composer/src/binding-warning.ts is 0.25, not 0.3.
+    expect(svg).toContain('opacity="0.25"');
+  });
+
+  it("hides the label when titleOverrides.showTitle is false", () => {
+    const svg = decode(renderAdjustStyleSvg({ ...BASE, style: "corner-badge", titleOverrides: { showTitle: false } }));
+    expect(svg).not.toContain("BRAKE BIAS");
   });
 });
