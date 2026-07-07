@@ -1,6 +1,6 @@
 {
   "name": "@iracedeck/deck-adapter-ulanzi",
-  "version": "2.0.0-alpha.2",
+  "version": "2.0.0-beta.0",
   "description": "Ulanzi Deck adapter for @iracedeck/deck-core",
   "type": "module",
   "main": "dist/index.js",

@@ -1,6 +1,6 @@
 {
   "name": "@iracedeck/audio-scenarios",
-  "version": "2.0.0-alpha.2",
+  "version": "2.0.0-beta.0",
   "description": "Data-driven audio scenario DSL and interpreter. Subscribes to @iracedeck/event-bus and drives @iracedeck/audio-service.",
   "type": "module",
   "main": "dist/index.js",
