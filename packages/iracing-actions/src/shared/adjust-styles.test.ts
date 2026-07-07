@@ -251,6 +251,18 @@ describe("renderAdjustStyleSvg — pill family and no-value styles", () => {
     expect(svg).toContain("BRAKE BIAS");
   });
 
+  it("escapes user-supplied title text in the pill-middle label", () => {
+    const svg = decode(
+      renderAdjustStyleSvg({
+        ...BASE,
+        style: "pill-middle-horizontal",
+        titleOverrides: { titleText: "FUEL & MIX" },
+      }),
+    );
+    expect(svg).toContain("FUEL &amp; MIX");
+    expect(svg).not.toContain("FUEL & MIX<");
+  });
+
   it("big-glyph is a huge accent glyph with hidden label by default", () => {
     const svg = decode(renderAdjustStyleSvg({ ...BASE, style: "big-glyph" }));
     expect(svg).toContain(">+</text>");
@@ -288,5 +300,9 @@ describe("renderPairedIconOrNull", () => {
       renderPairedIconOrNull({ ...common, setting: "view-brake-bias", keyStyle: "pill-middle-vertical" }) ?? "",
     );
     expect(svg).toContain('d="M14 0 V144 M130 0 V144"');
+  });
+
+  it("returns null for a pill-middle style requested on an adjust mode", () => {
+    expect(renderPairedIconOrNull({ ...common, setting: "brake-bias", keyStyle: "pill-middle-horizontal" })).toBeNull();
   });
 });

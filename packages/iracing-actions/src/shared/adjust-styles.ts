@@ -14,6 +14,7 @@ import {
   applyBindingWarning,
   type BorderOverrides,
   type ColorSlots,
+  escapeXml,
   generateBorderParts,
   generateTitleText,
   getGlobalBorderSettings,
@@ -290,7 +291,7 @@ export function renderAdjustStyleSvg(inputs: AdjustStyleRenderInputs): string {
   // overrides still apply; position/customPosition are style-fixed).
   const pillMiddleLabel =
     isPillMiddleStyle(style) && title.showTitle
-      ? `<text x="72" y="${style === "pill-middle-horizontal" ? 108 : 102}" text-anchor="middle" fill="${colors.textColor}" font-family="Arial, sans-serif" font-size="14" font-weight="${title.bold ? "bold" : "normal"}">${title.titleText}</text>`
+      ? `<text x="72" y="${style === "pill-middle-horizontal" ? 108 : 102}" text-anchor="middle" fill="${colors.textColor}" font-family="Arial, sans-serif" font-size="14" font-weight="${title.bold ? "bold" : "normal"}">${escapeXml(title.titleText)}</text>`
       : "";
 
   const borderSource = isPillStyle(style) ? PILL_BORDER_SOURCE : styleSource;
