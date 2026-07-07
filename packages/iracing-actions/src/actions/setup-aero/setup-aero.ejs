@@ -33,6 +33,12 @@
 
 		<%- include('dual-press-overrides') %>
 
+		<%- include('adjust-style', {
+			modeSelectId: 'setting-select',
+			pairedModes: ['front-wing', 'rear-wing'],
+			viewModes: ['view-front-wing', 'view-rear-wing']
+		}) %>
+
 		<%- include('title-overrides') %>
 
 		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/icon-defaults.json')['setup-aero'] }) %>

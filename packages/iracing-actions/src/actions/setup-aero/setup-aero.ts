@@ -4,6 +4,7 @@ import {
   ConnectionStateAwareAction,
   DualPressTracker,
   getDualPressDirections,
+  getDualPressThresholdMs,
   getGlobalBorderSettings,
   getGlobalColors,
   getGlobalGraphicSettings,
@@ -31,11 +32,18 @@ import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
 import {
-  formatViewValue,
-  generateSetupViewSvg,
-  getAdjustmentModeForView,
-  isViewSetting,
-} from "../../shared/setup-view.js";
+  ADJUST_REPEAT_INTERVAL_MS,
+  ADJUST_REPEAT_SAFETY_MS,
+  adjustStyleSettingsFields,
+  hasPairedValueSource,
+  pairedKeyNeedsTelemetry,
+  renderPairedIconOrNull,
+  seedFreshKeyStyle,
+  telemetryMemoValue,
+} from "../../shared/adjust-styles.js";
+import { IconUpdateThrottle } from "../../shared/icon-update-throttle.js";
+import { RepeatController } from "../../shared/repeat-controller.js";
+import { generateSetupViewSvg, getAdjustmentModeForView, isViewSetting } from "../../shared/setup-view.js";
 
 type SetupAeroAdjustSetting = "front-wing" | "rear-wing" | "qualifying-tape" | "rf-brake-attached";
 
@@ -106,6 +114,7 @@ const SetupAeroSettings = CommonSettings.extend({
     ])
     .default("front-wing"),
   direction: z.enum(["increase", "decrease"]).default("increase"),
+  ...adjustStyleSettingsFields,
   /**
    * Dual-press opt-in for View sub-modes (issue #540). When `true` (default),
    * a View key fires the global tap direction on a short press and the
@@ -121,6 +130,17 @@ const SetupAeroSettings = CommonSettings.extend({
 });
 
 type SetupAeroSettings = z.infer<typeof SetupAeroSettings>;
+
+/**
+ * @internal Exported for testing
+ *
+ * Parses raw settings, falling back to full defaults when the whole parse fails.
+ */
+export function parseSetupAeroSettings(raw: unknown): SetupAeroSettings {
+  const parsed = SetupAeroSettings.safeParse(raw);
+
+  return parsed.success ? parsed.data : SetupAeroSettings.parse({});
+}
 
 /**
  * @internal Exported for testing
@@ -175,9 +195,27 @@ export class SetupAero extends ConnectionStateAwareAction<SetupAeroSettings> {
   /** Per-context key-down timestamps for dual-press dispatch on View sub-modes (#540). */
   private readonly dualPress = new DualPressTracker();
 
+  /** Hold-to-repeat for paired-style directional keys (always on, spec 2026-07-07). */
+  private readonly repeat = new RepeatController(this.logger);
+
+  /** Coalesces telemetry-driven re-renders to ≤ 10/s per key (issue #493 pattern). */
+  private readonly iconThrottle = new IconUpdateThrottle();
+
   override async onWillAppear(ev: IDeckWillAppearEvent<SetupAeroSettings>): Promise<void> {
     await super.onWillAppear(ev);
-    const settings = this.parseSettings(ev.payload.settings);
+    let settings = this.parseSettings(ev.payload.settings);
+
+    // One-shot default seeding (spec 2026-07-07): a never-configured keypad key
+    // gets the modern `split` style; keys with any persisted settings stay legacy.
+    if (!ev.action.isDial()) {
+      const seeded = seedFreshKeyStyle(ev.payload.settings);
+
+      if (seeded) {
+        await ev.action.setSettings(seeded);
+        settings = this.parseSettings(seeded);
+      }
+    }
+
     this.activeContexts.set(ev.action.id, settings);
     this.applyActiveBinding(settings);
     await this.updateDisplay(ev, settings);
@@ -185,7 +223,7 @@ export class SetupAero extends ConnectionStateAwareAction<SetupAeroSettings> {
     this.sdkController.subscribe(ev.action.id, (telemetry) => {
       const stored = this.activeContexts.get(ev.action.id);
 
-      if (stored && isViewSetting(stored.setting)) {
+      if (stored && (isViewSetting(stored.setting) || pairedKeyNeedsTelemetry(stored))) {
         void this.updateDisplayFromTelemetry(ev.action.id, telemetry, stored);
       }
     });
@@ -196,6 +234,8 @@ export class SetupAero extends ConnectionStateAwareAction<SetupAeroSettings> {
     this.activeContexts.delete(ev.action.id);
     this.lastRenderedValue.delete(ev.action.id);
     this.dualPress.clear(ev.action.id);
+    this.repeat.clear(ev.action.id);
+    this.iconThrottle.clear(ev.action.id);
     await super.onWillDisappear(ev);
   }
 
@@ -204,6 +244,7 @@ export class SetupAero extends ConnectionStateAwareAction<SetupAeroSettings> {
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
     this.lastRenderedValue.delete(ev.action.id);
+    this.repeat.clear(ev.action.id);
     this.applyActiveBinding(settings);
     await this.updateDisplay(ev, settings);
   }
@@ -222,10 +263,28 @@ export class SetupAero extends ConnectionStateAwareAction<SetupAeroSettings> {
     }
 
     this.logger.info("Key down received");
+
+    // Hold-to-repeat for paired-style keys: arm SYNCHRONOUSLY before the first
+    // execute so a racing keyUp always finds timers to clear (fuel-service pattern).
+    if (settings.keyStyle !== "legacy" && hasPairedValueSource(settings.setting)) {
+      const { setting, direction } = settings;
+      this.repeat.onKeyDown(ev.action.id, {
+        holdMs: getDualPressThresholdMs(),
+        intervalMs: ADJUST_REPEAT_INTERVAL_MS,
+        safetyMs: ADJUST_REPEAT_SAFETY_MS,
+        execute: async () => {
+          await this.executeSetting(setting as SetupAeroAdjustSetting, direction);
+
+          return true;
+        },
+      });
+    }
+
     await this.executeSetting(settings.setting, settings.direction);
   }
 
   override async onKeyUp(ev: IDeckKeyUpEvent<SetupAeroSettings>): Promise<void> {
+    this.repeat.onKeyUp(ev.action.id);
     const settings = this.parseSettings(ev.payload.settings);
 
     if (!isViewSetting(settings.setting) || !settings.dualPressEnabled) {
@@ -291,9 +350,7 @@ export class SetupAero extends ConnectionStateAwareAction<SetupAeroSettings> {
   }
 
   private parseSettings(settings: unknown): SetupAeroSettings {
-    const parsed = SetupAeroSettings.safeParse(settings);
-
-    return parsed.success ? parsed.data : SetupAeroSettings.parse({});
+    return parseSetupAeroSettings(settings);
   }
 
   private applyActiveBinding(settings: SetupAeroSettings): void {
@@ -372,9 +429,10 @@ export class SetupAero extends ConnectionStateAwareAction<SetupAeroSettings> {
   ): Promise<void> {
     const svgDataUri = this.renderIcon(settings);
 
-    if (isViewSetting(settings.setting)) {
-      const telemetry = this.sdkController.getCurrentTelemetry();
-      this.lastRenderedValue.set(ev.action.id, formatViewValue(settings.setting, telemetry));
+    const memo = telemetryMemoValue(settings, this.sdkController.getCurrentTelemetry());
+
+    if (memo !== null) {
+      this.lastRenderedValue.set(ev.action.id, memo);
     }
 
     await ev.action.setTitle("");
@@ -384,6 +442,21 @@ export class SetupAero extends ConnectionStateAwareAction<SetupAeroSettings> {
 
   private renderIcon(settings: SetupAeroSettings): string {
     const bindingMissing = this.computeBindingMissing(settings);
+
+    const paired = renderPairedIconOrNull({
+      setting: settings.setting,
+      direction: settings.direction,
+      keyStyle: settings.keyStyle,
+      pairPosition: settings.pairPosition,
+      telemetry: this.sdkController.getCurrentTelemetry(),
+      colorSourceSvg: frontWingIncreaseIconSvg,
+      colorOverrides: settings.colorOverrides,
+      titleOverrides: settings.titleOverrides,
+      borderOverrides: settings.borderOverrides,
+      bindingMissing,
+    });
+
+    if (paired) return paired;
 
     if (isViewSetting(settings.setting)) {
       return generateSetupViewSvg({
@@ -405,22 +478,17 @@ export class SetupAero extends ConnectionStateAwareAction<SetupAeroSettings> {
     telemetry: TelemetryData | null,
     settings: SetupAeroSettings,
   ): Promise<void> {
-    if (!isViewSetting(settings.setting)) return;
+    const memo = telemetryMemoValue(settings, telemetry);
 
-    const value = formatViewValue(settings.setting, telemetry);
+    if (memo === null) return;
 
-    if (this.lastRenderedValue.get(contextId) === value) return;
+    if (this.lastRenderedValue.get(contextId) === memo) return;
 
-    this.lastRenderedValue.set(contextId, value);
-    const svgDataUri = generateSetupViewSvg({
-      viewId: settings.setting,
-      telemetry,
-      colorSourceSvg: frontWingIncreaseIconSvg,
-      colorOverrides: settings.colorOverrides,
-      titleOverrides: settings.titleOverrides,
-      borderOverrides: settings.borderOverrides,
-      bindingMissing: this.computeBindingMissing(settings),
+    this.lastRenderedValue.set(contextId, memo);
+    this.iconThrottle.schedule(contextId, async () => {
+      const stored = this.activeContexts.get(contextId);
+
+      if (stored) await this.updateKeyImage(contextId, this.renderIcon(stored));
     });
-    await this.updateKeyImage(contextId, svgDataUri);
   }
 }
