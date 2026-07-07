@@ -354,11 +354,16 @@ function buildStyleArt(
         return art + valueText(value, valueX, 74, 38 + bump, textColor);
       }
 
+      const onTopEdge = position === "top";
       const pointsUp = direction === "increase";
-      const art = pointsUp
-        ? chevrons("52,30 72,14 92,30", "52,46 72,30 92,46", accent, 7)
-        : chevrons("52,114 72,130 92,114", "52,98 72,114 92,98", accent, 7);
-      const valueY = pointsUp ? 84 : labelShown ? 62 : 60;
+      const art = onTopEdge
+        ? pointsUp
+          ? chevrons("52,30 72,14 92,30", "52,46 72,30 92,46", accent, 7)
+          : chevrons("52,14 72,30 92,14", "52,30 72,46 92,30", accent, 7)
+        : pointsUp
+          ? chevrons("52,130 72,114 92,130", "52,114 72,98 92,114", accent, 7)
+          : chevrons("52,114 72,130 92,114", "52,98 72,114 92,98", accent, 7);
+      const valueY = onTopEdge ? 84 : labelShown ? 62 : 60;
 
       return art + valueText(value, 72, valueY, 38 + bump, textColor);
     }

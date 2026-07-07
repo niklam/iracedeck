@@ -179,6 +179,27 @@ describe("renderAdjustStyleSvg — value-showing styles", () => {
     expect(dec).toContain('points="30,52 14,72 30,92"');
   });
 
+  it("edge-chevrons honors an explicit position that diverges from direction (horizontal)", () => {
+    // left edge + increase → chevrons on the LEFT, pointing RIGHT
+    const svg = decode(
+      renderAdjustStyleSvg({ ...BASE, style: "edge-chevrons", direction: "increase", pairPosition: "left" }),
+    );
+    expect(svg).toContain('points="14,52 30,72 14,92"');
+  });
+
+  it("edge-chevrons honors an explicit position that diverges from direction (vertical)", () => {
+    // top edge + decrease → chevrons at the TOP, pointing DOWN
+    const svg = decode(
+      renderAdjustStyleSvg({ ...BASE, style: "edge-chevrons", direction: "decrease", pairPosition: "top" }),
+    );
+    expect(svg).toContain('points="52,14 72,30 92,14"');
+    // bottom edge + increase → chevrons at the BOTTOM, pointing UP
+    const svg2 = decode(
+      renderAdjustStyleSvg({ ...BASE, style: "edge-chevrons", direction: "increase", pairPosition: "bottom" }),
+    );
+    expect(svg2).toContain('points="52,130 72,114 92,130"');
+  });
+
   it("renders the null placeholder and applies the binding warning overlay", () => {
     const svg = decode(renderAdjustStyleSvg({ ...BASE, style: "split", value: null, bindingMissing: true }));
     expect(svg).toContain("---");
@@ -190,5 +211,18 @@ describe("renderAdjustStyleSvg — value-showing styles", () => {
   it("hides the label when titleOverrides.showTitle is false", () => {
     const svg = decode(renderAdjustStyleSvg({ ...BASE, style: "corner-badge", titleOverrides: { showTitle: false } }));
     expect(svg).not.toContain("BRAKE BIAS");
+  });
+
+  it("bumps the value font size when shortValue is set", () => {
+    const svg = decode(renderAdjustStyleSvg({ ...BASE, style: "split", shortValue: true }));
+    expect(svg).toContain('font-size="46"');
+    expect(svg).not.toContain('font-size="38"');
+  });
+
+  it("takes background/text from colorSourceSvg but the accent from the template's own desc", () => {
+    const colorSourceSvg = `<svg><desc>{"colors":{"backgroundColor":"#3a2a1a","textColor":"#eeeeee","graphic1Color":"#ffffff"},"locked":["graphic1Color"]}</desc></svg>`;
+    const svg = decode(renderAdjustStyleSvg({ ...BASE, style: "corner-badge", colorSourceSvg }));
+    expect(svg).toContain('fill="#3a2a1a"'); // background from the action's palette
+    expect(svg).toContain('r="15" fill="#f1c40f"'); // badge accent from the template desc, NOT the locked white
   });
 });
