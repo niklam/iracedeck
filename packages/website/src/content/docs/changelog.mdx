@@ -38,12 +38,19 @@ _Unreleased_
 - Race Admin's driver-management commands — Grant Admin, Revoke Admin, Enable/Mute Chat for a driver, and Remove Driver — now refuse to send when the target is an AI car, the pace car, or a car number that isn't in the session (the key flashes a warning instead). iRacing applies these commands to _you_ when the target isn't a real user, which could revoke your own admin and end your session. Revoke Admin additionally refuses your own car, so you can't accidentally revoke your own admin. Race-control commands (black flag, EOL, DQ, and the rest) still work against AI cars as before.
 - The Race Engineer's checkered-flag callout in qualifying and races now waits until you actually take the flag at the start/finish line instead of firing the moment the session ends — previously it could play most of a lap early, e.g. “that's it for qualifying” while you were still on your final flying lap. When your own finish ends the race, the call still lands right as you cross the line; practice sessions keep the immediate call, since the flag there just means the session is over.
 - During a rolling-start formation, the Race Engineer's “one pace lap to go” call now fires when the pace car crosses the start/finish line — the moment the field is committed to another pace lap — instead of when your own car reaches the line, so you hear it as the final pace lap actually begins rather than seconds later from the mid or back of the grid.
-- Fuel Service keys no longer fall back to the Toggle Fuel Fill (“REFUEL”) icon and behavior when their stored settings contain a fuel unit the running version doesn't know — the unknown unit is read as liters and the key's selected mode is kept.
 - The Race Engineer no longer announces "This lap will be invalidated. We're out of qualifying laps…" for incidents picked up while circulating after your counted qualifying laps are done — those extra laps aren't timed attempts, so nothing is invalidated and the engineer stays quiet. An incident on your final counted lap still gets the out-of-laps announcement.
 
 **Breaking changes**
 
 - Knobs and dials on Mirabox and Ulanzi devices no longer offer iRaceDeck actions. The rebuilt dial experience is Stream Deck+ only for now, because it has not been verified on Mirabox and Ulanzi dial hardware yet — so any knob or dial assignments made with 1.x on those devices will disappear. Dial support for them will return in a future release once verified.
+
+## 1.23.1
+
+_2026-07-07_
+
+**Bug Fixes**
+
+- Fuel Service keys no longer fall back to the Toggle Fuel Fill (“REFUEL”) icon and behavior when their stored settings contain a fuel unit this version doesn't know — such as the `auto` unit written by iRaceDeck 2.0 pre-release builds sharing the same profiles. The unknown unit is now read as liters and the key's selected mode is kept.
 
 ## 1.23.0
 
