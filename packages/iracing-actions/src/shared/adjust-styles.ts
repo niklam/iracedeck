@@ -285,6 +285,14 @@ export function renderAdjustStyleSvg(inputs: AdjustStyleRenderInputs): string {
       })
     : "";
 
+  // Pill-middle labels live INSIDE the pill at a fixed spot; suppress the
+  // standard positioned title and draw the label directly (text/bold/size/show
+  // overrides still apply; position/customPosition are style-fixed).
+  const pillMiddleLabel =
+    isPillMiddleStyle(style) && title.showTitle
+      ? `<text x="72" y="${style === "pill-middle-horizontal" ? 108 : 102}" text-anchor="middle" fill="${colors.textColor}" font-family="Arial, sans-serif" font-size="14" font-weight="${title.bold ? "bold" : "normal"}">${title.titleText}</text>`
+      : "";
+
   const borderSource = isPillStyle(style) ? PILL_BORDER_SOURCE : styleSource;
   const border = resolveBorderSettings(borderSource, getGlobalBorderSettings(), inputs.borderOverrides);
   const borderSvg = generateBorderParts(border);
@@ -298,7 +306,7 @@ export function renderAdjustStyleSvg(inputs: AdjustStyleRenderInputs): string {
     backgroundColor: colors.backgroundColor,
     borderDefs: borderSvg.defs,
     borderContent: borderSvg.rects,
-    content: inner + titleContent,
+    content: inner + (isPillMiddleStyle(style) ? pillMiddleLabel : titleContent),
   });
 
   return svgToDataUri(svg);
@@ -368,8 +376,166 @@ function buildStyleArt(
       return art + valueText(value, 72, valueY, 38 + bump, textColor);
     }
 
-    default:
-      // Pill family + no-value styles are implemented in Task 3.
-      return valueText(value, 72, 72, 44 + bump, textColor);
+    case "big-glyph":
+      return glyphText(direction, 72, 72, 96, accent);
+
+    case "big-chevron": {
+      const horizontal = position === "left" || position === "right";
+
+      if (horizontal) {
+        return direction === "increase"
+          ? chevrons("68,36 104,72 68,108", "32,36 68,72 32,108", accent, 10)
+          : chevrons("76,36 40,72 76,108", "112,36 76,72 112,108", accent, 10);
+      }
+
+      return direction === "increase"
+        ? chevrons("36,76 72,40 108,76", "36,112 72,76 108,112", accent, 10)
+        : chevrons("36,68 72,104 108,68", "36,32 72,68 108,32", accent, 10);
+    }
+
+    case "joined-pill": {
+      // Frame open toward the partner (the JOINED edge is the opposite of `position`).
+      // With a visible bottom label (horizontal pair) the frame shortens to y 14..108;
+      // without one it uses the equal-margin frame y 14..130.
+      const yBot = labelShown && (position === "left" || position === "right") ? 108 : 130;
+      const yQ = yBot - 20;
+
+      switch (position) {
+        case "left":
+          return (
+            `<path d="M144 14 H34 Q14 14 14 34 V${yQ} Q14 ${yBot} 34 ${yBot} H144" fill="none" stroke="${accent}" stroke-width="5"/>` +
+            glyphText(direction, 38, (14 + yBot) / 2, 38, accent) +
+            valueText(value, 92, (14 + yBot) / 2, 34 + bump, textColor)
+          );
+        case "right":
+          return (
+            `<path d="M0 14 H110 Q130 14 130 34 V${yQ} Q130 ${yBot} 110 ${yBot} H0" fill="none" stroke="${accent}" stroke-width="5"/>` +
+            valueText(value, 52, (14 + yBot) / 2, 34 + bump, textColor) +
+            glyphText(direction, 106, (14 + yBot) / 2, 38, accent)
+          );
+        case "top":
+          return (
+            `<path d="M14 144 V34 Q14 14 34 14 H110 Q130 14 130 34 V144" fill="none" stroke="${accent}" stroke-width="5"/>` +
+            glyphText(direction, 72, 46, 38, accent) +
+            valueText(value, 72, 88, 34 + bump, textColor)
+          );
+        case "bottom":
+          return (
+            `<path d="M14 0 V110 Q14 130 34 130 H110 Q130 130 130 110 V0" fill="none" stroke="${accent}" stroke-width="5"/>` +
+            valueText(value, 72, 58, 34 + bump, textColor) +
+            glyphText(direction, 72, 100, 38, accent)
+          );
+      }
+
+      break;
+    }
+
+    case "pill-end": {
+      switch (position) {
+        case "left":
+          return (
+            `<path d="M144 14 H34 Q14 14 14 34 V110 Q14 130 34 130 H144" fill="none" stroke="${accent}" stroke-width="5"/>` +
+            glyphText(direction, 72, 72, 52, accent)
+          );
+        case "right":
+          return (
+            `<path d="M0 14 H110 Q130 14 130 34 V110 Q130 130 110 130 H0" fill="none" stroke="${accent}" stroke-width="5"/>` +
+            glyphText(direction, 72, 72, 52, accent)
+          );
+        case "top":
+          return (
+            `<path d="M14 144 V34 Q14 14 34 14 H110 Q130 14 130 34 V144" fill="none" stroke="${accent}" stroke-width="5"/>` +
+            glyphText(direction, 72, 80, 52, accent)
+          );
+        case "bottom":
+          return (
+            `<path d="M14 0 V110 Q14 130 34 130 H110 Q130 130 130 110 V0" fill="none" stroke="${accent}" stroke-width="5"/>` +
+            glyphText(direction, 72, 64, 52, accent)
+          );
+      }
+
+      break;
+    }
+
+    case "pill-middle-horizontal":
+      return (
+        `<path d="M0 14 H144 M0 130 H144" fill="none" stroke="${accent}" stroke-width="5"/>` +
+        valueText(value, 72, 62, 42 + bump, textColor)
+      );
+
+    case "pill-middle-vertical":
+      return (
+        `<path d="M14 0 V144 M130 0 V144" fill="none" stroke="${accent}" stroke-width="5"/>` +
+        valueText(value, 72, 58, 38 + bump, textColor)
+      );
   }
+
+  return valueText(inputs.value, 72, 72, 44, textColor); // unreachable — every style case returns above
+}
+
+export interface PairedIconOptions {
+  readonly setting: string; // current mode id (adjust mode or View id)
+  readonly direction: "increase" | "decrease";
+  readonly keyStyle: AdjustKeyStyle;
+  readonly pairPosition: PairPosition;
+  readonly telemetry: TelemetryData | null;
+  readonly colorSourceSvg: string;
+  readonly colorOverrides?: ColorSlots;
+  readonly titleOverrides?: TitleOverrides;
+  readonly borderOverrides?: BorderOverrides;
+  readonly bindingMissing?: boolean;
+}
+
+/**
+ * The single per-action entry point: returns the styled paired icon, or null
+ * when the key must fall back to its existing (legacy / View) render path.
+ * Applies all gating: legacy style, valueless modes, and View modes with a
+ * non-pill-middle style all return null.
+ */
+export function renderPairedIconOrNull(opts: PairedIconOptions): string | null {
+  const { setting, keyStyle } = opts;
+
+  if (keyStyle === "legacy") return null;
+
+  if (isViewSetting(setting)) {
+    if (!isPillMiddleStyle(keyStyle)) return null;
+
+    const def = VIEW_DEFS[setting];
+
+    return renderAdjustStyleSvg({
+      style: keyStyle,
+      direction: opts.direction,
+      pairPosition: opts.pairPosition,
+      value: stripUnit(formatViewValue(setting, opts.telemetry)),
+      label: def.label,
+      shortValue: (def.valueFontSize ?? 36) >= 40,
+      colorSourceSvg: opts.colorSourceSvg,
+      colorOverrides: opts.colorOverrides,
+      titleOverrides: opts.titleOverrides,
+      borderOverrides: opts.borderOverrides,
+      bindingMissing: opts.bindingMissing,
+    });
+  }
+
+  const viewId = getViewIdForAdjustment(setting);
+
+  if (!viewId) return null;
+
+  if (isPillMiddleStyle(keyStyle)) return null; // middle segments are View-key styles
+
+  const def = VIEW_DEFS[viewId];
+
+  return renderAdjustStyleSvg({
+    style: keyStyle,
+    direction: opts.direction,
+    pairPosition: opts.pairPosition,
+    value: styleShowsValue(keyStyle) ? stripUnit(formatViewValue(viewId, opts.telemetry)) : null,
+    label: def.label,
+    shortValue: (def.valueFontSize ?? 36) >= 40,
+    colorSourceSvg: opts.colorSourceSvg,
+    colorOverrides: opts.colorOverrides,
+    titleOverrides: opts.titleOverrides,
+    borderOverrides: opts.borderOverrides,
+    bindingMissing: opts.bindingMissing,
+  });
 }

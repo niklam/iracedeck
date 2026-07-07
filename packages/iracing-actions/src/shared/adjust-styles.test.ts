@@ -16,7 +16,7 @@ import {
   styleShowsValue,
   telemetryMemoValue,
 } from "./adjust-styles.js";
-import { renderAdjustStyleSvg } from "./adjust-styles.js";
+import { renderAdjustStyleSvg, renderPairedIconOrNull } from "./adjust-styles.js";
 
 vi.mock("@iracedeck/deck-core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@iracedeck/deck-core")>();
@@ -224,5 +224,69 @@ describe("renderAdjustStyleSvg — value-showing styles", () => {
     const svg = decode(renderAdjustStyleSvg({ ...BASE, style: "corner-badge", colorSourceSvg }));
     expect(svg).toContain('fill="#3a2a1a"'); // background from the action's palette
     expect(svg).toContain('r="15" fill="#f1c40f"'); // badge accent from the template desc, NOT the locked white
+  });
+});
+
+describe("renderAdjustStyleSvg — pill family and no-value styles", () => {
+  it("joined-pill draws a frame open toward the partner and no normal border", () => {
+    const left = decode(renderAdjustStyleSvg({ ...BASE, style: "joined-pill", direction: "decrease" }));
+    // decrease + auto → left key → frame open on the RIGHT edge (path starts and ends at x=144)
+    expect(left).toContain('d="M144 14 H34');
+    expect(left).toContain(">54.0</text>");
+    expect(left).toContain(">−</text>");
+  });
+
+  it("pill-end uses equal margins and a centered glyph, no value, no label", () => {
+    const svg = decode(renderAdjustStyleSvg({ ...BASE, style: "pill-end", value: null }));
+    expect(svg).toContain('d="M0 14 H110'); // increase + auto → right end → open LEFT
+    expect(svg).toContain(">+</text>");
+    expect(svg).not.toContain("---");
+    expect(svg).not.toContain("BRAKE BIAS");
+  });
+
+  it("pill-middle-horizontal draws both rails and centers value + label", () => {
+    const svg = decode(renderAdjustStyleSvg({ ...BASE, style: "pill-middle-horizontal" }));
+    expect(svg).toContain('d="M0 14 H144 M0 130 H144"');
+    expect(svg).toContain(">54.0</text>");
+    expect(svg).toContain("BRAKE BIAS");
+  });
+
+  it("big-glyph is a huge accent glyph with hidden label by default", () => {
+    const svg = decode(renderAdjustStyleSvg({ ...BASE, style: "big-glyph" }));
+    expect(svg).toContain(">+</text>");
+    expect(svg).not.toContain("BRAKE BIAS");
+  });
+
+  it("big-chevron points in the true direction of change", () => {
+    const svg = decode(renderAdjustStyleSvg({ ...BASE, style: "big-chevron", pairPosition: "top" }));
+    expect(svg).toContain('points="36,76 72,40 108,76"'); // vertical, increase → up
+  });
+});
+
+describe("renderPairedIconOrNull", () => {
+  const common = {
+    direction: "increase",
+    pairPosition: "auto",
+    telemetry: { dcBrakeBias: 54.0 } as never,
+    colorSourceSvg: `<svg><desc>{"colors":{"backgroundColor":"#3a2a1a","textColor":"#ffffff"}}</desc></svg>`,
+  } as const;
+
+  it("returns null for legacy style, valueless modes, and non-pill view styles", () => {
+    expect(renderPairedIconOrNull({ ...common, setting: "brake-bias", keyStyle: "legacy" })).toBeNull();
+    expect(renderPairedIconOrNull({ ...common, setting: "boost-level", keyStyle: "split" })).toBeNull();
+    expect(renderPairedIconOrNull({ ...common, setting: "view-brake-bias", keyStyle: "split" })).toBeNull();
+  });
+
+  it("renders a paired adjust key with the unit-stripped live value", () => {
+    const svg = decode(renderPairedIconOrNull({ ...common, setting: "brake-bias", keyStyle: "split" }) ?? "");
+    expect(svg).toContain(">54.0</text>");
+    expect(svg).not.toContain("54.0%");
+  });
+
+  it("renders a View key in pill-middle style", () => {
+    const svg = decode(
+      renderPairedIconOrNull({ ...common, setting: "view-brake-bias", keyStyle: "pill-middle-vertical" }) ?? "",
+    );
+    expect(svg).toContain('d="M14 0 V144 M130 0 V144"');
   });
 });
