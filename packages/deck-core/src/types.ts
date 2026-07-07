@@ -7,6 +7,8 @@
  */
 import type { ILogger } from "@iracedeck/logger";
 
+import type { DeckFeedbackPayload } from "./feedback-types.js";
+
 /**
  * Handle to a single action instance on the device.
  * Wraps platform-specific action references (e.g., Elgato's KeyAction/DialAction).
@@ -33,6 +35,23 @@ export interface IDeckActionContext {
   setSettings(settings: Record<string, unknown>): Promise<void>;
   /** Whether this context is a key (button) rather than a dial/encoder */
   isKey(): boolean;
+  /** Whether this context is a dial/encoder rather than a key (button). */
+  isDial(): boolean;
+  /**
+   * Update the encoder touch-strip layout items (Stream Deck+). No-op on
+   * platforms/controllers without a plugin-drawable touch strip.
+   */
+  setFeedback(feedback: DeckFeedbackPayload): Promise<void>;
+  /**
+   * Switch the encoder touch-strip layout (built-in id or plugin-relative JSON
+   * path). No-op where unsupported.
+   */
+  setFeedbackLayout(layout: string): Promise<void>;
+  /**
+   * Update the encoder trigger descriptions (Stream Deck+). No-op where
+   * unsupported.
+   */
+  setTriggerDescription(descriptions: DeckTriggerDescription): Promise<void>;
   /**
    * Briefly flash the host's warning indicator on the key (Elgato: the yellow
    * warning triangle). Optional — adapters whose host has no equivalent omit
@@ -67,7 +86,12 @@ export type IDeckKeyUpEvent<T> = IDeckEvent<T>;
 
 /** Fired when a rotary encoder/dial is turned */
 export interface IDeckDialRotateEvent<T> extends IDeckEvent<T> {
-  payload: { settings: T; ticks: number };
+  /**
+   * `pressed` reports whether the dial button was held down while the rotation
+   * occurred — the basis for the "Push + Turn" gesture. Native on both the
+   * Elgato (`DialRotate.pressed`) and Mirabox/Ulanzi (`payload.pressed`) SDKs.
+   */
+  payload: { settings: T; ticks: number; pressed: boolean };
 }
 
 /** Fired when a rotary encoder/dial is pressed */
@@ -75,6 +99,19 @@ export type IDeckDialDownEvent<T> = IDeckEvent<T>;
 
 /** Fired when a rotary encoder/dial is released */
 export type IDeckDialUpEvent<T> = IDeckEvent<T>;
+
+/** Fired when the encoder touchscreen (Stream Deck+) is tapped */
+export interface IDeckTouchTapEvent<T> extends IDeckEvent<T> {
+  payload: { settings: T; tapPos: [number, number]; hold: boolean; coordinates?: { row: number; column: number } };
+}
+
+/** Encoder trigger (interaction) descriptions shown in the Stream Deck app (Stream Deck+). */
+export interface DeckTriggerDescription {
+  rotate?: string;
+  push?: string;
+  touch?: string;
+  longTouch?: string;
+}
 
 /**
  * Interface that action classes implement to handle device events.
@@ -88,6 +125,7 @@ export interface IDeckActionHandler<T = unknown> {
   onDialRotate?(ev: IDeckDialRotateEvent<T>): Promise<void>;
   onDialDown?(ev: IDeckDialDownEvent<T>): Promise<void>;
   onDialUp?(ev: IDeckDialUpEvent<T>): Promise<void>;
+  onTouchTap?(ev: IDeckTouchTapEvent<T>): Promise<void>;
 }
 
 /**

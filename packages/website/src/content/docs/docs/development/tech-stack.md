@@ -11,16 +11,16 @@ For a visual walkthrough of how these packages fit together and how data flows f
 
 ## Packages
 
-| Package | Description |
-|---------|-------------|
+| Package                                 | Description                                                                             |
+| --------------------------------------- | --------------------------------------------------------------------------------------- |
 | `@iracedeck/iracing-plugin-stream-deck` | The main Stream Deck plugin — all 31 actions, Property Inspector UI, and icon rendering |
-| `@iracedeck/iracing-plugin-mirabox` | The Mirabox plugin — the same actions for Mirabox / VSD Craft devices |
-| `@iracedeck/iracing-plugin-ulanzi` | The Ulanzi Deck plugin — the same actions for Ulanzi Deck devices |
-| `@iracedeck/iracing-sdk` | TypeScript SDK for reading iRacing telemetry and session data via shared memory |
-| `@iracedeck/iracing-native` | Native C++ addon for Windows keyboard simulation and window management |
-| `@iracedeck/icons` | SVG icon library for all Stream Deck button icons |
-| `@iracedeck/logger` | Shared logging library with scoped loggers |
-| `@iracedeck/website` | This documentation site (Astro + Starlight) |
+| `@iracedeck/iracing-plugin-mirabox`     | The Mirabox plugin — the same actions for Mirabox / VSD Craft devices                   |
+| `@iracedeck/iracing-plugin-ulanzi`      | The Ulanzi Deck plugin — the same actions for Ulanzi Deck devices                       |
+| `@iracedeck/iracing-sdk`                | TypeScript SDK for reading iRacing telemetry and session data via shared memory         |
+| `@iracedeck/iracing-native`             | Native C++ addon for Windows keyboard simulation and window management                  |
+| `@iracedeck/icons`                      | SVG icon library for all Stream Deck button icons                                       |
+| `@iracedeck/logger`                     | Shared logging library with scoped loggers                                              |
+| `@iracedeck/website`                    | This documentation site (Astro + Starlight)                                             |
 
 ## How It Communicates with iRacing
 

@@ -19,7 +19,8 @@ packages/iracing-actions/src/actions/
 │   ├── <action-name>.test.ts
 │   ├── <action-name>.ejs      # Property Inspector template
 │   ├── icon.svg               # 20×20 category icon
-│   └── key.svg                # 72×72 key icon
+│   ├── key.svg                # 72×72 key icon
+│   └── dial.svg               # Optional 72×72 dial default (Elgato manifest `Encoder.Icon`, dual-surface actions only)
 ├── data/                      # Shared template data
 │   ├── icon-defaults.json
 │   ├── key-bindings.json      # Key binding definitions
@@ -263,7 +264,7 @@ export default {
         for (const entry of readdirSync(actionTemplatesDir, { withFileTypes: true })) {
           if (!entry.isDirectory() || entry.name === "data") continue;
           const actionDir = path.join(actionTemplatesDir, entry.name);
-          for (const file of ["icon.svg", "key.svg"]) {
+          for (const file of ["icon.svg", "key.svg", "dial.svg"]) {
             const src = path.join(actionDir, file);
             if (!existsSync(src)) continue;
             const destDir = path.join(destRoot, entry.name);

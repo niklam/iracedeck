@@ -32,6 +32,16 @@
         "source": "/docs/actions/driving/pit-crew",
         "destination": "/docs/actions/audio-voice/pit-crew",
         "type": 301
+      },
+      {
+        "source": "/docs/actions/pit-service/fuel-dial{,/}",
+        "destination": "/docs/actions/pit-service/fuel-service/",
+        "type": 301
+      },
+      {
+        "source": "/docs/actions/car-setup/setup-brakes-dial{,/}",
+        "destination": "/docs/actions/car-setup/setup-brakes/",
+        "type": 301
       }
     ]
   }

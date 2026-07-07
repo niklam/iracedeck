@@ -131,6 +131,17 @@ describe("normalizeFrame", () => {
     expect(ticks("hold-right")).toBe(1);
   });
 
+  it("flags `hold-` dialrotate directions as pressed (rotate-while-pressed)", () => {
+    const pressed = (rotateEvent: string): boolean =>
+      normalizeFrame({ cmd: "dialrotate", uuid: "u", key: "5", actionid: "a", rotateEvent })[0].payload?.pressed ??
+      false;
+
+    expect(pressed("left")).toBe(false);
+    expect(pressed("right")).toBe(false);
+    expect(pressed("hold-left")).toBe(true);
+    expect(pressed("hold-right")).toBe(true);
+  });
+
   it("maps settings-change frames to didReceiveSettings", () => {
     for (const cmd of ["didReceiveSettings", "paramfromapp", "paramfromplugin"]) {
       const ev = normalizeFrame({ cmd, uuid: "u", key: "5", actionid: "a", param: { x: 1 } })[0];

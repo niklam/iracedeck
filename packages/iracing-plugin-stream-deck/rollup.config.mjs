@@ -169,6 +169,7 @@ const config = {
 				__CAPABILITY_SVG_MASKS__: JSON.stringify(platformFeatures.capabilities.svgMasks),
 				__CAPABILITY_SVG_PATTERNS__: JSON.stringify(platformFeatures.capabilities.svgPatterns),
 				__FEATURE_BORDER_GLOW__: JSON.stringify(platformFeatures.features.borderGlow),
+				__FEATURE_DIAL_FEEDBACK__: JSON.stringify(platformFeatures.features.dialFeedback),
 			},
 		}),
 		piTemplatePlugin({
@@ -179,7 +180,8 @@ const config = {
 			platformFeatures,
 		}),
 		// Copy per-action static icons from @iracedeck/iracing-actions into {sdPlugin}/imgs/actions/<name>/.
-		// Source of truth: `packages/iracing-actions/src/actions/<name>/{icon,key}.svg`.
+		// Source of truth: `packages/iracing-actions/src/actions/<name>/{icon,key,dial}.svg`.
+		// dial.svg (optional) is the manifest `Encoder.Icon` default for dual-surface actions (#775).
 		{
 			name: "copy-action-icons",
 			generateBundle() {
@@ -187,7 +189,7 @@ const config = {
 				for (const entry of readdirSync(actionTemplatesDir, { withFileTypes: true })) {
 					if (!entry.isDirectory() || entry.name === "data") continue;
 					const actionDir = path.join(actionTemplatesDir, entry.name);
-					for (const file of ["icon.svg", "key.svg"]) {
+					for (const file of ["icon.svg", "key.svg", "dial.svg"]) {
 						const src = path.join(actionDir, file);
 						if (!existsSync(src)) continue;
 						const destDir = path.join(destRoot, entry.name);

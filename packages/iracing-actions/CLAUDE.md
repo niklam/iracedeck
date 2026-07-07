@@ -1,6 +1,6 @@
 # @iracedeck/iracing-actions
 
-All 30 platform-agnostic iRaceDeck action classes. These actions contain no platform-specific code — they import from `@iracedeck/deck-core` and are registered by platform-specific entry points (e.g., `iracing-plugin-stream-deck/src/plugin.ts`).
+All 31 platform-agnostic iRaceDeck action classes. These actions contain no platform-specific code — they import from `@iracedeck/deck-core` and are registered by platform-specific entry points (e.g., `iracing-plugin-stream-deck/src/plugin.ts`).
 
 ## Package Structure
 

@@ -10,16 +10,12 @@ Adjusts the overall UI scale.
 | Type | +/- |
 | SDK Support | No |
 | Communication Method | Key binding |
-| Dial Support | Yes |
+| Encoder Support | No |
 
 ## Behavior
 
 ### Button Press
 Triggers the direction configured in Settings (up or down).
-
-### Dial
-- **Rotate clockwise**: Scale UI up
-- **Rotate counter-clockwise**: Scale UI down
 
 ## Settings
 

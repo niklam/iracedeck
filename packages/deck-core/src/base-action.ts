@@ -23,6 +23,7 @@ import type {
   IDeckEvent,
   IDeckKeyDownEvent,
   IDeckKeyUpEvent,
+  IDeckTouchTapEvent,
   IDeckWillAppearEvent,
   IDeckWillDisappearEvent,
 } from "./types.js";
@@ -373,6 +374,9 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async onDialUp(ev: IDeckDialUpEvent<T>): Promise<void> {}
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async onTouchTap(ev: IDeckTouchTapEvent<T>): Promise<void> {}
 
   /**
    * Generate an SVG for a flag overlay. Most flags use a solid color;

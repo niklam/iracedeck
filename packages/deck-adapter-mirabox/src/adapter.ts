@@ -6,6 +6,8 @@
  * adapter, enabling all iRaceDeck actions to run on VSDinside devices.
  */
 import type {
+  DeckFeedbackPayload,
+  DeckTriggerDescription,
   IDeckActionContext,
   IDeckActionHandler,
   IDeckDialRotateEvent,
@@ -50,6 +52,19 @@ class VSDActionContext implements IDeckActionContext {
     // setImage, so display-only contexts should use the shared image path.
     return this.controllerType === "Keypad" || this.controllerType === "Information";
   }
+
+  isDial(): boolean {
+    return this.controllerType === "Knob" || this.controllerType === "Encoder";
+  }
+
+  // Stream Dock protocol has no plugin-facing touch-strip feedback, so these
+  // are no-ops on Mirabox (the interface members exist for Stream Deck+).
+  async setFeedback(_feedback: DeckFeedbackPayload): Promise<void> {}
+
+  async setFeedbackLayout(_layout: string): Promise<void> {}
+
+  // Stream Dock knobs have no trigger descriptions, so this is a no-op too.
+  async setTriggerDescription(_descriptions: DeckTriggerDescription): Promise<void> {}
 }
 
 /**
@@ -91,6 +106,18 @@ function wrapDisappearEvent<T>(data: VSDEvent & { context: string }): IDeckWillD
       isKey() {
         return false;
       },
+      isDial() {
+        return false;
+      },
+      async setFeedback() {
+        /* no-op: action is disappearing */
+      },
+      async setFeedbackLayout() {
+        /* no-op: action is disappearing */
+      },
+      async setTriggerDescription() {
+        /* no-op: action is disappearing */
+      },
     },
     payload: { settings: (data.payload?.settings ?? {}) as T },
   };
@@ -109,6 +136,9 @@ function wrapDialRotateEvent<T>(
     payload: {
       settings: (data.payload?.settings ?? {}) as T,
       ticks: data.payload?.ticks ?? 0,
+      // Mirabox's C++ SDK sends `pressed` on rotate frames (rotate-while-pressed
+      // is native, not Elgato-only). Default false when the frame omits it.
+      pressed: data.payload?.pressed ?? false,
     },
   };
 }

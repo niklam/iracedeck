@@ -10,16 +10,12 @@ Adjusts the vertical horizon position in the driver's view.
 | Type | +/- |
 | SDK Support | No |
 | Communication Method | Key binding |
-| Dial Support | Yes |
+| Encoder Support | No |
 
 ## Behavior
 
 ### Button Press
 Triggers the direction configured in Settings (up or down).
-
-### Dial
-- **Rotate clockwise**: Shift horizon up
-- **Rotate counter-clockwise**: Shift horizon down
 
 ## Settings
 

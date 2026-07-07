@@ -27,7 +27,7 @@ When iRacing telemetry first starts flowing — typically a few seconds after yo
 
 #### Details
 
-- **Dial:** Not supported
+- **Dial:** No rotation support
 - **Default binding:** None — button-driven feature, no keyboard binding
 - **Telemetry-aware icon:** Yes — the status bar reflects the current global flag
 
@@ -37,7 +37,7 @@ Toggles the directional proximity tick loop on/off. Pressing the button flips `r
 
 #### Details
 
-- **Dial:** Not supported
+- **Dial:** No rotation support
 - **Default binding:** None — button-driven feature, no keyboard binding
 - **Telemetry-aware icon:** Yes — the status bar reflects the current global flag
 

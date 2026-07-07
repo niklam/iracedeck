@@ -4,6 +4,12 @@ const RED = "#e74c3c";
 const GRAY = "#888888";
 
 /**
+ * Tri-state toggle indication shared by the status bars, state-driven key
+ * borders, and the Fuel Service dial's bar styling: on (green) / off (red) / na (gray).
+ */
+export type ToggleState = "on" | "off" | "na";
+
+/**
  * @internal Exported for testing
  *
  * Status bar showing ON state — full-width green bar with "ON" text at the bottom.
@@ -44,7 +50,7 @@ export function statusBarNA(): string {
  *
  * Maps a toggle state to the corresponding status bar color for border indicators.
  */
-export function borderColorForState(state: "on" | "off" | "na"): string {
+export function borderColorForState(state: ToggleState): string {
   switch (state) {
     case "on":
       return GREEN;

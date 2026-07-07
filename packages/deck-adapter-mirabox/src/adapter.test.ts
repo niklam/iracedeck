@@ -228,12 +228,35 @@ describe("VSDPlatformAdapter", () => {
         event: "dialRotate",
         action: "com.test.action",
         context: "ctx-789",
-        payload: { settings: {}, ticks: 3 },
+        payload: { settings: {}, ticks: 3, pressed: true },
       });
 
       expect(handler.onDialRotate).toHaveBeenCalledOnce();
       const ev = (handler.onDialRotate as ReturnType<typeof vi.fn>).mock.calls[0][0];
       expect(ev.payload.ticks).toBe(3);
+      // Mirabox sends `pressed` natively (rotate-while-pressed); pass it through.
+      expect(ev.payload.pressed).toBe(true);
+    });
+
+    it("defaults onDialRotate pressed to false when the frame omits it", async () => {
+      const handler: IDeckActionHandler = {
+        onDialRotate: vi.fn(),
+      };
+      adapter.registerAction("com.test.action", handler);
+
+      const dialRotateCall = client.onActionEvent.mock.calls.find(
+        (call: [string, string, unknown]) => call[1] === "dialRotate",
+      );
+
+      await dialRotateCall[2]({
+        event: "dialRotate",
+        action: "com.test.action",
+        context: "ctx-789",
+        payload: { settings: {}, ticks: 1 },
+      });
+
+      const ev = (handler.onDialRotate as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(ev.payload.pressed).toBe(false);
     });
 
     it("should provide no-op stubs for willDisappear context", async () => {
@@ -440,6 +463,59 @@ describe("VSDPlatformAdapter", () => {
 
       const ev = (handler.onWillAppear as ReturnType<typeof vi.fn>).mock.calls[0][0];
       expect(ev.action.isKey()).toBe(true);
+    });
+
+    async function getContextForController(controller: string) {
+      const handler: IDeckActionHandler = {
+        onWillAppear: vi.fn(),
+      };
+      adapter.registerAction("com.test.action", handler);
+
+      const willAppearCall = client.onActionEvent.mock.calls.find(
+        (call: [string, string, unknown]) => call[1] === "willAppear",
+      );
+      await willAppearCall[2]({
+        event: "willAppear",
+        action: "com.test.action",
+        context: "ctx",
+        payload: { settings: {}, controller },
+      });
+
+      return (handler.onWillAppear as ReturnType<typeof vi.fn>).mock.calls[0][0].action;
+    }
+
+    it("should return isDial=true for Knob controller", async () => {
+      const action = await getContextForController("Knob");
+      expect(action.isDial()).toBe(true);
+    });
+
+    it("should return isDial=true for Encoder controller", async () => {
+      const action = await getContextForController("Encoder");
+      expect(action.isDial()).toBe(true);
+    });
+
+    it("should return isDial=false for Keypad controller", async () => {
+      const action = await getContextForController("Keypad");
+      expect(action.isDial()).toBe(false);
+    });
+
+    it("should treat setFeedback and setFeedbackLayout as safe no-ops", async () => {
+      const action = await getContextForController("Knob");
+
+      // Stream Dock has no plugin-facing touch-strip feedback; these resolve
+      // without touching the client.
+      await expect(action.setFeedback({ value: 1 })).resolves.toBeUndefined();
+      await expect(action.setFeedbackLayout("$B1")).resolves.toBeUndefined();
+      expect(client.setImage).not.toHaveBeenCalled();
+    });
+
+    it("should treat setTriggerDescription as a safe no-op", async () => {
+      const action = await getContextForController("Knob");
+
+      // Stream Dock knobs have no trigger descriptions; this resolves without
+      // touching the client.
+      await expect(action.setTriggerDescription({ rotate: "Adjust", push: "Apply" })).resolves.toBeUndefined();
+      expect(client.setImage).not.toHaveBeenCalled();
     });
   });
 });

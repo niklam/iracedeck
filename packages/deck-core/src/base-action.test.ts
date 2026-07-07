@@ -77,9 +77,13 @@ function createTestContext(): TestContext {
   const fakeAction: IDeckActionContext = {
     id: "ctx-1",
     isKey: () => true,
+    isDial: () => false,
     setImage: setImageSpy,
     setTitle: vi.fn().mockResolvedValue(undefined),
     setSettings: vi.fn().mockResolvedValue(undefined),
+    setFeedback: vi.fn().mockResolvedValue(undefined),
+    setFeedbackLayout: vi.fn().mockResolvedValue(undefined),
+    setTriggerDescription: vi.fn().mockResolvedValue(undefined),
   };
 
   const willAppear = {

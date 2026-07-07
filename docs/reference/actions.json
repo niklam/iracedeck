@@ -8,7 +8,7 @@
           "id": "com.iracedeck.sd.core.session-info",
           "name": "Session Info",
           "file": "session-info.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKey": "mode",
           "modes": [
             {
@@ -75,6 +75,7 @@
           "file": "audio-controls.ts",
           "encoder": true,
           "settingsKeys": ["category", "action"],
+          "description": "One audio action for both surfaces (#782). On a KEYPAD button the category/action settings pick one of the modes below. On a DIAL (Elgato Encoder only — the Mirabox/Ulanzi manifests declare no dial controllers per #786) the action is a volume dial (settings under the dial root): dial.category picks what rotation adjusts — voice-chat / master tap the iRacing volume key bindings once per detent (capped per event; iRacing exposes no volume state, so the touch strip shows category identity only), race-engineer / radar step iRaceDeck's own 0-100 levels by 5 per detent with a live level bar + value on the touch strip (dimmed OFF state when the feature gate is disabled). dial.pressAction (default none) picks the press: push-to-talk holds audioControlsPushToTalk for the press duration (red ON AIR band while held), mute-unmute taps audioVoiceChatMute for voice-chat or toggles the Pit Crew feature gate for race-engineer / radar (shared toggle pathway, ack clips included; not offered for master — iRacing has no master-mute keybind). The strip render is Elgato-only (dial feedback flag). The PI branches per controller (actionInfo.payload.controller).",
           "modes": [
             { "category": "push-to-talk", "label": "Push to Talk" },
             { "category": "voice-chat", "action": "volume-up", "label": "Voice Chat Volume Up" },
@@ -82,7 +83,6 @@
             { "category": "voice-chat", "action": "mute", "label": "Voice Chat Mute" },
             { "category": "master", "action": "volume-up", "label": "Master Volume Up" },
             { "category": "master", "action": "volume-down", "label": "Master Volume Down" },
-            { "category": "master", "action": "mute", "label": "Master Mute" },
             { "category": "race-engineer", "action": "volume-up", "label": "Race Engineer Volume Up" },
             { "category": "race-engineer", "action": "volume-down", "label": "Race Engineer Volume Down" },
             { "category": "radar", "action": "volume-up", "label": "Radar Volume Up" },
@@ -93,7 +93,7 @@
           "id": "com.iracedeck.sd.core.black-box-selector",
           "name": "Black Box Selector",
           "file": "black-box-selector.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKeys": ["mode", "blackBox"],
           "modes": [
             { "mode": "direct", "blackBox": "lap-timing", "label": "Select Lap Timing" },
@@ -129,7 +129,7 @@
           "id": "com.iracedeck.sd.core.car-control",
           "name": "Car Control",
           "file": "car-control.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKey": "control",
           "modes": [
             { "value": "pit-speed-limiter", "label": "Pit Speed Limiter", "telemetryAware": true },
@@ -182,7 +182,7 @@
           "id": "com.iracedeck.sd.core.cockpit-misc",
           "name": "Cockpit Misc",
           "file": "cockpit-misc.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKeys": ["control", "direction"],
           "modes": [
             { "control": "toggle-wipers", "label": "Toggle Wipers" },
@@ -201,7 +201,7 @@
           "id": "com.iracedeck.sd.core.force-feedback",
           "name": "Force Feedback",
           "file": "force-feedback.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKeys": ["mode", "direction"],
           "modes": [
             { "mode": "auto-compute-ffb-force", "label": "Auto Compute FFB Force" },
@@ -221,7 +221,7 @@
           "id": "com.iracedeck.sd.core.splits-delta-cycle",
           "name": "Splits & Reference",
           "file": "splits-delta-cycle.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKey": "mode",
           "modes": [
             {
@@ -261,7 +261,7 @@
           "id": "com.iracedeck.sd.core.telemetry-control",
           "name": "Telemetry Control",
           "file": "telemetry-control.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKey": "action",
           "modes": [
             { "value": "toggle-logging", "label": "Toggle Logging" },
@@ -280,7 +280,7 @@
           "id": "com.iracedeck.sd.core.toggle-ui-elements",
           "name": "Toggle UI Elements",
           "file": "toggle-ui-elements.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKey": "element",
           "modes": [
             { "value": "dash-box", "label": "Dash Box" },
@@ -309,7 +309,7 @@
           "id": "com.iracedeck.sd.core.view-adjustment",
           "name": "View Adjustment",
           "file": "view-adjustment.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKeys": ["adjustment", "direction"],
           "modes": [
             { "adjustment": "fov", "direction": "increase", "label": "FOV Increase" },
@@ -327,7 +327,7 @@
           "id": "com.iracedeck.sd.core.replay-control",
           "name": "Replay Control",
           "file": "replay-control.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKey": "mode",
           "modes": [
             { "value": "play-pause", "label": "Play / Pause" },
@@ -376,7 +376,7 @@
           "id": "com.iracedeck.sd.core.replay-transport",
           "name": "Replay Transport",
           "file": "replay-transport.ts",
-          "encoder": true,
+          "encoder": false,
           "deprecated": true,
           "replacedBy": "com.iracedeck.sd.core.replay-control",
           "settingsKey": "transport",
@@ -395,7 +395,7 @@
           "id": "com.iracedeck.sd.core.replay-speed",
           "name": "Replay Speed",
           "file": "replay-speed.ts",
-          "encoder": true,
+          "encoder": false,
           "deprecated": true,
           "replacedBy": "com.iracedeck.sd.core.replay-control",
           "settingsKey": "direction",
@@ -408,7 +408,7 @@
           "id": "com.iracedeck.sd.core.replay-navigation",
           "name": "Replay Navigation",
           "file": "replay-navigation.ts",
-          "encoder": true,
+          "encoder": false,
           "deprecated": true,
           "replacedBy": "com.iracedeck.sd.core.replay-control",
           "settingsKey": "navigation",
@@ -430,7 +430,7 @@
           "id": "com.iracedeck.sd.core.camera-editor-adjustments",
           "name": "Camera Editor Adjustments",
           "file": "camera-editor-adjustments.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKeys": ["adjustment", "direction"],
           "modes": [
             { "adjustment": "latitude", "direction": "increase", "label": "Latitude +" },
@@ -468,7 +468,7 @@
           "id": "com.iracedeck.sd.core.camera-editor-controls",
           "name": "Camera Editor Controls",
           "file": "camera-editor-controls.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKey": "control",
           "modes": [
             { "value": "open-camera-tool", "label": "Open Camera Tool" },
@@ -505,7 +505,7 @@
           "id": "com.iracedeck.sd.core.camera-focus",
           "name": "Camera Controls",
           "file": "camera-controls.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKey": "target",
           "modes": [
             { "value": "change-camera", "label": "Change Camera" },
@@ -536,7 +536,7 @@
           "id": "com.iracedeck.sd.core.media-capture",
           "name": "Media Capture",
           "file": "media-capture.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKey": "action",
           "modes": [
             { "value": "start-stop-video", "label": "Start/Stop Video" },
@@ -557,7 +557,7 @@
           "id": "com.iracedeck.sd.core.pit-quick-actions",
           "name": "Pit Quick Actions",
           "file": "pit-quick-actions.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKey": "action",
           "modes": [
             { "value": "clear-all-checkboxes", "label": "Clear All Checkboxes" },
@@ -570,7 +570,9 @@
           "name": "Fuel Service",
           "file": "fuel-service.ts",
           "encoder": true,
+          "telemetryAware": true,
           "settingsKey": "mode",
+          "description": "One fuel action for both surfaces (#759). On a KEYPAD button the Mode setting picks one of the eight modes below; every fuel value goes through the iRacing API (pit.fuel against the live PitSvFuel baseline — no chat macros): Add/Reduce Fuel send pit.fuel(round(PitSvFuel ± amount)), Set Fuel Amount sends the absolute amount, a target at or below zero empties the request (1 L then clearFuel). The shared unit setting is auto | l | g | k, default Auto (from iRacing's live DisplayUnits); kilograms convert via sessionInfo DriverInfo.DriverCarFuelKgPerLtr (skipped with a warning when unavailable); legacy pre-#759 instances with a persisted mode but no unit are migrated to liters and the migration is persisted back so the PI shows it, while fresh instances persist auto on their first appear (before the PI can save a mode) so the two shapes stay unambiguous. Add/Reduce support hold-to-repeat (~250 ms cadence). The enableFuelingOnChange global ('Auto-enable fueling') is KEYPAD-ONLY: when off and fueling is off, adjustments send pit.fuel then pit.clearFuel to restore the unchecked box. On a DIAL (Elgato Encoder only — the Mirabox/Ulanzi manifests declare no dial controllers per #786) the action is the full fuel dial (former Fuel Dial action, settings under the dial root): modal by live telemetry — in MANUAL mode a bare turn sets the fuel to add (dial.mode chooses Add Amount or Target Amount, the target kept topped up as fuel burns while fueling is on, red target line on the bar); in AUTOFUEL mode a bare turn adjusts the autofuel lap margin via the fuelServiceLapMarginIncrease/Decrease key bindings (coalesced); AUTOFUEL: N/A when unavailable. Five gesture slots (dial.pressAction default Toggle Fueling, dial.longPressAction default Toggle Autofuel, dial.pushTurnAction Full / No Fuel pair default None, plus Elgato-only dial.tapAction / dial.longTouchAction default None for VR safety) each over Toggle Fueling, Toggle Full / No Fuel, Toggle Autofuel, Switch Mode, None. Press vs long-press is classified at dialUp (no timer); the self-drawn 200x100 touch strip carries the REFUEL/AUTOFUEL status band, per-mode readout, and two-segment fuel bar, refreshing every 5 s and immediately on displayed-state changes. The dial always auto-arms fueling on rotate (deliberately ignores enableFuelingOnChange). The PI branches per controller (actionInfo.payload.controller): keypad instances see the mode settings, dial instances the dial settings; the dial Unit select omits kilograms.",
           "modes": [
             { "value": "toggle-fuel-fill", "label": "Toggle Fuel Fill" },
             { "value": "add-fuel", "label": "Add Fuel" },
@@ -586,7 +588,7 @@
           "id": "com.iracedeck.sd.core.tire-service",
           "name": "Tire Service",
           "file": "tire-service.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKey": "action",
           "telemetryAware": true,
           "modes": [
@@ -614,7 +616,9 @@
           "name": "Setup Brakes",
           "file": "setup-brakes.ts",
           "encoder": true,
-          "settingsKeys": ["setting", "direction"],
+          "telemetryAware": true,
+          "settingsKeys": ["setting", "direction", "dial.setting"],
+          "description": "One brake action for both surfaces (#775). On a KEYPAD button the Setting dropdown picks one of the modes below (six live-telemetry View sub-modes with optional dual-press, seven adjustments with a Direction setting); everything taps the shared setupBrakes* key bindings. On a DIAL (Elgato Encoder only — the Mirabox/Ulanzi manifests declare no dial controllers per #786) the action is the former Setup Brakes Dial (#730), with settings under the dial root: dial.setting picks one brake value — brake bias, brake bias fine, peak brake bias, brake misc, engine braking, or ABS adjust — and turning steps it via the same increase/decrease bindings (clockwise increases; both directions must be bound). The live telemetry value (dcBrakeBias/dcBrakeBiasFine/dcPeakBrakeBias/dcBrakeMisc/dcEngineBraking/dcABS) renders as a self-drawn color-coded dash box — a short label (BB/BBF/PEAK/MISC/ENG/ABS) plus a large number, no % sign — on the touch strip (a single full-cell pixmap, Elgato only). Press gestures — dial.pressAction (default Toggle ABS), dial.longPressAction (default None), plus the Elgato-only dial.tapAction / dial.longTouchAction (default None for VR safety) — each over {Toggle ABS, None}; Toggle ABS taps the setupBrakesAbsToggle binding. Press vs long-press is classified at dialUp; turning while pressed adjusts the value and fires no press gesture. No View modes on the dial (the display shows the value) and no ABS Toggle rotation mode. Dial logic lives in setup-brakes-dial-surface.ts behind a host interface (the Fuel Service pattern). The PI branches per controller (actionInfo.payload.controller): keypad instances see the Setting/Direction/dual-press and appearance sections, dial instances the dial settings; the Related Key Bindings section is shared. Communication: key bindings on both surfaces.",
           "modes": [
             { "setting": "view-brake-bias", "label": "View Brake Bias", "controlType": "view" },
             { "setting": "view-brake-bias-fine", "label": "View Brake Bias Fine", "controlType": "view" },
@@ -641,7 +645,7 @@
           "id": "com.iracedeck.sd.core.setup-chassis",
           "name": "Setup Chassis",
           "file": "setup-chassis.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKeys": ["setting", "direction"],
           "modes": [
             { "setting": "view-diff-preload", "label": "View Diff Preload", "controlType": "view" },
@@ -685,7 +689,7 @@
           "id": "com.iracedeck.sd.core.setup-aero",
           "name": "Setup Aero",
           "file": "setup-aero.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKeys": ["setting", "direction"],
           "modes": [
             { "setting": "view-front-wing", "label": "View Front Wing", "controlType": "view" },
@@ -703,7 +707,7 @@
           "id": "com.iracedeck.sd.core.setup-engine",
           "name": "Setup Engine",
           "file": "setup-engine.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKeys": ["setting", "direction"],
           "modes": [
             { "setting": "view-engine-power", "label": "View Engine Power", "controlType": "view" },
@@ -723,7 +727,7 @@
           "id": "com.iracedeck.sd.core.setup-fuel",
           "name": "Setup Fuel",
           "file": "setup-fuel.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKeys": ["setting", "direction"],
           "modes": [
             { "setting": "view-fuel-mixture", "label": "View Fuel Mixture", "controlType": "view" },
@@ -741,7 +745,7 @@
           "id": "com.iracedeck.sd.core.setup-hybrid",
           "name": "Setup Hybrid",
           "file": "setup-hybrid.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKeys": ["setting", "direction"],
           "modes": [
             { "setting": "view-mguk-deploy-mode", "label": "View MGU-K Deploy Mode", "controlType": "view" },
@@ -762,7 +766,7 @@
           "id": "com.iracedeck.sd.core.setup-traction",
           "name": "Setup Traction",
           "file": "setup-traction.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKeys": ["setting", "direction"],
           "modes": [
             { "setting": "view-tc-slot-1", "label": "View TC1", "controlType": "view" },
@@ -789,7 +793,7 @@
           "id": "com.iracedeck.sd.core.chat",
           "name": "Chat",
           "file": "chat.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKey": "mode",
           "modes": [
             { "value": "send-message", "label": "Send Custom Message" },
@@ -819,7 +823,7 @@
           "id": "com.iracedeck.sd.core.race-admin",
           "name": "Race Admin",
           "file": "race-admin.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKey": "mode",
           "modes": [
             { "value": "yellow", "label": "Throw Yellow Flag", "description": "Throw a caution flag" },

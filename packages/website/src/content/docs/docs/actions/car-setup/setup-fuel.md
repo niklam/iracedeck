@@ -37,7 +37,7 @@ Adjust the fuel / air mixture setting.
 #### Details
 
 - **Method:** Key binding
-- **Dial:** Rotation adjusts fuel mixture (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
+- **Dial:** No rotation support
 - **Default binding:** No default key binding — both Fuel Mixture + and Fuel Mixture - must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** No
 
@@ -55,7 +55,7 @@ Adjust the fuel cut position setting.
 #### Details
 
 - **Method:** Key binding
-- **Dial:** Rotation adjusts fuel cut position (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
+- **Dial:** No rotation support
 - **Default binding:** No default key binding — both Fuel Cut Position + and Fuel Cut Position - must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** No
 

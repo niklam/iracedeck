@@ -25,6 +25,7 @@ export interface PlatformCapabilities {
  */
 export interface PlatformFeatureFlags {
   borderGlow: boolean;
+  dialFeedback: boolean;
   /** "Stream Deck Profiles" settings accordion + profile switching (Elgato-only; #736). */
   profiles: boolean;
 }

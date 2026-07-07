@@ -65,15 +65,25 @@ function pair(increase: string, decrease: string): CommDescriptor {
 }
 
 export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
+  // One entry for BOTH Fuel Service surfaces (#759): the keypad modes (keyed by
+  // the `mode` setting) and the dial gesture-slot values (the dial PI passes its
+  // own mode-setting per slot, e.g. `dial.pressAction`) share one map — the keys
+  // don't collide. All fuel-value modes are `api` since the chat→SDK switch.
   "fuel-service": entry("mode", {
     "toggle-fuel-fill": api,
-    "add-fuel": chat,
-    "reduce-fuel": chat,
-    "set-fuel-amount": chat,
+    "add-fuel": api,
+    "reduce-fuel": api,
+    "set-fuel-amount": api,
     "clear-fuel": api,
     "toggle-autofuel": keybind("fuelServiceToggleAutofuel"),
     "lap-margin-increase": keybind("fuelServiceLapMarginIncrease"),
     "lap-margin-decrease": keybind("fuelServiceLapMarginDecrease"),
+    // Dial gesture-slot values. "switch-mode" and "none" intentionally omitted —
+    // they issue no iRacing command, so the binding-status line renders nothing
+    // for them.
+    "toggle-fueling": api,
+    "fill-to-max": api,
+    "toggle-autofuel-mode": keybind("fuelServiceToggleAutofuel"),
   }),
 
   "tire-service": entry("mode", {
@@ -267,6 +277,25 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     radar: keybindFixed(),
   }),
 
+  // The dial surface of Audio Controls (#782): rotation is keyed by
+  // `dial.category` (BOTH volume keys required for the keybind categories; the
+  // internal categories drive plugin audio — no binding), press by
+  // `dial.pressAction` — one shared map, the value sets don't collide (the
+  // #759 shared-map pattern). A separate entry from the keypad map because
+  // the same category values need different descriptors per surface (keypad
+  // resolves one key via the `action` setting; dial rotation needs the pair).
+  // The PI hides the press status line for internal-category Mute / Unmute
+  // (plugin audio, nothing to configure); "none" is omitted so its line
+  // renders nothing.
+  "audio-controls-dial": entry("dial.category", {
+    "voice-chat": pair("audioVoiceChatVolumeUp", "audioVoiceChatVolumeDown"),
+    master: pair("audioMasterVolumeUp", "audioMasterVolumeDown"),
+    "race-engineer": keybindFixed(),
+    radar: keybindFixed(),
+    "push-to-talk": keybind("audioControlsPushToTalk"),
+    "mute-unmute": keybindBy("dial.category", { "voice-chat": "audioVoiceChatMute" }),
+  }),
+
   "toggle-ui-elements": entry("element", {
     "dash-box": keybind("toggleUiDashBox"),
     "speed-gear-pedals": keybind("toggleUiSpeedGearPedals"),
@@ -316,6 +345,23 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     "peak-brake-bias": dir("setupBrakesPeakBrakeBiasIncrease", "setupBrakesPeakBrakeBiasDecrease"),
     "brake-misc": dir("setupBrakesBrakeMiscIncrease", "setupBrakesBrakeMiscDecrease"),
     "engine-braking": dir("setupBrakesEngineBrakingIncrease", "setupBrakesEngineBrakingDecrease"),
+  }),
+
+  // The dial surface of the merged Setup Brakes action (#775) — consumed only by
+  // the dial section of setup-brakes.ejs. It can't share the keypad map above:
+  // the same mode names carry different descriptors per surface (keypad
+  // `brake-bias` is direction-keyed via `dir`, dial rotation requires BOTH keys
+  // via `pair` since the dial has no `direction` setting). The ABS-toggle press
+  // gesture is a single keybind. View modes and ABS Toggle as a rotation mode
+  // are intentionally absent.
+  "setup-brakes-dial": entry("dial.setting", {
+    "brake-bias": pair("setupBrakesBrakeBiasIncrease", "setupBrakesBrakeBiasDecrease"),
+    "brake-bias-fine": pair("setupBrakesBrakeBiasFineIncrease", "setupBrakesBrakeBiasFineDecrease"),
+    "peak-brake-bias": pair("setupBrakesPeakBrakeBiasIncrease", "setupBrakesPeakBrakeBiasDecrease"),
+    "brake-misc": pair("setupBrakesBrakeMiscIncrease", "setupBrakesBrakeMiscDecrease"),
+    "engine-braking": pair("setupBrakesEngineBrakingIncrease", "setupBrakesEngineBrakingDecrease"),
+    "abs-adjust": pair("setupBrakesAbsAdjustIncrease", "setupBrakesAbsAdjustDecrease"),
+    "toggle-abs": keybind("setupBrakesAbsToggle"),
   }),
 
   "setup-chassis": entry("setting", {

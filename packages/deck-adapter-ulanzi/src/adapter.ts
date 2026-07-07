@@ -11,6 +11,8 @@
  * therefore structurally near-identical to the Mirabox `VSDPlatformAdapter`.
  */
 import type {
+  DeckFeedbackPayload,
+  DeckTriggerDescription,
   IDeckActionContext,
   IDeckActionHandler,
   IDeckDialRotateEvent,
@@ -59,6 +61,19 @@ class UlanziActionContext implements IDeckActionContext {
     // Information area, like Mirabox, updates through setImage.
     return this.controllerType === "Keypad" || this.controllerType === "Information";
   }
+
+  isDial(): boolean {
+    return this.controllerType === "Encoder";
+  }
+
+  // UlanziStudio has no plugin-facing touch-strip feedback, so these are
+  // no-ops on Ulanzi (the interface members exist for Stream Deck+).
+  async setFeedback(_feedback: DeckFeedbackPayload): Promise<void> {}
+
+  async setFeedbackLayout(_layout: string): Promise<void> {}
+
+  // Ulanzi encoders have no trigger descriptions, so this is a no-op too.
+  async setTriggerDescription(_descriptions: DeckTriggerDescription): Promise<void> {}
 }
 
 /** Create a deck-core event from a Ulanzi event with full action context. */
@@ -95,6 +110,18 @@ function wrapDisappearEvent<T>(
       isKey() {
         return controllerType === "Keypad" || controllerType === "Information";
       },
+      isDial() {
+        return controllerType === "Encoder";
+      },
+      async setFeedback() {
+        /* no-op: action is disappearing */
+      },
+      async setFeedbackLayout() {
+        /* no-op: action is disappearing */
+      },
+      async setTriggerDescription() {
+        /* no-op: action is disappearing */
+      },
     },
     payload: { settings: (data.payload?.settings ?? {}) as T },
   };
@@ -111,6 +138,8 @@ function wrapDialRotateEvent<T>(
     payload: {
       settings: (data.payload?.settings ?? {}) as T,
       ticks: data.payload?.ticks ?? 0,
+      // Default false when the frame omits it (rotate-while-pressed support).
+      pressed: data.payload?.pressed ?? false,
     },
   };
 }

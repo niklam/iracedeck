@@ -30,7 +30,6 @@ import {
   getGlobalSettings,
   getGlobalTitleSettings,
   getKeyboard,
-  type IDeckDialRotateEvent,
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
   type IDeckWillAppearEvent,
@@ -83,7 +82,7 @@ export class {ActionName} extends ConnectionStateAwareAction<{ActionName}Setting
   // The base class receives it: constructor(logger: ILogger)
 
   // Required lifecycle handlers: onWillAppear, onWillDisappear,
-  // onDidReceiveSettings, onKeyDown, onDialRotate
+  // onDidReceiveSettings, onKeyDown
   // IMPORTANT: Call super.onWillAppear(ev) and super.onDidReceiveSettings(ev)
   // as the first line in those handlers (required for flag overlay and CommonSettings).
   // See splits-delta-cycle.ts for the full pattern.
@@ -259,11 +258,11 @@ adapter.registerAction({ACTION_NAME}_UUID, new {ActionName}(adapter.createLogger
 
 #### 7b. Register in Mirabox plugin — `packages/iracing-plugin-mirabox/src/plugin.ts`
 
-Same pattern as above — import from `@iracedeck/iracing-actions` and register via the VSD adapter. Maintain alphabetical order. The manifest at `packages/iracing-plugin-mirabox/com.iracedeck.sd.core.sdPlugin/manifest.json` must also be updated (note: uses `"Knob"` instead of `"Encoder"` for dial actions).
+Same pattern as above — import from `@iracedeck/iracing-actions` and register via the VSD adapter. Maintain alphabetical order. The manifest at `packages/iracing-plugin-mirabox/com.iracedeck.sd.core.sdPlugin/manifest.json` must also be updated.
 
 #### 8. Declare in manifest — `com.iracedeck.sd.core.sdPlugin/manifest.json`
 
-Insert the entry into the `Actions` array **at its alphabetical position by `Name`** (the array drives the action-list order in the host app, which is kept alphabetical), and add the matching entry to the Mirabox and Ulanzi manifests too — every plugin must expose the same action set. `scripts/manifest-actions-order.test.mjs` fails the build if any manifest's `Actions` drift out of order, gain a duplicate, or diverge from the others.
+Add entry to the `Actions` array:
 
 ```json
 {
@@ -272,14 +271,7 @@ Insert the entry into the `Actions` array **at its alphabetical position by `Nam
   "Icon": "imgs/actions/{action-name}/icon",
   "Tooltip": "Brief description of what the action does",
   "PropertyInspectorPath": "ui/{action-name}.html",
-  "Controllers": ["Keypad", "Encoder"],
-  "Encoder": {
-    "layout": "$B1",
-    "TriggerDescription": {
-      "Rotate": "What rotation does",
-      "Push": "What press does"
-    }
-  },
+  "Controllers": ["Keypad"],
   "States": [
     {
       "Image": "imgs/actions/{action-name}/key",
@@ -290,9 +282,7 @@ Insert the entry into the `Actions` array **at its alphabetical position by `Nam
 }
 ```
 
-- Use `"Controllers": ["Keypad"]` if the dial is not supported
-- Omit the `Encoder` manifest block entirely if Keypad-only
-- Only include `TriggerDescription` keys for handlers the action implements
+- Most actions are Keypad-only — use `"Controllers": ["Keypad"]` with no `Encoder` block. A **dial-capable** action may instead declare `"Controllers": ["Keypad", "Encoder"]` with an `Encoder` block (a `layout` pointing at a committed custom touch layout under `<sdPlugin>/layouts/*.json`, plus a `TriggerDescription`). `fuel-service` is the reference (#759) — see its manifest entry and `com.iracedeck.sd.core.sdPlugin/layouts/fuel-service.json`, and `.claude/rules/encoders-and-touchscreen.md` for the action-side mechanics and gating rules.
 
 #### 9. Add key bindings — `packages/iracing-actions/src/actions/data/key-bindings.json`
 

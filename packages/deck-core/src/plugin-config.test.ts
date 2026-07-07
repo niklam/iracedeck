@@ -13,12 +13,12 @@ import {
 
 const ALL_TRUE_FEATURES: PlatformFeatures = {
   capabilities: { svgFilters: true, svgMasks: true, svgPatterns: true },
-  features: { borderGlow: true, profiles: true },
+  features: { borderGlow: true, dialFeedback: true, profiles: true },
 };
 
 const ALL_FALSE_FEATURES: PlatformFeatures = {
   capabilities: { svgFilters: false, svgMasks: false, svgPatterns: false },
-  features: { borderGlow: false, profiles: false },
+  features: { borderGlow: false, dialFeedback: false, profiles: false },
 };
 
 describe("plugin-config", () => {

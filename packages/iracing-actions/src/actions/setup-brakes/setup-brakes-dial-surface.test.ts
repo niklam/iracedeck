@@ -1,0 +1,550 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { buildTriggerDescription, formatDialValue, renderBrakeDialBoxSvg } from "./setup-brakes-dial-surface.js";
+import { parseSetupBrakesSettings } from "./setup-brakes-settings.js";
+import { SetupBrakes } from "./setup-brakes.js";
+
+const { mockGetCurrentTelemetry, mockTapBinding, mockIsBindingMissing, mockDualPressThreshold, globalListeners } =
+  vi.hoisted(() => ({
+    mockGetCurrentTelemetry: vi.fn<() => unknown>(() => null),
+    mockTapBinding: vi.fn().mockResolvedValue(undefined),
+    mockIsBindingMissing: vi.fn(() => false),
+    // Mutable "Long-press threshold" global setting value (ms) for tests.
+    mockDualPressThreshold: { value: 500 },
+    // Captured onGlobalSettingsChange listeners (one per constructed action).
+    globalListeners: [] as Array<() => void>,
+  }));
+
+vi.mock("@iracedeck/deck-core", async () => {
+  // REAL zod semantics for the extended settings schema (defaults, the `dial`
+  // prefault, enum validation) — only the CommonSettings base fields are absent.
+  const { z } = await import("zod");
+
+  return {
+    CommonSettings: {
+      extend: (shape: never) => z.object(shape).passthrough(),
+    },
+    ConnectionStateAwareAction: class MockConnectionStateAwareAction {
+      logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+      sdkController = {
+        subscribe: vi.fn(),
+        unsubscribe: vi.fn(),
+        getCurrentTelemetry: mockGetCurrentTelemetry,
+        getSessionInfo: vi.fn(() => null),
+      };
+      setKeyImage = vi.fn().mockResolvedValue(undefined);
+      setRegenerateCallback = vi.fn();
+      updateKeyImage = vi.fn().mockResolvedValue(false);
+      setActiveBinding = vi.fn();
+      tapBinding = mockTapBinding;
+      isBindingMissing = mockIsBindingMissing;
+      async onWillAppear() {}
+      async onDidReceiveSettings() {}
+      async onWillDisappear() {}
+    },
+    // The keypad half of setup-brakes.ts references these inside functions the
+    // dial flows never call; DualPressTracker is the only one constructed.
+    DualPressTracker: class {
+      recordKeyDown = vi.fn();
+      computeOutcome = vi.fn(() => undefined);
+      clear = vi.fn();
+    },
+    getDualPressDirections: vi.fn(() => "tap-increases"),
+    getDualPressThresholdMs: () => mockDualPressThreshold.value,
+    onGlobalSettingsChange: vi.fn((listener: () => void) => {
+      globalListeners.push(listener);
+
+      return vi.fn();
+    }),
+    classifyDialRelease: (args: {
+      pressStartMs: number;
+      nowMs: number;
+      rotatedWhilePressed: boolean;
+      thresholdMs?: number;
+    }) => {
+      if (args.rotatedWhilePressed) return "push-turn";
+
+      return args.nowMs - args.pressStartMs >= (args.thresholdMs ?? 500) ? "long" : "short";
+    },
+    // #612 binding-missing overlay — appends a recognizable marker for assertions.
+    applyBindingWarning: (content: string) => `${content}<binding-warning/>`,
+    escapeXml: (str: string) => str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"),
+    svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
+  };
+});
+
+/** Fake dial (encoder) action context. */
+function dialContext(id: string) {
+  return {
+    id,
+    isKey: () => false,
+    isDial: () => true,
+    setImage: vi.fn().mockResolvedValue(undefined),
+    setTitle: vi.fn().mockResolvedValue(undefined),
+    setSettings: vi.fn().mockResolvedValue(undefined),
+    setFeedback: vi.fn().mockResolvedValue(undefined),
+    setTriggerDescription: vi.fn().mockResolvedValue(undefined),
+  };
+}
+
+type DialContext = ReturnType<typeof dialContext>;
+
+function rotateEvent(action: DialContext, settings: Record<string, unknown>, ticks: number, pressed = false) {
+  return { action, payload: { settings, ticks, pressed } };
+}
+
+function basicEvent(action: DialContext, settings: Record<string, unknown> = {}) {
+  return { action, payload: { settings } };
+}
+
+function touchTapEvent(action: DialContext, settings: Record<string, unknown>, hold: boolean) {
+  return { action, payload: { settings, tapPos: [0, 0] as [number, number], hold } };
+}
+
+/** Dial settings under the `dial` root (#775). */
+function dialSettings(dial: Record<string, unknown>) {
+  return { dial };
+}
+
+describe("setup-brakes dial-surface pure helpers", () => {
+  describe("renderBrakeDialBoxSvg", () => {
+    it("draws the abbreviation, value, accent border, and dark background", () => {
+      const svg = renderBrakeDialBoxSvg({ width: 144, height: 144, color: "#e74c3c", abbr: "BB", value: "62.2" });
+
+      expect(svg).toContain("#0d0d0d"); // dark background
+      expect(svg).toContain('stroke="#e74c3c"'); // accent border
+      expect(svg).toContain('fill="#e74c3c"'); // accent label + value
+      expect(svg).toContain(">BB<");
+      expect(svg).toContain(">62.2<");
+    });
+
+    it("shrinks the value font so a longer value fits inside a smaller one", () => {
+      const long = /font-size="(\d+)"[^>]*>100\.0</.exec(
+        renderBrakeDialBoxSvg({ width: 144, height: 144, color: "#e74c3c", abbr: "BB", value: "100.0" }),
+      );
+      const short = /font-size="(\d+)"[^>]*>3</.exec(
+        renderBrakeDialBoxSvg({ width: 144, height: 144, color: "#f39c12", abbr: "ABS", value: "3" }),
+      );
+
+      expect(long).not.toBeNull();
+      expect(short).not.toBeNull();
+      expect(Number(long![1])).toBeLessThan(Number(short![1]));
+    });
+
+    it("draws the #612 warning overlay only when bindingMissing is set", () => {
+      const without = renderBrakeDialBoxSvg({ width: 200, height: 100, color: "#f39c12", abbr: "ABS", value: "3" });
+      const withWarn = renderBrakeDialBoxSvg({
+        width: 200,
+        height: 100,
+        color: "#f39c12",
+        abbr: "ABS",
+        value: "3",
+        bindingMissing: true,
+      });
+
+      expect(without).not.toContain("binding-warning");
+      expect(withWarn).toContain("binding-warning");
+    });
+  });
+
+  describe("formatDialValue", () => {
+    it("drops the % from percentage settings", () => {
+      expect(formatDialValue("brake-bias", { dcBrakeBias: 54 } as never)).toBe("54.0");
+      expect(formatDialValue("brake-bias-fine", { dcBrakeBiasFine: 0.5 } as never)).toBe("0.5");
+    });
+
+    it("keeps integer settings as plain integers", () => {
+      expect(formatDialValue("abs-adjust", { dcABS: 3 } as never)).toBe("3");
+      expect(formatDialValue("engine-braking", { dcEngineBraking: 8 } as never)).toBe("8");
+    });
+
+    it("shows the placeholder when telemetry is unavailable", () => {
+      expect(formatDialValue("brake-bias", null)).toBe("---");
+    });
+  });
+
+  describe("buildTriggerDescription", () => {
+    it("names the bound setting on rotate and rides the long-press on push", () => {
+      const desc = buildTriggerDescription(
+        parseSetupBrakesSettings(
+          dialSettings({
+            setting: "brake-bias",
+            pressAction: "toggle-abs",
+            longPressAction: "toggle-abs",
+            tapAction: "none",
+            longTouchAction: "none",
+          }),
+        ),
+      );
+
+      expect(desc.rotate).toBe("Adjust Brake Bias");
+      expect(desc.push).toBe("Toggle ABS (hold: Toggle ABS)");
+      expect(desc.touch).toBeUndefined();
+      expect(desc.longTouch).toBeUndefined();
+    });
+
+    it("maps the touch slots and omits none slots", () => {
+      const desc = buildTriggerDescription(
+        parseSetupBrakesSettings(
+          dialSettings({
+            setting: "abs-adjust",
+            pressAction: "none",
+            longPressAction: "none",
+            tapAction: "toggle-abs",
+            longTouchAction: "toggle-abs",
+          }),
+        ),
+      );
+
+      expect(desc.rotate).toBe("Adjust ABS");
+      expect(desc.push).toBeUndefined();
+      expect(desc.touch).toBe("Toggle ABS");
+      expect(desc.longTouch).toBe("Toggle ABS");
+    });
+  });
+});
+
+describe("SetupBrakes dial surface", () => {
+  let action: SetupBrakes;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    mockDualPressThreshold.value = 500;
+    mockIsBindingMissing.mockReturnValue(false);
+    mockGetCurrentTelemetry.mockReturnValue({ dcBrakeBias: 54, dcABS: 3 });
+    globalListeners.length = 0;
+    action = new SetupBrakes();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  async function appear(ctx: DialContext, settings: Record<string, unknown> = {}) {
+    await action.onWillAppear(basicEvent(ctx, settings) as never);
+  }
+
+  describe("onDialRotate", () => {
+    it("taps the increase binding on a clockwise turn", async () => {
+      const ctx = dialContext("d1");
+      const settings = dialSettings({ setting: "brake-bias" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialRotate(rotateEvent(ctx, settings, 1) as never);
+
+      expect(mockTapBinding).toHaveBeenCalledWith("setupBrakesBrakeBiasIncrease");
+    });
+
+    it("taps the decrease binding on a counter-clockwise turn", async () => {
+      const ctx = dialContext("d2");
+      const settings = dialSettings({ setting: "brake-bias" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialRotate(rotateEvent(ctx, settings, -1) as never);
+
+      expect(mockTapBinding).toHaveBeenCalledWith("setupBrakesBrakeBiasDecrease");
+    });
+
+    it("resolves the binding per selected setting", async () => {
+      const ctx = dialContext("d3");
+      const settings = dialSettings({ setting: "abs-adjust" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialRotate(rotateEvent(ctx, settings, 1) as never);
+
+      expect(mockTapBinding).toHaveBeenCalledWith("setupBrakesAbsAdjustIncrease");
+    });
+
+    it("dispatches one tap per rotate event regardless of tick magnitude", async () => {
+      const ctx = dialContext("d4");
+      const settings = dialSettings({ setting: "brake-bias" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialRotate(rotateEvent(ctx, settings, 3) as never);
+
+      // One tap per event by sign (matches the sibling black-box dials);
+      // relative key bindings apply immediately in iRacing, so there is nothing to coalesce.
+      expect(mockTapBinding).toHaveBeenCalledTimes(1);
+      expect(mockTapBinding).toHaveBeenCalledWith("setupBrakesBrakeBiasIncrease");
+    });
+  });
+
+  describe("press gestures", () => {
+    it("fires the press action on a short press (toggle ABS by default)", async () => {
+      const ctx = dialContext("p1");
+      const settings = dialSettings({ setting: "brake-bias", pressAction: "toggle-abs" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(mockTapBinding).toHaveBeenCalledWith("setupBrakesAbsToggle");
+    });
+
+    it("fires the long-press action when held past the threshold", async () => {
+      const ctx = dialContext("p2");
+      const settings = dialSettings({ setting: "brake-bias", pressAction: "none", longPressAction: "toggle-abs" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(600);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(mockTapBinding).toHaveBeenCalledWith("setupBrakesAbsToggle");
+    });
+
+    it("fires no gesture on a push+turn (rotated while pressed)", async () => {
+      const ctx = dialContext("p3");
+      const settings = dialSettings({ setting: "brake-bias", pressAction: "toggle-abs" });
+      await appear(ctx, settings);
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      // Rotate while pressed: still adjusts brake bias, but guards the release.
+      await action.onDialRotate(rotateEvent(ctx, settings, 1, true) as never);
+
+      // The rotation still adjusts the bound setting even while the button is held.
+      expect(mockTapBinding).toHaveBeenCalledWith("setupBrakesBrakeBiasIncrease");
+      mockTapBinding.mockClear();
+
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      // The press gesture (toggle ABS) must NOT fire after a push+turn.
+      expect(mockTapBinding).not.toHaveBeenCalledWith("setupBrakesAbsToggle");
+    });
+
+    it("does nothing when the press action is none", async () => {
+      const ctx = dialContext("p4");
+      const settings = dialSettings({ setting: "brake-bias", pressAction: "none" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(mockTapBinding).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("onTouchTap", () => {
+    it("fires the tap action on a short touch", async () => {
+      const ctx = dialContext("t1");
+      const settings = dialSettings({ setting: "brake-bias", tapAction: "toggle-abs", longTouchAction: "none" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onTouchTap(touchTapEvent(ctx, settings, false) as never);
+
+      expect(mockTapBinding).toHaveBeenCalledWith("setupBrakesAbsToggle");
+    });
+
+    it("fires the long-touch action on a long touch", async () => {
+      const ctx = dialContext("t2");
+      const settings = dialSettings({ setting: "brake-bias", tapAction: "none", longTouchAction: "toggle-abs" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onTouchTap(touchTapEvent(ctx, settings, true) as never);
+
+      expect(mockTapBinding).toHaveBeenCalledWith("setupBrakesAbsToggle");
+    });
+
+    it("does nothing when dial feedback is disabled", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", false);
+      const ctx = dialContext("t3");
+      const settings = dialSettings({ setting: "brake-bias", tapAction: "toggle-abs" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onTouchTap(touchTapEvent(ctx, settings, false) as never);
+
+      expect(mockTapBinding).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("feedback rendering", () => {
+    it("pushes the dash box as a single touch-strip pixmap on a dial", async () => {
+      const ctx = dialContext("f1");
+      await appear(ctx, dialSettings({ setting: "brake-bias" }));
+
+      expect(ctx.setFeedback).toHaveBeenCalled();
+      const feedback = ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string };
+
+      expect(feedback.box).toContain("data:image/svg+xml");
+      const decoded = decodeURIComponent(feedback.box);
+
+      expect(decoded).toContain(">BB<");
+      expect(decoded).toContain(">54.0<"); // value with the % dropped
+    });
+
+    it("pushes the encoder trigger description on a dial", async () => {
+      const ctx = dialContext("f2");
+      await appear(ctx, dialSettings({ setting: "brake-bias" }));
+
+      expect(ctx.setTriggerDescription).toHaveBeenCalled();
+    });
+
+    it("pushes the two-line name icon as the deck-app dial image (#775)", async () => {
+      const ctx = dialContext("f7");
+      await appear(ctx, dialSettings({ setting: "brake-bias" }));
+
+      const img = decodeURIComponent(ctx.setImage.mock.calls.at(-1)?.[0] as string);
+
+      expect(img).toContain(">SETUP<");
+      expect(img).toContain(">BRAKES<");
+    });
+
+    it("throttles feedback to the change-render window so the setFeedback cap holds", async () => {
+      const ctx = dialContext("f4");
+      mockGetCurrentTelemetry.mockReturnValue({ dcBrakeBias: 54 });
+      await appear(ctx, dialSettings({ setting: "brake-bias" }));
+
+      const onTick = (
+        action as unknown as { sdkController: { subscribe: ReturnType<typeof vi.fn> } }
+      ).sdkController.subscribe.mock.calls.at(-1)?.[1] as (telemetry: unknown) => void;
+      ctx.setFeedback.mockClear();
+
+      // Within the 100 ms window: the value changes but the feedback push is throttled.
+      vi.advanceTimersByTime(50);
+      mockGetCurrentTelemetry.mockReturnValue({ dcBrakeBias: 55 });
+      onTick({ dcBrakeBias: 55 });
+
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+
+      // Past the window: the next change flushes one feedback push.
+      vi.advanceTimersByTime(100);
+      mockGetCurrentTelemetry.mockReturnValue({ dcBrakeBias: 56 });
+      onTick({ dcBrakeBias: 56 });
+
+      expect(ctx.setFeedback).toHaveBeenCalledTimes(1);
+      // The flushed push carries the latest value (56.0), not the throttled-over one.
+      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+
+      expect(decoded).toContain(">56.0<");
+    });
+
+    it("dims the strip under the #612 warning when a rotation binding is missing", async () => {
+      mockIsBindingMissing.mockReturnValue(true);
+      const ctx = dialContext("f6");
+      await appear(ctx, dialSettings({ setting: "brake-bias" }));
+
+      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+
+      expect(mockIsBindingMissing).toHaveBeenCalledWith([
+        "setupBrakesBrakeBiasIncrease",
+        "setupBrakesBrakeBiasDecrease",
+      ]);
+      expect(decoded).toContain("binding-warning");
+    });
+
+    it("re-renders the box and trigger description when the setting changes", async () => {
+      const ctx = dialContext("f5");
+      mockGetCurrentTelemetry.mockReturnValue({ dcBrakeBias: 54, dcABS: 3 });
+      await appear(ctx, dialSettings({ setting: "brake-bias" }));
+      ctx.setFeedback.mockClear();
+      ctx.setTriggerDescription.mockClear();
+
+      await action.onDidReceiveSettings(basicEvent(ctx, dialSettings({ setting: "abs-adjust" })) as never);
+
+      expect(ctx.setTriggerDescription).toHaveBeenCalled();
+      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+
+      expect(decoded).toContain(">ABS<");
+      expect(decoded).toContain(">3<");
+    });
+  });
+
+  describe("legacy flat-setting migration (#775)", () => {
+    it("seeds dial.setting from a pre-merge encoder placement's flat setting and persists it", async () => {
+      const ctx = dialContext("m1");
+      // Pre-#775 Ulanzi encoder placement: flat keypad settings, no dial root.
+      const legacy = { setting: "engine-braking", direction: "decrease" };
+      await appear(ctx, legacy);
+
+      expect(ctx.setSettings).toHaveBeenCalledWith({ ...legacy, dial: { setting: "engine-braking" } });
+      mockTapBinding.mockClear();
+
+      await action.onDialRotate(rotateEvent(ctx, { ...legacy, dial: { setting: "engine-braking" } }, 1) as never);
+
+      expect(mockTapBinding).toHaveBeenCalledWith("setupBrakesEngineBrakingIncrease");
+    });
+
+    it("does not seed when a dial object is already persisted or the flat setting is not a rotation value", async () => {
+      const ctx1 = dialContext("m2");
+      await appear(ctx1, { setting: "engine-braking", dial: { setting: "brake-bias" } });
+
+      expect(ctx1.setSettings).not.toHaveBeenCalled();
+
+      const ctx2 = dialContext("m3");
+      await appear(ctx2, { setting: "view-brake-bias" });
+
+      expect(ctx2.setSettings).not.toHaveBeenCalled();
+
+      const ctx3 = dialContext("m4");
+      await appear(ctx3, {});
+
+      expect(ctx3.setSettings).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("global-settings refresh", () => {
+    it("re-renders the strip when global settings change so the #612 warning tracks live bindings", async () => {
+      const ctx = dialContext("g1");
+      await appear(ctx, dialSettings({ setting: "brake-bias" }));
+
+      expect(globalListeners.length).toBeGreaterThan(0);
+      ctx.setFeedback.mockClear();
+
+      // The binding was configured while iRacing is offline (no telemetry ticks).
+      mockIsBindingMissing.mockReturnValue(true);
+
+      for (const listener of globalListeners) listener();
+
+      expect(ctx.setFeedback).toHaveBeenCalled();
+      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+
+      expect(decoded).toContain("binding-warning");
+    });
+  });
+
+  describe("active binding", () => {
+    it("does not declare active bindings for dial instances (would bleed onto keypad buttons)", async () => {
+      const ctx = dialContext("ab1");
+      await appear(ctx, dialSettings({ setting: "brake-bias" }));
+
+      const setActiveBinding = (action as unknown as { setActiveBinding: ReturnType<typeof vi.fn> }).setActiveBinding;
+
+      expect(setActiveBinding).not.toHaveBeenCalled();
+
+      await action.onDidReceiveSettings(basicEvent(ctx, dialSettings({ setting: "abs-adjust" })) as never);
+
+      expect(setActiveBinding).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("subscription lifecycle", () => {
+    it("subscribes on appear and unsubscribes on disappear", async () => {
+      const ctx = dialContext("s1");
+      await appear(ctx, dialSettings({ setting: "brake-bias" }));
+
+      const sdk = (
+        action as unknown as {
+          sdkController: { subscribe: ReturnType<typeof vi.fn>; unsubscribe: ReturnType<typeof vi.fn> };
+        }
+      ).sdkController;
+
+      expect(sdk.subscribe).toHaveBeenCalled();
+
+      await action.onWillDisappear(basicEvent(ctx, dialSettings({ setting: "brake-bias" })) as never);
+
+      expect(sdk.unsubscribe).toHaveBeenCalledWith("s1");
+    });
+  });
+});

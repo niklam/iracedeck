@@ -76,7 +76,7 @@ Flash the headlights while the button is held. Useful for multi-class racing com
 #### Details
 
 - **Method:** Key binding
-- **Dial:** No rotation support; press and hold the dial to flash, release to stop
+- **Dial:** No rotation support
 - **Default binding:** No default key binding — Headlight Flash has no default iRacing binding, so you must configure it in both iRacing and the Property Inspector
 - **Telemetry-aware icon:** No
 
@@ -127,7 +127,7 @@ Engage the car starter. Hold the button to crank.
 #### Details
 
 - **Method:** Key binding
-- **Dial:** No rotation support; press and hold the dial to crank, release to stop
+- **Dial:** No rotation support
 - **Default binding:** `S`
 - **Telemetry-aware icon:** No
 
@@ -144,7 +144,7 @@ Context-aware car entry, exit, pit reset, or tow. The icon updates dynamically b
 #### Details
 
 - **Method:** Key binding
-- **Dial:** No rotation support; manual hold holds `Shift+R` while the button is pressed. When auto-hold is on for the active state, a single tap holds it for 1.5 seconds or until you press again
+- **Dial:** No rotation support
 - **Default binding:** `Shift+R`
 - **Telemetry-aware icon:** Yes — out of the car the icon shows the session context (Test / Practice / Qualify / Grid / Race); in the car it switches between Exit Car, Reset to Pits, and Tow on a red background
 
@@ -175,7 +175,7 @@ Send the `Escape` key to exit the car or dismiss dialogs. The `Escape` key is ha
 #### Details
 
 - **Method:** Key binding
-- **Dial:** No rotation support; manual hold holds `Escape` while the button is pressed, auto-hold releases after 1.5 seconds or when you press again
+- **Dial:** No rotation support
 - **Default binding:** `Escape` (hardcoded — iRacing always uses `Escape` for this action, so the binding is not user-configurable)
 - **Telemetry-aware icon:** No
 

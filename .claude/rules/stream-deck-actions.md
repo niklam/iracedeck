@@ -365,43 +365,48 @@ const binding = parseBinding(globalSettings["blackBoxLapTiming"]);
 2. **Callback never fires**: Handlers must be registered BEFORE `adapter.connect()`
 3. **Wrong adapter instance**: Always pass the `IDeckPlatformAdapter` to `initGlobalSettings(adapter, logger)`
 
-## Dial Support
+## Encoder (Dial) & Touchscreen Support
 
-For Stream Deck+ dial support:
+Dial support is being rebuilt (#681); the Fuel Service dial surface (`fuel-service/fuel-dial-surface.ts`, merged from the former fuel-dial action in #759) is the reference implementation. **Read `@.claude/rules/encoders-and-touchscreen.md` first** — it is the authority for the platform facts and gating rules; the full payload/schema reference is `docs/reference/stream-deck-plus-encoders.md`. The per-action mechanics:
 
-### Manifest Configuration
+### Manifest
 
-```json
-{
-  "Controllers": ["Keypad", "Encoder"],
-  "Encoder": {
-    "layout": "$B1",
-    "TriggerDescription": {
-      "Rotate": "Description for rotation",
-      "Push": "Description for press"
-    }
-  }
+Declare both controllers and a custom touch layout **on the Elgato manifest only** — the Mirabox and Ulanzi manifests stay `"Controllers": ["Keypad"]` for dial-capable actions (#786: dial support there is withheld until verified on real hardware; see `.claude/rules/encoders-and-touchscreen.md` for the shapes to restore when re-enabling):
+
+```jsonc
+// Elgato (com.iracedeck.sd.core.sdPlugin/manifest.json)
+"Controllers": ["Keypad", "Encoder"],
+"Encoder": {
+  "layout": "layouts/fuel-service.json",
+  "TriggerDescription": { "Rotate": "Adjust fuel to add", "Push": "Toggle / clear / fill fueling", "Touch": "Toggle / clear / fill fueling" }
 }
+
+// Mirabox and Ulanzi (separate manifests) — Keypad only, no dial declaration (#786)
+"Controllers": ["Keypad"]
 ```
 
-### Action Handlers
+The custom layout JSON is committed under `<sdPlugin>/layouts/*.json` (Elgato only). Item `key`s (e.g. `title`, `value`, `bar`) are exactly what `setFeedback` addresses — a `bar`/`gbar` item takes a number or object, a `text` item a string, and a `pixmap` item a data-URI string (the Fuel Service dial draws its whole slot as one `pixmap`). See `packages/iracing-plugin-stream-deck/com.iracedeck.sd.core.sdPlugin/layouts/fuel-service.json`.
 
-- `onDialRotate(ev)` - Handle rotation. Use `ev.payload.ticks` (positive = clockwise, negative = counter-clockwise)
-- `onDialDown(ev)` - Handle press (only if needed)
+### Action handlers
 
-### Rotation Pattern
+Implement `onDialRotate` / `onDialDown` / `onDialUp` / `onTouchTap` alongside `onKeyDown` (a dial-capable action declaring both controllers receives key events on the keypad surface and dial/touch events on the encoder surface). Branch rendering on the surface:
 
 ```typescript
 override async onDialRotate(ev: IDeckDialRotateEvent<Settings>): Promise<void> {
-  const settings = MySettings.parse(ev.payload.settings);
-  // Clockwise (ticks > 0) = next/increase
-  // Counter-clockwise (ticks < 0) = previous/decrease
-  const keyData = ev.payload.ticks > 0 ? settings.keyNext : settings.keyPrevious;
-  if (keyData?.key) {
-    await getKeyboard().sendKeyCombination({ key: keyData.key, modifiers: keyData.modifiers });
-  }
+  // ticks is a SIGNED DELTA (may be >1 on a fast spin) — scale, never count.
+  ctx.target += ev.payload.ticks * step;
 }
+
+// Branch surfaces inside render(): isKey() → key image, isDial() → touch-strip feedback
+if (ev.action.isKey()) await this.setKeyImage(ev, svg);
+if (ev.action.isDial()) await ev.action.setFeedback({ title: "FUEL", value: "65 / 90 L", bar: "data:image/svg+xml,…" });
 ```
+
+- **Push the touchscreen** with `ev.action.setFeedback({...})` (keyed by layout item `key`, values typed by `DeckFeedbackPayload`) or switch layouts at runtime with `ev.action.setFeedbackLayout("layouts/other.json")`.
+- **Throttle feedback to ≤ 10 calls/sec per dial** — coalesce a continuous spin into a leading/trailing throttled flush (see the Fuel Service dial surface's `scheduleSend`/`flushSend`).
+- **Gate the touch strip** on the compile-time constant `__FEATURE_DIAL_FEEDBACK__` (touch + feedback), not on `isDial()` alone — Mirabox/Ulanzi have no plugin touch strip. Dial press / long-press / push+turn are **not** gated: classify them at `dialUp` with `classifyDialRelease` (a duration comparison ≥ `DIAL_LONG_PRESS_THRESHOLD_MS`, plus a `rotatedWhilePressed` guard so push+turn pre-empts both press actions). No `setTimeout`, no `__FEATURE_DIAL_LONG_PRESS__` — that flag was removed; a knob reporting release instantly just degrades a hold to a short press.
+
+Reference implementation: `packages/iracing-actions/src/actions/fuel-service/fuel-dial-surface.ts` (routed from `fuel-service.ts`, which branches every handler on the surface).
 
 ## Per-Mode Communication Method & Binding Status (#612)
 

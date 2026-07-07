@@ -7,6 +7,7 @@
 
 // Platform abstraction types
 export type {
+  DeckTriggerDescription,
   IDeckActionContext,
   IDeckActionHandler,
   IDeckDialDownEvent,
@@ -17,9 +18,19 @@ export type {
   IDeckKeyDownEvent,
   IDeckKeyUpEvent,
   IDeckPlatformAdapter,
+  IDeckTouchTapEvent,
   IDeckWillAppearEvent,
   IDeckWillDisappearEvent,
 } from "./types.js";
+
+// Encoder touch-strip feedback types (platform-agnostic)
+export type {
+  DeckFeedbackPayload,
+  DeckFeedbackValue,
+  DeckFeedbackBarItem,
+  DeckFeedbackTextItem,
+  DeckFeedbackPixmapItem,
+} from "./feedback-types.js";
 
 // Base action with inactive overlay support
 export { BaseAction } from "./base-action.js";
@@ -176,6 +187,18 @@ export {
   formatFuelAmountWithPrefix,
   formatFuelSettingWithUnit,
 } from "./unit-conversion.js";
+
+// Shared pit fuel-fill / autofuel telemetry readers (Fuel Service keypad + dial surfaces)
+export { isFuelFillOn, isAutofuelActive, isAutofuelEnabled } from "./fuel-telemetry.js";
+
+// Shared dial-gesture convention (Push + Turn pair + release-time classifier)
+export {
+  DIAL_LONG_PRESS_THRESHOLD_MS,
+  type DirectionalPair,
+  type DialReleaseKind,
+  resolvePairedAction,
+  classifyDialRelease,
+} from "./dial-gesture.js";
 
 // Keyboard types
 export {

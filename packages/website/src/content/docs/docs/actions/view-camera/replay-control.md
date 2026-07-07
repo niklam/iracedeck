@@ -26,7 +26,7 @@ Toggle forward playback. Remembers your last slow-motion speed across pause / re
 #### Details
 
 - **Method:** iRacing API
-- **Dial:** Rotation steps playback forward or backward by one frame
+- **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** Yes — the icon reflects whether the replay is currently playing or paused based on live replay state
 
@@ -43,7 +43,7 @@ Toggle reverse playback. Mirrors slow-motion speed when switching direction.
 #### Details
 
 - **Method:** iRacing API
-- **Dial:** Rotation steps playback forward or backward by one frame
+- **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** Yes — the icon reflects whether reverse playback is active based on live replay state
 
@@ -60,7 +60,7 @@ Pause playback and reset the remembered speed so the next Play / Pause starts at
 #### Details
 
 - **Method:** iRacing API
-- **Dial:** Rotation steps playback forward or backward by one frame
+- **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
 
@@ -77,7 +77,7 @@ Progressive fast-forward. The first press jumps to 2x; each subsequent press add
 #### Details
 
 - **Method:** iRacing API
-- **Dial:** Rotation steps playback forward or backward by one frame
+- **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
 
@@ -94,7 +94,7 @@ Progressive rewind. The first press jumps to −2x; each subsequent press adds *
 #### Details
 
 - **Method:** iRacing API
-- **Dial:** Rotation steps playback forward or backward by one frame
+- **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
 
@@ -111,7 +111,7 @@ Progressive slow-motion. The first press jumps to 1/2x; each subsequent press ma
 #### Details
 
 - **Method:** iRacing API
-- **Dial:** Rotation steps playback forward or backward by one frame
+- **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
 
@@ -128,7 +128,7 @@ Progressive slow-motion rewind. The first press jumps to −1/2x; each subsequen
 #### Details
 
 - **Method:** iRacing API
-- **Dial:** Rotation steps playback forward or backward by one frame
+- **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
 
@@ -145,7 +145,7 @@ Advance exactly one frame.
 #### Details
 
 - **Method:** iRacing API
-- **Dial:** Rotation steps playback forward or backward by one frame
+- **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
 
@@ -162,7 +162,7 @@ Step back exactly one frame.
 #### Details
 
 - **Method:** iRacing API
-- **Dial:** Rotation steps playback forward or backward by one frame
+- **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
 
@@ -179,7 +179,7 @@ Traverse the full speed range upward: 1/16x → ... → 1/2x → 1x → 2x → .
 #### Details
 
 - **Method:** iRacing API
-- **Dial:** Rotation progressively adjusts replay speed (clockwise = increase, counter-clockwise = decrease)
+- **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
 
@@ -196,7 +196,7 @@ Traverse the full speed range downward. Direction-aware — works whether playba
 #### Details
 
 - **Method:** iRacing API
-- **Dial:** Rotation progressively adjusts replay speed (clockwise = increase, counter-clockwise = decrease)
+- **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
 
@@ -213,7 +213,7 @@ Set replay playback to a specific speed selected in the Property Inspector.
 #### Details
 
 - **Method:** iRacing API
-- **Dial:** Rotation steps playback forward or backward by one frame
+- **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
 
@@ -247,7 +247,7 @@ Jump to the next session in the replay.
 #### Details
 
 - **Method:** iRacing API
-- **Dial:** Rotation cycles sessions (clockwise = next, counter-clockwise = previous)
+- **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
 
@@ -264,7 +264,7 @@ Jump to the previous session in the replay.
 #### Details
 
 - **Method:** iRacing API
-- **Dial:** Rotation cycles sessions (clockwise = next, counter-clockwise = previous)
+- **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
 
@@ -281,7 +281,7 @@ Jump forward one lap.
 #### Details
 
 - **Method:** iRacing API
-- **Dial:** Rotation cycles laps (clockwise = next, counter-clockwise = previous)
+- **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
 
@@ -298,7 +298,7 @@ Jump backward one lap.
 #### Details
 
 - **Method:** iRacing API
-- **Dial:** Rotation cycles laps (clockwise = next, counter-clockwise = previous)
+- **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
 
@@ -315,7 +315,7 @@ Jump to the next incident.
 #### Details
 
 - **Method:** iRacing API
-- **Dial:** Rotation cycles incidents (clockwise = next, counter-clockwise = previous)
+- **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
 
@@ -332,7 +332,7 @@ Jump to the previous incident.
 #### Details
 
 - **Method:** iRacing API
-- **Dial:** Rotation cycles incidents (clockwise = next, counter-clockwise = previous)
+- **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
 
@@ -349,7 +349,7 @@ Jump to the start of the replay.
 #### Details
 
 - **Method:** iRacing API
-- **Dial:** Rotation cycles incidents (clockwise = next incident, counter-clockwise = previous incident)
+- **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
 
@@ -366,7 +366,7 @@ Jump to the live point in the session (end of the replay buffer).
 #### Details
 
 - **Method:** iRacing API
-- **Dial:** Rotation cycles incidents (clockwise = next incident, counter-clockwise = previous incident)
+- **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
 
@@ -383,7 +383,7 @@ Jump the replay camera to your own car.
 #### Details
 
 - **Method:** iRacing API
-- **Dial:** Rotation cycles to the next / previous car on track around your position (clockwise = ahead, counter-clockwise = behind)
+- **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
 
@@ -428,7 +428,7 @@ Switch the replay camera to the next car. Defers to iRacing's own car-ordering b
 #### Details
 
 - **Method:** Key binding
-- **Dial:** Clockwise sends Next Car, counter-clockwise sends Previous Car
+- **Dial:** No rotation support
 - **Default binding:** `V`
 - **Telemetry-aware icon:** No
 
@@ -445,7 +445,7 @@ Switch the replay camera to the previous car. Defers to iRacing's own car-orderi
 #### Details
 
 - **Method:** Key binding
-- **Dial:** Clockwise sends Next Car, counter-clockwise sends Previous Car
+- **Dial:** No rotation support
 - **Default binding:** `Shift+V`
 - **Telemetry-aware icon:** No
 
@@ -462,7 +462,7 @@ Switch the replay camera to the next car by car number order. Includes all cars 
 #### Details
 
 - **Method:** iRacing API
-- **Dial:** Rotation cycles cars by number order (clockwise = next, counter-clockwise = previous)
+- **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
 
@@ -479,7 +479,7 @@ Switch the replay camera to the previous car by car number order. Includes all c
 #### Details
 
 - **Method:** iRacing API
-- **Dial:** Rotation cycles cars by number order (clockwise = next, counter-clockwise = previous)
+- **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
 

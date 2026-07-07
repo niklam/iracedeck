@@ -7,13 +7,13 @@
       "method": "api"
     },
     "add-fuel": {
-      "method": "chat"
+      "method": "api"
     },
     "reduce-fuel": {
-      "method": "chat"
+      "method": "api"
     },
     "set-fuel-amount": {
-      "method": "chat"
+      "method": "api"
     },
     "clear-fuel": {
       "method": "api"
@@ -37,6 +37,19 @@
       "binding": {
         "scope": "global",
         "key": "fuelServiceLapMarginDecrease"
+      }
+    },
+    "toggle-fueling": {
+      "method": "api"
+    },
+    "fill-to-max": {
+      "method": "api"
+    },
+    "toggle-autofuel-mode": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "fuelServiceToggleAutofuel"
       }
     }
   },
@@ -984,6 +997,56 @@
       "method": "keybind"
     }
   },
+  "audio-controls-dial": {
+    "_meta": {
+      "modeSetting": "dial.category"
+    },
+    "voice-chat": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "audioVoiceChatVolumeUp",
+          "audioVoiceChatVolumeDown"
+        ]
+      }
+    },
+    "master": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "audioMasterVolumeUp",
+          "audioMasterVolumeDown"
+        ]
+      }
+    },
+    "race-engineer": {
+      "method": "keybind"
+    },
+    "radar": {
+      "method": "keybind"
+    },
+    "push-to-talk": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "audioControlsPushToTalk"
+      }
+    },
+    "mute-unmute": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "dial.category",
+          "map": {
+            "voice-chat": "audioVoiceChatMute"
+          }
+        }
+      }
+    }
+  },
   "toggle-ui-elements": {
     "_meta": {
       "modeSetting": "element"
@@ -1327,6 +1390,78 @@
             "decrease": "setupBrakesEngineBrakingDecrease"
           }
         }
+      }
+    }
+  },
+  "setup-brakes-dial": {
+    "_meta": {
+      "modeSetting": "dial.setting"
+    },
+    "brake-bias": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupBrakesBrakeBiasIncrease",
+          "setupBrakesBrakeBiasDecrease"
+        ]
+      }
+    },
+    "brake-bias-fine": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupBrakesBrakeBiasFineIncrease",
+          "setupBrakesBrakeBiasFineDecrease"
+        ]
+      }
+    },
+    "peak-brake-bias": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupBrakesPeakBrakeBiasIncrease",
+          "setupBrakesPeakBrakeBiasDecrease"
+        ]
+      }
+    },
+    "brake-misc": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupBrakesBrakeMiscIncrease",
+          "setupBrakesBrakeMiscDecrease"
+        ]
+      }
+    },
+    "engine-braking": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupBrakesEngineBrakingIncrease",
+          "setupBrakesEngineBrakingDecrease"
+        ]
+      }
+    },
+    "abs-adjust": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupBrakesAbsAdjustIncrease",
+          "setupBrakesAbsAdjustDecrease"
+        ]
+      }
+    },
+    "toggle-abs": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "setupBrakesAbsToggle"
       }
     }
   },

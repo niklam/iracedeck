@@ -41,14 +41,42 @@ export const BINDING_WARNING_GLYPH = [
 ].join("");
 
 /**
+ * The canvas the warning is drawn onto. The glyph is authored for the 144×144
+ * key canvas; any other size (e.g. the 200×100 dial touch strip) recenters and
+ * rescales it via a plain translate+scale transform (SVG Tiny safe).
+ */
+export interface BindingWarningCanvas {
+  width: number;
+  height: number;
+}
+
+/** The reference canvas side the glyph coordinates are authored for. */
+const GLYPH_CANVAS = 144;
+
+/**
  * Return the centered binding-missing warning glyph snippet.
  *
  * Provided as a function (alongside the {@link BINDING_WARNING_GLYPH} constant)
  * so dynamic-template actions can compose the same overlay their static
- * counterparts get from {@link assembleIcon}.
+ * counterparts get from {@link assembleIcon}. Pass `canvas` when the target is
+ * not the 144×144 key canvas — the glyph is scaled by the smaller side and
+ * centered (issue #775: the dial touch strip is 200×100).
  */
-export function bindingWarningSvg(): string {
-  return BINDING_WARNING_GLYPH;
+export function bindingWarningSvg(canvas?: BindingWarningCanvas): string {
+  if (!canvas || (canvas.width === GLYPH_CANVAS && canvas.height === GLYPH_CANVAS)) {
+    return BINDING_WARNING_GLYPH;
+  }
+
+  const scale = Math.min(canvas.width, canvas.height) / GLYPH_CANVAS;
+  const tx = (canvas.width - GLYPH_CANVAS * scale) / 2;
+  const ty = (canvas.height - GLYPH_CANVAS * scale) / 2;
+
+  return `<g transform="translate(${round(tx)}, ${round(ty)}) scale(${round(scale)})">${BINDING_WARNING_GLYPH}</g>`;
+}
+
+/** Trim transform values to a stable, compact precision. */
+function round(value: number): number {
+  return Math.round(value * 10000) / 10000;
 }
 
 /**
@@ -67,8 +95,9 @@ export function dimForBindingWarning(content: string): string {
  * the content dimmed, with the warning triangle drawn on top.
  *
  * Shared by {@link assembleIcon} and dynamic-template actions so both produce
- * an identical overlay.
+ * an identical overlay. Pass `canvas` for non-144×144 targets (see
+ * {@link bindingWarningSvg}).
  */
-export function applyBindingWarning(graphicContent: string): string {
-  return dimForBindingWarning(graphicContent) + BINDING_WARNING_GLYPH;
+export function applyBindingWarning(graphicContent: string, canvas?: BindingWarningCanvas): string {
+  return dimForBindingWarning(graphicContent) + bindingWarningSvg(canvas);
 }

@@ -1,7 +1,7 @@
 {
   "$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
   "Name": "iRaceDeck",
-  "Version": "1.23.0.1813",
+  "Version": "2.0.0.1826",
   "Author": "Niklas Lampén",
   "Actions": [
     {
@@ -25,17 +25,18 @@
       "Name": "Audio Controls",
       "UUID": "com.iracedeck.sd.core.audio-controls",
       "Icon": "imgs/actions/audio-controls/icon",
-      "Tooltip": "Audio volume and mute controls (iRacing voice chat & master; iRaceDeck Race Engineer & Radar)",
+      "Tooltip": "Audio volume and mute controls (iRacing voice chat & master; iRaceDeck Race Engineer & Radar); on a dial: rotate for volume, push to talk or mute",
       "PropertyInspectorPath": "ui/audio-controls.html",
       "Controllers": [
         "Keypad",
         "Encoder"
       ],
       "Encoder": {
-        "layout": "$B1",
+        "Icon": "imgs/actions/audio-controls/dial",
+        "layout": "layouts/audio-controls.json",
         "TriggerDescription": {
-          "Rotate": "Volume up/down",
-          "Push": "Mute/silence"
+          "Rotate": "Adjust volume",
+          "Push": "Push to talk / mute"
         }
       },
       "States": [
@@ -53,15 +54,8 @@
       "Tooltip": "Cycle through or select iRacing black boxes",
       "PropertyInspectorPath": "ui/black-box-selector.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
-      "Encoder": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Rotate": "Next/Previous black box"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/black-box-selector/key",
@@ -77,16 +71,8 @@
       "Tooltip": "Cycle through cameras and focus on targets (your car, leader, incidents, positions)",
       "PropertyInspectorPath": "ui/camera-focus.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
-      "Encoder": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Rotate": "Next/Previous (cycle modes)",
-          "Push": "Activate selected target"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/camera-focus/key",
@@ -103,16 +89,8 @@
       "PropertyInspectorPath": "ui/camera-focus.html",
       "VisibleInActionsList": false,
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
-      "Encoder": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Rotate": "Next/Previous (cycle modes)",
-          "Push": "Activate selected target"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/camera-focus/key",
@@ -128,16 +106,8 @@
       "Tooltip": "Camera editor adjustments for position, rotation, zoom, and other parameters",
       "PropertyInspectorPath": "ui/camera-editor-adjustments.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
-      "Encoder": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Rotate": "Increase/Decrease adjustment",
-          "Push": "Activate selected adjustment"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/camera-editor-adjustments/key",
@@ -153,15 +123,8 @@
       "Tooltip": "Camera editor toggles and management controls for broadcasters and content creators",
       "PropertyInspectorPath": "ui/camera-editor-controls.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
-      "Encoder": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Push": "Activate selected control"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/camera-editor-controls/key",
@@ -177,15 +140,8 @@
       "Tooltip": "Control car operations (starter, ignition, pit limiter, and more)",
       "PropertyInspectorPath": "ui/car-control.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
-      "Encoder": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Push": "Activate car control"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/car-control/key",
@@ -201,15 +157,8 @@
       "Tooltip": "Text chat operations (open, reply, whisper, send message, macros)",
       "PropertyInspectorPath": "ui/chat.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
-      "Encoder": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Push": "Activate chat action"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/chat/key",
@@ -225,16 +174,8 @@
       "Tooltip": "Miscellaneous cockpit controls (toggle/trigger wipers, FFB, latency, dash pages, in-lap mode)",
       "PropertyInspectorPath": "ui/cockpit-misc.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
-      "Encoder": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Rotate": "Increase/Decrease adjustment",
-          "Push": "Activate control"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/cockpit-misc/key",
@@ -250,16 +191,8 @@
       "Tooltip": "Force feedback controls (FFB force, wheel LFE, bass shaker, haptic intensity)",
       "PropertyInspectorPath": "ui/force-feedback.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
-      "Encoder": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Rotate": "Increase/Decrease adjustment",
-          "Push": "Activate control"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/force-feedback/key",
@@ -272,17 +205,19 @@
       "Name": "Fuel Service",
       "UUID": "com.iracedeck.sd.core.fuel-service",
       "Icon": "imgs/actions/fuel-service/icon",
-      "Tooltip": "Fuel management for pit stops (add/reduce fuel, autofuel, lap margin)",
+      "Tooltip": "Fuel management for pit stops (add/reduce fuel, autofuel, lap margin); on a dial: set fuel to add, toggle/clear/fill fueling",
       "PropertyInspectorPath": "ui/fuel-service.html",
       "Controllers": [
         "Keypad",
         "Encoder"
       ],
       "Encoder": {
-        "layout": "$B1",
+        "Icon": "imgs/actions/fuel-service/dial",
+        "layout": "layouts/fuel-service.json",
         "TriggerDescription": {
-          "Rotate": "Increase/Decrease fuel",
-          "Push": "Activate fuel action"
+          "Rotate": "Adjust fuel to add",
+          "Push": "Toggle / clear / fill fueling",
+          "Touch": "Toggle / clear / fill fueling"
         }
       },
       "States": [
@@ -300,15 +235,8 @@
       "Tooltip": "Change the driver's view direction",
       "PropertyInspectorPath": "ui/look-direction.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
-      "Encoder": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Push": "Activate look direction"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/look-direction/key",
@@ -324,15 +252,8 @@
       "Tooltip": "Video recording, screenshots, and texture management",
       "PropertyInspectorPath": "ui/media-capture.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
-      "Encoder": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Push": "Activate selected capture action"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/media-capture/key",
@@ -365,15 +286,8 @@
       "Tooltip": "Quick pit stop controls (clear all, windshield tearoff, fast repair)",
       "PropertyInspectorPath": "ui/pit-quick-actions.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
-      "Encoder": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Push": "Activate pit action"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/pit-quick-actions/key",
@@ -389,15 +303,8 @@
       "Tooltip": "Session admin commands for race directors (yellows, penalties, pit control, chat)",
       "PropertyInspectorPath": "ui/race-admin.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
-      "Encoder": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Push": "Execute admin command"
-        }
-      },
       "States": [
         {
           "Image": "imgs/blank-key",
@@ -413,16 +320,8 @@
       "Tooltip": "Unified replay controls: transport, speed, and navigation",
       "PropertyInspectorPath": "ui/replay-control.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
-      "Encoder": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Rotate": "Context-dependent (frame step, speed, navigation)",
-          "Push": "Context-dependent (play, reset speed, navigate)"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/replay-control/key",
@@ -439,16 +338,8 @@
       "PropertyInspectorPath": "ui/replay-navigation.html",
       "VisibleInActionsList": false,
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
-      "Encoder": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Rotate": "Next/Previous (session, lap, or incident)",
-          "Push": "Activate navigation action"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/replay-navigation/key",
@@ -465,16 +356,8 @@
       "PropertyInspectorPath": "ui/replay-speed.html",
       "VisibleInActionsList": false,
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
-      "Encoder": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Rotate": "Increase/Decrease speed",
-          "Push": "Reset to normal speed"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/replay-speed/key",
@@ -491,16 +374,8 @@
       "PropertyInspectorPath": "ui/replay-transport.html",
       "VisibleInActionsList": false,
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
-      "Encoder": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Rotate": "Frame forward/backward",
-          "Push": "Play/Pause"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/replay-transport/key",
@@ -533,16 +408,8 @@
       "Tooltip": "Aerodynamic adjustments (front wing, rear wing, qualifying tape, RF brake)",
       "PropertyInspectorPath": "ui/setup-aero.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
-      "Encoder": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Rotate": "Increase/Decrease aero setting",
-          "Push": "Activate aero adjustment"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/setup-aero/key",
@@ -555,17 +422,19 @@
       "Name": "Setup Brakes",
       "UUID": "com.iracedeck.sd.core.setup-brakes",
       "Icon": "imgs/actions/setup-brakes/icon",
-      "Tooltip": "Brake adjustments (ABS, brake bias, peak bias, engine braking)",
+      "Tooltip": "Brake adjustments (ABS, brake bias, peak bias, engine braking); on a dial: adjust one brake setting, press to toggle ABS",
       "PropertyInspectorPath": "ui/setup-brakes.html",
       "Controllers": [
         "Keypad",
         "Encoder"
       ],
       "Encoder": {
-        "layout": "$B1",
+        "Icon": "imgs/actions/setup-brakes/dial",
+        "layout": "layouts/setup-brakes.json",
         "TriggerDescription": {
-          "Rotate": "Increase/Decrease brake setting",
-          "Push": "Activate brake adjustment"
+          "Rotate": "Adjust the selected brake setting",
+          "Push": "Configured action (default: toggle ABS)",
+          "Touch": "Configured action"
         }
       },
       "States": [
@@ -583,16 +452,8 @@
       "Tooltip": "Chassis adjustments (differential, ARB, springs, shocks, power steering)",
       "PropertyInspectorPath": "ui/setup-chassis.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
-      "Encoder": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Rotate": "Increase/Decrease chassis setting",
-          "Push": "Activate chassis adjustment"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/setup-chassis/key",
@@ -608,16 +469,8 @@
       "Tooltip": "Engine adjustments (power, throttle shaping, boost, launch RPM)",
       "PropertyInspectorPath": "ui/setup-engine.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
-      "Encoder": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Rotate": "Increase/Decrease engine setting",
-          "Push": "Activate engine adjustment"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/setup-engine/key",
@@ -633,16 +486,8 @@
       "Tooltip": "Fuel adjustments (mixture, fuel cut, low fuel, FCY mode)",
       "PropertyInspectorPath": "ui/setup-fuel.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
-      "Encoder": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Rotate": "Increase/Decrease fuel setting",
-          "Push": "Activate fuel adjustment"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/setup-fuel/key",
@@ -658,16 +503,8 @@
       "Tooltip": "Hybrid/ERS adjustments (MGU-K regen, deploy modes, HYS boost/regen)",
       "PropertyInspectorPath": "ui/setup-hybrid.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
-      "Encoder": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Rotate": "Increase/Decrease hybrid setting",
-          "Push": "Activate hybrid adjustment"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/setup-hybrid/key",
@@ -683,16 +520,8 @@
       "Tooltip": "Traction control adjustments (TC Toggle, TC Slots 1-4)",
       "PropertyInspectorPath": "ui/setup-traction.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
-      "Encoder": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Rotate": "Increase/Decrease TC setting",
-          "Push": "Activate TC adjustment"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/setup-traction/key",
@@ -708,16 +537,8 @@
       "Tooltip": "Cycle splits delta display modes or toggle reference car",
       "PropertyInspectorPath": "ui/splits-delta-cycle.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
-      "Encoder": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Rotate": "Next/Previous splits delta",
-          "Push": "Toggle reference car"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/splits-delta-cycle/key",
@@ -750,15 +571,8 @@
       "Tooltip": "Telemetry logging and recording controls",
       "PropertyInspectorPath": "ui/telemetry-control.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
-      "Encoder": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Push": "Activate telemetry action"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/telemetry-control/key",
@@ -791,15 +605,8 @@
       "Tooltip": "Tire management for pit stops (toggle tires, change compound, clear)",
       "PropertyInspectorPath": "ui/tire-service.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
-      "Encoder": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Push": "Activate tire action"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/tire-service/key",
@@ -815,15 +622,8 @@
       "Tooltip": "Toggle iRacing UI elements on or off",
       "PropertyInspectorPath": "ui/toggle-ui-elements.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
-      "Encoder": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Push": "Toggle UI element"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/toggle-ui-elements/key",
@@ -839,16 +639,8 @@
       "Tooltip": "Adjust camera and view settings (FOV, horizon, driver height, VR recenter, UI size)",
       "PropertyInspectorPath": "ui/view-adjustment.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
-      "Encoder": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Rotate": "Increase/Decrease adjustment",
-          "Push": "Activate adjustment"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/view-adjustment/key",

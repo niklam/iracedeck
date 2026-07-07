@@ -7,10 +7,9 @@ Mirrors the structure of `@iracedeck/iracing-plugin-stream-deck` but targets Mir
 ## Key Differences from iracing-plugin-stream-deck
 
 - Uses `VSDPlatformAdapter` instead of `ElgatoPlatformAdapter`
-- Manifest uses `"Knob"` instead of `"Encoder"` for dial actions
-- No `Encoder.layout` field (VSD doesn't support encoder layouts)
+- **All actions are Keypad-only in the manifest** — no `"Knob"` declarations (#786). The dial-capable actions (Fuel Service, Setup Brakes, Audio Controls) still bundle their shared dial surfaces from `@iracedeck/iracing-actions`, and the adapter still normalizes knob events, but the manifest withholds the dial controller until knob input is verified on real hardware. When re-enabling, a dial-capable action declares `"Controllers": ["Keypad", "Knob"]` with **no** `Encoder`/`Knob` config block and **no** touch strip — the Stream Dock protocol defines no layouts/`setFeedback`, so touch-strip feedback is unsupported (the Mirabox adapter no-ops it; only the touch strip is gated, by `__FEATURE_DIAL_FEEDBACK__`, `false` here). See `.claude/rules/encoders-and-touchscreen.md`.
 - Uses `ws` package for WebSocket communication (VSD bundles Node.js 20)
-- `SDKVersion: 1` instead of `3`
+- `SDKVersion: 2` instead of `3` (initially shipped as `1`, deliberately bumped to `2` in commit `51515173`)
 
 PI framework (web components, EJS partials, compile plugin, `sdpi-components.js`) comes from `@iracedeck/pi-components`, the same shared package the Elgato plugin consumes. Per-action PI templates, static icons, and template data come from `@iracedeck/iracing-actions` (`src/actions/<name>/*.ejs` + `icon.svg` + `key.svg`, and shared `src/actions/data/*.json`). The `rollup.config.mjs` imports `piTemplatePlugin`, `partialsDir`, and `browserDir` from `@iracedeck/pi-components/build`, computes `actionTemplatesDir` locally from the `@iracedeck/iracing-actions` path, and copies per-action `icon.svg`/`key.svg` into `com.iracedeck.sd.core.sdPlugin/imgs/actions/<name>/`. The plugin-level branding icons in `imgs/plugin/` are still copied from `iracing-plugin-stream-deck` until a dedicated branding package lands. Generated HTML is then stripped of the `lang="en"` attribute (`stripHtmlLangPlugin`) because VSD Craft does not accept it.
 

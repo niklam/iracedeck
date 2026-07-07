@@ -116,6 +116,7 @@ export default defineConfig({
             { slug: "docs/features/communication-methods" },
             { slug: "docs/features/key-bindings" },
             { slug: "docs/features/stream-deck-profiles" },
+            { slug: "docs/features/dials" },
             { slug: "docs/features/flags-overlay" },
             { slug: "docs/features/focus-iracing-window" },
             { slug: "docs/features/icon-colors" },

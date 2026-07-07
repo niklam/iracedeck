@@ -145,18 +145,15 @@ function clampVolume(value: number): number {
   return Math.max(VOLUME_MIN, Math.min(VOLUME_MAX, value));
 }
 
-function stepValue(current: number, direction: "up" | "down"): number {
-  return clampVolume(current + (direction === "up" ? VOLUME_STEP : -VOLUME_STEP));
-}
-
 /**
- * Step the global `radarVolume` by ±{@link VOLUME_STEP}, persist it, and apply
- * it to {@link AudioBus.Alerts}. A no-op (no persist, no bus write) when already
+ * Step the global `radarVolume` by `steps × VOLUME_STEP` (signed — a dial may
+ * deliver several detents per event), persist it, and apply it to
+ * {@link AudioBus.Alerts}. A no-op (no persist, no bus write) when already
  * clamped at the boundary. Returns the resulting volume.
  */
-export function stepRadarVolume(direction: "up" | "down"): number {
+export function stepRadarVolumeBy(steps: number): number {
   const current = readRadarVolume();
-  const next = stepValue(current, direction);
+  const next = clampVolume(current + steps * VOLUME_STEP);
 
   if (next === current) return current;
 
@@ -166,15 +163,21 @@ export function stepRadarVolume(direction: "up" | "down"): number {
   return next;
 }
 
+/** Single-step convenience over {@link stepRadarVolumeBy}. */
+export function stepRadarVolume(direction: "up" | "down"): number {
+  return stepRadarVolumeBy(direction === "up" ? 1 : -1);
+}
+
 /**
- * Step the global `raceEngineerVolume` by ±{@link VOLUME_STEP}, persist it, and
- * re-apply the Race Engineer audio gate. While Race Engineer is disabled the
- * value still updates but Voice stays muted (the gate is respected). A no-op
- * when already clamped at the boundary. Returns the resulting volume.
+ * Step the global `raceEngineerVolume` by `steps × VOLUME_STEP` (signed),
+ * persist it, and re-apply the Race Engineer audio gate. While Race Engineer
+ * is disabled the value still updates but Voice stays muted (the gate is
+ * respected). A no-op when already clamped at the boundary. Returns the
+ * resulting volume.
  */
-export function stepRaceEngineerVolume(direction: "up" | "down"): number {
+export function stepRaceEngineerVolumeBy(steps: number): number {
   const current = readRaceEngineerVolume();
-  const next = stepValue(current, direction);
+  const next = clampVolume(current + steps * VOLUME_STEP);
 
   if (next === current) return current;
 
@@ -182,4 +185,9 @@ export function stepRaceEngineerVolume(direction: "up" | "down"): number {
   applyRaceEngineerAudio();
 
   return next;
+}
+
+/** Single-step convenience over {@link stepRaceEngineerVolumeBy}. */
+export function stepRaceEngineerVolume(direction: "up" | "down"): number {
+  return stepRaceEngineerVolumeBy(direction === "up" ? 1 : -1);
 }

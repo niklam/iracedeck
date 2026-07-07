@@ -11,7 +11,9 @@ import {
   setRaceEngineerTestInFlight,
   setRaceEngineerToggleInFlight,
   stepRaceEngineerVolume,
+  stepRaceEngineerVolumeBy,
   stepRadarVolume,
+  stepRadarVolumeBy,
   VOLUME_MAX,
 } from "./audio-volume.js";
 
@@ -209,6 +211,47 @@ describe("audio-volume", () => {
       expect(stepRadarVolume("down")).toBe(0);
       expect(hoisted.updateGlobalSettings).not.toHaveBeenCalled();
       expect(hoisted.setBusVolume).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("stepRadarVolumeBy", () => {
+    it("steps by ticks × 5 and clamps at both boundaries", () => {
+      hoisted.setGlobalSettings({ radarVolume: 50 });
+      expect(stepRadarVolumeBy(3)).toBe(65);
+      expect(hoisted.updateGlobalSettings).toHaveBeenCalledWith({ radarVolume: 65 });
+      expect(hoisted.setBusVolume).toHaveBeenCalledWith(2, 0.65);
+
+      hoisted.setGlobalSettings({ radarVolume: 95 });
+      expect(stepRadarVolumeBy(4)).toBe(100);
+
+      hoisted.setGlobalSettings({ radarVolume: 5 });
+      expect(stepRadarVolumeBy(-2)).toBe(0);
+    });
+
+    it("is a no-op (no persist, no bus write) when already clamped at the boundary", () => {
+      hoisted.setGlobalSettings({ radarVolume: 100 });
+
+      expect(stepRadarVolumeBy(2)).toBe(100);
+      expect(hoisted.updateGlobalSettings).not.toHaveBeenCalled();
+      expect(hoisted.setBusVolume).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("stepRaceEngineerVolumeBy", () => {
+    it("steps by ticks × 5 and re-applies the gate", () => {
+      hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: true, raceEngineerVolume: 50 });
+
+      expect(stepRaceEngineerVolumeBy(-3)).toBe(35);
+      expect(hoisted.updateGlobalSettings).toHaveBeenCalledWith({ raceEngineerVolume: 35 });
+      expect(hoisted.setBusVolume).toHaveBeenCalledWith(0, 0.35);
+    });
+
+    it("persists the value but keeps Voice muted while Race Engineer is off", () => {
+      hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: false, raceEngineerVolume: 50 });
+
+      expect(stepRaceEngineerVolumeBy(2)).toBe(60);
+      expect(hoisted.updateGlobalSettings).toHaveBeenCalledWith({ raceEngineerVolume: 60 });
+      expect(hoisted.setBusVolume).toHaveBeenCalledWith(0, 0);
     });
   });
 

@@ -1,6 +1,6 @@
 {
   "Name": "iRaceDeck",
-  "Version": "1.23.0.1813",
+  "Version": "2.0.0.1826",
   "Author": "Niklas Lampén",
   "Actions": [
     {
@@ -27,8 +27,7 @@
       "Tooltip": "Audio volume and mute controls (iRacing voice chat & master; iRaceDeck Race Engineer & Radar)",
       "PropertyInspectorPath": "ui/audio-controls.html",
       "Controllers": [
-        "Keypad",
-        "Knob"
+        "Keypad"
       ],
       "States": [
         {
@@ -36,14 +35,7 @@
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ],
-      "Knob": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Rotate": "Volume up/down",
-          "Push": "Mute/silence"
-        }
-      }
+      ]
     },
     {
       "Name": "Black Box Selector",
@@ -52,8 +44,7 @@
       "Tooltip": "Cycle through or select iRacing black boxes",
       "PropertyInspectorPath": "ui/black-box-selector.html",
       "Controllers": [
-        "Keypad",
-        "Knob"
+        "Keypad"
       ],
       "States": [
         {
@@ -61,13 +52,7 @@
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ],
-      "Knob": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Rotate": "Next/Previous black box"
-        }
-      }
+      ]
     },
     {
       "Name": "Camera Controls",
@@ -76,8 +61,7 @@
       "Tooltip": "Cycle through cameras and focus on targets (your car, leader, incidents, positions)",
       "PropertyInspectorPath": "ui/camera-focus.html",
       "Controllers": [
-        "Keypad",
-        "Knob"
+        "Keypad"
       ],
       "States": [
         {
@@ -85,14 +69,7 @@
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ],
-      "Knob": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Rotate": "Next/Previous (cycle modes)",
-          "Push": "Activate selected target"
-        }
-      }
+      ]
     },
     {
       "Name": "Camera Cycle (Legacy)",
@@ -102,8 +79,7 @@
       "PropertyInspectorPath": "ui/camera-focus.html",
       "VisibleInActionsList": false,
       "Controllers": [
-        "Keypad",
-        "Knob"
+        "Keypad"
       ],
       "States": [
         {
@@ -111,14 +87,7 @@
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ],
-      "Knob": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Rotate": "Next/Previous (cycle modes)",
-          "Push": "Activate selected target"
-        }
-      }
+      ]
     },
     {
       "Name": "Camera Editor Adjustments",
@@ -127,8 +96,7 @@
       "Tooltip": "Camera editor adjustments for position, rotation, zoom, and other parameters",
       "PropertyInspectorPath": "ui/camera-editor-adjustments.html",
       "Controllers": [
-        "Keypad",
-        "Knob"
+        "Keypad"
       ],
       "States": [
         {
@@ -136,14 +104,7 @@
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ],
-      "Knob": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Rotate": "Increase/Decrease adjustment",
-          "Push": "Activate selected adjustment"
-        }
-      }
+      ]
     },
     {
       "Name": "Camera Editor Controls",
@@ -152,8 +113,7 @@
       "Tooltip": "Camera editor toggles and management controls for broadcasters and content creators",
       "PropertyInspectorPath": "ui/camera-editor-controls.html",
       "Controllers": [
-        "Keypad",
-        "Knob"
+        "Keypad"
       ],
       "States": [
         {
@@ -161,13 +121,7 @@
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ],
-      "Knob": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Push": "Activate selected control"
-        }
-      }
+      ]
     },
     {
       "Name": "Car Control",
@@ -176,8 +130,7 @@
       "Tooltip": "Control car operations (starter, ignition, pit limiter, and more)",
       "PropertyInspectorPath": "ui/car-control.html",
       "Controllers": [
-        "Keypad",
-        "Knob"
+        "Keypad"
       ],
       "States": [
         {
@@ -185,13 +138,7 @@
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ],
-      "Knob": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Push": "Activate car control"
-        }
-      }
+      ]
     },
     {
       "Name": "Chat",
@@ -200,8 +147,7 @@
       "Tooltip": "Text chat operations (open, reply, whisper, send message, macros)",
       "PropertyInspectorPath": "ui/chat.html",
       "Controllers": [
-        "Keypad",
-        "Knob"
+        "Keypad"
       ],
       "States": [
         {
@@ -209,13 +155,7 @@
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ],
-      "Knob": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Push": "Activate chat action"
-        }
-      }
+      ]
     },
     {
       "Name": "Cockpit Misc",
@@ -224,8 +164,7 @@
       "Tooltip": "Miscellaneous cockpit controls (toggle/trigger wipers, FFB, latency, dash pages, in-lap mode)",
       "PropertyInspectorPath": "ui/cockpit-misc.html",
       "Controllers": [
-        "Keypad",
-        "Knob"
+        "Keypad"
       ],
       "States": [
         {
@@ -233,14 +172,7 @@
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ],
-      "Knob": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Rotate": "Increase/Decrease adjustment",
-          "Push": "Activate control"
-        }
-      }
+      ]
     },
     {
       "Name": "Force Feedback",
@@ -249,8 +181,7 @@
       "Tooltip": "Force feedback controls (FFB force, wheel LFE, bass shaker, haptic intensity)",
       "PropertyInspectorPath": "ui/force-feedback.html",
       "Controllers": [
-        "Keypad",
-        "Knob"
+        "Keypad"
       ],
       "States": [
         {
@@ -258,14 +189,7 @@
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ],
-      "Knob": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Rotate": "Increase/Decrease adjustment",
-          "Push": "Activate control"
-        }
-      }
+      ]
     },
     {
       "Name": "Fuel Service",
@@ -274,8 +198,7 @@
       "Tooltip": "Fuel management for pit stops (add/reduce fuel, autofuel, lap margin)",
       "PropertyInspectorPath": "ui/fuel-service.html",
       "Controllers": [
-        "Keypad",
-        "Knob"
+        "Keypad"
       ],
       "States": [
         {
@@ -283,14 +206,7 @@
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ],
-      "Knob": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Rotate": "Increase/Decrease fuel",
-          "Push": "Activate fuel action"
-        }
-      }
+      ]
     },
     {
       "Name": "Look Direction",
@@ -299,8 +215,7 @@
       "Tooltip": "Change the driver's view direction",
       "PropertyInspectorPath": "ui/look-direction.html",
       "Controllers": [
-        "Keypad",
-        "Knob"
+        "Keypad"
       ],
       "States": [
         {
@@ -308,13 +223,7 @@
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ],
-      "Knob": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Push": "Activate look direction"
-        }
-      }
+      ]
     },
     {
       "Name": "Media Capture",
@@ -323,8 +232,7 @@
       "Tooltip": "Video recording, screenshots, and texture management",
       "PropertyInspectorPath": "ui/media-capture.html",
       "Controllers": [
-        "Keypad",
-        "Knob"
+        "Keypad"
       ],
       "States": [
         {
@@ -332,13 +240,7 @@
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ],
-      "Knob": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Push": "Activate selected capture action"
-        }
-      }
+      ]
     },
     {
       "Name": "Pit Crew",
@@ -364,8 +266,7 @@
       "Tooltip": "Quick pit stop controls (clear all, windshield tearoff, fast repair)",
       "PropertyInspectorPath": "ui/pit-quick-actions.html",
       "Controllers": [
-        "Keypad",
-        "Knob"
+        "Keypad"
       ],
       "States": [
         {
@@ -373,13 +274,7 @@
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ],
-      "Knob": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Push": "Activate pit action"
-        }
-      }
+      ]
     },
     {
       "Name": "Race Admin",
@@ -388,8 +283,7 @@
       "Tooltip": "Session admin commands for race directors (yellows, penalties, pit control, chat)",
       "PropertyInspectorPath": "ui/race-admin.html",
       "Controllers": [
-        "Keypad",
-        "Knob"
+        "Keypad"
       ],
       "States": [
         {
@@ -397,13 +291,7 @@
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ],
-      "Knob": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Push": "Execute admin command"
-        }
-      }
+      ]
     },
     {
       "Name": "Replay Control",
@@ -412,8 +300,7 @@
       "Tooltip": "Unified replay controls: transport, speed, and navigation",
       "PropertyInspectorPath": "ui/replay-control.html",
       "Controllers": [
-        "Keypad",
-        "Knob"
+        "Keypad"
       ],
       "States": [
         {
@@ -421,14 +308,7 @@
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ],
-      "Knob": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Rotate": "Context-dependent (frame step, speed, navigation)",
-          "Push": "Context-dependent (play, reset speed, navigate)"
-        }
-      }
+      ]
     },
     {
       "Name": "Replay Navigation",
@@ -438,8 +318,7 @@
       "PropertyInspectorPath": "ui/replay-navigation.html",
       "VisibleInActionsList": false,
       "Controllers": [
-        "Keypad",
-        "Knob"
+        "Keypad"
       ],
       "States": [
         {
@@ -447,14 +326,7 @@
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ],
-      "Knob": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Rotate": "Next/Previous (session, lap, or incident)",
-          "Push": "Activate navigation action"
-        }
-      }
+      ]
     },
     {
       "Name": "Replay Speed",
@@ -464,8 +336,7 @@
       "PropertyInspectorPath": "ui/replay-speed.html",
       "VisibleInActionsList": false,
       "Controllers": [
-        "Keypad",
-        "Knob"
+        "Keypad"
       ],
       "States": [
         {
@@ -473,14 +344,7 @@
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ],
-      "Knob": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Rotate": "Increase/Decrease speed",
-          "Push": "Reset to normal speed"
-        }
-      }
+      ]
     },
     {
       "Name": "Replay Transport",
@@ -490,8 +354,7 @@
       "PropertyInspectorPath": "ui/replay-transport.html",
       "VisibleInActionsList": false,
       "Controllers": [
-        "Keypad",
-        "Knob"
+        "Keypad"
       ],
       "States": [
         {
@@ -499,14 +362,7 @@
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ],
-      "Knob": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Rotate": "Frame forward/backward",
-          "Push": "Play/Pause"
-        }
-      }
+      ]
     },
     {
       "Name": "Session Info",
@@ -533,8 +389,7 @@
       "Tooltip": "Aerodynamic adjustments (front wing, rear wing, qualifying tape, RF brake)",
       "PropertyInspectorPath": "ui/setup-aero.html",
       "Controllers": [
-        "Keypad",
-        "Knob"
+        "Keypad"
       ],
       "States": [
         {
@@ -542,14 +397,7 @@
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ],
-      "Knob": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Rotate": "Increase/Decrease aero setting",
-          "Push": "Activate aero adjustment"
-        }
-      }
+      ]
     },
     {
       "Name": "Setup Brakes",
@@ -558,8 +406,7 @@
       "Tooltip": "Brake adjustments (ABS, brake bias, peak bias, engine braking)",
       "PropertyInspectorPath": "ui/setup-brakes.html",
       "Controllers": [
-        "Keypad",
-        "Knob"
+        "Keypad"
       ],
       "States": [
         {
@@ -567,14 +414,7 @@
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ],
-      "Knob": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Rotate": "Increase/Decrease brake setting",
-          "Push": "Activate brake adjustment"
-        }
-      }
+      ]
     },
     {
       "Name": "Setup Chassis",
@@ -583,8 +423,7 @@
       "Tooltip": "Chassis adjustments (differential, ARB, springs, shocks, power steering)",
       "PropertyInspectorPath": "ui/setup-chassis.html",
       "Controllers": [
-        "Keypad",
-        "Knob"
+        "Keypad"
       ],
       "States": [
         {
@@ -592,14 +431,7 @@
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ],
-      "Knob": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Rotate": "Increase/Decrease chassis setting",
-          "Push": "Activate chassis adjustment"
-        }
-      }
+      ]
     },
     {
       "Name": "Setup Engine",
@@ -608,8 +440,7 @@
       "Tooltip": "Engine adjustments (power, throttle shaping, boost, launch RPM)",
       "PropertyInspectorPath": "ui/setup-engine.html",
       "Controllers": [
-        "Keypad",
-        "Knob"
+        "Keypad"
       ],
       "States": [
         {
@@ -617,14 +448,7 @@
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ],
-      "Knob": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Rotate": "Increase/Decrease engine setting",
-          "Push": "Activate engine adjustment"
-        }
-      }
+      ]
     },
     {
       "Name": "Setup Fuel",
@@ -633,8 +457,7 @@
       "Tooltip": "Fuel adjustments (mixture, fuel cut, low fuel, FCY mode)",
       "PropertyInspectorPath": "ui/setup-fuel.html",
       "Controllers": [
-        "Keypad",
-        "Knob"
+        "Keypad"
       ],
       "States": [
         {
@@ -642,14 +465,7 @@
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ],
-      "Knob": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Rotate": "Increase/Decrease fuel setting",
-          "Push": "Activate fuel adjustment"
-        }
-      }
+      ]
     },
     {
       "Name": "Setup Hybrid",
@@ -658,8 +474,7 @@
       "Tooltip": "Hybrid/ERS adjustments (MGU-K regen, deploy modes, HYS boost/regen)",
       "PropertyInspectorPath": "ui/setup-hybrid.html",
       "Controllers": [
-        "Keypad",
-        "Knob"
+        "Keypad"
       ],
       "States": [
         {
@@ -667,14 +482,7 @@
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ],
-      "Knob": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Rotate": "Increase/Decrease hybrid setting",
-          "Push": "Activate hybrid adjustment"
-        }
-      }
+      ]
     },
     {
       "Name": "Setup Traction",
@@ -683,8 +491,7 @@
       "Tooltip": "Traction control adjustments (TC Toggle, TC Slots 1-4)",
       "PropertyInspectorPath": "ui/setup-traction.html",
       "Controllers": [
-        "Keypad",
-        "Knob"
+        "Keypad"
       ],
       "States": [
         {
@@ -692,14 +499,7 @@
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ],
-      "Knob": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Rotate": "Increase/Decrease TC setting",
-          "Push": "Activate TC adjustment"
-        }
-      }
+      ]
     },
     {
       "Name": "Splits & Reference",
@@ -708,8 +508,7 @@
       "Tooltip": "Cycle splits delta display modes or toggle reference car",
       "PropertyInspectorPath": "ui/splits-delta-cycle.html",
       "Controllers": [
-        "Keypad",
-        "Knob"
+        "Keypad"
       ],
       "States": [
         {
@@ -717,14 +516,7 @@
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ],
-      "Knob": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Rotate": "Next/Previous splits delta",
-          "Push": "Toggle reference car"
-        }
-      }
+      ]
     },
     {
       "Name": "Telemetry Control",
@@ -733,8 +525,7 @@
       "Tooltip": "Telemetry logging and recording controls",
       "PropertyInspectorPath": "ui/telemetry-control.html",
       "Controllers": [
-        "Keypad",
-        "Knob"
+        "Keypad"
       ],
       "States": [
         {
@@ -742,13 +533,7 @@
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ],
-      "Knob": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Push": "Activate telemetry action"
-        }
-      }
+      ]
     },
     {
       "Name": "Telemetry Display",
@@ -775,8 +560,7 @@
       "Tooltip": "Tire management for pit stops (toggle tires, change compound, clear)",
       "PropertyInspectorPath": "ui/tire-service.html",
       "Controllers": [
-        "Keypad",
-        "Knob"
+        "Keypad"
       ],
       "States": [
         {
@@ -784,13 +568,7 @@
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ],
-      "Knob": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Push": "Activate tire action"
-        }
-      }
+      ]
     },
     {
       "Name": "Toggle UI Elements",
@@ -799,8 +577,7 @@
       "Tooltip": "Toggle iRacing UI elements on or off",
       "PropertyInspectorPath": "ui/toggle-ui-elements.html",
       "Controllers": [
-        "Keypad",
-        "Knob"
+        "Keypad"
       ],
       "States": [
         {
@@ -808,13 +585,7 @@
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ],
-      "Knob": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Push": "Toggle UI element"
-        }
-      }
+      ]
     },
     {
       "Name": "View Adjustment",
@@ -823,8 +594,7 @@
       "Tooltip": "Adjust camera and view settings (FOV, horizon, driver height, VR recenter, UI size)",
       "PropertyInspectorPath": "ui/view-adjustment.html",
       "Controllers": [
-        "Keypad",
-        "Knob"
+        "Keypad"
       ],
       "States": [
         {
@@ -832,14 +602,7 @@
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ],
-      "Knob": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Rotate": "Increase/Decrease adjustment",
-          "Push": "Activate adjustment"
-        }
-      }
+      ]
     }
   ],
   "Category": "iRaceDeck",
