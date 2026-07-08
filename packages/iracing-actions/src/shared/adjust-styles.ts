@@ -238,12 +238,20 @@ const PILL_BORDER_SOURCE = `<svg><desc>{"colors":{},"border":{"enabled":false,"g
 
 const GLYPH: Record<"increase" | "decrease", string> = { increase: "+", decrease: "−" };
 
+/**
+ * Converts a visual-center y to a text baseline y. Qt's SVG renderer (Stream
+ * Deck / Mirabox / Ulanzi hosts) ignores `dominant-baseline`, so centering is
+ * done by shifting the baseline down by half the cap height of Arial-bold
+ * digits (~0.72em tall → 0.36em).
+ */
+const TEXT_CENTER_BASELINE_FACTOR = 0.36;
+
 function valueText(value: string | null, x: number, y: number, size: number, fill: string): string {
-  return `<text x="${x}" y="${y}" text-anchor="middle" dominant-baseline="central" fill="${fill}" font-family="Arial, sans-serif" font-size="${size}" font-weight="bold">${value ?? NULL_VALUE}</text>`;
+  return `<text x="${x}" y="${y + Math.round(size * TEXT_CENTER_BASELINE_FACTOR)}" text-anchor="middle" fill="${fill}" font-family="Arial, sans-serif" font-size="${size}" font-weight="bold">${value ?? NULL_VALUE}</text>`;
 }
 
 function glyphText(direction: "increase" | "decrease", x: number, y: number, size: number, fill: string): string {
-  return `<text x="${x}" y="${y}" text-anchor="middle" dominant-baseline="central" fill="${fill}" font-family="Arial, sans-serif" font-size="${size}" font-weight="bold">${GLYPH[direction]}</text>`;
+  return `<text x="${x}" y="${y + Math.round(size * TEXT_CENTER_BASELINE_FACTOR)}" text-anchor="middle" fill="${fill}" font-family="Arial, sans-serif" font-size="${size}" font-weight="bold">${GLYPH[direction]}</text>`;
 }
 
 /** Double chevron: `primary` is the outermost/leading chevron, the second is drawn at 45% opacity. */

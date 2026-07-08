@@ -462,12 +462,15 @@ export function generateSetupViewSvg(inputs: SetupViewRenderInputs): string {
   const valueFontSize = String(def.valueFontSize ?? VIEW_VALUE_FONT_SIZE_DEFAULT);
   // Default title sits at the bottom (per TITLE_DEFAULTS); the value sits a bit
   // below center so it's well-separated from the title without hugging the top.
-  const valueY = "79";
+  // Qt's SVG renderer ignores `dominant-baseline`, so the visual-center y (79)
+  // is converted to a baseline y by shifting down ~0.36em (see adjust-styles.ts
+  // TEXT_CENTER_BASELINE_FACTOR for the same math).
+  const valueY = String(79 + Math.round(0.36 * Number(valueFontSize)));
 
   // When a required binding is missing (#612), draw the value via the warning
   // overlay slot — dimmed beneath the centered warning triangle — and blank the
   // template's own value slot so it isn't rendered twice at full opacity.
-  const valueText = `<text x="72" y="${valueY}" text-anchor="middle" dominant-baseline="central" fill="${colors.textColor}" font-family="Arial, sans-serif" font-size="${valueFontSize}" font-weight="bold">${value}</text>`;
+  const valueText = `<text x="72" y="${valueY}" text-anchor="middle" fill="${colors.textColor}" font-family="Arial, sans-serif" font-size="${valueFontSize}" font-weight="bold">${value}</text>`;
   const warningContent = inputs.bindingMissing ? applyBindingWarning(valueText) : "";
 
   const svg = renderIconTemplate(setupViewTemplate, {

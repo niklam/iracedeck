@@ -75,6 +75,7 @@ These features do not work on any target platform:
 | SVG animations (`animate`, `animateTransform`, `animateMotion`, `set`) | Static profile only |
 | External CSS stylesheets | No support |
 | ECMA scripts / DOM manipulation | No support |
+| `dominant-baseline` / `alignment-baseline` on `<text>` | Not in SVG Tiny 1.2; ignored by QT5 and QT6 — text anchors at the baseline. Center text by computing the baseline y (+0.36em for Arial-bold digits) instead. |
 
 ## Current Icon Feature Usage
 
