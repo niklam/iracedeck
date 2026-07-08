@@ -254,6 +254,31 @@ function chevrons(primary: string, secondary: string, stroke: string, width: num
   );
 }
 
+/**
+ * Pill frame path open toward the joined edge (the side opposite `position`),
+ * rounded on the closed corners. `yTop`/`yBot` bound the closed span: for
+ * `left`/`right` frames that span is the Y axis (the frame's height, open on
+ * the X axis out to 0/144); for `top`/`bottom` frames the same two numbers
+ * bound the X axis instead (the frame's width, open on the Y axis out to
+ * 0/144) — callers pass the fixed 14/130 margins for those two positions,
+ * matching the original hardcoded `d` strings exactly.
+ */
+function pillFramePath(position: "left" | "right" | "top" | "bottom", yTop: number, yBot: number): string {
+  const near = yTop + 20;
+  const far = yBot - 20;
+
+  switch (position) {
+    case "left":
+      return `M144 ${yTop} H34 Q14 ${yTop} 14 ${near} V${far} Q14 ${yBot} 34 ${yBot} H144`;
+    case "right":
+      return `M0 ${yTop} H110 Q130 ${yTop} 130 ${near} V${far} Q130 ${yBot} 110 ${yBot} H0`;
+    case "top":
+      return `M${yTop} 144 V${near} Q${yTop} 14 ${near} 14 H${far} Q${yBot} 14 ${yBot} ${near} V144`;
+    case "bottom":
+      return `M${yTop} 0 V${far} Q${yTop} 130 ${near} 130 H${far} Q${yBot} 130 ${yBot} ${far} V0`;
+  }
+}
+
 export function renderAdjustStyleSvg(inputs: AdjustStyleRenderInputs): string {
   const { style, direction } = inputs;
   const position = resolvePairPosition(inputs.pairPosition, direction);
@@ -399,60 +424,41 @@ function buildStyleArt(
       // With a visible bottom label (horizontal pair) the frame shortens to y 14..108;
       // without one it uses the equal-margin frame y 14..130.
       const yBot = labelShown && (position === "left" || position === "right") ? 108 : 130;
-      const yQ = yBot - 20;
+      const framePath = `<path d="${pillFramePath(position, 14, yBot)}" fill="none" stroke="${accent}" stroke-width="5"/>`;
 
       switch (position) {
         case "left":
           return (
-            `<path d="M144 14 H34 Q14 14 14 34 V${yQ} Q14 ${yBot} 34 ${yBot} H144" fill="none" stroke="${accent}" stroke-width="5"/>` +
+            framePath +
             glyphText(direction, 38, (14 + yBot) / 2, 38, accent) +
             valueText(value, 92, (14 + yBot) / 2, 34 + bump, textColor)
           );
         case "right":
           return (
-            `<path d="M0 14 H110 Q130 14 130 34 V${yQ} Q130 ${yBot} 110 ${yBot} H0" fill="none" stroke="${accent}" stroke-width="5"/>` +
+            framePath +
             valueText(value, 52, (14 + yBot) / 2, 34 + bump, textColor) +
             glyphText(direction, 106, (14 + yBot) / 2, 38, accent)
           );
         case "top":
-          return (
-            `<path d="M14 144 V34 Q14 14 34 14 H110 Q130 14 130 34 V144" fill="none" stroke="${accent}" stroke-width="5"/>` +
-            glyphText(direction, 72, 46, 38, accent) +
-            valueText(value, 72, 88, 34 + bump, textColor)
-          );
+          return framePath + glyphText(direction, 72, 46, 38, accent) + valueText(value, 72, 88, 34 + bump, textColor);
         case "bottom":
-          return (
-            `<path d="M14 0 V110 Q14 130 34 130 H110 Q130 130 130 110 V0" fill="none" stroke="${accent}" stroke-width="5"/>` +
-            valueText(value, 72, 58, 34 + bump, textColor) +
-            glyphText(direction, 72, 100, 38, accent)
-          );
+          return framePath + valueText(value, 72, 58, 34 + bump, textColor) + glyphText(direction, 72, 100, 38, accent);
       }
 
       break;
     }
 
     case "pill-end": {
+      const framePath = `<path d="${pillFramePath(position, 14, 130)}" fill="none" stroke="${accent}" stroke-width="5"/>`;
+
       switch (position) {
         case "left":
-          return (
-            `<path d="M144 14 H34 Q14 14 14 34 V110 Q14 130 34 130 H144" fill="none" stroke="${accent}" stroke-width="5"/>` +
-            glyphText(direction, 72, 72, 52, accent)
-          );
         case "right":
-          return (
-            `<path d="M0 14 H110 Q130 14 130 34 V110 Q130 130 110 130 H0" fill="none" stroke="${accent}" stroke-width="5"/>` +
-            glyphText(direction, 72, 72, 52, accent)
-          );
+          return framePath + glyphText(direction, 72, 72, 52, accent);
         case "top":
-          return (
-            `<path d="M14 144 V34 Q14 14 34 14 H110 Q130 14 130 34 V144" fill="none" stroke="${accent}" stroke-width="5"/>` +
-            glyphText(direction, 72, 80, 52, accent)
-          );
+          return framePath + glyphText(direction, 72, 80, 52, accent);
         case "bottom":
-          return (
-            `<path d="M14 0 V110 Q14 130 34 130 H110 Q130 130 130 110 V0" fill="none" stroke="${accent}" stroke-width="5"/>` +
-            glyphText(direction, 72, 64, 52, accent)
-          );
+          return framePath + glyphText(direction, 72, 64, 52, accent);
       }
 
       break;

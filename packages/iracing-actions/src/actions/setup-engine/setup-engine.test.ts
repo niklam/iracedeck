@@ -531,4 +531,42 @@ describe("SetupEngine", () => {
       expect(degraded.setting).toBe("engine-power"); // catch keeps the rest of the parse alive
     });
   });
+
+  describe("hold-to-repeat wiring", () => {
+    it("arms repeat for a paired-style key and fires repeatedly while held", async () => {
+      vi.useFakeTimers();
+      const action = new SetupEngine();
+      const ev = fakeEvent("action-1", { setting: "engine-power", direction: "increase", keyStyle: "split" });
+
+      await action.onKeyDown(ev as any);
+      expect(mockTapBinding).toHaveBeenCalledTimes(1); // immediate first step
+
+      await vi.advanceTimersByTimeAsync(500 + 150 * 3 + 20); // hold threshold + 3 intervals
+      expect(mockTapBinding.mock.calls.length).toBeGreaterThanOrEqual(3);
+
+      await action.onKeyUp(
+        fakeEvent("action-1", { setting: "engine-power", direction: "increase", keyStyle: "split" }) as any,
+      );
+      const after = mockTapBinding.mock.calls.length;
+
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(mockTapBinding.mock.calls.length).toBe(after); // stopped on release
+
+      vi.useRealTimers();
+    });
+
+    it("does not arm repeat for a legacy-style key", async () => {
+      vi.useFakeTimers();
+      const action = new SetupEngine();
+
+      await action.onKeyDown(
+        fakeEvent("action-1", { setting: "engine-power", direction: "increase", keyStyle: "legacy" }) as any,
+      );
+      await vi.advanceTimersByTimeAsync(2000);
+
+      expect(mockTapBinding).toHaveBeenCalledTimes(1);
+
+      vi.useRealTimers();
+    });
+  });
 });

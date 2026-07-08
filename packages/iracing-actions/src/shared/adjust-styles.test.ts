@@ -26,7 +26,6 @@ vi.mock("@iracedeck/deck-core", async (importOriginal) => {
     getGlobalColors: () => ({}),
     getGlobalTitleSettings: () => ({}),
     getGlobalBorderSettings: () => ({}),
-    getGlobalGraphicSettings: () => ({}),
   };
 });
 
