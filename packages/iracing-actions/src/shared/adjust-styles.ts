@@ -295,11 +295,10 @@ function pillFramePath(position: "left" | "right" | "top" | "bottom", yTop: numb
 /**
  * Whether a pill style's frame has a closed (stroked) edge at y=14 (`"top"`)
  * or y=130 (`"bottom"`) for the given position — the only edges a top- or
- * bottom-positioned title can cross. A bottom title crossing its edge gets a
- * stroke knockout (`pillTitleKnockout`); a top title crossing its edge is
- * instead shifted to sit inside the frame (`pillTopTitleShift`) — see the
- * "top-positioned label instead renders INSIDE the frame" comment in
- * `renderAdjustStyleSvg`. `joined-pill`/`pill-end` close every edge except
+ * bottom-positioned title can cross. Both get the same stroke knockout
+ * (`pillTitleKnockout`); a top title is additionally shifted UP onto its
+ * stroke (`pillTopTitleShift`) so it mirrors a bottom title exactly.
+ * `joined-pill`/`pill-end` close every edge except
  * the one facing `position` (open toward the partner, no stroke to cross
  * there) — so the edge OPPOSITE `position` is the one that's missing: a
  * `position: "top"` frame is open at the bottom (no y=130 stroke), a
@@ -336,53 +335,41 @@ function pillHasStroke(
  * knockout — see `pillTopTitleShift`.
  */
 function pillTitleKnockout(title: ResolvedTitleSettings, backgroundColor: string): string {
-  if (!title.showTitle || !title.titleText || title.position !== "bottom") return "";
+  if (!title.showTitle || !title.titleText || (title.position !== "bottom" && title.position !== "top")) return "";
 
   const svgFontSize = title.fontSize * 2;
   const lines = title.titleText.split("\n");
-  const lineHeight = svgFontSize * 1.2;
   const longestLineChars = Math.max(...lines.map((line) => line.length));
   const width = Math.min(96, longestLineChars * svgFontSize * 0.62 + 12);
   const height = svgFontSize + 8;
-  const yPositions = calculateYPositions(lines.length, svgFontSize, lineHeight, "bottom", 0);
-  const textY = yPositions[yPositions.length - 1];
+  // The stroke the title is carved into: a bottom title's last line lands on
+  // the y=130 stroke; a top title is shifted UP onto the y=14 stroke (see
+  // `pillTopTitleShift`) so top and bottom read identically ("— TC1 —").
+  const strokeY = title.position === "bottom" ? 130 : 14;
 
-  return `<rect x="${72 - width / 2}" y="${textY - height / 2}" width="${width}" height="${height}" fill="${backgroundColor}"/>`;
+  return `<rect x="${72 - width / 2}" y="${strokeY - height / 2}" width="${width}" height="${height}" fill="${backgroundColor}"/>`;
 }
 
 /**
- * Downward shift (dy) so a TOP-positioned title renders fully inside the
- * pill frame instead of crossing the y=14 stroke (a top-edge knockout looked
- * wrong on hardware — issue #810), computed as an exact vertical MIRROR of
- * the bottom-positioned title's inset from its edge (previously a heuristic
- * that didn't match, leaving the top title sitting at a different height
- * than the bottom one — hardware feedback: "top title is not equally high as
- * bottom title; bottom is better").
+ * Vertical shift (dy) that moves a TOP-positioned title onto the y=14 top
+ * stroke, so it carves a knockout gap there exactly mirroring a bottom title
+ * on the y=130 stroke ("— TC1 —" on both). Hardware feedback: a top title
+ * rendered inside the frame (no gap) "is not equally high as the bottom
+ * title; bottom is better" — so top and bottom now use the identical
+ * on-stroke knockout treatment.
  *
- * `generateTitleText`'s bottom position always anchors its LAST line at a
- * fixed y=130 regardless of line count or font size (see `pillTitleKnockout`)
- * — an inset of `144 - 130 = 14` from the bottom edge. The mirror target for
- * the top title's FIRST line (also anchored at a fixed y regardless of line
- * count — `svgFontSize + 8`) is therefore the same 14px inset from the TOP
- * edge. Compares that target against where `generateTitleText`'s own "top"
- * placement already puts the first line and shifts DOWN only far enough to
- * close the gap — clamped to 0 so it's never pushed back UP toward the
- * stroke (at the default 9pt title this is already 0: the native top
- * position already clears the mirror target unshifted).
+ * `generateTitleText`'s "top" placement anchors the FIRST line at `topYs[0]`
+ * (a fixed y regardless of line count); the bottom title's LAST line sits on
+ * y=130. Shifting the first line to y=14 makes the two insets from their
+ * edges equal (14 both). Negative result = shift UP onto the stroke.
  */
 function pillTopTitleShift(title: ResolvedTitleSettings): number {
   const svgFontSize = title.fontSize * 2;
   const lineHeight = svgFontSize * 1.2;
   const lines = title.titleText.split("\n");
-
-  const bottomYs = calculateYPositions(lines.length, svgFontSize, lineHeight, "bottom", 0);
-  const bottomTextY = bottomYs[bottomYs.length - 1];
-  const mirrorTargetY = 144 - bottomTextY;
-
   const topYs = calculateYPositions(lines.length, svgFontSize, lineHeight, "top", 0);
-  const topTextY = topYs[0];
 
-  return Math.max(0, mirrorTargetY - topTextY);
+  return 14 - topYs[0];
 }
 
 /**
@@ -440,21 +427,21 @@ export function renderAdjustStyleSvg(inputs: AdjustStyleRenderInputs): string {
 
   const inner = inputs.bindingMissing ? applyBindingWarning(art) : art;
 
-  // A bottom-positioned label carves a gap in the pill stroke it crosses
-  // instead of sitting outside/across the frame — emitted after the frame
-  // (part of `inner`) and before the title text so the text draws on top.
+  // A top- or bottom-positioned label carves a gap in the pill stroke it sits
+  // on ("— TC1 —") instead of a solid bar crossing behind it — emitted after
+  // the frame (part of `inner`) and before the title text so the text draws on
+  // top. A top title is additionally shifted UP onto its y=14 stroke so it
+  // mirrors a bottom title exactly.
+  const titleEdge = title.position === "top" ? "top" : title.position === "bottom" ? "bottom" : null;
   const knockout =
-    title.position === "bottom" && pillHasStroke(style, position, "bottom")
+    titleContent && titleEdge && pillHasStroke(style, position, titleEdge)
       ? pillTitleKnockout(title, colors.backgroundColor)
       : "";
 
-  // A top-positioned label instead renders INSIDE the frame: shifted down
-  // past the y=14 stroke rather than knocking a gap in it (a top-edge
-  // knockout looked wrong on hardware — issue #810).
   const topShiftDy =
     titleContent && title.position === "top" && pillHasStroke(style, position, "top") ? pillTopTitleShift(title) : 0;
   const shiftedTitleContent =
-    topShiftDy > 0 ? `<g transform="translate(0, ${topShiftDy})">${titleContent}</g>` : titleContent;
+    topShiftDy !== 0 ? `<g transform="translate(0, ${topShiftDy})">${titleContent}</g>` : titleContent;
 
   const svg = renderIconTemplate(adjustStyleTemplate, {
     backgroundColor: colors.backgroundColor,

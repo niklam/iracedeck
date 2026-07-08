@@ -294,13 +294,13 @@ describe("renderAdjustStyleSvg — pill family and no-value styles", () => {
     expect(bottom).toContain('x="72" y="104"'); // glyph: 90 + 14 = 104
   });
 
-  it("joined-pill top key defaults its title to the top position, rendered without a knockout — the mirror shift is 0 at the default font since the title already clears the stroke unshifted (#810 Fix 3)", () => {
+  it("joined-pill top key defaults its title to the top position, carved into the y=14 stroke with a knockout mirroring the bottom (#810)", () => {
     const svg = decode(renderAdjustStyleSvg({ ...BASE, style: "joined-pill", pairPosition: "top" }));
     const pathIndex = svg.indexOf("<path");
     const titleIndex = svg.indexOf(">BRAKE BIAS<");
 
-    expect(svg.indexOf("<rect", pathIndex)).toBe(-1); // no knockout — top titles never get one
-    expect(svg.indexOf('<g transform="translate(0,', pathIndex)).toBe(-1); // mirror shift is 0 at default font
+    expect(svg.indexOf("<rect", pathIndex)).toBeGreaterThan(pathIndex); // knockout gap on the top stroke
+    expect(svg).toContain('<g transform="translate(0, -12)"'); // title shifted up onto the y=14 stroke (14 - 26)
     expect(titleIndex).toBeGreaterThan(pathIndex);
   });
 
@@ -337,15 +337,15 @@ describe("renderAdjustStyleSvg — pill family and no-value styles", () => {
     expect(svg.slice(pathIndex).indexOf('<g transform="translate(0,')).toBe(-1);
   });
 
-  it("pill-middle-horizontal renders a top-positioned title without a knockout (always has both rails, #810); mirror shift is 0 at the default font", () => {
+  it("pill-middle-horizontal carves a top-positioned title into its top rail with a knockout (#810)", () => {
     const svg = decode(
       renderAdjustStyleSvg({ ...BASE, style: "pill-middle-horizontal", titleOverrides: { position: "top" } }),
     );
     const pathIndex = svg.indexOf("<path");
     const titleIndex = svg.indexOf(">BRAKE BIAS<");
 
-    expect(svg.indexOf("<rect", pathIndex)).toBe(-1);
-    expect(svg.indexOf('<g transform="translate(0,', pathIndex)).toBe(-1);
+    expect(svg.indexOf("<rect", pathIndex)).toBeGreaterThan(pathIndex); // knockout gap on the top rail
+    expect(svg).toContain('<g transform="translate(0, -12)"'); // title shifted up onto the y=14 rail
     expect(titleIndex).toBeGreaterThan(pathIndex);
   });
 
