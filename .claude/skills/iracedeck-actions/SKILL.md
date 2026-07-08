@@ -55,7 +55,7 @@ When asked about actions or controls:
 | View & Camera | 5 | 89 | FOV, replay, camera controls, broadcast tools |
 | Media | 1 | 7 | Video recording, screenshots, texture management |
 | Pit Service | 3 | 15 | Fuel (keypad modes + a Stream Deck+ dial surface, #759), tires, compounds, tearoff, fast repair |
-| Car Setup | 7 | 73 | Brakes (button and dial surface, #730/#775), chassis, aero, engine, fuel mix, hybrid/ERS, traction control — adjustment modes plus live-display "View …" sub-modes; each View sub-mode also supports dual-press (tap = configured direction, long-press = opposite) so one key both shows the value and adjusts it (#540) |
+| Car Setup | 7 | 73 | Brakes (button and dial surface, #730/#775), chassis, aero, engine, fuel mix, hybrid/ERS, traction control — adjustment modes plus live-display "View …" sub-modes; each View sub-mode also supports dual-press (tap = configured direction, long-press = opposite) so one key both shows the value and adjusts it (#540); adjustment/View modes with a live telemetry value can also render as paired +/− key styles (2-key and 3-key layouts, six selectable styles, hold-to-repeat) — Phase 1 covers these seven setup actions (#810) |
 | Communication | 2 | 35 | Chat, macros (15), whisper, toggle, reply, race admin commands, car selector |
 | Stream Deck | 1 | 1 | Switch Profile — switch to a bundled iRaceDeck profile or back to the previous one (Elgato-only, no iRacing command) |
 | **Total** | **32** | **299** | |
