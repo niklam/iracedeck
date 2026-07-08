@@ -227,12 +227,31 @@ describe("renderAdjustStyleSvg — value-showing styles", () => {
 });
 
 describe("renderAdjustStyleSvg — pill family and no-value styles", () => {
-  it("joined-pill draws a frame open toward the partner and no normal border", () => {
+  it("joined-pill draws a full-height frame open toward the partner and no normal border", () => {
     const left = decode(renderAdjustStyleSvg({ ...BASE, style: "joined-pill", direction: "decrease" }));
-    // decrease + auto → left key → frame open on the RIGHT edge (path starts and ends at x=144)
-    expect(left).toContain('d="M144 14 H34');
+    // decrease + auto → left key → frame open on the RIGHT edge, equal-margin frame y 14..130
+    // (no more label-driven shortening to y 14..108).
+    expect(left).toContain('d="M144 14 H34 Q14 14 14 34 V110 Q14 130 34 130 H144"');
     expect(left).toContain(">54.0</text>");
     expect(left).toContain(">−</text>");
+  });
+
+  it("joined-pill carves a background-fill knockout in the bottom stroke under a visible bottom label", () => {
+    const svg = decode(renderAdjustStyleSvg({ ...BASE, style: "joined-pill", direction: "decrease" }));
+    const pathIndex = svg.indexOf("<path");
+    const rectIndex = svg.indexOf("<rect", pathIndex);
+    const titleIndex = svg.indexOf(">BRAKE BIAS<");
+
+    expect(pathIndex).toBeGreaterThan(-1);
+    expect(rectIndex).toBeGreaterThan(pathIndex); // knockout emitted after the pill frame path
+    expect(titleIndex).toBeGreaterThan(rectIndex); // ...and before the title text draws on top of it
+  });
+
+  it("joined-pill omits the knockout for the top position, whose bottom edge is already open", () => {
+    const svg = decode(renderAdjustStyleSvg({ ...BASE, style: "joined-pill", pairPosition: "top" }));
+    const pathIndex = svg.indexOf("<path");
+
+    expect(svg.indexOf("<rect", pathIndex)).toBe(-1);
   });
 
   it("pill-end uses equal margins and a centered glyph, no value, no label", () => {
@@ -243,14 +262,46 @@ describe("renderAdjustStyleSvg — pill family and no-value styles", () => {
     expect(svg).not.toContain("BRAKE BIAS");
   });
 
-  it("pill-middle-horizontal draws both rails and centers value + label", () => {
+  it("pill-end applies the same bottom-edge knockout when a per-key title override enables a label", () => {
+    const svg = decode(
+      renderAdjustStyleSvg({ ...BASE, style: "pill-end", titleOverrides: { showTitle: true, titleText: "STOP" } }),
+    );
+    const pathIndex = svg.indexOf("<path");
+    const rectIndex = svg.indexOf("<rect", pathIndex);
+    const titleIndex = svg.indexOf(">STOP<");
+
+    expect(rectIndex).toBeGreaterThan(pathIndex);
+    expect(titleIndex).toBeGreaterThan(rectIndex);
+  });
+
+  it("pill-middle-horizontal draws both rails and centers value (View-native size) + the standard bottom title", () => {
     const svg = decode(renderAdjustStyleSvg({ ...BASE, style: "pill-middle-horizontal" }));
     expect(svg).toContain('d="M0 14 H144 M0 130 H144"');
     expect(svg).toContain(">54.0</text>");
+    // No valueFontSize passed (not routed through renderPairedIconOrNull) → falls back
+    // to the View-native default of 36, not the old style-specific 42px bump.
+    expect(svg).toContain('font-size="36"');
     expect(svg).toContain("BRAKE BIAS");
   });
 
-  it("escapes user-supplied title text in the pill-middle label", () => {
+  it("pill-middle-horizontal carves a knockout for its always-present bottom rail under the standard title", () => {
+    const svg = decode(renderAdjustStyleSvg({ ...BASE, style: "pill-middle-horizontal" }));
+    const pathIndex = svg.indexOf("<path");
+    const rectIndex = svg.indexOf("<rect", pathIndex);
+    const titleIndex = svg.indexOf(">BRAKE BIAS<");
+
+    expect(rectIndex).toBeGreaterThan(pathIndex);
+    expect(titleIndex).toBeGreaterThan(rectIndex);
+  });
+
+  it("pill-middle-vertical needs no knockout (side rails only, no bottom rail)", () => {
+    const svg = decode(renderAdjustStyleSvg({ ...BASE, style: "pill-middle-vertical" }));
+    const pathIndex = svg.indexOf("<path");
+
+    expect(svg.indexOf("<rect", pathIndex)).toBe(-1);
+  });
+
+  it("escapes user-supplied title text flowing through the standard bottom title", () => {
     const svg = decode(
       renderAdjustStyleSvg({
         ...BASE,

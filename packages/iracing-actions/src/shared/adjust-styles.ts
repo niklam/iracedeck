@@ -13,8 +13,8 @@
 import {
   applyBindingWarning,
   type BorderOverrides,
+  calculateYPositions,
   type ColorSlots,
-  escapeXml,
   generateBorderParts,
   generateTitleText,
   getGlobalBorderSettings,
@@ -22,6 +22,7 @@ import {
   getGlobalTitleSettings,
   renderIconTemplate,
   resolveBorderSettings,
+  type ResolvedTitleSettings,
   resolveIconColors,
   resolveTitleSettings,
   svgToDataUri,
@@ -211,6 +212,13 @@ export interface AdjustStyleRenderInputs {
   readonly label: string;
   /** Bump value font size for short integer readouts (from VIEW_DEFS valueFontSize ≥ 40). */
   readonly shortValue?: boolean;
+  /**
+   * Explicit value font size (px) for pill-middle styles — the View's own size
+   * (`VIEW_DEFS[...].valueFontSize ?? 36`), rendered at the standard View
+   * center y=79. Replaces `shortValue`'s style-default-plus-bump scheme, which
+   * only applies to the other paired styles.
+   */
+  readonly valueFontSize?: number;
   /** Representative static icon of the owning action — supplies background/text palette. */
   readonly colorSourceSvg?: string;
   readonly colorOverrides?: ColorSlots;
@@ -287,6 +295,52 @@ function pillFramePath(position: "left" | "right" | "top" | "bottom", yTop: numb
   }
 }
 
+/**
+ * Whether a pill style's frame has a closed (stroked) bottom edge at y=130
+ * for the given position — the only edge a bottom-positioned label can carve
+ * a gap in. `joined-pill`/`pill-end` close every edge except the one facing
+ * `position: "top"` (open toward the bottom, no stroke to erase there).
+ * `pill-middle-horizontal` always draws both rails; `pill-middle-vertical`
+ * never has one (side rails only).
+ */
+function pillHasBottomStroke(style: AdjustKeyStyle, position: "left" | "right" | "top" | "bottom"): boolean {
+  switch (style) {
+    case "joined-pill":
+    case "pill-end":
+      return position !== "top";
+    case "pill-middle-horizontal":
+      return true;
+    default:
+      return false;
+  }
+}
+
+/**
+ * Erases the bottom pill stroke behind a bottom-positioned label so the
+ * frame reads as carved open around the text (e.g. "— TC1 —") instead of a
+ * solid bar crossing behind it. Sized to the longest title line and centered
+ * on the same y the title's last line actually lands on — `generateTitleText`
+ * anchors the bottom position's last line at a fixed y=130 regardless of line
+ * count, so the gap always hugs the stroke it needs to erase. No-op unless
+ * the resolved title is shown at the bottom position with non-empty text —
+ * callers must additionally gate on `pillHasBottomStroke` for styles/positions
+ * whose frame has no bottom edge to begin with.
+ */
+function pillBottomKnockout(title: ResolvedTitleSettings, backgroundColor: string): string {
+  if (!title.showTitle || !title.titleText || title.position !== "bottom") return "";
+
+  const svgFontSize = title.fontSize * 2;
+  const lines = title.titleText.split("\n");
+  const lineHeight = svgFontSize * 1.2;
+  const longestLineChars = Math.max(...lines.map((line) => line.length));
+  const width = Math.min(96, longestLineChars * svgFontSize * 0.62 + 12);
+  const height = svgFontSize + 8;
+  const yPositions = calculateYPositions(lines.length, svgFontSize, lineHeight, "bottom", 0);
+  const textY = yPositions[yPositions.length - 1];
+
+  return `<rect x="${72 - width / 2}" y="${textY - height / 2}" width="${width}" height="${height}" fill="${backgroundColor}"/>`;
+}
+
 export function renderAdjustStyleSvg(inputs: AdjustStyleRenderInputs): string {
   const { style, direction } = inputs;
   const position = resolvePairPosition(inputs.pairPosition, direction);
@@ -319,14 +373,6 @@ export function renderAdjustStyleSvg(inputs: AdjustStyleRenderInputs): string {
       })
     : "";
 
-  // Pill-middle labels live INSIDE the pill at a fixed spot; suppress the
-  // standard positioned title and draw the label directly (text/bold/size/show
-  // overrides still apply; position/customPosition are style-fixed).
-  const pillMiddleLabel =
-    isPillMiddleStyle(style) && title.showTitle
-      ? `<text x="72" y="${style === "pill-middle-horizontal" ? 108 : 102}" text-anchor="middle" fill="${colors.textColor}" font-family="Arial, sans-serif" font-size="14" font-weight="${title.bold ? "bold" : "normal"}">${escapeXml(title.titleText)}</text>`
-      : "";
-
   const borderSource = isPillStyle(style) ? PILL_BORDER_SOURCE : styleSource;
   const border = resolveBorderSettings(borderSource, getGlobalBorderSettings(), inputs.borderOverrides);
   const borderSvg = generateBorderParts(border);
@@ -336,11 +382,16 @@ export function renderAdjustStyleSvg(inputs: AdjustStyleRenderInputs): string {
 
   const inner = inputs.bindingMissing ? applyBindingWarning(art) : art;
 
+  // A bottom-positioned label carves a gap in the pill's bottom stroke
+  // instead of sitting outside/below the frame — emitted after the frame
+  // (part of `inner`) and before the title text so the text draws on top.
+  const knockout = pillHasBottomStroke(style, position) ? pillBottomKnockout(title, colors.backgroundColor) : "";
+
   const svg = renderIconTemplate(adjustStyleTemplate, {
     backgroundColor: colors.backgroundColor,
     borderDefs: borderSvg.defs,
     borderContent: borderSvg.rects,
-    content: inner + (isPillMiddleStyle(style) ? pillMiddleLabel : titleContent),
+    content: inner + knockout + titleContent,
   });
 
   return svgToDataUri(svg);
@@ -428,25 +479,17 @@ function buildStyleArt(
     }
 
     case "joined-pill": {
-      // Frame open toward the partner (the JOINED edge is the opposite of `position`).
-      // With a visible bottom label (horizontal pair) the frame shortens to y 14..108;
-      // without one it uses the equal-margin frame y 14..130.
-      const yBot = labelShown && (position === "left" || position === "right") ? 108 : 130;
-      const framePath = `<path d="${pillFramePath(position, 14, yBot)}" fill="none" stroke="${accent}" stroke-width="5"/>`;
+      // Frame open toward the partner (the JOINED edge is the opposite of
+      // `position`) and always full-height (equal margins, y 14..130) — a
+      // visible bottom label carves its own gap in the stroke via the
+      // caller's knockout rect rather than shortening the frame.
+      const framePath = `<path d="${pillFramePath(position, 14, 130)}" fill="none" stroke="${accent}" stroke-width="5"/>`;
 
       switch (position) {
         case "left":
-          return (
-            framePath +
-            glyphText(direction, 38, (14 + yBot) / 2, 38, accent) +
-            valueText(value, 92, (14 + yBot) / 2, 34 + bump, textColor)
-          );
+          return framePath + glyphText(direction, 38, 72, 38, accent) + valueText(value, 92, 72, 34 + bump, textColor);
         case "right":
-          return (
-            framePath +
-            valueText(value, 52, (14 + yBot) / 2, 34 + bump, textColor) +
-            glyphText(direction, 106, (14 + yBot) / 2, 38, accent)
-          );
+          return framePath + valueText(value, 52, 72, 34 + bump, textColor) + glyphText(direction, 106, 72, 38, accent);
         case "top":
           return framePath + glyphText(direction, 72, 46, 38, accent) + valueText(value, 72, 88, 34 + bump, textColor);
         case "bottom":
@@ -472,16 +515,20 @@ function buildStyleArt(
       break;
     }
 
+    // Normal View-key layout: value at the View's own font size (no shortValue
+    // bump — see AdjustStyleRenderInputs.valueFontSize), centered at the
+    // standard View y=79. The title (rendered by the caller) is the normal
+    // bottom-position title, not a style-specific label.
     case "pill-middle-horizontal":
       return (
         `<path d="M0 14 H144 M0 130 H144" fill="none" stroke="${accent}" stroke-width="5"/>` +
-        valueText(value, 72, 62, 42 + bump, textColor)
+        valueText(value, 72, 79, inputs.valueFontSize ?? 36, textColor)
       );
 
     case "pill-middle-vertical":
       return (
         `<path d="M14 0 V144 M130 0 V144" fill="none" stroke="${accent}" stroke-width="5"/>` +
-        valueText(value, 72, 58, 38 + bump, textColor)
+        valueText(value, 72, 79, inputs.valueFontSize ?? 36, textColor)
       );
   }
 
@@ -523,7 +570,7 @@ export function renderPairedIconOrNull(opts: PairedIconOptions): string | null {
       pairPosition: opts.pairPosition,
       value: stripUnit(formatViewValue(setting, opts.telemetry)),
       label: def.label,
-      shortValue: (def.valueFontSize ?? 36) >= 40,
+      valueFontSize: def.valueFontSize ?? 36,
       colorSourceSvg: opts.colorSourceSvg,
       colorOverrides: opts.colorOverrides,
       titleOverrides: opts.titleOverrides,
