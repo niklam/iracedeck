@@ -6,45 +6,110 @@
 	<body>
 		<%- include('section-header', { title: 'Action Settings' }) %>
 
-		<sdpi-item label="Setting">
-			<sdpi-select id="setting-select" setting="setting" default="front-wing">
-				<optgroup label="Adjust">
-					<option value="front-wing">Front Wing</option>
-					<option value="qualifying-tape">Qualifying Tape</option>
-					<option value="rear-wing">Rear Wing</option>
-					<option value="rf-brake-attached">RF Brake Attached</option>
-				</optgroup>
-				<optgroup label="Display value">
-					<option value="view-front-wing">View Front Wing</option>
-					<option value="view-rear-wing">View Rear Wing</option>
-				</optgroup>
-			</sdpi-select>
-		</sdpi-item>
-
 		<% var __comms = require('./data/action-comms.json')['setup-aero']; %>
-		<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
+		<% var __dialComms = require('./data/action-comms.json')['setup-aero-dial']; %>
 
-		<sdpi-item label="Direction" id="direction-item">
-			<sdpi-select setting="direction" default="increase">
-				<option value="increase">Increase</option>
-				<option value="decrease">Decrease</option>
-			</sdpi-select>
-		</sdpi-item>
+		<!-- Keypad settings — hidden when this instance is a dial (#799). -->
+		<div id="keypad-settings">
+			<sdpi-item label="Setting">
+				<sdpi-select id="setting-select" setting="setting" default="front-wing">
+					<optgroup label="Adjust">
+						<option value="front-wing">Front Wing</option>
+						<option value="qualifying-tape">Qualifying Tape</option>
+						<option value="rear-wing">Rear Wing</option>
+						<option value="rf-brake-attached">RF Brake Attached</option>
+					</optgroup>
+					<optgroup label="Display value">
+						<option value="view-front-wing">View Front Wing</option>
+						<option value="view-rear-wing">View Rear Wing</option>
+					</optgroup>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
 
-		<%- include('dual-press-overrides') %>
+			<sdpi-item label="Direction" id="direction-item">
+				<sdpi-select setting="direction" default="increase">
+					<option value="increase">Increase</option>
+					<option value="decrease">Decrease</option>
+				</sdpi-select>
+			</sdpi-item>
 
-		<%- include('adjust-style', {
-			modeSelectId: 'setting-select',
-			pairedModes: ['front-wing', 'rear-wing'],
-			viewModes: ['view-front-wing', 'view-rear-wing']
-		}) %>
+			<%- include('dual-press-overrides') %>
 
-		<%- include('title-overrides') %>
+			<%- include('adjust-style', {
+				modeSelectId: 'setting-select',
+				pairedModes: ['front-wing', 'rear-wing'],
+				viewModes: ['view-front-wing', 'view-rear-wing']
+			}) %>
+		</div>
 
-		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/icon-defaults.json')['setup-aero'] }) %>
-		<%- include('border-overrides', { defaults: require('./data/icon-defaults.json')['setup-aero'] }) %>
-		<%- include('graphic-overrides') %>
-		<%- include('common-settings') %>
+		<!-- Dial settings — shown only when this instance is a dial (#799). -->
+		<div id="dial-settings" class="hidden">
+			<sdpi-item label="Setting">
+				<sdpi-select setting="dial.setting" default="front-wing">
+					<option value="front-wing">Front Wing</option>
+					<option value="rear-wing">Rear Wing</option>
+					<option value="qualifying-tape">Qualifying Tape</option>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="dial.setting" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+			<% if (locals.platform?.features?.dialFeedback !== false) { %>
+			<div class="ird-supporting-text">
+				Turn the dial to adjust the selected aero setting; the touch strip shows its
+				live value. Qualifying Tape has no telemetry, so its strip shows the label
+				only. Both the increase and decrease key bindings must be set below.
+			</div>
+			<% } else { %>
+			<div class="ird-supporting-text">
+				Turn the knob to adjust the selected aero setting. Both the increase and
+				decrease key bindings must be set below.
+			</div>
+			<% } %>
+
+			<sdpi-item label="Press Action">
+				<sdpi-select setting="dial.pressAction" default="none">
+					<option value="none">None</option>
+					<option value="toggle-rf-brake">Toggle RF Brake</option>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="dial.pressAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+
+			<sdpi-item label="Long Press">
+				<sdpi-select setting="dial.longPressAction" default="none">
+					<option value="none">None</option>
+					<option value="toggle-rf-brake">Toggle RF Brake</option>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="dial.longPressAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+
+			<% if (locals.platform?.features?.dialFeedback !== false) { %>
+			<sdpi-item label="Tap Display">
+				<sdpi-select setting="dial.tapAction" default="none">
+					<option value="none">None</option>
+					<option value="toggle-rf-brake">Toggle RF Brake</option>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="dial.tapAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+
+			<sdpi-item label="Long Touch">
+				<sdpi-select setting="dial.longTouchAction" default="none">
+					<option value="none">None</option>
+					<option value="toggle-rf-brake">Toggle RF Brake</option>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="dial.longTouchAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+			<% } %>
+		</div>
+
+		<!-- Key-icon appearance — keypad only (a dial has no key icon). -->
+		<div id="keypad-appearance">
+			<%- include('title-overrides') %>
+
+			<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/icon-defaults.json')['setup-aero'] }) %>
+			<%- include('border-overrides', { defaults: require('./data/icon-defaults.json')['setup-aero'] }) %>
+			<%- include('graphic-overrides') %>
+			<%- include('common-settings') %>
+		</div>
 
 		<%- include('section-header', { title: 'Global Settings' }) %>
 
@@ -52,16 +117,21 @@
 			keyBindings: require('./data/key-bindings.json').setupAero
 		}) %>
 
-		<%- include('global-title-defaults') %>
-		<%- include('global-color-defaults') %>
-		<%- include('global-border-defaults') %>
-		<%- include('global-graphic-defaults') %>
-		<%- include('global-flag-flash') %>
+		<div id="keypad-global-appearance">
+			<%- include('global-title-defaults') %>
+			<%- include('global-color-defaults') %>
+			<%- include('global-border-defaults') %>
+			<%- include('global-graphic-defaults') %>
+			<%- include('global-flag-flash') %>
+		</div>
+
 		<%- include('global-common-settings') %>
 
 		<script>
-			// RF Brake Attached is non-directional; View sub-modes are read-only displays —
-			// both hide Direction. View sub-modes additionally show the dual-press opt-in.
+			// RF Brake Attached is non-directional; View sub-modes are read-only displays — both hide Direction.
+			// View sub-modes additionally show the dual-press opt-in.
+			const NON_DIRECTIONAL = new Set(["rf-brake-attached"]);
+
 			function isViewSetting(setting) {
 				return typeof setting === "string" && setting.startsWith("view-");
 			}
@@ -71,9 +141,31 @@
 				const dualEnabledItem = document.getElementById("dual-press-enabled-item");
 
 				const view = isViewSetting(setting);
-				const hideDirection = setting === "rf-brake-attached" || view;
+				const hideDirection = NON_DIRECTIONAL.has(setting) || view;
 				directionItem?.classList.toggle("hidden", hideDirection);
 				dualEnabledItem?.classList.toggle("hidden", !view);
+			}
+
+			// Which surface this instance sits on: the PI registration's
+			// actionInfo.payload.controller ("Keypad" | "Encoder"; the Mirabox host
+			// may report "Knob"). Anything unknown or unavailable falls back to the
+			// keypad view (#799).
+			async function resolveController() {
+				try {
+					const client = window.SDPIComponents && window.SDPIComponents.streamDeckClient;
+					const info = client && (await client.getConnectionInfo());
+					const controller = info && info.actionInfo && info.actionInfo.payload && info.actionInfo.payload.controller;
+					return controller === "Encoder" || controller === "Knob" ? "Encoder" : "Keypad";
+				} catch (err) {
+					return "Keypad";
+				}
+			}
+
+			function applyDialView() {
+				document.getElementById("keypad-settings")?.classList.add("hidden");
+				document.getElementById("keypad-appearance")?.classList.add("hidden");
+				document.getElementById("keypad-global-appearance")?.classList.add("hidden");
+				document.getElementById("dial-settings")?.classList.remove("hidden");
 			}
 
 			async function initialize() {
@@ -97,6 +189,10 @@
 							updateVisibility(currentValue);
 						}
 					}, 100);
+				}
+
+				if ((await resolveController()) === "Encoder") {
+					applyDialView();
 				}
 			}
 

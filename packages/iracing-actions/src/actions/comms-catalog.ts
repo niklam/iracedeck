@@ -331,6 +331,16 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     "rf-brake-attached": keybind("setupAeroRfBrakeAttached"),
   }),
 
+  // The dial surface of the merged Setup Aero action (#799). qualifying-tape
+  // rotates too (its strip is label-only — iRacing exposes no tape value); the
+  // press gesture can toggle the RF brake ducts.
+  "setup-aero-dial": entry("dial.setting", {
+    "front-wing": pair("setupAeroFrontWingIncrease", "setupAeroFrontWingDecrease"),
+    "rear-wing": pair("setupAeroRearWingIncrease", "setupAeroRearWingDecrease"),
+    "qualifying-tape": pair("setupAeroQualifyingTapeIncrease", "setupAeroQualifyingTapeDecrease"),
+    "toggle-rf-brake": keybind("setupAeroRfBrakeAttached"),
+  }),
+
   "setup-brakes": entry("setting", {
     "view-brake-bias": pair("setupBrakesBrakeBiasIncrease", "setupBrakesBrakeBiasDecrease"),
     "view-brake-bias-fine": pair("setupBrakesBrakeBiasFineIncrease", "setupBrakesBrakeBiasFineDecrease"),

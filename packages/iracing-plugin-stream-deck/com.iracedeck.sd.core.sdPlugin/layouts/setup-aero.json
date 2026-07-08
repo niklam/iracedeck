@@ -1,0 +1,16 @@
+{
+  "$schema": "https://schemas.elgato.com/streamdeck/plugins/layout.json",
+  "id": "setup-aero",
+  "items": [
+    {
+      "key": "box",
+      "type": "pixmap",
+      "rect": [
+        0,
+        0,
+        200,
+        100
+      ]
+    }
+  ]
+}

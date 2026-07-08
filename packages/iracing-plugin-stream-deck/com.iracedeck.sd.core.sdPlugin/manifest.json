@@ -408,8 +408,18 @@
       "Tooltip": "Aerodynamic adjustments (front wing, rear wing, qualifying tape, RF brake)",
       "PropertyInspectorPath": "ui/setup-aero.html",
       "Controllers": [
-        "Keypad"
+        "Keypad",
+        "Encoder"
       ],
+      "Encoder": {
+        "Icon": "imgs/actions/setup-aero/dial",
+        "layout": "layouts/setup-aero.json",
+        "TriggerDescription": {
+          "Rotate": "Adjust the selected aero setting",
+          "Push": "Configured action",
+          "Touch": "Configured action"
+        }
+      },
       "States": [
         {
           "Image": "imgs/actions/setup-aero/key",
