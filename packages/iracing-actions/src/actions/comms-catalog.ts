@@ -409,6 +409,15 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     "fcy-mode-toggle": keybind("setupFuelFcyModeToggle"),
   }),
 
+  // The dial surface of the merged Setup Fuel action (#797). Rotation adjusts the
+  // in-car fuel mixture / cut (distinct from the Fuel Service pit-fuel dial, #759);
+  // the press gesture can toggle FCY mode.
+  "setup-fuel-dial": entry("dial.setting", {
+    "fuel-mixture": pair("setupFuelFuelMixtureIncrease", "setupFuelFuelMixtureDecrease"),
+    "fuel-cut-position": pair("setupFuelFuelCutPositionIncrease", "setupFuelFuelCutPositionDecrease"),
+    "toggle-fcy": keybind("setupFuelFcyModeToggle"),
+  }),
+
   "setup-hybrid": entry("setting", {
     "view-mguk-deploy-mode": pair("setupHybridMgukDeployModeIncrease", "setupHybridMgukDeployModeDecrease"),
     "view-mguk-regen-gain": pair("setupHybridMgukRegenGainIncrease", "setupHybridMgukRegenGainDecrease"),

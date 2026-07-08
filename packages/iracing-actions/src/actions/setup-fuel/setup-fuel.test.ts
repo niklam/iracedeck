@@ -123,6 +123,20 @@ vi.mock("@iracedeck/deck-core", async () => {
       customPosition: 0,
     })),
     applyBindingWarning: vi.fn((content: string) => `${content}<warn/>`),
+    // Dial-surface deck-core exports (#797) — onGlobalSettingsChange runs at
+    // construction; the rest only on dial flows (keypad tests never hit them).
+    onGlobalSettingsChange: vi.fn(() => vi.fn()),
+    classifyDialRelease: (args: {
+      pressStartMs: number;
+      nowMs: number;
+      rotatedWhilePressed: boolean;
+      thresholdMs?: number;
+    }) => {
+      if (args.rotatedWhilePressed) return "push-turn";
+
+      return args.nowMs - args.pressStartMs >= (args.thresholdMs ?? 500) ? "long" : "short";
+    },
+    escapeXml: (str: string) => str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"),
     assembleIcon: vi.fn(
       ({
         graphicSvg,
@@ -148,14 +162,6 @@ function fakeEvent(actionId: string, settings: Record<string, unknown> = {}) {
   return {
     action: { id: actionId, isKey: () => true, isDial: () => false, setTitle: vi.fn(), setImage: vi.fn() },
     payload: { settings },
-  };
-}
-
-/** Create a minimal fake dial rotate event. */
-function fakeDialRotateEvent(actionId: string, settings: Record<string, unknown>, ticks: number) {
-  return {
-    action: { id: actionId, setTitle: vi.fn(), setImage: vi.fn() },
-    payload: { settings, ticks },
   };
 }
 
@@ -418,12 +424,6 @@ describe("SetupFuel", () => {
       expect(mockTapBinding).toHaveBeenCalledWith("setupFuelFuelCutPositionDecrease");
     });
 
-    it("should call tapGlobalBinding on dialDown", async () => {
-      await action.onDialDown(fakeEvent("action-1", { setting: "disable-fuel-cut" }) as any);
-
-      expect(mockTapBinding).toHaveBeenCalledWith("setupFuelDisableFuelCut");
-    });
-
     it("should call tapGlobalBinding even when no key binding is configured", async () => {
       await action.onKeyDown(fakeEvent("action-1", { setting: "disable-fuel-cut" }) as any);
 
@@ -437,55 +437,8 @@ describe("SetupFuel", () => {
     });
   });
 
-  describe("encoder behavior", () => {
-    let action: SetupFuel;
-
-    beforeEach(() => {
-      action = new SetupFuel();
-    });
-
-    it("should call tapGlobalBinding for increase on clockwise rotation for directional controls", async () => {
-      await action.onDialRotate(
-        fakeDialRotateEvent("action-1", { setting: "fuel-mixture", direction: "increase" }, 1) as any,
-      );
-
-      expect(mockTapBinding).toHaveBeenCalledWith("setupFuelFuelMixtureIncrease");
-    });
-
-    it("should call tapGlobalBinding for decrease on counter-clockwise rotation for directional controls", async () => {
-      await action.onDialRotate(
-        fakeDialRotateEvent("action-1", { setting: "fuel-mixture", direction: "increase" }, -1) as any,
-      );
-
-      expect(mockTapBinding).toHaveBeenCalledWith("setupFuelFuelMixtureDecrease");
-    });
-
-    it("should call tapGlobalBinding for fuel-cut-position rotation", async () => {
-      await action.onDialRotate(
-        fakeDialRotateEvent("action-1", { setting: "fuel-cut-position", direction: "increase" }, 2) as any,
-      );
-
-      expect(mockTapBinding).toHaveBeenCalledWith("setupFuelFuelCutPositionIncrease");
-    });
-
-    it("should ignore rotation for non-directional controls (disable-fuel-cut)", async () => {
-      await action.onDialRotate(fakeDialRotateEvent("action-1", { setting: "disable-fuel-cut" }, 1) as any);
-
-      expect(mockTapBinding).not.toHaveBeenCalled();
-    });
-
-    it("should ignore rotation for non-directional controls (low-fuel-accept)", async () => {
-      await action.onDialRotate(fakeDialRotateEvent("action-1", { setting: "low-fuel-accept" }, 1) as any);
-
-      expect(mockTapBinding).not.toHaveBeenCalled();
-    });
-
-    it("should ignore rotation for non-directional controls (fcy-mode-toggle)", async () => {
-      await action.onDialRotate(fakeDialRotateEvent("action-1", { setting: "fcy-mode-toggle" }, -1) as any);
-
-      expect(mockTapBinding).not.toHaveBeenCalled();
-    });
-  });
+  // Dial-surface behavior is exercised by setup-fuel-dial-surface.test.ts (#797);
+  // the former "encoder behavior" block tested the pre-dial-surface coupling.
 
   describe("view sub-modes (issue #541)", () => {
     let action: SetupFuel;

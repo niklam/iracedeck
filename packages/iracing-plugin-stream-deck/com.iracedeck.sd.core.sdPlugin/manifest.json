@@ -486,8 +486,18 @@
       "Tooltip": "Fuel adjustments (mixture, fuel cut, low fuel, FCY mode)",
       "PropertyInspectorPath": "ui/setup-fuel.html",
       "Controllers": [
-        "Keypad"
+        "Keypad",
+        "Encoder"
       ],
+      "Encoder": {
+        "Icon": "imgs/actions/setup-fuel/dial",
+        "layout": "layouts/setup-fuel.json",
+        "TriggerDescription": {
+          "Rotate": "Adjust the selected fuel setting",
+          "Push": "Configured action",
+          "Touch": "Configured action"
+        }
+      },
       "States": [
         {
           "Image": "imgs/actions/setup-fuel/key",

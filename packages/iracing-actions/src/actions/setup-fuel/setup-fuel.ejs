@@ -6,46 +6,109 @@
 	<body>
 		<%- include('section-header', { title: 'Action Settings' }) %>
 
-		<sdpi-item label="Setting">
-			<sdpi-select id="setting-select" setting="setting" default="fuel-mixture">
-				<optgroup label="Adjust">
-					<option value="disable-fuel-cut">Disable Fuel Cut</option>
-					<option value="fcy-mode-toggle">FCY Mode Toggle</option>
-					<option value="fuel-cut-position">Fuel Cut Position</option>
-					<option value="fuel-mixture">Fuel Mixture</option>
-					<option value="low-fuel-accept">Low Fuel Accept</option>
-				</optgroup>
-				<optgroup label="Display value">
-					<option value="view-fuel-cut-position">View Fuel Cut Position</option>
-					<option value="view-fuel-mixture">View Fuel Mixture</option>
-				</optgroup>
-			</sdpi-select>
-		</sdpi-item>
-
 		<% var __comms = require('./data/action-comms.json')['setup-fuel']; %>
-		<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
+		<% var __dialComms = require('./data/action-comms.json')['setup-fuel-dial']; %>
 
-		<sdpi-item label="Direction" id="direction-item">
-			<sdpi-select setting="direction" default="increase">
-				<option value="increase">Increase</option>
-				<option value="decrease">Decrease</option>
-			</sdpi-select>
-		</sdpi-item>
+		<!-- Keypad settings — hidden when this instance is a dial (#797). -->
+		<div id="keypad-settings">
+			<sdpi-item label="Setting">
+				<sdpi-select id="setting-select" setting="setting" default="fuel-mixture">
+					<optgroup label="Adjust">
+						<option value="disable-fuel-cut">Disable Fuel Cut</option>
+						<option value="fcy-mode-toggle">FCY Mode Toggle</option>
+						<option value="fuel-cut-position">Fuel Cut Position</option>
+						<option value="fuel-mixture">Fuel Mixture</option>
+						<option value="low-fuel-accept">Low Fuel Accept</option>
+					</optgroup>
+					<optgroup label="Display value">
+						<option value="view-fuel-cut-position">View Fuel Cut Position</option>
+						<option value="view-fuel-mixture">View Fuel Mixture</option>
+					</optgroup>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
 
-		<%- include('dual-press-overrides') %>
+			<sdpi-item label="Direction" id="direction-item">
+				<sdpi-select setting="direction" default="increase">
+					<option value="increase">Increase</option>
+					<option value="decrease">Decrease</option>
+				</sdpi-select>
+			</sdpi-item>
 
-		<%- include('adjust-style', {
-			modeSelectId: 'setting-select',
-			pairedModes: ['fuel-mixture', 'fuel-cut-position'],
-			viewModes: ['view-fuel-mixture', 'view-fuel-cut-position']
-		}) %>
+			<%- include('dual-press-overrides') %>
 
-		<%- include('title-overrides') %>
+			<%- include('adjust-style', {
+				modeSelectId: 'setting-select',
+				pairedModes: ['fuel-mixture', 'fuel-cut-position'],
+				viewModes: ['view-fuel-mixture', 'view-fuel-cut-position']
+			}) %>
+		</div>
 
-		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/icon-defaults.json')['setup-fuel'] }) %>
-		<%- include('border-overrides', { defaults: require('./data/icon-defaults.json')['setup-fuel'] }) %>
-		<%- include('graphic-overrides') %>
-		<%- include('common-settings') %>
+		<!-- Dial settings — shown only when this instance is a dial (#797). -->
+		<div id="dial-settings" class="hidden">
+			<sdpi-item label="Setting">
+				<sdpi-select setting="dial.setting" default="fuel-mixture">
+					<option value="fuel-mixture">Fuel Mixture</option>
+					<option value="fuel-cut-position">Fuel Cut Position</option>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="dial.setting" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+			<% if (locals.platform?.features?.dialFeedback !== false) { %>
+			<div class="ird-supporting-text">
+				Turn the dial to adjust the selected fuel setting; the touch strip shows its
+				live value. Both the increase and decrease key bindings must be set below.
+			</div>
+			<% } else { %>
+			<div class="ird-supporting-text">
+				Turn the knob to adjust the selected fuel setting. Both the increase and
+				decrease key bindings must be set below.
+			</div>
+			<% } %>
+
+			<sdpi-item label="Press Action">
+				<sdpi-select setting="dial.pressAction" default="none">
+					<option value="none">None</option>
+					<option value="toggle-fcy">Toggle FCY Mode</option>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="dial.pressAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+
+			<sdpi-item label="Long Press">
+				<sdpi-select setting="dial.longPressAction" default="none">
+					<option value="none">None</option>
+					<option value="toggle-fcy">Toggle FCY Mode</option>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="dial.longPressAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+
+			<% if (locals.platform?.features?.dialFeedback !== false) { %>
+			<sdpi-item label="Tap Display">
+				<sdpi-select setting="dial.tapAction" default="none">
+					<option value="none">None</option>
+					<option value="toggle-fcy">Toggle FCY Mode</option>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="dial.tapAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+
+			<sdpi-item label="Long Touch">
+				<sdpi-select setting="dial.longTouchAction" default="none">
+					<option value="none">None</option>
+					<option value="toggle-fcy">Toggle FCY Mode</option>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="dial.longTouchAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+			<% } %>
+		</div>
+
+		<!-- Key-icon appearance — keypad only (a dial has no key icon). -->
+		<div id="keypad-appearance">
+			<%- include('title-overrides') %>
+
+			<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/icon-defaults.json')['setup-fuel'] }) %>
+			<%- include('border-overrides', { defaults: require('./data/icon-defaults.json')['setup-fuel'] }) %>
+			<%- include('graphic-overrides') %>
+			<%- include('common-settings') %>
+		</div>
 
 		<%- include('section-header', { title: 'Global Settings' }) %>
 
@@ -53,16 +116,19 @@
 			keyBindings: require('./data/key-bindings.json').setupFuel
 		}) %>
 
-		<%- include('global-title-defaults') %>
-		<%- include('global-color-defaults') %>
-		<%- include('global-border-defaults') %>
-		<%- include('global-graphic-defaults') %>
-		<%- include('global-flag-flash') %>
+		<div id="keypad-global-appearance">
+			<%- include('global-title-defaults') %>
+			<%- include('global-color-defaults') %>
+			<%- include('global-border-defaults') %>
+			<%- include('global-graphic-defaults') %>
+			<%- include('global-flag-flash') %>
+		</div>
+
 		<%- include('global-common-settings') %>
 
 		<script>
-			// Non-directional controls hide Direction; View sub-modes are read-only displays — they
-			// also hide Direction but show the dual-press opt-in instead.
+			// One-shot toggles are non-directional; View sub-modes are read-only displays — both hide Direction.
+			// View sub-modes show the dual-press opt-in.
 			const NON_DIRECTIONAL = new Set(["disable-fuel-cut", "low-fuel-accept", "fcy-mode-toggle"]);
 
 			function isViewSetting(setting) {
@@ -77,6 +143,28 @@
 				const hideDirection = NON_DIRECTIONAL.has(setting) || view;
 				directionItem?.classList.toggle("hidden", hideDirection);
 				dualEnabledItem?.classList.toggle("hidden", !view);
+			}
+
+			// Which surface this instance sits on: the PI registration's
+			// actionInfo.payload.controller ("Keypad" | "Encoder"; the Mirabox host
+			// may report "Knob"). Anything unknown or unavailable falls back to the
+			// keypad view (#797).
+			async function resolveController() {
+				try {
+					const client = window.SDPIComponents && window.SDPIComponents.streamDeckClient;
+					const info = client && (await client.getConnectionInfo());
+					const controller = info && info.actionInfo && info.actionInfo.payload && info.actionInfo.payload.controller;
+					return controller === "Encoder" || controller === "Knob" ? "Encoder" : "Keypad";
+				} catch (err) {
+					return "Keypad";
+				}
+			}
+
+			function applyDialView() {
+				document.getElementById("keypad-settings")?.classList.add("hidden");
+				document.getElementById("keypad-appearance")?.classList.add("hidden");
+				document.getElementById("keypad-global-appearance")?.classList.add("hidden");
+				document.getElementById("dial-settings")?.classList.remove("hidden");
 			}
 
 			async function initialize() {
@@ -100,6 +188,10 @@
 							updateVisibility(currentValue);
 						}
 					}, 100);
+				}
+
+				if ((await resolveController()) === "Encoder") {
+					applyDialView();
 				}
 			}
 
