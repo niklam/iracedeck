@@ -36,6 +36,12 @@
 
 		<%- include('dual-press-overrides') %>
 
+		<%- include('adjust-style', {
+			modeSelectId: 'setting-select',
+			pairedModes: ['tc-slot-1', 'tc-slot-2', 'tc-slot-3', 'tc-slot-4'],
+			viewModes: ['view-tc-slot-1', 'view-tc-slot-2', 'view-tc-slot-3', 'view-tc-slot-4']
+		}) %>
+
 		<%- include('title-overrides') %>
 
 		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/icon-defaults.json')['setup-traction'] }) %>
