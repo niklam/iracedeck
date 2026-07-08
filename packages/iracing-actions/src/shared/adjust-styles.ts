@@ -296,18 +296,26 @@ function pillFramePath(position: "left" | "right" | "top" | "bottom", yTop: numb
 }
 
 /**
- * Whether a pill style's frame has a closed (stroked) bottom edge at y=130
- * for the given position — the only edge a bottom-positioned label can carve
- * a gap in. `joined-pill`/`pill-end` close every edge except the one facing
- * `position: "top"` (open toward the bottom, no stroke to erase there).
- * `pill-middle-horizontal` always draws both rails; `pill-middle-vertical`
- * never has one (side rails only).
+ * Whether a pill style's frame has a closed (stroked) edge at y=14 (`"top"`)
+ * or y=130 (`"bottom"`) for the given position — the only edges a top- or
+ * bottom-positioned label can cross and therefore carve a gap in.
+ * `joined-pill`/`pill-end` close every edge except the one facing `position`
+ * (open toward the partner, no stroke to erase there) — so the edge OPPOSITE
+ * `position` is the one that's missing: a `position: "top"` frame is open at
+ * the bottom (no y=130 stroke), a `position: "bottom"` frame is open at the
+ * top (no y=14 stroke); `left`/`right` frames keep both. `pill-middle-horizontal`
+ * always draws both rails (top and bottom); `pill-middle-vertical` never has
+ * either (side rails only).
  */
-function pillHasBottomStroke(style: AdjustKeyStyle, position: "left" | "right" | "top" | "bottom"): boolean {
+function pillHasStroke(
+  style: AdjustKeyStyle,
+  position: "left" | "right" | "top" | "bottom",
+  edge: "top" | "bottom",
+): boolean {
   switch (style) {
     case "joined-pill":
     case "pill-end":
-      return position !== "top";
+      return position !== (edge === "bottom" ? "top" : "bottom");
     case "pill-middle-horizontal":
       return true;
     default:
@@ -316,18 +324,21 @@ function pillHasBottomStroke(style: AdjustKeyStyle, position: "left" | "right" |
 }
 
 /**
- * Erases the bottom pill stroke behind a bottom-positioned label so the
- * frame reads as carved open around the text (e.g. "— TC1 —") instead of a
- * solid bar crossing behind it. Sized to the longest title line and centered
- * on the same y the title's last line actually lands on — `generateTitleText`
- * anchors the bottom position's last line at a fixed y=130 regardless of line
- * count, so the gap always hugs the stroke it needs to erase. No-op unless
- * the resolved title is shown at the bottom position with non-empty text —
- * callers must additionally gate on `pillHasBottomStroke` for styles/positions
- * whose frame has no bottom edge to begin with.
+ * Erases the top or bottom pill stroke crossed by a top- or bottom-positioned
+ * label so the frame reads as carved open around the text (e.g. "— TC1 —")
+ * instead of a solid bar crossing behind it. Sized to the longest title line
+ * and centered on the same y the crossed line actually lands on —
+ * `generateTitleText` anchors the bottom position's LAST line at a fixed
+ * y=130 and the top position's FIRST line at a fixed y=(fontSize+8)
+ * regardless of line count, so the gap always hugs the stroke it needs to
+ * erase. No-op unless the resolved title is shown at the top/bottom position
+ * with non-empty text — callers must additionally gate on `pillHasStroke`
+ * for styles/positions whose frame has no stroke on that edge to begin with.
  */
-function pillBottomKnockout(title: ResolvedTitleSettings, backgroundColor: string): string {
-  if (!title.showTitle || !title.titleText || title.position !== "bottom") return "";
+function pillTitleKnockout(title: ResolvedTitleSettings, backgroundColor: string): string {
+  if (!title.showTitle || !title.titleText) return "";
+
+  if (title.position !== "top" && title.position !== "bottom") return "";
 
   const svgFontSize = title.fontSize * 2;
   const lines = title.titleText.split("\n");
@@ -335,10 +346,24 @@ function pillBottomKnockout(title: ResolvedTitleSettings, backgroundColor: strin
   const longestLineChars = Math.max(...lines.map((line) => line.length));
   const width = Math.min(96, longestLineChars * svgFontSize * 0.62 + 12);
   const height = svgFontSize + 8;
-  const yPositions = calculateYPositions(lines.length, svgFontSize, lineHeight, "bottom", 0);
-  const textY = yPositions[yPositions.length - 1];
+  const yPositions = calculateYPositions(lines.length, svgFontSize, lineHeight, title.position, 0);
+  const textY = title.position === "bottom" ? yPositions[yPositions.length - 1] : yPositions[0];
 
   return `<rect x="${72 - width / 2}" y="${textY - height / 2}" width="${width}" height="${height}" fill="${backgroundColor}"/>`;
+}
+
+/**
+ * Optical center for content sharing the key with the title, mirroring
+ * `assembleIcon`'s title-aware graphic area (a one-line bottom title leaves a
+ * content area whose center sits at ~y=60.5; mirrored to ~y=83.5 for top
+ * titles) — see `computeGraphicArea` in `packages/icon-composer/src/title-settings.ts`.
+ * Rounded to 60/84 here since paired-style art isn't scaled/fit like a
+ * template graphic, just recentered.
+ */
+function titleAwareCenterY(title: ResolvedTitleSettings): number {
+  if (!title.showTitle) return 72;
+
+  return title.position === "top" ? 84 : 60;
 }
 
 export function renderAdjustStyleSvg(inputs: AdjustStyleRenderInputs): string {
@@ -378,14 +403,18 @@ export function renderAdjustStyleSvg(inputs: AdjustStyleRenderInputs): string {
   const borderSvg = generateBorderParts(border);
 
   const bump = inputs.shortValue ? 8 : 0;
-  const art = buildStyleArt(inputs, position, colors.textColor, accent, bump, title.showTitle);
+  const art = buildStyleArt(inputs, position, colors.textColor, accent, bump, title);
 
   const inner = inputs.bindingMissing ? applyBindingWarning(art) : art;
 
-  // A bottom-positioned label carves a gap in the pill's bottom stroke
-  // instead of sitting outside/below the frame — emitted after the frame
-  // (part of `inner`) and before the title text so the text draws on top.
-  const knockout = pillHasBottomStroke(style, position) ? pillBottomKnockout(title, colors.backgroundColor) : "";
+  // A top- or bottom-positioned label carves a gap in the pill stroke it
+  // crosses instead of sitting outside/across the frame — emitted after the
+  // frame (part of `inner`) and before the title text so the text draws on top.
+  const knockoutEdge = title.position === "top" || title.position === "bottom" ? title.position : null;
+  const knockout =
+    knockoutEdge && pillHasStroke(style, position, knockoutEdge)
+      ? pillTitleKnockout(title, colors.backgroundColor)
+      : "";
 
   const svg = renderIconTemplate(adjustStyleTemplate, {
     backgroundColor: colors.backgroundColor,
@@ -404,14 +433,16 @@ function buildStyleArt(
   textColor: string,
   accent: string,
   bump: number,
-  labelShown: boolean,
+  title: ResolvedTitleSettings,
 ): string {
   const { style, direction, value } = inputs;
 
   switch (style) {
     case "corner-badge":
+      // Value re-centers with the title (badge stays anchored top-right —
+      // it never competes with a bottom/top title for space).
       return (
-        valueText(value, 72, 79, 44 + bump, textColor) +
+        valueText(value, 72, titleAwareCenterY(title), 44 + bump, textColor) +
         `<circle cx="119" cy="25" r="15" fill="${accent}"/>` +
         glyphText(direction, 119, 26, 26, "#2a2a2a")
       );
@@ -419,11 +450,15 @@ function buildStyleArt(
     case "split":
       return valueText(value, 72, 56, 38 + bump, textColor) + glyphText(direction, 72, 104, 62, accent);
 
-    case "ghost":
+    case "ghost": {
+      // Glyph and value must stay locked together — both re-center with the title.
+      const centerY = titleAwareCenterY(title);
+
       return (
-        `<g opacity="0.2">${glyphText(direction, 72, 70, 130, accent)}</g>` +
-        valueText(value, 72, 72, 44 + bump, textColor)
+        `<g opacity="0.2">${glyphText(direction, 72, centerY, 130, accent)}</g>` +
+        valueText(value, 72, centerY, 44 + bump, textColor)
       );
+    }
 
     case "edge-chevrons": {
       // Chevrons sit on the `position` edge and point in the TRUE direction of
@@ -435,7 +470,7 @@ function buildStyleArt(
         // Point direction: increase → right, decrease → left. Edge: `position`.
         const pointsRight = direction === "increase";
         const onLeftEdge = position === "left";
-        const art = pointsRight
+        const chevronArt = pointsRight
           ? onLeftEdge
             ? chevrons("14,52 30,72 14,92", "30,52 46,72 30,92", accent, 7)
             : chevrons("114,52 130,72 114,92", "98,52 114,72 98,92", accent, 7)
@@ -443,10 +478,17 @@ function buildStyleArt(
             ? chevrons("30,52 14,72 30,92", "46,52 30,72 46,92", accent, 7)
             : chevrons("130,52 114,72 130,92", "114,52 98,72 114,92", accent, 7);
         const valueX = onLeftEdge ? 88 : 56;
+        const art = chevronArt + valueText(value, valueX, 74, 38 + bump, textColor);
 
-        return art + valueText(value, valueX, 74, 38 + bump, textColor);
+        // Chevrons and value move TOGETHER — one translate keeps them locked.
+        const dy = titleAwareCenterY(title) - 72;
+
+        return dy === 0 ? art : `<g transform="translate(0, ${dy})">${art}</g>`;
       }
 
+      // Vertical pairs: chevrons stay ANCHORED to their edge (unchanged).
+      // Only the value re-centers, and by different constants per edge since
+      // the chevrons already claim half the key.
       const onTopEdge = position === "top";
       const pointsUp = direction === "increase";
       const art = onTopEdge
@@ -456,26 +498,35 @@ function buildStyleArt(
         : pointsUp
           ? chevrons("52,130 72,114 92,130", "52,114 72,98 92,114", accent, 7)
           : chevrons("52,114 72,130 92,114", "52,98 72,114 92,98", accent, 7);
-      const valueY = onTopEdge ? 84 : labelShown ? 62 : 60;
+      const valueY = onTopEdge ? (title.showTitle ? 80 : 88) : title.showTitle ? 62 : 60;
 
       return art + valueText(value, 72, valueY, 38 + bump, textColor);
     }
 
-    case "big-glyph":
-      return glyphText(direction, 72, 72, 96, accent);
+    case "big-glyph": {
+      // Hidden by default (title locked off) → unchanged center 72; a per-key
+      // override that shows a label re-centers the glyph with it.
+      const content = glyphText(direction, 72, 72, 96, accent);
+      const dy = titleAwareCenterY(title) - 72;
+
+      return dy === 0 ? content : `<g transform="translate(0, ${dy})">${content}</g>`;
+    }
 
     case "big-chevron": {
       const horizontal = position === "left" || position === "right";
-
-      if (horizontal) {
-        return direction === "increase"
+      const content = horizontal
+        ? direction === "increase"
           ? chevrons("68,36 104,72 68,108", "32,36 68,72 32,108", accent, 10)
-          : chevrons("76,36 40,72 76,108", "112,36 76,72 112,108", accent, 10);
-      }
+          : chevrons("76,36 40,72 76,108", "112,36 76,72 112,108", accent, 10)
+        : direction === "increase"
+          ? chevrons("36,76 72,40 108,76", "36,112 72,76 108,112", accent, 10)
+          : chevrons("36,68 72,104 108,68", "36,32 72,68 108,32", accent, 10);
 
-      return direction === "increase"
-        ? chevrons("36,76 72,40 108,76", "36,112 72,76 108,112", accent, 10)
-        : chevrons("36,68 72,104 108,68", "36,32 72,68 108,32", accent, 10);
+      // Hidden by default (title locked off) → unchanged center 72; a per-key
+      // override that shows a label re-centers the chevron with it.
+      const dy = titleAwareCenterY(title) - 72;
+
+      return dy === 0 ? content : `<g transform="translate(0, ${dy})">${content}</g>`;
     }
 
     case "joined-pill": {

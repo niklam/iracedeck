@@ -157,6 +157,24 @@ describe("renderAdjustStyleSvg — value-showing styles", () => {
     expect(svg).toContain(">+</text>");
   });
 
+  it("corner-badge value re-centers with the title (Fix 2): shown/bottom -> 60, hidden -> 72, top -> 84", () => {
+    // Baseline y = center + round(0.36 * fontSize); fontSize here is 44 (no shortValue bump).
+    const shown = decode(renderAdjustStyleSvg({ ...BASE, style: "corner-badge" }));
+    expect(shown).toContain('x="72" y="76"'); // center 60 -> 60 + round(0.36*44) = 76
+
+    const hidden = decode(
+      renderAdjustStyleSvg({ ...BASE, style: "corner-badge", titleOverrides: { showTitle: false } }),
+    );
+    expect(hidden).toContain('x="72" y="88"'); // center 72 -> 72 + 16 = 88
+
+    const top = decode(renderAdjustStyleSvg({ ...BASE, style: "corner-badge", titleOverrides: { position: "top" } }));
+    expect(top).toContain('x="72" y="100"'); // center 84 -> 84 + 16 = 100
+
+    // The badge circle never moves.
+    expect(shown).toContain('circle cx="119" cy="25"');
+    expect(hidden).toContain('circle cx="119" cy="25"');
+  });
+
   it("split renders label top, value middle, big glyph bottom; decrease shows a minus", () => {
     const svg = decode(renderAdjustStyleSvg({ ...BASE, style: "split", direction: "decrease" }));
     expect(svg).toContain(">54.0</text>");
@@ -167,6 +185,18 @@ describe("renderAdjustStyleSvg — value-showing styles", () => {
     const svg = decode(renderAdjustStyleSvg({ ...BASE, style: "ghost" }));
     expect(svg).toContain('opacity="0.2"');
     expect(svg).toContain(">54.0</text>");
+  });
+
+  it("ghost keeps the glyph and value locked to the same title-aware shift (Fix 2)", () => {
+    const shown = decode(renderAdjustStyleSvg({ ...BASE, style: "ghost" }));
+    // Default (title shown, bottom): center 60 -> glyph baseline 60+round(130*0.36)=107, value baseline 60+16=76.
+    expect(shown).toContain('x="72" y="107"'); // glyph
+    expect(shown).toContain('x="72" y="76"'); // value
+
+    const hidden = decode(renderAdjustStyleSvg({ ...BASE, style: "ghost", titleOverrides: { showTitle: false } }));
+    // Hidden: center 72 -> glyph baseline 119, value baseline 88 — same 12px shift as the center's 60->72 delta.
+    expect(hidden).toContain('x="72" y="119"'); // glyph
+    expect(hidden).toContain('x="72" y="88"'); // value
   });
 
   it("edge-chevrons places chevrons on the resolved edge, pointing in the direction of change", () => {
@@ -197,6 +227,41 @@ describe("renderAdjustStyleSvg — value-showing styles", () => {
       renderAdjustStyleSvg({ ...BASE, style: "edge-chevrons", direction: "increase", pairPosition: "bottom" }),
     );
     expect(svg2).toContain('points="52,130 72,114 92,130"');
+  });
+
+  it("edge-chevrons (horizontal) wraps chevrons and value together in a title-aware translate (Fix 2)", () => {
+    const svg = decode(renderAdjustStyleSvg({ ...BASE, style: "edge-chevrons", pairPosition: "right" }));
+    const transformIndex = svg.indexOf('<g transform="translate(0, -12)">');
+    const closeIndex = svg.indexOf("</g>", transformIndex);
+    const pointsIndex = svg.indexOf('points="114,52 130,72 114,92"');
+    // Value's own y param (74) is unchanged by Fix 2 — the whole group is translated instead.
+    // Rendered baseline = 74 + round(38*0.36) = 88.
+    const valueIndex = svg.indexOf('x="56" y="88"');
+
+    expect(transformIndex).toBeGreaterThan(-1);
+    expect(pointsIndex).toBeGreaterThan(transformIndex);
+    expect(pointsIndex).toBeLessThan(closeIndex);
+    expect(valueIndex).toBeGreaterThan(transformIndex);
+    expect(valueIndex).toBeLessThan(closeIndex);
+  });
+
+  it("edge-chevrons (vertical) keeps chevrons anchored and only re-centers the value (Fix 2)", () => {
+    // chevrons-top: y param 80 when title shown (default) / 88 when hidden; baseline = param + round(38*0.36=14).
+    const top = decode(renderAdjustStyleSvg({ ...BASE, style: "edge-chevrons", pairPosition: "top" }));
+    expect(top).toContain('x="72" y="94"'); // 80 + 14
+    const topHidden = decode(
+      renderAdjustStyleSvg({
+        ...BASE,
+        style: "edge-chevrons",
+        pairPosition: "top",
+        titleOverrides: { showTitle: false },
+      }),
+    );
+    expect(topHidden).toContain('x="72" y="102"'); // 88 + 14
+
+    // chevrons-bottom: unchanged from before Fix 2 (its title defaults to top for that position) — y param 62 -> baseline 76.
+    const bottom = decode(renderAdjustStyleSvg({ ...BASE, style: "edge-chevrons", pairPosition: "bottom" }));
+    expect(bottom).toContain('x="72" y="76"');
   });
 
   it("renders the null placeholder and applies the binding warning overlay", () => {
@@ -252,6 +317,53 @@ describe("renderAdjustStyleSvg — pill family and no-value styles", () => {
     const pathIndex = svg.indexOf("<path");
 
     expect(svg.indexOf("<rect", pathIndex)).toBe(-1);
+  });
+
+  it("joined-pill carves a top-stroke knockout for a top-positioned title (Fix 1)", () => {
+    const svg = decode(
+      renderAdjustStyleSvg({
+        ...BASE,
+        style: "joined-pill",
+        pairPosition: "left",
+        titleOverrides: { position: "top" },
+      }),
+    );
+    const pathIndex = svg.indexOf("<path");
+    const rectIndex = svg.indexOf("<rect", pathIndex);
+    const titleIndex = svg.indexOf(">BRAKE BIAS<");
+
+    expect(rectIndex).toBeGreaterThan(pathIndex);
+    expect(titleIndex).toBeGreaterThan(rectIndex);
+    // Knockout hugs the top stroke (y=14), not the bottom (y=130) — single line,
+    // default font size: rect y = (fontSize+8) - (fontSize+8)/2 = 13.
+    expect(svg.slice(rectIndex, rectIndex + 120)).toContain('y="13"');
+  });
+
+  it("joined-pill omits the top-stroke knockout when its frame has no top stroke (position: bottom)", () => {
+    const svg = decode(
+      renderAdjustStyleSvg({
+        ...BASE,
+        style: "joined-pill",
+        pairPosition: "bottom",
+        titleOverrides: { position: "top" },
+      }),
+    );
+    const pathIndex = svg.indexOf("<path");
+
+    expect(svg.indexOf("<rect", pathIndex)).toBe(-1);
+  });
+
+  it("pill-middle-horizontal also carves a top-stroke knockout (always has both rails)", () => {
+    const svg = decode(
+      renderAdjustStyleSvg({ ...BASE, style: "pill-middle-horizontal", titleOverrides: { position: "top" } }),
+    );
+    const pathIndex = svg.indexOf("<path");
+    const rectIndex = svg.indexOf("<rect", pathIndex);
+    const titleIndex = svg.indexOf(">BRAKE BIAS<");
+
+    expect(rectIndex).toBeGreaterThan(pathIndex);
+    expect(titleIndex).toBeGreaterThan(rectIndex);
+    expect(svg.slice(rectIndex, rectIndex + 120)).toContain('y="13"');
   });
 
   it("pill-end uses equal margins and a centered glyph, no value, no label", () => {
@@ -317,6 +429,17 @@ describe("renderAdjustStyleSvg — pill family and no-value styles", () => {
     const svg = decode(renderAdjustStyleSvg({ ...BASE, style: "big-glyph" }));
     expect(svg).toContain(">+</text>");
     expect(svg).not.toContain("BRAKE BIAS");
+  });
+
+  it("big-glyph stays centered (no translate) by default; a shown per-key label re-centers it (Fix 2)", () => {
+    const svg = decode(renderAdjustStyleSvg({ ...BASE, style: "big-glyph" }));
+    expect(svg).not.toContain('<g transform="translate(0,');
+
+    const withLabel = decode(
+      renderAdjustStyleSvg({ ...BASE, style: "big-glyph", titleOverrides: { showTitle: true } }),
+    );
+    expect(withLabel).toContain('<g transform="translate(0, -12)">'); // title defaults to bottom -> center 60
+    expect(withLabel).toContain("BRAKE BIAS");
   });
 
   it("big-chevron points in the true direction of change", () => {
