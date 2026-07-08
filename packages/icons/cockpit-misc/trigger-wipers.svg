@@ -1,10 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 90 59" stroke-width="0.5" stroke="#fff" fill="#fff">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 72" stroke-width="0.5" stroke="#fff" fill="#fff">
   <desc>{"colors":{"backgroundColor":"#2a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"TRIGGER\nWIPERS"},"border":{"color":"#5a5a6a"}}</desc>
   
 
-    <path d="M5,52A44,44,0,0,1,85,52" fill="none" stroke="#888888" stroke-width="3"/>
-    <line x1="45" y1="52" x2="17" y2="12" stroke="{{graphic1Color}}" stroke-width="5" stroke-linecap="round"/>
-    <circle cx="45" cy="52" r="5" fill="{{graphic1Color}}" stroke="none"/>
-    <path d="M17,12A40,40,0,0,1,61,8" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round" stroke-dasharray="6,4"/>
+    <path d="M18,64 Q8,64 9,55 L14,17 Q15,7 25,7 L75,7 Q85,7 86,17 L91,55 Q92,64 82,64 Z" fill="none" stroke="#888888" stroke-width="4" stroke-linejoin="round"/>
+    <line x1="50" y1="61" x2="33" y2="20" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
+    <line x1="42.35" y1="42.55" x2="33" y2="20" stroke="{{graphic1Color}}" stroke-width="7" stroke-linecap="round"/>
+    <circle cx="50" cy="61" r="3.5" fill="{{graphic1Color}}" stroke="none"/>
+    <circle cx="60" cy="25" r="3" fill="{{graphic1Color}}" stroke="none"/>
+    <circle cx="70" cy="36" r="3" fill="{{graphic1Color}}" stroke="none"/>
+    <circle cx="58" cy="42" r="3" fill="{{graphic1Color}}" stroke="none"/>
+    <path d="M40,19 Q52,15 61,23" fill="none" stroke="{{graphic1Color}}" stroke-width="2.5" stroke-linecap="round" opacity="0.7"/>
 
 </svg>
