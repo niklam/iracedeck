@@ -1,6 +1,6 @@
 {
   "name": "@iracedeck/deck-adapter-mirabox",
-  "version": "2.0.0-rc.0",
+  "version": "2.1.0-dev.0",
   "description": "Mirabox adapter for @iracedeck/deck-core",
   "type": "module",
   "main": "dist/index.js",
