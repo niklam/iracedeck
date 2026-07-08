@@ -399,6 +399,15 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     "launch-rpm": dir("setupEngineLaunchRpmIncrease", "setupEngineLaunchRpmDecrease"),
   }),
 
+  // The dial surface of the merged Setup Engine action (#798). No press gesture;
+  // boost-level rotates too (its strip is label-only — iRacing exposes no boost value).
+  "setup-engine-dial": entry("dial.setting", {
+    "engine-power": pair("setupEngineEnginePowerIncrease", "setupEngineEnginePowerDecrease"),
+    "throttle-shaping": pair("setupEngineThrottleShapingIncrease", "setupEngineThrottleShapingDecrease"),
+    "boost-level": pair("setupEngineBoostLevelIncrease", "setupEngineBoostLevelDecrease"),
+    "launch-rpm": pair("setupEngineLaunchRpmIncrease", "setupEngineLaunchRpmDecrease"),
+  }),
+
   "setup-fuel": entry("setting", {
     "view-fuel-mixture": pair("setupFuelFuelMixtureIncrease", "setupFuelFuelMixtureDecrease"),
     "view-fuel-cut-position": pair("setupFuelFuelCutPositionIncrease", "setupFuelFuelCutPositionDecrease"),

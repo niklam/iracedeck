@@ -469,8 +469,16 @@
       "Tooltip": "Engine adjustments (power, throttle shaping, boost, launch RPM)",
       "PropertyInspectorPath": "ui/setup-engine.html",
       "Controllers": [
-        "Keypad"
+        "Keypad",
+        "Encoder"
       ],
+      "Encoder": {
+        "Icon": "imgs/actions/setup-engine/dial",
+        "layout": "layouts/setup-engine.json",
+        "TriggerDescription": {
+          "Rotate": "Adjust the selected engine setting"
+        }
+      },
       "States": [
         {
           "Image": "imgs/actions/setup-engine/key",
