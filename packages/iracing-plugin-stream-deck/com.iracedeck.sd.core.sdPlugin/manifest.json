@@ -462,8 +462,16 @@
       "Tooltip": "Chassis adjustments (differential, ARB, springs, shocks, power steering)",
       "PropertyInspectorPath": "ui/setup-chassis.html",
       "Controllers": [
-        "Keypad"
+        "Keypad",
+        "Encoder"
       ],
+      "Encoder": {
+        "Icon": "imgs/actions/setup-chassis/dial",
+        "layout": "layouts/setup-chassis.json",
+        "TriggerDescription": {
+          "Rotate": "Adjust the selected chassis setting"
+        }
+      },
       "States": [
         {
           "Image": "imgs/actions/setup-chassis/key",

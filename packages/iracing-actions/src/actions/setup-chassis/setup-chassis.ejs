@@ -6,61 +6,113 @@
 	<body>
 		<%- include('section-header', { title: 'Action Settings' }) %>
 
-		<sdpi-item label="Component">
-			<sdpi-select id="setting-select" setting="setting" default="differential-preload">
-				<optgroup label="Adjust">
-					<option value="differential-entry">Differential Entry</option>
-					<option value="differential-exit">Differential Exit</option>
-					<option value="differential-middle">Differential Middle</option>
-					<option value="differential-preload">Differential Preload</option>
-					<option value="front-arb">Front ARB</option>
-					<option value="left-spring">Left Spring</option>
-					<option value="lf-shock">LF Shock</option>
-					<option value="lr-shock">LR Shock</option>
-					<option value="power-steering">Power Steering</option>
-					<option value="rear-arb">Rear ARB</option>
-					<option value="rf-shock">RF Shock</option>
-					<option value="right-spring">Right Spring</option>
-					<option value="rr-shock">RR Shock</option>
-				</optgroup>
-				<optgroup label="Display value">
-					<option value="view-anti-roll-front">View Anti-Roll Front</option>
-					<option value="view-anti-roll-rear">View Anti-Roll Rear</option>
-					<option value="view-diff-entry">View Diff Entry</option>
-					<option value="view-diff-exit">View Diff Exit</option>
-					<option value="view-diff-middle">View Diff Middle</option>
-					<option value="view-diff-preload">View Diff Preload</option>
-					<option value="view-power-steering">View Power Steering</option>
-					<option value="view-weight-jacker-left">View Weight Jacker Left</option>
-					<option value="view-weight-jacker-right">View Weight Jacker Right</option>
-				</optgroup>
-			</sdpi-select>
-		</sdpi-item>
-
 		<% var __comms = require('./data/action-comms.json')['setup-chassis']; %>
-		<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
+		<% var __dialComms = require('./data/action-comms.json')['setup-chassis-dial']; %>
 
-		<sdpi-item label="Direction" id="direction-item">
-			<sdpi-select setting="direction" default="increase">
-				<option value="increase">Increase</option>
-				<option value="decrease">Decrease</option>
-			</sdpi-select>
-		</sdpi-item>
+		<!-- Keypad settings — hidden when this instance is a dial (#800). -->
+		<div id="keypad-settings">
+			<sdpi-item label="Component">
+				<sdpi-select id="setting-select" setting="setting" default="differential-preload">
+					<optgroup label="Adjust">
+						<option value="differential-entry">Differential Entry</option>
+						<option value="differential-exit">Differential Exit</option>
+						<option value="differential-middle">Differential Middle</option>
+						<option value="differential-preload">Differential Preload</option>
+						<option value="front-arb">Front ARB</option>
+						<option value="left-spring">Left Spring</option>
+						<option value="lf-shock">LF Shock</option>
+						<option value="lr-shock">LR Shock</option>
+						<option value="power-steering">Power Steering</option>
+						<option value="rear-arb">Rear ARB</option>
+						<option value="rf-shock">RF Shock</option>
+						<option value="right-spring">Right Spring</option>
+						<option value="rr-shock">RR Shock</option>
+					</optgroup>
+					<optgroup label="Display value">
+						<option value="view-anti-roll-front">View Anti-Roll Front</option>
+						<option value="view-anti-roll-rear">View Anti-Roll Rear</option>
+						<option value="view-diff-entry">View Diff Entry</option>
+						<option value="view-diff-exit">View Diff Exit</option>
+						<option value="view-diff-middle">View Diff Middle</option>
+						<option value="view-diff-preload">View Diff Preload</option>
+						<option value="view-power-steering">View Power Steering</option>
+						<option value="view-weight-jacker-left">View Weight Jacker Left</option>
+						<option value="view-weight-jacker-right">View Weight Jacker Right</option>
+					</optgroup>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
 
-		<%- include('dual-press-overrides') %>
+			<sdpi-item label="Direction" id="direction-item">
+				<sdpi-select setting="direction" default="increase">
+					<option value="increase">Increase</option>
+					<option value="decrease">Decrease</option>
+				</sdpi-select>
+			</sdpi-item>
 
-		<%- include('adjust-style', {
-			modeSelectId: 'setting-select',
-			pairedModes: ['differential-preload', 'differential-entry', 'differential-middle', 'differential-exit', 'front-arb', 'rear-arb', 'power-steering'],
-			viewModes: ['view-diff-preload', 'view-diff-entry', 'view-diff-middle', 'view-diff-exit', 'view-anti-roll-front', 'view-anti-roll-rear', 'view-power-steering', 'view-weight-jacker-left', 'view-weight-jacker-right']
-		}) %>
+			<%- include('dual-press-overrides') %>
 
-		<%- include('title-overrides') %>
+			<%- include('adjust-style', {
+				modeSelectId: 'setting-select',
+				pairedModes: ['differential-preload', 'differential-entry', 'differential-middle', 'differential-exit', 'front-arb', 'rear-arb', 'power-steering'],
+				viewModes: ['view-diff-preload', 'view-diff-entry', 'view-diff-middle', 'view-diff-exit', 'view-anti-roll-front', 'view-anti-roll-rear', 'view-power-steering', 'view-weight-jacker-left', 'view-weight-jacker-right']
+			}) %>
+		</div>
 
-		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/icon-defaults.json')['setup-chassis'] }) %>
-		<%- include('border-overrides', { defaults: require('./data/icon-defaults.json')['setup-chassis'] }) %>
-		<%- include('graphic-overrides') %>
-		<%- include('common-settings') %>
+		<!-- Dial settings — shown only when this instance is a dial (#800). Setup
+		     Chassis has no press gesture, so only the rotation Component is offered. -->
+		<div id="dial-settings" class="hidden">
+			<sdpi-item label="Component">
+				<sdpi-select setting="dial.setting" default="differential-preload">
+					<optgroup label="Differential">
+						<option value="differential-preload">Differential Preload</option>
+						<option value="differential-entry">Differential Entry</option>
+						<option value="differential-middle">Differential Middle</option>
+						<option value="differential-exit">Differential Exit</option>
+					</optgroup>
+					<optgroup label="Anti-Roll Bars">
+						<option value="front-arb">Front ARB</option>
+						<option value="rear-arb">Rear ARB</option>
+					</optgroup>
+					<optgroup label="Springs">
+						<option value="left-spring">Left Spring</option>
+						<option value="right-spring">Right Spring</option>
+					</optgroup>
+					<optgroup label="Shocks">
+						<option value="lf-shock">LF Shock</option>
+						<option value="rf-shock">RF Shock</option>
+						<option value="lr-shock">LR Shock</option>
+						<option value="rr-shock">RR Shock</option>
+					</optgroup>
+					<optgroup label="Steering">
+						<option value="power-steering">Power Steering</option>
+					</optgroup>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="dial.setting" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+			<% if (locals.platform?.features?.dialFeedback !== false) { %>
+			<div class="ird-supporting-text">
+				Turn the dial to adjust the selected chassis component; the touch strip shows
+				its live value. Springs and shocks have no telemetry, so their strips show
+				the label only. Both the increase and decrease key bindings must be set below.
+			</div>
+			<% } else { %>
+			<div class="ird-supporting-text">
+				Turn the knob to adjust the selected chassis component. Both the increase and
+				decrease key bindings must be set below.
+			</div>
+			<% } %>
+		</div>
+
+		<!-- Key-icon appearance — keypad only (a dial has no key icon). -->
+		<div id="keypad-appearance">
+			<%- include('title-overrides') %>
+
+			<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/icon-defaults.json')['setup-chassis'] }) %>
+			<%- include('border-overrides', { defaults: require('./data/icon-defaults.json')['setup-chassis'] }) %>
+			<%- include('graphic-overrides') %>
+			<%- include('common-settings') %>
+		</div>
 
 		<%- include('section-header', { title: 'Global Settings' }) %>
 
@@ -68,15 +120,18 @@
 			keyBindings: require('./data/key-bindings.json').setupChassis
 		}) %>
 
-		<%- include('global-title-defaults') %>
-		<%- include('global-color-defaults') %>
-		<%- include('global-border-defaults') %>
-		<%- include('global-graphic-defaults') %>
-		<%- include('global-flag-flash') %>
+		<div id="keypad-global-appearance">
+			<%- include('global-title-defaults') %>
+			<%- include('global-color-defaults') %>
+			<%- include('global-border-defaults') %>
+			<%- include('global-graphic-defaults') %>
+			<%- include('global-flag-flash') %>
+		</div>
+
 		<%- include('global-common-settings') %>
 
 		<script>
-			// View sub-modes are read-only displays — hide Direction and show the dual-press opt-in.
+			// View sub-modes are read-only displays — hide Direction; show the dual-press opt-in.
 			function isViewSetting(setting) {
 				return typeof setting === "string" && setting.startsWith("view-");
 			}
@@ -88,6 +143,28 @@
 				const view = isViewSetting(setting);
 				directionItem?.classList.toggle("hidden", view);
 				dualEnabledItem?.classList.toggle("hidden", !view);
+			}
+
+			// Which surface this instance sits on: the PI registration's
+			// actionInfo.payload.controller ("Keypad" | "Encoder"; the Mirabox host
+			// may report "Knob"). Anything unknown or unavailable falls back to the
+			// keypad view (#800).
+			async function resolveController() {
+				try {
+					const client = window.SDPIComponents && window.SDPIComponents.streamDeckClient;
+					const info = client && (await client.getConnectionInfo());
+					const controller = info && info.actionInfo && info.actionInfo.payload && info.actionInfo.payload.controller;
+					return controller === "Encoder" || controller === "Knob" ? "Encoder" : "Keypad";
+				} catch (err) {
+					return "Keypad";
+				}
+			}
+
+			function applyDialView() {
+				document.getElementById("keypad-settings")?.classList.add("hidden");
+				document.getElementById("keypad-appearance")?.classList.add("hidden");
+				document.getElementById("keypad-global-appearance")?.classList.add("hidden");
+				document.getElementById("dial-settings")?.classList.remove("hidden");
 			}
 
 			async function initialize() {
@@ -111,6 +188,10 @@
 							updateVisibility(currentValue);
 						}
 					}, 100);
+				}
+
+				if ((await resolveController()) === "Encoder") {
+					applyDialView();
 				}
 			}
 

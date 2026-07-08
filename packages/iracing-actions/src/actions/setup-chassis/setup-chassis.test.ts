@@ -185,6 +185,20 @@ vi.mock("@iracedeck/deck-core", async () => {
       customPosition: 0,
     })),
     applyBindingWarning: vi.fn((content: string) => `${content}<warn/>`),
+    // Dial-surface deck-core exports (#800) — onGlobalSettingsChange runs at
+    // construction; the rest only on dial flows (keypad tests never hit them).
+    onGlobalSettingsChange: vi.fn(() => vi.fn()),
+    classifyDialRelease: (args: {
+      pressStartMs: number;
+      nowMs: number;
+      rotatedWhilePressed: boolean;
+      thresholdMs?: number;
+    }) => {
+      if (args.rotatedWhilePressed) return "push-turn";
+
+      return args.nowMs - args.pressStartMs >= (args.thresholdMs ?? 500) ? "long" : "short";
+    },
+    escapeXml: (str: string) => str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"),
     assembleIcon: vi.fn(
       ({
         graphicSvg,
@@ -210,14 +224,6 @@ function fakeEvent(actionId: string, settings: Record<string, unknown> = {}) {
   return {
     action: { id: actionId, isKey: () => true, isDial: () => false, setTitle: vi.fn(), setImage: vi.fn() },
     payload: { settings },
-  };
-}
-
-/** Create a minimal fake dial rotate event. */
-function fakeDialRotateEvent(actionId: string, settings: Record<string, unknown>, ticks: number) {
-  return {
-    action: { id: actionId, setTitle: vi.fn(), setImage: vi.fn() },
-    payload: { settings, ticks },
   };
 }
 
@@ -554,12 +560,6 @@ describe("SetupChassis", () => {
       expect(mockTapBinding).toHaveBeenCalledWith("setupChassisPowerSteeringDecrease");
     });
 
-    it("should call tapGlobalBinding on dialDown", async () => {
-      await action.onDialDown(fakeEvent("action-1", { setting: "differential-preload", direction: "increase" }) as any);
-
-      expect(mockTapBinding).toHaveBeenCalledWith("setupChassisDifferentialPreloadIncrease");
-    });
-
     it("should call tapGlobalBinding even when no key binding is configured", async () => {
       await action.onKeyDown(fakeEvent("action-1", { setting: "differential-preload", direction: "increase" }) as any);
 
@@ -573,37 +573,8 @@ describe("SetupChassis", () => {
     });
   });
 
-  describe("encoder behavior", () => {
-    let action: SetupChassis;
-
-    beforeEach(() => {
-      action = new SetupChassis();
-    });
-
-    it("should call tapGlobalBinding for increase on clockwise rotation", async () => {
-      await action.onDialRotate(
-        fakeDialRotateEvent("action-1", { setting: "differential-preload", direction: "increase" }, 1) as any,
-      );
-
-      expect(mockTapBinding).toHaveBeenCalledWith("setupChassisDifferentialPreloadIncrease");
-    });
-
-    it("should call tapGlobalBinding for decrease on counter-clockwise rotation", async () => {
-      await action.onDialRotate(
-        fakeDialRotateEvent("action-1", { setting: "differential-preload", direction: "increase" }, -1) as any,
-      );
-
-      expect(mockTapBinding).toHaveBeenCalledWith("setupChassisDifferentialPreloadDecrease");
-    });
-
-    it("should call tapGlobalBinding for different settings on rotation", async () => {
-      await action.onDialRotate(
-        fakeDialRotateEvent("action-1", { setting: "front-arb", direction: "increase" }, 2) as any,
-      );
-
-      expect(mockTapBinding).toHaveBeenCalledWith("setupChassisFrontArbIncrease");
-    });
-  });
+  // Dial-surface behavior is exercised by setup-chassis-dial-surface.test.ts (#800);
+  // the former "encoder behavior" block tested the pre-dial-surface coupling.
 
   describe("view sub-modes (issue #541)", () => {
     let action: SetupChassis;

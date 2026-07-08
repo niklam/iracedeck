@@ -399,6 +399,25 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     "power-steering": dir("setupChassisPowerSteeringIncrease", "setupChassisPowerSteeringDecrease"),
   }),
 
+  // The dial surface of the merged Setup Chassis action (#800). No press gesture;
+  // springs and shocks rotate too (their strips are label-only — iRacing exposes
+  // no telemetry for them).
+  "setup-chassis-dial": entry("dial.setting", {
+    "differential-preload": pair("setupChassisDifferentialPreloadIncrease", "setupChassisDifferentialPreloadDecrease"),
+    "differential-entry": pair("setupChassisDifferentialEntryIncrease", "setupChassisDifferentialEntryDecrease"),
+    "differential-middle": pair("setupChassisDifferentialMiddleIncrease", "setupChassisDifferentialMiddleDecrease"),
+    "differential-exit": pair("setupChassisDifferentialExitIncrease", "setupChassisDifferentialExitDecrease"),
+    "front-arb": pair("setupChassisFrontArbIncrease", "setupChassisFrontArbDecrease"),
+    "rear-arb": pair("setupChassisRearArbIncrease", "setupChassisRearArbDecrease"),
+    "left-spring": pair("setupChassisLeftSpringIncrease", "setupChassisLeftSpringDecrease"),
+    "right-spring": pair("setupChassisRightSpringIncrease", "setupChassisRightSpringDecrease"),
+    "lf-shock": pair("setupChassisLfShockIncrease", "setupChassisLfShockDecrease"),
+    "rf-shock": pair("setupChassisRfShockIncrease", "setupChassisRfShockDecrease"),
+    "lr-shock": pair("setupChassisLrShockIncrease", "setupChassisLrShockDecrease"),
+    "rr-shock": pair("setupChassisRrShockIncrease", "setupChassisRrShockDecrease"),
+    "power-steering": pair("setupChassisPowerSteeringIncrease", "setupChassisPowerSteeringDecrease"),
+  }),
+
   "setup-engine": entry("setting", {
     "view-engine-power": pair("setupEngineEnginePowerIncrease", "setupEngineEnginePowerDecrease"),
     "view-throttle-shape": pair("setupEngineThrottleShapingIncrease", "setupEngineThrottleShapingDecrease"),
