@@ -46,6 +46,12 @@
 			</sdpi-item>
 
 			<%- include('dual-press-overrides') %>
+
+			<%- include('adjust-style', {
+				modeSelectId: 'setting-select',
+				pairedModes: ['abs-adjust', 'brake-bias', 'brake-bias-fine', 'peak-brake-bias', 'brake-misc', 'engine-braking'],
+				viewModes: ['view-brake-bias', 'view-brake-bias-fine', 'view-peak-brake-bias', 'view-brake-misc', 'view-engine-braking', 'view-abs-adjust']
+			}) %>
 		</div>
 
 		<!-- Dial settings — shown only when this instance is a dial (#775). -->

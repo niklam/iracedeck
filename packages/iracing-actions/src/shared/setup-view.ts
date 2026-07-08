@@ -20,6 +20,7 @@ import {
   getGlobalTitleSettings,
   renderIconTemplate,
   resolveBorderSettings,
+  type ResolvedTitleSettings,
   resolveIconColors,
   resolveTitleSettings,
   svgToDataUri,
@@ -399,6 +400,23 @@ export function formatViewValue(viewId: ViewSettingId, telemetry: TelemetryData 
 }
 
 /**
+ * Visual center y for the View value text — the single source of truth for
+ * title-aware content centering, shared by `generateSetupViewSvg` below AND
+ * `adjust-styles.ts`'s `titleAwareCenterY` (which delegates here), so the
+ * View look, the pill-middle styles, and the simple directional styles
+ * (edge-chevrons, big-glyph, big-chevron) all move identically (issue #810).
+ * Resolved from where the title sits: a hidden title frees the whole key so
+ * the value sits at the true center (72); a bottom title (or middle/custom)
+ * pushes the value UP so it clears the title, landing at 60; a top title
+ * needs the value pushed DOWN so it clears the title, landing at 84.
+ */
+export function viewValueCenterY(title: Pick<ResolvedTitleSettings, "showTitle" | "position">): number {
+  if (!title.showTitle) return 72;
+
+  return title.position === "top" ? 84 : 60;
+}
+
+/**
  * Inputs the setup-action passes to the shared View renderer. The override
  * fields mirror the matching `CommonSettings` fields verbatim; importing the
  * types here keeps the renderer type-checked end-to-end while still letting
@@ -460,14 +478,19 @@ export function generateSetupViewSvg(inputs: SetupViewRenderInputs): string {
   // Per-view override (set in VIEW_DEFS) wins; fall back to the default size that fits
   // longer values like "54.0%" without crowding the key's left/right edges.
   const valueFontSize = String(def.valueFontSize ?? VIEW_VALUE_FONT_SIZE_DEFAULT);
-  // Default title sits at the bottom (per TITLE_DEFAULTS); the value sits a bit
-  // below center so it's well-separated from the title without hugging the top.
-  const valueY = "79";
+  // The value's vertical center depends on where the resolved title sits
+  // (viewValueCenterY, #810): a shown bottom title pushes the value up to
+  // 60, a hidden title lets the value drop to true center (72), and a top
+  // title pushes it to 84 so it clears the title. Qt's SVG renderer ignores
+  // `dominant-baseline`, so the visual-center y is converted to a baseline y
+  // by shifting down ~0.36em (see adjust-styles.ts TEXT_CENTER_BASELINE_FACTOR
+  // for the same math).
+  const valueY = String(viewValueCenterY(resolvedTitle) + Math.round(0.36 * Number(valueFontSize)));
 
   // When a required binding is missing (#612), draw the value via the warning
   // overlay slot — dimmed beneath the centered warning triangle — and blank the
   // template's own value slot so it isn't rendered twice at full opacity.
-  const valueText = `<text x="72" y="${valueY}" text-anchor="middle" dominant-baseline="central" fill="${colors.textColor}" font-family="Arial, sans-serif" font-size="${valueFontSize}" font-weight="bold">${value}</text>`;
+  const valueText = `<text x="72" y="${valueY}" text-anchor="middle" fill="${colors.textColor}" font-family="Arial, sans-serif" font-size="${valueFontSize}" font-weight="bold">${value}</text>`;
   const warningContent = inputs.bindingMissing ? applyBindingWarning(valueText) : "";
 
   const svg = renderIconTemplate(setupViewTemplate, {

@@ -1,7 +1,12 @@
 import { getDualPressDirections } from "@iracedeck/deck-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { generateSetupHybridSvg, SETUP_HYBRID_GLOBAL_KEYS, SetupHybrid } from "./setup-hybrid.js";
+import {
+  generateSetupHybridSvg,
+  parseSetupHybridSettings,
+  SETUP_HYBRID_GLOBAL_KEYS,
+  SetupHybrid,
+} from "./setup-hybrid.js";
 
 // Convenience handle so dual-press tests can switch the live tap direction the same
 // way the runtime does (via the @iracedeck/deck-core getDualPressDirections reader).
@@ -41,125 +46,122 @@ vi.mock("@iracedeck/icons/setup-hybrid/hys-no-boost.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
 }));
 
-vi.mock("@iracedeck/deck-core", () => ({
-  CommonSettings: {
-    extend: (_fields: unknown) => {
-      // Return a mock Zod-like schema
-      const schema = {
-        parse: (data: Record<string, unknown>) => ({ ...data }),
-        safeParse: (data: Record<string, unknown>) => ({ success: true, data: { ...data } }),
-      };
+vi.mock("@iracedeck/deck-core", async () => {
+  const { z } = await import("zod");
 
-      return schema;
+  return {
+    CommonSettings: {
+      // REAL zod semantics for the extended settings schema (defaults, enum
+      // validation, keyStyle/pairPosition catch-degradation) — only the
+      // CommonSettings base fields are absent.
+      extend: (shape: never) => z.object(shape).passthrough(),
     },
-    parse: (data: Record<string, unknown>) => ({ ...data }),
-    safeParse: (data: Record<string, unknown>) => ({ success: true, data: { ...data } }),
-  },
-  ConnectionStateAwareAction: class MockConnectionStateAwareAction {
-    logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
-    sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn(), getCurrentTelemetry: vi.fn() };
-    updateConnectionState = vi.fn();
-    setKeyImage = vi.fn();
-    setRegenerateCallback = vi.fn();
-    updateKeyImage = vi.fn().mockResolvedValue(true);
-    tapBinding = mockTapBinding;
-    holdBinding = mockHoldBinding;
-    releaseBinding = mockReleaseBinding;
-    setActiveBinding = vi.fn();
-    isActiveBindingMissing = vi.fn(() => false);
-    isBindingMissing = vi.fn(() => false);
-    async onWillAppear() {}
-    async onDidReceiveSettings() {}
-    async onWillDisappear() {}
-  },
-  DualPressTracker: class MockDualPressTracker {
-    recordKeyDown = vi.fn();
-    computeOutcome = vi.fn(() => undefined);
-    clear = vi.fn();
-    hasPending = vi.fn(() => false);
-  },
-  getDualPressThresholdMs: vi.fn(() => 500),
-  getDualPressDirections: vi.fn(() => "tap-increases"),
-  formatKeyBinding: vi.fn((b: { key: string; modifiers: string[] }) => {
-    if (b.modifiers?.length) {
-      return `${b.modifiers.join("+")}+${b.key}`;
-    }
-
-    return b.key;
-  }),
-  generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
-  generateTitleText: vi.fn(({ text, fill }: { text: string; fill: string }) => {
-    if (!text) return "";
-
-    return `<text fill="${fill}">${text}</text>`;
-  }),
-  renderIconTemplate: vi.fn((_template: string, data: Record<string, string>) => {
-    return `<svg>${data.value ?? ""} ${data.titleContent ?? ""}</svg>`;
-  }),
-  svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
-  getGlobalBorderSettings: vi.fn(() => ({})),
-  getGlobalColors: vi.fn(() => ({})),
-  getGlobalGraphicSettings: vi.fn(() => ({})),
-  getGlobalSettings: vi.fn(() => ({})),
-  getKeyboard: vi.fn(() => ({
-    sendKeyCombination: vi.fn().mockResolvedValue(true),
-    pressKeyCombination: vi.fn().mockResolvedValue(true),
-    releaseKeyCombination: vi.fn().mockResolvedValue(true),
-  })),
-  LogLevel: { Info: 2 },
-  parseBinding: vi.fn(),
-  parseKeyBinding: vi.fn(),
-  isSimHubBinding: vi.fn(
-    (v: unknown) => v !== null && typeof v === "object" && (v as Record<string, unknown>).type === "simhub",
-  ),
-  isSimHubInitialized: vi.fn(() => false),
-  getSimHub: vi.fn(() => ({
-    startRole: vi.fn().mockResolvedValue(true),
-    stopRole: vi.fn().mockResolvedValue(true),
-  })),
-  getGlobalTitleSettings: vi.fn(() => ({})),
-  resolveIconColors: vi.fn((_svg, _global, _overrides) => ({})),
-  resolveBorderSettings: vi.fn((_svg: unknown, _global: unknown, _overrides?: unknown, _stateColor?: string) => ({
-    enabled: false,
-    borderWidth: 7,
-    borderColor: "#00aaff",
-    glowEnabled: true,
-    glowWidth: 18,
-  })),
-  resolveGraphicSettings: vi.fn(() => ({ scale: 1 })),
-  resolveTitleSettings: vi.fn((_svg: unknown, _global: unknown, _overrides: unknown, defaultTitle?: string) => ({
-    showTitle: true,
-    showGraphics: true,
-    titleText: defaultTitle ?? "",
-    bold: true,
-    fontSize: 18,
-    position: "bottom" as const,
-    customPosition: 0,
-  })),
-  applyBindingWarning: vi.fn((content: string) => `${content}<warn/>`),
-  assembleIcon: vi.fn(
-    ({
-      graphicSvg,
-      title,
-      bindingMissing,
-    }: {
-      graphicSvg: string;
-      colors: unknown;
-      title: { titleText: string };
-      bindingMissing?: boolean;
-    }) => {
-      const warn = bindingMissing ? "<warn/>" : "";
-      const encoded = encodeURIComponent(`<svg>${graphicSvg}${title?.titleText ?? ""}${warn}</svg>`);
-
-      return `data:image/svg+xml,${encoded}`;
+    ConnectionStateAwareAction: class MockConnectionStateAwareAction {
+      logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+      sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn(), getCurrentTelemetry: vi.fn() };
+      updateConnectionState = vi.fn();
+      setKeyImage = vi.fn();
+      setRegenerateCallback = vi.fn();
+      updateKeyImage = vi.fn().mockResolvedValue(true);
+      tapBinding = mockTapBinding;
+      holdBinding = mockHoldBinding;
+      releaseBinding = mockReleaseBinding;
+      setActiveBinding = vi.fn();
+      isActiveBindingMissing = vi.fn(() => false);
+      isBindingMissing = vi.fn(() => false);
+      async onWillAppear() {}
+      async onDidReceiveSettings() {}
+      async onWillDisappear() {}
     },
-  ),
-}));
+    DualPressTracker: class MockDualPressTracker {
+      recordKeyDown = vi.fn();
+      computeOutcome = vi.fn(() => undefined);
+      clear = vi.fn();
+      hasPending = vi.fn(() => false);
+    },
+    getDualPressThresholdMs: vi.fn(() => 500),
+    getDualPressDirections: vi.fn(() => "tap-increases"),
+    formatKeyBinding: vi.fn((b: { key: string; modifiers: string[] }) => {
+      if (b.modifiers?.length) {
+        return `${b.modifiers.join("+")}+${b.key}`;
+      }
+
+      return b.key;
+    }),
+    generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
+    generateTitleText: vi.fn(({ text, fill }: { text: string; fill: string }) => {
+      if (!text) return "";
+
+      return `<text fill="${fill}">${text}</text>`;
+    }),
+    renderIconTemplate: vi.fn((_template: string, data: Record<string, string>) => {
+      return `<svg>${data.value ?? ""} ${data.titleContent ?? ""}</svg>`;
+    }),
+    svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
+    getGlobalBorderSettings: vi.fn(() => ({})),
+    getGlobalColors: vi.fn(() => ({})),
+    getGlobalGraphicSettings: vi.fn(() => ({})),
+    getGlobalSettings: vi.fn(() => ({})),
+    getKeyboard: vi.fn(() => ({
+      sendKeyCombination: vi.fn().mockResolvedValue(true),
+      pressKeyCombination: vi.fn().mockResolvedValue(true),
+      releaseKeyCombination: vi.fn().mockResolvedValue(true),
+    })),
+    LogLevel: { Info: 2 },
+    parseBinding: vi.fn(),
+    parseKeyBinding: vi.fn(),
+    isSimHubBinding: vi.fn(
+      (v: unknown) => v !== null && typeof v === "object" && (v as Record<string, unknown>).type === "simhub",
+    ),
+    isSimHubInitialized: vi.fn(() => false),
+    getSimHub: vi.fn(() => ({
+      startRole: vi.fn().mockResolvedValue(true),
+      stopRole: vi.fn().mockResolvedValue(true),
+    })),
+    getGlobalTitleSettings: vi.fn(() => ({})),
+    resolveIconColors: vi.fn((_svg, _global, _overrides) => ({})),
+    resolveBorderSettings: vi.fn((_svg: unknown, _global: unknown, _overrides?: unknown, _stateColor?: string) => ({
+      enabled: false,
+      borderWidth: 7,
+      borderColor: "#00aaff",
+      glowEnabled: true,
+      glowWidth: 18,
+    })),
+    resolveGraphicSettings: vi.fn(() => ({ scale: 1 })),
+    resolveTitleSettings: vi.fn((_svg: unknown, _global: unknown, _overrides: unknown, defaultTitle?: string) => ({
+      showTitle: true,
+      showGraphics: true,
+      titleText: defaultTitle ?? "",
+      bold: true,
+      fontSize: 18,
+      position: "bottom" as const,
+      customPosition: 0,
+    })),
+    applyBindingWarning: vi.fn((content: string) => `${content}<warn/>`),
+    assembleIcon: vi.fn(
+      ({
+        graphicSvg,
+        title,
+        bindingMissing,
+      }: {
+        graphicSvg: string;
+        colors: unknown;
+        title: { titleText: string };
+        bindingMissing?: boolean;
+      }) => {
+        const warn = bindingMissing ? "<warn/>" : "";
+        const encoded = encodeURIComponent(`<svg>${graphicSvg}${title?.titleText ?? ""}${warn}</svg>`);
+
+        return `data:image/svg+xml,${encoded}`;
+      },
+    ),
+  };
+});
 
 /** Create a minimal fake event with the given action ID and settings. */
 function fakeEvent(actionId: string, settings: Record<string, unknown> = {}) {
   return {
-    action: { id: actionId, setTitle: vi.fn(), setImage: vi.fn() },
+    action: { id: actionId, isKey: () => true, isDial: () => false, setTitle: vi.fn(), setImage: vi.fn() },
     payload: { settings },
   };
 }
@@ -167,7 +169,7 @@ function fakeEvent(actionId: string, settings: Record<string, unknown> = {}) {
 /** Create a minimal fake dial rotate event. */
 function fakeDialRotateEvent(actionId: string, settings: Record<string, unknown>, ticks: number) {
   return {
-    action: { id: actionId, setTitle: vi.fn(), setImage: vi.fn() },
+    action: { id: actionId, isKey: () => false, isDial: () => true, setTitle: vi.fn(), setImage: vi.fn() },
     payload: { settings, ticks },
   };
 }
@@ -674,6 +676,55 @@ describe("SetupHybrid", () => {
       } as any);
 
       expect(tracker.clear).toHaveBeenCalledWith("action-1");
+    });
+  });
+
+  describe("paired key styles", () => {
+    it("parses keyStyle/pairPosition with defaults and catch-degradation", () => {
+      const parsed = parseSetupHybridSettings({ setting: "mguk-regen-gain" });
+      expect(parsed.keyStyle).toBe("legacy");
+      expect(parsed.pairPosition).toBe("auto");
+      const degraded = parseSetupHybridSettings({ setting: "mguk-regen-gain", keyStyle: "hologram" });
+      expect(degraded.keyStyle).toBe("legacy");
+      expect(degraded.setting).toBe("mguk-regen-gain"); // catch keeps the rest of the parse alive
+    });
+  });
+
+  describe("hold-to-repeat wiring", () => {
+    it("arms repeat for a paired-style key and fires repeatedly while held", async () => {
+      vi.useFakeTimers();
+      const action = new SetupHybrid();
+      const ev = fakeEvent("action-1", { setting: "mguk-regen-gain", direction: "increase", keyStyle: "split" });
+
+      await action.onKeyDown(ev as any);
+      expect(mockTapBinding).toHaveBeenCalledTimes(1); // immediate first step
+
+      await vi.advanceTimersByTimeAsync(500 + 150 * 3 + 20); // hold threshold + 3 intervals
+      expect(mockTapBinding.mock.calls.length).toBeGreaterThanOrEqual(3);
+
+      await action.onKeyUp(
+        fakeEvent("action-1", { setting: "mguk-regen-gain", direction: "increase", keyStyle: "split" }) as any,
+      );
+      const after = mockTapBinding.mock.calls.length;
+
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(mockTapBinding.mock.calls.length).toBe(after); // stopped on release
+
+      vi.useRealTimers();
+    });
+
+    it("does not arm repeat for a legacy-style key", async () => {
+      vi.useFakeTimers();
+      const action = new SetupHybrid();
+
+      await action.onKeyDown(
+        fakeEvent("action-1", { setting: "mguk-regen-gain", direction: "increase", keyStyle: "legacy" }) as any,
+      );
+      await vi.advanceTimersByTimeAsync(2000);
+
+      expect(mockTapBinding).toHaveBeenCalledTimes(1);
+
+      vi.useRealTimers();
     });
   });
 });

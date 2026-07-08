@@ -268,3 +268,16 @@ Adjust the power steering assist level.
 
 - **Increase** (default) — Pressing the button raises the assist level
 - **Decrease** — Pressing the button lowers the assist level
+
+## Key Styles — paired +/− buttons
+
+Adjustment modes with a live value (on Setup Chassis: Differential Preload, Differential Entry, Differential Middle, Differential Exit, Front ARB, Rear ARB, and Power Steering) can render as **paired keys**: place two keys with opposite directions next to each other (or three, with a View key in the middle) and both show the live value — no separate display key needed. Choose the look under **Key Style**:
+
+- **Legacy (arrows)** — the classic static arrow icon (default for existing keys).
+- **Split** — label on top, live value in the middle, a big +/− below (default for newly placed keys).
+- **Edge chevrons**, **Joined pill** — alternative value-showing pair looks.
+- **Big +/−**, **Big chevrons**, **Pill end** — no-value styles for the outer keys of a 3-key group; the View key in the middle shows the value (set its **Display Style** to *Pill middle* to span the pill across all three keys).
+
+Values are shown without units for maximum size. **Edge chevrons**, **Joined pill**, **Pill end**, and **Big chevrons** take a **Position in Pair** setting (*Auto* follows the direction: increase right, decrease left; pick *Top*/*Bottom* for vertical stacks). Holding a paired key repeats the adjustment until released. Colors follow the normal color overrides (the +/− accent is the *Graphic 1* slot); pill styles disable the normal border — the pill itself is the frame.
+
+Springs and shocks have no live telemetry value, so they stay legacy-only — no Key Style control appears for them. Weight Jacker Left / Right exist only as View sub-modes here; their Display Style dropdown offers the pill-middle options like any other View.

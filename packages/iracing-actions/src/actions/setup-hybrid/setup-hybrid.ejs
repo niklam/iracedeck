@@ -36,6 +36,12 @@
 
 		<%- include('dual-press-overrides') %>
 
+		<%- include('adjust-style', {
+			modeSelectId: 'setting-select',
+			pairedModes: ['mguk-deploy-mode', 'mguk-regen-gain', 'mguk-fixed-deploy'],
+			viewModes: ['view-mguk-deploy-mode', 'view-mguk-regen-gain', 'view-mguk-deploy-fixed']
+		}) %>
+
 		<%- include('title-overrides') %>
 
 		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/icon-defaults.json')['setup-hybrid'] }) %>

@@ -34,6 +34,12 @@
 
 		<%- include('dual-press-overrides') %>
 
+		<%- include('adjust-style', {
+			modeSelectId: 'setting-select',
+			pairedModes: ['engine-power', 'throttle-shaping', 'launch-rpm'],
+			viewModes: ['view-engine-power', 'view-throttle-shape', 'view-launch-rpm']
+		}) %>
+
 		<%- include('title-overrides') %>
 
 		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/icon-defaults.json')['setup-engine'] }) %>

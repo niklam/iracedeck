@@ -49,6 +49,12 @@
 
 		<%- include('dual-press-overrides') %>
 
+		<%- include('adjust-style', {
+			modeSelectId: 'setting-select',
+			pairedModes: ['differential-preload', 'differential-entry', 'differential-middle', 'differential-exit', 'front-arb', 'rear-arb', 'power-steering'],
+			viewModes: ['view-diff-preload', 'view-diff-entry', 'view-diff-middle', 'view-diff-exit', 'view-anti-roll-front', 'view-anti-roll-rear', 'view-power-steering', 'view-weight-jacker-left', 'view-weight-jacker-right']
+		}) %>
+
 		<%- include('title-overrides') %>
 
 		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/icon-defaults.json')['setup-chassis'] }) %>
