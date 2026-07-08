@@ -6,48 +6,80 @@
 	<body>
 		<%- include('section-header', { title: 'Action Settings' }) %>
 
-		<sdpi-item label="Setting">
-			<sdpi-select id="setting-select" setting="setting" default="mguk-regen-gain">
-				<optgroup label="Adjust">
-					<option value="hys-boost">HYS Boost</option>
-					<option value="hys-no-boost">HYS No Boost</option>
-					<option value="hys-regen">HYS Regen</option>
-					<option value="mguk-deploy-mode">MGU-K Deploy Mode</option>
-					<option value="mguk-fixed-deploy">MGU-K Fixed Deploy</option>
-					<option value="mguk-regen-gain">MGU-K Re-Gen Gain</option>
-				</optgroup>
-				<optgroup label="Display value">
-					<option value="view-mguk-deploy-fixed">View MGU-K Deploy Fixed</option>
-					<option value="view-mguk-deploy-mode">View MGU-K Deploy Mode</option>
-					<option value="view-mguk-regen-gain">View MGU-K Regen Gain</option>
-				</optgroup>
-			</sdpi-select>
-		</sdpi-item>
-
 		<% var __comms = require('./data/action-comms.json')['setup-hybrid']; %>
-		<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
+		<% var __dialComms = require('./data/action-comms.json')['setup-hybrid-dial']; %>
 
-		<sdpi-item label="Direction" id="direction-item">
-			<sdpi-select setting="direction" default="increase">
-				<option value="increase">Increase</option>
-				<option value="decrease">Decrease</option>
-			</sdpi-select>
-		</sdpi-item>
+		<!-- Keypad settings — hidden when this instance is a dial (#796). -->
+		<div id="keypad-settings">
+			<sdpi-item label="Setting">
+				<sdpi-select id="setting-select" setting="setting" default="mguk-regen-gain">
+					<optgroup label="Adjust">
+						<option value="hys-boost">HYS Boost</option>
+						<option value="hys-no-boost">HYS No Boost</option>
+						<option value="hys-regen">HYS Regen</option>
+						<option value="mguk-deploy-mode">MGU-K Deploy Mode</option>
+						<option value="mguk-fixed-deploy">MGU-K Fixed Deploy</option>
+						<option value="mguk-regen-gain">MGU-K Re-Gen Gain</option>
+					</optgroup>
+					<optgroup label="Display value">
+						<option value="view-mguk-deploy-fixed">View MGU-K Deploy Fixed</option>
+						<option value="view-mguk-deploy-mode">View MGU-K Deploy Mode</option>
+						<option value="view-mguk-regen-gain">View MGU-K Regen Gain</option>
+					</optgroup>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
 
-		<%- include('dual-press-overrides') %>
+			<sdpi-item label="Direction" id="direction-item">
+				<sdpi-select setting="direction" default="increase">
+					<option value="increase">Increase</option>
+					<option value="decrease">Decrease</option>
+				</sdpi-select>
+			</sdpi-item>
 
-		<%- include('adjust-style', {
-			modeSelectId: 'setting-select',
-			pairedModes: ['mguk-deploy-mode', 'mguk-regen-gain', 'mguk-fixed-deploy'],
-			viewModes: ['view-mguk-deploy-mode', 'view-mguk-regen-gain', 'view-mguk-deploy-fixed']
-		}) %>
+			<%- include('dual-press-overrides') %>
 
-		<%- include('title-overrides') %>
+			<%- include('adjust-style', {
+				modeSelectId: 'setting-select',
+				pairedModes: ['mguk-deploy-mode', 'mguk-regen-gain', 'mguk-fixed-deploy'],
+				viewModes: ['view-mguk-deploy-mode', 'view-mguk-regen-gain', 'view-mguk-deploy-fixed']
+			}) %>
+		</div>
 
-		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/icon-defaults.json')['setup-hybrid'] }) %>
-		<%- include('border-overrides', { defaults: require('./data/icon-defaults.json')['setup-hybrid'] }) %>
-		<%- include('graphic-overrides') %>
-		<%- include('common-settings') %>
+		<!-- Dial settings — shown only when this instance is a dial (#796). Setup
+		     Hybrid has no press gesture, so only the rotation Setting is offered. -->
+		<div id="dial-settings" class="hidden">
+			<sdpi-item label="Setting">
+				<sdpi-select setting="dial.setting" default="mguk-deploy-mode">
+					<option value="mguk-deploy-mode">MGU-K Deploy Mode</option>
+					<option value="mguk-regen-gain">MGU-K Regen Gain</option>
+					<option value="mguk-fixed-deploy">MGU-K Fixed Deploy</option>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="dial.setting" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+			<% if (locals.platform?.features?.dialFeedback !== false) { %>
+			<div class="ird-supporting-text">
+				Turn the dial to adjust the selected hybrid setting; the touch strip shows
+				its live value. Both the increase and decrease key bindings must be set
+				below.
+			</div>
+			<% } else { %>
+			<div class="ird-supporting-text">
+				Turn the knob to adjust the selected hybrid setting. Both the increase and
+				decrease key bindings must be set below.
+			</div>
+			<% } %>
+		</div>
+
+		<!-- Key-icon appearance — keypad only (a dial has no key icon). -->
+		<div id="keypad-appearance">
+			<%- include('title-overrides') %>
+
+			<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/icon-defaults.json')['setup-hybrid'] }) %>
+			<%- include('border-overrides', { defaults: require('./data/icon-defaults.json')['setup-hybrid'] }) %>
+			<%- include('graphic-overrides') %>
+			<%- include('common-settings') %>
+		</div>
 
 		<%- include('section-header', { title: 'Global Settings' }) %>
 
@@ -55,11 +87,14 @@
 			keyBindings: require('./data/key-bindings.json').setupHybrid
 		}) %>
 
-		<%- include('global-title-defaults') %>
-		<%- include('global-color-defaults') %>
-		<%- include('global-border-defaults') %>
-		<%- include('global-graphic-defaults') %>
-		<%- include('global-flag-flash') %>
+		<div id="keypad-global-appearance">
+			<%- include('global-title-defaults') %>
+			<%- include('global-color-defaults') %>
+			<%- include('global-border-defaults') %>
+			<%- include('global-graphic-defaults') %>
+			<%- include('global-flag-flash') %>
+		</div>
+
 		<%- include('global-common-settings') %>
 
 		<script>
@@ -79,6 +114,28 @@
 				const hideDirection = NON_DIRECTIONAL.has(setting) || view;
 				directionItem?.classList.toggle("hidden", hideDirection);
 				dualEnabledItem?.classList.toggle("hidden", !view);
+			}
+
+			// Which surface this instance sits on: the PI registration's
+			// actionInfo.payload.controller ("Keypad" | "Encoder"; the Mirabox host
+			// may report "Knob"). Anything unknown or unavailable falls back to the
+			// keypad view (#796).
+			async function resolveController() {
+				try {
+					const client = window.SDPIComponents && window.SDPIComponents.streamDeckClient;
+					const info = client && (await client.getConnectionInfo());
+					const controller = info && info.actionInfo && info.actionInfo.payload && info.actionInfo.payload.controller;
+					return controller === "Encoder" || controller === "Knob" ? "Encoder" : "Keypad";
+				} catch (err) {
+					return "Keypad";
+				}
+			}
+
+			function applyDialView() {
+				document.getElementById("keypad-settings")?.classList.add("hidden");
+				document.getElementById("keypad-appearance")?.classList.add("hidden");
+				document.getElementById("keypad-global-appearance")?.classList.add("hidden");
+				document.getElementById("dial-settings")?.classList.remove("hidden");
 			}
 
 			async function initialize() {
@@ -102,6 +159,10 @@
 							updateVisibility(currentValue);
 						}
 					}, 100);
+				}
+
+				if ((await resolveController()) === "Encoder") {
+					applyDialView();
 				}
 			}
 

@@ -138,6 +138,20 @@ vi.mock("@iracedeck/deck-core", async () => {
       customPosition: 0,
     })),
     applyBindingWarning: vi.fn((content: string) => `${content}<warn/>`),
+    // Dial-surface deck-core exports (#796) — onGlobalSettingsChange runs at
+    // construction; the rest only on dial flows (keypad tests never hit them).
+    onGlobalSettingsChange: vi.fn(() => vi.fn()),
+    classifyDialRelease: (args: {
+      pressStartMs: number;
+      nowMs: number;
+      rotatedWhilePressed: boolean;
+      thresholdMs?: number;
+    }) => {
+      if (args.rotatedWhilePressed) return "push-turn";
+
+      return args.nowMs - args.pressStartMs >= (args.thresholdMs ?? 500) ? "long" : "short";
+    },
+    escapeXml: (str: string) => str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"),
     assembleIcon: vi.fn(
       ({
         graphicSvg,
@@ -163,14 +177,6 @@ function fakeEvent(actionId: string, settings: Record<string, unknown> = {}) {
   return {
     action: { id: actionId, isKey: () => true, isDial: () => false, setTitle: vi.fn(), setImage: vi.fn() },
     payload: { settings },
-  };
-}
-
-/** Create a minimal fake dial rotate event. */
-function fakeDialRotateEvent(actionId: string, settings: Record<string, unknown>, ticks: number) {
-  return {
-    action: { id: actionId, isKey: () => false, isDial: () => true, setTitle: vi.fn(), setImage: vi.fn() },
-    payload: { settings, ticks },
   };
 }
 
@@ -393,18 +399,6 @@ describe("SetupHybrid", () => {
       expect(mockTapBinding).toHaveBeenCalledWith("setupHybridHysNoBoost");
     });
 
-    it("should call tapGlobalBinding on dialDown for directional controls", async () => {
-      await action.onDialDown(fakeEvent("action-1", { setting: "mguk-regen-gain", direction: "increase" }) as any);
-
-      expect(mockTapBinding).toHaveBeenCalledWith("setupHybridMgukRegenGainIncrease");
-    });
-
-    it("should call tapGlobalBinding on dialDown for toggle control", async () => {
-      await action.onDialDown(fakeEvent("action-1", { setting: "hys-no-boost" }) as any);
-
-      expect(mockTapBinding).toHaveBeenCalledWith("setupHybridHysNoBoost");
-    });
-
     it("should call tapGlobalBinding even when no key binding is configured", async () => {
       await action.onKeyDown(fakeEvent("action-1", { setting: "mguk-regen-gain", direction: "increase" }) as any);
 
@@ -442,19 +436,6 @@ describe("SetupHybrid", () => {
     it("should call releaseHeldBinding on keyUp after keyDown for hold controls", async () => {
       await action.onKeyDown(fakeEvent("action-1", { setting: "hys-boost" }) as any);
       await action.onKeyUp(fakeEvent("action-1", { setting: "hys-boost" }) as any);
-
-      expect(mockReleaseBinding).toHaveBeenCalledWith("action-1");
-    });
-
-    it("should call holdGlobalBinding on dialDown for hold controls", async () => {
-      await action.onDialDown(fakeEvent("action-1", { setting: "hys-boost" }) as any);
-
-      expect(mockHoldBinding).toHaveBeenCalledOnce();
-    });
-
-    it("should call releaseHeldBinding on dialUp after dialDown for hold controls", async () => {
-      await action.onDialDown(fakeEvent("action-1", { setting: "hys-boost" }) as any);
-      await action.onDialUp(fakeEvent("action-1", { setting: "hys-boost" }) as any);
 
       expect(mockReleaseBinding).toHaveBeenCalledWith("action-1");
     });
@@ -501,57 +482,9 @@ describe("SetupHybrid", () => {
     });
   });
 
-  describe("encoder behavior", () => {
-    let action: SetupHybrid;
-
-    beforeEach(() => {
-      action = new SetupHybrid();
-    });
-
-    it("should call tapGlobalBinding for increase on clockwise rotation for directional controls", async () => {
-      await action.onDialRotate(
-        fakeDialRotateEvent("action-1", { setting: "mguk-regen-gain", direction: "increase" }, 1) as any,
-      );
-
-      expect(mockTapBinding).toHaveBeenCalledWith("setupHybridMgukRegenGainIncrease");
-    });
-
-    it("should call tapGlobalBinding for decrease on counter-clockwise rotation for directional controls", async () => {
-      await action.onDialRotate(
-        fakeDialRotateEvent("action-1", { setting: "mguk-regen-gain", direction: "increase" }, -1) as any,
-      );
-
-      expect(mockTapBinding).toHaveBeenCalledWith("setupHybridMgukRegenGainDecrease");
-    });
-
-    it("should call tapGlobalBinding for mguk-deploy-mode rotation", async () => {
-      await action.onDialRotate(
-        fakeDialRotateEvent("action-1", { setting: "mguk-deploy-mode", direction: "increase" }, 2) as any,
-      );
-
-      expect(mockTapBinding).toHaveBeenCalledWith("setupHybridMgukDeployModeIncrease");
-    });
-
-    it("should ignore rotation for hold controls (hys-boost)", async () => {
-      await action.onDialRotate(fakeDialRotateEvent("action-1", { setting: "hys-boost" }, 1) as any);
-
-      expect(mockTapBinding).not.toHaveBeenCalled();
-      expect(mockHoldBinding).not.toHaveBeenCalled();
-    });
-
-    it("should ignore rotation for hold controls (hys-regen)", async () => {
-      await action.onDialRotate(fakeDialRotateEvent("action-1", { setting: "hys-regen" }, -1) as any);
-
-      expect(mockTapBinding).not.toHaveBeenCalled();
-      expect(mockHoldBinding).not.toHaveBeenCalled();
-    });
-
-    it("should ignore rotation for toggle control (hys-no-boost)", async () => {
-      await action.onDialRotate(fakeDialRotateEvent("action-1", { setting: "hys-no-boost" }, 1) as any);
-
-      expect(mockTapBinding).not.toHaveBeenCalled();
-    });
-  });
+  // Dial-surface behavior (rotate / press / touch / feedback) is exercised by the
+  // dedicated setup-hybrid-dial-surface.test.ts (#796); the former "encoder
+  // behavior" block and the dial-executes-keypad tests are superseded.
 
   describe("view sub-modes (issue #541)", () => {
     let action: SetupHybrid;

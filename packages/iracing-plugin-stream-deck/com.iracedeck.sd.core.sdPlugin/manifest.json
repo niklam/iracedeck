@@ -503,8 +503,16 @@
       "Tooltip": "Hybrid/ERS adjustments (MGU-K regen, deploy modes, HYS boost/regen)",
       "PropertyInspectorPath": "ui/setup-hybrid.html",
       "Controllers": [
-        "Keypad"
+        "Keypad",
+        "Encoder"
       ],
+      "Encoder": {
+        "Icon": "imgs/actions/setup-hybrid/dial",
+        "layout": "layouts/setup-hybrid.json",
+        "TriggerDescription": {
+          "Rotate": "Adjust the selected hybrid setting"
+        }
+      },
       "States": [
         {
           "Image": "imgs/actions/setup-hybrid/key",
@@ -520,8 +528,18 @@
       "Tooltip": "Traction control adjustments (TC Toggle, TC Slots 1-4)",
       "PropertyInspectorPath": "ui/setup-traction.html",
       "Controllers": [
-        "Keypad"
+        "Keypad",
+        "Encoder"
       ],
+      "Encoder": {
+        "Icon": "imgs/actions/setup-traction/dial",
+        "layout": "layouts/setup-traction.json",
+        "TriggerDescription": {
+          "Rotate": "Adjust the selected traction setting",
+          "Push": "Configured action (default: toggle TC)",
+          "Touch": "Configured action"
+        }
+      },
       "States": [
         {
           "Image": "imgs/actions/setup-traction/key",

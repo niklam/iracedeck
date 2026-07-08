@@ -421,6 +421,14 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     "hys-no-boost": keybind("setupHybridHysNoBoost"),
   }),
 
+  // The dial surface of the merged Setup Hybrid action (#796). No press gesture
+  // (Setup Hybrid has no natural toggle); View modes + HYS holds stay keypad-only.
+  "setup-hybrid-dial": entry("dial.setting", {
+    "mguk-deploy-mode": pair("setupHybridMgukDeployModeIncrease", "setupHybridMgukDeployModeDecrease"),
+    "mguk-regen-gain": pair("setupHybridMgukRegenGainIncrease", "setupHybridMgukRegenGainDecrease"),
+    "mguk-fixed-deploy": pair("setupHybridMgukFixedDeployIncrease", "setupHybridMgukFixedDeployDecrease"),
+  }),
+
   "setup-traction": entry("setting", {
     "view-tc-slot-1": pair("setupTractionTcSlot1Increase", "setupTractionTcSlot1Decrease"),
     "view-tc-slot-2": pair("setupTractionTcSlot2Increase", "setupTractionTcSlot2Decrease"),
@@ -431,6 +439,18 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     "tc-slot-2": dir("setupTractionTcSlot2Increase", "setupTractionTcSlot2Decrease"),
     "tc-slot-3": dir("setupTractionTcSlot3Increase", "setupTractionTcSlot3Decrease"),
     "tc-slot-4": dir("setupTractionTcSlot4Increase", "setupTractionTcSlot4Decrease"),
+  }),
+
+  // The dial surface of the merged Setup Traction action (#795) — consumed only
+  // by the dial section of setup-traction.ejs. Separate from the keypad map: the
+  // same mode names carry different descriptors per surface (keypad `tc-slot-N`
+  // is direction-keyed via `dir`, dial rotation requires BOTH keys via `pair`).
+  "setup-traction-dial": entry("dial.setting", {
+    "tc-slot-1": pair("setupTractionTcSlot1Increase", "setupTractionTcSlot1Decrease"),
+    "tc-slot-2": pair("setupTractionTcSlot2Increase", "setupTractionTcSlot2Decrease"),
+    "tc-slot-3": pair("setupTractionTcSlot3Increase", "setupTractionTcSlot3Decrease"),
+    "tc-slot-4": pair("setupTractionTcSlot4Increase", "setupTractionTcSlot4Decrease"),
+    "toggle-tc": keybind("setupTractionTcToggle"),
   }),
 
   // --- API / chat actions (no binding required) ---
