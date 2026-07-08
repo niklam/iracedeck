@@ -190,11 +190,11 @@ describe("VIEW_DEFS registry", () => {
 describe("generateSetupViewSvg — title-aware value centering (#810)", () => {
   const telemetry = { dcBrakeBias: 54.0 } as never;
 
-  it("value re-centers with the resolved title: shown/bottom -> 79, hidden -> 72, top -> 84", () => {
+  it("value re-centers with the resolved title: shown/bottom -> 60, hidden -> 72, top -> 84", () => {
     // Baseline y = center + round(0.36 * fontSize); "view-brake-bias" has no
     // valueFontSize override, so it falls back to the View-native default (36).
     const shown = dataUriToSvg(generateSetupViewSvg({ viewId: "view-brake-bias", telemetry }));
-    expect(shown).toContain('y="92"'); // center 79 -> 79 + round(0.36*36=13) = 92
+    expect(shown).toContain('y="73"'); // center 60 -> 60 + round(0.36*36=13) = 73
 
     const hidden = dataUriToSvg(
       generateSetupViewSvg({ viewId: "view-brake-bias", telemetry, titleOverrides: { showTitle: false } }),
@@ -211,6 +211,6 @@ describe("generateSetupViewSvg — title-aware value centering (#810)", () => {
     // Sanity check that the shown/bottom (established View look) case is
     // unchanged from before #810 — same baseline math as the hidden/top cases above.
     const shown = dataUriToSvg(generateSetupViewSvg({ viewId: "view-brake-bias", telemetry }));
-    expect(shown).toContain('x="72" y="92"');
+    expect(shown).toContain('x="72" y="73"');
   });
 });

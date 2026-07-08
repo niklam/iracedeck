@@ -400,18 +400,20 @@ export function formatViewValue(viewId: ViewSettingId, telemetry: TelemetryData 
 }
 
 /**
- * Visual center y for the View value text, resolved from where the title
- * sits: the long-established View look keeps y=79 when the title is shown at
- * the bottom (or middle/custom); a hidden title frees the whole key so the
- * value drops to the true center (72); a top title needs the value pushed
- * further down so it clears the title (84). Shared by `generateSetupViewSvg`
- * below and the paired pill-middle styles in `adjust-styles.ts`, which use
- * the identical layout and must move identically (issue #810).
+ * Visual center y for the View value text — the single source of truth for
+ * title-aware content centering, shared by `generateSetupViewSvg` below AND
+ * `adjust-styles.ts`'s `titleAwareCenterY` (which delegates here), so the
+ * View look, the pill-middle styles, and the simple directional styles
+ * (edge-chevrons, big-glyph, big-chevron) all move identically (issue #810).
+ * Resolved from where the title sits: a hidden title frees the whole key so
+ * the value sits at the true center (72); a bottom title (or middle/custom)
+ * pushes the value UP so it clears the title, landing at 60; a top title
+ * needs the value pushed DOWN so it clears the title, landing at 84.
  */
 export function viewValueCenterY(title: Pick<ResolvedTitleSettings, "showTitle" | "position">): number {
   if (!title.showTitle) return 72;
 
-  return title.position === "top" ? 84 : 79;
+  return title.position === "top" ? 84 : 60;
 }
 
 /**
@@ -477,9 +479,9 @@ export function generateSetupViewSvg(inputs: SetupViewRenderInputs): string {
   // longer values like "54.0%" without crowding the key's left/right edges.
   const valueFontSize = String(def.valueFontSize ?? VIEW_VALUE_FONT_SIZE_DEFAULT);
   // The value's vertical center depends on where the resolved title sits
-  // (viewValueCenterY, #810): the established bottom-title look keeps y=79,
-  // a hidden title lets the value drop to true center (72), and a top title
-  // pushes it to 84 so it clears the title. Qt's SVG renderer ignores
+  // (viewValueCenterY, #810): a shown bottom title pushes the value up to
+  // 60, a hidden title lets the value drop to true center (72), and a top
+  // title pushes it to 84 so it clears the title. Qt's SVG renderer ignores
   // `dominant-baseline`, so the visual-center y is converted to a baseline y
   // by shifting down ~0.36em (see adjust-styles.ts TEXT_CENTER_BASELINE_FACTOR
   // for the same math).

@@ -284,25 +284,24 @@ describe("renderAdjustStyleSvg — pill family and no-value styles", () => {
     expect(dec).toContain('x="92" y="84"');
   });
 
-  it("joined-pill (vertical) rebalances glyph/value per key (#810): top glyph 62/value 98, bottom value 50/glyph 86", () => {
+  it("joined-pill (vertical) rebalances glyph/value per key (#810 rebalance v2): top glyph 58/value 102, bottom value 46/glyph 90", () => {
     const top = decode(renderAdjustStyleSvg({ ...BASE, style: "joined-pill", pairPosition: "top" }));
-    expect(top).toContain('x="72" y="76"'); // glyph: 62 + round(38*0.36=14) = 76
-    expect(top).toContain('x="72" y="110"'); // value: 98 + round(34*0.36=12) = 110
+    expect(top).toContain('x="72" y="72"'); // glyph: 58 + round(38*0.36=14) = 72
+    expect(top).toContain('x="72" y="114"'); // value: 102 + round(34*0.36=12) = 114
 
     const bottom = decode(renderAdjustStyleSvg({ ...BASE, style: "joined-pill", pairPosition: "bottom" }));
-    expect(bottom).toContain('x="72" y="62"'); // value: 50 + 12 = 62
-    expect(bottom).toContain('x="72" y="100"'); // glyph: 86 + 14 = 100
+    expect(bottom).toContain('x="72" y="58"'); // value: 46 + 12 = 58
+    expect(bottom).toContain('x="72" y="104"'); // glyph: 90 + 14 = 104
   });
 
-  it("joined-pill top key defaults its title to the top position, rendered inside the frame instead of knocked out (#810)", () => {
+  it("joined-pill top key defaults its title to the top position, rendered without a knockout — the mirror shift is 0 at the default font since the title already clears the stroke unshifted (#810 Fix 3)", () => {
     const svg = decode(renderAdjustStyleSvg({ ...BASE, style: "joined-pill", pairPosition: "top" }));
     const pathIndex = svg.indexOf("<path");
-    const transformIndex = svg.indexOf('<g transform="translate(0, 9)">', pathIndex);
     const titleIndex = svg.indexOf(">BRAKE BIAS<");
 
-    expect(svg.indexOf("<rect", pathIndex)).toBe(-1); // no knockout — shifted inside the frame instead
-    expect(transformIndex).toBeGreaterThan(pathIndex);
-    expect(titleIndex).toBeGreaterThan(transformIndex);
+    expect(svg.indexOf("<rect", pathIndex)).toBe(-1); // no knockout — top titles never get one
+    expect(svg.indexOf('<g transform="translate(0,', pathIndex)).toBe(-1); // mirror shift is 0 at default font
+    expect(titleIndex).toBeGreaterThan(pathIndex);
   });
 
   it("joined-pill top key's default top title position is a locked default — a per-key override still wins", () => {
@@ -338,17 +337,16 @@ describe("renderAdjustStyleSvg — pill family and no-value styles", () => {
     expect(svg.slice(pathIndex).indexOf('<g transform="translate(0,')).toBe(-1);
   });
 
-  it("pill-middle-horizontal translates a top-positioned title down inside the frame instead of a knockout (always has both rails, #810)", () => {
+  it("pill-middle-horizontal renders a top-positioned title without a knockout (always has both rails, #810); mirror shift is 0 at the default font", () => {
     const svg = decode(
       renderAdjustStyleSvg({ ...BASE, style: "pill-middle-horizontal", titleOverrides: { position: "top" } }),
     );
     const pathIndex = svg.indexOf("<path");
-    const transformIndex = svg.indexOf('<g transform="translate(0, 9)">', pathIndex);
     const titleIndex = svg.indexOf(">BRAKE BIAS<");
 
     expect(svg.indexOf("<rect", pathIndex)).toBe(-1);
-    expect(transformIndex).toBeGreaterThan(pathIndex);
-    expect(titleIndex).toBeGreaterThan(transformIndex);
+    expect(svg.indexOf('<g transform="translate(0,', pathIndex)).toBe(-1);
+    expect(titleIndex).toBeGreaterThan(pathIndex);
   });
 
   it("pill-end uses equal margins and a centered glyph, no value, no label", () => {
@@ -381,10 +379,10 @@ describe("renderAdjustStyleSvg — pill family and no-value styles", () => {
     expect(svg).toContain("BRAKE BIAS");
   });
 
-  it("pill-middle-horizontal value re-centers with the title (#810, Fix 3): shown/bottom -> 79, hidden -> 72, top -> 84", () => {
+  it("pill-middle-horizontal value re-centers with the title (#810, Fix 1): shown/bottom -> 60, hidden -> 72, top -> 84", () => {
     // Baseline y = center + round(0.36 * fontSize); fontSize here is 36 (View-native default).
     const shown = decode(renderAdjustStyleSvg({ ...BASE, style: "pill-middle-horizontal" }));
-    expect(shown).toContain('x="72" y="92"'); // center 79 -> 79 + round(0.36*36=13) = 92
+    expect(shown).toContain('x="72" y="73"'); // center 60 -> 60 + round(0.36*36=13) = 73
 
     const hidden = decode(
       renderAdjustStyleSvg({ ...BASE, style: "pill-middle-horizontal", titleOverrides: { showTitle: false } }),

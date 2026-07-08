@@ -211,7 +211,7 @@ export interface AdjustStyleRenderInputs {
   /**
    * Explicit value font size (px) for pill-middle styles — the View's own size
    * (`VIEW_DEFS[...].valueFontSize ?? 36`), rendered at the title-aware View
-   * center (`viewValueCenterY` — y=79 by default, shifting with the resolved
+   * center (`viewValueCenterY` — y=60 by default, shifting with the resolved
    * title). Replaces `shortValue`'s style-default-plus-bump scheme, which only
    * applies to the other paired styles.
    */
@@ -353,34 +353,50 @@ function pillTitleKnockout(title: ResolvedTitleSettings, backgroundColor: string
 /**
  * Downward shift (dy) so a TOP-positioned title renders fully inside the
  * pill frame instead of crossing the y=14 stroke (a top-edge knockout looked
- * wrong on hardware — issue #810). `generateTitleText`'s top position anchors
- * the FIRST line at a fixed y=(svgFontSize+8) regardless of line count, so
- * only that first line's geometry matters here — a multi-line title shifts
- * as one block. Reuses the same box-height heuristic `pillTitleKnockout` uses
- * to size its covering rect (`svgFontSize + 8`, halved) as an approximation
- * of the glyph's visual top, then shifts that down to clear ~y=22. Clamped to
- * 0 so an oversized font (whose glyph top already clears y=22 unshifted) is
- * never pushed back up toward the stroke.
+ * wrong on hardware — issue #810), computed as an exact vertical MIRROR of
+ * the bottom-positioned title's inset from its edge (previously a heuristic
+ * that didn't match, leaving the top title sitting at a different height
+ * than the bottom one — hardware feedback: "top title is not equally high as
+ * bottom title; bottom is better").
+ *
+ * `generateTitleText`'s bottom position always anchors its LAST line at a
+ * fixed y=130 regardless of line count or font size (see `pillTitleKnockout`)
+ * — an inset of `144 - 130 = 14` from the bottom edge. The mirror target for
+ * the top title's FIRST line (also anchored at a fixed y regardless of line
+ * count — `svgFontSize + 8`) is therefore the same 14px inset from the TOP
+ * edge. Compares that target against where `generateTitleText`'s own "top"
+ * placement already puts the first line and shifts DOWN only far enough to
+ * close the gap — clamped to 0 so it's never pushed back UP toward the
+ * stroke (at the default 9pt title this is already 0: the native top
+ * position already clears the mirror target unshifted).
  */
 function pillTopTitleShift(title: ResolvedTitleSettings): number {
   const svgFontSize = title.fontSize * 2;
-  const glyphTop = (svgFontSize + 8) / 2;
+  const lineHeight = svgFontSize * 1.2;
+  const lines = title.titleText.split("\n");
 
-  return Math.max(0, 22 - glyphTop);
+  const bottomYs = calculateYPositions(lines.length, svgFontSize, lineHeight, "bottom", 0);
+  const bottomTextY = bottomYs[bottomYs.length - 1];
+  const mirrorTargetY = 144 - bottomTextY;
+
+  const topYs = calculateYPositions(lines.length, svgFontSize, lineHeight, "top", 0);
+  const topTextY = topYs[0];
+
+  return Math.max(0, mirrorTargetY - topTextY);
 }
 
 /**
- * Optical center for content sharing the key with the title, mirroring
- * `assembleIcon`'s title-aware graphic area (a one-line bottom title leaves a
- * content area whose center sits at ~y=60.5; mirrored to ~y=83.5 for top
- * titles) — see `computeGraphicArea` in `packages/icon-composer/src/title-settings.ts`.
- * Rounded to 60/84 here since paired-style art isn't scaled/fit like a
- * template graphic, just recentered.
+ * Optical center for content sharing the key with the title — delegates to
+ * `viewValueCenterY` (the single source of truth: no title → 72, top → 84,
+ * bottom → 60), mirroring `assembleIcon`'s title-aware graphic area (a
+ * one-line bottom title leaves a content area whose center sits at ~y=60.5;
+ * mirrored to ~y=83.5 for top titles) — see `computeGraphicArea` in
+ * `packages/icon-composer/src/title-settings.ts`. Rounded to 60/84 here
+ * since paired-style art isn't scaled/fit like a template graphic, just
+ * recentered.
  */
 function titleAwareCenterY(title: ResolvedTitleSettings): number {
-  if (!title.showTitle) return 72;
-
-  return title.position === "top" ? 84 : 60;
+  return viewValueCenterY(title);
 }
 
 export function renderAdjustStyleSvg(inputs: AdjustStyleRenderInputs): string {
@@ -561,13 +577,13 @@ function buildStyleArt(
         // shift in renderAdjustStyleSvg, so glyph and value both move down
         // to clear it (#810 rebalance).
         case "top":
-          return framePath + glyphText(direction, 72, 62, 38, accent) + valueText(value, 72, 98, 34 + bump, textColor);
+          return framePath + glyphText(direction, 72, 58, 38, accent) + valueText(value, 72, 102, 34 + bump, textColor);
         // BOTTOM key of a vertical pair: frame closed at bottom, open toward
         // the TOP partner. Title stays at the bottom (existing stroke
         // knockout); glyph and value both move up to rebalance against it
         // (#810 rebalance).
         case "bottom":
-          return framePath + valueText(value, 72, 50, 34 + bump, textColor) + glyphText(direction, 72, 86, 38, accent);
+          return framePath + valueText(value, 72, 46, 34 + bump, textColor) + glyphText(direction, 72, 90, 38, accent);
       }
 
       break;
