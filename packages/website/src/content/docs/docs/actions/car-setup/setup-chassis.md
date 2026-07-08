@@ -280,4 +280,4 @@ Adjustment modes with a live value (on Setup Chassis: Differential Preload, Diff
 
 Values are shown without units for maximum size. **Edge chevrons**, **Joined pill**, **Pill end**, and **Big chevrons** take a **Position in Pair** setting (*Auto* follows the direction: increase right, decrease left; pick *Top*/*Bottom* for vertical stacks). Holding a paired key repeats the adjustment until released. Colors follow the normal color overrides (the +/− accent is the *Graphic 1* slot); pill styles disable the normal border — the pill itself is the frame.
 
-Weight Jacker Left / Right, springs, and shocks are directional modes without a `dc*` telemetry field, so they stay legacy-only — no Key Style control appears for them.
+Springs and shocks have no live telemetry value, so they stay legacy-only — no Key Style control appears for them. Weight Jacker Left / Right exist only as View sub-modes here; their Display Style dropdown offers the pill-middle options like any other View.
