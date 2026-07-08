@@ -300,7 +300,7 @@ describe("renderAdjustStyleSvg — pill family and no-value styles", () => {
     const titleIndex = svg.indexOf(">BRAKE BIAS<");
 
     expect(svg.indexOf("<rect", pathIndex)).toBeGreaterThan(pathIndex); // knockout gap on the top stroke
-    expect(svg).toContain('<g transform="translate(0, -12)"'); // title shifted up onto the y=14 stroke (14 - 26)
+    expect(svg.indexOf('<g transform="translate(0,', pathIndex)).toBe(-1); // title keeps its natural position, no shift
     expect(titleIndex).toBeGreaterThan(pathIndex);
   });
 
@@ -345,7 +345,7 @@ describe("renderAdjustStyleSvg — pill family and no-value styles", () => {
     const titleIndex = svg.indexOf(">BRAKE BIAS<");
 
     expect(svg.indexOf("<rect", pathIndex)).toBeGreaterThan(pathIndex); // knockout gap on the top rail
-    expect(svg).toContain('<g transform="translate(0, -12)"'); // title shifted up onto the y=14 rail
+    expect(svg.indexOf('<g transform="translate(0,', pathIndex)).toBe(-1); // title keeps its natural position, no shift
     expect(titleIndex).toBeGreaterThan(pathIndex);
   });
 
