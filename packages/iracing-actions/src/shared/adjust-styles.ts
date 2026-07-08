@@ -32,16 +32,14 @@ import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
 import adjustStyleTemplate from "../../icons/adjust-style.svg";
-import { formatViewValue, isViewSetting, VIEW_DEFS, type ViewSettingId } from "./setup-view.js";
+import { formatViewValue, isViewSetting, VIEW_DEFS, type ViewSettingId, viewValueCenterY } from "./setup-view.js";
 
 /** Every selectable key style. Which subset applies depends on the mode kind (adjust vs View). */
 export const ADJUST_KEY_STYLES = [
   "legacy",
   // Value-showing directional styles (2-key pairs).
-  "corner-badge",
   "edge-chevrons",
   "split",
-  "ghost",
   "joined-pill",
   // No-value directional styles (3-key group outer keys; also fine standalone).
   "big-glyph",
@@ -120,10 +118,8 @@ export function hasPairedValueSource(setting: string): boolean {
 }
 
 const VALUE_SHOWING_STYLES: ReadonlySet<AdjustKeyStyle> = new Set([
-  "corner-badge",
   "edge-chevrons",
   "split",
-  "ghost",
   "joined-pill",
   "pill-middle-horizontal",
   "pill-middle-vertical",
@@ -214,9 +210,10 @@ export interface AdjustStyleRenderInputs {
   readonly shortValue?: boolean;
   /**
    * Explicit value font size (px) for pill-middle styles — the View's own size
-   * (`VIEW_DEFS[...].valueFontSize ?? 36`), rendered at the standard View
-   * center y=79. Replaces `shortValue`'s style-default-plus-bump scheme, which
-   * only applies to the other paired styles.
+   * (`VIEW_DEFS[...].valueFontSize ?? 36`), rendered at the title-aware View
+   * center (`viewValueCenterY` — y=79 by default, shifting with the resolved
+   * title). Replaces `shortValue`'s style-default-plus-bump scheme, which only
+   * applies to the other paired styles.
    */
   readonly valueFontSize?: number;
   /** Representative static icon of the owning action — supplies background/text palette. */
@@ -298,14 +295,17 @@ function pillFramePath(position: "left" | "right" | "top" | "bottom", yTop: numb
 /**
  * Whether a pill style's frame has a closed (stroked) edge at y=14 (`"top"`)
  * or y=130 (`"bottom"`) for the given position — the only edges a top- or
- * bottom-positioned label can cross and therefore carve a gap in.
- * `joined-pill`/`pill-end` close every edge except the one facing `position`
- * (open toward the partner, no stroke to erase there) — so the edge OPPOSITE
- * `position` is the one that's missing: a `position: "top"` frame is open at
- * the bottom (no y=130 stroke), a `position: "bottom"` frame is open at the
- * top (no y=14 stroke); `left`/`right` frames keep both. `pill-middle-horizontal`
- * always draws both rails (top and bottom); `pill-middle-vertical` never has
- * either (side rails only).
+ * bottom-positioned title can cross. A bottom title crossing its edge gets a
+ * stroke knockout (`pillTitleKnockout`); a top title crossing its edge is
+ * instead shifted to sit inside the frame (`pillTopTitleShift`) — see the
+ * "top-positioned label instead renders INSIDE the frame" comment in
+ * `renderAdjustStyleSvg`. `joined-pill`/`pill-end` close every edge except
+ * the one facing `position` (open toward the partner, no stroke to cross
+ * there) — so the edge OPPOSITE `position` is the one that's missing: a
+ * `position: "top"` frame is open at the bottom (no y=130 stroke), a
+ * `position: "bottom"` frame is open at the top (no y=14 stroke); `left`/
+ * `right` frames keep both. `pill-middle-horizontal` always draws both rails
+ * (top and bottom); `pill-middle-vertical` never has either (side rails only).
  */
 function pillHasStroke(
   style: AdjustKeyStyle,
@@ -324,21 +324,19 @@ function pillHasStroke(
 }
 
 /**
- * Erases the top or bottom pill stroke crossed by a top- or bottom-positioned
- * label so the frame reads as carved open around the text (e.g. "— TC1 —")
- * instead of a solid bar crossing behind it. Sized to the longest title line
- * and centered on the same y the crossed line actually lands on —
- * `generateTitleText` anchors the bottom position's LAST line at a fixed
- * y=130 and the top position's FIRST line at a fixed y=(fontSize+8)
- * regardless of line count, so the gap always hugs the stroke it needs to
- * erase. No-op unless the resolved title is shown at the top/bottom position
- * with non-empty text — callers must additionally gate on `pillHasStroke`
- * for styles/positions whose frame has no stroke on that edge to begin with.
+ * Erases the bottom pill stroke crossed by a bottom-positioned title so the
+ * frame reads as carved open around the text (e.g. "— TC1 —") instead of a
+ * solid bar crossing behind it. Sized to the longest title line and centered
+ * on the same y the crossed (LAST) line actually lands on — `generateTitleText`
+ * anchors the bottom position's last line at a fixed y=130 regardless of line
+ * count, so the gap always hugs the stroke it needs to erase. No-op unless
+ * the resolved title is shown at the bottom with non-empty text — callers
+ * must additionally gate on `pillHasStroke` for styles/positions whose frame
+ * has no bottom stroke to begin with. A TOP-positioned title never gets a
+ * knockout — see `pillTopTitleShift`.
  */
 function pillTitleKnockout(title: ResolvedTitleSettings, backgroundColor: string): string {
-  if (!title.showTitle || !title.titleText) return "";
-
-  if (title.position !== "top" && title.position !== "bottom") return "";
+  if (!title.showTitle || !title.titleText || title.position !== "bottom") return "";
 
   const svgFontSize = title.fontSize * 2;
   const lines = title.titleText.split("\n");
@@ -346,10 +344,29 @@ function pillTitleKnockout(title: ResolvedTitleSettings, backgroundColor: string
   const longestLineChars = Math.max(...lines.map((line) => line.length));
   const width = Math.min(96, longestLineChars * svgFontSize * 0.62 + 12);
   const height = svgFontSize + 8;
-  const yPositions = calculateYPositions(lines.length, svgFontSize, lineHeight, title.position, 0);
-  const textY = title.position === "bottom" ? yPositions[yPositions.length - 1] : yPositions[0];
+  const yPositions = calculateYPositions(lines.length, svgFontSize, lineHeight, "bottom", 0);
+  const textY = yPositions[yPositions.length - 1];
 
   return `<rect x="${72 - width / 2}" y="${textY - height / 2}" width="${width}" height="${height}" fill="${backgroundColor}"/>`;
+}
+
+/**
+ * Downward shift (dy) so a TOP-positioned title renders fully inside the
+ * pill frame instead of crossing the y=14 stroke (a top-edge knockout looked
+ * wrong on hardware — issue #810). `generateTitleText`'s top position anchors
+ * the FIRST line at a fixed y=(svgFontSize+8) regardless of line count, so
+ * only that first line's geometry matters here — a multi-line title shifts
+ * as one block. Reuses the same box-height heuristic `pillTitleKnockout` uses
+ * to size its covering rect (`svgFontSize + 8`, halved) as an approximation
+ * of the glyph's visual top, then shifts that down to clear ~y=22. Clamped to
+ * 0 so an oversized font (whose glyph top already clears y=22 unshifted) is
+ * never pushed back up toward the stroke.
+ */
+function pillTopTitleShift(title: ResolvedTitleSettings): number {
+  const svgFontSize = title.fontSize * 2;
+  const glyphTop = (svgFontSize + 8) / 2;
+
+  return Math.max(0, 22 - glyphTop);
 }
 
 /**
@@ -383,7 +400,7 @@ export function renderAdjustStyleSvg(inputs: AdjustStyleRenderInputs): string {
       ? TITLE_SOURCE_TOP
       : style === "big-glyph" || style === "big-chevron" || style === "pill-end"
         ? TITLE_SOURCE_HIDDEN
-        : style === "edge-chevrons" && position === "bottom"
+        : (style === "edge-chevrons" && position === "bottom") || (style === "joined-pill" && position === "top")
           ? TITLE_SOURCE_TOP
           : TITLE_SOURCE_BOTTOM;
   const title = resolveTitleSettings(titleSource, getGlobalTitleSettings(), inputs.titleOverrides, inputs.label);
@@ -407,20 +424,27 @@ export function renderAdjustStyleSvg(inputs: AdjustStyleRenderInputs): string {
 
   const inner = inputs.bindingMissing ? applyBindingWarning(art) : art;
 
-  // A top- or bottom-positioned label carves a gap in the pill stroke it
-  // crosses instead of sitting outside/across the frame — emitted after the
-  // frame (part of `inner`) and before the title text so the text draws on top.
-  const knockoutEdge = title.position === "top" || title.position === "bottom" ? title.position : null;
+  // A bottom-positioned label carves a gap in the pill stroke it crosses
+  // instead of sitting outside/across the frame — emitted after the frame
+  // (part of `inner`) and before the title text so the text draws on top.
   const knockout =
-    knockoutEdge && pillHasStroke(style, position, knockoutEdge)
+    title.position === "bottom" && pillHasStroke(style, position, "bottom")
       ? pillTitleKnockout(title, colors.backgroundColor)
       : "";
+
+  // A top-positioned label instead renders INSIDE the frame: shifted down
+  // past the y=14 stroke rather than knocking a gap in it (a top-edge
+  // knockout looked wrong on hardware — issue #810).
+  const topShiftDy =
+    titleContent && title.position === "top" && pillHasStroke(style, position, "top") ? pillTopTitleShift(title) : 0;
+  const shiftedTitleContent =
+    topShiftDy > 0 ? `<g transform="translate(0, ${topShiftDy})">${titleContent}</g>` : titleContent;
 
   const svg = renderIconTemplate(adjustStyleTemplate, {
     backgroundColor: colors.backgroundColor,
     borderDefs: borderSvg.defs,
     borderContent: borderSvg.rects,
-    content: inner + knockout + titleContent,
+    content: inner + knockout + shiftedTitleContent,
   });
 
   return svgToDataUri(svg);
@@ -438,27 +462,8 @@ function buildStyleArt(
   const { style, direction, value } = inputs;
 
   switch (style) {
-    case "corner-badge":
-      // Value re-centers with the title (badge stays anchored top-right —
-      // it never competes with a bottom/top title for space).
-      return (
-        valueText(value, 72, titleAwareCenterY(title), 44 + bump, textColor) +
-        `<circle cx="119" cy="25" r="15" fill="${accent}"/>` +
-        glyphText(direction, 119, 26, 26, "#2a2a2a")
-      );
-
     case "split":
       return valueText(value, 72, 56, 38 + bump, textColor) + glyphText(direction, 72, 104, 62, accent);
-
-    case "ghost": {
-      // Glyph and value must stay locked together — both re-center with the title.
-      const centerY = titleAwareCenterY(title);
-
-      return (
-        `<g opacity="0.2">${glyphText(direction, 72, centerY, 130, accent)}</g>` +
-        valueText(value, 72, centerY, 44 + bump, textColor)
-      );
-    }
 
     case "edge-chevrons": {
       // Chevrons sit on the `position` edge and point in the TRUE direction of
@@ -538,13 +543,31 @@ function buildStyleArt(
 
       switch (position) {
         case "left":
-          return framePath + glyphText(direction, 38, 72, 38, accent) + valueText(value, 92, 72, 34 + bump, textColor);
-        case "right":
-          return framePath + valueText(value, 52, 72, 34 + bump, textColor) + glyphText(direction, 106, 72, 38, accent);
+        case "right": {
+          // Small optical correction (#810 rebalance): the glyph reads
+          // better nudged off dead-center — "+" down, "−" up — the value
+          // stays put at 72.
+          const glyphY = direction === "increase" ? 75 : 69;
+
+          return position === "left"
+            ? framePath + glyphText(direction, 38, glyphY, 38, accent) + valueText(value, 92, 72, 34 + bump, textColor)
+            : framePath +
+                valueText(value, 52, 72, 34 + bump, textColor) +
+                glyphText(direction, 106, glyphY, 38, accent);
+        }
+        // TOP key of a vertical pair: frame closed at top, open toward the
+        // BOTTOM partner. Its title defaults to TOP (locked — see the
+        // titleSource resolution above) and renders inside the frame via the
+        // shift in renderAdjustStyleSvg, so glyph and value both move down
+        // to clear it (#810 rebalance).
         case "top":
-          return framePath + glyphText(direction, 72, 46, 38, accent) + valueText(value, 72, 88, 34 + bump, textColor);
+          return framePath + glyphText(direction, 72, 62, 38, accent) + valueText(value, 72, 98, 34 + bump, textColor);
+        // BOTTOM key of a vertical pair: frame closed at bottom, open toward
+        // the TOP partner. Title stays at the bottom (existing stroke
+        // knockout); glyph and value both move up to rebalance against it
+        // (#810 rebalance).
         case "bottom":
-          return framePath + valueText(value, 72, 58, 34 + bump, textColor) + glyphText(direction, 72, 100, 38, accent);
+          return framePath + valueText(value, 72, 50, 34 + bump, textColor) + glyphText(direction, 72, 86, 38, accent);
       }
 
       break;
@@ -567,19 +590,21 @@ function buildStyleArt(
     }
 
     // Normal View-key layout: value at the View's own font size (no shortValue
-    // bump — see AdjustStyleRenderInputs.valueFontSize), centered at the
-    // standard View y=79. The title (rendered by the caller) is the normal
-    // bottom-position title, not a style-specific label.
+    // bump — see AdjustStyleRenderInputs.valueFontSize), title-aware centered
+    // via viewValueCenterY (the same helper `generateSetupViewSvg` uses — the
+    // View look and the pill-middle look must move identically). The title
+    // (rendered by the caller) is the normal bottom-position title by
+    // default, not a style-specific label.
     case "pill-middle-horizontal":
       return (
         `<path d="M0 14 H144 M0 130 H144" fill="none" stroke="${accent}" stroke-width="5"/>` +
-        valueText(value, 72, 79, inputs.valueFontSize ?? 36, textColor)
+        valueText(value, 72, viewValueCenterY(title), inputs.valueFontSize ?? 36, textColor)
       );
 
     case "pill-middle-vertical":
       return (
         `<path d="M14 0 V144 M130 0 V144" fill="none" stroke="${accent}" stroke-width="5"/>` +
-        valueText(value, 72, 79, inputs.valueFontSize ?? 36, textColor)
+        valueText(value, 72, viewValueCenterY(title), inputs.valueFontSize ?? 36, textColor)
       );
   }
 

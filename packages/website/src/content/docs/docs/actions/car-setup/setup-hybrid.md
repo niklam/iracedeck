@@ -140,7 +140,7 @@ Adjustment modes with a live value (on Setup Hybrid: MGU-K Deploy Mode, MGU-K Re
 
 - **Legacy (arrows)** — the classic static arrow icon (default for existing keys).
 - **Split** — label on top, live value in the middle, a big +/− below (default for newly placed keys).
-- **Corner badge**, **Ghost +/−**, **Edge chevrons**, **Joined pill** — alternative value-showing pair looks.
+- **Edge chevrons**, **Joined pill** — alternative value-showing pair looks.
 - **Big +/−**, **Big chevrons**, **Pill end** — no-value styles for the outer keys of a 3-key group; the View key in the middle shows the value (set its **Display Style** to *Pill middle* to span the pill across all three keys).
 
 Values are shown without units for maximum size. **Edge chevrons**, **Joined pill**, **Pill end**, and **Big chevrons** take a **Position in Pair** setting (*Auto* follows the direction: increase right, decrease left; pick *Top*/*Bottom* for vertical stacks). Holding a paired key repeats the adjustment until released. Colors follow the normal color overrides (the +/− accent is the *Graphic 1* slot); pill styles disable the normal border — the pill itself is the frame.

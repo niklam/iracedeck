@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { dataUriToSvg } from "@iracedeck/deck-core";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   formatInteger,
@@ -6,11 +7,23 @@ import {
   formatPercentRaw,
   formatSignedPercent,
   formatViewValue,
+  generateSetupViewSvg,
   isViewSetting,
   VIEW_DEFS,
   VIEW_NULL_VALUE,
   type ViewSettingId,
 } from "./setup-view.js";
+
+vi.mock("@iracedeck/deck-core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@iracedeck/deck-core")>();
+
+  return {
+    ...actual,
+    getGlobalColors: () => ({}),
+    getGlobalTitleSettings: () => ({}),
+    getGlobalBorderSettings: () => ({}),
+  };
+});
 
 describe("setup-view formatters", () => {
   describe("formatPercent", () => {
@@ -171,5 +184,33 @@ describe("VIEW_DEFS registry", () => {
       expect(VIEW_DEFS[id].telemetryField).toMatch(/^dc/);
       expect(VIEW_DEFS[id].label.length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("generateSetupViewSvg — title-aware value centering (#810)", () => {
+  const telemetry = { dcBrakeBias: 54.0 } as never;
+
+  it("value re-centers with the resolved title: shown/bottom -> 79, hidden -> 72, top -> 84", () => {
+    // Baseline y = center + round(0.36 * fontSize); "view-brake-bias" has no
+    // valueFontSize override, so it falls back to the View-native default (36).
+    const shown = dataUriToSvg(generateSetupViewSvg({ viewId: "view-brake-bias", telemetry }));
+    expect(shown).toContain('y="92"'); // center 79 -> 79 + round(0.36*36=13) = 92
+
+    const hidden = dataUriToSvg(
+      generateSetupViewSvg({ viewId: "view-brake-bias", telemetry, titleOverrides: { showTitle: false } }),
+    );
+    expect(hidden).toContain('y="85"'); // center 72 -> 72 + 13 = 85
+
+    const top = dataUriToSvg(
+      generateSetupViewSvg({ viewId: "view-brake-bias", telemetry, titleOverrides: { position: "top" } }),
+    );
+    expect(top).toContain('y="97"'); // center 84 -> 84 + 13 = 97
+  });
+
+  it("matches the pill-middle styles' centering exactly (same viewValueCenterY helper)", () => {
+    // Sanity check that the shown/bottom (established View look) case is
+    // unchanged from before #810 — same baseline math as the hidden/top cases above.
+    const shown = dataUriToSvg(generateSetupViewSvg({ viewId: "view-brake-bias", telemetry }));
+    expect(shown).toContain('x="72" y="92"');
   });
 });
