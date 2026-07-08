@@ -54,8 +54,16 @@
     const VIEW_MODES = <%- JSON.stringify(viewModes) %>;
     const POSITION_AWARE = ["edge-chevrons", "joined-pill", "pill-end", "big-chevron"];
 
+    // Untouched sdpi controls report an empty value (nothing persisted yet), so
+    // fall back to the element's `default` attribute — same approach as
+    // ird-binding-status and the actions' own visibility scripts.
+    function resolveSelectValue(id) {
+      const el = document.getElementById(id);
+      return (el && (el.value || el.getAttribute("default"))) || "";
+    }
+
     function updateAdjustStyleVisibility() {
-      const mode = document.getElementById("<%= modeSelectId %>")?.value || "";
+      const mode = resolveSelectValue("<%= modeSelectId %>");
       const styleItem = document.getElementById("adjust-style-item");
       const viewStyleItem = document.getElementById("adjust-view-style-item");
       const positionItem = document.getElementById("adjust-position-item");
@@ -67,7 +75,7 @@
       viewStyleItem?.classList.toggle("hidden", !isView);
       help?.classList.toggle("hidden", !isPaired && !isView);
 
-      const style = document.getElementById(isView ? "adjust-view-style-select" : "adjust-style-select")?.value || "legacy";
+      const style = resolveSelectValue(isView ? "adjust-view-style-select" : "adjust-style-select") || "legacy";
       positionItem?.classList.toggle("hidden", !(isPaired && POSITION_AWARE.includes(style)));
     }
 
@@ -84,8 +92,8 @@
       // Polling fallback — sdpi-select events can be unreliable.
       let last = "";
       setInterval(() => {
-        const mode = document.getElementById("<%= modeSelectId %>")?.value || "";
-        const style = document.getElementById("adjust-style-select")?.value || "";
+        const mode = resolveSelectValue("<%= modeSelectId %>");
+        const style = resolveSelectValue("adjust-style-select");
         const key = mode + "|" + style;
         if (key !== last) {
           last = key;
