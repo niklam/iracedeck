@@ -1,10 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 44" stroke-width="0.5" stroke="#fff" fill="#fff">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 84 84" fill="none">
   <desc>{"colors":{"backgroundColor":"#3a2a2a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"TIRES\nCLEAR"},"border":{"color":"#6a5a5a"}}</desc>
-  
 
-    <circle cx="22" cy="22" r="20" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <circle cx="22" cy="22" r="8" fill="none" stroke="#888888" stroke-width="2"/>
-    <line x1="8" y1="8" x2="36" y2="36" stroke="#e74c3c" stroke-width="5" stroke-linecap="round"/>
-    <line x1="36" y1="8" x2="8" y2="36" stroke="#e74c3c" stroke-width="5" stroke-linecap="round"/>
+    <g fill="none" stroke="#888888" stroke-width="3">
+      <rect x="10" y="8" width="18" height="26" rx="4"/>
+      <rect x="56" y="8" width="18" height="26" rx="4"/>
+      <rect x="10" y="50" width="18" height="26" rx="4"/>
+      <rect x="56" y="50" width="18" height="26" rx="4"/>
+    </g>
+    <line x1="8" y1="76" x2="76" y2="8" stroke="#e74c3c" stroke-width="8" stroke-linecap="round"/>
 
 </svg>

@@ -331,6 +331,12 @@ describe("TireService", () => {
       const icon = generateTireIcon("Unknown");
       expect(icon).toContain("#888888");
     });
+
+    it("should render the compound initial letter inside the badge", () => {
+      expect(generateTireIcon("Soft")).toContain(">S</text>");
+      expect(generateTireIcon("Wet")).toContain(">W</text>");
+      expect(generateTireIcon("Dry")).toContain(">D</text>");
+    });
   });
 
   describe("areAllTiresOn", () => {
@@ -633,35 +639,44 @@ describe("TireService", () => {
       it("should show Stay on DRY when player and pit service are both dry", () => {
         const result = generateTireServiceSvg(compoundSettings, noTires, { player: 0, pitSv: 0 });
         const decoded = decodeURIComponent(result);
-        expect(decoded).toContain("Stay on");
+        expect(decoded).toContain("STAYING ON");
         expect(decoded).toContain("DRY");
       });
 
       it("should show Change to WET when player is dry but pit service is wet", () => {
         const result = generateTireServiceSvg(compoundSettings, noTires, { player: 0, pitSv: 1 });
         const decoded = decodeURIComponent(result);
-        expect(decoded).toContain("Change to");
+        expect(decoded).toContain("CHANGE TO");
         expect(decoded).toContain("WET");
+      });
+
+      it("dims the badge and adds a green confirm mark only when staying on the same compound", () => {
+        const staying = decodeURIComponent(generateTireServiceSvg(compoundSettings, noTires, { player: 1, pitSv: 1 }));
+        expect(staying).toContain('opacity="0.55"'); // badge dimmed when nothing will change
+        expect(staying).toContain("#2ecc71"); // green confirm badge
+
+        const changing = decodeURIComponent(generateTireServiceSvg(compoundSettings, noTires, { player: 0, pitSv: 1 }));
+        expect(changing).not.toContain('opacity="0.55"'); // vivid when a change is pending
       });
 
       it("should show Stay on WET when player and pit service are both wet", () => {
         const result = generateTireServiceSvg(compoundSettings, noTires, { player: 1, pitSv: 1 });
         const decoded = decodeURIComponent(result);
-        expect(decoded).toContain("Stay on");
+        expect(decoded).toContain("STAYING ON");
         expect(decoded).toContain("WET");
       });
 
       it("should show Change to DRY when player is wet but pit service is dry", () => {
         const result = generateTireServiceSvg(compoundSettings, noTires, { player: 1, pitSv: 0 });
         const decoded = decodeURIComponent(result);
-        expect(decoded).toContain("Change to");
+        expect(decoded).toContain("CHANGE TO");
         expect(decoded).toContain("DRY");
       });
 
       it("should default to Stay on DRY when compound is not provided", () => {
         const result = generateTireServiceSvg(compoundSettings, noTires);
         const decoded = decodeURIComponent(result);
-        expect(decoded).toContain("Stay on");
+        expect(decoded).toContain("STAYING ON");
         expect(decoded).toContain("DRY");
       });
 

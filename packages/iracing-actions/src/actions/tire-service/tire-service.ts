@@ -198,14 +198,31 @@ export function getCompoundName(compound: number): string {
 /**
  * @internal Exported for testing
  *
- * Generate a simple colored tire icon for a compound type.
+ * First character of a compound display name, uppercased (SOFT→S, DRY→D, WET→W).
+ * Used as the letter inside the compound badge ring.
+ */
+export function compoundInitial(name: string): string {
+  return name.trim().charAt(0).toUpperCase() || "?";
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * F1-style compound badge: a bold ring in the compound colour with the
+ * compound initial centred inside. The colour carries the meaning (soft red,
+ * medium yellow, hard white, inter green, wet blue, everything else — incl.
+ * dry — gray). The letter is placed by baseline maths (`54 + 0.36·fontSize`)
+ * rather than `dominant-baseline`, which the Stream Deck / Mirabox Qt renderer
+ * ignores.
  */
 export function generateTireIcon(compoundType: string): string {
   const color = getCompoundColor(compoundType);
+  const initial = compoundInitial(compoundType);
+  const letterY = 54 + Math.round(0.36 * 40);
 
   return `
-    <circle cx="72" cy="44" r="24" fill="${color}" fill-opacity="0.25" stroke="${color}" stroke-width="4"/>
-    <circle cx="72" cy="44" r="10" fill="${GRAY}" stroke="${GRAY}" stroke-width="2"/>`;
+    <circle cx="72" cy="54" r="33" fill="none" stroke="${color}" stroke-width="9"/>
+    <text x="72" y="${letterY}" text-anchor="middle" fill="${color}" font-family="Arial, sans-serif" font-size="40" font-weight="bold">${initial}</text>`;
 }
 
 /**
@@ -390,18 +407,24 @@ export function generateTireServiceSvg(
       let textElement: string;
       const compoundType = getCompoundName(compoundState.pitSv);
       const isChanging = compoundState.player !== compoundState.pitSv;
-
-      iconContent = generateTireIcon(compoundType);
+      const compoundColor = getCompoundColor(compoundType);
+      const badge = generateTireIcon(compoundType);
 
       if (isChanging) {
+        // Something WILL change on the next stop: vivid badge, name in the compound colour.
+        iconContent = badge;
         textElement = [
-          generateIconText({ text: `Change to`, fontSize: 18, fill: YELLOW, baseY: 112, centerX: 72 }),
-          generateIconText({ text: compoundType, fontSize: 24, fill: YELLOW, baseY: 138, centerX: 72 }),
+          generateIconText({ text: `CHANGE TO`, fontSize: 18, fill: "#bbbbbb", baseY: 112, centerX: 72 }),
+          generateIconText({ text: compoundType, fontSize: 24, fill: compoundColor, baseY: 138, centerX: 72 }),
         ].join("\n");
       } else {
+        // Keeping the same compound: settled, nothing pending — dim the badge and add a green ✓.
+        iconContent = `<g opacity="0.55">${badge}</g>
+    <circle cx="110" cy="24" r="14" fill="${GREEN}"/>
+    <polyline points="103,24 108,30 118,17" fill="none" stroke="#1a1a1a" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>`;
         textElement = [
-          generateIconText({ text: `Stay on`, fontSize: 18, fill: "#ffffff", baseY: 112, centerX: 72 }),
-          generateIconText({ text: compoundType, fontSize: 24, fill: "#ffffff", baseY: 138, centerX: 72 }),
+          generateIconText({ text: `STAYING ON`, fontSize: 18, fill: "#8a8a8a", baseY: 112, centerX: 72 }),
+          generateIconText({ text: compoundType, fontSize: 24, fill: "#c9c9c9", baseY: 138, centerX: 72 }),
         ].join("\n");
       }
 
