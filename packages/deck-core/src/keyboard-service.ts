@@ -66,6 +66,16 @@ export type ScanKeyPresser = (scanCodes: number[]) => void;
 export type ScanKeyReleaser = (scanCodes: number[]) => void;
 
 /**
+ * Function type for sending a SEQUENCE of distinct scan code chords in one
+ * native call (issue #818). Each chord is an array of PS/2 scan codes
+ * (modifiers first, then main key); chords fire in order.
+ *
+ * `holdMs === 0` emits the whole sequence in one atomic SendInput batch with no
+ * sleep, so the target consumes every event in the same frame.
+ */
+export type ScanKeySequenceSender = (chords: number[][], holdMs: number) => void;
+
+/**
  * Interface for the keyboard service.
  */
 export interface IKeyboardService {
@@ -98,6 +108,22 @@ export interface IKeyboardService {
    * @returns true if successful, false if an error occurred
    */
   releaseKeyCombination(combination: KeyCombination): Promise<boolean>;
+
+  /**
+   * Send a sequence of distinct key combinations in one native call.
+   *
+   * Deliberately has NO keysender fallback: keysender cannot emit the sequence
+   * atomically, and a non-atomic sequence defeats the purpose — the caller uses
+   * this precisely to avoid an intermediate state being rendered (issue #818).
+   * Returns false when the sequence sender was not supplied, the sequence is
+   * empty, or any combination lacks a scan code mapping. Callers must treat
+   * false as "skipped", never as "send it the slow way".
+   *
+   * @param combinations - The chords to send, in order
+   * @param holdMs - Per-chord hold in ms; 0 (default) = one atomic batch, no sleep
+   * @returns true if the sequence was dispatched, false if it was skipped
+   */
+  sendKeySequence(combinations: KeyCombination[], holdMs?: number): Promise<boolean>;
 }
 
 /**
@@ -143,17 +169,20 @@ class KeyboardService implements IKeyboardService {
   private scanKeySender: ScanKeySender | null;
   private scanKeyPresser: ScanKeyPresser | null;
   private scanKeyReleaser: ScanKeyReleaser | null;
+  private scanKeySequenceSender: ScanKeySequenceSender | null;
 
   constructor(
     logger: ILogger,
     scanKeySender: ScanKeySender | null,
     scanKeyPresser: ScanKeyPresser | null,
     scanKeyReleaser: ScanKeyReleaser | null,
+    scanKeySequenceSender: ScanKeySequenceSender | null,
   ) {
     this.logger = logger;
     this.scanKeySender = scanKeySender;
     this.scanKeyPresser = scanKeyPresser;
     this.scanKeyReleaser = scanKeyReleaser;
+    this.scanKeySequenceSender = scanKeySequenceSender;
   }
 
   /**
@@ -302,6 +331,52 @@ class KeyboardService implements IKeyboardService {
     return this.toggleViaKeysender(combination, false);
   }
 
+  async sendKeySequence(combinations: KeyCombination[], holdMs = 0): Promise<boolean> {
+    if (!this.scanKeySequenceSender) {
+      this.logger.debug("No scan key sequence sender configured, skipping sequence");
+
+      return false;
+    }
+
+    if (combinations.length === 0) {
+      return false;
+    }
+
+    const chords: number[][] = [];
+
+    for (const combination of combinations) {
+      // No keysender fallback: the sequence must be atomic or not happen at all.
+      if (!combination.code) {
+        this.logger.debug(`No event.code for key="${combination.key}", skipping sequence`);
+
+        return false;
+      }
+
+      const scanCodes = this.buildScanCodes(combination);
+
+      if (!scanCodes) {
+        this.logger.debug(`No scan code for event.code="${combination.code}", skipping sequence`);
+
+        return false;
+      }
+
+      chords.push(scanCodes);
+    }
+
+    try {
+      const rendered = chords.map((chord) => `[${chord.map((sc) => `0x${sc.toString(16)}`).join(", ")}]`).join(" -> ");
+      this.logger.debug(`Sending scan code sequence: ${rendered} (holdMs=${holdMs})`);
+
+      this.scanKeySequenceSender(chords, holdMs);
+
+      return true;
+    } catch (error) {
+      this.logger.error(`Failed to send scan code sequence: ${error}`);
+
+      return false;
+    }
+  }
+
   /**
    * Press scan codes without releasing (for key hold).
    */
@@ -441,6 +516,8 @@ let keyboardService: KeyboardService | null = null;
  * @param scanKeyReleaser - Optional function for releasing PS/2 scan codes without pressing (for key release).
  *   When scan code functions are provided, key combinations with event.code will use them for layout-independent sending.
  *   When omitted, all keys are sent via keysender (may have issues on non-US layouts).
+ * @param scanKeySequenceSender - Optional function for sending a sequence of distinct scan code chords in one
+ *   atomic native call (issue #818). When omitted, `sendKeySequence` always returns false (skipped).
  * @returns The initialized keyboard service
  * @throws Error if called more than once
  */
@@ -449,12 +526,19 @@ export function initializeKeyboard(
   scanKeySender?: ScanKeySender,
   scanKeyPresser?: ScanKeyPresser,
   scanKeyReleaser?: ScanKeyReleaser,
+  scanKeySequenceSender?: ScanKeySequenceSender,
 ): IKeyboardService {
   if (keyboardService) {
     throw new Error("Keyboard service already initialized. initializeKeyboard() should only be called once.");
   }
 
-  keyboardService = new KeyboardService(logger, scanKeySender ?? null, scanKeyPresser ?? null, scanKeyReleaser ?? null);
+  keyboardService = new KeyboardService(
+    logger,
+    scanKeySender ?? null,
+    scanKeyPresser ?? null,
+    scanKeyReleaser ?? null,
+    scanKeySequenceSender ?? null,
+  );
 
   return keyboardService;
 }

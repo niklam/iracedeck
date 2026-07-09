@@ -186,6 +186,7 @@ initializeKeyboard(
   (scanCodes) => native.sendScanKeys(scanCodes),      // tap (press + release)
   (scanCodes) => native.sendScanKeyDown(scanCodes),    // press only (key hold)
   (scanCodes) => native.sendScanKeyUp(scanCodes),      // release only (key release)
+  (chords, holdMs) => native.sendScanKeySequence(chords, holdMs), // atomic multi-chord sequence (#818)
 );
 
 // 7. Initialize audio engine for pit engineer voice playback.

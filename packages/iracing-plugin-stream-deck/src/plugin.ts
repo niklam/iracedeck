@@ -233,6 +233,7 @@ initializeKeyboard(
   (scanCodes) => native.sendScanKeys(scanCodes),
   (scanCodes) => native.sendScanKeyDown(scanCodes),
   (scanCodes) => native.sendScanKeyUp(scanCodes),
+  (chords, holdMs) => native.sendScanKeySequence(chords, holdMs),
 );
 
 // Initialize clipboard for paste-based action flows (e.g. race-admin "Type in Chat").
