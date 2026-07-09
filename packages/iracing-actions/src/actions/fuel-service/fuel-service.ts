@@ -502,6 +502,12 @@ export class FuelService extends ConnectionStateAwareAction<FuelServiceSettings>
   override async onKeyDown(ev: IDeckKeyDownEvent<FuelServiceSettings>): Promise<void> {
     this.logger.info("Key down received");
     const settings = this.parseSettings(ev.payload.settings);
+    // Raw vs parsed distinguishes "the PI never persisted the checkbox"
+    // (raw === undefined) from "it persisted a value that parsed to false".
+    const rawShowBlackBox = (ev.payload.settings as Record<string, unknown> | undefined)?.showBlackBox;
+    this.logger.debug(
+      `Key down settings: mode=${settings.mode}, showBlackBox=${settings.showBlackBox} (raw=${JSON.stringify(rawShowBlackBox)})`,
+    );
 
     // Arm the repeat timers synchronously before awaiting the first execute. If we
     // awaited first, onKeyUp could run during the yield and leave heldButtons cleared —
