@@ -49,6 +49,9 @@ export { WarningsBanner } from "./warnings.js";
 // Binding Status - per-mode communication / binding status line under the Mode selector
 export { BindingStatus } from "./binding-status.js";
 
+// Black Box Caveat - explains when "Show black box" can't work with the current bindings
+export { BlackBoxCaveat } from "./black-box-caveat.js";
+
 // Profile Switch - button that asks the plugin to switch to a bundled Stream Deck profile
 export { ProfileSwitch } from "./profile-switch.js";
 
