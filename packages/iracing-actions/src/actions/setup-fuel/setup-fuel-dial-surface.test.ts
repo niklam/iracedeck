@@ -281,6 +281,19 @@ describe("SetupFuel dial surface", () => {
       expect(mockTapBinding).not.toHaveBeenCalled();
     });
 
+    it("fires the long-press action when held past the threshold", async () => {
+      const ctx = dialContext("p5");
+      const settings = dialSettings({ setting: "fuel-mixture", longPressAction: "toggle-fcy" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(600);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(mockTapBinding).toHaveBeenCalledWith("setupFuelFcyModeToggle");
+    });
+
     it("fires no gesture on a push+turn (rotated while pressed)", async () => {
       const ctx = dialContext("p3");
       const settings = dialSettings({ setting: "fuel-mixture", pressAction: "toggle-fcy" });
@@ -306,6 +319,17 @@ describe("SetupFuel dial surface", () => {
       mockTapBinding.mockClear();
 
       await action.onTouchTap(touchTapEvent(ctx, settings, false) as never);
+
+      expect(mockTapBinding).toHaveBeenCalledWith("setupFuelFcyModeToggle");
+    });
+
+    it("fires the long-touch action on a held touch", async () => {
+      const ctx = dialContext("t4");
+      const settings = dialSettings({ setting: "fuel-mixture", longTouchAction: "toggle-fcy" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onTouchTap(touchTapEvent(ctx, settings, true) as never);
 
       expect(mockTapBinding).toHaveBeenCalledWith("setupFuelFcyModeToggle");
     });

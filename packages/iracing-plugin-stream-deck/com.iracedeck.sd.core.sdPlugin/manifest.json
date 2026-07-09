@@ -405,7 +405,7 @@
       "Name": "Setup Aero",
       "UUID": "com.iracedeck.sd.core.setup-aero",
       "Icon": "imgs/actions/setup-aero/icon",
-      "Tooltip": "Aerodynamic adjustments (front wing, rear wing, qualifying tape, RF brake)",
+      "Tooltip": "Aerodynamic adjustments (front wing, rear wing, qualifying tape, RF brake); on a dial: adjust one aero setting, press to toggle RF brake",
       "PropertyInspectorPath": "ui/setup-aero.html",
       "Controllers": [
         "Keypad",
@@ -459,7 +459,7 @@
       "Name": "Setup Chassis",
       "UUID": "com.iracedeck.sd.core.setup-chassis",
       "Icon": "imgs/actions/setup-chassis/icon",
-      "Tooltip": "Chassis adjustments (differential, ARB, springs, shocks, power steering)",
+      "Tooltip": "Chassis adjustments (differential, ARB, springs, shocks, power steering); on a dial: adjust one chassis setting",
       "PropertyInspectorPath": "ui/setup-chassis.html",
       "Controllers": [
         "Keypad",
@@ -484,7 +484,7 @@
       "Name": "Setup Engine",
       "UUID": "com.iracedeck.sd.core.setup-engine",
       "Icon": "imgs/actions/setup-engine/icon",
-      "Tooltip": "Engine adjustments (power, throttle shaping, boost, launch RPM)",
+      "Tooltip": "Engine adjustments (power, throttle shaping, boost, launch RPM); on a dial: adjust one engine setting",
       "PropertyInspectorPath": "ui/setup-engine.html",
       "Controllers": [
         "Keypad",
@@ -509,7 +509,7 @@
       "Name": "Setup Fuel",
       "UUID": "com.iracedeck.sd.core.setup-fuel",
       "Icon": "imgs/actions/setup-fuel/icon",
-      "Tooltip": "Fuel adjustments (mixture, fuel cut, low fuel, FCY mode)",
+      "Tooltip": "Fuel adjustments (mixture, fuel cut, low fuel, FCY mode); on a dial: adjust one fuel setting, press to toggle FCY mode",
       "PropertyInspectorPath": "ui/setup-fuel.html",
       "Controllers": [
         "Keypad",
@@ -536,7 +536,7 @@
       "Name": "Setup Hybrid",
       "UUID": "com.iracedeck.sd.core.setup-hybrid",
       "Icon": "imgs/actions/setup-hybrid/icon",
-      "Tooltip": "Hybrid/ERS adjustments (MGU-K regen, deploy modes, HYS boost/regen)",
+      "Tooltip": "Hybrid/ERS adjustments (MGU-K regen, deploy modes, HYS boost/regen); on a dial: adjust one MGU-K setting",
       "PropertyInspectorPath": "ui/setup-hybrid.html",
       "Controllers": [
         "Keypad",
@@ -561,7 +561,7 @@
       "Name": "Setup Traction",
       "UUID": "com.iracedeck.sd.core.setup-traction",
       "Icon": "imgs/actions/setup-traction/icon",
-      "Tooltip": "Traction control adjustments (TC Toggle, TC Slots 1-4)",
+      "Tooltip": "Traction control adjustments (TC Toggle, TC Slots 1-4); on a dial: adjust one TC slot, press to toggle TC",
       "PropertyInspectorPath": "ui/setup-traction.html",
       "Controllers": [
         "Keypad",

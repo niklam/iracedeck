@@ -97,6 +97,10 @@ function dialSettings(dial: Record<string, unknown>) {
   return { dial };
 }
 
+function touchTapEvent(action: DialContext, settings: Record<string, unknown>, hold: boolean) {
+  return { action, payload: { settings, tapPos: [0, 0] as [number, number], hold } };
+}
+
 describe("setup-aero dial-surface pure helpers", () => {
   describe("renderAeroDialBoxSvg", () => {
     it("draws the abbreviation, value, and accent border", () => {
@@ -221,6 +225,19 @@ describe("SetupAero dial surface", () => {
       expect(mockTapBinding).toHaveBeenCalledWith("setupAeroRfBrakeAttached");
     });
 
+    it("fires the long-press action when held past the threshold", async () => {
+      const ctx = dialContext("p2");
+      const settings = dialSettings({ setting: "front-wing", pressAction: "none", longPressAction: "toggle-rf-brake" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(600);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(mockTapBinding).toHaveBeenCalledWith("setupAeroRfBrakeAttached");
+    });
+
     it("does nothing on a short press by default (none)", async () => {
       const ctx = dialContext("p4");
       const settings = dialSettings({ setting: "front-wing" });
@@ -229,6 +246,42 @@ describe("SetupAero dial surface", () => {
 
       await action.onDialDown(basicEvent(ctx, settings) as never);
       await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(mockTapBinding).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("onTouchTap", () => {
+    it("fires the tap action on a short touch when configured", async () => {
+      const ctx = dialContext("t1");
+      const settings = dialSettings({ setting: "front-wing", tapAction: "toggle-rf-brake", longTouchAction: "none" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onTouchTap(touchTapEvent(ctx, settings, false) as never);
+
+      expect(mockTapBinding).toHaveBeenCalledWith("setupAeroRfBrakeAttached");
+    });
+
+    it("fires the long-touch action on a held touch", async () => {
+      const ctx = dialContext("t2");
+      const settings = dialSettings({ setting: "front-wing", tapAction: "none", longTouchAction: "toggle-rf-brake" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onTouchTap(touchTapEvent(ctx, settings, true) as never);
+
+      expect(mockTapBinding).toHaveBeenCalledWith("setupAeroRfBrakeAttached");
+    });
+
+    it("does nothing when dial feedback is disabled", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", false);
+      const ctx = dialContext("t3");
+      const settings = dialSettings({ setting: "front-wing", tapAction: "toggle-rf-brake" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onTouchTap(touchTapEvent(ctx, settings, false) as never);
 
       expect(mockTapBinding).not.toHaveBeenCalled();
     });

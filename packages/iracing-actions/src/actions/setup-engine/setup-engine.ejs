@@ -55,7 +55,7 @@
 					<option value="launch-rpm">Launch RPM</option>
 				</sdpi-select>
 			</sdpi-item>
-			<ird-binding-status mode-setting="dial.setting" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+			<ird-binding-status mode-setting="<%= __dialComms._meta.modeSetting %>" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
 			<% if (locals.platform?.features?.dialFeedback !== false) { %>
 			<div class="ird-supporting-text">
 				Turn the dial to adjust the selected engine setting; the touch strip shows

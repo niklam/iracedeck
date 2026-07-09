@@ -60,7 +60,7 @@
 					<option value="tc-slot-4">TC Slot 4</option>
 				</sdpi-select>
 			</sdpi-item>
-			<ird-binding-status mode-setting="dial.setting" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+			<ird-binding-status mode-setting="<%= __dialComms._meta.modeSetting %>" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
 			<% if (locals.platform?.features?.dialFeedback !== false) { %>
 			<div class="ird-supporting-text">
 				Turn the dial to adjust the selected traction setting; the touch strip shows
