@@ -153,4 +153,12 @@ describe("dialAppearanceFields", () => {
 
     expect(parsed.colors.borderColor).toBe("");
   });
+
+  it("degrades a non-object colors container to empty overrides", () => {
+    const empty = { borderColor: "", labelColor: "", valueColor: "", backgroundColor: "" };
+
+    for (const bad of ["garbage", null, 42]) {
+      expect(Schema.parse({ colors: bad }).colors).toEqual(empty);
+    }
+  });
 });

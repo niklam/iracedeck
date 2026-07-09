@@ -153,5 +153,10 @@ export const dialAppearanceFields = {
       valueColor: dialColorField,
       backgroundColor: dialColorField,
     })
-    .prefault({}),
+    .prefault({})
+    // A persisted non-object `colors` (string/array/… from a newer version)
+    // degrades to empty overrides — preserving the rest of the dial config —
+    // rather than throwing up to the dial-level `.catch`, which would reset the
+    // whole `dial` object (setting, gestures) to defaults.
+    .catch({ borderColor: "", labelColor: "", valueColor: "", backgroundColor: "" }),
 };
