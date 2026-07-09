@@ -27,7 +27,7 @@ Toggle the fuel fill checkbox on or off via the iRacing SDK. The icon shows the 
 
 Off by default. When enabled, pressing the key opens iRacing's Fuel black box so you can watch the value change — most useful for the autofuel lap margin, which no telemetry reports.
 
-iRacing never reveals which black box is open, and a black box hotkey is a toggle, so iRaceDeck presses a different box first and then the Fuel box. Both keypresses are sent as a single keystroke, so the intermediate box never appears on screen.
+iRacing never reveals which black box is open, and a black box hotkey is a toggle, so iRaceDeck presses a different box first and then the Fuel box. Both keypresses are sent together as one keystroke, so iRacing almost always applies them in the same frame and you never see the first box. Very occasionally a single frame slips through and it flashes for an instant.
 
 Requires keyboard bindings for the **Fuel** black box and at least one other black box — set them under **Related Key Bindings**. If either is missing, or is bound to a SimHub role instead of a key, the fuel value still changes but no black box opens.
 
@@ -58,7 +58,7 @@ The increment to add. Numeric — supports comma or period decimal separators (e
 
 Off by default. When enabled, pressing the key opens iRacing's Fuel black box so you can watch the value change — most useful for the autofuel lap margin, which no telemetry reports.
 
-iRacing never reveals which black box is open, and a black box hotkey is a toggle, so iRaceDeck presses a different box first and then the Fuel box. Both keypresses are sent as a single keystroke, so the intermediate box never appears on screen.
+iRacing never reveals which black box is open, and a black box hotkey is a toggle, so iRaceDeck presses a different box first and then the Fuel box. Both keypresses are sent together as one keystroke, so iRacing almost always applies them in the same frame and you never see the first box. Very occasionally a single frame slips through and it flashes for an instant.
 
 Requires keyboard bindings for the **Fuel** black box and at least one other black box — set them under **Related Key Bindings**. If either is missing, or is bound to a SimHub role instead of a key, the fuel value still changes but no black box opens.
 
@@ -89,7 +89,7 @@ The decrement to subtract. Numeric — supports comma or period decimal separato
 
 Off by default. When enabled, pressing the key opens iRacing's Fuel black box so you can watch the value change — most useful for the autofuel lap margin, which no telemetry reports.
 
-iRacing never reveals which black box is open, and a black box hotkey is a toggle, so iRaceDeck presses a different box first and then the Fuel box. Both keypresses are sent as a single keystroke, so the intermediate box never appears on screen.
+iRacing never reveals which black box is open, and a black box hotkey is a toggle, so iRaceDeck presses a different box first and then the Fuel box. Both keypresses are sent together as one keystroke, so iRacing almost always applies them in the same frame and you never see the first box. Very occasionally a single frame slips through and it flashes for an instant.
 
 Requires keyboard bindings for the **Fuel** black box and at least one other black box — set them under **Related Key Bindings**. If either is missing, or is bound to a SimHub role instead of a key, the fuel value still changes but no black box opens.
 
@@ -124,7 +124,7 @@ The target fuel amount. Numeric — supports comma or period decimal separators.
 
 Off by default. When enabled, pressing the key opens iRacing's Fuel black box so you can watch the value change — most useful for the autofuel lap margin, which no telemetry reports.
 
-iRacing never reveals which black box is open, and a black box hotkey is a toggle, so iRaceDeck presses a different box first and then the Fuel box. Both keypresses are sent as a single keystroke, so the intermediate box never appears on screen.
+iRacing never reveals which black box is open, and a black box hotkey is a toggle, so iRaceDeck presses a different box first and then the Fuel box. Both keypresses are sent together as one keystroke, so iRacing almost always applies them in the same frame and you never see the first box. Very occasionally a single frame slips through and it flashes for an instant.
 
 Requires keyboard bindings for the **Fuel** black box and at least one other black box — set them under **Related Key Bindings**. If either is missing, or is bound to a SimHub role instead of a key, the fuel value still changes but no black box opens.
 
@@ -144,7 +144,7 @@ Clear the pending fuel request via the iRacing SDK. Removes the fuel line from t
 
 Off by default. When enabled, pressing the key opens iRacing's Fuel black box so you can watch the value change — most useful for the autofuel lap margin, which no telemetry reports.
 
-iRacing never reveals which black box is open, and a black box hotkey is a toggle, so iRaceDeck presses a different box first and then the Fuel box. Both keypresses are sent as a single keystroke, so the intermediate box never appears on screen.
+iRacing never reveals which black box is open, and a black box hotkey is a toggle, so iRaceDeck presses a different box first and then the Fuel box. Both keypresses are sent together as one keystroke, so iRacing almost always applies them in the same frame and you never see the first box. Very occasionally a single frame slips through and it flashes for an instant.
 
 Requires keyboard bindings for the **Fuel** black box and at least one other black box — set them under **Related Key Bindings**. If either is missing, or is bound to a SimHub role instead of a key, the fuel value still changes but no black box opens.
 
@@ -164,7 +164,7 @@ Toggle iRacing's autofuel checkbox on or off. The icon shows a green ON / red OF
 
 Off by default. When enabled, pressing the key opens iRacing's Fuel black box so you can watch the value change — most useful for the autofuel lap margin, which no telemetry reports.
 
-iRacing never reveals which black box is open, and a black box hotkey is a toggle, so iRaceDeck presses a different box first and then the Fuel box. Both keypresses are sent as a single keystroke, so the intermediate box never appears on screen.
+iRacing never reveals which black box is open, and a black box hotkey is a toggle, so iRaceDeck presses a different box first and then the Fuel box. Both keypresses are sent together as one keystroke, so iRacing almost always applies them in the same frame and you never see the first box. Very occasionally a single frame slips through and it flashes for an instant.
 
 Requires keyboard bindings for the **Fuel** black box and at least one other black box — set them under **Related Key Bindings**. If either is missing, or is bound to a SimHub role instead of a key, the fuel value still changes but no black box opens.
 
@@ -184,7 +184,7 @@ Raise the autofuel lap margin by one. Pressing the button taps the iRacing "Lap 
 
 Off by default. When enabled, pressing the key opens iRacing's Fuel black box so you can watch the value change — most useful for the autofuel lap margin, which no telemetry reports.
 
-iRacing never reveals which black box is open, and a black box hotkey is a toggle, so iRaceDeck presses a different box first and then the Fuel box. Both keypresses are sent as a single keystroke, so the intermediate box never appears on screen.
+iRacing never reveals which black box is open, and a black box hotkey is a toggle, so iRaceDeck presses a different box first and then the Fuel box. Both keypresses are sent together as one keystroke, so iRacing almost always applies them in the same frame and you never see the first box. Very occasionally a single frame slips through and it flashes for an instant.
 
 Requires keyboard bindings for the **Fuel** black box and at least one other black box — set them under **Related Key Bindings**. If either is missing, or is bound to a SimHub role instead of a key, the fuel value still changes but no black box opens.
 
@@ -204,7 +204,7 @@ Lower the autofuel lap margin by one. Pressing the button taps the iRacing "Lap 
 
 Off by default. When enabled, pressing the key opens iRacing's Fuel black box so you can watch the value change — most useful for the autofuel lap margin, which no telemetry reports.
 
-iRacing never reveals which black box is open, and a black box hotkey is a toggle, so iRaceDeck presses a different box first and then the Fuel box. Both keypresses are sent as a single keystroke, so the intermediate box never appears on screen.
+iRacing never reveals which black box is open, and a black box hotkey is a toggle, so iRaceDeck presses a different box first and then the Fuel box. Both keypresses are sent together as one keystroke, so iRacing almost always applies them in the same frame and you never see the first box. Very occasionally a single frame slips through and it flashes for an instant.
 
 Requires keyboard bindings for the **Fuel** black box and at least one other black box — set them under **Related Key Bindings**. If either is missing, or is bound to a SimHub role instead of a key, the fuel value still changes but no black box opens.
 

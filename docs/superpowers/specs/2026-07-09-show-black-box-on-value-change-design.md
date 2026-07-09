@@ -120,16 +120,18 @@ Untouched. `showBlackBox` is not a way of talking to iRacing — it is a garnish
 - `shared/black-box.test.ts` — prime is Lap Timing by default; target-is-Lap-Timing picks the next configured box; Lap-Timing-unbound picks the first configured non-target; nothing bound returns `null`.
 - `fuel-service.test.ts` — the box fires exactly once per press when enabled; never when unchecked; never on repeat iterations; after repeat arming and before `executeMode`; never from a dial event.
 
-## Verification in the sim (before merge)
+## Verification in the sim — results (2026-07-09)
 
-The design rests on one assumption that cannot be tested outside iRacing.
+The design rested on one assumption that could not be tested outside iRacing. It was tested and **holds**.
 
-1. Does `holdMs = 0` register at all, or does iRacing sample keyboard state per frame and miss a press that opens and closes within one? If missed, raise `holdMs` to ~16–30 ms (one frame at 60 Hz) and re-test. The knob is a one-line change to `BLACK_BOX_SEQUENCE_HOLD_MS`.
-2. Does the priming box visibly flash at whatever `holdMs` wins?
-3. Does the Fuel box end up shown from every prior state — nothing shown, Fuel already shown, Lap Timing shown, some other box shown?
-4. Do Lap Margin ± still work with the box shown, and do they work with it hidden? This settles whether those keys are black-box-context-dependent, which the `"Lap margin changes through the black box"` comment in `fuel-service.ts` hints at but does not establish.
+1. **Does `holdMs = 0` register at all?** — **Yes.** iRacing honours a zero-duration press delivered in a single `SendInput` batch. Across 31 logged presses: 31 sequences dispatched (`Sending scan code sequence: [0x3b] -> [0x3e] (holdMs=0)`), 0 skipped, 0 binding bailouts. `BLACK_BOX_SEQUENCE_HOLD_MS` stays at `0`; the fallback path is retained but unused.
+2. **Does the priming box visibly flash?** — **Almost never.** The atomic batch guarantees delivery order, not that iRacing drains its input queue before rendering, so a rare single-frame flash of Lap Timing is possible when the events straddle a frame boundary. Observed as a "tiny, tiny flash" in a small minority of presses. Accepted; the docs say so rather than promising "never".
+3. **Show-then-change ordering** — confirmed: the sequence dispatches ~3 ms before `pit.fuel` goes out, so the driver watches the value tick.
+4. **Do Lap Margin ± work with the box hidden?** — **Still open.** If those keys turn out to act only on the currently-shown black box, the two lap-margin modes need the box unconditionally rather than behind a checkbox. Track separately; it does not block this change.
 
-Note that keyboard injection requires iRacing to have focus; `focusIRacingIfEnabled()` already runs before every key handler.
+Keyboard injection requires iRacing to have focus; `focusIRacingIfEnabled()` already runs before every key handler.
+
+**Diagnostic note.** `showBlackBox` is a **per-key** setting. During the first test it appeared broken because the ticked keys lived in a profile bound to `iRacingUI.exe`, which Stream Deck deactivates the moment the sim takes focus — the keys actually pressed were a different, un-ticked set. The `Key down settings: mode=…, showBlackBox=… (raw=…)` debug line in `onKeyDown` exists to make that distinction (never persisted vs persisted-but-false) visible in one glance.
 
 ## Rejected alternatives
 
