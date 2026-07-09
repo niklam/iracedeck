@@ -87,6 +87,8 @@ Cycle through available tire compounds. Each press advances to the next compound
 
 The available compounds depend on the car — most cars have DRY and WET, while some have additional options like Soft, Medium, and Hard.
 
+The key shows the selected compound as a colour-coded badge (F1 style — soft red, medium yellow, hard white, intermediate green, wet blue, and dry grey so it never reads as hard), and tells you whether the next stop will **change to** that compound or **stay on** the one already fitted.
+
 #### Details
 
 - **Method:** iRacing API
