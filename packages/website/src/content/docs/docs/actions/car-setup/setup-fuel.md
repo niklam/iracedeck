@@ -7,7 +7,7 @@ sidebar:
     variant: tip
 ---
 
-Adjust in-car fuel settings from the cockpit: fuel mixture, fuel cut position, disable fuel cut, low fuel accept, and full-course yellow mode. These are live car adjustments, not pit service fuel requests.
+Adjust in-car fuel settings from the cockpit: fuel mixture, fuel cut position, disable fuel cut, low fuel accept, and full-course yellow mode. These are live car adjustments, not pit service fuel requests. Placed on a **Stream Deck+ dial**, the same action becomes a fuel-setup dial with the live value on the touch strip — see [On a dial](#on-a-dial) below.
 
 ## View sub-modes
 
@@ -114,6 +114,46 @@ Toggle full-course yellow mode on or off.
 #### Settings
 
 - No additional settings
+
+## On a dial
+
+Placed on a Stream Deck+ dial, Setup Fuel becomes a fuel-setup dial (distinct from the Fuel Service pit-fuel dial — this adjusts the in-car fuel mixture and cut). Pick one value with the dial's **Setting** dropdown; turning the dial steps it up or down in the car, and the touch strip shows that value live as a big, color-coded number. It uses the same key bindings as the keypad modes, so no extra configuration is needed if you already use them. The Property Inspector automatically shows the dial settings below (instead of the keypad Setting and Direction) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
+
+#### Details
+
+- **Method:** Key binding — the same Setup Fuel increase/decrease bindings the keypad modes use, plus the *FCY Mode Toggle* binding for the press gestures. Configure them in the **Related Key Bindings** section; the Property Inspector shows a status line indicating whether each is set.
+- **Dial:** Rotating adjusts the selected value (clockwise = increase, counter-clockwise = decrease). Both the increase and decrease key bindings must be set.
+- **Telemetry-aware:** Yes — the touch strip shows the live value from telemetry (see the table below).
+
+#### Controls
+
+- **Elgato Stream Deck+** — dial rotation, a press (short or long), and a touchscreen readout that always shows. A touchscreen tap or long tap runs its own configured Tap Display / Long Touch action.
+
+Dials are currently Stream Deck+ only — the action can't be placed on Mirabox knobs or Ulanzi dials yet (see [Dials](/docs/features/dials/)).
+
+#### Setting: Setting
+
+The fuel value the dial controls. Each renders as a color-coded "dash box": a short label on top and the live value as a large number. Only the two adjustable values are offered — the one-shot toggles (Disable Fuel Cut, Low Fuel Accept, FCY Mode Toggle) don't map to a rotary.
+
+| Setting | Label | Telemetry source | Shown as |
+|---|---|---|---|
+| Fuel Mixture | MIX | `dcFuelMixture` | integer |
+| Fuel Cut Position | CUT | `dcFuelCutPosition` | integer |
+
+When telemetry isn't available the box shows `---`.
+
+#### Setting: Press Action / Long Press
+
+What a short or long press of the dial button does, chosen from:
+
+- **None** (default for both) — does nothing.
+- **Toggle FCY Mode** — taps the Setup Fuel *FCY Mode Toggle* binding.
+
+A press is classified when you release the dial — a hold past the [Long-press threshold](/docs/features/dials/#the-long-press-threshold) fires the Long Press action. Turning the dial while pressed adjusts the value (a "push + turn") and never fires the press action.
+
+#### Setting: Tap Display / Long Touch
+
+Optional touch-strip gestures (Stream Deck+ only), each over { Toggle FCY Mode, None }. Both default to **None** for VR safety.
 
 ## Key Styles — paired +/− buttons
 

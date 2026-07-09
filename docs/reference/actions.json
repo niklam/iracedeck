@@ -645,7 +645,7 @@
           "id": "com.iracedeck.sd.core.setup-chassis",
           "name": "Setup Chassis",
           "file": "setup-chassis.ts",
-          "encoder": false,
+          "encoder": true,
           "settingsKeys": ["setting", "direction"],
           "modes": [
             { "setting": "view-diff-preload", "label": "View Diff Preload", "controlType": "view" },
@@ -689,7 +689,7 @@
           "id": "com.iracedeck.sd.core.setup-aero",
           "name": "Setup Aero",
           "file": "setup-aero.ts",
-          "encoder": false,
+          "encoder": true,
           "settingsKeys": ["setting", "direction"],
           "modes": [
             { "setting": "view-front-wing", "label": "View Front Wing", "controlType": "view" },
@@ -707,7 +707,7 @@
           "id": "com.iracedeck.sd.core.setup-engine",
           "name": "Setup Engine",
           "file": "setup-engine.ts",
-          "encoder": false,
+          "encoder": true,
           "settingsKeys": ["setting", "direction"],
           "modes": [
             { "setting": "view-engine-power", "label": "View Engine Power", "controlType": "view" },
@@ -727,7 +727,7 @@
           "id": "com.iracedeck.sd.core.setup-fuel",
           "name": "Setup Fuel",
           "file": "setup-fuel.ts",
-          "encoder": false,
+          "encoder": true,
           "settingsKeys": ["setting", "direction"],
           "modes": [
             { "setting": "view-fuel-mixture", "label": "View Fuel Mixture", "controlType": "view" },
@@ -745,7 +745,7 @@
           "id": "com.iracedeck.sd.core.setup-hybrid",
           "name": "Setup Hybrid",
           "file": "setup-hybrid.ts",
-          "encoder": false,
+          "encoder": true,
           "settingsKeys": ["setting", "direction"],
           "modes": [
             { "setting": "view-mguk-deploy-mode", "label": "View MGU-K Deploy Mode", "controlType": "view" },
@@ -766,7 +766,7 @@
           "id": "com.iracedeck.sd.core.setup-traction",
           "name": "Setup Traction",
           "file": "setup-traction.ts",
-          "encoder": false,
+          "encoder": true,
           "settingsKeys": ["setting", "direction"],
           "modes": [
             { "setting": "view-tc-slot-1", "label": "View TC1", "controlType": "view" },

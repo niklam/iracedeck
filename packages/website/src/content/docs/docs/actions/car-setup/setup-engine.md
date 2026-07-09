@@ -7,7 +7,7 @@ sidebar:
     variant: tip
 ---
 
-Adjust engine-related setup options from the cockpit: engine power, throttle shaping, boost level, and launch RPM.
+Adjust engine-related setup options from the cockpit: engine power, throttle shaping, boost level, and launch RPM. Placed on a **Stream Deck+ dial**, the same action becomes an engine-setup dial with the live value on the touch strip — see [On a dial](#on-a-dial) below.
 
 ## View sub-modes
 
@@ -100,6 +100,39 @@ Adjust the launch control RPM target.
 
 - **Increase** (default) — Pressing the button raises the RPM target
 - **Decrease** — Pressing the button lowers the RPM target
+
+## On a dial
+
+Placed on a Stream Deck+ dial, Setup Engine becomes an engine-setup dial. Pick one value with the dial's **Setting** dropdown; turning the dial steps it up or down in the car, and the touch strip shows that value live as a big, color-coded number. It uses the same key bindings as the keypad modes, so no extra configuration is needed if you already use them. The Property Inspector automatically shows the dial settings below (instead of the keypad Setting and Direction) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
+
+#### Details
+
+- **Method:** Key binding — the same Setup Engine increase/decrease bindings the keypad modes use. Configure them in the **Related Key Bindings** section; the Property Inspector shows a status line indicating whether each is set.
+- **Dial:** Rotating adjusts the selected value (clockwise = increase, counter-clockwise = decrease). Both the increase and decrease key bindings must be set.
+- **Telemetry-aware:** Yes for most settings — the touch strip shows the live value from telemetry (see the table below). Boost Level has no telemetry, so its strip shows the label only.
+
+#### Controls
+
+- **Elgato Stream Deck+** — dial rotation and a touchscreen readout that always shows.
+
+Dials are currently Stream Deck+ only — the action can't be placed on Mirabox knobs or Ulanzi dials yet (see [Dials](/docs/features/dials/)).
+
+#### Setting: Setting
+
+The engine value the dial controls. Each renders as a color-coded "dash box": a short label on top and the live value as a large number.
+
+| Setting | Label | Telemetry source | Shown as |
+|---|---|---|---|
+| Engine Power | POWER | `dcEnginePower` | integer |
+| Throttle Shaping | THR | `dcThrottleShape` | integer |
+| Boost Level | BOOST | *(none — iRacing exposes no boost value)* | label only |
+| Launch RPM | LAUNCH | `dcLaunchRPM` | integer |
+
+When a telemetry-backed setting has no data the box shows `---`. Boost Level still rotates (it uses its increase/decrease bindings); its strip just can't show a live number.
+
+#### Press and touch gestures
+
+Setup Engine has no on/off toggle, so the dial press and touchscreen taps do nothing — the dial is rotation-only.
 
 ## Key Styles — paired +/− buttons
 
