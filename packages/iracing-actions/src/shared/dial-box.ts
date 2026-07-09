@@ -3,27 +3,21 @@
  * seven Setup dial surfaces (Brakes, Traction, Fuel, Engine, Aero, Chassis,
  * Hybrid) draw for their encoder slot. Each action was carrying its own copy of
  * this renderer (issue #817); this module is the single source (issue #811),
- * and adds user-adjustable colors + an optional border glow.
+ * and adds user-adjustable colors.
  *
  * The box is a rounded panel floating on the black device screen: the
  * background color fills the area INSIDE the border frame (the outer margin
- * stays transparent → device black), the border strokes that panel, an optional
- * blurred glow sits behind it, and the abbreviation label + live value sit on
- * top. Actions resolve their per-setting accent + any user overrides via
- * `resolveDialBoxColors`, spread `dialAppearanceFields` into their dial settings
- * schema, and route rendering through `renderDialBox`.
+ * stays transparent → device black), the border strokes that panel, and the
+ * abbreviation label + live value sit on top. Actions resolve their per-setting
+ * accent + any user overrides via `resolveDialBoxColors`, spread
+ * `dialAppearanceFields` into their dial settings schema, and route rendering
+ * through `renderDialBox`.
  */
 import { applyBindingWarning } from "@iracedeck/deck-core";
 import { z } from "zod";
 
 /** Default panel background — near-black, ≈ the device screen, so the default look is unchanged. */
 export const DIAL_BOX_BACKGROUND = "#0d0d0d";
-
-/** Glow tunables (mirroring the key-icon border glow in `icon-composer`). */
-const DIAL_GLOW_STD_DEV = 6;
-const DIAL_GLOW_OPACITY = 0.4;
-export const DIAL_GLOW_WIDTH_DEFAULT = 12;
-export const DIAL_GLOW_WIDTH_MAX = 30;
 
 /** The default identity-only (valueless) label scale, as a fraction of the box's shorter side. */
 const DEFAULT_IDENTITY_LABEL_SCALE = 0.24;
@@ -46,12 +40,6 @@ export interface DialBoxColors {
   label: string;
   value: string;
   background: string;
-}
-
-/** Border-glow settings for the dash box. */
-export interface DialBoxGlow {
-  enabled: boolean;
-  width: number;
 }
 
 /** An override string counts as "set" only when it is a non-empty string. */
@@ -84,11 +72,10 @@ function fitValueFontSize(text: string, maxWidth: number, cap: number): number {
 }
 
 /**
- * Renders the dash-box SVG. The background fills the panel INSIDE the border;
- * the border strokes it; an optional blurred glow (Elgato-only, gated on
- * `__FEATURE_BORDER_GLOW__`) sits behind it. An empty `value` (identity-only
- * setting) draws just the centered label. When the rotation binding is missing
- * the content dims under the centered #612 warning triangle.
+ * Renders the dash-box SVG. The background fills the panel INSIDE the border and
+ * the border strokes it. An empty `value` (identity-only setting) draws just the
+ * centered label. When the rotation binding is missing the content dims under
+ * the centered #612 warning triangle.
  */
 export function renderDialBox(args: {
   width: number;
@@ -96,7 +83,6 @@ export function renderDialBox(args: {
   abbr: string;
   value: string;
   colors: DialBoxColors;
-  glow: DialBoxGlow;
   identityLabelScale?: number;
   bindingMissing?: boolean;
 }): string {
@@ -106,7 +92,6 @@ export function renderDialBox(args: {
     abbr,
     value,
     colors,
-    glow,
     identityLabelScale = DEFAULT_IDENTITY_LABEL_SCALE,
     bindingMissing = false,
   } = args;
@@ -144,21 +129,8 @@ export function renderDialBox(args: {
   // inset rect leaves the outer margin transparent (device black).
   const panelRect = `<rect x="${inset}" y="${inset}" width="${innerW}" height="${innerH}" rx="${innerRx}" fill="${colors.background}" stroke="${colors.border}" stroke-width="${strokeWidth}"/>`;
 
-  let glowDefs = "";
-  let glowRect = "";
-
-  if (glow.enabled && __FEATURE_BORDER_GLOW__) {
-    const glowWidth = Math.min(glow.width, DIAL_GLOW_WIDTH_MAX);
-    glowDefs = `<defs><filter id="ird-dial-glow"><feGaussianBlur stdDeviation="${DIAL_GLOW_STD_DEV}"/></filter></defs>`;
-    // Drawn before the panel: the blurred halo shows outside the border, its
-    // inner half covered by the panel fill.
-    glowRect = `<rect x="${inset}" y="${inset}" width="${innerW}" height="${innerH}" rx="${innerRx}" fill="none" stroke="${colors.border}" stroke-width="${glowWidth}" opacity="${DIAL_GLOW_OPACITY}" filter="url(#ird-dial-glow)"/>`;
-  }
-
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">` +
-    glowDefs +
-    glowRect +
     panelRect +
     `${bindingMissing ? applyBindingWarning(content, { width: w, height: h }) : content}</svg>`
   );
@@ -182,10 +154,4 @@ export const dialAppearanceFields = {
       backgroundColor: dialColorField,
     })
     .prefault({}),
-  glow: z
-    .union([z.boolean(), z.string()])
-    .default(false)
-    .transform((val) => val === true || val === "true")
-    .catch(false),
-  glowWidth: z.coerce.number().catch(DIAL_GLOW_WIDTH_DEFAULT).default(DIAL_GLOW_WIDTH_DEFAULT),
 };

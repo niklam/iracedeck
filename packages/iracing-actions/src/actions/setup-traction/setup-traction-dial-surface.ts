@@ -84,7 +84,7 @@ export const DialSettings = z
     longPressAction: z.enum(GESTURE_ACTIONS).default("none"),
     tapAction: z.enum(GESTURE_ACTIONS).default("none"),
     longTouchAction: z.enum(GESTURE_ACTIONS).default("none"),
-    // Dash-box appearance overrides (colors + border glow, issue #811).
+    // Dash-box appearance overrides (colors, issue #811).
     ...dialAppearanceFields,
   })
   .prefault({});
@@ -425,7 +425,6 @@ export class SetupTractionDialSurface {
       abbr: MODE_ABBR[setting],
       value: formatDialValue(setting, this.host.getTelemetry()),
       colors: resolveDialBoxColors(ctx.dial.colors, MODE_COLOR[setting]),
-      glow: { enabled: ctx.dial.glow, width: ctx.dial.glowWidth },
       identityLabelScale: 0.24,
       bindingMissing: this.computeBindingMissing(ctx.dial),
     });

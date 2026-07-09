@@ -86,7 +86,7 @@ export const DialSettings = z
     tapAction: z.enum(GESTURE_ACTIONS).default("none"),
     // Long Touch (touch-strip tap, hold === true). Default None for VR safety.
     longTouchAction: z.enum(GESTURE_ACTIONS).default("none"),
-    // Dash-box appearance overrides (colors + border glow, issue #811).
+    // Dash-box appearance overrides (colors, issue #811).
     ...dialAppearanceFields,
   })
   // prefault (not default): a missing `dial` parses {} THROUGH the schema so

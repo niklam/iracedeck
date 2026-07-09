@@ -1,9 +1,8 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
 import {
   DIAL_BOX_BACKGROUND,
-  DIAL_GLOW_WIDTH_DEFAULT,
   dialAppearanceFields,
   type DialBoxColors,
   renderDialBox,
@@ -23,22 +22,9 @@ function accentColors(accent = ACCENT): DialBoxColors {
   return { border: accent, label: accent, value: accent, background: DIAL_BOX_BACKGROUND };
 }
 
-const NO_GLOW = { enabled: false, width: DIAL_GLOW_WIDTH_DEFAULT };
-
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
-
 describe("renderDialBox", () => {
   it("draws the abbreviation, value, accent border, and dark background by default", () => {
-    const svg = renderDialBox({
-      width: 200,
-      height: 100,
-      abbr: "BB",
-      value: "62.2",
-      colors: accentColors(),
-      glow: NO_GLOW,
-    });
+    const svg = renderDialBox({ width: 200, height: 100, abbr: "BB", value: "62.2", colors: accentColors() });
 
     expect(svg).toContain(DIAL_BOX_BACKGROUND);
     expect(svg).toContain(`stroke="${ACCENT}"`);
@@ -48,14 +34,7 @@ describe("renderDialBox", () => {
   });
 
   it("fills the background INSIDE the border and leaves the outer margin unfilled", () => {
-    const svg = renderDialBox({
-      width: 200,
-      height: 100,
-      abbr: "BB",
-      value: "62.2",
-      colors: accentColors(),
-      glow: NO_GLOW,
-    });
+    const svg = renderDialBox({ width: 200, height: 100, abbr: "BB", value: "62.2", colors: accentColors() });
 
     // The background+border share one inset rect (x/y = 5 on a 200x100 cell),
     // so the panel floats on the device-black margin...
@@ -71,7 +50,6 @@ describe("renderDialBox", () => {
       abbr: "BB",
       value: "62.2",
       colors: { border: "#111111", label: "#222222", value: "#333333", background: "#444444" },
-      glow: NO_GLOW,
     });
 
     // Panel: background fill + border stroke.
@@ -82,59 +60,8 @@ describe("renderDialBox", () => {
     expect(svg).toMatch(/<text[^>]*fill="#333333"[^>]*>62\.2<\/text>/);
   });
 
-  it("adds a blurred glow in the border color when glow is enabled", () => {
-    const svg = renderDialBox({
-      width: 200,
-      height: 100,
-      abbr: "BB",
-      value: "62.2",
-      colors: accentColors(),
-      glow: { enabled: true, width: 12 },
-    });
-
-    expect(svg).toContain("feGaussianBlur");
-    expect(svg).toContain('filter="url(#ird-dial-glow)"');
-    // The glow rect strokes the border color at the requested width.
-    expect(svg).toMatch(/<rect[^>]*stroke="#e74c3c"[^>]*stroke-width="12"[^>]*filter="url\(#ird-dial-glow\)"/);
-  });
-
-  it("omits the glow when the border-glow feature flag is off (Mirabox/Ulanzi)", () => {
-    vi.stubGlobal("__FEATURE_BORDER_GLOW__", false);
-
-    const svg = renderDialBox({
-      width: 200,
-      height: 100,
-      abbr: "BB",
-      value: "62.2",
-      colors: accentColors(),
-      glow: { enabled: true, width: 12 },
-    });
-
-    expect(svg).not.toContain("feGaussianBlur");
-  });
-
-  it("omits the glow when glow is disabled", () => {
-    const svg = renderDialBox({
-      width: 200,
-      height: 100,
-      abbr: "BB",
-      value: "62.2",
-      colors: accentColors(),
-      glow: NO_GLOW,
-    });
-
-    expect(svg).not.toContain("feGaussianBlur");
-  });
-
   it("draws only the centered label for an identity-only (valueless) setting", () => {
-    const svg = renderDialBox({
-      width: 200,
-      height: 100,
-      abbr: "QUAL",
-      value: "",
-      colors: accentColors(),
-      glow: NO_GLOW,
-    });
+    const svg = renderDialBox({ width: 200, height: 100, abbr: "QUAL", value: "", colors: accentColors() });
 
     expect(svg).toContain(">QUAL<");
     // Identity-only label is bigger (0.24 * minSide = 24 on a 200x100 cell).
@@ -150,7 +77,6 @@ describe("renderDialBox", () => {
       abbr: "BUMP",
       value: "",
       colors: accentColors(),
-      glow: NO_GLOW,
       identityLabelScale: 0.22,
     });
 
@@ -159,10 +85,10 @@ describe("renderDialBox", () => {
 
   it("shrinks the value font so a longer value fits inside a smaller one", () => {
     const long = /font-size="(\d+)"[^>]*>1234\.5</.exec(
-      renderDialBox({ width: 200, height: 100, abbr: "BB", value: "1234.5", colors: accentColors(), glow: NO_GLOW }),
+      renderDialBox({ width: 200, height: 100, abbr: "BB", value: "1234.5", colors: accentColors() }),
     );
     const short = /font-size="(\d+)"[^>]*>3</.exec(
-      renderDialBox({ width: 200, height: 100, abbr: "ABS", value: "3", colors: accentColors(), glow: NO_GLOW }),
+      renderDialBox({ width: 200, height: 100, abbr: "ABS", value: "3", colors: accentColors() }),
     );
 
     expect(long).not.toBeNull();
@@ -171,7 +97,7 @@ describe("renderDialBox", () => {
   });
 
   it("draws the #612 warning overlay only when bindingMissing is set", () => {
-    const base = { width: 200, height: 100, abbr: "ABS", value: "3", colors: accentColors(), glow: NO_GLOW } as const;
+    const base = { width: 200, height: 100, abbr: "ABS", value: "3", colors: accentColors() } as const;
 
     expect(renderDialBox(base)).not.toContain("binding-warning");
     expect(renderDialBox({ ...base, bindingMissing: true })).toContain("binding-warning");
@@ -207,38 +133,24 @@ describe("resolveDialBoxColors", () => {
 describe("dialAppearanceFields", () => {
   const Schema = z.object({ ...dialAppearanceFields }).prefault({});
 
-  it("defaults to empty color overrides, glow off, and the default glow width", () => {
+  it("defaults to empty color overrides", () => {
     expect(Schema.parse({})).toEqual({
       colors: { borderColor: "", labelColor: "", valueColor: "", backgroundColor: "" },
-      glow: false,
-      glowWidth: DIAL_GLOW_WIDTH_DEFAULT,
     });
   });
 
   it("parses real overrides through", () => {
     const parsed = Schema.parse({
       colors: { borderColor: "#111111", labelColor: "#222222", valueColor: "#333333", backgroundColor: "#444444" },
-      glow: true,
-      glowWidth: 20,
     });
 
     expect(parsed.colors.backgroundColor).toBe("#444444");
-    expect(parsed.glow).toBe(true);
-    expect(parsed.glowWidth).toBe(20);
-  });
-
-  it("coerces a string checkbox/glow-width value", () => {
-    const parsed = Schema.parse({ glow: "true", glowWidth: "18" });
-
-    expect(parsed.glow).toBe(true);
-    expect(parsed.glowWidth).toBe(18);
+    expect(parsed.colors.valueColor).toBe("#333333");
   });
 
   it("degrades malformed values to defaults instead of throwing", () => {
-    const parsed = Schema.parse({ colors: { borderColor: 42 }, glow: { nope: 1 }, glowWidth: "abc" });
+    const parsed = Schema.parse({ colors: { borderColor: 42 } });
 
     expect(parsed.colors.borderColor).toBe("");
-    expect(parsed.glow).toBe(false);
-    expect(parsed.glowWidth).toBe(DIAL_GLOW_WIDTH_DEFAULT);
   });
 });

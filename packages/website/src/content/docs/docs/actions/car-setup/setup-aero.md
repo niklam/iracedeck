@@ -119,7 +119,7 @@ Dials are currently Stream Deck+ only — the action can't be placed on Mirabox 
 
 #### Setting: Setting
 
-The aero value the dial controls. Each renders as a color-coded "dash box": a short label on top and the live value as a large number. Each setting has a built-in accent color, but you can override the border, label, value, and background colors — and add an optional border glow — in the **Dash Box Appearance** section of the dial settings. The RF Brake Attached toggle isn't offered as a rotation setting (it's a press gesture instead).
+The aero value the dial controls. Each renders as a color-coded "dash box": a short label on top and the live value as a large number. Each setting has a built-in accent color, but you can override the border, label, value, and background colors in the **Dash Box Appearance** section of the dial settings. The RF Brake Attached toggle isn't offered as a rotation setting (it's a press gesture instead).
 
 | Setting | Label | Telemetry source | Shown as |
 |---|---|---|---|

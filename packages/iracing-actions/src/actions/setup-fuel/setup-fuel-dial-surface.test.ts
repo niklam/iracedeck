@@ -310,15 +310,13 @@ describe("SetupFuel dial surface", () => {
       expect(decoded).toContain(">3<");
     });
 
-    it("applies dash-box color overrides and border glow from dial settings (#811)", async () => {
+    it("applies dash-box color overrides from dial settings (#811)", async () => {
       const ctx = dialContext("a811");
       await appear(
         ctx,
         dialSettings({
           setting: "fuel-mixture",
           colors: { borderColor: "#112233", backgroundColor: "#445566" },
-          glow: true,
-          glowWidth: 14,
         }),
       );
 
@@ -326,7 +324,6 @@ describe("SetupFuel dial surface", () => {
 
       expect(decoded).toContain('stroke="#112233"');
       expect(decoded).toContain('fill="#445566"');
-      expect(decoded).toContain("feGaussianBlur");
     });
 
     it("pushes the two-line name icon as the deck-app dial image (#797)", async () => {

@@ -344,15 +344,13 @@ describe("SetupBrakes dial surface", () => {
       expect(decoded).toContain(">54.0<"); // value with the % dropped
     });
 
-    it("applies dash-box color overrides and border glow from dial settings (#811)", async () => {
+    it("applies dash-box color overrides from dial settings (#811)", async () => {
       const ctx = dialContext("a1");
       await appear(
         ctx,
         dialSettings({
           setting: "brake-bias",
           colors: { borderColor: "#112233", backgroundColor: "#445566" },
-          glow: true,
-          glowWidth: 14,
         }),
       );
 
@@ -360,7 +358,6 @@ describe("SetupBrakes dial surface", () => {
 
       expect(decoded).toContain('stroke="#112233"'); // border override
       expect(decoded).toContain('fill="#445566"'); // background override, filling inside the border
-      expect(decoded).toContain("feGaussianBlur"); // glow enabled
     });
 
     it("pushes the encoder trigger description on a dial", async () => {

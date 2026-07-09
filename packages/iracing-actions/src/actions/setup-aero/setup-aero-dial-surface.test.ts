@@ -263,15 +263,13 @@ describe("SetupAero dial surface", () => {
       expect(decoded).toContain(">3<");
     });
 
-    it("applies dash-box color overrides and border glow from dial settings (#811)", async () => {
+    it("applies dash-box color overrides from dial settings (#811)", async () => {
       const ctx = dialContext("a811");
       await appear(
         ctx,
         dialSettings({
           setting: "front-wing",
           colors: { borderColor: "#112233", backgroundColor: "#445566" },
-          glow: true,
-          glowWidth: 14,
         }),
       );
 
@@ -279,7 +277,6 @@ describe("SetupAero dial surface", () => {
 
       expect(decoded).toContain('stroke="#112233"'); // border override
       expect(decoded).toContain('fill="#445566"'); // background override, filling inside the border
-      expect(decoded).toContain("feGaussianBlur"); // glow enabled
     });
 
     it("pushes a label-only strip for qualifying-tape (identity-only)", async () => {

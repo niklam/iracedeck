@@ -152,7 +152,7 @@ Dials are currently Stream Deck+ only — the action can't be placed on Mirabox 
 
 #### Setting: Setting
 
-The MGU-K value the dial controls. Each renders as a color-coded "dash box": a short label on top and the live value as a large number. Each setting has a built-in accent color, but you can override the border, label, value, and background colors — and add an optional border glow — in the **Dash Box Appearance** section of the dial settings. Only the three adjustable MGU-K values are offered — the HYS hold controls have no rotary sense.
+The MGU-K value the dial controls. Each renders as a color-coded "dash box": a short label on top and the live value as a large number. Each setting has a built-in accent color, but you can override the border, label, value, and background colors in the **Dash Box Appearance** section of the dial settings. Only the three adjustable MGU-K values are offered — the HYS hold controls have no rotary sense.
 
 | Setting | Label | Telemetry source | Shown as |
 |---|---|---|---|

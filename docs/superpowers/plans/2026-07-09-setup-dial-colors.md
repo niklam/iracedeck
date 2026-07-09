@@ -2,6 +2,8 @@
 
 _2026-07-09 · Issue #811 · Spec: docs/superpowers/specs/2026-07-09-setup-dial-colors-design.md_
 
+> **Update (2026-07-09):** The border glow was dropped after implementation (it didn't render on the Elgato touch strip); only the four dash-box colors shipped.
+
 Consolidate the seven duplicated Setup dial dash-box renderers into one shared renderer + settings fragment, then make four colors (border, label, value, background) user-adjustable, add an optional border glow, and change the background to fill **inside** the border (outer margin stays black).
 
 ## Phase 1 — Shared module (TDD)

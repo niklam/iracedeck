@@ -426,7 +426,6 @@ export class SetupBrakesDialSurface {
       abbr: MODE_ABBR[setting],
       value: formatDialValue(setting, this.host.getTelemetry()),
       colors: resolveDialBoxColors(ctx.settings.dial.colors, MODE_COLOR[setting]),
-      glow: { enabled: ctx.settings.dial.glow, width: ctx.settings.dial.glowWidth },
       bindingMissing: this.computeBindingMissing(ctx.settings),
     });
     const feedback: DeckFeedbackPayload = { box: svgToDataUri(boxSvg) };

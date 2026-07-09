@@ -2,6 +2,8 @@
 
 _2026-07-09 · Status: approved in brainstorming · Issue: #811_
 
+> **Update (2026-07-09, post-implementation):** The border glow was **dropped** — the `feGaussianBlur` glow did not render on the Elgato touch strip. Only the four colors (border, label, value, background) ship. Glow references below are kept for design history.
+
 ## Summary
 
 Make the Stream Deck+ dial touch-strip "dash box" appearance user-adjustable across **all seven Setup dial surfaces** — Setup Brakes, Traction, Fuel, Engine, Aero, Chassis, and Hybrid (dial surfaces added in #817). Today every dash box hardcodes its colors: the panel is fixed near-black (`BOX_BACKGROUND = "#0d0d0d"`) and the border, title label, and value all share one per-setting accent (`MODE_COLOR`). Users should be able to independently set the **border**, **title**, **value text**, and **background** colors, and optionally give the border a **glow**, with the current accents + black background preserved as defaults so nothing changes until a user overrides.
