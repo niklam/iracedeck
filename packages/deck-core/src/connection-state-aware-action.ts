@@ -253,6 +253,17 @@ export abstract class ConnectionStateAwareAction<T = Record<string, unknown>> ex
   }
 
   /**
+   * Execute several bindings as one atomic key sequence (issue #818).
+   * Returns false when the sequence was skipped (unset / SimHub / unmappable key).
+   *
+   * @param settingKeys - Global settings keys, in press order
+   * @param holdMs - Per-chord hold in ms; 0 (default) = one atomic batch
+   */
+  protected async tapBindingSequence(settingKeys: string[], holdMs?: number): Promise<boolean> {
+    return getBindingDispatcher().tapSequence(settingKeys, holdMs);
+  }
+
+  /**
    * Press and hold a binding from global settings.
    * Stays active until releaseBinding is called for the same actionId.
    *

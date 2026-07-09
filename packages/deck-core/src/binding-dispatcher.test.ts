@@ -11,6 +11,7 @@ const {
   mockSendKeyCombination,
   mockPressKeyCombination,
   mockReleaseKeyCombination,
+  mockSendKeySequence,
   mockStartRole,
   mockStopRole,
   mockGetGlobalSettings,
@@ -20,6 +21,7 @@ const {
   mockSendKeyCombination: vi.fn().mockResolvedValue(true),
   mockPressKeyCombination: vi.fn().mockResolvedValue(true),
   mockReleaseKeyCombination: vi.fn().mockResolvedValue(true),
+  mockSendKeySequence: vi.fn().mockResolvedValue(true),
   mockStartRole: vi.fn().mockResolvedValue(true),
   mockStopRole: vi.fn().mockResolvedValue(true),
   mockGetGlobalSettings: vi.fn<() => Record<string, unknown>>(() => ({})),
@@ -32,6 +34,7 @@ vi.mock("./keyboard-service.js", () => ({
     sendKeyCombination: mockSendKeyCombination,
     pressKeyCombination: mockPressKeyCombination,
     releaseKeyCombination: mockReleaseKeyCombination,
+    sendKeySequence: mockSendKeySequence,
   }),
 }));
 
@@ -74,6 +77,7 @@ describe("BindingDispatcher", () => {
     mockSendKeyCombination.mockResolvedValue(true);
     mockPressKeyCombination.mockResolvedValue(true);
     mockReleaseKeyCombination.mockResolvedValue(true);
+    mockSendKeySequence.mockResolvedValue(true);
   });
 
   // --- Initialization ---
@@ -578,6 +582,84 @@ describe("BindingDispatcher", () => {
       mockGetGlobalSettings.mockReturnValue({ myKey: "" });
 
       expect(getBindingDispatcher().isConfigured("myKey")).toBe(false);
+    });
+  });
+
+  // --- Atomic key sequences (#818) ---
+
+  describe("tapSequence", () => {
+    const keyboardBinding = (key: string, code: string) =>
+      JSON.stringify({ type: "keyboard", key, modifiers: [], code });
+
+    it("should return false for an empty key list", async () => {
+      initializeBindingDispatcher();
+
+      const result = await getBindingDispatcher().tapSequence([]);
+
+      expect(result).toBe(false);
+      expect(mockSendKeySequence).not.toHaveBeenCalled();
+    });
+
+    it("should send every binding as one sequence, in order", async () => {
+      mockGetGlobalSettings.mockReturnValue({
+        blackBoxLapTiming: keyboardBinding("f1", "F1"),
+        blackBoxFuel: keyboardBinding("f4", "F4"),
+      });
+      initializeBindingDispatcher();
+
+      const result = await getBindingDispatcher().tapSequence(["blackBoxLapTiming", "blackBoxFuel"]);
+
+      expect(result).toBe(true);
+      expect(mockSendKeySequence).toHaveBeenCalledWith(
+        [
+          { key: "f1", modifiers: undefined, code: "F1" },
+          { key: "f4", modifiers: undefined, code: "F4" },
+        ],
+        0,
+      );
+    });
+
+    it("should forward an explicit holdMs", async () => {
+      mockGetGlobalSettings.mockReturnValue({ blackBoxFuel: keyboardBinding("f4", "F4") });
+      initializeBindingDispatcher();
+
+      await getBindingDispatcher().tapSequence(["blackBoxFuel"], 16);
+
+      expect(mockSendKeySequence).toHaveBeenCalledWith([{ key: "f4", modifiers: undefined, code: "F4" }], 16);
+    });
+
+    it("should send nothing when any binding is unset", async () => {
+      mockGetGlobalSettings.mockReturnValue({ blackBoxFuel: keyboardBinding("f4", "F4") });
+      initializeBindingDispatcher();
+
+      const result = await getBindingDispatcher().tapSequence(["blackBoxLapTiming", "blackBoxFuel"]);
+
+      expect(result).toBe(false);
+      expect(mockSendKeySequence).not.toHaveBeenCalled();
+    });
+
+    it("should send nothing when any binding is a SimHub role", async () => {
+      mockGetGlobalSettings.mockReturnValue({
+        blackBoxLapTiming: JSON.stringify({ type: "simhub", role: "Lap Timing" }),
+        blackBoxFuel: keyboardBinding("f4", "F4"),
+      });
+      initializeBindingDispatcher();
+
+      const result = await getBindingDispatcher().tapSequence(["blackBoxLapTiming", "blackBoxFuel"]);
+
+      expect(result).toBe(false);
+      expect(mockSendKeySequence).not.toHaveBeenCalled();
+      expect(mockStartRole).not.toHaveBeenCalled();
+    });
+
+    it("should propagate a false result from the keyboard service", async () => {
+      mockGetGlobalSettings.mockReturnValue({ blackBoxFuel: keyboardBinding("f4", "F4") });
+      mockSendKeySequence.mockResolvedValue(false);
+      initializeBindingDispatcher();
+
+      const result = await getBindingDispatcher().tapSequence(["blackBoxFuel"]);
+
+      expect(result).toBe(false);
     });
   });
 });

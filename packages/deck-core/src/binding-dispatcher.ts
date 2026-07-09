@@ -44,6 +44,20 @@ export interface IBindingDispatcher {
   /** Execute a tap (press + release) binding from global settings. */
   tap(settingKey: string): Promise<void>;
 
+  /**
+   * Execute several bindings as ONE atomic key sequence (issue #818).
+   *
+   * Sends nothing and returns false when any binding is unset, is a SimHub role
+   * (it goes over HTTP and cannot join a SendInput batch), or has no scan code
+   * mapping. Callers must treat false as "skip" — a non-atomic fallback would
+   * reintroduce the visible intermediate state this API exists to prevent.
+   *
+   * @param settingKeys - Global settings keys, in press order
+   * @param holdMs - Per-chord hold in ms; 0 (default) = one atomic batch
+   * @returns true if the sequence was dispatched, false if it was skipped
+   */
+  tapSequence(settingKeys: string[], holdMs?: number): Promise<boolean>;
+
   /** Press and hold a binding from global settings. */
   hold(actionId: string, settingKey: string): Promise<void>;
 
@@ -88,6 +102,43 @@ class BindingDispatcher implements IBindingDispatcher {
     }
 
     await this.tapKeyboard(binding);
+  }
+
+  /**
+   * Resolve several bindings and send them as one atomic key sequence.
+   *
+   * @param settingKeys - Global settings keys, in press order
+   * @param holdMs - Per-chord hold in ms; 0 (default) = one atomic batch
+   */
+  async tapSequence(settingKeys: string[], holdMs = 0): Promise<boolean> {
+    if (settingKeys.length === 0) return false;
+
+    const combinations: KeyCombination[] = [];
+
+    for (const settingKey of settingKeys) {
+      const binding = this.resolveGlobalBinding(settingKey);
+
+      if (!binding) return false;
+
+      if (isSimHubBinding(binding)) {
+        this.logger.debug(`Binding for ${settingKey} is a SimHub role, cannot batch — skipping sequence`);
+
+        return false;
+      }
+
+      combinations.push(this.toKeyCombination(binding));
+    }
+
+    const sent = await getKeyboard().sendKeySequence(combinations, holdMs);
+
+    if (sent) {
+      this.logger.info("Key sequence sent successfully");
+      this.logger.debug(`Key sequence: ${settingKeys.join(" -> ")}`);
+    } else {
+      this.logger.debug(`Key sequence skipped: ${settingKeys.join(" -> ")}`);
+    }
+
+    return sent;
   }
 
   /**

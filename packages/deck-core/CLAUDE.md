@@ -18,7 +18,7 @@ Platform-agnostic core interfaces, base classes, and utilities for deck device p
 ### Base Classes
 
 - `BaseAction<T>` — Abstract base with SVG image management, flag overlay, inactive state tracking. Accepts logger via constructor. Implements `IDeckActionHandler<T>`.
-- `ConnectionStateAwareAction<T>` — Extends `BaseAction` with automatic iRacing connection tracking via `sdkController`. Also home of the binding-dispatch delegates: `setActiveBinding`, `tapBinding`, `holdBinding`, `releaseBinding`, and `isBindingMissing` (per-context missing-binding check — prefer it over the shared `isActiveBindingMissing()`).
+- `ConnectionStateAwareAction<T>` — Extends `BaseAction` with automatic iRacing connection tracking via `sdkController`. Also home of the binding-dispatch delegates: `setActiveBinding`, `tapBinding`, `tapBindingSequence` (atomic multi-chord sequence, #818), `holdBinding`, `releaseBinding`, and `isBindingMissing` (per-context missing-binding check — prefer it over the shared `isActiveBindingMissing()`).
 
 ### Icon Assembly (re-exported from `@iracedeck/icon-composer`)
 
