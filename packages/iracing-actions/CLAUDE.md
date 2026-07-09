@@ -38,6 +38,7 @@ icons/                                   # Dynamic SVG templates (telemetry-driv
 `src/shared/` holds cross-action utilities:
 
 - `adjust-styles.ts` — paired +/− key styles: style catalog, shared settings fields + fresh-key seeding, value-source gating over VIEW_DEFS, and the SVG renderer (spec: docs/superpowers/specs/2026-07-07-paired-adjust-key-styles-design.md)
+- `black-box.ts` — canonical black-box id↔global-key map (`BLACK_BOX_GLOBAL_KEYS`, also consumed by `comms-catalog.ts`) plus `showBlackBox()` / `resolvePrimeKey()`: press a different box first, then the target, as one atomic key sequence, because a black-box hotkey toggles and telemetry never reports the shown box (#818)
 - `car-select-intent.ts` — per-device intent deciding what a selector car-key press means (admin target vs camera focus, #790)
 - `dial-name-icon.ts` — plain two-line action-name image that dual-surface actions push for dial contexts (#775)
 - `icon-update-throttle.ts` — per-context throttle + trailing-edge coalescer for telemetry-driven `setKeyImage` bursts (#493)
