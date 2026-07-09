@@ -135,4 +135,22 @@ describe("fuel-service settings", () => {
       expect(resolveDisplayUnits("k", undefined)).toBe(1);
     });
   });
+
+  describe("showBlackBox (#818)", () => {
+    it("should default to false", () => {
+      expect(parseFuelServiceSettings({}).showBlackBox).toBe(false);
+    });
+
+    it("should accept a real boolean", () => {
+      expect(parseFuelServiceSettings({ showBlackBox: true }).showBlackBox).toBe(true);
+    });
+
+    it('should treat the string "true" as true', () => {
+      expect(parseFuelServiceSettings({ showBlackBox: "true" }).showBlackBox).toBe(true);
+    });
+
+    it('should treat the string "false" as false', () => {
+      expect(parseFuelServiceSettings({ showBlackBox: "false" }).showBlackBox).toBe(false);
+    });
+  });
 });

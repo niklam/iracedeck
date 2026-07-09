@@ -41,6 +41,7 @@ import { DisplayUnits, type SessionInfo, type TelemetryData } from "@iracedeck/i
 
 import fuelServiceTemplate from "../../../icons/fuel-service.svg";
 import { borderColorForState, statusBarNA, statusBarOff, statusBarOn } from "../../icons/status-bar.js";
+import { showBlackBox } from "../../shared/black-box.js";
 import { RepeatController } from "../../shared/repeat-controller.js";
 import { FuelDialSurface, readPitSvFuel } from "./fuel-dial-surface.js";
 import { FuelPipeline } from "./fuel-pipeline.js";
@@ -206,6 +207,13 @@ export function amountToLiters(amount: number, unit: "l" | "g" | "k", kgPerLtr: 
       return kgPerLtr === undefined ? null : amount / kgPerLtr;
   }
 }
+
+/**
+ * The black box every Fuel Service keypad mode is readable in (#818): the fuel
+ * to add, the fuel-fill checkbox, the autofuel toggle, and the lap margin all
+ * live in iRacing's Fuel black box.
+ */
+const FUEL_BLACK_BOX_ID = "fuel" as const;
 
 /** Modes that support long-press repeat (execute at interval while held) */
 const REPEATABLE_MODES = new Set<FuelServiceMode>(["add-fuel", "reduce-fuel"]);
@@ -514,6 +522,22 @@ export class FuelService extends ConnectionStateAwareAction<FuelServiceSettings>
 
           return true;
         },
+      });
+    }
+
+    // Show the Fuel black box BEFORE the value changes, so the driver watches it
+    // tick. Two constraints pin this exact position:
+    //   - AFTER repeat.onKeyDown, whose timers must be armed before the first
+    //     await (see the comment above).
+    //   - In onKeyDown rather than executeMode, because the repeat loop calls
+    //     executeMode directly. That gives "show once per press, never on a
+    //     repeat iteration" for free — nothing can change the shown box between
+    //     iterations. (#818)
+    if (settings.showBlackBox) {
+      await showBlackBox(FUEL_BLACK_BOX_ID, {
+        isConfigured: (key) => !this.isBindingMissing(key),
+        tapSequence: (keys, holdMs) => this.tapBindingSequence(keys, holdMs),
+        logger: this.logger,
       });
     }
 

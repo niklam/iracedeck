@@ -106,6 +106,14 @@ export const FuelServiceSettings = CommonSettings.extend({
   // which would discard the stored mode and render the key as toggle-fuel-fill
   // (the same hardening master applies for 2.0's "auto" on its side).
   unit: FuelUnit.default("auto").catch("auto"),
+  // Show iRacing's Fuel black box when the key is pressed (#818). Opt-in: some
+  // fuel values — notably the autofuel lap margin — have no telemetry readback,
+  // so the black box is the only confirmation the driver ever gets.
+  // NOT z.coerce.boolean(): it maps the string "false" to true.
+  showBlackBox: z
+    .union([z.boolean(), z.string()])
+    .transform((val) => val === true || val === "true")
+    .default(false),
   dial: DialSettings,
 });
 

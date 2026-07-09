@@ -13,20 +13,28 @@ import {
   resolveKeypadUnit,
 } from "./fuel-service.js";
 
-const { mockPitClearFuel, mockPitFuel, mockGetCommands, mockParseKeyBinding, mockGetGlobalSettings, mockTapBinding } =
-  vi.hoisted(() => ({
-    mockPitClearFuel: vi.fn(() => true),
-    mockPitFuel: vi.fn(() => true),
-    mockGetCommands: vi.fn(() => ({
-      pit: {
-        clearFuel: mockPitClearFuel,
-        fuel: mockPitFuel,
-      },
-    })),
-    mockParseKeyBinding: vi.fn(),
-    mockGetGlobalSettings: vi.fn(() => ({})),
-    mockTapBinding: vi.fn().mockResolvedValue(undefined),
-  }));
+const {
+  mockPitClearFuel,
+  mockPitFuel,
+  mockGetCommands,
+  mockParseKeyBinding,
+  mockGetGlobalSettings,
+  mockTapBinding,
+  mockTapBindingSequence,
+} = vi.hoisted(() => ({
+  mockPitClearFuel: vi.fn(() => true),
+  mockPitFuel: vi.fn(() => true),
+  mockGetCommands: vi.fn(() => ({
+    pit: {
+      clearFuel: mockPitClearFuel,
+      fuel: mockPitFuel,
+    },
+  })),
+  mockParseKeyBinding: vi.fn(),
+  mockGetGlobalSettings: vi.fn(() => ({})),
+  mockTapBinding: vi.fn().mockResolvedValue(undefined),
+  mockTapBindingSequence: vi.fn().mockResolvedValue(true),
+}));
 
 vi.mock("@iracedeck/iracing-sdk", () => ({
   DisplayUnits: { English: 0, Metric: 1 },
@@ -89,6 +97,7 @@ vi.mock("@iracedeck/deck-core", async () => {
       setRegenerateCallback = vi.fn();
       updateKeyImage = vi.fn().mockResolvedValue(true);
       tapBinding = mockTapBinding;
+      tapBindingSequence = mockTapBindingSequence;
       holdBinding = vi.fn().mockResolvedValue(undefined);
       releaseBinding = vi.fn().mockResolvedValue(undefined);
       setActiveBinding = vi.fn();
@@ -1413,6 +1422,89 @@ describe("FuelService", () => {
         // Only the single intended send. No stuck repeat, no safety warning.
         expect(mockPitFuel).toHaveBeenCalledTimes(1);
         expect(internals(action).logger.warn).not.toHaveBeenCalledWith(expect.stringContaining("safety timeout"));
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  describe("showBlackBox (#818)", () => {
+    let action: FuelService;
+
+    beforeEach(() => {
+      action = new FuelService();
+      internals(action).sdkController.getCurrentTelemetry.mockReturnValue(METRIC_TELEMETRY);
+      mockTapBindingSequence.mockResolvedValue(true);
+    });
+
+    it("should not touch the black box when the setting is off", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { mode: "add-fuel", amount: 5, unit: "l" }) as any);
+
+      expect(mockTapBindingSequence).not.toHaveBeenCalled();
+    });
+
+    it("should show the Fuel black box before the value changes when enabled", async () => {
+      await action.onKeyDown(
+        fakeEvent("action-1", { mode: "add-fuel", amount: 5, unit: "l", showBlackBox: true }) as any,
+      );
+
+      expect(mockTapBindingSequence).toHaveBeenCalledWith(["blackBoxLapTiming", "blackBoxFuel"], 0);
+      // Show-then-change: the sequence is dispatched before the SDK fuel command.
+      expect(mockTapBindingSequence.mock.invocationCallOrder[0]!).toBeLessThan(
+        mockPitFuel.mock.invocationCallOrder[0]!,
+      );
+    });
+
+    it('should treat the string "true" from sdpi-checkbox as enabled', async () => {
+      await action.onKeyDown(
+        fakeEvent("action-1", { mode: "add-fuel", amount: 5, unit: "l", showBlackBox: "true" }) as any,
+      );
+
+      expect(mockTapBindingSequence).toHaveBeenCalledOnce();
+    });
+
+    it('should treat the string "false" from sdpi-checkbox as disabled', async () => {
+      await action.onKeyDown(
+        fakeEvent("action-1", { mode: "add-fuel", amount: 5, unit: "l", showBlackBox: "false" }) as any,
+      );
+
+      expect(mockTapBindingSequence).not.toHaveBeenCalled();
+    });
+
+    it("should show the black box for the keyboard lap-margin mode too", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { mode: "lap-margin-increase", showBlackBox: true }) as any);
+
+      expect(mockTapBindingSequence).toHaveBeenCalledWith(["blackBoxLapTiming", "blackBoxFuel"], 0);
+    });
+
+    it("should still change the value when the sequence is skipped", async () => {
+      mockTapBindingSequence.mockResolvedValue(false);
+
+      await action.onKeyDown(
+        fakeEvent("action-1", { mode: "add-fuel", amount: 5, unit: "l", showBlackBox: true }) as any,
+      );
+
+      expect(mockPitFuel).toHaveBeenCalledWith(15);
+    });
+
+    it("should show the black box exactly once per press, not on every repeat iteration", async () => {
+      vi.useFakeTimers();
+
+      try {
+        // onWillAppear populates activeContexts, which the repeat loop's execute reads.
+        // `unit` is supplied so willAppear's one-shot unit-seeding setSettings is skipped.
+        const ev = fakeEvent("action-1", { mode: "add-fuel", amount: 1, unit: "l", showBlackBox: true });
+        await action.onWillAppear(ev as any);
+        await action.onKeyDown(ev as any);
+
+        // REPEAT_HOLD_THRESHOLD_MS is 400 and REPEAT_GAP_MS is 250, so 1500 ms
+        // covers the threshold plus several repeats.
+        await vi.advanceTimersByTimeAsync(1500);
+
+        expect(mockPitFuel.mock.calls.length).toBeGreaterThan(1);
+        expect(mockTapBindingSequence).toHaveBeenCalledOnce();
+
+        await action.onKeyUp(ev as any);
       } finally {
         vi.useRealTimers();
       }
