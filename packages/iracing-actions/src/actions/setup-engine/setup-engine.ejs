@@ -6,46 +6,79 @@
 	<body>
 		<%- include('section-header', { title: 'Action Settings' }) %>
 
-		<sdpi-item label="Setting">
-			<sdpi-select id="setting-select" setting="setting" default="engine-power">
-				<optgroup label="Adjust">
-					<option value="boost-level">Boost Level</option>
-					<option value="engine-power">Engine Power</option>
-					<option value="launch-rpm">Launch RPM</option>
-					<option value="throttle-shaping">Throttle Shaping</option>
-				</optgroup>
-				<optgroup label="Display value">
-					<option value="view-engine-power">View Engine Power</option>
-					<option value="view-launch-rpm">View Launch RPM</option>
-					<option value="view-throttle-shape">View Throttle Shape</option>
-				</optgroup>
-			</sdpi-select>
-		</sdpi-item>
-
 		<% var __comms = require('./data/action-comms.json')['setup-engine']; %>
-		<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
+		<% var __dialComms = require('./data/action-comms.json')['setup-engine-dial']; %>
 
-		<sdpi-item label="Direction" id="direction-item">
-			<sdpi-select setting="direction" default="increase">
-				<option value="increase">Increase</option>
-				<option value="decrease">Decrease</option>
-			</sdpi-select>
-		</sdpi-item>
+		<!-- Keypad settings — hidden when this instance is a dial (#798). -->
+		<div id="keypad-settings">
+			<sdpi-item label="Setting">
+				<sdpi-select id="setting-select" setting="setting" default="engine-power">
+					<optgroup label="Adjust">
+						<option value="boost-level">Boost Level</option>
+						<option value="engine-power">Engine Power</option>
+						<option value="launch-rpm">Launch RPM</option>
+						<option value="throttle-shaping">Throttle Shaping</option>
+					</optgroup>
+					<optgroup label="Display value">
+						<option value="view-engine-power">View Engine Power</option>
+						<option value="view-launch-rpm">View Launch RPM</option>
+						<option value="view-throttle-shape">View Throttle Shape</option>
+					</optgroup>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
 
-		<%- include('dual-press-overrides') %>
+			<sdpi-item label="Direction" id="direction-item">
+				<sdpi-select setting="direction" default="increase">
+					<option value="increase">Increase</option>
+					<option value="decrease">Decrease</option>
+				</sdpi-select>
+			</sdpi-item>
 
-		<%- include('adjust-style', {
-			modeSelectId: 'setting-select',
-			pairedModes: ['engine-power', 'throttle-shaping', 'launch-rpm'],
-			viewModes: ['view-engine-power', 'view-throttle-shape', 'view-launch-rpm']
-		}) %>
+			<%- include('dual-press-overrides') %>
 
-		<%- include('title-overrides') %>
+			<%- include('adjust-style', {
+				modeSelectId: 'setting-select',
+				pairedModes: ['engine-power', 'throttle-shaping', 'launch-rpm'],
+				viewModes: ['view-engine-power', 'view-throttle-shape', 'view-launch-rpm']
+			}) %>
+		</div>
 
-		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/icon-defaults.json')['setup-engine'] }) %>
-		<%- include('border-overrides', { defaults: require('./data/icon-defaults.json')['setup-engine'] }) %>
-		<%- include('graphic-overrides') %>
-		<%- include('common-settings') %>
+		<!-- Dial settings — shown only when this instance is a dial (#798). Setup
+		     Engine has no press gesture, so only the rotation Setting is offered. -->
+		<div id="dial-settings" class="hidden">
+			<sdpi-item label="Setting">
+				<sdpi-select setting="dial.setting" default="engine-power">
+					<option value="engine-power">Engine Power</option>
+					<option value="throttle-shaping">Throttle Shaping</option>
+					<option value="boost-level">Boost Level</option>
+					<option value="launch-rpm">Launch RPM</option>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="<%= __dialComms._meta.modeSetting %>" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+			<% if (locals.platform?.features?.dialFeedback !== false) { %>
+			<div class="ird-supporting-text">
+				Turn the dial to adjust the selected engine setting; the touch strip shows
+				its live value. Boost Level has no telemetry, so its strip shows the label
+				only. Both the increase and decrease key bindings must be set below.
+			</div>
+			<% } else { %>
+			<div class="ird-supporting-text">
+				Turn the knob to adjust the selected engine setting. Both the increase and
+				decrease key bindings must be set below.
+			</div>
+			<% } %>
+		</div>
+
+		<!-- Key-icon appearance — keypad only (a dial has no key icon). -->
+		<div id="keypad-appearance">
+			<%- include('title-overrides') %>
+
+			<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/icon-defaults.json')['setup-engine'] }) %>
+			<%- include('border-overrides', { defaults: require('./data/icon-defaults.json')['setup-engine'] }) %>
+			<%- include('graphic-overrides') %>
+			<%- include('common-settings') %>
+		</div>
 
 		<%- include('section-header', { title: 'Global Settings' }) %>
 
@@ -53,15 +86,18 @@
 			keyBindings: require('./data/key-bindings.json').setupEngine
 		}) %>
 
-		<%- include('global-title-defaults') %>
-		<%- include('global-color-defaults') %>
-		<%- include('global-border-defaults') %>
-		<%- include('global-graphic-defaults') %>
-		<%- include('global-flag-flash') %>
+		<div id="keypad-global-appearance">
+			<%- include('global-title-defaults') %>
+			<%- include('global-color-defaults') %>
+			<%- include('global-border-defaults') %>
+			<%- include('global-graphic-defaults') %>
+			<%- include('global-flag-flash') %>
+		</div>
+
 		<%- include('global-common-settings') %>
 
 		<script>
-			// View sub-modes are read-only displays — hide Direction and show the dual-press opt-in.
+			// View sub-modes are read-only displays — hide Direction; show the dual-press opt-in.
 			function isViewSetting(setting) {
 				return typeof setting === "string" && setting.startsWith("view-");
 			}
@@ -73,6 +109,28 @@
 				const view = isViewSetting(setting);
 				directionItem?.classList.toggle("hidden", view);
 				dualEnabledItem?.classList.toggle("hidden", !view);
+			}
+
+			// Which surface this instance sits on: the PI registration's
+			// actionInfo.payload.controller ("Keypad" | "Encoder"; the Mirabox host
+			// may report "Knob"). Anything unknown or unavailable falls back to the
+			// keypad view (#798).
+			async function resolveController() {
+				try {
+					const client = window.SDPIComponents && window.SDPIComponents.streamDeckClient;
+					const info = client && (await client.getConnectionInfo());
+					const controller = info && info.actionInfo && info.actionInfo.payload && info.actionInfo.payload.controller;
+					return controller === "Encoder" || controller === "Knob" ? "Encoder" : "Keypad";
+				} catch (err) {
+					return "Keypad";
+				}
+			}
+
+			function applyDialView() {
+				document.getElementById("keypad-settings")?.classList.add("hidden");
+				document.getElementById("keypad-appearance")?.classList.add("hidden");
+				document.getElementById("keypad-global-appearance")?.classList.add("hidden");
+				document.getElementById("dial-settings")?.classList.remove("hidden");
 			}
 
 			async function initialize() {
@@ -96,6 +154,10 @@
 							updateVisibility(currentValue);
 						}
 					}, 100);
+				}
+
+				if ((await resolveController()) === "Encoder") {
+					applyDialView();
 				}
 			}
 

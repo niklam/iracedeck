@@ -1243,6 +1243,48 @@
       }
     }
   },
+  "setup-aero-dial": {
+    "_meta": {
+      "modeSetting": "dial.setting"
+    },
+    "front-wing": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupAeroFrontWingIncrease",
+          "setupAeroFrontWingDecrease"
+        ]
+      }
+    },
+    "rear-wing": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupAeroRearWingIncrease",
+          "setupAeroRearWingDecrease"
+        ]
+      }
+    },
+    "qualifying-tape": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupAeroQualifyingTapeIncrease",
+          "setupAeroQualifyingTapeDecrease"
+        ]
+      }
+    },
+    "toggle-rf-brake": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "setupAeroRfBrakeAttached"
+      }
+    }
+  },
   "setup-brakes": {
     "_meta": {
       "modeSetting": "setting"
@@ -1729,6 +1771,141 @@
       }
     }
   },
+  "setup-chassis-dial": {
+    "_meta": {
+      "modeSetting": "dial.setting"
+    },
+    "differential-preload": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupChassisDifferentialPreloadIncrease",
+          "setupChassisDifferentialPreloadDecrease"
+        ]
+      }
+    },
+    "differential-entry": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupChassisDifferentialEntryIncrease",
+          "setupChassisDifferentialEntryDecrease"
+        ]
+      }
+    },
+    "differential-middle": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupChassisDifferentialMiddleIncrease",
+          "setupChassisDifferentialMiddleDecrease"
+        ]
+      }
+    },
+    "differential-exit": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupChassisDifferentialExitIncrease",
+          "setupChassisDifferentialExitDecrease"
+        ]
+      }
+    },
+    "front-arb": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupChassisFrontArbIncrease",
+          "setupChassisFrontArbDecrease"
+        ]
+      }
+    },
+    "rear-arb": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupChassisRearArbIncrease",
+          "setupChassisRearArbDecrease"
+        ]
+      }
+    },
+    "left-spring": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupChassisLeftSpringIncrease",
+          "setupChassisLeftSpringDecrease"
+        ]
+      }
+    },
+    "right-spring": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupChassisRightSpringIncrease",
+          "setupChassisRightSpringDecrease"
+        ]
+      }
+    },
+    "lf-shock": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupChassisLfShockIncrease",
+          "setupChassisLfShockDecrease"
+        ]
+      }
+    },
+    "rf-shock": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupChassisRfShockIncrease",
+          "setupChassisRfShockDecrease"
+        ]
+      }
+    },
+    "lr-shock": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupChassisLrShockIncrease",
+          "setupChassisLrShockDecrease"
+        ]
+      }
+    },
+    "rr-shock": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupChassisRrShockIncrease",
+          "setupChassisRrShockDecrease"
+        ]
+      }
+    },
+    "power-steering": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupChassisPowerSteeringIncrease",
+          "setupChassisPowerSteeringDecrease"
+        ]
+      }
+    }
+  },
   "setup-engine": {
     "_meta": {
       "modeSetting": "setting"
@@ -1816,6 +1993,51 @@
       }
     }
   },
+  "setup-engine-dial": {
+    "_meta": {
+      "modeSetting": "dial.setting"
+    },
+    "engine-power": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupEngineEnginePowerIncrease",
+          "setupEngineEnginePowerDecrease"
+        ]
+      }
+    },
+    "throttle-shaping": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupEngineThrottleShapingIncrease",
+          "setupEngineThrottleShapingDecrease"
+        ]
+      }
+    },
+    "boost-level": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupEngineBoostLevelIncrease",
+          "setupEngineBoostLevelDecrease"
+        ]
+      }
+    },
+    "launch-rpm": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupEngineLaunchRpmIncrease",
+          "setupEngineLaunchRpmDecrease"
+        ]
+      }
+    }
+  },
   "setup-fuel": {
     "_meta": {
       "modeSetting": "setting"
@@ -1881,6 +2103,38 @@
       }
     },
     "fcy-mode-toggle": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "setupFuelFcyModeToggle"
+      }
+    }
+  },
+  "setup-fuel-dial": {
+    "_meta": {
+      "modeSetting": "dial.setting"
+    },
+    "fuel-mixture": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupFuelFuelMixtureIncrease",
+          "setupFuelFuelMixtureDecrease"
+        ]
+      }
+    },
+    "fuel-cut-position": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupFuelFuelCutPositionIncrease",
+          "setupFuelFuelCutPositionDecrease"
+        ]
+      }
+    },
+    "toggle-fcy": {
       "method": "keybind",
       "binding": {
         "scope": "global",
@@ -1980,6 +2234,41 @@
       "binding": {
         "scope": "global",
         "key": "setupHybridHysNoBoost"
+      }
+    }
+  },
+  "setup-hybrid-dial": {
+    "_meta": {
+      "modeSetting": "dial.setting"
+    },
+    "mguk-deploy-mode": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupHybridMgukDeployModeIncrease",
+          "setupHybridMgukDeployModeDecrease"
+        ]
+      }
+    },
+    "mguk-regen-gain": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupHybridMgukRegenGainIncrease",
+          "setupHybridMgukRegenGainDecrease"
+        ]
+      }
+    },
+    "mguk-fixed-deploy": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupHybridMgukFixedDeployIncrease",
+          "setupHybridMgukFixedDeployDecrease"
+        ]
       }
     }
   },
@@ -2084,6 +2373,58 @@
             "decrease": "setupTractionTcSlot4Decrease"
           }
         }
+      }
+    }
+  },
+  "setup-traction-dial": {
+    "_meta": {
+      "modeSetting": "dial.setting"
+    },
+    "tc-slot-1": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupTractionTcSlot1Increase",
+          "setupTractionTcSlot1Decrease"
+        ]
+      }
+    },
+    "tc-slot-2": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupTractionTcSlot2Increase",
+          "setupTractionTcSlot2Decrease"
+        ]
+      }
+    },
+    "tc-slot-3": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupTractionTcSlot3Increase",
+          "setupTractionTcSlot3Decrease"
+        ]
+      }
+    },
+    "tc-slot-4": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupTractionTcSlot4Increase",
+          "setupTractionTcSlot4Decrease"
+        ]
+      }
+    },
+    "toggle-tc": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "setupTractionTcToggle"
       }
     }
   },

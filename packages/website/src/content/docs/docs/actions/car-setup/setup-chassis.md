@@ -7,7 +7,7 @@ sidebar:
     variant: tip
 ---
 
-Adjust chassis setup options from the cockpit: differential curves, anti-roll bars, spring preloads, shock absorbers, and power steering.
+Adjust chassis setup options from the cockpit: differential curves, anti-roll bars, spring preloads, shock absorbers, and power steering. Placed on a **Stream Deck+ dial**, the same action becomes a chassis-setup dial with the live value on the touch strip — see [On a dial](#on-a-dial) below.
 
 ## View sub-modes
 
@@ -268,6 +268,48 @@ Adjust the power steering assist level.
 
 - **Increase** (default) — Pressing the button raises the assist level
 - **Decrease** — Pressing the button lowers the assist level
+
+## On a dial
+
+Placed on a Stream Deck+ dial, Setup Chassis becomes a chassis-setup dial. Pick one component with the dial's **Component** dropdown; turning the dial steps it up or down in the car, and the touch strip shows that value live as a big, color-coded number. It uses the same key bindings as the keypad modes, so no extra configuration is needed if you already use them. The Property Inspector automatically shows the dial settings below (instead of the keypad Component and Direction) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
+
+#### Details
+
+- **Method:** Key binding — the same Setup Chassis increase/decrease bindings the keypad modes use. Configure them in the **Related Key Bindings** section; the Property Inspector shows a status line indicating whether each is set.
+- **Dial:** Rotating adjusts the selected component (clockwise = increase, counter-clockwise = decrease). Both the increase and decrease key bindings must be set.
+- **Telemetry-aware:** Yes for the differential, anti-roll bars, and power steering — the touch strip shows the live value from telemetry (see the table below). Springs and shocks have no telemetry, so their strips show the label only.
+
+#### Controls
+
+- **Elgato Stream Deck+** — dial rotation and a touchscreen readout that always shows.
+
+Dials are currently Stream Deck+ only — the action can't be placed on Mirabox knobs or Ulanzi dials yet (see [Dials](/docs/features/dials/)).
+
+#### Setting: Component
+
+The chassis component the dial controls. Each renders as a color-coded "dash box": a short label on top and the live value as a large number. Weight jackers and the View sub-modes aren't offered as rotation settings.
+
+| Component | Label | Telemetry source | Shown as |
+|---|---|---|---|
+| Differential Preload | PRELD | `dcDiffPreload` | integer |
+| Differential Entry | D-IN | `dcDiffEntry` | integer |
+| Differential Middle | D-MID | `dcDiffMiddle` | integer |
+| Differential Exit | D-OUT | `dcDiffExit` | integer |
+| Front ARB | FARB | `dcAntiRollFront` | integer |
+| Rear ARB | RARB | `dcAntiRollRear` | integer |
+| Left Spring | LSPR | *(none)* | label only |
+| Right Spring | RSPR | *(none)* | label only |
+| LF Shock | LF | *(none)* | label only |
+| RF Shock | RF | *(none)* | label only |
+| LR Shock | LR | *(none)* | label only |
+| RR Shock | RR | *(none)* | label only |
+| Power Steering | PWR | `dcPowerSteering` | integer |
+
+When a telemetry-backed component has no data the box shows `---`. Springs and shocks still rotate (they use their increase/decrease bindings); their strips just can't show a live number.
+
+#### Press and touch gestures
+
+Setup Chassis has no on/off toggle, so the dial press and touchscreen taps do nothing — the dial is rotation-only.
 
 ## Key Styles — paired +/− buttons
 

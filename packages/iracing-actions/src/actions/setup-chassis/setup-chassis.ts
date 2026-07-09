@@ -11,11 +11,14 @@ import {
   getGlobalTitleSettings,
   type IDeckDialDownEvent,
   type IDeckDialRotateEvent,
+  type IDeckDialUpEvent,
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
   type IDeckKeyUpEvent,
+  type IDeckTouchTapEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
+  onGlobalSettingsChange,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
@@ -63,6 +66,7 @@ import {
 import { IconUpdateThrottle } from "../../shared/icon-update-throttle.js";
 import { RepeatController } from "../../shared/repeat-controller.js";
 import { generateSetupViewSvg, getAdjustmentModeForView, isViewSetting } from "../../shared/setup-view.js";
+import { DialSettings, seedDialFromLegacySetting, SetupChassisDialSurface } from "./setup-chassis-dial-surface.js";
 
 type DirectionType = "increase" | "decrease";
 
@@ -216,6 +220,10 @@ const SetupChassisSettings = CommonSettings.extend({
     .union([z.boolean(), z.string()])
     .transform((v) => v === true || v === "true")
     .default(true),
+  // Dial-surface settings (#800), under the `dial` root so keypad and dial keys
+  // can't collide. catch: dial garbage degrades to dial defaults instead of
+  // failing the whole parse (which would reset a keypad instance).
+  dial: DialSettings.catch(() => DialSettings.parse({})),
 });
 
 type SetupChassisSettings = z.infer<typeof SetupChassisSettings>;
@@ -289,19 +297,49 @@ export class SetupChassis extends ConnectionStateAwareAction<SetupChassisSetting
   /** Coalesces telemetry-driven re-renders to ≤ 10/s per key (issue #493 pattern). */
   private readonly iconThrottle = new IconUpdateThrottle();
 
+  /**
+   * The dial half of the action; all IDeck dial events route here (#800). No
+   * `setActiveBinding` is delegated — it would bleed onto the keypad buttons.
+   */
+  private readonly dialSurface = new SetupChassisDialSurface({
+    logger: this.logger,
+    getTelemetry: () => this.sdkController.getCurrentTelemetry(),
+    tapBinding: (settingKey) => this.tapBinding(settingKey),
+    isBindingMissing: (keys) => this.isBindingMissing(keys),
+  });
+
+  /** Keeps the dial strips' #612 missing-binding warning live while iRacing is offline (#800). */
+  private readonly unsubscribeGlobalSettings = onGlobalSettingsChange(() => this.dialSurface.refreshAll());
+
   override async onWillAppear(ev: IDeckWillAppearEvent<SetupChassisSettings>): Promise<void> {
     await super.onWillAppear(ev);
     let settings = this.parseSettings(ev.payload.settings);
 
+    if (ev.action.isDial()) {
+      // #800 dial migration: a pre-dial-surface encoder placement drove the flat
+      // keypad `setting` — carry a valid rotation value over to `dial.setting`.
+      const seededDial = seedDialFromLegacySetting(ev.payload.settings);
+
+      if (seededDial) {
+        await ev.action.setSettings(seededDial);
+        settings = this.parseSettings(seededDial);
+      }
+
+      await this.dialSurface.willAppear(ev.action, settings.dial);
+      this.sdkController.subscribe(ev.action.id, (telemetry) => {
+        this.dialSurface.onTelemetry(ev.action.id, telemetry);
+      });
+
+      return;
+    }
+
     // One-shot default seeding (spec 2026-07-07): a never-configured keypad key
     // gets the modern `split` style; keys with any persisted settings stay legacy.
-    if (!ev.action.isDial()) {
-      const seeded = seedFreshKeyStyle(ev.payload.settings);
+    const seeded = seedFreshKeyStyle(ev.payload.settings);
 
-      if (seeded) {
-        await ev.action.setSettings(seeded);
-        settings = this.parseSettings(seeded);
-      }
+    if (seeded) {
+      await ev.action.setSettings(seeded);
+      settings = this.parseSettings(seeded);
     }
 
     this.activeContexts.set(ev.action.id, settings);
@@ -319,6 +357,7 @@ export class SetupChassis extends ConnectionStateAwareAction<SetupChassisSetting
 
   override async onWillDisappear(ev: IDeckWillDisappearEvent<SetupChassisSettings>): Promise<void> {
     this.sdkController.unsubscribe(ev.action.id);
+    this.dialSurface.willDisappear(ev.action.id);
     this.activeContexts.delete(ev.action.id);
     this.lastRenderedValue.delete(ev.action.id);
     this.dualPress.clear(ev.action.id);
@@ -330,6 +369,13 @@ export class SetupChassis extends ConnectionStateAwareAction<SetupChassisSetting
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<SetupChassisSettings>): Promise<void> {
     await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
+
+    if (ev.action.isDial()) {
+      await this.dialSurface.didReceiveSettings(ev.action, settings.dial);
+
+      return;
+    }
+
     this.activeContexts.set(ev.action.id, settings);
     this.lastRenderedValue.delete(ev.action.id);
     this.repeat.clear(ev.action.id);
@@ -408,24 +454,23 @@ export class SetupChassis extends ConnectionStateAwareAction<SetupChassisSetting
     await this.tapBinding(settingKey);
   }
 
-  override async onDialDown(ev: IDeckDialDownEvent<SetupChassisSettings>): Promise<void> {
-    const settings = this.parseSettings(ev.payload.settings);
-
-    if (isViewSetting(settings.setting)) return;
-
-    this.logger.info("Dial down received");
-    await this.executeSetting(settings.setting, settings.direction);
-  }
-
   override async onDialRotate(ev: IDeckDialRotateEvent<SetupChassisSettings>): Promise<void> {
     const settings = this.parseSettings(ev.payload.settings);
+    await this.dialSurface.rotate(ev.action, settings.dial, ev.payload.ticks, ev.payload.pressed === true);
+  }
 
-    if (isViewSetting(settings.setting)) return;
+  override async onDialDown(ev: IDeckDialDownEvent<SetupChassisSettings>): Promise<void> {
+    const settings = this.parseSettings(ev.payload.settings);
+    this.dialSurface.down(ev.action, settings.dial);
+  }
 
-    this.logger.info("Dial rotated");
-    // Clockwise (ticks > 0) = increase, Counter-clockwise (ticks < 0) = decrease
-    const direction: DirectionType = ev.payload.ticks > 0 ? "increase" : "decrease";
-    await this.executeSetting(settings.setting, direction);
+  override async onDialUp(ev: IDeckDialUpEvent<SetupChassisSettings>): Promise<void> {
+    await this.dialSurface.up(ev.action.id);
+  }
+
+  override async onTouchTap(ev: IDeckTouchTapEvent<SetupChassisSettings>): Promise<void> {
+    const settings = this.parseSettings(ev.payload.settings);
+    await this.dialSurface.touchTap(ev.action, settings.dial, ev.payload.hold === true);
   }
 
   private parseSettings(settings: unknown): SetupChassisSettings {

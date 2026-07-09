@@ -7,7 +7,7 @@ sidebar:
     variant: tip
 ---
 
-Adjust aerodynamic setup options from the cockpit — front and rear wing angles, qualifying tape, and the right-front brake attachment.
+Adjust aerodynamic setup options from the cockpit — front and rear wing angles, qualifying tape, and the right-front brake attachment. Placed on a **Stream Deck+ dial**, the same action becomes an aero-setup dial with the live value on the touch strip — see [On a dial](#on-a-dial) below.
 
 ## View sub-modes
 
@@ -100,6 +100,47 @@ Toggle the right-front brake attachment.
 #### Settings
 
 - No additional settings
+
+## On a dial
+
+Placed on a Stream Deck+ dial, Setup Aero becomes an aero-setup dial. Pick one value with the dial's **Setting** dropdown; turning the dial steps it up or down in the car, and the touch strip shows that value live as a big, color-coded number. It uses the same key bindings as the keypad modes, so no extra configuration is needed if you already use them. The Property Inspector automatically shows the dial settings below (instead of the keypad Setting and Direction) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
+
+#### Details
+
+- **Method:** Key binding — the same Setup Aero increase/decrease bindings the keypad modes use, plus the *RF Brake Attached* binding for the press gestures. Configure them in the **Related Key Bindings** section; the Property Inspector shows a status line indicating whether each is set.
+- **Dial:** Rotating adjusts the selected value (clockwise = increase, counter-clockwise = decrease). Both the increase and decrease key bindings must be set.
+- **Telemetry-aware:** Yes for the wings — the touch strip shows the live value from telemetry (see the table below). Qualifying Tape has no telemetry, so its strip shows the label only.
+
+#### Controls
+
+- **Elgato Stream Deck+** — dial rotation, a press (short or long), and a touchscreen readout that always shows. A touchscreen tap or long tap runs its own configured Tap Display / Long Touch action.
+
+Dials are currently Stream Deck+ only — the action can't be placed on Mirabox knobs or Ulanzi dials yet (see [Dials](/docs/features/dials/)).
+
+#### Setting: Setting
+
+The aero value the dial controls. Each renders as a color-coded "dash box": a short label on top and the live value as a large number. The RF Brake Attached toggle isn't offered as a rotation setting (it's a press gesture instead).
+
+| Setting | Label | Telemetry source | Shown as |
+|---|---|---|---|
+| Front Wing | FRONT | `dcFrontWing` | integer |
+| Rear Wing | REAR | `dcRearWing` | integer |
+| Qualifying Tape | TAPE | *(none — iRacing exposes no tape value)* | label only |
+
+When a telemetry-backed setting has no data the box shows `---`. Qualifying Tape still rotates (it uses its increase/decrease bindings); its strip just can't show a live number.
+
+#### Setting: Press Action / Long Press
+
+What a short or long press of the dial button does, chosen from:
+
+- **None** (default for both) — does nothing.
+- **Toggle RF Brake** — taps the Setup Aero *RF Brake Attached* binding.
+
+A press is classified when you release the dial — a hold past the [Long-press threshold](/docs/features/dials/#the-long-press-threshold) fires the Long Press action. Turning the dial while pressed adjusts the value (a "push + turn") and never fires the press action.
+
+#### Setting: Tap Display / Long Touch
+
+Optional touch-strip gestures (Stream Deck+ only), each over { Toggle RF Brake, None }. Both default to **None** for VR safety.
 
 ## Key Styles — paired +/− buttons
 

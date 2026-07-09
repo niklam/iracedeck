@@ -331,6 +331,16 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     "rf-brake-attached": keybind("setupAeroRfBrakeAttached"),
   }),
 
+  // The dial surface of the merged Setup Aero action (#799). qualifying-tape
+  // rotates too (its strip is label-only — iRacing exposes no tape value); the
+  // press gesture can toggle the RF brake ducts.
+  "setup-aero-dial": entry("dial.setting", {
+    "front-wing": pair("setupAeroFrontWingIncrease", "setupAeroFrontWingDecrease"),
+    "rear-wing": pair("setupAeroRearWingIncrease", "setupAeroRearWingDecrease"),
+    "qualifying-tape": pair("setupAeroQualifyingTapeIncrease", "setupAeroQualifyingTapeDecrease"),
+    "toggle-rf-brake": keybind("setupAeroRfBrakeAttached"),
+  }),
+
   "setup-brakes": entry("setting", {
     "view-brake-bias": pair("setupBrakesBrakeBiasIncrease", "setupBrakesBrakeBiasDecrease"),
     "view-brake-bias-fine": pair("setupBrakesBrakeBiasFineIncrease", "setupBrakesBrakeBiasFineDecrease"),
@@ -389,6 +399,25 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     "power-steering": dir("setupChassisPowerSteeringIncrease", "setupChassisPowerSteeringDecrease"),
   }),
 
+  // The dial surface of the merged Setup Chassis action (#800). No press gesture;
+  // springs and shocks rotate too (their strips are label-only — iRacing exposes
+  // no telemetry for them).
+  "setup-chassis-dial": entry("dial.setting", {
+    "differential-preload": pair("setupChassisDifferentialPreloadIncrease", "setupChassisDifferentialPreloadDecrease"),
+    "differential-entry": pair("setupChassisDifferentialEntryIncrease", "setupChassisDifferentialEntryDecrease"),
+    "differential-middle": pair("setupChassisDifferentialMiddleIncrease", "setupChassisDifferentialMiddleDecrease"),
+    "differential-exit": pair("setupChassisDifferentialExitIncrease", "setupChassisDifferentialExitDecrease"),
+    "front-arb": pair("setupChassisFrontArbIncrease", "setupChassisFrontArbDecrease"),
+    "rear-arb": pair("setupChassisRearArbIncrease", "setupChassisRearArbDecrease"),
+    "left-spring": pair("setupChassisLeftSpringIncrease", "setupChassisLeftSpringDecrease"),
+    "right-spring": pair("setupChassisRightSpringIncrease", "setupChassisRightSpringDecrease"),
+    "lf-shock": pair("setupChassisLfShockIncrease", "setupChassisLfShockDecrease"),
+    "rf-shock": pair("setupChassisRfShockIncrease", "setupChassisRfShockDecrease"),
+    "lr-shock": pair("setupChassisLrShockIncrease", "setupChassisLrShockDecrease"),
+    "rr-shock": pair("setupChassisRrShockIncrease", "setupChassisRrShockDecrease"),
+    "power-steering": pair("setupChassisPowerSteeringIncrease", "setupChassisPowerSteeringDecrease"),
+  }),
+
   "setup-engine": entry("setting", {
     "view-engine-power": pair("setupEngineEnginePowerIncrease", "setupEngineEnginePowerDecrease"),
     "view-throttle-shape": pair("setupEngineThrottleShapingIncrease", "setupEngineThrottleShapingDecrease"),
@@ -399,6 +428,15 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     "launch-rpm": dir("setupEngineLaunchRpmIncrease", "setupEngineLaunchRpmDecrease"),
   }),
 
+  // The dial surface of the merged Setup Engine action (#798). No press gesture;
+  // boost-level rotates too (its strip is label-only — iRacing exposes no boost value).
+  "setup-engine-dial": entry("dial.setting", {
+    "engine-power": pair("setupEngineEnginePowerIncrease", "setupEngineEnginePowerDecrease"),
+    "throttle-shaping": pair("setupEngineThrottleShapingIncrease", "setupEngineThrottleShapingDecrease"),
+    "boost-level": pair("setupEngineBoostLevelIncrease", "setupEngineBoostLevelDecrease"),
+    "launch-rpm": pair("setupEngineLaunchRpmIncrease", "setupEngineLaunchRpmDecrease"),
+  }),
+
   "setup-fuel": entry("setting", {
     "view-fuel-mixture": pair("setupFuelFuelMixtureIncrease", "setupFuelFuelMixtureDecrease"),
     "view-fuel-cut-position": pair("setupFuelFuelCutPositionIncrease", "setupFuelFuelCutPositionDecrease"),
@@ -407,6 +445,15 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     "disable-fuel-cut": keybind("setupFuelDisableFuelCut"),
     "low-fuel-accept": keybind("setupFuelLowFuelAccept"),
     "fcy-mode-toggle": keybind("setupFuelFcyModeToggle"),
+  }),
+
+  // The dial surface of the merged Setup Fuel action (#797). Rotation adjusts the
+  // in-car fuel mixture / cut (distinct from the Fuel Service pit-fuel dial, #759);
+  // the press gesture can toggle FCY mode.
+  "setup-fuel-dial": entry("dial.setting", {
+    "fuel-mixture": pair("setupFuelFuelMixtureIncrease", "setupFuelFuelMixtureDecrease"),
+    "fuel-cut-position": pair("setupFuelFuelCutPositionIncrease", "setupFuelFuelCutPositionDecrease"),
+    "toggle-fcy": keybind("setupFuelFcyModeToggle"),
   }),
 
   "setup-hybrid": entry("setting", {
@@ -421,6 +468,14 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     "hys-no-boost": keybind("setupHybridHysNoBoost"),
   }),
 
+  // The dial surface of the merged Setup Hybrid action (#796). No press gesture
+  // (Setup Hybrid has no natural toggle); View modes + HYS holds stay keypad-only.
+  "setup-hybrid-dial": entry("dial.setting", {
+    "mguk-deploy-mode": pair("setupHybridMgukDeployModeIncrease", "setupHybridMgukDeployModeDecrease"),
+    "mguk-regen-gain": pair("setupHybridMgukRegenGainIncrease", "setupHybridMgukRegenGainDecrease"),
+    "mguk-fixed-deploy": pair("setupHybridMgukFixedDeployIncrease", "setupHybridMgukFixedDeployDecrease"),
+  }),
+
   "setup-traction": entry("setting", {
     "view-tc-slot-1": pair("setupTractionTcSlot1Increase", "setupTractionTcSlot1Decrease"),
     "view-tc-slot-2": pair("setupTractionTcSlot2Increase", "setupTractionTcSlot2Decrease"),
@@ -431,6 +486,18 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     "tc-slot-2": dir("setupTractionTcSlot2Increase", "setupTractionTcSlot2Decrease"),
     "tc-slot-3": dir("setupTractionTcSlot3Increase", "setupTractionTcSlot3Decrease"),
     "tc-slot-4": dir("setupTractionTcSlot4Increase", "setupTractionTcSlot4Decrease"),
+  }),
+
+  // The dial surface of the merged Setup Traction action (#795) — consumed only
+  // by the dial section of setup-traction.ejs. Separate from the keypad map: the
+  // same mode names carry different descriptors per surface (keypad `tc-slot-N`
+  // is direction-keyed via `dir`, dial rotation requires BOTH keys via `pair`).
+  "setup-traction-dial": entry("dial.setting", {
+    "tc-slot-1": pair("setupTractionTcSlot1Increase", "setupTractionTcSlot1Decrease"),
+    "tc-slot-2": pair("setupTractionTcSlot2Increase", "setupTractionTcSlot2Decrease"),
+    "tc-slot-3": pair("setupTractionTcSlot3Increase", "setupTractionTcSlot3Decrease"),
+    "tc-slot-4": pair("setupTractionTcSlot4Increase", "setupTractionTcSlot4Decrease"),
+    "toggle-tc": keybind("setupTractionTcToggle"),
   }),
 
   // --- API / chat actions (no binding required) ---
