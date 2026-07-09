@@ -28,12 +28,16 @@ export const DIAL_GLOW_WIDTH_MAX = 30;
 /** The default identity-only (valueless) label scale, as a fraction of the box's shorter side. */
 const DEFAULT_IDENTITY_LABEL_SCALE = 0.24;
 
-/** User color overrides for the dash box; an empty/absent slot inherits the default. */
+/**
+ * User color overrides for the dash box; an empty/absent slot inherits the
+ * default. Keyed with the `*Color` suffix so the `ird-color-picker` PI control
+ * infers a slot type and shows its Not-set / Black / White / recent swatches.
+ */
 export interface DialBoxColorOverrides {
-  border?: string;
-  label?: string;
-  value?: string;
-  background?: string;
+  borderColor?: string;
+  labelColor?: string;
+  valueColor?: string;
+  backgroundColor?: string;
 }
 
 /** Fully resolved dash-box colors (every slot concrete). */
@@ -62,10 +66,10 @@ function overrideOr(override: string | undefined, fallback: string): string {
  */
 export function resolveDialBoxColors(overrides: DialBoxColorOverrides | undefined, accent: string): DialBoxColors {
   return {
-    border: overrideOr(overrides?.border, accent),
-    label: overrideOr(overrides?.label, accent),
-    value: overrideOr(overrides?.value, accent),
-    background: overrideOr(overrides?.background, DIAL_BOX_BACKGROUND),
+    border: overrideOr(overrides?.borderColor, accent),
+    label: overrideOr(overrides?.labelColor, accent),
+    value: overrideOr(overrides?.valueColor, accent),
+    background: overrideOr(overrides?.backgroundColor, DIAL_BOX_BACKGROUND),
   };
 }
 
@@ -172,10 +176,10 @@ const dialColorField = z.string().catch("").default("");
 export const dialAppearanceFields = {
   colors: z
     .object({
-      border: dialColorField,
-      label: dialColorField,
-      value: dialColorField,
-      background: dialColorField,
+      borderColor: dialColorField,
+      labelColor: dialColorField,
+      valueColor: dialColorField,
+      backgroundColor: dialColorField,
     })
     .prefault({}),
   glow: z

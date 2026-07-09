@@ -189,11 +189,13 @@ describe("resolveDialBoxColors", () => {
   });
 
   it("treats empty-string overrides as unset", () => {
-    expect(resolveDialBoxColors({ border: "", label: "", value: "", background: "" }, ACCENT)).toEqual(accentColors());
+    expect(
+      resolveDialBoxColors({ borderColor: "", labelColor: "", valueColor: "", backgroundColor: "" }, ACCENT),
+    ).toEqual(accentColors());
   });
 
   it("applies only the overridden slots", () => {
-    expect(resolveDialBoxColors({ background: "#001122", value: "#00ff00" }, ACCENT)).toEqual({
+    expect(resolveDialBoxColors({ backgroundColor: "#001122", valueColor: "#00ff00" }, ACCENT)).toEqual({
       border: ACCENT,
       label: ACCENT,
       value: "#00ff00",
@@ -207,7 +209,7 @@ describe("dialAppearanceFields", () => {
 
   it("defaults to empty color overrides, glow off, and the default glow width", () => {
     expect(Schema.parse({})).toEqual({
-      colors: { border: "", label: "", value: "", background: "" },
+      colors: { borderColor: "", labelColor: "", valueColor: "", backgroundColor: "" },
       glow: false,
       glowWidth: DIAL_GLOW_WIDTH_DEFAULT,
     });
@@ -215,12 +217,12 @@ describe("dialAppearanceFields", () => {
 
   it("parses real overrides through", () => {
     const parsed = Schema.parse({
-      colors: { border: "#111111", label: "#222222", value: "#333333", background: "#444444" },
+      colors: { borderColor: "#111111", labelColor: "#222222", valueColor: "#333333", backgroundColor: "#444444" },
       glow: true,
       glowWidth: 20,
     });
 
-    expect(parsed.colors.background).toBe("#444444");
+    expect(parsed.colors.backgroundColor).toBe("#444444");
     expect(parsed.glow).toBe(true);
     expect(parsed.glowWidth).toBe(20);
   });
@@ -233,9 +235,9 @@ describe("dialAppearanceFields", () => {
   });
 
   it("degrades malformed values to defaults instead of throwing", () => {
-    const parsed = Schema.parse({ colors: { border: 42 }, glow: { nope: 1 }, glowWidth: "abc" });
+    const parsed = Schema.parse({ colors: { borderColor: 42 }, glow: { nope: 1 }, glowWidth: "abc" });
 
-    expect(parsed.colors.border).toBe("");
+    expect(parsed.colors.borderColor).toBe("");
     expect(parsed.glow).toBe(false);
     expect(parsed.glowWidth).toBe(DIAL_GLOW_WIDTH_DEFAULT);
   });

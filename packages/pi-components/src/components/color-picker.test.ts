@@ -284,6 +284,13 @@ describe("inferSlotType", () => {
     expect(inferSlotType("borderColor")).toBe("borderColor");
   });
 
+  it("infers the dial dash-box color slots (issue #811)", () => {
+    expect(inferSlotType("dial.colors.borderColor")).toBe("borderColor");
+    expect(inferSlotType("dial.colors.backgroundColor")).toBe("backgroundColor");
+    expect(inferSlotType("dial.colors.labelColor")).toBe("labelColor");
+    expect(inferSlotType("dial.colors.valueColor")).toBe("valueColor");
+  });
+
   it("returns null for unknown or empty settings", () => {
     expect(inferSlotType(null)).toBeNull();
     expect(inferSlotType("")).toBeNull();

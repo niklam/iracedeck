@@ -48,7 +48,7 @@ describe("setup-brakes settings", () => {
         longPressAction: "none",
         tapAction: "none",
         longTouchAction: "none",
-        colors: { border: "", label: "", value: "", background: "" },
+        colors: { borderColor: "", labelColor: "", valueColor: "", backgroundColor: "" },
         glow: false,
         glowWidth: 12,
       });

@@ -212,7 +212,7 @@ describe("SetupEngine dial surface", () => {
         ctx,
         dialSettings({
           setting: "engine-power",
-          colors: { border: "#112233", background: "#445566" },
+          colors: { borderColor: "#112233", backgroundColor: "#445566" },
           glow: true,
           glowWidth: 14,
         }),

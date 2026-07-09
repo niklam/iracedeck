@@ -203,7 +203,7 @@ describe("SetupChassis dial surface", () => {
         ctx,
         dialSettings({
           setting: "differential-preload",
-          colors: { border: "#112233", background: "#445566" },
+          colors: { borderColor: "#112233", backgroundColor: "#445566" },
           glow: true,
           glowWidth: 14,
         }),
