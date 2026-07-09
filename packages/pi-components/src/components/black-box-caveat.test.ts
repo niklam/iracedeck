@@ -9,20 +9,25 @@ const MESSAGE = "Needs keyboard bindings.";
 const keyboardBinding = (key: string, code: string) => JSON.stringify({ type: "keyboard", key, modifiers: [], code });
 const simhubBinding = (role: string) => JSON.stringify({ type: "simhub", role });
 
+type Handler = (ev: { payload: { settings: Record<string, unknown> } }) => void;
+
 let globalSettings: Record<string, unknown> = {};
-let subscriber: ((ev: { payload: { settings: Record<string, unknown> } }) => void) | null = null;
+/** Mirrors sdpi's real event object: a handler list, subscribe/unsubscribe, no return value. */
+let handlers: Handler[] = [];
+
+const notify = (settings: Record<string, unknown>) => handlers.forEach((h) => h({ payload: { settings } }));
 
 function installSdpiStub(): void {
   (window as unknown as { SDPIComponents: unknown }).SDPIComponents = {
     streamDeckClient: {
       getGlobalSettings: () => Promise.resolve(globalSettings),
       didReceiveGlobalSettings: {
-        subscribe: (fn: (ev: { payload: { settings: Record<string, unknown> } }) => void) => {
-          subscriber = fn;
-
-          return () => {
-            subscriber = null;
-          };
+        // sdpi's subscribe() pushes onto a list and returns undefined.
+        subscribe: (fn: Handler): void => {
+          handlers.push(fn);
+        },
+        unsubscribe: (fn: Handler): void => {
+          handlers = handlers.filter((h) => h !== fn);
         },
       },
     },
@@ -56,7 +61,7 @@ describe("ird-black-box-caveat", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     globalSettings = {};
-    subscriber = null;
+    handlers = [];
     document.body.innerHTML = "";
     installSdpiStub();
   });
@@ -130,13 +135,43 @@ describe("ird-black-box-caveat", () => {
     const el = await mount(true);
     expect(isVisible(el)).toBe(true);
 
-    subscriber!({
-      payload: {
-        settings: {
-          blackBoxLapTiming: keyboardBinding("f1", "F1"),
-          blackBoxFuel: keyboardBinding("f4", "F4"),
-        },
-      },
+    notify({
+      blackBoxLapTiming: keyboardBinding("f1", "F1"),
+      blackBoxFuel: keyboardBinding("f4", "F4"),
+    });
+
+    expect(isVisible(el)).toBe(false);
+  });
+
+  it("should unsubscribe and stop polling on disconnect", async () => {
+    const el = await mount(true);
+    expect(handlers).toHaveLength(1);
+
+    el.remove();
+
+    expect(handlers).toHaveLength(0);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("should wire back up when removed and re-added to the DOM", async () => {
+    globalSettings = { blackBoxFuel: keyboardBinding("f4", "F4") };
+    const el = await mount(true);
+    expect(isVisible(el)).toBe(true);
+
+    el.remove();
+    expect(isVisible(el)).toBe(false); // torn down: container removed
+
+    document.body.appendChild(el);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // Live again: still warns (no prime bound), and a later binding clears it.
+    expect(handlers).toHaveLength(1);
+    expect(isVisible(el)).toBe(true);
+
+    notify({
+      blackBoxLapTiming: keyboardBinding("f1", "F1"),
+      blackBoxFuel: keyboardBinding("f4", "F4"),
     });
 
     expect(isVisible(el)).toBe(false);
@@ -152,5 +187,24 @@ describe("ird-black-box-caveat", () => {
     vi.advanceTimersByTime(300);
 
     expect(isVisible(el)).toBe(true);
+  });
+
+  it("should not render after a late getGlobalSettings resolve on a detached element", async () => {
+    let resolveSettings!: (v: Record<string, unknown>) => void;
+    (
+      window as unknown as { SDPIComponents: { streamDeckClient: { getGlobalSettings: () => Promise<unknown> } } }
+    ).SDPIComponents.streamDeckClient.getGlobalSettings = () =>
+      new Promise((res) => {
+        resolveSettings = res as (v: Record<string, unknown>) => void;
+      });
+
+    const el = await mount(true);
+    el.remove();
+
+    resolveSettings({});
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(isVisible(el)).toBe(false);
   });
 });

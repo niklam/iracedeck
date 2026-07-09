@@ -36,9 +36,19 @@ interface GlobalSettingsEvent {
   payload: { settings: Record<string, unknown> };
 }
 
+type GlobalSettingsHandler = (ev: GlobalSettingsEvent) => void;
+
+/**
+ * sdpi-components' event object. `subscribe` returns nothing — it pushes the
+ * handler onto an internal list — so detaching means calling `unsubscribe` with
+ * the SAME function reference, not disposing a returned handle.
+ */
 interface StreamDeckClient {
   getGlobalSettings(): Promise<Record<string, unknown>>;
-  didReceiveGlobalSettings: { subscribe(fn: (ev: GlobalSettingsEvent) => void): unknown };
+  didReceiveGlobalSettings: {
+    subscribe(fn: GlobalSettingsHandler): void;
+    unsubscribe?(fn: GlobalSettingsHandler): void;
+  };
 }
 
 /** Escape a value for safe use inside a `[attr="…"]` selector. */
@@ -75,13 +85,18 @@ export class BlackBoxCaveat extends HTMLElement {
   private settings: Record<string, unknown> = {};
   private settingsLoaded = false;
   private pollTimer: number | null = null;
-  private initialized = false;
+  private connected = false;
   private readonly onDomChange = (): void => this.render();
+  private readonly onGlobalSettings: GlobalSettingsHandler = (ev) => {
+    this.settings = ev?.payload?.settings ?? {};
+    this.settingsLoaded = true;
+    this.render();
+  };
 
   connectedCallback(): void {
-    if (this.initialized) return;
+    if (this.connected) return;
 
-    this.initialized = true;
+    this.connected = true;
     this.container = document.createElement("div");
     this.container.className = "ird-supporting-text";
     this.container.style.display = "none";
@@ -91,16 +106,15 @@ export class BlackBoxCaveat extends HTMLElement {
 
     if (client) {
       void client.getGlobalSettings().then((settings) => {
+        // A late resolve after disconnect must not resurrect a detached element.
+        if (!this.connected) return;
+
         this.settings = settings ?? {};
         this.settingsLoaded = true;
         this.render();
       });
 
-      client.didReceiveGlobalSettings.subscribe((ev) => {
-        this.settings = ev?.payload?.settings ?? {};
-        this.settingsLoaded = true;
-        this.render();
-      });
+      client.didReceiveGlobalSettings.subscribe(this.onGlobalSettings);
     }
 
     document.addEventListener("change", this.onDomChange);
@@ -110,14 +124,27 @@ export class BlackBoxCaveat extends HTMLElement {
     this.render();
   }
 
+  /**
+   * Fully tear down, so a remove-then-re-add of this element (a PI re-rendering
+   * the section) wires everything up again instead of leaving an inert husk.
+   */
   disconnectedCallback(): void {
+    this.connected = false;
+
     document.removeEventListener("change", this.onDomChange);
     document.removeEventListener("input", this.onDomChange);
+
+    // sdpi's subscribe() returns nothing; detaching means passing the same
+    // handler back to unsubscribe(). Optional — a stub may not implement it.
+    streamDeckClient()?.didReceiveGlobalSettings.unsubscribe?.(this.onGlobalSettings);
 
     if (this.pollTimer !== null) {
       window.clearInterval(this.pollTimer);
       this.pollTimer = null;
     }
+
+    this.container?.remove();
+    this.container = null;
   }
 
   /** Read the feature checkbox's live value from the DOM. */

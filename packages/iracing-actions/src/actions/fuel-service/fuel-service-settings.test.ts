@@ -152,5 +152,18 @@ describe("fuel-service settings", () => {
     it('should treat the string "false" as false', () => {
       expect(parseFuelServiceSettings({ showBlackBox: "false" }).showBlackBox).toBe(false);
     });
+
+    it("should not let a malformed value reset the sibling settings", () => {
+      // A corrupt/foreign persisted value must reset ONLY this field. Without
+      // .catch(false) the whole object parse fails and mode falls back to
+      // toggle-fuel-fill — the release/2.0 settings-contamination failure mode.
+      for (const malformed of [123, {}, null, ["x"]]) {
+        const parsed = parseFuelServiceSettings({ mode: "reduce-fuel", amount: 5, unit: "l", showBlackBox: malformed });
+
+        expect(parsed.showBlackBox).toBe(false);
+        expect(parsed.mode).toBe("reduce-fuel");
+        expect(parsed.amount).toBe(5);
+      }
+    });
   });
 });

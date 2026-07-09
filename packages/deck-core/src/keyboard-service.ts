@@ -120,7 +120,12 @@ export interface IKeyboardService {
    * false as "skipped", never as "send it the slow way".
    *
    * @param combinations - The chords to send, in order
-   * @param holdMs - Per-chord hold in ms; 0 (default) = one atomic batch, no sleep
+   * @param holdMs - Per-chord hold in ms; 0 (default) = one atomic batch, no sleep.
+   *   A non-zero value takes the native held path, which sleeps on the CALLING
+   *   thread once per chord — it is clamped natively to 50 ms (a few frames), so a
+   *   two-chord sequence blocks at most ~100 ms, matching an ordinary tap. Only
+   *   raise it for a target that samples keyboard state per frame and drops a
+   *   zero-duration press; iRacing does not.
    * @returns true if the sequence was dispatched, false if it was skipped
    */
   sendKeySequence(combinations: KeyCombination[], holdMs?: number): Promise<boolean>;

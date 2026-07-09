@@ -824,11 +824,20 @@ Napi::Value SendScanKeyUp(const Napi::CallbackInfo &info)
 }
 
 /**
- * Upper bound for the per-chord hold in SendScanKeySequence. Mirrors the chat
- * pipeline's defensive clamp: a negative or absurd JS value must never turn
- * Sleep() into a multi-second stall.
+ * Upper bound for the per-chord hold in SendScanKeySequence.
+ *
+ * The held path Sleep()s on the calling (JS main) thread, once per chord, so the
+ * bound is what caps the worst-case stall. 50 ms exists because the ONLY reason
+ * to hold a key here is to survive a target that samples keyboard state per frame:
+ * one frame is ~16 ms at 60 Hz, so a couple of frames is the whole useful range.
+ * A two-chord sequence therefore blocks at most ~100 ms — the same stall
+ * SendScanKeys already imposes on every ordinary tap, so this adds no new class
+ * of freeze. Nothing legitimately needs a second-long hold.
+ *
+ * Also a defensive clamp, like the chat pipeline's: a negative or absurd JS value
+ * must never turn Sleep() into a multi-second stall.
  */
-static const double kMaxSequenceHoldMs = 1000.0;
+static const double kMaxSequenceHoldMs = 50.0;
 
 /**
  * Send a SEQUENCE of distinct key chords in one native call (issue #818).

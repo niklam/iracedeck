@@ -110,10 +110,14 @@ export const FuelServiceSettings = CommonSettings.extend({
   // fuel values — notably the autofuel lap margin — have no telemetry readback,
   // so the black box is the only confirmation the driver ever gets.
   // NOT z.coerce.boolean(): it maps the string "false" to true.
+  // .catch keeps a malformed persisted value (neither boolean nor string) from
+  // failing the WHOLE object parse, which would drop the stored mode and amount
+  // back to defaults — the same hardening `unit` above applies, for the same reason.
   showBlackBox: z
     .union([z.boolean(), z.string()])
     .transform((val) => val === true || val === "true")
-    .default(false),
+    .default(false)
+    .catch(false),
   dial: DialSettings,
 });
 
