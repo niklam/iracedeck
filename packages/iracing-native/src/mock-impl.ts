@@ -121,6 +121,11 @@ export class IRacingNativeMock {
     console.debug(`[IRacingNativeMock] sendScanKeyUp([${scanCodes.join(", ")}])`);
   }
 
+  sendScanKeySequence(chords: number[][], holdMs = 0): void {
+    const rendered = chords.map((chord) => `[${chord.join(", ")}]`).join(", ");
+    console.debug(`[IRacingNativeMock] sendScanKeySequence([${rendered}], ${holdMs})`);
+  }
+
   setClipboardText(text: string): boolean {
     console.debug(`[IRacingNativeMock] setClipboardText("${text}")`);
 

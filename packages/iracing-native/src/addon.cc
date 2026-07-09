@@ -9,6 +9,7 @@
 #include <windows.h>
 #include <string>
 #include <mutex>
+#include <vector>
 #include <irsdk_defines.h>
 
 // Serializes all in-flight chat sends so the paste/broadcast sequence can't
@@ -659,13 +660,13 @@ Napi::Value FocusIRacingWindow(const Napi::CallbackInfo &info)
 // ============================================================================
 
 /**
- * Send a single scan code key event via SendInput.
+ * Build a single scan code INPUT record.
  * Uses KEYEVENTF_SCANCODE for layout-independent physical key sending.
  *
  * @param scanCode - PS/2 scan code. Bit 0x100 signals an extended key (KEYEVENTF_EXTENDEDKEY).
  * @param isDown - true for key press, false for key release
  */
-static void sendScanKey(UINT scanCode, bool isDown)
+static INPUT makeScanKeyInput(UINT scanCode, bool isDown)
 {
     INPUT ip = {};
     ip.type = INPUT_KEYBOARD;
@@ -689,6 +690,18 @@ static void sendScanKey(UINT scanCode, bool isDown)
     UINT mapType = (scanCode & 0x100) ? MAPVK_VSC_TO_VK_EX : MAPVK_VSC_TO_VK;
     ip.ki.wVk = static_cast<WORD>(MapVirtualKeyW(sc, mapType));
 
+    return ip;
+}
+
+/**
+ * Send a single scan code key event via SendInput.
+ *
+ * @param scanCode - PS/2 scan code. Bit 0x100 signals an extended key (KEYEVENTF_EXTENDEDKEY).
+ * @param isDown - true for key press, false for key release
+ */
+static void sendScanKey(UINT scanCode, bool isDown)
+{
+    INPUT ip = makeScanKeyInput(scanCode, isDown);
     SendInput(1, &ip, sizeof(INPUT));
 }
 
@@ -805,6 +818,141 @@ Napi::Value SendScanKeyUp(const Napi::CallbackInfo &info)
     {
         UINT sc = scanCodes.Get(static_cast<uint32_t>(i)).As<Napi::Number>().Uint32Value();
         sendScanKey(sc, false);
+    }
+
+    return env.Undefined();
+}
+
+/**
+ * Upper bound for the per-chord hold in SendScanKeySequence. Mirrors the chat
+ * pipeline's defensive clamp: a negative or absurd JS value must never turn
+ * Sleep() into a multi-second stall.
+ */
+static const double kMaxSequenceHoldMs = 1000.0;
+
+/**
+ * Send a SEQUENCE of distinct key chords in one native call (issue #818).
+ *
+ * Each chord is a scan code array in the usual convention (modifiers first,
+ * main key last). Chords fire in order.
+ *
+ * holdMs == 0 (the default): every down/up event of every chord is emitted in a
+ * SINGLE SendInput batch, with no Sleep. The events reach the target's input
+ * queue atomically, so a two-chord sequence ("show Lap Timing, then show Fuel")
+ * is consumed within one frame and the intermediate box never renders.
+ *
+ * holdMs > 0: falls back to per-chord press -> Sleep(holdMs) -> release, the
+ * same shape as SendScanKeys, for a target that samples keyboard state per
+ * frame and would miss a zero-duration press.
+ *
+ * @param chords - Array of scan code arrays (bit 0x100 = extended key)
+ * @param holdMs - Optional per-chord hold in ms; clamped to [0, kMaxSequenceHoldMs]
+ */
+Napi::Value SendScanKeySequence(const Napi::CallbackInfo &info)
+{
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 1 || !info[0].IsArray())
+    {
+        Napi::TypeError::New(env, "Expected (chords: number[][], holdMs?: number)").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    Napi::Array chords = info[0].As<Napi::Array>();
+    uint32_t chordCount = chords.Length();
+
+    if (chordCount == 0)
+    {
+        return env.Undefined();
+    }
+
+    // Read as a double, then clamp. Reading via Uint32Value() would let
+    // ECMAScript ToUint32 wrap a negative value into a huge DWORD.
+    double rawHold = 0.0;
+
+    if (info.Length() >= 2 && info[1].IsNumber())
+    {
+        rawHold = info[1].As<Napi::Number>().DoubleValue();
+    }
+
+    if (!(rawHold > 0.0))
+    {
+        rawHold = 0.0;
+    }
+    else if (rawHold > kMaxSequenceHoldMs)
+    {
+        rawHold = kMaxSequenceHoldMs;
+    }
+
+    DWORD holdMs = static_cast<DWORD>(rawHold);
+
+    // Atomic path: one SendInput for the whole sequence, no Sleep.
+    if (holdMs == 0)
+    {
+        std::vector<INPUT> inputs;
+
+        for (uint32_t c = 0; c < chordCount; c++)
+        {
+            Napi::Value entry = chords.Get(c);
+
+            if (!entry.IsArray())
+            {
+                continue;
+            }
+
+            Napi::Array scanCodes = entry.As<Napi::Array>();
+            uint32_t len = scanCodes.Length();
+
+            for (uint32_t i = 0; i < len; i++)
+            {
+                UINT sc = scanCodes.Get(i).As<Napi::Number>().Uint32Value();
+                inputs.push_back(makeScanKeyInput(sc, true));
+            }
+
+            for (int32_t i = static_cast<int32_t>(len) - 1; i >= 0; i--)
+            {
+                UINT sc = scanCodes.Get(static_cast<uint32_t>(i)).As<Napi::Number>().Uint32Value();
+                inputs.push_back(makeScanKeyInput(sc, false));
+            }
+        }
+
+        if (!inputs.empty())
+        {
+            SendInput(static_cast<UINT>(inputs.size()), inputs.data(), sizeof(INPUT));
+        }
+
+        return env.Undefined();
+    }
+
+    // Held path: press, hold, release — one chord at a time.
+    for (uint32_t c = 0; c < chordCount; c++)
+    {
+        Napi::Value entry = chords.Get(c);
+
+        if (!entry.IsArray())
+        {
+            continue;
+        }
+
+        Napi::Array scanCodes = entry.As<Napi::Array>();
+        uint32_t len = scanCodes.Length();
+
+        if (len == 0)
+        {
+            continue;
+        }
+
+        for (uint32_t i = 0; i < len; i++)
+        {
+            sendScanKey(scanCodes.Get(i).As<Napi::Number>().Uint32Value(), true);
+        }
+
+        Sleep(holdMs);
+
+        for (int32_t i = static_cast<int32_t>(len) - 1; i >= 0; i--)
+        {
+            sendScanKey(scanCodes.Get(static_cast<uint32_t>(i)).As<Napi::Number>().Uint32Value(), false);
+        }
     }
 
     return env.Undefined();
@@ -976,6 +1124,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports)
     exports.Set("sendScanKeys", Napi::Function::New(env, SendScanKeys));
     exports.Set("sendScanKeyDown", Napi::Function::New(env, SendScanKeyDown));
     exports.Set("sendScanKeyUp", Napi::Function::New(env, SendScanKeyUp));
+    exports.Set("sendScanKeySequence", Napi::Function::New(env, SendScanKeySequence));
 
     // Clipboard
     exports.Set("setClipboardText", Napi::Function::New(env, SetClipboardText));
