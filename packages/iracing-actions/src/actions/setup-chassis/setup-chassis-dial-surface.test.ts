@@ -1,11 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  buildTriggerDescription,
-  DialSettings,
-  formatDialValue,
-  renderChassisDialBoxSvg,
-} from "./setup-chassis-dial-surface.js";
+import { buildTriggerDescription, DialSettings, formatDialValue } from "./setup-chassis-dial-surface.js";
 import { SetupChassis } from "./setup-chassis.js";
 
 const { mockGetCurrentTelemetry, mockTapBinding, mockIsBindingMissing, mockDualPressThreshold, globalListeners } =
@@ -98,36 +93,6 @@ function dialSettings(dial: Record<string, unknown>) {
 }
 
 describe("setup-chassis dial-surface pure helpers", () => {
-  describe("renderChassisDialBoxSvg", () => {
-    it("draws the abbreviation, value, and accent border", () => {
-      const svg = renderChassisDialBoxSvg({ width: 144, height: 144, color: "#3498db", abbr: "PRELD", value: "3" });
-
-      expect(svg).toContain('stroke="#3498db"');
-      expect(svg).toContain(">PRELD<");
-      expect(svg).toContain(">3<");
-    });
-
-    it("renders label-only for an identity-only setting (a shock)", () => {
-      const svg = renderChassisDialBoxSvg({ width: 200, height: 100, color: "#9b59b6", abbr: "LF", value: "" });
-
-      expect(svg).toContain(">LF<");
-      expect((svg.match(/<text/g) ?? []).length).toBe(1);
-    });
-
-    it("draws the #612 warning overlay only when bindingMissing is set", () => {
-      const withWarn = renderChassisDialBoxSvg({
-        width: 200,
-        height: 100,
-        color: "#3498db",
-        abbr: "PRELD",
-        value: "3",
-        bindingMissing: true,
-      });
-
-      expect(withWarn).toContain("binding-warning");
-    });
-  });
-
   describe("formatDialValue", () => {
     it("formats readback settings as plain integers", () => {
       expect(formatDialValue("differential-preload", { dcDiffPreload: 3 } as never)).toBe("3");
@@ -230,6 +195,25 @@ describe("SetupChassis dial surface", () => {
 
       expect(decoded).toContain(">PRELD<");
       expect(decoded).toContain(">3<");
+    });
+
+    it("applies dash-box color overrides and border glow from dial settings (#811)", async () => {
+      const ctx = dialContext("a811");
+      await appear(
+        ctx,
+        dialSettings({
+          setting: "differential-preload",
+          colors: { border: "#112233", background: "#445566" },
+          glow: true,
+          glowWidth: 14,
+        }),
+      );
+
+      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+
+      expect(decoded).toContain('stroke="#112233"');
+      expect(decoded).toContain('fill="#445566"');
+      expect(decoded).toContain("feGaussianBlur");
     });
 
     it("pushes a label-only strip for a shock (identity-only)", async () => {

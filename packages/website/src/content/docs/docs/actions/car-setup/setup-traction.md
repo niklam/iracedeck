@@ -139,7 +139,7 @@ Dials are currently Stream Deck+ only — the action can't be placed on Mirabox 
 
 #### Setting: Setting
 
-The TC slot the dial controls. Each renders as a color-coded "dash box": a short label on top and the live value as a large number.
+The TC slot the dial controls. Each renders as a color-coded "dash box": a short label on top and the live value as a large number. Each setting has a built-in accent color, but you can override the border, label, value, and background colors — and add an optional border glow — in the **Dash Box Appearance** section of the dial settings.
 
 | Setting | Label | Telemetry source | Shown as |
 |---|---|---|---|

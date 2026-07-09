@@ -12,6 +12,7 @@ import { CommonSettings } from "@iracedeck/deck-core";
 import z from "zod";
 
 import { adjustStyleSettingsFields } from "../../shared/adjust-styles.js";
+import { dialAppearanceFields } from "../../shared/dial-box.js";
 
 /**
  * @internal Exported for testing
@@ -85,6 +86,8 @@ export const DialSettings = z
     tapAction: z.enum(GESTURE_ACTIONS).default("none"),
     // Long Touch (touch-strip tap, hold === true). Default None for VR safety.
     longTouchAction: z.enum(GESTURE_ACTIONS).default("none"),
+    // Dash-box appearance overrides (colors + border glow, issue #811).
+    ...dialAppearanceFields,
   })
   // prefault (not default): a missing `dial` parses {} THROUGH the schema so
   // the per-field defaults apply — same shape as a partially-persisted object.

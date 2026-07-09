@@ -1,11 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  buildTriggerDescription,
-  DialSettings,
-  formatDialValue,
-  renderFuelDialBoxSvg,
-} from "./setup-fuel-dial-surface.js";
+import { buildTriggerDescription, DialSettings, formatDialValue } from "./setup-fuel-dial-surface.js";
 import { SetupFuel } from "./setup-fuel.js";
 
 const { mockGetCurrentTelemetry, mockTapBinding, mockIsBindingMissing, mockDualPressThreshold, globalListeners } =
@@ -102,53 +97,6 @@ function dialSettings(dial: Record<string, unknown>) {
 }
 
 describe("setup-fuel dial-surface pure helpers", () => {
-  describe("renderFuelDialBoxSvg", () => {
-    it("draws the abbreviation, value, accent border, and dark background", () => {
-      const svg = renderFuelDialBoxSvg({ width: 144, height: 144, color: "#e67e22", abbr: "MIX", value: "3" });
-
-      expect(svg).toContain("#0d0d0d");
-      expect(svg).toContain('stroke="#e67e22"');
-      expect(svg).toContain('fill="#e67e22"');
-      expect(svg).toContain(">MIX<");
-      expect(svg).toContain(">3<");
-    });
-
-    it("shrinks the value font so a longer value fits inside a smaller one", () => {
-      const long = /font-size="(\d+)"[^>]*>1234</.exec(
-        renderFuelDialBoxSvg({ width: 144, height: 144, color: "#e67e22", abbr: "MIX", value: "1234" }),
-      );
-      const short = /font-size="(\d+)"[^>]*>3</.exec(
-        renderFuelDialBoxSvg({ width: 144, height: 144, color: "#3498db", abbr: "CUT", value: "3" }),
-      );
-
-      expect(long).not.toBeNull();
-      expect(short).not.toBeNull();
-      expect(Number(long![1])).toBeLessThan(Number(short![1]));
-    });
-
-    it("renders label-only (no value node) for an identity-only setting", () => {
-      const svg = renderFuelDialBoxSvg({ width: 200, height: 100, color: "#e67e22", abbr: "MIX", value: "" });
-
-      expect(svg).toContain(">MIX<");
-      expect((svg.match(/<text/g) ?? []).length).toBe(1);
-    });
-
-    it("draws the #612 warning overlay only when bindingMissing is set", () => {
-      const without = renderFuelDialBoxSvg({ width: 200, height: 100, color: "#3498db", abbr: "CUT", value: "3" });
-      const withWarn = renderFuelDialBoxSvg({
-        width: 200,
-        height: 100,
-        color: "#3498db",
-        abbr: "CUT",
-        value: "3",
-        bindingMissing: true,
-      });
-
-      expect(without).not.toContain("binding-warning");
-      expect(withWarn).toContain("binding-warning");
-    });
-  });
-
   describe("formatDialValue", () => {
     it("formats fuel values as plain integers", () => {
       expect(formatDialValue("fuel-mixture", { dcFuelMixture: 3 } as never)).toBe("3");
@@ -360,6 +308,25 @@ describe("SetupFuel dial surface", () => {
 
       expect(decoded).toContain(">MIX<");
       expect(decoded).toContain(">3<");
+    });
+
+    it("applies dash-box color overrides and border glow from dial settings (#811)", async () => {
+      const ctx = dialContext("a811");
+      await appear(
+        ctx,
+        dialSettings({
+          setting: "fuel-mixture",
+          colors: { border: "#112233", background: "#445566" },
+          glow: true,
+          glowWidth: 14,
+        }),
+      );
+
+      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+
+      expect(decoded).toContain('stroke="#112233"');
+      expect(decoded).toContain('fill="#445566"');
+      expect(decoded).toContain("feGaussianBlur");
     });
 
     it("pushes the two-line name icon as the deck-app dial image (#797)", async () => {

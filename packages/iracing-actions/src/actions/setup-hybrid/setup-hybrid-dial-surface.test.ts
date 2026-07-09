@@ -1,11 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  buildTriggerDescription,
-  DialSettings,
-  formatDialValue,
-  renderHybridDialBoxSvg,
-} from "./setup-hybrid-dial-surface.js";
+import { buildTriggerDescription, DialSettings, formatDialValue } from "./setup-hybrid-dial-surface.js";
 import { SetupHybrid } from "./setup-hybrid.js";
 
 const { mockGetCurrentTelemetry, mockTapBinding, mockIsBindingMissing, mockDualPressThreshold, globalListeners } =
@@ -104,53 +99,6 @@ function dialSettings(dial: Record<string, unknown>) {
 }
 
 describe("setup-hybrid dial-surface pure helpers", () => {
-  describe("renderHybridDialBoxSvg", () => {
-    it("draws the abbreviation, value, accent border, and dark background", () => {
-      const svg = renderHybridDialBoxSvg({ width: 144, height: 144, color: "#3498db", abbr: "DEPLOY", value: "3" });
-
-      expect(svg).toContain("#0d0d0d");
-      expect(svg).toContain('stroke="#3498db"');
-      expect(svg).toContain('fill="#3498db"');
-      expect(svg).toContain(">DEPLOY<");
-      expect(svg).toContain(">3<");
-    });
-
-    it("shrinks the value font so a longer value fits inside a smaller one", () => {
-      const long = /font-size="(\d+)"[^>]*>1234</.exec(
-        renderHybridDialBoxSvg({ width: 144, height: 144, color: "#3498db", abbr: "DEPLOY", value: "1234" }),
-      );
-      const short = /font-size="(\d+)"[^>]*>3</.exec(
-        renderHybridDialBoxSvg({ width: 144, height: 144, color: "#2ecc71", abbr: "REGEN", value: "3" }),
-      );
-
-      expect(long).not.toBeNull();
-      expect(short).not.toBeNull();
-      expect(Number(long![1])).toBeLessThan(Number(short![1]));
-    });
-
-    it("renders label-only (no value node) for an identity-only setting", () => {
-      const svg = renderHybridDialBoxSvg({ width: 200, height: 100, color: "#3498db", abbr: "DEPLOY", value: "" });
-
-      expect(svg).toContain(">DEPLOY<");
-      expect((svg.match(/<text/g) ?? []).length).toBe(1);
-    });
-
-    it("draws the #612 warning overlay only when bindingMissing is set", () => {
-      const without = renderHybridDialBoxSvg({ width: 200, height: 100, color: "#2ecc71", abbr: "REGEN", value: "3" });
-      const withWarn = renderHybridDialBoxSvg({
-        width: 200,
-        height: 100,
-        color: "#2ecc71",
-        abbr: "REGEN",
-        value: "3",
-        bindingMissing: true,
-      });
-
-      expect(without).not.toContain("binding-warning");
-      expect(withWarn).toContain("binding-warning");
-    });
-  });
-
   describe("formatDialValue", () => {
     it("formats MGU-K values as plain integers", () => {
       expect(formatDialValue("mguk-deploy-mode", { dcMGUKDeployMode: 3 } as never)).toBe("3");
@@ -306,6 +254,25 @@ describe("SetupHybrid dial surface", () => {
 
       expect(decoded).toContain(">DEPLOY<");
       expect(decoded).toContain(">3<");
+    });
+
+    it("applies dash-box color overrides and border glow from dial settings (#811)", async () => {
+      const ctx = dialContext("a811");
+      await appear(
+        ctx,
+        dialSettings({
+          setting: "mguk-deploy-mode",
+          colors: { border: "#112233", background: "#445566" },
+          glow: true,
+          glowWidth: 14,
+        }),
+      );
+
+      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+
+      expect(decoded).toContain('stroke="#112233"');
+      expect(decoded).toContain('fill="#445566"');
+      expect(decoded).toContain("feGaussianBlur");
     });
 
     it("pushes the encoder trigger description on a dial", async () => {

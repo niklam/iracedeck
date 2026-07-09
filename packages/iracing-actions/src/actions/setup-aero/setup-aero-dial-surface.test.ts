@@ -1,11 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  buildTriggerDescription,
-  DialSettings,
-  formatDialValue,
-  renderAeroDialBoxSvg,
-} from "./setup-aero-dial-surface.js";
+import { buildTriggerDescription, DialSettings, formatDialValue } from "./setup-aero-dial-surface.js";
 import { SetupAero } from "./setup-aero.js";
 
 const { mockGetCurrentTelemetry, mockTapBinding, mockIsBindingMissing, mockDualPressThreshold, globalListeners } =
@@ -102,36 +97,6 @@ function touchTapEvent(action: DialContext, settings: Record<string, unknown>, h
 }
 
 describe("setup-aero dial-surface pure helpers", () => {
-  describe("renderAeroDialBoxSvg", () => {
-    it("draws the abbreviation, value, and accent border", () => {
-      const svg = renderAeroDialBoxSvg({ width: 144, height: 144, color: "#3498db", abbr: "FRONT", value: "3" });
-
-      expect(svg).toContain('stroke="#3498db"');
-      expect(svg).toContain(">FRONT<");
-      expect(svg).toContain(">3<");
-    });
-
-    it("renders label-only for an identity-only setting (qualifying tape)", () => {
-      const svg = renderAeroDialBoxSvg({ width: 200, height: 100, color: "#9b59b6", abbr: "TAPE", value: "" });
-
-      expect(svg).toContain(">TAPE<");
-      expect((svg.match(/<text/g) ?? []).length).toBe(1);
-    });
-
-    it("draws the #612 warning overlay only when bindingMissing is set", () => {
-      const withWarn = renderAeroDialBoxSvg({
-        width: 200,
-        height: 100,
-        color: "#3498db",
-        abbr: "FRONT",
-        value: "3",
-        bindingMissing: true,
-      });
-
-      expect(withWarn).toContain("binding-warning");
-    });
-  });
-
   describe("formatDialValue", () => {
     it("formats readback wings as plain integers", () => {
       expect(formatDialValue("front-wing", { dcFrontWing: 3 } as never)).toBe("3");
@@ -296,6 +261,25 @@ describe("SetupAero dial surface", () => {
 
       expect(decoded).toContain(">FRONT<");
       expect(decoded).toContain(">3<");
+    });
+
+    it("applies dash-box color overrides and border glow from dial settings (#811)", async () => {
+      const ctx = dialContext("a811");
+      await appear(
+        ctx,
+        dialSettings({
+          setting: "front-wing",
+          colors: { border: "#112233", background: "#445566" },
+          glow: true,
+          glowWidth: 14,
+        }),
+      );
+
+      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+
+      expect(decoded).toContain('stroke="#112233"'); // border override
+      expect(decoded).toContain('fill="#445566"'); // background override, filling inside the border
+      expect(decoded).toContain("feGaussianBlur"); // glow enabled
     });
 
     it("pushes a label-only strip for qualifying-tape (identity-only)", async () => {

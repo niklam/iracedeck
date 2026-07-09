@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { buildTriggerDescription, formatDialValue, renderBrakeDialBoxSvg } from "./setup-brakes-dial-surface.js";
+import { buildTriggerDescription, formatDialValue } from "./setup-brakes-dial-surface.js";
 import { parseSetupBrakesSettings } from "./setup-brakes-settings.js";
 import { SetupBrakes } from "./setup-brakes.js";
 
@@ -107,46 +107,6 @@ function dialSettings(dial: Record<string, unknown>) {
 }
 
 describe("setup-brakes dial-surface pure helpers", () => {
-  describe("renderBrakeDialBoxSvg", () => {
-    it("draws the abbreviation, value, accent border, and dark background", () => {
-      const svg = renderBrakeDialBoxSvg({ width: 144, height: 144, color: "#e74c3c", abbr: "BB", value: "62.2" });
-
-      expect(svg).toContain("#0d0d0d"); // dark background
-      expect(svg).toContain('stroke="#e74c3c"'); // accent border
-      expect(svg).toContain('fill="#e74c3c"'); // accent label + value
-      expect(svg).toContain(">BB<");
-      expect(svg).toContain(">62.2<");
-    });
-
-    it("shrinks the value font so a longer value fits inside a smaller one", () => {
-      const long = /font-size="(\d+)"[^>]*>100\.0</.exec(
-        renderBrakeDialBoxSvg({ width: 144, height: 144, color: "#e74c3c", abbr: "BB", value: "100.0" }),
-      );
-      const short = /font-size="(\d+)"[^>]*>3</.exec(
-        renderBrakeDialBoxSvg({ width: 144, height: 144, color: "#f39c12", abbr: "ABS", value: "3" }),
-      );
-
-      expect(long).not.toBeNull();
-      expect(short).not.toBeNull();
-      expect(Number(long![1])).toBeLessThan(Number(short![1]));
-    });
-
-    it("draws the #612 warning overlay only when bindingMissing is set", () => {
-      const without = renderBrakeDialBoxSvg({ width: 200, height: 100, color: "#f39c12", abbr: "ABS", value: "3" });
-      const withWarn = renderBrakeDialBoxSvg({
-        width: 200,
-        height: 100,
-        color: "#f39c12",
-        abbr: "ABS",
-        value: "3",
-        bindingMissing: true,
-      });
-
-      expect(without).not.toContain("binding-warning");
-      expect(withWarn).toContain("binding-warning");
-    });
-  });
-
   describe("formatDialValue", () => {
     it("drops the % from percentage settings", () => {
       expect(formatDialValue("brake-bias", { dcBrakeBias: 54 } as never)).toBe("54.0");
@@ -382,6 +342,25 @@ describe("SetupBrakes dial surface", () => {
 
       expect(decoded).toContain(">BB<");
       expect(decoded).toContain(">54.0<"); // value with the % dropped
+    });
+
+    it("applies dash-box color overrides and border glow from dial settings (#811)", async () => {
+      const ctx = dialContext("a1");
+      await appear(
+        ctx,
+        dialSettings({
+          setting: "brake-bias",
+          colors: { border: "#112233", background: "#445566" },
+          glow: true,
+          glowWidth: 14,
+        }),
+      );
+
+      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+
+      expect(decoded).toContain('stroke="#112233"'); // border override
+      expect(decoded).toContain('fill="#445566"'); // background override, filling inside the border
+      expect(decoded).toContain("feGaussianBlur"); // glow enabled
     });
 
     it("pushes the encoder trigger description on a dial", async () => {

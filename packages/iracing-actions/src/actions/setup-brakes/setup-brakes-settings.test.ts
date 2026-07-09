@@ -48,6 +48,9 @@ describe("setup-brakes settings", () => {
         longPressAction: "none",
         tapAction: "none",
         longTouchAction: "none",
+        colors: { border: "", label: "", value: "", background: "" },
+        glow: false,
+        glowWidth: 12,
       });
     });
 

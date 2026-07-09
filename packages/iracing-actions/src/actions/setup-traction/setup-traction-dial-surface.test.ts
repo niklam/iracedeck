@@ -1,11 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  buildTriggerDescription,
-  DialSettings,
-  formatDialValue,
-  renderTractionDialBoxSvg,
-} from "./setup-traction-dial-surface.js";
+import { buildTriggerDescription, DialSettings, formatDialValue } from "./setup-traction-dial-surface.js";
 import { SetupTraction } from "./setup-traction.js";
 
 const { mockGetCurrentTelemetry, mockTapBinding, mockIsBindingMissing, mockDualPressThreshold, globalListeners } =
@@ -103,53 +98,6 @@ function dialSettings(dial: Record<string, unknown>) {
 }
 
 describe("setup-traction dial-surface pure helpers", () => {
-  describe("renderTractionDialBoxSvg", () => {
-    it("draws the abbreviation, value, accent border, and dark background", () => {
-      const svg = renderTractionDialBoxSvg({ width: 144, height: 144, color: "#3498db", abbr: "TC1", value: "3" });
-
-      expect(svg).toContain("#0d0d0d");
-      expect(svg).toContain('stroke="#3498db"');
-      expect(svg).toContain('fill="#3498db"');
-      expect(svg).toContain(">TC1<");
-      expect(svg).toContain(">3<");
-    });
-
-    it("shrinks the value font so a longer value fits inside a smaller one", () => {
-      const long = /font-size="(\d+)"[^>]*>1234</.exec(
-        renderTractionDialBoxSvg({ width: 144, height: 144, color: "#3498db", abbr: "TC1", value: "1234" }),
-      );
-      const short = /font-size="(\d+)"[^>]*>3</.exec(
-        renderTractionDialBoxSvg({ width: 144, height: 144, color: "#f39c12", abbr: "TC3", value: "3" }),
-      );
-
-      expect(long).not.toBeNull();
-      expect(short).not.toBeNull();
-      expect(Number(long![1])).toBeLessThan(Number(short![1]));
-    });
-
-    it("renders label-only (no value node) for an identity-only setting", () => {
-      const svg = renderTractionDialBoxSvg({ width: 200, height: 100, color: "#3498db", abbr: "TC1", value: "" });
-
-      expect(svg).toContain(">TC1<");
-      expect((svg.match(/<text/g) ?? []).length).toBe(1);
-    });
-
-    it("draws the #612 warning overlay only when bindingMissing is set", () => {
-      const without = renderTractionDialBoxSvg({ width: 200, height: 100, color: "#f39c12", abbr: "TC3", value: "3" });
-      const withWarn = renderTractionDialBoxSvg({
-        width: 200,
-        height: 100,
-        color: "#f39c12",
-        abbr: "TC3",
-        value: "3",
-        bindingMissing: true,
-      });
-
-      expect(without).not.toContain("binding-warning");
-      expect(withWarn).toContain("binding-warning");
-    });
-  });
-
   describe("formatDialValue", () => {
     it("formats TC slot values as plain integers", () => {
       expect(formatDialValue("tc-slot-1", { dcTractionControl: 3 } as never)).toBe("3");
@@ -371,6 +319,25 @@ describe("SetupTraction dial surface", () => {
 
       expect(decoded).toContain(">TC1<");
       expect(decoded).toContain(">3<");
+    });
+
+    it("applies dash-box color overrides and border glow from dial settings (#811)", async () => {
+      const ctx = dialContext("a811");
+      await appear(
+        ctx,
+        dialSettings({
+          setting: "tc-slot-1",
+          colors: { border: "#112233", background: "#445566" },
+          glow: true,
+          glowWidth: 14,
+        }),
+      );
+
+      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+
+      expect(decoded).toContain('stroke="#112233"');
+      expect(decoded).toContain('fill="#445566"');
+      expect(decoded).toContain("feGaussianBlur");
     });
 
     it("pushes the encoder trigger description on a dial", async () => {

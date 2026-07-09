@@ -39,6 +39,7 @@ icons/                                   # Dynamic SVG templates (telemetry-driv
 
 - `adjust-styles.ts` — paired +/− key styles: style catalog, shared settings fields + fresh-key seeding, value-source gating over VIEW_DEFS, and the SVG renderer (spec: docs/superpowers/specs/2026-07-07-paired-adjust-key-styles-design.md)
 - `car-select-intent.ts` — per-device intent deciding what a selector car-key press means (admin target vs camera focus, #790)
+- `dial-box.ts` — shared Stream Deck+ dial "dash box" renderer + `dialAppearanceFields` settings fragment: the seven Setup dial surfaces resolve their per-setting accent plus user color/glow overrides (`resolveDialBoxColors`) and route rendering through `renderDialBox` (#811)
 - `dial-name-icon.ts` — plain two-line action-name image that dual-surface actions push for dial contexts (#775)
 - `icon-update-throttle.ts` — per-context throttle + trailing-edge coalescer for telemetry-driven `setKeyImage` bursts (#493)
 - `profile-entries.ts` — shared `_deviceProfiles` PI-dropdown entry building + echo-loop change guard (#790)

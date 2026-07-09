@@ -133,7 +133,7 @@ Dials are currently Stream Deck+ only — the action can't be placed on Mirabox 
 
 #### Setting: Setting
 
-The fuel value the dial controls. Each renders as a color-coded "dash box": a short label on top and the live value as a large number. Only the two adjustable values are offered — the one-shot toggles (Disable Fuel Cut, Low Fuel Accept, FCY Mode Toggle) don't map to a rotary.
+The fuel value the dial controls. Each renders as a color-coded "dash box": a short label on top and the live value as a large number. Each setting has a built-in accent color, but you can override the border, label, value, and background colors — and add an optional border glow — in the **Dash Box Appearance** section of the dial settings. Only the two adjustable values are offered — the one-shot toggles (Disable Fuel Cut, Low Fuel Accept, FCY Mode Toggle) don't map to a rotary.
 
 | Setting | Label | Telemetry source | Shown as |
 |---|---|---|---|

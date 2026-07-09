@@ -1,11 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  buildTriggerDescription,
-  DialSettings,
-  formatDialValue,
-  renderEngineDialBoxSvg,
-} from "./setup-engine-dial-surface.js";
+import { buildTriggerDescription, DialSettings, formatDialValue } from "./setup-engine-dial-surface.js";
 import { SetupEngine } from "./setup-engine.js";
 
 const { mockGetCurrentTelemetry, mockTapBinding, mockIsBindingMissing, mockDualPressThreshold, globalListeners } =
@@ -98,37 +93,6 @@ function dialSettings(dial: Record<string, unknown>) {
 }
 
 describe("setup-engine dial-surface pure helpers", () => {
-  describe("renderEngineDialBoxSvg", () => {
-    it("draws the abbreviation, value, accent border, and dark background", () => {
-      const svg = renderEngineDialBoxSvg({ width: 144, height: 144, color: "#e74c3c", abbr: "POWER", value: "3" });
-
-      expect(svg).toContain("#0d0d0d");
-      expect(svg).toContain('stroke="#e74c3c"');
-      expect(svg).toContain(">POWER<");
-      expect(svg).toContain(">3<");
-    });
-
-    it("renders label-only (no value node) for an identity-only setting (boost)", () => {
-      const svg = renderEngineDialBoxSvg({ width: 200, height: 100, color: "#f39c12", abbr: "BOOST", value: "" });
-
-      expect(svg).toContain(">BOOST<");
-      expect((svg.match(/<text/g) ?? []).length).toBe(1);
-    });
-
-    it("draws the #612 warning overlay only when bindingMissing is set", () => {
-      const withWarn = renderEngineDialBoxSvg({
-        width: 200,
-        height: 100,
-        color: "#e74c3c",
-        abbr: "POWER",
-        value: "3",
-        bindingMissing: true,
-      });
-
-      expect(withWarn).toContain("binding-warning");
-    });
-  });
-
   describe("formatDialValue", () => {
     it("formats readback settings as plain integers", () => {
       expect(formatDialValue("engine-power", { dcEnginePower: 3 } as never)).toBe("3");
@@ -240,6 +204,25 @@ describe("SetupEngine dial surface", () => {
 
       expect(decoded).toContain(">POWER<");
       expect(decoded).toContain(">3<");
+    });
+
+    it("applies dash-box color overrides and border glow from dial settings (#811)", async () => {
+      const ctx = dialContext("a811");
+      await appear(
+        ctx,
+        dialSettings({
+          setting: "engine-power",
+          colors: { border: "#112233", background: "#445566" },
+          glow: true,
+          glowWidth: 14,
+        }),
+      );
+
+      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+
+      expect(decoded).toContain('stroke="#112233"');
+      expect(decoded).toContain('fill="#445566"');
+      expect(decoded).toContain("feGaussianBlur");
     });
 
     it("pushes a label-only strip for boost-level (identity-only)", async () => {

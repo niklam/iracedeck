@@ -1,0 +1,61 @@
+<!--
+  Dial Dash-Box Appearance (issue #811)
+
+  Per-dial-instance colors + optional border glow for the Stream Deck+ touch-strip
+  dash box shared by the Setup dial surfaces. Every color picker starts "not set"
+  (empty), meaning inherit the setting's accent (border/label/value) or the dark
+  default (background); the glow width shows only when glow is enabled.
+
+  Include this inside the `#dial-settings` block, gated on the `dialFeedback`
+  feature — the touch strip (and therefore these controls) is Elgato-only.
+-->
+<%- include('accordion', {
+  title: 'Dash Box Appearance',
+  open: false,
+  content:
+    '<sdpi-item label="Border Color">' +
+      '<ird-color-picker setting="dial.colors.border"></ird-color-picker>' +
+    '</sdpi-item>' +
+    '<sdpi-item label="Label Color">' +
+      '<ird-color-picker setting="dial.colors.label"></ird-color-picker>' +
+    '</sdpi-item>' +
+    '<sdpi-item label="Value Color">' +
+      '<ird-color-picker setting="dial.colors.value"></ird-color-picker>' +
+    '</sdpi-item>' +
+    '<sdpi-item label="Background Color">' +
+      '<ird-color-picker setting="dial.colors.background"></ird-color-picker>' +
+    '</sdpi-item>' +
+    '<sdpi-item label="Show Glow">' +
+      '<sdpi-checkbox id="ird-dial-glow" setting="dial.glow" label="Enable border glow"></sdpi-checkbox>' +
+    '</sdpi-item>' +
+    '<sdpi-item id="ird-dial-glow-width" class="hidden" label="Glow Width">' +
+      '<ird-range-input setting="dial.glowWidth" min="1" max="30" step="1" default="12" showlabels></ird-range-input>' +
+    '</sdpi-item>'
+}) %>
+
+<script>
+(function () {
+  async function initDialAppearance() {
+    await customElements.whenDefined('sdpi-checkbox');
+    var glow = document.getElementById('ird-dial-glow');
+    var widthItem = document.getElementById('ird-dial-glow-width');
+    if (!glow || !widthItem) return;
+
+    function updateVisibility() {
+      widthItem.classList.toggle('hidden', !glow.value);
+    }
+
+    updateVisibility();
+    glow.addEventListener('change', updateVisibility);
+    glow.addEventListener('input', updateVisibility);
+    // Polling fallback — the checkbox value settles after settings load.
+    setInterval(updateVisibility, 200);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initDialAppearance);
+  } else {
+    initDialAppearance();
+  }
+})();
+</script>

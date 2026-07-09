@@ -18,7 +18,6 @@
  * iRacing exposes no `dc*` telemetry for. No Traction setting triggers it.
  */
 import {
-  applyBindingWarning,
   classifyDialRelease,
   type DeckFeedbackPayload,
   type DeckTriggerDescription,
@@ -30,11 +29,9 @@ import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 import z from "zod";
 
+import { dialAppearanceFields, renderDialBox, resolveDialBoxColors } from "../../shared/dial-box.js";
 import { renderDialNameIcon } from "../../shared/dial-name-icon.js";
 import { formatViewValue, type ViewSettingId } from "../../shared/setup-view.js";
-
-/** Background behind the dash box (the device screen is black). */
-const BOX_BACKGROUND = "#0d0d0d";
 
 /** Minimum gap (ms) between change-driven feedback pushes (≤10 setFeedback/s/dial). */
 const CHANGE_RENDER_MIN_INTERVAL_MS = 100;
@@ -87,6 +84,8 @@ export const DialSettings = z
     longPressAction: z.enum(GESTURE_ACTIONS).default("none"),
     tapAction: z.enum(GESTURE_ACTIONS).default("none"),
     longTouchAction: z.enum(GESTURE_ACTIONS).default("none"),
+    // Dash-box appearance overrides (colors + border glow, issue #811).
+    ...dialAppearanceFields,
   })
   .prefault({});
 
@@ -131,7 +130,7 @@ const MODE_ABBR: Record<SetupTractionDialSetting, string> = {
   "tc-slot-4": "TC4",
 };
 
-/** Per-setting accent color for the dash box (not user-overridable). */
+/** Per-setting accent — the DEFAULT dash-box border/label/value color, overridable per dial (#811). */
 const MODE_COLOR: Record<SetupTractionDialSetting, string> = {
   "tc-slot-1": "#3498db",
   "tc-slot-2": "#2ecc71",
@@ -160,62 +159,6 @@ export function formatDialValue(setting: SetupTractionDialSetting, telemetry: Te
   if (!viewId) return "";
 
   return formatViewValue(viewId, telemetry).replace(/%$/, "");
-}
-
-/** Shrink the value font so the number fits the box width, capped for short values. */
-function fitValueFontSize(text: string, maxWidth: number, cap: number): number {
-  const approx = maxWidth / Math.max(1, text.length * 0.6);
-
-  return Math.round(Math.min(cap, approx));
-}
-
-/**
- * @internal Exported for testing
- *
- * Renders the self-contained "dash box" SVG. An empty `value` (identity-only
- * setting) draws just the centered label. When the rotation binding is missing the
- * content dims under the centered #612 warning triangle.
- */
-export function renderTractionDialBoxSvg(args: {
-  width: number;
-  height: number;
-  color: string;
-  abbr: string;
-  value: string;
-  bindingMissing?: boolean;
-}): string {
-  const { width: w, height: h, color, abbr, value, bindingMissing = false } = args;
-  const minSide = Math.min(w, h);
-  const radius = Math.round(minSide * 0.16);
-  const inset = Math.max(5, Math.round(minSide * 0.045));
-  const strokeWidth = Math.max(5, Math.round(minSide * 0.05));
-  const identityOnly = value === "";
-
-  const labelFontSize = identityOnly ? Math.round(minSide * 0.24) : Math.round(minSide * 0.15);
-  const labelY = identityOnly ? Math.round(h * 0.5) : Math.round(h * 0.28);
-
-  const labelText = `<text x="${w / 2}" y="${labelY}" text-anchor="middle" dominant-baseline="central" fill="${color}" font-family="Arial, sans-serif" font-size="${labelFontSize}" font-weight="bold">${abbr}</text>`;
-
-  let valueText = "";
-
-  if (!identityOnly) {
-    const valueFontSize = fitValueFontSize(
-      value,
-      w - 2 * (inset + strokeWidth + Math.round(w * 0.05)),
-      Math.round(h * 0.52),
-    );
-    const valueY = Math.round(h * 0.64) + 13;
-    valueText = `<text x="${w / 2}" y="${valueY}" text-anchor="middle" dominant-baseline="central" fill="${color}" font-family="Arial, sans-serif" font-size="${valueFontSize}" font-weight="bold">${value}</text>`;
-  }
-
-  const content = labelText + valueText;
-
-  return (
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">` +
-    `<rect x="0" y="0" width="${w}" height="${h}" rx="${radius}" fill="${BOX_BACKGROUND}"/>` +
-    `<rect x="${inset}" y="${inset}" width="${w - 2 * inset}" height="${h - 2 * inset}" rx="${Math.max(0, radius - inset)}" fill="none" stroke="${color}" stroke-width="${strokeWidth}"/>` +
-    `${bindingMissing ? applyBindingWarning(content, { width: w, height: h }) : content}</svg>`
-  );
 }
 
 /**
@@ -476,12 +419,14 @@ export class SetupTractionDialSurface {
     if (!ctx.action.isDial()) return;
 
     const setting = ctx.dial.setting;
-    const boxSvg = renderTractionDialBoxSvg({
+    const boxSvg = renderDialBox({
       width: 200,
       height: 100,
-      color: MODE_COLOR[setting],
       abbr: MODE_ABBR[setting],
       value: formatDialValue(setting, this.host.getTelemetry()),
+      colors: resolveDialBoxColors(ctx.dial.colors, MODE_COLOR[setting]),
+      glow: { enabled: ctx.dial.glow, width: ctx.dial.glowWidth },
+      identityLabelScale: 0.24,
       bindingMissing: this.computeBindingMissing(ctx.dial),
     });
     const feedback: DeckFeedbackPayload = { box: svgToDataUri(boxSvg) };
