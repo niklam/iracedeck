@@ -424,6 +424,81 @@ describe("Keyboard Service", () => {
     });
   });
 
+  describe("sendKeySequence", () => {
+    it("should return false when no sequence sender is configured", async () => {
+      const keyboard = initializeKeyboard();
+
+      const result = await keyboard.sendKeySequence([{ key: "f1", code: "F1" }]);
+
+      expect(result).toBe(false);
+    });
+
+    it("should return false for an empty sequence", async () => {
+      const mockSequenceSender = vi.fn();
+      const keyboard = initializeKeyboard(undefined, undefined, undefined, undefined, mockSequenceSender);
+
+      const result = await keyboard.sendKeySequence([]);
+
+      expect(result).toBe(false);
+      expect(mockSequenceSender).not.toHaveBeenCalled();
+    });
+
+    it("should send one chord per combination, modifiers first", async () => {
+      const mockSequenceSender = vi.fn();
+      const keyboard = initializeKeyboard(undefined, undefined, undefined, undefined, mockSequenceSender);
+
+      const result = await keyboard.sendKeySequence([
+        { key: "f1", code: "F1" },
+        { key: "f4", code: "F4" },
+      ]);
+
+      expect(result).toBe(true);
+      // F1 = 0x3b, F4 = 0x3e (PS/2 Set 1)
+      expect(mockSequenceSender).toHaveBeenCalledWith([[0x3b], [0x3e]], 0);
+    });
+
+    it("should include modifier scan codes before the main key", async () => {
+      const mockSequenceSender = vi.fn();
+      const keyboard = initializeKeyboard(undefined, undefined, undefined, undefined, mockSequenceSender);
+
+      await keyboard.sendKeySequence([{ key: "f1", code: "F1", modifiers: ["ctrl"] }]);
+
+      // ctrl = 0x1d, F1 = 0x3b
+      expect(mockSequenceSender).toHaveBeenCalledWith([[0x1d, 0x3b]], 0);
+    });
+
+    it("should forward an explicit holdMs", async () => {
+      const mockSequenceSender = vi.fn();
+      const keyboard = initializeKeyboard(undefined, undefined, undefined, undefined, mockSequenceSender);
+
+      await keyboard.sendKeySequence([{ key: "f1", code: "F1" }], 16);
+
+      expect(mockSequenceSender).toHaveBeenCalledWith([[0x3b]], 16);
+    });
+
+    it("should skip (not fall back to keysender) when a combination has no event.code", async () => {
+      const mockSequenceSender = vi.fn();
+      const keyboard = initializeKeyboard(undefined, undefined, undefined, undefined, mockSequenceSender);
+
+      const result = await keyboard.sendKeySequence([{ key: "f1" }, { key: "f4", code: "F4" }]);
+
+      expect(result).toBe(false);
+      expect(mockSequenceSender).not.toHaveBeenCalled();
+      expect(mockSendKey).not.toHaveBeenCalled();
+    });
+
+    it("should skip when a combination's event.code has no scan code", async () => {
+      const mockSequenceSender = vi.fn();
+      const keyboard = initializeKeyboard(undefined, undefined, undefined, undefined, mockSequenceSender);
+
+      const result = await keyboard.sendKeySequence([{ key: "f1", code: "TotallyNotAKey" }]);
+
+      expect(result).toBe(false);
+      expect(mockSequenceSender).not.toHaveBeenCalled();
+      expect(mockSendKey).not.toHaveBeenCalled();
+    });
+  });
+
   describe("_resetKeyboard", () => {
     it("should reset the keyboard service state", () => {
       initializeKeyboard();

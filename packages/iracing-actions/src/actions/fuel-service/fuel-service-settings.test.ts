@@ -135,4 +135,35 @@ describe("fuel-service settings", () => {
       expect(resolveDisplayUnits("k", undefined)).toBe(1);
     });
   });
+
+  describe("showBlackBox (#818)", () => {
+    it("should default to false", () => {
+      expect(parseFuelServiceSettings({}).showBlackBox).toBe(false);
+    });
+
+    it("should accept a real boolean", () => {
+      expect(parseFuelServiceSettings({ showBlackBox: true }).showBlackBox).toBe(true);
+    });
+
+    it('should treat the string "true" as true', () => {
+      expect(parseFuelServiceSettings({ showBlackBox: "true" }).showBlackBox).toBe(true);
+    });
+
+    it('should treat the string "false" as false', () => {
+      expect(parseFuelServiceSettings({ showBlackBox: "false" }).showBlackBox).toBe(false);
+    });
+
+    it("should not let a malformed value reset the sibling settings", () => {
+      // A corrupt/foreign persisted value must reset ONLY this field. Without
+      // .catch(false) the whole object parse fails and mode falls back to
+      // toggle-fuel-fill — the release/2.0 settings-contamination failure mode.
+      for (const malformed of [123, {}, null, ["x"]]) {
+        const parsed = parseFuelServiceSettings({ mode: "reduce-fuel", amount: 5, unit: "l", showBlackBox: malformed });
+
+        expect(parsed.showBlackBox).toBe(false);
+        expect(parsed.mode).toBe("reduce-fuel");
+        expect(parsed.amount).toBe(5);
+      }
+    });
+  });
 });

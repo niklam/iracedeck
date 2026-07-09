@@ -27,6 +27,8 @@ import {
   keybindKeys,
 } from "@iracedeck/deck-core";
 
+import { BLACK_BOX_GLOBAL_KEYS } from "../shared/black-box.js";
+
 const api: CommDescriptor = { method: "api" };
 const chat: CommDescriptor = { method: "chat" };
 
@@ -94,19 +96,7 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
   }),
 
   "black-box-selector": entry("mode", {
-    direct: keybindBy("blackBox", {
-      "lap-timing": "blackBoxLapTiming",
-      standings: "blackBoxStandings",
-      relative: "blackBoxRelative",
-      fuel: "blackBoxFuel",
-      tires: "blackBoxTires",
-      "tire-info": "blackBoxTireInfo",
-      "pit-stop": "blackBoxPitStop",
-      "in-car": "blackBoxInCar",
-      mirror: "blackBoxMirror",
-      radio: "blackBoxRadio",
-      weather: "blackBoxWeather",
-    }),
+    direct: keybindBy("blackBox", BLACK_BOX_GLOBAL_KEYS),
     next: keybind("blackBoxCycleNext"),
     previous: keybind("blackBoxCyclePrevious"),
   }),

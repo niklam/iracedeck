@@ -136,6 +136,14 @@ override async onWillDisappear(ev: IDeckWillDisappearEvent<Settings>): Promise<v
 - Cycle action with global key bindings: `packages/iracing-actions/src/actions/splits-delta-cycle/splits-delta-cycle.ts`
 - Long-press (key hold): `packages/iracing-actions/src/actions/look-direction/look-direction.ts`
 
+## Atomic key sequences — `sendKeySequence` / `tapSequence` (#818)
+
+Some iRacing interactions need two *different* keys pressed back to back with no observable intermediate state. Showing a specific black box is the canonical case: telemetry never reports which box is open and a black-box hotkey is a **toggle**, so the only way to guarantee the target box ends up visible is to press a different box first and then the target. Two ordinary `tapBinding` calls would block the JS main thread for ~200 ms (each `sendScanKeys` holds `Sleep(100)` natively) and visibly flash the priming box.
+
+`getKeyboard().sendKeySequence(combinations, holdMs?)` and its binding-aware wrapper `getBindingDispatcher().tapSequence(settingKeys, holdMs?)` send the whole sequence in a single native `SendInput` batch. Both **return `false` and send nothing** rather than degrading, when any key is unbound, is a SimHub role, or lacks a scan-code mapping — a non-atomic sequence would reintroduce the very flicker the API exists to remove. Callers treat `false` as "skip", and surface it in the PI rather than failing silently.
+
+Actions reach it through `this.tapBindingSequence(settingKeys, holdMs?)`. The iRacing policy (which box to prime with, and the `holdMs` tuning constant) lives in `packages/iracing-actions/src/shared/black-box.ts`, not in `deck-core`.
+
 ## Direct Keyboard Access (Plugin-Level Only)
 
 Direct `getKeyboard()` calls are reserved for plugin initialization code and infrastructure,
@@ -147,6 +155,7 @@ import { getKeyboard, type KeyboardKey, type KeyboardModifier, type KeyCombinati
 await getKeyboard().sendKeyCombination(combination);       // tap
 await getKeyboard().pressKeyCombination(combination);      // hold
 await getKeyboard().releaseKeyCombination(combination);    // release
+await getKeyboard().sendKeySequence([comboA, comboB]);     // atomic multi-chord sequence (#818)
 ```
 
 ## Plugin Setup for Keyboard Support
@@ -172,6 +181,7 @@ initializeKeyboard(
   (scanCodes) => native.sendScanKeys(scanCodes),      // tap (press + release)
   (scanCodes) => native.sendScanKeyDown(scanCodes),    // press only (key hold)
   (scanCodes) => native.sendScanKeyUp(scanCodes),      // release only (key release)
+  (chords, holdMs) => native.sendScanKeySequence(chords, holdMs), // atomic multi-chord sequence (#818)
 );
 
 initWindowFocus(adapter.createLogger("WindowFocus"), () => native.focusIRacingWindow());
@@ -248,7 +258,7 @@ When modifying keyboard functionality, changes must be synchronized across all l
 1. **Native addon** (`iracing-native/src/addon.cc`) — C++ implementation + register in `Init()`
 2. **TS wrapper** (`iracing-native/src/index.ts`) — must mirror every native export
 3. **Keyboard service** (`deck-core/src/keyboard-service.ts`) — callback types, `IKeyboardService` interface, `KeyboardService` implementation, `initializeKeyboard()` signature
-4. **Plugin init** (all plugin `plugin.ts` files: `iracing-plugin-stream-deck`, `iracing-plugin-mirabox`) — `initializeKeyboard()` call must pass all callbacks
-5. **Tests** (`keyboard-service.test.ts`) — must cover all paths (scan code + keysender fallback)
+4. **Plugin init** (all plugin `plugin.ts` files: `iracing-plugin-stream-deck`, `iracing-plugin-mirabox`, `iracing-plugin-ulanzi`) — `initializeKeyboard()` call must pass all callbacks
+5. **Tests** (`packages/iracing-plugin-stream-deck/src/shared/keyboard-service.test.ts`) — must cover all paths (scan code + keysender fallback + sequence skip)
 6. **Rules** (`.claude/rules/keyboard-shortcuts.md`, `.claude/rules/plugin-structure.md`) — must reflect the current API
 7. **Package CLAUDE.md** (`iracing-native/CLAUDE.md`) — must document all native keyboard functions

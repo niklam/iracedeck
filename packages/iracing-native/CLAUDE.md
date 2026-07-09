@@ -58,7 +58,7 @@ Internally, a static C++ helper does the `FindWindowA(NULL, "iRacing.com Simulat
 
 ## Keyboard Input Functions
 
-The addon provides three keyboard functions using Windows `SendInput()` with `KEYEVENTF_SCANCODE` for layout-independent physical key sending.
+The addon provides four keyboard functions using Windows `SendInput()` with `KEYEVENTF_SCANCODE` for layout-independent physical key sending.
 
 All functions accept an array of PS/2 scan codes (modifiers first, then main key). Extended keys (arrows, delete, etc.) use bit `0x100` to signal `KEYEVENTF_EXTENDEDKEY`.
 
@@ -71,7 +71,14 @@ All functions accept an array of PS/2 scan codes (modifiers first, then main key
 ### `sendScanKeyUp(scanCodes: number[])`
 **Release only** — releases each scan code in reverse order without pressing. No sleep. Should be called after `sendScanKeyDown()` to release held keys.
 
-All three delegate to a static C++ `sendScanKey(scanCode, isDown)` that sends one key event via `SendInput()`, deriving `wVk` from the scan code with `MapVirtualKeyW()` for compatibility.
+### `sendScanKeySequence(chords: number[][], holdMs?: number)`
+**Atomic sequence** — sends several distinct chords in order, in one call (issue #818). Each chord is its own scan-code array.
+
+With `holdMs = 0` (the default) every down/up event of every chord is emitted in a **single `SendInput` batch** with no `Sleep`, so the target application normally consumes the whole sequence within one frame and no intermediate state is rendered. This is what lets iRaceDeck switch black boxes (press Lap Timing, then Fuel) without the priming box flickering — a black-box hotkey is a toggle, and telemetry never reports which box is shown, so a lone press cannot guarantee the target ends up visible. The batch guarantees delivery *order*, not that the target drains its whole input queue before rendering: iRacing was measured to swallow the intermediate box on nearly every press, with a rare single-frame flash when the events straddle a frame boundary.
+
+With `holdMs > 0` it falls back to per-chord press → `Sleep(holdMs)` → release, the same shape as `sendScanKeys`, for a target that samples keyboard state per frame and would miss a zero-duration press. That `Sleep` runs on the JS main thread, so `holdMs` is read as a double and clamped to `[0, kMaxSequenceHoldMs]` (**50 ms**): the only purpose of a hold is to survive one or two frames (~16 ms each at 60 Hz), and the clamp caps a two-chord sequence at ~100 ms — the same stall `sendScanKeys` already imposes on every tap. A negative JS value can't wrap into a multi-second stall either. iRacing was verified to honour `holdMs = 0`, so the held path is unused in practice.
+
+All four build their events with a static C++ `makeScanKeyInput(scanCode, isDown)` that derives `wVk` from the scan code with `MapVirtualKeyW()` for compatibility. The first three send one event per `SendInput()` call via `sendScanKey(scanCode, isDown)`; `sendScanKeySequence` at `holdMs = 0` batches every event into one `SendInput()` call instead.
 
 ## Clipboard Functions
 

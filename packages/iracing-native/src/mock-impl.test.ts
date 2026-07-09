@@ -149,6 +149,16 @@ describe("IRacingNativeMock", () => {
       expect(() => mock.sendScanKeyUp([0x1e])).not.toThrow();
       expect(console.debug).toHaveBeenCalled();
     });
+
+    it("sendScanKeySequence should not throw", () => {
+      expect(() => mock.sendScanKeySequence([[0x3b], [0x3e]])).not.toThrow();
+      expect(console.debug).toHaveBeenCalled();
+    });
+
+    it("sendScanKeySequence should accept an explicit holdMs", () => {
+      expect(() => mock.sendScanKeySequence([[0x3b], [0x3e]], 16)).not.toThrow();
+      expect(console.debug).toHaveBeenCalledWith(expect.stringContaining("16"));
+    });
   });
 
   describe("getElevationStatus (mock)", () => {

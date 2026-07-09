@@ -60,6 +60,35 @@
 					Applies to button presses only — a fuel dial always enables fueling when turned.
 				</div>
 			</div>
+
+			<sdpi-item label="Show black box">
+				<sdpi-checkbox
+					id="show-black-box"
+					setting="showBlackBox"
+					label="Show the Fuel black box when this key is pressed"
+				></sdpi-checkbox>
+			</sdpi-item>
+			<div class="ird-supporting-text">
+				Lets you see the value change in iRacing — including the autofuel lap margin,
+				which no telemetry reports. iRacing never says which black box is open, so
+				iRaceDeck switches through another box first; both keypresses are sent
+				together, so you effectively never see it.
+			</div>
+			<%
+			// Prime candidates = the 11 direct black boxes only. The two cycle keys are
+			// excluded deliberately: cycling could land on the target box itself, and the
+			// target press would then toggle it back OFF. This mirrors BLACK_BOX_GLOBAL_KEYS
+			// in iracing-actions/src/shared/black-box.ts, which the runtime resolver uses.
+			var __primeCandidates = require('./data/key-bindings.json').blackBox
+				.filter(function (b) { return b.id !== 'cycleNext' && b.id !== 'cyclePrevious'; })
+				.map(function (b) { return b.setting; });
+			%>
+			<ird-black-box-caveat
+				enabled-setting="showBlackBox"
+				target="blackBoxFuel"
+				candidates='<%= JSON.stringify(__primeCandidates) %>'
+				message="Showing the black box needs keyboard bindings for the Fuel black box and at least one other black box. Set them under Related Key Bindings. The fuel value still changes without them."
+			></ird-black-box-caveat>
 		</div>
 
 		<!-- Dial settings — shown only when this instance is a dial (#759). -->
@@ -169,8 +198,21 @@
 		<%- include('section-header', { title: 'Global Settings' }) %>
 
 		<div id="key-bindings-section" class="hidden">
+			<%
+			var __kb = require('./data/key-bindings.json');
+			// The two black-box rows are here so this PI SEEDS their defaults (#818):
+			// ird-key-binding writes its `default` into global settings the first time it
+			// renders, and black-box-selector.ejs used to be the only template that did.
+			// Without this, "Show black box" would silently do nothing for anyone who
+			// never placed a Black Box Selector key.
+			var __blackBoxRows = __kb.blackBox
+				.filter(function (b) { return b.id === 'lapTiming' || b.id === 'fuel'; })
+				.map(function (b) {
+					return { id: b.id, label: 'Black Box: ' + b.label, default: b.default, setting: b.setting };
+				});
+			%>
 			<%- include('global-key-bindings', {
-				keyBindings: require('./data/key-bindings.json').fuelService
+				keyBindings: __kb.fuelService.concat(__blackBoxRows)
 			}) %>
 		</div>
 
@@ -251,12 +293,40 @@
 					}, 100);
 				}
 
+				const showBlackBox = document.getElementById("show-black-box");
+
+				if (showBlackBox) {
+					const reapply = () => updateVisibility(currentMode);
+					showBlackBox.addEventListener("change", reapply);
+					showBlackBox.addEventListener("input", reapply);
+
+					// Polling fallback — sdpi component events can be unreliable.
+					let lastChecked = isShowBlackBoxOn();
+					setInterval(() => {
+						const checked = isShowBlackBoxOn();
+						if (checked !== lastChecked) {
+							lastChecked = checked;
+							reapply();
+						}
+					}, 100);
+				}
+
 				if ((await resolveController()) === "Encoder") {
 					applyDialView();
 				}
 			}
 
+			// Remembered so the Show-black-box checkbox can re-run visibility on its own.
+			let currentMode = "toggle-fuel-fill";
+
+			function isShowBlackBoxOn() {
+				const el = document.getElementById("show-black-box");
+				return !!el && (el.value === true || el.value === "true");
+			}
+
 			function updateVisibility(mode) {
+				currentMode = mode;
+
 				const fuelSettings = document.getElementById("fuel-settings");
 				const keyBindings = document.getElementById("key-bindings-section");
 				const fuelingOnChange = document.getElementById("fueling-on-change-section");
@@ -273,7 +343,9 @@
 					fuelingOnChange?.classList.add("hidden");
 				}
 
-				if (KEYBOARD_MODES.includes(mode)) {
+				// The black-box keys live in this accordion too (#818), so an API mode with
+				// Show black box ticked still needs it visible.
+				if (KEYBOARD_MODES.includes(mode) || isShowBlackBoxOn()) {
 					keyBindings?.classList.remove("hidden");
 				} else {
 					keyBindings?.classList.add("hidden");

@@ -277,6 +277,25 @@ export class IRacingNative {
     }
   }
 
+  /**
+   * Send a sequence of distinct key chords in one native call (issue #818).
+   *
+   * Chords fire in order; each is an array of PS/2 scan codes (modifiers first,
+   * then main key). With `holdMs === 0` the whole sequence goes out as a single
+   * atomic SendInput batch with no sleep, so the target consumes every event in
+   * the same frame — no intermediate state is ever rendered.
+   *
+   * @param chords - Array of scan code arrays
+   * @param holdMs - Per-chord hold in ms (default 0 = atomic batch, no sleep)
+   */
+  sendScanKeySequence(chords: number[][], holdMs = 0): void {
+    if (addon) {
+      addon.sendScanKeySequence(chords, holdMs);
+    } else {
+      this.getMock().sendScanKeySequence(chords, holdMs);
+    }
+  }
+
   // ============================================================================
   // Clipboard
   // ============================================================================

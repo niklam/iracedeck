@@ -30,6 +30,8 @@ import tiresIconSvg from "@iracedeck/icons/black-box-selector/tires.svg";
 import weatherIconSvg from "@iracedeck/icons/black-box-selector/weather.svg";
 import z from "zod";
 
+import { BLACK_BOX_GLOBAL_KEYS } from "../../shared/black-box.js";
+
 const DIRECT_ICONS: Record<string, string> = {
   "lap-timing": lapTimingIconSvg,
   standings: standingsIconSvg,
@@ -69,23 +71,10 @@ const BLACK_BOX_TITLE_TEXT: Record<string, string> = {
 };
 
 /**
- * @internal Exported for testing
- *
- * Mapping from blackBox setting values (kebab-case) to global settings keys
+ * @internal Re-exported for the existing tests. The map itself lives in
+ * `shared/black-box.ts`, which is also what the #612 comms catalog imports.
  */
-export const BLACK_BOX_GLOBAL_KEYS: Record<string, string> = {
-  "lap-timing": "blackBoxLapTiming",
-  standings: "blackBoxStandings",
-  relative: "blackBoxRelative",
-  fuel: "blackBoxFuel",
-  tires: "blackBoxTires",
-  "tire-info": "blackBoxTireInfo",
-  "pit-stop": "blackBoxPitStop",
-  "in-car": "blackBoxInCar",
-  mirror: "blackBoxMirror",
-  radio: "blackBoxRadio",
-  weather: "blackBoxWeather",
-};
+export { BLACK_BOX_GLOBAL_KEYS };
 
 const BlackBoxSelectorSettings = CommonSettings.extend({
   mode: z.enum(["direct", "next", "previous"]).default("direct"),
