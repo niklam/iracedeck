@@ -287,7 +287,7 @@ Dials are currently Stream Deck+ only — the action can't be placed on Mirabox 
 
 #### Setting: Component
 
-The chassis component the dial controls. Each renders as a color-coded "dash box": a short label on top and the live value as a large number. Weight jackers and the View sub-modes aren't offered as rotation settings.
+The chassis component the dial controls. Each renders as a color-coded "dash box": a short label on top and the live value as a large number. Each setting has a built-in accent color, but you can override the border, label, value, and background colors in the **Dash Box Appearance** section of the dial settings. Weight jackers and the View sub-modes aren't offered as rotation settings.
 
 | Component | Label | Telemetry source | Shown as |
 |---|---|---|---|

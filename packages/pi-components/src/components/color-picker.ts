@@ -44,8 +44,20 @@ const HEX_REGEX = /^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 /** Regex for normalized stored hex (lowercase, 6 digits, with #) */
 const NORMALIZED_HEX_REGEX = /^#[0-9a-f]{6}$/;
 
-/** Slot types that share a recent‑color history. */
-const KNOWN_SLOTS = ["backgroundColor", "textColor", "graphic1Color", "graphic2Color", "borderColor"] as const;
+/**
+ * Slot types that share a recent‑color history. `labelColor` / `valueColor`
+ * are the Setup dial dash-box text slots (issue #811); the dial's border and
+ * background reuse the existing `borderColor` / `backgroundColor` slots.
+ */
+const KNOWN_SLOTS = [
+  "backgroundColor",
+  "textColor",
+  "graphic1Color",
+  "graphic2Color",
+  "borderColor",
+  "labelColor",
+  "valueColor",
+] as const;
 type SlotType = (typeof KNOWN_SLOTS)[number];
 
 /** Fixed presets always rendered (after the optional icon‑default slot). */

@@ -102,6 +102,10 @@
 				decrease key bindings must be set below.
 			</div>
 			<% } %>
+
+			<% if (locals.platform?.features?.dialFeedback !== false) { %>
+			<%- include('dial-appearance') %>
+			<% } %>
 		</div>
 
 		<!-- Key-icon appearance — keypad only (a dial has no key icon). -->

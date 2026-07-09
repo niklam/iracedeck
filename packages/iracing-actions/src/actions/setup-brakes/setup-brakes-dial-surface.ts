@@ -10,7 +10,6 @@
  * toggle ABS).
  */
 import {
-  applyBindingWarning,
   classifyDialRelease,
   type DeckFeedbackPayload,
   type DeckTriggerDescription,
@@ -21,6 +20,7 @@ import {
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 
+import { renderDialBox, resolveDialBoxColors } from "../../shared/dial-box.js";
 import { renderDialNameIcon } from "../../shared/dial-name-icon.js";
 import { formatViewValue, type ViewSettingId } from "../../shared/setup-view.js";
 import {
@@ -31,9 +31,6 @@ import {
   type SetupBrakesDirection,
   type SetupBrakesSettings,
 } from "./setup-brakes-settings.js";
-
-/** Background behind the dash box (the device screen is black). */
-const BOX_BACKGROUND = "#0d0d0d";
 
 /**
  * Minimum gap (ms) between change-driven feedback pushes. A fast spin moves the
@@ -69,8 +66,8 @@ const MODE_ABBR: Record<SetupBrakesDialSetting, string> = {
 /**
  * Per-setting accent color for the dash box's border, label, and value. These are
  * semantic (a glance distinguishes one configured dial from another, and yellow
- * ABS follows the sim-dashboard convention) and are intentionally not exposed as
- * user color overrides.
+ * ABS follows the sim-dashboard convention) and serve as the DEFAULT border,
+ * label, and value color — each independently overridable per dial (issue #811).
  */
 const MODE_COLOR: Record<SetupBrakesDialSetting, string> = {
   "brake-bias": "#e74c3c",
@@ -101,61 +98,6 @@ const MODE_LABEL: Record<SetupBrakesDialSetting, string> = {
  */
 export function formatDialValue(setting: SetupBrakesDialSetting, telemetry: TelemetryData | null): string {
   return formatViewValue(VIEW_ID[setting], telemetry).replace(/%$/, "");
-}
-
-/**
- * Bold Arial digits + "." average ~0.6 em wide; shrink the value font so the
- * number fits the box width, capped so short values (e.g. "3") stay sensible.
- */
-function fitValueFontSize(text: string, maxWidth: number, cap: number): number {
-  const approx = maxWidth / Math.max(1, text.length * 0.6);
-
-  return Math.round(Math.min(cap, approx));
-}
-
-/**
- * @internal Exported for testing
- *
- * Renders the self-contained "dash box" SVG: a black rounded background, a
- * rounded border in the setting's accent color, the abbreviation label on top,
- * and the value as a large number (auto-shrunk to fit the box). Used for the
- * dial touch-strip pixmap. When the rotation binding is missing the label +
- * value dim under the centered #612 warning triangle (the same convention as
- * the Fuel Service strip).
- */
-export function renderBrakeDialBoxSvg(args: {
-  width: number;
-  height: number;
-  color: string;
-  abbr: string;
-  value: string;
-  bindingMissing?: boolean;
-}): string {
-  const { width: w, height: h, color, abbr, value, bindingMissing = false } = args;
-  const minSide = Math.min(w, h);
-  const radius = Math.round(minSide * 0.16);
-  const inset = Math.max(5, Math.round(minSide * 0.045));
-  const strokeWidth = Math.max(5, Math.round(minSide * 0.05));
-  const labelFontSize = Math.round(minSide * 0.15);
-  const labelY = Math.round(h * 0.28);
-  const valueFontSize = fitValueFontSize(
-    value,
-    w - 2 * (inset + strokeWidth + Math.round(w * 0.05)),
-    Math.round(h * 0.52),
-  );
-  // Nudge the value down from the 0.64 anchor so it sits lower in the box.
-  const valueY = Math.round(h * 0.64) + 13;
-
-  const content =
-    `<text x="${w / 2}" y="${labelY}" text-anchor="middle" dominant-baseline="central" fill="${color}" font-family="Arial, sans-serif" font-size="${labelFontSize}" font-weight="bold">${abbr}</text>` +
-    `<text x="${w / 2}" y="${valueY}" text-anchor="middle" dominant-baseline="central" fill="${color}" font-family="Arial, sans-serif" font-size="${valueFontSize}" font-weight="bold">${value}</text>`;
-
-  return (
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">` +
-    `<rect x="0" y="0" width="${w}" height="${h}" rx="${radius}" fill="${BOX_BACKGROUND}"/>` +
-    `<rect x="${inset}" y="${inset}" width="${w - 2 * inset}" height="${h - 2 * inset}" rx="${Math.max(0, radius - inset)}" fill="none" stroke="${color}" stroke-width="${strokeWidth}"/>` +
-    `${bindingMissing ? applyBindingWarning(content, { width: w, height: h }) : content}</svg>`
-  );
 }
 
 /**
@@ -478,12 +420,12 @@ export class SetupBrakesDialSurface {
     if (!ctx.action.isDial()) return;
 
     const setting = ctx.settings.dial.setting;
-    const boxSvg = renderBrakeDialBoxSvg({
+    const boxSvg = renderDialBox({
       width: 200,
       height: 100,
-      color: MODE_COLOR[setting],
       abbr: MODE_ABBR[setting],
       value: formatDialValue(setting, this.host.getTelemetry()),
+      colors: resolveDialBoxColors(ctx.settings.dial.colors, MODE_COLOR[setting]),
       bindingMissing: this.computeBindingMissing(ctx.settings),
     });
     const feedback: DeckFeedbackPayload = { box: svgToDataUri(boxSvg) };

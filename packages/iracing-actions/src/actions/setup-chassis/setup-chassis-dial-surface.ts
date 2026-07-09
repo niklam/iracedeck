@@ -14,7 +14,6 @@
  * seven diff/ARB/power-steering settings show the live value.
  */
 import {
-  applyBindingWarning,
   classifyDialRelease,
   type DeckFeedbackPayload,
   type DeckTriggerDescription,
@@ -26,10 +25,10 @@ import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 import z from "zod";
 
+import { dialAppearanceFields, renderDialBox, resolveDialBoxColors } from "../../shared/dial-box.js";
 import { renderDialNameIcon } from "../../shared/dial-name-icon.js";
 import { formatViewValue, type ViewSettingId } from "../../shared/setup-view.js";
 
-const BOX_BACKGROUND = "#0d0d0d";
 const CHANGE_RENDER_MIN_INTERVAL_MS = 100;
 
 export const ROTATION_SETTINGS = [
@@ -95,6 +94,8 @@ export const DialSettings = z
     longPressAction: z.enum(GESTURE_ACTIONS).default("none"),
     tapAction: z.enum(GESTURE_ACTIONS).default("none"),
     longTouchAction: z.enum(GESTURE_ACTIONS).default("none"),
+    // Dash-box appearance overrides (colors, issue #811).
+    ...dialAppearanceFields,
   })
   .prefault({});
 
@@ -186,55 +187,6 @@ export function formatDialValue(setting: SetupChassisDialSetting, telemetry: Tel
   if (!viewId) return "";
 
   return formatViewValue(viewId, telemetry).replace(/%$/, "");
-}
-
-function fitValueFontSize(text: string, maxWidth: number, cap: number): number {
-  const approx = maxWidth / Math.max(1, text.length * 0.6);
-
-  return Math.round(Math.min(cap, approx));
-}
-
-/** @internal Exported for testing */
-export function renderChassisDialBoxSvg(args: {
-  width: number;
-  height: number;
-  color: string;
-  abbr: string;
-  value: string;
-  bindingMissing?: boolean;
-}): string {
-  const { width: w, height: h, color, abbr, value, bindingMissing = false } = args;
-  const minSide = Math.min(w, h);
-  const radius = Math.round(minSide * 0.16);
-  const inset = Math.max(5, Math.round(minSide * 0.045));
-  const strokeWidth = Math.max(5, Math.round(minSide * 0.05));
-  const identityOnly = value === "";
-
-  const labelFontSize = identityOnly ? Math.round(minSide * 0.22) : Math.round(minSide * 0.15);
-  const labelY = identityOnly ? Math.round(h * 0.5) : Math.round(h * 0.28);
-
-  const labelText = `<text x="${w / 2}" y="${labelY}" text-anchor="middle" dominant-baseline="central" fill="${color}" font-family="Arial, sans-serif" font-size="${labelFontSize}" font-weight="bold">${abbr}</text>`;
-
-  let valueText = "";
-
-  if (!identityOnly) {
-    const valueFontSize = fitValueFontSize(
-      value,
-      w - 2 * (inset + strokeWidth + Math.round(w * 0.05)),
-      Math.round(h * 0.52),
-    );
-    const valueY = Math.round(h * 0.64) + 13;
-    valueText = `<text x="${w / 2}" y="${valueY}" text-anchor="middle" dominant-baseline="central" fill="${color}" font-family="Arial, sans-serif" font-size="${valueFontSize}" font-weight="bold">${value}</text>`;
-  }
-
-  const content = labelText + valueText;
-
-  return (
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">` +
-    `<rect x="0" y="0" width="${w}" height="${h}" rx="${radius}" fill="${BOX_BACKGROUND}"/>` +
-    `<rect x="${inset}" y="${inset}" width="${w - 2 * inset}" height="${h - 2 * inset}" rx="${Math.max(0, radius - inset)}" fill="none" stroke="${color}" stroke-width="${strokeWidth}"/>` +
-    `${bindingMissing ? applyBindingWarning(content, { width: w, height: h }) : content}</svg>`
-  );
 }
 
 /** @internal Exported for testing */
@@ -471,12 +423,13 @@ export class SetupChassisDialSurface {
     if (!ctx.action.isDial()) return;
 
     const setting = ctx.dial.setting;
-    const boxSvg = renderChassisDialBoxSvg({
+    const boxSvg = renderDialBox({
       width: 200,
       height: 100,
-      color: MODE_COLOR[setting],
       abbr: MODE_ABBR[setting],
       value: formatDialValue(setting, this.host.getTelemetry()),
+      colors: resolveDialBoxColors(ctx.dial.colors, MODE_COLOR[setting]),
+      identityLabelScale: 0.22,
       bindingMissing: this.computeBindingMissing(ctx.dial),
     });
     const feedback: DeckFeedbackPayload = { box: svgToDataUri(boxSvg) };

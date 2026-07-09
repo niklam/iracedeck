@@ -1,0 +1,28 @@
+<!--
+  Dial Dash-Box Appearance (issue #811)
+
+  Per-dial-instance colors for the Stream Deck+ touch-strip dash box shared by
+  the Setup dial surfaces. Every color picker starts "not set" (empty), meaning
+  inherit the setting's accent (border/label/value) or the dark default
+  (background).
+
+  Include this inside the `#dial-settings` block, gated on the `dialFeedback`
+  feature — the touch strip (and therefore these controls) is Elgato-only.
+-->
+<%- include('accordion', {
+  title: 'Dash Box Appearance',
+  open: false,
+  content:
+    '<sdpi-item label="Border Color">' +
+      '<ird-color-picker setting="dial.colors.borderColor"></ird-color-picker>' +
+    '</sdpi-item>' +
+    '<sdpi-item label="Label Color">' +
+      '<ird-color-picker setting="dial.colors.labelColor"></ird-color-picker>' +
+    '</sdpi-item>' +
+    '<sdpi-item label="Value Color">' +
+      '<ird-color-picker setting="dial.colors.valueColor"></ird-color-picker>' +
+    '</sdpi-item>' +
+    '<sdpi-item label="Background Color">' +
+      '<ird-color-picker setting="dial.colors.backgroundColor"></ird-color-picker>' +
+    '</sdpi-item>'
+}) %>

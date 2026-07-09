@@ -169,7 +169,7 @@ Dials are currently Stream Deck+ only — the action can't be placed on Mirabox 
 
 #### Setting: Setting
 
-The brake value the dial controls. Each setting renders as a color-coded "dash box": a short label on top and the live value as a large number. The `%` is dropped (bias values read as percentages). The label and color are fixed per setting so multiple dials stay distinguishable at a glance.
+The brake value the dial controls. Each setting renders as a color-coded "dash box": a short label on top and the live value as a large number. The `%` is dropped (bias values read as percentages). Each setting has a built-in accent color so multiple dials stay distinguishable at a glance; you can override the border, label, value, and background colors in the **Dash Box Appearance** section of the dial settings.
 
 | Setting | Label | Color | Telemetry source | Shown as |
 |---|---|---|---|---|
