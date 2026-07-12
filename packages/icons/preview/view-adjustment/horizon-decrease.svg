@@ -1,7 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 65">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 51.3 51.3">
   <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"title":{"text":"HORIZON\nDOWN"},"border":{"color":"#3a5a6a"}}</desc>
   <defs>
-    <linearGradient id="dgl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#24425e"/><stop offset="1" stop-color="#0d1f30"/></linearGradient><linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.55"/></linearGradient><linearGradient id="minusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f47c6a"/><stop offset="1" stop-color="#c0392b"/></linearGradient>
+    <linearGradient id="dgl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#24425e"/><stop offset="1" stop-color="#0d1f30"/></linearGradient><linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.55"/></linearGradient>
   </defs>
   <g transform="translate(-22.2 -8.2)">
 
@@ -10,7 +10,6 @@
     <line x1="26.4" y1="42" x2="69.6" y2="42" stroke="#4fc3f7" stroke-width="3.5" stroke-linecap="round"/>
     <line x1="40" y1="34" x2="46" y2="34" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" opacity="0.85"/>
     <line x1="50" y1="34" x2="56" y2="34" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" opacity="0.85"/>
-    <circle cx="48" cy="34" r="23" fill="none" stroke="url(#mtl)" stroke-width="3.5"/><rect x="66" y="45" width="26" height="26" rx="8" fill="url(#minusG)" stroke="#1a2a3a" stroke-width="3"/>
-    <path d="M72 58h14" stroke="#ffffff" stroke-width="4.5" stroke-linecap="round"/>
+    <circle cx="48" cy="34" r="23" fill="none" stroke="url(#mtl)" stroke-width="3.5"/>
   </g>
 </svg>

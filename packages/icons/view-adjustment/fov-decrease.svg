@@ -1,15 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 83.8 54">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 68 65.3">
   <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"title":{"text":"FOV\nDECREASE"},"border":{"color":"#3a5a6a"}}</desc>
   <defs>
-    <linearGradient id="minusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f47c6a"/><stop offset="1" stop-color="#c0392b"/></linearGradient>
+    
   </defs>
-  <g transform="translate(-10.5 -19.2)">
+  <g transform="translate(-10.5 -3.2)">
 
     <polygon points="16,36 76,22 76,50" fill="{{graphic2Color}}" opacity="0.16"/>
     <line x1="16" y1="36" x2="76" y2="22" stroke="{{graphic2Color}}" stroke-width="3.5" stroke-linecap="round"/>
     <line x1="16" y1="36" x2="76" y2="50" stroke="{{graphic2Color}}" stroke-width="3.5" stroke-linecap="round"/>
     <path d="M36 30 A21 21 0 0 1 36 42" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-    <circle cx="16" cy="36" r="4.5" fill="#ffffff"/><rect x="66" y="45" width="26" height="26" rx="8" fill="url(#minusG)" stroke="{{backgroundColor}}" stroke-width="3"/>
-    <path d="M72 58h14" stroke="#ffffff" stroke-width="4.5" stroke-linecap="round"/>
+    <circle cx="16" cy="36" r="4.5" fill="#ffffff"/>
   </g>
 </svg>
