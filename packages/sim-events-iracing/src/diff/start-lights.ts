@@ -1,34 +1,48 @@
 /**
- * Start-light transitions + pre-start numeric countdown (issues #480 / #673).
+ * Start-light transitions + pre-start numeric countdown (issues #480 / #673 /
+ * #829).
  *
  * Two independent pieces, both driven off `SessionFlags` / `SessionState` /
- * `SessionTimeRemain` and the session YAML helpers:
+ * `SessionTimeRemain` and the session YAML helpers — split into two diff
+ * functions because the translator runs them on opposite sides of the replay
+ * guard (issue #829):
  *
- *   1. **Gantry rising edges.** `StartReady` / `StartGo` each fire once on
- *      their off→on edge (vs `state.lastStartLightBits`). The procedure is
- *      Ready → Set → Go: the heads-up line belongs on `StartReady` (issue
- *      #673 — `StartSet` lights too late to be useful, so nothing is emitted
- *      for it). `StartReady` is standing-only: rolling starts hold the bit
- *      through Warmup→ParadeLaps too (rolling AI capture 2112), where the
- *      rolling-start family (#660) owns the lead-in.
+ *   1. **Gantry rising edges** (`diffStartLights`, post-guard — in-car only).
+ *      `StartReady` / `StartGo` each fire once on their off→on edge (vs
+ *      `state.lastStartLightBits`). The procedure is Ready → Set → Go: the
+ *      heads-up line belongs on `StartReady` (issue #673 — `StartSet` lights
+ *      too late to be useful, so nothing is emitted for it). `StartReady` is
+ *      standing-only: rolling starts hold the bit through Warmup→ParadeLaps
+ *      too (rolling AI capture 2112), where the rolling-start family (#660)
+ *      owns the lead-in.
  *
- *   2. **Numeric countdown.** A `SessionTimeRemain` countdown that runs in the
- *      standing pre-start window — `standing ∧ SessionState ∈ {GetInCar,
- *      Warmup} ∧ ¬(StartSet ∨ StartGo) ∧ SessionTimeRemain>0`. `SessionTimeRemain`
- *      is the real time-to-lights from `GetInCar` onward (issue #666), so the
- *      window opens at `GetInCar` and closes once `StartSet`/`StartGo` light —
- *      the gantry owns the final moment. `StartReady` deliberately does NOT
- *      close the window: the standing capture (2056) shows it's up while the
+ *   2. **Numeric countdown** (`diffStartCountdown`, PRE-guard — issue #829:
+ *      the countdown is the "get in the car" reminder, so it must keep
+ *      running while the user sits in the garage / session screen / replay
+ *      view, where iRacing reports `IsReplayPlaying: true`). A
+ *      `SessionTimeRemain` countdown that runs in the standing pre-start
+ *      window — `standing ∧ SessionState ∈ {GetInCar, Warmup} ∧ ¬(StartSet ∨
+ *      StartGo) ∧ SessionTimeRemain>0`. `SessionTimeRemain` is the real
+ *      time-to-lights from `GetInCar` onward (issue #666), so the window
+ *      opens at `GetInCar` and closes once `StartSet`/`StartGo` light — the
+ *      gantry owns the final moment. `StartReady` deliberately does NOT close
+ *      the window: the standing capture (2056) shows it's up while the
  *      countdown runs. On the first in-window tick the ceiling is seeded from
- *      `SessionTimeRemain` so only thresholds the window can actually reach fire;
- *      each tick emits ONLY the smallest newly-crossed threshold so a dropped
- *      tick never produces a stale burst. AI races are NOT suppressed (issue
- *      #666) — the ceiling seed already keeps a compressed pre-start window from
- *      speaking a number it can't reach.
+ *      `SessionTimeRemain` so only thresholds the window can actually reach
+ *      fire; each tick emits ONLY the smallest newly-crossed threshold so a
+ *      dropped tick never produces a stale burst. AI races are NOT suppressed
+ *      (issue #666) — the ceiling seed already keeps a compressed pre-start
+ *      window from speaking a number it can't reach.
  *
- * First tick after connect / window entry seeds without firing. State resets
- * whenever the diff observes a tick outside the window after the window was
- * active, so a re-grid counts down again.
+ * Both diffs seed silently on their first tick and share no state: the gantry
+ * seeds its edge baseline, and the countdown consumes one silent observation
+ * before its ceiling may anchor (the first `SessionTimeRemain` a fresh state
+ * sees can be a scheduled value an AI session collapses right after —
+ * capture 2056). Countdown state resets whenever the diff observes a tick
+ * outside the window after the window was active, so a re-grid counts down
+ * again — and it is deliberately preserved across `wipeStateForReplay`
+ * (issue #829) so a garage↔car flip mid-countdown can neither drop a
+ * boundary mark (a re-seed would lower the ceiling) nor replay a spoken one.
  */
 import { Flags, hasFlag, SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
 
@@ -49,8 +63,6 @@ export function diffStartLights(
   emit: EmitFn,
 ): void {
   const sessionFlags = telemetry.SessionFlags ?? 0;
-  const sessionState = typeof telemetry.SessionState === "number" ? telemetry.SessionState : SessionState.Invalid;
-  const timeRemain = typeof telemetry.SessionTimeRemain === "number" ? telemetry.SessionTimeRemain : 0;
   const standing = resolveStandingStart(sessionInfo);
 
   const startBits = sessionFlags & START_LIGHT_MASK;
@@ -63,7 +75,6 @@ export function diffStartLights(
     return;
   }
 
-  // ── Gantry rising edges ────────────────────────────────────────────────
   const prevBits = state.lastStartLightBits;
   const rising = (flag: number): boolean => (startBits & flag) !== 0 && (prevBits & flag) === 0;
 
@@ -78,13 +89,36 @@ export function diffStartLights(
   }
 
   state.lastStartLightBits = startBits;
+}
 
-  // ── Numeric countdown ──────────────────────────────────────────────────
+export function diffStartCountdown(
+  state: TranslatorState,
+  telemetry: TelemetryData,
+  sessionInfo: Record<string, unknown> | null,
+  emit: EmitFn,
+): void {
+  // First tick — consume as a silent observation (every diff's seed-silently
+  // convention). The first SessionTimeRemain a fresh state sees can be a
+  // scheduled value an AI session collapses right after (capture 2056:
+  // 262 s → 1.02 s); anchoring the ceiling on it would fire a stale bottom
+  // mark on the collapse. The ceiling anchors from the second observation on.
+  if (!state.startCountdownObserved) {
+    state.startCountdownObserved = true;
+
+    return;
+  }
+
+  const sessionFlags = telemetry.SessionFlags ?? 0;
+  const sessionState = typeof telemetry.SessionState === "number" ? telemetry.SessionState : SessionState.Invalid;
+  const timeRemain = typeof telemetry.SessionTimeRemain === "number" ? telemetry.SessionTimeRemain : 0;
+  const standing = resolveStandingStart(sessionInfo);
+
   // SessionTimeRemain is the real time-to-lights from GetInCar onward (issue
   // #666), so the window opens at GetInCar and closes once StartSet/StartGo
   // light — the gantry lines own the final moment. StartReady does NOT close
   // the window (it's up while the countdown runs — standing capture 2056).
-  // Race-only / in-car gating is handled at the scenario `where:` layer, not here.
+  // Race-only gating is handled at the scenario `where:` layer, not here; the
+  // in-car gate was deliberately removed (issue #829).
   const inWindow =
     standing &&
     (sessionState === SessionState.GetInCar || sessionState === SessionState.Warmup) &&

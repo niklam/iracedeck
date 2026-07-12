@@ -45,8 +45,10 @@ const mockLogger = {
 };
 
 // Default telemetry attached to published events: driver live in the car. The
-// start-light scenarios gate on `isLiveOnTrack` (issue #480 follow-up), so events
-// need in-car telemetry to fire; the out-of-car test passes an override.
+// gantry scenarios gate on `isLiveOnTrack` (issue #480 follow-up), so their
+// events need in-car telemetry to fire; the countdown scenarios deliberately
+// do NOT (issue #829 — the countdown is the "get in the car" reminder). The
+// out-of-car tests pass overrides.
 const IN_CAR = { IsOnTrack: true, IsReplayPlaying: false };
 
 function createMockBus(): IEventBus & {
@@ -466,15 +468,37 @@ describe("START_LIGHT_ALERTS race-only gating", () => {
     expect(voiceClipsPlayed().some((p) => p.includes("/start-lights/countdown-30-"))).toBe(true);
   });
 
-  it("suppresses every start-light callout when out of the car (replay / grid spectating)", () => {
+  it("suppresses the gantry lines when out of the car (missed the start — no 'go, go, go')", () => {
     mockSessionType.mockReturnValue("Race");
     const outOfCar = { IsOnTrack: false, IsReplayPlaying: false };
 
     bus.publishEvent("startLight.start-ready.raised", {}, outOfCar);
     bus.publishEvent("startLight.start-go.raised", {}, outOfCar);
-    bus.publishEvent("startLight.countdown.raised", { seconds: 30 }, outOfCar);
     flush(audio);
 
     expect(voiceClipsPlayed()).toEqual([]);
+  });
+
+  // Issue #829: the countdown is the "get in the car" reminder — it must play
+  // while the driver sits in the garage / session screen / in-session replay
+  // view. The replay-only (saved replay) case is gated translator-side via
+  // SimMode, not here.
+  it("fires the countdown when out of the car (garage / session screen / replay view)", () => {
+    mockSessionType.mockReturnValue("Race");
+    const outOfCar = { IsOnTrack: false, IsReplayPlaying: true };
+
+    bus.publishEvent("startLight.countdown.raised", { seconds: 30 }, outOfCar);
+    flush(audio);
+
+    expect(voiceClipsPlayed().some((p) => p.includes("/start-lights/countdown-30-"))).toBe(true);
+  });
+
+  it("fires the countdown with no telemetry attached (scenario-harness path)", () => {
+    mockSessionType.mockReturnValue("Race");
+
+    bus.publishEvent("startLight.countdown.raised", { seconds: 10 }, null);
+    flush(audio);
+
+    expect(voiceClipsPlayed().some((p) => p.includes("/start-lights/countdown-10-"))).toBe(true);
   });
 });

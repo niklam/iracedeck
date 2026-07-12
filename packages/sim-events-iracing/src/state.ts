@@ -231,6 +231,16 @@ export type TranslatorState = {
    * down again.
    */
   startCountdownFired: Set<number>;
+  /**
+   * Whether the countdown diff has consumed its first tick as a silent
+   * observation (issue #829 — the countdown runs pre-guard and owns its own
+   * seed, mirroring every diff's seed-silently convention). The first
+   * `SessionTimeRemain` a fresh state sees can be a scheduled value an AI
+   * session collapses right after (capture 2056: 262 s → 1.02 s), so the
+   * ceiling anchors from the second observation on. Preserved across
+   * `wipeStateForReplay` with the rest of the countdown cluster.
+   */
+  startCountdownObserved: boolean;
 
   // ── Toggles (pit service, car control) ──────────────────────────────────
   toggleStateInitialized: boolean;
@@ -610,6 +620,7 @@ export function createInitialState(): TranslatorState {
     lastStartLightBits: 0,
     startCountdownCeiling: null,
     startCountdownFired: new Set(),
+    startCountdownObserved: false,
 
     toggleStateInitialized: false,
     lastPitSvFlags: 0,
