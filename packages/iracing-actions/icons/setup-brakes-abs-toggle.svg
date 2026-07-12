@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#3a2a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"","showTitle":false,"locked":["showTitle"]},"border":{"color":"#6a5a3a"}}</desc>
+  {{borderDefs}}
+  <g>
+    <rect x="0" y="0" width="144" height="144" rx="24" fill="{{backgroundColor}}"/>
+{{borderContent}}
+    <defs>
+      <linearGradient id="abs-mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="{{graphic1Color}}"/><stop offset="1" stop-color="{{graphic1Color}}" stop-opacity="0.55"/></linearGradient>
+    </defs>
+    <path d="M40.5 25.5 A31.5 31.5 0 0 0 40.5 70.5" fill="none" stroke="url(#abs-mtl)" stroke-width="5.25" stroke-linecap="round"/>
+    <path d="M103.5 25.5 A31.5 31.5 0 0 1 103.5 70.5" fill="none" stroke="url(#abs-mtl)" stroke-width="5.25" stroke-linecap="round"/>
+    <circle cx="72" cy="48" r="25.5" fill="none" stroke="url(#abs-mtl)" stroke-width="5.25"/>
+    <text x="72" y="54.75" font-family="Arial, sans-serif" font-size="17.25" font-weight="bold" fill="{{graphic1Color}}" text-anchor="middle">ABS</text>
+    {{titleContent}}
+{{iconContent}}
+  </g>
+</svg>

@@ -1,4 +1,8 @@
 import { getDualPressDirections } from "@iracedeck/deck-core";
+// ---------------------------------------------------------------------------
+// TC Toggle tri-state (#827)
+// ---------------------------------------------------------------------------
+import { renderIconTemplate, resolveBorderSettings } from "@iracedeck/deck-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -7,6 +11,7 @@ import {
   SETUP_TRACTION_GLOBAL_KEYS,
   SetupTraction,
 } from "./setup-traction.js";
+import { generateTcToggleSvg, tcToggleState } from "./setup-traction.js";
 
 // Convenience handle so dual-press tests can switch the live tap direction the same
 // way the runtime does (via the @iracedeck/deck-core getDualPressDirections reader).
@@ -567,5 +572,56 @@ describe("SetupTraction", () => {
 
       vi.useRealTimers();
     });
+  });
+});
+
+describe("tcToggleState", () => {
+  it("returns na without telemetry", () => {
+    expect(tcToggleState(null)).toBe("na");
+  });
+
+  it("returns na when dcTractionControl is absent", () => {
+    expect(tcToggleState({} as never)).toBe("na");
+  });
+
+  it("returns on for a positive TC level", () => {
+    expect(tcToggleState({ dcTractionControl: 2 } as never)).toBe("on");
+  });
+
+  it("returns off for a zero TC level", () => {
+    expect(tcToggleState({ dcTractionControl: 0 } as never)).toBe("off");
+  });
+});
+
+describe("generateTcToggleSvg", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("renders the tri-state template with the matching status bar", () => {
+    const result = generateTcToggleSvg(parseSetupTractionSettings({ setting: "tc-toggle" }), "on");
+
+    expect(result).toContain("data:image/svg+xml");
+
+    const call = vi.mocked(renderIconTemplate).mock.calls.at(-1);
+
+    expect(call?.[1]?.iconContent).toContain(">ON</text>");
+  });
+
+  it("passes the state color into border resolution", () => {
+    generateTcToggleSvg(parseSetupTractionSettings({ setting: "tc-toggle" }), "na");
+
+    const call = vi.mocked(resolveBorderSettings).mock.calls.at(-1);
+
+    expect(call?.[3]).toBe("#888888");
+  });
+
+  it("dims behind the warning when the binding is missing", () => {
+    generateTcToggleSvg(parseSetupTractionSettings({ setting: "tc-toggle" }), "off", true);
+
+    const call = vi.mocked(renderIconTemplate).mock.calls.at(-1);
+
+    expect(call?.[1]?.iconContent).toContain(">OFF</text>");
+    expect(call?.[1]?.iconContent).toContain("<warn/>");
   });
 });

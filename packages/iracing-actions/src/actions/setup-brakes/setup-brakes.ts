@@ -1,7 +1,10 @@
 import {
+  applyBindingWarning,
   assembleIcon,
   ConnectionStateAwareAction,
   DualPressTracker,
+  generateBorderParts,
+  generateTitleText,
   getDualPressDirections,
   getDualPressThresholdMs,
   getGlobalBorderSettings,
@@ -18,10 +21,12 @@ import {
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
   onGlobalSettingsChange,
+  renderIconTemplate,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
   resolveTitleSettings,
+  svgToDataUri,
 } from "@iracedeck/deck-core";
 import absAdjustDecreaseIconSvg from "@iracedeck/icons/setup-brakes/abs-adjust-decrease.svg";
 import absAdjustIncreaseIconSvg from "@iracedeck/icons/setup-brakes/abs-adjust-increase.svg";
@@ -38,6 +43,14 @@ import peakBrakeBiasDecreaseIconSvg from "@iracedeck/icons/setup-brakes/peak-bra
 import peakBrakeBiasIncreaseIconSvg from "@iracedeck/icons/setup-brakes/peak-brake-bias-increase.svg";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 
+import absToggleTemplate from "../../../icons/setup-brakes-abs-toggle.svg";
+import {
+  borderColorForState,
+  statusBarNA,
+  statusBarOff,
+  statusBarOn,
+  type ToggleState,
+} from "../../icons/status-bar.js";
 import {
   ADJUST_REPEAT_INTERVAL_MS,
   ADJUST_REPEAT_SAFETY_MS,
@@ -168,6 +181,74 @@ export function generateSetupBrakesSvg(settings: SetupBrakesSettings, bindingMis
   return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic, bindingMissing });
 }
 
+const STATUS_BARS: Record<ToggleState, () => string> = { on: statusBarOn, off: statusBarOff, na: statusBarNA };
+
+/**
+ * @internal Exported for testing
+ *
+ * Maps dcABS telemetry to the tri-state shown on the ABS Toggle key: no
+ * telemetry -> N/A; dcABS > 0 -> on; otherwise off. dcABS carries the ABS
+ * level, which the toggle binding flips between off and the configured level.
+ */
+export function absToggleState(telemetry: TelemetryData | null): ToggleState {
+  const value = telemetry?.dcABS;
+
+  if (typeof value !== "number") return "na";
+
+  return value > 0 ? "on" : "off";
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * ABS Toggle renders through a dedicated tri-state template (the DRS pattern,
+ * #827): the ISO ABS symbol above a full-width ON/OFF/N-A status bar, with the
+ * key border tracking the same state color.
+ */
+export function generateAbsToggleSvg(
+  settings: SetupBrakesSettings,
+  state: ToggleState,
+  bindingMissing = false,
+): string {
+  const colors = resolveIconColors(absToggleTemplate, getGlobalColors(), settings.colorOverrides) as Record<
+    string,
+    string
+  >;
+  const resolvedTitle = resolveTitleSettings(absToggleTemplate, getGlobalTitleSettings(), settings.titleOverrides);
+
+  const titleContent = resolvedTitle.showTitle
+    ? generateTitleText({
+        text: resolvedTitle.titleText,
+        fontSize: resolvedTitle.fontSize,
+        bold: resolvedTitle.bold,
+        position: resolvedTitle.position,
+        customPosition: resolvedTitle.customPosition,
+        fill: colors.textColor ?? "#ffffff",
+      })
+    : "";
+
+  const border = resolveBorderSettings(
+    absToggleTemplate,
+    getGlobalBorderSettings(),
+    settings.borderOverrides,
+    borderColorForState(state),
+  );
+  const borderSvg = generateBorderParts(border);
+
+  const baseIconContent = STATUS_BARS[state]();
+  const iconContent = bindingMissing ? applyBindingWarning(baseIconContent) : baseIconContent;
+
+  const svg = renderIconTemplate(absToggleTemplate, {
+    iconContent,
+    titleContent,
+    borderDefs: borderSvg.defs,
+    borderContent: borderSvg.rects,
+    ...colors,
+  });
+
+  return svgToDataUri(svg);
+}
+
 /**
  * Setup Brakes Action
  *
@@ -261,7 +342,10 @@ export class SetupBrakes extends ConnectionStateAwareAction<SetupBrakesSettings>
     this.sdkController.subscribe(ev.action.id, (telemetry) => {
       const stored = this.activeContexts.get(ev.action.id);
 
-      if (stored && (isViewSetting(stored.setting) || pairedKeyNeedsTelemetry(stored))) {
+      if (
+        stored &&
+        (stored.setting === "abs-toggle" || isViewSetting(stored.setting) || pairedKeyNeedsTelemetry(stored))
+      ) {
         void this.updateDisplayFromTelemetry(ev.action.id, telemetry, stored);
       }
     });
@@ -477,7 +561,7 @@ export class SetupBrakes extends ConnectionStateAwareAction<SetupBrakesSettings>
   ): Promise<void> {
     const svgDataUri = this.renderIcon(settings);
 
-    const memo = telemetryMemoValue(settings, this.sdkController.getCurrentTelemetry());
+    const memo = this.telemetryMemo(settings, this.sdkController.getCurrentTelemetry());
 
     if (memo !== null) {
       this.lastRenderedValue.set(ev.action.id, memo);
@@ -490,6 +574,10 @@ export class SetupBrakes extends ConnectionStateAwareAction<SetupBrakesSettings>
 
   private renderIcon(settings: SetupBrakesSettings): string {
     const bindingMissing = this.computeBindingMissing(settings);
+
+    if (settings.setting === "abs-toggle") {
+      return generateAbsToggleSvg(settings, absToggleState(this.sdkController.getCurrentTelemetry()), bindingMissing);
+    }
 
     const paired = renderPairedIconOrNull({
       setting: settings.setting,
@@ -521,12 +609,25 @@ export class SetupBrakes extends ConnectionStateAwareAction<SetupBrakesSettings>
     return generateSetupBrakesSvg(settings, bindingMissing);
   }
 
+  /**
+   * Memo value that decides whether a telemetry tick changes what the key
+   * shows. abs-toggle keys memo their tri-state; everything else defers to
+   * the shared adjust-styles/View memo.
+   */
+  private telemetryMemo(settings: SetupBrakesSettings, telemetry: TelemetryData | null): string | null {
+    if (settings.setting === "abs-toggle") {
+      return `abs-toggle|${absToggleState(telemetry)}`;
+    }
+
+    return telemetryMemoValue(settings, telemetry);
+  }
+
   private async updateDisplayFromTelemetry(
     contextId: string,
     telemetry: TelemetryData | null,
     settings: SetupBrakesSettings,
   ): Promise<void> {
-    const memo = telemetryMemoValue(settings, telemetry);
+    const memo = this.telemetryMemo(settings, telemetry);
 
     if (memo === null) return;
 

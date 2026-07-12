@@ -1,11 +1,16 @@
 // Convenience handle so dual-press tests can switch the live tap direction the same
 // way the runtime does (via the @iracedeck/deck-core getDualPressDirections reader).
 import { getDualPressDirections } from "@iracedeck/deck-core";
+// ---------------------------------------------------------------------------
+// ABS Toggle tri-state (#827)
+// ---------------------------------------------------------------------------
+import { renderIconTemplate, resolveBorderSettings } from "@iracedeck/deck-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { parseSetupBrakesSettings } from "./setup-brakes-settings.js";
 import { generateSetupBrakesSvg, SETUP_BRAKES_GLOBAL_KEYS } from "./setup-brakes.js";
 import { SetupBrakes } from "./setup-brakes.js";
+import { absToggleState, generateAbsToggleSvg } from "./setup-brakes.js";
 
 const mockGetDualPressDirections = getDualPressDirections as unknown as ReturnType<typeof vi.fn>;
 
@@ -725,5 +730,56 @@ describe("SetupBrakes", () => {
 
       vi.useRealTimers();
     });
+  });
+});
+
+describe("absToggleState", () => {
+  it("returns na without telemetry", () => {
+    expect(absToggleState(null)).toBe("na");
+  });
+
+  it("returns na when dcABS is absent", () => {
+    expect(absToggleState({} as never)).toBe("na");
+  });
+
+  it("returns on for a positive ABS level", () => {
+    expect(absToggleState({ dcABS: 3 } as never)).toBe("on");
+  });
+
+  it("returns off for a zero ABS level", () => {
+    expect(absToggleState({ dcABS: 0 } as never)).toBe("off");
+  });
+});
+
+describe("generateAbsToggleSvg", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("renders the tri-state template with the matching status bar", () => {
+    const result = generateAbsToggleSvg(svgSettings({ setting: "abs-toggle" }), "on");
+
+    expect(result).toContain("data:image/svg+xml");
+
+    const call = vi.mocked(renderIconTemplate).mock.calls.at(-1);
+
+    expect(call?.[1]?.iconContent).toContain(">ON</text>");
+  });
+
+  it("passes the state color into border resolution", () => {
+    generateAbsToggleSvg(svgSettings({ setting: "abs-toggle" }), "off");
+
+    const call = vi.mocked(resolveBorderSettings).mock.calls.at(-1);
+
+    expect(call?.[3]).toBe("#e74c3c");
+  });
+
+  it("shows N/A and dims behind the warning when the binding is missing", () => {
+    generateAbsToggleSvg(svgSettings({ setting: "abs-toggle" }), "na", true);
+
+    const call = vi.mocked(renderIconTemplate).mock.calls.at(-1);
+
+    expect(call?.[1]?.iconContent).toContain(">N/A</text>");
+    expect(call?.[1]?.iconContent).toContain("<warn/>");
   });
 });
