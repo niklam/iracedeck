@@ -1,12 +1,22 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
   <rect x="0" y="0" width="72" height="72" rx="8" fill="#2a1a3a"/>
-  <!-- Video camera body with record indicator -->
-  <rect x="20" y="12" width="22" height="18" rx="2" fill="none" stroke="#ffffff" stroke-width="1.5"/>
-  <polygon points="42,15 54,9 54,33 42,27" fill="none" stroke="#ffffff" stroke-width="1.5" stroke-linejoin="round"/>
-  <circle cx="31" cy="21" r="5" fill="none" stroke="#888888" stroke-width="1"/>
-  <circle cx="31" cy="21" r="2.5" fill="#e74c3c"/>
-  <text x="36" y="52" text-anchor="middle" dominant-baseline="central"
-        fill="#ffffff" font-family="Arial, sans-serif" font-size="8">VIDEO</text>
-  <text x="36" y="63" text-anchor="middle" dominant-baseline="central"
-        fill="#ffffff" font-family="Arial, sans-serif" font-size="10" font-weight="bold">START/STOP</text>
+  <svg x="4" y="4" width="64" height="64" viewBox="0 0 96 72">
+  
+  <defs>
+    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.55"/></linearGradient>
+    <linearGradient id="blkG2" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#5c6a78"/><stop offset="1" stop-color="#28313a"/></linearGradient>
+    <linearGradient id="redG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ff6b5e"/><stop offset="1" stop-color="#c0392b"/></linearGradient>
+    <filter id="glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="3"/></filter>
+  </defs>
+
+    <circle cx="24" cy="17" r="7" fill="#3f5561"/><circle cx="24" cy="17" r="2.6" fill="url(#mtl)"/>
+    <circle cx="41" cy="17" r="7" fill="#3f5561"/><circle cx="41" cy="17" r="2.6" fill="url(#mtl)"/>
+    <rect x="12" y="22" width="44" height="32" rx="7" fill="url(#mtl)"/>
+    <rect x="12" y="22" width="44" height="8" rx="4" fill="#ffffff" opacity="0.25"/>
+    <polygon points="56,33 78,23 78,53 56,43" fill="url(#blkG2)"/>
+    <line x1="78" y1="23" x2="78" y2="53" stroke="#7a8894" stroke-width="2.5" stroke-linecap="round"/>
+    <circle cx="80" cy="12" r="7" fill="url(#redG)" filter="url(#glow)"/>
+    <circle cx="80" cy="12" r="6.5" fill="url(#redG)"/>
+
+  </svg>
 </svg>

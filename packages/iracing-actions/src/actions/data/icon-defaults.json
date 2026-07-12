@@ -204,6 +204,11 @@
     "graphic1Color": "#ffffff",
     "borderColor": "#3a5a6a"
   },
+  "adjust-style": {
+    "backgroundColor": "#2a3444",
+    "textColor": "#ffffff",
+    "graphic1Color": "#f1c40f"
+  },
   "car-control-drs": {
     "backgroundColor": "#2a3a2a",
     "textColor": "#ffffff",
@@ -242,6 +247,17 @@
   "session-info": {
     "backgroundColor": "#2a3444",
     "textColor": "#ffffff"
+  },
+  "setup-brakes-abs-toggle": {
+    "backgroundColor": "#3a2a1a",
+    "textColor": "#ffffff",
+    "graphic1Color": "#ffffff",
+    "borderColor": "#6a5a3a"
+  },
+  "setup-traction-tc-toggle": {
+    "backgroundColor": "#1a2a1a",
+    "textColor": "#ffffff",
+    "graphic1Color": "#ffffff"
   },
   "setup-view": {
     "backgroundColor": "#2a3444",

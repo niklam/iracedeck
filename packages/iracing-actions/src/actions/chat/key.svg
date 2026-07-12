@@ -1,13 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
   <rect x="0" y="0" width="72" height="72" rx="8" fill="#2a3a4a"/>
-  <!-- Chat bubble -->
-  <path d="M16 10 h40 a4 4 0 0 1 4 4 v20 a4 4 0 0 1-4 4 H38 l-3 5 l-3-5 H16 a4 4 0 0 1-4-4 V14 a4 4 0 0 1 4-4 z"
-        fill="none" stroke="#ffffff" stroke-width="2" stroke-linejoin="round"/>
-  <!-- Pencil icon inside bubble -->
-  <line x1="28" y1="28" x2="40" y2="18" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round"/>
-  <line x1="28" y1="28" x2="30" y2="26" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-  <text x="36" y="52" text-anchor="middle" dominant-baseline="central"
-        fill="#ffffff" font-family="Arial, sans-serif" font-size="10" font-weight="bold">OPEN</text>
-  <text x="36" y="63" text-anchor="middle" dominant-baseline="central"
-        fill="#ffffff" font-family="Arial, sans-serif" font-size="8">CHAT</text>
+  <svg x="4" y="4" width="64" height="64" viewBox="0 0 96 72">
+  
+  <defs>
+    <linearGradient id="scl2" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#c3cfda"/></linearGradient>
+  </defs>
+
+    <rect x="14" y="10" width="60" height="36" rx="9" fill="url(#scl2)"/>
+    <polygon points="28,45 28,58 41,45" fill="url(#scl2)"/>
+    <line x1="44" y1="18" x2="44" y2="38" stroke="#2563ab" stroke-width="3.2"/>
+    <line x1="39" y1="18" x2="49" y2="18" stroke="#2563ab" stroke-width="2.8" stroke-linecap="round"/>
+    <line x1="39" y1="38" x2="49" y2="38" stroke="#2563ab" stroke-width="2.8" stroke-linecap="round"/>
+
+  </svg>
 </svg>

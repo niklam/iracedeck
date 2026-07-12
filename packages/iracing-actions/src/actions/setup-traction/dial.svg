@@ -1,6 +1,21 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
-  <!-- Default dial (Encoder.Icon) image: just the action name on two lines (#795). -->
-  <rect x="0" y="0" width="72" height="72" rx="8" fill="#1a3a2a"/>
-  <text x="36" y="32" text-anchor="middle" fill="#ffffff" font-family="Arial, sans-serif" font-size="13" font-weight="bold">SETUP</text>
-  <text x="36" y="48" text-anchor="middle" fill="#ffffff" font-family="Arial, sans-serif" font-size="12" font-weight="bold">TRACTION</text>
+  <rect x="0" y="0" width="72" height="72" rx="8" fill="#1a2a1a"/>
+  <svg x="4" y="4" width="64" height="64" viewBox="0 0 96 72">
+  
+  <defs>
+    <radialGradient id="tireG" cx="0.4" cy="0.35" r="0.9"><stop stop-color="#4a5560"/><stop offset="1" stop-color="#20262c"/></radialGradient>
+    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.55"/></linearGradient>
+    <linearGradient id="plusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#4be08d"/><stop offset="1" stop-color="#1d9e58"/></linearGradient>
+  </defs>
+
+    <circle cx="38" cy="32" r="20" fill="url(#tireG)"/>
+    <circle cx="38" cy="32" r="16.4" fill="none" stroke="#14181d" stroke-width="3" stroke-dasharray="5 6"/>
+    <circle cx="38" cy="32" r="9.0" fill="url(#mtl)"/>
+    <path d="M20 58 Q38 51 56 58" fill="none" stroke="#4fc3f7" stroke-width="3.5" stroke-linecap="round"/>
+    <path d="M25 65 Q38 59.5 51 65" fill="none" stroke="#4fc3f7" stroke-width="3" stroke-linecap="round" opacity="0.6"/>
+    <circle cx="70" cy="16" r="9.5" fill="#4fc3f7"/>
+    <text x="70" y="20.5" font-family="Arial, sans-serif" font-size="13" font-weight="bold" fill="#12222e" text-anchor="middle" stroke="none">1</text><circle cx="80" cy="60" r="10" fill="url(#plusG)" stroke="#1a2a1a" stroke-width="3"/>
+    <path d="M75 60h10M80 55v10" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"/>
+
+  </svg>
 </svg>

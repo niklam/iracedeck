@@ -1,21 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
-  <!-- Main background -->
   <rect x="0" y="0" width="72" height="72" rx="8" fill="#1a2a3a"/>
+  <svg x="4" y="4" width="64" height="64" viewBox="0 0 96 72">
+  
+  <defs>
+    <linearGradient id="plusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#4be08d"/><stop offset="1" stop-color="#1d9e58"/></linearGradient>
+  </defs>
 
-  <!-- Camera lens -->
-  <circle cx="36" cy="22" r="12" fill="none" stroke="#ffffff" stroke-width="1.5"/>
-  <circle cx="36" cy="22" r="6" fill="none" stroke="#888888" stroke-width="1"/>
-  <circle cx="36" cy="22" r="2" fill="#ffffff"/>
+    <polygon points="16,36 76,6 76,66" fill="#4fc3f7" opacity="0.16"/>
+    <line x1="16" y1="36" x2="76" y2="6" stroke="#4fc3f7" stroke-width="3.5" stroke-linecap="round"/>
+    <line x1="16" y1="36" x2="76" y2="66" stroke="#4fc3f7" stroke-width="3.5" stroke-linecap="round"/>
+    <path d="M36 26 A21 21 0 0 1 36 46" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="16" cy="36" r="4.5" fill="#ffffff"/><circle cx="80" cy="60" r="10" fill="url(#plusG)" stroke="#1a2a3a" stroke-width="3"/>
+    <path d="M75 60h10M80 55v10" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"/>
 
-  <!-- Adjustment arrows -->
-  <path d="M56 16 L56 10 L52 14" fill="none" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M56 10 L60 14" fill="none" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M56 28 L56 34 L52 30" fill="none" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M56 34 L60 30" fill="none" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-
-  <!-- Two-line label -->
-  <text x="36" y="52" text-anchor="middle" dominant-baseline="central"
-        fill="#ffffff" font-family="Arial, sans-serif" font-size="10" font-weight="bold">VIEW</text>
-  <text x="36" y="63" text-anchor="middle" dominant-baseline="central"
-        fill="#ffffff" font-family="Arial, sans-serif" font-size="8">ADJUST</text>
+  </svg>
 </svg>

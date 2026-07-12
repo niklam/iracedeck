@@ -1,19 +1,24 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
-  <!-- Main background -->
   <rect x="0" y="0" width="72" height="72" rx="8" fill="#1a2a3a"/>
+  <svg x="4" y="4" width="64" height="64" viewBox="0 0 96 72">
+  
+  <defs>
+    <linearGradient id="scl2" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#c3cfda"/></linearGradient>
+    <clipPath id="lid2"><path d="M16 36 Q48 2 80 36 Q48 62 16 36 Z"/></clipPath>
+    <radialGradient id="iris2" cx="0.5" cy="0.5" r="0.55"><stop stop-color="#f0c75e"/><stop offset="0.35" stop-color="#5aa7c4"/><stop offset="0.75" stop-color="#2563ab"/><stop offset="1" stop-color="#0f2f4f"/></radialGradient>
+    <filter id="glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="3"/></filter>
+  </defs>
 
-  <!-- Eye with directional arrows -->
-  <path d="M18 24 Q36 12 54 24 Q36 36 18 24 Z" fill="none" stroke="#ffffff" stroke-width="1.5"/>
-  <circle cx="36" cy="24" r="5" fill="none" stroke="#ffffff" stroke-width="1.5"/>
-  <circle cx="36" cy="24" r="2" fill="#ffffff"/>
-  <!-- Left arrow -->
-  <path d="M14 38 L10 38 L13 35" fill="none" stroke="#888888" stroke-width="1.5" stroke-linecap="round"/>
-  <!-- Right arrow -->
-  <path d="M58 38 L62 38 L59 35" fill="none" stroke="#888888" stroke-width="1.5" stroke-linecap="round"/>
+    <path d="M16 36 Q48 2 80 36 Q48 62 16 36 Z" fill="url(#scl2)"/>
+    <g clip-path="url(#lid2)">
+      <ellipse cx="31" cy="36" rx="16" ry="20" fill="url(#iris2)"/>
+      <ellipse cx="28" cy="36" rx="8" ry="10" fill="#0b1420"/>
+      <circle cx="35" cy="28" r="3.2" fill="#ffffff" opacity="0.9"/>
+      <path d="M16 36 Q48 2 80 36" fill="none" stroke="#000000" stroke-width="7" opacity="0.16"/>
+    </g>
+    <path d="M16 36 Q48 2 80 36 Q48 62 16 36 Z" fill="none" stroke="#14202e" stroke-width="2.5"/>
+    <polyline points="16,24 5,36 16,48" fill="none" stroke="#4fc3f7" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+    <polyline points="16,24 5,36 16,48" fill="none" stroke="#9fe3ff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
 
-  <!-- Two-line label -->
-  <text x="36" y="52" text-anchor="middle" dominant-baseline="central"
-        fill="#ffffff" font-family="Arial, sans-serif" font-size="10" font-weight="bold">LOOK</text>
-  <text x="36" y="63" text-anchor="middle" dominant-baseline="central"
-        fill="#ffffff" font-family="Arial, sans-serif" font-size="8">DIRECTION</text>
+  </svg>
 </svg>
