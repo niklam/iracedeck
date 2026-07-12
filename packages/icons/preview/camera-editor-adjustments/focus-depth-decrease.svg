@@ -1,8 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 82.8 61.8">
   <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"title":{"text":"FOCUS DEPTH\n-"},"border":{"color":"#3a5a6a"}}</desc>
   <defs>
-    <filter id="glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="3"/></filter>
-    <linearGradient id="minusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f47c6a"/><stop offset="1" stop-color="#c0392b"/></linearGradient>
+    <filter id="glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="3"/></filter><linearGradient id="minusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f47c6a"/><stop offset="1" stop-color="#c0392b"/></linearGradient>
   </defs>
   <g transform="translate(-11.5 -11.5)">
 

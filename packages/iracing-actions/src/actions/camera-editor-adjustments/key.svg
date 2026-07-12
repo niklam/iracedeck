@@ -3,8 +3,7 @@
   <svg x="4" y="4" width="64" height="64" viewBox="0 0 76 60.3">
   
   <defs>
-    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.55"/></linearGradient>
-    <linearGradient id="plusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#4be08d"/><stop offset="1" stop-color="#1d9e58"/></linearGradient>
+    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.55"/></linearGradient><linearGradient id="plusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#4be08d"/><stop offset="1" stop-color="#1d9e58"/></linearGradient>
   </defs>
   <g transform="translate(-18.2 -13)">
 

@@ -1,9 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 73.3 62.3">
   <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"F-NUMBER\n+"},"border":{"color":"#3a5a6a"}}</desc>
   <defs>
-    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="{{graphic1Color}}"/><stop offset="1" stop-color="{{graphic1Color}}" stop-opacity="0.55"/></linearGradient>
-    <radialGradient id="lns" cx="0.38" cy="0.32" r="0.95"><stop stop-color="#8ed4ff"/><stop offset="0.55" stop-color="#2c5f9e"/><stop offset="1" stop-color="#122c4d"/></radialGradient>
-    <linearGradient id="plusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#4be08d"/><stop offset="1" stop-color="#1d9e58"/></linearGradient>
+    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="{{graphic1Color}}"/><stop offset="1" stop-color="{{graphic1Color}}" stop-opacity="0.55"/></linearGradient><radialGradient id="lns" cx="0.38" cy="0.32" r="0.95"><stop stop-color="#8ed4ff"/><stop offset="0.55" stop-color="#2c5f9e"/><stop offset="1" stop-color="#122c4d"/></radialGradient><linearGradient id="plusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#4be08d"/><stop offset="1" stop-color="#1d9e58"/></linearGradient>
   </defs>
   <g transform="translate(-21 -11)">
 

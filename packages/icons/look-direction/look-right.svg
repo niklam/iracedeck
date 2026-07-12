@@ -1,10 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 85.3 38.3">
   <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"title":{"text":"LOOK\nRIGHT"},"border":{"color":"#3a5a6a"}}</desc>
   <defs>
-    <linearGradient id="scl2" x1="0" y1="0" x2="0" y2="1"><stop stop-color="{{graphic1Color}}"/><stop offset="1" stop-color="{{graphic1Color}}" stop-opacity="0.76"/></linearGradient>
-    <clipPath id="lid2"><path d="M16 36 Q48 2 80 36 Q48 62 16 36 Z"/></clipPath>
-    <radialGradient id="iris2" cx="0.5" cy="0.5" r="0.55"><stop stop-color="#f0c75e"/><stop offset="0.35" stop-color="#5aa7c4"/><stop offset="0.75" stop-color="#2563ab"/><stop offset="1" stop-color="#0f2f4f"/></radialGradient>
-    <filter id="glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="3"/></filter>
+    <linearGradient id="scl2" x1="0" y1="0" x2="0" y2="1"><stop stop-color="{{graphic1Color}}"/><stop offset="1" stop-color="{{graphic1Color}}" stop-opacity="0.76"/></linearGradient><clipPath id="lid2"><path d="M16 36 Q48 2 80 36 Q48 62 16 36 Z"/></clipPath><radialGradient id="iris2" cx="0.5" cy="0.5" r="0.55"><stop stop-color="#f0c75e"/><stop offset="0.35" stop-color="#5aa7c4"/><stop offset="0.75" stop-color="#2563ab"/><stop offset="1" stop-color="#0f2f4f"/></radialGradient><filter id="glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="3"/></filter>
   </defs>
   <g transform="translate(-13 -16.7)">
 

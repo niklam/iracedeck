@@ -1,8 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 86.3 59.5">
   <desc>{"colors":{"backgroundColor":"#2a2a4a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"locked":["graphic1Color"],"title":{"text":"LESS INTENSE\nWHEEL LFE"},"border":{"color":"#5a5a7a"}}</desc>
   <defs>
-    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.55"/></linearGradient>
-    <linearGradient id="minusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f47c6a"/><stop offset="1" stop-color="#c0392b"/></linearGradient>
+    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.55"/></linearGradient><linearGradient id="minusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f47c6a"/><stop offset="1" stop-color="#c0392b"/></linearGradient>
   </defs>
   <g transform="translate(-8 -13.7)">
 

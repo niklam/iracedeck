@@ -1,8 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 85.8 59.3">
   <desc>{"colors":{"backgroundColor":"#2a2a4a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"locked":["graphic1Color"],"title":{"text":"AUTO\nFFB FORCE"},"border":{"color":"#5a5a7a"}}</desc>
   <defs>
-    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="{{graphic1Color}}"/><stop offset="1" stop-color="{{graphic1Color}}" stop-opacity="0.55"/></linearGradient>
-    <linearGradient id="ambG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f7d94c"/><stop offset="1" stop-color="#d9980f"/></linearGradient>
+    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="{{graphic1Color}}"/><stop offset="1" stop-color="{{graphic1Color}}" stop-opacity="0.55"/></linearGradient><linearGradient id="ambG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f7d94c"/><stop offset="1" stop-color="#d9980f"/></linearGradient>
   </defs>
   <g transform="translate(-8.5 -14)">
 

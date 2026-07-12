@@ -1,9 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 78 69">
   <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"title":{"text":"LATITUDE\n+"},"border":{"color":"#3a5a6a"}}</desc>
   <defs>
-    <filter id="glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="3"/></filter>
-    <radialGradient id="latg" cx="0.35" cy="0.28" r="1"><stop stop-color="#7dd3fc"/><stop offset="0.55" stop-color="#2b6cb0"/><stop offset="1" stop-color="#173a63"/></radialGradient>
-    <linearGradient id="plusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#4be08d"/><stop offset="1" stop-color="#1d9e58"/></linearGradient>
+    <filter id="glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="3"/></filter><radialGradient id="latg" cx="0.35" cy="0.28" r="1"><stop stop-color="#7dd3fc"/><stop offset="0.55" stop-color="#2b6cb0"/><stop offset="1" stop-color="#173a63"/></radialGradient><linearGradient id="plusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#4be08d"/><stop offset="1" stop-color="#1d9e58"/></linearGradient>
   </defs>
   <g transform="translate(-16.2 -4.2)">
 
