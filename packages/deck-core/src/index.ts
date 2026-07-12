@@ -334,6 +334,7 @@ export {
 // Device + profile reference (issues #736, #753, #790)
 export {
   CAR_SELECTOR_PROFILE,
+  DEFAULT_KEY_IMAGE_SIZE,
   DEVICE_SPECS,
   DEVICE_SUPPORT,
   deviceProfileName,
@@ -341,6 +342,7 @@ export {
   getDeviceSpec,
   getDeviceSupport,
   isDeviceSupported,
+  keyImageSizeForDevice,
   PROFILE_DEVICE_SUFFIXES,
   profileDeviceSuffix,
   profileDisplayName,
