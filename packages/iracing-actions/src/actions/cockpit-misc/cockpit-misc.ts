@@ -20,12 +20,14 @@ import dashPage1DecreaseSvg from "@iracedeck/icons/cockpit-misc/dash-page-1-decr
 import dashPage1IncreaseSvg from "@iracedeck/icons/cockpit-misc/dash-page-1-increase.svg";
 import dashPage2DecreaseSvg from "@iracedeck/icons/cockpit-misc/dash-page-2-decrease.svg";
 import dashPage2IncreaseSvg from "@iracedeck/icons/cockpit-misc/dash-page-2-increase.svg";
-import ffbMaxForceDecreaseSvg from "@iracedeck/icons/cockpit-misc/ffb-max-force-decrease.svg";
-import ffbMaxForceIncreaseSvg from "@iracedeck/icons/cockpit-misc/ffb-max-force-increase.svg";
 import inLapModeSvg from "@iracedeck/icons/cockpit-misc/in-lap-mode.svg";
 import reportLatencySvg from "@iracedeck/icons/cockpit-misc/report-latency.svg";
 import toggleWipersSvg from "@iracedeck/icons/cockpit-misc/toggle-wipers.svg";
 import triggerWipersSvg from "@iracedeck/icons/cockpit-misc/trigger-wipers.svg";
+// ffb-max-force is a hidden legacy alias of Force Feedback's ffb-force mode (#827) —
+// it shares that mode's bindings and now its icons too.
+import ffbMaxForceDecreaseSvg from "@iracedeck/icons/force-feedback/ffb-force-decrease.svg";
+import ffbMaxForceIncreaseSvg from "@iracedeck/icons/force-feedback/ffb-force-increase.svg";
 import z from "zod";
 
 type CockpitMiscControl =
