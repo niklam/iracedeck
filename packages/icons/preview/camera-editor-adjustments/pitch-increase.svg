@@ -1,10 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 76 50" stroke-width="0.5" stroke="#fff" fill="#fff">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
   <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"PITCH\n+"},"border":{"color":"#3a5a6a"}}</desc>
-  
+  <defs>
+    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.55"/></linearGradient>
+    <linearGradient id="plusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#4be08d"/><stop offset="1" stop-color="#1d9e58"/></linearGradient>
+  </defs>
 
-    <rect x="1" y="13" width="40" height="32" rx="4" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <polygon points="41,19 61,9 61,49 41,39" fill="none" stroke="#ffffff" stroke-width="3" stroke-linejoin="round"/>
-    <path d="M69,49A16,24,0,0,0,69,1" fill="none" stroke="#888888" stroke-width="2"/>
-    <polyline points="63,7 69,1 75,7" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-
+    <rect x="24" y="28" width="26" height="18" rx="4" fill="url(#mtl)"/>
+    <rect x="24" y="28" width="26" height="5.5" rx="2.7" fill="#ffffff" opacity="0.25"/>
+    <rect x="50" y="32" width="9" height="10" rx="2" fill="#3f5561"/>
+    <path d="M64 18 Q78 37 64 56" fill="none" stroke="#4fc3f7" stroke-width="3.5" stroke-linecap="round"/><polygon points="60,12 68.5,16.5 61,22.5" fill="#4fc3f7"/><circle cx="80" cy="60" r="10" fill="url(#plusG)" stroke="#1a2a3a" stroke-width="3"/>
+    <path d="M75 60h10M80 55v10" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"/>
 </svg>

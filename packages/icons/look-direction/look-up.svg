@@ -1,11 +1,20 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 84 64" stroke-width="0.5" stroke="#fff" fill="#fff">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
   <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"LOOK\nUP"},"border":{"color":"#3a5a6a"}}</desc>
-  
+  <defs>
+    <linearGradient id="scl2" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#c3cfda"/></linearGradient>
+    <clipPath id="lid2"><path d="M16 36 Q48 2 80 36 Q48 62 16 36 Z"/></clipPath>
+    <radialGradient id="iris2" cx="0.5" cy="0.5" r="0.55"><stop stop-color="#f0c75e"/><stop offset="0.35" stop-color="#5aa7c4"/><stop offset="0.75" stop-color="#2563ab"/><stop offset="1" stop-color="#0f2f4f"/></radialGradient>
+    <filter id="glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="3"/></filter>
+  </defs>
 
-    <path d="M2,38Q38,14,74,38Q38,62,2,38Z" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
-    <circle cx="38" cy="38" r="10" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
-    <circle cx="38" cy="34" r="4" fill="{{graphic1Color}}" stroke="none"/>
-    <path d="M74,14L74,2L66,10" fill="none" stroke="#888888" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M74,2L82,10" fill="none" stroke="#888888" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-
+    <path d="M16 36 Q48 2 80 36 Q48 62 16 36 Z" fill="url(#scl2)"/>
+    <g clip-path="url(#lid2)">
+      <ellipse cx="48" cy="24" rx="20" ry="16" fill="url(#iris2)"/>
+      <ellipse cx="48" cy="21" rx="10" ry="8" fill="#0b1420"/>
+      <circle cx="42.5" cy="17" r="3.2" fill="#ffffff" opacity="0.9"/>
+      <path d="M16 36 Q48 2 80 36" fill="none" stroke="#000000" stroke-width="7" opacity="0.16"/>
+    </g>
+    <path d="M16 36 Q48 2 80 36 Q48 62 16 36 Z" fill="none" stroke="#14202e" stroke-width="2.5"/>
+    <polyline points="36,15 48,4 60,15" fill="none" stroke="#4fc3f7" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+    <polyline points="36,15 48,4 60,15" fill="none" stroke="#9fe3ff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

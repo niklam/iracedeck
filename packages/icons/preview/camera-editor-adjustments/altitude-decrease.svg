@@ -1,10 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 88 50" stroke-width="0.5" stroke="#fff" fill="#fff">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
   <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"ALTITUDE\n-"},"border":{"color":"#3a5a6a"}}</desc>
-  
+  <defs>
+    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.55"/></linearGradient>
+    <linearGradient id="minusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f47c6a"/><stop offset="1" stop-color="#c0392b"/></linearGradient>
+  </defs>
 
-    <rect x="15" y="7" width="48" height="36" rx="4" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <polygon points="63,13 87,1 87,49 63,37" fill="none" stroke="#ffffff" stroke-width="3" stroke-linejoin="round"/>
-    <line x1="7" y1="3" x2="7" y2="43" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-    <polyline points="1,37 7,43 13,37" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-
+    <line x1="14" y1="58" x2="72" y2="58" stroke="#8fa3ad" stroke-width="3.5" stroke-linecap="round"/>
+    <line x1="34" y1="53" x2="34" y2="20" stroke="#4fc3f7" stroke-width="3" stroke-dasharray="5 4"/>
+    <rect x="26" y="7" width="16" height="11" rx="2.5" fill="url(#mtl)"/>
+    <rect x="42" y="9" width="6" height="7" rx="1.5" fill="#3f5561"/>
+    <circle cx="34" cy="58" r="3" fill="#4fc3f7"/><circle cx="80" cy="60" r="10" fill="url(#minusG)" stroke="#1a2a3a" stroke-width="3"/>
+    <path d="M75 60h10" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"/>
 </svg>

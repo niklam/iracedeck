@@ -1,11 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 74 58" stroke-width="0.5" stroke="#fff" fill="#fff">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
   <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"F-NUMBER\n+"},"border":{"color":"#3a5a6a"}}</desc>
-  
+  <defs>
+    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="{{graphic1Color}}"/><stop offset="1" stop-color="{{graphic1Color}}" stop-opacity="0.55"/></linearGradient>
+    <radialGradient id="lns" cx="0.38" cy="0.32" r="0.95"><stop stop-color="#8ed4ff"/><stop offset="0.55" stop-color="#2c5f9e"/><stop offset="1" stop-color="#122c4d"/></radialGradient>
+    <linearGradient id="plusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#4be08d"/><stop offset="1" stop-color="#1d9e58"/></linearGradient>
+  </defs>
 
-    <circle cx="29" cy="29" r="28" fill="none" stroke="#888888" stroke-width="2"/>
-    <polygon points="29,5 45,13 45,45 29,53 13,45 13,13" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linejoin="round"/>
-    <circle cx="29" cy="29" r="10" fill="none" stroke="{{graphic1Color}}" stroke-width="2"/>
-    <line x1="65" y1="21" x2="65" y2="37" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
-    <line x1="57" y1="29" x2="73" y2="29" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
-
+    <circle cx="44" cy="34" r="22" fill="url(#mtl)"/>
+    <circle cx="44" cy="34" r="19" fill="#14202e"/>
+    <line x1="63.0" y1="34.0" x2="40.0" y2="40.9" stroke="#8fa3ad" stroke-width="3"/><line x1="53.5" y1="50.5" x2="36.0" y2="34.0" stroke="#8fa3ad" stroke-width="3"/><line x1="34.5" y1="50.5" x2="40.0" y2="27.1" stroke="#8fa3ad" stroke-width="3"/><line x1="25.0" y1="34.0" x2="48.0" y2="27.1" stroke="#8fa3ad" stroke-width="3"/><line x1="34.5" y1="17.5" x2="52.0" y2="34.0" stroke="#8fa3ad" stroke-width="3"/><line x1="53.5" y1="17.5" x2="48.0" y2="40.9" stroke="#8fa3ad" stroke-width="3"/>
+    <circle cx="44" cy="34" r="7" fill="url(#lns)"/><circle cx="80" cy="60" r="10" fill="url(#plusG)" stroke="{{backgroundColor}}" stroke-width="3"/>
+    <path d="M75 60h10M80 55v10" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"/>
 </svg>

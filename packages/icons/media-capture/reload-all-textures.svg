@@ -1,14 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 68 60" stroke-width="0.5" stroke="#fff" fill="#fff">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
   <desc>{"colors":{"backgroundColor":"#2a1a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"TEXTURES\nRELOAD ALL"},"border":{"color":"#5a3a6a"}}</desc>
-  
+  <defs>
+    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="{{graphic1Color}}"/><stop offset="1" stop-color="{{graphic1Color}}" stop-opacity="0.55"/></linearGradient>
+  </defs>
 
-    <path d="M34,2A28,28,0,1,1,6,30" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
-    <polyline points="2,22 6,30 14,26" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M34,58A28,28,0,1,1,62,30" fill="none" stroke="#888888" stroke-width="2" stroke-linecap="round"/>
-    <polyline points="66,38 62,30 54,34" fill="none" stroke="#888888" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    <rect x="22" y="18" width="10" height="10" fill="none" stroke="#888888" stroke-width="1.6"/>
-    <rect x="36" y="18" width="10" height="10" fill="none" stroke="#888888" stroke-width="1.6"/>
-    <rect x="22" y="32" width="10" height="10" fill="none" stroke="#888888" stroke-width="1.6"/>
-    <rect x="36" y="32" width="10" height="10" fill="none" stroke="#888888" stroke-width="1.6"/>
-
+    <rect x="16" y="14" width="17" height="17" rx="3" fill="url(#mtl)"/>
+    <rect x="36" y="14" width="17" height="17" rx="3" fill="#5a4a72"/>
+    <rect x="16" y="34" width="17" height="17" rx="3" fill="#5a4a72"/>
+    <rect x="36" y="34" width="17" height="17" rx="3" fill="url(#mtl)"/>
+    <path d="M62 26 A15 15 0 0 1 88 30" fill="none" stroke="#4fc3f7" stroke-width="4" stroke-linecap="round"/>
+    <polygon points="88,22 91,33 80,31" fill="#4fc3f7"/>
+    <path d="M86 44 A15 15 0 0 1 60 40" fill="none" stroke="#4fc3f7" stroke-width="4" stroke-linecap="round"/>
+    <polygon points="60,48 57,37 68,39" fill="#4fc3f7"/>
 </svg>

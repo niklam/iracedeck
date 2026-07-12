@@ -1,12 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 62 60" stroke-width="0.5" stroke="#fff" fill="#fff">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
   <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"BLIMP VEL\n-"},"border":{"color":"#3a5a6a"}}</desc>
-  
+  <defs>
+    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.55"/></linearGradient>
+    <linearGradient id="minusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f47c6a"/><stop offset="1" stop-color="#c0392b"/></linearGradient>
+  </defs>
 
-    <circle cx="33" cy="29" r="28" fill="none" stroke="#888888" stroke-width="2" stroke-dasharray="6,6"/>
-    <circle cx="33" cy="29" r="6" fill="#ffffff" stroke="none"/>
-    <circle cx="5" cy="29" r="4" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <path d="M1,25A28,28,0,0,1,53,9" fill="none" stroke="#888888" stroke-width="2"/>
-    <path d="M1,33A28,28,0,0,0,21,53" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <polyline points="15,49 21,53 17,59" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-
+    <line x1="12" y1="25" x2="28" y2="25" stroke="#4fc3f7" stroke-width="3" stroke-linecap="round" opacity="0.55"/>
+    <line x1="8" y1="33" x2="26" y2="33" stroke="#4fc3f7" stroke-width="3.2" stroke-linecap="round" opacity="0.8"/>
+    <line x1="12" y1="41" x2="28" y2="41" stroke="#4fc3f7" stroke-width="3" stroke-linecap="round" opacity="0.55"/>
+    <g transform="translate(54 33) scale(1)">
+    <ellipse cx="0" cy="0" rx="16" ry="8.5" fill="url(#mtl)"/>
+    <polygon points="13,-3.5 21,-7.5 21,7.5 13,3.5" fill="#8fa3ad"/>
+    <rect x="-6" y="7.5" width="9" height="4.5" rx="2" fill="#3f5561"/>
+    <ellipse cx="-4" cy="-3.5" rx="7" ry="3" fill="#ffffff" opacity="0.3"/>
+  </g><circle cx="80" cy="60" r="10" fill="url(#minusG)" stroke="#1a2a3a" stroke-width="3"/>
+    <path d="M75 60h10" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"/>
 </svg>

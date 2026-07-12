@@ -1,12 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 90 54" stroke-width="0.5" stroke="#fff" fill="#fff">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
   <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"KEY STEP\n-"},"border":{"color":"#3a5a6a"}}</desc>
-  
+  <defs>
+    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.55"/></linearGradient>
+    <linearGradient id="minusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f47c6a"/><stop offset="1" stop-color="#c0392b"/></linearGradient>
+  </defs>
 
-    <rect x="1" y="1" width="88" height="8" rx="2" fill="none" stroke="#888888" stroke-width="2"/>
-    <rect x="1" y="1" width="56" height="8" rx="2" fill="#ffffff" fill-opacity="0.3" stroke="none"/>
-    <line x1="13" y1="25" x2="13" y2="53" stroke="#888888" stroke-width="2" stroke-dasharray="4,4"/>
-    <line x1="45" y1="25" x2="45" y2="53" stroke="#ffffff" stroke-width="3"/>
-    <line x1="77" y1="25" x2="77" y2="53" stroke="#888888" stroke-width="2" stroke-dasharray="4,4"/>
-    <polyline points="39,45 45,53 51,45" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-
+    <rect x="16" y="18" width="27" height="27" rx="6" fill="url(#mtl)"/>
+    <rect x="19.5" y="21" width="20" height="17" rx="3.5" fill="#dfe7ec"/>
+    <polygon points="29.5,25.5 24,33 35,33" fill="#3f5561"/>
+    <path d="M50 52 h8 v-8 h8 v-8 h8 v-8 h8" fill="none" stroke="#4fc3f7" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="80" cy="60" r="10" fill="url(#minusG)" stroke="#1a2a3a" stroke-width="3"/>
+    <path d="M75 60h10" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"/>
 </svg>

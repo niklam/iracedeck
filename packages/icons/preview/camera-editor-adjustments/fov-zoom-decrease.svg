@@ -1,10 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 78 50" stroke-width="0.5" stroke="#fff" fill="#fff">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
   <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"FOV ZOOM\n-"},"border":{"color":"#3a5a6a"}}</desc>
-  
+  <defs>
+    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.55"/></linearGradient>
+    <linearGradient id="minusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f47c6a"/><stop offset="1" stop-color="#c0392b"/></linearGradient>
+  </defs>
 
-    <circle cx="25" cy="25" r="24" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <circle cx="25" cy="25" r="12" fill="none" stroke="#888888" stroke-width="2"/>
-    <circle cx="25" cy="25" r="4" fill="#ffffff" stroke="none"/>
-    <line x1="61" y1="25" x2="77" y2="25" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-
+    <polygon points="22,36 74,12 74,60" fill="#4fc3f7" opacity="0.16"/>
+    <line x1="22" y1="36" x2="74" y2="12" stroke="#4fc3f7" stroke-width="3.5" stroke-linecap="round"/>
+    <line x1="22" y1="36" x2="74" y2="60" stroke="#4fc3f7" stroke-width="3.5" stroke-linecap="round"/>
+    <path d="M38 29 A18 18 0 0 1 38 43" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <rect x="9" y="29" width="13" height="14" rx="3" fill="url(#mtl)"/><circle cx="80" cy="60" r="10" fill="url(#minusG)" stroke="#1a2a3a" stroke-width="3"/>
+    <path d="M75 60h10" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"/>
 </svg>

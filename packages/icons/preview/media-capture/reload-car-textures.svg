@@ -1,12 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 84 46" stroke-width="0.5" stroke="#fff" fill="#fff">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
   <desc>{"colors":{"backgroundColor":"#2a1a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"TEXTURES\nRELOAD CAR"},"border":{"color":"#5a3a6a"}}</desc>
-  
+  <defs>
+    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.55"/></linearGradient>
+  </defs>
 
-    <path d="M6,38L14,22L34,18L50,18L70,22L78,38Z" fill="none" stroke="#ffffff" stroke-width="3" stroke-linejoin="round"/>
-    <line x1="2" y1="38" x2="82" y2="38" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-    <circle cx="22" cy="38" r="6" fill="none" stroke="#888888" stroke-width="2"/>
-    <circle cx="62" cy="38" r="6" fill="none" stroke="#888888" stroke-width="2"/>
-    <path d="M42,2A12,12,0,1,1,30,14" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-    <polyline points="26,10 30,14 34,10" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-
+    <rect x="20" y="12" width="24" height="46" rx="9" fill="url(#mtl)"/>
+    <rect x="24" y="18" width="16" height="11" rx="4" fill="#2c3e50" opacity="0.55"/>
+    <rect x="24" y="42" width="16" height="9" rx="4" fill="#2c3e50" opacity="0.35"/>
+    <rect x="14" y="17" width="7" height="14" rx="3" fill="#3f5561"/>
+    <rect x="43" y="17" width="7" height="14" rx="3" fill="#3f5561"/>
+    <rect x="14" y="41" width="7" height="14" rx="3" fill="#3f5561"/>
+    <rect x="43" y="41" width="7" height="14" rx="3" fill="#3f5561"/>
+    <path d="M62 26 A15 15 0 0 1 88 30" fill="none" stroke="#4fc3f7" stroke-width="4" stroke-linecap="round"/>
+    <polygon points="88,22 91,33 80,31" fill="#4fc3f7"/>
+    <path d="M86 44 A15 15 0 0 1 60 40" fill="none" stroke="#4fc3f7" stroke-width="4" stroke-linecap="round"/>
+    <polygon points="60,48 57,37 68,39" fill="#4fc3f7"/>
 </svg>

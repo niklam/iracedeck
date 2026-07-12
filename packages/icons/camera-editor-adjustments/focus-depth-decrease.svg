@@ -1,12 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 74 52" stroke-width="0.5" stroke="#fff" fill="#fff">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
   <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"FOCUS DEPTH\n-"},"border":{"color":"#3a5a6a"}}</desc>
-  
+  <defs>
+    <filter id="glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="3"/></filter>
+    <linearGradient id="minusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f47c6a"/><stop offset="1" stop-color="#c0392b"/></linearGradient>
+  </defs>
 
-    <circle cx="17" cy="17" r="16" fill="none" stroke="#888888" stroke-width="2"/>
-    <circle cx="17" cy="17" r="6" fill="#888888" stroke="none"/>
-    <circle cx="61" cy="17" r="12" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
-    <circle cx="61" cy="17" r="4" fill="{{graphic1Color}}" stroke="none"/>
-    <line x1="37" y1="45" x2="17" y2="45" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
-    <polyline points="23,39 17,45 23,51" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-
+    <path d="M14 22 v-8 h9" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M73 14 h9 v8" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M82 50 v8 h-9" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M23 58 h-9 v-8" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="30" cy="36" r="5" fill="#ffffff" opacity="0.3" filter="url(#glow)"/>
+    <circle cx="66" cy="36" r="5" fill="#ffffff" opacity="0.3" filter="url(#glow)"/>
+    <circle cx="48" cy="36" r="6" fill="#4fc3f7" filter="url(#glow)"/>
+    <circle cx="48" cy="36" r="6" fill="#4fc3f7"/><circle cx="80" cy="60" r="10" fill="url(#minusG)" stroke="{{backgroundColor}}" stroke-width="3"/>
+    <path d="M75 60h10" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"/>
 </svg>

@@ -1,10 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 52" stroke-width="0.5" stroke="#fff" fill="#fff">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
   <desc>{"colors":{"backgroundColor":"#2a1a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"VIDEO\nSTART/STOP"},"border":{"color":"#5a3a6a"}}</desc>
-  
+  <defs>
+    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.55"/></linearGradient>
+    <linearGradient id="blkG2" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#5c6a78"/><stop offset="1" stop-color="#28313a"/></linearGradient>
+    <linearGradient id="redG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ff6b5e"/><stop offset="1" stop-color="#c0392b"/></linearGradient>
+    <filter id="glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="3"/></filter>
+  </defs>
 
-    <rect x="2" y="8" width="44" height="36" rx="4" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <polygon points="46,14 70,2 70,50 46,38" fill="none" stroke="#ffffff" stroke-width="3" stroke-linejoin="round"/>
-    <circle cx="24" cy="26" r="10" fill="none" stroke="#888888" stroke-width="2"/>
-    <circle cx="24" cy="26" r="5" fill="#e74c3c" stroke="none"/>
-
+    <circle cx="24" cy="17" r="7" fill="#3f5561"/><circle cx="24" cy="17" r="2.6" fill="url(#mtl)"/>
+    <circle cx="41" cy="17" r="7" fill="#3f5561"/><circle cx="41" cy="17" r="2.6" fill="url(#mtl)"/>
+    <rect x="12" y="22" width="44" height="32" rx="7" fill="url(#mtl)"/>
+    <rect x="12" y="22" width="44" height="8" rx="4" fill="#ffffff" opacity="0.25"/>
+    <polygon points="56,33 78,23 78,53 56,43" fill="url(#blkG2)"/>
+    <line x1="78" y1="23" x2="78" y2="53" stroke="#7a8894" stroke-width="2.5" stroke-linecap="round"/>
+    <circle cx="80" cy="12" r="7" fill="url(#redG)" filter="url(#glow)"/>
+    <circle cx="80" cy="12" r="6.5" fill="url(#redG)"/>
 </svg>

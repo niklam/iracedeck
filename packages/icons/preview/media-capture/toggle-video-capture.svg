@@ -1,10 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 52" stroke-width="0.5" stroke="#fff" fill="#fff">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
   <desc>{"colors":{"backgroundColor":"#2a1a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"VIDEO\nTOGGLE"},"border":{"color":"#5a3a6a"}}</desc>
-  
+  <defs>
+    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.55"/></linearGradient>
+    <linearGradient id="blkG2" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#5c6a78"/><stop offset="1" stop-color="#28313a"/></linearGradient>
+  </defs>
 
-    <rect x="2" y="8" width="44" height="36" rx="4" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <polygon points="46,14 70,2 70,50 46,38" fill="none" stroke="#ffffff" stroke-width="3" stroke-linejoin="round"/>
-    <line x1="24" y1="16" x2="24" y2="24" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-    <path d="M16,20A10,10,0,1,0,32,20" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-
+    <circle cx="24" cy="17" r="7" fill="#3f5561"/><circle cx="24" cy="17" r="2.6" fill="url(#mtl)"/>
+    <circle cx="41" cy="17" r="7" fill="#3f5561"/><circle cx="41" cy="17" r="2.6" fill="url(#mtl)"/>
+    <rect x="12" y="22" width="44" height="32" rx="7" fill="url(#mtl)"/>
+    <rect x="12" y="22" width="44" height="8" rx="4" fill="#ffffff" opacity="0.25"/>
+    <polygon points="56,33 78,23 78,53 56,43" fill="url(#blkG2)"/>
+    <line x1="78" y1="23" x2="78" y2="53" stroke="#7a8894" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M74.5 8 A7.5 7.5 0 1 0 83.5 8" fill="none" stroke="#4be08d" stroke-width="3" stroke-linecap="round"/>
+    <line x1="79" y1="4" x2="79" y2="12" stroke="#4be08d" stroke-width="3" stroke-linecap="round"/>
 </svg>
