@@ -6,5 +6,5 @@
 
     <rect x="22" y="10" width="52" height="34" rx="4" fill="#14202e" stroke="url(#mtl)" stroke-width="3.5"/>
     <text x="48" y="31.5" font-family="Arial, sans-serif" font-size="12.5" font-weight="bold" fill="#f6d34c" text-anchor="middle" stroke="none">IN LAP</text>
-    <line x1="48" y1="46" x2="48" y2="62" stroke="url(#mtl)" stroke-width="4.5" stroke-linecap="round"/>
+    <rect x="45.75" y="45" width="4.5" height="17" rx="2.25" fill="url(#mtl)"/>
 </svg>
