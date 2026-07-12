@@ -133,14 +133,41 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
    * Register a callback to regenerate the SVG for a context when global colors change.
    * Call this after setKeyImage() in your updateDisplay method.
    *
+   * Registration also reconciles immediately (issue #642): `setKeyImage()` computes its
+   * SVG, awaits the (potentially slow, e.g. rasterization) `setImage()` call, and only
+   * *then* does the caller register this callback — so a global-settings arrival that
+   * lands during that await is invisible to `onGlobalSettingsUpdated`, which skips
+   * contexts with no `regenerate` yet, and the stale (e.g. binding-missing-warning) icon
+   * ships until the next `willAppear`. Re-running `regenerate()` right here, synchronously
+   * with registration, closes that window by picking up whatever state won the race.
+   *
    * @param contextId - The action context ID
    * @param regenerate - Function that returns the new SVG data URI
    */
   protected setRegenerateCallback(contextId: string, regenerate: () => string): void {
     const entry = this.contexts.get(contextId);
 
-    if (entry) {
-      entry.regenerate = regenerate;
+    if (!entry) return;
+
+    entry.regenerate = regenerate;
+
+    try {
+      const newSvg = regenerate();
+
+      if (newSvg === entry.svg) return;
+
+      entry.svg = newSvg;
+
+      // Skip contexts with active flag overlay, same gate as updateKeyImage/refreshAllImages.
+      if (this.flagOverlayActive.has(contextId)) return;
+
+      const finalImage = this.applyOverlayIfNeeded(newSvg);
+
+      entry.action.setImage(finalImage).catch((err) => {
+        this.logger.warn(`Failed to reconcile image for context ${contextId}: ${err}`);
+      });
+    } catch {
+      // regenerate failed, keep existing svg
     }
   }
 

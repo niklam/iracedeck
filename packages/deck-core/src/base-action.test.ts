@@ -62,6 +62,19 @@ class TestAction extends BaseAction {
   registerKey(ev: IDeckWillAppearEvent<Record<string, unknown>>, svg: string): Promise<void> {
     return (this as unknown as { setKeyImage: (e: unknown, s: string) => Promise<void> }).setKeyImage(ev, svg);
   }
+
+  // Expose protected setRegenerateCallback for issue #642 reconciliation tests.
+  registerRegenerateCallback(contextId: string, regenerate: () => string): void {
+    return (this as unknown as { setRegenerateCallback: (id: string, r: () => string) => void }).setRegenerateCallback(
+      contextId,
+      regenerate,
+    );
+  }
+
+  // Expose protected getKeyImage for issue #642 reconciliation tests.
+  getStoredSvg(contextId: string): string | undefined {
+    return (this as unknown as { getKeyImage: (id: string) => string | undefined }).getKeyImage(contextId);
+  }
 }
 
 interface TestContext {
@@ -203,5 +216,111 @@ describe("BaseAction flag flash duration (issue #490)", () => {
 
     ctx.driveTelemetry(FLAG_YELLOW); // fresh transition — should retrigger
     expect(ctx.action.getOverlayActive().has("ctx-1")).toBe(true);
+  });
+});
+
+describe("BaseAction regenerate-callback reconciliation (issue #642)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetGlobalSettings.mockReturnValue({});
+  });
+
+  function createReconciliationContext(): {
+    action: TestAction;
+    fakeAction: IDeckActionContext;
+    setImageSpy: ReturnType<typeof vi.fn>;
+  } {
+    const action = new TestAction();
+    const setImageSpy = vi.fn().mockResolvedValue(undefined);
+    const fakeAction: IDeckActionContext = {
+      id: "ctx-regen",
+      isKey: () => true,
+      isDial: () => false,
+      setImage: setImageSpy,
+      setTitle: vi.fn().mockResolvedValue(undefined),
+      setSettings: vi.fn().mockResolvedValue(undefined),
+      setFeedback: vi.fn().mockResolvedValue(undefined),
+      setFeedbackLayout: vi.fn().mockResolvedValue(undefined),
+      setTriggerDescription: vi.fn().mockResolvedValue(undefined),
+    };
+
+    return { action, fakeAction, setImageSpy };
+  }
+
+  it("reconciles the icon when settings changed during the setKeyImage() await, closing the startup race", async () => {
+    const { action, fakeAction, setImageSpy } = createReconciliationContext();
+    const willAppear = {
+      action: fakeAction,
+      payload: { settings: {} },
+    } as unknown as IDeckWillAppearEvent<Record<string, unknown>>;
+
+    // Simulates: render svg "A" (e.g. bindingMissing=true because the global
+    // settings cache was empty), then setKeyImage's await lets a settings
+    // change land before the regenerate callback is registered.
+    await action.registerKey(willAppear, "A");
+    expect(setImageSpy).toHaveBeenLastCalledWith("A");
+
+    // Registration now reconciles: the settings arrived, so regenerate()
+    // returns the corrected icon "B".
+    action.registerRegenerateCallback(fakeAction.id, () => "B");
+
+    expect(setImageSpy).toHaveBeenLastCalledWith("B");
+    expect(action.getStoredSvg(fakeAction.id)).toBe("B");
+  });
+
+  it("does not push a second setImage when the regenerated icon is unchanged", async () => {
+    const { action, fakeAction, setImageSpy } = createReconciliationContext();
+    const willAppear = {
+      action: fakeAction,
+      payload: { settings: {} },
+    } as unknown as IDeckWillAppearEvent<Record<string, unknown>>;
+
+    await action.registerKey(willAppear, "A");
+    expect(setImageSpy).toHaveBeenCalledTimes(1);
+
+    action.registerRegenerateCallback(fakeAction.id, () => "A");
+
+    expect(setImageSpy).toHaveBeenCalledTimes(1);
+    expect(action.getStoredSvg(fakeAction.id)).toBe("A");
+  });
+
+  it("does not crash and keeps the stored svg when the regenerate callback throws", async () => {
+    const { action, fakeAction, setImageSpy } = createReconciliationContext();
+    const willAppear = {
+      action: fakeAction,
+      payload: { settings: {} },
+    } as unknown as IDeckWillAppearEvent<Record<string, unknown>>;
+
+    await action.registerKey(willAppear, "A");
+    expect(setImageSpy).toHaveBeenCalledTimes(1);
+
+    expect(() =>
+      action.registerRegenerateCallback(fakeAction.id, () => {
+        throw new Error("boom");
+      }),
+    ).not.toThrow();
+
+    expect(action.getStoredSvg(fakeAction.id)).toBe("A");
+    expect(setImageSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("stores the reconciled svg but skips the visual push while flag overlay is active", async () => {
+    const { action, fakeAction, setImageSpy } = createReconciliationContext();
+    const willAppear = {
+      action: fakeAction,
+      payload: { settings: {} },
+    } as unknown as IDeckWillAppearEvent<Record<string, unknown>>;
+
+    await action.registerKey(willAppear, "A");
+    expect(setImageSpy).toHaveBeenCalledTimes(1);
+
+    // Simulate an active flag flash for this context (same set the flag
+    // overlay machinery uses to gate visual updates in updateKeyImage).
+    action.getOverlayActive().add(fakeAction.id);
+
+    action.registerRegenerateCallback(fakeAction.id, () => "B");
+
+    expect(action.getStoredSvg(fakeAction.id)).toBe("B");
+    expect(setImageSpy).toHaveBeenCalledTimes(1);
   });
 });

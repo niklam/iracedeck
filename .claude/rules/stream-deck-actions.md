@@ -146,6 +146,8 @@ private async updateDisplay(
 }
 ```
 
+Call `this.setRegenerateCallback(contextId, () => svg)` after `setKeyImage()` in `updateDisplay()` so global-settings changes (colors, title, borders) can re-render the icon later. Registration itself reconciles immediately (issue #642): since `setKeyImage()` awaits the image push before the caller registers the callback, a global-settings arrival that lands during that await is otherwise missed, and `setRegenerateCallback` closes that window by re-running `regenerate()` and pushing the result if it differs from what was stored.
+
 Directional Actions (increase/decrease, cycle)
 
 - Use a `direction` setting key for directional actions.
