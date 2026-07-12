@@ -119,6 +119,9 @@ export { findNearestCarOnTrack, type FindNearestCarOptions, nearestCarGapMeters 
 // Position utilities
 export { calculateRacePositions, classPositionFromOrder } from "./position-utils.js";
 
+// iRating estimation utilities (#268)
+export { calculateIRatingChanges, calculateSof, type IRatingRaceResult } from "./irating-utils.js";
+
 // Flag utilities
 export { type FlagInfo, FLAG_DEFINITIONS, resolveActiveFlag, resolveAllActiveFlags } from "./flag-utils.js";
 
