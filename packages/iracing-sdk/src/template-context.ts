@@ -6,6 +6,7 @@
  * and {{= expression }} calculations (raw map).
  */
 import type { ExpressionValue } from "./expression-evaluator.js";
+import { estimateIRatingChanges, type IRatingEstimates } from "./irating-utils.js";
 import { classPositionFromOrder } from "./position-utils.js";
 import type { SDKController } from "./SDKController.js";
 import { findNearestCarOnTrack } from "./track-utils.js";
@@ -56,6 +57,8 @@ type DriverFields = {
   lap: number | undefined;
   laps_completed: number | undefined;
   irating: number | undefined;
+  irating_change: number | undefined;
+  irating_new: number | undefined;
   license: string;
 };
 
@@ -88,6 +91,8 @@ const EMPTY_DRIVER_FIELDS: DriverFields = {
   lap: undefined,
   laps_completed: undefined,
   irating: undefined,
+  irating_change: undefined,
+  irating_new: undefined,
   license: "",
 };
 
@@ -207,12 +212,20 @@ export function prefixKeys<T>(prefix: string, record: Record<string, T>): Record
  * keys so expressions referencing them fail as unknown variables (rendering "").
  * Runtime nulls from YAML session data are treated like undefined.
  */
+/** Fields whose display form is the signed, rounded integer (+31 / -15 / 0). */
+const SIGNED_INT_DISPLAY_FIELDS = new Set(["irating_change"]);
+
 function fieldsToMaps(fields: Record<string, DriverFieldValue>): FieldMaps {
   const display: Record<string, string> = {};
   const raw: Record<string, TemplateValue> = {};
 
   for (const [key, value] of Object.entries(fields)) {
-    display[key] = value != null ? String(value) : "";
+    if (value != null && typeof value === "number" && SIGNED_INT_DISPLAY_FIELDS.has(key)) {
+      const rounded = Math.round(value);
+      display[key] = rounded > 0 ? `+${rounded}` : String(rounded);
+    } else {
+      display[key] = value != null ? String(value) : "";
+    }
 
     if (value != null) {
       raw[key] = value;
@@ -232,8 +245,11 @@ function driverMaps(
   telemetry: TelemetryData | null,
   order?: number[],
   playerCarIdx?: number,
+  estimates?: IRatingEstimates,
 ): FieldMaps {
-  return fieldsToMaps(driver ? buildDriverFields(driver, telemetry, order, playerCarIdx) : { ...EMPTY_DRIVER_FIELDS });
+  return fieldsToMaps(
+    driver ? buildDriverFields(driver, telemetry, order, playerCarIdx, estimates) : { ...EMPTY_DRIVER_FIELDS },
+  );
 }
 
 /**
@@ -260,38 +276,49 @@ export function buildTemplateContextFromData(
   const liveOrder = livePositions && livePositions.length > 0 ? livePositions : undefined;
   const order = isRaceSession(sessionInfo, telemetry) ? liveOrder : undefined;
 
+  // Estimated iRating change per car ("if the race ended now", #268) — computed
+  // from the same canonical order; memoized inside the estimator so the O(n²)
+  // math only re-runs when positions actually change.
+  const estimates = order
+    ? estimateIRatingChanges({ drivers, order, carIdxClass: telemetry?.CarIdxClass as number[] | undefined })
+    : undefined;
+
   const selfDriver = drivers.find((d) => d.CarIdx === playerCarIdx);
-  const self = fieldsToMaps(buildSelfFields(selfDriver, playerCarIdx, telemetry, order));
+  const self = fieldsToMaps(buildSelfFields(selfDriver, playerCarIdx, telemetry, order, estimates));
 
   const trackAhead = driverMaps(
     findNearestDriverOnTrack(playerCarIdx, drivers, telemetry, "ahead"),
     telemetry,
     order,
     playerCarIdx,
+    estimates,
   );
   const trackBehind = driverMaps(
     findNearestDriverOnTrack(playerCarIdx, drivers, telemetry, "behind"),
     telemetry,
     order,
     playerCarIdx,
+    estimates,
   );
   const raceAhead = driverMaps(
     findDriverByRacePosition(playerCarIdx, drivers, telemetry, -1, order),
     telemetry,
     order,
     playerCarIdx,
+    estimates,
   );
   const raceBehind = driverMaps(
     findDriverByRacePosition(playerCarIdx, drivers, telemetry, +1, order),
     telemetry,
     order,
     playerCarIdx,
+    estimates,
   );
   // `focused` can resolve to the player's own car (camera on you) — passing
   // playerCarIdx makes it use the same player-authoritative fields as `self`.
-  const focused = driverMaps(findDriverByCamCarIdx(drivers, telemetry), telemetry, order, playerCarIdx);
+  const focused = driverMaps(findDriverByCamCarIdx(drivers, telemetry), telemetry, order, playerCarIdx, estimates);
 
-  const sessionFields = buildSessionFields(sessionInfo, telemetry);
+  const sessionFields = buildSessionFields(sessionInfo, telemetry, estimates, playerCarIdx);
   const trackFields = buildTrackFields(sessionInfo);
 
   const telemetryMaps = telemetry
@@ -487,6 +514,7 @@ function buildDriverFields(
   telemetry: TelemetryData | null,
   order?: number[],
   playerCarIdx?: number,
+  estimates?: IRatingEstimates,
 ): DriverFields {
   const { firstName, lastName } = splitDriverName(driver.UserName);
   const carIdx = driver.CarIdx;
@@ -496,6 +524,8 @@ function buildDriverFields(
   // the one prefix that can be aimed at a non-competitor: render its
   // position/class blank rather than a 0 or a bogus on-track lap-order rank.
   const isCompetitor = driver.CarIsPaceCar !== 1 && driver.IsSpectator !== 1;
+  // Estimated iRating change (#268): null (not in the scored field) → blank.
+  const iratingChange = isCompetitor ? (estimates?.changes[carIdx] ?? null) : null;
 
   return {
     name: driver.UserName,
@@ -516,6 +546,9 @@ function buildDriverFields(
     lap: (isPlayer ? telemetry?.Lap : undefined) ?? telemetry?.CarIdxLap?.[carIdx],
     laps_completed: (isPlayer ? telemetry?.LapCompleted : undefined) ?? telemetry?.CarIdxLapCompleted?.[carIdx],
     irating: driver.IRating,
+    irating_change: iratingChange ?? undefined,
+    // Projected post-race rating — integer, like the reference implementation.
+    irating_new: iratingChange != null && driver.IRating > 0 ? Math.round(driver.IRating + iratingChange) : undefined,
     license: driver.LicString ?? "",
   };
 }
@@ -530,13 +563,14 @@ function buildSelfFields(
   playerCarIdx: number,
   telemetry: TelemetryData | null,
   order?: number[],
+  estimates?: IRatingEstimates,
 ): SelfDriverFields {
   if (!driver) return { ...EMPTY_SELF_FIELDS };
 
   // Self is the player-aware per-car field set plus the player-only incident
   // count — so `self` and `focused`-on-the-player share one code path.
   return {
-    ...buildDriverFields(driver, telemetry, order, playerCarIdx),
+    ...buildDriverFields(driver, telemetry, order, playerCarIdx, estimates),
     incidents: telemetry?.PlayerCarMyIncidentCount,
   };
 }
@@ -558,7 +592,12 @@ function isRaceSession(sessionInfo: SessionInfo | null, telemetry: TelemetryData
   return (getCurrentSession(sessionInfo, telemetry)?.SessionType as string) === "Race";
 }
 
-function buildSessionFields(sessionInfo: SessionInfo | null, telemetry: TelemetryData | null): FieldMaps {
+function buildSessionFields(
+  sessionInfo: SessionInfo | null,
+  telemetry: TelemetryData | null,
+  estimates?: IRatingEstimates,
+  playerCarIdx?: number,
+): FieldMaps {
   const currentSession = getCurrentSession(sessionInfo, telemetry);
 
   const lapsRemaining = telemetry?.SessionLapsRemainEx;
@@ -570,10 +609,18 @@ function buildSessionFields(sessionInfo: SessionInfo | null, telemetry: Telemetr
   // wanting math on it should use telemetry.SessionTimeRemain instead.
   const timeRemainingFormatted = formatTimeRemaining(timeRemaining);
 
+  // Strength of Field of the player's class (#268) — blank when the player
+  // isn't in a scored field (non-race, no order, missing iRating, <2-car class).
+  const sof = playerCarIdx !== undefined && playerCarIdx >= 0 ? (estimates?.sofs[playerCarIdx] ?? null) : null;
+
   const raw: Record<string, TemplateValue> = { type, time_remaining: timeRemainingFormatted };
 
   if (hasLapsRemaining) {
     raw.laps_remaining = lapsRemaining;
+  }
+
+  if (sof !== null) {
+    raw.sof = sof;
   }
 
   return {
@@ -581,6 +628,7 @@ function buildSessionFields(sessionInfo: SessionInfo | null, telemetry: Telemetr
       type,
       laps_remaining: hasLapsRemaining ? String(lapsRemaining) : "",
       time_remaining: timeRemainingFormatted,
+      sof: sof !== null ? String(Math.round(sof)) : "",
     },
     raw,
   };
