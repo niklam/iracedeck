@@ -36,7 +36,11 @@ import {
   type IDeckTouchTapEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
+  isSvgDataUri,
+  keyImageSizeForDevice,
   requestProfileSwitch,
+  toDeviceImage,
+  TOUCH_STRIP_SLOT_WIDTH,
 } from "@iracedeck/deck-core";
 import type { ILogger } from "@iracedeck/logger";
 
@@ -81,7 +85,12 @@ class ElgatoActionContext implements IDeckActionContext {
   }
 
   async setImage(dataUri: string): Promise<void> {
-    await this.sdAction.setImage(dataUri);
+    const image = await toDeviceImage(this.id, dataUri, keyImageSizeForDevice(this.sdAction.device?.type));
+
+    // null = superseded by a newer image for this context — skip the send.
+    if (image === null) return;
+
+    await this.sdAction.setImage(image);
   }
 
   async setTitle(title: string): Promise<void> {
@@ -101,7 +110,23 @@ class ElgatoActionContext implements IDeckActionContext {
   }
 
   async setFeedback(feedback: DeckFeedbackPayload): Promise<void> {
-    if (this.sdAction.setFeedback) await this.sdAction.setFeedback(feedback as FeedbackPayload);
+    if (!this.sdAction.setFeedback) return;
+
+    const converted: DeckFeedbackPayload = {};
+
+    for (const [key, value] of Object.entries(feedback)) {
+      if (typeof value === "string" && isSvgDataUri(value)) {
+        const image = await toDeviceImage(`${this.id}#${key}`, value, TOUCH_STRIP_SLOT_WIDTH);
+
+        if (image === null) return; // a newer feedback push superseded this one
+
+        converted[key] = image;
+      } else {
+        converted[key] = value;
+      }
+    }
+
+    await this.sdAction.setFeedback(converted as FeedbackPayload);
   }
 
   async setFeedbackLayout(layout: string): Promise<void> {
