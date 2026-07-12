@@ -52,12 +52,7 @@ import { generateSetupViewSvg, getAdjustmentModeForView, isViewSetting } from ".
 import { DialSettings, seedDialFromLegacySetting, SetupHybridDialSurface } from "./setup-hybrid-dial-surface.js";
 
 type SetupHybridAdjustSetting =
-  | "mguk-regen-gain"
-  | "mguk-deploy-mode"
-  | "mguk-fixed-deploy"
-  | "hys-boost"
-  | "hys-regen"
-  | "hys-no-boost";
+  "mguk-regen-gain" | "mguk-deploy-mode" | "mguk-fixed-deploy" | "hys-boost" | "hys-regen" | "hys-no-boost";
 
 /**
  * The combined `setting` type is the union of `SetupHybridAdjustSetting` and the three

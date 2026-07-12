@@ -646,8 +646,7 @@ export function findFastestLapForCar(
 ): number | null {
   const sessionNum = telemetry?.SessionNum as number | undefined;
   const sessionInfoRoot = (sessionInfo as Record<string, unknown> | undefined)?.SessionInfo as
-    | Record<string, unknown>
-    | undefined;
+    Record<string, unknown> | undefined;
   const sessions = sessionInfoRoot?.Sessions as Array<Record<string, unknown>> | undefined;
 
   if (sessions && typeof sessionNum === "number") {

@@ -492,12 +492,7 @@ const SCENARIO_ID_TO_PIT_STATUS_ID: Record<string, PitStatusCalloutId> = {
  * driver); the other five default `true`.
  */
 export type IncidentCalloutId =
-  | "off-track"
-  | "out-of-control"
-  | "contact-world"
-  | "collision-world"
-  | "contact-car"
-  | "collision-car";
+  "off-track" | "out-of-control" | "contact-world" | "collision-world" | "contact-car" | "collision-car";
 
 /**
  * Canonical mapping from `IncidentCalloutId` to its plugin-global setting key

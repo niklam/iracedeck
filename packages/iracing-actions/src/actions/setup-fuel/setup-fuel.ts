@@ -50,11 +50,7 @@ import { generateSetupViewSvg, getAdjustmentModeForView, isViewSetting } from ".
 import { DialSettings, seedDialFromLegacySetting, SetupFuelDialSurface } from "./setup-fuel-dial-surface.js";
 
 type SetupFuelAdjustSetting =
-  | "fuel-mixture"
-  | "fuel-cut-position"
-  | "disable-fuel-cut"
-  | "low-fuel-accept"
-  | "fcy-mode-toggle";
+  "fuel-mixture" | "fuel-cut-position" | "disable-fuel-cut" | "low-fuel-accept" | "fcy-mode-toggle";
 
 /**
  * The combined `setting` type is the union of `SetupFuelAdjustSetting` and the two View

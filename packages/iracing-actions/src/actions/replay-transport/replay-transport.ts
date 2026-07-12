@@ -28,14 +28,7 @@ import stopIconSvg from "@iracedeck/icons/replay-transport/stop.svg";
 import z from "zod";
 
 type TransportAction =
-  | "play"
-  | "pause"
-  | "stop"
-  | "fast-forward"
-  | "rewind"
-  | "slow-motion"
-  | "frame-forward"
-  | "frame-backward";
+  "play" | "pause" | "stop" | "fast-forward" | "rewind" | "slow-motion" | "frame-forward" | "frame-backward";
 
 /**
  * Title text for each transport action (format: "subLabel\nmainLabel")
