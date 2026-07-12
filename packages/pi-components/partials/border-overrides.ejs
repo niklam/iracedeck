@@ -9,7 +9,6 @@
     - defaults: Object with per-action border defaults (e.g., { color: "#5a5a5a" })
 -->
 <% var defaultColor = (defaults && defaults.borderColor) || '#00aaff'; %>
-<% var borderGlowEnabled = (locals.platform?.features?.borderGlow !== false); %>
 <%- include('accordion', {
   title: 'Border Overrides',
   open: false,
@@ -27,18 +26,16 @@
     '<sdpi-item id="ird-border-color" class="hidden" label="Color">' +
       '<ird-color-picker id="ird-border-color-picker" setting="borderOverrides.borderColor" data-default-color="' + defaultColor + '"></ird-color-picker>' +
     '</sdpi-item>' +
-    (borderGlowEnabled ? (
-      '<sdpi-item id="ird-border-glow" class="hidden" label="Show Glow">' +
-        '<sdpi-select id="ird-border-glow-select" setting="borderOverrides.glowEnabled" default="inherit">' +
-          '<option value="inherit">Inherit</option>' +
-          '<option value="true">Yes</option>' +
-          '<option value="false">No</option>' +
-        '</sdpi-select>' +
-      '</sdpi-item>' +
-      '<sdpi-item id="ird-border-glow-width" class="hidden" label="Glow Width">' +
-        '<ird-range-input setting="borderOverrides.glowWidth" min="1" max="30" step="1" default="18" showlabels></ird-range-input>' +
-      '</sdpi-item>'
-    ) : '')
+    '<sdpi-item id="ird-border-glow" class="hidden" label="Show Glow">' +
+      '<sdpi-select id="ird-border-glow-select" setting="borderOverrides.glowEnabled" default="inherit">' +
+        '<option value="inherit">Inherit</option>' +
+        '<option value="true">Yes</option>' +
+        '<option value="false">No</option>' +
+      '</sdpi-select>' +
+    '</sdpi-item>' +
+    '<sdpi-item id="ird-border-glow-width" class="hidden" label="Glow Width">' +
+      '<ird-range-input setting="borderOverrides.glowWidth" min="1" max="30" step="1" default="18" showlabels></ird-range-input>' +
+    '</sdpi-item>'
 }) %>
 
 <script>
@@ -46,11 +43,7 @@
   async function initBorderOverrides() {
     await customElements.whenDefined('sdpi-select');
     var borderSelect = document.getElementById('ird-border-enabled');
-    <% if (borderGlowEnabled) { %>
     var glowSelect = document.getElementById('ird-border-glow-select');
-    <% } else { %>
-    var glowSelect = null;
-    <% } %>
     if (!borderSelect) return;
 
     function clearField(selector) {
@@ -71,17 +64,13 @@
     function clearAllBorderOverrides() {
       clearField('[setting="borderOverrides.borderWidth"]');
       clearField('[setting="borderOverrides.borderColor"]');
-      <% if (borderGlowEnabled) { %>
       clearSelect(glowSelect);
       clearField('[setting="borderOverrides.glowWidth"]');
-      <% } %>
     }
 
-    <% if (borderGlowEnabled) { %>
     function clearGlowOverrides() {
       clearField('[setting="borderOverrides.glowWidth"]');
     }
-    <% } %>
 
     function isBorderEnabled() {
       return borderSelect.value === 'true';
@@ -89,26 +78,22 @@
 
     function updateVisibility() {
       var showBorderSettings = isBorderEnabled();
-      var items = ['ird-border-width', 'ird-border-color'<% if (borderGlowEnabled) { %>, 'ird-border-glow'<% } %>];
+      var items = ['ird-border-width', 'ird-border-color', 'ird-border-glow'];
       items.forEach(function(id) {
         var el = document.getElementById(id);
         if (el) el.classList.toggle('hidden', !showBorderSettings);
       });
 
-      <% if (borderGlowEnabled) { %>
       // Glow width visible only when border settings are shown AND glow is not "false"
       var glowVal = glowSelect ? glowSelect.value : 'inherit';
       var showGlowWidth = showBorderSettings && glowVal !== 'false';
       var glowWidthEl = document.getElementById('ird-border-glow-width');
       if (glowWidthEl) glowWidthEl.classList.toggle('hidden', !showGlowWidth);
-      <% } %>
     }
 
     // Track previous values to detect intentional user changes (not re-fires from settings reload)
     var prevBorderVal = borderSelect.value || 'inherit';
-    <% if (borderGlowEnabled) { %>
     var prevGlowVal = glowSelect ? (glowSelect.value || 'inherit') : 'inherit';
-    <% } %>
 
     updateVisibility();
 
@@ -137,7 +122,6 @@
       updateVisibility();
     }
 
-    <% if (borderGlowEnabled) { %>
     function onGlowChange() {
       var cur = glowSelect ? (glowSelect.value || 'inherit') : 'inherit';
       if (prevGlowVal === 'true' && cur !== 'true') {
@@ -146,31 +130,24 @@
       prevGlowVal = cur;
       updateVisibility();
     }
-    <% } %>
 
     borderSelect.addEventListener('change', onBorderChange);
     borderSelect.addEventListener('input', onBorderChange);
-    <% if (borderGlowEnabled) { %>
     if (glowSelect) {
       glowSelect.addEventListener('change', onGlowChange);
       glowSelect.addEventListener('input', onGlowChange);
     }
-    <% } %>
 
     // Polling fallback (sdpi-select events are unreliable)
     setInterval(function() {
       var curBorder = borderSelect.value || 'inherit';
-      <% if (borderGlowEnabled) { %>
       var curGlow = glowSelect ? (glowSelect.value || 'inherit') : 'inherit';
-      <% } %>
       if (curBorder !== prevBorderVal) {
         onBorderChange();
       }
-      <% if (borderGlowEnabled) { %>
       if (curGlow !== prevGlowVal) {
         onGlowChange();
       }
-      <% } %>
     }, 100);
   }
 

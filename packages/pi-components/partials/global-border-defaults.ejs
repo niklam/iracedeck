@@ -5,7 +5,6 @@
   Settings are stored in global settings (shared across all action instances).
   Collapsed by default.
 -->
-<% var borderGlowEnabled = (locals.platform?.features?.borderGlow !== false); %>
 <%- include('accordion', {
   title: 'Border Defaults',
   open: false,
@@ -23,7 +22,7 @@
     <sdpi-item id="global-border-color-item" class="hidden" label="Color">
       <ird-color-picker id="global-border-color" setting="borderColor" global></ird-color-picker>
     </sdpi-item>
-  ` + (borderGlowEnabled ? `
+  ` + `
     <sdpi-item id="global-border-glow-item" class="hidden" label="Show Glow">
       <sdpi-select id="global-border-glow-enabled" setting="borderGlowEnabled" default="default" global>
         <option value="default">Default</option>
@@ -34,5 +33,5 @@
     <sdpi-item id="global-border-glow-width-item" class="hidden" label="Glow Width">
       <ird-range-input setting="borderGlowWidth" min="1" max="30" step="1" default="18" global showlabels></ird-range-input>
     </sdpi-item>
-  ` : ``)
+  `
 }) %>
