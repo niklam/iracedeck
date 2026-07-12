@@ -10,15 +10,17 @@
  * normalizes Ulanzi `cmd` frames into Elgato-style events. This adapter is
  * therefore structurally near-identical to the Mirabox `VSDPlatformAdapter`.
  */
-import type {
-  DeckFeedbackPayload,
-  DeckTriggerDescription,
-  IDeckActionContext,
-  IDeckActionHandler,
-  IDeckDialRotateEvent,
-  IDeckEvent,
-  IDeckPlatformAdapter,
-  IDeckWillDisappearEvent,
+import {
+  type DeckFeedbackPayload,
+  type DeckTriggerDescription,
+  DEFAULT_KEY_IMAGE_SIZE,
+  type IDeckActionContext,
+  type IDeckActionHandler,
+  type IDeckDialRotateEvent,
+  type IDeckEvent,
+  type IDeckPlatformAdapter,
+  type IDeckWillDisappearEvent,
+  toDeviceImage,
 } from "@iracedeck/deck-core";
 import type { ILogger } from "@iracedeck/logger";
 import { createConsoleLogger, LogLevel } from "@iracedeck/logger";
@@ -41,7 +43,12 @@ class UlanziActionContext implements IDeckActionContext {
   ) {}
 
   async setImage(dataUri: string): Promise<void> {
-    this.client.setImage(this.id, dataUri);
+    const image = await toDeviceImage(this.id, dataUri, DEFAULT_KEY_IMAGE_SIZE);
+
+    // null = superseded by a newer image for this context — skip the send.
+    if (image === null) return;
+
+    this.client.setImage(this.id, image);
   }
 
   async setTitle(_title: string): Promise<void> {
