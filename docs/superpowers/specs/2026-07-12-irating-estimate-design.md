@@ -28,8 +28,11 @@ estimate and is documented as such.
   beside `position-utils.ts`). The template context and the Session Info action both
   call it. No `SDKController` changes, no new injected providers, no plugin wiring.
 - **Value shown pre-green**: as soon as a live order exists in a race session the value
-  renders (delta for finishing where you currently run — grid order during pace laps).
-  Matches how popular overlays behave.
+  renders (delta for finishing where you currently run). **Implementation reality:** the
+  canonical order only classifies cars once `CarIdxLapCompleted >= 0` (crossing the line
+  to begin lap 1), so the key is blank on the grid and through the pace lap and populates
+  as the field takes the green. Seeding the pre-green order from the qualifying grid would
+  need translator support and is deferred as a possible follow-up.
 
 ## The formula
 
