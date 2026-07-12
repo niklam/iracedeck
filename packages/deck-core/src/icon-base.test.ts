@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { generateBorderParts } from "./icon-base.js";
 import type { ResolvedBorderSettings } from "./title-settings.js";
@@ -79,28 +79,5 @@ describe("generateBorderParts", () => {
     expect(result.rects).toContain('x="20"');
     expect(result.rects).toContain('width="104"');
     expect(result.rects).toContain('rx="4"');
-  });
-
-  describe("__FEATURE_BORDER_GLOW__ gating", () => {
-    afterEach(() => {
-      vi.unstubAllGlobals();
-    });
-
-    it("should skip glow when flag is false (even if glowEnabled=true)", () => {
-      vi.stubGlobal("__FEATURE_BORDER_GLOW__", false);
-      const result = generateBorderParts({ ...DEFAULTS, enabled: true, glowEnabled: true });
-      expect(result.defs).toBe("");
-      expect(result.rects).not.toContain("ird-border-glow");
-      expect(result.rects).not.toContain("feGaussianBlur");
-      expect(result.rects).toContain('stroke="#00aaff"');
-      expect(result.rects).toContain('stroke-width="7"');
-    });
-
-    it("should emit glow when flag is true and glowEnabled=true", () => {
-      vi.stubGlobal("__FEATURE_BORDER_GLOW__", true);
-      const result = generateBorderParts({ ...DEFAULTS, enabled: true, glowEnabled: true });
-      expect(result.defs).toContain("ird-border-glow");
-      expect(result.defs).toContain("feGaussianBlur");
-    });
   });
 });

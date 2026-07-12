@@ -341,15 +341,13 @@ export function resolveBorderSettings(
       "borderWidth",
     ),
     borderColor,
-    glowEnabled:
-      __FEATURE_BORDER_GLOW__ &&
-      resolve(
-        actionOverrides?.glowEnabled,
-        globalBorderSettings.glowEnabled,
-        iconDefaults.glowEnabled,
-        BORDER_DEFAULTS.glowEnabled,
-        "glowEnabled",
-      ),
+    glowEnabled: resolve(
+      actionOverrides?.glowEnabled,
+      globalBorderSettings.glowEnabled,
+      iconDefaults.glowEnabled,
+      BORDER_DEFAULTS.glowEnabled,
+      "glowEnabled",
+    ),
     glowWidth: resolve(
       actionOverrides?.glowWidth,
       globalBorderSettings.glowWidth,

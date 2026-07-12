@@ -239,10 +239,6 @@ const config = {
 		replace({
 			preventAssignment: true,
 			values: {
-				__CAPABILITY_SVG_FILTERS__: JSON.stringify(platformFeatures.capabilities.svgFilters),
-				__CAPABILITY_SVG_MASKS__: JSON.stringify(platformFeatures.capabilities.svgMasks),
-				__CAPABILITY_SVG_PATTERNS__: JSON.stringify(platformFeatures.capabilities.svgPatterns),
-				__FEATURE_BORDER_GLOW__: JSON.stringify(platformFeatures.features.borderGlow),
 				__FEATURE_DIAL_FEEDBACK__: JSON.stringify(platformFeatures.features.dialFeedback),
 				__FEATURE_PNG_RASTERIZATION__: JSON.stringify(platformFeatures.features.pngRasterization),
 			},

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { TitleOverrides } from "./common-settings.js";
 import { getGlobalSettings } from "./global-settings.js";
@@ -474,27 +474,6 @@ describe("resolveBorderSettings", () => {
     const result = resolveBorderSettings(GRAPHIC_NO_BORDER, global);
     expect(result.glowEnabled).toBe(false);
     expect(result.glowWidth).toBe(50);
-  });
-
-  describe("__FEATURE_BORDER_GLOW__ gating", () => {
-    afterEach(() => {
-      vi.unstubAllGlobals();
-    });
-
-    it("should force glowEnabled to false when the flag is false", () => {
-      vi.stubGlobal("__FEATURE_BORDER_GLOW__", false);
-      const global: GlobalBorderSettings = { glowEnabled: true };
-      const overrides = { glowEnabled: true };
-      const result = resolveBorderSettings(GRAPHIC_NO_BORDER, global, overrides);
-      expect(result.glowEnabled).toBe(false);
-    });
-
-    it("should respect resolved glowEnabled when the flag is true", () => {
-      vi.stubGlobal("__FEATURE_BORDER_GLOW__", true);
-      const overrides = { glowEnabled: true };
-      const result = resolveBorderSettings(GRAPHIC_NO_BORDER, {}, overrides);
-      expect(result.glowEnabled).toBe(true);
-    });
   });
 
   describe("icon border defaults + locked fields (#755)", () => {
