@@ -73,8 +73,10 @@ export function extractGraphicContent(svgTemplate: string): string {
     content = content.replace(/<\/g>\s*$/, "");
   }
 
-  // Remove <defs> and <filter> elements — activity-state filter is applied at render time by the overlay system
-  content = content.replace(/<defs>[\s\S]*?<\/defs>/, "");
+  // Remove only a legacy activity-state <defs> block — that filter is applied at render
+  // time by the overlay system. Other <defs> (gradients, clipPaths, glow filters used by
+  // the rich icon artwork, #827) must be preserved so the assembled icon can reference them.
+  content = content.replace(/<defs>(?:(?!<\/defs>)[\s\S])*activity-state(?:(?!<\/defs>)[\s\S])*<\/defs>/, "");
 
   return content.trim();
 }
