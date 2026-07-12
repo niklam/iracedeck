@@ -1,5 +1,7 @@
 # Set FFB Max Force
 
+> **Consolidated in #827:** this Cockpit Misc mode is a hidden legacy alias of the Force Feedback action's **FFB Force** mode. Existing buttons keep working (same bindings, now the same icons); new buttons should use Force Feedback. The mode no longer appears in the Cockpit Misc PI dropdown.
+
 Adjusts the maximum force feedback force.
 
 ## Properties

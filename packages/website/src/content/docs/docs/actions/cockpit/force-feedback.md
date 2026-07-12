@@ -32,7 +32,7 @@ Toggle iRacing's auto-compute FFB force calibration.
 
 ### FFB Force
 
-Adjust the overall force feedback force. Shares the same global key binding as Cockpit Misc's FFB Max Force mode — configuring one updates the other.
+Adjust the force feedback maximum force (iRacing's "max force" setting, in Nm). This is the canonical home of the former Cockpit Misc FFB Max Force mode — old Cockpit Misc buttons keep working and share the same global key binding, so configuring one updates the other.
 
 #### Details
 

@@ -9,6 +9,17 @@
   - **Exception**: `packages/icons/tire-service/toggle-tires.svg` is intentionally kept on the legacy 144×144 canvas. The tire-service action overlays four dynamic tire-status rects in 144-coord space at runtime, so the car body's coordinates must stay in that frame. The migration script (`scripts/migrate-icons-to-trimmed-viewbox.mjs`) explicitly skips this file via `SKIP_FILES`, and `tire-service.ts` uses a hardcoded `TOGGLE_TIRES_BOUNDS` instead of reading the viewBox. Don't trim it without also rewriting the dynamic tire layout in the action.
 - **Dynamic templates** (e.g., `packages/iracing-actions/icons/*.svg`): 144x144 Mustache templates for actions with telemetry-driven content that can't be pre-rendered as standalone SVGs.
 
+## Rich icon design system (#827)
+
+The sets redesigned in #827 (Force Feedback, Media Capture, Camera Editor Adjustments, Look Direction, Cockpit Misc dash/in-lap, Telemetry Control, all seven Setup sets, Chat, View Adjustment, Black Box Selector) follow a shared rich language — apply it when adding icons to these sets or redesigning others (full spec: `docs/superpowers/specs/2026-07-12-icon-redesign-design.md`):
+
+- **Materials**: primary "metal" artwork = per-file `mtl` gradient whose stops are `{{graphic1Color}}` at opacity 1 → 0.55 (recolors with user overrides while keeping the shaded look). Fixed literal gradients for semantics: amber `ambG`, red `redG`, green `plusG`, minus `minusG`, lens glass `lns`, dark display `dgl`, tire `tireG`. Accent = `#4fc3f7` cyan marking the adjusted dimension. Glow = duplicated element under a `feGaussianBlur stdDeviation="3"` filter copy.
+- **Direction chips**: every ± mode carries a bottom-right circle chip (green `+` / red `−`) ringed with `{{backgroundColor}}`; ± pairs share artwork unless the drawing itself is direction-aware (pitch, brake bias, FOV, horizon, driver height, UI size).
+- **"A" badge**: amber circle with a dark bold `A` marks automatic/computed modes (auto-compute FFB, auto-set mic gain). In the chip slot when non-directional; top-right when a chip is also present. Use it for any future "magic" mode.
+- **Tri-state toggles**: telemetry-aware toggles (ABS Toggle, TC Toggle, like DRS/Fast Repair) render a dedicated 144×144 template + the shared `statusBarOn/Off/NA` bottom bar with `borderColorForState`.
+- **Cutouts** that expose the key background (wheel windows, gear hubs) use `{{backgroundColor}}`.
+- **Gradient pitfall**: never stroke an axis-aligned `<line>` with a gradient — the objectBoundingBox is zero-sized and the stroke vanishes. Use a `rect` or a literal metal tone (`#c9d4dc`).
+
 ## Standalone Icon SVGs (preferred)
 
 Most action icons are standalone SVG files in the `@iracedeck/icons` package:
