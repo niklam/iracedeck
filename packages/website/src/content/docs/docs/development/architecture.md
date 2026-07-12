@@ -141,7 +141,7 @@ flowchart TB
   classDef adp fill:#16a085,color:#fff,stroke:#0e6f5c;
 ```
 
-The render path is fully abstracted: `iracing-actions` hands a finished icon to `deck-core`, and whichever adapter is loaded paints it on the real hardware. The command path has three mechanisms — the SDK broadcast (`getCommands()`) is preferred, native keyboard injection (`getKeyboard()`) covers what the SDK can't, and chat macros cover the rest.
+The render path is fully abstracted: `iracing-actions` hands a finished icon to `deck-core`, and whichever adapter is loaded paints it on the real hardware. Before that icon crosses SEAM 2, each adapter rasterizes it from SVG to PNG in-plugin (`@iracedeck/rasterizer`, wrapping `@resvg/resvg-js`) and sends the device pixels rather than an SVG string, so every key and dial looks identical regardless of which host's own SVG engine it's running on. The command path has three mechanisms — the SDK broadcast (`getCommands()`) is preferred, native keyboard injection (`getKeyboard()`) covers what the SDK can't, and chat macros cover the rest.
 
 ## The Race Engineer branch
 
@@ -200,6 +200,7 @@ flowchart TB
   end
   subgraph foundation["Foundation — no internal deps"]
     icons["icons"]:::core
+    rast["rasterizer"]:::core
     pinat["iracing-native"]:::sim
     anat["audio-native"]:::audio
     aasset["audio-assets"]:::audio
@@ -214,6 +215,9 @@ flowchart TB
   psd --> pic
   pmb --> pic
   pul --> pic
+  psd --> rast
+  pmb --> rast
+  pul --> rast
 
   aelg --> dc
   amb --> dc
@@ -245,7 +249,7 @@ flowchart TB
   classDef plugin fill:#596775,color:#fff,stroke:#3c4651;
 ```
 
-To keep this readable, `@iracedeck/logger` (imported by nearly every package) and a few cross-cutting edges are omitted — the three plugins also pull in the audio stack, `event-bus`, and `sim-events-iracing` directly. The shape that matters: `deck-core` is the hub the device adapters share, and the foundation packages at the bottom depend on nothing internal.
+To keep this readable, `@iracedeck/logger` (imported by nearly every package) and a few cross-cutting edges are omitted — the three plugins also pull in the audio stack, `event-bus`, and `sim-events-iracing` directly. The shape that matters: `deck-core` is the hub the device adapters share, and the foundation packages at the bottom depend on nothing internal. `rasterizer` is a foundation package too (it wraps `@resvg/resvg-js` and has no internal iRaceDeck dependencies), but note the arrow direction: each **plugin** imports it and injects a render function into `deck-core`'s rasterizer service at startup (`initializeRasterizer(...)`, gated by the `pngRasterization` feature flag) — `deck-core` itself never imports `rasterizer`, so there's deliberately no `deck-core → rasterizer` edge here.
 
 ## Seams & where the abstraction leaks
 
@@ -258,7 +262,7 @@ Honest architecture documents its leaks, too. These are the places where the cle
 
 - **Inbound is abstracted; outbound is not.** Telemetry is funneled through the sim-agnostic bus, but the command path is still iRacing-shaped: `getCommands()` returns iRacing SDK commands, and `deck-core` imports `iracing-sdk` directly. A second sim would need its own command vocabulary, which has no seam yet.
 - **The shared layer isn't purely sim-agnostic.** `iracing-actions` imports `iracing-sdk` and `sim-events-iracing` directly — not only `deck-core` + `event-bus`. So "everything right of SEAM 1 is sim-agnostic" is an aspiration the action layer doesn't fully meet.
-- **Device differences leak around the adapter.** SVG rendering capability differs by device (QT5 on Mirabox vs QT6.7+ on Elgato). That's handled at *build time* via platform [feature flags](/docs/development/feature-flags/), not expressed through `IDeckPlatformAdapter` — so a real device difference lives outside the device seam.
+- **Device differences leak around the adapter.** The Stream Deck+ touch strip only exists on Elgato hardware, so touch-strip feedback and touch-tap input are handled at *build time* via a platform [feature flag](/docs/development/feature-flags/) (`dialFeedback`), not expressed through `IDeckPlatformAdapter` — a real device difference living outside the device seam. (A previous device difference here — divergent SVG rendering capability between hosts' own engines — was eliminated rather than papered over: since issue #642 every adapter rasterizes icons to PNG in-plugin, so no host-specific SVG engine is in the picture anymore.)
 - **Ulanzi reuses Elgato's plugin and action UUIDs verbatim.** A pragmatic coupling: UlanziStudio doesn't validate the UUID prefix, so reusing the canonical IDs avoided a parallel identity scheme.
 - **`openUrl` sits off the interface on purpose.** It's a concrete method on each adapter rather than part of `IDeckPlatformAdapter`, a deliberate gap that avoids touching every typed mock adapter for a rarely-used capability.
 - **Some pieces are Windows-native.** `iracing-native` (keyboard/window) and `audio-native` (mixer) are C++ addons that fall back to mocks on other platforms — see [cross-platform development](/docs/development/setup/).

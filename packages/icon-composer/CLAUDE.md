@@ -69,7 +69,7 @@ Pure TypeScript library, no Rollup needed. Outputs ESM with declarations.
 
 ## Dependencies
 
-None. This package has zero runtime dependencies. All functions are pure and self-contained, with one caveat: `generateBorderParts()` (and the glow resolution in `resolveBorderSettings()`) reads the ambient compile-time global `__FEATURE_BORDER_GLOW__` (declared in `src/platform-features.d.ts`, injected by the plugin bundlers — see `.claude/rules/platform-feature-flags.md`). Standalone consumers and tests must define it themselves; the root `test-setup.ts` stubs it to `true`.
+None. This package has zero runtime dependencies. All functions are pure and self-contained. Border glow (`generateBorderParts()`, and the glow resolution in `resolveBorderSettings()`) is unconditional as of issue #642 — it no longer reads any platform feature-flag constant, so it renders the same on every platform. (The `borderGlow` feature flag and its `__FEATURE_BORDER_GLOW__` ambient global were retired when icon rendering moved to in-plugin PNG rasterization via `@iracedeck/rasterizer`; see `.claude/rules/svg-platform-compatibility.md` and `.claude/rules/platform-feature-flags.md`.)
 
 ## Relationship to deck-core
 

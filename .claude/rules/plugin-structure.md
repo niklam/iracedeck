@@ -87,13 +87,13 @@ output: {
 },
 ```
 
-### Native Module Dependencies (keysender)
+### Native Module Dependencies (keysender, @resvg/resvg-js)
 
-**CRITICAL**: If your plugin uses keyboard functionality (`getKeyboard()`, `initializeKeyboard()`), you MUST:
+**CRITICAL**: If your plugin uses keyboard functionality (`getKeyboard()`, `initializeKeyboard()`) or PNG rasterization (`initializeRasterizer()`, `@iracedeck/rasterizer`), you MUST:
 
-1. **Mark native modules as external** - Native CommonJS modules like `keysender` cannot be bundled into ES modules. Add them to the `external` array:
+1. **Mark native modules as external** - Native CommonJS/N-API modules like `keysender` and `@resvg/resvg-js` cannot be bundled into ES modules. Add them to the `external` array:
 ```javascript
-external: ["@iracedeck/iracing-native", "yaml", "keysender"],
+external: ["@iracedeck/iracing-native", "@resvg/resvg-js", "yaml", "keysender"],
 ```
 
 2. **Include them as runtime dependencies** - Add to the emitted `package.json` in the `generateBundle` hook:
@@ -102,15 +102,16 @@ const pkg = {
   type: "module",
   dependencies: {
     "@iracedeck/iracing-native": "file:../../../iracing-native",
+    "@resvg/resvg-js": "2.6.2",
     "keysender": "2.4.0",
     yaml: "2.8.2",
   }
 };
 ```
 
-**Why this matters**: Bundling `keysender` (a native CommonJS module) into an ES module output causes runtime errors like "require is not defined". The module must be loaded at runtime from `node_modules`.
+**Why this matters**: Bundling `keysender` or `@resvg/resvg-js` (native modules) into an ES module output causes runtime errors like "require is not defined". They must be loaded at runtime from `node_modules`. Unlike `keysender`, `@resvg/resvg-js` ships prebuilt binaries for macOS and Linux too, so it needs no mock and no `optionalDependencies` split — it's a plain `dependencies` entry on every platform.
 
-3. **Use `optionalDependencies` for keysender** - In the emitted `package.json`, place `keysender` under `optionalDependencies` so it installs on Windows but silently fails on macOS/Linux:
+3. **Use `optionalDependencies` for keysender only** - In the emitted `package.json`, place `keysender` under `optionalDependencies` so it installs on Windows but silently fails on macOS/Linux:
 ```javascript
 const pkg = {
   type: "module",
@@ -120,6 +121,8 @@ const pkg = {
   }
 };
 ```
+
+4. **Bundle the rasterizer's fonts** - `@iracedeck/rasterizer` ships bundled Arimo font files (`packages/rasterizer/fonts/`) that must be copied into `{sdPlugin}/assets/fonts/` at build time (a dedicated `generateBundle` copy step, same pattern as the per-action icon copy) so `createSvgRasterizer({ fontsDir })` can find them at runtime.
 
 Reference `iracing-plugin-stream-deck/rollup.config.mjs` for the correct configuration.
 
@@ -153,11 +156,13 @@ import {
   initGlobalSettings,
   initializeBindingDispatcher,
   initializeKeyboard,
+  initializeRasterizer,
   initializeSDK,
   initializeSimHub,
 } from "@iracedeck/deck-core";
 import { initializeEventBus } from "@iracedeck/event-bus";
 import { IRacingNative } from "@iracedeck/iracing-native";
+import { createSvgRasterizer } from "@iracedeck/rasterizer";
 import { initializeSimEventsIracing } from "@iracedeck/sim-events-iracing";
 // Per-plugin module — NOT in deck-core (each plugin has its own src/shared/window-focus.ts)
 import { focusIRacingIfEnabled, initWindowFocus } from "./shared/index.js";
@@ -189,36 +194,48 @@ initializeKeyboard(
   (chords, holdMs) => native.sendScanKeySequence(chords, holdMs), // atomic multi-chord sequence (#818)
 );
 
-// 7. Initialize audio engine for pit engineer voice playback.
+// 7. Rasterize device-bound SVG icons to PNG in-plugin (#642), gated by the
+//    `pngRasterization` platform flag (temporary kill-switch — see
+//    @.claude/rules/platform-feature-flags.md). When the flag is off,
+//    initializeRasterizer() is never called, deck-core's rasterizer service
+//    stays uninitialized, and every adapter falls back to sending SVG as before.
+if (__FEATURE_PNG_RASTERIZATION__) {
+  initializeRasterizer(
+    createSvgRasterizer({ fontsDir: join(__binDir, "..", "assets", "fonts") }),
+    adapter.createLogger("Rasterizer"),
+  );
+}
+
+// 8. Initialize audio engine for pit engineer voice playback.
 //    Third arg = base path of the bundled audio assets (the plugin's assets/audio dir).
 const audioNative = new AudioNative();
 initializeAudio(adapter.createLogger("Audio"), audioNative, join(__binDir, "..", "assets", "audio"));
 getAudio().init();
 
-// 8. Initialize window focus service
+// 9. Initialize window focus service
 initWindowFocus(adapter.createLogger("WindowFocus"), () => native.focusIRacingWindow());
 
-// 9. Register focus-before-action listeners (BEFORE registering actions)
+// 10. Register focus-before-action listeners (BEFORE registering actions)
 adapter.onKeyDown(() => focusIRacingIfEnabled());
 adapter.onDialDown(() => focusIRacingIfEnabled());
 adapter.onDialRotate(() => focusIRacingIfEnabled());
 
-// 10. Register actions via the adapter (logger injected via constructor)
+// 11. Register actions via the adapter (logger injected via constructor)
 adapter.registerAction(MY_ACTION_UUID, new MyAction(adapter.createLogger("MyAction")));
 
-// 11. Initialize global settings BEFORE connect() - pass adapter!
+// 12. Initialize global settings BEFORE connect() - pass adapter!
 initGlobalSettings(adapter, adapter.createLogger("GlobalSettings"));
 
-// 12. Initialize SimHub service AFTER global settings (reads host/port from settings)
+// 13. Initialize SimHub service AFTER global settings (reads host/port from settings)
 initializeSimHub(adapter.createLogger("SimHub"));
 
-// 13. Initialize binding dispatcher AFTER global settings, keyboard, and SimHub
+// 14. Initialize binding dispatcher AFTER global settings, keyboard, and SimHub
 initializeBindingDispatcher(adapter.createLogger("BindingDispatcher"));
 
-// 14. Initialize app monitor BEFORE connect() - pass adapter!
+// 15. Initialize app monitor BEFORE connect() - pass adapter!
 initAppMonitor(adapter, adapter.createLogger("AppMonitor"));
 
-// 15. Connect LAST
+// 16. Connect LAST
 adapter.connect();
 ```
 
@@ -229,6 +246,7 @@ adapter.connect();
 - `initializeSimEventsIracing()` must come after `initializeSDK()` (requires `getController()`) and after `initializeEventBus()`; it's the only package that reads `sdkController` ticks on behalf of action consumers
 - `initializeAudio()` creates the audio service singleton (third argument = audio-assets base path); `getAudio().init()` starts the miniaudio engine. Both must be called before actions that use audio (e.g., Pit Engineer)
 - `initWindowFocus` / `focusIRacingIfEnabled` come from the plugin's own `src/shared/window-focus.ts` (via `./shared/index.js`), not from `@iracedeck/deck-core`
+- `initializeRasterizer()` is gated by `__FEATURE_PNG_RASTERIZATION__` and must come before any code that renders a device image (it can run anywhere before `adapter.connect()`, since `toDeviceImage()` passes images through unchanged until it's called); see `@.claude/rules/platform-feature-flags.md`
 - `initializeSimHub()` must come AFTER `initGlobalSettings()` (reads host/port from settings)
 - `initializeBindingDispatcher()` must come AFTER `initGlobalSettings()`, `initializeKeyboard()`, and `initializeSimHub()`
 - Actions are imported from `@iracedeck/iracing-actions` and registered via `adapter.registerAction(UUID, handler)`
