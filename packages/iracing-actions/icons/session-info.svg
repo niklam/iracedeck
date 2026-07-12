@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
   <desc>{"colors":{"backgroundColor":"#2a3444","textColor":"#ffffff"}}</desc>
   {{borderDefs}}
-  <g filter="url(#activity-state)">
+  <g>
     <!-- Main background (dynamic color for flash effect) -->
     <rect x="0" y="0" width="144" height="144" rx="24" fill="{{backgroundColor}}"/>
 {{borderContent}}
