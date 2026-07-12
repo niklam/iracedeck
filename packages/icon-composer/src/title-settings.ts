@@ -86,7 +86,7 @@ export function generateTitleText(options: GenerateTitleTextOptions): string {
   const weight = bold ? "bold" : "normal";
 
   const makeTextEl = (content: string, y: number): string =>
-    `<text x="72" y="${y}" text-anchor="middle" dominant-baseline="central" fill="${fill}" font-family="Arial, sans-serif" font-size="${fontSize}" font-weight="${weight}">${escapeXml(content)}</text>`;
+    `<text x="72" y="${y}" text-anchor="middle" fill="${fill}" font-family="Arial, sans-serif" font-size="${fontSize}" font-weight="${weight}">${escapeXml(content)}</text>`;
 
   const yPositions = calculateYPositions(lines.length, fontSize, lineHeight, position, customPosition);
 

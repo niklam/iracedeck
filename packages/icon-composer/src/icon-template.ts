@@ -277,7 +277,7 @@ export function generateIconText(options: GenerateIconTextOptions): string {
   const lineHeight = fontSize * lineHeightMultiplier;
 
   if (lines.length === 1) {
-    return `<text class="title" x="${centerX}" y="${baseY}" text-anchor="middle" dominant-baseline="central" fill="${fill}" font-family="sans-serif" font-size="${fontSize}" font-weight="bold">${escapeXml(text)}</text>`;
+    return `<text class="title" x="${centerX}" y="${baseY}" text-anchor="middle" fill="${fill}" font-family="sans-serif" font-size="${fontSize}" font-weight="bold">${escapeXml(text)}</text>`;
   }
 
   const totalBlockHeight = (lines.length - 1) * lineHeight;
@@ -288,7 +288,7 @@ export function generateIconText(options: GenerateIconTextOptions): string {
   for (let i = 0; i < lines.length; i++) {
     const y = startY + i * lineHeight;
     textElements.push(
-      `<text class="title" x="${centerX}" y="${y}" text-anchor="middle" dominant-baseline="central" fill="${fill}" font-family="sans-serif" font-size="${fontSize}" font-weight="bold">${escapeXml(lines[i])}</text>`,
+      `<text class="title" x="${centerX}" y="${y}" text-anchor="middle" fill="${fill}" font-family="sans-serif" font-size="${fontSize}" font-weight="bold">${escapeXml(lines[i])}</text>`,
     );
   }
 

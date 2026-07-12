@@ -267,10 +267,15 @@ describe("icon-template", () => {
 
       expect(result).toContain('x="72"');
       expect(result).toContain('text-anchor="middle"');
-      expect(result).toContain('dominant-baseline="central"');
       expect(result).toContain('fill="#ffffff"');
       expect(result).toContain('font-family="sans-serif"');
       expect(result).toContain('font-weight="bold"');
+    });
+
+    it("should not emit dominant-baseline — resvg honors it and shifts text off the tuned baseline", () => {
+      const result = generateIconText({ text: "Test" });
+
+      expect(result).not.toContain("dominant-baseline");
     });
 
     it("should use custom fill color", () => {

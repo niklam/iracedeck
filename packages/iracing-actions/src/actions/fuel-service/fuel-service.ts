@@ -155,7 +155,7 @@ function fuelFillGraphicContent(telemetryState: FuelServiceTelemetryState, graph
       : formatFuelFillAmount(telemetryState.fuelAmount, telemetryState.displayUnits);
 
   return `
-    <text x="72" y="75" text-anchor="middle" dominant-baseline="central"
+    <text x="72" y="75" text-anchor="middle"
           fill="${graphic1Color}" font-family="Arial, sans-serif" font-size="40" font-weight="bold">${fuelText}</text>`;
 }
 

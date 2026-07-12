@@ -17,7 +17,7 @@ export type ToggleState = "on" | "off" | "na";
 export function statusBarOn(): string {
   return `
     <rect x="0" y="100" width="144" height="44" fill="${GREEN}"/>
-    <text x="72" y="129" text-anchor="middle" dominant-baseline="central"
+    <text x="72" y="129" text-anchor="middle"
           fill="${WHITE}" font-family="Arial, sans-serif" font-size="20" font-weight="bold">ON</text>`;
 }
 
@@ -29,7 +29,7 @@ export function statusBarOn(): string {
 export function statusBarOff(): string {
   return `
     <rect x="0" y="100" width="144" height="44" fill="${RED}"/>
-    <text x="72" y="129" text-anchor="middle" dominant-baseline="central"
+    <text x="72" y="129" text-anchor="middle"
           fill="${WHITE}" font-family="Arial, sans-serif" font-size="20" font-weight="bold">OFF</text>`;
 }
 
@@ -41,7 +41,7 @@ export function statusBarOff(): string {
 export function statusBarNA(): string {
   return `
     <rect x="0" y="100" width="144" height="44" fill="${GRAY}"/>
-    <text x="72" y="129" text-anchor="middle" dominant-baseline="central"
+    <text x="72" y="129" text-anchor="middle"
           fill="${WHITE}" font-family="Arial, sans-serif" font-size="20" font-weight="bold">N/A</text>`;
 }
 

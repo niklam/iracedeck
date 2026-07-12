@@ -186,7 +186,7 @@ export function pitLimiterSpeedGraphic(speed: number, compact = false): string {
 
   return `
     <circle cx="72" cy="${cy}" r="${r}" fill="${WHITE}" stroke="${GRAY}" stroke-width="6"/>
-    <text x="72" y="${textY}" text-anchor="middle" dominant-baseline="central"
+    <text x="72" y="${textY}" text-anchor="middle"
           fill="#2a3a2a" font-family="Arial, sans-serif" font-size="${fontSize}" font-weight="bold">${speed}</text>`;
 }
 
