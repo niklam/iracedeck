@@ -96,6 +96,8 @@ Examples shown with `self` prefix. Replace with any prefix above. (`incidents` i
 
 In race sessions, `position` and `class_position` follow the **live race order** — they update continuously as cars move (the same live ordering the [Session Info](/docs/actions/display-session/session-info/) Position readout uses while racing on track), rather than only refreshing at the start/finish line. A car physically in the pits shows its **live track position**, not its held official position. Before the green flag — and for any car not yet classified into the running order — the value renders blank.
 
+`irating_change` and `irating_new` are **estimates** computed from the live running order and the field's iRatings (per car class, exactly like iRacing scores them) — not official post-race values. They render blank outside race sessions, before a live order exists, and for cars excluded from scoring (the pace car, spectators, cars without a valid iRating, or a class with fewer than two cars). In expressions, `irating_change` is the unrounded value — wrap it in `round(...)` to match the displayed number.
+
 | Variable | Description |
 |----------|-------------|
 | `{{self.name}}` | Full driver name |
@@ -108,6 +110,8 @@ In race sessions, `position` and `class_position` follow the **live race order**
 | `{{self.lap}}` | Current lap number |
 | `{{self.laps_completed}}` | Laps completed |
 | `{{self.irating}}` | iRating |
+| `{{self.irating_change}}` | Estimated iRating change if the race ended now (e.g., `+31` / `-15`; race sessions only) |
+| `{{self.irating_new}}` | Projected post-race iRating (current + estimated change; race sessions only) |
 | `{{self.license}}` | License string (e.g., "A 4.99") |
 | `{{self.incidents}}` | Incident count (self only) |
 
@@ -118,6 +122,7 @@ In race sessions, `position` and `class_position` follow the **live race order**
 | `{{session.type}}` | Session type (Practice, Qualify, Race, etc.) |
 | `{{session.laps_remaining}}` | Laps remaining |
 | `{{session.time_remaining}}` | Time remaining (MM:SS) |
+| `{{session.sof}}` | Strength of Field of your class (estimated, race sessions only) |
 
 ## Track
 

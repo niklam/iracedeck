@@ -34,5 +34,6 @@ Both live in `@iracedeck/sim-events-iracing` (`translator.ts`) and are built on 
 - **Session Info → Position** — `getLivePosition()`.
 - **Telemetry Display / Chat / Race Admin** driver-info template prefixes (`self`, `track_ahead/behind`, `race_ahead/behind`, `focused`) — the injected order via `buildTemplateContextFromData` (`@iracedeck/iracing-sdk` `template-context.ts`).
 - **Race Engineer** position callouts — `getLivePosition()`.
+- **iRating estimate (#268)** — `estimateIRatingChanges` (`@iracedeck/iracing-sdk` `irating-utils.ts`) takes the order as an argument: the template variables (`irating_change` / `irating_new` / `session.sof`) consume the injected order in `buildTemplateContextFromData`; the Session Info → iRating mode consumes `getLiveRacePositions()` directly.
 
 When you add a position-aware feature, wire it to the canonical source and add it to this list.
