@@ -260,6 +260,17 @@ export {
   type IBindingDispatcher,
 } from "./binding-dispatcher.js";
 
+// Rasterizer service singleton
+export {
+  _resetRasterizer,
+  initializeRasterizer,
+  isRasterizerInitialized,
+  isSvgDataUri,
+  TOUCH_STRIP_SLOT_WIDTH,
+  toDeviceImage,
+  type SvgRenderFn,
+} from "./rasterizer-service.js";
+
 // Key binding utilities
 export { formatKeyBinding, parseKeyBinding, parseBinding } from "./key-binding-utils.js";
 export { setWarning, clearWarning, type PiWarning, type PiWarningLevel } from "./pi-warnings.js";
