@@ -1,14 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 106 36" stroke-width="0.5" stroke="#fff" fill="#fff">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
   <desc>{"colors":{"backgroundColor":"#2a2a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"LOUDER\nBASS SHAKER"},"border":{"color":"#5a5a7a"}}</desc>
-  
+  <defs>
+    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.55"/></linearGradient>
+    <linearGradient id="plusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#4be08d"/><stop offset="1" stop-color="#1d9e58"/></linearGradient>
+  </defs>
 
-    <rect x="22" y="2" width="40" height="32" rx="4" fill="none" stroke="#ffffff" stroke-width="4"/>
-    <line x1="30" y1="10" x2="30" y2="26" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
-    <line x1="38" y1="6" x2="38" y2="30" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
-    <line x1="46" y1="10" x2="46" y2="26" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
-    <line x1="54" y1="6" x2="54" y2="30" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
-    <path d="M8,4Q2,18,8,32" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-    <path d="M74,4Q80,18,74,32" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-    <polyline points="88,14 96,2 104,14" fill="none" stroke="#2ecc71" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-
+    <rect x="14" y="15" width="32" height="37" rx="4" fill="url(#mtl)"/>
+    <circle cx="30" cy="33.5" r="11.5" fill="#3f5561"/>
+    <circle cx="30" cy="33.5" r="5" fill="#14181d"/>
+    <circle cx="19" cy="20" r="1.5" fill="#5c6d77"/><circle cx="41" cy="20" r="1.5" fill="#5c6d77"/>
+    <circle cx="19" cy="47" r="1.5" fill="#5c6d77"/><circle cx="41" cy="47" r="1.5" fill="#5c6d77"/>
+    <path d="M54 22 Q62 34 54 46" fill="none" stroke="#4fc3f7" stroke-width="3" stroke-linecap="round" opacity="0.5"/>
+    <path d="M62 17 Q72 34 62 51" fill="none" stroke="#4fc3f7" stroke-width="3.6" stroke-linecap="round" opacity="0.75"/>
+    <path d="M70 12 Q82 34 70 56" fill="none" stroke="#4fc3f7" stroke-width="4.2" stroke-linecap="round"/><circle cx="80" cy="60" r="10" fill="url(#plusG)" stroke="#2a2a4a" stroke-width="3"/>
+    <path d="M75 60h10M80 55v10" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"/>
 </svg>
