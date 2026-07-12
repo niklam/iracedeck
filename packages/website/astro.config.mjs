@@ -14,13 +14,6 @@ export default defineConfig({
   integrations: [
     // Must come BEFORE starlight so its rehype plugin transforms ```mermaid
     // code fences into rendered diagrams ahead of Expressive Code.
-    //
-    // Known, non-fatal startup warnings: astro-mermaid 2.1.0 (the latest release)
-    // lags Astro 6's reworked markdown API, so it logs "isUnifiedProcessor is not
-    // a function" and falls back to the deprecated `markdown.rehypePlugins` array,
-    // which in turn makes Astro print its own deprecation notice. Diagrams still
-    // transform and render correctly in dev and build. Revisit (and drop this note)
-    // when astro-mermaid ships Astro 6 support.
     mermaid({
       theme: "default",
       autoTheme: true,
