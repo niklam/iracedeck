@@ -23,6 +23,7 @@ Example (Mirabox):
 {
   "features": {
     "dialFeedback": false,
+    "profiles": false,
     "pngRasterization": true
   }
 }
@@ -32,9 +33,9 @@ Example (Mirabox):
 
 The plugin build pipeline reads the merged flags once and fans them out to three places:
 
-1. **Bundle code** — `@rollup/plugin-replace` substitutes `__FEATURE_DIAL_FEEDBACK__` and `__FEATURE_PNG_RASTERIZATION__` with `true` / `false` at compile time. Terser then drops unreachable branches, so disabled code doesn't ship. `pngRasterization` gates a single call, `initializeRasterizer(...)` in each plugin's `plugin.ts` — when it's `false`, the call (and everything it would have pulled in) is dropped.
-2. **Property Inspector HTML** — the same flags are passed into EJS templates as `locals.platform`. Controls wrapped in `<% if (locals.platform?.features?.dialFeedback !== false) { %>` disappear from the compiled HTML. `pngRasterization` gates no PI content — it only guards a plugin-startup call.
-3. **Runtime `config.json`** — the merged flags are written to `com.iracedeck.sd.core.sdPlugin/bin/config.json` as a `featureFlags` field. Readable at runtime via `getFeatureFlag("pngRasterization")` / `getPlatformFeatures()` from `@iracedeck/deck-core` if a dynamic check is ever needed.
+1. **Bundle code** — `@rollup/plugin-replace` substitutes `__FEATURE_DIAL_FEEDBACK__` and `__FEATURE_PNG_RASTERIZATION__` with `true` / `false` at compile time. Terser then drops unreachable branches, so disabled code doesn't ship. `pngRasterization` gates a single call, `initializeRasterizer(...)` in each plugin's `plugin.ts` — when it's `false`, the call (and everything it would have pulled in) is dropped. `profiles` is **not** substituted here — it has no compile-time constant, so it never tree-shakes anything (see the table below).
+2. **Property Inspector HTML** — the same flags are passed into EJS templates as `locals.platform`. Controls wrapped in `<% if (locals.platform?.features?.dialFeedback !== false) { %>` disappear from the compiled HTML. `profiles` gates PI content the same way — the "Stream Deck Profiles" accordion and the Race Admin / Camera Focus car-selector sections. `pngRasterization` gates no PI content — it only guards a plugin-startup call.
+3. **Runtime `config.json`** — the merged flags are written to `com.iracedeck.sd.core.sdPlugin/bin/config.json` as a `featureFlags` field. Readable at runtime via `getFeatureFlag("pngRasterization")` / `getPlatformFeatures()` from `@iracedeck/deck-core` if a dynamic check is ever needed. This is the **only** way to read `profiles`, since it skips the compile-time path entirely.
 
 ## Overriding flags locally
 
@@ -69,6 +70,7 @@ A committed `feature-flags.local.json.example` at the repo root documents the sh
 | Flag | Stream Deck | Mirabox | Ulanzi | Purpose |
 |------|-------------|---------|--------|---------|
 | `dialFeedback` | `true` | `false` | `false` | Stream Deck+ touch-strip feedback + touch-tap input — only Elgato hardware has a plugin-facing touch strip |
+| `profiles` | `true` | `false` | `false` | Stream Deck Profiles PI accordion + profile switching (Race Admin selector, Camera Focus) — Elgato-only, since Mirabox/Ulanzi hosts have no profile system. **Runtime-only**: read via `getFeatureFlag("profiles")` / `locals.platform`, with no `__FEATURE_*__` compile-time constant (unlike the other two flags) |
 | `pngRasterization` | `true` | `true` | `true` | Temporary kill-switch for in-plugin PNG rasterization (`@iracedeck/rasterizer`, issue #642) — `true` everywhere; force it `false` locally to fall back to raw SVG data URIs |
 
 ## Adding a new flag
@@ -77,7 +79,5 @@ Short version (see the in-repo rule `.claude/rules/platform-feature-flags.md` fo
 
 1. Add the flag to all three `platform-features.json` files with the correct per-platform default.
 2. Add it to the `PlatformFeatureFlags` interface in `packages/deck-core/src/plugin-config.ts`.
-3. Declare the `__FEATURE_*__` ambient global in each of the three plugins' own `src/platform-features.d.ts`.
-4. Add a replace entry in **all three** plugin `rollup.config.mjs` files.
-5. Gate the affected code (plugin init, `deck-core`, or an action file) and/or PI partials (`locals.platform?.features?.yourFlag !== false`).
-6. Seed the default in `test-setup.ts` and cover both the `true` and `false` paths with `vi.stubGlobal`.
+3. If the flag needs to tree-shake bundle code (most do), declare the `__FEATURE_*__` ambient global in each of the three plugins' own `src/platform-features.d.ts` and add a replace entry in **all three** plugin `rollup.config.mjs` files, then seed the default in `test-setup.ts` and cover both the `true` and `false` paths with `vi.stubGlobal`. A flag that only gates a PI control or an infrequent runtime check — like `profiles` — can skip all of this and just read `getFeatureFlag(...)` / `locals.platform?.features?.…` at the call site.
+4. Gate the affected code (plugin init, `deck-core`, or an action file) and/or PI partials (`locals.platform?.features?.yourFlag !== false`).

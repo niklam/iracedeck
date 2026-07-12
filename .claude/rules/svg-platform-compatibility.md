@@ -64,7 +64,8 @@ The project's 700+ icon SVGs still deliberately use a minimal feature set, now f
 
 - **Widely used**: basic shapes, text/tspan, fill/stroke, opacity, stroke-dasharray, transforms, viewBox, rx (rounded corners)
 - **Moderately used**: defs/use (favicon files), Mustache template placeholders for runtime color/text
-- **Rarely used**: filters (border glow), gradients; masks, patterns, clipPath, markers, animations, and embedded images (except favicons) remain unused
+- **Rarely used**: filters (border glow)
+- **Not used**: gradients, masks, patterns, clipPath, markers, animations, and embedded images (except favicons)
 
 ## Guidelines for New Icons
 
