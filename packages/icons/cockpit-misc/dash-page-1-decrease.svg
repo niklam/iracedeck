@@ -1,10 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 90 52" stroke-width="0.5" stroke="#fff" fill="#fff">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
   <desc>{"colors":{"backgroundColor":"#2a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"PREVIOUS\nDASH PG 1"},"border":{"color":"#5a5a6a"}}</desc>
-  
+  <defs>
+    <linearGradient id="dgl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#24425e"/><stop offset="1" stop-color="#0d1f30"/></linearGradient>
+    <linearGradient id="minusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f47c6a"/><stop offset="1" stop-color="#c0392b"/></linearGradient>
+  </defs>
 
-    <rect x="6" y="2" width="80" height="48" rx="6" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
-    <text x="46" y="30" text-anchor="middle" dominant-baseline="central"
-          fill="{{graphic1Color}}" font-family="Arial, sans-serif" font-size="28" font-weight="bold" stroke="none">1</text>
-    <polyline points="12,14 2,26 12,38" fill="none" stroke="#2ecc71" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-
+    <rect x="14" y="14" width="56" height="38" rx="6" fill="url(#dgl)" stroke="#b7c5cd" stroke-width="2.5"/>
+    <rect x="19" y="19" width="22" height="5" rx="2" fill="#4fc3f7" opacity="0.7"/>
+    <rect x="19" y="30" width="13" height="4" rx="2" fill="#8fa3ad" opacity="0.6"/>
+    <text x="64" y="36" font-family="Arial, sans-serif" font-size="10" font-weight="bold" fill="#f6d34c" text-anchor="end" stroke="none">12.5</text>
+    <rect x="19" y="41" width="16" height="4" rx="2" fill="#8fa3ad" opacity="0.6"/>
+    <text x="64" y="47" font-family="Arial, sans-serif" font-size="10" font-weight="bold" fill="#4fc3f7" text-anchor="end" stroke="none">98°</text>
+    <circle cx="74" cy="18" r="9.5" fill="#4fc3f7"/>
+    <text x="74" y="22.5" font-family="Arial, sans-serif" font-size="13" font-weight="bold" fill="#12222e" text-anchor="middle" stroke="none">1</text><circle cx="80" cy="60" r="10" fill="url(#minusG)" stroke="{{backgroundColor}}" stroke-width="3"/>
+    <path d="M75 60h10" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"/>
 </svg>

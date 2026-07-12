@@ -1,11 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 92 52" stroke-width="0.5" stroke="#fff" fill="#fff">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
   <desc>{"colors":{"backgroundColor":"#3a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"EVENT\nMARK"},"border":{"color":"#6a5a6a"}}</desc>
-  
+  <defs>
+    <linearGradient id="ambG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f7d94c"/><stop offset="1" stop-color="#d9980f"/></linearGradient>
+    <filter id="glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="3"/></filter>
+  </defs>
 
-    <line x1="2" y1="50" x2="90" y2="50" stroke="#888888" stroke-width="1.6"/>
-    <polyline points="10,50 10,38 18,38 26,50 26,38 34,38 42,50" fill="none"
-              stroke="#888888" stroke-width="2" stroke-linecap="round"/>
-    <line x1="46" y1="50" x2="46" y2="2" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-    <polygon points="46,2 70,14 46,26" fill="#f1c40f" stroke="none"/>
-
+    <path d="M18 10 V52 H76" fill="none" stroke="#b7c5cd" stroke-width="3" stroke-linecap="round"/>
+    <polyline points="24,44 33,29 42,37 52,19 61,27 70,15" fill="none" stroke="#4fc3f7" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <line x1="48" y1="14" x2="48" y2="50" stroke="#f6d34c" stroke-width="2.5" stroke-dasharray="4 3.5"/>
+    <polygon points="48,10 62,14.5 48,19" fill="url(#ambG)" filter="url(#glow)"/>
+    <polygon points="48,10 62,14.5 48,19" fill="url(#ambG)"/>
 </svg>

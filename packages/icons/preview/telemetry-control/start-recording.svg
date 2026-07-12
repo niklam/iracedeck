@@ -1,9 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 92 52" stroke-width="0.5" stroke="#fff" fill="#fff">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
   <desc>{"colors":{"backgroundColor":"#3a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"RECORDING\nSTART"},"border":{"color":"#6a5a6a"}}</desc>
-  
+  <defs>
+    <linearGradient id="plusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#4be08d"/><stop offset="1" stop-color="#1d9e58"/></linearGradient>
+    <filter id="glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="3"/></filter>
+  </defs>
 
-    <circle cx="46" cy="22" r="20" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <circle cx="46" cy="22" r="10" fill="#e74c3c" stroke="none"/>
-    <line x1="2" y1="50" x2="90" y2="50" stroke="#888888" stroke-width="1.6"/>
-
+    <path d="M18 10 V52 H76" fill="none" stroke="#b7c5cd" stroke-width="3" stroke-linecap="round"/>
+    <polyline points="24,44 33,29 42,37 52,19 61,27 70,15" fill="none" stroke="#4fc3f7" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <polygon points="74,6 74,20 86,13" fill="url(#plusG)" filter="url(#glow)"/>
+    <polygon points="74,6 74,20 86,13" fill="url(#plusG)"/>
 </svg>

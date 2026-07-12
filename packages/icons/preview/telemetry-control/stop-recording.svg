@@ -1,9 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 92 52" stroke-width="0.5" stroke="#fff" fill="#fff">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
   <desc>{"colors":{"backgroundColor":"#3a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"RECORDING\nSTOP"},"border":{"color":"#6a5a6a"}}</desc>
-  
+  <defs>
+    <linearGradient id="redG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ff6b5e"/><stop offset="1" stop-color="#c0392b"/></linearGradient>
+    <filter id="glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="3"/></filter>
+  </defs>
 
-    <circle cx="46" cy="22" r="20" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <rect x="34" y="10" width="24" height="24" fill="#ffffff" stroke="none"/>
-    <line x1="2" y1="50" x2="90" y2="50" stroke="#888888" stroke-width="1.6"/>
-
+    <path d="M18 10 V52 H76" fill="none" stroke="#b7c5cd" stroke-width="3" stroke-linecap="round"/>
+    <polyline points="24,44 33,29 42,37 52,19 61,27 70,15" fill="none" stroke="#4fc3f7" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="73" y="7" width="12" height="12" rx="2.5" fill="url(#redG)" filter="url(#glow)"/>
+    <rect x="73" y="7" width="12" height="12" rx="2.5" fill="url(#redG)"/>
 </svg>

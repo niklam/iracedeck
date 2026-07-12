@@ -1,10 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 92 58" stroke-width="0.5" stroke="#fff" fill="#fff">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
   <desc>{"colors":{"backgroundColor":"#3a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"TOGGLE\nLOGGING"},"border":{"color":"#6a5a6a"}}</desc>
-  
+  <defs>
+    <linearGradient id="redG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ff6b5e"/><stop offset="1" stop-color="#c0392b"/></linearGradient>
+    <filter id="glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="3"/></filter>
+  </defs>
 
-    <polyline points="2,44 18,24 34,36 50,12 66,28 82,8" fill="none"
-              stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="82" cy="8" r="6" fill="#2ecc71" stroke="none"/>
-    <line x1="2" y1="56" x2="90" y2="56" stroke="#888888" stroke-width="1.6"/>
-
+    <path d="M18 10 V52 H76" fill="none" stroke="#b7c5cd" stroke-width="3" stroke-linecap="round"/>
+    <polyline points="24,44 33,29 42,37 52,19 61,27 70,15" fill="none" stroke="#4fc3f7" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="80" cy="13" r="7" fill="url(#redG)" filter="url(#glow)"/>
+    <circle cx="80" cy="13" r="6.5" fill="url(#redG)"/>
 </svg>

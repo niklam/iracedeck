@@ -1,12 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 92 44" stroke-width="0.5" stroke="#fff" fill="#fff">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
   <desc>{"colors":{"backgroundColor":"#2a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"MODE\nIN LAP"},"border":{"color":"#5a5a6a"}}</desc>
-  
+  <defs>
+    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.55"/></linearGradient>
+  </defs>
 
-    <rect x="2" y="2" width="88" height="40" rx="6" fill="none" stroke="#888888" stroke-width="3"/>
-    <line x1="46" y1="2" x2="46" y2="42" stroke="#888888" stroke-width="1"/>
-    <path d="M22,34L22,14L42,14" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-    <polyline points="34,8 42,14 34,20" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-    <text x="66" y="24" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="14" font-weight="bold" stroke="none">IN</text>
-
+    <rect x="22" y="10" width="52" height="34" rx="4" fill="#14202e" stroke="url(#mtl)" stroke-width="3.5"/>
+    <text x="48" y="31.5" font-family="Arial, sans-serif" font-size="12.5" font-weight="bold" fill="#f6d34c" text-anchor="middle" stroke="none">IN LAP</text>
+    <line x1="48" y1="46" x2="48" y2="62" stroke="url(#mtl)" stroke-width="4.5" stroke-linecap="round"/>
 </svg>
