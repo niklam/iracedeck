@@ -109,6 +109,11 @@ class ElgatoActionContext implements IDeckActionContext {
     return this.sdAction.isDial?.() ?? false;
   }
 
+  // Assumes at most one SVG pixmap per feedback payload (today's only caller,
+  // fuel-service/fuel-dial-surface.ts, sends a single full-slot pixmap): a
+  // superseded pixmap drops the WHOLE payload via the early return below, and
+  // if a payload ever carried multiple SVG values they would rasterize
+  // serially (one toDeviceImage await at a time), not in parallel.
   async setFeedback(feedback: DeckFeedbackPayload): Promise<void> {
     if (!this.sdAction.setFeedback) return;
 

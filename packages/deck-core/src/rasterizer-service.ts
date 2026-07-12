@@ -19,7 +19,11 @@ const SVG_DATA_URI_PREFIX = "data:image/svg+xml";
 /** Elgato touch-strip slot width in px — dial pixmaps rasterize at this width. */
 export const TOUCH_STRIP_SLOT_WIDTH = 200;
 
-/** LRU cap: 512 entries ≈ a few MB of PNGs; static icons all fit. */
+/**
+ * LRU cap: 512 entries — worst case ~15-25 MB (240px PNGs, base64-encoded, keys
+ * and values both counted). All static icons fit well within the cap; high-churn
+ * dynamic icons (e.g. live telemetry values) evict the oldest entries first.
+ */
 const CACHE_MAX_ENTRIES = 512;
 
 export function isSvgDataUri(value: string): boolean {

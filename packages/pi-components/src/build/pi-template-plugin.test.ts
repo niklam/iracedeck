@@ -405,9 +405,9 @@ describe("piTemplatePlugin", () => {
       await (plugin.generateBundle as AnyFunction).call(context);
     }
 
-    // With default platformFeatures = { capabilities: {}, features: {} },
-    // features.dialFeedback is undefined (!== false), so DIAL is emitted — preserving
-    // backward-compatible behavior for templates without platform gating.
+    // With default platformFeatures = { features: {} }, features.dialFeedback is
+    // undefined (!== false), so DIAL is emitted — preserving backward-compatible
+    // behavior for templates without platform gating.
     const content = readFileSync(path.join(outputDir, "no-flags.html"), "utf-8");
     expect(content).toContain("DIAL");
   });

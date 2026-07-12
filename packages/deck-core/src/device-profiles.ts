@@ -430,6 +430,9 @@ export function shipsBundledProfiles(type: number): boolean {
   return getDeviceSupport(type)?.profileTemplates === "target";
 }
 
+/** Fallback PNG raster size (px) for key images when the device type is unknown or non-Elgato. */
+export const DEFAULT_KEY_IMAGE_SIZE = 144;
+
 /**
  * PNG raster size (px) for key images, per Elgato device type — the physical
  * key LCD size at @2x (Elgato's recommended image scale). Non-Elgato devices
@@ -437,8 +440,6 @@ export function shipsBundledProfiles(type: number): boolean {
  * DEFAULT_KEY_IMAGE_SIZE; refine per-model once measured on hardware
  * (#642 decision doc §6 checklist).
  */
-export const DEFAULT_KEY_IMAGE_SIZE = 144;
-
 const KEY_IMAGE_SIZES: Partial<Record<DeviceType, number>> = {
   [DeviceType.StreamDeck]: 144, // 72×72 keys
   [DeviceType.StreamDeckMini]: 160, // 80×80 keys

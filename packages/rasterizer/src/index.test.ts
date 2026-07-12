@@ -39,4 +39,9 @@ describe("createSvgRasterizer", () => {
     const withoutText = await rasterize(NO_TEXT_SVG, 144);
     expect(withText.equals(withoutText)).toBe(false);
   });
+
+  it("throws when the fonts directory is missing", () => {
+    const missingFontsDir = fileURLToPath(new URL("../fonts-does-not-exist", import.meta.url));
+    expect(() => createSvgRasterizer({ fontsDir: missingFontsDir })).toThrow(/fonts directory not found/i);
+  });
 });

@@ -245,10 +245,15 @@ initializeClipboard(adapter.createLogger("Clipboard"), (text) => native.setClipb
 // Rasterize device-bound SVG icons to PNG in-plugin (#642). When the flag is
 // off, the service stays uninitialized and adapters pass SVG through as before.
 if (__FEATURE_PNG_RASTERIZATION__) {
-  initializeRasterizer(
-    createSvgRasterizer({ fontsDir: join(__binDir, "..", "assets", "fonts") }),
-    adapter.createLogger("Rasterizer"),
-  );
+  const rasterizerLogger = adapter.createLogger("Rasterizer");
+
+  try {
+    initializeRasterizer(createSvgRasterizer({ fontsDir: join(__binDir, "..", "assets", "fonts") }), rasterizerLogger);
+  } catch (err) {
+    // Fonts missing or resvg init failed — stay uninitialized so adapters
+    // fall back to sending SVG, instead of crashing the whole plugin.
+    rasterizerLogger.warn(`PNG rasterization disabled: ${err}`);
+  }
 }
 
 // Initialize audio engine for pit crew voice playback.
