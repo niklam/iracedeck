@@ -9312,6 +9312,246 @@
       "textPreview": "Final lap now. <break time=\"0.3s\" /> Make it count.",
       "generatedAt": "2026-07-05T10:02:24.301Z",
       "requestId": "SFL4lvCjdqfJpnRZ251E"
+    },
+    "voice/default/names/ant.mp3": {
+      "hash": "6436847465dd02d9",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Ant",
+      "generatedAt": "2026-07-11T11:33:37.998Z",
+      "requestId": "BqrEEdqAn1ScMPsRQVU4"
+    },
+    "voice/default/names/anthony.mp3": {
+      "hash": "ea36ce7fe60290da",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Anthony",
+      "generatedAt": "2026-07-11T11:33:38.378Z",
+      "requestId": "ECwYxM2mhtU9QVivtmS1"
+    },
+    "voice/default/names/bird.mp3": {
+      "hash": "ce0a69d81c39094e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Bird",
+      "generatedAt": "2026-07-11T11:33:38.543Z",
+      "requestId": "Ai9YvfuknuXwHqTg7uDN"
+    },
+    "voice/default/names/brad.mp3": {
+      "hash": "4e75ca15c0cfab32",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Brad",
+      "generatedAt": "2026-07-11T11:33:38.694Z",
+      "requestId": "yCOeQFRKfaNYoK5WagZ3"
+    },
+    "voice/default/names/kanki.mp3": {
+      "hash": "eb4cf0abe5084b41",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Kanki",
+      "generatedAt": "2026-07-11T11:33:38.848Z",
+      "requestId": "sLy1qx5kTeL4X6UF3iTK"
+    },
+    "voice/default/names/shamoy.mp3": {
+      "hash": "36ec46521e39e6b3",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Shamoy",
+      "generatedAt": "2026-07-11T11:33:39.009Z",
+      "requestId": "O9XxPghZ7NwxAopm762l"
+    },
+    "voice/default/session-start-greeting/ant.mp3": {
+      "hash": "31b908e80695173a",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Ok, Ant,",
+      "generatedAt": "2026-07-11T11:33:39.982Z",
+      "requestId": "IIX3NAAj2CNYltwjj8dE"
+    },
+    "voice/default/session-start-greeting/anthony.mp3": {
+      "hash": "fcf07a9af6f1dc69",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Ok, Anthony,",
+      "generatedAt": "2026-07-11T11:33:40.153Z",
+      "requestId": "wwd53NATOi68Xfo8gxhr"
+    },
+    "voice/default/session-start-greeting/bird.mp3": {
+      "hash": "fe947cf350bcd263",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Ok, Bird,",
+      "generatedAt": "2026-07-11T11:33:40.295Z",
+      "requestId": "9TA86EWoEyUKO6NRqeWs"
+    },
+    "voice/default/session-start-greeting/brad.mp3": {
+      "hash": "4d3e04eb3c790e65",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Ok, Brad,",
+      "generatedAt": "2026-07-11T11:33:40.450Z",
+      "requestId": "5GuCxOLtatvw9zvoTmwt"
+    },
+    "voice/default/session-start-greeting/kanki.mp3": {
+      "hash": "3dddab1bea561691",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Ok, Kanki,",
+      "generatedAt": "2026-07-11T11:33:40.587Z",
+      "requestId": "ZjB6yShxhFxlpfOhXnfW"
+    },
+    "voice/default/session-start-greeting/shamoy.mp3": {
+      "hash": "f43e0db467cd5d0d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Ok, Shamoy,",
+      "generatedAt": "2026-07-11T11:33:40.749Z",
+      "requestId": "B6yqFxmIXPUpDUPSHFZV"
+    },
+    "voice/default/race-start-greeting/ant.mp3": {
+      "hash": "e746bd32d17cf901",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Ant.",
+      "generatedAt": "2026-07-11T11:33:41.736Z",
+      "requestId": "73ybnHIW6bMs8IIB1n75"
+    },
+    "voice/default/race-start-greeting/anthony.mp3": {
+      "hash": "053fa4aa6b18e90d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Anthony.",
+      "generatedAt": "2026-07-11T11:33:41.900Z",
+      "requestId": "Y7gSEk9IcELwrThr0op6"
+    },
+    "voice/default/race-start-greeting/bird.mp3": {
+      "hash": "d7ad78e3dcc2fad2",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Bird.",
+      "generatedAt": "2026-07-11T11:33:42.058Z",
+      "requestId": "xnI1UqHwIqbqhILVQ4r5"
+    },
+    "voice/default/race-start-greeting/brad.mp3": {
+      "hash": "266a8e381cf0ee4d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Brad.",
+      "generatedAt": "2026-07-11T11:33:42.204Z",
+      "requestId": "NsIPFqBIjrRTmw9CM6fp"
+    },
+    "voice/default/race-start-greeting/kanki.mp3": {
+      "hash": "e84dc1213597dc88",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Kanki.",
+      "generatedAt": "2026-07-11T11:33:42.366Z",
+      "requestId": "dxYqOuUGR9Ud9MEvvpti"
+    },
+    "voice/default/race-start-greeting/shamoy.mp3": {
+      "hash": "ae64ee0c49bbf21b",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Shamoy.",
+      "generatedAt": "2026-07-11T11:33:42.511Z",
+      "requestId": "VQWSYbR9MaM7Lsnrdcw4"
+    },
+    "voice/default/race-end-greeting/ant.mp3": {
+      "hash": "5586d72f60e85b97",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Ant,",
+      "generatedAt": "2026-07-11T11:33:43.910Z",
+      "requestId": "gqtpqbuz1HfAXqysdc9X"
+    },
+    "voice/default/race-end-greeting/anthony.mp3": {
+      "hash": "303527a4802e63b1",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Anthony,",
+      "generatedAt": "2026-07-11T11:33:44.065Z",
+      "requestId": "NCqdAZgEqNMHKsxDQ9YB"
+    },
+    "voice/default/race-end-greeting/bird.mp3": {
+      "hash": "1ad4ab569118134a",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Bird,",
+      "generatedAt": "2026-07-11T11:33:44.216Z",
+      "requestId": "bbALfi9jszIcQ2Sxsa3Z"
+    },
+    "voice/default/race-end-greeting/brad.mp3": {
+      "hash": "5dac3ee5817a7b6c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Brad,",
+      "generatedAt": "2026-07-11T11:33:44.354Z",
+      "requestId": "LosO3RJsGQJCeb9YBzcA"
+    },
+    "voice/default/race-end-greeting/kanki.mp3": {
+      "hash": "e34e2c3392546dc9",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Kanki,",
+      "generatedAt": "2026-07-11T11:33:44.516Z",
+      "requestId": "rx6THfCD9SAnc1H9DiHa"
+    },
+    "voice/default/race-end-greeting/shamoy.mp3": {
+      "hash": "625177677dcf7d19",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Shamoy,",
+      "generatedAt": "2026-07-11T11:33:44.655Z",
+      "requestId": "WFsv31e8xUHJMXH3gU1J"
+    },
+    "voice/default/position-overtake-come-on/ant.mp3": {
+      "hash": "f04c9e779f536e75",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Come on, Ant.",
+      "generatedAt": "2026-07-11T11:33:45.770Z",
+      "requestId": "e3niDXM9IsNBq1bOi5nw"
+    },
+    "voice/default/position-overtake-come-on/anthony.mp3": {
+      "hash": "e86518741ff739e8",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Come on, Anthony.",
+      "generatedAt": "2026-07-11T11:33:45.940Z",
+      "requestId": "lnOyNnauSte65Bt3CrIn"
+    },
+    "voice/default/position-overtake-come-on/bird.mp3": {
+      "hash": "446a3ca71bec6aca",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Come on, Bird.",
+      "generatedAt": "2026-07-11T11:33:46.100Z",
+      "requestId": "tdgYk2LMsFwPIjzS78M4"
+    },
+    "voice/default/position-overtake-come-on/brad.mp3": {
+      "hash": "8a6f533d5051e17b",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Come on, Brad.",
+      "generatedAt": "2026-07-11T11:33:46.238Z",
+      "requestId": "HqDOWJEPSeNk4KYXAQP9"
+    },
+    "voice/default/position-overtake-come-on/kanki.mp3": {
+      "hash": "3d702d1088431d83",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Come on, Kanki.",
+      "generatedAt": "2026-07-11T11:33:46.398Z",
+      "requestId": "0PBfs62N4NNimiVi3LfO"
+    },
+    "voice/default/position-overtake-come-on/shamoy.mp3": {
+      "hash": "5d14af405a38ad69",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Come on, Shamoy.",
+      "generatedAt": "2026-07-11T11:33:46.546Z",
+      "requestId": "i3I8okMDpYu7V8vfReZk"
     }
   }
 }
