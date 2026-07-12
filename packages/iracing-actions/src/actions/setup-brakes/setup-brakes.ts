@@ -62,13 +62,7 @@ import {
 export { SETUP_BRAKES_GLOBAL_KEYS } from "./setup-brakes-settings.js";
 
 type SetupBrakesAdjustSetting =
-  | "abs-toggle"
-  | "abs-adjust"
-  | "brake-bias"
-  | "brake-bias-fine"
-  | "peak-brake-bias"
-  | "brake-misc"
-  | "engine-braking";
+  "abs-toggle" | "abs-adjust" | "brake-bias" | "brake-bias-fine" | "peak-brake-bias" | "brake-misc" | "engine-braking";
 
 /**
  * The combined `setting` type is the union of `SetupBrakesAdjustSetting` and the six View

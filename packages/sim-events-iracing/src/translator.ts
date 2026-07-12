@@ -1363,8 +1363,7 @@ function resolveSessionType(sessionInfo: Record<string, unknown> | null, telemet
   if (!sessionInfo) return "";
 
   const sessions = (sessionInfo.SessionInfo as Record<string, unknown> | undefined)?.Sessions as
-    | Array<Record<string, unknown>>
-    | undefined;
+    Array<Record<string, unknown>> | undefined;
   const sessionNum = telemetry.SessionNum ?? 0;
   const current = sessions?.[sessionNum as number];
 

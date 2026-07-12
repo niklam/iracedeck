@@ -24,13 +24,7 @@ import weatherReportIconSvg from "@iracedeck/icons/ai-spotter-controls/weather-r
 import z from "zod";
 
 type SpotterControl =
-  | "damage-report"
-  | "weather-report"
-  | "toggle-report-laps"
-  | "announce-leader"
-  | "louder"
-  | "quieter"
-  | "silence";
+  "damage-report" | "weather-report" | "toggle-report-laps" | "announce-leader" | "louder" | "quieter" | "silence";
 
 /**
  * @internal Exported for testing

@@ -160,8 +160,7 @@ export function countActiveDriversInPlayerClass(sessionInfo: IRacingSessionInfo 
   if (!sessionInfo) return 0;
 
   const driverInfo = sessionInfo.DriverInfo as
-    | { Drivers?: Array<Record<string, unknown>>; DriverCarIdx?: number }
-    | undefined;
+    { Drivers?: Array<Record<string, unknown>>; DriverCarIdx?: number } | undefined;
   const drivers = driverInfo?.Drivers;
 
   if (!Array.isArray(drivers)) return 0;

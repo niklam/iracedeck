@@ -459,8 +459,7 @@ class KeyBindingInput extends HTMLElement {
   private async initLayoutMap(): Promise<void> {
     try {
       const kbd = (navigator as unknown as Record<string, unknown>).keyboard as
-        | { getLayoutMap?: () => Promise<KeyboardLayoutMapLike> }
-        | undefined;
+        { getLayoutMap?: () => Promise<KeyboardLayoutMapLike> } | undefined;
 
       if (kbd?.getLayoutMap) {
         this.layoutMap = await kbd.getLayoutMap();

@@ -88,12 +88,7 @@ export type StartCountdownSeconds = 90 | 60 | 30 | 10;
  * type information.
  */
 export type IncidentType =
-  | "off-track"
-  | "out-of-control"
-  | "contact-world"
-  | "collision-world"
-  | "contact-car"
-  | "collision-car";
+  "off-track" | "out-of-control" | "contact-world" | "collision-world" | "contact-car" | "collision-car";
 
 /**
  * Canonical track-wetness state (issue #526). Mirrors iRacing's

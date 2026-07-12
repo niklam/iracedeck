@@ -273,8 +273,7 @@ export function getEnterExitTowState(
   // On track, not in pit stall — check session type
   const sessionNum = telemetry.SessionNum ?? 0;
   const sessions = (sessionInfo?.SessionInfo as Record<string, unknown> | undefined)?.Sessions as
-    | Array<Record<string, unknown>>
-    | undefined;
+    Array<Record<string, unknown>> | undefined;
   const currentSession = sessions?.find((s) => s.SessionNum === sessionNum);
   const sessionType = currentSession?.SessionType as string | undefined;
 
@@ -306,8 +305,7 @@ export function getSessionContext(
 
   const sessionNum = telemetry.SessionNum ?? 0;
   const sessions = (sessionInfo?.SessionInfo as Record<string, unknown> | undefined)?.Sessions as
-    | Array<Record<string, unknown>>
-    | undefined;
+    Array<Record<string, unknown>> | undefined;
   const currentSession = sessions?.find((s) => s.SessionNum === sessionNum);
   const sessionType = currentSession?.SessionType as string | undefined;
 
