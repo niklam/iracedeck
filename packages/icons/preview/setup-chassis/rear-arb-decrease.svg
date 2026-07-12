@@ -1,15 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 91.5 64.3">
   <desc>{"colors":{"backgroundColor":"#1a3a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"REAR ARB\nDECREASE"},"border":{"color":"#3a6a3a"}}</desc>
   <defs>
     <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.55"/></linearGradient>
     <filter id="glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="3"/></filter>
     <linearGradient id="minusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f47c6a"/><stop offset="1" stop-color="#c0392b"/></linearGradient>
   </defs>
+  <g transform="translate(-2.7 -9)">
 <rect x="16" y="10" width="26" height="50" rx="10" fill="url(#mtl)"/>
     <rect x="20" y="16" width="18" height="12" rx="4" fill="#2c3e50" opacity="0.55"/>
     <rect x="20" y="44" width="18" height="10" rx="4" fill="#2c3e50" opacity="0.35"/><rect x="8" y="15" width="8" height="15" rx="3" fill="#3f5561"/><rect x="42" y="15" width="8" height="15" rx="3" fill="#3f5561"/><rect x="8" y="42" width="8" height="15" rx="3" fill="#3f5561"/><rect x="42" y="42" width="8" height="15" rx="3" fill="#3f5561"/><rect x="8" y="47" width="42" height="6" rx="3" fill="#f7d94c" filter="url(#glow)"/>
     <rect x="8" y="47" width="42" height="6" rx="3" fill="#f7d94c"/>
     <path d="M60 34 V22 H82 V34" fill="none" stroke="#dfe7ec" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="60" cy="40" r="3.5" fill="#b7c5cd"/><circle cx="82" cy="40" r="3.5" fill="#b7c5cd"/><circle cx="80" cy="60" r="10" fill="url(#minusG)" stroke="#1a3a1a" stroke-width="3"/>
-    <path d="M75 60h10" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"/>
+    <circle cx="60" cy="40" r="3.5" fill="#b7c5cd"/><circle cx="82" cy="40" r="3.5" fill="#b7c5cd"/><rect x="66" y="45" width="26" height="26" rx="8" fill="url(#minusG)" stroke="#1a3a1a" stroke-width="3"/>
+    <path d="M72 58h14" stroke="#ffffff" stroke-width="4.5" stroke-linecap="round"/>
+  </g>
 </svg>

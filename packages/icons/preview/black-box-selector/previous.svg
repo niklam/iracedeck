@@ -1,11 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 68">
-  <desc>{"colors":{"backgroundColor":"#2a2a2a","textColor":"#ffffff"},"title":{"text":"PREVIOUS"},"border":{"color":"#5a5a5a"}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 81.3 49.3">
+  <desc>{"colors":{"backgroundColor":"#2a2a2a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"title":{"text":"PREVIOUS"},"border":{"color":"#5a5a5a"}}</desc>
   <defs>
     <linearGradient id="bbG2" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#453a1c"/><stop offset="1" stop-color="#221a0a"/></linearGradient>
-    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="{{graphic1Color}}"/><stop offset="1" stop-color="{{graphic1Color}}" stop-opacity="0.55"/></linearGradient>
+    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.55"/></linearGradient>
   </defs>
+  <g transform="translate(-7.2 -9.2)">
 
     <rect x="10" y="12" width="76" height="44" rx="6" fill="url(#bbG2)" stroke="#6a5138" stroke-width="3.5"/>
     <polyline points="58,22 44,34 58,46" fill="none" stroke="url(#mtl)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
     <polyline points="44,22 30,34 44,46" fill="none" stroke="url(#mtl)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" opacity="0.55"/>
+  </g>
 </svg>

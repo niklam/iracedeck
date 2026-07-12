@@ -1,14 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 73.3 62.3">
   <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"F-NUMBER\n-"},"border":{"color":"#3a5a6a"}}</desc>
   <defs>
     <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.55"/></linearGradient>
     <radialGradient id="lns" cx="0.38" cy="0.32" r="0.95"><stop stop-color="#8ed4ff"/><stop offset="0.55" stop-color="#2c5f9e"/><stop offset="1" stop-color="#122c4d"/></radialGradient>
     <linearGradient id="minusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f47c6a"/><stop offset="1" stop-color="#c0392b"/></linearGradient>
   </defs>
+  <g transform="translate(-21 -11)">
 
     <circle cx="44" cy="34" r="22" fill="url(#mtl)"/>
     <circle cx="44" cy="34" r="19" fill="#14202e"/>
     <line x1="63.0" y1="34.0" x2="40.0" y2="40.9" stroke="#8fa3ad" stroke-width="3"/><line x1="53.5" y1="50.5" x2="36.0" y2="34.0" stroke="#8fa3ad" stroke-width="3"/><line x1="34.5" y1="50.5" x2="40.0" y2="27.1" stroke="#8fa3ad" stroke-width="3"/><line x1="25.0" y1="34.0" x2="48.0" y2="27.1" stroke="#8fa3ad" stroke-width="3"/><line x1="34.5" y1="17.5" x2="52.0" y2="34.0" stroke="#8fa3ad" stroke-width="3"/><line x1="53.5" y1="17.5" x2="48.0" y2="40.9" stroke="#8fa3ad" stroke-width="3"/>
-    <circle cx="44" cy="34" r="7" fill="url(#lns)"/><circle cx="80" cy="60" r="10" fill="url(#minusG)" stroke="#1a2a3a" stroke-width="3"/>
-    <path d="M75 60h10" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"/>
+    <circle cx="44" cy="34" r="7" fill="url(#lns)"/><rect x="66" y="45" width="26" height="26" rx="8" fill="url(#minusG)" stroke="#1a2a3a" stroke-width="3"/>
+    <path d="M72 58h14" stroke="#ffffff" stroke-width="4.5" stroke-linecap="round"/>
+  </g>
 </svg>

@@ -1,11 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 61.8 49.8">
   <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"CHAT\nWHISPER"},"border":{"color":"#5a6a7a"}}</desc>
   <defs>
-    <linearGradient id="scl2" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#c3cfda"/></linearGradient>
+    <linearGradient id="scl2" x1="0" y1="0" x2="0" y2="1"><stop stop-color="{{graphic1Color}}"/><stop offset="1" stop-color="{{graphic1Color}}" stop-opacity="0.76"/></linearGradient>
   </defs>
+  <g transform="translate(-13 -9)">
 
     <rect x="14" y="10" width="60" height="36" rx="9" fill="url(#scl2)"/>
     <polygon points="28,45 28,58 41,45" fill="url(#scl2)"/>
     <polygon points="34,24 39,24 45,18 45,38 39,32 34,32" fill="#3f5561"/>
     <path d="M50 24 Q53.5 28 50 32" fill="none" stroke="#3f5561" stroke-width="3" stroke-linecap="round"/>
+  </g>
 </svg>

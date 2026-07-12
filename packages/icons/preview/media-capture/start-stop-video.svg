@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 81.5 55.8">
   <desc>{"colors":{"backgroundColor":"#2a1a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"VIDEO\nSTART/STOP"},"border":{"color":"#5a3a6a"}}</desc>
   <defs>
     <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.55"/></linearGradient>
@@ -6,6 +6,7 @@
     <linearGradient id="redG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ff6b5e"/><stop offset="1" stop-color="#c0392b"/></linearGradient>
     <filter id="glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="3"/></filter>
   </defs>
+  <g transform="translate(-11 0.8)">
 
     <circle cx="24" cy="17" r="7" fill="#3f5561"/><circle cx="24" cy="17" r="2.6" fill="url(#mtl)"/>
     <circle cx="41" cy="17" r="7" fill="#3f5561"/><circle cx="41" cy="17" r="2.6" fill="url(#mtl)"/>
@@ -15,4 +16,5 @@
     <line x1="78" y1="23" x2="78" y2="53" stroke="#7a8894" stroke-width="2.5" stroke-linecap="round"/>
     <circle cx="80" cy="12" r="7" fill="url(#redG)" filter="url(#glow)"/>
     <circle cx="80" cy="12" r="6.5" fill="url(#redG)"/>
+  </g>
 </svg>

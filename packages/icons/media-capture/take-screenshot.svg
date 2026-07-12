@@ -1,10 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 74.8 56.3">
   <desc>{"colors":{"backgroundColor":"#2a1a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"CAPTURE\nSCREENSHOT"},"border":{"color":"#5a3a6a"}}</desc>
   <defs>
     <linearGradient id="pgb" x1="0" y1="0" x2="0" y2="1"><stop stop-color="{{graphic1Color}}"/><stop offset="1" stop-color="{{graphic1Color}}" stop-opacity="0.6"/></linearGradient>
     <radialGradient id="lns" cx="0.38" cy="0.32" r="0.95"><stop stop-color="#8ed4ff"/><stop offset="0.55" stop-color="#2c5f9e"/><stop offset="1" stop-color="#122c4d"/></radialGradient>
     <filter id="glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="3"/></filter>
   </defs>
+  <g transform="translate(-15 -4.5)">
 <g transform="translate(0 0) scale(1)">
     <rect x="34" y="13" width="18" height="11" rx="3" fill="url(#pgb)"/>
     <rect x="16" y="22" width="54" height="38" rx="7" fill="url(#pgb)"/>
@@ -15,4 +16,5 @@
   </g>
     <path transform="translate(78 8) scale(1)" d="M0 0 l2.6 6 6 2.6 -6 2.6 -2.6 6 -2.6 -6 -6 -2.6 6 -2.6 Z" fill="#f6d34c" filter="url(#glow)"/>
     <path transform="translate(78 8) scale(1)" d="M0 0 l2.6 6 6 2.6 -6 2.6 -2.6 6 -2.6 -6 -6 -2.6 6 -2.6 Z" fill="#f6d34c"/>
+  </g>
 </svg>

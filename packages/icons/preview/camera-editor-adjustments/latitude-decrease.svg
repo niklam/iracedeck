@@ -1,10 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
-  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"LATITUDE\n-"},"border":{"color":"#3a5a6a"}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 78 69">
+  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"title":{"text":"LATITUDE\n-"},"border":{"color":"#3a5a6a"}}</desc>
   <defs>
     <filter id="glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="3"/></filter>
     <radialGradient id="latg" cx="0.35" cy="0.28" r="1"><stop stop-color="#7dd3fc"/><stop offset="0.55" stop-color="#2b6cb0"/><stop offset="1" stop-color="#173a63"/></radialGradient>
     <linearGradient id="minusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f47c6a"/><stop offset="1" stop-color="#c0392b"/></linearGradient>
   </defs>
+  <g transform="translate(-16.2 -4.2)">
 
     <circle cx="44" cy="32" r="23" fill="#4fc3f7" opacity="0.4" filter="url(#glow)"/>
     <circle cx="44" cy="32" r="22" fill="url(#latg)"/>
@@ -12,6 +13,7 @@
     <line x1="24.5" y1="23" x2="63.5" y2="23" stroke="#dbeafe" stroke-width="2" opacity="0.8"/>
     <line x1="22" y1="32" x2="66" y2="32" stroke="#ffffff" stroke-width="3.5"/>
     <line x1="24.5" y1="41" x2="63.5" y2="41" stroke="#dbeafe" stroke-width="2" opacity="0.8"/>
-    <ellipse cx="44" cy="32" rx="9" ry="22" fill="none" stroke="#dbeafe" stroke-width="1.6" opacity="0.45"/><circle cx="80" cy="60" r="10" fill="url(#minusG)" stroke="#1a2a3a" stroke-width="3"/>
-    <path d="M75 60h10" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"/>
+    <ellipse cx="44" cy="32" rx="9" ry="22" fill="none" stroke="#dbeafe" stroke-width="1.6" opacity="0.45"/><rect x="66" y="45" width="26" height="26" rx="8" fill="url(#minusG)" stroke="#1a2a3a" stroke-width="3"/>
+    <path d="M72 58h14" stroke="#ffffff" stroke-width="4.5" stroke-linecap="round"/>
+  </g>
 </svg>

@@ -1,10 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
-  <desc>{"colors":{"backgroundColor":"#3a3a1a","textColor":"#ffffff"},"title":{"text":"FCY MODE\nTOGGLE"},"border":{"color":"#6a6a3a"}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 75.5 48">
+  <desc>{"colors":{"backgroundColor":"#3a3a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"FCY MODE\nTOGGLE"},"border":{"color":"#6a6a3a"}}</desc>
   <defs>
     <linearGradient id="ambG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f7d94c"/><stop offset="1" stop-color="#d9980f"/></linearGradient>
     <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="{{graphic1Color}}"/><stop offset="1" stop-color="{{graphic1Color}}" stop-opacity="0.55"/></linearGradient>
     <filter id="glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="3"/></filter>
   </defs>
+  <g transform="translate(-14.5 -3.7)">
 <g transform="translate(30 0) scale(0.85)">
     <path d="M0 6 C0 6 -17 28 -17 40 a17 17 0 0 0 34 0 C17 28 0 6 0 6 Z" fill="url(#ambG)"/>
     <path d="M-8 42 a8 8 0 0 0 8 8" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" opacity="0.55"/>
@@ -12,4 +13,5 @@
     <rect x="54.25" y="9" width="3.5" height="42" rx="1.75" fill="url(#mtl)"/>
     <path d="M59 12 Q71 8 84 12 L84 28 Q71 24 59 28 Z" fill="#f6d34c" filter="url(#glow)"/>
     <path d="M59 12 Q71 8 84 12 L84 28 Q71 24 59 28 Z" fill="#f6d34c"/>
+  </g>
 </svg>

@@ -1,9 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
-  <desc>{"colors":{"backgroundColor":"#3a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"TAKE\nSNAPSHOT"},"border":{"color":"#6a5a6a"}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 67.3 60.3">
+  <desc>{"colors":{"backgroundColor":"#3a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"locked":["graphic1Color"],"title":{"text":"TAKE\nSNAPSHOT"},"border":{"color":"#6a5a6a"}}</desc>
   <defs>
     <filter id="glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="3"/></filter>
     <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.55"/></linearGradient>
   </defs>
+  <g transform="translate(-13.2 -3.2)">
 
     <polyline points="16,18 26,10 36,16 48,7 60,13 72,6" fill="none" stroke="#4fc3f7" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
     <line x1="48" y1="25" x2="48" y2="42" stroke="#4be08d" stroke-width="4.5" stroke-linecap="round" filter="url(#glow)"/>
@@ -11,4 +12,5 @@
     <line x1="48" y1="25" x2="48" y2="42" stroke="#4be08d" stroke-width="4.5" stroke-linecap="round"/>
     <polyline points="39,35 48,44 57,35" fill="none" stroke="#4be08d" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
     <polyline points="18,50 18,61 78,61 78,50" fill="none" stroke="url(#mtl)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
 </svg>

@@ -1,7 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 42.3 25.8">
   <desc>{"colors":{"backgroundColor":"#1a2a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"TOGGLE\nTC"},"border":{"color":"#3a5a3a"}}</desc>
   <defs>
     
   </defs>
+  <g transform="translate(-26.2 -21.5)">
 <text x="48" y="46" font-family="Arial, sans-serif" font-size="32" font-weight="bold" fill="#ffffff" text-anchor="middle" stroke="none">TC</text>
+  </g>
 </svg>

@@ -1,9 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 68">
-  <desc>{"colors":{"backgroundColor":"#2a2a2a","textColor":"#ffffff"},"title":{"text":"PIT-STOP"},"border":{"color":"#5a5a5a"}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 81.3 49.3">
+  <desc>{"colors":{"backgroundColor":"#2a2a2a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"title":{"text":"PIT-STOP"},"border":{"color":"#5a5a5a"}}</desc>
   <defs>
     <linearGradient id="bbG2" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#453a1c"/><stop offset="1" stop-color="#221a0a"/></linearGradient>
     <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="{{graphic1Color}}"/><stop offset="1" stop-color="{{graphic1Color}}" stop-opacity="0.55"/></linearGradient>
   </defs>
+  <g transform="translate(-7.2 -9.2)">
 
     <rect x="10" y="12" width="76" height="44" rx="6" fill="url(#bbG2)" stroke="#6a5138" stroke-width="3.5"/>
     <g transform="translate(10 6.8) scale(0.8)">
@@ -17,4 +18,5 @@
       <circle cx="64.5" cy="20" r="3" fill="#3d3318"/>
       <line x1="64.5" y1="20" x2="68.5" y2="18" stroke="#3d3318" stroke-width="3.5" stroke-linecap="round"/>
     </g>
+  </g>
 </svg>

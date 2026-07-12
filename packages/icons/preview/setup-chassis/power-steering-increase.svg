@@ -1,10 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 71.3 64.5">
   <desc>{"colors":{"backgroundColor":"#1a3a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"PWR STEER\nINCREASE"},"border":{"color":"#3a6a3a"}}</desc>
   <defs>
     <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.55"/></linearGradient>
     <filter id="glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="3"/></filter>
     <linearGradient id="plusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#4be08d"/><stop offset="1" stop-color="#1d9e58"/></linearGradient>
   </defs>
+  <g transform="translate(-23 -8.7)">
 
     <circle cx="44" cy="30" r="20" fill="url(#mtl)"/>
     <circle cx="44" cy="30" r="15" fill="#1a3a1a"/>
@@ -14,6 +15,7 @@
     <circle cx="44" cy="30" r="3" fill="#3f5561"/>
     <path d="M 29.2 18 A 20 20 0 0 1 58.8 18" fill="none" stroke="#ffffff" stroke-width="3.2" opacity="0.3" stroke-linecap="round"/>
     <polygon points="72,36 64,52 70,52 67,64 78,48 71,48" fill="#f7d94c" filter="url(#glow)"/>
-    <polygon points="72,36 64,52 70,52 67,64 78,48 71,48" fill="#f7d94c"/><circle cx="80" cy="60" r="10" fill="url(#plusG)" stroke="#1a3a1a" stroke-width="3"/>
-    <path d="M75 60h10M80 55v10" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"/>
+    <polygon points="72,36 64,52 70,52 67,64 78,48 71,48" fill="#f7d94c"/><rect x="66" y="45" width="26" height="26" rx="8" fill="url(#plusG)" stroke="#1a3a1a" stroke-width="3"/>
+    <path d="M72 58h14M79 51v14" stroke="#ffffff" stroke-width="4.5" stroke-linecap="round"/>
+  </g>
 </svg>

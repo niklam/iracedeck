@@ -110,3 +110,8 @@ Family frame: olive glass `#453a1c → #221a0a`, stroke `#6a5138`, no top highli
 ## Verification
 
 `pnpm build`, `pnpm lint`, `pnpm test` all green (no watcher); previews regenerated; manual visual pass of `packages/icons/preview/**` against the approved galleries; Niklas does the final on-device test before push/PR (per standing workflow).
+
+## Post-device-test revision (2026-07-12, Niklas review)
+
+- **Tight per-icon viewBoxes**: the initial uniform `0 0 96 72` box left large margins on many keys (FFB pair most visibly). Every icon's viewBox is now the resvg-rendered alpha bounding box of its artwork plus 1 unit of padding, so artwork fills the key.
+- **`{{graphic2Color}}` accent slot**: the cyan accent (`#4fc3f7`) across all sets is the graphic2 slot (declared in each `<desc>`, default preserved); chat maps its in-bubble blue (`#2563ab`) to the same slot. The eye sclera and chat bubble are `{{graphic1Color}}`-driven (`scl2` gradient at opacity 1 → 0.76), so Look Direction and Chat respond to color customization. PI `color-overrides` slot lists extended accordingly (black-box gains graphic1+graphic2).

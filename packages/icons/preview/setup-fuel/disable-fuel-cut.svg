@@ -1,9 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 81.5 41.8">
   <desc>{"colors":{"backgroundColor":"#3a3a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"FUEL CUT\nDISABLE"},"border":{"color":"#6a6a3a"}}</desc>
   <defs>
     <linearGradient id="ambG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f7d94c"/><stop offset="1" stop-color="#d9980f"/></linearGradient>
     <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.55"/></linearGradient>
   </defs>
+  <g transform="translate(-8.2 -2)">
 <g transform="translate(22 0) scale(0.75)">
     <path d="M0 6 C0 6 -17 28 -17 40 a17 17 0 0 0 34 0 C17 28 0 6 0 6 Z" fill="url(#ambG)"/>
     <path d="M-8 42 a8 8 0 0 0 8 8" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" opacity="0.55"/>
@@ -16,4 +17,5 @@
   </g>
     <circle cx="79" cy="13" r="8.5" fill="none" stroke="#e74c3c" stroke-width="3"/>
     <line x1="73.5" y1="18.5" x2="84.5" y2="7.5" stroke="#e74c3c" stroke-width="3" stroke-linecap="round"/>
+  </g>
 </svg>

@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 83.3 67.3">
   <desc>{"colors":{"backgroundColor":"#3a2a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"BRAKE BIAS\nDECREASE"},"border":{"color":"#6a5a3a"}}</desc>
   <defs>
     <radialGradient id="disc" cx="0.4" cy="0.35" r="0.9"><stop stop-color="#ffffff"/><stop offset="0.6" stop-color="#ffffff" stop-opacity="0.72"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.45"/></radialGradient>
@@ -6,6 +6,7 @@
     <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.55"/></linearGradient>
     <linearGradient id="minusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f47c6a"/><stop offset="1" stop-color="#c0392b"/></linearGradient>
   </defs>
+  <g transform="translate(-11 -6)">
 
     <circle cx="28" cy="20" r="12" fill="url(#disc)"/>
     <circle cx="28" cy="20" r="4.1" fill="#3f5561"/>
@@ -17,6 +18,7 @@
     <text x="15" y="47.5" font-family="Arial, sans-serif" font-size="10" font-weight="bold" fill="#b7c5cd" text-anchor="middle" stroke="none">R</text>
     <text x="77" y="47.5" font-family="Arial, sans-serif" font-size="10" font-weight="bold" fill="#b7c5cd" text-anchor="middle" stroke="none">F</text>
     <circle cx="26" cy="44" r="5.5" fill="url(#mtl)"/>
-    <circle cx="80" cy="60" r="10" fill="url(#minusG)" stroke="#3a2a1a" stroke-width="3"/>
-    <path d="M75 60h10" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"/>
+    <rect x="66" y="45" width="26" height="26" rx="8" fill="url(#minusG)" stroke="#3a2a1a" stroke-width="3"/>
+    <path d="M72 58h14" stroke="#ffffff" stroke-width="4.5" stroke-linecap="round"/>
+  </g>
 </svg>

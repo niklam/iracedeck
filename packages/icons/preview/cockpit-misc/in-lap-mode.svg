@@ -1,10 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 57.3 55.5">
   <desc>{"colors":{"backgroundColor":"#2a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"MODE\nIN LAP"},"border":{"color":"#5a5a6a"}}</desc>
   <defs>
     <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.55"/></linearGradient>
   </defs>
+  <g transform="translate(-19.2 -7.2)">
 
     <rect x="22" y="10" width="52" height="34" rx="4" fill="#14202e" stroke="url(#mtl)" stroke-width="3.5"/>
     <text x="48" y="31.5" font-family="Arial, sans-serif" font-size="12.5" font-weight="bold" fill="#f6d34c" text-anchor="middle" stroke="none">IN LAP</text>
     <rect x="45.75" y="45" width="4.5" height="17" rx="2.25" fill="url(#mtl)"/>
+  </g>
 </svg>

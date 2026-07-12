@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80.8 69">
   <desc>{"colors":{"backgroundColor":"#3a3a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"FUEL MIX\nINCREASE"},"border":{"color":"#6a6a3a"}}</desc>
   <defs>
     <linearGradient id="ambG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f7d94c"/><stop offset="1" stop-color="#d9980f"/></linearGradient>
@@ -6,6 +6,7 @@
     <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.55"/></linearGradient>
     <linearGradient id="plusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#4be08d"/><stop offset="1" stop-color="#1d9e58"/></linearGradient>
   </defs>
+  <g transform="translate(-13.5 -4.2)">
 <g transform="translate(30 0) scale(0.9)">
     <path d="M0 6 C0 6 -17 28 -17 40 a17 17 0 0 0 34 0 C17 28 0 6 0 6 Z" fill="url(#ambG)"/>
     <path d="M-8 42 a8 8 0 0 0 8 8" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" opacity="0.55"/>
@@ -13,6 +14,7 @@
     <path d="M56 32 A14 14 0 0 1 70 18" fill="none" stroke="#4be08d" stroke-width="6" stroke-linecap="round"/>
     <path d="M70 18 A14 14 0 0 1 84 32" fill="none" stroke="url(#redG)" stroke-width="6" stroke-linecap="round"/>
     <line x1="70" y1="32" x2="79" y2="22" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round"/>
-    <circle cx="70" cy="32" r="4" fill="url(#mtl)"/><circle cx="80" cy="60" r="10" fill="url(#plusG)" stroke="#3a3a1a" stroke-width="3"/>
-    <path d="M75 60h10M80 55v10" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"/>
+    <circle cx="70" cy="32" r="4" fill="url(#mtl)"/><rect x="66" y="45" width="26" height="26" rx="8" fill="url(#plusG)" stroke="#3a3a1a" stroke-width="3"/>
+    <path d="M72 58h14M79 51v14" stroke="#ffffff" stroke-width="4.5" stroke-linecap="round"/>
+  </g>
 </svg>

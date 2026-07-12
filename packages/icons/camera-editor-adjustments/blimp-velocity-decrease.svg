@@ -1,18 +1,20 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
-  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"BLIMP VEL\n-"},"border":{"color":"#3a5a6a"}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 89 50.8">
+  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"title":{"text":"BLIMP VEL\n-"},"border":{"color":"#3a5a6a"}}</desc>
   <defs>
     <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="{{graphic1Color}}"/><stop offset="1" stop-color="{{graphic1Color}}" stop-opacity="0.55"/></linearGradient>
     <linearGradient id="minusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f47c6a"/><stop offset="1" stop-color="#c0392b"/></linearGradient>
   </defs>
+  <g transform="translate(-5.2 -22.5)">
 
-    <line x1="12" y1="25" x2="28" y2="25" stroke="#4fc3f7" stroke-width="3" stroke-linecap="round" opacity="0.55"/>
-    <line x1="8" y1="33" x2="26" y2="33" stroke="#4fc3f7" stroke-width="3.2" stroke-linecap="round" opacity="0.8"/>
-    <line x1="12" y1="41" x2="28" y2="41" stroke="#4fc3f7" stroke-width="3" stroke-linecap="round" opacity="0.55"/>
+    <line x1="12" y1="25" x2="28" y2="25" stroke="{{graphic2Color}}" stroke-width="3" stroke-linecap="round" opacity="0.55"/>
+    <line x1="8" y1="33" x2="26" y2="33" stroke="{{graphic2Color}}" stroke-width="3.2" stroke-linecap="round" opacity="0.8"/>
+    <line x1="12" y1="41" x2="28" y2="41" stroke="{{graphic2Color}}" stroke-width="3" stroke-linecap="round" opacity="0.55"/>
     <g transform="translate(54 33) scale(1)">
     <ellipse cx="0" cy="0" rx="16" ry="8.5" fill="url(#mtl)"/>
     <polygon points="13,-3.5 21,-7.5 21,7.5 13,3.5" fill="#8fa3ad"/>
     <rect x="-6" y="7.5" width="9" height="4.5" rx="2" fill="#3f5561"/>
     <ellipse cx="-4" cy="-3.5" rx="7" ry="3" fill="#ffffff" opacity="0.3"/>
-  </g><circle cx="80" cy="60" r="10" fill="url(#minusG)" stroke="{{backgroundColor}}" stroke-width="3"/>
-    <path d="M75 60h10" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"/>
+  </g><rect x="66" y="45" width="26" height="26" rx="8" fill="url(#minusG)" stroke="{{backgroundColor}}" stroke-width="3"/>
+    <path d="M72 58h14" stroke="#ffffff" stroke-width="4.5" stroke-linecap="round"/>
+  </g>
 </svg>

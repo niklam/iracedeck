@@ -1,9 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
-  <desc>{"colors":{"backgroundColor":"#2a2a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"INCREASE\nFFB FORCE"},"border":{"color":"#5a5a7a"}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 85.8 59.3">
+  <desc>{"colors":{"backgroundColor":"#2a2a4a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"locked":["graphic1Color"],"title":{"text":"INCREASE\nFFB FORCE"},"border":{"color":"#5a5a7a"}}</desc>
   <defs>
     <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="{{graphic1Color}}"/><stop offset="1" stop-color="{{graphic1Color}}" stop-opacity="0.55"/></linearGradient>
     <linearGradient id="plusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#4be08d"/><stop offset="1" stop-color="#1d9e58"/></linearGradient>
   </defs>
+  <g transform="translate(-8.5 -14)">
 
     <circle cx="34" cy="41" r="17" fill="url(#mtl)"/>
     <circle cx="34" cy="41" r="12" fill="{{backgroundColor}}"/>
@@ -12,11 +13,12 @@
     <circle cx="34" cy="41" r="6.1" fill="url(#mtl)"/>
     <circle cx="34" cy="41" r="2.5" fill="#3f5561"/>
     <path d="M 21.4 30.8 A 17 17 0 0 1 46.6 30.8" fill="none" stroke="#ffffff" stroke-width="2.7" opacity="0.3" stroke-linecap="round"/>
-    <path d="M13.2 29 A24 24 0 0 1 54.8 29" fill="none" stroke="#4fc3f7" stroke-width="4" stroke-linecap="round"/>
-    <polygon points="9.5,35.5 16.5,31 11,25.5" fill="#4fc3f7"/>
-    <polygon points="58.5,35.5 51.5,31 57,25.5" fill="#4fc3f7"/>
-    <polygon points="63,37 77,37 80,51 60,51" fill="url(#mtl)"/>
-    <path d="M66 37 Q70 29.5 74 37" fill="none" stroke="#b7c5cd" stroke-width="3.5" stroke-linecap="round"/>
-    <text x="70" y="48" font-family="Arial, sans-serif" font-size="8" font-weight="bold" fill="{{backgroundColor}}" text-anchor="middle" stroke="none">Nm</text><circle cx="80" cy="60" r="10" fill="url(#plusG)" stroke="{{backgroundColor}}" stroke-width="3"/>
-    <path d="M75 60h10M80 55v10" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"/>
+    <path d="M13.2 29 A24 24 0 0 1 54.8 29" fill="none" stroke="{{graphic2Color}}" stroke-width="4" stroke-linecap="round"/>
+    <polygon points="9.5,35.5 16.5,31 11,25.5" fill="{{graphic2Color}}"/>
+    <polygon points="58.5,35.5 51.5,31 57,25.5" fill="{{graphic2Color}}"/>
+    <polygon points="63,33 77,33 80,47 60,47" fill="url(#mtl)"/>
+    <path d="M66 33 Q70 25.5 74 33" fill="none" stroke="#b7c5cd" stroke-width="3.5" stroke-linecap="round"/>
+    <text x="70" y="44" font-family="Arial, sans-serif" font-size="8" font-weight="bold" fill="{{backgroundColor}}" text-anchor="middle" stroke="none">Nm</text><rect x="66" y="45" width="26" height="26" rx="8" fill="url(#plusG)" stroke="{{backgroundColor}}" stroke-width="3"/>
+    <path d="M72 58h14M79 51v14" stroke="#ffffff" stroke-width="4.5" stroke-linecap="round"/>
+  </g>
 </svg>

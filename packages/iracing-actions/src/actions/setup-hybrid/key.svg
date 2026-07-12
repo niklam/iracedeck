@@ -1,18 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
   <rect x="0" y="0" width="72" height="72" rx="8" fill="#1a3a1a"/>
-  <svg x="4" y="4" width="64" height="64" viewBox="0 0 96 72">
+  <svg x="4" y="4" width="64" height="64" viewBox="0 0 65 59.5">
   
   <defs>
     <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.55"/></linearGradient>
     <linearGradient id="plusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#4be08d"/><stop offset="1" stop-color="#1d9e58"/></linearGradient>
     <filter id="glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="3"/></filter>
   </defs>
+  <g transform="translate(-17 -4)">
 
     <rect x="25" y="10" width="10" height="6" rx="2" fill="#8fa3ad"/>
     <rect x="18" y="16" width="24" height="38" rx="4.5" fill="url(#mtl)"/>
     <rect x="22" y="34" width="16" height="16" rx="2.5" fill="url(#plusG)"/>
     <polygon points="68,6 54,36 64,36 58,62 78,30 67,30" fill="#f7d94c" filter="url(#glow)"/>
     <polygon points="68,6 54,36 64,36 58,62 78,30 67,30" fill="#f7d94c"/>
+  </g>
 
   </svg>
 </svg>

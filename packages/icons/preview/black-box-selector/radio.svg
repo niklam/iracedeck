@@ -1,10 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 68">
-  <desc>{"colors":{"backgroundColor":"#2a2a2a","textColor":"#ffffff"},"title":{"text":"RADIO"},"border":{"color":"#5a5a5a"}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 81.3 49.3">
+  <desc>{"colors":{"backgroundColor":"#2a2a2a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"title":{"text":"RADIO"},"border":{"color":"#5a5a5a"}}</desc>
   <defs>
     <linearGradient id="bbG2" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#453a1c"/><stop offset="1" stop-color="#221a0a"/></linearGradient>
-    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="{{graphic1Color}}"/><stop offset="1" stop-color="{{graphic1Color}}" stop-opacity="0.55"/></linearGradient>
+    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.55"/></linearGradient>
     <linearGradient id="ambG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f7d94c"/><stop offset="1" stop-color="#d9980f"/></linearGradient>
   </defs>
+  <g transform="translate(-7.2 -9.2)">
 
     <rect x="10" y="12" width="76" height="44" rx="6" fill="url(#bbG2)" stroke="#6a5138" stroke-width="3.5"/>
     <rect x="26" y="16" width="13" height="20" rx="6.5" fill="url(#mtl)"/>
@@ -13,4 +14,5 @@
     <rect x="52" y="33" width="6" height="13" rx="2" fill="url(#ambG)"/>
     <rect x="62" y="25" width="6" height="21" rx="2" fill="url(#ambG)"/>
     <rect x="72" y="29" width="6" height="17" rx="2" fill="url(#ambG)"/>
+  </g>
 </svg>
