@@ -17,6 +17,9 @@ node_modules/
 # Audio assets (copied from @iracedeck/audio-assets at build time)
 *.sdPlugin/assets/audio
 
+# Font assets (rasterized at build time)
+*.sdPlugin/assets/fonts
+
 # Packaged plugin artifacts (streamdeck pack output / manual zips)
 *.streamDeckPlugin
 *.zip

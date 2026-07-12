@@ -260,6 +260,17 @@ export {
   type IBindingDispatcher,
 } from "./binding-dispatcher.js";
 
+// Rasterizer service singleton
+export {
+  _resetRasterizer,
+  initializeRasterizer,
+  isRasterizerInitialized,
+  isSvgDataUri,
+  TOUCH_STRIP_SLOT_WIDTH,
+  toDeviceImage,
+  type SvgRenderFn,
+} from "./rasterizer-service.js";
+
 // Key binding utilities
 export { formatKeyBinding, parseKeyBinding, parseBinding } from "./key-binding-utils.js";
 export { setWarning, clearWarning, type PiWarning, type PiWarningLevel } from "./pi-warnings.js";
@@ -302,7 +313,6 @@ export {
   getPlatformFeatures,
   _resetPluginConfig,
   type PluginConfig,
-  type PlatformCapabilities,
   type PlatformFeatureFlags,
   type PlatformFeatures,
 } from "./plugin-config.js";
@@ -323,6 +333,7 @@ export {
 // Device + profile reference (issues #736, #753, #790)
 export {
   CAR_SELECTOR_PROFILE,
+  DEFAULT_KEY_IMAGE_SIZE,
   DEVICE_SPECS,
   DEVICE_SUPPORT,
   deviceProfileName,
@@ -330,6 +341,7 @@ export {
   getDeviceSpec,
   getDeviceSupport,
   isDeviceSupported,
+  keyImageSizeForDevice,
   PROFILE_DEVICE_SUFFIXES,
   profileDeviceSuffix,
   profileDisplayName,

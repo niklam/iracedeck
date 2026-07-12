@@ -104,7 +104,7 @@ export function piTemplatePlugin(options) {
     partialsDir,
     additionalPartialsDirs = [],
     version,
-    platformFeatures = { capabilities: {}, features: {} },
+    platformFeatures = { features: {} },
   } = options;
 
   if (!version) {
@@ -199,7 +199,7 @@ export function piTemplatePlugin(options) {
             version: version,
             // Documentation URL for this action (empty string if not mapped)
             docsUrl,
-            // Platform capabilities + feature flags for this plugin build
+            // Platform feature flags for this plugin build
             platform: platformFeatures,
             // Also expose a require function for inline requires (resolved from templatesDir)
             require: createTemplateRequire(templatesDir),

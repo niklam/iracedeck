@@ -145,7 +145,7 @@ const config = {
 		},
 		inlineDynamicImports: true
 	},
-	external: ["@iracedeck/audio-native", "@iracedeck/iracing-native", "yaml", "keysender"],
+	external: ["@iracedeck/audio-native", "@iracedeck/iracing-native", "@resvg/resvg-js", "yaml", "keysender"],
 	plugins: [
 		// Resolve .js imports to .ts files for the raw-TypeScript actions package.
 		// Only applies to relative imports (starting with ".") within the actions package.
@@ -165,11 +165,8 @@ const config = {
 		replace({
 			preventAssignment: true,
 			values: {
-				__CAPABILITY_SVG_FILTERS__: JSON.stringify(platformFeatures.capabilities.svgFilters),
-				__CAPABILITY_SVG_MASKS__: JSON.stringify(platformFeatures.capabilities.svgMasks),
-				__CAPABILITY_SVG_PATTERNS__: JSON.stringify(platformFeatures.capabilities.svgPatterns),
-				__FEATURE_BORDER_GLOW__: JSON.stringify(platformFeatures.features.borderGlow),
 				__FEATURE_DIAL_FEEDBACK__: JSON.stringify(platformFeatures.features.dialFeedback),
+				__FEATURE_PNG_RASTERIZATION__: JSON.stringify(platformFeatures.features.pngRasterization),
 			},
 		}),
 		piTemplatePlugin({
@@ -202,6 +199,18 @@ const config = {
 		// Copy shared audio assets from @iracedeck/audio-assets, applying the
 		// radio-engineer ffmpeg treatment to voice categories and caching output.
 		processAndCopyAudioAssetsPlugin({ sdPlugin }),
+		// Copy the bundled Arimo fonts from @iracedeck/rasterizer into {sdPlugin}/assets/fonts
+		{
+			name: "copy-rasterizer-fonts",
+			generateBundle() {
+				const fontsSrc = path.resolve(__dirname, "../rasterizer/fonts");
+				const destDir = path.join(sdPlugin, "assets", "fonts");
+				mkdirSync(destDir, { recursive: true });
+				for (const file of readdirSync(fontsSrc)) {
+					copyFileSync(path.join(fontsSrc, file), path.join(destDir, file));
+				}
+			},
+		},
 		// Copy vendored sdpi-components.js and built pi-components.js from @iracedeck/pi-components
 		{
 			name: "copy-pi-browser-assets",
@@ -267,6 +276,7 @@ const config = {
 					dependencies: {
 						"@iracedeck/audio-native": "file:../../../audio-native",
 						"@iracedeck/iracing-native": "file:../../../iracing-native",
+						"@resvg/resvg-js": "2.6.2",
 						yaml: "2.8.2",
 					},
 					optionalDependencies: {

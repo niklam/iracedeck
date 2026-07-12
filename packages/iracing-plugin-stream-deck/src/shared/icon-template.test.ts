@@ -11,13 +11,13 @@ import { describe, expect, it } from "vitest";
 
 describe("icon-template", () => {
   const validTemplate72 = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
-  <g filter="url(#activity-state)">
+  <g>
     <text x="72" y="130" class="title">{{text}}</text>
   </g>
 </svg>`;
 
   const validTemplate144 = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <g filter="url(#activity-state)">
+  <g>
     <text x="72" y="126" class="title">{{text}}</text>
   </g>
 </svg>`;
@@ -140,13 +140,38 @@ describe("icon-template", () => {
       expect(errors).toContain("Oversized viewBox 200x200. Expected dimensions <= 144 (standard render canvas).");
     });
 
-    it("should detect missing activity-state filter", () => {
+    it("should not flag a template without the activity-state filter", () => {
       const template = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
         <g></g>
       </svg>`;
       const errors = validateIconTemplate(template);
 
-      expect(errors).toContain('Missing activity-state filter group. Expected: <g filter="url(#activity-state)">');
+      expect(errors).not.toContain(
+        'Dangling activity-state filter reference. Elements referencing an undefined filter are not rendered by resvg — remove filter="url(#activity-state)" (the inactive-overlay system injects its own filter when active).',
+      );
+    });
+
+    it("should reject a dangling activity-state filter reference", () => {
+      const template = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+        <g filter="url(#activity-state)"></g>
+      </svg>`;
+      const errors = validateIconTemplate(template);
+
+      expect(errors).toContain(
+        'Dangling activity-state filter reference. Elements referencing an undefined filter are not rendered by resvg — remove filter="url(#activity-state)" (the inactive-overlay system injects its own filter when active).',
+      );
+    });
+
+    it("should not flag a reference that has a matching local filter definition", () => {
+      const template = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+        <defs><filter id="activity-state"><feGaussianBlur stdDeviation="1"/></filter></defs>
+        <g filter="url(#activity-state)"></g>
+      </svg>`;
+      const errors = validateIconTemplate(template);
+
+      expect(errors).not.toContain(
+        'Dangling activity-state filter reference. Elements referencing an undefined filter are not rendered by resvg — remove filter="url(#activity-state)" (the inactive-overlay system injects its own filter when active).',
+      );
     });
 
     it("should detect missing namespace", () => {
@@ -159,9 +184,10 @@ describe("icon-template", () => {
     });
 
     it("should report multiple errors", () => {
-      const template = "<svg><g></g></svg>";
+      const template = '<svg><g filter="url(#activity-state)"></g></svg>';
       const errors = validateIconTemplate(template);
 
+      // Missing viewBox, dangling activity-state filter, missing namespace
       expect(errors.length).toBe(3);
     });
   });
@@ -253,10 +279,15 @@ describe("icon-template", () => {
 
       expect(result).toContain('x="72"');
       expect(result).toContain('text-anchor="middle"');
-      expect(result).toContain('dominant-baseline="central"');
       expect(result).toContain('fill="#ffffff"');
       expect(result).toContain('font-family="sans-serif"');
       expect(result).toContain('font-weight="bold"');
+    });
+
+    it("should not emit dominant-baseline — resvg honors it and shifts text off the tuned baseline", () => {
+      const result = generateIconText({ text: "Test" });
+
+      expect(result).not.toContain("dominant-baseline");
     });
 
     it("should use custom fill color", () => {

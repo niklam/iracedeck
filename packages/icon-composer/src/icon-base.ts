@@ -27,7 +27,7 @@ export function generateBorderParts(border: ResolvedBorderSettings): {
   const borderRx = Math.max(0, 24 - borderInset);
   const borderRect = `<rect x="${borderInset}" y="${borderInset}" width="${144 - 2 * borderInset}" height="${144 - 2 * borderInset}" rx="${borderRx}" fill="none" stroke="${border.borderColor}" stroke-width="${border.borderWidth}"/>`;
 
-  if (!border.glowEnabled || !__FEATURE_BORDER_GLOW__) {
+  if (!border.glowEnabled) {
     return { defs: "", rects: borderRect };
   }
 

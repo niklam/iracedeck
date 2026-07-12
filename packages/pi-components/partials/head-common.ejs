@@ -522,66 +522,48 @@
   // Note: titleOverrides.titleText uses sdpi-textarea with setting attribute.
   // Persistence is handled automatically by sdpi-components.
 
-  <% var borderGlowEnabled = (locals.platform?.features?.borderGlow !== false); %>
-  // Global Border Defaults — show/hide sub-settings based on Show Border<% if (borderGlowEnabled) { %> and Show Glow<% } %>
+  // Global Border Defaults — show/hide sub-settings based on Show Border and Show Glow
   (function() {
     async function initGlobalBorderToggle() {
       await customElements.whenDefined('sdpi-select');
       var borderSelect = document.getElementById('global-border-enabled');
-      <% if (borderGlowEnabled) { %>
       var glowSelect = document.getElementById('global-border-glow-enabled');
-      <% } else { %>
-      var glowSelect = null;
-      <% } %>
       if (!borderSelect) return;
 
       function updateGlobalBorderVisibility() {
         var show = borderSelect.value === 'true';
         [
           'global-border-width-item',
-          'global-border-color-item'
-          <% if (borderGlowEnabled) { %>, 'global-border-glow-item'<% } %>
+          'global-border-color-item',
+          'global-border-glow-item'
         ].forEach(function(id) {
           var el = document.getElementById(id);
           if (el) el.classList.toggle('hidden', !show);
         });
-        <% if (borderGlowEnabled) { %>
         var glowVal = glowSelect ? glowSelect.value : 'default';
         var showGlowWidth = show && glowVal === 'true';
         var glowWidthEl = document.getElementById('global-border-glow-width-item');
         if (glowWidthEl) glowWidthEl.classList.toggle('hidden', !showGlowWidth);
-        <% } %>
       }
 
       updateGlobalBorderVisibility();
       borderSelect.addEventListener('change', updateGlobalBorderVisibility);
       borderSelect.addEventListener('input', updateGlobalBorderVisibility);
-      <% if (borderGlowEnabled) { %>
       if (glowSelect) {
         glowSelect.addEventListener('change', updateGlobalBorderVisibility);
         glowSelect.addEventListener('input', updateGlobalBorderVisibility);
       }
-      <% } %>
 
       var lastBorder = borderSelect.value || 'default';
-      <% if (borderGlowEnabled) { %>
       var lastGlow = glowSelect ? (glowSelect.value || 'default') : 'default';
-      <% } %>
       setInterval(function() {
         var curBorder = borderSelect.value || 'default';
-        <% if (borderGlowEnabled) { %>
         var curGlow = glowSelect ? (glowSelect.value || 'default') : 'default';
         if (curBorder !== lastBorder || curGlow !== lastGlow) {
           lastBorder = curBorder;
           lastGlow = curGlow;
           updateGlobalBorderVisibility();
         }
-        <% } else { %>
-        if (curBorder !== lastBorder) {
-          lastBorder = curBorder;
-          updateGlobalBorderVisibility();
-        }
-        <% } %>
       }, 100);
     }
 

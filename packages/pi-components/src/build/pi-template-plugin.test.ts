@@ -342,8 +342,8 @@ describe("piTemplatePlugin", () => {
     writeFileSync(
       path.join(templatesDir, "flags.ejs"),
       "<!DOCTYPE html><html><body>" +
-        "<% if (locals.platform?.features?.borderGlow !== false) { %>GLOW<% } %>" +
-        "|<%= locals.platform?.capabilities?.svgFilters %>" +
+        "<% if (locals.platform?.features?.dialFeedback !== false) { %>DIAL<% } %>" +
+        "|<%= locals.platform?.features?.pngRasterization %>" +
         "</body></html>",
     );
 
@@ -353,8 +353,7 @@ describe("piTemplatePlugin", () => {
       partialsDir,
       version: "1.0.0",
       platformFeatures: {
-        capabilities: { svgFilters: false, svgMasks: false, svgPatterns: false },
-        features: { borderGlow: false },
+        features: { dialFeedback: false, pngRasterization: false },
       },
     });
 
@@ -373,7 +372,7 @@ describe("piTemplatePlugin", () => {
     }
 
     const content = readFileSync(path.join(outputDir, "flags.html"), "utf-8");
-    expect(content).not.toContain("GLOW");
+    expect(content).not.toContain("DIAL");
     expect(content).toContain("|false");
   });
 
@@ -381,7 +380,7 @@ describe("piTemplatePlugin", () => {
     writeFileSync(
       path.join(templatesDir, "no-flags.ejs"),
       "<!DOCTYPE html><html><body>" +
-        "<% if (locals.platform?.features?.borderGlow !== false) { %>GLOW<% } %>" +
+        "<% if (locals.platform?.features?.dialFeedback !== false) { %>DIAL<% } %>" +
         "</body></html>",
     );
 
@@ -406,11 +405,11 @@ describe("piTemplatePlugin", () => {
       await (plugin.generateBundle as AnyFunction).call(context);
     }
 
-    // With default platformFeatures = { capabilities: {}, features: {} },
-    // features.borderGlow is undefined (!== false), so GLOW is emitted — preserving
-    // backward-compatible behavior for templates without platform gating.
+    // With default platformFeatures = { features: {} }, features.dialFeedback is
+    // undefined (!== false), so DIAL is emitted — preserving backward-compatible
+    // behavior for templates without platform gating.
     const content = readFileSync(path.join(outputDir, "no-flags.html"), "utf-8");
-    expect(content).toContain("GLOW");
+    expect(content).toContain("DIAL");
   });
 
   it("should pass variables to partials", async () => {

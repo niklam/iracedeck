@@ -38,7 +38,7 @@ import { migrateRespondPmToReply } from "./migrate-respond-pm.js";
  */
 const SEND_MESSAGE_TEMPLATE = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
   <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#4a90d9","graphic2Color":"#000000"}}</desc>
-  <g filter="url(#activity-state)">
+  <g>
     <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
     <path d="M28 28 h90 a12 12 0 0 1 12 12 v68 a12 12 0 0 1-12 12 H58 l-8 16 l-8 -16 H26 a12 12 0 0 1-12-12 V40 a12 12 0 0 1 12-12 z"
           fill="{{graphic2Color}}" stroke="{{graphic1Color}}" stroke-width="5" stroke-linejoin="round"/>
@@ -52,7 +52,7 @@ const SEND_MESSAGE_TEMPLATE = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="
  */
 const MACRO_TEMPLATE = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
   <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#4a90d9","graphic2Color":"none"}}</desc>
-  <g filter="url(#activity-state)">
+  <g>
     <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
     <path d="M28 28 h90 a12 12 0 0 1 12 12 v68 a12 12 0 0 1-12 12 H58 l-8 16 l-8 -16 H26 a12 12 0 0 1-12-12 V40 a12 12 0 0 1 12-12 z"
           fill="{{graphic2Color}}" stroke="{{graphic1Color}}" stroke-width="5" stroke-linejoin="round"/>

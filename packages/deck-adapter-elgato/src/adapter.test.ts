@@ -1,9 +1,12 @@
 import type StreamDeck from "@elgato/streamdeck";
 import {
   _resetProfileSwitcher,
+  _resetRasterizer,
   type IDeckActionHandler,
+  initializeRasterizer,
   initProfileSwitcher,
   requestProfileSwitchBack,
+  svgToDataUri,
 } from "@iracedeck/deck-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -221,6 +224,91 @@ describe("ElgatoPlatformAdapter", () => {
       expect(ev.payload.ticks).toBe(4);
       // `pressed` (rotate-while-pressed) passes straight through from the Elgato SDK.
       expect(ev.payload.pressed).toBe(true);
+    });
+  });
+
+  describe("ElgatoActionContext image rasterization (#642)", () => {
+    const SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144"><rect width="144" height="144" fill="#123"/></svg>`;
+    const svgUri = svgToDataUri(SVG);
+
+    afterEach(() => {
+      _resetRasterizer();
+    });
+
+    it("passes SVG data URIs through unchanged when no rasterizer is initialized", async () => {
+      const handler: IDeckActionHandler = { onWillAppear: vi.fn() };
+      const bridge = registerAndGetBridge(handler);
+      const action = createMockKeyAction("ctx-key");
+
+      await bridge.onWillAppear({ action, payload: { settings: {} } });
+
+      const ev = (handler.onWillAppear as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      await ev.action.setImage(svgUri);
+
+      expect(action.setImage).toHaveBeenCalledWith(svgUri);
+    });
+
+    it("rasterizes setImage SVG data URIs to PNG at the device's key size", async () => {
+      const rendered: number[] = [];
+      initializeRasterizer(async (_svg, px) => {
+        rendered.push(px);
+
+        return Buffer.from("png");
+      });
+
+      const handler: IDeckActionHandler = { onWillAppear: vi.fn() };
+      const bridge = registerAndGetBridge(handler);
+      // StreamDeckPlus (device type 7) → 240px key image.
+      const action = { ...createMockKeyAction("ctx-key"), device: { id: "dev1", type: 7 } };
+
+      await bridge.onWillAppear({ action, payload: { settings: {} } });
+
+      const ev = (handler.onWillAppear as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      await ev.action.setImage(svgUri);
+
+      expect(rendered).toEqual([240]);
+      expect(action.setImage).toHaveBeenCalledWith(`data:image/png;base64,${Buffer.from("png").toString("base64")}`);
+    });
+
+    it("rasterizes SVG pixmap values in setFeedback at the touch-strip slot width, leaving other values alone", async () => {
+      const rendered: number[] = [];
+      initializeRasterizer(async (_svg, px) => {
+        rendered.push(px);
+
+        return Buffer.from("png");
+      });
+
+      const handler: IDeckActionHandler = { onWillAppear: vi.fn() };
+      const bridge = registerAndGetBridge(handler);
+      const action = createMockDialAction("ctx-dial");
+
+      await bridge.onWillAppear({ action, payload: { settings: {} } });
+
+      const ev = (handler.onWillAppear as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      await ev.action.setFeedback({ box: svgUri, title: "FUEL" });
+
+      expect(rendered).toEqual([200]);
+      expect(action.setFeedback).toHaveBeenCalledWith({
+        box: `data:image/png;base64,${Buffer.from("png").toString("base64")}`,
+        title: "FUEL",
+      });
+    });
+
+    it("forwards an already-rasterized PNG data URI in setFeedback unchanged without invoking the renderer", async () => {
+      const render = vi.fn().mockResolvedValue(Buffer.from("png"));
+      initializeRasterizer(render);
+
+      const handler: IDeckActionHandler = { onWillAppear: vi.fn() };
+      const bridge = registerAndGetBridge(handler);
+      const action = createMockDialAction("ctx-dial");
+
+      await bridge.onWillAppear({ action, payload: { settings: {} } });
+
+      const ev = (handler.onWillAppear as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      await ev.action.setFeedback({ box: "data:image/png;base64,AAAA" });
+
+      expect(render).not.toHaveBeenCalled();
+      expect(action.setFeedback).toHaveBeenCalledWith({ box: "data:image/png;base64,AAAA" });
     });
   });
 });

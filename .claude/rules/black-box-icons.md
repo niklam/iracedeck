@@ -172,9 +172,11 @@ const RED = "#e74c3c";     // Hot temperatures
 
 ## SVG Template Structure
 
+Do not wrap the `<g>` in `filter="url(#activity-state)"` — that filter id is never defined in emitted SVG (the inactive-overlay feature that would define it is disabled), and resvg does not render elements referencing an unresolvable filter, unlike the old QT renderers which silently ignored the dangling reference.
+
 ```svg
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
-  <g filter="url(#activity-state)">
+  <g>
     <!-- Main background -->
     <rect x="0" y="0" width="72" height="72" rx="8" fill="#2a2a2a"/>
 

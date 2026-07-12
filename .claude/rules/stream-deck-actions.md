@@ -146,6 +146,8 @@ private async updateDisplay(
 }
 ```
 
+Call `this.setRegenerateCallback(ev.action.id, () => generateMyIconSvg(settings, this.isBindingMissing(...)))` after `setKeyImage()` in `updateDisplay()` — the callback must re-run icon generation against the action's *current* settings (not close over the already-generated SVG string) — so global-settings changes (colors, title, borders) can re-render the icon later. Registration itself reconciles immediately (issue #642): since `setKeyImage()` awaits the image push before the caller registers the callback, a global-settings arrival that lands during that await is otherwise missed, and `setRegenerateCallback` closes that window by re-running `regenerate()` and pushing the result if it differs from what was stored.
+
 Directional Actions (increase/decrease, cycle)
 
 - Use a `direction` setting key for directional actions.

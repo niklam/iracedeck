@@ -41,7 +41,7 @@ export function generateValueContent(value: string, fontSize: number, textColor:
   if (lines.length <= 1) {
     const text = lines[0] ?? "";
 
-    return `<text x="72" y="${baseY}" text-anchor="middle" dominant-baseline="central" fill="${textColor}" font-family="Arial, sans-serif" font-size="${fontSize}" font-weight="bold">${escapeXml(text)}</text>`;
+    return `<text x="72" y="${baseY}" text-anchor="middle" fill="${textColor}" font-family="Arial, sans-serif" font-size="${fontSize}" font-weight="bold">${escapeXml(text)}</text>`;
   }
 
   const totalBlockHeight = (lines.length - 1) * lineHeight;
@@ -51,7 +51,7 @@ export function generateValueContent(value: string, fontSize: number, textColor:
     .map((line, i) => {
       const y = startY + i * lineHeight;
 
-      return `<text x="72" y="${y}" text-anchor="middle" dominant-baseline="central" fill="${textColor}" font-family="Arial, sans-serif" font-size="${fontSize}" font-weight="bold">${escapeXml(line)}</text>`;
+      return `<text x="72" y="${y}" text-anchor="middle" fill="${textColor}" font-family="Arial, sans-serif" font-size="${fontSize}" font-weight="bold">${escapeXml(line)}</text>`;
     })
     .join("\n    ");
 }

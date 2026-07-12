@@ -1,12 +1,7 @@
 {
-  "capabilities": {
-    "svgFilters": true,
-    "svgMasks": true,
-    "svgPatterns": true
-  },
   "features": {
-    "borderGlow": true,
     "dialFeedback": true,
-    "profiles": true
+    "profiles": true,
+    "pngRasterization": true
   }
 }

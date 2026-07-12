@@ -277,7 +277,7 @@ export function generateIconText(options: GenerateIconTextOptions): string {
   const lineHeight = fontSize * lineHeightMultiplier;
 
   if (lines.length === 1) {
-    return `<text class="title" x="${centerX}" y="${baseY}" text-anchor="middle" dominant-baseline="central" fill="${fill}" font-family="sans-serif" font-size="${fontSize}" font-weight="bold">${escapeXml(text)}</text>`;
+    return `<text class="title" x="${centerX}" y="${baseY}" text-anchor="middle" fill="${fill}" font-family="sans-serif" font-size="${fontSize}" font-weight="bold">${escapeXml(text)}</text>`;
   }
 
   const totalBlockHeight = (lines.length - 1) * lineHeight;
@@ -288,7 +288,7 @@ export function generateIconText(options: GenerateIconTextOptions): string {
   for (let i = 0; i < lines.length; i++) {
     const y = startY + i * lineHeight;
     textElements.push(
-      `<text class="title" x="${centerX}" y="${y}" text-anchor="middle" dominant-baseline="central" fill="${fill}" font-family="sans-serif" font-size="${fontSize}" font-weight="bold">${escapeXml(lines[i])}</text>`,
+      `<text class="title" x="${centerX}" y="${y}" text-anchor="middle" fill="${fill}" font-family="sans-serif" font-size="${fontSize}" font-weight="bold">${escapeXml(lines[i])}</text>`,
     );
   }
 
@@ -311,9 +311,18 @@ export function validateIconTemplate(svg: string): string[] {
     );
   }
 
-  // Check for activity-state filter group
-  if (!svg.includes('filter="url(#activity-state)"')) {
-    errors.push('Missing activity-state filter group. Expected: <g filter="url(#activity-state)">');
+  // Check for a dangling activity-state filter reference — the filter id is usually never
+  // defined in the emitted SVG (it belongs to the disabled inactive-overlay feature), and
+  // resvg does not render elements referencing an unresolvable filter (unlike the old QT
+  // renderers). Only flag it when the reference has no matching <filter id="activity-state">
+  // definition in the same SVG — a template that defines its own filter is fine.
+  const hasActivityStateReference = /filter=["']url\(#activity-state\)["']/.test(svg);
+  const hasActivityStateDefinition = /<filter\b[^>]*\bid=["']activity-state["']/.test(svg);
+
+  if (hasActivityStateReference && !hasActivityStateDefinition) {
+    errors.push(
+      'Dangling activity-state filter reference. Elements referencing an undefined filter are not rendered by resvg — remove filter="url(#activity-state)" (the inactive-overlay system injects its own filter when active).',
+    );
   }
 
   // Check SVG namespace

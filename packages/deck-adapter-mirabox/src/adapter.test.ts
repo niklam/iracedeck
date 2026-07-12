@@ -1,5 +1,11 @@
-import type { IDeckActionHandler } from "@iracedeck/deck-core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  _resetRasterizer,
+  DEFAULT_KEY_IMAGE_SIZE,
+  type IDeckActionHandler,
+  initializeRasterizer,
+  svgToDataUri,
+} from "@iracedeck/deck-core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { VSDPlatformAdapter } from "./adapter.js";
 
@@ -516,6 +522,57 @@ describe("VSDPlatformAdapter", () => {
       // touching the client.
       await expect(action.setTriggerDescription({ rotate: "Adjust", push: "Apply" })).resolves.toBeUndefined();
       expect(client.setImage).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("VSDActionContext image rasterization (#642)", () => {
+    const SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144"><rect width="144" height="144" fill="#123"/></svg>`;
+    const svgUri = svgToDataUri(SVG);
+
+    async function getWillAppearEvent(context: string) {
+      const handler: IDeckActionHandler = { onWillAppear: vi.fn() };
+      adapter.registerAction("com.test.action", handler);
+
+      const willAppearCall = client.onActionEvent.mock.calls.find(
+        (call: [string, string, unknown]) => call[1] === "willAppear",
+      );
+      await willAppearCall[2]({
+        event: "willAppear",
+        action: "com.test.action",
+        context,
+        payload: { settings: {}, controller: "Keypad" },
+      });
+
+      return (handler.onWillAppear as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    }
+
+    afterEach(() => {
+      _resetRasterizer();
+    });
+
+    it("passes SVG data URIs through unchanged when no rasterizer is initialized", async () => {
+      const ev = await getWillAppearEvent("ctx-img");
+      await ev.action.setImage(svgUri);
+
+      expect(client.setImage).toHaveBeenCalledWith("ctx-img", svgUri);
+    });
+
+    it("rasterizes setImage SVG data URIs at the default key size", async () => {
+      const rendered: number[] = [];
+      initializeRasterizer(async (_svg, px) => {
+        rendered.push(px);
+
+        return Buffer.from("png");
+      });
+
+      const ev = await getWillAppearEvent("ctx-img");
+      await ev.action.setImage(svgUri);
+
+      expect(rendered).toEqual([DEFAULT_KEY_IMAGE_SIZE]);
+      expect(client.setImage).toHaveBeenCalledWith(
+        "ctx-img",
+        `data:image/png;base64,${Buffer.from("png").toString("base64")}`,
+      );
     });
   });
 });

@@ -587,7 +587,7 @@ export function generateCycleCameraGridSvg(
     thumbnails += `<g transform="translate(${pos.x + offsetX}, ${pos.y + offsetY}) scale(${scale})">${artwork}</g>`;
   }
 
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144"><g filter="url(#activity-state)"><rect x="0" y="0" width="144" height="144" fill="${bgColor}"/>${thumbnails}${label}</g></svg>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144"><g><rect x="0" y="0" width="144" height="144" fill="${bgColor}"/>${thumbnails}${label}</g></svg>`;
 
   return svgToDataUri(svg);
 }

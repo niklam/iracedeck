@@ -65,6 +65,7 @@ import {
   initializeBindingDispatcher,
   initializeClipboard,
   initializeKeyboard,
+  initializeRasterizer,
   initializeSDK,
   initializeSimHub,
   initPluginConfig,
@@ -155,6 +156,7 @@ import {
   ViewAdjustment,
 } from "@iracedeck/iracing-actions";
 import { IRacingNative } from "@iracedeck/iracing-native";
+import { createSvgRasterizer } from "@iracedeck/rasterizer";
 import {
   getDriverSetupName,
   getLivePosition,
@@ -239,6 +241,20 @@ initializeKeyboard(
 // Initialize clipboard for paste-based action flows (e.g. race-admin "Type in Chat").
 // Pasting itself uses the keyboard service above (Ctrl+V).
 initializeClipboard(adapter.createLogger("Clipboard"), (text) => native.setClipboardText(text));
+
+// Rasterize device-bound SVG icons to PNG in-plugin (#642). When the flag is
+// off, the service stays uninitialized and adapters pass SVG through as before.
+if (__FEATURE_PNG_RASTERIZATION__) {
+  const rasterizerLogger = adapter.createLogger("Rasterizer");
+
+  try {
+    initializeRasterizer(createSvgRasterizer({ fontsDir: join(__binDir, "..", "assets", "fonts") }), rasterizerLogger);
+  } catch (err) {
+    // Fonts missing or resvg init failed — stay uninitialized so adapters
+    // fall back to sending SVG, instead of crashing the whole plugin.
+    rasterizerLogger.warn(`PNG rasterization disabled: ${err}`);
+  }
+}
 
 // Initialize audio engine for pit crew voice playback.
 // Base path lets scenarios emit manifest-relative clip paths (e.g.

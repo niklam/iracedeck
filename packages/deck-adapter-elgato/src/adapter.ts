@@ -36,7 +36,11 @@ import {
   type IDeckTouchTapEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
+  isDataUri,
+  keyImageSizeForDevice,
   requestProfileSwitch,
+  toDeviceImage,
+  TOUCH_STRIP_SLOT_WIDTH,
 } from "@iracedeck/deck-core";
 import type { ILogger } from "@iracedeck/logger";
 
@@ -81,7 +85,12 @@ class ElgatoActionContext implements IDeckActionContext {
   }
 
   async setImage(dataUri: string): Promise<void> {
-    await this.sdAction.setImage(dataUri);
+    const image = await toDeviceImage(this.id, dataUri, keyImageSizeForDevice(this.sdAction.device?.type));
+
+    // null = superseded by a newer image for this context — skip the send.
+    if (image === null) return;
+
+    await this.sdAction.setImage(image);
   }
 
   async setTitle(title: string): Promise<void> {
@@ -100,8 +109,36 @@ class ElgatoActionContext implements IDeckActionContext {
     return this.sdAction.isDial?.() ?? false;
   }
 
+  // Route every data-URI value (SVG or already-rasterized PNG/etc.) through
+  // toDeviceImage so it participates in per-context supersede tracking —
+  // toDeviceImage passes non-SVG data URIs through unchanged, but still bumps
+  // the sequence, which is what lets a later PNG push drop a stale in-flight
+  // SVG render for the same key (#642). Plain-text string values (e.g. a
+  // `title` field) are never data URIs and skip the image pipeline entirely.
+  //
+  // Assumes at most one image value per feedback payload (today's only
+  // caller, fuel-service/fuel-dial-surface.ts, sends a single full-slot
+  // pixmap): a superseded value drops the WHOLE payload via the early return
+  // below, and if a payload ever carried multiple image values they would
+  // rasterize serially (one toDeviceImage await at a time), not in parallel.
   async setFeedback(feedback: DeckFeedbackPayload): Promise<void> {
-    if (this.sdAction.setFeedback) await this.sdAction.setFeedback(feedback as FeedbackPayload);
+    if (!this.sdAction.setFeedback) return;
+
+    const converted: DeckFeedbackPayload = {};
+
+    for (const [key, value] of Object.entries(feedback)) {
+      if (typeof value === "string" && isDataUri(value)) {
+        const image = await toDeviceImage(`${this.id}#${key}`, value, TOUCH_STRIP_SLOT_WIDTH);
+
+        if (image === null) return; // a newer feedback push superseded this one
+
+        converted[key] = image;
+      } else {
+        converted[key] = value;
+      }
+    }
+
+    await this.sdAction.setFeedback(converted as FeedbackPayload);
   }
 
   async setFeedbackLayout(layout: string): Promise<void> {

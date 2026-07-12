@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   CAR_SELECTOR_PROFILE,
+  DEFAULT_KEY_IMAGE_SIZE,
   DEVICE_SPECS,
   DEVICE_SUPPORT,
   deviceProfileName,
@@ -9,6 +10,7 @@ import {
   getDeviceSpec,
   getDeviceSupport,
   isDeviceSupported,
+  keyImageSizeForDevice,
   PROFILE_DEVICE_SUFFIXES,
   PROFILE_NAMES,
   PROFILE_NAV_ACTIONS,
@@ -258,5 +260,21 @@ describe("lookup helpers", () => {
     expect(isDeviceSupported(DeviceType.StreamDeckPlusXL)).toBe(true);
     expect(isDeviceSupported(DeviceType.StreamDeckPedal)).toBe(false);
     expect(isDeviceSupported(DeviceType.CorsairVoyager)).toBe(false);
+  });
+});
+
+describe("keyImageSizeForDevice", () => {
+  it("returns @2x physical key size for known Elgato devices", () => {
+    expect(keyImageSizeForDevice(DeviceType.StreamDeck)).toBe(144);
+    expect(keyImageSizeForDevice(DeviceType.StreamDeckMini)).toBe(160);
+    expect(keyImageSizeForDevice(DeviceType.StreamDeckXL)).toBe(192);
+    expect(keyImageSizeForDevice(DeviceType.StreamDeckPlus)).toBe(240);
+    expect(keyImageSizeForDevice(DeviceType.StreamDeckNeo)).toBe(192);
+  });
+
+  it("falls back to the default for unknown or missing device types", () => {
+    expect(keyImageSizeForDevice(undefined)).toBe(DEFAULT_KEY_IMAGE_SIZE);
+    expect(keyImageSizeForDevice(999)).toBe(DEFAULT_KEY_IMAGE_SIZE);
+    expect(keyImageSizeForDevice(DeviceType.StreamDeckPedal)).toBe(DEFAULT_KEY_IMAGE_SIZE);
   });
 });

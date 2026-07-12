@@ -105,7 +105,7 @@ export function renderDialBox(args: {
   const labelFontSize = identityOnly ? Math.round(minSide * identityLabelScale) : Math.round(minSide * 0.15);
   const labelY = identityOnly ? Math.round(h * 0.5) : Math.round(h * 0.28);
 
-  const labelText = `<text x="${w / 2}" y="${labelY}" text-anchor="middle" dominant-baseline="central" fill="${colors.label}" font-family="Arial, sans-serif" font-size="${labelFontSize}" font-weight="bold">${abbr}</text>`;
+  const labelText = `<text x="${w / 2}" y="${labelY}" text-anchor="middle" fill="${colors.label}" font-family="Arial, sans-serif" font-size="${labelFontSize}" font-weight="bold">${abbr}</text>`;
 
   let valueText = "";
 
@@ -116,7 +116,7 @@ export function renderDialBox(args: {
       Math.round(h * 0.52),
     );
     const valueY = Math.round(h * 0.64) + 13;
-    valueText = `<text x="${w / 2}" y="${valueY}" text-anchor="middle" dominant-baseline="central" fill="${colors.value}" font-family="Arial, sans-serif" font-size="${valueFontSize}" font-weight="bold">${value}</text>`;
+    valueText = `<text x="${w / 2}" y="${valueY}" text-anchor="middle" fill="${colors.value}" font-family="Arial, sans-serif" font-size="${valueFontSize}" font-weight="bold">${value}</text>`;
   }
 
   const content = labelText + valueText;
