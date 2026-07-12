@@ -45,10 +45,13 @@ class RasterizerService {
   ) {}
 
   async toDeviceImage(contextKey: string, image: string, targetPx: number): Promise<string | null> {
-    if (!isSvgDataUri(image)) return image;
-
+    // Bump the sequence BEFORE the non-SVG early return: a non-SVG image for
+    // this context must still supersede any in-flight SVG render, otherwise
+    // a slow render started before it could land after it (stale-over-fresh).
     const seq = (this.latestRequest.get(contextKey) ?? 0) + 1;
     this.latestRequest.set(contextKey, seq);
+
+    if (!isSvgDataUri(image)) return image;
 
     let result: string;
 
@@ -125,7 +128,10 @@ export function isRasterizerInitialized(): boolean {
  * Convert a device-bound image to what should actually be sent to the host.
  * Pass-through (input returned unchanged) when the service is uninitialized
  * or the input is not an SVG data URI; `null` when a newer request for the
- * same contextKey superseded this one (caller must skip its send).
+ * same contextKey superseded this one (caller must skip its send). A non-SVG
+ * image still bumps the per-contextKey sequence before returning, so it can
+ * supersede — and never be superseded-past by — an in-flight SVG render for
+ * the same context.
  */
 export async function toDeviceImage(contextKey: string, image: string, targetPx: number): Promise<string | null> {
   if (!rasterizerService) return image;

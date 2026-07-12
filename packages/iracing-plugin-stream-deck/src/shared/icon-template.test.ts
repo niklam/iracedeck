@@ -162,6 +162,18 @@ describe("icon-template", () => {
       );
     });
 
+    it("should not flag a reference that has a matching local filter definition", () => {
+      const template = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+        <defs><filter id="activity-state"><feGaussianBlur stdDeviation="1"/></filter></defs>
+        <g filter="url(#activity-state)"></g>
+      </svg>`;
+      const errors = validateIconTemplate(template);
+
+      expect(errors).not.toContain(
+        'Dangling activity-state filter reference. Elements referencing an undefined filter are not rendered by resvg — remove filter="url(#activity-state)" (the inactive-overlay system injects its own filter when active).',
+      );
+    });
+
     it("should detect missing namespace", () => {
       const template = `<svg viewBox="0 0 144 144">
         <g filter="url(#activity-state)"></g>

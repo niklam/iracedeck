@@ -249,7 +249,12 @@ describe("ElgatoPlatformAdapter", () => {
     });
 
     it("rasterizes setImage SVG data URIs to PNG at the device's key size", async () => {
-      initializeRasterizer(async () => Buffer.from("png"));
+      const rendered: number[] = [];
+      initializeRasterizer(async (_svg, px) => {
+        rendered.push(px);
+
+        return Buffer.from("png");
+      });
 
       const handler: IDeckActionHandler = { onWillAppear: vi.fn() };
       const bridge = registerAndGetBridge(handler);
@@ -261,6 +266,7 @@ describe("ElgatoPlatformAdapter", () => {
       const ev = (handler.onWillAppear as ReturnType<typeof vi.fn>).mock.calls[0][0];
       await ev.action.setImage(svgUri);
 
+      expect(rendered).toEqual([240]);
       expect(action.setImage).toHaveBeenCalledWith(`data:image/png;base64,${Buffer.from("png").toString("base64")}`);
     });
 
@@ -286,6 +292,23 @@ describe("ElgatoPlatformAdapter", () => {
         box: `data:image/png;base64,${Buffer.from("png").toString("base64")}`,
         title: "FUEL",
       });
+    });
+
+    it("forwards an already-rasterized PNG data URI in setFeedback unchanged without invoking the renderer", async () => {
+      const render = vi.fn().mockResolvedValue(Buffer.from("png"));
+      initializeRasterizer(render);
+
+      const handler: IDeckActionHandler = { onWillAppear: vi.fn() };
+      const bridge = registerAndGetBridge(handler);
+      const action = createMockDialAction("ctx-dial");
+
+      await bridge.onWillAppear({ action, payload: { settings: {} } });
+
+      const ev = (handler.onWillAppear as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      await ev.action.setFeedback({ box: "data:image/png;base64,AAAA" });
+
+      expect(render).not.toHaveBeenCalled();
+      expect(action.setFeedback).toHaveBeenCalledWith({ box: "data:image/png;base64,AAAA" });
     });
   });
 });

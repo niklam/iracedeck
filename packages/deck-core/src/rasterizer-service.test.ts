@@ -46,6 +46,22 @@ describe("toDeviceImage", () => {
     expect(render).not.toHaveBeenCalled();
   });
 
+  it("a non-SVG image supersedes an in-flight SVG render for the same contextKey", async () => {
+    let releaseFirst!: (png: Buffer) => void;
+    const slow = new Promise<Buffer>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const render = vi.fn().mockReturnValueOnce(slow);
+    initializeRasterizer(render);
+
+    const first = toDeviceImage("ctx1", SVG_URI, 144);
+    const second = await toDeviceImage("ctx1", "data:image/png;base64,AAAA", 144);
+    releaseFirst(FAKE_PNG);
+
+    expect(second).toBe("data:image/png;base64,AAAA");
+    await expect(first).resolves.toBeNull();
+  });
+
   it("caches by (targetPx, svg) — identical input renders once", async () => {
     const render = vi.fn().mockResolvedValue(FAKE_PNG);
     initializeRasterizer(render);

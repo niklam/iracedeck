@@ -98,7 +98,7 @@ Because of that linearity there is nothing per-font-size to cache — one width-
 
 Numeric readouts get a bonus: **all ten Arial-Bold digits share one advance (1139 units, no inter-digit kerning)** — "5432" and "2345" are both exactly 40.04 px @18 px. A field like RPM only changes width when the digit _count_ changes; sizing the field once for the maximum expected digits means zero layout recomputation and zero visual jitter at runtime.
 
-Caveats: table summation is exact for the Latin+digits title vocabulary but is not full text shaping (revisit if titles ever need Arabic-class scripts); user-typed title text can contain out-of-table characters, which needs a fallback advance (or a one-off `getBBox()` measure for exotic input).
+Caveats: table summation is exact for the Latin-and-digits title vocabulary but is not full text shaping (revisit if titles ever need Arabic-class scripts); user-typed title text can contain out-of-table characters, which needs a fallback advance (or a one-off `getBBox()` measure for exotic input).
 
 ## 8. Follow-up issues (proposed)
 

@@ -311,10 +311,15 @@ export function validateIconTemplate(svg: string): string[] {
     );
   }
 
-  // Check for a dangling activity-state filter reference — the filter id is never defined
-  // in the emitted SVG (it belongs to the disabled inactive-overlay feature), and resvg does
-  // not render elements referencing an unresolvable filter (unlike the old QT renderers).
-  if (svg.includes('filter="url(#activity-state)"')) {
+  // Check for a dangling activity-state filter reference — the filter id is usually never
+  // defined in the emitted SVG (it belongs to the disabled inactive-overlay feature), and
+  // resvg does not render elements referencing an unresolvable filter (unlike the old QT
+  // renderers). Only flag it when the reference has no matching <filter id="activity-state">
+  // definition in the same SVG — a template that defines its own filter is fine.
+  const hasActivityStateReference = /filter=["']url\(#activity-state\)["']/.test(svg);
+  const hasActivityStateDefinition = /<filter\b[^>]*\bid=["']activity-state["']/.test(svg);
+
+  if (hasActivityStateReference && !hasActivityStateDefinition) {
     errors.push(
       'Dangling activity-state filter reference. Elements referencing an undefined filter are not rendered by resvg — remove filter="url(#activity-state)" (the inactive-overlay system injects its own filter when active).',
     );
