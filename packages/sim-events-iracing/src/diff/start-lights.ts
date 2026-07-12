@@ -34,11 +34,11 @@
  *      (issue #666) — the ceiling seed already keeps a compressed pre-start
  *      window from speaking a number it can't reach.
  *
- * Both diffs seed silently on their first tick and share no state: the gantry
- * seeds its edge baseline, and the countdown consumes one silent observation
- * before its ceiling may anchor (the first `SessionTimeRemain` a fresh state
- * sees can be a scheduled value an AI session collapses right after —
- * capture 2056). Countdown state resets whenever the diff observes a tick
+ * Both diffs seed silently and share no state: the gantry seeds its edge
+ * baseline on its first tick, and the countdown consumes its first IN-WINDOW
+ * sample as a silent observation before its ceiling may anchor (the
+ * window-entry `SessionTimeRemain` can be a scheduled value an AI session
+ * collapses right after — capture 2056). Countdown state resets whenever the diff observes a tick
  * outside the window after the window was active, so a re-grid counts down
  * again — and it is deliberately preserved across `wipeStateForReplay`
  * (issue #829) so a garage↔car flip mid-countdown can neither drop a
@@ -97,17 +97,6 @@ export function diffStartCountdown(
   sessionInfo: Record<string, unknown> | null,
   emit: EmitFn,
 ): void {
-  // First tick — consume as a silent observation (every diff's seed-silently
-  // convention). The first SessionTimeRemain a fresh state sees can be a
-  // scheduled value an AI session collapses right after (capture 2056:
-  // 262 s → 1.02 s); anchoring the ceiling on it would fire a stale bottom
-  // mark on the collapse. The ceiling anchors from the second observation on.
-  if (!state.startCountdownObserved) {
-    state.startCountdownObserved = true;
-
-    return;
-  }
-
   const sessionFlags = telemetry.SessionFlags ?? 0;
   const sessionState = typeof telemetry.SessionState === "number" ? telemetry.SessionState : SessionState.Invalid;
   const timeRemain = typeof telemetry.SessionTimeRemain === "number" ? telemetry.SessionTimeRemain : 0;
@@ -137,7 +126,22 @@ export function diffStartCountdown(
     return;
   }
 
-  // First in-window tick — seed the ceiling (highest eligible threshold).
+  // First IN-WINDOW tick a fresh state sees — consume as a silent observation
+  // (every diff's seed-silently convention). The window-entry SessionTimeRemain
+  // can be a scheduled value an AI session collapses right after (capture
+  // 2056: 262 s → 1.02 s); anchoring the ceiling on it would fire a stale
+  // bottom mark on the collapse. Gated AFTER the window check so out-of-window
+  // startup ticks can't consume it (PR #830 review), and once per state
+  // lifetime (not per window entry) so the #666 blip-reset semantics — window
+  // re-entry re-seeds the ceiling immediately — stay unchanged.
+  if (!state.startCountdownObserved) {
+    state.startCountdownObserved = true;
+
+    return;
+  }
+
+  // First in-window tick after the observation — seed the ceiling (highest
+  // eligible threshold).
   const ceiling = state.startCountdownCeiling ?? timeRemain;
   state.startCountdownCeiling = ceiling;
 

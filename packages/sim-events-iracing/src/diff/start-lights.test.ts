@@ -107,11 +107,12 @@ describe("diffStartLights — gantry rising edges", () => {
 });
 
 describe("diffStartCountdown — numeric countdown", () => {
-  it("consumes the first tick as a silent observation — a collapsing AI window fires nothing (issue #829)", () => {
+  it("consumes the first in-window tick as a silent observation — a collapsing AI window fires nothing (issue #829)", () => {
     const state = createInitialState();
     // The countdown owns its own seed (no diffStartLights call needed): the
-    // first tick is a silent observation because its SessionTimeRemain can be
-    // a scheduled value the AI session collapses right after (capture 2056).
+    // first in-window tick is a silent observation because its
+    // SessionTimeRemain can be a scheduled value the AI session collapses
+    // right after (capture 2056).
     const first = collect();
     diffStartCountdown(state, tick(0, SessionState.GetInCar, 262), STANDING_SESSION, first.emit);
     expect(first.events).toEqual([]);
@@ -124,6 +125,29 @@ describe("diffStartCountdown — numeric countdown", () => {
     diffStartCountdown(state, tick(0, SessionState.GetInCar, 1.02), STANDING_SESSION, collapsed.emit);
     expect(collapsed.events).toEqual([]);
     expect(state.startCountdownCeiling).toBe(1.02);
+  });
+
+  it("an out-of-window tick does NOT consume the observation — the first IN-WINDOW sample is the silent one (#829 review)", () => {
+    const state = createInitialState();
+    // Startup delivers a settling out-of-window tick first (Invalid state).
+    // It must not consume the observation, or the next tick would anchor the
+    // ceiling on the collapsible 262 s reading and the collapse would fire a
+    // stale 10.
+    diffStartCountdown(state, tick(0, SessionState.Invalid, -1), STANDING_SESSION, () => {});
+    expect(state.startCountdownObserved).toBe(false);
+
+    const entry = collect();
+    diffStartCountdown(state, tick(0, SessionState.GetInCar, 262), STANDING_SESSION, entry.emit); // observation
+    expect(entry.events).toEqual([]);
+    expect(state.startCountdownCeiling).toBeNull();
+
+    const collapsed = collect();
+    diffStartCountdown(state, tick(0, SessionState.GetInCar, 1.02), STANDING_SESSION, collapsed.emit); // ceiling=1.02
+    expect(collapsed.events).toEqual([]);
+
+    const after = collect();
+    diffStartCountdown(state, tick(0, SessionState.GetInCar, 0.5), STANDING_SESSION, after.emit);
+    expect(after.events).toEqual([]);
   });
 
   it("window-gate: seeds ceiling and fires only thresholds <= ceiling", () => {
