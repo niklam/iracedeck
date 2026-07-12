@@ -4,9 +4,9 @@ Per-plugin build-time flags that gate platform-specific features and temporary k
 
 ## Layout
 
-- `packages/iracing-plugin-stream-deck/platform-features.json` — committed Stream Deck flags (all true by default).
-- `packages/iracing-plugin-mirabox/platform-features.json` — committed Mirabox flags (QT5-incompatible features off).
-- `packages/iracing-plugin-ulanzi/platform-features.json` — committed Ulanzi flags. Kept at the Mirabox conservative baseline (filters/masks/patterns off): basic SVG data-URI icons are confirmed to render in UlanziDeck (issue #508), but filters/masks/patterns haven't been exercised — widen a flag only once that feature is confirmed on Ulanzi.
+- `packages/iracing-plugin-stream-deck/platform-features.json` — committed Stream Deck flags (`dialFeedback`, `profiles`, and `pngRasterization` all true).
+- `packages/iracing-plugin-mirabox/platform-features.json` — committed Mirabox flags (`dialFeedback` and `profiles` off — no plugin touch strip and no profile system on the Mirabox host; `pngRasterization` on, same as Elgato).
+- `packages/iracing-plugin-ulanzi/platform-features.json` — committed Ulanzi flags, identical shape to Mirabox today (`dialFeedback` and `profiles` off, `pngRasterization` on) — widen `dialFeedback`/`profiles` only once dial/profile support is verified on Ulanzi hardware.
 - `feature-flags.local.json` — **optional, gitignored** developer override at repo root. Deep-merges over every plugin's committed flags at build time.
 - `feature-flags.local.json.example` — committed example showing the file shape.
 
