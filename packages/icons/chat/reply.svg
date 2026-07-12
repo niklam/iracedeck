@@ -1,10 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 70" stroke-width="0.5" stroke="#fff" fill="#fff">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
   <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"CHAT\nREPLY"},"border":{"color":"#5a6a7a"}}</desc>
-  
+  <defs>
+    <linearGradient id="scl2" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#c3cfda"/></linearGradient>
+  </defs>
 
-    <path d="M10,2h80a8,8,0,0,1,8,8v40a8,8,0,0,1,-8,8H54l-6,10l-6,-10H10a8,8,0,0,1,-8,-8V10a8,8,0,0,1,8,-8z"
-          fill="none" stroke="{{graphic1Color}}" stroke-width="4" stroke-linejoin="round"/>
-    <path d="M38,18L26,28L38,38" fill="none" stroke="{{color}}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M26,28H54A8,8,0,0,1,62,36" fill="none" stroke="{{color}}" stroke-width="4" stroke-linecap="round"/>
-
+    <rect x="14" y="10" width="60" height="36" rx="9" fill="url(#scl2)"/>
+    <polygon points="28,45 28,58 41,45" fill="url(#scl2)"/>
+    <path d="M56 36 V32 Q56 24 46 24 H36" fill="none" stroke="#2563ab" stroke-width="3.5" stroke-linecap="round"/>
+    <polygon points="38,17.5 27,24 38,30.5" fill="#2563ab"/>
 </svg>

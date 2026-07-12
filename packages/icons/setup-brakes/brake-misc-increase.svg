@@ -1,11 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 88 52" stroke-width="0.5" stroke="#fff" fill="#fff">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
   <desc>{"colors":{"backgroundColor":"#3a2a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"BRAKE MISC\nINCREASE"},"border":{"color":"#6a5a3a"}}</desc>
-  
+  <defs>
+    <radialGradient id="disc" cx="0.4" cy="0.35" r="0.9"><stop stop-color="{{graphic1Color}}"/><stop offset="0.6" stop-color="{{graphic1Color}}" stop-opacity="0.72"/><stop offset="1" stop-color="{{graphic1Color}}" stop-opacity="0.45"/></radialGradient>
+    <linearGradient id="redG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ff6b5e"/><stop offset="1" stop-color="#c0392b"/></linearGradient>
+    <linearGradient id="plusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#4be08d"/><stop offset="1" stop-color="#1d9e58"/></linearGradient>
+  </defs>
 
-    <circle cx="26" cy="26" r="24" fill="none" stroke="#888888" stroke-width="3"/>
-    <circle cx="26" cy="26" r="10" fill="none" stroke="#888888" stroke-width="2"/>
-    <line x1="42" y1="10" x2="58" y2="42" stroke="{{graphic1Color}}" stroke-width="4" stroke-linecap="round"/>
-    <line x1="50" y1="10" x2="66" y2="42" stroke="{{graphic1Color}}" stroke-width="4" stroke-linecap="round"/>
-    <polyline points="76,34 86,22 76,10" fill="none" stroke="#f1c40f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-
+    <circle cx="40" cy="35" r="22" fill="url(#disc)"/>
+    <circle cx="40" cy="35" r="7.5" fill="#3f5561"/>
+    <path d="M 48.8 15.2 A 22 22 0 0 1 60.9 28.8" fill="none" stroke="url(#redG)" stroke-width="7.9" stroke-linecap="round"/>
+    <circle cx="64" cy="14" r="2.8" fill="#dfe7ec"/><circle cx="72.5" cy="14" r="2.8" fill="#dfe7ec"/><circle cx="81" cy="14" r="2.8" fill="#dfe7ec"/>
+    <circle cx="40" cy="35" r="14.5" fill="none" stroke="#5c6d77" stroke-width="1.5"/><circle cx="80" cy="60" r="10" fill="url(#plusG)" stroke="{{backgroundColor}}" stroke-width="3"/>
+    <path d="M75 60h10M80 55v10" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"/>
 </svg>

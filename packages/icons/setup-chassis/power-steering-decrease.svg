@@ -1,11 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 76 60" stroke-width="0.5" stroke="#fff" fill="#fff">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
   <desc>{"colors":{"backgroundColor":"#1a3a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"PWR STEER\nDECREASE"},"border":{"color":"#3a6a3a"}}</desc>
-  
+  <defs>
+    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="{{graphic1Color}}"/><stop offset="1" stop-color="{{graphic1Color}}" stop-opacity="0.55"/></linearGradient>
+    <filter id="glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="3"/></filter>
+    <linearGradient id="minusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f47c6a"/><stop offset="1" stop-color="#c0392b"/></linearGradient>
+  </defs>
 
-    <circle cx="46" cy="30" r="28" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
-    <circle cx="46" cy="30" r="8" fill="none" stroke="#888888" stroke-width="2"/>
-    <line x1="46" y1="38" x2="46" y2="58" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
-    <polyline points="42,18 46,26 42,26 46,34" fill="none" stroke="#f1c40f" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-    <polyline points="12,18 2,30 12,42" fill="none" stroke="#f1c40f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-
+    <circle cx="44" cy="30" r="20" fill="url(#mtl)"/>
+    <circle cx="44" cy="30" r="15" fill="{{backgroundColor}}"/>
+    <rect x="25" y="26.6" width="38" height="6.8" fill="url(#mtl)"/>
+    <rect x="40.6" y="30" width="6.8" height="20" fill="url(#mtl)"/>
+    <circle cx="44" cy="30" r="7.2" fill="url(#mtl)"/>
+    <circle cx="44" cy="30" r="3" fill="#3f5561"/>
+    <path d="M 29.2 18 A 20 20 0 0 1 58.8 18" fill="none" stroke="#ffffff" stroke-width="3.2" opacity="0.3" stroke-linecap="round"/>
+    <polygon points="72,36 64,52 70,52 67,64 78,48 71,48" fill="#f7d94c" filter="url(#glow)"/>
+    <polygon points="72,36 64,52 70,52 67,64 78,48 71,48" fill="#f7d94c"/><circle cx="80" cy="60" r="10" fill="url(#minusG)" stroke="{{backgroundColor}}" stroke-width="3"/>
+    <path d="M75 60h10" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"/>
 </svg>

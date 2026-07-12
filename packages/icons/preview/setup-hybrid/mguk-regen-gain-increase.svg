@@ -1,10 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 88 36" stroke-width="0.5" stroke="#fff" fill="#fff">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
   <desc>{"colors":{"backgroundColor":"#1a3a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"REGEN GAIN\nINCREASE"},"border":{"color":"#3a6a3a"}}</desc>
-  
+  <defs>
+    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.55"/></linearGradient>
+    <linearGradient id="plusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#4be08d"/><stop offset="1" stop-color="#1d9e58"/></linearGradient>
+  </defs>
 
-    <rect x="2" y="2" width="52" height="32" rx="6" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <rect x="54" y="12" width="6" height="12" rx="2" fill="#ffffff" stroke="none"/>
-    <polyline points="24,8 30,18 24,18 30,28" fill="none" stroke="#2ecc71" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-    <polyline points="76,30 86,18 76,6" fill="none" stroke="#2ecc71" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-
+    <rect x="25" y="10" width="10" height="6" rx="2" fill="#8fa3ad"/>
+    <rect x="18" y="16" width="24" height="38" rx="4.5" fill="url(#mtl)"/>
+    <rect x="22" y="34" width="16" height="16" rx="2.5" fill="url(#plusG)"/>
+    <path d="M54 24 A14 14 0 0 1 80 28" fill="none" stroke="#4be08d" stroke-width="4" stroke-linecap="round"/>
+    <polygon points="80,20 83,31 72,29" fill="#4be08d"/>
+    <path d="M78 42 A14 14 0 0 1 52 38" fill="none" stroke="#4be08d" stroke-width="4" stroke-linecap="round"/>
+    <polygon points="52,46 49,35 60,37" fill="#4be08d"/><circle cx="80" cy="60" r="10" fill="url(#plusG)" stroke="#1a3a1a" stroke-width="3"/>
+    <path d="M75 60h10M80 55v10" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"/>
 </svg>

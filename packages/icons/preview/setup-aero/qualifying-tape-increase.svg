@@ -1,12 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 84 48" stroke-width="0.5" stroke="#fff" fill="#fff">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
   <desc>{"colors":{"backgroundColor":"#1a1a3a","textColor":"#ffffff"},"title":{"text":"QUAL TAPE\nINCREASE"},"border":{"color":"#3a3a6a"}}</desc>
-  
+  <defs>
+    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="{{graphic1Color}}"/><stop offset="1" stop-color="{{graphic1Color}}" stop-opacity="0.55"/></linearGradient>
+    <linearGradient id="plusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#4be08d"/><stop offset="1" stop-color="#1d9e58"/></linearGradient>
+  </defs>
 
-    <rect x="2" y="2" width="56" height="44" rx="6" fill="none" stroke="#888888" stroke-width="3"/>
-    <line x1="2" y1="14" x2="58" y2="14" stroke="#888888" stroke-width="1"/>
-    <line x1="2" y1="26" x2="58" y2="26" stroke="#888888" stroke-width="1"/>
-    <line x1="2" y1="38" x2="58" y2="38" stroke="#888888" stroke-width="1"/>
-    <rect x="6" y="10" width="48" height="12" rx="2" fill="#f1c40f" opacity="0.6" stroke="none"/>
-    <polyline points="72,30 82,18 72,6" fill="none" stroke="#f1c40f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-
+    <rect x="16" y="14" width="44" height="36" rx="5" fill="#10141d" stroke="url(#mtl)" stroke-width="2.5"/>
+    <line x1="21" y1="22" x2="55" y2="22" stroke="#3f5561" stroke-width="2.5"/>
+    <line x1="21" y1="29" x2="55" y2="29" stroke="#3f5561" stroke-width="2.5"/>
+    <line x1="21" y1="36" x2="55" y2="36" stroke="#3f5561" stroke-width="2.5"/>
+    <line x1="21" y1="43" x2="55" y2="43" stroke="#3f5561" stroke-width="2.5"/>
+    <polygon points="18,46 50,12 60,20 28,54" fill="#dfe7ec" opacity="0.95"/>
+    <circle cx="64" cy="16" r="8.5" fill="url(#mtl)"/>
+    <circle cx="64" cy="16" r="3.5" fill="#1a1a3a"/><circle cx="80" cy="60" r="10" fill="url(#plusG)" stroke="#1a1a3a" stroke-width="3"/>
+    <path d="M75 60h10M80 55v10" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"/>
 </svg>

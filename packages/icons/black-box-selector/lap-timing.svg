@@ -1,14 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 121 58" stroke-width="0.5" stroke="#fff" fill="#fff">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 68">
   <desc>{"colors":{"backgroundColor":"#2a2a2a","textColor":"#ffffff"},"title":{"text":"LAP TIMING"},"border":{"color":"#5a5a5a"}}</desc>
-  
+  <defs>
+    <linearGradient id="bbG2" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#453a1c"/><stop offset="1" stop-color="#221a0a"/></linearGradient>
+    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="{{graphic1Color}}"/><stop offset="1" stop-color="{{graphic1Color}}" stop-opacity="0.55"/></linearGradient>
+  </defs>
 
-    <rect x="9" y="2" width="110" height="54" rx="6" fill="#2d2510" stroke="#4a3728" stroke-width="4"/>
-    <text x="16" y="15" fill="#888888" font-family="Arial, sans-serif" font-size="10" stroke="none">LAP</text>
-    <text x="56" y="15" fill="#f39c12" font-family="Arial, sans-serif" font-size="12" font-weight="bold" stroke="none">1:23.456</text>
-    <text x="16" y="29" fill="#888888" font-family="Arial, sans-serif" font-size="10" stroke="none">LAST</text>
-    <text x="56" y="29" fill="#ffffff" font-family="Arial, sans-serif" font-size="12" stroke="none">1:24.012</text>
-    <text x="16" y="43" fill="#888888" font-family="Arial, sans-serif" font-size="10" stroke="none">BEST</text>
-    <text x="56" y="43" fill="#2ecc71" font-family="Arial, sans-serif" font-size="12" font-weight="bold" stroke="none">1:22.891</text>
-    <rect x="16" y="49" width="96" height="2" fill="#ffffff" opacity="0.3" stroke="none"/>
-
+    <rect x="10" y="12" width="76" height="44" rx="6" fill="url(#bbG2)" stroke="#6a5138" stroke-width="3.5"/>
+    <circle cx="31" cy="36" r="10.5" fill="#14100a" stroke="url(#mtl)" stroke-width="3.8"/>
+    <rect x="28.5" y="20.5" width="5" height="4.5" rx="1.5" fill="url(#mtl)"/>
+    <line x1="31" y1="36" x2="36" y2="30" stroke="#f7d94c" stroke-width="2.6" stroke-linecap="round"/>
+    <circle cx="31" cy="36" r="1.7" fill="#f7d94c"/>
+    <text x="61" y="40" fill="#f7d94c" font-family="Arial, sans-serif" font-size="12" font-weight="bold" text-anchor="middle" stroke="none">1:23.4</text>
 </svg>

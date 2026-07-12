@@ -1,14 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 68" stroke-width="0.5" stroke="#fff" fill="#fff">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
   <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"VR VIEW\nRECENTER"},"border":{"color":"#3a5a6a"}}</desc>
-  
+  <defs>
+    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.55"/></linearGradient>
+    <radialGradient id="lns" cx="0.38" cy="0.32" r="0.95"><stop stop-color="#8ed4ff"/><stop offset="0.55" stop-color="#2c5f9e"/><stop offset="1" stop-color="#122c4d"/></radialGradient>
+  </defs>
 
-    <rect x="14" y="14" width="80" height="40" rx="12" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <line x1="54" y1="14" x2="54" y2="54" stroke="#888888" stroke-width="1"/>
-    <circle cx="38" cy="34" r="12" fill="none" stroke="#888888" stroke-width="2"/>
-    <circle cx="70" cy="34" r="12" fill="none" stroke="#888888" stroke-width="2"/>
-    <line x1="54" y1="2" x2="54" y2="10" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-    <line x1="54" y1="58" x2="54" y2="66" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-    <line x1="2" y1="34" x2="10" y2="34" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-    <line x1="98" y1="34" x2="106" y2="34" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-
+    <circle cx="48" cy="36" r="27" fill="none" stroke="#4fc3f7" stroke-width="2.5" stroke-dasharray="6 6" opacity="0.7"/>
+    <line x1="48" y1="4" x2="48" y2="12" stroke="#4fc3f7" stroke-width="3" stroke-linecap="round"/>
+    <rect x="12" y="28" width="7" height="15" rx="3" fill="#8fa3ad"/>
+    <rect x="77" y="28" width="7" height="15" rx="3" fill="#8fa3ad"/>
+    <rect x="18" y="21" width="60" height="30" rx="11" fill="url(#mtl)"/>
+    <circle cx="37" cy="36" r="8.5" fill="url(#lns)"/>
+    <circle cx="59" cy="36" r="8.5" fill="url(#lns)"/>
+    <circle cx="34.5" cy="33" r="2.2" fill="#ffffff" opacity="0.85"/>
+    <circle cx="56.5" cy="33" r="2.2" fill="#ffffff" opacity="0.85"/>
 </svg>

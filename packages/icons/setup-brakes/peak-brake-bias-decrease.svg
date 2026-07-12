@@ -1,10 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 52" stroke-width="0.5" stroke="#fff" fill="#fff">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
   <desc>{"colors":{"backgroundColor":"#3a2a1a","textColor":"#ffffff"},"title":{"text":"PEAK BIAS\nDECREASE"},"border":{"color":"#6a5a3a"}}</desc>
-  
+  <defs>
+    <filter id="glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="3"/></filter>
+    <linearGradient id="minusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f47c6a"/><stop offset="1" stop-color="#c0392b"/></linearGradient>
+  </defs>
 
-    <circle cx="38" cy="26" r="24" fill="none" stroke="#888888" stroke-width="3"/>
-    <circle cx="38" cy="26" r="10" fill="none" stroke="#888888" stroke-width="2"/>
-    <line x1="38" y1="2" x2="38" y2="14" stroke="#e74c3c" stroke-width="4" stroke-linecap="round"/>
-    <polyline points="12,10 2,22 12,34" fill="none" stroke="#f1c40f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-
+    <path d="M18 12 V52 H74" fill="none" stroke="#b7c5cd" stroke-width="3" stroke-linecap="round"/>
+    <path d="M22 48 C34 46 40 20 48 16 C56 20 64 44 70 48" fill="none" stroke="#4fc3f7" stroke-width="3.5" stroke-linecap="round"/>
+    <circle cx="48" cy="15" r="4" fill="#f6d34c" filter="url(#glow)"/>
+    <circle cx="48" cy="15" r="4" fill="#f6d34c"/><circle cx="80" cy="60" r="10" fill="url(#minusG)" stroke="{{backgroundColor}}" stroke-width="3"/>
+    <path d="M75 60h10" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"/>
 </svg>

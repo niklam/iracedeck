@@ -1,14 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 114 58" stroke-width="0.5" stroke="#fff" fill="#fff">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 68">
   <desc>{"colors":{"backgroundColor":"#2a2a2a","textColor":"#ffffff"},"title":{"text":"RADIO"},"border":{"color":"#5a5a5a"}}</desc>
-  
+  <defs>
+    <linearGradient id="bbG2" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#453a1c"/><stop offset="1" stop-color="#221a0a"/></linearGradient>
+    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="{{graphic1Color}}"/><stop offset="1" stop-color="{{graphic1Color}}" stop-opacity="0.55"/></linearGradient>
+    <linearGradient id="ambG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f7d94c"/><stop offset="1" stop-color="#d9980f"/></linearGradient>
+  </defs>
 
-    <rect x="2" y="2" width="110" height="54" rx="6" fill="#2d2510" stroke="#4a3728" stroke-width="4"/>
-    <path d="M13,29a20,20,0,0,1,40,0" fill="none" stroke="#888888" stroke-width="3"/>
-    <rect x="9" y="25" width="10" height="18" rx="4" fill="#888888" stroke="none"/>
-    <rect x="47" y="25" width="10" height="18" rx="4" fill="#888888" stroke="none"/>
-    <path d="M13,43q0,8,10,8h4" fill="none" stroke="#888888" stroke-width="2"/>
-    <ellipse cx="29" cy="51" rx="4" ry="3" fill="#888888" stroke="none"/>
-    <text x="73" y="17" fill="#ffffff" font-family="Arial, sans-serif" font-size="10" stroke="none">CH</text>
-    <text x="73" y="35" fill="#2ecc71" font-family="Arial, sans-serif" font-size="12" font-weight="bold" stroke="none">ALL</text>
-
+    <rect x="10" y="12" width="76" height="44" rx="6" fill="url(#bbG2)" stroke="#6a5138" stroke-width="3.5"/>
+    <rect x="26" y="16" width="13" height="20" rx="6.5" fill="url(#mtl)"/>
+    <path d="M21 29 v4 a11.5 11.5 0 0 0 23 0 v-4" fill="none" stroke="#b7c5cd" stroke-width="3" stroke-linecap="round"/>
+    <line x1="32.5" y1="45" x2="32.5" y2="50" stroke="#b7c5cd" stroke-width="3" stroke-linecap="round"/>
+    <rect x="52" y="33" width="6" height="13" rx="2" fill="url(#ambG)"/>
+    <rect x="62" y="25" width="6" height="21" rx="2" fill="url(#ambG)"/>
+    <rect x="72" y="29" width="6" height="17" rx="2" fill="url(#ambG)"/>
 </svg>

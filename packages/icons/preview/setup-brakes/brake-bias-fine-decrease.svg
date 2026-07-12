@@ -1,13 +1,22 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 92 36" stroke-width="0.5" stroke="#fff" fill="#fff">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
   <desc>{"colors":{"backgroundColor":"#3a2a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"BIAS FINE\nDECREASE"},"border":{"color":"#6a5a3a"}}</desc>
-  
+  <defs>
+    <radialGradient id="disc" cx="0.4" cy="0.35" r="0.9"><stop stop-color="#ffffff"/><stop offset="0.6" stop-color="#ffffff" stop-opacity="0.72"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.45"/></radialGradient>
+    <linearGradient id="redG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ff6b5e"/><stop offset="1" stop-color="#c0392b"/></linearGradient>
+    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.55"/></linearGradient>
+    <linearGradient id="minusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f47c6a"/><stop offset="1" stop-color="#c0392b"/></linearGradient>
+  </defs>
 
-    <rect x="2" y="10" width="88" height="20" rx="6" fill="none" stroke="#888888" stroke-width="3"/>
-    <rect x="2" y="10" width="52" height="20" rx="6" fill="#e74c3c" opacity="0.4" stroke="none"/>
-    <line x1="54" y1="6" x2="54" y2="34" stroke="#ffffff" stroke-width="3"/>
-    <line x1="18" y1="10" x2="18" y2="30" stroke="#888888" stroke-width="1"/>
-    <line x1="34" y1="10" x2="34" y2="30" stroke="#888888" stroke-width="1"/>
-    <line x1="70" y1="10" x2="70" y2="30" stroke="#888888" stroke-width="1"/>
-    <polyline points="12,2 2,14 12,26" fill="none" stroke="#f1c40f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-
+    <circle cx="28" cy="20" r="12" fill="url(#disc)"/>
+    <circle cx="28" cy="20" r="4.1" fill="#3f5561"/>
+    <path d="M 32.8 9.2 A 12 12 0 0 1 39.4 16.6" fill="none" stroke="url(#redG)" stroke-width="4.3" stroke-linecap="round"/>
+    <circle cx="64" cy="20" r="12" fill="url(#disc)"/>
+    <circle cx="64" cy="20" r="4.1" fill="#3f5561"/>
+    <path d="M 68.8 9.2 A 12 12 0 0 1 75.4 16.6" fill="none" stroke="url(#redG)" stroke-width="4.3" stroke-linecap="round"/>
+    <rect x="22" y="41" width="48" height="6" rx="3" fill="#14100a" stroke="#6a5138" stroke-width="1.5"/>
+    <text x="15" y="47.5" font-family="Arial, sans-serif" font-size="10" font-weight="bold" fill="#b7c5cd" text-anchor="middle" stroke="none">R</text>
+    <text x="77" y="47.5" font-family="Arial, sans-serif" font-size="10" font-weight="bold" fill="#b7c5cd" text-anchor="middle" stroke="none">F</text>
+    <circle cx="26" cy="44" r="5.5" fill="url(#mtl)"/>
+    <circle cx="26" cy="43" r="9.5" fill="none" stroke="#dfe7ec" stroke-width="2.8"/><line x1="32.5" y1="50" x2="38.5" y2="56" stroke="#dfe7ec" stroke-width="3.2" stroke-linecap="round"/><circle cx="80" cy="60" r="10" fill="url(#minusG)" stroke="#3a2a1a" stroke-width="3"/>
+    <path d="M75 60h10" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"/>
 </svg>

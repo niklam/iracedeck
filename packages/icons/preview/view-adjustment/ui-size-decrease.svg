@@ -1,11 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 84 56" stroke-width="0.5" stroke="#fff" fill="#fff">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
   <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"UI SIZE\nDECREASE"},"border":{"color":"#3a5a6a"}}</desc>
-  
+  <defs>
+    <linearGradient id="dgl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#24425e"/><stop offset="1" stop-color="#0d1f30"/></linearGradient>
+    <linearGradient id="minusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f47c6a"/><stop offset="1" stop-color="#c0392b"/></linearGradient>
+  </defs>
 
-    <rect x="2" y="2" width="80" height="52" rx="4" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <line x1="2" y1="14" x2="82" y2="14" stroke="#888888" stroke-width="2"/>
-    <circle cx="10" cy="8" r="2" fill="#888888" stroke="none"/>
-    <circle cx="18" cy="8" r="2" fill="#888888" stroke="none"/>
-    <path d="M76,48L60,32M60,42L60,32L70,32" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-
+    <rect x="8" y="20.5" width="33" height="27" rx="3.5" fill="none" stroke="#7d8f9b" stroke-width="2.2" opacity="0.85"/>
+    <rect x="8" y="20.5" width="33" height="6.5" rx="3" fill="#7d8f9b" opacity="0.4"/>
+    <line x1="37" y1="34" x2="50" y2="34" stroke="#4fc3f7" stroke-width="3.2" stroke-linecap="round"/>
+    <polyline points="44,28 50,34 44,40" fill="none" stroke="#4fc3f7" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="58" y="26" width="22" height="17" rx="3" fill="url(#dgl)" stroke="#b7c5cd" stroke-width="2.5"/>
+    <rect x="58" y="26" width="22" height="5" rx="2.5" fill="#4fc3f7" opacity="0.6"/><circle cx="80" cy="60" r="10" fill="url(#minusG)" stroke="#1a2a3a" stroke-width="3"/>
+    <path d="M75 60h10" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"/>
 </svg>

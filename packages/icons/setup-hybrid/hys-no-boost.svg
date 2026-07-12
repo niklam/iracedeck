@@ -1,10 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 62 36" stroke-width="0.5" stroke="#fff" fill="#fff">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
   <desc>{"colors":{"backgroundColor":"#1a3a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"HYS\nNO BOOST"},"border":{"color":"#3a6a3a"}}</desc>
-  
+  <defs>
+    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="{{graphic1Color}}"/><stop offset="1" stop-color="{{graphic1Color}}" stop-opacity="0.55"/></linearGradient>
+    <linearGradient id="plusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#4be08d"/><stop offset="1" stop-color="#1d9e58"/></linearGradient>
+  </defs>
 
-    <rect x="2" y="2" width="52" height="32" rx="6" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
-    <rect x="54" y="12" width="6" height="12" rx="2" fill="{{graphic1Color}}" stroke="none"/>
-    <line x1="16" y1="10" x2="40" y2="26" stroke="#888888" stroke-width="4" stroke-linecap="round"/>
-    <line x1="40" y1="10" x2="16" y2="26" stroke="#888888" stroke-width="4" stroke-linecap="round"/>
-
+    <rect x="25" y="10" width="10" height="6" rx="2" fill="#8fa3ad"/>
+    <rect x="18" y="16" width="24" height="38" rx="4.5" fill="url(#mtl)"/>
+    <rect x="22" y="34" width="16" height="16" rx="2.5" fill="url(#plusG)"/>
+    <polygon points="68,6 54,36 64,36 58,62 78,30 67,30" fill="#6b7f8a"/>
+    <circle cx="66" cy="32" r="15" fill="none" stroke="#e74c3c" stroke-width="3.5"/>
+    <line x1="55.5" y1="42.5" x2="76.5" y2="21.5" stroke="#e74c3c" stroke-width="3.5" stroke-linecap="round"/>
 </svg>

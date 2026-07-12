@@ -1,10 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 54" stroke-width="0.5" stroke="#fff" fill="#fff">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
   <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"FOV\nDECREASE"},"border":{"color":"#3a5a6a"}}</desc>
-  
+  <defs>
+    <linearGradient id="minusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f47c6a"/><stop offset="1" stop-color="#c0392b"/></linearGradient>
+  </defs>
 
-    <circle cx="26" cy="46" r="6" fill="#ffffff" stroke="none"/>
-    <line x1="26" y1="40" x2="2" y2="2" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-    <line x1="26" y1="40" x2="50" y2="2" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-    <line x1="2" y1="2" x2="50" y2="2" stroke="#888888" stroke-width="2" stroke-dasharray="4,4"/>
-
+    <polygon points="16,36 76,22 76,50" fill="#4fc3f7" opacity="0.16"/>
+    <line x1="16" y1="36" x2="76" y2="22" stroke="#4fc3f7" stroke-width="3.5" stroke-linecap="round"/>
+    <line x1="16" y1="36" x2="76" y2="50" stroke="#4fc3f7" stroke-width="3.5" stroke-linecap="round"/>
+    <path d="M36 30 A21 21 0 0 1 36 42" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="16" cy="36" r="4.5" fill="#ffffff"/><circle cx="80" cy="60" r="10" fill="url(#minusG)" stroke="#1a2a3a" stroke-width="3"/>
+    <path d="M75 60h10" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"/>
 </svg>

@@ -1,11 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 84 52" stroke-width="0.5" stroke="#fff" fill="#fff">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
   <desc>{"colors":{"backgroundColor":"#3a2a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"ABS\nINCREASE"},"border":{"color":"#6a5a3a"}}</desc>
-  
+  <defs>
+    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.55"/></linearGradient>
+    <linearGradient id="plusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#4be08d"/><stop offset="1" stop-color="#1d9e58"/></linearGradient>
+  </defs>
 
-    <circle cx="26" cy="26" r="24" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <circle cx="26" cy="26" r="12" fill="none" stroke="#888888" stroke-width="2"/>
-    <text x="26" y="28" text-anchor="middle" dominant-baseline="central"
-          fill="#e74c3c" font-family="Arial, sans-serif" font-size="14" font-weight="bold" stroke="none">ABS</text>
-    <polyline points="66,22 74,10 82,22" fill="none" stroke="#f1c40f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-
+    <path d="M27 17 A21 21 0 0 0 27 47" fill="none" stroke="url(#mtl)" stroke-width="3.5" stroke-linecap="round"/>
+    <path d="M69 17 A21 21 0 0 1 69 47" fill="none" stroke="url(#mtl)" stroke-width="3.5" stroke-linecap="round"/>
+    <circle cx="48" cy="32" r="17" fill="none" stroke="url(#mtl)" stroke-width="3.5"/>
+    <text x="48" y="36.5" font-family="Arial, sans-serif" font-size="11.5" font-weight="bold" fill="#ffffff" text-anchor="middle" stroke="none">ABS</text><circle cx="80" cy="60" r="10" fill="url(#plusG)" stroke="#3a2a1a" stroke-width="3"/>
+    <path d="M75 60h10M80 55v10" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"/>
 </svg>

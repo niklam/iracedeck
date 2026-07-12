@@ -1,13 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 114 58" stroke-width="0.5" stroke="#fff" fill="#fff">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 68">
   <desc>{"colors":{"backgroundColor":"#2a2a2a","textColor":"#ffffff"},"title":{"text":"TIRES"},"border":{"color":"#5a5a5a"}}</desc>
-  
+  <defs>
+    <linearGradient id="bbG2" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#453a1c"/><stop offset="1" stop-color="#221a0a"/></linearGradient>
+    <linearGradient id="plusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#4be08d"/><stop offset="1" stop-color="#1d9e58"/></linearGradient>
+    <linearGradient id="ambG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f7d94c"/><stop offset="1" stop-color="#d9980f"/></linearGradient>
+    <linearGradient id="redG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ff6b5e"/><stop offset="1" stop-color="#c0392b"/></linearGradient>
+  </defs>
 
-    <rect x="2" y="2" width="110" height="54" rx="6" fill="#2d2510" stroke="#4a3728" stroke-width="4"/>
-    <circle cx="41" cy="29" r="20" fill="none" stroke="#888888" stroke-width="4"/>
-    <circle cx="41" cy="29" r="10" fill="none" stroke="#888888" stroke-width="3"/>
-    <circle cx="41" cy="29" r="4" fill="#888888" stroke="none"/>
-    <text x="77" y="21" fill="#ffffff" font-family="Arial, sans-serif" font-size="10" stroke="none">FL</text>
-    <text x="77" y="37" fill="#2ecc71" font-family="Arial, sans-serif" font-size="12" font-weight="bold" stroke="none">98%</text>
-    <text x="77" y="51" fill="#888888" font-family="Arial, sans-serif" font-size="8" stroke="none">WEAR</text>
-
+    <rect x="10" y="12" width="76" height="44" rx="6" fill="url(#bbG2)" stroke="#6a5138" stroke-width="3.5"/>
+    <line x1="43" y1="26" x2="53" y2="26" stroke="#6a5a2e" stroke-width="3"/>
+    <line x1="43" y1="43" x2="53" y2="43" stroke="#6a5a2e" stroke-width="3"/>
+    <line x1="48" y1="26" x2="48" y2="43" stroke="#6a5a2e" stroke-width="3"/>
+    <rect x="31" y="18" width="11" height="16" rx="3.5" fill="url(#plusG)"/>
+    <rect x="54" y="18" width="11" height="16" rx="3.5" fill="url(#plusG)"/>
+    <rect x="31" y="35" width="11" height="16" rx="3.5" fill="url(#ambG)"/>
+    <rect x="54" y="35" width="11" height="16" rx="3.5" fill="url(#redG)"/>
 </svg>

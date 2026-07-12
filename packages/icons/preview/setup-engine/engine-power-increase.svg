@@ -1,12 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 88 52" stroke-width="0.5" stroke="#fff" fill="#fff">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 72">
   <desc>{"colors":{"backgroundColor":"#2a3a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"ENG POWER\nINCREASE"},"border":{"color":"#5a6a3a"}}</desc>
-  
+  <defs>
+    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.55"/></linearGradient>
+    <filter id="glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="3"/></filter>
+    <linearGradient id="plusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#4be08d"/><stop offset="1" stop-color="#1d9e58"/></linearGradient>
+  </defs>
 
-    <rect x="2" y="10" width="56" height="40" rx="6" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <line x1="14" y1="10" x2="14" y2="2" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
-    <line x1="30" y1="10" x2="30" y2="2" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
-    <line x1="46" y1="10" x2="46" y2="2" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
-    <polyline points="24,22 30,34 24,34 30,46" fill="none" stroke="#f1c40f" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-    <polyline points="76,38 86,26 76,14" fill="none" stroke="#f1c40f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-
+    <rect x="22" y="14" width="6" height="10" rx="2" fill="#6b7f8a"/>
+    <rect x="32" y="14" width="6" height="10" rx="2" fill="#6b7f8a"/>
+    <rect x="42" y="14" width="6" height="10" rx="2" fill="#6b7f8a"/>
+    <rect x="18" y="22" width="34" height="10" rx="2.5" fill="#8fa3ad"/>
+    <rect x="14" y="30" width="42" height="26" rx="4" fill="url(#mtl)"/>
+    <polygon points="72,8 60,34 69,34 64,56 81,28 71,28" fill="#f7d94c" filter="url(#glow)"/>
+    <polygon points="72,8 60,34 69,34 64,56 81,28 71,28" fill="#f7d94c"/><circle cx="80" cy="60" r="10" fill="url(#plusG)" stroke="#2a3a1a" stroke-width="3"/>
+    <path d="M75 60h10M80 55v10" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"/>
 </svg>
