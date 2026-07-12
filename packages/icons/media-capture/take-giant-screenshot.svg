@@ -1,9 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 77.3 65.3">
   <desc>{"colors":{"backgroundColor":"#2a1a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"SCREENSHOT\nGIANT"},"border":{"color":"#5a3a6a"}}</desc>
   <defs>
-    <linearGradient id="pgb" x1="0" y1="0" x2="0" y2="1"><stop stop-color="{{graphic1Color}}"/><stop offset="1" stop-color="{{graphic1Color}}" stop-opacity="0.6"/></linearGradient>
-    <radialGradient id="lns" cx="0.38" cy="0.32" r="0.95"><stop stop-color="#8ed4ff"/><stop offset="0.55" stop-color="#2c5f9e"/><stop offset="1" stop-color="#122c4d"/></radialGradient>
-    <filter id="glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="3"/></filter>
+    <linearGradient id="pgb" x1="0" y1="0" x2="0" y2="1"><stop stop-color="{{graphic1Color}}"/><stop offset="1" stop-color="{{graphic1Color}}" stop-opacity="0.6"/></linearGradient><radialGradient id="lns" cx="0.38" cy="0.32" r="0.95"><stop stop-color="#8ed4ff"/><stop offset="0.55" stop-color="#2c5f9e"/><stop offset="1" stop-color="#122c4d"/></radialGradient><filter id="glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="3"/></filter>
   </defs>
   <g transform="translate(-9.2 -5.2)">
 

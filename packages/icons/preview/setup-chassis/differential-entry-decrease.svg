@@ -1,22 +1,27 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 87.3 64.3">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 88.5 56.8">
   <desc>{"colors":{"backgroundColor":"#1a3a1a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"locked":["graphic1Color"],"title":{"text":"DIFF ENTRY\nDECREASE"},"border":{"color":"#3a6a3a"}}</desc>
   <defs>
-    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.55"/></linearGradient>
-    <filter id="glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="3"/></filter>
-    <linearGradient id="minusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f47c6a"/><stop offset="1" stop-color="#c0392b"/></linearGradient>
+    
   </defs>
-  <g transform="translate(-7 -9)">
-<rect x="16" y="10" width="26" height="50" rx="10" fill="url(#mtl)"/>
-    <rect x="20" y="16" width="18" height="12" rx="4" fill="#2c3e50" opacity="0.55"/>
-    <rect x="20" y="44" width="18" height="10" rx="4" fill="#2c3e50" opacity="0.35"/><rect x="8" y="15" width="8" height="15" rx="3" fill="#3f5561"/><rect x="42" y="15" width="8" height="15" rx="3" fill="#3f5561"/><rect x="8" y="42" width="8" height="15" rx="3" fill="#3f5561"/><rect x="42" y="42" width="8" height="15" rx="3" fill="#3f5561"/><rect x="27" y="14" width="4.5" height="42" rx="2" fill="#f7d94c" filter="url(#glow)"/>
-    <rect x="27" y="14" width="4.5" height="42" rx="2" fill="#f7d94c"/>
-    <circle cx="29.2" cy="35" r="6" fill="#f7d94c"/>
-    <line x1="79.0" y1="28.0" x2="84.0" y2="28.0" stroke="#c9d4dc" stroke-width="4.5"/><line x1="76.4" y1="34.4" x2="79.9" y2="37.9" stroke="#c9d4dc" stroke-width="4.5"/><line x1="70.0" y1="37.0" x2="70.0" y2="42.0" stroke="#c9d4dc" stroke-width="4.5"/><line x1="63.6" y1="34.4" x2="60.1" y2="37.9" stroke="#c9d4dc" stroke-width="4.5"/><line x1="61.0" y1="28.0" x2="56.0" y2="28.0" stroke="#c9d4dc" stroke-width="4.5"/><line x1="63.6" y1="21.6" x2="60.1" y2="18.1" stroke="#c9d4dc" stroke-width="4.5"/><line x1="70.0" y1="19.0" x2="70.0" y2="14.0" stroke="#c9d4dc" stroke-width="4.5"/><line x1="76.4" y1="21.6" x2="79.9" y2="18.1" stroke="#c9d4dc" stroke-width="4.5"/>
-    <circle cx="70" cy="28" r="10.5" fill="url(#mtl)"/>
-    <circle cx="70" cy="28" r="4" fill="#1a3a1a"/>
-    <path d="M58 58 Q58 44 72 44" fill="none" stroke="#8fa3ad" stroke-width="3" stroke-linecap="round"/>
-    <circle cx="58" cy="54" r="3.5" fill="#4fc3f7" filter="url(#glow)"/>
-    <circle cx="58" cy="54" r="3.5" fill="#4fc3f7"/><rect x="66" y="45" width="26" height="26" rx="8" fill="url(#minusG)" stroke="#1a3a1a" stroke-width="3"/>
-    <path d="M72 58h14" stroke="#ffffff" stroke-width="4.5" stroke-linecap="round"/>
+  <g transform="translate(-7.2 -7.5)">
+<g transform="translate(-6.7 3.6) scale(0.42)">
+    <g transform="translate(-21.8, 1.3) scale(1.3)">
+  <path fill="#ffffff" d="M70.2 9.39c0 0-2.72 11.69-3.59 16.34-0.86 4.65-2.89 16.11-2.89 16.11s-1.97 0.53-3.56 0.81c-2.76 0.49-5.51 2.92-5.52 9.09 0 6.16 0 8.28 0 11.68 0 8.92 8.6 7.46 8.6 12.86 0 5.4 0 9.54 0 9.54l17.52 0c0 0 0-4.14 0-9.54 0-5.4 8.6-3.94 8.6-12.86 0-3.41 0-5.51 0-11.68s-2.76-8.6-5.52-9.09c-1.6-0.28-3.57-0.81-3.57-0.81s-2.03-11.46-2.89-16.11c-0.86-4.65-3.59-16.34-3.58-16.34-0.19-0.85-0.93-1.45-1.8-1.45C71.14 7.94 70.39 8.55 70.2 9.39z" stroke="none"/>
+  <path fill="#1a3a1a" d="M76.27 45.98c0 4.05-1.91 5.09-4.27 5.08-2.36 0-4.27-1.04-4.27-5.08 0-4.05 1.91-7.32 4.27-7.33C74.36 38.65 76.27 41.93 76.27 45.98z" stroke="none"/>
+  <path fill="#ffffff" d="M88.79 19.19l0-8.28-13.31 0c0.45 1.95 1.19 5.18 1.86 8.28L88.79 19.19z" stroke="none"/>
+  <path fill="#ffffff" d="M55.21 10.91l0 8.28 11.45 0c0.68-3.09 1.41-6.32 1.86-8.28L55.21 10.91z" stroke="none"/>
+  <polygon fill="#ffffff" points="57.8,88 57.8,98.05 86.19,98.06 86.19,88" stroke="none"/>
+</g>
+    <rect x="68.5" y="58" width="7" height="38" rx="3" fill="#4fc3f7"/><circle cx="72" cy="77" r="7.5" fill="#4fc3f7"/>
+    <rect x="40.57" y="30.94" width="14.88" height="18.13" rx="2" fill="#ffffff"/>
+    <rect x="88.56" y="30.94" width="14.88" height="18.13" rx="2" fill="#ffffff"/>
+    <rect x="35.89" y="98.07" width="15.79" height="21.48" rx="2" fill="#ffffff"/>
+    <rect x="92.33" y="98.07" width="15.79" height="21.48" rx="2" fill="#ffffff"/>
+  </g>
+    <line x1="72.0" y1="30.0" x2="76.5" y2="30.0" stroke="#ffffff" stroke-width="4"/><line x1="69.7" y1="35.7" x2="72.8" y2="38.8" stroke="#ffffff" stroke-width="4"/><line x1="64.0" y1="38.0" x2="64.0" y2="42.5" stroke="#ffffff" stroke-width="4"/><line x1="58.3" y1="35.7" x2="55.2" y2="38.8" stroke="#ffffff" stroke-width="4"/><line x1="56.0" y1="30.0" x2="51.5" y2="30.0" stroke="#ffffff" stroke-width="4"/><line x1="58.3" y1="24.3" x2="55.2" y2="21.2" stroke="#ffffff" stroke-width="4"/><line x1="64.0" y1="22.0" x2="64.0" y2="17.5" stroke="#ffffff" stroke-width="4"/><line x1="69.7" y1="24.3" x2="72.8" y2="21.2" stroke="#ffffff" stroke-width="4"/>
+    <circle cx="64" cy="30" r="9.5" fill="#ffffff"/>
+    <circle cx="64" cy="30" r="3.6" fill="#1a3a1a"/>
+    <path d="M54 62 Q54 48 68 48" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" opacity="0.55"/>
+    <circle cx="54" cy="58" r="3.5" fill="#4fc3f7"/><path d="M68 30h24" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>
   </g>
 </svg>

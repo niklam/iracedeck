@@ -3,10 +3,7 @@
   <svg x="4" y="4" width="64" height="64" viewBox="0 0 81.5 55.8">
   
   <defs>
-    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.55"/></linearGradient>
-    <linearGradient id="blkG2" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#5c6a78"/><stop offset="1" stop-color="#28313a"/></linearGradient>
-    <linearGradient id="redG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ff6b5e"/><stop offset="1" stop-color="#c0392b"/></linearGradient>
-    <filter id="glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="3"/></filter>
+    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.55"/></linearGradient><linearGradient id="blkG2" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#5c6a78"/><stop offset="1" stop-color="#28313a"/></linearGradient><linearGradient id="redG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ff6b5e"/><stop offset="1" stop-color="#c0392b"/></linearGradient><filter id="glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="3"/></filter>
   </defs>
   <g transform="translate(-11 0.8)">
 
