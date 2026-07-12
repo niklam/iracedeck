@@ -28,6 +28,8 @@ export interface PlatformFeatureFlags {
   dialFeedback: boolean;
   /** "Stream Deck Profiles" settings accordion + profile switching (Elgato-only; #736). */
   profiles: boolean;
+  /** Rasterize device-bound SVG icons to PNG in-plugin (#642). Temporary kill-switch. */
+  pngRasterization: boolean;
 }
 
 export interface PlatformFeatures {

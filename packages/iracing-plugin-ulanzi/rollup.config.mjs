@@ -258,6 +258,7 @@ const config = {
         __CAPABILITY_SVG_PATTERNS__: JSON.stringify(platformFeatures.capabilities.svgPatterns),
         __FEATURE_BORDER_GLOW__: JSON.stringify(platformFeatures.features.borderGlow),
         __FEATURE_DIAL_FEEDBACK__: JSON.stringify(platformFeatures.features.dialFeedback),
+        __FEATURE_PNG_RASTERIZATION__: JSON.stringify(platformFeatures.features.pngRasterization),
       },
     }),
     // Compile PI templates from @iracedeck/iracing-actions
