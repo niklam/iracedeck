@@ -450,6 +450,9 @@ importers:
       '@iracedeck/pi-components':
         specifier: workspace:*
         version: link:../pi-components
+      '@iracedeck/rasterizer':
+        specifier: workspace:*
+        version: link:../rasterizer
       '@iracedeck/sim-events-iracing':
         specifier: workspace:*
         version: link:../sim-events-iracing
@@ -544,6 +547,9 @@ importers:
       '@iracedeck/pi-components':
         specifier: workspace:*
         version: link:../pi-components
+      '@iracedeck/rasterizer':
+        specifier: workspace:*
+        version: link:../rasterizer
       '@iracedeck/sim-events-iracing':
         specifier: workspace:*
         version: link:../sim-events-iracing
@@ -635,6 +641,9 @@ importers:
       '@iracedeck/pi-components':
         specifier: workspace:*
         version: link:../pi-components
+      '@iracedeck/rasterizer':
+        specifier: workspace:*
+        version: link:../rasterizer
       '@iracedeck/sim-events-iracing':
         specifier: workspace:*
         version: link:../sim-events-iracing
