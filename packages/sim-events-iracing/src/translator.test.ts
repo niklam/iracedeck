@@ -2870,4 +2870,124 @@ describe("sim-events-iracing translator", () => {
       expect(ev.data.classPosition).toBe(1);
     });
   });
+
+  // Issue #829: the standing-start numeric countdown is the "get in the car"
+  // reminder, so it must be emitted while the user is OUT of the car — sitting
+  // in the garage / session screen / in-session replay view, where iRacing
+  // reports `IsReplayPlaying: true`. The countdown diff therefore runs BEFORE
+  // the replay guard, gated on `!isReplayOnlySession` (the #604 discriminator)
+  // so a standalone saved replay stays silent, and its state survives the
+  // replay-edge wipes so view flips can neither drop nor replay a mark.
+  describe("standing-start countdown out of car (issue #829)", () => {
+    const STANDING_RACE_SESSION: Record<string, unknown> = {
+      SessionInfo: { Sessions: [{ SessionType: "Race" }] },
+      WeekendInfo: { TrackID: 42, SimMode: "full", WeekendOptions: { StandingStart: 1 } },
+    };
+
+    function countdownSeconds(handler: ReturnType<typeof vi.fn>): number[] {
+      return handler.mock.calls.map((c) => (c[0] as SimEventOf<"startLight.countdown.raised">).data.seconds);
+    }
+
+    function garageTick(timeRemain: number): TelemetryData {
+      return telemetry({
+        SessionNum: 0,
+        SessionState: SessionState.GetInCar,
+        SessionTimeRemain: timeRemain,
+        IsReplayPlaying: true,
+        IsOnTrack: false,
+      });
+    }
+
+    function liveTick(timeRemain: number): TelemetryData {
+      return telemetry({
+        SessionNum: 0,
+        SessionState: SessionState.GetInCar,
+        SessionTimeRemain: timeRemain,
+        IsReplayPlaying: false,
+        IsOnTrack: true,
+      });
+    }
+
+    it("still emits the countdown while live in the car", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(STANDING_RACE_SESSION);
+      const handler = vi.fn();
+      getEventBus().subscribe("startLight.countdown.raised", handler);
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(liveTick(95)); // first-tick observation
+      controller.__tick(liveTick(94)); // seeds ceiling
+      controller.__tick(liveTick(58));
+
+      expect(countdownSeconds(handler)).toEqual([60]);
+    });
+
+    it("emits the countdown while the user is out of the car (garage / session screen)", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(STANDING_RACE_SESSION);
+      const handler = vi.fn();
+      getEventBus().subscribe("startLight.countdown.raised", handler);
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(garageTick(95)); // first-tick observation (also the replay-entry wipe tick)
+      controller.__tick(garageTick(94)); // seeds ceiling on a replay-mode tick
+      controller.__tick(garageTick(58));
+      controller.__tick(garageTick(28));
+
+      expect(countdownSeconds(handler)).toEqual([60, 30]);
+    });
+
+    it("keeps countdown state across a garage flip — a mark at the flip boundary still fires", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(STANDING_RACE_SESSION);
+      const handler = vi.fn();
+      getEventBus().subscribe("startLight.countdown.raised", handler);
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(liveTick(95)); // first-tick observation
+      controller.__tick(liveTick(94)); // seeds ceiling=94 live
+      controller.__tick(liveTick(92));
+      // Hop into the garage right before the 90 mark. The replay-edge wipe
+      // must preserve the seeded ceiling — a re-seed at 89 would exclude 90.
+      controller.__tick(garageTick(91));
+      controller.__tick(garageTick(89));
+
+      expect(countdownSeconds(handler)).toEqual([90]);
+    });
+
+    it("does not replay a fired mark when the user gets back in the car", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(STANDING_RACE_SESSION);
+      const handler = vi.fn();
+      getEventBus().subscribe("startLight.countdown.raised", handler);
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(garageTick(95)); // first-tick observation
+      controller.__tick(garageTick(94)); // seeds ceiling
+      controller.__tick(garageTick(58)); // fires 60
+      // Back in the car — the replay-exit wipe must not clear the fired set.
+      controller.__tick(liveTick(55));
+      controller.__tick(liveTick(54));
+      controller.__tick(liveTick(28)); // fires 30
+
+      expect(countdownSeconds(handler)).toEqual([60, 30]);
+    });
+
+    it("stays silent in a replay-only session (SimMode=replay)", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo({
+        SessionInfo: { Sessions: [{ SessionType: "Race" }] },
+        WeekendInfo: { TrackID: 42, SimMode: "replay", WeekendOptions: { StandingStart: 1 } },
+      });
+      const handler = vi.fn();
+      getEventBus().subscribe("startLight.countdown.raised", handler);
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(garageTick(95));
+      controller.__tick(garageTick(58));
+      controller.__tick(garageTick(28));
+
+      expect(handler).not.toHaveBeenCalled();
+    });
+  });
 });

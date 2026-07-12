@@ -62,7 +62,7 @@ import { diffPitsOpen } from "./diff/pits-open.js";
 import { calculateFrozenRacePositions, updatePositionTracking } from "./diff/race-finish.js";
 import { diffRadar, resolveRadarState } from "./diff/radar.js";
 import { diffRollingStart } from "./diff/rolling-start.js";
-import { diffStartLights } from "./diff/start-lights.js";
+import { diffStartCountdown, diffStartLights } from "./diff/start-lights.js";
 import { diffToggles } from "./diff/toggles.js";
 import { diffTrackWetness } from "./diff/track-wetness.js";
 import type { PendingEvent } from "./diff/types.js";
@@ -903,15 +903,18 @@ function handleDisconnect(self: TranslatorInstance): void {
 /**
  * Wipe `TranslatorState` for a replay-mode transition (both edges — entering
  * and leaving replay), preserving the checkered-deferral cluster (issue
- * #771): a checkered held for the player's S/F crossing must survive a
- * replay glance mid-deferral, or the callout is silently lost — the flag
- * diff's post-wipe re-seed sees the `Checkered` bit already set and never
- * re-emits. The flag seed deliberately leaves these fields alone. A genuine
- * session change still clears them (`resetPerSessionState` wipes without
- * preservation), so a pending checkered can't leak into the next session.
+ * #771) and the standing-start countdown cluster (issue #829): a checkered
+ * held for the player's S/F crossing must survive a replay glance
+ * mid-deferral, or the callout is silently lost — the flag diff's post-wipe
+ * re-seed sees the `Checkered` bit already set and never re-emits — and the
+ * pre-guard countdown keeps counting through garage/replay views, so a wipe
+ * would re-seed its ceiling lower and drop a mark at the flip boundary. The
+ * flag seed deliberately leaves these fields alone. A genuine session change
+ * still clears them (`resetPerSessionState` wipes without preservation), so
+ * neither cluster can leak into the next session.
  */
 function wipeStateForReplay(self: TranslatorInstance): void {
-  const preservedFlagDeferrals = {
+  const preservedAcrossReplay = {
     checkeredPendingCross: self.state.checkeredPendingCross,
     flagLastCrossedAt: self.state.flagLastCrossedAt,
     // The white two-stage latch + raise timestamp (issue #772): a replay
@@ -919,10 +922,19 @@ function wipeStateForReplay(self: TranslatorInstance): void {
     // nor drop the heads-up gap guard (timestamp).
     whiteLastLapFired: self.state.whiteLastLapFired,
     whiteRaisedAt: self.state.whiteRaisedAt,
+    // The standing-start countdown cluster (issue #829): the countdown runs
+    // PRE-guard and keeps counting while the user sits in the garage (a
+    // replay-mode view), so both replay edges must leave it alone — a
+    // re-seed at the flip would lower the ceiling and silently drop a mark
+    // right at the boundary. The countdown's own window-exit reset (and
+    // `resetPerSessionState`) still clears it at the real end of the window.
+    startCountdownCeiling: self.state.startCountdownCeiling,
+    startCountdownFired: self.state.startCountdownFired,
+    startCountdownObserved: self.state.startCountdownObserved,
   };
 
   self.state = createInitialState();
-  Object.assign(self.state, preservedFlagDeferrals);
+  Object.assign(self.state, preservedAcrossReplay);
 }
 
 function resetPerSessionState(self: TranslatorInstance, telemetry: TelemetryData): void {
@@ -1137,6 +1149,25 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     self.lastObservedSessionNum = currentSessionNum;
   }
 
+  // Standing-start numeric countdown (issue #829). Runs on every tick BEFORE
+  // the replay guard: the countdown is the "get in the car" reminder, and
+  // iRacing reports `IsReplayPlaying: true` while the user sits in the garage
+  // / session screen / in-session replay view — exactly where the reminder
+  // matters most. Gated on `!replayOnlySession` (the #604 `SimMode`
+  // discriminator) so a standalone saved replay stays silent, and its state
+  // is preserved by `wipeStateForReplay` so a garage↔car flip can neither
+  // drop a boundary mark nor replay a spoken one. The gantry edges stay
+  // post-guard (`diffStartLights` below) — out of the car at lights-out means
+  // the start was missed, so "go, go, go" would be noise.
+  if (!replayOnlySession) {
+    diffStartCountdown(
+      self.state,
+      telemetry,
+      self.controller.getSessionInfo() as Record<string, unknown> | null,
+      (ev) => publish(self, ev, telemetry, Date.now()),
+    );
+  }
+
   // `driver.firstOnTrack` is detected on every tick — including replay ticks
   // — so the genuine garage/replay → live-on-track transition is never
   // missed. Must run before the replay guard's early return below.
@@ -1250,9 +1281,11 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     isRaceSession && resolvePlayerIsLeader(self, telemetry, playerCarIdx),
     sessionType.includes("Practice") || sessionType.includes("Testing"),
   );
-  // Start-light gantry + numeric pre-start countdown (issue #480). Sits beside
-  // diffFlags (after the replay guard) and reads the already-resolved
-  // `sessionInfo` for the standing-start / AI-race gates.
+  // Start-light gantry edges (issue #480). Sits beside diffFlags (after the
+  // replay guard — the gantry lines are in-car only) and reads the
+  // already-resolved `sessionInfo` for the standing-start gate. The numeric
+  // pre-start countdown runs PRE-guard instead (`diffStartCountdown` above,
+  // issue #829) so it reaches a driver who's still in the garage.
   diffStartLights(self.state, telemetry, sessionInfo, emit);
   // Rolling-start "one pace lap to go" (issue #657) — a start/finish-crossing
   // heuristic, NOT iRacing's `OneLapToGreen` edge. Reads `sessionInfo` for the

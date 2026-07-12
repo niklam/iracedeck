@@ -1,10 +1,18 @@
 /**
- * Start-light family scenarios (issues #480 / #673).
+ * Start-light family scenarios (issues #480 / #673 / #829).
  *
  * Two gantry lines (ready / go) plus a four-mark numeric pre-start
  * countdown. Each callout wraps its clip in the shared radio frame
  * (`@pit-crew.radio-open` / `@pit-crew.radio-close`) so the engineer voice
  * matches every other Pit Crew message.
+ *
+ * **In-car gating differs by half** (issue #829): the gantry lines require
+ * the driver live in the car (out of the car at lights-out means the start
+ * was missed — "go, go, go" would be noise), while the countdown marks
+ * deliberately play OUT of the car too — they're the "get in the car"
+ * reminder, audible from the garage / session screen / replay view. The
+ * saved-replay case is suppressed translator-side (the pre-guard countdown
+ * diff is gated on `SimMode`, #604), not here.
  *
  * **Pool-driven clips** (mirrors `flag-alerts.ts`): every scenario draws from a
  * pool defined in `pools.ts` under the `start-light-` prefix, so a future
@@ -39,13 +47,15 @@ function startLightSequence(steps: Step[]): Step[] {
   return ["@pit-crew.radio-open", ...steps, "@pit-crew.radio-close"];
 }
 
-// Start lights are a race-only concept spoken to a driver in the car. The diff
-// already gates on standing-start + the GetInCar/Warmup pre-start window, but iRacing
-// can raise the grid bits while forming the race grid at the END of a qualifying
-// session — so gate on the race session too. Also gate on `isLiveOnTrack` so the
-// gantry/countdown stays silent while the user is out of the car at the grid or
-// in a replay (issue #480 follow-up). Live-read at fire time. Safe for the
-// critical `start-go`: at a real race start the driver is in the car, in "Race".
+// Start lights are a race-only concept. The diff already gates on
+// standing-start + the GetInCar/Warmup pre-start window, but iRacing can raise
+// the grid bits while forming the race grid at the END of a qualifying session
+// — so gate on the race session too. The GANTRY lines additionally gate on
+// `isLiveOnTrack` so they stay silent while the user is out of the car at the
+// grid or in a replay (issue #480 follow-up); the countdown marks use the bare
+// race gate instead (issue #829 — see the header). Live-read at fire time.
+// Safe for the critical `start-go`: at a real race start the driver is in the
+// car, in "Race".
 const liveRaceCar = (e: SimEventOf<SimEventName>): boolean =>
   isRaceSession(getSessionType()) && isLiveOnTrack(e.telemetry as TelemetryData | null);
 
@@ -79,6 +89,12 @@ const START_GO: Scenario = {
  * and draws from its own `start-light-countdown-<N>` pool (mirrors pit-box's
  * one-event-per-mark shape). All under the single `calloutEnabledStartCountdown`
  * opt-in via `SCENARIO_ID_TO_START_LIGHT_ID`.
+ *
+ * No `isLiveOnTrack` gate here (issue #829): the marks are the "get in the
+ * car" reminder and must play while the driver sits in the garage / session
+ * screen / replay view. Race-session gating stays (the grid bits leak at the
+ * qualifying checkered), and the saved-replay case never emits the event at
+ * all (translator-side `SimMode` gate).
  */
 const COUNTDOWN_SECONDS: readonly StartCountdownSeconds[] = [90, 60, 30, 10];
 
@@ -94,7 +110,8 @@ function countdownScenario(seconds: StartCountdownSeconds): Scenario {
     sequence: startLightSequence([`pool:start-light-countdown-${seconds}`]),
     when: {
       event: "startLight.countdown.raised",
-      where: (e) => liveRaceCar(e) && (e as SimEventOf<"startLight.countdown.raised">).data.seconds === seconds,
+      where: (e) =>
+        isRaceSession(getSessionType()) && (e as SimEventOf<"startLight.countdown.raised">).data.seconds === seconds,
     },
   };
 }
