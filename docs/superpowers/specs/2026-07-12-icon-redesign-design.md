@@ -120,3 +120,13 @@ Family frame: olive glass `#453a1c → #221a0a`, stroke `#6a5138`, no top highli
 
 - **Flat car style for car-bearing icons** (Setup Aero, Setup Chassis, reload-car-textures): the canonical car is the Tire Service race car (verbatim body paths + the four tire rects from `tire-service.ts`), drawn flat — `{{graphic1Color}}` silhouette on the background, cockpit window in `{{backgroundColor}}`, highlighted parts (corner tires, side pairs, axle pairs, wing panels, rear-wing plane, driveline overlay) in `{{graphic2Color}}`. Direction is a **bare oversized +/− mark in graphic1** (no chip plate); a third graphic slot may be introduced later. Glyphs beside the car (shock coil, spring, ARB U-bar, diff gear + phase badge, drilled brake disc with bullseye hub and caliper arc, DRIVE-wheel power steering + graphic2 bolt) are flat graphic1 strokes/fills, vertically centered on the car; marks must not extend the artwork's bounding box below the car.
 - Everything else keeps the rich chipless style decided earlier (waves = graphic2, direction in the artwork).
+
+## Third revision — plain style final direction (2026-07-13, Niklas review, browser rounds v1–v4)
+
+Niklas committed to the **flat/plain style** for every remaining set (Media Capture, Camera Editor Adjustments, Cockpit Misc dash/in-lap, Setup Brakes/Engine/Fuel/Hybrid/Traction, Chat, Black Box Selector, Recenter VR):
+
+- **Plain vocabulary**: solid `{{graphic1Color}}` fills, interior details as `{{backgroundColor}}` cutouts, at most one accent per icon (`{{graphic2Color}}` or the icon's fixed semantic color). No gradients, glow, or gloss. Elements sitting on the key background (pitch camera lens, blimp cabin) stay white. Implemented as a `plain` transform in the emitter (`plainifyArt` + `plain: true` per set / per icon) over the authored rich artwork.
+- **± marks**: bare graphic1 `+`/`−` (stroke 6) to the right of the artwork, **vertically centered on it**; titles then use INCREASE/DECREASE words, never `+`/`−` signs. Dash pages use `>` (right) / `<` (LEFT side of the panel) chevrons.
+- **Media Capture rework**: video camera is a clean silhouette (no reels — per review the tiny reels read badly); the action glyph lives **inside the body** (red record dot, background-cutout clock, green power) instead of a top-right badge. Reload icons: refresh arrows swapped top-to-bottom; Reload All spacing widened, Reload Car tightened; titles end with TEXTURES on the lower row.
+- **Tri-state exemption**: abs-toggle and tc-toggle are tri-state buttons and were excluded from the plain conversion (files untouched by the emitter).
+- Force Feedback, Look Direction, View Adjustment ± and Telemetry Control keep their previously approved treatments.

@@ -1,13 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50.8 51.8">
-  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"title":{"text":"PITCH\n+"},"border":{"color":"#3a5a6a"}}</desc>
+  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"title":{"text":"PITCH\nINCREASE"},"border":{"color":"#3a5a6a"}}</desc>
   <defs>
-    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.55"/></linearGradient>
+    
   </defs>
   <g transform="translate(-23 -11)">
 
-    <rect x="24" y="28" width="26" height="18" rx="4" fill="url(#mtl)"/>
-    <rect x="24" y="28" width="26" height="5.5" rx="2.7" fill="#ffffff" opacity="0.25"/>
-    <rect x="50" y="32" width="9" height="10" rx="2" fill="#3f5561"/>
+    <rect x="24" y="28" width="26" height="18" rx="4" fill="#ffffff"/>
+    
+    <rect x="50" y="32" width="9" height="10" rx="2" fill="#ffffff"/>
     <path d="M64 18 Q78 37 64 56" fill="none" stroke="#4fc3f7" stroke-width="3.5" stroke-linecap="round"/><polygon points="60,12 68.5,16.5 61,22.5" fill="#4fc3f7"/>
   </g>
 </svg>

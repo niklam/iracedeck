@@ -1,16 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 81.3 49.3">
   <desc>{"colors":{"backgroundColor":"#2a2a2a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"title":{"text":"RELATIVE"},"border":{"color":"#5a5a5a"}}</desc>
   <defs>
-    <linearGradient id="bbG2" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#453a1c"/><stop offset="1" stop-color="#221a0a"/></linearGradient>
-    <linearGradient id="ambG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f7d94c"/><stop offset="1" stop-color="#d9980f"/></linearGradient>
+    
   </defs>
   <g transform="translate(-7.2 -9.2)">
 
-    <rect x="10" y="12" width="76" height="44" rx="6" fill="url(#bbG2)" stroke="#6a5138" stroke-width="3.5"/>
+    <rect x="10" y="12" width="76" height="44" rx="6" fill="#2a2a2a" stroke="#ffffff" stroke-width="3.5"/>
     <rect x="20" y="17" width="56" height="9.5" rx="3" fill="#4a3f22"/>
     <rect x="23" y="19.5" width="4.5" height="4.5" rx="1" fill="#d8cba0"/>
     <rect x="31" y="19.7" width="22" height="4" rx="2" fill="#d8cba0" opacity="0.7"/>
-    <rect x="20" y="29.5" width="56" height="9.5" rx="3" fill="url(#ambG)"/>
+    <rect x="20" y="29.5" width="56" height="9.5" rx="3" fill="#f6d34c"/>
     <rect x="23" y="32" width="4.5" height="4.5" rx="1" fill="#241c0a"/>
     <rect x="31" y="32.2" width="28" height="4" rx="2" fill="#241c0a" opacity="0.8"/>
     <rect x="20" y="42" width="56" height="9.5" rx="3" fill="#4a3f22"/>

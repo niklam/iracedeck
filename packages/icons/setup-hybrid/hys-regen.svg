@@ -1,16 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 62.3 45.8">
   <desc>{"colors":{"backgroundColor":"#1a3a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"HYS\nREGEN"},"border":{"color":"#3a6a3a"}}</desc>
   <defs>
-    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="{{graphic1Color}}"/><stop offset="1" stop-color="{{graphic1Color}}" stop-opacity="0.55"/></linearGradient>
-    <linearGradient id="plusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#4be08d"/><stop offset="1" stop-color="#1d9e58"/></linearGradient>
-    <filter id="glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="3"/></filter>
+    
   </defs>
   <g transform="translate(-17 -9)">
 
-    <rect x="25" y="10" width="10" height="6" rx="2" fill="#8fa3ad"/>
-    <rect x="18" y="16" width="24" height="38" rx="4.5" fill="url(#mtl)"/>
-    <rect x="22" y="34" width="16" height="16" rx="2.5" fill="url(#plusG)"/>
-    <line x1="76" y1="28" x2="54" y2="28" stroke="#4be08d" stroke-width="5" stroke-linecap="round" filter="url(#glow)"/>
+    <rect x="25" y="10" width="10" height="6" rx="2" fill="{{graphic1Color}}"/>
+    <rect x="18" y="16" width="24" height="38" rx="4.5" fill="{{graphic1Color}}"/>
+    <rect x="22" y="34" width="16" height="16" rx="2.5" fill="#2ecc71"/>
+    
     <line x1="76" y1="28" x2="54" y2="28" stroke="#4be08d" stroke-width="5" stroke-linecap="round"/>
     <polygon points="54,21 44,28 54,35" fill="#4be08d"/>
   </g>

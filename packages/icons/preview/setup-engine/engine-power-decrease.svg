@@ -1,19 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 81.3 67.3">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100.8 49.8">
   <desc>{"colors":{"backgroundColor":"#2a3a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"ENG POWER\nDECREASE"},"border":{"color":"#5a6a3a"}}</desc>
   <defs>
-    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.55"/></linearGradient>
-    <filter id="glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="3"/></filter>
-    <linearGradient id="minusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f47c6a"/><stop offset="1" stop-color="#c0392b"/></linearGradient>
+    
   </defs>
-  <g transform="translate(-13 -6)">
+  <g transform="translate(-13 -7)">
 
     <rect x="22" y="14" width="6" height="10" rx="2" fill="#6b7f8a"/>
     <rect x="32" y="14" width="6" height="10" rx="2" fill="#6b7f8a"/>
     <rect x="42" y="14" width="6" height="10" rx="2" fill="#6b7f8a"/>
-    <rect x="18" y="22" width="34" height="10" rx="2.5" fill="#8fa3ad"/>
-    <rect x="14" y="30" width="42" height="26" rx="4" fill="url(#mtl)"/>
-    <polygon points="72,8 60,34 69,34 64,56 81,28 71,28" fill="#f7d94c" filter="url(#glow)"/>
-    <polygon points="72,8 60,34 69,34 64,56 81,28 71,28" fill="#f7d94c"/><rect x="66" y="45" width="26" height="26" rx="8" fill="url(#minusG)" stroke="#2a3a1a" stroke-width="3"/>
-    <path d="M72 58h14" stroke="#ffffff" stroke-width="4.5" stroke-linecap="round"/>
+    <rect x="18" y="22" width="34" height="10" rx="2.5" fill="#ffffff"/>
+    <rect x="14" y="30" width="42" height="26" rx="4" fill="#ffffff"/>
+    
+    <polygon points="72,8 60,34 69,34 64,56 81,28 71,28" fill="#f7d94c"/><path d="M85.8 31.9h24" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>
   </g>
 </svg>

@@ -1,21 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 81.3 49.3">
   <desc>{"colors":{"backgroundColor":"#2a2a2a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"title":{"text":"TIRE INFO"},"border":{"color":"#5a5a5a"}}</desc>
   <defs>
-    <linearGradient id="bbG2" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#453a1c"/><stop offset="1" stop-color="#221a0a"/></linearGradient>
-    <radialGradient id="tireG" cx="0.4" cy="0.35" r="0.9"><stop stop-color="#4a5560"/><stop offset="1" stop-color="#20262c"/></radialGradient>
-    <linearGradient id="plusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#4be08d"/><stop offset="1" stop-color="#1d9e58"/></linearGradient>
-    <linearGradient id="ambG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f7d94c"/><stop offset="1" stop-color="#d9980f"/></linearGradient>
-    <linearGradient id="redG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ff6b5e"/><stop offset="1" stop-color="#c0392b"/></linearGradient>
+    
   </defs>
   <g transform="translate(-7.2 -9.2)">
 
-    <rect x="10" y="12" width="76" height="44" rx="6" fill="url(#bbG2)" stroke="#6a5138" stroke-width="3.5"/>
-    <rect x="22" y="19" width="16" height="28" rx="5.5" fill="url(#tireG)"/>
-    <line x1="26" y1="23" x2="26" y2="43" stroke="#14181d" stroke-width="2"/>
-    <line x1="30" y1="23" x2="30" y2="43" stroke="#14181d" stroke-width="2"/>
-    <line x1="34" y1="23" x2="34" y2="43" stroke="#14181d" stroke-width="2"/>
-    <rect x="48" y="24" width="7" height="20" rx="2.5" fill="url(#plusG)"/>
-    <rect x="58" y="29" width="7" height="15" rx="2.5" fill="url(#ambG)"/>
-    <rect x="68" y="34" width="7" height="10" rx="2.5" fill="url(#redG)"/>
+    <rect x="10" y="12" width="76" height="44" rx="6" fill="#2a2a2a" stroke="#ffffff" stroke-width="3.5"/>
+    <rect x="22" y="19" width="16" height="28" rx="5.5" fill="#ffffff"/>
+    <line x1="26" y1="23" x2="26" y2="43" stroke="#2a2a2a" stroke-width="2"/>
+    <line x1="30" y1="23" x2="30" y2="43" stroke="#2a2a2a" stroke-width="2"/>
+    <line x1="34" y1="23" x2="34" y2="43" stroke="#2a2a2a" stroke-width="2"/>
+    <rect x="48" y="24" width="7" height="20" rx="2.5" fill="#2ecc71"/>
+    <rect x="58" y="29" width="7" height="15" rx="2.5" fill="#f6d34c"/>
+    <rect x="68" y="34" width="7" height="10" rx="2.5" fill="#e74c3c"/>
   </g>
 </svg>

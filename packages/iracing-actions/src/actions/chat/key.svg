@@ -3,12 +3,12 @@
   <svg x="4" y="4" width="64" height="64" viewBox="0 0 61.8 49.8">
   
   <defs>
-    <linearGradient id="scl2" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.76"/></linearGradient>
+    
   </defs>
   <g transform="translate(-13 -9)">
 
-    <rect x="14" y="10" width="60" height="36" rx="9" fill="url(#scl2)"/>
-    <polygon points="28,45 28,58 41,45" fill="url(#scl2)"/>
+    <rect x="14" y="10" width="60" height="36" rx="9" fill="#ffffff"/>
+    <polygon points="28,45 28,58 41,45" fill="#ffffff"/>
     <line x1="44" y1="18" x2="44" y2="38" stroke="#2563ab" stroke-width="3.2"/>
     <line x1="39" y1="18" x2="49" y2="18" stroke="#2563ab" stroke-width="2.8" stroke-linecap="round"/>
     <line x1="39" y1="38" x2="49" y2="38" stroke="#2563ab" stroke-width="2.8" stroke-linecap="round"/>

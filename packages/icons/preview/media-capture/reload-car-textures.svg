@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 84.8 54.5">
-  <desc>{"colors":{"backgroundColor":"#2a1a3a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"title":{"text":"TEXTURES\nRELOAD CAR"},"border":{"color":"#5a3a6a"}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 77.8 54.5">
+  <desc>{"colors":{"backgroundColor":"#2a1a3a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"title":{"text":"RELOAD CAR\nTEXTURES"},"border":{"color":"#5a3a6a"}}</desc>
   <defs>
     
   </defs>
@@ -18,9 +18,9 @@
     <rect x="35.89" y="98.07" width="15.79" height="21.48" rx="2" fill="#ffffff"/>
     <rect x="92.33" y="98.07" width="15.79" height="21.48" rx="2" fill="#ffffff"/>
   </g>
-    <path d="M62 26 A15 15 0 0 1 88 30" fill="none" stroke="#4fc3f7" stroke-width="4" stroke-linecap="round"/>
-    <polygon points="88,22 91,33 80,31" fill="#4fc3f7"/>
-    <path d="M86 44 A15 15 0 0 1 60 40" fill="none" stroke="#4fc3f7" stroke-width="4" stroke-linecap="round"/>
-    <polygon points="60,48 57,37 68,39" fill="#4fc3f7"/>
+    <path d="M79 26 A15 15 0 0 0 53 30" fill="none" stroke="#4fc3f7" stroke-width="4" stroke-linecap="round"/>
+    <polygon points="53,22 50,33 61,31" fill="#4fc3f7"/>
+    <path d="M55 44 A15 15 0 0 0 81 40" fill="none" stroke="#4fc3f7" stroke-width="4" stroke-linecap="round"/>
+    <polygon points="81,48 84,37 73,39" fill="#4fc3f7"/>
   </g>
 </svg>

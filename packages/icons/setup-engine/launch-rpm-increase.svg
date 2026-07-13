@@ -1,16 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 83.8 60.8">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 106.8 43.8">
   <desc>{"colors":{"backgroundColor":"#2a3a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"LAUNCH RPM\nINCREASE"},"border":{"color":"#5a6a3a"}}</desc>
   <defs>
-    <linearGradient id="redG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ff6b5e"/><stop offset="1" stop-color="#c0392b"/></linearGradient>
-    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="{{graphic1Color}}"/><stop offset="1" stop-color="{{graphic1Color}}" stop-opacity="0.55"/></linearGradient>
-    <linearGradient id="plusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#4be08d"/><stop offset="1" stop-color="#1d9e58"/></linearGradient>
+    
   </defs>
   <g transform="translate(-10.5 -12.5)">
 
-    <path d="M15 50 A33 33 0 0 1 81 50" fill="none" stroke="#3f5561" stroke-width="7" stroke-linecap="round"/>
-    <path d="M67 22 A33 33 0 0 1 81 50" fill="none" stroke="url(#redG)" stroke-width="7" stroke-linecap="round"/>
+    <path d="M15 50 A33 33 0 0 1 81 50" fill="none" stroke="{{backgroundColor}}" stroke-width="7" stroke-linecap="round"/>
+    <path d="M67 22 A33 33 0 0 1 81 50" fill="none" stroke="#e74c3c" stroke-width="7" stroke-linecap="round"/>
     <line x1="48" y1="50" x2="69" y2="25" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
-    <circle cx="48" cy="50" r="5.5" fill="url(#mtl)"/><rect x="66" y="45" width="26" height="26" rx="8" fill="url(#plusG)" stroke="{{backgroundColor}}" stroke-width="3"/>
-    <path d="M72 58h14M79 51v14" stroke="#ffffff" stroke-width="4.5" stroke-linecap="round"/>
+    <circle cx="48" cy="50" r="5.5" fill="{{graphic1Color}}"/><path d="M89.3 34.4h24M101.3 22.4v24" fill="none" stroke="{{graphic1Color}}" stroke-width="6" stroke-linecap="round"/>
   </g>
 </svg>

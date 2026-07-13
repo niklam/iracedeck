@@ -1,19 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 89 50.8">
-  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"title":{"text":"BLIMP VEL\n+"},"border":{"color":"#3a5a6a"}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 102.5 32">
+  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"title":{"text":"BLIMP VEL\nINCREASE"},"border":{"color":"#3a5a6a"}}</desc>
   <defs>
-    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.55"/></linearGradient><linearGradient id="plusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#4be08d"/><stop offset="1" stop-color="#1d9e58"/></linearGradient>
+    
   </defs>
-  <g transform="translate(-5.2 -22.5)">
+  <g transform="translate(-5.2 -18)">
 
     <line x1="12" y1="25" x2="28" y2="25" stroke="#4fc3f7" stroke-width="3" stroke-linecap="round" opacity="0.55"/>
     <line x1="8" y1="33" x2="26" y2="33" stroke="#4fc3f7" stroke-width="3.2" stroke-linecap="round" opacity="0.8"/>
     <line x1="12" y1="41" x2="28" y2="41" stroke="#4fc3f7" stroke-width="3" stroke-linecap="round" opacity="0.55"/>
     <g transform="translate(54 33) scale(1)">
-    <ellipse cx="0" cy="0" rx="16" ry="8.5" fill="url(#mtl)"/>
-    <polygon points="13,-3.5 21,-7.5 21,7.5 13,3.5" fill="#8fa3ad"/>
-    <rect x="-6" y="7.5" width="9" height="4.5" rx="2" fill="#3f5561"/>
-    <ellipse cx="-4" cy="-3.5" rx="7" ry="3" fill="#ffffff" opacity="0.3"/>
-  </g><rect x="66" y="45" width="26" height="26" rx="8" fill="url(#plusG)" stroke="#1a2a3a" stroke-width="3"/>
-    <path d="M72 58h14M79 51v14" stroke="#ffffff" stroke-width="4.5" stroke-linecap="round"/>
+    <ellipse cx="0" cy="0" rx="16" ry="8.5" fill="#ffffff"/>
+    <polygon points="13,-3.5 21,-7.5 21,7.5 13,3.5" fill="#ffffff"/>
+    <rect x="-6" y="7.5" width="9" height="4.5" rx="2" fill="#ffffff"/>
+    
+  </g><path d="M79.8 34.1h24M91.8 22.1v24" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>
   </g>
 </svg>

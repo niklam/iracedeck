@@ -1,21 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 81.3 49.3">
   <desc>{"colors":{"backgroundColor":"#2a2a2a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"title":{"text":"IN-CAR"},"border":{"color":"#5a5a5a"}}</desc>
   <defs>
-    <linearGradient id="bbG2" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#453a1c"/><stop offset="1" stop-color="#221a0a"/></linearGradient>
-    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="{{graphic1Color}}"/><stop offset="1" stop-color="{{graphic1Color}}" stop-opacity="0.55"/></linearGradient>
+    
   </defs>
   <g transform="translate(-7.2 -9.2)">
 
-    <rect x="10" y="12" width="76" height="44" rx="6" fill="url(#bbG2)" stroke="#6a5138" stroke-width="3.5"/>
-    <circle cx="32" cy="34" r="15" fill="url(#mtl)"/>
+    <rect x="10" y="12" width="76" height="44" rx="6" fill="{{backgroundColor}}" stroke="{{graphic1Color}}" stroke-width="3.5"/>
+    <circle cx="32" cy="34" r="15" fill="{{graphic1Color}}"/>
     <circle cx="32" cy="34" r="11" fill="#241c0a"/>
-    <rect x="17" y="31.7" width="30" height="4.6" fill="url(#mtl)"/>
-    <rect x="29.7" y="34" width="4.6" height="15" fill="url(#mtl)"/>
-    <circle cx="32" cy="34" r="5" fill="url(#mtl)"/>
-    <circle cx="32" cy="34" r="2" fill="#3f5561"/>
-    <rect x="54" y="23" width="26" height="5" rx="2.5" fill="#14100a" stroke="#6a5138" stroke-width="1"/>
-    <circle cx="63" cy="25.5" r="4.2" fill="url(#mtl)"/>
-    <rect x="54" y="38" width="26" height="5" rx="2.5" fill="#14100a" stroke="#6a5138" stroke-width="1"/>
-    <circle cx="72" cy="40.5" r="4.2" fill="url(#mtl)"/>
+    <rect x="17" y="31.7" width="30" height="4.6" fill="{{graphic1Color}}"/>
+    <rect x="29.7" y="34" width="4.6" height="15" fill="{{graphic1Color}}"/>
+    <circle cx="32" cy="34" r="5" fill="{{graphic1Color}}"/>
+    <circle cx="32" cy="34" r="2" fill="{{backgroundColor}}"/>
+    <rect x="54" y="23" width="26" height="5" rx="2.5" fill="{{backgroundColor}}" stroke="{{graphic1Color}}" stroke-width="1"/>
+    <circle cx="63" cy="25.5" r="4.2" fill="{{graphic1Color}}"/>
+    <rect x="54" y="38" width="26" height="5" rx="2.5" fill="{{backgroundColor}}" stroke="{{graphic1Color}}" stroke-width="1"/>
+    <circle cx="72" cy="40.5" r="4.2" fill="{{graphic1Color}}"/>
   </g>
 </svg>

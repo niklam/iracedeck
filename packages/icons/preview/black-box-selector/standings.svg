@@ -1,17 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 81.3 49.3">
   <desc>{"colors":{"backgroundColor":"#2a2a2a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"title":{"text":"STANDINGS"},"border":{"color":"#5a5a5a"}}</desc>
   <defs>
-    <linearGradient id="bbG2" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#453a1c"/><stop offset="1" stop-color="#221a0a"/></linearGradient>
-    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.55"/></linearGradient>
-    <linearGradient id="ambG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f7d94c"/><stop offset="1" stop-color="#d9980f"/></linearGradient>
+    
   </defs>
   <g transform="translate(-7.2 -9.2)">
 
-    <rect x="10" y="12" width="76" height="44" rx="6" fill="url(#bbG2)" stroke="#6a5138" stroke-width="3.5"/>
-    <rect x="26" y="29" width="14" height="17" rx="2" fill="url(#mtl)"/>
-    <rect x="42" y="19" width="14" height="27" rx="2" fill="url(#ambG)"/>
+    <rect x="10" y="12" width="76" height="44" rx="6" fill="#2a2a2a" stroke="#ffffff" stroke-width="3.5"/>
+    <rect x="26" y="29" width="14" height="17" rx="2" fill="#ffffff"/>
+    <rect x="42" y="19" width="14" height="27" rx="2" fill="#f6d34c"/>
     <text x="49" y="31" fill="#241c0a" font-family="Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" stroke="none">1</text>
-    <rect x="58" y="36" width="14" height="10" rx="2" fill="url(#mtl)"/>
-    <line x1="22" y1="47.5" x2="76" y2="47.5" stroke="#6a5138" stroke-width="2.5" stroke-linecap="round"/>
+    <rect x="58" y="36" width="14" height="10" rx="2" fill="#ffffff"/>
+    <line x1="22" y1="47.5" x2="76" y2="47.5" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
   </g>
 </svg>

@@ -1,13 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 81.3 49.3">
   <desc>{"colors":{"backgroundColor":"#2a2a2a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"title":{"text":"WEATHER"},"border":{"color":"#5a5a5a"}}</desc>
   <defs>
-    <linearGradient id="bbG2" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#453a1c"/><stop offset="1" stop-color="#221a0a"/></linearGradient>
-    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="{{graphic1Color}}"/><stop offset="1" stop-color="{{graphic1Color}}" stop-opacity="0.55"/></linearGradient>
+    
   </defs>
   <g transform="translate(-7.2 -9.2)">
 
-    <rect x="10" y="12" width="76" height="44" rx="6" fill="url(#bbG2)" stroke="#6a5138" stroke-width="3.5"/>
-    <path d="M38 41 a7 7 0 0 1 0 -14 a9.5 9.5 0 0 1 18 -2.5 a6 6 0 0 1 2.5 16.5 Z" fill="url(#mtl)"/>
+    <rect x="10" y="12" width="76" height="44" rx="6" fill="{{backgroundColor}}" stroke="{{graphic1Color}}" stroke-width="3.5"/>
+    <path d="M38 41 a7 7 0 0 1 0 -14 a9.5 9.5 0 0 1 18 -2.5 a6 6 0 0 1 2.5 16.5 Z" fill="{{graphic1Color}}"/>
     <line x1="39" y1="45" x2="36.5" y2="50" stroke="{{graphic2Color}}" stroke-width="3" stroke-linecap="round"/>
     <line x1="48" y1="45" x2="45.5" y2="50" stroke="{{graphic2Color}}" stroke-width="3" stroke-linecap="round"/>
     <line x1="57" y1="45" x2="54.5" y2="50" stroke="{{graphic2Color}}" stroke-width="3" stroke-linecap="round"/>

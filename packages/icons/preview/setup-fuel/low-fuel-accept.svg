@@ -1,17 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 74.8 55.8">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 69.8 52.8">
   <desc>{"colors":{"backgroundColor":"#3a3a1a","textColor":"#ffffff"},"title":{"text":"LOW FUEL\nACCEPT"},"border":{"color":"#6a6a3a"}}</desc>
   <defs>
-    <linearGradient id="ambG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f7d94c"/><stop offset="1" stop-color="#d9980f"/></linearGradient>
-    <filter id="glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="3"/></filter>
+    
   </defs>
   <g transform="translate(-18 -5)">
 <g transform="translate(36 0) scale(1)">
-    <path d="M0 6 C0 6 -17 28 -17 40 a17 17 0 0 0 34 0 C17 28 0 6 0 6 Z" fill="url(#ambG)"/>
+    <path d="M0 6 C0 6 -17 28 -17 40 a17 17 0 0 0 34 0 C17 28 0 6 0 6 Z" fill="#f6d34c"/>
     <path d="M-8 42 a8 8 0 0 0 8 8" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" opacity="0.55"/>
   </g>
-    <rect x="33.5" y="24" width="5" height="14" rx="2.5" fill="#3a2a10"/>
-    <circle cx="36" cy="45" r="3.2" fill="#3a2a10"/>
-    <path d="M56 42 l10 10 L84 30" fill="none" stroke="#4be08d" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+    <rect x="33.5" y="24" width="5" height="14" rx="2.5" fill="#3a3a1a"/>
+    <circle cx="36" cy="45" r="3.2" fill="#3a3a1a"/>
+    
     <path d="M56 42 l10 10 L84 30" fill="none" stroke="#4be08d" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
 </svg>

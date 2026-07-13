@@ -1,20 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80.8 69">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 106.3 48">
   <desc>{"colors":{"backgroundColor":"#3a3a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"FUEL MIX\nDECREASE"},"border":{"color":"#6a6a3a"}}</desc>
   <defs>
-    <linearGradient id="ambG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f7d94c"/><stop offset="1" stop-color="#d9980f"/></linearGradient>
-    <linearGradient id="redG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ff6b5e"/><stop offset="1" stop-color="#c0392b"/></linearGradient>
-    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="{{graphic1Color}}"/><stop offset="1" stop-color="{{graphic1Color}}" stop-opacity="0.55"/></linearGradient>
-    <linearGradient id="minusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f47c6a"/><stop offset="1" stop-color="#c0392b"/></linearGradient>
+    
   </defs>
   <g transform="translate(-13.5 -4.2)">
 <g transform="translate(30 0) scale(0.9)">
-    <path d="M0 6 C0 6 -17 28 -17 40 a17 17 0 0 0 34 0 C17 28 0 6 0 6 Z" fill="url(#ambG)"/>
+    <path d="M0 6 C0 6 -17 28 -17 40 a17 17 0 0 0 34 0 C17 28 0 6 0 6 Z" fill="#f6d34c"/>
     <path d="M-8 42 a8 8 0 0 0 8 8" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" opacity="0.55"/>
   </g>
     <path d="M56 32 A14 14 0 0 1 70 18" fill="none" stroke="#4be08d" stroke-width="6" stroke-linecap="round"/>
-    <path d="M70 18 A14 14 0 0 1 84 32" fill="none" stroke="url(#redG)" stroke-width="6" stroke-linecap="round"/>
+    <path d="M70 18 A14 14 0 0 1 84 32" fill="none" stroke="#e74c3c" stroke-width="6" stroke-linecap="round"/>
     <line x1="70" y1="32" x2="79" y2="22" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round"/>
-    <circle cx="70" cy="32" r="4" fill="url(#mtl)"/><rect x="66" y="45" width="26" height="26" rx="8" fill="url(#minusG)" stroke="{{backgroundColor}}" stroke-width="3"/>
-    <path d="M72 58h14" stroke="#ffffff" stroke-width="4.5" stroke-linecap="round"/>
+    <circle cx="70" cy="32" r="4" fill="{{graphic1Color}}"/><path d="M91.8 28.3h24" fill="none" stroke="{{graphic1Color}}" stroke-width="6" stroke-linecap="round"/>
   </g>
 </svg>

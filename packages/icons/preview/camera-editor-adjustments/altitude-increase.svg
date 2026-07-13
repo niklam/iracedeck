@@ -1,15 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 83 67.3">
-  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"title":{"text":"ALTITUDE\n+"},"border":{"color":"#3a5a6a"}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 95 55.8">
+  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"title":{"text":"ALTITUDE\nINCREASE"},"border":{"color":"#3a5a6a"}}</desc>
   <defs>
-    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.55"/></linearGradient><linearGradient id="plusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#4be08d"/><stop offset="1" stop-color="#1d9e58"/></linearGradient>
+    
   </defs>
   <g transform="translate(-11.2 -6)">
 
-    <line x1="14" y1="58" x2="72" y2="58" stroke="#8fa3ad" stroke-width="3.5" stroke-linecap="round"/>
+    <line x1="14" y1="58" x2="72" y2="58" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round"/>
     <line x1="34" y1="53" x2="34" y2="20" stroke="#4fc3f7" stroke-width="3" stroke-dasharray="5 4"/>
-    <rect x="26" y="7" width="16" height="11" rx="2.5" fill="url(#mtl)"/>
-    <rect x="42" y="9" width="6" height="7" rx="1.5" fill="#3f5561"/>
-    <circle cx="34" cy="58" r="3" fill="#4fc3f7"/><rect x="66" y="45" width="26" height="26" rx="8" fill="url(#plusG)" stroke="#1a2a3a" stroke-width="3"/>
-    <path d="M72 58h14M79 51v14" stroke="#ffffff" stroke-width="4.5" stroke-linecap="round"/>
+    <rect x="26" y="7" width="16" height="11" rx="2.5" fill="#ffffff"/>
+    <rect x="42" y="9" width="6" height="7" rx="1.5" fill="#1a2a3a"/>
+    <circle cx="34" cy="58" r="3" fill="#4fc3f7"/><path d="M78.5 33.9h24M90.5 21.9v24" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>
   </g>
 </svg>

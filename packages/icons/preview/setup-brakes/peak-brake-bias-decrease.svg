@@ -1,15 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 78.8 67.8">
-  <desc>{"colors":{"backgroundColor":"#3a2a1a","textColor":"#ffffff","graphic2Color":"#4fc3f7"},"title":{"text":"PEAK BIAS\nDECREASE"},"border":{"color":"#6a5a3a"}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 92.8 44.8">
+  <desc>{"colors":{"backgroundColor":"#3a2a1a","textColor":"#ffffff","graphic2Color":"#4fc3f7","graphic1Color":"#ffffff"},"title":{"text":"PEAK BIAS\nDECREASE"},"border":{"color":"#6a5a3a"}}</desc>
   <defs>
-    <filter id="glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="3"/></filter>
-    <linearGradient id="minusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f47c6a"/><stop offset="1" stop-color="#c0392b"/></linearGradient>
+    
   </defs>
-  <g transform="translate(-15.5 -5.5)">
+  <g transform="translate(-15.5 -9.5)">
 
-    <path d="M18 12 V52 H74" fill="none" stroke="#b7c5cd" stroke-width="3" stroke-linecap="round"/>
+    <path d="M18 12 V52 H74" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
     <path d="M22 48 C34 46 40 20 48 16 C56 20 64 44 70 48" fill="none" stroke="#4fc3f7" stroke-width="3.5" stroke-linecap="round"/>
-    <circle cx="48" cy="15" r="4" fill="#f6d34c" filter="url(#glow)"/>
-    <circle cx="48" cy="15" r="4" fill="#f6d34c"/><rect x="66" y="45" width="26" height="26" rx="8" fill="url(#minusG)" stroke="#3a2a1a" stroke-width="3"/>
-    <path d="M72 58h14" stroke="#ffffff" stroke-width="4.5" stroke-linecap="round"/>
+    
+    <circle cx="48" cy="15" r="4" fill="#f6d34c"/><path d="M80.3 31.9h24" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>
   </g>
 </svg>

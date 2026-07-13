@@ -1,17 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 77.3 63.3">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 99.8 47.8">
   <desc>{"colors":{"backgroundColor":"#3a2a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"BRAKE MISC\nDECREASE"},"border":{"color":"#6a5a3a"}}</desc>
   <defs>
-    <radialGradient id="disc" cx="0.4" cy="0.35" r="0.9"><stop stop-color="{{graphic1Color}}"/><stop offset="0.6" stop-color="{{graphic1Color}}" stop-opacity="0.72"/><stop offset="1" stop-color="{{graphic1Color}}" stop-opacity="0.45"/></radialGradient>
-    <linearGradient id="redG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ff6b5e"/><stop offset="1" stop-color="#c0392b"/></linearGradient>
-    <linearGradient id="minusG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f47c6a"/><stop offset="1" stop-color="#c0392b"/></linearGradient>
+    
   </defs>
   <g transform="translate(-17 -10)">
 
-    <circle cx="40" cy="35" r="22" fill="url(#disc)"/>
-    <circle cx="40" cy="35" r="7.5" fill="#3f5561"/>
-    <path d="M 48.8 15.2 A 22 22 0 0 1 60.9 28.8" fill="none" stroke="url(#redG)" stroke-width="7.9" stroke-linecap="round"/>
+    <circle cx="40" cy="35" r="22" fill="{{graphic1Color}}"/>
+    <circle cx="40" cy="35" r="7.5" fill="{{backgroundColor}}"/>
+    <path d="M 48.8 15.2 A 22 22 0 0 1 60.9 28.8" fill="none" stroke="#e74c3c" stroke-width="7.9" stroke-linecap="round"/>
     <circle cx="64" cy="14" r="2.8" fill="#dfe7ec"/><circle cx="72.5" cy="14" r="2.8" fill="#dfe7ec"/><circle cx="81" cy="14" r="2.8" fill="#dfe7ec"/>
-    <circle cx="40" cy="35" r="14.5" fill="none" stroke="#5c6d77" stroke-width="1.5"/><rect x="66" y="45" width="26" height="26" rx="8" fill="url(#minusG)" stroke="{{backgroundColor}}" stroke-width="3"/>
-    <path d="M72 58h14" stroke="#ffffff" stroke-width="4.5" stroke-linecap="round"/>
+    <circle cx="40" cy="35" r="14.5" fill="none" stroke="{{backgroundColor}}" stroke-width="1.5"/><path d="M88.8 33.9h24" fill="none" stroke="{{graphic1Color}}" stroke-width="6" stroke-linecap="round"/>
   </g>
 </svg>
