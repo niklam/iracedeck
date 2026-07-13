@@ -6,16 +6,13 @@
   <g transform="translate(-7.2 -9.2)">
 
     <rect x="10" y="12" width="76" height="44" rx="6" fill="{{backgroundColor}}" stroke="{{graphic1Color}}" stroke-width="3.5"/>
-    <g transform="translate(10 6.8) scale(0.8)">
-      <line x1="33.5" y1="19.5" x2="37.5" y2="23.5" stroke="#dfe7ec" stroke-width="6.5" stroke-linecap="round"/>
-      <line x1="36" y1="22" x2="52" y2="38" stroke="{{graphic1Color}}" stroke-width="4" stroke-linecap="round"/>
-      <line x1="54" y1="40" x2="63" y2="49" stroke="{{graphic1Color}}" stroke-width="9.5" stroke-linecap="round"/>
-      <line x1="57.5" y1="41.5" x2="54.5" y2="44.5" stroke="#3d3318" stroke-width="2"/>
-      <line x1="60.5" y1="44.5" x2="57.5" y2="47.5" stroke="#3d3318" stroke-width="2"/>
-      <line x1="36" y1="46" x2="56" y2="26" stroke="{{graphic1Color}}" stroke-width="6" stroke-linecap="round"/>
-      <circle cx="60" cy="22" r="6" fill="{{graphic1Color}}"/>
-      <circle cx="64.5" cy="20" r="3" fill="#3d3318"/>
-      <line x1="64.5" y1="20" x2="68.5" y2="18" stroke="#3d3318" stroke-width="3.5" stroke-linecap="round"/>
-    </g>
+    <line x1="31" y1="20" x2="38" y2="27" stroke="{{graphic1Color}}" stroke-width="7.5" stroke-linecap="round"/>
+    <line x1="32" y1="23.5" x2="35" y2="20.5" stroke="{{backgroundColor}}" stroke-width="1.8"/>
+    <line x1="35" y1="26.5" x2="38" y2="23.5" stroke="{{backgroundColor}}" stroke-width="1.8"/>
+    <line x1="39.5" y1="28.5" x2="61" y2="46.5" stroke="{{graphic1Color}}" stroke-width="3.8" stroke-linecap="round"/>
+    <line x1="34" y1="47" x2="56" y2="27" stroke="{{graphic1Color}}" stroke-width="5.5" stroke-linecap="round"/>
+    <circle cx="60" cy="23.5" r="6" fill="{{graphic1Color}}"/>
+    <circle cx="64.5" cy="21.5" r="3" fill="{{backgroundColor}}"/>
+    <line x1="64.5" y1="21.5" x2="68.5" y2="19.5" stroke="{{backgroundColor}}" stroke-width="3.5" stroke-linecap="round"/>
   </g>
 </svg>
