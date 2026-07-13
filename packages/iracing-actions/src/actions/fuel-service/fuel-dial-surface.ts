@@ -27,6 +27,7 @@ import {
   isAutofuelActive,
   isAutofuelEnabled,
   isFuelFillOn,
+  isPitstopActive,
   resolvePairedAction,
   svgToDataUri,
 } from "@iracedeck/deck-core";
@@ -1310,7 +1311,23 @@ export class FuelDialSurface {
     // two fill-to dials targeting the same request a clear on either correctly
     // suppresses the other's re-arm (last command wins, no ping-pong) — a
     // per-context flag would have them fight over the shared request every tick.
-    if (ctx.settings.dial.mode === "fill-to" && this.isFuelFillOn() && !this.pipeline.lastPitWasClear) {
+    //
+    // The `!isPitstopActive` guard pauses the monitor while the car is actively
+    // receiving pit service (issue #831). The monitor was built for fuel BURN
+    // (the level falls slowly, ~one re-send per litre), but during the stop the
+    // pump RAISES the level litres per second — every recomputed add is smaller,
+    // and re-broadcasting those shrinking amounts into the in-progress fueling
+    // changes the requested amount mid-fueling and stops it short of the target
+    // (and at target-reached the add-hits-0 path would clearFuel mid-stop). No
+    // extra re-baseline is needed after the stop: `lastSentWholeAdd` still holds
+    // the pre-stop value, so the first post-stop tick re-sends the remaining
+    // need exactly once (or clears once the target is genuinely met).
+    if (
+      ctx.settings.dial.mode === "fill-to" &&
+      this.isFuelFillOn() &&
+      !this.pipeline.lastPitWasClear &&
+      !isPitstopActive(telemetry)
+    ) {
       const addLtr = this.effectiveAddLtr(ctx);
       const displayUnits = this.effectiveDisplayUnits(ctx);
       const wholeKey = addLtr <= 0 ? null : Math.round(fuelToDisplayUnits(addLtr, displayUnits));
