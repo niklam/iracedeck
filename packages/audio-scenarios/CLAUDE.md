@@ -94,7 +94,15 @@ Field-by-field guidance on when to reach for each scheduling knob is in `.claude
 
 At fire time, every clip-producing step (clip / var / pool / connector) is checked against the manifest for the **active voice**. A required step that resolves to nothing — missing clip, null var, empty pool — **aborts the entire callout**: nothing plays, never a fragment, and no cooldown is stamped. The abort is decided **before** any bus scheduling or preemption (`prepareOps` runs ahead of the cancel in `attemptFire`), so a callout that would have preempted an in-flight one but then aborts can never silence it. A deferred (queueable) fire re-runs the check at idle-replay.
 
-`{ optional: [steps…] }` marks a genuinely-optional clause: if any member resolves to nothing, the **whole group** is skipped locally (never half a clause) and the rest of the callout plays. Reserve it for self-contained add-on sentences, never a step mid-sentence. Current optional clauses: the session-start pit-speed clause, the session/race-start setup-warning nudges, the name-based greetings (session-start / race-start / race-end — driver names are a union across voices, so a per-voice name gap must not kill the brief), and the overtake-lost "Come on, `<name>`." opener.
+`{ optional: [steps…] }` marks a genuinely-optional clause: if any member resolves to nothing, the **whole group** is skipped locally (never half a clause) and the rest of the callout plays. Reserve it for self-contained add-on sentences, never a step mid-sentence. Current optional clauses: the session-start pit-speed clause, the session/race-start temperature clauses and the race-start position clause (issue #836 — value ranges derive from the clips, no clamping or bounds), the session/race-start setup-warning nudges, the name-based greetings (session-start / race-start / race-end — driver names are a union across voices, so a per-voice name gap must not kill the brief), and the overtake-lost "Come on, `<name>`." opener.
+
+## Value pools — `poolRef(group, base)` (issue #836)
+
+Value-indexed clips (position numbers, lap-time digits, temperatures, speeds, names, and the fixed result/intro lines) are **pools too, usually of size 1**. A `var` resolver returns `poolRef(group, base)` (from `dsl.ts` — the `pool:<group>/<base>` reference form) instead of a raw clip path; the interpreter derives the pool's members from the manifest for the active voice at fire time — every `<base>-NN.mp3` **plus the bare `<base>.mp3`** (a bare value clip is a size-1 pool, so no rename migration was needed). Consequences:
+
+- **No hardcoded value ranges.** The former `SESSION_START_SPEED_VALUES`, temp clamps, `POSITION_MAX` / `POSITION_NUMBER_MAX`, and `LAP_TIME_MINUTE_MAX` constants are gone — the clips that exist define what's speakable. A value with no clip skips its `optional` clause or aborts the callout (per #835). Extending a range is now just generating clips.
+- **Variants for free.** Any value clip can gain `-NN` variants (e.g. `currently-01` / `currently-02`) with no code change — the poolRef picks uniform-random with the shared no-repeat guard.
+- `where:` predicates keep only **null/known checks** (is there a position at all?), never numeric range checks.
 
 ## Live gating
 

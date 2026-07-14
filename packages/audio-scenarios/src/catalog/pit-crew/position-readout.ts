@@ -33,13 +33,11 @@
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventOf } from "@iracedeck/event-bus";
 
-import { WEIGHT } from "../../dsl.js";
+import { poolRef, WEIGHT } from "../../dsl.js";
 import type { Scenario, Step } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 import { overtakeContextAllows, type OvertakeGateResolver } from "./overtake-gate.js";
-import { POSITION_NUMBER_MAX, POSITION_NUMBER_MIN, positionNumberIsSpeakable } from "./position-range.js";
 
-export { POSITION_NUMBER_MAX, POSITION_NUMBER_MIN };
 export { type OvertakeGate, type OvertakeGateResolver, overtakeContextAllows } from "./overtake-gate.js";
 
 /**
@@ -182,11 +180,13 @@ export function selectLivePosition(live: LivePosition | null): number | null {
   return n > 0 ? n : null;
 }
 
-/** Whether the live position is currently in the speakable clip range. */
+/**
+ * Whether the live position is currently known. Whether it is *speakable*
+ * derives from the clips that exist for the active voice (issues #835/#836):
+ * a position with no clip aborts the readout at expansion time.
+ */
 export function liveCurrentlyAnnounceable(live: LivePosition | null): boolean {
-  const n = selectLivePosition(live);
-
-  return n !== null && positionNumberIsSpeakable(n);
+  return selectLivePosition(live) !== null;
 }
 
 /**
@@ -210,10 +210,6 @@ export function isOvertakeEffectiveLeader(data: {
   return effective === 1;
 }
 
-function voicePath(group: string, name: string): string {
-  return `voice/{voice}/${group}/${name}.mp3`;
-}
-
 /**
  * Register the shared live-position number var. Reads the live resolver at
  * expansion time and returns the `position-number/<N>` clip; returns `null` (a
@@ -230,17 +226,15 @@ export function registerPositionReadoutVars(engine: IScenarioEngine, getLivePosi
   engine.defineVar("positionReadout.intro", () => {
     const n = selectLivePosition(getLivePosition());
 
-    if (n === null || !positionNumberIsSpeakable(n)) return null;
+    if (n === null) return null;
 
-    return shouldSpeakIntro(n) ? voicePath(POSITION_GROUP_INTRO_WORSE, "currently-01") : null;
+    return shouldSpeakIntro(n) ? poolRef(POSITION_GROUP_INTRO_WORSE, "currently") : null;
   });
 
   engine.defineVar("positionReadout.number", () => {
     const n = selectLivePosition(getLivePosition());
 
-    if (n === null || !positionNumberIsSpeakable(n)) return null;
-
-    return voicePath(POSITION_GROUP_NUMBER, String(n));
+    return n !== null ? poolRef(POSITION_GROUP_NUMBER, String(n)) : null;
   });
 }
 

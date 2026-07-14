@@ -307,3 +307,17 @@ export function applyBase(base: string | undefined, path: string): string {
 
   return `${base}/${path}`;
 }
+
+/**
+ * Build a dynamic pool reference for a `var` resolver to return (issue #836):
+ * `pool:<group>/<base>`. The interpreter derives the pool's members from the
+ * manifest for the active voice at fire time — every
+ * `voice/<voice>/<group>/<base>-NN.mp3` plus the bare `<base>.mp3` — so
+ * value-indexed clips (numbers, names, temps, digits) are pools too, usually
+ * of size 1, and gain variants by just adding clip files. A reference that is
+ * empty for the active voice aborts the callout (or skips its `optional`
+ * group) per the issue #835 rule.
+ */
+export function poolRef(group: string, base: string): string {
+  return `pool:${group}/${base}`;
+}

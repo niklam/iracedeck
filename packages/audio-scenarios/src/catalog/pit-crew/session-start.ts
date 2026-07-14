@@ -49,6 +49,7 @@ import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type SessionStartSnapshot, TrackWetness } from "@iracedeck/event-bus";
 
 import type { Scenario, Step } from "../../dsl.js";
+import { poolRef } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 
 /**
@@ -57,25 +58,6 @@ import type { IScenarioEngine } from "../../interpreter.js";
  * callout entirely (its `where:` predicate short-circuits).
  */
 export type SessionStartSnapshotResolver = () => SessionStartSnapshot | null;
-
-/**
- * Observed iRacing pit speed limits, in km/h and mph (field findings). Each is
- * expanded by ±1 because telemetry occasionally reports a value one unit off
- * the posted limit. The scenario only speaks a pit-speed clause for a value in
- * this set; everything else is skipped. New limits get appended here and to
- * the `session-start-speed-numbers` voice group together — the two must stay
- * in sync.
- */
-const PIT_LIMIT_FINDINGS_KMH = [40, 48, 50, 56, 60, 64, 72, 80] as const;
-const PIT_LIMIT_FINDINGS_MPH = [25, 30, 31, 35, 37, 40, 45, 50] as const;
-
-export const SESSION_START_SPEED_VALUES: ReadonlySet<number> = new Set(
-  [...PIT_LIMIT_FINDINGS_KMH, ...PIT_LIMIT_FINDINGS_MPH].flatMap((v) => [v - 1, v, v + 1]),
-);
-
-/** Track temperature / air temperature clip range, in the display unit. */
-export const SESSION_START_TEMP_MIN = 0;
-export const SESSION_START_TEMP_MAX = 150;
 
 /**
  * Delay before the where: predicate and sequence-expansion run, once
@@ -115,78 +97,66 @@ function clipPath(filename: string): string {
   return `${SESSION_START_BASE}/${filename}`;
 }
 
-/** Build a full `voice/{voice}/...` path for a `var` resolver (no base applied). */
-function voicePath(group: string, name: string): string {
-  return `voice/{voice}/${group}/${name}.mp3`;
-}
-
-/** Clamp a temperature reading into the generated clip range. */
-function clampTemp(value: number): number {
-  return Math.min(SESSION_START_TEMP_MAX, Math.max(SESSION_START_TEMP_MIN, value));
-}
-
-/** Whether the pit-speed clause can be spoken for this snapshot. */
-function speedIsSpeakable(snapshot: SessionStartSnapshot | null): boolean {
-  return snapshot !== null && SESSION_START_SPEED_VALUES.has(snapshot.pitSpeedLimit);
-}
-
 /**
  * Register the session-start scenario's variables on the scenario engine.
  * Must run before the scenario is defined — load-time validation rejects a
  * `{ var }` step whose name isn't registered. The resolvers close over the
  * snapshot closure and return `null` (a no-op step) whenever conditions
  * aren't available.
+ *
+ * Every resolver returns a dynamic pool reference (issue #836): the clips
+ * that exist for the active voice define what values are speakable, so there
+ * are no hardcoded speed/temperature ranges — a value with no clip skips its
+ * `optional` clause (or aborts the callout for required content, per #835).
  */
 export function registerSessionStartVars(engine: IScenarioEngine, getSnapshot: SessionStartSnapshotResolver): void {
   engine.defineVar("sessionStart.greeting", () => {
     const s = getSnapshot();
 
-    return s ? voicePath("session-start-greeting", s.driverName) : null;
+    return s ? poolRef("session-start-greeting", s.driverName) : null;
   });
 
   engine.defineVar("sessionStart.sessionLine", () => {
     const s = getSnapshot();
 
-    return s ? voicePath("session-start", `session-${s.sessionType}`) : null;
+    return s ? poolRef("session-start", `session-${s.sessionType}`) : null;
   });
 
   engine.defineVar("sessionStart.speedNumber", () => {
     const s = getSnapshot();
 
-    return s && SESSION_START_SPEED_VALUES.has(s.pitSpeedLimit)
-      ? voicePath("session-start-speed-numbers", String(s.pitSpeedLimit))
-      : null;
+    return s ? poolRef("session-start-speed-numbers", String(s.pitSpeedLimit)) : null;
   });
 
   engine.defineVar("sessionStart.speedUnit", () => {
     const s = getSnapshot();
 
-    return s ? voicePath("session-start", `speed-unit-${s.speedUnit}`) : null;
+    return s ? poolRef("session-start", `speed-unit-${s.speedUnit}`) : null;
   });
 
   engine.defineVar("sessionStart.trackTempNumber", () => {
     const s = getSnapshot();
 
-    return s ? voicePath("session-start-temp-numbers", String(clampTemp(s.trackTemp))) : null;
+    return s ? poolRef("session-start-temp-numbers", String(s.trackTemp)) : null;
   });
 
   engine.defineVar("sessionStart.airTempNumber", () => {
     const s = getSnapshot();
 
-    return s ? voicePath("session-start-temp-numbers", String(clampTemp(s.airTemp))) : null;
+    return s ? poolRef("session-start-temp-numbers", String(s.airTemp)) : null;
   });
 
   engine.defineVar("sessionStart.degreesUnit", () => {
     const s = getSnapshot();
 
-    return s ? voicePath("session-start", `degrees-${s.tempUnit}`) : null;
+    return s ? poolRef("session-start", `degrees-${s.tempUnit}`) : null;
   });
 
   engine.defineVar("sessionStart.wetness", () => {
     const s = getSnapshot();
     const suffix = s ? WETNESS_CLIP_SUFFIX[s.wetness] : undefined;
 
-    return suffix ? voicePath("session-start", `wetness-${suffix}`) : null;
+    return suffix ? poolRef("session-start", `wetness-${suffix}`) : null;
   });
 }
 
@@ -258,27 +228,34 @@ export function buildSessionStartScenario(
     // sentence either way — instead of aborting the whole brief.
     { optional: [{ var: "sessionStart.greeting" }] },
     { var: "sessionStart.sessionLine" },
+    // Optional clause (issues #835/#836): whether a pit-speed value is
+    // speakable derives from the clips that exist — a limit (or a voice)
+    // without the number clip skips the WHOLE clause (never "The pit speed
+    // limit is…" with no number) while the rest of the brief still plays.
     {
-      if: () => speedIsSpeakable(getSnapshot()),
-      // Optional clause (issue #835): a voice without the speed-number clip
-      // skips the WHOLE pit-speed clause (never "The pit speed limit is…"
-      // with no number) while the rest of the brief still plays.
-      then: [
-        {
-          optional: [
-            clipPath("pit-speed-intro.mp3"),
-            { var: "sessionStart.speedNumber" },
-            { var: "sessionStart.speedUnit" },
-          ],
-        },
+      optional: [
+        clipPath("pit-speed-intro.mp3"),
+        { var: "sessionStart.speedNumber" },
+        { var: "sessionStart.speedUnit" },
       ],
     },
-    clipPath("track-temp-intro.mp3"),
-    { var: "sessionStart.trackTempNumber" },
-    { var: "sessionStart.degreesUnit" },
-    clipPath("air-temp-intro.mp3"),
-    { var: "sessionStart.airTempNumber" },
-    { var: "sessionStart.degreesUnit" },
+    // Optional clauses (issue #836): the temp clip range is defined by the
+    // generated clips (no clamping) — a reading outside it skips its clause
+    // rather than speaking a wrong clamped number or killing the brief.
+    {
+      optional: [
+        clipPath("track-temp-intro.mp3"),
+        { var: "sessionStart.trackTempNumber" },
+        { var: "sessionStart.degreesUnit" },
+      ],
+    },
+    {
+      optional: [
+        clipPath("air-temp-intro.mp3"),
+        { var: "sessionStart.airTempNumber" },
+        { var: "sessionStart.degreesUnit" },
+      ],
+    },
     clipPath("wetness-intro.mp3"),
     { var: "sessionStart.wetness" },
     {

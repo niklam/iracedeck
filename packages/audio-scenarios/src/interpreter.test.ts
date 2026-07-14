@@ -3,7 +3,7 @@ import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { WEIGHT } from "./dsl.js";
+import { poolRef, WEIGHT } from "./dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "./interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "./interpreter.js";
 
@@ -424,6 +424,135 @@ describe("manifest-derived pools (definePoolFromManifest)", () => {
 
     expect(mockLogger.error).not.toHaveBeenCalled();
     expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining("static-purple"));
+  });
+});
+
+// ─── Value pools: bare files + dynamic pool refs (issue #836) ────────────────
+
+describe("value pools (issue #836)", () => {
+  const valueManifest: AudioAssetsManifest = {
+    clips: [
+      "sfx/IRD-tick-open.mp3",
+      "sfx/IRD-tick-close.mp3",
+      "sfx/IRD-ambient-pit.mp3",
+      // Bare value clip — a size-1 pool.
+      "voice/default/position-number/7.mp3",
+      // Bare + -NN variants form one pool.
+      "voice/default/flags/blue.mp3",
+      "voice/default/flags/blue-01.mp3",
+      "voice/default/flags/blue-02.mp3",
+      // luca carries the value with two variants; titan lacks it entirely.
+      "voice/luca/position-number/7.mp3",
+      "voice/luca/position-number/7-01.mp3",
+      "voice/titan/flags/red-01.mp3",
+    ],
+    ambientLoop: "sfx/IRD-ambient-pit.mp3",
+    ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
+  };
+
+  let activeVoice: string | null;
+
+  beforeEach(() => {
+    _resetAudioScenarios();
+    activeVoice = "default";
+    bus = createMockBus();
+    audio = createFakeAudio();
+    engine = initializeAudioScenarios(bus, audio, valueManifest, mockLogger as never, () => activeVoice);
+  });
+
+  function voicePaths(): string[] {
+    return audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
+  }
+
+  it("treats a bare <base>.mp3 as a size-1 registered pool", () => {
+    engine.definePoolFromManifest("position-7", "position-number", "7");
+    engine.defineScenario({
+      id: "test.bare",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      sequence: ["pool:position-7"],
+    });
+
+    engine.fire("test.bare");
+    flushVoiceAndSfx(audio);
+
+    expect(voicePaths()).toEqual(["voice/default/position-number/7.mp3"]);
+  });
+
+  it("unions bare and -NN files into one pool", () => {
+    const stub = vi.spyOn(Math, "random").mockReturnValue(0.99);
+    engine.definePoolFromManifest("flag-blue", "flags", "blue");
+    engine.defineScenario({
+      id: "test.mixed",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      sequence: ["pool:flag-blue"],
+    });
+
+    engine.fire("test.mixed");
+    flushVoiceAndSfx(audio);
+
+    // Three members sorted [blue-01, blue-02, blue] — 0.99 picks index 2, the bare file.
+    expect(voicePaths()).toEqual(["voice/default/flags/blue.mp3"]);
+
+    stub.mockRestore();
+  });
+
+  it("resolves a var-returned pool reference for the active voice", () => {
+    engine.defineVar("position", () => poolRef("position-number", "7"));
+    engine.defineScenario({
+      id: "test.poolref",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      sequence: ["{{position}}"],
+    });
+
+    engine.fire("test.poolref");
+    flushVoiceAndSfx(audio);
+
+    expect(voicePaths()).toEqual(["voice/default/position-number/7.mp3"]);
+
+    // luca draws from its own two variants.
+    const stub = vi.spyOn(Math, "random").mockReturnValue(0);
+    activeVoice = "luca";
+    engine.fire("test.poolref");
+    flushVoiceAndSfx(audio);
+
+    expect(voicePaths().at(-1)).toMatch(/^voice\/luca\/position-number\/7(-01)?\.mp3$/);
+    stub.mockRestore();
+  });
+
+  it("aborts the whole callout when a pool reference is empty for the active voice", () => {
+    engine.defineVar("position", () => poolRef("position-number", "7"));
+    engine.defineScenario({
+      id: "test.poolref-missing",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      sequence: ["/sfx/IRD-tick-open.mp3", "{{position}}"],
+    });
+
+    activeVoice = "titan";
+    engine.fire("test.poolref-missing");
+    flushVoiceAndSfx(audio);
+
+    expect(audio._played).toEqual([]);
+    expect(mockLogger.error).not.toHaveBeenCalled();
+  });
+
+  it("skips an optional group locally when its pool reference is empty for the active voice", () => {
+    engine.defineVar("position", () => poolRef("position-number", "7"));
+    engine.defineScenario({
+      id: "test.poolref-optional",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      sequence: ["/sfx/IRD-tick-open.mp3", { optional: ["{{position}}"] }, "/sfx/IRD-tick-close.mp3"],
+    });
+
+    activeVoice = "titan";
+    engine.fire("test.poolref-optional");
+    flushVoiceAndSfx(audio);
+
+    expect(audio._played.map((p) => p.path)).toEqual(["sfx/IRD-tick-open.mp3", "sfx/IRD-tick-close.mp3"]);
   });
 });
 

@@ -36,12 +36,9 @@
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventOf } from "@iracedeck/event-bus";
 
-import { WEIGHT } from "../../dsl.js";
+import { poolRef, WEIGHT } from "../../dsl.js";
 import type { Scenario, Step } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
-import { POSITION_NUMBER_MAX, POSITION_NUMBER_MIN, positionNumberIsSpeakable } from "./position.js";
-
-export { POSITION_NUMBER_MAX, POSITION_NUMBER_MIN };
 
 /**
  * Plugin-composed snapshot the scenario reads at fire time. Combines the
@@ -61,11 +58,6 @@ export type RaceFinishedSnapshotResolver = () => RaceFinishedSnapshot | null;
 const RACE_END_GREETING_GROUP = "race-end-greeting";
 const RACE_END_GROUP = "race-end";
 const POSITION_GROUP_NUMBER = "position-number";
-
-/** Build a full `voice/{voice}/...` path for a `var` resolver. */
-function voicePath(group: string, name: string): string {
-  return `voice/{voice}/${group}/${name}.mp3`;
-}
 
 /**
  * Pick the position the result clip should speak. Multi-class series read
@@ -101,13 +93,13 @@ export function registerRaceEndVars(engine: IScenarioEngine, getSnapshot: RaceFi
     // session-start scenario's behavior.
     const name = s.driverName && s.driverName.length > 0 ? s.driverName : "driver";
 
-    return voicePath(RACE_END_GREETING_GROUP, name);
+    return poolRef(RACE_END_GREETING_GROUP, name);
   });
 
-  engine.defineVar("raceEnd.weWon", () => voicePath(RACE_END_GROUP, "we-won-01"));
-  engine.defineVar("raceEnd.secondPlace", () => voicePath(RACE_END_GROUP, "second-place-01"));
-  engine.defineVar("raceEnd.podiumThird", () => voicePath(RACE_END_GROUP, "podium-third-01"));
-  engine.defineVar("raceEnd.raceOverResultIs", () => voicePath(RACE_END_GROUP, "race-over-result-is-01"));
+  engine.defineVar("raceEnd.weWon", () => poolRef(RACE_END_GROUP, "we-won"));
+  engine.defineVar("raceEnd.secondPlace", () => poolRef(RACE_END_GROUP, "second-place"));
+  engine.defineVar("raceEnd.podiumThird", () => poolRef(RACE_END_GROUP, "podium-third"));
+  engine.defineVar("raceEnd.raceOverResultIs", () => poolRef(RACE_END_GROUP, "race-over-result-is"));
 
   engine.defineVar("raceEnd.position", () => {
     const s = getSnapshot();
@@ -116,9 +108,7 @@ export function registerRaceEndVars(engine: IScenarioEngine, getSnapshot: RaceFi
 
     const position = selectEffectiveFinalPosition(s);
 
-    if (position === null || !positionNumberIsSpeakable(position)) return null;
-
-    return voicePath(POSITION_GROUP_NUMBER, String(position));
+    return position !== null ? poolRef(POSITION_GROUP_NUMBER, String(position)) : null;
   });
 }
 
@@ -146,9 +136,7 @@ export function buildRaceEndScenario(getSnapshot: RaceFinishedSnapshotResolver):
 
     const position = selectEffectiveFinalPosition(s);
 
-    if (position === null) return false;
-
-    return position >= 4 && positionNumberIsSpeakable(position);
+    return position !== null && position >= 4;
   };
 
   const sequence: Step[] = [
@@ -203,7 +191,7 @@ export function buildRaceEndScenario(getSnapshot: RaceFinishedSnapshotResolver):
 
         const position = selectEffectiveFinalPosition(snapshot);
 
-        return position !== null && positionNumberIsSpeakable(position);
+        return position !== null;
       },
     },
     channel: AudioChannel.Voice,

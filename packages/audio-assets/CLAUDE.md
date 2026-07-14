@@ -90,7 +90,8 @@ The most common case — a new callout in an existing family (e.g. another flag)
 ## Conventions
 
 - One group per callout family (flags, pit-actions, pit-status, track-conditions, …). Mixing families in one group makes the cost-scoping flag `--group` less useful.
-- Variants use a `-NN` suffix (`blue-01.mp3`, `blue-02.mp3`). A pool is *all clips sharing a base name* — `voice/<voice>/<group>/<base>-NN.mp3` — derived per-voice from the runtime manifest (issue #664), so **adding or removing a variant is just adding or removing an entry + clip**: no pool edit, no code change. Playback picks uniform-random with a no-immediate-repeat guard (not in numeric order).
+- Variants use a `-NN` suffix (`blue-01.mp3`, `blue-02.mp3`). A pool is *all clips sharing a base name* — every `voice/<voice>/<group>/<base>-NN.mp3` **plus the bare `<base>.mp3`** (issue #836: a bare value clip like `position-number/7.mp3` is a size-1 pool) — derived per-voice from the runtime manifest (issue #664), so **adding or removing a variant is just adding or removing an entry + clip**: no pool edit, no code change. Playback picks uniform-random with a no-immediate-repeat guard (not in numeric order).
+- Value clips (numbers, temperatures, speeds, names, lap-time digits) define their own speakable range by existing (issue #836): there are no code-side bounds or clamps, so widening a range (e.g. more temp values, higher position numbers) is purely a generate-clips job.
 - The `<group>/<base>` pair is the stable identifier — the audio-scenarios `POOL_REGISTRY` references pools by it, so renaming a base is a breaking change for the pool that references it. (The acknowledgment clips are the exception until #837: they don't follow `-NN` yet and are referenced by exact path.)
 
 ## Known re-render triggers
