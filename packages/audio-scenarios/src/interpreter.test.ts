@@ -594,6 +594,29 @@ describe("required-step abort (issue #835)", () => {
     expect(voicePaths()).toEqual(["voice/default/flags/blue-01.mp3"]);
   });
 
+  it("substitutes {voice} in connector picks and aborts when the clip is missing for the active voice", () => {
+    engine.definePool("connector", ["voice/{voice}/flags/blue-01.mp3"]);
+    engine.defineScenario({
+      id: "test.connector",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      sequence: [{ connector: true }, "/sfx/IRD-tick-close.mp3"],
+    });
+
+    engine.fire("test.connector");
+    flushVoiceAndSfx(audio);
+
+    expect(voicePaths()).toEqual(["voice/default/flags/blue-01.mp3"]);
+    expect(audio._played).toHaveLength(2);
+
+    activeVoice = "titan";
+    engine.fire("test.connector");
+    flushVoiceAndSfx(audio);
+
+    // The whole second fire aborted — no new plays.
+    expect(audio._played).toHaveLength(2);
+  });
+
   it("an aborted fire does not stamp the cooldown", () => {
     let value: string | null = null;
     engine.defineVar("mutable", () => value);

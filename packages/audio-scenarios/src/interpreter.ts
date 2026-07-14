@@ -1050,7 +1050,9 @@ class ScenarioEngine implements IScenarioEngine {
 
           if (!pick) throw new ExpansionAbort(`connector pool resolved to nothing`);
 
-          this.pushClip(out, pick, defaultChannel);
+          const path = this.substituteVoice(pick);
+          this.assertClipAvailable(path, `connector`);
+          this.pushClip(out, path, defaultChannel);
 
           break;
         }
