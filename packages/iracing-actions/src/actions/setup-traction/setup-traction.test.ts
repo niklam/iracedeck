@@ -22,31 +22,31 @@ const { mockTapBinding } = vi.hoisted(() => ({
 }));
 
 vi.mock("@iracedeck/icons/setup-traction/tc-toggle.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+  default: '<svg xmlns="http://www.w3.org/2000/svg">tc-toggle {{mainLabel}} {{subLabel}}</svg>',
 }));
 vi.mock("@iracedeck/icons/setup-traction/tc-slot-1-increase.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+  default: '<svg xmlns="http://www.w3.org/2000/svg">tc-slot-1-increase {{mainLabel}} {{subLabel}}</svg>',
 }));
 vi.mock("@iracedeck/icons/setup-traction/tc-slot-1-decrease.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+  default: '<svg xmlns="http://www.w3.org/2000/svg">tc-slot-1-decrease {{mainLabel}} {{subLabel}}</svg>',
 }));
 vi.mock("@iracedeck/icons/setup-traction/tc-slot-2-increase.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+  default: '<svg xmlns="http://www.w3.org/2000/svg">tc-slot-2-increase {{mainLabel}} {{subLabel}}</svg>',
 }));
 vi.mock("@iracedeck/icons/setup-traction/tc-slot-2-decrease.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+  default: '<svg xmlns="http://www.w3.org/2000/svg">tc-slot-2-decrease {{mainLabel}} {{subLabel}}</svg>',
 }));
 vi.mock("@iracedeck/icons/setup-traction/tc-slot-3-increase.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+  default: '<svg xmlns="http://www.w3.org/2000/svg">tc-slot-3-increase {{mainLabel}} {{subLabel}}</svg>',
 }));
 vi.mock("@iracedeck/icons/setup-traction/tc-slot-3-decrease.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+  default: '<svg xmlns="http://www.w3.org/2000/svg">tc-slot-3-decrease {{mainLabel}} {{subLabel}}</svg>',
 }));
 vi.mock("@iracedeck/icons/setup-traction/tc-slot-4-increase.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+  default: '<svg xmlns="http://www.w3.org/2000/svg">tc-slot-4-increase {{mainLabel}} {{subLabel}}</svg>',
 }));
 vi.mock("@iracedeck/icons/setup-traction/tc-slot-4-decrease.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+  default: '<svg xmlns="http://www.w3.org/2000/svg">tc-slot-4-decrease {{mainLabel}} {{subLabel}}</svg>',
 }));
 
 vi.mock("@iracedeck/deck-core", async () => {
@@ -288,7 +288,7 @@ describe("SetupTraction", () => {
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("TC1");
-      expect(decoded).toContain("INCREASE");
+      expect(decoded).not.toContain("INCREASE");
     });
 
     it("should include correct labels for tc-slot-1 decrease", () => {
@@ -296,7 +296,7 @@ describe("SetupTraction", () => {
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("TC1");
-      expect(decoded).toContain("DECREASE");
+      expect(decoded).not.toContain("DECREASE");
     });
 
     it("should include correct labels for all combinations", () => {
@@ -306,20 +306,20 @@ describe("SetupTraction", () => {
           decrease: { mainLabel: "TC", subLabel: "TOGGLE" },
         },
         "tc-slot-1": {
-          increase: { mainLabel: "TC1", subLabel: "INCREASE" },
-          decrease: { mainLabel: "TC1", subLabel: "DECREASE" },
+          increase: { mainLabel: "TC1", subLabel: "TC1</svg>" },
+          decrease: { mainLabel: "TC1", subLabel: "TC1</svg>" },
         },
         "tc-slot-2": {
-          increase: { mainLabel: "TC2", subLabel: "INCREASE" },
-          decrease: { mainLabel: "TC2", subLabel: "DECREASE" },
+          increase: { mainLabel: "TC2", subLabel: "TC2</svg>" },
+          decrease: { mainLabel: "TC2", subLabel: "TC2</svg>" },
         },
         "tc-slot-3": {
-          increase: { mainLabel: "TC3", subLabel: "INCREASE" },
-          decrease: { mainLabel: "TC3", subLabel: "DECREASE" },
+          increase: { mainLabel: "TC3", subLabel: "TC3</svg>" },
+          decrease: { mainLabel: "TC3", subLabel: "TC3</svg>" },
         },
         "tc-slot-4": {
-          increase: { mainLabel: "TC4", subLabel: "INCREASE" },
-          decrease: { mainLabel: "TC4", subLabel: "DECREASE" },
+          increase: { mainLabel: "TC4", subLabel: "TC4</svg>" },
+          decrease: { mainLabel: "TC4", subLabel: "TC4</svg>" },
         },
       };
 

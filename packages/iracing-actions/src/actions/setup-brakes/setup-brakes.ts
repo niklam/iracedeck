@@ -117,18 +117,18 @@ const SETUP_BRAKES_ICONS: Record<string, string> = {
  */
 const SETUP_BRAKES_TITLES: Record<string, string> = {
   "abs-toggle": "TOGGLE\nABS",
-  "abs-adjust-increase": "INCREASE\nABS",
-  "abs-adjust-decrease": "DECREASE\nABS",
-  "brake-bias-increase": "INCREASE\nBRAKE BIAS",
-  "brake-bias-decrease": "DECREASE\nBRAKE BIAS",
-  "brake-bias-fine-increase": "INCREASE\nBIAS FINE",
-  "brake-bias-fine-decrease": "DECREASE\nBIAS FINE",
-  "peak-brake-bias-increase": "INCREASE\nPEAK BIAS",
-  "peak-brake-bias-decrease": "DECREASE\nPEAK BIAS",
-  "brake-misc-increase": "INCREASE\nBRAKE MISC",
-  "brake-misc-decrease": "DECREASE\nBRAKE MISC",
-  "engine-braking-increase": "INCREASE\nENG BRAKE",
-  "engine-braking-decrease": "DECREASE\nENG BRAKE",
+  "abs-adjust-increase": "ABS",
+  "abs-adjust-decrease": "ABS",
+  "brake-bias-increase": "BRAKE BIAS",
+  "brake-bias-decrease": "BRAKE BIAS",
+  "brake-bias-fine-increase": "BIAS FINE",
+  "brake-bias-fine-decrease": "BIAS FINE",
+  "peak-brake-bias-increase": "PEAK BIAS",
+  "peak-brake-bias-decrease": "PEAK BIAS",
+  "brake-misc-increase": "BRAKE MISC",
+  "brake-misc-decrease": "BRAKE MISC",
+  "engine-braking-increase": "ENG BRAKE",
+  "engine-braking-decrease": "ENG BRAKE",
 };
 
 /**

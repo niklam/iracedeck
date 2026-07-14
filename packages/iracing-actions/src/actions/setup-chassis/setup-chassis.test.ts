@@ -441,7 +441,7 @@ describe("SetupChassis", () => {
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("DIFF PRELOAD");
-      expect(decoded).toContain("INCREASE");
+      expect(decoded).not.toContain("INCREASE");
     });
 
     it("should include correct labels for power-steering decrease", () => {
@@ -449,62 +449,62 @@ describe("SetupChassis", () => {
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("PWR STEER");
-      expect(decoded).toContain("DECREASE");
+      expect(decoded).not.toContain("DECREASE");
     });
 
     it("should include correct labels for all combinations", () => {
       const expectedLabels: Record<string, Record<string, { line1: string; line2: string }>> = {
         "differential-preload": {
-          increase: { line1: "DIFF PRELOAD", line2: "INCREASE" },
-          decrease: { line1: "DIFF PRELOAD", line2: "DECREASE" },
+          increase: { line1: "DIFF PRELOAD", line2: "DIFF PRELOAD</svg>" },
+          decrease: { line1: "DIFF PRELOAD", line2: "DIFF PRELOAD</svg>" },
         },
         "differential-entry": {
-          increase: { line1: "DIFF ENTRY", line2: "INCREASE" },
-          decrease: { line1: "DIFF ENTRY", line2: "DECREASE" },
+          increase: { line1: "DIFF ENTRY", line2: "DIFF ENTRY</svg>" },
+          decrease: { line1: "DIFF ENTRY", line2: "DIFF ENTRY</svg>" },
         },
         "differential-middle": {
-          increase: { line1: "DIFF MIDDLE", line2: "INCREASE" },
-          decrease: { line1: "DIFF MIDDLE", line2: "DECREASE" },
+          increase: { line1: "DIFF MIDDLE", line2: "DIFF MIDDLE</svg>" },
+          decrease: { line1: "DIFF MIDDLE", line2: "DIFF MIDDLE</svg>" },
         },
         "differential-exit": {
-          increase: { line1: "DIFF EXIT", line2: "INCREASE" },
-          decrease: { line1: "DIFF EXIT", line2: "DECREASE" },
+          increase: { line1: "DIFF EXIT", line2: "DIFF EXIT</svg>" },
+          decrease: { line1: "DIFF EXIT", line2: "DIFF EXIT</svg>" },
         },
         "front-arb": {
-          increase: { line1: "FRONT ARB", line2: "INCREASE" },
-          decrease: { line1: "FRONT ARB", line2: "DECREASE" },
+          increase: { line1: "FRONT ARB", line2: "FRONT ARB</svg>" },
+          decrease: { line1: "FRONT ARB", line2: "FRONT ARB</svg>" },
         },
         "rear-arb": {
-          increase: { line1: "REAR ARB", line2: "INCREASE" },
-          decrease: { line1: "REAR ARB", line2: "DECREASE" },
+          increase: { line1: "REAR ARB", line2: "REAR ARB</svg>" },
+          decrease: { line1: "REAR ARB", line2: "REAR ARB</svg>" },
         },
         "left-spring": {
-          increase: { line1: "LEFT SPRING", line2: "INCREASE" },
-          decrease: { line1: "LEFT SPRING", line2: "DECREASE" },
+          increase: { line1: "LEFT SPRING", line2: "LEFT SPRING</svg>" },
+          decrease: { line1: "LEFT SPRING", line2: "LEFT SPRING</svg>" },
         },
         "right-spring": {
-          increase: { line1: "RIGHT SPRING", line2: "INCREASE" },
-          decrease: { line1: "RIGHT SPRING", line2: "DECREASE" },
+          increase: { line1: "RIGHT SPRING", line2: "RIGHT SPRING</svg>" },
+          decrease: { line1: "RIGHT SPRING", line2: "RIGHT SPRING</svg>" },
         },
         "lf-shock": {
-          increase: { line1: "LF SHOCK", line2: "INCREASE" },
-          decrease: { line1: "LF SHOCK", line2: "DECREASE" },
+          increase: { line1: "LF SHOCK", line2: "LF SHOCK</svg>" },
+          decrease: { line1: "LF SHOCK", line2: "LF SHOCK</svg>" },
         },
         "rf-shock": {
-          increase: { line1: "RF SHOCK", line2: "INCREASE" },
-          decrease: { line1: "RF SHOCK", line2: "DECREASE" },
+          increase: { line1: "RF SHOCK", line2: "RF SHOCK</svg>" },
+          decrease: { line1: "RF SHOCK", line2: "RF SHOCK</svg>" },
         },
         "lr-shock": {
-          increase: { line1: "LR SHOCK", line2: "INCREASE" },
-          decrease: { line1: "LR SHOCK", line2: "DECREASE" },
+          increase: { line1: "LR SHOCK", line2: "LR SHOCK</svg>" },
+          decrease: { line1: "LR SHOCK", line2: "LR SHOCK</svg>" },
         },
         "rr-shock": {
-          increase: { line1: "RR SHOCK", line2: "INCREASE" },
-          decrease: { line1: "RR SHOCK", line2: "DECREASE" },
+          increase: { line1: "RR SHOCK", line2: "RR SHOCK</svg>" },
+          decrease: { line1: "RR SHOCK", line2: "RR SHOCK</svg>" },
         },
         "power-steering": {
-          increase: { line1: "PWR STEER", line2: "INCREASE" },
-          decrease: { line1: "PWR STEER", line2: "DECREASE" },
+          increase: { line1: "PWR STEER", line2: "PWR STEER</svg>" },
+          decrease: { line1: "PWR STEER", line2: "PWR STEER</svg>" },
         },
       };
 

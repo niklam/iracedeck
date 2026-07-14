@@ -106,39 +106,40 @@ const ADJUSTMENT_ICONS: Record<string, string> = {
 };
 
 /**
- * Title text for each adjustment + direction combination (format: "subLabel\nmainLabel")
+ * Title text for each adjustment + direction combination. The direction is carried by the
+ * giant +/- glyph in the artwork, so titles are the adjustment name only.
  */
 const CAMERA_EDITOR_TITLES: Record<string, string> = {
-  "latitude-increase": "LATITUDE\n+",
-  "latitude-decrease": "LATITUDE\n-",
-  "longitude-increase": "LONGITUDE\n+",
-  "longitude-decrease": "LONGITUDE\n-",
-  "altitude-increase": "ALTITUDE\n+",
-  "altitude-decrease": "ALTITUDE\n-",
-  "yaw-increase": "YAW\n+",
-  "yaw-decrease": "YAW\n-",
-  "pitch-increase": "PITCH\n+",
-  "pitch-decrease": "PITCH\n-",
-  "fov-zoom-increase": "FOV ZOOM\n+",
-  "fov-zoom-decrease": "FOV ZOOM\n-",
-  "key-step-increase": "KEY STEP\n+",
-  "key-step-decrease": "KEY STEP\n-",
-  "vanish-x-increase": "VANISH X\n+",
-  "vanish-x-decrease": "VANISH X\n-",
-  "vanish-y-increase": "VANISH Y\n+",
-  "vanish-y-decrease": "VANISH Y\n-",
-  "blimp-radius-increase": "BLIMP RAD\n+",
-  "blimp-radius-decrease": "BLIMP RAD\n-",
-  "blimp-velocity-increase": "BLIMP VEL\n+",
-  "blimp-velocity-decrease": "BLIMP VEL\n-",
-  "mic-gain-increase": "MIC GAIN\n+",
-  "mic-gain-decrease": "MIC GAIN\n-",
+  "latitude-increase": "LATITUDE",
+  "latitude-decrease": "LATITUDE",
+  "longitude-increase": "LONGITUDE",
+  "longitude-decrease": "LONGITUDE",
+  "altitude-increase": "ALTITUDE",
+  "altitude-decrease": "ALTITUDE",
+  "yaw-increase": "YAW",
+  "yaw-decrease": "YAW",
+  "pitch-increase": "PITCH",
+  "pitch-decrease": "PITCH",
+  "fov-zoom-increase": "FOV ZOOM",
+  "fov-zoom-decrease": "FOV ZOOM",
+  "key-step-increase": "KEY STEP",
+  "key-step-decrease": "KEY STEP",
+  "vanish-x-increase": "VANISH X",
+  "vanish-x-decrease": "VANISH X",
+  "vanish-y-increase": "VANISH Y",
+  "vanish-y-decrease": "VANISH Y",
+  "blimp-radius-increase": "BLIMP RAD",
+  "blimp-radius-decrease": "BLIMP RAD",
+  "blimp-velocity-increase": "BLIMP VEL",
+  "blimp-velocity-decrease": "BLIMP VEL",
+  "mic-gain-increase": "MIC GAIN",
+  "mic-gain-decrease": "MIC GAIN",
   "auto-set-mic-gain-increase": "MIC GAIN\nAUTO",
   "auto-set-mic-gain-decrease": "MIC GAIN\nAUTO",
-  "f-number-increase": "F-NUMBER\n+",
-  "f-number-decrease": "F-NUMBER\n-",
-  "focus-depth-increase": "FOCUS DEPTH\n+",
-  "focus-depth-decrease": "FOCUS DEPTH\n-",
+  "f-number-increase": "F-NUMBER",
+  "f-number-decrease": "F-NUMBER",
+  "focus-depth-increase": "FOCUS DEPTH",
+  "focus-depth-decrease": "FOCUS DEPTH",
 };
 
 /**
@@ -184,7 +185,7 @@ export function generateCameraEditorAdjustmentsSvg(
 
   const iconKey = `${adjustment}-${direction}`;
   const iconSvg = ADJUSTMENT_ICONS[iconKey] || ADJUSTMENT_ICONS["latitude-increase"];
-  const defaultTitle = CAMERA_EDITOR_TITLES[iconKey] || "LATITUDE\n+";
+  const defaultTitle = CAMERA_EDITOR_TITLES[iconKey] || "LATITUDE";
 
   const colors = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
   const title = resolveTitleSettings(iconSvg, getGlobalTitleSettings(), settings.titleOverrides, defaultTitle);

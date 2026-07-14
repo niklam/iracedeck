@@ -19,31 +19,31 @@ const { mockTapBinding, mockHoldBinding, mockReleaseBinding } = vi.hoisted(() =>
 }));
 
 vi.mock("@iracedeck/icons/setup-hybrid/mguk-regen-gain-increase.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+  default: '<svg xmlns="http://www.w3.org/2000/svg">mguk-regen-gain-increase {{mainLabel}} {{subLabel}}</svg>',
 }));
 vi.mock("@iracedeck/icons/setup-hybrid/mguk-regen-gain-decrease.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+  default: '<svg xmlns="http://www.w3.org/2000/svg">mguk-regen-gain-decrease {{mainLabel}} {{subLabel}}</svg>',
 }));
 vi.mock("@iracedeck/icons/setup-hybrid/mguk-deploy-mode-increase.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+  default: '<svg xmlns="http://www.w3.org/2000/svg">mguk-deploy-mode-increase {{mainLabel}} {{subLabel}}</svg>',
 }));
 vi.mock("@iracedeck/icons/setup-hybrid/mguk-deploy-mode-decrease.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+  default: '<svg xmlns="http://www.w3.org/2000/svg">mguk-deploy-mode-decrease {{mainLabel}} {{subLabel}}</svg>',
 }));
 vi.mock("@iracedeck/icons/setup-hybrid/mguk-fixed-deploy-increase.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+  default: '<svg xmlns="http://www.w3.org/2000/svg">mguk-fixed-deploy-increase {{mainLabel}} {{subLabel}}</svg>',
 }));
 vi.mock("@iracedeck/icons/setup-hybrid/mguk-fixed-deploy-decrease.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+  default: '<svg xmlns="http://www.w3.org/2000/svg">mguk-fixed-deploy-decrease {{mainLabel}} {{subLabel}}</svg>',
 }));
 vi.mock("@iracedeck/icons/setup-hybrid/hys-boost.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+  default: '<svg xmlns="http://www.w3.org/2000/svg">hys-boost {{mainLabel}} {{subLabel}}</svg>',
 }));
 vi.mock("@iracedeck/icons/setup-hybrid/hys-regen.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+  default: '<svg xmlns="http://www.w3.org/2000/svg">hys-regen {{mainLabel}} {{subLabel}}</svg>',
 }));
 vi.mock("@iracedeck/icons/setup-hybrid/hys-no-boost.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+  default: '<svg xmlns="http://www.w3.org/2000/svg">hys-no-boost {{mainLabel}} {{subLabel}}</svg>',
 }));
 
 vi.mock("@iracedeck/deck-core", async () => {
@@ -298,7 +298,7 @@ describe("SetupHybrid", () => {
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("REGEN GAIN");
-      expect(decoded).toContain("INCREASE");
+      expect(decoded).not.toContain("INCREASE");
     });
 
     it("should include correct labels for mguk-regen-gain decrease", () => {
@@ -306,7 +306,7 @@ describe("SetupHybrid", () => {
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("REGEN GAIN");
-      expect(decoded).toContain("DECREASE");
+      expect(decoded).not.toContain("DECREASE");
     });
 
     it("should include correct labels for hys-boost", () => {
@@ -328,16 +328,16 @@ describe("SetupHybrid", () => {
     it("should include correct labels for all combinations", () => {
       const expectedLabels: Record<string, Record<string, { mainLabel: string; subLabel: string }>> = {
         "mguk-regen-gain": {
-          increase: { mainLabel: "REGEN GAIN", subLabel: "INCREASE" },
-          decrease: { mainLabel: "REGEN GAIN", subLabel: "DECREASE" },
+          increase: { mainLabel: "REGEN GAIN", subLabel: "REGEN GAIN</svg>" },
+          decrease: { mainLabel: "REGEN GAIN", subLabel: "REGEN GAIN</svg>" },
         },
         "mguk-deploy-mode": {
-          increase: { mainLabel: "DEPLOY MODE", subLabel: "INCREASE" },
-          decrease: { mainLabel: "DEPLOY MODE", subLabel: "DECREASE" },
+          increase: { mainLabel: "DEPLOY MODE", subLabel: "DEPLOY MODE</svg>" },
+          decrease: { mainLabel: "DEPLOY MODE", subLabel: "DEPLOY MODE</svg>" },
         },
         "mguk-fixed-deploy": {
-          increase: { mainLabel: "FIXED DEPLOY", subLabel: "INCREASE" },
-          decrease: { mainLabel: "FIXED DEPLOY", subLabel: "DECREASE" },
+          increase: { mainLabel: "FIXED DEPLOY", subLabel: "FIXED DEPLOY</svg>" },
+          decrease: { mainLabel: "FIXED DEPLOY", subLabel: "FIXED DEPLOY</svg>" },
         },
         "hys-boost": {
           increase: { mainLabel: "HYS", subLabel: "BOOST" },

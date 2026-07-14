@@ -352,7 +352,7 @@ describe("SetupBrakes", () => {
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("BRAKE BIAS");
-      expect(decoded).toContain("INCREASE");
+      expect(decoded).not.toContain("INCREASE");
     });
 
     it("should include correct labels for brake-bias decrease", () => {
@@ -360,7 +360,7 @@ describe("SetupBrakes", () => {
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("BRAKE BIAS");
-      expect(decoded).toContain("DECREASE");
+      expect(decoded).not.toContain("DECREASE");
     });
 
     it("should include correct labels for brake-bias-fine increase", () => {
@@ -368,7 +368,7 @@ describe("SetupBrakes", () => {
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("BIAS FINE");
-      expect(decoded).toContain("INCREASE");
+      expect(decoded).not.toContain("INCREASE");
     });
 
     it("should include correct labels for engine-braking decrease", () => {
@@ -376,7 +376,7 @@ describe("SetupBrakes", () => {
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("ENG BRAKE");
-      expect(decoded).toContain("DECREASE");
+      expect(decoded).not.toContain("DECREASE");
     });
 
     it("should include correct labels for all combinations", () => {
@@ -386,28 +386,28 @@ describe("SetupBrakes", () => {
           decrease: { line1: "ABS", line2: "TOGGLE" },
         },
         "abs-adjust": {
-          increase: { line1: "ABS", line2: "INCREASE" },
-          decrease: { line1: "ABS", line2: "DECREASE" },
+          increase: { line1: "ABS", line2: "ABS</svg>" },
+          decrease: { line1: "ABS", line2: "ABS</svg>" },
         },
         "brake-bias": {
-          increase: { line1: "BRAKE BIAS", line2: "INCREASE" },
-          decrease: { line1: "BRAKE BIAS", line2: "DECREASE" },
+          increase: { line1: "BRAKE BIAS", line2: "BRAKE BIAS</svg>" },
+          decrease: { line1: "BRAKE BIAS", line2: "BRAKE BIAS</svg>" },
         },
         "brake-bias-fine": {
-          increase: { line1: "BIAS FINE", line2: "INCREASE" },
-          decrease: { line1: "BIAS FINE", line2: "DECREASE" },
+          increase: { line1: "BIAS FINE", line2: "BIAS FINE</svg>" },
+          decrease: { line1: "BIAS FINE", line2: "BIAS FINE</svg>" },
         },
         "peak-brake-bias": {
-          increase: { line1: "PEAK BIAS", line2: "INCREASE" },
-          decrease: { line1: "PEAK BIAS", line2: "DECREASE" },
+          increase: { line1: "PEAK BIAS", line2: "PEAK BIAS</svg>" },
+          decrease: { line1: "PEAK BIAS", line2: "PEAK BIAS</svg>" },
         },
         "brake-misc": {
-          increase: { line1: "BRAKE MISC", line2: "INCREASE" },
-          decrease: { line1: "BRAKE MISC", line2: "DECREASE" },
+          increase: { line1: "BRAKE MISC", line2: "BRAKE MISC</svg>" },
+          decrease: { line1: "BRAKE MISC", line2: "BRAKE MISC</svg>" },
         },
         "engine-braking": {
-          increase: { line1: "ENG BRAKE", line2: "INCREASE" },
-          decrease: { line1: "ENG BRAKE", line2: "DECREASE" },
+          increase: { line1: "ENG BRAKE", line2: "ENG BRAKE</svg>" },
+          decrease: { line1: "ENG BRAKE", line2: "ENG BRAKE</svg>" },
         },
       };
 

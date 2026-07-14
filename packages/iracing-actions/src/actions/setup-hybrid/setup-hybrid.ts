@@ -91,12 +91,12 @@ const SETUP_HYBRID_ICONS: Record<string, string> = {
  * Title text for each setting + direction combination (format: "subLabel\nmainLabel")
  */
 const SETUP_HYBRID_TITLES: Record<string, string> = {
-  "mguk-regen-gain-increase": "INCREASE\nREGEN GAIN",
-  "mguk-regen-gain-decrease": "DECREASE\nREGEN GAIN",
-  "mguk-deploy-mode-increase": "INCREASE\nDEPLOY MODE",
-  "mguk-deploy-mode-decrease": "DECREASE\nDEPLOY MODE",
-  "mguk-fixed-deploy-increase": "INCREASE\nFIXED DEPLOY",
-  "mguk-fixed-deploy-decrease": "DECREASE\nFIXED DEPLOY",
+  "mguk-regen-gain-increase": "REGEN GAIN",
+  "mguk-regen-gain-decrease": "REGEN GAIN",
+  "mguk-deploy-mode-increase": "DEPLOY MODE",
+  "mguk-deploy-mode-decrease": "DEPLOY MODE",
+  "mguk-fixed-deploy-increase": "FIXED DEPLOY",
+  "mguk-fixed-deploy-decrease": "FIXED DEPLOY",
   "hys-boost": "BOOST\nHYS",
   "hys-regen": "REGEN\nHYS",
   "hys-no-boost": "NO BOOST\nHYS",

@@ -118,14 +118,14 @@ const SETUP_TRACTION_ICONS: Record<string, string> = {
  */
 const SETUP_TRACTION_TITLES: Record<string, string> = {
   "tc-toggle": "TOGGLE\nTC",
-  "tc-slot-1-increase": "INCREASE\nTC1",
-  "tc-slot-1-decrease": "DECREASE\nTC1",
-  "tc-slot-2-increase": "INCREASE\nTC2",
-  "tc-slot-2-decrease": "DECREASE\nTC2",
-  "tc-slot-3-increase": "INCREASE\nTC3",
-  "tc-slot-3-decrease": "DECREASE\nTC3",
-  "tc-slot-4-increase": "INCREASE\nTC4",
-  "tc-slot-4-decrease": "DECREASE\nTC4",
+  "tc-slot-1-increase": "TC1",
+  "tc-slot-1-decrease": "TC1",
+  "tc-slot-2-increase": "TC2",
+  "tc-slot-2-decrease": "TC2",
+  "tc-slot-3-increase": "TC3",
+  "tc-slot-3-decrease": "TC3",
+  "tc-slot-4-increase": "TC4",
+  "tc-slot-4-decrease": "TC4",
 };
 
 /**

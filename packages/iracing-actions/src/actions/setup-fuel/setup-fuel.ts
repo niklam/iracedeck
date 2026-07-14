@@ -80,10 +80,10 @@ const SETUP_FUEL_ICONS: Record<string, string> = {
  * Title text for each setting + direction combination (format: "subLabel\nmainLabel")
  */
 const SETUP_FUEL_TITLES: Record<string, string> = {
-  "fuel-mixture-increase": "INCREASE\nFUEL MIX",
-  "fuel-mixture-decrease": "DECREASE\nFUEL MIX",
-  "fuel-cut-position-increase": "INCREASE\nFUEL CUT",
-  "fuel-cut-position-decrease": "DECREASE\nFUEL CUT",
+  "fuel-mixture-increase": "FUEL MIX",
+  "fuel-mixture-decrease": "FUEL MIX",
+  "fuel-cut-position-increase": "FUEL CUT",
+  "fuel-cut-position-decrease": "FUEL CUT",
   "disable-fuel-cut": "DISABLE\nFUEL CUT",
   "low-fuel-accept": "ACCEPT\nLOW FUEL",
   "fcy-mode-toggle": "TOGGLE\nFCY MODE",

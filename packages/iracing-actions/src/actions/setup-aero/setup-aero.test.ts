@@ -263,7 +263,7 @@ describe("SetupAero", () => {
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("FRONT WING");
-      expect(decoded).toContain("INCREASE");
+      expect(decoded).not.toContain("INCREASE");
     });
 
     it("should include correct labels for front-wing decrease", () => {
@@ -271,22 +271,22 @@ describe("SetupAero", () => {
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("FRONT WING");
-      expect(decoded).toContain("DECREASE");
+      expect(decoded).not.toContain("DECREASE");
     });
 
     it("should include correct labels for all combinations", () => {
       const expectedLabels: Record<string, Record<string, { line1: string; line2: string }>> = {
         "front-wing": {
-          increase: { line1: "FRONT WING", line2: "INCREASE" },
-          decrease: { line1: "FRONT WING", line2: "DECREASE" },
+          increase: { line1: "FRONT WING", line2: "FRONT WING</svg>" },
+          decrease: { line1: "FRONT WING", line2: "FRONT WING</svg>" },
         },
         "rear-wing": {
-          increase: { line1: "REAR WING", line2: "INCREASE" },
-          decrease: { line1: "REAR WING", line2: "DECREASE" },
+          increase: { line1: "REAR WING", line2: "REAR WING</svg>" },
+          decrease: { line1: "REAR WING", line2: "REAR WING</svg>" },
         },
         "qualifying-tape": {
-          increase: { line1: "QUAL TAPE", line2: "INCREASE" },
-          decrease: { line1: "QUAL TAPE", line2: "DECREASE" },
+          increase: { line1: "QUAL TAPE", line2: "QUAL TAPE</svg>" },
+          decrease: { line1: "QUAL TAPE", line2: "QUAL TAPE</svg>" },
         },
         "rf-brake-attached": {
           increase: { line1: "RF BRAKE", line2: "TOGGLE" },

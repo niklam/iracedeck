@@ -78,14 +78,14 @@ const SETUP_ENGINE_ICONS: Record<string, string> = {
  * Title text for each setting + direction combination (format: "subLabel\nmainLabel")
  */
 const SETUP_ENGINE_TITLES: Record<string, string> = {
-  "engine-power-increase": "INCREASE\nENG POWER",
-  "engine-power-decrease": "DECREASE\nENG POWER",
-  "throttle-shaping-increase": "INCREASE\nTHROTTLE",
-  "throttle-shaping-decrease": "DECREASE\nTHROTTLE",
-  "boost-level-increase": "INCREASE\nBOOST",
-  "boost-level-decrease": "DECREASE\nBOOST",
-  "launch-rpm-increase": "INCREASE\nLAUNCH RPM",
-  "launch-rpm-decrease": "DECREASE\nLAUNCH RPM",
+  "engine-power-increase": "ENG POWER",
+  "engine-power-decrease": "ENG POWER",
+  "throttle-shaping-increase": "THROTTLE",
+  "throttle-shaping-decrease": "THROTTLE",
+  "boost-level-increase": "BOOST",
+  "boost-level-decrease": "BOOST",
+  "launch-rpm-increase": "LAUNCH RPM",
+  "launch-rpm-decrease": "LAUNCH RPM",
 };
 
 /**
