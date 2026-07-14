@@ -1,10 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 70" stroke-width="0.5" stroke="#fff" fill="#fff">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 61.8 49.8">
   <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"CHAT\nCANCEL"},"border":{"color":"#5a6a7a"}}</desc>
-  
+  <defs>
+    
+  </defs>
+  <g transform="translate(-13 -9)">
 
-    <path d="M10,2h80a8,8,0,0,1,8,8v40a8,8,0,0,1,-8,8H54l-6,10l-6,-10H10a8,8,0,0,1,-8,-8V10a8,8,0,0,1,8,-8z"
-          fill="none" stroke="#ffffff" stroke-width="4" stroke-linejoin="round"/>
-    <line x1="34" y1="16" x2="66" y2="40" stroke="{{color}}" stroke-width="5" stroke-linecap="round"/>
-    <line x1="66" y1="16" x2="34" y2="40" stroke="{{color}}" stroke-width="5" stroke-linecap="round"/>
-
+    <rect x="14" y="10" width="60" height="36" rx="9" fill="#ffffff"/>
+    <polygon points="28,45 28,58 41,45" fill="#ffffff"/>
+    <line x1="38" y1="21" x2="50" y2="35" stroke="#e74c3c" stroke-width="4.5" stroke-linecap="round"/>
+    <line x1="50" y1="21" x2="38" y2="35" stroke="#e74c3c" stroke-width="4.5" stroke-linecap="round"/>
+  </g>
 </svg>

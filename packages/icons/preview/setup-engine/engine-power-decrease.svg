@@ -1,12 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 88 52" stroke-width="0.5" stroke="#fff" fill="#fff">
-  <desc>{"colors":{"backgroundColor":"#2a3a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"ENG POWER\nDECREASE"},"border":{"color":"#5a6a3a"}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100.8 49.8">
+  <desc>{"colors":{"backgroundColor":"#2a3a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"ENG POWER"},"border":{"color":"#5a6a3a"}}</desc>
+  <defs>
+    
+  </defs>
+  <g transform="translate(-13 -7)">
 
-
-    <rect x="30" y="10" width="56" height="40" rx="6" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <line x1="42" y1="10" x2="42" y2="2" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
-    <line x1="58" y1="10" x2="58" y2="2" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
-    <line x1="74" y1="10" x2="74" y2="2" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
-    <polyline points="52,22 58,34 52,34 58,46" fill="none" stroke="#f1c40f" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-    <polyline points="12,38 2,26 12,14" fill="none" stroke="#f1c40f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-
+    <rect x="22" y="14" width="6" height="10" rx="2" fill="#6b7f8a"/>
+    <rect x="32" y="14" width="6" height="10" rx="2" fill="#6b7f8a"/>
+    <rect x="42" y="14" width="6" height="10" rx="2" fill="#6b7f8a"/>
+    <rect x="18" y="22" width="34" height="10" rx="2.5" fill="#ffffff"/>
+    <rect x="14" y="30" width="42" height="26" rx="4" fill="#ffffff"/>
+    
+    <polygon points="72,8 60,34 69,34 64,56 81,28 71,28" fill="#f7d94c"/><path d="M85.8 31.9h24" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>
+  </g>
 </svg>

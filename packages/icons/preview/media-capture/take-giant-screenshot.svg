@@ -1,15 +1,22 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 92 52" stroke-width="0.5" stroke="#fff" fill="#fff">
-  <desc>{"colors":{"backgroundColor":"#2a1a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"SCREENSHOT\nGIANT"},"border":{"color":"#5a3a6a"}}</desc>
-  
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 77.3 65.3">
+  <desc>{"colors":{"backgroundColor":"#2a1a3a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"title":{"text":"SCREENSHOT\nGIANT"},"border":{"color":"#5a3a6a"}}</desc>
+  <defs>
+    
+  </defs>
+  <g transform="translate(-9.2 -5.2)">
 
-    <rect x="2" y="10" width="52" height="40" rx="4" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <rect x="22" y="2" width="16" height="12" rx="2" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <circle cx="28" cy="30" r="10" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <circle cx="28" cy="30" r="4" fill="#ffffff" stroke="none"/>
-    <rect x="62" y="10" width="28" height="28" rx="2" fill="none" stroke="#888888" stroke-width="3"/>
-    <line x1="66" y1="14" x2="70" y2="14" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
-    <line x1="66" y1="14" x2="66" y2="18" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
-    <line x1="86" y1="34" x2="82" y2="34" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
-    <line x1="86" y1="34" x2="86" y2="30" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
-
+    <path d="M12 16 v-8 h8" fill="none" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M76 8 h8 v8" fill="none" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M84 60 v8 h-8" fill="none" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M20 68 h-8 v-8" fill="none" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/><g transform="translate(14 10) scale(0.78)">
+    <rect x="34" y="13" width="18" height="11" rx="3" fill="#ffffff"/>
+    <rect x="16" y="22" width="54" height="38" rx="7" fill="#ffffff"/>
+    
+    <circle cx="43" cy="41" r="13" fill="#2a1a3a"/>
+    <circle cx="43" cy="41" r="11" fill="#4fc3f7"/>
+    <circle cx="39" cy="36" r="3.5" fill="#ffffff" opacity="0.85"/>
+  </g>
+    
+    <path transform="translate(76 14) scale(0.85)" d="M0 0 l2.6 6 6 2.6 -6 2.6 -2.6 6 -2.6 -6 -6 -2.6 6 -2.6 Z" fill="#f6d34c"/>
+  </g>
 </svg>

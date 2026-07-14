@@ -1,12 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 92 44" stroke-width="0.5" stroke="#fff" fill="#fff">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 57.3 55.5">
   <desc>{"colors":{"backgroundColor":"#2a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"MODE\nIN LAP"},"border":{"color":"#5a5a6a"}}</desc>
-  
+  <defs>
+    
+  </defs>
+  <g transform="translate(-19.2 -7.2)">
 
-    <rect x="2" y="2" width="88" height="40" rx="6" fill="none" stroke="#888888" stroke-width="3"/>
-    <line x1="46" y1="2" x2="46" y2="42" stroke="#888888" stroke-width="1"/>
-    <path d="M22,34L22,14L42,14" fill="none" stroke="{{graphic1Color}}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-    <polyline points="34,8 42,14 34,20" fill="none" stroke="{{graphic1Color}}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-    <text x="66" y="24" text-anchor="middle" dominant-baseline="central"
-          fill="{{graphic1Color}}" font-family="Arial, sans-serif" font-size="14" font-weight="bold" stroke="none">IN</text>
-
+    <rect x="22" y="10" width="52" height="34" rx="4" fill="{{backgroundColor}}" stroke="{{graphic1Color}}" stroke-width="3.5"/>
+    <text x="48" y="31.5" font-family="Arial, sans-serif" font-size="12.5" font-weight="bold" fill="#f6d34c" text-anchor="middle" stroke="none">IN LAP</text>
+    <rect x="45.75" y="45" width="4.5" height="17" rx="2.25" fill="{{graphic1Color}}"/>
+  </g>
 </svg>

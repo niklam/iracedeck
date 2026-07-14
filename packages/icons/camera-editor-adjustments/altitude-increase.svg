@@ -1,10 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 88 50" stroke-width="0.5" stroke="#fff" fill="#fff">
-  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"ALTITUDE\n+"},"border":{"color":"#3a5a6a"}}</desc>
-  
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 95 55.8">
+  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"title":{"text":"ALTITUDE"},"border":{"color":"#3a5a6a"}}</desc>
+  <defs>
+    
+  </defs>
+  <g transform="translate(-11.2 -6)">
 
-    <rect x="15" y="7" width="48" height="36" rx="4" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
-    <polygon points="63,13 87,1 87,49 63,37" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linejoin="round"/>
-    <line x1="7" y1="43" x2="7" y2="3" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
-    <polyline points="1,9 7,3 13,9" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-
+    <line x1="14" y1="58" x2="72" y2="58" stroke="{{graphic1Color}}" stroke-width="3.5" stroke-linecap="round"/>
+    <line x1="34" y1="53" x2="34" y2="20" stroke="{{graphic2Color}}" stroke-width="3" stroke-dasharray="5 4"/>
+    <rect x="26" y="7" width="16" height="11" rx="2.5" fill="{{graphic1Color}}"/>
+    <rect x="42" y="9" width="6" height="7" rx="1.5" fill="{{backgroundColor}}"/>
+    <circle cx="34" cy="58" r="3" fill="{{graphic2Color}}"/><path d="M78.5 33.9h24M90.5 21.9v24" fill="none" stroke="{{graphic1Color}}" stroke-width="6" stroke-linecap="round"/>
+  </g>
 </svg>

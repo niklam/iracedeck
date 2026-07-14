@@ -1,14 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 114 58" stroke-width="0.5" stroke="#fff" fill="#fff">
-  <desc>{"colors":{"backgroundColor":"#2a2a2a","textColor":"#ffffff"},"title":{"text":"WEATHER"},"border":{"color":"#5a5a5a"}}</desc>
-  
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 81.3 49.3">
+  <desc>{"colors":{"backgroundColor":"#2a2a2a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"title":{"text":"WEATHER"},"border":{"color":"#5a5a5a"}}</desc>
+  <defs>
+    
+  </defs>
+  <g transform="translate(-7.2 -9.2)">
 
-    <rect x="2" y="2" width="110" height="54" rx="6" fill="#2d2510" stroke="#4a3728" stroke-width="4"/>
-    <circle cx="25" cy="21" r="10" fill="#f39c12" stroke="none"/>
-    <circle cx="33" cy="37" r="8" fill="#888888" stroke="none"/>
-    <circle cx="45" cy="33" r="10" fill="#888888" stroke="none"/>
-    <circle cx="57" cy="37" r="8" fill="#888888" stroke="none"/>
-    <rect x="29" y="37" width="32" height="10" fill="#888888" stroke="none"/>
-    <text x="71" y="21" fill="#ffffff" font-family="Arial, sans-serif" font-size="10" stroke="none">TRACK</text>
-    <text x="78" y="39" fill="#2ecc71" font-family="Arial, sans-serif" font-size="12" font-weight="bold" stroke="none">24°C</text>
-
+    <rect x="10" y="12" width="76" height="44" rx="6" fill="{{backgroundColor}}" stroke="{{graphic1Color}}" stroke-width="3.5"/>
+    <path d="M38 41 a7 7 0 0 1 0 -14 a9.5 9.5 0 0 1 18 -2.5 a6 6 0 0 1 2.5 16.5 Z" fill="{{graphic1Color}}"/>
+    <line x1="39" y1="45" x2="36.5" y2="50" stroke="{{graphic2Color}}" stroke-width="3" stroke-linecap="round"/>
+    <line x1="48" y1="45" x2="45.5" y2="50" stroke="{{graphic2Color}}" stroke-width="3" stroke-linecap="round"/>
+    <line x1="57" y1="45" x2="54.5" y2="50" stroke="{{graphic2Color}}" stroke-width="3" stroke-linecap="round"/>
+  </g>
 </svg>

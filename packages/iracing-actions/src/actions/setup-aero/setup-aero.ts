@@ -79,12 +79,12 @@ const SETUP_AERO_ICONS: Record<string, string> = {
  * Title text for each setting + direction combination (format: "subLabel\nmainLabel")
  */
 const SETUP_AERO_TITLES: Record<string, string> = {
-  "front-wing-increase": "INCREASE\nFRONT WING",
-  "front-wing-decrease": "DECREASE\nFRONT WING",
-  "rear-wing-increase": "INCREASE\nREAR WING",
-  "rear-wing-decrease": "DECREASE\nREAR WING",
-  "qualifying-tape-increase": "INCREASE\nQUAL TAPE",
-  "qualifying-tape-decrease": "DECREASE\nQUAL TAPE",
+  "front-wing-increase": "FRONT WING",
+  "front-wing-decrease": "FRONT WING",
+  "rear-wing-increase": "REAR WING",
+  "rear-wing-decrease": "REAR WING",
+  "qualifying-tape-increase": "QUAL TAPE",
+  "qualifying-tape-decrease": "QUAL TAPE",
   "rf-brake-attached": "TOGGLE\nRF BRAKE",
 };
 

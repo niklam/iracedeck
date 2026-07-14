@@ -1,10 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 90 52" stroke-width="0.5" stroke="#fff" fill="#fff">
-  <desc>{"colors":{"backgroundColor":"#2a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"NEXT\nDASH PG 2"},"border":{"color":"#5a5a6a"}}</desc>
-  
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 111.8 46.5">
+  <desc>{"colors":{"backgroundColor":"#2a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"locked":["graphic1Color"],"title":{"text":"NEXT\nDASH PG 2"},"border":{"color":"#5a5a6a"}}</desc>
+  <defs>
+    
+  </defs>
+  <g transform="translate(0.1 -7.5)">
 
-    <rect x="4" y="2" width="80" height="48" rx="6" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <text x="44" y="30" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="28" font-weight="bold" stroke="none">2</text>
-    <polyline points="78,38 88,26 78,14" fill="none" stroke="#2ecc71" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-
+    <rect x="14" y="14" width="56" height="38" rx="6" fill="#2a2a3a" stroke="#ffffff" stroke-width="2.5"/>
+    <rect x="19" y="19" width="22" height="5" rx="2" fill="#4fc3f7" opacity="0.7"/>
+    <rect x="19" y="30" width="13" height="4" rx="2" fill="#ffffff" opacity="0.6"/>
+    <text x="64" y="36" font-family="Arial, sans-serif" font-size="10" font-weight="bold" fill="#f6d34c" text-anchor="end" stroke="none">12.5</text>
+    <rect x="19" y="41" width="16" height="4" rx="2" fill="#ffffff" opacity="0.6"/>
+    <text x="64" y="47" font-family="Arial, sans-serif" font-size="10" font-weight="bold" fill="#4fc3f7" text-anchor="end" stroke="none">98°</text>
+    <circle cx="74" cy="18" r="9.5" fill="#4fc3f7"/>
+    <text x="74" y="22.5" font-family="Arial, sans-serif" font-size="13" font-weight="bold" fill="#12222e" text-anchor="middle" stroke="none">2</text>
+    <polyline points="84,21 96,33 84,45" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
 </svg>

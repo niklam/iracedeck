@@ -1,10 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 54" stroke-width="0.5" stroke="#fff" fill="#fff">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 69.8 52.8">
   <desc>{"colors":{"backgroundColor":"#3a3a1a","textColor":"#ffffff"},"title":{"text":"LOW FUEL\nACCEPT"},"border":{"color":"#6a6a3a"}}</desc>
-  
-
-    <path d="M22,4C22,4,6,24,6,34C6,44,12,50,22,50C32,50,38,44,38,34C38,24,22,4,22,4Z"
-          fill="none" stroke="#888888" stroke-width="3"/>
-    <path d="M4,40Q22,34,36,40" fill="none" stroke="#888888" stroke-width="2" stroke-linecap="round"/>
-    <polyline points="38,20 48,36 68,8" fill="none" stroke="#2ecc71" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
-
+  <defs>
+    
+  </defs>
+  <g transform="translate(-18 -5)">
+<g transform="translate(36 0) scale(1)">
+    <path d="M0 6 C0 6 -17 28 -17 40 a17 17 0 0 0 34 0 C17 28 0 6 0 6 Z" fill="#f6d34c"/>
+    <path d="M-8 42 a8 8 0 0 0 8 8" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" opacity="0.55"/>
+  </g>
+    <rect x="33.5" y="24" width="5" height="14" rx="2.5" fill="{{backgroundColor}}"/>
+    <circle cx="36" cy="45" r="3.2" fill="{{backgroundColor}}"/>
+    
+    <path d="M56 42 l10 10 L84 30" fill="none" stroke="#4be08d" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
 </svg>

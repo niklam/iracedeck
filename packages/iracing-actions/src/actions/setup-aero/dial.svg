@@ -1,6 +1,26 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
-  <!-- Default dial (Encoder.Icon) image: just the action name on two lines (#799). -->
-  <rect x="0" y="0" width="72" height="72" rx="8" fill="#1a3a3a"/>
-  <text x="36" y="32" text-anchor="middle" fill="#ffffff" font-family="Arial, sans-serif" font-size="13" font-weight="bold">SETUP</text>
-  <text x="36" y="48" text-anchor="middle" fill="#ffffff" font-family="Arial, sans-serif" font-size="13" font-weight="bold">AERO</text>
+  <rect x="0" y="0" width="72" height="72" rx="8" fill="#1a1a3a"/>
+  <svg x="4" y="4" width="64" height="64" viewBox="0 0 71.5 51">
+  
+  <defs>
+    
+  </defs>
+  <g transform="translate(-7.2 -7.5)">
+<g transform="translate(-6.7 3.6) scale(0.42)">
+    <g transform="translate(-21.8, 1.3) scale(1.3)">
+  <path fill="#ffffff" d="M70.2 9.39c0 0-2.72 11.69-3.59 16.34-0.86 4.65-2.89 16.11-2.89 16.11s-1.97 0.53-3.56 0.81c-2.76 0.49-5.51 2.92-5.52 9.09 0 6.16 0 8.28 0 11.68 0 8.92 8.6 7.46 8.6 12.86 0 5.4 0 9.54 0 9.54l17.52 0c0 0 0-4.14 0-9.54 0-5.4 8.6-3.94 8.6-12.86 0-3.41 0-5.51 0-11.68s-2.76-8.6-5.52-9.09c-1.6-0.28-3.57-0.81-3.57-0.81s-2.03-11.46-2.89-16.11c-0.86-4.65-3.59-16.34-3.58-16.34-0.19-0.85-0.93-1.45-1.8-1.45C71.14 7.94 70.39 8.55 70.2 9.39z" stroke="none"/>
+  <path fill="#1a1a3a" d="M76.27 45.98c0 4.05-1.91 5.09-4.27 5.08-2.36 0-4.27-1.04-4.27-5.08 0-4.05 1.91-7.32 4.27-7.33C74.36 38.65 76.27 41.93 76.27 45.98z" stroke="none"/>
+  <path fill="#ffffff" d="M88.79 19.19l0-8.28-13.31 0c0.45 1.95 1.19 5.18 1.86 8.28L88.79 19.19z" stroke="none"/>
+  <path fill="#ffffff" d="M55.21 10.91l0 8.28 11.45 0c0.68-3.09 1.41-6.32 1.86-8.28L55.21 10.91z" stroke="none"/>
+  <polygon fill="#4fc3f7" points="57.8,88 57.8,98.05 86.19,98.06 86.19,88" stroke="none"/>
+</g>
+    
+    <rect x="40.57" y="30.94" width="14.88" height="18.13" rx="2" fill="#ffffff"/>
+    <rect x="88.56" y="30.94" width="14.88" height="18.13" rx="2" fill="#ffffff"/>
+    <rect x="35.89" y="98.07" width="15.79" height="21.48" rx="2" fill="#ffffff"/>
+    <rect x="92.33" y="98.07" width="15.79" height="21.48" rx="2" fill="#ffffff"/>
+  </g><path d="M51 32.5h24M63 20.5v24" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>
+  </g>
+
+  </svg>
 </svg>

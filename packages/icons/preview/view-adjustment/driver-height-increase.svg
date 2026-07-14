@@ -1,18 +1,23 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 94 50" stroke-width="0.5" stroke="#fff" fill="#fff">
-  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"DRIVER HEIGHT\nUP"},"border":{"color":"#3a5a6a"}}</desc>
-  
-
-    <circle cx="10" cy="20" r="5" fill="none" stroke="#888888" stroke-width="3"/>
-    <line x1="10" y1="26" x2="10" y2="38" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
-    <line x1="2" y1="30" x2="18" y2="30" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
-    <line x1="10" y1="38" x2="4" y2="48" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
-    <line x1="10" y1="38" x2="16" y2="48" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
-    <line x1="38" y1="28" x2="54" y2="28" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-    <polyline points="48,22 54,28 48,34" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="82" cy="8" r="6" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <line x1="82" y1="14" x2="82" y2="36" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-    <line x1="72" y1="24" x2="92" y2="24" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-    <line x1="82" y1="36" x2="74" y2="48" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-    <line x1="82" y1="36" x2="90" y2="48" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 74.8 52.8">
+  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"title":{"text":"DRIVER HEIGHT\nUP"},"border":{"color":"#3a5a6a"}}</desc>
+  <defs>
+    
+  </defs>
+  <g transform="translate(-11 -5.5)">
+<g stroke="#7d8f9b" opacity="0.85" stroke-width="4" stroke-linecap="round" fill="none">
+      <circle cx="22" cy="29" r="4.8" fill="#7d8f9b" stroke="none"/>
+      <line x1="22" y1="35" x2="22" y2="45"/>
+      <line x1="15.5" y1="38.5" x2="28.5" y2="38.5"/>
+      <line x1="22" y1="45" x2="17" y2="55"/>
+      <line x1="22" y1="45" x2="27" y2="55"/>
+    </g>
+    <line x1="37" y1="34" x2="50" y2="34" stroke="#4fc3f7" stroke-width="3.2" stroke-linecap="round"/>
+    <polyline points="44,28 50,34 44,40" fill="none" stroke="#4fc3f7" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/><g stroke="#ffffff" opacity="1" stroke-width="5" stroke-linecap="round" fill="none">
+      <circle cx="72" cy="13" r="6.5" fill="#ffffff" stroke="none"/>
+      <line x1="72" y1="21" x2="72" y2="40"/>
+      <line x1="63" y1="28" x2="81" y2="28"/>
+      <line x1="72" y1="40" x2="65" y2="55"/>
+      <line x1="72" y1="40" x2="79" y2="55"/>
+    </g>
+  </g>
 </svg>

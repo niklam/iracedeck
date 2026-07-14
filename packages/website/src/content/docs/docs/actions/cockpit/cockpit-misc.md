@@ -1,17 +1,21 @@
 ---
 title: Cockpit Misc
-description: Miscellaneous cockpit controls — wipers, FFB max force, latency, dash pages, and in-lap mode.
+description: Miscellaneous cockpit controls — wipers, latency, dash pages, and in-lap mode.
 sidebar:
   badge:
-    text: "7 modes"
+    text: "6 modes"
     variant: tip
 ---
 
-Cockpit Misc groups together various cockpit controls that don't fit neatly into other categories. Manage wipers, force feedback maximum force, latency reporting, dashboard pages, and in-lap mode.
+Cockpit Misc groups together various cockpit controls that don't fit neatly into other categories. Manage wipers, latency reporting, dashboard pages, and in-lap mode.
+
+:::note
+FFB Max Force now lives in the [Force Feedback](/docs/actions/cockpit/force-feedback/) action as the FFB Force mode. Existing Cockpit Misc buttons configured with the old mode keep working, but new buttons should use Force Feedback.
+:::
 
 ## Modes
 
-Select the mode from the **Control** dropdown in the Property Inspector. Directional modes (FFB Max Force, Dash Page 1, Dash Page 2) also expose a **Direction** setting for Increase / Decrease.
+Select the mode from the **Control** dropdown in the Property Inspector. Directional modes (Dash Page 1, Dash Page 2) also expose a **Direction** setting for Increase / Decrease.
 
 ### Toggle Wipers
 
@@ -44,24 +48,6 @@ Trigger a single wiper sweep.
 #### Settings
 
 - No additional settings
-
----
-
-### FFB Max Force
-
-Adjust the force feedback maximum force. The **Direction** setting picks whether pressing the button increases or decreases the force.
-
-#### Details
-
-- **Method:** Key binding
-- **Dial:** No rotation support
-- **Default binding:** No default key binding — both FFB Force Increase and FFB Force Decrease must be configured in iRacing and in the Property Inspector
-- **Telemetry-aware icon:** No
-
-#### Setting: Direction
-
-- **Increase** (default) — Pressing the button raises the max force
-- **Decrease** — Pressing the button lowers the max force
 
 ---
 

@@ -1,14 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 68 60" stroke-width="0.5" stroke="#fff" fill="#fff">
-  <desc>{"colors":{"backgroundColor":"#2a1a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"TEXTURES\nRELOAD ALL"},"border":{"color":"#5a3a6a"}}</desc>
-  
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 74.8 39.8">
+  <desc>{"colors":{"backgroundColor":"#2a1a3a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"title":{"text":"RELOAD ALL\nTEXTURES"},"border":{"color":"#5a3a6a"}}</desc>
+  <defs>
+    
+  </defs>
+  <g transform="translate(-15 -13)">
 
-    <path d="M34,2A28,28,0,1,1,6,30" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
-    <polyline points="2,22 6,30 14,26" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M34,58A28,28,0,1,1,62,30" fill="none" stroke="#888888" stroke-width="2" stroke-linecap="round"/>
-    <polyline points="66,38 62,30 54,34" fill="none" stroke="#888888" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    <rect x="22" y="18" width="10" height="10" fill="none" stroke="#888888" stroke-width="1.6"/>
-    <rect x="36" y="18" width="10" height="10" fill="none" stroke="#888888" stroke-width="1.6"/>
-    <rect x="22" y="32" width="10" height="10" fill="none" stroke="#888888" stroke-width="1.6"/>
-    <rect x="36" y="32" width="10" height="10" fill="none" stroke="#888888" stroke-width="1.6"/>
-
+    <rect x="16" y="14" width="17" height="17" rx="3" fill="{{graphic1Color}}"/>
+    <rect x="36" y="14" width="17" height="17" rx="3" fill="#5a4a72"/>
+    <rect x="16" y="34" width="17" height="17" rx="3" fill="#5a4a72"/>
+    <rect x="36" y="34" width="17" height="17" rx="3" fill="{{graphic1Color}}"/>
+    <path d="M84 26 A15 15 0 0 0 58 30" fill="none" stroke="{{graphic2Color}}" stroke-width="4" stroke-linecap="round"/>
+    <polygon points="58,22 55,33 66,31" fill="{{graphic2Color}}"/>
+    <path d="M60 44 A15 15 0 0 0 86 40" fill="none" stroke="{{graphic2Color}}" stroke-width="4" stroke-linecap="round"/>
+    <polygon points="86,48 89,37 78,39" fill="{{graphic2Color}}"/>
+  </g>
 </svg>

@@ -1,17 +1,26 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
-  <!-- Main background -->
   <rect x="0" y="0" width="72" height="72" rx="8" fill="#2a2a4a"/>
+  <svg x="4" y="4" width="64" height="64" viewBox="0 0 72.8 45.3">
+  
+  <defs>
+    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.55"/></linearGradient>
+  </defs>
+  <g transform="translate(-8.5 -13.5)">
 
-  <!-- Steering wheel -->
-  <circle cx="36" cy="26" r="12" fill="none" stroke="#ffffff" stroke-width="2"/>
-  <circle cx="36" cy="26" r="4" fill="none" stroke="#888888" stroke-width="1.5"/>
-  <line x1="36" y1="22" x2="36" y2="14" stroke="#888888" stroke-width="1.5" stroke-linecap="round"/>
-  <line x1="32" y1="28" x2="24" y2="30" stroke="#888888" stroke-width="1.5" stroke-linecap="round"/>
-  <line x1="40" y1="28" x2="48" y2="30" stroke="#888888" stroke-width="1.5" stroke-linecap="round"/>
+    <circle cx="34" cy="41" r="17" fill="url(#mtl)"/>
+    <circle cx="34" cy="41" r="12" fill="#2a2a4a"/>
+    <rect x="18" y="38.1" width="32" height="5.8" fill="url(#mtl)"/>
+    <rect x="31.1" y="41" width="5.8" height="17" fill="url(#mtl)"/>
+    <circle cx="34" cy="41" r="6.1" fill="url(#mtl)"/>
+    <circle cx="34" cy="41" r="2.5" fill="#3f5561"/>
+    <path d="M 21.4 30.8 A 17 17 0 0 1 46.6 30.8" fill="none" stroke="#ffffff" stroke-width="2.7" opacity="0.3" stroke-linecap="round"/>
+    <path d="M13.2 29 A24 24 0 0 1 54.8 29" fill="none" stroke="#4fc3f7" stroke-width="5" stroke-linecap="round"/>
+    <polygon points="9.5,35.5 16.5,31 11,25.5" fill="#4fc3f7"/>
+    <polygon points="58.5,35.5 51.5,31 57,25.5" fill="#4fc3f7"/><g transform="translate(-3.5 -2) scale(1.05)">
+    <polygon points="63,33 77,33 80,47 60,47" fill="url(#mtl)"/>
+    <path d="M66 33 Q70 25.5 74 33" fill="none" stroke="#b7c5cd" stroke-width="3.5" stroke-linecap="round"/>
+    <text x="70" y="44" font-family="Arial, sans-serif" font-size="8" font-weight="bold" fill="#2a2a4a" text-anchor="middle" stroke="none">Nm</text></g>
+  </g>
 
-  <!-- Two-line label -->
-  <text x="36" y="52" text-anchor="middle" dominant-baseline="central"
-        fill="#ffffff" font-family="Arial, sans-serif" font-size="10" font-weight="bold">FORCE</text>
-  <text x="36" y="63" text-anchor="middle" dominant-baseline="central"
-        fill="#ffffff" font-family="Arial, sans-serif" font-size="8">FEEDBACK</text>
+  </svg>
 </svg>

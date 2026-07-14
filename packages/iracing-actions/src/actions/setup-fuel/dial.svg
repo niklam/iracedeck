@@ -1,6 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
-  <!-- Default dial (Encoder.Icon) image: just the action name on two lines (#797). -->
-  <rect x="0" y="0" width="72" height="72" rx="8" fill="#1a2a3a"/>
-  <text x="36" y="32" text-anchor="middle" fill="#ffffff" font-family="Arial, sans-serif" font-size="13" font-weight="bold">SETUP</text>
-  <text x="36" y="48" text-anchor="middle" fill="#ffffff" font-family="Arial, sans-serif" font-size="13" font-weight="bold">FUEL</text>
+  <rect x="0" y="0" width="72" height="72" rx="8" fill="#3a3a1a"/>
+  <svg x="4" y="4" width="64" height="64" viewBox="0 0 106.3 48">
+  
+  <defs>
+    
+  </defs>
+  <g transform="translate(-13.5 -4.2)">
+<g transform="translate(30 0) scale(0.9)">
+    <path d="M0 6 C0 6 -17 28 -17 40 a17 17 0 0 0 34 0 C17 28 0 6 0 6 Z" fill="#f6d34c"/>
+    <path d="M-8 42 a8 8 0 0 0 8 8" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" opacity="0.55"/>
+  </g>
+    <path d="M56 32 A14 14 0 0 1 70 18" fill="none" stroke="#4be08d" stroke-width="6" stroke-linecap="round"/>
+    <path d="M70 18 A14 14 0 0 1 84 32" fill="none" stroke="#e74c3c" stroke-width="6" stroke-linecap="round"/>
+    <line x1="70" y1="32" x2="79" y2="22" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round"/>
+    <circle cx="70" cy="32" r="4" fill="#ffffff"/><path d="M91.8 28.3h24M103.8 16.3v24" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>
+  </g>
+
+  </svg>
 </svg>

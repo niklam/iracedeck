@@ -293,7 +293,7 @@ describe("SetupFuel", () => {
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("FUEL MIX");
-      expect(decoded).toContain("INCREASE");
+      expect(decoded).not.toContain("INCREASE");
     });
 
     it("should include correct labels for fuel-mixture decrease", () => {
@@ -301,7 +301,7 @@ describe("SetupFuel", () => {
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("FUEL MIX");
-      expect(decoded).toContain("DECREASE");
+      expect(decoded).not.toContain("DECREASE");
     });
 
     it("should include correct labels for fuel-cut-position increase", () => {
@@ -309,7 +309,7 @@ describe("SetupFuel", () => {
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("FUEL CUT");
-      expect(decoded).toContain("INCREASE");
+      expect(decoded).not.toContain("INCREASE");
     });
 
     it("should include correct labels for disable-fuel-cut", () => {
@@ -339,12 +339,12 @@ describe("SetupFuel", () => {
     it("should include correct labels for all combinations", () => {
       const expectedLabels: Record<string, Record<string, { line1: string; line2: string }>> = {
         "fuel-mixture": {
-          increase: { line1: "FUEL MIX", line2: "INCREASE" },
-          decrease: { line1: "FUEL MIX", line2: "DECREASE" },
+          increase: { line1: "FUEL MIX", line2: "FUEL MIX</svg>" },
+          decrease: { line1: "FUEL MIX", line2: "FUEL MIX</svg>" },
         },
         "fuel-cut-position": {
-          increase: { line1: "FUEL CUT", line2: "INCREASE" },
-          decrease: { line1: "FUEL CUT", line2: "DECREASE" },
+          increase: { line1: "FUEL CUT", line2: "FUEL CUT</svg>" },
+          decrease: { line1: "FUEL CUT", line2: "FUEL CUT</svg>" },
         },
         "disable-fuel-cut": {
           increase: { line1: "FUEL CUT", line2: "DISABLE" },

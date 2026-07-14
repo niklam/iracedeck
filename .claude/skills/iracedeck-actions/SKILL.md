@@ -9,7 +9,7 @@ description: Use when looking up Stream Deck actions, sub-actions, modes, catego
 
 Complete action definitions: `docs/reference/actions.json`
 
-This skill file documents **32 actions with 300 modes** using a detailed per-mode count (the totals in the category table below). The user-facing website (`packages/website/src/content/docs/`) uses a coarser counting convention and shows a lower total (**268 modes**) — treat the website as the source of truth for user-facing copy and this skill file as the detailed inventory. `docs/reference/actions.json` has not yet been re-synced to the per-mode counting convention; treat it as a detailed inventory of individual mode values that is occasionally out of date.
+This skill file documents **32 actions with 299 modes** using a detailed per-mode count (the totals in the category table below). The user-facing website (`packages/website/src/content/docs/`) uses a coarser counting convention and shows a lower total (**267 modes**) — treat the website as the source of truth for user-facing copy and this skill file as the detailed inventory. `docs/reference/actions.json` has not yet been re-synced to the per-mode counting convention; treat it as a detailed inventory of individual mode values that is occasionally out of date.
 
 Each action entry:
 ```json
@@ -51,14 +51,14 @@ When asked about actions or controls:
 |----------|---------|-------|-------------|
 | Display & Session | 2 | 10 | Live session data: incidents, laps, position, estimated iRating gain/loss, fuel, laps to empty, flags, track wetness |
 | Driving Controls | 6 | 35 | AI spotter, audio (incl. Race Engineer & Radar volume), black boxes, look direction, car control, pit crew (Race Engineer toggle + radar) |
-| Cockpit & Interface | 5 | 35 | Wipers, force feedback, splits & reference, telemetry, UI toggles |
+| Cockpit & Interface | 5 | 34 | Wipers, force feedback, splits & reference, telemetry, UI toggles |
 | View & Camera | 5 | 89 | FOV, replay, camera controls, broadcast tools |
 | Media | 1 | 7 | Video recording, screenshots, texture management |
 | Pit Service | 3 | 15 | Fuel (keypad modes + a Stream Deck+ dial surface, #759), tires, compounds, tearoff, fast repair |
 | Car Setup | 7 | 73 | Brakes (button and dial surface, #730/#775), chassis, aero, engine, fuel mix, hybrid/ERS, traction control — adjustment modes plus live-display "View …" sub-modes; each View sub-mode also supports dual-press (tap = configured direction, long-press = opposite) so one key both shows the value and adjusts it (#540); adjustment/View modes with a live telemetry value can also render as paired +/− key styles (2-key and 3-key layouts, several selectable styles, hold-to-repeat) — Phase 1 covers these seven setup actions (#810) |
 | Communication | 2 | 35 | Chat, macros (15), whisper, toggle, reply, race admin commands, car selector |
 | Stream Deck | 1 | 1 | Switch Profile — switch to a bundled iRaceDeck profile or back to the previous one (Elgato-only, no iRacing command) |
-| **Total** | **32** | **300** | |
+| **Total** | **32** | **299** | |
 
 Mode counts reflect the PI Mode/Setting dropdown choices documented in each action page. Directional variants (Increase/Decrease) are treated as a single mode with a Direction sub-setting, matching the per-mode website format. Legacy replay actions (Replay Transport, Replay Speed, Replay Navigation) and Camera Cycle (Legacy) still exist in the plugin manifest for backward compatibility but are not counted as documented actions.
 
@@ -86,7 +86,7 @@ Mode counts reflect the PI Mode/Setting dropdown choices documented in each acti
 
 | Action | Modes | Mode values |
 |--------|-------|-------------|
-| Cockpit Misc | 7 | toggle-wipers, trigger-wipers, ffb-max-force (+/-), report-latency, dash-page-1 (+/-), dash-page-2 (+/-), in-lap-mode |
+| Cockpit Misc | 6 | toggle-wipers, trigger-wipers, report-latency, dash-page-1 (+/-), dash-page-2 (+/-), in-lap-mode (`ffb-max-force` is a hidden legacy alias of Force Feedback's ffb-force since #827 — kept functional, not in the PI dropdown) |
 | Splits & Reference | 6 | cycle (+/- direction), toggle-ref-car, custom-sector-start, custom-sector-end, active-reset-set, active-reset-run |
 | Telemetry Control | 6 | toggle-logging, mark-event, start/stop/restart recording (SDK), snapshot (developer tool — saves current telemetry + session info to disk as timestamped JSON + Markdown; configurable Output Folder; no iRacing command) |
 | Force Feedback | 6 | auto-compute-ffb-force, ffb-force (+/-), wheel-lfe (+/-), bass-shaker-lfe (+/-), wheel-lfe-intensity (+/-), haptic-lfe-intensity (+/-) |

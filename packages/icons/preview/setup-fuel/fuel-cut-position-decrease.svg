@@ -1,10 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 88 64" stroke-width="0.5" stroke="#fff" fill="#fff">
-  <desc>{"colors":{"backgroundColor":"#3a3a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"FUEL CUT\nDECREASE"},"border":{"color":"#6a6a3a"}}</desc>
-
-
-    <path d="M60,4C60,4,80,28,80,40C80,52,72,60,60,60C48,60,40,52,40,40C40,28,60,4,60,4Z"
-          fill="none" stroke="#ffffff" stroke-width="4"/>
-    <line x1="36" y1="36" x2="84" y2="36" stroke="#e74c3c" stroke-width="3" stroke-dasharray="6,4" stroke-linecap="round"/>
-    <polyline points="14,40 4,28 14,16" fill="none" stroke="#f1c40f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 110.5 40.3">
+  <desc>{"colors":{"backgroundColor":"#3a3a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"FUEL CUT"},"border":{"color":"#6a6a3a"}}</desc>
+  <defs>
+    
+  </defs>
+  <g transform="translate(-8.2 -3.5)">
+<g transform="translate(22 0) scale(0.75)">
+    <path d="M0 6 C0 6 -17 28 -17 40 a17 17 0 0 0 34 0 C17 28 0 6 0 6 Z" fill="#f6d34c"/>
+    <path d="M-8 42 a8 8 0 0 0 8 8" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" opacity="0.55"/>
+  </g><g transform="translate(0 0)">
+    <rect x="44" y="32" width="42" height="5" rx="2.5" fill="#ffffff"/>
+    <polygon points="56,26 56,43 66,34.5" fill="#ffffff"/>
+    <polygon points="76,26 76,43 66,34.5" fill="#ffffff"/>
+    <line x1="66" y1="34.5" x2="66" y2="20" stroke="#ffffff" stroke-width="3"/>
+    <line x1="59" y1="18.5" x2="73" y2="18.5" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round"/>
+  </g><path d="M90.8 23.6h24" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>
+  </g>
 </svg>

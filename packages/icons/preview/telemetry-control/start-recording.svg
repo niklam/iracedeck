@@ -1,9 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 92 52" stroke-width="0.5" stroke="#fff" fill="#fff">
-  <desc>{"colors":{"backgroundColor":"#3a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"RECORDING\nSTART"},"border":{"color":"#6a5a6a"}}</desc>
-  
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 69.3 53.8">
+  <desc>{"colors":{"backgroundColor":"#3a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"locked":["graphic1Color"],"title":{"text":"START\nRECORDING"},"border":{"color":"#6a5a6a"}}</desc>
+  <defs>
+    
+  </defs>
+  <g transform="translate(-15.2 -0.7)">
 
-    <circle cx="46" cy="22" r="20" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <circle cx="46" cy="22" r="10" fill="#e74c3c" stroke="none"/>
-    <line x1="2" y1="50" x2="90" y2="50" stroke="#888888" stroke-width="1.6"/>
-
+    <path d="M18 10 V52 H76" fill="none" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round"/>
+    <polyline points="24,44 33,29 42,37 52,19 61,27 70,15" fill="none" stroke="#4fc3f7" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <polygon points="60,26 60,50 82,38" fill="#2ecc71" stroke="#3a2a3a" stroke-width="3.5" stroke-linejoin="round"/>
+  </g>
 </svg>

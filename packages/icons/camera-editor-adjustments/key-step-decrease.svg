@@ -1,12 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 90 54" stroke-width="0.5" stroke="#fff" fill="#fff">
-  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"KEY STEP\n-"},"border":{"color":"#3a5a6a"}}</desc>
-  
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 101.3 37.5">
+  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"title":{"text":"KEY STEP"},"border":{"color":"#3a5a6a"}}</desc>
+  <defs>
+    
+  </defs>
+  <g transform="translate(-15 -17)">
 
-    <rect x="1" y="1" width="88" height="8" rx="2" fill="none" stroke="#888888" stroke-width="2"/>
-    <rect x="1" y="1" width="56" height="8" rx="2" fill="{{graphic1Color}}" fill-opacity="0.3" stroke="none"/>
-    <line x1="13" y1="25" x2="13" y2="53" stroke="#888888" stroke-width="2" stroke-dasharray="4,4"/>
-    <line x1="45" y1="25" x2="45" y2="53" stroke="{{graphic1Color}}" stroke-width="3"/>
-    <line x1="77" y1="25" x2="77" y2="53" stroke="#888888" stroke-width="2" stroke-dasharray="4,4"/>
-    <polyline points="39,45 45,53 51,45" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-
+    <rect x="16" y="18" width="27" height="27" rx="6" fill="{{graphic1Color}}"/>
+    <rect x="19.5" y="21" width="20" height="17" rx="3.5" fill="#dfe7ec"/>
+    <polygon points="29.5,25.5 24,33 35,33" fill="{{backgroundColor}}"/>
+    <path d="M50 52 h8 v-8 h8 v-8 h8 v-8 h8" fill="none" stroke="{{graphic2Color}}" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M88.5 35.8h24" fill="none" stroke="{{graphic1Color}}" stroke-width="6" stroke-linecap="round"/>
+  </g>
 </svg>

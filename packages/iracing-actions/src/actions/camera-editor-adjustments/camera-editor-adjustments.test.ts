@@ -338,16 +338,14 @@ describe("CameraEditorAdjustments", () => {
       const result = generateCameraEditorAdjustmentsSvg({ adjustment: "latitude", direction: "increase" });
       const decoded = decodeURIComponent(result);
 
-      expect(decoded).toContain("LATITUDE");
-      expect(decoded).toContain("+");
+      expect(decoded).toContain("LATITUDE</svg>");
     });
 
     it("should include correct labels for fov-zoom decrease", () => {
       const result = generateCameraEditorAdjustmentsSvg({ adjustment: "fov-zoom", direction: "decrease" });
       const decoded = decodeURIComponent(result);
 
-      expect(decoded).toContain("FOV ZOOM");
-      expect(decoded).toContain("-");
+      expect(decoded).toContain("FOV ZOOM</svg>");
     });
 
     it("should include correct labels for auto-set-mic-gain", () => {
@@ -362,79 +360,35 @@ describe("CameraEditorAdjustments", () => {
     });
 
     it("should include correct labels for all combinations", () => {
-      const expectedLabels: Record<string, Record<string, { mainLabel: string; subLabel: string }>> = {
-        latitude: {
-          increase: { mainLabel: "+", subLabel: "LATITUDE" },
-          decrease: { mainLabel: "-", subLabel: "LATITUDE" },
-        },
-        longitude: {
-          increase: { mainLabel: "+", subLabel: "LONGITUDE" },
-          decrease: { mainLabel: "-", subLabel: "LONGITUDE" },
-        },
-        altitude: {
-          increase: { mainLabel: "+", subLabel: "ALTITUDE" },
-          decrease: { mainLabel: "-", subLabel: "ALTITUDE" },
-        },
-        yaw: {
-          increase: { mainLabel: "+", subLabel: "YAW" },
-          decrease: { mainLabel: "-", subLabel: "YAW" },
-        },
-        pitch: {
-          increase: { mainLabel: "+", subLabel: "PITCH" },
-          decrease: { mainLabel: "-", subLabel: "PITCH" },
-        },
-        "fov-zoom": {
-          increase: { mainLabel: "+", subLabel: "FOV ZOOM" },
-          decrease: { mainLabel: "-", subLabel: "FOV ZOOM" },
-        },
-        "key-step": {
-          increase: { mainLabel: "+", subLabel: "KEY STEP" },
-          decrease: { mainLabel: "-", subLabel: "KEY STEP" },
-        },
-        "vanish-x": {
-          increase: { mainLabel: "+", subLabel: "VANISH X" },
-          decrease: { mainLabel: "-", subLabel: "VANISH X" },
-        },
-        "vanish-y": {
-          increase: { mainLabel: "+", subLabel: "VANISH Y" },
-          decrease: { mainLabel: "-", subLabel: "VANISH Y" },
-        },
-        "blimp-radius": {
-          increase: { mainLabel: "+", subLabel: "BLIMP RAD" },
-          decrease: { mainLabel: "-", subLabel: "BLIMP RAD" },
-        },
-        "blimp-velocity": {
-          increase: { mainLabel: "+", subLabel: "BLIMP VEL" },
-          decrease: { mainLabel: "-", subLabel: "BLIMP VEL" },
-        },
-        "mic-gain": {
-          increase: { mainLabel: "+", subLabel: "MIC GAIN" },
-          decrease: { mainLabel: "-", subLabel: "MIC GAIN" },
-        },
-        "auto-set-mic-gain": {
-          increase: { mainLabel: "AUTO", subLabel: "MIC GAIN" },
-          decrease: { mainLabel: "AUTO", subLabel: "MIC GAIN" },
-        },
-        "f-number": {
-          increase: { mainLabel: "+", subLabel: "F-NUMBER" },
-          decrease: { mainLabel: "-", subLabel: "F-NUMBER" },
-        },
-        "focus-depth": {
-          increase: { mainLabel: "+", subLabel: "FOCUS DEPTH" },
-          decrease: { mainLabel: "-", subLabel: "FOCUS DEPTH" },
-        },
+      // Direction is carried by the giant +/- glyph in the artwork, so both
+      // directions share the same single-line title (auto-set keeps its AUTO line).
+      const expectedTitles: Record<string, string> = {
+        latitude: "LATITUDE",
+        longitude: "LONGITUDE",
+        altitude: "ALTITUDE",
+        yaw: "YAW",
+        pitch: "PITCH",
+        "fov-zoom": "FOV ZOOM",
+        "key-step": "KEY STEP",
+        "vanish-x": "VANISH X",
+        "vanish-y": "VANISH Y",
+        "blimp-radius": "BLIMP RAD",
+        "blimp-velocity": "BLIMP VEL",
+        "mic-gain": "MIC GAIN",
+        "auto-set-mic-gain": "MIC GAIN\nAUTO",
+        "f-number": "F-NUMBER",
+        "focus-depth": "FOCUS DEPTH",
       };
 
-      for (const [adjustment, directions] of Object.entries(expectedLabels)) {
-        for (const [direction, labels] of Object.entries(directions)) {
+      for (const [adjustment, title] of Object.entries(expectedTitles)) {
+        for (const direction of ["increase", "decrease"]) {
           const result = generateCameraEditorAdjustmentsSvg({
             adjustment: adjustment as any,
             direction: direction as any,
           });
           const decoded = decodeURIComponent(result);
 
-          expect(decoded).toContain(labels.mainLabel);
-          expect(decoded).toContain(labels.subLabel);
+          expect(decoded).toContain(`${title}</svg>`);
         }
       }
     });

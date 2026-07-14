@@ -1,45 +1,40 @@
 # Set FFB Max Force
 
-Adjusts the maximum force feedback force.
+> **Consolidated in #827:** this Cockpit Misc mode is a hidden legacy alias of the Force Feedback action's **FFB Force (max force)** mode. Existing buttons keep working (same bindings, now the same icons); new buttons should use Force Feedback. The mode no longer appears in the Cockpit Misc PI dropdown.
+
+Adjusts iRacing's force feedback "max force" setting (Nm) via a configurable key binding. Kept only so buttons configured before #827 keep working.
 
 ## Properties
 
 | Property | Value |
 |----------|-------|
-| Action ID | `com.iracedeck.sd.core.set-ffb-max-force` |
-| Type | Adjustment |
-| SDK Support | Yes |
-| Encoder Support | No |
+| Action ID | `com.iracedeck.sd.core.cockpit-misc` (mode `ffb-max-force`) |
+| Type | +/- |
+| SDK Support | No |
+| Dial Support | No |
+| Communication Method | Key binding |
 
-## Behavior
+## Legacy alias contract
 
-### Button Press
-Sets or adjusts FFB max force based on configured mode.
+- The mode value `ffb-max-force` stays in the Cockpit Misc settings schema and key handler, but its `<option>` is hidden in the Property Inspector (precedent: Pit Crew `radar-volume` after #590, Chat `respond-pm`).
+- It fires the same global key bindings as Force Feedback's `ffb-force` mode — `cockpitMiscFfbForceIncrease` / `cockpitMiscFfbForceDecrease` — so configuring the binding in either PI updates both.
+- It renders Force Feedback's `ffb-force-increase` / `ffb-force-decrease` icons, so legacy buttons look identical to their Force Feedback replacements.
 
-## Settings
+## Keyboard Simulation Table
 
-| Setting | Type | Default | Description |
-|---------|------|---------|-------------|
-| Mode | Dropdown | Adjust | Operation mode |
-| Value | Number | - | Target max force value in Nm (Set mode only) |
-
-### Mode Options
-- **Set** - Set to a specific value
-- **Adjust** - Increment/decrement current value
-
-## Telemetry Integration
-
-Uses iRacing SDK to set FFB max force value directly and read current value for display.
+| Action | Default Key | iRacing Setting |
+|--------|-------------|-----------------|
+| Increase | *(none)* | Max force increase |
+| Decrease | *(none)* | Max force decrease |
 
 ## Icon States
 
-| State | Icon |
-|-------|------|
-| Default | FFB/steering wheel icon with current value |
+| Mode/State | Icon |
+|------------|------|
+| Increase | Force Feedback steering wheel with Nm weight and INCREASE title |
+| Decrease | Force Feedback steering wheel with Nm weight and DECREASE title |
 
 ## Notes
 
-- SDK-based adjustment allows precise control
-- Higher values = stronger feedback but possible clipping
-- Lower values = weaker feedback but more detail
-- Can read current value from telemetry to display
+- For new buttons, use **Force Feedback → FFB Force (max force)** — see `force-feedback.md`.
+- Higher values = stronger feedback but possible clipping; lower values = weaker feedback but more detail.

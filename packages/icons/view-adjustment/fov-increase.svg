@@ -1,10 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 92 54" stroke-width="0.5" stroke="#fff" fill="#fff">
-  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"FOV\nINCREASE"},"border":{"color":"#3a5a6a"}}</desc>
-  
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 68 65.3">
+  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"title":{"text":"FOV\nINCREASE"},"border":{"color":"#3a5a6a"}}</desc>
+  <defs>
+    
+  </defs>
+  <g transform="translate(-10.5 -3.2)">
 
-    <circle cx="46" cy="46" r="6" fill="{{graphic1Color}}" stroke="none"/>
-    <line x1="46" y1="40" x2="2" y2="2" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
-    <line x1="46" y1="40" x2="90" y2="2" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
-    <line x1="2" y1="2" x2="90" y2="2" stroke="#888888" stroke-width="2" stroke-dasharray="4,4"/>
-
+    <polygon points="16,36 76,6 76,66" fill="{{graphic2Color}}" opacity="0.16"/>
+    <line x1="16" y1="36" x2="76" y2="6" stroke="{{graphic2Color}}" stroke-width="3.5" stroke-linecap="round"/>
+    <line x1="16" y1="36" x2="76" y2="66" stroke="{{graphic2Color}}" stroke-width="3.5" stroke-linecap="round"/>
+    <path d="M36 26 A21 21 0 0 1 36 46" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="16" cy="36" r="4.5" fill="#ffffff"/>
+  </g>
 </svg>

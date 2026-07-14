@@ -1,6 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
-  <!-- Default dial (Encoder.Icon) image: just the action name on two lines (#798). -->
   <rect x="0" y="0" width="72" height="72" rx="8" fill="#2a3a1a"/>
-  <text x="36" y="32" text-anchor="middle" fill="#ffffff" font-family="Arial, sans-serif" font-size="13" font-weight="bold">SETUP</text>
-  <text x="36" y="48" text-anchor="middle" fill="#ffffff" font-family="Arial, sans-serif" font-size="13" font-weight="bold">ENGINE</text>
+  <svg x="4" y="4" width="64" height="64" viewBox="0 0 100.8 49.8">
+  
+  <defs>
+    
+  </defs>
+  <g transform="translate(-13 -7)">
+
+    <rect x="22" y="14" width="6" height="10" rx="2" fill="#6b7f8a"/>
+    <rect x="32" y="14" width="6" height="10" rx="2" fill="#6b7f8a"/>
+    <rect x="42" y="14" width="6" height="10" rx="2" fill="#6b7f8a"/>
+    <rect x="18" y="22" width="34" height="10" rx="2.5" fill="#ffffff"/>
+    <rect x="14" y="30" width="42" height="26" rx="4" fill="#ffffff"/>
+    
+    <polygon points="72,8 60,34 69,34 64,56 81,28 71,28" fill="#f7d94c"/><path d="M85.8 31.9h24M97.8 19.9v24" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>
+  </g>
+
+  </svg>
 </svg>

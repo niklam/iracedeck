@@ -1,14 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 114 58" stroke-width="0.5" stroke="#fff" fill="#fff">
-  <desc>{"colors":{"backgroundColor":"#2a2a2a","textColor":"#ffffff"},"title":{"text":"FUEL"},"border":{"color":"#5a5a5a"}}</desc>
-  
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 81.3 49.3">
+  <desc>{"colors":{"backgroundColor":"#2a2a2a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"title":{"text":"FUEL"},"border":{"color":"#5a5a5a"}}</desc>
+  <defs>
+    
+  </defs>
+  <g transform="translate(-7.2 -9.2)">
 
-    <rect x="2" y="2" width="110" height="54" rx="6" fill="#2d2510" stroke="#4a3728" stroke-width="4"/>
-    <rect x="21" y="13" width="24" height="32" rx="2" fill="none" stroke="#888888" stroke-width="3"/>
-    <rect x="25" y="17" width="16" height="10" fill="#888888" stroke="none"/>
-    <path d="M45,21h12a4,4,0,0,1,4,4v14a5,5,0,0,1,-10,0v-6" fill="none" stroke="#888888" stroke-width="3"/>
-    <circle cx="53" cy="23" r="3" fill="#888888" stroke="none"/>
-    <rect x="29" y="9" width="8" height="4" fill="#888888" stroke="none"/>
-    <text x="77" y="25" fill="#f39c12" font-family="Arial, sans-serif" font-size="12" font-weight="bold" stroke="none">12.5</text>
-    <text x="77" y="41" fill="#888888" font-family="Arial, sans-serif" font-size="10" stroke="none">GAL</text>
-
+    <rect x="10" y="12" width="76" height="44" rx="6" fill="{{backgroundColor}}" stroke="{{graphic1Color}}" stroke-width="3.5"/>
+    <path d="M27 18 C27 18 18 29 18 35 a9.5 9.5 0 0 0 19 0 C37 29 27 18 27 18 Z" fill="#f6d34c"/>
+    <text x="61" y="33" fill="#f7d94c" font-family="Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" stroke="none">12.5</text>
+    <rect x="44" y="38" width="35" height="9" rx="4.5" fill="{{backgroundColor}}" stroke="{{graphic1Color}}" stroke-width="1.5"/>
+    <rect x="44" y="38" width="23" height="9" rx="4.5" fill="#f6d34c"/>
+  </g>
 </svg>

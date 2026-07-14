@@ -1,11 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 62 58" stroke-width="0.5" stroke="#fff" fill="#fff">
-  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"BLIMP RAD\n-"},"border":{"color":"#3a5a6a"}}</desc>
-  
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 90.5 49.5">
+  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"title":{"text":"BLIMP RAD"},"border":{"color":"#3a5a6a"}}</desc>
+  <defs>
+    
+  </defs>
+  <g transform="translate(-17.7 -12.5)">
 
-    <circle cx="29" cy="29" r="28" fill="none" stroke="#888888" stroke-width="2" stroke-dasharray="6,6"/>
-    <circle cx="29" cy="29" r="6" fill="#ffffff" stroke="none"/>
-    <circle cx="57" cy="29" r="4" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <line x1="53" y1="29" x2="41" y2="29" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-    <polyline points="47,23 41,29 47,35" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-
+    <circle cx="40" cy="40" r="20" fill="none" stroke="#4fc3f7" stroke-width="2.5" stroke-dasharray="6 5" opacity="0.75"/>
+    <circle cx="40" cy="40" r="3" fill="#ffffff"/>
+    <line x1="40" y1="40" x2="54" y2="26" stroke="#4fc3f7" stroke-width="3" stroke-linecap="round"/>
+    <g transform="translate(60 20) scale(0.75)">
+    <ellipse cx="0" cy="0" rx="16" ry="8.5" fill="#ffffff"/>
+    <polygon points="13,-3.5 21,-7.5 21,7.5 13,3.5" fill="#ffffff"/>
+    <rect x="-6" y="7.5" width="9" height="4.5" rx="2" fill="#ffffff"/>
+    
+  </g><path d="M80.5 37.3h24" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>
+  </g>
 </svg>

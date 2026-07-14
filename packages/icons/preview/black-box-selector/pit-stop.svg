@@ -1,13 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 114 58" stroke-width="0.5" stroke="#fff" fill="#fff">
-  <desc>{"colors":{"backgroundColor":"#2a2a2a","textColor":"#ffffff"},"title":{"text":"PIT-STOP"},"border":{"color":"#5a5a5a"}}</desc>
-  
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 81.3 49.3">
+  <desc>{"colors":{"backgroundColor":"#2a2a2a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"title":{"text":"PIT-STOP"},"border":{"color":"#5a5a5a"}}</desc>
+  <defs>
+    
+  </defs>
+  <g transform="translate(-7.2 -9.2)">
 
-    <rect x="2" y="2" width="110" height="54" rx="6" fill="#2d2510" stroke="#4a3728" stroke-width="4"/>
-    <path d="M17,41l8,-8l-4,-4l16,-16l6,6l-16,16l4,4l-8,8z" fill="#888888" stroke="none"/>
-    <circle cx="45" cy="13" r="8" fill="none" stroke="#888888" stroke-width="3"/>
-    <path d="M39,13h12M45,7v12" stroke="#888888" stroke-width="2"/>
-    <text x="69" y="17" fill="#ffffff" font-family="Arial, sans-serif" font-size="10" stroke="none">FUEL</text>
-    <text x="69" y="31" fill="#f39c12" font-family="Arial, sans-serif" font-size="10" font-weight="bold" stroke="none">+10.5</text>
-    <text x="69" y="45" fill="#2ecc71" font-family="Arial, sans-serif" font-size="10" stroke="none">TIRES ✓</text>
-
+    <rect x="10" y="12" width="76" height="44" rx="6" fill="#2a2a2a" stroke="#ffffff" stroke-width="3.5"/>
+    <line x1="31" y1="20" x2="38" y2="27" stroke="#ffffff" stroke-width="7.5" stroke-linecap="round"/>
+    <line x1="32" y1="23.5" x2="35" y2="20.5" stroke="#2a2a2a" stroke-width="1.8"/>
+    <line x1="35" y1="26.5" x2="38" y2="23.5" stroke="#2a2a2a" stroke-width="1.8"/>
+    <line x1="39.5" y1="28.5" x2="61" y2="46.5" stroke="#ffffff" stroke-width="3.8" stroke-linecap="round"/>
+    <line x1="34" y1="47" x2="56" y2="27" stroke="#ffffff" stroke-width="5.5" stroke-linecap="round"/>
+    <circle cx="60" cy="23.5" r="6" fill="#ffffff"/>
+    <circle cx="64.5" cy="21.5" r="3" fill="#2a2a2a"/>
+    <line x1="64.5" y1="21.5" x2="68.5" y2="19.5" stroke="#2a2a2a" stroke-width="3.5" stroke-linecap="round"/>
+  </g>
 </svg>

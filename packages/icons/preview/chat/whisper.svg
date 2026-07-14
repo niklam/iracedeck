@@ -1,11 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 70" stroke-width="0.5" stroke="#fff" fill="#fff">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 61.8 49.8">
   <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"CHAT\nWHISPER"},"border":{"color":"#5a6a7a"}}</desc>
-  
+  <defs>
+    
+  </defs>
+  <g transform="translate(-13 -9)">
 
-    <path d="M10,2h80a8,8,0,0,1,8,8v40a8,8,0,0,1,-8,8H54l-6,10l-6,-10H10a8,8,0,0,1,-8,-8V10a8,8,0,0,1,8,-8z"
-          fill="none" stroke="#ffffff" stroke-width="4" stroke-linejoin="round"/>
-    <path d="M38,18A8,8,0,0,1,38,38" fill="none" stroke="{{color}}" stroke-width="4" stroke-linecap="round"/>
-    <path d="M46,12A16,16,0,0,1,46,44" fill="none" stroke="{{color}}" stroke-width="3" stroke-linecap="round"/>
-    <path d="M54,6A24,24,0,0,1,54,50" fill="none" stroke="{{color}}" stroke-width="2" stroke-linecap="round"/>
-
+    <rect x="14" y="10" width="60" height="36" rx="9" fill="#ffffff"/>
+    <polygon points="28,45 28,58 41,45" fill="#ffffff"/>
+    <polygon points="34,24 39,24 45,18 45,38 39,32 34,32" fill="#2a3a4a"/>
+    <path d="M50 24 Q53.5 28 50 32" fill="none" stroke="#2a3a4a" stroke-width="3" stroke-linecap="round"/>
+  </g>
 </svg>

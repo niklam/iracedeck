@@ -1,10 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 70" stroke-width="0.5" stroke="#fff" fill="#fff">
-  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"CHAT\nREPLY"},"border":{"color":"#5a6a7a"}}</desc>
-  
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 61.8 49.8">
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#2563ab"},"title":{"text":"CHAT\nREPLY"},"border":{"color":"#5a6a7a"}}</desc>
+  <defs>
+    
+  </defs>
+  <g transform="translate(-13 -9)">
 
-    <path d="M10,2h80a8,8,0,0,1,8,8v40a8,8,0,0,1,-8,8H54l-6,10l-6,-10H10a8,8,0,0,1,-8,-8V10a8,8,0,0,1,8,-8z"
-          fill="none" stroke="{{graphic1Color}}" stroke-width="4" stroke-linejoin="round"/>
-    <path d="M38,18L26,28L38,38" fill="none" stroke="{{color}}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M26,28H54A8,8,0,0,1,62,36" fill="none" stroke="{{color}}" stroke-width="4" stroke-linecap="round"/>
-
+    <rect x="14" y="10" width="60" height="36" rx="9" fill="{{graphic1Color}}"/>
+    <polygon points="28,45 28,58 41,45" fill="{{graphic1Color}}"/>
+    <path d="M56 36 V32 Q56 24 46 24 H36" fill="none" stroke="{{graphic2Color}}" stroke-width="3.5" stroke-linecap="round"/>
+    <polygon points="38,17.5 27,24 38,30.5" fill="{{graphic2Color}}"/>
+  </g>
 </svg>

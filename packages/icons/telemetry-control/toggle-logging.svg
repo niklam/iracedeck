@@ -1,10 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 92 58" stroke-width="0.5" stroke="#fff" fill="#fff">
-  <desc>{"colors":{"backgroundColor":"#3a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"TOGGLE\nLOGGING"},"border":{"color":"#6a5a6a"}}</desc>
-  
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 69.3 53.8">
+  <desc>{"colors":{"backgroundColor":"#3a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"locked":["graphic1Color"],"title":{"text":"TOGGLE\nLOGGING"},"border":{"color":"#6a5a6a"}}</desc>
+  <defs>
+    
+  </defs>
+  <g transform="translate(-15.2 -0.7)">
 
-    <polyline points="2,44 18,24 34,36 50,12 66,28 82,8" fill="none"
-              stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="82" cy="8" r="6" fill="#2ecc71" stroke="none"/>
-    <line x1="2" y1="56" x2="90" y2="56" stroke="#888888" stroke-width="1.6"/>
-
+    <path d="M18 10 V52 H76" fill="none" stroke="{{graphic1Color}}" stroke-width="3.5" stroke-linecap="round"/>
+    <polyline points="24,44 33,29 42,37 52,19 61,27 70,15" fill="none" stroke="{{graphic2Color}}" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="68" cy="38" r="12" fill="#e74c3c" stroke="{{backgroundColor}}" stroke-width="3.5"/>
+  </g>
 </svg>

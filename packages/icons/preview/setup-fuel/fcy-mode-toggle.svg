@@ -1,9 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 64" stroke-width="0.5" stroke="#fff" fill="#fff">
-  <desc>{"colors":{"backgroundColor":"#3a3a1a","textColor":"#ffffff"},"title":{"text":"FCY MODE\nTOGGLE"},"border":{"color":"#6a6a3a"}}</desc>
-  
-
-    <path d="M36,4L68,60L4,60Z" fill="none" stroke="#f1c40f" stroke-width="4" stroke-linejoin="round"/>
-    <line x1="36" y1="20" x2="36" y2="44" stroke="#f1c40f" stroke-width="5" stroke-linecap="round"/>
-    <circle cx="36" cy="52" r="3" fill="#f1c40f" stroke="none"/>
-
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 70.3 47.8">
+  <desc>{"colors":{"backgroundColor":"#3a3a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"FCY MODE\nTOGGLE"},"border":{"color":"#6a6a3a"}}</desc>
+  <defs>
+    
+  </defs>
+  <g transform="translate(-14.5 -4)">
+<g transform="translate(30 0) scale(0.85)">
+    <path d="M0 6 C0 6 -17 28 -17 40 a17 17 0 0 0 34 0 C17 28 0 6 0 6 Z" fill="#f6d34c"/>
+    <path d="M-8 42 a8 8 0 0 0 8 8" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" opacity="0.55"/>
+  </g>
+    <rect x="54.25" y="9" width="3.5" height="42" rx="1.75" fill="#ffffff"/>
+    
+    <path d="M59 12 Q71 8 84 12 L84 28 Q71 24 59 28 Z" fill="#f6d34c"/>
+  </g>
 </svg>

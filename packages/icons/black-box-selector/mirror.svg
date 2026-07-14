@@ -1,14 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 114 58" stroke-width="0.5" stroke="#fff" fill="#fff">
-  <desc>{"colors":{"backgroundColor":"#2a2a2a","textColor":"#ffffff"},"title":{"text":"GRAPHICS"},"border":{"color":"#5a5a5a"}}</desc>
-  
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 81.3 49.3">
+  <desc>{"colors":{"backgroundColor":"#2a2a2a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"title":{"text":"GRAPHICS"},"border":{"color":"#5a5a5a"}}</desc>
+  <defs>
+    
+  </defs>
+  <g transform="translate(-7.2 -9.2)">
 
-    <rect x="2" y="2" width="110" height="54" rx="6" fill="#2d2510" stroke="#4a3728" stroke-width="4"/>
-    <rect x="53" y="7" width="8" height="8" fill="#888888" stroke="none"/>
-    <rect x="13" y="15" width="88" height="28" rx="4" fill="none" stroke="#888888" stroke-width="3"/>
-    <rect x="17" y="19" width="80" height="20" rx="2" fill="#888888" opacity="0.2" stroke="none"/>
-    <line x1="25" y1="21" x2="37" y2="33" stroke="#ffffff" stroke-width="3" opacity="0.5"/>
-    <line x1="33" y1="21" x2="45" y2="33" stroke="#ffffff" stroke-width="2" opacity="0.3"/>
-    <line x1="69" y1="21" x2="81" y2="33" stroke="#ffffff" stroke-width="3" opacity="0.5"/>
-    <line x1="77" y1="21" x2="89" y2="33" stroke="#ffffff" stroke-width="2" opacity="0.3"/>
-
+    <rect x="10" y="12" width="76" height="44" rx="6" fill="{{backgroundColor}}" stroke="{{graphic1Color}}" stroke-width="3.5"/>
+    <rect x="44" y="16" width="8" height="6" rx="1.5" fill="{{graphic1Color}}"/>
+    <rect x="18" y="21" width="60" height="26" rx="5" fill="{{graphic2Color}}" stroke="{{graphic1Color}}" stroke-width="2.5"/>
+    <line x1="28" y1="26" x2="38" y2="42" stroke="#ffffff" stroke-width="3" opacity="0.5" stroke-linecap="round"/>
+    
+    <line x1="58" y1="26" x2="68" y2="42" stroke="#ffffff" stroke-width="3" opacity="0.5" stroke-linecap="round"/>
+    
+  </g>
 </svg>

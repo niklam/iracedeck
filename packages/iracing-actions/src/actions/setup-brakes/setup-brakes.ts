@@ -38,6 +38,13 @@ import peakBrakeBiasDecreaseIconSvg from "@iracedeck/icons/setup-brakes/peak-bra
 import peakBrakeBiasIncreaseIconSvg from "@iracedeck/icons/setup-brakes/peak-brake-bias-increase.svg";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 
+import absToggleTemplate from "../../../icons/setup-brakes-abs-toggle.svg";
+import {
+  generateToggleStateSvg,
+  type ToggleState,
+  toggleStateFromLevel,
+  toggleStateMemoKey,
+} from "../../icons/status-bar.js";
 import {
   ADJUST_REPEAT_INTERVAL_MS,
   ADJUST_REPEAT_SAFETY_MS,
@@ -104,18 +111,18 @@ const SETUP_BRAKES_ICONS: Record<string, string> = {
  */
 const SETUP_BRAKES_TITLES: Record<string, string> = {
   "abs-toggle": "TOGGLE\nABS",
-  "abs-adjust-increase": "INCREASE\nABS",
-  "abs-adjust-decrease": "DECREASE\nABS",
-  "brake-bias-increase": "INCREASE\nBRAKE BIAS",
-  "brake-bias-decrease": "DECREASE\nBRAKE BIAS",
-  "brake-bias-fine-increase": "INCREASE\nBIAS FINE",
-  "brake-bias-fine-decrease": "DECREASE\nBIAS FINE",
-  "peak-brake-bias-increase": "INCREASE\nPEAK BIAS",
-  "peak-brake-bias-decrease": "DECREASE\nPEAK BIAS",
-  "brake-misc-increase": "INCREASE\nBRAKE MISC",
-  "brake-misc-decrease": "DECREASE\nBRAKE MISC",
-  "engine-braking-increase": "INCREASE\nENG BRAKE",
-  "engine-braking-decrease": "DECREASE\nENG BRAKE",
+  "abs-adjust-increase": "ABS",
+  "abs-adjust-decrease": "ABS",
+  "brake-bias-increase": "BRAKE BIAS",
+  "brake-bias-decrease": "BRAKE BIAS",
+  "brake-bias-fine-increase": "BIAS FINE",
+  "brake-bias-fine-decrease": "BIAS FINE",
+  "peak-brake-bias-increase": "PEAK BIAS",
+  "peak-brake-bias-decrease": "PEAK BIAS",
+  "brake-misc-increase": "BRAKE MISC",
+  "brake-misc-decrease": "BRAKE MISC",
+  "engine-braking-increase": "ENG BRAKE",
+  "engine-braking-decrease": "ENG BRAKE",
 };
 
 /**
@@ -166,6 +173,55 @@ export function generateSetupBrakesSvg(settings: SetupBrakesSettings, bindingMis
   const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
 
   return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic, bindingMissing });
+}
+
+/**
+ * ISO ABS symbol drawn above the status bar. Lives here (not baked into the
+ * chrome template) so `generateToggleStateSvg` can dim it together with the
+ * bar under the binding-missing warning — the DRS pattern. Rendered with the
+ * icon's resolved colors, so the placeholders resolve at compose time.
+ */
+const ABS_TOGGLE_ARTWORK = `
+    <defs>
+      <linearGradient id="abs-mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="{{graphic1Color}}"/><stop offset="1" stop-color="{{graphic1Color}}" stop-opacity="0.55"/></linearGradient>
+    </defs>
+    <path d="M40.5 25.5 A31.5 31.5 0 0 0 40.5 70.5" fill="none" stroke="url(#abs-mtl)" stroke-width="5.25" stroke-linecap="round"/>
+    <path d="M103.5 25.5 A31.5 31.5 0 0 1 103.5 70.5" fill="none" stroke="url(#abs-mtl)" stroke-width="5.25" stroke-linecap="round"/>
+    <circle cx="72" cy="48" r="25.5" fill="none" stroke="url(#abs-mtl)" stroke-width="5.25"/>
+    <text x="72" y="54.75" font-family="Arial, sans-serif" font-size="17.25" font-weight="bold" fill="{{graphic1Color}}" text-anchor="middle">ABS</text>`;
+
+/**
+ * @internal Exported for testing
+ *
+ * Maps dcABS telemetry to the tri-state shown on the ABS Toggle key: no
+ * telemetry -> N/A; dcABS > 0 -> on; otherwise off. dcABS carries the ABS
+ * level, which the toggle binding flips between off and the configured level.
+ */
+export function absToggleState(telemetry: TelemetryData | null): ToggleState {
+  return toggleStateFromLevel(telemetry?.dcABS);
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * ABS Toggle renders through the shared tri-state toggle path (the DRS
+ * pattern, #827): the ISO ABS symbol above a full-width ON/OFF/N-A status
+ * bar, with the key border tracking the same state color.
+ */
+export function generateAbsToggleSvg(
+  settings: SetupBrakesSettings,
+  state: ToggleState,
+  bindingMissing = false,
+): string {
+  return generateToggleStateSvg({
+    template: absToggleTemplate,
+    artwork: ABS_TOGGLE_ARTWORK,
+    state,
+    colorOverrides: settings.colorOverrides,
+    titleOverrides: settings.titleOverrides,
+    borderOverrides: settings.borderOverrides,
+    bindingMissing,
+  });
 }
 
 /**
@@ -261,7 +317,10 @@ export class SetupBrakes extends ConnectionStateAwareAction<SetupBrakesSettings>
     this.sdkController.subscribe(ev.action.id, (telemetry) => {
       const stored = this.activeContexts.get(ev.action.id);
 
-      if (stored && (isViewSetting(stored.setting) || pairedKeyNeedsTelemetry(stored))) {
+      if (
+        stored &&
+        (stored.setting === "abs-toggle" || isViewSetting(stored.setting) || pairedKeyNeedsTelemetry(stored))
+      ) {
         void this.updateDisplayFromTelemetry(ev.action.id, telemetry, stored);
       }
     });
@@ -477,7 +536,7 @@ export class SetupBrakes extends ConnectionStateAwareAction<SetupBrakesSettings>
   ): Promise<void> {
     const svgDataUri = this.renderIcon(settings);
 
-    const memo = telemetryMemoValue(settings, this.sdkController.getCurrentTelemetry());
+    const memo = this.telemetryMemo(settings, this.sdkController.getCurrentTelemetry());
 
     if (memo !== null) {
       this.lastRenderedValue.set(ev.action.id, memo);
@@ -490,6 +549,10 @@ export class SetupBrakes extends ConnectionStateAwareAction<SetupBrakesSettings>
 
   private renderIcon(settings: SetupBrakesSettings): string {
     const bindingMissing = this.computeBindingMissing(settings);
+
+    if (settings.setting === "abs-toggle") {
+      return generateAbsToggleSvg(settings, absToggleState(this.sdkController.getCurrentTelemetry()), bindingMissing);
+    }
 
     const paired = renderPairedIconOrNull({
       setting: settings.setting,
@@ -521,12 +584,25 @@ export class SetupBrakes extends ConnectionStateAwareAction<SetupBrakesSettings>
     return generateSetupBrakesSvg(settings, bindingMissing);
   }
 
+  /**
+   * Memo value that decides whether a telemetry tick changes what the key
+   * shows. abs-toggle keys memo their tri-state; everything else defers to
+   * the shared adjust-styles/View memo.
+   */
+  private telemetryMemo(settings: SetupBrakesSettings, telemetry: TelemetryData | null): string | null {
+    if (settings.setting === "abs-toggle") {
+      return toggleStateMemoKey("abs-toggle", absToggleState(telemetry));
+    }
+
+    return telemetryMemoValue(settings, telemetry);
+  }
+
   private async updateDisplayFromTelemetry(
     contextId: string,
     telemetry: TelemetryData | null,
     settings: SetupBrakesSettings,
   ): Promise<void> {
-    const memo = telemetryMemoValue(settings, telemetry);
+    const memo = this.telemetryMemo(settings, telemetry);
 
     if (memo === null) return;
 

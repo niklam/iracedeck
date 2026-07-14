@@ -187,8 +187,20 @@
           "modes": [
             { "control": "toggle-wipers", "label": "Toggle Wipers" },
             { "control": "trigger-wipers", "label": "Trigger Wipers" },
-            { "control": "ffb-max-force", "direction": "increase", "label": "FFB Max Force Up" },
-            { "control": "ffb-max-force", "direction": "decrease", "label": "FFB Max Force Down" },
+            {
+              "control": "ffb-max-force",
+              "direction": "increase",
+              "label": "FFB Max Force Up",
+              "hidden": true,
+              "note": "Legacy alias of Force Feedback ffb-force (#827); kept functional, not selectable in the PI"
+            },
+            {
+              "control": "ffb-max-force",
+              "direction": "decrease",
+              "label": "FFB Max Force Down",
+              "hidden": true,
+              "note": "Legacy alias of Force Feedback ffb-force (#827); kept functional, not selectable in the PI"
+            },
             { "control": "report-latency", "label": "Report Latency" },
             { "control": "dash-page-1", "direction": "increase", "label": "Dash Page 1 Next" },
             { "control": "dash-page-1", "direction": "decrease", "label": "Dash Page 1 Previous" },
@@ -205,8 +217,8 @@
           "settingsKeys": ["mode", "direction"],
           "modes": [
             { "mode": "auto-compute-ffb-force", "label": "Auto Compute FFB Force" },
-            { "mode": "ffb-force", "direction": "increase", "label": "FFB Force Increase" },
-            { "mode": "ffb-force", "direction": "decrease", "label": "FFB Force Decrease" },
+            { "mode": "ffb-force", "direction": "increase", "label": "FFB Force (max force) Increase" },
+            { "mode": "ffb-force", "direction": "decrease", "label": "FFB Force (max force) Decrease" },
             { "mode": "wheel-lfe", "direction": "increase", "label": "Wheel LFE Louder" },
             { "mode": "wheel-lfe", "direction": "decrease", "label": "Wheel LFE Quieter" },
             { "mode": "bass-shaker-lfe", "direction": "increase", "label": "BassShaker LFE Louder" },

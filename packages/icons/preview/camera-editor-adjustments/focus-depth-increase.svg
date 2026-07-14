@@ -1,12 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 74 52" stroke-width="0.5" stroke="#fff" fill="#fff">
-  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"FOCUS DEPTH\n+"},"border":{"color":"#3a5a6a"}}</desc>
-  
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 104.8 48.8">
+  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"title":{"text":"FOCUS DEPTH"},"border":{"color":"#3a5a6a"}}</desc>
+  <defs>
+    
+  </defs>
+  <g transform="translate(-11.5 -11.5)">
 
-    <circle cx="17" cy="17" r="16" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <circle cx="17" cy="17" r="6" fill="#ffffff" stroke="none"/>
-    <circle cx="61" cy="17" r="12" fill="none" stroke="#888888" stroke-width="2"/>
-    <circle cx="61" cy="17" r="4" fill="#888888" stroke="none"/>
-    <line x1="37" y1="45" x2="57" y2="45" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-    <polyline points="51,39 57,45 51,51" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-
+    <path d="M14 22 v-8 h9" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M73 14 h9 v8" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M82 50 v8 h-9" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M23 58 h-9 v-8" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    
+    
+    
+    <circle cx="48" cy="36" r="6" fill="#4fc3f7"/><path d="M88.3 35.9h24M100.3 23.9v24" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>
+  </g>
 </svg>

@@ -1,6 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
-  <!-- Default dial (Encoder.Icon) image: just the action name on two lines (#796). -->
-  <rect x="0" y="0" width="72" height="72" rx="8" fill="#2a1a3a"/>
-  <text x="36" y="32" text-anchor="middle" fill="#ffffff" font-family="Arial, sans-serif" font-size="13" font-weight="bold">SETUP</text>
-  <text x="36" y="48" text-anchor="middle" fill="#ffffff" font-family="Arial, sans-serif" font-size="13" font-weight="bold">HYBRID</text>
+  <rect x="0" y="0" width="72" height="72" rx="8" fill="#1a3a1a"/>
+  <svg x="4" y="4" width="64" height="64" viewBox="0 0 61.8 57.8">
+  
+  <defs>
+    
+  </defs>
+  <g transform="translate(-17 -5)">
+
+    <rect x="25" y="10" width="10" height="6" rx="2" fill="#ffffff"/>
+    <rect x="18" y="16" width="24" height="38" rx="4.5" fill="#ffffff"/>
+    <rect x="22" y="34" width="16" height="16" rx="2.5" fill="#2ecc71"/>
+    
+    <polygon points="68,6 54,36 64,36 58,62 78,30 67,30" fill="#f7d94c"/>
+  </g>
+
+  </svg>
 </svg>

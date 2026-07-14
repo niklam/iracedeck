@@ -1,11 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 84 52" stroke-width="0.5" stroke="#fff" fill="#fff">
-  <desc>{"colors":{"backgroundColor":"#1a2a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"TC4\nDECREASE"},"border":{"color":"#3a5a3a"}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 95.3 61.8">
+  <desc>{"colors":{"backgroundColor":"#1a2a1a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"locked":["graphic1Color"],"title":{"text":"TC4"},"border":{"color":"#3a5a3a"}}</desc>
+  <defs>
+    
+  </defs>
+  <g transform="translate(-17 -5.5)">
 
-
-    <circle cx="58" cy="26" r="24" fill="none" stroke="#ffffff" stroke-width="4"/>
-    <circle cx="58" cy="26" r="12" fill="none" stroke="#888888" stroke-width="2"/>
-    <text x="58" y="28" text-anchor="middle" dominant-baseline="central"
-          fill="#2ecc71" font-family="Arial, sans-serif" font-size="16" font-weight="bold" stroke="none">4</text>
-    <polyline points="12,34 2,22 12,10" fill="none" stroke="#2ecc71" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-
+    <circle cx="38" cy="32" r="20" fill="#ffffff"/>
+    <circle cx="38" cy="32" r="16.4" fill="none" stroke="#1a2a1a" stroke-width="3" stroke-dasharray="5 6"/>
+    <circle cx="38" cy="32" r="9.0" fill="#ffffff"/>
+    <path d="M20 58 Q38 51 56 58" fill="none" stroke="#4fc3f7" stroke-width="3.5" stroke-linecap="round"/>
+    <path d="M25 65 Q38 59.5 51 65" fill="none" stroke="#4fc3f7" stroke-width="3" stroke-linecap="round" opacity="0.6"/>
+    <circle cx="70" cy="16" r="9.5" fill="#4fc3f7"/>
+    <text x="70" y="20.5" font-family="Arial, sans-serif" font-size="13" font-weight="bold" fill="#12222e" text-anchor="middle" stroke="none">4</text><path d="M84.3 36.4h24" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>
+  </g>
 </svg>

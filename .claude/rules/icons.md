@@ -9,6 +9,21 @@
   - **Exception**: `packages/icons/tire-service/toggle-tires.svg` is intentionally kept on the legacy 144×144 canvas. The tire-service action overlays four dynamic tire-status rects in 144-coord space at runtime, so the car body's coordinates must stay in that frame. The migration script (`scripts/migrate-icons-to-trimmed-viewbox.mjs`) explicitly skips this file via `SKIP_FILES`, and `tire-service.ts` uses a hardcoded `TOGGLE_TIRES_BOUNDS` instead of reading the viewBox. Don't trim it without also rewriting the dynamic tire layout in the action.
 - **Dynamic templates** (e.g., `packages/iracing-actions/icons/*.svg`): 144x144 Mustache templates for actions with telemetry-driven content that can't be pre-rendered as standalone SVGs.
 
+## Plain icon design system (#827)
+
+The sets redesigned in #827 follow a shared **plain** language — apply it when adding icons to these sets or redesigning others (full spec: `docs/superpowers/specs/2026-07-12-icon-redesign-design.md`):
+
+- **Plain style** (Media Capture, Camera Editor Adjustments, Cockpit Misc dash/in-lap, Setup Brakes/Engine/Fuel/Hybrid/Traction, Chat, Black Box Selector, Recenter VR, plus the flat-car sets below): solid `{{graphic1Color}}` (white) fills, interior details cut out in `{{backgroundColor}}`, and at most one accent per icon — `{{graphic2Color}}` (default `#4fc3f7` cyan; chat defaults `#2563ab`) or the icon's fixed semantic color (red record/stop `#e74c3c`, green play/OK `#2ecc71`, amber fuel/flag/auto `#f6d34c`). No gradients, no glow, no gloss overlays. An element that sits directly on the key background (a lens beside a camera body, the blimp cabin) must be white, not a cutout.
+- **Rich-chipless exceptions**: Force Feedback, Look Direction, the View Adjustment ± modes, and Telemetry Control keep their previously approved treatments (`mtl`/`scl2` gradient shading where they had it); the same tight-viewBox/pair rules apply.
+- **Tight viewBoxes**: each icon's viewBox is the rendered alpha bounding box of its artwork (+1 unit padding) — not a uniform canvas — so `assembleIcon` can scale the art to fill the key. When editing artwork, re-trim the viewBox to the new extent; big unused margins shrink the icon on the key (#827 review finding).
+- **± marks**: no chips anywhere. When the drawing itself shows the direction (FOV cone, wave count, before→after), the pair carries no mark at all — a rotation arrow does **not** count (camera pitch/yaw share one arrow and carry the mark). Otherwise the mark is a bare `{{graphic1Color}}` `+`/`−` (stroke 6, 24-unit arms) placed to the right of the artwork and **vertically centered on it**. Dash pages use `>` (next, right side) / `<` (previous, LEFT side of the panel) chevrons instead. **Titles**: an icon with a giant ± mark has **no direction line at all** (the mark says it — the emitter strips it automatically); an icon whose drawing shows direction without a mark uses INCREASE/DECREASE words, never `+`/`−` signs.
+- **Pair frames**: ± pairs share one viewBox frame (union of both variants' bounds) with each variant horizontally centered so both keys render at identical scale (the emitter's `pair:` key; `anchor: "frame"` pins shared artwork like the telemetry graph instead of centering).
+- **"A" badge**: amber rounded square with a dark bold `A`, top-right, marks automatic/computed modes (auto-compute FFB force, auto-set mic gain). Use it for any future "magic" mode.
+- **Flat car style**: car-bearing icons (Setup Aero, Setup Chassis, reload-car-textures) draw the shared flat top-view race car (the Tire Service car body verbatim) as `{{graphic1Color}}` on the background with one `{{graphic2Color}}` accent on the adjusted part.
+- **Tri-state toggles**: telemetry-aware toggles (ABS Toggle, TC Toggle, like DRS/Fast Repair) render a dedicated 144×144 template + the shared `statusBarOn/Off/NA` bottom bar with `borderColorForState` — they are exempt from the plain conversion.
+- **Cutouts** that expose the key background (wheel windows, gear hubs, glyphs inside the video-camera body) use `{{backgroundColor}}`.
+- **Gradient pitfall** (rich sets only): never stroke an axis-aligned `<line>` with a gradient — the objectBoundingBox is zero-sized and the stroke vanishes. Use a `rect` or a literal metal tone (`#c9d4dc`).
+
 ## Standalone Icon SVGs (preferred)
 
 Most action icons are standalone SVG files in the `@iracedeck/icons` package:
@@ -22,7 +37,7 @@ packages/icons/{action-name}/
 
 ### Structure (trimmed-viewBox graphic snippet)
 
-Icons are graphic snippets — they contain only the artwork and metadata. Each icon's `viewBox` IS the artwork extent (no padding, no surrounding canvas). The background rect, title text, border, and centering/scaling are added at render time by `assembleIcon()` based on the SVG's own viewBox dimensions.
+Icons are graphic snippets — they contain only the artwork and metadata. Each icon's `viewBox` is the artwork's rendered bounding box plus a 1-unit anti-clip margin on every side — no larger surrounding canvas. The background rect, title text, border, and centering/scaling are added at render time by `assembleIcon()` based on the SVG's own viewBox dimensions.
 
 ```svg
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 104 68">
@@ -36,7 +51,7 @@ Icons are graphic snippets — they contain only the artwork and metadata. Each 
 </svg>
 ```
 
-The `viewBox` width and height are the artwork's own dimensions — no surrounding padding. `assembleIcon()` reads them via `parseSvgViewBox()` and uses `applyGraphicTransform()` to scale the artwork into the available area (which shrinks when a title is shown at top or bottom) and centers it. Users can further adjust scale via Graphic Overrides (per-action) or Graphic Defaults (global).
+The `viewBox` width and height are the artwork's own dimensions plus the 1-unit margin — no larger canvas around them. `assembleIcon()` reads them via `parseSvgViewBox()` and uses `applyGraphicTransform()` to scale the artwork into the available area (which shrinks when a title is shown at top or bottom) and centers it. Users can further adjust scale via Graphic Overrides (per-action) or Graphic Defaults (global).
 
 The `title.text` field in `<desc>` provides the default title. Prefer short, single-line titles (e.g., `"1x"`, `"DRS"`) — only use two lines (`"CATEGORY\nACTION"`) when a single line cannot convey the action clearly. Title position, font, and visibility are controlled via `resolveTitleSettings()` at render time.
 
@@ -164,7 +179,7 @@ Current dynamic templates: `car-control-pit-limiter.svg`, `session-info.svg`, `t
 
 ## Design Specs
 
-- Standalone icons: variable-sized viewBox trimmed to the artwork extent (no canvas padding, no background rect).
+- Standalone icons: variable-sized viewBox trimmed to the artwork extent plus the 1-unit anti-clip margin (no surrounding canvas, no background rect).
 - Dynamic templates: 144x144 canvas, no rounded corners.
 - Stroke width: 4–5px main, 2–3px details (in 144x144 reference scale — author at the same visual weight regardless of trimmed viewBox size, the render-time scaler keeps proportions correct).
 - Colors: white `#ffffff`, green `#2ecc71`, red `#e74c3c`, yellow `#f39c12`, purple `#9b59b6`, gray `#888888`.

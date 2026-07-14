@@ -1,6 +1,24 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
-  <!-- Default dial (Encoder.Icon) image: just the action name on two lines (#775). -->
   <rect x="0" y="0" width="72" height="72" rx="8" fill="#3a2a1a"/>
-  <text x="36" y="32" text-anchor="middle" fill="#ffffff" font-family="Arial, sans-serif" font-size="13" font-weight="bold">SETUP</text>
-  <text x="36" y="48" text-anchor="middle" fill="#ffffff" font-family="Arial, sans-serif" font-size="13" font-weight="bold">BRAKES</text>
+  <svg x="4" y="4" width="64" height="64" viewBox="0 0 101.3 44.3">
+  
+  <defs>
+    
+  </defs>
+  <g transform="translate(-11 -6)">
+
+    <circle cx="28" cy="20" r="12" fill="#ffffff"/>
+    <circle cx="28" cy="20" r="4.1" fill="#3a2a1a"/>
+    <path d="M 32.8 9.2 A 12 12 0 0 1 39.4 16.6" fill="none" stroke="#e74c3c" stroke-width="4.3" stroke-linecap="round"/>
+    <circle cx="64" cy="20" r="12" fill="#ffffff"/>
+    <circle cx="64" cy="20" r="4.1" fill="#3a2a1a"/>
+    <path d="M 68.8 9.2 A 12 12 0 0 1 75.4 16.6" fill="none" stroke="#e74c3c" stroke-width="4.3" stroke-linecap="round"/>
+    <rect x="22" y="41" width="48" height="6" rx="3" fill="#3a2a1a" stroke="#ffffff" stroke-width="1.5"/>
+    <text x="15" y="47.5" font-family="Arial, sans-serif" font-size="10" font-weight="bold" fill="#ffffff" text-anchor="middle" stroke="none">R</text>
+    <text x="77" y="47.5" font-family="Arial, sans-serif" font-size="10" font-weight="bold" fill="#ffffff" text-anchor="middle" stroke="none">F</text>
+    <circle cx="66" cy="44" r="5.5" fill="#ffffff"/>
+    <path d="M84.5 28.1h24M96.5 16.1v24" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>
+  </g>
+
+  </svg>
 </svg>

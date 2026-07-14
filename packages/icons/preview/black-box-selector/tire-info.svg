@@ -1,15 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 114 58" stroke-width="0.5" stroke="#fff" fill="#fff">
-  <desc>{"colors":{"backgroundColor":"#2a2a2a","textColor":"#ffffff"},"title":{"text":"TIRE INFO"},"border":{"color":"#5a5a5a"}}</desc>
-  
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 81.3 49.3">
+  <desc>{"colors":{"backgroundColor":"#2a2a2a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"title":{"text":"TIRE INFO"},"border":{"color":"#5a5a5a"}}</desc>
+  <defs>
+    
+  </defs>
+  <g transform="translate(-7.2 -9.2)">
 
-    <rect x="2" y="2" width="110" height="54" rx="6" fill="#2d2510" stroke="#4a3728" stroke-width="4"/>
-    <circle cx="41" cy="29" r="20" fill="none" stroke="#888888" stroke-width="3"/>
-    <circle cx="41" cy="29" r="10" fill="none" stroke="#888888" stroke-width="2"/>
-    <path d="M21,29A20,20,0,0,1,27,13" fill="none" stroke="#3498db" stroke-width="6" stroke-linecap="round"/>
-    <path d="M27,13A20,20,0,0,1,41,9" fill="none" stroke="#2ecc71" stroke-width="6" stroke-linecap="round"/>
-    <path d="M41,9A20,20,0,0,1,55,13" fill="none" stroke="#f39c12" stroke-width="6" stroke-linecap="round"/>
-    <path d="M55,13A20,20,0,0,1,61,29" fill="none" stroke="#e74c3c" stroke-width="6" stroke-linecap="round"/>
-    <text x="81" y="21" fill="#ffffff" font-family="Arial, sans-serif" font-size="10" stroke="none">TEMP</text>
-    <text x="81" y="39" fill="#2ecc71" font-family="Arial, sans-serif" font-size="14" font-weight="bold" stroke="none">85°</text>
-
+    <rect x="10" y="12" width="76" height="44" rx="6" fill="#2a2a2a" stroke="#ffffff" stroke-width="3.5"/>
+    <rect x="22" y="19" width="16" height="28" rx="5.5" fill="#ffffff"/>
+    <line x1="26" y1="23" x2="26" y2="43" stroke="#2a2a2a" stroke-width="2"/>
+    <line x1="30" y1="23" x2="30" y2="43" stroke="#2a2a2a" stroke-width="2"/>
+    <line x1="34" y1="23" x2="34" y2="43" stroke="#2a2a2a" stroke-width="2"/>
+    <rect x="48" y="24" width="7" height="20" rx="2.5" fill="#2ecc71"/>
+    <rect x="58" y="29" width="7" height="15" rx="2.5" fill="#f6d34c"/>
+    <rect x="68" y="34" width="7" height="10" rx="2.5" fill="#e74c3c"/>
+  </g>
 </svg>

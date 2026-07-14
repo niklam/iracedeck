@@ -1,12 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
   <rect x="0" y="0" width="72" height="72" rx="8" fill="#3a2a3a"/>
-  <!-- Toggle logging icon content (static version) -->
-  <polyline points="14,28 22,18 30,24 38,12 46,20 54,10" fill="none"
-            stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="54" cy="10" r="3" fill="#2ecc71"/>
-  <line x1="14" y1="34" x2="58" y2="34" stroke="#888888" stroke-width="0.8"/>
-  <text x="36" y="52" text-anchor="middle" dominant-baseline="central"
-        fill="#ffffff" font-family="Arial, sans-serif" font-size="10" font-weight="bold">LOGGING</text>
-  <text x="36" y="63" text-anchor="middle" dominant-baseline="central"
-        fill="#ffffff" font-family="Arial, sans-serif" font-size="8">TOGGLE</text>
+  <svg x="4" y="4" width="64" height="64" viewBox="0 0 69.3 53.8">
+  
+  <defs>
+    
+  </defs>
+  <g transform="translate(-15.2 -0.7)">
+
+    <path d="M18 10 V52 H76" fill="none" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round"/>
+    <polyline points="24,44 33,29 42,37 52,19 61,27 70,15" fill="none" stroke="#4fc3f7" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="68" cy="38" r="12" fill="#e74c3c" stroke="#3a2a3a" stroke-width="3.5"/>
+  </g>
+
+  </svg>
 </svg>

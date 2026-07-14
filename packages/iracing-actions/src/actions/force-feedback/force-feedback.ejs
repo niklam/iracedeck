@@ -10,7 +10,7 @@
 			<sdpi-select id="mode-select" setting="mode" default="auto-compute-ffb-force">
 				<optgroup label="Force Feedback">
 					<option value="auto-compute-ffb-force">Auto Compute FFB Force</option>
-					<option value="ffb-force">FFB Force</option>
+					<option value="ffb-force">FFB Force (max force)</option>
 					<option value="wheel-lfe">Wheel LFE</option>
 				</optgroup>
 				<optgroup label="Bass Shaker">
@@ -36,7 +36,7 @@
 		</sdpi-item>
 
 		<%- include('title-overrides') %>
-		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/icon-defaults.json')['force-feedback'] }) %>
+		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color', 'graphic2Color'], defaults: require('./data/icon-defaults.json')['force-feedback'] }) %>
 		<%- include('border-overrides', { defaults: require('./data/icon-defaults.json')['force-feedback'] }) %>
 		<%- include('graphic-overrides') %>
 		<%- include('common-settings') %>

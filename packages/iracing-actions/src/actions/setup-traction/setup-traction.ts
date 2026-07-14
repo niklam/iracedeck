@@ -36,6 +36,13 @@ import tcToggleIconSvg from "@iracedeck/icons/setup-traction/tc-toggle.svg";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
+import tcToggleTemplate from "../../../icons/setup-traction-tc-toggle.svg";
+import {
+  generateToggleStateSvg,
+  type ToggleState,
+  toggleStateFromLevel,
+  toggleStateMemoKey,
+} from "../../icons/status-bar.js";
 import {
   ADJUST_REPEAT_INTERVAL_MS,
   ADJUST_REPEAT_SAFETY_MS,
@@ -52,6 +59,16 @@ import { generateSetupViewSvg, getAdjustmentModeForView, isViewSetting } from ".
 import { DialSettings, seedDialFromLegacySetting, SetupTractionDialSurface } from "./setup-traction-dial-surface.js";
 
 type SetupTractionAdjustSetting = "tc-toggle" | "tc-slot-1" | "tc-slot-2" | "tc-slot-3" | "tc-slot-4";
+
+/**
+ * @internal Exported for testing
+ *
+ * Maps dcTractionControl telemetry to the tri-state shown on the TC Toggle
+ * key: no telemetry -> N/A; dcTractionControl > 0 -> on; otherwise off.
+ */
+export function tcToggleState(telemetry: TelemetryData | null): ToggleState {
+  return toggleStateFromLevel(telemetry?.dcTractionControl);
+}
 
 /**
  * The combined `setting` type is the union of `SetupTractionAdjustSetting` and the two
@@ -89,14 +106,14 @@ const SETUP_TRACTION_ICONS: Record<string, string> = {
  */
 const SETUP_TRACTION_TITLES: Record<string, string> = {
   "tc-toggle": "TOGGLE\nTC",
-  "tc-slot-1-increase": "INCREASE\nTC1",
-  "tc-slot-1-decrease": "DECREASE\nTC1",
-  "tc-slot-2-increase": "INCREASE\nTC2",
-  "tc-slot-2-decrease": "DECREASE\nTC2",
-  "tc-slot-3-increase": "INCREASE\nTC3",
-  "tc-slot-3-decrease": "DECREASE\nTC3",
-  "tc-slot-4-increase": "INCREASE\nTC4",
-  "tc-slot-4-decrease": "DECREASE\nTC4",
+  "tc-slot-1-increase": "TC1",
+  "tc-slot-1-decrease": "TC1",
+  "tc-slot-2-increase": "TC2",
+  "tc-slot-2-decrease": "TC2",
+  "tc-slot-3-increase": "TC3",
+  "tc-slot-3-decrease": "TC3",
+  "tc-slot-4-increase": "TC4",
+  "tc-slot-4-decrease": "TC4",
 };
 
 /**
@@ -214,6 +231,28 @@ export function generateSetupTractionSvg(settings: SetupTractionSettings, bindin
 }
 
 /**
+ * @internal Exported for testing
+ *
+ * TC Toggle renders through the shared tri-state toggle path (the DRS
+ * pattern, #827): a big locked "TC" title above a full-width ON/OFF/N-A
+ * status bar, with the key border tracking the same state color.
+ */
+export function generateTcToggleSvg(
+  settings: SetupTractionSettings,
+  state: ToggleState,
+  bindingMissing = false,
+): string {
+  return generateToggleStateSvg({
+    template: tcToggleTemplate,
+    state,
+    colorOverrides: settings.colorOverrides,
+    titleOverrides: settings.titleOverrides,
+    borderOverrides: settings.borderOverrides,
+    bindingMissing,
+  });
+}
+
+/**
  * Setup Traction Action
  * Provides traction control in-car adjustments (TC Toggle, TC1–TC4)
  * via keyboard shortcuts.
@@ -289,7 +328,10 @@ export class SetupTraction extends ConnectionStateAwareAction<SetupTractionSetti
     this.sdkController.subscribe(ev.action.id, (telemetry) => {
       const stored = this.activeContexts.get(ev.action.id);
 
-      if (stored && (isViewSetting(stored.setting) || pairedKeyNeedsTelemetry(stored))) {
+      if (
+        stored &&
+        (stored.setting === "tc-toggle" || isViewSetting(stored.setting) || pairedKeyNeedsTelemetry(stored))
+      ) {
         void this.updateDisplayFromTelemetry(ev.action.id, telemetry, stored);
       }
     });
@@ -495,7 +537,7 @@ export class SetupTraction extends ConnectionStateAwareAction<SetupTractionSetti
   ): Promise<void> {
     const svgDataUri = this.renderIcon(settings);
 
-    const memo = telemetryMemoValue(settings, this.sdkController.getCurrentTelemetry());
+    const memo = this.telemetryMemo(settings, this.sdkController.getCurrentTelemetry());
 
     if (memo !== null) {
       this.lastRenderedValue.set(ev.action.id, memo);
@@ -508,6 +550,10 @@ export class SetupTraction extends ConnectionStateAwareAction<SetupTractionSetti
 
   private renderIcon(settings: SetupTractionSettings): string {
     const bindingMissing = this.computeBindingMissing(settings);
+
+    if (settings.setting === "tc-toggle") {
+      return generateTcToggleSvg(settings, tcToggleState(this.sdkController.getCurrentTelemetry()), bindingMissing);
+    }
 
     const paired = renderPairedIconOrNull({
       setting: settings.setting,
@@ -539,12 +585,25 @@ export class SetupTraction extends ConnectionStateAwareAction<SetupTractionSetti
     return generateSetupTractionSvg(settings, bindingMissing);
   }
 
+  /**
+   * Memo value that decides whether a telemetry tick changes what the key
+   * shows. tc-toggle keys memo their tri-state; everything else defers to
+   * the shared adjust-styles/View memo.
+   */
+  private telemetryMemo(settings: SetupTractionSettings, telemetry: TelemetryData | null): string | null {
+    if (settings.setting === "tc-toggle") {
+      return toggleStateMemoKey("tc-toggle", tcToggleState(telemetry));
+    }
+
+    return telemetryMemoValue(settings, telemetry);
+  }
+
   private async updateDisplayFromTelemetry(
     contextId: string,
     telemetry: TelemetryData | null,
     settings: SetupTractionSettings,
   ): Promise<void> {
-    const memo = telemetryMemoValue(settings, telemetry);
+    const memo = this.telemetryMemo(settings, telemetry);
 
     if (memo === null) return;
 

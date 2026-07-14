@@ -15,6 +15,8 @@
   "black-box-selector": {
     "backgroundColor": "#2a2a2a",
     "textColor": "#ffffff",
+    "graphic1Color": "#ffffff",
+    "graphic2Color": "#4fc3f7",
     "borderColor": "#5a5a5a"
   },
   "camera-cycle": {
@@ -27,6 +29,7 @@
     "backgroundColor": "#1a2a3a",
     "textColor": "#ffffff",
     "graphic1Color": "#ffffff",
+    "graphic2Color": "#4fc3f7",
     "borderColor": "#3a5a6a"
   },
   "camera-editor-controls": {
@@ -62,12 +65,14 @@
     "backgroundColor": "#2a2a3a",
     "textColor": "#ffffff",
     "graphic1Color": "#ffffff",
+    "graphic2Color": "#4fc3f7",
     "borderColor": "#5a5a6a"
   },
   "force-feedback": {
     "backgroundColor": "#2a2a4a",
     "textColor": "#ffffff",
     "graphic1Color": "#ffffff",
+    "graphic2Color": "#4fc3f7",
     "borderColor": "#5a5a7a"
   },
   "fuel-service": {
@@ -80,12 +85,14 @@
     "backgroundColor": "#1a2a3a",
     "textColor": "#ffffff",
     "graphic1Color": "#ffffff",
+    "graphic2Color": "#4fc3f7",
     "borderColor": "#3a5a6a"
   },
   "media-capture": {
     "backgroundColor": "#2a1a3a",
     "textColor": "#ffffff",
     "graphic1Color": "#ffffff",
+    "graphic2Color": "#4fc3f7",
     "borderColor": "#5a3a6a"
   },
   "pit-engineer": {
@@ -131,6 +138,7 @@
     "backgroundColor": "#1a1a3a",
     "textColor": "#ffffff",
     "graphic1Color": "#ffffff",
+    "graphic2Color": "#4fc3f7",
     "borderColor": "#3a3a6a"
   },
   "setup-brakes": {
@@ -143,12 +151,14 @@
     "backgroundColor": "#1a3a1a",
     "textColor": "#ffffff",
     "graphic1Color": "#ffffff",
+    "graphic2Color": "#4fc3f7",
     "borderColor": "#3a6a3a"
   },
   "setup-engine": {
     "backgroundColor": "#2a3a1a",
     "textColor": "#ffffff",
     "graphic1Color": "#ffffff",
+    "graphic2Color": "#4fc3f7",
     "borderColor": "#5a6a3a"
   },
   "setup-fuel": {
@@ -167,6 +177,7 @@
     "backgroundColor": "#1a2a1a",
     "textColor": "#ffffff",
     "graphic1Color": "#ffffff",
+    "graphic2Color": "#4fc3f7",
     "borderColor": "#3a5a3a"
   },
   "splits-delta-cycle": {
@@ -184,6 +195,7 @@
     "backgroundColor": "#3a2a3a",
     "textColor": "#ffffff",
     "graphic1Color": "#ffffff",
+    "graphic2Color": "#4fc3f7",
     "borderColor": "#6a5a6a"
   },
   "tire-service": {
@@ -202,7 +214,13 @@
     "backgroundColor": "#1a2a3a",
     "textColor": "#ffffff",
     "graphic1Color": "#ffffff",
+    "graphic2Color": "#4fc3f7",
     "borderColor": "#3a5a6a"
+  },
+  "adjust-style": {
+    "backgroundColor": "#2a3444",
+    "textColor": "#ffffff",
+    "graphic1Color": "#f1c40f"
   },
   "car-control-drs": {
     "backgroundColor": "#2a3a2a",
@@ -242,6 +260,17 @@
   "session-info": {
     "backgroundColor": "#2a3444",
     "textColor": "#ffffff"
+  },
+  "setup-brakes-abs-toggle": {
+    "backgroundColor": "#3a2a1a",
+    "textColor": "#ffffff",
+    "graphic1Color": "#ffffff",
+    "borderColor": "#6a5a3a"
+  },
+  "setup-traction-tc-toggle": {
+    "backgroundColor": "#1a2a1a",
+    "textColor": "#ffffff",
+    "graphic1Color": "#ffffff"
   },
   "setup-view": {
     "backgroundColor": "#2a3444",

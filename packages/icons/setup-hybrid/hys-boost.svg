@@ -1,10 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 62 46" stroke-width="0.5" stroke="#fff" fill="#fff">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 61.8 57.8">
   <desc>{"colors":{"backgroundColor":"#1a3a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"HYS\nBOOST"},"border":{"color":"#3a6a3a"}}</desc>
-  
+  <defs>
+    
+  </defs>
+  <g transform="translate(-17 -5)">
 
-    <rect x="2" y="12" width="52" height="32" rx="6" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
-    <rect x="54" y="22" width="6" height="12" rx="2" fill="{{graphic1Color}}" stroke="none"/>
-    <polyline points="24,38 28,26 24,26 28,12" fill="none" stroke="#2ecc71" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-    <polyline points="20,8 28,2 36,8" fill="none" stroke="#2ecc71" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-
+    <rect x="25" y="10" width="10" height="6" rx="2" fill="{{graphic1Color}}"/>
+    <rect x="18" y="16" width="24" height="38" rx="4.5" fill="{{graphic1Color}}"/>
+    <rect x="22" y="34" width="16" height="16" rx="2.5" fill="#2ecc71"/>
+    
+    <polygon points="68,6 54,36 64,36 58,62 78,30 67,30" fill="#f7d94c"/>
+  </g>
 </svg>

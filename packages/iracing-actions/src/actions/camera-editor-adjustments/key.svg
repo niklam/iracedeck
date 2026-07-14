@@ -1,17 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
-  <!-- Main background -->
   <rect x="0" y="0" width="72" height="72" rx="8" fill="#1a2a3a"/>
+  <svg x="4" y="4" width="64" height="64" viewBox="0 0 90.5 47.8">
+  
+  <defs>
+    
+  </defs>
+  <g transform="translate(-18.2 -13)">
 
-  <!-- Camera body with crosshair (position group) -->
-  <rect x="18" y="12" width="24" height="18" rx="2" fill="none" stroke="#ffffff" stroke-width="1.5"/>
-  <polygon points="42,15 54,9 54,33 42,27" fill="none" stroke="#ffffff" stroke-width="1.5" stroke-linejoin="round"/>
-  <!-- XYZ axis arrows -->
-  <line x1="30" y1="30" x2="30" y2="38" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round"/>
-  <polyline points="27,35 30,38 33,35" fill="none" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <ellipse cx="48" cy="40" rx="27" ry="14" fill="none" stroke="#4fc3f7" stroke-width="2.5" stroke-dasharray="6 5" opacity="0.65"/>
+    <path d="M21 44 A27 14 0 0 0 48 54" fill="none" stroke="#4fc3f7" stroke-width="3.5" stroke-linecap="round"/>
+    <polygon points="48,60 40,54 50,49" fill="#4fc3f7"/>
+    <rect x="44" y="14" width="9" height="9" rx="2" fill="#1a2a3a"/>
+    <rect x="35" y="22" width="26" height="19" rx="4" fill="#ffffff"/>
+    
+    <circle cx="48" cy="31" r="5" fill="#1a2a3a"/><path d="M81 36.9h24M93 24.9v24" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>
+  </g>
 
-  <!-- Two-line label (inverted: secondary top, primary bottom) -->
-  <text x="36" y="52" text-anchor="middle" dominant-baseline="central"
-        fill="#ffffff" font-family="Arial, sans-serif" font-size="8">LATITUDE</text>
-  <text x="36" y="63" text-anchor="middle" dominant-baseline="central"
-        fill="#ffffff" font-family="Arial, sans-serif" font-size="10" font-weight="bold">+</text>
+  </svg>
 </svg>

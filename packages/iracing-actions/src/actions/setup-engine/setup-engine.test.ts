@@ -272,7 +272,7 @@ describe("SetupEngine", () => {
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("ENG POWER");
-      expect(decoded).toContain("INCREASE");
+      expect(decoded).not.toContain("INCREASE");
     });
 
     it("should include correct labels for throttle-shaping decrease", () => {
@@ -280,26 +280,26 @@ describe("SetupEngine", () => {
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("THROTTLE");
-      expect(decoded).toContain("DECREASE");
+      expect(decoded).not.toContain("DECREASE");
     });
 
     it("should include correct labels for all combinations", () => {
       const expectedLabels: Record<string, Record<string, { line1: string; line2: string }>> = {
         "engine-power": {
-          increase: { line1: "ENG POWER", line2: "INCREASE" },
-          decrease: { line1: "ENG POWER", line2: "DECREASE" },
+          increase: { line1: "ENG POWER", line2: "ENG POWER</svg>" },
+          decrease: { line1: "ENG POWER", line2: "ENG POWER</svg>" },
         },
         "throttle-shaping": {
-          increase: { line1: "THROTTLE", line2: "INCREASE" },
-          decrease: { line1: "THROTTLE", line2: "DECREASE" },
+          increase: { line1: "THROTTLE", line2: "THROTTLE</svg>" },
+          decrease: { line1: "THROTTLE", line2: "THROTTLE</svg>" },
         },
         "boost-level": {
-          increase: { line1: "BOOST", line2: "INCREASE" },
-          decrease: { line1: "BOOST", line2: "DECREASE" },
+          increase: { line1: "BOOST", line2: "BOOST</svg>" },
+          decrease: { line1: "BOOST", line2: "BOOST</svg>" },
         },
         "launch-rpm": {
-          increase: { line1: "LAUNCH RPM", line2: "INCREASE" },
-          decrease: { line1: "LAUNCH RPM", line2: "DECREASE" },
+          increase: { line1: "LAUNCH RPM", line2: "LAUNCH RPM</svg>" },
+          decrease: { line1: "LAUNCH RPM", line2: "LAUNCH RPM</svg>" },
         },
       };
 

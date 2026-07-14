@@ -1,12 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 84 48" stroke-width="0.5" stroke="#fff" fill="#fff">
-  <desc>{"colors":{"backgroundColor":"#1a1a3a","textColor":"#ffffff"},"title":{"text":"QUAL TAPE\nINCREASE"},"border":{"color":"#3a3a6a"}}</desc>
-  
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 78.3 53.3">
+  <desc>{"colors":{"backgroundColor":"#1a1a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"QUAL TAPE"},"border":{"color":"#3a3a6a"}}</desc>
+  <defs>
+    
+  </defs>
+  <g transform="translate(-13.5 -6.5)">
 
-    <rect x="2" y="2" width="56" height="44" rx="6" fill="none" stroke="#888888" stroke-width="3"/>
-    <line x1="2" y1="14" x2="58" y2="14" stroke="#888888" stroke-width="1"/>
-    <line x1="2" y1="26" x2="58" y2="26" stroke="#888888" stroke-width="1"/>
-    <line x1="2" y1="38" x2="58" y2="38" stroke="#888888" stroke-width="1"/>
-    <rect x="6" y="10" width="48" height="12" rx="2" fill="#f1c40f" opacity="0.6" stroke="none"/>
-    <polyline points="72,30 82,18 72,6" fill="none" stroke="#f1c40f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-
+    <rect x="16" y="14" width="44" height="36" rx="5" fill="none" stroke="#ffffff" stroke-width="3"/>
+    <line x1="22" y1="23" x2="54" y2="23" stroke="#ffffff" stroke-width="2.5" opacity="0.6"/>
+    <line x1="22" y1="31" x2="54" y2="31" stroke="#ffffff" stroke-width="2.5" opacity="0.6"/>
+    <line x1="22" y1="39" x2="54" y2="39" stroke="#ffffff" stroke-width="2.5" opacity="0.6"/>
+    <polygon points="18,46 50,12 60,20 28,54" fill="#ffffff"/>
+    <circle cx="64" cy="16" r="8.5" fill="#ffffff"/>
+    <circle cx="64" cy="16" r="3.5" fill="#1a1a3a"/><path d="M64 44h24M76 32v24" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>
+  </g>
 </svg>

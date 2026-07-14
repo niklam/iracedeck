@@ -1,14 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 48" stroke-width="0.5" stroke="#fff" fill="#fff">
-  <desc>{"colors":{"backgroundColor":"#2a2a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"QUIETER\nWHEEL LFE"},"border":{"color":"#5a5a7a"}}</desc>
-  
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 69 50.3">
+  <desc>{"colors":{"backgroundColor":"#2a2a4a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"locked":["graphic1Color"],"title":{"text":"QUIETER\nWHEEL LFE"},"border":{"color":"#5a5a7a"}}</desc>
+  <defs>
+    <linearGradient id="mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.55"/></linearGradient>
+  </defs>
+  <g transform="translate(-5.4 -8.7)">
 
-    <circle cx="24" cy="24" r="22" fill="none" stroke="#ffffff" stroke-width="4"/>
-    <circle cx="24" cy="24" r="7" fill="none" stroke="#888888" stroke-width="3"/>
-    <line x1="24" y1="17" x2="24" y2="2" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
-    <line x1="17" y1="28" x2="2" y2="32" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
-    <line x1="31" y1="28" x2="46" y2="32" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
-    <path d="M60,12a14,14,0,0,1,0,24" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-    <path d="M68,4a24,24,0,0,1,0,40" fill="none" stroke="#888888" stroke-width="3" stroke-linecap="round" stroke-dasharray="4 4"/>
-    <polyline points="78,10 86,22 94,10" fill="none" stroke="#e74c3c" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-
+    <circle cx="30" cy="34" r="19" fill="url(#mtl)"/>
+    <circle cx="30" cy="34" r="14" fill="#2a2a4a"/>
+    <rect x="12" y="30.8" width="36" height="6.5" fill="url(#mtl)"/>
+    <rect x="26.8" y="34" width="6.5" height="19" fill="url(#mtl)"/>
+    <circle cx="30" cy="34" r="6.8" fill="url(#mtl)"/>
+    <circle cx="30" cy="34" r="2.9" fill="#3f5561"/>
+    <path d="M 15.9 22.6 A 19 19 0 0 1 44.1 22.6" fill="none" stroke="#ffffff" stroke-width="3" opacity="0.3" stroke-linecap="round"/><path d="M54 22 Q62 34 54 46" fill="none" stroke="#4fc3f7" stroke-width="3" stroke-linecap="round"/>
+    <path d="M62 17 Q72 34 62 51" fill="none" stroke="#4fc3f7" stroke-width="3.6" stroke-linecap="round"/>
+  </g>
 </svg>

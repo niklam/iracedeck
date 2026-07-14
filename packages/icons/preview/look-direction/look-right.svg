@@ -1,11 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 92 64" stroke-width="0.5" stroke="#fff" fill="#fff">
-  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"LOOK\nRIGHT"},"border":{"color":"#3a5a6a"}}</desc>
-  
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 69.8 34.5">
+  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"title":{"text":"LOOK\nRIGHT"},"border":{"color":"#3a5a6a"}}</desc>
+  <defs>
+    <linearGradient id="scl2" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.76"/></linearGradient><clipPath id="lid2"><path d="M16 36 Q48 2 80 36 Q48 62 16 36 Z"/></clipPath><radialGradient id="iris2" cx="0.5" cy="0.5" r="0.55"><stop stop-color="#f0c75e"/><stop offset="0.35" stop-color="#5aa7c4"/><stop offset="0.75" stop-color="#2563ab"/><stop offset="1" stop-color="#0f2f4f"/></radialGradient>
+  </defs>
+  <g transform="translate(-13 -16.7)">
 
-    <path d="M2,26Q38,2,74,26Q38,50,2,26Z" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <circle cx="38" cy="26" r="10" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <circle cx="42" cy="26" r="4" fill="#ffffff" stroke="none"/>
-    <path d="M78,54L90,54L82,46" fill="none" stroke="#888888" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M90,54L82,62" fill="none" stroke="#888888" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-
+    <path d="M16 36 Q48 2 80 36 Q48 62 16 36 Z" fill="url(#scl2)"/>
+    <g clip-path="url(#lid2)">
+      <ellipse cx="65" cy="36" rx="16" ry="20" fill="url(#iris2)"/>
+      <ellipse cx="68" cy="36" rx="8" ry="10" fill="#0b1420"/>
+      <circle cx="61" cy="28" r="3.2" fill="#ffffff" opacity="0.9"/>
+      <path d="M16 36 Q48 2 80 36" fill="none" stroke="#000000" stroke-width="7" opacity="0.16"/>
+    </g>
+    <path d="M16 36 Q48 2 80 36 Q48 62 16 36 Z" fill="none" stroke="#14202e" stroke-width="2.5"/>
+  </g>
 </svg>
