@@ -28,16 +28,16 @@
  * well-separated in time, so the cache-overwrite race between back-to-back
  * fires is not a practical concern.
  *
- * Initial clip scope (find-shape-during-implementation per the issue): minutes
- * 1–10, whole seconds 0–59, decimals 0–9. Out-of-range lap times (currently
- * just laps ≥ 11 minutes) are filtered by the `where:` predicate via
- * {@link lapTimeIsSpeakable} so the scenario doesn't fire at all when a step
- * would have no clip — never partial readouts.
+ * Clip scope derives from the manifest (issues #835/#836): each component
+ * resolver returns a pool reference, and a lap time whose minute component has
+ * no clip for the active voice aborts the whole readout at expansion — never
+ * partial readouts, no hardcoded bounds.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventOf } from "@iracedeck/event-bus";
 
 import type { Scenario, Step } from "../../dsl.js";
+import { poolRef } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 
 /**
@@ -50,29 +50,10 @@ export type LapCompletedSnapshotResolver = () => LapCompletedSnapshot | null;
 /** Snapshot the var resolvers read — exactly the `lap.completed` event payload. */
 export type LapCompletedSnapshot = SimEventOf<"lap.completed">["data"];
 
-/**
- * Initial clip-scope bounds for the readout (issue #555). The voice config
- * currently ships `lap-time-minute/1..10` and `lap-time-second/0..59`; lap
- * times whose minute component falls outside `0..LAP_TIME_MINUTE_MAX` are
- * skipped at the `where:` predicate so the readout is never partial. The
- * second-component range covers the full minute, so no per-second filtering
- * applies — only the bounds check stays for defensive correctness if the
- * scenario is ever called with junk telemetry.
- * Expand both groups + these constants together when widening coverage.
- */
-export const LAP_TIME_MINUTE_MAX = 10;
-export const LAP_TIME_SECOND_MIN = 0;
-export const LAP_TIME_SECOND_MAX = 59;
-
 const LAP_TIME_GROUP_INTRO = "lap-time-intro";
 const LAP_TIME_GROUP_MINUTE = "lap-time-minute";
 const LAP_TIME_GROUP_SECOND = "lap-time-second";
 const LAP_TIME_GROUP_DECIMAL = "lap-time-decimal";
-
-/** Build a full `voice/{voice}/...` path for a `var` resolver (no base applied). */
-function voicePath(group: string, name: string): string {
-  return `voice/{voice}/${group}/${name}.mp3`;
-}
 
 /**
  * Split a lap time (seconds) into minute / whole-second / decimal-tenth, with
@@ -101,26 +82,6 @@ function hasMinuteComponent(snapshot: LapCompletedSnapshot | null): boolean {
 }
 
 /**
- * Whether every clip needed for the readout currently exists. Off-range lap
- * times are dropped at the `where:` predicate so the scenario never plays a
- * partial readout. Expand the bounds together with the voice config groups.
- */
-export function lapTimeIsSpeakable(lapTime: number): boolean {
-  if (!Number.isFinite(lapTime) || lapTime <= 0) return false;
-
-  const { minutes, seconds } = splitLapTime(lapTime);
-
-  if (minutes > LAP_TIME_MINUTE_MAX) return false;
-
-  // Defensive bounds check on the whole-second component. The current scope is
-  // 0..59, which covers the entire minute, so this never rejects realistic
-  // input — it only catches programming errors or junk telemetry.
-  if (seconds < LAP_TIME_SECOND_MIN || seconds > LAP_TIME_SECOND_MAX) return false;
-
-  return true;
-}
-
-/**
  * Register the lap-time scenario's variables on the scenario engine. Must run
  * before {@link buildLapTimeScenario} is registered — load-time validation
  * rejects a `{ var }` step whose name isn't registered.
@@ -135,7 +96,7 @@ export function registerLapTimeVars(engine: IScenarioEngine, getSnapshot: LapCom
     // rather than inferring it from companion fields (e.g. presence of
     // `previousBestLapTime`). Keeps the behavior independent of how the
     // emitter happens to populate the optional fields.
-    return voicePath(LAP_TIME_GROUP_INTRO, s.isFirstValid ? "first-good-lap" : "best-lap-yet");
+    return poolRef(LAP_TIME_GROUP_INTRO, s.isFirstValid ? "first-good-lap" : "best-lap-yet");
   });
 
   engine.defineVar("lapTime.minute", () => {
@@ -145,9 +106,9 @@ export function registerLapTimeVars(engine: IScenarioEngine, getSnapshot: LapCom
 
     const { minutes } = splitLapTime(s.lapTime);
 
-    if (minutes < 1 || minutes > LAP_TIME_MINUTE_MAX) return null;
+    if (minutes < 1) return null;
 
-    return voicePath(LAP_TIME_GROUP_MINUTE, String(minutes));
+    return poolRef(LAP_TIME_GROUP_MINUTE, String(minutes));
   });
 
   engine.defineVar("lapTime.second", () => {
@@ -157,9 +118,7 @@ export function registerLapTimeVars(engine: IScenarioEngine, getSnapshot: LapCom
 
     const { seconds } = splitLapTime(s.lapTime);
 
-    if (seconds < LAP_TIME_SECOND_MIN || seconds > LAP_TIME_SECOND_MAX) return null;
-
-    return voicePath(LAP_TIME_GROUP_SECOND, String(seconds));
+    return poolRef(LAP_TIME_GROUP_SECOND, String(seconds));
   });
 
   engine.defineVar("lapTime.decimal", () => {
@@ -169,9 +128,7 @@ export function registerLapTimeVars(engine: IScenarioEngine, getSnapshot: LapCom
 
     const { tenths } = splitLapTime(s.lapTime);
 
-    if (tenths < 0 || tenths > 9) return null;
-
-    return voicePath(LAP_TIME_GROUP_DECIMAL, String(tenths));
+    return poolRef(LAP_TIME_GROUP_DECIMAL, String(tenths));
   });
 }
 
@@ -200,8 +157,10 @@ function lapTimeScenario(getRaceFinishedFired: () => boolean, sequence: Step[]):
 
         // Fire on the new-PB case (`isBest`) AND the first-valid-lap case
         // (`isFirstValid`) so an emitter that only marks the latter without
-        // setting `isBest` still surfaces the announcement.
-        return (data.isBest || data.isFirstValid) && lapTimeIsSpeakable(data.lapTime);
+        // setting `isBest` still surfaces the announcement. Whether the
+        // components are speakable derives from the clips that exist — a
+        // missing component clip aborts at expansion (issues #835/#836).
+        return (data.isBest || data.isFirstValid) && Number.isFinite(data.lapTime) && data.lapTime > 0;
       },
     },
     channel: AudioChannel.Voice,

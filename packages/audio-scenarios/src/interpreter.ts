@@ -381,7 +381,30 @@ class ScenarioEngine implements IScenarioEngine {
       this.logger.warn(`Pool "${name}" redefined`);
     }
 
-    const pattern = new RegExp(`^voice/([^/]+)/${escapeRegExp(group)}/${escapeRegExp(base)}-\\d{2}\\.mp3$`);
+    const pool = this.buildManifestPool(group, base);
+
+    // Typo guard: only the reference voice is checked — other voices may
+    // legitimately omit the callout. Warn, never reject: a pool that is
+    // empty for the active voice just skips at fire time.
+    const reference = referenceVoice(this.manifest);
+
+    if (reference !== null && !pool.byVoice.has(reference)) {
+      this.logger.warn(
+        `Pool "${name}": no "${group}/${base}" clips for reference voice "${reference}" (possible typo)`,
+      );
+    }
+
+    this.pools.set(name, pool);
+  }
+
+  /**
+   * Scan the manifest for a pool's members: every
+   * `voice/<voice>/<group>/<base>-NN.mp3` variant PLUS the bare
+   * `voice/<voice>/<group>/<base>.mp3` (issue #836 — a bare value clip is a
+   * size-1 pool, so numbers/names/temps need no rename migration).
+   */
+  private buildManifestPool(group: string, base: string): Extract<PoolState, { kind: "manifest" }> {
+    const pattern = new RegExp(`^voice/([^/]+)/${escapeRegExp(group)}/${escapeRegExp(base)}(?:-\\d{2})?\\.mp3$`);
     const byVoice = new Map<string, string[]>();
 
     for (const clip of this.manifest.clips) {
@@ -401,18 +424,7 @@ class ScenarioEngine implements IScenarioEngine {
 
     for (const members of byVoice.values()) members.sort();
 
-    // Typo guard: only the reference voice is checked — other voices may
-    // legitimately omit the callout. Warn, never reject: a pool that is
-    // empty for the active voice just skips at fire time.
-    const reference = referenceVoice(this.manifest);
-
-    if (reference !== null && !byVoice.has(reference)) {
-      this.logger.warn(
-        `Pool "${name}": no "${group}/${base}-NN" clips for reference voice "${reference}" (possible typo)`,
-      );
-    }
-
-    this.pools.set(name, { kind: "manifest", group, base, byVoice, lastIndex: -1, lastVoice: null });
+    return { kind: "manifest", group, base, byVoice, lastIndex: -1, lastVoice: null };
   }
 
   defineVar(name: string, resolver: () => string | null): void {
@@ -1026,6 +1038,21 @@ class ScenarioEngine implements IScenarioEngine {
 
           if (!value) throw new ExpansionAbort(`var {{${step.name}}} resolved to nothing`);
 
+          // A resolver may return a dynamic pool reference (`pool:<group>/<base>`,
+          // issue #836) instead of a clip path — value-indexed clips (numbers,
+          // names, temps) are pools too, usually of size 1.
+          if (value.startsWith("pool:")) {
+            const pick = this.pickFromPoolRef(value);
+
+            if (!pick) {
+              throw new ExpansionAbort(`var {{${step.name}}} → "${value}" is empty for the active voice`);
+            }
+
+            this.pushClip(out, pick, defaultChannel);
+
+            break;
+          }
+
           const path = this.substituteVoice(value);
           this.assertClipAvailable(path, `var {{${step.name}}}`);
           this.pushClip(out, path, defaultChannel);
@@ -1142,6 +1169,32 @@ class ScenarioEngine implements IScenarioEngine {
     if (path === this.manifest.ticks.open || path === this.manifest.ticks.close) return AudioChannel.SFX;
 
     return defaultChannel;
+  }
+
+  /**
+   * Resolve a dynamic pool reference returned by a var resolver (issue #836):
+   * `pool:<group>/<base>`. The pool is derived from the manifest on first use
+   * and cached in the pools map under the full ref string (registered pool
+   * names never carry the `pool:` prefix, so the namespaces can't collide) —
+   * giving value pools the same no-repeat guard and voice-change reset as
+   * registered pools. No reference-voice typo guard: values legitimately
+   * differ per voice.
+   */
+  private pickFromPoolRef(ref: string): string | null {
+    if (!this.pools.has(ref)) {
+      const spec = ref.slice("pool:".length);
+      const slash = spec.indexOf("/");
+
+      if (slash <= 0 || slash === spec.length - 1) {
+        this.logger.error(`pickFromPoolRef: malformed pool reference "${ref}" — expected pool:<group>/<base>`);
+
+        return null;
+      }
+
+      this.pools.set(ref, this.buildManifestPool(spec.slice(0, slash), spec.slice(slash + 1)));
+    }
+
+    return this.pickFromPool(ref, true);
   }
 
   private pickFromPool(name: string, noRepeat: boolean): string | null {

@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AudioAssetsManifest } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
 import { registerPitCrew } from "./index.js";
-import { type LapCompletedSnapshot, lapTimeIsSpeakable, splitLapTime } from "./lap-time.js";
+import { type LapCompletedSnapshot, splitLapTime } from "./lap-time.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
 
@@ -138,6 +138,9 @@ const manifest: AudioAssetsManifest = {
     ...MINUTE_NAMES.map((n) => `voice/${VOICE}/lap-time-minute/${n}.mp3`),
     ...SECOND_NAMES.map((n) => `voice/${VOICE}/lap-time-second/${n}.mp3`),
     ...DECIMAL_NAMES.map((n) => `voice/${VOICE}/lap-time-decimal/${n}.mp3`),
+    // Beyond the historical 10-minute bound — speakability derives from the
+    // clips that exist, not a code constant (issue #836).
+    `voice/${VOICE}/lap-time-minute/12.mp3`,
   ],
   ambientLoop: "sfx/IRD-ambient-pit.mp3",
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
@@ -249,29 +252,6 @@ describe("splitLapTime", () => {
   });
 });
 
-describe("lapTimeIsSpeakable", () => {
-  it("accepts laps across the full minute range", () => {
-    expect(lapTimeIsSpeakable(63.5)).toBe(true); // 1:03.5
-    expect(lapTimeIsSpeakable(83.4)).toBe(true); // 1:23.4 — seconds=23
-    expect(lapTimeIsSpeakable(60.4)).toBe(true); // 1:00.4 — seconds=0
-    expect(lapTimeIsSpeakable(605.2)).toBe(true); // 10:05.2
-    expect(lapTimeIsSpeakable(8.4)).toBe(true); // 0:08.4 (sub-1-min)
-    expect(lapTimeIsSpeakable(34.8)).toBe(true); // 0:34.8 (sub-1-min, seconds=34)
-  });
-
-  it("rejects laps where the minute component exceeds the max", () => {
-    expect(lapTimeIsSpeakable(665.5)).toBe(false); // 11:05.5
-    expect(lapTimeIsSpeakable(3600)).toBe(false); // 60:00.0
-  });
-
-  it("rejects non-finite or non-positive lap times", () => {
-    expect(lapTimeIsSpeakable(0)).toBe(false);
-    expect(lapTimeIsSpeakable(-1)).toBe(false);
-    expect(lapTimeIsSpeakable(NaN)).toBe(false);
-    expect(lapTimeIsSpeakable(Infinity)).toBe(false);
-  });
-});
-
 describe("lap-time scenario", () => {
   it("plays the full readout for a 1:03.4 new personal best", () => {
     fire(snap({ lapTime: 63.4 }));
@@ -311,11 +291,19 @@ describe("lap-time scenario", () => {
     expect(voicePaths()).toEqual([]);
   });
 
-  it("does not fire when the lap time exceeds the minute-component max", () => {
-    // 11:05.5 — minutes=11 > LAP_TIME_MINUTE_MAX (10)
+  it("stays silent when the minute component has no clip (11:05.5, no 11.mp3 staged)", () => {
     fire(snap({ lapTime: 665.5 }));
 
     expect(voicePaths()).toEqual([]);
+  });
+
+  it("speaks any minute value that has a clip — no hardcoded minute bound (issue #836)", () => {
+    // 12:30.5 — beyond the historical 10-minute constant, but 12.mp3 exists.
+    fire(snap({ lapTime: 750.5 }));
+
+    expect(hasClip("/lap-time-minute/12.mp3")).toBe(true);
+    expect(hasClip("/lap-time-second/30.mp3")).toBe(true);
+    expect(hasClip("/lap-time-decimal/5.mp3")).toBe(true);
   });
 
   it("plays a full 1:23.4 readout — verifies expanded seconds coverage (0–59)", () => {

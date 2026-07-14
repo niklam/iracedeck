@@ -10,7 +10,7 @@
  *   - Position worsened → "worse" intro + correct number clip
  *   - No previous position (first valid lap) → "better" intro (treated as fix)
  *   - Position unchanged → silent
- *   - Out-of-range position (> POSITION_NUMBER_MAX) → silent
+ *   - Position with no clip for the active voice → silent (expansion abort, issues #835/#836)
  *   - Multi-class session uses classPosition; single-class uses overall position
  *   - Session-type gating: qualifying only fires; race / practice / test stay silent
  *   - Per-callout opt-in suppresses fires when off
@@ -23,13 +23,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AudioAssetsManifest } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
 import { _resetPositionReadoutCooldown, registerPitCrew } from "./index.js";
-import {
-  POSITION_NUMBER_MAX,
-  POSITION_NUMBER_MIN,
-  positionChangeIsAnnounceable,
-  positionNumberIsSpeakable,
-  selectEffectivePosition,
-} from "./position.js";
+import { positionChangeIsAnnounceable, selectEffectivePosition } from "./position.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
 
@@ -140,7 +134,7 @@ function flush(audio: FakeAudio, iterations = 60): void {
 
 const VOICE = "default";
 
-const NUMBER_NAMES = Array.from({ length: POSITION_NUMBER_MAX }, (_, i) => String(i + 1));
+const NUMBER_NAMES = Array.from({ length: 64 }, (_, i) => String(i + 1));
 
 const manifest: AudioAssetsManifest = {
   clips: [
@@ -279,24 +273,6 @@ describe("selectEffectivePosition", () => {
   });
 });
 
-describe("positionNumberIsSpeakable", () => {
-  it("accepts integers across the supported range", () => {
-    expect(positionNumberIsSpeakable(POSITION_NUMBER_MIN)).toBe(true);
-    expect(positionNumberIsSpeakable(POSITION_NUMBER_MAX)).toBe(true);
-    expect(positionNumberIsSpeakable(33)).toBe(true);
-  });
-
-  it("rejects out-of-range positions", () => {
-    expect(positionNumberIsSpeakable(0)).toBe(false);
-    expect(positionNumberIsSpeakable(POSITION_NUMBER_MAX + 1)).toBe(false);
-  });
-
-  it("rejects non-integers", () => {
-    expect(positionNumberIsSpeakable(1.5)).toBe(false);
-    expect(positionNumberIsSpeakable(NaN)).toBe(false);
-  });
-});
-
 describe("positionChangeIsAnnounceable", () => {
   it("returns true for an improvement", () => {
     expect(positionChangeIsAnnounceable(snap({ position: 3, previousPosition: 5 }))).toBe(true);
@@ -330,8 +306,8 @@ describe("positionChangeIsAnnounceable", () => {
     expect(positionChangeIsAnnounceable(snap({ position: 5, previousPosition: 5, isBest: true }))).toBe(false);
   });
 
-  it("returns false when position is out of range", () => {
-    expect(positionChangeIsAnnounceable(snap({ position: POSITION_NUMBER_MAX + 1, previousPosition: 99 }))).toBe(false);
+  it("returns true for a change to a position beyond the staged clip range — the expansion abort owns speakability (issue #836)", () => {
+    expect(positionChangeIsAnnounceable(snap({ position: 65, previousPosition: 99 }))).toBe(true);
   });
 
   it("returns true for an invalid lap with unchanged position (issue #572 — invalid branch still fires)", () => {
@@ -393,8 +369,8 @@ describe("position-change scenario", () => {
     expect(voicePaths()).toEqual([]);
   });
 
-  it("stays silent when position is out of range", () => {
-    fire(snap({ position: POSITION_NUMBER_MAX + 1, previousPosition: 99 }));
+  it("stays silent when the position has no clip for the active voice (expansion abort, issue #836)", () => {
+    fire(snap({ position: 65, previousPosition: 99 }));
 
     expect(voicePaths()).toEqual([]);
   });

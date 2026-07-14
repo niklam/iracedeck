@@ -174,17 +174,13 @@ export {
   type LapCompletedSnapshot,
   type LapCompletedSnapshotResolver,
   type LapTimeCalloutId,
-  lapTimeIsSpeakable,
   splitLapTime,
 } from "./lap-time.js";
 export {
   buildPositionScenario,
   POSITION_CALLOUT_SETTING_KEYS,
-  POSITION_NUMBER_MAX,
-  POSITION_NUMBER_MIN,
   type PositionCalloutId,
   positionChangeIsAnnounceable,
-  positionNumberIsSpeakable,
   selectEffectivePosition,
 } from "./position.js";
 export {
@@ -206,8 +202,6 @@ export {
 export {
   buildRaceStartScenario,
   isRaceSession,
-  POSITION_MAX,
-  positionIsSpeakable,
   RACE_START_CALLOUT_SETTING_KEYS,
   RACE_START_DELAY_MS,
   type RaceStartCalloutId,
@@ -223,7 +217,6 @@ export {
 export {
   buildSessionStartScenario,
   SESSION_START_CALLOUT_SETTING_KEYS,
-  SESSION_START_SPEED_VALUES,
   type SessionStartCalloutId,
   type SessionStartSnapshotResolver,
 } from "./session-start.js";
@@ -231,8 +224,6 @@ export {
   buildOvertakeGainedScenario,
   buildOvertakeLostScenario,
   OVERTAKE_CALLOUT_SETTING_KEYS,
-  OVERTAKE_POSITION_MAX,
-  OVERTAKE_POSITION_MIN,
   type OvertakeCalloutId,
   type OvertakeDriverNameResolver,
   overtakeGainIsAnnounceable,

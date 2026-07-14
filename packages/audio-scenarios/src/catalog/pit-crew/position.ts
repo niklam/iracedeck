@@ -71,9 +71,9 @@
  *     hold-position status is owned by the every-3-laps race-status callout
  *     (issue #569) so we don't double-narrate. Practice / test stay silent.
  *     See `isAnnounceableSessionType` for the rationale.
- *   - Position is in the announceable range (`POSITION_NUMBER_MIN..MAX`).
- *     Out-of-range positions cause the scenario not to fire at all
- *     rather than producing a partial readout.
+ *   - A position with no `position-number` clip for the active voice aborts
+ *     the whole callout at expansion (issues #835/#836) — the clips that
+ *     exist define the speakable range; never a partial readout.
  *   - Position change detected OR (qualifying only) position unchanged on a
  *     non-PB lap (the status-update path; see `positionChangeIsAnnounceable`).
  *
@@ -84,10 +84,9 @@
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventOf } from "@iracedeck/event-bus";
 
-import { WEIGHT } from "../../dsl.js";
+import { poolRef, WEIGHT } from "../../dsl.js";
 import type { Scenario, Step } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
-import { POSITION_NUMBER_MAX, POSITION_NUMBER_MIN, positionNumberIsSpeakable } from "./position-range.js";
 import {
   liveCurrentlyAnnounceable,
   type LivePositionResolver,
@@ -103,10 +102,6 @@ import {
  */
 export type LapCompletedSnapshotResolver = () => SimEventOf<"lap.completed">["data"] | null;
 
-// Re-exported from the leaf range module (issue #574) so existing importers
-// (`./index.js`, race-status.ts, overtake.ts) keep their import path.
-export { POSITION_NUMBER_MAX, POSITION_NUMBER_MIN, positionNumberIsSpeakable };
-
 const POSITION_GROUP_INTRO_BETTER = "position-intro-better";
 const POSITION_GROUP_INTRO_WORSE = "position-intro-worse";
 const POSITION_GROUP_INTRO_POLE = "position-intro-pole";
@@ -119,11 +114,6 @@ const POSITION_GROUP_NUMBER = "position-number";
  * time (no live data). Used only in the qualifying invalid-lap branch.
  */
 const POSITION_DIDNT_COUNT_CLIP = "position-invalid-lap/that-lap-didnt-count-01.mp3";
-
-/** Build a full `voice/{voice}/...` path for a `var` resolver. */
-function voicePath(group: string, name: string): string {
-  return `voice/{voice}/${group}/${name}.mp3`;
-}
 
 /**
  * Pick the position pair the engineer should announce. Multi-class series
@@ -162,8 +152,6 @@ export function positionChangeIsAnnounceable(snapshot: SimEventOf<"lap.completed
   const effective = selectEffectivePosition(snapshot);
 
   if (!effective) return false;
-
-  if (!positionNumberIsSpeakable(effective.current)) return false;
 
   if (effective.previous === undefined) {
     // No baseline — first fix, speak as better.
@@ -265,12 +253,12 @@ export function registerPositionVars(
     // "We're currently P3" reads correctly as a standings status regardless
     // of whether you gained or lost the place.
     if (s.sessionType === "race") {
-      return voicePath(POSITION_GROUP_INTRO_WORSE, "currently-01");
+      return poolRef(POSITION_GROUP_INTRO_WORSE, "currently");
     }
 
     return isBetterChange(s)
-      ? voicePath(POSITION_GROUP_INTRO_BETTER, "that-puts-us-to-01")
-      : voicePath(POSITION_GROUP_INTRO_WORSE, "currently-01");
+      ? poolRef(POSITION_GROUP_INTRO_BETTER, "that-puts-us-to")
+      : poolRef(POSITION_GROUP_INTRO_WORSE, "currently");
   });
 
   engine.defineVar("position.number", () => {
@@ -285,18 +273,14 @@ export function registerPositionVars(
     if (s.sessionType === "race") {
       const n = selectLivePosition(getLivePosition());
 
-      if (n === null || !positionNumberIsSpeakable(n)) return null;
-
-      return voicePath(POSITION_GROUP_NUMBER, String(n));
+      return n !== null ? poolRef(POSITION_GROUP_NUMBER, String(n)) : null;
     }
 
     // Qualifying: the "that puts us to / on pole" flow needs the before/after
     // comparison, so it stays on the frozen lap snapshot.
     const effective = selectEffectivePosition(s);
 
-    if (!effective || !positionNumberIsSpeakable(effective.current)) return null;
-
-    return voicePath(POSITION_GROUP_NUMBER, String(effective.current));
+    return effective ? poolRef(POSITION_GROUP_NUMBER, String(effective.current)) : null;
   });
 
   // Self-contained "That puts us on pole." clip — replaces both the intro
@@ -307,7 +291,7 @@ export function registerPositionVars(
 
     if (!s) return null;
 
-    return voicePath(POSITION_GROUP_INTRO_POLE, "that-puts-us-on-pole-01");
+    return poolRef(POSITION_GROUP_INTRO_POLE, "that-puts-us-on-pole");
   });
 }
 

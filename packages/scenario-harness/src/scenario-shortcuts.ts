@@ -876,7 +876,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     category: "Position",
     label: "P65 (out of scope)",
     description:
-      "Position exceeds POSITION_NUMBER_MAX (64). Scenario's `where:` predicate short-circuits — no audio plays.",
+      "No position-number clip exists for P65 (the default voice ships 1..64), so the callout aborts at expansion (issues #835/#836) — no audio plays.",
     event: "lap.completed",
     data: {
       lap: 5,
@@ -1184,7 +1184,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     "p65",
     "Race start — P65 (out of range)",
     65,
-    "Above POSITION_MAX (64). Position clause is skipped entirely; greeting + conditions still play.",
+    "No position-number clip exists for P65, so the optional position clause skips (issue #836); greeting + conditions still play.",
   ),
   raceStart(
     "no-position",

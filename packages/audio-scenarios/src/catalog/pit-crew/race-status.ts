@@ -52,18 +52,15 @@
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventOf } from "@iracedeck/event-bus";
 
-import { WEIGHT } from "../../dsl.js";
+import { poolRef, WEIGHT } from "../../dsl.js";
 import type { Scenario, Step } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
-import { POSITION_NUMBER_MAX, POSITION_NUMBER_MIN, positionNumberIsSpeakable } from "./position-range.js";
 import {
   liveCurrentlyAnnounceable,
   type LivePositionResolver,
   selectLivePosition,
   tryClaimPositionAnnouncement,
 } from "./position-readout.js";
-
-export { POSITION_NUMBER_MAX, POSITION_NUMBER_MIN };
 
 /** Shared snapshot resolver type (same shape as lap-time / position). */
 export type LapCompletedSnapshotResolver = () => SimEventOf<"lap.completed">["data"] | null;
@@ -76,9 +73,6 @@ const POSITION_GROUP_NUMBER = "position-number";
 export const RACE_STATUS_LAP_INTERVAL = 3;
 
 /** Build a full `voice/{voice}/...` path for a `var` resolver. */
-function voicePath(group: string, name: string): string {
-  return `voice/{voice}/${group}/${name}.mp3`;
-}
 
 /**
  * Whether the cadence condition fires this lap. `lapsSincePositionChange`
@@ -103,16 +97,14 @@ export function raceStatusCadenceHits(snapshot: SimEventOf<"lap.completed">["dat
  */
 export function registerRaceStatusVars(engine: IScenarioEngine, getLivePosition: LivePositionResolver): void {
   // Non-leader status intro: reuses the existing `currently` clip from #566.
-  engine.defineVar("raceStatus.intro", () => voicePath(POSITION_GROUP_INTRO_WORSE, "currently-01"));
+  engine.defineVar("raceStatus.intro", () => poolRef(POSITION_GROUP_INTRO_WORSE, "currently"));
 
   // Non-leader status number: reads LIVE position and reuses the existing
-  // `position-number` clips from #566 ("pee one" through "pee sixty four").
+  // `position-number` clips from #566.
   engine.defineVar("raceStatus.number", () => {
     const n = selectLivePosition(getLivePosition());
 
-    if (n === null || !positionNumberIsSpeakable(n)) return null;
-
-    return voicePath(POSITION_GROUP_NUMBER, String(n));
+    return n !== null ? poolRef(POSITION_GROUP_NUMBER, String(n)) : null;
   });
 
   // Leader-only "still leading" clip — replaces the intro + number when the
@@ -121,9 +113,9 @@ export function registerRaceStatusVars(engine: IScenarioEngine, getLivePosition:
   // returns class position in multi-class), so speak "still leading our class"
   // rather than "still leading the race" (#599).
   engine.defineVar("raceStatus.stillLeading", () => {
-    const suffix = getLivePosition()?.isMultiClass ? "still-leading-class-01" : "still-leading-01";
+    const suffix = getLivePosition()?.isMultiClass ? "still-leading-class" : "still-leading";
 
-    return voicePath(RACE_STATUS_GROUP, suffix);
+    return poolRef(RACE_STATUS_GROUP, suffix);
   });
 }
 

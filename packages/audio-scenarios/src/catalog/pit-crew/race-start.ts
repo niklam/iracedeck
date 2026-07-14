@@ -57,6 +57,7 @@ import type { ILogger } from "@iracedeck/logger";
 import { getSessionType } from "@iracedeck/sim-events-iracing";
 
 import type { Scenario, Step } from "../../dsl.js";
+import { poolRef } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 
 /**
@@ -83,19 +84,6 @@ export type RaceStartSnapshotResolver = () => RaceStartSnapshot | null;
  */
 export const RACE_START_DELAY_MS = 3000;
 
-/**
- * Highest grid position the scenario will speak. Bounded by the
- * `position-number` voice group, which today ships clips P1..P64. Positions
- * outside this range cause the position clause to be skipped entirely (the
- * scenario still speaks the greeting + conditions) — never a partial readout.
- * Expand this constant together with the voice group.
- */
-export const POSITION_MAX = 64;
-
-/** Track temperature / air temperature clip range, in the display unit. */
-const RACE_START_TEMP_MIN = 0;
-const RACE_START_TEMP_MAX = 150;
-
 /** Wetness enum → `session-start/wetness-<suffix>.mp3` clip suffix. */
 const WETNESS_CLIP_SUFFIX: Readonly<Partial<Record<TrackWetness, string>>> = {
   [TrackWetness.Dry]: "dry",
@@ -118,27 +106,6 @@ const SETUP_WARNING_GROUP = "setup-warning";
 /** Build a `clip` step path relative to the scenario's `voice/{voice}` base. */
 function clipPath(filename: string): string {
   return `${RACE_START_BASE}/${filename}`;
-}
-
-/** Build a full `voice/{voice}/...` path for a `var` resolver (no base applied). */
-function voicePath(group: string, name: string): string {
-  return `voice/{voice}/${group}/${name}.mp3`;
-}
-
-/** Clamp a temperature reading into the generated clip range. */
-function clampTemp(value: number): number {
-  return Math.min(RACE_START_TEMP_MAX, Math.max(RACE_START_TEMP_MIN, value));
-}
-
-/**
- * Whether the grid-position clause can be spoken. Skips on `undefined`
- * (telemetry hasn't populated `PlayerCarPosition` yet) or out-of-range (above
- * {@link POSITION_MAX}, below 1). P1 is speakable but takes the pole branch.
- */
-export function positionIsSpeakable(position: number | undefined): boolean {
-  if (typeof position !== "number") return false;
-
-  return position >= 1 && position <= POSITION_MAX;
 }
 
 /**
@@ -174,15 +141,15 @@ export function registerRaceStartVars(engine: IScenarioEngine, getSnapshot: Race
 
     const name = s.driverName && s.driverName.length > 0 ? s.driverName : "driver";
 
-    return voicePath(RACE_START_GREETING_GROUP, name);
+    return poolRef(RACE_START_GREETING_GROUP, name);
   });
 
   engine.defineVar("raceStart.position", () => {
     const s = getSnapshot();
 
-    if (!s || !positionIsSpeakable(s.playerCarPosition)) return null;
+    if (!s || typeof s.playerCarPosition !== "number" || s.playerCarPosition < 1) return null;
 
-    return voicePath(POSITION_NUMBER_GROUP, String(s.playerCarPosition));
+    return poolRef(POSITION_NUMBER_GROUP, String(s.playerCarPosition));
   });
 
   engine.defineVar("raceStart.trackTempNumber", () => {
@@ -190,7 +157,7 @@ export function registerRaceStartVars(engine: IScenarioEngine, getSnapshot: Race
 
     if (!s) return null;
 
-    return voicePath(SESSION_START_TEMP_NUMBERS_GROUP, String(clampTemp(s.trackTemp)));
+    return poolRef(SESSION_START_TEMP_NUMBERS_GROUP, String(s.trackTemp));
   });
 
   engine.defineVar("raceStart.airTempNumber", () => {
@@ -198,7 +165,7 @@ export function registerRaceStartVars(engine: IScenarioEngine, getSnapshot: Race
 
     if (!s) return null;
 
-    return voicePath(SESSION_START_TEMP_NUMBERS_GROUP, String(clampTemp(s.airTemp)));
+    return poolRef(SESSION_START_TEMP_NUMBERS_GROUP, String(s.airTemp));
   });
 
   engine.defineVar("raceStart.degreesUnit", () => {
@@ -206,14 +173,14 @@ export function registerRaceStartVars(engine: IScenarioEngine, getSnapshot: Race
 
     if (!s) return null;
 
-    return voicePath(SESSION_START_GROUP, `degrees-${s.tempUnit}`);
+    return poolRef(SESSION_START_GROUP, `degrees-${s.tempUnit}`);
   });
 
   engine.defineVar("raceStart.wetness", () => {
     const s = getSnapshot();
     const suffix = s ? WETNESS_CLIP_SUFFIX[s.wetness] : undefined;
 
-    return suffix ? voicePath(SESSION_START_GROUP, `wetness-${suffix}`) : null;
+    return suffix ? poolRef(SESSION_START_GROUP, `wetness-${suffix}`) : null;
   });
 }
 
@@ -242,9 +209,7 @@ export function buildRaceStartScenario(
 
     const position = s.playerCarPosition;
 
-    if (typeof position !== "number") return false;
-
-    return position >= 2 && position <= POSITION_MAX;
+    return typeof position === "number" && position >= 2;
   };
 
   const sequence: Step[] = [
@@ -253,24 +218,42 @@ export function buildRaceStartScenario(
     // voice lacking the picked name clip skips the greeting — a complete
     // sentence either way — instead of aborting the whole brief.
     { optional: [{ var: "raceStart.greeting" }] },
+    // Optional clause (issue #836): whether a grid position is speakable
+    // derives from the clips that exist (no hardcoded bound) — a position (or
+    // a voice) without the number clip skips the clause entirely and the
+    // readout continues with the conditions brief.
     {
-      if: isPole,
-      then: [clipPath("starting-from-pole-01.mp3")],
-      else: [
+      optional: [
         {
-          if: isComposedPosition,
-          then: [clipPath("qualifying-put-us-to-01.mp3"), { var: "raceStart.position" }],
-          // No `else` — missing / out-of-range position skips the clause
-          // entirely and the readout continues with the conditions brief.
+          if: isPole,
+          then: [clipPath("starting-from-pole-01.mp3")],
+          else: [
+            {
+              if: isComposedPosition,
+              then: [clipPath("qualifying-put-us-to-01.mp3"), { var: "raceStart.position" }],
+              // No `else` — a missing position skips the clause entirely.
+            },
+          ],
         },
       ],
     },
-    `${SESSION_START_GROUP}/track-temp-intro.mp3`,
-    { var: "raceStart.trackTempNumber" },
-    { var: "raceStart.degreesUnit" },
-    `${SESSION_START_GROUP}/air-temp-intro.mp3`,
-    { var: "raceStart.airTempNumber" },
-    { var: "raceStart.degreesUnit" },
+    // Optional clauses (issue #836): the temp clip range is defined by the
+    // generated clips (no clamping) — a reading outside it skips its clause
+    // rather than speaking a wrong clamped number or killing the brief.
+    {
+      optional: [
+        `${SESSION_START_GROUP}/track-temp-intro.mp3`,
+        { var: "raceStart.trackTempNumber" },
+        { var: "raceStart.degreesUnit" },
+      ],
+    },
+    {
+      optional: [
+        `${SESSION_START_GROUP}/air-temp-intro.mp3`,
+        { var: "raceStart.airTempNumber" },
+        { var: "raceStart.degreesUnit" },
+      ],
+    },
     `${SESSION_START_GROUP}/wetness-intro.mp3`,
     { var: "raceStart.wetness" },
     {

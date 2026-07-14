@@ -16,7 +16,7 @@ import type { AudioAssetsManifest } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
 import { registerPitCrew } from "./index.js";
 import { _resetRadarEngine } from "./radar-engine.js";
-import { SESSION_START_DELAY_MS, SESSION_START_SPEED_VALUES } from "./session-start.js";
+import { SESSION_START_DELAY_MS } from "./session-start.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
 
 vi.mock("@iracedeck/sim-events-iracing", () => ({
@@ -153,11 +153,17 @@ const SESSION_START_CLIPS = [
 
 const GREETING_NAMES = ["niklas", "driver"];
 
+// The speed-number clips this fixture stages. Includes 100 — a value outside
+// the historical hardcoded findings set — because speakability now derives
+// from the clips that exist, not a code constant (issue #836).
+const SPEED_CLIP_VALUES = [45, 60, 79, 80, 81, 100];
+
 // A voice with no speed-number clips, no setup-warning clips, and only the
 // "driver" greeting — exercises the optional-clause skips (issue #835).
 const BARE_VOICE = "bare";
-// A voice with no temp-number clips — a required clip is missing, so the
-// whole brief must abort (issue #835).
+// A voice with no wetness-state clips — a required clip is missing, so the
+// whole brief must abort (issue #835). (Temp clips are also absent, but the
+// temp clauses are optional since #836 and would merely skip.)
 const PARTIAL_VOICE = "partial";
 
 const manifest: AudioAssetsManifest = {
@@ -167,7 +173,7 @@ const manifest: AudioAssetsManifest = {
     "sfx/IRD-ambient-pit.mp3",
     ...GREETING_NAMES.map((n) => `voice/${VOICE}/session-start-greeting/${n}.mp3`),
     ...SESSION_START_CLIPS.map((c) => `voice/${VOICE}/session-start/${c}.mp3`),
-    ...[...SESSION_START_SPEED_VALUES].map((n) => `voice/${VOICE}/session-start-speed-numbers/${n}.mp3`),
+    ...SPEED_CLIP_VALUES.map((n) => `voice/${VOICE}/session-start-speed-numbers/${n}.mp3`),
     ...Array.from({ length: 151 }, (_, i) => `voice/${VOICE}/session-start-temp-numbers/${i}.mp3`),
     `voice/${VOICE}/setup-warning/qualifying-01.mp3`,
     `voice/${VOICE}/setup-warning/race-01.mp3`,
@@ -175,7 +181,9 @@ const manifest: AudioAssetsManifest = {
     ...SESSION_START_CLIPS.map((c) => `voice/${BARE_VOICE}/session-start/${c}.mp3`),
     ...Array.from({ length: 151 }, (_, i) => `voice/${BARE_VOICE}/session-start-temp-numbers/${i}.mp3`),
     ...GREETING_NAMES.map((n) => `voice/${PARTIAL_VOICE}/session-start-greeting/${n}.mp3`),
-    ...SESSION_START_CLIPS.map((c) => `voice/${PARTIAL_VOICE}/session-start/${c}.mp3`),
+    ...SESSION_START_CLIPS.filter((c) => !/^wetness-./.test(c)).map(
+      (c) => `voice/${PARTIAL_VOICE}/session-start/${c}.mp3`,
+    ),
   ],
   ambientLoop: "sfx/IRD-ambient-pit.mp3",
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
@@ -272,17 +280,25 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("SESSION_START_SPEED_VALUES", () => {
-  it("expands every finding by ±1 for telemetry drift", () => {
-    // 80 km/h is a finding — 79/80/81 must all be speakable.
-    expect(SESSION_START_SPEED_VALUES.has(79)).toBe(true);
-    expect(SESSION_START_SPEED_VALUES.has(80)).toBe(true);
-    expect(SESSION_START_SPEED_VALUES.has(81)).toBe(true);
+describe("value clips derive speakability from the manifest (issue #836)", () => {
+  it("speaks a pit-speed value outside the historical findings set when its clip exists", () => {
+    fire(snap({ pitSpeedLimit: 100, speedUnit: "kmh" }));
+
+    expect(hasClip("/session-start/pit-speed-intro.mp3")).toBe(true);
+    expect(hasClip("/session-start-speed-numbers/100.mp3")).toBe(true);
+    expect(hasClip("/session-start/speed-unit-kmh.mp3")).toBe(true);
   });
 
-  it("excludes values that aren't a known limit or its neighbour", () => {
-    expect(SESSION_START_SPEED_VALUES.has(100)).toBe(false);
-    expect(SESSION_START_SPEED_VALUES.has(0)).toBe(false);
+  it("skips the temp clause when the temperature has no clip (no clamping), playing the rest", () => {
+    fire(snap({ trackTemp: 200 }));
+
+    expect(voicePaths().some((p) => p.includes("session-start-temp-numbers/200"))).toBe(false);
+    expect(voicePaths().some((p) => p.includes("session-start-temp-numbers/150"))).toBe(false);
+    expect(hasClip("/session-start/track-temp-intro.mp3")).toBe(false);
+    // The air-temp clause and the rest of the brief still play.
+    expect(hasClip("/session-start/air-temp-intro.mp3")).toBe(true);
+    expect(hasClip("/session-start-temp-numbers/20.mp3")).toBe(true);
+    expect(hasClip("/session-start/wetness-intro.mp3")).toBe(true);
   });
 });
 
@@ -316,7 +332,7 @@ describe("per-voice clip availability (issue #835)", () => {
     expect(hasClip("/session-start/session-qualifying.mp3")).toBe(true);
   });
 
-  it("skips the WHOLE brief for a voice missing a required clip (temp numbers) — never a fragment", () => {
+  it("skips the WHOLE brief for a voice missing a required clip (wetness state) — never a fragment", () => {
     activeVoice = PARTIAL_VOICE;
     fire(snap());
 
@@ -430,8 +446,8 @@ describe("session-start scenario", () => {
       expect(hasClip("/session-start/speed-unit-kmh.mp3")).toBe(true);
     });
 
-    it("skips the whole clause when the limit is not a known value", () => {
-      fire(snap({ pitSpeedLimit: 100 }));
+    it("skips the whole clause when the limit has no clip", () => {
+      fire(snap({ pitSpeedLimit: 99 }));
 
       // The rest of the readout still plays — only the pit-speed clause drops.
       expect(hasClip("/session-start/pit-speed-intro.mp3")).toBe(false);

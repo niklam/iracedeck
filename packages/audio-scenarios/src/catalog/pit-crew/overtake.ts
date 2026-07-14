@@ -30,9 +30,9 @@ import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventOf } from "@iracedeck/event-bus";
 
 import type { Scenario, Step } from "../../dsl.js";
+import { poolRef } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 import { overtakeContextAllows, type OvertakeGateResolver } from "./overtake-gate.js";
-import { POSITION_NUMBER_MAX, POSITION_NUMBER_MIN, positionNumberIsSpeakable } from "./position-range.js";
 import { shouldReactToOvertake } from "./position-readout.js";
 
 /**
@@ -45,11 +45,6 @@ export type OvertakeDriverNameResolver = () => string | null;
 
 const OVERTAKE_BASE = "position-overtake";
 const COME_ON_GROUP = "position-overtake-come-on";
-
-/** Build a full `voice/{voice}/...` path for a `var` resolver (no base applied). */
-function voicePath(group: string, name: string): string {
-  return `voice/{voice}/${group}/${name}.mp3`;
-}
 
 /** Build a `clip` step path relative to the scenario's `voice/{voice}` base. */
 function clipPath(filename: string): string {
@@ -89,20 +84,18 @@ function selectEffectiveOvertakePosition(data: {
 
 /**
  * Whether an `overtake.completed` payload should produce an audible reaction.
- * The effective position must be inside the speakable range; the translator
- * has already enforced race-only / hold / gap / sim-glitch suppression.
+ * The effective position must be known; whether it is *speakable* derives
+ * from the clips that exist for the active voice (issues #835/#836). The
+ * translator has already enforced race-only / hold / gap / sim-glitch
+ * suppression.
  */
 export function overtakeGainIsAnnounceable(data: SimEventOf<"overtake.completed">["data"]): boolean {
-  const current = selectEffectiveOvertakePosition(data);
-
-  return current !== null && positionNumberIsSpeakable(current);
+  return selectEffectiveOvertakePosition(data) !== null;
 }
 
 /** Symmetric with {@link overtakeGainIsAnnounceable} for the loss side. */
 export function overtakeLossIsAnnounceable(data: SimEventOf<"overtake.lost">["data"]): boolean {
-  const current = selectEffectiveOvertakePosition(data);
-
-  return current !== null && positionNumberIsSpeakable(current);
+  return selectEffectiveOvertakePosition(data) !== null;
 }
 
 /**
@@ -115,7 +108,7 @@ export function registerOvertakeVars(engine: IScenarioEngine, getDriverName: Ove
   engine.defineVar("overtake.lost.comeOn", () => {
     const name = getDriverName();
 
-    return name ? voicePath(COME_ON_GROUP, name) : null;
+    return name ? poolRef(COME_ON_GROUP, name) : null;
   });
 }
 
@@ -288,5 +281,3 @@ export const SCENARIO_ID_TO_OVERTAKE_ID: Record<(typeof OVERTAKE_SCENARIO_IDS)[n
   "pit-crew.overtake-gained-position": "gained",
   "pit-crew.overtake-lost-position": "lost",
 };
-
-export { POSITION_NUMBER_MAX as OVERTAKE_POSITION_MAX, POSITION_NUMBER_MIN as OVERTAKE_POSITION_MIN };

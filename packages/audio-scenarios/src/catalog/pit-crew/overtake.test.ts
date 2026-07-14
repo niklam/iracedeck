@@ -277,7 +277,7 @@ describe("overtakeGainIsAnnounceable / overtakeLossIsAnnounceable", () => {
     ).toBe(true);
   });
 
-  it("rejects positions outside the speakable clip range", () => {
+  it("accepts any known position — speakability derives from the clips at expansion time (issue #836)", () => {
     expect(
       overtakeGainIsAnnounceable({
         position: 100,
@@ -286,7 +286,7 @@ describe("overtakeGainIsAnnounceable / overtakeLossIsAnnounceable", () => {
         carIdx: 0,
         sustained: 3000,
       } as GainedSnap),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("uses class position when multi-class", () => {

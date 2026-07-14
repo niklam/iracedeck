@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AudioAssetsManifest } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
 import { registerPitCrew } from "./index.js";
-import { isRaceSession, POSITION_MAX, positionIsSpeakable, RACE_START_DELAY_MS } from "./race-start.js";
+import { isRaceSession, RACE_START_DELAY_MS } from "./race-start.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
 
@@ -169,14 +169,17 @@ const manifest: AudioAssetsManifest = {
     ...Array.from({ length: 151 }, (_, i) => `voice/${VOICE}/session-start-temp-numbers/${i}.mp3`),
     // Position numbers — reused from the existing position-number group
     // (issue #566). 1..64 covers the entire speakable range.
-    ...Array.from({ length: POSITION_MAX }, (_, i) => `voice/${VOICE}/position-number/${i + 1}.mp3`),
+    ...Array.from({ length: 64 }, (_, i) => `voice/${VOICE}/position-number/${i + 1}.mp3`),
+    // Beyond the historical 64-position bound — speakability derives from the
+    // clips that exist, not a code constant (issue #836).
+    `voice/${VOICE}/position-number/70.mp3`,
     `voice/${VOICE}/setup-warning/qualifying-01.mp3`,
     `voice/${VOICE}/setup-warning/race-01.mp3`,
     `voice/${BARE_VOICE}/race-start-greeting/driver.mp3`,
     ...RACE_START_CLIPS.map((c) => `voice/${BARE_VOICE}/race-start/${c}.mp3`),
     ...SESSION_START_CLIPS.map((c) => `voice/${BARE_VOICE}/session-start/${c}.mp3`),
     ...Array.from({ length: 151 }, (_, i) => `voice/${BARE_VOICE}/session-start-temp-numbers/${i}.mp3`),
-    ...Array.from({ length: POSITION_MAX }, (_, i) => `voice/${BARE_VOICE}/position-number/${i + 1}.mp3`),
+    ...Array.from({ length: 64 }, (_, i) => `voice/${BARE_VOICE}/position-number/${i + 1}.mp3`),
   ],
   ambientLoop: "sfx/IRD-ambient-pit.mp3",
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
@@ -281,21 +284,6 @@ describe("isRaceSession", () => {
     expect(isRaceSession("Offline Testing")).toBe(false);
     expect(isRaceSession("Open Qualify")).toBe(false);
     expect(isRaceSession("Lone Qualify")).toBe(false);
-  });
-});
-
-describe("positionIsSpeakable", () => {
-  it("accepts P1..POSITION_MAX", () => {
-    expect(positionIsSpeakable(1)).toBe(true);
-    expect(positionIsSpeakable(7)).toBe(true);
-    expect(positionIsSpeakable(POSITION_MAX)).toBe(true);
-  });
-
-  it("rejects out-of-range and undefined values", () => {
-    expect(positionIsSpeakable(undefined)).toBe(false);
-    expect(positionIsSpeakable(0)).toBe(false);
-    expect(positionIsSpeakable(-1)).toBe(false);
-    expect(positionIsSpeakable(POSITION_MAX + 1)).toBe(false);
   });
 });
 
@@ -415,15 +403,15 @@ describe("race-start scenario", () => {
       expect(hasClip("/race-start/starting-from-pole-01.mp3")).toBe(false);
     });
 
-    it("POSITION_MAX is speakable (upper boundary)", () => {
-      fire(snap({ playerCarPosition: POSITION_MAX }));
+    it("speaks any position that has a clip — no hardcoded bound (issue #836)", () => {
+      fire(snap({ playerCarPosition: 70 }));
 
       expect(hasClip("/race-start/qualifying-put-us-to-01.mp3")).toBe(true);
-      expect(hasClip(`/position-number/${POSITION_MAX}.mp3`)).toBe(true);
+      expect(hasClip("/position-number/70.mp3")).toBe(true);
     });
 
-    it("skips the position clause entirely when above POSITION_MAX (greeting + conditions still play)", () => {
-      fire(snap({ playerCarPosition: POSITION_MAX + 1 }));
+    it("skips the position clause entirely when the position has no clip (greeting + conditions still play)", () => {
+      fire(snap({ playerCarPosition: 65 }));
 
       expect(hasClip("/race-start/qualifying-put-us-to-01.mp3")).toBe(false);
       expect(hasClip("/race-start/starting-from-pole-01.mp3")).toBe(false);
@@ -477,11 +465,16 @@ describe("race-start scenario", () => {
       expect(hasClip("/session-start-temp-numbers/68.mp3")).toBe(true);
     });
 
-    it("clamps out-of-range temps into the clip range", () => {
-      fire(snap({ trackTemp: 999, airTemp: -50 }));
+    it("skips a temp clause whose reading has no clip (no clamping, issue #836), keeping the rest", () => {
+      fire(snap({ trackTemp: 999, airTemp: 20 }));
 
-      expect(hasClip("/session-start-temp-numbers/150.mp3")).toBe(true);
-      expect(hasClip("/session-start-temp-numbers/0.mp3")).toBe(true);
+      expect(hasClip("/session-start/track-temp-intro.mp3")).toBe(false);
+      expect(voicePaths().some((p) => p.includes("session-start-temp-numbers/999"))).toBe(false);
+      expect(voicePaths().some((p) => p.includes("session-start-temp-numbers/150"))).toBe(false);
+      // The air-temp clause and the wetness readout still play.
+      expect(hasClip("/session-start/air-temp-intro.mp3")).toBe(true);
+      expect(hasClip("/session-start-temp-numbers/20.mp3")).toBe(true);
+      expect(hasClip("/session-start/wetness-intro.mp3")).toBe(true);
     });
   });
 
