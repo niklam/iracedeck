@@ -318,7 +318,7 @@ export function buildTemplateContextFromData(
   // playerCarIdx makes it use the same player-authoritative fields as `self`.
   const focused = driverMaps(findDriverByCamCarIdx(drivers, telemetry), telemetry, order, playerCarIdx, estimates);
 
-  const sessionFields = buildSessionFields(sessionInfo, telemetry, estimates, playerCarIdx);
+  const sessionFields = buildSessionFields(sessionInfo, telemetry, playerCarIdx, estimates);
   const trackFields = buildTrackFields(sessionInfo);
 
   const telemetryMaps = telemetry
@@ -595,8 +595,8 @@ function isRaceSession(sessionInfo: SessionInfo | null, telemetry: TelemetryData
 function buildSessionFields(
   sessionInfo: SessionInfo | null,
   telemetry: TelemetryData | null,
-  estimates?: IRatingEstimates,
   playerCarIdx?: number,
+  estimates?: IRatingEstimates,
 ): FieldMaps {
   const currentSession = getCurrentSession(sessionInfo, telemetry);
 
