@@ -1,5 +1,10 @@
 import { FLAG_DEFINITIONS, resolveActiveFlag, SessionState, TrackWetness } from "@iracedeck/iracing-sdk";
-import { getFuelStats, getLivePosition, getStartingGridPosition } from "@iracedeck/sim-events-iracing";
+import {
+  getFuelStats,
+  getLivePosition,
+  getLiveRacePositions,
+  getStartingGridPosition,
+} from "@iracedeck/sim-events-iracing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -9,6 +14,7 @@ import {
   formatSessionTime,
   generateSessionInfoSvg,
   generateTrackWetnessGraphic,
+  iratingValueColor,
   SessionInfo,
   trackWetnessLabel,
 } from "./session-info.js";
@@ -27,6 +33,7 @@ vi.mock("@iracedeck/sim-events-iracing", () => ({
   FUEL_LAP_HISTORY_CAP: 20,
   getFuelStats: vi.fn(() => ({ lastLap: null, avg: null, samples: 0 })),
   getLivePosition: vi.fn(() => null),
+  getLiveRacePositions: vi.fn(() => null),
   getStartingGridPosition: vi.fn(() => null),
 }));
 
@@ -47,6 +54,7 @@ vi.mock("@iracedeck/deck-core", () => ({
         "time-remaining",
         "laps",
         "position",
+        "irating",
         "fuel",
         "flags",
         "track-wetness",
@@ -136,7 +144,16 @@ vi.mock("@iracedeck/deck-core", () => ({
 /** Default settings factory for tests */
 function defaultSettings(
   overrides: Partial<{
-    mode: "incidents" | "time-remaining" | "laps" | "position" | "fuel" | "flags" | "track-wetness" | "laps-to-empty";
+    mode:
+      | "incidents"
+      | "time-remaining"
+      | "laps"
+      | "position"
+      | "irating"
+      | "fuel"
+      | "flags"
+      | "track-wetness"
+      | "laps-to-empty";
     fontSize: number;
     positionType: "class" | "overall";
     positionShowTotal: boolean;
@@ -924,6 +941,91 @@ describe("SessionInfo", () => {
       const telemetry = {} as any;
 
       expect(action["extractDisplayValue"](settings as any, telemetry)).toBe("--");
+    });
+  });
+
+  describe("irating mode display value (issue #268)", () => {
+    // Race session with a 3-car single-class field; the player (carIdx 0) has the
+    // highest rating. Live order: carIdx 1 leads, player second, carIdx 2 third.
+    const IRATING_SESSION_INFO = {
+      SessionInfo: { Sessions: [{ SessionType: "Race" }] },
+      DriverInfo: {
+        DriverCarIdx: 0,
+        Drivers: [
+          { CarIdx: 0, UserName: "Player", CarNumber: "1", IRating: 3000, CarIsPaceCar: 0, IsSpectator: 0 },
+          { CarIdx: 1, UserName: "Leader", CarNumber: "2", IRating: 2500, CarIsPaceCar: 0, IsSpectator: 0 },
+          { CarIdx: 2, UserName: "Trailer", CarNumber: "3", IRating: 2000, CarIsPaceCar: 0, IsSpectator: 0 },
+        ],
+      },
+    };
+
+    function makeIratingAction(order: number[] | null, sessionInfo: unknown = IRATING_SESSION_INFO) {
+      vi.mocked(getLiveRacePositions).mockReturnValue(order);
+      const action = new SessionInfo();
+      action["sdkController"].getSessionInfo = vi.fn().mockReturnValue(sessionInfo);
+
+      return action;
+    }
+
+    it("shows a minus-signed value when the player runs below expectation", () => {
+      // Highest-rated player running P2 of 3 → expected to lose points.
+      const action = makeIratingAction([2, 1, 3]);
+      const settings = defaultSettings({ mode: "irating" });
+      const telemetry = { SessionNum: 0, CarIdxClass: [100, 100, 100] } as any;
+
+      expect(action["extractDisplayValue"](settings as any, telemetry)).toMatch(/^-\d+$/);
+    });
+
+    it("shows a plus-signed value when the player runs above expectation", () => {
+      // Lowest-rated player leading a 2-car field → expected to gain points.
+      const sessionInfo = {
+        SessionInfo: { Sessions: [{ SessionType: "Race" }] },
+        DriverInfo: {
+          DriverCarIdx: 0,
+          Drivers: [
+            { CarIdx: 0, UserName: "Player", CarNumber: "1", IRating: 2000, CarIsPaceCar: 0, IsSpectator: 0 },
+            { CarIdx: 1, UserName: "Rival", CarNumber: "2", IRating: 3000, CarIsPaceCar: 0, IsSpectator: 0 },
+          ],
+        },
+      };
+      const action = makeIratingAction([1, 2], sessionInfo);
+      const settings = defaultSettings({ mode: "irating" });
+      const telemetry = { SessionNum: 0, CarIdxClass: [100, 100] } as any;
+
+      expect(action["extractDisplayValue"](settings as any, telemetry)).toMatch(/^\+\d+$/);
+    });
+
+    it("renders blank when there is no live order", () => {
+      const action = makeIratingAction(null);
+      const settings = defaultSettings({ mode: "irating" });
+      const telemetry = { SessionNum: 0 } as any;
+
+      expect(action["extractDisplayValue"](settings as any, telemetry)).toBe("");
+    });
+
+    it("renders blank in a non-race session", () => {
+      const sessionInfo = { ...IRATING_SESSION_INFO, SessionInfo: { Sessions: [{ SessionType: "Practice" }] } };
+      const action = makeIratingAction([2, 1, 3], sessionInfo);
+      const settings = defaultSettings({ mode: "irating" });
+      const telemetry = { SessionNum: 0, CarIdxClass: [100, 100, 100] } as any;
+
+      expect(action["extractDisplayValue"](settings as any, telemetry)).toBe("");
+    });
+
+    it("renders blank when telemetry is null", () => {
+      const action = makeIratingAction([2, 1, 3]);
+      const settings = defaultSettings({ mode: "irating" });
+
+      expect(action["extractDisplayValue"](settings as any, null)).toBe("");
+    });
+  });
+
+  describe("iratingValueColor", () => {
+    it("is green for gains, red for losses, undefined at zero/blank", () => {
+      expect(iratingValueColor("+31")).toBe("#2ecc71");
+      expect(iratingValueColor("-15")).toBe("#e74c3c");
+      expect(iratingValueColor("0")).toBeUndefined();
+      expect(iratingValueColor("")).toBeUndefined();
     });
   });
 

@@ -1107,3 +1107,91 @@ describe("flattenContext display map", () => {
     expect(result.c).toBe("valid");
   });
 });
+
+describe("iRating estimate template variables (#268)", () => {
+  const IRATING_DRIVERS = [
+    makeDriver({ CarIdx: 0, UserName: "Player One", IRating: 3000 }),
+    makeDriver({ CarIdx: 1, UserName: "Rival Two", CarNumber: "2", IRating: 2500 }),
+    makeDriver({ CarIdx: 2, UserName: "Rival Three", CarNumber: "3", IRating: 2000 }),
+  ];
+  // Live order: carIdx 1 leads, player second, carIdx 2 third.
+  const IRATING_ORDER = [2, 1, 3];
+
+  function makeIratingTelemetry(overrides: Partial<TelemetryData> = {}): TelemetryData {
+    return makeTelemetry({ CarIdxClass: [100, 100, 100], ...overrides } as Partial<TelemetryData>);
+  }
+
+  it("exposes irating_change and irating_new on self and relative prefixes", () => {
+    const ctx = buildTemplateContextFromData(
+      makeIratingTelemetry(),
+      makeSessionInfo(IRATING_DRIVERS, 0),
+      IRATING_ORDER,
+    );
+
+    expect(ctx.raw["self.irating_change"]).toBeTypeOf("number");
+    expect(ctx.raw["self.irating_new"]).toBeTypeOf("number");
+    expect(ctx.raw["race_ahead.irating_change"]).toBeTypeOf("number");
+    expect(ctx.raw["race_behind.irating_change"]).toBeTypeOf("number");
+
+    const change = ctx.raw["self.irating_change"] as number;
+
+    expect(ctx.raw["self.irating_new"]).toBe(Math.round(3000 + change));
+  });
+
+  it("formats the display form signed and rounded", () => {
+    const ctx = buildTemplateContextFromData(
+      makeIratingTelemetry(),
+      makeSessionInfo(IRATING_DRIVERS, 0),
+      IRATING_ORDER,
+    );
+
+    const change = ctx.raw["self.irating_change"] as number;
+    const rounded = Math.round(change);
+    const expected = rounded > 0 ? `+${rounded}` : String(rounded);
+
+    expect(ctx.display["self.irating_change"]).toBe(expected);
+  });
+
+  it("exposes session.sof as the player's class SOF", () => {
+    const ctx = buildTemplateContextFromData(
+      makeIratingTelemetry(),
+      makeSessionInfo(IRATING_DRIVERS, 0),
+      IRATING_ORDER,
+    );
+
+    const sof = ctx.raw["session.sof"] as number;
+
+    expect(sof).toBeGreaterThan(2000);
+    expect(sof).toBeLessThan(3000);
+    expect(ctx.display["session.sof"]).toBe(String(Math.round(sof)));
+  });
+
+  it("renders blank in a non-race session (no live order in use)", () => {
+    const nonRace = makeSessionInfo(IRATING_DRIVERS, 0);
+    (nonRace as unknown as { SessionInfo: { Sessions: { SessionType: string }[] } }).SessionInfo.Sessions = [
+      { SessionType: "Practice" },
+    ];
+
+    const ctx = buildTemplateContextFromData(makeIratingTelemetry(), nonRace, IRATING_ORDER);
+
+    expect(ctx.display["self.irating_change"]).toBe("");
+    expect(ctx.raw["self.irating_change"]).toBeUndefined();
+    expect(ctx.display["session.sof"]).toBe("");
+    expect(ctx.raw["session.sof"]).toBeUndefined();
+  });
+
+  it("renders blank for a driver excluded from the field", () => {
+    const drivers = [...IRATING_DRIVERS, makeDriver({ CarIdx: 3, UserName: "No Rating", IRating: 0 })];
+    // Focus the camera on the no-rating car.
+    const telemetry = makeIratingTelemetry({
+      CamCarIdx: 3,
+      CarIdxClass: [100, 100, 100, 100],
+    } as Partial<TelemetryData>);
+
+    const ctx = buildTemplateContextFromData(telemetry, makeSessionInfo(drivers, 0), [2, 1, 3, 4]);
+
+    expect(ctx.display["focused.irating_change"]).toBe("");
+    expect(ctx.raw["focused.irating_change"]).toBeUndefined();
+    expect(ctx.display["focused.name"]).toBe("No Rating");
+  });
+});
