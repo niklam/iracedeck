@@ -68,6 +68,12 @@ export type ScenarioContext = {
  * A single step in a scenario sequence.
  *
  * Strings are shorthand for one of the object forms (see `parseStepShorthand`).
+ *
+ * `{ optional: [...] }` (issue #835) marks a genuinely-optional clause: when
+ * any clip-producing step inside it resolves to nothing for the active voice,
+ * the WHOLE group is skipped locally (never half a clause) and the rest of
+ * the callout still plays. Outside an optional group, a step that resolves
+ * to nothing aborts the entire callout instead.
  */
 export type Step =
   | string
@@ -78,6 +84,7 @@ export type Step =
   | { pause: number }
   | { include: string }
   | { if: (ctx: ScenarioContext) => boolean; then: Step[]; else?: Step[] }
+  | { optional: Step[] }
   | { ambient: "start" | "stop" | "seek" };
 
 /**
@@ -202,6 +209,7 @@ export type ResolvedStep =
   | { kind: "pause"; ms: number }
   | { kind: "include"; id: string }
   | { kind: "if"; predicate: (ctx: ScenarioContext) => boolean; then: ResolvedStep[]; else?: ResolvedStep[] }
+  | { kind: "optional"; steps: ResolvedStep[] }
   | { kind: "ambient"; action: "start" | "stop" | "seek" };
 
 /**
@@ -268,6 +276,10 @@ export function resolveStep(step: Step): ResolvedStep {
   if ("include" in step) return { kind: "include", id: step.include };
 
   if ("ambient" in step) return { kind: "ambient", action: step.ambient };
+
+  if ("optional" in step) {
+    return { kind: "optional", steps: step.optional.map(resolveStep) };
+  }
 
   if ("if" in step) {
     return {

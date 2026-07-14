@@ -211,6 +211,19 @@ type ExecOp =
   | { kind: "ambient"; action: "start" | "stop" | "seek" }
   | { kind: "pause"; ms: number };
 
+/**
+ * Internal control-flow signal (issue #835): a REQUIRED clip-producing step
+ * resolved to nothing during expansion — missing clip for the active voice,
+ * null var, or empty pool. Thrown by `expandSequence`, caught locally by
+ * `{ optional: [...] }` groups, and otherwise surfaced to `prepareOps`, which
+ * skips the whole callout so a fragment is never spoken. The abort is decided
+ * BEFORE any bus cancellation (see `attemptFire`), so an aborting fire can
+ * never silence an in-flight one.
+ */
+class ExpansionAbort {
+  constructor(readonly reason: string) {}
+}
+
 class ScenarioEngine implements IScenarioEngine {
   private readonly eventBus: IEventBus;
   private readonly audio: IAudioService;
@@ -227,6 +240,8 @@ class ScenarioEngine implements IScenarioEngine {
   private readonly pools = new Map<string, PoolState>();
   private readonly vars = new Map<string, () => string | null>();
   private readonly busState = new Map<AudioBus, BusState>();
+  /** Set view of `manifest.clips` for O(1) availability checks at expansion time. */
+  private readonly clipSet: Set<string>;
 
   constructor(
     eventBus: IEventBus,
@@ -240,6 +255,7 @@ class ScenarioEngine implements IScenarioEngine {
     this.manifest = manifest;
     this.logger = logger;
     this.getActiveVoice = getActiveVoice;
+    this.clipSet = new Set(manifest.clips);
   }
 
   /**
@@ -610,32 +626,52 @@ class ScenarioEngine implements IScenarioEngine {
       const sameFamily =
         entry.raw.family !== undefined && running !== undefined && entry.raw.family === running.raw.family;
 
-      if (sameFamily) {
-        this.cancelActiveFire(state);
-        // fall through to play the newer family member
-      } else if (weight > runningWeight && entry.raw.interrupt === true) {
+      const interruptCut = weight > runningWeight && entry.raw.interrupt === true;
+
+      if (sameFamily || interruptCut) {
+        // This fire would silence the in-flight one — expand FIRST (issue
+        // #835), so a fire that aborts (or expands empty) never cancels
+        // what's playing.
+        const expanded = this.prepareOps(entry, event);
+
+        if (expanded === null) return;
+
         // Higher weight + interrupt: cut the in-flight fire immediately. If
         // that fire is queueable, stash it so it replays once we're done.
-        this.stashRunningIfQueueable(state, running);
+        // (A same-family replacement never stashes — the new fire is fresher
+        // info about the same subject.)
+        if (!sameFamily) this.stashRunningIfQueueable(state, running);
+
         this.cancelActiveFire(state);
-        // fall through to play now
-      } else if (weight > runningWeight) {
+
+        if (!resume) entry.lastFireAt = now;
+
+        this.executeFire(entry, event, expanded, resume);
+
+        return;
+      }
+
+      if (weight > runningWeight) {
         // Higher weight, no interrupt: win the bus but let the current line
         // finish — wait as the pending next fire.
         this.setPending(entry.raw.id, event, weight, state, "waiting for bus (higher weight, no interrupt)");
 
         return;
-      } else {
-        // Equal or lower weight: can't take the bus now.
-        this.queueOrDrop(entry, event, weight, state, "bus busy", resume);
-
-        return;
       }
+
+      // Equal or lower weight: can't take the bus now.
+      this.queueOrDrop(entry, event, weight, state, "bus busy", resume);
+
+      return;
     }
+
+    const expanded = this.prepareOps(entry, event);
+
+    if (expanded === null) return;
 
     if (!resume) entry.lastFireAt = now;
 
-    this.executeFire(entry, event, resume);
+    this.executeFire(entry, event, expanded, resume);
   }
 
   /** Defer a fire for idle-replay when `queueable`, otherwise drop it. */
@@ -684,7 +720,16 @@ class ScenarioEngine implements IScenarioEngine {
     this.setPending(active.id, active.event, active.weight, state, "stashed (preempted)", resume);
   }
 
-  private executeFire(entry: CompiledScenario, event: SimEventOf<SimEventName> | null, resume?: ResumeState): void {
+  /**
+   * Expand a fire's sequence into execution ops — the abort decision point
+   * (issue #835). Returns `null` when the fire must not play: a REQUIRED
+   * clip-producing step resolved to nothing (missing clip / null var / empty
+   * pool for the active voice — never a half-sentence), the expansion threw,
+   * or it produced no ops. `attemptFire` calls this BEFORE any bus
+   * cancellation, so an aborting fire can't silence an in-flight one, and an
+   * aborted fire stamps no cooldown.
+   */
+  private prepareOps(entry: CompiledScenario, event: SimEventOf<SimEventName> | null): ExecOp[] | null {
     const ctx: ScenarioContext = {
       event,
       telemetry: event?.telemetry ?? null,
@@ -704,19 +749,34 @@ class ScenarioEngine implements IScenarioEngine {
         new Set([entry.raw.id]),
       );
     } catch (err) {
+      if (err instanceof ExpansionAbort) {
+        this.logger.debug(`Scenario "${entry.raw.id}" skipped — ${err.reason}`);
+
+        return null;
+      }
+
       this.logger.error(
         `Scenario "${entry.raw.id}" expansion failed: ${err instanceof Error ? err.message : String(err)}`,
       );
 
-      return;
+      return null;
     }
 
     if (expanded.length === 0) {
       this.logger.debug(`Scenario "${entry.raw.id}" expanded to empty sequence; skipping`);
 
-      return;
+      return null;
     }
 
+    return expanded;
+  }
+
+  private executeFire(
+    entry: CompiledScenario,
+    event: SimEventOf<SimEventName> | null,
+    expanded: ExecOp[],
+    resume?: ResumeState,
+  ): void {
     // Resume from an interrupt cut (issue #758): when the fresh expansion is
     // unchanged from the stashed one, continue from the interrupted clip
     // (re-keying the radio frame when it was already opened). A changed
@@ -952,16 +1012,23 @@ class ScenarioEngine implements IScenarioEngine {
 
     for (const step of steps) {
       switch (step.kind) {
-        case "clip":
-          this.pushClip(out, this.substituteVoice(applyBase(base, step.path)), defaultChannel);
+        case "clip": {
+          const path = this.substituteVoice(applyBase(base, step.path));
+          this.assertClipAvailable(path, `clip "${step.path}"`);
+          this.pushClip(out, path, defaultChannel);
           break;
+        }
 
         case "var": {
           const resolver = this.vars.get(step.name);
           const value = resolver ? resolver() : null;
           ctx.vars[step.name] = value;
 
-          if (value) this.pushClip(out, this.substituteVoice(value), defaultChannel);
+          if (!value) throw new ExpansionAbort(`var {{${step.name}}} resolved to nothing`);
+
+          const path = this.substituteVoice(value);
+          this.assertClipAvailable(path, `var {{${step.name}}}`);
+          this.pushClip(out, path, defaultChannel);
 
           break;
         }
@@ -969,7 +1036,11 @@ class ScenarioEngine implements IScenarioEngine {
         case "pool": {
           const pick = this.pickFromPool(step.name, step.noRepeat);
 
-          if (pick) this.pushClip(out, this.substituteVoice(pick), defaultChannel);
+          if (!pick) throw new ExpansionAbort(`pool "${step.name}" resolved to nothing for the active voice`);
+
+          const path = this.substituteVoice(pick);
+          this.assertClipAvailable(path, `pool "${step.name}"`);
+          this.pushClip(out, path, defaultChannel);
 
           break;
         }
@@ -977,7 +1048,11 @@ class ScenarioEngine implements IScenarioEngine {
         case "connector": {
           const pick = this.pickFromPool("connector", true);
 
-          if (pick) this.pushClip(out, pick, defaultChannel);
+          if (!pick) throw new ExpansionAbort(`connector pool resolved to nothing`);
+
+          const path = this.substituteVoice(pick);
+          this.assertClipAvailable(path, `connector`);
+          this.pushClip(out, path, defaultChannel);
 
           break;
         }
@@ -1016,6 +1091,23 @@ class ScenarioEngine implements IScenarioEngine {
           break;
         }
 
+        case "optional": {
+          // A genuinely-optional clause (issue #835): a member resolving to
+          // nothing skips the WHOLE group locally — never half a clause —
+          // and the rest of the callout still plays. Each recursive call
+          // builds its own op list, so a mid-group abort discards the
+          // group's partial ops cleanly.
+          try {
+            out.push(...this.expandSequence(step.steps, base, defaultChannel, ctx, visitedIncludes));
+          } catch (err) {
+            if (!(err instanceof ExpansionAbort)) throw err;
+
+            this.logger.debug(`optional clause skipped — ${err.reason}`);
+          }
+
+          break;
+        }
+
         case "ambient":
           out.push({ kind: "ambient", action: step.action });
           break;
@@ -1027,6 +1119,17 @@ class ScenarioEngine implements IScenarioEngine {
     }
 
     return out;
+  }
+
+  /**
+   * Guard a resolved clip path against the manifest (issue #835): a required
+   * clip the active voice doesn't have aborts the whole callout — never a
+   * half-sentence. `{ optional: [...] }` groups catch the abort locally.
+   */
+  private assertClipAvailable(path: string, what: string): void {
+    if (this.clipSet.has(path)) return;
+
+    throw new ExpansionAbort(`${what} → "${path}" is not in the manifest for the active voice`);
   }
 
   /** Push a clip op, routing walkie-talkie ticks to SFX and everything else to the default channel. */

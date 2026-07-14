@@ -73,6 +73,19 @@ describe("resolveStep", () => {
       else: [{ kind: "clip", path: "b.mp3" }],
     });
   });
+
+  it("recursively resolves `optional` groups, including nested ones (issue #835)", () => {
+    const out = resolveStep({ optional: ["a.mp3", { var: "name" }, { optional: ["b.mp3"] }] });
+
+    expect(out).toEqual({
+      kind: "optional",
+      steps: [
+        { kind: "clip", path: "a.mp3" },
+        { kind: "var", name: "name" },
+        { kind: "optional", steps: [{ kind: "clip", path: "b.mp3" }] },
+      ],
+    });
+  });
 });
 
 describe("applyBase", () => {

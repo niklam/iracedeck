@@ -11,7 +11,7 @@ below cover the audio-scenarios-only mechanics.
 ## Engine modules (`src/`)
 
 - `dsl.ts` — the `Scenario` / step types, the `WEIGHT` bands, and step-shorthand resolution.
-- `interpreter.ts` — the scenario engine: subscribes scenarios to the bus, expands sequences at fire time (`pickFromPool` with per-pool no-immediate-repeat, `{voice}` substitution, include/var/conditional resolution), and runs the weight/interrupt/queueable scheduler with per-bus focus floors and the single pending slot. Pools register either as manifest-derived (`definePoolFromManifest(name, group, base)` — members are every `voice/<voice>/<group>/<base>-NN.mp3` in the manifest, resolved per active voice at fire time; issue #664) or as explicit clip lists (`definePool`).
+- `interpreter.ts` — the scenario engine: subscribes scenarios to the bus, expands sequences at fire time (`pickFromPool` with per-pool no-immediate-repeat, `{voice}` substitution, include/var/conditional resolution), and runs the weight/interrupt/queueable scheduler with per-bus focus floors and the single pending slot. Pools register either as manifest-derived (`definePoolFromManifest(name, group, base)` — members are every `voice/<voice>/<group>/<base>-NN.mp3` in the manifest, resolved per active voice at fire time; issue #664) or as explicit clip lists (`definePool`). Expansion runs **before** bus scheduling (`prepareOps`), and a required step resolving to nothing aborts the whole callout (issue #835 — see "Required-step abort" below).
 - `validation.ts` — load-time scenario validation on `defineScenario` (clip/pool/var/include existence, include-cycle detection, scheduling-metadata checks — e.g. `resumable` requires `queueable`). Errors disable the scenario; `{voice}`-templated paths are checked against the **reference voice** only (`referenceVoice()` — `default` when present) and a miss just **warns**, since per-voice clip sets may legitimately diverge (issue #664).
 - `manifest.ts` — deliberate leaf module breaking the interpreter ↔ validation circular import; defines the `AudioAssetsManifest` shape (`{ clips, ambientLoop, ticks }`) plus the voice / driver-name scanners and `referenceVoice()`.
 
@@ -55,9 +55,11 @@ reference pools by name — `"pool:<name>"` in a sequence step, or
 `{ pool: "<name>" }` in a step object — exactly as before.
 
 - Members resolve **at fire time for the active voice**. Voices may carry
-  different variant counts or omit a pool entirely — an empty pool skips its
-  step (debug log, not an error). Until the whole-callout skip rule lands
-  (#835), the rest of the sequence still plays.
+  different variant counts or omit a pool entirely — a required pool that is
+  empty for the active voice **aborts the whole callout** (issue #835, debug
+  log, not an error): never a half-sentence. Wrap genuinely-optional clauses
+  in `{ optional: [...] }` to skip locally instead (see "Required-step abort"
+  below).
 - Single-member pools resolve deterministically; multi-member pools are
   **sampled uniform-random** with a per-pool no-immediate-repeat guard
   (`pickFromPool`), shared across every scenario that draws from the pool.
@@ -87,6 +89,12 @@ A `Scenario` (see `src/dsl.ts`) binds:
 - `sequence:` — ordered steps. The full sequence is `[@pit-crew.radio-open, …body…, @pit-crew.radio-close]` for everything that should sound like radio chatter; the radio frame is itself an include scenario.
 
 Field-by-field guidance on when to reach for each scheduling knob is in `.claude/rules/race-engineer-callouts.md` (step 4).
+
+## Required-step abort + `{ optional: [...] }` (issue #835)
+
+At fire time, every clip-producing step (clip / var / pool / connector) is checked against the manifest for the **active voice**. A required step that resolves to nothing — missing clip, null var, empty pool — **aborts the entire callout**: nothing plays, never a fragment, and no cooldown is stamped. The abort is decided **before** any bus scheduling or preemption (`prepareOps` runs ahead of the cancel in `attemptFire`), so a callout that would have preempted an in-flight one but then aborts can never silence it. A deferred (queueable) fire re-runs the check at idle-replay.
+
+`{ optional: [steps…] }` marks a genuinely-optional clause: if any member resolves to nothing, the **whole group** is skipped locally (never half a clause) and the rest of the callout plays. Reserve it for self-contained add-on sentences, never a step mid-sentence. Current optional clauses: the session-start pit-speed clause, the session/race-start setup-warning nudges, the name-based greetings (session-start / race-start / race-end — driver names are a union across voices, so a per-voice name gap must not kill the brief), and the overtake-lost "Come on, `<name>`." opener.
 
 ## Live gating
 

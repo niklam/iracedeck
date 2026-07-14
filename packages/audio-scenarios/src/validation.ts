@@ -124,6 +124,11 @@ export function validateScenario(
 
           break;
 
+        case "optional":
+          walk(step.steps, base, visited);
+
+          break;
+
         case "ambient":
         case "pause":
           break;
