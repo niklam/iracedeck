@@ -29,6 +29,10 @@ _Unreleased_
 - The Setup dial touch-strip "dash box" (Setup Brakes, Traction, Fuel, Engine, Aero, Chassis, and Hybrid) is now customizable: set the border, label, value, and background colors independently. The border, label, and value default to the setting's built-in accent and the background to the near-black panel, so existing dials look exactly as before until you change them.
 - Key and dial icons are now rendered to pixels by the plugin itself instead of each deck app's SVG engine, so icons look identical on every device and effects like the border glow work on Mirabox and Ulanzi decks too.
 
+**Bug Fixes**
+
+- A Fuel Service dial in **Target Amount** mode no longer changes the fuel request while the car is being fueled during a pit stop. It used to keep re-sending the shrinking remaining amount as fuel was pumped in, which could stop fueling well short of the target; the target top-up now pauses during pit service and resumes afterward.
+
 ## 2.0.0
 
 _2026-07-08_

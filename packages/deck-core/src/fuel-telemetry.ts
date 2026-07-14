@@ -20,6 +20,16 @@ export function isFuelFillOn(telemetry: TelemetryData | null): boolean {
 }
 
 /**
+ * Whether the player car is actively receiving pit service (`PitstopActive`).
+ * While service is in progress the plugin must not touch the fuel request —
+ * a `pit.fuel` broadcast landing mid-fueling changes the requested amount and
+ * interrupts the fueling (issue #831).
+ */
+export function isPitstopActive(telemetry: TelemetryData | null): boolean {
+  return telemetry?.PitstopActive === true;
+}
+
+/**
  * Whether autofuel is active for the next pit stop (`dpFuelAutoFillActive`).
  * The Fuel Service dial surface reads this live to decide which mode it is in
  * (manual vs autofuel).
