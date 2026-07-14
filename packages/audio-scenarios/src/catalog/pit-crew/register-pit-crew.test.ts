@@ -201,14 +201,14 @@ const FLAG_CLIP_NAMES = [
 // so toggle scenarios that reference `pool:pit-action-acknowledgment` and
 // `pool:acknowledgment` pass validation at register time.
 const ACK_POOL_CLIPS = [
-  "voice/luca/acknowledgment/okay.mp3",
-  "voice/luca/acknowledgment/got-it.mp3",
-  "voice/luca/acknowledgment/roger-that.mp3",
-  "voice/luca/acknowledgment/copy-that.mp3",
-  "voice/luca/acknowledgment/we-got-that.mp3",
-  "voice/luca/pit-actions/got-it.mp3",
-  "voice/luca/pit-actions/roger-that.mp3",
-  "voice/luca/pit-actions/copy-that.mp3",
+  "voice/luca/acknowledgment/acknowledgment-01.mp3",
+  "voice/luca/acknowledgment/acknowledgment-02.mp3",
+  "voice/luca/acknowledgment/acknowledgment-03.mp3",
+  "voice/luca/acknowledgment/acknowledgment-04.mp3",
+  "voice/luca/acknowledgment/acknowledgment-05.mp3",
+  "voice/luca/pit-actions/acknowledgment-01.mp3",
+  "voice/luca/pit-actions/acknowledgment-02.mp3",
+  "voice/luca/pit-actions/acknowledgment-03.mp3",
 ] as const;
 
 // Toggle-confirmation clips referenced directly from

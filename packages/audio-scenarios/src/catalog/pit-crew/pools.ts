@@ -27,8 +27,20 @@
 export type PoolSource = { group: string; base: string };
 
 export const POOL_REGISTRY: Readonly<Record<string, PoolSource>> = {
-  // Pit-action callouts. One pool per action; `pit-action-acknowledgment`
-  // stays enumerated below until the acknowledgment rename migration (#837).
+  // Acknowledgments that open toggle callouts ("Copy that.", "Got it.", …) —
+  // five variants under the `acknowledgment` base (#837 rename migration).
+  acknowledgment: { group: "acknowledgment", base: "acknowledgment" },
+
+  // Pit-action acknowledgments — short "got it" style intros that play before
+  // a pit-action callout. Kept as a separate pool from `acknowledgment`
+  // (rather than reusing it) so the two pools' no-repeat trackers stay
+  // independent — the user hears variety on a toggle burst even if an
+  // `acknowledgment` clip just played for an unrelated cue. The clip set is
+  // also a deliberate subset (no "Okay." / "We got that.") tuned for the
+  // pit-service confirmation register.
+  "pit-action-acknowledgment": { group: "pit-actions", base: "acknowledgment" },
+
+  // Pit-action callouts. One pool per action.
   "pit-action-fuel-on": { group: "pit-actions", base: "fuel-on" },
   "pit-action-fuel-off": { group: "pit-actions", base: "fuel-off" },
   "pit-action-tires-off": { group: "pit-actions", base: "tires-off" },
@@ -161,51 +173,15 @@ export const POOL_REGISTRY: Readonly<Record<string, PoolSource>> = {
 };
 
 /**
- * The two acknowledgment pools still enumerate explicit clip paths: their
- * curated clips don't follow the `<base>-NN` convention yet (`okay.mp3`,
- * `got-it.mp3`, …), so they can't be derived from the manifest. They move
- * into `POOL_REGISTRY` with the acknowledgment rename migration (#837).
- */
-export const ENUMERATED_POOLS: Readonly<Record<string, readonly string[]>> = {
-  // Acknowledgments that open toggle callouts ("copy that", "got it", ...).
-  // Voice-scoped via `{voice}` substitution — resolved at playback time from
-  // the active Race Engineer voice setting.
-  acknowledgment: [
-    "voice/{voice}/acknowledgment/okay.mp3",
-    "voice/{voice}/acknowledgment/got-it.mp3",
-    "voice/{voice}/acknowledgment/roger-that.mp3",
-    "voice/{voice}/acknowledgment/copy-that.mp3",
-    "voice/{voice}/acknowledgment/we-got-that.mp3",
-  ],
-
-  // Pit-action acknowledgments — short "got it" style intros that play before
-  // a pit-action callout ("...we'll change the front tires at the next pitstop").
-  // Kept as a separate pool from `acknowledgment` (rather than reusing it) so the
-  // two pools' no-repeat trackers stay independent — the user hears variety on a
-  // toggle burst even if an `acknowledgment` clip just played for an unrelated cue.
-  // The clip set is also a deliberate subset (no "okay" / "we got that") tuned
-  // for the pit-service confirmation register.
-  "pit-action-acknowledgment": [
-    "voice/{voice}/pit-actions/got-it.mp3",
-    "voice/{voice}/pit-actions/roger-that.mp3",
-    "voice/{voice}/pit-actions/copy-that.mp3",
-  ],
-};
-
-/**
- * Register every catalog pool with the engine: registry pools derive their
- * members from the manifest per voice; the enumerated remainder registers
- * as explicit clip lists (until #837).
+ * Register every catalog pool with the engine — all pools derive their
+ * members from the manifest per voice (the last enumerated remainder, the
+ * two acknowledgment pools, moved into the registry with the #837 rename
+ * migration).
  */
 export function registerPools(engine: {
-  definePool(name: string, clips: string[]): void;
   definePoolFromManifest(name: string, group: string, base: string): void;
 }): void {
   for (const [name, { group, base }] of Object.entries(POOL_REGISTRY)) {
     engine.definePoolFromManifest(name, group, base);
-  }
-
-  for (const [name, clips] of Object.entries(ENUMERATED_POOLS)) {
-    engine.definePool(name, [...clips]);
   }
 }
