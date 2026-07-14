@@ -217,8 +217,8 @@
           "settingsKeys": ["mode", "direction"],
           "modes": [
             { "mode": "auto-compute-ffb-force", "label": "Auto Compute FFB Force" },
-            { "mode": "ffb-force", "direction": "increase", "label": "FFB Force Increase" },
-            { "mode": "ffb-force", "direction": "decrease", "label": "FFB Force Decrease" },
+            { "mode": "ffb-force", "direction": "increase", "label": "FFB Force (max force) Increase" },
+            { "mode": "ffb-force", "direction": "decrease", "label": "FFB Force (max force) Decrease" },
             { "mode": "wheel-lfe", "direction": "increase", "label": "Wheel LFE Louder" },
             { "mode": "wheel-lfe", "direction": "decrease", "label": "Wheel LFE Quieter" },
             { "mode": "bass-shaker-lfe", "direction": "increase", "label": "BassShaker LFE Louder" },

@@ -1,11 +1,8 @@
 import {
-  applyBindingWarning,
   assembleIcon,
   CommonSettings,
   ConnectionStateAwareAction,
   DualPressTracker,
-  generateBorderParts,
-  generateTitleText,
   getDualPressDirections,
   getDualPressThresholdMs,
   getGlobalBorderSettings,
@@ -22,12 +19,10 @@ import {
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
   onGlobalSettingsChange,
-  renderIconTemplate,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
   resolveTitleSettings,
-  svgToDataUri,
 } from "@iracedeck/deck-core";
 import tcSlot1DecreaseIconSvg from "@iracedeck/icons/setup-traction/tc-slot-1-decrease.svg";
 import tcSlot1IncreaseIconSvg from "@iracedeck/icons/setup-traction/tc-slot-1-increase.svg";
@@ -43,11 +38,10 @@ import z from "zod";
 
 import tcToggleTemplate from "../../../icons/setup-traction-tc-toggle.svg";
 import {
-  borderColorForState,
-  statusBarNA,
-  statusBarOff,
-  statusBarOn,
+  generateToggleStateSvg,
   type ToggleState,
+  toggleStateFromLevel,
+  toggleStateMemoKey,
 } from "../../icons/status-bar.js";
 import {
   ADJUST_REPEAT_INTERVAL_MS,
@@ -66,8 +60,6 @@ import { DialSettings, seedDialFromLegacySetting, SetupTractionDialSurface } fro
 
 type SetupTractionAdjustSetting = "tc-toggle" | "tc-slot-1" | "tc-slot-2" | "tc-slot-3" | "tc-slot-4";
 
-const STATUS_BARS: Record<ToggleState, () => string> = { on: statusBarOn, off: statusBarOff, na: statusBarNA };
-
 /**
  * @internal Exported for testing
  *
@@ -75,11 +67,7 @@ const STATUS_BARS: Record<ToggleState, () => string> = { on: statusBarOn, off: s
  * key: no telemetry -> N/A; dcTractionControl > 0 -> on; otherwise off.
  */
 export function tcToggleState(telemetry: TelemetryData | null): ToggleState {
-  const value = telemetry?.dcTractionControl;
-
-  if (typeof value !== "number") return "na";
-
-  return value > 0 ? "on" : "off";
+  return toggleStateFromLevel(telemetry?.dcTractionControl);
 }
 
 /**
@@ -245,52 +233,23 @@ export function generateSetupTractionSvg(settings: SetupTractionSettings, bindin
 /**
  * @internal Exported for testing
  *
- * TC Toggle renders through a dedicated tri-state template (the DRS pattern,
- * #827): a big locked "TC" title above a full-width ON/OFF/N-A status bar,
- * with the key border tracking the same state color.
+ * TC Toggle renders through the shared tri-state toggle path (the DRS
+ * pattern, #827): a big locked "TC" title above a full-width ON/OFF/N-A
+ * status bar, with the key border tracking the same state color.
  */
 export function generateTcToggleSvg(
   settings: SetupTractionSettings,
   state: ToggleState,
   bindingMissing = false,
 ): string {
-  const colors = resolveIconColors(tcToggleTemplate, getGlobalColors(), settings.colorOverrides) as Record<
-    string,
-    string
-  >;
-  const resolvedTitle = resolveTitleSettings(tcToggleTemplate, getGlobalTitleSettings(), settings.titleOverrides);
-
-  const titleContent = resolvedTitle.showTitle
-    ? generateTitleText({
-        text: resolvedTitle.titleText,
-        fontSize: resolvedTitle.fontSize,
-        bold: resolvedTitle.bold,
-        position: resolvedTitle.position,
-        customPosition: resolvedTitle.customPosition,
-        fill: colors.textColor ?? "#ffffff",
-      })
-    : "";
-
-  const border = resolveBorderSettings(
-    tcToggleTemplate,
-    getGlobalBorderSettings(),
-    settings.borderOverrides,
-    borderColorForState(state),
-  );
-  const borderSvg = generateBorderParts(border);
-
-  const baseIconContent = STATUS_BARS[state]();
-  const iconContent = bindingMissing ? applyBindingWarning(baseIconContent) : baseIconContent;
-
-  const svg = renderIconTemplate(tcToggleTemplate, {
-    iconContent,
-    titleContent,
-    borderDefs: borderSvg.defs,
-    borderContent: borderSvg.rects,
-    ...colors,
+  return generateToggleStateSvg({
+    template: tcToggleTemplate,
+    state,
+    colorOverrides: settings.colorOverrides,
+    titleOverrides: settings.titleOverrides,
+    borderOverrides: settings.borderOverrides,
+    bindingMissing,
   });
-
-  return svgToDataUri(svg);
 }
 
 /**
@@ -633,7 +592,7 @@ export class SetupTraction extends ConnectionStateAwareAction<SetupTractionSetti
    */
   private telemetryMemo(settings: SetupTractionSettings, telemetry: TelemetryData | null): string | null {
     if (settings.setting === "tc-toggle") {
-      return `tc-toggle|${tcToggleState(telemetry)}`;
+      return toggleStateMemoKey("tc-toggle", tcToggleState(telemetry));
     }
 
     return telemetryMemoValue(settings, telemetry);

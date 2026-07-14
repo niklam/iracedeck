@@ -37,7 +37,7 @@ packages/icons/{action-name}/
 
 ### Structure (trimmed-viewBox graphic snippet)
 
-Icons are graphic snippets — they contain only the artwork and metadata. Each icon's `viewBox` IS the artwork extent (no padding, no surrounding canvas). The background rect, title text, border, and centering/scaling are added at render time by `assembleIcon()` based on the SVG's own viewBox dimensions.
+Icons are graphic snippets — they contain only the artwork and metadata. Each icon's `viewBox` is the artwork's rendered bounding box plus a 1-unit anti-clip margin on every side — no larger surrounding canvas. The background rect, title text, border, and centering/scaling are added at render time by `assembleIcon()` based on the SVG's own viewBox dimensions.
 
 ```svg
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 104 68">
@@ -51,7 +51,7 @@ Icons are graphic snippets — they contain only the artwork and metadata. Each 
 </svg>
 ```
 
-The `viewBox` width and height are the artwork's own dimensions — no surrounding padding. `assembleIcon()` reads them via `parseSvgViewBox()` and uses `applyGraphicTransform()` to scale the artwork into the available area (which shrinks when a title is shown at top or bottom) and centers it. Users can further adjust scale via Graphic Overrides (per-action) or Graphic Defaults (global).
+The `viewBox` width and height are the artwork's own dimensions plus the 1-unit margin — no larger canvas around them. `assembleIcon()` reads them via `parseSvgViewBox()` and uses `applyGraphicTransform()` to scale the artwork into the available area (which shrinks when a title is shown at top or bottom) and centers it. Users can further adjust scale via Graphic Overrides (per-action) or Graphic Defaults (global).
 
 The `title.text` field in `<desc>` provides the default title. Prefer short, single-line titles (e.g., `"1x"`, `"DRS"`) — only use two lines (`"CATEGORY\nACTION"`) when a single line cannot convey the action clearly. Title position, font, and visibility are controlled via `resolveTitleSettings()` at render time.
 
@@ -179,7 +179,7 @@ Current dynamic templates: `car-control-pit-limiter.svg`, `session-info.svg`, `t
 
 ## Design Specs
 
-- Standalone icons: variable-sized viewBox trimmed to the artwork extent (no canvas padding, no background rect).
+- Standalone icons: variable-sized viewBox trimmed to the artwork extent plus the 1-unit anti-clip margin (no surrounding canvas, no background rect).
 - Dynamic templates: 144x144 canvas, no rounded corners.
 - Stroke width: 4–5px main, 2–3px details (in 144x144 reference scale — author at the same visual weight regardless of trimmed viewBox size, the render-time scaler keeps proportions correct).
 - Colors: white `#ffffff`, green `#2ecc71`, red `#e74c3c`, yellow `#f39c12`, purple `#9b59b6`, gray `#888888`.

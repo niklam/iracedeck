@@ -1,10 +1,7 @@
 import {
-  applyBindingWarning,
   assembleIcon,
   ConnectionStateAwareAction,
   DualPressTracker,
-  generateBorderParts,
-  generateTitleText,
   getDualPressDirections,
   getDualPressThresholdMs,
   getGlobalBorderSettings,
@@ -21,12 +18,10 @@ import {
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
   onGlobalSettingsChange,
-  renderIconTemplate,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
   resolveTitleSettings,
-  svgToDataUri,
 } from "@iracedeck/deck-core";
 import absAdjustDecreaseIconSvg from "@iracedeck/icons/setup-brakes/abs-adjust-decrease.svg";
 import absAdjustIncreaseIconSvg from "@iracedeck/icons/setup-brakes/abs-adjust-increase.svg";
@@ -45,11 +40,10 @@ import type { TelemetryData } from "@iracedeck/iracing-sdk";
 
 import absToggleTemplate from "../../../icons/setup-brakes-abs-toggle.svg";
 import {
-  borderColorForState,
-  statusBarNA,
-  statusBarOff,
-  statusBarOn,
+  generateToggleStateSvg,
   type ToggleState,
+  toggleStateFromLevel,
+  toggleStateMemoKey,
 } from "../../icons/status-bar.js";
 import {
   ADJUST_REPEAT_INTERVAL_MS,
@@ -181,8 +175,6 @@ export function generateSetupBrakesSvg(settings: SetupBrakesSettings, bindingMis
   return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic, bindingMissing });
 }
 
-const STATUS_BARS: Record<ToggleState, () => string> = { on: statusBarOn, off: statusBarOff, na: statusBarNA };
-
 /**
  * @internal Exported for testing
  *
@@ -191,62 +183,29 @@ const STATUS_BARS: Record<ToggleState, () => string> = { on: statusBarOn, off: s
  * level, which the toggle binding flips between off and the configured level.
  */
 export function absToggleState(telemetry: TelemetryData | null): ToggleState {
-  const value = telemetry?.dcABS;
-
-  if (typeof value !== "number") return "na";
-
-  return value > 0 ? "on" : "off";
+  return toggleStateFromLevel(telemetry?.dcABS);
 }
 
 /**
  * @internal Exported for testing
  *
- * ABS Toggle renders through a dedicated tri-state template (the DRS pattern,
- * #827): the ISO ABS symbol above a full-width ON/OFF/N-A status bar, with the
- * key border tracking the same state color.
+ * ABS Toggle renders through the shared tri-state toggle path (the DRS
+ * pattern, #827): the ISO ABS symbol above a full-width ON/OFF/N-A status
+ * bar, with the key border tracking the same state color.
  */
 export function generateAbsToggleSvg(
   settings: SetupBrakesSettings,
   state: ToggleState,
   bindingMissing = false,
 ): string {
-  const colors = resolveIconColors(absToggleTemplate, getGlobalColors(), settings.colorOverrides) as Record<
-    string,
-    string
-  >;
-  const resolvedTitle = resolveTitleSettings(absToggleTemplate, getGlobalTitleSettings(), settings.titleOverrides);
-
-  const titleContent = resolvedTitle.showTitle
-    ? generateTitleText({
-        text: resolvedTitle.titleText,
-        fontSize: resolvedTitle.fontSize,
-        bold: resolvedTitle.bold,
-        position: resolvedTitle.position,
-        customPosition: resolvedTitle.customPosition,
-        fill: colors.textColor ?? "#ffffff",
-      })
-    : "";
-
-  const border = resolveBorderSettings(
-    absToggleTemplate,
-    getGlobalBorderSettings(),
-    settings.borderOverrides,
-    borderColorForState(state),
-  );
-  const borderSvg = generateBorderParts(border);
-
-  const baseIconContent = STATUS_BARS[state]();
-  const iconContent = bindingMissing ? applyBindingWarning(baseIconContent) : baseIconContent;
-
-  const svg = renderIconTemplate(absToggleTemplate, {
-    iconContent,
-    titleContent,
-    borderDefs: borderSvg.defs,
-    borderContent: borderSvg.rects,
-    ...colors,
+  return generateToggleStateSvg({
+    template: absToggleTemplate,
+    state,
+    colorOverrides: settings.colorOverrides,
+    titleOverrides: settings.titleOverrides,
+    borderOverrides: settings.borderOverrides,
+    bindingMissing,
   });
-
-  return svgToDataUri(svg);
 }
 
 /**
@@ -616,7 +575,7 @@ export class SetupBrakes extends ConnectionStateAwareAction<SetupBrakesSettings>
    */
   private telemetryMemo(settings: SetupBrakesSettings, telemetry: TelemetryData | null): string | null {
     if (settings.setting === "abs-toggle") {
-      return `abs-toggle|${absToggleState(telemetry)}`;
+      return toggleStateMemoKey("abs-toggle", absToggleState(telemetry));
     }
 
     return telemetryMemoValue(settings, telemetry);

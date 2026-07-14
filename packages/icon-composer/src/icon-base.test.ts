@@ -38,6 +38,25 @@ describe("extractGraphicContent", () => {
 </svg>`;
     const result = extractGraphicContent(svg);
     expect(result).not.toContain("activity-state");
+    expect(result).not.toContain("<defs>");
     expect(result).toContain('<circle cx="72" cy="72" r="30"');
+  });
+
+  it("removes only the activity-state filter from a mixed defs block", () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <defs>
+    <linearGradient id="mtl"><stop stop-color="{{graphic1Color}}"/></linearGradient>
+    <filter id="activity-state"><feColorMatrix type="saturate" values="1"/></filter>
+    <clipPath id="lid"><rect x="0" y="0" width="144" height="72"/></clipPath>
+  </defs>
+  <g filter="url(#activity-state)">
+    <rect x="10" y="10" width="20" height="20" fill="url(#mtl)" clip-path="url(#lid)"/>
+  </g>
+</svg>`;
+    const result = extractGraphicContent(svg);
+    expect(result).not.toContain("activity-state");
+    expect(result).toContain('<linearGradient id="mtl">');
+    expect(result).toContain('<clipPath id="lid">');
+    expect(result).toContain('fill="url(#mtl)"');
   });
 });
