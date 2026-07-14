@@ -41,7 +41,7 @@ voice scenario as the outermost short-circuit.
 
 | Concern | File |
 |---|---|
-| **Voice lines (source of truth)** | `packages/audio-assets/configs/<voice-id>.voice.json` — canonical: `default.voice.json`; key parity across voices enforced by `voice-parity.test.ts` |
+| **Voice lines (source of truth)** | `packages/audio-assets/configs/<voice-id>.voice.json` — canonical: `default.voice.json`; voices may differ in variant counts and omit callouts (issue #664), `voice-parity.test.ts` only guards against `<group>/<base>` keys unknown to default |
 | **Generated clips** | `packages/audio-assets/voice/<voice>/<group>/<name>.mp3` (gitignored locally; committed once stable) |
 | **Generator cache** | `packages/audio-assets/generate.manifest.json` |
 | **Runtime manifest** | `packages/audio-assets/manifest.json` (rebuilt by `generate:manifest`) |
@@ -49,7 +49,7 @@ voice scenario as the outermost short-circuit.
 | **Bus public exports** | `packages/event-bus/src/index.ts` (export new enums as values, not just types) |
 | **iRacing translator** | `packages/sim-events-iracing/src/diff/<name>.ts` + wired into `translator.ts` |
 | **Translator state** | `packages/sim-events-iracing/src/state.ts` (TranslatorState type AND createInitialState — keep them in sync) |
-| **Audio pools** | `packages/audio-scenarios/src/catalog/pit-crew/pools.ts` |
+| **Audio pools** | `packages/audio-scenarios/src/catalog/pit-crew/pools.ts` — `POOL_REGISTRY` maps pool name → manifest `(group, base)`; members (`<base>-NN.mp3`) derive per-voice from the manifest at fire time (issue #664) |
 | **Audio scenarios** | `packages/audio-scenarios/src/catalog/pit-crew/<family>.ts` |
 | **Family wiring (id type, key map, scenario id map, registerPitCrew param)** | `packages/audio-scenarios/src/catalog/pit-crew/index.ts` |
 | **Per-callout opt-in (Zod field)** | `packages/deck-core/src/global-settings.ts` |
@@ -62,7 +62,7 @@ voice scenario as the outermost short-circuit.
 
 - **Per-callout opt-in setting key:** `callout<Polarity><Family><Subject>` (`.claude/rules/global-settings.md` is the canonical reference). Polarity is always `Enabled`; the schema field's *default* encodes the family's natural baseline (callouts default `true`). Examples: `calloutEnabledFlagYellowLocal`, `calloutEnabledTrackWetness`.
 - **Scenario id:** `pit-crew.<family>-<subject>` — `pit-crew.flag-yellow-local`, `pit-crew.pit-status-too-far-left`, `pit-crew.track-conditions-worsening-mostly-dry`.
-- **Pool name:** `<family>-<subject>` — matches the scenario subject. One pool per scenario; arrays of clip paths so future variants append cleanly.
+- **Pool name:** `<family>-<subject>` — matches the scenario subject. One pool per scenario. A pool's members are all clips sharing its `(group, base)` — `voice/<voice>/<group>/<base>-NN.mp3` — so future variants are clip-file additions with no code change (issue #664). The pool name need not equal `<group>/<base>` (`flag-blue` → `flags`/`blue`); `POOL_REGISTRY` carries the mapping.
 - **Voice clip path:** `voice/{voice}/<group>/<name>.mp3` — group keys the `groups` map in the voice config; name keys the entry inside the group.
 - **Family identifier (for preemption):** matches the directory naming: `flag`, `damage`, `pit-status`, `track-conditions`. All scenarios in a family share the same `family:` value, so a newer fire supersedes an in-flight one cleanly.
 
@@ -86,7 +86,7 @@ In `packages/event-bus/src/event-catalog.ts`:
 
 ### 3. Voice lines
 
-In `packages/audio-assets/configs/default.voice.json` (and every other voice file — `voice-parity.test.ts` enforces matching `<group>/<entry-name>` sets across voices, even though text can differ):
+In `packages/audio-assets/configs/default.voice.json` (other voices *may* add the same entries with their own wording, but don't have to — a voice without a clip skips that callout; `voice-parity.test.ts` only rejects `<group>/<base>` keys unknown to default, issue #664):
 - Add (or extend) a group with one entry per `(direction × subject)` combination.
 - Each entry: `name` (kebab-case, suffix `-01` so future variants append as `-02`), `text`, optionally `seed` (omit it on new entries — the generator defaults an omitted seed to `1` — or set `"seed": 1` explicitly; NEVER an arbitrary/random value, since the seed only selects which take ElevenLabs produces. Bump it deliberately for a different take when the generated clip doesn't sound right — the seed feeds the hash, so the change re-cuts only that clip), optional `previous_request_ids` to bias prosody continuity.
 - Use `<break time="0.3s" />` for natural pauses inside a single line.
@@ -104,7 +104,7 @@ Each `configs/<voice-id>.voice.json` is the per-voice source of truth — voices
 
 ### 4. Audio pools + scenario
 
-- Add one pool per `(direction × subject)` to `packages/audio-scenarios/src/catalog/pit-crew/pools.ts`. Single-element pools are deterministic; multi-element pools are sampled uniform-random with a per-pool no-immediate-repeat guard (the interpreter's `pickFromPool` — not a sequential rotation).
+- Add one `POOL_REGISTRY` entry per `(direction × subject)` to `packages/audio-scenarios/src/catalog/pit-crew/pools.ts` — pool name → `(group, base)`, no clip lists. The pool's members are derived per-voice from the manifest (`voice/<voice>/<group>/<base>-NN.mp3`) at fire time, so adding a *variant* later is a clip-file change only. Single-member pools are deterministic; multi-member pools are sampled uniform-random with a per-pool no-immediate-repeat guard (the interpreter's `pickFromPool` — not a sequential rotation; the tracker resets on voice change).
 - Write a scenario file under `packages/audio-scenarios/src/catalog/pit-crew/<family>.ts`. Mirror `flag-alerts.ts` / `pit-status.ts` / `track-conditions.ts`. Each scenario has:
   - `id: "pit-crew.<family>-<subject>"`
   - `family: "<family>"` (shared across the whole family — a newer same-family fire replaces the in-flight family-mate wholesale, regardless of weight)

@@ -14,7 +14,7 @@ import {
   FLAG_SCENARIO_IDS,
   WAVING_FLAG_COOLDOWN_MS,
 } from "./flag-alerts.js";
-import { POOLS } from "./pools.js";
+import { POOL_REGISTRY } from "./pools.js";
 import { RADIO_CLOSE, RADIO_OPEN } from "./radio-frame.js";
 
 const mockSessionType = vi.fn(() => "Race");
@@ -215,7 +215,10 @@ beforeEach(() => {
   audio = createFakeAudio();
   engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => activeVoice);
 
-  for (const name of FLAG_POOL_NAMES) engine.definePool(name, [...POOLS[name]]);
+  for (const name of FLAG_POOL_NAMES) {
+    const { group, base } = POOL_REGISTRY[name];
+    engine.definePoolFromManifest(name, group, base);
+  }
 
   engine.defineScenario(RADIO_OPEN);
   engine.defineScenario(RADIO_CLOSE);
@@ -788,10 +791,11 @@ describe("FLAG_POOL_NAMES", () => {
     ]);
   });
 
-  it("every name has a non-empty pool entry in POOLS", () => {
+  it("every name has a POOL_REGISTRY entry sourced from the flags group", () => {
     for (const name of FLAG_POOL_NAMES) {
-      expect(POOLS[name]).toBeDefined();
-      expect(POOLS[name].length).toBeGreaterThan(0);
+      expect(POOL_REGISTRY[name]).toBeDefined();
+      expect(POOL_REGISTRY[name].group).toBe("flags");
+      expect(POOL_REGISTRY[name].base.length).toBeGreaterThan(0);
     }
   });
 });

@@ -2,8 +2,9 @@
  * Load-time validation for scenarios.
  *
  * Runs on `defineScenario` against the already-loaded scenarios, pools,
- * variables, and audio-asset manifest. Returns a list of human-readable
- * errors — empty means the scenario is ready to play.
+ * variables, and audio-asset manifest. Returns human-readable `errors`
+ * (non-empty disables the scenario) and `warnings` (logged, scenario stays
+ * enabled — e.g. a probable typo in a `{voice}`-templated path).
  *
  * Include-cycle detection is performed here (at load time) *in addition* to
  * the runtime guard in the interpreter's expansion code, so broken graphs
@@ -11,21 +12,24 @@
  */
 import type { ResolvedStep, Scenario } from "./dsl.js";
 import { applyBase } from "./dsl.js";
-import { type AudioAssetsManifest, manifestVoices } from "./manifest.js";
+import { type AudioAssetsManifest, referenceVoice } from "./manifest.js";
 
 type CompiledEntry = { raw: Scenario; resolvedSequence: ResolvedStep[] };
+
+export type ScenarioValidationResult = { errors: string[]; warnings: string[] };
 
 export function validateScenario(
   s: Scenario,
   resolved: ResolvedStep[],
   scenarios: Map<string, CompiledEntry>,
-  pools: Map<string, { clips: string[] }>,
+  pools: Map<string, unknown>,
   vars: Map<string, () => string | null>,
   manifest: AudioAssetsManifest,
-): string[] {
+): ScenarioValidationResult {
   const errors: string[] = [];
+  const warnings: string[] = [];
   const clipSet = new Set(manifest.clips);
-  const voices = manifestVoices(manifest);
+  const reference = referenceVoice(manifest);
 
   // Scheduling metadata (issue #652): `weight` must be a finite number when
   // present so a typo (e.g. an undefined `WEIGHT.x`) surfaces at load rather
@@ -47,7 +51,7 @@ export function validateScenario(
 
   walk(resolved, s.base, new Set([s.id]));
 
-  return errors;
+  return { errors, warnings };
 
   function walk(steps: ResolvedStep[], base: string | undefined, visited: Set<string>): void {
     for (const step of steps) {
@@ -56,13 +60,17 @@ export function validateScenario(
           const abs = applyBase(base, step.path);
 
           if (abs.includes("{voice}")) {
-            // Templated — every voice in the manifest must have the resolved
-            // clip; if even one is missing this scenario can't safely run
-            // when the user picks that voice.
-            for (const voice of voices) {
-              const resolved = abs.replace(/\{voice\}/g, voice);
+            // Templated — checked against the REFERENCE voice only (issue
+            // #664): per-voice clip sets may legitimately diverge, so a gap
+            // in another voice is not an error. A miss for the reference
+            // voice is a probable typo and only warns — the scenario stays
+            // enabled and the step skips at fire time.
+            if (reference !== null) {
+              const resolved = abs.replace(/\{voice\}/g, reference);
 
-              if (!clipSet.has(resolved)) errors.push(`unknown clip: ${resolved} (template: ${abs})`);
+              if (!clipSet.has(resolved)) {
+                warnings.push(`unknown clip for reference voice: ${resolved} (template: ${abs})`);
+              }
             }
           } else if (!clipSet.has(abs)) {
             errors.push(`unknown clip: ${abs}`);

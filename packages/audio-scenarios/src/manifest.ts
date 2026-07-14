@@ -40,6 +40,22 @@ export function scanRaceEngineerVoices(manifest: AudioAssetsManifest): string[] 
 }
 
 /**
+ * The voice used for load-time typo guards (issue #664): the canonical
+ * `default` voice when present, else the first sorted voice, else `null`.
+ * Per-voice clip sets may legitimately diverge — voices can carry different
+ * variant counts or omit a callout — so validation checks `{voice}`-templated
+ * paths against this single reference voice instead of requiring parity
+ * across all voices.
+ */
+export function referenceVoice(manifest: AudioAssetsManifest): string | null {
+  const voices = scanRaceEngineerVoices(manifest);
+
+  if (voices.length === 0) return null;
+
+  return voices.includes("default") ? "default" : voices[0];
+}
+
+/**
  * Sorted array of available driver-name keys (the names the engineer can
  * address the user as) derived from `voice/<voice>/names/<name>.mp3`
  * paths. The set is the union across voices — a name only present for one

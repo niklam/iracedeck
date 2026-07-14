@@ -47,7 +47,7 @@ import { getLatestTelemetry, getSessionType, getStandingStart } from "@iracedeck
 
 import type { Scenario, Step } from "../../dsl.js";
 import { WEIGHT } from "../../dsl.js";
-import { POOLS } from "./pools.js";
+import { POOL_REGISTRY } from "./pools.js";
 import { isRaceSession } from "./race-start.js";
 
 // Race-progression / formation flags (one-pace-lap-to-go, green-held, ten-to-go,
@@ -444,4 +444,4 @@ export const FLAG_SCENARIO_IDS: readonly string[] = FLAG_ALERTS.map((s) => s.id)
  * flows through `registerPitCrew()` without a parallel list to keep
  * in sync.
  */
-export const FLAG_POOL_NAMES: readonly string[] = Object.keys(POOLS).filter((name) => name.startsWith("flag-"));
+export const FLAG_POOL_NAMES: readonly string[] = Object.keys(POOL_REGISTRY).filter((name) => name.startsWith("flag-"));

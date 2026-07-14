@@ -19,7 +19,7 @@ import { WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
 import { registerPitCrew, type RollingStartCalloutId } from "./index.js";
-import { POOLS } from "./pools.js";
+import { POOL_REGISTRY } from "./pools.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import { RADIO_CLOSE, RADIO_OPEN } from "./radio-frame.js";
 import { ROLLING_START_ALERTS, ROLLING_START_POOL_NAMES, ROLLING_START_SCENARIO_IDS } from "./rolling-start.js";
@@ -177,7 +177,10 @@ beforeEach(() => {
   audio = createFakeAudio();
   engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => activeVoice);
 
-  for (const name of ROLLING_START_POOL_NAMES) engine.definePool(name, [...POOLS[name]]);
+  for (const name of ROLLING_START_POOL_NAMES) {
+    const { group, base } = POOL_REGISTRY[name];
+    engine.definePoolFromManifest(name, group, base);
+  }
 
   engine.defineScenario(RADIO_OPEN);
   engine.defineScenario(RADIO_CLOSE);

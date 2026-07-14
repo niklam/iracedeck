@@ -22,7 +22,7 @@ import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js"
 import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
 import { type PitStatusCalloutId, registerPitCrew } from "./index.js";
 import { PIT_STATUS_ALERTS, PIT_STATUS_POOL_NAMES, PIT_STATUS_SCENARIO_IDS } from "./pit-status.js";
-import { POOLS } from "./pools.js";
+import { POOL_REGISTRY } from "./pools.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import { RADIO_CLOSE, RADIO_OPEN } from "./radio-frame.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
@@ -203,10 +203,11 @@ describe("PIT_STATUS_ALERTS structure", () => {
     }
   });
 
-  it("every pool name has a non-empty pool entry in POOLS", () => {
+  it("every pool name has a POOL_REGISTRY entry sourced from the pit-status group", () => {
     for (const name of PIT_STATUS_POOL_NAMES) {
-      expect(POOLS[name]).toBeDefined();
-      expect(POOLS[name].length).toBeGreaterThan(0);
+      expect(POOL_REGISTRY[name]).toBeDefined();
+      expect(POOL_REGISTRY[name].group).toBe("pit-status");
+      expect(POOL_REGISTRY[name].base.length).toBeGreaterThan(0);
     }
   });
 });
@@ -217,7 +218,10 @@ describe("PIT_STATUS_ALERTS triggers (engine-level, no opt-out gating)", () => {
     audio = createFakeAudio();
     engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
 
-    for (const name of PIT_STATUS_POOL_NAMES) engine.definePool(name, [...POOLS[name]]);
+    for (const name of PIT_STATUS_POOL_NAMES) {
+      const { group, base } = POOL_REGISTRY[name];
+      engine.definePoolFromManifest(name, group, base);
+    }
 
     engine.defineScenario(RADIO_OPEN);
     engine.defineScenario(RADIO_CLOSE);
