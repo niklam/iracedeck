@@ -23,7 +23,7 @@
  * (practice / qualifying / between sessions), so a transition outside a race is
  * suppressed — the callout is only meaningful in a race. `isRaceSession` is
  * resolved once per tick by the translator and passed in (same shape as
- * `diffFuel` / `diffOvertakes`).
+ * `diffFuelLapsLeft` / `diffOvertakes`).
  *
  * **Replay-only gate (#604).** The diff runs after the translator's main
  * `IsReplayPlaying` guard, but a paused or frame-scrubbed replay can read

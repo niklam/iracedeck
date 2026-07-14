@@ -490,15 +490,38 @@ export type TranslatorState = {
   // ── Radar ─────────────────────────────────────────────────────────────
   radarState: RadarState;
 
-  // ── Fuel thresholds ─────────────────────────────────────────────────────
-  fuelLastLap: number;
-  fuelAtLapStart: number | null;
-  fuelHistory: number[];
-  fuelFiredThresholds: Set<number>;
-  lastLapsRemaining: number | null;
+  // ── Laps-of-fuel-left callouts (issue #838) ───────────────────────────────
   // NOTE: the validated fuel lap history (issue #465) deliberately does NOT
   // live here — it's the instance-level `FuelLapTracker` (see `fuel-laps.ts`)
   // so replay/garage state wipes and session changes don't destroy it.
+  /**
+   * Previous-tick `LapDistPct`, for the rising 0.5-crossing sample trigger.
+   * `null` until the first valid tick (seed silently). Re-seeds after a
+   * replay/garage gap — the jump made the edge comparison meaningless.
+   */
+  fuelCalloutLastDistPct: number | null;
+  /**
+   * `Lap` value of the last mid-lap sample, so a car rolling backwards and
+   * forwards across the 0.5 mark can't sample the same lap twice. `-1` = none.
+   */
+  fuelCalloutLastSampledLap: number;
+  /**
+   * Previous-tick `FuelLevel` for refuel detection (a debounced per-tick
+   * increase re-arms the announced counts). Preserved across
+   * `wipeStateForReplay` so a garage refuel — which happens entirely inside
+   * replay-mode ticks — lands as one big positive delta on the first live
+   * tick back and re-arms the stint.
+   */
+  fuelCalloutLastFuelLevel: number | null;
+  /**
+   * Smallest count already announced this stint, or `null` when none has
+   * been. A sample only emits when its count is strictly below this
+   * (descending crossings only; multi-count drops speak just the current
+   * count). Cleared by a refuel — the new stint re-arms every count.
+   * Preserved across `wipeStateForReplay` so a replay glance mid-race can't
+   * repeat a count; a genuine session change still clears it.
+   */
+  fuelCalloutLastAnnouncedCount: number | null;
 
   // ── Lifecycle ───────────────────────────────────────────────────────────
   // `driver.firstOnTrack` is tracked on the translator instance, not here —
@@ -696,11 +719,10 @@ export function createInitialState(): TranslatorState {
 
     radarState: "clear",
 
-    fuelLastLap: -1,
-    fuelAtLapStart: null,
-    fuelHistory: [],
-    fuelFiredThresholds: new Set(),
-    lastLapsRemaining: null,
+    fuelCalloutLastDistPct: null,
+    fuelCalloutLastSampledLap: -1,
+    fuelCalloutLastFuelLevel: null,
+    fuelCalloutLastAnnouncedCount: null,
 
     lifecycleInitialized: false,
     lastSessionNum: null,

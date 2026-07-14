@@ -29,10 +29,18 @@ export {
   isSimEventsIracingInitialized,
   type LivePosition,
   type OvertakeTelemetryGate,
+  type SimEventsIracingOptions,
 } from "./translator.js";
 export { DAMAGE_DEBOUNCE_MS } from "./diff/damage.js";
 export { YELLOW_CLEARED_HOLD_MS } from "./diff/flags.js";
-export { FUEL_THRESHOLDS } from "./diff/fuel.js";
+export {
+  FUEL_CALLOUT_DEFAULT_MARGIN_LAPS,
+  FUEL_CALLOUT_MARGIN_MAX_LAPS,
+  FUEL_CALLOUT_MARGIN_MIN_LAPS,
+  FUEL_LAPS_LEFT_MAX_COUNT,
+  FUEL_LAPS_LEFT_WINDOW_LAPS,
+  sanitizeFuelCalloutMarginLaps,
+} from "./diff/fuel-laps-left.js";
 export { FUEL_LAP_HISTORY_CAP, type FuelLap, type FuelStats } from "./diff/fuel-laps.js";
 export { OVERTAKE_HOLD_MS, OVERTAKE_MAX_JUMP } from "./diff/overtakes.js";
 export { PIT_APPROACH_COOLDOWN_MS } from "./diff/pit-lane.js";

@@ -189,9 +189,10 @@ export const EVENT_TEMPLATES = [
   // ── Value-change ──
   { name: "radar.changed", description: "Proximity radar state changed", data: { from: "clear", to: "left" } },
   {
-    name: "fuel.lapsRemaining.crossed",
-    description: "Crossed a fuel-laps-remaining threshold",
-    data: { threshold: 5, laps: 4.6 },
+    name: "fuel.lapsLeft.crossed",
+    description:
+      "Estimated laps-of-fuel-left crossed down to a new count (issue #838) — count 0 is the box-this-lap call",
+    data: { count: 3, lapsLeft: 3.4 },
   },
   {
     name: "track.wetness.changed",

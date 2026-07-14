@@ -692,6 +692,71 @@ export const GlobalSettingsSchema = z
       .transform((val) => val === true || val === "true")
       .default(true),
     /**
+     * Per-count opt-ins for the estimated laps-of-fuel-left callouts (issue
+     * #838). One boolean per spoken count 10 → 1 plus the count-0 "box this
+     * lap for fuel" call. Unlike most callout families the defaults are NOT
+     * uniform: 5, 3, 2, 1 and Box ship ON, the rest OFF (the Discord-request
+     * baseline) — a driver who wants the full countdown opts the other counts
+     * in. Canonical id↔key mapping in `FUEL_CALLOUT_SETTING_KEYS` (in
+     * `@iracedeck/audio-scenarios`); the margin slider below tunes the
+     * estimate they all speak.
+     */
+    calloutEnabledFuelLapsLeft10: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(false),
+    calloutEnabledFuelLapsLeft9: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(false),
+    calloutEnabledFuelLapsLeft8: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(false),
+    calloutEnabledFuelLapsLeft7: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(false),
+    calloutEnabledFuelLapsLeft6: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(false),
+    calloutEnabledFuelLapsLeft5: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledFuelLapsLeft4: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(false),
+    calloutEnabledFuelLapsLeft3: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledFuelLapsLeft2: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledFuelLapsLeft1: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledFuelLapsLeftBox: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    /**
+     * Safety margin in laps subtracted from the raw laps-of-fuel-left
+     * estimate before the Race Engineer derives the spoken count (issue
+     * #838). The spoken number is deliberately conservative relative to
+     * Session Info's Laps to Empty display. Range 0.0–3.0 in 0.1 steps,
+     * default 0.3. Must match `FUEL_CALLOUT_DEFAULT_MARGIN_LAPS` (and the
+     * min/max constants) in `@iracedeck/sim-events-iracing`. The `.catch`
+     * keeps a malformed persisted value from aborting the whole settings
+     * parse (the `changelogNotification` precedent).
+     */
+    fuelCalloutMarginLaps: z.coerce.number().min(0).max(3).default(0.3).catch(0.3),
+    /**
      * Setup-name mismatch warning opt-in (issue #625). When on, the Race
      * Engineer appends a "double-check your setup" nudge after the session-start
      * (qualifying) and race-start intros when the loaded setup name looks wrong

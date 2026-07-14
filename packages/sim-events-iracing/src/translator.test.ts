@@ -1248,41 +1248,60 @@ describe("sim-events-iracing translator", () => {
     });
   });
 
-  describe("fuel threshold crossings", () => {
-    it("emits fuel.lapsRemaining.crossed once per descending threshold", () => {
+  describe("laps-of-fuel-left crossings (issue #838)", () => {
+    it("emits fuel.lapsLeft.crossed on descending mid-lap crossings, once per stint, re-armed by a refuel", () => {
       const controller = createMockController();
       const bus = getEventBus();
       const handler = vi.fn();
-      bus.subscribe("fuel.lapsRemaining.crossed", handler);
+      bus.subscribe("fuel.lapsLeft.crossed", handler);
       controller.__setSessionInfo({
         SessionInfo: { Sessions: [{ SessionType: "Race" }] },
         DriverInfo: { DriverCarIdx: 0 },
       });
       initializeSimEventsIracing(bus, controller, createMockLogger());
 
-      // Build history across 3 lap boundaries. Fuel drops from 10 → 9 → 8 → 7
-      // on lap transitions; avgPerLap = 1.
-      controller.__tick(telemetry({ Lap: 1, FuelLevel: 10 }));
-      controller.__tick(telemetry({ Lap: 2, FuelLevel: 9 }));
-      controller.__tick(telemetry({ Lap: 3, FuelLevel: 8 }));
-      controller.__tick(telemetry({ Lap: 4, FuelLevel: 7 }));
-      // History is [1, 1, 1]; FuelLevel=7 → 7 laps remaining, no crossing.
+      // Build two validated laps (~2 L / ~90 s each) through the real #465
+      // tracker: each boundary pairs the LapDistPct wrap with the Lap counter
+      // increment. Fuel stays high enough that every mid-lap sample sits above
+      // the 10-count ceiling — silent.
+      controller.__tick(telemetry({ Lap: 1, LapDistPct: 0.9, SessionTime: 0, FuelLevel: 64 }));
+      controller.__tick(telemetry({ Lap: 2, LapDistPct: 0.05, SessionTime: 5, FuelLevel: 63.9 }));
+      controller.__tick(telemetry({ Lap: 2, LapDistPct: 0.55, SessionTime: 45, FuelLevel: 63 }));
+      controller.__tick(telemetry({ Lap: 2, LapDistPct: 0.9, SessionTime: 80, FuelLevel: 62.2 }));
+      controller.__tick(telemetry({ Lap: 3, LapDistPct: 0.05, SessionTime: 90, FuelLevel: 62 }));
+      controller.__tick(telemetry({ Lap: 3, LapDistPct: 0.55, SessionTime: 135, FuelLevel: 61 }));
+      controller.__tick(telemetry({ Lap: 3, LapDistPct: 0.9, SessionTime: 170, FuelLevel: 60.2 }));
+      controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.05, SessionTime: 180, FuelLevel: 60 }));
       expect(handler).not.toHaveBeenCalled();
 
-      // Mid-lap drop — stays on lap 4 so lap-boundary logic doesn't poison the
-      // rolling history; only the crossing logic runs.
-      controller.__tick(telemetry({ Lap: 4, FuelLevel: 4.8 }));
+      // Fuel is suddenly low: the mid-lap sample computes
+      // floor(4.9/1.95 − 0.3 − 0.45) = 1 → "1 lap of fuel left".
+      controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.45, SessionTime: 200, FuelLevel: 5.0 }));
+      controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.55, SessionTime: 210, FuelLevel: 4.9 }));
       expect(handler).toHaveBeenCalledTimes(1);
-      expect((handler.mock.calls[0]![0] as SimEventOf<"fuel.lapsRemaining.crossed">).data.threshold).toBe(5);
+      expect((handler.mock.calls[0]![0] as SimEventOf<"fuel.lapsLeft.crossed">).data.count).toBe(1);
 
-      // Drop further — crosses 3.
-      controller.__tick(telemetry({ Lap: 4, FuelLevel: 2.8 }));
-      expect(handler).toHaveBeenCalledTimes(2);
-      expect((handler.mock.calls[1]![0] as SimEventOf<"fuel.lapsRemaining.crossed">).data.threshold).toBe(3);
+      // Rolling back and forth across the mid-lap mark on the SAME lap never
+      // re-samples.
+      controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.45, SessionTime: 215, FuelLevel: 4.85 }));
+      controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.55, SessionTime: 220, FuelLevel: 4.8 }));
+      expect(handler).toHaveBeenCalledTimes(1);
 
-      // Crossing 5 again does not re-fire.
-      controller.__tick(telemetry({ Lap: 4, FuelLevel: 2.5 }));
+      // Next lap the estimate reads below zero laps → the box-this-lap call
+      // (count 0) — the only remaining descending crossing.
+      controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.9, SessionTime: 255, FuelLevel: 4.6 }));
+      controller.__tick(telemetry({ Lap: 5, LapDistPct: 0.05, SessionTime: 265, FuelLevel: 4.5 }));
+      controller.__tick(telemetry({ Lap: 5, LapDistPct: 0.55, SessionTime: 310, FuelLevel: 4.4 }));
       expect(handler).toHaveBeenCalledTimes(2);
+      expect((handler.mock.calls[1]![0] as SimEventOf<"fuel.lapsLeft.crossed">).data.count).toBe(0);
+
+      // A refuel re-arms the stint: the next mid-lap sample announces again.
+      controller.__tick(telemetry({ Lap: 5, LapDistPct: 0.6, SessionTime: 320, FuelLevel: 40 }));
+      controller.__tick(telemetry({ Lap: 5, LapDistPct: 0.9, SessionTime: 350, FuelLevel: 39.8 }));
+      controller.__tick(telemetry({ Lap: 6, LapDistPct: 0.05, SessionTime: 360, FuelLevel: 39.7 }));
+      controller.__tick(telemetry({ Lap: 6, LapDistPct: 0.55, SessionTime: 405, FuelLevel: 38 }));
+      expect(handler).toHaveBeenCalledTimes(3);
+      expect((handler.mock.calls[2]![0] as SimEventOf<"fuel.lapsLeft.crossed">).data.count).toBe(1);
     });
   });
 

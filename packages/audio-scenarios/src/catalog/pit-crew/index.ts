@@ -17,12 +17,13 @@
  *   - Flag alert scenarios (every transition the translator publishes:
  *     yellow scope-aware, yellow.cleared, green, blue, white, red, black,
  *     checkered with session-type branch, debris, meatball)
+ *   - Laps-of-fuel-left scenarios (counts 10 → 1 plus the box-this-lap call,
+ *     via `fuel.lapsLeft.crossed` — issue #838)
  *
- * Other voice scenarios (welcome, pit-approach, fuel-warning, incident
- * alerts, limiter callouts, tips, drs/p2p toggles) are not currently
- * registered; they'll be added one at a time as their `voice/{voice}/…`
- * content is generated and the corresponding pools and scenarios are
- * reintroduced.
+ * Other voice scenarios (welcome, pit-approach, incident alerts, limiter
+ * callouts, tips, drs/p2p toggles) are not currently registered; they'll be
+ * added one at a time as their `voice/{voice}/…` content is generated and
+ * the corresponding pools and scenarios are reintroduced.
  *
  * `bus` is the event bus instance returned by `initializeEventBus(...)`;
  * passed through to `registerRadarEngine` so the radar engine and the
@@ -52,6 +53,7 @@ import type { Scenario } from "../../dsl.js";
 import { getScenarioEngine, isAudioScenariosInitialized } from "../../interpreter.js";
 import { DAMAGE_ALERTS } from "./damage-alerts.js";
 import { FLAG_ALERTS } from "./flag-alerts.js";
+import { FUEL_LAPS_LEFT_ALERTS } from "./fuel-laps-left.js";
 import { INCIDENT_ALERTS } from "./incidents.js";
 import {
   buildLapTimeScenario,
@@ -572,6 +574,60 @@ const SCENARIO_ID_TO_PIT_BOX_ID: Record<string, PitBoxCalloutId> = {
   "pit-crew.pit-box-pit-now": "count-in",
 };
 
+/**
+ * Stable identifier for each user-toggleable laps-of-fuel-left callout
+ * (issue #838). One id per spoken count — the trailing segment of the
+ * scenario id minus the `pit-crew.fuel-` prefix. `laps-left-box` is the
+ * count-0 "box this lap for fuel" call.
+ */
+export type FuelCalloutId =
+  | "laps-left-10"
+  | "laps-left-9"
+  | "laps-left-8"
+  | "laps-left-7"
+  | "laps-left-6"
+  | "laps-left-5"
+  | "laps-left-4"
+  | "laps-left-3"
+  | "laps-left-2"
+  | "laps-left-1"
+  | "laps-left-box";
+
+/**
+ * Canonical mapping from `FuelCalloutId` to its plugin-global setting key in
+ * `GlobalSettingsSchema`. Plugin entry points use this to read the live
+ * opt-in for each count without duplicating the key strings. Defaults are
+ * NOT uniform (unlike most callout families): 5, 3, 2, 1 and Box ship ON,
+ * the rest OFF — see the schema fields in deck-core.
+ */
+export const FUEL_CALLOUT_SETTING_KEYS: Record<FuelCalloutId, string> = {
+  "laps-left-10": "calloutEnabledFuelLapsLeft10",
+  "laps-left-9": "calloutEnabledFuelLapsLeft9",
+  "laps-left-8": "calloutEnabledFuelLapsLeft8",
+  "laps-left-7": "calloutEnabledFuelLapsLeft7",
+  "laps-left-6": "calloutEnabledFuelLapsLeft6",
+  "laps-left-5": "calloutEnabledFuelLapsLeft5",
+  "laps-left-4": "calloutEnabledFuelLapsLeft4",
+  "laps-left-3": "calloutEnabledFuelLapsLeft3",
+  "laps-left-2": "calloutEnabledFuelLapsLeft2",
+  "laps-left-1": "calloutEnabledFuelLapsLeft1",
+  "laps-left-box": "calloutEnabledFuelLapsLeftBox",
+};
+
+const SCENARIO_ID_TO_FUEL_ID: Record<string, FuelCalloutId> = {
+  "pit-crew.fuel-laps-left-10": "laps-left-10",
+  "pit-crew.fuel-laps-left-9": "laps-left-9",
+  "pit-crew.fuel-laps-left-8": "laps-left-8",
+  "pit-crew.fuel-laps-left-7": "laps-left-7",
+  "pit-crew.fuel-laps-left-6": "laps-left-6",
+  "pit-crew.fuel-laps-left-5": "laps-left-5",
+  "pit-crew.fuel-laps-left-4": "laps-left-4",
+  "pit-crew.fuel-laps-left-3": "laps-left-3",
+  "pit-crew.fuel-laps-left-2": "laps-left-2",
+  "pit-crew.fuel-laps-left-1": "laps-left-1",
+  "pit-crew.fuel-laps-left-box": "laps-left-box",
+};
+
 /** Stable id for each spotter PI opt-in (issue #651). */
 export type SpotterCalloutId = "cars" | "still-there";
 
@@ -825,6 +881,14 @@ export function registerPitCrew(
   // master stays the last per-callout opt-in. Default `() => true` preserves
   // legacy behavior for tests that don't supply a closure.
   getStartLightCalloutEnabled: (id: StartLightCalloutId) => boolean = () => true,
+  // User opt-in for the laps-of-fuel-left callouts (issue #838). One boolean
+  // per spoken count (10 → 1 plus the count-0 box call). Same gate-at-event-
+  // arrival shape as the other callout families: read live so a toggle off
+  // mid-session takes effect on the next crossing without cutting an
+  // in-flight clip. Placed before the master gate so the master stays the
+  // last per-callout opt-in. Default `() => true` preserves legacy behavior
+  // for tests that don't supply a closure.
+  getFuelCalloutEnabled: (id: FuelCalloutId) => boolean = () => true,
   // Master gate for the Race Engineer voice subsystem (issue #515).
   // Plugins wire this to `pitCrewRaceEngineerEnabled === true`. Read live
   // on every event arrival and applied as the OUTERMOST wrapper around
@@ -1006,6 +1070,18 @@ export function registerPitCrew(
       wrapWithMaster(
         wrapCalloutScenario(s, SCENARIO_ID_TO_PIT_BOX_ID, getPitBoxCalloutEnabled, "pit-box callout", logger),
       ),
+    );
+  }
+
+  // Laps-of-fuel-left callouts (issue #838). Eleven per-count scenarios, one
+  // opt-in each via `SCENARIO_ID_TO_FUEL_ID` — the fuel-laps-left pools are
+  // already registered en masse above via `registerPools(engine)`;
+  // `FUEL_LAPS_LEFT_POOL_NAMES` exists for the catalog tests. No
+  // registration-order concern — `fuel.lapsLeft.crossed` has no other
+  // subscribers.
+  for (const s of FUEL_LAPS_LEFT_ALERTS) {
+    engine.defineScenario(
+      wrapWithMaster(wrapCalloutScenario(s, SCENARIO_ID_TO_FUEL_ID, getFuelCalloutEnabled, "fuel callout", logger)),
     );
   }
 

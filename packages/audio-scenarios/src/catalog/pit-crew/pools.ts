@@ -102,6 +102,20 @@ export const POOL_REGISTRY: Readonly<Record<string, PoolSource>> = {
   "pit-window-opened": { group: "pit-window", base: "opened" },
   "pit-window-closed": { group: "pit-window", base: "closed" },
 
+  // Laps-of-fuel-left callout pools (issue #838): one per spoken count
+  // 10 → 1 plus the dedicated count-0 "box this lap for fuel" call.
+  "fuel-laps-left-10": { group: "fuel", base: "laps-left-10" },
+  "fuel-laps-left-9": { group: "fuel", base: "laps-left-9" },
+  "fuel-laps-left-8": { group: "fuel", base: "laps-left-8" },
+  "fuel-laps-left-7": { group: "fuel", base: "laps-left-7" },
+  "fuel-laps-left-6": { group: "fuel", base: "laps-left-6" },
+  "fuel-laps-left-5": { group: "fuel", base: "laps-left-5" },
+  "fuel-laps-left-4": { group: "fuel", base: "laps-left-4" },
+  "fuel-laps-left-3": { group: "fuel", base: "laps-left-3" },
+  "fuel-laps-left-2": { group: "fuel", base: "laps-left-2" },
+  "fuel-laps-left-1": { group: "fuel", base: "laps-left-1" },
+  "fuel-laps-left-box": { group: "fuel", base: "laps-left-box" },
+
   // Damage callout pool (issue #489).
   "damage-repair-needed": { group: "damage", base: "repair-needed" },
 

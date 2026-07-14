@@ -14,6 +14,8 @@ import {
   type DamageCalloutId,
   FLAG_CALLOUT_SETTING_KEYS,
   type FlagCalloutId,
+  FUEL_CALLOUT_SETTING_KEYS,
+  type FuelCalloutId,
   INCIDENT_CALLOUT_SETTING_KEYS,
   type IncidentCalloutId,
   LAP_TIME_CALLOUT_SETTING_KEYS,
@@ -176,6 +178,7 @@ import {
   initializeSimEventsIracing,
   isPitActionsAllowed,
   isRaceFinished,
+  sanitizeFuelCalloutMarginLaps,
 } from "@iracedeck/sim-events-iracing";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -230,7 +233,13 @@ const eventBus = initializeEventBus(adapter.createLogger("EventBus"));
 
 // Translate sdkController ticks → semantic events on the bus. The only
 // package allowed to read `@iracedeck/iracing-sdk` for telemetry.
-initializeSimEventsIracing(eventBus, getController(), adapter.createLogger("SimEventsIracing"));
+// The laps-of-fuel-left margin (issue #838) is injected as a live-read
+// closure over global settings — sanitized so a malformed persisted value
+// can't poison the estimate — keeping sim-events-iracing deck-core-free.
+initializeSimEventsIracing(eventBus, getController(), adapter.createLogger("SimEventsIracing"), {
+  getFuelLapsLeftMarginLaps: () =>
+    sanitizeFuelCalloutMarginLaps((getGlobalSettings() as Record<string, unknown>).fuelCalloutMarginLaps),
+});
 
 // Feed the translator's live per-car race order into the template-context builder
 // so Telemetry Display / Chat / Race Admin driver prefixes report the same
@@ -549,6 +558,13 @@ registerPitCrew(
   // gates so the masters stay the last args.
   (id: StartLightCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[START_LIGHT_CALLOUT_SETTING_KEYS[id]] !== false,
+  // Laps-of-fuel-left callout opt-ins (issue #838). One boolean per spoken
+  // count (10 → 1 plus the box call) with non-uniform schema defaults —
+  // `!== false` reads the parsed cache, so the OFF-by-default counts resolve
+  // through the schema default rather than this fallback. Same live-read
+  // pattern as the other callout families. Placed before the master gates so
+  // the masters stay the last args.
+  (id: FuelCalloutId) => (getGlobalSettings() as Record<string, unknown>)[FUEL_CALLOUT_SETTING_KEYS[id]] !== false,
   // Race Engineer master gate (issue #515).
   () => (getGlobalSettings() as Record<string, unknown>).pitCrewRaceEngineerEnabled === true,
   // Radar master gate (issue #515).
