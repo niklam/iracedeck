@@ -59,6 +59,14 @@ export interface IScenarioEngine {
    * resolved at fire time for the active voice. Voices may carry different
    * variant counts or omit the pool entirely — an empty pool skips the step.
    * No clip list is enumerated in code.
+   *
+   * `(group, base)` is the pool's STABLE IDENTIFIER: renaming a base — in
+   * the registry or on disk — silently changes (or empties) what the pool
+   * resolves to, so treat it as a breaking change for the pool. The
+   * reference-voice typo guard warns at registration; it deliberately never
+   * rejects, because an empty pool is indistinguishable from a legitimate
+   * per-voice omission (and tests register the full catalog against minimal
+   * manifests).
    */
   definePoolFromManifest(name: string, group: string, base: string): void;
   defineVar(name: string, resolver: () => string | null): void;
