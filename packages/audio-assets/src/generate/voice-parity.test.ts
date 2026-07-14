@@ -10,28 +10,28 @@ const CONFIGS_DIR = path.join(PACKAGE_ROOT, "configs");
 
 const DEFAULT_VOICE_ID = "default";
 
+/** Strip the `-NN` variant suffix from an entry name (`blue-01` → `blue`). */
+function stripVariantSuffix(name: string): string {
+  return name.replace(/-\d{2}$/, "");
+}
+
 /**
- * Collect the set of `<group>/<entry-name>` keys for a voice. This is the
- * unit of parity: every voice pack must offer the same set of clips, even
- * if the wording differs between voices.
+ * Collect the set of `<group>/<base>` keys for a voice, where `base` is the
+ * entry name with any `-NN` variant suffix stripped. This is the unit of the
+ * relaxed parity check (issue #664): pools are derived per-voice from the
+ * clips that actually exist, so a voice may carry a different number of
+ * variants of a line, or omit a callout entirely — neither is an error.
  */
-function clipKeys(voice: VoiceConfig): Set<string> {
+function baseKeys(voice: VoiceConfig): Set<string> {
   const keys = new Set<string>();
 
   for (const [groupName, entries] of Object.entries(voice.groups)) {
     for (const entry of entries) {
-      keys.add(`${groupName}/${entry.name}`);
+      keys.add(`${groupName}/${stripVariantSuffix(entry.name)}`);
     }
   }
 
   return keys;
-}
-
-function diff(reference: Set<string>, other: Set<string>): { missing: string[]; extra: string[] } {
-  const missing = [...reference].filter((k) => !other.has(k)).sort();
-  const extra = [...other].filter((k) => !reference.has(k)).sort();
-
-  return { missing, extra };
 }
 
 describe("voice-parity", () => {
@@ -45,23 +45,19 @@ describe("voice-parity", () => {
 
   if (!defaultVoice) return;
 
-  const defaultKeys = clipKeys(defaultVoice);
+  const defaultBases = baseKeys(defaultVoice);
 
+  // Soft typo guard: a base the canonical default voice doesn't know is
+  // referenced by no pool, so it would never play — almost certainly a
+  // misspelling (`blu-01` for `blue-01`). MISSING bases are deliberately
+  // allowed: a voice that omits a callout simply doesn't play it.
   for (const [voiceId, voice] of voiceConfigs) {
     if (voiceId === DEFAULT_VOICE_ID) continue;
 
-    it(`voice "${voiceId}" has the same <group>/<entry> keys as default`, () => {
-      const keys = clipKeys(voice);
-      const { missing, extra } = diff(defaultKeys, keys);
+    it(`voice "${voiceId}" has no <group>/<base> keys unknown to default (typo guard)`, () => {
+      const extra = [...baseKeys(voice)].filter((k) => !defaultBases.has(k)).sort();
 
-      // Build a single message so the test failure shows both gaps at once.
-      const parts: string[] = [];
-
-      if (missing.length > 0) parts.push(`missing in "${voiceId}":\n  ${missing.join("\n  ")}`);
-
-      if (extra.length > 0) parts.push(`extra in "${voiceId}" (not in default):\n  ${extra.join("\n  ")}`);
-
-      expect(parts, parts.join("\n\n")).toEqual([]);
+      expect(extra, `extra in "${voiceId}" (not in default — probable typo):\n  ${extra.join("\n  ")}`).toEqual([]);
     });
   }
 });

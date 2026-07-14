@@ -240,6 +240,193 @@ describe("pools", () => {
   });
 });
 
+// ─── Manifest-derived pools (issue #664) ────────────────────────────────────
+
+describe("manifest-derived pools (definePoolFromManifest)", () => {
+  /**
+   * Voiced manifest: `default` is the reference voice with two `blue`
+   * variants (plus a near-miss `blue-cleared` base that must not leak into
+   * the `blue` pool); `luca` carries an extra third variant; `titan` omits
+   * the blue callout entirely.
+   */
+  const voicedManifest: AudioAssetsManifest = {
+    clips: [
+      "sfx/IRD-tick-open.mp3",
+      "sfx/IRD-tick-close.mp3",
+      "sfx/IRD-ambient-pit.mp3",
+      "voice/default/flags/blue-01.mp3",
+      "voice/default/flags/blue-02.mp3",
+      "voice/default/flags/blue-cleared-01.mp3",
+      "voice/luca/flags/blue-01.mp3",
+      "voice/luca/flags/blue-02.mp3",
+      "voice/luca/flags/blue-03.mp3",
+      "voice/titan/flags/red-01.mp3",
+    ],
+    ambientLoop: "sfx/IRD-ambient-pit.mp3",
+    ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
+  };
+
+  let activeVoice: string | null;
+
+  beforeEach(() => {
+    _resetAudioScenarios();
+    activeVoice = "default";
+    bus = createMockBus();
+    audio = createFakeAudio();
+    engine = initializeAudioScenarios(bus, audio, voicedManifest, mockLogger as never, () => activeVoice);
+  });
+
+  function defineBluePoolScenario(): void {
+    engine.definePoolFromManifest("flag-blue", "flags", "blue");
+    engine.defineScenario({
+      id: "test.blue",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      sequence: ["pool:flag-blue"],
+    });
+  }
+
+  function voicePaths(): string[] {
+    return audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
+  }
+
+  it("resolves pool members from the manifest for the active voice at fire time", () => {
+    const stub = vi.spyOn(Math, "random").mockReturnValue(0);
+    defineBluePoolScenario();
+
+    engine.fire("test.blue");
+    flushVoiceAndSfx(audio);
+
+    activeVoice = "luca";
+    engine.fire("test.blue");
+    flushVoiceAndSfx(audio);
+
+    expect(voicePaths()[0]).toBe("voice/default/flags/blue-01.mp3");
+    expect(voicePaths()[1]).toMatch(/^voice\/luca\/flags\/blue-0\d\.mp3$/);
+
+    stub.mockRestore();
+  });
+
+  it("draws only from the active voice's own variants (counts may differ per voice)", () => {
+    const stub = vi.spyOn(Math, "random").mockReturnValue(0.99);
+    defineBluePoolScenario();
+
+    activeVoice = "luca";
+    engine.fire("test.blue");
+    flushVoiceAndSfx(audio);
+
+    activeVoice = "default";
+    engine.fire("test.blue");
+    flushVoiceAndSfx(audio);
+
+    // luca has three variants (0.99 → index 2); default has two (0.99 → index 1).
+    expect(voicePaths()).toEqual(["voice/luca/flags/blue-03.mp3", "voice/default/flags/blue-02.mp3"]);
+
+    stub.mockRestore();
+  });
+
+  it("matches only exact <base>-NN members, not longer bases sharing the prefix", () => {
+    // If the scan treated `base` as a prefix, sorted members would be
+    // [blue-01, blue-02, blue-cleared-01] and 0.9 would pick blue-cleared-01.
+    const stub = vi.spyOn(Math, "random").mockReturnValue(0.9);
+    defineBluePoolScenario();
+
+    engine.fire("test.blue");
+    flushVoiceAndSfx(audio);
+
+    expect(voicePaths()).toEqual(["voice/default/flags/blue-02.mp3"]);
+
+    stub.mockRestore();
+  });
+
+  it("resets the no-repeat tracker when the active voice changes", () => {
+    const stub = vi.spyOn(Math, "random").mockReturnValue(0);
+    defineBluePoolScenario();
+
+    engine.fire("test.blue");
+    flushVoiceAndSfx(audio);
+
+    // Without the reset, the stale lastIndex (0) would bump the luca pick to
+    // blue-02; with it, index 0 is a fresh pick.
+    activeVoice = "luca";
+    engine.fire("test.blue");
+    flushVoiceAndSfx(audio);
+
+    expect(voicePaths()).toEqual(["voice/default/flags/blue-01.mp3", "voice/luca/flags/blue-01.mp3"]);
+
+    stub.mockRestore();
+  });
+
+  it("skips the pool step when the active voice has no clips for it (debug, not error)", () => {
+    engine.definePoolFromManifest("flag-blue", "flags", "blue");
+    engine.defineScenario({
+      id: "test.blue-then-tick",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      sequence: ["pool:flag-blue", "sfx/IRD-tick-close.mp3"],
+    });
+
+    activeVoice = "titan";
+    engine.fire("test.blue-then-tick");
+    flushVoiceAndSfx(audio);
+
+    expect(voicePaths()).toEqual([]);
+    expect(audio._played.map((p) => p.path)).toEqual(["sfx/IRD-tick-close.mp3"]);
+    expect(mockLogger.error).not.toHaveBeenCalled();
+  });
+
+  it("skips the pool step when no voice is selected", () => {
+    defineBluePoolScenario();
+
+    activeVoice = null;
+    engine.fire("test.blue");
+    flushVoiceAndSfx(audio);
+
+    expect(voicePaths()).toEqual([]);
+    expect(mockLogger.error).not.toHaveBeenCalled();
+  });
+
+  it("warns at define time when the reference voice has no clips for the base (typo guard), without disabling", () => {
+    engine.definePoolFromManifest("flag-purple", "flags", "purple");
+
+    expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining("flag-purple"));
+
+    // The pool is still registered — a scenario referencing it validates clean.
+    engine.defineScenario({
+      id: "test.purple",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      sequence: ["pool:flag-purple"],
+    });
+
+    expect(mockLogger.error).not.toHaveBeenCalled();
+  });
+
+  it("registers a {voice}-templated static pool when the reference voice has the clip, even if another voice lacks it", () => {
+    engine.definePool("static-blue", ["voice/{voice}/flags/blue-01.mp3"]);
+
+    expect(mockLogger.error).not.toHaveBeenCalled();
+
+    engine.defineScenario({
+      id: "test.static-blue",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      sequence: ["pool:static-blue"],
+    });
+    engine.fire("test.static-blue");
+    flushVoiceAndSfx(audio);
+
+    expect(voicePaths()).toEqual(["voice/default/flags/blue-01.mp3"]);
+  });
+
+  it("warns (not rejects) when a {voice}-templated static-pool clip is missing for the reference voice", () => {
+    engine.definePool("static-purple", ["voice/{voice}/flags/purple-01.mp3"]);
+
+    expect(mockLogger.error).not.toHaveBeenCalled();
+    expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining("static-purple"));
+  });
+});
+
 // ─── Variables ──────────────────────────────────────────────────────────────
 
 describe("variables", () => {

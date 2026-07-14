@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
-import { POOLS } from "./pools.js";
+import { ENUMERATED_POOLS, POOL_REGISTRY } from "./pools.js";
 import { RADIO_CLOSE, RADIO_OPEN } from "./radio-frame.js";
 import {
   FAST_REPAIR_TOGGLE_SCENARIOS,
@@ -178,10 +178,13 @@ beforeEach(() => {
   audio = createFakeAudio();
   engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => activeVoice);
 
-  engine.definePool("pit-action-acknowledgment", [...POOLS["pit-action-acknowledgment"]]);
-  engine.definePool("pit-action-fuel-on", [...POOLS["pit-action-fuel-on"]]);
-  engine.definePool("pit-action-fuel-off", [...POOLS["pit-action-fuel-off"]]);
-  engine.definePool("pit-action-tires-off", [...POOLS["pit-action-tires-off"]]);
+  engine.definePool("pit-action-acknowledgment", [...ENUMERATED_POOLS["pit-action-acknowledgment"]]);
+
+  for (const name of ["pit-action-fuel-on", "pit-action-fuel-off", "pit-action-tires-off"]) {
+    const { group, base } = POOL_REGISTRY[name];
+    engine.definePoolFromManifest(name, group, base);
+  }
+
   engine.defineScenario(RADIO_OPEN);
   engine.defineScenario(RADIO_CLOSE);
 

@@ -40,7 +40,7 @@ import { getSessionType } from "@iracedeck/sim-events-iracing";
 
 import type { Scenario, Step } from "../../dsl.js";
 import { WEIGHT } from "../../dsl.js";
-import { POOLS } from "./pools.js";
+import { POOL_REGISTRY } from "./pools.js";
 import { isRaceSession } from "./race-start.js";
 
 function startLightSequence(steps: Step[]): Step[] {
@@ -131,6 +131,6 @@ export const START_LIGHT_SCENARIO_IDS: readonly string[] = START_LIGHT_ALERTS.ma
  * prefix, so adding or renaming a pool there automatically flows through
  * `registerPitCrew()` without a parallel list to keep in sync.
  */
-export const START_LIGHT_POOL_NAMES: readonly string[] = Object.keys(POOLS).filter((name) =>
+export const START_LIGHT_POOL_NAMES: readonly string[] = Object.keys(POOL_REGISTRY).filter((name) =>
   name.startsWith("start-light-"),
 );

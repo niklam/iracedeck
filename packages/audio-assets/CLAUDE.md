@@ -31,9 +31,9 @@ Consumer surface (`package.json` exports): `./build` (`processAndCopyAudioAssets
 
 `sfx/` holds the non-voice assets: the walkie-talkie tick-open/close pair, the ambient pit loop, and the radar proximity tones (`sfx/radar/`). They're consumed by `@iracedeck/audio-scenarios` — the radio frame (`radio-frame.ts`), the PI background-volume test (`background-test.ts`), and the radar engine (`radar-engine.ts`). Deliberately **not** radio-filtered at build time: everything outside `voice/` is copied into the plugin output unchanged (see `src/presets.mjs`), so the ticks and tones stay clean.
 
-## Key parity across voices
+## Voices may diverge — the relaxed parity check (issue #664)
 
-The test `src/generate/voice-parity.test.ts` enforces that every voice config defines the **same set of `<group>/<entry-name>` keys** as `default.voice.json`. The wording can vary per voice (different engineer personalities), but the *set of clips offered* must match — otherwise pools and scenarios resolve inconsistently for one voice and not another. CI fails with a diff (missing / extra) on any mismatch.
+Pools are derived per-voice from the clips that actually exist (see the `@iracedeck/audio-scenarios` `POOL_REGISTRY`), so voices do **not** need identical clip sets: a voice may record fewer or more `-NN` variants of a line, or omit a callout entirely — that voice simply doesn't play it. The test `src/generate/voice-parity.test.ts` keeps only a **soft typo guard**: a non-default voice must not define a `<group>/<base>` key (entry name with the `-NN` suffix stripped) that `default.voice.json` doesn't know — such a base is referenced by nothing and would never play, so it's almost certainly a misspelling. Missing keys are allowed; wording can vary per voice (different engineer personalities).
 
 ## Manifests
 
@@ -67,7 +67,7 @@ See `README.md` for the full CLI flag reference.
 
 The most common case — a new callout in an existing family (e.g. another flag):
 
-1. Add the entry to the group in `configs/default.voice.json`, and the same `<group>/<entry-name>` key to every other voice config (the parity test enforces it; wording may differ per voice). Omit `seed` (or set `"seed": 1`) — never an arbitrary value.
+1. Add the entry to the group in `configs/default.voice.json`. Other voice configs *may* add the same `<group>/<entry-name>` key (wording may differ per voice) but don't have to — a voice without the clip just skips that callout (issue #664). Omit `seed` (or set `"seed": 1`) — never an arbitrary value.
 2. Preview: `pnpm --filter @iracedeck/audio-assets generate:dry-run --group <group>` — it must report exactly the new entries as "WOULD GENERATE" and everything else as cache hits.
 3. Generate scoped: `pnpm --filter @iracedeck/audio-assets generate --group <group>`.
 4. Rebuild the runtime manifest: `pnpm --filter @iracedeck/audio-assets generate:manifest`.
@@ -75,23 +75,23 @@ The most common case — a new callout in an existing family (e.g. another flag)
 
 ## Adding a new group
 
-1. Add the new top-level key under `groups` in `configs/default.voice.json` (the canonical voice; the parity test enforces that every other voice gets the same key set).
+1. Add the new top-level key under `groups` in `configs/default.voice.json` (the canonical voice; other voices may adopt the group later — parity is not required, issue #664).
 2. Author the entries (text, no `seed` — or `"seed": 1` — by default, optional `previous_request_ids`).
 3. Generate (scoped by `--group`), after a dry-run preview.
 4. Rebuild the runtime manifest.
-5. Reference the new clips from a pool in `@iracedeck/audio-scenarios` (`packages/audio-scenarios/src/catalog/pit-crew/pools.ts`).
+5. Register the pool in `@iracedeck/audio-scenarios` — a `POOL_REGISTRY` entry mapping the pool name to `(group, base)` in `packages/audio-scenarios/src/catalog/pit-crew/pools.ts`.
 
 ## Adding a new voice
 
-1. Create `configs/<voice-id>.voice.json` with its own `id` (ElevenLabs voice id), `label`, `model_id`, `voice_settings`, and `groups`. The groups must contain the same `<group>/<entry-name>` set as `default.voice.json` — the parity test enforces this.
+1. Create `configs/<voice-id>.voice.json` with its own `id` (ElevenLabs voice id), `label`, `model_id`, `voice_settings`, and `groups`. The groups do **not** need to match `default.voice.json` — a partial voice ships fine and simply skips the callouts it lacks (issue #664). The only constraint is the typo guard: don't invent `<group>/<base>` keys that `default.voice.json` doesn't have.
 2. Run `pnpm --filter @iracedeck/audio-assets generate --voice <voice-id>` to render its clips into `voice/<voice-id>/...`.
 3. Rebuild the runtime manifest. The runtime auto-discovers voices from the manifest's `voice/<id>/...` paths, so the new voice appears in the PI dropdown automatically.
 
 ## Conventions
 
 - One group per callout family (flags, pit-actions, pit-status, track-conditions, …). Mixing families in one group makes the cost-scoping flag `--group` less useful.
-- File names are stable identifiers — pools reference them by exact path. Renaming an entry's `name` is a breaking change for any pool that references it.
-- Variants use a `-NN` suffix (`flag-blue-01.mp3`, `flag-blue-02.mp3`). Playback picks from the pool uniform-random with a no-immediate-repeat guard (not in array order).
+- Variants use a `-NN` suffix (`blue-01.mp3`, `blue-02.mp3`). A pool is *all clips sharing a base name* — `voice/<voice>/<group>/<base>-NN.mp3` — derived per-voice from the runtime manifest (issue #664), so **adding or removing a variant is just adding or removing an entry + clip**: no pool edit, no code change. Playback picks uniform-random with a no-immediate-repeat guard (not in numeric order).
+- The `<group>/<base>` pair is the stable identifier — the audio-scenarios `POOL_REGISTRY` references pools by it, so renaming a base is a breaking change for the pool that references it. (The acknowledgment clips are the exception until #837: they don't follow `-NN` yet and are referenced by exact path.)
 
 ## Known re-render triggers
 

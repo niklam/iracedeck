@@ -11,15 +11,15 @@ below cover the audio-scenarios-only mechanics.
 ## Engine modules (`src/`)
 
 - `dsl.ts` — the `Scenario` / step types, the `WEIGHT` bands, and step-shorthand resolution.
-- `interpreter.ts` — the scenario engine: subscribes scenarios to the bus, expands sequences at fire time (`pickFromPool` with per-pool no-immediate-repeat, `{voice}` substitution, include/var/conditional resolution), and runs the weight/interrupt/queueable scheduler with per-bus focus floors and the single pending slot.
-- `validation.ts` — load-time scenario validation on `defineScenario` (clip/pool/var/include existence per voice, include-cycle detection, scheduling-metadata checks — e.g. `resumable` requires `queueable`).
-- `manifest.ts` — deliberate leaf module breaking the interpreter ↔ validation circular import; defines the `AudioAssetsManifest` shape (`{ clips, ambientLoop, ticks }`) plus the voice / driver-name scanners.
+- `interpreter.ts` — the scenario engine: subscribes scenarios to the bus, expands sequences at fire time (`pickFromPool` with per-pool no-immediate-repeat, `{voice}` substitution, include/var/conditional resolution), and runs the weight/interrupt/queueable scheduler with per-bus focus floors and the single pending slot. Pools register either as manifest-derived (`definePoolFromManifest(name, group, base)` — members are every `voice/<voice>/<group>/<base>-NN.mp3` in the manifest, resolved per active voice at fire time; issue #664) or as explicit clip lists (`definePool`).
+- `validation.ts` — load-time scenario validation on `defineScenario` (clip/pool/var/include existence, include-cycle detection, scheduling-metadata checks — e.g. `resumable` requires `queueable`). Errors disable the scenario; `{voice}`-templated paths are checked against the **reference voice** only (`referenceVoice()` — `default` when present) and a miss just **warns**, since per-voice clip sets may legitimately diverge (issue #664).
+- `manifest.ts` — deliberate leaf module breaking the interpreter ↔ validation circular import; defines the `AudioAssetsManifest` shape (`{ clips, ambientLoop, ticks }`) plus the voice / driver-name scanners and `referenceVoice()`.
 
 ## Catalog layout
 
 `src/catalog/pit-crew/` — one file per scenario family, plus wiring, shared helpers, two imperative engines, and three non-family singles (tests, where present, are sibling `*.test.ts` files — not every family has one).
 
-- **Wiring & shared:** `index.ts` (id types, setting-key maps, scenario-id maps, `registerPitCrew()`), `pools.ts` (every pool name → clip paths), `radio-frame.ts` (the shared `@pit-crew.radio-open` / `@pit-crew.radio-close` include scenarios).
+- **Wiring & shared:** `index.ts` (id types, setting-key maps, scenario-id maps, `registerPitCrew()`), `pools.ts` (`POOL_REGISTRY`: pool name → manifest `(group, base)` source, plus the enumerated acknowledgment pools and `registerPools()`), `radio-frame.ts` (the shared `@pit-crew.radio-open` / `@pit-crew.radio-close` include scenarios).
 - **Flags & race flow:** `flag-alerts.ts`, `start-lights.ts`, `rolling-start.ts`, `session-start.ts`, `race-start.ts`, `race-status.ts`, `race-end.ts`, `qualifying-invalidation.ts`.
 - **Pit:** `pit-approach.ts`, `pit-box.ts`, `pit-exit.ts`, `pit-limiter.ts`, `pit-status.ts`, `pit-window.ts`, `readback.ts`, `service-reminder.ts`, `stall-departure.ts`, `toggle-confirmations.ts`.
 - **Position & pace:** `position.ts`, `overtake.ts`, `lap-time.ts` — plus the shared helpers `position-readout.ts` (the cross-trigger "We're currently P[n]" readout + cooldown), `position-range.ts`, and `overtake-gate.ts` (leaf modules, not families).
@@ -45,18 +45,32 @@ Per-family issue history lives in `.claude/rules/race-engineer-callout-examples.
 
 ## Pools
 
-Defined once in `pools.ts` as `Record<string, readonly string[]>`. Scenarios
-reference them by name — `"pool:<name>"` in a sequence step, or `{ pool: "<name>" }`
-in a step object.
+Pools are **config-driven** (issue #664): a pool is *all clips sharing a base
+name* — `voice/<voice>/<group>/<base>-NN.mp3` — derived per-voice from the
+runtime audio-asset manifest. `POOL_REGISTRY` in `pools.ts` maps each logical
+pool name to its `(group, base)` source and carries **no clip lists and no
+counts**; adding or removing a variant (or bringing up a partial voice) is a
+clip-file change in `@iracedeck/audio-assets` with no code edit. Scenarios
+reference pools by name — `"pool:<name>"` in a sequence step, or
+`{ pool: "<name>" }` in a step object — exactly as before.
 
-- Single-element pools resolve deterministically.
-- Multi-element pools are **sampled uniform-random** with a per-pool
-  no-immediate-repeat guard (`pickFromPool`), shared across every scenario
-  that draws from the pool. So a callout family that reuses a pool (e.g., the
-  acknowledgment pool used by every pit-action confirmation) never plays the
-  same clip back-to-back across the whole family.
-- Voice substitution: `{voice}` in a path is replaced at playback time with
-  the active Race Engineer voice setting. Always use `voice/{voice}/…` paths.
+- Members resolve **at fire time for the active voice**. Voices may carry
+  different variant counts or omit a pool entirely — an empty pool skips its
+  step (debug log, not an error). Until the whole-callout skip rule lands
+  (#835), the rest of the sequence still plays.
+- Single-member pools resolve deterministically; multi-member pools are
+  **sampled uniform-random** with a per-pool no-immediate-repeat guard
+  (`pickFromPool`), shared across every scenario that draws from the pool.
+  The tracker resets when the active voice changes, since variant counts
+  differ across voices.
+- Typo guard: a registry entry whose `(group, base)` matches no clip for the
+  **reference voice** (`default`) warns at registration without disabling
+  anything.
+- The two acknowledgment pools (`acknowledgment`, `pit-action-acknowledgment`)
+  are still explicit clip lists in `ENUMERATED_POOLS` — their curated clips
+  don't follow `<base>-NN` yet. They move into the registry with the rename
+  migration (#837). For these `{voice}` paths, substitution happens at
+  playback time from the active Race Engineer voice setting.
 
 ## Scenarios
 
@@ -105,7 +119,7 @@ Both engines reuse the existing `radar.changed` bus event (no new event, no tran
 Adding one more callout to a family that already exists (e.g. another flag colour, or a paired `*-cleared`) needs **no `registerPitCrew` signature change and no plugin change** — the per-family `get<Family>CalloutEnabled` closure is generic over the family's id type, so a new union member routes through it automatically:
 
 1. Add the scenario to the family file and append it to the `<FAMILY>_ALERTS` array.
-2. Add its pool to `pools.ts` (clip path `voice/{voice}/<group>/<name>.mp3` — the clip itself is authored/generated in `@iracedeck/audio-assets`).
+2. Add its pool to `POOL_REGISTRY` in `pools.ts` — one line mapping the pool name to its `(group, base)`; the clips themselves (`voice/<voice>/<group>/<base>-NN.mp3`) are authored/generated in `@iracedeck/audio-assets`. Adding a *variant* of an existing callout needs no `pools.ts` change at all.
 3. In `index.ts`, extend three places: the `<Family>CalloutId` union, `<FAMILY>_CALLOUT_SETTING_KEYS` (key: `callout<Polarity><Family><Subject>`), and `SCENARIO_ID_TO_<FAMILY>_ID`.
 4. Cross-package companions: the Zod field in `deck-core/src/global-settings.ts` (default `true`), the PI checkbox row in `pit-crew.ejs`, BOTH exhaustive literals in `deck-core/src/simhub-service.test.ts`, and this package's test fixtures (`<family>.test.ts` + `register-pit-crew.test.ts` — clip-name lists, id lists, fire matrices).
 5. If the triggering bus event is new, also add the `scenario-harness` event template (`event-names.ts`, enforced by a compile-time completeness check) and a shortcut button (`scenario-shortcuts.ts`).
@@ -116,7 +130,7 @@ This is the consumer-side checklist; see the rule
 (`.claude/rules/race-engineer-callouts.md`) for the full cross-package flow.
 
 1. New file under `src/catalog/pit-crew/<family>.ts` — scenarios, pool names, scenario-id list.
-2. Add the pool entries to `pools.ts`.
+2. Add the family's `POOL_REGISTRY` entries to `pools.ts` (pool name → `(group, base)`).
 3. In `index.ts`:
    - Add `<Family>CalloutId` (type union of subject ids).
    - Add `<FAMILY>_CALLOUT_SETTING_KEYS: Record<<Family>CalloutId, string>` — exported so plugins can read it.
@@ -127,7 +141,7 @@ This is the consumer-side checklist; see the rule
 ## Conventions
 
 - **Scenario id:** `pit-crew.<family>-<subject>`. The translator does NOT see this id; it's the audio-side convention. The compile-time completeness check in `<FAMILY>_SCENARIO_IDS` catches typos.
-- **Pool name:** `<family>-<subject>`. Mirrors the scenario naming so a grep on the family prefix finds both halves.
+- **Pool name:** `<family>-<subject>`. Mirrors the scenario naming so a grep on the family prefix finds both halves. The name does **not** have to equal the manifest `<group>/<base>` (`flag-blue` → `flags`/`blue`; `start-light-ready` → `start-lights`/`start-ready`) — `POOL_REGISTRY` carries the mapping.
 - **Family identifier (`family:` field):** matches the file/scenario prefix without the `pit-crew.` namespace. So `flag-yellow-local` has `family: "flag"`, `track-conditions-worsening-mostly-dry` has `family: "track-conditions"`.
 
 ## Testing

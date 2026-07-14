@@ -28,7 +28,7 @@ import { getSessionType } from "@iracedeck/sim-events-iracing";
 
 import type { Scenario } from "../../dsl.js";
 import { WEIGHT } from "../../dsl.js";
-import { POOLS } from "./pools.js";
+import { POOL_REGISTRY } from "./pools.js";
 import { isRaceSession } from "./race-start.js";
 
 // Rolling-start callouts are a race-only concept spoken to a driver in the car.
@@ -61,6 +61,6 @@ export const ROLLING_START_SCENARIO_IDS: readonly string[] = ROLLING_START_ALERT
  * prefix, so adding or renaming a pool there automatically flows through
  * `registerPitCrew()` without a parallel list to keep in sync.
  */
-export const ROLLING_START_POOL_NAMES: readonly string[] = Object.keys(POOLS).filter((name) =>
+export const ROLLING_START_POOL_NAMES: readonly string[] = Object.keys(POOL_REGISTRY).filter((name) =>
   name.startsWith("rolling-start-"),
 );

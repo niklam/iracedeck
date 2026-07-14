@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { type AudioAssetsManifest, manifestVoices, scanDriverNames, scanRaceEngineerVoices } from "./manifest.js";
+import {
+  type AudioAssetsManifest,
+  manifestVoices,
+  referenceVoice,
+  scanDriverNames,
+  scanRaceEngineerVoices,
+} from "./manifest.js";
 
 const manifest: AudioAssetsManifest = {
   clips: [
@@ -34,6 +40,24 @@ describe("scanRaceEngineerVoices", () => {
 
   it("returns an empty array when no voice clips are present", () => {
     expect(scanRaceEngineerVoices({ ...manifest, clips: [] })).toEqual([]);
+  });
+});
+
+describe("referenceVoice", () => {
+  it("prefers the canonical 'default' voice when present", () => {
+    const m: AudioAssetsManifest = {
+      ...manifest,
+      clips: ["voice/luca/welcome.mp3", "voice/default/welcome.mp3", "voice/titan/welcome.mp3"],
+    };
+    expect(referenceVoice(m)).toBe("default");
+  });
+
+  it("falls back to the first sorted voice when 'default' is absent", () => {
+    expect(referenceVoice(manifest)).toBe("luca");
+  });
+
+  it("returns null when the manifest has no voices", () => {
+    expect(referenceVoice({ ...manifest, clips: ["sfx/IRD-tick-open.mp3"] })).toBeNull();
   });
 });
 

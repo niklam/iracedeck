@@ -1,19 +1,172 @@
 /**
- * Pool definitions for the pit-crew scenario catalog.
+ * Pool registry for the pit-crew scenario catalog (issue #664).
  *
- * Each pool name maps to a list of clip paths relative to the
- * `@iracedeck/audio-assets` package root. Pools are registered with the
- * scenario engine at catalog load time; scenarios then reference them as
- * `"pool:<name>"` and `{ pool: "<name>" }`.
+ * Pools are config-driven: a pool is *all clips sharing a base name*
+ * (`voice/<voice>/<group>/<base>-NN.mp3`), derived per-voice from the
+ * runtime audio-asset manifest. `POOL_REGISTRY` maps each logical pool name
+ * to its `(group, base)` source — it carries **no clip lists and no
+ * counts**. Adding or removing a variant (or an entire voice) is a
+ * clip-file change in `@iracedeck/audio-assets`; this file only changes
+ * when a *new callout* (a new base) is introduced.
  *
- * Selection is RANDOM — every pick is a uniform-random clip from the pool
- * (`Math.random`), never a fixed order. The only constraint is no immediate
- * repeat: the same clip is never played twice in a row. That "last index"
- * tracker is shared per-pool, so the no-repeat guard holds even across two
- * scenarios that draw from the same pool.
+ * Registered with the scenario engine at catalog load time via
+ * `engine.definePoolFromManifest(name, group, base)`; scenarios reference
+ * pools as `"pool:<name>"` and `{ pool: "<name>" }` exactly as before.
+ *
+ * Selection is RANDOM — every pick is a uniform-random clip from the active
+ * voice's members (`Math.random`), never a fixed order. The only constraint
+ * is no immediate repeat: the same clip is never played twice in a row.
+ * That "last index" tracker is shared per-pool (and reset when the active
+ * voice changes, since variant counts differ across voices), so the
+ * no-repeat guard holds even across two scenarios drawing from one pool.
+ * Voices may carry different variant counts or omit a pool entirely — an
+ * empty pool skips its step at fire time.
  */
 
-export const POOLS: Readonly<Record<string, readonly string[]>> = {
+/** Where a pool's members live in the manifest: `voice/<voice>/<group>/<base>-NN.mp3`. */
+export type PoolSource = { group: string; base: string };
+
+export const POOL_REGISTRY: Readonly<Record<string, PoolSource>> = {
+  // Pit-action callouts. One pool per action; `pit-action-acknowledgment`
+  // stays enumerated below until the acknowledgment rename migration (#837).
+  "pit-action-fuel-on": { group: "pit-actions", base: "fuel-on" },
+  "pit-action-fuel-off": { group: "pit-actions", base: "fuel-off" },
+  "pit-action-tires-off": { group: "pit-actions", base: "tires-off" },
+
+  // Flag callout pools. Every flag scenario draws from a pool — even the
+  // single-clip flags. Green, white and checkered branch on getSessionType()
+  // at fire time so each session type gets its own pool. Auto-picked by
+  // `FLAG_POOL_NAMES` (the `flag-` prefix).
+  "flag-yellow-local": { group: "flags", base: "yellow-local" },
+  "flag-yellow-full": { group: "flags", base: "yellow-full" },
+  "flag-yellow-cleared": { group: "flags", base: "yellow-cleared" },
+  "flag-blue": { group: "flags", base: "blue" },
+  "flag-red": { group: "flags", base: "red" },
+  "flag-black": { group: "flags", base: "black" },
+  "flag-debris": { group: "flags", base: "debris" },
+  "flag-meatball": { group: "flags", base: "meatball" },
+  "flag-green-practice": { group: "flags", base: "green-practice" },
+  "flag-green-qualifying": { group: "flags", base: "green-qualifying" },
+  "flag-green-race": { group: "flags", base: "green-race" },
+  "flag-white-practice": { group: "flags", base: "white-practice" },
+  "flag-white-qualifying": { group: "flags", base: "white-qualifying" },
+  "flag-white-race": { group: "flags", base: "white-race" },
+  // Stage 2 of the two-stage white (issue #772) — the player crosses S/F
+  // under the white flag and starts THEIR last lap.
+  "flag-white-last-lap": { group: "flags", base: "white-last-lap" },
+  "flag-checkered-practice": { group: "flags", base: "checkered-practice" },
+  "flag-checkered-qualifying": { group: "flags", base: "checkered-qualifying" },
+  "flag-checkered-race": { group: "flags", base: "checkered-race" },
+  // Missing-session-flag callouts (issue #480): driver-black splits,
+  // race-progression flags, and the caution-waving variants (#657).
+  "flag-disqualify": { group: "flags", base: "disqualify" },
+  "flag-furled": { group: "flags", base: "furled" },
+  "flag-furled-cleared": { group: "flags", base: "furled-cleared" },
+  "flag-dq-scoring-invalid": { group: "flags", base: "dq-scoring-invalid" },
+  "flag-crossed": { group: "flags", base: "crossed" },
+  "flag-one-pace-lap-to-go": { group: "flags", base: "one-pace-lap-to-go" },
+  "flag-green-held": { group: "flags", base: "green-held" },
+  "flag-ten-to-go": { group: "flags", base: "ten-to-go" },
+  "flag-five-to-go": { group: "flags", base: "five-to-go" },
+  "flag-yellow-waving": { group: "flags", base: "yellow-waving" },
+  "flag-caution-waving": { group: "flags", base: "caution-waving" },
+
+  // Start-light family pools (issues #480 / #673): two gantry lines plus
+  // the four numeric countdown marks. Auto-picked by the `start-light-`
+  // prefix (see `start-lights.ts` `START_LIGHT_POOL_NAMES`).
+  "start-light-ready": { group: "start-lights", base: "start-ready" },
+  "start-light-go": { group: "start-lights", base: "start-go" },
+  "start-light-countdown-90": { group: "start-lights", base: "countdown-90" },
+  "start-light-countdown-60": { group: "start-lights", base: "countdown-60" },
+  "start-light-countdown-30": { group: "start-lights", base: "countdown-30" },
+  "start-light-countdown-10": { group: "start-lights", base: "countdown-10" },
+
+  // Rolling-start family pool (issue #660): the "pace car is moving" call
+  // at the start of a rolling-start formation lap.
+  "rolling-start-pace-car": { group: "rolling-start", base: "pace-car-moving" },
+
+  // Pit-window callout pools (issue #655): pit road opened / closed for the
+  // player.
+  "pit-window-opened": { group: "pit-window", base: "opened" },
+  "pit-window-closed": { group: "pit-window", base: "closed" },
+
+  // Damage callout pool (issue #489).
+  "damage-repair-needed": { group: "damage", base: "repair-needed" },
+
+  // Pit-service status callout pools (issue #479). One pool per non-`None`
+  // PitSvStatus target. Closing transitions (`* → None`) are suppressed by
+  // the sim translator, so there's no `pit-status-none` pool.
+  "pit-status-in-progress": { group: "pit-status", base: "in-progress" },
+  "pit-status-complete": { group: "pit-status", base: "complete" },
+  "pit-status-too-far-left": { group: "pit-status", base: "too-far-left" },
+  "pit-status-too-far-right": { group: "pit-status", base: "too-far-right" },
+  "pit-status-too-far-forward": { group: "pit-status", base: "too-far-forward" },
+  "pit-status-too-far-back": { group: "pit-status", base: "too-far-back" },
+  "pit-status-bad-angle": { group: "pit-status", base: "bad-angle" },
+  "pit-status-cant-fix-that": { group: "pit-status", base: "cant-fix-that" },
+
+  // Incident callout pools (issue #530). One pool per IncidentType
+  // discriminator. Collision lines mention the deterministic penalty point
+  // count inline (CollisionWithWorld is always 2x, CollisionWithCar is
+  // always 4x per iRacing's `irsdk_IncidentFlags` enum), so no separate
+  // penalty follow-on pool is needed.
+  "incident-off-track": { group: "incidents", base: "off-track" },
+  "incident-out-of-control": { group: "incidents", base: "out-of-control" },
+  "incident-contact-world": { group: "incidents", base: "contact-world" },
+  "incident-collision-world": { group: "incidents", base: "collision-world" },
+  "incident-contact-car": { group: "incidents", base: "contact-car" },
+  "incident-collision-car": { group: "incidents", base: "collision-car" },
+
+  // Track-conditions callout pools (issue #526). One pool per
+  // (direction, target-state) combination — six worsening + six drying.
+  "track-conditions-worsening-mostly-dry": { group: "track-conditions", base: "worsening-mostly-dry" },
+  "track-conditions-worsening-very-lightly-wet": { group: "track-conditions", base: "worsening-very-lightly-wet" },
+  "track-conditions-worsening-lightly-wet": { group: "track-conditions", base: "worsening-lightly-wet" },
+  "track-conditions-worsening-moderately-wet": { group: "track-conditions", base: "worsening-moderately-wet" },
+  "track-conditions-worsening-very-wet": { group: "track-conditions", base: "worsening-very-wet" },
+  "track-conditions-worsening-extremely-wet": { group: "track-conditions", base: "worsening-extremely-wet" },
+  "track-conditions-drying-dry": { group: "track-conditions", base: "drying-dry" },
+  "track-conditions-drying-mostly-dry": { group: "track-conditions", base: "drying-mostly-dry" },
+  "track-conditions-drying-very-lightly-wet": { group: "track-conditions", base: "drying-very-lightly-wet" },
+  "track-conditions-drying-lightly-wet": { group: "track-conditions", base: "drying-lightly-wet" },
+  "track-conditions-drying-moderately-wet": { group: "track-conditions", base: "drying-moderately-wet" },
+  "track-conditions-drying-very-wet": { group: "track-conditions", base: "drying-very-wet" },
+
+  // Qualifying lap-invalidation pools (issue #567). The core "invalidated"
+  // line always fires; the tail picks one of these branches based on the
+  // snapshot's `lapsRemaining`:
+  //   0      → qualifying-out-of-laps
+  //   1..5   → qualifying-N-laps-left  (each clip carries its own unique
+  //            motivational line, so the scenario is just a pool lookup)
+  //   6+     → qualifying-plenty-of-laps
+  // Time-limited qualifying is gated upstream (no `lapLimited` snapshot field
+  // → tail skipped, core line only).
+  "qualifying-invalidated": { group: "qualifying-invalidation", base: "invalidated" },
+  "qualifying-out-of-laps": { group: "qualifying-invalidation", base: "out-of-laps" },
+  "qualifying-plenty-of-laps": { group: "qualifying-invalidation", base: "plenty-of-laps" },
+  "qualifying-1-lap-left": { group: "qualifying-invalidation", base: "1-lap-left" },
+  "qualifying-2-laps-left": { group: "qualifying-invalidation", base: "2-laps-left" },
+  "qualifying-3-laps-left": { group: "qualifying-invalidation", base: "3-laps-left" },
+  "qualifying-4-laps-left": { group: "qualifying-invalidation", base: "4-laps-left" },
+  "qualifying-5-laps-left": { group: "qualifying-invalidation", base: "5-laps-left" },
+
+  // Pit-box count-in pools (issue #600). One pool per distance mark. Terse
+  // delivery — no radio frame around the countdown (see `pit-box.ts`).
+  "pit-box-five": { group: "pit-box", base: "five" },
+  "pit-box-four": { group: "pit-box", base: "four" },
+  "pit-box-three": { group: "pit-box", base: "three" },
+  "pit-box-two": { group: "pit-box", base: "two" },
+  "pit-box-one": { group: "pit-box", base: "one" },
+  "pit-box-pit-now": { group: "pit-box", base: "pit-now" },
+};
+
+/**
+ * The two acknowledgment pools still enumerate explicit clip paths: their
+ * curated clips don't follow the `<base>-NN` convention yet (`okay.mp3`,
+ * `got-it.mp3`, …), so they can't be derived from the manifest. They move
+ * into `POOL_REGISTRY` with the acknowledgment rename migration (#837).
+ */
+export const ENUMERATED_POOLS: Readonly<Record<string, readonly string[]>> = {
   // Acknowledgments that open toggle callouts ("copy that", "got it", ...).
   // Voice-scoped via `{voice}` substitution — resolved at playback time from
   // the active Race Engineer voice setting.
@@ -37,230 +190,22 @@ export const POOLS: Readonly<Record<string, readonly string[]>> = {
     "voice/{voice}/pit-actions/roger-that.mp3",
     "voice/{voice}/pit-actions/copy-that.mp3",
   ],
-
-  // Pit-action callouts. One pool per action — single-clip today, named
-  // `-NN` so future variants append cleanly (mirrors the flag pools).
-  "pit-action-fuel-on": ["voice/{voice}/pit-actions/fuel-on-01.mp3"],
-  "pit-action-fuel-off": ["voice/{voice}/pit-actions/fuel-off-01.mp3"],
-  "pit-action-tires-off": ["voice/{voice}/pit-actions/tires-off-01.mp3"],
-
-  // Flag callout pools. Every flag scenario draws from a pool — even the
-  // single-clip flags — so adding a variant later becomes a one-line
-  // append here instead of restructuring the scenario. Multi-element
-  // pools pick at random (no immediate repeat, shared per-pool);
-  // single-element pools are deterministic. All voice-scoped via `{voice}`.
-  "flag-yellow-local": ["voice/{voice}/flags/yellow-local-01.mp3"],
-  "flag-yellow-full": ["voice/{voice}/flags/yellow-full-01.mp3"],
-  "flag-yellow-cleared": ["voice/{voice}/flags/yellow-cleared-01.mp3"],
-  "flag-blue": [
-    "voice/{voice}/flags/blue-01.mp3",
-    "voice/{voice}/flags/blue-02.mp3",
-  ],
-  "flag-red": ["voice/{voice}/flags/red-01.mp3"],
-  "flag-black": ["voice/{voice}/flags/black-01.mp3"],
-  "flag-debris": [
-    "voice/{voice}/flags/debris-01.mp3",
-    "voice/{voice}/flags/debris-02.mp3",
-    "voice/{voice}/flags/debris-03.mp3",
-  ],
-  "flag-meatball": ["voice/{voice}/flags/meatball-01.mp3"],
-  // Green, white and checkered all branch on getSessionType() at fire time
-  // so each session type gets its own pool. Future variants for any single
-  // session type append to that pool only.
-  "flag-green-practice": ["voice/{voice}/flags/green-practice-01.mp3"],
-  "flag-green-qualifying": ["voice/{voice}/flags/green-qualifying-01.mp3"],
-  "flag-green-race": [
-    "voice/{voice}/flags/green-race-01.mp3",
-    "voice/{voice}/flags/green-race-02.mp3",
-  ],
-  "flag-white-practice": ["voice/{voice}/flags/white-practice-01.mp3"],
-  "flag-white-qualifying": ["voice/{voice}/flags/white-qualifying-01.mp3"],
-  "flag-white-race": [
-    "voice/{voice}/flags/white-race-01.mp3",
-    "voice/{voice}/flags/white-race-02.mp3",
-  ],
-  // Stage 2 of the two-stage white (issue #772) — the player crosses S/F
-  // under the white flag and starts THEIR last lap.
-  "flag-white-last-lap": [
-    "voice/{voice}/flags/white-last-lap-01.mp3",
-    "voice/{voice}/flags/white-last-lap-02.mp3",
-  ],
-  "flag-checkered-practice": ["voice/{voice}/flags/checkered-practice-01.mp3"],
-  "flag-checkered-qualifying": ["voice/{voice}/flags/checkered-qualifying-01.mp3"],
-  "flag-checkered-race": ["voice/{voice}/flags/checkered-race-01.mp3"],
-
-  // Missing-session-flag callout pools (issue #480). Driver-black splits
-  // (disqualify / furled / dq-scoring-invalid), race-progression flags
-  // (crossed / one-pace-lap-to-go / green-held / ten-to-go / five-to-go), and
-  // the caution-waving variants (yellow-waving / caution-waving). Mostly
-  // single-clip; `one-pace-lap-to-go` and `green-held` have five variants each
-  // (#657). Auto-picked by `FLAG_POOL_NAMES` (the `flag-` prefix).
-  "flag-disqualify": ["voice/{voice}/flags/disqualify-01.mp3"],
-  "flag-furled": ["voice/{voice}/flags/furled-01.mp3"],
-  "flag-furled-cleared": ["voice/{voice}/flags/furled-cleared-01.mp3"],
-  "flag-dq-scoring-invalid": ["voice/{voice}/flags/dq-scoring-invalid-01.mp3"],
-  "flag-crossed": ["voice/{voice}/flags/crossed-01.mp3"],
-  "flag-one-pace-lap-to-go": [
-    "voice/{voice}/flags/one-pace-lap-to-go-01.mp3",
-    "voice/{voice}/flags/one-pace-lap-to-go-02.mp3",
-    "voice/{voice}/flags/one-pace-lap-to-go-03.mp3",
-    "voice/{voice}/flags/one-pace-lap-to-go-04.mp3",
-    "voice/{voice}/flags/one-pace-lap-to-go-05.mp3",
-  ],
-  "flag-green-held": [
-    "voice/{voice}/flags/green-held-01.mp3",
-    "voice/{voice}/flags/green-held-02.mp3",
-    "voice/{voice}/flags/green-held-03.mp3",
-    "voice/{voice}/flags/green-held-04.mp3",
-    "voice/{voice}/flags/green-held-05.mp3",
-  ],
-  "flag-ten-to-go": ["voice/{voice}/flags/ten-to-go-01.mp3"],
-  "flag-five-to-go": ["voice/{voice}/flags/five-to-go-01.mp3"],
-  "flag-yellow-waving": ["voice/{voice}/flags/yellow-waving-01.mp3"],
-  "flag-caution-waving": ["voice/{voice}/flags/caution-waving-01.mp3"],
-
-  // Start-light family pools (issues #480 / #673). Two gantry lines (ready /
-  // go — the heads-up line moved from StartSet to StartReady in #673) plus the
-  // four numeric countdown marks (90 added in #673; 15/5 dropped in #666).
-  // Auto-picked for the start-light catalog by the `start-light-` prefix (see
-  // `start-lights.ts` `START_LIGHT_POOL_NAMES`). Single-clip today; voice-scoped
-  // via `{voice}`.
-  "start-light-ready": ["voice/{voice}/start-lights/start-ready-01.mp3"],
-  "start-light-go": ["voice/{voice}/start-lights/start-go-01.mp3"],
-  "start-light-countdown-90": ["voice/{voice}/start-lights/countdown-90-01.mp3"],
-  "start-light-countdown-60": ["voice/{voice}/start-lights/countdown-60-01.mp3"],
-  "start-light-countdown-30": ["voice/{voice}/start-lights/countdown-30-01.mp3"],
-  "start-light-countdown-10": ["voice/{voice}/start-lights/countdown-10-01.mp3"],
-
-  // Rolling-start family pool (issue #660). Five random-pick variants for the
-  // "pace car is moving" call at the start of a rolling-start formation lap.
-  "rolling-start-pace-car": [
-    "voice/{voice}/rolling-start/pace-car-moving-01.mp3",
-    "voice/{voice}/rolling-start/pace-car-moving-02.mp3",
-    "voice/{voice}/rolling-start/pace-car-moving-03.mp3",
-    "voice/{voice}/rolling-start/pace-car-moving-04.mp3",
-    "voice/{voice}/rolling-start/pace-car-moving-05.mp3",
-  ],
-
-  // Pit-window callout pools (issue #655). Pit road opened / closed for the
-  // player. Two multi-element pools (five variants each) so the engineer doesn't
-  // repeat himself across a caution's open→closed→open flurry; random pick with
-  // the shared no-immediate-repeat guard. Voice-scoped via `{voice}`.
-  "pit-window-opened": [
-    "voice/{voice}/pit-window/opened-01.mp3",
-    "voice/{voice}/pit-window/opened-02.mp3",
-    "voice/{voice}/pit-window/opened-03.mp3",
-    "voice/{voice}/pit-window/opened-04.mp3",
-    "voice/{voice}/pit-window/opened-05.mp3",
-  ],
-  "pit-window-closed": [
-    "voice/{voice}/pit-window/closed-01.mp3",
-    "voice/{voice}/pit-window/closed-02.mp3",
-    "voice/{voice}/pit-window/closed-03.mp3",
-    "voice/{voice}/pit-window/closed-04.mp3",
-    "voice/{voice}/pit-window/closed-05.mp3",
-  ],
-
-  // Damage callout pool (issue #489). Single pool today; multi-clip random
-  // selection works the same way as the flag pools above.
-  "damage-repair-needed": [
-    "voice/{voice}/damage/repair-needed-01.mp3",
-    "voice/{voice}/damage/repair-needed-02.mp3",
-    "voice/{voice}/damage/repair-needed-03.mp3",
-  ],
-
-  // Pit-service status callout pools (issue #479). One pool per non-`None`
-  // PitSvStatus target. Single-clip today; future variants append cleanly
-  // here without scenario changes. Closing transitions (`* → None`) are
-  // suppressed by the sim translator, so there's no `pit-status-none` pool.
-  "pit-status-in-progress": ["voice/{voice}/pit-status/in-progress-01.mp3"],
-  "pit-status-complete": ["voice/{voice}/pit-status/complete-01.mp3"],
-  "pit-status-too-far-left": ["voice/{voice}/pit-status/too-far-left-01.mp3"],
-  "pit-status-too-far-right": ["voice/{voice}/pit-status/too-far-right-01.mp3"],
-  "pit-status-too-far-forward": ["voice/{voice}/pit-status/too-far-forward-01.mp3"],
-  "pit-status-too-far-back": ["voice/{voice}/pit-status/too-far-back-01.mp3"],
-  "pit-status-bad-angle": ["voice/{voice}/pit-status/bad-angle-01.mp3"],
-  "pit-status-cant-fix-that": ["voice/{voice}/pit-status/cant-fix-that-01.mp3"],
-
-  // Incident callout pools (issue #530). One pool per IncidentType
-  // discriminator. Three alternating lines per pool — the first two are
-  // calm coaching (off-track / out-of-control / contact = no penalty),
-  // the third adds variety. Collision lines mention the deterministic
-  // penalty point count inline (CollisionWithWorld is always 2x,
-  // CollisionWithCar is always 4x per iRacing's `irsdk_IncidentFlags`
-  // enum), so no separate penalty follow-on pool is needed.
-  "incident-off-track": [
-    "voice/{voice}/incidents/off-track-01.mp3",
-    "voice/{voice}/incidents/off-track-02.mp3",
-    "voice/{voice}/incidents/off-track-03.mp3",
-  ],
-  "incident-out-of-control": [
-    "voice/{voice}/incidents/out-of-control-01.mp3",
-    "voice/{voice}/incidents/out-of-control-02.mp3",
-    "voice/{voice}/incidents/out-of-control-03.mp3",
-  ],
-  "incident-contact-world": [
-    "voice/{voice}/incidents/contact-world-01.mp3",
-    "voice/{voice}/incidents/contact-world-02.mp3",
-    "voice/{voice}/incidents/contact-world-03.mp3",
-  ],
-  "incident-collision-world": [
-    "voice/{voice}/incidents/collision-world-01.mp3",
-    "voice/{voice}/incidents/collision-world-02.mp3",
-    "voice/{voice}/incidents/collision-world-03.mp3",
-  ],
-  "incident-contact-car": [
-    "voice/{voice}/incidents/contact-car-01.mp3",
-    "voice/{voice}/incidents/contact-car-02.mp3",
-    "voice/{voice}/incidents/contact-car-03.mp3",
-  ],
-  "incident-collision-car": [
-    "voice/{voice}/incidents/collision-car-01.mp3",
-    "voice/{voice}/incidents/collision-car-02.mp3",
-    "voice/{voice}/incidents/collision-car-03.mp3",
-  ],
-
-  // Track-conditions callout pools (issue #526). One pool per
-  // (direction, target-state) combination — six worsening + six drying.
-  // Single-clip today; future variants append cleanly here.
-  "track-conditions-worsening-mostly-dry": ["voice/{voice}/track-conditions/worsening-mostly-dry-01.mp3"],
-  "track-conditions-worsening-very-lightly-wet": ["voice/{voice}/track-conditions/worsening-very-lightly-wet-01.mp3"],
-  "track-conditions-worsening-lightly-wet": ["voice/{voice}/track-conditions/worsening-lightly-wet-01.mp3"],
-  "track-conditions-worsening-moderately-wet": ["voice/{voice}/track-conditions/worsening-moderately-wet-01.mp3"],
-  "track-conditions-worsening-very-wet": ["voice/{voice}/track-conditions/worsening-very-wet-01.mp3"],
-  "track-conditions-worsening-extremely-wet": ["voice/{voice}/track-conditions/worsening-extremely-wet-01.mp3"],
-  "track-conditions-drying-dry": ["voice/{voice}/track-conditions/drying-dry-01.mp3"],
-  "track-conditions-drying-mostly-dry": ["voice/{voice}/track-conditions/drying-mostly-dry-01.mp3"],
-  "track-conditions-drying-very-lightly-wet": ["voice/{voice}/track-conditions/drying-very-lightly-wet-01.mp3"],
-  "track-conditions-drying-lightly-wet": ["voice/{voice}/track-conditions/drying-lightly-wet-01.mp3"],
-  "track-conditions-drying-moderately-wet": ["voice/{voice}/track-conditions/drying-moderately-wet-01.mp3"],
-  "track-conditions-drying-very-wet": ["voice/{voice}/track-conditions/drying-very-wet-01.mp3"],
-
-  // Qualifying lap-invalidation pools (issue #567). The core "invalidated"
-  // line always fires; the tail picks one of these branches based on the
-  // snapshot's `lapsRemaining`:
-  //   0      → qualifying-out-of-laps
-  //   1..5   → qualifying-N-laps-left  (each clip carries its own unique
-  //            motivational line, so the scenario is just a pool lookup)
-  //   6+     → qualifying-plenty-of-laps
-  // Time-limited qualifying is gated upstream (no `lapLimited` snapshot field
-  // → tail skipped, core line only).
-  "qualifying-invalidated": ["voice/{voice}/qualifying-invalidation/invalidated-01.mp3"],
-  "qualifying-out-of-laps": ["voice/{voice}/qualifying-invalidation/out-of-laps-01.mp3"],
-  "qualifying-plenty-of-laps": ["voice/{voice}/qualifying-invalidation/plenty-of-laps-01.mp3"],
-  "qualifying-1-lap-left": ["voice/{voice}/qualifying-invalidation/1-lap-left-01.mp3"],
-  "qualifying-2-laps-left": ["voice/{voice}/qualifying-invalidation/2-laps-left-01.mp3"],
-  "qualifying-3-laps-left": ["voice/{voice}/qualifying-invalidation/3-laps-left-01.mp3"],
-  "qualifying-4-laps-left": ["voice/{voice}/qualifying-invalidation/4-laps-left-01.mp3"],
-  "qualifying-5-laps-left": ["voice/{voice}/qualifying-invalidation/5-laps-left-01.mp3"],
-
-  // Pit-box count-in pools (issue #600). One pool per distance mark; single-clip
-  // today, named `-NN` so future variants append cleanly. Terse delivery — no
-  // radio frame around the countdown (see `pit-box.ts`).
-  "pit-box-five": ["voice/{voice}/pit-box/five-01.mp3"],
-  "pit-box-four": ["voice/{voice}/pit-box/four-01.mp3"],
-  "pit-box-three": ["voice/{voice}/pit-box/three-01.mp3"],
-  "pit-box-two": ["voice/{voice}/pit-box/two-01.mp3"],
-  "pit-box-one": ["voice/{voice}/pit-box/one-01.mp3"],
-  "pit-box-pit-now": ["voice/{voice}/pit-box/pit-now-01.mp3"],
 };
+
+/**
+ * Register every catalog pool with the engine: registry pools derive their
+ * members from the manifest per voice; the enumerated remainder registers
+ * as explicit clip lists (until #837).
+ */
+export function registerPools(engine: {
+  definePool(name: string, clips: string[]): void;
+  definePoolFromManifest(name: string, group: string, base: string): void;
+}): void {
+  for (const [name, { group, base }] of Object.entries(POOL_REGISTRY)) {
+    engine.definePoolFromManifest(name, group, base);
+  }
+
+  for (const [name, clips] of Object.entries(ENUMERATED_POOLS)) {
+    engine.definePool(name, [...clips]);
+  }
+}

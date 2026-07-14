@@ -43,8 +43,8 @@ import { silentLogger } from "@iracedeck/logger";
 import type { ResolvedStep, Scenario, ScenarioContext } from "./dsl.js";
 import { applyBase, DEFAULT_WEIGHT, resolveStep } from "./dsl.js";
 // Manifest types + helpers live in `./manifest.js` to break a circular
-// import with `./validation.js`, which also needs `manifestVoices`.
-import { type AudioAssetsManifest, manifestVoices } from "./manifest.js";
+// import with `./validation.js`, which also needs `referenceVoice`.
+import { type AudioAssetsManifest, referenceVoice } from "./manifest.js";
 import { validateScenario } from "./validation.js";
 
 // Re-export so existing consumers of `interpreter.js` keep their import paths.
@@ -53,6 +53,14 @@ export { type AudioAssetsManifest, manifestVoices } from "./manifest.js";
 export interface IScenarioEngine {
   defineScenario(s: Scenario): void;
   definePool(name: string, clips: string[]): void;
+  /**
+   * Register a pool whose members are derived from the audio-asset manifest
+   * (issue #664): every clip matching `voice/<voice>/<group>/<base>-NN.mp3`,
+   * resolved at fire time for the active voice. Voices may carry different
+   * variant counts or omit the pool entirely — an empty pool skips the step.
+   * No clip list is enumerated in code.
+   */
+  definePoolFromManifest(name: string, group: string, base: string): void;
   defineVar(name: string, resolver: () => string | null): void;
   setEnabled(scenarioId: string, enabled: boolean): void;
   fire(scenarioId: string): void;
@@ -70,7 +78,22 @@ export interface IScenarioEngine {
   releaseFocus(bus: AudioBus, ownerId: string): void;
 }
 
-type PoolState = { clips: string[]; lastIndex: number };
+/**
+ * A pool is either an explicit clip list (`static`) or derived from the
+ * manifest per voice at fire time (`manifest`, issue #664). Both share the
+ * no-immediate-repeat `lastIndex`; manifest pools also track the voice the
+ * index belongs to, since variant counts differ across voices.
+ */
+type PoolState =
+  | { kind: "static"; clips: string[]; lastIndex: number }
+  | {
+      kind: "manifest";
+      group: string;
+      base: string;
+      byVoice: Map<string, string[]>;
+      lastIndex: number;
+      lastVoice: string | null;
+    };
 
 type CompiledScenario = {
   raw: Scenario;
@@ -263,7 +286,18 @@ class ScenarioEngine implements IScenarioEngine {
 
     this.scenarios.set(s.id, entry);
 
-    const errors = validateScenario(s, resolvedSequence, this.scenarios, this.pools, this.vars, this.manifest);
+    const { errors, warnings } = validateScenario(
+      s,
+      resolvedSequence,
+      this.scenarios,
+      this.pools,
+      this.vars,
+      this.manifest,
+    );
+
+    if (warnings.length > 0) {
+      this.logger.warn(`Scenario "${s.id}" has validation warnings:\n  - ${warnings.join("\n  - ")}`);
+    }
 
     if (errors.length > 0) {
       this.logger.error(`Scenario "${s.id}" has validation errors and is disabled:\n  - ${errors.join("\n  - ")}`);
@@ -282,18 +316,21 @@ class ScenarioEngine implements IScenarioEngine {
       this.logger.warn(`Pool "${name}" redefined`);
     }
 
-    // For `{voice}`-templated clips we expand against every voice present in
-    // the manifest and require all variants to exist; this catches typos
-    // (`{voce}`) and missing-voice gaps at definition time, not at fire time.
-    const voices = manifestVoices(this.manifest);
+    // A `{voice}`-templated clip is checked against the REFERENCE voice only
+    // (issue #664): per-voice clip sets may legitimately diverge, so a gap in
+    // another voice is not an error. A miss for the reference voice is a
+    // probable typo and warns without rejecting the pool. Non-templated
+    // clips must exist verbatim.
+    const reference = referenceVoice(this.manifest);
     const missing: string[] = [];
+    const suspect: string[] = [];
 
     for (const clip of clips) {
       if (clip.includes("{voice}")) {
-        for (const voice of voices) {
-          const resolved = clip.replace(/\{voice\}/g, voice);
+        if (reference !== null) {
+          const resolved = clip.replace(/\{voice\}/g, reference);
 
-          if (!this.manifest.clips.includes(resolved)) missing.push(resolved);
+          if (!this.manifest.clips.includes(resolved)) suspect.push(resolved);
         }
       } else if (!this.manifest.clips.includes(clip)) {
         missing.push(clip);
@@ -306,7 +343,52 @@ class ScenarioEngine implements IScenarioEngine {
       return;
     }
 
-    this.pools.set(name, { clips: [...clips], lastIndex: -1 });
+    if (suspect.length > 0) {
+      this.logger.warn(
+        `Pool "${name}": no clip for reference voice "${reference}" (possible typo):\n  - ${suspect.join("\n  - ")}`,
+      );
+    }
+
+    this.pools.set(name, { kind: "static", clips: [...clips], lastIndex: -1 });
+  }
+
+  definePoolFromManifest(name: string, group: string, base: string): void {
+    if (this.pools.has(name)) {
+      this.logger.warn(`Pool "${name}" redefined`);
+    }
+
+    const pattern = new RegExp(`^voice/([^/]+)/${escapeRegExp(group)}/${escapeRegExp(base)}-\\d{2}\\.mp3$`);
+    const byVoice = new Map<string, string[]>();
+
+    for (const clip of this.manifest.clips) {
+      const match = pattern.exec(clip);
+
+      if (!match) continue;
+
+      let members = byVoice.get(match[1]);
+
+      if (!members) {
+        members = [];
+        byVoice.set(match[1], members);
+      }
+
+      members.push(clip);
+    }
+
+    for (const members of byVoice.values()) members.sort();
+
+    // Typo guard: only the reference voice is checked — other voices may
+    // legitimately omit the callout. Warn, never reject: a pool that is
+    // empty for the active voice just skips at fire time.
+    const reference = referenceVoice(this.manifest);
+
+    if (reference !== null && !byVoice.has(reference)) {
+      this.logger.warn(
+        `Pool "${name}": no "${group}/${base}-NN" clips for reference voice "${reference}" (possible typo)`,
+      );
+    }
+
+    this.pools.set(name, { kind: "manifest", group, base, byVoice, lastIndex: -1, lastVoice: null });
   }
 
   defineVar(name: string, resolver: () => string | null): void {
@@ -965,21 +1047,47 @@ class ScenarioEngine implements IScenarioEngine {
       return null;
     }
 
-    if (pool.clips.length === 0) {
-      this.logger.error(`pickFromPool: pool "${name}" is empty — step skipped, clip will not play`);
+    let clips: string[];
+
+    if (pool.kind === "manifest") {
+      const voice = this.getActiveVoice();
+
+      if (!voice) {
+        this.logger.debug(`pickFromPool: pool "${name}" skipped — no active voice selected`);
+
+        return null;
+      }
+
+      // Variant counts differ across voices, so a stale lastIndex from
+      // another voice would skew the no-repeat guard — reset it on voice
+      // change (issue #664).
+      if (voice !== pool.lastVoice) {
+        pool.lastVoice = voice;
+        pool.lastIndex = -1;
+      }
+
+      clips = pool.byVoice.get(voice) ?? [];
+    } else {
+      clips = pool.clips;
+    }
+
+    if (clips.length === 0) {
+      // Not an error: a voice may legitimately omit a callout (issue #664) —
+      // the step skips silently.
+      this.logger.debug(`pickFromPool: pool "${name}" is empty for the active voice — step skipped`);
 
       return null;
     }
 
-    let idx = Math.floor(Math.random() * pool.clips.length);
+    let idx = Math.floor(Math.random() * clips.length);
 
-    if (noRepeat && pool.clips.length > 1 && idx === pool.lastIndex) {
-      idx = (idx + 1) % pool.clips.length;
+    if (noRepeat && clips.length > 1 && idx === pool.lastIndex) {
+      idx = (idx + 1) % clips.length;
     }
 
     pool.lastIndex = idx;
 
-    return pool.clips[idx];
+    return clips[idx];
   }
 }
 
@@ -997,6 +1105,11 @@ function buildResumeState(active: ActiveFire): ResumeState | undefined {
   if (sourceIndex >= active.sourceOps.length) return undefined;
 
   return { ops: active.sourceOps, index: sourceIndex };
+}
+
+/** Escape a literal string for embedding in a RegExp source. */
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /** Element-wise equality of two expanded op lists (plain data, no functions). */

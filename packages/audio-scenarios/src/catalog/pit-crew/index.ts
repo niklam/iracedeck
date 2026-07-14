@@ -5,8 +5,8 @@
  *   - The directional radar (state-driven tick loop, not expressible in the
  *     scenario DSL)
  *   - All pools defined in `pools.ts`, registered en masse via
- *     `Object.entries(POOLS)` (acknowledgment, pit-action acknowledgment,
- *     per-action pit-action callouts, flag callouts)
+ *     `registerPools(engine)` — manifest-derived registry pools plus the
+ *     enumerated acknowledgment pools (issue #664)
  *   - The radio-frame include scenarios (`@pit-crew.radio-open` / `…close`)
  *   - Fuel toggle scenarios (on/off via `pitService.toggled`)
  *   - Tire toggle scenarios (every meaningful tire-set selection, including
@@ -72,7 +72,7 @@ import {
 import { PIT_BOX_ALERTS } from "./pit-box.js";
 import { PIT_STATUS_ALERTS } from "./pit-status.js";
 import { PIT_WINDOW_ALERTS } from "./pit-window.js";
-import { POOLS } from "./pools.js";
+import { registerPools } from "./pools.js";
 import {
   buildOvertakeGainedPositionScenario,
   buildOvertakeLostPositionScenario,
@@ -865,9 +865,7 @@ export function registerPitCrew(
 
   const engine = getScenarioEngine();
 
-  Object.entries(POOLS).forEach(([key, value]) => {
-    engine.definePool(key, value as string[]);
-  });
+  registerPools(engine);
 
   engine.defineScenario(RADIO_OPEN);
   engine.defineScenario(RADIO_CLOSE);
@@ -920,7 +918,7 @@ export function registerPitCrew(
   }
 
   // Start-light family (issue #480). The `start-light-*` pools are already
-  // registered en masse above via `Object.entries(POOLS)` (same as the flag
+  // registered en masse above via `registerPools(engine)` (same as the flag
   // pools), so no explicit pool loop is needed here — `START_LIGHT_POOL_NAMES`
   // exists for the catalog tests to register pools in isolation. Two grouped
   // opt-ins (`lights`, `countdown`) gate the five scenarios via
@@ -940,7 +938,7 @@ export function registerPitCrew(
   }
 
   // Pit-window family (issue #655). The `pit-window-*` pools are already
-  // registered en masse above via `Object.entries(POOLS)`, so no explicit pool
+  // registered en masse above via `registerPools(engine)`, so no explicit pool
   // loop is needed here — `PIT_WINDOW_POOL_NAMES` exists for the catalog tests
   // to register pools in isolation. Single subject (`pit-open-closed`) gates
   // both directional scenarios via `SCENARIO_ID_TO_PIT_WINDOW_ID`.
@@ -953,7 +951,7 @@ export function registerPitCrew(
   }
 
   // Rolling-start family (issue #660). The `rolling-start-*` pool is already
-  // registered en masse above via `Object.entries(POOLS)`, so no explicit pool
+  // registered en masse above via `registerPools(engine)`, so no explicit pool
   // loop is needed here — `ROLLING_START_POOL_NAMES` exists for the catalog
   // tests to register pools in isolation. Single subject (`pace-car`) gates the
   // scenario via `SCENARIO_ID_TO_ROLLING_START_ID`.
