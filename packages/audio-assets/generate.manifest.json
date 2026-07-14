@@ -7808,6 +7808,94 @@
       "textPreview": "Copy that.",
       "generatedAt": "2026-05-14T18:37:07.109Z",
       "requestId": "Ko2GwWUY810nK2B2lxbg"
+    },
+    "voice/default/fuel/laps-left-10-01.mp3": {
+      "hash": "7aed09fe007cdb53",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "We're estimating that we have about 10 laps of fuel left after completing this …",
+      "generatedAt": "2026-07-14T16:41:06.015Z",
+      "requestId": "pJ6gWhsCqBY870K6MHUN"
+    },
+    "voice/default/fuel/laps-left-9-01.mp3": {
+      "hash": "d626c7b43d97abfa",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "We're estimating that we have about 9 laps of fuel left after completing this l…",
+      "generatedAt": "2026-07-14T16:41:06.308Z",
+      "requestId": "FrCeFuZeA9XPmBAMomx5"
+    },
+    "voice/default/fuel/laps-left-8-01.mp3": {
+      "hash": "ea2496eba1e07bdb",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "We're estimating that we have about 8 laps of fuel left after completing this l…",
+      "generatedAt": "2026-07-14T16:41:06.594Z",
+      "requestId": "pwlaobOCyqNIEkCZdvx9"
+    },
+    "voice/default/fuel/laps-left-7-01.mp3": {
+      "hash": "6aefec453465c6a4",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "We're estimating that we have about 7 laps of fuel left after completing this l…",
+      "generatedAt": "2026-07-14T16:41:06.873Z",
+      "requestId": "ux4dHwzDnu0khg23jFgC"
+    },
+    "voice/default/fuel/laps-left-6-01.mp3": {
+      "hash": "44ff6a1ad63f9d71",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "We're estimating that we have about 6 laps of fuel left after completing this l…",
+      "generatedAt": "2026-07-14T16:41:07.360Z",
+      "requestId": "q1BeiUCZKbsxsSAvcoRZ"
+    },
+    "voice/default/fuel/laps-left-5-01.mp3": {
+      "hash": "6fd64d73aadf2035",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "We're estimating that we have about 5 laps of fuel left after completing this l…",
+      "generatedAt": "2026-07-14T16:41:07.625Z",
+      "requestId": "eLuGJl8dton2AYONhXym"
+    },
+    "voice/default/fuel/laps-left-4-01.mp3": {
+      "hash": "d13c8a65aed80137",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "We're estimating that we have about 4 laps of fuel left after completing this l…",
+      "generatedAt": "2026-07-14T16:41:07.915Z",
+      "requestId": "2slHjQJOKEufTy8S1u5D"
+    },
+    "voice/default/fuel/laps-left-3-01.mp3": {
+      "hash": "b6e04c224031e6fa",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "We're estimating that we have about 3 laps of fuel left after completing this l…",
+      "generatedAt": "2026-07-14T16:41:08.176Z",
+      "requestId": "bjnxzGl0r0vqzoix7LQN"
+    },
+    "voice/default/fuel/laps-left-2-01.mp3": {
+      "hash": "813d6453a88134c1",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "We're estimating that we have about 2 laps of fuel left after completing this l…",
+      "generatedAt": "2026-07-14T16:41:08.460Z",
+      "requestId": "EUXoUqoTFgghtt37cdh1"
+    },
+    "voice/default/fuel/laps-left-1-01.mp3": {
+      "hash": "ef4447a3a3933034",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "We're estimating only 1 more lap of fuel after completing this one. <break time…",
+      "generatedAt": "2026-07-14T16:41:08.749Z",
+      "requestId": "Fyc2XQAPzbXGsVRH3sQ1"
+    },
+    "voice/default/fuel/laps-left-box-01.mp3": {
+      "hash": "291c81f198209d27",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Box this lap for fuel. <break time=\"0.3s\" /> Box this lap.",
+      "generatedAt": "2026-07-14T16:41:09.006Z",
+      "requestId": "qfcoTtHJYQylcQ4vf8ux"
     }
   }
 }
