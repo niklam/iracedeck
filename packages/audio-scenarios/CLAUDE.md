@@ -19,7 +19,7 @@ below cover the audio-scenarios-only mechanics.
 
 `src/catalog/pit-crew/` — one file per scenario family, plus wiring, shared helpers, two imperative engines, and three non-family singles (tests, where present, are sibling `*.test.ts` files — not every family has one).
 
-- **Wiring & shared:** `index.ts` (id types, setting-key maps, scenario-id maps, `registerPitCrew()`), `pools.ts` (`POOL_REGISTRY`: pool name → manifest `(group, base)` source, plus the enumerated acknowledgment pools and `registerPools()`), `radio-frame.ts` (the shared `@pit-crew.radio-open` / `@pit-crew.radio-close` include scenarios).
+- **Wiring & shared:** `index.ts` (id types, setting-key maps, scenario-id maps, `registerPitCrew()`), `pools.ts` (`POOL_REGISTRY`: pool name → manifest `(group, base)` source, plus `registerPools()`), `radio-frame.ts` (the shared `@pit-crew.radio-open` / `@pit-crew.radio-close` include scenarios).
 - **Flags & race flow:** `flag-alerts.ts`, `start-lights.ts`, `rolling-start.ts`, `session-start.ts`, `race-start.ts`, `race-status.ts`, `race-end.ts`, `qualifying-invalidation.ts`.
 - **Pit:** `pit-approach.ts`, `pit-box.ts`, `pit-exit.ts`, `pit-limiter.ts`, `pit-status.ts`, `pit-window.ts`, `readback.ts`, `service-reminder.ts`, `stall-departure.ts`, `toggle-confirmations.ts`.
 - **Position & pace:** `position.ts`, `overtake.ts`, `lap-time.ts` — plus the shared helpers `position-readout.ts` (the cross-trigger "We're currently P[n]" readout + cooldown), `position-range.ts`, and `overtake-gate.ts` (leaf modules, not families).
@@ -68,11 +68,9 @@ reference pools by name — `"pool:<name>"` in a sequence step, or
 - Typo guard: a registry entry whose `(group, base)` matches no clip for the
   **reference voice** (`default`) warns at registration without disabling
   anything.
-- The two acknowledgment pools (`acknowledgment`, `pit-action-acknowledgment`)
-  are still explicit clip lists in `ENUMERATED_POOLS` — their curated clips
-  don't follow `<base>-NN` yet. They move into the registry with the rename
-  migration (#837). For these `{voice}` paths, substitution happens at
-  playback time from the active Race Engineer voice setting.
+- Every pool is registry-derived — the last enumerated remainder (the two
+  acknowledgment pools) moved into the registry with the #837 rename
+  migration (`acknowledgment/acknowledgment-NN`, `pit-actions/acknowledgment-NN`).
 
 ## Scenarios
 

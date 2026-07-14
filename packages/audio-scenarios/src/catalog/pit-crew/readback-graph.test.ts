@@ -174,14 +174,14 @@ const READBACK_CLIP_NAMES = [
 ] as const;
 
 const OTHER_CLIP_NAMES = [
-  "voice/luca/acknowledgment/okay.mp3",
-  "voice/luca/acknowledgment/got-it.mp3",
-  "voice/luca/acknowledgment/roger-that.mp3",
-  "voice/luca/acknowledgment/copy-that.mp3",
-  "voice/luca/acknowledgment/we-got-that.mp3",
-  "voice/luca/pit-actions/got-it.mp3",
-  "voice/luca/pit-actions/roger-that.mp3",
-  "voice/luca/pit-actions/copy-that.mp3",
+  "voice/luca/acknowledgment/acknowledgment-01.mp3",
+  "voice/luca/acknowledgment/acknowledgment-02.mp3",
+  "voice/luca/acknowledgment/acknowledgment-03.mp3",
+  "voice/luca/acknowledgment/acknowledgment-04.mp3",
+  "voice/luca/acknowledgment/acknowledgment-05.mp3",
+  "voice/luca/pit-actions/acknowledgment-01.mp3",
+  "voice/luca/pit-actions/acknowledgment-02.mp3",
+  "voice/luca/pit-actions/acknowledgment-03.mp3",
   "voice/luca/pit-actions/fuel-on-01.mp3",
   "voice/luca/pit-actions/fuel-off-01.mp3",
   "voice/luca/pit-actions/tires-off-01.mp3",

@@ -12,23 +12,23 @@
   "groups": {
     "acknowledgment": [
       {
-        "name": "okay",
+        "name": "acknowledgment-01",
         "text": "Okay."
       },
       {
-        "name": "got-it",
+        "name": "acknowledgment-02",
         "text": "Got it."
       },
       {
-        "name": "roger-that",
+        "name": "acknowledgment-03",
         "text": "Roger that."
       },
       {
-        "name": "copy-that",
+        "name": "acknowledgment-04",
         "text": "Copy that."
       },
       {
-        "name": "we-got-that",
+        "name": "acknowledgment-05",
         "text": "We got that."
       }
     ],
@@ -431,16 +431,16 @@
     ],
     "pit-actions": [
       {
-        "name": "got-it",
+        "name": "acknowledgment-01",
         "text": "Got it."
       },
       {
-        "name": "roger-that",
+        "name": "acknowledgment-02",
         "text": "Roger that.",
         "seed": 2
       },
       {
-        "name": "copy-that",
+        "name": "acknowledgment-03",
         "text": "Copy that.",
         "seed": 4
       },
@@ -448,171 +448,171 @@
         "name": "fuel-on-01",
         "text": "We're refueling at the next pit stop.",
         "previous_request_ids": [
-          "pit-actions/got-it",
-          "pit-actions/roger-that",
-          "pit-actions/copy-that"
+          "pit-actions/acknowledgment-01",
+          "pit-actions/acknowledgment-02",
+          "pit-actions/acknowledgment-03"
         ]
       },
       {
         "name": "fuel-off-01",
         "text": "We're skipping fuel at the next pit stop.",
         "previous_request_ids": [
-          "pit-actions/got-it",
-          "pit-actions/roger-that",
-          "pit-actions/copy-that"
+          "pit-actions/acknowledgment-01",
+          "pit-actions/acknowledgment-02",
+          "pit-actions/acknowledgment-03"
         ]
       },
       {
         "name": "tires-off-01",
         "text": "We're skipping tires at the next pit stop.",
         "previous_request_ids": [
-          "pit-actions/got-it",
-          "pit-actions/roger-that",
-          "pit-actions/copy-that"
+          "pit-actions/acknowledgment-01",
+          "pit-actions/acknowledgment-02",
+          "pit-actions/acknowledgment-03"
         ]
       },
       {
         "name": "tires-on-fronts",
         "text": "We'll change the front tires at the next pit stop.",
         "previous_request_ids": [
-          "pit-actions/got-it",
-          "pit-actions/roger-that",
-          "pit-actions/copy-that"
+          "pit-actions/acknowledgment-01",
+          "pit-actions/acknowledgment-02",
+          "pit-actions/acknowledgment-03"
         ]
       },
       {
         "name": "tires-on-rears",
         "text": "We'll change the rear tires at the next pit stop.",
         "previous_request_ids": [
-          "pit-actions/got-it",
-          "pit-actions/roger-that",
-          "pit-actions/copy-that"
+          "pit-actions/acknowledgment-01",
+          "pit-actions/acknowledgment-02",
+          "pit-actions/acknowledgment-03"
         ]
       },
       {
         "name": "tires-on-lefts",
         "text": "We'll change both left side tires at the next pit stop.",
         "previous_request_ids": [
-          "pit-actions/got-it",
-          "pit-actions/roger-that",
-          "pit-actions/copy-that"
+          "pit-actions/acknowledgment-01",
+          "pit-actions/acknowledgment-02",
+          "pit-actions/acknowledgment-03"
         ]
       },
       {
         "name": "tires-on-rights",
         "text": "We'll change both right side tires at the next pit stop.",
         "previous_request_ids": [
-          "pit-actions/got-it",
-          "pit-actions/roger-that",
-          "pit-actions/copy-that"
+          "pit-actions/acknowledgment-01",
+          "pit-actions/acknowledgment-02",
+          "pit-actions/acknowledgment-03"
         ]
       },
       {
         "name": "tires-on-all",
         "text": "We'll change all tires at the next pit stop.",
         "previous_request_ids": [
-          "pit-actions/got-it",
-          "pit-actions/roger-that",
-          "pit-actions/copy-that"
+          "pit-actions/acknowledgment-01",
+          "pit-actions/acknowledgment-02",
+          "pit-actions/acknowledgment-03"
         ]
       },
       {
         "name": "tires-on-lf",
         "text": "We'll change the left-front at the next pit stop.",
         "previous_request_ids": [
-          "pit-actions/got-it",
-          "pit-actions/roger-that",
-          "pit-actions/copy-that"
+          "pit-actions/acknowledgment-01",
+          "pit-actions/acknowledgment-02",
+          "pit-actions/acknowledgment-03"
         ]
       },
       {
         "name": "tires-on-rf",
         "text": "We'll change the right-front at the next pit stop.",
         "previous_request_ids": [
-          "pit-actions/got-it",
-          "pit-actions/roger-that",
-          "pit-actions/copy-that"
+          "pit-actions/acknowledgment-01",
+          "pit-actions/acknowledgment-02",
+          "pit-actions/acknowledgment-03"
         ]
       },
       {
         "name": "tires-on-lr",
         "text": "We'll change the left-rear at the next pit stop.",
         "previous_request_ids": [
-          "pit-actions/got-it",
-          "pit-actions/roger-that",
-          "pit-actions/copy-that"
+          "pit-actions/acknowledgment-01",
+          "pit-actions/acknowledgment-02",
+          "pit-actions/acknowledgment-03"
         ]
       },
       {
         "name": "tires-on-rr",
         "text": "We'll change the right-rear at the next pit stop.",
         "previous_request_ids": [
-          "pit-actions/got-it",
-          "pit-actions/roger-that",
-          "pit-actions/copy-that"
+          "pit-actions/acknowledgment-01",
+          "pit-actions/acknowledgment-02",
+          "pit-actions/acknowledgment-03"
         ]
       },
       {
         "name": "tires-on-lf-rr",
         "text": "We'll change the left-front and right-rear at the next pit stop.",
         "previous_request_ids": [
-          "pit-actions/got-it",
-          "pit-actions/roger-that",
-          "pit-actions/copy-that"
+          "pit-actions/acknowledgment-01",
+          "pit-actions/acknowledgment-02",
+          "pit-actions/acknowledgment-03"
         ]
       },
       {
         "name": "tires-on-rf-lr",
         "text": "We'll change the right-front and left-rear at the next pit stop.",
         "previous_request_ids": [
-          "pit-actions/got-it",
-          "pit-actions/roger-that",
-          "pit-actions/copy-that"
+          "pit-actions/acknowledgment-01",
+          "pit-actions/acknowledgment-02",
+          "pit-actions/acknowledgment-03"
         ]
       },
       {
         "name": "tires-on-skip-lf",
         "text": "We'll change everything but the left-front at the next pit stop.",
         "previous_request_ids": [
-          "pit-actions/got-it",
-          "pit-actions/roger-that",
-          "pit-actions/copy-that"
+          "pit-actions/acknowledgment-01",
+          "pit-actions/acknowledgment-02",
+          "pit-actions/acknowledgment-03"
         ]
       },
       {
         "name": "tires-on-skip-rf",
         "text": "We'll change everything but the right-front at the next pit stop.",
         "previous_request_ids": [
-          "pit-actions/got-it",
-          "pit-actions/roger-that",
-          "pit-actions/copy-that"
+          "pit-actions/acknowledgment-01",
+          "pit-actions/acknowledgment-02",
+          "pit-actions/acknowledgment-03"
         ]
       },
       {
         "name": "tires-on-skip-lr",
         "text": "We'll change everything but the left-rear at the next pit stop.",
         "previous_request_ids": [
-          "pit-actions/got-it",
-          "pit-actions/roger-that",
-          "pit-actions/copy-that"
+          "pit-actions/acknowledgment-01",
+          "pit-actions/acknowledgment-02",
+          "pit-actions/acknowledgment-03"
         ]
       },
       {
         "name": "tires-on-skip-rr",
         "text": "We'll change everything but the right-rear at the next pit stop.",
         "previous_request_ids": [
-          "pit-actions/got-it",
-          "pit-actions/roger-that",
-          "pit-actions/copy-that"
+          "pit-actions/acknowledgment-01",
+          "pit-actions/acknowledgment-02",
+          "pit-actions/acknowledgment-03"
         ]
       },
       {
         "name": "tires-compound-dry",
         "text": "Switching to dry compound at the next pit stop.",
         "previous_request_ids": [
-          "pit-actions/got-it",
-          "pit-actions/roger-that",
-          "pit-actions/copy-that"
+          "pit-actions/acknowledgment-01",
+          "pit-actions/acknowledgment-02",
+          "pit-actions/acknowledgment-03"
         ]
       },
       {
@@ -620,45 +620,45 @@
         "seed": 2,
         "text": "Switching to wets at the next pit stop.",
         "previous_request_ids": [
-          "pit-actions/got-it",
-          "pit-actions/roger-that",
-          "pit-actions/copy-that"
+          "pit-actions/acknowledgment-01",
+          "pit-actions/acknowledgment-02",
+          "pit-actions/acknowledgment-03"
         ]
       },
       {
         "name": "windshield-on",
         "text": "We'll clean the windshield at the next pit stop.",
         "previous_request_ids": [
-          "pit-actions/got-it",
-          "pit-actions/roger-that",
-          "pit-actions/copy-that"
+          "pit-actions/acknowledgment-01",
+          "pit-actions/acknowledgment-02",
+          "pit-actions/acknowledgment-03"
         ]
       },
       {
         "name": "windshield-off",
         "text": "We're not cleaning the windshield at the next pit stop.",
         "previous_request_ids": [
-          "pit-actions/got-it",
-          "pit-actions/roger-that",
-          "pit-actions/copy-that"
+          "pit-actions/acknowledgment-01",
+          "pit-actions/acknowledgment-02",
+          "pit-actions/acknowledgment-03"
         ]
       },
       {
         "name": "fast-repair-on",
         "text": "We'll do a fast repair at the next pit stop.",
         "previous_request_ids": [
-          "pit-actions/got-it",
-          "pit-actions/roger-that",
-          "pit-actions/copy-that"
+          "pit-actions/acknowledgment-01",
+          "pit-actions/acknowledgment-02",
+          "pit-actions/acknowledgment-03"
         ]
       },
       {
         "name": "fast-repair-off",
         "text": "We're skipping fast repair at the next pit stop.",
         "previous_request_ids": [
-          "pit-actions/got-it",
-          "pit-actions/roger-that",
-          "pit-actions/copy-that"
+          "pit-actions/acknowledgment-01",
+          "pit-actions/acknowledgment-02",
+          "pit-actions/acknowledgment-03"
         ]
       }
     ],
@@ -4274,7 +4274,9 @@
         "name": "that-lap-didnt-count-01",
         "text": "That lap didn't count.",
         "seed": 1,
-        "next_request_ids": ["position-intro-worse/currently-01"]
+        "next_request_ids": [
+          "position-intro-worse/currently-01"
+        ]
       }
     ],
     "position-intro-better": [
@@ -4954,76 +4956,286 @@
       }
     ],
     "race-end-greeting": [
-      { "name": "adam", "text": "Adam," },
-      { "name": "al", "text": "Al," },
-      { "name": "andre", "text": "André," },
-      { "name": "andrew", "text": "Andrew," },
-      { "name": "andy", "text": "Andy," },
-      { "name": "ant", "text": "Ant," },
-      { "name": "anthony", "text": "Anthony," },
-      { "name": "bird", "text": "Bird," },
-      { "name": "bob", "text": "Bob," },
-      { "name": "boss", "text": "Boss," },
-      { "name": "brad", "text": "Brad," },
-      { "name": "brenton", "text": "Brenton," },
-      { "name": "casey", "text": "Casey," },
-      { "name": "champ", "text": "Champ," },
-      { "name": "chris", "text": "Chris," },
-      { "name": "cole", "text": "Cole," },
-      { "name": "daniel", "text": "Daniel," },
-      { "name": "dave", "text": "Dave," },
-      { "name": "david", "text": "David," },
-      { "name": "dean", "text": "Dean," },
-      { "name": "dominic", "text": "Dominic," },
-      { "name": "driver", "text": "Driver," },
-      { "name": "dylan", "text": "Dylan," },
-      { "name": "felix", "text": "Felix," },
-      { "name": "fox", "text": "Fox," },
-      { "name": "fredrich", "text": "Fredrich," },
-      { "name": "glen", "text": "Glen," },
-      { "name": "guido", "text": "Guido," },
-      { "name": "hector", "text": "Hector," },
-      { "name": "hesham", "text": "Hesham," },
-      { "name": "ivan", "text": "Ivan," },
-      { "name": "jace", "text": "Jace," },
-      { "name": "jakub", "text": "Jakub," },
-      { "name": "james", "text": "James," },
-      { "name": "jasper", "text": "Jasper," },
-      { "name": "johan", "text": "Johan," },
-      { "name": "jon", "text": "Jon," },
-      { "name": "jorge", "text": "Jorge," },
-      { "name": "jose", "text": "Jose," },
-      { "name": "justin", "text": "Justin," },
-      { "name": "kanki", "text": "Kanki," },
-      { "name": "kev", "text": "Kev," },
-      { "name": "kevin", "text": "Kevin," },
-      { "name": "kris", "text": "Kris," },
-      { "name": "lee", "text": "Lee," },
-      { "name": "lorenzo", "text": "Lorenzo," },
-      { "name": "marcus", "text": "Marcus," },
-      { "name": "mark", "text": "Mark," },
-      { "name": "mate", "text": "Mate," },
-      { "name": "matt", "text": "Matt," },
-      { "name": "matthew", "text": "Matthew," },
-      { "name": "miguel", "text": "Miguel," },
-      { "name": "mike", "text": "Mike," },
-      { "name": "miquel", "text": "Miquel," },
-      { "name": "nick", "text": "Nick," },
-      { "name": "niklas", "text": "Niklas," },
-      { "name": "noj", "text": "Noj," },
-      { "name": "oivindl", "text": "Öivin," },
-      { "name": "pablo", "text": "Pablo," },
-      { "name": "patrick", "text": "Patrick," },
-      { "name": "raymond", "text": "Raymond," },
-      { "name": "rich", "text": "Rich," },
-      { "name": "rob", "text": "Rob," },
-      { "name": "ron", "text": "Ron," },
-      { "name": "shamoy", "text": "Shamoy," },
-      { "name": "shawn", "text": "Shawn," },
-      { "name": "tim", "text": "Tim," },
-      { "name": "tom", "text": "Tom," },
-      { "name": "ville", "text": "Ville," },
-      { "name": "zeus", "text": "Zeus," }
+      {
+        "name": "adam",
+        "text": "Adam,"
+      },
+      {
+        "name": "al",
+        "text": "Al,"
+      },
+      {
+        "name": "andre",
+        "text": "André,"
+      },
+      {
+        "name": "andrew",
+        "text": "Andrew,"
+      },
+      {
+        "name": "andy",
+        "text": "Andy,"
+      },
+      {
+        "name": "ant",
+        "text": "Ant,"
+      },
+      {
+        "name": "anthony",
+        "text": "Anthony,"
+      },
+      {
+        "name": "bird",
+        "text": "Bird,"
+      },
+      {
+        "name": "bob",
+        "text": "Bob,"
+      },
+      {
+        "name": "boss",
+        "text": "Boss,"
+      },
+      {
+        "name": "brad",
+        "text": "Brad,"
+      },
+      {
+        "name": "brenton",
+        "text": "Brenton,"
+      },
+      {
+        "name": "casey",
+        "text": "Casey,"
+      },
+      {
+        "name": "champ",
+        "text": "Champ,"
+      },
+      {
+        "name": "chris",
+        "text": "Chris,"
+      },
+      {
+        "name": "cole",
+        "text": "Cole,"
+      },
+      {
+        "name": "daniel",
+        "text": "Daniel,"
+      },
+      {
+        "name": "dave",
+        "text": "Dave,"
+      },
+      {
+        "name": "david",
+        "text": "David,"
+      },
+      {
+        "name": "dean",
+        "text": "Dean,"
+      },
+      {
+        "name": "dominic",
+        "text": "Dominic,"
+      },
+      {
+        "name": "driver",
+        "text": "Driver,"
+      },
+      {
+        "name": "dylan",
+        "text": "Dylan,"
+      },
+      {
+        "name": "felix",
+        "text": "Felix,"
+      },
+      {
+        "name": "fox",
+        "text": "Fox,"
+      },
+      {
+        "name": "fredrich",
+        "text": "Fredrich,"
+      },
+      {
+        "name": "glen",
+        "text": "Glen,"
+      },
+      {
+        "name": "guido",
+        "text": "Guido,"
+      },
+      {
+        "name": "hector",
+        "text": "Hector,"
+      },
+      {
+        "name": "hesham",
+        "text": "Hesham,"
+      },
+      {
+        "name": "ivan",
+        "text": "Ivan,"
+      },
+      {
+        "name": "jace",
+        "text": "Jace,"
+      },
+      {
+        "name": "jakub",
+        "text": "Jakub,"
+      },
+      {
+        "name": "james",
+        "text": "James,"
+      },
+      {
+        "name": "jasper",
+        "text": "Jasper,"
+      },
+      {
+        "name": "johan",
+        "text": "Johan,"
+      },
+      {
+        "name": "jon",
+        "text": "Jon,"
+      },
+      {
+        "name": "jorge",
+        "text": "Jorge,"
+      },
+      {
+        "name": "jose",
+        "text": "Jose,"
+      },
+      {
+        "name": "justin",
+        "text": "Justin,"
+      },
+      {
+        "name": "kanki",
+        "text": "Kanki,"
+      },
+      {
+        "name": "kev",
+        "text": "Kev,"
+      },
+      {
+        "name": "kevin",
+        "text": "Kevin,"
+      },
+      {
+        "name": "kris",
+        "text": "Kris,"
+      },
+      {
+        "name": "lee",
+        "text": "Lee,"
+      },
+      {
+        "name": "lorenzo",
+        "text": "Lorenzo,"
+      },
+      {
+        "name": "marcus",
+        "text": "Marcus,"
+      },
+      {
+        "name": "mark",
+        "text": "Mark,"
+      },
+      {
+        "name": "mate",
+        "text": "Mate,"
+      },
+      {
+        "name": "matt",
+        "text": "Matt,"
+      },
+      {
+        "name": "matthew",
+        "text": "Matthew,"
+      },
+      {
+        "name": "miguel",
+        "text": "Miguel,"
+      },
+      {
+        "name": "mike",
+        "text": "Mike,"
+      },
+      {
+        "name": "miquel",
+        "text": "Miquel,"
+      },
+      {
+        "name": "nick",
+        "text": "Nick,"
+      },
+      {
+        "name": "niklas",
+        "text": "Niklas,"
+      },
+      {
+        "name": "noj",
+        "text": "Noj,"
+      },
+      {
+        "name": "oivindl",
+        "text": "Öivin,"
+      },
+      {
+        "name": "pablo",
+        "text": "Pablo,"
+      },
+      {
+        "name": "patrick",
+        "text": "Patrick,"
+      },
+      {
+        "name": "raymond",
+        "text": "Raymond,"
+      },
+      {
+        "name": "rich",
+        "text": "Rich,"
+      },
+      {
+        "name": "rob",
+        "text": "Rob,"
+      },
+      {
+        "name": "ron",
+        "text": "Ron,"
+      },
+      {
+        "name": "shamoy",
+        "text": "Shamoy,"
+      },
+      {
+        "name": "shawn",
+        "text": "Shawn,"
+      },
+      {
+        "name": "tim",
+        "text": "Tim,"
+      },
+      {
+        "name": "tom",
+        "text": "Tom,"
+      },
+      {
+        "name": "ville",
+        "text": "Ville,"
+      },
+      {
+        "name": "zeus",
+        "text": "Zeus,"
+      }
     ],
     "race-end": [
       {
@@ -5075,148 +5287,568 @@
       }
     ],
     "race-start-greeting": [
-      { "name": "adam", "text": "Time to race, Adam." },
-      { "name": "al", "text": "Time to race, Al." },
-      { "name": "andre", "text": "Time to race, André." },
-      { "name": "andrew", "text": "Time to race, Andrew." },
-      { "name": "andy", "text": "Time to race, Andy." },
-      { "name": "ant", "text": "Time to race, Ant." },
-      { "name": "anthony", "text": "Time to race, Anthony." },
-      { "name": "bird", "text": "Time to race, Bird." },
-      { "name": "bob", "text": "Time to race, Bob." },
-      { "name": "boss", "text": "Time to race, Boss." },
-      { "name": "brad", "text": "Time to race, Brad." },
-      { "name": "brenton", "text": "Time to race, Brenton." },
-      { "name": "casey", "text": "Time to race, Casey." },
-      { "name": "champ", "text": "Time to race, Champ." },
-      { "name": "chris", "text": "Time to race, Chris." },
-      { "name": "cole", "text": "Time to race, Cole." },
-      { "name": "daniel", "text": "Time to race, Daniel." },
-      { "name": "dave", "text": "Time to race, Dave." },
-      { "name": "david", "text": "Time to race, David." },
-      { "name": "dean", "text": "Time to race, Dean." },
-      { "name": "dominic", "text": "Time to race, Dominic." },
-      { "name": "driver", "text": "Time to race, Driver." },
-      { "name": "dylan", "text": "Time to race, Dylan." },
-      { "name": "felix", "text": "Time to race, Felix." },
-      { "name": "fox", "text": "Time to race, Fox." },
-      { "name": "fredrich", "text": "Time to race, Fredrich." },
-      { "name": "glen", "text": "Time to race, Glen." },
-      { "name": "guido", "text": "Time to race, Guido." },
-      { "name": "hector", "text": "Time to race, Hector." },
-      { "name": "hesham", "text": "Time to race, Hesham." },
-      { "name": "ivan", "text": "Time to race, Ivan." },
-      { "name": "jace", "text": "Time to race, Jace." },
-      { "name": "jakub", "text": "Time to race, Jakub." },
-      { "name": "james", "text": "Time to race, James." },
-      { "name": "jasper", "text": "Time to race, Jasper." },
-      { "name": "johan", "text": "Time to race, Johan." },
-      { "name": "jon", "text": "Time to race, Jon." },
-      { "name": "jorge", "text": "Time to race, Jorge." },
-      { "name": "jose", "text": "Time to race, Jose." },
-      { "name": "justin", "text": "Time to race, Justin." },
-      { "name": "kanki", "text": "Time to race, Kanki." },
-      { "name": "kev", "text": "Time to race, Kev." },
-      { "name": "kevin", "text": "Time to race, Kevin." },
-      { "name": "kris", "text": "Time to race, Kris." },
-      { "name": "lee", "text": "Time to race, Lee." },
-      { "name": "lorenzo", "text": "Time to race, Lorenzo." },
-      { "name": "marcus", "text": "Time to race, Marcus." },
-      { "name": "mark", "text": "Time to race, Mark." },
-      { "name": "mate", "text": "Time to race, Mate." },
-      { "name": "matt", "text": "Time to race, Matt." },
-      { "name": "matthew", "text": "Time to race, Matthew." },
-      { "name": "miguel", "text": "Time to race, Miguel." },
-      { "name": "mike", "text": "Time to race, Mike." },
-      { "name": "miquel", "text": "Time to race, Miquel." },
-      { "name": "nick", "text": "Time to race, Nick." },
-      { "name": "niklas", "text": "Time to race, Niklas." },
-      { "name": "noj", "text": "Time to race, Noj." },
-      { "name": "oivindl", "text": "Time to race, Öivin." },
-      { "name": "pablo", "text": "Time to race, Pablo." },
-      { "name": "patrick", "text": "Time to race, Patrick." },
-      { "name": "raymond", "text": "Time to race, Raymond." },
-      { "name": "rich", "text": "Time to race, Rich." },
-      { "name": "rob", "text": "Time to race, Rob." },
-      { "name": "ron", "text": "Time to race, Ron." },
-      { "name": "shamoy", "text": "Time to race, Shamoy." },
-      { "name": "shawn", "text": "Time to race, Shawn." },
-      { "name": "tim", "text": "Time to race, Tim." },
-      { "name": "tom", "text": "Time to race, Tom." },
-      { "name": "ville", "text": "Time to race, Ville." },
-      { "name": "zeus", "text": "Time to race, Zeus." }
+      {
+        "name": "adam",
+        "text": "Time to race, Adam."
+      },
+      {
+        "name": "al",
+        "text": "Time to race, Al."
+      },
+      {
+        "name": "andre",
+        "text": "Time to race, André."
+      },
+      {
+        "name": "andrew",
+        "text": "Time to race, Andrew."
+      },
+      {
+        "name": "andy",
+        "text": "Time to race, Andy."
+      },
+      {
+        "name": "ant",
+        "text": "Time to race, Ant."
+      },
+      {
+        "name": "anthony",
+        "text": "Time to race, Anthony."
+      },
+      {
+        "name": "bird",
+        "text": "Time to race, Bird."
+      },
+      {
+        "name": "bob",
+        "text": "Time to race, Bob."
+      },
+      {
+        "name": "boss",
+        "text": "Time to race, Boss."
+      },
+      {
+        "name": "brad",
+        "text": "Time to race, Brad."
+      },
+      {
+        "name": "brenton",
+        "text": "Time to race, Brenton."
+      },
+      {
+        "name": "casey",
+        "text": "Time to race, Casey."
+      },
+      {
+        "name": "champ",
+        "text": "Time to race, Champ."
+      },
+      {
+        "name": "chris",
+        "text": "Time to race, Chris."
+      },
+      {
+        "name": "cole",
+        "text": "Time to race, Cole."
+      },
+      {
+        "name": "daniel",
+        "text": "Time to race, Daniel."
+      },
+      {
+        "name": "dave",
+        "text": "Time to race, Dave."
+      },
+      {
+        "name": "david",
+        "text": "Time to race, David."
+      },
+      {
+        "name": "dean",
+        "text": "Time to race, Dean."
+      },
+      {
+        "name": "dominic",
+        "text": "Time to race, Dominic."
+      },
+      {
+        "name": "driver",
+        "text": "Time to race, Driver."
+      },
+      {
+        "name": "dylan",
+        "text": "Time to race, Dylan."
+      },
+      {
+        "name": "felix",
+        "text": "Time to race, Felix."
+      },
+      {
+        "name": "fox",
+        "text": "Time to race, Fox."
+      },
+      {
+        "name": "fredrich",
+        "text": "Time to race, Fredrich."
+      },
+      {
+        "name": "glen",
+        "text": "Time to race, Glen."
+      },
+      {
+        "name": "guido",
+        "text": "Time to race, Guido."
+      },
+      {
+        "name": "hector",
+        "text": "Time to race, Hector."
+      },
+      {
+        "name": "hesham",
+        "text": "Time to race, Hesham."
+      },
+      {
+        "name": "ivan",
+        "text": "Time to race, Ivan."
+      },
+      {
+        "name": "jace",
+        "text": "Time to race, Jace."
+      },
+      {
+        "name": "jakub",
+        "text": "Time to race, Jakub."
+      },
+      {
+        "name": "james",
+        "text": "Time to race, James."
+      },
+      {
+        "name": "jasper",
+        "text": "Time to race, Jasper."
+      },
+      {
+        "name": "johan",
+        "text": "Time to race, Johan."
+      },
+      {
+        "name": "jon",
+        "text": "Time to race, Jon."
+      },
+      {
+        "name": "jorge",
+        "text": "Time to race, Jorge."
+      },
+      {
+        "name": "jose",
+        "text": "Time to race, Jose."
+      },
+      {
+        "name": "justin",
+        "text": "Time to race, Justin."
+      },
+      {
+        "name": "kanki",
+        "text": "Time to race, Kanki."
+      },
+      {
+        "name": "kev",
+        "text": "Time to race, Kev."
+      },
+      {
+        "name": "kevin",
+        "text": "Time to race, Kevin."
+      },
+      {
+        "name": "kris",
+        "text": "Time to race, Kris."
+      },
+      {
+        "name": "lee",
+        "text": "Time to race, Lee."
+      },
+      {
+        "name": "lorenzo",
+        "text": "Time to race, Lorenzo."
+      },
+      {
+        "name": "marcus",
+        "text": "Time to race, Marcus."
+      },
+      {
+        "name": "mark",
+        "text": "Time to race, Mark."
+      },
+      {
+        "name": "mate",
+        "text": "Time to race, Mate."
+      },
+      {
+        "name": "matt",
+        "text": "Time to race, Matt."
+      },
+      {
+        "name": "matthew",
+        "text": "Time to race, Matthew."
+      },
+      {
+        "name": "miguel",
+        "text": "Time to race, Miguel."
+      },
+      {
+        "name": "mike",
+        "text": "Time to race, Mike."
+      },
+      {
+        "name": "miquel",
+        "text": "Time to race, Miquel."
+      },
+      {
+        "name": "nick",
+        "text": "Time to race, Nick."
+      },
+      {
+        "name": "niklas",
+        "text": "Time to race, Niklas."
+      },
+      {
+        "name": "noj",
+        "text": "Time to race, Noj."
+      },
+      {
+        "name": "oivindl",
+        "text": "Time to race, Öivin."
+      },
+      {
+        "name": "pablo",
+        "text": "Time to race, Pablo."
+      },
+      {
+        "name": "patrick",
+        "text": "Time to race, Patrick."
+      },
+      {
+        "name": "raymond",
+        "text": "Time to race, Raymond."
+      },
+      {
+        "name": "rich",
+        "text": "Time to race, Rich."
+      },
+      {
+        "name": "rob",
+        "text": "Time to race, Rob."
+      },
+      {
+        "name": "ron",
+        "text": "Time to race, Ron."
+      },
+      {
+        "name": "shamoy",
+        "text": "Time to race, Shamoy."
+      },
+      {
+        "name": "shawn",
+        "text": "Time to race, Shawn."
+      },
+      {
+        "name": "tim",
+        "text": "Time to race, Tim."
+      },
+      {
+        "name": "tom",
+        "text": "Time to race, Tom."
+      },
+      {
+        "name": "ville",
+        "text": "Time to race, Ville."
+      },
+      {
+        "name": "zeus",
+        "text": "Time to race, Zeus."
+      }
     ],
     "position-overtake-come-on": [
-      { "name": "adam", "text": "Come on, Adam." },
-      { "name": "al", "text": "Come on, Al." },
-      { "name": "andre", "text": "Come on, André." },
-      { "name": "andrew", "text": "Come on, Andrew." },
-      { "name": "andy", "text": "Come on, Andy." },
-      { "name": "ant", "text": "Come on, Ant." },
-      { "name": "anthony", "text": "Come on, Anthony." },
-      { "name": "bird", "text": "Come on, Bird." },
-      { "name": "bob", "text": "Come on, Bob." },
-      { "name": "boss", "text": "Come on, Boss." },
-      { "name": "brad", "text": "Come on, Brad." },
-      { "name": "brenton", "text": "Come on, Brenton." },
-      { "name": "casey", "text": "Come on, Casey." },
-      { "name": "champ", "text": "Come on, Champ." },
-      { "name": "chris", "text": "Come on, Chris." },
-      { "name": "cole", "text": "Come on, Cole." },
-      { "name": "daniel", "text": "Come on, Daniel." },
-      { "name": "dave", "text": "Come on, Dave." },
-      { "name": "david", "text": "Come on, David." },
-      { "name": "dean", "text": "Come on, Dean." },
-      { "name": "dominic", "text": "Come on, Dominic." },
-      { "name": "driver", "text": "Come on, Driver." },
-      { "name": "dylan", "text": "Come on, Dylan." },
-      { "name": "felix", "text": "Come on, Felix." },
-      { "name": "fox", "text": "Come on, Fox." },
-      { "name": "fredrich", "text": "Come on, Fredrich." },
-      { "name": "glen", "text": "Come on, Glen." },
-      { "name": "guido", "text": "Come on, Guido." },
-      { "name": "hector", "text": "Come on, Hector." },
-      { "name": "hesham", "text": "Come on, Hesham." },
-      { "name": "ivan", "text": "Come on, Ivan." },
-      { "name": "jace", "text": "Come on, Jace." },
-      { "name": "jakub", "text": "Come on, Jakub." },
-      { "name": "james", "text": "Come on, James." },
-      { "name": "jasper", "text": "Come on, Jasper." },
-      { "name": "johan", "text": "Come on, Johan." },
-      { "name": "jon", "text": "Come on, Jon." },
-      { "name": "jorge", "text": "Come on, Jorge." },
-      { "name": "jose", "text": "Come on, Jose." },
-      { "name": "justin", "text": "Come on, Justin." },
-      { "name": "kanki", "text": "Come on, Kanki." },
-      { "name": "kev", "text": "Come on, Kev." },
-      { "name": "kevin", "text": "Come on, Kevin." },
-      { "name": "kris", "text": "Come on, Kris." },
-      { "name": "lee", "text": "Come on, Lee." },
-      { "name": "lorenzo", "text": "Come on, Lorenzo." },
-      { "name": "marcus", "text": "Come on, Marcus." },
-      { "name": "mark", "text": "Come on, Mark." },
-      { "name": "mate", "text": "Come on, Mate." },
-      { "name": "matt", "text": "Come on, Matt." },
-      { "name": "matthew", "text": "Come on, Matthew." },
-      { "name": "miguel", "text": "Come on, Miguel." },
-      { "name": "mike", "text": "Come on, Mike." },
-      { "name": "miquel", "text": "Come on, Miquel." },
-      { "name": "nick", "text": "Come on, Nick." },
-      { "name": "niklas", "text": "Come on, Niklas." },
-      { "name": "noj", "text": "Come on, Noj." },
-      { "name": "oivindl", "text": "Come on, Öivin." },
-      { "name": "pablo", "text": "Come on, Pablo." },
-      { "name": "patrick", "text": "Come on, Patrick." },
-      { "name": "raymond", "text": "Come on, Raymond." },
-      { "name": "rich", "text": "Come on, Rich." },
-      { "name": "rob", "text": "Come on, Rob." },
-      { "name": "ron", "text": "Come on, Ron." },
-      { "name": "shamoy", "text": "Come on, Shamoy." },
-      { "name": "shawn", "text": "Come on, Shawn." },
-      { "name": "tim", "text": "Come on, Tim." },
-      { "name": "tom", "text": "Come on, Tom." },
-      { "name": "ville", "text": "Come on, Ville." },
-      { "name": "zeus", "text": "Come on, Zeus." }
+      {
+        "name": "adam",
+        "text": "Come on, Adam."
+      },
+      {
+        "name": "al",
+        "text": "Come on, Al."
+      },
+      {
+        "name": "andre",
+        "text": "Come on, André."
+      },
+      {
+        "name": "andrew",
+        "text": "Come on, Andrew."
+      },
+      {
+        "name": "andy",
+        "text": "Come on, Andy."
+      },
+      {
+        "name": "ant",
+        "text": "Come on, Ant."
+      },
+      {
+        "name": "anthony",
+        "text": "Come on, Anthony."
+      },
+      {
+        "name": "bird",
+        "text": "Come on, Bird."
+      },
+      {
+        "name": "bob",
+        "text": "Come on, Bob."
+      },
+      {
+        "name": "boss",
+        "text": "Come on, Boss."
+      },
+      {
+        "name": "brad",
+        "text": "Come on, Brad."
+      },
+      {
+        "name": "brenton",
+        "text": "Come on, Brenton."
+      },
+      {
+        "name": "casey",
+        "text": "Come on, Casey."
+      },
+      {
+        "name": "champ",
+        "text": "Come on, Champ."
+      },
+      {
+        "name": "chris",
+        "text": "Come on, Chris."
+      },
+      {
+        "name": "cole",
+        "text": "Come on, Cole."
+      },
+      {
+        "name": "daniel",
+        "text": "Come on, Daniel."
+      },
+      {
+        "name": "dave",
+        "text": "Come on, Dave."
+      },
+      {
+        "name": "david",
+        "text": "Come on, David."
+      },
+      {
+        "name": "dean",
+        "text": "Come on, Dean."
+      },
+      {
+        "name": "dominic",
+        "text": "Come on, Dominic."
+      },
+      {
+        "name": "driver",
+        "text": "Come on, Driver."
+      },
+      {
+        "name": "dylan",
+        "text": "Come on, Dylan."
+      },
+      {
+        "name": "felix",
+        "text": "Come on, Felix."
+      },
+      {
+        "name": "fox",
+        "text": "Come on, Fox."
+      },
+      {
+        "name": "fredrich",
+        "text": "Come on, Fredrich."
+      },
+      {
+        "name": "glen",
+        "text": "Come on, Glen."
+      },
+      {
+        "name": "guido",
+        "text": "Come on, Guido."
+      },
+      {
+        "name": "hector",
+        "text": "Come on, Hector."
+      },
+      {
+        "name": "hesham",
+        "text": "Come on, Hesham."
+      },
+      {
+        "name": "ivan",
+        "text": "Come on, Ivan."
+      },
+      {
+        "name": "jace",
+        "text": "Come on, Jace."
+      },
+      {
+        "name": "jakub",
+        "text": "Come on, Jakub."
+      },
+      {
+        "name": "james",
+        "text": "Come on, James."
+      },
+      {
+        "name": "jasper",
+        "text": "Come on, Jasper."
+      },
+      {
+        "name": "johan",
+        "text": "Come on, Johan."
+      },
+      {
+        "name": "jon",
+        "text": "Come on, Jon."
+      },
+      {
+        "name": "jorge",
+        "text": "Come on, Jorge."
+      },
+      {
+        "name": "jose",
+        "text": "Come on, Jose."
+      },
+      {
+        "name": "justin",
+        "text": "Come on, Justin."
+      },
+      {
+        "name": "kanki",
+        "text": "Come on, Kanki."
+      },
+      {
+        "name": "kev",
+        "text": "Come on, Kev."
+      },
+      {
+        "name": "kevin",
+        "text": "Come on, Kevin."
+      },
+      {
+        "name": "kris",
+        "text": "Come on, Kris."
+      },
+      {
+        "name": "lee",
+        "text": "Come on, Lee."
+      },
+      {
+        "name": "lorenzo",
+        "text": "Come on, Lorenzo."
+      },
+      {
+        "name": "marcus",
+        "text": "Come on, Marcus."
+      },
+      {
+        "name": "mark",
+        "text": "Come on, Mark."
+      },
+      {
+        "name": "mate",
+        "text": "Come on, Mate."
+      },
+      {
+        "name": "matt",
+        "text": "Come on, Matt."
+      },
+      {
+        "name": "matthew",
+        "text": "Come on, Matthew."
+      },
+      {
+        "name": "miguel",
+        "text": "Come on, Miguel."
+      },
+      {
+        "name": "mike",
+        "text": "Come on, Mike."
+      },
+      {
+        "name": "miquel",
+        "text": "Come on, Miquel."
+      },
+      {
+        "name": "nick",
+        "text": "Come on, Nick."
+      },
+      {
+        "name": "niklas",
+        "text": "Come on, Niklas."
+      },
+      {
+        "name": "noj",
+        "text": "Come on, Noj."
+      },
+      {
+        "name": "oivindl",
+        "text": "Come on, Öivin."
+      },
+      {
+        "name": "pablo",
+        "text": "Come on, Pablo."
+      },
+      {
+        "name": "patrick",
+        "text": "Come on, Patrick."
+      },
+      {
+        "name": "raymond",
+        "text": "Come on, Raymond."
+      },
+      {
+        "name": "rich",
+        "text": "Come on, Rich."
+      },
+      {
+        "name": "rob",
+        "text": "Come on, Rob."
+      },
+      {
+        "name": "ron",
+        "text": "Come on, Ron."
+      },
+      {
+        "name": "shamoy",
+        "text": "Come on, Shamoy."
+      },
+      {
+        "name": "shawn",
+        "text": "Come on, Shawn."
+      },
+      {
+        "name": "tim",
+        "text": "Come on, Tim."
+      },
+      {
+        "name": "tom",
+        "text": "Come on, Tom."
+      },
+      {
+        "name": "ville",
+        "text": "Come on, Ville."
+      },
+      {
+        "name": "zeus",
+        "text": "Come on, Zeus."
+      }
     ],
     "position-overtake": [
       {

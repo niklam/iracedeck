@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
-import { ENUMERATED_POOLS, POOL_REGISTRY } from "./pools.js";
+import { POOL_REGISTRY } from "./pools.js";
 import { RADIO_CLOSE, RADIO_OPEN } from "./radio-frame.js";
 import {
   FAST_REPAIR_TOGGLE_SCENARIOS,
@@ -122,14 +122,14 @@ const manifest: AudioAssetsManifest = {
     "sfx/IRD-tick-close.mp3",
     "sfx/IRD-ambient-pit.mp3",
     ...VOICE_KEYS.flatMap((v) => [
-      `voice/${v}/acknowledgment/okay.mp3`,
-      `voice/${v}/acknowledgment/got-it.mp3`,
-      `voice/${v}/acknowledgment/roger-that.mp3`,
-      `voice/${v}/acknowledgment/copy-that.mp3`,
-      `voice/${v}/acknowledgment/we-got-that.mp3`,
-      `voice/${v}/pit-actions/got-it.mp3`,
-      `voice/${v}/pit-actions/roger-that.mp3`,
-      `voice/${v}/pit-actions/copy-that.mp3`,
+      `voice/${v}/acknowledgment/acknowledgment-01.mp3`,
+      `voice/${v}/acknowledgment/acknowledgment-02.mp3`,
+      `voice/${v}/acknowledgment/acknowledgment-03.mp3`,
+      `voice/${v}/acknowledgment/acknowledgment-04.mp3`,
+      `voice/${v}/acknowledgment/acknowledgment-05.mp3`,
+      `voice/${v}/pit-actions/acknowledgment-01.mp3`,
+      `voice/${v}/pit-actions/acknowledgment-02.mp3`,
+      `voice/${v}/pit-actions/acknowledgment-03.mp3`,
       `voice/${v}/pit-actions/fuel-on-01.mp3`,
       `voice/${v}/pit-actions/fuel-off-01.mp3`,
       `voice/${v}/pit-actions/tires-off-01.mp3`,
@@ -178,9 +178,12 @@ beforeEach(() => {
   audio = createFakeAudio();
   engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => activeVoice);
 
-  engine.definePool("pit-action-acknowledgment", [...ENUMERATED_POOLS["pit-action-acknowledgment"]]);
-
-  for (const name of ["pit-action-fuel-on", "pit-action-fuel-off", "pit-action-tires-off"]) {
+  for (const name of [
+    "pit-action-acknowledgment",
+    "pit-action-fuel-on",
+    "pit-action-fuel-off",
+    "pit-action-tires-off",
+  ]) {
     const { group, base } = POOL_REGISTRY[name];
     engine.definePoolFromManifest(name, group, base);
   }
