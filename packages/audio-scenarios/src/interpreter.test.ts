@@ -357,7 +357,7 @@ describe("manifest-derived pools (definePoolFromManifest)", () => {
     stub.mockRestore();
   });
 
-  it("skips the pool step when the active voice has no clips for it (debug, not error)", () => {
+  it("aborts the whole callout when the active voice has no clips for a required pool (issue #835)", () => {
     engine.definePoolFromManifest("flag-blue", "flags", "blue");
     engine.defineScenario({
       id: "test.blue-then-tick",
@@ -370,19 +370,19 @@ describe("manifest-derived pools (definePoolFromManifest)", () => {
     engine.fire("test.blue-then-tick");
     flushVoiceAndSfx(audio);
 
-    expect(voicePaths()).toEqual([]);
-    expect(audio._played.map((p) => p.path)).toEqual(["sfx/IRD-tick-close.mp3"]);
+    // The whole callout is skipped — never a fragment, so no trailing tick.
+    expect(audio._played).toEqual([]);
     expect(mockLogger.error).not.toHaveBeenCalled();
   });
 
-  it("skips the pool step when no voice is selected", () => {
+  it("aborts the whole callout when no voice is selected", () => {
     defineBluePoolScenario();
 
     activeVoice = null;
     engine.fire("test.blue");
     flushVoiceAndSfx(audio);
 
-    expect(voicePaths()).toEqual([]);
+    expect(audio._played).toEqual([]);
     expect(mockLogger.error).not.toHaveBeenCalled();
   });
 
@@ -427,6 +427,223 @@ describe("manifest-derived pools (definePoolFromManifest)", () => {
   });
 });
 
+// ─── Required-step abort + optional groups (issue #835) ─────────────────────
+
+describe("required-step abort (issue #835)", () => {
+  const voicedManifest: AudioAssetsManifest = {
+    clips: [
+      "sfx/IRD-tick-open.mp3",
+      "sfx/IRD-tick-close.mp3",
+      "sfx/IRD-ambient-pit.mp3",
+      "voice/default/flags/blue-01.mp3",
+      "voice/default/flags/blue-02.mp3",
+      "voice/luca/flags/blue-01.mp3",
+      "voice/titan/flags/red-01.mp3",
+    ],
+    ambientLoop: "sfx/IRD-ambient-pit.mp3",
+    ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
+  };
+
+  let activeVoice: string | null;
+
+  beforeEach(() => {
+    _resetAudioScenarios();
+    activeVoice = "default";
+    bus = createMockBus();
+    audio = createFakeAudio();
+    engine = initializeAudioScenarios(bus, audio, voicedManifest, mockLogger as never, () => activeVoice);
+  });
+
+  function voicePaths(): string[] {
+    return audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
+  }
+
+  it("aborts the whole callout when a var resolves to a clip the active voice lacks", () => {
+    engine.defineVar("clip", () => "voice/{voice}/flags/blue-01.mp3");
+    engine.defineScenario({
+      id: "test.var-clip",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      sequence: ["/sfx/IRD-tick-open.mp3", "{{clip}}", "/sfx/IRD-tick-close.mp3"],
+    });
+
+    activeVoice = "titan";
+    engine.fire("test.var-clip");
+    flushVoiceAndSfx(audio);
+
+    expect(audio._played).toEqual([]);
+
+    // The same fire works for a voice that has the clip.
+    activeVoice = "default";
+    engine.fire("test.var-clip");
+    flushVoiceAndSfx(audio);
+
+    expect(voicePaths()).toEqual(["voice/default/flags/blue-01.mp3"]);
+  });
+
+  it("aborts the whole callout when a voice-templated clip step is missing for the active voice", () => {
+    engine.defineScenario({
+      id: "test.clip-step",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      base: "voice/{voice}",
+      sequence: ["/sfx/IRD-tick-open.mp3", "flags/blue-01.mp3", "/sfx/IRD-tick-close.mp3"],
+    });
+
+    activeVoice = "titan";
+    engine.fire("test.clip-step");
+    flushVoiceAndSfx(audio);
+
+    expect(audio._played).toEqual([]);
+
+    activeVoice = "luca";
+    engine.fire("test.clip-step");
+    flushVoiceAndSfx(audio);
+
+    expect(voicePaths()).toEqual(["voice/luca/flags/blue-01.mp3"]);
+  });
+
+  it("skips an optional group locally when a member resolves to nothing, playing the rest", () => {
+    engine.defineVar("missing", () => null);
+    engine.defineScenario({
+      id: "test.optional-skip",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      sequence: [
+        "/sfx/IRD-tick-open.mp3",
+        { optional: ["voice/{voice}/flags/blue-01.mp3", "{{missing}}"] },
+        "/sfx/IRD-tick-close.mp3",
+      ],
+    });
+
+    engine.fire("test.optional-skip");
+    flushVoiceAndSfx(audio);
+
+    // The whole GROUP contributes nothing (no half-clause), the frame plays.
+    expect(audio._played.map((p) => p.path)).toEqual(["sfx/IRD-tick-open.mp3", "sfx/IRD-tick-close.mp3"]);
+  });
+
+  it("plays an optional group in full when every member resolves", () => {
+    engine.defineVar("present", () => "voice/{voice}/flags/blue-02.mp3");
+    engine.defineScenario({
+      id: "test.optional-plays",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      sequence: [
+        "/sfx/IRD-tick-open.mp3",
+        { optional: ["voice/{voice}/flags/blue-01.mp3", "{{present}}"] },
+        "/sfx/IRD-tick-close.mp3",
+      ],
+    });
+
+    engine.fire("test.optional-plays");
+    flushVoiceAndSfx(audio);
+
+    expect(voicePaths()).toEqual(["voice/default/flags/blue-01.mp3", "voice/default/flags/blue-02.mp3"]);
+  });
+
+  it("an aborting same-family fire does not cancel the in-flight family-mate", () => {
+    engine.defineVar("missing", () => null);
+    engine.defineScenario({
+      id: "test.family-a",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      family: "f",
+      sequence: ["voice/{voice}/flags/blue-01.mp3"],
+    });
+    engine.defineScenario({
+      id: "test.family-b",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      family: "f",
+      sequence: ["{{missing}}", "voice/{voice}/flags/blue-02.mp3"],
+    });
+
+    engine.fire("test.family-a");
+    // A's clip is in flight — do not complete it yet.
+    engine.fire("test.family-b");
+
+    // B aborted BEFORE preemption: A was not stopped and finishes normally.
+    expect(audio._stopped).toEqual([]);
+    flushVoiceAndSfx(audio);
+    expect(voicePaths()).toEqual(["voice/default/flags/blue-01.mp3"]);
+  });
+
+  it("an aborting higher-weight interrupt fire does not cut the in-flight fire", () => {
+    engine.defineVar("missing", () => null);
+    engine.defineScenario({
+      id: "test.normal",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      sequence: ["voice/{voice}/flags/blue-01.mp3"],
+    });
+    engine.defineScenario({
+      id: "test.critical",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: WEIGHT.CRITICAL,
+      interrupt: true,
+      sequence: ["{{missing}}"],
+    });
+
+    engine.fire("test.normal");
+    engine.fire("test.critical");
+
+    expect(audio._stopped).toEqual([]);
+    flushVoiceAndSfx(audio);
+    expect(voicePaths()).toEqual(["voice/default/flags/blue-01.mp3"]);
+  });
+
+  it("an aborted fire does not stamp the cooldown", () => {
+    let value: string | null = null;
+    engine.defineVar("mutable", () => value);
+    engine.defineScenario({
+      id: "test.cooldown",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      cooldown: 60_000,
+      sequence: ["{{mutable}}"],
+    });
+
+    engine.fire("test.cooldown");
+    flushVoiceAndSfx(audio);
+    expect(audio._played).toEqual([]);
+
+    value = "voice/{voice}/flags/blue-01.mp3";
+    engine.fire("test.cooldown");
+    flushVoiceAndSfx(audio);
+
+    expect(voicePaths()).toEqual(["voice/default/flags/blue-01.mp3"]);
+  });
+
+  it("a deferred queueable fire re-checks the abort at idle-replay", () => {
+    let value: string | null = "voice/{voice}/flags/blue-02.mp3";
+    engine.defineVar("mutable", () => value);
+    engine.defineScenario({
+      id: "test.busy",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      sequence: ["voice/{voice}/flags/blue-01.mp3"],
+    });
+    engine.defineScenario({
+      id: "test.deferred",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      queueable: true,
+      sequence: ["{{mutable}}"],
+    });
+
+    engine.fire("test.busy");
+    engine.fire("test.deferred"); // equal weight, bus busy → deferred
+
+    value = null; // the deferred fire's clip vanishes while it waits
+    flushVoiceAndSfx(audio);
+
+    // The replay aborted — only the first fire's clip ever played.
+    expect(voicePaths()).toEqual(["voice/default/flags/blue-01.mp3"]);
+  });
+});
+
 // ─── Variables ──────────────────────────────────────────────────────────────
 
 describe("variables", () => {
@@ -450,7 +667,7 @@ describe("variables", () => {
     });
   });
 
-  it("skips the variable when the resolver returns null", () => {
+  it("aborts the whole callout when a required variable resolves to null (issue #835)", () => {
     engine.defineVar("name", () => null);
     engine.defineScenario({
       id: "test.var-null",
@@ -461,7 +678,7 @@ describe("variables", () => {
 
     engine.fire("test.var-null");
 
-    expect(audio._played.map((p) => p.path)).toEqual(["pit-crew/greeting/a.mp3"]);
+    expect(audio._played).toEqual([]);
   });
 });
 

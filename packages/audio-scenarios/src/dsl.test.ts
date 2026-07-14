@@ -73,6 +73,18 @@ describe("resolveStep", () => {
       else: [{ kind: "clip", path: "b.mp3" }],
     });
   });
+
+  it("recursively resolves `optional` groups (issue #835)", () => {
+    const out = resolveStep({ optional: ["a.mp3", { var: "name" }] });
+
+    expect(out).toEqual({
+      kind: "optional",
+      steps: [
+        { kind: "clip", path: "a.mp3" },
+        { kind: "var", name: "name" },
+      ],
+    });
+  });
 });
 
 describe("applyBase", () => {

@@ -153,6 +153,13 @@ const SESSION_START_CLIPS = [
 
 const GREETING_NAMES = ["niklas", "driver"];
 
+// A voice with no speed-number clips, no setup-warning clips, and only the
+// "driver" greeting — exercises the optional-clause skips (issue #835).
+const BARE_VOICE = "bare";
+// A voice with no temp-number clips — a required clip is missing, so the
+// whole brief must abort (issue #835).
+const PARTIAL_VOICE = "partial";
+
 const manifest: AudioAssetsManifest = {
   clips: [
     "sfx/IRD-tick-open.mp3",
@@ -164,6 +171,11 @@ const manifest: AudioAssetsManifest = {
     ...Array.from({ length: 151 }, (_, i) => `voice/${VOICE}/session-start-temp-numbers/${i}.mp3`),
     `voice/${VOICE}/setup-warning/qualifying-01.mp3`,
     `voice/${VOICE}/setup-warning/race-01.mp3`,
+    `voice/${BARE_VOICE}/session-start-greeting/driver.mp3`,
+    ...SESSION_START_CLIPS.map((c) => `voice/${BARE_VOICE}/session-start/${c}.mp3`),
+    ...Array.from({ length: 151 }, (_, i) => `voice/${BARE_VOICE}/session-start-temp-numbers/${i}.mp3`),
+    ...GREETING_NAMES.map((n) => `voice/${PARTIAL_VOICE}/session-start-greeting/${n}.mp3`),
+    ...SESSION_START_CLIPS.map((c) => `voice/${PARTIAL_VOICE}/session-start/${c}.mp3`),
   ],
   ambientLoop: "sfx/IRD-ambient-pit.mp3",
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
@@ -207,14 +219,17 @@ function hasClip(suffix: string): boolean {
   return voicePaths().some((p) => p.endsWith(suffix));
 }
 
+let activeVoice: string;
+
 beforeEach(() => {
   vi.useFakeTimers();
   currentSnapshot = null;
   sessionStartEnabled = true;
   setupWarningMismatch = () => false;
+  activeVoice = VOICE;
   bus = createMockBus();
   audio = createFakeAudio();
-  initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
+  initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => activeVoice);
   registerPitCrew(
     bus,
     undefined,
@@ -268,6 +283,44 @@ describe("SESSION_START_SPEED_VALUES", () => {
   it("excludes values that aren't a known limit or its neighbour", () => {
     expect(SESSION_START_SPEED_VALUES.has(100)).toBe(false);
     expect(SESSION_START_SPEED_VALUES.has(0)).toBe(false);
+  });
+});
+
+describe("per-voice clip availability (issue #835)", () => {
+  it("skips the pit-speed clause for a voice with no speed-number clips, playing the rest", () => {
+    activeVoice = BARE_VOICE;
+    fire(snap({ driverName: "driver", pitSpeedLimit: 80 }));
+
+    expect(hasClip("/session-start/pit-speed-intro.mp3")).toBe(false);
+    expect(voicePaths().some((p) => p.includes("session-start-speed-numbers"))).toBe(false);
+    expect(hasClip("/session-start/speed-unit-kmh.mp3")).toBe(false);
+    // The rest of the brief still plays.
+    expect(hasClip("/session-start/session-qualifying.mp3")).toBe(true);
+    expect(hasClip("/session-start/track-temp-intro.mp3")).toBe(true);
+  });
+
+  it("skips the setup-warning nudge for a voice with no setup-warning clips, playing the rest", () => {
+    activeVoice = BARE_VOICE;
+    setupWarningMismatch = (kind) => kind === "qualifying";
+    fire(snap({ driverName: "driver" }));
+
+    expect(voicePaths().some((p) => p.includes("setup-warning"))).toBe(false);
+    expect(hasClip("/session-start/session-qualifying.mp3")).toBe(true);
+  });
+
+  it("skips the greeting for a voice lacking the picked name clip, playing the rest", () => {
+    activeVoice = BARE_VOICE;
+    fire(snap({ driverName: "niklas" }));
+
+    expect(voicePaths().some((p) => p.includes("session-start-greeting"))).toBe(false);
+    expect(hasClip("/session-start/session-qualifying.mp3")).toBe(true);
+  });
+
+  it("skips the WHOLE brief for a voice missing a required clip (temp numbers) — never a fragment", () => {
+    activeVoice = PARTIAL_VOICE;
+    fire(snap());
+
+    expect(audio._played).toEqual([]);
   });
 });
 

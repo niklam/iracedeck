@@ -249,7 +249,10 @@ export function buildRaceStartScenario(
 
   const sequence: Step[] = [
     "@pit-crew.radio-open",
-    { var: "raceStart.greeting" },
+    // Optional (issue #835): driver names are a union across voices, so a
+    // voice lacking the picked name clip skips the greeting — a complete
+    // sentence either way — instead of aborting the whole brief.
+    { optional: [{ var: "raceStart.greeting" }] },
     {
       if: isPole,
       then: [clipPath("starting-from-pole-01.mp3")],
@@ -272,7 +275,9 @@ export function buildRaceStartScenario(
     { var: "raceStart.wetness" },
     {
       if: () => getSetupWarningMismatch("race"),
-      then: [`${SETUP_WARNING_GROUP}/race-01.mp3`],
+      // Optional clause (issue #835): the nudge is a self-contained add-on —
+      // a voice without the clip skips it, not the brief.
+      then: [{ optional: [`${SETUP_WARNING_GROUP}/race-01.mp3`] }],
     },
     "@pit-crew.radio-close",
   ];

@@ -218,7 +218,10 @@ export function buildOvertakeLostScenario(
 ): Scenario {
   const sequence: Step[] = [
     "@pit-crew.radio-open",
-    { var: "overtake.lost.comeOn" },
+    // Optional (issue #835): the "Come on, <name>." opener is a complete
+    // sentence on its own — a voice lacking the name clip (or an unwired
+    // resolver) skips it and the loss line still plays.
+    { optional: [{ var: "overtake.lost.comeOn" }] },
     clipPath("dont-give-up-positions-01.mp3"),
     "@pit-crew.radio-close",
   ];

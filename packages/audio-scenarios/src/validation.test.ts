@@ -99,6 +99,17 @@ describe("validateScenario", () => {
     expect(errorLogs.join("\n")).toContain("include target not found: does.not.exist");
   });
 
+  it("walks optional groups like any other branch (issue #835)", () => {
+    engine.defineScenario({
+      id: "bad-optional",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      sequence: [{ optional: ["pit-crew/greeting/does-not-exist.mp3"] }],
+    });
+
+    expect(errorLogs.join("\n")).toContain("unknown clip");
+  });
+
   it("flags include cycles", () => {
     engine.defineScenario({
       id: "a",

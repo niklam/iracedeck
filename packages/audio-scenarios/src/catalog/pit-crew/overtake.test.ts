@@ -390,6 +390,22 @@ describe("overtake reaction (immediate)", () => {
     expect(voicePaths()).toContain(`voice/${VOICE}/position-overtake-come-on/driver.mp3`);
   });
 
+  it("lost skips the come-on clause when the voice lacks the name clip, still playing dont-give-up (issue #835)", () => {
+    currentDriverName = "ghost";
+    fireLost({});
+
+    expect(voicePaths().some((p) => p.includes("position-overtake-come-on"))).toBe(false);
+    expect(voicePaths()).toContain(`voice/${VOICE}/position-overtake/dont-give-up-positions-01.mp3`);
+  });
+
+  it("lost skips the come-on clause when no name resolver is wired, still playing dont-give-up (issue #835)", () => {
+    currentDriverName = null;
+    fireLost({});
+
+    expect(voicePaths().some((p) => p.includes("position-overtake-come-on"))).toBe(false);
+    expect(voicePaths()).toContain(`voice/${VOICE}/position-overtake/dont-give-up-positions-01.mp3`);
+  });
+
   it("does not fire the gained reaction when its opt-in is off", () => {
     overtakeEnabled.gained = false;
     fireGained({});

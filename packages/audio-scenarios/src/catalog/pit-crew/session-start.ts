@@ -253,14 +253,24 @@ export function buildSessionStartScenario(
 ): Scenario {
   const sequence: Step[] = [
     "@pit-crew.radio-open",
-    { var: "sessionStart.greeting" },
+    // Optional (issue #835): driver names are a union across voices, so a
+    // voice lacking the picked name clip skips the greeting — a complete
+    // sentence either way — instead of aborting the whole brief.
+    { optional: [{ var: "sessionStart.greeting" }] },
     { var: "sessionStart.sessionLine" },
     {
       if: () => speedIsSpeakable(getSnapshot()),
+      // Optional clause (issue #835): a voice without the speed-number clip
+      // skips the WHOLE pit-speed clause (never "The pit speed limit is…"
+      // with no number) while the rest of the brief still plays.
       then: [
-        clipPath("pit-speed-intro.mp3"),
-        { var: "sessionStart.speedNumber" },
-        { var: "sessionStart.speedUnit" },
+        {
+          optional: [
+            clipPath("pit-speed-intro.mp3"),
+            { var: "sessionStart.speedNumber" },
+            { var: "sessionStart.speedUnit" },
+          ],
+        },
       ],
     },
     clipPath("track-temp-intro.mp3"),
@@ -273,7 +283,9 @@ export function buildSessionStartScenario(
     { var: "sessionStart.wetness" },
     {
       if: () => getSnapshot()?.sessionType === "qualifying" && getSetupWarningMismatch("qualifying"),
-      then: [`${SETUP_WARNING_GROUP}/qualifying-01.mp3`],
+      // Optional clause (issue #835): the nudge is a self-contained add-on —
+      // a voice without the clip skips it, not the brief.
+      then: [{ optional: [`${SETUP_WARNING_GROUP}/qualifying-01.mp3`] }],
     },
     "@pit-crew.radio-close",
   ];

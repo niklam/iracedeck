@@ -90,7 +90,41 @@ function createFakeAudio(): FakeAudio {
   } as unknown as FakeAudio;
 }
 
-const manifest = { clips: [], ambientLoop: "", ticks: { open: "", close: "" } } as never;
+// The spotter's clip catalog is code-enumerated, but fire-time expansion
+// checks every clip against the manifest for the active voice (issue #835) —
+// so the fixture carries the full production spotter clip set per test voice.
+const SPOTTER_CLIP_NAMES = [
+  "car-inside",
+  "car-left",
+  "car-outside",
+  "car-right",
+  "clear-inside-car-outside",
+  "clear-inside-two-cars-outside",
+  "clear-left-car-right",
+  "clear-left-two-cars-right",
+  "clear-outside-car-inside",
+  "clear-outside-two-cars-inside",
+  "clear-right-car-left",
+  "clear-right-two-cars-left",
+  "clear",
+  "hold-your-line",
+  "one-car-inside",
+  "one-car-left",
+  "one-car-outside",
+  "one-car-right",
+  "still-there",
+  "three-wide",
+  "two-cars-inside",
+  "two-cars-left",
+  "two-cars-outside",
+  "two-cars-right",
+] as const;
+
+const manifest = {
+  clips: ["luca", "elena"].flatMap((v) => SPOTTER_CLIP_NAMES.map((name) => `voice/${v}/spotter/${name}.mp3`)),
+  ambientLoop: "",
+  ticks: { open: "", close: "" },
+} as never;
 
 // ─── Fake event bus ─────────────────────────────────────────────────────────
 
