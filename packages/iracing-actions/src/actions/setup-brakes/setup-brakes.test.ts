@@ -749,6 +749,11 @@ describe("absToggleState", () => {
   it("returns off for a zero ABS level", () => {
     expect(absToggleState({ dcABS: 0 } as never)).toBe("off");
   });
+
+  it("returns na for a non-finite ABS level", () => {
+    expect(absToggleState({ dcABS: Number.NaN } as never)).toBe("na");
+    expect(absToggleState({ dcABS: Number.POSITIVE_INFINITY } as never)).toBe("na");
+  });
 });
 
 describe("generateAbsToggleSvg", () => {

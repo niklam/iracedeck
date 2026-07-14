@@ -176,6 +176,21 @@ export function generateSetupBrakesSvg(settings: SetupBrakesSettings, bindingMis
 }
 
 /**
+ * ISO ABS symbol drawn above the status bar. Lives here (not baked into the
+ * chrome template) so `generateToggleStateSvg` can dim it together with the
+ * bar under the binding-missing warning — the DRS pattern. Rendered with the
+ * icon's resolved colors, so the placeholders resolve at compose time.
+ */
+const ABS_TOGGLE_ARTWORK = `
+    <defs>
+      <linearGradient id="abs-mtl" x1="0" y1="0" x2="0" y2="1"><stop stop-color="{{graphic1Color}}"/><stop offset="1" stop-color="{{graphic1Color}}" stop-opacity="0.55"/></linearGradient>
+    </defs>
+    <path d="M40.5 25.5 A31.5 31.5 0 0 0 40.5 70.5" fill="none" stroke="url(#abs-mtl)" stroke-width="5.25" stroke-linecap="round"/>
+    <path d="M103.5 25.5 A31.5 31.5 0 0 1 103.5 70.5" fill="none" stroke="url(#abs-mtl)" stroke-width="5.25" stroke-linecap="round"/>
+    <circle cx="72" cy="48" r="25.5" fill="none" stroke="url(#abs-mtl)" stroke-width="5.25"/>
+    <text x="72" y="54.75" font-family="Arial, sans-serif" font-size="17.25" font-weight="bold" fill="{{graphic1Color}}" text-anchor="middle">ABS</text>`;
+
+/**
  * @internal Exported for testing
  *
  * Maps dcABS telemetry to the tri-state shown on the ABS Toggle key: no
@@ -200,6 +215,7 @@ export function generateAbsToggleSvg(
 ): string {
   return generateToggleStateSvg({
     template: absToggleTemplate,
+    artwork: ABS_TOGGLE_ARTWORK,
     state,
     colorOverrides: settings.colorOverrides,
     titleOverrides: settings.titleOverrides,

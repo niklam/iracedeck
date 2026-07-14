@@ -21,12 +21,13 @@ describe("extractGraphicContent", () => {
     <linearGradient id="mtl"><stop stop-color="{{graphic1Color}}"/><stop offset="1" stop-color="{{graphic1Color}}" stop-opacity="0.55"/></linearGradient>
     <filter id="glow"><feGaussianBlur stdDeviation="3"/></filter>
   </defs>
-  <rect x="10" y="10" width="20" height="20" fill="url(#mtl)"/>
+  <rect x="10" y="10" width="20" height="20" fill="url(#mtl)" filter="url(#glow)"/>
 </svg>`;
     const result = extractGraphicContent(svg);
     expect(result).toContain('<linearGradient id="mtl">');
     expect(result).toContain('<filter id="glow">');
     expect(result).toContain('fill="url(#mtl)"');
+    expect(result).toContain('filter="url(#glow)"');
   });
 
   it("still strips a legacy activity-state defs block", () => {
