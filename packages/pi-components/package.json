@@ -1,6 +1,6 @@
 {
   "name": "@iracedeck/pi-components",
-  "version": "2.1.0",
+  "version": "2.2.0-dev.0",
   "description": "Shared Property Inspector assets for iRaceDeck plugins: web components, EJS templates and partials, template data, and the Rollup EJS compile plugin",
   "type": "module",
   "packageManager": "pnpm@10.0.0",
