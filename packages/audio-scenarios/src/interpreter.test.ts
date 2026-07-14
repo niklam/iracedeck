@@ -3,7 +3,7 @@ import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { WEIGHT } from "./dsl.js";
+import { poolRef, WEIGHT } from "./dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "./interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "./interpreter.js";
 
@@ -499,7 +499,7 @@ describe("value pools (issue #836)", () => {
   });
 
   it("resolves a var-returned pool reference for the active voice", () => {
-    engine.defineVar("position", () => "pool:position-number/7");
+    engine.defineVar("position", () => poolRef("position-number", "7"));
     engine.defineScenario({
       id: "test.poolref",
       channel: AudioChannel.Voice,
@@ -523,7 +523,7 @@ describe("value pools (issue #836)", () => {
   });
 
   it("aborts the whole callout when a pool reference is empty for the active voice", () => {
-    engine.defineVar("position", () => "pool:position-number/7");
+    engine.defineVar("position", () => poolRef("position-number", "7"));
     engine.defineScenario({
       id: "test.poolref-missing",
       channel: AudioChannel.Voice,
@@ -540,7 +540,7 @@ describe("value pools (issue #836)", () => {
   });
 
   it("skips an optional group locally when its pool reference is empty for the active voice", () => {
-    engine.defineVar("position", () => "pool:position-number/7");
+    engine.defineVar("position", () => poolRef("position-number", "7"));
     engine.defineScenario({
       id: "test.poolref-optional",
       channel: AudioChannel.Voice,
