@@ -1,9 +1,9 @@
 ---
 title: Session Info
-description: Display live session information — incidents, time, laps, position, fuel, laps to empty, flags, and track wetness.
+description: Display live session information — incidents, time, laps, position, estimated iRating gain/loss, fuel, laps to empty, flags, and track wetness.
 sidebar:
   badge:
-    text: "8 modes"
+    text: "9 modes"
     variant: tip
 ---
 
@@ -84,6 +84,28 @@ Whether to append the field size after your position. Defaults to **Off**.
 
 - **Off** (default) — Show just your position (e.g., `P3`)
 - **On** — Show your position out of the field size (e.g., `P3/24`). The total is scoped to match Position Type — cars in your class for **Class**, the whole field for **Overall**.
+
+#### Setting: Font Size
+
+Size of the rendered value, in PI units (5–36, doubled for SVG render). Defaults to `14`.
+
+---
+
+### iRating Gain/Loss
+
+Show your estimated iRating change if the race ended now — e.g. `+31` in green when you're gaining, `-15` in red when you're losing. The estimate uses the community-documented formula over your class's field (each car class is scored separately, exactly like iRacing does) and the live running order. The value appears once the live running order forms — as the field takes the green and crosses the start/finish line to begin lap 1 — and updates as positions change. The value is blank on the grid and through the pace lap, outside race sessions, and whenever no estimate is possible.
+
+:::note
+This is an **estimate**, not the official post-race value — iRacing does not expose the official iRating change in real time. Retired and towed cars stay frozen at their last position, mirroring how iRacing scores a retirement.
+:::
+
+The same estimate is available as [template variables](/docs/features/template-variables/) — `irating_change` and `irating_new` on every driver prefix, plus `session.sof` for your class's Strength of Field.
+
+#### Details
+
+- **Dial:** No rotation support
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** Yes — the value updates live as positions change, green for a gain and red for a loss
 
 #### Setting: Font Size
 

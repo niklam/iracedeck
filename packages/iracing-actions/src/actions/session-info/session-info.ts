@@ -17,8 +17,10 @@ import {
 } from "@iracedeck/deck-core";
 import {
   DisplayUnits,
+  estimateIRatingChanges,
   type FlagInfo,
   type SessionInfo as IRacingSessionInfo,
+  type IRatingFieldDriver,
   isPreGreen,
   resolveActiveFlag,
   type TelemetryData,
@@ -28,6 +30,7 @@ import {
   FUEL_LAP_HISTORY_CAP,
   getFuelStats,
   getLivePosition,
+  getLiveRacePositions,
   getStartingGridPosition,
 } from "@iracedeck/sim-events-iracing";
 import z from "zod";
@@ -35,6 +38,23 @@ import z from "zod";
 import sessionInfoTemplate from "../../../icons/session-info.svg";
 
 const BACKGROUND_FLASH = "#e74c3c";
+
+const IRATING_GAIN_COLOR = "#2ecc71";
+const IRATING_LOSS_COLOR = "#e74c3c";
+
+/**
+ * @internal Exported for testing
+ *
+ * Value color for the irating mode: green for a gain, red for a loss,
+ * undefined (theme text color) for zero or blank.
+ */
+export function iratingValueColor(value: string): string | undefined {
+  if (value.startsWith("+")) return IRATING_GAIN_COLOR;
+
+  if (value.startsWith("-")) return IRATING_LOSS_COLOR;
+
+  return undefined;
+}
 
 const FLASH_INTERVAL_MS = 250;
 const FLASH_STEPS = 12; // on-off x6 (6 red flashes)
@@ -51,7 +71,17 @@ const LITERS_PER_GALLON = 3.78541;
 
 const SessionInfoSettings = CommonSettings.extend({
   mode: z
-    .enum(["incidents", "time-remaining", "laps", "position", "fuel", "flags", "track-wetness", "laps-to-empty"])
+    .enum([
+      "incidents",
+      "time-remaining",
+      "laps",
+      "position",
+      "irating",
+      "fuel",
+      "flags",
+      "track-wetness",
+      "laps-to-empty",
+    ])
     .default("incidents"),
   fontSize: z.preprocess(
     (val) => (val === "" || val === null || val === undefined ? undefined : val),
@@ -259,12 +289,14 @@ export function generateSessionInfoSvg(
   isFlashing: boolean,
   colorOverride?: { background: string; text: string },
   trackWetnessState?: TrackWetness,
+  valueColor?: string,
 ): string {
   const titleLabels: Record<string, string> = {
     incidents: "INCIDENTS",
     "time-remaining": "TIME LEFT",
     laps: "LAPS",
     position: "POSITION",
+    irating: "IRATING",
     fuel: "FUEL",
     flags: "FLAGS",
     "laps-to-empty": "LAPS TO\nEMPTY",
@@ -338,7 +370,9 @@ export function generateSessionInfoSvg(
     value: valueText,
     valueFontSize,
     valueY,
-    textColor,
+    // The title fill was already resolved into titleContent above, so a
+    // value-only color override (irating gain/loss) only affects the value.
+    textColor: valueColor ?? textColor,
   });
 
   return svgToDataUri(svg);
@@ -431,8 +465,16 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
     // Resolve flag colors for flags mode
     const colorOverride = this.resolveFlagColorOverride(settings, telemetry);
     const trackWetnessState = telemetry?.TrackWetness as TrackWetness | undefined;
+    const valueColor = settings.mode === "irating" ? iratingValueColor(value) : undefined;
 
-    const svgDataUri = generateSessionInfoSvg(settings, value, isFlashing, colorOverride, trackWetnessState);
+    const svgDataUri = generateSessionInfoSvg(
+      settings,
+      value,
+      isFlashing,
+      colorOverride,
+      trackWetnessState,
+      valueColor,
+    );
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
 
@@ -457,6 +499,12 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
     // clears the value text slot for this mode to avoid drawing it twice.
     if (settings.mode === "track-wetness") {
       return trackWetnessLabel(telemetry?.TrackWetness as TrackWetness | undefined);
+    }
+
+    // Estimated iRating change (#268): "+31" / "-15" / "0", blank whenever no
+    // estimate is possible (non-race, no live order, player not in the field).
+    if (settings.mode === "irating") {
+      return this.extractIRatingValue(telemetry);
     }
 
     if (!telemetry) {
@@ -624,6 +672,36 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
     return formatSessionTime(remain);
   }
 
+  private extractIRatingValue(telemetry: TelemetryData | null): string {
+    if (!telemetry || !this.isRaceSession(telemetry)) return "";
+
+    // Canonical live order (race-positions rule) — the same order the template
+    // context's irating_change consumes, so key and placeholders always agree.
+    const order = getLiveRacePositions();
+
+    if (!order) return "";
+
+    const sessionInfo = this.sdkController.getSessionInfo();
+    const driverInfo = sessionInfo?.DriverInfo as { Drivers?: IRatingFieldDriver[]; DriverCarIdx?: number } | undefined;
+    const drivers = driverInfo?.Drivers;
+    const playerCarIdx = driverInfo?.DriverCarIdx;
+
+    if (!Array.isArray(drivers) || playerCarIdx === undefined) return "";
+
+    const estimates = estimateIRatingChanges({
+      drivers,
+      order,
+      carIdxClass: telemetry.CarIdxClass as number[] | undefined,
+    });
+    const change = estimates.changes[playerCarIdx];
+
+    if (change == null) return "";
+
+    const rounded = Math.round(change);
+
+    return rounded > 0 ? `+${rounded}` : String(rounded);
+  }
+
   private countActiveCars(): number {
     return countActiveDrivers(this.sdkController.getSessionInfo());
   }
@@ -728,7 +806,15 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
 
     if (lastStateKey !== stateKey) {
       this.lastState.set(contextId, stateKey);
-      const svgDataUri = generateSessionInfoSvg(settings, value, isFlashing, colorOverride, trackWetnessState);
+      const valueColor = settings.mode === "irating" ? iratingValueColor(value) : undefined;
+      const svgDataUri = generateSessionInfoSvg(
+        settings,
+        value,
+        isFlashing,
+        colorOverride,
+        trackWetnessState,
+        valueColor,
+      );
       await this.updateKeyImage(contextId, svgDataUri);
     }
   }

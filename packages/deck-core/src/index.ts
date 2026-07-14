@@ -189,7 +189,7 @@ export {
 } from "./unit-conversion.js";
 
 // Shared pit fuel-fill / autofuel telemetry readers (Fuel Service keypad + dial surfaces)
-export { isFuelFillOn, isAutofuelActive, isAutofuelEnabled } from "./fuel-telemetry.js";
+export { isFuelFillOn, isAutofuelActive, isAutofuelEnabled, isPitstopActive } from "./fuel-telemetry.js";
 
 // Shared dial-gesture convention (Push + Turn pair + release-time classifier)
 export {

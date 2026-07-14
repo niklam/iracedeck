@@ -145,6 +145,7 @@ vi.mock("@iracedeck/deck-core", async () => {
     isFuelFillOn: (t: any) => !!t && t.PitSvFlags !== undefined && (t.PitSvFlags & 0x10) === 0x10,
     isAutofuelActive: (t: any) => !!t && t.dpFuelAutoFillActive !== undefined && t.dpFuelAutoFillActive !== 0,
     isAutofuelEnabled: (t: any) => (!t || t.dpFuelAutoFillEnabled === undefined ? true : t.dpFuelAutoFillEnabled !== 0),
+    isPitstopActive: (t: any) => !!t && t.PitstopActive === true,
     // Keypad-icon exports used by fuel-service.ts (not exercised by the dial suite).
     assembleIcon: vi.fn(() => "data:image/svg+xml,assembled"),
     resolveGraphicSettings: vi.fn(() => ({ scaleMode: "inherit" as const, scale: 100 })),
@@ -1706,6 +1707,85 @@ describe("FuelService dial surface", () => {
       onTick({ DisplayUnits: 1, PitSvFuel: 20, FuelLevel: 44, PitSvFlags: FUEL_FILL }); // need 65-44=21 -> re-send
 
       expect(mockPitFuel).toHaveBeenCalledWith(21);
+    });
+  });
+
+  describe("continuous fill-to monitor pauses during an active pit stop (issue #831)", () => {
+    /** Fill-to, fuel ON, current 44, requested add 46 → seed target = 90. */
+    const PRE_STOP = { DisplayUnits: 1, PitSvFuel: 46, FuelLevel: 44, PitSvFlags: FUEL_FILL };
+    const SETTINGS = { unitMode: "liters", stepSize: 1, dialMode: "fill-to", pressAction: "toggle-fueling" };
+
+    async function appearAndPrime(id: string) {
+      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      const ctx = dialContext(id);
+      mockGetSessionInfo.mockReturnValue(SESSION_110L);
+      mockGetCurrentTelemetry.mockReturnValue(PRE_STOP);
+      await appear(ctx, SETTINGS);
+
+      const onTick = getTelemetryCallback(action);
+      // Prime the re-send baseline before the stop (first tick broadcasts add 46).
+      onTick(PRE_STOP);
+      mockPitFuel.mockClear();
+      mockPitClearFuel.mockClear();
+
+      return onTick;
+    }
+
+    it("does NOT re-broadcast pit.fuel while the car is receiving pit service", async () => {
+      const onTick = await appearAndPrime("ps1");
+
+      // The stop begins: fuel is PUMPED IN and FuelLevel RISES litres per second,
+      // so every recomputed add is smaller. Re-broadcasting would change the
+      // requested amount mid-fueling and interrupt the fueling (issue #831).
+      for (const fuel of [50, 60, 70, 80]) {
+        const telemetry = { ...PRE_STOP, FuelLevel: fuel, PitstopActive: true };
+        mockGetCurrentTelemetry.mockReturnValue(telemetry);
+        onTick(telemetry);
+      }
+
+      expect(mockPitFuel).not.toHaveBeenCalled();
+      expect(mockPitClearFuel).not.toHaveBeenCalled();
+    });
+
+    it("does NOT clear fueling when the fuel level reaches the target mid-stop", async () => {
+      const onTick = await appearAndPrime("ps2");
+
+      // The pumped fuel reaches the target (90) while the stop is still active:
+      // the recomputed add hits 0, which outside a stop maps to clearFuel. During
+      // the stop that would uncheck the fuel box while the crew is fueling.
+      for (const fuel of [89.5, 90]) {
+        const telemetry = { ...PRE_STOP, FuelLevel: fuel, PitstopActive: true };
+        mockGetCurrentTelemetry.mockReturnValue(telemetry);
+        onTick(telemetry);
+      }
+
+      expect(mockPitClearFuel).not.toHaveBeenCalled();
+      expect(mockPitFuel).not.toHaveBeenCalled();
+    });
+
+    it("re-sends the corrected remaining add exactly once after the stop ends", async () => {
+      const onTick = await appearAndPrime("ps3");
+
+      // Mid-stop: fuel rises to 60, monitor holds fire.
+      const midStop = { ...PRE_STOP, FuelLevel: 60, PitstopActive: true };
+      mockGetCurrentTelemetry.mockReturnValue(midStop);
+      onTick(midStop);
+
+      expect(mockPitFuel).not.toHaveBeenCalled();
+
+      // The driver leaves early (fueling incomplete, fuel-fill still ON): the
+      // monitor resumes and re-sends the remaining need (90 − 60 = 30) ONCE.
+      const postStop = { ...PRE_STOP, FuelLevel: 60, PitstopActive: false };
+      mockGetCurrentTelemetry.mockReturnValue(postStop);
+      onTick(postStop);
+
+      expect(mockPitFuel).toHaveBeenCalledTimes(1);
+      expect(mockPitFuel).toHaveBeenLastCalledWith(30);
+
+      // Same level again: the whole-unit gate suppresses a repeat.
+      onTick(postStop);
+
+      expect(mockPitFuel).toHaveBeenCalledTimes(1);
     });
   });
 

@@ -1,7 +1,7 @@
 import { PitSvFlags } from "@iracedeck/iracing-sdk";
 import { describe, expect, it } from "vitest";
 
-import { isAutofuelActive, isAutofuelEnabled, isFuelFillOn } from "./fuel-telemetry.js";
+import { isAutofuelActive, isAutofuelEnabled, isFuelFillOn, isPitstopActive } from "./fuel-telemetry.js";
 
 describe("isFuelFillOn", () => {
   it("returns true when the FuelFill flag is set", () => {
@@ -12,6 +12,18 @@ describe("isFuelFillOn", () => {
     expect(isFuelFillOn({ PitSvFlags: 0 } as never)).toBe(false);
     expect(isFuelFillOn({} as never)).toBe(false);
     expect(isFuelFillOn(null)).toBe(false);
+  });
+});
+
+describe("isPitstopActive", () => {
+  it("returns true when the player car is receiving pit service", () => {
+    expect(isPitstopActive({ PitstopActive: true } as never)).toBe(true);
+  });
+
+  it("returns false when false, missing, or telemetry is null", () => {
+    expect(isPitstopActive({ PitstopActive: false } as never)).toBe(false);
+    expect(isPitstopActive({} as never)).toBe(false);
+    expect(isPitstopActive(null)).toBe(false);
   });
 });
 
