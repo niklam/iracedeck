@@ -7,7 +7,7 @@ sidebar:
     variant: tip
 ---
 
-Switch between iRacing's split-time delta display modes, toggle the reference car display, mark custom sector start and end points, or use active reset to practice specific track sections without leaving the cockpit.
+Switch between iRacing's split-time delta display modes, toggle the reference car display, mark custom sector start and end points, or use active reset to practice specific track sections without leaving the cockpit. Placed on a **Stream Deck+ dial**, the same action becomes a splits-delta cycle dial — turning steps through the delta modes and pressing toggles the reference car — see [On a dial](#on-a-dial) below.
 
 ## Modes
 
@@ -20,7 +20,7 @@ Cycle through iRacing's splits delta display modes. Pressing the button sends th
 #### Details
 
 - **Method:** Key binding
-- **Dial:** No rotation support
+- **Dial:** Rotating cycles the delta modes (clockwise = next, counter-clockwise = previous) — see [On a dial](#on-a-dial) below
 - **Default binding:** Depends on the selected direction — see the **Direction** setting below
 - **Telemetry-aware icon:** No
 
@@ -115,3 +115,33 @@ Teleport the car back to the saved active reset snapshot. Solo practice sessions
 #### Settings
 
 - No additional settings
+
+## On a dial
+
+Placed on a Stream Deck+ dial, Splits & Reference becomes a splits-delta cycle dial. Turning the dial steps through iRacing's delta display modes — one detent per mode — using the same **Next** and **Previous** key bindings the keypad **Cycle Splits Delta** mode uses, so no extra configuration is needed if you already use them. It has a single rotation behaviour, so there is no dial **Setting** dropdown; the Property Inspector automatically shows the dial gesture options (instead of the keypad Mode and Direction) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
+
+#### Details
+
+- **Method:** Key binding — the same **Next** / **Previous** bindings the keypad Cycle Splits Delta mode uses. Configure them in the **Related Key Bindings** section; the Property Inspector shows a status line indicating whether each is set.
+- **Dial:** Rotating cycles the delta modes (clockwise = next, counter-clockwise = previous), scaled by how fast you turn and capped at five modes per flick. Both the Next and Previous key bindings must be set.
+- **Telemetry-aware:** No — iRacing exposes no telemetry for the currently selected splits mode, so the touch strip shows the action identity only (a `DELTA` label), never a live value.
+
+#### Controls
+
+- **Elgato Stream Deck+** — dial rotation, a configurable press, and a static touchscreen label.
+
+Dials are currently Stream Deck+ only — the action can't be placed on Mirabox knobs or Ulanzi dials yet (see [Dials](/docs/features/dials/)).
+
+#### Touch strip
+
+The touch strip shows a color-coded "dash box" with just a `DELTA` label — iRacing publishes no value for the selected splits mode, so there is nothing live to display. You can override the border, label, value, and background colors in the **Dash Box Appearance** section of the dial settings.
+
+#### Press and touch gestures
+
+The dial press and touchscreen taps each run a configurable gesture — **Toggle Reference Car** (taps the same `toggleUiDisplayRefCar` binding as the keypad Toggle Reference Car mode) or **None**:
+
+- **Press Action** (default *Toggle Reference Car*) — a short press.
+- **Long Press** (default *None*) — a press held past the long-press threshold.
+- **Tap Display** and **Long Touch** (default *None*, Elgato only) — a tap or long touch on the touch strip.
+
+A push-and-turn (rotating while holding the dial in) cycles modes without firing the press gesture.

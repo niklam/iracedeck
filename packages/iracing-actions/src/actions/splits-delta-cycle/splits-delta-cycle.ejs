@@ -6,33 +6,98 @@
 	<body>
 		<%- include('section-header', { title: 'Action Settings' }) %>
 
-		<sdpi-item label="Mode">
-			<sdpi-select id="mode-select" setting="mode" default="cycle">
-				<option value="cycle">Cycle Splits Delta</option>
-				<option value="toggle-ref-car">Toggle Reference Car</option>
-				<option value="custom-sector-start">Custom Sector Start</option>
-				<option value="custom-sector-end">Custom Sector End</option>
-				<option value="active-reset-set">Set Active Reset Point</option>
-				<option value="active-reset-run">Reset to Start Point</option>
-			</sdpi-select>
-		</sdpi-item>
-
 		<% var __comms = require('./data/action-comms.json')['splits-delta-cycle']; %>
-		<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
+		<% var __dialComms = require('./data/action-comms.json')['splits-delta-cycle-dial']; %>
 
-		<sdpi-item id="direction-item" label="Direction">
-			<sdpi-select setting="direction" default="next">
-				<option value="next">Next</option>
-				<option value="previous">Previous</option>
-			</sdpi-select>
-		</sdpi-item>
+		<!-- Keypad settings — hidden when this instance is a dial (#807). -->
+		<div id="keypad-settings">
+			<sdpi-item label="Mode">
+				<sdpi-select id="mode-select" setting="mode" default="cycle">
+					<option value="cycle">Cycle Splits Delta</option>
+					<option value="toggle-ref-car">Toggle Reference Car</option>
+					<option value="custom-sector-start">Custom Sector Start</option>
+					<option value="custom-sector-end">Custom Sector End</option>
+					<option value="active-reset-set">Set Active Reset Point</option>
+					<option value="active-reset-run">Reset to Start Point</option>
+				</sdpi-select>
+			</sdpi-item>
 
-		<%- include('title-overrides') %>
+			<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
 
-		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/icon-defaults.json')['splits-delta-cycle'] }) %>
-		<%- include('border-overrides', { defaults: require('./data/icon-defaults.json')['splits-delta-cycle'] }) %>
-		<%- include('graphic-overrides') %>
-		<%- include('common-settings') %>
+			<sdpi-item id="direction-item" label="Direction">
+				<sdpi-select setting="direction" default="next">
+					<option value="next">Next</option>
+					<option value="previous">Previous</option>
+				</sdpi-select>
+			</sdpi-item>
+		</div>
+
+		<!-- Dial settings — shown only when this instance is a dial (#807). One
+		     rotation behavior (cycle), so no Setting dropdown — just the press /
+		     touch gestures. -->
+		<div id="dial-settings" class="hidden">
+			<ird-binding-status mode-setting="<%= __dialComms._meta.modeSetting %>" default-mode="cycle" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+			<% if (locals.platform?.features?.dialFeedback !== false) { %>
+			<div class="ird-supporting-text">
+				Turn the dial to step through iRacing's splits / delta display modes
+				(clockwise = next, counter-clockwise = previous). Both the Next and
+				Previous key bindings must be set below. The touch strip shows the action
+				identity only — iRacing exposes no telemetry for the selected mode.
+			</div>
+			<% } else { %>
+			<div class="ird-supporting-text">
+				Turn the knob to step through iRacing's splits / delta display modes
+				(clockwise = next, counter-clockwise = previous). Both the Next and
+				Previous key bindings must be set below.
+			</div>
+			<% } %>
+
+			<sdpi-item label="Press Action">
+				<sdpi-select setting="dial.pressAction" default="toggle-ref-car">
+					<option value="toggle-ref-car">Toggle Reference Car</option>
+					<option value="none">None</option>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="dial.pressAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+
+			<sdpi-item label="Long Press">
+				<sdpi-select setting="dial.longPressAction" default="none">
+					<option value="toggle-ref-car">Toggle Reference Car</option>
+					<option value="none">None</option>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="dial.longPressAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+
+			<% if (locals.platform?.features?.dialFeedback !== false) { %>
+			<sdpi-item label="Tap Display">
+				<sdpi-select setting="dial.tapAction" default="none">
+					<option value="toggle-ref-car">Toggle Reference Car</option>
+					<option value="none">None</option>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="dial.tapAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+
+			<sdpi-item label="Long Touch">
+				<sdpi-select setting="dial.longTouchAction" default="none">
+					<option value="toggle-ref-car">Toggle Reference Car</option>
+					<option value="none">None</option>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="dial.longTouchAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+
+			<%- include('dial-appearance') %>
+			<% } %>
+		</div>
+
+		<!-- Key-icon appearance — keypad only (a dial has no key icon). -->
+		<div id="keypad-appearance">
+			<%- include('title-overrides') %>
+
+			<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/icon-defaults.json')['splits-delta-cycle'] }) %>
+			<%- include('border-overrides', { defaults: require('./data/icon-defaults.json')['splits-delta-cycle'] }) %>
+			<%- include('graphic-overrides') %>
+			<%- include('common-settings') %>
+		</div>
 
 		<%- include('section-header', { title: 'Global Settings' }) %>
 
@@ -40,14 +105,48 @@
 			keyBindings: require('./data/key-bindings.json').splitsDelta
 		}) %>
 
-		<%- include('global-title-defaults') %>
-		<%- include('global-color-defaults') %>
-		<%- include('global-border-defaults') %>
-		<%- include('global-graphic-defaults') %>
-		<%- include('global-flag-flash') %>
+		<div id="keypad-global-appearance">
+			<%- include('global-title-defaults') %>
+			<%- include('global-color-defaults') %>
+			<%- include('global-border-defaults') %>
+			<%- include('global-graphic-defaults') %>
+			<%- include('global-flag-flash') %>
+		</div>
+
 		<%- include('global-common-settings') %>
 
 		<script>
+			function updateVisibility(mode) {
+				const directionItem = document.getElementById("direction-item");
+				if (mode === "cycle") {
+					directionItem?.classList.remove("hidden");
+				} else {
+					directionItem?.classList.add("hidden");
+				}
+			}
+
+			// Which surface this instance sits on: the PI registration's
+			// actionInfo.payload.controller ("Keypad" | "Encoder"; the Mirabox host
+			// may report "Knob"). Anything unknown or unavailable falls back to the
+			// keypad view (#807).
+			async function resolveController() {
+				try {
+					const client = window.SDPIComponents && window.SDPIComponents.streamDeckClient;
+					const info = client && (await client.getConnectionInfo());
+					const controller = info && info.actionInfo && info.actionInfo.payload && info.actionInfo.payload.controller;
+					return controller === "Encoder" || controller === "Knob" ? "Encoder" : "Keypad";
+				} catch (err) {
+					return "Keypad";
+				}
+			}
+
+			function applyDialView() {
+				document.getElementById("keypad-settings")?.classList.add("hidden");
+				document.getElementById("keypad-appearance")?.classList.add("hidden");
+				document.getElementById("keypad-global-appearance")?.classList.add("hidden");
+				document.getElementById("dial-settings")?.classList.remove("hidden");
+			}
+
 			async function initialize() {
 				await customElements.whenDefined("sdpi-select");
 
@@ -71,14 +170,9 @@
 						}
 					}, 100);
 				}
-			}
 
-			function updateVisibility(mode) {
-				const directionItem = document.getElementById("direction-item");
-				if (mode === "cycle") {
-					directionItem?.classList.remove("hidden");
-				} else {
-					directionItem?.classList.add("hidden");
+				if ((await resolveController()) === "Encoder") {
+					applyDialView();
 				}
 			}
 

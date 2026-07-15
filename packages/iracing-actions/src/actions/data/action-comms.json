@@ -164,6 +164,28 @@
       }
     }
   },
+  "splits-delta-cycle-dial": {
+    "_meta": {
+      "modeSetting": "dial.rotation"
+    },
+    "cycle": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "splitsDeltaNext",
+          "splitsDeltaPrevious"
+        ]
+      }
+    },
+    "toggle-ref-car": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "toggleUiDisplayRefCar"
+      }
+    }
+  },
   "look-direction": {
     "_meta": {
       "modeSetting": "direction"

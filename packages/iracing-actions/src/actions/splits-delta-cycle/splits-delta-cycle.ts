@@ -8,9 +8,13 @@ import {
   getGlobalTitleSettings,
   type IDeckDialDownEvent,
   type IDeckDialRotateEvent,
+  type IDeckDialUpEvent,
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
+  type IDeckTouchTapEvent,
   type IDeckWillAppearEvent,
+  type IDeckWillDisappearEvent,
+  onGlobalSettingsChange,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
@@ -24,6 +28,8 @@ import displayRefCarIconSvg from "@iracedeck/icons/splits-delta-cycle/display-re
 import nextIconSvg from "@iracedeck/icons/splits-delta-cycle/next.svg";
 import previousIconSvg from "@iracedeck/icons/splits-delta-cycle/previous.svg";
 import z from "zod";
+
+import { DialSettings, SplitsDeltaCycleDialSurface } from "./splits-delta-cycle-dial-surface.js";
 
 const DIRECTION_ICONS: Record<string, string> = {
   next: nextIconSvg,
@@ -56,6 +62,10 @@ const SplitsDeltaCycleSettings = CommonSettings.extend({
     ])
     .default("cycle"),
   direction: z.enum(["next", "previous"]).default("next"),
+  // Dial-surface settings (#807), under the `dial` root so keypad and dial keys
+  // can't collide. catch: dial garbage degrades to dial defaults instead of
+  // failing the whole parse (which would reset a keypad instance).
+  dial: DialSettings.catch(() => DialSettings.parse({})),
 });
 
 type SplitsDeltaCycleSettings = z.infer<typeof SplitsDeltaCycleSettings>;
@@ -141,16 +151,51 @@ export function generateSplitsDeltaCycleSvg(settings: SplitsDeltaCycleSettings, 
 export const SPLITS_DELTA_CYCLE_UUID = "com.iracedeck.sd.core.splits-delta-cycle" as const;
 
 export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycleSettings> {
+  /**
+   * The dial half of the action; all IDeck dial events route here (#807). No
+   * `setActiveBinding` is delegated — it would bleed onto the keypad buttons.
+   */
+  private readonly dialSurface = new SplitsDeltaCycleDialSurface({
+    logger: this.logger,
+    tapBinding: (settingKey) => this.tapBinding(settingKey),
+    isBindingMissing: (keys) => this.isBindingMissing(keys),
+  });
+
+  /** Keeps the dial strip's #612 missing-binding warning live while iRacing is offline (#807). */
+  private readonly unsubscribeGlobalSettings = onGlobalSettingsChange(() => this.dialSurface.refreshAll());
+
   override async onWillAppear(ev: IDeckWillAppearEvent<SplitsDeltaCycleSettings>): Promise<void> {
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
+
+    if (ev.action.isDial()) {
+      // The dial has a single rotation behavior (cycle) and its own gesture
+      // defaults, so a pre-dial-surface encoder placement needs no migration —
+      // an absent `dial` prefaults cleanly.
+      await this.dialSurface.willAppear(ev.action, settings.dial);
+
+      return;
+    }
+
     this.setActiveBinding(this.resolveSettingKey(settings));
     await this.updateDisplay(ev, settings);
+  }
+
+  override async onWillDisappear(ev: IDeckWillDisappearEvent<SplitsDeltaCycleSettings>): Promise<void> {
+    this.dialSurface.willDisappear(ev.action.id);
+    await super.onWillDisappear(ev);
   }
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<SplitsDeltaCycleSettings>): Promise<void> {
     await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
+
+    if (ev.action.isDial()) {
+      await this.dialSurface.didReceiveSettings(ev.action, settings.dial);
+
+      return;
+    }
+
     this.setActiveBinding(this.resolveSettingKey(settings));
     await this.updateDisplay(ev, settings);
   }
@@ -161,25 +206,23 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
     await this.tapBinding(this.resolveSettingKey(settings));
   }
 
-  override async onDialDown(ev: IDeckDialDownEvent<SplitsDeltaCycleSettings>): Promise<void> {
-    this.logger.info("Dial down received");
-    const settings = this.parseSettings(ev.payload.settings);
-
-    const settingKey = MODE_KEY_MAP[settings.mode];
-
-    if (!settingKey) return;
-
-    await this.tapBinding(settingKey);
-  }
-
   override async onDialRotate(ev: IDeckDialRotateEvent<SplitsDeltaCycleSettings>): Promise<void> {
     const settings = this.parseSettings(ev.payload.settings);
+    await this.dialSurface.rotate(ev.action, settings.dial, ev.payload.ticks, ev.payload.pressed === true);
+  }
 
-    if (settings.mode !== "cycle") return;
+  override async onDialDown(ev: IDeckDialDownEvent<SplitsDeltaCycleSettings>): Promise<void> {
+    const settings = this.parseSettings(ev.payload.settings);
+    this.dialSurface.down(ev.action, settings.dial);
+  }
 
-    this.logger.info(`Dial rotated: ${ev.payload.ticks} ticks`);
-    const settingKey = ev.payload.ticks > 0 ? GLOBAL_KEY_NAMES.NEXT : GLOBAL_KEY_NAMES.PREVIOUS;
-    await this.tapBinding(settingKey);
+  override async onDialUp(ev: IDeckDialUpEvent<SplitsDeltaCycleSettings>): Promise<void> {
+    await this.dialSurface.up(ev.action.id);
+  }
+
+  override async onTouchTap(ev: IDeckTouchTapEvent<SplitsDeltaCycleSettings>): Promise<void> {
+    const settings = this.parseSettings(ev.payload.settings);
+    await this.dialSurface.touchTap(ev.action, settings.dial, ev.payload.hold === true);
   }
 
   private parseSettings(settings: unknown): SplitsDeltaCycleSettings {

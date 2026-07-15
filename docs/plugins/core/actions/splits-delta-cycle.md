@@ -10,12 +10,28 @@ Manages splits delta display cycling, reference car toggling, custom sector mark
 | Type | Multi-toggle |
 | SDK Support | No |
 | Communication Method | Key binding |
-| Encoder Support | No |
+| Encoder Support | Yes (Elgato Stream Deck+ only) |
 
 ## Behavior
 
 ### Button Press
 Triggers the action configured in Settings.
+
+### Dial (Stream Deck+)
+Placed on a dial, the action has a single rotation behavior — no dial `Setting` dropdown. Turning cycles iRacing's splits / delta display modes: clockwise taps **Next** (`splitsDeltaNext`), counter-clockwise taps **Previous** (`splitsDeltaPrevious`), scaled by tick magnitude and capped at five taps per event. Both bindings must be set. iRacing exposes no telemetry for the selected splits mode, so the touch strip shows the action identity only (a `DELTA` label) and never a live value.
+
+The press and touchscreen taps each run a configurable gesture over {Toggle Reference Car, None}, classified at `dialUp`:
+
+| Gesture | Setting | Default | Action |
+|---------|---------|---------|--------|
+| Press | `dial.pressAction` | Toggle Reference Car | Taps `toggleUiDisplayRefCar` |
+| Long Press | `dial.longPressAction` | None | — |
+| Tap Display | `dial.tapAction` | None (Elgato only) | — |
+| Long Touch | `dial.longTouchAction` | None (Elgato only) | — |
+
+A push-and-turn (rotating while the dial is held in) cycles modes without firing the press gesture. Mirabox and Ulanzi declare no dial controllers yet (#786), so the dial surface is Elgato Stream Deck+ only.
+
+- **Communication Method (dial):** Key binding — rotation taps the `splitsDeltaNext` / `splitsDeltaPrevious` bindings; the press gesture taps `toggleUiDisplayRefCar`.
 
 ## Settings
 
