@@ -310,8 +310,8 @@ The camera-tool parameter the dial controls. Each renders as a color-coded "dash
 | FOV Zoom | FOV | *(none)* | label only |
 | F-number | F-NUM | *(none)* | label only |
 | Focus Depth | FOCUS | *(none)* | label only |
-| Vanish X | VAN X | *(none)* | label only |
-| Vanish Y | VAN Y | *(none)* | label only |
+| VanishX | VAN X | *(none)* | label only |
+| VanishY | VAN Y | *(none)* | label only |
 | Blimp Radius | B-RAD | *(none)* | label only |
 | Blimp Velocity | B-VEL | *(none)* | label only |
 | Key Step | STEP | *(none)* | label only |
