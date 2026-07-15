@@ -26,6 +26,14 @@ _Unreleased_
 
 - Reworked the Race Engineer's voice-clip catalog to be fully config-driven: which lines, variants, and values the engineer can speak now derives from the audio clips that actually ship instead of lists in code, a callout missing any required clip skips cleanly as a whole (never a half-sentence), and voices may carry different variant counts or omit lines entirely — groundwork for additional Race Engineer voices.
 
+## 2.1.1
+
+_2026-07-15_
+
+**Bug Fixes**
+
+- The plugin no longer keeps an audio stream open while the Race Engineer is silent, so iRaceDeck no longer prevents your PC from going to sleep — the audio device now runs only while something is actually playing.
+
 ## 2.1.0
 
 _2026-07-14_
