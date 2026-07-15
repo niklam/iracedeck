@@ -125,7 +125,7 @@ Placed on a Stream Deck+ dial, Cockpit Misc becomes a dash-page dial. Pick which
 
 #### Details
 
-- **Method:** Key binding — the same Cockpit Misc dash-page increase/decrease bindings the keypad modes use, plus the *Toggle Wipers* / *In Lap Mode* bindings for the press and touch gestures. Configure them in the **Related Key Bindings** section; the Property Inspector shows a status line indicating whether each is set.
+- **Method:** Key binding — the same Cockpit Misc dash-page increase/decrease bindings the keypad modes use, plus any of the keypad's one-shot bindings (*Toggle Wipers*, *Trigger Wipers*, *In Lap Mode*, *Report Latency*) for the press and touch gestures. Configure them in the **Related Key Bindings** section; the Property Inspector shows a status line indicating whether each is set.
 - **Dial:** Rotating cycles the selected dashboard page (clockwise = next, counter-clockwise = previous). Both the increase and decrease key bindings must be set.
 - **Default binding:** No default key binding — both directions of the chosen dash page must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** Yes — the touch strip shows the live page number from telemetry (`dcDashPage` / `dcDashPage2`)
@@ -152,11 +152,13 @@ When telemetry isn't available — or the car has no dashboard pages — the box
 What a short or long press of the dial button does, chosen from:
 
 - **Toggle Wipers** — taps the Cockpit Misc *Toggle Wipers* binding.
+- **Trigger Wipers** — taps the Cockpit Misc *Trigger Wipers* binding.
 - **In-Lap Mode** — taps the Cockpit Misc *In Lap Mode* binding.
+- **Report Latency** — taps the Cockpit Misc *Report Latency* binding.
 - **None** (default for both) — does nothing.
 
 A press is classified when you release the dial — a hold past the [Long-press threshold](/docs/features/dials/#the-long-press-threshold) fires the Long Press action. Turning the dial while pressed cycles the page (a "push + turn") and never fires the press action.
 
 #### Setting: Tap Display / Long Touch
 
-Optional touch-strip gestures (Stream Deck+ only), each over { Toggle Wipers, In-Lap Mode, None }. Both default to **None** for VR safety.
+Optional touch-strip gestures (Stream Deck+ only), each over { Toggle Wipers, Trigger Wipers, In-Lap Mode, Report Latency, None }. Both default to **None** for VR safety.

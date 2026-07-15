@@ -4,6 +4,7 @@ import {
   buildTriggerDescription,
   DialSettings,
   formatDialValue,
+  GESTURE_ACTIONS,
   rotationKey,
   seedDialFromLegacySetting,
 } from "./cockpit-misc-dial-surface.js";
@@ -124,6 +125,14 @@ describe("cockpit-misc dial-surface pure helpers", () => {
     it("resolves the shared increase/decrease binding for a dial setting", () => {
       expect(rotationKey("dash-page-1", "increase")).toBe("cockpitMiscDashPage1Increase");
       expect(rotationKey("dash-page-2", "decrease")).toBe("cockpitMiscDashPage2Decrease");
+    });
+  });
+
+  describe("GESTURE_ACTIONS", () => {
+    it("offers every keypad one-shot as a gesture option, plus none (#805)", () => {
+      // Mirrors the keypad's non-directional one-shots (COCKPIT_MISC_GLOBAL_KEYS
+      // in cockpit-misc.ts): toggle/trigger wipers, in-lap mode, report latency.
+      expect(GESTURE_ACTIONS).toEqual(["toggle-wipers", "trigger-wipers", "in-lap-mode", "report-latency", "none"]);
     });
   });
 
@@ -331,6 +340,31 @@ describe("CockpitMisc dial surface", () => {
       expect(mockTapBinding).toHaveBeenCalledWith("cockpitMiscInLapMode");
     });
 
+    it("resolves the trigger-wipers binding (#805 — every keypad one-shot is offered)", async () => {
+      const ctx = dialContext("p5");
+      const settings = dialSettings({ setting: "dash-page-1", pressAction: "trigger-wipers" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(mockTapBinding).toHaveBeenCalledWith("cockpitMiscTriggerWipers");
+    });
+
+    it("resolves the report-latency binding on a long press (#805)", async () => {
+      const ctx = dialContext("p6");
+      const settings = dialSettings({ setting: "dash-page-1", pressAction: "none", longPressAction: "report-latency" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(600);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(mockTapBinding).toHaveBeenCalledWith("cockpitMiscReportLatency");
+    });
+
     it("fires no gesture on a push+turn (rotated while pressed)", async () => {
       const ctx = dialContext("p3");
       const settings = dialSettings({ setting: "dash-page-1", pressAction: "toggle-wipers" });
@@ -383,6 +417,17 @@ describe("CockpitMisc dial surface", () => {
       await action.onTouchTap(touchTapEvent(ctx, settings, true) as never);
 
       expect(mockTapBinding).toHaveBeenCalledWith("cockpitMiscInLapMode");
+    });
+
+    it("fires the report-latency binding on a short touch (#805)", async () => {
+      const ctx = dialContext("t4");
+      const settings = dialSettings({ setting: "dash-page-1", tapAction: "report-latency", longTouchAction: "none" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onTouchTap(touchTapEvent(ctx, settings, false) as never);
+
+      expect(mockTapBinding).toHaveBeenCalledWith("cockpitMiscReportLatency");
     });
 
     it("does nothing when dial feedback is disabled", async () => {

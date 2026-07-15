@@ -872,11 +872,25 @@
         "key": "cockpitMiscToggleWipers"
       }
     },
+    "trigger-wipers": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "cockpitMiscTriggerWipers"
+      }
+    },
     "in-lap-mode": {
       "method": "keybind",
       "binding": {
         "scope": "global",
         "key": "cockpitMiscInLapMode"
+      }
+    },
+    "report-latency": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "cockpitMiscReportLatency"
       }
     }
   },

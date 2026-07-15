@@ -10,8 +10,9 @@
  * `Decrease` bindings as the keypad surface. The touch strip shows the live page
  * number iRacing reports for that display (`dcDashPage` / `dcDashPage2`), or
  * `---` when the car exposes no dash pages (dc*-presence is the capability
- * signal). Pressing runs a configurable gesture (toggle wipers / in-lap mode /
- * none; default none).
+ * signal). Pressing runs a configurable gesture — any of the keypad's one-shot
+ * controls (toggle wipers / trigger wipers / in-lap mode / report latency) or
+ * none; default none.
  *
  * The `ffb-max-force` keypad mode is deliberately NOT a rotation setting here —
  * it shares bindings with the Force Feedback action, whose own dial surface
@@ -55,10 +56,12 @@ export type CockpitMiscDialSetting = (typeof ROTATION_SETTINGS)[number];
 
 /**
  * The actions a dial-button / touch gesture (Push, Long Press, Tap Display,
- * Long Touch) can run, plus the `none` sentinel. Both non-`none` values tap the
- * matching one-shot Cockpit Misc key binding.
+ * Long Touch) can run, plus the `none` sentinel. Every non-`none` value taps
+ * the matching one-shot Cockpit Misc key binding — the same set of one-shots
+ * the keypad surface offers (`COCKPIT_MISC_GLOBAL_KEYS` in cockpit-misc.ts),
+ * so a dial user isn't missing an option a keypad placement would have (#805).
  */
-export const GESTURE_ACTIONS = ["toggle-wipers", "in-lap-mode", "none"] as const;
+export const GESTURE_ACTIONS = ["toggle-wipers", "trigger-wipers", "in-lap-mode", "report-latency", "none"] as const;
 export type GestureSlot = (typeof GESTURE_ACTIONS)[number];
 
 export type CockpitMiscDirection = "increase" | "decrease";
@@ -74,7 +77,9 @@ const DIAL_ROTATION_KEYS: Record<string, string> = {
 /** Shared Cockpit Misc one-shot bindings tapped by the press / touch gestures. */
 const GESTURE_KEYS: Record<Exclude<GestureSlot, "none">, string> = {
   "toggle-wipers": "cockpitMiscToggleWipers",
+  "trigger-wipers": "cockpitMiscTriggerWipers",
   "in-lap-mode": "cockpitMiscInLapMode",
+  "report-latency": "cockpitMiscReportLatency",
 };
 
 /** Resolves the shared Cockpit Misc rotation binding for a dial setting + direction. */
@@ -211,8 +216,12 @@ function gestureLabel(action: GestureSlot): string | undefined {
   switch (action) {
     case "toggle-wipers":
       return "Toggle Wipers";
+    case "trigger-wipers":
+      return "Trigger Wipers";
     case "in-lap-mode":
       return "In-Lap Mode";
+    case "report-latency":
+      return "Report Latency";
     case "none":
       return undefined;
   }
@@ -448,9 +457,7 @@ export class CockpitMiscDialSurface {
       return;
     }
 
-    this.host.logger.info(
-      action === "toggle-wipers" ? "Cockpit misc dial toggled wipers" : "Cockpit misc dial in-lap mode",
-    );
+    this.host.logger.info(`Cockpit misc dial gesture: ${gestureLabel(action)}`);
     await this.host.tapBinding(key);
   }
 
