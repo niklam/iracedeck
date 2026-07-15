@@ -7,7 +7,7 @@ sidebar:
     variant: tip
 ---
 
-Precise control over every adjustable camera parameter in iRacing's camera editor. Each mode targets a specific axis or property. Use this action alongside [Camera Editor Controls](/docs/actions/view-camera/camera-editor-controls/) for a complete editing workflow. Placed on a **Stream Deck+ dial**, the same action becomes a camera-tool dial — turn to nudge one parameter, with the parameter's name and a −/+ rotary arc on the touch strip — see [On a dial](#on-a-dial) below.
+Precise control over every adjustable camera parameter in iRacing's camera editor. Each mode targets a specific axis or property. Use this action alongside [Camera Editor Controls](/docs/actions/view-camera/camera-editor-controls/) for a complete editing workflow. Placed on a **Stream Deck+ dial**, the same action becomes a camera-tool dial — turn to nudge one parameter, with the parameter's name on the touch strip — see [On a dial](#on-a-dial) below.
 
 ## Modes
 
@@ -288,7 +288,7 @@ Placed on a Stream Deck+ dial, Camera Editor Adjustments becomes a precision cam
 
 - **Method:** Key binding — the same Camera Editor Adjustments increase/decrease bindings the keypad modes use for rotation, plus, for the press and touch gestures, the *Auto Set Mic Gain* binding and any [Camera Editor Controls](/docs/actions/view-camera/camera-editor-controls/) one-shot bindings you assign to a slot. Configure them all in the **Related Key Bindings** section; the Property Inspector shows a status line indicating whether each is set.
 - **Dial:** Rotating adjusts the selected parameter (clockwise = increase, counter-clockwise = decrease). Both the increase and decrease key bindings must be set.
-- **Telemetry-aware:** No. iRacing exposes no camera-tool state, so the touch strip shows the selected parameter's name above a −/+ rotary arc in its accent color — a rotation affordance, never a live value.
+- **Telemetry-aware:** No. iRacing exposes no camera-tool state, so the touch strip shows the selected parameter's name only — never a live value.
 
 #### Controls
 
@@ -298,24 +298,24 @@ Dials are currently Stream Deck+ only — the action can't be placed on Mirabox 
 
 #### Setting: Adjustment
 
-The camera-tool parameter the dial controls. Each renders as a color-coded "dash box" showing the parameter's full name near the top with a static −/+ rotary arc below it — because iRacing exposes no camera-tool values, the box is a rotation affordance (turn left to lower, right to raise), never a live number. Each setting has a built-in accent color that tints both the name and the arc, but you can override the border, label, value, and background colors in the **Dash Box Appearance** section of the dial settings. Only the 14 rotatable parameters are offered — Auto Set Mic Gain is a one-shot with no direction, so it's available as a press gesture instead.
+The camera-tool parameter the dial controls. Each renders as a color-coded "dash box" showing the parameter's full name — because iRacing exposes no camera-tool values, the box shows the name only, never a number. Each setting has a built-in accent color, but you can override the border, label, value, and background colors in the **Dash Box Appearance** section of the dial settings. Only the 14 rotatable parameters are offered — Auto Set Mic Gain is a one-shot with no direction, so it's available as a press gesture instead.
 
 | Setting | Strip name | Telemetry source | Shown as |
 |---|---|---|---|
-| Latitude | Latitude | *(none — iRacing exposes no camera-tool state)* | name + −/+ arc |
-| Longitude | Longitude | *(none)* | name + −/+ arc |
-| Altitude | Altitude | *(none)* | name + −/+ arc |
-| Yaw | Yaw | *(none)* | name + −/+ arc |
-| Pitch | Pitch | *(none)* | name + −/+ arc |
-| FOV Zoom | FOV Zoom | *(none)* | name + −/+ arc |
-| F-number | F-number | *(none)* | name + −/+ arc |
-| Focus Depth | Focus Depth | *(none)* | name + −/+ arc |
-| Vanish X | Vanish X | *(none)* | name + −/+ arc |
-| Vanish Y | Vanish Y | *(none)* | name + −/+ arc |
-| Blimp Radius | Blimp Radius | *(none)* | name + −/+ arc |
-| Blimp Velocity | Blimp Velocity | *(none)* | name + −/+ arc |
-| Key Step | Key Step | *(none)* | name + −/+ arc |
-| Mic Gain | Mic Gain | *(none)* | name + −/+ arc |
+| Latitude | Latitude | *(none — iRacing exposes no camera-tool state)* | label only |
+| Longitude | Longitude | *(none)* | label only |
+| Altitude | Altitude | *(none)* | label only |
+| Yaw | Yaw | *(none)* | label only |
+| Pitch | Pitch | *(none)* | label only |
+| FOV Zoom | FOV Zoom | *(none)* | label only |
+| F-number | F-number | *(none)* | label only |
+| Focus Depth | Focus Depth | *(none)* | label only |
+| Vanish X | Vanish X | *(none)* | label only |
+| Vanish Y | Vanish Y | *(none)* | label only |
+| Blimp Radius | Blimp Radius | *(none)* | label only |
+| Blimp Velocity | Blimp Velocity | *(none)* | label only |
+| Key Step | Key Step | *(none)* | label only |
+| Mic Gain | Mic Gain | *(none)* | label only |
 
 #### Setting: Press Action / Long Press
 

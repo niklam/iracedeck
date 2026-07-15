@@ -6,7 +6,6 @@ import {
   formatDialValue,
   GESTURE_ACTIONS,
   identityLabelScaleFor,
-  renderRotaryArc,
 } from "./camera-editor-adjustments-dial-surface.js";
 import { CameraEditorAdjustments } from "./camera-editor-adjustments.js";
 
@@ -204,26 +203,6 @@ describe("camera-editor-adjustments dial-surface pure helpers", () => {
 
     it("never grows a longer name above a shorter one", () => {
       expect(identityLabelScaleFor("Blimp Velocity")).toBeLessThanOrEqual(identityLabelScaleFor("Yaw"));
-    });
-  });
-
-  describe("renderRotaryArc", () => {
-    it("draws a rounded, segmented arc in the given color with dimmed −/+ end glyphs", () => {
-      const svg = renderRotaryArc("#3498db");
-
-      expect(svg).toMatch(/<path[^>]*stroke="#3498db"/);
-      expect(svg).toContain('stroke-linecap="round"');
-      expect(svg).toContain('stroke-dasharray="3 10"');
-      expect(svg).toMatch(/<text[^>]*fill-opacity="0.55"[^>]*>−<\/text>/);
-      expect(svg).toMatch(/<text[^>]*fill-opacity="0.55"[^>]*>\+<\/text>/);
-    });
-
-    it("uses only resvg-safe features (no filters/masks/dominant-baseline)", () => {
-      const svg = renderRotaryArc("#e74c3c");
-
-      expect(svg).not.toContain("dominant-baseline");
-      expect(svg).not.toContain("<filter");
-      expect(svg).not.toContain("<mask");
     });
   });
 });
@@ -447,7 +426,7 @@ describe("CameraEditorAdjustments dial surface", () => {
   });
 
   describe("feedback rendering", () => {
-    it("pushes the full mixed-case parameter name with the rotary arc (identity-only — no live value)", async () => {
+    it("pushes the full mixed-case parameter name, label-only (identity-only — no live value)", async () => {
       const ctx = dialContext("f1");
       await appear(ctx, dialSettings({ setting: "latitude" }));
 
@@ -456,21 +435,16 @@ describe("CameraEditorAdjustments dial surface", () => {
 
       // Full name, not the old "LAT" abbreviation.
       expect(decoded).toContain(">Latitude<");
-      // The rotary affordance: an arc path plus the −/+ end glyphs.
-      expect(decoded).toContain("<path");
-      expect(decoded).toContain(">−<");
-      expect(decoded).toContain(">+<");
-      // Identity-only: the name label + the two end glyphs, and no numeric value.
-      expect((decoded.match(/<text/g) ?? []).length).toBe(3);
+      // No arc graphic — just the label.
+      expect(decoded).not.toContain("<path");
+      // Identity-only: exactly one text node (the label), no value number.
+      expect((decoded.match(/<text/g) ?? []).length).toBe(1);
     });
 
-    it("draws the rotary arc in the setting's accent color and scales long names down", async () => {
-      const ctx = dialContext("f-arc");
-      // latitude accent = #3498db.
+    it("scales long names down so they fit the frame", async () => {
+      const ctx = dialContext("f-scale");
       await appear(ctx, dialSettings({ setting: "latitude" }));
       const lat = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
-
-      expect(lat).toMatch(/<path[^>]*stroke="#3498db"/);
       const latFont = Number(/<text[^>]*font-size="(\d+)"[^>]*>Latitude</.exec(lat)?.[1]);
 
       ctx.setFeedback.mockClear();

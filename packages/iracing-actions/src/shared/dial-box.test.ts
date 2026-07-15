@@ -91,38 +91,6 @@ describe("renderDialBox", () => {
     expect(svg).toMatch(/<text[^>]*y="59"[^>]*>QUAL<\/text>/);
   });
 
-  it("places the identity-only label near the top under the 'top' layout", () => {
-    // Top layout: round(h*0.19) + round(fontSize*0.36) = 19 + round(24*0.36) = 28.
-    const svg = renderDialBox({
-      width: 200,
-      height: 100,
-      abbr: "Latitude",
-      value: "",
-      colors: accentColors(),
-      labelLayout: "top",
-    });
-
-    expect(svg).toMatch(/<text[^>]*y="28"[^>]*>Latitude<\/text>/);
-  });
-
-  it("renders an inner graphic inside the frame and dims it under the #612 warning", () => {
-    const graphic = '<path d="M 10 10" stroke="#abcdef"/>';
-    const base = { width: 200, height: 100, abbr: "LAT", value: "", colors: accentColors(), innerGraphic: graphic };
-
-    expect(renderDialBox(base)).toContain(graphic);
-    // The graphic sits inside the warning-dimmed content, not after it.
-    expect(renderDialBox({ ...base, bindingMissing: true })).toMatch(
-      new RegExp(`${graphic.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}<binding-warning/>`),
-    );
-  });
-
-  it("adds no inner graphic and keeps the centered label when neither option is given (backward compatible)", () => {
-    const svg = renderDialBox({ width: 200, height: 100, abbr: "QUAL", value: "", colors: accentColors() });
-
-    expect(svg).not.toContain("<path");
-    expect(svg).toMatch(/<text[^>]*y="59"[^>]*>QUAL<\/text>/);
-  });
-
   it("shrinks the value font so a longer value fits inside a smaller one", () => {
     const long = /font-size="(\d+)"[^>]*>1234\.5</.exec(
       renderDialBox({ width: 200, height: 100, abbr: "BB", value: "1234.5", colors: accentColors() }),
