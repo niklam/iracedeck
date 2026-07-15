@@ -134,7 +134,15 @@ export {
 export { type FlagInfo, FLAG_DEFINITIONS, resolveActiveFlag, resolveAllActiveFlags } from "./flag-utils.js";
 
 // Telemetry feature detection (car-capability + session-phase helpers)
-export { hasPitLimiter, hasVisor, hasWipers, isLiveOnTrack, isPostRace, isPreGreen } from "./telemetry-features.js";
+export {
+  hasPitLimiter,
+  hasVisor,
+  hasWipers,
+  isLiveOnTrack,
+  isPenaltyFlagActive,
+  isPostRace,
+  isPreGreen,
+} from "./telemetry-features.js";
 
 // Session info utilities
 export {
