@@ -68,8 +68,49 @@ export const ROTATION_SETTINGS = [
 ] as const;
 export type CameraEditorDialSetting = (typeof ROTATION_SETTINGS)[number];
 
-/** `auto-mic-gain` taps the Auto Set Mic Gain binding. */
-export const GESTURE_ACTIONS = ["auto-mic-gain", "none"] as const;
+/**
+ * Dial gesture-slot values. `auto-mic-gain` taps the Auto Set Mic Gain binding;
+ * every camera-tool id (e.g. `open-camera-tool`) taps the matching Camera Editor
+ * Controls one-shot (#804). This is a cross-action binding reuse — the `camCtrl*`
+ * keys are plugin-global (precedent: Cockpit Misc's `ffb-max-force` reusing Force
+ * Feedback's keys). Every Camera Editor Controls control is a plain parameterless
+ * one-shot tap, so all of them qualify; their ids and `camCtrl*` binding keys are
+ * reused verbatim.
+ */
+export const GESTURE_ACTIONS = [
+  "auto-mic-gain",
+  "open-camera-tool",
+  "key-acceleration-toggle",
+  "key-10x-toggle",
+  "parabolic-mic-toggle",
+  "cycle-position-type",
+  "cycle-aim-type",
+  "acquire-start",
+  "acquire-end",
+  "temporary-edits-toggle",
+  "dampening-toggle",
+  "zoom-toggle",
+  "beyond-fence-toggle",
+  "in-cockpit-toggle",
+  "mouse-navigation-toggle",
+  "pitch-gyro-toggle",
+  "roll-gyro-toggle",
+  "limit-shot-range-toggle",
+  "show-camera-toggle",
+  "shot-selection-toggle",
+  "manual-focus-toggle",
+  "insert-camera",
+  "remove-camera",
+  "copy-camera",
+  "paste-camera",
+  "copy-group",
+  "paste-group",
+  "save-track-camera",
+  "load-track-camera",
+  "save-car-camera",
+  "load-car-camera",
+  "none",
+] as const;
 export type GestureSlot = (typeof GESTURE_ACTIONS)[number];
 
 export type CameraEditorDirection = "increase" | "decrease";
@@ -104,7 +145,84 @@ const DIAL_ROTATION_KEYS: Record<string, string> = {
   "mic-gain-increase": "camEditMicGainIncrease",
   "mic-gain-decrease": "camEditMicGainDecrease",
 };
-const AUTO_MIC_GAIN_KEY = "camEditAutoSetMicGain";
+/**
+ * Binding key each non-`none` gesture taps. Auto Set Mic Gain uses the
+ * camera-editor's own `camEditAutoSetMicGain`; every camera-tool one-shot reuses
+ * Camera Editor Controls' `camCtrl*` key verbatim (#804). The `Record` over
+ * `Exclude<GestureSlot, "none">` makes a missing entry a compile error.
+ */
+const GESTURE_BINDING_KEYS: Record<Exclude<GestureSlot, "none">, string> = {
+  "auto-mic-gain": "camEditAutoSetMicGain",
+  "open-camera-tool": "camCtrlOpenCameraTool",
+  "key-acceleration-toggle": "camCtrlKeyAccelerationToggle",
+  "key-10x-toggle": "camCtrlKey10xToggle",
+  "parabolic-mic-toggle": "camCtrlParabolicMicToggle",
+  "cycle-position-type": "camCtrlCyclePositionType",
+  "cycle-aim-type": "camCtrlCycleAimType",
+  "acquire-start": "camCtrlAcquireStart",
+  "acquire-end": "camCtrlAcquireEnd",
+  "temporary-edits-toggle": "camCtrlTemporaryEditsToggle",
+  "dampening-toggle": "camCtrlDampeningToggle",
+  "zoom-toggle": "camCtrlZoomToggle",
+  "beyond-fence-toggle": "camCtrlBeyondFenceToggle",
+  "in-cockpit-toggle": "camCtrlInCockpitToggle",
+  "mouse-navigation-toggle": "camCtrlMouseNavigationToggle",
+  "pitch-gyro-toggle": "camCtrlPitchGyroToggle",
+  "roll-gyro-toggle": "camCtrlRollGyroToggle",
+  "limit-shot-range-toggle": "camCtrlLimitShotRangeToggle",
+  "show-camera-toggle": "camCtrlShowCameraToggle",
+  "shot-selection-toggle": "camCtrlShotSelectionToggle",
+  "manual-focus-toggle": "camCtrlManualFocusToggle",
+  "insert-camera": "camCtrlInsertCamera",
+  "remove-camera": "camCtrlRemoveCamera",
+  "copy-camera": "camCtrlCopyCamera",
+  "paste-camera": "camCtrlPasteCamera",
+  "copy-group": "camCtrlCopyGroup",
+  "paste-group": "camCtrlPasteGroup",
+  "save-track-camera": "camCtrlSaveTrackCamera",
+  "load-track-camera": "camCtrlLoadTrackCamera",
+  "save-car-camera": "camCtrlSaveCarCamera",
+  "load-car-camera": "camCtrlLoadCarCamera",
+};
+
+/**
+ * Human label per gesture, for the Stream Deck+ trigger-description tooltip. The
+ * camera-tool labels match the Camera Editor Controls PI verbatim; Auto Set Mic
+ * Gain stays "Auto Mic Gain" to fit the touch-strip trigger line.
+ */
+const GESTURE_LABELS: Record<Exclude<GestureSlot, "none">, string> = {
+  "auto-mic-gain": "Auto Mic Gain",
+  "open-camera-tool": "Open Camera Tool",
+  "key-acceleration-toggle": "Key Acceleration Toggle",
+  "key-10x-toggle": "Key 10x Toggle",
+  "parabolic-mic-toggle": "Parabolic Mic Toggle",
+  "cycle-position-type": "Cycle Position Type",
+  "cycle-aim-type": "Cycle Aim Type",
+  "acquire-start": "Acquire Start",
+  "acquire-end": "Acquire End",
+  "temporary-edits-toggle": "Temporary Edits Toggle",
+  "dampening-toggle": "Dampening Toggle",
+  "zoom-toggle": "Zoom Toggle",
+  "beyond-fence-toggle": "Beyond Fence Toggle",
+  "in-cockpit-toggle": "In Cockpit Toggle",
+  "mouse-navigation-toggle": "Mouse Navigation Toggle",
+  "pitch-gyro-toggle": "Pitch Gyro Toggle",
+  "roll-gyro-toggle": "Roll Gyro Toggle",
+  "limit-shot-range-toggle": "Limit Shot Range Toggle",
+  "show-camera-toggle": "Show Camera Toggle",
+  "shot-selection-toggle": "Shot Selection Toggle",
+  "manual-focus-toggle": "Manual Focus Toggle",
+  "insert-camera": "Insert Camera",
+  "remove-camera": "Remove Camera",
+  "copy-camera": "Copy Camera",
+  "paste-camera": "Paste Camera",
+  "copy-group": "Copy Group",
+  "paste-group": "Paste Group",
+  "save-track-camera": "Save Track Camera",
+  "load-track-camera": "Load Track Camera",
+  "save-car-camera": "Save Car Camera",
+  "load-car-camera": "Load Car Camera",
+};
 
 export function rotationKey(setting: CameraEditorDialSetting, direction: CameraEditorDirection): string | undefined {
   return DIAL_ROTATION_KEYS[`${setting}-${direction}`];
@@ -240,12 +358,7 @@ export function buildTriggerDescription(dial: DialSettings): DeckTriggerDescript
 }
 
 function gestureLabel(action: GestureSlot): string | undefined {
-  switch (action) {
-    case "auto-mic-gain":
-      return "Auto Mic Gain";
-    case "none":
-      return undefined;
-  }
+  return action === "none" ? undefined : GESTURE_LABELS[action];
 }
 
 interface CameraEditorDialContext {
@@ -426,10 +539,9 @@ export class CameraEditorDialSurface {
   private async doGesture(action: GestureSlot): Promise<void> {
     if (action === "none") return;
 
-    if (action === "auto-mic-gain") {
-      this.host.logger.info("Camera editor dial auto-set mic gain");
-      await this.host.tapBinding(AUTO_MIC_GAIN_KEY);
-    }
+    this.host.logger.info("Camera editor dial gesture");
+    this.host.logger.debug(`Gesture: ${action}`);
+    await this.host.tapBinding(GESTURE_BINDING_KEYS[action]);
   }
 
   private computeBindingMissing(dial: DialSettings): boolean {

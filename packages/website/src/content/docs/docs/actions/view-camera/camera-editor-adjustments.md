@@ -286,7 +286,7 @@ Placed on a Stream Deck+ dial, Camera Editor Adjustments becomes a precision cam
 
 #### Details
 
-- **Method:** Key binding — the same Camera Editor Adjustments increase/decrease bindings the keypad modes use, plus the *Auto Set Mic Gain* binding for the press gestures. Configure them in the **Related Key Bindings** section; the Property Inspector shows a status line indicating whether each is set.
+- **Method:** Key binding — the same Camera Editor Adjustments increase/decrease bindings the keypad modes use for rotation, plus, for the press and touch gestures, the *Auto Set Mic Gain* binding and any [Camera Editor Controls](/docs/actions/view-camera/camera-editor-controls/) one-shot bindings you assign to a slot. Configure them all in the **Related Key Bindings** section; the Property Inspector shows a status line indicating whether each is set.
 - **Dial:** Rotating adjusts the selected parameter (clockwise = increase, counter-clockwise = decrease). Both the increase and decrease key bindings must be set.
 - **Telemetry-aware:** No. iRacing exposes no camera-tool state, so the touch strip shows the selected parameter's name only — never a live value.
 
@@ -323,9 +323,10 @@ What a short or long press of the dial button does, chosen from:
 
 - **None** (default for both) — does nothing.
 - **Auto Set Mic Gain** — taps the *Auto Set Mic Gain* binding, which auto-sets the microphone gain for the current camera.
+- **Any Camera Editor Controls one-shot** — the full set of parameterless camera-tool commands from [Camera Editor Controls](/docs/actions/view-camera/camera-editor-controls/) (open the camera tool, the various toggles, cycle position/aim type, acquire start/end, insert/remove and copy/paste of cameras and groups, save/load track and car cameras, and the rest). Each taps that control's shared key binding, so one dial can both nudge a parameter and fire a camera-tool command.
 
 A press is classified when you release the dial — a hold past the [Long-press threshold](/docs/features/dials/#the-long-press-threshold) fires the Long Press action. Turning the dial while pressed adjusts the parameter (a "push + turn") and never fires the press action.
 
 #### Setting: Tap Display / Long Touch
 
-Optional touch-strip gestures (Stream Deck+ only), each over { Auto Set Mic Gain, None }. Both default to **None** for VR safety.
+Optional touch-strip gestures (Stream Deck+ only). Each offers the same choices as the press gestures — None, Auto Set Mic Gain, or any Camera Editor Controls one-shot. Both default to **None** for VR safety.

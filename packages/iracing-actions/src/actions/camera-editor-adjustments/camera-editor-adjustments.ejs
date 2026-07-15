@@ -9,6 +9,43 @@
 		<% var __comms = require('./data/action-comms.json')['camera-editor-adjustments']; %>
 		<% var __dialComms = require('./data/action-comms.json')['camera-editor-adjustments-dial']; %>
 
+		<%
+			// Camera-tool one-shots the dial's press/touch gestures can fire, reused
+			// verbatim from Camera Editor Controls (#804). Labels match its PI exactly.
+			var __gestureCameraTool = [
+				{ value: 'open-camera-tool', label: 'Open Camera Tool' },
+				{ value: 'key-acceleration-toggle', label: 'Key Acceleration Toggle' },
+				{ value: 'key-10x-toggle', label: 'Key 10x Toggle' },
+				{ value: 'parabolic-mic-toggle', label: 'Parabolic Mic Toggle' },
+				{ value: 'cycle-position-type', label: 'Cycle Position Type' },
+				{ value: 'cycle-aim-type', label: 'Cycle Aim Type' },
+				{ value: 'acquire-start', label: 'Acquire Start' },
+				{ value: 'acquire-end', label: 'Acquire End' },
+				{ value: 'temporary-edits-toggle', label: 'Temporary Edits Toggle' },
+				{ value: 'dampening-toggle', label: 'Dampening Toggle' },
+				{ value: 'zoom-toggle', label: 'Zoom Toggle' },
+				{ value: 'beyond-fence-toggle', label: 'Beyond Fence Toggle' },
+				{ value: 'in-cockpit-toggle', label: 'In Cockpit Toggle' },
+				{ value: 'mouse-navigation-toggle', label: 'Mouse Navigation Toggle' },
+				{ value: 'pitch-gyro-toggle', label: 'Pitch Gyro Toggle' },
+				{ value: 'roll-gyro-toggle', label: 'Roll Gyro Toggle' },
+				{ value: 'limit-shot-range-toggle', label: 'Limit Shot Range Toggle' },
+				{ value: 'show-camera-toggle', label: 'Show Camera Toggle' },
+				{ value: 'shot-selection-toggle', label: 'Shot Selection Toggle' },
+				{ value: 'manual-focus-toggle', label: 'Manual Focus Toggle' },
+				{ value: 'insert-camera', label: 'Insert Camera' },
+				{ value: 'remove-camera', label: 'Remove Camera' },
+				{ value: 'copy-camera', label: 'Copy Camera' },
+				{ value: 'paste-camera', label: 'Paste Camera' },
+				{ value: 'copy-group', label: 'Copy Group' },
+				{ value: 'paste-group', label: 'Paste Group' },
+				{ value: 'save-track-camera', label: 'Save Track Camera' },
+				{ value: 'load-track-camera', label: 'Load Track Camera' },
+				{ value: 'save-car-camera', label: 'Save Car Camera' },
+				{ value: 'load-car-camera', label: 'Load Car Camera' }
+			];
+		%>
+
 		<!-- Keypad settings — hidden when this instance is a dial (#804). -->
 		<div id="keypad-settings">
 			<sdpi-item label="Adjustment">
@@ -91,7 +128,12 @@
 			<sdpi-item label="Press Action">
 				<sdpi-select setting="dial.pressAction" default="none">
 					<option value="none">None</option>
-					<option value="auto-mic-gain">Auto Set Mic Gain</option>
+					<optgroup label="Adjustments">
+						<option value="auto-mic-gain">Auto Set Mic Gain</option>
+					</optgroup>
+					<optgroup label="Camera Tool">
+						<% __gestureCameraTool.forEach(function (o) { %><option value="<%= o.value %>"><%= o.label %></option><% }); %>
+					</optgroup>
 				</sdpi-select>
 			</sdpi-item>
 			<ird-binding-status mode-setting="dial.pressAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
@@ -99,7 +141,12 @@
 			<sdpi-item label="Long Press">
 				<sdpi-select setting="dial.longPressAction" default="none">
 					<option value="none">None</option>
-					<option value="auto-mic-gain">Auto Set Mic Gain</option>
+					<optgroup label="Adjustments">
+						<option value="auto-mic-gain">Auto Set Mic Gain</option>
+					</optgroup>
+					<optgroup label="Camera Tool">
+						<% __gestureCameraTool.forEach(function (o) { %><option value="<%= o.value %>"><%= o.label %></option><% }); %>
+					</optgroup>
 				</sdpi-select>
 			</sdpi-item>
 			<ird-binding-status mode-setting="dial.longPressAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
@@ -108,7 +155,12 @@
 			<sdpi-item label="Tap Display">
 				<sdpi-select setting="dial.tapAction" default="none">
 					<option value="none">None</option>
-					<option value="auto-mic-gain">Auto Set Mic Gain</option>
+					<optgroup label="Adjustments">
+						<option value="auto-mic-gain">Auto Set Mic Gain</option>
+					</optgroup>
+					<optgroup label="Camera Tool">
+						<% __gestureCameraTool.forEach(function (o) { %><option value="<%= o.value %>"><%= o.label %></option><% }); %>
+					</optgroup>
 				</sdpi-select>
 			</sdpi-item>
 			<ird-binding-status mode-setting="dial.tapAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
@@ -116,7 +168,12 @@
 			<sdpi-item label="Long Touch">
 				<sdpi-select setting="dial.longTouchAction" default="none">
 					<option value="none">None</option>
-					<option value="auto-mic-gain">Auto Set Mic Gain</option>
+					<optgroup label="Adjustments">
+						<option value="auto-mic-gain">Auto Set Mic Gain</option>
+					</optgroup>
+					<optgroup label="Camera Tool">
+						<% __gestureCameraTool.forEach(function (o) { %><option value="<%= o.value %>"><%= o.label %></option><% }); %>
+					</optgroup>
 				</sdpi-select>
 			</sdpi-item>
 			<ird-binding-status mode-setting="dial.longTouchAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
@@ -139,6 +196,7 @@
 
 		<%- include('global-key-bindings', {
 			keyBindings: require('./data/key-bindings.json').cameraEditorAdjustments
+				.concat(require('./data/key-bindings.json').cameraEditorControls)
 		}) %>
 
 		<div id="keypad-global-appearance">

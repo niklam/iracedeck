@@ -704,6 +704,216 @@
         "scope": "global",
         "key": "camEditAutoSetMicGain"
       }
+    },
+    "open-camera-tool": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlOpenCameraTool"
+      }
+    },
+    "key-acceleration-toggle": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlKeyAccelerationToggle"
+      }
+    },
+    "key-10x-toggle": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlKey10xToggle"
+      }
+    },
+    "parabolic-mic-toggle": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlParabolicMicToggle"
+      }
+    },
+    "cycle-position-type": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlCyclePositionType"
+      }
+    },
+    "cycle-aim-type": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlCycleAimType"
+      }
+    },
+    "acquire-start": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlAcquireStart"
+      }
+    },
+    "acquire-end": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlAcquireEnd"
+      }
+    },
+    "temporary-edits-toggle": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlTemporaryEditsToggle"
+      }
+    },
+    "dampening-toggle": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlDampeningToggle"
+      }
+    },
+    "zoom-toggle": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlZoomToggle"
+      }
+    },
+    "beyond-fence-toggle": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlBeyondFenceToggle"
+      }
+    },
+    "in-cockpit-toggle": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlInCockpitToggle"
+      }
+    },
+    "mouse-navigation-toggle": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlMouseNavigationToggle"
+      }
+    },
+    "pitch-gyro-toggle": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlPitchGyroToggle"
+      }
+    },
+    "roll-gyro-toggle": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlRollGyroToggle"
+      }
+    },
+    "limit-shot-range-toggle": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlLimitShotRangeToggle"
+      }
+    },
+    "show-camera-toggle": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlShowCameraToggle"
+      }
+    },
+    "shot-selection-toggle": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlShotSelectionToggle"
+      }
+    },
+    "manual-focus-toggle": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlManualFocusToggle"
+      }
+    },
+    "insert-camera": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlInsertCamera"
+      }
+    },
+    "remove-camera": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlRemoveCamera"
+      }
+    },
+    "copy-camera": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlCopyCamera"
+      }
+    },
+    "paste-camera": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlPasteCamera"
+      }
+    },
+    "copy-group": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlCopyGroup"
+      }
+    },
+    "paste-group": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlPasteGroup"
+      }
+    },
+    "save-track-camera": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlSaveTrackCamera"
+      }
+    },
+    "load-track-camera": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlLoadTrackCamera"
+      }
+    },
+    "save-car-camera": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlSaveCarCamera"
+      }
+    },
+    "load-car-camera": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlLoadCarCamera"
+      }
     }
   },
   "camera-editor-controls": {

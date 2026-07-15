@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { buildTriggerDescription, DialSettings, formatDialValue } from "./camera-editor-adjustments-dial-surface.js";
+import {
+  buildTriggerDescription,
+  DialSettings,
+  formatDialValue,
+  GESTURE_ACTIONS,
+} from "./camera-editor-adjustments-dial-surface.js";
 import { CameraEditorAdjustments } from "./camera-editor-adjustments.js";
 
 const { mockGetCurrentTelemetry, mockTapBinding, mockIsBindingMissing, mockDualPressThreshold, globalListeners } =
@@ -162,6 +167,29 @@ describe("camera-editor-adjustments dial-surface pure helpers", () => {
       expect(desc.push).toBe("Auto Mic Gain (hold: Auto Mic Gain)");
       expect(desc.touch).toBeUndefined();
     });
+
+    it("labels a camera-tool one-shot gesture on the trigger description (#804)", () => {
+      const desc = buildTriggerDescription(
+        DialSettings.parse({ setting: "latitude", pressAction: "open-camera-tool", tapAction: "zoom-toggle" }),
+      );
+
+      expect(desc.push).toBe("Open Camera Tool");
+      expect(desc.touch).toBe("Zoom Toggle");
+    });
+  });
+
+  describe("GESTURE_ACTIONS", () => {
+    it("offers Auto Mic Gain, every Camera Editor Controls one-shot, and None (#804)", () => {
+      // Auto Set Mic Gain + 30 camera-tool one-shots + None = 32 options.
+      expect(GESTURE_ACTIONS).toHaveLength(32);
+      expect(GESTURE_ACTIONS).toContain("auto-mic-gain");
+      expect(GESTURE_ACTIONS).toContain("none");
+
+      // Spot-check the camera-tool one-shots reused verbatim from the sibling action.
+      for (const id of ["open-camera-tool", "zoom-toggle", "load-car-camera"]) {
+        expect(GESTURE_ACTIONS).toContain(id);
+      }
+    });
   });
 });
 
@@ -269,6 +297,31 @@ describe("CameraEditorAdjustments dial surface", () => {
       expect(mockTapBinding).toHaveBeenCalledWith("camEditAutoSetMicGain");
     });
 
+    it("fires a Camera Editor Controls one-shot on a short press when configured (#804)", async () => {
+      const ctx = dialContext("p1c");
+      const settings = dialSettings({ setting: "latitude", pressAction: "open-camera-tool" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(mockTapBinding).toHaveBeenCalledWith("camCtrlOpenCameraTool");
+    });
+
+    it("fires a Camera Editor Controls one-shot on the long-press when configured (#804)", async () => {
+      const ctx = dialContext("p3c");
+      const settings = dialSettings({ setting: "latitude", longPressAction: "zoom-toggle" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(600);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(mockTapBinding).toHaveBeenCalledWith("camCtrlZoomToggle");
+    });
+
     it("does nothing on a short press by default (none)", async () => {
       const ctx = dialContext("p2");
       const settings = dialSettings({ setting: "latitude" });
@@ -332,6 +385,17 @@ describe("CameraEditorAdjustments dial surface", () => {
       await action.onTouchTap(touchTapEvent(ctx, settings, true) as never);
 
       expect(mockTapBinding).toHaveBeenCalledWith("camEditAutoSetMicGain");
+    });
+
+    it("fires a Camera Editor Controls one-shot on a tap when configured (#804)", async () => {
+      const ctx = dialContext("t1c");
+      const settings = dialSettings({ setting: "latitude", tapAction: "load-car-camera", longTouchAction: "none" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onTouchTap(touchTapEvent(ctx, settings, false) as never);
+
+      expect(mockTapBinding).toHaveBeenCalledWith("camCtrlLoadCarCamera");
     });
 
     it("does nothing when dial feedback is disabled", async () => {
