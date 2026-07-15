@@ -146,7 +146,7 @@ External links in a PI otherwise open in the deck app's small built-in browser, 
 <a href="https://iracedeck.com/downloads/" target="_blank" rel="noopener noreferrer">Downloads</a>
 ```
 
-That event reaches the OS default browser on every host: Elgato handles it natively, the VSD (Mirabox) host receives it directly, and the Ulanzi PI bridge translates it to its `openurl` cmd (`src/ulanzi-bridge/translate.ts`). No plugin-side code is needed. The handler resolves the anchor's normalized `.href` and only reroutes `http(s)` (the SDK can't open other schemes, e.g. `mailto:`/`app://`, and in-PI/relative targets are left alone). It only intercepts when sdpi-components is loaded, so a load failure falls back to the link's default behavior; the `openUrl` send is fire-and-forget (rejections swallowed) and the listener installs once per document.
+That event reaches the OS default browser on every host: Elgato handles it natively, the VSD (Mirabox) host receives it directly, and the Ulanzi PI bridge relays it as a `sendToPlugin` openUrl marker (`src/ulanzi-bridge/translate.ts`) that the Ulanzi adapter re-sends as `openurl` from the **plugin** socket — UlanziStudio ignores `openurl` sent on the PI socket (#845). No per-action plugin code is needed on any host. The handler resolves the anchor's normalized `.href` and only reroutes `http(s)` (the SDK can't open other schemes, e.g. `mailto:`/`app://`, and in-PI/relative targets are left alone). It only intercepts when sdpi-components is loaded, so a load failure falls back to the link's default behavior; the `openUrl` send is fire-and-forget (rejections swallowed) and the listener installs once per document.
 
 ## Title Overrides Partial
 

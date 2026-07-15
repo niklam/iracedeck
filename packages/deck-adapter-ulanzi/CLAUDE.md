@@ -10,7 +10,7 @@ Mirrors `@iracedeck/deck-adapter-mirabox`. The key difference: VSD Craft speaks 
 - **`UlanziPlatformAdapter`** (`adapter.ts`) — wraps the client, translating normalized events into deck-core events (`IDeckWillAppearEvent`, `IDeckKeyDownEvent`, …) via `UlanziActionContext`. Near-identical to `VSDPlatformAdapter`.
 - **Controller type defaults to Keypad (gotcha for the #786 dial re-enable)** — Ulanzi `add` frames carry no controller hint (`normalizeFrame("add")` emits only settings), so every context falls back to `Keypad` in `registerAction` and `isDial()` is effectively never true on Ulanzi today. Also, `ControllerType` here is `"Keypad" | "Encoder" | "Information"` — no `"Knob"` (unlike Mirabox).
 - **`switchToProfile` is a no-op** — UlanziStudio has no profile system. The PI "Stream Deck Profiles" accordion is hidden on this platform via the `profiles` feature flag (`packages/iracing-plugin-ulanzi/platform-features.json`), so the method exists only to satisfy `IDeckPlatformAdapter`.
-- **`openUrl(url)`** — the adapter's own method sends the `openurl` cmd best-effort (harmless if the host ignores it). Distinct from the PI bridge, which separately translates PI link clicks to the same cmd.
+- **`openUrl(url)`** — the adapter's own method sends the `openurl` cmd best-effort (harmless if the host ignores it). PI link clicks route through here too: UlanziStudio ignores `openurl` sent on the **PI** socket, so the PI bridge relays link clicks as a `sendToPlugin` openUrl marker and the adapter constructor forwards them out the plugin socket via `client.openUrl` (#845).
 - **`UlanziActionContext.setTitle` is a no-op** — Ulanzi has no native title API (labels travel as the `text` field of the icon setter). iRaceDeck bakes the title into the icon SVG and every action only ever calls `setTitle("")` to clear the native title, which Ulanzi never draws (`setImage` sends `showtext:false`).
 - **`createLogger(scope)`** — `createConsoleLogger()` teed to `<plugin>/log/<YYYY.M.D>.log` (`file-logger.ts`) when a log dir is passed to the constructor (issue #609). The UlanziStudio host discards plugin stdout, same as Mirabox's Stream Dock host. Console + file share the live `logLevel` (`setLogLevel`).
 - **Broadcast callbacks** — `onKeyDown`, `onDialDown`, `onDialRotate` fire before per-action handlers (for window focus).
@@ -39,6 +39,7 @@ On open the client sends the handshake `{ code: 0, cmd: "connected", uuid }` (no
 | `didReceiveSettings` / `paramfromapp` / `paramfromplugin` | `didReceiveSettings`         | settings in `param`                                        |
 | `didReceiveGlobalSettings`                                | global event                 | settings in `settings`                                     |
 | `sendToPlugin` (PI-appear marker)                         | `propertyInspectorDidAppear` | see below                                                  |
+| `sendToPlugin` (openUrl marker)                           | `openUrl` (global event)     | url in `payload.url` — see below                           |
 | `run` / `setactive` / acks                                | (ignored)                    |                                                            |
 
 Frames with `code` set and no `cmdType === "REQUEST"` are ack/responses and are dropped.
@@ -47,9 +48,11 @@ Frames with `code` set and no `cmdType === "REQUEST"` are ack/responses and are 
 
 Ulanzi only carries settings on `add` / `paramfromapp`; `keydown` / `keyup` / `dial*` frames omit them. The client caches the latest settings per context and **backfills** press/dial events before routing — otherwise actions would fire with empty settings. The cache is dropped on `clear`.
 
-### PI-appear (synthesized)
+### PI markers (synthesized)
 
 UlanziStudio has no host-generated "PI appeared" event. The Ulanzi PI bridge (in `@iracedeck/pi-components`) sends a `sendToPlugin` marker (`payload.event === "propertyInspectorDidAppear"`) on connect; the client normalizes that into the `propertyInspectorDidAppear` global event so `onPropertyInspectorDidAppear` (e.g. audio-device re-enumeration) works.
+
+External PI links use the same relay (#845): UlanziStudio ignores `openurl` sent on the PI socket but honours it from the plugin socket, so the bridge translates sdpi's `openUrl` event into a `sendToPlugin` openUrl marker, the client normalizes it to an `openUrl` global event, and the adapter constructor forwards the url via `client.openUrl`. Any other `sendToPlugin` payload normalizes to nothing.
 
 ### Outbound icons
 

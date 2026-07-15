@@ -73,6 +73,13 @@ const WS_OPEN = 1;
 /** Marker a Ulanzi PI bridge sends (via `sendToPlugin`) to signal it opened. */
 const PI_APPEAR_MARKER = "propertyInspectorDidAppear";
 
+/**
+ * Marker the Ulanzi PI bridge sends (via `sendToPlugin`) to relay an external
+ * link click. UlanziStudio ignores `openurl` sent on the PI socket but honours
+ * it from the plugin socket, so the adapter re-sends the url from there (#845).
+ */
+const PI_OPEN_URL_MARKER = "openUrl";
+
 /** Parse UlanziStudio connection parameters from process.argv. */
 export function parseConnectionParams(): UlanziConnectionParams {
   return {
@@ -137,8 +144,8 @@ function pressedFromRotate(rotateEvent: unknown): boolean {
  * Normalize a raw Ulanzi wire frame (keyed by `cmd`) into zero or more
  * Elgato-style {@link UlanziEvent}s. Most frames map 1:1; `clear` fans out to
  * one disappear event per item in its `param` array; `sendToPlugin` is surfaced
- * only for the PI-appear marker; unused frames (`run`, `setactive`, command
- * acks) normalize to nothing.
+ * only for the known PI markers (PI-appear, openUrl); unused frames (`run`,
+ * `setactive`, command acks) normalize to nothing.
  *
  * Pure and side-effect-free: settings backfill for press/dial events (which
  * carry no `param` on the wire) is the stateful client's responsibility.
@@ -179,10 +186,17 @@ export function normalizeFrame(frame: Record<string, unknown>): UlanziEvent[] {
       return normalizeClear(frame);
     case "didReceiveGlobalSettings":
       return [{ event: "didReceiveGlobalSettings", payload: { settings: settingsOf(frame) } }];
-    case "sendToPlugin":
-      return asRecord(frame.payload)?.event === PI_APPEAR_MARKER
-        ? [{ event: "propertyInspectorDidAppear", action, context }]
-        : [];
+    case "sendToPlugin": {
+      const payload = asRecord(frame.payload);
+
+      if (payload?.event === PI_APPEAR_MARKER) return [{ event: "propertyInspectorDidAppear", action, context }];
+
+      if (payload?.event === PI_OPEN_URL_MARKER) {
+        return [{ event: "openUrl", action, context, payload: { url: String(payload.url ?? "") } }];
+      }
+
+      return [];
+    }
     default:
       return [];
   }
