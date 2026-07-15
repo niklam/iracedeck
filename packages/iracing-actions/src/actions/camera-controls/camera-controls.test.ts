@@ -1,4 +1,4 @@
-import { requestProfileSwitch, resolveProfileNameForDevice } from "@iracedeck/deck-core";
+import { getCommands, requestProfileSwitch, resolveProfileNameForDevice } from "@iracedeck/deck-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { _resetSelectIntents, getSelectIntent } from "../../shared/car-select-intent.js";
@@ -105,6 +105,7 @@ vi.mock("../race-admin/race-admin-selector.js", () => ({
 vi.mock("@iracedeck/iracing-sdk", () => ({
   getCameraGroupsFromSessionInfo: vi.fn(() => []),
   getCarNumberRawFromSessionInfo: vi.fn(() => null),
+  getCarNumberFromSessionInfo: vi.fn(() => null),
 }));
 
 const { mockGetGlobalSettings } = vi.hoisted(() => ({
@@ -149,6 +150,9 @@ vi.mock("@iracedeck/deck-core", () => ({
       focusOnMostExciting: vi.fn(() => true),
     },
   })),
+  // #803 dial surface: the host wires a global-settings listener in its
+  // constructor; return a no-op unsubscribe so `new CameraControls()` succeeds.
+  onGlobalSettingsChange: vi.fn(() => vi.fn()),
   // focus-select-car (#790)
   CAR_SELECTOR_PROFILE: "iRaceDeck Car Selector",
   requestProfileSwitch: vi.fn(),
@@ -223,6 +227,21 @@ vi.mock("@iracedeck/deck-core", () => ({
     return result;
   }),
   svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
+  // #803 dial surface deps (used by the host-integration dial tests below).
+  escapeXml: (str: string) => str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"),
+  applyBindingWarning: (content: string) => `${content}<binding-warning/>`,
+  getDualPressThresholdMs: () => 500,
+  classifyDialRelease: (args: {
+    pressStartMs: number;
+    nowMs: number;
+    rotatedWhilePressed: boolean;
+    thresholdMs?: number;
+  }) =>
+    args.rotatedWhilePressed
+      ? "push-turn"
+      : args.nowMs - args.pressStartMs >= (args.thresholdMs ?? 500)
+        ? "long"
+        : "short",
 }));
 
 describe("CameraControls", () => {
@@ -835,6 +854,8 @@ describe("CameraControls", () => {
           id: "ctx-1",
           deviceId: "dev-1",
           deviceType: 2,
+          isKey: () => true,
+          isDial: () => false,
           setSettings: vi.fn(async () => {}),
           setTitle: vi.fn(async () => {}),
         },
@@ -934,5 +955,74 @@ describe("CameraControls", () => {
         expect(setSettings).not.toHaveBeenCalled();
       });
     });
+  });
+});
+
+// Host integration (#803): the dial branch of the lifecycle handlers routes to
+// the CameraDialSurface, and rotation reuses the keypad's own executeCycle SDK
+// dispatch (the central mandate — reuse, don't duplicate). The surface's own
+// behavior is covered exhaustively in camera-dial-surface.test.ts.
+describe("CameraControls dial surface (host integration)", () => {
+  function dialContext() {
+    return {
+      id: "dial-1",
+      deviceId: "dev-1",
+      deviceType: 2,
+      isKey: () => false,
+      isDial: () => true,
+      setImage: vi.fn(async () => {}),
+      setTitle: vi.fn(async () => {}),
+      setSettings: vi.fn(async () => {}),
+      setFeedback: vi.fn(async () => {}),
+      setTriggerDescription: vi.fn(async () => {}),
+    };
+  }
+
+  function sdk(action: CameraControls) {
+    return (
+      action as unknown as {
+        sdkController: {
+          subscribe: ReturnType<typeof vi.fn>;
+          getCurrentTelemetry: ReturnType<typeof vi.fn>;
+          getSessionInfo: ReturnType<typeof vi.fn>;
+        };
+      }
+    ).sdkController;
+  }
+
+  it("routes a dial willAppear to the surface: pushes the name icon and subscribes to telemetry", async () => {
+    const action = new CameraControls();
+    const ctx = dialContext();
+
+    await action.onWillAppear({ action: ctx, payload: { settings: { dial: { mode: "car" } } } } as never);
+
+    const img = decodeURIComponent(ctx.setImage.mock.calls.at(-1)?.[0] as string);
+    expect(img).toContain("CAMERA");
+    expect(img).toContain("CONTROLS");
+    expect(sdk(action).subscribe).toHaveBeenCalledWith("dial-1", expect.any(Function));
+  });
+
+  it("reuses the keypad cycle dispatch (SDK camera command) on a dial rotation", async () => {
+    const action = new CameraControls();
+    sdk(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 3 });
+    vi.mocked(getCommands).mockClear();
+
+    await action.onDialRotate({
+      action: dialContext(),
+      payload: { settings: { dial: { mode: "car" } }, ticks: 1 },
+    } as never);
+
+    // The rotation reached executeCycle, which resolves the camera command surface.
+    expect(getCommands).toHaveBeenCalled();
+  });
+
+  it("does not focus for a keypad focus-select-car on a dial press (gesture default is none)", async () => {
+    const action = new CameraControls();
+    const ctx = dialContext();
+
+    await action.onDialDown({ action: ctx, payload: { settings: { dial: {} } } } as never);
+    await action.onDialUp({ action: ctx, payload: { settings: { dial: {} } } } as never);
+
+    expect(requestProfileSwitch).not.toHaveBeenCalled();
   });
 });

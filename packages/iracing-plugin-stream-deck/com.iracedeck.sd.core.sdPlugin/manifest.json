@@ -68,11 +68,21 @@
       "Name": "Camera Controls",
       "UUID": "com.iracedeck.sd.core.camera-focus",
       "Icon": "imgs/actions/camera-focus/icon",
-      "Tooltip": "Cycle through cameras and focus on targets (your car, leader, incidents, positions)",
+      "Tooltip": "Cycle through cameras and focus on targets (your car, leader, incidents, positions); on a dial: rotate to cycle cameras/cars with the live focus on the touch strip",
       "PropertyInspectorPath": "ui/camera-focus.html",
       "Controllers": [
-        "Keypad"
+        "Keypad",
+        "Encoder"
       ],
+      "Encoder": {
+        "Icon": "imgs/actions/camera-focus/dial",
+        "layout": "layouts/camera-focus.json",
+        "TriggerDescription": {
+          "Rotate": "Cycle the camera or focused car",
+          "Push": "Configured action",
+          "Touch": "Configured action"
+        }
+      },
       "States": [
         {
           "Image": "imgs/actions/camera-focus/key",

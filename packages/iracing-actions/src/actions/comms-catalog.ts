@@ -15,8 +15,11 @@
  * emitted under the reserved `_meta` key inside each action's map.
  *
  * Display-only / internal actions (session-info, telemetry-display, pit-crew,
- * camera-cycle, camera-focus) are intentionally absent: they issue no iRacing
- * command, so they get no status line and no icon warning.
+ * camera-cycle) are intentionally absent: they issue no iRacing command, so they
+ * get no status line and no icon warning. Camera Controls' KEYPAD surface is
+ * likewise absent (every camera mode is an SDK command, nothing to configure);
+ * only its DIAL surface carries an all-API `camera-focus-dial` entry (#803) so
+ * the dial PI can show the "iRacing API" status line under its Mode selector.
  */
 import {
   type ActionCommMap,
@@ -196,6 +199,21 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     "load-track-camera": keybind("camCtrlLoadTrackCamera"),
     "save-car-camera": keybind("camCtrlSaveCarCamera"),
     "load-car-camera": keybind("camCtrlLoadCarCamera"),
+  }),
+
+  // The dial surface of Camera Controls (#803). Rotation cycles the camera or
+  // the focused car and the press gestures center on the player's car / switch
+  // camera — every one an iRacing SDK camera command (`getCommands().camera.*`),
+  // so all modes are `api`. The dial reuses the keypad's own cycle/focus
+  // dispatch (no key bindings, nothing to configure); the map exists so the dial
+  // PI can render the "iRacing API" status line under its Mode selector.
+  // _meta.modeSetting = "dial.mode". The keypad surface has no entry (its modes
+  // are equally binding-free — see the header note).
+  "camera-focus-dial": entry("dial.mode", {
+    camera: api,
+    "sub-camera": api,
+    car: api,
+    driving: api,
   }),
 
   "cockpit-misc": entry("control", {

@@ -13,10 +13,13 @@ import {
   getGlobalTitleSettings,
   type IDeckDialDownEvent,
   type IDeckDialRotateEvent,
+  type IDeckDialUpEvent,
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
+  type IDeckTouchTapEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
+  onGlobalSettingsChange,
   parseSvgViewBox,
   renderIconTemplate,
   requestProfileSwitch,
@@ -76,6 +79,7 @@ import z from "zod";
 import { setSelectIntent } from "../../shared/car-select-intent.js";
 import { profileEntriesEqual } from "../../shared/profile-entries.js";
 import { availableProfilesForDevice, deviceProfileEntries } from "../race-admin/race-admin-selector.js";
+import { CameraDialSurface, DialSettings } from "./camera-dial-surface.js";
 import { migrateFocusOnExitingToMostExciting } from "./migrate-focus-on-exiting.js";
 
 // --- Target types ---
@@ -172,6 +176,12 @@ const CameraControlsSettings = CommonSettings.extend({
    * Not user-editable.
    */
   _deviceProfiles: z.array(z.union([z.string(), z.object({ name: z.string(), label: z.string() })])).optional(),
+  // Dial-surface settings (#803), under the `dial` root so the two surfaces'
+  // keys can't collide. catch: garbage inside the dial subtree (e.g. a value
+  // written by a newer plugin version after a downgrade) degrades to dial
+  // defaults instead of failing the whole parse — which would reset a KEYPAD
+  // instance's mode via the full-defaults fallback in parseSettings.
+  dial: DialSettings.catch(() => DialSettings.parse({})),
 });
 
 type CameraControlsSettings = z.infer<typeof CameraControlsSettings>;
@@ -715,8 +725,42 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
   /** Last displayed group name per context to avoid redundant re-renders */
   private lastDisplayedGroup = new Map<string, string>();
 
+  /**
+   * The dial half of the action (#803); all IDeck dial events route here.
+   * Rotation reuses the keypad's own `executeCycle` / focus dispatch — the dial
+   * duplicates no camera logic. No `setActiveBinding`/`tapBinding` is delegated:
+   * every camera action is an SDK command, so there is no binding to configure.
+   */
+  private readonly dialSurface = new CameraDialSurface({
+    logger: this.logger,
+    getTelemetry: () => this.sdkController.getCurrentTelemetry(),
+    getSessionInfo: () => this.sdkController.getSessionInfo(),
+    cycle: (target, direction) => this.executeCycle(target, direction),
+    focusMyCar: () => this.focusMyCar(),
+    changeCamera: () => this.executeCycle("cycle-camera", "next"),
+  });
+
+  /**
+   * Keeps the dial strips' dash-box appearance (#811) live: telemetry ticks
+   * only arrive while iRacing is connected, so without this a color override
+   * saved with the sim closed would leave the strip stale until the next
+   * connect. The subscription lives for the plugin's lifetime.
+   */
+  private readonly unsubscribeGlobalSettings = onGlobalSettingsChange(() => this.dialSurface.refreshAll());
+
   override async onWillAppear(ev: IDeckWillAppearEvent<CameraControlsSettings>): Promise<void> {
     await super.onWillAppear(ev);
+
+    if (ev.action.isDial()) {
+      const settings = this.parseSettings(ev.payload.settings);
+      await this.dialSurface.willAppear(ev.action, settings.dial);
+      this.sdkController.subscribe(ev.action.id, (telemetry) => {
+        this.dialSurface.onTelemetry(ev.action.id, telemetry);
+      });
+
+      return;
+    }
+
     await this.persistMigratedSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
@@ -735,12 +779,21 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
   override async onWillDisappear(ev: IDeckWillDisappearEvent<CameraControlsSettings>): Promise<void> {
     await super.onWillDisappear(ev);
     this.sdkController.unsubscribe(ev.action.id);
+    this.dialSurface.willDisappear(ev.action.id);
     this.activeContexts.delete(ev.action.id);
     this.lastDisplayedGroup.delete(ev.action.id);
   }
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<CameraControlsSettings>): Promise<void> {
     await super.onDidReceiveSettings(ev);
+
+    if (ev.action.isDial()) {
+      const settings = this.parseSettings(ev.payload.settings);
+      await this.dialSurface.didReceiveSettings(ev.action, settings.dial);
+
+      return;
+    }
+
     await this.persistMigratedSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
@@ -769,29 +822,23 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
     }
   }
 
-  override async onDialDown(ev: IDeckDialDownEvent<CameraControlsSettings>): Promise<void> {
-    this.logger.info("Dial down received");
-    const settings = this.parseSettings(ev.payload.settings);
-
-    if (settings.target === "focus-select-car") return;
-
-    if (isCycleTarget(settings.target)) {
-      this.executeCycle(settings.target, settings.direction, settings.cameraGroupSubset);
-    } else if (settings.target === "change-camera") {
-      this.executeChangeCamera(settings.cameraGroup);
-    } else {
-      this.executeFocus(settings);
-    }
-  }
-
   override async onDialRotate(ev: IDeckDialRotateEvent<CameraControlsSettings>): Promise<void> {
     const settings = this.parseSettings(ev.payload.settings);
+    this.dialSurface.rotate(ev.action, settings.dial, ev.payload.ticks, ev.payload.pressed === true);
+  }
 
-    if (!isCycleTarget(settings.target)) return;
+  override async onDialDown(ev: IDeckDialDownEvent<CameraControlsSettings>): Promise<void> {
+    const settings = this.parseSettings(ev.payload.settings);
+    this.dialSurface.down(ev.action, settings.dial);
+  }
 
-    this.logger.info("Dial rotated");
-    const direction: Direction = ev.payload.ticks > 0 ? "next" : "previous";
-    this.executeCycle(settings.target, direction, settings.cameraGroupSubset);
+  override async onDialUp(ev: IDeckDialUpEvent<CameraControlsSettings>): Promise<void> {
+    await this.dialSurface.up(ev.action.id);
+  }
+
+  override async onTouchTap(ev: IDeckTouchTapEvent<CameraControlsSettings>): Promise<void> {
+    const settings = this.parseSettings(ev.payload.settings);
+    await this.dialSurface.touchTap(ev.action, settings.dial, ev.payload.hold === true);
   }
 
   private parseSettings(settings: unknown): CameraControlsSettings {
@@ -902,6 +949,39 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
     }
   }
 
+  /**
+   * Center the camera on the player's own car — the Focus Your Car mode. Shared
+   * by the keypad `focus-your-car` mode and the dial's Focus My Car press
+   * gesture (#803) so both go through one SDK dispatch. Reads its own telemetry
+   * so the dial can call it without a settings object.
+   */
+  private focusMyCar(): void {
+    const telemetry = this.sdkController.getCurrentTelemetry();
+
+    if (!telemetry) {
+      this.logger.warn("No telemetry available for focus on your car");
+
+      return;
+    }
+
+    const playerCarIdx = telemetry.PlayerCarIdx ?? 0;
+    const sessionInfo = this.sdkController.getSessionInfo();
+    const carNumberRaw = sessionInfo ? getCarNumberRawFromSessionInfo(sessionInfo, playerCarIdx) : null;
+
+    if (carNumberRaw === null) {
+      this.logger.warn("Cannot focus on your car: car number not found in session info");
+
+      return;
+    }
+
+    const camera = getCommands().camera;
+    const groupNum = telemetry.CamGroupNumber ?? 1;
+    const cameraNum = telemetry.CamCameraNumber ?? 1;
+    const success = camera.switchNum(carNumberRaw, groupNum, cameraNum);
+    this.logger.info("Focus on your car executed");
+    this.logger.debug(`Result: ${success}, carNumberRaw: ${carNumberRaw}`);
+  }
+
   private executeFocus(settings: CameraControlsSettings): void {
     const telemetry = this.sdkController.getCurrentTelemetry();
 
@@ -917,18 +997,7 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
 
     switch (settings.target) {
       case "focus-your-car": {
-        const playerCarIdx = telemetry.PlayerCarIdx ?? 0;
-        const sessionInfo = this.sdkController.getSessionInfo();
-        const carNumberRaw = sessionInfo ? getCarNumberRawFromSessionInfo(sessionInfo, playerCarIdx) : null;
-
-        if (carNumberRaw === null) {
-          this.logger.warn("Cannot focus on your car: car number not found in session info");
-          break;
-        }
-
-        const success = camera.switchNum(carNumberRaw, groupNum, cameraNum);
-        this.logger.info("Focus on your car executed");
-        this.logger.debug(`Result: ${success}, carNumberRaw: ${carNumberRaw}`);
+        this.focusMyCar();
 
         break;
       }

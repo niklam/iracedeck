@@ -769,6 +769,23 @@
       }
     }
   },
+  "camera-focus-dial": {
+    "_meta": {
+      "modeSetting": "dial.mode"
+    },
+    "camera": {
+      "method": "api"
+    },
+    "sub-camera": {
+      "method": "api"
+    },
+    "car": {
+      "method": "api"
+    },
+    "driving": {
+      "method": "api"
+    }
+  },
   "cockpit-misc": {
     "_meta": {
       "modeSetting": "control"
