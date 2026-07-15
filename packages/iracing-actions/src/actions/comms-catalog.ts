@@ -212,8 +212,17 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
   "camera-focus-dial": entry("dial.mode", {
     camera: api,
     "sub-camera": api,
-    car: api,
+    "car-number": api,
+    "race-position": api,
     driving: api,
+    // Gesture-slot values (dial.pressAction / .longPressAction / .tapAction /
+    // .longTouchAction) — each an SDK camera command. "none" is omitted (it
+    // issues no command). Kept complete so the catalog documents every gesture.
+    "focus-my-car": api,
+    "change-camera": api,
+    "focus-on-leader": api,
+    "focus-on-incident": api,
+    "focus-on-most-exciting": api,
   }),
 
   "cockpit-misc": entry("control", {

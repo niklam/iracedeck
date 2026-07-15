@@ -232,31 +232,36 @@ The numeric camera state value passed to the iRacing SDK. Integer. Defaults to `
 
 ## On a dial
 
-Placed on a Stream Deck+ dial, Camera Controls becomes a camera dial for spectating and broadcasting. Turn the dial to flip through cameras or cars — the dial's own **Mode** setting picks the target, and the turn direction replaces the keypad cycle modes' Next / Previous setting (clockwise = next, counter-clockwise = previous). The touch strip shows the live camera focus: the car number you're currently watching and the active camera group. Everything is an iRacing SDK camera command, so no bindings are needed. The Property Inspector automatically shows the dial settings (instead of the keypad Mode) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
+Placed on a Stream Deck+ dial, Camera Controls becomes a camera dial for spectating and broadcasting. Turn the dial to flip through cameras or cars — the dial's own **Mode** setting picks the target, and the turn direction replaces the keypad cycle modes' Next / Previous setting (clockwise = next, counter-clockwise = previous). The touch strip is a carousel: the current camera (or the focused car's number) sits in the centre with the previous / next either side. Everything is an iRacing SDK camera command, so no bindings are needed. The Property Inspector automatically shows the dial settings (instead of the keypad Mode) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
 
 #### Details
 
 - **Method:** iRacing API — the dial reuses the same SDK camera commands as the keypad cycle modes; no key bindings, nothing to configure
 - **Dial:** Rotating cycles the selected target one step per detent (clockwise = next, counter-clockwise = previous)
 - **Default binding:** No keyboard binding
-- **Telemetry-aware icon:** Yes — the touch strip shows the live focused car number and camera group from telemetry, falling back to a mode label when out of a session
+- **Telemetry-aware icon:** Yes — the touch strip is a live carousel of the current camera / focused car and its neighbours from telemetry, falling back to a mode label when out of a session
 
 #### Controls
 
-- **Elgato Stream Deck+** — dial rotation, a press (short or long), and a touchscreen focus readout that always shows. A touchscreen tap or long tap runs its own configured Tap Display / Long Touch gesture.
+- **Elgato Stream Deck+** — dial rotation, a press (short or long), and a touchscreen carousel that always shows. A touchscreen tap or long tap runs its own configured Tap Display / Long Touch gesture.
 
 Dials are currently Stream Deck+ only — the action can't be placed on Mirabox knobs or Ulanzi dials yet (see [Dials](/docs/features/dials/)).
 
 #### Setting: Mode
 
-Which target the dial cycles. Defaults to **Cycle Car** — the marquee flip-through-the-field control.
+Which target the dial cycles. Defaults to **Cycle by Car #** — the marquee flip-through-the-field control.
 
-- **Cycle Camera** — steps through the camera groups (Nose, Cockpit, TV1, …)
+- **Cycle Camera** — steps through the camera groups (Nose, Cockpit, TV1, …). Only the groups you enable in the **Camera Groups** selector take part — the same plugin-global set the keypad Cycle Camera uses.
 - **Cycle Sub-Camera** — steps through the sub-cameras within the active group
-- **Cycle Car** (default) — moves camera focus to the next / previous car in the field
+- **Cycle by Car #** (default) — moves camera focus to the next / previous car ordered by car number
+- **Cycle by Race Position** — moves camera focus up / down the live running order (the plugin's canonical race order, with iRacing's official position as a fallback when no live order is available)
 - **Cycle Driving Camera** — steps through the driving-style cameras
 
-The touch strip shows the focused car number as a large `#number` and the active camera group name as the label, in a per-mode accent color. You can override the border, label, value, and background colors in the **Dash Box Appearance** section of the dial settings. Out of a session the strip falls back to a plain mode label (`CAR`, `CAMERA`, …).
+The touch strip is a carousel. In **Cycle Camera** the current camera group's icon sits large in the centre with its name beneath, flanked by the smaller dimmed previous / next groups from your enabled set — exactly what one detent either way would switch to. In the car modes the focused car's number sits large in the centre (`#number`) flanked by the previous / next cars; **Cycle by Race Position** also adds a small `P4` position badge. Sub-Camera and Driving keep a plain group-name / `#car` readout. Everything is drawn in a per-mode accent colour you can override (border, label, value, background) in the **Dash Box Appearance** section of the dial settings. Out of a session the strip falls back to a plain mode label (`CAR #`, `CAMERA`, …).
+
+#### Setting: Camera Groups (Cycle Camera)
+
+When the dial mode is **Cycle Camera**, a checkbox grid lets you pick which camera groups the dial cycles through and previews on the carousel. This is the **same plugin-global set** the keypad Cycle Camera uses — change it here or there and every Cycle Camera surface respects the same list. Use **Select All** / **Clear Selection** to manage it quickly.
 
 #### Setting: Press Action / Long Press
 
@@ -264,10 +269,13 @@ What a short or long press of the dial button does, chosen from:
 
 - **Focus My Car** — centers the camera on your own car (the keypad Focus Your Car mode)
 - **Change Camera** — switches to the next camera angle
+- **Focus on Leader** — focuses the current race leader
+- **Focus on Incident** — focuses the latest incident reported by iRacing
+- **Focus on Most Exciting** — focuses the car the iRacing director rates most exciting
 - **None** (default) — does nothing
 
 Both default to **None** (blind-safe). A press is classified when you release the dial — a hold past the [Long-press threshold](/docs/features/dials/#the-long-press-threshold) fires the Long Press action. Turning the dial while pressed cycles the target (a "push + turn") and never fires the press action.
 
 #### Setting: Tap Display / Long Touch
 
-Optional touch-strip gestures (Stream Deck+ only), each over { Focus My Car, Change Camera, None }. Both default to **None** for VR safety.
+Optional touch-strip gestures (Stream Deck+ only), each over the same set { Focus My Car, Change Camera, Focus on Leader, Focus on Incident, Focus on Most Exciting, None }. Both default to **None** for VR safety.

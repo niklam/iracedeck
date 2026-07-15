@@ -3,16 +3,36 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildTriggerDescription,
   CameraDialSurface,
+  computeCarNumberTarget,
   computeFocusReadout,
+  computeRacePositionTarget,
   DialSettings,
   formatReadout,
+  renderCameraCarousel,
+  renderCarCarousel,
+  wrapPosition,
 } from "./camera-dial-surface.js";
 
-const { mockGroups, mockCarNumber } = vi.hoisted(() => ({
+const { mockGroups, mockCarNumber, mockCarNumberByIdx, mockAllCars } = vi.hoisted(() => ({
   // Mutable session lookups the SDK helper mocks read, so tests can flip
   // in-session / out-of-session and change the focused car per case.
-  mockGroups: { value: [{ groupNum: 9, groupName: "Cockpit" }] as Array<{ groupNum: number; groupName: string }> },
+  mockGroups: {
+    value: [
+      { groupNum: 1, groupName: "Nose" },
+      { groupNum: 9, groupName: "Cockpit" },
+      { groupNum: 12, groupName: "Chase" },
+    ] as Array<{ groupNum: number; groupName: string }>,
+  },
   mockCarNumber: { value: "42" as string | null },
+  // When set, getCarNumberFromSessionInfo resolves per carIdx (race-position tests).
+  mockCarNumberByIdx: { value: null as Record<number, string> | null },
+  mockAllCars: {
+    value: [
+      { carIdx: 1, carNumber: "3", carNumberRaw: 3, userName: "a" },
+      { carIdx: 3, carNumber: "42", carNumberRaw: 42, userName: "b" },
+      { carIdx: 5, carNumber: "99", carNumberRaw: 99, userName: "c" },
+    ] as Array<{ carIdx: number; carNumber: string; carNumberRaw: number; userName: string }>,
+  },
 }));
 
 vi.mock("@iracedeck/deck-core", () => ({
@@ -35,7 +55,10 @@ vi.mock("@iracedeck/deck-core", () => ({
 
 vi.mock("@iracedeck/iracing-sdk", () => ({
   getCameraGroupsFromSessionInfo: vi.fn(() => mockGroups.value),
-  getCarNumberFromSessionInfo: vi.fn(() => mockCarNumber.value),
+  getCarNumberFromSessionInfo: vi.fn((_s: unknown, carIdx: number) =>
+    mockCarNumberByIdx.value ? (mockCarNumberByIdx.value[carIdx] ?? null) : mockCarNumber.value,
+  ),
+  getAllCarNumbers: vi.fn(() => mockAllCars.value),
 }));
 
 /** Fake dial (encoder) action context. */
@@ -59,9 +82,17 @@ function makeHost(over: Partial<Record<string, unknown>> = {}) {
     logger: { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     getTelemetry: vi.fn(() => TELEMETRY as never),
     getSessionInfo: vi.fn(() => ({}) as unknown),
+    getRacePositions: vi.fn(() => null as number[] | null),
+    getEnabledCameraGroups: vi.fn(() => ["Nose", "Cockpit", "Chase"]),
+    getGroupGlyph: vi.fn((name: string) => ({ width: 68, height: 68, artwork: `<path data-group="${name}"/>` })),
     cycle: vi.fn(),
+    focusCarNumber: vi.fn(),
+    focusPosition: vi.fn(),
     focusMyCar: vi.fn(),
     changeCamera: vi.fn(),
+    focusOnLeader: vi.fn(),
+    focusOnIncident: vi.fn(),
+    focusOnMostExciting: vi.fn(),
     ...over,
   };
 }
@@ -71,8 +102,18 @@ function dial(over: Record<string, unknown> = {}) {
 }
 
 beforeEach(() => {
-  mockGroups.value = [{ groupNum: 9, groupName: "Cockpit" }];
+  mockGroups.value = [
+    { groupNum: 1, groupName: "Nose" },
+    { groupNum: 9, groupName: "Cockpit" },
+    { groupNum: 12, groupName: "Chase" },
+  ];
   mockCarNumber.value = "42";
+  mockCarNumberByIdx.value = null;
+  mockAllCars.value = [
+    { carIdx: 1, carNumber: "3", carNumberRaw: 3, userName: "a" },
+    { carIdx: 3, carNumber: "42", carNumberRaw: 42, userName: "b" },
+    { carIdx: 5, carNumber: "99", carNumberRaw: 99, userName: "c" },
+  ];
 });
 
 afterEach(() => {
@@ -88,236 +129,426 @@ describe("camera dial-surface pure helpers", () => {
     it("returns nulls when telemetry is unavailable", () => {
       expect(computeFocusReadout(null, {})).toEqual({ groupName: null, carNumber: null });
     });
-
-    it("returns a null group when the CamGroupNumber is not in the session groups", () => {
-      mockGroups.value = [{ groupNum: 17, groupName: "TV1" }];
-
-      expect(computeFocusReadout(TELEMETRY as never, {})).toEqual({ groupName: null, carNumber: "42" });
-    });
-
-    it("returns a null car number when the focused car is not in the driver list", () => {
-      mockCarNumber.value = null;
-
-      expect(computeFocusReadout(TELEMETRY as never, {})).toEqual({ groupName: "Cockpit", carNumber: null });
-    });
   });
 
-  describe("formatReadout", () => {
+  describe("formatReadout (sub-camera / driving strips)", () => {
     it("shows the group name as the label and the #-car-number as the value", () => {
-      expect(formatReadout("car", TELEMETRY as never, {})).toEqual({ label: "COCKPIT", value: "#42" });
+      expect(formatReadout("sub-camera", TELEMETRY as never, {})).toEqual({ label: "COCKPIT", value: "#42" });
     });
 
     it("falls back to the mode identity label with an empty value out of session", () => {
-      expect(formatReadout("car", null, {})).toEqual({ label: "CAR", value: "" });
-      expect(formatReadout("camera", null, {})).toEqual({ label: "CAMERA", value: "" });
       expect(formatReadout("sub-camera", null, {})).toEqual({ label: "SUB CAM", value: "" });
       expect(formatReadout("driving", null, {})).toEqual({ label: "DRIVING", value: "" });
     });
+  });
 
-    it("uses the identity label but keeps the car number when the group is unknown", () => {
-      mockGroups.value = [];
+  describe("wrapPosition", () => {
+    it("wraps forward and backward within the field", () => {
+      expect(wrapPosition(2, 1, 3)).toBe(3);
+      expect(wrapPosition(3, 1, 3)).toBe(1); // wrap forward at the end
+      expect(wrapPosition(1, -1, 3)).toBe(3); // wrap backward at the start
+    });
+  });
 
-      expect(formatReadout("car", TELEMETRY as never, {})).toEqual({ label: "CAR", value: "#42" });
+  describe("computeCarNumberTarget", () => {
+    const cars = [
+      { carIdx: 1, carNumber: "3", carNumberRaw: 3 },
+      { carIdx: 3, carNumber: "42", carNumberRaw: 42 },
+      { carIdx: 5, carNumber: "99", carNumberRaw: 99 },
+    ];
+
+    it("steps to the next / previous car by ascending number", () => {
+      expect(computeCarNumberTarget(3, cars, "next")?.carNumberRaw).toBe(99);
+      expect(computeCarNumberTarget(3, cars, "previous")?.carNumberRaw).toBe(3);
+    });
+
+    it("wraps at the ends of the field", () => {
+      expect(computeCarNumberTarget(5, cars, "next")?.carNumberRaw).toBe(3);
+      expect(computeCarNumberTarget(1, cars, "previous")?.carNumberRaw).toBe(99);
+    });
+
+    it("starts from an end when the focused car is not in the list", () => {
+      expect(computeCarNumberTarget(99, cars, "next")?.carNumberRaw).toBe(3);
+      expect(computeCarNumberTarget(undefined, cars, "previous")?.carNumberRaw).toBe(99);
+    });
+
+    it("returns null for an empty field", () => {
+      expect(computeCarNumberTarget(3, [], "next")).toBeNull();
+    });
+  });
+
+  describe("computeRacePositionTarget", () => {
+    // carIdx→position: idx1=P3, idx2=P1, idx3=P2.
+    const order = [0, 3, 1, 2];
+
+    it("steps the focused car to the next / previous position", () => {
+      expect(computeRacePositionTarget(3, order, "next")?.targetPosition).toBe(3);
+      expect(computeRacePositionTarget(3, order, "previous")?.targetPosition).toBe(1);
+    });
+
+    it("wraps at the ends of the field", () => {
+      expect(computeRacePositionTarget(2, order, "previous")?.targetPosition).toBe(3); // P1 prev → P3
+      expect(computeRacePositionTarget(1, order, "next")?.targetPosition).toBe(1); // P3 next → P1
+    });
+
+    it("returns null with no order or an unclassified focused car", () => {
+      expect(computeRacePositionTarget(3, null, "next")).toBeNull();
+      expect(computeRacePositionTarget(0, order, "next")).toBeNull(); // order[0] === 0
     });
   });
 
   describe("buildTriggerDescription", () => {
     it("names the cycled target on rotate and rides the long-press on push", () => {
       const desc = buildTriggerDescription(
-        dial({ mode: "car", pressAction: "focus-my-car", longPressAction: "change-camera" }),
+        dial({ mode: "car-number", pressAction: "focus-my-car", longPressAction: "focus-on-leader" }),
       );
 
-      expect(desc.rotate).toBe("Cycle Cars");
-      expect(desc.push).toBe("Focus My Car (hold: Change Camera)");
-      expect(desc.touch).toBeUndefined();
-      expect(desc.longTouch).toBeUndefined();
+      expect(desc.rotate).toBe("Cycle Cars by Number");
+      expect(desc.push).toBe("Focus My Car (hold: Focus on Leader)");
     });
 
-    it("maps the touch slots and omits none slots", () => {
+    it("names the race-position target and maps the touch slots", () => {
       const desc = buildTriggerDescription(
-        dial({ mode: "camera", pressAction: "none", tapAction: "focus-my-car", longTouchAction: "change-camera" }),
+        dial({ mode: "race-position", tapAction: "focus-on-incident", longTouchAction: "focus-on-most-exciting" }),
       );
 
-      expect(desc.rotate).toBe("Cycle Cameras");
-      expect(desc.push).toBeUndefined();
-      expect(desc.touch).toBe("Focus My Car");
-      expect(desc.longTouch).toBe("Change Camera");
+      expect(desc.rotate).toBe("Cycle Cars by Position");
+      expect(desc.touch).toBe("Focus on Incident");
+      expect(desc.longTouch).toBe("Focus on Most Exciting");
+    });
+  });
+
+  describe("renderCameraCarousel", () => {
+    const colors = { border: "#111", label: "#222", value: "#333", background: "#0d0d0d" };
+
+    it("draws the centre group name plus the side glyphs", () => {
+      const svg = renderCameraCarousel({
+        width: 200,
+        height: 100,
+        colors,
+        identityLabel: "CAMERA",
+        current: { name: "Cockpit", glyph: { width: 68, height: 68, artwork: '<path data-g="Cockpit"/>' } },
+        prev: { name: "Nose", glyph: { width: 68, height: 68, artwork: '<path data-g="Nose"/>' } },
+        next: { name: "Chase", glyph: { width: 68, height: 68, artwork: '<path data-g="Chase"/>' } },
+      });
+
+      expect(svg).toContain(">COCKPIT<");
+      expect(svg).toContain('data-g="Cockpit"');
+      expect(svg).toContain('data-g="Nose"');
+      expect(svg).toContain('data-g="Chase"');
+    });
+
+    it("renders a side name when a group has no glyph", () => {
+      const svg = renderCameraCarousel({
+        width: 200,
+        height: 100,
+        colors,
+        identityLabel: "CAMERA",
+        current: { name: "Cockpit", glyph: null },
+        prev: { name: "Scenic", glyph: null },
+        next: null,
+      });
+
+      expect(svg).toContain(">SCENIC<");
+      expect(svg).toContain(">COCKPIT<");
+    });
+
+    it("falls back to the identity label with no current group", () => {
+      const svg = renderCameraCarousel({
+        width: 200,
+        height: 100,
+        colors,
+        identityLabel: "CAMERA",
+        current: null,
+        prev: null,
+        next: null,
+      });
+
+      expect(svg).toContain(">CAMERA<");
+    });
+  });
+
+  describe("renderCarCarousel", () => {
+    const colors = { border: "#111", label: "#222", value: "#333", background: "#0d0d0d" };
+
+    it("draws the centre car number and the side numbers", () => {
+      const svg = renderCarCarousel({
+        width: 200,
+        height: 100,
+        colors,
+        identityLabel: "CAR #",
+        center: "42",
+        prev: "3",
+        next: "99",
+        position: null,
+      });
+
+      expect(svg).toContain(">#42<");
+      expect(svg).toContain(">#3<");
+      expect(svg).toContain(">#99<");
+      expect(svg).not.toContain(">P");
+    });
+
+    it("adds the position badge in race-position mode", () => {
+      const svg = renderCarCarousel({
+        width: 200,
+        height: 100,
+        colors,
+        identityLabel: "POSITION",
+        center: "42",
+        prev: "7",
+        next: "5",
+        position: 4,
+      });
+
+      expect(svg).toContain(">P4<");
+      expect(svg).toContain(">#42<");
+    });
+
+    it("falls back to the identity label with no focused car", () => {
+      const svg = renderCarCarousel({
+        width: 200,
+        height: 100,
+        colors,
+        identityLabel: "CAR #",
+        center: null,
+        prev: null,
+        next: null,
+        position: null,
+      });
+
+      expect(svg).toContain(">CAR #<");
     });
   });
 });
 
 describe("CameraDialSurface", () => {
-  describe("rotation → keypad cycle dispatch", () => {
-    it("cycles the mapped target forward on a clockwise turn", () => {
-      const host = makeHost();
-      const surface = new CameraDialSurface(host as never);
-      surface.rotate(dialContext("d1") as never, dial({ mode: "car" }), 1, false);
+  describe("legacy settings mapping", () => {
+    it("maps the pre-rework mode 'car' to 'car-number' without dropping other fields", () => {
+      const parsed = DialSettings.parse({ mode: "car", pressAction: "focus-my-car", longTouchAction: "change-camera" });
 
-      expect(host.cycle).toHaveBeenCalledWith("cycle-car", "next");
+      expect(parsed.mode).toBe("car-number");
+      expect(parsed.pressAction).toBe("focus-my-car");
+      expect(parsed.longTouchAction).toBe("change-camera");
     });
 
-    it("cycles backward on a counter-clockwise turn", () => {
-      const host = makeHost();
-      const surface = new CameraDialSurface(host as never);
-      surface.rotate(dialContext("d2") as never, dial({ mode: "car" }), -1, false);
-
-      expect(host.cycle).toHaveBeenCalledWith("cycle-car", "previous");
+    it("defaults to car-number for a fresh dial", () => {
+      expect(DialSettings.parse({}).mode).toBe("car-number");
     });
+  });
 
-    it("maps each dial mode to its keypad cycle target", () => {
+  describe("rotation → cycle modes", () => {
+    it("cycles the mapped camera / sub-camera / driving target", () => {
       const host = makeHost();
       const surface = new CameraDialSurface(host as never);
-      surface.rotate(dialContext("d3") as never, dial({ mode: "camera" }), 1, false);
-      surface.rotate(dialContext("d3") as never, dial({ mode: "sub-camera" }), 1, false);
-      surface.rotate(dialContext("d3") as never, dial({ mode: "driving" }), 1, false);
+      surface.rotate(dialContext("d1") as never, dial({ mode: "camera" }), 1, false);
+      surface.rotate(dialContext("d1") as never, dial({ mode: "sub-camera" }), 1, false);
+      surface.rotate(dialContext("d1") as never, dial({ mode: "driving" }), -1, false);
 
       expect(host.cycle).toHaveBeenNthCalledWith(1, "cycle-camera", "next");
       expect(host.cycle).toHaveBeenNthCalledWith(2, "cycle-sub-camera", "next");
-      expect(host.cycle).toHaveBeenNthCalledWith(3, "cycle-driving", "next");
+      expect(host.cycle).toHaveBeenNthCalledWith(3, "cycle-driving", "previous");
     });
 
     it("dispatches one cycle step per rotate event regardless of tick magnitude", () => {
       const host = makeHost();
       const surface = new CameraDialSurface(host as never);
-      // A fast spin coalesces to ticks=3; the stateful camera commands compute
-      // the next car/group from the CURRENT telemetry, so it is one step per event.
-      surface.rotate(dialContext("d4") as never, dial({ mode: "car" }), 3, false);
+      surface.rotate(dialContext("d2") as never, dial({ mode: "camera" }), 3, false);
 
       expect(host.cycle).toHaveBeenCalledTimes(1);
     });
+  });
 
-    it("does nothing on a zero-tick event", () => {
+  describe("rotation → car-number mode", () => {
+    it("focuses the next / previous car by ascending number", () => {
       const host = makeHost();
       const surface = new CameraDialSurface(host as never);
-      surface.rotate(dialContext("d5") as never, dial({ mode: "car" }), 0, false);
+      surface.rotate(dialContext("c1") as never, dial({ mode: "car-number" }), 1, false);
+
+      expect(host.focusCarNumber).toHaveBeenCalledWith(99); // focused = #42, next = #99
+
+      surface.rotate(dialContext("c1") as never, dial({ mode: "car-number" }), -1, false);
+
+      expect(host.focusCarNumber).toHaveBeenLastCalledWith(3); // previous = #3
+    });
+
+    it("does not cycle in car-number mode", () => {
+      const host = makeHost();
+      const surface = new CameraDialSurface(host as never);
+      surface.rotate(dialContext("c2") as never, dial({ mode: "car-number" }), 1, false);
 
       expect(host.cycle).not.toHaveBeenCalled();
     });
   });
 
-  describe("press gestures", () => {
+  describe("rotation → race-position mode", () => {
+    it("focuses the next position from the canonical live order", () => {
+      // carIdx→position: idx1=P3, idx2=P1, idx3=P2; focused CamCarIdx=3 (P2).
+      const host = makeHost({ getRacePositions: vi.fn(() => [0, 3, 1, 2]) });
+      const surface = new CameraDialSurface(host as never);
+      surface.rotate(dialContext("r1") as never, dial({ mode: "race-position" }), 1, false);
+
+      expect(host.focusPosition).toHaveBeenCalledWith(3); // P2 next → P3
+    });
+
+    it("falls back to official CarIdxPosition when there is no canonical order", () => {
+      const host = makeHost({
+        getRacePositions: vi.fn(() => null),
+        getTelemetry: vi.fn(() => ({ CamCarIdx: 3, CarIdxPosition: [0, 3, 1, 2] }) as never),
+      });
+      const surface = new CameraDialSurface(host as never);
+      surface.rotate(dialContext("r2") as never, dial({ mode: "race-position" }), 1, false);
+
+      expect(host.getRacePositions).toHaveBeenCalled();
+      expect(host.focusPosition).toHaveBeenCalledWith(3);
+    });
+
+    it("does nothing when the focused car has no position", () => {
+      const host = makeHost({
+        getRacePositions: vi.fn(() => null),
+        getTelemetry: vi.fn(() => ({ CamCarIdx: 3 }) as never), // no CarIdxPosition either
+      });
+      const surface = new CameraDialSurface(host as never);
+      surface.rotate(dialContext("r3") as never, dial({ mode: "race-position" }), 1, false);
+
+      expect(host.focusPosition).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("press & touch gestures", () => {
     it("fires the press gesture (focus my car) on a short press", async () => {
       const host = makeHost();
       const surface = new CameraDialSurface(host as never);
-      const ctx = dialContext("p1");
-      const settings = dial({ pressAction: "focus-my-car" });
-
-      surface.down(ctx as never, settings);
+      surface.down(dialContext("p1") as never, dial({ pressAction: "focus-my-car" }));
       await surface.up("p1");
 
       expect(host.focusMyCar).toHaveBeenCalled();
     });
 
-    it("fires the long-press gesture (change camera) when held past the threshold", async () => {
+    it("fires the new focus-on-leader gesture on a short press", async () => {
+      const host = makeHost();
+      const surface = new CameraDialSurface(host as never);
+      surface.down(dialContext("p2") as never, dial({ pressAction: "focus-on-leader" }));
+      await surface.up("p2");
+
+      expect(host.focusOnLeader).toHaveBeenCalled();
+    });
+
+    it("fires the long-press gesture (focus on incident) past the threshold", async () => {
       vi.useFakeTimers();
       const host = makeHost();
       const surface = new CameraDialSurface(host as never);
-      const ctx = dialContext("p2");
-      const settings = dial({ pressAction: "none", longPressAction: "change-camera" });
-
-      surface.down(ctx as never, settings);
+      surface.down(dialContext("p3") as never, dial({ pressAction: "none", longPressAction: "focus-on-incident" }));
       vi.advanceTimersByTime(600);
-      await surface.up("p2");
+      await surface.up("p3");
 
-      expect(host.changeCamera).toHaveBeenCalled();
+      expect(host.focusOnIncident).toHaveBeenCalled();
       vi.useRealTimers();
     });
 
-    it("fires no gesture on a push+turn (rotated while pressed)", async () => {
+    it("fires no gesture on a push+turn", async () => {
       const host = makeHost();
       const surface = new CameraDialSurface(host as never);
-      const ctx = dialContext("p3");
-      const settings = dial({ mode: "car", pressAction: "focus-my-car" });
+      const settings = dial({ mode: "car-number", pressAction: "focus-my-car" });
+      surface.down(dialContext("p4") as never, settings);
+      surface.rotate(dialContext("p4") as never, settings, 1, true);
 
-      surface.down(ctx as never, settings);
-      surface.rotate(ctx as never, settings, 1, true);
+      expect(host.focusCarNumber).toHaveBeenCalled(); // the rotation still fired
 
-      // The rotation still cycles even while the button is held.
-      expect(host.cycle).toHaveBeenCalledWith("cycle-car", "next");
-
-      await surface.up("p3");
-
-      expect(host.focusMyCar).not.toHaveBeenCalled();
-    });
-
-    it("does nothing when the press gesture is none", async () => {
-      const host = makeHost();
-      const surface = new CameraDialSurface(host as never);
-      const ctx = dialContext("p4");
-      const settings = dial({ pressAction: "none" });
-
-      surface.down(ctx as never, settings);
       await surface.up("p4");
 
       expect(host.focusMyCar).not.toHaveBeenCalled();
-      expect(host.changeCamera).not.toHaveBeenCalled();
     });
-  });
 
-  describe("touch gestures", () => {
-    it("fires the tap gesture on a short touch", async () => {
+    it("fires the tap gesture (focus on most exciting) on a short touch", async () => {
       const host = makeHost();
       const surface = new CameraDialSurface(host as never);
-      await surface.touchTap(dialContext("t1") as never, dial({ tapAction: "focus-my-car" }), false);
+      await surface.touchTap(dialContext("t1") as never, dial({ tapAction: "focus-on-most-exciting" }), false);
 
-      expect(host.focusMyCar).toHaveBeenCalled();
+      expect(host.focusOnMostExciting).toHaveBeenCalled();
     });
 
-    it("fires the long-touch gesture on a long touch", async () => {
-      const host = makeHost();
-      const surface = new CameraDialSurface(host as never);
-      await surface.touchTap(dialContext("t2") as never, dial({ longTouchAction: "change-camera" }), true);
-
-      expect(host.changeCamera).toHaveBeenCalled();
-    });
-
-    it("does nothing when dial feedback is disabled", async () => {
+    it("does nothing on touch when dial feedback is disabled", async () => {
       vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", false);
       const host = makeHost();
       const surface = new CameraDialSurface(host as never);
-      await surface.touchTap(dialContext("t3") as never, dial({ tapAction: "focus-my-car" }), false);
+      await surface.touchTap(dialContext("t2") as never, dial({ tapAction: "focus-my-car" }), false);
 
       expect(host.focusMyCar).not.toHaveBeenCalled();
     });
   });
 
   describe("feedback rendering", () => {
-    it("pushes the focus dash box as a single touch-strip pixmap on willAppear", async () => {
+    it("renders the camera carousel with the current group name and glyphs", async () => {
       const host = makeHost();
       const surface = new CameraDialSurface(host as never);
       const ctx = dialContext("f1");
-      await surface.willAppear(ctx as never, dial({ mode: "car" }));
+      await surface.willAppear(ctx as never, dial({ mode: "camera" }));
 
-      expect(ctx.setFeedback).toHaveBeenCalled();
-      const feedback = ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string };
+      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
 
-      expect(feedback.box).toContain("data:image/svg+xml");
-      const decoded = decodeURIComponent(feedback.box);
+      expect(decoded).toContain(">COCKPIT<"); // current group
+      expect(decoded).toContain('data-group="Cockpit"');
+      expect(decoded).toContain('data-group="Nose"'); // prev
+      expect(decoded).toContain('data-group="Chase"'); // next
+    });
+
+    it("renders the car-number carousel with the focused #number", async () => {
+      const host = makeHost();
+      const surface = new CameraDialSurface(host as never);
+      const ctx = dialContext("f2");
+      await surface.willAppear(ctx as never, dial({ mode: "car-number" }));
+
+      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+
+      expect(decoded).toContain(">#42<"); // focused car
+      expect(decoded).toContain(">#99<"); // next by number
+      expect(decoded).toContain(">#3<"); // previous by number
+    });
+
+    it("renders the race-position carousel with a position badge", async () => {
+      mockCarNumberByIdx.value = { 1: "77", 2: "88", 3: "42" };
+      const host = makeHost({ getRacePositions: vi.fn(() => [0, 3, 1, 2]) });
+      const surface = new CameraDialSurface(host as never);
+      const ctx = dialContext("f3");
+      await surface.willAppear(ctx as never, dial({ mode: "race-position" }));
+
+      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+
+      expect(decoded).toContain(">P2<"); // focused car is P2
+      expect(decoded).toContain(">#42<"); // focused car number
+    });
+
+    it("keeps the plain readout for the sub-camera mode", async () => {
+      const host = makeHost();
+      const surface = new CameraDialSurface(host as never);
+      const ctx = dialContext("f4");
+      await surface.willAppear(ctx as never, dial({ mode: "sub-camera" }));
+
+      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
 
       expect(decoded).toContain(">COCKPIT<");
       expect(decoded).toContain(">#42<");
     });
 
-    it("shows an identity-only label box when out of session", async () => {
+    it("shows an identity-only label box out of session (car-number)", async () => {
       const host = makeHost({ getTelemetry: vi.fn(() => null) });
       const surface = new CameraDialSurface(host as never);
-      const ctx = dialContext("f2");
-      await surface.willAppear(ctx as never, dial({ mode: "car" }));
+      const ctx = dialContext("f5");
+      await surface.willAppear(ctx as never, dial({ mode: "car-number" }));
 
       const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
 
-      expect(decoded).toContain(">CAR<");
-      // Exactly one text node (label only — no value line).
-      expect(decoded.match(/<text/g)?.length).toBe(1);
+      expect(decoded).toContain(">CAR #<");
     });
 
     it("applies dash-box color overrides from dial settings (#811)", async () => {
       const host = makeHost();
       const surface = new CameraDialSurface(host as never);
-      const ctx = dialContext("f3");
+      const ctx = dialContext("f6");
       await surface.willAppear(
         ctx as never,
-        dial({ mode: "car", colors: { borderColor: "#112233", backgroundColor: "#445566" } }),
+        dial({ mode: "car-number", colors: { borderColor: "#112233", backgroundColor: "#445566" } }),
       );
 
       const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
@@ -329,8 +560,8 @@ describe("CameraDialSurface", () => {
     it("pushes the encoder trigger description and the two-line name icon", async () => {
       const host = makeHost();
       const surface = new CameraDialSurface(host as never);
-      const ctx = dialContext("f4");
-      await surface.willAppear(ctx as never, dial({ mode: "car" }));
+      const ctx = dialContext("f7");
+      await surface.willAppear(ctx as never, dial({ mode: "car-number" }));
 
       expect(ctx.setTriggerDescription).toHaveBeenCalled();
       const img = decodeURIComponent(ctx.setImage.mock.calls.at(-1)?.[0] as string);
@@ -343,21 +574,19 @@ describe("CameraDialSurface", () => {
       vi.useFakeTimers();
       const host = makeHost();
       const surface = new CameraDialSurface(host as never);
-      const ctx = dialContext("f5");
-      await surface.willAppear(ctx as never, dial({ mode: "car" }));
+      const ctx = dialContext("f8");
+      await surface.willAppear(ctx as never, dial({ mode: "sub-camera" }));
       ctx.setFeedback.mockClear();
 
-      // Within the 100 ms window: the focused car changes but the push is throttled.
       vi.advanceTimersByTime(50);
       mockCarNumber.value = "7";
-      surface.onTelemetry("f5", TELEMETRY as never);
+      surface.onTelemetry("f8", TELEMETRY as never);
 
       expect(ctx.setFeedback).not.toHaveBeenCalled();
 
-      // Past the window: the next change flushes one feedback push with the latest value.
       vi.advanceTimersByTime(100);
       mockCarNumber.value = "9";
-      surface.onTelemetry("f5", TELEMETRY as never);
+      surface.onTelemetry("f8", TELEMETRY as never);
 
       expect(ctx.setFeedback).toHaveBeenCalledTimes(1);
       const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
@@ -369,8 +598,8 @@ describe("CameraDialSurface", () => {
     it("re-renders the box and trigger description when the settings change", async () => {
       const host = makeHost();
       const surface = new CameraDialSurface(host as never);
-      const ctx = dialContext("f6");
-      await surface.willAppear(ctx as never, dial({ mode: "car" }));
+      const ctx = dialContext("f9");
+      await surface.willAppear(ctx as never, dial({ mode: "car-number" }));
       ctx.setFeedback.mockClear();
       ctx.setTriggerDescription.mockClear();
 
@@ -384,23 +613,40 @@ describe("CameraDialSurface", () => {
       vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", false);
       const host = makeHost();
       const surface = new CameraDialSurface(host as never);
-      const ctx = dialContext("f7");
-      await surface.willAppear(ctx as never, dial({ mode: "car" }));
+      const ctx = dialContext("f10");
+      await surface.willAppear(ctx as never, dial({ mode: "camera" }));
 
       expect(ctx.setFeedback).not.toHaveBeenCalled();
       expect(ctx.setTriggerDescription).not.toHaveBeenCalled();
     });
 
-    it("re-renders every context on refreshAll (dash-box appearance edits offline)", async () => {
+    it("re-renders every context on refreshAll (subset / appearance edits offline)", async () => {
       const host = makeHost();
       const surface = new CameraDialSurface(host as never);
-      const ctx = dialContext("f8");
-      await surface.willAppear(ctx as never, dial({ mode: "car" }));
+      const ctx = dialContext("f11");
+      await surface.willAppear(ctx as never, dial({ mode: "camera" }));
       ctx.setFeedback.mockClear();
 
       surface.refreshAll();
 
       expect(ctx.setFeedback).toHaveBeenCalled();
+    });
+
+    it("computes the carousel preview from the same enabled subset the rotation honors", async () => {
+      const getEnabledCameraGroups = vi.fn(() => ["Nose", "Chase"]); // Cockpit excluded
+      const host = makeHost({ getEnabledCameraGroups });
+      const surface = new CameraDialSurface(host as never);
+      const ctx = dialContext("f12");
+      await surface.willAppear(ctx as never, dial({ mode: "camera" }));
+
+      expect(getEnabledCameraGroups).toHaveBeenCalled();
+      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+
+      // Current (Cockpit, group 9) still renders even though it is not enabled;
+      // the neighbours come from the enabled subset (Nose < 9 < Chase).
+      expect(decoded).toContain(">COCKPIT<");
+      expect(decoded).toContain('data-group="Nose"');
+      expect(decoded).toContain('data-group="Chase"');
     });
   });
 

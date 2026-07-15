@@ -106,6 +106,13 @@ vi.mock("@iracedeck/iracing-sdk", () => ({
   getCameraGroupsFromSessionInfo: vi.fn(() => []),
   getCarNumberRawFromSessionInfo: vi.fn(() => null),
   getCarNumberFromSessionInfo: vi.fn(() => null),
+  getAllCarNumbers: vi.fn(() => []),
+}));
+
+// The camera dial surface consumes the canonical live race order (#803); with
+// no translator instance in tests it returns null (the CarIdxPosition fallback).
+vi.mock("@iracedeck/sim-events-iracing", () => ({
+  getLiveRacePositions: vi.fn(() => null),
 }));
 
 const { mockGetGlobalSettings } = vi.hoisted(() => ({
@@ -1007,9 +1014,10 @@ describe("CameraControls dial surface (host integration)", () => {
     sdk(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 3 });
     vi.mocked(getCommands).mockClear();
 
+    // A cycle mode (camera) routes rotation through the keypad's executeCycle.
     await action.onDialRotate({
       action: dialContext(),
-      payload: { settings: { dial: { mode: "car" } }, ticks: 1 },
+      payload: { settings: { dial: { mode: "camera" } }, ticks: 1 },
     } as never);
 
     // The rotation reached executeCycle, which resolves the camera command surface.
