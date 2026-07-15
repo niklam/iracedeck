@@ -869,17 +869,27 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
           // Step to the neighbouring camera resolved from the SAME carousel the
           // dial sub-camera preview uses (computeSubCameraCarousel over the
           // group's CameraInfo.Cameras[]), so preview and execution can't
-          // diverge (#803 strip redesign). The carousel always yields a REAL
-          // camera of the group when the list is non-empty — stepping+wrapping
-          // when the current camera is found, and recovering to the list's first
-          // (next) / last (previous) camera when it is NOT (the Scenic group,
-          // whose active CamCameraNumber isn't a member of its Cameras[] block,
-          // used to fall through to a synthetic cameraNum ± 1 that iRacing
-          // rejected → the "does nothing" no-op, #803). Only a genuinely empty
-          // camera list leaves nothing to resolve, and then the raw ± 1 lets
-          // iRacing wrap internally.
-          const carousel = computeSubCameraCarousel(cameraNum, getCamerasInGroup(sessionInfo, groupNum));
+          // diverge (#803 strip redesign). With a non-empty list the carousel
+          // yields a REAL camera of the group — stepping+wrapping when the
+          // current camera is found, and recovering to the list's first (next) /
+          // last (previous) camera when it is NOT (the Scenic group, whose
+          // active CamCameraNumber isn't a member of its Cameras[] block, used
+          // to fall through to a synthetic cameraNum ± 1 that iRacing rejected
+          // → the "does nothing" no-op, #803) — except a LOCATED single-camera
+          // group, which has no neighbour at all (the preview shows current
+          // only), so the cycle deliberately no-ops rather than dispatching a
+          // synthetic non-member camera. Only a genuinely empty camera list
+          // leaves nothing to resolve, and then the raw ± 1 lets iRacing wrap
+          // internally.
+          const cameras = getCamerasInGroup(sessionInfo, groupNum);
+          const carousel = computeSubCameraCarousel(cameraNum, cameras);
           const targetCamera = direction === "next" ? carousel.next : carousel.prev;
+
+          if (cameras.length > 0 && !targetCamera) {
+            this.logger.debug("Sub-camera group has no neighbour to cycle to");
+            break;
+          }
+
           const targetCameraNum = targetCamera ? targetCamera.cameraNum : cameraNum + dir;
           const success = camera.switchNum(carNumberRaw, groupNum, targetCameraNum);
           this.logger.info("Sub-camera switched");

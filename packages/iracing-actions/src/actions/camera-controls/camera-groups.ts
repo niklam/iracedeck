@@ -77,17 +77,22 @@ export function parseGroupSubset(raw: string | Record<string, unknown> | undefin
     subset = raw as Record<string, unknown>;
   }
 
-  if (!subset?.groups) {
+  // Only a plain name→boolean map is a valid subset — a malformed shape (e.g.
+  // `groups: "Nose"`, whose Object.entries would yield numeric character keys)
+  // must fall back like a missing setting, not read as "nothing enabled".
+  const rawGroups = subset?.groups;
+
+  if (typeof rawGroups !== "object" || rawGroups === null || Array.isArray(rawGroups)) {
     return undefined;
   }
 
-  const groups = subset.groups as Record<string, boolean>;
+  const groups = rawGroups as Record<string, unknown>;
 
   // Normalize legacy name variants to canonical names
   const LEGACY_NAMES: Record<string, string> = { "Pit Lane2": "Pit Lane 2" };
 
   return Object.entries(groups)
-    .filter(([, isEnabled]) => isEnabled)
+    .filter(([, isEnabled]) => isEnabled === true)
     .map(([name]) => LEGACY_NAMES[name] ?? name);
 }
 

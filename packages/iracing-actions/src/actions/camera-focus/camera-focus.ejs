@@ -191,7 +191,7 @@
 			</div>
 			<% } %>
 
-			<%# Camera-group subset for the dial's Cycle Camera mode — bound to the SAME global cameraGroupSubset the keypad Cycle Camera uses (#803). %>
+			<%# Camera-group subset for the dial's Cycle Camera mode — bound to the plugin-global cameraGroupSubset (#803). Keypad Cycle Camera buttons keep their pre-existing per-button subset and fall back to this global set only until they save one. %>
 			<div id="dial-camera-groups-section" class="hidden">
 				<div class="ird-section-heading">Camera Groups</div>
 				<div id="dial-camera-groups-grid" class="camera-groups-grid"></div>
@@ -200,7 +200,7 @@
 					<button id="dial-btn-clear" type="button">Clear Selection</button>
 				</div>
 				<div class="ird-supporting-text">
-					The cameras chosen here apply to Cycle Camera everywhere — it is the plugin-global camera set, the same list the keypad Cycle Camera uses.
+					This is the plugin-global camera set every dial rotates through. Keypad Cycle Camera buttons follow it too until a button saves its own per-button selection, which then takes precedence for that button.
 				</div>
 			</div>
 

@@ -1222,6 +1222,40 @@ describe("cycle-sub-camera keeps focus by car number (pace-car stall #803)", () 
     expect(mockCamera.switchNum).toHaveBeenCalledWith(44, 20, 22);
     expect(mockCamera.switchNum).not.toHaveBeenCalledWith(44, 20, 29);
   });
+
+  it("no-ops for a located single-camera group instead of dispatching a synthetic neighbour", async () => {
+    const action = new CameraControls();
+    // The focused camera IS the group's only camera — nothing to cycle to. The
+    // carousel (and the strip preview) show current-only, so the dispatch must
+    // not fall back to the synthetic cameraNum ± 1 iRacing would reject.
+    sdk(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 0, CamGroupNumber: 5, CamCameraNumber: 7 });
+    sdk(action).getSessionInfo.mockReturnValue({});
+    vi.mocked(getCarNumberRawFromSessionInfo).mockReturnValue(44);
+    vi.mocked(getCamerasInGroup).mockReturnValue([{ cameraNum: 7, cameraName: "Solo" }]);
+
+    await action.onDialRotate({
+      action: dialContext(),
+      payload: { settings: { dial: { mode: "sub-camera" } }, ticks: 1 },
+    } as never);
+
+    expect(mockCamera.switchNum).not.toHaveBeenCalled();
+    expect(mockCamera.cycleSubCamera).not.toHaveBeenCalled();
+  });
+
+  it("keeps the raw ± 1 fallback for a genuinely empty camera list (iRacing wraps internally)", async () => {
+    const action = new CameraControls();
+    sdk(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 0, CamGroupNumber: 5, CamCameraNumber: 2 });
+    sdk(action).getSessionInfo.mockReturnValue({});
+    vi.mocked(getCarNumberRawFromSessionInfo).mockReturnValue(44);
+    vi.mocked(getCamerasInGroup).mockReturnValue([]);
+
+    await action.onDialRotate({
+      action: dialContext(),
+      payload: { settings: { dial: { mode: "sub-camera" } }, ticks: 1 },
+    } as never);
+
+    expect(mockCamera.switchNum).toHaveBeenCalledWith(44, 5, 3);
+  });
 });
 
 // Residual pace-car siblings of the sub-camera fix (#803): cycle-driving used

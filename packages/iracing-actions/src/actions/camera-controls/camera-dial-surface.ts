@@ -1112,12 +1112,18 @@ export class CameraDialSurface {
 
     if (!ctx.action.isDial()) return;
 
+    // Snapshot the signature of the state being RENDERED before the push:
+    // recomputing it after the await would record whatever telemetry arrived
+    // while setFeedback was in flight as "rendered", leaving the strip showing
+    // stale state A while the baseline says B — suppressing B's render until
+    // yet another change.
+    const renderedSignature = this.displayedSignature(ctx);
     const feedback: DeckFeedbackPayload = { box: svgToDataUri(this.renderStrip(ctx.dial)) };
     await ctx.action.setFeedback(feedback);
 
     // Reset the change-detector baseline so this pushed feedback doesn't
     // immediately re-fire the render-on-change path on the next telemetry tick.
-    ctx.lastRenderSig = this.displayedSignature(ctx);
+    ctx.lastRenderSig = renderedSignature;
     ctx.lastChangeRenderAt = Date.now();
   }
 }

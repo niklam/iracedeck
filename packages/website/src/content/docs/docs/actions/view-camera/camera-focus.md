@@ -48,7 +48,7 @@ Cycle through camera groups. The **Direction** setting picks whether pressing th
 
 A checkbox grid in the Property Inspector lets you pick exactly which groups should participate in the cycle. By default Nose, Cockpit, Chase, TV1, TV2, and TV3 are enabled. Use **Select All** / **Clear Selection** to manage the list quickly.
 
-The subset is stored as a global setting shared across every Camera Controls instance — configure it once and every cycling button respects the same list.
+Each button stores its own subset, so different buttons can cycle different sets. A button that has never saved a selection follows the plugin-global camera set — the one the dial's Cycle Camera mode uses — until you change its grid, which then takes precedence for that button.
 
 ---
 
@@ -251,7 +251,7 @@ Dials are currently Stream Deck+ only — the action can't be placed on Mirabox 
 
 Which target the dial cycles. Defaults to **Cycle by Car #** — the marquee flip-through-the-field control.
 
-- **Cycle Camera** — steps through the camera groups (Nose, Cockpit, TV1, …). Only the groups you enable in the **Camera Groups** selector take part — the same plugin-global set the keypad Cycle Camera uses.
+- **Cycle Camera** — steps through the camera groups (Nose, Cockpit, TV1, …). Only the groups you enable in the **Camera Groups** selector take part — the plugin-global camera set (keypad Cycle Camera buttons without their own per-button selection follow it too).
 - **Cycle Sub-Camera** — steps through the sub-cameras within the active group
 - **Cycle by Car #** (default) — moves camera focus to the next / previous car ordered by car number
 - **Cycle by Race Position** — moves camera focus up / down the live running order (the plugin's canonical race order, with iRacing's official position as a fallback when no live order is available)
@@ -269,7 +269,7 @@ Everything is drawn in a per-mode accent colour you can override (border, label,
 
 #### Setting: Camera Groups (Cycle Camera)
 
-When the dial mode is **Cycle Camera**, a checkbox grid lets you pick which camera groups the dial cycles through and previews on the carousel. This is the **same plugin-global set** the keypad Cycle Camera uses — change it here or there and every Cycle Camera surface respects the same list. Use **Select All** / **Clear Selection** to manage it quickly.
+When the dial mode is **Cycle Camera**, a checkbox grid lets you pick which camera groups the dial cycles through and previews on the carousel. This is the **plugin-global camera set** — every dial shares it, and keypad Cycle Camera buttons follow it too until a button saves its own per-button selection. Use **Select All** / **Clear Selection** to manage it quickly.
 
 #### Setting: Press Action / Long Press
 

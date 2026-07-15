@@ -881,6 +881,41 @@ describe("CameraDialSurface", () => {
       vi.useRealTimers();
     });
 
+    it("records the RENDERED state as the change-detector baseline, not state that arrived mid-push", async () => {
+      vi.useFakeTimers();
+      const host = makeHost();
+      const surface = new CameraDialSurface(host as never);
+      const ctx = dialContext("f8b");
+      await surface.willAppear(ctx as never, dial({ mode: "car-number" }));
+      ctx.setFeedback.mockClear();
+
+      // Defer the next push so telemetry can advance while it is in flight.
+      let resolvePush: () => void = () => {};
+      ctx.setFeedback.mockImplementationOnce(() => new Promise<void>((resolve) => (resolvePush = resolve)));
+
+      vi.advanceTimersByTime(200);
+      mockCarNumber.value = "7";
+      surface.onTelemetry("f8b", TELEMETRY as never); // renders #7; push pending
+
+      expect(ctx.setFeedback).toHaveBeenCalledTimes(1);
+
+      // Telemetry advances to #9 WHILE the #7 push is still in flight — the
+      // baseline must stay at the rendered #7, or #9's render is suppressed.
+      mockCarNumber.value = "9";
+      resolvePush();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      vi.advanceTimersByTime(200);
+      surface.onTelemetry("f8b", TELEMETRY as never);
+
+      expect(ctx.setFeedback).toHaveBeenCalledTimes(2);
+      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+
+      expect(decoded).toContain(">#9<");
+      vi.useRealTimers();
+    });
+
     it("re-renders the box and trigger description when the settings change", async () => {
       const host = makeHost();
       const surface = new CameraDialSurface(host as never);

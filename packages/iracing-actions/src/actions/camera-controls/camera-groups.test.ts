@@ -27,6 +27,25 @@ describe("parseGroupSubset", () => {
     expect(parseGroupSubset("not json")).toBeUndefined();
     expect(parseGroupSubset({})).toBeUndefined();
   });
+
+  it("rejects malformed groups shapes instead of reading them as valid subsets", () => {
+    // A string would otherwise yield numeric character keys via Object.entries,
+    // silently disabling every camera instead of falling back.
+    expect(parseGroupSubset({ groups: "Nose" })).toBeUndefined();
+    expect(parseGroupSubset({ groups: ["Nose", "Chase"] })).toBeUndefined();
+    expect(parseGroupSubset({ groups: 5 })).toBeUndefined();
+    expect(parseGroupSubset(JSON.stringify({ groups: "Nose" }))).toBeUndefined();
+  });
+
+  it("only counts strict-true values as enabled", () => {
+    expect(parseGroupSubset({ groups: { Nose: true, Cockpit: "true", Chase: 1, TV1: false } })).toEqual(["Nose"]);
+  });
+
+  it("keeps an all-disabled map distinct from a malformed one", () => {
+    // {} and all-false are VALID subsets (nothing enabled) — not a fallback.
+    expect(parseGroupSubset({ groups: {} })).toEqual([]);
+    expect(parseGroupSubset({ groups: { Nose: false } })).toEqual([]);
+  });
 });
 
 describe("computeCameraCarousel", () => {
