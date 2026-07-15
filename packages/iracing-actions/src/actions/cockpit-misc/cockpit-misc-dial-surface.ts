@@ -43,6 +43,9 @@ import { formatInteger } from "../../shared/setup-view.js";
 
 const CHANGE_RENDER_MIN_INTERVAL_MS = 100;
 
+/** Cap on binding taps dispatched for one rotate event (a fast spin coalesces ticks). */
+const MAX_TAPS_PER_EVENT = 5;
+
 /**
  * The dash-page selectors the dial can cycle. `ffb-max-force` is intentionally
  * absent (its FFB rotation belongs to the Force Feedback dial surface).
@@ -299,7 +302,14 @@ export class CockpitMiscDialSurface {
     }
 
     const direction: CockpitMiscDirection = ticks > 0 ? "increase" : "decrease";
-    await this.dispatchRotation(ctx, direction);
+    // Scale by |ticks|, capped so a fast spin can't queue a long tap burst
+    // (relative dash-page bindings apply once per press — there is no
+    // absolute-page command to scale instead).
+    const taps = Math.min(Math.abs(ticks), MAX_TAPS_PER_EVENT);
+
+    for (let i = 0; i < taps; i++) {
+      await this.dispatchRotation(ctx, direction);
+    }
   }
 
   down(action: IDeckActionContext, dial: DialSettings): void {

@@ -257,7 +257,7 @@ describe("CockpitMisc dial surface", () => {
       expect(mockTapBinding).toHaveBeenCalledWith("cockpitMiscDashPage2Increase");
     });
 
-    it("dispatches one tap per rotate event regardless of tick magnitude", async () => {
+    it("scales taps by tick magnitude on a fast clockwise spin", async () => {
       const ctx = dialContext("d4");
       const settings = dialSettings({ setting: "dash-page-1" });
       await appear(ctx, settings);
@@ -265,10 +265,43 @@ describe("CockpitMisc dial surface", () => {
 
       await action.onDialRotate(rotateEvent(ctx, settings, 3) as never);
 
-      // One tap per event by sign — relative dash-page bindings apply immediately
-      // in iRacing, so there is nothing to coalesce.
-      expect(mockTapBinding).toHaveBeenCalledTimes(1);
+      expect(mockTapBinding).toHaveBeenCalledTimes(3);
       expect(mockTapBinding).toHaveBeenCalledWith("cockpitMiscDashPage1Increase");
+    });
+
+    it("scales taps by tick magnitude on a fast counter-clockwise spin", async () => {
+      const ctx = dialContext("d5");
+      const settings = dialSettings({ setting: "dash-page-1" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialRotate(rotateEvent(ctx, settings, -2) as never);
+
+      expect(mockTapBinding).toHaveBeenCalledTimes(2);
+      expect(mockTapBinding).toHaveBeenCalledWith("cockpitMiscDashPage1Decrease");
+    });
+
+    it("caps taps at MAX_TAPS_PER_EVENT on a very fast spin", async () => {
+      const ctx = dialContext("d6");
+      const settings = dialSettings({ setting: "dash-page-1" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialRotate(rotateEvent(ctx, settings, 12) as never);
+
+      expect(mockTapBinding).toHaveBeenCalledTimes(5);
+      expect(mockTapBinding).toHaveBeenCalledWith("cockpitMiscDashPage1Increase");
+    });
+
+    it("dispatches no tap for a zero-tick rotate event", async () => {
+      const ctx = dialContext("d7");
+      const settings = dialSettings({ setting: "dash-page-1" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialRotate(rotateEvent(ctx, settings, 0) as never);
+
+      expect(mockTapBinding).not.toHaveBeenCalled();
     });
   });
 
