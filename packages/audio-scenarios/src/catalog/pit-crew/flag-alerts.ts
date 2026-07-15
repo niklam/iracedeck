@@ -42,7 +42,15 @@
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventName, SimEventOf } from "@iracedeck/event-bus";
-import { Flags, hasFlag, isLiveOnTrack, isPostRace, isPreGreen, type TelemetryData } from "@iracedeck/iracing-sdk";
+import {
+  Flags,
+  hasFlag,
+  isLiveOnTrack,
+  isPenaltyFlagActive,
+  isPostRace,
+  isPreGreen,
+  type TelemetryData,
+} from "@iracedeck/iracing-sdk";
 import { getLatestTelemetry, getSessionType, getStandingStart } from "@iracedeck/sim-events-iracing";
 
 import type { Scenario, Step } from "../../dsl.js";
@@ -282,17 +290,13 @@ function furledBitUp(fallbackWhenUnknown: boolean): boolean {
 // that moment, and "Black flag cleared." would announce the opposite. The
 // translator suppresses the same-tick case; this covers a legitimately-emitted
 // clear that queued behind a longer line and was overtaken by the escalation
-// before the bus idled. Missing telemetry reads as not-escalated so the gate
-// never suppresses on missing data (the #574 precedent — keeps the scenario
-// harness firable without iRacing).
+// before the bus idled. Delegates to the SAME `isPenaltyFlagActive` predicate
+// the translator's suppression uses, so the two layers' definitions of
+// "escalated" can't diverge. Missing telemetry reads as not-escalated so the
+// gate never suppresses on missing data (the #574 precedent — keeps the
+// scenario harness firable without iRacing).
 function penaltyBitUp(): boolean {
-  const telemetry = getLatestTelemetry() as TelemetryData | null;
-
-  if (telemetry === null) return false;
-
-  const sessionFlags = telemetry.SessionFlags ?? 0;
-
-  return hasFlag(sessionFlags, Flags.Black) || hasFlag(sessionFlags, Flags.Disqualify);
+  return isPenaltyFlagActive(getLatestTelemetry() as TelemetryData | null);
 }
 
 // `queueable: true` so a furled-black-flag call deferred behind another

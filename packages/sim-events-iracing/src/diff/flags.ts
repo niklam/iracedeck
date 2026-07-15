@@ -66,7 +66,7 @@
  * entirely (the last-lap scenario is race-only).
  */
 import type { FlagScope } from "@iracedeck/event-bus";
-import { Flags, hasFlag, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { Flags, hasFlag, isPenaltyFlagActive, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 import type { TranslatorState } from "../state.js";
 import type { EmitFn } from "./types.js";
@@ -484,11 +484,11 @@ export function diffFlags(
       // falling edge with Black/Disqualify up means the penalty is now in
       // force — the black/DQ raised callout speaks for it, and "Black flag
       // cleared." would announce the opposite of what happened. Consume the
-      // announce silently; checked on the raw bits (not `current`) because
-      // the "black" key is withheld when Disqualify is also set.
-      const escalated = hasFlag(sessionFlags, Flags.Black) || hasFlag(sessionFlags, Flags.Disqualify);
-
-      if (!escalated) emit({ event: "flag.furled.cleared", data: {} });
+      // announce silently. `isPenaltyFlagActive` is shared with the audio
+      // layer's speak-time gate so the two definitions of "escalated" can't
+      // diverge; it reads the raw bits (not `current`) because the "black"
+      // key is withheld when Disqualify is also set.
+      if (!isPenaltyFlagActive(telemetry)) emit({ event: "flag.furled.cleared", data: {} });
 
       state.furledAnnounced = false;
     }

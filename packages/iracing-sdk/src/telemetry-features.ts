@@ -6,7 +6,9 @@
  * car has the feature. These pure helpers wrap that field-presence check so consumers
  * (actions, audio-scenarios, tests) can ask "does this car have X?" consistently.
  */
-import { SessionState, type TelemetryData } from "@iracedeck/iracing-native";
+import { Flags, SessionState, type TelemetryData } from "@iracedeck/iracing-native";
+
+import { hasFlag } from "./utils.js";
 
 /**
  * Check whether the current car has a pit speed limiter.
@@ -126,4 +128,24 @@ export function isPostRace(t: TelemetryData | null | undefined): boolean {
   const state = t?.SessionState;
 
   return state === SessionState.Checkered || state === SessionState.CoolDown;
+}
+
+/**
+ * Whether a driver-penalty flag — `Black` or `Disqualify` — is currently shown
+ * to the player. This is THE definition of "the furled warning escalated into
+ * an actual penalty" (issue #846): iRacing raises the real black flag by
+ * clearing `Furled` and setting `Black` in the same transition, so the
+ * translator's same-tick cleared-suppression and the audio layer's speak-time
+ * gate must agree on what counts as a penalty — both call this predicate so
+ * the two layers cannot silently diverge.
+ *
+ * Missing telemetry or a missing `SessionFlags` yields `false` (not escalated)
+ * — don't punish missing data; a consumer that needs a different unknown-state
+ * answer should check for null before calling.
+ *
+ * @param t - The latest telemetry snapshot, or null when unavailable
+ * @returns true when the Black or Disqualify session-flag bit is set
+ */
+export function isPenaltyFlagActive(t: TelemetryData | null | undefined): boolean {
+  return hasFlag(t?.SessionFlags, Flags.Black) || hasFlag(t?.SessionFlags, Flags.Disqualify);
 }
