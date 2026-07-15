@@ -584,9 +584,11 @@ registerPitCrew(
 // migration code is needed.
 //
 // `currentAudioDeviceId` starts as `""` (System Default) because that is
-// what `getAudio().init()` opened above — without this seed, the first
-// arrival of `audioOutputDevice = ""` would look like a transition and
-// fire a redundant `setAudioDevice(-1)` (an engine teardown + reopen).
+// the device `getAudio().init()` created the engine on above (created,
+// not started — the device only runs during playback, #849) — without
+// this seed, the first arrival of `audioOutputDevice = ""` would look
+// like a transition and fire a redundant `setAudioDevice(-1)` (an engine
+// teardown + reopen).
 let initialDevicePushDone = false;
 let startupDefaultsApplied = false;
 // Previous-value trackers for the "On startup" PI checkboxes. Null until

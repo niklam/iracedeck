@@ -98,6 +98,30 @@ export class AudioNative {
   }
 
   /**
+   * Start the engine's playback device. The device is NOT started by
+   * {@link initAudioEngine} — a running device holds an OS audio stream
+   * that blocks PC sleep (issue #849), so callers start it around actual
+   * playback. Idempotent: an already-started device reports success.
+   *
+   * @returns true if the device is running after the call
+   */
+  startAudioEngine(): boolean {
+    return addon ? addon.startAudioEngine() : this.getMock().startAudioEngine();
+  }
+
+  /**
+   * Stop the engine's playback device, releasing the OS audio stream (and
+   * with it Windows' sleep-blocking power request, issue #849). Active
+   * sounds are not released — playback resumes if the device is started
+   * again. Idempotent: an already-stopped device reports success.
+   *
+   * @returns true if the device is stopped after the call
+   */
+  stopAudioEngine(): boolean {
+    return addon ? addon.stopAudioEngine() : this.getMock().stopAudioEngine();
+  }
+
+  /**
    * Play an audio file on a specific mixer channel.
    * Stops any existing sound on that channel first.
    * Supports WAV, MP3, and FLAC formats.

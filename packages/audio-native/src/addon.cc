@@ -182,6 +182,12 @@ Napi::Value InitAudioEngine(const Napi::CallbackInfo &info)
     g_engine = new ma_engine();
     ma_engine_config config = ma_engine_config_init();
     config.pContext = g_audioContext;
+    // Don't start the playback device at init. A running device keeps a
+    // WASAPI render stream open 24/7, which makes Windows hold a SYSTEM
+    // power request ("An audio stream is currently in use") and blocks
+    // PC sleep (issue #849). The JS layer starts/stops the device around
+    // actual playback via StartAudioEngine/StopAudioEngine.
+    config.noAutoStart = MA_TRUE;
 
     ma_result result = ma_engine_init(&config, g_engine);
     if (result != MA_SUCCESS)
@@ -193,6 +199,54 @@ Napi::Value InitAudioEngine(const Napi::CallbackInfo &info)
 
     g_selectedDeviceIndex = -1;
     return Napi::Boolean::New(env, true);
+}
+
+/**
+ * Start the engine's playback device. Idempotent — an already-started
+ * device reports success.
+ * @returns true if the device is running after the call
+ */
+Napi::Value StartAudioEngine(const Napi::CallbackInfo &info)
+{
+    Napi::Env env = info.Env();
+
+    if (!g_engine)
+    {
+        return Napi::Boolean::New(env, false);
+    }
+
+    ma_device *device = ma_engine_get_device(g_engine);
+    if (device && ma_device_is_started(device))
+    {
+        return Napi::Boolean::New(env, true);
+    }
+
+    return Napi::Boolean::New(env, ma_engine_start(g_engine) == MA_SUCCESS);
+}
+
+/**
+ * Stop the engine's playback device, releasing the OS audio stream (and
+ * with it Windows' sleep-blocking power request, issue #849). Sounds are
+ * not touched — a started sound resumes when the device starts again.
+ * Idempotent — an already-stopped device reports success.
+ * @returns true if the device is stopped after the call
+ */
+Napi::Value StopAudioEngine(const Napi::CallbackInfo &info)
+{
+    Napi::Env env = info.Env();
+
+    if (!g_engine)
+    {
+        return Napi::Boolean::New(env, false);
+    }
+
+    ma_device *device = ma_engine_get_device(g_engine);
+    if (device && !ma_device_is_started(device))
+    {
+        return Napi::Boolean::New(env, true);
+    }
+
+    return Napi::Boolean::New(env, ma_engine_stop(g_engine) == MA_SUCCESS);
 }
 
 /**
@@ -579,10 +633,11 @@ Napi::Value SetAudioDevice(const Napi::CallbackInfo &info)
     delete g_engine;
     g_engine = nullptr;
 
-    // Reinitialize engine with selected device
+    // Reinitialize engine with selected device (stopped — see InitAudioEngine)
     g_engine = new ma_engine();
     ma_engine_config engineConfig = ma_engine_config_init();
     engineConfig.pContext = g_audioContext;
+    engineConfig.noAutoStart = MA_TRUE;
     if (pDeviceId)
     {
         engineConfig.pPlaybackDeviceID = pDeviceId;
@@ -598,6 +653,7 @@ Napi::Value SetAudioDevice(const Napi::CallbackInfo &info)
         g_engine = new ma_engine();
         ma_engine_config fallbackConfig = ma_engine_config_init();
         fallbackConfig.pContext = g_audioContext;
+        fallbackConfig.noAutoStart = MA_TRUE;
         ma_result fallbackResult = ma_engine_init(&fallbackConfig, g_engine);
         if (fallbackResult != MA_SUCCESS)
         {
@@ -687,10 +743,11 @@ Napi::Value SetAudioDeviceById(const Napi::CallbackInfo &info)
     delete g_engine;
     g_engine = nullptr;
 
-    // Reinitialize engine with the selected device
+    // Reinitialize engine with the selected device (stopped — see InitAudioEngine)
     g_engine = new ma_engine();
     ma_engine_config engineConfig = ma_engine_config_init();
     engineConfig.pContext = g_audioContext;
+    engineConfig.noAutoStart = MA_TRUE;
     engineConfig.pPlaybackDeviceID = &selectedId;
 
     ma_result result = ma_engine_init(&engineConfig, g_engine);
@@ -703,6 +760,7 @@ Napi::Value SetAudioDeviceById(const Napi::CallbackInfo &info)
         g_engine = new ma_engine();
         ma_engine_config fallbackConfig = ma_engine_config_init();
         fallbackConfig.pContext = g_audioContext;
+        fallbackConfig.noAutoStart = MA_TRUE;
         ma_result fallbackResult = ma_engine_init(&fallbackConfig, g_engine);
         if (fallbackResult != MA_SUCCESS)
         {
@@ -727,6 +785,8 @@ Napi::Object Init(Napi::Env env, Napi::Object exports)
 {
     exports.Set("initAudioEngine", Napi::Function::New(env, InitAudioEngine));
     exports.Set("destroyAudioEngine", Napi::Function::New(env, DestroyAudioEngine));
+    exports.Set("startAudioEngine", Napi::Function::New(env, StartAudioEngine));
+    exports.Set("stopAudioEngine", Napi::Function::New(env, StopAudioEngine));
     exports.Set("playOnChannel", Napi::Function::New(env, PlayOnChannel));
     exports.Set("stopChannel", Napi::Function::New(env, StopChannel));
     exports.Set("setChannelVolume", Napi::Function::New(env, SetChannelVolume));

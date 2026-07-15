@@ -44,7 +44,10 @@ The addon embeds miniaudio for multi-channel mixing. 4 independent channels with
 `stopChannel`, `isChannelPlaying`, `stopAllChannels`, and `destroyAudioEngine` do exactly what their names say (see `src/index.ts`); the functions below have behavior worth documenting.
 
 ### `initAudioEngine(): boolean`
-Creates an `ma_engine` (WASAPI shared mode on Windows). Returns `true` on success.
+Creates an `ma_engine` (WASAPI shared mode on Windows). Returns `true` on success. The playback device is created **stopped** (`noAutoStart`, issue #849) — a running device holds an OS render stream 24/7, which makes Windows keep a SYSTEM power request open and blocks PC sleep. `@iracedeck/audio-service` starts/stops the device around actual playback; the device-switch reinits (`setAudioDevice`/`setAudioDeviceById`) likewise leave the new engine stopped.
+
+### `startAudioEngine(): boolean` / `stopAudioEngine(): boolean`
+Start/stop the engine's playback device (the OS audio stream). Both are idempotent — an already-started/stopped device reports success — and return `false` only when the engine doesn't exist or the underlying miniaudio call fails. `stopAudioEngine` does not release sounds; a started sound resumes when the device starts again. Consumed by `@iracedeck/audio-service`, which starts the device at the playback-start chokepoint and stops it after all channels have been idle for `IDLE_STOP_DELAY_MS` (issue #849).
 
 ### `playOnChannel(channel: number, filePath: string, loop?: boolean, volume?: number): boolean`
 Plays a file on a specific channel (0–3). Stops any existing sound on that channel first. Supports WAV, MP3, FLAC.
