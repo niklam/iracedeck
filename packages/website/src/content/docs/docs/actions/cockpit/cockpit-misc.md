@@ -121,7 +121,7 @@ Toggle in-lap mode (used for practice and qualifying to mark the return to pit).
 
 ## On a dial
 
-Placed on a Stream Deck+ dial, Cockpit Misc becomes a dash-page dial. Pick which dashboard display the dial controls with its **Setting** dropdown; turning the dial cycles that display's pages, and the touch strip shows the page the car is currently on as a big, color-coded number. It uses the same key bindings as the keypad Dash Page modes, so no extra configuration is needed if you already use them. The Property Inspector automatically shows the dial settings below (instead of the keypad Control and Direction) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
+Placed on a Stream Deck+ dial, Cockpit Misc becomes a dash-page dial. Pick which dashboard display the dial controls with its **Control** dropdown; turning the dial cycles that display's pages, and the touch strip shows the page the car is currently on as a big, color-coded number. It uses the same key bindings as the keypad Dash Page modes, so no extra configuration is needed if you already use them. The Property Inspector automatically shows the dial settings below (instead of the keypad Control and Direction) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
 
 #### Details
 
@@ -136,7 +136,7 @@ Placed on a Stream Deck+ dial, Cockpit Misc becomes a dash-page dial. Pick which
 
 Dials are currently Stream Deck+ only — the action can't be placed on Mirabox knobs or Ulanzi dials yet (see [Dials](/docs/features/dials/)).
 
-#### Setting: Setting
+#### Setting: Control
 
 The dashboard display the dial controls. Each setting renders as a color-coded "dash box": a short label on top and the live page number as a large number. Each setting has a built-in accent color so multiple dials stay distinguishable at a glance; you can override the border, label, value, and background colors in the **Dash Box Appearance** section of the dial settings.
 
