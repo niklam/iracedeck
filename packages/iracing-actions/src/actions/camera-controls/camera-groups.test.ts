@@ -119,12 +119,27 @@ describe("computeSubCameraCarousel", () => {
     expect(computeSubCameraCarousel(1, [])).toEqual({ current: null, prev: null, next: null });
   });
 
-  it("returns current only when the focused camera number is not in the list", () => {
-    // No camera 5 in the list → nothing to anchor the neighbours on.
+  it("recovers to the list ends when the focused camera number is not in the list", () => {
+    // The active CamCameraNumber (5) is not a member of the group's Cameras[] —
+    // this is the Scenic-group reality (issue #803): a large multi-camera group
+    // whose current camera number the carousel can't anchor on. Rather than
+    // returning null neighbours (which made the dispatch fall back to a synthetic
+    // cameraNum ± 1 that iRacing rejects → the sub-camera no-op), re-enter the
+    // list at its natural end: next → first camera, previous → last camera.
     const carousel = computeSubCameraCarousel(5, CAMERAS);
 
     expect(carousel.current).toBeNull();
-    expect(carousel.prev).toBeNull();
-    expect(carousel.next).toBeNull();
+    expect(carousel.next?.cameraName).toBe("Cockpit"); // first camera (cameraNum 1)
+    expect(carousel.prev?.cameraName).toBe("Gyro"); // last camera (cameraNum 3)
+  });
+
+  it("recovers to the sole camera's end even for a single-camera group with an unmatched current", () => {
+    // Degenerate: current camera not the sole listed one. Still recover to a real
+    // camera rather than leaving the dispatch with nothing to target.
+    const carousel = computeSubCameraCarousel(9, [{ cameraNum: 4, cameraName: "Only" }]);
+
+    expect(carousel.current).toBeNull();
+    expect(carousel.next?.cameraName).toBe("Only");
+    expect(carousel.prev?.cameraName).toBe("Only");
   });
 });

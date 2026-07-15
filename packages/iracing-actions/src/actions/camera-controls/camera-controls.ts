@@ -869,9 +869,15 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
           // Step to the neighbouring camera resolved from the SAME carousel the
           // dial sub-camera preview uses (computeSubCameraCarousel over the
           // group's CameraInfo.Cameras[]), so preview and execution can't
-          // diverge (#803 strip redesign). With no camera list — or the current
-          // camera missing from it — fall back to the raw ± 1 wrap iRacing
-          // resolves internally.
+          // diverge (#803 strip redesign). The carousel always yields a REAL
+          // camera of the group when the list is non-empty — stepping+wrapping
+          // when the current camera is found, and recovering to the list's first
+          // (next) / last (previous) camera when it is NOT (the Scenic group,
+          // whose active CamCameraNumber isn't a member of its Cameras[] block,
+          // used to fall through to a synthetic cameraNum ± 1 that iRacing
+          // rejected → the "does nothing" no-op, #803). Only a genuinely empty
+          // camera list leaves nothing to resolve, and then the raw ± 1 lets
+          // iRacing wrap internally.
           const carousel = computeSubCameraCarousel(cameraNum, getCamerasInGroup(sessionInfo, groupNum));
           const targetCamera = direction === "next" ? carousel.next : carousel.prev;
           const targetCameraNum = targetCamera ? targetCamera.cameraNum : cameraNum + dir;

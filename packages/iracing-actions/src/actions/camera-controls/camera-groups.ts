@@ -200,20 +200,32 @@ export interface SubCameraCarousel {
  * `computeCameraCarousel` + `getNextSelectedGroupEntry` back the camera mode).
  *
  * A single-camera group can't cycle, so `prev` / `next` are `null` (current
- * only). When the current camera number isn't found in the list, `current` is
- * `null` (the caller renders its identity fallback and the dispatch falls back
- * to the raw ± 1 wrap iRacing resolves internally).
+ * only). When the current camera number isn't found in the list (the Scenic
+ * reality — a large multi-camera group whose active `CamCameraNumber` the
+ * carousel can't anchor on, issue #803), `current` is `null` but `prev` / `next`
+ * RECOVER to the list ends (next → first, previous → last) so a detent still
+ * steps onto a REAL camera of the group. Without this the dispatch fell back to a
+ * synthetic `cameraNum ± 1` that isn't a member of the group's `Cameras[]`, which
+ * iRacing rejects — the sub-camera "does nothing" no-op. This mirrors
+ * `computeRacePositionTarget`'s pace-car recovery (re-enter the order at its
+ * natural end) and, being the SAME helper the dial preview reads, keeps preview
+ * and execution in step.
  */
 export function computeSubCameraCarousel(currentCameraNum: number | null, cameras: CameraInGroup[]): SubCameraCarousel {
   if (cameras.length === 0) return { current: null, prev: null, next: null };
 
   const sorted = [...cameras].sort((a, b) => a.cameraNum - b.cameraNum);
   const idx = currentCameraNum === null ? -1 : sorted.findIndex((c) => c.cameraNum === currentCameraNum);
-  const current = idx >= 0 ? sorted[idx] : null;
 
-  // A single camera (or an unresolved current camera) has no meaningful
-  // neighbours — show the current only.
-  if (sorted.length === 1 || idx < 0) return { current, prev: null, next: null };
+  // Current camera not located in the group's list — recover at the natural end
+  // (next → first, previous → last) so the dispatch targets a real group camera
+  // rather than a synthetic cameraNum ± 1 iRacing would reject (issue #803).
+  if (idx < 0) return { current: null, prev: sorted[sorted.length - 1], next: sorted[0] };
+
+  const current = sorted[idx];
+
+  // A single located camera has no neighbour to cycle to.
+  if (sorted.length === 1) return { current, prev: null, next: null };
 
   return {
     current,

@@ -1167,6 +1167,61 @@ describe("cycle-sub-camera keeps focus by car number (pace-car stall #803)", () 
     // camera the strip previews and the camera the dispatch switches to agree.
     expect(mockCamera.switchNum).toHaveBeenCalledWith(0, 9, 1);
   });
+
+  // The Scenic regression (#803): a large multi-camera group whose active
+  // CamCameraNumber is NOT a member of the group's Cameras[] list (Scenic camera
+  // numbers are a group-specific block, e.g. 18–22, that the current camera value
+  // doesn't index into). Before the recovery fix the carousel returned null
+  // neighbours and the dispatch fell back to a synthetic `cameraNum + dir` (31) —
+  // not a real camera of the group, so iRacing rejected it and the sub-camera did
+  // NOTHING. The dispatch must now target a REAL camera from the list.
+  it("targets a real group camera (not a synthetic cameraNum ± 1) when the current camera isn't in the list — Scenic no-op fix", async () => {
+    const action = new CameraControls();
+    // CamCameraNumber 30 is not in the Scenic camera list [18..22].
+    sdk(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 0, CamGroupNumber: 20, CamCameraNumber: 30 });
+    sdk(action).getSessionInfo.mockReturnValue({});
+    vi.mocked(getCarNumberRawFromSessionInfo).mockReturnValue(44);
+    vi.mocked(getCamerasInGroup).mockReturnValue([
+      { cameraNum: 18, cameraName: "Scenic 1" },
+      { cameraNum: 19, cameraName: "Scenic 2" },
+      { cameraNum: 20, cameraName: "Scenic 3" },
+      { cameraNum: 21, cameraName: "Scenic 4" },
+      { cameraNum: 22, cameraName: "Scenic 5" },
+    ]);
+
+    await action.onDialRotate({
+      action: dialContext(),
+      payload: { settings: { dial: { mode: "sub-camera" } }, ticks: 1 },
+    } as never);
+
+    // next detent recovers to the FIRST camera (18), a real member of the group —
+    // NOT the synthetic 30 + 1 = 31 that iRacing rejects.
+    expect(mockCamera.switchNum).toHaveBeenCalledWith(44, 20, 18);
+    expect(mockCamera.switchNum).not.toHaveBeenCalledWith(44, 20, 31);
+  });
+
+  it("recovers to the LAST group camera on a previous detent when the current camera isn't in the list", async () => {
+    const action = new CameraControls();
+    sdk(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 0, CamGroupNumber: 20, CamCameraNumber: 30 });
+    sdk(action).getSessionInfo.mockReturnValue({});
+    vi.mocked(getCarNumberRawFromSessionInfo).mockReturnValue(44);
+    vi.mocked(getCamerasInGroup).mockReturnValue([
+      { cameraNum: 18, cameraName: "Scenic 1" },
+      { cameraNum: 19, cameraName: "Scenic 2" },
+      { cameraNum: 20, cameraName: "Scenic 3" },
+      { cameraNum: 21, cameraName: "Scenic 4" },
+      { cameraNum: 22, cameraName: "Scenic 5" },
+    ]);
+
+    await action.onDialRotate({
+      action: dialContext(),
+      payload: { settings: { dial: { mode: "sub-camera" } }, ticks: -1 },
+    } as never);
+
+    // previous detent recovers to the LAST camera (22), NOT the synthetic 30 - 1 = 29.
+    expect(mockCamera.switchNum).toHaveBeenCalledWith(44, 20, 22);
+    expect(mockCamera.switchNum).not.toHaveBeenCalledWith(44, 20, 29);
+  });
 });
 
 // Residual pace-car siblings of the sub-camera fix (#803): cycle-driving used
