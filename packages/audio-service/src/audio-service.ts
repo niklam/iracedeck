@@ -13,9 +13,10 @@
  *
  * Usage:
  * 1. Call initializeAudio() once at plugin startup with an AudioNative instance
- * 2. Call getAudio().init() to create the engine (the playback device itself
- *    only runs while something plays — it starts on demand and stops after an
- *    idle window so the OS audio stream doesn't block PC sleep, issue #849)
+ * 2. Call getAudio().init() to set up the audio subsystem (the OS audio
+ *    device only exists while something plays — created on demand and
+ *    released after an idle window, since even an idle stream makes
+ *    Windows block PC sleep, issue #849)
  * 3. Use getAudio() in actions to play sounds on channels
  *
  * @example
@@ -99,12 +100,12 @@ const PERCEPTUAL_EXPONENT = 2.5;
 
 /**
  * How long every channel must stay idle before the playback device is
- * stopped. A running device holds an OS audio stream 24/7, which makes
- * Windows keep a SYSTEM power request open and blocks PC sleep — so the
- * device only runs around actual playback. The delay debounces clip
- * chaining (voice-sequence connectors, radar tick trains, the pit-box
- * count-in's ~1 s gaps) so a burst of related clips doesn't churn the
- * device on/off between them.
+ * released. A WASAPI stream makes Windows hold a SYSTEM power request
+ * that blocks PC sleep even while the stream is merely initialized, not
+ * running — so the device only exists around actual playback. The delay
+ * debounces clip chaining (voice-sequence connectors, radar tick trains,
+ * the pit-box count-in's ~1 s gaps) so a burst of related clips doesn't
+ * churn the device between them.
  *
  * @internal Exported for testing
  */
@@ -164,8 +165,8 @@ export interface PlaybackObserver {
 
 export interface IAudioService {
   /**
-   * Initialize the audio engine. Call once after initializeAudio(). The
-   * playback device stays stopped until the first play (#849).
+   * Initialize the audio engine. Call once after initializeAudio(). No
+   * OS audio device exists until the first play (#849).
    */
   init(): boolean;
 
@@ -283,10 +284,10 @@ class AudioService implements IAudioService {
   // Persistent observer for clip start/complete on any channel.
   private playbackObserver: PlaybackObserver | null = null;
 
-  // Playback-device run state (#849). The device is only started around
-  // actual playback; while stopped, the OS holds no audio stream and the
+  // Playback-device run state (#849). The device only exists around
+  // actual playback; once released, the OS holds no audio stream and the
   // PC can sleep. `deviceRunning` tracks what we asked the native layer
-  // to do; `idleStopTimer` is the pending debounced stop.
+  // to do; `idleStopTimer` is the pending debounced release.
   private deviceRunning = false;
   private idleStopTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -521,11 +522,11 @@ class AudioService implements IAudioService {
 
     const ok = this.native.setAudioDevice(deviceIndex);
 
-    // The native reinit leaves the new engine stopped (noAutoStart), but
-    // the "already on this device" fast path keeps the old engine as-is —
-    // stop explicitly so a switch never leaves the device running idle
+    // The native switch tears the engine down itself, but the "already on
+    // this device" fast path keeps the old engine as-is — release
+    // explicitly so a switch never leaves a device alive while idle
     // (#849). Nothing is playing (channels drained above), and the next
-    // play restarts the device.
+    // play recreates the device.
     this.cancelIdleStop();
     this.native.stopAudioEngine();
     this.deviceRunning = false;
@@ -558,20 +559,13 @@ class AudioService implements IAudioService {
       this.logger.info("Audio output device switched by id");
       this.logger.debug(`Device id: ${deviceId}`);
     } else {
-      // The native layer returns false for three distinct reasons:
-      // (a) the id isn't in the current enumeration (stale / unplugged /
-      // legacy value), (b) the hex string is malformed, or (c) the engine
-      // reinit failed. Distinguish (a) from (b)+(c) by re-checking the
-      // enumeration so the operator log is truthful. Caller decides how
-      // to recover (typically fall back to system default).
-      const exists = this.native.getAudioDevices().some((d) => d.id === deviceId);
-
-      if (exists) {
-        this.logger.error("Failed to switch audio output device by id (engine reinit failed)");
-      } else {
-        this.logger.warn("Audio output device id not found in current enumeration");
-      }
-
+      // The native layer returns false when the id is malformed or isn't
+      // in the current enumeration (stale / unplugged / legacy value) —
+      // the switch itself can't fail anymore, since it only records the
+      // selection and the engine is recreated lazily at the next play
+      // (#849). Caller decides how to recover (typically fall back to
+      // system default).
+      this.logger.warn("Audio output device id not found in current enumeration");
       this.logger.debug(`Device id: ${deviceId}`);
     }
 
@@ -637,12 +631,13 @@ class AudioService implements IAudioService {
   }
 
   /**
-   * Arm the debounced device stop once every channel is idle. The timer
-   * re-checks at expiry — a clip that started meanwhile cancels it via
-   * `ensureDeviceRunning`, and the guard covers any path that missed the
-   * cancel. Stopping the device releases the OS audio stream so the PC
-   * can sleep (#849); active sounds are never cut because the stop is
-   * only armed when no channel is active.
+   * Arm the debounced device release once every channel is idle. The
+   * timer re-checks at expiry — a clip that started meanwhile cancels it
+   * via `ensureDeviceRunning`, and the guard covers any path that missed
+   * the cancel. The native stop tears the whole engine down (an
+   * initialized-but-stopped stream still blocks PC sleep, #849), which
+   * also releases any loaded sounds — safe, because the release is only
+   * armed when no channel is active.
    */
   private maybeScheduleIdleStop(): void {
     if (!this.deviceRunning) return;

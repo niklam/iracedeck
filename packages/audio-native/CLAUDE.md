@@ -44,10 +44,10 @@ The addon embeds miniaudio for multi-channel mixing. 4 independent channels with
 `stopChannel`, `isChannelPlaying`, `stopAllChannels`, and `destroyAudioEngine` do exactly what their names say (see `src/index.ts`); the functions below have behavior worth documenting.
 
 ### `initAudioEngine(): boolean`
-Creates an `ma_engine` (WASAPI shared mode on Windows). Returns `true` on success. The playback device is created **stopped** (`noAutoStart`, issue #849) — a running device holds an OS render stream 24/7, which makes Windows keep a SYSTEM power request open and blocks PC sleep. `@iracedeck/audio-service` starts/stops the device around actual playback; the device-switch reinits (`setAudioDevice`/`setAudioDeviceById`) likewise leave the new engine stopped.
+Creates only the shared `ma_context` (device enumeration). **No `ma_engine` and no OS audio device exist after init** (issue #849): Windows holds a sleep-blocking SYSTEM power request ("An audio stream is currently in use") for a WASAPI stream that merely exists — even initialized-but-stopped — so the engine is created lazily (`startAudioEngine`/`playOnChannel`) and torn down entirely when idle (`stopAudioEngine`). Returns `true` when the context is usable.
 
 ### `startAudioEngine(): boolean` / `stopAudioEngine(): boolean`
-Start/stop the engine's playback device (the OS audio stream). Both are idempotent — an already-started/stopped device reports success — and return `false` only when the engine doesn't exist or the underlying miniaudio call fails. `stopAudioEngine` does not release sounds; a started sound resumes when the device starts again. Consumed by `@iracedeck/audio-service`, which starts the device at the playback-start chokepoint and stops it after all channels have been idle for `IDLE_STOP_DELAY_MS` (issue #849).
+The device lifecycle pair (issue #849). `startAudioEngine` lazily creates the engine on the remembered device selection (system-default fallback if it vanished — the selection is kept so a replug self-heals) and starts it; `stopAudioEngine` tears the whole engine down, releasing the OS stream and any loaded sounds. Both idempotent. Consumed by `@iracedeck/audio-service`, which starts at the playback-start chokepoint and releases after all channels have been idle for `IDLE_STOP_DELAY_MS` — so sounds are never cut. `playOnChannel` also recreates the engine on demand (the device starts moments later via `startAudioEngine`, and a stopped device just holds the sound at its start).
 
 ### `playOnChannel(channel: number, filePath: string, loop?: boolean, volume?: number): boolean`
 Plays a file on a specific channel (0–3). Stops any existing sound on that channel first. Supports WAV, MP3, FLAC.
@@ -65,10 +65,10 @@ Seeks to a random position in the current sound (used for ambient loop variation
 Enumerates available audio playback devices. `id` is a hex-encoded `ma_device_id` — the platform-stable identifier (WASAPI endpoint ID on Windows, CoreAudio UID on macOS, etc.) suitable for persisting selection across sessions. `index` is the volatile enumeration position retained for backward compatibility. `AudioDeviceInfo` (`{ index, name, id, isDefault }`) is an exported type — it is the persistence contract consumed by the `ird-audio-device-select` PI component, which persists selection by stable `id`, never by `index`.
 
 ### `setAudioDevice(deviceIndex: number): boolean`
-Switches audio output to a specific device by enumeration index. -1 for system default. Stops all sounds and reinitializes the engine. Prefer `setAudioDeviceById` for persisted selections.
+Selects the output device by enumeration index (-1 for system default): validates, remembers the selection, and tears down any live engine — the next play recreates it on the new device (issue #849; recreating eagerly would hold the sleep-blocking power request while idle). Prefer `setAudioDeviceById` for persisted selections.
 
 ### `setAudioDeviceById(deviceId: string): boolean`
-Switches audio output to a device looked up by its stable `id` from `getAudioDevices`. Returns `false` if the id is not found in the current enumeration (e.g. unplugged device). On engine-init failure, falls back to the system default so the mixer remains usable. Use this for any selection that needs to survive replug or driver reset.
+Same as `setAudioDevice` but looks the device up by its stable `id` from `getAudioDevices`. Returns `false` if the id is malformed or not found in the current enumeration (e.g. unplugged device). Should the selected device vanish before the next play, the lazy engine creation falls back to the system default so the mixer remains usable. Use this for any selection that needs to survive replug or driver reset.
 
 ## Channel enum
 
