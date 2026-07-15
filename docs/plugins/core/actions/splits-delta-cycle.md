@@ -20,27 +20,22 @@ Triggers the action configured in Settings.
 ### Dial (Stream Deck+)
 Placed on a dial, the action has a single rotation behavior — no dial `Setting` dropdown. Turning cycles iRacing's splits / delta display modes: clockwise taps **Next** (`splitsDeltaNext`), counter-clockwise taps **Previous** (`splitsDeltaPrevious`), scaled by tick magnitude and capped at five taps per event. Both bindings must be set. iRacing exposes no telemetry for the selected splits mode, so the touch strip shows the action identity only (a `DELTA` label) and never a live value.
 
-The press and touchscreen taps each run a configurable gesture over {Toggle Reference Car, None}, classified at `dialUp`:
-
-| Gesture | Setting | Default | Action |
-|---------|---------|---------|--------|
-| Press | `dial.pressAction` | Toggle Reference Car | Taps `toggleUiDisplayRefCar` |
-| Long Press | `dial.longPressAction` | None | — |
-| Tap Display | `dial.tapAction` | None (Elgato only) | — |
-| Long Touch | `dial.longTouchAction` | None (Elgato only) | — |
-
-A push-and-turn (rotating while the dial is held in) cycles modes without firing the press gesture. Mirabox and Ulanzi declare no dial controllers yet (#786), so the dial surface is Elgato Stream Deck+ only.
+The press and touchscreen taps each run a configurable gesture over {Toggle Reference Car, None}, classified at `dialUp` — see [Dial settings](#dial-settings) below for the defaults. A push-and-turn (rotating while the dial is held in) cycles modes without firing the press gesture. Mirabox and Ulanzi declare no dial controllers yet (#786), so the dial surface is Elgato Stream Deck+ only.
 
 - **Communication Method (dial):** Key binding — rotation taps the `splitsDeltaNext` / `splitsDeltaPrevious` bindings; the press gesture taps `toggleUiDisplayRefCar`.
 
 ## Settings
+
+The Property Inspector shows the settings for the surface the instance sits on: keypad instances see the keypad settings, dial instances the dial settings.
+
+### Keypad settings
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
 | Mode | Dropdown | Cycle | Action mode |
 | Direction | Dropdown | Next | Cycle direction (Cycle mode only) |
 
-### Mode Options
+#### Mode Options
 - **Cycle** - Cycle through splits delta display modes
 - **Toggle Reference Car** - Toggle the reference car display on/off
 - **Custom Sector Start** - Marks the start point for a custom sector
@@ -48,9 +43,22 @@ A push-and-turn (rotating while the dial is held in) cycles modes without firing
 - **Set Active Reset Point** - Saves the current car state as a reset snapshot (solo practice only)
 - **Reset to Start Point** - Teleports the car back to the saved active reset snapshot (solo practice only)
 
-### Direction Options (Cycle mode)
+#### Direction Options (Cycle mode)
 - **Next** - Cycle to next display mode
 - **Previous** - Cycle to previous display mode
+
+### Dial settings
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| Press Action | Dropdown | Toggle Reference Car | What a short dial press does |
+| Long Press | Dropdown | None | What a long dial press does |
+| Tap Display | Dropdown | None | What a touch-strip tap does (Elgato only) |
+| Long Touch | Dropdown | None | What a touch-strip long tap does (Elgato only) |
+
+#### Gesture Action Options (Press, Long Press, Tap Display, Long Touch)
+- **Toggle Reference Car** - Taps `toggleUiDisplayRefCar`
+- **None** - The gesture does nothing
 
 ## Keyboard Simulation
 
