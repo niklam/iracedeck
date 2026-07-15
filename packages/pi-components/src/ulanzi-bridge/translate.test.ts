@@ -55,11 +55,14 @@ describe("elgatoToUlanzi", () => {
       payload: { foo: 1 },
     });
 
+    // openUrl relays through the plugin socket (sendToPlugin marker): the host
+    // ignores `openurl` sent on the PI socket, so the plugin re-sends it (#845).
     expect(elgatoToUlanzi({ event: "openUrl", payload: { url: "https://x/" } }, identity)).toEqual({
-      cmd: "openurl",
-      url: "https://x/",
-      local: false,
-      param: "",
+      cmd: "sendToPlugin",
+      uuid: identity.uuid,
+      key: "5",
+      actionid: "abc",
+      payload: { event: "openUrl", url: "https://x/" },
     });
 
     expect(elgatoToUlanzi({ event: "logMessage", payload: { message: "hi" } }, identity)).toEqual({
