@@ -218,7 +218,7 @@ describe("ViewAdjustment dial surface", () => {
       expect(mockTapBinding).toHaveBeenCalledWith("viewAdjustDriverHeightDown");
     });
 
-    it("dispatches one tap per rotate event regardless of tick magnitude", async () => {
+    it("scales taps by tick magnitude on a fast clockwise spin", async () => {
       const ctx = dialContext("d4");
       const settings = dialSettings({ setting: "ui-size" });
       await appear(ctx, settings);
@@ -226,8 +226,43 @@ describe("ViewAdjustment dial surface", () => {
 
       await action.onDialRotate(rotateEvent(ctx, settings, 3) as never);
 
-      expect(mockTapBinding).toHaveBeenCalledTimes(1);
+      expect(mockTapBinding).toHaveBeenCalledTimes(3);
       expect(mockTapBinding).toHaveBeenCalledWith("viewAdjustUiSizeIncrease");
+    });
+
+    it("scales taps by tick magnitude on a fast counter-clockwise spin", async () => {
+      const ctx = dialContext("d5");
+      const settings = dialSettings({ setting: "fov" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialRotate(rotateEvent(ctx, settings, -2) as never);
+
+      expect(mockTapBinding).toHaveBeenCalledTimes(2);
+      expect(mockTapBinding).toHaveBeenCalledWith("viewAdjustFovDecrease");
+    });
+
+    it("caps taps per rotate event at MAX_TAPS_PER_EVENT", async () => {
+      const ctx = dialContext("d6");
+      const settings = dialSettings({ setting: "fov" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialRotate(rotateEvent(ctx, settings, 12) as never);
+
+      expect(mockTapBinding).toHaveBeenCalledTimes(5);
+      expect(mockTapBinding).toHaveBeenCalledWith("viewAdjustFovIncrease");
+    });
+
+    it("does nothing on a zero-tick rotate event", async () => {
+      const ctx = dialContext("d7");
+      const settings = dialSettings({ setting: "fov" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialRotate(rotateEvent(ctx, settings, 0) as never);
+
+      expect(mockTapBinding).not.toHaveBeenCalled();
     });
   });
 

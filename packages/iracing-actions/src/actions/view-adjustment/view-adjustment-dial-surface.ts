@@ -39,6 +39,14 @@ import { renderDialNameIcon } from "../../shared/dial-name-icon.js";
 const CHANGE_RENDER_MIN_INTERVAL_MS = 100;
 
 /**
+ * Cap on how many binding taps a single rotate event dispatches. A fast spin
+ * coalesces into |ticks| > 1; scaling by ticks (capped) advances multiple
+ * detents per event so the adjustment tracks the wheel, while the cap keeps
+ * one flick from firing an unbounded burst.
+ */
+const MAX_TAPS_PER_EVENT = 5;
+
+/**
  * The directional view adjustments the dial can drive. Recenter VR is absent —
  * it is non-directional (a one-shot), so it is offered as a press gesture below
  * rather than a rotation setting.
@@ -265,8 +273,11 @@ export class ViewAdjustmentDialSurface {
       ctx.rotatedWhilePressed = true;
     }
 
+    if (ticks === 0) return;
+
     const direction: ViewAdjustmentDirection = ticks > 0 ? "increase" : "decrease";
-    await this.dispatchRotation(ctx, direction);
+    const taps = Math.min(Math.abs(ticks), MAX_TAPS_PER_EVENT);
+    await this.dispatchRotation(ctx, direction, taps);
   }
 
   down(action: IDeckActionContext, dial: DialSettings): void {
@@ -364,7 +375,11 @@ export class ViewAdjustmentDialSurface {
     return ctx;
   }
 
-  private async dispatchRotation(ctx: ViewAdjustmentDialContext, direction: ViewAdjustmentDirection): Promise<void> {
+  private async dispatchRotation(
+    ctx: ViewAdjustmentDialContext,
+    direction: ViewAdjustmentDirection,
+    taps: number,
+  ): Promise<void> {
     const key = rotationKey(ctx.dial.setting, direction);
 
     if (!key) {
@@ -374,8 +389,11 @@ export class ViewAdjustmentDialSurface {
     }
 
     this.host.logger.info("View adjustment dial rotated");
-    this.host.logger.debug(`${ctx.dial.setting} ${direction}`);
-    await this.host.tapBinding(key);
+    this.host.logger.debug(`${ctx.dial.setting} ${direction} x${taps}`);
+
+    for (let i = 0; i < taps; i++) {
+      await this.host.tapBinding(key);
+    }
   }
 
   private async doGesture(action: GestureSlot): Promise<void> {
