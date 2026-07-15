@@ -925,6 +925,42 @@ describe("AudioService", () => {
       expect(native.startAudioEngine).toHaveBeenCalledTimes(2);
     });
 
+    it("aborts the play when the device fails to start: returns false, no onStart, unloads the queued sound", () => {
+      const { native } = createServiceWithEndCallbacks();
+      (native.startAudioEngine as ReturnType<typeof vi.fn>).mockReturnValue(false);
+
+      const onStart = vi.fn();
+      getAudio().setPlaybackObserver({ onStart });
+
+      const ok = getAudio().playOnChannel(AudioChannel.Voice, "/msg.mp3");
+
+      expect(ok).toBe(false);
+      expect(onStart).not.toHaveBeenCalled();
+      // The queued sound must be unloaded — otherwise it would blast out
+      // whenever a LATER play manages to start the device.
+      expect(native.stopChannel).toHaveBeenCalledWith(AudioChannel.Voice);
+    });
+
+    it("retries a failed idle teardown instead of marking the device stopped", () => {
+      const { native, endCallbacks } = createServiceWithEndCallbacks();
+      (native.stopAudioEngine as ReturnType<typeof vi.fn>).mockReturnValueOnce(false);
+
+      getAudio().playOnChannel(AudioChannel.Voice, "/msg.mp3");
+      endCallbacks[AudioChannel.Voice]();
+
+      vi.advanceTimersByTime(IDLE_STOP_DELAY_MS);
+      expect(native.stopAudioEngine).toHaveBeenCalledTimes(1);
+
+      // First attempt failed — the device must still count as running and
+      // the release must be retried after another idle window.
+      vi.advanceTimersByTime(IDLE_STOP_DELAY_MS);
+      expect(native.stopAudioEngine).toHaveBeenCalledTimes(2);
+
+      // Second attempt succeeded — the next play restarts the device.
+      getAudio().playOnChannel(AudioChannel.Voice, "/again.mp3");
+      expect(native.startAudioEngine).toHaveBeenCalledTimes(2);
+    });
+
     it("destroy cancels a pending idle stop", () => {
       const { native, endCallbacks } = createServiceWithEndCallbacks();
       getAudio().playOnChannel(AudioChannel.Voice, "/msg.mp3");

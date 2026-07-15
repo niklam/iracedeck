@@ -351,9 +351,11 @@ class AudioService implements IAudioService {
 
     const ok = this.native.playOnChannel(channel, resolved, loop, this.channelVolumes[channel]);
 
-    if (ok) this.notifyPlaybackStart(channel, resolved);
+    if (!ok) return false;
 
-    return ok;
+    // False when the playback device failed to start — the queued sound
+    // has been unloaded and the play did not actually happen.
+    return this.notifyPlaybackStart(channel, resolved);
   }
 
   /**
@@ -609,18 +611,24 @@ class AudioService implements IAudioService {
    * idle stop. Called from the playback-start chokepoint so every play
    * site keeps the device state in sync. A failed start is logged and
    * left for the next play to retry — `deviceRunning` stays false.
+   *
+   * @returns true when the device is running after the call
    */
-  private ensureDeviceRunning(): void {
+  private ensureDeviceRunning(): boolean {
     this.cancelIdleStop();
 
-    if (this.deviceRunning) return;
+    if (this.deviceRunning) return true;
 
     if (this.native.startAudioEngine()) {
       this.deviceRunning = true;
       this.logger.info("Audio device started");
-    } else {
-      this.logger.error("Failed to start audio playback device");
+
+      return true;
     }
+
+    this.logger.error("Failed to start audio playback device");
+
+    return false;
   }
 
   private cancelIdleStop(): void {
@@ -650,34 +658,55 @@ class AudioService implements IAudioService {
 
       if (!this.deviceRunning || this.channelActive.some((active) => active)) return;
 
-      const stopped = this.native.stopAudioEngine();
-      this.deviceRunning = false;
-
-      if (stopped) {
+      if (this.native.stopAudioEngine()) {
+        this.deviceRunning = false;
         this.logger.info("Audio device stopped (idle)");
       } else {
-        this.logger.warn("Failed to stop idle audio playback device");
+        // The native stream may still be alive — keep `deviceRunning` set
+        // and re-arm so the release is retried while idle, instead of
+        // permanently leaving a sleep-blocking stream behind.
+        this.logger.warn("Failed to stop idle audio playback device; retrying");
+        this.maybeScheduleIdleStop();
       }
     }, IDLE_STOP_DELAY_MS);
   }
 
-  private notifyPlaybackStart(channel: AudioChannel, filePath: string): void {
-    // Single chokepoint for "a clip just started". Marking active here
-    // guarantees every play site (including the voice-sequence engine
-    // paths that go through `native.playOnChannel` directly) keeps
-    // `channelActive` in sync with reality.
+  /**
+   * Single chokepoint for "a clip just started" — every play site
+   * (including the voice-sequence engine paths that go through
+   * `native.playOnChannel` directly) funnels through here, keeping the
+   * device lifecycle and `channelActive` in sync with reality.
+   *
+   * The device is started BEFORE the channel is marked active or
+   * observers are notified: when the start fails, the queued sound is
+   * unloaded (it would otherwise blast out whenever a later play manages
+   * to start the device) and false is returned so the caller can report
+   * the play as failed. `stopChannel` also cancels an in-flight voice
+   * sequence when the failing channel is Voice, so the sequence engine
+   * can't stall waiting for an end callback that will never come.
+   *
+   * @returns true when playback is genuinely under way
+   */
+  private notifyPlaybackStart(channel: AudioChannel, filePath: string): boolean {
+    if (!this.ensureDeviceRunning()) {
+      this.stopChannel(channel);
+
+      return false;
+    }
+
     this.channelActive[channel] = true;
-    this.ensureDeviceRunning();
 
     const observer = this.playbackObserver;
 
-    if (!observer?.onStart) return;
-
-    try {
-      observer.onStart(channel, filePath);
-    } catch (err) {
-      this.logger.warn(`Playback observer onStart threw: ${err instanceof Error ? err.message : String(err)}`);
+    if (observer?.onStart) {
+      try {
+        observer.onStart(channel, filePath);
+      } catch (err) {
+        this.logger.warn(`Playback observer onStart threw: ${err instanceof Error ? err.message : String(err)}`);
+      }
     }
+
+    return true;
   }
 
   private notifyPlaybackEnd(channel: AudioChannel): void {
