@@ -20,9 +20,9 @@ Triggers the action configured in Settings.
 ### Dial (Stream Deck+)
 Placed on a dial, the action has a single rotation behavior — no dial `Setting` dropdown. Turning cycles iRacing's splits / delta display modes: clockwise taps **Next** (`splitsDeltaNext`), counter-clockwise taps **Previous** (`splitsDeltaPrevious`), scaled by tick magnitude and capped at five taps per event. Both bindings must be set. iRacing exposes no telemetry for the selected splits mode, so the touch strip shows the action identity only (a `DELTA` label) and never a live value.
 
-The press and touchscreen taps each run a configurable gesture over {Toggle Reference Car, None}, classified at `dialUp` — see [Dial settings](#dial-settings) below for the defaults. A push-and-turn (rotating while the dial is held in) cycles modes without firing the press gesture. Mirabox and Ulanzi declare no dial controllers yet (#786), so the dial surface is Elgato Stream Deck+ only.
+The press and touchscreen taps each run a configurable gesture chosen from every one-shot mode the keypad surface offers beyond Cycle itself — {Toggle Reference Car, Custom Sector Start, Custom Sector End, Set Active Reset Point, Reset to Start Point, None} — classified at `dialUp` — see [Dial settings](#dial-settings) below for the defaults. A push-and-turn (rotating while the dial is held in) cycles modes without firing the press gesture. Mirabox and Ulanzi declare no dial controllers yet (#786), so the dial surface is Elgato Stream Deck+ only.
 
-- **Communication Method (dial):** Key binding — rotation taps the `splitsDeltaNext` / `splitsDeltaPrevious` bindings; the press gesture taps `toggleUiDisplayRefCar`.
+- **Communication Method (dial):** Key binding — rotation taps the `splitsDeltaNext` / `splitsDeltaPrevious` bindings; the press / touch gestures tap the same binding key as their keypad-mode counterpart (e.g. `toggleUiDisplayRefCar`, `splitsDeltaCustomSectorStart`).
 
 ## Settings
 
@@ -58,6 +58,10 @@ The Property Inspector shows the settings for the surface the instance sits on: 
 
 #### Gesture Action Options (Press, Long Press, Tap Display, Long Touch)
 - **Toggle Reference Car** - Taps `toggleUiDisplayRefCar`
+- **Custom Sector Start** - Taps `splitsDeltaCustomSectorStart`
+- **Custom Sector End** - Taps `splitsDeltaCustomSectorEnd`
+- **Set Active Reset Point** - Taps `splitsDeltaActiveResetSet`
+- **Reset to Start Point** - Taps `splitsDeltaActiveResetRun`
 - **None** - The gesture does nothing
 
 ## Keyboard Simulation

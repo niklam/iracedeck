@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { buildTriggerDescription, DialSettings } from "./splits-delta-cycle-dial-surface.js";
+import { buildTriggerDescription, DialSettings, GESTURE_ACTIONS } from "./splits-delta-cycle-dial-surface.js";
 import { SplitsDeltaCycle } from "./splits-delta-cycle.js";
 
 const { mockTapBinding, mockIsBindingMissing, mockDualPressThreshold, globalListeners } = vi.hoisted(() => ({
@@ -95,12 +95,34 @@ function lastFeedbackBox(ctx: DialContext): string {
 }
 
 describe("splits-delta-cycle dial-surface pure helpers", () => {
+  describe("GESTURE_ACTIONS", () => {
+    it("offers every keypad one-shot mode plus none (#807 follow-up)", () => {
+      expect(GESTURE_ACTIONS).toEqual([
+        "toggle-ref-car",
+        "custom-sector-start",
+        "custom-sector-end",
+        "active-reset-set",
+        "active-reset-run",
+        "none",
+      ]);
+    });
+  });
+
   describe("buildTriggerDescription", () => {
     it("always cycles on rotate and defaults the press to Toggle Reference Car", () => {
       const desc = buildTriggerDescription(DialSettings.parse({}));
 
       expect(desc.rotate).toBe("Cycle splits / delta mode");
       expect(desc.push).toBe("Toggle Reference Car");
+    });
+
+    it("labels the new one-shot gestures matching the keypad's wording", () => {
+      const desc = buildTriggerDescription(
+        DialSettings.parse({ pressAction: "custom-sector-start", tapAction: "active-reset-run" }),
+      );
+
+      expect(desc.push).toBe("Custom Sector Start");
+      expect(desc.touch).toBe("Reset to Start Point");
     });
 
     it("carries the long-press as a (hold: …) hint", () => {
@@ -251,6 +273,31 @@ describe("SplitsDeltaCycle dial surface", () => {
       expect(mockTapBinding).toHaveBeenCalledWith("toggleUiDisplayRefCar");
     });
 
+    it("dispatches a Custom Sector Start press using the keypad's exact binding key (#807 follow-up)", async () => {
+      const ctx = dialContext("p3b");
+      const settings = dialSettings({ pressAction: "custom-sector-start" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(mockTapBinding).toHaveBeenCalledWith("splitsDeltaCustomSectorStart");
+    });
+
+    it("dispatches an Active Reset Run long press using the keypad's exact binding key (#807 follow-up)", async () => {
+      const ctx = dialContext("p3c");
+      const settings = dialSettings({ longPressAction: "active-reset-run" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(600);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(mockTapBinding).toHaveBeenCalledWith("splitsDeltaActiveResetRun");
+    });
+
     it("fires no press gesture after a push+turn", async () => {
       const ctx = dialContext("p4");
       await appear(ctx);
@@ -296,6 +343,17 @@ describe("SplitsDeltaCycle dial surface", () => {
       await action.onTouchTap(touchEvent(ctx, settings, false) as never);
 
       expect(mockTapBinding).toHaveBeenCalledWith("toggleUiDisplayRefCar");
+    });
+
+    it("dispatches a Set Active Reset Point long touch using the keypad's exact binding key (#807 follow-up)", async () => {
+      const ctx = dialContext("t2b");
+      const settings = dialSettings({ longTouchAction: "active-reset-set" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onTouchTap(touchEvent(ctx, settings, true) as never);
+
+      expect(mockTapBinding).toHaveBeenCalledWith("splitsDeltaActiveResetSet");
     });
 
     it("ignores touch taps when the touch strip is unavailable", async () => {

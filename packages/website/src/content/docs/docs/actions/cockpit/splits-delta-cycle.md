@@ -138,7 +138,7 @@ The touch strip shows a color-coded "dash box" with just a `DELTA` label — iRa
 
 #### Press and touch gestures
 
-The dial press and touchscreen taps each run a configurable gesture — **Toggle Reference Car** (taps the same `toggleUiDisplayRefCar` binding as the keypad Toggle Reference Car mode) or **None**:
+The dial press and touchscreen taps each run a configurable gesture, chosen from every one-shot mode the keypad surface offers beyond **Cycle Splits Delta** — **Toggle Reference Car**, **Custom Sector Start**, **Custom Sector End**, **Set Active Reset Point**, **Reset to Start Point** — or **None**. Each gesture taps the same key binding as its keypad-mode counterpart (e.g. **Toggle Reference Car** taps `toggleUiDisplayRefCar`, **Custom Sector Start** taps `splitsDeltaCustomSectorStart`), so nothing the keypad can do in one press is unreachable from the dial:
 
 - **Press Action** (default *Toggle Reference Car*) — a short press.
 - **Long Press** (default *None*) — a press held past the long-press threshold.

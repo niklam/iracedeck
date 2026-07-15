@@ -15,8 +15,11 @@
  * part of the strip is the #612 missing-binding warning, refreshed by the
  * owning action via `refreshAll()` on global-settings changes.
  *
- * Pressing runs a configurable gesture, defaulting to Toggle Reference Car —
- * harmless and the natural companion to mode cycling.
+ * Pressing runs a configurable gesture — defaulting to Toggle Reference Car,
+ * the natural companion to mode cycling — chosen from every one-shot mode the
+ * keypad surface offers beyond cycle itself (Toggle Reference Car, Custom
+ * Sector Start/End, Active Reset Set/Run), so nothing the keypad can do in one
+ * press is unreachable from the dial (#807 follow-up).
  */
 import {
   classifyDialRelease,
@@ -34,13 +37,18 @@ import { renderDialNameIcon } from "../../shared/dial-name-icon.js";
 
 /**
  * The global-settings binding keys the dial taps — shared verbatim with the
- * keypad surface (the `cycle` mode's Next / Previous and the reference-car
- * toggle). No new bindings are introduced.
+ * keypad surface (the `cycle` mode's Next / Previous and every one-shot mode's
+ * binding key, see `GLOBAL_KEY_NAMES` / `MODE_KEY_MAP` in splits-delta-cycle.ts).
+ * No new bindings are introduced.
  */
 export const SPLITS_DIAL_KEYS = {
   next: "splitsDeltaNext",
   previous: "splitsDeltaPrevious",
   toggleRefCar: "toggleUiDisplayRefCar",
+  customSectorStart: "splitsDeltaCustomSectorStart",
+  customSectorEnd: "splitsDeltaCustomSectorEnd",
+  activeResetSet: "splitsDeltaActiveResetSet",
+  activeResetRun: "splitsDeltaActiveResetRun",
 } as const;
 
 /**
@@ -56,9 +64,28 @@ const IDENTITY_ABBR = "DELTA";
 /** The dash box accent (border / label default) — the action's identity purple. */
 const ACCENT_COLOR = "#9b59b6";
 
-/** Gesture slots offered by the press / touch options (Toggle Reference Car or nothing). */
-export const GESTURE_ACTIONS = ["toggle-ref-car", "none"] as const;
+/**
+ * Gesture slots offered by the press / touch options — every one-shot mode the
+ * keypad surface offers beyond `cycle` itself, plus nothing (#807 follow-up).
+ */
+export const GESTURE_ACTIONS = [
+  "toggle-ref-car",
+  "custom-sector-start",
+  "custom-sector-end",
+  "active-reset-set",
+  "active-reset-run",
+  "none",
+] as const;
 export type SplitsDialGesture = (typeof GESTURE_ACTIONS)[number];
+
+/** Binding key dispatched per gesture value (`"none"` fires nothing, see `doGesture`). */
+const GESTURE_KEY_MAP: Record<Exclude<SplitsDialGesture, "none">, string> = {
+  "toggle-ref-car": SPLITS_DIAL_KEYS.toggleRefCar,
+  "custom-sector-start": SPLITS_DIAL_KEYS.customSectorStart,
+  "custom-sector-end": SPLITS_DIAL_KEYS.customSectorEnd,
+  "active-reset-set": SPLITS_DIAL_KEYS.activeResetSet,
+  "active-reset-run": SPLITS_DIAL_KEYS.activeResetRun,
+};
 
 export const DialSettings = z
   .object({
@@ -76,11 +103,23 @@ export const DialSettings = z
 
 export type DialSettings = z.infer<typeof DialSettings>;
 
-/** Human-readable label for a gesture slot (for the encoder trigger description). */
+/**
+ * Human-readable label for a gesture slot (for the encoder trigger
+ * description). Wording matches the keypad PI's Mode dropdown labels verbatim
+ * (see splits-delta-cycle.ejs / docs/plugins/core/actions/splits-delta-cycle.md).
+ */
 function gestureLabel(action: SplitsDialGesture): string | undefined {
   switch (action) {
     case "toggle-ref-car":
       return "Toggle Reference Car";
+    case "custom-sector-start":
+      return "Custom Sector Start";
+    case "custom-sector-end":
+      return "Custom Sector End";
+    case "active-reset-set":
+      return "Set Active Reset Point";
+    case "active-reset-run":
+      return "Reset to Start Point";
     case "none":
       return undefined;
   }
@@ -303,16 +342,17 @@ export class SplitsDeltaCycleDialSurface {
   private async doGesture(action: SplitsDialGesture): Promise<void> {
     if (action === "none") return;
 
-    if (action === "toggle-ref-car") {
-      this.host.logger.info("Splits & Reference dial toggled reference car");
-      await this.host.tapBinding(SPLITS_DIAL_KEYS.toggleRefCar);
-    }
+    const key = GESTURE_KEY_MAP[action];
+
+    this.host.logger.info(`Splits & Reference dial gesture: ${action}`);
+    await this.host.tapBinding(key);
   }
 
   /**
    * The dial's primary function is rotation, which needs BOTH the Next and
-   * Previous bindings (#612); the reference-car press gesture is secondary and
-   * never gates the strip warning.
+   * Previous bindings (#612); the press / touch gesture slots are secondary
+   * and never gate the strip warning, regardless of which one-shot mode is
+   * configured.
    */
   private computeBindingMissing(): boolean {
     return this.host.isBindingMissing([SPLITS_DIAL_KEYS.next, SPLITS_DIAL_KEYS.previous]);

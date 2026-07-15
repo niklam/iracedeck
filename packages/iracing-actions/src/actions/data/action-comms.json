@@ -184,6 +184,34 @@
         "scope": "global",
         "key": "toggleUiDisplayRefCar"
       }
+    },
+    "custom-sector-start": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "splitsDeltaCustomSectorStart"
+      }
+    },
+    "custom-sector-end": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "splitsDeltaCustomSectorEnd"
+      }
+    },
+    "active-reset-set": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "splitsDeltaActiveResetSet"
+      }
+    },
+    "active-reset-run": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "splitsDeltaActiveResetRun"
+      }
     }
   },
   "look-direction": {
