@@ -301,14 +301,27 @@ export class CockpitMiscDialSurface {
       ctx.rotatedWhilePressed = true;
     }
 
+    if (ticks === 0) return;
+
     const direction: CockpitMiscDirection = ticks > 0 ? "increase" : "decrease";
+    const key = rotationKey(ctx.dial.setting, direction);
+
+    if (!key) {
+      this.host.logger.warn(`No global key mapping for ${ctx.dial.setting} ${direction}`);
+
+      return;
+    }
+
     // Scale by |ticks|, capped so a fast spin can't queue a long tap burst
     // (relative dash-page bindings apply once per press — there is no
     // absolute-page command to scale instead).
     const taps = Math.min(Math.abs(ticks), MAX_TAPS_PER_EVENT);
 
+    this.host.logger.info(`Cockpit misc dial rotated ${direction}`);
+    this.host.logger.debug(`${ctx.dial.setting} ${direction} ×${taps} (ticks=${ticks})`);
+
     for (let i = 0; i < taps; i++) {
-      await this.dispatchRotation(ctx, direction);
+      await this.host.tapBinding(key);
     }
   }
 
@@ -421,21 +434,6 @@ export class CockpitMiscDialSurface {
     }
 
     return ctx;
-  }
-
-  /** Taps the shared Cockpit Misc increase/decrease binding for the bound dash page. */
-  private async dispatchRotation(ctx: CockpitMiscDialContext, direction: CockpitMiscDirection): Promise<void> {
-    const key = rotationKey(ctx.dial.setting, direction);
-
-    if (!key) {
-      this.host.logger.warn(`No global key mapping for ${ctx.dial.setting} ${direction}`);
-
-      return;
-    }
-
-    this.host.logger.info("Cockpit misc dial rotated");
-    this.host.logger.debug(`${ctx.dial.setting} ${direction}`);
-    await this.host.tapBinding(key);
   }
 
   /** Runs a configured press / touch gesture. */
