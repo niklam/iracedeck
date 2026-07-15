@@ -15,8 +15,14 @@
  * emitted under the reserved `_meta` key inside each action's map.
  *
  * Display-only / internal actions (session-info, telemetry-display, pit-crew,
- * camera-cycle, camera-focus) are intentionally absent: they issue no iRacing
- * command, so they get no status line and no icon warning.
+ * camera-cycle) are intentionally absent: they issue no iRacing command, so they
+ * get no status line and no icon warning. Camera Controls' KEYPAD surface is
+ * likewise absent (every camera mode is an SDK command, nothing to configure);
+ * its DIAL surface still carries an all-API `camera-focus-dial` entry (#803) —
+ * the dial PI dropped its status line as redundant (every dial mode is `api`,
+ * so the line never said anything useful), but the entry stays as this file's
+ * per-mode communication-method record and still feeds the generated
+ * `action-comms.json`.
  */
 import {
   type ActionCommMap,
@@ -196,6 +202,32 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     "load-track-camera": keybind("camCtrlLoadTrackCamera"),
     "save-car-camera": keybind("camCtrlSaveCarCamera"),
     "load-car-camera": keybind("camCtrlLoadCarCamera"),
+  }),
+
+  // The dial surface of Camera Controls (#803). Rotation cycles the camera or
+  // the focused car and the press gestures center on the player's car / switch
+  // camera — every one an iRacing SDK camera command (`getCommands().camera.*`),
+  // so all modes are `api`. The dial reuses the keypad's own cycle/focus
+  // dispatch (no key bindings, nothing to configure); the map documents that
+  // per-mode communication method and feeds the generated `action-comms.json`
+  // (the dial PI's status line under its Mode selector was dropped as
+  // redundant since every mode reads the same "iRacing API" — see the header
+  // note). _meta.modeSetting = "dial.mode". The keypad surface has no entry
+  // (its modes are equally binding-free — see the header note).
+  "camera-focus-dial": entry("dial.mode", {
+    camera: api,
+    "sub-camera": api,
+    "car-number": api,
+    "race-position": api,
+    driving: api,
+    // Gesture-slot values (dial.pressAction / .longPressAction / .tapAction /
+    // .longTouchAction) — each an SDK camera command. "none" is omitted (it
+    // issues no command). Kept complete so the catalog documents every gesture.
+    "focus-my-car": api,
+    "change-camera": api,
+    "focus-on-leader": api,
+    "focus-on-incident": api,
+    "focus-on-most-exciting": api,
   }),
 
   "cockpit-misc": entry("control", {

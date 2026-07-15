@@ -769,6 +769,41 @@
       }
     }
   },
+  "camera-focus-dial": {
+    "_meta": {
+      "modeSetting": "dial.mode"
+    },
+    "camera": {
+      "method": "api"
+    },
+    "sub-camera": {
+      "method": "api"
+    },
+    "car-number": {
+      "method": "api"
+    },
+    "race-position": {
+      "method": "api"
+    },
+    "driving": {
+      "method": "api"
+    },
+    "focus-my-car": {
+      "method": "api"
+    },
+    "change-camera": {
+      "method": "api"
+    },
+    "focus-on-leader": {
+      "method": "api"
+    },
+    "focus-on-incident": {
+      "method": "api"
+    },
+    "focus-on-most-exciting": {
+      "method": "api"
+    }
+  },
   "cockpit-misc": {
     "_meta": {
       "modeSetting": "control"
