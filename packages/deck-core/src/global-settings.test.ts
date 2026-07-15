@@ -494,6 +494,42 @@ describe("setup-warning patterns (issue #625)", () => {
   });
 });
 
+describe("fuelCalloutMarginLaps (issue #838)", () => {
+  it("defaults to 0.3 when not specified", () => {
+    const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
+    expect(parsed.fuelCalloutMarginLaps).toBe(0.3);
+  });
+
+  it("accepts the bounds and coerces a numeric string from the Property Inspector slider", () => {
+    expect(
+      (GlobalSettingsSchema.parse({ fuelCalloutMarginLaps: 0 }) as Record<string, unknown>).fuelCalloutMarginLaps,
+    ).toBe(0);
+    expect(
+      (GlobalSettingsSchema.parse({ fuelCalloutMarginLaps: 3 }) as Record<string, unknown>).fuelCalloutMarginLaps,
+    ).toBe(3);
+    expect(
+      (GlobalSettingsSchema.parse({ fuelCalloutMarginLaps: "0.7" }) as Record<string, unknown>).fuelCalloutMarginLaps,
+    ).toBe(0.7);
+  });
+
+  it("normalizes empty-ish persisted values to the default instead of coercing them to 0", () => {
+    // z.coerce.number() alone would turn null / "" / whitespace into 0 and
+    // silently disable the safety margin.
+    for (const value of [null, "", "  ", "\t\n"]) {
+      const parsed = GlobalSettingsSchema.parse({ fuelCalloutMarginLaps: value }) as Record<string, unknown>;
+      expect(parsed.fuelCalloutMarginLaps).toBe(0.3);
+    }
+  });
+
+  it("falls back to the default on malformed or out-of-range values without throwing", () => {
+    for (const value of ["abc", -1, 99, NaN]) {
+      expect(() => GlobalSettingsSchema.parse({ fuelCalloutMarginLaps: value })).not.toThrow();
+      const parsed = GlobalSettingsSchema.parse({ fuelCalloutMarginLaps: value }) as Record<string, unknown>;
+      expect(parsed.fuelCalloutMarginLaps).toBe(0.3);
+    }
+  });
+});
+
 describe("dualPressThresholdMs (issue #540)", () => {
   it("defaults to 500 when not specified", () => {
     const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;

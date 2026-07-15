@@ -751,11 +751,17 @@ export const GlobalSettingsSchema = z
      * #838). The spoken number is deliberately conservative relative to
      * Session Info's Laps to Empty display. Range 0.0–3.0 in 0.1 steps,
      * default 0.3. Must match `FUEL_CALLOUT_DEFAULT_MARGIN_LAPS` (and the
-     * min/max constants) in `@iracedeck/sim-events-iracing`. The `.catch`
-     * keeps a malformed persisted value from aborting the whole settings
-     * parse (the `changelogNotification` precedent).
+     * min/max constants) in `@iracedeck/sim-events-iracing`. The preprocess
+     * normalizes empty-ish persisted values (`null`, `""`, whitespace) to
+     * the default — `z.coerce.number()` would otherwise turn them into `0`
+     * and silently disable the margin — and the `.catch` keeps any other
+     * malformed value from aborting the whole settings parse (the
+     * `changelogNotification` precedent).
      */
-    fuelCalloutMarginLaps: z.coerce.number().min(0).max(3).default(0.3).catch(0.3),
+    fuelCalloutMarginLaps: z.preprocess(
+      (val) => (val == null || (typeof val === "string" && val.trim() === "") ? undefined : val),
+      z.coerce.number().min(0).max(3).default(0.3).catch(0.3),
+    ),
     /**
      * Setup-name mismatch warning opt-in (issue #625). When on, the Race
      * Engineer appends a "double-check your setup" nudge after the session-start
