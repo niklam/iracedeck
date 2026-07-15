@@ -197,9 +197,26 @@ describe("camera dial-surface pure helpers", () => {
       expect(computeRacePositionTarget(1, order, "next")?.targetPosition).toBe(1); // P3 next → P1
     });
 
-    it("returns null with no order or an unclassified focused car", () => {
+    it("returns null with no order (or an out-of-range focused car)", () => {
       expect(computeRacePositionTarget(3, null, "next")).toBeNull();
-      expect(computeRacePositionTarget(0, order, "next")).toBeNull(); // order[0] === 0
+      expect(computeRacePositionTarget(undefined, order, "next")).toBeNull();
+      expect(computeRacePositionTarget(-1, order, "next")).toBeNull();
+    });
+
+    it("recovers into the running order when the focused car is unclassified (pace/safety car)", () => {
+      // order[0] === 0 (unclassified — pace car / safety car / car not in the
+      // order). A detent must still act: next → the leader (P1), previous →
+      // last place (maxPosition). No currentPosition, so no position badge.
+      expect(computeRacePositionTarget(0, order, "next")).toEqual({
+        currentPosition: null,
+        targetPosition: 1,
+        maxPosition: 3,
+      });
+      expect(computeRacePositionTarget(0, order, "previous")).toEqual({
+        currentPosition: null,
+        targetPosition: 3,
+        maxPosition: 3,
+      });
     });
   });
 
@@ -363,6 +380,21 @@ describe("CameraDialSurface", () => {
 
       expect(host.cycle).toHaveBeenCalledTimes(1);
     });
+
+    it("still dispatches sub-camera / camera cycling when the pace car (unclassified) has focus — keypad parity (#803)", () => {
+      // The pace car is focused (CamCarIdx 0, no classified race position). Cycle
+      // modes must dispatch under EXACTLY the keypad's conditions — the dial adds
+      // no pace-car guard of its own — so `host.cycle` (the keypad's executeCycle)
+      // still fires. Whatever the SDK then does with the pace car is shared with
+      // the keypad; it is not a dial-side stall.
+      const host = makeHost({ getTelemetry: vi.fn(() => ({ CamCarIdx: 0, CamGroupNumber: 9 }) as never) });
+      const surface = new CameraDialSurface(host as never);
+      surface.rotate(dialContext("d3") as never, dial({ mode: "sub-camera" }), 1, false);
+      surface.rotate(dialContext("d3") as never, dial({ mode: "camera" }), 1, false);
+
+      expect(host.cycle).toHaveBeenNthCalledWith(1, "cycle-sub-camera", "next");
+      expect(host.cycle).toHaveBeenNthCalledWith(2, "cycle-camera", "next");
+    });
   });
 
   describe("rotation → car-number mode", () => {
@@ -384,6 +416,21 @@ describe("CameraDialSurface", () => {
       surface.rotate(dialContext("c2") as never, dial({ mode: "car-number" }), 1, false);
 
       expect(host.cycle).not.toHaveBeenCalled();
+    });
+
+    it("recovers to an end of the field when the pace car (not in the number list) has focus (#803)", () => {
+      // getAllCarNumbers(…, true, true) EXCLUDES the pace car, so the focused
+      // pace-car index isn't in the list — car-number mode already re-enters at
+      // the first (next) / last (previous) car rather than stalling.
+      const host = makeHost({ getTelemetry: vi.fn(() => ({ CamCarIdx: 0, CamGroupNumber: 9 }) as never) });
+      const surface = new CameraDialSurface(host as never);
+      surface.rotate(dialContext("c3") as never, dial({ mode: "car-number" }), 1, false);
+
+      expect(host.focusCarNumber).toHaveBeenCalledWith(3); // first car by number (#3)
+
+      surface.rotate(dialContext("c3") as never, dial({ mode: "car-number" }), -1, false);
+
+      expect(host.focusCarNumber).toHaveBeenLastCalledWith(99); // last car by number (#99)
     });
   });
 
@@ -457,6 +504,32 @@ describe("CameraDialSurface", () => {
       surface.rotate(dialContext("r4") as never, dial({ mode: "race-position" }), 1, false);
 
       expect(host.focusCarNumber).not.toHaveBeenCalled();
+    });
+
+    it("recovers to the leader (P1) on a next detent when the focused car has no position (pace car, #803)", () => {
+      // order: carIdx0 = P0 (unclassified — the focused PACE car); carIdx2 = P1
+      // (leader), carIdx1 = P3 (last). raw numbers: leader carIdx2 → 11.
+      mockCarNumberRawByIdx.value = { 2: 11, 1: 22 };
+      const host = makeHost({
+        getRacePositions: vi.fn(() => [0, 3, 1, 2]),
+        getTelemetry: vi.fn(() => ({ CamCarIdx: 0, CamGroupNumber: 9 }) as never),
+      });
+      const surface = new CameraDialSurface(host as never);
+      surface.rotate(dialContext("r5") as never, dial({ mode: "race-position" }), 1, false);
+
+      expect(host.focusCarNumber).toHaveBeenCalledWith(11); // leader (P1) car's raw number
+    });
+
+    it("recovers to last place on a previous detent when the focused car has no position (pace car, #803)", () => {
+      mockCarNumberRawByIdx.value = { 2: 11, 1: 22 };
+      const host = makeHost({
+        getRacePositions: vi.fn(() => [0, 3, 1, 2]),
+        getTelemetry: vi.fn(() => ({ CamCarIdx: 0, CamGroupNumber: 9 }) as never),
+      });
+      const surface = new CameraDialSurface(host as never);
+      surface.rotate(dialContext("r6") as never, dial({ mode: "race-position" }), -1, false);
+
+      expect(host.focusCarNumber).toHaveBeenCalledWith(22); // last-place (maxPosition) car's raw number
     });
   });
 
@@ -562,6 +635,27 @@ describe("CameraDialSurface", () => {
 
       expect(decoded).toContain(">P2<"); // focused car is P2
       expect(decoded).toContain(">#42<"); // focused car number
+    });
+
+    it("previews the recovery targets (leader / last) with no position badge when the pace car has focus (#803)", async () => {
+      // Focused pace car = carIdx0 (P0, unclassified). Leader (P1) = carIdx2,
+      // last (P3) = carIdx1. Preview must show the recovery neighbours the
+      // detents will actually focus, and NO Pn badge for the unclassified car.
+      mockCarNumberByIdx.value = { 0: "0", 2: "1", 1: "99" };
+      const host = makeHost({
+        getRacePositions: vi.fn(() => [0, 3, 1, 2]),
+        getTelemetry: vi.fn(() => ({ CamCarIdx: 0, CamGroupNumber: 9 }) as never),
+      });
+      const surface = new CameraDialSurface(host as never);
+      const ctx = dialContext("f3b");
+      await surface.willAppear(ctx as never, dial({ mode: "race-position" }));
+
+      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+
+      expect(decoded).toContain(">#0<"); // focused pace car
+      expect(decoded).toContain(">#1<"); // next detent → leader (P1)
+      expect(decoded).toContain(">#99<"); // previous detent → last place
+      expect(decoded).not.toContain(">P"); // no position badge for the unclassified car
     });
 
     it("keeps the plain readout for the sub-camera mode", async () => {

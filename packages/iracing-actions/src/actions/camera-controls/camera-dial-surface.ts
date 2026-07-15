@@ -22,7 +22,10 @@
  *     different orders (canonical vs. official), and those orders deliberately
  *     diverge in tow/finish/freeze cases — so resolving the car number from the
  *     same canonical-first order the preview uses keeps the camera landing on
- *     the previewed car (issue #803 rework review).
+ *     the previewed car (issue #803 rework review). When the focused car has no
+ *     classified position (the pace / safety car, or a car missing from the
+ *     order), a detent still acts by re-entering the running order at its end —
+ *     next → the leader, previous → last place — rather than stalling (#803).
  *
  * Everything the dial does is an iRacing SDK camera command, so — unlike the
  * Setup dials — the surface taps no key bindings and never shows a
@@ -258,28 +261,40 @@ export function computeCarNumberTarget(
  *
  * Compute the target race position for a rotation. `order` is a per-car,
  * 1-based rank array indexed by `carIdx` (the canonical live order, or the
- * `CarIdxPosition` fallback the caller supplies) — `0` = not classified. Returns
- * the focused car's current position, the wrapped target one detent away, and
- * the field size, or `null` when the focused car has no position.
+ * `CarIdxPosition` fallback the caller supplies) — `0` = not classified.
+ *
+ * When the focused car IS classified, returns its current position, the wrapped
+ * target one detent away, and the field size. When the focused car is NOT
+ * classified (the pace / safety car, or a car missing from the order) but the
+ * field is non-empty, a detent still acts by re-entering the running order at
+ * its natural end — clockwise (next) → the leader (P1), counter-clockwise
+ * (previous) → last place (issue #803, so the pace car in focus doesn't stall
+ * cycling). `currentPosition` is then `null` (no position badge). Returns `null`
+ * only when there is no usable order at all (no order, or an empty field).
  */
 export function computeRacePositionTarget(
   camCarIdx: number | undefined,
   order: number[] | null,
   direction: Direction,
-): { currentPosition: number; targetPosition: number; maxPosition: number } | null {
+): { currentPosition: number | null; targetPosition: number; maxPosition: number } | null {
   if (!order || camCarIdx === undefined || camCarIdx < 0) return null;
-
-  const currentPosition = order[camCarIdx];
-
-  if (typeof currentPosition !== "number" || currentPosition <= 0) return null;
 
   const maxPosition = order.reduce((m, p) => (typeof p === "number" && p > m ? p : m), 0);
 
   if (maxPosition <= 0) return null;
 
   const dir = direction === "next" ? 1 : -1;
+  const currentPosition = order[camCarIdx];
 
-  return { currentPosition, targetPosition: wrapPosition(currentPosition, dir, maxPosition), maxPosition };
+  // Classified focused car: step one position from it, wrapping the field.
+  if (typeof currentPosition === "number" && currentPosition > 0) {
+    return { currentPosition, targetPosition: wrapPosition(currentPosition, dir, maxPosition), maxPosition };
+  }
+
+  // Unclassified focused car (pace / safety car, or a car not in the order):
+  // re-enter the order at its natural end so a detent isn't a no-op. next → P1,
+  // previous → last place. No currentPosition → the carousel omits the badge.
+  return { currentPosition: null, targetPosition: dir === 1 ? 1 : maxPosition, maxPosition };
 }
 
 /** Human-readable label for a gesture slot (for the trigger description). */
@@ -849,17 +864,20 @@ export class CameraDialSurface {
     }
 
     const order = this.resolveOrder(telemetry);
-    const target = computeRacePositionTarget(camCarIdx, order, "next");
+    // Preview the SAME per-direction targets the rotation will focus (including
+    // the pace-car recovery: next → leader, previous → last), so the carousel
+    // never previews a different car than a detent lands on.
+    const nextTarget = computeRacePositionTarget(camCarIdx, order, "next");
+    const prevTarget = computeRacePositionTarget(camCarIdx, order, "previous");
 
-    if (!target || !order) return { center, prev: null, next: null, position: null };
-
-    const prevPos = wrapPosition(target.currentPosition, -1, target.maxPosition);
+    if (!nextTarget || !prevTarget || !order) return { center, prev: null, next: null, position: null };
 
     return {
       center,
-      prev: carNumberAtPosition(order, sessionInfo, prevPos),
-      next: carNumberAtPosition(order, sessionInfo, target.targetPosition),
-      position: target.currentPosition,
+      prev: carNumberAtPosition(order, sessionInfo, prevTarget.targetPosition),
+      next: carNumberAtPosition(order, sessionInfo, nextTarget.targetPosition),
+      // null for an unclassified focused car → no position badge.
+      position: nextTarget.currentPosition,
     };
   }
 
