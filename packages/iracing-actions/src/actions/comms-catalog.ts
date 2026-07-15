@@ -101,6 +101,21 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     previous: keybind("blackBoxCyclePrevious"),
   }),
 
+  // The dial surface of Black Box Selector (#808). Rotation always cycles — there
+  // is no rotation-setting selector — so it is a single fixed mode the PI selects
+  // via `default-mode="cycle"` (there is no `dial.rotation` control to read;
+  // `_meta.modeSetting` names a setting that never exists in the DOM). The
+  // "cycle" descriptor is the next/previous key PAIR (warn if either is unset).
+  // The press gesture `open-selected-box` opens the box chosen by `dial.pressBox`,
+  // reusing the keypad Direct mode's per-box keys via the keyBy descriptor (the
+  // audio-controls `mute-unmute` pattern). Every dial path is keybind-backed —
+  // black-box selection has no SDK support. A separate entry from the keypad map:
+  // the keypad `next`/`previous` are single keys, the dial rotation needs both.
+  "black-box-selector-dial": entry("dial.rotation", {
+    cycle: pair("blackBoxCycleNext", "blackBoxCyclePrevious"),
+    "open-selected-box": keybindBy("dial.pressBox", BLACK_BOX_GLOBAL_KEYS),
+  }),
+
   "splits-delta-cycle": entry("mode", {
     cycle: keybindBy("direction", { next: "splitsDeltaNext", previous: "splitsDeltaPrevious" }),
     "toggle-ref-car": keybind("toggleUiDisplayRefCar"),

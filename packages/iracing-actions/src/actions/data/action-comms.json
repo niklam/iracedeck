@@ -111,6 +111,43 @@
       }
     }
   },
+  "black-box-selector-dial": {
+    "_meta": {
+      "modeSetting": "dial.rotation"
+    },
+    "cycle": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "blackBoxCycleNext",
+          "blackBoxCyclePrevious"
+        ]
+      }
+    },
+    "open-selected-box": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "dial.pressBox",
+          "map": {
+            "lap-timing": "blackBoxLapTiming",
+            "standings": "blackBoxStandings",
+            "relative": "blackBoxRelative",
+            "fuel": "blackBoxFuel",
+            "tires": "blackBoxTires",
+            "tire-info": "blackBoxTireInfo",
+            "pit-stop": "blackBoxPitStop",
+            "in-car": "blackBoxInCar",
+            "mirror": "blackBoxMirror",
+            "radio": "blackBoxRadio",
+            "weather": "blackBoxWeather"
+          }
+        }
+      }
+    }
+  },
   "splits-delta-cycle": {
     "_meta": {
       "modeSetting": "mode"

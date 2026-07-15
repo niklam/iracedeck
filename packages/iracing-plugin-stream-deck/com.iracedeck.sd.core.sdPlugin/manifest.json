@@ -51,11 +51,21 @@
       "Name": "Black Box Selector",
       "UUID": "com.iracedeck.sd.core.black-box-selector",
       "Icon": "imgs/actions/black-box-selector/icon",
-      "Tooltip": "Cycle through or select iRacing black boxes",
+      "Tooltip": "Cycle through or select iRacing black boxes; on a dial: turn to step through the black boxes, press to open a chosen box",
       "PropertyInspectorPath": "ui/black-box-selector.html",
       "Controllers": [
-        "Keypad"
+        "Keypad",
+        "Encoder"
       ],
+      "Encoder": {
+        "Icon": "imgs/actions/black-box-selector/dial",
+        "layout": "layouts/black-box-selector.json",
+        "TriggerDescription": {
+          "Rotate": "Cycle black boxes",
+          "Push": "Configured action",
+          "Touch": "Configured action"
+        }
+      },
       "States": [
         {
           "Image": "imgs/actions/black-box-selector/key",

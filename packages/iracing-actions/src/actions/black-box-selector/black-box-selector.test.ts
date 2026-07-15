@@ -99,6 +99,13 @@ vi.mock("@iracedeck/deck-core", () => ({
   getKeyboard: vi.fn(() => ({
     sendKeyCombination: vi.fn().mockResolvedValue(true),
   })),
+  // Dial surface (imported transitively) needs these at construct / render time.
+  onGlobalSettingsChange: vi.fn(() => vi.fn()),
+  applyBindingWarning: vi.fn((content: string) => `${content}<binding-warning/>`),
+  escapeXml: vi.fn((s: string) => s),
+  svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
+  classifyDialRelease: vi.fn(() => "short"),
+  getDualPressThresholdMs: vi.fn(() => 500),
   LogLevel: { Info: 2 },
   parseKeyBinding: vi.fn(),
   resolveIconColors: vi.fn((_svg: unknown, _global: unknown, _overrides: unknown) => ({})),
@@ -260,7 +267,13 @@ describe("BlackBoxSelector", () => {
 
     function fakeEvent(actionId: string, settings: Record<string, unknown>) {
       return {
-        action: { id: actionId, setTitle: vi.fn(), setImage: vi.fn(), isKey: vi.fn().mockReturnValue(true) },
+        action: {
+          id: actionId,
+          setTitle: vi.fn(),
+          setImage: vi.fn(),
+          isKey: vi.fn().mockReturnValue(true),
+          isDial: vi.fn().mockReturnValue(false),
+        },
         payload: { settings },
       };
     }
