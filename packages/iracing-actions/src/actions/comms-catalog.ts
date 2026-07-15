@@ -217,6 +217,18 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     "in-lap-mode": keybind("cockpitMiscInLapMode"),
   }),
 
+  // The dial surface of the Cockpit Misc action (#805). Rotation cycles a
+  // dashboard page via BOTH the increase AND decrease keys (`pair` — the dial
+  // has no `direction` setting, unlike the keypad map above); the press gesture
+  // can toggle wipers or in-lap mode. `ffb-max-force` is intentionally absent as
+  // a rotation setting (FFB rotation belongs to the Force Feedback dial).
+  "cockpit-misc-dial": entry("dial.setting", {
+    "dash-page-1": pair("cockpitMiscDashPage1Increase", "cockpitMiscDashPage1Decrease"),
+    "dash-page-2": pair("cockpitMiscDashPage2Increase", "cockpitMiscDashPage2Decrease"),
+    "toggle-wipers": keybind("cockpitMiscToggleWipers"),
+    "in-lap-mode": keybind("cockpitMiscInLapMode"),
+  }),
+
   "force-feedback": entry("mode", {
     "auto-compute-ffb-force": keybind("forceFeedbackAutoCompute"),
     "ffb-force": keybindBy("direction", {

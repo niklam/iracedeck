@@ -734,6 +734,12 @@ export interface TelemetryData {
   dcMGUKDeployMode?: number;
   dcMGUKRegenGain?: number;
   dcMGUKDeployFixed?: number;
+  // In-car dash page selectors — the active page on each dashboard display, surfaced by
+  // Cockpit Misc's dial surface (issue #805). iRacing only exposes them on cars whose
+  // cockpit has dash pages, so field *presence* is the capability signal (a car with no
+  // dash pages shows `---`). Optional and scalar; the parser picks them up automatically.
+  dcDashPage?: number;
+  dcDashPage2?: number;
   // Capability markers — iRacing exposes these only on cars that have the control, so
   // field *presence* (not value) signals the capability. See iracing-sdk's
   // telemetry-features.ts (hasPitLimiter/hasVisor/hasWipers). Visor and wipers are

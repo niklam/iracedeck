@@ -6,46 +6,124 @@
 	<body>
 		<%- include('section-header', { title: 'Action Settings' }) %>
 
-		<sdpi-item label="Control">
-			<sdpi-select id="control-select" setting="control" default="toggle-wipers">
-				<option value="toggle-wipers">Toggle Wipers</option>
-				<option value="trigger-wipers">Trigger Wipers</option>
-				<option value="ffb-max-force" hidden>FFB Max Force</option>
-				<option value="report-latency">Report Latency</option>
-				<option value="dash-page-1">Dash Page 1</option>
-				<option value="dash-page-2">Dash Page 2</option>
-				<option value="in-lap-mode">In Lap Mode</option>
-			</sdpi-select>
-		</sdpi-item>
-
 		<% var __comms = require('./data/action-comms.json')['cockpit-misc']; %>
-		<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
+		<% var __dialComms = require('./data/action-comms.json')['cockpit-misc-dial']; %>
+		<%# Two comms maps for one action (#805): the keypad map is direction-keyed
+		    (`keybindBy`) while the dial rotation map requires BOTH keys (`pair`) — the
+		    same dash-page names carry different descriptors per surface, so they can't
+		    share one map. %>
 
-		<sdpi-item label="Direction" id="direction-item">
-			<sdpi-select setting="direction" default="increase">
-				<option value="increase">Increase</option>
-				<option value="decrease">Decrease</option>
-			</sdpi-select>
-		</sdpi-item>
+		<!-- Keypad settings — hidden when this instance is a dial (#805). -->
+		<div id="keypad-settings">
+			<sdpi-item label="Control">
+				<sdpi-select id="control-select" setting="control" default="toggle-wipers">
+					<option value="toggle-wipers">Toggle Wipers</option>
+					<option value="trigger-wipers">Trigger Wipers</option>
+					<option value="ffb-max-force" hidden>FFB Max Force</option>
+					<option value="report-latency">Report Latency</option>
+					<option value="dash-page-1">Dash Page 1</option>
+					<option value="dash-page-2">Dash Page 2</option>
+					<option value="in-lap-mode">In Lap Mode</option>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
 
-		<%- include('title-overrides') %>
+			<sdpi-item label="Direction" id="direction-item">
+				<sdpi-select setting="direction" default="increase">
+					<option value="increase">Increase</option>
+					<option value="decrease">Decrease</option>
+				</sdpi-select>
+			</sdpi-item>
+		</div>
 
-		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color', 'graphic2Color'], defaults: require('./data/icon-defaults.json')['cockpit-misc'] }) %>
-		<%- include('border-overrides', { defaults: require('./data/icon-defaults.json')['cockpit-misc'] }) %>
-		<%- include('graphic-overrides') %>
-		<%- include('common-settings') %>
+		<!-- Dial settings — shown only when this instance is a dial (#805). -->
+		<div id="dial-settings" class="hidden">
+			<sdpi-item label="Setting">
+				<sdpi-select setting="dial.setting" default="dash-page-1">
+					<option value="dash-page-1">Dash Page 1</option>
+					<option value="dash-page-2">Dash Page 2</option>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="dial.setting" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+			<% if (locals.platform?.features?.dialFeedback !== false) { %>
+			<div class="ird-supporting-text">
+				Turn the dial to cycle the selected dashboard page; the touch strip shows
+				the live page number. Both the increase and decrease key bindings must be
+				set below.
+			</div>
+			<% } else { %>
+			<div class="ird-supporting-text">
+				Turn the knob to cycle the selected dashboard page. Both the increase and
+				decrease key bindings must be set below.
+			</div>
+			<% } %>
+
+			<sdpi-item label="Press Action">
+				<sdpi-select setting="dial.pressAction" default="none">
+					<option value="none">None</option>
+					<option value="toggle-wipers">Toggle Wipers</option>
+					<option value="in-lap-mode">In-Lap Mode</option>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="dial.pressAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+
+			<sdpi-item label="Long Press">
+				<sdpi-select setting="dial.longPressAction" default="none">
+					<option value="none">None</option>
+					<option value="toggle-wipers">Toggle Wipers</option>
+					<option value="in-lap-mode">In-Lap Mode</option>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="dial.longPressAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+
+			<% if (locals.platform?.features?.dialFeedback !== false) { %>
+			<sdpi-item label="Tap Display">
+				<sdpi-select setting="dial.tapAction" default="none">
+					<option value="none">None</option>
+					<option value="toggle-wipers">Toggle Wipers</option>
+					<option value="in-lap-mode">In-Lap Mode</option>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="dial.tapAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+
+			<sdpi-item label="Long Touch">
+				<sdpi-select setting="dial.longTouchAction" default="none">
+					<option value="none">None</option>
+					<option value="toggle-wipers">Toggle Wipers</option>
+					<option value="in-lap-mode">In-Lap Mode</option>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="dial.longTouchAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+
+			<%- include('dial-appearance') %>
+			<% } %>
+		</div>
+
+		<!-- Key-icon appearance — keypad only (a dial has no key icon). -->
+		<div id="keypad-appearance">
+			<%- include('title-overrides') %>
+
+			<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color', 'graphic2Color'], defaults: require('./data/icon-defaults.json')['cockpit-misc'] }) %>
+			<%- include('border-overrides', { defaults: require('./data/icon-defaults.json')['cockpit-misc'] }) %>
+			<%- include('graphic-overrides') %>
+			<%- include('common-settings') %>
+		</div>
 
 		<%- include('section-header', { title: 'Global Settings' }) %>
 
+		<%# Every cockpit mode on both surfaces is a key binding — always show them. %>
 		<%- include('global-key-bindings', {
 			keyBindings: require('./data/key-bindings.json').cockpitMisc
 		}) %>
 
-		<%- include('global-title-defaults') %>
-		<%- include('global-color-defaults') %>
-		<%- include('global-border-defaults') %>
-		<%- include('global-graphic-defaults') %>
-		<%- include('global-flag-flash') %>
+		<div id="keypad-global-appearance">
+			<%- include('global-title-defaults') %>
+			<%- include('global-color-defaults') %>
+			<%- include('global-border-defaults') %>
+			<%- include('global-graphic-defaults') %>
+			<%- include('global-flag-flash') %>
+		</div>
+
 		<%- include('global-common-settings') %>
 
 		<script>
@@ -59,9 +137,33 @@
 				directionItem.classList.toggle("hidden", !DIRECTIONAL_CONTROLS.has(control));
 			}
 
+			// Which surface this instance sits on: the PI registration's
+			// actionInfo.payload.controller ("Keypad" | "Encoder"; the Mirabox host
+			// may report "Knob"). Anything unknown or unavailable falls back to the
+			// keypad view (#805).
+			async function resolveController() {
+				try {
+					const client = window.SDPIComponents && window.SDPIComponents.streamDeckClient;
+					const info = client && (await client.getConnectionInfo());
+					const controller = info && info.actionInfo && info.actionInfo.payload && info.actionInfo.payload.controller;
+					return controller === "Encoder" || controller === "Knob" ? "Encoder" : "Keypad";
+				} catch (err) {
+					return "Keypad";
+				}
+			}
+
+			function applyDialView() {
+				document.getElementById("keypad-settings")?.classList.add("hidden");
+				document.getElementById("keypad-appearance")?.classList.add("hidden");
+				document.getElementById("keypad-global-appearance")?.classList.add("hidden");
+				document.getElementById("dial-settings")?.classList.remove("hidden");
+			}
+
 			async function initialize() {
 				await customElements.whenDefined("sdpi-select");
 
+				// Wire the keypad control visibility FIRST so a slow/failed controller
+				// lookup still leaves a fully functional keypad PI (the default view).
 				const controlSelect = document.getElementById("control-select");
 
 				if (controlSelect) {
@@ -84,6 +186,10 @@
 							updateVisibility(currentValue);
 						}
 					}, 100);
+				}
+
+				if ((await resolveController()) === "Encoder") {
+					applyDialView();
 				}
 			}
 
