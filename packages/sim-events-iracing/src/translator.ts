@@ -41,13 +41,17 @@ import { type ILogger, silentLogger } from "@iracedeck/logger";
 import { diffDamage } from "./diff/damage.js";
 import { diffFlags } from "./diff/flags.js";
 import {
+  diffFuelLapsLeft,
+  FUEL_CALLOUT_DEFAULT_MARGIN_LAPS,
+  FUEL_LAPS_LEFT_WINDOW_LAPS,
+} from "./diff/fuel-laps-left.js";
+import {
   computeFuelStats,
   createFuelLapTracker,
   diffFuelLaps,
   type FuelLapTracker,
   type FuelStats,
 } from "./diff/fuel-laps.js";
-import { diffFuel } from "./diff/fuel.js";
 import { diffIncidents } from "./diff/incidents.js";
 import { diffLaps } from "./diff/laps.js";
 import { diffLifecycle } from "./diff/lifecycle.js";
@@ -135,6 +139,28 @@ type TranslatorInstance = {
    * `handleDisconnect`. Read via `getFuelStats()`.
    */
   fuelLaps: FuelLapTracker;
+  /**
+   * Live-read safety margin (laps) for the laps-of-fuel-left callouts
+   * (issue #838). Plugins wire it to the `fuelCalloutMarginLaps` global
+   * setting (sanitized); defaults to the constant when no closure is given.
+   */
+  getFuelLapsLeftMarginLaps: () => number;
+};
+
+/**
+ * Optional wiring for {@link initializeSimEventsIracing} (issue #838).
+ * Settings-backed knobs the diffs read live — injected as closures so this
+ * package stays independent of `@iracedeck/deck-core`.
+ */
+export type SimEventsIracingOptions = {
+  /**
+   * Live-read margin (laps) subtracted from the raw laps-of-fuel-left
+   * estimate before the spoken count is derived. Plugins compose it from
+   * the `fuelCalloutMarginLaps` global setting via
+   * `sanitizeFuelCalloutMarginLaps`. Default: a constant
+   * {@link FUEL_CALLOUT_DEFAULT_MARGIN_LAPS}.
+   */
+  getFuelLapsLeftMarginLaps?: () => number;
 };
 
 let instance: TranslatorInstance | null = null;
@@ -148,6 +174,7 @@ export function initializeSimEventsIracing(
   eventBus: IEventBus,
   sdkController: SDKController,
   logger: ILogger = silentLogger,
+  options: SimEventsIracingOptions = {},
 ): void {
   if (instance) {
     throw new Error("sim-events-iracing already initialized. initializeSimEventsIracing() should only be called once.");
@@ -167,6 +194,7 @@ export function initializeSimEventsIracing(
     firstOnTrackFired: false,
     freshConnectFireChecked: false,
     fuelLaps: createFuelLapTracker(),
+    getFuelLapsLeftMarginLaps: options.getFuelLapsLeftMarginLaps ?? (() => FUEL_CALLOUT_DEFAULT_MARGIN_LAPS),
   };
 
   instance = self;
@@ -931,6 +959,15 @@ function wipeStateForReplay(self: TranslatorInstance): void {
     startCountdownCeiling: self.state.startCountdownCeiling,
     startCountdownFired: self.state.startCountdownFired,
     startCountdownObserved: self.state.startCountdownObserved,
+    // The laps-of-fuel-left announce state (issue #838): a replay glance
+    // mid-race must not re-announce a count already spoken this stint, and
+    // the previous-fuel-level tracker must survive the garage visit so the
+    // refuel that happened there (replay-mode ticks) lands as one positive
+    // delta on the first live tick back and re-arms the stint. The sampling
+    // baselines (`fuelCalloutLastDistPct` / `fuelCalloutLastSampledLap`)
+    // deliberately re-seed — the position jump made their edges meaningless.
+    fuelCalloutLastFuelLevel: self.state.fuelCalloutLastFuelLevel,
+    fuelCalloutLastAnnouncedCount: self.state.fuelCalloutLastAnnouncedCount,
   };
 
   self.state = createInitialState();
@@ -1357,7 +1394,17 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // convert the LapDistPct→box gap into meters; the box itself comes from
   // `DriverInfo.DriverPitTrkPct`. Runs after the track-length resolution above.
   diffPitBoxCountdown(self.state, telemetry, resolvePitBoxTrkPct(sessionInfo), trackLengthMeters, emit);
-  diffFuel(self.state, telemetry, isRaceSession, emit);
+  // Laps-of-fuel-left callout crossings (issue #838). Reads the SAME
+  // validated estimator as Session Info's Laps to Empty (issue #748), over
+  // the same default window, so the spoken count tracks the display.
+  diffFuelLapsLeft(
+    self.state,
+    telemetry,
+    isRaceSession,
+    () => computeFuelStats(self.fuelLaps.history, FUEL_LAPS_LEFT_WINDOW_LAPS),
+    self.getFuelLapsLeftMarginLaps,
+    emit,
+  );
 
   // Validated per-lap fuel history (issue #465) — tracker-only, no events.
   // Deliberately NOT race-gated: consumption stats are just as useful on a

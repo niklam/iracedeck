@@ -28,6 +28,7 @@ import { _setFurledRaisedSpoken } from "./flag-alerts.js";
 import {
   type DamageCalloutId,
   type FlagCalloutId,
+  type FuelCalloutId,
   type IncidentCalloutId,
   type PitWindowCalloutId,
   registerPitCrew,
@@ -319,6 +320,14 @@ const PIT_WINDOW_CLIP_PATHS = [
   `voice/${VOICE}/pit-window/closed-05.mp3`,
 ] as const;
 
+// Laps-of-fuel-left clips referenced from `fuel-laps-left.ts` (issue #838).
+// One clip per spoken count 10 → 1 plus the count-0 box call.
+const FUEL_LAPS_LEFT_CLIP_PATHS = [
+  ...["10", "9", "8", "7", "6", "5", "4", "3", "2", "1", "box"].map(
+    (subject) => `voice/${VOICE}/fuel/laps-left-${subject}-01.mp3`,
+  ),
+] as const;
+
 const manifest: AudioAssetsManifest = {
   clips: [
     "sfx/IRD-tick-open.mp3",
@@ -333,6 +342,7 @@ const manifest: AudioAssetsManifest = {
     ...START_LIGHT_CLIP_PATHS,
     ...ROLLING_START_CLIP_PATHS,
     ...PIT_WINDOW_CLIP_PATHS,
+    ...FUEL_LAPS_LEFT_CLIP_PATHS,
   ],
   ambientLoop: "sfx/IRD-ambient-pit.mp3",
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
@@ -398,6 +408,7 @@ let incidentEnabled: Map<IncidentCalloutId, boolean>;
 let pitBoxEnabled: boolean;
 let pitWindowEnabled: Map<PitWindowCalloutId, boolean>;
 let rollingStartEnabled: Map<RollingStartCalloutId, boolean>;
+let fuelEnabled: Map<FuelCalloutId, boolean>;
 let voiceMasterEnabled: boolean;
 
 beforeEach(() => {
@@ -408,6 +419,7 @@ beforeEach(() => {
   pitBoxEnabled = true;
   pitWindowEnabled = new Map<PitWindowCalloutId, boolean>([["pit-open-closed", true]]);
   rollingStartEnabled = new Map<RollingStartCalloutId, boolean>([["pace-car", true]]);
+  fuelEnabled = new Map<FuelCalloutId, boolean>();
   voiceMasterEnabled = true;
   mockSessionType.mockReturnValue("Race");
   bus = createMockBus();
@@ -451,6 +463,7 @@ beforeEach(() => {
     (id) => pitWindowEnabled.get(id) ?? true, // getPitWindowCalloutEnabled (issue #655)
     (id) => rollingStartEnabled.get(id) ?? true, // getRollingStartCalloutEnabled (issue #660)
     () => true, // getStartLightCalloutEnabled (issue #480)
+    (id) => fuelEnabled.get(id) ?? true, // getFuelCalloutEnabled (issue #838)
     () => voiceMasterEnabled,
     undefined, // getRadarMasterEnabled
   );
@@ -1125,6 +1138,57 @@ describe("pit-window family registration (issue #655)", () => {
   it("is suppressed when the master gate is off", () => {
     voiceMasterEnabled = false;
     bus.publishEvent("pitsOpen.changed", { from: true, to: false } as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+  });
+});
+
+// Issue #838: the laps-of-fuel-left family is registered by `registerPitCrew`
+// and wrapped by the master gate + one per-count opt-in. These tests confirm
+// the wiring — the count math / dedup / refuel re-arm live in the translator
+// diff and are covered in `sim-events-iracing`'s `fuel-laps-left.test.ts`.
+describe("laps-of-fuel-left family registration (issue #838)", () => {
+  it.each([
+    { count: 5, fragment: "/fuel/laps-left-5-" },
+    { count: 1, fragment: "/fuel/laps-left-1-" },
+    { count: 0, fragment: "/fuel/laps-left-box-" },
+  ])("fires the $fragment clip on count=$count when the opt-in is on", ({ count, fragment }) => {
+    bus.publishEvent("fuel.lapsLeft.crossed", { count, lapsLeft: count + 0.4 } as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed().some((p) => p.includes(fragment))).toBe(true);
+  });
+
+  it("only the matching count's scenario fires", () => {
+    bus.publishEvent("fuel.lapsLeft.crossed", { count: 3, lapsLeft: 3.4 } as never);
+    flush(audio);
+
+    const clips = voiceClipsPlayed();
+    expect(clips.some((p) => p.includes("/fuel/laps-left-3-"))).toBe(true);
+    expect(clips.filter((p) => p.includes("/fuel/laps-left-")).length).toBe(1);
+  });
+
+  it("is suppressed when that count's opt-in is off", () => {
+    fuelEnabled.set("laps-left-box", false);
+    bus.publishEvent("fuel.lapsLeft.crossed", { count: 0, lapsLeft: 0.2 } as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+    expect(mockLogger.debug).toHaveBeenCalledWith("fuel callout suppressed: laps-left-box");
+  });
+
+  it("a disabled count does not gate a different count", () => {
+    fuelEnabled.set("laps-left-4", false);
+    bus.publishEvent("fuel.lapsLeft.crossed", { count: 3, lapsLeft: 3.4 } as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed().some((p) => p.includes("/fuel/laps-left-3-"))).toBe(true);
+  });
+
+  it("is suppressed when the master gate is off", () => {
+    voiceMasterEnabled = false;
+    bus.publishEvent("fuel.lapsLeft.crossed", { count: 0, lapsLeft: 0.2 } as never);
     flush(audio);
 
     expect(voiceClipsPlayed()).toEqual([]);

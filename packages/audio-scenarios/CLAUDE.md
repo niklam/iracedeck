@@ -23,7 +23,7 @@ below cover the audio-scenarios-only mechanics.
 - **Flags & race flow:** `flag-alerts.ts`, `start-lights.ts`, `rolling-start.ts`, `session-start.ts`, `race-start.ts`, `race-status.ts`, `race-end.ts`, `qualifying-invalidation.ts`.
 - **Pit:** `pit-approach.ts`, `pit-box.ts`, `pit-exit.ts`, `pit-limiter.ts`, `pit-status.ts`, `pit-window.ts`, `readback.ts`, `service-reminder.ts`, `stall-departure.ts`, `toggle-confirmations.ts`.
 - **Position & pace:** `position.ts`, `overtake.ts`, `lap-time.ts` — plus the shared helpers `position-readout.ts` (the cross-trigger "We're currently P[n]" readout + cooldown), `position-range.ts`, and `overtake-gate.ts` (leaf modules, not families).
-- **Car & conditions:** `damage-alerts.ts`, `fuel-warnings.ts`, `incidents.ts`, `track-conditions.ts`.
+- **Car & conditions:** `damage-alerts.ts`, `fuel-laps-left.ts`, `incidents.ts`, `track-conditions.ts`.
 - **Imperative engines (not scenario families):** `radar-engine.ts`, `spotter-engine.ts` — see the dedicated section below.
 - `welcome.ts` — the once-per-car-entry welcome on `driver.firstOnTrack` (~60% greeting probability as a conditional `if` step, optional driver-name clip, start-window tip).
 - `tips.ts` — per-lap racing tips in race sessions (25% chance per `lap.started`), start-window (lap ≤ 1) vs mid-race pools; its header notes the behavior drift from the legacy pit-engineer's polling trigger.

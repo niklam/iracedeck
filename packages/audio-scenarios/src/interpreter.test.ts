@@ -1702,8 +1702,8 @@ describe("event subscription", () => {
     engine.defineScenario({
       id: "test.fuel-3",
       when: {
-        event: "fuel.lapsRemaining.crossed",
-        where: (e) => (e as SimEventOf<"fuel.lapsRemaining.crossed">).data.threshold === 3,
+        event: "fuel.lapsLeft.crossed",
+        where: (e) => (e as SimEventOf<"fuel.lapsLeft.crossed">).data.count === 3,
       },
       channel: AudioChannel.Voice,
       bus: AudioBus.Voice,
@@ -1711,17 +1711,17 @@ describe("event subscription", () => {
     });
 
     bus.publish({
-      event: "fuel.lapsRemaining.crossed",
+      event: "fuel.lapsLeft.crossed",
       timestamp: Date.now(),
       telemetry: null,
-      data: { threshold: 5, laps: 5 },
-    } as SimEventMap["fuel.lapsRemaining.crossed"]);
+      data: { count: 5, lapsLeft: 5.4 },
+    } as SimEventMap["fuel.lapsLeft.crossed"]);
     bus.publish({
-      event: "fuel.lapsRemaining.crossed",
+      event: "fuel.lapsLeft.crossed",
       timestamp: Date.now(),
       telemetry: null,
-      data: { threshold: 3, laps: 3 },
-    } as SimEventMap["fuel.lapsRemaining.crossed"]);
+      data: { count: 3, lapsLeft: 3.4 },
+    } as SimEventMap["fuel.lapsLeft.crossed"]);
 
     flushVoiceAndSfx(audio);
 

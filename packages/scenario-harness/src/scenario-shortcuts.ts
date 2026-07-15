@@ -1365,4 +1365,26 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     event: "pitBox.countdown",
     data: { mark: "pit-now" },
   },
+
+  // ── Fuel (issue #838) ──
+  // Fire each laps-of-fuel-left count directly so you hear the clip without
+  // burning down a real tank through `/api/telemetry`. Count 0 is the
+  // dedicated box-this-lap call. Same-family preempt: fire two in a row to
+  // confirm the second cancels the first.
+  ...[10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map((count) => ({
+    id: `fuel-laps-left-${count}`,
+    category: "Fuel",
+    label: `${count} lap${count === 1 ? "" : "s"} of fuel left`,
+    description: `Estimated ${count} full lap${count === 1 ? "" : "s"} of fuel after completing the current lap.`,
+    event: "fuel.lapsLeft.crossed" as const,
+    data: { count, lapsLeft: count + 0.4 },
+  })),
+  {
+    id: "fuel-laps-left-box",
+    category: "Fuel",
+    label: "Box this lap",
+    description: "The tank won't cover another full lap — box this lap for fuel (count 0).",
+    event: "fuel.lapsLeft.crossed",
+    data: { count: 0, lapsLeft: 0.4 },
+  },
 ];

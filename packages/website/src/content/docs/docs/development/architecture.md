@@ -89,7 +89,7 @@ This is why a button "knows" a yellow is out: it never reads telemetry itself �
 
 `event-bus` is the contract every consumer codes against. It gives them three things:
 
-- **A typed, sim-agnostic event catalog** — the vocabulary of things that can happen (`flag.yellow.raised`, an overtake, a fuel-threshold crossing, a pit-lane transition). It's a plain pub/sub package that imports no simulator SDK, so the vocabulary stays the same no matter which sim feeds it.
+- **A typed, sim-agnostic event catalog** — the vocabulary of things that can happen (`flag.yellow.raised`, an overtake, a laps-of-fuel-left crossing, a pit-lane transition). It's a plain pub/sub package that imports no simulator SDK, so the vocabulary stays the same no matter which sim feeds it.
 - **Decoupled fan-out** — publishers and subscribers never reference each other. The translator publishes; the actions and the Race Engineer each subscribe independently. You can add a consumer without touching the producer, and — in principle — swap the producer without touching the consumers.
 - **A generic telemetry snapshot on the envelope** — alongside the semantic payload, each event carries the latest raw telemetry in a generic field. This is the sim-specific escape hatch: the Race Engineer's radar and spotter engines read it (via `getLatestTelemetry`) because their job needs the full per-car picture, not a single event. It is also the part of this seam that is **not** sim-agnostic yet — see the leaks below.
 
@@ -97,7 +97,7 @@ The catalog spans around 60 events grouped into families — pit lane and stops,
 
 ```text
 flag.yellow.raised          → { scope: "local" | "full" }
-fuel.lapsRemaining.crossed  → { threshold: number, laps: number }
+fuel.lapsLeft.crossed       → { count: number, lapsLeft: number }
 overtake.completed          → { position, previousPosition, gapBehindMeters?, isLeader, … }
 ```
 

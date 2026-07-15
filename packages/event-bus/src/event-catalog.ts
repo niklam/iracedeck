@@ -689,7 +689,19 @@ export type SimEventMap = {
    * value-change shape as {@link radar.changed} / `pitService.statusChanged`.
    */
   "pitsOpen.changed": SimEvent<"pitsOpen.changed", { from: boolean; to: boolean }>;
-  "fuel.lapsRemaining.crossed": SimEvent<"fuel.lapsRemaining.crossed", { threshold: number; laps: number }>;
+  /**
+   * The estimated whole laps of fuel left crossed down to a new count
+   * (issue #838). Emitted at most once per mid-lap sample (the `LapDistPct`
+   * 0.5 crossing) in race sessions, and only on a DESCENDING crossing —
+   * `count` is the number of full laps the driver can complete AFTER
+   * finishing the current lap, margin-adjusted
+   * (`floor(rawLapsLeft − margin − remaining lap fraction)`, clamped at 0).
+   * `count === 0` means "box this lap for fuel". Each count fires once per
+   * stint; a refuel re-arms every count. `lapsLeft` carries the
+   * margin-adjusted (fractional) estimate at sample time for logging.
+   * Replaces the never-consumed `fuel.lapsRemaining.crossed` event.
+   */
+  "fuel.lapsLeft.crossed": SimEvent<"fuel.lapsLeft.crossed", { count: number; lapsLeft: number }>;
   /**
    * Track-wetness state changed (issue #526). Emitted on every step change in
    * the sim's track-wetness state. `from`/`to` carry the canonical

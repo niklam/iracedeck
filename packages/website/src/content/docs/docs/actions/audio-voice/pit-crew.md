@@ -239,6 +239,16 @@ The box location comes straight from iRacing (`DriverInfo.DriverPitTrkPct`), so 
 
 The count-in fires whenever you're on pit road approaching your box, so it isn't tied to having requested pit service — a drive-through will count down too.
 
+## Laps of fuel left
+
+In race sessions the Race Engineer estimates how many full laps of fuel you have left and calls the count out once per lap, around the middle of the lap: *"We're estimating that we have about 3 laps of fuel left after completing this lap."* The count means full laps **after** you finish the current one, so when the tank won't cover another full lap the engineer switches to the dedicated *"Box this lap for fuel."* call.
+
+The estimate comes from the same validated fuel-consumption tracker as Session Info's **Laps to Empty** display — clean laps only, no out-laps, in-laps, tow laps, or refuel laps polluting the average — so the spoken number tracks what the display shows. On top of that, a configurable **safety margin** (0–3 laps in 0.1 steps, default 0.3) is subtracted before the count is derived, making the spoken estimate deliberately conservative: with the display reading 3.05 laps and the default margin, mid-lap you'll hear *"about 2 laps"*. The engineer stays silent until the tracker has at least one clean lap to average.
+
+Each count announces at most once per stint, and only on the way down — saving fuel and raising the estimate never re-announces a higher count, and a count already spoken stays spoken. When the estimate drops several counts between laps you hear only the current one, never a stale burst. A refuel re-arms every count for the new stint. The eleven callouts share a `fuel` family, so a fresher count cleanly preempts one still playing; the 1-lap warning and the box call are treated as must-hear (they cut lesser chatter mid-sentence), 2–3 laps rank with the safety callouts, and 4–10 laps are ordinary commentary.
+
+Which counts you hear is configurable per count under **Race Engineer Callouts → Fuel** — see [the opt-in list below](#race-engineer-callouts-per-subject-opt-inout).
+
 ## Spotter (side-awareness calls)
 
 The Race Engineer voices spoken side-awareness as cars come and go alongside you — "Car left.", "Two cars right.", "Three wide.", a de-escalation "One car left.", combined swaps like "Clear right. Car left.", and a final "Clear." — plus a short repeating "Still there." reminder for as long as a car stays beside you. This is a **Race Engineer voice callout family** (like flags, position, or lap time), not a separate Stream Deck mode or button: it's gated by the Race Engineer master (the **Race Engineer Toggle** button) plus two Property Inspector opt-ins, both on by default. With the engineer off, the spotter is silent.
@@ -338,6 +348,12 @@ Each direction is independent — drivers who want the congratulations but not t
 Under **Pit Box**, one callout is toggleable, enabled by default:
 
 - **Count-in to pit box** — the *"five… four… three… two… one… pit now"* distance countdown to your pit box as you drive down pit road. Disabling this silences the whole count-in.
+
+Under **Fuel**, each laps-of-fuel-left count has its own checkbox (see [Laps of fuel left](#laps-of-fuel-left) above for the full behavior). **5, 3, 2, 1 and Box this lap are enabled by default**; 10–6 and 4 ship off so a fresh install hears a short, escalating sequence rather than a count every lap:
+
+- **10 … 1 laps of fuel left** — the per-count mid-lap estimation callouts.
+- **Box this lap** — the *"Box this lap for fuel."* call when the tank won't cover another full lap.
+- **Fuel margin (laps)** (`fuelCalloutMarginLaps`, 0–3 in 0.1 steps, default 0.3) — the safety margin subtracted from the estimate before it is spoken. Higher values make the engineer call you in earlier. Read live, so a change takes effect on the next lap's announcement.
 
 Under **Spotter**, two callouts are toggleable, both enabled by default (see [Spotter (side-awareness calls)](#spotter-side-awareness-calls) above for the full behavior):
 

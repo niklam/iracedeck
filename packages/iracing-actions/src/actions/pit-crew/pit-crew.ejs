@@ -328,6 +328,30 @@
 				return '<sdpi-checkbox setting="' + c.setting + '" label="' + c.label + '" global default="true"></sdpi-checkbox>';
 			}).join('');
 
+			// Laps-of-fuel-left callouts (issue #838). One checkbox per spoken
+			// count 10 → 1 plus the count-0 "Box this lap" call. Defaults are NOT
+			// uniform (5, 3, 2, 1 and Box ship ON, the rest OFF — the Discord-
+			// request baseline), so each item carries its own `on` flag. An OFF
+			// default must OMIT the `default` attribute entirely — `default="false"`
+			// renders CHECKED (the truthy-attribute sdpi-checkbox trap).
+			var fuelCallouts = [
+				{ setting: "calloutEnabledFuelLapsLeft10",  label: "10 laps of fuel left", on: false },
+				{ setting: "calloutEnabledFuelLapsLeft9",   label: "9 laps of fuel left",  on: false },
+				{ setting: "calloutEnabledFuelLapsLeft8",   label: "8 laps of fuel left",  on: false },
+				{ setting: "calloutEnabledFuelLapsLeft7",   label: "7 laps of fuel left",  on: false },
+				{ setting: "calloutEnabledFuelLapsLeft6",   label: "6 laps of fuel left",  on: false },
+				{ setting: "calloutEnabledFuelLapsLeft5",   label: "5 laps of fuel left",  on: true },
+				{ setting: "calloutEnabledFuelLapsLeft4",   label: "4 laps of fuel left",  on: false },
+				{ setting: "calloutEnabledFuelLapsLeft3",   label: "3 laps of fuel left",  on: true },
+				{ setting: "calloutEnabledFuelLapsLeft2",   label: "2 laps of fuel left",  on: true },
+				{ setting: "calloutEnabledFuelLapsLeft1",   label: "1 lap of fuel left",   on: true },
+				{ setting: "calloutEnabledFuelLapsLeftBox", label: "Box this lap",         on: true },
+			];
+			var fuelRowCount = Math.ceil(fuelCallouts.length / 2);
+			var fuelCheckboxes = fuelCallouts.map(function (c) {
+				return '<sdpi-checkbox setting="' + c.setting + '" label="' + c.label + '" global' + (c.on ? ' default="true"' : '') + '></sdpi-checkbox>';
+			}).join('');
+
 			// Setup-name mismatch warning (issue #625). Single subject — one toggle
 			// covers both the qualifying and race warnings. The editable patterns
 			// that drive it live in their own accordion below.
@@ -448,6 +472,16 @@
 						pitBoxCheckboxes +
 					'</div>' +
 				'</sdpi-item>' +
+				'<sdpi-item label="Fuel">' +
+					'<div style="display:grid;grid-template-rows:repeat(' + fuelRowCount + ',auto);grid-auto-flow:column;gap:4px 12px;width:100%;">' +
+						fuelCheckboxes +
+					'</div>' +
+				'</sdpi-item>' +
+				'<div class="ird-supporting-text">Estimated laps of fuel left, announced mid-lap once each count is reached. "Box this lap" fires when the tank won\'t cover another full lap.</div>' +
+				'<sdpi-item label="Fuel margin (laps)">' +
+					'<ird-range-input setting="fuelCalloutMarginLaps" min="0" max="3" step="0.1" default="0.3" global showlabels></ird-range-input>' +
+				'</sdpi-item>' +
+				'<div class="ird-supporting-text">Safety margin subtracted from the estimate before it is spoken — higher values make the engineer call you in earlier.</div>' +
 				'<sdpi-item label="Setup Warning">' +
 					'<div style="display:grid;grid-template-rows:repeat(' + setupWarningRowCount + ',auto);grid-auto-flow:column;gap:4px 12px;width:100%;">' +
 						setupWarningCheckboxes +

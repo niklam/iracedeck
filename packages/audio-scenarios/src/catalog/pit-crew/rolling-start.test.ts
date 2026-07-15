@@ -326,6 +326,7 @@ describe("ROLLING_START_ALERTS opt-in gating (issue #660)", () => {
       undefined, // getPitWindowCalloutEnabled (issue #655)
       (id) => rollingStartEnabled.get(id) ?? true, // getRollingStartCalloutEnabled
       undefined, // getStartLightCalloutEnabled
+      undefined, // getFuelCalloutEnabled (issue #838)
       undefined, // getRaceEngineerMasterEnabled
       undefined, // getRadarMasterEnabled
     );

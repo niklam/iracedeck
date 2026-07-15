@@ -944,6 +944,63 @@
         "seed": 6
       }
     ],
+    "fuel": [
+      {
+        "name": "laps-left-10-01",
+        "text": "We're estimating that we have about 10 laps of fuel left after completing this lap.",
+        "seed": 1
+      },
+      {
+        "name": "laps-left-9-01",
+        "text": "We're estimating that we have about 9 laps of fuel left after completing this lap.",
+        "seed": 1
+      },
+      {
+        "name": "laps-left-8-01",
+        "text": "We're estimating that we have about 8 laps of fuel left after completing this lap.",
+        "seed": 1
+      },
+      {
+        "name": "laps-left-7-01",
+        "text": "We're estimating that we have about 7 laps of fuel left after completing this lap.",
+        "seed": 1
+      },
+      {
+        "name": "laps-left-6-01",
+        "text": "We're estimating that we have about 6 laps of fuel left after completing this lap.",
+        "seed": 1
+      },
+      {
+        "name": "laps-left-5-01",
+        "text": "We're estimating that we have about 5 laps of fuel left after completing this lap.",
+        "seed": 1
+      },
+      {
+        "name": "laps-left-4-01",
+        "text": "We're estimating that we have about 4 laps of fuel left after completing this lap.",
+        "seed": 1
+      },
+      {
+        "name": "laps-left-3-01",
+        "text": "We're estimating that we have about 3 laps of fuel left after completing this lap.",
+        "seed": 1
+      },
+      {
+        "name": "laps-left-2-01",
+        "text": "We're estimating that we have about 2 laps of fuel left after completing this lap.",
+        "seed": 1
+      },
+      {
+        "name": "laps-left-1-01",
+        "text": "We're estimating only 1 more lap of fuel after completing this one. <break time=\"0.3s\" /> Plan to box.",
+        "seed": 1
+      },
+      {
+        "name": "laps-left-box-01",
+        "text": "Box this lap for fuel. <break time=\"0.3s\" /> Box this lap.",
+        "seed": 1
+      }
+    ],
     "incidents": [
       {
         "name": "off-track-01",
