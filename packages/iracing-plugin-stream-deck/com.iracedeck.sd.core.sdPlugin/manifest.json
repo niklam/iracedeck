@@ -188,11 +188,21 @@
       "Name": "Force Feedback",
       "UUID": "com.iracedeck.sd.core.force-feedback",
       "Icon": "imgs/actions/force-feedback/icon",
-      "Tooltip": "Force feedback controls (FFB force, wheel LFE, bass shaker, haptic intensity)",
+      "Tooltip": "Force feedback controls (FFB force, wheel LFE, bass shaker, haptic intensity); on a dial: adjust FFB strength or an LFE level with the live max force in Nm",
       "PropertyInspectorPath": "ui/force-feedback.html",
       "Controllers": [
-        "Keypad"
+        "Keypad",
+        "Encoder"
       ],
+      "Encoder": {
+        "Icon": "imgs/actions/force-feedback/dial",
+        "layout": "layouts/force-feedback.json",
+        "TriggerDescription": {
+          "Rotate": "Adjust the selected force feedback setting",
+          "Push": "Configured action",
+          "Touch": "Configured action"
+        }
+      },
       "States": [
         {
           "Image": "imgs/actions/force-feedback/key",

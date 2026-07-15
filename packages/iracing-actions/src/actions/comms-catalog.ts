@@ -241,6 +241,22 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     }),
   }),
 
+  // The dial surface of the Force Feedback action (#802). Rotation is keyed by
+  // `dial.setting` (BOTH the increase and decrease keys required); the Auto FFB
+  // press gesture taps the shared auto-compute binding. A separate entry from
+  // the keypad map because the same setting values need different descriptors
+  // per surface (keypad resolves one key via `direction`, dial rotation needs
+  // the pair). FFB Force reuses the Cockpit Misc keys (#827). `auto-compute-ffb-force`
+  // is keypad-only (no rotation), so it is absent here.
+  "force-feedback-dial": entry("dial.setting", {
+    "ffb-force": pair("cockpitMiscFfbForceIncrease", "cockpitMiscFfbForceDecrease"),
+    "wheel-lfe": pair("forceFeedbackWheelLfeLouder", "forceFeedbackWheelLfeQuieter"),
+    "bass-shaker-lfe": pair("forceFeedbackBassShakerLfeLouder", "forceFeedbackBassShakerLfeQuieter"),
+    "wheel-lfe-intensity": pair("forceFeedbackWheelLfeIntensityIncrease", "forceFeedbackWheelLfeIntensityDecrease"),
+    "haptic-lfe-intensity": pair("forceFeedbackHapticLfeIntensityIncrease", "forceFeedbackHapticLfeIntensityDecrease"),
+    "auto-ffb": keybind("forceFeedbackAutoCompute"),
+  }),
+
   chat: entry("mode", {
     "open-chat": api,
     reply: api,
