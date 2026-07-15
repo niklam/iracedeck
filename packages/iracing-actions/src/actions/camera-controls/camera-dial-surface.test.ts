@@ -13,7 +13,7 @@ import {
   wrapPosition,
 } from "./camera-dial-surface.js";
 
-const { mockGroups, mockCarNumber, mockCarNumberByIdx, mockAllCars } = vi.hoisted(() => ({
+const { mockGroups, mockCarNumber, mockCarNumberByIdx, mockCarNumberRawByIdx, mockAllCars } = vi.hoisted(() => ({
   // Mutable session lookups the SDK helper mocks read, so tests can flip
   // in-session / out-of-session and change the focused car per case.
   mockGroups: {
@@ -26,6 +26,9 @@ const { mockGroups, mockCarNumber, mockCarNumberByIdx, mockAllCars } = vi.hoiste
   mockCarNumber: { value: "42" as string | null },
   // When set, getCarNumberFromSessionInfo resolves per carIdx (race-position tests).
   mockCarNumberByIdx: { value: null as Record<number, string> | null },
+  // When set, getCarNumberRawFromSessionInfo resolves per carIdx (race-position
+  // EXECUTION tests — the raw number is what focusCarNumber is dispatched with).
+  mockCarNumberRawByIdx: { value: null as Record<number, number> | null },
   mockAllCars: {
     value: [
       { carIdx: 1, carNumber: "3", carNumberRaw: 3, userName: "a" },
@@ -58,6 +61,9 @@ vi.mock("@iracedeck/iracing-sdk", () => ({
   getCarNumberFromSessionInfo: vi.fn((_s: unknown, carIdx: number) =>
     mockCarNumberByIdx.value ? (mockCarNumberByIdx.value[carIdx] ?? null) : mockCarNumber.value,
   ),
+  getCarNumberRawFromSessionInfo: vi.fn((_s: unknown, carIdx: number) =>
+    mockCarNumberRawByIdx.value ? (mockCarNumberRawByIdx.value[carIdx] ?? null) : null,
+  ),
   getAllCarNumbers: vi.fn(() => mockAllCars.value),
 }));
 
@@ -87,7 +93,6 @@ function makeHost(over: Partial<Record<string, unknown>> = {}) {
     getGroupGlyph: vi.fn((name: string) => ({ width: 68, height: 68, artwork: `<path data-group="${name}"/>` })),
     cycle: vi.fn(),
     focusCarNumber: vi.fn(),
-    focusPosition: vi.fn(),
     focusMyCar: vi.fn(),
     changeCamera: vi.fn(),
     focusOnLeader: vi.fn(),
@@ -109,6 +114,7 @@ beforeEach(() => {
   ];
   mockCarNumber.value = "42";
   mockCarNumberByIdx.value = null;
+  mockCarNumberRawByIdx.value = null;
   mockAllCars.value = [
     { carIdx: 1, carNumber: "3", carNumberRaw: 3, userName: "a" },
     { carIdx: 3, carNumber: "42", carNumberRaw: 42, userName: "b" },
@@ -382,16 +388,44 @@ describe("CameraDialSurface", () => {
   });
 
   describe("rotation → race-position mode", () => {
-    it("focuses the next position from the canonical live order", () => {
-      // carIdx→position: idx1=P3, idx2=P1, idx3=P2; focused CamCarIdx=3 (P2).
+    it("focuses the target car BY NUMBER, resolved from the canonical live order (not a bare position)", () => {
+      // carIdx→position: idx1=P3, idx2=P1, idx3=P2; focused CamCarIdx=3 (P2), next → P3 → carIdx1.
+      mockCarNumberRawByIdx.value = { 1: 3, 3: 42 };
       const host = makeHost({ getRacePositions: vi.fn(() => [0, 3, 1, 2]) });
       const surface = new CameraDialSurface(host as never);
       surface.rotate(dialContext("r1") as never, dial({ mode: "race-position" }), 1, false);
 
-      expect(host.focusPosition).toHaveBeenCalledWith(3); // P2 next → P3
+      // Dispatched via focusCarNumber (switchNum), NOT a position-based call —
+      // switchPos would resolve the position against iRacing's OWN official
+      // order, which can diverge from the canonical order used here.
+      expect(host.focusCarNumber).toHaveBeenCalledWith(3); // carIdx1's raw number
     });
 
-    it("falls back to official CarIdxPosition when there is no canonical order", () => {
+    it("focuses the CANONICAL car even when the official CarIdxPosition order disagrees (the preview↔execution seam)", () => {
+      // Canonical order (getRacePositions): idx1=P3, idx2=P1, idx3=P2 — same as
+      // above, so P3 (the rotation target) is carIdx1.
+      const canonicalOrder = [0, 3, 1, 2];
+      // Official CarIdxPosition DIVERGES (e.g. a tow/finish/freeze case per
+      // race-positions.md): here idx1=P1, idx2=P2, idx3=P3 — so if execution
+      // resolved the target position against the OFFICIAL order instead, P3
+      // would be carIdx3, not carIdx1.
+      const officialOrder = [0, 1, 2, 3];
+      mockCarNumberRawByIdx.value = { 1: 3, 3: 42 }; // carIdx1 → #3 (canonical), carIdx3 → #42 (official-wrong)
+      const host = makeHost({
+        getRacePositions: vi.fn(() => canonicalOrder),
+        getTelemetry: vi.fn(() => ({ CamCarIdx: 3, CarIdxPosition: officialOrder }) as never),
+      });
+      const surface = new CameraDialSurface(host as never);
+      surface.rotate(dialContext("r-diverge") as never, dial({ mode: "race-position" }), 1, false);
+
+      // Must land on the CANONICAL car (#3 / carIdx1) — the same car the
+      // carousel preview shows — never the official-order car (#42 / carIdx3).
+      expect(host.focusCarNumber).toHaveBeenCalledWith(3);
+      expect(host.focusCarNumber).not.toHaveBeenCalledWith(42);
+    });
+
+    it("falls back to official CarIdxPosition when there is no canonical order, resolving the car the SAME way", () => {
+      mockCarNumberRawByIdx.value = { 1: 3, 3: 42 };
       const host = makeHost({
         getRacePositions: vi.fn(() => null),
         getTelemetry: vi.fn(() => ({ CamCarIdx: 3, CarIdxPosition: [0, 3, 1, 2] }) as never),
@@ -400,7 +434,9 @@ describe("CameraDialSurface", () => {
       surface.rotate(dialContext("r2") as never, dial({ mode: "race-position" }), 1, false);
 
       expect(host.getRacePositions).toHaveBeenCalled();
-      expect(host.focusPosition).toHaveBeenCalledWith(3);
+      // Same car-number resolution path as the canonical case — the fallback
+      // order stays coherent between preview and execution too.
+      expect(host.focusCarNumber).toHaveBeenCalledWith(3);
     });
 
     it("does nothing when the focused car has no position", () => {
@@ -411,7 +447,16 @@ describe("CameraDialSurface", () => {
       const surface = new CameraDialSurface(host as never);
       surface.rotate(dialContext("r3") as never, dial({ mode: "race-position" }), 1, false);
 
-      expect(host.focusPosition).not.toHaveBeenCalled();
+      expect(host.focusCarNumber).not.toHaveBeenCalled();
+    });
+
+    it("does nothing when the resolved position has no raw car number in session info", () => {
+      mockCarNumberRawByIdx.value = {}; // carIdx1 unmapped
+      const host = makeHost({ getRacePositions: vi.fn(() => [0, 3, 1, 2]) });
+      const surface = new CameraDialSurface(host as never);
+      surface.rotate(dialContext("r4") as never, dial({ mode: "race-position" }), 1, false);
+
+      expect(host.focusCarNumber).not.toHaveBeenCalled();
     });
   });
 

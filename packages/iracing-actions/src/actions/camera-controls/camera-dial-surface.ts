@@ -16,7 +16,13 @@
  *     an explicit ordering — car number ascending, or the canonical live race
  *     order (`getLiveRacePositions`, per `.claude/rules/race-positions.md`,
  *     official `CarIdxPosition` only as the documented fallback) — and focus it
- *     directly via the keypad's Switch-by-Number / Switch-by-Position dispatch.
+ *     directly via the keypad's Switch-by-Number dispatch. race-position also
+ *     resolves to a car NUMBER (never a bare position) before dispatching: the
+ *     carousel preview and the SDK's own `switchPos` resolve positions from
+ *     different orders (canonical vs. official), and those orders deliberately
+ *     diverge in tow/finish/freeze cases — so resolving the car number from the
+ *     same canonical-first order the preview uses keeps the camera landing on
+ *     the previewed car (issue #803 rework review).
  *
  * Everything the dial does is an iRacing SDK camera command, so — unlike the
  * Setup dials — the surface taps no key bindings and never shows a
@@ -36,6 +42,7 @@ import {
   getAllCarNumbers,
   getCameraGroupsFromSessionInfo,
   getCarNumberFromSessionInfo,
+  getCarNumberRawFromSessionInfo,
   type TelemetryData,
 } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
@@ -539,10 +546,14 @@ export interface CameraDialHost {
   getGroupGlyph(groupName: string): CarouselGlyph | null;
   /** Cycle the given target one step (the keypad's own `executeCycle`). */
   cycle(target: DialCycleTarget, direction: Direction): void;
-  /** Focus a car by its raw car number (the keypad Switch by Car Number dispatch). */
+  /**
+   * Focus a car by its raw car number (the keypad Switch by Car Number
+   * dispatch). Also the race-position mode's execution path: it resolves its
+   * target to a car number (via the same canonical-first order the preview
+   * uses) rather than dispatching a bare position, so the camera can't land on
+   * a different car than the one previewed — see the file header.
+   */
   focusCarNumber(carNumberRaw: number): void;
-  /** Focus the car at a race position (the keypad Switch by Position dispatch). */
-  focusPosition(position: number): void;
   /** Center the camera on the player's car (the keypad Focus Your Car mode). */
   focusMyCar(): void;
   /** Switch to the next camera angle (the keypad Cycle Camera dispatch). */
@@ -750,10 +761,18 @@ export class CameraDialSurface {
     }
 
     // race-position: canonical live order, official CarIdxPosition as fallback.
+    // Resolve the target car NUMBER from that SAME order (never dispatch a bare
+    // position) — the carousel preview does the same lookup via
+    // carNumberAtPosition, so preview and execution can't land on different
+    // cars even where canonical and official position orders diverge.
     const order = this.resolveOrder(telemetry);
     const target = computeRacePositionTarget(camCarIdx, order, direction);
 
-    if (target) this.host.focusPosition(target.targetPosition);
+    if (!target || !order) return;
+
+    const carNumberRaw = carNumberRawAtPosition(order, this.host.getSessionInfo(), target.targetPosition);
+
+    if (carNumberRaw !== null) this.host.focusCarNumber(carNumberRaw);
   }
 
   /** The live order, canonical first, official `CarIdxPosition` as fallback. */
@@ -912,11 +931,30 @@ export class CameraDialSurface {
   }
 }
 
-/** The display car number at a given race position (via the inverse of `order`). */
-function carNumberAtPosition(order: number[], sessionInfo: unknown, position: number): string | null {
+/** The carIdx running at a given race position (the inverse of `order`), or null when unclassified. */
+function carIdxAtPosition(order: number[], position: number): number | null {
   const carIdx = order.findIndex((p) => p === position);
 
-  if (carIdx < 0) return null;
+  return carIdx < 0 ? null : carIdx;
+}
 
-  return getCarNumberFromSessionInfo(sessionInfo, carIdx);
+/** The display car number at a given race position (via the inverse of `order`). */
+function carNumberAtPosition(order: number[], sessionInfo: unknown, position: number): string | null {
+  const carIdx = carIdxAtPosition(order, position);
+
+  return carIdx === null ? null : getCarNumberFromSessionInfo(sessionInfo, carIdx);
+}
+
+/**
+ * The raw car number (the camera-API identity, not the display string) running
+ * at a given race position. Used by the race-position rotation dispatch — see
+ * the file header — so execution focuses the SAME car the carousel preview
+ * shows via `carNumberAtPosition`, rather than a bare position that iRacing's
+ * own `switchPos` would resolve against a potentially different (official)
+ * order.
+ */
+function carNumberRawAtPosition(order: number[], sessionInfo: unknown, position: number): number | null {
+  const carIdx = carIdxAtPosition(order, position);
+
+  return carIdx === null ? null : getCarNumberRawFromSessionInfo(sessionInfo, carIdx);
 }

@@ -653,7 +653,6 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
     getGroupGlyph: (groupName) => resolveGroupGlyph(groupName),
     cycle: (target, direction) => this.executeCycle(target, direction),
     focusCarNumber: (carNumberRaw) => this.focusCarNumber(carNumberRaw),
-    focusPosition: (position) => this.focusPosition(position),
     focusMyCar: () => this.focusMyCar(),
     changeCamera: () => this.executeCycle("cycle-camera", "next"),
     focusOnLeader: () => this.focusOn("focus-on-leader"),
@@ -904,9 +903,15 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
   }
 
   /**
-   * Focus a car by its raw car number — the dial's car-number cycle target
-   * (#803). Reuses the keypad Switch by Car Number command surface, reading the
-   * active camera group / sub-camera from telemetry so the angle is preserved.
+   * Focus a car by its raw car number — the dial's car-number cycle target,
+   * and also its race-position target (#803 rework review): race-position
+   * resolves to a car number via the SAME canonical-first order the carousel
+   * preview uses, rather than dispatching a bare position through `switchPos`
+   * (which iRacing resolves against its own OFFICIAL position order — a
+   * mismatch in tow/finish/freeze cases would otherwise focus a different car
+   * than the one previewed). Reuses the keypad Switch by Car Number command
+   * surface, reading the active camera group / sub-camera from telemetry so
+   * the angle is preserved.
    */
   private focusCarNumber(carNumberRaw: number): void {
     const telemetry = this.sdkController.getCurrentTelemetry();
@@ -923,27 +928,6 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
     const success = camera.switchNum(carNumberRaw, groupNum, cameraNum);
     this.logger.info("Camera dial focus by car number");
     this.logger.debug(`Result: ${success}, carNumberRaw: ${carNumberRaw}`);
-  }
-
-  /**
-   * Focus the car running at a race position — the dial's race-position cycle
-   * target (#803). Reuses the keypad Switch by Position command surface.
-   */
-  private focusPosition(position: number): void {
-    const telemetry = this.sdkController.getCurrentTelemetry();
-
-    if (!telemetry) {
-      this.logger.warn("No telemetry available for camera focus by position");
-
-      return;
-    }
-
-    const camera = getCommands().camera;
-    const groupNum = telemetry.CamGroupNumber ?? 1;
-    const cameraNum = telemetry.CamCameraNumber ?? 1;
-    const success = camera.switchPos(position, groupNum, cameraNum);
-    this.logger.info("Camera dial focus by position");
-    this.logger.debug(`Result: ${success}, position: ${position}`);
   }
 
   /**
