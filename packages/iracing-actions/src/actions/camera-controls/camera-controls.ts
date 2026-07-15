@@ -69,14 +69,18 @@ import scenicSvg from "@iracedeck/icons/camera-select/scenic.svg";
 import tv1Svg from "@iracedeck/icons/camera-select/tv1.svg";
 import tv2Svg from "@iracedeck/icons/camera-select/tv2.svg";
 import tv3Svg from "@iracedeck/icons/camera-select/tv3.svg";
-import { getCameraGroupsFromSessionInfo, getCarNumberRawFromSessionInfo } from "@iracedeck/iracing-sdk";
+import {
+  getAllCarNumbers,
+  getCameraGroupsFromSessionInfo,
+  getCarNumberRawFromSessionInfo,
+} from "@iracedeck/iracing-sdk";
 import { getLiveRacePositions } from "@iracedeck/sim-events-iracing";
 import z from "zod";
 
 import { setSelectIntent } from "../../shared/car-select-intent.js";
 import { profileEntriesEqual } from "../../shared/profile-entries.js";
 import { availableProfilesForDevice, deviceProfileEntries } from "../race-admin/race-admin-selector.js";
-import { CameraDialSurface, type CarouselGlyph, DialSettings } from "./camera-dial-surface.js";
+import { CameraDialSurface, type CarouselGlyph, computeCarNumberTarget, DialSettings } from "./camera-dial-surface.js";
 import {
   CAMERA_GROUPS_SETTING_KEY,
   DEFAULT_ENABLED_GROUPS,
@@ -872,15 +876,51 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
         break;
       }
       case "cycle-car": {
-        const success = camera.cycleCar(carIdx, dir);
-        this.logger.info("Car cycled");
-        this.logger.debug(`Result: ${success}, direction: ${direction}`);
+        // Cycle to the neighbouring car by ascending car number and focus it BY
+        // NUMBER — the same switchNum-not-switchPos correction the other cycle
+        // branches use (issue #803). cycleCar's switchPos(carIdx ± 1) treats the
+        // car INDEX as a race POSITION, so it lands on whatever car sits at that
+        // position and stalls when the focused (pace) car has no valid position.
+        // Reuses the dial car-number mode's ordering (computeCarNumberTarget) so
+        // both surfaces agree; falls back to the raw cycle helper only out of
+        // session (no car list).
+        const sessionInfo = this.sdkController.getSessionInfo();
+        const cars = getAllCarNumbers(sessionInfo, true, true);
+        const targetCar = computeCarNumberTarget(carIdx, cars, direction);
+
+        if (targetCar) {
+          const success = camera.switchNum(targetCar.carNumberRaw, groupNum, cameraNum);
+          this.logger.info("Car switched");
+          this.logger.debug(`Result: ${success}, direction: ${direction}, carNumberRaw: ${targetCar.carNumberRaw}`);
+        } else {
+          const success = camera.cycleCar(carIdx, dir);
+          this.logger.info("Car cycled (fallback)");
+          this.logger.debug(`Result: ${success}, direction: ${direction}`);
+        }
+
         break;
       }
       case "cycle-driving": {
-        const success = camera.cycleDrivingCamera(carIdx, groupNum, dir);
-        this.logger.info("Driving camera cycled");
-        this.logger.debug(`Result: ${success}, direction: ${direction}`);
+        // Driving cameras are camera groups too, so keep focus on the CURRENTLY
+        // focused car by number and advance the group — the same
+        // switchNum-not-switchPos correction cycle-camera / cycle-sub-camera use.
+        // cycleDrivingCamera's switchPos(carIdx, group ± 1) treats the car INDEX
+        // as a race POSITION, which the pace car has none of, stalling the cycle
+        // (issue #803). Fall back to the raw cycle helper only when the car
+        // number can't be resolved (out of session).
+        const sessionInfo = this.sdkController.getSessionInfo();
+        const carNumberRaw = sessionInfo ? getCarNumberRawFromSessionInfo(sessionInfo, carIdx) : null;
+
+        if (carNumberRaw !== null) {
+          const success = camera.switchNum(carNumberRaw, groupNum + dir, 0);
+          this.logger.info("Driving camera switched");
+          this.logger.debug(`Result: ${success}, direction: ${direction}, carNumberRaw: ${carNumberRaw}`);
+        } else {
+          const success = camera.cycleDrivingCamera(carIdx, groupNum, dir);
+          this.logger.info("Driving camera cycled (car number fallback)");
+          this.logger.debug(`Result: ${success}, direction: ${direction}`);
+        }
+
         break;
       }
     }
