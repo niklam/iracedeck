@@ -92,6 +92,14 @@ describe("UlanziPlatformAdapter", () => {
 
       expect(client.openUrl).not.toHaveBeenCalled();
     });
+
+    it("forwards only http(s) urls — other schemes and malformed urls are dropped", () => {
+      for (const url of ["javascript:alert(1)", "file:///C:/Windows/system.ini", "app://open", "not a url", "   "]) {
+        openUrlHandler()({ event: "openUrl", action: "u", context: "u___5___a", payload: { url } });
+      }
+
+      expect(client.openUrl).not.toHaveBeenCalled();
+    });
   });
 
   describe("onDidReceiveGlobalSettings", () => {

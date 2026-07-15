@@ -199,6 +199,14 @@ describe("normalizeFrame", () => {
     ]);
   });
 
+  it("drops an openUrl marker whose url is not a string", () => {
+    for (const url of [42, null, undefined, { nested: true }]) {
+      expect(
+        normalizeFrame({ cmd: "sendToPlugin", uuid: "u", key: "5", actionid: "a", payload: { event: "openUrl", url } }),
+      ).toEqual([]);
+    }
+  });
+
   it("ignores unused frames (`run`, `setactive`, acks)", () => {
     expect(normalizeFrame({ cmd: "run", uuid: "u", key: "5", actionid: "a" })).toEqual([]);
     expect(normalizeFrame({ cmd: "setactive", uuid: "u", key: "5", actionid: "a", active: true })).toEqual([]);

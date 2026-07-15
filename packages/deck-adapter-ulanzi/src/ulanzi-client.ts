@@ -191,8 +191,10 @@ export function normalizeFrame(frame: Record<string, unknown>): UlanziEvent[] {
 
       if (payload?.event === PI_APPEAR_MARKER) return [{ event: "propertyInspectorDidAppear", action, context }];
 
-      if (payload?.event === PI_OPEN_URL_MARKER) {
-        return [{ event: "openUrl", action, context, payload: { url: String(payload.url ?? "") } }];
+      // Pass the url through only when it is already a string — no coercion, so
+      // a malformed marker normalizes to nothing (the adapter validates further).
+      if (payload?.event === PI_OPEN_URL_MARKER && typeof payload.url === "string") {
+        return [{ event: "openUrl", action, context, payload: { url: payload.url } }];
       }
 
       return [];

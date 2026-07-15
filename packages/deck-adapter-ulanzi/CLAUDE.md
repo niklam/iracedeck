@@ -52,7 +52,7 @@ Ulanzi only carries settings on `add` / `paramfromapp`; `keydown` / `keyup` / `d
 
 UlanziStudio has no host-generated "PI appeared" event. The Ulanzi PI bridge (in `@iracedeck/pi-components`) sends a `sendToPlugin` marker (`payload.event === "propertyInspectorDidAppear"`) on connect; the client normalizes that into the `propertyInspectorDidAppear` global event so `onPropertyInspectorDidAppear` (e.g. audio-device re-enumeration) works.
 
-External PI links use the same relay (#845): UlanziStudio ignores `openurl` sent on the PI socket but honours it from the plugin socket, so the bridge translates sdpi's `openUrl` event into a `sendToPlugin` openUrl marker, the client normalizes it to an `openUrl` global event, and the adapter constructor forwards the url via `client.openUrl`. Any other `sendToPlugin` payload normalizes to nothing.
+External PI links use the same relay (#845): UlanziStudio ignores `openurl` sent on the PI socket but honours it from the plugin socket, so the bridge translates sdpi's `openUrl` event into a `sendToPlugin` openUrl marker, the client normalizes it to an `openUrl` global event (string urls only — no coercion), and the adapter constructor forwards the url via `client.openUrl` after validating it parses as `http:`/`https:` (matching the PI external-link contract, #243; the debug log redacts to origin + path). Any other `sendToPlugin` payload normalizes to nothing.
 
 ### Outbound icons
 

@@ -28,7 +28,9 @@ function imageRefs() {
     }
   }
 
-  return refs.filter(([, ref]) => typeof ref === "string");
+  // No filtering: a missing Icon / States[n].Image must fail the assertions
+  // below, not silently shrink the case list.
+  return refs;
 }
 
 /**
@@ -55,11 +57,14 @@ describe("ulanzi manifest image references", () => {
   // host it does not probe for .png/.svg/@2x variants, so an extensionless
   // reference (the Elgato manifest convention) renders no icon. Every
   // first-party Ulanzi plugin declares explicit extensions (issue #845).
-  it.each(imageRefs())("declares an explicit file extension: %s", (_label, ref) => {
+  it.each(imageRefs())("declares an explicit file extension: %s", (label, ref) => {
+    expect(ref, `${label}: image reference must be a string`).toBeTypeOf("string");
     expect(ref).toMatch(/\.(png|svg)$/);
   });
 
-  it.each(imageRefs())("resolves to a committed source file: %s", (_label, ref) => {
+  it.each(imageRefs())("resolves to a committed source file: %s", (label, ref) => {
+    expect(ref, `${label}: image reference must be a string`).toBeTypeOf("string");
+
     const source = committedSource(ref);
 
     expect(source, `unrecognized image path shape: ${ref}`).not.toBeNull();
