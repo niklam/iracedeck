@@ -72,6 +72,7 @@ import tv3Svg from "@iracedeck/icons/camera-select/tv3.svg";
 import {
   getAllCarNumbers,
   getCameraGroupsFromSessionInfo,
+  getCamerasInGroup,
   getCarNumberRawFromSessionInfo,
 } from "@iracedeck/iracing-sdk";
 import { getLiveRacePositions } from "@iracedeck/sim-events-iracing";
@@ -83,6 +84,7 @@ import { availableProfilesForDevice, deviceProfileEntries } from "../race-admin/
 import { CameraDialSurface, type CarouselGlyph, computeCarNumberTarget, DialSettings } from "./camera-dial-surface.js";
 import {
   CAMERA_GROUPS_SETTING_KEY,
+  computeSubCameraCarousel,
   DEFAULT_ENABLED_GROUPS,
   getNextSelectedGroupEntry,
   parseGroupSubset,
@@ -864,9 +866,18 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
         const carNumberRaw = sessionInfo ? getCarNumberRawFromSessionInfo(sessionInfo, carIdx) : null;
 
         if (carNumberRaw !== null) {
-          const success = camera.switchNum(carNumberRaw, groupNum, cameraNum + dir);
+          // Step to the neighbouring camera resolved from the SAME carousel the
+          // dial sub-camera preview uses (computeSubCameraCarousel over the
+          // group's CameraInfo.Cameras[]), so preview and execution can't
+          // diverge (#803 strip redesign). With no camera list — or the current
+          // camera missing from it — fall back to the raw ± 1 wrap iRacing
+          // resolves internally.
+          const carousel = computeSubCameraCarousel(cameraNum, getCamerasInGroup(sessionInfo, groupNum));
+          const targetCamera = direction === "next" ? carousel.next : carousel.prev;
+          const targetCameraNum = targetCamera ? targetCamera.cameraNum : cameraNum + dir;
+          const success = camera.switchNum(carNumberRaw, groupNum, targetCameraNum);
           this.logger.info("Sub-camera switched");
-          this.logger.debug(`Result: ${success}, direction: ${direction}, carNumberRaw: ${carNumberRaw}`);
+          this.logger.debug(`Result: ${success}, direction: ${direction}, camera: ${targetCameraNum}`);
         } else {
           const success = camera.cycleSubCamera(carIdx, groupNum, cameraNum, dir);
           this.logger.info("Sub-camera cycled (car number fallback)");

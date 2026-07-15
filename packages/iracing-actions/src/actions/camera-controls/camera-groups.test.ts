@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { computeCameraCarousel, getNextSelectedGroup, parseGroupSubset } from "./camera-groups.js";
+import {
+  computeCameraCarousel,
+  computeSubCameraCarousel,
+  getNextSelectedGroup,
+  parseGroupSubset,
+} from "./camera-groups.js";
 
 const SESSION_GROUPS = [
   { groupNum: 1, groupName: "Nose" },
@@ -67,5 +72,59 @@ describe("computeCameraCarousel", () => {
 
     expect(carousel.next?.groupNum).toBe(getNextSelectedGroup(17, enabled, SESSION_GROUPS, 1));
     expect(carousel.prev?.groupNum).toBe(getNextSelectedGroup(17, enabled, SESSION_GROUPS, -1));
+  });
+});
+
+describe("computeSubCameraCarousel", () => {
+  // Deliberately UNSORTED input to prove the helper orders by cameraNum.
+  const CAMERAS = [
+    { cameraNum: 2, cameraName: "Roll Bar" },
+    { cameraNum: 1, cameraName: "Cockpit" },
+    { cameraNum: 3, cameraName: "Gyro" },
+  ];
+
+  it("resolves the current camera and its ascending-cameraNum neighbours", () => {
+    const carousel = computeSubCameraCarousel(2, CAMERAS);
+
+    expect(carousel.current?.cameraName).toBe("Roll Bar");
+    expect(carousel.prev?.cameraName).toBe("Cockpit"); // cameraNum 1
+    expect(carousel.next?.cameraName).toBe("Gyro"); // cameraNum 3
+  });
+
+  it("wraps at the ends of the camera list", () => {
+    // Current = last camera (cameraNum 3): next wraps to the first (cameraNum 1),
+    // prev is cameraNum 2.
+    const carousel = computeSubCameraCarousel(3, CAMERAS);
+
+    expect(carousel.current?.cameraName).toBe("Gyro");
+    expect(carousel.next?.cameraName).toBe("Cockpit");
+    expect(carousel.prev?.cameraName).toBe("Roll Bar");
+
+    // First camera (cameraNum 1): prev wraps to the last (cameraNum 3).
+    const first = computeSubCameraCarousel(1, CAMERAS);
+
+    expect(first.prev?.cameraName).toBe("Gyro");
+    expect(first.next?.cameraName).toBe("Roll Bar");
+  });
+
+  it("shows a single-camera group as current only (no neighbours)", () => {
+    const carousel = computeSubCameraCarousel(1, [{ cameraNum: 1, cameraName: "CamNose" }]);
+
+    expect(carousel.current?.cameraName).toBe("CamNose");
+    expect(carousel.prev).toBeNull();
+    expect(carousel.next).toBeNull();
+  });
+
+  it("returns all-null for an empty camera list", () => {
+    expect(computeSubCameraCarousel(1, [])).toEqual({ current: null, prev: null, next: null });
+  });
+
+  it("returns current only when the focused camera number is not in the list", () => {
+    // No camera 5 in the list → nothing to anchor the neighbours on.
+    const carousel = computeSubCameraCarousel(5, CAMERAS);
+
+    expect(carousel.current).toBeNull();
+    expect(carousel.prev).toBeNull();
+    expect(carousel.next).toBeNull();
   });
 });

@@ -4,39 +4,42 @@ import {
   buildTriggerDescription,
   CameraDialSurface,
   computeCarNumberTarget,
-  computeFocusReadout,
   computeRacePositionTarget,
   DialSettings,
-  formatReadout,
   renderCameraCarousel,
   renderCarCarousel,
+  renderSubCameraCarousel,
   wrapPosition,
 } from "./camera-dial-surface.js";
 
-const { mockGroups, mockCarNumber, mockCarNumberByIdx, mockCarNumberRawByIdx, mockAllCars } = vi.hoisted(() => ({
-  // Mutable session lookups the SDK helper mocks read, so tests can flip
-  // in-session / out-of-session and change the focused car per case.
-  mockGroups: {
-    value: [
-      { groupNum: 1, groupName: "Nose" },
-      { groupNum: 9, groupName: "Cockpit" },
-      { groupNum: 12, groupName: "Chase" },
-    ] as Array<{ groupNum: number; groupName: string }>,
-  },
-  mockCarNumber: { value: "42" as string | null },
-  // When set, getCarNumberFromSessionInfo resolves per carIdx (race-position tests).
-  mockCarNumberByIdx: { value: null as Record<number, string> | null },
-  // When set, getCarNumberRawFromSessionInfo resolves per carIdx (race-position
-  // EXECUTION tests — the raw number is what focusCarNumber is dispatched with).
-  mockCarNumberRawByIdx: { value: null as Record<number, number> | null },
-  mockAllCars: {
-    value: [
-      { carIdx: 1, carNumber: "3", carNumberRaw: 3, userName: "a" },
-      { carIdx: 3, carNumber: "42", carNumberRaw: 42, userName: "b" },
-      { carIdx: 5, carNumber: "99", carNumberRaw: 99, userName: "c" },
-    ] as Array<{ carIdx: number; carNumber: string; carNumberRaw: number; userName: string }>,
-  },
-}));
+const { mockGroups, mockCameras, mockCarNumber, mockCarNumberByIdx, mockCarNumberRawByIdx, mockAllCars } = vi.hoisted(
+  () => ({
+    // Mutable session lookups the SDK helper mocks read, so tests can flip
+    // in-session / out-of-session and change the focused car per case.
+    mockGroups: {
+      value: [
+        { groupNum: 1, groupName: "Nose" },
+        { groupNum: 9, groupName: "Cockpit" },
+        { groupNum: 12, groupName: "Chase" },
+      ] as Array<{ groupNum: number; groupName: string }>,
+    },
+    // The cameras getCamerasInGroup returns for the focused group (sub-camera mode).
+    mockCameras: { value: [] as Array<{ cameraNum: number; cameraName: string }> },
+    mockCarNumber: { value: "42" as string | null },
+    // When set, getCarNumberFromSessionInfo resolves per carIdx (race-position tests).
+    mockCarNumberByIdx: { value: null as Record<number, string> | null },
+    // When set, getCarNumberRawFromSessionInfo resolves per carIdx (race-position
+    // EXECUTION tests — the raw number is what focusCarNumber is dispatched with).
+    mockCarNumberRawByIdx: { value: null as Record<number, number> | null },
+    mockAllCars: {
+      value: [
+        { carIdx: 1, carNumber: "3", carNumberRaw: 3, userName: "a" },
+        { carIdx: 3, carNumber: "42", carNumberRaw: 42, userName: "b" },
+        { carIdx: 5, carNumber: "99", carNumberRaw: 99, userName: "c" },
+      ] as Array<{ carIdx: number; carNumber: string; carNumberRaw: number; userName: string }>,
+    },
+  }),
+);
 
 vi.mock("@iracedeck/deck-core", () => ({
   // push-turn when rotated while held, else long/short vs the threshold.
@@ -58,6 +61,7 @@ vi.mock("@iracedeck/deck-core", () => ({
 
 vi.mock("@iracedeck/iracing-sdk", () => ({
   getCameraGroupsFromSessionInfo: vi.fn(() => mockGroups.value),
+  getCamerasInGroup: vi.fn(() => mockCameras.value),
   getCarNumberFromSessionInfo: vi.fn((_s: unknown, carIdx: number) =>
     mockCarNumberByIdx.value ? (mockCarNumberByIdx.value[carIdx] ?? null) : mockCarNumber.value,
   ),
@@ -112,6 +116,7 @@ beforeEach(() => {
     { groupNum: 9, groupName: "Cockpit" },
     { groupNum: 12, groupName: "Chase" },
   ];
+  mockCameras.value = [];
   mockCarNumber.value = "42";
   mockCarNumberByIdx.value = null;
   mockCarNumberRawByIdx.value = null;
@@ -127,27 +132,6 @@ afterEach(() => {
 });
 
 describe("camera dial-surface pure helpers", () => {
-  describe("computeFocusReadout", () => {
-    it("resolves the focused car number and camera group name", () => {
-      expect(computeFocusReadout(TELEMETRY as never, {})).toEqual({ groupName: "Cockpit", carNumber: "42" });
-    });
-
-    it("returns nulls when telemetry is unavailable", () => {
-      expect(computeFocusReadout(null, {})).toEqual({ groupName: null, carNumber: null });
-    });
-  });
-
-  describe("formatReadout (sub-camera / driving strips)", () => {
-    it("shows the group name as the label and the #-car-number as the value", () => {
-      expect(formatReadout("sub-camera", TELEMETRY as never, {})).toEqual({ label: "COCKPIT", value: "#42" });
-    });
-
-    it("falls back to the mode identity label with an empty value out of session", () => {
-      expect(formatReadout("sub-camera", null, {})).toEqual({ label: "SUB CAM", value: "" });
-      expect(formatReadout("driving", null, {})).toEqual({ label: "DRIVING", value: "" });
-    });
-  });
-
   describe("wrapPosition", () => {
     it("wraps forward and backward within the field", () => {
       expect(wrapPosition(2, 1, 3)).toBe(3);
@@ -244,17 +228,19 @@ describe("camera dial-surface pure helpers", () => {
   describe("renderCameraCarousel", () => {
     const colors = { border: "#111", label: "#222", value: "#333", background: "#0d0d0d" };
 
-    it("draws the centre group name plus the side glyphs", () => {
+    it("draws the mode-name title, the centre group name, and the side glyphs", () => {
       const svg = renderCameraCarousel({
         width: 200,
         height: 100,
         colors,
+        title: "CAMERA",
         identityLabel: "CAMERA",
         current: { name: "Cockpit", glyph: { width: 68, height: 68, artwork: '<path data-g="Cockpit"/>' } },
         prev: { name: "Nose", glyph: { width: 68, height: 68, artwork: '<path data-g="Nose"/>' } },
         next: { name: "Chase", glyph: { width: 68, height: 68, artwork: '<path data-g="Chase"/>' } },
       });
 
+      expect(svg).toContain(">CAMERA<"); // mode-name title (top line)
       expect(svg).toContain(">COCKPIT<");
       expect(svg).toContain('data-g="Cockpit"');
       expect(svg).toContain('data-g="Nose"');
@@ -266,6 +252,7 @@ describe("camera dial-surface pure helpers", () => {
         width: 200,
         height: 100,
         colors,
+        title: "CAMERA",
         identityLabel: "CAMERA",
         current: { name: "Cockpit", glyph: null },
         prev: { name: "Scenic", glyph: null },
@@ -276,11 +263,29 @@ describe("camera dial-surface pure helpers", () => {
       expect(svg).toContain(">COCKPIT<");
     });
 
+    it("renders current only (no side glyphs) when prev/next are null — the driving mode shape", () => {
+      const svg = renderCameraCarousel({
+        width: 200,
+        height: 100,
+        colors,
+        title: "DRIVING CAM",
+        identityLabel: "DRIVING",
+        current: { name: "Cockpit", glyph: { width: 68, height: 68, artwork: '<path data-g="Cockpit"/>' } },
+        prev: null,
+        next: null,
+      });
+
+      expect(svg).toContain(">DRIVING CAM<");
+      expect(svg).toContain(">COCKPIT<");
+      expect(svg).toContain('data-g="Cockpit"');
+    });
+
     it("falls back to the identity label with no current group", () => {
       const svg = renderCameraCarousel({
         width: 200,
         height: 100,
         colors,
+        title: "CAMERA",
         identityLabel: "CAMERA",
         current: null,
         prev: null,
@@ -291,14 +296,52 @@ describe("camera dial-surface pure helpers", () => {
     });
   });
 
+  describe("renderSubCameraCarousel", () => {
+    const colors = { border: "#111", label: "#222", value: "#333", background: "#0d0d0d" };
+
+    it("draws the mode-name title, the centre camera name, and the side camera names", () => {
+      const svg = renderSubCameraCarousel({
+        width: 200,
+        height: 100,
+        colors,
+        title: "SUB-CAMERA",
+        identityLabel: "SUB CAM",
+        current: "Roll Bar",
+        prev: "Cockpit",
+        next: "Gyro",
+      });
+
+      expect(svg).toContain(">SUB-CAMERA<"); // mode-name title
+      expect(svg).toContain(">ROLL BAR<"); // current camera (uppercased)
+      expect(svg).toContain(">COCKPIT<"); // prev camera
+      expect(svg).toContain(">GYRO<"); // next camera
+    });
+
+    it("falls back to the identity label with no current camera", () => {
+      const svg = renderSubCameraCarousel({
+        width: 200,
+        height: 100,
+        colors,
+        title: "SUB-CAMERA",
+        identityLabel: "SUB CAM",
+        current: null,
+        prev: null,
+        next: null,
+      });
+
+      expect(svg).toContain(">SUB CAM<");
+    });
+  });
+
   describe("renderCarCarousel", () => {
     const colors = { border: "#111", label: "#222", value: "#333", background: "#0d0d0d" };
 
-    it("draws the centre car number and the side numbers", () => {
+    it("draws the mode-name title, the centre car number, and the side numbers", () => {
       const svg = renderCarCarousel({
         width: 200,
         height: 100,
         colors,
+        title: "CAR #",
         identityLabel: "CAR #",
         center: "42",
         prev: "3",
@@ -306,10 +349,11 @@ describe("camera dial-surface pure helpers", () => {
         position: null,
       });
 
+      expect(svg).toContain(">CAR #<"); // mode-name title
       expect(svg).toContain(">#42<");
       expect(svg).toContain(">#3<");
       expect(svg).toContain(">#99<");
-      expect(svg).not.toContain(">P");
+      expect(svg).not.toMatch(/>P\d/); // no position badge (title "CAR #" is not a badge)
     });
 
     it("adds the position badge in race-position mode", () => {
@@ -317,6 +361,7 @@ describe("camera dial-surface pure helpers", () => {
         width: 200,
         height: 100,
         colors,
+        title: "POSITION",
         identityLabel: "POSITION",
         center: "42",
         prev: "7",
@@ -324,6 +369,7 @@ describe("camera dial-surface pure helpers", () => {
         position: 4,
       });
 
+      expect(svg).toContain(">POSITION<"); // mode-name title
       expect(svg).toContain(">P4<");
       expect(svg).toContain(">#42<");
     });
@@ -333,6 +379,7 @@ describe("camera dial-surface pure helpers", () => {
         width: 200,
         height: 100,
         colors,
+        title: "CAR #",
         identityLabel: "CAR #",
         center: null,
         prev: null,
@@ -605,13 +652,14 @@ describe("CameraDialSurface", () => {
 
       const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
 
+      expect(decoded).toContain(">CAMERA<"); // mode-name title
       expect(decoded).toContain(">COCKPIT<"); // current group
       expect(decoded).toContain('data-group="Cockpit"');
       expect(decoded).toContain('data-group="Nose"'); // prev
       expect(decoded).toContain('data-group="Chase"'); // next
     });
 
-    it("renders the car-number carousel with the focused #number", async () => {
+    it("renders the car-number carousel with the mode-name title and the focused #number", async () => {
       const host = makeHost();
       const surface = new CameraDialSurface(host as never);
       const ctx = dialContext("f2");
@@ -619,12 +667,13 @@ describe("CameraDialSurface", () => {
 
       const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
 
+      expect(decoded).toContain(">CAR #<"); // mode-name title
       expect(decoded).toContain(">#42<"); // focused car
       expect(decoded).toContain(">#99<"); // next by number
       expect(decoded).toContain(">#3<"); // previous by number
     });
 
-    it("renders the race-position carousel with a position badge", async () => {
+    it("renders the race-position carousel with the mode-name title and a position badge", async () => {
       mockCarNumberByIdx.value = { 1: "77", 2: "88", 3: "42" };
       const host = makeHost({ getRacePositions: vi.fn(() => [0, 3, 1, 2]) });
       const surface = new CameraDialSurface(host as never);
@@ -633,6 +682,7 @@ describe("CameraDialSurface", () => {
 
       const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
 
+      expect(decoded).toContain(">POSITION<"); // mode-name title
       expect(decoded).toContain(">P2<"); // focused car is P2
       expect(decoded).toContain(">#42<"); // focused car number
     });
@@ -655,19 +705,74 @@ describe("CameraDialSurface", () => {
       expect(decoded).toContain(">#0<"); // focused pace car
       expect(decoded).toContain(">#1<"); // next detent → leader (P1)
       expect(decoded).toContain(">#99<"); // previous detent → last place
-      expect(decoded).not.toContain(">P"); // no position badge for the unclassified car
+      // No position badge (P<digit>) for the unclassified car — the "POSITION"
+      // title starts with P but is never followed by a digit.
+      expect(decoded).not.toMatch(/>P\d/);
     });
 
-    it("keeps the plain readout for the sub-camera mode", async () => {
-      const host = makeHost();
+    it("renders the sub-camera name carousel from the group's camera list", async () => {
+      // The focused camera (CamCameraNumber 2) and its neighbours come straight
+      // from getCamerasInGroup — the SAME list computeSubCameraCarousel steps
+      // through for the dispatch, so preview == execution.
+      mockCameras.value = [
+        { cameraNum: 1, cameraName: "Cockpit" },
+        { cameraNum: 2, cameraName: "Roll Bar" },
+        { cameraNum: 3, cameraName: "Gyro" },
+      ];
+      const host = makeHost({
+        getTelemetry: vi.fn(() => ({ CamGroupNumber: 9, CamCarIdx: 3, CamCameraNumber: 2 }) as never),
+      });
       const surface = new CameraDialSurface(host as never);
       const ctx = dialContext("f4");
       await surface.willAppear(ctx as never, dial({ mode: "sub-camera" }));
 
       const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
 
-      expect(decoded).toContain(">COCKPIT<");
-      expect(decoded).toContain(">#42<");
+      expect(decoded).toContain(">SUB-CAMERA<"); // mode-name title
+      expect(decoded).toContain(">ROLL BAR<"); // current camera (cameraNum 2)
+      expect(decoded).toContain(">COCKPIT<"); // prev camera (cameraNum 1)
+      expect(decoded).toContain(">GYRO<"); // next camera (cameraNum 3)
+      // The focused CAR number is no longer part of the sub-camera strip.
+      expect(decoded).not.toContain(">#42<");
+    });
+
+    it("wraps the sub-camera carousel at the ends of the group's camera list", async () => {
+      // Focused on the LAST camera (cameraNum 3) — next wraps to cameraNum 1.
+      mockCameras.value = [
+        { cameraNum: 1, cameraName: "Cockpit" },
+        { cameraNum: 2, cameraName: "Roll Bar" },
+        { cameraNum: 3, cameraName: "Gyro" },
+      ];
+      const host = makeHost({
+        getTelemetry: vi.fn(() => ({ CamGroupNumber: 9, CamCarIdx: 3, CamCameraNumber: 3 }) as never),
+      });
+      const surface = new CameraDialSurface(host as never);
+      const ctx = dialContext("f4b");
+      await surface.willAppear(ctx as never, dial({ mode: "sub-camera" }));
+
+      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+
+      expect(decoded).toContain(">GYRO<"); // current (cameraNum 3)
+      expect(decoded).toContain(">ROLL BAR<"); // prev (cameraNum 2)
+      expect(decoded).toContain(">COCKPIT<"); // next wraps to cameraNum 1
+    });
+
+    it("renders the driving strip as the current camera group only (no invented preview)", async () => {
+      // Driving hands `group ± 1` to iRacing, which resolves + wraps it
+      // internally, so there is NO coherent neighbour to preview — current only.
+      const host = makeHost({ getTelemetry: vi.fn(() => ({ CamGroupNumber: 9, CamCarIdx: 3 }) as never) });
+      const surface = new CameraDialSurface(host as never);
+      const ctx = dialContext("f4c");
+      await surface.willAppear(ctx as never, dial({ mode: "driving" }));
+
+      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+
+      expect(decoded).toContain(">DRIVING CAM<"); // mode-name title
+      expect(decoded).toContain(">COCKPIT<"); // current group (group 9)
+      expect(decoded).toContain('data-group="Cockpit"'); // current group glyph
+      // No neighbour groups previewed.
+      expect(decoded).not.toContain('data-group="Nose"');
+      expect(decoded).not.toContain('data-group="Chase"');
     });
 
     it("shows an identity-only label box out of session (car-number)", async () => {
@@ -714,11 +819,11 @@ describe("CameraDialSurface", () => {
       const host = makeHost();
       const surface = new CameraDialSurface(host as never);
       const ctx = dialContext("f8");
-      await surface.willAppear(ctx as never, dial({ mode: "sub-camera" }));
+      await surface.willAppear(ctx as never, dial({ mode: "car-number" }));
       ctx.setFeedback.mockClear();
 
       vi.advanceTimersByTime(50);
-      mockCarNumber.value = "7";
+      mockCarNumber.value = "7"; // focused car number (getCarNumberFromSessionInfo)
       surface.onTelemetry("f8", TELEMETRY as never);
 
       expect(ctx.setFeedback).not.toHaveBeenCalled();

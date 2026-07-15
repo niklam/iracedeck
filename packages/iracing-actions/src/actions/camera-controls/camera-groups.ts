@@ -13,7 +13,7 @@
  * icon→artwork resolution stay in `camera-controls.ts`; only the pure subset
  * math lives here.
  */
-import type { CameraGroup } from "@iracedeck/iracing-sdk";
+import type { CameraGroup, CameraInGroup } from "@iracedeck/iracing-sdk";
 
 /**
  * @internal Exported for testing
@@ -172,5 +172,52 @@ export function computeCameraCarousel(
     current,
     prev: getNextSelectedGroupEntry(base, enabledGroupNames, sessionGroups, -1),
     next: getNextSelectedGroupEntry(base, enabledGroupNames, sessionGroups, 1),
+  };
+}
+
+/**
+ * The three sub-cameras the dial sub-camera carousel shows: the camera the group
+ * is currently on plus the cameras one detent counter-clockwise (`prev`) and
+ * clockwise (`next`) within the SAME group — exactly what one turn would switch
+ * to. `null` slots when there is no camera to show for that position.
+ */
+export interface SubCameraCarousel {
+  current: CameraInGroup | null;
+  prev: CameraInGroup | null;
+  next: CameraInGroup | null;
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * Build the dial sub-camera carousel from the current sub-camera number and the
+ * group's camera list (session YAML `CameraInfo.Groups[].Cameras[]`, via
+ * `getCamerasInGroup`). The cameras are ordered by ascending `cameraNum`; `prev`
+ * / `next` are the neighbours one detent away, wrapping at the ends. This is the
+ * SINGLE source both the dial preview and the keypad/dial sub-camera dispatch
+ * step through — the dispatch focuses `next.cameraNum` / `prev.cameraNum`, so
+ * the previewed camera and the switched-to camera can never diverge (mirrors how
+ * `computeCameraCarousel` + `getNextSelectedGroupEntry` back the camera mode).
+ *
+ * A single-camera group can't cycle, so `prev` / `next` are `null` (current
+ * only). When the current camera number isn't found in the list, `current` is
+ * `null` (the caller renders its identity fallback and the dispatch falls back
+ * to the raw ± 1 wrap iRacing resolves internally).
+ */
+export function computeSubCameraCarousel(currentCameraNum: number | null, cameras: CameraInGroup[]): SubCameraCarousel {
+  if (cameras.length === 0) return { current: null, prev: null, next: null };
+
+  const sorted = [...cameras].sort((a, b) => a.cameraNum - b.cameraNum);
+  const idx = currentCameraNum === null ? -1 : sorted.findIndex((c) => c.cameraNum === currentCameraNum);
+  const current = idx >= 0 ? sorted[idx] : null;
+
+  // A single camera (or an unresolved current camera) has no meaningful
+  // neighbours — show the current only.
+  if (sorted.length === 1 || idx < 0) return { current, prev: null, next: null };
+
+  return {
+    current,
+    prev: sorted[(idx - 1 + sorted.length) % sorted.length],
+    next: sorted[(idx + 1) % sorted.length],
   };
 }

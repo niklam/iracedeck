@@ -1,5 +1,5 @@
 import { getCommands, requestProfileSwitch, resolveProfileNameForDevice } from "@iracedeck/deck-core";
-import { getAllCarNumbers, getCarNumberRawFromSessionInfo } from "@iracedeck/iracing-sdk";
+import { getAllCarNumbers, getCamerasInGroup, getCarNumberRawFromSessionInfo } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { _resetSelectIntents, getSelectIntent } from "../../shared/car-select-intent.js";
@@ -105,6 +105,7 @@ vi.mock("../race-admin/race-admin-selector.js", () => ({
 
 vi.mock("@iracedeck/iracing-sdk", () => ({
   getCameraGroupsFromSessionInfo: vi.fn(() => []),
+  getCamerasInGroup: vi.fn(() => []),
   getCarNumberRawFromSessionInfo: vi.fn(() => null),
   getCarNumberFromSessionInfo: vi.fn(() => null),
   getAllCarNumbers: vi.fn(() => []),
@@ -1080,8 +1081,9 @@ describe("cycle-sub-camera keeps focus by car number (pace-car stall #803)", () 
   });
 
   afterEach(() => {
-    // Restore the module default so the switched return can't leak forward.
+    // Restore the module defaults so a switched return can't leak forward.
     vi.mocked(getCarNumberRawFromSessionInfo).mockReturnValue(null);
+    vi.mocked(getCamerasInGroup).mockReturnValue([]);
   });
 
   it("dispatches switchNum with the focused car's raw number on a dial rotation (pace car focused)", async () => {
@@ -1142,6 +1144,28 @@ describe("cycle-sub-camera keeps focus by car number (pace-car stall #803)", () 
 
     expect(mockCamera.cycleSubCamera).toHaveBeenCalledWith(3, 9, 2, 1);
     expect(mockCamera.switchNum).not.toHaveBeenCalled();
+  });
+
+  it("focuses the camera the sub-camera carousel resolves — same source as the dial preview, including wrap (#803 strip)", async () => {
+    const action = new CameraControls();
+    // Focused on the LAST camera (cameraNum 3); the carousel wraps next → cameraNum 1.
+    sdk(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 0, CamGroupNumber: 9, CamCameraNumber: 3 });
+    sdk(action).getSessionInfo.mockReturnValue({});
+    vi.mocked(getCarNumberRawFromSessionInfo).mockReturnValue(0);
+    vi.mocked(getCamerasInGroup).mockReturnValue([
+      { cameraNum: 1, cameraName: "Cockpit" },
+      { cameraNum: 2, cameraName: "Roll Bar" },
+      { cameraNum: 3, cameraName: "Gyro" },
+    ]);
+
+    await action.onDialRotate({
+      action: dialContext(),
+      payload: { settings: { dial: { mode: "sub-camera" } }, ticks: 1 },
+    } as never);
+
+    // Wraps to cameraNum 1 (the carousel target) — NOT the raw 3 + 1 = 4, so the
+    // camera the strip previews and the camera the dispatch switches to agree.
+    expect(mockCamera.switchNum).toHaveBeenCalledWith(0, 9, 1);
   });
 });
 

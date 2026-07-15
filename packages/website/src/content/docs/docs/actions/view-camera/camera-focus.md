@@ -232,7 +232,7 @@ The numeric camera state value passed to the iRacing SDK. Integer. Defaults to `
 
 ## On a dial
 
-Placed on a Stream Deck+ dial, Camera Controls becomes a camera dial for spectating and broadcasting. Turn the dial to flip through cameras or cars — the dial's own **Mode** setting picks the target, and the turn direction replaces the keypad cycle modes' Next / Previous setting (clockwise = next, counter-clockwise = previous). The touch strip is a carousel: the current camera (or the focused car's number) sits in the centre with the previous / next either side. Everything is an iRacing SDK camera command, so no bindings are needed. The Property Inspector automatically shows the dial settings (instead of the keypad Mode) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
+Placed on a Stream Deck+ dial, Camera Controls becomes a camera dial for spectating and broadcasting. Turn the dial to flip through cameras or cars — the dial's own **Mode** setting picks the target, and the turn direction replaces the keypad cycle modes' Next / Previous setting (clockwise = next, counter-clockwise = previous). The touch strip's top line always names the current mode; below it the main content is whatever that mode acts on — the current camera, sub-camera, or car — with the neighbours either side where they can be previewed. Everything is an iRacing SDK camera command, so no bindings are needed. The Property Inspector automatically shows the dial settings (instead of the keypad Mode) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
 
 #### Details
 
@@ -257,7 +257,14 @@ Which target the dial cycles. Defaults to **Cycle by Car #** — the marquee fli
 - **Cycle by Race Position** — moves camera focus up / down the live running order (the plugin's canonical race order, with iRacing's official position as a fallback when no live order is available)
 - **Cycle Driving Camera** — steps through the driving-style cameras
 
-The touch strip is a carousel. In **Cycle Camera** the current camera group's icon sits large in the centre with its name beneath, flanked by the smaller dimmed previous / next groups from your enabled set — exactly what one detent either way would switch to. In the car modes the focused car's number sits large in the centre (`#number`) flanked by the previous / next cars; **Cycle by Race Position** also adds a small `P4` position badge. Sub-Camera and Driving keep a plain group-name / `#car` readout. Everything is drawn in a per-mode accent colour you can override (border, label, value, background) in the **Dash Box Appearance** section of the dial settings. Out of a session the strip falls back to a plain mode label (`CAR #`, `CAMERA`, …).
+The touch strip's small top line always names the current mode (`CAMERA`, `SUB-CAMERA`, `CAR #`, `POSITION`, or `DRIVING CAM`). Below it, the main content is whatever that mode acts on:
+
+- **Cycle Camera** — the current camera group's icon and name in the centre, flanked by the smaller dimmed previous / next groups from your enabled set — exactly what one detent either way would switch to.
+- **Cycle Sub-Camera** — the current camera's name within the focused group, flanked by the adjacent cameras (the same order a turn steps through).
+- **Cycle by Car #** / **Cycle by Race Position** — the focused car's number large in the centre (`#number`) flanked by the previous / next cars; **Cycle by Race Position** also adds a small `P4` badge for the focused car's position.
+- **Cycle Driving Camera** — the current camera group's icon and name only. Driving cycling hands the next group to iRacing to resolve, so there is no neighbour to preview.
+
+Everything is drawn in a per-mode accent colour you can override (border, label, value, background) in the **Dash Box Appearance** section of the dial settings. Out of a session the strip falls back to a plain mode label (`CAR #`, `CAMERA`, …).
 
 #### Setting: Camera Groups (Cycle Camera)
 

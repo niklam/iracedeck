@@ -4,10 +4,19 @@
  * On a Stream Deck+ dial, rotation cycles the camera or the focused car — the
  * dial's `mode` selects the target and the turn direction replaces the keypad
  * cycle modes' explicit next/previous setting (clockwise = next,
- * counter-clockwise = previous). The touch strip is a camera CAROUSEL: the
- * current camera group's icon (or the focused car's number) sits large in the
- * centre, flanked by smaller dimmed previous / next slots showing exactly what
- * one detent either way would switch to.
+ * counter-clockwise = previous). The touch strip's small top line is always the
+ * MODE name (CAMERA / SUB-CAMERA / CAR # / POSITION / DRIVING CAM); the main
+ * content identifies the thing that mode acts on:
+ *   - camera → the current camera group's icon + name, flanked by the dimmed
+ *     enabled-subset neighbours one detent either way,
+ *   - sub-camera → the current camera's NAME within the focused group, flanked
+ *     by the dimmed adjacent cameras (same `Cameras[]` order the dispatch steps),
+ *   - car-number / race-position → the focused car's number large in the centre
+ *     (a `P<pos>` badge above it in race-position) flanked by the prev / next
+ *     cars,
+ *   - driving → the current camera group's icon + name ONLY. The driving cycle
+ *     hands `group ± 1` to iRacing, which resolves and wraps it internally, so
+ *     there is no coherent neighbour to preview — better none than a lying one.
  *
  * Two families of mode:
  *   - Cycle modes (camera / sub-camera / driving) rotate via the keypad's own
@@ -44,6 +53,7 @@ import {
 import {
   getAllCarNumbers,
   getCameraGroupsFromSessionInfo,
+  getCamerasInGroup,
   getCarNumberFromSessionInfo,
   getCarNumberRawFromSessionInfo,
   type TelemetryData,
@@ -51,14 +61,9 @@ import {
 import type { ILogger } from "@iracedeck/logger";
 import { z } from "zod";
 
-import {
-  dialAppearanceFields,
-  type DialBoxColors,
-  renderDialBox,
-  resolveDialBoxColors,
-} from "../../shared/dial-box.js";
+import { dialAppearanceFields, type DialBoxColors, resolveDialBoxColors } from "../../shared/dial-box.js";
 import { renderDialNameIcon } from "../../shared/dial-name-icon.js";
-import { computeCameraCarousel } from "./camera-groups.js";
+import { computeCameraCarousel, computeSubCameraCarousel } from "./camera-groups.js";
 
 /**
  * Minimum gap (ms) between change-driven feedback pushes. Cycling a car or a
@@ -143,6 +148,19 @@ const MODE_LABEL: Record<DialMode, string> = {
 };
 
 /**
+ * The strip's small top-line title — the ACTION/mode name, on every mode (issue
+ * #803 strip redesign). Short forms kept consistent with the strip typography;
+ * NO mode ever shows a camera or car name as the title.
+ */
+const MODE_TITLE: Record<DialMode, string> = {
+  camera: "CAMERA",
+  "sub-camera": "SUB-CAMERA",
+  "car-number": "CAR #",
+  "race-position": "POSITION",
+  driving: "DRIVING CAM",
+};
+
+/**
  * Dial-surface settings, stored under the `dial` root key. All fields default,
  * so a keypad-only instance (or a fresh dial) parses `{}` to a full object.
  */
@@ -169,59 +187,6 @@ export const DialSettings = z
   .prefault({});
 
 export type DialSettings = z.infer<typeof DialSettings>;
-
-/** The live camera-focus readout resolved from telemetry + the session YAML. */
-export interface FocusReadout {
-  /** Active camera group name (from `CamGroupNumber` + `CameraInfo`), or null. */
-  groupName: string | null;
-  /** Focused car's display number (from `CamCarIdx` + the driver list), or null. */
-  carNumber: string | null;
-}
-
-/**
- * @internal Exported for testing
- *
- * Resolves the focused car number and camera group name from the live camera
- * telemetry (`CamCarIdx` / `CamGroupNumber`) against the session driver list
- * and camera-group list. Every field independently degrades to `null` when its
- * source is unavailable (out of session, missing driver, unknown group).
- */
-export function computeFocusReadout(telemetry: TelemetryData | null, sessionInfo: unknown): FocusReadout {
-  if (!telemetry) return { groupName: null, carNumber: null };
-
-  const groups = getCameraGroupsFromSessionInfo(sessionInfo);
-  const camGroup = telemetry.CamGroupNumber;
-  const groupName =
-    typeof camGroup === "number" ? (groups.find((g) => g.groupNum === camGroup)?.groupName ?? null) : null;
-
-  const camCarIdx = telemetry.CamCarIdx;
-  const carNumber =
-    typeof camCarIdx === "number" && camCarIdx >= 0 ? getCarNumberFromSessionInfo(sessionInfo, camCarIdx) : null;
-
-  return { groupName, carNumber };
-}
-
-/**
- * @internal Exported for testing
- *
- * The dash-box label + value for the current focus, used by the sub-camera and
- * driving modes (whose strip stays the plain group-name / #car readout). With a
- * live focus the label is the camera group name and the value is the
- * `#`-prefixed car number; with no live data the label falls back to the mode
- * identity and the value is empty (the identity-only, label-only box).
- */
-export function formatReadout(
-  mode: DialMode,
-  telemetry: TelemetryData | null,
-  sessionInfo: unknown,
-): { label: string; value: string } {
-  const { groupName, carNumber } = computeFocusReadout(telemetry, sessionInfo);
-
-  return {
-    label: groupName ? groupName.toUpperCase() : MODE_IDENTITY[mode],
-    value: carNumber ? `#${carNumber}` : "",
-  };
-}
 
 /**
  * @internal Exported for testing
@@ -409,6 +374,11 @@ function identityBox(w: number, h: number, label: string, colors: DialBoxColors)
   return svgWrap(w, h, dialPanel(w, h, colors) + text);
 }
 
+/** The strip's small top-line title — the mode name, drawn on every live strip (issue #803). */
+function titleLine(w: number, h: number, title: string, colors: DialBoxColors): string {
+  return `<text x="${w / 2}" y="${Math.round(h * 0.2)}" text-anchor="middle" fill="${colors.label}" font-family="Arial, sans-serif" font-size="13" font-weight="bold" opacity="0.85">${escapeXml(title)}</text>`;
+}
+
 /** Places a glyph centred at (cx, cy), scaled so its longer side fits `size`. */
 function placeGlyph(glyph: CarouselGlyph, cx: number, cy: number, size: number, opacity: number): string {
   const scale = size / Math.max(glyph.width, glyph.height);
@@ -422,15 +392,17 @@ function placeGlyph(glyph: CarouselGlyph, cx: number, cy: number, size: number, 
 /**
  * @internal Exported for testing
  *
- * Renders the camera-carousel strip: the current group's icon large in the
- * centre with its name beneath, flanked by the smaller dimmed previous / next
- * groups. Falls back to a centred identity label out of a session (no current
- * group).
+ * Renders the camera-carousel strip: the mode-name title on top, the current
+ * group's icon in the centre with its name beneath, flanked by the smaller
+ * dimmed previous / next groups. Driving mode passes `prev`/`next` as `null` for
+ * a current-only render (no coherent neighbour to preview). Falls back to a
+ * centred identity label out of a session (no current group).
  */
 export function renderCameraCarousel(args: {
   width: number;
   height: number;
   colors: DialBoxColors;
+  title: string;
   identityLabel: string;
   current: CarouselSlot | null;
   prev: CarouselSlot | null;
@@ -440,7 +412,7 @@ export function renderCameraCarousel(args: {
 
   if (!args.current) return identityBox(w, h, args.identityLabel, colors);
 
-  const parts: string[] = [dialPanel(w, h, colors)];
+  const parts: string[] = [dialPanel(w, h, colors), titleLine(w, h, args.title, colors)];
 
   // Side slots (dimmed), drawn behind the centre.
   for (const [slot, cx] of [
@@ -449,18 +421,18 @@ export function renderCameraCarousel(args: {
   ] as const) {
     if (!slot) continue;
 
-    if (slot.glyph) parts.push(placeGlyph(slot.glyph, cx, h * 0.42, 28, 0.4));
+    if (slot.glyph) parts.push(placeGlyph(slot.glyph, cx, h * 0.5, 26, 0.4));
     else
       parts.push(
-        `<text x="${cx}" y="${Math.round(h * 0.54)}" text-anchor="middle" fill="${colors.label}" font-family="Arial, sans-serif" font-size="11" font-weight="bold" opacity="0.4">${escapeXml(slot.name.toUpperCase())}</text>`,
+        `<text x="${cx}" y="${Math.round(h * 0.56)}" text-anchor="middle" fill="${colors.label}" font-family="Arial, sans-serif" font-size="11" font-weight="bold" opacity="0.4">${escapeXml(slot.name.toUpperCase())}</text>`,
       );
   }
 
   // Centre glyph (if mapped) with the group name beneath it.
-  if (args.current.glyph) parts.push(placeGlyph(args.current.glyph, w / 2, h * 0.4, 48, 1));
+  if (args.current.glyph) parts.push(placeGlyph(args.current.glyph, w / 2, h * 0.5, 42, 1));
 
   parts.push(
-    `<text x="${w / 2}" y="${Math.round(h * 0.87)}" text-anchor="middle" fill="${colors.value}" font-family="Arial, sans-serif" font-size="15" font-weight="bold">${escapeXml(args.current.name.toUpperCase())}</text>`,
+    `<text x="${w / 2}" y="${Math.round(h * 0.9)}" text-anchor="middle" fill="${colors.value}" font-family="Arial, sans-serif" font-size="14" font-weight="bold">${escapeXml(args.current.name.toUpperCase())}</text>`,
   );
 
   return svgWrap(w, h, parts.join(""));
@@ -469,15 +441,60 @@ export function renderCameraCarousel(args: {
 /**
  * @internal Exported for testing
  *
- * Renders the car-carousel strip: the focused car's number large in the centre
- * (with a `P<pos>` badge above it in race-position mode), flanked by the smaller
- * dimmed previous / next car numbers. Falls back to a centred identity label out
- * of a session (no focused car number).
+ * Renders the sub-camera carousel: the mode-name title on top, the current
+ * camera's NAME within the focused group large in the centre, flanked by the
+ * smaller dimmed previous / next camera names (the same `Cameras[]` order the
+ * dispatch steps through). Falls back to a centred identity label out of a
+ * session (no current camera).
+ */
+export function renderSubCameraCarousel(args: {
+  width: number;
+  height: number;
+  colors: DialBoxColors;
+  title: string;
+  identityLabel: string;
+  current: string | null;
+  prev: string | null;
+  next: string | null;
+}): string {
+  const { width: w, height: h, colors } = args;
+
+  if (!args.current) return identityBox(w, h, args.identityLabel, colors);
+
+  const parts: string[] = [dialPanel(w, h, colors), titleLine(w, h, args.title, colors)];
+
+  for (const [name, cx] of [
+    [args.prev, w * 0.15],
+    [args.next, w * 0.85],
+  ] as const) {
+    if (!name) continue;
+
+    parts.push(
+      `<text x="${cx}" y="${Math.round(h * 0.52)}" text-anchor="middle" fill="${colors.label}" font-family="Arial, sans-serif" font-size="11" font-weight="bold" opacity="0.4">${escapeXml(name.toUpperCase())}</text>`,
+    );
+  }
+
+  parts.push(
+    `<text x="${w / 2}" y="${Math.round(h * 0.68)}" text-anchor="middle" fill="${colors.value}" font-family="Arial, sans-serif" font-size="20" font-weight="bold">${escapeXml(args.current.toUpperCase())}</text>`,
+  );
+
+  return svgWrap(w, h, parts.join(""));
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * Renders the car-carousel strip: the mode-name title on top, the focused car's
+ * number large in the centre (with a `P<pos>` badge below the title in
+ * race-position mode), flanked by the smaller dimmed previous / next car
+ * numbers. Falls back to a centred identity label out of a session (no focused
+ * car number).
  */
 export function renderCarCarousel(args: {
   width: number;
   height: number;
   colors: DialBoxColors;
+  title: string;
   identityLabel: string;
   center: string | null;
   prev: string | null;
@@ -488,7 +505,7 @@ export function renderCarCarousel(args: {
 
   if (!args.center) return identityBox(w, h, args.identityLabel, colors);
 
-  const parts: string[] = [dialPanel(w, h, colors)];
+  const parts: string[] = [dialPanel(w, h, colors), titleLine(w, h, args.title, colors)];
 
   for (const [num, cx] of [
     [args.prev, w * 0.16],
@@ -497,17 +514,17 @@ export function renderCarCarousel(args: {
     if (!num) continue;
 
     parts.push(
-      `<text x="${cx}" y="${Math.round(h * 0.58)}" text-anchor="middle" fill="${colors.label}" font-family="Arial, sans-serif" font-size="18" font-weight="bold" opacity="0.45">#${escapeXml(num)}</text>`,
+      `<text x="${cx}" y="${Math.round(h * 0.62)}" text-anchor="middle" fill="${colors.label}" font-family="Arial, sans-serif" font-size="18" font-weight="bold" opacity="0.45">#${escapeXml(num)}</text>`,
     );
   }
 
   if (args.position !== null) {
     parts.push(
-      `<text x="${w / 2}" y="${Math.round(h * 0.27)}" text-anchor="middle" fill="${colors.label}" font-family="Arial, sans-serif" font-size="16" font-weight="bold">P${args.position}</text>`,
+      `<text x="${w / 2}" y="${Math.round(h * 0.37)}" text-anchor="middle" fill="${colors.label}" font-family="Arial, sans-serif" font-size="15" font-weight="bold">P${args.position}</text>`,
     );
   }
 
-  const centerY = args.position !== null ? Math.round(h * 0.74) : Math.round(h * 0.66);
+  const centerY = args.position !== null ? Math.round(h * 0.8) : Math.round(h * 0.72);
 
   parts.push(
     `<text x="${w / 2}" y="${centerY}" text-anchor="middle" fill="${colors.value}" font-family="Arial, sans-serif" font-size="40" font-weight="bold">#${escapeXml(args.center)}</text>`,
@@ -881,6 +898,47 @@ export class CameraDialSurface {
     };
   }
 
+  /**
+   * Builds the sub-camera carousel view: the current camera's name within the
+   * focused group plus the adjacent camera names, from the SAME
+   * `computeSubCameraCarousel` the keypad/dial sub-camera dispatch steps through
+   * (over the group's `CameraInfo.Cameras[]`), so preview == execution.
+   */
+  private subCameraView(telemetry: TelemetryData | null): {
+    current: string | null;
+    prev: string | null;
+    next: string | null;
+  } {
+    const camGroup = telemetry?.CamGroupNumber;
+
+    if (typeof camGroup !== "number") return { current: null, prev: null, next: null };
+
+    const cameras = getCamerasInGroup(this.host.getSessionInfo(), camGroup);
+    const camCameraNum = typeof telemetry?.CamCameraNumber === "number" ? telemetry.CamCameraNumber : null;
+    const carousel = computeSubCameraCarousel(camCameraNum, cameras);
+
+    return {
+      current: carousel.current?.cameraName ?? null,
+      prev: carousel.prev?.cameraName ?? null,
+      next: carousel.next?.cameraName ?? null,
+    };
+  }
+
+  /**
+   * The current camera group as a carousel slot (icon + name) for the driving
+   * mode's current-only strip. Resolved straight from telemetry + the session
+   * camera-group list (driving cycles ALL groups, not the enabled subset).
+   */
+  private drivingCurrentSlot(telemetry: TelemetryData | null): CarouselSlot | null {
+    const camGroup = telemetry?.CamGroupNumber;
+
+    if (typeof camGroup !== "number") return null;
+
+    const group = getCameraGroupsFromSessionInfo(this.host.getSessionInfo()).find((g) => g.groupNum === camGroup);
+
+    return group ? { name: group.groupName, glyph: this.host.getGroupGlyph(group.groupName) } : null;
+  }
+
   /** A compact signature of the displayed readout; a feedback push is due when it changes. */
   private displayedSignature(ctx: CameraDialContext): string {
     const dial = ctx.dial;
@@ -898,9 +956,14 @@ export class CameraDialSurface {
       return [dial.mode, v.center ?? "", v.prev ?? "", v.next ?? "", v.position ?? ""].join("|");
     }
 
-    const { label, value } = formatReadout(dial.mode, telemetry, this.host.getSessionInfo());
+    if (dial.mode === "sub-camera") {
+      const v = this.subCameraView(telemetry);
 
-    return [dial.mode, label, value].join("|");
+      return ["sub-camera", v.prev ?? "", v.current ?? "", v.next ?? ""].join("|");
+    }
+
+    // driving: current group only.
+    return ["driving", this.drivingCurrentSlot(telemetry)?.name ?? ""].join("|");
   }
 
   /** Pushes the encoder trigger descriptions for a dial (Elgato only). */
@@ -914,23 +977,36 @@ export class CameraDialSurface {
   private renderStrip(dial: DialSettings): string {
     const colors = resolveDialBoxColors(dial.colors, MODE_COLOR[dial.mode]);
     const telemetry = this.host.getTelemetry();
+    const base = { width: 200, height: 100, colors, title: MODE_TITLE[dial.mode] } as const;
 
     if (dial.mode === "camera") {
       const slots = this.cameraCarouselSlots(telemetry);
 
-      return renderCameraCarousel({ width: 200, height: 100, colors, identityLabel: MODE_IDENTITY.camera, ...slots });
+      return renderCameraCarousel({ ...base, identityLabel: MODE_IDENTITY.camera, ...slots });
     }
 
     if (dial.mode === "car-number" || dial.mode === "race-position") {
       const view = this.carCarouselView(dial.mode, telemetry);
 
-      return renderCarCarousel({ width: 200, height: 100, colors, identityLabel: MODE_IDENTITY[dial.mode], ...view });
+      return renderCarCarousel({ ...base, identityLabel: MODE_IDENTITY[dial.mode], ...view });
     }
 
-    // sub-camera / driving keep the plain group-name / #car readout.
-    const { label, value } = formatReadout(dial.mode, telemetry, this.host.getSessionInfo());
+    if (dial.mode === "sub-camera") {
+      const view = this.subCameraView(telemetry);
 
-    return renderDialBox({ width: 200, height: 100, abbr: label, value, colors });
+      return renderSubCameraCarousel({ ...base, identityLabel: MODE_IDENTITY["sub-camera"], ...view });
+    }
+
+    // driving: the current camera group icon + name only. The driving cycle
+    // hands `group ± 1` to iRacing, which resolves and wraps it internally — no
+    // coherent neighbour to preview — so prev/next are null (current-only).
+    return renderCameraCarousel({
+      ...base,
+      identityLabel: MODE_IDENTITY.driving,
+      current: this.drivingCurrentSlot(telemetry),
+      prev: null,
+      next: null,
+    });
   }
 
   /** Pushes the touch-strip feedback (the full-cell carousel/readout) when this is a dial. */
