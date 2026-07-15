@@ -42,6 +42,13 @@ export interface DialBoxColors {
   background: string;
 }
 
+/**
+ * Where an identity-only (valueless) label sits vertically inside the frame.
+ * `"center"` (default) keeps the historic centered label; `"top"` places it
+ * small near the frame top, freeing the lower area for an `innerGraphic`.
+ */
+export type DialBoxLabelLayout = "center" | "top";
+
 /** An override string counts as "set" only when it is a non-empty string. */
 function overrideOr(override: string | undefined, fallback: string): string {
   return typeof override === "string" && override !== "" ? override : fallback;
@@ -74,8 +81,9 @@ function fitValueFontSize(text: string, maxWidth: number, cap: number): number {
 /**
  * Renders the dash-box SVG. The background fills the panel INSIDE the border and
  * the border strokes it. An empty `value` (identity-only setting) draws just the
- * centered label. When the rotation binding is missing the content dims under
- * the centered #612 warning triangle.
+ * label — centered by default, or small near the top under `labelLayout: "top"`
+ * so an `innerGraphic` can occupy the lower area. When the rotation binding is
+ * missing the content dims under the centered #612 warning triangle.
  */
 export function renderDialBox(args: {
   width: number;
@@ -85,6 +93,17 @@ export function renderDialBox(args: {
   colors: DialBoxColors;
   identityLabelScale?: number;
   bindingMissing?: boolean;
+  /**
+   * Vertical placement of an identity-only label (ignored when a `value` is
+   * present). Defaults to `"center"` so every existing caller is unchanged.
+   */
+  labelLayout?: DialBoxLabelLayout;
+  /**
+   * Extra SVG drawn inside the frame, beneath the #612 warning dim — e.g. a
+   * rotation-affordance arc. Empty by default, so existing callers are
+   * unchanged. Must use resvg-safe features only (paths/strokes/text).
+   */
+  innerGraphic?: string;
 }): string {
   const {
     width: w,
@@ -94,6 +113,8 @@ export function renderDialBox(args: {
     colors,
     identityLabelScale = DEFAULT_IDENTITY_LABEL_SCALE,
     bindingMissing = false,
+    labelLayout = "center",
+    innerGraphic = "",
   } = args;
 
   const minSide = Math.min(w, h);
@@ -103,11 +124,19 @@ export function renderDialBox(args: {
   const identityOnly = value === "";
 
   const labelFontSize = identityOnly ? Math.round(minSide * identityLabelScale) : Math.round(minSide * 0.15);
-  // SVG <text> y is the BASELINE and resvg ignores dominant-baseline, so a
-  // centered identity-only label must add the baseline offset (~0.36em for bold
-  // Arial) — otherwise it renders visibly ABOVE center (#804). The
-  // label-above-value layout keeps its historic baseline (0.28h).
-  const labelY = identityOnly ? Math.round(h * 0.5) + Math.round(labelFontSize * 0.36) : Math.round(h * 0.28);
+  // SVG <text> y is the BASELINE and resvg ignores dominant-baseline, so an
+  // identity-only label must add the baseline offset (~0.36em for bold Arial)
+  // to its intended center — otherwise it renders visibly ABOVE center (#804).
+  // The label-above-value layout keeps its historic baseline (0.28h).
+  const baselineOffset = Math.round(labelFontSize * 0.36);
+  let labelY: number;
+
+  if (identityOnly) {
+    const labelCenter = labelLayout === "top" ? Math.round(h * 0.19) : Math.round(h * 0.5);
+    labelY = labelCenter + baselineOffset;
+  } else {
+    labelY = Math.round(h * 0.28);
+  }
 
   const labelText = `<text x="${w / 2}" y="${labelY}" text-anchor="middle" fill="${colors.label}" font-family="Arial, sans-serif" font-size="${labelFontSize}" font-weight="bold">${abbr}</text>`;
 
@@ -123,7 +152,7 @@ export function renderDialBox(args: {
     valueText = `<text x="${w / 2}" y="${valueY}" text-anchor="middle" fill="${colors.value}" font-family="Arial, sans-serif" font-size="${valueFontSize}" font-weight="bold">${value}</text>`;
   }
 
-  const content = labelText + valueText;
+  const content = labelText + valueText + innerGraphic;
 
   const innerW = w - 2 * inset;
   const innerH = h - 2 * inset;

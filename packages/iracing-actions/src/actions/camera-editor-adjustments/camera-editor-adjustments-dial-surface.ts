@@ -11,8 +11,8 @@
  *
  * iRacing exposes NO camera-tool state (no telemetry for any parameter), so
  * every value is identity-only: the touch strip shows the selected parameter's
- * label only, never a live number — the documented #782 voice-chat/master
- * compromise, not an implementation gap.
+ * full name plus a static −/+ rotary arc affordance, never a live number — the
+ * documented #782 voice-chat/master compromise, not an implementation gap.
  */
 import {
   classifyDialRelease,
@@ -261,24 +261,6 @@ export function seedDialFromLegacySetting(raw: unknown): Record<string, unknown>
   return { ...obj, dial: { setting: legacy } };
 }
 
-/** Short dash-box label per setting. */
-const MODE_ABBR: Record<CameraEditorDialSetting, string> = {
-  latitude: "LAT",
-  longitude: "LON",
-  altitude: "ALT",
-  yaw: "YAW",
-  pitch: "PITCH",
-  "fov-zoom": "FOV",
-  "f-number": "F-NUM",
-  "focus-depth": "FOCUS",
-  "vanish-x": "VAN X",
-  "vanish-y": "VAN Y",
-  "blimp-radius": "B-RAD",
-  "blimp-velocity": "B-VEL",
-  "key-step": "STEP",
-  "mic-gain": "MIC",
-};
-
 /** Per-setting accent color, grouped by parameter family. */
 const MODE_COLOR: Record<CameraEditorDialSetting, string> = {
   latitude: "#3498db",
@@ -297,7 +279,11 @@ const MODE_COLOR: Record<CameraEditorDialSetting, string> = {
   "mic-gain": "#e74c3c",
 };
 
-/** Human label for "Adjust <label>" trigger descriptions. */
+/**
+ * Full mixed-case parameter name — used both for "Adjust <label>" trigger
+ * descriptions and as the touch-strip dash-box label (#804). Mixed case, never
+ * uppercased, for readability of the longer names.
+ */
 const MODE_LABEL: Record<CameraEditorDialSetting, string> = {
   latitude: "Latitude",
   longitude: "Longitude",
@@ -314,6 +300,64 @@ const MODE_LABEL: Record<CameraEditorDialSetting, string> = {
   "key-step": "Key Step",
   "mic-gain": "Mic Gain",
 };
+
+/**
+ * @internal Exported for testing
+ *
+ * Length-based font scale for the identity-only name label, as a fraction of
+ * the box's shorter side, so the longest name ("Blimp Velocity") still fits
+ * inside the frame with margin. No in-process text measurement is available, so
+ * a character-count step suffices — the label sits small near the frame top and
+ * the rotary arc takes the lower area.
+ */
+export function identityLabelScaleFor(label: string): number {
+  if (label.length <= 8) return 0.18;
+
+  if (label.length <= 11) return 0.16;
+
+  return 0.14;
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * A static, segmented top-half "rainbow" arc drawn beneath the name label as a
+ * rotation affordance: turning the dial counter-clockwise (−, left end) lowers
+ * the parameter and clockwise (+, right end) raises it. It is NOT a gauge —
+ * iRacing exposes no camera-tool value to fill — so the arc is purely
+ * decorative, stroked in the resolved accent (`color`, defaulting to the
+ * setting's `MODE_COLOR`, so a user label-color override flows through). The
+ * small −/+ end glyphs are dimmed so the arc reads as the primary mark.
+ *
+ * resvg-safe only: one arc `<path>` (rounded caps + `stroke-dasharray` for the
+ * segments) and two `<text>` glyphs — no filters/masks/dominant-baseline.
+ */
+export function renderRotaryArc(color: string): string {
+  const cx = 100;
+  // cy in the lower half so the apex (cy − r) clears the top label comfortably.
+  const cy = 74;
+  const r = 44;
+  // 150° top arc, symmetric about the apex (12 o'clock = −90° in y-down):
+  // endpoints at −90 ∓ 75°.
+  const toRad = (deg: number): number => (deg * Math.PI) / 180;
+  const round1 = (n: number): number => Math.round(n * 10) / 10;
+  const leftAngle = toRad(-165);
+  const rightAngle = toRad(-15);
+  const sx = round1(cx + r * Math.cos(leftAngle));
+  const sy = round1(cy + r * Math.sin(leftAngle));
+  const ex = round1(cx + r * Math.cos(rightAngle));
+  const ey = round1(cy + r * Math.sin(rightAngle));
+
+  const arc =
+    `<path d="M ${sx} ${sy} A ${r} ${r} 0 0 1 ${ex} ${ey}" fill="none" stroke="${color}" ` +
+    `stroke-width="6" stroke-linecap="round" stroke-dasharray="3 10"/>`;
+
+  const glyph = (x: number, mark: string): string =>
+    `<text x="${x}" y="70" text-anchor="middle" fill="${color}" fill-opacity="0.55" ` +
+    `font-family="Arial, sans-serif" font-size="15" font-weight="bold">${mark}</text>`;
+
+  return arc + glyph(48, "−") + glyph(152, "+");
+}
 
 /**
  * @internal Exported for testing
@@ -570,13 +614,18 @@ export class CameraEditorDialSurface {
     if (!ctx.action.isDial()) return;
 
     const setting = ctx.dial.setting;
+    const label = MODE_LABEL[setting];
+    const colors = resolveDialBoxColors(ctx.dial.colors, MODE_COLOR[setting]);
     const boxSvg = renderDialBox({
       width: 200,
       height: 100,
-      abbr: MODE_ABBR[setting],
+      // The full mixed-case name near the top; the rotary arc fills the rest.
+      abbr: label,
       value: formatDialValue(setting, this.host.getTelemetry()),
-      colors: resolveDialBoxColors(ctx.dial.colors, MODE_COLOR[setting]),
-      identityLabelScale: 0.24,
+      colors,
+      identityLabelScale: identityLabelScaleFor(label),
+      labelLayout: "top",
+      innerGraphic: renderRotaryArc(colors.label),
       bindingMissing: this.computeBindingMissing(ctx.dial),
     });
     const feedback: DeckFeedbackPayload = { box: svgToDataUri(boxSvg) };
