@@ -1,7 +1,14 @@
 import type { AudioNative } from "@iracedeck/audio-native";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { _resetAudio, AudioChannel, getAudio, initializeAudio, isAudioInitialized } from "./audio-service.js";
+import {
+  _resetAudio,
+  AudioChannel,
+  getAudio,
+  IDLE_STOP_DELAY_MS,
+  initializeAudio,
+  isAudioInitialized,
+} from "./audio-service.js";
 
 function createMockNative(): AudioNative {
   return {
@@ -17,6 +24,8 @@ function createMockNative(): AudioNative {
     getAudioDevices: vi.fn(() => [{ index: 0, name: "Default Device", id: "default-id", isDefault: true }]),
     setAudioDevice: vi.fn(() => true),
     setAudioDeviceById: vi.fn(() => true),
+    startAudioEngine: vi.fn(() => true),
+    stopAudioEngine: vi.fn(() => true),
   } as unknown as AudioNative;
 }
 
@@ -762,6 +771,206 @@ describe("AudioService", () => {
       const ok = getAudio().setAudioDeviceById("STALE-ID");
 
       expect(ok).toBe(false);
+    });
+  });
+
+  describe("engine device start/stop (#849 — idle stream blocks PC sleep)", () => {
+    function createServiceWithEndCallbacks() {
+      const native = createMockNative();
+      const endCallbacks: Record<number, () => void> = {};
+      (native.setChannelEndCallback as ReturnType<typeof vi.fn>).mockImplementation((ch: number, cb: () => void) => {
+        endCallbacks[ch] = cb;
+      });
+      initializeAudio(mockLogger as never, native);
+      getAudio().init();
+
+      return { native, endCallbacks };
+    }
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("init() does not start the playback device", () => {
+      const { native } = createServiceWithEndCallbacks();
+      expect(native.startAudioEngine).not.toHaveBeenCalled();
+    });
+
+    it("starts the device on the first play", () => {
+      const { native } = createServiceWithEndCallbacks();
+      const ok = getAudio().playOnChannel(AudioChannel.Voice, "/msg.mp3");
+      expect(ok).toBe(true);
+      expect(native.startAudioEngine).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not re-start the device while it is already running", () => {
+      const { native } = createServiceWithEndCallbacks();
+      getAudio().playOnChannel(AudioChannel.Voice, "/msg.mp3");
+      getAudio().playOnChannel(AudioChannel.SFX, "/tick.mp3");
+      expect(native.startAudioEngine).toHaveBeenCalledTimes(1);
+    });
+
+    it("stops the device after all channels have been idle for the idle window", () => {
+      const { native, endCallbacks } = createServiceWithEndCallbacks();
+      getAudio().playOnChannel(AudioChannel.Voice, "/msg.mp3");
+      endCallbacks[AudioChannel.Voice]();
+
+      vi.advanceTimersByTime(IDLE_STOP_DELAY_MS);
+
+      expect(native.stopAudioEngine).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not stop the device before the idle window elapses", () => {
+      const { native, endCallbacks } = createServiceWithEndCallbacks();
+      getAudio().playOnChannel(AudioChannel.Voice, "/msg.mp3");
+      endCallbacks[AudioChannel.Voice]();
+
+      vi.advanceTimersByTime(IDLE_STOP_DELAY_MS - 1);
+
+      expect(native.stopAudioEngine).not.toHaveBeenCalled();
+    });
+
+    it("a new play within the idle window cancels the pending stop", () => {
+      const { native, endCallbacks } = createServiceWithEndCallbacks();
+      getAudio().playOnChannel(AudioChannel.Voice, "/msg.mp3");
+      endCallbacks[AudioChannel.Voice]();
+
+      vi.advanceTimersByTime(IDLE_STOP_DELAY_MS / 2);
+      getAudio().playOnChannel(AudioChannel.Voice, "/next.mp3");
+      vi.advanceTimersByTime(IDLE_STOP_DELAY_MS);
+
+      expect(native.stopAudioEngine).not.toHaveBeenCalled();
+      // Device never stopped, so no second start either.
+      expect(native.startAudioEngine).toHaveBeenCalledTimes(1);
+    });
+
+    it("restarts the device on the next play after an idle stop", () => {
+      const { native, endCallbacks } = createServiceWithEndCallbacks();
+      getAudio().playOnChannel(AudioChannel.Voice, "/msg.mp3");
+      endCallbacks[AudioChannel.Voice]();
+      vi.advanceTimersByTime(IDLE_STOP_DELAY_MS);
+      expect(native.stopAudioEngine).toHaveBeenCalledTimes(1);
+
+      getAudio().playOnChannel(AudioChannel.Voice, "/later.mp3");
+
+      expect(native.startAudioEngine).toHaveBeenCalledTimes(2);
+    });
+
+    it("does not stop the device while another channel is still active", () => {
+      const { native, endCallbacks } = createServiceWithEndCallbacks();
+      getAudio().playOnChannel(AudioChannel.Ambient, "/ambient.mp3", true);
+      getAudio().playOnChannel(AudioChannel.Voice, "/msg.mp3");
+      endCallbacks[AudioChannel.Voice]();
+
+      vi.advanceTimersByTime(IDLE_STOP_DELAY_MS * 2);
+
+      expect(native.stopAudioEngine).not.toHaveBeenCalled();
+    });
+
+    it("manual stopAllChannels also arms the idle stop", () => {
+      const { native } = createServiceWithEndCallbacks();
+      getAudio().playOnChannel(AudioChannel.Ambient, "/ambient.mp3", true);
+
+      getAudio().stopAllChannels();
+      vi.advanceTimersByTime(IDLE_STOP_DELAY_MS);
+
+      expect(native.stopAudioEngine).toHaveBeenCalledTimes(1);
+    });
+
+    it("manual stopChannel of the last active channel arms the idle stop", () => {
+      const { native } = createServiceWithEndCallbacks();
+      getAudio().playOnChannel(AudioChannel.Radar, "/tick.mp3");
+
+      getAudio().stopChannel(AudioChannel.Radar);
+      vi.advanceTimersByTime(IDLE_STOP_DELAY_MS);
+
+      expect(native.stopAudioEngine).toHaveBeenCalledTimes(1);
+    });
+
+    it("a device switch leaves the device stopped until the next play", () => {
+      const { native } = createServiceWithEndCallbacks();
+      getAudio().playOnChannel(AudioChannel.Voice, "/msg.mp3");
+
+      getAudio().setAudioDevice(1);
+
+      expect(native.stopAudioEngine).toHaveBeenCalled();
+
+      getAudio().playOnChannel(AudioChannel.Voice, "/after-switch.mp3");
+      expect(native.startAudioEngine).toHaveBeenCalledTimes(2);
+    });
+
+    it("a device switch by id leaves the device stopped until the next play", () => {
+      const { native } = createServiceWithEndCallbacks();
+      getAudio().playOnChannel(AudioChannel.Voice, "/msg.mp3");
+
+      getAudio().setAudioDeviceById("BBBB");
+
+      expect(native.stopAudioEngine).toHaveBeenCalled();
+
+      getAudio().playOnChannel(AudioChannel.Voice, "/after-switch.mp3");
+      expect(native.startAudioEngine).toHaveBeenCalledTimes(2);
+    });
+
+    it("retries the device start on the next play when starting fails", () => {
+      const { native } = createServiceWithEndCallbacks();
+      (native.startAudioEngine as ReturnType<typeof vi.fn>).mockReturnValue(false);
+
+      getAudio().playOnChannel(AudioChannel.Voice, "/msg.mp3");
+      getAudio().playOnChannel(AudioChannel.Voice, "/msg2.mp3");
+
+      expect(native.startAudioEngine).toHaveBeenCalledTimes(2);
+    });
+
+    it("aborts the play when the device fails to start: returns false, no onStart, unloads the queued sound", () => {
+      const { native } = createServiceWithEndCallbacks();
+      (native.startAudioEngine as ReturnType<typeof vi.fn>).mockReturnValue(false);
+
+      const onStart = vi.fn();
+      getAudio().setPlaybackObserver({ onStart });
+
+      const ok = getAudio().playOnChannel(AudioChannel.Voice, "/msg.mp3");
+
+      expect(ok).toBe(false);
+      expect(onStart).not.toHaveBeenCalled();
+      // The queued sound must be unloaded — otherwise it would blast out
+      // whenever a LATER play manages to start the device.
+      expect(native.stopChannel).toHaveBeenCalledWith(AudioChannel.Voice);
+    });
+
+    it("retries a failed idle teardown instead of marking the device stopped", () => {
+      const { native, endCallbacks } = createServiceWithEndCallbacks();
+      (native.stopAudioEngine as ReturnType<typeof vi.fn>).mockReturnValueOnce(false);
+
+      getAudio().playOnChannel(AudioChannel.Voice, "/msg.mp3");
+      endCallbacks[AudioChannel.Voice]();
+
+      vi.advanceTimersByTime(IDLE_STOP_DELAY_MS);
+      expect(native.stopAudioEngine).toHaveBeenCalledTimes(1);
+
+      // First attempt failed — the device must still count as running and
+      // the release must be retried after another idle window.
+      vi.advanceTimersByTime(IDLE_STOP_DELAY_MS);
+      expect(native.stopAudioEngine).toHaveBeenCalledTimes(2);
+
+      // Second attempt succeeded — the next play restarts the device.
+      getAudio().playOnChannel(AudioChannel.Voice, "/again.mp3");
+      expect(native.startAudioEngine).toHaveBeenCalledTimes(2);
+    });
+
+    it("destroy cancels a pending idle stop", () => {
+      const { native, endCallbacks } = createServiceWithEndCallbacks();
+      getAudio().playOnChannel(AudioChannel.Voice, "/msg.mp3");
+      endCallbacks[AudioChannel.Voice]();
+
+      getAudio().destroy();
+      (native.stopAudioEngine as ReturnType<typeof vi.fn>).mockClear();
+      vi.advanceTimersByTime(IDLE_STOP_DELAY_MS * 2);
+
+      expect(native.stopAudioEngine).not.toHaveBeenCalled();
     });
   });
 });
