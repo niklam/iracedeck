@@ -180,7 +180,6 @@
 					<option value="driving">Cycle Driving Camera</option>
 				</sdpi-select>
 			</sdpi-item>
-			<ird-binding-status mode-setting="dial.mode" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
 			<% if (locals.platform?.features?.dialFeedback !== false) { %>
 			<div class="ird-supporting-text">
 				Turn the dial to cycle the selected target — clockwise for next, counter-clockwise for previous. The touch strip shows the focused car number and the active camera group.
