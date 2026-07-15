@@ -11,9 +11,12 @@
  *     enabled-subset neighbours one detent either way,
  *   - sub-camera → the current camera's NAME within the focused group, flanked
  *     by the dimmed adjacent cameras (same `Cameras[]` order the dispatch steps),
- *   - car-number / race-position → the focused car's number large in the centre
- *     (a `P<pos>` badge above it in race-position) flanked by the prev / next
- *     cars,
+ *   - car-number → the focused car's number large in the centre, flanked by the
+ *     prev / next car numbers,
+ *   - race-position → the focused car's race POSITION large in the centre
+ *     (`P<pos>`, the primary readout — issue #803 rework) with its car number
+ *     smaller beneath it, flanked by the dimmed prev / next POSITION previews
+ *     (no car numbers at side size),
  *   - driving → the current camera group's icon + name ONLY. The driving cycle
  *     hands `group ± 1` to iRacing, which resolves and wraps it internally, so
  *     there is no coherent neighbour to preview — better none than a lying one.
@@ -27,14 +30,15 @@
  *     official `CarIdxPosition` only as the documented fallback) — and focus it
  *     directly via the keypad's Switch-by-Number dispatch. race-position also
  *     resolves to a car NUMBER (never a bare position) before dispatching: the
- *     carousel preview and the SDK's own `switchPos` resolve positions from
- *     different orders (canonical vs. official), and those orders deliberately
- *     diverge in tow/finish/freeze cases — so resolving the car number from the
- *     same canonical-first order the preview uses keeps the camera landing on
- *     the previewed car (issue #803 rework review). When the focused car has no
- *     classified position (the pace / safety car, or a car missing from the
- *     order), a detent still acts by re-entering the running order at its end —
- *     next → the leader, previous → last place — rather than stalling (#803).
+ *     SDK's own `switchPos` resolves positions from a potentially different
+ *     (official) order than the canonical one the carousel previews, so
+ *     execution resolves the car number from the SAME canonical-first order
+ *     and target position the preview's side badges show (issue #803 rework
+ *     review) — preview and execution can't land on different cars. When the
+ *     focused car has no classified position (the pace / safety car, or a car
+ *     missing from the order), a detent still acts by re-entering the running
+ *     order at its end — next → the leader, previous → last place — rather
+ *     than stalling (#803).
  *
  * Everything the dial does is an iRacing SDK camera command, so — unlike the
  * Setup dials — the surface taps no key bindings and never shows a
@@ -337,14 +341,30 @@ export interface CarouselSlot {
   glyph: CarouselGlyph | null;
 }
 
-/** The three car-carousel readouts plus an optional race position badge. */
+/** The car-number carousel readouts: the focused car's number plus its ascending-order neighbours. */
 export interface CarCarouselView {
   /** Focused car's display number (no `#`), or null out of a session. */
   center: string | null;
   prev: string | null;
   next: string | null;
-  /** Race position of the focused car (race-position mode only). */
-  position: number | null;
+}
+
+/**
+ * The race-position carousel readouts: the focused car's POSITION (the
+ * primary centre readout) and its car number (the secondary label beneath
+ * it), plus the dimmed side previews — themselves POSITIONS, not car
+ * numbers, since a side badge only needs to say "one detent away is P<n>"
+ * (issue #803 rework).
+ */
+export interface RacePositionCarouselView {
+  /** Focused car's race position, or null when unclassified (pace/safety car). */
+  centerPosition: number | null;
+  /** Focused car's display number (no `#`), or null out of a session. */
+  centerCarNumber: string | null;
+  /** Recovery-aware target position one detent back (see `computeRacePositionTarget`). */
+  prevPosition: number | null;
+  /** Recovery-aware target position one detent forward. */
+  nextPosition: number | null;
 }
 
 function svgWrap(w: number, h: number, inner: string): string {
@@ -484,11 +504,10 @@ export function renderSubCameraCarousel(args: {
 /**
  * @internal Exported for testing
  *
- * Renders the car-carousel strip: the mode-name title on top, the focused car's
- * number large in the centre (with a `P<pos>` badge below the title in
- * race-position mode), flanked by the smaller dimmed previous / next car
- * numbers. Falls back to a centred identity label out of a session (no focused
- * car number).
+ * Renders the car-number carousel strip: the mode-name title on top, the
+ * focused car's number large in the centre, flanked by the smaller dimmed
+ * previous / next car numbers. Falls back to a centred identity label out of
+ * a session (no focused car number).
  */
 export function renderCarCarousel(args: {
   width: number;
@@ -499,7 +518,6 @@ export function renderCarCarousel(args: {
   center: string | null;
   prev: string | null;
   next: string | null;
-  position: number | null;
 }): string {
   const { width: w, height: h, colors } = args;
 
@@ -518,17 +536,67 @@ export function renderCarCarousel(args: {
     );
   }
 
-  if (args.position !== null) {
+  parts.push(
+    `<text x="${w / 2}" y="${Math.round(h * 0.72)}" text-anchor="middle" fill="${colors.value}" font-family="Arial, sans-serif" font-size="40" font-weight="bold">#${escapeXml(args.center)}</text>`,
+  );
+
+  return svgWrap(w, h, parts.join(""));
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * Renders the race-position carousel strip: the mode-name title on top, the
+ * focused car's race POSITION large in the centre (`P<pos>`, the primary
+ * readout — issue #803 rework) with its car number smaller beneath it,
+ * flanked by the smaller dimmed previous / next POSITION previews (the SAME
+ * recovery-aware targets the rotation focuses — see
+ * `computeRacePositionTarget`). When the focused car has no classified
+ * position (the pace / safety car), the centre falls back to a number-only
+ * readout rather than a lying `P` badge; the side previews still show the
+ * recovery targets. Falls back to a centred identity label out of a session
+ * (no focused car number).
+ */
+export function renderRacePositionCarousel(args: {
+  width: number;
+  height: number;
+  colors: DialBoxColors;
+  title: string;
+  identityLabel: string;
+  centerPosition: number | null;
+  centerCarNumber: string | null;
+  prevPosition: number | null;
+  nextPosition: number | null;
+}): string {
+  const { width: w, height: h, colors } = args;
+
+  if (!args.centerCarNumber) return identityBox(w, h, args.identityLabel, colors);
+
+  const parts: string[] = [dialPanel(w, h, colors), titleLine(w, h, args.title, colors)];
+
+  for (const [pos, cx] of [
+    [args.prevPosition, w * 0.16],
+    [args.nextPosition, w * 0.84],
+  ] as const) {
+    if (pos === null) continue;
+
     parts.push(
-      `<text x="${w / 2}" y="${Math.round(h * 0.37)}" text-anchor="middle" fill="${colors.label}" font-family="Arial, sans-serif" font-size="15" font-weight="bold">P${args.position}</text>`,
+      `<text x="${cx}" y="${Math.round(h * 0.62)}" text-anchor="middle" fill="${colors.label}" font-family="Arial, sans-serif" font-size="18" font-weight="bold" opacity="0.45">P${pos}</text>`,
     );
   }
 
-  const centerY = args.position !== null ? Math.round(h * 0.8) : Math.round(h * 0.72);
-
-  parts.push(
-    `<text x="${w / 2}" y="${centerY}" text-anchor="middle" fill="${colors.value}" font-family="Arial, sans-serif" font-size="40" font-weight="bold">#${escapeXml(args.center)}</text>`,
-  );
+  if (args.centerPosition !== null) {
+    parts.push(
+      `<text x="${w / 2}" y="${Math.round(h * 0.68)}" text-anchor="middle" fill="${colors.value}" font-family="Arial, sans-serif" font-size="40" font-weight="bold">P${args.centerPosition}</text>`,
+    );
+    parts.push(
+      `<text x="${w / 2}" y="${Math.round(h * 0.9)}" text-anchor="middle" fill="${colors.label}" font-family="Arial, sans-serif" font-size="15" font-weight="bold">#${escapeXml(args.centerCarNumber)}</text>`,
+    );
+  } else {
+    parts.push(
+      `<text x="${w / 2}" y="${Math.round(h * 0.72)}" text-anchor="middle" fill="${colors.value}" font-family="Arial, sans-serif" font-size="40" font-weight="bold">#${escapeXml(args.centerCarNumber)}</text>`,
+    );
+  }
 
   return svgWrap(w, h, parts.join(""));
 }
@@ -794,9 +862,10 @@ export class CameraDialSurface {
 
     // race-position: canonical live order, official CarIdxPosition as fallback.
     // Resolve the target car NUMBER from that SAME order (never dispatch a bare
-    // position) — the carousel preview does the same lookup via
-    // carNumberAtPosition, so preview and execution can't land on different
-    // cars even where canonical and official position orders diverge.
+    // position) — the carousel preview's side badges show this SAME
+    // recovery-aware target POSITION (computeRacePositionTarget), so preview
+    // and execution can't land on different cars even where canonical and
+    // official position orders diverge.
     const order = this.resolveOrder(telemetry);
     const target = computeRacePositionTarget(camCarIdx, order, direction);
 
@@ -862,39 +931,49 @@ export class CameraDialSurface {
     return { current: slotFor(carousel.current), prev: slotFor(carousel.prev), next: slotFor(carousel.next) };
   }
 
-  /** Builds the car carousel view for the car-number / race-position modes. */
-  private carCarouselView(mode: "car-number" | "race-position", telemetry: TelemetryData | null): CarCarouselView {
+  /** Builds the car-number carousel view: the focused car plus its ascending-order neighbours. */
+  private carNumberCarouselView(telemetry: TelemetryData | null): CarCarouselView {
     const sessionInfo = this.host.getSessionInfo();
     const camCarIdx = telemetry?.CamCarIdx;
     const center =
       typeof camCarIdx === "number" && camCarIdx >= 0 ? getCarNumberFromSessionInfo(sessionInfo, camCarIdx) : null;
-
-    if (mode === "car-number") {
-      const cars = getAllCarNumbers(sessionInfo, true, true);
-
-      return {
-        center,
-        prev: computeCarNumberTarget(camCarIdx, cars, "previous")?.carNumber ?? null,
-        next: computeCarNumberTarget(camCarIdx, cars, "next")?.carNumber ?? null,
-        position: null,
-      };
-    }
-
-    const order = this.resolveOrder(telemetry);
-    // Preview the SAME per-direction targets the rotation will focus (including
-    // the pace-car recovery: next → leader, previous → last), so the carousel
-    // never previews a different car than a detent lands on.
-    const nextTarget = computeRacePositionTarget(camCarIdx, order, "next");
-    const prevTarget = computeRacePositionTarget(camCarIdx, order, "previous");
-
-    if (!nextTarget || !prevTarget || !order) return { center, prev: null, next: null, position: null };
+    const cars = getAllCarNumbers(sessionInfo, true, true);
 
     return {
       center,
-      prev: carNumberAtPosition(order, sessionInfo, prevTarget.targetPosition),
-      next: carNumberAtPosition(order, sessionInfo, nextTarget.targetPosition),
-      // null for an unclassified focused car → no position badge.
-      position: nextTarget.currentPosition,
+      prev: computeCarNumberTarget(camCarIdx, cars, "previous")?.carNumber ?? null,
+      next: computeCarNumberTarget(camCarIdx, cars, "next")?.carNumber ?? null,
+    };
+  }
+
+  /**
+   * Builds the race-position carousel view: the focused car's position (the
+   * primary centre readout) and car number (secondary), plus the dimmed side
+   * PREVIEWS — the SAME per-direction targets the rotation will focus
+   * (including the pace-car recovery: next → leader, previous → last), so the
+   * carousel never previews a position a detent doesn't actually land on.
+   */
+  private racePositionCarouselView(telemetry: TelemetryData | null): RacePositionCarouselView {
+    const sessionInfo = this.host.getSessionInfo();
+    const camCarIdx = telemetry?.CamCarIdx;
+    const centerCarNumber =
+      typeof camCarIdx === "number" && camCarIdx >= 0 ? getCarNumberFromSessionInfo(sessionInfo, camCarIdx) : null;
+
+    const order = this.resolveOrder(telemetry);
+    const nextTarget = computeRacePositionTarget(camCarIdx, order, "next");
+    const prevTarget = computeRacePositionTarget(camCarIdx, order, "previous");
+
+    if (!nextTarget || !prevTarget) {
+      return { centerPosition: null, centerCarNumber, prevPosition: null, nextPosition: null };
+    }
+
+    return {
+      // null for an unclassified focused car → no position badge (falls back
+      // to a number-only centre in the renderer).
+      centerPosition: nextTarget.currentPosition,
+      centerCarNumber,
+      prevPosition: prevTarget.targetPosition,
+      nextPosition: nextTarget.targetPosition,
     };
   }
 
@@ -950,10 +1029,22 @@ export class CameraDialSurface {
       return ["camera", prev?.name ?? "", current?.name ?? "", next?.name ?? ""].join("|");
     }
 
-    if (dial.mode === "car-number" || dial.mode === "race-position") {
-      const v = this.carCarouselView(dial.mode, telemetry);
+    if (dial.mode === "car-number") {
+      const v = this.carNumberCarouselView(telemetry);
 
-      return [dial.mode, v.center ?? "", v.prev ?? "", v.next ?? "", v.position ?? ""].join("|");
+      return ["car-number", v.center ?? "", v.prev ?? "", v.next ?? ""].join("|");
+    }
+
+    if (dial.mode === "race-position") {
+      const v = this.racePositionCarouselView(telemetry);
+
+      return [
+        "race-position",
+        v.centerCarNumber ?? "",
+        v.centerPosition ?? "",
+        v.prevPosition ?? "",
+        v.nextPosition ?? "",
+      ].join("|");
     }
 
     if (dial.mode === "sub-camera") {
@@ -985,10 +1076,16 @@ export class CameraDialSurface {
       return renderCameraCarousel({ ...base, identityLabel: MODE_IDENTITY.camera, ...slots });
     }
 
-    if (dial.mode === "car-number" || dial.mode === "race-position") {
-      const view = this.carCarouselView(dial.mode, telemetry);
+    if (dial.mode === "car-number") {
+      const view = this.carNumberCarouselView(telemetry);
 
-      return renderCarCarousel({ ...base, identityLabel: MODE_IDENTITY[dial.mode], ...view });
+      return renderCarCarousel({ ...base, identityLabel: MODE_IDENTITY["car-number"], ...view });
+    }
+
+    if (dial.mode === "race-position") {
+      const view = this.racePositionCarouselView(telemetry);
+
+      return renderRacePositionCarousel({ ...base, identityLabel: MODE_IDENTITY["race-position"], ...view });
     }
 
     if (dial.mode === "sub-camera") {
@@ -1032,20 +1129,13 @@ function carIdxAtPosition(order: number[], position: number): number | null {
   return carIdx < 0 ? null : carIdx;
 }
 
-/** The display car number at a given race position (via the inverse of `order`). */
-function carNumberAtPosition(order: number[], sessionInfo: unknown, position: number): string | null {
-  const carIdx = carIdxAtPosition(order, position);
-
-  return carIdx === null ? null : getCarNumberFromSessionInfo(sessionInfo, carIdx);
-}
-
 /**
  * The raw car number (the camera-API identity, not the display string) running
  * at a given race position. Used by the race-position rotation dispatch — see
- * the file header — so execution focuses the SAME car the carousel preview
- * shows via `carNumberAtPosition`, rather than a bare position that iRacing's
- * own `switchPos` would resolve against a potentially different (official)
- * order.
+ * the file header — so execution focuses the car at the SAME target position
+ * the carousel's side preview shows, rather than a bare position that
+ * iRacing's own `switchPos` would resolve against a potentially different
+ * (official) order.
  */
 function carNumberRawAtPosition(order: number[], sessionInfo: unknown, position: number): number | null {
   const carIdx = carIdxAtPosition(order, position);

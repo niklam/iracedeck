@@ -261,7 +261,8 @@ The touch strip's small top line always names the current mode (`CAMERA`, `SUB-C
 
 - **Cycle Camera** — the current camera group's icon and name in the centre, flanked by the smaller dimmed previous / next groups from your enabled set — exactly what one detent either way would switch to.
 - **Cycle Sub-Camera** — the current camera's name within the focused group, flanked by the adjacent cameras (the same order a turn steps through).
-- **Cycle by Car #** / **Cycle by Race Position** — the focused car's number large in the centre (`#number`) flanked by the previous / next cars; **Cycle by Race Position** also adds a small `P4` badge for the focused car's position.
+- **Cycle by Car #** — the focused car's number large in the centre (`#number`) flanked by the previous / next car numbers.
+- **Cycle by Race Position** — the focused car's race position large in the centre (`P4`), with its car number shown smaller beneath it, flanked by the smaller dimmed previous / next position previews (`P3` / `P5`) — the same targets a detent would actually focus. When the focused car has no classified position (the pace / safety car), the centre falls back to a number-only readout instead of a misleading position badge.
 - **Cycle Driving Camera** — the current camera group's icon and name only. Driving cycling hands the next group to iRacing to resolve, so there is no neighbour to preview.
 
 Everything is drawn in a per-mode accent colour you can override (border, label, value, background) in the **Dash Box Appearance** section of the dial settings. Out of a session the strip falls back to a plain mode label (`CAR #`, `CAMERA`, …).

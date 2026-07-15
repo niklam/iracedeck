@@ -8,6 +8,7 @@ import {
   DialSettings,
   renderCameraCarousel,
   renderCarCarousel,
+  renderRacePositionCarousel,
   renderSubCameraCarousel,
   wrapPosition,
 } from "./camera-dial-surface.js";
@@ -346,32 +347,13 @@ describe("camera dial-surface pure helpers", () => {
         center: "42",
         prev: "3",
         next: "99",
-        position: null,
       });
 
       expect(svg).toContain(">CAR #<"); // mode-name title
       expect(svg).toContain(">#42<");
       expect(svg).toContain(">#3<");
       expect(svg).toContain(">#99<");
-      expect(svg).not.toMatch(/>P\d/); // no position badge (title "CAR #" is not a badge)
-    });
-
-    it("adds the position badge in race-position mode", () => {
-      const svg = renderCarCarousel({
-        width: 200,
-        height: 100,
-        colors,
-        title: "POSITION",
-        identityLabel: "POSITION",
-        center: "42",
-        prev: "7",
-        next: "5",
-        position: 4,
-      });
-
-      expect(svg).toContain(">POSITION<"); // mode-name title
-      expect(svg).toContain(">P4<");
-      expect(svg).toContain(">#42<");
+      expect(svg).not.toMatch(/>P\d/); // never a position badge — car-number mode is number-primary
     });
 
     it("falls back to the identity label with no focused car", () => {
@@ -384,10 +366,69 @@ describe("camera dial-surface pure helpers", () => {
         center: null,
         prev: null,
         next: null,
-        position: null,
       });
 
       expect(svg).toContain(">CAR #<");
+    });
+  });
+
+  describe("renderRacePositionCarousel", () => {
+    const colors = { border: "#111", label: "#222", value: "#333", background: "#0d0d0d" };
+
+    it("draws the mode-name title, the centre POSITION as primary, and the car number as secondary", () => {
+      const svg = renderRacePositionCarousel({
+        width: 200,
+        height: 100,
+        colors,
+        title: "POSITION",
+        identityLabel: "POSITION",
+        centerPosition: 4,
+        centerCarNumber: "42",
+        prevPosition: 3,
+        nextPosition: 5,
+      });
+
+      expect(svg).toContain(">POSITION<"); // mode-name title
+      expect(svg).toContain(">P4<"); // primary: the focused car's position
+      expect(svg).toContain(">#42<"); // secondary: the focused car's number
+      expect(svg).toContain(">P3<"); // dimmed side preview (previous detent target)
+      expect(svg).toContain(">P5<"); // dimmed side preview (next detent target)
+      expect(svg).not.toMatch(/>#3<|>#5</); // side previews are positions, never car numbers
+    });
+
+    it("falls back to a number-only centre when the focused car has no classified position", () => {
+      const svg = renderRacePositionCarousel({
+        width: 200,
+        height: 100,
+        colors,
+        title: "POSITION",
+        identityLabel: "POSITION",
+        centerPosition: null,
+        centerCarNumber: "0",
+        prevPosition: 3,
+        nextPosition: 1,
+      });
+
+      expect(svg).toContain(">#0<"); // number-only centre, no lying P badge for the unclassified car
+      // The side previews still recover to a real position and show it dimmed.
+      expect(svg).toContain(">P3<");
+      expect(svg).toContain(">P1<");
+    });
+
+    it("falls back to the identity label with no focused car", () => {
+      const svg = renderRacePositionCarousel({
+        width: 200,
+        height: 100,
+        colors,
+        title: "POSITION",
+        identityLabel: "POSITION",
+        centerPosition: null,
+        centerCarNumber: null,
+        prevPosition: null,
+        nextPosition: null,
+      });
+
+      expect(svg).toContain(">POSITION<");
     });
   });
 });
@@ -673,7 +714,7 @@ describe("CameraDialSurface", () => {
       expect(decoded).toContain(">#3<"); // previous by number
     });
 
-    it("renders the race-position carousel with the mode-name title and a position badge", async () => {
+    it("renders the race-position carousel with the mode-name title, position primary, and car number secondary", async () => {
       mockCarNumberByIdx.value = { 1: "77", 2: "88", 3: "42" };
       const host = makeHost({ getRacePositions: vi.fn(() => [0, 3, 1, 2]) });
       const surface = new CameraDialSurface(host as never);
@@ -683,14 +724,18 @@ describe("CameraDialSurface", () => {
       const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
 
       expect(decoded).toContain(">POSITION<"); // mode-name title
-      expect(decoded).toContain(">P2<"); // focused car is P2
-      expect(decoded).toContain(">#42<"); // focused car number
+      expect(decoded).toContain(">P2<"); // primary: focused car is P2
+      expect(decoded).toContain(">#42<"); // secondary: focused car's number, beneath the position
+      expect(decoded).toContain(">P3<"); // dimmed side preview (previous detent target)
+      expect(decoded).toContain(">P1<"); // dimmed side preview (next detent target)
     });
 
-    it("previews the recovery targets (leader / last) with no position badge when the pace car has focus (#803)", async () => {
-      // Focused pace car = carIdx0 (P0, unclassified). Leader (P1) = carIdx2,
-      // last (P3) = carIdx1. Preview must show the recovery neighbours the
-      // detents will actually focus, and NO Pn badge for the unclassified car.
+    it("previews the recovery-target POSITIONS at the sides, falling back to a number-only centre, when the pace car has focus (#803)", async () => {
+      // Focused pace car = carIdx0 (P0, unclassified). Recovery: next → leader
+      // (P1) = carIdx2, previous → last place (P3, maxPosition=3) = carIdx1.
+      // The centre has no classified position so it falls back to the plain
+      // car number rather than a lying "P0" badge; the side previews still
+      // show the real recovery targets the detents will actually focus.
       mockCarNumberByIdx.value = { 0: "0", 2: "1", 1: "99" };
       const host = makeHost({
         getRacePositions: vi.fn(() => [0, 3, 1, 2]),
@@ -702,12 +747,9 @@ describe("CameraDialSurface", () => {
 
       const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
 
-      expect(decoded).toContain(">#0<"); // focused pace car
-      expect(decoded).toContain(">#1<"); // next detent → leader (P1)
-      expect(decoded).toContain(">#99<"); // previous detent → last place
-      // No position badge (P<digit>) for the unclassified car — the "POSITION"
-      // title starts with P but is never followed by a digit.
-      expect(decoded).not.toMatch(/>P\d/);
+      expect(decoded).toContain(">#0<"); // number-only centre for the unclassified pace car
+      expect(decoded).toContain(">P1<"); // next detent → leader (P1)
+      expect(decoded).toContain(">P3<"); // previous detent → last place (P3)
     });
 
     it("renders the sub-camera name carousel from the group's camera list", async () => {
