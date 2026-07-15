@@ -690,11 +690,21 @@
       "Name": "View Adjustment",
       "UUID": "com.iracedeck.sd.core.view-adjustment",
       "Icon": "imgs/actions/view-adjustment/icon",
-      "Tooltip": "Adjust camera and view settings (FOV, horizon, driver height, VR recenter, UI size)",
+      "Tooltip": "Adjust camera and view settings (FOV, horizon, driver height, VR recenter, UI size); on a dial: adjust one view setting, press to recenter VR",
       "PropertyInspectorPath": "ui/view-adjustment.html",
       "Controllers": [
-        "Keypad"
+        "Keypad",
+        "Encoder"
       ],
+      "Encoder": {
+        "Icon": "imgs/actions/view-adjustment/dial",
+        "layout": "layouts/view-adjustment.json",
+        "TriggerDescription": {
+          "Rotate": "Adjust the selected view setting",
+          "Push": "Configured action",
+          "Touch": "Configured action"
+        }
+      },
       "States": [
         {
           "Image": "imgs/actions/view-adjustment/key",

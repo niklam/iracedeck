@@ -146,6 +146,21 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     "ui-size": keybindBy("direction", { increase: "viewAdjustUiSizeIncrease", decrease: "viewAdjustUiSizeDecrease" }),
   }),
 
+  // The dial surface of View Adjustment (#806). Separate from the keypad map:
+  // the same setting names carry different descriptors per surface (keypad
+  // `fov` is direction-keyed via `keybindBy`, dial rotation requires BOTH keys
+  // via `pair` since the dial has no `direction` setting). Recenter VR is not a
+  // rotation mode here — it is the default press gesture (`recenter-vr`), a
+  // single keybind. iRacing exposes no telemetry for any of these, so the strip
+  // is label-only; every setting still needs both increase and decrease bound.
+  "view-adjustment-dial": entry("dial.setting", {
+    fov: pair("viewAdjustFovIncrease", "viewAdjustFovDecrease"),
+    horizon: pair("viewAdjustHorizonUp", "viewAdjustHorizonDown"),
+    "driver-height": pair("viewAdjustDriverHeightUp", "viewAdjustDriverHeightDown"),
+    "ui-size": pair("viewAdjustUiSizeIncrease", "viewAdjustUiSizeDecrease"),
+    "recenter-vr": keybind("viewAdjustRecenterVr"),
+  }),
+
   "camera-editor-adjustments": entry("adjustment", {
     latitude: dir("camEditLatitudeIncrease", "camEditLatitudeDecrease"),
     longitude: dir("camEditLongitudeIncrease", "camEditLongitudeDecrease"),

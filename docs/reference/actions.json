@@ -321,8 +321,9 @@
           "id": "com.iracedeck.sd.core.view-adjustment",
           "name": "View Adjustment",
           "file": "view-adjustment.ts",
-          "encoder": false,
-          "settingsKeys": ["adjustment", "direction"],
+          "encoder": true,
+          "settingsKeys": ["adjustment", "direction", "dial.setting"],
+          "description": "One view action for both surfaces (#806). On a KEYPAD button the Adjustment dropdown picks a mode below (fov/horizon/driver-height/ui-size with a Direction, plus the non-directional recenter-vr one-shot). On a DIAL (Elgato Encoder only per #786) settings live under the dial root: dial.setting picks fov/horizon/driver-height/ui-size and turning steps it via the shared viewAdjust* increase/decrease bindings (both directions must be bound). iRacing exposes no telemetry for any of these values, so the self-drawn touch strip (Elgato only) shows the setting's label only — no value, no readback (the #782 identity-only compromise). Press gestures: dial.pressAction (default Recenter VR, which is blind-safe and the exact gesture a VR driver wants) and dial.longPressAction (default None), plus the Elgato-only dial.tapAction/dial.longTouchAction (default None), each over {Recenter VR, None}; Recenter VR taps the viewAdjustRecenterVr binding. Press vs long-press is classified at dialUp; turning while pressed fires no gesture. The PI branches per controller (actionInfo.payload.controller). Communication: key bindings on both surfaces.",
           "modes": [
             { "adjustment": "fov", "direction": "increase", "label": "FOV Increase" },
             { "adjustment": "fov", "direction": "decrease", "label": "FOV Decrease" },

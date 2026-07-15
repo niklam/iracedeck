@@ -6,32 +6,104 @@
 	<body>
 		<%- include('section-header', { title: 'Action Settings' }) %>
 
-		<sdpi-item label="Adjustment">
-			<sdpi-select id="adjustment-select" setting="adjustment" default="fov">
-				<option value="fov">FOV</option>
-				<option value="horizon">Horizon</option>
-				<option value="driver-height">Driver Height</option>
-				<option value="recenter-vr">Recenter VR</option>
-				<option value="ui-size">UI Size</option>
-			</sdpi-select>
-		</sdpi-item>
-
 		<% var __comms = require('./data/action-comms.json')['view-adjustment']; %>
-		<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
+		<% var __dialComms = require('./data/action-comms.json')['view-adjustment-dial']; %>
+		<%# Two comms maps for one action (#806): the keypad map is direction-keyed
+		    (`keybindBy`) while the dial rotation map requires BOTH keys (`pair`) — the
+		    same mode names carry different descriptors per surface, so they can't share
+		    one map. %>
 
-		<sdpi-item label="Direction" id="direction-item">
-			<sdpi-select setting="direction" default="increase">
-				<option value="increase">Increase</option>
-				<option value="decrease">Decrease</option>
-			</sdpi-select>
-		</sdpi-item>
+		<!-- Keypad settings — hidden when this instance is a dial (#806). -->
+		<div id="keypad-settings">
+			<sdpi-item label="Adjustment">
+				<sdpi-select id="adjustment-select" setting="adjustment" default="fov">
+					<option value="fov">FOV</option>
+					<option value="horizon">Horizon</option>
+					<option value="driver-height">Driver Height</option>
+					<option value="recenter-vr">Recenter VR</option>
+					<option value="ui-size">UI Size</option>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
 
-		<%- include('title-overrides') %>
+			<sdpi-item label="Direction" id="direction-item">
+				<sdpi-select setting="direction" default="increase">
+					<option value="increase">Increase</option>
+					<option value="decrease">Decrease</option>
+				</sdpi-select>
+			</sdpi-item>
+		</div>
 
-		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color', 'graphic2Color'], defaults: require('./data/icon-defaults.json')['view-adjustment'] }) %>
-		<%- include('border-overrides', { defaults: require('./data/icon-defaults.json')['view-adjustment'] }) %>
-		<%- include('graphic-overrides') %>
-		<%- include('common-settings') %>
+		<!-- Dial settings — shown only when this instance is a dial (#806). -->
+		<div id="dial-settings" class="hidden">
+			<sdpi-item label="Setting">
+				<sdpi-select setting="dial.setting" default="fov">
+					<option value="fov">FOV</option>
+					<option value="horizon">Horizon</option>
+					<option value="driver-height">Driver Height</option>
+					<option value="ui-size">UI Size</option>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="<%= __dialComms._meta.modeSetting %>" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+			<% if (locals.platform?.features?.dialFeedback !== false) { %>
+			<div class="ird-supporting-text">
+				Turn the dial to adjust the selected view setting. iRacing exposes no value
+				for these, so the touch strip shows the setting's name only. Both the
+				increase and decrease key bindings must be set below.
+			</div>
+			<% } else { %>
+			<div class="ird-supporting-text">
+				Turn the knob to adjust the selected view setting. Both the increase and
+				decrease key bindings must be set below.
+			</div>
+			<% } %>
+
+			<sdpi-item label="Press Action">
+				<sdpi-select setting="dial.pressAction" default="recenter-vr">
+					<option value="recenter-vr">Recenter VR</option>
+					<option value="none">None</option>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="dial.pressAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+
+			<sdpi-item label="Long Press">
+				<sdpi-select setting="dial.longPressAction" default="none">
+					<option value="recenter-vr">Recenter VR</option>
+					<option value="none">None</option>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="dial.longPressAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+
+			<% if (locals.platform?.features?.dialFeedback !== false) { %>
+			<sdpi-item label="Tap Display">
+				<sdpi-select setting="dial.tapAction" default="none">
+					<option value="none">None</option>
+					<option value="recenter-vr">Recenter VR</option>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="dial.tapAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+
+			<sdpi-item label="Long Touch">
+				<sdpi-select setting="dial.longTouchAction" default="none">
+					<option value="none">None</option>
+					<option value="recenter-vr">Recenter VR</option>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="dial.longTouchAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+
+			<%- include('dial-appearance') %>
+			<% } %>
+		</div>
+
+		<!-- Key-icon appearance — keypad only (a dial has no key icon). -->
+		<div id="keypad-appearance">
+			<%- include('title-overrides') %>
+
+			<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color', 'graphic2Color'], defaults: require('./data/icon-defaults.json')['view-adjustment'] }) %>
+			<%- include('border-overrides', { defaults: require('./data/icon-defaults.json')['view-adjustment'] }) %>
+			<%- include('graphic-overrides') %>
+			<%- include('common-settings') %>
+		</div>
 
 		<%- include('section-header', { title: 'Global Settings' }) %>
 
@@ -39,39 +111,60 @@
 			keyBindings: require('./data/key-bindings.json').viewAdjustment
 		}) %>
 
-		<%- include('global-title-defaults') %>
-		<%- include('global-color-defaults') %>
-		<%- include('global-border-defaults') %>
-		<%- include('global-graphic-defaults') %>
-		<%- include('global-flag-flash') %>
+		<div id="keypad-global-appearance">
+			<%- include('global-title-defaults') %>
+			<%- include('global-color-defaults') %>
+			<%- include('global-border-defaults') %>
+			<%- include('global-graphic-defaults') %>
+			<%- include('global-flag-flash') %>
+		</div>
+
 		<%- include('global-common-settings') %>
 
 		<script>
+			// Recenter VR is a non-directional one-shot on the keypad — hide Direction for it.
 			function updateVisibility(adjustment) {
 				const directionItem = document.getElementById("direction-item");
-				if (!directionItem) return;
+				directionItem?.classList.toggle("hidden", adjustment === "recenter-vr");
+			}
 
-				// Hide direction dropdown when Recenter VR is selected
-				directionItem.classList.toggle("hidden", adjustment === "recenter-vr");
+			// Which surface this instance sits on: the PI registration's
+			// actionInfo.payload.controller ("Keypad" | "Encoder"; the Mirabox host
+			// may report "Knob"). Anything unknown or unavailable falls back to the
+			// keypad view (#806).
+			async function resolveController() {
+				try {
+					const client = window.SDPIComponents && window.SDPIComponents.streamDeckClient;
+					const info = client && (await client.getConnectionInfo());
+					const controller = info && info.actionInfo && info.actionInfo.payload && info.actionInfo.payload.controller;
+					return controller === "Encoder" || controller === "Knob" ? "Encoder" : "Keypad";
+				} catch (err) {
+					return "Keypad";
+				}
+			}
+
+			function applyDialView() {
+				document.getElementById("keypad-settings")?.classList.add("hidden");
+				document.getElementById("keypad-appearance")?.classList.add("hidden");
+				document.getElementById("keypad-global-appearance")?.classList.add("hidden");
+				document.getElementById("dial-settings")?.classList.remove("hidden");
 			}
 
 			async function initialize() {
 				await customElements.whenDefined("sdpi-select");
 
+				// Wire the keypad Direction visibility FIRST so a slow/failed controller
+				// lookup still leaves a fully functional keypad PI (the default view).
 				const adjustmentSelect = document.getElementById("adjustment-select");
 
 				if (adjustmentSelect) {
 					const initialValue = adjustmentSelect.value || "fov";
 					updateVisibility(initialValue);
 
-					adjustmentSelect.addEventListener("change", (ev) => {
-						updateVisibility(ev.target.value || "fov");
-					});
-					adjustmentSelect.addEventListener("input", (ev) => {
-						updateVisibility(ev.target.value || "fov");
-					});
+					const onChange = (ev) => updateVisibility(ev.target.value || "fov");
+					adjustmentSelect.addEventListener("change", onChange);
+					adjustmentSelect.addEventListener("input", onChange);
 
-					// Polling fallback for reliable detection
 					let lastValue = adjustmentSelect.value || "fov";
 					setInterval(() => {
 						const currentValue = adjustmentSelect.value;
@@ -80,6 +173,10 @@
 							updateVisibility(currentValue);
 						}
 					}, 100);
+				}
+
+				if ((await resolveController()) === "Encoder") {
+					applyDialView();
 				}
 			}
 
