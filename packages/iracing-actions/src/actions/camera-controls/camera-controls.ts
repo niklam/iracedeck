@@ -849,9 +849,26 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
         break;
       }
       case "cycle-sub-camera": {
-        const success = camera.cycleSubCamera(carIdx, groupNum, cameraNum, dir);
-        this.logger.info("Sub-camera cycled");
-        this.logger.debug(`Result: ${success}, direction: ${direction}`);
+        // Keep focus on the CURRENTLY focused car by number and just advance the
+        // sub-camera — the same switchNum-not-switchPos correction cycle-camera
+        // uses above. switchPos takes a RACE POSITION, so cycleSubCamera's
+        // switchPos(carIdx) switches to whatever car sits at that position; the
+        // pace car has no valid position, which stalled the cycle (issue #803).
+        // Fall back to the raw cycle helper only when the car number can't be
+        // resolved (out of session).
+        const sessionInfo = this.sdkController.getSessionInfo();
+        const carNumberRaw = sessionInfo ? getCarNumberRawFromSessionInfo(sessionInfo, carIdx) : null;
+
+        if (carNumberRaw !== null) {
+          const success = camera.switchNum(carNumberRaw, groupNum, cameraNum + dir);
+          this.logger.info("Sub-camera switched");
+          this.logger.debug(`Result: ${success}, direction: ${direction}, carNumberRaw: ${carNumberRaw}`);
+        } else {
+          const success = camera.cycleSubCamera(carIdx, groupNum, cameraNum, dir);
+          this.logger.info("Sub-camera cycled (car number fallback)");
+          this.logger.debug(`Result: ${success}, direction: ${direction}`);
+        }
+
         break;
       }
       case "cycle-car": {
