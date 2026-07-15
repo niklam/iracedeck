@@ -554,6 +554,158 @@
       }
     }
   },
+  "camera-editor-adjustments-dial": {
+    "_meta": {
+      "modeSetting": "dial.setting"
+    },
+    "latitude": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "camEditLatitudeIncrease",
+          "camEditLatitudeDecrease"
+        ]
+      }
+    },
+    "longitude": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "camEditLongitudeIncrease",
+          "camEditLongitudeDecrease"
+        ]
+      }
+    },
+    "altitude": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "camEditAltitudeIncrease",
+          "camEditAltitudeDecrease"
+        ]
+      }
+    },
+    "yaw": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "camEditYawIncrease",
+          "camEditYawDecrease"
+        ]
+      }
+    },
+    "pitch": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "camEditPitchIncrease",
+          "camEditPitchDecrease"
+        ]
+      }
+    },
+    "fov-zoom": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "camEditFovZoomIncrease",
+          "camEditFovZoomDecrease"
+        ]
+      }
+    },
+    "f-number": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "camEditFNumberIncrease",
+          "camEditFNumberDecrease"
+        ]
+      }
+    },
+    "focus-depth": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "camEditFocusDepthIncrease",
+          "camEditFocusDepthDecrease"
+        ]
+      }
+    },
+    "vanish-x": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "camEditVanishXIncrease",
+          "camEditVanishXDecrease"
+        ]
+      }
+    },
+    "vanish-y": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "camEditVanishYIncrease",
+          "camEditVanishYDecrease"
+        ]
+      }
+    },
+    "blimp-radius": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "camEditBlimpRadiusIncrease",
+          "camEditBlimpRadiusDecrease"
+        ]
+      }
+    },
+    "blimp-velocity": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "camEditBlimpVelocityIncrease",
+          "camEditBlimpVelocityDecrease"
+        ]
+      }
+    },
+    "key-step": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "camEditKeyStepIncrease",
+          "camEditKeyStepDecrease"
+        ]
+      }
+    },
+    "mic-gain": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "camEditMicGainIncrease",
+          "camEditMicGainDecrease"
+        ]
+      }
+    },
+    "auto-mic-gain": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camEditAutoSetMicGain"
+      }
+    }
+  },
   "camera-editor-controls": {
     "_meta": {
       "modeSetting": "control"

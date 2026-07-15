@@ -165,6 +165,30 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     "focus-depth": dir("camEditFocusDepthIncrease", "camEditFocusDepthDecrease"),
   }),
 
+  // The dial surface of Camera Editor Adjustments (#804). Rotation steps one of
+  // the 14 camera-tool parameters via BOTH increase/decrease keys (warn if
+  // either is unset). Auto Set Mic Gain is not a rotation value — it is offered
+  // only as a press gesture, a single fixed binding. Separate from the keypad
+  // map: rotation has no `direction` setting, so each value needs the pair.
+  "camera-editor-adjustments-dial": entry("dial.setting", {
+    latitude: pair("camEditLatitudeIncrease", "camEditLatitudeDecrease"),
+    longitude: pair("camEditLongitudeIncrease", "camEditLongitudeDecrease"),
+    altitude: pair("camEditAltitudeIncrease", "camEditAltitudeDecrease"),
+    yaw: pair("camEditYawIncrease", "camEditYawDecrease"),
+    pitch: pair("camEditPitchIncrease", "camEditPitchDecrease"),
+    "fov-zoom": pair("camEditFovZoomIncrease", "camEditFovZoomDecrease"),
+    "f-number": pair("camEditFNumberIncrease", "camEditFNumberDecrease"),
+    "focus-depth": pair("camEditFocusDepthIncrease", "camEditFocusDepthDecrease"),
+    "vanish-x": pair("camEditVanishXIncrease", "camEditVanishXDecrease"),
+    "vanish-y": pair("camEditVanishYIncrease", "camEditVanishYDecrease"),
+    "blimp-radius": pair("camEditBlimpRadiusIncrease", "camEditBlimpRadiusDecrease"),
+    "blimp-velocity": pair("camEditBlimpVelocityIncrease", "camEditBlimpVelocityDecrease"),
+    "key-step": pair("camEditKeyStepIncrease", "camEditKeyStepDecrease"),
+    "mic-gain": pair("camEditMicGainIncrease", "camEditMicGainDecrease"),
+    // Press gesture — a single fixed binding.
+    "auto-mic-gain": keybind("camEditAutoSetMicGain"),
+  }),
+
   "camera-editor-controls": entry("control", {
     "open-camera-tool": keybind("camCtrlOpenCameraTool"),
     "key-acceleration-toggle": keybind("camCtrlKeyAccelerationToggle"),

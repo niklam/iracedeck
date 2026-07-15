@@ -6,42 +6,134 @@
 	<body>
 		<%- include('section-header', { title: 'Action Settings' }) %>
 
-		<sdpi-item label="Adjustment">
-			<sdpi-select id="adjustment-select" setting="adjustment" default="latitude">
-				<option value="latitude">Latitude</option>
-				<option value="longitude">Longitude</option>
-				<option value="altitude">Altitude</option>
-				<option value="yaw">Yaw</option>
-				<option value="pitch">Pitch</option>
-				<option value="fov-zoom">FOV Zoom</option>
-				<option value="key-step">Key Step</option>
-				<option value="vanish-x">VanishX</option>
-				<option value="vanish-y">VanishY</option>
-				<option value="blimp-radius">Blimp Radius</option>
-				<option value="blimp-velocity">Blimp Velocity</option>
-				<option value="mic-gain">Mic Gain</option>
-				<option value="auto-set-mic-gain">Auto Set Mic Gain</option>
-				<option value="f-number">F-number</option>
-				<option value="focus-depth">Focus Depth</option>
-			</sdpi-select>
-		</sdpi-item>
-
 		<% var __comms = require('./data/action-comms.json')['camera-editor-adjustments']; %>
-		<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
+		<% var __dialComms = require('./data/action-comms.json')['camera-editor-adjustments-dial']; %>
 
-		<sdpi-item label="Direction" id="direction-item">
-			<sdpi-select setting="direction" default="increase">
-				<option value="increase">Increase</option>
-				<option value="decrease">Decrease</option>
-			</sdpi-select>
-		</sdpi-item>
+		<!-- Keypad settings — hidden when this instance is a dial (#804). -->
+		<div id="keypad-settings">
+			<sdpi-item label="Adjustment">
+				<sdpi-select id="adjustment-select" setting="adjustment" default="latitude">
+					<option value="latitude">Latitude</option>
+					<option value="longitude">Longitude</option>
+					<option value="altitude">Altitude</option>
+					<option value="yaw">Yaw</option>
+					<option value="pitch">Pitch</option>
+					<option value="fov-zoom">FOV Zoom</option>
+					<option value="key-step">Key Step</option>
+					<option value="vanish-x">VanishX</option>
+					<option value="vanish-y">VanishY</option>
+					<option value="blimp-radius">Blimp Radius</option>
+					<option value="blimp-velocity">Blimp Velocity</option>
+					<option value="mic-gain">Mic Gain</option>
+					<option value="auto-set-mic-gain">Auto Set Mic Gain</option>
+					<option value="f-number">F-number</option>
+					<option value="focus-depth">Focus Depth</option>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
 
-		<%- include('title-overrides') %>
+			<sdpi-item label="Direction" id="direction-item">
+				<sdpi-select setting="direction" default="increase">
+					<option value="increase">Increase</option>
+					<option value="decrease">Decrease</option>
+				</sdpi-select>
+			</sdpi-item>
+		</div>
 
-		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color', 'graphic2Color'], defaults: require('./data/icon-defaults.json')['camera-editor-adjustments'] }) %>
-		<%- include('border-overrides', { defaults: require('./data/icon-defaults.json')['camera-editor-adjustments'] }) %>
-		<%- include('graphic-overrides') %>
-		<%- include('common-settings') %>
+		<!-- Dial settings — shown only when this instance is a dial (#804). iRacing
+		     exposes no camera-tool state, so the touch strip shows the selected
+		     parameter's label only (no live value). -->
+		<div id="dial-settings" class="hidden">
+			<sdpi-item label="Setting">
+				<sdpi-select setting="dial.setting" default="latitude">
+					<optgroup label="Position">
+						<option value="latitude">Latitude</option>
+						<option value="longitude">Longitude</option>
+						<option value="altitude">Altitude</option>
+					</optgroup>
+					<optgroup label="Orientation">
+						<option value="yaw">Yaw</option>
+						<option value="pitch">Pitch</option>
+					</optgroup>
+					<optgroup label="Lens">
+						<option value="fov-zoom">FOV Zoom</option>
+						<option value="f-number">F-number</option>
+						<option value="focus-depth">Focus Depth</option>
+					</optgroup>
+					<optgroup label="Vanishing point">
+						<option value="vanish-x">Vanish X</option>
+						<option value="vanish-y">Vanish Y</option>
+					</optgroup>
+					<optgroup label="Blimp">
+						<option value="blimp-radius">Blimp Radius</option>
+						<option value="blimp-velocity">Blimp Velocity</option>
+					</optgroup>
+					<optgroup label="Other">
+						<option value="key-step">Key Step</option>
+						<option value="mic-gain">Mic Gain</option>
+					</optgroup>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="<%= __dialComms._meta.modeSetting %>" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+			<% if (locals.platform?.features?.dialFeedback !== false) { %>
+			<div class="ird-supporting-text">
+				Turn the dial to step the selected camera parameter. iRacing exposes no
+				camera-tool values, so the touch strip shows the parameter name only — no
+				live number. Both the increase and decrease key bindings must be set below.
+			</div>
+			<% } else { %>
+			<div class="ird-supporting-text">
+				Turn the knob to step the selected camera parameter. Both the increase and
+				decrease key bindings must be set below.
+			</div>
+			<% } %>
+
+			<sdpi-item label="Press Action">
+				<sdpi-select setting="dial.pressAction" default="none">
+					<option value="none">None</option>
+					<option value="auto-mic-gain">Auto Set Mic Gain</option>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="dial.pressAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+
+			<sdpi-item label="Long Press">
+				<sdpi-select setting="dial.longPressAction" default="none">
+					<option value="none">None</option>
+					<option value="auto-mic-gain">Auto Set Mic Gain</option>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="dial.longPressAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+
+			<% if (locals.platform?.features?.dialFeedback !== false) { %>
+			<sdpi-item label="Tap Display">
+				<sdpi-select setting="dial.tapAction" default="none">
+					<option value="none">None</option>
+					<option value="auto-mic-gain">Auto Set Mic Gain</option>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="dial.tapAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+
+			<sdpi-item label="Long Touch">
+				<sdpi-select setting="dial.longTouchAction" default="none">
+					<option value="none">None</option>
+					<option value="auto-mic-gain">Auto Set Mic Gain</option>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="dial.longTouchAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+
+			<%- include('dial-appearance') %>
+			<% } %>
+		</div>
+
+		<!-- Key-icon appearance — keypad only (a dial has no key icon). -->
+		<div id="keypad-appearance">
+			<%- include('title-overrides') %>
+
+			<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color', 'graphic2Color'], defaults: require('./data/icon-defaults.json')['camera-editor-adjustments'] }) %>
+			<%- include('border-overrides', { defaults: require('./data/icon-defaults.json')['camera-editor-adjustments'] }) %>
+			<%- include('graphic-overrides') %>
+			<%- include('common-settings') %>
+		</div>
 
 		<%- include('section-header', { title: 'Global Settings' }) %>
 
@@ -49,11 +141,14 @@
 			keyBindings: require('./data/key-bindings.json').cameraEditorAdjustments
 		}) %>
 
-		<%- include('global-title-defaults') %>
-		<%- include('global-color-defaults') %>
-		<%- include('global-border-defaults') %>
-		<%- include('global-graphic-defaults') %>
-		<%- include('global-flag-flash') %>
+		<div id="keypad-global-appearance">
+			<%- include('global-title-defaults') %>
+			<%- include('global-color-defaults') %>
+			<%- include('global-border-defaults') %>
+			<%- include('global-graphic-defaults') %>
+			<%- include('global-flag-flash') %>
+		</div>
+
 		<%- include('global-common-settings') %>
 
 		<script>
@@ -63,6 +158,28 @@
 
 				// Hide direction dropdown when Auto Set Mic Gain is selected
 				directionItem.classList.toggle("hidden", adjustment === "auto-set-mic-gain");
+			}
+
+			// Which surface this instance sits on: the PI registration's
+			// actionInfo.payload.controller ("Keypad" | "Encoder"; the Mirabox host
+			// may report "Knob"). Anything unknown or unavailable falls back to the
+			// keypad view (#804).
+			async function resolveController() {
+				try {
+					const client = window.SDPIComponents && window.SDPIComponents.streamDeckClient;
+					const info = client && (await client.getConnectionInfo());
+					const controller = info && info.actionInfo && info.actionInfo.payload && info.actionInfo.payload.controller;
+					return controller === "Encoder" || controller === "Knob" ? "Encoder" : "Keypad";
+				} catch (err) {
+					return "Keypad";
+				}
+			}
+
+			function applyDialView() {
+				document.getElementById("keypad-settings")?.classList.add("hidden");
+				document.getElementById("keypad-appearance")?.classList.add("hidden");
+				document.getElementById("keypad-global-appearance")?.classList.add("hidden");
+				document.getElementById("dial-settings")?.classList.remove("hidden");
 			}
 
 			async function initialize() {
@@ -90,6 +207,10 @@
 							updateVisibility(currentValue);
 						}
 					}, 100);
+				}
+
+				if ((await resolveController()) === "Encoder") {
+					applyDialView();
 				}
 			}
 

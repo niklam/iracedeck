@@ -103,11 +103,21 @@
       "Name": "Camera Editor Adjustments",
       "UUID": "com.iracedeck.sd.core.camera-editor-adjustments",
       "Icon": "imgs/actions/camera-editor-adjustments/icon",
-      "Tooltip": "Camera editor adjustments for position, rotation, zoom, and other parameters",
+      "Tooltip": "Camera editor adjustments for position, rotation, zoom, and other parameters; on a dial: adjust one camera-tool parameter, press to auto-set mic gain",
       "PropertyInspectorPath": "ui/camera-editor-adjustments.html",
       "Controllers": [
-        "Keypad"
+        "Keypad",
+        "Encoder"
       ],
+      "Encoder": {
+        "Icon": "imgs/actions/camera-editor-adjustments/dial",
+        "layout": "layouts/camera-editor-adjustments.json",
+        "TriggerDescription": {
+          "Rotate": "Adjust the selected camera parameter",
+          "Push": "Configured action",
+          "Touch": "Configured action"
+        }
+      },
       "States": [
         {
           "Image": "imgs/actions/camera-editor-adjustments/key",
