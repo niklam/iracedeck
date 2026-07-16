@@ -27,20 +27,9 @@ vi.mock("@iracedeck/icons/force-feedback/bass-shaker-lfe-increase.svg", () => ({
 vi.mock("@iracedeck/icons/force-feedback/bass-shaker-lfe-decrease.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">bass-shaker-decrease</svg>',
 }));
-vi.mock("@iracedeck/icons/force-feedback/wheel-lfe-intensity-increase.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">wheel-intensity-increase</svg>',
-}));
-vi.mock("@iracedeck/icons/force-feedback/wheel-lfe-intensity-decrease.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">wheel-intensity-decrease</svg>',
-}));
-vi.mock("@iracedeck/icons/force-feedback/haptic-lfe-intensity-increase.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">haptic-intensity-increase</svg>',
-}));
-vi.mock("@iracedeck/icons/force-feedback/haptic-lfe-intensity-decrease.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">haptic-intensity-decrease</svg>',
-}));
-
 vi.mock("@iracedeck/deck-core", () => ({
+  deleteGlobalSettings: vi.fn(),
+  updateGlobalSettings: vi.fn(),
   CommonSettings: {
     extend: (_fields: unknown) => {
       const schema = {
@@ -127,7 +116,13 @@ vi.mock("@iracedeck/deck-core", () => ({
 /** Create a minimal fake event with the given action ID and settings. */
 function fakeEvent(actionId: string, settings: Record<string, unknown> = {}) {
   return {
-    action: { id: actionId, setTitle: vi.fn(), setImage: vi.fn() },
+    action: {
+      id: actionId,
+      isDial: vi.fn(() => false),
+      setTitle: vi.fn(),
+      setImage: vi.fn(),
+      setSettings: vi.fn().mockResolvedValue(undefined),
+    },
     payload: { settings },
   };
 }
@@ -166,28 +161,13 @@ describe("ForceFeedback", () => {
       expect(FORCE_FEEDBACK_GLOBAL_KEYS["bass-shaker-lfe-decrease"]).toBe("forceFeedbackBassShakerLfeQuieter");
     });
 
-    it("should have correct mapping for wheel-lfe-intensity-increase", () => {
-      expect(FORCE_FEEDBACK_GLOBAL_KEYS["wheel-lfe-intensity-increase"]).toBe("forceFeedbackWheelLfeIntensityIncrease");
+    it("should have no entries for the retired intensity modes", () => {
+      const keys = Object.keys(FORCE_FEEDBACK_GLOBAL_KEYS);
+      expect(keys.filter((k) => k.includes("intensity"))).toEqual([]);
     });
 
-    it("should have correct mapping for wheel-lfe-intensity-decrease", () => {
-      expect(FORCE_FEEDBACK_GLOBAL_KEYS["wheel-lfe-intensity-decrease"]).toBe("forceFeedbackWheelLfeIntensityDecrease");
-    });
-
-    it("should have correct mapping for haptic-lfe-intensity-increase", () => {
-      expect(FORCE_FEEDBACK_GLOBAL_KEYS["haptic-lfe-intensity-increase"]).toBe(
-        "forceFeedbackHapticLfeIntensityIncrease",
-      );
-    });
-
-    it("should have correct mapping for haptic-lfe-intensity-decrease", () => {
-      expect(FORCE_FEEDBACK_GLOBAL_KEYS["haptic-lfe-intensity-decrease"]).toBe(
-        "forceFeedbackHapticLfeIntensityDecrease",
-      );
-    });
-
-    it("should have exactly 11 entries", () => {
-      expect(Object.keys(FORCE_FEEDBACK_GLOBAL_KEYS)).toHaveLength(11);
+    it("should have exactly 7 entries", () => {
+      expect(Object.keys(FORCE_FEEDBACK_GLOBAL_KEYS)).toHaveLength(7);
     });
   });
 
@@ -210,14 +190,7 @@ describe("ForceFeedback", () => {
     });
 
     it("should generate valid data URIs for all mode + direction combinations", () => {
-      const modes = [
-        "auto-compute-ffb-force",
-        "ffb-force",
-        "wheel-lfe",
-        "bass-shaker-lfe",
-        "wheel-lfe-intensity",
-        "haptic-lfe-intensity",
-      ] as const;
+      const modes = ["auto-compute-ffb-force", "ffb-force", "wheel-lfe", "bass-shaker-lfe"] as const;
       const directions = ["increase", "decrease"] as const;
 
       for (const mode of modes) {
@@ -261,20 +234,6 @@ describe("ForceFeedback", () => {
       expect(decoded).toContain("LOUDER");
       expect(decoded).toContain("BASS SHAKER");
     });
-
-    it("should include correct labels for wheel-lfe-intensity increase", () => {
-      const result = generateForceFeedbackSvg({ mode: "wheel-lfe-intensity", direction: "increase" });
-      const decoded = decodeURIComponent(result);
-      expect(decoded).toContain("MORE INTENSE");
-      expect(decoded).toContain("WHEEL LFE");
-    });
-
-    it("should include correct labels for haptic-lfe-intensity decrease", () => {
-      const result = generateForceFeedbackSvg({ mode: "haptic-lfe-intensity", direction: "decrease" });
-      const decoded = decodeURIComponent(result);
-      expect(decoded).toContain("LESS INTENSE");
-      expect(decoded).toContain("HAPTIC LFE");
-    });
   });
 
   describe("tap behavior", () => {
@@ -309,14 +268,40 @@ describe("ForceFeedback", () => {
       expect(mockTapBinding).toHaveBeenCalledWith("forceFeedbackBassShakerLfeQuieter");
     });
 
-    it("should call tapBinding for wheel-lfe-intensity increase", async () => {
+    it("should tap the canonical wheel-lfe binding for the retired wheel-lfe-intensity mode", async () => {
       await action.onKeyDown(fakeEvent("action-1", { mode: "wheel-lfe-intensity", direction: "increase" }) as any);
-      expect(mockTapBinding).toHaveBeenCalledWith("forceFeedbackWheelLfeIntensityIncrease");
+      expect(mockTapBinding).toHaveBeenCalledWith("forceFeedbackWheelLfeLouder");
     });
 
-    it("should call tapBinding for haptic-lfe-intensity decrease", async () => {
+    it("should tap the canonical bass-shaker-lfe binding for the retired haptic-lfe-intensity mode", async () => {
       await action.onKeyDown(fakeEvent("action-1", { mode: "haptic-lfe-intensity", direction: "decrease" }) as any);
-      expect(mockTapBinding).toHaveBeenCalledWith("forceFeedbackHapticLfeIntensityDecrease");
+      expect(mockTapBinding).toHaveBeenCalledWith("forceFeedbackBassShakerLfeQuieter");
+    });
+  });
+
+  describe("legacy mode persistence", () => {
+    let action: ForceFeedback;
+
+    beforeEach(() => {
+      action = new ForceFeedback();
+    });
+
+    it("should persist the migrated mode on willAppear for a retired mode", async () => {
+      const ev = fakeEvent("action-1", { mode: "wheel-lfe-intensity", direction: "decrease" });
+      await action.onWillAppear(ev as any);
+      expect(ev.action.setSettings).toHaveBeenCalledWith({ mode: "wheel-lfe", direction: "decrease" });
+    });
+
+    it("should persist the migrated mode on didReceiveSettings for a retired mode", async () => {
+      const ev = fakeEvent("action-1", { mode: "haptic-lfe-intensity", direction: "increase" });
+      await action.onDidReceiveSettings(ev as any);
+      expect(ev.action.setSettings).toHaveBeenCalledWith({ mode: "bass-shaker-lfe", direction: "increase" });
+    });
+
+    it("should not persist anything for canonical modes", async () => {
+      const ev = fakeEvent("action-1", { mode: "wheel-lfe", direction: "increase" });
+      await action.onWillAppear(ev as any);
+      expect(ev.action.setSettings).not.toHaveBeenCalled();
     });
   });
 });

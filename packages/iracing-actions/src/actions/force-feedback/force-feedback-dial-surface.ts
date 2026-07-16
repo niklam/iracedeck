@@ -9,8 +9,8 @@
  *
  * `ffb-force` is the one setting iRacing reports live (`SteeringWheelMaxForceNm`,
  * already typed on `TelemetryData`), so its touch strip shows the actual max
- * force in Nm (one decimal). The four LFE values (wheel / bass-shaker volume and
- * wheel / haptic intensity) have no telemetry readback, so they render
+ * force in Nm (one decimal). The two LFE values (wheel / bass-shaker volume)
+ * have no telemetry readback, so they render
  * label-only via the dash box's identity-only branch — the Audio-Controls
  * voice-chat/master compromise (#782).
  *
@@ -54,8 +54,6 @@ export const ROTATION_SETTINGS = [
   "ffb-force",
   "wheel-lfe",
   "bass-shaker-lfe",
-  "wheel-lfe-intensity",
-  "haptic-lfe-intensity",
 ] as const;
 export type ForceFeedbackDialSetting = (typeof ROTATION_SETTINGS)[number];
 
@@ -81,10 +79,6 @@ const DIAL_ROTATION_KEYS: Record<string, string> = {
   "wheel-lfe-decrease": "forceFeedbackWheelLfeQuieter",
   "bass-shaker-lfe-increase": "forceFeedbackBassShakerLfeLouder",
   "bass-shaker-lfe-decrease": "forceFeedbackBassShakerLfeQuieter",
-  "wheel-lfe-intensity-increase": "forceFeedbackWheelLfeIntensityIncrease",
-  "wheel-lfe-intensity-decrease": "forceFeedbackWheelLfeIntensityDecrease",
-  "haptic-lfe-intensity-increase": "forceFeedbackHapticLfeIntensityIncrease",
-  "haptic-lfe-intensity-decrease": "forceFeedbackHapticLfeIntensityDecrease",
 };
 
 /** The Auto Compute FFB Force binding, tapped by the `auto-ffb` press gesture. */
@@ -145,8 +139,6 @@ const MODE_ABBR: Record<ForceFeedbackDialSetting, string> = {
   "ffb-force": "FFB",
   "wheel-lfe": "WHEEL",
   "bass-shaker-lfe": "SHAKER",
-  "wheel-lfe-intensity": "W-INT",
-  "haptic-lfe-intensity": "H-INT",
 };
 
 /**
@@ -158,8 +150,6 @@ const MODE_COLOR: Record<ForceFeedbackDialSetting, string> = {
   "ffb-force": "#4fc3f7",
   "wheel-lfe": "#2ecc71",
   "bass-shaker-lfe": "#9b59b6",
-  "wheel-lfe-intensity": "#e67e22",
-  "haptic-lfe-intensity": "#f39c12",
 };
 
 /** Friendly mode name for the encoder trigger description ("Adjust …"). */
@@ -167,8 +157,6 @@ const MODE_LABEL: Record<ForceFeedbackDialSetting, string> = {
   "ffb-force": "FFB Force",
   "wheel-lfe": "Wheel LFE",
   "bass-shaker-lfe": "Bass Shaker LFE",
-  "wheel-lfe-intensity": "Wheel LFE Intensity",
-  "haptic-lfe-intensity": "Haptic LFE Intensity",
 };
 
 /**

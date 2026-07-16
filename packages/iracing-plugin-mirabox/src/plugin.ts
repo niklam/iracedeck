@@ -118,6 +118,7 @@ import {
   LookDirection,
   MEDIA_CAPTURE_UUID,
   MediaCapture,
+  migrateLfeIntensityBindingKeys,
   PIT_CREW_UUID,
   PIT_QUICK_ACTIONS_UUID,
   PitCrew,
@@ -669,6 +670,14 @@ onGlobalSettingsChange((settings) => {
     // should default on per the Race Engineer "new functionality defaults on"
     // principle rather than inherit a disable of the old, broken cue.
     deleteGlobalSettings(["calloutEnabledFlagOneLapToGreen"]);
+
+    // Issue #848: the Force Feedback LFE "intensity" modes were retired as
+    // duplicates of Wheel/BassShaker LFE (iRacing has one control pair per
+    // LFE device, labeled differently across its settings pages). Carry any
+    // bindings stored under the retired keys over to the canonical
+    // louder/quieter keys (never overwriting a configured one), then drop
+    // the retired keys. Idempotent.
+    migrateLfeIntensityBindingKeys();
 
     updateGlobalSettings({
       pitCrewRaceEngineerEnabled: settings.pitCrewRaceEngineerEnabledOnStartup,

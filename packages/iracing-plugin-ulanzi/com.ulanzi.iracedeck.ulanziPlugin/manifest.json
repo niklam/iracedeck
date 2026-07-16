@@ -179,7 +179,7 @@
       "Name": "Force Feedback",
       "UUID": "com.iracedeck.sd.core.force-feedback",
       "Icon": "imgs/actions/force-feedback/icon.svg",
-      "Tooltip": "Force feedback controls (FFB force, wheel LFE, bass shaker, haptic intensity)",
+      "Tooltip": "Force feedback controls (FFB force, wheel LFE, bass shaker LFE)",
       "PropertyInspectorPath": "ui/force-feedback.html",
       "Controllers": [
         "Keypad"

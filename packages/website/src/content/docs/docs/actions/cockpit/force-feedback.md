@@ -1,13 +1,17 @@
 ---
 title: Force Feedback
-description: Force feedback and haptic controls for wheel, bass shaker, and LFE intensity.
+description: Force feedback and haptic controls for wheel and bass shaker LFE.
 sidebar:
   badge:
-    text: "6 modes"
+    text: "4 modes"
     variant: tip
 ---
 
-Control force feedback and haptic settings from iRacing's Audio & Force Feedback page: auto-compute FFB, overall FFB force, wheel LFE loudness and intensity, bass shaker LFE loudness, and haptic LFE intensity. Placed on a **Stream Deck+ dial**, the same action becomes a force-feedback dial with the live max force in Nm on the touch strip — see [On a dial](#on-a-dial) below.
+Control force feedback and haptic settings from iRacing's Audio & Force Feedback page: auto-compute FFB, overall FFB force, wheel LFE loudness, and bass shaker LFE loudness. Placed on a **Stream Deck+ dial**, the same action becomes a force-feedback dial with the live max force in Nm on the touch strip — see [On a dial](#on-a-dial) below.
+
+:::note
+iRacing's Options pages label the same two LFE controls "More Intense / Less Intense" under **Wheel LFE Controls** and **Haptic LFE Controls** — those are the identical iRacing bindings as Wheel LFE and Bass Shaker LFE below, just named differently. Earlier iRaceDeck versions exposed them as separate Wheel/Haptic LFE Intensity modes; buttons and dials saved with those modes are migrated automatically.
+:::
 
 ## Modes
 
@@ -50,7 +54,7 @@ Adjust the force feedback maximum force (iRacing's "max force" setting, in Nm). 
 
 ### Wheel LFE
 
-Adjust the wheel LFE (low-frequency effects) loudness.
+Adjust the wheel LFE (low-frequency effects) loudness — the control iRacing's Options pages call Wheel LFE "More Intense / Less Intense".
 
 #### Details
 
@@ -68,7 +72,7 @@ Adjust the wheel LFE (low-frequency effects) loudness.
 
 ### Bass Shaker LFE
 
-Adjust the bass shaker LFE loudness.
+Adjust the bass shaker LFE loudness — the control iRacing's Options pages call Haptic LFE "More Intense / Less Intense".
 
 #### Details
 
@@ -82,42 +86,6 @@ Adjust the bass shaker LFE loudness.
 - **Increase** (default) — Pressing the button makes it louder
 - **Decrease** — Pressing the button makes it quieter
 
----
-
-### Wheel LFE Intensity
-
-Adjust the wheel LFE intensity curve.
-
-#### Details
-
-- **Method:** Key binding
-- **Dial:** See [On a dial](#on-a-dial)
-- **Default binding:** No default key binding — both Wheel LFE More Intense and Wheel LFE Less Intense must be configured in iRacing and in the Property Inspector
-- **Telemetry-aware icon:** No
-
-#### Setting: Direction
-
-- **Increase** (default) — Pressing the button makes it more intense
-- **Decrease** — Pressing the button makes it less intense
-
----
-
-### Haptic LFE Intensity
-
-Adjust the haptic LFE intensity curve.
-
-#### Details
-
-- **Method:** Key binding
-- **Dial:** See [On a dial](#on-a-dial)
-- **Default binding:** No default key binding — both Haptic LFE More Intense and Haptic LFE Less Intense must be configured in iRacing and in the Property Inspector
-- **Telemetry-aware icon:** No
-
-#### Setting: Direction
-
-- **Increase** (default) — Pressing the button makes it more intense
-- **Decrease** — Pressing the button makes it less intense
-
 ## On a dial
 
 Placed on a Stream Deck+ dial, Force Feedback becomes a force-feedback dial. Pick one value with the dial's **Mode** dropdown; turning the dial steps it up or down in iRacing, and for **FFB Force** the touch strip shows the live max force in Nm. It uses the same key bindings as the keypad modes, so no extra configuration is needed if you already use them. The Property Inspector automatically shows the dial settings below (instead of the keypad Mode and Direction) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
@@ -126,7 +94,7 @@ Placed on a Stream Deck+ dial, Force Feedback becomes a force-feedback dial. Pic
 
 - **Method:** Key binding — the same Force Feedback increase/decrease bindings the keypad modes use, plus the *Auto Compute FFB Force* binding for the press gestures. Configure them in the **Related Key Bindings** section; the Property Inspector shows a status line indicating whether each is set.
 - **Dial:** Rotating adjusts the selected value (clockwise = increase, counter-clockwise = decrease). Both the increase and decrease key bindings must be set. A fast spin advances several detents (up to five per turn event).
-- **Telemetry-aware:** Yes for FFB Force — the touch strip shows the live `SteeringWheelMaxForceNm` value as `XX.X Nm`. The four LFE settings have no telemetry, so their strips show the label only.
+- **Telemetry-aware:** Yes for FFB Force — the touch strip shows the live `SteeringWheelMaxForceNm` value as `XX.X Nm`. The two LFE settings have no telemetry, so their strips show the label only.
 
 #### Controls
 
@@ -143,8 +111,6 @@ The value the dial controls. Each renders as a color-coded "dash box": a short l
 | FFB Force (max force) | FFB | `SteeringWheelMaxForceNm` | `XX.X Nm` |
 | Wheel LFE | WHEEL | *(none — iRacing exposes no LFE state)* | label only |
 | Bass Shaker LFE | SHAKER | *(none — iRacing exposes no LFE state)* | label only |
-| Wheel LFE Intensity | W-INT | *(none — iRacing exposes no LFE state)* | label only |
-| Haptic LFE Intensity | H-INT | *(none — iRacing exposes no LFE state)* | label only |
 
 When FFB Force has no telemetry the box shows `---`. The LFE settings still rotate (they use their increase/decrease bindings); their strips just show the label.
 
