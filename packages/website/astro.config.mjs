@@ -27,6 +27,9 @@ export default defineConfig({
         replacesTitle: true,
       },
       customCss: ["./src/styles/custom.css"],
+      // Injects the icon-gallery's component-rendered class/family headings
+      // into the page's right-side TOC (see src/routeData.ts, item 3).
+      routeMiddleware: "./src/routeData.ts",
       social: [
         {
           icon: "github",
