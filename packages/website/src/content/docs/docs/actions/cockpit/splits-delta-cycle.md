@@ -7,7 +7,7 @@ sidebar:
     variant: tip
 ---
 
-Switch between iRacing's split-time delta display modes, toggle the reference car display, mark custom sector start and end points, or use active reset to practice specific track sections without leaving the cockpit. Placed on a **Stream Deck+ dial**, the same action becomes a splits-delta cycle dial — turning steps through the delta modes and pressing toggles the reference car — see [On a dial](#on-a-dial) below.
+Switch between iRacing's split-time delta display modes, toggle the reference car display, mark custom sector start and end points, or use active reset to practice specific track sections without leaving the cockpit. Placed on a **Stream Deck+ dial**, the same action becomes a splits-delta cycle dial — turning steps through the delta modes and pressing toggles the reference car by default — see [On a dial](#on-a-dial) below.
 
 ## Modes
 
