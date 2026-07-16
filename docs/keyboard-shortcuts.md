@@ -167,10 +167,8 @@
 | Auto Compute FFB Force | Ctrl+A | No | Auto Compute FFB Force |
 | Adjust FFB Force | - | No | Increase FFB Force / Decrease FFB Force |
 | Set FFB Max Force | - | Yes | - |
-| Adjust Wheel LFE | - | No | Wheel LFE Louder / Wheel LFE Quieter |
-| Adjust BassShaker LFE | - | No | BassShaker LFE Louder / BassShaker LFE Quieter |
-| Adjust Wheel LFE Intensity | - | No | Wheel LFE More Intense / Wheel LFE Less Intense |
-| Adjust Haptic LFE Intensity | - | No | Haptic LFE More Intense / Haptic LFE Less Intense |
+| Adjust Wheel LFE | - | No | Wheel LFE Louder / Wheel LFE Quieter (the Options pages label the same controls Wheel LFE More Intense / Less Intense) |
+| Adjust BassShaker LFE | - | No | BassShaker LFE Louder / BassShaker LFE Quieter (the Options pages label the same controls Haptic LFE More Intense / Less Intense) |
 
 ## Chat
 

@@ -24,15 +24,13 @@
 					<optgroup label="Bass Shaker">
 						<option value="bass-shaker-lfe">BassShaker LFE</option>
 					</optgroup>
-					<optgroup label="Wheel LFE Controls">
-						<option value="wheel-lfe-intensity">Wheel LFE Intensity</option>
-					</optgroup>
-					<optgroup label="Haptic LFE Controls">
-						<option value="haptic-lfe-intensity">Haptic LFE Intensity</option>
-					</optgroup>
 				</sdpi-select>
 			</sdpi-item>
 			<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
+			<div class="ird-supporting-text">
+				iRacing's Options pages call the LFE controls "More Intense / Less Intense" under Wheel LFE Controls and
+				Haptic LFE Controls — they are the same iRacing bindings as Wheel LFE and BassShaker LFE here.
+			</div>
 
 			<sdpi-item label="Direction" id="direction-item">
 				<sdpi-select id="direction-select" setting="direction" default="increase">
@@ -49,8 +47,6 @@
 					<option value="ffb-force">FFB Force (max force)</option>
 					<option value="wheel-lfe">Wheel LFE</option>
 					<option value="bass-shaker-lfe">Bass Shaker LFE</option>
-					<option value="wheel-lfe-intensity">Wheel LFE Intensity</option>
-					<option value="haptic-lfe-intensity">Haptic LFE Intensity</option>
 				</sdpi-select>
 			</sdpi-item>
 			<ird-binding-status mode-setting="dial.setting" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
@@ -138,8 +134,6 @@
 				"ffb-force": { increase: "Increase", decrease: "Decrease" },
 				"wheel-lfe": { increase: "Louder", decrease: "Quieter" },
 				"bass-shaker-lfe": { increase: "Louder", decrease: "Quieter" },
-				"wheel-lfe-intensity": { increase: "More Intense", decrease: "Less Intense" },
-				"haptic-lfe-intensity": { increase: "More Intense", decrease: "Less Intense" },
 			};
 
 			function updateVisibility(mode) {
