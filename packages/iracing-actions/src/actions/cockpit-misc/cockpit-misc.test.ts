@@ -74,6 +74,9 @@ vi.mock("@iracedeck/deck-core", () => ({
 
     return b.key;
   }),
+  // The dial half of the action subscribes to global-settings changes at
+  // construction (#805) — return a no-op unsubscribe so `new CockpitMisc()` works.
+  onGlobalSettingsChange: vi.fn(() => vi.fn()),
   generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
   getGlobalBorderSettings: vi.fn(() => ({})),
   getGlobalColors: vi.fn(() => ({})),
@@ -126,14 +129,6 @@ function fakeEvent(actionId: string, settings: Record<string, unknown> = {}) {
   return {
     action: { id: actionId, setTitle: vi.fn(), setImage: vi.fn() },
     payload: { settings },
-  };
-}
-
-/** Create a minimal fake dial rotate event. */
-function fakeDialRotateEvent(actionId: string, settings: Record<string, unknown>, ticks: number) {
-  return {
-    action: { id: actionId, setTitle: vi.fn(), setImage: vi.fn() },
-    payload: { settings, ticks },
   };
 }
 
@@ -416,12 +411,6 @@ describe("CockpitMisc", () => {
       expect(mockTapBinding).toHaveBeenCalledWith("cockpitMiscDashPage2Decrease");
     });
 
-    it("should call tapGlobalBinding on dialDown", async () => {
-      await action.onDialDown(fakeEvent("action-1", { control: "trigger-wipers" }) as any);
-
-      expect(mockTapBinding).toHaveBeenCalledWith("cockpitMiscTriggerWipers");
-    });
-
     it("should call tapGlobalBinding on keyDown for toggle-wipers", async () => {
       await action.onKeyDown(fakeEvent("action-1", { control: "toggle-wipers" }) as any);
 
@@ -441,59 +430,8 @@ describe("CockpitMisc", () => {
     });
   });
 
-  describe("encoder behavior", () => {
-    let action: CockpitMisc;
-
-    beforeEach(() => {
-      action = new CockpitMisc();
-    });
-
-    it("should call tapGlobalBinding for increase on clockwise rotation for directional controls", async () => {
-      await action.onDialRotate(
-        fakeDialRotateEvent("action-1", { control: "ffb-max-force", direction: "increase" }, 1) as any,
-      );
-
-      expect(mockTapBinding).toHaveBeenCalledWith("cockpitMiscFfbForceIncrease");
-    });
-
-    it("should call tapGlobalBinding for decrease on counter-clockwise rotation for directional controls", async () => {
-      await action.onDialRotate(
-        fakeDialRotateEvent("action-1", { control: "ffb-max-force", direction: "increase" }, -1) as any,
-      );
-
-      expect(mockTapBinding).toHaveBeenCalledWith("cockpitMiscFfbForceDecrease");
-    });
-
-    it("should call tapGlobalBinding for dash-page-1 rotation", async () => {
-      await action.onDialRotate(
-        fakeDialRotateEvent("action-1", { control: "dash-page-1", direction: "increase" }, 2) as any,
-      );
-
-      expect(mockTapBinding).toHaveBeenCalledWith("cockpitMiscDashPage1Increase");
-    });
-
-    it("should ignore rotation for non-directional controls (toggle-wipers)", async () => {
-      await action.onDialRotate(fakeDialRotateEvent("action-1", { control: "toggle-wipers" }, 1) as any);
-
-      expect(mockTapBinding).not.toHaveBeenCalled();
-    });
-
-    it("should ignore rotation for non-directional controls (trigger-wipers)", async () => {
-      await action.onDialRotate(fakeDialRotateEvent("action-1", { control: "trigger-wipers" }, 1) as any);
-
-      expect(mockTapBinding).not.toHaveBeenCalled();
-    });
-
-    it("should ignore rotation for non-directional controls (report-latency)", async () => {
-      await action.onDialRotate(fakeDialRotateEvent("action-1", { control: "report-latency" }, -1) as any);
-
-      expect(mockTapBinding).not.toHaveBeenCalled();
-    });
-
-    it("should ignore rotation for non-directional controls (in-lap-mode)", async () => {
-      await action.onDialRotate(fakeDialRotateEvent("action-1", { control: "in-lap-mode" }, 1) as any);
-
-      expect(mockTapBinding).not.toHaveBeenCalled();
-    });
-  });
+  // Dial (encoder) behavior now routes to CockpitMiscDialSurface and reads the
+  // `dial` settings root (#805); it is covered end-to-end through the real action
+  // in cockpit-misc-dial-surface.test.ts (rotation, press/touch gestures,
+  // telemetry readback, legacy migration, subscription lifecycle).
 });

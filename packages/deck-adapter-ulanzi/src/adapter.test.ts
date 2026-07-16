@@ -71,6 +71,37 @@ describe("UlanziPlatformAdapter", () => {
     });
   });
 
+  // The Ulanzi PI bridge relays external-link clicks as a `sendToPlugin` openUrl
+  // marker (the host ignores `openurl` sent on the PI socket, #845); the adapter
+  // forwards them out the plugin socket, which the host honours.
+  describe("PI openUrl relay", () => {
+    const openUrlHandler = () => client.onGlobalEvent.mock.calls.find((call) => call[0] === "openUrl")?.[1];
+
+    it("registers a global openUrl handler on construction", () => {
+      expect(client.onGlobalEvent).toHaveBeenCalledWith("openUrl", expect.any(Function));
+    });
+
+    it("forwards the relayed url out the plugin socket via client.openUrl", () => {
+      openUrlHandler()({ event: "openUrl", action: "u", context: "u___5___a", payload: { url: "https://x/" } });
+
+      expect(client.openUrl).toHaveBeenCalledWith("https://x/");
+    });
+
+    it("ignores a relay without a usable url", () => {
+      openUrlHandler()({ event: "openUrl", action: "u", context: "u___5___a", payload: {} });
+
+      expect(client.openUrl).not.toHaveBeenCalled();
+    });
+
+    it("forwards only http(s) urls — other schemes and malformed urls are dropped", () => {
+      for (const url of ["javascript:alert(1)", "file:///C:/Windows/system.ini", "app://open", "not a url", "   "]) {
+        openUrlHandler()({ event: "openUrl", action: "u", context: "u___5___a", payload: { url } });
+      }
+
+      expect(client.openUrl).not.toHaveBeenCalled();
+    });
+  });
+
   describe("onDidReceiveGlobalSettings", () => {
     it("should register a global event handler for didReceiveGlobalSettings", () => {
       const callback = vi.fn();
@@ -83,7 +114,7 @@ describe("UlanziPlatformAdapter", () => {
       const callback = vi.fn();
       adapter.onDidReceiveGlobalSettings(callback);
 
-      const handler = client.onGlobalEvent.mock.calls[0][1];
+      const handler = client.onGlobalEvent.mock.calls.find((call) => call[0] === "didReceiveGlobalSettings")?.[1];
       handler({ event: "didReceiveGlobalSettings", payload: { settings: { key: "value" } } });
 
       expect(callback).toHaveBeenCalledWith({ key: "value" });
@@ -102,7 +133,7 @@ describe("UlanziPlatformAdapter", () => {
       const callback = vi.fn();
       adapter.onApplicationDidLaunch(callback);
 
-      const handler = client.onGlobalEvent.mock.calls[0][1];
+      const handler = client.onGlobalEvent.mock.calls.find((call) => call[0] === "applicationDidLaunch")?.[1];
       handler({ event: "applicationDidLaunch", payload: { application: "iRacingSim64DX11.exe" } });
 
       expect(callback).toHaveBeenCalledWith("iRacingSim64DX11.exe");
@@ -130,7 +161,7 @@ describe("UlanziPlatformAdapter", () => {
       const callback = vi.fn();
       adapter.onPropertyInspectorDidAppear(callback);
 
-      const handler = client.onGlobalEvent.mock.calls[0][1];
+      const handler = client.onGlobalEvent.mock.calls.find((call) => call[0] === "propertyInspectorDidAppear")?.[1];
       handler({ event: "propertyInspectorDidAppear", action: "com.test.action", context: "abc" });
 
       expect(callback).toHaveBeenCalledTimes(1);

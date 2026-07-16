@@ -8,9 +8,13 @@ import {
   getGlobalTitleSettings,
   type IDeckDialDownEvent,
   type IDeckDialRotateEvent,
+  type IDeckDialUpEvent,
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
+  type IDeckTouchTapEvent,
   type IDeckWillAppearEvent,
+  type IDeckWillDisappearEvent,
+  onGlobalSettingsChange,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
@@ -29,6 +33,8 @@ import triggerWipersSvg from "@iracedeck/icons/cockpit-misc/trigger-wipers.svg";
 import ffbMaxForceDecreaseSvg from "@iracedeck/icons/force-feedback/ffb-force-decrease.svg";
 import ffbMaxForceIncreaseSvg from "@iracedeck/icons/force-feedback/ffb-force-increase.svg";
 import z from "zod";
+
+import { CockpitMiscDialSurface, DialSettings, seedDialFromLegacySetting } from "./cockpit-misc-dial-surface.js";
 
 type CockpitMiscControl =
   | "toggle-wipers"
@@ -115,6 +121,10 @@ const CockpitMiscSettings = CommonSettings.extend({
     ])
     .default("toggle-wipers"),
   direction: z.enum(["increase", "decrease"]).default("increase"),
+  // Dial-surface settings (#805), under the `dial` root so keypad and dial keys
+  // can't collide. catch: dial garbage degrades to dial defaults instead of
+  // failing the whole parse (which would reset a keypad instance).
+  dial: DialSettings.catch(() => DialSettings.parse({})),
 });
 
 type CockpitMiscSettings = z.infer<typeof CockpitMiscSettings>;
@@ -157,9 +167,42 @@ export function generateCockpitMiscSvg(settings: CockpitMiscSettings, bindingMis
 export const COCKPIT_MISC_UUID = "com.iracedeck.sd.core.cockpit-misc" as const;
 
 export class CockpitMisc extends ConnectionStateAwareAction<CockpitMiscSettings> {
+  /**
+   * The dial half of the action; all IDeck dial events route here (#805). No
+   * `setActiveBinding` is delegated — it would bleed onto the keypad buttons.
+   */
+  private readonly dialSurface = new CockpitMiscDialSurface({
+    logger: this.logger,
+    getTelemetry: () => this.sdkController.getCurrentTelemetry(),
+    tapBinding: (settingKey) => this.tapBinding(settingKey),
+    isBindingMissing: (keys) => this.isBindingMissing(keys),
+  });
+
+  /** Keeps the dial strips' #612 missing-binding warning live while iRacing is offline (#805). */
+  private readonly unsubscribeGlobalSettings = onGlobalSettingsChange(() => this.dialSurface.refreshAll());
+
   override async onWillAppear(ev: IDeckWillAppearEvent<CockpitMiscSettings>): Promise<void> {
     await super.onWillAppear(ev);
-    const settings = this.parseSettings(ev.payload.settings);
+    let settings = this.parseSettings(ev.payload.settings);
+
+    if (ev.action.isDial()) {
+      // #805 dial migration: a pre-dial-surface encoder placement drove the flat
+      // keypad `control` — carry a valid dash-page value over to `dial.setting`.
+      const seededDial = seedDialFromLegacySetting(ev.payload.settings);
+
+      if (seededDial) {
+        await ev.action.setSettings(seededDial);
+        settings = this.parseSettings(seededDial);
+      }
+
+      await this.dialSurface.willAppear(ev.action, settings.dial);
+      this.sdkController.subscribe(ev.action.id, (telemetry) => {
+        this.dialSurface.onTelemetry(ev.action.id, telemetry);
+      });
+
+      return;
+    }
+
     const activeKey = this.resolveGlobalKey(settings.control, settings.direction);
 
     if (activeKey) {
@@ -169,9 +212,22 @@ export class CockpitMisc extends ConnectionStateAwareAction<CockpitMiscSettings>
     await this.updateDisplay(ev, settings);
   }
 
+  override async onWillDisappear(ev: IDeckWillDisappearEvent<CockpitMiscSettings>): Promise<void> {
+    this.sdkController.unsubscribe(ev.action.id);
+    this.dialSurface.willDisappear(ev.action.id);
+    await super.onWillDisappear(ev);
+  }
+
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<CockpitMiscSettings>): Promise<void> {
     await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
+
+    if (ev.action.isDial()) {
+      await this.dialSurface.didReceiveSettings(ev.action, settings.dial);
+
+      return;
+    }
+
     const activeKey = this.resolveGlobalKey(settings.control, settings.direction);
 
     if (activeKey) {
@@ -187,26 +243,23 @@ export class CockpitMisc extends ConnectionStateAwareAction<CockpitMiscSettings>
     await this.executeControl(settings.control, settings.direction);
   }
 
-  override async onDialDown(ev: IDeckDialDownEvent<CockpitMiscSettings>): Promise<void> {
-    this.logger.info("Dial down received");
+  override async onDialRotate(ev: IDeckDialRotateEvent<CockpitMiscSettings>): Promise<void> {
     const settings = this.parseSettings(ev.payload.settings);
-    await this.executeControl(settings.control, settings.direction);
+    await this.dialSurface.rotate(ev.action, settings.dial, ev.payload.ticks, ev.payload.pressed === true);
   }
 
-  override async onDialRotate(ev: IDeckDialRotateEvent<CockpitMiscSettings>): Promise<void> {
-    this.logger.info("Dial rotated");
+  override async onDialDown(ev: IDeckDialDownEvent<CockpitMiscSettings>): Promise<void> {
     const settings = this.parseSettings(ev.payload.settings);
+    this.dialSurface.down(ev.action, settings.dial);
+  }
 
-    // Non-directional controls have no +/- adjustment — ignore rotation
-    if (!DIRECTIONAL_CONTROLS.has(settings.control)) {
-      this.logger.debug(`Rotation ignored for ${settings.control}`);
+  override async onDialUp(ev: IDeckDialUpEvent<CockpitMiscSettings>): Promise<void> {
+    await this.dialSurface.up(ev.action.id);
+  }
 
-      return;
-    }
-
-    // Clockwise (ticks > 0) = increase, Counter-clockwise (ticks < 0) = decrease
-    const direction: DirectionType = ev.payload.ticks > 0 ? "increase" : "decrease";
-    await this.executeControl(settings.control, direction);
+  override async onTouchTap(ev: IDeckTouchTapEvent<CockpitMiscSettings>): Promise<void> {
+    const settings = this.parseSettings(ev.payload.settings);
+    await this.dialSurface.touchTap(ev.action, settings.dial, ev.payload.hold === true);
   }
 
   private parseSettings(settings: unknown): CockpitMiscSettings {

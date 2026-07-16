@@ -1020,3 +1020,56 @@ describe("furled speak-time validity + cleared pairing (issue #669)", () => {
     ]);
   });
 });
+
+// Issue #846: when the driver ignores the furled warning, iRacing raises the
+// actual black flag by clearing Furled and setting Black in one transition.
+// The diff suppresses the cleared emission on that tick, but a cleared that
+// was legitimately emitted (genuine withdrawal) and then deferred behind a
+// longer line can still meet the escalation before the bus idles — the
+// speak-time gate must expand it to silence rather than announce "Black flag
+// cleared." right after the black-flag call.
+describe("furled → black escalation speak-time gate (issue #846)", () => {
+  const BLACK_UP = { SessionFlags: Flags.Black };
+  const DQ_UP = { SessionFlags: Flags.Disqualify };
+
+  it("a cleared meeting the actual black flag at speak time plays nothing", () => {
+    _setFurledRaisedSpoken(true); // raised line was spoken
+    mockLatestTelemetry.mockReturnValue(BLACK_UP); // …but the warning escalated
+    bus.publishEvent("flag.furled.cleared", {});
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+    expect(sfxClipsPlayed()).toEqual([]);
+  });
+
+  it("a cleared meeting a disqualification at speak time plays nothing", () => {
+    _setFurledRaisedSpoken(true);
+    mockLatestTelemetry.mockReturnValue(DQ_UP);
+    bus.publishEvent("flag.furled.cleared", {});
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+  });
+
+  it("a queued clear overtaken by the escalation expands to silence at idle-replay", () => {
+    engine.defineScenario({
+      id: "test.filler3",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      base: "voice/{voice}",
+      weight: WEIGHT.SAFETY,
+      sequence: ["pool:flag-yellow-cleared"],
+    });
+    mockLatestTelemetry.mockReturnValue({ SessionFlags: Flags.Furled });
+    bus.publishEvent("flag.furled.raised", {});
+    flush(audio); // raised plays → marker set
+
+    engine.fire("test.filler3"); // occupies the Voice bus; deliberately not flushed
+    mockLatestTelemetry.mockReturnValue({ SessionFlags: 0 }); // genuine drop…
+    bus.publishEvent("flag.furled.cleared", {}); // …emits cleared; equal weight → queued
+    mockLatestTelemetry.mockReturnValue(BLACK_UP); // escalation lands while queued
+    flush(audio); // filler finishes → queued clear replays → expands to silence
+
+    expect(voiceClipsPlayed().filter((p) => p.includes("furled-cleared"))).toEqual([]);
+  });
+});

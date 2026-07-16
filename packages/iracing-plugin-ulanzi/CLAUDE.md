@@ -22,6 +22,8 @@ PI framework (web components, EJS partials, compile plugin, `sdpi-components.js`
 
 `com.ulanzi.iracedeck.ulanziPlugin/manifest.json` is committed and hand-maintained, mirroring the Mirabox action set with the Ulanzi transform above. When adding/removing an action, update this manifest alongside the Elgato and Mirabox manifests, keeping the `Actions` array alphabetical by display `Name` (the host renders them in array order). `scripts/manifest-actions-order.test.mjs` discovers every plugin manifest dynamically and enforces sorted order, name uniqueness, and cross-manifest action-set parity — ecosystem-specific actions (`ECOSYSTEM_SPECIFIC_ACTIONS`, currently the Elgato-only "Switch Profile") are exempt from the parity check only. (A throwaway transform script — `scripts/local/gen-ulanzi-manifest.mjs`, gitignored — bootstrapped the initial file from the Mirabox manifest.)
 
+**Image paths carry explicit file extensions** (`imgs/plugin/marketplace.png`, `imgs/actions/<name>/icon.svg`, `imgs/actions/<name>/key.svg`) — unlike the Elgato manifest convention, UlanziStudio resolves image paths literally and does not probe for `.png`/`.svg`/`@2x` variants, so an extensionless reference shows no icon (e.g. in the Settings > Plugins list, #845). `scripts/ulanzi-manifest-images.test.mjs` enforces the extension and that every reference resolves to its committed source (per-action icons in `@iracedeck/iracing-actions`, plugin branding in the Elgato plugin's `imgs/plugin/` — the rollup copy sources).
+
 ## Build
 
 ```bash
@@ -43,6 +45,8 @@ There is no `link:ulanzi` script — the root `package.json` only has `*:stream-
 Validated live in UlanziDeck (the desktop host): the plugin loads, the WebSocket connects (handshake + argv layout `address port language`), the global-settings read/write round-trips, the PI bridge drives `sdpi-components`, the **SVG data-URI icons render**, and key presses dispatch to actions. The earlier known-unknowns (manifest format, the 4-segment UUID, the wire protocol, the PI bridge, SVG passthrough) are therefore confirmed, not deferred.
 
 Still to exercise on a physical device: dial input end-to-end (the manifest declares no `Encoder` controllers until this is verified — #786), D200X dial custom feedback layouts (no SDK `setFeedback` method — rich dial-slot display is deferred), Keypad-vs-Encoder detection at `add` (defaults to Keypad), and per-device behaviour across the four supported device models. None block the build.
+
+Still to verify in the UlanziStudio host (no device needed): the #845 fixes — the plugin-list icon (manifest image paths now carry explicit extensions) and PI external links (relayed out the plugin socket via the `sendToPlugin` openUrl marker). Both were authored blind against first-party plugin conventions and the observed working plugin-socket `openurl` path.
 
 ## Window Focus
 

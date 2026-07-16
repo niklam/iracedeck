@@ -85,6 +85,7 @@ vi.mock("@iracedeck/deck-core", () => ({
     sendKeyCombination: vi.fn().mockResolvedValue(true),
   })),
   LogLevel: { Info: 2 },
+  onGlobalSettingsChange: vi.fn(() => vi.fn()),
   parseBinding: vi.fn(),
   parseKeyBinding: vi.fn(),
   isSimHubBinding: vi.fn(
@@ -128,14 +129,6 @@ function fakeEvent(actionId: string, settings: Record<string, unknown> = {}) {
   return {
     action: { id: actionId, setTitle: vi.fn(), setImage: vi.fn() },
     payload: { settings },
-  };
-}
-
-/** Create a minimal fake dial rotate event. */
-function fakeDialRotateEvent(actionId: string, settings: Record<string, unknown>, ticks: number) {
-  return {
-    action: { id: actionId, setTitle: vi.fn(), setImage: vi.fn() },
-    payload: { settings, ticks },
   };
 }
 
@@ -324,62 +317,6 @@ describe("ForceFeedback", () => {
     it("should call tapBinding for haptic-lfe-intensity decrease", async () => {
       await action.onKeyDown(fakeEvent("action-1", { mode: "haptic-lfe-intensity", direction: "decrease" }) as any);
       expect(mockTapBinding).toHaveBeenCalledWith("forceFeedbackHapticLfeIntensityDecrease");
-    });
-
-    it("should call tapBinding on dialDown for directional modes", async () => {
-      await action.onDialDown(fakeEvent("action-1", { mode: "wheel-lfe", direction: "increase" }) as any);
-      expect(mockTapBinding).toHaveBeenCalledWith("forceFeedbackWheelLfeLouder");
-    });
-
-    it("should NOT call tapBinding on dialDown for auto-compute-ffb-force", async () => {
-      await action.onDialDown(fakeEvent("action-1", { mode: "auto-compute-ffb-force" }) as any);
-      expect(mockTapBinding).not.toHaveBeenCalled();
-    });
-  });
-
-  describe("encoder behavior", () => {
-    let action: ForceFeedback;
-
-    beforeEach(() => {
-      action = new ForceFeedback();
-    });
-
-    it("should call tapBinding for increase on clockwise rotation", async () => {
-      await action.onDialRotate(
-        fakeDialRotateEvent("action-1", { mode: "ffb-force", direction: "increase" }, 1) as any,
-      );
-      expect(mockTapBinding).toHaveBeenCalledWith("cockpitMiscFfbForceIncrease");
-    });
-
-    it("should call tapBinding for decrease on counter-clockwise rotation", async () => {
-      await action.onDialRotate(
-        fakeDialRotateEvent("action-1", { mode: "ffb-force", direction: "increase" }, -1) as any,
-      );
-      expect(mockTapBinding).toHaveBeenCalledWith("cockpitMiscFfbForceDecrease");
-    });
-
-    it("should call tapBinding for wheel-lfe rotation", async () => {
-      await action.onDialRotate(
-        fakeDialRotateEvent("action-1", { mode: "wheel-lfe", direction: "increase" }, 2) as any,
-      );
-      expect(mockTapBinding).toHaveBeenCalledWith("forceFeedbackWheelLfeLouder");
-    });
-
-    it("should call tapBinding for bass-shaker-lfe counter-clockwise rotation", async () => {
-      await action.onDialRotate(
-        fakeDialRotateEvent("action-1", { mode: "bass-shaker-lfe", direction: "increase" }, -1) as any,
-      );
-      expect(mockTapBinding).toHaveBeenCalledWith("forceFeedbackBassShakerLfeQuieter");
-    });
-
-    it("should ignore rotation for auto-compute-ffb-force", async () => {
-      await action.onDialRotate(fakeDialRotateEvent("action-1", { mode: "auto-compute-ffb-force" }, 1) as any);
-      expect(mockTapBinding).not.toHaveBeenCalled();
-    });
-
-    it("should ignore counter-clockwise rotation for auto-compute-ffb-force", async () => {
-      await action.onDialRotate(fakeDialRotateEvent("action-1", { mode: "auto-compute-ffb-force" }, -1) as any);
-      expect(mockTapBinding).not.toHaveBeenCalled();
     });
   });
 });

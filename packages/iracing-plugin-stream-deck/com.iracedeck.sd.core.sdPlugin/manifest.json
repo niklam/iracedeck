@@ -78,11 +78,21 @@
       "Name": "Camera Controls",
       "UUID": "com.iracedeck.sd.core.camera-focus",
       "Icon": "imgs/actions/camera-focus/icon",
-      "Tooltip": "Cycle through cameras and focus on targets (your car, leader, incidents, positions)",
+      "Tooltip": "Cycle through cameras and focus on targets (your car, leader, incidents, positions); on a dial: rotate to cycle cameras/cars with the live focus on the touch strip",
       "PropertyInspectorPath": "ui/camera-focus.html",
       "Controllers": [
-        "Keypad"
+        "Keypad",
+        "Encoder"
       ],
+      "Encoder": {
+        "Icon": "imgs/actions/camera-focus/dial",
+        "layout": "layouts/camera-focus.json",
+        "TriggerDescription": {
+          "Rotate": "Cycle the camera or focused car",
+          "Push": "Configured action",
+          "Touch": "Configured action"
+        }
+      },
       "States": [
         {
           "Image": "imgs/actions/camera-focus/key",
@@ -113,11 +123,21 @@
       "Name": "Camera Editor Adjustments",
       "UUID": "com.iracedeck.sd.core.camera-editor-adjustments",
       "Icon": "imgs/actions/camera-editor-adjustments/icon",
-      "Tooltip": "Camera editor adjustments for position, rotation, zoom, and other parameters",
+      "Tooltip": "Camera editor adjustments for position, rotation, zoom, and other parameters; on a dial: adjust one camera-tool parameter, configurable press/touch gestures (e.g. auto-set mic gain)",
       "PropertyInspectorPath": "ui/camera-editor-adjustments.html",
       "Controllers": [
-        "Keypad"
+        "Keypad",
+        "Encoder"
       ],
+      "Encoder": {
+        "Icon": "imgs/actions/camera-editor-adjustments/dial",
+        "layout": "layouts/camera-editor-adjustments.json",
+        "TriggerDescription": {
+          "Rotate": "Adjust the selected camera parameter",
+          "Push": "Configured action",
+          "Touch": "Configured action"
+        }
+      },
       "States": [
         {
           "Image": "imgs/actions/camera-editor-adjustments/key",
@@ -181,11 +201,21 @@
       "Name": "Cockpit Misc",
       "UUID": "com.iracedeck.sd.core.cockpit-misc",
       "Icon": "imgs/actions/cockpit-misc/icon",
-      "Tooltip": "Miscellaneous cockpit controls (toggle/trigger wipers, FFB, latency, dash pages, in-lap mode)",
+      "Tooltip": "Miscellaneous cockpit controls (toggle/trigger wipers, FFB, latency, dash pages, in-lap mode); on a dial: cycle a dashboard page with the live page number on the touch strip",
       "PropertyInspectorPath": "ui/cockpit-misc.html",
       "Controllers": [
-        "Keypad"
+        "Keypad",
+        "Encoder"
       ],
+      "Encoder": {
+        "Icon": "imgs/actions/cockpit-misc/dial",
+        "layout": "layouts/cockpit-misc.json",
+        "TriggerDescription": {
+          "Rotate": "Cycle the selected dashboard page",
+          "Push": "Configured action",
+          "Touch": "Configured action"
+        }
+      },
       "States": [
         {
           "Image": "imgs/actions/cockpit-misc/key",
@@ -198,11 +228,21 @@
       "Name": "Force Feedback",
       "UUID": "com.iracedeck.sd.core.force-feedback",
       "Icon": "imgs/actions/force-feedback/icon",
-      "Tooltip": "Force feedback controls (FFB force, wheel LFE, bass shaker, haptic intensity)",
+      "Tooltip": "Force feedback controls (FFB force, wheel LFE, bass shaker, haptic intensity); on a dial: adjust FFB strength or an LFE level with the live max force in Nm",
       "PropertyInspectorPath": "ui/force-feedback.html",
       "Controllers": [
-        "Keypad"
+        "Keypad",
+        "Encoder"
       ],
+      "Encoder": {
+        "Icon": "imgs/actions/force-feedback/dial",
+        "layout": "layouts/force-feedback.json",
+        "TriggerDescription": {
+          "Rotate": "Adjust the selected force feedback setting",
+          "Push": "Configured action",
+          "Touch": "Configured action"
+        }
+      },
       "States": [
         {
           "Image": "imgs/actions/force-feedback/key",
@@ -598,11 +638,21 @@
       "Name": "Splits & Reference",
       "UUID": "com.iracedeck.sd.core.splits-delta-cycle",
       "Icon": "imgs/actions/splits-delta-cycle/icon",
-      "Tooltip": "Cycle splits delta display modes or toggle reference car",
+      "Tooltip": "Cycle splits delta display modes or toggle reference car; on a dial: turn to cycle modes",
       "PropertyInspectorPath": "ui/splits-delta-cycle.html",
       "Controllers": [
-        "Keypad"
+        "Keypad",
+        "Encoder"
       ],
+      "Encoder": {
+        "Icon": "imgs/actions/splits-delta-cycle/dial",
+        "layout": "layouts/splits-delta-cycle.json",
+        "TriggerDescription": {
+          "Rotate": "Cycle splits / delta mode",
+          "Push": "Configured action",
+          "Touch": "Configured action"
+        }
+      },
       "States": [
         {
           "Image": "imgs/actions/splits-delta-cycle/key",
@@ -700,11 +750,21 @@
       "Name": "View Adjustment",
       "UUID": "com.iracedeck.sd.core.view-adjustment",
       "Icon": "imgs/actions/view-adjustment/icon",
-      "Tooltip": "Adjust camera and view settings (FOV, horizon, driver height, VR recenter, UI size)",
+      "Tooltip": "Adjust camera and view settings (FOV, horizon, driver height, VR recenter, UI size); on a dial: adjust one view setting, press to recenter VR",
       "PropertyInspectorPath": "ui/view-adjustment.html",
       "Controllers": [
-        "Keypad"
+        "Keypad",
+        "Encoder"
       ],
+      "Encoder": {
+        "Icon": "imgs/actions/view-adjustment/dial",
+        "layout": "layouts/view-adjustment.json",
+        "TriggerDescription": {
+          "Rotate": "Adjust the selected view setting",
+          "Push": "Configured action",
+          "Touch": "Configured action"
+        }
+      },
       "States": [
         {
           "Image": "imgs/actions/view-adjustment/key",

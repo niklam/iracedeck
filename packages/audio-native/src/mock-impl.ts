@@ -16,6 +16,14 @@ export class AudioNativeMock {
     console.debug("[AudioNativeMock] destroyAudioEngine()");
   }
 
+  startAudioEngine(): boolean {
+    return true;
+  }
+
+  stopAudioEngine(): boolean {
+    return true;
+  }
+
   playOnChannel(_channel: number, _filePath: string, _loop = false, _volume = 1.0): boolean {
     return true;
   }
