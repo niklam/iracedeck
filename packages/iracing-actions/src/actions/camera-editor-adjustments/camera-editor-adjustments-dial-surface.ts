@@ -115,7 +115,12 @@ export type GestureSlot = (typeof GESTURE_ACTIONS)[number];
 
 export type CameraEditorDirection = "increase" | "decrease";
 
-const DIAL_ROTATION_KEYS: Record<string, string> = {
+/**
+ * Rotation binding key per setting+direction. The template-literal `Record`
+ * makes a missing or mis-keyed pair a compile error — the same completeness
+ * guarantee as `GESTURE_BINDING_KEYS` below.
+ */
+const DIAL_ROTATION_KEYS: Record<`${CameraEditorDialSetting}-${CameraEditorDirection}`, string> = {
   "latitude-increase": "camEditLatitudeIncrease",
   "latitude-decrease": "camEditLatitudeDecrease",
   "longitude-increase": "camEditLongitudeIncrease",

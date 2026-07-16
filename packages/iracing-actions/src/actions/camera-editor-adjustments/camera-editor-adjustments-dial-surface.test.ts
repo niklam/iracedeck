@@ -181,15 +181,44 @@ describe("camera-editor-adjustments dial-surface pure helpers", () => {
 
   describe("GESTURE_ACTIONS", () => {
     it("offers Auto Mic Gain, every Camera Editor Controls one-shot, and None (#804)", () => {
-      // Auto Set Mic Gain + 30 camera-tool one-shots + None = 32 options.
-      expect(GESTURE_ACTIONS).toHaveLength(32);
-      expect(GESTURE_ACTIONS).toContain("auto-mic-gain");
-      expect(GESTURE_ACTIONS).toContain("none");
-
-      // Spot-check the camera-tool one-shots reused verbatim from the sibling action.
-      for (const id of ["open-camera-tool", "zoom-toggle", "load-car-camera"]) {
-        expect(GESTURE_ACTIONS).toContain(id);
-      }
+      // The complete catalog: Auto Set Mic Gain, the 30 camera-tool one-shots
+      // (ids reused verbatim from the sibling Camera Editor Controls action, in
+      // its PI order), then None. Asserted in full so a dropped, duplicated, or
+      // mis-keyed entry fails loudly.
+      expect(GESTURE_ACTIONS).toEqual([
+        "auto-mic-gain",
+        "open-camera-tool",
+        "key-acceleration-toggle",
+        "key-10x-toggle",
+        "parabolic-mic-toggle",
+        "cycle-position-type",
+        "cycle-aim-type",
+        "acquire-start",
+        "acquire-end",
+        "temporary-edits-toggle",
+        "dampening-toggle",
+        "zoom-toggle",
+        "beyond-fence-toggle",
+        "in-cockpit-toggle",
+        "mouse-navigation-toggle",
+        "pitch-gyro-toggle",
+        "roll-gyro-toggle",
+        "limit-shot-range-toggle",
+        "show-camera-toggle",
+        "shot-selection-toggle",
+        "manual-focus-toggle",
+        "insert-camera",
+        "remove-camera",
+        "copy-camera",
+        "paste-camera",
+        "copy-group",
+        "paste-group",
+        "save-track-camera",
+        "load-track-camera",
+        "save-car-camera",
+        "load-car-camera",
+        "none",
+      ]);
     });
   });
 
@@ -284,6 +313,30 @@ describe("CameraEditorAdjustments dial surface", () => {
       await action.onDialRotate(rotateEvent(ctx, settings, 12) as never);
 
       expect(mockTapBinding).toHaveBeenCalledTimes(5);
+    });
+
+    it("scales coalesced counter-clockwise ticks onto the decrease binding", async () => {
+      const ctx = dialContext("d7");
+      const settings = dialSettings({ setting: "latitude" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialRotate(rotateEvent(ctx, settings, -3) as never);
+
+      expect(mockTapBinding).toHaveBeenCalledTimes(3);
+      expect(mockTapBinding).toHaveBeenCalledWith("camEditLatitudeDecrease");
+    });
+
+    it("caps a fast counter-clockwise flick the same as a clockwise one", async () => {
+      const ctx = dialContext("d8");
+      const settings = dialSettings({ setting: "latitude" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialRotate(rotateEvent(ctx, settings, -12) as never);
+
+      expect(mockTapBinding).toHaveBeenCalledTimes(5);
+      expect(mockTapBinding).toHaveBeenCalledWith("camEditLatitudeDecrease");
     });
 
     it("ignores a zero-tick rotate event", async () => {
