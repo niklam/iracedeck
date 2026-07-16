@@ -20,7 +20,7 @@ Adjust the field of view.
 #### Details
 
 - **Method:** Key binding
-- **Dial:** No rotation support
+- **Dial:** See [On a dial](#on-a-dial)
 - **Default binding:** `]` (increase) and `[` (decrease)
 - **Telemetry-aware icon:** No
 
@@ -38,7 +38,7 @@ Adjust the horizon line position.
 #### Details
 
 - **Method:** Key binding
-- **Dial:** No rotation support
+- **Dial:** See [On a dial](#on-a-dial)
 - **Default binding:** `Shift+]` (increase/up) and `Shift+[` (decrease/down)
 - **Telemetry-aware icon:** No
 
@@ -56,7 +56,7 @@ Adjust the driver eye position.
 #### Details
 
 - **Method:** Key binding
-- **Dial:** No rotation support
+- **Dial:** See [On a dial](#on-a-dial)
 - **Default binding:** `Ctrl+]` (increase/up) and `Ctrl+[` (decrease/down)
 - **Telemetry-aware icon:** No
 
@@ -74,7 +74,7 @@ Re-center the VR headset view.
 #### Details
 
 - **Method:** Key binding
-- **Dial:** No rotation support
+- **Dial:** Not a rotation setting — it's the default press gesture; see [On a dial](#on-a-dial)
 - **Default binding:** `;`
 - **Telemetry-aware icon:** No
 
@@ -91,7 +91,7 @@ Adjust the in-sim UI element size.
 #### Details
 
 - **Method:** Key binding
-- **Dial:** No rotation support
+- **Dial:** See [On a dial](#on-a-dial)
 - **Default binding:** `Ctrl+PageUp` (increase) and `Ctrl+PageDown` (decrease)
 - **Telemetry-aware icon:** No
 
