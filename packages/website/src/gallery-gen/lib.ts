@@ -97,31 +97,36 @@ export function renderDynamicTemplate(svg: string, sampleValues: Record<string, 
  */
 export const DYNAMIC_SAMPLE_DATA: Record<string, Record<string, string>> = {
   "adjust-style": {},
-  "car-control-drs": { titleContent: sampleTitle("DRS") },
-  "car-control-pit-limiter": { titleContent: sampleTitle("PIT\nLIMITER") },
-  "car-control-push-to-pass": { titleContent: sampleTitle("P2P") },
+  "car-control-drs": { titleContent: sampleTitle("DRS", 92) },
+  "car-control-pit-limiter": { titleContent: sampleTitle("PIT\nLIMITER", 92) },
+  "car-control-push-to-pass": { titleContent: sampleTitle("P2P", 92) },
   "fuel-service": { titleContent: sampleTitle("FUEL\n+10 L") },
   "pit-crew": {},
-  "pit-quick-actions": { titleContent: sampleTitle("PIT\nACTIONS") },
-  "pit-quick-actions-fast-repair": { titleContent: sampleTitle("FAST\nREPAIR") },
-  "pit-quick-actions-windshield": { titleContent: sampleTitle("TEAROFF") },
+  "pit-quick-actions": { titleContent: sampleTitle("PIT\nACTIONS", 92) },
+  "pit-quick-actions-fast-repair": { titleContent: sampleTitle("FAST\nREPAIR", 92) },
+  "pit-quick-actions-windshield": { titleContent: sampleTitle("TEAROFF", 92) },
   "race-admin-car-selector": { titleContent: sampleTitle("CAR") },
   "session-info": { value: "P12", valueFontSize: "64", valueY: "88", titleContent: sampleTitle("POSITION") },
-  "setup-brakes-abs-toggle": { titleContent: sampleTitle("ABS") },
-  "setup-traction-tc-toggle": { titleContent: sampleTitle("TC") },
+  "setup-brakes-abs-toggle": { titleContent: sampleTitle("ABS", 92) },
+  "setup-traction-tc-toggle": { titleContent: sampleTitle("TC", 92) },
   "setup-view": { value: "52.4", valueFontSize: "48", valueY: "84", titleContent: sampleTitle("BIAS") },
   "telemetry-display": { titleContent: sampleTitle("SPEED") },
   "tire-service": { textElement: "" },
 };
 
-/** A minimal centered title block matching the composed-icon look (18px bold, bottom-anchored). */
-function sampleTitle(text: string): string {
+/**
+ * A minimal centered title block matching the composed-icon look (18px bold, bottom-anchored).
+ * @param text - The text to render (newline-separated for multi-line titles)
+ * @param bottomY - The baseline y-coordinate for the last line (default 118); each prior line sits 20px above the one below it
+ * @internal Exported for testing
+ */
+export function sampleTitle(text: string, bottomY: number = 118): string {
   const lines = text.split("\n");
 
   return lines
     .map(
       (line, i) =>
-        `<text x="72" y="${118 + i * 20 - (lines.length - 1) * 20}" font-family="Arial, sans-serif" font-size="18" font-weight="bold" fill="#ffffff" text-anchor="middle">${line}</text>`,
+        `<text x="72" y="${bottomY - (lines.length - 1 - i) * 20}" font-family="Arial, sans-serif" font-size="18" font-weight="bold" fill="#ffffff" text-anchor="middle">${line}</text>`,
     )
     .join("");
 }

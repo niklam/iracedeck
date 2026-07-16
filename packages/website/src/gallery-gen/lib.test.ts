@@ -7,6 +7,7 @@ import {
   parseIconImports,
   parseTitlesMaps,
   renderDynamicTemplate,
+  sampleTitle,
 } from "./lib.js";
 
 describe("parseTitlesMaps", () => {
@@ -114,6 +115,37 @@ describe("renderDynamicTemplate", () => {
   it("lets sample values win over desc colors", () => {
     const out = renderDynamicTemplate(svg, { backgroundColor: "#000000" });
     expect(out).toContain(`fill="#000000"`);
+  });
+});
+
+describe("sampleTitle", () => {
+  it("places a single line at the specified bottomY", () => {
+    const svg = sampleTitle("SINGLE", 100);
+    expect(svg).toContain('y="100"');
+    expect(svg).toContain(">SINGLE<");
+  });
+
+  it("uses default bottomY of 118 when not specified", () => {
+    const svg = sampleTitle("DEFAULT");
+    expect(svg).toContain('y="118"');
+  });
+
+  it("positions multi-line text with each line 20px above the previous", () => {
+    const svg = sampleTitle("A\nB", 92);
+    // First line should be at 92 - (2-1)*20 = 72
+    // Second line should be at 92 - (2-2)*20 = 92
+    expect(svg).toContain('y="72"');
+    expect(svg).toContain('y="92"');
+    expect(svg).toContain(">A<");
+    expect(svg).toContain(">B<");
+  });
+
+  it("renders multi-line text with default bottomY of 118", () => {
+    const svg = sampleTitle("X\nY");
+    // First line at 118 - 20 = 98
+    // Second line at 118
+    expect(svg).toContain('y="98"');
+    expect(svg).toContain('y="118"');
   });
 });
 
