@@ -27,8 +27,8 @@ export interface GalleryEntry {
    * Human-friendly display name for `template`-class entries' family (issue: gallery
    * feedback wave, item 11). The manifest `Name` when the family slug is exactly a
    * known action folder name, otherwise a title-cased fallback of the slug — see
-   * `titleCaseSlug` in `sections.ts`. Unset for every other class (no family headings
-   * render there after items 7/10).
+   * `titleCaseSlug` in `sections.ts`. Also set on `dynamic`-class entries for the
+   * three dynamic-only action groups. Unset for `key` and `category` entries.
    */
   familyName?: string;
 }

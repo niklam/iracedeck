@@ -6,9 +6,11 @@ import entries from "../data/icon-gallery.json";
 import type { GalleryEntry } from "../gallery-gen/lib.js";
 import {
   buildTemplateGroups,
+  categoryRemainder,
   CLASS_SECTIONS,
   dialRemainder,
   dynamicSectionEntries,
+  keyRemainder,
   SIZE_FACTS,
   type TemplateGroup,
 } from "../gallery-gen/sections.js";
@@ -35,12 +37,28 @@ const dynamicEntries = dynamicSectionEntries(all);
 // dropping a real asset (item 3).
 const orphanDials = dialRemainder(all);
 
+// Build-time warnings for silently-dropped orphans (key/category that couldn't
+// be matched to any group).
+const orphanKeys = keyRemainder(all);
+const orphanCategories = categoryRemainder(all);
+
+if (orphanKeys.length > 0) {
+  console.warn(
+    `IconGallery: ${orphanKeys.length} default key image(s) have no group and are not rendered: ${orphanKeys.map((e) => e.name).join(", ")}`,
+  );
+}
+if (orphanCategories.length > 0) {
+  console.warn(
+    `IconGallery: ${orphanCategories.length} category icon(s) have no group and are not rendered: ${orphanCategories.map((e) => e.name).join(", ")}`,
+  );
+}
+
 function dialLabel(e: GalleryEntry): string {
   return e.family === "touch-strip" ? "dial screen (sample)" : "dial icon";
 }
 
 function groupCount(group: TemplateGroup): number {
-  return group.entries.length + (group.defaultKey ? 1 : 0);
+  return group.entries.length + (group.defaultKey ? 1 : 0) + group.dialEntries.length;
 }
 ---
 
@@ -212,9 +230,7 @@ function groupCount(group: TemplateGroup): number {
     color: var(--sl-color-gray-3);
   }
   .group-blurb {
-    color: var(--sl-color-gray-2);
-    font-size: var(--sl-text-sm);
-    font-style: italic;
+    /* Styled like section blurbs: plain paragraph formatting */
   }
   .gallery-dial-row {
     margin-top: 0.75rem;

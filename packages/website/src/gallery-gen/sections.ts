@@ -264,7 +264,8 @@ export function computePlacedKeyActions(entries: GalleryEntry[]): Set<string> {
  * {@link DYNAMIC_ONLY_ACTIONS}). Expected empty on the real dataset as of the
  * gallery restructure wave (item 4) — the old standalone "Static default key
  * images" section was removed because of it; kept here as the regression
- * guard/safety net rather than silently dropping a future real orphan.
+ * guard that backs the build-time orphan warning in `IconGallery.astro` rather
+ * than silently dropping a future real orphan.
  */
 export function keyRemainder(entries: GalleryEntry[]): GalleryEntry[] {
   return remainderOf(entries, "key");
@@ -291,7 +292,9 @@ export function computePlacedCategoryActions(entries: GalleryEntry[]): Set<strin
 
 /**
  * `category`-class entries NOT placed beside any template-section group's
- * heading — genuine orphans. Expected empty on the real dataset (item 4); see
+ * heading — genuine orphans. Expected empty on the real dataset (item 4); kept
+ * here as the regression guard that backs the build-time orphan warning in
+ * `IconGallery.astro` rather than silently dropping a future real orphan. See
  * {@link keyRemainder}.
  */
 export function categoryRemainder(entries: GalleryEntry[]): GalleryEntry[] {
