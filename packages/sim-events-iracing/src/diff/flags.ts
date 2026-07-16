@@ -7,7 +7,11 @@
  * (issue #669): flag.furled.raised is debounced behind
  * {@link FURLED_DEBOUNCE_MS} (running briefly off track flashes the bit),
  * and flag.furled.cleared fires on the falling edge only when the raised
- * callout was actually announced.
+ * callout was actually announced — and only when the drop is a genuine
+ * withdrawal: a falling edge with Black/Disqualify up is the ESCALATION
+ * into the actual penalty (iRacing swaps Furled for Black in one
+ * transition), so the announce is consumed silently and the black/DQ
+ * raised callout speaks for it (issue #846).
  *
  * Yellow handling (issue #480 rework): a *static* yellow (`Yellow` without
  * `YellowWaving`) / *static* caution (`Caution` without `CautionWaving`)
@@ -62,7 +66,7 @@
  * entirely (the last-lap scenario is race-only).
  */
 import type { FlagScope } from "@iracedeck/event-bus";
-import { Flags, hasFlag, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { Flags, hasFlag, isPenaltyFlagActive, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 import type { TranslatorState } from "../state.js";
 import type { EmitFn } from "./types.js";
@@ -474,7 +478,18 @@ export function diffFlags(
     state.furledPendingAt = 0;
 
     if (state.furledAnnounced) {
-      emit({ event: "flag.furled.cleared", data: {} });
+      // Escalation, not withdrawal (issue #846): iRacing raises the actual
+      // black flag by clearing `Furled` and setting `Black` in the same
+      // transition (captured: SessionFlags 0x100C0000 → 0x10050000), so a
+      // falling edge with Black/Disqualify up means the penalty is now in
+      // force — the black/DQ raised callout speaks for it, and "Black flag
+      // cleared." would announce the opposite of what happened. Consume the
+      // announce silently. `isPenaltyFlagActive` is shared with the audio
+      // layer's speak-time gate so the two definitions of "escalated" can't
+      // diverge; it reads the raw bits (not `current`) because the "black"
+      // key is withheld when Disqualify is also set.
+      if (!isPenaltyFlagActive(telemetry)) emit({ event: "flag.furled.cleared", data: {} });
+
       state.furledAnnounced = false;
     }
   } else if (!state.activeFlags.has("furled")) {

@@ -79,8 +79,12 @@ export class AudioNative {
   }
 
   /**
-   * Initialize the miniaudio audio engine.
-   * @returns true if the engine was created successfully
+   * Initialize the audio subsystem (the device-enumeration context).
+   * Deliberately opens NO audio device — Windows holds a sleep-blocking
+   * power request for a WASAPI stream that merely exists (issue #849), so
+   * the engine/device is created lazily by {@link startAudioEngine} /
+   * `playOnChannel` and torn down by {@link stopAudioEngine}.
+   * @returns true if the audio subsystem is usable
    */
   initAudioEngine(): boolean {
     return addon ? addon.initAudioEngine() : this.getMock().initAudioEngine();
@@ -95,6 +99,33 @@ export class AudioNative {
     } else {
       this.getMock().destroyAudioEngine();
     }
+  }
+
+  /**
+   * Start the audio device, lazily creating the engine on the selected
+   * output device first if none exists. No device exists after
+   * {@link initAudioEngine} or {@link stopAudioEngine} — even an idle,
+   * stopped stream makes Windows hold a sleep-blocking power request
+   * (issue #849) — so callers start around actual playback. Idempotent:
+   * an already-started device reports success.
+   *
+   * @returns true if the device is running after the call
+   */
+  startAudioEngine(): boolean {
+    return addon ? addon.startAudioEngine() : this.getMock().startAudioEngine();
+  }
+
+  /**
+   * Release the audio device entirely (engine teardown), removing the OS
+   * audio stream and with it Windows' sleep-blocking power request
+   * (issue #849). Any sounds still loaded are released with the engine —
+   * callers stop only when every channel is idle. The next play or
+   * {@link startAudioEngine} recreates the engine on demand. Idempotent.
+   *
+   * @returns true if no device exists after the call
+   */
+  stopAudioEngine(): boolean {
+    return addon ? addon.stopAudioEngine() : this.getMock().stopAudioEngine();
   }
 
   /**

@@ -13,7 +13,10 @@
  *
  * Usage:
  * 1. Call initializeAudio() once at plugin startup with an AudioNative instance
- * 2. Call getAudio().init() to start the engine
+ * 2. Call getAudio().init() to set up the audio subsystem (the OS audio
+ *    device only exists while something plays — created on demand and
+ *    released after an idle window, since even an idle stream makes
+ *    Windows block PC sleep, issue #849)
  * 3. Use getAudio() in actions to play sounds on channels
  *
  * @example
@@ -93,6 +96,21 @@ const CHANNEL_MIX_RATIO: Readonly<Record<AudioChannel, number>> = {
  */
 const PERCEPTUAL_EXPONENT = 2.5;
 
+// ─── Idle device stop (#849) ─────────────────────────────────────────────────
+
+/**
+ * How long every channel must stay idle before the playback device is
+ * released. A WASAPI stream makes Windows hold a SYSTEM power request
+ * that blocks PC sleep even while the stream is merely initialized, not
+ * running — so the device only exists around actual playback. The delay
+ * debounces clip chaining (voice-sequence connectors, radar tick trains,
+ * the pit-box count-in's ~1 s gaps) so a burst of related clips doesn't
+ * churn the device between them.
+ *
+ * @internal Exported for testing
+ */
+export const IDLE_STOP_DELAY_MS = 5000;
+
 function toPerceivedAmplitude(linear: number): number {
   return Math.pow(linear, PERCEPTUAL_EXPONENT);
 }
@@ -146,7 +164,10 @@ export interface PlaybackObserver {
 // ─── Public interface ────────────────────────────────────────────────────────
 
 export interface IAudioService {
-  /** Initialize the audio engine. Call once after initializeAudio(). */
+  /**
+   * Initialize the audio engine. Call once after initializeAudio(). No
+   * OS audio device exists until the first play (#849).
+   */
   init(): boolean;
 
   /** Destroy the audio engine. Call on shutdown. */
@@ -263,6 +284,13 @@ class AudioService implements IAudioService {
   // Persistent observer for clip start/complete on any channel.
   private playbackObserver: PlaybackObserver | null = null;
 
+  // Playback-device run state (#849). The device only exists around
+  // actual playback; once released, the OS holds no audio stream and the
+  // PC can sleep. `deviceRunning` tracks what we asked the native layer
+  // to do; `idleStopTimer` is the pending debounced release.
+  private deviceRunning = false;
+  private idleStopTimer: ReturnType<typeof setTimeout> | null = null;
+
   constructor(logger: ILogger, native: AudioNative, basePath: string | null) {
     this.logger = logger;
     this.native = native;
@@ -306,6 +334,8 @@ class AudioService implements IAudioService {
 
     this.cancelVoiceSequence();
     this.channelActive.fill(false);
+    this.cancelIdleStop();
+    this.deviceRunning = false;
     this.native.destroyAudioEngine();
     this.engineReady = false;
     this.logger.info("Audio engine destroyed");
@@ -321,9 +351,11 @@ class AudioService implements IAudioService {
 
     const ok = this.native.playOnChannel(channel, resolved, loop, this.channelVolumes[channel]);
 
-    if (ok) this.notifyPlaybackStart(channel, resolved);
+    if (!ok) return false;
 
-    return ok;
+    // False when the playback device failed to start — the queued sound
+    // has been unloaded and the play did not actually happen.
+    return this.notifyPlaybackStart(channel, resolved);
   }
 
   /**
@@ -492,6 +524,15 @@ class AudioService implements IAudioService {
 
     const ok = this.native.setAudioDevice(deviceIndex);
 
+    // The native switch tears the engine down itself, but the "already on
+    // this device" fast path keeps the old engine as-is — release
+    // explicitly so a switch never leaves a device alive while idle
+    // (#849). Nothing is playing (channels drained above), and the next
+    // play recreates the device.
+    this.cancelIdleStop();
+    this.native.stopAudioEngine();
+    this.deviceRunning = false;
+
     if (ok) {
       this.logger.info("Audio output device switched");
       this.logger.debug(`Device index: ${deviceIndex}`);
@@ -511,24 +552,22 @@ class AudioService implements IAudioService {
 
     const ok = this.native.setAudioDeviceById(deviceId);
 
+    // Same post-switch stop as `setAudioDevice` — see the comment there.
+    this.cancelIdleStop();
+    this.native.stopAudioEngine();
+    this.deviceRunning = false;
+
     if (ok) {
       this.logger.info("Audio output device switched by id");
       this.logger.debug(`Device id: ${deviceId}`);
     } else {
-      // The native layer returns false for three distinct reasons:
-      // (a) the id isn't in the current enumeration (stale / unplugged /
-      // legacy value), (b) the hex string is malformed, or (c) the engine
-      // reinit failed. Distinguish (a) from (b)+(c) by re-checking the
-      // enumeration so the operator log is truthful. Caller decides how
-      // to recover (typically fall back to system default).
-      const exists = this.native.getAudioDevices().some((d) => d.id === deviceId);
-
-      if (exists) {
-        this.logger.error("Failed to switch audio output device by id (engine reinit failed)");
-      } else {
-        this.logger.warn("Audio output device id not found in current enumeration");
-      }
-
+      // The native layer returns false when the id is malformed or isn't
+      // in the current enumeration (stale / unplugged / legacy value) —
+      // the switch itself can't fail anymore, since it only records the
+      // selection and the engine is recreated lazily at the next play
+      // (#849). Caller decides how to recover (typically fall back to
+      // system default).
+      this.logger.warn("Audio output device id not found in current enumeration");
       this.logger.debug(`Device id: ${deviceId}`);
     }
 
@@ -567,25 +606,117 @@ class AudioService implements IAudioService {
     }
   }
 
-  private notifyPlaybackStart(channel: AudioChannel, filePath: string): void {
-    // Single chokepoint for "a clip just started". Marking active here
-    // guarantees every play site (including the voice-sequence engine
-    // paths that go through `native.playOnChannel` directly) keeps
-    // `channelActive` in sync with reality.
+  /**
+   * Start the playback device if it isn't running, and cancel any pending
+   * idle stop. Called from the playback-start chokepoint so every play
+   * site keeps the device state in sync. A failed start is logged and
+   * left for the next play to retry — `deviceRunning` stays false.
+   *
+   * @returns true when the device is running after the call
+   */
+  private ensureDeviceRunning(): boolean {
+    this.cancelIdleStop();
+
+    if (this.deviceRunning) return true;
+
+    if (this.native.startAudioEngine()) {
+      this.deviceRunning = true;
+      this.logger.info("Audio device started");
+
+      return true;
+    }
+
+    this.logger.error("Failed to start audio playback device");
+
+    return false;
+  }
+
+  private cancelIdleStop(): void {
+    if (this.idleStopTimer) {
+      clearTimeout(this.idleStopTimer);
+      this.idleStopTimer = null;
+    }
+  }
+
+  /**
+   * Arm the debounced device release once every channel is idle. The
+   * timer re-checks at expiry — a clip that started meanwhile cancels it
+   * via `ensureDeviceRunning`, and the guard covers any path that missed
+   * the cancel. The native stop tears the whole engine down (an
+   * initialized-but-stopped stream still blocks PC sleep, #849), which
+   * also releases any loaded sounds — safe, because the release is only
+   * armed when no channel is active.
+   */
+  private maybeScheduleIdleStop(): void {
+    if (!this.deviceRunning) return;
+
+    if (this.channelActive.some((active) => active)) return;
+
+    this.cancelIdleStop();
+    this.idleStopTimer = setTimeout(() => {
+      this.idleStopTimer = null;
+
+      if (!this.deviceRunning || this.channelActive.some((active) => active)) return;
+
+      if (this.native.stopAudioEngine()) {
+        this.deviceRunning = false;
+        this.logger.info("Audio device stopped (idle)");
+      } else {
+        // The native stream may still be alive — keep `deviceRunning` set
+        // and re-arm so the release is retried while idle, instead of
+        // permanently leaving a sleep-blocking stream behind.
+        this.logger.warn("Failed to stop idle audio playback device; retrying");
+        this.maybeScheduleIdleStop();
+      }
+    }, IDLE_STOP_DELAY_MS);
+  }
+
+  /**
+   * Single chokepoint for "a clip just started" — every play site
+   * (including the voice-sequence engine paths that go through
+   * `native.playOnChannel` directly) funnels through here, keeping the
+   * device lifecycle and `channelActive` in sync with reality.
+   *
+   * The device is started BEFORE the channel is marked active or
+   * observers are notified: when the start fails, the queued sound is
+   * unloaded (it would otherwise blast out whenever a later play manages
+   * to start the device) and false is returned so the caller can report
+   * the play as failed. `stopChannel` also cancels an in-flight voice
+   * sequence when the failing channel is Voice, so the sequence engine
+   * can't stall waiting for an end callback that will never come.
+   *
+   * @returns true when playback is genuinely under way
+   */
+  private notifyPlaybackStart(channel: AudioChannel, filePath: string): boolean {
+    if (!this.ensureDeviceRunning()) {
+      this.stopChannel(channel);
+
+      return false;
+    }
+
     this.channelActive[channel] = true;
 
     const observer = this.playbackObserver;
 
-    if (!observer?.onStart) return;
-
-    try {
-      observer.onStart(channel, filePath);
-    } catch (err) {
-      this.logger.warn(`Playback observer onStart threw: ${err instanceof Error ? err.message : String(err)}`);
+    if (observer?.onStart) {
+      try {
+        observer.onStart(channel, filePath);
+      } catch (err) {
+        this.logger.warn(`Playback observer onStart threw: ${err instanceof Error ? err.message : String(err)}`);
+      }
     }
+
+    return true;
   }
 
   private notifyPlaybackEnd(channel: AudioChannel): void {
+    // Every deactivation path (natural end, manual stop, stop-all) funnels
+    // through here with `channelActive` already cleared — the right moment
+    // to arm the debounced device stop when this was the last active
+    // channel. A follow-up clip (voice-sequence chaining, radar ticks)
+    // cancels it synchronously via `ensureDeviceRunning`.
+    this.maybeScheduleIdleStop();
+
     const observer = this.playbackObserver;
 
     if (!observer?.onComplete) return;

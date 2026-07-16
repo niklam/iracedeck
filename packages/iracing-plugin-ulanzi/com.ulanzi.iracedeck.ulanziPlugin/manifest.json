@@ -3,9 +3,9 @@
   "Name": "iRaceDeck",
   "Version": "2.2.0.1887",
   "Description": "Complete iRacing controls for Ulanzi Deck.",
-  "Icon": "imgs/plugin/marketplace",
+  "Icon": "imgs/plugin/marketplace.png",
   "Category": "iRaceDeck",
-  "CategoryIcon": "imgs/plugin/category-icon",
+  "CategoryIcon": "imgs/plugin/category-icon.png",
   "CodePath": "bin/plugin.js",
   "Type": "JavaScript",
   "UUID": "com.iracedeck.sd.core",
@@ -27,7 +27,7 @@
     {
       "Name": "AI Spotter Controls",
       "UUID": "com.iracedeck.sd.core.ai-spotter-controls",
-      "Icon": "imgs/actions/ai-spotter-controls/icon",
+      "Icon": "imgs/actions/ai-spotter-controls/icon.svg",
       "Tooltip": "AI spotter controls (damage/weather reports, lap reporting, volume, silence)",
       "PropertyInspectorPath": "ui/ai-spotter-controls.html",
       "Controllers": [
@@ -35,14 +35,14 @@
       ],
       "States": [
         {
-          "Image": "imgs/actions/ai-spotter-controls/key"
+          "Image": "imgs/actions/ai-spotter-controls/key.svg"
         }
       ]
     },
     {
       "Name": "Audio Controls",
       "UUID": "com.iracedeck.sd.core.audio-controls",
-      "Icon": "imgs/actions/audio-controls/icon",
+      "Icon": "imgs/actions/audio-controls/icon.svg",
       "Tooltip": "Audio volume and mute controls (iRacing voice chat & master; iRaceDeck Race Engineer & Radar)",
       "PropertyInspectorPath": "ui/audio-controls.html",
       "Controllers": [
@@ -50,14 +50,14 @@
       ],
       "States": [
         {
-          "Image": "imgs/actions/audio-controls/key"
+          "Image": "imgs/actions/audio-controls/key.svg"
         }
       ]
     },
     {
       "Name": "Black Box Selector",
       "UUID": "com.iracedeck.sd.core.black-box-selector",
-      "Icon": "imgs/actions/black-box-selector/icon",
+      "Icon": "imgs/actions/black-box-selector/icon.svg",
       "Tooltip": "Cycle through or select iRacing black boxes",
       "PropertyInspectorPath": "ui/black-box-selector.html",
       "Controllers": [
@@ -65,14 +65,14 @@
       ],
       "States": [
         {
-          "Image": "imgs/actions/black-box-selector/key"
+          "Image": "imgs/actions/black-box-selector/key.svg"
         }
       ]
     },
     {
       "Name": "Camera Controls",
       "UUID": "com.iracedeck.sd.core.camera-focus",
-      "Icon": "imgs/actions/camera-focus/icon",
+      "Icon": "imgs/actions/camera-focus/icon.svg",
       "Tooltip": "Cycle through cameras and focus on targets (your car, leader, incidents, positions)",
       "PropertyInspectorPath": "ui/camera-focus.html",
       "Controllers": [
@@ -80,14 +80,14 @@
       ],
       "States": [
         {
-          "Image": "imgs/actions/camera-focus/key"
+          "Image": "imgs/actions/camera-focus/key.svg"
         }
       ]
     },
     {
       "Name": "Camera Cycle (Legacy)",
       "UUID": "com.iracedeck.sd.core.camera-cycle",
-      "Icon": "imgs/actions/camera-focus/icon",
+      "Icon": "imgs/actions/camera-focus/icon.svg",
       "Tooltip": "Legacy action — use Camera Controls instead",
       "PropertyInspectorPath": "ui/camera-focus.html",
       "Controllers": [
@@ -95,7 +95,7 @@
       ],
       "States": [
         {
-          "Image": "imgs/actions/camera-focus/key"
+          "Image": "imgs/actions/camera-focus/key.svg"
         }
       ],
       "VisibleInActionsList": false
@@ -103,7 +103,7 @@
     {
       "Name": "Camera Editor Adjustments",
       "UUID": "com.iracedeck.sd.core.camera-editor-adjustments",
-      "Icon": "imgs/actions/camera-editor-adjustments/icon",
+      "Icon": "imgs/actions/camera-editor-adjustments/icon.svg",
       "Tooltip": "Camera editor adjustments for position, rotation, zoom, and other parameters",
       "PropertyInspectorPath": "ui/camera-editor-adjustments.html",
       "Controllers": [
@@ -111,14 +111,14 @@
       ],
       "States": [
         {
-          "Image": "imgs/actions/camera-editor-adjustments/key"
+          "Image": "imgs/actions/camera-editor-adjustments/key.svg"
         }
       ]
     },
     {
       "Name": "Camera Editor Controls",
       "UUID": "com.iracedeck.sd.core.camera-editor-controls",
-      "Icon": "imgs/actions/camera-editor-controls/icon",
+      "Icon": "imgs/actions/camera-editor-controls/icon.svg",
       "Tooltip": "Camera editor toggles and management controls for broadcasters and content creators",
       "PropertyInspectorPath": "ui/camera-editor-controls.html",
       "Controllers": [
@@ -126,14 +126,14 @@
       ],
       "States": [
         {
-          "Image": "imgs/actions/camera-editor-controls/key"
+          "Image": "imgs/actions/camera-editor-controls/key.svg"
         }
       ]
     },
     {
       "Name": "Car Control",
       "UUID": "com.iracedeck.sd.core.car-control",
-      "Icon": "imgs/actions/car-control/icon",
+      "Icon": "imgs/actions/car-control/icon.svg",
       "Tooltip": "Control car operations (starter, ignition, pit limiter, and more)",
       "PropertyInspectorPath": "ui/car-control.html",
       "Controllers": [
@@ -141,14 +141,14 @@
       ],
       "States": [
         {
-          "Image": "imgs/actions/car-control/key"
+          "Image": "imgs/actions/car-control/key.svg"
         }
       ]
     },
     {
       "Name": "Chat",
       "UUID": "com.iracedeck.sd.core.chat",
-      "Icon": "imgs/actions/chat/icon",
+      "Icon": "imgs/actions/chat/icon.svg",
       "Tooltip": "Text chat operations (open, reply, whisper, send message, macros)",
       "PropertyInspectorPath": "ui/chat.html",
       "Controllers": [
@@ -156,14 +156,14 @@
       ],
       "States": [
         {
-          "Image": "imgs/actions/chat/key"
+          "Image": "imgs/actions/chat/key.svg"
         }
       ]
     },
     {
       "Name": "Cockpit Misc",
       "UUID": "com.iracedeck.sd.core.cockpit-misc",
-      "Icon": "imgs/actions/cockpit-misc/icon",
+      "Icon": "imgs/actions/cockpit-misc/icon.svg",
       "Tooltip": "Miscellaneous cockpit controls (toggle/trigger wipers, FFB, latency, dash pages, in-lap mode)",
       "PropertyInspectorPath": "ui/cockpit-misc.html",
       "Controllers": [
@@ -171,14 +171,14 @@
       ],
       "States": [
         {
-          "Image": "imgs/actions/cockpit-misc/key"
+          "Image": "imgs/actions/cockpit-misc/key.svg"
         }
       ]
     },
     {
       "Name": "Force Feedback",
       "UUID": "com.iracedeck.sd.core.force-feedback",
-      "Icon": "imgs/actions/force-feedback/icon",
+      "Icon": "imgs/actions/force-feedback/icon.svg",
       "Tooltip": "Force feedback controls (FFB force, wheel LFE, bass shaker, haptic intensity)",
       "PropertyInspectorPath": "ui/force-feedback.html",
       "Controllers": [
@@ -186,14 +186,14 @@
       ],
       "States": [
         {
-          "Image": "imgs/actions/force-feedback/key"
+          "Image": "imgs/actions/force-feedback/key.svg"
         }
       ]
     },
     {
       "Name": "Fuel Service",
       "UUID": "com.iracedeck.sd.core.fuel-service",
-      "Icon": "imgs/actions/fuel-service/icon",
+      "Icon": "imgs/actions/fuel-service/icon.svg",
       "Tooltip": "Fuel management for pit stops (add/reduce fuel, autofuel, lap margin)",
       "PropertyInspectorPath": "ui/fuel-service.html",
       "Controllers": [
@@ -201,14 +201,14 @@
       ],
       "States": [
         {
-          "Image": "imgs/actions/fuel-service/key"
+          "Image": "imgs/actions/fuel-service/key.svg"
         }
       ]
     },
     {
       "Name": "Look Direction",
       "UUID": "com.iracedeck.sd.core.look-direction",
-      "Icon": "imgs/actions/look-direction/icon",
+      "Icon": "imgs/actions/look-direction/icon.svg",
       "Tooltip": "Change the driver's view direction",
       "PropertyInspectorPath": "ui/look-direction.html",
       "Controllers": [
@@ -216,14 +216,14 @@
       ],
       "States": [
         {
-          "Image": "imgs/actions/look-direction/key"
+          "Image": "imgs/actions/look-direction/key.svg"
         }
       ]
     },
     {
       "Name": "Media Capture",
       "UUID": "com.iracedeck.sd.core.media-capture",
-      "Icon": "imgs/actions/media-capture/icon",
+      "Icon": "imgs/actions/media-capture/icon.svg",
       "Tooltip": "Video recording, screenshots, and texture management",
       "PropertyInspectorPath": "ui/media-capture.html",
       "Controllers": [
@@ -231,14 +231,14 @@
       ],
       "States": [
         {
-          "Image": "imgs/actions/media-capture/key"
+          "Image": "imgs/actions/media-capture/key.svg"
         }
       ]
     },
     {
       "Name": "Pit Crew",
       "UUID": "com.iracedeck.sd.core.pit-crew",
-      "Icon": "imgs/actions/pit-crew/icon",
+      "Icon": "imgs/actions/pit-crew/icon.svg",
       "Tooltip": "Race Engineer voice and Radar controls",
       "PropertyInspectorPath": "ui/pit-crew.html",
       "Controllers": [
@@ -246,14 +246,14 @@
       ],
       "States": [
         {
-          "Image": "imgs/actions/pit-crew/key"
+          "Image": "imgs/actions/pit-crew/key.svg"
         }
       ]
     },
     {
       "Name": "Pit Quick Actions",
       "UUID": "com.iracedeck.sd.core.pit-quick-actions",
-      "Icon": "imgs/actions/pit-quick-actions/icon",
+      "Icon": "imgs/actions/pit-quick-actions/icon.svg",
       "Tooltip": "Quick pit stop controls (clear all, windshield tearoff, fast repair)",
       "PropertyInspectorPath": "ui/pit-quick-actions.html",
       "Controllers": [
@@ -261,14 +261,14 @@
       ],
       "States": [
         {
-          "Image": "imgs/actions/pit-quick-actions/key"
+          "Image": "imgs/actions/pit-quick-actions/key.svg"
         }
       ]
     },
     {
       "Name": "Race Admin",
       "UUID": "com.iracedeck.sd.core.race-admin",
-      "Icon": "imgs/actions/race-admin/icon",
+      "Icon": "imgs/actions/race-admin/icon.svg",
       "Tooltip": "Session admin commands for race directors (yellows, penalties, pit control, chat)",
       "PropertyInspectorPath": "ui/race-admin.html",
       "Controllers": [
@@ -276,14 +276,14 @@
       ],
       "States": [
         {
-          "Image": "imgs/actions/race-admin/key"
+          "Image": "imgs/actions/race-admin/key.svg"
         }
       ]
     },
     {
       "Name": "Replay Control",
       "UUID": "com.iracedeck.sd.core.replay-control",
-      "Icon": "imgs/actions/replay-control/icon",
+      "Icon": "imgs/actions/replay-control/icon.svg",
       "Tooltip": "Unified replay controls: transport, speed, and navigation",
       "PropertyInspectorPath": "ui/replay-control.html",
       "Controllers": [
@@ -291,14 +291,14 @@
       ],
       "States": [
         {
-          "Image": "imgs/actions/replay-control/key"
+          "Image": "imgs/actions/replay-control/key.svg"
         }
       ]
     },
     {
       "Name": "Replay Navigation",
       "UUID": "com.iracedeck.sd.core.replay-navigation",
-      "Icon": "imgs/actions/replay-navigation/icon",
+      "Icon": "imgs/actions/replay-navigation/icon.svg",
       "Tooltip": "Jump to sessions, laps, incidents, or specific positions in replay",
       "PropertyInspectorPath": "ui/replay-navigation.html",
       "Controllers": [
@@ -306,7 +306,7 @@
       ],
       "States": [
         {
-          "Image": "imgs/actions/replay-navigation/key"
+          "Image": "imgs/actions/replay-navigation/key.svg"
         }
       ],
       "VisibleInActionsList": false
@@ -314,7 +314,7 @@
     {
       "Name": "Replay Speed",
       "UUID": "com.iracedeck.sd.core.replay-speed",
-      "Icon": "imgs/actions/replay-speed/icon",
+      "Icon": "imgs/actions/replay-speed/icon.svg",
       "Tooltip": "Increase or decrease replay playback speed",
       "PropertyInspectorPath": "ui/replay-speed.html",
       "Controllers": [
@@ -322,7 +322,7 @@
       ],
       "States": [
         {
-          "Image": "imgs/actions/replay-speed/key"
+          "Image": "imgs/actions/replay-speed/key.svg"
         }
       ],
       "VisibleInActionsList": false
@@ -330,7 +330,7 @@
     {
       "Name": "Replay Transport",
       "UUID": "com.iracedeck.sd.core.replay-transport",
-      "Icon": "imgs/actions/replay-transport/icon",
+      "Icon": "imgs/actions/replay-transport/icon.svg",
       "Tooltip": "Replay playback controls (play, pause, fast forward, rewind, slow motion, frame step)",
       "PropertyInspectorPath": "ui/replay-transport.html",
       "Controllers": [
@@ -338,7 +338,7 @@
       ],
       "States": [
         {
-          "Image": "imgs/actions/replay-transport/key"
+          "Image": "imgs/actions/replay-transport/key.svg"
         }
       ],
       "VisibleInActionsList": false
@@ -346,7 +346,7 @@
     {
       "Name": "Session Info",
       "UUID": "com.iracedeck.sd.core.session-info",
-      "Icon": "imgs/actions/session-info/icon",
+      "Icon": "imgs/actions/session-info/icon.svg",
       "Tooltip": "Display live session data (incidents, time, laps, position, fuel, flags)",
       "PropertyInspectorPath": "ui/session-info.html",
       "Controllers": [
@@ -354,14 +354,14 @@
       ],
       "States": [
         {
-          "Image": "imgs/actions/session-info/key"
+          "Image": "imgs/actions/session-info/key.svg"
         }
       ]
     },
     {
       "Name": "Setup Aero",
       "UUID": "com.iracedeck.sd.core.setup-aero",
-      "Icon": "imgs/actions/setup-aero/icon",
+      "Icon": "imgs/actions/setup-aero/icon.svg",
       "Tooltip": "Aerodynamic adjustments (front wing, rear wing, qualifying tape, RF brake)",
       "PropertyInspectorPath": "ui/setup-aero.html",
       "Controllers": [
@@ -369,14 +369,14 @@
       ],
       "States": [
         {
-          "Image": "imgs/actions/setup-aero/key"
+          "Image": "imgs/actions/setup-aero/key.svg"
         }
       ]
     },
     {
       "Name": "Setup Brakes",
       "UUID": "com.iracedeck.sd.core.setup-brakes",
-      "Icon": "imgs/actions/setup-brakes/icon",
+      "Icon": "imgs/actions/setup-brakes/icon.svg",
       "Tooltip": "Brake adjustments (ABS, brake bias, peak bias, engine braking)",
       "PropertyInspectorPath": "ui/setup-brakes.html",
       "Controllers": [
@@ -384,14 +384,14 @@
       ],
       "States": [
         {
-          "Image": "imgs/actions/setup-brakes/key"
+          "Image": "imgs/actions/setup-brakes/key.svg"
         }
       ]
     },
     {
       "Name": "Setup Chassis",
       "UUID": "com.iracedeck.sd.core.setup-chassis",
-      "Icon": "imgs/actions/setup-chassis/icon",
+      "Icon": "imgs/actions/setup-chassis/icon.svg",
       "Tooltip": "Chassis adjustments (differential, ARB, springs, shocks, power steering)",
       "PropertyInspectorPath": "ui/setup-chassis.html",
       "Controllers": [
@@ -399,14 +399,14 @@
       ],
       "States": [
         {
-          "Image": "imgs/actions/setup-chassis/key"
+          "Image": "imgs/actions/setup-chassis/key.svg"
         }
       ]
     },
     {
       "Name": "Setup Engine",
       "UUID": "com.iracedeck.sd.core.setup-engine",
-      "Icon": "imgs/actions/setup-engine/icon",
+      "Icon": "imgs/actions/setup-engine/icon.svg",
       "Tooltip": "Engine adjustments (power, throttle shaping, boost, launch RPM)",
       "PropertyInspectorPath": "ui/setup-engine.html",
       "Controllers": [
@@ -414,14 +414,14 @@
       ],
       "States": [
         {
-          "Image": "imgs/actions/setup-engine/key"
+          "Image": "imgs/actions/setup-engine/key.svg"
         }
       ]
     },
     {
       "Name": "Setup Fuel",
       "UUID": "com.iracedeck.sd.core.setup-fuel",
-      "Icon": "imgs/actions/setup-fuel/icon",
+      "Icon": "imgs/actions/setup-fuel/icon.svg",
       "Tooltip": "Fuel adjustments (mixture, fuel cut, low fuel, FCY mode)",
       "PropertyInspectorPath": "ui/setup-fuel.html",
       "Controllers": [
@@ -429,14 +429,14 @@
       ],
       "States": [
         {
-          "Image": "imgs/actions/setup-fuel/key"
+          "Image": "imgs/actions/setup-fuel/key.svg"
         }
       ]
     },
     {
       "Name": "Setup Hybrid",
       "UUID": "com.iracedeck.sd.core.setup-hybrid",
-      "Icon": "imgs/actions/setup-hybrid/icon",
+      "Icon": "imgs/actions/setup-hybrid/icon.svg",
       "Tooltip": "Hybrid/ERS adjustments (MGU-K regen, deploy modes, HYS boost/regen)",
       "PropertyInspectorPath": "ui/setup-hybrid.html",
       "Controllers": [
@@ -444,14 +444,14 @@
       ],
       "States": [
         {
-          "Image": "imgs/actions/setup-hybrid/key"
+          "Image": "imgs/actions/setup-hybrid/key.svg"
         }
       ]
     },
     {
       "Name": "Setup Traction",
       "UUID": "com.iracedeck.sd.core.setup-traction",
-      "Icon": "imgs/actions/setup-traction/icon",
+      "Icon": "imgs/actions/setup-traction/icon.svg",
       "Tooltip": "Traction control adjustments (TC Toggle, TC Slots 1-4)",
       "PropertyInspectorPath": "ui/setup-traction.html",
       "Controllers": [
@@ -459,14 +459,14 @@
       ],
       "States": [
         {
-          "Image": "imgs/actions/setup-traction/key"
+          "Image": "imgs/actions/setup-traction/key.svg"
         }
       ]
     },
     {
       "Name": "Splits & Reference",
       "UUID": "com.iracedeck.sd.core.splits-delta-cycle",
-      "Icon": "imgs/actions/splits-delta-cycle/icon",
+      "Icon": "imgs/actions/splits-delta-cycle/icon.svg",
       "Tooltip": "Cycle splits delta display modes or toggle reference car",
       "PropertyInspectorPath": "ui/splits-delta-cycle.html",
       "Controllers": [
@@ -474,14 +474,14 @@
       ],
       "States": [
         {
-          "Image": "imgs/actions/splits-delta-cycle/key"
+          "Image": "imgs/actions/splits-delta-cycle/key.svg"
         }
       ]
     },
     {
       "Name": "Telemetry Control",
       "UUID": "com.iracedeck.sd.core.telemetry-control",
-      "Icon": "imgs/actions/telemetry-control/icon",
+      "Icon": "imgs/actions/telemetry-control/icon.svg",
       "Tooltip": "Telemetry logging and recording controls",
       "PropertyInspectorPath": "ui/telemetry-control.html",
       "Controllers": [
@@ -489,14 +489,14 @@
       ],
       "States": [
         {
-          "Image": "imgs/actions/telemetry-control/key"
+          "Image": "imgs/actions/telemetry-control/key.svg"
         }
       ]
     },
     {
       "Name": "Telemetry Display",
       "UUID": "com.iracedeck.sd.core.telemetry-display",
-      "Icon": "imgs/actions/telemetry-display/icon",
+      "Icon": "imgs/actions/telemetry-display/icon.svg",
       "Tooltip": "Display live telemetry values using custom templates",
       "PropertyInspectorPath": "ui/telemetry-display.html",
       "Controllers": [
@@ -504,14 +504,14 @@
       ],
       "States": [
         {
-          "Image": "imgs/actions/telemetry-display/key"
+          "Image": "imgs/actions/telemetry-display/key.svg"
         }
       ]
     },
     {
       "Name": "Tire Service",
       "UUID": "com.iracedeck.sd.core.tire-service",
-      "Icon": "imgs/actions/tire-service/icon",
+      "Icon": "imgs/actions/tire-service/icon.svg",
       "Tooltip": "Tire management for pit stops (toggle tires, change compound, clear)",
       "PropertyInspectorPath": "ui/tire-service.html",
       "Controllers": [
@@ -519,14 +519,14 @@
       ],
       "States": [
         {
-          "Image": "imgs/actions/tire-service/key"
+          "Image": "imgs/actions/tire-service/key.svg"
         }
       ]
     },
     {
       "Name": "Toggle UI Elements",
       "UUID": "com.iracedeck.sd.core.toggle-ui-elements",
-      "Icon": "imgs/actions/toggle-ui-elements/icon",
+      "Icon": "imgs/actions/toggle-ui-elements/icon.svg",
       "Tooltip": "Toggle iRacing UI elements on or off",
       "PropertyInspectorPath": "ui/toggle-ui-elements.html",
       "Controllers": [
@@ -534,14 +534,14 @@
       ],
       "States": [
         {
-          "Image": "imgs/actions/toggle-ui-elements/key"
+          "Image": "imgs/actions/toggle-ui-elements/key.svg"
         }
       ]
     },
     {
       "Name": "View Adjustment",
       "UUID": "com.iracedeck.sd.core.view-adjustment",
-      "Icon": "imgs/actions/view-adjustment/icon",
+      "Icon": "imgs/actions/view-adjustment/icon.svg",
       "Tooltip": "Adjust camera and view settings (FOV, horizon, driver height, VR recenter, UI size)",
       "PropertyInspectorPath": "ui/view-adjustment.html",
       "Controllers": [
@@ -549,7 +549,7 @@
       ],
       "States": [
         {
-          "Image": "imgs/actions/view-adjustment/key"
+          "Image": "imgs/actions/view-adjustment/key.svg"
         }
       ]
     }

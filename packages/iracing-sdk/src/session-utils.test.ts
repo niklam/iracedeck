@@ -4,6 +4,7 @@ import {
   classifyCarNumberTarget,
   getAllCarNumbers,
   getCameraGroupsFromSessionInfo,
+  getCamerasInGroup,
   getCarNumberFromSessionInfo,
   getCarNumberRawFromSessionInfo,
   getPlayerCarNumberFromSessionInfo,
@@ -318,5 +319,55 @@ describe("getCameraGroupsFromSessionInfo", () => {
 
   it("should return empty array when Groups is empty", () => {
     expect(getCameraGroupsFromSessionInfo({ CameraInfo: { Groups: [] } })).toEqual([]);
+  });
+});
+
+describe("getCamerasInGroup", () => {
+  const sessionInfo = {
+    CameraInfo: {
+      Groups: [
+        {
+          GroupNum: 1,
+          GroupName: "Nose",
+          Cameras: [{ CameraNum: 1, CameraName: "CamNose" }],
+        },
+        {
+          GroupNum: 9,
+          GroupName: "Cockpit",
+          Cameras: [
+            { CameraNum: 1, CameraName: "Cockpit" },
+            { CameraNum: 2, CameraName: "Roll Bar" },
+            { CameraNum: 3, CameraName: "Gyro" },
+          ],
+        },
+      ],
+    },
+  };
+
+  it("should extract the cameras of the matching group", () => {
+    expect(getCamerasInGroup(sessionInfo, 9)).toEqual([
+      { cameraNum: 1, cameraName: "Cockpit" },
+      { cameraNum: 2, cameraName: "Roll Bar" },
+      { cameraNum: 3, cameraName: "Gyro" },
+    ]);
+  });
+
+  it("should return a single-camera group", () => {
+    expect(getCamerasInGroup(sessionInfo, 1)).toEqual([{ cameraNum: 1, cameraName: "CamNose" }]);
+  });
+
+  it("should return empty array when the group number is not present", () => {
+    expect(getCamerasInGroup(sessionInfo, 99)).toEqual([]);
+  });
+
+  it("should return empty array when the group has no Cameras list", () => {
+    expect(getCamerasInGroup({ CameraInfo: { Groups: [{ GroupNum: 3, GroupName: "Chase" }] } }, 3)).toEqual([]);
+  });
+
+  it("should return empty array when CameraInfo or Groups is missing", () => {
+    expect(getCamerasInGroup({}, 1)).toEqual([]);
+    expect(getCamerasInGroup(null, 1)).toEqual([]);
+    expect(getCamerasInGroup(undefined, 1)).toEqual([]);
+    expect(getCamerasInGroup({ CameraInfo: {} }, 1)).toEqual([]);
   });
 });
