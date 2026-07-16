@@ -360,6 +360,58 @@
       }
     }
   },
+  "view-adjustment-dial": {
+    "_meta": {
+      "modeSetting": "dial.setting"
+    },
+    "fov": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "viewAdjustFovIncrease",
+          "viewAdjustFovDecrease"
+        ]
+      }
+    },
+    "horizon": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "viewAdjustHorizonUp",
+          "viewAdjustHorizonDown"
+        ]
+      }
+    },
+    "driver-height": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "viewAdjustDriverHeightUp",
+          "viewAdjustDriverHeightDown"
+        ]
+      }
+    },
+    "ui-size": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "viewAdjustUiSizeIncrease",
+          "viewAdjustUiSizeDecrease"
+        ]
+      }
+    },
+    "recenter-vr": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "viewAdjustRecenterVr"
+      }
+    }
+  },
   "camera-editor-adjustments": {
     "_meta": {
       "modeSetting": "adjustment"
