@@ -890,6 +890,12 @@ importers:
         specifier: 0.35.3
         version: 0.35.3(@types/node@26.1.1)
     devDependencies:
+      '@iracedeck/audio-scenarios':
+        specifier: workspace:*
+        version: link:../audio-scenarios
+      '@iracedeck/audio-service':
+        specifier: workspace:*
+        version: link:../audio-service
       '@iracedeck/deck-core':
         specifier: workspace:*
         version: link:../deck-core

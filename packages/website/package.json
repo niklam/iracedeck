@@ -19,6 +19,8 @@
     "sharp": "0.35.3"
   },
   "devDependencies": {
+    "@iracedeck/audio-scenarios": "workspace:*",
+    "@iracedeck/audio-service": "workspace:*",
     "@iracedeck/deck-core": "workspace:*",
     "@iracedeck/icon-composer": "workspace:*",
     "firebase-tools": "15.23.0",
