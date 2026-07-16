@@ -191,11 +191,21 @@
       "Name": "Cockpit Misc",
       "UUID": "com.iracedeck.sd.core.cockpit-misc",
       "Icon": "imgs/actions/cockpit-misc/icon",
-      "Tooltip": "Miscellaneous cockpit controls (toggle/trigger wipers, FFB, latency, dash pages, in-lap mode)",
+      "Tooltip": "Miscellaneous cockpit controls (toggle/trigger wipers, FFB, latency, dash pages, in-lap mode); on a dial: cycle a dashboard page with the live page number on the touch strip",
       "PropertyInspectorPath": "ui/cockpit-misc.html",
       "Controllers": [
-        "Keypad"
+        "Keypad",
+        "Encoder"
       ],
+      "Encoder": {
+        "Icon": "imgs/actions/cockpit-misc/dial",
+        "layout": "layouts/cockpit-misc.json",
+        "TriggerDescription": {
+          "Rotate": "Cycle the selected dashboard page",
+          "Push": "Configured action",
+          "Touch": "Configured action"
+        }
+      },
       "States": [
         {
           "Image": "imgs/actions/cockpit-misc/key",

@@ -1238,6 +1238,59 @@
       }
     }
   },
+  "cockpit-misc-dial": {
+    "_meta": {
+      "modeSetting": "dial.setting"
+    },
+    "dash-page-1": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "cockpitMiscDashPage1Increase",
+          "cockpitMiscDashPage1Decrease"
+        ]
+      }
+    },
+    "dash-page-2": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "cockpitMiscDashPage2Increase",
+          "cockpitMiscDashPage2Decrease"
+        ]
+      }
+    },
+    "toggle-wipers": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "cockpitMiscToggleWipers"
+      }
+    },
+    "trigger-wipers": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "cockpitMiscTriggerWipers"
+      }
+    },
+    "in-lap-mode": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "cockpitMiscInLapMode"
+      }
+    },
+    "report-latency": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "cockpitMiscReportLatency"
+      }
+    }
+  },
   "force-feedback": {
     "_meta": {
       "modeSetting": "mode"
