@@ -190,6 +190,21 @@ const DIAL_BOX_SAMPLES: DialBoxSampleSpec[] = [
   { key: "splits-delta-cycle", abbr: "DELTA", accent: "#9b59b6", value: "", identityLabelScale: 0.24 },
 ];
 
+/**
+ * Template icons retired by an open PR shipping in the same release (#848 / PR #864
+ * merges the duplicate LFE Intensity modes into Wheel/BassShaker LFE). The icon
+ * files still exist on this branch because force-feedback.ts imports them until
+ * that PR merges — the gallery must not show them. DELETE this list once #864 is
+ * merged and this branch has synced with master (the walk then no longer finds
+ * the files and the list is inert).
+ */
+const RETIRED_TEMPLATES = new Set([
+  "force-feedback/wheel-lfe-intensity-increase",
+  "force-feedback/wheel-lfe-intensity-decrease",
+  "force-feedback/haptic-lfe-intensity-increase",
+  "force-feedback/haptic-lfe-intensity-decrease",
+]);
+
 function repoRel(p: string): string {
   return path.relative(REPO_ROOT, p).replaceAll(path.sep, "/");
 }
@@ -302,6 +317,7 @@ rmSync(ASSETS_OUT, { recursive: true, force: true });
 const entries: GalleryEntry[] = [];
 const skippedTemplates: string[] = [];
 const excludedHidden: string[] = [];
+const retiredTemplates: string[] = [];
 
 // 1. Key icon templates — full composition through the real pipeline. Orphan
 // templates (imported by no action) are skipped rather than shown as stale
@@ -316,6 +332,11 @@ for (const familyDirent of readdirSync(ICONS_ROOT, { withFileTypes: true })) {
     const name = file.slice(0, -4);
     const iconPath = `${family}/${name}`;
     const consumers = actionsByIcon.get(iconPath) ?? [];
+
+    if (RETIRED_TEMPLATES.has(iconPath)) {
+      retiredTemplates.push(iconPath);
+      continue;
+    }
 
     if (consumers.length === 0) {
       skippedTemplates.push(iconPath);
@@ -645,4 +666,8 @@ if (skippedTemplates.length > 0) {
 
 if (excludedHidden.length > 0) {
   console.log(`Excluded ${excludedHidden.length} entries for hidden actions: ${excludedHidden.join(", ")}`);
+}
+
+if (retiredTemplates.length > 0) {
+  console.log(`Excluded ${retiredTemplates.length} retired templates (#864): ${retiredTemplates.join(", ")}`);
 }
