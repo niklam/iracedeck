@@ -27,7 +27,8 @@ export interface GalleryEntry {
 
 const COLOR_SLOTS = ["backgroundColor", "textColor", "graphic1Color", "graphic2Color"] as const;
 
-const TITLES_MAP_RE = /const\s+[A-Z0-9_]*_TITLES\s*:\s*Record<string,\s*string>\s*=\s*\{([\s\S]*?)\n\};/g;
+const TITLES_MAP_RE =
+  /(?:export\s+)?const\s+[A-Z0-9_]*_TITLES\s*:\s*(?:Partial<)?Record<[A-Za-z0-9_$]+,\s*string>>?\s*=\s*\{([\s\S]*?)\n\};/g;
 const TITLES_ENTRY_RE = /(?:["']([^"']+)["']|([A-Za-z0-9_$-]+))\s*:\s*"((?:[^"\\]|\\.)*)"/g;
 
 /** Merged key→title entries from every `*_TITLES: Record<string, string>` map in an action source file. */

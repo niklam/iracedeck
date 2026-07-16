@@ -38,6 +38,30 @@ const B_TITLES: Record<string, string> = {
   it("returns an empty object when no titles map exists", () => {
     expect(parseTitlesMaps("const x = 1;")).toEqual({});
   });
+
+  it("extracts maps with typed keys and Partial<Record<...>>", () => {
+    const src = `
+const SPOTTER_TITLES: Record<SpotterControl, string> = {
+  "toggle-spotter": "SPOTTER",
+};
+export const CHAT_TITLES: Partial<Record<ChatMode, string>> = {
+  "respond-pm": "REPLY\\nPM",
+};
+`;
+    expect(parseTitlesMaps(src)).toEqual({
+      "toggle-spotter": "SPOTTER",
+      "respond-pm": "REPLY\nPM",
+    });
+  });
+
+  it("ignores nested Record maps whose values are not strings", () => {
+    const src = `
+const NESTED_TITLES: Record<string, Record<string, string>> = {
+  outer: { inner: "NOPE" },
+};
+`;
+    expect(parseTitlesMaps(src)).toEqual({});
+  });
 });
 
 describe("parseIconImports", () => {
