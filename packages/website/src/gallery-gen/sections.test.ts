@@ -28,7 +28,7 @@ function entry(overrides: Partial<GalleryEntry> & Pick<GalleryEntry, "class" | "
 }
 
 const FIXTURE: GalleryEntry[] = [
-  // template family "fuel-service" — unambiguous single consumer, has a matching key entry.
+  // template family "fuel-service" — single consumer, has a matching key entry.
   entry({
     class: "template",
     family: "fuel-service",
@@ -43,18 +43,34 @@ const FIXTURE: GalleryEntry[] = [
     actions: ["fuel-service"],
     familyName: "Fuel Service",
   }),
-  // template family "camera-select" — unambiguous single consumer, NO familyName set
-  // (fallback path), and NO matching key entry (its consumer has no key.svg).
+  // template family "camera-select" — single consumer, NO familyName set (fallback
+  // path), and NO matching key entry (its consumer has no key.svg).
   entry({ class: "template", family: "camera-select", name: "blimp", actions: ["camera-controls"] }),
-  // template family "car-control" — AMBIGUOUS: two distinct consuming actions.
-  entry({ class: "template", family: "car-control", name: "drs-on", actions: ["car-control"] }),
-  entry({ class: "template", family: "car-control", name: "drs-off", actions: ["other-action"] }),
+  // template family "force-feedback" — TIE-BREAK (item 16): two consuming actions, one
+  // of which ("force-feedback") equals the family slug — mirrors the real
+  // force-feedback/cockpit-misc split. The same-named consumer wins.
+  entry({ class: "template", family: "force-feedback", name: "increase", actions: ["force-feedback", "cockpit-misc"] }),
+  // template family "shared-graphics" — AMBIGUOUS with NO same-named consumer: two
+  // distinct consuming actions, neither named "shared-graphics" — no placement.
+  entry({ class: "template", family: "shared-graphics", name: "icon-a", actions: ["action-a"] }),
+  entry({ class: "template", family: "shared-graphics", name: "icon-b", actions: ["action-b"] }),
+  // template family "camera-focus" — mirrors the real repo quirk: single unambiguous
+  // consumer "camera-controls", which has NO category entry of its own. A separate,
+  // same-named "camera-focus" category entry exists from a distinct legacy action
+  // folder — the SAME-SLUG fallback (category-only) should place it; key placement
+  // must NOT use this fallback (a same-named key entry also exists, for contrast).
+  entry({ class: "template", family: "camera-focus", name: "focus-your-car", actions: ["camera-controls"] }),
   // key entries
   entry({ class: "key", family: "fuel-service", name: "fuel-service", actions: ["fuel-service"] }),
+  entry({ class: "key", family: "force-feedback", name: "force-feedback", actions: ["force-feedback"] }),
+  entry({ class: "key", family: "camera-focus", name: "camera-focus", actions: ["camera-focus"] }),
   entry({ class: "key", family: "orphan-action", name: "orphan-action", actions: ["orphan-action"] }),
-  // category entries — fuel-service placeable beside its family heading (item 15);
-  // orphan-action has no template family, so it stays in the remainder.
+  // category entries — fuel-service/force-feedback placeable beside their family
+  // headings (item 15); orphan-action has no template family, so it stays in the
+  // remainder; camera-focus is the same-slug fallback case above.
   entry({ class: "category", family: "fuel-service", name: "fuel-service" }),
+  entry({ class: "category", family: "force-feedback", name: "force-feedback" }),
+  entry({ class: "category", family: "camera-focus", name: "camera-focus" }),
   entry({ class: "category", family: "orphan-action", name: "orphan-action" }),
   // flat classes
   entry({ class: "dynamic", family: "dynamic-templates", name: "tire-service" }),
@@ -65,7 +81,13 @@ describe("familiesOf", () => {
   it("groups entries by family within a class, sorted by family name", () => {
     const grouped = familiesOf(FIXTURE, "template");
 
-    expect(grouped.map(([family]) => family)).toEqual(["camera-select", "car-control", "fuel-service"]);
+    expect(grouped.map(([family]) => family)).toEqual([
+      "camera-focus",
+      "camera-select",
+      "force-feedback",
+      "fuel-service",
+      "shared-graphics",
+    ]);
     expect(grouped.find(([family]) => family === "fuel-service")?.[1]).toHaveLength(2);
   });
 
@@ -109,12 +131,26 @@ describe("defaultKeyFor", () => {
     expect(key?.class).toBe("key");
   });
 
-  it("returns undefined for an ambiguous family (more than one consuming action)", () => {
-    expect(defaultKeyFor(FIXTURE, "car-control")).toBeUndefined();
+  it("prefers the same-named consumer when a family has multiple consumers (item 16 tie-break)", () => {
+    const key = defaultKeyFor(FIXTURE, "force-feedback");
+
+    expect(key?.name).toBe("force-feedback");
+    expect(key?.class).toBe("key");
   });
 
-  it("returns undefined when the unambiguous consumer has no key.svg entry", () => {
+  it("returns undefined for an ambiguous family with no same-named consumer", () => {
+    expect(defaultKeyFor(FIXTURE, "shared-graphics")).toBeUndefined();
+  });
+
+  it("returns undefined when the resolved consumer has no key.svg entry", () => {
     expect(defaultKeyFor(FIXTURE, "camera-select")).toBeUndefined();
+  });
+
+  it("does NOT apply the category same-slug fallback — a same-named key entry belonging to a different action is ignored", () => {
+    // "camera-focus" resolves to consumer "camera-controls" (unambiguous), which has
+    // no key.svg. A key entry literally named "camera-focus" exists (a different,
+    // unrelated action folder) but must not be used — that fallback is category-only.
+    expect(defaultKeyFor(FIXTURE, "camera-focus")).toBeUndefined();
   });
 
   it("returns undefined for an unknown family", () => {
@@ -123,15 +159,17 @@ describe("defaultKeyFor", () => {
 });
 
 describe("computePlacedKeyActions / keyRemainder", () => {
-  it("places the fuel-service key action and leaves the orphan action in the remainder", () => {
+  it("places the fuel-service and force-feedback (tie-break) key actions, leaving camera-focus and the orphan action in the remainder", () => {
     const placed = computePlacedKeyActions(FIXTURE);
 
     expect(placed.has("fuel-service")).toBe(true);
+    expect(placed.has("force-feedback")).toBe(true);
+    expect(placed.has("camera-focus")).toBe(false);
     expect(placed.has("orphan-action")).toBe(false);
 
     const remainder = keyRemainder(FIXTURE);
 
-    expect(remainder.map((e) => e.name)).toEqual(["orphan-action"]);
+    expect(remainder.map((e) => e.name)).toEqual(["camera-focus", "orphan-action"]);
   });
 });
 
@@ -143,20 +181,38 @@ describe("defaultCategoryFor", () => {
     expect(category?.class).toBe("category");
   });
 
-  it("returns undefined for an ambiguous family (more than one consuming action)", () => {
-    expect(defaultCategoryFor(FIXTURE, "car-control")).toBeUndefined();
+  it("prefers the same-named consumer when a family has multiple consumers (item 16 tie-break)", () => {
+    const category = defaultCategoryFor(FIXTURE, "force-feedback");
+
+    expect(category?.name).toBe("force-feedback");
+    expect(category?.class).toBe("category");
   });
 
-  it("returns undefined when the unambiguous consumer has no category entry", () => {
+  it("returns undefined for an ambiguous family with no same-named consumer", () => {
+    expect(defaultCategoryFor(FIXTURE, "shared-graphics")).toBeUndefined();
+  });
+
+  it("returns undefined when neither the resolved consumer nor the family slug has a category entry", () => {
     expect(defaultCategoryFor(FIXTURE, "camera-select")).toBeUndefined();
+  });
+
+  it("falls back to a same-slug category entry when the resolved consumer has none (owner follow-up refinement)", () => {
+    // "camera-focus" resolves to consumer "camera-controls" (no category icon), but a
+    // category entry literally named "camera-focus" exists — use it.
+    const category = defaultCategoryFor(FIXTURE, "camera-focus");
+
+    expect(category?.name).toBe("camera-focus");
+    expect(category?.class).toBe("category");
   });
 });
 
 describe("computePlacedCategoryActions / categoryRemainder", () => {
-  it("places the fuel-service category action and leaves the orphan action in the remainder", () => {
+  it("places fuel-service, force-feedback (tie-break), and camera-focus (same-slug fallback) category actions, leaving only the orphan action in the remainder", () => {
     const placed = computePlacedCategoryActions(FIXTURE);
 
     expect(placed.has("fuel-service")).toBe(true);
+    expect(placed.has("force-feedback")).toBe(true);
+    expect(placed.has("camera-focus")).toBe(true);
     expect(placed.has("orphan-action")).toBe(false);
 
     const remainder = categoryRemainder(FIXTURE);
@@ -197,9 +253,11 @@ describe("buildGalleryToc", () => {
     const template = toc.find((t) => t.slug === "class-template");
 
     expect(template?.children).toEqual([
+      { depth: 3, slug: "template-camera-focus", text: "Camera Focus", children: [] },
       { depth: 3, slug: "template-camera-select", text: "Camera Select", children: [] },
-      { depth: 3, slug: "template-car-control", text: "Car Control", children: [] },
+      { depth: 3, slug: "template-force-feedback", text: "Force Feedback", children: [] },
       { depth: 3, slug: "template-fuel-service", text: "Fuel Service", children: [] },
+      { depth: 3, slug: "template-shared-graphics", text: "Shared Graphics", children: [] },
     ]);
   });
 });

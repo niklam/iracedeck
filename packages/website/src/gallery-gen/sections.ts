@@ -136,14 +136,20 @@ export function buildGalleryToc(entries: GalleryEntry[]): TocItem[] {
 }
 
 /**
- * The single distinct action name across a template family's entries'
- * `actions` arrays, or undefined when the family's consuming action can't be
- * determined unambiguously (the union is empty or has more than one name).
- * Shared by {@link defaultKeyFor} and {@link defaultCategoryFor} (item 10,
- * extended to `category` by item 15) so the "one unambiguous consumer" rule
- * lives in exactly one place.
+ * The template family's consuming action, for placement purposes. Shared by
+ * {@link defaultKeyFor} and {@link defaultCategoryFor} (item 10, extended to
+ * `category` by item 15) so the resolution rule lives in exactly one place.
+ *
+ * - Zero consumers -> undefined.
+ * - Exactly one consumer -> that action.
+ * - Multiple consumers -> the SAME-NAME TIE-BREAK (item 16): a family shared
+ *   by several actions (e.g. `force-feedback`, imported by both the
+ *   `force-feedback` and `cockpit-misc` actions) prefers the action whose
+ *   folder name equals the family slug — that's the family's "home" action.
+ *   Falls back to undefined (no placement) when no same-named consumer
+ *   exists among the multiple candidates.
  */
-function unambiguousFamilyAction(entries: GalleryEntry[], family: string): string | undefined {
+function resolveFamilyAction(entries: GalleryEntry[], family: string): string | undefined {
   const actionNames = new Set<string>();
 
   for (const e of entries) {
@@ -152,18 +158,22 @@ function unambiguousFamilyAction(entries: GalleryEntry[], family: string): strin
     for (const action of e.actions) actionNames.add(action);
   }
 
-  return actionNames.size === 1 ? [...actionNames][0] : undefined;
+  if (actionNames.size === 0) return undefined;
+
+  if (actionNames.size === 1) return [...actionNames][0];
+
+  return actionNames.has(family) ? family : undefined;
 }
 
 /**
  * Resolves the entry of the given `cls` to render alongside a template
  * family — the "default icon" key card (item 10) or the family-heading
  * category glyph (item 15). Returns undefined when the family's consuming
- * action can't be determined unambiguously, or when that single action has
- * no entry of `cls`.
+ * action can't be resolved (see {@link resolveFamilyAction}), or when that
+ * action has no entry of `cls`.
  */
 function defaultEntryFor(entries: GalleryEntry[], family: string, cls: "key" | "category"): GalleryEntry | undefined {
-  const action = unambiguousFamilyAction(entries, family);
+  const action = resolveFamilyAction(entries, family);
 
   if (!action) return undefined;
 
@@ -217,11 +227,22 @@ export function keyRemainder(entries: GalleryEntry[]): GalleryEntry[] {
 
 /**
  * Resolves the `category`-class entry to render as the small glyph chip
- * beside a template family's heading (item 15) — the same unambiguous-consumer
- * rule as {@link defaultKeyFor}, applied to the `category` class.
+ * beside a template family's heading (item 15). Tries the same
+ * consumer-resolution rule as {@link defaultKeyFor} first (including the item
+ * 16 same-name tie-break); if that finds nothing, falls back to a
+ * SAME-SLUG MATCH (owner follow-up refinement): a `category` entry whose
+ * `name` equals the family slug, even when that action isn't the family's
+ * actual import-consumer. This is what moves the `camera-focus` chip onto the
+ * `camera-focus` template family's heading — the real consumer
+ * (`camera-controls`) has no category icon, but the separate, same-named
+ * `camera-focus` action folder does. Deliberately `category`-only: `key`
+ * placement stays purely consumer-resolution based, so this fallback does not
+ * apply to {@link defaultKeyFor}.
  */
 export function defaultCategoryFor(entries: GalleryEntry[], family: string): GalleryEntry | undefined {
-  return defaultEntryFor(entries, family, "category");
+  return (
+    defaultEntryFor(entries, family, "category") ?? entries.find((e) => e.class === "category" && e.name === family)
+  );
 }
 
 /**
@@ -230,7 +251,15 @@ export function defaultCategoryFor(entries: GalleryEntry[], family: string): Gal
  * in `entries`.
  */
 export function computePlacedCategoryActions(entries: GalleryEntry[]): Set<string> {
-  return computePlacedActions(entries, "category");
+  const placed = new Set<string>();
+
+  for (const [family] of familiesOf(entries, "template")) {
+    const hit = defaultCategoryFor(entries, family);
+
+    if (hit) placed.add(hit.name);
+  }
+
+  return placed;
 }
 
 /**
@@ -239,5 +268,7 @@ export function computePlacedCategoryActions(entries: GalleryEntry[]): Set<strin
  * Empty when every category entry was placed.
  */
 export function categoryRemainder(entries: GalleryEntry[]): GalleryEntry[] {
-  return remainderOf(entries, "category");
+  const placed = computePlacedCategoryActions(entries);
+
+  return entries.filter((e) => e.class === "category" && !placed.has(e.name));
 }

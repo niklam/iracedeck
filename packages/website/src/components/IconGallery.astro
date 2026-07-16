@@ -74,8 +74,12 @@ function entriesForSection(sectionId: string): GalleryEntry[] {
                   </span>
                   <span class="family-slug">{family}</span>
                 </h3>
+                {defaultKey && (
+                  <div class="gallery-default-row">
+                    <IconGalleryCard entry={defaultKey} label="default icon" />
+                  </div>
+                )}
                 <div class="gallery-grid">
-                  {defaultKey && <IconGalleryCard entry={defaultKey} label="default icon" />}
                   {icons.map((e) => <IconGalleryCard entry={e} />)}
                 </div>
               </div>
@@ -146,6 +150,9 @@ function entriesForSection(sectionId: string): GalleryEntry[] {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
     gap: 0.5rem;
+  }
+  .gallery-default-row {
+    margin-bottom: 0.5rem;
   }
   .family-name {
     display: block;
