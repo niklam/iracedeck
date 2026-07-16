@@ -23,6 +23,14 @@ export interface GalleryEntry {
   file: string;
   /** True when the rendering used hand-picked sample values (dynamic templates, dash box) */
   sample?: boolean;
+  /**
+   * Human-friendly display name for `template`-class entries' family (issue: gallery
+   * feedback wave, item 11). The manifest `Name` when the family slug is exactly a
+   * known action folder name, otherwise a title-cased fallback of the slug — see
+   * `titleCaseSlug` in `sections.ts`. Unset for every other class (no family headings
+   * render there after items 7/10).
+   */
+  familyName?: string;
 }
 
 const COLOR_SLOTS = ["backgroundColor", "textColor", "graphic1Color", "graphic2Color"] as const;
@@ -31,7 +39,11 @@ const TITLES_MAP_RE =
   /(?:export\s+)?const\s+[A-Z0-9_]*_TITLES\s*:\s*(?:Partial<)?Record<[A-Za-z0-9_$]+,\s*string>>?\s*=\s*\{([\s\S]*?)\n\};/g;
 const TITLES_ENTRY_RE = /(?:["']([^"']+)["']|([A-Za-z0-9_$-]+))\s*:\s*"((?:[^"\\]|\\.)*)"/g;
 
-/** Merged key→title entries from every `*_TITLES: Record<string, string>` map in an action source file. */
+/**
+ * Merged key→title entries from every string-valued `*_TITLES` map in an action
+ * source file — `Record<string, string>`, typed-key `Record<SomeUnion, string>`,
+ * and `Partial<Record<..., string>>` variants are all matched.
+ */
 export function parseTitlesMaps(actionSource: string): Record<string, string> {
   const titles: Record<string, string> = {};
 

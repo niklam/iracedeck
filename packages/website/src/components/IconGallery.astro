@@ -3,79 +3,88 @@
 // Renders the generated icon inventory (src/data/icon-gallery.json) as a
 // searchable, per-family grouped gallery. Assets live in /icon-gallery/.
 import entries from "../data/icon-gallery.json";
+import type { GalleryEntry } from "../gallery-gen/lib.js";
+import {
+  categoryRemainder,
+  CLASS_SECTIONS,
+  defaultCategoryFor,
+  defaultKeyFor,
+  familiesOf,
+  familyAnchor,
+  familyDisplayName,
+  keyRemainder,
+} from "../gallery-gen/sections.js";
+import IconGalleryCard from "./IconGalleryCard.astro";
 
-interface Entry {
-  class: string;
-  family: string;
-  name: string;
-  path: string;
-  viewBox?: string;
-  slots: string[];
-  locked: string[];
-  title?: string;
-  actions: string[];
-  file: string;
-  sample?: boolean;
-}
+const all = entries as GalleryEntry[];
 
-const CLASS_SECTIONS: { id: string; label: string; blurb: string }[] = [
-  { id: "template", label: "Key icon templates", blurb: "The main icon library — artwork snippets composed with titles, colors, and borders at runtime, shown here with their defaults." },
-  { id: "dynamic", label: "Dynamic templates", blurb: "Telemetry-driven full-canvas templates. Cards show the template frame with sample values; live content is drawn from telemetry at runtime." },
-  { id: "key", label: "Static default key images", blurb: "The default key image each action shows before it renders." },
-  { id: "dial", label: "Dial icons", blurb: "Per-action encoder icons plus a sample of the shared touch-strip dash box." },
-  { id: "category", label: "Category icons", blurb: "The small 20×20 icons shown in the deck app's action list." },
-];
+// The standalone "Static default key images" / "Category icons" sections only
+// show the remainder — entries that couldn't be placed into a template family
+// group (item 10) or beside a family heading (item 15).
+const keyRemainderEntries = keyRemainder(all);
+const categoryRemainderEntries = categoryRemainder(all);
 
-const all = entries as Entry[];
+function entriesForSection(sectionId: string): GalleryEntry[] {
+  if (sectionId === "key") return keyRemainderEntries;
+  if (sectionId === "category") return categoryRemainderEntries;
 
-function familiesOf(cls: string): [string, Entry[]][] {
-  const map = new Map<string, Entry[]>();
-  for (const e of all.filter((e) => e.class === cls)) {
-    map.set(e.family, [...(map.get(e.family) ?? []), e]);
-  }
-  return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
-}
-
-function searchText(e: Entry): string {
-  return [e.name, e.family, e.title ?? "", ...e.actions].join(" ").toLowerCase();
+  return all.filter((e) => e.class === sectionId);
 }
 ---
 
-<div class="icon-gallery">
+<div class="icon-gallery not-content">
   <p>
     <input id="icon-gallery-filter" type="search" placeholder="Filter by name, family, action, or title…" aria-label="Filter icons" />
     <span id="icon-gallery-count">{all.length} icons</span>
   </p>
 
-  {CLASS_SECTIONS.map((section) => (
-    <section class="gallery-class" data-class={section.id}>
-      <h2 id={`class-${section.id}`}>{section.label}</h2>
-      <p>{section.blurb}</p>
-      {familiesOf(section.id).map(([family, icons]) => (
-        <div class="gallery-family">
-          <h3>{family} <span class="family-count">({icons.length})</span></h3>
+  {CLASS_SECTIONS.map((section) => {
+    const sectionEntries = entriesForSection(section.id);
+
+    // The remainder-only "key" section disappears entirely once every key
+    // entry has been placed into its template family group (item 10).
+    if (sectionEntries.length === 0) return null;
+
+    return (
+      <section class="gallery-class" data-class={section.id}>
+        <h2 id={`class-${section.id}`}>{section.label}</h2>
+        <p>{section.blurb}</p>
+        <p class="section-size">{section.blurbSize}</p>
+
+        {section.flat ? (
           <div class="gallery-grid">
-            {icons.map((e) => (
-              <details class="icon-card" data-search={searchText(e)}>
-                <summary>
-                  <span class="icon-tile"><img src={e.file} alt={e.name} loading="lazy" width="72" height="72" /></span>
-                  <span class="icon-name">{e.name}{e.sample && <em> (sample)</em>}</span>
-                </summary>
-                <dl>
-                  <dt>Path</dt><dd><code>{e.path}</code></dd>
-                  {e.viewBox && <><dt>viewBox</dt><dd><code>{e.viewBox}</code></dd></>}
-                  {e.slots.length > 0 && <><dt>Color slots</dt><dd><code>{e.slots.join(", ")}</code></dd></>}
-                  {e.locked.length > 0 && <><dt>Locked slots</dt><dd><code>{e.locked.join(", ")}</code></dd></>}
-                  {e.title && <><dt>Default title</dt><dd class="title-text">{e.title}</dd></>}
-                  {e.actions.length > 0 && <><dt>Used by</dt><dd>{e.actions.join(", ")}</dd></>}
-                </dl>
-              </details>
-            ))}
+            {sectionEntries.map((e) => <IconGalleryCard entry={e} />)}
           </div>
-        </div>
-      ))}
-    </section>
-  ))}
+        ) : (
+          familiesOf(all, section.id).map(([family, icons]) => {
+            const defaultKey = defaultKeyFor(all, family);
+            const categoryIcon = defaultCategoryFor(all, family);
+            const count = icons.length + (defaultKey ? 1 : 0);
+
+            return (
+              <div class="gallery-family">
+                <h3 id={familyAnchor(section.id, family)}>
+                  <span class="family-name">
+                    {categoryIcon && (
+                      <span class="family-category-chip">
+                        <img src={categoryIcon.file} alt="" loading="lazy" width="26" height="26" />
+                      </span>
+                    )}
+                    {familyDisplayName(family, all)} <span class="family-count">({count})</span>
+                  </span>
+                  <span class="family-slug">{family}</span>
+                </h3>
+                <div class="gallery-grid">
+                  {defaultKey && <IconGalleryCard entry={defaultKey} label="default icon" />}
+                  {icons.map((e) => <IconGalleryCard entry={e} />)}
+                </div>
+              </div>
+            );
+          })
+        )}
+      </section>
+    );
+  })}
 </div>
 
 <script>
@@ -102,6 +111,19 @@ function searchText(e: Entry): string {
 </script>
 
 <style>
+  .icon-gallery h2 {
+    margin-top: 2rem;
+    margin-bottom: 0.5rem;
+  }
+  .icon-gallery h2:first-of-type {
+    margin-top: 0.5rem;
+  }
+  .icon-gallery h3 {
+    margin: 1rem 0 0.5rem;
+  }
+  .icon-gallery p {
+    margin: 0.5rem 0;
+  }
   #icon-gallery-filter {
     width: 100%;
     max-width: 24rem;
@@ -116,57 +138,37 @@ function searchText(e: Entry): string {
     color: var(--sl-color-gray-3);
     font-size: var(--sl-text-sm);
   }
+  .section-size {
+    color: var(--sl-color-gray-3);
+    font-size: var(--sl-text-sm);
+  }
   .gallery-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
     gap: 0.5rem;
   }
-  .icon-card {
-    border: 1px solid var(--sl-color-gray-5);
-    border-radius: 0.5rem;
-    padding: 0.4rem;
-  }
-  .icon-card summary {
-    cursor: pointer;
-    list-style: none;
-    text-align: center;
-  }
-  .icon-tile {
-    display: inline-block;
-    background: #0d0d0d;
-    border-radius: 0.6rem;
-    padding: 0.4rem;
-    line-height: 0;
-  }
-  .icon-tile img {
-    width: 72px;
-    height: 72px;
-    max-width: 100%;
-    object-fit: contain;
-  }
-  .icon-name {
+  .family-name {
     display: block;
-    margin-top: 0.3rem;
-    font-size: var(--sl-text-xs);
-    word-break: break-word;
   }
-  .icon-card dl {
-    font-size: var(--sl-text-xs);
-    margin: 0.5rem 0 0;
-  }
-  .icon-card dt {
-    font-weight: 600;
-    margin-top: 0.3rem;
-  }
-  .icon-card dd {
-    margin: 0;
-    overflow-wrap: anywhere;
-  }
-  .title-text {
-    white-space: pre-line;
+  .family-category-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #0d0d0d;
+    border-radius: 0.3rem;
+    padding: 0.2rem;
+    margin-right: 0.4rem;
+    vertical-align: middle;
   }
   .family-count {
     color: var(--sl-color-gray-3);
     font-weight: normal;
+  }
+  .family-slug {
+    display: block;
+    margin-top: 0.1rem;
+    font-size: var(--sl-text-xs);
+    font-weight: normal;
+    color: var(--sl-color-gray-3);
   }
 </style>
