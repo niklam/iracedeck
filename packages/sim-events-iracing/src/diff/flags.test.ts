@@ -922,3 +922,83 @@ describe("diffFlags — furled debounce + paired cleared (issue #669)", () => {
     expect(events).toEqual([]);
   });
 });
+
+describe("diffFlags — furled → black/DQ escalation suppresses the cleared (issue #846)", () => {
+  /** Announce a furled warning so the escalation tick has something to pair against. */
+  function announceFurled(state: ReturnType<typeof createInitialState>): void {
+    state.flagStateInitialized = true;
+    diffFlags(state, tick(Flags.Furled), T0, () => {}); // arm
+    diffFlags(state, tick(Flags.Furled), T0 + FURLED_DEBOUNCE_MS, () => {}); // announce
+  }
+
+  it("a same-tick Furled→Black swap emits flag.black.raised and NO flag.furled.cleared", () => {
+    const state = createInitialState();
+    announceFurled(state);
+
+    // The captured escalation (issue #846): SessionFlags 0x100C0000 → 0x10050000 —
+    // iRacing clears Furled and raises Black in the same transition.
+    const before = Flags.StartHidden | Flags.Servicible | Flags.Furled;
+    const after = Flags.StartHidden | Flags.Servicible | Flags.Black;
+
+    expect(before).toBe(269221888);
+    expect(after).toBe(268763136);
+
+    diffFlags(state, tick(before), T0 + 5000, () => {});
+
+    const { events, emit } = collect();
+    diffFlags(state, tick(after), T0 + 10_000, emit);
+
+    expect(events).toEqual([{ event: "flag.black.raised", data: {} }]);
+    expect(state.furledAnnounced).toBe(false); // consumed by the escalation
+  });
+
+  it("a same-tick Furled→Disqualify swap emits flag.disqualify.raised and NO flag.furled.cleared", () => {
+    const state = createInitialState();
+    announceFurled(state);
+
+    const { events, emit } = collect();
+    diffFlags(state, tick(Flags.Disqualify), T0 + 5000, emit);
+
+    expect(events).toEqual([{ event: "flag.disqualify.raised", data: {} }]);
+    expect(state.furledAnnounced).toBe(false);
+  });
+
+  it("furled dropping while a black flag is ALREADY up is also suppressed (penalty in force)", () => {
+    const state = createInitialState();
+    announceFurled(state);
+    diffFlags(state, tick(Flags.Furled | Flags.Black), T0 + 5000, () => {}); // black raised, furled still up
+
+    const { events, emit } = collect();
+    diffFlags(state, tick(Flags.Black), T0 + 10_000, emit); // furled drops under the penalty
+
+    expect(events).toEqual([]);
+    expect(state.furledAnnounced).toBe(false);
+  });
+
+  it("the black flag later clearing emits no stale furled-cleared", () => {
+    const state = createInitialState();
+    announceFurled(state);
+    diffFlags(state, tick(Flags.Black), T0 + 5000, () => {}); // escalation — cleared suppressed
+
+    const { events, emit } = collect();
+    diffFlags(state, tick(0), T0 + 60_000, emit); // penalty served, black drops
+
+    expect(events).toEqual([]);
+  });
+
+  it("a fresh furled episode after the escalation resolves still announces raised and cleared", () => {
+    const state = createInitialState();
+    announceFurled(state);
+    diffFlags(state, tick(Flags.Black), T0 + 5000, () => {}); // escalation
+    diffFlags(state, tick(0), T0 + 60_000, () => {}); // penalty served
+
+    diffFlags(state, tick(Flags.Furled), T0 + 90_000, () => {}); // re-arm
+    const raised = collect();
+    diffFlags(state, tick(Flags.Furled), T0 + 90_000 + FURLED_DEBOUNCE_MS, raised.emit);
+    expect(raised.events).toEqual([{ event: "flag.furled.raised", data: {} }]);
+
+    const cleared = collect();
+    diffFlags(state, tick(0), T0 + 120_000, cleared.emit); // genuine withdrawal
+    expect(cleared.events).toEqual([{ event: "flag.furled.cleared", data: {} }]);
+  });
+});

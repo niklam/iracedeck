@@ -83,6 +83,14 @@ describe("renderDialBox", () => {
     expect(svg).toMatch(/font-size="22"[^>]*>BUMP</);
   });
 
+  it("baseline-centers the identity-only label instead of anchoring it above center (#804)", () => {
+    // <text> y is the baseline and resvg ignores dominant-baseline, so a truly
+    // centered label must sit at h*0.5 + round(fontSize*0.36): 50 + round(24*0.36) = 59.
+    const svg = renderDialBox({ width: 200, height: 100, abbr: "QUAL", value: "", colors: accentColors() });
+
+    expect(svg).toMatch(/<text[^>]*y="59"[^>]*>QUAL<\/text>/);
+  });
+
   it("shrinks the value font so a longer value fits inside a smaller one", () => {
     const long = /font-size="(\d+)"[^>]*>1234\.5</.exec(
       renderDialBox({ width: 200, height: 100, abbr: "BB", value: "1234.5", colors: accentColors() }),

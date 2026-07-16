@@ -15,12 +15,30 @@ _Unreleased_
 
 **Features**
 
-- The Race Engineer now estimates how many laps of fuel you have left and calls the count out mid-lap — *"We're estimating that we have about 3 laps of fuel left after completing this lap."* — ending in a dedicated *"Box this lap for fuel."* call when the tank won't cover another full lap. Each count from 10 down to 1 plus the box call has its own checkbox (5, 3, 2, 1 and Box on by default), and a safety-margin slider (0–3 laps, default 0.3) makes the spoken estimate deliberately conservative relative to Session Info's Laps to Empty display. Counts announce once per stint on the way down — saving fuel never repeats a higher count — and a refuel re-arms them all.
+- Force Feedback now works on a Stream Deck+ dial: turn it to adjust FFB strength or any of the wheel / bass-shaker / haptic LFE levels through your existing key bindings, with the live max force shown in Nm on the touch strip for the FFB Force setting. An optional press can run Auto FFB (off by default, since it overwrites the force you've been tuning). Dials are Elgato Stream Deck+ only for now.
+- Camera Controls now works on a Stream Deck+ dial: turn it to flip through cameras or cars (clockwise for next, counter-clockwise for previous — pick the target with the dial's Mode setting, including cycle by car number or by live race position), and the touch strip names the mode on its top line and shows what that mode controls below — the current camera, the current sub-camera by name, or the car you're watching — with the previous and next either side where they can be previewed. For Cycle Camera you choose which camera groups it steps through, and a press, long-press, or touchscreen tap can jump the camera to your own car, the leader, the latest incident, the most exciting car, or the next camera angle. Dials are Elgato Stream Deck+ only for now.
+- Camera Editor Adjustments now works on a Stream Deck+ dial: turn it to nudge one camera-tool parameter (latitude, longitude, altitude, yaw, pitch, FOV zoom, F-number, focus depth, vanishing point, blimp radius/velocity, key step, or mic gain), pick which one from the dial's Adjustment dropdown, and optionally assign each press and touch gesture to auto-set the mic gain or fire any Camera Editor Controls command (open the camera tool, a toggle, save/load a camera, and so on). Because iRacing exposes no camera-tool values, the touch strip shows the selected parameter's full name rather than a live value. Dials are Elgato Stream Deck+ only for now.
+- Cockpit Misc now works on a Stream Deck+ dial: turning it cycles through the in-car dashboard pages (dash page 1 or 2, your choice) and the touch strip shows the live page number the car is on — or `---` when the car has no dash pages. The dial press and touchscreen can optionally run any of the keypad's one-shot controls — toggle or trigger the wipers, in-lap mode, or report latency. Dials are Elgato Stream Deck+ only for now.
 - View Adjustment now works on a Stream Deck+ dial: one action for buttons and dials. On a dial you pick which view setting it adjusts (FOV, horizon, driver height, or UI size) and turn to change it, and a press recenters your VR headset by default. Your existing View Adjustment key bindings are reused, and the settings panel shows dial settings on a dial and button settings on a button. iRacing reports no value for these, so the touch strip shows the setting's name. Dials are Elgato Stream Deck+ only for now.
+- The Race Engineer now estimates how many laps of fuel you have left and calls the count out mid-lap — *"We're estimating that we have about 3 laps of fuel left after completing this lap."* — ending in a dedicated *"Box this lap for fuel."* call when the tank won't cover another full lap. Each count from 10 down to 1 plus the box call has its own checkbox (5, 3, 2, 1 and Box on by default), and a safety-margin slider (0–3 laps, default 0.3) makes the spoken estimate deliberately conservative relative to Session Info's Laps to Empty display. Counts announce once per stint on the way down — saving fuel never repeats a higher count — and a refuel re-arms them all.
+
+**Bug Fixes**
+
+- Fixed the Race Engineer announcing "Black flag cleared." when a furled black-flag warning escalated into the actual black flag — which also silenced the black-flag callout itself. The escalation now plays the black-flag (or disqualification) call and nothing else; a genuinely withdrawn warning still announces "Black flag cleared." as before.
+- The plugin now shows its icon in Ulanzi Studio's Settings > Plugins list.
+- The documentation and Downloads links at the bottom of an action's settings now open in the browser on Ulanzi Deck.
 
 **Maintenance**
 
 - Reworked the Race Engineer's voice-clip catalog to be fully config-driven: which lines, variants, and values the engineer can speak now derives from the audio clips that actually ship instead of lists in code, a callout missing any required clip skips cleanly as a whole (never a half-sentence), and voices may carry different variant counts or omit lines entirely — groundwork for additional Race Engineer voices.
+
+## 2.1.1
+
+_2026-07-15_
+
+**Bug Fixes**
+
+- The plugin no longer keeps an audio stream open while the Race Engineer is silent, so iRaceDeck no longer prevents your PC from going to sleep — the audio device now runs only while something is actually playing.
 
 ## 2.1.0
 

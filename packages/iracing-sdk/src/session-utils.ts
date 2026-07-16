@@ -166,6 +166,37 @@ export function getCameraGroupsFromSessionInfo(sessionInfo: unknown): CameraGrou
   return groups.map((g) => ({ groupNum: g.GroupNum, groupName: g.GroupName }));
 }
 
+export interface CameraInGroup {
+  cameraNum: number;
+  cameraName: string;
+}
+
+/**
+ * Get the cameras within a specific camera group from iRacing session info.
+ *
+ * Extracts CameraInfo.Groups[].Cameras[] for the group whose GroupNum matches
+ * `groupNum` (each camera carries its CameraNum and CameraName). Returns an
+ * empty array when CameraInfo, the matching group, or its Cameras list is
+ * missing.
+ *
+ * @param sessionInfo - The iRacing session info object
+ * @param groupNum - The camera group number whose cameras to read
+ * @returns Array of cameras with camera number and name
+ */
+export function getCamerasInGroup(sessionInfo: unknown, groupNum: number): CameraInGroup[] {
+  const cameraInfo = (sessionInfo as Record<string, unknown>)?.CameraInfo as Record<string, unknown> | undefined;
+  const groups = cameraInfo?.Groups as
+    Array<{ GroupNum: number; Cameras?: Array<{ CameraNum: number; CameraName: string }> }> | undefined;
+
+  if (!groups) return [];
+
+  const group = groups.find((g) => g.GroupNum === groupNum);
+
+  if (!group?.Cameras) return [];
+
+  return group.Cameras.map((c) => ({ cameraNum: c.CameraNum, cameraName: c.CameraName }));
+}
+
 /**
  * Find a driver entry by car index from session info.
  */

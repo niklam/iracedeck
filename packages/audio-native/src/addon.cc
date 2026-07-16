@@ -108,7 +108,16 @@ static ma_engine *g_engine = nullptr;
 static ma_sound *g_channels[IRD_MAX_CHANNELS] = {};
 static Napi::ThreadSafeFunction g_completionTSFN[IRD_MAX_CHANNELS];
 static bool g_tsfnRegistered[IRD_MAX_CHANNELS] = {};
-static int g_selectedDeviceIndex = -1; // -1 = system default
+
+// The user-selected output device, remembered across engine teardowns so a
+// lazily recreated engine (see ensureEngineCreated) reopens the same device.
+// Windows holds a sleep-blocking power request for a WASAPI stream that is
+// merely INITIALIZED — stopping it is not enough (issue #849) — so the
+// engine (and with it the device) only exists while audio is in flight.
+// Identity is tracked by stable ma_device_id bytes only, never by the
+// volatile enumeration index (order changes across hotplug/reorder).
+static ma_device_id g_selectedDeviceId = {};
+static bool g_useSelectedDevice = false;
 
 // Serializes access to g_completionTSFN[] / g_tsfnRegistered[].
 // Without it, maEndCallback runs on miniaudio's audio thread while
@@ -153,20 +162,93 @@ static void uninitChannel(int channel)
 }
 
 /**
- * Initialize the miniaudio engine.
- * Creates a shared context for device enumeration and engine use.
- * @returns true if engine was created successfully
+ * Tear down the engine (and with it the OS audio device/stream) while
+ * keeping the context and the per-channel TSFNs alive. Any remaining
+ * channel sounds are released first — they belong to the engine.
+ */
+static void teardownEngine()
+{
+    if (!g_engine)
+    {
+        return;
+    }
+
+    for (int i = 0; i < IRD_MAX_CHANNELS; i++)
+    {
+        uninitChannel(i);
+    }
+
+    ma_engine_uninit(g_engine);
+    delete g_engine;
+    g_engine = nullptr;
+}
+
+/**
+ * Lazily create the engine on the remembered device selection (system
+ * default when none). The engine — and with it the WASAPI/OS audio
+ * stream — must only exist while audio is in flight: Windows holds a
+ * sleep-blocking power request for a stream that is merely initialized,
+ * not just a running one (issue #849).
+ *
+ * The device is created stopped (noAutoStart); StartAudioEngine starts it.
+ * When the remembered device can't be opened (unplugged), falls back to
+ * the system default WITHOUT clearing the selection, so a later replug
+ * self-heals on the next engine creation.
+ *
+ * @returns true if an engine exists after the call
+ */
+static bool ensureEngineCreated()
+{
+    if (g_engine)
+    {
+        return true;
+    }
+
+    if (!g_audioContext)
+    {
+        return false;
+    }
+
+    g_engine = new ma_engine();
+    ma_engine_config config = ma_engine_config_init();
+    config.pContext = g_audioContext;
+    config.noAutoStart = MA_TRUE;
+    if (g_useSelectedDevice)
+    {
+        config.pPlaybackDeviceID = &g_selectedDeviceId;
+    }
+
+    ma_result result = ma_engine_init(&config, g_engine);
+    if (result != MA_SUCCESS && g_useSelectedDevice)
+    {
+        // Fallback: system default so the mixer remains usable.
+        ma_engine_config fallbackConfig = ma_engine_config_init();
+        fallbackConfig.pContext = g_audioContext;
+        fallbackConfig.noAutoStart = MA_TRUE;
+        result = ma_engine_init(&fallbackConfig, g_engine);
+    }
+
+    if (result != MA_SUCCESS)
+    {
+        delete g_engine;
+        g_engine = nullptr;
+        return false;
+    }
+
+    return true;
+}
+
+/**
+ * Initialize the audio subsystem: creates the shared context used for
+ * device enumeration and later engine creation. Deliberately does NOT
+ * create the engine or open any audio device — see ensureEngineCreated.
+ * Idempotent.
+ * @returns true if the context exists after the call
  */
 Napi::Value InitAudioEngine(const Napi::CallbackInfo &info)
 {
     Napi::Env env = info.Env();
 
-    if (g_engine)
-    {
-        return Napi::Boolean::New(env, true); // already initialized
-    }
-
-    // Create shared context if not already created
     if (!g_audioContext)
     {
         g_audioContext = new ma_context();
@@ -179,19 +261,59 @@ Napi::Value InitAudioEngine(const Napi::CallbackInfo &info)
         }
     }
 
-    g_engine = new ma_engine();
-    ma_engine_config config = ma_engine_config_init();
-    config.pContext = g_audioContext;
+    // Deliberately no device-selection reset here: init is idempotent and
+    // must not desynchronize a remembered selection from a live engine.
+    // The initial globals and DestroyAudioEngine establish default state.
+    return Napi::Boolean::New(env, true);
+}
 
-    ma_result result = ma_engine_init(&config, g_engine);
-    if (result != MA_SUCCESS)
+/**
+ * Start the audio device, creating the engine first if needed.
+ * Idempotent — an already-started device reports success.
+ * @returns true if the device is running after the call
+ */
+Napi::Value StartAudioEngine(const Napi::CallbackInfo &info)
+{
+    Napi::Env env = info.Env();
+
+    if (!ensureEngineCreated())
     {
-        delete g_engine;
-        g_engine = nullptr;
         return Napi::Boolean::New(env, false);
     }
 
-    g_selectedDeviceIndex = -1;
+    ma_device *device = ma_engine_get_device(g_engine);
+    if (device && ma_device_is_started(device))
+    {
+        return Napi::Boolean::New(env, true);
+    }
+
+    if (ma_engine_start(g_engine) != MA_SUCCESS)
+    {
+        // A created-but-unstartable engine must not linger: even an
+        // initialized, stopped stream holds Windows' sleep-blocking power
+        // request (#849), and the JS layer only arms the idle release
+        // after a successful start. The next play recreates and retries.
+        teardownEngine();
+        return Napi::Boolean::New(env, false);
+    }
+
+    return Napi::Boolean::New(env, true);
+}
+
+/**
+ * Release the audio device entirely by tearing down the engine. Merely
+ * stopping the device is NOT enough — Windows keeps the sleep-blocking
+ * "An audio stream is currently in use" power request for an initialized
+ * stream (issue #849), so the whole stream must go away. Any remaining
+ * channel sounds are released with the engine; the next play recreates
+ * everything on demand. Idempotent — no engine reports success.
+ * @returns true if no device exists after the call
+ */
+Napi::Value StopAudioEngine(const Napi::CallbackInfo &info)
+{
+    Napi::Env env = info.Env();
+
+    teardownEngine();
     return Napi::Boolean::New(env, true);
 }
 
@@ -217,12 +339,7 @@ Napi::Value DestroyAudioEngine(const Napi::CallbackInfo &info)
         }
     }
 
-    if (g_engine)
-    {
-        ma_engine_uninit(g_engine);
-        delete g_engine;
-        g_engine = nullptr;
-    }
+    teardownEngine();
 
     if (g_audioContext)
     {
@@ -231,7 +348,7 @@ Napi::Value DestroyAudioEngine(const Napi::CallbackInfo &info)
         g_audioContext = nullptr;
     }
 
-    g_selectedDeviceIndex = -1;
+    g_useSelectedDevice = false;
     return env.Undefined();
 }
 
@@ -254,7 +371,16 @@ Napi::Value PlayOnChannel(const Napi::CallbackInfo &info)
         return Napi::Boolean::New(env, false);
     }
 
-    if (!g_engine)
+    // Recreate the engine on demand — it may have been torn down by an
+    // idle StopAudioEngine (#849). The device is created stopped; the JS
+    // layer starts it via StartAudioEngine right after this call, and a
+    // stopped device simply holds the sound at its beginning until then.
+    // Track whether THIS call created the engine so failure paths below
+    // can roll it back — a failed play must not leave an initialized
+    // (sleep-blocking) device behind, since the JS layer only arms the
+    // idle release after a successful play.
+    bool createdEngine = (g_engine == nullptr);
+    if (!ensureEngineCreated())
     {
         return Napi::Boolean::New(env, false);
     }
@@ -262,6 +388,10 @@ Napi::Value PlayOnChannel(const Napi::CallbackInfo &info)
     int channel = info[0].As<Napi::Number>().Int32Value();
     if (channel < 0 || channel >= IRD_MAX_CHANNELS)
     {
+        if (createdEngine)
+        {
+            teardownEngine();
+        }
         return Napi::Boolean::New(env, false);
     }
 
@@ -278,6 +408,10 @@ Napi::Value PlayOnChannel(const Napi::CallbackInfo &info)
     if (result != MA_SUCCESS)
     {
         delete sound;
+        if (createdEngine)
+        {
+            teardownEngine();
+        }
         return Napi::Boolean::New(env, false);
     }
 
@@ -293,6 +427,10 @@ Napi::Value PlayOnChannel(const Napi::CallbackInfo &info)
     if (result != MA_SUCCESS)
     {
         uninitChannel(channel);
+        if (createdEngine)
+        {
+            teardownEngine();
+        }
         return Napi::Boolean::New(env, false);
     }
 
@@ -508,10 +646,11 @@ Napi::Value GetAudioDevices(const Napi::CallbackInfo &info)
 }
 
 /**
- * Switch audio output to a specific device.
- * Stops all sounds, reinitializes engine with the selected device.
+ * Switch audio output to a specific device: validates the index, remembers
+ * the selection, and tears down any live engine — the next play recreates
+ * it on the new device (see ensureEngineCreated).
  * @param deviceIndex - Device index from GetAudioDevices(), or -1 for system default
- * @returns true if engine was reinitialized successfully
+ * @returns true if the selection was accepted
  */
 Napi::Value SetAudioDevice(const Napi::CallbackInfo &info)
 {
@@ -526,104 +665,72 @@ Napi::Value SetAudioDevice(const Napi::CallbackInfo &info)
     int deviceIndex = info[0].As<Napi::Number>().Int32Value();
 
     // Only -1 (system default) and non-negative device indices are valid.
-    // Without this, negative values below -1 skip the `>= 0` enumeration
-    // branch, silently get treated as "default device", and are then
-    // persisted into g_selectedDeviceIndex — the next call with the same
-    // invalid value would short-circuit via the fast-path below.
+    // Without this, negative values below -1 would skip the `>= 0`
+    // enumeration branch and silently be treated as "default device".
     if (deviceIndex < -1)
     {
         return Napi::Boolean::New(env, false);
     }
 
-    if (!g_engine || !g_audioContext)
+    if (!g_audioContext)
     {
         return Napi::Boolean::New(env, false);
     }
 
-    // Skip if already on the requested device
-    if (deviceIndex == g_selectedDeviceIndex)
+    if (deviceIndex == -1)
+    {
+        // Selecting the default when it is already selected is a no-op.
+        if (!g_useSelectedDevice)
+        {
+            return Napi::Boolean::New(env, true);
+        }
+
+        teardownEngine();
+        g_useSelectedDevice = false;
+        return Napi::Boolean::New(env, true);
+    }
+
+    // Resolve the index to its stable id BEFORE tearing anything down.
+    // Identity is decided on the id, never the index — enumeration order
+    // is volatile across hotplug/reorder, so an index-based comparison
+    // could silently "succeed" on a different physical device.
+    ma_device_info *pPlaybackDevices;
+    ma_uint32 playbackCount;
+    ma_result enumResult = ma_context_get_devices(g_audioContext, &pPlaybackDevices, &playbackCount, NULL, NULL);
+    if (enumResult != MA_SUCCESS || static_cast<ma_uint32>(deviceIndex) >= playbackCount)
+    {
+        return Napi::Boolean::New(env, false);
+    }
+    ma_device_id selectedId = pPlaybackDevices[deviceIndex].id;
+
+    // Already on this physical device — nothing to change.
+    if (g_useSelectedDevice && memcmp(&selectedId, &g_selectedDeviceId, sizeof(ma_device_id)) == 0)
     {
         return Napi::Boolean::New(env, true);
     }
 
-    // Validate deviceIndex BEFORE tearing down the current engine.
-    // Without this, an invalid index silently falls back to the default
-    // device but is still recorded as selected — the next call on the same
-    // stale index would short-circuit via the fast-path above and return
-    // true for a device that was never active.
-    ma_device_id *pDeviceId = nullptr;
-    ma_device_id selectedId = {};
+    // Remember the selection and tear the engine down — the next play
+    // recreates it on the new device (ensureEngineCreated). Recreating
+    // eagerly here would leave an initialized device holding Windows'
+    // sleep-blocking power request while idle (#849).
+    teardownEngine();
 
-    if (deviceIndex >= 0)
-    {
-        ma_device_info *pPlaybackDevices;
-        ma_uint32 playbackCount;
-        ma_result enumResult = ma_context_get_devices(g_audioContext, &pPlaybackDevices, &playbackCount, NULL, NULL);
-        if (enumResult != MA_SUCCESS || static_cast<ma_uint32>(deviceIndex) >= playbackCount)
-        {
-            return Napi::Boolean::New(env, false);
-        }
-        selectedId = pPlaybackDevices[deviceIndex].id;
-        pDeviceId = &selectedId;
-    }
-    // deviceIndex == -1 leaves pDeviceId null → engine uses the system default.
-
-    // Stop all active sounds (but keep TSFNs alive)
-    for (int i = 0; i < IRD_MAX_CHANNELS; i++)
-    {
-        uninitChannel(i);
-    }
-
-    // Destroy current engine
-    ma_engine_uninit(g_engine);
-    delete g_engine;
-    g_engine = nullptr;
-
-    // Reinitialize engine with selected device
-    g_engine = new ma_engine();
-    ma_engine_config engineConfig = ma_engine_config_init();
-    engineConfig.pContext = g_audioContext;
-    if (pDeviceId)
-    {
-        engineConfig.pPlaybackDeviceID = pDeviceId;
-    }
-
-    ma_result result = ma_engine_init(&engineConfig, g_engine);
-    if (result != MA_SUCCESS)
-    {
-        delete g_engine;
-        g_engine = nullptr;
-
-        // Fallback: try default device
-        g_engine = new ma_engine();
-        ma_engine_config fallbackConfig = ma_engine_config_init();
-        fallbackConfig.pContext = g_audioContext;
-        ma_result fallbackResult = ma_engine_init(&fallbackConfig, g_engine);
-        if (fallbackResult != MA_SUCCESS)
-        {
-            delete g_engine;
-            g_engine = nullptr;
-            g_selectedDeviceIndex = -1;
-            return Napi::Boolean::New(env, false);
-        }
-        g_selectedDeviceIndex = -1;
-        return Napi::Boolean::New(env, false);
-    }
-
-    g_selectedDeviceIndex = deviceIndex;
+    g_selectedDeviceId = selectedId;
+    g_useSelectedDevice = true;
     return Napi::Boolean::New(env, true);
 }
 
 /**
- * Switch audio output to a specific device looked up by its stable ID.
- * Stops all sounds, reinitializes engine with the matched device.
+ * Switch audio output to a specific device looked up by its stable ID:
+ * validates the id against the current enumeration, remembers the
+ * selection, and tears down any live engine — the next play recreates it
+ * on the matched device (see ensureEngineCreated, which falls back to the
+ * system default should the device vanish before then).
  *
  * @param deviceId - Hex-encoded `ma_device_id` from a `getAudioDevices()` entry.
- * @returns true if the device was found and the engine was reinitialized.
- *          Returns false if the ID is malformed, the device isn't in the
- *          current enumeration, or engine reinit fails. On reinit failure
- *          the engine is recreated with the system default so the mixer
- *          stays usable.
+ * @returns true if the device was found and the selection accepted.
+ *          Returns false if the ID is malformed or the device isn't in
+ *          the current enumeration.
  */
 Napi::Value SetAudioDeviceById(const Napi::CallbackInfo &info)
 {
@@ -635,7 +742,7 @@ Napi::Value SetAudioDeviceById(const Napi::CallbackInfo &info)
         return Napi::Boolean::New(env, false);
     }
 
-    if (!g_engine || !g_audioContext)
+    if (!g_audioContext)
     {
         return Napi::Boolean::New(env, false);
     }
@@ -677,45 +784,22 @@ Napi::Value SetAudioDeviceById(const Napi::CallbackInfo &info)
     // may be invalidated by the next enumeration / reinit.
     ma_device_id selectedId = pPlaybackDevices[matchIndex].id;
 
-    // Stop all active sounds before tearing down the engine
-    for (int i = 0; i < IRD_MAX_CHANNELS; i++)
+    // Already on this physical device — nothing to change.
+    if (g_useSelectedDevice && memcmp(&selectedId, &g_selectedDeviceId, sizeof(ma_device_id)) == 0)
     {
-        uninitChannel(i);
+        return Napi::Boolean::New(env, true);
     }
 
-    ma_engine_uninit(g_engine);
-    delete g_engine;
-    g_engine = nullptr;
+    // Remember the selection and tear the engine down — the next play
+    // recreates it on the new device (ensureEngineCreated). Recreating
+    // eagerly here would leave an initialized device holding Windows'
+    // sleep-blocking power request while idle (#849). Should the device
+    // vanish before that play, ensureEngineCreated falls back to the
+    // system default so the mixer remains usable.
+    teardownEngine();
 
-    // Reinitialize engine with the selected device
-    g_engine = new ma_engine();
-    ma_engine_config engineConfig = ma_engine_config_init();
-    engineConfig.pContext = g_audioContext;
-    engineConfig.pPlaybackDeviceID = &selectedId;
-
-    ma_result result = ma_engine_init(&engineConfig, g_engine);
-    if (result != MA_SUCCESS)
-    {
-        delete g_engine;
-        g_engine = nullptr;
-
-        // Fallback: try default device so the mixer remains usable.
-        g_engine = new ma_engine();
-        ma_engine_config fallbackConfig = ma_engine_config_init();
-        fallbackConfig.pContext = g_audioContext;
-        ma_result fallbackResult = ma_engine_init(&fallbackConfig, g_engine);
-        if (fallbackResult != MA_SUCCESS)
-        {
-            delete g_engine;
-            g_engine = nullptr;
-        }
-        g_selectedDeviceIndex = -1;
-        return Napi::Boolean::New(env, false);
-    }
-
-    // Track the matched index so a subsequent `setAudioDevice(index)` skip
-    // optimization stays consistent with what's actually open.
-    g_selectedDeviceIndex = matchIndex;
+    g_selectedDeviceId = selectedId;
+    g_useSelectedDevice = true;
     return Napi::Boolean::New(env, true);
 }
 
@@ -727,6 +811,8 @@ Napi::Object Init(Napi::Env env, Napi::Object exports)
 {
     exports.Set("initAudioEngine", Napi::Function::New(env, InitAudioEngine));
     exports.Set("destroyAudioEngine", Napi::Function::New(env, DestroyAudioEngine));
+    exports.Set("startAudioEngine", Napi::Function::New(env, StartAudioEngine));
+    exports.Set("stopAudioEngine", Napi::Function::New(env, StopAudioEngine));
     exports.Set("playOnChannel", Napi::Function::New(env, PlayOnChannel));
     exports.Set("stopChannel", Napi::Function::New(env, StopChannel));
     exports.Set("setChannelVolume", Napi::Function::New(env, SetChannelVolume));

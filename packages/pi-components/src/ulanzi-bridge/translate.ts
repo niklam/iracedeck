@@ -54,7 +54,14 @@ export function elgatoToUlanzi(
     case "sendToPlugin":
       return { cmd: "sendToPlugin", ...base, payload: asRecord(frame.payload) ?? {} };
     case "openUrl":
-      return { cmd: "openurl", url: String(asRecord(frame.payload)?.url ?? ""), local: false, param: "" };
+      // Relayed out the plugin socket as a sendToPlugin marker: UlanziStudio
+      // ignores `openurl` sent on the PI socket but honours it from the plugin
+      // socket, so the Ulanzi adapter re-sends it from there (#845).
+      return {
+        cmd: "sendToPlugin",
+        ...base,
+        payload: { event: "openUrl", url: String(asRecord(frame.payload)?.url ?? "") },
+      };
     case "logMessage":
       return { cmd: "logMessage", message: String(asRecord(frame.payload)?.message ?? ""), level: "info" };
     default:
