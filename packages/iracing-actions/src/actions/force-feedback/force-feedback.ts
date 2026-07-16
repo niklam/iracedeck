@@ -8,9 +8,13 @@ import {
   getGlobalTitleSettings,
   type IDeckDialDownEvent,
   type IDeckDialRotateEvent,
+  type IDeckDialUpEvent,
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
+  type IDeckTouchTapEvent,
   type IDeckWillAppearEvent,
+  type IDeckWillDisappearEvent,
+  onGlobalSettingsChange,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
@@ -28,6 +32,8 @@ import wheelLfeIncreaseSvg from "@iracedeck/icons/force-feedback/wheel-lfe-incre
 import wheelLfeIntensityDecreaseSvg from "@iracedeck/icons/force-feedback/wheel-lfe-intensity-decrease.svg";
 import wheelLfeIntensityIncreaseSvg from "@iracedeck/icons/force-feedback/wheel-lfe-intensity-increase.svg";
 import z from "zod";
+
+import { DialSettings, ForceFeedbackDialSurface, seedDialFromLegacySetting } from "./force-feedback-dial-surface.js";
 
 type ForceFeedbackMode =
   | "auto-compute-ffb-force"
@@ -126,6 +132,10 @@ const ForceFeedbackSettings = CommonSettings.extend({
     ])
     .default("auto-compute-ffb-force"),
   direction: z.enum(["increase", "decrease"]).default("increase"),
+  // Dial-surface settings (#802), under the `dial` root so keypad and dial keys
+  // can't collide. catch: dial garbage degrades to dial defaults instead of
+  // failing the whole parse (which would reset a keypad instance).
+  dial: DialSettings.catch(() => DialSettings.parse({})),
 });
 
 type ForceFeedbackSettings = z.infer<typeof ForceFeedbackSettings>;
@@ -168,9 +178,42 @@ export function generateForceFeedbackSvg(settings: ForceFeedbackSettings, bindin
 export const FORCE_FEEDBACK_UUID = "com.iracedeck.sd.core.force-feedback" as const;
 
 export class ForceFeedback extends ConnectionStateAwareAction<ForceFeedbackSettings> {
+  /**
+   * The dial half of the action; all IDeck dial events route here (#802). No
+   * `setActiveBinding` is delegated — it would bleed onto the keypad buttons.
+   */
+  private readonly dialSurface = new ForceFeedbackDialSurface({
+    logger: this.logger,
+    getTelemetry: () => this.sdkController.getCurrentTelemetry(),
+    tapBinding: (settingKey) => this.tapBinding(settingKey),
+    isBindingMissing: (keys) => this.isBindingMissing(keys),
+  });
+
+  /** Keeps the dial strip's #612 missing-binding warning live while iRacing is offline (#802). */
+  private readonly unsubscribeGlobalSettings = onGlobalSettingsChange(() => this.dialSurface.refreshAll());
+
   override async onWillAppear(ev: IDeckWillAppearEvent<ForceFeedbackSettings>): Promise<void> {
     await super.onWillAppear(ev);
-    const settings = this.parseSettings(ev.payload.settings);
+    let settings = this.parseSettings(ev.payload.settings);
+
+    if (ev.action.isDial()) {
+      // #802 dial migration: a pre-dial-surface encoder placement drove the flat
+      // keypad `mode` — carry a valid rotation value over to `dial.setting`.
+      const seededDial = seedDialFromLegacySetting(ev.payload.settings);
+
+      if (seededDial) {
+        await ev.action.setSettings(seededDial);
+        settings = this.parseSettings(seededDial);
+      }
+
+      await this.dialSurface.willAppear(ev.action, settings.dial);
+      this.sdkController.subscribe(ev.action.id, (telemetry) => {
+        this.dialSurface.onTelemetry(ev.action.id, telemetry);
+      });
+
+      return;
+    }
+
     const activeKey = this.resolveGlobalKey(settings.mode, settings.direction);
 
     if (activeKey) {
@@ -180,9 +223,22 @@ export class ForceFeedback extends ConnectionStateAwareAction<ForceFeedbackSetti
     await this.updateDisplay(ev, settings);
   }
 
+  override async onWillDisappear(ev: IDeckWillDisappearEvent<ForceFeedbackSettings>): Promise<void> {
+    this.sdkController.unsubscribe(ev.action.id);
+    this.dialSurface.willDisappear(ev.action.id);
+    await super.onWillDisappear(ev);
+  }
+
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<ForceFeedbackSettings>): Promise<void> {
     await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
+
+    if (ev.action.isDial()) {
+      await this.dialSurface.didReceiveSettings(ev.action, settings.dial);
+
+      return;
+    }
+
     const activeKey = this.resolveGlobalKey(settings.mode, settings.direction);
 
     if (activeKey) {
@@ -198,34 +254,23 @@ export class ForceFeedback extends ConnectionStateAwareAction<ForceFeedbackSetti
     await this.executeMode(settings.mode, settings.direction);
   }
 
-  override async onDialDown(ev: IDeckDialDownEvent<ForceFeedbackSettings>): Promise<void> {
-    this.logger.info("Dial down received");
+  override async onDialRotate(ev: IDeckDialRotateEvent<ForceFeedbackSettings>): Promise<void> {
     const settings = this.parseSettings(ev.payload.settings);
-
-    // Auto Compute FFB Force is too disruptive to toggle accidentally via dial press
-    if (settings.mode === "auto-compute-ffb-force") {
-      this.logger.debug("Dial down ignored for auto-compute-ffb-force");
-
-      return;
-    }
-
-    await this.executeMode(settings.mode, settings.direction);
+    await this.dialSurface.rotate(ev.action, settings.dial, ev.payload.ticks, ev.payload.pressed === true);
   }
 
-  override async onDialRotate(ev: IDeckDialRotateEvent<ForceFeedbackSettings>): Promise<void> {
-    this.logger.info("Dial rotated");
+  override async onDialDown(ev: IDeckDialDownEvent<ForceFeedbackSettings>): Promise<void> {
     const settings = this.parseSettings(ev.payload.settings);
+    this.dialSurface.down(ev.action, settings.dial);
+  }
 
-    // Non-directional mode (auto-compute) has no +/- adjustment — ignore rotation
-    if (!DIRECTIONAL_MODES.has(settings.mode)) {
-      this.logger.debug(`Rotation ignored for ${settings.mode}`);
+  override async onDialUp(ev: IDeckDialUpEvent<ForceFeedbackSettings>): Promise<void> {
+    await this.dialSurface.up(ev.action.id);
+  }
 
-      return;
-    }
-
-    // Clockwise (ticks > 0) = increase, Counter-clockwise (ticks < 0) = decrease
-    const direction: DirectionType = ev.payload.ticks > 0 ? "increase" : "decrease";
-    await this.executeMode(settings.mode, direction);
+  override async onTouchTap(ev: IDeckTouchTapEvent<ForceFeedbackSettings>): Promise<void> {
+    const settings = this.parseSettings(ev.payload.settings);
+    await this.dialSurface.touchTap(ev.action, settings.dial, ev.payload.hold === true);
   }
 
   private parseSettings(settings: unknown): ForceFeedbackSettings {

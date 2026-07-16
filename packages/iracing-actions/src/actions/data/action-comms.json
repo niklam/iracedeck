@@ -953,6 +953,68 @@
       }
     }
   },
+  "force-feedback-dial": {
+    "_meta": {
+      "modeSetting": "dial.setting"
+    },
+    "ffb-force": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "cockpitMiscFfbForceIncrease",
+          "cockpitMiscFfbForceDecrease"
+        ]
+      }
+    },
+    "wheel-lfe": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "forceFeedbackWheelLfeLouder",
+          "forceFeedbackWheelLfeQuieter"
+        ]
+      }
+    },
+    "bass-shaker-lfe": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "forceFeedbackBassShakerLfeLouder",
+          "forceFeedbackBassShakerLfeQuieter"
+        ]
+      }
+    },
+    "wheel-lfe-intensity": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "forceFeedbackWheelLfeIntensityIncrease",
+          "forceFeedbackWheelLfeIntensityDecrease"
+        ]
+      }
+    },
+    "haptic-lfe-intensity": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "forceFeedbackHapticLfeIntensityIncrease",
+          "forceFeedbackHapticLfeIntensityDecrease"
+        ]
+      }
+    },
+    "auto-ffb": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "forceFeedbackAutoCompute"
+      }
+    }
+  },
   "chat": {
     "_meta": {
       "modeSetting": "mode"
