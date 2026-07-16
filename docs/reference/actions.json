@@ -93,8 +93,9 @@
           "id": "com.iracedeck.sd.core.black-box-selector",
           "name": "Black Box Selector",
           "file": "black-box-selector.ts",
-          "encoder": false,
-          "settingsKeys": ["mode", "blackBox"],
+          "encoder": true,
+          "settingsKeys": ["mode", "blackBox", "dial.pressBox"],
+          "description": "One black-box action for both surfaces (#808). On a KEYPAD button the Mode dropdown picks Direct (opens the box chosen by the blackBox setting — a toggle: pressing again while shown closes it), Next, or Previous; each taps a single key binding (blackBoxLapTiming…blackBoxWeather, blackBoxCycleNext, blackBoxCyclePrevious). On a DIAL (Elgato Encoder only per #786) settings live under the dial root: rotation ALWAYS cycles — clockwise taps blackBoxCycleNext, counter-clockwise blackBoxCyclePrevious, scaled by ticks and capped at 5 per event (there is no rotation-setting selector). A press gesture (dial.pressAction/dial.longPressAction, default None, plus the Elgato-only dial.tapAction/dial.longTouchAction, default None) can Open Selected Box: it single-taps the per-box binding chosen by dial.pressBox — the SAME single-tap dispatch the keypad Direct mode uses (so it toggles too). iRacing exposes no open-box telemetry (the #782 identity-only compromise), so the touch strip is static: a BB badge + BLACK BOX wordmark, dimmed under the #612 warning when the Cycle bindings are unset; it refreshes on global-settings changes, not telemetry (this surface never subscribes to the tick). Press vs long-press is classified at dialUp; turning while pressed fires no gesture. The PI branches per controller (actionInfo.payload.controller). Communication: key bindings on both surfaces (no SDK support).",
           "modes": [
             { "mode": "direct", "blackBox": "lap-timing", "label": "Select Lap Timing" },
             { "mode": "direct", "blackBox": "standings", "label": "Select Standings" },
