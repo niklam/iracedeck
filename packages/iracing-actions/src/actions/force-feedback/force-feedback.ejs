@@ -6,51 +6,129 @@
 	<body>
 		<%- include('section-header', { title: 'Action Settings' }) %>
 
-		<sdpi-item label="Mode">
-			<sdpi-select id="mode-select" setting="mode" default="auto-compute-ffb-force">
-				<optgroup label="Force Feedback">
-					<option value="auto-compute-ffb-force">Auto Compute FFB Force</option>
+		<% var __comms = require('./data/action-comms.json')['force-feedback']; %>
+		<% var __dialComms = require('./data/action-comms.json')['force-feedback-dial']; %>
+		<%# Two comms maps for one action (#802): the keypad map is direction-keyed
+		    while the dial rotation map requires BOTH keys (`pair`) — the same mode
+		    names carry different descriptors per surface. %>
+
+		<!-- Keypad settings — hidden when this instance is a dial (#802). -->
+		<div id="keypad-settings">
+			<sdpi-item label="Mode">
+				<sdpi-select id="mode-select" setting="mode" default="auto-compute-ffb-force">
+					<optgroup label="Force Feedback">
+						<option value="auto-compute-ffb-force">Auto Compute FFB Force</option>
+						<option value="ffb-force">FFB Force (max force)</option>
+						<option value="wheel-lfe">Wheel LFE</option>
+					</optgroup>
+					<optgroup label="Bass Shaker">
+						<option value="bass-shaker-lfe">BassShaker LFE</option>
+					</optgroup>
+					<optgroup label="Wheel LFE Controls">
+						<option value="wheel-lfe-intensity">Wheel LFE Intensity</option>
+					</optgroup>
+					<optgroup label="Haptic LFE Controls">
+						<option value="haptic-lfe-intensity">Haptic LFE Intensity</option>
+					</optgroup>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
+
+			<sdpi-item label="Direction" id="direction-item">
+				<sdpi-select id="direction-select" setting="direction" default="increase">
+					<option value="increase" id="increase-label">Increase</option>
+					<option value="decrease" id="decrease-label">Decrease</option>
+				</sdpi-select>
+			</sdpi-item>
+		</div>
+
+		<!-- Dial settings — shown only when this instance is a dial (#802). -->
+		<div id="dial-settings" class="hidden">
+			<sdpi-item label="Mode">
+				<sdpi-select setting="dial.setting" default="ffb-force">
 					<option value="ffb-force">FFB Force (max force)</option>
 					<option value="wheel-lfe">Wheel LFE</option>
-				</optgroup>
-				<optgroup label="Bass Shaker">
-					<option value="bass-shaker-lfe">BassShaker LFE</option>
-				</optgroup>
-				<optgroup label="Wheel LFE Controls">
+					<option value="bass-shaker-lfe">Bass Shaker LFE</option>
 					<option value="wheel-lfe-intensity">Wheel LFE Intensity</option>
-				</optgroup>
-				<optgroup label="Haptic LFE Controls">
 					<option value="haptic-lfe-intensity">Haptic LFE Intensity</option>
-				</optgroup>
-			</sdpi-select>
-		</sdpi-item>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="dial.setting" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+			<% if (locals.platform?.features?.dialFeedback !== false) { %>
+			<div class="ird-supporting-text">
+				Turn the dial to adjust the selected setting. FFB Force shows the live max
+				force in Nm on the touch strip; the LFE settings show the label only
+				(iRacing exposes no LFE state). Both the increase and decrease key bindings
+				must be set below.
+			</div>
+			<% } else { %>
+			<div class="ird-supporting-text">
+				Turn the knob to adjust the selected setting. Both the increase and decrease
+				key bindings must be set below.
+			</div>
+			<% } %>
 
-		<% var __comms = require('./data/action-comms.json')['force-feedback']; %>
-		<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
+			<sdpi-item label="Press Action">
+				<sdpi-select setting="dial.pressAction" default="none">
+					<option value="none">None</option>
+					<option value="auto-ffb">Auto FFB</option>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="dial.pressAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
 
-		<sdpi-item label="Direction" id="direction-item">
-			<sdpi-select id="direction-select" setting="direction" default="increase">
-				<option value="increase" id="increase-label">Increase</option>
-				<option value="decrease" id="decrease-label">Decrease</option>
-			</sdpi-select>
-		</sdpi-item>
+			<sdpi-item label="Long Press">
+				<sdpi-select setting="dial.longPressAction" default="none">
+					<option value="none">None</option>
+					<option value="auto-ffb">Auto FFB</option>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="dial.longPressAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
 
-		<%- include('title-overrides') %>
-		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color', 'graphic2Color'], defaults: require('./data/icon-defaults.json')['force-feedback'] }) %>
-		<%- include('border-overrides', { defaults: require('./data/icon-defaults.json')['force-feedback'] }) %>
-		<%- include('graphic-overrides') %>
-		<%- include('common-settings') %>
+			<% if (locals.platform?.features?.dialFeedback !== false) { %>
+			<sdpi-item label="Tap Display">
+				<sdpi-select setting="dial.tapAction" default="none">
+					<option value="none">None</option>
+					<option value="auto-ffb">Auto FFB</option>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="dial.tapAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+
+			<sdpi-item label="Long Touch">
+				<sdpi-select setting="dial.longTouchAction" default="none">
+					<option value="none">None</option>
+					<option value="auto-ffb">Auto FFB</option>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="dial.longTouchAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+
+			<%- include('dial-appearance') %>
+			<% } %>
+		</div>
+
+		<!-- Key-icon appearance — keypad only (a dial has no key icon). -->
+		<div id="keypad-appearance">
+			<%- include('title-overrides') %>
+			<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color', 'graphic2Color'], defaults: require('./data/icon-defaults.json')['force-feedback'] }) %>
+			<%- include('border-overrides', { defaults: require('./data/icon-defaults.json')['force-feedback'] }) %>
+			<%- include('graphic-overrides') %>
+			<%- include('common-settings') %>
+		</div>
 
 		<%- include('section-header', { title: 'Global Settings' }) %>
 
+		<%# Every force-feedback mode on both surfaces is a key binding — always show them. %>
 		<%- include('global-key-bindings', {
 			keyBindings: require('./data/key-bindings.json').forceFeedback
 		}) %>
-		<%- include('global-title-defaults') %>
-		<%- include('global-color-defaults') %>
-		<%- include('global-border-defaults') %>
-		<%- include('global-graphic-defaults') %>
-		<%- include('global-flag-flash') %>
+
+		<div id="keypad-global-appearance">
+			<%- include('global-title-defaults') %>
+			<%- include('global-color-defaults') %>
+			<%- include('global-border-defaults') %>
+			<%- include('global-graphic-defaults') %>
+			<%- include('global-flag-flash') %>
+		</div>
+
 		<%- include('global-common-settings') %>
 
 		<script>
@@ -66,8 +144,7 @@
 
 			function updateVisibility(mode) {
 				const directionItem = document.getElementById("direction-item");
-				if (!directionItem) return;
-				directionItem.classList.toggle("hidden", NON_DIRECTIONAL_MODES.has(mode));
+				if (directionItem) directionItem.classList.toggle("hidden", NON_DIRECTIONAL_MODES.has(mode));
 
 				const labels = DIRECTION_LABELS[mode];
 				if (labels) {
@@ -78,8 +155,33 @@
 				}
 			}
 
+			// Which surface this instance sits on: the PI registration's
+			// actionInfo.payload.controller ("Keypad" | "Encoder"; the Mirabox host
+			// may report "Knob"). Anything unknown or unavailable falls back to the
+			// keypad view (#802).
+			async function resolveController() {
+				try {
+					const client = window.SDPIComponents && window.SDPIComponents.streamDeckClient;
+					const info = client && (await client.getConnectionInfo());
+					const controller = info && info.actionInfo && info.actionInfo.payload && info.actionInfo.payload.controller;
+					return controller === "Encoder" || controller === "Knob" ? "Encoder" : "Keypad";
+				} catch (err) {
+					return "Keypad";
+				}
+			}
+
+			function applyDialView() {
+				document.getElementById("keypad-settings")?.classList.add("hidden");
+				document.getElementById("keypad-appearance")?.classList.add("hidden");
+				document.getElementById("keypad-global-appearance")?.classList.add("hidden");
+				document.getElementById("dial-settings")?.classList.remove("hidden");
+			}
+
 			async function initialize() {
 				await customElements.whenDefined("sdpi-select");
+
+				// Wire the keypad mode visibility FIRST so a slow/failed controller
+				// lookup still leaves a fully functional keypad PI (the default view).
 				const modeSelect = document.getElementById("mode-select");
 				if (modeSelect) {
 					const initialValue = modeSelect.value || "auto-compute-ffb-force";
@@ -96,6 +198,10 @@
 							updateVisibility(currentValue);
 						}
 					}, 100);
+				}
+
+				if ((await resolveController()) === "Encoder") {
+					applyDialView();
 				}
 			}
 

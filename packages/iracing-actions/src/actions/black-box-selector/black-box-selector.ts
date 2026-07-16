@@ -6,10 +6,15 @@ import {
   getGlobalColors,
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
+  type IDeckDialDownEvent,
   type IDeckDialRotateEvent,
+  type IDeckDialUpEvent,
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
+  type IDeckTouchTapEvent,
   type IDeckWillAppearEvent,
+  type IDeckWillDisappearEvent,
+  onGlobalSettingsChange,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
@@ -31,6 +36,7 @@ import weatherIconSvg from "@iracedeck/icons/black-box-selector/weather.svg";
 import z from "zod";
 
 import { BLACK_BOX_GLOBAL_KEYS } from "../../shared/black-box.js";
+import { BlackBoxSelectorDialSurface, DialSettings } from "./black-box-selector-dial-surface.js";
 
 const DIRECT_ICONS: Record<string, string> = {
   "lap-timing": lapTimingIconSvg,
@@ -93,6 +99,10 @@ const BlackBoxSelectorSettings = CommonSettings.extend({
       "weather",
     ])
     .default("lap-timing"),
+  // Dial-surface settings (#808), under the `dial` root so keypad and dial keys
+  // can't collide. catch: dial garbage degrades to dial defaults instead of
+  // failing the whole parse (which would reset a keypad instance).
+  dial: DialSettings.catch(() => DialSettings.parse({})),
 });
 
 type BlackBoxSelectorSettings = z.infer<typeof BlackBoxSelectorSettings>;
@@ -144,16 +154,48 @@ export function generateBlackBoxSelectorSvg(settings: BlackBoxSelectorSettings, 
 export const BLACK_BOX_SELECTOR_UUID = "com.iracedeck.sd.core.black-box-selector" as const;
 
 export class BlackBoxSelector extends ConnectionStateAwareAction<BlackBoxSelectorSettings> {
+  /**
+   * The dial half of the action; all IDeck dial events route here (#808). No
+   * `setActiveBinding` is delegated — it would bleed onto the keypad buttons.
+   */
+  private readonly dialSurface = new BlackBoxSelectorDialSurface({
+    logger: this.logger,
+    tapBinding: (settingKey) => this.tapBinding(settingKey),
+    isBindingMissing: (keys) => this.isBindingMissing(keys),
+  });
+
+  /** Keeps the dial strips' #612 missing-binding warning live while iRacing is offline (#808). */
+  private readonly unsubscribeGlobalSettings = onGlobalSettingsChange(() => this.dialSurface.refreshAll());
+
   override async onWillAppear(ev: IDeckWillAppearEvent<BlackBoxSelectorSettings>): Promise<void> {
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
+
+    if (ev.action.isDial()) {
+      await this.dialSurface.willAppear(ev.action, settings.dial);
+
+      return;
+    }
+
     this.setActiveBinding(this.resolveSettingKey(settings));
     await this.updateDisplay(ev, settings);
+  }
+
+  override async onWillDisappear(ev: IDeckWillDisappearEvent<BlackBoxSelectorSettings>): Promise<void> {
+    this.dialSurface.willDisappear(ev.action.id);
+    await super.onWillDisappear(ev);
   }
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<BlackBoxSelectorSettings>): Promise<void> {
     await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
+
+    if (ev.action.isDial()) {
+      await this.dialSurface.didReceiveSettings(ev.action, settings.dial);
+
+      return;
+    }
+
     this.setActiveBinding(this.resolveSettingKey(settings));
     await this.updateDisplay(ev, settings);
   }
@@ -193,11 +235,21 @@ export class BlackBoxSelector extends ConnectionStateAwareAction<BlackBoxSelecto
   }
 
   override async onDialRotate(ev: IDeckDialRotateEvent<BlackBoxSelectorSettings>): Promise<void> {
-    this.logger.info(`Dial rotated: ${ev.payload.ticks} ticks`);
+    const settings = this.parseSettings(ev.payload.settings);
+    await this.dialSurface.rotate(ev.action, settings.dial, ev.payload.ticks, ev.payload.pressed === true);
+  }
 
-    // Clockwise (ticks > 0) = next, Counter-clockwise (ticks < 0) = previous
-    const settingKey = ev.payload.ticks > 0 ? GLOBAL_KEYS.CYCLE_NEXT : GLOBAL_KEYS.CYCLE_PREVIOUS;
+  override async onDialDown(ev: IDeckDialDownEvent<BlackBoxSelectorSettings>): Promise<void> {
+    const settings = this.parseSettings(ev.payload.settings);
+    this.dialSurface.down(ev.action, settings.dial);
+  }
 
-    await this.tapBinding(settingKey);
+  override async onDialUp(ev: IDeckDialUpEvent<BlackBoxSelectorSettings>): Promise<void> {
+    await this.dialSurface.up(ev.action.id);
+  }
+
+  override async onTouchTap(ev: IDeckTouchTapEvent<BlackBoxSelectorSettings>): Promise<void> {
+    const settings = this.parseSettings(ev.payload.settings);
+    await this.dialSurface.touchTap(ev.action, settings.dial, ev.payload.hold === true);
   }
 }

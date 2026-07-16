@@ -147,9 +147,11 @@ export {
 // Session info utilities
 export {
   type CameraGroup,
+  type CameraInGroup,
   type CarNumberTargetClass,
   classifyCarNumberTarget,
   getCameraGroupsFromSessionInfo,
+  getCamerasInGroup,
   getCarNumberFromSessionInfo,
   getCarNumberRawFromSessionInfo,
   getPlayerCarNumberFromSessionInfo,

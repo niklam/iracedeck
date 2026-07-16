@@ -1,0 +1,1150 @@
+/**
+ * The dial (encoder) surface of Camera Controls (issue #803, reworked).
+ *
+ * On a Stream Deck+ dial, rotation cycles the camera or the focused car — the
+ * dial's `mode` selects the target and the turn direction replaces the keypad
+ * cycle modes' explicit next/previous setting (clockwise = next,
+ * counter-clockwise = previous). The touch strip's small top line is always the
+ * MODE name (CAMERA / SUB-CAMERA / CAR # / POSITION / DRIVING CAM); the main
+ * content identifies the thing that mode acts on:
+ *   - camera → the current camera group's icon + name, flanked by the dimmed
+ *     enabled-subset neighbours one detent either way,
+ *   - sub-camera → the current camera's NAME within the focused group, flanked
+ *     by the dimmed adjacent cameras (same `Cameras[]` order the dispatch steps),
+ *   - car-number → the focused car's number large in the centre, flanked by the
+ *     prev / next car numbers,
+ *   - race-position → the focused car's race POSITION large in the centre
+ *     (`P<pos>`, the primary readout — issue #803 rework) with its car number
+ *     smaller beneath it, flanked by the dimmed prev / next POSITION previews
+ *     (no car numbers at side size),
+ *   - driving → the current camera group's icon + name ONLY. The driving cycle
+ *     hands `group ± 1` to iRacing, which resolves and wraps it internally, so
+ *     there is no coherent neighbour to preview — better none than a lying one.
+ *
+ * Two families of mode:
+ *   - Cycle modes (camera / sub-camera / driving) rotate via the keypad's own
+ *     `executeCycle` SDK dispatch (reuse, don't duplicate).
+ *   - Car modes (car-number / race-position) compute the neighbouring car from
+ *     an explicit ordering — car number ascending, or the canonical live race
+ *     order (`getLiveRacePositions`, per `.claude/rules/race-positions.md`,
+ *     official `CarIdxPosition` only as the documented fallback) — and focus it
+ *     directly via the keypad's Switch-by-Number dispatch. race-position also
+ *     resolves to a car NUMBER (never a bare position) before dispatching: the
+ *     SDK's own `switchPos` resolves positions from a potentially different
+ *     (official) order than the canonical one the carousel previews, so
+ *     execution resolves the car number from the SAME canonical-first order
+ *     and target position the preview's side badges show (issue #803 rework
+ *     review) — preview and execution can't land on different cars. When the
+ *     focused car has no classified position (the pace / safety car, or a car
+ *     missing from the order), a detent still acts by re-entering the running
+ *     order at its end — next → the leader, previous → last place — rather
+ *     than stalling (#803).
+ *
+ * Everything the dial does is an iRacing SDK camera command, so — unlike the
+ * Setup dials — the surface taps no key bindings and never shows a
+ * missing-binding warning; out of a session each mode falls back to a plain
+ * identity label.
+ */
+import {
+  classifyDialRelease,
+  type DeckFeedbackPayload,
+  type DeckTriggerDescription,
+  escapeXml,
+  getDualPressThresholdMs,
+  type IDeckActionContext,
+  svgToDataUri,
+} from "@iracedeck/deck-core";
+import {
+  getAllCarNumbers,
+  getCameraGroupsFromSessionInfo,
+  getCamerasInGroup,
+  getCarNumberFromSessionInfo,
+  getCarNumberRawFromSessionInfo,
+  type TelemetryData,
+} from "@iracedeck/iracing-sdk";
+import type { ILogger } from "@iracedeck/logger";
+import { z } from "zod";
+
+import { dialAppearanceFields, type DialBoxColors, resolveDialBoxColors } from "../../shared/dial-box.js";
+import { renderDialNameIcon } from "../../shared/dial-name-icon.js";
+import { computeCameraCarousel, computeSubCameraCarousel } from "./camera-groups.js";
+
+/**
+ * Minimum gap (ms) between change-driven feedback pushes. Cycling a car or a
+ * camera moves `CamCarIdx` / `CamGroupNumber`, and the strip re-renders the
+ * moment the readout changes — but no more than once per this window so a burst
+ * of telemetry can't exceed the documented ≤10 `setFeedback`/sec/dial cap
+ * (mirrors the Setup Brakes dial).
+ */
+const CHANGE_RENDER_MIN_INTERVAL_MS = 100;
+
+/** The cycle target the dial rotates through. */
+export const DIAL_MODES = ["camera", "sub-camera", "car-number", "race-position", "driving"] as const;
+export type DialMode = (typeof DIAL_MODES)[number];
+
+/**
+ * The keypad `target` value each CYCLE dial mode maps to. Car modes are absent
+ * — they focus a computed target directly rather than cycling.
+ */
+export type DialCycleTarget = "cycle-camera" | "cycle-sub-camera" | "cycle-driving";
+type CycleDialMode = "camera" | "sub-camera" | "driving";
+
+const CYCLE_MODE_TO_TARGET: Record<CycleDialMode, DialCycleTarget> = {
+  camera: "cycle-camera",
+  "sub-camera": "cycle-sub-camera",
+  driving: "cycle-driving",
+};
+
+function isCycleMode(mode: DialMode): mode is CycleDialMode {
+  return mode === "camera" || mode === "sub-camera" || mode === "driving";
+}
+
+/** Rotation direction; clockwise (`ticks > 0`) advances, counter-clockwise goes back. */
+export type Direction = "next" | "previous";
+
+/**
+ * The actions a dial-button / touch gesture (Push, Long Press, Tap Display,
+ * Long Touch) can run, plus the "none" sentinel. Every real gesture reuses the
+ * keypad's own iRacing API dispatch: `focus-my-car` centres on the player's car
+ * (keypad Focus Your Car); `change-camera` switches to the next camera angle
+ * (keypad Cycle Camera); `focus-on-leader` / `focus-on-incident` /
+ * `focus-on-most-exciting` are the keypad's parameterless focus one-shots.
+ */
+export const GESTURE_ACTIONS = [
+  "none",
+  "focus-my-car",
+  "change-camera",
+  "focus-on-leader",
+  "focus-on-incident",
+  "focus-on-most-exciting",
+] as const;
+export type GestureSlot = (typeof GESTURE_ACTIONS)[number];
+
+/** Fallback identity label drawn when no live focus is available (out of session). */
+const MODE_IDENTITY: Record<DialMode, string> = {
+  camera: "CAMERA",
+  "sub-camera": "SUB CAM",
+  "car-number": "CAR #",
+  "race-position": "POSITION",
+  driving: "DRIVING",
+};
+
+/**
+ * Per-mode accent for the dash box's border / label / value (the DEFAULT color,
+ * each independently overridable per dial, issue #811) so multiple camera dials
+ * stay distinguishable at a glance.
+ */
+const MODE_COLOR: Record<DialMode, string> = {
+  camera: "#3498db",
+  "sub-camera": "#9b59b6",
+  "car-number": "#2ecc71",
+  "race-position": "#e74c3c",
+  driving: "#e67e22",
+};
+
+/** Friendly mode name for the encoder trigger description ("Cycle …"). */
+const MODE_LABEL: Record<DialMode, string> = {
+  camera: "Cameras",
+  "sub-camera": "Sub-Cameras",
+  "car-number": "Cars by Number",
+  "race-position": "Cars by Position",
+  driving: "Driving Cameras",
+};
+
+/**
+ * The strip's small top-line title — the ACTION/mode name, on every mode (issue
+ * #803 strip redesign). Short forms kept consistent with the strip typography;
+ * NO mode ever shows a camera or car name as the title.
+ */
+const MODE_TITLE: Record<DialMode, string> = {
+  camera: "CAMERA",
+  "sub-camera": "SUB-CAMERA",
+  "car-number": "CAR #",
+  "race-position": "POSITION",
+  driving: "DRIVING CAM",
+};
+
+/**
+ * Dial-surface settings, stored under the `dial` root key. All fields default,
+ * so a keypad-only instance (or a fresh dial) parses `{}` to a full object.
+ */
+export const DialSettings = z
+  .object({
+    // Which target rotation drives. Default "car-number" — the marquee
+    // broadcast/spectate flip-through-the-field use case (issue #803). The
+    // preprocess maps the pre-rework enum value "car" onto "car-number" so a
+    // persisted legacy dial keeps working (its gestures / colors untouched).
+    mode: z.preprocess((v) => (v === "car" ? "car-number" : v), z.enum(DIAL_MODES).default("car-number")),
+    // Push (short press) — fires on dialUp. Default None (blind-safe rule).
+    pressAction: z.enum(GESTURE_ACTIONS).default("none"),
+    // Long Press (held dial button past the threshold, no rotation) — fires on dialUp.
+    longPressAction: z.enum(GESTURE_ACTIONS).default("none"),
+    // Tap Display (touch-strip tap, hold === false). Default None for VR safety.
+    tapAction: z.enum(GESTURE_ACTIONS).default("none"),
+    // Long Touch (touch-strip tap, hold === true). Default None for VR safety.
+    longTouchAction: z.enum(GESTURE_ACTIONS).default("none"),
+    // Dash-box appearance overrides (colors, issue #811).
+    ...dialAppearanceFields,
+  })
+  // prefault (not default): a missing `dial` parses {} THROUGH the schema so
+  // the per-field defaults apply — same shape as a partially-persisted object.
+  .prefault({});
+
+export type DialSettings = z.infer<typeof DialSettings>;
+
+/**
+ * @internal Exported for testing
+ *
+ * Wrap a 1-based race position by `dir` within a field of `max` cars.
+ */
+export function wrapPosition(current: number, dir: 1 | -1, max: number): number {
+  return ((current - 1 + dir + max) % max) + 1;
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * Compute the neighbouring car by ascending car number. The list is the
+ * session's cars already sorted by car number (`getAllCarNumbers`); the focused
+ * car (`camCarIdx`) is located in it and its `dir` neighbour returned (wrapping
+ * at the ends). When the focused car is not in the list (e.g. the pace car),
+ * rotation starts from the first (next) or last (previous) car.
+ */
+export function computeCarNumberTarget(
+  camCarIdx: number | undefined,
+  cars: Array<{ carIdx: number; carNumber: string; carNumberRaw: number }>,
+  direction: Direction,
+): { carNumberRaw: number; carNumber: string } | null {
+  if (cars.length === 0) return null;
+
+  const dir = direction === "next" ? 1 : -1;
+  const idx = camCarIdx === undefined ? -1 : cars.findIndex((c) => c.carIdx === camCarIdx);
+  const nextIdx = idx === -1 ? (dir === 1 ? 0 : cars.length - 1) : (idx + dir + cars.length) % cars.length;
+  const target = cars[nextIdx];
+
+  return { carNumberRaw: target.carNumberRaw, carNumber: target.carNumber };
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * Compute the target race position for a rotation. `order` is a per-car,
+ * 1-based rank array indexed by `carIdx` (the canonical live order, or the
+ * `CarIdxPosition` fallback the caller supplies) — `0` = not classified.
+ *
+ * When the focused car IS classified, returns its current position, the wrapped
+ * target one detent away, and the field size. When the focused car is NOT
+ * classified (the pace / safety car, or a car missing from the order) but the
+ * field is non-empty, a detent still acts by re-entering the running order at
+ * its natural end — clockwise (next) → the leader (P1), counter-clockwise
+ * (previous) → last place (issue #803, so the pace car in focus doesn't stall
+ * cycling). `currentPosition` is then `null` (no position badge). Returns `null`
+ * only when there is no usable order at all (no order, or an empty field).
+ */
+export function computeRacePositionTarget(
+  camCarIdx: number | undefined,
+  order: number[] | null,
+  direction: Direction,
+): { currentPosition: number | null; targetPosition: number; maxPosition: number } | null {
+  if (!order || camCarIdx === undefined || camCarIdx < 0) return null;
+
+  const maxPosition = order.reduce((m, p) => (typeof p === "number" && p > m ? p : m), 0);
+
+  if (maxPosition <= 0) return null;
+
+  const dir = direction === "next" ? 1 : -1;
+  const currentPosition = order[camCarIdx];
+
+  // Classified focused car: step one position from it, wrapping the field.
+  if (typeof currentPosition === "number" && currentPosition > 0) {
+    return { currentPosition, targetPosition: wrapPosition(currentPosition, dir, maxPosition), maxPosition };
+  }
+
+  // Unclassified focused car (pace / safety car, or a car not in the order):
+  // re-enter the order at its natural end so a detent isn't a no-op. next → P1,
+  // previous → last place. No currentPosition → the carousel omits the badge.
+  return { currentPosition: null, targetPosition: dir === 1 ? 1 : maxPosition, maxPosition };
+}
+
+/** Human-readable label for a gesture slot (for the trigger description). */
+function gestureLabel(action: GestureSlot): string | undefined {
+  switch (action) {
+    case "focus-my-car":
+      return "Focus My Car";
+    case "change-camera":
+      return "Change Camera";
+    case "focus-on-leader":
+      return "Focus on Leader";
+    case "focus-on-incident":
+      return "Focus on Incident";
+    case "focus-on-most-exciting":
+      return "Focus on Most Exciting";
+    case "none":
+      return undefined;
+  }
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * Computes the encoder trigger descriptions from the current dial settings.
+ * `rotate` names the cycled target; `push` carries the press action with the
+ * long-press as a "(hold: …)" hint; `touch` / `longTouch` carry the touch-strip
+ * gestures.
+ */
+export function buildTriggerDescription(dial: DialSettings): DeckTriggerDescription {
+  const description: DeckTriggerDescription = {
+    rotate: `Cycle ${MODE_LABEL[dial.mode]}`,
+  };
+
+  const pushLabel = gestureLabel(dial.pressAction);
+  const holdLabel = gestureLabel(dial.longPressAction);
+
+  if (pushLabel && holdLabel) {
+    description.push = `${pushLabel} (hold: ${holdLabel})`;
+  } else if (pushLabel) {
+    description.push = pushLabel;
+  } else if (holdLabel) {
+    description.push = `Hold: ${holdLabel}`;
+  }
+
+  const tapLabel = gestureLabel(dial.tapAction);
+
+  if (tapLabel) {
+    description.touch = tapLabel;
+  }
+
+  const longTouchLabel = gestureLabel(dial.longTouchAction);
+
+  if (longTouchLabel) {
+    description.longTouch = longTouchLabel;
+  }
+
+  return description;
+}
+
+// --- Carousel rendering ------------------------------------------------------
+
+/** A colour-resolved camera-group icon glyph for the carousel. */
+export interface CarouselGlyph {
+  /** Source viewBox width of the group icon. */
+  width: number;
+  /** Source viewBox height. */
+  height: number;
+  /** The colour-resolved inner artwork (no `<svg>` wrapper). */
+  artwork: string;
+}
+
+/** One camera carousel slot: a group name plus its glyph (null when unmapped). */
+export interface CarouselSlot {
+  name: string;
+  glyph: CarouselGlyph | null;
+}
+
+/** The car-number carousel readouts: the focused car's number plus its ascending-order neighbours. */
+export interface CarCarouselView {
+  /** Focused car's display number (no `#`), or null out of a session. */
+  center: string | null;
+  prev: string | null;
+  next: string | null;
+}
+
+/**
+ * The race-position carousel readouts: the focused car's POSITION (the
+ * primary centre readout) and its car number (the secondary label beneath
+ * it), plus the dimmed side previews — themselves POSITIONS, not car
+ * numbers, since a side badge only needs to say "one detent away is P<n>"
+ * (issue #803 rework).
+ */
+export interface RacePositionCarouselView {
+  /** Focused car's race position, or null when unclassified (pace/safety car). */
+  centerPosition: number | null;
+  /** Focused car's display number (no `#`), or null out of a session. */
+  centerCarNumber: string | null;
+  /** Recovery-aware target position one detent back (see `computeRacePositionTarget`). */
+  prevPosition: number | null;
+  /** Recovery-aware target position one detent forward. */
+  nextPosition: number | null;
+}
+
+function svgWrap(w: number, h: number, inner: string): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">${inner}</svg>`;
+}
+
+/**
+ * The rounded dash-box panel: the background fills the panel INSIDE the border
+ * frame (outer margin stays device-black) and the border strokes it — matching
+ * the shared `renderDialBox` geometry so the carousel strips look identical to
+ * the label/value strips.
+ */
+function dialPanel(w: number, h: number, colors: DialBoxColors): string {
+  const minSide = Math.min(w, h);
+  const radius = Math.round(minSide * 0.16);
+  const inset = Math.max(5, Math.round(minSide * 0.045));
+  const strokeWidth = Math.max(5, Math.round(minSide * 0.05));
+  const innerRx = Math.max(0, radius - inset);
+
+  return `<rect x="${inset}" y="${inset}" width="${w - 2 * inset}" height="${h - 2 * inset}" rx="${innerRx}" fill="${colors.background}" stroke="${colors.border}" stroke-width="${strokeWidth}"/>`;
+}
+
+/** A centred identity label (out-of-session fallback). */
+function identityBox(w: number, h: number, label: string, colors: DialBoxColors): string {
+  const text = `<text x="${w / 2}" y="${Math.round(h * 0.5) + 8}" text-anchor="middle" fill="${colors.label}" font-family="Arial, sans-serif" font-size="24" font-weight="bold">${escapeXml(label)}</text>`;
+
+  return svgWrap(w, h, dialPanel(w, h, colors) + text);
+}
+
+/** The strip's small top-line title — the mode name, drawn on every live strip (issue #803). */
+function titleLine(w: number, h: number, title: string, colors: DialBoxColors): string {
+  return `<text x="${w / 2}" y="${Math.round(h * 0.2)}" text-anchor="middle" fill="${colors.label}" font-family="Arial, sans-serif" font-size="13" font-weight="bold" opacity="0.85">${escapeXml(title)}</text>`;
+}
+
+/** Places a glyph centred at (cx, cy), scaled so its longer side fits `size`. */
+function placeGlyph(glyph: CarouselGlyph, cx: number, cy: number, size: number, opacity: number): string {
+  const scale = size / Math.max(glyph.width, glyph.height);
+  const x = cx - (glyph.width * scale) / 2;
+  const y = cy - (glyph.height * scale) / 2;
+  const op = opacity < 1 ? ` opacity="${opacity}"` : "";
+
+  return `<g transform="translate(${x.toFixed(2)}, ${y.toFixed(2)}) scale(${scale.toFixed(4)})"${op}>${glyph.artwork}</g>`;
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * Renders the camera-carousel strip: the mode-name title on top, the current
+ * group's icon in the centre with its name beneath, flanked by the smaller
+ * dimmed previous / next groups. Driving mode passes `prev`/`next` as `null` for
+ * a current-only render (no coherent neighbour to preview). Falls back to a
+ * centred identity label out of a session (no current group).
+ */
+export function renderCameraCarousel(args: {
+  width: number;
+  height: number;
+  colors: DialBoxColors;
+  title: string;
+  identityLabel: string;
+  current: CarouselSlot | null;
+  prev: CarouselSlot | null;
+  next: CarouselSlot | null;
+}): string {
+  const { width: w, height: h, colors } = args;
+
+  if (!args.current) return identityBox(w, h, args.identityLabel, colors);
+
+  const parts: string[] = [dialPanel(w, h, colors), titleLine(w, h, args.title, colors)];
+
+  // Side slots (dimmed), drawn behind the centre.
+  for (const [slot, cx] of [
+    [args.prev, w * 0.18],
+    [args.next, w * 0.82],
+  ] as const) {
+    if (!slot) continue;
+
+    if (slot.glyph) parts.push(placeGlyph(slot.glyph, cx, h * 0.5, 26, 0.4));
+    else
+      parts.push(
+        `<text x="${cx}" y="${Math.round(h * 0.56)}" text-anchor="middle" fill="${colors.label}" font-family="Arial, sans-serif" font-size="11" font-weight="bold" opacity="0.4">${escapeXml(slot.name.toUpperCase())}</text>`,
+      );
+  }
+
+  // Centre glyph (if mapped) with the group name beneath it.
+  if (args.current.glyph) parts.push(placeGlyph(args.current.glyph, w / 2, h * 0.5, 42, 1));
+
+  parts.push(
+    `<text x="${w / 2}" y="${Math.round(h * 0.9)}" text-anchor="middle" fill="${colors.value}" font-family="Arial, sans-serif" font-size="14" font-weight="bold">${escapeXml(args.current.name.toUpperCase())}</text>`,
+  );
+
+  return svgWrap(w, h, parts.join(""));
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * Renders the sub-camera carousel: the mode-name title on top, the current
+ * camera's NAME within the focused group large in the centre, flanked by the
+ * smaller dimmed previous / next camera names (the same `Cameras[]` order the
+ * dispatch steps through). Falls back to a centred identity label out of a
+ * session (no current camera).
+ */
+export function renderSubCameraCarousel(args: {
+  width: number;
+  height: number;
+  colors: DialBoxColors;
+  title: string;
+  identityLabel: string;
+  current: string | null;
+  prev: string | null;
+  next: string | null;
+}): string {
+  const { width: w, height: h, colors } = args;
+
+  if (!args.current) return identityBox(w, h, args.identityLabel, colors);
+
+  const parts: string[] = [dialPanel(w, h, colors), titleLine(w, h, args.title, colors)];
+
+  for (const [name, cx] of [
+    [args.prev, w * 0.15],
+    [args.next, w * 0.85],
+  ] as const) {
+    if (!name) continue;
+
+    parts.push(
+      `<text x="${cx}" y="${Math.round(h * 0.52)}" text-anchor="middle" fill="${colors.label}" font-family="Arial, sans-serif" font-size="11" font-weight="bold" opacity="0.4">${escapeXml(name.toUpperCase())}</text>`,
+    );
+  }
+
+  parts.push(
+    `<text x="${w / 2}" y="${Math.round(h * 0.68)}" text-anchor="middle" fill="${colors.value}" font-family="Arial, sans-serif" font-size="20" font-weight="bold">${escapeXml(args.current.toUpperCase())}</text>`,
+  );
+
+  return svgWrap(w, h, parts.join(""));
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * Renders the car-number carousel strip: the mode-name title on top, the
+ * focused car's number large in the centre, flanked by the smaller dimmed
+ * previous / next car numbers. Falls back to a centred identity label out of
+ * a session (no focused car number).
+ */
+export function renderCarCarousel(args: {
+  width: number;
+  height: number;
+  colors: DialBoxColors;
+  title: string;
+  identityLabel: string;
+  center: string | null;
+  prev: string | null;
+  next: string | null;
+}): string {
+  const { width: w, height: h, colors } = args;
+
+  if (!args.center) return identityBox(w, h, args.identityLabel, colors);
+
+  const parts: string[] = [dialPanel(w, h, colors), titleLine(w, h, args.title, colors)];
+
+  for (const [num, cx] of [
+    [args.prev, w * 0.16],
+    [args.next, w * 0.84],
+  ] as const) {
+    if (!num) continue;
+
+    parts.push(
+      `<text x="${cx}" y="${Math.round(h * 0.62)}" text-anchor="middle" fill="${colors.label}" font-family="Arial, sans-serif" font-size="18" font-weight="bold" opacity="0.45">#${escapeXml(num)}</text>`,
+    );
+  }
+
+  parts.push(
+    `<text x="${w / 2}" y="${Math.round(h * 0.72)}" text-anchor="middle" fill="${colors.value}" font-family="Arial, sans-serif" font-size="40" font-weight="bold">#${escapeXml(args.center)}</text>`,
+  );
+
+  return svgWrap(w, h, parts.join(""));
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * Renders the race-position carousel strip: the mode-name title on top, the
+ * focused car's race POSITION large in the centre (`P<pos>`, the primary
+ * readout — issue #803 rework) with its car number smaller beneath it,
+ * flanked by the smaller dimmed previous / next POSITION previews (the SAME
+ * recovery-aware targets the rotation focuses — see
+ * `computeRacePositionTarget`). When the focused car has no classified
+ * position (the pace / safety car), the centre falls back to a number-only
+ * readout rather than a lying `P` badge; the side previews still show the
+ * recovery targets. Falls back to a centred identity label out of a session
+ * (no focused car number).
+ */
+export function renderRacePositionCarousel(args: {
+  width: number;
+  height: number;
+  colors: DialBoxColors;
+  title: string;
+  identityLabel: string;
+  centerPosition: number | null;
+  centerCarNumber: string | null;
+  prevPosition: number | null;
+  nextPosition: number | null;
+}): string {
+  const { width: w, height: h, colors } = args;
+
+  if (!args.centerCarNumber) return identityBox(w, h, args.identityLabel, colors);
+
+  const parts: string[] = [dialPanel(w, h, colors), titleLine(w, h, args.title, colors)];
+
+  for (const [pos, cx] of [
+    [args.prevPosition, w * 0.16],
+    [args.nextPosition, w * 0.84],
+  ] as const) {
+    if (pos === null) continue;
+
+    parts.push(
+      `<text x="${cx}" y="${Math.round(h * 0.62)}" text-anchor="middle" fill="${colors.label}" font-family="Arial, sans-serif" font-size="18" font-weight="bold" opacity="0.45">P${pos}</text>`,
+    );
+  }
+
+  if (args.centerPosition !== null) {
+    parts.push(
+      `<text x="${w / 2}" y="${Math.round(h * 0.68)}" text-anchor="middle" fill="${colors.value}" font-family="Arial, sans-serif" font-size="40" font-weight="bold">P${args.centerPosition}</text>`,
+    );
+    parts.push(
+      `<text x="${w / 2}" y="${Math.round(h * 0.9)}" text-anchor="middle" fill="${colors.label}" font-family="Arial, sans-serif" font-size="15" font-weight="bold">#${escapeXml(args.centerCarNumber)}</text>`,
+    );
+  } else {
+    parts.push(
+      `<text x="${w / 2}" y="${Math.round(h * 0.72)}" text-anchor="middle" fill="${colors.value}" font-family="Arial, sans-serif" font-size="40" font-weight="bold">#${escapeXml(args.centerCarNumber)}</text>`,
+    );
+  }
+
+  return svgWrap(w, h, parts.join(""));
+}
+
+// --- Runtime state -----------------------------------------------------------
+
+/** Per-context runtime state. */
+interface CameraDialContext {
+  dial: DialSettings;
+  action: IDeckActionContext;
+  /** Timestamp (ms) the current dial-button press started (dialDown). */
+  pressStart: number;
+  /**
+   * Whether the dial was rotated while the button was held during the current
+   * press. Set in rotate (pressed === true), read once at dialUp so a
+   * push+turn cycles without also firing the press gesture on release.
+   */
+  rotatedWhilePressed: boolean;
+  /** Signature of the DISPLAYED readout at the last change-driven render. */
+  lastRenderSig: string | null;
+  /** Timestamp (ms) of the last change-driven feedback push (throttle gate). */
+  lastChangeRenderAt: number;
+}
+
+/**
+ * The delegates the surface needs from its owning action. Camera cycling and
+ * focus stay on the action (the SDK camera commands), so the dial reuses the
+ * SAME dispatch as the keypad rather than duplicating it. Deliberately NO
+ * `setActiveBinding` / `tapBinding`: the surface issues no key bindings, and
+ * readiness state is one value per action-class instance that a dial context
+ * would bleed onto the keypad buttons (see global-settings.md).
+ */
+export interface CameraDialHost {
+  readonly logger: ILogger;
+  getTelemetry(): TelemetryData | null;
+  getSessionInfo(): unknown;
+  /**
+   * The canonical live race order (carIdx → 1-based rank), per
+   * `.claude/rules/race-positions.md`. `null` when there is no live order (a
+   * non-race session, or before it is available) — the surface then falls back
+   * to the official `CarIdxPosition` telemetry.
+   */
+  getRacePositions(): number[] | null;
+  /** Enabled camera-group names (the global `cameraGroupSubset`). */
+  getEnabledCameraGroups(): string[];
+  /** Colour-resolved carousel glyph for a group name, or null when unmapped. */
+  getGroupGlyph(groupName: string): CarouselGlyph | null;
+  /** Cycle the given target one step (the keypad's own `executeCycle`). */
+  cycle(target: DialCycleTarget, direction: Direction): void;
+  /**
+   * Focus a car by its raw car number (the keypad Switch by Car Number
+   * dispatch). Also the race-position mode's execution path: it resolves its
+   * target to a car number (via the same canonical-first order the preview
+   * uses) rather than dispatching a bare position, so the camera can't land on
+   * a different car than the one previewed — see the file header.
+   */
+  focusCarNumber(carNumberRaw: number): void;
+  /** Center the camera on the player's car (the keypad Focus Your Car mode). */
+  focusMyCar(): void;
+  /** Switch to the next camera angle (the keypad Cycle Camera dispatch). */
+  changeCamera(): void;
+  /** Focus the race leader (the keypad Focus on Leader mode). */
+  focusOnLeader(): void;
+  /** Focus the latest incident (the keypad Focus on Incident mode). */
+  focusOnIncident(): void;
+  /** Focus the director's most-exciting car (the keypad Focus on Most Exciting mode). */
+  focusOnMostExciting(): void;
+}
+
+/**
+ * Owns all per-dial-context state, dispatches rotations and gestures, and
+ * renders the touch-strip carousel. The owning action routes every dial
+ * lifecycle/input event here and forwards telemetry ticks per subscribed
+ * context.
+ */
+export class CameraDialSurface {
+  private readonly contextsState = new Map<string, CameraDialContext>();
+
+  constructor(private readonly host: CameraDialHost) {}
+
+  async willAppear(action: IDeckActionContext, dial: DialSettings): Promise<void> {
+    const ctx = this.ensureContext(action, dial);
+
+    // The deck-app image for the dial: just the action name. Without this the
+    // app falls back to keypad iconography for the dial slot.
+    action
+      .setImage(renderDialNameIcon({ line1: "CAMERA", line2: "CONTROLS", backgroundColor: "#2a3a4a" }))
+      .catch((err) => {
+        this.host.logger.debug(`Dial name icon push failed: ${String(err)}`);
+      });
+
+    await this.applyTriggerDescription(ctx);
+    await this.renderFeedback(ctx);
+  }
+
+  willDisappear(actionId: string): void {
+    this.contextsState.delete(actionId);
+  }
+
+  async didReceiveSettings(action: IDeckActionContext, dial: DialSettings): Promise<void> {
+    const ctx = this.ensureContext(action, dial);
+    // Bust the memo so the next render reflects the new mode even if it happens
+    // to format to the same readout string as the previous one.
+    ctx.lastRenderSig = null;
+
+    await this.applyTriggerDescription(ctx);
+    await this.renderFeedback(ctx);
+  }
+
+  rotate(action: IDeckActionContext, dial: DialSettings, ticks: number, pressed: boolean): void {
+    const ctx = this.ensureContext(action, dial);
+
+    if (ticks === 0) return;
+
+    // A pressed rotation still cycles; the guard makes the dialUp classifier
+    // skip the press gesture so holding-and-turning never also fires it. The
+    // readout settles a beat later from telemetry.
+    if (pressed) {
+      ctx.rotatedWhilePressed = true;
+    }
+
+    // One step per rotate event (direction from the tick sign). The camera
+    // commands compute the next car/group/position from the CURRENT telemetry,
+    // which only advances after a sim tick — so re-issuing them N times in one
+    // event would re-target the same neighbour, not step N. One detent = one
+    // step; a continued spin arrives as further rotate events.
+    const direction: Direction = ticks > 0 ? "next" : "previous";
+    this.dispatchRotation(dial.mode, direction);
+    this.host.logger.info("Camera dial rotated");
+    this.host.logger.debug(`${dial.mode} ${direction}`);
+  }
+
+  down(action: IDeckActionContext, dial: DialSettings): void {
+    const ctx = this.ensureContext(action, dial);
+
+    // Record the press start and clear the push+turn guard. Fire nothing and
+    // start no timer — press vs long-press is classified once at dialUp.
+    ctx.pressStart = Date.now();
+    ctx.rotatedWhilePressed = false;
+  }
+
+  async up(actionId: string): Promise<void> {
+    const ctx = this.contextsState.get(actionId);
+
+    if (!ctx) return;
+
+    // Consume the press start immediately so a stray dialUp without a preceding
+    // dialDown can't reclassify. A 0 sentinel means "no press in progress".
+    const pressStartMs = ctx.pressStart;
+    ctx.pressStart = 0;
+
+    if (pressStartMs === 0) return;
+
+    const kind = classifyDialRelease({
+      pressStartMs,
+      nowMs: Date.now(),
+      rotatedWhilePressed: ctx.rotatedWhilePressed,
+      thresholdMs: getDualPressThresholdMs(),
+    });
+
+    if (kind === "push-turn") return;
+
+    const gesture = kind === "long" ? ctx.dial.longPressAction : ctx.dial.pressAction;
+
+    if (gesture === "none") return;
+
+    this.host.logger.info(kind === "long" ? "Camera dial long-pressed" : "Camera dial pressed");
+    this.doGesture(gesture);
+  }
+
+  async touchTap(action: IDeckActionContext, dial: DialSettings, hold: boolean): Promise<void> {
+    if (!__FEATURE_DIAL_FEEDBACK__) return;
+
+    // hold === true → Long Touch slot; hold === false → Tap Display slot.
+    const gesture = hold ? dial.longTouchAction : dial.tapAction;
+
+    if (gesture === "none") return;
+
+    this.ensureContext(action, dial);
+    this.host.logger.info(hold ? "Camera dial long touch" : "Camera dial tap");
+    this.doGesture(gesture);
+  }
+
+  onTelemetry(actionId: string, _telemetry: TelemetryData | null): void {
+    const ctx = this.contextsState.get(actionId);
+
+    if (!ctx) return;
+
+    const sig = this.displayedSignature(ctx);
+
+    if (sig === ctx.lastRenderSig) return;
+
+    // Changed but feedback-throttled: do nothing and do NOT advance
+    // lastRenderSig, so the throttled feedback still fires next window.
+    if (Date.now() - ctx.lastChangeRenderAt < CHANGE_RENDER_MIN_INTERVAL_MS) return;
+
+    // Advance the baseline SYNCHRONOUSLY before the async render: 60 Hz ticks
+    // arriving while the setFeedback push is still in flight would otherwise each
+    // fire another push inside the same 100 ms window, defeating the ≤10
+    // setFeedback/sec/dial throttle.
+    ctx.lastRenderSig = sig;
+    ctx.lastChangeRenderAt = Date.now();
+    this.renderFeedback(ctx).catch((err) => {
+      this.host.logger.debug(`Dial feedback render failed: ${String(err)}`);
+    });
+  }
+
+  /**
+   * Re-renders every dial context (readout memo busted). Called by the owning
+   * action on global-settings changes so a dash-box appearance edit (issue #811)
+   * or a camera-subset change redraws the strip even while iRacing is offline
+   * (no telemetry ticks arrive).
+   */
+  refreshAll(): void {
+    for (const ctx of this.contextsState.values()) {
+      ctx.lastRenderSig = null;
+      this.renderFeedback(ctx).catch((err) => {
+        this.host.logger.debug(`Dial feedback refresh failed: ${String(err)}`);
+      });
+    }
+  }
+
+  private ensureContext(action: IDeckActionContext, dial: DialSettings): CameraDialContext {
+    let ctx = this.contextsState.get(action.id);
+
+    if (!ctx) {
+      ctx = {
+        dial,
+        action,
+        pressStart: 0,
+        rotatedWhilePressed: false,
+        lastRenderSig: null,
+        lastChangeRenderAt: 0,
+      };
+      this.contextsState.set(action.id, ctx);
+    } else {
+      ctx.action = action;
+      ctx.dial = dial;
+    }
+
+    return ctx;
+  }
+
+  /** Routes a rotation to the cycle dispatch or the car-focus dispatch by mode. */
+  private dispatchRotation(mode: DialMode, direction: Direction): void {
+    if (isCycleMode(mode)) {
+      this.host.cycle(CYCLE_MODE_TO_TARGET[mode], direction);
+
+      return;
+    }
+
+    const telemetry = this.host.getTelemetry();
+    const camCarIdx = telemetry?.CamCarIdx;
+
+    if (mode === "car-number") {
+      const cars = getAllCarNumbers(this.host.getSessionInfo(), true, true);
+      const target = computeCarNumberTarget(camCarIdx, cars, direction);
+
+      if (target) this.host.focusCarNumber(target.carNumberRaw);
+
+      return;
+    }
+
+    // race-position: canonical live order, official CarIdxPosition as fallback.
+    // Resolve the target car NUMBER from that SAME order (never dispatch a bare
+    // position) — the carousel preview's side badges show this SAME
+    // recovery-aware target POSITION (computeRacePositionTarget), so preview
+    // and execution can't land on different cars even where canonical and
+    // official position orders diverge.
+    const order = this.resolveOrder(telemetry);
+    const target = computeRacePositionTarget(camCarIdx, order, direction);
+
+    if (!target || !order) return;
+
+    const carNumberRaw = carNumberRawAtPosition(order, this.host.getSessionInfo(), target.targetPosition);
+
+    if (carNumberRaw !== null) this.host.focusCarNumber(carNumberRaw);
+  }
+
+  /** The live order, canonical first, official `CarIdxPosition` as fallback. */
+  private resolveOrder(telemetry: TelemetryData | null): number[] | null {
+    return this.host.getRacePositions() ?? telemetry?.CarIdxPosition ?? null;
+  }
+
+  /** Runs a configured press / touch gesture through the keypad's own dispatch. */
+  private doGesture(gesture: GestureSlot): void {
+    switch (gesture) {
+      case "focus-my-car":
+        this.host.logger.info("Camera dial focus my car");
+        this.host.focusMyCar();
+
+        return;
+      case "change-camera":
+        this.host.logger.info("Camera dial change camera");
+        this.host.changeCamera();
+
+        return;
+      case "focus-on-leader":
+        this.host.logger.info("Camera dial focus on leader");
+        this.host.focusOnLeader();
+
+        return;
+      case "focus-on-incident":
+        this.host.logger.info("Camera dial focus on incident");
+        this.host.focusOnIncident();
+
+        return;
+      case "focus-on-most-exciting":
+        this.host.logger.info("Camera dial focus on most exciting");
+        this.host.focusOnMostExciting();
+
+        return;
+      case "none":
+        return;
+    }
+  }
+
+  /** Builds the camera carousel view from the current group + enabled subset. */
+  private cameraCarouselSlots(telemetry: TelemetryData | null): {
+    current: CarouselSlot | null;
+    prev: CarouselSlot | null;
+    next: CarouselSlot | null;
+  } {
+    const enabled = this.host.getEnabledCameraGroups();
+    const sessionGroups = getCameraGroupsFromSessionInfo(this.host.getSessionInfo());
+    const camGroup = typeof telemetry?.CamGroupNumber === "number" ? telemetry.CamGroupNumber : null;
+    const carousel = computeCameraCarousel(camGroup, enabled, sessionGroups);
+
+    const slotFor = (group: (typeof carousel)["current"]): CarouselSlot | null =>
+      group ? { name: group.groupName, glyph: this.host.getGroupGlyph(group.groupName) } : null;
+
+    return { current: slotFor(carousel.current), prev: slotFor(carousel.prev), next: slotFor(carousel.next) };
+  }
+
+  /** Builds the car-number carousel view: the focused car plus its ascending-order neighbours. */
+  private carNumberCarouselView(telemetry: TelemetryData | null): CarCarouselView {
+    const sessionInfo = this.host.getSessionInfo();
+    const camCarIdx = telemetry?.CamCarIdx;
+    const center =
+      typeof camCarIdx === "number" && camCarIdx >= 0 ? getCarNumberFromSessionInfo(sessionInfo, camCarIdx) : null;
+    const cars = getAllCarNumbers(sessionInfo, true, true);
+
+    return {
+      center,
+      prev: computeCarNumberTarget(camCarIdx, cars, "previous")?.carNumber ?? null,
+      next: computeCarNumberTarget(camCarIdx, cars, "next")?.carNumber ?? null,
+    };
+  }
+
+  /**
+   * Builds the race-position carousel view: the focused car's position (the
+   * primary centre readout) and car number (secondary), plus the dimmed side
+   * PREVIEWS — the SAME per-direction targets the rotation will focus
+   * (including the pace-car recovery: next → leader, previous → last), so the
+   * carousel never previews a position a detent doesn't actually land on.
+   */
+  private racePositionCarouselView(telemetry: TelemetryData | null): RacePositionCarouselView {
+    const sessionInfo = this.host.getSessionInfo();
+    const camCarIdx = telemetry?.CamCarIdx;
+    const centerCarNumber =
+      typeof camCarIdx === "number" && camCarIdx >= 0 ? getCarNumberFromSessionInfo(sessionInfo, camCarIdx) : null;
+
+    const order = this.resolveOrder(telemetry);
+    const nextTarget = computeRacePositionTarget(camCarIdx, order, "next");
+    const prevTarget = computeRacePositionTarget(camCarIdx, order, "previous");
+
+    if (!nextTarget || !prevTarget) {
+      return { centerPosition: null, centerCarNumber, prevPosition: null, nextPosition: null };
+    }
+
+    return {
+      // null for an unclassified focused car → no position badge (falls back
+      // to a number-only centre in the renderer).
+      centerPosition: nextTarget.currentPosition,
+      centerCarNumber,
+      prevPosition: prevTarget.targetPosition,
+      nextPosition: nextTarget.targetPosition,
+    };
+  }
+
+  /**
+   * Builds the sub-camera carousel view: the current camera's name within the
+   * focused group plus the adjacent camera names, from the SAME
+   * `computeSubCameraCarousel` the keypad/dial sub-camera dispatch steps through
+   * (over the group's `CameraInfo.Cameras[]`), so preview == execution.
+   */
+  private subCameraView(telemetry: TelemetryData | null): {
+    current: string | null;
+    prev: string | null;
+    next: string | null;
+  } {
+    const camGroup = telemetry?.CamGroupNumber;
+
+    if (typeof camGroup !== "number") return { current: null, prev: null, next: null };
+
+    const cameras = getCamerasInGroup(this.host.getSessionInfo(), camGroup);
+    const camCameraNum = typeof telemetry?.CamCameraNumber === "number" ? telemetry.CamCameraNumber : null;
+    const carousel = computeSubCameraCarousel(camCameraNum, cameras);
+
+    return {
+      current: carousel.current?.cameraName ?? null,
+      prev: carousel.prev?.cameraName ?? null,
+      next: carousel.next?.cameraName ?? null,
+    };
+  }
+
+  /**
+   * The current camera group as a carousel slot (icon + name) for the driving
+   * mode's current-only strip. Resolved straight from telemetry + the session
+   * camera-group list (driving cycles ALL groups, not the enabled subset).
+   */
+  private drivingCurrentSlot(telemetry: TelemetryData | null): CarouselSlot | null {
+    const camGroup = telemetry?.CamGroupNumber;
+
+    if (typeof camGroup !== "number") return null;
+
+    const group = getCameraGroupsFromSessionInfo(this.host.getSessionInfo()).find((g) => g.groupNum === camGroup);
+
+    return group ? { name: group.groupName, glyph: this.host.getGroupGlyph(group.groupName) } : null;
+  }
+
+  /** A compact signature of the displayed readout; a feedback push is due when it changes. */
+  private displayedSignature(ctx: CameraDialContext): string {
+    const dial = ctx.dial;
+    const telemetry = this.host.getTelemetry();
+
+    if (dial.mode === "camera") {
+      const { current, prev, next } = this.cameraCarouselSlots(telemetry);
+
+      return ["camera", prev?.name ?? "", current?.name ?? "", next?.name ?? ""].join("|");
+    }
+
+    if (dial.mode === "car-number") {
+      const v = this.carNumberCarouselView(telemetry);
+
+      return ["car-number", v.center ?? "", v.prev ?? "", v.next ?? ""].join("|");
+    }
+
+    if (dial.mode === "race-position") {
+      const v = this.racePositionCarouselView(telemetry);
+
+      return [
+        "race-position",
+        v.centerCarNumber ?? "",
+        v.centerPosition ?? "",
+        v.prevPosition ?? "",
+        v.nextPosition ?? "",
+      ].join("|");
+    }
+
+    if (dial.mode === "sub-camera") {
+      const v = this.subCameraView(telemetry);
+
+      return ["sub-camera", v.prev ?? "", v.current ?? "", v.next ?? ""].join("|");
+    }
+
+    // driving: current group only.
+    return ["driving", this.drivingCurrentSlot(telemetry)?.name ?? ""].join("|");
+  }
+
+  /** Pushes the encoder trigger descriptions for a dial (Elgato only). */
+  private async applyTriggerDescription(ctx: CameraDialContext): Promise<void> {
+    if (!__FEATURE_DIAL_FEEDBACK__ || !ctx.action.isDial()) return;
+
+    await ctx.action.setTriggerDescription(buildTriggerDescription(ctx.dial));
+  }
+
+  /** Builds the touch-strip SVG for the current mode. */
+  private renderStrip(dial: DialSettings): string {
+    const colors = resolveDialBoxColors(dial.colors, MODE_COLOR[dial.mode]);
+    const telemetry = this.host.getTelemetry();
+    const base = { width: 200, height: 100, colors, title: MODE_TITLE[dial.mode] } as const;
+
+    if (dial.mode === "camera") {
+      const slots = this.cameraCarouselSlots(telemetry);
+
+      return renderCameraCarousel({ ...base, identityLabel: MODE_IDENTITY.camera, ...slots });
+    }
+
+    if (dial.mode === "car-number") {
+      const view = this.carNumberCarouselView(telemetry);
+
+      return renderCarCarousel({ ...base, identityLabel: MODE_IDENTITY["car-number"], ...view });
+    }
+
+    if (dial.mode === "race-position") {
+      const view = this.racePositionCarouselView(telemetry);
+
+      return renderRacePositionCarousel({ ...base, identityLabel: MODE_IDENTITY["race-position"], ...view });
+    }
+
+    if (dial.mode === "sub-camera") {
+      const view = this.subCameraView(telemetry);
+
+      return renderSubCameraCarousel({ ...base, identityLabel: MODE_IDENTITY["sub-camera"], ...view });
+    }
+
+    // driving: the current camera group icon + name only. The driving cycle
+    // hands `group ± 1` to iRacing, which resolves and wraps it internally — no
+    // coherent neighbour to preview — so prev/next are null (current-only).
+    return renderCameraCarousel({
+      ...base,
+      identityLabel: MODE_IDENTITY.driving,
+      current: this.drivingCurrentSlot(telemetry),
+      prev: null,
+      next: null,
+    });
+  }
+
+  /** Pushes the touch-strip feedback (the full-cell carousel/readout) when this is a dial. */
+  private async renderFeedback(ctx: CameraDialContext): Promise<void> {
+    if (!__FEATURE_DIAL_FEEDBACK__) return;
+
+    if (!ctx.action.isDial()) return;
+
+    // Snapshot the signature of the state being RENDERED before the push:
+    // recomputing it after the await would record whatever telemetry arrived
+    // while setFeedback was in flight as "rendered", leaving the strip showing
+    // stale state A while the baseline says B — suppressing B's render until
+    // yet another change.
+    const renderedSignature = this.displayedSignature(ctx);
+    const feedback: DeckFeedbackPayload = { box: svgToDataUri(this.renderStrip(ctx.dial)) };
+    await ctx.action.setFeedback(feedback);
+
+    // Reset the change-detector baseline so this pushed feedback doesn't
+    // immediately re-fire the render-on-change path on the next telemetry tick.
+    ctx.lastRenderSig = renderedSignature;
+    ctx.lastChangeRenderAt = Date.now();
+  }
+}
+
+/** The carIdx running at a given race position (the inverse of `order`), or null when unclassified. */
+function carIdxAtPosition(order: number[], position: number): number | null {
+  const carIdx = order.findIndex((p) => p === position);
+
+  return carIdx < 0 ? null : carIdx;
+}
+
+/**
+ * The raw car number (the camera-API identity, not the display string) running
+ * at a given race position. Used by the race-position rotation dispatch — see
+ * the file header — so execution focuses the car at the SAME target position
+ * the carousel's side preview shows, rather than a bare position that
+ * iRacing's own `switchPos` would resolve against a potentially different
+ * (official) order.
+ */
+function carNumberRawAtPosition(order: number[], sessionInfo: unknown, position: number): number | null {
+  const carIdx = carIdxAtPosition(order, position);
+
+  return carIdx === null ? null : getCarNumberRawFromSessionInfo(sessionInfo, carIdx);
+}
