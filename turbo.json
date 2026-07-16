@@ -18,6 +18,11 @@
       "inputs": ["voice/**", "src/build/**", "src/presets.mjs"],
       "outputs": [".cache/**"]
     },
+    "@iracedeck/website#build": {
+      "dependsOn": ["^build"],
+      "env": ["PUBLIC_IRACEDECK_VERSION"],
+      "outputs": ["dist/**"]
+    },
     "dev": {
       "dependsOn": ["^build"],
       "cache": false,

@@ -6,6 +6,7 @@
 import { defineRouteMiddleware } from "@astrojs/starlight/route-data";
 
 import entries from "./data/icon-gallery.json";
+import type { GalleryEntry } from "./gallery-gen/lib.js";
 import { buildGalleryToc } from "./gallery-gen/sections.js";
 
 export const onRequest = defineRouteMiddleware(({ locals }) => {
@@ -15,5 +16,5 @@ export const onRequest = defineRouteMiddleware(({ locals }) => {
 
   if (!route.toc) return;
 
-  route.toc.items = [...route.toc.items, ...buildGalleryToc(entries)];
+  route.toc.items = [...route.toc.items, ...buildGalleryToc(entries as GalleryEntry[])];
 });
