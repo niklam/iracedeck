@@ -24,6 +24,10 @@ _Unreleased_
 - Black Box Selector now works on a Stream Deck+ dial: turn to step through iRacing's black boxes (clockwise for the next, counter-clockwise for the previous) and optionally press to open one box you pick. It reuses your existing black-box key bindings, and the settings panel shows dial settings on a dial and button settings on a button. Because iRacing reports no telemetry for which box is open, the touch strip shows the action's identity only. Dials are Elgato Stream Deck+ only for now.
 - The Race Engineer now estimates how many laps of fuel you have left and calls the count out mid-lap — *"We're estimating that we have about 3 laps of fuel left after completing this lap."* — ending in a dedicated *"Box this lap for fuel."* call when the tank won't cover another full lap. Each count from 10 down to 1 plus the box call has its own checkbox (5, 3, 2, 1 and Box on by default), and a safety-margin slider (0–3 laps, default 0.3) makes the spoken estimate deliberately conservative relative to Session Info's Laps to Empty display. Counts announce once per stint on the way down — saving fuel never repeats a higher count — and a refuel re-arms them all.
 
+**Improvements**
+
+- The developer documentation on iracedeck.com now includes a searchable gallery of every icon shipped with the plugin, plus a designing-icons guide for contributing custom icons or a full alternative icon set.
+
 **Bug Fixes**
 
 - Fixed the Race Engineer announcing "Black flag cleared." when a furled black-flag warning escalated into the actual black flag — which also silenced the black-flag callout itself. The escalation now plays the black-flag (or disqualification) call and nothing else; a genuinely withdrawn warning still announces "Black flag cleared." as before.

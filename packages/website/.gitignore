@@ -7,3 +7,7 @@ node_modules/
 
 # Firebase
 .firebase/
+
+# Generated icon gallery (regenerated on every build — see scripts/generate-icon-gallery.mts)
+public/icon-gallery/
+src/data/icon-gallery.json

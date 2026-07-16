@@ -30,7 +30,7 @@ jobs:
       - run: pnpm install
 
       - name: Build website
-        run: pnpm --filter @iracedeck/website build
+        run: pnpm exec turbo run build --filter=@iracedeck/website
         env:
           PUBLIC_IRACEDECK_VERSION: ${{ inputs.version || '' }}
 

@@ -1,0 +1,105 @@
+---
+// packages/website/src/components/IconGalleryCard.astro
+// One expandable gallery card, shared by every section/family grouping in
+// IconGallery.astro so the flat vs. family-grouped vs. "default icon"-placed
+// (item 10) rendering paths never duplicate the card markup.
+import type { GalleryEntry } from "../gallery-gen/lib.js";
+
+interface Props {
+  entry: GalleryEntry;
+  /** Overrides the displayed name — used for the "default icon" card placed
+   * at the front of a template family group (item 10). The real entry name
+   * still shows in the expanded technical panel. */
+  label?: string;
+}
+
+const { entry: e, label } = Astro.props;
+
+function searchText(entry: GalleryEntry): string {
+  return [entry.name, entry.family, entry.title ?? "", ...entry.actions].join(" ").toLowerCase();
+}
+
+// Dial dash-box samples are 200×100 (2:1) — rendering them at the default
+// 72×72 would squish them, so they get a wider image slot (item 5).
+const isDash = e.class === "dial" && e.family === "touch-strip";
+// Category icons (20×20) are white glyphs on a transparent background — a
+// dark tile makes them readable on the light theme (item 14). Every dial.svg
+// encoder icon carries its own opaque background rect (verified against all
+// nine dual-surface actions), so dial-class cards need no such tile.
+const isCategory = e.class === "category";
+const imgWidth = isDash ? 144 : isCategory ? 44 : 72;
+const imgHeight = isDash ? 72 : isCategory ? 44 : 72;
+---
+
+<details class="icon-card" data-search={searchText(e)}>
+  <summary>
+    <span class="icon-image-wrap" class:list={{ "icon-image-wrap-dark": isCategory }}>
+      <img src={e.file} alt={e.name} loading="lazy" width={imgWidth} height={imgHeight} class="icon-image" />
+    </span>
+    <span class="icon-name">{label ?? e.name}{e.sample && <em> (sample)</em>}</span>
+  </summary>
+  <dl>
+    {label && (
+      <>
+        <dt>Name</dt><dd><code>{e.name}</code></dd>
+      </>
+    )}
+    <dt>Path</dt><dd><code>{e.path}</code></dd>
+    {e.viewBox && <><dt>viewBox</dt><dd><code>{e.viewBox}</code></dd></>}
+    {e.slots.length > 0 && <><dt>Color slots</dt><dd><code>{e.slots.join(", ")}</code></dd></>}
+    {e.locked.length > 0 && <><dt>Locked slots</dt><dd><code>{e.locked.join(", ")}</code></dd></>}
+    {e.title && <><dt>Default title</dt><dd class="title-text">{e.title}</dd></>}
+    {e.actions.length > 0 && <><dt>Used by</dt><dd>{e.actions.join(", ")}</dd></>}
+  </dl>
+</details>
+
+<style>
+  .icon-card {
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.5rem;
+    padding: 0.4rem;
+  }
+  .icon-card summary {
+    cursor: pointer;
+    list-style: none;
+    text-align: center;
+  }
+  .icon-card summary::marker,
+  .icon-card summary::-webkit-details-marker {
+    display: none;
+  }
+  .icon-image-wrap {
+    display: inline-block;
+    line-height: 0;
+  }
+  .icon-image-wrap-dark {
+    background: #0d0d0d;
+    border-radius: 0.4rem;
+    padding: 0.5rem;
+  }
+  .icon-image {
+    max-width: 100%;
+    object-fit: contain;
+  }
+  .icon-name {
+    display: block;
+    margin-top: 0.3rem;
+    font-size: var(--sl-text-xs);
+    word-break: break-word;
+  }
+  .icon-card dl {
+    font-size: var(--sl-text-xs);
+    margin: 0.5rem 0 0;
+  }
+  .icon-card dt {
+    font-weight: 600;
+    margin-top: 0.3rem;
+  }
+  .icon-card dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+  .title-text {
+    white-space: pre-line;
+  }
+</style>

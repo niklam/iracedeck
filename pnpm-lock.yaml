@@ -890,9 +890,24 @@ importers:
         specifier: 0.35.3
         version: 0.35.3(@types/node@26.1.1)
     devDependencies:
+      '@iracedeck/audio-scenarios':
+        specifier: workspace:*
+        version: link:../audio-scenarios
+      '@iracedeck/audio-service':
+        specifier: workspace:*
+        version: link:../audio-service
+      '@iracedeck/deck-core':
+        specifier: workspace:*
+        version: link:../deck-core
+      '@iracedeck/icon-composer':
+        specifier: workspace:*
+        version: link:../icon-composer
       firebase-tools:
         specifier: 15.23.0
         version: 15.23.0(@types/node@26.1.1)(encoding@0.1.13)
+      tsx:
+        specifier: 4.23.0
+        version: 4.23.0
 
 packages:
 

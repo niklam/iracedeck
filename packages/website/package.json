@@ -5,10 +5,11 @@
   "description": "Documentation website for iRaceDeck Stream Deck plugins",
   "type": "module",
   "scripts": {
-    "dev": "astro dev",
-    "build": "astro build",
+    "dev": "pnpm generate:gallery && astro dev",
+    "build": "pnpm generate:gallery && astro build",
+    "generate:gallery": "tsx scripts/generate-icon-gallery.mts",
     "preview": "astro preview",
-    "deploy": "astro build && firebase deploy --only hosting"
+    "deploy": "pnpm build && firebase deploy --only hosting"
   },
   "dependencies": {
     "@astrojs/starlight": "0.41.3",
@@ -18,6 +19,11 @@
     "sharp": "0.35.3"
   },
   "devDependencies": {
-    "firebase-tools": "15.23.0"
+    "@iracedeck/audio-scenarios": "workspace:*",
+    "@iracedeck/audio-service": "workspace:*",
+    "@iracedeck/deck-core": "workspace:*",
+    "@iracedeck/icon-composer": "workspace:*",
+    "firebase-tools": "15.23.0",
+    "tsx": "4.23.0"
   }
 }
