@@ -58,8 +58,7 @@ export function migrateLfeIntensityModes(raw: unknown): {
 
   if (dial && typeof dial === "object" && !Array.isArray(dial)) {
     const dialRecord = dial as Record<string, unknown>;
-    const dialReplacement =
-      typeof dialRecord.setting === "string" ? RETIRED_MODE_MAP[dialRecord.setting] : undefined;
+    const dialReplacement = typeof dialRecord.setting === "string" ? RETIRED_MODE_MAP[dialRecord.setting] : undefined;
 
     if (dialReplacement !== undefined) {
       migrated = { ...migrated, dial: { ...dialRecord, setting: dialReplacement } };

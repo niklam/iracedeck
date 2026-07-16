@@ -116,7 +116,13 @@ vi.mock("@iracedeck/deck-core", () => ({
 /** Create a minimal fake event with the given action ID and settings. */
 function fakeEvent(actionId: string, settings: Record<string, unknown> = {}) {
   return {
-    action: { id: actionId, setTitle: vi.fn(), setImage: vi.fn(), setSettings: vi.fn().mockResolvedValue(undefined) },
+    action: {
+      id: actionId,
+      isDial: vi.fn(() => false),
+      setTitle: vi.fn(),
+      setImage: vi.fn(),
+      setSettings: vi.fn().mockResolvedValue(undefined),
+    },
     payload: { settings },
   };
 }
