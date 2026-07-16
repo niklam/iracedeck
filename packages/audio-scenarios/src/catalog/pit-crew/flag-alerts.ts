@@ -42,7 +42,15 @@
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventName, SimEventOf } from "@iracedeck/event-bus";
-import { Flags, hasFlag, isLiveOnTrack, isPostRace, isPreGreen, type TelemetryData } from "@iracedeck/iracing-sdk";
+import {
+  Flags,
+  hasFlag,
+  isLiveOnTrack,
+  isPenaltyFlagActive,
+  isPostRace,
+  isPreGreen,
+  type TelemetryData,
+} from "@iracedeck/iracing-sdk";
 import { getLatestTelemetry, getSessionType, getStandingStart } from "@iracedeck/sim-events-iracing";
 
 import type { Scenario, Step } from "../../dsl.js";
@@ -275,6 +283,22 @@ function furledBitUp(fallbackWhenUnknown: boolean): boolean {
   return hasFlag(telemetry.SessionFlags ?? 0, Flags.Furled);
 }
 
+// Live Black/Disqualify read for the cleared gate's escalation check (issue
+// #846). iRacing raises the actual black flag by CLEARING `Furled` and setting
+// `Black` in one transition, so a furled-cleared meeting either penalty bit at
+// speak time is the ESCALATION, not a withdrawal — the black/DQ callout owns
+// that moment, and "Black flag cleared." would announce the opposite. The
+// translator suppresses the same-tick case; this covers a legitimately-emitted
+// clear that queued behind a longer line and was overtaken by the escalation
+// before the bus idled. Delegates to the SAME `isPenaltyFlagActive` predicate
+// the translator's suppression uses, so the two layers' definitions of
+// "escalated" can't diverge. Missing telemetry reads as not-escalated so the
+// gate never suppresses on missing data (the #574 precedent — keeps the
+// scenario harness firable without iRacing).
+function penaltyBitUp(): boolean {
+  return isPenaltyFlagActive(getLatestTelemetry() as TelemetryData | null);
+}
+
 // `queueable: true` so a furled-black-flag call deferred behind another
 // safety-level line (another flag / spotter focus) replays when the bus next
 // idles instead of being dropped — it carries a give-the-time-back instruction
@@ -331,7 +355,10 @@ const FURLED_CLEARED: Scenario = {
   // when the warning is already BACK UP by the time the bus idles (the
   // re-raise is debounced upstream, so a fresh raised fire may not have
   // displaced this one from the pending slot yet), or when a fresh raised
-  // fire reset the spoken marker while this clear sat in the queue. Only a
+  // fire reset the spoken marker while this clear sat in the queue. A clear
+  // meeting Black/Disqualify is the escalation (issue #846) — the episode is
+  // over for good (no further cleared event is coming: the diff consumed its
+  // announce), so the marker is consumed WITHOUT playing. Otherwise only a
   // clear that actually plays consumes the marker.
   sequence: [
     {
@@ -340,7 +367,7 @@ const FURLED_CLEARED: Scenario = {
 
         furledRaisedSpoken = false;
 
-        return true;
+        return !penaltyBitUp();
       },
       then: flagSequence(["pool:flag-furled-cleared"]),
     },

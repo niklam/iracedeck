@@ -71,7 +71,11 @@
 
 		<%# The car-selector focus mode rides on Stream Deck profiles, so it is gated to Elgato (see platform-feature-flags.md). %>
 		<% var showFocusSelectCar = locals.platform?.features?.profiles !== false; %>
+		<%# Dial comms map (#803): the dial surface is entirely SDK-driven, so every mode is `api`. %>
+		<% var __dialComms = require('./data/action-comms.json')['camera-focus-dial']; %>
 
+		<!-- Keypad settings — hidden when this instance is a dial (#803). -->
+		<div id="keypad-settings">
 		<sdpi-item label="Mode">
 			<sdpi-select id="target-select" setting="target" default="change-camera">
 				<option value="change-camera">Change Camera</option>
@@ -163,21 +167,112 @@
 				</optgroup>
 			</sdpi-select>
 		</sdpi-item>
+		</div>
+		<%# end #keypad-settings %>
 
+		<!-- Dial settings — shown only when this instance is a dial (#803). -->
+		<div id="dial-settings" class="hidden">
+			<sdpi-item label="Mode">
+				<sdpi-select id="dial-mode-select" setting="dial.mode" default="car-number">
+					<option value="camera">Cycle Camera</option>
+					<option value="sub-camera">Cycle Sub-Camera</option>
+					<option value="car-number">Cycle by Car #</option>
+					<option value="race-position">Cycle by Race Position</option>
+					<option value="driving">Cycle Driving Camera</option>
+				</sdpi-select>
+			</sdpi-item>
+			<% if (locals.platform?.features?.dialFeedback !== false) { %>
+			<div class="ird-supporting-text">
+				Turn the dial to cycle the selected target — clockwise for next, counter-clockwise for previous. The touch strip shows a carousel: the current camera (or the focused car's number) in the centre, with the previous / next either side.
+			</div>
+			<% } else { %>
+			<div class="ird-supporting-text">
+				Turn the knob to cycle the selected target — clockwise for next, counter-clockwise for previous.
+			</div>
+			<% } %>
+
+			<%# Camera-group subset for the dial's Cycle Camera mode — bound to the plugin-global cameraGroupSubset (#803). Keypad Cycle Camera buttons keep their pre-existing per-button subset and fall back to this global set only until they save one. %>
+			<div id="dial-camera-groups-section" class="hidden">
+				<div class="ird-section-heading">Camera Groups</div>
+				<div id="dial-camera-groups-grid" class="camera-groups-grid"></div>
+				<div class="camera-groups-buttons">
+					<button id="dial-btn-select-all" type="button">Select All</button>
+					<button id="dial-btn-clear" type="button">Clear Selection</button>
+				</div>
+				<div class="ird-supporting-text">
+					This is the plugin-global camera set every dial rotates through. Keypad Cycle Camera buttons follow it too until a button saves its own per-button selection, which then takes precedence for that button.
+				</div>
+			</div>
+
+			<sdpi-item label="Press Action">
+				<sdpi-select setting="dial.pressAction" default="none">
+					<option value="none">None</option>
+					<option value="focus-my-car">Focus My Car</option>
+					<option value="change-camera">Change Camera</option>
+					<option value="focus-on-leader">Focus on Leader</option>
+					<option value="focus-on-incident">Focus on Incident</option>
+					<option value="focus-on-most-exciting">Focus on Most Exciting</option>
+				</sdpi-select>
+			</sdpi-item>
+
+			<sdpi-item label="Long Press">
+				<sdpi-select setting="dial.longPressAction" default="none">
+					<option value="none">None</option>
+					<option value="focus-my-car">Focus My Car</option>
+					<option value="change-camera">Change Camera</option>
+					<option value="focus-on-leader">Focus on Leader</option>
+					<option value="focus-on-incident">Focus on Incident</option>
+					<option value="focus-on-most-exciting">Focus on Most Exciting</option>
+				</sdpi-select>
+			</sdpi-item>
+
+			<% if (locals.platform?.features?.dialFeedback !== false) { %>
+			<sdpi-item label="Tap Display">
+				<sdpi-select setting="dial.tapAction" default="none">
+					<option value="none">None</option>
+					<option value="focus-my-car">Focus My Car</option>
+					<option value="change-camera">Change Camera</option>
+					<option value="focus-on-leader">Focus on Leader</option>
+					<option value="focus-on-incident">Focus on Incident</option>
+					<option value="focus-on-most-exciting">Focus on Most Exciting</option>
+				</sdpi-select>
+			</sdpi-item>
+
+			<sdpi-item label="Long Touch">
+				<sdpi-select setting="dial.longTouchAction" default="none">
+					<option value="none">None</option>
+					<option value="focus-my-car">Focus My Car</option>
+					<option value="change-camera">Change Camera</option>
+					<option value="focus-on-leader">Focus on Leader</option>
+					<option value="focus-on-incident">Focus on Incident</option>
+					<option value="focus-on-most-exciting">Focus on Most Exciting</option>
+				</sdpi-select>
+			</sdpi-item>
+
+			<%- include('dial-appearance') %>
+			<% } %>
+		</div>
+
+		<!-- Key-icon appearance — keypad only (a dial has no key icon). -->
+		<div id="keypad-appearance">
 		<%- include('title-overrides') %>
 
 		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/icon-defaults.json')['camera-focus'] }) %>
 		<%- include('border-overrides', { defaults: require('./data/icon-defaults.json')['camera-focus'] }) %>
 		<%- include('graphic-overrides') %>
 		<%- include('common-settings') %>
+		</div>
 
 		<%- include('section-header', { title: 'Global Settings' }) %>
 
+		<div id="keypad-global-appearance">
 		<%- include('global-title-defaults') %>
 		<%- include('global-color-defaults') %>
 		<%- include('global-border-defaults') %>
 		<%- include('global-graphic-defaults') %>
 		<%- include('global-flag-flash') %>
+		</div>
+
 		<%- include('global-common-settings') %>
 
 		<script>
@@ -206,39 +301,6 @@
 				var SETTING_KEY = "cameraGroupSubset";
 				var CYCLE_TARGETS = ["cycle-camera", "cycle-sub-camera", "cycle-car", "cycle-driving"];
 
-				var currentGroups = {};
-				var saveSubset = null;
-				var initialized = false;
-
-				function isCycleTarget(target) {
-					return CYCLE_TARGETS.indexOf(target) !== -1;
-				}
-
-				function getGroupNames() {
-					return ALL_GROUPS;
-				}
-
-				// Ensure currentGroups has entries for ALL visible groups
-				// so saving doesn't lose groups that weren't explicitly toggled
-				function ensureAllGroupsTracked() {
-					var names = getGroupNames();
-					var changed = false;
-					for (var i = 0; i < names.length; i++) {
-						if (!(names[i] in currentGroups)) {
-							currentGroups[names[i]] = DEFAULT_ENABLED.indexOf(names[i]) !== -1;
-							changed = true;
-						}
-					}
-					return changed;
-				}
-
-				function isGroupEnabled(name) {
-					if (name in currentGroups) {
-						return currentGroups[name] === true;
-					}
-					return DEFAULT_ENABLED.indexOf(name) !== -1;
-				}
-
 				var GROUP_SECTIONS = [
 					{ heading: "Car", start: 0, end: 9 },
 					{ heading: "Chase", start: 9, end: 12 },
@@ -246,11 +308,35 @@
 					{ heading: "Aerial", start: 18, end: 20 }
 				];
 
-				function renderCheckboxes() {
-					var grid = document.getElementById("camera-groups-grid");
+				var initialized = false;
+
+				function isCycleTarget(target) {
+					return CYCLE_TARGETS.indexOf(target) !== -1;
+				}
+
+				function isGroupEnabled(state, name) {
+					if (name in state) {
+						return state[name] === true;
+					}
+					return DEFAULT_ENABLED.indexOf(name) !== -1;
+				}
+
+				// Ensure the state has entries for ALL visible groups so saving
+				// doesn't lose groups that weren't explicitly toggled.
+				function ensureAllGroupsTracked(state) {
+					for (var i = 0; i < ALL_GROUPS.length; i++) {
+						if (!(ALL_GROUPS[i] in state)) {
+							state[ALL_GROUPS[i]] = DEFAULT_ENABLED.indexOf(ALL_GROUPS[i]) !== -1;
+						}
+					}
+				}
+
+				// Shared grid renderer — the SAME markup for the keypad Cycle Camera
+				// selector and the dial Cycle Camera selector (#803).
+				function renderGroupCheckboxes(gridId, state, onToggle) {
+					var grid = document.getElementById(gridId);
 					if (!grid) return;
 
-					var names = getGroupNames();
 					grid.innerHTML = "";
 
 					for (var s = 0; s < GROUP_SECTIONS.length; s++) {
@@ -260,14 +346,16 @@
 						heading.textContent = section.heading;
 						grid.appendChild(heading);
 
-						for (var i = section.start; i < section.end && i < names.length; i++) {
-							var name = names[i];
+						for (var i = section.start; i < section.end && i < ALL_GROUPS.length; i++) {
+							var name = ALL_GROUPS[i];
 							var label = document.createElement("label");
 							var checkbox = document.createElement("input");
 							checkbox.type = "checkbox";
-							checkbox.checked = isGroupEnabled(name);
+							checkbox.checked = isGroupEnabled(state, name);
 							checkbox.dataset.group = name;
-							checkbox.addEventListener("change", onCheckboxChange);
+							checkbox.addEventListener("change", function (ev) {
+								onToggle(ev.target.dataset.group, ev.target.checked);
+							});
 							label.appendChild(checkbox);
 							label.appendChild(document.createTextNode(DISPLAY_NAMES[name] || name));
 							grid.appendChild(label);
@@ -275,38 +363,48 @@
 					}
 				}
 
-				function onCheckboxChange(ev) {
-					// On first change, populate all groups so save includes everything
-					ensureAllGroupsTracked();
-					var name = ev.target.dataset.group;
-					currentGroups[name] = ev.target.checked;
-					saveCurrentGroups();
-				}
+				// A camera-group selector bound to a settings hook. The keypad uses a
+				// per-action hook (with a legacy global fallback); the dial uses the
+				// GLOBAL cameraGroupSubset directly — the same set the dial rotation
+				// honors via getEnabledGroupNames(undefined) (#803).
+				function createGroupSelector(gridId, selectAllId, clearId) {
+					var state = {};
+					var save = null;
 
-				function saveCurrentGroups() {
-					if (!saveSubset) return;
-					saveSubset(JSON.stringify({ groups: currentGroups }));
-				}
-
-				function selectAll() {
-					ensureAllGroupsTracked();
-					var names = getGroupNames();
-					for (var i = 0; i < names.length; i++) {
-						currentGroups[names[i]] = true;
+					function persist() {
+						if (save) save(JSON.stringify({ groups: state }));
 					}
-					renderCheckboxes();
-					saveCurrentGroups();
+					function render() {
+						renderGroupCheckboxes(gridId, state, function (name, checked) {
+							ensureAllGroupsTracked(state);
+							state[name] = checked;
+							persist();
+						});
+					}
+					function setAll(value) {
+						ensureAllGroupsTracked(state);
+						for (var i = 0; i < ALL_GROUPS.length; i++) {
+							state[ALL_GROUPS[i]] = value;
+						}
+						render();
+						persist();
+					}
+
+					return {
+						setState: function (groups) { state = groups || {}; render(); },
+						setSave: function (fn) { save = fn; },
+						render: render,
+						wireButtons: function () {
+							var a = document.getElementById(selectAllId);
+							if (a) a.addEventListener("click", function () { setAll(true); });
+							var c = document.getElementById(clearId);
+							if (c) c.addEventListener("click", function () { setAll(false); });
+						}
+					};
 				}
 
-				function clearSelection() {
-					ensureAllGroupsTracked();
-					var names = getGroupNames();
-					for (var i = 0; i < names.length; i++) {
-						currentGroups[names[i]] = false;
-					}
-					renderCheckboxes();
-					saveCurrentGroups();
-				}
+				var keypadSelector = createGroupSelector("camera-groups-grid", "btn-select-all", "btn-clear");
+				var dialSelector = createGroupSelector("dial-camera-groups-grid", "dial-btn-select-all", "dial-btn-clear");
 
 				// Conditional visibility
 				function updateVisibility(target) {
@@ -343,58 +441,92 @@
 					}
 				}
 
+				// Which surface this instance sits on: the PI registration's
+				// actionInfo.payload.controller ("Keypad" | "Encoder"; the Mirabox host
+				// may report "Knob"). Anything unknown or unavailable falls back to the
+				// keypad view (#803).
+				async function resolveController() {
+					try {
+						var client = window.SDPIComponents && window.SDPIComponents.streamDeckClient;
+						var info = client && (await client.getConnectionInfo());
+						var controller = info && info.actionInfo && info.actionInfo.payload && info.actionInfo.payload.controller;
+						return controller === "Encoder" || controller === "Knob" ? "Encoder" : "Keypad";
+					} catch (err) {
+						return "Keypad";
+					}
+				}
+
+				function applyDialView() {
+					document.getElementById("keypad-settings") && document.getElementById("keypad-settings").classList.add("hidden");
+					document.getElementById("keypad-appearance") && document.getElementById("keypad-appearance").classList.add("hidden");
+					document.getElementById("keypad-global-appearance") && document.getElementById("keypad-global-appearance").classList.add("hidden");
+					document.getElementById("dial-settings") && document.getElementById("dial-settings").classList.remove("hidden");
+				}
+
+				// Dial Mode visibility — the shared camera-groups selector shows only
+				// for the dial's Cycle Camera mode (#803).
+				function updateDialVisibility(mode) {
+					var section = document.getElementById("dial-camera-groups-section");
+					if (section) section.classList.toggle("hidden", mode !== "camera");
+				}
+
 				async function initializePI() {
 					if (initialized) return;
 					initialized = true;
 
 					await customElements.whenDefined("sdpi-select");
 
-					// Set up per-action settings for camera groups, with legacy global fallback
-					var legacyGroups = null;
 					if (window.SDPIComponents) {
-						// Read legacy global setting (for users upgrading from shared selection)
+						// Keypad selector: per-action setting with a legacy global fallback.
+						var legacyGroups = null;
 						window.SDPIComponents.useGlobalSettings(SETTING_KEY, function (value) {
 							if (value) {
 								try {
 									var parsed = JSON.parse(value);
-									if (parsed && parsed.groups) {
-										legacyGroups = parsed.groups;
-									}
+									if (parsed && parsed.groups) legacyGroups = parsed.groups;
 								} catch (e) {
 									// ignore
 								}
 							}
 						});
 
-						var subsetHook = window.SDPIComponents.useSettings(SETTING_KEY, function (value) {
+						var keypadHook = window.SDPIComponents.useSettings(SETTING_KEY, function (value) {
+							var groups = {};
 							if (value) {
 								try {
 									var parsed = JSON.parse(value);
-									if (parsed && parsed.groups) {
-										currentGroups = parsed.groups;
-									} else {
-										currentGroups = {};
-									}
+									if (parsed && parsed.groups) groups = parsed.groups;
 								} catch (e) {
-									currentGroups = {};
+									groups = {};
 								}
 							} else if (legacyGroups) {
 								// No per-action value yet — seed from legacy global setting
-								currentGroups = legacyGroups;
-							} else {
-								currentGroups = {};
+								groups = legacyGroups;
 							}
-							renderCheckboxes();
+							keypadSelector.setState(groups);
 						});
-						saveSubset = subsetHook[1];
+						keypadSelector.setSave(keypadHook[1]);
 
+						// Dial selector: the GLOBAL cameraGroupSubset (read + save).
+						var dialHook = window.SDPIComponents.useGlobalSettings(SETTING_KEY, function (value) {
+							var groups = {};
+							if (value) {
+								try {
+									var parsed = JSON.parse(value);
+									if (parsed && parsed.groups) groups = parsed.groups;
+								} catch (e) {
+									groups = {};
+								}
+							}
+							dialSelector.setState(groups);
+						});
+						dialSelector.setSave(dialHook[1]);
 					}
 
-					// Button handlers
-					document.getElementById("btn-select-all").addEventListener("click", selectAll);
-					document.getElementById("btn-clear").addEventListener("click", clearSelection);
+					keypadSelector.wireButtons();
+					dialSelector.wireButtons();
 
-					// Target visibility
+					// Keypad target visibility
 					var targetSelect = document.getElementById("target-select");
 					if (targetSelect) {
 						var initialValue = targetSelect.value || "change-camera";
@@ -417,7 +549,36 @@
 						}, 100);
 					}
 
-					renderCheckboxes();
+					// Dial mode visibility
+					var dialModeSelect = document.getElementById("dial-mode-select");
+					if (dialModeSelect) {
+						updateDialVisibility(dialModeSelect.value || "car-number");
+
+						dialModeSelect.addEventListener("change", function (ev) {
+							updateDialVisibility(ev.target.value || "car-number");
+						});
+						dialModeSelect.addEventListener("input", function (ev) {
+							updateDialVisibility(ev.target.value || "car-number");
+						});
+
+						var lastMode = dialModeSelect.value || "car-number";
+						setInterval(function () {
+							var currentMode = dialModeSelect.value;
+							if (currentMode && currentMode !== lastMode) {
+								lastMode = currentMode;
+								updateDialVisibility(currentMode);
+							}
+						}, 100);
+					}
+
+					keypadSelector.render();
+					dialSelector.render();
+
+					// Switch to the dial view last, so a slow/failed controller lookup
+					// still leaves a fully functional keypad PI (the default view).
+					if ((await resolveController()) === "Encoder") {
+						applyDialView();
+					}
 				}
 
 				if (document.readyState === "loading") {

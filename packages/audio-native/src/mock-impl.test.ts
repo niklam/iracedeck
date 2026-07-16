@@ -24,6 +24,14 @@ describe("AudioNativeMock", () => {
       expect(() => mock.destroyAudioEngine()).not.toThrow();
       expect(console.debug).toHaveBeenCalled();
     });
+
+    it("startAudioEngine returns true", () => {
+      expect(mock.startAudioEngine()).toBe(true);
+    });
+
+    it("stopAudioEngine returns true", () => {
+      expect(mock.stopAudioEngine()).toBe(true);
+    });
   });
 
   describe("channel operations", () => {
