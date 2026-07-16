@@ -1,7 +1,14 @@
-import { SessionState, type TelemetryData } from "@iracedeck/iracing-native";
+import { Flags, SessionState, type TelemetryData } from "@iracedeck/iracing-native";
 import { describe, expect, it } from "vitest";
 
-import { hasPitLimiter, hasVisor, hasWipers, isPostRace, isPreGreen } from "./telemetry-features.js";
+import {
+  hasPitLimiter,
+  hasVisor,
+  hasWipers,
+  isPenaltyFlagActive,
+  isPostRace,
+  isPreGreen,
+} from "./telemetry-features.js";
 
 /** Build a minimal TelemetryData mock from a partial set of fields. */
 function telemetry(fields: Partial<TelemetryData>): TelemetryData {
@@ -81,6 +88,37 @@ describe("telemetry-features", () => {
     it("returns false for null/undefined telemetry", () => {
       expect(isPreGreen(null)).toBe(false);
       expect(isPreGreen(undefined)).toBe(false);
+    });
+  });
+
+  describe("isPenaltyFlagActive", () => {
+    it("returns true when the Black bit is set", () => {
+      expect(isPenaltyFlagActive(telemetry({ SessionFlags: Flags.Black }))).toBe(true);
+    });
+
+    it("returns true when the Disqualify bit is set (alone or with Black)", () => {
+      expect(isPenaltyFlagActive(telemetry({ SessionFlags: Flags.Disqualify }))).toBe(true);
+      expect(isPenaltyFlagActive(telemetry({ SessionFlags: Flags.Black | Flags.Disqualify }))).toBe(true);
+    });
+
+    it("returns true when a penalty bit rides alongside unrelated bits (the captured #846 escalation)", () => {
+      // SessionFlags 0x10050000 — StartHidden | Servicible | Black.
+      expect(isPenaltyFlagActive(telemetry({ SessionFlags: 268763136 }))).toBe(true);
+    });
+
+    it("returns false for non-penalty flags (Furled is a warning, not a penalty)", () => {
+      expect(isPenaltyFlagActive(telemetry({ SessionFlags: Flags.Furled }))).toBe(false);
+      expect(isPenaltyFlagActive(telemetry({ SessionFlags: Flags.Green | Flags.Yellow }))).toBe(false);
+      expect(isPenaltyFlagActive(telemetry({ SessionFlags: 0 }))).toBe(false);
+    });
+
+    it("returns false when SessionFlags is absent (don't punish missing data)", () => {
+      expect(isPenaltyFlagActive(telemetry({}))).toBe(false);
+    });
+
+    it("returns false for null/undefined telemetry", () => {
+      expect(isPenaltyFlagActive(null)).toBe(false);
+      expect(isPenaltyFlagActive(undefined)).toBe(false);
     });
   });
 

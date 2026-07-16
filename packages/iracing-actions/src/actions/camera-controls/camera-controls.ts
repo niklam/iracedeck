@@ -13,10 +13,13 @@ import {
   getGlobalTitleSettings,
   type IDeckDialDownEvent,
   type IDeckDialRotateEvent,
+  type IDeckDialUpEvent,
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
+  type IDeckTouchTapEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
+  onGlobalSettingsChange,
   parseSvgViewBox,
   renderIconTemplate,
   requestProfileSwitch,
@@ -67,16 +70,36 @@ import tv1Svg from "@iracedeck/icons/camera-select/tv1.svg";
 import tv2Svg from "@iracedeck/icons/camera-select/tv2.svg";
 import tv3Svg from "@iracedeck/icons/camera-select/tv3.svg";
 import {
-  type CameraGroup,
+  getAllCarNumbers,
   getCameraGroupsFromSessionInfo,
+  getCamerasInGroup,
   getCarNumberRawFromSessionInfo,
 } from "@iracedeck/iracing-sdk";
+import { getLiveRacePositions } from "@iracedeck/sim-events-iracing";
 import z from "zod";
 
 import { setSelectIntent } from "../../shared/car-select-intent.js";
 import { profileEntriesEqual } from "../../shared/profile-entries.js";
 import { availableProfilesForDevice, deviceProfileEntries } from "../race-admin/race-admin-selector.js";
+import { CameraDialSurface, type CarouselGlyph, computeCarNumberTarget, DialSettings } from "./camera-dial-surface.js";
+import {
+  CAMERA_GROUPS_SETTING_KEY,
+  computeSubCameraCarousel,
+  DEFAULT_ENABLED_GROUPS,
+  getNextSelectedGroupEntry,
+  parseGroupSubset,
+} from "./camera-groups.js";
 import { migrateFocusOnExitingToMostExciting } from "./migrate-focus-on-exiting.js";
+
+// Re-exported from the shared leaf so existing importers (and tests) keep their
+// `camera-controls.js` import path (issue #803 rework).
+export {
+  CAMERA_GROUPS_SETTING_KEY,
+  DEFAULT_CAMERA_GROUPS,
+  DEFAULT_ENABLED_GROUPS,
+  getNextSelectedGroup,
+  parseGroupSubset,
+} from "./camera-groups.js";
 
 // --- Target types ---
 
@@ -105,50 +128,6 @@ function isCycleTarget(target: Target): target is CycleTarget {
   return (CYCLE_TARGET_VALUES as readonly string[]).includes(target);
 }
 
-// --- Camera group subset constants ---
-
-/**
- * @internal Exported for testing
- *
- * Per-action settings key for camera group subset selection
- */
-export const CAMERA_GROUPS_SETTING_KEY = "cameraGroupSubset";
-
-/**
- * @internal Exported for testing
- *
- * All known iRacing camera group names
- */
-export const DEFAULT_CAMERA_GROUPS = [
-  "Nose",
-  "Gearbox",
-  "Roll Bar",
-  "LF Susp",
-  "LR Susp",
-  "Gyro",
-  "RF Susp",
-  "RR Susp",
-  "Cockpit",
-  "Scenic",
-  "TV1",
-  "TV2",
-  "TV3",
-  "Pit Lane",
-  "Pit Lane 2",
-  "Chopper",
-  "Blimp",
-  "Chase",
-  "Far Chase",
-  "Rear Chase",
-];
-
-/**
- * @internal Exported for testing
- *
- * Default enabled camera groups (used when no per-action or legacy global setting is saved)
- */
-export const DEFAULT_ENABLED_GROUPS = ["Nose", "Cockpit", "Chase", "TV1", "TV2", "TV3"];
-
 // --- Settings schema ---
 
 const CameraControlsSettings = CommonSettings.extend({
@@ -172,6 +151,12 @@ const CameraControlsSettings = CommonSettings.extend({
    * Not user-editable.
    */
   _deviceProfiles: z.array(z.union([z.string(), z.object({ name: z.string(), label: z.string() })])).optional(),
+  // Dial-surface settings (#803), under the `dial` root so the two surfaces'
+  // keys can't collide. catch: garbage inside the dial subtree (e.g. a value
+  // written by a newer plugin version after a downgrade) degrades to dial
+  // defaults instead of failing the whole parse — which would reset a KEYPAD
+  // instance's mode via the full-defaults fallback in parseSettings.
+  dial: DialSettings.catch(() => DialSettings.parse({})),
 });
 
 type CameraControlsSettings = z.infer<typeof CameraControlsSettings>;
@@ -597,40 +582,6 @@ export function generateCycleCameraGridSvg(
 /**
  * @internal Exported for testing
  *
- * Parse a camera group subset value (JSON string or object) into a list of enabled group names.
- * Returns undefined when the value is missing or unparseable, so the caller can distinguish
- * "no setting stored" from "all groups disabled".
- */
-export function parseGroupSubset(raw: string | Record<string, unknown> | undefined): string[] | undefined {
-  let subset: Record<string, unknown> | undefined;
-
-  if (typeof raw === "string" && raw) {
-    try {
-      subset = JSON.parse(raw) as Record<string, unknown>;
-    } catch {
-      return undefined;
-    }
-  } else if (typeof raw === "object" && raw !== null) {
-    subset = raw as Record<string, unknown>;
-  }
-
-  if (!subset?.groups) {
-    return undefined;
-  }
-
-  const groups = subset.groups as Record<string, boolean>;
-
-  // Normalize legacy name variants to canonical names
-  const LEGACY_NAMES: Record<string, string> = { "Pit Lane2": "Pit Lane 2" };
-
-  return Object.entries(groups)
-    .filter(([, isEnabled]) => isEnabled)
-    .map(([name]) => LEGACY_NAMES[name] ?? name);
-}
-
-/**
- * @internal Exported for testing
- *
  * Get the list of enabled camera group names from per-action settings.
  * Falls back to the legacy global setting (for users upgrading from older versions),
  * then to DEFAULT_ENABLED_GROUPS.
@@ -652,48 +603,21 @@ export function getEnabledGroupNames(raw: string | Record<string, unknown> | und
 }
 
 /**
- * @internal Exported for testing
- *
- * Find the next camera group in the selected subset.
+ * Resolve a camera-group name to its dial-carousel glyph — the colour-resolved
+ * inner artwork of the group's camera-select icon plus its source dimensions.
+ * Returns null for an unmapped group name so the carousel can render name-only.
+ * Shared with the keypad cycle-camera preview via `CAMERA_SELECT_ICONS`.
  */
-export function getNextSelectedGroup(
-  currentGroupNum: number,
-  enabledGroupNames: string[],
-  sessionGroups: CameraGroup[],
-  direction: 1 | -1,
-): number | null {
-  return getNextSelectedGroupEntry(currentGroupNum, enabledGroupNames, sessionGroups, direction)?.groupNum ?? null;
-}
+function resolveGroupGlyph(groupName: string): CarouselGlyph | null {
+  const iconSvg = CAMERA_SELECT_ICONS[groupName];
 
-/**
- * Find the next camera group entry in the selected subset.
- * Returns both groupNum and groupName, or null if no enabled groups exist.
- */
-function getNextSelectedGroupEntry(
-  currentGroupNum: number,
-  enabledGroupNames: string[],
-  sessionGroups: CameraGroup[],
-  direction: 1 | -1,
-): CameraGroup | null {
-  const enabled = sessionGroups
-    .filter((g) => enabledGroupNames.includes(g.groupName))
-    .sort((a, b) => a.groupNum - b.groupNum);
+  if (!iconSvg) return null;
 
-  if (enabled.length === 0) return null;
+  const colors = resolveIconColors(iconSvg, {}, undefined);
+  const artwork = renderIconTemplate(extractGraphicContent(iconSvg), colors);
+  const viewBox = parseSvgViewBox(iconSvg);
 
-  const currentIndex = enabled.findIndex((g) => g.groupNum === currentGroupNum);
-
-  if (currentIndex === -1) {
-    if (direction === 1) {
-      return enabled.find((g) => g.groupNum > currentGroupNum) ?? enabled[0];
-    } else {
-      return [...enabled].reverse().find((g) => g.groupNum < currentGroupNum) ?? enabled[enabled.length - 1];
-    }
-  }
-
-  const nextIndex = (currentIndex + direction + enabled.length) % enabled.length;
-
-  return enabled[nextIndex];
+  return { artwork, width: viewBox?.width ?? 144, height: viewBox?.height ?? 144 };
 }
 
 // --- Action ---
@@ -715,8 +639,54 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
   /** Last displayed group name per context to avoid redundant re-renders */
   private lastDisplayedGroup = new Map<string, string>();
 
+  /**
+   * The dial half of the action (#803); all IDeck dial events route here.
+   * Rotation reuses the keypad's own `executeCycle` / focus dispatch — the dial
+   * duplicates no camera logic. No `setActiveBinding`/`tapBinding` is delegated:
+   * every camera action is an SDK command, so there is no binding to configure.
+   */
+  private readonly dialSurface = new CameraDialSurface({
+    logger: this.logger,
+    getTelemetry: () => this.sdkController.getCurrentTelemetry(),
+    getSessionInfo: () => this.sdkController.getSessionInfo(),
+    // Canonical live race order (race-positions.md) — the dial's race-position
+    // mode consumes it, official CarIdxPosition only as the fallback.
+    getRacePositions: () => getLiveRacePositions(),
+    // The camera-carousel preview walks the SAME global subset the dial rotation
+    // honors: executeCycle("cycle-camera", …) passes no per-action subset, so
+    // both resolve through getEnabledGroupNames(undefined) → the global setting.
+    getEnabledCameraGroups: () => getEnabledGroupNames(undefined),
+    getGroupGlyph: (groupName) => resolveGroupGlyph(groupName),
+    cycle: (target, direction) => this.executeCycle(target, direction),
+    focusCarNumber: (carNumberRaw) => this.focusCarNumber(carNumberRaw),
+    focusMyCar: () => this.focusMyCar(),
+    changeCamera: () => this.executeCycle("cycle-camera", "next"),
+    focusOnLeader: () => this.focusOn("focus-on-leader"),
+    focusOnIncident: () => this.focusOn("focus-on-incident"),
+    focusOnMostExciting: () => this.focusOn("focus-on-most-exciting"),
+  });
+
+  /**
+   * Keeps the dial strips' dash-box appearance (#811) live: telemetry ticks
+   * only arrive while iRacing is connected, so without this a color override
+   * saved with the sim closed would leave the strip stale until the next
+   * connect. The subscription lives for the plugin's lifetime.
+   */
+  private readonly unsubscribeGlobalSettings = onGlobalSettingsChange(() => this.dialSurface.refreshAll());
+
   override async onWillAppear(ev: IDeckWillAppearEvent<CameraControlsSettings>): Promise<void> {
     await super.onWillAppear(ev);
+
+    if (ev.action.isDial()) {
+      const settings = this.parseSettings(ev.payload.settings);
+      await this.dialSurface.willAppear(ev.action, settings.dial);
+      this.sdkController.subscribe(ev.action.id, (telemetry) => {
+        this.dialSurface.onTelemetry(ev.action.id, telemetry);
+      });
+
+      return;
+    }
+
     await this.persistMigratedSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
@@ -735,12 +705,21 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
   override async onWillDisappear(ev: IDeckWillDisappearEvent<CameraControlsSettings>): Promise<void> {
     await super.onWillDisappear(ev);
     this.sdkController.unsubscribe(ev.action.id);
+    this.dialSurface.willDisappear(ev.action.id);
     this.activeContexts.delete(ev.action.id);
     this.lastDisplayedGroup.delete(ev.action.id);
   }
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<CameraControlsSettings>): Promise<void> {
     await super.onDidReceiveSettings(ev);
+
+    if (ev.action.isDial()) {
+      const settings = this.parseSettings(ev.payload.settings);
+      await this.dialSurface.didReceiveSettings(ev.action, settings.dial);
+
+      return;
+    }
+
     await this.persistMigratedSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
@@ -769,29 +748,23 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
     }
   }
 
-  override async onDialDown(ev: IDeckDialDownEvent<CameraControlsSettings>): Promise<void> {
-    this.logger.info("Dial down received");
-    const settings = this.parseSettings(ev.payload.settings);
-
-    if (settings.target === "focus-select-car") return;
-
-    if (isCycleTarget(settings.target)) {
-      this.executeCycle(settings.target, settings.direction, settings.cameraGroupSubset);
-    } else if (settings.target === "change-camera") {
-      this.executeChangeCamera(settings.cameraGroup);
-    } else {
-      this.executeFocus(settings);
-    }
-  }
-
   override async onDialRotate(ev: IDeckDialRotateEvent<CameraControlsSettings>): Promise<void> {
     const settings = this.parseSettings(ev.payload.settings);
+    this.dialSurface.rotate(ev.action, settings.dial, ev.payload.ticks, ev.payload.pressed === true);
+  }
 
-    if (!isCycleTarget(settings.target)) return;
+  override async onDialDown(ev: IDeckDialDownEvent<CameraControlsSettings>): Promise<void> {
+    const settings = this.parseSettings(ev.payload.settings);
+    this.dialSurface.down(ev.action, settings.dial);
+  }
 
-    this.logger.info("Dial rotated");
-    const direction: Direction = ev.payload.ticks > 0 ? "next" : "previous";
-    this.executeCycle(settings.target, direction, settings.cameraGroupSubset);
+  override async onDialUp(ev: IDeckDialUpEvent<CameraControlsSettings>): Promise<void> {
+    await this.dialSurface.up(ev.action.id);
+  }
+
+  override async onTouchTap(ev: IDeckTouchTapEvent<CameraControlsSettings>): Promise<void> {
+    const settings = this.parseSettings(ev.payload.settings);
+    await this.dialSurface.touchTap(ev.action, settings.dial, ev.payload.hold === true);
   }
 
   private parseSettings(settings: unknown): CameraControlsSettings {
@@ -882,22 +855,204 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
         break;
       }
       case "cycle-sub-camera": {
-        const success = camera.cycleSubCamera(carIdx, groupNum, cameraNum, dir);
-        this.logger.info("Sub-camera cycled");
-        this.logger.debug(`Result: ${success}, direction: ${direction}`);
+        // Keep focus on the CURRENTLY focused car by number and just advance the
+        // sub-camera — the same switchNum-not-switchPos correction cycle-camera
+        // uses above. switchPos takes a RACE POSITION, so cycleSubCamera's
+        // switchPos(carIdx) switches to whatever car sits at that position; the
+        // pace car has no valid position, which stalled the cycle (issue #803).
+        // Fall back to the raw cycle helper only when the car number can't be
+        // resolved (out of session).
+        const sessionInfo = this.sdkController.getSessionInfo();
+        const carNumberRaw = sessionInfo ? getCarNumberRawFromSessionInfo(sessionInfo, carIdx) : null;
+
+        if (carNumberRaw !== null) {
+          // Step to the neighbouring camera resolved from the SAME carousel the
+          // dial sub-camera preview uses (computeSubCameraCarousel over the
+          // group's CameraInfo.Cameras[]), so preview and execution can't
+          // diverge (#803 strip redesign). With a non-empty list the carousel
+          // yields a REAL camera of the group — stepping+wrapping when the
+          // current camera is found, and recovering to the list's first (next) /
+          // last (previous) camera when it is NOT (the Scenic group, whose
+          // active CamCameraNumber isn't a member of its Cameras[] block, used
+          // to fall through to a synthetic cameraNum ± 1 that iRacing rejected
+          // → the "does nothing" no-op, #803) — except a LOCATED single-camera
+          // group, which has no neighbour at all (the preview shows current
+          // only), so the cycle deliberately no-ops rather than dispatching a
+          // synthetic non-member camera. Only a genuinely empty camera list
+          // leaves nothing to resolve, and then the raw ± 1 lets iRacing wrap
+          // internally.
+          const cameras = getCamerasInGroup(sessionInfo, groupNum);
+          const carousel = computeSubCameraCarousel(cameraNum, cameras);
+          const targetCamera = direction === "next" ? carousel.next : carousel.prev;
+
+          if (cameras.length > 0 && !targetCamera) {
+            this.logger.debug("Sub-camera group has no neighbour to cycle to");
+            break;
+          }
+
+          const targetCameraNum = targetCamera ? targetCamera.cameraNum : cameraNum + dir;
+          const success = camera.switchNum(carNumberRaw, groupNum, targetCameraNum);
+          this.logger.info("Sub-camera switched");
+          this.logger.debug(`Result: ${success}, direction: ${direction}, camera: ${targetCameraNum}`);
+        } else {
+          const success = camera.cycleSubCamera(carIdx, groupNum, cameraNum, dir);
+          this.logger.info("Sub-camera cycled (car number fallback)");
+          this.logger.debug(`Result: ${success}, direction: ${direction}`);
+        }
+
         break;
       }
       case "cycle-car": {
-        const success = camera.cycleCar(carIdx, dir);
-        this.logger.info("Car cycled");
-        this.logger.debug(`Result: ${success}, direction: ${direction}`);
+        // Cycle to the neighbouring car by ascending car number and focus it BY
+        // NUMBER — the same switchNum-not-switchPos correction the other cycle
+        // branches use (issue #803). cycleCar's switchPos(carIdx ± 1) treats the
+        // car INDEX as a race POSITION, so it lands on whatever car sits at that
+        // position and stalls when the focused (pace) car has no valid position.
+        // Reuses the dial car-number mode's ordering (computeCarNumberTarget) so
+        // both surfaces agree; falls back to the raw cycle helper only out of
+        // session (no car list).
+        const sessionInfo = this.sdkController.getSessionInfo();
+        const cars = getAllCarNumbers(sessionInfo, true, true);
+        const targetCar = computeCarNumberTarget(carIdx, cars, direction);
+
+        if (targetCar) {
+          const success = camera.switchNum(targetCar.carNumberRaw, groupNum, cameraNum);
+          this.logger.info("Car switched");
+          this.logger.debug(`Result: ${success}, direction: ${direction}, carNumberRaw: ${targetCar.carNumberRaw}`);
+        } else {
+          const success = camera.cycleCar(carIdx, dir);
+          this.logger.info("Car cycled (fallback)");
+          this.logger.debug(`Result: ${success}, direction: ${direction}`);
+        }
+
         break;
       }
       case "cycle-driving": {
-        const success = camera.cycleDrivingCamera(carIdx, groupNum, dir);
-        this.logger.info("Driving camera cycled");
-        this.logger.debug(`Result: ${success}, direction: ${direction}`);
+        // Driving cameras are camera groups too, so keep focus on the CURRENTLY
+        // focused car by number and advance the group — the same
+        // switchNum-not-switchPos correction cycle-camera / cycle-sub-camera use.
+        // cycleDrivingCamera's switchPos(carIdx, group ± 1) treats the car INDEX
+        // as a race POSITION, which the pace car has none of, stalling the cycle
+        // (issue #803). Fall back to the raw cycle helper only when the car
+        // number can't be resolved (out of session).
+        const sessionInfo = this.sdkController.getSessionInfo();
+        const carNumberRaw = sessionInfo ? getCarNumberRawFromSessionInfo(sessionInfo, carIdx) : null;
+
+        if (carNumberRaw !== null) {
+          const success = camera.switchNum(carNumberRaw, groupNum + dir, 0);
+          this.logger.info("Driving camera switched");
+          this.logger.debug(`Result: ${success}, direction: ${direction}, carNumberRaw: ${carNumberRaw}`);
+        } else {
+          const success = camera.cycleDrivingCamera(carIdx, groupNum, dir);
+          this.logger.info("Driving camera cycled (car number fallback)");
+          this.logger.debug(`Result: ${success}, direction: ${direction}`);
+        }
+
         break;
+      }
+    }
+  }
+
+  /**
+   * Center the camera on the player's own car — the Focus Your Car mode. Shared
+   * by the keypad `focus-your-car` mode and the dial's Focus My Car press
+   * gesture (#803) so both go through one SDK dispatch. Reads its own telemetry
+   * so the dial can call it without a settings object.
+   */
+  private focusMyCar(): void {
+    const telemetry = this.sdkController.getCurrentTelemetry();
+
+    if (!telemetry) {
+      this.logger.warn("No telemetry available for focus on your car");
+
+      return;
+    }
+
+    const playerCarIdx = telemetry.PlayerCarIdx ?? 0;
+    const sessionInfo = this.sdkController.getSessionInfo();
+    const carNumberRaw = sessionInfo ? getCarNumberRawFromSessionInfo(sessionInfo, playerCarIdx) : null;
+
+    if (carNumberRaw === null) {
+      this.logger.warn("Cannot focus on your car: car number not found in session info");
+
+      return;
+    }
+
+    const camera = getCommands().camera;
+    const groupNum = telemetry.CamGroupNumber ?? 1;
+    const cameraNum = telemetry.CamCameraNumber ?? 1;
+    const success = camera.switchNum(carNumberRaw, groupNum, cameraNum);
+    this.logger.info("Focus on your car executed");
+    this.logger.debug(`Result: ${success}, carNumberRaw: ${carNumberRaw}`);
+  }
+
+  /**
+   * Focus a car by its raw car number — the dial's car-number cycle target,
+   * and also its race-position target (#803 rework review): race-position
+   * resolves to a car number via the SAME canonical-first order the carousel
+   * preview uses, rather than dispatching a bare position through `switchPos`
+   * (which iRacing resolves against its own OFFICIAL position order — a
+   * mismatch in tow/finish/freeze cases would otherwise focus a different car
+   * than the one previewed). Reuses the keypad Switch by Car Number command
+   * surface, reading the active camera group / sub-camera from telemetry so
+   * the angle is preserved.
+   */
+  private focusCarNumber(carNumberRaw: number): void {
+    const telemetry = this.sdkController.getCurrentTelemetry();
+
+    if (!telemetry) {
+      this.logger.warn("No telemetry available for camera focus by car number");
+
+      return;
+    }
+
+    const camera = getCommands().camera;
+    const groupNum = telemetry.CamGroupNumber ?? 1;
+    const cameraNum = telemetry.CamCameraNumber ?? 1;
+    const success = camera.switchNum(carNumberRaw, groupNum, cameraNum);
+    this.logger.info("Camera dial focus by car number");
+    this.logger.debug(`Result: ${success}, carNumberRaw: ${carNumberRaw}`);
+  }
+
+  /**
+   * The parameterless focus one-shots (leader / incident / most-exciting) —
+   * shared by the keypad focus modes and the dial's focus gestures (#803), each
+   * reusing the same SDK camera command.
+   */
+  private focusOn(target: "focus-on-leader" | "focus-on-incident" | "focus-on-most-exciting"): void {
+    const telemetry = this.sdkController.getCurrentTelemetry();
+
+    if (!telemetry) {
+      this.logger.warn("No telemetry available for camera focus");
+
+      return;
+    }
+
+    const camera = getCommands().camera;
+    const groupNum = telemetry.CamGroupNumber ?? 1;
+    const cameraNum = telemetry.CamCameraNumber ?? 1;
+
+    switch (target) {
+      case "focus-on-leader": {
+        const success = camera.focusOnLeader(groupNum, cameraNum);
+        this.logger.info("Focus on leader executed");
+        this.logger.debug(`Result: ${success}`);
+
+        return;
+      }
+      case "focus-on-incident": {
+        const success = camera.focusOnIncident(groupNum, cameraNum);
+        this.logger.info("Focus on incident executed");
+        this.logger.debug(`Result: ${success}`);
+
+        return;
+      }
+      case "focus-on-most-exciting": {
+        const success = camera.focusOnMostExciting(groupNum, cameraNum);
+        this.logger.info("Focus on most exciting executed");
+        this.logger.debug(`Result: ${success}`);
+
+        return;
       }
     }
   }
@@ -917,37 +1072,15 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
 
     switch (settings.target) {
       case "focus-your-car": {
-        const playerCarIdx = telemetry.PlayerCarIdx ?? 0;
-        const sessionInfo = this.sdkController.getSessionInfo();
-        const carNumberRaw = sessionInfo ? getCarNumberRawFromSessionInfo(sessionInfo, playerCarIdx) : null;
-
-        if (carNumberRaw === null) {
-          this.logger.warn("Cannot focus on your car: car number not found in session info");
-          break;
-        }
-
-        const success = camera.switchNum(carNumberRaw, groupNum, cameraNum);
-        this.logger.info("Focus on your car executed");
-        this.logger.debug(`Result: ${success}, carNumberRaw: ${carNumberRaw}`);
+        this.focusMyCar();
 
         break;
       }
-      case "focus-on-leader": {
-        const success = camera.focusOnLeader(groupNum, cameraNum);
-        this.logger.info("Focus on leader executed");
-        this.logger.debug(`Result: ${success}`);
-        break;
-      }
-      case "focus-on-incident": {
-        const success = camera.focusOnIncident(groupNum, cameraNum);
-        this.logger.info("Focus on incident executed");
-        this.logger.debug(`Result: ${success}`);
-        break;
-      }
+      case "focus-on-leader":
+      case "focus-on-incident":
       case "focus-on-most-exciting": {
-        const success = camera.focusOnMostExciting(groupNum, cameraNum);
-        this.logger.info("Focus on most exciting executed");
-        this.logger.debug(`Result: ${success}`);
+        // Shared with the dial's focus gestures (#803) so both surfaces use one dispatch.
+        this.focusOn(settings.target);
         break;
       }
       case "switch-by-position": {

@@ -1131,6 +1131,41 @@
       }
     }
   },
+  "camera-focus-dial": {
+    "_meta": {
+      "modeSetting": "dial.mode"
+    },
+    "camera": {
+      "method": "api"
+    },
+    "sub-camera": {
+      "method": "api"
+    },
+    "car-number": {
+      "method": "api"
+    },
+    "race-position": {
+      "method": "api"
+    },
+    "driving": {
+      "method": "api"
+    },
+    "focus-my-car": {
+      "method": "api"
+    },
+    "change-camera": {
+      "method": "api"
+    },
+    "focus-on-leader": {
+      "method": "api"
+    },
+    "focus-on-incident": {
+      "method": "api"
+    },
+    "focus-on-most-exciting": {
+      "method": "api"
+    }
+  },
   "cockpit-misc": {
     "_meta": {
       "modeSetting": "control"
@@ -1277,6 +1312,68 @@
             "decrease": "forceFeedbackHapticLfeIntensityDecrease"
           }
         }
+      }
+    }
+  },
+  "force-feedback-dial": {
+    "_meta": {
+      "modeSetting": "dial.setting"
+    },
+    "ffb-force": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "cockpitMiscFfbForceIncrease",
+          "cockpitMiscFfbForceDecrease"
+        ]
+      }
+    },
+    "wheel-lfe": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "forceFeedbackWheelLfeLouder",
+          "forceFeedbackWheelLfeQuieter"
+        ]
+      }
+    },
+    "bass-shaker-lfe": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "forceFeedbackBassShakerLfeLouder",
+          "forceFeedbackBassShakerLfeQuieter"
+        ]
+      }
+    },
+    "wheel-lfe-intensity": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "forceFeedbackWheelLfeIntensityIncrease",
+          "forceFeedbackWheelLfeIntensityDecrease"
+        ]
+      }
+    },
+    "haptic-lfe-intensity": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "forceFeedbackHapticLfeIntensityIncrease",
+          "forceFeedbackHapticLfeIntensityDecrease"
+        ]
+      }
+    },
+    "auto-ffb": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "forceFeedbackAutoCompute"
       }
     }
   },
