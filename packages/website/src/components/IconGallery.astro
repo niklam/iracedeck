@@ -1,34 +1,46 @@
 ---
 // packages/website/src/components/IconGallery.astro
 // Renders the generated icon inventory (src/data/icon-gallery.json) as a
-// searchable, per-family grouped gallery. Assets live in /icon-gallery/.
+// searchable, action-group-centric gallery. Assets live in /icon-gallery/.
 import entries from "../data/icon-gallery.json";
 import type { GalleryEntry } from "../gallery-gen/lib.js";
 import {
-  categoryRemainder,
+  buildTemplateGroups,
   CLASS_SECTIONS,
-  defaultCategoryFor,
-  defaultKeyFor,
-  familiesOf,
-  familyAnchor,
-  familyDisplayName,
-  keyRemainder,
+  dialRemainder,
+  dynamicSectionEntries,
+  SIZE_FACTS,
+  type TemplateGroup,
 } from "../gallery-gen/sections.js";
 import IconGalleryCard from "./IconGalleryCard.astro";
 
 const all = entries as GalleryEntry[];
 
-// The standalone "Static default key images" / "Category icons" sections only
-// show the remainder — entries that couldn't be placed into a template family
-// group (item 10) or beside a family heading (item 15).
-const keyRemainderEntries = keyRemainder(all);
-const categoryRemainderEntries = categoryRemainder(all);
+const templateSection = CLASS_SECTIONS.find((s) => s.id === "template")!;
+const dynamicSection = CLASS_SECTIONS.find((s) => s.id === "dynamic")!;
 
-function entriesForSection(sectionId: string): GalleryEntry[] {
-  if (sectionId === "key") return keyRemainderEntries;
-  if (sectionId === "category") return categoryRemainderEntries;
+// One group per template family PLUS one synthetic "action group" for each
+// of the three dynamic-only actions (Pit Crew, Session Info, Telemetry
+// Display), sorted together alphabetically by display name (item 2, gallery
+// restructure wave).
+const templateGroups = buildTemplateGroups(all);
 
-  return all.filter((e) => e.class === sectionId);
+// The flat "Dynamic templates" grid only shows templates whose action ALSO
+// has a group above (item 4) — the three dynamic-only actions' entries were
+// pulled into their own group's grid instead (item 2).
+const dynamicEntries = dynamicSectionEntries(all);
+
+// Dial assets (dial.svg + dash sample) that couldn't be matched to any group
+// — expected empty; kept as a safety-net rump section rather than silently
+// dropping a real asset (item 3).
+const orphanDials = dialRemainder(all);
+
+function dialLabel(e: GalleryEntry): string {
+  return e.family === "touch-strip" ? "dial screen (sample)" : "dial icon";
+}
+
+function groupCount(group: TemplateGroup): number {
+  return group.entries.length + (group.defaultKey ? 1 : 0);
 }
 ---
 
@@ -38,57 +50,78 @@ function entriesForSection(sectionId: string): GalleryEntry[] {
     <span id="icon-gallery-count">{all.length} icons</span>
   </p>
 
-  {CLASS_SECTIONS.map((section) => {
-    const sectionEntries = entriesForSection(section.id);
+  <div class="gallery-size-facts">
+    <p>Sizes at a glance</p>
+    <ul>
+      {SIZE_FACTS.map((fact) => <li>{fact}</li>)}
+    </ul>
+  </div>
 
-    // The remainder-only "key" section disappears entirely once every key
-    // entry has been placed into its template family group (item 10).
-    if (sectionEntries.length === 0) return null;
+  {templateGroups.length > 0 && (
+    <section class="gallery-class" data-class="template">
+      <h2 id={`class-${templateSection.id}`}>{templateSection.label}</h2>
+      <p>{templateSection.blurb}</p>
+      <p class="section-size">{templateSection.blurbSize}</p>
 
-    return (
-      <section class="gallery-class" data-class={section.id}>
-        <h2 id={`class-${section.id}`}>{section.label}</h2>
-        <p>{section.blurb}</p>
-        <p class="section-size">{section.blurbSize}</p>
+      {templateGroups.map((group) => (
+        <div class="gallery-family">
+          <h3 id={group.anchor}>
+            <span class="family-name">
+              {group.categoryIcon && (
+                <span class="family-category-chip">
+                  <img src={group.categoryIcon.file} alt="" loading="lazy" width="26" height="26" />
+                </span>
+              )}
+              {group.displayName} <span class="family-count">({groupCount(group)})</span>
+            </span>
+            <span class="family-slug">{group.slug}</span>
+          </h3>
 
-        {section.flat ? (
+          {group.blurb && <p class="group-blurb">{group.blurb}</p>}
+
+          {group.defaultKey && (
+            <div class="gallery-default-row">
+              <IconGalleryCard entry={group.defaultKey} label="default icon" />
+            </div>
+          )}
+
           <div class="gallery-grid">
-            {sectionEntries.map((e) => <IconGalleryCard entry={e} />)}
+            {group.entries.map((e) => <IconGalleryCard entry={e} />)}
           </div>
-        ) : (
-          familiesOf(all, section.id).map(([family, icons]) => {
-            const defaultKey = defaultKeyFor(all, family);
-            const categoryIcon = defaultCategoryFor(all, family);
-            const count = icons.length + (defaultKey ? 1 : 0);
 
-            return (
-              <div class="gallery-family">
-                <h3 id={familyAnchor(section.id, family)}>
-                  <span class="family-name">
-                    {categoryIcon && (
-                      <span class="family-category-chip">
-                        <img src={categoryIcon.file} alt="" loading="lazy" width="26" height="26" />
-                      </span>
-                    )}
-                    {familyDisplayName(family, all)} <span class="family-count">({count})</span>
-                  </span>
-                  <span class="family-slug">{family}</span>
-                </h3>
-                {defaultKey && (
-                  <div class="gallery-default-row">
-                    <IconGalleryCard entry={defaultKey} label="default icon" />
-                  </div>
-                )}
-                <div class="gallery-grid">
-                  {icons.map((e) => <IconGalleryCard entry={e} />)}
-                </div>
+          {group.dialEntries.length > 0 && (
+            <div class="gallery-dial-row">
+              <div class="gallery-dial-label">Dial</div>
+              <div class="gallery-grid">
+                {group.dialEntries.map((e) => <IconGalleryCard entry={e} label={dialLabel(e)} />)}
               </div>
-            );
-          })
-        )}
-      </section>
-    );
-  })}
+            </div>
+          )}
+        </div>
+      ))}
+    </section>
+  )}
+
+  {dynamicEntries.length > 0 && (
+    <section class="gallery-class" data-class="dynamic">
+      <h2 id={`class-${dynamicSection.id}`}>{dynamicSection.label}</h2>
+      <p>{dynamicSection.blurb}</p>
+      <p class="section-size">{dynamicSection.blurbSize}</p>
+      <div class="gallery-grid">
+        {dynamicEntries.map((e) => <IconGalleryCard entry={e} />)}
+      </div>
+    </section>
+  )}
+
+  {orphanDials.length > 0 && (
+    <section class="gallery-class" data-class="dial">
+      <h2 id="class-dial">Dials</h2>
+      <p>Dial assets (encoder icons and touch-strip dash-box samples) that couldn't be matched to an action group above.</p>
+      <div class="gallery-grid">
+        {orphanDials.map((e) => <IconGalleryCard entry={e} label={dialLabel(e)} />)}
+      </div>
+    </section>
+  )}
 </div>
 
 <script>
@@ -177,5 +210,44 @@ function entriesForSection(sectionId: string): GalleryEntry[] {
     font-size: var(--sl-text-xs);
     font-weight: normal;
     color: var(--sl-color-gray-3);
+  }
+  .group-blurb {
+    color: var(--sl-color-gray-2);
+    font-size: var(--sl-text-sm);
+    font-style: italic;
+  }
+  .gallery-dial-row {
+    margin-top: 0.75rem;
+  }
+  .gallery-dial-label {
+    text-transform: uppercase;
+    font-size: var(--sl-text-xs);
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    color: var(--sl-color-gray-3);
+    margin-bottom: 0.3rem;
+  }
+  .gallery-size-facts {
+    margin: 0.5rem 0 1.5rem;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.5rem;
+    font-size: var(--sl-text-sm);
+    color: var(--sl-color-gray-3);
+  }
+  .gallery-size-facts p {
+    margin: 0 0 0.4rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: var(--sl-text-xs);
+    letter-spacing: 0.05em;
+    color: var(--sl-color-gray-2);
+  }
+  .gallery-size-facts ul {
+    margin: 0;
+    padding-left: 1.1rem;
+  }
+  .gallery-size-facts li {
+    margin: 0.2rem 0;
   }
 </style>
