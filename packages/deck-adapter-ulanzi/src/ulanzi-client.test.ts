@@ -171,7 +171,7 @@ describe("normalizeFrame", () => {
     expect(ev).toEqual({ event: "didReceiveGlobalSettings", payload: { settings: { debugLogging: true } } });
   });
 
-  it("surfaces `sendToPlugin` only for the PI-appear marker", () => {
+  it("surfaces `sendToPlugin` only for known PI markers", () => {
     const marker = normalizeFrame({
       cmd: "sendToPlugin",
       uuid: "u",
@@ -183,6 +183,28 @@ describe("normalizeFrame", () => {
 
     const other = normalizeFrame({ cmd: "sendToPlugin", uuid: "u", key: "5", actionid: "a", payload: { foo: 1 } });
     expect(other).toEqual([]);
+  });
+
+  it("surfaces the `sendToPlugin` openUrl marker as a global openUrl event carrying the url", () => {
+    const events = normalizeFrame({
+      cmd: "sendToPlugin",
+      uuid: "u",
+      key: "5",
+      actionid: "a",
+      payload: { event: "openUrl", url: "https://iracedeck.com/docs/" },
+    });
+
+    expect(events).toEqual([
+      { event: "openUrl", action: "u", context: "u___5___a", payload: { url: "https://iracedeck.com/docs/" } },
+    ]);
+  });
+
+  it("drops an openUrl marker whose url is not a string", () => {
+    for (const url of [42, null, undefined, { nested: true }]) {
+      expect(
+        normalizeFrame({ cmd: "sendToPlugin", uuid: "u", key: "5", actionid: "a", payload: { event: "openUrl", url } }),
+      ).toEqual([]);
+    }
   });
 
   it("ignores unused frames (`run`, `setactive`, acks)", () => {

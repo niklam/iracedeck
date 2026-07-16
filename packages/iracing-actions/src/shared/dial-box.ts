@@ -103,7 +103,11 @@ export function renderDialBox(args: {
   const identityOnly = value === "";
 
   const labelFontSize = identityOnly ? Math.round(minSide * identityLabelScale) : Math.round(minSide * 0.15);
-  const labelY = identityOnly ? Math.round(h * 0.5) : Math.round(h * 0.28);
+  // SVG <text> y is the BASELINE and resvg ignores dominant-baseline, so a
+  // centered identity-only label must add the baseline offset (~0.36em for bold
+  // Arial) — otherwise it renders visibly ABOVE center (#804). The
+  // label-above-value layout keeps its historic baseline (0.28h).
+  const labelY = identityOnly ? Math.round(h * 0.5) + Math.round(labelFontSize * 0.36) : Math.round(h * 0.28);
 
   const labelText = `<text x="${w / 2}" y="${labelY}" text-anchor="middle" fill="${colors.label}" font-family="Arial, sans-serif" font-size="${labelFontSize}" font-weight="bold">${abbr}</text>`;
 

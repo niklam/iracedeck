@@ -7,7 +7,7 @@ sidebar:
     variant: tip
 ---
 
-Precise control over every adjustable camera parameter in iRacing's camera editor. Each mode targets a specific axis or property. Use this action alongside [Camera Editor Controls](/docs/actions/view-camera/camera-editor-controls/) for a complete editing workflow.
+Precise control over every adjustable camera parameter in iRacing's camera editor. Each mode targets a specific axis or property. Use this action alongside [Camera Editor Controls](/docs/actions/view-camera/camera-editor-controls/) for a complete editing workflow. Placed on a **Stream Deck+ dial**, the same action becomes a camera-tool dial — turn to nudge one parameter, with the parameter's name on the touch strip — see [On a dial](#on-a-dial) below.
 
 ## Modes
 
@@ -279,3 +279,54 @@ Adjust the focus depth.
 
 - **Increase** (default) — Pressing the button increases focus depth
 - **Decrease** — Pressing the button decreases focus depth
+
+## On a dial
+
+Placed on a Stream Deck+ dial, Camera Editor Adjustments becomes a precision camera-tool dial — ideal for a broadcast operator mapping latitude, yaw, zoom, and focus across the four dials. Pick one parameter with the dial's **Adjustment** dropdown; turning the dial steps it up or down in the camera editor. It uses the same key bindings as the keypad modes, so no extra configuration is needed if you already use them. The Property Inspector automatically shows the dial settings below (instead of the keypad Adjustment and Direction) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
+
+#### Details
+
+- **Method:** Key binding — the same Camera Editor Adjustments increase/decrease bindings the keypad modes use for rotation, plus, for the press and touch gestures, the *Auto Set Mic Gain* binding and any [Camera Editor Controls](/docs/actions/view-camera/camera-editor-controls/) one-shot bindings you assign to a slot. Configure them all in the **Related Key Bindings** section; the Property Inspector shows a status line indicating whether each is set.
+- **Dial:** Rotating adjusts the selected parameter (clockwise = increase, counter-clockwise = decrease). Both the increase and decrease key bindings must be set.
+- **Telemetry-aware:** No. iRacing exposes no camera-tool state, so the touch strip shows the selected parameter's name only — never a live value.
+
+#### Controls
+
+- **Elgato Stream Deck+** — dial rotation, a press (short or long), and a touchscreen readout that always shows. A touchscreen tap or long tap runs its own configured Tap Display / Long Touch action.
+
+Dials are currently Stream Deck+ only — the action can't be placed on Mirabox knobs or Ulanzi dials yet (see [Dials](/docs/features/dials/)).
+
+#### Setting: Adjustment
+
+The camera-tool parameter the dial controls. Each renders as a color-coded "dash box" showing the parameter's full name — because iRacing exposes no camera-tool values, the box shows the name only, never a number. Each setting has a built-in accent color, but you can override the border, label, value, and background colors in the **Dash Box Appearance** section of the dial settings. Only the 14 rotatable parameters are offered — Auto Set Mic Gain is a one-shot with no direction, so it's available as a press gesture instead.
+
+| Setting | Strip name | Telemetry source | Shown as |
+|---|---|---|---|
+| Latitude | Latitude | *(none — iRacing exposes no camera-tool state)* | label only |
+| Longitude | Longitude | *(none)* | label only |
+| Altitude | Altitude | *(none)* | label only |
+| Yaw | Yaw | *(none)* | label only |
+| Pitch | Pitch | *(none)* | label only |
+| FOV Zoom | FOV Zoom | *(none)* | label only |
+| F-number | F-number | *(none)* | label only |
+| Focus Depth | Focus Depth | *(none)* | label only |
+| Vanish X | Vanish X | *(none)* | label only |
+| Vanish Y | Vanish Y | *(none)* | label only |
+| Blimp Radius | Blimp Radius | *(none)* | label only |
+| Blimp Velocity | Blimp Velocity | *(none)* | label only |
+| Key Step | Key Step | *(none)* | label only |
+| Mic Gain | Mic Gain | *(none)* | label only |
+
+#### Setting: Press Action / Long Press
+
+What a short or long press of the dial button does, chosen from:
+
+- **None** (default for both) — does nothing.
+- **Auto Set Mic Gain** — taps the *Auto Set Mic Gain* binding, which auto-sets the microphone gain for the current camera.
+- **Any Camera Editor Controls one-shot** — the full set of parameterless camera-tool commands from [Camera Editor Controls](/docs/actions/view-camera/camera-editor-controls/) (open the camera tool, the various toggles, cycle position/aim type, acquire start/end, insert/remove and copy/paste of cameras and groups, save/load track and car cameras, and the rest). Each taps that control's shared key binding, so one dial can both nudge a parameter and fire a camera-tool command.
+
+A press is classified when you release the dial — a hold past the [Long-press threshold](/docs/features/dials/#the-long-press-threshold) fires the Long Press action. Turning the dial while pressed adjusts the parameter (a "push + turn") and never fires the press action.
+
+#### Setting: Tap Display / Long Touch
+
+Optional touch-strip gestures (Stream Deck+ only). Each offers the same choices as the press gestures — None, Auto Set Mic Gain, or any Camera Editor Controls one-shot. Both default to **None** for VR safety.

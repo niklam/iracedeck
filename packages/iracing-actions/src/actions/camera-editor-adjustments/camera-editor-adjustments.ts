@@ -8,9 +8,13 @@ import {
   getGlobalTitleSettings,
   type IDeckDialDownEvent,
   type IDeckDialRotateEvent,
+  type IDeckDialUpEvent,
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
+  type IDeckTouchTapEvent,
   type IDeckWillAppearEvent,
+  type IDeckWillDisappearEvent,
+  onGlobalSettingsChange,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
@@ -47,6 +51,12 @@ import vanishYIncreaseIconSvg from "@iracedeck/icons/camera-editor-adjustments/v
 import yawDecreaseIconSvg from "@iracedeck/icons/camera-editor-adjustments/yaw-decrease.svg";
 import yawIncreaseIconSvg from "@iracedeck/icons/camera-editor-adjustments/yaw-increase.svg";
 import z from "zod";
+
+import {
+  CameraEditorDialSurface,
+  DialSettings,
+  seedDialFromLegacySetting,
+} from "./camera-editor-adjustments-dial-surface.js";
 
 const ADJUSTMENT_VALUES = [
   "latitude",
@@ -168,6 +178,10 @@ export const CAMERA_EDITOR_GLOBAL_KEYS: Record<AdjustmentType, Record<DirectionT
 const CameraEditorAdjustmentsSettings = CommonSettings.extend({
   adjustment: z.enum(ADJUSTMENT_VALUES).default("latitude"),
   direction: z.enum(["increase", "decrease"]).default("increase"),
+  // Dial-surface settings (#804), under the `dial` root so keypad and dial keys
+  // can't collide. catch: dial garbage degrades to dial defaults instead of
+  // failing the whole parse (which would reset a keypad instance).
+  dial: DialSettings.catch(() => DialSettings.parse({})),
 });
 
 type CameraEditorAdjustmentsSettings = z.infer<typeof CameraEditorAdjustmentsSettings>;
@@ -204,11 +218,50 @@ export function generateCameraEditorAdjustmentsSvg(
 export const CAMERA_EDITOR_ADJUSTMENTS_UUID = "com.iracedeck.sd.core.camera-editor-adjustments" as const;
 
 export class CameraEditorAdjustments extends ConnectionStateAwareAction<CameraEditorAdjustmentsSettings> {
+  /**
+   * The dial half of the action; all IDeck dial events route here (#804). No
+   * `setActiveBinding` is delegated — it would bleed onto the keypad buttons.
+   */
+  private readonly dialSurface = new CameraEditorDialSurface({
+    logger: this.logger,
+    getTelemetry: () => this.sdkController.getCurrentTelemetry(),
+    tapBinding: (settingKey) => this.tapBinding(settingKey),
+    isBindingMissing: (keys) => this.isBindingMissing(keys),
+  });
+
+  /** Keeps the dial strips' #612 missing-binding warning live while iRacing is offline (#804). */
+  private readonly unsubscribeGlobalSettings = onGlobalSettingsChange(() => this.dialSurface.refreshAll());
+
   override async onWillAppear(ev: IDeckWillAppearEvent<CameraEditorAdjustmentsSettings>): Promise<void> {
     await super.onWillAppear(ev);
-    const settings = this.parseSettings(ev.payload.settings);
+    let settings = this.parseSettings(ev.payload.settings);
+
+    if (ev.action.isDial()) {
+      // #804 dial migration: a pre-dial-surface encoder placement drove the flat
+      // keypad `adjustment` — carry a valid rotation value over to `dial.setting`.
+      const seededDial = seedDialFromLegacySetting(ev.payload.settings);
+
+      if (seededDial) {
+        await ev.action.setSettings(seededDial);
+        settings = this.parseSettings(seededDial);
+      }
+
+      await this.dialSurface.willAppear(ev.action, settings.dial);
+      this.sdkController.subscribe(ev.action.id, (telemetry) => {
+        this.dialSurface.onTelemetry(ev.action.id, telemetry);
+      });
+
+      return;
+    }
+
     this.setActiveBinding(CAMERA_EDITOR_GLOBAL_KEYS[settings.adjustment]?.[settings.direction]);
     await this.updateDisplay(ev, settings);
+  }
+
+  override async onWillDisappear(ev: IDeckWillDisappearEvent<CameraEditorAdjustmentsSettings>): Promise<void> {
+    this.sdkController.unsubscribe(ev.action.id);
+    this.dialSurface.willDisappear(ev.action.id);
+    await super.onWillDisappear(ev);
   }
 
   override async onDidReceiveSettings(
@@ -216,6 +269,13 @@ export class CameraEditorAdjustments extends ConnectionStateAwareAction<CameraEd
   ): Promise<void> {
     await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
+
+    if (ev.action.isDial()) {
+      await this.dialSurface.didReceiveSettings(ev.action, settings.dial);
+
+      return;
+    }
+
     this.setActiveBinding(CAMERA_EDITOR_GLOBAL_KEYS[settings.adjustment]?.[settings.direction]);
     await this.updateDisplay(ev, settings);
   }
@@ -226,26 +286,23 @@ export class CameraEditorAdjustments extends ConnectionStateAwareAction<CameraEd
     await this.executeAdjustment(settings.adjustment, settings.direction);
   }
 
-  override async onDialDown(ev: IDeckDialDownEvent<CameraEditorAdjustmentsSettings>): Promise<void> {
-    this.logger.info("Dial down received");
+  override async onDialRotate(ev: IDeckDialRotateEvent<CameraEditorAdjustmentsSettings>): Promise<void> {
     const settings = this.parseSettings(ev.payload.settings);
-    await this.executeAdjustment(settings.adjustment, settings.direction);
+    await this.dialSurface.rotate(ev.action, settings.dial, ev.payload.ticks, ev.payload.pressed === true);
   }
 
-  override async onDialRotate(ev: IDeckDialRotateEvent<CameraEditorAdjustmentsSettings>): Promise<void> {
-    this.logger.info("Dial rotated");
+  override async onDialDown(ev: IDeckDialDownEvent<CameraEditorAdjustmentsSettings>): Promise<void> {
     const settings = this.parseSettings(ev.payload.settings);
+    this.dialSurface.down(ev.action, settings.dial);
+  }
 
-    // Auto Set Mic Gain has no directional adjustment — ignore rotation
-    if (settings.adjustment === "auto-set-mic-gain") {
-      this.logger.debug("Rotation ignored for Auto Set Mic Gain");
+  override async onDialUp(ev: IDeckDialUpEvent<CameraEditorAdjustmentsSettings>): Promise<void> {
+    await this.dialSurface.up(ev.action.id);
+  }
 
-      return;
-    }
-
-    // Clockwise (ticks > 0) = increase, Counter-clockwise (ticks < 0) = decrease
-    const direction: DirectionType = ev.payload.ticks > 0 ? "increase" : "decrease";
-    await this.executeAdjustment(settings.adjustment, direction);
+  override async onTouchTap(ev: IDeckTouchTapEvent<CameraEditorAdjustmentsSettings>): Promise<void> {
+    const settings = this.parseSettings(ev.payload.settings);
+    await this.dialSurface.touchTap(ev.action, settings.dial, ev.payload.hold === true);
   }
 
   private parseSettings(settings: unknown): CameraEditorAdjustmentsSettings {

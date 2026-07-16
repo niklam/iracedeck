@@ -184,6 +184,39 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
     this.fileSink = logDir ? new FileSink(logDir) : null;
     const log = logger ?? this.buildLogger("Ulanzi");
     this.client = new UlanziClient(parseConnectionParams(), log.createScope("WebSocket"));
+
+    // The Ulanzi PI bridge relays external-link clicks as a `sendToPlugin`
+    // openUrl marker — UlanziStudio ignores `openurl` sent on the PI socket but
+    // honours it from the plugin socket, so forward it from here (#845). Only
+    // http(s) URLs are forwarded, matching the PI external-link contract (#243)
+    // and the Elgato host's own behavior.
+    this.client.onGlobalEvent("openUrl", (data) => {
+      const url = data.payload?.url;
+
+      if (typeof url !== "string") return;
+
+      let parsed: URL;
+
+      try {
+        parsed = new URL(url);
+      } catch {
+        log.warn("Ignoring relayed PI URL: not a valid URL");
+
+        return;
+      }
+
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+        log.warn("Ignoring relayed PI URL: unsupported scheme");
+
+        return;
+      }
+
+      log.info("Opening URL relayed from Property Inspector");
+      // Redacted to origin + path: query/fragment could carry identifiers that
+      // don't belong in console or file logs.
+      log.debug(`URL: ${parsed.origin}${parsed.pathname}`);
+      this.client.openUrl(url);
+    });
   }
 
   /**

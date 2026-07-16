@@ -15,8 +15,14 @@
  * emitted under the reserved `_meta` key inside each action's map.
  *
  * Display-only / internal actions (session-info, telemetry-display, pit-crew,
- * camera-cycle, camera-focus) are intentionally absent: they issue no iRacing
- * command, so they get no status line and no icon warning.
+ * camera-cycle) are intentionally absent: they issue no iRacing command, so they
+ * get no status line and no icon warning. Camera Controls' KEYPAD surface is
+ * likewise absent (every camera mode is an SDK command, nothing to configure);
+ * its DIAL surface still carries an all-API `camera-focus-dial` entry (#803) —
+ * the dial PI dropped its status line as redundant (every dial mode is `api`,
+ * so the line never said anything useful), but the entry stays as this file's
+ * per-mode communication-method record and still feeds the generated
+ * `action-comms.json`.
  */
 import {
   type ActionCommMap,
@@ -164,6 +170,21 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     "ui-size": keybindBy("direction", { increase: "viewAdjustUiSizeIncrease", decrease: "viewAdjustUiSizeDecrease" }),
   }),
 
+  // The dial surface of View Adjustment (#806). Separate from the keypad map:
+  // the same setting names carry different descriptors per surface (keypad
+  // `fov` is direction-keyed via `keybindBy`, dial rotation requires BOTH keys
+  // via `pair` since the dial has no `direction` setting). Recenter VR is not a
+  // rotation mode here — it is the default press gesture (`recenter-vr`), a
+  // single keybind. iRacing exposes no telemetry for any of these, so the strip
+  // is label-only; every setting still needs both increase and decrease bound.
+  "view-adjustment-dial": entry("dial.setting", {
+    fov: pair("viewAdjustFovIncrease", "viewAdjustFovDecrease"),
+    horizon: pair("viewAdjustHorizonUp", "viewAdjustHorizonDown"),
+    "driver-height": pair("viewAdjustDriverHeightUp", "viewAdjustDriverHeightDown"),
+    "ui-size": pair("viewAdjustUiSizeIncrease", "viewAdjustUiSizeDecrease"),
+    "recenter-vr": keybind("viewAdjustRecenterVr"),
+  }),
+
   "camera-editor-adjustments": entry("adjustment", {
     latitude: dir("camEditLatitudeIncrease", "camEditLatitudeDecrease"),
     longitude: dir("camEditLongitudeIncrease", "camEditLongitudeDecrease"),
@@ -181,6 +202,64 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     "auto-set-mic-gain": keybind("camEditAutoSetMicGain"),
     "f-number": dir("camEditFNumberIncrease", "camEditFNumberDecrease"),
     "focus-depth": dir("camEditFocusDepthIncrease", "camEditFocusDepthDecrease"),
+  }),
+
+  // The dial surface of Camera Editor Adjustments (#804). Rotation steps one of
+  // the 14 camera-tool parameters via BOTH increase/decrease keys (warn if
+  // either is unset). Auto Set Mic Gain is not a rotation value — it is offered
+  // only as a press gesture, a single fixed binding. Separate from the keypad
+  // map: rotation has no `direction` setting, so each value needs the pair.
+  "camera-editor-adjustments-dial": entry("dial.setting", {
+    latitude: pair("camEditLatitudeIncrease", "camEditLatitudeDecrease"),
+    longitude: pair("camEditLongitudeIncrease", "camEditLongitudeDecrease"),
+    altitude: pair("camEditAltitudeIncrease", "camEditAltitudeDecrease"),
+    yaw: pair("camEditYawIncrease", "camEditYawDecrease"),
+    pitch: pair("camEditPitchIncrease", "camEditPitchDecrease"),
+    "fov-zoom": pair("camEditFovZoomIncrease", "camEditFovZoomDecrease"),
+    "f-number": pair("camEditFNumberIncrease", "camEditFNumberDecrease"),
+    "focus-depth": pair("camEditFocusDepthIncrease", "camEditFocusDepthDecrease"),
+    "vanish-x": pair("camEditVanishXIncrease", "camEditVanishXDecrease"),
+    "vanish-y": pair("camEditVanishYIncrease", "camEditVanishYDecrease"),
+    "blimp-radius": pair("camEditBlimpRadiusIncrease", "camEditBlimpRadiusDecrease"),
+    "blimp-velocity": pair("camEditBlimpVelocityIncrease", "camEditBlimpVelocityDecrease"),
+    "key-step": pair("camEditKeyStepIncrease", "camEditKeyStepDecrease"),
+    "mic-gain": pair("camEditMicGainIncrease", "camEditMicGainDecrease"),
+    // Press/touch gesture values (dial.pressAction/longPressAction/tapAction/
+    // longTouchAction all share this map). Auto Set Mic Gain taps the
+    // camera-editor's own fixed binding; the camera-tool one-shots reuse Camera
+    // Editor Controls' camCtrl* keys verbatim (#804) — cross-action binding
+    // reuse, keys shared plugin-wide (precedent: cockpit-misc ffb-max-force).
+    "auto-mic-gain": keybind("camEditAutoSetMicGain"),
+    "open-camera-tool": keybind("camCtrlOpenCameraTool"),
+    "key-acceleration-toggle": keybind("camCtrlKeyAccelerationToggle"),
+    "key-10x-toggle": keybind("camCtrlKey10xToggle"),
+    "parabolic-mic-toggle": keybind("camCtrlParabolicMicToggle"),
+    "cycle-position-type": keybind("camCtrlCyclePositionType"),
+    "cycle-aim-type": keybind("camCtrlCycleAimType"),
+    "acquire-start": keybind("camCtrlAcquireStart"),
+    "acquire-end": keybind("camCtrlAcquireEnd"),
+    "temporary-edits-toggle": keybind("camCtrlTemporaryEditsToggle"),
+    "dampening-toggle": keybind("camCtrlDampeningToggle"),
+    "zoom-toggle": keybind("camCtrlZoomToggle"),
+    "beyond-fence-toggle": keybind("camCtrlBeyondFenceToggle"),
+    "in-cockpit-toggle": keybind("camCtrlInCockpitToggle"),
+    "mouse-navigation-toggle": keybind("camCtrlMouseNavigationToggle"),
+    "pitch-gyro-toggle": keybind("camCtrlPitchGyroToggle"),
+    "roll-gyro-toggle": keybind("camCtrlRollGyroToggle"),
+    "limit-shot-range-toggle": keybind("camCtrlLimitShotRangeToggle"),
+    "show-camera-toggle": keybind("camCtrlShowCameraToggle"),
+    "shot-selection-toggle": keybind("camCtrlShotSelectionToggle"),
+    "manual-focus-toggle": keybind("camCtrlManualFocusToggle"),
+    "insert-camera": keybind("camCtrlInsertCamera"),
+    "remove-camera": keybind("camCtrlRemoveCamera"),
+    "copy-camera": keybind("camCtrlCopyCamera"),
+    "paste-camera": keybind("camCtrlPasteCamera"),
+    "copy-group": keybind("camCtrlCopyGroup"),
+    "paste-group": keybind("camCtrlPasteGroup"),
+    "save-track-camera": keybind("camCtrlSaveTrackCamera"),
+    "load-track-camera": keybind("camCtrlLoadTrackCamera"),
+    "save-car-camera": keybind("camCtrlSaveCarCamera"),
+    "load-car-camera": keybind("camCtrlLoadCarCamera"),
   }),
 
   "camera-editor-controls": entry("control", {
@@ -216,6 +295,32 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     "load-car-camera": keybind("camCtrlLoadCarCamera"),
   }),
 
+  // The dial surface of Camera Controls (#803). Rotation cycles the camera or
+  // the focused car and the press gestures center on the player's car / switch
+  // camera — every one an iRacing SDK camera command (`getCommands().camera.*`),
+  // so all modes are `api`. The dial reuses the keypad's own cycle/focus
+  // dispatch (no key bindings, nothing to configure); the map documents that
+  // per-mode communication method and feeds the generated `action-comms.json`
+  // (the dial PI's status line under its Mode selector was dropped as
+  // redundant since every mode reads the same "iRacing API" — see the header
+  // note). _meta.modeSetting = "dial.mode". The keypad surface has no entry
+  // (its modes are equally binding-free — see the header note).
+  "camera-focus-dial": entry("dial.mode", {
+    camera: api,
+    "sub-camera": api,
+    "car-number": api,
+    "race-position": api,
+    driving: api,
+    // Gesture-slot values (dial.pressAction / .longPressAction / .tapAction /
+    // .longTouchAction) — each an SDK camera command. "none" is omitted (it
+    // issues no command). Kept complete so the catalog documents every gesture.
+    "focus-my-car": api,
+    "change-camera": api,
+    "focus-on-leader": api,
+    "focus-on-incident": api,
+    "focus-on-most-exciting": api,
+  }),
+
   "cockpit-misc": entry("control", {
     "toggle-wipers": keybind("cockpitMiscToggleWipers"),
     "trigger-wipers": keybind("cockpitMiscTriggerWipers"),
@@ -233,6 +338,21 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
       decrease: "cockpitMiscDashPage2Decrease",
     }),
     "in-lap-mode": keybind("cockpitMiscInLapMode"),
+  }),
+
+  // The dial surface of the Cockpit Misc action (#805). Rotation cycles a
+  // dashboard page via BOTH the increase AND decrease keys (`pair` — the dial
+  // has no `direction` setting, unlike the keypad map above); the press gesture
+  // can run any of the keypad's one-shots (toggle/trigger wipers, in-lap mode,
+  // report latency). `ffb-max-force` is intentionally absent as a rotation
+  // setting (FFB rotation belongs to the Force Feedback dial).
+  "cockpit-misc-dial": entry("dial.setting", {
+    "dash-page-1": pair("cockpitMiscDashPage1Increase", "cockpitMiscDashPage1Decrease"),
+    "dash-page-2": pair("cockpitMiscDashPage2Increase", "cockpitMiscDashPage2Decrease"),
+    "toggle-wipers": keybind("cockpitMiscToggleWipers"),
+    "trigger-wipers": keybind("cockpitMiscTriggerWipers"),
+    "in-lap-mode": keybind("cockpitMiscInLapMode"),
+    "report-latency": keybind("cockpitMiscReportLatency"),
   }),
 
   "force-feedback": entry("mode", {
@@ -257,6 +377,22 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
       increase: "forceFeedbackHapticLfeIntensityIncrease",
       decrease: "forceFeedbackHapticLfeIntensityDecrease",
     }),
+  }),
+
+  // The dial surface of the Force Feedback action (#802). Rotation is keyed by
+  // `dial.setting` (BOTH the increase and decrease keys required); the Auto FFB
+  // press gesture taps the shared auto-compute binding. A separate entry from
+  // the keypad map because the same setting values need different descriptors
+  // per surface (keypad resolves one key via `direction`, dial rotation needs
+  // the pair). FFB Force reuses the Cockpit Misc keys (#827). `auto-compute-ffb-force`
+  // is keypad-only (no rotation), so it is absent here.
+  "force-feedback-dial": entry("dial.setting", {
+    "ffb-force": pair("cockpitMiscFfbForceIncrease", "cockpitMiscFfbForceDecrease"),
+    "wheel-lfe": pair("forceFeedbackWheelLfeLouder", "forceFeedbackWheelLfeQuieter"),
+    "bass-shaker-lfe": pair("forceFeedbackBassShakerLfeLouder", "forceFeedbackBassShakerLfeQuieter"),
+    "wheel-lfe-intensity": pair("forceFeedbackWheelLfeIntensityIncrease", "forceFeedbackWheelLfeIntensityDecrease"),
+    "haptic-lfe-intensity": pair("forceFeedbackHapticLfeIntensityIncrease", "forceFeedbackHapticLfeIntensityDecrease"),
+    "auto-ffb": keybind("forceFeedbackAutoCompute"),
   }),
 
   chat: entry("mode", {
