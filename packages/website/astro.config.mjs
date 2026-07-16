@@ -220,6 +220,7 @@ export default defineConfig({
             { slug: "docs/development/setup" },
             { slug: "docs/development/feature-flags" },
             { slug: "docs/development/icon-gallery" },
+            { slug: "docs/development/designing-icons" },
           ],
         },
         {
