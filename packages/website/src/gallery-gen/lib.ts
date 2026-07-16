@@ -101,7 +101,6 @@ export const DYNAMIC_SAMPLE_DATA: Record<string, Record<string, string>> = {
   "car-control-pit-limiter": { titleContent: sampleTitle("PIT\nLIMITER", 92) },
   "car-control-push-to-pass": { titleContent: sampleTitle("P2P", 92) },
   "fuel-service": { titleContent: sampleTitle("FUEL\n+10 L") },
-  "pit-crew": {},
   "pit-quick-actions": { titleContent: sampleTitle("PIT\nACTIONS", 92) },
   "pit-quick-actions-fast-repair": { titleContent: sampleTitle("FAST\nREPAIR", 92) },
   "pit-quick-actions-windshield": { titleContent: sampleTitle("TEAROFF", 92) },

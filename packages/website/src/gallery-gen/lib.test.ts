@@ -150,14 +150,18 @@ describe("sampleTitle", () => {
 });
 
 describe("DYNAMIC_SAMPLE_DATA", () => {
-  it("has an entry for every known dynamic template", () => {
+  it("has an entry for every known dynamic template EXCEPT pit-crew", () => {
+    // pit-crew.svg is special-cased directly in the generator (PIT_CREW_SAMPLES):
+    // it renders TWO gallery samples off the same physical file (the
+    // race-engineer and radar tri-state modes, item 2 of the gallery
+    // restructure wave), which this simple one-sample-per-file map can't
+    // express — so it's intentionally absent here.
     expect(Object.keys(DYNAMIC_SAMPLE_DATA).sort()).toEqual([
       "adjust-style",
       "car-control-drs",
       "car-control-pit-limiter",
       "car-control-push-to-pass",
       "fuel-service",
-      "pit-crew",
       "pit-quick-actions",
       "pit-quick-actions-fast-repair",
       "pit-quick-actions-windshield",

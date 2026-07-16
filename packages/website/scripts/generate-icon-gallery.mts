@@ -36,9 +36,10 @@ import {
   parseIconImports,
   parseTitlesMaps,
   renderDynamicTemplate,
+  sampleTitle,
   type GalleryEntry,
 } from "../src/gallery-gen/lib.js";
-import { titleCaseSlug } from "../src/gallery-gen/sections.js";
+import { DYNAMIC_ONLY_ACTIONS, titleCaseSlug } from "../src/gallery-gen/sections.js";
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "../../..");
@@ -107,6 +108,28 @@ const STATUS_BAR_TEMPLATES = new Set([
  *   - setup-hybrid-dial-surface.ts: default "mguk-deploy-mode" -> MODE_ABBR
  *     "DEPLOY", MODE_COLOR "#3498db"; value-bearing (view-mguk-deploy-mode, formatInteger).
  */
+/**
+ * Pit Crew renders TWO of its three `mode` settings as tri-state toggle
+ * buttons with a status-bar on/off indicator — `race-engineer` and `radar`
+ * (pit-crew.ts `modePresentation()`, lines ~211-234: both return a
+ * `stateIndicator` of `"on"`/`"off"`). The third mode, `radar-volume`, is a
+ * +/- stepper with no status bar (`stateIndicator: null`) so it gets no
+ * distinct sample (gallery restructure wave, item 2's investigation).
+ *
+ * pit-crew.svg (the physical dynamic template both modes share) exposes only
+ * ONE `{{iconContent}}` placeholder — no separate `{{titleContent}}` token —
+ * because the real action bakes title + artwork + status bar into
+ * `iconContent` itself (`generatePitCrewSvg()`, lines ~243-303: `iconContent =
+ * scaledGraphic + titleText + statusBar`). So each gallery sample supplies the
+ * full `iconContent` as a sample title (bottomY 92, clear of the status bar,
+ * matching `STATUS_BAR_TEMPLATES`' convention) plus `statusBarOn()`, leaving
+ * the artwork blank like every other dynamic-template sample.
+ */
+const PIT_CREW_SAMPLES: { key: string; title: string }[] = [
+  { key: "pit-crew-engineer", title: "RACE\nENGINEER" },
+  { key: "pit-crew-radar", title: "RADAR" },
+];
+
 const SETUP_DIAL_SAMPLES: { key: string; abbr: string; accent: string; value: string }[] = [
   { key: "setup-brakes", abbr: "BB", accent: "#e74c3c", value: "52.4" },
   { key: "setup-traction", abbr: "TC1", accent: "#3498db", value: "5" },
@@ -249,12 +272,17 @@ for (const familyDirent of readdirSync(ICONS_ROOT, { withFileTypes: true })) {
       continue;
     }
 
-    // Exclude only when EVERY consuming action is hidden — an icon a visible
-    // action also imports (e.g. camera-cycle/* is consumed solely by the
-    // visible "camera-controls" action, not by the separate hidden legacy
-    // "camera-cycle" action/UUID) must stay (issue: gallery feedback wave,
-    // item 13).
-    if (consumers.every((action) => hiddenActions.has(action))) {
+    // Exclude when EVERY consuming action is hidden (issue: gallery feedback
+    // wave, item 13) — e.g. replay-navigation/* is consumed solely by the
+    // hidden replay-navigation action itself. OR exclude when the FAMILY slug
+    // itself is a hidden action's folder name, regardless of consumers
+    // (gallery restructure wave, item 1) — camera-cycle/* is consumed solely
+    // by the VISIBLE "camera-controls" action (not by the separate hidden
+    // legacy "Camera Cycle (Legacy)" action/UUID, which shares the family's
+    // name but no longer imports its icons), so the consumer-based rule alone
+    // doesn't catch it; the owner wants the whole family gone regardless of
+    // who still imports it.
+    if (hiddenActions.has(family) || consumers.every((action) => hiddenActions.has(action))) {
       excludedHidden.push(`template:${iconPath}`);
       continue;
     }
@@ -290,12 +318,41 @@ for (const familyDirent of readdirSync(ICONS_ROOT, { withFileTypes: true })) {
 // 2. Dynamic templates — template frame with sample values; the tri-state
 // toggle set additionally gets the real status bar composed into iconContent
 // so the card matches what the device actually shows (issue: gallery feedback
-// wave, item 4).
+// wave, item 4). Pit Crew, Session Info, and Telemetry Display
+// (DYNAMIC_ONLY_ACTIONS) have no template-class family of their own (gallery
+// restructure wave, item 2) — their entries are tagged with the action's own
+// slug as `family` (and that action as their sole consumer) so
+// buildTemplateGroups()/dynamicSectionEntries() in sections.ts attach them to
+// a synthetic "action group" in the template section instead of the flat
+// "Dynamic templates" section.
 for (const file of readdirSync(DYNAMIC_ROOT)) {
   if (!file.endsWith(".svg")) continue;
   const name = file.slice(0, -4);
   const sourcePath = path.join(DYNAMIC_ROOT, file);
   const svg = readFileSync(sourcePath, "utf-8");
+
+  if (name === "pit-crew") {
+    for (const pitCrewSample of PIT_CREW_SAMPLES) {
+      const sitePath = `dynamic/${pitCrewSample.key}.svg`;
+      const iconContent = sampleTitle(pitCrewSample.title, 92) + statusBarOn();
+      writeAsset(sitePath, renderDynamicTemplate(svg, { iconContent }));
+      entries.push({
+        class: "dynamic",
+        family: "pit-crew",
+        name: pitCrewSample.key,
+        path: repoRel(sourcePath),
+        viewBox: extractRawViewBox(svg),
+        slots: extractColorSlots(svg),
+        locked: [...parseIconLocked(svg)],
+        title: pitCrewSample.title,
+        actions: ["pit-crew"],
+        file: `/icon-gallery/${sitePath}`,
+        familyName: resolveFamilyName("pit-crew"),
+        sample: true,
+      });
+    }
+    continue;
+  }
 
   const baseSample = DYNAMIC_SAMPLE_DATA[name] ?? {};
   const sample = STATUS_BAR_TEMPLATES.has(name)
@@ -304,17 +361,21 @@ for (const file of readdirSync(DYNAMIC_ROOT)) {
 
   const sitePath = `dynamic/${name}.svg`;
   writeAsset(sitePath, renderDynamicTemplate(svg, sample));
+
+  const dynamicOnly = DYNAMIC_ONLY_ACTIONS.includes(name);
+
   entries.push({
     class: "dynamic",
-    family: "dynamic-templates",
+    family: dynamicOnly ? name : "dynamic-templates",
     name,
     path: repoRel(sourcePath),
     viewBox: extractRawViewBox(svg),
     slots: extractColorSlots(svg),
     locked: [...parseIconLocked(svg)],
     title: parseIconTitleDefaults(svg).text,
-    actions: [],
+    actions: dynamicOnly ? [name] : [],
     file: `/icon-gallery/${sitePath}`,
+    ...(dynamicOnly ? { familyName: resolveFamilyName(name) } : {}),
     sample: true,
   });
 }
