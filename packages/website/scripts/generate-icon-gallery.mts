@@ -26,6 +26,8 @@ import {
 } from "@iracedeck/icon-composer";
 
 import { renderAudioStripSvg } from "../../iracing-actions/src/actions/audio-controls/audio-dial-surface.ts";
+import { renderBlackBoxStrip } from "../../iracing-actions/src/actions/black-box-selector/black-box-selector-dial-surface.ts";
+import { renderCarCarousel } from "../../iracing-actions/src/actions/camera-controls/camera-dial-surface.ts";
 import { renderStripCanvasSvg } from "../../iracing-actions/src/actions/fuel-service/fuel-dial-surface.ts";
 import { statusBarOn } from "../../iracing-actions/src/icons/status-bar.ts";
 import { renderDialBox, resolveDialBoxColors } from "../../iracing-actions/src/shared/dial-box.ts";
@@ -130,7 +132,16 @@ const PIT_CREW_SAMPLES: { key: string; title: string }[] = [
   { key: "pit-crew-radar", title: "RADAR" },
 ];
 
-const SETUP_DIAL_SAMPLES: { key: string; abbr: string; accent: string; value: string }[] = [
+interface DialBoxSampleSpec {
+  key: string;
+  abbr: string;
+  accent: string;
+  value: string;
+  /** Only meaningful for identity-only specs (`value: ""`) — see `renderDialBox`'s `identityLabelScale`. */
+  identityLabelScale?: number;
+}
+
+const SETUP_DIAL_SAMPLES: DialBoxSampleSpec[] = [
   { key: "setup-brakes", abbr: "BB", accent: "#e74c3c", value: "52.4" },
   { key: "setup-traction", abbr: "TC1", accent: "#3498db", value: "5" },
   { key: "setup-fuel", abbr: "MIX", accent: "#e67e22", value: "3" },
@@ -138,6 +149,45 @@ const SETUP_DIAL_SAMPLES: { key: string; abbr: string; accent: string; value: st
   { key: "setup-aero", abbr: "FRONT", accent: "#3498db", value: "4" },
   { key: "setup-chassis", abbr: "PRELD", accent: "#3498db", value: "45" },
   { key: "setup-hybrid", abbr: "DEPLOY", accent: "#3498db", value: "2" },
+];
+
+/**
+ * Sample abbreviation/accent/value for five of the seven newly merged
+ * (#802–#807) dial surfaces that ALSO render through the shared
+ * `renderDialBox` — same unexported-per-surface-map convention as
+ * `SETUP_DIAL_SAMPLES` above (each surface owns its own `MODE_ABBR`/
+ * `MODE_COLOR`, so these are read off the source directly). The other two new
+ * surfaces (`camera-controls` / `camera-focus-dash` and `black-box-selector`)
+ * own custom strip renderers and are emitted separately below. Source lines as
+ * of this change:
+ *   - force-feedback-dial-surface.ts: DialSettings.setting default "ffb-force"
+ *     -> MODE_ABBR "FFB", MODE_COLOR "#4fc3f7"; value-bearing (formatDialValue
+ *     formats the live `SteeringWheelMaxForceNm` as "XX.X Nm").
+ *   - camera-editor-adjustments-dial-surface.ts: DialSettings.setting default
+ *     "latitude" -> MODE_LABEL "Latitude" (the full mixed-case name is used
+ *     verbatim as the dash-box abbr, not an acronym), MODE_COLOR "#3498db";
+ *     identity-only (formatDialValue is a hardcoded "" — iRacing exposes no
+ *     camera-tool telemetry), scale from identityLabelScaleFor("Latitude") =
+ *     0.18 (length 8 <= 8).
+ *   - cockpit-misc-dial-surface.ts: DialSettings.setting default "dash-page-1"
+ *     -> MODE_ABBR "DASH 1", MODE_COLOR "#3498db"; value-bearing
+ *     (formatDialValue reads the live `dcDashPage` field via the shared
+ *     formatInteger from shared/setup-view.ts).
+ *   - view-adjustment-dial-surface.ts: DialSettings.setting default "fov" ->
+ *     MODE_ABBR "FOV", MODE_COLOR "#3498db"; identity-only (formatDialValue is
+ *     a hardcoded "" — iRacing exposes no view-adjustment telemetry), scale
+ *     0.24 (the renderFeedback call's explicit identityLabelScale).
+ *   - splits-delta-cycle-dial-surface.ts: no `dial.setting` at all (a single
+ *     rotation behavior) -> IDENTITY_ABBR "DELTA", ACCENT_COLOR "#9b59b6";
+ *     identity-only (the surface never subscribes to telemetry), default
+ *     scale 0.24 (renderFeedback omits identityLabelScale).
+ */
+const DIAL_BOX_SAMPLES: DialBoxSampleSpec[] = [
+  { key: "force-feedback", abbr: "FFB", accent: "#4fc3f7", value: "46.4 Nm" },
+  { key: "camera-editor-adjustments", abbr: "Latitude", accent: "#3498db", value: "", identityLabelScale: 0.18 },
+  { key: "cockpit-misc", abbr: "DASH 1", accent: "#3498db", value: "2" },
+  { key: "view-adjustment", abbr: "FOV", accent: "#3498db", value: "", identityLabelScale: 0.24 },
+  { key: "splits-delta-cycle", abbr: "DELTA", accent: "#9b59b6", value: "", identityLabelScale: 0.24 },
 ];
 
 function repoRel(p: string): string {
@@ -421,13 +471,15 @@ for (const dirent of readdirSync(ACTIONS_ROOT, { withFileTypes: true })) {
   }
 }
 
-// 6. Dial touch-strip dash-box samples — one per Setup dial surface (all seven
-// render through the shared renderDialBox), plus one representative frame each
-// for the Fuel Service and Audio Controls dial surfaces, which draw their own
-// custom pixmaps but expose a pure, tsx-importable render function that needs
-// no live host/context object (verified empirically — issue: gallery feedback
-// wave, item 5).
-for (const spec of SETUP_DIAL_SAMPLES) {
+// 6. Dial touch-strip dash-box samples — one per Setup dial surface plus five
+// of the seven post-merge (#802–#807) dial surfaces (all twelve render
+// through the shared renderDialBox), plus one representative frame each for
+// the Fuel Service, Audio Controls, Camera Controls (camera-focus-dash), and
+// Black Box Selector dial surfaces, which draw their own custom pixmaps but
+// expose a pure, tsx-importable render function that needs no live
+// host/context object (verified empirically — issue: gallery feedback wave,
+// item 5; extended for the post-merge batch, task 10).
+for (const spec of [...SETUP_DIAL_SAMPLES, ...DIAL_BOX_SAMPLES]) {
   const sourcePath = path.join(ACTIONS_ROOT, spec.key, `${spec.key}-dial-surface.ts`);
   const dashSvg = bakeDialScreenBackground(
     toRawSvg(
@@ -437,6 +489,7 @@ for (const spec of SETUP_DIAL_SAMPLES) {
         abbr: spec.abbr,
         value: spec.value,
         colors: resolveDialBoxColors(undefined, spec.accent),
+        ...(spec.identityLabelScale !== undefined ? { identityLabelScale: spec.identityLabelScale } : {}),
       }),
     ),
     200,
@@ -498,6 +551,82 @@ entries.push({
   locked: [],
   actions: [],
   file: `/icon-gallery/${audioSitePath}`,
+  sample: true,
+});
+
+/**
+ * Camera Controls' dial surface (issue #803, camera-dial-surface.ts) owns its
+ * own carousel renderers per `dial.mode` rather than the shared renderDialBox.
+ * `renderCarCarousel` (exported for testing, lines ~512-544) is pure and needs
+ * no live host — it renders the DEFAULT mode, "car-number" (DialSettings.mode
+ * default, line ~177), with MODE_TITLE["car-number"] = "CAR #" (line ~163),
+ * MODE_IDENTITY["car-number"] = "CAR #" (line ~127, unused here since a live
+ * center is supplied), and MODE_COLOR["car-number"] = "#2ecc71" (line ~140).
+ * `center`/`prev`/`next` are plausible sample car numbers.
+ *
+ * This action's static assets (dial.svg/icon.svg/key.svg) live under the
+ * `camera-focus` folder (a UUID alias, see camera-controls.ts
+ * CAMERA_FOCUS_UUID === CAMERA_CONTROLS_UUID and sections.ts's same-slug
+ * fallback), so the sample is named `camera-focus-dash` — matching that
+ * folder's dial.svg (family === name === "camera-focus") — so
+ * `dialEntriesFor` places it in the camera-focus template group.
+ */
+const cameraFocusDashSvg = bakeDialScreenBackground(
+  renderCarCarousel({
+    width: 200,
+    height: 100,
+    colors: resolveDialBoxColors(undefined, "#2ecc71"),
+    title: "CAR #",
+    identityLabel: "CAR #",
+    center: "24",
+    prev: "12",
+    next: "88",
+  }),
+  200,
+  100,
+);
+const cameraFocusSitePath = "dial/camera-focus-dash.svg";
+writeAsset(cameraFocusSitePath, cameraFocusDashSvg);
+entries.push({
+  class: "dial",
+  family: "touch-strip",
+  name: "camera-focus-dash",
+  path: repoRel(path.join(ACTIONS_ROOT, "camera-controls", "camera-dial-surface.ts")),
+  slots: [],
+  locked: [],
+  actions: [],
+  file: `/icon-gallery/${cameraFocusSitePath}`,
+  sample: true,
+});
+
+/**
+ * Black Box Selector's dial surface (issue #808) draws its own static strip —
+ * `renderBlackBoxStrip` (exported for testing, lines ~134-157) — a "BB" badge
+ * + "BLACK BOX" wordmark with no live readback (iRacing exposes no open-box
+ * telemetry, the #782 identity-only compromise), using the surface's own
+ * ACCENT "#d4a017" (line ~45) and `bindingMissing: false` (the Cycle bindings
+ * assumed configured for the sample, same convention as every other dash
+ * sample above).
+ */
+const blackBoxDashSvg = bakeDialScreenBackground(
+  renderBlackBoxStrip({
+    colors: resolveDialBoxColors(undefined, "#d4a017"),
+    bindingMissing: false,
+  }),
+  200,
+  100,
+);
+const blackBoxSitePath = "dial/black-box-selector-dash.svg";
+writeAsset(blackBoxSitePath, blackBoxDashSvg);
+entries.push({
+  class: "dial",
+  family: "touch-strip",
+  name: "black-box-selector-dash",
+  path: repoRel(path.join(ACTIONS_ROOT, "black-box-selector", "black-box-selector-dial-surface.ts")),
+  slots: [],
+  locked: [],
+  actions: [],
+  file: `/icon-gallery/${blackBoxSitePath}`,
   sample: true,
 });
 
