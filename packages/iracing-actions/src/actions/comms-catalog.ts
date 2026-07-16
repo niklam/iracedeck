@@ -171,6 +171,64 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     "focus-depth": dir("camEditFocusDepthIncrease", "camEditFocusDepthDecrease"),
   }),
 
+  // The dial surface of Camera Editor Adjustments (#804). Rotation steps one of
+  // the 14 camera-tool parameters via BOTH increase/decrease keys (warn if
+  // either is unset). Auto Set Mic Gain is not a rotation value — it is offered
+  // only as a press gesture, a single fixed binding. Separate from the keypad
+  // map: rotation has no `direction` setting, so each value needs the pair.
+  "camera-editor-adjustments-dial": entry("dial.setting", {
+    latitude: pair("camEditLatitudeIncrease", "camEditLatitudeDecrease"),
+    longitude: pair("camEditLongitudeIncrease", "camEditLongitudeDecrease"),
+    altitude: pair("camEditAltitudeIncrease", "camEditAltitudeDecrease"),
+    yaw: pair("camEditYawIncrease", "camEditYawDecrease"),
+    pitch: pair("camEditPitchIncrease", "camEditPitchDecrease"),
+    "fov-zoom": pair("camEditFovZoomIncrease", "camEditFovZoomDecrease"),
+    "f-number": pair("camEditFNumberIncrease", "camEditFNumberDecrease"),
+    "focus-depth": pair("camEditFocusDepthIncrease", "camEditFocusDepthDecrease"),
+    "vanish-x": pair("camEditVanishXIncrease", "camEditVanishXDecrease"),
+    "vanish-y": pair("camEditVanishYIncrease", "camEditVanishYDecrease"),
+    "blimp-radius": pair("camEditBlimpRadiusIncrease", "camEditBlimpRadiusDecrease"),
+    "blimp-velocity": pair("camEditBlimpVelocityIncrease", "camEditBlimpVelocityDecrease"),
+    "key-step": pair("camEditKeyStepIncrease", "camEditKeyStepDecrease"),
+    "mic-gain": pair("camEditMicGainIncrease", "camEditMicGainDecrease"),
+    // Press/touch gesture values (dial.pressAction/longPressAction/tapAction/
+    // longTouchAction all share this map). Auto Set Mic Gain taps the
+    // camera-editor's own fixed binding; the camera-tool one-shots reuse Camera
+    // Editor Controls' camCtrl* keys verbatim (#804) — cross-action binding
+    // reuse, keys shared plugin-wide (precedent: cockpit-misc ffb-max-force).
+    "auto-mic-gain": keybind("camEditAutoSetMicGain"),
+    "open-camera-tool": keybind("camCtrlOpenCameraTool"),
+    "key-acceleration-toggle": keybind("camCtrlKeyAccelerationToggle"),
+    "key-10x-toggle": keybind("camCtrlKey10xToggle"),
+    "parabolic-mic-toggle": keybind("camCtrlParabolicMicToggle"),
+    "cycle-position-type": keybind("camCtrlCyclePositionType"),
+    "cycle-aim-type": keybind("camCtrlCycleAimType"),
+    "acquire-start": keybind("camCtrlAcquireStart"),
+    "acquire-end": keybind("camCtrlAcquireEnd"),
+    "temporary-edits-toggle": keybind("camCtrlTemporaryEditsToggle"),
+    "dampening-toggle": keybind("camCtrlDampeningToggle"),
+    "zoom-toggle": keybind("camCtrlZoomToggle"),
+    "beyond-fence-toggle": keybind("camCtrlBeyondFenceToggle"),
+    "in-cockpit-toggle": keybind("camCtrlInCockpitToggle"),
+    "mouse-navigation-toggle": keybind("camCtrlMouseNavigationToggle"),
+    "pitch-gyro-toggle": keybind("camCtrlPitchGyroToggle"),
+    "roll-gyro-toggle": keybind("camCtrlRollGyroToggle"),
+    "limit-shot-range-toggle": keybind("camCtrlLimitShotRangeToggle"),
+    "show-camera-toggle": keybind("camCtrlShowCameraToggle"),
+    "shot-selection-toggle": keybind("camCtrlShotSelectionToggle"),
+    "manual-focus-toggle": keybind("camCtrlManualFocusToggle"),
+    "insert-camera": keybind("camCtrlInsertCamera"),
+    "remove-camera": keybind("camCtrlRemoveCamera"),
+    "copy-camera": keybind("camCtrlCopyCamera"),
+    "paste-camera": keybind("camCtrlPasteCamera"),
+    "copy-group": keybind("camCtrlCopyGroup"),
+    "paste-group": keybind("camCtrlPasteGroup"),
+    "save-track-camera": keybind("camCtrlSaveTrackCamera"),
+    "load-track-camera": keybind("camCtrlLoadTrackCamera"),
+    "save-car-camera": keybind("camCtrlSaveCarCamera"),
+    "load-car-camera": keybind("camCtrlLoadCarCamera"),
+  }),
+
   "camera-editor-controls": entry("control", {
     "open-camera-tool": keybind("camCtrlOpenCameraTool"),
     "key-acceleration-toggle": keybind("camCtrlKeyAccelerationToggle"),
