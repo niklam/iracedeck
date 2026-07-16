@@ -20,7 +20,7 @@ Toggle iRacing's auto-compute FFB force calibration.
 #### Details
 
 - **Method:** Key binding
-- **Dial:** No rotation support
+- **Dial:** Not a rotation value — on a dial, Auto FFB is available as the configurable press and touch gestures (see [On a dial](#on-a-dial))
 - **Default binding:** `Ctrl+A`
 - **Telemetry-aware icon:** No
 
@@ -37,7 +37,7 @@ Adjust the force feedback maximum force (iRacing's "max force" setting, in Nm). 
 #### Details
 
 - **Method:** Key binding
-- **Dial:** No rotation support
+- **Dial:** See [On a dial](#on-a-dial)
 - **Default binding:** No default key binding — both FFB Force Increase and FFB Force Decrease must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** No
 
@@ -55,7 +55,7 @@ Adjust the wheel LFE (low-frequency effects) loudness.
 #### Details
 
 - **Method:** Key binding
-- **Dial:** No rotation support
+- **Dial:** See [On a dial](#on-a-dial)
 - **Default binding:** No default key binding — both Wheel LFE Louder and Wheel LFE Quieter must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** No
 
@@ -73,7 +73,7 @@ Adjust the bass shaker LFE loudness.
 #### Details
 
 - **Method:** Key binding
-- **Dial:** No rotation support
+- **Dial:** See [On a dial](#on-a-dial)
 - **Default binding:** No default key binding — both Bass Shaker LFE Louder and Bass Shaker LFE Quieter must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** No
 
@@ -91,7 +91,7 @@ Adjust the wheel LFE intensity curve.
 #### Details
 
 - **Method:** Key binding
-- **Dial:** No rotation support
+- **Dial:** See [On a dial](#on-a-dial)
 - **Default binding:** No default key binding — both Wheel LFE More Intense and Wheel LFE Less Intense must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** No
 
@@ -109,7 +109,7 @@ Adjust the haptic LFE intensity curve.
 #### Details
 
 - **Method:** Key binding
-- **Dial:** No rotation support
+- **Dial:** See [On a dial](#on-a-dial)
 - **Default binding:** No default key binding — both Haptic LFE More Intense and Haptic LFE Less Intense must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** No
 

@@ -485,7 +485,12 @@ export class ForceFeedbackDialSurface {
   private displayedSignature(ctx: ForceFeedbackDialContext): string {
     const value = formatDialValue(ctx.dial.setting, this.host.getTelemetry());
 
-    return [ctx.dial.setting, value, this.computeBindingMissing(ctx.dial) ? "warn" : ""].join("|");
+    return ForceFeedbackDialSurface.signature(ctx.dial.setting, value, this.computeBindingMissing(ctx.dial));
+  }
+
+  /** The one signature format shared by the change detector and the render memo. */
+  private static signature(setting: ForceFeedbackDialSetting, value: string, bindingMissing: boolean): string {
+    return [setting, value, bindingMissing ? "warn" : ""].join("|");
   }
 
   /** Pushes the encoder trigger descriptions for a dial (Elgato only). */
@@ -502,21 +507,26 @@ export class ForceFeedbackDialSurface {
     if (!ctx.action.isDial()) return;
 
     const setting = ctx.dial.setting;
+    const value = formatDialValue(setting, this.host.getTelemetry());
+    const bindingMissing = this.computeBindingMissing(ctx.dial);
     const boxSvg = renderDialBox({
       width: 200,
       height: 100,
       abbr: MODE_ABBR[setting],
-      value: formatDialValue(setting, this.host.getTelemetry()),
+      value,
       colors: resolveDialBoxColors(ctx.dial.colors, MODE_COLOR[setting]),
       identityLabelScale: 0.24,
-      bindingMissing: this.computeBindingMissing(ctx.dial),
+      bindingMissing,
     });
     const feedback: DeckFeedbackPayload = { box: svgToDataUri(boxSvg) };
     await ctx.action.setFeedback(feedback);
 
-    // Reset the change-detector baseline so this pushed feedback doesn't
-    // immediately re-fire the render-on-change path on the next telemetry tick.
-    ctx.lastRenderSig = this.displayedSignature(ctx);
+    // Reset the change-detector baseline to the state that was actually
+    // RENDERED (not re-read after the await) so this pushed feedback doesn't
+    // immediately re-fire the render-on-change path on the next telemetry tick
+    // — and so a value that moved while setFeedback was in flight still counts
+    // as a pending change instead of being memoized as already shown.
+    ctx.lastRenderSig = ForceFeedbackDialSurface.signature(setting, value, bindingMissing);
     ctx.lastChangeRenderAt = Date.now();
   }
 }

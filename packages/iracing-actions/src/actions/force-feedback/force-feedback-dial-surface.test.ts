@@ -378,6 +378,31 @@ describe("ForceFeedback dial surface", () => {
       expect(decoded).toContain(">14.0 Nm<");
     });
 
+    it("memoizes the rendered value, not one that arrives while the push is in flight", async () => {
+      const ctx = dialContext("f8");
+      mockGetCurrentTelemetry.mockReturnValue({ SteeringWheelMaxForceNm: 12 });
+      // While the willAppear feedback push is in flight, telemetry moves 12 → 13.
+      ctx.setFeedback.mockImplementationOnce(async () => {
+        mockGetCurrentTelemetry.mockReturnValue({ SteeringWheelMaxForceNm: 13 });
+      });
+      await appear(ctx, dialSettings({ setting: "ffb-force" }));
+
+      const onTick = (
+        action as unknown as { sdkController: { subscribe: ReturnType<typeof vi.fn> } }
+      ).sdkController.subscribe.mock.calls.at(-1)?.[1] as (telemetry: unknown) => void;
+      ctx.setFeedback.mockClear();
+
+      // Past the throttle window: the tick for the newer value must NOT be
+      // suppressed by a baseline recorded from state re-read after the await.
+      vi.advanceTimersByTime(150);
+      onTick({ SteeringWheelMaxForceNm: 13 });
+
+      expect(ctx.setFeedback).toHaveBeenCalledTimes(1);
+      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+
+      expect(decoded).toContain(">13.0 Nm<");
+    });
+
     it("dims the strip under the #612 warning when a rotation binding is missing", async () => {
       mockIsBindingMissing.mockReturnValue(true);
       const ctx = dialContext("f6");
