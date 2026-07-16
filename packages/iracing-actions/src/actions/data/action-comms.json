@@ -164,6 +164,56 @@
       }
     }
   },
+  "splits-delta-cycle-dial": {
+    "_meta": {
+      "modeSetting": "dial.rotation"
+    },
+    "cycle": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "splitsDeltaNext",
+          "splitsDeltaPrevious"
+        ]
+      }
+    },
+    "toggle-ref-car": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "toggleUiDisplayRefCar"
+      }
+    },
+    "custom-sector-start": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "splitsDeltaCustomSectorStart"
+      }
+    },
+    "custom-sector-end": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "splitsDeltaCustomSectorEnd"
+      }
+    },
+    "active-reset-set": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "splitsDeltaActiveResetSet"
+      }
+    },
+    "active-reset-run": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "splitsDeltaActiveResetRun"
+      }
+    }
+  },
   "look-direction": {
     "_meta": {
       "modeSetting": "direction"

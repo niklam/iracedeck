@@ -628,11 +628,21 @@
       "Name": "Splits & Reference",
       "UUID": "com.iracedeck.sd.core.splits-delta-cycle",
       "Icon": "imgs/actions/splits-delta-cycle/icon",
-      "Tooltip": "Cycle splits delta display modes or toggle reference car",
+      "Tooltip": "Cycle splits delta display modes or toggle reference car; on a dial: turn to cycle modes",
       "PropertyInspectorPath": "ui/splits-delta-cycle.html",
       "Controllers": [
-        "Keypad"
+        "Keypad",
+        "Encoder"
       ],
+      "Encoder": {
+        "Icon": "imgs/actions/splits-delta-cycle/dial",
+        "layout": "layouts/splits-delta-cycle.json",
+        "TriggerDescription": {
+          "Rotate": "Cycle splits / delta mode",
+          "Push": "Configured action",
+          "Touch": "Configured action"
+        }
+      },
       "States": [
         {
           "Image": "imgs/actions/splits-delta-cycle/key",

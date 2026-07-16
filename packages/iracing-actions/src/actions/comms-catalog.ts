@@ -116,6 +116,24 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     "active-reset-run": keybind("splitsDeltaActiveResetRun"),
   }),
 
+  // The dial surface of Splits & Reference (#807) — the smallest of the batch: a
+  // single rotation behavior (cycle) and no `dial.setting` select. Rotation taps
+  // BOTH the Next and Previous bindings (either unset → warn); the press / touch
+  // gesture slots offer every one-shot mode the keypad map above has (#807
+  // follow-up). Separate from the keypad map because the dial has no
+  // `direction` setting — rotation needs the pair, while the keypad `cycle`
+  // mode resolves one key via `direction`. `_meta.modeSetting` names the
+  // (control-less) rotation slot, so the PI's rotation status line falls back to
+  // its `default-mode="cycle"`; the gesture lines read `dial.pressAction` etc.
+  "splits-delta-cycle-dial": entry("dial.rotation", {
+    cycle: pair("splitsDeltaNext", "splitsDeltaPrevious"),
+    "toggle-ref-car": keybind("toggleUiDisplayRefCar"),
+    "custom-sector-start": keybind("splitsDeltaCustomSectorStart"),
+    "custom-sector-end": keybind("splitsDeltaCustomSectorEnd"),
+    "active-reset-set": keybind("splitsDeltaActiveResetSet"),
+    "active-reset-run": keybind("splitsDeltaActiveResetRun"),
+  }),
+
   "look-direction": entry("direction", {
     "look-left": keybind("lookDirectionLeft"),
     "look-right": keybind("lookDirectionRight"),
