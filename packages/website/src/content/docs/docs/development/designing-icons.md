@@ -57,16 +57,16 @@ The default set lives in family folders, one SVG per icon variant:
 <family>/<variant>.svg        e.g. fuel-service/add-fuel.svg
 ```
 
-An alternative icon set must **mirror these paths and names exactly** — the path is the key the plugin uses to match your icon to its slot, and any icon your set doesn't provide falls back to the default artwork. Browse every family, name, and current design in the [icon gallery](/docs/development/icon-gallery/).
+An alternative icon set must **mirror these paths and names exactly** — the path will be the key the plugin uses to match your icon to its slot, and any icon your set doesn't provide will fall back to the default artwork. Browse every family, name, and current design in the [icon gallery](/docs/development/icon-gallery/).
 
 ## Scope of a v1 icon set
 
 - **In scope:** the key icon templates (the "Key icon templates" section of the gallery — the vast majority of what users see).
 - **Out of scope for now (stays default):** dynamic telemetry-driven templates, static default key images, dial icons, and category icons. These are documented in the gallery for completeness and may open up to sets later.
 
-## How a set ships
+## How a set will ship
 
-Alternative icon sets are bundled with the plugin and selected via a dropdown in the plugin's global settings. Matching is per icon with automatic fallback to the default set — so a partial set works fine, and a set can grow release by release.
+Alternative icon sets will be bundled with the plugin and selected via a dropdown in the plugin's global settings. Matching will be per icon with automatic fallback to the default set — so a partial set will work fine, and a set can grow release by release.
 
 ## Delivering a set
 
