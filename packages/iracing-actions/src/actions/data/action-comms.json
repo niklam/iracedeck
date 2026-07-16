@@ -1479,32 +1479,6 @@
           }
         }
       }
-    },
-    "wheel-lfe-intensity": {
-      "method": "keybind",
-      "binding": {
-        "scope": "global",
-        "keyBy": {
-          "setting": "direction",
-          "map": {
-            "increase": "forceFeedbackWheelLfeIntensityIncrease",
-            "decrease": "forceFeedbackWheelLfeIntensityDecrease"
-          }
-        }
-      }
-    },
-    "haptic-lfe-intensity": {
-      "method": "keybind",
-      "binding": {
-        "scope": "global",
-        "keyBy": {
-          "setting": "direction",
-          "map": {
-            "increase": "forceFeedbackHapticLfeIntensityIncrease",
-            "decrease": "forceFeedbackHapticLfeIntensityDecrease"
-          }
-        }
-      }
     }
   },
   "force-feedback-dial": {
@@ -1538,26 +1512,6 @@
         "keys": [
           "forceFeedbackBassShakerLfeLouder",
           "forceFeedbackBassShakerLfeQuieter"
-        ]
-      }
-    },
-    "wheel-lfe-intensity": {
-      "method": "keybind",
-      "binding": {
-        "scope": "global",
-        "keys": [
-          "forceFeedbackWheelLfeIntensityIncrease",
-          "forceFeedbackWheelLfeIntensityDecrease"
-        ]
-      }
-    },
-    "haptic-lfe-intensity": {
-      "method": "keybind",
-      "binding": {
-        "scope": "global",
-        "keys": [
-          "forceFeedbackHapticLfeIntensityIncrease",
-          "forceFeedbackHapticLfeIntensityDecrease"
         ]
       }
     },

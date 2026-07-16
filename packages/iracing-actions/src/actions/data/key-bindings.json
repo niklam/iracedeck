@@ -234,30 +234,6 @@
       "label": "BassShaker LFE Quieter",
       "default": "",
       "setting": "forceFeedbackBassShakerLfeQuieter"
-    },
-    {
-      "id": "wheelLfeIntensityIncrease",
-      "label": "Wheel LFE More Intense",
-      "default": "",
-      "setting": "forceFeedbackWheelLfeIntensityIncrease"
-    },
-    {
-      "id": "wheelLfeIntensityDecrease",
-      "label": "Wheel LFE Less Intense",
-      "default": "",
-      "setting": "forceFeedbackWheelLfeIntensityDecrease"
-    },
-    {
-      "id": "hapticLfeIntensityIncrease",
-      "label": "Haptic LFE More Intense",
-      "default": "",
-      "setting": "forceFeedbackHapticLfeIntensityIncrease"
-    },
-    {
-      "id": "hapticLfeIntensityDecrease",
-      "label": "Haptic LFE Less Intense",
-      "default": "",
-      "setting": "forceFeedbackHapticLfeIntensityDecrease"
     }
   ],
   "fuelService": [

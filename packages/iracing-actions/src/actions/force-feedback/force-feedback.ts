@@ -25,34 +25,19 @@ import bassShakerLfeDecreaseSvg from "@iracedeck/icons/force-feedback/bass-shake
 import bassShakerLfeIncreaseSvg from "@iracedeck/icons/force-feedback/bass-shaker-lfe-increase.svg";
 import ffbForceDecreaseSvg from "@iracedeck/icons/force-feedback/ffb-force-decrease.svg";
 import ffbForceIncreaseSvg from "@iracedeck/icons/force-feedback/ffb-force-increase.svg";
-import hapticLfeIntensityDecreaseSvg from "@iracedeck/icons/force-feedback/haptic-lfe-intensity-decrease.svg";
-import hapticLfeIntensityIncreaseSvg from "@iracedeck/icons/force-feedback/haptic-lfe-intensity-increase.svg";
 import wheelLfeDecreaseSvg from "@iracedeck/icons/force-feedback/wheel-lfe-decrease.svg";
 import wheelLfeIncreaseSvg from "@iracedeck/icons/force-feedback/wheel-lfe-increase.svg";
-import wheelLfeIntensityDecreaseSvg from "@iracedeck/icons/force-feedback/wheel-lfe-intensity-decrease.svg";
-import wheelLfeIntensityIncreaseSvg from "@iracedeck/icons/force-feedback/wheel-lfe-intensity-increase.svg";
 import z from "zod";
 
 import { DialSettings, ForceFeedbackDialSurface, seedDialFromLegacySetting } from "./force-feedback-dial-surface.js";
+import { migrateLfeIntensityModes } from "./migrate-lfe-intensity.js";
 
-type ForceFeedbackMode =
-  | "auto-compute-ffb-force"
-  | "ffb-force"
-  | "wheel-lfe"
-  | "bass-shaker-lfe"
-  | "wheel-lfe-intensity"
-  | "haptic-lfe-intensity";
+type ForceFeedbackMode = "auto-compute-ffb-force" | "ffb-force" | "wheel-lfe" | "bass-shaker-lfe";
 
 type DirectionType = "increase" | "decrease";
 
 /** Modes that have +/- direction */
-const DIRECTIONAL_MODES: Set<ForceFeedbackMode> = new Set([
-  "ffb-force",
-  "wheel-lfe",
-  "bass-shaker-lfe",
-  "wheel-lfe-intensity",
-  "haptic-lfe-intensity",
-]);
+const DIRECTIONAL_MODES: Set<ForceFeedbackMode> = new Set(["ffb-force", "wheel-lfe", "bass-shaker-lfe"]);
 
 /**
  * Title text for each mode + direction combination (format: "subLabel\nmainLabel")
@@ -65,10 +50,6 @@ const FORCE_FEEDBACK_TITLES: Record<string, string> = {
   "wheel-lfe-decrease": "QUIETER\nWHEEL LFE",
   "bass-shaker-lfe-increase": "LOUDER\nBASS SHAKER",
   "bass-shaker-lfe-decrease": "QUIETER\nBASS SHAKER",
-  "wheel-lfe-intensity-increase": "MORE INTENSE\nWHEEL LFE",
-  "wheel-lfe-intensity-decrease": "LESS INTENSE\nWHEEL LFE",
-  "haptic-lfe-intensity-increase": "MORE INTENSE\nHAPTIC LFE",
-  "haptic-lfe-intensity-decrease": "LESS INTENSE\nHAPTIC LFE",
 };
 
 /**
@@ -89,14 +70,6 @@ const FORCE_FEEDBACK_SVGS: Record<ForceFeedbackMode, Record<DirectionType, strin
     increase: bassShakerLfeIncreaseSvg,
     decrease: bassShakerLfeDecreaseSvg,
   },
-  "wheel-lfe-intensity": {
-    increase: wheelLfeIntensityIncreaseSvg,
-    decrease: wheelLfeIntensityDecreaseSvg,
-  },
-  "haptic-lfe-intensity": {
-    increase: hapticLfeIntensityIncreaseSvg,
-    decrease: hapticLfeIntensityDecreaseSvg,
-  },
 };
 
 /**
@@ -114,22 +87,11 @@ export const FORCE_FEEDBACK_GLOBAL_KEYS: Record<string, string> = {
   "wheel-lfe-decrease": "forceFeedbackWheelLfeQuieter",
   "bass-shaker-lfe-increase": "forceFeedbackBassShakerLfeLouder",
   "bass-shaker-lfe-decrease": "forceFeedbackBassShakerLfeQuieter",
-  "wheel-lfe-intensity-increase": "forceFeedbackWheelLfeIntensityIncrease",
-  "wheel-lfe-intensity-decrease": "forceFeedbackWheelLfeIntensityDecrease",
-  "haptic-lfe-intensity-increase": "forceFeedbackHapticLfeIntensityIncrease",
-  "haptic-lfe-intensity-decrease": "forceFeedbackHapticLfeIntensityDecrease",
 };
 
 const ForceFeedbackSettings = CommonSettings.extend({
   mode: z
-    .enum([
-      "auto-compute-ffb-force",
-      "ffb-force",
-      "wheel-lfe",
-      "bass-shaker-lfe",
-      "wheel-lfe-intensity",
-      "haptic-lfe-intensity",
-    ])
+    .enum(["auto-compute-ffb-force", "ffb-force", "wheel-lfe", "bass-shaker-lfe"])
     .default("auto-compute-ffb-force"),
   direction: z.enum(["increase", "decrease"]).default("increase"),
   // Dial-surface settings (#802), under the `dial` root so keypad and dial keys
@@ -172,8 +134,10 @@ export function generateForceFeedbackSvg(settings: ForceFeedbackSettings, bindin
 
 /**
  * Force Feedback Action
- * Controls force feedback and haptic settings (FFB force, wheel LFE, bass shaker LFE,
- * wheel/haptic LFE intensity) via keyboard shortcuts.
+ * Controls force feedback and haptic settings (FFB force, wheel LFE, bass
+ * shaker LFE) via keyboard shortcuts. iRacing's Options pages label the same
+ * two LFE control pairs "More Intense / Less Intense" — the former separate
+ * intensity modes were retired as duplicates (issue #848).
  */
 export const FORCE_FEEDBACK_UUID = "com.iracedeck.sd.core.force-feedback" as const;
 
@@ -197,13 +161,18 @@ export class ForceFeedback extends ConnectionStateAwareAction<ForceFeedbackSetti
     let settings = this.parseSettings(ev.payload.settings);
 
     if (ev.action.isDial()) {
-      // #802 dial migration: a pre-dial-surface encoder placement drove the flat
-      // keypad `mode` — carry a valid rotation value over to `dial.setting`.
-      const seededDial = seedDialFromLegacySetting(ev.payload.settings);
+      // #802 dial migration on top of the #848 intensity-mode migration: a
+      // pre-dial-surface encoder placement drove the flat keypad `mode` — carry
+      // a valid rotation value over to `dial.setting`, mapping a retired
+      // intensity mode to its canonical LFE mode first so it still seeds.
+      const { migrated } = migrateLfeIntensityModes(ev.payload.settings);
+      const seededDial = seedDialFromLegacySetting(migrated);
 
       if (seededDial) {
         await ev.action.setSettings(seededDial);
         settings = this.parseSettings(seededDial);
+      } else {
+        await this.persistMigratedSettings(ev);
       }
 
       await this.dialSurface.willAppear(ev.action, settings.dial);
@@ -214,6 +183,7 @@ export class ForceFeedback extends ConnectionStateAwareAction<ForceFeedbackSetti
       return;
     }
 
+    await this.persistMigratedSettings(ev);
     const activeKey = this.resolveGlobalKey(settings.mode, settings.direction);
 
     if (activeKey) {
@@ -231,6 +201,7 @@ export class ForceFeedback extends ConnectionStateAwareAction<ForceFeedbackSetti
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<ForceFeedbackSettings>): Promise<void> {
     await super.onDidReceiveSettings(ev);
+    await this.persistMigratedSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
 
     if (ev.action.isDial()) {
@@ -274,9 +245,33 @@ export class ForceFeedback extends ConnectionStateAwareAction<ForceFeedbackSetti
   }
 
   private parseSettings(settings: unknown): ForceFeedbackSettings {
-    const parsed = ForceFeedbackSettings.safeParse(settings);
+    const { migrated } = migrateLfeIntensityModes(settings);
+    const parsed = ForceFeedbackSettings.safeParse(migrated);
 
     return parsed.success ? parsed.data : ForceFeedbackSettings.parse({});
+  }
+
+  /**
+   * Detect a retired intensity mode in the persisted settings (keypad `mode` or
+   * dial `dial.setting`, #848) and write the migrated shape back to storage so
+   * the PI dropdowns show the canonical mode. Logs and swallows persist
+   * failures — the runtime always reads via `parseSettings`, so a failed
+   * persist doesn't block functionality.
+   */
+  private async persistMigratedSettings(
+    ev: IDeckWillAppearEvent<ForceFeedbackSettings> | IDeckDidReceiveSettingsEvent<ForceFeedbackSettings>,
+  ): Promise<void> {
+    const { migrated, changed } = migrateLfeIntensityModes(ev.payload.settings);
+
+    if (!changed) return;
+
+    try {
+      await ev.action.setSettings(migrated);
+    } catch (err) {
+      this.logger.warn(
+        `Failed to persist migrated force-feedback settings: ${err instanceof Error ? err.message : err}`,
+      );
+    }
   }
 
   private async executeMode(mode: ForceFeedbackMode, direction: DirectionType): Promise<void> {

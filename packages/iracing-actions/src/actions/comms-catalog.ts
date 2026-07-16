@@ -384,14 +384,6 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
       increase: "forceFeedbackBassShakerLfeLouder",
       decrease: "forceFeedbackBassShakerLfeQuieter",
     }),
-    "wheel-lfe-intensity": keybindBy("direction", {
-      increase: "forceFeedbackWheelLfeIntensityIncrease",
-      decrease: "forceFeedbackWheelLfeIntensityDecrease",
-    }),
-    "haptic-lfe-intensity": keybindBy("direction", {
-      increase: "forceFeedbackHapticLfeIntensityIncrease",
-      decrease: "forceFeedbackHapticLfeIntensityDecrease",
-    }),
   }),
 
   // The dial surface of the Force Feedback action (#802). Rotation is keyed by
@@ -405,8 +397,6 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     "ffb-force": pair("cockpitMiscFfbForceIncrease", "cockpitMiscFfbForceDecrease"),
     "wheel-lfe": pair("forceFeedbackWheelLfeLouder", "forceFeedbackWheelLfeQuieter"),
     "bass-shaker-lfe": pair("forceFeedbackBassShakerLfeLouder", "forceFeedbackBassShakerLfeQuieter"),
-    "wheel-lfe-intensity": pair("forceFeedbackWheelLfeIntensityIncrease", "forceFeedbackWheelLfeIntensityDecrease"),
-    "haptic-lfe-intensity": pair("forceFeedbackHapticLfeIntensityIncrease", "forceFeedbackHapticLfeIntensityDecrease"),
     "auto-ffb": keybind("forceFeedbackAutoCompute"),
   }),
 

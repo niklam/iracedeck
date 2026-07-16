@@ -26,6 +26,7 @@ export { CAR_CONTROL_UUID, CarControl } from "./actions/car-control/car-control.
 export { CHAT_UUID, Chat } from "./actions/chat/chat.js";
 export { COCKPIT_MISC_UUID, CockpitMisc } from "./actions/cockpit-misc/cockpit-misc.js";
 export { FORCE_FEEDBACK_UUID, ForceFeedback } from "./actions/force-feedback/force-feedback.js";
+export { migrateLfeIntensityBindingKeys } from "./actions/force-feedback/migrate-lfe-intensity.js";
 export { FUEL_SERVICE_UUID, FuelService } from "./actions/fuel-service/fuel-service.js";
 export { LOOK_DIRECTION_UUID, LookDirection } from "./actions/look-direction/look-direction.js";
 export { MEDIA_CAPTURE_UUID, MediaCapture } from "./actions/media-capture/media-capture.js";

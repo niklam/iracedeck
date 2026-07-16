@@ -112,8 +112,6 @@ describe("force-feedback dial-surface pure helpers", () => {
     it("returns empty (identity-only) for the LFE settings, which have no readback", () => {
       expect(formatDialValue("wheel-lfe", { SteeringWheelMaxForceNm: 12 } as never)).toBe("");
       expect(formatDialValue("bass-shaker-lfe", null)).toBe("");
-      expect(formatDialValue("wheel-lfe-intensity", null)).toBe("");
-      expect(formatDialValue("haptic-lfe-intensity", null)).toBe("");
     });
   });
 
