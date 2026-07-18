@@ -828,6 +828,19 @@ describe("proximity scheduling (#867)", () => {
 
     expect(lastVoicePath()).toBe(`${BASE}two-cars-left.mp3`);
   });
+
+  it("a queueable CRITICAL line cut by a transition call replays once the call finishes", () => {
+    // Fuel-critical shape: CRITICAL + interrupt + queueable. The cut stashes
+    // it; CRITICAL clears the spotter's SAFETY focus floor, so it replays at
+    // idle even while the car is still alongside.
+    startBlocker(WEIGHT.CRITICAL, { interrupt: true, queueable: true });
+    bus.publishRadar("left");
+    expect(lastVoicePath()).toBe(`${BASE}car-left.mp3`);
+
+    audio._triggerChannelEnd(VOICE);
+
+    expect(voicePaths().filter((p) => p === BLOCKER_CLIP)).toHaveLength(2);
+  });
 });
 
 // ─── Voice substitution ──────────────────────────────────────────────────────
