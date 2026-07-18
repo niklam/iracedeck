@@ -2,6 +2,7 @@ import type { IDeckPlatformAdapter } from "@iracedeck/deck-core";
 import {
   _resetAppMonitor,
   initAppMonitor,
+  IRACING_EXIT_SDK_CONFIRM_MS,
   isAppMonitorInitialized,
   isIRacingActive,
   isIRacingRunning,
@@ -13,10 +14,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // Mock the sdk-singleton module used internally by app-monitor
 const mockSetReconnectEnabled = vi.fn();
 const mockGetConnectionStatus = vi.fn();
+// Captures the connection-tick callback app-monitor subscribes with (issue
+// #870 SDK-disconnect fallback) so tests can drive connect/disconnect ticks.
+let sdkTickCallback: ((telemetry: unknown, isConnected: boolean) => void) | null = null;
+const mockSubscribe = vi.fn((_id: string, cb: (telemetry: unknown, isConnected: boolean) => void) => {
+  sdkTickCallback = cb;
+});
 const mockGetController = vi.fn(() => ({
   setReconnectEnabled: mockSetReconnectEnabled,
   getConnectionStatus: mockGetConnectionStatus,
+  subscribe: mockSubscribe,
 }));
+
+function driveSdkTick(isConnected: boolean): void {
+  sdkTickCallback?.(null, isConnected);
+}
 
 // Mock sdk-singleton that app-monitor.ts imports internally.
 // The path is relative from this test file to the deck-core source module.
@@ -79,6 +91,7 @@ function resetGetControllerMock() {
   mockGetController.mockImplementation(() => ({
     setReconnectEnabled: mockSetReconnectEnabled,
     getConnectionStatus: mockGetConnectionStatus,
+    subscribe: mockSubscribe,
   }));
 }
 
@@ -89,6 +102,8 @@ describe("App Monitor", () => {
     mockAdapter = createMockAdapter();
     mockSetReconnectEnabled.mockClear();
     mockGetConnectionStatus.mockClear();
+    mockSubscribe.mockClear();
+    sdkTickCallback = null;
     // Default to not connected
     mockGetConnectionStatus.mockReturnValue(false);
     // Reset getController to default behavior
@@ -249,9 +264,8 @@ describe("App Monitor", () => {
 
     it("should return true when the SDK reports connected even without a launch event", () => {
       initAppMonitor(mockAdapter, createMockLogger());
-      // Simulate the startup race: no applicationDidLaunch delivered yet, but
-      // the SDK controller has already attached to iRacing's shared memory.
-      mockAdapter._simulateTerminate("iRacingSim64DX11.exe");
+      // The startup race: no app-monitor event has been delivered at all, but
+      // the SDK controller has attached to iRacing's shared memory since init.
       mockGetConnectionStatus.mockReturnValue(true);
 
       expect(isIRacingRunning()).toBe(false);
@@ -294,7 +308,16 @@ describe("App Monitor", () => {
     it("should notify AFTER the running flag and reconnect state are already down", () => {
       initAppMonitor(mockAdapter, createMockLogger());
       mockAdapter._simulateLaunch("iRacingSim64DX11.exe");
-      mockGetConnectionStatus.mockReturnValue(false);
+      // Model the real coupling: the SDK stays connected until
+      // setReconnectEnabled(false) actively disconnects it. If the listener
+      // loop ever moved above that call, isIRacingActive() would read the
+      // still-connected SDK and this test would fail.
+      mockGetConnectionStatus.mockReturnValue(true);
+      mockSetReconnectEnabled.mockImplementation((enabled: boolean) => {
+        if (!enabled) {
+          mockGetConnectionStatus.mockReturnValue(false);
+        }
+      });
 
       const observed: boolean[] = [];
       onIRacingTerminated(() => {
@@ -304,6 +327,7 @@ describe("App Monitor", () => {
       mockAdapter._simulateTerminate("iRacingSim64DX11.exe");
 
       expect(observed).toEqual([false, false]);
+      mockSetReconnectEnabled.mockReset();
     });
 
     it("should stop notifying after unsubscribe", () => {
@@ -349,6 +373,121 @@ describe("App Monitor", () => {
       mockAdapter._simulateTerminate("iRacingSim64DX11.exe");
 
       expect(listener).not.toHaveBeenCalled();
+    });
+
+    it("should still notify when setReconnectEnabled throws (a throwing telemetry subscriber)", () => {
+      initAppMonitor(mockAdapter, createMockLogger());
+      mockAdapter._simulateLaunch("iRacingSim64DX11.exe");
+      const listener = vi.fn();
+      onIRacingTerminated(listener);
+
+      mockSetReconnectEnabled.mockImplementation((enabled: boolean) => {
+        if (!enabled) {
+          throw new Error("subscriber boom in disconnect fan-out");
+        }
+      });
+
+      expect(() => mockAdapter._simulateTerminate("iRacingSim64DX11.exe")).not.toThrow();
+      expect(listener).toHaveBeenCalledTimes(1);
+      mockSetReconnectEnabled.mockReset();
+    });
+  });
+
+  describe("SDK-disconnect exit fallback (issue #870)", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("should notify listeners on a confirmed SDK disconnect when no terminate event exists", () => {
+      // A host without app-monitoring events (Ulanzi): iRacing already runs at
+      // plugin start, so the init path marks it running from the connection.
+      mockGetConnectionStatus.mockReturnValue(true);
+      initAppMonitor(mockAdapter, createMockLogger());
+      const listener = vi.fn();
+      onIRacingTerminated(listener);
+
+      driveSdkTick(true);
+      mockGetConnectionStatus.mockReturnValue(false);
+      driveSdkTick(false);
+      expect(listener).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(IRACING_EXIT_SDK_CONFIRM_MS);
+
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(isIRacingRunning()).toBe(false);
+      expect(isIRacingActive()).toBe(false);
+    });
+
+    it("should not notify when the connection recovers inside the confirmation window", () => {
+      mockGetConnectionStatus.mockReturnValue(true);
+      initAppMonitor(mockAdapter, createMockLogger());
+      const listener = vi.fn();
+      onIRacingTerminated(listener);
+
+      driveSdkTick(true);
+      driveSdkTick(false);
+      vi.advanceTimersByTime(IRACING_EXIT_SDK_CONFIRM_MS - 1);
+      driveSdkTick(true);
+      vi.advanceTimersByTime(IRACING_EXIT_SDK_CONFIRM_MS);
+
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    it("should not notify on an SDK blip while the host says iRacing is still running", () => {
+      // Elgato: the launch event set the running flag; a transient SDK
+      // disconnect without a terminate event must not read as a sim exit.
+      initAppMonitor(mockAdapter, createMockLogger());
+      mockAdapter._simulateLaunch("iRacingSim64DX11.exe");
+      const listener = vi.fn();
+      onIRacingTerminated(listener);
+
+      driveSdkTick(true);
+      driveSdkTick(false);
+      vi.advanceTimersByTime(IRACING_EXIT_SDK_CONFIRM_MS);
+
+      expect(listener).not.toHaveBeenCalled();
+      expect(isIRacingRunning()).toBe(true);
+    });
+
+    it("should not double-notify after a terminate event already handled the exit", () => {
+      initAppMonitor(mockAdapter, createMockLogger());
+      mockAdapter._simulateLaunch("iRacingSim64DX11.exe");
+      const listener = vi.fn();
+      onIRacingTerminated(listener);
+
+      driveSdkTick(true);
+      mockAdapter._simulateTerminate("iRacingSim64DX11.exe");
+      expect(listener).toHaveBeenCalledTimes(1);
+
+      // The disconnect the terminate handler itself caused reaches the
+      // fallback as a tick; its confirmation must dedupe.
+      driveSdkTick(false);
+      vi.advanceTimersByTime(IRACING_EXIT_SDK_CONFIRM_MS);
+
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+
+    it("should re-arm for the next session after a fallback-notified exit", () => {
+      mockGetConnectionStatus.mockReturnValue(true);
+      initAppMonitor(mockAdapter, createMockLogger());
+      const listener = vi.fn();
+      onIRacingTerminated(listener);
+
+      driveSdkTick(true);
+      driveSdkTick(false);
+      vi.advanceTimersByTime(IRACING_EXIT_SDK_CONFIRM_MS);
+      expect(listener).toHaveBeenCalledTimes(1);
+
+      // iRacing comes back (SDK reconnects), then exits again.
+      driveSdkTick(true);
+      driveSdkTick(false);
+      vi.advanceTimersByTime(IRACING_EXIT_SDK_CONFIRM_MS);
+
+      expect(listener).toHaveBeenCalledTimes(2);
     });
   });
 

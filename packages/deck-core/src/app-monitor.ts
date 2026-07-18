@@ -16,17 +16,121 @@ import type { IDeckPlatformAdapter } from "./types.js";
 /** The iRacing executable name on Windows */
 const IRACING_EXE = "iRacingSim64DX11.exe";
 
+/**
+ * How long a lost SDK connection must stay lost before it counts as an
+ * iRacing exit (issue #870). Some hosts never deliver applicationDidTerminate
+ * (Ulanzi maps no app-monitoring events at all; Mirabox delivery is
+ * unproven), so a sustained SDK disconnect is the only exit signal there.
+ * The window is well above the controller's 2 s reconnect poll, so a
+ * transient shared-memory blip reconnects and cancels the confirmation
+ * instead of mis-reading as an exit.
+ */
+export const IRACING_EXIT_SDK_CONFIRM_MS = 5000;
+
 /** Whether initAppMonitor has been called */
 let initialized = false;
 
 /** Tracks whether iRacing is currently running */
 let iRacingRunning = false;
 
+/**
+ * Whether `iRacingRunning` was set by a host applicationDidLaunch event
+ * (issue #870). The init-already-connected path also sets the flag, but its
+ * only evidence is the SDK connection — so when that connection is
+ * confirmed lost, a connection-derived flag is cleared while an
+ * event-derived one is trusted until applicationDidTerminate says otherwise.
+ */
+let runningSetByEvent = false;
+
 /** Logger instance for this module */
 let logger: ILogger | null = null;
 
 /** Listeners notified after iRacing terminates (issue #870) */
 const terminatedListeners = new Set<() => void>();
+
+/**
+ * Whether the terminated listeners have already been notified for the
+ * current exit episode (issue #870). The terminate event and the
+ * SDK-disconnect fallback can both observe the same exit; whichever runs
+ * first wins, and the flag re-arms when the sim becomes active again.
+ */
+let simExitNotified = false;
+
+/** Last SDK connection state seen by the fallback's connection ticks */
+let lastSdkConnected: boolean | null = null;
+
+/** Pending SDK-disconnect confirmation timer (issue #870) */
+let sdkExitConfirmTimer: ReturnType<typeof setTimeout> | null = null;
+
+function cancelSdkExitConfirm(): void {
+  if (sdkExitConfirmTimer !== null) {
+    clearTimeout(sdkExitConfirmTimer);
+    sdkExitConfirmTimer = null;
+  }
+}
+
+/** Notify the terminated listeners once per exit episode. */
+function notifyIRacingExit(): void {
+  if (simExitNotified) {
+    return;
+  }
+
+  simExitNotified = true;
+
+  for (const listener of terminatedListeners) {
+    try {
+      listener();
+    } catch (error) {
+      logger?.error("iRacing-terminated listener failed");
+      logger?.debug(`Listener error: ${String(error)}`);
+    }
+  }
+}
+
+/**
+ * SDK connection tick from the controller subscription (issue #870). A
+ * connection coming up marks the sim active again (cancelling any pending
+ * exit confirmation and re-arming the exit notification); a fresh
+ * true→false transition arms the confirmation window.
+ */
+function handleSdkConnectionTick(isConnected: boolean): void {
+  const was = lastSdkConnected;
+  lastSdkConnected = isConnected;
+
+  if (isConnected) {
+    cancelSdkExitConfirm();
+    simExitNotified = false;
+
+    return;
+  }
+
+  if (was !== true || sdkExitConfirmTimer !== null) {
+    return;
+  }
+
+  sdkExitConfirmTimer = setTimeout(() => {
+    sdkExitConfirmTimer = null;
+
+    // The terminate event already handled this exit, or the connection came
+    // back (ticks cancel the timer, this is a belt-and-suspenders re-check).
+    if (simExitNotified || lastSdkConnected === true) {
+      return;
+    }
+
+    // The host affirmatively says iRacing is running (launch event, no
+    // terminate yet) — treat the disconnect as a transient SDK blip.
+    if (iRacingRunning && runningSetByEvent) {
+      return;
+    }
+
+    // The connection was the only evidence iRacing was up, and it stayed
+    // gone for the whole window: clear the connection-derived running flag
+    // and treat this as the sim exit no terminate event will ever report.
+    iRacingRunning = false;
+    logger?.info("iRacing exit detected via SDK disconnect");
+    notifyIRacingExit();
+  }, IRACING_EXIT_SDK_CONFIRM_MS);
+}
 
 /**
  * Initialize the app monitor.
@@ -69,6 +173,9 @@ export function initAppMonitor(adapter: IDeckPlatformAdapter, log: ILogger): voi
     if (application.toLowerCase() === IRACING_EXE.toLowerCase()) {
       logger?.info("iRacing launched");
       iRacingRunning = true;
+      runningSetByEvent = true;
+      cancelSdkExitConfirm();
+      simExitNotified = false;
       getController().setReconnectEnabled(true);
     }
   });
@@ -80,22 +187,34 @@ export function initAppMonitor(adapter: IDeckPlatformAdapter, log: ILogger): voi
     if (application.toLowerCase() === IRACING_EXE.toLowerCase()) {
       logger?.info("iRacing terminated");
       iRacingRunning = false;
+      runningSetByEvent = false;
+
       // setReconnectEnabled(false) actively disconnects the SDK, so by the
       // time the terminated listeners below run, both isIRacingRunning() and
       // the controller's connection status already read false — a listener
       // consulting isIRacingActive() (the #870 version-check re-run) sees the
-      // sim as gone without any settle delay.
-      getController().setReconnectEnabled(false);
-
-      for (const listener of terminatedListeners) {
-        try {
-          listener();
-        } catch (error) {
-          logger?.error("iRacing-terminated listener failed");
-          logger?.debug(`Listener error: ${String(error)}`);
-        }
+      // sim as gone without any settle delay. Its synchronous null-telemetry
+      // fan-out runs every SDK subscriber, so a throwing subscriber must not
+      // abort this handler before the exit notification below.
+      try {
+        getController().setReconnectEnabled(false);
+      } catch (error) {
+        logger?.error("Disabling reconnect on iRacing exit failed");
+        logger?.debug(`setReconnectEnabled error: ${String(error)}`);
       }
+
+      notifyIRacingExit();
     }
+  });
+
+  // SDK-disconnect exit fallback (issue #870): on hosts that never deliver
+  // applicationDidTerminate, a sustained loss of the SDK's shared-memory
+  // connection is the only signal that iRacing exited. The subscription is
+  // never the controller's first subscriber in production (the sim-events
+  // translator subscribes at plugin init), so it doesn't change the
+  // controller's lifecycle.
+  controller.subscribe("appMonitor", (_telemetry, isConnected) => {
+    handleSdkConnectionTick(isConnected);
   });
 
   initialized = true;
@@ -178,5 +297,9 @@ export function isAppMonitorInitialized(): boolean {
 export function _resetAppMonitor(): void {
   initialized = false;
   iRacingRunning = false;
+  runningSetByEvent = false;
+  simExitNotified = false;
+  lastSdkConnected = null;
+  cancelSdkExitConfirm();
   terminatedListeners.clear();
 }

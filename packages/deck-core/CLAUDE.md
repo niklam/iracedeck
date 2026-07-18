@@ -34,7 +34,7 @@ deck-core adds global settings readers on top of the pure functions:
 - `common-settings.ts` — `CommonSettings` Zod schema (flagsOverlay, colorOverrides, titleOverrides, borderOverrides, graphicOverrides)
 - `migrate-legacy-action.ts` — `migrateLegacyActionToMode` settings-migration helper
 - `global-settings.ts` — Plugin-level global settings manager (takes `IDeckPlatformAdapter`)
-- `app-monitor.ts` — iRacing process detection (takes `IDeckPlatformAdapter`); also `isIRacingActive()` (running-flag OR live SDK connection) and the `onIRacingTerminated(listener)` subscription, whose listeners run after the running flag and SDK connection are already down (#870)
+- `app-monitor.ts` — iRacing process detection (takes `IDeckPlatformAdapter`); also `isIRacingActive()` (running-flag OR live SDK connection) and the `onIRacingTerminated(listener)` subscription, whose listeners run after the running flag and SDK connection are already down (#870). Exit detection is dual-path: the host terminate event, plus an SDK-disconnect fallback (`IRACING_EXIT_SDK_CONFIRM_MS`, 5 s sustained loss) for hosts that never deliver app-monitoring events — deduped per exit episode, blip-safe when a launch event affirmed the sim is running
 - `sdk-singleton.ts` — iRacing SDK singleton (`initializeSDK`, `getController`, `getCommands`)
 - `keyboard-service.ts` — Keyboard singleton (`initializeKeyboard`, `getKeyboard`)
 - `clipboard-service.ts` — Clipboard singleton with injected writer (`initializeClipboard`, `getClipboard`); mirrors the keyboard-service DI pattern

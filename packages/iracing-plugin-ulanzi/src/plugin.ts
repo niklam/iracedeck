@@ -88,6 +88,7 @@ import {
   resolveActiveRaceEngineerVoice,
   runVersionCheck,
   setWarning,
+  shouldOpenChangelog,
   updateGlobalSettings,
   validateSetupWarningPatterns,
   VERSION_CHECK_STARTUP_GRACE_MS,
@@ -632,6 +633,8 @@ function pushDriverNamesIfChanged(): void {
   updateGlobalSettings({ _driverNames: driverNameListJson });
 }
 
+const versionCheckLogger = adapter.createLogger("VersionCheck");
+
 // Changelog version check (issues #680, #742, #870). Builds its inputs from
 // the LIVE settings cache on every call, because it runs at two different
 // moments: once ~15 s after the first global-settings arrival (the #870
@@ -665,15 +668,27 @@ function runChangelogVersionCheck(): void {
     persist: (version) => updateGlobalSettings({ _lastSeenVersion: version }),
     persistOpenedAt: (timestamp) => updateGlobalSettings({ _lastChangelogOpenedAt: timestamp }),
     openUrl: (url) => adapter.openUrl(url),
-    logger: adapter.createLogger("VersionCheck"),
+    logger: versionCheckLogger,
   });
 }
 
 // Re-run the check when iRacing exits so a changelog deferred mid-session
-// opens right after the session ends (issue #870). The app monitor notifies
-// after the running flag and the SDK connection are already down, so the
-// isSimRunning gate reads false here.
-onIRacingTerminated(runChangelogVersionCheck);
+// opens right after the session ends (issue #870) — on this host solely via
+// the app monitor's SDK-disconnect fallback, since UlanziStudio delivers no
+// app-monitoring events. The app monitor notifies after the running flag and
+// the SDK connection are already down, so the isSimRunning gate reads false
+// here. Gated on an open actually being pending: once the version is
+// persisted (or on a pre-release build) every later sim exit would otherwise
+// re-run a dead check and log "Version up to date" for the whole process
+// lifetime.
+onIRacingTerminated(() => {
+  const s = getGlobalSettings() as Record<string, unknown>;
+  const lastSeen = typeof s._lastSeenVersion === "string" ? s._lastSeenVersion : undefined;
+
+  if (!shouldOpenChangelog(getPluginVersion(), lastSeen)) return;
+
+  runChangelogVersionCheck();
+});
 
 onGlobalSettingsChange((settings) => {
   const s = settings as Record<string, unknown>;

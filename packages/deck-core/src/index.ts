@@ -238,6 +238,7 @@ export {
 export {
   _resetAppMonitor,
   initAppMonitor,
+  IRACING_EXIT_SDK_CONFIRM_MS,
   isAppMonitorInitialized,
   isIRacingActive,
   isIRacingRunning,
@@ -324,7 +325,7 @@ export {
   type PlatformFeatures,
 } from "./plugin-config.js";
 
-// Version-check / changelog opener (issues #680, #742)
+// Version-check / changelog opener (issues #680, #742, #870)
 export {
   buildChangelogUrl,
   CHANGELOG_BASE_URL,
@@ -335,6 +336,7 @@ export {
   resolveChangelogDecision,
   runVersionCheck,
   shouldOpenChangelog,
+  VERSION_CHECK_STARTUP_GRACE_MS,
 } from "./version-check.js";
 
 // Device + profile reference (issues #736, #753, #790)

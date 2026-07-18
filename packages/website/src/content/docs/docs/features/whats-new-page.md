@@ -9,7 +9,7 @@ After iRaceDeck updates to a new version, the What's New page — the [changelog
 
 The What's New page **never opens while iRacing is running**. If the deck software updates the plugin mid-session — which restarts the plugin while you're on track — the page quietly waits and opens right after you exit iRacing. If you restart your PC or the deck software first, it opens on the next start where iRacing isn't running.
 
-On a normal start with iRacing closed, the page opens a few seconds after the deck software starts up.
+On a normal start with iRacing closed, the page opens about fifteen seconds after the deck software starts up.
 
 ## Choosing When It Opens
 
