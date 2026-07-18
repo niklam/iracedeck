@@ -224,6 +224,13 @@ export function initAppMonitor(adapter: IDeckPlatformAdapter, log: ILogger): voi
   if (controller.getConnectionStatus()) {
     iRacingRunning = true;
     logger.info("Initialized (already connected)");
+  } else if (adapter.supportsApplicationMonitoring === false) {
+    // This host never delivers applicationDidLaunch, so pausing reconnect
+    // here would leave the SDK permanently disconnected whenever iRacing
+    // starts after the plugin (issue #870 review). Keep polling — the
+    // resulting connection is also the exit signal the SDK-disconnect
+    // fallback relies on.
+    logger.info("Initialized (no app-monitor events, reconnect polling stays on)");
   } else {
     // Not connected - disable reconnection until iRacing launches
     // The platform will fire applicationDidLaunch immediately if iRacing is already running

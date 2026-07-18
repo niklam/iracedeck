@@ -188,6 +188,19 @@ describe("App Monitor", () => {
       expect(mockAdapter.onApplicationDidLaunch).toHaveBeenCalledOnce();
     });
 
+    it("should keep reconnect polling enabled on hosts without app-monitor events", () => {
+      mockGetConnectionStatus.mockReturnValue(false);
+      const eventlessAdapter = { ...createMockAdapter(), supportsApplicationMonitoring: false };
+
+      initAppMonitor(eventlessAdapter, createMockLogger());
+
+      // No launch event will ever re-enable reconnect on such a host, so the
+      // init path must not pause it — the polling is what lets the SDK attach
+      // when iRacing starts later, and the resulting connection is the signal
+      // the SDK-disconnect exit fallback relies on.
+      expect(mockSetReconnectEnabled).not.toHaveBeenCalledWith(false);
+    });
+
     it("should throw if SDK is not initialized", () => {
       // Override mock to throw
       mockGetController.mockImplementation(() => {
