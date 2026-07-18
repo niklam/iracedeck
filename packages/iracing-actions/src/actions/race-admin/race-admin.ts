@@ -176,6 +176,23 @@ export const RACE_ADMIN_ICONS: Record<Exclude<RaceAdminMode, "select-car">, stri
 // ── Icon Generation ─────────────────────────────────────────────
 
 /**
+ * Penalty-aware default main label for the black-flag mode (#792). The penalty
+ * preset is what tells black-flag keys apart on a page of them, so it's baked
+ * into the default label — a static Title Text override would also replace the
+ * dynamic car-number sub-label. Falls back to plain `BLACK` when the penalty
+ * value is empty or not a number.
+ */
+function blackFlagMainLabel(settings: RaceAdminSettings): string {
+  if (settings.penaltyType === "drivethrough") return "BLACK DT";
+
+  const value = settings.penaltyValue?.trim();
+
+  if (!value || !/^\d+(\.\d+)?$/.test(value)) return "BLACK";
+
+  return settings.penaltyType === "laps" ? `BLACK ${value}L` : `BLACK ${value}S`;
+}
+
+/**
  * @internal Exported for testing
  */
 export function generateRaceAdminSvg(
@@ -206,7 +223,8 @@ export function generateRaceAdminSvg(
     subLabel = resolvedCar ? `#${resolvedCar.carNumber}` : "NO CAR";
   }
 
-  const defaultTitle = subLabel ? `${subLabel}\n${meta.mainLabel}` : meta.mainLabel;
+  const mainLabel = mode === "black-flag" ? blackFlagMainLabel(settings) : meta.mainLabel;
+  const defaultTitle = subLabel ? `${subLabel}\n${mainLabel}` : mainLabel;
 
   const colors = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
   const title = resolveTitleSettings(iconSvg, getGlobalTitleSettings(), settings.titleOverrides, defaultTitle);

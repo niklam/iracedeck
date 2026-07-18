@@ -57,6 +57,10 @@ See **Shared settings** below — this mode needs a driver.
 - **Laps** — Number of laps to serve (e.g., `2`)
 - **Drive-Through** — Drive-through penalty (`D`)
 
+#### Key label
+
+The default key label reflects the configured penalty — `BLACK 30S` for a 30-second time penalty, `BLACK 3L` for a 3-lap penalty, `BLACK DT` for a drive-through — so a page of black-flag presets stays distinguishable without a custom title. The driver-target line above it (e.g. `#42` or `NO CAR` for the Selected Car target) is unaffected. An empty or invalid penalty value falls back to plain `BLACK`, and a custom **Title Text** override still replaces the whole label.
+
 ---
 
 ### Disqualify Driver
