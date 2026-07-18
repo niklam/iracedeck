@@ -98,6 +98,12 @@ In race sessions, `position` and `class_position` follow the **live race order**
 
 `irating_change` and `irating_new` are **estimates** computed from the live running order and the field's iRatings (per car class, exactly like iRacing scores them) — not official post-race values. They render blank outside race sessions, before a live order exists, and for cars excluded from scoring (the pace car, spectators, cars without a valid iRating, or a class with fewer than two cars). In expressions, `irating_change` is the unrounded value — wrap it in `round(...)` to match the displayed number.
 
+The text fields (`name`, `abbrev_name`, `car_number`, `license`) are always available in expressions — when iRacing doesn't provide one (for example, AI drivers have no `abbrev_name`), it's an empty string rather than an unknown variable. That makes fallback patterns work:
+
+```text
+{{= track_ahead.abbrev_name ? track_ahead.abbrev_name : track_ahead.name }}
+```
+
 | Variable | Description |
 |----------|-------------|
 | `{{self.name}}` | Full driver name |

@@ -69,13 +69,18 @@ type SelfDriverFields = DriverFields & {
   incidents: number | undefined;
 };
 
+/**
+ * One entry from the session YAML's driver roster. String fields iRacing can
+ * leave blank (parsed to null) — e.g. AbbrevName for AI drivers (#869) — are
+ * typed nullable so consumers must coalesce.
+ */
 interface DriverEntry {
   CarIdx: number;
-  UserName: string;
-  AbbrevName: string;
-  CarNumber: string;
+  UserName: string | null;
+  AbbrevName: string | null;
+  CarNumber: string | null;
   IRating: number;
-  LicString: string;
+  LicString: string | null;
   IsSpectator: number;
   CarIsPaceCar: number;
 }
@@ -516,7 +521,12 @@ function buildDriverFields(
   playerCarIdx?: number,
   estimates?: IRatingEstimates,
 ): DriverFields {
-  const { firstName, lastName } = splitDriverName(driver.UserName);
+  // iRacing's session YAML can send string fields blank (→ null) — e.g.
+  // AbbrevName for AI drivers (#869). Coalesce to "" so the raw map keeps the
+  // key and expressions like `{{= x.abbrev_name ? … : … }}` can branch on it
+  // instead of dying on an unknown variable.
+  const userName = driver.UserName ?? "";
+  const { firstName, lastName } = splitDriverName(userName);
   const carIdx = driver.CarIdx;
   const isPlayer = playerCarIdx !== undefined && carIdx === playerCarIdx;
   // The pace car and spectators have no race position. The relative prefixes
@@ -528,11 +538,11 @@ function buildDriverFields(
   const iratingChange = isCompetitor ? (estimates?.changes[carIdx] ?? null) : null;
 
   return {
-    name: driver.UserName,
+    name: userName,
     first_name: firstName,
     last_name: lastName,
-    abbrev_name: driver.AbbrevName,
-    car_number: driver.CarNumber,
+    abbrev_name: driver.AbbrevName ?? "",
+    car_number: driver.CarNumber ?? "",
     // Single source: the canonical live order. When it exists it's authoritative
     // (a car not in it stays blank); only with no live order at all do we fall
     // back to iRacing's official CarIdxPosition. No pit-road / PlayerCar* overlay —
