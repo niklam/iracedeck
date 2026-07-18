@@ -622,9 +622,11 @@ describe("RaceAdmin", () => {
     });
 
     it("should show BLACK DT for a drive-through penalty regardless of value", () => {
-      const settings = { ...defaultSettings, penaltyType: "drivethrough" as const, penaltyValue: "30" };
-      const decoded = decodeURIComponent(generateRaceAdminSvg("black-flag", settings));
-      expect(decoded).toContain("FLAG\nBLACK DT");
+      for (const penaltyValue of ["30", "", "garbage"]) {
+        const settings = { ...defaultSettings, penaltyType: "drivethrough" as const, penaltyValue };
+        const decoded = decodeURIComponent(generateRaceAdminSvg("black-flag", settings));
+        expect(decoded).toContain("FLAG\nBLACK DT");
+      }
     });
 
     it("should fall back to plain BLACK when the penalty value is empty", () => {
