@@ -1008,6 +1008,70 @@ describe("buildTemplateContextFromData raw map", () => {
     expect(ctx.raw["focused.irating"]).toBe(4200);
     expect(resolveTemplate("{{= focused.irating + 100 }}", ctx)).toBe("4300");
   });
+
+  it("should keep a null AbbrevName as an empty string in raw (AI drivers, #869)", () => {
+    const sessionInfo = makeSessionInfo([makeDriver({ CarIdx: 0, AbbrevName: null })], 0);
+
+    const ctx = buildTemplateContextFromData(makeTelemetry(), sessionInfo);
+
+    expect(ctx.raw["self.abbrev_name"]).toBe("");
+    expect(ctx.display["self.abbrev_name"]).toBe("");
+  });
+
+  it("should let a ternary fall back to name when abbrev_name is null (#869)", () => {
+    const drivers = [
+      makeDriver({ CarIdx: 0, UserName: "Player" }),
+      makeDriver({ CarIdx: 1, UserName: "Ahead Driver", AbbrevName: null }),
+    ];
+
+    // Default telemetry places CarIdx 1 physically ahead of the player.
+    const ctx = buildTemplateContextFromData(makeTelemetry(), makeSessionInfo(drivers, 0));
+
+    expect(resolveTemplate("{{= track_ahead.abbrev_name ? track_ahead.abbrev_name : track_ahead.name }}", ctx)).toBe(
+      "Ahead Driver",
+    );
+    expect(resolveTemplate('{{= track_ahead.abbrev_name == "" ? "1" : "2" }}3', ctx)).toBe("13");
+  });
+
+  it("should keep a null CarNumber as an empty string in raw", () => {
+    const sessionInfo = makeSessionInfo([makeDriver({ CarIdx: 0, CarNumber: null })], 0);
+
+    const ctx = buildTemplateContextFromData(makeTelemetry(), sessionInfo);
+
+    expect(ctx.raw["self.car_number"]).toBe("");
+    expect(ctx.display["self.car_number"]).toBe("");
+  });
+
+  it("should not crash on a null UserName and keep name fields as empty strings", () => {
+    const sessionInfo = makeSessionInfo([makeDriver({ CarIdx: 0, UserName: null })], 0);
+
+    const ctx = buildTemplateContextFromData(makeTelemetry(), sessionInfo);
+
+    expect(ctx.raw["self.name"]).toBe("");
+    expect(ctx.raw["self.first_name"]).toBe("");
+    expect(ctx.raw["self.last_name"]).toBe("");
+    expect(ctx.display["self.name"]).toBe("");
+  });
+
+  it("should keep a null LicString as an empty string in raw", () => {
+    const sessionInfo = makeSessionInfo([makeDriver({ CarIdx: 0, LicString: null })], 0);
+
+    const ctx = buildTemplateContextFromData(makeTelemetry(), sessionInfo);
+
+    expect(ctx.raw["self.license"]).toBe("");
+    expect(ctx.display["self.license"]).toBe("");
+  });
+
+  it("should coerce unquoted-numeric YAML string fields instead of crashing (#869)", () => {
+    const sessionInfo = makeSessionInfo([makeDriver({ CarIdx: 0, UserName: 88, AbbrevName: 88, CarNumber: 88 })], 0);
+
+    const ctx = buildTemplateContextFromData(makeTelemetry(), sessionInfo);
+
+    expect(ctx.raw["self.name"]).toBe("88");
+    expect(ctx.raw["self.first_name"]).toBe("88");
+    expect(ctx.raw["self.abbrev_name"]).toBe("88");
+    expect(ctx.raw["self.car_number"]).toBe("88");
+  });
 });
 
 describe("flattenContext display map", () => {

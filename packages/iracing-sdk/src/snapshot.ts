@@ -259,8 +259,11 @@ export function buildPlayerTelemetry(
 
   // Player identity
   if (player) {
-    posRows.push(["Driver", String(player.UserName)]);
-    posRows.push(["Car", `${player.CarScreenName ?? player.CarScreenNameShort ?? "Unknown"} (#${player.CarNumber})`]);
+    posRows.push(["Driver", String(player.UserName ?? "")]);
+    posRows.push([
+      "Car",
+      `${player.CarScreenName ?? player.CarScreenNameShort ?? "Unknown"} (#${player.CarNumber ?? ""})`,
+    ]);
 
     if (player.TeamName) posRows.push(["Team", String(player.TeamName)]);
 

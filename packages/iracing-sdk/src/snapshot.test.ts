@@ -159,6 +159,19 @@ describe("buildPlayerTelemetry", () => {
     expect(table).toContain("180.0 km/h"); // 50 m/s * 3.6
     expect(table).toContain("32.6 L");
   });
+
+  it("should render blank instead of 'null' for a blank UserName/CarNumber (#869)", () => {
+    const sessionInfo = {
+      DriverInfo: {
+        Drivers: [{ CarIdx: 1, UserName: null, CarNumber: null, CarScreenName: "Mazda MX-5" }],
+      },
+    } as Record<string, unknown>;
+
+    const table = buildPlayerTelemetry({ PlayerCarIdx: 1 }, sessionInfo);
+
+    expect(table).not.toContain("null");
+    expect(table).toContain("Mazda MX-5 (#)");
+  });
 });
 
 describe("generateMarkdown", () => {
