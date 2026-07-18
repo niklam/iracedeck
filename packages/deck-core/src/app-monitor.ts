@@ -25,6 +25,9 @@ let iRacingRunning = false;
 /** Logger instance for this module */
 let logger: ILogger | null = null;
 
+/** Listeners notified after iRacing terminates (issue #870) */
+const terminatedListeners = new Set<() => void>();
+
 /**
  * Initialize the app monitor.
  * Sets up listeners for iRacing launch/terminate events.
@@ -77,7 +80,21 @@ export function initAppMonitor(adapter: IDeckPlatformAdapter, log: ILogger): voi
     if (application.toLowerCase() === IRACING_EXE.toLowerCase()) {
       logger?.info("iRacing terminated");
       iRacingRunning = false;
+      // setReconnectEnabled(false) actively disconnects the SDK, so by the
+      // time the terminated listeners below run, both isIRacingRunning() and
+      // the controller's connection status already read false — a listener
+      // consulting isIRacingActive() (the #870 version-check re-run) sees the
+      // sim as gone without any settle delay.
       getController().setReconnectEnabled(false);
+
+      for (const listener of terminatedListeners) {
+        try {
+          listener();
+        } catch (error) {
+          logger?.error("iRacing-terminated listener failed");
+          logger?.debug(`Listener error: ${String(error)}`);
+        }
+      }
     }
   });
 
@@ -106,6 +123,46 @@ export function isIRacingRunning(): boolean {
 }
 
 /**
+ * Check if iRacing is active by ANY available signal (issue #870): the app
+ * monitor's launch/terminate tracking OR a live SDK shared-memory connection.
+ * The two signals cover each other's gaps — the launch event can lag plugin
+ * startup (or never arrive on hosts with unproven app monitoring), while the
+ * SDK connects to iRacing directly regardless of the deck host. Returns false
+ * when the SDK singleton isn't initialized yet.
+ *
+ * @returns true if iRacing is running or the SDK reports a connection
+ */
+export function isIRacingActive(): boolean {
+  if (iRacingRunning) {
+    return true;
+  }
+
+  try {
+    return getController().getConnectionStatus();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Subscribe to iRacing termination (issue #870). Listeners run after the
+ * running flag is cleared and the SDK has been disconnected, so
+ * `isIRacingActive()` already reads false inside a listener. Listeners may be
+ * registered before `initAppMonitor` — the registry is module-scoped. A
+ * throwing listener is logged and skipped; the rest still run.
+ *
+ * @param listener - Called once per iRacing exit
+ * @returns Unsubscribe function
+ */
+export function onIRacingTerminated(listener: () => void): () => void {
+  terminatedListeners.add(listener);
+
+  return () => {
+    terminatedListeners.delete(listener);
+  };
+}
+
+/**
  * Check if the app monitor has been initialized.
  *
  * @returns true if initialized, false otherwise
@@ -121,4 +178,5 @@ export function isAppMonitorInitialized(): boolean {
 export function _resetAppMonitor(): void {
   initialized = false;
   iRacingRunning = false;
+  terminatedListeners.clear();
 }

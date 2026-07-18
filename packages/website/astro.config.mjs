@@ -120,6 +120,7 @@ export default defineConfig({
             { slug: "docs/features/graphic-scaling" },
             { slug: "docs/features/border-indicator" },
             { slug: "docs/features/template-variables" },
+            { slug: "docs/features/whats-new-page" },
           ],
         },
         {

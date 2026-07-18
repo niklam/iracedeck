@@ -34,7 +34,7 @@ deck-core adds global settings readers on top of the pure functions:
 - `common-settings.ts` — `CommonSettings` Zod schema (flagsOverlay, colorOverrides, titleOverrides, borderOverrides, graphicOverrides)
 - `migrate-legacy-action.ts` — `migrateLegacyActionToMode` settings-migration helper
 - `global-settings.ts` — Plugin-level global settings manager (takes `IDeckPlatformAdapter`)
-- `app-monitor.ts` — iRacing process detection (takes `IDeckPlatformAdapter`)
+- `app-monitor.ts` — iRacing process detection (takes `IDeckPlatformAdapter`); also `isIRacingActive()` (running-flag OR live SDK connection) and the `onIRacingTerminated(listener)` subscription, whose listeners run after the running flag and SDK connection are already down (#870)
 - `sdk-singleton.ts` — iRacing SDK singleton (`initializeSDK`, `getController`, `getCommands`)
 - `keyboard-service.ts` — Keyboard singleton (`initializeKeyboard`, `getKeyboard`)
 - `clipboard-service.ts` — Clipboard singleton with injected writer (`initializeClipboard`, `getClipboard`); mirrors the keyboard-service DI pattern
@@ -50,7 +50,7 @@ deck-core adds global settings readers on top of the pure functions:
 - `unit-conversion.ts` — Fuel unit conversion utilities
 - `fuel-telemetry.ts` — Shared `isFuelFillOn` / `isAutofuelActive` / `isAutofuelEnabled` telemetry readers used by both Fuel Service surfaces (keypad + dial)
 - `setup-warning.ts` + `setup-warning-constants.ts` — Setup-name mismatch warning (#625): `evaluateSetupWarning`, pattern helpers (`compileSetupWarningPattern`, `setupNameMatchesPattern`, `validateSetupWarningPatterns`), and the warning-id/setting-key constants (kept in a dependency-free leaf module)
-- `version-check.ts` — Startup version-upgrade detection + changelog opener (`shouldOpenChangelog`, `resolveChangelogDecision`, `buildChangelogUrl`, `runVersionCheck`; #680, #742); full behavior in `.claude/rules/global-settings.md`
+- `version-check.ts` — Startup version-upgrade detection + changelog opener (`shouldOpenChangelog`, `resolveChangelogDecision`, `buildChangelogUrl`, `runVersionCheck`, `VERSION_CHECK_STARTUP_GRACE_MS`; #680, #742, #870 — never opens while iRacing is running: a due open defers via the `isSimRunning` delegate and re-runs on `onIRacingTerminated`); full behavior in `.claude/rules/global-settings.md`
 - `device-profiles.ts` — Canonical Stream Deck device + profile reference (#736, #753, #790): `DeviceType`, `DEVICE_SPECS`, `DEVICE_SUPPORT`, `PROFILE_NAMES` / `PROFILE_TARGET_DEVICES` / `PROFILE_NAV_ACTIONS`, `CAR_SELECTOR_PROFILE`, `shipsBundledProfiles`, lookup helpers, and the device-suffixed profile-name helpers (`PROFILE_DEVICE_SUFFIXES`, `profileDeviceSuffix`, `deviceProfileName`, `profileDisplayName`, `resolveProfileNameForDevice`); details in `.claude/rules/profiles-and-devices.md` (Elgato-only)
 - `profile-switcher.ts` — Profile-switch singleton (#736): `requestProfileSwitch`, `requestProfileSwitchBack`, `notifyProfileVisible` — the layer above the adapters' `switchToProfile`; a safe no-op where unregistered (non-Elgato)
 

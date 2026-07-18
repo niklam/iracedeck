@@ -235,7 +235,14 @@ export {
 } from "./clipboard-service.js";
 
 // App monitor for iRacing process detection
-export { initAppMonitor, isIRacingRunning, isAppMonitorInitialized, _resetAppMonitor } from "./app-monitor.js";
+export {
+  _resetAppMonitor,
+  initAppMonitor,
+  isAppMonitorInitialized,
+  isIRacingActive,
+  isIRacingRunning,
+  onIRacingTerminated,
+} from "./app-monitor.js";
 
 // Scan code mapping
 export { getScanCode, getModifierScanCode } from "./scan-code-map.js";

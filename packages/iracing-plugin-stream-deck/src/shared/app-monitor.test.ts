@@ -1,5 +1,12 @@
 import type { IDeckPlatformAdapter } from "@iracedeck/deck-core";
-import { _resetAppMonitor, initAppMonitor, isAppMonitorInitialized, isIRacingRunning } from "@iracedeck/deck-core";
+import {
+  _resetAppMonitor,
+  initAppMonitor,
+  isAppMonitorInitialized,
+  isIRacingActive,
+  isIRacingRunning,
+  onIRacingTerminated,
+} from "@iracedeck/deck-core";
 import type { ILogger } from "@iracedeck/logger";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -222,6 +229,126 @@ describe("App Monitor", () => {
 
       expect(mockSetReconnectEnabled).not.toHaveBeenCalled();
       expect(isIRacingRunning()).toBe(false);
+    });
+  });
+
+  describe("isIRacingActive (issue #870)", () => {
+    it("should return false when iRacing is not running and the SDK is not connected", () => {
+      initAppMonitor(mockAdapter, createMockLogger());
+
+      expect(isIRacingActive()).toBe(false);
+    });
+
+    it("should return true after iRacing launches", () => {
+      initAppMonitor(mockAdapter, createMockLogger());
+
+      mockAdapter._simulateLaunch("iRacingSim64DX11.exe");
+
+      expect(isIRacingActive()).toBe(true);
+    });
+
+    it("should return true when the SDK reports connected even without a launch event", () => {
+      initAppMonitor(mockAdapter, createMockLogger());
+      // Simulate the startup race: no applicationDidLaunch delivered yet, but
+      // the SDK controller has already attached to iRacing's shared memory.
+      mockAdapter._simulateTerminate("iRacingSim64DX11.exe");
+      mockGetConnectionStatus.mockReturnValue(true);
+
+      expect(isIRacingRunning()).toBe(false);
+      expect(isIRacingActive()).toBe(true);
+    });
+
+    it("should return false when the SDK singleton is not initialized", () => {
+      mockGetController.mockImplementation(() => {
+        throw new Error("SDK not initialized");
+      });
+
+      expect(isIRacingActive()).toBe(false);
+
+      resetGetControllerMock();
+    });
+  });
+
+  describe("onIRacingTerminated (issue #870)", () => {
+    it("should notify listeners when iRacing terminates", () => {
+      initAppMonitor(mockAdapter, createMockLogger());
+      const listener = vi.fn();
+      onIRacingTerminated(listener);
+
+      mockAdapter._simulateLaunch("iRacingSim64DX11.exe");
+      mockAdapter._simulateTerminate("iRacingSim64DX11.exe");
+
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+
+    it("should not notify listeners for other applications", () => {
+      initAppMonitor(mockAdapter, createMockLogger());
+      const listener = vi.fn();
+      onIRacingTerminated(listener);
+
+      mockAdapter._simulateTerminate("SomeOtherApp.exe");
+
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    it("should notify AFTER the running flag and reconnect state are already down", () => {
+      initAppMonitor(mockAdapter, createMockLogger());
+      mockAdapter._simulateLaunch("iRacingSim64DX11.exe");
+      mockGetConnectionStatus.mockReturnValue(false);
+
+      const observed: boolean[] = [];
+      onIRacingTerminated(() => {
+        observed.push(isIRacingRunning(), isIRacingActive());
+      });
+
+      mockAdapter._simulateTerminate("iRacingSim64DX11.exe");
+
+      expect(observed).toEqual([false, false]);
+    });
+
+    it("should stop notifying after unsubscribe", () => {
+      initAppMonitor(mockAdapter, createMockLogger());
+      const listener = vi.fn();
+      const unsubscribe = onIRacingTerminated(listener);
+
+      unsubscribe();
+      mockAdapter._simulateTerminate("iRacingSim64DX11.exe");
+
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    it("should keep notifying later listeners when an earlier one throws", () => {
+      initAppMonitor(mockAdapter, createMockLogger());
+      const second = vi.fn();
+      onIRacingTerminated(() => {
+        throw new Error("listener boom");
+      });
+      onIRacingTerminated(second);
+
+      expect(() => mockAdapter._simulateTerminate("iRacingSim64DX11.exe")).not.toThrow();
+      expect(second).toHaveBeenCalledTimes(1);
+    });
+
+    it("should fire listeners registered before initAppMonitor", () => {
+      const listener = vi.fn();
+      onIRacingTerminated(listener);
+      initAppMonitor(mockAdapter, createMockLogger());
+
+      mockAdapter._simulateTerminate("iRacingSim64DX11.exe");
+
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+
+    it("should clear listeners on _resetAppMonitor", () => {
+      initAppMonitor(mockAdapter, createMockLogger());
+      const listener = vi.fn();
+      onIRacingTerminated(listener);
+
+      _resetAppMonitor();
+      initAppMonitor(mockAdapter, createMockLogger());
+      mockAdapter._simulateTerminate("iRacingSim64DX11.exe");
+
+      expect(listener).not.toHaveBeenCalled();
     });
   });
 

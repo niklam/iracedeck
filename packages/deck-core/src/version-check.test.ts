@@ -392,4 +392,124 @@ describe("runVersionCheck", () => {
       expect(openUrl).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe("sim-running gate (issue #870)", () => {
+    const now = 1_750_000_000_000;
+    let persistOpenedAt: Mock<(timestamp: number) => void>;
+
+    beforeEach(() => {
+      persistOpenedAt = vi.fn<(timestamp: number) => void>();
+    });
+
+    it("defers a due open while the sim is running: fully inert so the version stays pending", async () => {
+      await runVersionCheck({
+        currentVersion: "1.24.0",
+        lastSeenVersion: "1.23.0",
+        ecosystem: "stream-deck",
+        isSimRunning: () => true,
+        persist,
+        persistOpenedAt,
+        openUrl,
+        logger,
+        now,
+      });
+
+      expect(persist).not.toHaveBeenCalled();
+      expect(persistOpenedAt).not.toHaveBeenCalled();
+      expect(openUrl).not.toHaveBeenCalled();
+    });
+
+    it("defers a monthly open past the window while the sim is running", async () => {
+      await runVersionCheck({
+        currentVersion: "1.24.0",
+        lastSeenVersion: "1.23.0",
+        policy: "monthly",
+        lastOpenedAt: now - MONTHLY_WINDOW_MS - 1,
+        ecosystem: "stream-deck",
+        isSimRunning: () => true,
+        persist,
+        persistOpenedAt,
+        openUrl,
+        logger,
+        now,
+      });
+
+      expect(persist).not.toHaveBeenCalled();
+      expect(persistOpenedAt).not.toHaveBeenCalled();
+      expect(openUrl).not.toHaveBeenCalled();
+    });
+
+    it("opens normally when the delegate reports the sim is not running", async () => {
+      await runVersionCheck({
+        currentVersion: "1.24.0",
+        lastSeenVersion: "1.23.0",
+        ecosystem: "stream-deck",
+        isSimRunning: () => false,
+        persist,
+        persistOpenedAt,
+        openUrl,
+        logger,
+        now,
+      });
+
+      expect(persist).toHaveBeenCalledWith("1.24.0");
+      expect(persistOpenedAt).toHaveBeenCalledWith(now);
+      expect(openUrl).toHaveBeenCalledTimes(1);
+    });
+
+    it("never: still records the version silently while the sim is running (nothing opens anyway)", async () => {
+      await runVersionCheck({
+        currentVersion: "1.24.0",
+        lastSeenVersion: "1.23.0",
+        policy: "never",
+        ecosystem: "stream-deck",
+        isSimRunning: () => true,
+        persist,
+        persistOpenedAt,
+        openUrl,
+        logger,
+        now,
+      });
+
+      expect(persist).toHaveBeenCalledWith("1.24.0");
+      expect(openUrl).not.toHaveBeenCalled();
+    });
+
+    it("features: a patch update still records silently while the sim is running", async () => {
+      await runVersionCheck({
+        currentVersion: "1.23.1",
+        lastSeenVersion: "1.23.0",
+        policy: "features",
+        ecosystem: "stream-deck",
+        isSimRunning: () => true,
+        persist,
+        persistOpenedAt,
+        openUrl,
+        logger,
+        now,
+      });
+
+      expect(persist).toHaveBeenCalledWith("1.23.1");
+      expect(openUrl).not.toHaveBeenCalled();
+    });
+
+    it("does not consult the delegate when nothing is due", async () => {
+      const isSimRunning = vi.fn(() => true);
+
+      await runVersionCheck({
+        currentVersion: "1.23.0",
+        lastSeenVersion: "1.23.0",
+        ecosystem: "stream-deck",
+        isSimRunning,
+        persist,
+        openUrl,
+        logger,
+        now,
+      });
+
+      expect(isSimRunning).not.toHaveBeenCalled();
+      expect(persist).not.toHaveBeenCalled();
+      expect(openUrl).not.toHaveBeenCalled();
+    });
+  });
 });

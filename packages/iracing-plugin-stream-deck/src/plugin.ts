@@ -72,7 +72,9 @@ import {
   initializeSimHub,
   initPluginConfig,
   initProfileSwitcher,
+  isIRacingActive,
   onGlobalSettingsChange,
+  onIRacingTerminated,
   type PluginConfig,
   resolveActiveDriverName,
   resolveActiveRaceEngineerVoice,
@@ -80,6 +82,7 @@ import {
   setWarning,
   updateGlobalSettings,
   validateSetupWarningPatterns,
+  VERSION_CHECK_STARTUP_GRACE_MS,
 } from "@iracedeck/deck-core";
 import { initializeEventBus } from "@iracedeck/event-bus";
 import {
@@ -655,6 +658,50 @@ function pushDriverNamesIfChanged(): void {
   updateGlobalSettings({ _driverNames: driverNameListJson });
 }
 
+// Changelog version check (issues #680, #742, #870). Builds its inputs from
+// the LIVE settings cache on every call, because it runs at two different
+// moments: once ~15 s after the first global-settings arrival (the #870
+// startup grace that lets the sim-running signals settle), and again whenever
+// iRacing exits — a due changelog is never opened over a live session, it
+// defers (nothing persisted) and stays pending until the sim is gone.
+// `runVersionCheck` is naturally idempotent across these calls: once a
+// version is persisted, later calls decide `skip`.
+function runChangelogVersionCheck(): void {
+  // Nothing meaningful to compare before the first settings arrival.
+  if (!startupDefaultsApplied) return;
+
+  const settings = getGlobalSettings();
+  const s = settings as Record<string, unknown>;
+
+  // Reads the last-seen version from the passthrough `_lastSeenVersion` key
+  // and persists the running version. No-op for pre-release builds and
+  // same/older versions; opens the browser via the Elgato SDK. `type` is the
+  // connected device's type id (best-effort), omitted when no device is
+  // connected yet. The `changelogNotification` preference (issue #742)
+  // decides whether a due changelog opens, is recorded silently, or stays
+  // pending (monthly window, anchored on the passthrough
+  // `_lastChangelogOpenedAt` key).
+  void runVersionCheck({
+    currentVersion: getPluginVersion(),
+    lastSeenVersion: typeof s._lastSeenVersion === "string" ? s._lastSeenVersion : undefined,
+    policy: settings.changelogNotification,
+    lastOpenedAt: typeof s._lastChangelogOpenedAt === "number" ? s._lastChangelogOpenedAt : undefined,
+    ecosystem: getPluginPlatform(),
+    deviceType: [...streamDeck.devices].find((d) => d.isConnected)?.type,
+    isSimRunning: isIRacingActive,
+    persist: (version) => updateGlobalSettings({ _lastSeenVersion: version }),
+    persistOpenedAt: (timestamp) => updateGlobalSettings({ _lastChangelogOpenedAt: timestamp }),
+    openUrl: (url) => adapter.openUrl(url),
+    logger: adapter.createLogger("VersionCheck"),
+  });
+}
+
+// Re-run the check when iRacing exits so a changelog deferred mid-session
+// opens right after the session ends (issue #870). The app monitor notifies
+// after the running flag and the SDK connection are already down, so the
+// isSimRunning gate reads false here.
+onIRacingTerminated(runChangelogVersionCheck);
+
 onGlobalSettingsChange((settings) => {
   const s = settings as Record<string, unknown>;
 
@@ -713,26 +760,11 @@ onGlobalSettingsChange((settings) => {
     });
 
     // Open the website changelog once when a newer stable version is
-    // detected (issue #680). Reads the last-seen version from the
-    // passthrough `_lastSeenVersion` key and persists the running version.
-    // No-op for pre-release builds and same/older versions; opens the
-    // browser via the Elgato SDK. `type` is the connected device's type id
-    // (best-effort), omitted when no device is connected yet. The
-    // `changelogNotification` preference (issue #742) decides whether a due
-    // changelog opens, is recorded silently, or stays pending (monthly
-    // window, anchored on the passthrough `_lastChangelogOpenedAt` key).
-    void runVersionCheck({
-      currentVersion: getPluginVersion(),
-      lastSeenVersion: typeof s._lastSeenVersion === "string" ? s._lastSeenVersion : undefined,
-      policy: settings.changelogNotification,
-      lastOpenedAt: typeof s._lastChangelogOpenedAt === "number" ? s._lastChangelogOpenedAt : undefined,
-      ecosystem: getPluginPlatform(),
-      deviceType: [...streamDeck.devices].find((d) => d.isConnected)?.type,
-      persist: (version) => updateGlobalSettings({ _lastSeenVersion: version }),
-      persistOpenedAt: (timestamp) => updateGlobalSettings({ _lastChangelogOpenedAt: timestamp }),
-      openUrl: (url) => adapter.openUrl(url),
-      logger: adapter.createLogger("VersionCheck"),
-    });
+    // detected (issue #680) — via the shared runChangelogVersionCheck above,
+    // delayed by the #870 startup grace so a mid-session plugin restart (the
+    // deck-host auto-update case) can't run the check before the sim-running
+    // signals are up and open the page over a live session.
+    setTimeout(runChangelogVersionCheck, VERSION_CHECK_STARTUP_GRACE_MS);
   }
 
   // Mirror "On startup" PI edits into the runtime toggles immediately so
