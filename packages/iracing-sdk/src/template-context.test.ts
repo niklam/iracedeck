@@ -1052,6 +1052,26 @@ describe("buildTemplateContextFromData raw map", () => {
     expect(ctx.raw["self.last_name"]).toBe("");
     expect(ctx.display["self.name"]).toBe("");
   });
+
+  it("should keep a null LicString as an empty string in raw", () => {
+    const sessionInfo = makeSessionInfo([makeDriver({ CarIdx: 0, LicString: null })], 0);
+
+    const ctx = buildTemplateContextFromData(makeTelemetry(), sessionInfo);
+
+    expect(ctx.raw["self.license"]).toBe("");
+    expect(ctx.display["self.license"]).toBe("");
+  });
+
+  it("should coerce unquoted-numeric YAML string fields instead of crashing (#869)", () => {
+    const sessionInfo = makeSessionInfo([makeDriver({ CarIdx: 0, UserName: 88, AbbrevName: 88, CarNumber: 88 })], 0);
+
+    const ctx = buildTemplateContextFromData(makeTelemetry(), sessionInfo);
+
+    expect(ctx.raw["self.name"]).toBe("88");
+    expect(ctx.raw["self.first_name"]).toBe("88");
+    expect(ctx.raw["self.abbrev_name"]).toBe("88");
+    expect(ctx.raw["self.car_number"]).toBe("88");
+  });
 });
 
 describe("flattenContext display map", () => {

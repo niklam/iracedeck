@@ -79,6 +79,20 @@ describe("classifyCarNumberTarget", () => {
     expect(classifyCarNumberTarget(null, "42")).toBe("unknown");
     expect(classifyCarNumberTarget({}, "42")).toBe("unknown");
   });
+
+  it("tolerates roster entries with null or unquoted-numeric CarNumber (#869)", () => {
+    const info = {
+      DriverInfo: {
+        Drivers: [
+          { CarIdx: 0, CarNumber: null, CarNumberRaw: 0 },
+          { CarIdx: 1, CarNumber: 42, CarNumberRaw: 42, UserName: "Jane Doe", CarIsAI: 0 },
+        ],
+      },
+    };
+
+    expect(classifyCarNumberTarget(info, "42")).toBe("user");
+    expect(classifyCarNumberTarget(info, "7")).toBe("unknown");
+  });
 });
 
 describe("getCarNumberFromSessionInfo", () => {
@@ -122,6 +136,26 @@ describe("getCarNumberFromSessionInfo", () => {
     };
 
     expect(getCarNumberFromSessionInfo(info, 0)).toBe("042");
+  });
+
+  it("should return null when the entry's CarNumber is null (blank in YAML, #869)", () => {
+    const info = {
+      DriverInfo: {
+        Drivers: [{ CarIdx: 0, CarNumber: null, CarNumberRaw: 0 }],
+      },
+    };
+
+    expect(getCarNumberFromSessionInfo(info, 0)).toBeNull();
+  });
+
+  it("should handle an unquoted numeric CarNumber (#869)", () => {
+    const info = {
+      DriverInfo: {
+        Drivers: [{ CarIdx: 0, CarNumber: 42, CarNumberRaw: 42 }],
+      },
+    };
+
+    expect(getCarNumberFromSessionInfo(info, 0)).toBe("42");
   });
 
   it("should return null for unknown car index", () => {
@@ -199,6 +233,19 @@ describe("getAllCarNumbers", () => {
       ],
     },
   };
+
+  it("should skip entries whose CarNumber is null (blank in YAML, #869)", () => {
+    const info = {
+      DriverInfo: {
+        Drivers: [
+          { CarIdx: 0, CarNumber: null, CarNumberRaw: 0 },
+          { CarIdx: 1, CarNumber: "42", CarNumberRaw: 42 },
+        ],
+      },
+    };
+
+    expect(getAllCarNumbers(info)).toEqual([{ carIdx: 1, carNumber: "42", carNumberRaw: 42, userName: "" }]);
+  });
 
   it("should return all car numbers sorted ascending by numeric value", () => {
     const result = getAllCarNumbers(sessionInfo);
