@@ -15,6 +15,7 @@ _Unreleased_
 
 **Bug Fixes**
 
+- Spotter proximity calls ("Car left.", "Two cars right.", "Three wide.") are now always heard immediately: they cut any other Race Engineer line mid-sentence — even critical ones — instead of being silently dropped when another callout occupied the voice channel. The informational "Clear." and "Still there." lines still yield to critical calls.
 - Template expressions no longer render as empty text when they reference a driver text field iRacing left blank — such as `abbrev_name` for AI drivers. Blank fields now count as empty strings in expressions, so fallback patterns like `{{= track_ahead.abbrev_name ? track_ahead.abbrev_name : track_ahead.name }}` work as expected.
 
 ## 2.2.0

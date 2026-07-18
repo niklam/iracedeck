@@ -5,6 +5,7 @@ import type { IEventBus, RadarState, SimEventName, SimEventOf } from "@iracedeck
 import { TrackDirection } from "@iracedeck/sim-events-iracing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { WEIGHT } from "../../dsl.js";
 import { _resetAudioScenarios, getScenarioEngine, initializeAudioScenarios } from "../../interpreter.js";
 import {
   _resetSpotterEngine,
@@ -14,6 +15,7 @@ import {
   SPOTTER_CLEAR_FALLBACK_MS,
   SPOTTER_CLEAR_POLL_MS,
   SPOTTER_FOCUS_OWNER,
+  SPOTTER_INFO_SCENARIO_ID,
   SPOTTER_STILL_THERE_DEFAULT_MS,
   type SpotterDeps,
 } from "./spotter-engine.js";
@@ -121,7 +123,11 @@ const SPOTTER_CLIP_NAMES = [
 ] as const;
 
 const manifest = {
-  clips: ["luca", "elena"].flatMap((v) => SPOTTER_CLIP_NAMES.map((name) => `voice/${v}/spotter/${name}.mp3`)),
+  clips: [
+    ...["luca", "elena"].flatMap((v) => SPOTTER_CLIP_NAMES.map((name) => `voice/${v}/spotter/${name}.mp3`)),
+    // Non-spotter clip for the #867 scheduling tests' in-flight blocker line.
+    "test/blocker.mp3",
+  ],
   ambientLoop: "",
   ticks: { open: "", close: "" },
 } as never;
@@ -706,7 +712,7 @@ describe("scenario identity", () => {
     expect(lastVoicePath()).toBe(`${BASE}two-cars-left.mp3`);
   });
 
-  it("registers the scenario under the documented id with SAFETY weight on the Voice bus", () => {
+  it("registers the transition-call scenario at PROXIMITY and the info scenario at SAFETY (#867)", () => {
     // Spy before the first registration so the initial defineScenario is captured.
     const spy = vi.spyOn(getScenarioEngine(), "defineScenario");
     registerSpotterEngine(bus, deps);
@@ -716,12 +722,111 @@ describe("scenario identity", () => {
         id: SPOTTER_CALL_SCENARIO_ID,
         channel: AudioChannel.Voice,
         bus: AudioBus.Voice,
+        weight: WEIGHT.PROXIMITY,
         focusOwner: SPOTTER_FOCUS_OWNER,
         family: "spotter",
         interrupt: true,
         queueable: false,
       }),
     );
+    expect(spy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: SPOTTER_INFO_SCENARIO_ID,
+        channel: AudioChannel.Voice,
+        bus: AudioBus.Voice,
+        weight: WEIGHT.SAFETY,
+        focusOwner: SPOTTER_FOCUS_OWNER,
+        family: "spotter",
+        interrupt: true,
+        queueable: false,
+      }),
+    );
+  });
+});
+
+// ─── Proximity scheduling (issue #867) ───────────────────────────────────────
+//
+// A proximity transition call must ALWAYS be heard, immediately — no in-flight
+// line, not even a CRITICAL one, may keep it off the bus. The informational
+// fires ("Clear.", the still-there reminder) stay at SAFETY so they can never
+// chop up a CRITICAL line (meatball, fuel-critical, start gantry).
+
+describe("proximity scheduling (#867)", () => {
+  const BLOCKER_CLIP = "test/blocker.mp3";
+
+  /** Define + fire a blocker line at the given weight; it stays in flight. */
+  function startBlocker(weight: number, opts: { queueable?: boolean; interrupt?: boolean } = {}): void {
+    getScenarioEngine().defineScenario({
+      id: "test.blocker",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight,
+      ...opts,
+      sequence: [BLOCKER_CLIP],
+    });
+    getScenarioEngine().fire("test.blocker");
+    expect(voicePaths()).toContain(BLOCKER_CLIP);
+  }
+
+  beforeEach(() => {
+    registerSpotterEngine(bus, deps);
+  });
+
+  it("a transition call cuts an in-flight CRITICAL line and plays immediately", () => {
+    startBlocker(WEIGHT.CRITICAL, { interrupt: true });
+    bus.publishRadar("left");
+
+    expect(audio._stopped).toContain(VOICE);
+    expect(lastVoicePath()).toBe(`${BASE}car-left.mp3`);
+  });
+
+  it("a transition call cuts an in-flight equal-SAFETY line and plays immediately", () => {
+    startBlocker(WEIGHT.SAFETY);
+    bus.publishRadar("left");
+
+    expect(lastVoicePath()).toBe(`${BASE}car-left.mp3`);
+  });
+
+  it("'Clear.' does not cut an in-flight CRITICAL line (stays SAFETY)", () => {
+    bus.publishRadar("left");
+    audio._triggerChannelEnd(VOICE);
+    // CRITICAL passes the spotter's SAFETY focus floor and takes the bus.
+    startBlocker(WEIGHT.CRITICAL, { interrupt: true });
+    bus.publishRadar("clear", "left");
+
+    expect(voicePaths()).not.toContain(`${BASE}clear.mp3`);
+  });
+
+  it("the still-there reminder does not cut an in-flight CRITICAL line", () => {
+    bus.publishRadar("left");
+    audio._triggerChannelEnd(VOICE);
+    startBlocker(WEIGHT.CRITICAL, { interrupt: true });
+    vi.advanceTimersByTime(SPOTTER_STILL_THERE_DEFAULT_MS);
+
+    expect(voicePaths()).not.toContain(`${BASE}still-there.mp3`);
+    expect(voicePaths()).not.toContain(`${BASE}hold-your-line.mp3`);
+  });
+
+  it("the still-there reminder still cuts routine NORMAL chatter (SAFETY + interrupt)", () => {
+    // Cars-off keeps the arrival call from cutting the blocker first, while the
+    // focus gate + reminder loop still engage on the transition.
+    registerSpotterEngine(bus, makeDeps({ getCarsEnabled: () => false }));
+    startBlocker(WEIGHT.NORMAL);
+    bus.publishRadar("left");
+    vi.advanceTimersByTime(SPOTTER_STILL_THERE_DEFAULT_MS);
+
+    const reminders = voicePaths().filter((p) => p === `${BASE}still-there.mp3` || p === `${BASE}hold-your-line.mp3`);
+    expect(reminders).toHaveLength(1);
+  });
+
+  it("a transition call replaces an in-flight reminder (shared spotter family)", () => {
+    bus.publishRadar("left");
+    audio._triggerChannelEnd(VOICE);
+    vi.advanceTimersByTime(SPOTTER_STILL_THERE_DEFAULT_MS);
+
+    bus.publishRadar("two-left", "left");
+
+    expect(lastVoicePath()).toBe(`${BASE}two-cars-left.mp3`);
   });
 });
 

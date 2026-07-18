@@ -3,12 +3,23 @@
  * family (issue #651). Like the radar engine it owns a state machine over
  * `RadarState` driven off the existing `radar.changed` event, but unlike
  * radar (which plays directly on `AudioChannel.Radar`) it schedules every
- * callout through the #652 interpreter via `engine.fire("pit-crew.spotter-call")`.
+ * callout through the #652 interpreter via `engine.fire(...)`.
  *
- * That single scenario plays a `{ var: "spotterClip" }` step whose value this
+ * Each fired scenario plays a `{ var: "spotterClip" }` step whose value this
  * engine computes per transition, so clip selection is entirely var-driven —
  * no interpreter pools, no dependency on the audio manifest at load time
  * (the engine builds and tests green before any spotter clip exists).
+ *
+ * Scheduling splits into two scenarios (issue #867): every car-presence
+ * transition call ("Car left", "Two cars right", "Three wide", the combined
+ * swaps, the 2→1 de-escalation) fires through `pit-crew.spotter-call` at
+ * `WEIGHT.PROXIMITY` — strictly above CRITICAL, so it cuts ANY in-flight
+ * line; a missed proximity call is the most dangerous silence the engineer
+ * can produce. The informational fires — "Clear." and the still-there
+ * reminder loop — go through `pit-crew.spotter-info` at `WEIGHT.SAFETY`, so
+ * they can never chop up a CRITICAL line (meatball, fuel-critical, start
+ * gantry). Both share `family: "spotter"` + the focus owner, so they keep
+ * replacing each other wholesale like the former single scenario did.
  *
  * While a car is alongside the engine holds an exclusive-focus floor
  * (`WEIGHT.SAFETY`) on `AudioBus.Voice` so routine chatter is held back while
@@ -28,6 +39,7 @@ import { getScenarioEngine } from "../../interpreter.js";
 
 export const SPOTTER_FOCUS_OWNER = "spotter";
 export const SPOTTER_CALL_SCENARIO_ID = "pit-crew.spotter-call";
+export const SPOTTER_INFO_SCENARIO_ID = "pit-crew.spotter-info";
 
 /** "Still there" reminder cadence bounds (issue #651), user-configurable in the PI. */
 export const SPOTTER_STILL_THERE_MIN_SECONDS = 1;
@@ -90,14 +102,40 @@ export type SpotterDeps = {
 };
 
 /**
- * The single interpreter-scheduled scenario every spotter callout fires
- * through. `sequence: [{ var: "spotterClip" }]` plays whatever path the engine
+ * The transition-call scenario — every car-presence transition fires through
+ * it. `sequence: [{ var: "spotterClip" }]` plays whatever path the engine
  * stashed in `pendingSpotterClip` for this transition; `focusOwner: "spotter"`
  * lets the engine's own fires bypass the SAFETY floor it holds while a car is
  * alongside. Unframed (decision D1): no `@pit-crew.radio-open`/`-close`.
+ *
+ * `WEIGHT.PROXIMITY` + `interrupt: true` (issue #867): a proximity transition
+ * must always be heard immediately, cutting even an in-flight CRITICAL line.
+ * `queueable: false` stays — a stale proximity call must never replay late;
+ * the guarantee comes from winning the bus now.
  */
 const SPOTTER_CALL_SCENARIO: Scenario = {
   id: SPOTTER_CALL_SCENARIO_ID,
+  channel: AudioChannel.Voice,
+  bus: AudioBus.Voice,
+  weight: WEIGHT.PROXIMITY,
+  interrupt: true,
+  queueable: false,
+  family: "spotter",
+  focusOwner: SPOTTER_FOCUS_OWNER,
+  sequence: [{ var: "spotterClip" }],
+};
+
+/**
+ * The informational sibling (issue #867): "Clear." and the still-there
+ * reminder loop. Identical shape but `WEIGHT.SAFETY` — informational lines
+ * must never chop up a CRITICAL call (meatball, fuel-critical, the start
+ * gantry), and the 1–10 s reminder cadence would do exactly that at
+ * PROXIMITY. Shares `family: "spotter"` + the focus owner with the call
+ * scenario so the two replace each other wholesale, exactly like the former
+ * single scenario.
+ */
+const SPOTTER_INFO_SCENARIO: Scenario = {
+  id: SPOTTER_INFO_SCENARIO_ID,
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
   weight: WEIGHT.SAFETY,
@@ -222,9 +260,16 @@ function pickNoRepeat(pool: PoolPick): string {
 
 // ─── Firing + focus + loop ───────────────────────────────────────────────────
 
-function fireClip(path: string): void {
+/** Fire a car-presence transition call at PROXIMITY — always heard, cuts anything (#867). */
+function fireCallClip(path: string): void {
   pendingSpotterClip = path;
   getScenarioEngine().fire(SPOTTER_CALL_SCENARIO_ID);
+}
+
+/** Fire an informational line ("Clear.", still-there) at SAFETY — never cuts a CRITICAL line. */
+function fireInfoClip(path: string): void {
+  pendingSpotterClip = path;
+  getScenarioEngine().fire(SPOTTER_INFO_SCENARIO_ID);
 }
 
 // Re-assert the focus floor on every non-clear transition rather than caching a
@@ -281,7 +326,7 @@ function tick(): void {
   // fire nothing, so re-enabling mid-session resumes the reminder. Also hold the
   // reminder while a → clear is being confirmed (pendingClear), so a short
   // cadence can't speak "still there" moments before the buffered "clear".
-  if (pendingClear === null && deps.getStillThereEnabled()) fireClip(pickNoRepeat(stillTherePick));
+  if (pendingClear === null && deps.getStillThereEnabled()) fireInfoClip(pickNoRepeat(stillTherePick));
 
   loopTimer = setTimeout(tick, loopIntervalMs());
 }
@@ -371,7 +416,7 @@ function handleTransition(oldState: RadarState, newState: RadarState, dir: Track
   const carsEnabled = deps.getCarsEnabled();
 
   if (newState === "clear") {
-    if (carsEnabled) fireClip(pickNoRepeat(clearPick));
+    if (carsEnabled) fireInfoClip(pickNoRepeat(clearPick));
 
     releaseFocus();
 
@@ -381,7 +426,7 @@ function handleTransition(oldState: RadarState, newState: RadarState, dir: Track
   acquireFocus();
 
   if (newState === "both") {
-    if (carsEnabled) fireClip(THREE_WIDE);
+    if (carsEnabled) fireCallClip(THREE_WIDE);
 
     startLoop();
 
@@ -398,16 +443,16 @@ function handleTransition(oldState: RadarState, newState: RadarState, dir: Track
   if (carsEnabled) {
     if (old[other] > 0) {
       // Other side just cleared while occupied keeps car(s) → combined clip.
-      fireClip(combinedClip(other, occupied, n, dir));
+      fireCallClip(combinedClip(other, occupied, n, dir));
     } else if (old[occupied] === 0) {
       // 0 → 1 car / 0 → 2 two-cars.
-      fireClip(levelClip(occupied, n, dir));
+      fireCallClip(levelClip(occupied, n, dir));
     } else if (n > old[occupied]) {
       // 1 → 2 two-cars escalation (n is 2 here; pass it rather than a literal).
-      fireClip(levelClip(occupied, n, dir));
+      fireCallClip(levelClip(occupied, n, dir));
     } else {
       // 2 → 1 de-escalation: "One car <side>."
-      fireClip(levelClip(occupied, 1, dir, true));
+      fireCallClip(levelClip(occupied, 1, dir, true));
     }
   }
 
@@ -500,6 +545,7 @@ export function registerSpotterEngine(bus: IEventBus, nextDeps: SpotterDeps): vo
   const engine = getScenarioEngine();
   engine.defineVar("spotterClip", () => pendingSpotterClip);
   engine.defineScenario(SPOTTER_CALL_SCENARIO);
+  engine.defineScenario(SPOTTER_INFO_SCENARIO);
 
   registeredBus = bus;
   bus.subscribe("radar.changed", handleRadarChanged);
