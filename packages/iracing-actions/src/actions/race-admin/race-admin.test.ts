@@ -532,6 +532,7 @@ describe("RaceAdmin", () => {
 
   describe("generateRaceAdminSvg", () => {
     const defaultSettings = {
+      addedWithVersion: "",
       mode: "yellow" as const,
       driverTarget: "viewed-car" as const,
       carNumber: "",
@@ -542,6 +543,8 @@ describe("RaceAdmin", () => {
       paceLapsValue: "1",
       gridSetMinutes: "5",
       trackStatePercent: "50",
+      selectorPage: "0",
+      selectorTargetProfile: "",
     };
 
     it("should generate a valid data URI", () => {
@@ -602,6 +605,50 @@ describe("RaceAdmin", () => {
       const settings = { ...defaultSettings, driverTarget: "selected-car" as const };
       const decoded = decodeURIComponent(generateRaceAdminSvg("black-flag", settings, null));
       expect(decoded).toContain("NO CAR");
+    });
+
+    // Penalty-aware black-flag default title (#792)
+
+    it("should show BLACK 30S for a time penalty", () => {
+      const settings = { ...defaultSettings, penaltyType: "time" as const, penaltyValue: "30" };
+      const decoded = decodeURIComponent(generateRaceAdminSvg("black-flag", settings));
+      expect(decoded).toContain("FLAG\nBLACK 30S");
+    });
+
+    it("should show BLACK 3L for a laps penalty", () => {
+      const settings = { ...defaultSettings, penaltyType: "laps" as const, penaltyValue: "3" };
+      const decoded = decodeURIComponent(generateRaceAdminSvg("black-flag", settings));
+      expect(decoded).toContain("FLAG\nBLACK 3L");
+    });
+
+    it("should show BLACK DT for a drive-through penalty regardless of value", () => {
+      const settings = { ...defaultSettings, penaltyType: "drivethrough" as const, penaltyValue: "30" };
+      const decoded = decodeURIComponent(generateRaceAdminSvg("black-flag", settings));
+      expect(decoded).toContain("FLAG\nBLACK DT");
+    });
+
+    it("should fall back to plain BLACK when the penalty value is empty", () => {
+      const settings = { ...defaultSettings, penaltyType: "time" as const, penaltyValue: "  " };
+      const decoded = decodeURIComponent(generateRaceAdminSvg("black-flag", settings));
+      expect(decoded).toContain("FLAG\nBLACK</svg>");
+    });
+
+    it("should fall back to plain BLACK when the penalty value is not a number", () => {
+      const settings = { ...defaultSettings, penaltyType: "laps" as const, penaltyValue: "abc" };
+      const decoded = decodeURIComponent(generateRaceAdminSvg("black-flag", settings));
+      expect(decoded).toContain("FLAG\nBLACK</svg>");
+    });
+
+    it("should keep the selected-car number sub-label on the penalty-aware title", () => {
+      const settings = { ...defaultSettings, driverTarget: "selected-car" as const, penaltyValue: "30" };
+      const decoded = decodeURIComponent(generateRaceAdminSvg("black-flag", settings, { carNumber: "42" }));
+      expect(decoded).toContain("#42\nBLACK 30S");
+    });
+
+    it("should keep the NO CAR sub-label on the penalty-aware title when nothing is selected", () => {
+      const settings = { ...defaultSettings, driverTarget: "selected-car" as const, penaltyValue: "30" };
+      const decoded = decodeURIComponent(generateRaceAdminSvg("black-flag", settings, null));
+      expect(decoded).toContain("NO CAR\nBLACK 30S");
     });
   });
 
