@@ -13,6 +13,10 @@ Release notes for each version of iRaceDeck. The newest release is listed first.
 
 _Unreleased_
 
+**Improvements**
+
+- Session Info's iRating Gain/Loss estimate no longer waits for the race to go green: during qualifying it scores the current qualifying standings as if they were the finish, and on the race grid and pace lap it starts from the qualifying grid, so a value shows the moment positions exist. The same applies to the `irating_change` / `irating_new` / `session.sof` template variables, and in practice and test sessions the key now shows `--` instead of staying empty.
+
 **Bug Fixes**
 
 - Template expressions no longer render as empty text when they reference a driver text field iRacing left blank — such as `abbrev_name` for AI drivers. Blank fields now count as empty strings in expressions, so fallback patterns like `{{= track_ahead.abbrev_name ? track_ahead.abbrev_name : track_ahead.name }}` work as expected.

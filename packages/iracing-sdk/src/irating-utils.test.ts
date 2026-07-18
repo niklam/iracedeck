@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { calculateIRatingChanges, calculateSof, estimateIRatingChanges } from "./irating-utils.js";
+import {
+  calculateIRatingChanges,
+  calculateSof,
+  estimateIRatingChanges,
+  resolveIRatingEstimateOrder,
+} from "./irating-utils.js";
 
 /**
  * Reference vectors from Turbo87/irating-rs (src/snapshots/irating__tests__it_works.snap):
@@ -198,5 +203,124 @@ describe("calculateSof", () => {
 
   it("returns 0 for an empty field", () => {
     expect(calculateSof([])).toBe(0);
+  });
+});
+
+describe("resolveIRatingEstimateOrder (#872)", () => {
+  const LIVE_ORDER = [2, 1, 3];
+  const OFFICIAL = [3, 2, 1];
+  const QUALIFY_RESULTS = [
+    { CarIdx: 0, Position: 1 },
+    { CarIdx: 1, Position: 0 },
+    { CarIdx: 2, Position: 2 },
+  ];
+
+  it("uses the live order in a race session when it has classified cars", () => {
+    const order = resolveIRatingEstimateOrder({
+      sessionType: "Race",
+      liveOrder: LIVE_ORDER,
+      officialPositions: OFFICIAL,
+      qualifyResults: QUALIFY_RESULTS,
+    });
+
+    expect(order).toBe(LIVE_ORDER);
+  });
+
+  it("falls back to official positions in a race when the live order is all zeros (pre-green)", () => {
+    const order = resolveIRatingEstimateOrder({
+      sessionType: "Race",
+      liveOrder: [0, 0, 0],
+      officialPositions: OFFICIAL,
+    });
+
+    expect(order).toEqual(OFFICIAL);
+  });
+
+  it("falls back to the qualifying grid in a race when official positions are all zeros (rolling-start formation)", () => {
+    const order = resolveIRatingEstimateOrder({
+      sessionType: "Race",
+      liveOrder: null,
+      officialPositions: [0, 0, 0],
+      qualifyResults: QUALIFY_RESULTS,
+    });
+
+    // Grid Position is 0-indexed: carIdx 1 on pole, carIdx 0 second, carIdx 2 third.
+    expect(order).toEqual([2, 1, 3]);
+  });
+
+  it("uses official positions in a qualifying session, ignoring any live order", () => {
+    for (const sessionType of ["Open Qualify", "Lone Qualify"]) {
+      const order = resolveIRatingEstimateOrder({
+        sessionType,
+        liveOrder: LIVE_ORDER,
+        officialPositions: OFFICIAL,
+      });
+
+      expect(order).toEqual(OFFICIAL);
+      expect(order).not.toBe(LIVE_ORDER);
+    }
+  });
+
+  it("falls back to the qualifying grid in a qualifying session with no official positions yet", () => {
+    const order = resolveIRatingEstimateOrder({
+      sessionType: "Open Qualify",
+      officialPositions: [0, 0, 0],
+      qualifyResults: QUALIFY_RESULTS,
+    });
+
+    expect(order).toEqual([2, 1, 3]);
+  });
+
+  it("returns null in practice, testing, and warmup sessions regardless of sources", () => {
+    for (const sessionType of ["Practice", "Lone Practice", "Offline Testing", "Warmup"]) {
+      const order = resolveIRatingEstimateOrder({
+        sessionType,
+        liveOrder: LIVE_ORDER,
+        officialPositions: OFFICIAL,
+        qualifyResults: QUALIFY_RESULTS,
+      });
+
+      expect(order).toBeNull();
+    }
+  });
+
+  it("returns null when the session type is unknown", () => {
+    expect(resolveIRatingEstimateOrder({ sessionType: undefined, officialPositions: OFFICIAL })).toBeNull();
+    expect(resolveIRatingEstimateOrder({ sessionType: "", officialPositions: OFFICIAL })).toBeNull();
+  });
+
+  it("returns null when no source is usable", () => {
+    const order = resolveIRatingEstimateOrder({
+      sessionType: "Race",
+      liveOrder: [0, 0],
+      officialPositions: [0, 0],
+      qualifyResults: [],
+    });
+
+    expect(order).toBeNull();
+  });
+
+  it("normalizes invalid official entries to 0 (not classified)", () => {
+    const order = resolveIRatingEstimateOrder({
+      sessionType: "Open Qualify",
+      officialPositions: [2, 0, 1, -1],
+    });
+
+    expect(order).toEqual([2, 0, 1, 0]);
+  });
+
+  it("skips malformed qualify-result entries", () => {
+    const order = resolveIRatingEstimateOrder({
+      sessionType: "Race",
+      qualifyResults: [
+        { CarIdx: 0, Position: 0 },
+        { CarIdx: 1, Position: -1 },
+        { CarIdx: -1, Position: 2 },
+        { Position: 3 },
+        { CarIdx: 2 },
+      ],
+    });
+
+    expect(order).toEqual([1, 0, 0]);
   });
 });

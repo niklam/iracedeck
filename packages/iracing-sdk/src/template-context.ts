@@ -6,7 +6,12 @@
  * and {{= expression }} calculations (raw map).
  */
 import type { ExpressionValue } from "./expression-evaluator.js";
-import { estimateIRatingChanges, type IRatingEstimates } from "./irating-utils.js";
+import {
+  estimateIRatingChanges,
+  type IRatingEstimates,
+  type IRatingQualifyResult,
+  resolveIRatingEstimateOrder,
+} from "./irating-utils.js";
 import { classPositionFromOrder } from "./position-utils.js";
 import type { SDKController } from "./SDKController.js";
 import { findNearestCarOnTrack } from "./track-utils.js";
@@ -287,11 +292,23 @@ export function buildTemplateContextFromData(
   const liveOrder = livePositions && livePositions.length > 0 ? livePositions : undefined;
   const order = isRaceSession(sessionInfo, telemetry) ? liveOrder : undefined;
 
-  // Estimated iRating change per car ("if the race ended now", #268) — computed
-  // from the same canonical order; memoized inside the estimator so the O(n²)
-  // math only re-runs when positions actually change.
-  const estimates = order
-    ? estimateIRatingChanges({ drivers, order, carIdxClass: telemetry?.CarIdxClass as number[] | undefined })
+  // Estimated iRating change per car ("if the race ended now", #268) — the
+  // order input is widened beyond the position `order` above (#872): qualifying
+  // and race pre-green resolve through the official counters / qualifying grid,
+  // while a usable live order stays authoritative. Memoized inside the
+  // estimator so the O(n²) math only re-runs when positions actually change.
+  const estimateOrder = resolveIRatingEstimateOrder({
+    sessionType: (getCurrentSession(sessionInfo, telemetry)?.SessionType as string) ?? undefined,
+    liveOrder,
+    officialPositions: telemetry?.CarIdxPosition as number[] | undefined,
+    qualifyResults: extractQualifyResults(sessionInfo),
+  });
+  const estimates = estimateOrder
+    ? estimateIRatingChanges({
+        drivers,
+        order: estimateOrder,
+        carIdxClass: telemetry?.CarIdxClass as number[] | undefined,
+      })
     : undefined;
 
   const selfDriver = drivers.find((d) => d.CarIdx === playerCarIdx);
@@ -605,6 +622,14 @@ function getCurrentSession(
 
 function isRaceSession(sessionInfo: SessionInfo | null, telemetry: TelemetryData | null): boolean {
   return (getCurrentSession(sessionInfo, telemetry)?.SessionType as string) === "Race";
+}
+
+function extractQualifyResults(sessionInfo: SessionInfo | null): IRatingQualifyResult[] | undefined {
+  const qualifyInfo = (sessionInfo as Record<string, unknown> | null)?.QualifyResultsInfo as
+    Record<string, unknown> | undefined;
+  const results = qualifyInfo?.Results;
+
+  return Array.isArray(results) ? (results as IRatingQualifyResult[]) : undefined;
 }
 
 function buildSessionFields(

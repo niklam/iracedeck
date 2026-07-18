@@ -1244,6 +1244,58 @@ describe("iRating estimate template variables (#268)", () => {
     expect(ctx.raw["session.sof"]).toBeUndefined();
   });
 
+  it("emits the estimate from official positions in a qualifying session (#872)", () => {
+    const qualifying = makeSessionInfo(IRATING_DRIVERS, 0);
+    (qualifying as unknown as { SessionInfo: { Sessions: { SessionType: string }[] } }).SessionInfo.Sessions = [
+      { SessionType: "Open Qualify" },
+    ];
+
+    // No live order injected; official CarIdxPosition [2, 1, 3] is the standings.
+    const ctx = buildTemplateContextFromData(makeIratingTelemetry(), qualifying, null);
+
+    // Highest-rated player (3000) sitting P2 of 3 → negative estimate.
+    expect(ctx.raw["self.irating_change"]).toBeTypeOf("number");
+    expect(ctx.raw["self.irating_change"] as number).toBeLessThan(0);
+    expect(ctx.raw["self.irating_new"]).toBeTypeOf("number");
+    expect(ctx.raw["session.sof"]).toBeTypeOf("number");
+    expect(ctx.display["session.sof"]).not.toBe("");
+  });
+
+  it("emits the estimate from the qualifying grid in a race before any positions exist (#872)", () => {
+    const preGreen = makeSessionInfo(IRATING_DRIVERS, 0);
+
+    // Grid: carIdx 1 on pole, player (carIdx 0) second, carIdx 2 third (Position is 0-indexed).
+    (preGreen as unknown as Record<string, unknown>).QualifyResultsInfo = {
+      Results: [
+        { CarIdx: 0, Position: 1 },
+        { CarIdx: 1, Position: 0 },
+        { CarIdx: 2, Position: 2 },
+      ],
+    };
+
+    const telemetry = makeIratingTelemetry({
+      CarIdxPosition: [0, 0, 0],
+      CarIdxClassPosition: [0, 0, 0],
+    } as Partial<TelemetryData>);
+
+    const ctx = buildTemplateContextFromData(telemetry, preGreen, [0, 0, 0]);
+
+    expect(ctx.raw["self.irating_change"]).toBeTypeOf("number");
+    expect(ctx.raw["self.irating_change"] as number).toBeLessThan(0);
+    expect(ctx.raw["session.sof"]).toBeTypeOf("number");
+  });
+
+  it("keeps the live order authoritative over official positions in a race (#872)", () => {
+    // Live order: player (3000, highest) P3; official counters claim P1.
+    const telemetry = makeIratingTelemetry({
+      CarIdxPosition: [1, 2, 3],
+    } as Partial<TelemetryData>);
+
+    const ctx = buildTemplateContextFromData(telemetry, makeSessionInfo(IRATING_DRIVERS, 0), [3, 1, 2]);
+
+    expect(ctx.raw["self.irating_change"] as number).toBeLessThan(0);
+  });
+
   it("renders blank for a driver excluded from the field", () => {
     const drivers = [...IRATING_DRIVERS, makeDriver({ CarIdx: 3, UserName: "No Rating", IRating: 0 })];
     // Focus the camera on the no-rating car.

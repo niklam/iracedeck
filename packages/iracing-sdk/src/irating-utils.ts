@@ -99,6 +99,88 @@ export interface IRatingEstimates {
   sofs: (number | null)[];
 }
 
+/** Session-YAML qualifying result entry (`QualifyResultsInfo.Results[]`); `Position` is 0-indexed. */
+export interface IRatingQualifyResult {
+  CarIdx?: number;
+  Position?: number;
+}
+
+export interface IRatingEstimateOrderSources {
+  /** Raw iRacing SessionType ("Race", "Open Qualify", "Lone Qualify", "Practice", …). */
+  sessionType: string | undefined;
+  /** Canonical live race order (1-based rank by carIdx, 0 = not classified). */
+  liveOrder?: number[] | null;
+  /** Official standings counters (telemetry `CarIdxPosition`). */
+  officialPositions?: ArrayLike<number> | null;
+  /** Session-YAML qualifying results (`SessionInfo.QualifyResultsInfo.Results`). */
+  qualifyResults?: IRatingQualifyResult[] | null;
+}
+
+function hasClassifiedCar(order: ArrayLike<number> | null | undefined): order is ArrayLike<number> {
+  if (!order) return false;
+
+  for (let i = 0; i < order.length; i++) {
+    if (order[i] > 0) return true;
+  }
+
+  return false;
+}
+
+function normalizeOfficialOrder(positions: ArrayLike<number>): number[] {
+  return Array.from(positions, (p) => (typeof p === "number" && p > 0 ? p : 0));
+}
+
+function orderFromQualifyResults(results: IRatingQualifyResult[]): number[] | null {
+  let size = 0;
+
+  for (const entry of results) {
+    if (typeof entry.CarIdx === "number" && entry.CarIdx >= 0) size = Math.max(size, entry.CarIdx + 1);
+  }
+
+  if (size === 0) return null;
+
+  const order = new Array<number>(size).fill(0);
+  let usable = false;
+
+  for (const entry of results) {
+    const { CarIdx: carIdx, Position: position } = entry;
+
+    if (typeof carIdx !== "number" || carIdx < 0 || typeof position !== "number" || position < 0) continue;
+
+    order[carIdx] = position + 1; // Position is 0-indexed
+    usable = true;
+  }
+
+  return usable ? order : null;
+}
+
+/**
+ * Pick the as-if-finishing order for the iRating estimate (#872). Race
+ * sessions use the canonical live order the moment it has classified a car
+ * (it stays authoritative per race-positions.md); before that — and for the
+ * whole of qualifying, where lap-progress order isn't the standings — the
+ * official `CarIdxPosition` counters are the sanctioned fallback. When those
+ * also read all-zero (a rolling-start formation lap scores nobody until the
+ * line, #647), the session-YAML qualifying grid fills the gap — iRacing
+ * populates `QualifyResultsInfo` the moment the grid is set, even in
+ * race-only events. Practice / testing / warmup get no estimate: null.
+ */
+export function resolveIRatingEstimateOrder(sources: IRatingEstimateOrderSources): number[] | null {
+  const { sessionType, liveOrder, officialPositions, qualifyResults } = sources;
+  const isRace = sessionType === "Race";
+  const isQualifying = typeof sessionType === "string" && sessionType.includes("Qualify");
+
+  if (!isRace && !isQualifying) return null;
+
+  if (isRace && Array.isArray(liveOrder) && hasClassifiedCar(liveOrder)) return liveOrder;
+
+  if (hasClassifiedCar(officialPositions)) return normalizeOfficialOrder(officialPositions);
+
+  if (Array.isArray(qualifyResults)) return orderFromQualifyResults(qualifyResults);
+
+  return null;
+}
+
 /** Single-entry memo — inputs rarely change between ticks (only on overtakes / session updates). */
 let memoSignature: string | null = null;
 let memoResult: IRatingEstimates | null = null;

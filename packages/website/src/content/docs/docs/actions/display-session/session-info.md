@@ -93,7 +93,7 @@ Size of the rendered value, in PI units (5–36, doubled for SVG render). Defaul
 
 ### iRating Gain/Loss
 
-Show your estimated iRating change if the race ended now — e.g. `+31` in green when you're gaining, `-15` in red when you're losing. The estimate uses the community-documented formula over your class's field (each car class is scored separately, exactly like iRacing does) and the live running order. The value appears once the live running order forms — as the field takes the green and crosses the start/finish line to begin lap 1 — and updates as positions change. The value is blank on the grid and through the pace lap, outside race sessions, and whenever no estimate is possible.
+Show your estimated iRating change if the race ended now — e.g. `+31` in green when you're gaining, `-15` in red when you're losing. The estimate uses the community-documented formula over your class's field (each car class is scored separately, exactly like iRacing does). In a running race it follows the live running order; during qualifying it treats the current qualifying standings as the finishing order, and on the race grid and pace lap it starts from the qualifying grid — so a value is shown from the moment positions exist and updates as they change. The key shows `--` in practice and test sessions, and whenever no estimate is possible yet.
 
 :::note
 This is an **estimate**, not the official post-race value — iRacing does not expose the official iRating change in real time. Retired and towed cars stay frozen at their last position, mirroring how iRacing scores a retirement.
