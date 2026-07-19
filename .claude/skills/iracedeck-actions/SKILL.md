@@ -68,7 +68,7 @@ Mode counts reflect the PI Mode/Setting dropdown choices documented in each acti
 
 | Action | Modes | Mode values |
 |--------|-------|-------------|
-| Session Info | 9 | incidents, time-remaining, laps, position, irating (estimated iRating gain/loss if the race ended now, green/red value, scored within the player's class; #268), fuel (Fuel Value sub-modes: current level / used last lap / average per lap over a configurable 1–20 lap window; #465), laps-to-empty (live tank level ÷ the same 1–20-lap average, two decimals, `--` until a clean lap exists; #748), flags, track-wetness |
+| Session Info | 9 | incidents, time-remaining, laps, position, irating (estimated iRating gain/loss if the race ended now, green/red value, scored within the player's class; shown in race, qualifying, and race pre-green — `--` in practice/test or when no estimate is possible; #268, #872), fuel (Fuel Value sub-modes: current level / used last lap / average per lap over a configurable 1–20 lap window; #465), laps-to-empty (live tank level ÷ the same 1–20-lap average, two decimals, `--` until a clean lap exists; #748), flags, track-wetness |
 | Telemetry Display | 1 | template (Mustache-driven display, no Mode dropdown; templates also support `{{= expr }}` expressions — arithmetic, comparisons, ternary, round/floor/ceil/abs/min/max — #192) |
 
 ### Driving Controls

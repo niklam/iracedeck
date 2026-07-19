@@ -116,8 +116,8 @@ The text fields (`name`, `first_name`, `last_name`, `abbrev_name`, `car_number`,
 | `{{self.lap}}` | Current lap number |
 | `{{self.laps_completed}}` | Laps completed |
 | `{{self.irating}}` | iRating |
-| `{{self.irating_change}}` | Estimated iRating change if the race ended now (e.g., `+31` / `-15`; race sessions only) |
-| `{{self.irating_new}}` | Projected post-race iRating (current + estimated change; race sessions only) |
+| `{{self.irating_change}}` | Estimated iRating change if the race ended now (e.g., `+31` / `-15`; race and qualifying sessions) |
+| `{{self.irating_new}}` | Projected post-race iRating (current + estimated change; race and qualifying sessions) |
 | `{{self.license}}` | License string (e.g., "A 4.99") |
 | `{{self.incidents}}` | Incident count (self only) |
 
@@ -128,7 +128,7 @@ The text fields (`name`, `first_name`, `last_name`, `abbrev_name`, `car_number`,
 | `{{session.type}}` | Session type (Practice, Qualify, Race, etc.) |
 | `{{session.laps_remaining}}` | Laps remaining |
 | `{{session.time_remaining}}` | Time remaining (MM:SS) |
-| `{{session.sof}}` | Strength of Field of your class (estimated, race sessions only) |
+| `{{session.sof}}` | Strength of Field of your class (estimated, race and qualifying sessions) |
 
 ## Track
 

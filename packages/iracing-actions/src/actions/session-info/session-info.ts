@@ -18,11 +18,13 @@ import {
 import {
   DisplayUnits,
   estimateIRatingChanges,
+  extractQualifyResults,
   type FlagInfo,
   type SessionInfo as IRacingSessionInfo,
   type IRatingFieldDriver,
   isPreGreen,
   resolveActiveFlag,
+  resolveIRatingEstimateOrder,
   type TelemetryData,
   TrackWetness,
 } from "@iracedeck/iracing-sdk";
@@ -42,13 +44,18 @@ const BACKGROUND_FLASH = "#e74c3c";
 const IRATING_GAIN_COLOR = "#2ecc71";
 const IRATING_LOSS_COLOR = "#e74c3c";
 
+/** Value shown by the irating mode when no estimate is possible (#872). */
+const IRATING_NO_ESTIMATE = "--";
+
 /**
  * @internal Exported for testing
  *
  * Value color for the irating mode: green for a gain, red for a loss,
- * undefined (theme text color) for zero or blank.
+ * undefined (theme text color) for zero, blank, or the "--" placeholder.
  */
 export function iratingValueColor(value: string): string | undefined {
+  if (value === IRATING_NO_ESTIMATE) return undefined;
+
   if (value.startsWith("+")) return IRATING_GAIN_COLOR;
 
   if (value.startsWith("-")) return IRATING_LOSS_COLOR;
@@ -501,8 +508,9 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
       return trackWetnessLabel(telemetry?.TrackWetness as TrackWetness | undefined);
     }
 
-    // Estimated iRating change (#268): "+31" / "-15" / "0", blank whenever no
-    // estimate is possible (non-race, no live order, player not in the field).
+    // Estimated iRating change (#268, #872): "+31" / "-15" / "0" in race,
+    // qualifying, and race pre-green; "--" whenever no estimate is possible
+    // (practice/testing, no positions yet, player not in a scored field).
     if (settings.mode === "irating") {
       return this.extractIRatingValue(telemetry);
     }
@@ -673,20 +681,31 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
   }
 
   private extractIRatingValue(telemetry: TelemetryData | null): string {
-    if (!telemetry || !this.isRaceSession(telemetry)) return "";
-
-    // Canonical live order (race-positions rule) — the same order the template
-    // context's irating_change consumes, so key and placeholders always agree.
-    const order = getLiveRacePositions();
-
-    if (!order) return "";
+    if (!telemetry) return IRATING_NO_ESTIMATE;
 
     const sessionInfo = this.sdkController.getSessionInfo();
     const driverInfo = sessionInfo?.DriverInfo as { Drivers?: IRatingFieldDriver[]; DriverCarIdx?: number } | undefined;
     const drivers = driverInfo?.Drivers;
     const playerCarIdx = driverInfo?.DriverCarIdx;
 
-    if (!Array.isArray(drivers) || playerCarIdx === undefined) return "";
+    if (!Array.isArray(drivers) || playerCarIdx === undefined) return IRATING_NO_ESTIMATE;
+
+    // As-if-finishing order (#872): the canonical live order in a running race
+    // (race-positions rule — the same source the template context's
+    // irating_change consumes, so key and placeholders always agree), the
+    // official standings in qualifying / race pre-green, and the session-YAML
+    // qualifying grid before those populate — anchored on the player so the
+    // pre-green source holds through the green-flag run to the line.
+    // Practice/testing yield no order.
+    const order = resolveIRatingEstimateOrder({
+      sessionType: this.getSessionType(telemetry, sessionInfo),
+      liveOrder: getLiveRacePositions(),
+      officialPositions: telemetry.CarIdxPosition as number[] | undefined,
+      qualifyResults: extractQualifyResults(sessionInfo),
+      playerCarIdx,
+    });
+
+    if (!order) return IRATING_NO_ESTIMATE;
 
     const estimates = estimateIRatingChanges({
       drivers,
@@ -695,7 +714,7 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
     });
     const change = estimates.changes[playerCarIdx];
 
-    if (change == null) return "";
+    if (change == null) return IRATING_NO_ESTIMATE;
 
     const rounded = Math.round(change);
 
@@ -710,17 +729,22 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
     return countActiveDriversInPlayerClass(this.sdkController.getSessionInfo());
   }
 
-  private isRaceSession(telemetry: TelemetryData | null): boolean {
-    const sessionInfo = this.sdkController.getSessionInfo();
-
-    if (!sessionInfo) return false;
+  private getSessionType(
+    telemetry: TelemetryData | null,
+    sessionInfo: IRacingSessionInfo | null = this.sdkController.getSessionInfo(),
+  ): string | undefined {
+    if (!sessionInfo) return undefined;
 
     const sessions = (sessionInfo as Record<string, unknown>).SessionInfo as Record<string, unknown> | undefined;
     const sessionList = sessions?.Sessions as Array<Record<string, unknown>> | undefined;
     const sessionNum = telemetry?.SessionNum ?? 0;
     const currentSession = sessionList?.[sessionNum as number];
 
-    return (currentSession?.SessionType as string) === "Race";
+    return currentSession?.SessionType as string | undefined;
+  }
+
+  private isRaceSession(telemetry: TelemetryData | null): boolean {
+    return this.getSessionType(telemetry) === "Race";
   }
 
   private resolveFlagColorOverride(

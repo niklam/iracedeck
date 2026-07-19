@@ -995,28 +995,76 @@ describe("SessionInfo", () => {
       expect(action["extractDisplayValue"](settings as any, telemetry)).toMatch(/^\+\d+$/);
     });
 
-    it("renders blank when there is no live order", () => {
+    it("shows the estimate from official positions in a qualifying session (#872)", () => {
+      const sessionInfo = { ...IRATING_SESSION_INFO, SessionInfo: { Sessions: [{ SessionType: "Open Qualify" }] } };
+      const action = makeIratingAction(null, sessionInfo);
+      const settings = defaultSettings({ mode: "irating" });
+      // Highest-rated player (3000) sitting P2 of 3 in the qualifying standings → losing points.
+      const telemetry = { SessionNum: 0, CarIdxPosition: [2, 1, 3], CarIdxClass: [100, 100, 100] } as any;
+
+      expect(action["extractDisplayValue"](settings as any, telemetry)).toMatch(/^-\d+$/);
+    });
+
+    it("shows the estimate from the qualifying grid in a race before any positions exist (#872)", () => {
+      const sessionInfo = {
+        ...IRATING_SESSION_INFO,
+        // Grid: carIdx 1 on pole, player second, carIdx 2 third (Position is 0-indexed).
+        QualifyResultsInfo: {
+          Results: [
+            { CarIdx: 0, Position: 1 },
+            { CarIdx: 1, Position: 0 },
+            { CarIdx: 2, Position: 2 },
+          ],
+        },
+      };
+      const action = makeIratingAction([0, 0, 0], sessionInfo);
+      const settings = defaultSettings({ mode: "irating" });
+      const telemetry = { SessionNum: 0, CarIdxPosition: [0, 0, 0], CarIdxClass: [100, 100, 100] } as any;
+
+      expect(action["extractDisplayValue"](settings as any, telemetry)).toMatch(/^-\d+$/);
+    });
+
+    it("holds the grid estimate through the green-flag run to the line (player not yet classified)", () => {
+      const sessionInfo = {
+        ...IRATING_SESSION_INFO,
+        QualifyResultsInfo: {
+          Results: [
+            { CarIdx: 0, Position: 1 },
+            { CarIdx: 1, Position: 0 },
+            { CarIdx: 2, Position: 2 },
+          ],
+        },
+      };
+      // The leader (carIdx 1) has crossed S/F; the player (carIdx 0) has not.
+      const action = makeIratingAction([0, 1, 0], sessionInfo);
+      const settings = defaultSettings({ mode: "irating" });
+      const telemetry = { SessionNum: 0, CarIdxPosition: [0, 1, 0], CarIdxClass: [100, 100, 100] } as any;
+
+      expect(action["extractDisplayValue"](settings as any, telemetry)).toMatch(/^-\d+$/);
+    });
+
+    it("renders '--' when no order source is usable", () => {
       const action = makeIratingAction(null);
       const settings = defaultSettings({ mode: "irating" });
       const telemetry = { SessionNum: 0 } as any;
 
-      expect(action["extractDisplayValue"](settings as any, telemetry)).toBe("");
+      expect(action["extractDisplayValue"](settings as any, telemetry)).toBe("--");
     });
 
-    it("renders blank in a non-race session", () => {
+    it("renders '--' in a practice session", () => {
       const sessionInfo = { ...IRATING_SESSION_INFO, SessionInfo: { Sessions: [{ SessionType: "Practice" }] } };
       const action = makeIratingAction([2, 1, 3], sessionInfo);
       const settings = defaultSettings({ mode: "irating" });
-      const telemetry = { SessionNum: 0, CarIdxClass: [100, 100, 100] } as any;
+      const telemetry = { SessionNum: 0, CarIdxPosition: [2, 1, 3], CarIdxClass: [100, 100, 100] } as any;
 
-      expect(action["extractDisplayValue"](settings as any, telemetry)).toBe("");
+      expect(action["extractDisplayValue"](settings as any, telemetry)).toBe("--");
     });
 
-    it("renders blank when telemetry is null", () => {
+    it("renders '--' when telemetry is null", () => {
       const action = makeIratingAction([2, 1, 3]);
       const settings = defaultSettings({ mode: "irating" });
 
-      expect(action["extractDisplayValue"](settings as any, null)).toBe("");
+      expect(action["extractDisplayValue"](settings as any, null)).toBe("--");
     });
   });
 
@@ -1026,6 +1074,10 @@ describe("SessionInfo", () => {
       expect(iratingValueColor("-15")).toBe("#e74c3c");
       expect(iratingValueColor("0")).toBeUndefined();
       expect(iratingValueColor("")).toBeUndefined();
+    });
+
+    it("does not color the '--' placeholder (#872)", () => {
+      expect(iratingValueColor("--")).toBeUndefined();
     });
   });
 
