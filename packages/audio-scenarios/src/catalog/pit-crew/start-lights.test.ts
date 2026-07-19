@@ -12,7 +12,7 @@
  *     suppresses all four numbers; `lights` off suppresses ready/go.
  */
 import type { IAudioService } from "@iracedeck/audio-service";
-import { AudioChannel } from "@iracedeck/audio-service";
+import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -335,6 +335,42 @@ describe("START_LIGHT_ALERTS preemption", () => {
     bus.publishEvent("startLight.start-go.raised", {});
     flush(audio);
 
+    expect(lastVoiceClip()).toBe("voice/luca/start-lights/start-go-01.mp3");
+  });
+
+  // The two runtime supersession guards for the #867 queueable change: the DSL
+  // replays queueable fires unconditionally, so these prove a stale
+  // "lights are up" can never replay after "go" has superseded it.
+
+  it("start-go supersedes a start-ready queued behind a busy bus — ready never replays (#867)", () => {
+    engine.defineScenario({
+      id: "test.blocker",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: WEIGHT.PROXIMITY,
+      sequence: ["voice/luca/start-lights/countdown-90-01.mp3"],
+    });
+    engine.fire("test.blocker");
+
+    // Both gantry lines defer behind the higher-weight line (queueable: true);
+    // the single pending slot's newest-wins tie-break keeps only go.
+    bus.publishEvent("startLight.start-ready.raised", {});
+    bus.publishEvent("startLight.start-go.raised", {});
+    flush(audio);
+
+    const voice = voiceClipsPlayed();
+    expect(voice).toContain("voice/luca/start-lights/start-go-01.mp3");
+    expect(voice).not.toContain("voice/luca/start-lights/start-ready-01.mp3");
+  });
+
+  it("a start-ready cut mid-playback by start-go is not stashed — no replay at idle (#867)", () => {
+    bus.publishEvent("startLight.start-ready.raised", {});
+    // Mid-playback (no flush): go supersedes via the shared family, and a
+    // same-family replacement is never stashed for replay.
+    bus.publishEvent("startLight.start-go.raised", {});
+    flush(audio);
+
+    expect(voiceClipsPlayed()).not.toContain("voice/luca/start-lights/start-ready-01.mp3");
     expect(lastVoiceClip()).toBe("voice/luca/start-lights/start-go-01.mp3");
   });
 });
