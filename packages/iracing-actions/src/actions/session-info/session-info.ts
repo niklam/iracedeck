@@ -18,10 +18,10 @@ import {
 import {
   DisplayUnits,
   estimateIRatingChanges,
+  extractQualifyResults,
   type FlagInfo,
   type SessionInfo as IRacingSessionInfo,
   type IRatingFieldDriver,
-  type IRatingQualifyResult,
   isPreGreen,
   resolveActiveFlag,
   resolveIRatingEstimateOrder,
@@ -46,15 +46,6 @@ const IRATING_LOSS_COLOR = "#e74c3c";
 
 /** Value shown by the irating mode when no estimate is possible (#872). */
 const IRATING_NO_ESTIMATE = "--";
-
-/** Session-YAML qualifying grid (`QualifyResultsInfo.Results`) for the pre-green estimate order (#872). */
-function extractQualifyResults(sessionInfo: unknown): IRatingQualifyResult[] | undefined {
-  const qualifyInfo = (sessionInfo as Record<string, unknown> | null | undefined)?.QualifyResultsInfo as
-    Record<string, unknown> | undefined;
-  const results = qualifyInfo?.Results;
-
-  return Array.isArray(results) ? (results as IRatingQualifyResult[]) : undefined;
-}
 
 /**
  * @internal Exported for testing
@@ -703,12 +694,15 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
     // (race-positions rule — the same source the template context's
     // irating_change consumes, so key and placeholders always agree), the
     // official standings in qualifying / race pre-green, and the session-YAML
-    // qualifying grid before those populate. Practice/testing yield no order.
+    // qualifying grid before those populate — anchored on the player so the
+    // pre-green source holds through the green-flag run to the line.
+    // Practice/testing yield no order.
     const order = resolveIRatingEstimateOrder({
-      sessionType: this.getSessionType(telemetry),
+      sessionType: this.getSessionType(telemetry, sessionInfo),
       liveOrder: getLiveRacePositions(),
       officialPositions: telemetry.CarIdxPosition as number[] | undefined,
       qualifyResults: extractQualifyResults(sessionInfo),
+      playerCarIdx,
     });
 
     if (!order) return IRATING_NO_ESTIMATE;
@@ -735,9 +729,10 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
     return countActiveDriversInPlayerClass(this.sdkController.getSessionInfo());
   }
 
-  private getSessionType(telemetry: TelemetryData | null): string | undefined {
-    const sessionInfo = this.sdkController.getSessionInfo();
-
+  private getSessionType(
+    telemetry: TelemetryData | null,
+    sessionInfo: IRacingSessionInfo | null = this.sdkController.getSessionInfo(),
+  ): string | undefined {
     if (!sessionInfo) return undefined;
 
     const sessions = (sessionInfo as Record<string, unknown>).SessionInfo as Record<string, unknown> | undefined;

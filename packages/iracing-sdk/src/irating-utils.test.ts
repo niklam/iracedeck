@@ -309,7 +309,7 @@ describe("resolveIRatingEstimateOrder (#872)", () => {
     expect(order).toEqual([2, 0, 1, 0]);
   });
 
-  it("skips malformed qualify-result entries", () => {
+  it("skips malformed qualify-result entries without throwing", () => {
     const order = resolveIRatingEstimateOrder({
       sessionType: "Race",
       qualifyResults: [
@@ -318,9 +318,55 @@ describe("resolveIRatingEstimateOrder (#872)", () => {
         { CarIdx: -1, Position: 2 },
         { Position: 3 },
         { CarIdx: 2 },
-      ],
+        null, // empty YAML list item
+        { CarIdx: 2.5, Position: 4 }, // fractional CarIdx must not become an array length
+        { CarIdx: 1e9, Position: 5 }, // absurd CarIdx must not allocate a giant array
+        { CarIdx: 3, Position: Number.NaN }, // NaN rank must not poison the order
+        { CarIdx: 4, Position: 1.5 },
+      ] as unknown as { CarIdx?: number; Position?: number }[],
     });
 
-    expect(order).toEqual([1, 0, 0]);
+    // Only the one fully valid entry survives; size comes from valid entries only.
+    expect(order).toEqual([1]);
+  });
+
+  it("anchors on the player when playerCarIdx is given: skips sources that do not classify the player", () => {
+    // Green-flag run to the line (#647): the leader (carIdx 1) has crossed S/F so the
+    // live order classifies one car, but the player (carIdx 0) is still rank 0.
+    const order = resolveIRatingEstimateOrder({
+      sessionType: "Race",
+      playerCarIdx: 0,
+      liveOrder: [0, 1, 0],
+      officialPositions: [0, 1, 0],
+      qualifyResults: QUALIFY_RESULTS,
+    });
+
+    // Falls through to the grid — the only source that classifies the player.
+    expect(order).toEqual([2, 1, 3]);
+  });
+
+  it("prefers the live order once it classifies the player", () => {
+    const order = resolveIRatingEstimateOrder({
+      sessionType: "Race",
+      playerCarIdx: 0,
+      liveOrder: LIVE_ORDER,
+      officialPositions: OFFICIAL,
+      qualifyResults: QUALIFY_RESULTS,
+    });
+
+    expect(order).toBe(LIVE_ORDER);
+  });
+
+  it("falls back to the first usable source when no source classifies the player (spectator)", () => {
+    // Spectator's carIdx is beyond every order — behave as if no anchor was given.
+    const order = resolveIRatingEstimateOrder({
+      sessionType: "Race",
+      playerCarIdx: 10,
+      liveOrder: [0, 1, 0],
+      officialPositions: [0, 0, 0],
+      qualifyResults: [],
+    });
+
+    expect(order).toEqual([0, 1, 0]);
   });
 });

@@ -1024,6 +1024,25 @@ describe("SessionInfo", () => {
       expect(action["extractDisplayValue"](settings as any, telemetry)).toMatch(/^-\d+$/);
     });
 
+    it("holds the grid estimate through the green-flag run to the line (player not yet classified)", () => {
+      const sessionInfo = {
+        ...IRATING_SESSION_INFO,
+        QualifyResultsInfo: {
+          Results: [
+            { CarIdx: 0, Position: 1 },
+            { CarIdx: 1, Position: 0 },
+            { CarIdx: 2, Position: 2 },
+          ],
+        },
+      };
+      // The leader (carIdx 1) has crossed S/F; the player (carIdx 0) has not.
+      const action = makeIratingAction([0, 1, 0], sessionInfo);
+      const settings = defaultSettings({ mode: "irating" });
+      const telemetry = { SessionNum: 0, CarIdxPosition: [0, 1, 0], CarIdxClass: [100, 100, 100] } as any;
+
+      expect(action["extractDisplayValue"](settings as any, telemetry)).toMatch(/^-\d+$/);
+    });
+
     it("renders '--' when no order source is usable", () => {
       const action = makeIratingAction(null);
       const settings = defaultSettings({ mode: "irating" });

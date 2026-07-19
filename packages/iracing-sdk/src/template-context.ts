@@ -8,8 +8,8 @@
 import type { ExpressionValue } from "./expression-evaluator.js";
 import {
   estimateIRatingChanges,
+  extractQualifyResults,
   type IRatingEstimates,
-  type IRatingQualifyResult,
   resolveIRatingEstimateOrder,
 } from "./irating-utils.js";
 import { classPositionFromOrder } from "./position-utils.js";
@@ -289,20 +289,27 @@ export function buildTemplateContextFromData(
   // falls back per-car to iRacing's official CarIdxPosition. One coherent order
   // means a strict 1..N ranking, so neighbour selection can't hit duplicate
   // ranks (issue #710). See @.claude/rules/race-positions.md.
+  const sessionType = getCurrentSession(sessionInfo, telemetry)?.SessionType as string | undefined;
   const liveOrder = livePositions && livePositions.length > 0 ? livePositions : undefined;
-  const order = isRaceSession(sessionInfo, telemetry) ? liveOrder : undefined;
+  const order = sessionType === "Race" ? liveOrder : undefined;
 
   // Estimated iRating change per car ("if the race ended now", #268) — the
   // order input is widened beyond the position `order` above (#872): qualifying
   // and race pre-green resolve through the official counters / qualifying grid,
-  // while a usable live order stays authoritative. Memoized inside the
-  // estimator so the O(n²) math only re-runs when positions actually change.
-  const estimateOrder = resolveIRatingEstimateOrder({
-    sessionType: (getCurrentSession(sessionInfo, telemetry)?.SessionType as string) ?? undefined,
-    liveOrder,
-    officialPositions: telemetry?.CarIdxPosition as number[] | undefined,
-    qualifyResults: extractQualifyResults(sessionInfo),
-  });
+  // anchored on the player so the pre-green source holds through the green-flag
+  // run to the line, while a usable live order stays authoritative. Gated on
+  // telemetry: without CarIdxClass a multiclass field would be scored as one
+  // combined class. Memoized inside the estimator so the O(n²) math only
+  // re-runs when positions actually change.
+  const estimateOrder = telemetry
+    ? resolveIRatingEstimateOrder({
+        sessionType,
+        liveOrder,
+        officialPositions: telemetry.CarIdxPosition as number[] | undefined,
+        qualifyResults: extractQualifyResults(sessionInfo),
+        playerCarIdx,
+      })
+    : null;
   const estimates = estimateOrder
     ? estimateIRatingChanges({
         drivers,
@@ -618,18 +625,6 @@ function getCurrentSession(
   const sessionNum = telemetry?.SessionNum ?? 0;
 
   return sessionList?.[sessionNum];
-}
-
-function isRaceSession(sessionInfo: SessionInfo | null, telemetry: TelemetryData | null): boolean {
-  return (getCurrentSession(sessionInfo, telemetry)?.SessionType as string) === "Race";
-}
-
-function extractQualifyResults(sessionInfo: SessionInfo | null): IRatingQualifyResult[] | undefined {
-  const qualifyInfo = (sessionInfo as Record<string, unknown> | null)?.QualifyResultsInfo as
-    Record<string, unknown> | undefined;
-  const results = qualifyInfo?.Results;
-
-  return Array.isArray(results) ? (results as IRatingQualifyResult[]) : undefined;
 }
 
 function buildSessionFields(

@@ -1285,6 +1285,50 @@ describe("iRating estimate template variables (#268)", () => {
     expect(ctx.raw["session.sof"]).toBeTypeOf("number");
   });
 
+  it("holds the grid estimate through the green-flag run to the line (player not yet classified)", () => {
+    const preGreen = makeSessionInfo(IRATING_DRIVERS, 0);
+
+    (preGreen as unknown as Record<string, unknown>).QualifyResultsInfo = {
+      Results: [
+        { CarIdx: 0, Position: 1 },
+        { CarIdx: 1, Position: 0 },
+        { CarIdx: 2, Position: 2 },
+      ],
+    };
+
+    // The leader (carIdx 1) has crossed S/F, the player (carIdx 0) has not:
+    // the partial live order must NOT displace the grid for the player.
+    const telemetry = makeIratingTelemetry({
+      CarIdxPosition: [0, 1, 0],
+      CarIdxClassPosition: [0, 1, 0],
+    } as Partial<TelemetryData>);
+
+    const ctx = buildTemplateContextFromData(telemetry, preGreen, [0, 1, 0]);
+
+    expect(ctx.raw["self.irating_change"]).toBeTypeOf("number");
+    expect(ctx.raw["self.irating_change"] as number).toBeLessThan(0);
+  });
+
+  it("emits no estimate when telemetry is null even if the qualifying grid is cached", () => {
+    const sessionInfo = makeSessionInfo(IRATING_DRIVERS, 0);
+
+    (sessionInfo as unknown as Record<string, unknown>).QualifyResultsInfo = {
+      Results: [
+        { CarIdx: 0, Position: 1 },
+        { CarIdx: 1, Position: 0 },
+        { CarIdx: 2, Position: 2 },
+      ],
+    };
+
+    // Without telemetry there is no CarIdxClass — a multiclass field would be
+    // scored as one combined class, so no estimate is emitted at all.
+    const ctx = buildTemplateContextFromData(null, sessionInfo, null);
+
+    expect(ctx.raw["self.irating_change"]).toBeUndefined();
+    expect(ctx.display["self.irating_change"]).toBe("");
+    expect(ctx.raw["session.sof"]).toBeUndefined();
+  });
+
   it("keeps the live order authoritative over official positions in a race (#872)", () => {
     // Live order: player (3000, highest) P3; official counters claim P1.
     const telemetry = makeIratingTelemetry({

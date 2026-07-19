@@ -112,8 +112,31 @@ export interface IRatingEstimateOrderSources {
   liveOrder?: number[] | null;
   /** Official standings counters (telemetry `CarIdxPosition`). */
   officialPositions?: ArrayLike<number> | null;
-  /** Session-YAML qualifying results (`SessionInfo.QualifyResultsInfo.Results`). */
+  /** Qualifying results from the top-level session-YAML `QualifyResultsInfo.Results` key. */
   qualifyResults?: IRatingQualifyResult[] | null;
+  /**
+   * Player's carIdx. When given, a source only wins if it classifies the
+   * player — the #647 hold that keeps the pre-green fallback on screen through
+   * the green-flag run to the line instead of dipping to "no estimate".
+   */
+  playerCarIdx?: number;
+}
+
+/** Upper bound for a plausible carIdx — guards corrupt session YAML from sizing huge arrays. */
+const MAX_QUALIFY_CAR_IDX = 255;
+
+/**
+ * Extract the qualifying grid from parsed session info — the top-level
+ * session-YAML `QualifyResultsInfo.Results` key (a sibling of `SessionInfo`,
+ * not nested inside it). Shared by every `resolveIRatingEstimateOrder` caller
+ * so the shape knowledge lives in one place.
+ */
+export function extractQualifyResults(sessionInfo: unknown): IRatingQualifyResult[] | undefined {
+  const qualifyInfo = (sessionInfo as Record<string, unknown> | null | undefined)?.QualifyResultsInfo as
+    Record<string, unknown> | undefined;
+  const results = qualifyInfo?.Results;
+
+  return Array.isArray(results) ? (results as IRatingQualifyResult[]) : undefined;
 }
 
 function hasClassifiedCar(order: ArrayLike<number> | null | undefined): order is ArrayLike<number> {
@@ -131,54 +154,75 @@ function normalizeOfficialOrder(positions: ArrayLike<number>): number[] {
 }
 
 function orderFromQualifyResults(results: IRatingQualifyResult[]): number[] | null {
-  let size = 0;
+  // One strict validity rule for sizing AND filling: session YAML can contain
+  // null list items, fractional/absurd indices, or NaN positions, and this runs
+  // inside the per-tick render path — skip anything malformed, never throw.
+  const ranks = new Map<number, number>();
 
-  for (const entry of results) {
-    if (typeof entry.CarIdx === "number" && entry.CarIdx >= 0) size = Math.max(size, entry.CarIdx + 1);
+  for (const entry of results as unknown[]) {
+    if (typeof entry !== "object" || entry === null) continue;
+
+    const { CarIdx: carIdx, Position: position } = entry as IRatingQualifyResult;
+
+    if (!Number.isInteger(carIdx) || (carIdx as number) < 0 || (carIdx as number) > MAX_QUALIFY_CAR_IDX) continue;
+
+    if (!Number.isInteger(position) || (position as number) < 0) continue;
+
+    ranks.set(carIdx as number, (position as number) + 1); // Position is 0-indexed
   }
 
-  if (size === 0) return null;
+  if (ranks.size === 0) return null;
 
-  const order = new Array<number>(size).fill(0);
-  let usable = false;
+  const order = new Array<number>(Math.max(...ranks.keys()) + 1).fill(0);
 
-  for (const entry of results) {
-    const { CarIdx: carIdx, Position: position } = entry;
+  for (const [carIdx, rank] of ranks) order[carIdx] = rank;
 
-    if (typeof carIdx !== "number" || carIdx < 0 || typeof position !== "number" || position < 0) continue;
-
-    order[carIdx] = position + 1; // Position is 0-indexed
-    usable = true;
-  }
-
-  return usable ? order : null;
+  return order;
 }
 
 /**
- * Pick the as-if-finishing order for the iRating estimate (#872). Race
- * sessions use the canonical live order the moment it has classified a car
- * (it stays authoritative per race-positions.md); before that — and for the
- * whole of qualifying, where lap-progress order isn't the standings — the
- * official `CarIdxPosition` counters are the sanctioned fallback. When those
- * also read all-zero (a rolling-start formation lap scores nobody until the
- * line, #647), the session-YAML qualifying grid fills the gap — iRacing
- * populates `QualifyResultsInfo` the moment the grid is set, even in
- * race-only events. Practice / testing / warmup get no estimate: null.
+ * Pick the as-if-finishing order for the iRating estimate (#872). Sources in
+ * priority order: the canonical live order (race sessions only — authoritative
+ * per race-positions.md), the official `CarIdxPosition` counters (the
+ * sanctioned fallback for qualifying and race pre-green), and the session-YAML
+ * qualifying grid (`QualifyResultsInfo` is populated the moment the grid is
+ * set, even in race-only events — while the counters read all-zero through a
+ * rolling-start formation lap, #647). With a `playerCarIdx` anchor, the first
+ * source that CLASSIFIES THE PLAYER wins, so the estimate holds on the grid
+ * through the green-flag run to the line instead of dipping out the moment the
+ * leader crosses; when no source classifies the player (e.g. spectating), the
+ * first usable source applies. Practice / testing / warmup get no estimate:
+ * null.
  */
 export function resolveIRatingEstimateOrder(sources: IRatingEstimateOrderSources): number[] | null {
-  const { sessionType, liveOrder, officialPositions, qualifyResults } = sources;
+  const { sessionType, liveOrder, officialPositions, qualifyResults, playerCarIdx } = sources;
   const isRace = sessionType === "Race";
   const isQualifying = typeof sessionType === "string" && sessionType.includes("Qualify");
 
   if (!isRace && !isQualifying) return null;
 
-  if (isRace && Array.isArray(liveOrder) && hasClassifiedCar(liveOrder)) return liveOrder;
+  const candidates: (() => number[] | null)[] = [
+    () =>
+      isRace && Array.isArray(liveOrder) && hasClassifiedCar(liveOrder) ? liveOrder : null,
+    () =>
+      hasClassifiedCar(officialPositions) ? normalizeOfficialOrder(officialPositions) : null,
+    () =>
+      Array.isArray(qualifyResults) ? orderFromQualifyResults(qualifyResults) : null,
+  ];
+  const anchored = typeof playerCarIdx === "number" && playerCarIdx >= 0;
+  let firstUsable: number[] | null = null;
 
-  if (hasClassifiedCar(officialPositions)) return normalizeOfficialOrder(officialPositions);
+  for (const candidate of candidates) {
+    const order = candidate();
 
-  if (Array.isArray(qualifyResults)) return orderFromQualifyResults(qualifyResults);
+    if (!order) continue;
 
-  return null;
+    if (!anchored || order[playerCarIdx] > 0) return order;
+
+    firstUsable ??= order;
+  }
+
+  return firstUsable;
 }
 
 /** Single-entry memo — inputs rarely change between ticks (only on overtakes / session updates). */

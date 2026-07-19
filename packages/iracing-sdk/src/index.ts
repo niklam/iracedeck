@@ -124,6 +124,7 @@ export {
   calculateIRatingChanges,
   calculateSof,
   estimateIRatingChanges,
+  extractQualifyResults,
   type IRatingEstimateInput,
   type IRatingEstimateOrderSources,
   type IRatingEstimates,
