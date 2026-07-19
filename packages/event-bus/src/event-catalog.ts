@@ -699,7 +699,12 @@ export type SimEventMap = {
    * `count === 0` means "box this lap for fuel". Each count fires once per
    * stint; a refuel re-arms every count. `lapsLeft` carries the
    * margin-adjusted (fractional) estimate at sample time for logging.
-   * Replaces the never-consumed `fuel.lapsRemaining.crossed` event.
+   * Race-coverage suppression (issue #866): no emission at all — including
+   * the count-0 box call — when the count covers the remaining laps of a
+   * lap-limited race, on the player's own final lap (both race formats), or
+   * post-race (checkered / cool-down); an unknown race length keeps
+   * emitting. Replaces the never-consumed `fuel.lapsRemaining.crossed`
+   * event.
    */
   "fuel.lapsLeft.crossed": SimEvent<"fuel.lapsLeft.crossed", { count: number; lapsLeft: number }>;
   /**
