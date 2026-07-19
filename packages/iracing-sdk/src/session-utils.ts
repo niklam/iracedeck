@@ -6,12 +6,18 @@
 
 interface DriverEntry {
   CarIdx: number;
-  CarNumber: string;
+  /** Session YAML can leave this blank (null) or emit it unquoted (number) — see #869. */
+  CarNumber: string | number | null;
   CarNumberRaw: number;
   CarIsPaceCar?: number;
   IsSpectator?: number;
   UserName?: string;
   CarIsAI?: number;
+}
+
+/** Digit-cleaned car number for a roster entry; "" when the YAML left it blank. */
+function cleanCarNumber(carNumber: DriverEntry["CarNumber"]): string {
+  return String(carNumber ?? "").replace(/[^0-9]/g, "");
 }
 
 /**
@@ -56,7 +62,7 @@ export function classifyCarNumberTarget(sessionInfo: unknown, carNumber: string)
 
   const driverInfo = (sessionInfo as Record<string, unknown>)?.DriverInfo as Record<string, unknown> | undefined;
   const drivers = driverInfo?.Drivers as DriverEntry[] | undefined;
-  const driver = drivers?.find((d) => d.CarNumber?.replace(/[^0-9]/g, "") === target);
+  const driver = drivers?.find((d) => cleanCarNumber(d.CarNumber) === target);
 
   if (!driver) return "unknown";
 
@@ -78,7 +84,7 @@ export function getCarNumberFromSessionInfo(sessionInfo: unknown, carIdx: number
 
   if (!driver) return null;
 
-  const cleaned = driver.CarNumber.replace(/[^0-9]/g, "");
+  const cleaned = cleanCarNumber(driver.CarNumber);
 
   return cleaned.length > 0 ? cleaned : null;
 }
@@ -127,7 +133,7 @@ export function getAllCarNumbers(
 
     if (excludeSpectators && driver.IsSpectator === 1) continue;
 
-    const cleaned = driver.CarNumber.replace(/[^0-9]/g, "");
+    const cleaned = cleanCarNumber(driver.CarNumber);
 
     if (cleaned.length === 0) continue;
 

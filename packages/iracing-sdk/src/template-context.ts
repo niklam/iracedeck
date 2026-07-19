@@ -69,15 +69,26 @@ type SelfDriverFields = DriverFields & {
   incidents: number | undefined;
 };
 
+/**
+ * One entry from the session YAML's driver roster. String fields iRacing can
+ * leave blank (parsed to null) — e.g. AbbrevName for AI drivers — or emit as
+ * unquoted numeric scalars (parsed to number), so consumers must normalize
+ * through `yamlString` (#869).
+ */
 interface DriverEntry {
   CarIdx: number;
-  UserName: string;
-  AbbrevName: string;
-  CarNumber: string;
+  UserName: string | number | null;
+  AbbrevName: string | number | null;
+  CarNumber: string | number | null;
   IRating: number;
-  LicString: string;
+  LicString: string | number | null;
   IsSpectator: number;
   CarIsPaceCar: number;
+}
+
+/** Normalizes a YAML scalar to a string: blank (null/undefined) → "", numbers → digits. */
+function yamlString(value: string | number | null | undefined): string {
+  return value == null ? "" : String(value);
 }
 
 const EMPTY_DRIVER_FIELDS: DriverFields = {
@@ -516,7 +527,11 @@ function buildDriverFields(
   playerCarIdx?: number,
   estimates?: IRatingEstimates,
 ): DriverFields {
-  const { firstName, lastName } = splitDriverName(driver.UserName);
+  // Normalize the YAML string fields (#869) so the raw map keeps the key and
+  // expressions like `{{= x.abbrev_name ? … : … }}` can branch on it instead
+  // of dying on an unknown variable.
+  const userName = yamlString(driver.UserName);
+  const { firstName, lastName } = splitDriverName(userName);
   const carIdx = driver.CarIdx;
   const isPlayer = playerCarIdx !== undefined && carIdx === playerCarIdx;
   // The pace car and spectators have no race position. The relative prefixes
@@ -528,11 +543,11 @@ function buildDriverFields(
   const iratingChange = isCompetitor ? (estimates?.changes[carIdx] ?? null) : null;
 
   return {
-    name: driver.UserName,
+    name: userName,
     first_name: firstName,
     last_name: lastName,
-    abbrev_name: driver.AbbrevName,
-    car_number: driver.CarNumber,
+    abbrev_name: yamlString(driver.AbbrevName),
+    car_number: yamlString(driver.CarNumber),
     // Single source: the canonical live order. When it exists it's authoritative
     // (a car not in it stays blank); only with no live order at all do we fall
     // back to iRacing's official CarIdxPosition. No pit-road / PlayerCar* overlay —
@@ -549,7 +564,7 @@ function buildDriverFields(
     irating_change: iratingChange ?? undefined,
     // Projected post-race rating — integer, like the reference implementation.
     irating_new: iratingChange != null && driver.IRating > 0 ? Math.round(driver.IRating + iratingChange) : undefined,
-    license: driver.LicString ?? "",
+    license: yamlString(driver.LicString),
   };
 }
 
