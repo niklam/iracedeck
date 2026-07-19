@@ -237,7 +237,7 @@ afterEach(() => {
 // ─── Registration ────────────────────────────────────────────────────────────
 
 describe("registerSpotterEngine", () => {
-  it("defines the spotter-call scenario and subscribes to radar.changed once", () => {
+  it("defines both spotter scenarios and subscribes to radar.changed once", () => {
     const subscribeSpy = vi.spyOn(bus, "subscribe");
     registerSpotterEngine(bus, deps);
     registerSpotterEngine(bus, deps);
@@ -373,6 +373,9 @@ describe("final clear", () => {
   it("non-clear → clear plays the clear clip and releases focus", () => {
     const releaseSpy = vi.spyOn(getScenarioEngine(), "releaseFocus");
     bus.publishRadar("left");
+    // Finish the arrival clip — a lower-weight info fire never cuts a
+    // still-playing transition call (#867 family split).
+    audio._triggerChannelEnd(VOICE);
 
     bus.publishRadar("clear", "left");
 
@@ -483,6 +486,8 @@ describe("sustained still-there loop", () => {
 
   it("fires a still-there clip on each interval while a car is alongside", () => {
     bus.publishRadar("left");
+    // Finish the arrival clip — an info fire never cuts a playing call (#867).
+    audio._triggerChannelEnd(VOICE);
     const afterArrival = voicePaths().length;
 
     vi.advanceTimersByTime(SPOTTER_STILL_THERE_DEFAULT_MS);
@@ -496,6 +501,7 @@ describe("sustained still-there loop", () => {
   it("does not repeat the same still-there variant back-to-back", () => {
     const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0);
     bus.publishRadar("left");
+    audio._triggerChannelEnd(VOICE);
 
     vi.advanceTimersByTime(SPOTTER_STILL_THERE_DEFAULT_MS);
     const first = lastVoicePath();
@@ -512,6 +518,7 @@ describe("sustained still-there loop", () => {
     // be cancelled and rescheduled, so no still-there fires at the old time.
     vi.advanceTimersByTime(SPOTTER_STILL_THERE_DEFAULT_MS - 100);
     bus.publishRadar("two-left", "left");
+    audio._triggerChannelEnd(VOICE);
     const afterTransition = voicePaths().length;
 
     vi.advanceTimersByTime(100);
@@ -574,6 +581,7 @@ describe("sustained still-there loop", () => {
     registerSpotterEngine(bus, deps);
 
     bus.publishRadar("left");
+    audio._triggerChannelEnd(VOICE);
     const base = voicePaths().length;
 
     // The default cadence would have fired by now; the configured 6 s has not.
@@ -625,6 +633,7 @@ describe("opt-in gating (live)", () => {
     registerSpotterEngine(bus, deps);
 
     bus.publishRadar("left");
+    audio._triggerChannelEnd(VOICE);
     const afterArrival = voicePaths().length;
 
     stillThere = false;
@@ -736,7 +745,10 @@ describe("scenario identity", () => {
         bus: AudioBus.Voice,
         weight: WEIGHT.SAFETY,
         focusOwner: SPOTTER_FOCUS_OWNER,
-        family: "spotter",
+        // Deliberately NOT the call scenario's family: same-family preemption
+        // ignores weight, so a shared family would let a reminder tick chop a
+        // still-playing transition call.
+        family: "spotter-info",
         interrupt: true,
         queueable: false,
       }),
@@ -819,7 +831,7 @@ describe("proximity scheduling (#867)", () => {
     expect(reminders).toHaveLength(1);
   });
 
-  it("a transition call replaces an in-flight reminder (shared spotter family)", () => {
+  it("a transition call cuts an in-flight reminder (PROXIMITY > SAFETY + interrupt)", () => {
     bus.publishRadar("left");
     audio._triggerChannelEnd(VOICE);
     vi.advanceTimersByTime(SPOTTER_STILL_THERE_DEFAULT_MS);
@@ -827,6 +839,33 @@ describe("proximity scheduling (#867)", () => {
     bus.publishRadar("two-left", "left");
 
     expect(lastVoicePath()).toBe(`${BASE}two-cars-left.mp3`);
+  });
+
+  it("the reminder never replaces an in-flight transition call, and retries next tick", () => {
+    // The transition clip is still playing when the reminder tick fires: the
+    // info scenario is a different family and lower weight, so it drops
+    // instead of wholesale-replacing the danger call mid-word.
+    bus.publishRadar("left");
+    vi.advanceTimersByTime(SPOTTER_STILL_THERE_DEFAULT_MS);
+
+    expect(lastVoicePath()).toBe(`${BASE}car-left.mp3`);
+
+    // The loop self-heals: once the call clip ends, the next tick speaks.
+    audio._triggerChannelEnd(VOICE);
+    vi.advanceTimersByTime(SPOTTER_STILL_THERE_DEFAULT_MS);
+
+    const reminders = voicePaths().filter((p) => p === `${BASE}still-there.mp3` || p === `${BASE}hold-your-line.mp3`);
+    expect(reminders).toHaveLength(1);
+  });
+
+  it("'Clear.' never cuts an in-flight transition call", () => {
+    // Arrival clip still playing when the (immediate, no gap data) clear
+    // lands — the info fire drops rather than truncating the danger call.
+    bus.publishRadar("left");
+    bus.publishRadar("clear", "left");
+
+    expect(voicePaths()).not.toContain(`${BASE}clear.mp3`);
+    expect(lastVoicePath()).toBe(`${BASE}car-left.mp3`);
   });
 
   it("a queueable CRITICAL line cut by a transition call replays once the call finishes", () => {
@@ -873,6 +912,8 @@ describe("clear confirmation buffer", () => {
   it("holds 'clear' until the nearest-car gap grows by the buffer distance", () => {
     nearestGap = 2;
     bus.publishRadar("left");
+    // Finish the arrival clip — an info fire never cuts a playing call (#867).
+    audio._triggerChannelEnd(VOICE);
     const afterArrival = voicePaths().length;
 
     // CarLeftRight flickers clear, but the car hasn't pulled away — no clear yet.
@@ -902,6 +943,7 @@ describe("clear confirmation buffer", () => {
   it("falls back to clear after the fallback window if the gap never grows", () => {
     nearestGap = 5;
     bus.publishRadar("right");
+    audio._triggerChannelEnd(VOICE);
 
     bus.publishRadar("clear", "right");
     // Gap stays flat (e.g. a sideways move at a matched longitudinal position).
@@ -912,6 +954,7 @@ describe("clear confirmation buffer", () => {
   it("skips the buffer (immediate clear) when no distance data is available", () => {
     nearestGap = null;
     bus.publishRadar("left");
+    audio._triggerChannelEnd(VOICE);
 
     bus.publishRadar("clear", "left");
     expect(lastVoicePath()).toBe(`${BASE}clear.mp3`);
@@ -926,6 +969,7 @@ describe("clear confirmation buffer", () => {
     registerSpotterEngine(bus, deps);
 
     bus.publishRadar("left");
+    audio._triggerChannelEnd(VOICE);
     bus.publishRadar("clear", "left"); // enter pending clear; loop interval is 400 ms
     const afterArrival = voicePaths().length;
 

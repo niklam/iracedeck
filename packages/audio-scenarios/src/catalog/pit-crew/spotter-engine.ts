@@ -18,8 +18,13 @@
  * can produce. The informational fires — "Clear." and the still-there
  * reminder loop — go through `pit-crew.spotter-info` at `WEIGHT.SAFETY`, so
  * they can never chop up a CRITICAL line (meatball, fuel-critical, start
- * gantry). Both share `family: "spotter"` + the focus owner, so they keep
- * replacing each other wholesale like the former single scenario did.
+ * gantry). The two carry DIFFERENT families ("spotter" vs "spotter-info") so
+ * the same-family wholesale-replace rule — which runs before any weight
+ * comparison — can never let a SAFETY info fire replace an in-flight
+ * PROXIMITY call: a call cuts a playing info line via weight + interrupt,
+ * an info fire arriving during a call clip simply drops (the reminder loop
+ * retries a cadence later), and each scenario still replaces its own
+ * in-flight fires via its family.
  *
  * While a car is alongside the engine holds an exclusive-focus floor
  * (`WEIGHT.SAFETY`) on `AudioBus.Voice` so routine chatter is held back while
@@ -130,9 +135,14 @@ const SPOTTER_CALL_SCENARIO: Scenario = {
  * reminder loop. Identical shape but `WEIGHT.SAFETY` — informational lines
  * must never chop up a CRITICAL call (meatball, fuel-critical, the start
  * gantry), and the 1–10 s reminder cadence would do exactly that at
- * PROXIMITY. Shares `family: "spotter"` + the focus owner with the call
- * scenario so the two replace each other wholesale, exactly like the former
- * single scenario.
+ * PROXIMITY. Deliberately NOT in `family: "spotter"`: same-family preemption
+ * replaces the in-flight family-mate regardless of weight, so sharing the
+ * call scenario's family would let a reminder tick chop a still-playing
+ * transition call — the exact "always heard" inversion the review of #867
+ * flagged. With its own `family: "spotter-info"` the call still cuts a
+ * playing info line (PROXIMITY > SAFETY + interrupt), info fires still
+ * replace each other ("Clear." over a playing reminder), and an info fire
+ * arriving during a call clip drops harmlessly (the loop retries next tick).
  */
 const SPOTTER_INFO_SCENARIO: Scenario = {
   id: SPOTTER_INFO_SCENARIO_ID,
@@ -141,7 +151,7 @@ const SPOTTER_INFO_SCENARIO: Scenario = {
   weight: WEIGHT.SAFETY,
   interrupt: true,
   queueable: false,
-  family: "spotter",
+  family: "spotter-info",
   focusOwner: SPOTTER_FOCUS_OWNER,
   sequence: [{ var: "spotterClip" }],
 };

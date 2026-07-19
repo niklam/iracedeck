@@ -240,11 +240,15 @@ describe("START_LIGHT_ALERTS structure", () => {
     }
   });
 
-  it("start-ready and start-go are CRITICAL + interrupt", () => {
+  it("start-ready and start-go are CRITICAL + interrupt + queueable", () => {
     for (const id of ["pit-crew.start-light-ready", "pit-crew.start-light-go"]) {
       const s = findScenario(id);
       expect(s.weight).toBe(WEIGHT.CRITICAL);
       expect(s.interrupt).toBe(true);
+      // Issue #867: a spotter proximity call (PROXIMITY > CRITICAL) outranks
+      // the gantry lines exactly when cars are side by side at a start;
+      // queueable defers them for replay instead of losing the one-shot call.
+      expect(s.queueable).toBe(true);
     }
   });
 
