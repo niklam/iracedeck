@@ -5,6 +5,7 @@ import type { IEventBus, RadarState, SimEventName, SimEventOf } from "@iracedeck
 import { TrackDirection } from "@iracedeck/sim-events-iracing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { WEIGHT } from "../../dsl.js";
 import { _resetAudioScenarios, getScenarioEngine, initializeAudioScenarios } from "../../interpreter.js";
 import {
   _resetSpotterEngine,
@@ -14,6 +15,7 @@ import {
   SPOTTER_CLEAR_FALLBACK_MS,
   SPOTTER_CLEAR_POLL_MS,
   SPOTTER_FOCUS_OWNER,
+  SPOTTER_INFO_SCENARIO_ID,
   SPOTTER_STILL_THERE_DEFAULT_MS,
   type SpotterDeps,
 } from "./spotter-engine.js";
@@ -121,7 +123,11 @@ const SPOTTER_CLIP_NAMES = [
 ] as const;
 
 const manifest = {
-  clips: ["luca", "elena"].flatMap((v) => SPOTTER_CLIP_NAMES.map((name) => `voice/${v}/spotter/${name}.mp3`)),
+  clips: [
+    ...["luca", "elena"].flatMap((v) => SPOTTER_CLIP_NAMES.map((name) => `voice/${v}/spotter/${name}.mp3`)),
+    // Non-spotter clip for the #867 scheduling tests' in-flight blocker line.
+    "test/blocker.mp3",
+  ],
   ambientLoop: "",
   ticks: { open: "", close: "" },
 } as never;
@@ -231,7 +237,7 @@ afterEach(() => {
 // ─── Registration ────────────────────────────────────────────────────────────
 
 describe("registerSpotterEngine", () => {
-  it("defines the spotter-call scenario and subscribes to radar.changed once", () => {
+  it("defines both spotter scenarios and subscribes to radar.changed once", () => {
     const subscribeSpy = vi.spyOn(bus, "subscribe");
     registerSpotterEngine(bus, deps);
     registerSpotterEngine(bus, deps);
@@ -367,6 +373,9 @@ describe("final clear", () => {
   it("non-clear → clear plays the clear clip and releases focus", () => {
     const releaseSpy = vi.spyOn(getScenarioEngine(), "releaseFocus");
     bus.publishRadar("left");
+    // Finish the arrival clip — a lower-weight info fire never cuts a
+    // still-playing transition call (#867 family split).
+    audio._triggerChannelEnd(VOICE);
 
     bus.publishRadar("clear", "left");
 
@@ -477,6 +486,8 @@ describe("sustained still-there loop", () => {
 
   it("fires a still-there clip on each interval while a car is alongside", () => {
     bus.publishRadar("left");
+    // Finish the arrival clip — an info fire never cuts a playing call (#867).
+    audio._triggerChannelEnd(VOICE);
     const afterArrival = voicePaths().length;
 
     vi.advanceTimersByTime(SPOTTER_STILL_THERE_DEFAULT_MS);
@@ -490,6 +501,7 @@ describe("sustained still-there loop", () => {
   it("does not repeat the same still-there variant back-to-back", () => {
     const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0);
     bus.publishRadar("left");
+    audio._triggerChannelEnd(VOICE);
 
     vi.advanceTimersByTime(SPOTTER_STILL_THERE_DEFAULT_MS);
     const first = lastVoicePath();
@@ -506,6 +518,7 @@ describe("sustained still-there loop", () => {
     // be cancelled and rescheduled, so no still-there fires at the old time.
     vi.advanceTimersByTime(SPOTTER_STILL_THERE_DEFAULT_MS - 100);
     bus.publishRadar("two-left", "left");
+    audio._triggerChannelEnd(VOICE);
     const afterTransition = voicePaths().length;
 
     vi.advanceTimersByTime(100);
@@ -568,6 +581,7 @@ describe("sustained still-there loop", () => {
     registerSpotterEngine(bus, deps);
 
     bus.publishRadar("left");
+    audio._triggerChannelEnd(VOICE);
     const base = voicePaths().length;
 
     // The default cadence would have fired by now; the configured 6 s has not.
@@ -619,6 +633,7 @@ describe("opt-in gating (live)", () => {
     registerSpotterEngine(bus, deps);
 
     bus.publishRadar("left");
+    audio._triggerChannelEnd(VOICE);
     const afterArrival = voicePaths().length;
 
     stillThere = false;
@@ -706,7 +721,7 @@ describe("scenario identity", () => {
     expect(lastVoicePath()).toBe(`${BASE}two-cars-left.mp3`);
   });
 
-  it("registers the scenario under the documented id with SAFETY weight on the Voice bus", () => {
+  it("registers the transition-call scenario at PROXIMITY and the info scenario at SAFETY (#867)", () => {
     // Spy before the first registration so the initial defineScenario is captured.
     const spy = vi.spyOn(getScenarioEngine(), "defineScenario");
     registerSpotterEngine(bus, deps);
@@ -716,12 +731,154 @@ describe("scenario identity", () => {
         id: SPOTTER_CALL_SCENARIO_ID,
         channel: AudioChannel.Voice,
         bus: AudioBus.Voice,
+        weight: WEIGHT.PROXIMITY,
         focusOwner: SPOTTER_FOCUS_OWNER,
         family: "spotter",
         interrupt: true,
         queueable: false,
       }),
     );
+    expect(spy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: SPOTTER_INFO_SCENARIO_ID,
+        channel: AudioChannel.Voice,
+        bus: AudioBus.Voice,
+        weight: WEIGHT.SAFETY,
+        focusOwner: SPOTTER_FOCUS_OWNER,
+        // Deliberately NOT the call scenario's family: same-family preemption
+        // ignores weight, so a shared family would let a reminder tick chop a
+        // still-playing transition call.
+        family: "spotter-info",
+        interrupt: true,
+        queueable: false,
+      }),
+    );
+  });
+});
+
+// ─── Proximity scheduling (issue #867) ───────────────────────────────────────
+//
+// A proximity transition call must ALWAYS be heard, immediately — no in-flight
+// line, not even a CRITICAL one, may keep it off the bus. The informational
+// fires ("Clear.", the still-there reminder) stay at SAFETY so they can never
+// chop up a CRITICAL line (meatball, fuel-critical, start gantry).
+
+describe("proximity scheduling (#867)", () => {
+  const BLOCKER_CLIP = "test/blocker.mp3";
+
+  /** Define + fire a blocker line at the given weight; it stays in flight. */
+  function startBlocker(weight: number, opts: { queueable?: boolean; interrupt?: boolean } = {}): void {
+    getScenarioEngine().defineScenario({
+      id: "test.blocker",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight,
+      ...opts,
+      sequence: [BLOCKER_CLIP],
+    });
+    getScenarioEngine().fire("test.blocker");
+    expect(voicePaths()).toContain(BLOCKER_CLIP);
+  }
+
+  beforeEach(() => {
+    registerSpotterEngine(bus, deps);
+  });
+
+  it("a transition call cuts an in-flight CRITICAL line and plays immediately", () => {
+    startBlocker(WEIGHT.CRITICAL, { interrupt: true });
+    bus.publishRadar("left");
+
+    expect(audio._stopped).toContain(VOICE);
+    expect(lastVoicePath()).toBe(`${BASE}car-left.mp3`);
+  });
+
+  it("a transition call cuts an in-flight equal-SAFETY line and plays immediately", () => {
+    startBlocker(WEIGHT.SAFETY);
+    bus.publishRadar("left");
+
+    expect(lastVoicePath()).toBe(`${BASE}car-left.mp3`);
+  });
+
+  it("'Clear.' does not cut an in-flight CRITICAL line (stays SAFETY)", () => {
+    bus.publishRadar("left");
+    audio._triggerChannelEnd(VOICE);
+    // CRITICAL passes the spotter's SAFETY focus floor and takes the bus.
+    startBlocker(WEIGHT.CRITICAL, { interrupt: true });
+    bus.publishRadar("clear", "left");
+
+    expect(voicePaths()).not.toContain(`${BASE}clear.mp3`);
+  });
+
+  it("the still-there reminder does not cut an in-flight CRITICAL line", () => {
+    bus.publishRadar("left");
+    audio._triggerChannelEnd(VOICE);
+    startBlocker(WEIGHT.CRITICAL, { interrupt: true });
+    vi.advanceTimersByTime(SPOTTER_STILL_THERE_DEFAULT_MS);
+
+    expect(voicePaths()).not.toContain(`${BASE}still-there.mp3`);
+    expect(voicePaths()).not.toContain(`${BASE}hold-your-line.mp3`);
+  });
+
+  it("the still-there reminder still cuts routine NORMAL chatter (SAFETY + interrupt)", () => {
+    // Cars-off keeps the arrival call from cutting the blocker first, while the
+    // focus gate + reminder loop still engage on the transition.
+    registerSpotterEngine(bus, makeDeps({ getCarsEnabled: () => false }));
+    startBlocker(WEIGHT.NORMAL);
+    bus.publishRadar("left");
+    vi.advanceTimersByTime(SPOTTER_STILL_THERE_DEFAULT_MS);
+
+    const reminders = voicePaths().filter((p) => p === `${BASE}still-there.mp3` || p === `${BASE}hold-your-line.mp3`);
+    expect(reminders).toHaveLength(1);
+  });
+
+  it("a transition call cuts an in-flight reminder (PROXIMITY > SAFETY + interrupt)", () => {
+    bus.publishRadar("left");
+    audio._triggerChannelEnd(VOICE);
+    vi.advanceTimersByTime(SPOTTER_STILL_THERE_DEFAULT_MS);
+
+    bus.publishRadar("two-left", "left");
+
+    expect(lastVoicePath()).toBe(`${BASE}two-cars-left.mp3`);
+  });
+
+  it("the reminder never replaces an in-flight transition call, and retries next tick", () => {
+    // The transition clip is still playing when the reminder tick fires: the
+    // info scenario is a different family and lower weight, so it drops
+    // instead of wholesale-replacing the danger call mid-word.
+    bus.publishRadar("left");
+    vi.advanceTimersByTime(SPOTTER_STILL_THERE_DEFAULT_MS);
+
+    expect(lastVoicePath()).toBe(`${BASE}car-left.mp3`);
+
+    // The loop self-heals: once the call clip ends, the next tick speaks.
+    audio._triggerChannelEnd(VOICE);
+    vi.advanceTimersByTime(SPOTTER_STILL_THERE_DEFAULT_MS);
+
+    const reminders = voicePaths().filter((p) => p === `${BASE}still-there.mp3` || p === `${BASE}hold-your-line.mp3`);
+    expect(reminders).toHaveLength(1);
+  });
+
+  it("'Clear.' never cuts an in-flight transition call", () => {
+    // Arrival clip still playing when the (immediate, no gap data) clear
+    // lands — the info fire drops rather than truncating the danger call.
+    bus.publishRadar("left");
+    bus.publishRadar("clear", "left");
+
+    expect(voicePaths()).not.toContain(`${BASE}clear.mp3`);
+    expect(lastVoicePath()).toBe(`${BASE}car-left.mp3`);
+  });
+
+  it("a queueable CRITICAL line cut by a transition call replays once the call finishes", () => {
+    // Fuel-critical shape: CRITICAL + interrupt + queueable. The cut stashes
+    // it; CRITICAL clears the spotter's SAFETY focus floor, so it replays at
+    // idle even while the car is still alongside.
+    startBlocker(WEIGHT.CRITICAL, { interrupt: true, queueable: true });
+    bus.publishRadar("left");
+    expect(lastVoicePath()).toBe(`${BASE}car-left.mp3`);
+
+    audio._triggerChannelEnd(VOICE);
+
+    expect(voicePaths().filter((p) => p === BLOCKER_CLIP)).toHaveLength(2);
   });
 });
 
@@ -755,6 +912,8 @@ describe("clear confirmation buffer", () => {
   it("holds 'clear' until the nearest-car gap grows by the buffer distance", () => {
     nearestGap = 2;
     bus.publishRadar("left");
+    // Finish the arrival clip — an info fire never cuts a playing call (#867).
+    audio._triggerChannelEnd(VOICE);
     const afterArrival = voicePaths().length;
 
     // CarLeftRight flickers clear, but the car hasn't pulled away — no clear yet.
@@ -784,6 +943,7 @@ describe("clear confirmation buffer", () => {
   it("falls back to clear after the fallback window if the gap never grows", () => {
     nearestGap = 5;
     bus.publishRadar("right");
+    audio._triggerChannelEnd(VOICE);
 
     bus.publishRadar("clear", "right");
     // Gap stays flat (e.g. a sideways move at a matched longitudinal position).
@@ -794,6 +954,7 @@ describe("clear confirmation buffer", () => {
   it("skips the buffer (immediate clear) when no distance data is available", () => {
     nearestGap = null;
     bus.publishRadar("left");
+    audio._triggerChannelEnd(VOICE);
 
     bus.publishRadar("clear", "left");
     expect(lastVoicePath()).toBe(`${BASE}clear.mp3`);
@@ -808,6 +969,7 @@ describe("clear confirmation buffer", () => {
     registerSpotterEngine(bus, deps);
 
     bus.publishRadar("left");
+    audio._triggerChannelEnd(VOICE);
     bus.publishRadar("clear", "left"); // enter pending clear; loop interval is 400 ms
     const afterArrival = voicePaths().length;
 
