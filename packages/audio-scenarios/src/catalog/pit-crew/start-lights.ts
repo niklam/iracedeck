@@ -29,9 +29,16 @@
  * and `start-go` are `WEIGHT.CRITICAL` + `interrupt: true` — "lights are up"
  * and "go, go, go!" must cut anything in flight. (The heads-up line fires on
  * the `StartReady` edge — issue #673; the procedure is Ready → Set → Go and
- * `StartSet` lights too late to be useful, so nothing is spoken there.) The
- * countdown numbers are `queueable: false`: a number that can't take the bus
- * right now is dropped rather than replayed stale a beat later.
+ * `StartSet` lights too late to be useful, so nothing is spoken there.) Both
+ * gantry lines are also `queueable: true` (issue #867): a spotter proximity
+ * call at `WEIGHT.PROXIMITY` outranks them, and cars are side by side at
+ * every race start — without queueable, a gantry line colliding with a ~1 s
+ * spotter clip (either direction) would be permanently lost; deferred, it
+ * replays the moment the clip ends, and the `family: "start-light"` pending
+ * tie-break (newest wins) keeps a stale `start-ready` from replaying after
+ * `start-go` has superseded it. The countdown numbers stay
+ * `queueable: false`: a number that can't take the bus right now is dropped
+ * rather than replayed stale a beat later.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventName, SimEventOf, StartCountdownSeconds } from "@iracedeck/event-bus";
@@ -66,6 +73,7 @@ const START_READY: Scenario = {
   base: "voice/{voice}",
   weight: WEIGHT.CRITICAL,
   interrupt: true,
+  queueable: true,
   family: "start-light",
   sequence: startLightSequence(["pool:start-light-ready"]),
   when: { event: "startLight.start-ready.raised", where: liveRaceCar },
@@ -78,6 +86,7 @@ const START_GO: Scenario = {
   base: "voice/{voice}",
   weight: WEIGHT.CRITICAL,
   interrupt: true,
+  queueable: true,
   family: "start-light",
   sequence: startLightSequence(["pool:start-light-go"]),
   when: { event: "startLight.start-go.raised", where: liveRaceCar },

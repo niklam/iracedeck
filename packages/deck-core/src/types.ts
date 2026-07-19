@@ -144,6 +144,16 @@ export interface IDeckPlatformAdapter {
   /** Subscribe to application termination events */
   onApplicationDidTerminate(callback: (application: string) => void): void;
   /**
+   * Whether the host actually delivers the application launch/terminate
+   * events for `ApplicationsToMonitor` (issue #870). Omitted/undefined means
+   * supported. Declare `false` when the protocol has no app-monitoring
+   * events at all (UlanziStudio) — the app monitor then keeps SDK reconnect
+   * polling enabled at startup, since no launch event will ever arrive to
+   * re-enable it, and the resulting connection doubles as the exit signal
+   * for the SDK-disconnect fallback.
+   */
+  readonly supportsApplicationMonitoring?: boolean;
+  /**
    * Subscribe to Property Inspector appear events (fires each time any
    * action's PI becomes visible). Used to refresh dynamic PI state that
    * only makes sense while the PI is open — e.g. re-enumerating audio

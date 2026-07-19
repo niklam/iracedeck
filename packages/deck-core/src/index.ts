@@ -235,7 +235,15 @@ export {
 } from "./clipboard-service.js";
 
 // App monitor for iRacing process detection
-export { initAppMonitor, isIRacingRunning, isAppMonitorInitialized, _resetAppMonitor } from "./app-monitor.js";
+export {
+  _resetAppMonitor,
+  initAppMonitor,
+  IRACING_EXIT_SDK_CONFIRM_MS,
+  isAppMonitorInitialized,
+  isIRacingActive,
+  isIRacingRunning,
+  onIRacingTerminated,
+} from "./app-monitor.js";
 
 // Scan code mapping
 export { getScanCode, getModifierScanCode } from "./scan-code-map.js";
@@ -317,7 +325,7 @@ export {
   type PlatformFeatures,
 } from "./plugin-config.js";
 
-// Version-check / changelog opener (issues #680, #742)
+// Version-check / changelog opener (issues #680, #742, #870)
 export {
   buildChangelogUrl,
   CHANGELOG_BASE_URL,
@@ -328,6 +336,7 @@ export {
   resolveChangelogDecision,
   runVersionCheck,
   shouldOpenChangelog,
+  VERSION_CHECK_STARTUP_GRACE_MS,
 } from "./version-check.js";
 
 // Device + profile reference (issues #736, #753, #790)

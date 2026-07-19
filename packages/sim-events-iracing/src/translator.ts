@@ -30,6 +30,7 @@ import { TrackWetness } from "@iracedeck/event-bus";
 import {
   CarLeftRight,
   classPositionFromOrder,
+  IRSDK_UNLIMITED_LAPS,
   nearestCarGapMeters,
   type SDKController,
   SessionState,
@@ -617,14 +618,6 @@ function resolveStartingClassPosition(
 }
 
 /**
- * `SessionLapsTotal` sentinel iRacing uses for time-limited sessions —
- * anything `>= UNLIMITED_LAPS` means there is no defined lap count.
- *
- * @internal
- */
-const UNLIMITED_LAPS = 32767;
-
-/**
  * Build the qualifying lap-invalidation snapshot from the latest telemetry
  * tick (issue #567). Returns `null` when telemetry isn't available — the
  * scenario's `where:` short-circuits and the callout stays silent.
@@ -634,8 +627,9 @@ const UNLIMITED_LAPS = 32767;
  *     counts the lap the driver is currently on as "remaining"; the
  *     snapshot's contract is "attempts remaining AFTER the current
  *     invalidated lap", so we subtract one before handing it off.
- *   - `lapLimited` = `0 < SessionLapsTotal < UNLIMITED_LAPS` — distinguishes
- *     a lap-limited qualifying from a time-limited one (sentinel 32767).
+ *   - `lapLimited` = `0 < SessionLapsTotal < IRSDK_UNLIMITED_LAPS` —
+ *     distinguishes a lap-limited qualifying from a time-limited one
+ *     (sentinel 32767).
  *   - `lapStartedFromPits` = the translator-state flag maintained by the
  *     pit-lane diff (set true on `pitLane.exited`) and the lifecycle diff
  *     (cleared on `lap.started`). Covers both the session out-lap and any
@@ -659,7 +653,7 @@ export function getQualifyingInvalidationSnapshot(): QualifyingInvalidationSnaps
   const telemetry = instance.latestTelemetry;
   const sessionInfo = instance.controller.getSessionInfo() as Record<string, unknown> | null;
   const lapsTotal = telemetry.SessionLapsTotal ?? 0;
-  const lapLimited = lapsTotal > 0 && lapsTotal < UNLIMITED_LAPS;
+  const lapLimited = lapsTotal > 0 && lapsTotal < IRSDK_UNLIMITED_LAPS;
   const rawLapsRemaining =
     typeof telemetry.SessionLapsRemainEx === "number" && telemetry.SessionLapsRemainEx >= 0
       ? telemetry.SessionLapsRemainEx
@@ -1396,7 +1390,9 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   diffPitBoxCountdown(self.state, telemetry, resolvePitBoxTrkPct(sessionInfo), trackLengthMeters, emit);
   // Laps-of-fuel-left callout crossings (issue #838). Reads the SAME
   // validated estimator as Session Info's Laps to Empty (issue #748), over
-  // the same default window, so the spoken count tracks the display.
+  // the same default window, so the spoken count tracks the display. Runs
+  // after diffFlags so the race-coverage suppression (#866) reads a
+  // same-tick-fresh `whiteLastLapFired` final-lap latch.
   diffFuelLapsLeft(
     self.state,
     telemetry,

@@ -9,9 +9,11 @@
  *   - the 10-count ceiling and the count-0 box call
  *   - refuel re-arm (debounced) and jitter immunity
  *   - race / live-in-car / missing-stats / invalid-telemetry gates
+ *   - race-coverage suppression (issue #866): the lap-limited remaining-laps
+ *     comparison, the white-flag last-lap latch, and the post-race gate
  *   - margin sanitization (`sanitizeFuelCalloutMarginLaps`)
  */
-import type { TelemetryData } from "@iracedeck/iracing-sdk";
+import { SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { describe, expect, it } from "vitest";
 
 import { createInitialState, type TranslatorState } from "../state.js";
@@ -61,6 +63,19 @@ function makeRunner(events: PendingEvent[], state: TranslatorState = createIniti
 
 function counts(events: PendingEvent[]): number[] {
   return events.map((e) => (e.data as { count: number }).count);
+}
+
+function lapSample(
+  run: ReturnType<typeof makeRunner>["run"],
+  lap: number,
+  fuel: number,
+  options?: RunOptions,
+  extra: Partial<TelemetryData> = {},
+): void {
+  run(tick({ Lap: lap, LapDistPct: 0.45, FuelLevel: fuel + 0.02, ...extra }), options);
+  run(tick({ Lap: lap, LapDistPct: 0.55, FuelLevel: fuel, ...extra }), options);
+  run(tick({ Lap: lap, LapDistPct: 0.95, FuelLevel: fuel - 0.02, ...extra }), options);
+  run(tick({ Lap: lap + 1, LapDistPct: 0.05, FuelLevel: fuel - 0.04, ...extra }), options);
 }
 
 describe("diffFuelLapsLeft — sampling", () => {
@@ -119,13 +134,6 @@ describe("diffFuelLapsLeft — sampling", () => {
 });
 
 describe("diffFuelLapsLeft — announcement rules", () => {
-  function lapSample(run: ReturnType<typeof makeRunner>["run"], lap: number, fuel: number, options?: RunOptions): void {
-    run(tick({ Lap: lap, LapDistPct: 0.45, FuelLevel: fuel + 0.02 }), options);
-    run(tick({ Lap: lap, LapDistPct: 0.55, FuelLevel: fuel }), options);
-    run(tick({ Lap: lap, LapDistPct: 0.95, FuelLevel: fuel - 0.02 }), options);
-    run(tick({ Lap: lap + 1, LapDistPct: 0.05, FuelLevel: fuel - 0.04 }), options);
-  }
-
   it("never re-announces a higher or equal count (fuel saving raises the estimate)", () => {
     const events: PendingEvent[] = [];
     const { run } = makeRunner(events);
@@ -241,6 +249,98 @@ describe("diffFuelLapsLeft — gates", () => {
     run(tick({ Lap: -1, LapDistPct: 0.55, FuelLevel: 6.1 }));
 
     expect(events).toEqual([]);
+  });
+});
+
+describe("diffFuelLapsLeft — race-coverage suppression (issue #866)", () => {
+  it("suppresses the box call on the final lap of a lap-limited race", () => {
+    const events: PendingEvent[] = [];
+    const { run } = makeRunner(events);
+
+    // SessionLapsRemainEx 1 → 0 full laps needed after the current one; even
+    // the count-0 box call is noise when the race ends with this lap.
+    lapSample(run, 5, 0.6, {}, { SessionLapsRemainEx: 1 });
+
+    expect(events).toEqual([]);
+  });
+
+  it("suppresses a count that covers the remaining race laps", () => {
+    const events: PendingEvent[] = [];
+    const { run } = makeRunner(events);
+
+    // 3 laps remain including the current one → 2 full laps needed after it;
+    // count 2 covers exactly → silent.
+    lapSample(run, 5, 6.1, {}, { SessionLapsRemainEx: 3 });
+
+    expect(events).toEqual([]);
+  });
+
+  it("still announces when the estimate falls short of the remaining laps", () => {
+    const events: PendingEvent[] = [];
+    const { run } = makeRunner(events);
+
+    // 4 laps remain including the current one → 3 needed; count 2 falls short.
+    lapSample(run, 5, 6.1, {}, { SessionLapsRemainEx: 4 });
+
+    expect(counts(events)).toEqual([2]);
+  });
+
+  it("keeps announcing when laps remaining is unknown (timed sentinel, invalid reading)", () => {
+    // Timed race: the 32767 unlimited sentinel is not a lap count.
+    const sentinelEvents: PendingEvent[] = [];
+    const sentinel = makeRunner(sentinelEvents);
+    lapSample(sentinel.run, 5, 6.1, {}, { SessionLapsRemainEx: 32767 });
+    expect(counts(sentinelEvents)).toEqual([2]);
+
+    // A negative reading is invalid, not a coverage determination.
+    const invalidEvents: PendingEvent[] = [];
+    const invalid = makeRunner(invalidEvents);
+    lapSample(invalid.run, 5, 0.6, {}, { SessionLapsRemainEx: -1 });
+    expect(counts(invalidEvents)).toEqual([0]);
+  });
+
+  it("suppresses the family on the player's own final lap (white-flag crossing latch)", () => {
+    const events: PendingEvent[] = [];
+    const runner = makeRunner(events);
+    runner.state.whiteLastLapFired = true;
+
+    // Timed race (no usable lap counter) — the #772 latch is the only signal.
+    lapSample(runner.run, 5, 0.6, {}, { SessionLapsRemainEx: 32767 });
+
+    expect(events).toEqual([]);
+  });
+
+  it("goes silent post-race (checkered / cool-down)", () => {
+    const events: PendingEvent[] = [];
+    const { run } = makeRunner(events);
+
+    lapSample(run, 5, 0.6, {}, { SessionState: SessionState.Checkered });
+    lapSample(run, 6, 0.5, {}, { SessionState: SessionState.CoolDown });
+
+    expect(events).toEqual([]);
+  });
+
+  it("does not suppress while racing", () => {
+    const events: PendingEvent[] = [];
+    const { run } = makeRunner(events);
+
+    lapSample(run, 5, 0.6, {}, { SessionState: SessionState.Racing });
+
+    expect(counts(events)).toEqual([0]);
+  });
+
+  it("leaves the dedup floor untouched on suppression so a later drop still announces", () => {
+    const events: PendingEvent[] = [];
+    const { run } = makeRunner(events);
+
+    // Count 2 covers the 2 laps needed → suppressed, floor NOT advanced.
+    lapSample(run, 5, 6.1, {}, { SessionLapsRemainEx: 3 });
+    expect(events).toEqual([]);
+
+    // Next lap the counter reading is unavailable — coverage is unknown, so
+    // the same count 2 must still announce (an advanced floor would eat it).
+    lapSample(run, 6, 5.9);
+    expect(counts(events)).toEqual([2]);
   });
 });
 

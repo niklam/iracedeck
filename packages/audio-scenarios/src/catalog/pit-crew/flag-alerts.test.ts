@@ -295,15 +295,19 @@ describe("FLAG_ALERTS structure", () => {
     }
   });
 
-  it("meatball is CRITICAL weight + interrupt + outside the flag family", () => {
+  it("meatball is CRITICAL weight + interrupt + queueable + outside the flag family", () => {
     const meatball = findScenario("pit-crew.flag-meatball");
 
     expect(meatball.weight).toBe(WEIGHT.CRITICAL);
     expect(meatball.interrupt).toBe(true);
+    // Issue #867: a spotter proximity call (PROXIMITY > CRITICAL) can cut or
+    // outrank the meatball line; queueable defers it for replay instead of
+    // losing the one-shot box-for-repairs instruction forever.
+    expect(meatball.queueable).toBe(true);
     expect(meatball.family).toBeUndefined();
   });
 
-  it("furled, furled-cleared, yellow-cleared and white-last-lap are queueable (defer behind a busy bus) — and they're the only flags that are", () => {
+  it("furled, furled-cleared, yellow-cleared, white-last-lap and meatball are queueable (defer behind a busy bus) — and they're the only flags that are", () => {
     const queueableIds = [
       "pit-crew.flag-furled",
       "pit-crew.flag-furled-cleared",
@@ -312,6 +316,9 @@ describe("FLAG_ALERTS structure", () => {
       // latch never re-fires, so a fire displaced by an equal-weight line
       // (spotter call) must replay at idle instead of being dropped.
       "pit-crew.flag-white-last-lap",
+      // Issue #867: a spotter proximity call outranks the meatball line; the
+      // one-shot raise must defer/stash and replay instead of being lost.
+      "pit-crew.flag-meatball",
     ];
 
     for (const id of queueableIds) {

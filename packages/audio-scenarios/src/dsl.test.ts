@@ -1,6 +1,19 @@
 import { describe, expect, it } from "vitest";
 
-import { applyBase, parseStepShorthand, resolveStep } from "./dsl.js";
+import { applyBase, parseStepShorthand, resolveStep, WEIGHT } from "./dsl.js";
+
+describe("WEIGHT bands", () => {
+  it("orders the bands TRANSIENT < CHATTER < NORMAL < SAFETY < CRITICAL < PROXIMITY", () => {
+    expect(WEIGHT.TRANSIENT).toBeLessThan(WEIGHT.CHATTER);
+    expect(WEIGHT.CHATTER).toBeLessThan(WEIGHT.NORMAL);
+    expect(WEIGHT.NORMAL).toBeLessThan(WEIGHT.SAFETY);
+    expect(WEIGHT.SAFETY).toBeLessThan(WEIGHT.CRITICAL);
+    // Strictly above CRITICAL is load-bearing (#867): an equal-weight fire
+    // never cuts, so PROXIMITY at CRITICAL would still drop spotter calls
+    // behind an in-flight CRITICAL line.
+    expect(WEIGHT.PROXIMITY).toBeGreaterThan(WEIGHT.CRITICAL);
+  });
+});
 
 describe("parseStepShorthand", () => {
   it("treats a bare path as a clip", () => {

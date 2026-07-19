@@ -228,7 +228,13 @@ const DEBRIS: Scenario = {
 // pit on a meatball is a black-flag penalty. Give it `weight: WEIGHT.CRITICAL`
 // with `interrupt: true` so it cuts in-flight engineer chatter mid-message.
 // Intentionally NOT in `family: "flag"`: a routine yellow must not cancel
-// a still-playing meatball.
+// a still-playing meatball. `queueable: true` (issue #867): a spotter
+// proximity call at `WEIGHT.PROXIMITY` outranks the meatball, so a collision
+// (either the spotter cutting a playing meatball line, or the meatball raise
+// arriving during a spotter clip) defers it for replay the moment the clip
+// ends instead of losing the box-for-repairs instruction forever — the raise
+// is a one-shot edge that never re-fires, and the instruction stays valid
+// until obeyed, so a ~1 s-late replay is always correct.
 const MEATBALL: Scenario = {
   id: "pit-crew.flag-meatball",
   when: { event: "flag.meatball.raised" },
@@ -237,6 +243,7 @@ const MEATBALL: Scenario = {
   base: "voice/{voice}",
   weight: WEIGHT.CRITICAL,
   interrupt: true,
+  queueable: true,
   sequence: flagSequence(["pool:flag-meatball"]),
 };
 

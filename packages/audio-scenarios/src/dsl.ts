@@ -40,6 +40,15 @@ export const WEIGHT = {
   SAFETY: 70,
   /** Must-hear lines that cut anything below them (meatball, fuel-critical). Pair with `interrupt: true`. */
   CRITICAL: 100,
+  /**
+   * Immediate-danger proximity information that must ALWAYS be heard — the
+   * spotter's transition calls ("Car left", "Three wide"). Sits strictly
+   * above CRITICAL because an equal-weight fire never cuts (issue #867): at
+   * CRITICAL a spotter call would still be silently dropped behind an
+   * in-flight CRITICAL line. Pair with `interrupt: true` + `queueable: false`
+   * — the guarantee is winning the bus NOW, never a stale deferred replay.
+   */
+  PROXIMITY: 120,
 } as const;
 
 /** Scheduling weight applied when a scenario omits `weight`. */
