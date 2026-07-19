@@ -156,6 +156,15 @@ function wrapDialRotateEvent<T>(
  * UlanziStudio WebSocket protocol via {@link UlanziClient}.
  */
 export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
+  /**
+   * UlanziStudio's protocol has no app-monitoring events — the client's
+   * cmd→event normalization maps nothing to applicationDidLaunch/Terminate,
+   * so the handlers registered below can never fire. Declaring this lets the
+   * app monitor keep SDK reconnect polling enabled instead of pausing it
+   * while waiting for a launch event that will never arrive (issue #870).
+   */
+  readonly supportsApplicationMonitoring = false;
+
   private readonly client: UlanziClient;
   private readonly keyDownCallbacks: (() => void)[] = [];
   private readonly dialDownCallbacks: (() => void)[] = [];

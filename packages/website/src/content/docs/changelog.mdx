@@ -20,6 +20,7 @@ _Unreleased_
 **Bug Fixes**
 
 - Template expressions no longer render as empty text when they reference a driver text field iRacing left blank — such as `abbrev_name` for AI drivers. Blank fields now count as empty strings in expressions, so fallback patterns like `{{= track_ahead.abbrev_name ? track_ahead.abbrev_name : track_ahead.name }}` work as expected.
+- The What's New page no longer pops up in your browser while iRacing is running — if the deck software updates the plugin mid-session, the page now waits and opens right after you exit the sim (or on the next start of the deck software without iRacing). How the page works, and the setting that controls when it opens, are now documented in the [What's New Page](/docs/features/whats-new-page/) feature guide.
 
 ## 2.2.0
 

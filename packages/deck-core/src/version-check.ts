@@ -16,6 +16,15 @@
  * or `never` (still records the version silently so re-enabling later doesn't
  * pop an old changelog).
  *
+ * The changelog must never open while iRacing is running (issue #870): a due
+ * `open` is deferred — nothing persisted, the version stays pending — when the
+ * injected `isSimRunning` delegate reports the sim active. Plugins re-run the
+ * check when iRacing exits (the app monitor's `onIRacingTerminated` hook) and
+ * delay the startup check by {@link VERSION_CHECK_STARTUP_GRACE_MS} so the
+ * sim-detection signals (app-monitor launch event, SDK connection) have
+ * settled before the first decision — a plugin restarted mid-session by a
+ * deck-host auto-update would otherwise check before either signal is up.
+ *
  * The logic is pure and side-effect-free except `runVersionCheck`, which is the
  * orchestrator: it takes injected `persist`/`openUrl` delegates so the module
  * stays platform-agnostic (no Stream Deck / Mirabox dependency).
@@ -38,6 +47,18 @@ export type ChangelogNotificationPolicy = (typeof CHANGELOG_NOTIFICATION_POLICIE
 
 /** Suppression window for the `monthly` policy: 30 days in milliseconds. */
 export const MONTHLY_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * Delay between the first global-settings arrival and the startup version
+ * check (issue #870). The sim-running signals the `isSimRunning` delegate
+ * reads — the app monitor's `applicationDidLaunch` for an already-running
+ * iRacing, and the SDK controller's shared-memory connection — race the
+ * settings arrival on a mid-session plugin restart (exactly the deck-host
+ * auto-update case), so an immediate check could open the changelog over a
+ * live session. By this long after startup both signals are reliably settled;
+ * a changelog opening this much later on a sim-free startup is harmless.
+ */
+export const VERSION_CHECK_STARTUP_GRACE_MS = 15_000;
 
 /**
  * Outcome of a version check under a notification policy:
@@ -151,6 +172,14 @@ export function buildChangelogUrl(p: { ecosystem: string; deviceType?: string | 
  * `persistOpenedAt` back the `monthly` window via the passthrough
  * `_lastChangelogOpenedAt` key. The timestamp is stamped on every open under any
  * policy so a later switch to `monthly` has a meaningful anchor.
+ *
+ * `isSimRunning` (issue #870) gates the `open` outcome only: when it reports
+ * true, the open is deferred exactly like the monthly window — nothing
+ * persisted, so the version stays pending for a later run (the plugins re-run
+ * the check when iRacing exits). It is consulted at decision time, as late as
+ * possible, and only when an open is actually due; `track-silently` still
+ * persists (nothing would open anyway, and recording the version keeps a later
+ * policy switch from replaying an old release).
  */
 export async function runVersionCheck(opts: {
   currentVersion: string;
@@ -160,6 +189,7 @@ export async function runVersionCheck(opts: {
   now?: number;
   ecosystem: string;
   deviceType?: string | number;
+  isSimRunning?: () => boolean;
   persist: (version: string) => void;
   persistOpenedAt?: (timestamp: number) => void;
   openUrl: (url: string) => void | Promise<void>;
@@ -173,6 +203,7 @@ export async function runVersionCheck(opts: {
     now = Date.now(),
     ecosystem,
     deviceType,
+    isSimRunning,
     persist,
     persistOpenedAt,
     openUrl,
@@ -206,6 +237,16 @@ export async function runVersionCheck(opts: {
     logger.debug(
       `Current version: ${currentVersion}, last seen: ${lastSeenVersion ?? "(none)"}, last opened: ${lastOpenedAt ?? "(none)"}`,
     );
+
+    return;
+  }
+
+  // Never open over a live session (issue #870): defer — persisting nothing —
+  // so the version stays pending. Checked before the persist-first write, since
+  // a persisted version would mark the release as seen without it ever opening.
+  if (isSimRunning?.()) {
+    logger.info("New version detected, changelog deferred while iRacing is running");
+    logger.debug(`Current version: ${currentVersion}, last seen: ${lastSeenVersion ?? "(none)"}`);
 
     return;
   }
