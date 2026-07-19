@@ -30,17 +30,20 @@
  *     covers the remaining race laps (`count >= SessionLapsRemainEx − 1`,
  *     lap-limited races), on the player's own final lap (the #772 white-flag
  *     crossing latch — timed races too), and post-race (checkered /
- *     cool-down), nothing is emitted. The announced floor is NOT advanced by
- *     a suppression, so coverage is re-evaluated every lap and a burn-rate
- *     spike that shrinks the estimate below the race distance still
- *     announces. Unknown laps remaining (missing field, the 32767 timed
- *     sentinel) keeps announcing — silence only on a positive "fuel covers
- *     the race" determination.
+ *     cool-down), nothing is emitted. The lap-count comparison suppresses
+ *     only on a positive "fuel covers the race" determination — unknown laps
+ *     remaining (missing field, the `IRSDK_UNLIMITED_LAPS` timed sentinel)
+ *     keeps announcing — but the final-lap and post-race gates are
+ *     UNCONDITIONAL: even a genuinely-short estimate stays silent there, a
+ *     deliberate trade-off (#866 review). The announced floor is NOT
+ *     advanced by a suppression, so coverage is re-evaluated every lap and a
+ *     burn-rate spike that shrinks the estimate below the race distance
+ *     still announces on the earlier laps.
  *
  * Race sessions only, live in car, and silent until the tracker has valid
  * samples — no estimate, no callout, never a guess.
  */
-import { isLiveOnTrack, isPostRace, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { IRSDK_UNLIMITED_LAPS, isLiveOnTrack, isPostRace, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 import type { TranslatorState } from "../state.js";
 import type { FuelStats } from "./fuel-laps.js";
@@ -75,13 +78,6 @@ export const FUEL_CALLOUT_MARGIN_MAX_LAPS = 3;
  * the same debounce floor the #465 tracker uses for refuel-aware accounting.
  */
 const REFUEL_EPSILON_L = 0.01;
-
-/**
- * `SessionLapsRemainEx` sentinel in sessions without a lap limit (timed
- * races) — the translator's `UNLIMITED_LAPS`. At or above it the reading is
- * not a lap count, so race-coverage suppression treats it as unknown.
- */
-const SESSION_LAPS_UNLIMITED = 32767;
 
 /**
  * Sanitize a raw `fuelCalloutMarginLaps` global-settings value into a usable
@@ -158,7 +154,11 @@ export function diffFuelLapsLeft(
   // onward (a cool-down "box this lap" would be equally wrong, the #657
   // precedent) and on the player's own final lap — the #772 white-flag
   // crossing latch, which works in timed races too, where the lap counter
-  // below reads the unlimited sentinel.
+  // below reads the unlimited sentinel. DELIBERATE TRADE-OFF: this silence
+  // is unconditional — even an estimate saying the tank won't last to the
+  // line stays quiet on the final lap, because at the estimator's ±margin
+  // precision a final-lap shortage call is more often noise than a real
+  // splash-and-dash opportunity (decided in the #866 review).
   if (isPostRace(telemetry) || state.whiteLastLapFired) return;
 
   const stats = getStats();
@@ -171,22 +171,25 @@ export function diffFuelLapsLeft(
 
   // Race-coverage suppression, part 2 (issue #866): in a lap-limited race,
   // when the post-margin count covers the remaining race distance there is
-  // nothing to refuel for. `count` and `SessionLapsRemainEx` share the same
-  // "includes the current lap" shape (#776), so the comparison is
+  // nothing to refuel for. The two values have DIFFERENT shapes — `count`
+  // means full laps completable AFTER the current one, while the raw counter
+  // INCLUDES the current lap (#776) — so the −1 bridges them:
   // `count >= raw − 1` (full laps needed after the current one). The dedup
   // floor is deliberately NOT advanced: coverage is re-evaluated every lap,
   // so a burn-rate spike that shrinks the estimate below the race distance
   // still announces. An unknown reading (missing field, negative, the timed
-  // sentinel) keeps announcing — silence only on a positive "fuel covers
-  // the race" determination.
+  // sentinel) keeps announcing — this comparison suppresses only on a
+  // positive "fuel covers the race" determination. Note the final lap
+  // (raw 1) suppresses unconditionally since `count` is clamped to 0 — the
+  // same deliberate trade-off as part 1 above.
   const rawLapsRemain = telemetry.SessionLapsRemainEx;
 
   if (
     typeof rawLapsRemain === "number" &&
     Number.isFinite(rawLapsRemain) &&
     rawLapsRemain >= 0 &&
-    rawLapsRemain < SESSION_LAPS_UNLIMITED &&
-    count >= Math.max(0, rawLapsRemain - 1)
+    rawLapsRemain < IRSDK_UNLIMITED_LAPS &&
+    count >= rawLapsRemain - 1
   ) {
     return;
   }
