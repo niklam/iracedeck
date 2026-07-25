@@ -3,6 +3,9 @@ import audioAssetsManifest from "@iracedeck/audio-assets/manifest.json" with { t
 import { AudioNative } from "@iracedeck/audio-native";
 import { initializeAudioScenarios, scanDriverNames, scanRaceEngineerVoices } from "@iracedeck/audio-scenarios";
 import {
+  CORNER_NAME_CALLOUT_SETTING_KEYS,
+  type CornerNameCalloutId,
+  type CornerNameSnapshot,
   DAMAGE_CALLOUT_SETTING_KEYS,
   type DamageCalloutId,
   FLAG_CALLOUT_SETTING_KEYS,
@@ -178,6 +181,7 @@ import {
   initializeSimEventsIracing,
   isPitActionsAllowed,
   isRaceFinished,
+  sanitizeCornerCalloutLeadSeconds,
   sanitizeFuelCalloutMarginLaps,
 } from "@iracedeck/sim-events-iracing";
 import { readFileSync } from "node:fs";
@@ -234,6 +238,10 @@ const eventBus = initializeEventBus(adapter.createLogger("EventBus"));
 initializeSimEventsIracing(eventBus, getController(), adapter.createLogger("SimEventsIracing"), {
   getFuelLapsLeftMarginLaps: () =>
     sanitizeFuelCalloutMarginLaps((getGlobalSettings() as Record<string, unknown>).fuelCalloutMarginLaps),
+  // Corner-name announcement lead (issue #888) — same live-read + sanitize
+  // shape as the fuel margin above.
+  getCornerCalloutLeadSeconds: () =>
+    sanitizeCornerCalloutLeadSeconds((getGlobalSettings() as Record<string, unknown>).cornerCalloutLeadSeconds),
 });
 
 // Feed the translator's live per-car race order into the template-context builder
@@ -337,6 +345,15 @@ eventBus.subscribe("lap.completed", (ev) => {
       `isMultiClass=${ev.data.isMultiClass ?? "?"} lapsSincePositionChange=${ev.data.lapsSincePositionChange ?? "?"}`,
   );
   lapCompletedLogger.debug(`payload: ${JSON.stringify(ev.data)}`);
+});
+
+// Cache the most recent `cornerName.approaching` payload so the corner-name
+// scenario's clip resolver reads it at fire time (issue #888) — the lap-time
+// subscription pattern. Subscribed BEFORE registerPitCrew so this listener
+// runs first and the cache is fresh when the scenario evaluates.
+let lastCornerName: CornerNameSnapshot | null = null;
+eventBus.subscribe("cornerName.approaching", (ev) => {
+  lastCornerName = ev.data;
 });
 
 // Cache the most recent `race.finished` payload so the race-end scenario's
@@ -581,6 +598,11 @@ registerPitCrew(
   // pattern as the other callout families. Placed before the master gates so
   // the masters stay the last args.
   (id: FuelCalloutId) => (getGlobalSettings() as Record<string, unknown>)[FUEL_CALLOUT_SETTING_KEYS[id]] !== false,
+  // Corner-name callout opt-in (issue #888). Live-read, single subject.
+  (id: CornerNameCalloutId) =>
+    (getGlobalSettings() as Record<string, unknown>)[CORNER_NAME_CALLOUT_SETTING_KEYS[id]] !== false,
+  // Corner-name snapshot resolver (issue #888) — the cache populated above.
+  () => lastCornerName,
   // Race Engineer master gate (issue #515). Read live so a fresh install
   // (or a deck with no Pit Crew button mounted) suppresses every voice
   // scenario at dispatch time, independent of audio bus volumes.
