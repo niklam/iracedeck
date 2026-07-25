@@ -30,6 +30,11 @@ export const EVENT_TEMPLATES = [
     data: { mark: "three" },
   },
   {
+    name: "cornerName.approaching",
+    description: "Approaching a named corner in practice/test (issue #888)",
+    data: { name: "Eau Rouge", slug: "eau-rouge" },
+  },
+  {
     name: "pitService.readbackRequested",
     description: "Engineer pit-service readback (entry / refire / exit)",
     data: {
