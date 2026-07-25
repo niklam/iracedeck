@@ -1366,6 +1366,26 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     data: { mark: "pit-now" },
   },
 
+  // ── Corner names (issue #888) ──
+  // Fire the event directly so you audition name clips without driving a
+  // practice lap. Fire two in a row to confirm same-family preemption.
+  {
+    id: "corner-name-eau-rouge",
+    category: "Corner Names",
+    label: "Eau Rouge",
+    description: "Corner-name callout for a named corner (practice/test).",
+    event: "cornerName.approaching",
+    data: { name: "Eau Rouge", slug: "eau-rouge" },
+  },
+  {
+    id: "corner-name-turn-5",
+    category: "Corner Names",
+    label: "Turn 5",
+    description: 'Corner-name callout for a numbered corner — spoken as "Turn five".',
+    event: "cornerName.approaching",
+    data: { name: "Turn 5", slug: "turn-5" },
+  },
+
   // ── Fuel (issue #838) ──
   // Fire each laps-of-fuel-left count directly so you hear the clip without
   // burning down a real tank through `/api/telemetry`. Count 0 is the
