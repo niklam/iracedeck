@@ -20,7 +20,8 @@
   "dependencies": {
     "@iracedeck/event-bus": "workspace:*",
     "@iracedeck/iracing-sdk": "workspace:*",
-    "@iracedeck/logger": "workspace:*"
+    "@iracedeck/logger": "workspace:*",
+    "@iracedeck/track-data": "workspace:*"
   },
   "devDependencies": {
     "@tsconfig/node22": "22.0.5",

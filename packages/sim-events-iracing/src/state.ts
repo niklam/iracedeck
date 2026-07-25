@@ -7,6 +7,7 @@
  * first tick after connect seeds without firing spurious transition events.
  */
 import { type IncidentType, type PitBoxMark, type RadarState, TrackWetness } from "@iracedeck/event-bus";
+import type { CornerMarker } from "@iracedeck/track-data";
 
 export type MaterialSample = {
   t: number; // timestamp (ms since epoch)
@@ -55,6 +56,29 @@ export type TranslatorState = {
    * seeds correctly on the first tick the box becomes known.
    */
   pitBoxEntrySeeded: boolean;
+
+  // ── Corner-name callouts (issue #888) ────────────────────────────────────
+  /**
+   * Previous tick's lead point (`LapDistPct` + speed-scaled lead offset,
+   * folded into [0, 1)). `null` until the first valid practice tick seeds it
+   * silently; reset to `null` whenever the diff's gates fail so a return to
+   * the track starts a fresh pass.
+   */
+  cornerLeadPrevPct: number | null;
+  /**
+   * Marker indices (into the resolved marker array) already announced this
+   * lap. Cleared when the lead point wraps past S/F, on teleport re-anchor,
+   * and whenever the gates fail.
+   */
+  cornerSpoken: Set<number>;
+  /**
+   * Cache key (`${TrackID}|${SessionNum}`) for the resolved corner markers —
+   * the same invalidation pattern as `trackLengthKey`.
+   */
+  cornerMarkersKey: string;
+  /** Resolved corner markers for the current track, `null` when not in the dataset. */
+  cornerMarkers: CornerMarker[] | null;
+
   /**
    * Whether the current lap began at pit exit. Set true by `diffPitLane`
    * when emitting `pitLane.exited`; cleared by `diffLifecycle` when
@@ -612,6 +636,11 @@ export function createInitialState(): TranslatorState {
     pitApproachCooldownUntil: 0,
     pitBoxMarksSpoken: new Set(),
     pitBoxEntrySeeded: false,
+
+    cornerLeadPrevPct: null,
+    cornerSpoken: new Set(),
+    cornerMarkersKey: "",
+    cornerMarkers: null,
 
     flagStateInitialized: false,
     activeFlags: new Set(),
