@@ -3,20 +3,27 @@
  *
  * On a Stream Deck+ dial, rotation cycles the camera or the focused car — the
  * dial's `mode` selects the target and the turn direction replaces the keypad
- * cycle modes' explicit next/previous setting (clockwise = next,
- * counter-clockwise = previous). The touch strip's small top line is always the
- * MODE name (CAMERA / SUB-CAMERA / CAR # / POSITION / DRIVING CAM); the main
- * content identifies the thing that mode acts on:
+ * cycle modes' explicit next/previous setting. Clockwise = next for every mode
+ * EXCEPT race-position, whose default is flipped (issue #884): clockwise
+ * selects the car AHEAD (decreasing position number), because "next position"
+ * would otherwise mean losing places. The `reverseRotation` setting inverts
+ * the active mode's default mapping (see `clockwiseDirection`). The touch
+ * strip's small top line is always the MODE name (CAMERA / SUB-CAMERA / CAR #
+ * / POSITION / DRIVING CAM); the main content identifies the thing that mode
+ * acts on, flanked by dimmed side previews that follow the EFFECTIVE mapping —
+ * the left slot is always the counter-clockwise detent's target and the right
+ * slot the clockwise one, so preview == execution holds under both the
+ * race-position default flip and the reverse option:
  *   - camera → the current camera group's icon + name, flanked by the dimmed
  *     enabled-subset neighbours one detent either way,
  *   - sub-camera → the current camera's NAME within the focused group, flanked
  *     by the dimmed adjacent cameras (same `Cameras[]` order the dispatch steps),
  *   - car-number → the focused car's number large in the centre, flanked by the
- *     prev / next car numbers,
+ *     neighbouring car numbers,
  *   - race-position → the focused car's race POSITION large in the centre
  *     (`P<pos>`, the primary readout — issue #803 rework) with its car number
- *     smaller beneath it, flanked by the dimmed prev / next POSITION previews
- *     (no car numbers at side size),
+ *     smaller beneath it, flanked by the dimmed POSITION previews one detent
+ *     either way (no car numbers at side size),
  *   - driving → the current camera group's icon + name ONLY. The driving cycle
  *     hands `group ± 1` to iRacing, which resolves and wraps it internally, so
  *     there is no coherent neighbour to preview — better none than a lying one.
@@ -99,8 +106,32 @@ function isCycleMode(mode: DialMode): mode is CycleDialMode {
   return mode === "camera" || mode === "sub-camera" || mode === "driving";
 }
 
-/** Rotation direction; clockwise (`ticks > 0`) advances, counter-clockwise goes back. */
+/**
+ * A rotation's dispatch direction in the cycled ordering (camera list, car
+ * numbers ascending, race positions ascending). Which PHYSICAL turn maps to
+ * which direction is decided by `clockwiseDirection` (issue #884).
+ */
 export type Direction = "next" | "previous";
+
+function oppositeDirection(direction: Direction): Direction {
+  return direction === "next" ? "previous" : "next";
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * The `Direction` a clockwise detent dispatches for a mode. Race-position's
+ * default is flipped (issue #884): clockwise selects the car AHEAD — its
+ * "next" means the position NUMBER increases, i.e. falling back through the
+ * field, which nobody reads as forward. Every other mode keeps clockwise =
+ * next. `reverseRotation` inverts the active mode's default mapping (for
+ * race-position, that restores the pre-#884 clockwise → P# increases feel).
+ */
+export function clockwiseDirection(mode: DialMode, reverseRotation: boolean): Direction {
+  const defaultClockwise: Direction = mode === "race-position" ? "previous" : "next";
+
+  return reverseRotation ? oppositeDirection(defaultClockwise) : defaultClockwise;
+}
 
 /**
  * The actions a dial-button / touch gesture (Push, Long Press, Tap Display,
@@ -175,6 +206,16 @@ export const DialSettings = z
     // preprocess maps the pre-rework enum value "car" onto "car-number" so a
     // persisted legacy dial keeps working (its gestures / colors untouched).
     mode: z.preprocess((v) => (v === "car" ? "car-number" : v), z.enum(DIAL_MODES).default("car-number")),
+    // Inverts the active mode's rotation mapping (issue #884). Deliberately NO
+    // migration: an unchecked box means the NEW race-position default
+    // (clockwise = the car ahead); checking it restores the pre-#884 feel
+    // there, and flips clockwise to "previous" in every other mode. The
+    // union+transform is the sdpi checkbox convention — z.coerce.boolean()
+    // would turn the persisted string "false" into true.
+    reverseRotation: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(false),
     // Push (short press) — fires on dialUp. Default None (blind-safe rule).
     pressAction: z.enum(GESTURE_ACTIONS).default("none"),
     // Long Press (held dial button past the threshold, no rotation) — fires on dialUp.
@@ -341,12 +382,16 @@ export interface CarouselSlot {
   glyph: CarouselGlyph | null;
 }
 
-/** The car-number carousel readouts: the focused car's number plus its ascending-order neighbours. */
+/**
+ * The car-number carousel readouts: the focused car's number plus its
+ * ascending-order neighbours, already assigned to their STRIP SIDES — left =
+ * the counter-clockwise detent's target, right = the clockwise one (#884).
+ */
 export interface CarCarouselView {
   /** Focused car's display number (no `#`), or null out of a session. */
   center: string | null;
-  prev: string | null;
-  next: string | null;
+  left: string | null;
+  right: string | null;
 }
 
 /**
@@ -354,17 +399,18 @@ export interface CarCarouselView {
  * primary centre readout) and its car number (the secondary label beneath
  * it), plus the dimmed side previews — themselves POSITIONS, not car
  * numbers, since a side badge only needs to say "one detent away is P<n>"
- * (issue #803 rework).
+ * (issue #803 rework). Sides follow the EFFECTIVE rotation mapping (#884):
+ * left = the counter-clockwise detent's target, right = the clockwise one.
  */
 export interface RacePositionCarouselView {
   /** Focused car's race position, or null when unclassified (pace/safety car). */
   centerPosition: number | null;
   /** Focused car's display number (no `#`), or null out of a session. */
   centerCarNumber: string | null;
-  /** Recovery-aware target position one detent back (see `computeRacePositionTarget`). */
-  prevPosition: number | null;
-  /** Recovery-aware target position one detent forward. */
-  nextPosition: number | null;
+  /** Recovery-aware target position one counter-clockwise detent away (see `computeRacePositionTarget`). */
+  leftPosition: number | null;
+  /** Recovery-aware target position one clockwise detent away. */
+  rightPosition: number | null;
 }
 
 function svgWrap(w: number, h: number, inner: string): string {
@@ -414,7 +460,8 @@ function placeGlyph(glyph: CarouselGlyph, cx: number, cy: number, size: number, 
  *
  * Renders the camera-carousel strip: the mode-name title on top, the current
  * group's icon in the centre with its name beneath, flanked by the smaller
- * dimmed previous / next groups. Driving mode passes `prev`/`next` as `null` for
+ * dimmed neighbour groups — `left` is the counter-clockwise detent's target,
+ * `right` the clockwise one (#884). Driving mode passes both as `null` for
  * a current-only render (no coherent neighbour to preview). Falls back to a
  * centred identity label out of a session (no current group).
  */
@@ -425,8 +472,8 @@ export function renderCameraCarousel(args: {
   title: string;
   identityLabel: string;
   current: CarouselSlot | null;
-  prev: CarouselSlot | null;
-  next: CarouselSlot | null;
+  left: CarouselSlot | null;
+  right: CarouselSlot | null;
 }): string {
   const { width: w, height: h, colors } = args;
 
@@ -436,8 +483,8 @@ export function renderCameraCarousel(args: {
 
   // Side slots (dimmed), drawn behind the centre.
   for (const [slot, cx] of [
-    [args.prev, w * 0.18],
-    [args.next, w * 0.82],
+    [args.left, w * 0.18],
+    [args.right, w * 0.82],
   ] as const) {
     if (!slot) continue;
 
@@ -463,9 +510,10 @@ export function renderCameraCarousel(args: {
  *
  * Renders the sub-camera carousel: the mode-name title on top, the current
  * camera's NAME within the focused group large in the centre, flanked by the
- * smaller dimmed previous / next camera names (the same `Cameras[]` order the
- * dispatch steps through). Falls back to a centred identity label out of a
- * session (no current camera).
+ * smaller dimmed adjacent camera names (the same `Cameras[]` order the
+ * dispatch steps through) — `left` is the counter-clockwise detent's target,
+ * `right` the clockwise one (#884). Falls back to a centred identity label
+ * out of a session (no current camera).
  */
 export function renderSubCameraCarousel(args: {
   width: number;
@@ -474,8 +522,8 @@ export function renderSubCameraCarousel(args: {
   title: string;
   identityLabel: string;
   current: string | null;
-  prev: string | null;
-  next: string | null;
+  left: string | null;
+  right: string | null;
 }): string {
   const { width: w, height: h, colors } = args;
 
@@ -484,8 +532,8 @@ export function renderSubCameraCarousel(args: {
   const parts: string[] = [dialPanel(w, h, colors), titleLine(w, h, args.title, colors)];
 
   for (const [name, cx] of [
-    [args.prev, w * 0.15],
-    [args.next, w * 0.85],
+    [args.left, w * 0.15],
+    [args.right, w * 0.85],
   ] as const) {
     if (!name) continue;
 
@@ -506,8 +554,9 @@ export function renderSubCameraCarousel(args: {
  *
  * Renders the car-number carousel strip: the mode-name title on top, the
  * focused car's number large in the centre, flanked by the smaller dimmed
- * previous / next car numbers. Falls back to a centred identity label out of
- * a session (no focused car number).
+ * neighbouring car numbers — `left` is the counter-clockwise detent's target,
+ * `right` the clockwise one (#884). Falls back to a centred identity label
+ * out of a session (no focused car number).
  */
 export function renderCarCarousel(args: {
   width: number;
@@ -516,8 +565,8 @@ export function renderCarCarousel(args: {
   title: string;
   identityLabel: string;
   center: string | null;
-  prev: string | null;
-  next: string | null;
+  left: string | null;
+  right: string | null;
 }): string {
   const { width: w, height: h, colors } = args;
 
@@ -526,8 +575,8 @@ export function renderCarCarousel(args: {
   const parts: string[] = [dialPanel(w, h, colors), titleLine(w, h, args.title, colors)];
 
   for (const [num, cx] of [
-    [args.prev, w * 0.16],
-    [args.next, w * 0.84],
+    [args.left, w * 0.16],
+    [args.right, w * 0.84],
   ] as const) {
     if (!num) continue;
 
@@ -549,13 +598,13 @@ export function renderCarCarousel(args: {
  * Renders the race-position carousel strip: the mode-name title on top, the
  * focused car's race POSITION large in the centre (`P<pos>`, the primary
  * readout — issue #803 rework) with its car number smaller beneath it,
- * flanked by the smaller dimmed previous / next POSITION previews (the SAME
- * recovery-aware targets the rotation focuses — see
- * `computeRacePositionTarget`). When the focused car has no classified
- * position (the pace / safety car), the centre falls back to a number-only
- * readout rather than a lying `P` badge; the side previews still show the
- * recovery targets. Falls back to a centred identity label out of a session
- * (no focused car number).
+ * flanked by the smaller dimmed POSITION previews (the SAME recovery-aware
+ * targets the rotation focuses — see `computeRacePositionTarget`; `left` is
+ * the counter-clockwise detent's target, `right` the clockwise one, #884).
+ * When the focused car has no classified position (the pace / safety car),
+ * the centre falls back to a number-only readout rather than a lying `P`
+ * badge; the side previews still show the recovery targets. Falls back to a
+ * centred identity label out of a session (no focused car number).
  */
 export function renderRacePositionCarousel(args: {
   width: number;
@@ -565,8 +614,8 @@ export function renderRacePositionCarousel(args: {
   identityLabel: string;
   centerPosition: number | null;
   centerCarNumber: string | null;
-  prevPosition: number | null;
-  nextPosition: number | null;
+  leftPosition: number | null;
+  rightPosition: number | null;
 }): string {
   const { width: w, height: h, colors } = args;
 
@@ -575,8 +624,8 @@ export function renderRacePositionCarousel(args: {
   const parts: string[] = [dialPanel(w, h, colors), titleLine(w, h, args.title, colors)];
 
   for (const [pos, cx] of [
-    [args.prevPosition, w * 0.16],
-    [args.nextPosition, w * 0.84],
+    [args.leftPosition, w * 0.16],
+    [args.rightPosition, w * 0.84],
   ] as const) {
     if (pos === null) continue;
 
@@ -718,12 +767,14 @@ export class CameraDialSurface {
       ctx.rotatedWhilePressed = true;
     }
 
-    // One step per rotate event (direction from the tick sign). The camera
-    // commands compute the next car/group/position from the CURRENT telemetry,
-    // which only advances after a sim tick — so re-issuing them N times in one
-    // event would re-target the same neighbour, not step N. One detent = one
-    // step; a continued spin arrives as further rotate events.
-    const direction: Direction = ticks > 0 ? "next" : "previous";
+    // One step per rotate event (direction from the tick sign through the
+    // mode's effective clockwise mapping, #884). The camera commands compute
+    // the next car/group/position from the CURRENT telemetry, which only
+    // advances after a sim tick — so re-issuing them N times in one event
+    // would re-target the same neighbour, not step N. One detent = one step;
+    // a continued spin arrives as further rotate events.
+    const clockwise = clockwiseDirection(dial.mode, dial.reverseRotation);
+    const direction: Direction = ticks > 0 ? clockwise : oppositeDirection(clockwise);
     this.dispatchRotation(dial.mode, direction);
     this.host.logger.info("Camera dial rotated");
     this.host.logger.debug(`${dial.mode} ${direction}`);
@@ -914,11 +965,18 @@ export class CameraDialSurface {
     }
   }
 
-  /** Builds the camera carousel view from the current group + enabled subset. */
-  private cameraCarouselSlots(telemetry: TelemetryData | null): {
+  /**
+   * Builds the camera carousel view from the current group + enabled subset,
+   * with the neighbours on the sides their detents actually land on (#884):
+   * left = counter-clockwise, right = clockwise.
+   */
+  private cameraCarouselSlots(
+    telemetry: TelemetryData | null,
+    dial: DialSettings,
+  ): {
     current: CarouselSlot | null;
-    prev: CarouselSlot | null;
-    next: CarouselSlot | null;
+    left: CarouselSlot | null;
+    right: CarouselSlot | null;
   } {
     const enabled = this.host.getEnabledCameraGroups();
     const sessionGroups = getCameraGroupsFromSessionInfo(this.host.getSessionInfo());
@@ -928,21 +986,31 @@ export class CameraDialSurface {
     const slotFor = (group: (typeof carousel)["current"]): CarouselSlot | null =>
       group ? { name: group.groupName, glyph: this.host.getGroupGlyph(group.groupName) } : null;
 
-    return { current: slotFor(carousel.current), prev: slotFor(carousel.prev), next: slotFor(carousel.next) };
+    const clockwiseIsNext = clockwiseDirection(dial.mode, dial.reverseRotation) === "next";
+
+    return {
+      current: slotFor(carousel.current),
+      left: slotFor(clockwiseIsNext ? carousel.prev : carousel.next),
+      right: slotFor(clockwiseIsNext ? carousel.next : carousel.prev),
+    };
   }
 
-  /** Builds the car-number carousel view: the focused car plus its ascending-order neighbours. */
-  private carNumberCarouselView(telemetry: TelemetryData | null): CarCarouselView {
+  /**
+   * Builds the car-number carousel view: the focused car plus its
+   * ascending-order neighbours, each on the side its detent lands on (#884).
+   */
+  private carNumberCarouselView(telemetry: TelemetryData | null, dial: DialSettings): CarCarouselView {
     const sessionInfo = this.host.getSessionInfo();
     const camCarIdx = telemetry?.CamCarIdx;
     const center =
       typeof camCarIdx === "number" && camCarIdx >= 0 ? getCarNumberFromSessionInfo(sessionInfo, camCarIdx) : null;
     const cars = getAllCarNumbers(sessionInfo, true, true);
+    const clockwise = clockwiseDirection(dial.mode, dial.reverseRotation);
 
     return {
       center,
-      prev: computeCarNumberTarget(camCarIdx, cars, "previous")?.carNumber ?? null,
-      next: computeCarNumberTarget(camCarIdx, cars, "next")?.carNumber ?? null,
+      left: computeCarNumberTarget(camCarIdx, cars, oppositeDirection(clockwise))?.carNumber ?? null,
+      right: computeCarNumberTarget(camCarIdx, cars, clockwise)?.carNumber ?? null,
     };
   }
 
@@ -950,30 +1018,32 @@ export class CameraDialSurface {
    * Builds the race-position carousel view: the focused car's position (the
    * primary centre readout) and car number (secondary), plus the dimmed side
    * PREVIEWS — the SAME per-direction targets the rotation will focus
-   * (including the pace-car recovery: next → leader, previous → last), so the
-   * carousel never previews a position a detent doesn't actually land on.
+   * (including the pace-car recovery), each on the side its detent lands on
+   * (#884), so the carousel never previews a position a detent doesn't
+   * actually land on.
    */
-  private racePositionCarouselView(telemetry: TelemetryData | null): RacePositionCarouselView {
+  private racePositionCarouselView(telemetry: TelemetryData | null, dial: DialSettings): RacePositionCarouselView {
     const sessionInfo = this.host.getSessionInfo();
     const camCarIdx = telemetry?.CamCarIdx;
     const centerCarNumber =
       typeof camCarIdx === "number" && camCarIdx >= 0 ? getCarNumberFromSessionInfo(sessionInfo, camCarIdx) : null;
 
     const order = this.resolveOrder(telemetry);
-    const nextTarget = computeRacePositionTarget(camCarIdx, order, "next");
-    const prevTarget = computeRacePositionTarget(camCarIdx, order, "previous");
+    const clockwise = clockwiseDirection(dial.mode, dial.reverseRotation);
+    const cwTarget = computeRacePositionTarget(camCarIdx, order, clockwise);
+    const ccwTarget = computeRacePositionTarget(camCarIdx, order, oppositeDirection(clockwise));
 
-    if (!nextTarget || !prevTarget) {
-      return { centerPosition: null, centerCarNumber, prevPosition: null, nextPosition: null };
+    if (!cwTarget || !ccwTarget) {
+      return { centerPosition: null, centerCarNumber, leftPosition: null, rightPosition: null };
     }
 
     return {
       // null for an unclassified focused car → no position badge (falls back
       // to a number-only centre in the renderer).
-      centerPosition: nextTarget.currentPosition,
+      centerPosition: cwTarget.currentPosition,
       centerCarNumber,
-      prevPosition: prevTarget.targetPosition,
-      nextPosition: nextTarget.targetPosition,
+      leftPosition: ccwTarget.targetPosition,
+      rightPosition: cwTarget.targetPosition,
     };
   }
 
@@ -981,25 +1051,30 @@ export class CameraDialSurface {
    * Builds the sub-camera carousel view: the current camera's name within the
    * focused group plus the adjacent camera names, from the SAME
    * `computeSubCameraCarousel` the keypad/dial sub-camera dispatch steps through
-   * (over the group's `CameraInfo.Cameras[]`), so preview == execution.
+   * (over the group's `CameraInfo.Cameras[]`), each on the side its detent
+   * lands on (#884) — so preview == execution.
    */
-  private subCameraView(telemetry: TelemetryData | null): {
+  private subCameraView(
+    telemetry: TelemetryData | null,
+    dial: DialSettings,
+  ): {
     current: string | null;
-    prev: string | null;
-    next: string | null;
+    left: string | null;
+    right: string | null;
   } {
     const camGroup = telemetry?.CamGroupNumber;
 
-    if (typeof camGroup !== "number") return { current: null, prev: null, next: null };
+    if (typeof camGroup !== "number") return { current: null, left: null, right: null };
 
     const cameras = getCamerasInGroup(this.host.getSessionInfo(), camGroup);
     const camCameraNum = typeof telemetry?.CamCameraNumber === "number" ? telemetry.CamCameraNumber : null;
     const carousel = computeSubCameraCarousel(camCameraNum, cameras);
+    const clockwiseIsNext = clockwiseDirection(dial.mode, dial.reverseRotation) === "next";
 
     return {
       current: carousel.current?.cameraName ?? null,
-      prev: carousel.prev?.cameraName ?? null,
-      next: carousel.next?.cameraName ?? null,
+      left: (clockwiseIsNext ? carousel.prev : carousel.next)?.cameraName ?? null,
+      right: (clockwiseIsNext ? carousel.next : carousel.prev)?.cameraName ?? null,
     };
   }
 
@@ -1024,33 +1099,33 @@ export class CameraDialSurface {
     const telemetry = this.host.getTelemetry();
 
     if (dial.mode === "camera") {
-      const { current, prev, next } = this.cameraCarouselSlots(telemetry);
+      const { current, left, right } = this.cameraCarouselSlots(telemetry, dial);
 
-      return ["camera", prev?.name ?? "", current?.name ?? "", next?.name ?? ""].join("|");
+      return ["camera", left?.name ?? "", current?.name ?? "", right?.name ?? ""].join("|");
     }
 
     if (dial.mode === "car-number") {
-      const v = this.carNumberCarouselView(telemetry);
+      const v = this.carNumberCarouselView(telemetry, dial);
 
-      return ["car-number", v.center ?? "", v.prev ?? "", v.next ?? ""].join("|");
+      return ["car-number", v.center ?? "", v.left ?? "", v.right ?? ""].join("|");
     }
 
     if (dial.mode === "race-position") {
-      const v = this.racePositionCarouselView(telemetry);
+      const v = this.racePositionCarouselView(telemetry, dial);
 
       return [
         "race-position",
         v.centerCarNumber ?? "",
         v.centerPosition ?? "",
-        v.prevPosition ?? "",
-        v.nextPosition ?? "",
+        v.leftPosition ?? "",
+        v.rightPosition ?? "",
       ].join("|");
     }
 
     if (dial.mode === "sub-camera") {
-      const v = this.subCameraView(telemetry);
+      const v = this.subCameraView(telemetry, dial);
 
-      return ["sub-camera", v.prev ?? "", v.current ?? "", v.next ?? ""].join("|");
+      return ["sub-camera", v.left ?? "", v.current ?? "", v.right ?? ""].join("|");
     }
 
     // driving: current group only.
@@ -1071,38 +1146,38 @@ export class CameraDialSurface {
     const base = { width: 200, height: 100, colors, title: MODE_TITLE[dial.mode] } as const;
 
     if (dial.mode === "camera") {
-      const slots = this.cameraCarouselSlots(telemetry);
+      const slots = this.cameraCarouselSlots(telemetry, dial);
 
       return renderCameraCarousel({ ...base, identityLabel: MODE_IDENTITY.camera, ...slots });
     }
 
     if (dial.mode === "car-number") {
-      const view = this.carNumberCarouselView(telemetry);
+      const view = this.carNumberCarouselView(telemetry, dial);
 
       return renderCarCarousel({ ...base, identityLabel: MODE_IDENTITY["car-number"], ...view });
     }
 
     if (dial.mode === "race-position") {
-      const view = this.racePositionCarouselView(telemetry);
+      const view = this.racePositionCarouselView(telemetry, dial);
 
       return renderRacePositionCarousel({ ...base, identityLabel: MODE_IDENTITY["race-position"], ...view });
     }
 
     if (dial.mode === "sub-camera") {
-      const view = this.subCameraView(telemetry);
+      const view = this.subCameraView(telemetry, dial);
 
       return renderSubCameraCarousel({ ...base, identityLabel: MODE_IDENTITY["sub-camera"], ...view });
     }
 
     // driving: the current camera group icon + name only. The driving cycle
     // hands `group ± 1` to iRacing, which resolves and wraps it internally — no
-    // coherent neighbour to preview — so prev/next are null (current-only).
+    // coherent neighbour to preview — so the sides are null (current-only).
     return renderCameraCarousel({
       ...base,
       identityLabel: MODE_IDENTITY.driving,
       current: this.drivingCurrentSlot(telemetry),
-      prev: null,
-      next: null,
+      left: null,
+      right: null,
     });
   }
 

@@ -183,13 +183,20 @@
 			</sdpi-item>
 			<% if (locals.platform?.features?.dialFeedback !== false) { %>
 			<div class="ird-supporting-text">
-				Turn the dial to cycle the selected target — clockwise for next, counter-clockwise for previous. The touch strip shows a carousel: the current camera (or the focused car's number) in the centre, with the previous / next either side.
+				Turn the dial to cycle the selected target — clockwise for next, counter-clockwise for previous. In Race Position mode clockwise selects the car ahead (lower position number). The touch strip shows a carousel: the current camera (or the focused car's number) in the centre, with each turn direction's target at its side.
 			</div>
 			<% } else { %>
 			<div class="ird-supporting-text">
-				Turn the knob to cycle the selected target — clockwise for next, counter-clockwise for previous.
+				Turn the knob to cycle the selected target — clockwise for next, counter-clockwise for previous. In Race Position mode clockwise selects the car ahead (lower position number).
 			</div>
 			<% } %>
+
+			<sdpi-item label="Rotation">
+				<sdpi-checkbox setting="dial.reverseRotation" label="Reverse rotation"></sdpi-checkbox>
+			</sdpi-item>
+			<div class="ird-supporting-text">
+				Flips the turn direction of the selected mode.
+			</div>
 
 			<%# Camera-group subset for the dial's Cycle Camera mode — bound to the plugin-global cameraGroupSubset (#803). Keypad Cycle Camera buttons keep their pre-existing per-button subset and fall back to this global set only until they save one. %>
 			<div id="dial-camera-groups-section" class="hidden">
