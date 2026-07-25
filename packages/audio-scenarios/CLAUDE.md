@@ -23,6 +23,7 @@ below cover the audio-scenarios-only mechanics.
 - **Flags & race flow:** `flag-alerts.ts`, `start-lights.ts`, `rolling-start.ts`, `session-start.ts`, `race-start.ts`, `race-status.ts`, `race-end.ts`, `qualifying-invalidation.ts`.
 - **Pit:** `pit-approach.ts`, `pit-box.ts`, `pit-exit.ts`, `pit-limiter.ts`, `pit-status.ts`, `pit-window.ts`, `readback.ts`, `service-reminder.ts`, `stall-departure.ts`, `toggle-confirmations.ts`.
 - **Position & pace:** `position.ts`, `overtake.ts`, `lap-time.ts` — plus the shared helpers `position-readout.ts` (the cross-trigger "We're currently P[n]" readout + cooldown), `position-range.ts`, and `overtake-gate.ts` (leaf modules, not families).
+- **Track knowledge:** `corner-name.ts` — practice/test corner-name announcements (issue #888): snapshot-driven builder (`buildCornerNameScenario` + `registerCornerNameVars`), clip resolved as `poolRef("corner-names", slug)` from the event payload's slug, no radio frame, `queueable: false`, `family: "corner-name"`.
 - **Car & conditions:** `damage-alerts.ts`, `fuel-laps-left.ts`, `incidents.ts`, `track-conditions.ts`.
 - **Imperative engines (not scenario families):** `radar-engine.ts`, `spotter-engine.ts` — see the dedicated section below.
 - `welcome.ts` — the once-per-car-entry welcome on `driver.firstOnTrack` (~60% greeting probability as a conditional `if` step, optional driver-name clip, start-window tip).
