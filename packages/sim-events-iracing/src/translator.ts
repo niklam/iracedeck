@@ -38,7 +38,9 @@ import {
   TrkLoc,
 } from "@iracedeck/iracing-sdk";
 import { type ILogger, silentLogger } from "@iracedeck/logger";
+import { type CornerMarker, resolveCornerMarkers } from "@iracedeck/track-data";
 
+import { CORNER_CALLOUT_DEFAULT_LEAD_SECONDS, diffCornerName } from "./diff/corner-name.js";
 import { diffDamage } from "./diff/damage.js";
 import { diffFlags } from "./diff/flags.js";
 import {
@@ -146,6 +148,12 @@ type TranslatorInstance = {
    * setting (sanitized); defaults to the constant when no closure is given.
    */
   getFuelLapsLeftMarginLaps: () => number;
+  /**
+   * Live-read announcement lead (seconds) for the corner-name callouts
+   * (issue #888). Plugins wire it to the `cornerCalloutLeadSeconds` global
+   * setting (sanitized); defaults to the constant when no closure is given.
+   */
+  getCornerCalloutLeadSeconds: () => number;
 };
 
 /**
@@ -162,6 +170,13 @@ export type SimEventsIracingOptions = {
    * {@link FUEL_CALLOUT_DEFAULT_MARGIN_LAPS}.
    */
   getFuelLapsLeftMarginLaps?: () => number;
+  /**
+   * Live-read announcement lead (seconds) for the corner-name callouts
+   * (issue #888). Plugins compose it from the `cornerCalloutLeadSeconds`
+   * global setting via `sanitizeCornerCalloutLeadSeconds`. Default: a
+   * constant {@link CORNER_CALLOUT_DEFAULT_LEAD_SECONDS}.
+   */
+  getCornerCalloutLeadSeconds?: () => number;
 };
 
 let instance: TranslatorInstance | null = null;
@@ -196,6 +211,7 @@ export function initializeSimEventsIracing(
     freshConnectFireChecked: false,
     fuelLaps: createFuelLapTracker(),
     getFuelLapsLeftMarginLaps: options.getFuelLapsLeftMarginLaps ?? (() => FUEL_CALLOUT_DEFAULT_MARGIN_LAPS),
+    getCornerCalloutLeadSeconds: options.getCornerCalloutLeadSeconds ?? (() => CORNER_CALLOUT_DEFAULT_LEAD_SECONDS),
   };
 
   instance = self;
@@ -1388,6 +1404,21 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // convert the LapDistPct→box gap into meters; the box itself comes from
   // `DriverInfo.DriverPitTrkPct`. Runs after the track-length resolution above.
   diffPitBoxCountdown(self.state, telemetry, resolvePitBoxTrkPct(sessionInfo), trackLengthMeters, emit);
+  // Corner-name callouts (issue #888). Practice/test only — the diff gates on
+  // the classified session type (diff-side per #655, so the harness can fire
+  // the event directly). Reuses the cached trackLengthMeters for the
+  // speed→lap-fraction conversion; markers resolve from the bundled
+  // lovely-track-data snapshot keyed by WeekendInfo.TrackName. An empty raw
+  // session type means session info hasn't resolved — stay silent.
+  diffCornerName(
+    self.state,
+    telemetry,
+    sessionType !== "" && classifySessionType(sessionType) === "practice",
+    resolveCornerMarkersCached(self.state, sessionInfo, telemetry),
+    trackLengthMeters,
+    self.getCornerCalloutLeadSeconds,
+    emit,
+  );
   // Laps-of-fuel-left callout crossings (issue #838). Reads the SAME
   // validated estimator as Session Info's Laps to Empty (issue #748), over
   // the same default window, so the spoken count tracks the display. Runs
@@ -1683,6 +1714,36 @@ function resolveTrackLengthMeters(
   }
 
   return state.trackLengthMeters;
+}
+
+/**
+ * Resolve (and cache) the bundled corner markers for the current track
+ * (issue #888). Keyed by `(TrackID, SessionNum)` like the track-length cache;
+ * re-resolves when the key changes and retries while null in case the first
+ * YAML tick lacked `TrackName`. Returns `null` for tracks not in the dataset.
+ */
+function resolveCornerMarkersCached(
+  state: TranslatorState,
+  sessionInfo: Record<string, unknown> | null,
+  telemetry: TelemetryData,
+): CornerMarker[] | null {
+  if (!sessionInfo) return state.cornerMarkers;
+
+  const weekend = sessionInfo.WeekendInfo as Record<string, unknown> | undefined;
+  const key = `${String(weekend?.TrackID ?? "")}|${String(telemetry.SessionNum ?? "")}`;
+
+  if (key !== state.cornerMarkersKey) {
+    state.cornerMarkersKey = key;
+    state.cornerMarkers = null;
+  } else if (state.cornerMarkers !== null) {
+    return state.cornerMarkers;
+  }
+
+  const trackName = typeof weekend?.TrackName === "string" ? weekend.TrackName : "";
+
+  if (trackName !== "") state.cornerMarkers = resolveCornerMarkers(trackName);
+
+  return state.cornerMarkers;
 }
 
 function resolvePitSpeedLimit(
