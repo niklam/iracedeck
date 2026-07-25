@@ -7,7 +7,6 @@
     "module": "ES2022",
     "moduleResolution": "Bundler",
     "noImplicitOverride": true,
-    "resolveJsonModule": true,
     "outDir": "dist",
     "rootDir": "src"
   },
