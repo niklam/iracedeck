@@ -10,7 +10,12 @@
 import { processAndCopyAudioAssets, wipeProcessedCache } from "@iracedeck/audio-assets/build";
 import { AudioNative } from "@iracedeck/audio-native";
 import { initializeAudioScenarios } from "@iracedeck/audio-scenarios";
-import { type LapCompletedSnapshot, registerPitCrew, setRadarEnabled } from "@iracedeck/audio-scenarios/pit-crew";
+import {
+  type CornerNameSnapshot,
+  type LapCompletedSnapshot,
+  registerPitCrew,
+  setRadarEnabled,
+} from "@iracedeck/audio-scenarios/pit-crew";
 import { AudioBus, initializeAudio } from "@iracedeck/audio-service";
 import { initGlobalSettings, onGlobalSettingsChange, resolveActiveRaceEngineerVoice } from "@iracedeck/deck-core";
 import { initializeEventBus } from "@iracedeck/event-bus";
@@ -94,6 +99,14 @@ async function main(): Promise<void> {
     lastLapCompleted = ev.data;
   });
 
+  // Cache the most recent `cornerName.approaching` payload so the corner-name
+  // scenario's clip resolver can read it at fire time (issue #888). Same
+  // subscribe-before-registerPitCrew ordering as the lap-time cache above.
+  let lastCornerName: CornerNameSnapshot | null = null;
+  eventBus.subscribe("cornerName.approaching", (ev) => {
+    lastCornerName = ev.data;
+  });
+
   // Wire the pit-action cooldown so the harness sees the same suppression
   // window the production plugins do, the readback-snapshot resolver so
   // deferred replays speak the current queue (issue #481), the
@@ -126,6 +139,22 @@ async function main(): Promise<void> {
     undefined, // getRaceFinishedSnapshot
     undefined, // getRaceStartCalloutEnabled
     () => getHarnessRaceStartSnapshot(),
+    undefined, // getOvertakeCalloutEnabled
+    undefined, // getOvertakeDriverName
+    undefined, // getLivePosition
+    undefined, // getOvertakeGate
+    undefined, // getPitBoxCalloutEnabled
+    undefined, // getSetupWarningMismatch
+    undefined, // getSpotterCalloutEnabled
+    undefined, // getSpotterTrackDirection
+    undefined, // getSpotterStillThereIntervalMs
+    undefined, // getSpotterNearestCarGapMeters
+    undefined, // getPitWindowCalloutEnabled
+    undefined, // getRollingStartCalloutEnabled
+    undefined, // getStartLightCalloutEnabled
+    undefined, // getFuelCalloutEnabled
+    undefined, // getCornerNameCalloutEnabled (issue #888)
+    () => lastCornerName, // getCornerNameSnapshot (issue #888)
   );
 
   // ── deck-core global-settings pipeline ──────────────────────────────────

@@ -855,6 +855,9 @@ importers:
       '@iracedeck/logger':
         specifier: workspace:*
         version: link:../logger
+      '@iracedeck/track-data':
+        specifier: workspace:*
+        version: link:../track-data
     devDependencies:
       '@tsconfig/node22':
         specifier: 22.0.5

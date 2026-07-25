@@ -251,6 +251,16 @@ The engineer also stays quiet when refueling wouldn't help: in a lap-limited rac
 
 Which counts you hear is configurable per count under **Race Engineer Callouts → Fuel** — see [the opt-in list below](#race-engineer-callouts-per-subject-opt-inout).
 
+## Corner names (practice & test)
+
+When you're learning a track, coaching videos, setup guides, and community references name corners — *"brake later into Eau Rouge"* — rather than cite distances. In **practice and test sessions** the Race Engineer announces each named corner as you approach it: just the bare name — *"Eau Rouge."*, *"Turn five."* — timed to land **before** the corner, not in it. The lead scales with your speed: the call fires when your projected position a configurable number of seconds ahead (default **1 second**, tunable 0–5 s under **Race Engineer Callouts → Corner call lead**) crosses the corner's entry marker, so a fast approach announces earlier down the road than a slow one. Keep the lead short — through a sequence of consecutive corners a long lead blurs the calls together; a fresher corner always preempts one still being spoken.
+
+Each corner announces once per lap. Resetting to the pits or getting towed starts a fresh run — the corners announce again on your next pass. Nothing is announced while you drive down pit road, in race or qualifying sessions, while watching a replay, or when you're out of the car.
+
+Corner data © 2025 [Lovely Sim Racing](https://github.com/Lovely-Sim-Racing/lovely-track-data) (lovely-track-data, modified: pruned and normalized for iRaceDeck), corner names by Racing Circuits — [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/), used with permission — thank you! The dataset covers roughly 68 iRacing track configurations with named turns; tracks outside it simply stay silent, and dataset updates ship with plugin releases.
+
+One opt-in lives under **Race Engineer Callouts → Corner Names**, enabled by default — see [the opt-in list below](#race-engineer-callouts-per-subject-opt-inout).
+
 ## Spotter (side-awareness calls)
 
 The Race Engineer voices spoken side-awareness as cars come and go alongside you — "Car left.", "Two cars right.", "Three wide.", a de-escalation "One car left.", combined swaps like "Clear right. Car left.", and a final "Clear." — plus a short repeating "Still there." reminder for as long as a car stays beside you. This is a **Race Engineer voice callout family** (like flags, position, or lap time), not a separate Stream Deck mode or button: it's gated by the Race Engineer master (the **Race Engineer Toggle** button) plus two Property Inspector opt-ins, both on by default. With the engineer off, the spotter is silent.
@@ -358,6 +368,11 @@ Under **Fuel**, each laps-of-fuel-left count has its own checkbox (see [Laps of 
 - **10 … 1 laps of fuel left** — the per-count mid-lap estimation callouts.
 - **Box this lap** — the *"Box this lap for fuel."* call when the tank won't cover another full lap.
 - **Fuel margin (laps)** (`fuelCalloutMarginLaps`, 0–3 in 0.1 steps, default 0.3) — the safety margin subtracted from the estimate before it is spoken. Higher values make the engineer call you in earlier. Read live, so a change takes effect on the next lap's announcement.
+
+Under **Corner Names**, one callout is toggleable, enabled by default (see [Corner names (practice & test)](#corner-names-practice--test) above for the full behavior):
+
+- **Corner names (practice/test)** (`calloutEnabledCornerNames`) — the per-corner name announcement in practice and test sessions. Disabling silences the whole family.
+- **Corner call lead (seconds)** (`cornerCalloutLeadSeconds`, 0–5 in 0.5 steps, default 1) — how far before the corner the name is spoken, scaled by your speed. Read live, so a change takes effect on the next corner.
 
 Under **Spotter**, two callouts are toggleable, both enabled by default (see [Spotter (side-awareness calls)](#spotter-side-awareness-calls) above for the full behavior):
 

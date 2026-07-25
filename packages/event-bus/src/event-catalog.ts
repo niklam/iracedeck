@@ -303,6 +303,18 @@ export type SimEventMap = {
    */
   "pitBox.countdown": SimEvent<"pitBox.countdown", { mark: PitBoxMark }>;
   /**
+   * Approaching a named corner in a practice/test session (issue #888).
+   * Emitted by the sim translator when the speed-scaled lead point (current
+   * position + lead-seconds × speed) crosses a corner's start marker from the
+   * bundled `@iracedeck/track-data` snapshot. Open-vocabulary payload: `name`
+   * is the normalized display name ("Eau Rouge", "Turn 5") and `slug` the
+   * clip base (`corner-names/<slug>-01.mp3`) — the slug rides in the payload
+   * so audio consumers never import the dataset package. Once per corner per
+   * lap; the audio scenario's `family: "corner-name"` lets consecutive
+   * corners preempt an in-flight name cleanly.
+   */
+  "cornerName.approaching": SimEvent<"cornerName.approaching", { name: string; slug: string }>;
+  /**
    * Pit-service readback request (issue #476). Fired by the sim translator
    * at three moments during a pit stop:
    *   - "entry"        — first onPitRoad off→on transition

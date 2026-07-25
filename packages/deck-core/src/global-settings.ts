@@ -577,6 +577,16 @@ export const GlobalSettingsSchema = z
       .transform((val) => val === true || val === "true")
       .default(true),
     /**
+     * Opt-in for the corner-name callouts (issue #888). One boolean for the
+     * family — the engineer announces the upcoming corner's name in practice
+     * and test sessions. Defaults `true`. Canonical id↔key mapping in
+     * `CORNER_NAME_CALLOUT_SETTING_KEYS` (in `@iracedeck/audio-scenarios`).
+     */
+    calloutEnabledCornerNames: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    /**
      * Opt-in for the position-change callout (issues #566 + #569). One boolean
      * for the family — the engineer announces the driver's current position
      * after a qualifying or race lap whose effective position changed. In
@@ -761,6 +771,18 @@ export const GlobalSettingsSchema = z
     fuelCalloutMarginLaps: z.preprocess(
       (val) => (val == null || (typeof val === "string" && val.trim() === "") ? undefined : val),
       z.coerce.number().min(0).max(3).default(0.3).catch(0.3),
+    ),
+    /**
+     * Corner-name announcement lead in seconds (issue #888) — how far ahead
+     * of the corner the name is spoken, scaled by current speed in the
+     * translator. Slider 0–5 s, default 1. Must match the
+     * `CORNER_CALLOUT_*_SECONDS` constants in `@iracedeck/sim-events-iracing`.
+     * Same preprocess/catch shape as `fuelCalloutMarginLaps` so empty-ish or
+     * malformed persisted values fall back instead of aborting the parse.
+     */
+    cornerCalloutLeadSeconds: z.preprocess(
+      (val) => (val == null || (typeof val === "string" && val.trim() === "") ? undefined : val),
+      z.coerce.number().min(0).max(5).default(1).catch(1),
     ),
     /**
      * Setup-name mismatch warning opt-in (issue #625). When on, the Race

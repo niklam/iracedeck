@@ -51,6 +51,13 @@ import { TrackDirection } from "@iracedeck/sim-events-iracing";
 
 import type { Scenario } from "../../dsl.js";
 import { getScenarioEngine, isAudioScenariosInitialized } from "../../interpreter.js";
+import {
+  buildCornerNameScenario,
+  type CornerNameCalloutId,
+  type CornerNameSnapshotResolver,
+  registerCornerNameVars,
+  SCENARIO_ID_TO_CORNER_NAME_ID,
+} from "./corner-name.js";
 import { DAMAGE_ALERTS } from "./damage-alerts.js";
 import { FLAG_ALERTS } from "./flag-alerts.js";
 import { FUEL_LAPS_LEFT_ALERTS } from "./fuel-laps-left.js";
@@ -170,6 +177,13 @@ export {
   type PitReadbackCalloutId,
   type ReadbackSnapshotResolver,
 } from "./readback.js";
+export {
+  buildCornerNameScenario,
+  CORNER_NAME_CALLOUT_SETTING_KEYS,
+  type CornerNameCalloutId,
+  type CornerNameSnapshot,
+  type CornerNameSnapshotResolver,
+} from "./corner-name.js";
 export {
   buildLapTimeScenario,
   LAP_TIME_CALLOUT_SETTING_KEYS,
@@ -889,6 +903,18 @@ export function registerPitCrew(
   // last per-callout opt-in. Default `() => true` preserves legacy behavior
   // for tests that don't supply a closure.
   getFuelCalloutEnabled: (id: FuelCalloutId) => boolean = () => true,
+  // User opt-in for the corner-name callouts (issue #888). Single subject
+  // gating the practice/test corner announcements. Same gate-at-event-arrival
+  // shape as the other callout families. Placed before the master gate so the
+  // master stays the last per-callout opt-in. Default `() => true` preserves
+  // legacy behavior for tests that don't supply a closure.
+  getCornerNameCalloutEnabled: (id: CornerNameCalloutId) => boolean = () => true,
+  // Corner-name snapshot (issue #888). Plugins cache the latest
+  // `cornerName.approaching` payload (the lap-time subscription pattern) and
+  // pass the getter; the clip resolver reads it at expansion time. Default
+  // `() => null` makes the scenario's `where:` short-circuit — a safe stub
+  // for tests.
+  getCornerNameSnapshot: CornerNameSnapshotResolver = () => null,
   // Master gate for the Race Engineer voice subsystem (issue #515).
   // Plugins wire this to `pitCrewRaceEngineerEnabled === true`. Read live
   // on every event arrival and applied as the OUTERMOST wrapper around
@@ -1159,6 +1185,21 @@ export function registerPitCrew(
         SCENARIO_ID_TO_LAP_TIME_ID,
         getLapTimeCalloutEnabled,
         "lap-time callout",
+        logger,
+      ),
+    ),
+  );
+
+  // Corner-name callout (issue #888). Register-vars-before-scenario ordering,
+  // same as session-start / lap-time.
+  registerCornerNameVars(engine, getCornerNameSnapshot);
+  engine.defineScenario(
+    wrapWithMaster(
+      wrapCalloutScenario(
+        buildCornerNameScenario(getCornerNameSnapshot),
+        SCENARIO_ID_TO_CORNER_NAME_ID,
+        getCornerNameCalloutEnabled,
+        "corner-name callout",
         logger,
       ),
     ),

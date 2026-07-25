@@ -234,6 +234,7 @@ flowchart TB
   dc --> sdk
   sei --> eb
   sei --> sdk
+  sei --> tdata
   asc --> asv
   asc --> aasset
   asc --> eb

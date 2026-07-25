@@ -31,6 +31,12 @@ export {
   type OvertakeTelemetryGate,
   type SimEventsIracingOptions,
 } from "./translator.js";
+export {
+  CORNER_CALLOUT_DEFAULT_LEAD_SECONDS,
+  CORNER_CALLOUT_LEAD_MAX_SECONDS,
+  CORNER_CALLOUT_LEAD_MIN_SECONDS,
+  sanitizeCornerCalloutLeadSeconds,
+} from "./diff/corner-name.js";
 export { DAMAGE_DEBOUNCE_MS } from "./diff/damage.js";
 export { YELLOW_CLEARED_HOLD_MS } from "./diff/flags.js";
 export {
