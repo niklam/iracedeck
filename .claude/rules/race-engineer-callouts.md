@@ -48,6 +48,7 @@ voice scenario as the outermost short-circuit.
 | **Bus event catalog** | `packages/event-bus/src/event-catalog.ts` |
 | **Bus public exports** | `packages/event-bus/src/index.ts` (export new enums as values, not just types) |
 | **iRacing translator** | `packages/sim-events-iracing/src/diff/<name>.ts` + wired into `translator.ts` |
+| **Bundled track datasets (corner markers)** | `packages/track-data/` — committed snapshot + resolver + attribution constants; refresh via `scripts/refresh-corner-data.mjs` (issue #888) |
 | **Translator state** | `packages/sim-events-iracing/src/state.ts` (TranslatorState type AND createInitialState — keep them in sync) |
 | **Audio pools** | `packages/audio-scenarios/src/catalog/pit-crew/pools.ts` — `POOL_REGISTRY` maps pool name → manifest `(group, base)`; members (`<base>-NN.mp3`) derive per-voice from the manifest at fire time (issue #664) |
 | **Audio scenarios** | `packages/audio-scenarios/src/catalog/pit-crew/<family>.ts` |
