@@ -436,6 +436,8 @@ describe("START_LIGHT_ALERTS opt-in gating (issue #480)", () => {
       undefined, // getRollingStartCalloutEnabled
       (id) => startLightEnabled.get(id) ?? true, // getStartLightCalloutEnabled
       undefined, // getFuelCalloutEnabled (issue #838)
+      undefined, // getCornerNameCalloutEnabled (issue #888)
+      undefined, // getCornerNameSnapshot (issue #888)
       undefined, // getRaceEngineerMasterEnabled
       undefined, // getRadarMasterEnabled
     );

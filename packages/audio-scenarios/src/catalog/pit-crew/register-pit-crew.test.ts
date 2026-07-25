@@ -464,6 +464,8 @@ beforeEach(() => {
     (id) => rollingStartEnabled.get(id) ?? true, // getRollingStartCalloutEnabled (issue #660)
     () => true, // getStartLightCalloutEnabled (issue #480)
     (id) => fuelEnabled.get(id) ?? true, // getFuelCalloutEnabled (issue #838)
+    undefined, // getCornerNameCalloutEnabled (issue #888)
+    undefined, // getCornerNameSnapshot (issue #888)
     () => voiceMasterEnabled,
     undefined, // getRadarMasterEnabled
   );
