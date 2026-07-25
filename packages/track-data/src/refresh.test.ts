@@ -53,6 +53,17 @@ describe("buildCornerSnapshot", () => {
     ]);
   });
 
+  it("skips malformed turn members without aborting the file", () => {
+    const snapshot = buildCornerSnapshot([
+      {
+        trackId: "x",
+        turn: [null, 42, "junk", ["nested"], { start: 0.3, name: "Ok" }],
+      },
+    ]);
+
+    expect(snapshot.x).toEqual([{ start: 0.3, name: "Ok" }]);
+  });
+
   it("drops out-of-range positions", () => {
     const snapshot = buildCornerSnapshot([
       {

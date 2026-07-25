@@ -37,10 +37,13 @@ describe("listCornerNames", () => {
 });
 
 describe("CORNER_DATA_ATTRIBUTION", () => {
-  it("carries the grant-mandated credits", () => {
+  it("carries the grant-mandated credits and the CC BY-NC-SA payload", () => {
     expect(CORNER_DATA_ATTRIBUTION.sourceName).toBe("Lovely Sim Racing");
+    expect(CORNER_DATA_ATTRIBUTION.copyrightNotice).toBe("© 2025 Lovely Sim Racing");
     expect(CORNER_DATA_ATTRIBUTION.sourceUrl).toBe("https://github.com/Lovely-Sim-Racing/lovely-track-data");
     expect(CORNER_DATA_ATTRIBUTION.license).toBe("CC BY-NC-SA 4.0");
+    expect(CORNER_DATA_ATTRIBUTION.licenseUrl).toBe("https://creativecommons.org/licenses/by-nc-sa/4.0/");
+    expect(CORNER_DATA_ATTRIBUTION.changesNotice).not.toBe("");
     expect(CORNER_DATA_ATTRIBUTION.namesCredit).toBe("Racing Circuits");
   });
 });

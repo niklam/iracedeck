@@ -28,7 +28,12 @@ export function buildCornerSnapshot(files: RawTrackFile[]): CornerSnapshot {
 
     const entries: CornerSnapshotEntry[] = [];
 
-    for (const raw of file.turn as Record<string, unknown>[]) {
+    for (const value of file.turn) {
+      // Defensive: a null / primitive / array member of `turn` must skip, not
+      // abort the whole refresh.
+      if (value === null || typeof value !== "object" || Array.isArray(value)) continue;
+
+      const raw = value as Record<string, unknown>;
       const name = typeof raw.name === "string" ? raw.name : typeof raw.naem === "string" ? raw.naem : "";
       const position = typeof raw.start === "number" ? raw.start : typeof raw.marker === "number" ? raw.marker : null;
 

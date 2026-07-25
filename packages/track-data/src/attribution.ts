@@ -10,7 +10,11 @@
  */
 export const CORNER_DATA_ATTRIBUTION = {
   sourceName: "Lovely Sim Racing",
+  copyrightNotice: "© 2025 Lovely Sim Racing",
   sourceUrl: "https://github.com/Lovely-Sim-Racing/lovely-track-data",
   license: "CC BY-NC-SA 4.0",
+  licenseUrl: "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+  /** CC BY-NC-SA requires disclosing modifications to the licensed material. */
+  changesNotice: "Pruned and normalized corner-marker data.",
   namesCredit: "Racing Circuits",
 } as const;
