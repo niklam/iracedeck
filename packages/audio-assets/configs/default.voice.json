@@ -6058,6 +6058,1764 @@
         "text": "Hold your line.",
         "seed": 2
       }
+    ],
+    "corner-names": [
+      {
+        "name": "130r-01",
+        "text": "One-thirty R."
+      },
+      {
+        "name": "180-01",
+        "text": "One eighty."
+      },
+      {
+        "name": "1er-ralentisseur-01",
+        "text": "Premier Ralentisseur."
+      },
+      {
+        "name": "200r-01",
+        "text": "Two hundred R."
+      },
+      {
+        "name": "2e-ralentisseur-01",
+        "text": "Deuxième Ralentisseur."
+      },
+      {
+        "name": "abbey-01",
+        "text": "Abbey."
+      },
+      {
+        "name": "acque-minerali-01",
+        "text": "Acque Minerali."
+      },
+      {
+        "name": "adelaide-01",
+        "text": "Adelaide."
+      },
+      {
+        "name": "adenauer-forst-01",
+        "text": "Adenauer Forst."
+      },
+      {
+        "name": "advan-bogen-01",
+        "text": "ADVAN-Bogen."
+      },
+      {
+        "name": "advanced-petroleum-corner-01",
+        "text": "Advanced Petroleum Corner."
+      },
+      {
+        "name": "agostini-01",
+        "text": "Agostini."
+      },
+      {
+        "name": "aintree-01",
+        "text": "Aintree."
+      },
+      {
+        "name": "alex-criville-01",
+        "text": "Alex Criville."
+      },
+      {
+        "name": "amman-kurve-01",
+        "text": "Amman Kurve."
+      },
+      {
+        "name": "andretti-hairpin-01",
+        "text": "Andretti Hairpin."
+      },
+      {
+        "name": "angel-nieto-01",
+        "text": "Angel Nieto."
+      },
+      {
+        "name": "anti-banked-curve-01",
+        "text": "Anti-Banked Curve."
+      },
+      {
+        "name": "antoniusbuche-01",
+        "text": "Antoniusbuche."
+      },
+      {
+        "name": "aremberg-01",
+        "text": "Aremberg."
+      },
+      {
+        "name": "arie-luyendijk-bocht-01",
+        "text": "Arie Luyendijk Bocht."
+      },
+      {
+        "name": "arrabbiata-1-01",
+        "text": "Arrabbiata one."
+      },
+      {
+        "name": "arrabbiata-2-01",
+        "text": "Arrabbiata two."
+      },
+      {
+        "name": "aspar-01",
+        "text": "Aspar."
+      },
+      {
+        "name": "attwood-curve-01",
+        "text": "Attwood Curve."
+      },
+      {
+        "name": "auto-motor-und-sport-kurve-01",
+        "text": "auto motor und sport-Kurve."
+      },
+      {
+        "name": "ayrton-senna-chicane-01",
+        "text": "Ayrton Senna Chicane."
+      },
+      {
+        "name": "banc-sabadell-01",
+        "text": "Banc Sabadell."
+      },
+      {
+        "name": "bauer-kurve-01",
+        "text": "Bauer Kurve."
+      },
+      {
+        "name": "becketts-01",
+        "text": "Becketts."
+      },
+      {
+        "name": "bergwerk-01",
+        "text": "Bergwerk."
+      },
+      {
+        "name": "bico-de-pato-01",
+        "text": "Bico de Pato."
+      },
+      {
+        "name": "big-bend-01",
+        "text": "Big Bend."
+      },
+      {
+        "name": "bill-mitchell-bend-01",
+        "text": "Bill Mitchell Bend."
+      },
+      {
+        "name": "biondetti-1-01",
+        "text": "Biondetti one."
+      },
+      {
+        "name": "biondetti-2-01",
+        "text": "Biondetti two."
+      },
+      {
+        "name": "bishop-bend-01",
+        "text": "Bishop Bend."
+      },
+      {
+        "name": "bitch-01",
+        "text": "Bitch."
+      },
+      {
+        "name": "blanchimont-01",
+        "text": "Blanchimont."
+      },
+      {
+        "name": "bocht-10-01",
+        "text": "Bocht ten."
+      },
+      {
+        "name": "bocht-9-01",
+        "text": "Bocht nine."
+      },
+      {
+        "name": "bolderbergbocht-01",
+        "text": "Bolderbergbocht."
+      },
+      {
+        "name": "bomb-hole-01",
+        "text": "Bomb Hole."
+      },
+      {
+        "name": "borgo-san-lorenzo-01",
+        "text": "Borgo San Lorenzo."
+      },
+      {
+        "name": "britten-s-01",
+        "text": "Britten's."
+      },
+      {
+        "name": "brooklands-01",
+        "text": "Brooklands."
+      },
+      {
+        "name": "bruennchen-01",
+        "text": "Bruennchen."
+      },
+      {
+        "name": "brundle-01",
+        "text": "Brundle."
+      },
+      {
+        "name": "bruxelles-01",
+        "text": "Bruxelles."
+      },
+      {
+        "name": "bucine-01",
+        "text": "Bucine."
+      },
+      {
+        "name": "butte-01",
+        "text": "Butte."
+      },
+      {
+        "name": "campsa-01",
+        "text": "Campsa."
+      },
+      {
+        "name": "campus-01",
+        "text": "Campus."
+      },
+      {
+        "name": "canada-corner-01",
+        "text": "Canada Corner."
+      },
+      {
+        "name": "caracciola-karussell-01",
+        "text": "Caracciola-Karussell."
+      },
+      {
+        "name": "carousel-01",
+        "text": "Carousel."
+      },
+      {
+        "name": "casanova-01",
+        "text": "Casanova."
+      },
+      {
+        "name": "cascades-01",
+        "text": "Cascades."
+      },
+      {
+        "name": "casio-triangle-01",
+        "text": "Casio Triangle."
+      },
+      {
+        "name": "champion-curve-01",
+        "text": "Champion Curve."
+      },
+      {
+        "name": "chapel-01",
+        "text": "Chapel."
+      },
+      {
+        "name": "chateaou-d-eau-01",
+        "text": "Chateaou d'Eau."
+      },
+      {
+        "name": "chicane-01",
+        "text": "Chicane."
+      },
+      {
+        "name": "chicane-racc-01",
+        "text": "Chicane RACC."
+      },
+      {
+        "name": "chute-01",
+        "text": "Chute."
+      },
+      {
+        "name": "clark-curve-01",
+        "text": "Clark Curve."
+      },
+      {
+        "name": "clay-hill-01",
+        "text": "Clay Hill."
+      },
+      {
+        "name": "club-01",
+        "text": "Club."
+      },
+      {
+        "name": "coca-cola-corner-01",
+        "text": "Coca-Cola Corner."
+      },
+      {
+        "name": "complexe-du-lycee-01",
+        "text": "Complexe du Lycee."
+      },
+      {
+        "name": "coppice-01",
+        "text": "Coppice."
+      },
+      {
+        "name": "copse-01",
+        "text": "Copse."
+      },
+      {
+        "name": "coram-01",
+        "text": "Coram."
+      },
+      {
+        "name": "correntaio-01",
+        "text": "Correntaio."
+      },
+      {
+        "name": "courbe-d-antares-01",
+        "text": "Courbe d'Antares."
+      },
+      {
+        "name": "courbe-des-hunaudieres-01",
+        "text": "Courbe des Hunaudieres."
+      },
+      {
+        "name": "courbe-du-buisson-01",
+        "text": "Courbe du Buisson."
+      },
+      {
+        "name": "courbe-du-golf-01",
+        "text": "Courbe du Golf."
+      },
+      {
+        "name": "courbe-dunlop-01",
+        "text": "Courbe Dunlop."
+      },
+      {
+        "name": "courbe-paul-frere-01",
+        "text": "Courbe Paul Frere."
+      },
+      {
+        "name": "craner-curves-01",
+        "text": "Craner Curves."
+      },
+      {
+        "name": "cunningham-01",
+        "text": "Cunningham."
+      },
+      {
+        "name": "curva-biassono-01",
+        "text": "Curva Biassono."
+      },
+      {
+        "name": "curva-del-carro-01",
+        "text": "Curva del Carro."
+      },
+      {
+        "name": "curva-del-rio-01",
+        "text": "Curva del Rio."
+      },
+      {
+        "name": "curva-del-serraglio-01",
+        "text": "Curva del Serraglio."
+      },
+      {
+        "name": "curva-do-sol-01",
+        "text": "Curva do Sol."
+      },
+      {
+        "name": "curva-misano-01",
+        "text": "Curva Misano."
+      },
+      {
+        "name": "curva-parabolica-01",
+        "text": "Curva Parabolica."
+      },
+      {
+        "name": "curva-quericia-01",
+        "text": "Curva Quericia."
+      },
+      {
+        "name": "curva-tramonto-01",
+        "text": "Curva Tramonto."
+      },
+      {
+        "name": "curvone-01",
+        "text": "Curvone."
+      },
+      {
+        "name": "deer-leap-01",
+        "text": "Deer Leap."
+      },
+      {
+        "name": "degner-01",
+        "text": "Degner."
+      },
+      {
+        "name": "denton-s-01",
+        "text": "Denton's."
+      },
+      {
+        "name": "descente-de-la-chapelle-01",
+        "text": "Descente de la Chapelle."
+      },
+      {
+        "name": "descida-do-lago-01",
+        "text": "Descida do Lago."
+      },
+      {
+        "name": "dingle-dell-01",
+        "text": "Dingle Dell."
+      },
+      {
+        "name": "diving-turn-01",
+        "text": "Diving Turn."
+      },
+      {
+        "name": "doettinger-hoehe-01",
+        "text": "Doettinger Hoehe."
+      },
+      {
+        "name": "double-gauche-01",
+        "text": "Double Gauche."
+      },
+      {
+        "name": "dreifach-rechts-01",
+        "text": "Dreifach-Rechts."
+      },
+      {
+        "name": "druids-01",
+        "text": "Druids."
+      },
+      {
+        "name": "druids-corner-01",
+        "text": "Druids Corner."
+      },
+      {
+        "name": "dry-sack-01",
+        "text": "Dry Sack."
+      },
+      {
+        "name": "dunlop-01",
+        "text": "Dunlop."
+      },
+      {
+        "name": "dunlop-kehre-01",
+        "text": "Dunlop-Kehre."
+      },
+      {
+        "name": "earste-01",
+        "text": "Earste."
+      },
+      {
+        "name": "eau-rouge-01",
+        "text": "Eau Rouge."
+      },
+      {
+        "name": "einfahrt-parabolika-01",
+        "text": "Einfahrt Parabolika."
+      },
+      {
+        "name": "elf-01",
+        "text": "Elf."
+      },
+      {
+        "name": "eschbach-01",
+        "text": "Eschbach."
+      },
+      {
+        "name": "esse-01",
+        "text": "Esse."
+      },
+      {
+        "name": "esses-01",
+        "text": "Esses."
+      },
+      {
+        "name": "esses-d-indianapolis-01",
+        "text": "Esses d'Indianapolis."
+      },
+      {
+        "name": "esses-du-karting-01",
+        "text": "Esses du Karting."
+      },
+      {
+        "name": "estoril-01",
+        "text": "Estoril."
+      },
+      {
+        "name": "europcar-01",
+        "text": "Europcar."
+      },
+      {
+        "name": "exmuehle-01",
+        "text": "ExMuehle."
+      },
+      {
+        "name": "expo-92-01",
+        "text": "Expo ninety-two."
+      },
+      {
+        "name": "fangio-chicane-01",
+        "text": "Fangio Chicane."
+      },
+      {
+        "name": "farm-curve-01",
+        "text": "Farm Curve."
+      },
+      {
+        "name": "ferradura-01",
+        "text": "Ferradura."
+      },
+      {
+        "name": "ferrari-01",
+        "text": "Ferrari."
+      },
+      {
+        "name": "first-corner-01",
+        "text": "First Corner."
+      },
+      {
+        "name": "fish-hook-01",
+        "text": "Fish Hook."
+      },
+      {
+        "name": "flugplatz-01",
+        "text": "Flugplatz."
+      },
+      {
+        "name": "fogarty-esses-01",
+        "text": "Fogarty Esses."
+      },
+      {
+        "name": "ford-kurve-01",
+        "text": "Ford-Kurve."
+      },
+      {
+        "name": "forest-s-elbow-01",
+        "text": "Forest's Elbow."
+      },
+      {
+        "name": "foster-s-dip-01",
+        "text": "Foster's Dip."
+      },
+      {
+        "name": "fuchsroehre-01",
+        "text": "Fuchsroehre."
+      },
+      {
+        "name": "galgenkopf-01",
+        "text": "Galgenkopf."
+      },
+      {
+        "name": "galp-01",
+        "text": "Galp."
+      },
+      {
+        "name": "gendebien-bend-01",
+        "text": "Gendebien Bend."
+      },
+      {
+        "name": "gerlachbocht-01",
+        "text": "Gerlachbocht."
+      },
+      {
+        "name": "goddards-01",
+        "text": "Goddards."
+      },
+      {
+        "name": "golf-01",
+        "text": "Golf."
+      },
+      {
+        "name": "graham-hill-bend-01",
+        "text": "Graham Hill Bend."
+      },
+      {
+        "name": "grande-courbe-01",
+        "text": "Grande Courbe."
+      },
+      {
+        "name": "gresini-01",
+        "text": "GRESINI."
+      },
+      {
+        "name": "griffin-s-mount-01",
+        "text": "Griffin's Mount."
+      },
+      {
+        "name": "grosse-kuppe-kurve-01",
+        "text": "Grosse Kuppe-Kurve."
+      },
+      {
+        "name": "gurney-bend-01",
+        "text": "Gurney Bend."
+      },
+      {
+        "name": "hairpin-01",
+        "text": "Hairpin."
+      },
+      {
+        "name": "hairpin-corner-01",
+        "text": "Hairpin Corner."
+      },
+      {
+        "name": "hairpin-turn-01",
+        "text": "Hairpin Turn."
+      },
+      {
+        "name": "hamilton-01",
+        "text": "Hamilton."
+      },
+      {
+        "name": "hans-ernst-bocht-01",
+        "text": "Hans Ernst Bocht."
+      },
+      {
+        "name": "hasseroder-01",
+        "text": "Hasseröder."
+      },
+      {
+        "name": "hasseroeder-01",
+        "text": "Hasseroeder."
+      },
+      {
+        "name": "hatzenbach-01",
+        "text": "Hatzenbach."
+      },
+      {
+        "name": "hawthorn-bend-01",
+        "text": "Hawthorn Bend."
+      },
+      {
+        "name": "hedwigshoehe-01",
+        "text": "Hedwigshoehe."
+      },
+      {
+        "name": "heel-01",
+        "text": "Heel."
+      },
+      {
+        "name": "hell-corner-01",
+        "text": "Hell Corner."
+      },
+      {
+        "name": "hislop-s-01",
+        "text": "Hislop's."
+      },
+      {
+        "name": "hobbs-corner-01",
+        "text": "Hobbs Corner."
+      },
+      {
+        "name": "hog-pen-01",
+        "text": "Hog Pen."
+      },
+      {
+        "name": "hohe-acht-01",
+        "text": "Hohe Acht."
+      },
+      {
+        "name": "hoheneichen-01",
+        "text": "Hoheneichen."
+      },
+      {
+        "name": "hohenrain-01",
+        "text": "Hohenrain."
+      },
+      {
+        "name": "hollywood-01",
+        "text": "Hollywood."
+      },
+      {
+        "name": "honda-corner-01",
+        "text": "Honda Corner."
+      },
+      {
+        "name": "horseshoe-01",
+        "text": "Horseshoe."
+      },
+      {
+        "name": "hotel-01",
+        "text": "Hotel."
+      },
+      {
+        "name": "hugenholzbocht-01",
+        "text": "Hugenholzbocht."
+      },
+      {
+        "name": "imola-01",
+        "text": "Imola."
+      },
+      {
+        "name": "inner-loop-01",
+        "text": "Inner Loop."
+      },
+      {
+        "name": "island-bend-01",
+        "text": "Island Bend."
+      },
+      {
+        "name": "jacky-ickxbocht-01",
+        "text": "Jacky Ickxbocht."
+      },
+      {
+        "name": "jochen-rindtbocht-01",
+        "text": "Jochen Rindtbocht."
+      },
+      {
+        "name": "juncao-01",
+        "text": "Juncao."
+      },
+      {
+        "name": "kallenhard-01",
+        "text": "Kallenhard."
+      },
+      {
+        "name": "kanaalbocht-01",
+        "text": "Kanaalbocht."
+      },
+      {
+        "name": "karthallen-kurve-01",
+        "text": "Karthallen-Kurve."
+      },
+      {
+        "name": "kemmel-01",
+        "text": "Kemmel."
+      },
+      {
+        "name": "kesselchen-01",
+        "text": "Kesselchen."
+      },
+      {
+        "name": "kettle-bottoms-01",
+        "text": "Kettle Bottoms."
+      },
+      {
+        "name": "kitome-corner-01",
+        "text": "Kitome Corner."
+      },
+      {
+        "name": "kleine-chicane-01",
+        "text": "Kleine Chicane."
+      },
+      {
+        "name": "kleine-kuppe-kurve-01",
+        "text": "Kleine Kuppe-Kurve."
+      },
+      {
+        "name": "klostertal-01",
+        "text": "Klostertal."
+      },
+      {
+        "name": "knickerbrook-01",
+        "text": "Knickerbrook."
+      },
+      {
+        "name": "kumho-01",
+        "text": "Kumho."
+      },
+      {
+        "name": "l-epingle-01",
+        "text": "L'Epingle."
+      },
+      {
+        "name": "la-caixa-01",
+        "text": "La Caixa."
+      },
+      {
+        "name": "la-carrierasse-01",
+        "text": "La Carrierasse."
+      },
+      {
+        "name": "la-courmelle-01",
+        "text": "La Courmelle."
+      },
+      {
+        "name": "la-cuvette-01",
+        "text": "La cuvette."
+      },
+      {
+        "name": "la-servie-01",
+        "text": "La servie."
+      },
+      {
+        "name": "la-source-01",
+        "text": "La Source."
+      },
+      {
+        "name": "lagos-01",
+        "text": "Lagos."
+      },
+      {
+        "name": "laranjinha-01",
+        "text": "Laranjinha."
+      },
+      {
+        "name": "last-corner-01",
+        "text": "Last Corner."
+      },
+      {
+        "name": "last-curve-01",
+        "text": "Last Curve."
+      },
+      {
+        "name": "le-cavalet-01",
+        "text": "Le Cavalet."
+      },
+      {
+        "name": "le-mans-curve-01",
+        "text": "Le Mans Curve."
+      },
+      {
+        "name": "left-hook-01",
+        "text": "Left Hook."
+      },
+      {
+        "name": "les-combes-01",
+        "text": "Les Combes."
+      },
+      {
+        "name": "les-fagnes-01",
+        "text": "Les Fagnes."
+      },
+      {
+        "name": "lodge-corner-01",
+        "text": "Lodge Corner."
+      },
+      {
+        "name": "lorenzo-01",
+        "text": "Lorenzo."
+      },
+      {
+        "name": "lucien-bianchbocht-01",
+        "text": "Lucien Bianchbocht."
+      },
+      {
+        "name": "luco-01",
+        "text": "Luco."
+      },
+      {
+        "name": "luffield-01",
+        "text": "Luffield."
+      },
+      {
+        "name": "maggots-01",
+        "text": "Maggots."
+      },
+      {
+        "name": "maison-blanche-01",
+        "text": "Maison Blanche."
+      },
+      {
+        "name": "malmedy-01",
+        "text": "Malmedy."
+      },
+      {
+        "name": "mastersbocht-01",
+        "text": "Mastersbocht."
+      },
+      {
+        "name": "materassi-01",
+        "text": "Materassi."
+      },
+      {
+        "name": "mcdonald-s-01",
+        "text": "McDonald's."
+      },
+      {
+        "name": "mcleans-01",
+        "text": "McLeans."
+      },
+      {
+        "name": "mcphillamy-park-01",
+        "text": "McPhillamy Park."
+      },
+      {
+        "name": "melbourne-hairpin-01",
+        "text": "Melbourne Hairpin."
+      },
+      {
+        "name": "mercedes-01",
+        "text": "Mercedes."
+      },
+      {
+        "name": "mergulho-01",
+        "text": "Mergulho."
+      },
+      {
+        "name": "metzgesfeld-01",
+        "text": "Metzgesfeld."
+      },
+      {
+        "name": "michael-schumacher-s-01",
+        "text": "Michael-Schumacher-S."
+      },
+      {
+        "name": "michelin-01",
+        "text": "Michelin."
+      },
+      {
+        "name": "michelin-kurve-01",
+        "text": "Michelin-Kurve."
+      },
+      {
+        "name": "mike-knight-corner-01",
+        "text": "Mike Knight Corner."
+      },
+      {
+        "name": "mobil-1-kurve-01",
+        "text": "Mobil one Kurve."
+      },
+      {
+        "name": "momo-corner-01",
+        "text": "Momo Corner."
+      },
+      {
+        "name": "moraine-sweep-01",
+        "text": "Moraine Sweep."
+      },
+      {
+        "name": "moss-s-01",
+        "text": "Moss S."
+      },
+      {
+        "name": "motorsport-news-esses-01",
+        "text": "Motorsport News Esses."
+      },
+      {
+        "name": "murray-s-corner-01",
+        "text": "Murray's Corner."
+      },
+      {
+        "name": "murrays-01",
+        "text": "Murrays."
+      },
+      {
+        "name": "mutkurve-01",
+        "text": "Mutkurve."
+      },
+      {
+        "name": "nascar-bend-01",
+        "text": "Nascar Bend."
+      },
+      {
+        "name": "new-holland-01",
+        "text": "New Holland."
+      },
+      {
+        "name": "ngk-schikane-01",
+        "text": "NGK-Schikane."
+      },
+      {
+        "name": "niki-lauda-kurve-01",
+        "text": "Niki Lauda Kurve."
+      },
+      {
+        "name": "nissan-corner-01",
+        "text": "Nissan Corner."
+      },
+      {
+        "name": "nordkurve-01",
+        "text": "Nordkurve."
+      },
+      {
+        "name": "northern-bm-corner-01",
+        "text": "Northern BM Corner."
+      },
+      {
+        "name": "nuerburgring-01",
+        "text": "Nuerburgring."
+      },
+      {
+        "name": "o-brien-aluminium-dogleg-01",
+        "text": "O'Brien Aluminium Dogleg."
+      },
+      {
+        "name": "oak-tree-01",
+        "text": "Oak Tree."
+      },
+      {
+        "name": "oggies-01",
+        "text": "Oggies."
+      },
+      {
+        "name": "old-hairpin-01",
+        "text": "Old Hairpin."
+      },
+      {
+        "name": "old-hall-corner-01",
+        "text": "Old Hall Corner."
+      },
+      {
+        "name": "omega-kurve-01",
+        "text": "Omega-Kurve."
+      },
+      {
+        "name": "outer-loop-01",
+        "text": "Outer Loop."
+      },
+      {
+        "name": "paddock-bend-01",
+        "text": "Paddock Bend."
+      },
+      {
+        "name": "paddock-hill-bend-01",
+        "text": "Paddock Hill Bend."
+      },
+      {
+        "name": "palagio-01",
+        "text": "Palagio."
+      },
+      {
+        "name": "palmer-01",
+        "text": "Palmer."
+      },
+      {
+        "name": "parabolika-01",
+        "text": "Parabolika."
+      },
+      {
+        "name": "peluqui-01",
+        "text": "Peluqui."
+      },
+      {
+        "name": "penrite-corner-01",
+        "text": "Penrite Corner."
+      },
+      {
+        "name": "pflanzgarten-01",
+        "text": "Pflanzgarten."
+      },
+      {
+        "name": "pinheirinho-01",
+        "text": "Pinheirinho."
+      },
+      {
+        "name": "piper-corner-01",
+        "text": "Piper Corner."
+      },
+      {
+        "name": "piratella-01",
+        "text": "Piratella."
+      },
+      {
+        "name": "poggiosecco-01",
+        "text": "Poggiosecco."
+      },
+      {
+        "name": "portimao-01",
+        "text": "Portimao."
+      },
+      {
+        "name": "prima-curva-di-lesmo-01",
+        "text": "Prima Curva di Lesmo."
+      },
+      {
+        "name": "prima-variante-01",
+        "text": "Prima Variante."
+      },
+      {
+        "name": "primeira-01",
+        "text": "Primeira."
+      },
+      {
+        "name": "quarry-bend-01",
+        "text": "Quarry Bend."
+      },
+      {
+        "name": "queckenberg-kurve-01",
+        "text": "Queckenberg Kurve."
+      },
+      {
+        "name": "quiddelbacher-hoehe-01",
+        "text": "Quiddelbacher Hoehe."
+      },
+      {
+        "name": "raidillon-01",
+        "text": "Raidillon."
+      },
+      {
+        "name": "ralentisseur-dunlop-01",
+        "text": "Ralentisseur Dunlop."
+      },
+      {
+        "name": "ralf-waldmann-kurve-01",
+        "text": "Ralf-Waldmann-Kurve."
+      },
+      {
+        "name": "rauch-01",
+        "text": "Rauch."
+      },
+      {
+        "name": "recaro-corner-01",
+        "text": "Recaro Corner."
+      },
+      {
+        "name": "red-bull-mobile-01",
+        "text": "Red Bull Mobile."
+      },
+      {
+        "name": "redgate-01",
+        "text": "Redgate."
+      },
+      {
+        "name": "redman-corner-01",
+        "text": "Redman Corner."
+      },
+      {
+        "name": "reid-park-01",
+        "text": "Reid Park."
+      },
+      {
+        "name": "remus-01",
+        "text": "Remus."
+      },
+      {
+        "name": "renault-01",
+        "text": "Renault."
+      },
+      {
+        "name": "repsol-01",
+        "text": "Repsol."
+      },
+      {
+        "name": "revolver-corner-01",
+        "text": "Revolver Corner."
+      },
+      {
+        "name": "riches-01",
+        "text": "Riches."
+      },
+      {
+        "name": "rindt-01",
+        "text": "Rindt."
+      },
+      {
+        "name": "rivazza-01",
+        "text": "Rivazza."
+      },
+      {
+        "name": "rob-slotemakerbocht-01",
+        "text": "Rob Slotemakerbocht."
+      },
+      {
+        "name": "roberts-01",
+        "text": "Roberts."
+      },
+      {
+        "name": "roll-over-corner-01",
+        "text": "Roll-Over Corner."
+      },
+      {
+        "name": "roller-coaster-01",
+        "text": "Roller Coaster."
+      },
+      {
+        "name": "s-do-senna-01",
+        "text": "S do Senna."
+      },
+      {
+        "name": "s-du-tetre-rouge-01",
+        "text": "S du Tetre Rouge."
+      },
+      {
+        "name": "sachs-kurve-01",
+        "text": "Sachs-Kurve."
+      },
+      {
+        "name": "sachsen-kurve-01",
+        "text": "Sachsen Kurve."
+      },
+      {
+        "name": "sacramentshelling-01",
+        "text": "Sacramentshelling."
+      },
+      {
+        "name": "sagres-01",
+        "text": "Sagres."
+      },
+      {
+        "name": "samsung-01",
+        "text": "Samsung."
+      },
+      {
+        "name": "san-donato-01",
+        "text": "San Donato."
+      },
+      {
+        "name": "savelli-01",
+        "text": "Savelli."
+      },
+      {
+        "name": "scarperia-01",
+        "text": "Scarperia."
+      },
+      {
+        "name": "scheivlak-01",
+        "text": "Scheivlak."
+      },
+      {
+        "name": "schikane-01",
+        "text": "Schikane."
+      },
+      {
+        "name": "schlossgold-01",
+        "text": "Schlossgold."
+      },
+      {
+        "name": "schwalbenschwanz-01",
+        "text": "Schwalbenschwanz."
+      },
+      {
+        "name": "schwantz-curve-01",
+        "text": "Schwantz Curve."
+      },
+      {
+        "name": "schwedenkreuz-01",
+        "text": "Schwedenkreuz."
+      },
+      {
+        "name": "seat-01",
+        "text": "Seat."
+      },
+      {
+        "name": "seconda-curva-di-lesmo-01",
+        "text": "Seconda Curva di Lesmo."
+      },
+      {
+        "name": "seconda-variante-01",
+        "text": "Seconda Variante."
+      },
+      {
+        "name": "sheene-s-01",
+        "text": "Sheene's."
+      },
+      {
+        "name": "shell-corner-01",
+        "text": "Shell Corner."
+      },
+      {
+        "name": "shell-kurve-01",
+        "text": "Shell Kurve."
+      },
+      {
+        "name": "shell-oils-corner-01",
+        "text": "Shell Oils Corner."
+      },
+      {
+        "name": "sito-pons-01",
+        "text": "Sito Pons."
+      },
+      {
+        "name": "skyline-01",
+        "text": "Skyline."
+      },
+      {
+        "name": "snake-01",
+        "text": "Snake."
+      },
+      {
+        "name": "south-bend-01",
+        "text": "South Bend."
+      },
+      {
+        "name": "speaker-s-corner-01",
+        "text": "Speaker's Corner."
+      },
+      {
+        "name": "spiegelkurve-01",
+        "text": "Spiegelkurve."
+      },
+      {
+        "name": "spiral-01",
+        "text": "Spiral."
+      },
+      {
+        "name": "spitzkehre-01",
+        "text": "Spitzkehre."
+      },
+      {
+        "name": "spoon-curve-01",
+        "text": "Spoon Curve."
+      },
+      {
+        "name": "starkey-s-bridge-01",
+        "text": "Starkey's Bridge."
+      },
+      {
+        "name": "stavelot-01",
+        "text": "Stavelot."
+      },
+      {
+        "name": "stefan-bellof-s-01",
+        "text": "Stefan-Bellof-S."
+      },
+      {
+        "name": "sterrenwachtbocht-01",
+        "text": "Sterrenwachtbocht."
+      },
+      {
+        "name": "stirling-s-01",
+        "text": "Stirling's."
+      },
+      {
+        "name": "stowe-01",
+        "text": "Stowe."
+      },
+      {
+        "name": "suedkurve-01",
+        "text": "Suedkurve."
+      },
+      {
+        "name": "sulman-park-01",
+        "text": "Sulman Park."
+      },
+      {
+        "name": "sunset-bend-01",
+        "text": "Sunset Bend."
+      },
+      {
+        "name": "surtees-01",
+        "text": "Surtees."
+      },
+      {
+        "name": "t14-wall-of-champions-01",
+        "text": "Wall of Champions."
+      },
+      {
+        "name": "t15a-01",
+        "text": "Turn fifteen A."
+      },
+      {
+        "name": "t15b-01",
+        "text": "Turn fifteen B."
+      },
+      {
+        "name": "t17a-01",
+        "text": "Turn seventeen A."
+      },
+      {
+        "name": "t17b-01",
+        "text": "Turn seventeen B."
+      },
+      {
+        "name": "t17c-01",
+        "text": "Turn seventeen C."
+      },
+      {
+        "name": "t17d-01",
+        "text": "Turn seventeen D."
+      },
+      {
+        "name": "t18a-01",
+        "text": "Turn eighteen A."
+      },
+      {
+        "name": "t18b-01",
+        "text": "Turn eighteen B."
+      },
+      {
+        "name": "t19a-01",
+        "text": "Turn nineteen A."
+      },
+      {
+        "name": "t19b-01",
+        "text": "Turn nineteen B."
+      },
+      {
+        "name": "t22a-01",
+        "text": "Turn twenty-two A."
+      },
+      {
+        "name": "t22b-01",
+        "text": "Turn twenty-two B."
+      },
+      {
+        "name": "t3-t4-01",
+        "text": "Turn three and four."
+      },
+      {
+        "name": "t4b-01",
+        "text": "Turn four B."
+      },
+      {
+        "name": "t5a-01",
+        "text": "Turn five A."
+      },
+      {
+        "name": "t5b-01",
+        "text": "Turn five B."
+      },
+      {
+        "name": "t6-t7-01",
+        "text": "Turn six and seven."
+      },
+      {
+        "name": "t6b-01",
+        "text": "Turn six B."
+      },
+      {
+        "name": "t8-t9-01",
+        "text": "Turn eight and nine."
+      },
+      {
+        "name": "t8a-01",
+        "text": "Turn eight A."
+      },
+      {
+        "name": "t8b-01",
+        "text": "Turn eight B."
+      },
+      {
+        "name": "tarzanbocht-01",
+        "text": "Tarzanbocht."
+      },
+      {
+        "name": "terlamenbocht-01",
+        "text": "Terlamenbocht."
+      },
+      {
+        "name": "the-90-01",
+        "text": "The ninety."
+      },
+      {
+        "name": "the-bend-01",
+        "text": "The Bend."
+      },
+      {
+        "name": "the-carousel-01",
+        "text": "The Carousel."
+      },
+      {
+        "name": "the-chase-01",
+        "text": "The Chase."
+      },
+      {
+        "name": "the-corkscrew-01",
+        "text": "The Corkscrew."
+      },
+      {
+        "name": "the-cutting-01",
+        "text": "The Cutting."
+      },
+      {
+        "name": "the-dipper-01",
+        "text": "The Dipper."
+      },
+      {
+        "name": "the-esses-01",
+        "text": "The Esses."
+      },
+      {
+        "name": "the-kink-01",
+        "text": "The Kink."
+      },
+      {
+        "name": "the-loop-01",
+        "text": "The Loop."
+      },
+      {
+        "name": "the-sweeper-01",
+        "text": "The Sweeper."
+      },
+      {
+        "name": "tiergarten-01",
+        "text": "Tiergarten."
+      },
+      {
+        "name": "toe-01",
+        "text": "Toe."
+      },
+      {
+        "name": "tosa-01",
+        "text": "Tosa."
+      },
+      {
+        "name": "tower-turn-01",
+        "text": "Tower Turn."
+      },
+      {
+        "name": "triple-01",
+        "text": "Triple."
+      },
+      {
+        "name": "triple-gauche-01",
+        "text": "Triple Gauche."
+      },
+      {
+        "name": "turn-1-01",
+        "text": "Turn one."
+      },
+      {
+        "name": "turn-10-01",
+        "text": "Turn ten."
+      },
+      {
+        "name": "turn-10a-01",
+        "text": "Turn ten A."
+      },
+      {
+        "name": "turn-10b-01",
+        "text": "Turn ten B."
+      },
+      {
+        "name": "turn-11-01",
+        "text": "Turn eleven."
+      },
+      {
+        "name": "turn-12-01",
+        "text": "Turn twelve."
+      },
+      {
+        "name": "turn-12a-01",
+        "text": "Turn twelve A."
+      },
+      {
+        "name": "turn-12b-01",
+        "text": "Turn twelve B."
+      },
+      {
+        "name": "turn-13-01",
+        "text": "Turn thirteen."
+      },
+      {
+        "name": "turn-14-01",
+        "text": "Turn fourteen."
+      },
+      {
+        "name": "turn-15-01",
+        "text": "Turn fifteen."
+      },
+      {
+        "name": "turn-16-01",
+        "text": "Turn sixteen."
+      },
+      {
+        "name": "turn-17-01",
+        "text": "Turn seventeen."
+      },
+      {
+        "name": "turn-18-01",
+        "text": "Turn eighteen."
+      },
+      {
+        "name": "turn-19-01",
+        "text": "Turn nineteen."
+      },
+      {
+        "name": "turn-2-01",
+        "text": "Turn two."
+      },
+      {
+        "name": "turn-20-01",
+        "text": "Turn twenty."
+      },
+      {
+        "name": "turn-21-01",
+        "text": "Turn twenty-one."
+      },
+      {
+        "name": "turn-23-01",
+        "text": "Turn twenty-three."
+      },
+      {
+        "name": "turn-24-01",
+        "text": "Turn twenty-four."
+      },
+      {
+        "name": "turn-3-01",
+        "text": "Turn three."
+      },
+      {
+        "name": "turn-4-01",
+        "text": "Turn four."
+      },
+      {
+        "name": "turn-4b-01",
+        "text": "Turn four B."
+      },
+      {
+        "name": "turn-5-01",
+        "text": "Turn five."
+      },
+      {
+        "name": "turn-5a-01",
+        "text": "Turn five A."
+      },
+      {
+        "name": "turn-5b-01",
+        "text": "Turn five B."
+      },
+      {
+        "name": "turn-6-01",
+        "text": "Turn six."
+      },
+      {
+        "name": "turn-6b-01",
+        "text": "Turn six B."
+      },
+      {
+        "name": "turn-7-01",
+        "text": "Turn seven."
+      },
+      {
+        "name": "turn-8-01",
+        "text": "Turn eight."
+      },
+      {
+        "name": "turn-8a-01",
+        "text": "Turn eight A."
+      },
+      {
+        "name": "turn-8b-01",
+        "text": "Turn eight B."
+      },
+      {
+        "name": "turn-9-01",
+        "text": "Turn nine."
+      },
+      {
+        "name": "turn-9a-01",
+        "text": "Turn nine A."
+      },
+      {
+        "name": "turn-9b-01",
+        "text": "Turn nine B."
+      },
+      {
+        "name": "turn-9c-01",
+        "text": "Turn nine C."
+      },
+      {
+        "name": "turn-one-01",
+        "text": "Turn One."
+      },
+      {
+        "name": "turn-two-01",
+        "text": "Turn Two."
+      },
+      {
+        "name": "uphill-01",
+        "text": "Uphill."
+      },
+      {
+        "name": "vale-01",
+        "text": "Vale."
+      },
+      {
+        "name": "valvoline-kurve-01",
+        "text": "Valvoline Kurve."
+      },
+      {
+        "name": "variante-ascari-01",
+        "text": "Variante Ascari."
+      },
+      {
+        "name": "variante-del-parco-01",
+        "text": "Variante del Parco."
+      },
+      {
+        "name": "variante-tamburello-01",
+        "text": "Variante Tamburello."
+      },
+      {
+        "name": "variante-villeneuve-01",
+        "text": "Variante Villeneuve."
+      },
+      {
+        "name": "village-01",
+        "text": "Village."
+      },
+      {
+        "name": "villeneuve-chicane-01",
+        "text": "Villeneuve Chicane."
+      },
+      {
+        "name": "virage-corvette-01",
+        "text": "Virage Corvette."
+      },
+      {
+        "name": "virage-d-arnage-01",
+        "text": "Virage d'Arnage."
+      },
+      {
+        "name": "virage-de-mulsanne-01",
+        "text": "Virage de Mulsanne."
+      },
+      {
+        "name": "virage-du-camion-01",
+        "text": "Virage du Camion."
+      },
+      {
+        "name": "virage-du-pont-01",
+        "text": "Virage du Pont."
+      },
+      {
+        "name": "virage-du-raccordement-01",
+        "text": "Virage du Raccordement."
+      },
+      {
+        "name": "virage-du-tertre-rouge-01",
+        "text": "Virage du Tertre Rouge."
+      },
+      {
+        "name": "virage-ford-01",
+        "text": "Virage Ford."
+      },
+      {
+        "name": "virage-porsche-01",
+        "text": "Virage Porsche."
+      },
+      {
+        "name": "virage-senna-01",
+        "text": "Virage Senna."
+      },
+      {
+        "name": "volkswagen-kurve-01",
+        "text": "Volkswagen-Kurve."
+      },
+      {
+        "name": "wagon-bend-01",
+        "text": "Wagon Bend."
+      },
+      {
+        "name": "warsteiner-kurve-01",
+        "text": "Warsteiner-Kurve."
+      },
+      {
+        "name": "water-tower-01",
+        "text": "Water Tower."
+      },
+      {
+        "name": "wehrseifen-01",
+        "text": "Wehrseifen."
+      },
+      {
+        "name": "west-bend-01",
+        "text": "West Bend."
+      },
+      {
+        "name": "westfield-bend-01",
+        "text": "Westfield Bend."
+      },
+      {
+        "name": "williams-01",
+        "text": "Williams."
+      },
+      {
+        "name": "wilson-01",
+        "text": "Wilson."
+      },
+      {
+        "name": "wippermann-01",
+        "text": "Wippermann."
+      },
+      {
+        "name": "woodcote-01",
+        "text": "Woodcote."
+      },
+      {
+        "name": "wuerth-01",
+        "text": "Wuerth."
+      },
+      {
+        "name": "yokohama-bridge-01",
+        "text": "Yokohama Bridge."
+      },
+      {
+        "name": "yokohama-s-01",
+        "text": "Yokohama-S."
+      },
+      {
+        "name": "zeppelin-kurve-01",
+        "text": "Zeppelin Kurve."
+      }
     ]
   }
 }
