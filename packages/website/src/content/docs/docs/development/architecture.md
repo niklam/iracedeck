@@ -204,6 +204,7 @@ flowchart TB
     pinat["iracing-native"]:::sim
     anat["audio-native"]:::audio
     aasset["audio-assets"]:::audio
+    tdata["track-data"]:::sim
   end
 
   psd --> aelg
