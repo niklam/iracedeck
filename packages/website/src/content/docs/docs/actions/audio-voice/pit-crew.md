@@ -257,7 +257,7 @@ When you're learning a track, coaching videos, setup guides, and community refer
 
 Each corner announces once per lap. Resetting to the pits or getting towed starts a fresh run — the corners announce again on your next pass. Nothing is announced while you drive down pit road, in race or qualifying sessions, while watching a replay, or when you're out of the car.
 
-Corner data comes from [Lovely Sim Racing's lovely-track-data](https://github.com/Lovely-Sim-Racing/lovely-track-data) dataset (corner names by Racing Circuits, CC BY-NC-SA 4.0, used with permission — thank you!), covering roughly 68 iRacing track configurations with named turns. Tracks outside the dataset simply stay silent, and dataset updates ship with plugin releases.
+Corner data © 2025 [Lovely Sim Racing](https://github.com/Lovely-Sim-Racing/lovely-track-data) (lovely-track-data, modified: pruned and normalized for iRaceDeck), corner names by Racing Circuits — [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/), used with permission — thank you! The dataset covers roughly 68 iRacing track configurations with named turns; tracks outside it simply stay silent, and dataset updates ship with plugin releases.
 
 One opt-in lives under **Race Engineer Callouts → Corner Names**, enabled by default — see [the opt-in list below](#race-engineer-callouts-per-subject-opt-inout).
 
