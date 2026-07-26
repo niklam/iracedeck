@@ -20,7 +20,7 @@
   "dependencies": {
     "@iracedeck/deck-core": "workspace:*",
     "@iracedeck/logger": "workspace:*",
-    "ws": "8.21.0"
+    "ws": "8.21.1"
   },
   "devDependencies": {
     "@tsconfig/node22": "22.0.5",
