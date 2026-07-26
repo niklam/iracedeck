@@ -33,7 +33,9 @@ const mockLogger = {
   withLevel: vi.fn(),
 };
 
-function createMockBus(): IEventBus & { publishEvent: (name: SimEventName, data: Record<string, unknown>) => void } {
+function createMockBus(): IEventBus & {
+  publishEvent: (name: SimEventName, data: Record<string, unknown>, telemetry?: unknown) => void;
+} {
   const handlers = new Map<SimEventName, Set<(e: SimEventOf<SimEventName>) => void>>();
 
   return {
@@ -57,11 +59,11 @@ function createMockBus(): IEventBus & { publishEvent: (name: SimEventName, data:
     publish: (event: SimEventOf<SimEventName>) => {
       for (const handler of Array.from(handlers.get(event.event as SimEventName) ?? [])) handler(event);
     },
-    publishEvent(name: SimEventName, data: Record<string, unknown>) {
+    publishEvent(name: SimEventName, data: Record<string, unknown>, telemetry?: unknown) {
       this.publish({
         event: name,
         timestamp: Date.now(),
-        telemetry: null as unknown,
+        telemetry: (telemetry ?? null) as unknown,
         data: data as never,
       } as SimEventOf<SimEventName>);
     },
@@ -504,6 +506,44 @@ describe("session-start scenario", () => {
       expect(hasClip("/setup-warning/qualifying-01.mp3")).toBe(false);
       // Practice readout otherwise plays in full.
       expect(hasClip("/session-start/session-practice.mp3")).toBe(true);
+    });
+  });
+
+  // Issue #871: the translator's fresh-connect synthesis marks itself with
+  // `from: -1`. Connecting mid-practice/mid-qualifying with the car already
+  // on track must not replay the brief; connecting in the garage (the #668
+  // case) and genuine transitions (`from >= 0`) still brief.
+  describe("mid-session fresh-connect suppression (issue #871)", () => {
+    it("suppresses the brief on a synthetic fresh connect with the car on track", () => {
+      currentSnapshot = snap();
+      bus.publishEvent("session.changed", { from: -1, to: 0 }, { IsOnTrack: true, IsReplayPlaying: false });
+      flush(audio);
+
+      expect(voicePaths()).toEqual([]);
+    });
+
+    it("still briefs on a synthetic fresh connect in the garage", () => {
+      currentSnapshot = snap();
+      bus.publishEvent("session.changed", { from: -1, to: 0 }, { IsOnTrack: false, IsReplayPlaying: false });
+      flush(audio);
+
+      expect(hasClip("/session-start/session-qualifying.mp3")).toBe(true);
+    });
+
+    it("still briefs on a genuine session transition with the car on track", () => {
+      currentSnapshot = snap();
+      bus.publishEvent("session.changed", { from: 0, to: 1 }, { IsOnTrack: true, IsReplayPlaying: false });
+      flush(audio);
+
+      expect(hasClip("/session-start/session-qualifying.mp3")).toBe(true);
+    });
+
+    it("briefs on a synthetic fresh connect with no telemetry attached (don't punish missing data)", () => {
+      currentSnapshot = snap();
+      bus.publishEvent("session.changed", { from: -1, to: 0 });
+      flush(audio);
+
+      expect(hasClip("/session-start/session-qualifying.mp3")).toBe(true);
     });
   });
 });

@@ -13,7 +13,10 @@
  *     the sim-events-iracing translator, so replays never trigger a brief.
  *   - Fresh-connect synthetic event: when the plugin connects mid-session, the
  *     translator emits a synthetic `session.changed { from: -1, to: N }` —
- *     connecting mid-practice or mid-qualifying triggers the brief.
+ *     connecting mid-practice or mid-qualifying triggers the brief, UNLESS the
+ *     driver is already live on track (issue #871): a plugin restart while
+ *     lapping must not replay the intro, so the `where:` rejects the synthetic
+ *     marker when `isLiveOnTrack(e.telemetry)` is true.
  *
  * The delay is implemented as `triggerDelay` after {@link SESSION_START_DELAY_MS}
  * (see its doc for why this is a `triggerDelay`, not a leading pause).
@@ -47,6 +50,7 @@
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type SessionStartSnapshot, TrackWetness } from "@iracedeck/event-bus";
+import { isLiveOnTrack, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 import type { Scenario, Step } from "../../dsl.js";
 import { poolRef } from "../../dsl.js";
@@ -172,7 +176,7 @@ function sessionStartScenario(getSnapshot: SessionStartSnapshotResolver, sequenc
     id: "pit-crew.session-start",
     when: {
       event: "session.changed",
-      where: () => {
+      where: (e) => {
         const snapshot = getSnapshot();
 
         if (snapshot === null) return false;
@@ -188,6 +192,19 @@ function sessionStartScenario(getSnapshot: SessionStartSnapshotResolver, sequenc
         // snapshot resolver, so the gate and the spoken session-type line are
         // always drawn from the same source and can't disagree.
         if (snapshot.sessionType === "race") return false;
+
+        // Issue #871: the translator's fresh-connect synthesis marks itself
+        // with `from: -1`. Replaying the intro brief to a driver already
+        // lapping (plugin restart mid-practice / mid-qualifying) is noise —
+        // reject the synthetic event when the driver is live on track. The
+        // envelope telemetry is the synthesis-tick state, i.e. "was the
+        // driver already driving at connect". Connecting in the garage (the
+        // #668 case) and genuine transitions (`from >= 0`) still brief, and
+        // missing telemetry briefs too (don't punish missing data — also
+        // keeps the harness composer firable without driving telemetry).
+        const from = (e.data as { from?: number }).from;
+
+        if (from === -1 && isLiveOnTrack(e.telemetry as TelemetryData | null)) return false;
 
         return true;
       },
