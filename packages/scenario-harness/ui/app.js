@@ -773,6 +773,19 @@ function wireSessionStartComposer() {
       alert(`Session start fire failed: ${e.message}`);
     }
   });
+
+  // Issue #871: the fresh-connect variant publishes the translator's
+  // mid-session connect shape (from: -1). The session-start where: rejects it
+  // when the live mock telemetry says the driver is on track (apply the
+  // hot-lap preset first), and still briefs from the garage (in-garage).
+  $("session-start-fire-connect").addEventListener("click", async () => {
+    try {
+      await post("/api/session-start/snapshot", readSessionStartSnapshot());
+      await post("/api/bus/publish", { event: "session.changed", data: { from: -1, to: 0 } });
+    } catch (e) {
+      alert(`Session start fresh-connect fire failed: ${e.message}`);
+    }
+  });
 }
 
 // ── Wire up controls ──────────────────────────────────────────────────────
