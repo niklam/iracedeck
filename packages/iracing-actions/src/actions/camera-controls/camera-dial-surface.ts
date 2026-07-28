@@ -134,6 +134,17 @@ export function clockwiseDirection(mode: DialMode, reverseRotation: boolean): Di
 }
 
 /**
+ * Assigns a cycle ordering's `previous`/`next` targets to the strip's side
+ * slots under the effective mapping: the left slot is always the
+ * counter-clockwise detent's target and the right slot the clockwise one
+ * (#884). The one place the side rule lives — every carousel view builder
+ * routes through it.
+ */
+function orientSides<T>(clockwise: Direction, prev: T, next: T): { left: T; right: T } {
+  return clockwise === "next" ? { left: prev, right: next } : { left: next, right: prev };
+}
+
+/**
  * The actions a dial-button / touch gesture (Push, Long Press, Tap Display,
  * Long Touch) can run, plus the "none" sentinel. Every real gesture reuses the
  * keypad's own iRacing API dispatch: `focus-my-car` centres on the player's car
@@ -277,10 +288,13 @@ export function computeCarNumberTarget(
  * target one detent away, and the field size. When the focused car is NOT
  * classified (the pace / safety car, or a car missing from the order) but the
  * field is non-empty, a detent still acts by re-entering the running order at
- * its natural end — clockwise (next) → the leader (P1), counter-clockwise
- * (previous) → last place (issue #803, so the pace car in focus doesn't stall
- * cycling). `currentPosition` is then `null` (no position badge). Returns `null`
- * only when there is no usable order at all (no order, or an empty field).
+ * its natural end — `next` → the leader (P1), `previous` → last place (issue
+ * #803, so the pace car in focus doesn't stall cycling). Which physical turn
+ * dispatches which direction is decided by `clockwiseDirection` (#884): under
+ * the race-position default, a clockwise detent dispatches `previous`, so it
+ * re-enters at last place and walks up the field. `currentPosition` is then
+ * `null` (no position badge). Returns `null` only when there is no usable
+ * order at all (no order, or an empty field).
  */
 export function computeRacePositionTarget(
   camCarIdx: number | undefined,
@@ -986,12 +1000,11 @@ export class CameraDialSurface {
     const slotFor = (group: (typeof carousel)["current"]): CarouselSlot | null =>
       group ? { name: group.groupName, glyph: this.host.getGroupGlyph(group.groupName) } : null;
 
-    const clockwiseIsNext = clockwiseDirection(dial.mode, dial.reverseRotation) === "next";
+    const clockwise = clockwiseDirection(dial.mode, dial.reverseRotation);
 
     return {
       current: slotFor(carousel.current),
-      left: slotFor(clockwiseIsNext ? carousel.prev : carousel.next),
-      right: slotFor(clockwiseIsNext ? carousel.next : carousel.prev),
+      ...orientSides(clockwise, slotFor(carousel.prev), slotFor(carousel.next)),
     };
   }
 
@@ -1009,8 +1022,11 @@ export class CameraDialSurface {
 
     return {
       center,
-      left: computeCarNumberTarget(camCarIdx, cars, oppositeDirection(clockwise))?.carNumber ?? null,
-      right: computeCarNumberTarget(camCarIdx, cars, clockwise)?.carNumber ?? null,
+      ...orientSides(
+        clockwise,
+        computeCarNumberTarget(camCarIdx, cars, "previous")?.carNumber ?? null,
+        computeCarNumberTarget(camCarIdx, cars, "next")?.carNumber ?? null,
+      ),
     };
   }
 
@@ -1029,21 +1045,23 @@ export class CameraDialSurface {
       typeof camCarIdx === "number" && camCarIdx >= 0 ? getCarNumberFromSessionInfo(sessionInfo, camCarIdx) : null;
 
     const order = this.resolveOrder(telemetry);
-    const clockwise = clockwiseDirection(dial.mode, dial.reverseRotation);
-    const cwTarget = computeRacePositionTarget(camCarIdx, order, clockwise);
-    const ccwTarget = computeRacePositionTarget(camCarIdx, order, oppositeDirection(clockwise));
+    const nextTarget = computeRacePositionTarget(camCarIdx, order, "next");
+    const prevTarget = computeRacePositionTarget(camCarIdx, order, "previous");
 
-    if (!cwTarget || !ccwTarget) {
+    if (!nextTarget || !prevTarget) {
       return { centerPosition: null, centerCarNumber, leftPosition: null, rightPosition: null };
     }
+
+    const clockwise = clockwiseDirection(dial.mode, dial.reverseRotation);
+    const sides = orientSides(clockwise, prevTarget.targetPosition, nextTarget.targetPosition);
 
     return {
       // null for an unclassified focused car → no position badge (falls back
       // to a number-only centre in the renderer).
-      centerPosition: cwTarget.currentPosition,
+      centerPosition: nextTarget.currentPosition,
       centerCarNumber,
-      leftPosition: ccwTarget.targetPosition,
-      rightPosition: cwTarget.targetPosition,
+      leftPosition: sides.left,
+      rightPosition: sides.right,
     };
   }
 
@@ -1069,12 +1087,11 @@ export class CameraDialSurface {
     const cameras = getCamerasInGroup(this.host.getSessionInfo(), camGroup);
     const camCameraNum = typeof telemetry?.CamCameraNumber === "number" ? telemetry.CamCameraNumber : null;
     const carousel = computeSubCameraCarousel(camCameraNum, cameras);
-    const clockwiseIsNext = clockwiseDirection(dial.mode, dial.reverseRotation) === "next";
+    const clockwise = clockwiseDirection(dial.mode, dial.reverseRotation);
 
     return {
       current: carousel.current?.cameraName ?? null,
-      left: (clockwiseIsNext ? carousel.prev : carousel.next)?.cameraName ?? null,
-      right: (clockwiseIsNext ? carousel.next : carousel.prev)?.cameraName ?? null,
+      ...orientSides(clockwise, carousel.prev?.cameraName ?? null, carousel.next?.cameraName ?? null),
     };
   }
 
