@@ -10,6 +10,7 @@ import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioChannel } from "@iracedeck/audio-service";
 import type { IEventBus, RaceStartSnapshot, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { TrackWetness } from "@iracedeck/event-bus";
+import { SessionState } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AudioAssetsManifest } from "../../interpreter.js";
@@ -35,7 +36,9 @@ const mockLogger = {
   withLevel: vi.fn(),
 };
 
-function createMockBus(): IEventBus & { publishEvent: (name: SimEventName, data: Record<string, unknown>) => void } {
+function createMockBus(): IEventBus & {
+  publishEvent: (name: SimEventName, data: Record<string, unknown>, telemetry?: unknown) => void;
+} {
   const handlers = new Map<SimEventName, Set<(e: SimEventOf<SimEventName>) => void>>();
 
   return {
@@ -59,11 +62,11 @@ function createMockBus(): IEventBus & { publishEvent: (name: SimEventName, data:
     publish: (event: SimEventOf<SimEventName>) => {
       for (const handler of Array.from(handlers.get(event.event as SimEventName) ?? [])) handler(event);
     },
-    publishEvent(name: SimEventName, data: Record<string, unknown>) {
+    publishEvent(name: SimEventName, data: Record<string, unknown>, telemetry?: unknown) {
       this.publish({
         event: name,
         timestamp: Date.now(),
-        telemetry: null as unknown,
+        telemetry: (telemetry ?? null) as unknown,
         data: data as never,
       } as SimEventOf<SimEventName>);
     },
@@ -204,9 +207,13 @@ let currentSnapshot: RaceStartSnapshot | null;
 let raceStartEnabled: boolean;
 let setupWarningMismatch: (kind: "qualifying" | "race") => boolean;
 
-function fire(snapshot: RaceStartSnapshot | null): void {
+function fire(
+  snapshot: RaceStartSnapshot | null,
+  data: { from: number; to: number } = { from: 0, to: 1 },
+  telemetry?: Record<string, unknown>,
+): void {
   currentSnapshot = snapshot;
-  bus.publishEvent("session.changed", { from: 0, to: 1 });
+  bus.publishEvent("session.changed", data, telemetry);
   flush(audio);
 }
 
@@ -494,6 +501,51 @@ describe("race-start scenario", () => {
       fire(snap());
 
       expect(hasClip("/setup-warning/race-01.mp3")).toBe(false);
+    });
+  });
+
+  // Issue #871: the translator's fresh-connect synthesis marks itself with
+  // `from: -1`. A fresh connect into a race already underway (post-green or
+  // post-race) must not replay the grid brief; a pre-green grid restart still
+  // briefs (starting position + conditions are still actionable), and genuine
+  // transitions (`from >= 0`) are untouched. Defense-in-depth: the translator
+  // already latches silently on a race + Racing connect, but the scenario owns
+  // its own firing conditions for harness-fired events.
+  describe("mid-session fresh-connect suppression (issue #871)", () => {
+    it("suppresses the brief on a synthetic fresh connect with the race underway (Racing)", () => {
+      fire(snap(), { from: -1, to: 1 }, { SessionState: SessionState.Racing });
+
+      expect(voicePaths()).toEqual([]);
+    });
+
+    it("suppresses the brief on a synthetic fresh connect after the race (Checkered)", () => {
+      fire(snap(), { from: -1, to: 1 }, { SessionState: SessionState.Checkered });
+
+      expect(voicePaths()).toEqual([]);
+    });
+
+    it("suppresses the brief on a synthetic fresh connect during cool-down (CoolDown)", () => {
+      fire(snap(), { from: -1, to: 1 }, { SessionState: SessionState.CoolDown });
+
+      expect(voicePaths()).toEqual([]);
+    });
+
+    it("still briefs on a synthetic fresh connect on the pre-green grid (Warmup)", () => {
+      fire(snap(), { from: -1, to: 1 }, { SessionState: SessionState.Warmup });
+
+      expect(hasClip("/race-start-greeting/niklas.mp3")).toBe(true);
+    });
+
+    it("still briefs on a genuine session transition when the state reads Racing", () => {
+      fire(snap(), { from: 0, to: 1 }, { SessionState: SessionState.Racing });
+
+      expect(hasClip("/race-start-greeting/niklas.mp3")).toBe(true);
+    });
+
+    it("briefs on a synthetic fresh connect with no telemetry attached (don't punish missing data)", () => {
+      fire(snap(), { from: -1, to: 1 });
+
+      expect(hasClip("/race-start-greeting/niklas.mp3")).toBe(true);
     });
   });
 });

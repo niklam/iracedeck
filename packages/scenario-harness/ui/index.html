@@ -190,7 +190,10 @@
               Compose a session-start brief, then fire it. Fires a
               <code>session.changed</code> event (the same trigger the production translator
               synthesizes at practice / qualifying connect). The brief plays after a ~3 s delay —
-              silence after clicking Fire is expected.
+              silence after clicking Fire is expected. “Fire as Fresh Connect” publishes the
+              mid-session connect shape (<code>from: -1</code>, issue #871): apply the
+              <code>hot-lap</code> telemetry preset first to hear it suppressed, or
+              <code>in-garage</code> to hear it still brief.
             </p>
 
             <div class="readback-row">
@@ -250,6 +253,7 @@
 
             <div class="actions">
               <button id="session-start-fire" class="primary" type="button">Fire Session Start</button>
+              <button id="session-start-fire-connect" type="button">Fire as Fresh Connect</button>
             </div>
           </div>
         </div>

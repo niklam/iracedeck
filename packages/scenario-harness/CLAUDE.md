@@ -32,6 +32,8 @@ Boot processes the audio-assets clips through the same radio-engineer ffmpeg fil
 
 Scenarios whose resolvers are harness-held (session-start, qualifying-invalidation, race-start) have dedicated `/api/<name>/snapshot` endpoints; shortcuts in `src/scenario-shortcuts.ts` may carry a snapshot inline, which the UI POSTs BEFORE publishing the trigger event so the resolver returns the intended snapshot at fire time. `/api/readback/snapshot` is different: production readback scenarios re-read live telemetry at fire time (issue #481), so it converts the composer snapshot into a telemetry PATCH via `snapshotToTelemetryPatch` (`src/pit-readback-telemetry.ts`), which mirrors the translator's `buildSnapshot()` field-for-field, then ticks once synchronously. Known limitation: `windshield.available` has no telemetry source (`buildSnapshot()` hardcodes it `true`), so the patch drops it.
 
+The session-start composer has a second fire button, "Fire as Fresh Connect", publishing `session.changed { from: -1, to: 0 }` (the translator's mid-session connect shape) so the #871 on-track suppression is reproducible — apply a telemetry preset (`hot-lap` vs `in-garage`) before firing; the race-start equivalents are the two "Fresh connect" shortcuts in `src/scenario-shortcuts.ts`.
+
 ## API surface
 
 HTTP for writes, WebSocket (`/ws`) for the live stream of `event` / `state` / `audio` messages. Routes (`src/server.ts`): `/api/state` (full snapshot incl. event templates, shortcuts, preset names), `/api/connection`, `/api/tick` + `/api/tick/once`, `/api/telemetry` (+`/preset`), `/api/session` (+`/preset`), `/api/settings`, `/api/audio/device|refresh|wipe-cache`, the snapshot endpoints above, and `/api/bus/publish` (raw event injection, name-checked against the catalog).

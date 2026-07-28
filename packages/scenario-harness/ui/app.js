@@ -44,9 +44,7 @@ function loadPersistedSettings() {
 
 function persistSettings(settings) {
   if (!settings || typeof settings !== "object") return;
-  const filtered = Object.fromEntries(
-    Object.entries(settings).filter(([key]) => !key.startsWith("_")),
-  );
+  const filtered = Object.fromEntries(Object.entries(settings).filter(([key]) => !key.startsWith("_")));
   try {
     localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(filtered));
   } catch {
@@ -176,10 +174,13 @@ function renderSettings() {
       key: "audioOutputDevice",
       label: "Audio Device",
       type: "select",
-      options: [{ value: "", label: "System Default" }, ...state.audioDevices.map((d) => ({
-        value: d.id,
-        label: d.isDefault ? `${d.name} (default)` : d.name,
-      }))],
+      options: [
+        { value: "", label: "System Default" },
+        ...state.audioDevices.map((d) => ({
+          value: d.id,
+          label: d.isDefault ? `${d.name} (default)` : d.name,
+        })),
+      ],
       route: "/api/audio/device",
       param: "deviceId",
     },
@@ -470,15 +471,15 @@ function connectWebSocket() {
 // as a small fixed set; if a new bit is added there, add it here too.
 
 const ENGINE_WARNINGS = [
-  { id: "ew-water-temp",     label: "Water Temp",        bit: 0x0001 },
-  { id: "ew-fuel-pressure",  label: "Fuel Pressure",     bit: 0x0002 },
-  { id: "ew-oil-pressure",   label: "Oil Pressure",      bit: 0x0004 },
-  { id: "ew-engine-stalled", label: "Engine Stalled",    bit: 0x0008 },
-  { id: "ew-pit-limiter",    label: "Pit Speed Limiter", bit: 0x0010 },
-  { id: "ew-rev-limiter",    label: "Rev Limiter",       bit: 0x0020 },
-  { id: "ew-oil-temp",       label: "Oil Temp",          bit: 0x0040 },
-  { id: "ew-mand-rep",       label: "Mandatory Repair",  bit: 0x0080 },
-  { id: "ew-opt-rep",        label: "Optional Repair",   bit: 0x0100 },
+  { id: "ew-water-temp", label: "Water Temp", bit: 0x0001 },
+  { id: "ew-fuel-pressure", label: "Fuel Pressure", bit: 0x0002 },
+  { id: "ew-oil-pressure", label: "Oil Pressure", bit: 0x0004 },
+  { id: "ew-engine-stalled", label: "Engine Stalled", bit: 0x0008 },
+  { id: "ew-pit-limiter", label: "Pit Speed Limiter", bit: 0x0010 },
+  { id: "ew-rev-limiter", label: "Rev Limiter", bit: 0x0020 },
+  { id: "ew-oil-temp", label: "Oil Temp", bit: 0x0040 },
+  { id: "ew-mand-rep", label: "Mandatory Repair", bit: 0x0080 },
+  { id: "ew-opt-rep", label: "Optional Repair", bit: 0x0100 },
 ];
 
 const ENGINE_WARNINGS_DAMAGE_MASK = 0x0080 | 0x0100;
@@ -761,18 +762,28 @@ function readSessionStartSnapshot() {
   };
 }
 
+// Push the composed snapshot first so the scenario's resolver sees it, then
+// publish the trigger event. `/api/session-start/snapshot` awaits a 204
+// before we publish, so there's no push-vs-fire race.
+async function fireSessionStart(data, label) {
+  try {
+    await post("/api/session-start/snapshot", readSessionStartSnapshot());
+    await post("/api/bus/publish", { event: "session.changed", data });
+  } catch (e) {
+    alert(`${label} failed: ${e.message}`);
+  }
+}
+
 function wireSessionStartComposer() {
-  $("session-start-fire").addEventListener("click", async () => {
-    try {
-      // Push the composed snapshot first so the scenario's resolver sees it,
-      // then publish the trigger event. `/api/session-start/snapshot` awaits
-      // a 204 before we publish, so there's no push-vs-fire race.
-      await post("/api/session-start/snapshot", readSessionStartSnapshot());
-      await post("/api/bus/publish", { event: "session.changed", data: { from: 0, to: 1 } });
-    } catch (e) {
-      alert(`Session start fire failed: ${e.message}`);
-    }
-  });
+  $("session-start-fire").addEventListener("click", () => fireSessionStart({ from: 0, to: 1 }, "Session start fire"));
+
+  // Issue #871: the fresh-connect variant publishes the translator's
+  // mid-session connect shape (from: -1). The session-start where: rejects it
+  // when the live mock telemetry says the driver is on track (apply the
+  // hot-lap preset first), and still briefs from the garage (in-garage).
+  $("session-start-fire-connect").addEventListener("click", () =>
+    fireSessionStart({ from: -1, to: 0 }, "Session start fresh-connect fire"),
+  );
 }
 
 // ── Wire up controls ──────────────────────────────────────────────────────

@@ -3,6 +3,7 @@
   "PlayerCarInPitStall": false,
   "IsOnTrack": true,
   "PlayerTrackSurface": 3,
+  "SessionState": 4,
   "Speed": 65,
   "RPM": 7400,
   "Lap": 5,

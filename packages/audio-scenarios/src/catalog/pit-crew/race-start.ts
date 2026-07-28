@@ -46,13 +46,18 @@
  * sessions still using session-start.
  *
  * `where:` is `classifySessionType(getSessionType()) === "race" &&
- * getSnapshot() !== null`. The first arm gates the scenario open only for race
- * transitions (practice/qualifying are owned by session-start); the second arm
- * short-circuits when telemetry / wetness aren't yet available so the scenario
- * skips entirely rather than speaking a partial readout.
+ * getSnapshot() !== null`, plus the issue #871 fresh-connect gate: a synthetic
+ * `session.changed { from: -1 }` (plugin connect mid-session) is rejected when
+ * the race is already underway (`SessionState === Racing` or post-race) — a
+ * pre-green grid restart still briefs. The first arm gates the scenario open
+ * only for race transitions (practice/qualifying are owned by session-start);
+ * the snapshot arm short-circuits when telemetry / wetness aren't yet
+ * available so the scenario skips entirely rather than speaking a partial
+ * readout.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type RaceStartSnapshot, TrackWetness } from "@iracedeck/event-bus";
+import { isPostRace, SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 import { getSessionType } from "@iracedeck/sim-events-iracing";
 
@@ -269,7 +274,7 @@ export function buildRaceStartScenario(
     id: "pit-crew.race-start",
     when: {
       event: "session.changed",
-      where: () => {
+      where: (e) => {
         const sessionType = getSessionType();
         const inRace = isRaceSession(sessionType);
         const snapshot = getSnapshot();
@@ -282,6 +287,25 @@ export function buildRaceStartScenario(
 
         if (snapshot === null) {
           logger?.info(`race-start where: rejected — snapshot is null (telemetry not ready / wetness unknown)`);
+
+          return false;
+        }
+
+        // Issue #871: the translator's fresh-connect synthesis marks itself
+        // with `from: -1`. A fresh connect into a race already underway —
+        // post-green (Racing) or post-race (Checkered/CoolDown) — must not
+        // replay the grid brief; a restart on the pre-green grid still briefs
+        // (starting position + conditions are still actionable). Explicit
+        // positive state set (the #647 house style), so a missing/Invalid
+        // SessionState briefs rather than suppresses. Defense-in-depth: the
+        // translator already latches silently on race + Racing, but the
+        // scenario owns its firing conditions for harness-fired events.
+        const from = (e.data as { from?: number }).from;
+        const telemetry = e.telemetry as TelemetryData | null;
+
+        if (from === -1 && (telemetry?.SessionState === SessionState.Racing || isPostRace(telemetry))) {
+          logger?.info("race-start where: rejected — fresh connect into a race already underway");
+          logger?.debug(`Fresh-connect rejection detail: SessionState=${telemetry?.SessionState}`);
 
           return false;
         }
