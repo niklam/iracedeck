@@ -146,6 +146,7 @@ function raceStart(
   label: string,
   playerCarPosition: number | undefined,
   description: string,
+  from = 0,
 ): ScenarioShortcut {
   return {
     id: `race-start-${id}`,
@@ -153,7 +154,7 @@ function raceStart(
     label,
     description,
     event: "session.changed",
-    data: { from: 0, to: 1 },
+    data: { from, to: 1 },
     raceStartSnapshot: {
       driverName: "niklas",
       trackTemp: 28,
@@ -1198,41 +1199,24 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   // when the race is already underway (SessionState Racing / post-race) and
   // still briefs on the pre-green grid. The gate reads the event envelope's
   // telemetry, which `/api/bus/publish` fills from the live mock state — so
-  // apply the named telemetry preset BEFORE clicking.
-  {
-    id: "race-start-fresh-connect-grid",
-    category: "Race Start",
-    label: "Fresh connect — pre-green grid (briefs)",
-    description:
-      "Synthetic fresh-connect session.changed (from: -1) while the race hasn't gone green. Apply the on-grid telemetry preset first (SessionState: Warmup) — the grid brief still plays (issue #871).",
-    event: "session.changed",
-    data: { from: -1, to: 1 },
-    raceStartSnapshot: {
-      driverName: "niklas",
-      trackTemp: 28,
-      airTemp: 20,
-      tempUnit: "celsius",
-      wetness: TrackWetness.Dry,
-      playerCarPosition: 3,
-    },
-  },
-  {
-    id: "race-start-fresh-connect-mid-race",
-    category: "Race Start",
-    label: "Fresh connect — mid-race (suppressed)",
-    description:
-      "Synthetic fresh-connect session.changed (from: -1) with the race underway. Apply the hot-lap telemetry preset first (SessionState: Racing) — no brief plays (issue #871).",
-    event: "session.changed",
-    data: { from: -1, to: 1 },
-    raceStartSnapshot: {
-      driverName: "niklas",
-      trackTemp: 28,
-      airTemp: 20,
-      tempUnit: "celsius",
-      wetness: TrackWetness.Dry,
-      playerCarPosition: 3,
-    },
-  },
+  // apply the named telemetry preset BEFORE clicking. Like every Race Start
+  // shortcut, the scenario also gates on `getSessionType() === "race"`, so a
+  // race session preset must be active or the where: rejects before the #871
+  // gate is ever reached.
+  raceStart(
+    "fresh-connect-grid",
+    "Fresh connect — pre-green grid (briefs)",
+    3,
+    "Synthetic fresh-connect session.changed (from: -1) while the race hasn't gone green. Apply the race session preset AND the on-grid telemetry preset first (SessionState: Warmup) — the grid brief still plays (issue #871).",
+    -1,
+  ),
+  raceStart(
+    "fresh-connect-mid-race",
+    "Fresh connect — mid-race (suppressed)",
+    3,
+    "Synthetic fresh-connect session.changed (from: -1) with the race underway. Apply the race session preset AND the hot-lap telemetry preset first (SessionState: Racing) — no brief plays (issue #871).",
+    -1,
+  ),
 
   // ── Overtakes (issue #574) ──
   // Fire the bus events directly so you hear/see the scenario without driving

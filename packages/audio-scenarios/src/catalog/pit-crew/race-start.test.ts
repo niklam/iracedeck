@@ -207,9 +207,13 @@ let currentSnapshot: RaceStartSnapshot | null;
 let raceStartEnabled: boolean;
 let setupWarningMismatch: (kind: "qualifying" | "race") => boolean;
 
-function fire(snapshot: RaceStartSnapshot | null): void {
+function fire(
+  snapshot: RaceStartSnapshot | null,
+  data: { from: number; to: number } = { from: 0, to: 1 },
+  telemetry?: Record<string, unknown>,
+): void {
   currentSnapshot = snapshot;
-  bus.publishEvent("session.changed", { from: 0, to: 1 });
+  bus.publishEvent("session.changed", data, telemetry);
   flush(audio);
 }
 
@@ -509,41 +513,37 @@ describe("race-start scenario", () => {
   // its own firing conditions for harness-fired events.
   describe("mid-session fresh-connect suppression (issue #871)", () => {
     it("suppresses the brief on a synthetic fresh connect with the race underway (Racing)", () => {
-      currentSnapshot = snap();
-      bus.publishEvent("session.changed", { from: -1, to: 1 }, { SessionState: SessionState.Racing });
-      flush(audio);
+      fire(snap(), { from: -1, to: 1 }, { SessionState: SessionState.Racing });
 
       expect(voicePaths()).toEqual([]);
     });
 
     it("suppresses the brief on a synthetic fresh connect after the race (Checkered)", () => {
-      currentSnapshot = snap();
-      bus.publishEvent("session.changed", { from: -1, to: 1 }, { SessionState: SessionState.Checkered });
-      flush(audio);
+      fire(snap(), { from: -1, to: 1 }, { SessionState: SessionState.Checkered });
+
+      expect(voicePaths()).toEqual([]);
+    });
+
+    it("suppresses the brief on a synthetic fresh connect during cool-down (CoolDown)", () => {
+      fire(snap(), { from: -1, to: 1 }, { SessionState: SessionState.CoolDown });
 
       expect(voicePaths()).toEqual([]);
     });
 
     it("still briefs on a synthetic fresh connect on the pre-green grid (Warmup)", () => {
-      currentSnapshot = snap();
-      bus.publishEvent("session.changed", { from: -1, to: 1 }, { SessionState: SessionState.Warmup });
-      flush(audio);
+      fire(snap(), { from: -1, to: 1 }, { SessionState: SessionState.Warmup });
 
       expect(hasClip("/race-start-greeting/niklas.mp3")).toBe(true);
     });
 
     it("still briefs on a genuine session transition when the state reads Racing", () => {
-      currentSnapshot = snap();
-      bus.publishEvent("session.changed", { from: 0, to: 1 }, { SessionState: SessionState.Racing });
-      flush(audio);
+      fire(snap(), { from: 0, to: 1 }, { SessionState: SessionState.Racing });
 
       expect(hasClip("/race-start-greeting/niklas.mp3")).toBe(true);
     });
 
     it("briefs on a synthetic fresh connect with no telemetry attached (don't punish missing data)", () => {
-      currentSnapshot = snap();
-      bus.publishEvent("session.changed", { from: -1, to: 1 });
-      flush(audio);
+      fire(snap(), { from: -1, to: 1 });
 
       expect(hasClip("/race-start-greeting/niklas.mp3")).toBe(true);
     });

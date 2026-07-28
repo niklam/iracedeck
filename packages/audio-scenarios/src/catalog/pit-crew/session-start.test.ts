@@ -215,9 +215,13 @@ let currentSnapshot: SessionStartSnapshot | null;
 let sessionStartEnabled: boolean;
 let setupWarningMismatch: (kind: "qualifying" | "race") => boolean;
 
-function fire(snapshot: SessionStartSnapshot | null): void {
+function fire(
+  snapshot: SessionStartSnapshot | null,
+  data: { from: number; to: number } = { from: 0, to: 1 },
+  telemetry?: Record<string, unknown>,
+): void {
   currentSnapshot = snapshot;
-  bus.publishEvent("session.changed", { from: 0, to: 1 });
+  bus.publishEvent("session.changed", data, telemetry);
   flush(audio);
 }
 
@@ -515,33 +519,34 @@ describe("session-start scenario", () => {
   // case) and genuine transitions (`from >= 0`) still brief.
   describe("mid-session fresh-connect suppression (issue #871)", () => {
     it("suppresses the brief on a synthetic fresh connect with the car on track", () => {
-      currentSnapshot = snap();
-      bus.publishEvent("session.changed", { from: -1, to: 0 }, { IsOnTrack: true, IsReplayPlaying: false });
-      flush(audio);
+      fire(snap(), { from: -1, to: 0 }, { IsOnTrack: true, IsReplayPlaying: false });
+
+      expect(voicePaths()).toEqual([]);
+    });
+
+    it("suppresses the brief on a synthetic fresh connect with the car on track and the replay view open", () => {
+      // The gate reads `IsOnTrack` directly (not `isLiveOnTrack`): a connect
+      // tick carrying `IsReplayPlaying: true` — the in-session replay view,
+      // or the #604 transient replay tick — is still mid-session.
+      fire(snap(), { from: -1, to: 0 }, { IsOnTrack: true, IsReplayPlaying: true });
 
       expect(voicePaths()).toEqual([]);
     });
 
     it("still briefs on a synthetic fresh connect in the garage", () => {
-      currentSnapshot = snap();
-      bus.publishEvent("session.changed", { from: -1, to: 0 }, { IsOnTrack: false, IsReplayPlaying: false });
-      flush(audio);
+      fire(snap(), { from: -1, to: 0 }, { IsOnTrack: false, IsReplayPlaying: false });
 
       expect(hasClip("/session-start/session-qualifying.mp3")).toBe(true);
     });
 
     it("still briefs on a genuine session transition with the car on track", () => {
-      currentSnapshot = snap();
-      bus.publishEvent("session.changed", { from: 0, to: 1 }, { IsOnTrack: true, IsReplayPlaying: false });
-      flush(audio);
+      fire(snap(), { from: 0, to: 1 }, { IsOnTrack: true, IsReplayPlaying: false });
 
       expect(hasClip("/session-start/session-qualifying.mp3")).toBe(true);
     });
 
     it("briefs on a synthetic fresh connect with no telemetry attached (don't punish missing data)", () => {
-      currentSnapshot = snap();
-      bus.publishEvent("session.changed", { from: -1, to: 0 });
-      flush(audio);
+      fire(snap(), { from: -1, to: 0 });
 
       expect(hasClip("/session-start/session-qualifying.mp3")).toBe(true);
     });

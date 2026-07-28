@@ -304,9 +304,8 @@ export function buildRaceStartScenario(
         const telemetry = e.telemetry as TelemetryData | null;
 
         if (from === -1 && (telemetry?.SessionState === SessionState.Racing || isPostRace(telemetry))) {
-          logger?.info(
-            `race-start where: rejected — fresh connect into a race already underway (SessionState=${telemetry?.SessionState})`,
-          );
+          logger?.info("race-start where: rejected — fresh connect into a race already underway");
+          logger?.debug(`Fresh-connect rejection detail: SessionState=${telemetry?.SessionState}`);
 
           return false;
         }

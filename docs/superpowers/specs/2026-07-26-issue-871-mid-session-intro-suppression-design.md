@@ -22,10 +22,10 @@ Per the issue's preferred shape and the #480 precedent (scenario-layer `isLiveOn
 `where:` additionally rejects when:
 
 ```text
-e.data.from === -1 && isLiveOnTrack(e.telemetry)
+e.data.from === -1 && e.telemetry.IsOnTrack === true
 ```
 
-- `isLiveOnTrack` (`@iracedeck/iracing-sdk` `telemetry-features.ts`): `IsOnTrack === true && IsReplayPlaying !== true` — the issue's named "already driving" signal.
+- A direct `IsOnTrack` read — deliberately NOT `isLiveOnTrack` (the issue's originally named signal): its `IsReplayPlaying !== true` conjunct encodes "actively driving", but the question here is "session already underway". A connect tick carrying `IsReplayPlaying: true` with the car on track (in-session replay view open, or the #604 transient replay tick) is still mid-session — `isLiveOnTrack` would let it evade the gate and replay the brief over a live session.
 - Connecting in the garage mid-practice/mid-qualifying still briefs (the #668 case the synthesis was built for).
 - Session state is deliberately not consulted — practice/qualifying sit in `Racing` throughout, so on-track state is the only meaningful "already underway" signal there.
 
@@ -47,14 +47,15 @@ Firing-condition fix of the existing `calloutEnabledSessionStart` / `calloutEnab
 
 ## Scenario harness
 
-- New shortcuts publishing `session.changed { from: -1, to: 0 }` (the synthetic-connect shape) in the Session Start and Race Start categories, covering both the suppressed and the still-briefing cases. Descriptions instruct QA to apply the matching telemetry preset first (the `where:` gates read the envelope telemetry, which the harness fills from the live mock state).
+- Session Start: a second composer fire button — "Fire as Fresh Connect" — publishes `session.changed { from: -1, to: 0 }` (the synthetic-connect shape); apply the `hot-lap` / `in-garage` telemetry preset first to hear the suppressed vs still-briefing case. (Shipped as a composer button rather than standalone shortcuts — the composer already owns the session-start snapshot.)
+- Race Start: two "Fresh connect" shortcuts (pre-green grid → briefs; mid-race → suppressed). Descriptions instruct QA to apply the race session preset plus the matching telemetry preset first (the `where:` gates read the envelope telemetry, which the harness fills from the live mock state; the race-session preset matters because the race-start `where:` rejects non-race sessions before the #871 gate is reached).
 - Preset support: add `SessionState` to `hot-lap` (`4` = Racing) and `on-grid` (`2` = Warmup) telemetry presets so the race cases are reproducible; `hot-lap` / `in-garage` already cover `IsOnTrack` for the practice cases.
 
 ## Tests
 
 Extend `session-start.test.ts` / `race-start.test.ts` `where:` coverage:
 
-- session-start: synthetic + on-track → rejected; synthetic + in-garage → passes; genuine transition (`from >= 0`) + on-track → passes; synthetic + null telemetry → passes (don't punish missing data).
+- session-start: synthetic + on-track → rejected; synthetic + on-track + replay view (`IsReplayPlaying: true`) → rejected; synthetic + in-garage → passes; genuine transition (`from >= 0`) + on-track → passes; synthetic + null telemetry → passes (don't punish missing data).
 - race-start: synthetic + `Racing` → rejected; synthetic + `Checkered`/`CoolDown` → rejected; synthetic + pre-green (`Warmup`) → passes; genuine transition + `Racing` → passes; synthetic + missing `SessionState` → passes.
 
 ## Docs

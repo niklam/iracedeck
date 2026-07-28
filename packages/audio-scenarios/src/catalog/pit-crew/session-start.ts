@@ -14,9 +14,9 @@
  *   - Fresh-connect synthetic event: when the plugin connects mid-session, the
  *     translator emits a synthetic `session.changed { from: -1, to: N }` —
  *     connecting mid-practice or mid-qualifying triggers the brief, UNLESS the
- *     driver is already live on track (issue #871): a plugin restart while
+ *     driver's car is already on track (issue #871): a plugin restart while
  *     lapping must not replay the intro, so the `where:` rejects the synthetic
- *     marker when `isLiveOnTrack(e.telemetry)` is true.
+ *     marker when the envelope telemetry reads `IsOnTrack === true`.
  *
  * The delay is implemented as `triggerDelay` after {@link SESSION_START_DELAY_MS}
  * (see its doc for why this is a `triggerDelay`, not a leading pause).
@@ -44,13 +44,15 @@
  * outside {@link SESSION_START_SPEED_VALUES} — a guessed or rounded number
  * could imply a false pit-speed-penalty risk.
  *
- * `where:` is `getSnapshot() !== null && sessionType !== "race"`, so the
- * scenario doesn't fire at all when conditions are unavailable (no telemetry /
- * session info, or wetness still `Unknown`), and never fires in race sessions.
+ * `where:` is `getSnapshot() !== null && sessionType !== "race"`, plus the
+ * #871 fresh-connect arm (reject `from === -1` when the car is on track) — so
+ * the scenario doesn't fire at all when conditions are unavailable (no
+ * telemetry / session info, or wetness still `Unknown`), never fires in race
+ * sessions, and never replays the brief to a driver already mid-session.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type SessionStartSnapshot, TrackWetness } from "@iracedeck/event-bus";
-import { isLiveOnTrack, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { type TelemetryData } from "@iracedeck/iracing-sdk";
 
 import type { Scenario, Step } from "../../dsl.js";
 import { poolRef } from "../../dsl.js";
@@ -196,15 +198,21 @@ function sessionStartScenario(getSnapshot: SessionStartSnapshotResolver, sequenc
         // Issue #871: the translator's fresh-connect synthesis marks itself
         // with `from: -1`. Replaying the intro brief to a driver already
         // lapping (plugin restart mid-practice / mid-qualifying) is noise —
-        // reject the synthetic event when the driver is live on track. The
+        // reject the synthetic event when the driver's car is on track. The
         // envelope telemetry is the synthesis-tick state, i.e. "was the
-        // driver already driving at connect". Connecting in the garage (the
+        // driver already driving at connect". Deliberately NOT
+        // `isLiveOnTrack` — its `IsReplayPlaying !== true` conjunct encodes
+        // "actively driving", but the question here is "session already
+        // underway": a connect tick with the in-session replay view open (or
+        // the #604 transient replay tick) would evade the gate and replay
+        // the brief over a live session. Connecting in the garage (the
         // #668 case) and genuine transitions (`from >= 0`) still brief, and
         // missing telemetry briefs too (don't punish missing data — also
         // keeps the harness composer firable without driving telemetry).
         const from = (e.data as { from?: number }).from;
+        const telemetry = e.telemetry as TelemetryData | null;
 
-        if (from === -1 && isLiveOnTrack(e.telemetry as TelemetryData | null)) return false;
+        if (from === -1 && telemetry?.IsOnTrack === true) return false;
 
         return true;
       },

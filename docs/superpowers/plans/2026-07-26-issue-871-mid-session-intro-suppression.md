@@ -6,6 +6,8 @@
 
 **Architecture:** The translator's fresh-connect synthesis (`session.changed { from: -1 }`) stays untouched. The two intro scenarios' `where:` predicates learn to reject the self-identifying synthetic event when the session is already underway: session-start rejects when `isLiveOnTrack(e.telemetry)`, race-start rejects when `SessionState === Racing || isPostRace(e.telemetry)`. Approved spec: `docs/superpowers/specs/2026-07-26-issue-871-mid-session-intro-suppression-design.md`.
 
+> **Amended post-review:** the session-start gate now reads `e.telemetry.IsOnTrack === true` directly rather than `isLiveOnTrack` — its `IsReplayPlaying` conjunct would let a connect tick with the in-session replay view open evade the gate (see the amended spec). The snapshots below predate the amendment.
+
 **Tech Stack:** TypeScript monorepo (pnpm + turbo), Vitest, scenario-engine test harness in `@iracedeck/audio-scenarios`.
 
 ## Global Constraints
