@@ -327,7 +327,9 @@ export class UlanziClient {
   /**
    * Normalize a raw frame, maintain the per-context settings cache, and route
    * each resulting event. The SDK ignores ack/response frames (`code` set unless
-   * `cmdType === "REQUEST"`); event frames omit `code`.
+   * `cmdType === "REQUEST"`) — except a `didReceiveGlobalSettings` that carries
+   * settings, which is a request reply the client must keep (#868); event
+   * frames omit `code`.
    */
   private handleFrame(frame: Record<string, unknown>): void {
     if (frame.code !== undefined && frame.cmdType !== "REQUEST") {
