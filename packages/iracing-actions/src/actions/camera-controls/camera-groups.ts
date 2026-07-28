@@ -146,8 +146,9 @@ export function getNextSelectedGroupEntry(
 /**
  * The three camera groups the dial carousel shows: the group the camera is
  * currently on (may sit outside the enabled subset), plus the enabled-subset
- * neighbours one detent counter-clockwise (`prev`) and clockwise (`next`) —
- * exactly what a single turn would switch to.
+ * ORDERING neighbours one cycle step back (`prev`) and forward (`next`).
+ * Which physical turn lands on which neighbour is not fixed here — the
+ * consumer maps them to strip sides via `clockwiseDirection` (#884).
  */
 export interface CameraCarousel {
   current: CameraGroup | null;
@@ -182,9 +183,11 @@ export function computeCameraCarousel(
 
 /**
  * The three sub-cameras the dial sub-camera carousel shows: the camera the group
- * is currently on plus the cameras one detent counter-clockwise (`prev`) and
- * clockwise (`next`) within the SAME group — exactly what one turn would switch
- * to. `null` slots when there is no camera to show for that position.
+ * is currently on plus the ORDERING neighbours one cycle step back (`prev`) and
+ * forward (`next`) within the SAME group. Which physical turn lands on which
+ * neighbour is not fixed here — the consumer maps them to strip sides via
+ * `clockwiseDirection` (#884). `null` slots when there is no camera to show
+ * for that position.
  */
 export interface SubCameraCarousel {
   current: CameraInGroup | null;

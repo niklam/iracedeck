@@ -562,7 +562,7 @@ entries.push({
  * default, line ~177), with MODE_TITLE["car-number"] = "CAR #" (line ~163),
  * MODE_IDENTITY["car-number"] = "CAR #" (line ~127, unused here since a live
  * center is supplied), and MODE_COLOR["car-number"] = "#2ecc71" (line ~140).
- * `center`/`prev`/`next` are plausible sample car numbers.
+ * `center`/`left`/`right` are plausible sample car numbers (sides per #884).
  *
  * This action's static assets (dial.svg/icon.svg/key.svg) live under the
  * `camera-focus` folder (a UUID alias, see camera-controls.ts
@@ -579,8 +579,8 @@ const cameraFocusDashSvg = bakeDialScreenBackground(
     title: "CAR #",
     identityLabel: "CAR #",
     center: "24",
-    prev: "12",
-    next: "88",
+    left: "12",
+    right: "88",
   }),
   200,
   100,

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildTriggerDescription,
   CameraDialSurface,
+  clockwiseDirection,
   computeCarNumberTarget,
   computeRacePositionTarget,
   DialSettings,
@@ -87,6 +88,16 @@ function dialContext(id: string) {
 }
 
 const TELEMETRY = { CamGroupNumber: 9, CamCarIdx: 3 };
+
+/**
+ * Matches a strip text element at one of the renderers' side slots. The x
+ * coordinate is computed the SAME way production does (`width * factor`), so
+ * the assertion pins WHICH side a preview is drawn on — the left side is the
+ * counter-clockwise detent's target, the right side the clockwise one (#884).
+ */
+function sideText(xFactor: number, content: string): RegExp {
+  return new RegExp(`<text x="${200 * xFactor}"[^>]*>${content}<`);
+}
 
 function makeHost(over: Partial<Record<string, unknown>> = {}) {
   return {
@@ -205,6 +216,25 @@ describe("camera dial-surface pure helpers", () => {
     });
   });
 
+  describe("clockwiseDirection", () => {
+    it("maps clockwise to previous for race-position (the car ahead, #884) and to next for every other mode", () => {
+      expect(clockwiseDirection("race-position", false)).toBe("previous");
+
+      for (const mode of ["camera", "sub-camera", "car-number", "driving"] as const) {
+        expect(clockwiseDirection(mode, false)).toBe("next");
+      }
+    });
+
+    it("flips the active mode's default mapping when reverseRotation is set", () => {
+      // race-position reversed = the pre-#884 feel (clockwise → P# increases).
+      expect(clockwiseDirection("race-position", true)).toBe("next");
+      expect(clockwiseDirection("car-number", true)).toBe("previous");
+      expect(clockwiseDirection("camera", true)).toBe("previous");
+      expect(clockwiseDirection("sub-camera", true)).toBe("previous");
+      expect(clockwiseDirection("driving", true)).toBe("previous");
+    });
+  });
+
   describe("buildTriggerDescription", () => {
     it("names the cycled target on rotate and rides the long-press on push", () => {
       const desc = buildTriggerDescription(
@@ -237,8 +267,8 @@ describe("camera dial-surface pure helpers", () => {
         title: "CAMERA",
         identityLabel: "CAMERA",
         current: { name: "Cockpit", glyph: { width: 68, height: 68, artwork: '<path data-g="Cockpit"/>' } },
-        prev: { name: "Nose", glyph: { width: 68, height: 68, artwork: '<path data-g="Nose"/>' } },
-        next: { name: "Chase", glyph: { width: 68, height: 68, artwork: '<path data-g="Chase"/>' } },
+        left: { name: "Nose", glyph: { width: 68, height: 68, artwork: '<path data-g="Nose"/>' } },
+        right: { name: "Chase", glyph: { width: 68, height: 68, artwork: '<path data-g="Chase"/>' } },
       });
 
       expect(svg).toContain(">CAMERA<"); // mode-name title (top line)
@@ -256,15 +286,15 @@ describe("camera dial-surface pure helpers", () => {
         title: "CAMERA",
         identityLabel: "CAMERA",
         current: { name: "Cockpit", glyph: null },
-        prev: { name: "Scenic", glyph: null },
-        next: null,
+        left: { name: "Scenic", glyph: null },
+        right: null,
       });
 
       expect(svg).toContain(">SCENIC<");
       expect(svg).toContain(">COCKPIT<");
     });
 
-    it("renders current only (no side glyphs) when prev/next are null — the driving mode shape", () => {
+    it("renders current only (no side glyphs) when left/right are null — the driving mode shape", () => {
       const svg = renderCameraCarousel({
         width: 200,
         height: 100,
@@ -272,8 +302,8 @@ describe("camera dial-surface pure helpers", () => {
         title: "DRIVING CAM",
         identityLabel: "DRIVING",
         current: { name: "Cockpit", glyph: { width: 68, height: 68, artwork: '<path data-g="Cockpit"/>' } },
-        prev: null,
-        next: null,
+        left: null,
+        right: null,
       });
 
       expect(svg).toContain(">DRIVING CAM<");
@@ -289,8 +319,8 @@ describe("camera dial-surface pure helpers", () => {
         title: "CAMERA",
         identityLabel: "CAMERA",
         current: null,
-        prev: null,
-        next: null,
+        left: null,
+        right: null,
       });
 
       expect(svg).toContain(">CAMERA<");
@@ -308,14 +338,14 @@ describe("camera dial-surface pure helpers", () => {
         title: "SUB-CAMERA",
         identityLabel: "SUB CAM",
         current: "Roll Bar",
-        prev: "Cockpit",
-        next: "Gyro",
+        left: "Cockpit",
+        right: "Gyro",
       });
 
       expect(svg).toContain(">SUB-CAMERA<"); // mode-name title
       expect(svg).toContain(">ROLL BAR<"); // current camera (uppercased)
-      expect(svg).toContain(">COCKPIT<"); // prev camera
-      expect(svg).toContain(">GYRO<"); // next camera
+      expect(svg).toContain(">COCKPIT<"); // left-side camera
+      expect(svg).toContain(">GYRO<"); // right-side camera
     });
 
     it("falls back to the identity label with no current camera", () => {
@@ -326,8 +356,8 @@ describe("camera dial-surface pure helpers", () => {
         title: "SUB-CAMERA",
         identityLabel: "SUB CAM",
         current: null,
-        prev: null,
-        next: null,
+        left: null,
+        right: null,
       });
 
       expect(svg).toContain(">SUB CAM<");
@@ -345,8 +375,8 @@ describe("camera dial-surface pure helpers", () => {
         title: "CAR #",
         identityLabel: "CAR #",
         center: "42",
-        prev: "3",
-        next: "99",
+        left: "3",
+        right: "99",
       });
 
       expect(svg).toContain(">CAR #<"); // mode-name title
@@ -364,8 +394,8 @@ describe("camera dial-surface pure helpers", () => {
         title: "CAR #",
         identityLabel: "CAR #",
         center: null,
-        prev: null,
-        next: null,
+        left: null,
+        right: null,
       });
 
       expect(svg).toContain(">CAR #<");
@@ -384,15 +414,15 @@ describe("camera dial-surface pure helpers", () => {
         identityLabel: "POSITION",
         centerPosition: 4,
         centerCarNumber: "42",
-        prevPosition: 3,
-        nextPosition: 5,
+        leftPosition: 3,
+        rightPosition: 5,
       });
 
       expect(svg).toContain(">POSITION<"); // mode-name title
       expect(svg).toContain(">P4<"); // primary: the focused car's position
       expect(svg).toContain(">#42<"); // secondary: the focused car's number
-      expect(svg).toContain(">P3<"); // dimmed side preview (previous detent target)
-      expect(svg).toContain(">P5<"); // dimmed side preview (next detent target)
+      expect(svg).toContain(">P3<"); // dimmed left-side preview
+      expect(svg).toContain(">P5<"); // dimmed right-side preview
       expect(svg).not.toMatch(/>#3<|>#5</); // side previews are positions, never car numbers
     });
 
@@ -405,8 +435,8 @@ describe("camera dial-surface pure helpers", () => {
         identityLabel: "POSITION",
         centerPosition: null,
         centerCarNumber: "0",
-        prevPosition: 3,
-        nextPosition: 1,
+        leftPosition: 3,
+        rightPosition: 1,
       });
 
       expect(svg).toContain(">#0<"); // number-only centre, no lying P badge for the unclassified car
@@ -424,8 +454,8 @@ describe("camera dial-surface pure helpers", () => {
         identityLabel: "POSITION",
         centerPosition: null,
         centerCarNumber: null,
-        prevPosition: null,
-        nextPosition: null,
+        leftPosition: null,
+        rightPosition: null,
       });
 
       expect(svg).toContain(">POSITION<");
@@ -448,6 +478,18 @@ describe("CameraDialSurface", () => {
     });
   });
 
+  describe("reverseRotation setting (#884)", () => {
+    it("defaults to false so an untouched dial gets the new default mapping", () => {
+      expect(DialSettings.parse({}).reverseRotation).toBe(false);
+    });
+
+    it("coerces the sdpi checkbox string forms (the z.coerce.boolean trap)", () => {
+      expect(DialSettings.parse({ reverseRotation: true }).reverseRotation).toBe(true);
+      expect(DialSettings.parse({ reverseRotation: "true" }).reverseRotation).toBe(true);
+      expect(DialSettings.parse({ reverseRotation: "false" }).reverseRotation).toBe(false);
+    });
+  });
+
   describe("rotation → cycle modes", () => {
     it("cycles the mapped camera / sub-camera / driving target", () => {
       const host = makeHost();
@@ -467,6 +509,16 @@ describe("CameraDialSurface", () => {
       surface.rotate(dialContext("d2") as never, dial({ mode: "camera" }), 3, false);
 
       expect(host.cycle).toHaveBeenCalledTimes(1);
+    });
+
+    it("reverses the cycle direction when reverseRotation is set (#884)", () => {
+      const host = makeHost();
+      const surface = new CameraDialSurface(host as never);
+      surface.rotate(dialContext("d4") as never, dial({ mode: "camera", reverseRotation: true }), 1, false);
+      surface.rotate(dialContext("d4") as never, dial({ mode: "driving", reverseRotation: true }), -1, false);
+
+      expect(host.cycle).toHaveBeenNthCalledWith(1, "cycle-camera", "previous");
+      expect(host.cycle).toHaveBeenNthCalledWith(2, "cycle-driving", "next");
     });
 
     it("still dispatches sub-camera / camera cycling when the pace car (unclassified) has focus — keypad parity (#803)", () => {
@@ -498,6 +550,14 @@ describe("CameraDialSurface", () => {
       expect(host.focusCarNumber).toHaveBeenLastCalledWith(3); // previous = #3
     });
 
+    it("focuses the previous car by number on a clockwise detent when reverseRotation is set (#884)", () => {
+      const host = makeHost();
+      const surface = new CameraDialSurface(host as never);
+      surface.rotate(dialContext("c1b") as never, dial({ mode: "car-number", reverseRotation: true }), 1, false);
+
+      expect(host.focusCarNumber).toHaveBeenCalledWith(3); // focused = #42, previous = #3
+    });
+
     it("does not cycle in car-number mode", () => {
       const host = makeHost();
       const surface = new CameraDialSurface(host as never);
@@ -523,9 +583,10 @@ describe("CameraDialSurface", () => {
   });
 
   describe("rotation → race-position mode", () => {
-    it("focuses the target car BY NUMBER, resolved from the canonical live order (not a bare position)", () => {
-      // carIdx→position: idx1=P3, idx2=P1, idx3=P2; focused CamCarIdx=3 (P2), next → P3 → carIdx1.
-      mockCarNumberRawByIdx.value = { 1: 3, 3: 42 };
+    it("focuses the car AHEAD (P# decreases) on a clockwise detent — the #884 default", () => {
+      // carIdx→position: idx1=P3, idx2=P1, idx3=P2; focused CamCarIdx=3 (P2).
+      // Clockwise now selects the car ahead: P2 → P1 → carIdx2.
+      mockCarNumberRawByIdx.value = { 1: 3, 2: 11, 3: 42 };
       const host = makeHost({ getRacePositions: vi.fn(() => [0, 3, 1, 2]) });
       const surface = new CameraDialSurface(host as never);
       surface.rotate(dialContext("r1") as never, dial({ mode: "race-position" }), 1, false);
@@ -533,19 +594,33 @@ describe("CameraDialSurface", () => {
       // Dispatched via focusCarNumber (switchNum), NOT a position-based call —
       // switchPos would resolve the position against iRacing's OWN official
       // order, which can diverge from the canonical order used here.
-      expect(host.focusCarNumber).toHaveBeenCalledWith(3); // carIdx1's raw number
+      expect(host.focusCarNumber).toHaveBeenCalledWith(11); // carIdx2 (P1)'s raw number
+
+      // Counter-clockwise selects the car behind: P2 → P3 → carIdx1.
+      surface.rotate(dialContext("r1") as never, dial({ mode: "race-position" }), -1, false);
+
+      expect(host.focusCarNumber).toHaveBeenLastCalledWith(3); // carIdx1 (P3)'s raw number
+    });
+
+    it("restores the pre-#884 mapping (clockwise → P# increases) when reverseRotation is set", () => {
+      mockCarNumberRawByIdx.value = { 1: 3, 2: 11, 3: 42 };
+      const host = makeHost({ getRacePositions: vi.fn(() => [0, 3, 1, 2]) });
+      const surface = new CameraDialSurface(host as never);
+      surface.rotate(dialContext("r1b") as never, dial({ mode: "race-position", reverseRotation: true }), 1, false);
+
+      expect(host.focusCarNumber).toHaveBeenCalledWith(3); // clockwise → P3 (the car behind) again
     });
 
     it("focuses the CANONICAL car even when the official CarIdxPosition order disagrees (the preview↔execution seam)", () => {
-      // Canonical order (getRacePositions): idx1=P3, idx2=P1, idx3=P2 — same as
-      // above, so P3 (the rotation target) is carIdx1.
+      // Canonical order (getRacePositions): idx1=P3, idx2=P1, idx3=P2 —
+      // focused CamCarIdx=3 (P2), so the clockwise target P1 is carIdx2.
       const canonicalOrder = [0, 3, 1, 2];
       // Official CarIdxPosition DIVERGES (e.g. a tow/finish/freeze case per
       // race-positions.md): here idx1=P1, idx2=P2, idx3=P3 — so if execution
-      // resolved the target position against the OFFICIAL order instead, P3
-      // would be carIdx3, not carIdx1.
+      // resolved the target position against the OFFICIAL order instead, P1
+      // would be carIdx1, not carIdx2.
       const officialOrder = [0, 1, 2, 3];
-      mockCarNumberRawByIdx.value = { 1: 3, 3: 42 }; // carIdx1 → #3 (canonical), carIdx3 → #42 (official-wrong)
+      mockCarNumberRawByIdx.value = { 2: 11, 1: 3 }; // carIdx2 → #11 (canonical), carIdx1 → #3 (official-wrong)
       const host = makeHost({
         getRacePositions: vi.fn(() => canonicalOrder),
         getTelemetry: vi.fn(() => ({ CamCarIdx: 3, CarIdxPosition: officialOrder }) as never),
@@ -553,14 +628,14 @@ describe("CameraDialSurface", () => {
       const surface = new CameraDialSurface(host as never);
       surface.rotate(dialContext("r-diverge") as never, dial({ mode: "race-position" }), 1, false);
 
-      // Must land on the CANONICAL car (#3 / carIdx1) — the same car the
-      // carousel preview shows — never the official-order car (#42 / carIdx3).
-      expect(host.focusCarNumber).toHaveBeenCalledWith(3);
-      expect(host.focusCarNumber).not.toHaveBeenCalledWith(42);
+      // Must land on the CANONICAL car (#11 / carIdx2) — the same car the
+      // carousel preview shows — never the official-order car (#3 / carIdx1).
+      expect(host.focusCarNumber).toHaveBeenCalledWith(11);
+      expect(host.focusCarNumber).not.toHaveBeenCalledWith(3);
     });
 
     it("falls back to official CarIdxPosition when there is no canonical order, resolving the car the SAME way", () => {
-      mockCarNumberRawByIdx.value = { 1: 3, 3: 42 };
+      mockCarNumberRawByIdx.value = { 2: 11, 3: 42 };
       const host = makeHost({
         getRacePositions: vi.fn(() => null),
         getTelemetry: vi.fn(() => ({ CamCarIdx: 3, CarIdxPosition: [0, 3, 1, 2] }) as never),
@@ -570,8 +645,9 @@ describe("CameraDialSurface", () => {
 
       expect(host.getRacePositions).toHaveBeenCalled();
       // Same car-number resolution path as the canonical case — the fallback
-      // order stays coherent between preview and execution too.
-      expect(host.focusCarNumber).toHaveBeenCalledWith(3);
+      // order stays coherent between preview and execution too. Clockwise →
+      // the car ahead (P1 → carIdx2).
+      expect(host.focusCarNumber).toHaveBeenCalledWith(11);
     });
 
     it("does nothing when the focused car has no position", () => {
@@ -594,9 +670,11 @@ describe("CameraDialSurface", () => {
       expect(host.focusCarNumber).not.toHaveBeenCalled();
     });
 
-    it("recovers to the leader (P1) on a next detent when the focused car has no position (pace car, #803)", () => {
+    it("recovers to last place on a clockwise detent when the focused car has no position (pace car, #803/#884)", () => {
       // order: carIdx0 = P0 (unclassified — the focused PACE car); carIdx2 = P1
-      // (leader), carIdx1 = P3 (last). raw numbers: leader carIdx2 → 11.
+      // (leader), carIdx1 = P3 (last). Clockwise walks UP the field (#884), so
+      // from outside the order it re-enters at last place and each further
+      // clockwise detent moves toward the leader.
       mockCarNumberRawByIdx.value = { 2: 11, 1: 22 };
       const host = makeHost({
         getRacePositions: vi.fn(() => [0, 3, 1, 2]),
@@ -605,10 +683,10 @@ describe("CameraDialSurface", () => {
       const surface = new CameraDialSurface(host as never);
       surface.rotate(dialContext("r5") as never, dial({ mode: "race-position" }), 1, false);
 
-      expect(host.focusCarNumber).toHaveBeenCalledWith(11); // leader (P1) car's raw number
+      expect(host.focusCarNumber).toHaveBeenCalledWith(22); // last-place (maxPosition) car's raw number
     });
 
-    it("recovers to last place on a previous detent when the focused car has no position (pace car, #803)", () => {
+    it("recovers to the leader (P1) on a counter-clockwise detent when the focused car has no position (pace car, #803/#884)", () => {
       mockCarNumberRawByIdx.value = { 2: 11, 1: 22 };
       const host = makeHost({
         getRacePositions: vi.fn(() => [0, 3, 1, 2]),
@@ -617,7 +695,7 @@ describe("CameraDialSurface", () => {
       const surface = new CameraDialSurface(host as never);
       surface.rotate(dialContext("r6") as never, dial({ mode: "race-position" }), -1, false);
 
-      expect(host.focusCarNumber).toHaveBeenCalledWith(22); // last-place (maxPosition) car's raw number
+      expect(host.focusCarNumber).toHaveBeenCalledWith(11); // leader (P1) car's raw number
     });
   });
 
@@ -696,8 +774,24 @@ describe("CameraDialSurface", () => {
       expect(decoded).toContain(">CAMERA<"); // mode-name title
       expect(decoded).toContain(">COCKPIT<"); // current group
       expect(decoded).toContain('data-group="Cockpit"');
-      expect(decoded).toContain('data-group="Nose"'); // prev
-      expect(decoded).toContain('data-group="Chase"'); // next
+      expect(decoded).toContain('data-group="Nose"'); // counter-clockwise (prev) on the left
+      expect(decoded).toContain('data-group="Chase"'); // clockwise (next) on the right
+    });
+
+    it("swaps the camera-carousel preview sides when reverseRotation is set (#884)", async () => {
+      // Null glyphs so the side slots render as NAME texts whose x coordinate
+      // pins the side (glyph transforms don't expose the slot x directly).
+      const host = makeHost({ getGroupGlyph: vi.fn(() => null) });
+      const surface = new CameraDialSurface(host as never);
+      const ctx = dialContext("f1b");
+      await surface.willAppear(ctx as never, dial({ mode: "camera", reverseRotation: true }));
+
+      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+
+      // Reversed: clockwise cycles to the PREVIOUS group (Nose), so it previews
+      // on the right; the next group (Chase) moves to the left.
+      expect(decoded).toMatch(sideText(0.82, "NOSE"));
+      expect(decoded).toMatch(sideText(0.18, "CHASE"));
     });
 
     it("renders the car-number carousel with the mode-name title and the focused #number", async () => {
@@ -710,8 +804,21 @@ describe("CameraDialSurface", () => {
 
       expect(decoded).toContain(">CAR #<"); // mode-name title
       expect(decoded).toContain(">#42<"); // focused car
-      expect(decoded).toContain(">#99<"); // next by number
-      expect(decoded).toContain(">#3<"); // previous by number
+      expect(decoded).toMatch(sideText(0.84, "#99")); // clockwise (next by number) on the right
+      expect(decoded).toMatch(sideText(0.16, "#3")); // counter-clockwise (previous by number) on the left
+    });
+
+    it("swaps the car-number preview sides when reverseRotation is set (#884)", async () => {
+      const host = makeHost();
+      const surface = new CameraDialSurface(host as never);
+      const ctx = dialContext("f2b");
+      await surface.willAppear(ctx as never, dial({ mode: "car-number", reverseRotation: true }));
+
+      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+
+      // Clockwise now goes to the PREVIOUS car by number, so it previews right.
+      expect(decoded).toMatch(sideText(0.84, "#3"));
+      expect(decoded).toMatch(sideText(0.16, "#99"));
     });
 
     it("renders the race-position carousel with the mode-name title, position primary, and car number secondary", async () => {
@@ -726,13 +833,30 @@ describe("CameraDialSurface", () => {
       expect(decoded).toContain(">POSITION<"); // mode-name title
       expect(decoded).toContain(">P2<"); // primary: focused car is P2
       expect(decoded).toContain(">#42<"); // secondary: focused car's number, beneath the position
-      expect(decoded).toContain(">P3<"); // dimmed side preview (previous detent target)
-      expect(decoded).toContain(">P1<"); // dimmed side preview (next detent target)
+      // Clockwise selects the car ahead (#884), so P1 previews on the RIGHT and
+      // the car behind (P3) on the LEFT — the sides follow the effective mapping.
+      expect(decoded).toMatch(sideText(0.84, "P1"));
+      expect(decoded).toMatch(sideText(0.16, "P3"));
+    });
+
+    it("swaps the race-position preview sides when reverseRotation restores the pre-#884 mapping", async () => {
+      mockCarNumberByIdx.value = { 1: "77", 2: "88", 3: "42" };
+      const host = makeHost({ getRacePositions: vi.fn(() => [0, 3, 1, 2]) });
+      const surface = new CameraDialSurface(host as never);
+      const ctx = dialContext("f3r");
+      await surface.willAppear(ctx as never, dial({ mode: "race-position", reverseRotation: true }));
+
+      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+
+      // Reversed: clockwise → P# increases again, so P3 previews on the RIGHT.
+      expect(decoded).toMatch(sideText(0.84, "P3"));
+      expect(decoded).toMatch(sideText(0.16, "P1"));
     });
 
     it("previews the recovery-target POSITIONS at the sides, falling back to a number-only centre, when the pace car has focus (#803)", async () => {
-      // Focused pace car = carIdx0 (P0, unclassified). Recovery: next → leader
-      // (P1) = carIdx2, previous → last place (P3, maxPosition=3) = carIdx1.
+      // Focused pace car = carIdx0 (P0, unclassified). Recovery (#884 mapping):
+      // clockwise walks up the field, so it re-enters at last place (P3,
+      // maxPosition=3) = carIdx1; counter-clockwise → the leader (P1) = carIdx2.
       // The centre has no classified position so it falls back to the plain
       // car number rather than a lying "P0" badge; the side previews still
       // show the real recovery targets the detents will actually focus.
@@ -748,8 +872,8 @@ describe("CameraDialSurface", () => {
       const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
 
       expect(decoded).toContain(">#0<"); // number-only centre for the unclassified pace car
-      expect(decoded).toContain(">P1<"); // next detent → leader (P1)
-      expect(decoded).toContain(">P3<"); // previous detent → last place (P3)
+      expect(decoded).toMatch(sideText(0.84, "P3")); // clockwise detent → last place
+      expect(decoded).toMatch(sideText(0.16, "P1")); // counter-clockwise detent → leader
     });
 
     it("renders the sub-camera name carousel from the group's camera list", async () => {
@@ -772,10 +896,29 @@ describe("CameraDialSurface", () => {
 
       expect(decoded).toContain(">SUB-CAMERA<"); // mode-name title
       expect(decoded).toContain(">ROLL BAR<"); // current camera (cameraNum 2)
-      expect(decoded).toContain(">COCKPIT<"); // prev camera (cameraNum 1)
-      expect(decoded).toContain(">GYRO<"); // next camera (cameraNum 3)
+      expect(decoded).toMatch(sideText(0.15, "COCKPIT")); // counter-clockwise (prev, cameraNum 1) on the left
+      expect(decoded).toMatch(sideText(0.85, "GYRO")); // clockwise (next, cameraNum 3) on the right
       // The focused CAR number is no longer part of the sub-camera strip.
       expect(decoded).not.toContain(">#42<");
+    });
+
+    it("swaps the sub-camera preview sides when reverseRotation is set (#884)", async () => {
+      mockCameras.value = [
+        { cameraNum: 1, cameraName: "Cockpit" },
+        { cameraNum: 2, cameraName: "Roll Bar" },
+        { cameraNum: 3, cameraName: "Gyro" },
+      ];
+      const host = makeHost({
+        getTelemetry: vi.fn(() => ({ CamGroupNumber: 9, CamCarIdx: 3, CamCameraNumber: 2 }) as never),
+      });
+      const surface = new CameraDialSurface(host as never);
+      const ctx = dialContext("f4r");
+      await surface.willAppear(ctx as never, dial({ mode: "sub-camera", reverseRotation: true }));
+
+      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+
+      expect(decoded).toMatch(sideText(0.85, "COCKPIT")); // clockwise now steps to the previous camera
+      expect(decoded).toMatch(sideText(0.15, "GYRO"));
     });
 
     it("wraps the sub-camera carousel at the ends of the group's camera list", async () => {
