@@ -107,12 +107,22 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 }
 
 /**
- * Extract action settings from a frame. Ulanzi delivers settings in `param`
- * (`add` / `paramfromapp` / `paramfromplugin`); global-settings replies use
- * `settings`. Reading `param` first then `settings` covers both.
+ * Extract action settings from a frame. Ulanzi delivers action settings in
+ * `param` (`add` / `paramfromapp` / `paramfromplugin`); reading `param` first
+ * then `settings` covers frames that fall back to the SDK-doc field name.
  */
 function settingsOf(frame: Record<string, unknown>): Record<string, unknown> {
   return asRecord(frame.param) ?? asRecord(frame.settings) ?? {};
+}
+
+/**
+ * Extract global settings from a `didReceiveGlobalSettings` frame. Per the
+ * Ulanzi SDK, global replies carry the payload in `settings` — read it first so
+ * a reply that also carries an (empty) `param` record cannot shadow the actual
+ * settings (#868). `param` stays as the fallback for host variants that use it.
+ */
+function globalSettingsOf(frame: Record<string, unknown>): Record<string, unknown> {
+  return asRecord(frame.settings) ?? asRecord(frame.param) ?? {};
 }
 
 /** Build the context string from a frame's `uuid` / `key` / `actionid`. */
@@ -185,7 +195,11 @@ export function normalizeFrame(frame: Record<string, unknown>): UlanziEvent[] {
     case "clear":
       return normalizeClear(frame);
     case "didReceiveGlobalSettings":
-      return [{ event: "didReceiveGlobalSettings", payload: { settings: settingsOf(frame) } }];
+      // The reply's scope uuid travels as `action` so the adapter can tell
+      // plugin-scoped replies from action-scoped bootstrap fallbacks (#868).
+      // Deliberately no `context`: the per-context settings cache in
+      // handleFrame must not backfill global frames.
+      return [{ event: "didReceiveGlobalSettings", action, payload: { settings: globalSettingsOf(frame) } }];
     case "sendToPlugin": {
       const payload = asRecord(frame.payload);
 
@@ -284,8 +298,17 @@ export class UlanziClient {
     });
 
     this.ws.on("message", (raw: Buffer | string) => {
+      const text = raw.toString();
+
+      // Wire-level frame log (debug level = the PI "Enable debug logging"
+      // toggle): global-settings reply shape and routing vary across
+      // UlanziStudio versions, so support logs must show exactly what
+      // arrived (#868). Truncated to keep oversized frames from flooding
+      // the per-day log file.
+      this.logger.debug(`Received frame: ${text.length > 2000 ? `${text.slice(0, 2000)}…` : text}`);
+
       try {
-        this.handleFrame(JSON.parse(raw.toString()) as Record<string, unknown>);
+        this.handleFrame(JSON.parse(text) as Record<string, unknown>);
       } catch (error) {
         this.logger.error(`Failed to parse WebSocket message: ${error}`);
       }
@@ -308,7 +331,17 @@ export class UlanziClient {
    */
   private handleFrame(frame: Record<string, unknown>): void {
     if (frame.code !== undefined && frame.cmdType !== "REQUEST") {
-      return;
+      // Ack/response frames drop — with one exception: the host may reply to
+      // an explicit `getGlobalSettings` request with an ack-shaped frame
+      // (`code` set) that carries the settings payload. Dropping it would
+      // lose the boot-time settings restore (#868). Data-less global-settings
+      // acks (plain write confirmations) still drop.
+      const carriesGlobalSettings =
+        frame.cmd === "didReceiveGlobalSettings" && Object.keys(globalSettingsOf(frame)).length > 0;
+
+      if (!carriesGlobalSettings) {
+        return;
+      }
     }
 
     for (const ev of normalizeFrame(frame)) {
@@ -396,10 +429,25 @@ export class UlanziClient {
     this.send({ cmd: "setSettings", uuid, key, actionid, settings });
   }
 
-  requestGlobalSettings(): void {
-    this.send({ cmd: "getGlobalSettings", uuid: PLUGIN_UUID, key: "", actionid: "" });
+  /**
+   * Request global settings. Plugin scope by default; pass an action context
+   * for the adapter's boot-time bootstrap read — the Ulanzi SDK documents that
+   * a main-service `getGlobalSettings` must carry an action context to be
+   * answered (#868). Writes never take a context: they must always land in the
+   * plugin-scope bucket (see {@link setGlobalSettings}).
+   */
+  requestGlobalSettings(context?: string): void {
+    const scope = context ? decodeContext(context) : { uuid: PLUGIN_UUID, key: "", actionid: "" };
+
+    this.send({ cmd: "getGlobalSettings", ...scope });
   }
 
+  /**
+   * Persist global settings. Always plugin-scoped: UlanziStudio buckets the
+   * store by the frame's `uuid`, and the boot-time restore reads the plugin
+   * bucket — a write scoped any other way would be invisible after a restart
+   * (#868, the original key-bindings-lost bug).
+   */
   setGlobalSettings(settings: Record<string, unknown>): void {
     this.send({ cmd: "setGlobalSettings", uuid: PLUGIN_UUID, key: "", actionid: "", settings });
   }

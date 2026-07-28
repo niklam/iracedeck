@@ -26,7 +26,7 @@ import type { ILogger } from "@iracedeck/logger";
 import { createConsoleLogger, LogLevel } from "@iracedeck/logger";
 
 import { FileSink, withFileSink } from "./file-logger.js";
-import { parseConnectionParams, UlanziClient, type UlanziEvent } from "./ulanzi-client.js";
+import { parseConnectionParams, PLUGIN_UUID, UlanziClient, type UlanziEvent } from "./ulanzi-client.js";
 
 /** Valid controller types for Ulanzi devices. */
 type ControllerType = "Keypad" | "Encoder" | "Information";
@@ -173,6 +173,22 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
   /** Track controller type per context from willAppear events. */
   private readonly contextControllers = new Map<string, ControllerType>();
 
+  /** Callbacks registered via {@link onDidReceiveGlobalSettings} (fan-out list). */
+  private readonly globalSettingsCallbacks: ((settings: unknown) => void)[] = [];
+
+  /** Whether any didReceiveGlobalSettings reply has arrived this process. */
+  private globalSettingsReplyReceived = false;
+
+  /**
+   * Whether a non-empty plugin-scoped reply has been applied. Once set, late
+   * action-scoped replies (the boot bootstrap fallback) are dropped so a
+   * per-action bucket's stale contents can't clobber authoritative data (#868).
+   */
+  private globalSettingsSettled = false;
+
+  /** Whether the one-shot boot-time global-settings bootstrap read was sent. */
+  private globalSettingsBootstrapSent = false;
+
   /**
    * Shared, runtime-mutable minimum log level (issue #609). `createConsoleLogger`
    * captures its level at creation time, so to honour the "Enable debug logging"
@@ -226,6 +242,32 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
       log.debug(`URL: ${parsed.origin}${parsed.pathname}`);
       this.client.openUrl(url);
     });
+
+    // Global-settings reply routing (#868). Registered here (not in
+    // onDidReceiveGlobalSettings) so reply tracking runs even before deck-core
+    // wires its callback. Plugin-scoped replies (uuid absent or the plugin
+    // UUID) are authoritative and always forwarded. Action-scoped replies
+    // exist only as the boot bootstrap fallback — forwarded while nothing
+    // better has arrived, dropped once a non-empty plugin-scoped reply has
+    // been applied, so a per-action bucket's stale contents can't clobber it.
+    this.client.onGlobalEvent("didReceiveGlobalSettings", (data) => {
+      this.globalSettingsReplyReceived = true;
+
+      const scope = data.action ?? "";
+      const pluginScoped = scope === "" || scope === PLUGIN_UUID;
+
+      if (!pluginScoped && this.globalSettingsSettled) return;
+
+      const settings = data.payload?.settings ?? {};
+
+      if (pluginScoped && Object.keys(settings).length > 0) {
+        this.globalSettingsSettled = true;
+      }
+
+      for (const callback of this.globalSettingsCallbacks) {
+        callback(settings);
+      }
+    });
   }
 
   /**
@@ -248,9 +290,9 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
   }
 
   onDidReceiveGlobalSettings(callback: (settings: unknown) => void): void {
-    this.client.onGlobalEvent("didReceiveGlobalSettings", (data) => {
-      callback(data.payload?.settings ?? {});
-    });
+    // Delivery runs through the constructor-registered reply router, which
+    // applies the #868 scope policy before fanning out.
+    this.globalSettingsCallbacks.push(callback);
   }
 
   getGlobalSettings(): void {
@@ -306,6 +348,15 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
 
       const controller = ((data.payload?.controller as string) ?? "Keypad") as ControllerType;
       this.contextControllers.set(data.context, controller);
+
+      // Boot-time global-settings bootstrap (#868): the host does not answer
+      // the connect-time plugin-scope read — the Ulanzi SDK requires an action
+      // context on main-service reads — so re-drive the read once with the
+      // first appearing action's context, the earliest context the plugin has.
+      if (!this.globalSettingsReplyReceived && !this.globalSettingsBootstrapSent) {
+        this.globalSettingsBootstrapSent = true;
+        this.client.requestGlobalSettings(data.context);
+      }
 
       await handler.onWillAppear?.(
         wrapEvent<T>(this.client, data as UlanziEvent & { context: string }, getControllerType(data.context)),

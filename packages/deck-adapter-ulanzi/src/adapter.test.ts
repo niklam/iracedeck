@@ -15,6 +15,7 @@ const mockInstances: Array<Record<string, ReturnType<typeof vi.fn>>> = [];
 // Mock UlanziClient — factory must not reference variables defined after vi.mock
 vi.mock("./ulanzi-client.js", () => ({
   parseConnectionParams: () => ({ address: "127.0.0.1", port: "3906", language: "en" }),
+  PLUGIN_UUID: "com.iracedeck.sd.core",
   UlanziClient: class {
     onActionEvent = vi.fn();
     onGlobalEvent = vi.fn();
@@ -118,6 +119,92 @@ describe("UlanziPlatformAdapter", () => {
       handler({ event: "didReceiveGlobalSettings", payload: { settings: { key: "value" } } });
 
       expect(callback).toHaveBeenCalledWith({ key: "value" });
+    });
+
+    it("forwards a pre-settle action-scoped reply (boot bootstrap fallback)", () => {
+      // Before any plugin-scoped reply has arrived, an action-scoped reply is
+      // the only data the boot bootstrap read can produce — forward it (#868).
+      const callback = vi.fn();
+      adapter.onDidReceiveGlobalSettings(callback);
+
+      const handler = client.onGlobalEvent.mock.calls.find((call) => call[0] === "didReceiveGlobalSettings")?.[1];
+      handler({ event: "didReceiveGlobalSettings", action: "com.test.action", payload: { settings: { a: 1 } } });
+
+      expect(callback).toHaveBeenCalledWith({ a: 1 });
+    });
+
+    it("drops an action-scoped reply after a non-empty plugin-scoped reply has been applied", () => {
+      // A late action-scoped reply carries a per-action bucket's stale
+      // contents — it must not clobber authoritative plugin-scoped data (#868).
+      const callback = vi.fn();
+      adapter.onDidReceiveGlobalSettings(callback);
+
+      const handler = client.onGlobalEvent.mock.calls.find((call) => call[0] === "didReceiveGlobalSettings")?.[1];
+      handler({
+        event: "didReceiveGlobalSettings",
+        action: "com.iracedeck.sd.core",
+        payload: { settings: { debugLogging: true } },
+      });
+      handler({ event: "didReceiveGlobalSettings", action: "com.test.action", payload: { settings: { stale: 1 } } });
+
+      expect(callback).toHaveBeenCalledTimes(1);
+      expect(callback).toHaveBeenCalledWith({ debugLogging: true });
+    });
+
+    it("keeps forwarding plugin-scoped replies after settling", () => {
+      const callback = vi.fn();
+      adapter.onDidReceiveGlobalSettings(callback);
+
+      const handler = client.onGlobalEvent.mock.calls.find((call) => call[0] === "didReceiveGlobalSettings")?.[1];
+      handler({ event: "didReceiveGlobalSettings", payload: { settings: { debugLogging: true } } });
+      handler({ event: "didReceiveGlobalSettings", payload: { settings: { debugLogging: false } } });
+
+      expect(callback).toHaveBeenCalledTimes(2);
+      expect(callback).toHaveBeenLastCalledWith({ debugLogging: false });
+    });
+  });
+
+  describe("global-settings boot bootstrap (#868)", () => {
+    const willAppear = () =>
+      client.onActionEvent.mock.calls.find((call: [string, string, unknown]) => call[1] === "willAppear")?.[2] as (
+        data: unknown,
+      ) => Promise<void>;
+
+    const globalSettingsHandler = () =>
+      client.onGlobalEvent.mock.calls.find((call) => call[0] === "didReceiveGlobalSettings")?.[1];
+
+    it("re-requests global settings with the first appearing action's context when no reply has arrived", async () => {
+      // The host does not answer the connect-time plugin-scope read (the SDK
+      // requires an action context on main-service reads), so the earliest
+      // appearing context re-drives the read (#868).
+      adapter.registerAction("com.test.action", {});
+
+      await willAppear()({
+        event: "willAppear",
+        action: "com.test.action",
+        context: "com.test.action___5___abc",
+        payload: { settings: {} },
+      });
+
+      expect(client.requestGlobalSettings).toHaveBeenCalledWith("com.test.action___5___abc");
+    });
+
+    it("bootstraps only once even when more actions appear", async () => {
+      adapter.registerAction("com.test.action", {});
+
+      await willAppear()({ event: "willAppear", action: "com.test.action", context: "c1", payload: { settings: {} } });
+      await willAppear()({ event: "willAppear", action: "com.test.action", context: "c2", payload: { settings: {} } });
+
+      expect(client.requestGlobalSettings).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not bootstrap once a global-settings reply has arrived", async () => {
+      adapter.registerAction("com.test.action", {});
+      globalSettingsHandler()({ event: "didReceiveGlobalSettings", payload: { settings: { debugLogging: true } } });
+
+      await willAppear()({ event: "willAppear", action: "com.test.action", context: "c1", payload: { settings: {} } });
+
+      expect(client.requestGlobalSettings).not.toHaveBeenCalled();
     });
   });
 

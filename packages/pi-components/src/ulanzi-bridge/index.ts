@@ -17,9 +17,8 @@
  * The Ulanzi plugin's rollup build injects `<script src="ulanzi-pi-bridge.js">`
  * before `sdpi-components.js` into each generated PI HTML.
  */
-import { type BridgeIdentity, elgatoToUlanzi, encodeContext, ulanziToElgato } from "./translate.js";
+import { type BridgeIdentity, elgatoToUlanzi, encodeContext, PLUGIN_UUID, ulanziToElgato } from "./translate.js";
 
-const PLUGIN_UUID = "com.iracedeck.sd.core";
 const WS_OPEN = 1;
 const WS_CLOSED = 3;
 

@@ -168,7 +168,29 @@ describe("normalizeFrame", () => {
   it("maps `didReceiveGlobalSettings` to a global event with settings", () => {
     const ev = normalizeFrame({ cmd: "didReceiveGlobalSettings", settings: { debugLogging: true } })[0];
 
-    expect(ev).toEqual({ event: "didReceiveGlobalSettings", payload: { settings: { debugLogging: true } } });
+    expect(ev).toEqual({
+      event: "didReceiveGlobalSettings",
+      action: "",
+      payload: { settings: { debugLogging: true } },
+    });
+  });
+
+  it("prefers `settings` over `param` for didReceiveGlobalSettings", () => {
+    // A reply carrying both fields must not surface an empty `param` record in
+    // place of the actual settings payload (#868).
+    const ev = normalizeFrame({ cmd: "didReceiveGlobalSettings", param: {}, settings: { debugLogging: true } })[0];
+
+    expect(ev.payload?.settings).toEqual({ debugLogging: true });
+  });
+
+  it("stamps the reply scope uuid as `action` on didReceiveGlobalSettings, with no `context`", () => {
+    // `action` lets the adapter tell plugin-scoped replies from action-scoped
+    // bootstrap fallbacks; omitting `context` keeps the per-context settings
+    // cache from backfilling global frames (#868).
+    const ev = normalizeFrame({ cmd: "didReceiveGlobalSettings", uuid: "com.x.action", settings: { a: 1 } })[0];
+
+    expect(ev.action).toBe("com.x.action");
+    expect(ev.context).toBeUndefined();
   });
 
   it("surfaces `sendToPlugin` only for known PI markers", () => {
@@ -345,6 +367,46 @@ describe("UlanziClient routing + settings cache", () => {
 
     expect(handler).not.toHaveBeenCalled();
   });
+
+  it("delivers an ack-shaped didReceiveGlobalSettings reply that carries settings", async () => {
+    // The host may stamp `code` on the reply to an explicit getGlobalSettings
+    // request — the one ack the client must not drop, or boot-time settings
+    // restore never happens (#868).
+    const client = await connected();
+    const handler = vi.fn();
+    client.onGlobalEvent("didReceiveGlobalSettings", handler);
+
+    lastSocket.emit(
+      "message",
+      JSON.stringify({ code: 0, cmd: "didReceiveGlobalSettings", settings: { debugLogging: true } }),
+    );
+
+    expect(handler).toHaveBeenCalledOnce();
+    expect((handler.mock.calls[0][0] as UlanziEvent).payload?.settings).toEqual({ debugLogging: true });
+  });
+
+  it("still drops data-less ack-shaped didReceiveGlobalSettings frames", async () => {
+    const client = await connected();
+    const handler = vi.fn();
+    client.onGlobalEvent("didReceiveGlobalSettings", handler);
+
+    lastSocket.emit("message", JSON.stringify({ code: 0, cmd: "didReceiveGlobalSettings" }));
+    lastSocket.emit("message", JSON.stringify({ code: 0, cmd: "didReceiveGlobalSettings", settings: {} }));
+
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("logs inbound frames at debug level for wire-level support diagnostics", async () => {
+    const debug = vi.fn();
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug, createScope: vi.fn() };
+    const client = new UlanziClient(params, logger as never, () => {});
+    await client.connect();
+    lastSocket.emit("open");
+
+    lastSocket.emit("message", JSON.stringify({ cmd: "didReceiveGlobalSettings", settings: {} }));
+
+    expect(debug).toHaveBeenCalledWith(expect.stringContaining("didReceiveGlobalSettings"));
+  });
 });
 
 describe("UlanziClient outbound commands", () => {
@@ -412,6 +474,23 @@ describe("UlanziClient outbound commands", () => {
       actionid: "",
       settings: { debugLogging: true },
     });
+  });
+
+  it("requestGlobalSettings without a context uses the plugin scope", async () => {
+    const client = await connected();
+    client.requestGlobalSettings();
+
+    expect(sentMessages()).toContainEqual({ cmd: "getGlobalSettings", uuid: PLUGIN_UUID, key: "", actionid: "" });
+  });
+
+  it("requestGlobalSettings with a context sends that action scope", async () => {
+    // The Ulanzi SDK documents that a main-service getGlobalSettings must carry
+    // an action context to be answered — the adapter's boot-time bootstrap read
+    // uses the first appearing action's context (#868).
+    const client = await connected();
+    client.requestGlobalSettings("com.x.action___5___a");
+
+    expect(sentMessages()).toContainEqual({ cmd: "getGlobalSettings", uuid: "com.x.action", key: "5", actionid: "a" });
   });
 
   it("openUrl sends an openurl frame", async () => {
