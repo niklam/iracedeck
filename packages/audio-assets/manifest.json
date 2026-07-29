@@ -1384,6 +1384,8 @@
     "voice/default/start-lights/countdown-90-01.mp3",
     "voice/default/start-lights/start-go-01.mp3",
     "voice/default/start-lights/start-ready-01.mp3",
+    "voice/default/toggle/corner-names-off-01.mp3",
+    "voice/default/toggle/corner-names-on-01.mp3",
     "voice/default/toggle/going-silent-01.mp3",
     "voice/default/toggle/radio-check-01.mp3",
     "voice/default/toggle/resuming-01.mp3",

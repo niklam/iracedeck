@@ -1399,6 +1399,14 @@
         "name": "radio-check-01",
         "text": "Radio check, radio check. <break time=\"0.2s\"/> Standing by.",
         "seed": 6
+      },
+      {
+        "name": "corner-names-on-01",
+        "text": "Roger that. <break time=\"0.2s\"/> Corner calls coming up."
+      },
+      {
+        "name": "corner-names-off-01",
+        "text": "Copy that. <break time=\"0.2s\"/> Dropping the corner calls."
       }
     ],
     "session-start": [
