@@ -208,3 +208,55 @@ export function toggleRadarFeature(logger: ILogger): boolean {
 
   return next;
 }
+
+/**
+ * Whether the corner-name callouts (issue #888) are enabled. Reads the SAME
+ * per-callout opt-in the PI checkbox writes (`calloutEnabledCornerNames`), so
+ * the Pit Crew Corner Names key and the checkbox mirror one value. Defaults
+ * to enabled — only an explicit `false` opts out (the callout family's
+ * natural baseline).
+ */
+export function isCornerNamesEnabled(): boolean {
+  return (getGlobalSettings() as Record<string, unknown>).calloutEnabledCornerNames !== false;
+}
+
+/**
+ * Per-callout opt-in for the Corner Names toggle acknowledgment (issue #897).
+ * Same defaults-to-enabled live-read shape as {@link isToggleAckEnabled}.
+ */
+export function isCornerNamesToggleAckEnabled(): boolean {
+  return (getGlobalSettings() as Record<string, unknown>).calloutEnabledToggleCornerNames !== false;
+}
+
+/**
+ * Flip the corner-name callout opt-in (issue #897) — the pathway behind the
+ * Pit Crew Corner Names toggle key. Returns the NEW state.
+ *
+ * The corner-name scenario reads the opt-in live on every event arrival, so
+ * persisting the flip is the whole toggle — nothing to stop or re-register,
+ * and an in-flight clip plays through (the #554 opt-in semantics).
+ *
+ * The acknowledgment plays only when the Race Engineer master gate is on:
+ * unlike the master toggle this flip never mutes the Voice bus, so no
+ * in-flight bypass or bus-volume force is needed — with the master on, Voice
+ * is already at the slider value. Master off means a silent flip (the
+ * engineer is off the air). Skipped silently when no voice is available.
+ */
+export function toggleCornerNamesFeature(logger: ILogger): boolean {
+  const next = !isCornerNamesEnabled();
+  logger.info(`Corner name callouts ${next ? "enabled" : "disabled"}`);
+
+  updateGlobalSettings({ calloutEnabledCornerNames: next });
+
+  if (isRaceEngineerEnabled() && isCornerNamesToggleAckEnabled()) {
+    const voice = resolveActiveRaceEngineerVoice(readJsonStringArray("_raceEngineerVoices"));
+
+    if (voice) {
+      playVoiceSequence([`voice/${voice}/toggle/corner-names-${next ? "on" : "off"}-01.mp3`]);
+    } else {
+      logger.debug("Corner names toggle ack skipped — no voice available");
+    }
+  }
+
+  return next;
+}
