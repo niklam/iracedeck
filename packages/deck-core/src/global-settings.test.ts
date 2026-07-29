@@ -127,6 +127,9 @@ describe("global-settings cache (synchronous update on local writes)", () => {
   });
 
   it("forwards the full merged+parsed settings payload to the adapter", () => {
+    // Open the #896 first-arrival gate — writes before the first host
+    // settings arrival are queued, not persisted.
+    mock.echo!({});
     updateGlobalSettings({ pitCrewRadarEnabled: false });
 
     expect(mock.setGlobalSettings).toHaveBeenCalledTimes(1);
@@ -469,12 +472,11 @@ describe("flagFlashDurationSeconds (issue #490)", () => {
     expect(parsed.flagFlashDurationSeconds).toBe(12);
   });
 
-  it("rejects values below 0", () => {
-    expect(() => GlobalSettingsSchema.parse({ flagFlashDurationSeconds: -1 })).toThrow();
-  });
-
-  it("rejects values above 30", () => {
-    expect(() => GlobalSettingsSchema.parse({ flagFlashDurationSeconds: 31 })).toThrow();
+  it("falls back to the default on malformed or out-of-range values instead of aborting the parse (issue #896)", () => {
+    for (const value of [-1, 31, "abc"]) {
+      const parsed = GlobalSettingsSchema.parse({ flagFlashDurationSeconds: value }) as Record<string, unknown>;
+      expect(parsed.flagFlashDurationSeconds).toBe(15);
+    }
   });
 });
 
@@ -563,12 +565,11 @@ describe("dualPressThresholdMs (issue #540)", () => {
     expect(parsed.dualPressThresholdMs).toBe(750);
   });
 
-  it("rejects values below 200", () => {
-    expect(() => GlobalSettingsSchema.parse({ dualPressThresholdMs: 199 })).toThrow();
-  });
-
-  it("rejects values above 2000", () => {
-    expect(() => GlobalSettingsSchema.parse({ dualPressThresholdMs: 2001 })).toThrow();
+  it("falls back to the default on malformed or out-of-range values instead of aborting the parse (issue #896)", () => {
+    for (const value of [199, 2001, "abc"]) {
+      const parsed = GlobalSettingsSchema.parse({ dualPressThresholdMs: value }) as Record<string, unknown>;
+      expect(parsed.dualPressThresholdMs).toBe(500);
+    }
   });
 });
 
@@ -583,8 +584,9 @@ describe("dualPressDirections (issue #540)", () => {
     expect(parsed.dualPressDirections).toBe("tap-decreases");
   });
 
-  it("rejects unknown enum values", () => {
-    expect(() => GlobalSettingsSchema.parse({ dualPressDirections: "tap-toggles" })).toThrow();
+  it("falls back to the default on unknown enum values instead of aborting the parse (issue #896)", () => {
+    const parsed = GlobalSettingsSchema.parse({ dualPressDirections: "tap-toggles" }) as Record<string, unknown>;
+    expect(parsed.dualPressDirections).toBe("tap-increases");
   });
 });
 
@@ -626,12 +628,11 @@ describe("fastestLapSearchDelayMs (issue #577)", () => {
     expect(parsed.fastestLapSearchDelayMs).toBe(650);
   });
 
-  it("rejects values below 50", () => {
-    expect(() => GlobalSettingsSchema.parse({ fastestLapSearchDelayMs: 49 })).toThrow();
-  });
-
-  it("rejects values above 1000", () => {
-    expect(() => GlobalSettingsSchema.parse({ fastestLapSearchDelayMs: 1001 })).toThrow();
+  it("falls back to the default on malformed or out-of-range values instead of aborting the parse (issue #896)", () => {
+    for (const value of [49, 1001, "abc"]) {
+      const parsed = GlobalSettingsSchema.parse({ fastestLapSearchDelayMs: value }) as Record<string, unknown>;
+      expect(parsed.fastestLapSearchDelayMs).toBe(400);
+    }
   });
 });
 
@@ -656,12 +657,11 @@ describe("chatEnterToCloseDelayMs (issue #589)", () => {
     expect(parsed.chatEnterToCloseDelayMs).toBe(300);
   });
 
-  it("rejects values below 0", () => {
-    expect(() => GlobalSettingsSchema.parse({ chatEnterToCloseDelayMs: -1 })).toThrow();
-  });
-
-  it("rejects values above 2000", () => {
-    expect(() => GlobalSettingsSchema.parse({ chatEnterToCloseDelayMs: 2001 })).toThrow();
+  it("falls back to the default on malformed or out-of-range values instead of aborting the parse (issue #896)", () => {
+    for (const value of [-1, 2001, "abc"]) {
+      const parsed = GlobalSettingsSchema.parse({ chatEnterToCloseDelayMs: value }) as Record<string, unknown>;
+      expect(parsed.chatEnterToCloseDelayMs).toBe(200);
+    }
   });
 });
 
@@ -688,5 +688,275 @@ describe("debugLogging (issue #609)", () => {
     const parsed = GlobalSettingsSchema.parse({ debugLogging: true }) as Record<string, unknown>;
 
     expect(parsed.debugLogging).toBe(true);
+  });
+});
+
+describe("first-arrival write gate (issue #896)", () => {
+  let mock: MockAdapter;
+
+  beforeEach(() => {
+    _resetGlobalSettings();
+    mock = createMockAdapter();
+    initGlobalSettings(mock.adapter, createMockLogger());
+  });
+
+  it("queues a write that happens before the first host settings arrival instead of persisting defaults", () => {
+    updateGlobalSettings({ radarVolume: 80 });
+
+    // Nothing persisted — a write here would overwrite host storage with a
+    // defaults-based object, wiping every key binding (the #896 wipe).
+    expect(mock.setGlobalSettings).not.toHaveBeenCalled();
+    // Read-your-writes: the cache still reflects the new value immediately.
+    expect((getGlobalSettings() as Record<string, unknown>).radarVolume).toBe(80);
+  });
+
+  it("flushes the queued write merged over the real settings once they arrive", () => {
+    const binding = '{"type":"keyboard","key":"f1","modifiers":[]}';
+    updateGlobalSettings({ radarVolume: 80 });
+
+    mock.echo!({ blackBoxLapTiming: binding, radarVolume: 50 });
+
+    expect(mock.setGlobalSettings).toHaveBeenCalledTimes(1);
+    const sent = mock.setGlobalSettings.mock.calls[0][0] as Record<string, unknown>;
+    // The host's stored binding survives, and the queued local write wins
+    // over the (older) stored value.
+    expect(sent.blackBoxLapTiming).toBe(binding);
+    expect(sent.radarVolume).toBe(80);
+  });
+
+  it("does not write back on the first arrival when nothing was queued", () => {
+    mock.echo!({ radarVolume: 60 });
+
+    expect(mock.setGlobalSettings).not.toHaveBeenCalled();
+    expect((getGlobalSettings() as Record<string, unknown>).radarVolume).toBe(60);
+  });
+});
+
+describe("pending-write overlay on host echoes (issue #896)", () => {
+  let mock: MockAdapter;
+
+  beforeEach(() => {
+    _resetGlobalSettings();
+    mock = createMockAdapter();
+    initGlobalSettings(mock.adapter, createMockLogger());
+    // Open the first-arrival gate so writes persist immediately.
+    mock.echo!({});
+    mock.setGlobalSettings.mockClear();
+  });
+
+  it("re-applies a pending local write when a stale echo omits the key", () => {
+    updateGlobalSettings({ pitCrewRadarEnabled: true });
+
+    mock.echo!({});
+
+    expect((getGlobalSettings() as Record<string, unknown>).pitCrewRadarEnabled).toBe(true);
+  });
+
+  it("re-applies a pending local write when a stale echo carries the pre-write value", () => {
+    updateGlobalSettings({ radarVolume: 80 });
+
+    mock.echo!({ radarVolume: 50 });
+
+    expect((getGlobalSettings() as Record<string, unknown>).radarVolume).toBe(80);
+  });
+
+  it("accepts a genuinely newer foreign value for the same key", () => {
+    updateGlobalSettings({ radarVolume: 80 });
+
+    // Neither our written value (80) nor the pre-write value (50): a newer
+    // write from another party — the echo wins.
+    mock.echo!({ radarVolume: 65 });
+
+    expect((getGlobalSettings() as Record<string, unknown>).radarVolume).toBe(65);
+  });
+
+  it("drops the pending write once an echo confirms it", () => {
+    updateGlobalSettings({ radarVolume: 80 });
+
+    mock.echo!({ radarVolume: 80 });
+    // With the pending write confirmed and dropped, a later echo wins.
+    mock.echo!({ radarVolume: 30 });
+
+    expect((getGlobalSettings() as Record<string, unknown>).radarVolume).toBe(30);
+  });
+
+  it("keeps the latest of two coalesced local writes when a stale echo carries the original host value", () => {
+    // Real host baseline, then two local writes before any echo.
+    mock.echo!({ radarVolume: 50 });
+    updateGlobalSettings({ radarVolume: 60 });
+    updateGlobalSettings({ radarVolume: 70 });
+
+    // Stale echo from before the write episode — must not read as a
+    // foreign write just because the second write moved the baseline.
+    mock.echo!({ radarVolume: 50 });
+
+    expect((getGlobalSettings() as Record<string, unknown>).radarVolume).toBe(70);
+  });
+
+  it("keeps the latest of two coalesced local writes when the echo of the first write arrives", () => {
+    updateGlobalSettings({ radarVolume: 60 });
+    updateGlobalSettings({ radarVolume: 70 });
+
+    // The first write's own echo carries an intermediate episode value —
+    // stale, not foreign.
+    mock.echo!({ radarVolume: 60 });
+
+    expect((getGlobalSettings() as Record<string, unknown>).radarVolume).toBe(70);
+  });
+
+  it("treats string-typed echo values as equal to their parsed counterparts", () => {
+    // The PI persists numbers as strings ("50") while plugin writes persist
+    // parsed numbers — a stale echo carrying the string form of the
+    // pre-write value must still be recognized as stale, not as a newer
+    // foreign write.
+    updateGlobalSettings({ radarVolume: 80 });
+
+    mock.echo!({ radarVolume: "50" });
+
+    expect((getGlobalSettings() as Record<string, unknown>).radarVolume).toBe(80);
+  });
+
+  it("confirms a pending write from its string-typed echo form", () => {
+    updateGlobalSettings({ radarVolume: 80 });
+
+    mock.echo!({ radarVolume: "80" });
+    mock.echo!({ radarVolume: "30" });
+
+    expect((getGlobalSettings() as Record<string, unknown>).radarVolume).toBe(30);
+  });
+});
+
+describe("pending-delete reconciliation on host echoes (issue #896)", () => {
+  let mock: MockAdapter;
+
+  beforeEach(() => {
+    _resetGlobalSettings();
+    mock = createMockAdapter();
+    initGlobalSettings(mock.adapter, createMockLogger());
+  });
+
+  it("re-drops a deleted key from a stale echo, then confirms once an echo omits it", () => {
+    mock.echo!({ legacyA: 1 });
+    deleteGlobalSettings(["legacyA"]);
+
+    // Stale echo still carrying the deleted key — the delete is re-applied.
+    mock.echo!({ legacyA: 1 });
+    expect("legacyA" in (getGlobalSettings() as Record<string, unknown>)).toBe(false);
+
+    // An echo without the key confirms the delete and clears the pending
+    // record — a later (foreign) re-add of the key is then accepted.
+    mock.echo!({});
+    mock.echo!({ legacyA: 5 });
+    expect((getGlobalSettings() as Record<string, unknown>).legacyA).toBe(5);
+  });
+});
+
+describe("host payload salvage (issue #896)", () => {
+  let mock: MockAdapter;
+
+  beforeEach(() => {
+    _resetGlobalSettings();
+    mock = createMockAdapter();
+    initGlobalSettings(mock.adapter, createMockLogger());
+  });
+
+  it("keeps the good keys when one persisted value is unparseable", () => {
+    // debugLogging: 42 fails its union (no per-field catch) — the salvage
+    // path must drop that key rather than abort the whole parse and leave
+    // the cache at defaults (failure path 3 in #896).
+    mock.echo!({ blackBoxLapTiming: "b1", debugLogging: 42, radarVolume: 80 });
+
+    const settings = getGlobalSettings() as Record<string, unknown>;
+    expect(settings.blackBoxLapTiming).toBe("b1");
+    expect(settings.radarVolume).toBe(80);
+    expect(settings.debugLogging).toBe(false);
+  });
+
+  it("a malformed hardened field degrades to its default without touching bindings in the same payload", () => {
+    mock.echo!({ simHubPort: "not-a-port", lookDirectionLeft: "b2" });
+
+    const settings = getGlobalSettings() as Record<string, unknown>;
+    expect(settings.lookDirectionLeft).toBe("b2");
+    expect(settings.simHubPort).toBe(8888);
+  });
+});
+
+describe("shrink guard on outgoing writes (issue #896)", () => {
+  let mock: MockAdapter;
+
+  beforeEach(() => {
+    _resetGlobalSettings();
+    mock = createMockAdapter();
+    initGlobalSettings(mock.adapter, createMockLogger());
+  });
+
+  it("keeps bindings in outgoing writes when the same payload carried an unparseable value", () => {
+    mock.echo!({ blackBoxLapTiming: "b1", debugLogging: 42 });
+    mock.setGlobalSettings.mockClear();
+
+    updateGlobalSettings({ radarVolume: 80 });
+
+    const sent = mock.setGlobalSettings.mock.calls[0][0] as Record<string, unknown>;
+    // The binding (a passthrough key — salvage can never drop those) rides
+    // along untouched.
+    expect(sent.blackBoxLapTiming).toBe("b1");
+    // The unparseable schema field heals to its default in storage — the
+    // salvage dropped the corrupt value and the schema materialized the
+    // default, so the next session parses cleanly.
+    expect(sent.debugLogging).toBe(false);
+    expect(sent.radarVolume).toBe(80);
+  });
+
+  it("does not resurrect explicitly deleted keys", () => {
+    mock.echo!({ legacyA: 1, keepMe: 2 });
+    deleteGlobalSettings(["legacyA"]);
+    mock.setGlobalSettings.mockClear();
+
+    updateGlobalSettings({ radarVolume: 80 });
+
+    const sent = mock.setGlobalSettings.mock.calls[0][0] as Record<string, unknown>;
+    expect("legacyA" in sent).toBe(false);
+    expect(sent.keepMe).toBe(2);
+  });
+});
+
+describe("schema hardening (issue #896)", () => {
+  it("simHubPort falls back to the default on malformed or out-of-range values", () => {
+    for (const value of ["99999", "abc", 0, -5]) {
+      const parsed = GlobalSettingsSchema.parse({ simHubPort: value }) as Record<string, unknown>;
+      expect(parsed.simHubPort).toBe(8888);
+    }
+  });
+
+  it("volume fields fall back to their defaults on malformed or out-of-range values", () => {
+    const parsed = GlobalSettingsSchema.parse({
+      radarVolume: 101,
+      raceEngineerVolume: -1,
+      backgroundVolume: "loud",
+    }) as Record<string, unknown>;
+    expect(parsed.radarVolume).toBe(50);
+    expect(parsed.raceEngineerVolume).toBe(50);
+    expect(parsed.backgroundVolume).toBe(25);
+  });
+
+  it("chat delay fields fall back to their defaults on out-of-range values", () => {
+    const parsed = GlobalSettingsSchema.parse({
+      chatOpenToPasteDelayMs: 9999,
+      chatPasteToEnterDelayMs: -1,
+    }) as Record<string, unknown>;
+    expect(parsed.chatOpenToPasteDelayMs).toBe(200);
+    expect(parsed.chatPasteToEnterDelayMs).toBe(200);
+  });
+
+  it("disableWhenDisconnected coerces PI string values like the other booleans", () => {
+    const parsedFalse = GlobalSettingsSchema.parse({ disableWhenDisconnected: "false" }) as Record<string, unknown>;
+    expect(parsedFalse.disableWhenDisconnected).toBe(false);
+    const parsedTrue = GlobalSettingsSchema.parse({ disableWhenDisconnected: "true" }) as Record<string, unknown>;
+    expect(parsedTrue.disableWhenDisconnected).toBe(true);
+  });
+
+  it("simHubHost falls back to the default on a non-string value", () => {
+    const parsed = GlobalSettingsSchema.parse({ simHubHost: 42 }) as Record<string, unknown>;
+    expect(parsed.simHubHost).toBe("127.0.0.1");
   });
 });
