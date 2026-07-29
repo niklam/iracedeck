@@ -130,6 +130,7 @@ const STATUS_BAR_TEMPLATES = new Set([
 const PIT_CREW_SAMPLES: { key: string; title: string }[] = [
   { key: "pit-crew-engineer", title: "RACE\nENGINEER" },
   { key: "pit-crew-radar", title: "RADAR" },
+  { key: "pit-crew-corner-names", title: "CORNER\nNAMES" },
 ];
 
 interface DialBoxSampleSpec {

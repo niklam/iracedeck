@@ -155,9 +155,19 @@
           "file": "pit-crew.ts",
           "encoder": false,
           "settingsKeys": ["mode", "direction"],
-          "description": "Multi-mode action for the iRaceDeck audio framework. The initial release exposes only the directional Radar proximity ticks; a Race Engineer voice feature is planned for a follow-up release and will return to the Mode dropdown alongside its voice scenarios. The radar-volume mode moved to the Audio Controls action (#590) — hidden from the Pit Crew Mode dropdown but kept functional so existing buttons keep working.",
+          "description": "Multi-mode action for the iRaceDeck audio framework: the Race Engineer voice toggle, the directional Radar proximity ticks, and the Corner Names callout toggle (#897). The radar-volume mode moved to the Audio Controls action (#590) — hidden from the Pit Crew Mode dropdown but kept functional so existing buttons keep working.",
           "modes": [
+            {
+              "mode": "race-engineer",
+              "label": "Race Engineer Toggle",
+              "description": "Flips the Race Engineer master gate (voice scenarios + pit ambience) on/off, with a spoken acknowledgment"
+            },
             { "mode": "radar", "label": "Radar", "description": "Toggles the directional proximity tick loop on/off" },
+            {
+              "mode": "corner-names",
+              "label": "Corner Names",
+              "description": "Toggles the corner-name callouts (practice/test) on/off — flips the same calloutEnabledCornerNames setting as the PI checkbox, with a spoken acknowledgment (#897)"
+            },
             {
               "mode": "radar-volume",
               "direction": "up",
