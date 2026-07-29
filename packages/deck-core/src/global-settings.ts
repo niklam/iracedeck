@@ -975,13 +975,15 @@ let hasQueuedWrites = false;
 
 /**
  * A local write not yet confirmed by a host echo (issue #896). `value` is
- * what this module last wrote for the key; `previousValue` is what the cache
- * held before that write — a host payload still carrying `previousValue` (or
- * missing the key) is a stale echo and must not roll the write back.
+ * what this module last wrote for the key; `supersededValues` is every value
+ * this write episode replaced — the pre-episode baseline plus each coalesced
+ * intermediate own value. A host payload still carrying any of these (or
+ * missing the key) is a stale echo and must not roll the write back; only a
+ * value outside the episode is a genuinely newer foreign write.
  */
 interface PendingLocalWrite {
   value: unknown;
-  previousValue: unknown;
+  supersededValues: unknown[];
 }
 
 /**
@@ -1162,7 +1164,11 @@ export function initGlobalSettings(adapter: IDeckPlatformAdapter, log: ILogger):
 
       if (rawHasKey && sameValue(raw[key], pending.value)) {
         pendingLocalWrites.delete(key);
-      } else if (firstArrival || !rawHasKey || sameValue(raw[key], pending.previousValue)) {
+      } else if (
+        firstArrival ||
+        !rawHasKey ||
+        pending.supersededValues.some((superseded) => sameValue(raw[key], superseded))
+      ) {
         merged[key] = pending.value;
         reappliedKeys.push(key);
       } else {
@@ -1297,7 +1303,25 @@ export function updateGlobalSettings(partial: Record<string, unknown>): void {
     if (salvage.droppedKeys.includes(key)) continue;
 
     pendingLocalDeletes.delete(key);
-    pendingLocalWrites.set(key, { value: parsedView[key], previousValue: base[key] });
+
+    // Coalesce with an existing pending write for the key: keep every value
+    // the episode superseded — the pre-episode baseline AND each
+    // intermediate own value — so a delayed echo of either form (the host
+    // state from before the episode, or the echo of an earlier write in it)
+    // is recognized as stale rather than as a foreign write that would roll
+    // the whole episode back.
+    const existing = pendingLocalWrites.get(key);
+    let supersededValues: unknown[];
+
+    if (existing === undefined) {
+      supersededValues = [base[key]];
+    } else if (existing.supersededValues.some((superseded) => sameValue(superseded, existing.value))) {
+      supersededValues = existing.supersededValues;
+    } else {
+      supersededValues = [...existing.supersededValues, existing.value];
+    }
+
+    pendingLocalWrites.set(key, { value: parsedView[key], supersededValues });
   }
 
   applyParsedSettings(salvage.settings);

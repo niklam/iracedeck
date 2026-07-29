@@ -768,6 +768,30 @@ describe("pending-write overlay on host echoes (issue #896)", () => {
     expect((getGlobalSettings() as Record<string, unknown>).radarVolume).toBe(30);
   });
 
+  it("keeps the latest of two coalesced local writes when a stale echo carries the original host value", () => {
+    // Real host baseline, then two local writes before any echo.
+    mock.echo!({ radarVolume: 50 });
+    updateGlobalSettings({ radarVolume: 60 });
+    updateGlobalSettings({ radarVolume: 70 });
+
+    // Stale echo from before the write episode — must not read as a
+    // foreign write just because the second write moved the baseline.
+    mock.echo!({ radarVolume: 50 });
+
+    expect((getGlobalSettings() as Record<string, unknown>).radarVolume).toBe(70);
+  });
+
+  it("keeps the latest of two coalesced local writes when the echo of the first write arrives", () => {
+    updateGlobalSettings({ radarVolume: 60 });
+    updateGlobalSettings({ radarVolume: 70 });
+
+    // The first write's own echo carries an intermediate episode value —
+    // stale, not foreign.
+    mock.echo!({ radarVolume: 60 });
+
+    expect((getGlobalSettings() as Record<string, unknown>).radarVolume).toBe(70);
+  });
+
   it("treats string-typed echo values as equal to their parsed counterparts", () => {
     // The PI persists numbers as strings ("50") while plugin writes persist
     // parsed numbers — a stale echo carrying the string form of the
