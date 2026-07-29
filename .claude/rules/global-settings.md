@@ -135,6 +135,19 @@ const GlobalSettingsSchema = z.object({
 
 The `.passthrough()` allows dynamic key binding properties (e.g., `blackBoxLapTiming`, `lookDirectionLeft`) without declaring them explicitly in the schema.
 
+**Every plain-value schema field must end in `.catch(<default>)`** (or be otherwise throw-proof, like the union+transform booleans and the `preprocess`-guarded strings). A single throwing field aborts the entire settings parse, which stalls the cache at defaults and makes every key binding look unset (#896). Follow the `spotterStillThereSeconds` / `changelogNotification` precedent when adding fields.
+
+## Write semantics — stale-cache safety (#896)
+
+Global settings are one JSON blob with two independent full-object writers — the PI (sdpi-components saves its whole page snapshot) and the plugin (`updateGlobalSettings` sends the whole cache). A write from a stale cache silently deletes keys the other side saved (the "key bindings not saved" bug). `global-settings.ts` defends every plugin-side write path; when touching that module, preserve these four mechanisms:
+
+- **First-arrival gate.** Writes (`updateGlobalSettings` / `deleteGlobalSettings`) before the host's first `didReceiveGlobalSettings` response are applied to the cache (read-your-writes) but **queued, not persisted** — the cache is pure schema defaults until then, and persisting would wipe storage. The first arrival flushes queued writes merged over the real settings. Consequence: plugin code may write global settings at any time, including before startup settings arrive (the #610 elevation probe does), without wiping anything.
+- **Pending-write overlay.** Every written key stays pending until a host payload confirms it. A stale echo (key missing, or still carrying the pre-write value) gets the local write re-applied; a genuinely different value is a newer foreign write and wins; on the first arrival local writes always win. This is what stops the delayed host echo (#419) from rolling back local writes.
+- **Per-key salvage.** Host payloads are parsed with `parseWithSalvage`: when the strict parse fails, the offending top-level keys are dropped (falling back to their schema defaults) and the parse retried, so one corrupt value can't stall every setting. Passthrough keys (bindings) are never validated, so they can never be dropped.
+- **Shrink guard.** Outgoing writes restore any key the last host payload held that is missing from the cache and was not explicitly deleted — logged at `warn` with the key names at `debug`. Defense-in-depth against any future path that loses keys from the cache.
+
+Diagnostics: with `debugLogging` on, the module logs raw payloads, queued/flushed writes, re-applied pending keys, salvage-dropped keys, and shrink-guard restores — enough to tell which failure path a "bindings not saved" report actually hit.
+
 ## Title Settings Keys
 
 Plugin-level title defaults are stored as flat keys with a `title` prefix and read via `getGlobalTitleSettings()`:
