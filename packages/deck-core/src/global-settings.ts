@@ -548,6 +548,18 @@ export const GlobalSettingsSchema = z
       .transform((val) => val === true || val === "true")
       .default(true),
     /**
+     * Corner Names toggle acknowledgment (issue #897). When enabled, the Pit
+     * Crew Corner Names key speaks a short confirmation on every toggle
+     * ("corner calls coming up" / "dropping the corner calls"). Only gates
+     * the ack — the toggle itself always applies, and the ack additionally
+     * requires the Race Engineer master gate to be on. UI-side, no scenario
+     * engine. Read live in `toggleCornerNamesFeature()`. Default `true`.
+     */
+    calloutEnabledToggleCornerNames: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    /**
      * Opt-in for the Race Engineer radio check fired when iRacing telemetry
      * starts flowing (issue #554 follow-up). On a false→true transition of
      * the SDK controller's connection state, the Pit Crew action plays the

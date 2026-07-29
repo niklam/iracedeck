@@ -338,6 +338,18 @@ describe("spotter callout defaults (issue #651)", () => {
   });
 });
 
+describe("corner-names toggle ack opt-in default (issue #897)", () => {
+  it("defaults calloutEnabledToggleCornerNames to true", () => {
+    const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
+    expect(parsed.calloutEnabledToggleCornerNames).toBe(true);
+  });
+
+  it('coerces the string "false" to boolean false', () => {
+    const parsed = GlobalSettingsSchema.parse({ calloutEnabledToggleCornerNames: "false" }) as Record<string, unknown>;
+    expect(parsed.calloutEnabledToggleCornerNames).toBe(false);
+  });
+});
+
 describe("resolveActiveRaceEngineerVoice", () => {
   beforeEach(() => {
     _resetGlobalSettings();
