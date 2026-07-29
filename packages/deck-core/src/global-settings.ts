@@ -1286,12 +1286,18 @@ export function updateGlobalSettings(partial: Record<string, unknown>): void {
 
   // Record the surviving partial keys as pending until a host payload
   // confirms them (#896) — a stale echo arriving later must not roll them
-  // back. A write supersedes any pending delete of the same key.
+  // back. A write supersedes any pending delete of the same key. Record the
+  // PARSED value, not the raw input: the outgoing write sends the parsed
+  // cache, so the host echo carries the parsed form — recording the raw
+  // input (e.g. an out-of-range number the schema `.catch()`-ed) would
+  // leave the key pending forever, re-applied and logged on every echo.
+  const parsedView = salvage.settings as Record<string, unknown>;
+
   for (const key of Object.keys(partial)) {
     if (salvage.droppedKeys.includes(key)) continue;
 
     pendingLocalDeletes.delete(key);
-    pendingLocalWrites.set(key, { value: partial[key], previousValue: base[key] });
+    pendingLocalWrites.set(key, { value: parsedView[key], previousValue: base[key] });
   }
 
   applyParsedSettings(salvage.settings);

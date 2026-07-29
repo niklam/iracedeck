@@ -790,6 +790,31 @@ describe("pending-write overlay on host echoes (issue #896)", () => {
   });
 });
 
+describe("pending-delete reconciliation on host echoes (issue #896)", () => {
+  let mock: MockAdapter;
+
+  beforeEach(() => {
+    _resetGlobalSettings();
+    mock = createMockAdapter();
+    initGlobalSettings(mock.adapter, createMockLogger());
+  });
+
+  it("re-drops a deleted key from a stale echo, then confirms once an echo omits it", () => {
+    mock.echo!({ legacyA: 1 });
+    deleteGlobalSettings(["legacyA"]);
+
+    // Stale echo still carrying the deleted key — the delete is re-applied.
+    mock.echo!({ legacyA: 1 });
+    expect("legacyA" in (getGlobalSettings() as Record<string, unknown>)).toBe(false);
+
+    // An echo without the key confirms the delete and clears the pending
+    // record — a later (foreign) re-add of the key is then accepted.
+    mock.echo!({});
+    mock.echo!({ legacyA: 5 });
+    expect((getGlobalSettings() as Record<string, unknown>).legacyA).toBe(5);
+  });
+});
+
 describe("host payload salvage (issue #896)", () => {
   let mock: MockAdapter;
 

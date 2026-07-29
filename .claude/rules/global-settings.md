@@ -123,13 +123,24 @@ Global settings are validated with Zod. The schema is in `deck-core/src/global-s
 
 ```typescript
 const GlobalSettingsSchema = z.object({
-  disableWhenDisconnected: z.boolean().default(true),
+  disableWhenDisconnected: z.union([z.boolean(), z.string()])
+    .transform((val) => val === true || val === "true")
+    .default(true)
+    .catch(true),
   debugLogging: z.union([z.boolean(), z.string()])
     .transform((val) => val === true || val === "true")
     .default(false), // opt-in verbose logging (issue #609)
-  focusIRacingWindow: z.boolean().default(false),
-  simHubHost: z.string().default("127.0.0.1"),
-  simHubPort: z.coerce.number().min(1).max(65535).default(8888),
+  focusIRacingWindow: z.union([z.boolean(), z.string()])
+    .transform((val) => val === true || val === "true")
+    .default(false),
+  simHubHost: z.preprocess(
+    (val) => (val === "" ? undefined : val),
+    z.string().default("127.0.0.1").catch("127.0.0.1"),
+  ),
+  simHubPort: z.preprocess(
+    (val) => (val === "" ? undefined : val),
+    z.coerce.number().min(1).max(65535).default(8888).catch(8888),
+  ),
 }).passthrough();
 ```
 
