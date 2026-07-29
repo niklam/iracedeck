@@ -104,6 +104,7 @@ vi.mock("../race-admin/race-admin-selector.js", () => ({
 }));
 
 vi.mock("@iracedeck/iracing-sdk", () => ({
+  TrkLoc: { NotInWorld: -1, OffTrack: 0, InPitStall: 1, AproachingPits: 2, OnTrack: 3 },
   getCameraGroupsFromSessionInfo: vi.fn(() => []),
   getCamerasInGroup: vi.fn(() => []),
   getCarNumberRawFromSessionInfo: vi.fn(() => null),
