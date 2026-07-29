@@ -123,6 +123,18 @@ describe("UlanziPlatformAdapter", () => {
 
       expect(client.setGlobalSettings).toHaveBeenCalledWith({ push: 3 });
     });
+
+    it("opens the gate on an action-scoped (bootstrap) reply too", () => {
+      // The gate opens on ANY reply — the action-scoped bootstrap fallback
+      // included — so deck-core's post-arrival snapshot write reaches the host.
+      adapter.setGlobalSettings({ foo: "defaults-only" });
+      replyHandler()({ event: "didReceiveGlobalSettings", action: "com.test.action", payload: { settings: { a: 1 } } });
+
+      adapter.setGlobalSettings({ foo: "post-reply" });
+
+      expect(client.setGlobalSettings).toHaveBeenCalledTimes(1);
+      expect(client.setGlobalSettings).toHaveBeenCalledWith({ foo: "post-reply" });
+    });
   });
 
   describe("openUrl", () => {
