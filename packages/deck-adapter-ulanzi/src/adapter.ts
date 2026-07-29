@@ -32,6 +32,17 @@ import { parseConnectionParams, PLUGIN_UUID, UlanziClient, type UlanziEvent } fr
 type ControllerType = "Keypad" | "Encoder" | "Information";
 
 /**
+ * How long plugin-initiated global-settings writes stay gated waiting for the
+ * first `didReceiveGlobalSettings` reply (#868, Ulanzi's RCA "root cause 2").
+ * Before that reply the deck-core cache holds schema defaults only, so a full
+ * write would erase every stored passthrough key (key bindings,
+ * `_lastSeenVersion`, …) from the host's store. If no reply ever arrives, the
+ * latest buffered write flushes after this timeout so legitimate persistence
+ * still works on hosts that never answer reads.
+ */
+const GLOBAL_SETTINGS_WRITE_GATE_TIMEOUT_MS = 30_000;
+
+/**
  * Wraps a Ulanzi action context (identified by its context string) into a
  * platform-agnostic IDeckActionContext.
  */
@@ -190,6 +201,21 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
   private globalSettingsBootstrapSent = false;
 
   /**
+   * Whether plugin-initiated global-settings writes may reach the host. Opens
+   * on the first reply (buffered write discarded — deck-core re-writes a
+   * fresh post-reply snapshot anyway) or on the gate timeout (buffered write
+   * flushed). Closed at boot so a defaults-only cache can't clobber the
+   * host's stored passthrough keys (#868, Ulanzi's RCA "root cause 2").
+   */
+  private globalSettingsWriteGateOpen = false;
+
+  /** Latest plugin-initiated write buffered while the write gate is closed. */
+  private pendingGlobalSettingsWrite: Record<string, unknown> | null = null;
+
+  /** Timer that opens the write gate (flushing the buffer) if no reply arrives. */
+  private globalSettingsWriteGateTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /**
    * Shared, runtime-mutable minimum log level (issue #609). `createConsoleLogger`
    * captures its level at creation time, so to honour the "Enable debug logging"
    * toggle without recreating every scoped logger, loggers built here read this
@@ -253,6 +279,20 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
     this.client.onGlobalEvent("didReceiveGlobalSettings", (data) => {
       this.globalSettingsReplyReceived = true;
 
+      // Open the write gate BEFORE fanning out: deck-core's listeners write a
+      // fresh post-reply snapshot synchronously from inside the callback, and
+      // that write must pass. The stale pre-reply buffer is discarded — it was
+      // computed from a defaults-only cache and would clobber stored keys.
+      if (!this.globalSettingsWriteGateOpen) {
+        this.globalSettingsWriteGateOpen = true;
+        this.pendingGlobalSettingsWrite = null;
+
+        if (this.globalSettingsWriteGateTimer !== null) {
+          clearTimeout(this.globalSettingsWriteGateTimer);
+          this.globalSettingsWriteGateTimer = null;
+        }
+      }
+
       const scope = data.action ?? "";
       const pluginScoped = scope === "" || scope === PLUGIN_UUID;
 
@@ -300,6 +340,27 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
   }
 
   setGlobalSettings(settings: Record<string, unknown>): void {
+    // Write gate (#868, Ulanzi's RCA "root cause 2"): before the first
+    // didReceiveGlobalSettings reply the deck-core cache holds schema defaults
+    // only, so this full-snapshot write would erase every stored passthrough
+    // key (key bindings, `_lastSeenVersion`, …) from the host's store. Buffer
+    // the latest write until the reply opens the gate (buffer discarded) or
+    // the timeout opens it (buffer flushed).
+    if (!this.globalSettingsWriteGateOpen) {
+      this.pendingGlobalSettingsWrite = settings;
+      this.globalSettingsWriteGateTimer ??= setTimeout(() => {
+        this.globalSettingsWriteGateOpen = true;
+        this.globalSettingsWriteGateTimer = null;
+
+        if (this.pendingGlobalSettingsWrite !== null) {
+          this.client.setGlobalSettings(this.pendingGlobalSettingsWrite);
+          this.pendingGlobalSettingsWrite = null;
+        }
+      }, GLOBAL_SETTINGS_WRITE_GATE_TIMEOUT_MS);
+
+      return;
+    }
+
     this.client.setGlobalSettings(settings);
   }
 
