@@ -133,6 +133,18 @@ type TranslatorInstance = {
    */
   freshConnectFireChecked: boolean;
   /**
+   * Once-per-episode marker for the replay-only skip log (issue #908). The
+   * #604 replay-only gate deliberately does NOT latch
+   * `freshConnectFireChecked`, so while a replay-only session is open the
+   * gate re-evaluates — and would otherwise log the skip — on every tick
+   * (~60 INFO lines/s). Set when the skip is first logged; reset when a
+   * non-replay-only tick is observed (checked ahead of the fresh-connect
+   * gate in `handleTick`, so a tick without SessionNum still ends the
+   * episode) and by `handleDisconnect`, so a later replay episode logs
+   * again. Logging only — no effect on the synthesis/latch behavior.
+   */
+  freshConnectReplaySkipLogged: boolean;
+  /**
    * Validated per-lap fuel consumption history (issue #465). Instance-level
    * — NOT `TranslatorState` — so the replay guard's per-tick state wipes and
    * `resetPerSessionState` don't destroy the accumulated stats: garage visits
@@ -209,6 +221,7 @@ export function initializeSimEventsIracing(
     firstOnTrackSeeded: false,
     firstOnTrackFired: false,
     freshConnectFireChecked: false,
+    freshConnectReplaySkipLogged: false,
     fuelLaps: createFuelLapTracker(),
     getFuelLapsLeftMarginLaps: options.getFuelLapsLeftMarginLaps ?? (() => FUEL_CALLOUT_DEFAULT_MARGIN_LAPS),
     getCornerCalloutLeadSeconds: options.getCornerCalloutLeadSeconds ?? (() => CORNER_CALLOUT_DEFAULT_LEAD_SECONDS),
@@ -898,8 +911,10 @@ function handleDisconnect(self: TranslatorInstance): void {
   self.firstOnTrackSeeded = false;
   self.firstOnTrackFired = false;
   // Re-arm the fresh-connect session.changed synthesis so a reconnect into a
-  // session re-checks the SessionState gate (issues #568, #668).
+  // session re-checks the SessionState gate (issues #568, #668). The replay
+  // skip log marker re-arms with it — a reconnect is a new episode (#908).
   self.freshConnectFireChecked = false;
+  self.freshConnectReplaySkipLogged = false;
   // The fuel lap history survives replays and session changes, but a
   // disconnect means the sim is gone — reset it fully so a later reconnect
   // seeds cleanly (issue #465).
@@ -1071,6 +1086,18 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // viewing stays silent.
   const currentSessionNum = telemetry.SessionNum ?? null;
 
+  // Issue #908: a non-replay-only tick ends the replay episode for the skip
+  // log in the fresh-connect gate below, so a later replay episode logs
+  // again. Checked ahead of the gate — a tick without SessionNum never
+  // enters it but still ends the episode — and only while the marker is
+  // set, so the session-info read isn't added to every tick.
+  if (
+    self.freshConnectReplaySkipLogged &&
+    !isReplayOnlySession(self.controller.getSessionInfo() as Record<string, unknown> | null)
+  ) {
+    self.freshConnectReplaySkipLogged = false;
+  }
+
   // Fresh-connect session.changed synthesis (issues #568, #668). On the first
   // tick after connect (or reconnect) that satisfies the gating conditions,
   // synthesize a `session.changed { from: -1, to: SessionNum }` so the
@@ -1101,8 +1128,15 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     // session the user isn't actually in.
     if (isReplayOnlySession(sessionInfo)) {
       // Don't latch — a later live tick (e.g. user exits the replay UI) re-
-      // evaluates and can still fire the synthesis.
-      self.logger.info(`Fresh-connect session.changed: skipped (replay-only session, SessionNum=${currentSessionNum})`);
+      // evaluates and can still fire the synthesis. Log once per replay
+      // episode, not per evaluated tick (issue #908) — the held replay state
+      // is not an event.
+      if (!self.freshConnectReplaySkipLogged) {
+        self.freshConnectReplaySkipLogged = true;
+        self.logger.info(
+          `Fresh-connect session.changed: skipped (replay-only session, SessionNum=${currentSessionNum})`,
+        );
+      }
     } else {
       // Capture the RAW session type first. `classifySessionType("")` returns
       // "race" (its safe default), so classifying before the session YAML has

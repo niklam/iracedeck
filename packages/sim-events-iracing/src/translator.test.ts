@@ -1756,6 +1756,141 @@ describe("sim-events-iracing translator", () => {
         expect(handler).toHaveBeenCalledTimes(1);
         expect(handler.mock.calls[0]![0].data).toEqual({ from: 1, to: 2 });
       });
+
+      // Issue #908: while the fresh-connect check stays unlatched in a
+      // replay-only session, the deliberate no-latch behavior means the gate
+      // re-evaluates on every tick — but the skip must be LOGGED once per
+      // replay episode, not per tick (~60 INFO lines/s otherwise). The gate's
+      // synthesis/latch behavior is unchanged.
+      describe("once-per-episode replay-skip logging (issue #908)", () => {
+        const REPLAY_SESSION_INFO = {
+          SessionInfo: { Sessions: [{ SessionType: "Race" }] },
+          WeekendInfo: { TrackID: 42, SimMode: "replay" },
+        };
+        const LIVE_SESSION_INFO = {
+          SessionInfo: { Sessions: [{ SessionType: "Race" }] },
+          WeekendInfo: { TrackID: 42, SimMode: "full" },
+        };
+
+        function replayTick(controller: MockController): void {
+          controller.__tick(
+            telemetry({ SessionNum: 0, SessionState: SessionState.GetInCar, IsReplayPlaying: true, IsOnTrack: false }),
+          );
+        }
+
+        function replaySkipLogCount(logger: ILogger): number {
+          return vi.mocked(logger.info).mock.calls.filter((call) => String(call[0]).includes("replay-only session"))
+            .length;
+        }
+
+        it("logs the replay-only skip once across many replay-only ticks", () => {
+          const controller = createMockController();
+          controller.__setSessionInfo(REPLAY_SESSION_INFO);
+          const logger = createMockLogger();
+          initializeSimEventsIracing(getEventBus(), controller, logger);
+
+          for (let i = 0; i < 5; i++) replayTick(controller);
+
+          expect(replaySkipLogCount(logger)).toBe(1);
+        });
+
+        it("re-logs the skip when a new replay episode begins after a non-replay tick", () => {
+          const controller = createMockController();
+          controller.__setSessionInfo(REPLAY_SESSION_INFO);
+          const bus = getEventBus();
+          const handler = vi.fn();
+          bus.subscribe("session.changed", handler);
+          const logger = createMockLogger();
+          initializeSimEventsIracing(bus, controller, logger);
+
+          // Episode 1: two replay-only ticks — one log line.
+          replayTick(controller);
+          replayTick(controller);
+          expect(replaySkipLogCount(logger)).toBe(1);
+
+          // Live tick with telemetry still settling — SessionState.Invalid
+          // keeps the fresh-connect latch open (no fire), so a later replay
+          // episode re-evaluates the gate.
+          controller.__setSessionInfo(LIVE_SESSION_INFO);
+          controller.__tick(
+            telemetry({ SessionNum: 0, SessionState: SessionState.Invalid, IsReplayPlaying: false, IsOnTrack: false }),
+          );
+          expect(handler).not.toHaveBeenCalled();
+
+          // Episode 2: back into the replay UI — logs again, once.
+          controller.__setSessionInfo(REPLAY_SESSION_INFO);
+          replayTick(controller);
+          replayTick(controller);
+          expect(replaySkipLogCount(logger)).toBe(2);
+        });
+
+        it("re-logs the skip after a non-replay tick that carries no SessionNum", () => {
+          // A live tick whose telemetry lacks SessionNum never enters the
+          // fresh-connect gate, but it still ends the replay episode — the
+          // marker must reset so the next replay episode logs again.
+          const controller = createMockController();
+          controller.__setSessionInfo(REPLAY_SESSION_INFO);
+          const logger = createMockLogger();
+          initializeSimEventsIracing(getEventBus(), controller, logger);
+
+          // Episode 1: two replay-only ticks — one log line.
+          replayTick(controller);
+          replayTick(controller);
+          expect(replaySkipLogCount(logger)).toBe(1);
+
+          // Live tick with no SessionNum — skips the fresh-connect gate.
+          controller.__setSessionInfo(LIVE_SESSION_INFO);
+          controller.__tick(telemetry({ SessionNum: undefined, IsReplayPlaying: false, IsOnTrack: false }));
+
+          // Episode 2: back into the replay UI — logs again.
+          controller.__setSessionInfo(REPLAY_SESSION_INFO);
+          replayTick(controller);
+          expect(replaySkipLogCount(logger)).toBe(2);
+        });
+
+        it("logs again after a disconnect re-arms the fresh-connect check", () => {
+          const controller = createMockController();
+          controller.__setSessionInfo(REPLAY_SESSION_INFO);
+          const logger = createMockLogger();
+          initializeSimEventsIracing(getEventBus(), controller, logger);
+
+          // Episode 1: two replay-only ticks — one log line.
+          replayTick(controller);
+          replayTick(controller);
+
+          // Disconnect resets the fresh-connect check; the reconnect into a
+          // still-open replay is a new episode and logs again.
+          controller.__tick(null, false);
+          replayTick(controller);
+          replayTick(controller);
+
+          expect(replaySkipLogCount(logger)).toBe(2);
+        });
+
+        // Regression guard for the unchanged no-latch behavior: many
+        // replay-only ticks stay silent, and the first live tick still fires
+        // the synthesis.
+        it("still fires the synthesis on the first live tick after many replay-only ticks", () => {
+          const controller = createMockController();
+          controller.__setSessionInfo(REPLAY_SESSION_INFO);
+          const bus = getEventBus();
+          const handler = vi.fn();
+          bus.subscribe("session.changed", handler);
+          initializeSimEventsIracing(bus, controller, createMockLogger());
+
+          for (let i = 0; i < 5; i++) replayTick(controller);
+
+          expect(handler).not.toHaveBeenCalled();
+
+          controller.__setSessionInfo(LIVE_SESSION_INFO);
+          controller.__tick(
+            telemetry({ SessionNum: 0, SessionState: SessionState.GetInCar, IsReplayPlaying: false, IsOnTrack: false }),
+          );
+
+          expect(handler).toHaveBeenCalledTimes(1);
+          expect(handler.mock.calls[0]![0].data).toEqual({ from: -1, to: 0 });
+        });
+      });
     });
 
     // Fresh-connect session.changed synthesis (issues #568, #668). When the
