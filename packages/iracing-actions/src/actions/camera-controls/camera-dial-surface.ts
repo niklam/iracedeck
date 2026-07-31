@@ -371,16 +371,20 @@ export function computeRacePositionTarget(
 }
 
 /**
- * Presence predicate for the car-mode target walks (issue #885): whether a car
- * currently exists in the sim world, judged the same way the translator's
- * position tracking does (`race-finish.ts`) — valid lap telemetry and a track
- * surface other than `NotInWorld`. Post-race, finished/towed cars despawn but
+ * Presence predicate for the car cycling target walks (issue #885): whether a
+ * car currently exists in the sim world — valid lap telemetry and a track
+ * surface other than `NotInWorld`, the same per-tick in-world formula the
+ * translator's position tracking starts from (`race-finish.ts`), deliberately
+ * WITHOUT its freeze/debounce: a one-tick `NotInWorld` blink at worst makes a
+ * detent skip one live car (the next detent recovers), which doesn't justify
+ * carrying per-car history here. Post-race, finished/towed cars despawn but
  * keep their frozen rank in the canonical order (and stay listed in session
  * info), and iRacing silently ignores a camera switch to them. Without the
  * per-car world arrays (out of session) there is nothing to judge presence by,
- * so every car counts as present.
+ * so every car counts as present. Shared with the keypad Cycle Car dispatch in
+ * `camera-controls.ts`, which walks the same ordering.
  */
-function carPresence(telemetry: TelemetryData | null): (carIdx: number) => boolean {
+export function carPresence(telemetry: TelemetryData | null): (carIdx: number) => boolean {
   const lc = telemetry?.CarIdxLapCompleted;
   const dp = telemetry?.CarIdxLapDistPct;
 
@@ -467,9 +471,11 @@ export interface CarouselSlot {
 }
 
 /**
- * The car-number carousel readouts: the focused car's number plus its
- * ascending-order neighbours, already assigned to their STRIP SIDES — left =
- * the counter-clockwise detent's target, right = the clockwise one (#884).
+ * The car-number carousel readouts: the focused car's number plus the nearest
+ * PRESENT car either way along the ascending order (adjacent unless cars in
+ * between left the world, #885), already assigned to their STRIP SIDES —
+ * left = the counter-clockwise detent's target, right = the clockwise one
+ * (#884).
  */
 export interface CarCarouselView {
   /** Focused car's display number (no `#`), or null out of a session. */
@@ -638,9 +644,10 @@ export function renderSubCameraCarousel(args: {
  *
  * Renders the car-number carousel strip: the mode-name title on top, the
  * focused car's number large in the centre, flanked by the smaller dimmed
- * neighbouring car numbers — `left` is the counter-clockwise detent's target,
- * `right` the clockwise one (#884). Falls back to a centred identity label
- * out of a session (no focused car number).
+ * numbers of the cars one detent away (the nearest PRESENT cars, #885) —
+ * `left` is the counter-clockwise detent's target, `right` the clockwise one
+ * (#884). Falls back to a centred identity label out of a session (no focused
+ * car number).
  */
 export function renderCarCarousel(args: {
   width: number;

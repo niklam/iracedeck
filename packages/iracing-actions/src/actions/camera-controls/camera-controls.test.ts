@@ -1441,6 +1441,33 @@ describe("cycle-car focuses the neighbour by car number (pace-car recovery #803)
     expect(mockCamera.switchNum).toHaveBeenCalledWith(12, 9, 2);
   });
 
+  it("skips a car that left the world and focuses the next present one (#885)", async () => {
+    // Three cars: #7 (carIdx 5, focused), #12 (carIdx 9), #30 (carIdx 11).
+    // carIdx 9 despawned post-race (NotInWorld, lap telemetry -1) — the keypad
+    // Cycle Car walk must skip it to #30, same as the dial car-number mode.
+    const action = new CameraControls();
+    sdk(action).getCurrentTelemetry.mockReturnValue({
+      CamCarIdx: 5,
+      CamGroupNumber: 9,
+      CamCameraNumber: 2,
+      CarIdxLapCompleted: [-1, -1, -1, -1, -1, 10, -1, -1, -1, -1, -1, 10],
+      CarIdxLapDistPct: [-1, -1, -1, -1, -1, 0.5, -1, -1, -1, -1, -1, 0.6],
+      CarIdxTrackSurface: [-1, -1, -1, -1, -1, 3, -1, -1, -1, -1, -1, 3],
+    });
+    sdk(action).getSessionInfo.mockReturnValue({});
+    vi.mocked(getAllCarNumbers).mockReturnValue([
+      ...CARS,
+      { carIdx: 11, carNumber: "30", carNumberRaw: 30, userName: "c" },
+    ]);
+
+    await action.onKeyDown({
+      action: { id: "k1" },
+      payload: { settings: { target: "cycle-car", direction: "next" } },
+    } as never);
+
+    expect(mockCamera.switchNum).toHaveBeenCalledWith(30, 9, 2);
+  });
+
   it("falls back to cycleCar when the field is empty (out of session)", async () => {
     const action = new CameraControls();
     sdk(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 3, CamGroupNumber: 9, CamCameraNumber: 2 });
