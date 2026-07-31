@@ -60,13 +60,13 @@ import stopIconSvg from "@iracedeck/icons/replay-control/stop.svg";
 import {
   findNearestCarOnTrack,
   getAllCarNumbers,
-  getCarNumberFromSessionInfo,
   getCarNumberRawFromSessionInfo,
   ReplayPosMode,
   type TelemetryData,
 } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
+import { carPresence, computeCarNumberTarget } from "../../shared/car-cycling.js";
 import { RepeatController } from "../../shared/repeat-controller.js";
 
 const REPLAY_CONTROL_MODES = [
@@ -678,38 +678,23 @@ export function findFastestLapForCar(
  * Find the next or previous car by car number order.
  * Includes all cars (even in pits), skips the pace car.
  * Returns the CarNumberRaw value for camera API use, or null if not found.
+ *
+ * Delegates to the shared `computeCarNumberTarget` walk (#885), so an
+ * `isPresent` predicate (see `carPresence`) makes it skip cars that are no
+ * longer in the sim world — session info keeps every driver listed after they
+ * tow out or leave post-race, but iRacing silently ignores a camera switch to
+ * an absent car, which would dead-loop the cycle on the same target.
  */
 export function findAdjacentCarByNumber(
   sessionInfo: unknown,
   currentCarIdx: number,
   direction: "next" | "prev",
+  isPresent?: (carIdx: number) => boolean,
 ): number | null {
   const allCars = getAllCarNumbers(sessionInfo, true);
+  const target = computeCarNumberTarget(currentCarIdx, allCars, direction === "next" ? "next" : "previous", isPresent);
 
-  if (allCars.length === 0) return null;
-
-  const currentCarNumber = getCarNumberFromSessionInfo(sessionInfo, currentCarIdx);
-  const fallbackCar = direction === "next" ? allCars[0] : allCars[allCars.length - 1];
-
-  if (currentCarNumber === null) {
-    return fallbackCar.carNumberRaw;
-  }
-
-  const currentIndex = allCars.findIndex((c) => c.carNumber === currentCarNumber);
-
-  if (currentIndex === -1) {
-    return fallbackCar.carNumberRaw;
-  }
-
-  if (direction === "next") {
-    const nextIndex = (currentIndex + 1) % allCars.length;
-
-    return allCars[nextIndex].carNumberRaw;
-  } else {
-    const prevIndex = (currentIndex - 1 + allCars.length) % allCars.length;
-
-    return allCars[prevIndex].carNumberRaw;
-  }
+  return target?.carNumberRaw ?? null;
 }
 
 /**
@@ -1780,7 +1765,9 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
 
         const sessionInfo = this.sdkController.getSessionInfo();
         const navDirection = mode === "next-car-number" ? "next" : "prev";
-        const carNum = findAdjacentCarByNumber(sessionInfo, camCarIdx, navDirection);
+        // Skip cars that left the world (#885) — switching to one is silently
+        // ignored by iRacing and would dead-loop the cycle on the same target.
+        const carNum = findAdjacentCarByNumber(sessionInfo, camCarIdx, navDirection, carPresence(telemetry));
 
         if (carNum === null) {
           this.logger.warn("Could not find adjacent car by number");
