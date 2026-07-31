@@ -15,6 +15,7 @@ describe("FileSink", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
     rmSync(dir, { recursive: true, force: true });
   });
 
@@ -78,6 +79,7 @@ describe("FileSink pruning", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
     rmSync(dir, { recursive: true, force: true });
   });
 
@@ -102,6 +104,17 @@ describe("FileSink pruning", () => {
     expect(readdirSync(dir).sort()).toEqual(["2026.7.31.log", "notes.log", "readme.txt"]);
   });
 
+  it("leaves files with impossible dates untouched instead of letting Date roll them over", () => {
+    // new Date(2020, 1, 31) silently rolls over to Mar 2 — an impossible date
+    // must be treated as not-a-log-file, not as its rolled-over date.
+    writeFileSync(join(dir, "2020.2.31.log"), "impossible date\n");
+
+    const sink = new FileSink(dir);
+    sink.write("INFO", "today");
+
+    expect(readdirSync(dir).sort()).toEqual(["2020.2.31.log", "2026.7.31.log"]);
+  });
+
   it("prunes only on the first write of a sink", () => {
     const sink = new FileSink(dir);
     sink.write("INFO", "first");
@@ -120,10 +133,7 @@ describe("FileSink pruning", () => {
     mkdirSync(join(dir, "2020.1.1.log"));
     writeFileSync(join(dir, "2019.1.1.log"), "expired, sorts before the bad entry\n");
     writeFileSync(join(dir, "2021.1.1.log"), "expired, sorts after the bad entry\n");
-    // spyOn returns the spy already installed by an earlier test — clear its
-    // recorded calls so this assertion can only see the prune failure.
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    errorSpy.mockClear();
 
     const sink = new FileSink(dir);
     expect(() => sink.write("INFO", "still logged")).not.toThrow();

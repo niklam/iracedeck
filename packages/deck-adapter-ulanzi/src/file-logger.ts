@@ -80,7 +80,14 @@ export class FileSink {
 
         if (!match) continue;
 
-        const fileDate = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+        const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+        const fileDate = new Date(year, month - 1, day);
+
+        // Date() silently rolls impossible dates over (2020.2.31 → Mar 2) —
+        // treat those names as not-a-log-file rather than as the rolled date.
+        if (fileDate.getFullYear() !== year || fileDate.getMonth() !== month - 1 || fileDate.getDate() !== day) {
+          continue;
+        }
 
         if (fileDate >= cutoff) continue;
 
