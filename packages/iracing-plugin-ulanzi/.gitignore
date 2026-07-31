@@ -9,3 +9,7 @@ node_modules/
 *.ulanziPlugin/imgs
 *.ulanziPlugin/ui
 *.ulanziPlugin/assets
+
+# License files copied from the repo root at build time (#905)
+*.ulanziPlugin/LICENSE
+*.ulanziPlugin/THIRD-PARTY-LICENSES.md

@@ -211,6 +211,15 @@ const config = {
 				}
 			},
 		},
+		// Ship the project license and aggregated third-party notices at the plugin root (#905)
+		{
+			name: "copy-license-files",
+			generateBundle() {
+				for (const file of ["LICENSE", "THIRD-PARTY-LICENSES.md"]) {
+					copyFileSync(path.resolve(__dirname, "../..", file), path.join(sdPlugin, file));
+				}
+			},
+		},
 		// Copy vendored sdpi-components.js and built pi-components.js from @iracedeck/pi-components
 		{
 			name: "copy-pi-browser-assets",

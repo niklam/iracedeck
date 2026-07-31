@@ -221,6 +221,8 @@ iRaceDeck is source-available and licensed under the [iRaceDeck Non-Commercial L
 
 Free for personal and non-commercial use, including use in sim racing events and competitions.
 
+Plugin downloads ship the license alongside [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md), which aggregates the license notices of every bundled third-party component.
+
 For full details, see [USAGE.md](USAGE.md).
 
 The name “iRaceDeck” and associated branding are not included in the license and may not be used for derived versions without permission.

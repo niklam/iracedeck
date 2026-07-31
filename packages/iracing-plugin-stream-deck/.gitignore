@@ -20,6 +20,10 @@ node_modules/
 # Font assets (rasterized at build time)
 *.sdPlugin/assets/fonts
 
+# License files copied from the repo root at build time (#905)
+*.sdPlugin/LICENSE
+*.sdPlugin/THIRD-PARTY-LICENSES.md
+
 # Packaged plugin artifacts (streamdeck pack output / manual zips)
 *.streamDeckPlugin
 *.zip
