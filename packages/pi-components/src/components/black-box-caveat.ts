@@ -87,6 +87,20 @@ export class BlackBoxCaveat extends HTMLElement {
   private pollTimer: number | null = null;
   private connected = false;
   private readonly onDomChange = (): void => this.render();
+
+  // On hosts that retain navigated-away PI pages (the #903 leak scenario),
+  // disconnectedCallback never fires — pagehide is the only teardown signal,
+  // so the poll stops there and resumes on pageshow.
+  private pageHidden = false;
+  private readonly onPageHide = (): void => {
+    this.pageHidden = true;
+    this.stopPolling();
+  };
+  private readonly onPageShow = (): void => {
+    this.pageHidden = false;
+
+    if (this.connected) this.startPolling();
+  };
   private readonly onGlobalSettings: GlobalSettingsHandler = (ev) => {
     this.settings = ev?.payload?.settings ?? {};
     this.settingsLoaded = true;
@@ -119,9 +133,24 @@ export class BlackBoxCaveat extends HTMLElement {
 
     document.addEventListener("change", this.onDomChange);
     document.addEventListener("input", this.onDomChange);
-    this.pollTimer = window.setInterval(this.onDomChange, CHECKBOX_POLL_INTERVAL_MS);
+    window.addEventListener("pagehide", this.onPageHide);
+    window.addEventListener("pageshow", this.onPageShow);
+    this.startPolling();
 
     this.render();
+  }
+
+  private startPolling(): void {
+    if (this.pageHidden || this.pollTimer !== null) return;
+
+    this.pollTimer = window.setInterval(this.onDomChange, CHECKBOX_POLL_INTERVAL_MS);
+  }
+
+  private stopPolling(): void {
+    if (this.pollTimer !== null) {
+      window.clearInterval(this.pollTimer);
+      this.pollTimer = null;
+    }
   }
 
   /**
@@ -133,15 +162,14 @@ export class BlackBoxCaveat extends HTMLElement {
 
     document.removeEventListener("change", this.onDomChange);
     document.removeEventListener("input", this.onDomChange);
+    window.removeEventListener("pagehide", this.onPageHide);
+    window.removeEventListener("pageshow", this.onPageShow);
 
     // sdpi's subscribe() returns nothing; detaching means passing the same
     // handler back to unsubscribe(). Optional — a stub may not implement it.
     streamDeckClient()?.didReceiveGlobalSettings.unsubscribe?.(this.onGlobalSettings);
 
-    if (this.pollTimer !== null) {
-      window.clearInterval(this.pollTimer);
-      this.pollTimer = null;
-    }
+    this.stopPolling();
 
     this.container?.remove();
     this.container = null;

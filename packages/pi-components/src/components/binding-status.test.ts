@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import "./binding-status.js";
 
@@ -250,5 +250,75 @@ describe("ird-binding-status", () => {
     setBinding("decKey", "");
     setMode("view-fov");
     expect(text()).toContain("No binding set");
+  });
+
+  // On hosts that retain navigated-away PI pages, disconnectedCallback never
+  // fires — pagehide is the only teardown signal the component gets (#903).
+  describe("page lifecycle (issue #903)", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    /** Change the Mode control WITHOUT dispatching events, so only the DOM poll can see it. */
+    function silentlySetMode(value: string): void {
+      const select = document.querySelector(`sdpi-select[setting="mode"]`) as Element & { value?: unknown };
+      select.value = value;
+    }
+
+    it("stops the DOM poll on pagehide and resumes it on pageshow", () => {
+      el = mount(FUEL_COMMS);
+      setMode("toggle-fuel-fill");
+      expect(text()).toContain("iRacing API");
+
+      window.dispatchEvent(new Event("pagehide"));
+      silentlySetMode("add-fuel");
+      vi.advanceTimersByTime(1000);
+      expect(text()).toContain("iRacing API");
+
+      window.dispatchEvent(new Event("pageshow"));
+      vi.advanceTimersByTime(300);
+      expect(text()).toContain("Chat command");
+    });
+
+    it("stops the SimHub reachability poll on pagehide and resumes it on pageshow", () => {
+      el = mount(FUEL_COMMS);
+      setBinding("fuelServiceToggleAutofuel", simhubBinding("My Role"));
+      setMode("toggle-autofuel");
+      const callsAfterSetup = mockFetchReachable.mock.calls.length;
+
+      window.dispatchEvent(new Event("pagehide"));
+      vi.advanceTimersByTime(2_000_000);
+      expect(mockFetchReachable.mock.calls.length).toBe(callsAfterSetup);
+
+      window.dispatchEvent(new Event("pageshow"));
+      expect(mockFetchReachable.mock.calls.length).toBeGreaterThan(callsAfterSetup);
+    });
+
+    it("does not let a probe resolving after pagehide re-arm the SimHub poll", async () => {
+      let resolveProbe!: (v: boolean) => void;
+      mockFetchReachable.mockImplementation(
+        () =>
+          new Promise<boolean>((res) => {
+            resolveProbe = res;
+          }),
+      );
+
+      el = mount(FUEL_COMMS);
+      setBinding("fuelServiceToggleAutofuel", simhubBinding("My Role"));
+      setMode("toggle-autofuel");
+      const callsAfterSetup = mockFetchReachable.mock.calls.length;
+
+      window.dispatchEvent(new Event("pagehide"));
+      resolveProbe(true);
+      await Promise.resolve();
+      await Promise.resolve();
+
+      vi.advanceTimersByTime(2_000_000);
+      expect(mockFetchReachable.mock.calls.length).toBe(callsAfterSetup);
+    });
   });
 });

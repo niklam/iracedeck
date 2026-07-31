@@ -240,7 +240,7 @@ Use this pattern to show/hide sub-settings based on a mode dropdown. Start hidde
 
 Reference implementation: `packages/iracing-actions/src/actions/session-info/session-info.ejs` (shows position/fuel sub-settings only when their mode is selected).
 
-**The polling fallback MUST register on the shared page poller `window.irdPoll(fn)`** (exposed by `pi-components.js`, issue #903) — never a raw `setInterval`. `irdPoll` runs a single 100 ms interval per PI page and clears it on `pagehide`, so a navigated-away page releases its timer; per-script `setInterval` calls were never cleaned up and leaked the whole document on hosts that retain PI pages (observed as memory/CPU growth in UlanziStudio).
+**The polling fallback MUST register on the shared page poller `window.irdPoll(fn)`** (exposed by `pi-components.js`, issue #903) — never a raw `setInterval` in a template script. `irdPoll` runs a single 100 ms interval per PI page and clears it on `pagehide`, so a navigated-away page releases its timer; per-script `setInterval` calls were never cleaned up and leaked the whole document on hosts that retain PI pages (observed as memory/CPU growth in UlanziStudio). Web components that own their own timers (`ird-binding-status`, `ird-black-box-caveat`) must stop them on `pagehide` and resume on `pageshow` in addition to their `disconnectedCallback` cleanup — navigating away never detaches elements, so `disconnectedCallback` alone never fires in that scenario.
 
 sdpi-components are web components. To show/hide elements based on select values:
 
