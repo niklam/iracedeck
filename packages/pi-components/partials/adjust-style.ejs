@@ -87,9 +87,9 @@
         el?.addEventListener("input", updateAdjustStyleVisibility);
       }
 
-      // Polling fallback — sdpi-select events can be unreliable.
+      // Polling fallback on the shared page poller — sdpi-select events can be unreliable (#903).
       let last = "";
-      setInterval(() => {
+      window.irdPoll(() => {
         const mode = resolveSelectValue("<%= modeSelectId %>");
         const style = resolveSelectValue("adjust-style-select");
         const key = mode + "|" + style;
@@ -97,7 +97,7 @@
           last = key;
           updateAdjustStyleVisibility();
         }
-      }, 100);
+      });
     }
 
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", initAdjustStyle);

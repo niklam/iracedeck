@@ -163,20 +163,20 @@ Supports `<option>` and `<optgroup>` children.
 </sdpi-select>
 ```
 
-**CRITICAL PITFALL:** `sdpi-select` fires `input` events, NOT `change` events. For reliable detection in custom JS, listen to both and add a polling fallback:
+**CRITICAL PITFALL:** `sdpi-select` fires `input` events, NOT `change` events. For reliable detection in custom JS, listen to both and add a polling fallback. **Never call `setInterval` directly** — register the fallback on the shared page poller `window.irdPoll(fn)` (from `pi-components.js`, issue #903), which runs one 100 ms interval per PI page and clears it on `pagehide` so timers can't leak on hosts that retain navigated-away pages:
 
 ```javascript
 select.addEventListener("change", handleChange);
 select.addEventListener("input", handleChange);
 
 let lastValue = select.value || "default";
-setInterval(() => {
+window.irdPoll(() => {
   const currentValue = select.value;
   if (currentValue && currentValue !== lastValue) {
     lastValue = currentValue;
     handleChange();
   }
-}, 100);
+});
 ```
 
 ### `<sdpi-radio>` — Radio Buttons

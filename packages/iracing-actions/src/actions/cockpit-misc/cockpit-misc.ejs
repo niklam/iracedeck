@@ -187,13 +187,13 @@
 
 					// Polling fallback for reliable detection
 					let lastValue = controlSelect.value || "toggle-wipers";
-					setInterval(() => {
+					window.irdPoll(() => {
 						const currentValue = controlSelect.value;
 						if (currentValue && currentValue !== lastValue) {
 							lastValue = currentValue;
 							updateVisibility(currentValue);
 						}
-					}, 100);
+					});
 				}
 
 				if ((await resolveController()) === "Encoder") {

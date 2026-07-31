@@ -71,13 +71,13 @@
 
 					// Polling fallback for reliable detection
 					let lastNavigation = navigationSelect.value || "next-session";
-					setInterval(() => {
+					window.irdPoll(() => {
 						const currentNavigation = navigationSelect.value;
 						if (currentNavigation && currentNavigation !== lastNavigation) {
 							lastNavigation = currentNavigation;
 							updateVisibility(currentNavigation);
 						}
-					}, 100);
+					});
 				}
 			}
 

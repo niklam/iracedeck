@@ -579,13 +579,13 @@
 				modeSelect.addEventListener("input", (ev) => update(ev.target.value));
 
 				let last = modeSelect.value || "race-engineer";
-				setInterval(() => {
+				window.irdPoll(() => {
 					const current = modeSelect.value;
 					if (current && current !== last) {
 						last = current;
 						update(current);
 					}
-				}, 100);
+				});
 			}
 			if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", initializeDirectionVisibility);
 			else initializeDirectionVisibility();

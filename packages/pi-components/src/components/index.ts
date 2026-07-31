@@ -1,5 +1,7 @@
 // External links - reroute external http(s) PI link clicks to the OS default browser
 import { installExternalLinkHandler } from "./external-links.js";
+// Shared page poller - single per-page interval behind window.irdPoll (issue #903)
+import { installSharedPoller } from "./poller.js";
 
 /**
  * Property Inspector Components for iRaceDeck Stream Deck plugins
@@ -58,5 +60,12 @@ export { ProfileSwitch } from "./profile-switch.js";
 // Profile Select - dropdown of bundled profiles available for the action's device
 export { ProfileSelect } from "./profile-select.js";
 
+// Shared Poller - one per-page polling interval with page-lifecycle cleanup
+export { createSharedPoller, installSharedPoller, POLL_INTERVAL_MS } from "./poller.js";
+
 // Side effect on bundle load: reroute external PI links to the default browser (issue #243).
 installExternalLinkHandler();
+
+// Side effect on bundle load: expose window.irdPoll — the shared per-page poller
+// that inline PI scripts register their sdpi polling fallbacks on (issue #903).
+installSharedPoller();

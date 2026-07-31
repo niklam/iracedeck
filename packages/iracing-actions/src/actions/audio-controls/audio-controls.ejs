@@ -227,13 +227,13 @@
 
 					// Polling fallback for reliable detection
 					let lastValue = categorySelect.value || "push-to-talk";
-					setInterval(() => {
+					window.irdPoll(() => {
 						const currentValue = categorySelect.value;
 						if (currentValue && currentValue !== lastValue) {
 							lastValue = currentValue;
 							updateVisibility(currentValue);
 						}
-					}, 100);
+					});
 				}
 
 				// Dial section wiring — polling fallback covers both selects at once.
@@ -247,7 +247,7 @@
 					el.addEventListener("input", updateDialVisibility);
 				}
 				updateDialVisibility();
-				setInterval(updateDialVisibility, 100);
+				window.irdPoll(updateDialVisibility);
 
 				if ((await resolveController()) === "Encoder") {
 					applyDialView();

@@ -284,13 +284,13 @@
 
 					// Polling fallback for reliable detection
 					let lastMode = modeSelect.value || "toggle-fuel-fill";
-					setInterval(() => {
+					window.irdPoll(() => {
 						const currentMode = modeSelect.value;
 						if (currentMode && currentMode !== lastMode) {
 							lastMode = currentMode;
 							updateVisibility(currentMode);
 						}
-					}, 100);
+					});
 				}
 
 				const showBlackBox = document.getElementById("show-black-box");
@@ -302,13 +302,13 @@
 
 					// Polling fallback — sdpi component events can be unreliable.
 					let lastChecked = isShowBlackBoxOn();
-					setInterval(() => {
+					window.irdPoll(() => {
 						const checked = isShowBlackBoxOn();
 						if (checked !== lastChecked) {
 							lastChecked = checked;
 							reapply();
 						}
-					}, 100);
+					});
 				}
 
 				if ((await resolveController()) === "Encoder") {

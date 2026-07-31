@@ -53,13 +53,13 @@
 
 					// Polling fallback for reliable detection
 					let lastMode = modeSelect.value || "change-all-tires";
-					setInterval(() => {
+					window.irdPoll(() => {
 						const currentMode = modeSelect.value;
 						if (currentMode && currentMode !== lastMode) {
 							lastMode = currentMode;
 							updateVisibility(currentMode);
 						}
-					}, 100);
+					});
 				}
 			}
 

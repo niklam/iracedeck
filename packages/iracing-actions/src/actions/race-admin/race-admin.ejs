@@ -213,13 +213,13 @@
 					modeSelect.addEventListener("input", function(ev) { updateModeVisibility(ev.target.value); });
 
 					var lastMode = modeSelect.value || "yellow";
-					setInterval(function() {
+					window.irdPoll(function() {
 						var currentMode = modeSelect.value;
 						if (currentMode && currentMode !== lastMode) {
 							lastMode = currentMode;
 							updateModeVisibility(currentMode);
 						}
-					}, 100);
+					});
 				}
 
 				if (driverTargetSelect) {
@@ -228,13 +228,13 @@
 
 					// Polling fallback — sdpi-select change events can be unreliable.
 					var lastTarget = driverTargetSelect.value || "type-in-chat";
-					setInterval(function() {
+					window.irdPoll(function() {
 						var current = driverTargetSelect.value;
 						if (current && current !== lastTarget) {
 							lastTarget = current;
 							updateCarNumberVisibility();
 						}
-					}, 100);
+					});
 				}
 			}
 
