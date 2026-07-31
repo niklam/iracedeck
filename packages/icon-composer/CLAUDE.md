@@ -50,7 +50,7 @@ Design constraint: the glyph uses only `polygon`, `rect` (with `rx`), and `circl
 - `resolveGraphicSettings()` — Merges per-action graphic overrides and global graphic settings
 - `generateTitleText()` — Generates positioned SVG title text elements
 - `calculateYPositions()` — Computes Y positions for title text lines by placement mode
-- `computeGraphicArea()` — Computes available rectangle for graphic based on title placement
+- `computeGraphicArea()` — Computes available rectangle for graphic based on title placement. Uses `ResolvedTitleSettings.layoutText` (when set) instead of `titleText` to size the area — deck-core's template-resolving `resolveTitleSettings` wrapper (#899) sets it to the raw user template so live-resolved titles can't make the artwork jump size between empty and non-empty resolutions
 - `applyGraphicTransform()` — Wraps content in a `<g transform>` to scale and center it within an available area. Static-icon callers pass `{x: 0, y: 0, width, height}` derived from the SVG's own viewBox; inline-assembled callers (car-control, pit-crew) pass bounds matching whatever coordinate space their content occupies.
 - `assembleIcon()` — Full icon assembly: extracts artwork, applies colors, scales/positions the graphic into the title-aware available area using the SVG's viewBox dimensions, generates title, border, and wraps in base template. Accepts `bindingMissing?: boolean` — when true, applies the #612 warning overlay (dimmed artwork + centered triangle via `applyBindingWarning`) for static icons whose required binding is unset
 

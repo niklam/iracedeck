@@ -73,6 +73,14 @@ describe("computeGraphicArea", () => {
     expect(area).toEqual({ x: 8, y: 8, width: 128, height: 128 });
   });
 
+  it("should size the area from layoutText when present, keeping templated-title layout stable (#899)", () => {
+    // A templated title that currently resolves empty must still reserve the
+    // space its raw template occupies, so the graphic doesn't jump size when
+    // the value appears.
+    const area = computeGraphicArea({ ...baseTitle, titleText: "", layoutText: "CAMERA\nNEXT" });
+    expect(area).toEqual(computeGraphicArea(baseTitle));
+  });
+
   it("should reduce height when title is at bottom (default case)", () => {
     const area = computeGraphicArea(baseTitle);
     // With fontSize 9 (doubled to 18), 2 lines at bottom:

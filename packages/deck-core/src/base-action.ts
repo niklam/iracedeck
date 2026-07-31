@@ -727,6 +727,16 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
    * template against current telemetry) and push the image when it changed.
    * Mirrors the setRegenerateCallback reconciliation path, including the
    * flag-overlay gate.
+   *
+   * Teardown window: a subclass may await work in onWillDisappear before
+   * calling super, and during that window a pending trailing flush (or a
+   * telemetry tick) can still land here for the disappearing context — the
+   * base class has no earlier hook, so this window cannot be closed from
+   * here (the #493/#532 clear-before-await convention applies to
+   * action-owned throttles, which CAN clear at handler entry). That is
+   * accepted: the same window exists for every base-owned subscription
+   * (flag flash, readiness), and the worst case is a setImage to a dead
+   * context whose rejection is caught and logged below.
    */
   private regenerateForTitleTemplate(contextId: string): void {
     const entry = this.contexts.get(contextId);

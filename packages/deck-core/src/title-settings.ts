@@ -14,8 +14,10 @@ import { resolveTitleTemplate, titleHasTemplate } from "./title-template.js";
  * Title, Border, and Graphic Settings — deck-core layer
  *
  * This file provides the global settings readers that connect to the
- * plugin settings store. All pure assembly and resolution functions
- * have been moved to @iracedeck/icon-composer.
+ * plugin settings store. The pure assembly and resolution functions live
+ * in @iracedeck/icon-composer and are re-exported here — except
+ * resolveTitleSettings, which this module wraps to template-resolve
+ * user-entered title text against the live SDK context (issue #899).
  */
 
 // Re-export everything from icon-composer for backward compatibility
@@ -65,6 +67,9 @@ export function resolveTitleSettings(
 
   if (userText && titleHasTemplate(userText)) {
     resolved.titleText = resolveTitleTemplate(userText);
+    // Size the graphic area from the raw template so the artwork doesn't
+    // jump when the resolved value flips between empty and non-empty.
+    resolved.layoutText = userText;
   }
 
   return resolved;

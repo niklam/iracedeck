@@ -159,6 +159,20 @@ describe("resolveTitleSettings", () => {
       expect(result.titleText).toBe("");
     });
 
+    it("exposes the raw template as layoutText so the graphic layout stays stable across resolutions", () => {
+      mockGetCurrentTemplateContext.mockReturnValue({ display: {}, raw: {} });
+      const action: TitleOverrides = { titleText: "{{unknown.variable}}" };
+      const result = resolveTitleSettings(GRAPHIC_WITH_TITLE, {}, action);
+      expect(result.titleText).toBe("");
+      expect(result.layoutText).toBe("{{unknown.variable}}");
+    });
+
+    it("does not set layoutText for non-templated titles", () => {
+      const action: TitleOverrides = { titleText: "PLAIN" };
+      const result = resolveTitleSettings(GRAPHIC_WITH_TITLE, {}, action);
+      expect(result.layoutText).toBeUndefined();
+    });
+
     it("does not resolve templates in action default text", () => {
       mockGetCurrentTemplateContext.mockReturnValue({
         display: { "self.car_number": "34" },
