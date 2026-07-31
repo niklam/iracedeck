@@ -68,7 +68,8 @@ export class FileSink {
    * directory ensure). Only names matching the exact `<YYYY.M.D>.log` pattern
    * are touched; the comparison is date-only, so a file exactly at the
    * retention boundary is kept for the whole day. Failures are swallowed the
-   * same way write failures are — a stale log must never crash the plugin.
+   * same way write failures are — a stale log must never crash the plugin —
+   * and per file, so one locked or undeletable entry doesn't stop the rest.
    */
   private prune(now: Date): void {
     try {
@@ -81,7 +82,13 @@ export class FileSink {
 
         const fileDate = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
 
-        if (fileDate < cutoff) unlinkSync(join(this.dir, name));
+        if (fileDate >= cutoff) continue;
+
+        try {
+          unlinkSync(join(this.dir, name));
+        } catch (err) {
+          console.error(`[Ulanzi FileSink] prune of ${name} failed: ${String(err)}`);
+        }
       }
     } catch (err) {
       console.error(`[Ulanzi FileSink] prune failed: ${String(err)}`);

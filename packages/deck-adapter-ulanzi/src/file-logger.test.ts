@@ -112,10 +112,14 @@ describe("FileSink pruning", () => {
     expect(readdirSync(dir)).toContain("2020.1.1.log");
   });
 
-  it("swallows prune failures and still writes the log line", () => {
+  it("swallows prune failures and keeps pruning the remaining files", () => {
     // A directory named like an expired log file — unlink throws on it, and the
-    // sink must swallow that (logging never crashes the plugin) and still write.
+    // sink must swallow that (logging never crashes the plugin), still delete
+    // the expired files on either side of it in directory order, and still
+    // write the log line.
     mkdirSync(join(dir, "2020.1.1.log"));
+    writeFileSync(join(dir, "2019.1.1.log"), "expired, sorts before the bad entry\n");
+    writeFileSync(join(dir, "2021.1.1.log"), "expired, sorts after the bad entry\n");
     // spyOn returns the spy already installed by an earlier test — clear its
     // recorded calls so this assertion can only see the prune failure.
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -124,6 +128,7 @@ describe("FileSink pruning", () => {
     const sink = new FileSink(dir);
     expect(() => sink.write("INFO", "still logged")).not.toThrow();
 
+    expect(readdirSync(dir).sort()).toEqual(["2020.1.1.log", "2026.7.31.log"]);
     expect(readFileSync(join(dir, "2026.7.31.log"), "utf-8")).toContain("INFO still logged");
     expect(errorSpy).toHaveBeenCalled();
   });
