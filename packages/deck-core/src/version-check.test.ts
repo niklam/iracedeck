@@ -390,6 +390,7 @@ describe("runVersionCheck", () => {
 
       expect(persist).toHaveBeenCalledWith("1.24.1");
       expect(openUrl).not.toHaveBeenCalled();
+      expect(persistOpenedAt).not.toHaveBeenCalled();
     });
 
     it("opens fine without a persistOpenedAt delegate", async () => {
