@@ -138,8 +138,8 @@
       glowSelect.addEventListener('input', onGlowChange);
     }
 
-    // Polling fallback (sdpi-select events are unreliable)
-    setInterval(function() {
+    // Polling fallback on the shared page poller (sdpi-select events are unreliable, #903)
+    window.irdPoll(function() {
       var curBorder = borderSelect.value || 'inherit';
       var curGlow = glowSelect ? (glowSelect.value || 'inherit') : 'inherit';
       if (curBorder !== prevBorderVal) {
@@ -148,7 +148,7 @@
       if (curGlow !== prevGlowVal) {
         onGlowChange();
       }
-    }, 100);
+    });
   }
 
   if (document.readyState === 'loading') {

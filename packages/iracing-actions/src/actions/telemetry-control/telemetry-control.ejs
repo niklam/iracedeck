@@ -43,13 +43,13 @@
 				modeSelect.addEventListener("input", (ev) => updateVisibility(ev.target.value));
 
 				let lastMode = modeSelect.value || "toggle-logging";
-				setInterval(() => {
+				window.irdPoll(() => {
 					const current = modeSelect.value;
 					if (current && current !== lastMode) {
 						lastMode = current;
 						updateVisibility(current);
 					}
-				}, 100);
+				});
 			}
 
 			function updateVisibility(mode) {

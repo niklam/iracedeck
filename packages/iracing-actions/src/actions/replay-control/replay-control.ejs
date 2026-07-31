@@ -135,13 +135,13 @@
 					});
 
 					let lastMode = modeSelect.value || "play-pause";
-					setInterval(() => {
+					window.irdPoll(() => {
 						const currentMode = modeSelect.value;
 						if (currentMode && currentMode !== lastMode) {
 							lastMode = currentMode;
 							updateVisibility(currentMode);
 						}
-					}, 100);
+					});
 				}
 			}
 

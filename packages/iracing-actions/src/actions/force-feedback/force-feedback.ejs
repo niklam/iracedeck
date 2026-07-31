@@ -185,13 +185,13 @@
 					modeSelect.addEventListener("input", function(ev) { updateVisibility(ev.target.value); });
 
 					let lastValue = modeSelect.value || "auto-compute-ffb-force";
-					setInterval(function() {
+					window.irdPoll(function() {
 						const currentValue = modeSelect.value;
 						if (currentValue && currentValue !== lastValue) {
 							lastValue = currentValue;
 							updateVisibility(currentValue);
 						}
-					}, 100);
+					});
 				}
 
 				if ((await resolveController()) === "Encoder") {

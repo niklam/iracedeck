@@ -56,13 +56,13 @@
     modeSelect.addEventListener('change', onChange);
     modeSelect.addEventListener('input', onChange);
 
-    // Polling fallback
-    setInterval(function() {
+    // Polling fallback on the shared page poller (#903)
+    window.irdPoll(function() {
       var cur = modeSelect.value || 'inherit';
       if (cur !== prevVal) {
         onChange();
       }
-    }, 100);
+    });
   }
 
   if (document.readyState === 'loading') {

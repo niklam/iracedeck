@@ -78,7 +78,7 @@
 
 				let lastMode = modeSelect.value || "incidents";
 				let lastFuelSubMode = fuelSubModeSelect?.value || "now";
-				setInterval(() => {
+				window.irdPoll(() => {
 					const currentMode = modeSelect.value;
 					const currentFuelSubMode = fuelSubModeSelect?.value;
 					if (
@@ -89,7 +89,7 @@
 						lastFuelSubMode = currentFuelSubMode || lastFuelSubMode;
 						updateVisibility();
 					}
-				}, 100);
+				});
 			}
 
 			function updateVisibility() {

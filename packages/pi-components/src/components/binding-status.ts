@@ -169,6 +169,23 @@ export class BindingStatus extends HTMLElement {
   private domPollTimer: number | null = null;
   private readonly onDomChange = (): void => this.readDom();
 
+  // On hosts that retain navigated-away PI pages (the #903 leak scenario),
+  // disconnectedCallback never fires — the element is never detached, the
+  // document just stops being the active one. pagehide is the only teardown
+  // signal, so both polls stop there and resume on pageshow.
+  private pageHidden = false;
+  private readonly onPageHide = (): void => {
+    this.pageHidden = true;
+    this.stopDomPolling();
+    this.stopSimHubPolling();
+  };
+  private readonly onPageShow = (): void => {
+    this.pageHidden = false;
+    this.startDomPolling();
+
+    if (this.pollSimHub) this.ensureSimHubPolling();
+  };
+
   connectedCallback(): void {
     if (this.initialized) return;
 
@@ -230,9 +247,24 @@ export class BindingStatus extends HTMLElement {
     // edits in the accordion). This is the proven pattern in this codebase.
     document.addEventListener("input", this.onDomChange, true);
     document.addEventListener("change", this.onDomChange, true);
-    this.domPollTimer = window.setInterval(this.onDomChange, DOM_POLL_INTERVAL_MS);
+    window.addEventListener("pagehide", this.onPageHide);
+    window.addEventListener("pageshow", this.onPageShow);
+    this.startDomPolling();
 
     this.readDom();
+  }
+
+  private startDomPolling(): void {
+    if (this.pageHidden || this.domPollTimer !== null) return;
+
+    this.domPollTimer = window.setInterval(this.onDomChange, DOM_POLL_INTERVAL_MS);
+  }
+
+  private stopDomPolling(): void {
+    if (this.domPollTimer !== null) {
+      window.clearInterval(this.domPollTimer);
+      this.domPollTimer = null;
+    }
   }
 
   /** Read the current mode, secondary values, and binding values from the DOM. */
@@ -409,7 +441,9 @@ export class BindingStatus extends HTMLElement {
   // --- SimHub reachability polling ---
 
   private ensureSimHubPolling(): void {
-    if (this.simHubPollTimer !== null) return;
+    // A probe resolving after pagehide re-renders; it must not re-arm the poll
+    // on a hidden page — pageshow restarts it via the remembered pollSimHub.
+    if (this.pageHidden || this.simHubPollTimer !== null) return;
 
     void this.probeSimHub();
     this.simHubPollTimer = window.setInterval(() => void this.probeSimHub(), SIMHUB_POLL_INTERVAL_MS);
@@ -438,11 +472,9 @@ export class BindingStatus extends HTMLElement {
     this.stopSimHubPolling();
     document.removeEventListener("input", this.onDomChange, true);
     document.removeEventListener("change", this.onDomChange, true);
-
-    if (this.domPollTimer !== null) {
-      window.clearInterval(this.domPollTimer);
-      this.domPollTimer = null;
-    }
+    window.removeEventListener("pagehide", this.onPageHide);
+    window.removeEventListener("pageshow", this.onPageShow);
+    this.stopDomPolling();
   }
 
   private line(level: "ok" | "warn" | "muted" | "danger", symbol: string, text: string): HTMLDivElement {

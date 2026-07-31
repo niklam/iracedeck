@@ -166,13 +166,13 @@
 					adjustmentSelect.addEventListener("input", onChange);
 
 					let lastValue = adjustmentSelect.value || "fov";
-					setInterval(() => {
+					window.irdPoll(() => {
 						const currentValue = adjustmentSelect.value;
 						if (currentValue && currentValue !== lastValue) {
 							lastValue = currentValue;
 							updateVisibility(currentValue);
 						}
-					}, 100);
+					});
 				}
 
 				if ((await resolveController()) === "Encoder") {

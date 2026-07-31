@@ -316,14 +316,16 @@
       updateTitleCustomPosition(select.value || 'inherit');
       select.addEventListener('change', function(e) { updateTitleCustomPosition(e.target.value); });
       select.addEventListener('input', function(e) { updateTitleCustomPosition(e.target.value); });
+      // Polling fallback on the shared page poller (window.irdPoll from
+      // pi-components.js) — sdpi-select events can be unreliable (#903).
       var lastVal = select.value || 'inherit';
-      setInterval(function() {
+      window.irdPoll(function() {
         var cur = select.value;
         if (cur && cur !== lastVal) {
           lastVal = cur;
           updateTitleCustomPosition(cur);
         }
-      }, 100);
+      });
     }
 
     if (document.readyState === 'loading') {
@@ -353,13 +355,13 @@
       select.addEventListener('change', function(e) { updateGlobalTitleCustomPosition(e.target.value); });
       select.addEventListener('input', function(e) { updateGlobalTitleCustomPosition(e.target.value); });
       var lastVal = select.value || 'default';
-      setInterval(function() {
+      window.irdPoll(function() {
         var cur = select.value;
         if (cur && cur !== lastVal) {
           lastVal = cur;
           updateGlobalTitleCustomPosition(cur);
         }
-      }, 100);
+      });
     }
 
     if (document.readyState === 'loading') {
@@ -407,13 +409,13 @@
 
       // Polling fallback for checkbox state (sdpi-checkbox loads asynchronously)
       var lastChecked = isChecked();
-      setInterval(function() {
+      window.irdPoll(function() {
         var cur = isChecked();
         if (cur !== lastChecked) {
           lastChecked = cur;
           setVisibility(cur);
         }
-      }, 100);
+      });
     }
 
     if (document.readyState === 'loading') {
@@ -452,13 +454,13 @@
       showRange(!isChecked());
 
       var lastChecked = isChecked();
-      setInterval(function() {
+      window.irdPoll(function() {
         var cur = isChecked();
         if (cur !== lastChecked) {
           lastChecked = cur;
           showRange(!cur);
         }
-      }, 100);
+      });
     }
 
     if (document.readyState === 'loading') {
@@ -556,7 +558,7 @@
 
       var lastBorder = borderSelect.value || 'default';
       var lastGlow = glowSelect ? (glowSelect.value || 'default') : 'default';
-      setInterval(function() {
+      window.irdPoll(function() {
         var curBorder = borderSelect.value || 'default';
         var curGlow = glowSelect ? (glowSelect.value || 'default') : 'default';
         if (curBorder !== lastBorder || curGlow !== lastGlow) {
@@ -564,7 +566,7 @@
           lastGlow = curGlow;
           updateGlobalBorderVisibility();
         }
-      }, 100);
+      });
     }
 
     if (document.readyState === 'loading') {

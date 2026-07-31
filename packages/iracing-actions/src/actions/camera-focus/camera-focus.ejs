@@ -547,13 +547,13 @@
 						});
 
 						var lastTarget = targetSelect.value || "change-camera";
-						setInterval(function () {
+						window.irdPoll(function () {
 							var currentTarget = targetSelect.value;
 							if (currentTarget && currentTarget !== lastTarget) {
 								lastTarget = currentTarget;
 								updateVisibility(currentTarget);
 							}
-						}, 100);
+						});
 					}
 
 					// Dial mode visibility
@@ -569,13 +569,13 @@
 						});
 
 						var lastMode = dialModeSelect.value || "car-number";
-						setInterval(function () {
+						window.irdPoll(function () {
 							var currentMode = dialModeSelect.value;
 							if (currentMode && currentMode !== lastMode) {
 								lastMode = currentMode;
 								updateDialVisibility(currentMode);
 							}
-						}, 100);
+						});
 					}
 
 					keypadSelector.render();

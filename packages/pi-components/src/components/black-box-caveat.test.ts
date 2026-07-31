@@ -189,6 +189,42 @@ describe("ird-black-box-caveat", () => {
     expect(isVisible(el)).toBe(true);
   });
 
+  // On hosts that retain navigated-away PI pages, disconnectedCallback never
+  // fires — pagehide is the only teardown signal the component gets (#903).
+  it("should stop the checkbox poll on pagehide and resume it on pageshow", async () => {
+    const el = await mount(false);
+
+    window.dispatchEvent(new Event("pagehide"));
+    // Flip the checkbox WITHOUT dispatching events, so only the poll could notice.
+    const checkbox = document.querySelector(`[setting="showBlackBox"]`) as Element & { value?: unknown };
+    checkbox.value = true;
+    vi.advanceTimersByTime(1000);
+
+    expect(isVisible(el)).toBe(false);
+
+    window.dispatchEvent(new Event("pageshow"));
+    vi.advanceTimersByTime(300);
+
+    expect(isVisible(el)).toBe(true);
+  });
+
+  it("should poll again when re-added after a pageshow it missed while detached", async () => {
+    const el = await mount(false);
+
+    window.dispatchEvent(new Event("pagehide"));
+    el.remove();
+    // pageshow fires while the element is detached — its listener is gone.
+    window.dispatchEvent(new Event("pageshow"));
+    document.body.appendChild(el);
+
+    // Flip the checkbox WITHOUT dispatching events, so only the poll could notice.
+    const checkbox = document.querySelector(`[setting="showBlackBox"]`) as Element & { value?: unknown };
+    checkbox.value = true;
+    vi.advanceTimersByTime(300);
+
+    expect(isVisible(el)).toBe(true);
+  });
+
   it("should not render after a late getGlobalSettings resolve on a detached element", async () => {
     let resolveSettings!: (v: Record<string, unknown>) => void;
     (

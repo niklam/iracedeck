@@ -200,13 +200,13 @@
 
 					// Polling fallback — sdpi-select events can be unreliable.
 					let lastValue = settingSelect.value || "brake-bias";
-					setInterval(() => {
+					window.irdPoll(() => {
 						const currentValue = settingSelect.value;
 						if (currentValue && currentValue !== lastValue) {
 							lastValue = currentValue;
 							updateVisibility(currentValue);
 						}
-					}, 100);
+					});
 				}
 
 				if ((await resolveController()) === "Encoder") {

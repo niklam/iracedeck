@@ -192,13 +192,13 @@
 					settingSelect.addEventListener("input", onChange);
 
 					let lastValue = settingSelect.value || "tc-toggle";
-					setInterval(() => {
+					window.irdPoll(() => {
 						const currentValue = settingSelect.value;
 						if (currentValue && currentValue !== lastValue) {
 							lastValue = currentValue;
 							updateVisibility(currentValue);
 						}
-					}, 100);
+					});
 				}
 
 				if ((await resolveController()) === "Encoder") {

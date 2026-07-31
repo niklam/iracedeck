@@ -93,10 +93,10 @@
 			select.addEventListener("input", function(ev) { updateColorDefaults(ev.target.value); });
 
 			var last = select.value || "damage-report";
-			setInterval(function() {
+			window.irdPoll(function() {
 				var cur = select.value;
 				if (cur && cur !== last) { last = cur; updateColorDefaults(cur); }
-			}, 100);
+			});
 		}
 
 		if (document.readyState === "loading") {

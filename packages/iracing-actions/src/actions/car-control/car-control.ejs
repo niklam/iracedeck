@@ -60,13 +60,13 @@
 
 				// Polling fallback: sdpi-select events can be unreliable on programmatic value restores
 				let lastControl = controlSelect.value || "pit-speed-limiter";
-				setInterval(() => {
+				window.irdPoll(() => {
 					const currentControl = controlSelect.value;
 					if (currentControl && currentControl !== lastControl) {
 						lastControl = currentControl;
 						updateAutoHoldVisibility(currentControl);
 					}
-				}, 100);
+				});
 			}
 
 			function updateAutoHoldVisibility(control) {
