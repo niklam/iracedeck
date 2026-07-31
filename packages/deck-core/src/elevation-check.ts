@@ -48,7 +48,24 @@ export function createElevationCheckSubscriber(
 
     checked = true;
 
-    const status = getStatus();
+    // A throwing probe must not escape into the SDK controller's dispatch loop
+    // (it iterates subscribers unguarded — a throw would starve the rest). The
+    // check stays latched until the next connection: retrying every tick would
+    // hammer a persistently failing probe at telemetry rate, and the failure is
+    // logged at warn so the skipped check still shows up in support logs. The
+    // PI warning is left as-is — an unknown status shouldn't clear a banner
+    // that may still be accurate.
+    let status: { mismatch: boolean };
+
+    try {
+      status = getStatus();
+    } catch (error) {
+      logger.warn("Elevation check failed; skipping until the next connection");
+      logger.debug(`Elevation check error: ${error instanceof Error ? error.message : String(error)}`);
+
+      return;
+    }
+
     const warning = evaluateElevationWarning(status);
 
     if (warning) {

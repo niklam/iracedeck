@@ -112,4 +112,51 @@ describe("createElevationCheckSubscriber", () => {
       `Elevation status: ${JSON.stringify({ mismatch: false, selfElevated: true })}`,
     );
   });
+
+  it("swallows a throwing probe, logs at warn, and leaves the PI warning untouched", () => {
+    const logger = createMockLogger();
+    const subscriber = createElevationCheckSubscriber({
+      getStatus: () => {
+        throw new Error("probe exploded");
+      },
+      logger,
+    });
+
+    expect(() => subscriber(undefined, true)).not.toThrow();
+
+    expect(logger.warn).toHaveBeenCalledWith("Elevation check failed; skipping until the next connection");
+    expect(logger.debug).toHaveBeenCalledWith("Elevation check error: probe exploded");
+    expect(logger.info).not.toHaveBeenCalled();
+    expect(setWarning).not.toHaveBeenCalled();
+    expect(clearWarning).not.toHaveBeenCalled();
+  });
+
+  it("does not re-probe on later connected ticks after a failed probe", () => {
+    const getStatus = vi.fn(() => {
+      throw new Error("probe exploded");
+    });
+    const subscriber = createElevationCheckSubscriber({ getStatus, logger: createMockLogger() });
+
+    subscriber(undefined, true);
+    subscriber(undefined, true);
+
+    expect(getStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-probes on reconnect after a failed probe", () => {
+    const getStatus = vi
+      .fn<() => { mismatch: boolean }>()
+      .mockImplementationOnce(() => {
+        throw new Error("probe exploded");
+      })
+      .mockImplementation(() => ({ mismatch: false }));
+    const subscriber = createElevationCheckSubscriber({ getStatus, logger: createMockLogger() });
+
+    subscriber(undefined, true);
+    subscriber(undefined, false);
+    subscriber(undefined, true);
+
+    expect(getStatus).toHaveBeenCalledTimes(2);
+    expect(clearWarning).toHaveBeenCalledWith(ELEVATION_WARNING_ID);
+  });
 });
