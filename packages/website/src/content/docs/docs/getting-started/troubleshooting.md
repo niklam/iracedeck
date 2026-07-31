@@ -22,7 +22,7 @@ If iRaceDeck appears connected — telemetry-driven features like the Race Engin
 - iRacing is running **as Administrator**, and
 - the Stream Deck software (and therefore iRaceDeck) is **not**.
 
-Windows blocks a non-elevated program from sending input or commands to an elevated one, so iRaceDeck's button presses are silently dropped even though it can still read iRacing's telemetry. When iRaceDeck detects this, it shows a ⚠️ warning banner at the top of every action's settings (Property Inspector).
+Windows blocks a non-elevated program from sending input or commands to an elevated one, so iRaceDeck's button presses are silently dropped even though it can still read iRacing's telemetry. When iRaceDeck detects this, it shows a ⚠️ warning banner at the top of every action's settings (Property Inspector). The check's result is also written to the plugin log on every connection — a mismatch as a warning, a pass as a confirmation — so a support log shows the outcome without any extra settings.
 
 **Fix:** run both at the same level. Either:
 

@@ -223,7 +223,7 @@ clearWarning("elevation-mismatch");                         // remove by id
 
 Records are keyed by `id` so independent producers coexist. `setWarning` skips the write when an identical record already exists; `clearWarning` is a no-op when the id is absent. The `ird-warnings` PI web component (auto-injected by `head-common.ejs`) renders the array and prepends a per-level icon — so warning **messages must not start with their own emoji**. Banners are state-driven and not dismissible: a warning persists until its condition clears.
 
-Reference producer: the elevation-mismatch detector wired in both plugins' `plugin.ts` using `evaluateElevationWarning()` + `getElevationStatus()`.
+Reference producer: the elevation-mismatch detector — deck-core's `createElevationCheckSubscriber` (wrapping `evaluateElevationWarning()` + the injected `getElevationStatus()`), wired in every plugin's `plugin.ts`.
 
 ## Version-upgrade changelog — `_lastSeenVersion` + `runVersionCheck` (#680, #742, #870)
 

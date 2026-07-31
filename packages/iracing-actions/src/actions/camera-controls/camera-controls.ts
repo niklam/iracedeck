@@ -78,10 +78,11 @@ import {
 import { getLiveRacePositions } from "@iracedeck/sim-events-iracing";
 import z from "zod";
 
+import { carPresence, computeCarNumberTarget } from "../../shared/car-cycling.js";
 import { setSelectIntent } from "../../shared/car-select-intent.js";
 import { profileEntriesEqual } from "../../shared/profile-entries.js";
 import { availableProfilesForDevice, deviceProfileEntries } from "../race-admin/race-admin-selector.js";
-import { CameraDialSurface, type CarouselGlyph, computeCarNumberTarget, DialSettings } from "./camera-dial-surface.js";
+import { CameraDialSurface, type CarouselGlyph, DialSettings } from "./camera-dial-surface.js";
 import {
   CAMERA_GROUPS_SETTING_KEY,
   computeSubCameraCarousel,
@@ -908,18 +909,22 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
         // branches use (issue #803). cycleCar's switchPos(carIdx ± 1) treats the
         // car INDEX as a race POSITION, so it lands on whatever car sits at that
         // position and stalls when the focused (pace) car has no valid position.
-        // Reuses the dial car-number mode's ordering (computeCarNumberTarget) so
-        // both surfaces agree; falls back to the raw cycle helper only out of
-        // session (no car list).
+        // Reuses the dial car-number mode's ordering (computeCarNumberTarget)
+        // and its world-presence walk (carPresence, #885) so both surfaces
+        // agree — including skipping cars that left the world post-race; falls
+        // back to the raw cycle helper only out of session (no car list).
         const sessionInfo = this.sdkController.getSessionInfo();
         const cars = getAllCarNumbers(sessionInfo, true, true);
-        const targetCar = computeCarNumberTarget(carIdx, cars, direction);
+        const targetCar = computeCarNumberTarget(carIdx, cars, direction, carPresence(telemetry));
 
         if (targetCar) {
           const success = camera.switchNum(targetCar.carNumberRaw, groupNum, cameraNum);
           this.logger.info("Car switched");
           this.logger.debug(`Result: ${success}, direction: ${direction}, carNumberRaw: ${targetCar.carNumberRaw}`);
-        } else {
+        } else if (cars.length === 0) {
+          // Only fall back to the raw SDK cycle out of session (no car list).
+          // When cars exist but every other one has left the world, do nothing
+          // — matching the dial's no-fallback contract (#885).
           const success = camera.cycleCar(carIdx, dir);
           this.logger.info("Car cycled (fallback)");
           this.logger.debug(`Result: ${success}, direction: ${direction}`);

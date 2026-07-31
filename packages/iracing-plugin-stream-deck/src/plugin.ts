@@ -56,10 +56,8 @@ import {
 import { getAudio, initializeAudio } from "@iracedeck/audio-service";
 import { ElgatoPlatformAdapter } from "@iracedeck/deck-adapter-elgato";
 import {
-  clearWarning,
+  createElevationCheckSubscriber,
   deleteGlobalSettings,
-  ELEVATION_WARNING_ID,
-  evaluateElevationWarning,
   evaluateSetupWarning,
   getController,
   getGlobalSettings,
@@ -82,7 +80,6 @@ import {
   resolveActiveDriverName,
   resolveActiveRaceEngineerVoice,
   runVersionCheck,
-  setWarning,
   shouldOpenChangelog,
   updateGlobalSettings,
   validateSetupWarningPatterns,
@@ -948,40 +945,16 @@ initializeBindingDispatcher(adapter.createLogger("BindingDispatcher"));
 initAppMonitor(adapter, adapter.createLogger("AppMonitor"));
 
 // Detect an Administrator/integrity mismatch with iRacing and surface it as a
-// PI warning banner (issue #610). When iRacing runs elevated and the plugin
-// does not, Windows UIPI silently drops every outbound command while telemetry
-// keeps flowing — so nothing else signals the cause. The probe runs once per
-// connection (re-armed on reconnect) and is purely diagnostic: it never gates
-// or disables the plugin.
-const elevationLogger = adapter.createLogger("Elevation");
-let elevationWasConnected = false;
-let elevationChecked = false;
-
-getController().subscribe("elevation-check", (_telemetry, isConnected) => {
-  if (isConnected && !elevationWasConnected && !elevationChecked) {
-    elevationChecked = true;
-
-    const status = native.getElevationStatus();
-    const warning = evaluateElevationWarning(status);
-
-    if (warning) {
-      elevationLogger.warn(
-        "iRacing appears to run at a higher integrity level than the plugin; outbound commands will be silently dropped",
-      );
-      elevationLogger.debug(`Elevation status: ${JSON.stringify(status)}`);
-      setWarning(warning.id, warning.level, warning.message);
-    } else {
-      clearWarning(ELEVATION_WARNING_ID);
-    }
-  }
-
-  if (isConnected) {
-    elevationWasConnected = true;
-  } else {
-    elevationWasConnected = false;
-    elevationChecked = false;
-  }
-});
+// PI warning banner (issue #610). Both outcomes are logged at the default log
+// level so support logs always capture whether the check ran and what it found
+// (issue #902) — see createElevationCheckSubscriber in deck-core.
+getController().subscribe(
+  "elevation-check",
+  createElevationCheckSubscriber({
+    getStatus: () => native.getElevationStatus(),
+    logger: adapter.createLogger("Elevation"),
+  }),
+);
 
 // Connect to the Stream Deck
 adapter.connect();
