@@ -21,6 +21,7 @@ _Unreleased_
 
 - Session Info's iRating Gain/Loss estimate no longer waits for the race to go green: during qualifying it scores the current qualifying standings as if they were the finish, and on the race grid and pace lap it starts from the qualifying grid, so a value shows the moment positions exist. The same applies to the `irating_change` / `irating_new` / `session.sof` template variables, and in practice and test sessions the key now shows `--` instead of staying empty.
 - Race Admin's Black Flag keys now label themselves with the configured penalty — `BLACK 30S` for a 30-second time penalty, `BLACK 3L` for a 3-lap penalty, `BLACK DT` for a drive-through — so a page of black-flag presets no longer needs custom titles. The bundled Race Admin Per Car profile's three black-flag keys drop their static titles and show the selected car's number again.
+- The Administrator-mismatch check (iRacing running as Administrator while the deck software is not, which silently blocks every button) now logs its outcome on every connection at the default log level — including a confirmation when everything matches — so a support log shows whether the check ran and what it found without turning on debug logging first.
 
 **Bug Fixes**
 
