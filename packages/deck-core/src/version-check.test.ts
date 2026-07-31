@@ -360,7 +360,7 @@ describe("runVersionCheck", () => {
       expect(persistOpenedAt).toHaveBeenCalledWith(now);
     });
 
-    it("defaults to always and stamps the timestamp when the delegate is provided", async () => {
+    it("defaults to features and stamps the timestamp when the delegate is provided", async () => {
       await runVersionCheck({
         currentVersion: "1.24.0",
         lastSeenVersion: "1.23.0",
@@ -374,6 +374,23 @@ describe("runVersionCheck", () => {
 
       expect(openUrl).toHaveBeenCalledTimes(1);
       expect(persistOpenedAt).toHaveBeenCalledWith(now);
+    });
+
+    it("tracks a patch-only bump silently under the default policy (issue #901)", async () => {
+      await runVersionCheck({
+        currentVersion: "1.24.1",
+        lastSeenVersion: "1.24.0",
+        ecosystem: "stream-deck",
+        persist,
+        persistOpenedAt,
+        openUrl,
+        logger,
+        now,
+      });
+
+      expect(persist).toHaveBeenCalledWith("1.24.1");
+      expect(openUrl).not.toHaveBeenCalled();
+      expect(persistOpenedAt).not.toHaveBeenCalled();
     });
 
     it("opens fine without a persistOpenedAt delegate", async () => {

@@ -9,12 +9,13 @@
  * are not nagged on every dev bump.
  *
  * The `changelogNotification` global setting (issue #742) controls *when* a due
- * changelog actually opens: `always` (every stable update — the default and the
- * pre-#742 behavior), `features` (only major/minor bumps; patch releases record
- * the version silently), `monthly` (at most once per 30 days — a suppressed
- * update stays pending and opens at the first startup after the window passes),
- * or `never` (still records the version silently so re-enabling later doesn't
- * pop an old changelog).
+ * changelog actually opens: `always` (every stable update — the pre-#742
+ * behavior, and the default until #901), `features` (only major/minor bumps;
+ * patch releases record the version silently — the default since #901),
+ * `monthly` (at most once per 30 days — a suppressed update stays pending and
+ * opens at the first startup after the window passes), or `never` (still
+ * records the version silently so re-enabling later doesn't pop an old
+ * changelog).
  *
  * The changelog must never open while iRacing is running (issue #870): a due
  * `open` is deferred — nothing persisted, the version stays pending — when the
@@ -44,6 +45,14 @@ export const CHANGELOG_NOTIFICATION_POLICIES = ["always", "features", "monthly",
 
 /** User preference for when the changelog opens after an update. */
 export type ChangelogNotificationPolicy = (typeof CHANGELOG_NOTIFICATION_POLICIES)[number];
+
+/**
+ * Default `changelogNotification` policy (issue #901): open only after feature
+ * (major/minor) releases; patch-only updates record the version silently.
+ * Shared by the `GlobalSettingsSchema` field and `runVersionCheck` so the two
+ * can never disagree.
+ */
+export const DEFAULT_CHANGELOG_NOTIFICATION_POLICY: ChangelogNotificationPolicy = "features";
 
 /** Suppression window for the `monthly` policy: 30 days in milliseconds. */
 export const MONTHLY_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
@@ -168,8 +177,8 @@ export function buildChangelogUrl(p: { ecosystem: string; deviceType?: string | 
  * opened-at timestamp, and then open the changelog URL. Opening failures are
  * swallowed and logged — they must not crash startup.
  *
- * `policy` defaults to `always` (the pre-#742 behavior); `lastOpenedAt` /
- * `persistOpenedAt` back the `monthly` window via the passthrough
+ * `policy` defaults to {@link DEFAULT_CHANGELOG_NOTIFICATION_POLICY};
+ * `lastOpenedAt` / `persistOpenedAt` back the `monthly` window via the passthrough
  * `_lastChangelogOpenedAt` key. The timestamp is stamped on every open under any
  * policy so a later switch to `monthly` has a meaningful anchor.
  *
@@ -198,7 +207,7 @@ export async function runVersionCheck(opts: {
   const {
     currentVersion,
     lastSeenVersion,
-    policy = "always",
+    policy = DEFAULT_CHANGELOG_NOTIFICATION_POLICY,
     lastOpenedAt,
     now = Date.now(),
     ecosystem,

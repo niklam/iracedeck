@@ -137,7 +137,7 @@ describe("SimHub Service", () => {
       chatOpenToPasteDelayMs: 200,
       chatPasteToEnterDelayMs: 200,
       chatEnterToCloseDelayMs: 200,
-      changelogNotification: "always",
+      changelogNotification: "features",
     });
   });
 
@@ -324,7 +324,7 @@ describe("SimHub Service", () => {
         chatOpenToPasteDelayMs: 200,
         chatPasteToEnterDelayMs: 200,
         chatEnterToCloseDelayMs: 200,
-        changelogNotification: "always",
+        changelogNotification: "features",
       });
 
       initializeSimHub(mockLogger);

@@ -15,8 +15,8 @@ On a normal start with iRacing closed, the page opens about fifteen seconds afte
 
 The **What's New page** setting controls when a due page actually opens. You'll find it in the **Common Settings** accordion (under _Updates_) in any action's Property Inspector.
 
-- **Open after every update** — the default. Every new release opens the page once.
-- **Only after updates with new features** — skips small bug-fix updates; feature releases still open the page.
+- **Open after every update** — every new release opens the page once.
+- **Only after updates with new features** — the default. Skips small bug-fix updates; feature releases still open the page.
 - **Open at most once a month** — no more than one What's New page per 30 days. A release inside that window stays pending and opens later, so nothing is skipped.
 - **Never open** — the page never opens on its own. You can always read the [changelog](/changelog/) directly.
 

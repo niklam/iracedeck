@@ -591,9 +591,9 @@ describe("dualPressDirections (issue #540)", () => {
 });
 
 describe("changelogNotification (issue #742)", () => {
-  it("defaults to always when not specified", () => {
+  it("defaults to features when not specified (issue #901)", () => {
     const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
-    expect(parsed.changelogNotification).toBe("always");
+    expect(parsed.changelogNotification).toBe("features");
   });
 
   it.each(CHANGELOG_NOTIFICATION_POLICIES)("accepts %s", (value) => {
@@ -601,9 +601,9 @@ describe("changelogNotification (issue #742)", () => {
     expect(parsed.changelogNotification).toBe(value);
   });
 
-  it("falls back to always on a malformed persisted value", () => {
+  it("falls back to features on a malformed persisted value", () => {
     const parsed = GlobalSettingsSchema.parse({ changelogNotification: "sometimes" }) as Record<string, unknown>;
-    expect(parsed.changelogNotification).toBe("always");
+    expect(parsed.changelogNotification).toBe("features");
   });
 });
 

@@ -26,7 +26,7 @@ import {
   DEFAULT_SETUP_WARNING_RACE_PATTERN,
 } from "./setup-warning-constants.js";
 import type { IDeckPlatformAdapter } from "./types.js";
-import { CHANGELOG_NOTIFICATION_POLICIES } from "./version-check.js";
+import { CHANGELOG_NOTIFICATION_POLICIES, DEFAULT_CHANGELOG_NOTIFICATION_POLICY } from "./version-check.js";
 
 /**
  * Schema for key binding values stored in global settings.
@@ -923,21 +923,24 @@ export const GlobalSettingsSchema = z
     /**
      * When the "what's new" changelog page opens after a plugin upgrade
      * (issue #742). `always` opens once per stable update (the pre-#742
-     * behavior and the default, keeping the feature opt-out); `features`
-     * opens only for major/minor updates and records patch releases
-     * silently; `monthly` opens at most once per 30 days — a suppressed
+     * behavior, and the default until #901); `features` opens only for
+     * major/minor updates and records patch releases silently (the default
+     * since #901); `monthly` opens at most once per 30 days — a suppressed
      * update stays pending and opens at the first startup after the window
      * passes; `never` still records the version silently so switching back
      * later doesn't replay an old release. Consumed by `runVersionCheck`
      * alongside the passthrough `_lastSeenVersion` /
      * `_lastChangelogOpenedAt` keys — see `version-check.ts`.
      */
-    // `.catch("always")` so a malformed persisted value (e.g. a hand-edited
-    // settings file) falls back to the default instead of throwing and
-    // aborting the entire GlobalSettingsSchema.parse — which would stall
-    // every setting, not just this one (the `spotterStillThereSeconds`
-    // precedent).
-    changelogNotification: z.enum(CHANGELOG_NOTIFICATION_POLICIES).default("always").catch("always"),
+    // `.catch(DEFAULT_CHANGELOG_NOTIFICATION_POLICY)` so a malformed
+    // persisted value (e.g. a hand-edited settings file) falls back to the
+    // default instead of throwing and aborting the entire
+    // GlobalSettingsSchema.parse — which would stall every setting, not just
+    // this one (the `spotterStillThereSeconds` precedent).
+    changelogNotification: z
+      .enum(CHANGELOG_NOTIFICATION_POLICIES)
+      .default(DEFAULT_CHANGELOG_NOTIFICATION_POLICY)
+      .catch(DEFAULT_CHANGELOG_NOTIFICATION_POLICY),
   })
   .passthrough();
 
