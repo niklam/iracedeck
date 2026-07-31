@@ -39,7 +39,7 @@ This is the **authoritative source for a mode's communication method** when answ
 
 ## Template variables in key titles (#899)
 
-User-entered title text resolves `{{variable}}` / `{{= expression }}` templates against live telemetry on **every** action — the Title Overrides **Title Text** field (any action) and Telemetry Display's own **Title** setting. Only user-entered text resolves; icon `<desc>` default titles and action-code default titles never do. Templated titles update live (re-resolved on telemetry ticks through a shared BaseAction watcher, 10 Hz throttled); with the sim disconnected, variables render empty and `{{= … }}` parse errors stay visible. Full variable list: the website's Template Variables page (`docs/features/template-variables.md`).
+User-entered title text resolves `{{variable}}` / `{{= expression }}` templates against live telemetry on **every** action — the Title Overrides **Title Text** field (any action) and Telemetry Display's own **Title** setting. Only user-entered text resolves; icon `<desc>` default titles and action-code default titles never do. Templated titles update live (re-resolved on telemetry ticks through a shared BaseAction watcher, 10 Hz throttled); with the sim disconnected, variables render empty and `{{= … }}` parse errors stay visible. Full variable list: the website's Template Variables page (`packages/website/src/content/docs/docs/features/template-variables.md`, rendered at `/docs/features/template-variables/`).
 
 ## How to Use
 
