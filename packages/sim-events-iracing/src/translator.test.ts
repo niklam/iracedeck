@@ -1824,6 +1824,30 @@ describe("sim-events-iracing translator", () => {
           expect(replaySkipLogCount(logger)).toBe(2);
         });
 
+        it("re-logs the skip after a non-replay tick that carries no SessionNum", () => {
+          // A live tick whose telemetry lacks SessionNum never enters the
+          // fresh-connect gate, but it still ends the replay episode — the
+          // marker must reset so the next replay episode logs again.
+          const controller = createMockController();
+          controller.__setSessionInfo(REPLAY_SESSION_INFO);
+          const logger = createMockLogger();
+          initializeSimEventsIracing(getEventBus(), controller, logger);
+
+          // Episode 1: two replay-only ticks — one log line.
+          replayTick(controller);
+          replayTick(controller);
+          expect(replaySkipLogCount(logger)).toBe(1);
+
+          // Live tick with no SessionNum — skips the fresh-connect gate.
+          controller.__setSessionInfo(LIVE_SESSION_INFO);
+          controller.__tick(telemetry({ SessionNum: undefined, IsReplayPlaying: false, IsOnTrack: false }));
+
+          // Episode 2: back into the replay UI — logs again.
+          controller.__setSessionInfo(REPLAY_SESSION_INFO);
+          replayTick(controller);
+          expect(replaySkipLogCount(logger)).toBe(2);
+        });
+
         it("logs again after a disconnect re-arms the fresh-connect check", () => {
           const controller = createMockController();
           controller.__setSessionInfo(REPLAY_SESSION_INFO);

@@ -138,9 +138,10 @@ type TranslatorInstance = {
    * `freshConnectFireChecked`, so while a replay-only session is open the
    * gate re-evaluates — and would otherwise log the skip — on every tick
    * (~60 INFO lines/s). Set when the skip is first logged; reset when a
-   * non-replay-only tick is observed and by `handleDisconnect`, so a later
-   * replay episode logs again. Logging only — no effect on the
-   * synthesis/latch behavior.
+   * non-replay-only tick is observed (checked ahead of the fresh-connect
+   * gate in `handleTick`, so a tick without SessionNum still ends the
+   * episode) and by `handleDisconnect`, so a later replay episode logs
+   * again. Logging only — no effect on the synthesis/latch behavior.
    */
   freshConnectReplaySkipLogged: boolean;
   /**
@@ -1085,6 +1086,18 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // viewing stays silent.
   const currentSessionNum = telemetry.SessionNum ?? null;
 
+  // Issue #908: a non-replay-only tick ends the replay episode for the skip
+  // log in the fresh-connect gate below, so a later replay episode logs
+  // again. Checked ahead of the gate — a tick without SessionNum never
+  // enters it but still ends the episode — and only while the marker is
+  // set, so the session-info read isn't added to every tick.
+  if (
+    self.freshConnectReplaySkipLogged &&
+    !isReplayOnlySession(self.controller.getSessionInfo() as Record<string, unknown> | null)
+  ) {
+    self.freshConnectReplaySkipLogged = false;
+  }
+
   // Fresh-connect session.changed synthesis (issues #568, #668). On the first
   // tick after connect (or reconnect) that satisfies the gating conditions,
   // synthesize a `session.changed { from: -1, to: SessionNum }` so the
@@ -1125,8 +1138,6 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
         );
       }
     } else {
-      // Non-replay-only tick observed — a later replay episode logs again.
-      self.freshConnectReplaySkipLogged = false;
       // Capture the RAW session type first. `classifySessionType("")` returns
       // "race" (its safe default), so classifying before the session YAML has
       // loaded would misread a not-yet-known session as race and could fire a
