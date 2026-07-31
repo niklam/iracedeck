@@ -10,6 +10,7 @@
 			<sdpi-select id="mode-select" setting="mode" default="race-engineer">
 				<option value="race-engineer">Race Engineer Toggle</option>
 				<option value="radar">Radar</option>
+				<option value="corner-names">Corner Names</option>
 				<!-- Radar Volume moved to the Audio Controls action (issue #590). The option
 				     is removed from this dropdown for new buttons but kept (via JS) when a
 				     button already uses it, so existing setups keep working. -->
@@ -257,6 +258,7 @@
 			// announces the upcoming corner's name in practice/test sessions.
 			var cornerNameCallouts = [
 				{ setting: "calloutEnabledCornerNames", label: "Corner names (practice/test)" },
+				{ setting: "calloutEnabledToggleCornerNames", label: "Toggle on/off acknowledgment" },
 			];
 			var cornerNameRowCount = Math.ceil(cornerNameCallouts.length / 2);
 			var cornerNameCheckboxes = cornerNameCallouts.map(function (c) {

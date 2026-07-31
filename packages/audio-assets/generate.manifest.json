@@ -11408,6 +11408,22 @@
       "textPreview": "Zeppelin Kurve.",
       "generatedAt": "2026-07-25T18:25:54.081Z",
       "requestId": "8TnujIro1XyIY6Pv9CHA"
+    },
+    "voice/default/toggle/corner-names-on-01.mp3": {
+      "hash": "6d2e195cdfa2d217",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Roger that. <break time=\"0.2s\"/> Corner calls coming up.",
+      "generatedAt": "2026-07-29T14:26:15.225Z",
+      "requestId": "l9QYTeO99GAytTukL1b6"
+    },
+    "voice/default/toggle/corner-names-off-01.mp3": {
+      "hash": "b7e12c61b1890303",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Copy that. <break time=\"0.2s\"/> Dropping the corner calls.",
+      "generatedAt": "2026-07-29T14:26:15.466Z",
+      "requestId": "5src4KYUD6u7y09eIxjE"
     }
   }
 }

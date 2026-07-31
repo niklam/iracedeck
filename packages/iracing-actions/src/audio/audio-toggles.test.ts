@@ -1,8 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  isCornerNamesEnabled,
+  isCornerNamesToggleAckEnabled,
   isToggleAckEnabled,
   readJsonStringArray,
+  toggleCornerNamesFeature,
   toggleRaceEngineerFeature,
   toggleRadarFeature,
 } from "./audio-toggles.js";
@@ -148,6 +151,70 @@ describe("audio-toggles", () => {
       expect(toggleRadarFeature(logger)).toBe(false);
       expect(hoisted.setRadarEnabled).toHaveBeenCalledWith(false);
       expect(hoisted.updateGlobalSettings).toHaveBeenCalledWith({ pitCrewRadarEnabled: false });
+    });
+  });
+
+  describe("toggleCornerNamesFeature (issue #897)", () => {
+    it("disables from the default-on state, persists, and plays the off ack when the master is on", () => {
+      hoisted.setGlobalSettings({
+        pitCrewRaceEngineerEnabled: true,
+        _raceEngineerVoices: JSON.stringify(["default"]),
+      });
+
+      expect(toggleCornerNamesFeature(logger)).toBe(false);
+      expect(hoisted.updateGlobalSettings).toHaveBeenCalledWith({ calloutEnabledCornerNames: false });
+      expect(hoisted.playOnChannel).toHaveBeenCalledWith(0, "voice/default/toggle/corner-names-off-01.mp3");
+    });
+
+    it("re-enables from off and plays the on ack", () => {
+      hoisted.setGlobalSettings({
+        calloutEnabledCornerNames: false,
+        pitCrewRaceEngineerEnabled: true,
+        _raceEngineerVoices: JSON.stringify(["default"]),
+      });
+
+      expect(toggleCornerNamesFeature(logger)).toBe(true);
+      expect(hoisted.updateGlobalSettings).toHaveBeenCalledWith({ calloutEnabledCornerNames: true });
+      expect(hoisted.playOnChannel).toHaveBeenCalledWith(0, "voice/default/toggle/corner-names-on-01.mp3");
+    });
+
+    it("toggles silently when the Race Engineer master gate is off", () => {
+      hoisted.setGlobalSettings({ _raceEngineerVoices: JSON.stringify(["default"]) });
+
+      expect(toggleCornerNamesFeature(logger)).toBe(false);
+      expect(hoisted.updateGlobalSettings).toHaveBeenCalledWith({ calloutEnabledCornerNames: false });
+      expect(hoisted.playOnChannel).not.toHaveBeenCalled();
+    });
+
+    it("toggles silently when the ack opt-in is off", () => {
+      hoisted.setGlobalSettings({
+        pitCrewRaceEngineerEnabled: true,
+        calloutEnabledToggleCornerNames: false,
+        _raceEngineerVoices: JSON.stringify(["default"]),
+      });
+
+      toggleCornerNamesFeature(logger);
+      expect(hoisted.playOnChannel).not.toHaveBeenCalled();
+    });
+
+    it("still toggles when no voice is available (ack skipped silently)", () => {
+      hoisted.resolveActiveRaceEngineerVoice.mockReturnValue(null as never);
+      hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: true });
+
+      expect(toggleCornerNamesFeature(logger)).toBe(false);
+      expect(hoisted.updateGlobalSettings).toHaveBeenCalledWith({ calloutEnabledCornerNames: false });
+      expect(hoisted.playOnChannel).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("isCornerNamesEnabled / isCornerNamesToggleAckEnabled", () => {
+    it("default to enabled and only an explicit false opts out", () => {
+      expect(isCornerNamesEnabled()).toBe(true);
+      expect(isCornerNamesToggleAckEnabled()).toBe(true);
+
+      hoisted.setGlobalSettings({ calloutEnabledCornerNames: false, calloutEnabledToggleCornerNames: false });
+      expect(isCornerNamesEnabled()).toBe(false);
+      expect(isCornerNamesToggleAckEnabled()).toBe(false);
     });
   });
 });

@@ -288,6 +288,10 @@ describe("Settings (persisted legacy field stripping)", () => {
     expect(parsed.direction).toBe("up");
   });
 
+  it("accepts corner-names as a mode value (#897)", () => {
+    expect(Settings.parse({ mode: "corner-names" }).mode).toBe("corner-names");
+  });
+
   it("still accepts persisted race-engineer mode for backward compat", () => {
     const parsed = Settings.parse({ mode: "race-engineer" });
 
@@ -1167,6 +1171,42 @@ describe("PitCrew action", () => {
     });
   });
 
+  describe("onKeyDown — corner-names mode (#897)", () => {
+    it("flips calloutEnabledCornerNames off from the default-on state", async () => {
+      const action = new PitCrew();
+      await action.onWillAppear(buildAppearEvent({ mode: "corner-names" }) as never);
+      vi.clearAllMocks();
+
+      await action.onKeyDown(buildAppearEvent({ mode: "corner-names" }) as never);
+
+      expect(hoisted.updateGlobalSettings).toHaveBeenCalledWith({ calloutEnabledCornerNames: false });
+      expect(hoisted.setRadarEnabled).not.toHaveBeenCalled();
+    });
+
+    it("flips back on when already off", async () => {
+      hoisted.setGlobalSettings({ calloutEnabledCornerNames: false });
+      const action = new PitCrew();
+      await action.onWillAppear(buildAppearEvent({ mode: "corner-names" }) as never);
+      vi.clearAllMocks();
+
+      await action.onKeyDown(buildAppearEvent({ mode: "corner-names" }) as never);
+
+      expect(hoisted.updateGlobalSettings).toHaveBeenCalledWith({ calloutEnabledCornerNames: true });
+    });
+
+    it("does not touch the race-engineer or radar gates", async () => {
+      const action = new PitCrew();
+      await action.onWillAppear(buildAppearEvent({ mode: "corner-names" }) as never);
+      vi.clearAllMocks();
+
+      await action.onKeyDown(buildAppearEvent({ mode: "corner-names" }) as never);
+
+      const updates = hoisted.updateGlobalSettings.mock.calls.flatMap(([partial]) => Object.keys(partial));
+      expect(updates).not.toContain("pitCrewRaceEngineerEnabled");
+      expect(updates).not.toContain("pitCrewRadarEnabled");
+    });
+  });
+
   describe("onKeyDown — radar-volume mode", () => {
     it("steps radarVolume up by 5 on direction=up", async () => {
       hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: true, pitCrewRadarEnabled: true, radarVolume: 70 });
@@ -1316,6 +1356,18 @@ describe("generatePitCrewSvg", () => {
   it("paints the status bar OFF for radar mode when pitCrewRadarEnabled is false", () => {
     hoisted.setGlobalSettings({ pitCrewRadarEnabled: false });
     const result = decodeURIComponent(generatePitCrewSvg(Settings.parse({ mode: "radar" })));
+    expect(result).toContain("status-bar-off");
+  });
+
+  it("paints the status bar ON for corner-names mode when the callout opt-in is enabled (default) (#897)", () => {
+    const result = decodeURIComponent(generatePitCrewSvg(Settings.parse({ mode: "corner-names" })));
+    expect(result).toContain("status-bar-on");
+    expect(result).toContain("CORNER");
+  });
+
+  it("paints the status bar OFF for corner-names mode when the callout opt-in is disabled (#897)", () => {
+    hoisted.setGlobalSettings({ calloutEnabledCornerNames: false });
+    const result = decodeURIComponent(generatePitCrewSvg(Settings.parse({ mode: "corner-names" })));
     expect(result).toContain("status-bar-off");
   });
 

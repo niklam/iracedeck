@@ -1,6 +1,6 @@
 # Pit Crew
 
-Multi-mode action covering the iRaceDeck pit-side audio framework. Modes available today: **Race Engineer Toggle** (gates the voice scenario engine), **Radar** (toggles the directional proximity tick loop), and **Radar Volume** (steps the radar volume up or down, deprecated and hidden from the PI). The Race Engineer voice catalog covers pit-service confirmations, pit-lane callouts, the full set of flag transitions described below, and the spotter side-awareness callout family (a Race Engineer voice family, not a separate mode — see [Spotter calls](#spotter-calls)).
+Multi-mode action covering the iRaceDeck pit-side audio framework. Modes available today: **Race Engineer Toggle** (gates the voice scenario engine), **Radar** (toggles the directional proximity tick loop), **Corner Names** (toggles the corner-name callouts in practice/test, issue #897), and **Radar Volume** (steps the radar volume up or down, deprecated and hidden from the PI). The Race Engineer voice catalog covers pit-service confirmations, pit-lane callouts, the full set of flag transitions described below, and the spotter side-awareness callout family (a Race Engineer voice family, not a separate mode — see [Spotter calls](#spotter-calls)).
 
 ## Properties
 
@@ -13,7 +13,7 @@ Multi-mode action covering the iRaceDeck pit-side audio framework. Modes availab
 
 ## Default state
 
-`raceEngineerEnabled` and `radarEnabled` both ship **off** (issue #378). A fresh install — and any user who has never pressed a toggle — stays quiet until they explicitly enable the feature with a Race Engineer Toggle or Radar key press. The status bar on each toggle's icon paints red on first launch, flipping green only after the first press. The spotter side-awareness calls are part of the Race Engineer voice (gated by `raceEngineerEnabled` plus their own opt-ins — see [Spotter calls](#spotter-calls)), not a separate toggle.
+`raceEngineerEnabled` and `radarEnabled` both ship **off** (issue #378). A fresh install — and any user who has never pressed a toggle — stays quiet until they explicitly enable the feature with a Race Engineer Toggle or Radar key press. Those two toggles' status bars paint red on first launch, flipping green only after the first press. **Corner Names is the reverse**: its setting (`calloutEnabledCornerNames`) ships **on** — the callout family's natural baseline — so its status bar starts green (though the callouts still need the Race Engineer master gate on to be heard). The spotter side-awareness calls are part of the Race Engineer voice (gated by `raceEngineerEnabled` plus their own opt-ins — see [Spotter calls](#spotter-calls)), not a separate toggle.
 
 ## Behavior
 
@@ -25,6 +25,7 @@ Multi-mode action covering the iRaceDeck pit-side audio framework. Modes availab
 When iRacing telemetry first starts flowing into the plugin (false → true SDK connection transition), the Race Engineer announces "<name>, radio check. Standing by." so the driver has audible confirmation that the plugin is talking to iRacing. Gated on both the Race Engineer master gate AND a dedicated per-callout opt-in (**Race Engineer Callouts → Telemetry Connect**) so the user can keep the master ack but suppress the connect line, or vice versa. Module-level dedup across every visible Pit Crew instance ensures the line fires at most once per real connect; reconnecting (iRacing close + relaunch, transient SDK drop) replays it.
 - **Radar mode**: Flips the plugin-global `radarEnabled` and stops/starts the directional proximity tick loop synchronously. Off by default — pressing the key once starts the loop. Used by Radar alongside the per-instance Radar Test button.
 - **Radar Volume mode**: Steps the plugin-global `radarVolume` by ±5, clamped to 0–100. Takes effect immediately on `AudioBus.Alerts`. Direction is configured per button (Up or Down). Stepping to 0 mutes the radar without toggling the feature off. Deprecated (#590) — hidden from the PI Mode dropdown but kept functional for existing buttons.
+- **Corner Names mode**: Flips the plugin-global `calloutEnabledCornerNames` opt-in (issue #897) — the same setting as the **Race Engineer Callouts → Corner Names** PI checkbox, so key and checkbox mirror each other. Unlike the Race Engineer / Radar gates this setting ships **on** by default. The engineer confirms each press ("Roger that. Corner calls coming up." / "Copy that. Dropping the corner calls.") when the Race Engineer master gate is on, gated by its own opt-in (`calloutEnabledToggleCornerNames`, **Toggle on/off acknowledgment** in the Corner Names PI group). With the master off the flip is silent — and the corner callouts themselves stay quiet regardless, since every engineer callout requires the master.
 
 ### Race Engineer voice coverage
 
@@ -103,6 +104,7 @@ Both opt-ins (and the interval) are read live on every event/tick, so changing t
 ### Mode Options
 - **Race Engineer Toggle** - Toggles the engineer voice on/off
 - **Radar** - Toggles the directional proximity ticks on/off
+- **Corner Names** - Toggles the corner-name callouts (practice/test) on/off
 - **Radar Volume** - Steps the global Radar volume up or down (deprecated, hidden from the dropdown)
 
 ### Direction Options
@@ -126,12 +128,14 @@ None. Pit Crew drives its own audio framework; it does not emit keyboard events.
 
 ## Icon States
 
-The Radar mode paints a status bar on the lower third of the key (green when the feature is on, red when off). Radar Volume modes paint no status bar — the current volume shows as a percentage in the title.
+The toggle modes (Race Engineer, Radar, Corner Names) paint a status bar on the lower third of the key (green when the feature is on, red when off). Radar Volume modes paint no status bar — the current volume shows as a percentage in the title.
 
 | Mode / State | Icon |
 |--------------|------|
 | Radar — on | Radar-sweep glyph, status bar green |
 | Radar — off | Radar-sweep glyph, status bar red |
+| Corner Names — on | Corner-bend glyph (two concentric apex curves), status bar green |
+| Corner Names — off | Corner-bend glyph, status bar red |
 | Radar Volume Up | Radar glyph + up arrow, title shows `VOL +` and current % |
 | Radar Volume Down | Radar glyph + down arrow, title shows `VOL −` and current % |
 

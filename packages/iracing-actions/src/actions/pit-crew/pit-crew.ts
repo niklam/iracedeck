@@ -30,8 +30,10 @@ import { z } from "zod";
 
 import pitCrewTemplate from "../../../icons/pit-crew.svg";
 import {
+  isCornerNamesEnabled,
   playVoiceSequence,
   readJsonStringArray,
+  toggleCornerNamesFeature,
   toggleRaceEngineerFeature,
   toggleRadarFeature,
 } from "../../audio/audio-toggles.js";
@@ -79,6 +81,10 @@ export const PIT_CREW_UUID = "com.iracedeck.sd.core.pit-crew";
  *     the step is up or down. Hidden from the Property Inspector (issue #590)
  *     in favour of the Audio Controls "Radar" volume buttons, but kept
  *     functional so existing buttons configured with this mode keep working.
+ *   - `corner-names`: flips the global `calloutEnabledCornerNames` opt-in
+ *     (issue #897) — the same setting the PI checkbox writes, so key and
+ *     checkbox mirror each other. Speaks a toggle acknowledgment when the
+ *     Race Engineer master gate is on.
  *
  * All user-visible feature state (enabled flags, volume) lives in global
  * settings so every Pit Crew button reflects the same values. Persisted
@@ -88,7 +94,7 @@ export const PIT_CREW_UUID = "com.iracedeck.sd.core.pit-crew";
  */
 /** @internal Exported for testing. */
 export const Settings = CommonSettings.extend({
-  mode: z.enum(["race-engineer", "radar", "radar-volume"]).default("race-engineer"),
+  mode: z.enum(["race-engineer", "radar", "radar-volume", "corner-names"]).default("race-engineer"),
   direction: z.enum(["up", "down"]).default("up"),
 });
 
@@ -200,6 +206,21 @@ function radarPathContent(color: string): string {
   );
 }
 
+/**
+ * Simple stroked corner-apex glyph for the Corner Names mode (issue #897) —
+ * two concentric track-corner bends. Placeholder artwork, same convention as
+ * the radar glyph. Drawn inside MECHANIC_BOUNDS so it flows through the same
+ * scaling pipeline as the other glyphs.
+ */
+function cornerNamesPathContent(color: string): string {
+  return (
+    `<g fill="none" stroke="${color}" stroke-linecap="round" stroke-linejoin="round">` +
+    `<path stroke-width="5" d="M 14 62 L 14 34 Q 14 14 34 14 L 60 14"/>` +
+    `<path stroke-width="3" d="M 30 62 L 30 44 Q 30 30 44 30 L 60 30"/>` +
+    `</g>`
+  );
+}
+
 function arrowUpPath(color: string): string {
   return `<path fill="${color}" d="M35.7 10 L60 50 L45 50 L45 65 L26 65 L26 50 L11 50 Z"/>`;
 }
@@ -229,6 +250,11 @@ function modePresentation(
       return {
         defaultTitle: `${direction === "up" ? "VOL +" : "VOL −"}\n${radarVolume}%`,
         stateIndicator: null,
+      };
+    case "corner-names":
+      return {
+        defaultTitle: "CORNER\nNAMES",
+        stateIndicator: isCornerNamesEnabled() ? "on" : "off",
       };
   }
 }
@@ -310,6 +336,8 @@ function pickArtwork(mode: Mode, direction: "up" | "down", color: string): strin
       return radarPathContent(color);
     case "radar-volume":
       return radarPathContent(color) + (direction === "up" ? arrowUpPath(color) : arrowDownPath(color));
+    case "corner-names":
+      return cornerNamesPathContent(color);
   }
 }
 
@@ -500,6 +528,9 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
         this.logger.info(`Radar volume ${settings.direction} → ${next}`);
         break;
       }
+      case "corner-names":
+        toggleCornerNamesFeature(this.logger);
+        break;
     }
 
     await this.rerenderAll();

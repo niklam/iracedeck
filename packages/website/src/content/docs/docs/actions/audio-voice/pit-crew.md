@@ -3,11 +3,11 @@ title: Pit Crew
 description: Directional proximity radar driven by the iRaceDeck audio framework.
 sidebar:
   badge:
-    text: "2 modes"
+    text: "3 modes"
     variant: tip
 ---
 
-Pit Crew bundles iRaceDeck's pit-side audio into one Stream Deck action. It exposes **Race Engineer Toggle** (the default — flips the engineer voice on/off) and **Radar** (directional proximity ticks when a car pulls alongside). The Race Engineer voice also speaks **Spotter** side-awareness calls ("car left", "three wide", "clear") — these are a voice callout family, not a separate mode (see [Spotter (side-awareness calls)](#spotter-side-awareness-calls) below).
+Pit Crew bundles iRaceDeck's pit-side audio into one Stream Deck action. It exposes **Race Engineer Toggle** (the default — flips the engineer voice on/off), **Radar** (directional proximity ticks when a car pulls alongside), and **Corner Names** (toggles the corner-name callouts in practice and test sessions). The Race Engineer voice also speaks **Spotter** side-awareness calls ("car left", "three wide", "clear") — these are a voice callout family, not a separate mode (see [Spotter (side-awareness calls)](#spotter-side-awareness-calls) below).
 
 Radar volume (Up/Down stepping) now lives in the [Audio Controls](/docs/actions/audio-voice/audio-controls/) action under the **Radar** mode, alongside the new **Race Engineer** volume buttons. Existing Pit Crew buttons configured for Radar Volume keep working, but new buttons set up volume control from Audio Controls.
 
@@ -34,6 +34,18 @@ When iRacing telemetry first starts flowing — typically a few seconds after yo
 ### Radar
 
 Toggles the directional proximity tick loop on/off. Pressing the button flips `radarEnabled` in plugin-global settings (off by default) and synchronously stops or starts the tick loop on `AudioChannel.Radar` (so a tick can't fire after the user already muted it). The status bar flips green ↔ red.
+
+#### Details
+
+- **Dial:** No rotation support
+- **Default binding:** None — button-driven feature, no keyboard binding
+- **Telemetry-aware icon:** Yes — the status bar reflects the current global flag
+
+### Corner Names
+
+Toggles the [corner-name callouts](#corner-names-practice--test) on/off. Pressing the button flips the same **Race Engineer Callouts → Corner Names** setting as the Property Inspector checkbox, so the key and the checkbox always mirror each other — and unlike the other two toggles, the callouts ship **enabled** by default. The status bar flips green ↔ red and follows the setting live, whichever surface changed it.
+
+The engineer confirms each press with a short line — *"Roger that. Corner calls coming up."* when you enable, *"Copy that. Dropping the corner calls."* when you disable — as long as the Race Engineer master is on. Disable the confirmation under **Race Engineer Callouts → Corner Names → Toggle on/off acknowledgment**. With the Race Engineer master off, the toggle still flips the setting silently — but the corner names themselves stay quiet regardless of this key, because every engineer callout requires the master.
 
 #### Details
 
@@ -259,7 +271,7 @@ Each corner announces once per lap. Resetting to the pits or getting towed start
 
 Corner data © 2025 [Lovely Sim Racing](https://github.com/Lovely-Sim-Racing/lovely-track-data) (lovely-track-data, modified: pruned and normalized for iRaceDeck), corner names by Racing Circuits — [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/), used with permission — thank you! The dataset covers roughly 68 iRacing track configurations with named turns; tracks outside it simply stay silent, and dataset updates ship with plugin releases.
 
-One opt-in lives under **Race Engineer Callouts → Corner Names**, enabled by default — see [the opt-in list below](#race-engineer-callouts-per-subject-opt-inout).
+Two opt-ins live under **Race Engineer Callouts → Corner Names** — the corner-name announcement itself and the toggle acknowledgment, both enabled by default — see [the opt-in list below](#race-engineer-callouts-per-subject-opt-inout). The Pit Crew action's [**Corner Names** mode](#corner-names) flips the announcement setting from a deck key, with a spoken confirmation.
 
 ## Spotter (side-awareness calls)
 
@@ -369,9 +381,10 @@ Under **Fuel**, each laps-of-fuel-left count has its own checkbox (see [Laps of 
 - **Box this lap** — the *"Box this lap for fuel."* call when the tank won't cover another full lap.
 - **Fuel margin (laps)** (`fuelCalloutMarginLaps`, 0–3 in 0.1 steps, default 0.3) — the safety margin subtracted from the estimate before it is spoken. Higher values make the engineer call you in earlier. Read live, so a change takes effect on the next lap's announcement.
 
-Under **Corner Names**, one callout is toggleable, enabled by default (see [Corner names (practice & test)](#corner-names-practice--test) above for the full behavior):
+Under **Corner Names**, two callouts are toggleable, both enabled by default (see [Corner names (practice & test)](#corner-names-practice--test) above for the full behavior):
 
-- **Corner names (practice/test)** (`calloutEnabledCornerNames`) — the per-corner name announcement in practice and test sessions. Disabling silences the whole family.
+- **Corner names (practice/test)** (`calloutEnabledCornerNames`) — the per-corner name announcement in practice and test sessions. Disabling silences the whole family. The Pit Crew action's [**Corner Names** mode](#corner-names) flips this same setting from a deck key.
+- **Toggle on/off acknowledgment** (`calloutEnabledToggleCornerNames`) — the spoken confirmation when the Corner Names key is pressed. Disabling keeps the toggle silent (the status bar still updates).
 - **Corner call lead (seconds)** (`cornerCalloutLeadSeconds`, 0–5 in 0.5 steps, default 1) — how far before the corner the name is spoken, scaled by your speed. Read live, so a change takes effect on the next corner.
 
 Under **Spotter**, two callouts are toggleable, both enabled by default (see [Spotter (side-awareness calls)](#spotter-side-awareness-calls) above for the full behavior):
