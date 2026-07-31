@@ -13,7 +13,7 @@ Multi-mode action covering the iRaceDeck pit-side audio framework. Modes availab
 
 ## Default state
 
-`raceEngineerEnabled` and `radarEnabled` both ship **off** (issue #378). A fresh install — and any user who has never pressed a toggle — stays quiet until they explicitly enable the feature with a Race Engineer Toggle or Radar key press. The status bar on each toggle's icon paints red on first launch, flipping green only after the first press. The spotter side-awareness calls are part of the Race Engineer voice (gated by `raceEngineerEnabled` plus their own opt-ins — see [Spotter calls](#spotter-calls)), not a separate toggle.
+`raceEngineerEnabled` and `radarEnabled` both ship **off** (issue #378). A fresh install — and any user who has never pressed a toggle — stays quiet until they explicitly enable the feature with a Race Engineer Toggle or Radar key press. Those two toggles' status bars paint red on first launch, flipping green only after the first press. **Corner Names is the reverse**: its setting (`calloutEnabledCornerNames`) ships **on** — the callout family's natural baseline — so its status bar starts green (though the callouts still need the Race Engineer master gate on to be heard). The spotter side-awareness calls are part of the Race Engineer voice (gated by `raceEngineerEnabled` plus their own opt-ins — see [Spotter calls](#spotter-calls)), not a separate toggle.
 
 ## Behavior
 

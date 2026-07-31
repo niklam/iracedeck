@@ -271,7 +271,7 @@ Each corner announces once per lap. Resetting to the pits or getting towed start
 
 Corner data © 2025 [Lovely Sim Racing](https://github.com/Lovely-Sim-Racing/lovely-track-data) (lovely-track-data, modified: pruned and normalized for iRaceDeck), corner names by Racing Circuits — [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/), used with permission — thank you! The dataset covers roughly 68 iRacing track configurations with named turns; tracks outside it simply stay silent, and dataset updates ship with plugin releases.
 
-One opt-in lives under **Race Engineer Callouts → Corner Names**, enabled by default — see [the opt-in list below](#race-engineer-callouts-per-subject-opt-inout). The Pit Crew action's [**Corner Names** mode](#corner-names) flips the same setting from a deck key, with a spoken confirmation.
+Two opt-ins live under **Race Engineer Callouts → Corner Names** — the corner-name announcement itself and the toggle acknowledgment, both enabled by default — see [the opt-in list below](#race-engineer-callouts-per-subject-opt-inout). The Pit Crew action's [**Corner Names** mode](#corner-names) flips the announcement setting from a deck key, with a spoken confirmation.
 
 ## Spotter (side-awareness calls)
 
