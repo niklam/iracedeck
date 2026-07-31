@@ -948,6 +948,28 @@ describe("ReplayControl", () => {
 
       expect(findAdjacentCarByNumber({}, 0, "next")).toBe(3042);
     });
+
+    it("skips cars that left the world when a presence predicate is given (#885)", () => {
+      vi.mocked(getAllCarNumbers).mockReturnValue([
+        { carIdx: 0, carNumber: "4", carNumberRaw: 4 },
+        { carIdx: 1, carNumber: "7", carNumberRaw: 7 },
+        { carIdx: 2, carNumber: "42", carNumberRaw: 42 },
+      ]);
+      vi.mocked(getCarNumberFromSessionInfo).mockReturnValue("4");
+
+      // #7 (carIdx 1) despawned post-race — next from #4 walks past it to #42.
+      expect(findAdjacentCarByNumber({}, 0, "next", (carIdx) => carIdx !== 1)).toBe(42);
+    });
+
+    it("returns null when no other car is present in the world (#885)", () => {
+      vi.mocked(getAllCarNumbers).mockReturnValue([
+        { carIdx: 0, carNumber: "4", carNumberRaw: 4 },
+        { carIdx: 1, carNumber: "7", carNumberRaw: 7 },
+      ]);
+      vi.mocked(getCarNumberFromSessionInfo).mockReturnValue("4");
+
+      expect(findAdjacentCarByNumber({}, 0, "next", (carIdx) => carIdx === 0)).toBeNull();
+    });
   });
 
   describe("findFastestLapForCar", () => {

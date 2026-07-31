@@ -78,16 +78,11 @@ import {
 import { getLiveRacePositions } from "@iracedeck/sim-events-iracing";
 import z from "zod";
 
+import { carPresence, computeCarNumberTarget } from "../../shared/car-cycling.js";
 import { setSelectIntent } from "../../shared/car-select-intent.js";
 import { profileEntriesEqual } from "../../shared/profile-entries.js";
 import { availableProfilesForDevice, deviceProfileEntries } from "../race-admin/race-admin-selector.js";
-import {
-  CameraDialSurface,
-  type CarouselGlyph,
-  carPresence,
-  computeCarNumberTarget,
-  DialSettings,
-} from "./camera-dial-surface.js";
+import { CameraDialSurface, type CarouselGlyph, DialSettings } from "./camera-dial-surface.js";
 import {
   CAMERA_GROUPS_SETTING_KEY,
   computeSubCameraCarousel,
@@ -926,7 +921,10 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
           const success = camera.switchNum(targetCar.carNumberRaw, groupNum, cameraNum);
           this.logger.info("Car switched");
           this.logger.debug(`Result: ${success}, direction: ${direction}, carNumberRaw: ${targetCar.carNumberRaw}`);
-        } else {
+        } else if (cars.length === 0) {
+          // Only fall back to the raw SDK cycle out of session (no car list).
+          // When cars exist but every other one has left the world, do nothing
+          // — matching the dial's no-fallback contract (#885).
           const success = camera.cycleCar(carIdx, dir);
           this.logger.info("Car cycled (fallback)");
           this.logger.debug(`Result: ${success}, direction: ${direction}`);

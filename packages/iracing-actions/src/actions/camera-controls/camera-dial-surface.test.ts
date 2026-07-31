@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { computeCarNumberTarget } from "../../shared/car-cycling.js";
 import {
   buildTriggerDescription,
   CameraDialSurface,
   clockwiseDirection,
-  computeCarNumberTarget,
   computeRacePositionTarget,
   DialSettings,
   renderCameraCarousel,

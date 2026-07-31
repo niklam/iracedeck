@@ -376,12 +376,12 @@
             {
               "value": "next-car-number",
               "label": "Next Car (Number Order)",
-              "description": "Switch camera to next car by number order (includes pit cars, excludes pace car)"
+              "description": "Switch camera to next car by number order (includes pit cars, excludes the pace car and cars no longer in the sim world, #885)"
             },
             {
               "value": "prev-car-number",
               "label": "Previous Car (Number Order)",
-              "description": "Switch camera to previous car by number order (includes pit cars, excludes pace car)"
+              "description": "Switch camera to previous car by number order (includes pit cars, excludes the pace car and cars no longer in the sim world, #885)"
             }
           ]
         },
