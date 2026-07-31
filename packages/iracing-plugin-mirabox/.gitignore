@@ -8,5 +8,9 @@ node_modules/
 *.sdPlugin/ui
 *.sdPlugin/assets
 
+# License files copied from the repo root at build time (#905)
+*.sdPlugin/LICENSE
+*.sdPlugin/THIRD-PARTY-LICENSES.md
+
 # Build artifacts
 *.streamDeckPlugin

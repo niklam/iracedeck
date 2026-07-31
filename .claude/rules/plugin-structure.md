@@ -50,6 +50,8 @@ packages/iracing-plugin-stream-deck-{name}/
 ├── icons/                                 # SVG icon templates
 └── com.iracedeck.sd.{name}.sdPlugin/
     ├── manifest.json                      # Plugin metadata
+    ├── LICENSE                            # Copied at build time from the repo root (#905)
+    ├── THIRD-PARTY-LICENSES.md            # Copied at build time from the repo root (#905)
     ├── imgs/
     │   ├── plugin/                        # category-icon.png, marketplace.png (@1x and @2x)
     │   └── actions/{action-name}/         # icon.svg, key.svg for each action
@@ -125,6 +127,12 @@ const pkg = {
 4. **Bundle the rasterizer's fonts** - `@iracedeck/rasterizer` ships bundled Arimo font files (`packages/rasterizer/fonts/`) that must be copied into `{sdPlugin}/assets/fonts/` at build time (a dedicated `generateBundle` copy step, same pattern as the per-action icon copy) so `createSvgRasterizer({ fontsDir })` can find them at runtime.
 
 Reference `iracing-plugin-stream-deck/rollup.config.mjs` for the correct configuration.
+
+### License and Third-Party Notices
+
+Every plugin artifact must ship the project `LICENSE` and the aggregated `THIRD-PARTY-LICENSES.md` at the sdPlugin root (issue #905): LICENSE §3/§5/§7 require the license text in every distributed copy, and several shipped components carry notice obligations of their own (the iRacing SDK's BSD-3-Clause notice, the MPL-2.0 source pointer for `@resvg/resvg-js`, the Lovely Sim Racing corner-data attribution). Both files are copied from the repo root by the `copy-license-files` `generateBundle` step in each plugin's `rollup.config.mjs` (same pattern as the rasterizer-fonts copy), and the copies are gitignored in each plugin package — new plugins must add both the copy step and the `.gitignore` entries.
+
+When a shipped third-party dependency or vendored component is added or removed, update the repo-root `THIRD-PARTY-LICENSES.md` in the same change. `scripts/third-party-licenses.test.mjs` guards the wiring: every non-workspace rollup `external` must have an entry in the file, every plugin config must contain the copy step, and no `.sdignore` pattern may exclude the two files from the packed plugin.
 
 ### Application Monitoring
 
