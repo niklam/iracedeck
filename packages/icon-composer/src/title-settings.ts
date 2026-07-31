@@ -24,6 +24,14 @@ export interface ResolvedTitleSettings {
   showTitle: boolean;
   showGraphics: boolean;
   titleText: string;
+  /**
+   * Optional layout-stable text used by computeGraphicArea in place of
+   * titleText (issue #899): when titleText is a live-resolved template, the
+   * caller sets this to the raw template so the graphic area is sized from
+   * the user's configured text shape and doesn't jump when the resolved
+   * value flips between empty and non-empty.
+   */
+  layoutText?: string;
   bold: boolean;
   fontSize: number;
   position: "top" | "middle" | "bottom" | "custom";
@@ -444,10 +452,14 @@ export function computeGraphicArea(title: ResolvedTitleSettings): GraphicArea {
   const PADDING = 8;
   const fullArea = { x: PADDING, y: PADDING, width: CANVAS - 2 * PADDING, height: CANVAS - 2 * PADDING };
 
-  if (!title.showTitle || !title.titleText) return fullArea;
+  // layoutText keeps templated titles layout-stable: the area is sized from
+  // the raw template shape, not whatever the template resolved to this tick.
+  const layoutText = title.layoutText ?? title.titleText;
+
+  if (!title.showTitle || !layoutText) return fullArea;
 
   const fontSize = title.fontSize * 2;
-  const lines = title.titleText.split("\n");
+  const lines = layoutText.split("\n");
   const lineHeight = fontSize * 1.2;
 
   // Compute the "bottom" case height as the reference — used for both top and bottom

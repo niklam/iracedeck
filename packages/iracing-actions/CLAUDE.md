@@ -42,10 +42,11 @@ icons/                                   # Dynamic SVG templates (telemetry-driv
 - `car-select-intent.ts` — per-device intent deciding what a selector car-key press means (admin target vs camera focus, #790)
 - `dial-box.ts` — shared Stream Deck+ dial "dash box" renderer + `dialAppearanceFields` settings fragment: the seven Setup dial surfaces plus Camera Editor Adjustments resolve their per-setting accent plus user color overrides (`resolveDialBoxColors`) and route rendering through `renderDialBox` (#811). Identity-only labels are baseline-centered (`+0.36em`) so they sit truly centered rather than above center (#804)
 - `dial-name-icon.ts` — plain two-line action-name image that dual-surface actions push for dial contexts (#775)
-- `icon-update-throttle.ts` — per-context throttle + trailing-edge coalescer for telemetry-driven `setKeyImage` bursts (#493)
 - `profile-entries.ts` — shared `_deviceProfiles` PI-dropdown entry building + echo-loop change guard (#790)
 - `repeat-controller.ts` — long-press hold-to-repeat timing controller
 - `setup-view.ts` — registry, formatters, and render helper for the setup actions' "View …" sub-modes (#541)
+
+The former `icon-update-throttle.ts` (per-context 10 Hz throttle + trailing-edge coalescer for telemetry-driven `setKeyImage` bursts, #493) moved to `@iracedeck/deck-core` in #899 — import `IconUpdateThrottle` from there.
 
 The top-level `icons/` directory holds one 144x144 runtime template per dynamic-icon action (content rendered from live telemetry) — see the directory for the current set and `.claude/rules/icons.md` for the template format.
 

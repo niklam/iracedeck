@@ -17,12 +17,14 @@ Platform-agnostic core interfaces, base classes, and utilities for deck device p
 
 ### Base Classes
 
-- `BaseAction<T>` — Abstract base with SVG image management, flag overlay, inactive state tracking. Accepts logger via constructor. Implements `IDeckActionHandler<T>`.
+- `BaseAction<T>` — Abstract base with SVG image management, flag overlay, inactive state tracking, and the title-template live watcher (#899): contexts whose user-entered `titleOverrides.titleText` contains `{{` share one telemetry subscription that re-resolves the template per tick, string-compares, and re-runs the context's regenerate callback through a 10 Hz `IconUpdateThrottle` — so any action that registers `setRegenerateCallback` gets live templated titles for free. Accepts logger via constructor. Implements `IDeckActionHandler<T>`.
 - `ConnectionStateAwareAction<T>` — Extends `BaseAction` with automatic iRacing connection tracking via `sdkController`. Also home of the binding-dispatch delegates: `setActiveBinding`, `tapBinding`, `tapBindingSequence` (atomic multi-chord sequence, #818), `holdBinding`, `releaseBinding`, and `isBindingMissing` (per-context missing-binding check — prefer it over the shared `isActiveBindingMissing()`).
 
 ### Icon Assembly (re-exported from `@iracedeck/icon-composer`)
 
-Pure icon assembly functions (assembleIcon, extractGraphicContent, generateTitleText, resolveTitleSettings, resolveBorderSettings, resolveGraphicSettings, resolveIconColors, etc.) have been moved to the standalone `@iracedeck/icon-composer` package (zero dependencies). They are re-exported from `deck-core` for backward compatibility — existing imports from `@iracedeck/deck-core` continue to work.
+Pure icon assembly functions (assembleIcon, extractGraphicContent, generateTitleText, resolveBorderSettings, resolveGraphicSettings, resolveIconColors, etc.) have been moved to the standalone `@iracedeck/icon-composer` package (zero dependencies). They are re-exported from `deck-core` for backward compatibility — existing imports from `@iracedeck/deck-core` continue to work.
+
+**Exception:** `resolveTitleSettings` is no longer a pure re-export (#899) — deck-core's `title-settings.ts` wraps icon-composer's pure function and template-resolves the user-entered `titleOverrides.titleText` against the live SDK template context (`title-template.ts`). Always import it from `@iracedeck/deck-core`, never from `@iracedeck/icon-composer` directly, or titles lose template support.
 
 deck-core adds global settings readers on top of the pure functions:
 - `getGlobalTitleSettings()` — reads title defaults from global settings store
@@ -40,6 +42,8 @@ deck-core adds global settings readers on top of the pure functions:
 - `clipboard-service.ts` — Clipboard singleton with injected writer (`initializeClipboard`, `getClipboard`); mirrors the keyboard-service DI pattern
 - `simhub-service.ts` — SimHub Control Mapper singleton (`initializeSimHub`, `getSimHub`) plus the reachability API (`isSimHubReachable`, `onSimHubReachabilityChange`)
 - `icon-template.ts` — SVG template rendering and color resolution (delegates to `@iracedeck/icon-composer`)
+- `title-template.ts` — User-entered title template resolution (#899): `titleHasTemplate` (the cheap `{{` gate) and `resolveTitleTemplate` (resolves via `getCurrentTemplateContext()` + `resolveTemplate`; empty-context fallback when disconnected/uninitialized, so variables render empty and expression parse errors stay verbatim)
+- `icon-update-throttle.ts` — `IconUpdateThrottle`, the per-context 10 Hz throttle + trailing-edge coalescer for telemetry-driven `setKeyImage` bursts (#493; moved here from `iracing-actions/src/shared/` in #899 so the `BaseAction` title watcher can use it)
 - `overlay-utils.ts` — SVG overlay utilities (inactive state, data URI conversion)
 - `key-binding-utils.ts` — Key binding parsing and formatting
 - `comm-descriptor.ts` — The #612 per-mode `CommDescriptor` types + `keybind` / `keybindBy` / `keybindKeys` / `keybindFixed` helpers, consumed by iracing-actions' `comms-catalog.ts`

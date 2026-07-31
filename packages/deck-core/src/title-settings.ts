@@ -1,13 +1,23 @@
-import type { GlobalBorderSettings, GlobalGraphicSettings, GlobalTitleSettings } from "@iracedeck/icon-composer";
+import {
+  type GlobalBorderSettings,
+  type GlobalGraphicSettings,
+  type GlobalTitleSettings,
+  type ResolvedTitleSettings,
+  resolveTitleSettings as resolveTitleSettingsPure,
+  type TitleOverrides,
+} from "@iracedeck/icon-composer";
 
 import { getGlobalSettings } from "./global-settings.js";
+import { resolveTitleTemplate, titleHasTemplate } from "./title-template.js";
 
 /**
  * Title, Border, and Graphic Settings — deck-core layer
  *
  * This file provides the global settings readers that connect to the
- * plugin settings store. All pure assembly and resolution functions
- * have been moved to @iracedeck/icon-composer.
+ * plugin settings store. The pure assembly and resolution functions live
+ * in @iracedeck/icon-composer and are re-exported here — except
+ * resolveTitleSettings, which this module wraps to template-resolve
+ * user-entered title text against the live SDK context (issue #899).
  */
 
 // Re-export everything from icon-composer for backward compatibility
@@ -21,7 +31,6 @@ export {
   GRAPHIC_DEFAULTS,
   resolveBorderSettings,
   resolveGraphicSettings,
-  resolveTitleSettings,
   TITLE_DEFAULTS,
   type BorderOverrides,
   type GenerateTitleTextOptions,
@@ -35,6 +44,36 @@ export {
   type GlobalTitleSettings,
   type TitleOverrides,
 } from "@iracedeck/icon-composer";
+
+/**
+ * Resolves title settings, additionally resolving {{…}} template placeholders
+ * in user-entered title text (issue #899).
+ *
+ * Wraps icon-composer's pure resolveTitleSettings: only the per-action
+ * titleText override — the one field a user types — is template-resolved.
+ * Action default text and icon `<desc>` titles pass through verbatim. A
+ * template that resolves to an empty string stays empty rather than falling
+ * back to the default title, so a disconnected sim never swaps a templated
+ * title for unrelated text.
+ */
+export function resolveTitleSettings(
+  graphicSvg: string,
+  globalTitleSettings: GlobalTitleSettings,
+  actionOverrides?: TitleOverrides,
+  actionDefaultText?: string,
+): ResolvedTitleSettings {
+  const resolved = resolveTitleSettingsPure(graphicSvg, globalTitleSettings, actionOverrides, actionDefaultText);
+  const userText = actionOverrides?.titleText;
+
+  if (userText && titleHasTemplate(userText)) {
+    resolved.titleText = resolveTitleTemplate(userText);
+    // Size the graphic area from the raw template so the artwork doesn't
+    // jump when the resolved value flips between empty and non-empty.
+    resolved.layoutText = userText;
+  }
+
+  return resolved;
+}
 
 // Binding-missing warning overlay (issue #612)
 export {

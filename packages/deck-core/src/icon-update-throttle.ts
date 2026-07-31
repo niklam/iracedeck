@@ -33,9 +33,10 @@ export class IconUpdateThrottle {
   /**
    * Either render immediately or coalesce into a trailing flush.
    *
-   * `render` errors are swallowed (logged via the host's normal logger if
-   * the action wraps the call); the throttle stays in a clean state so the
-   * next change still gets through.
+   * `render` errors — synchronous throws and async rejections alike — are
+   * swallowed (logged via the host's normal logger if the action wraps the
+   * call); the throttle stays in a clean state so the next change still
+   * gets through.
    */
   schedule(contextId: string, render: () => Promise<void> | void): void {
     const now = Date.now();
@@ -47,7 +48,7 @@ export class IconUpdateThrottle {
       // because this immediate render supersedes it.
       this.lastImageSentAt.set(contextId, now);
       this.cancelPending(contextId);
-      void Promise.resolve(render()).catch(() => {});
+      IconUpdateThrottle.invokeRender(render);
 
       return;
     }
@@ -64,9 +65,23 @@ export class IconUpdateThrottle {
       setTimeout(() => {
         this.pendingFlush.delete(contextId);
         this.lastImageSentAt.set(contextId, Date.now());
-        void Promise.resolve(render()).catch(() => {});
+        IconUpdateThrottle.invokeRender(render);
       }, delay),
     );
+  }
+
+  /**
+   * Run `render` synchronously, swallowing synchronous throws and async
+   * rejections alike — an escaping throw would propagate into the caller's
+   * telemetry fan-out (immediate branch) or become an unhandled error in
+   * the timer callback (trailing branch).
+   */
+  private static invokeRender(render: () => Promise<void> | void): void {
+    try {
+      void Promise.resolve(render()).catch(() => {});
+    } catch {
+      // Synchronous throw — swallowed, same contract as async rejections.
+    }
   }
 
   /**

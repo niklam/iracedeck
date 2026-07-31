@@ -1,11 +1,12 @@
 ---
 title: Template Variables
-description: iRacing telemetry and session variables available for Mustache templates in the Telemetry Display, Chat, and Race Admin actions, plus expression syntax for calculated values.
+description: iRacing telemetry and session variables available for Mustache templates in key titles, the Telemetry Display, Chat, and Race Admin actions, plus expression syntax for calculated values.
 ---
 
 These are the variables available for use in Mustache templates. Use them with the `{{variable}}` syntax to display live iRacing data on your Stream Deck buttons or include dynamic values in chat messages, or compute calculated values with the `{{= expression }}` syntax (see [Expressions](#expressions)).
 
 Template variables are supported by:
+- **Key titles on every action** — put a template in the Title Text field (Title Overrides section of any action's settings, or the Telemetry Display Title setting) and the title resolves against live telemetry, updating as the values change. For example, `{{track_ahead.car_number}}` as the title of a Camera Controls next-car button shows which car the button will switch to. While iRacing is not connected, variables render as empty text (a syntax error in an `{{= … }}` expression stays visible so you can spot it). Only text you enter is resolved — built-in default titles never are.
 - [Telemetry Display](/docs/actions/display-session/telemetry-display/) — show any variable on a Stream Deck button
 - [Chat](/docs/actions/communication/chat/) — include variables in custom chat messages
 - [Race Admin](/docs/actions/communication/race-admin/) — include variables in admin message templates

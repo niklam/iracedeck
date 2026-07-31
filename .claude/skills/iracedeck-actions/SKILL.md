@@ -37,6 +37,10 @@ Every action mode talks to iRacing through one of three methods, formalized per-
 
 This is the **authoritative source for a mode's communication method** when answering "how does action X mode Y talk to iRacing?" or labeling docs. An action can mix all three across its modes (e.g. Fuel Service). Display-only / internal actions (session-info, telemetry-display, pit-crew) and Camera Controls' keypad surface (its camera command modes use the SDK; the Elgato-only Focus Car pick-from-grid mode is a deck-side profile switch, not a camera command — nothing to configure either way) are absent from the catalog — Camera Controls' **dial** surface still carries an all-API `camera-focus-dial` entry (#803) as this catalog's per-mode communication-method record, but its dial PI no longer renders the status line built from it (dropped as redundant since every dial mode reads the same "iRacing API", #803 rework review). The Telemetry Control **snapshot** mode is likewise absent (it writes telemetry to disk, issuing no iRacing command), so it shows no status line. The method surfaces in the PI (an `ird-binding-status` line under the Mode selector) and on the key icon (a centered ⚠️ when a required binding is unset).
 
+## Template variables in key titles (#899)
+
+User-entered title text resolves `{{variable}}` / `{{= expression }}` templates against live telemetry on **every** action — the Title Overrides **Title Text** field (any action) and Telemetry Display's own **Title** setting. Only user-entered text resolves; icon `<desc>` default titles and action-code default titles never do. Templated titles update live (re-resolved on telemetry ticks through a shared BaseAction watcher, 10 Hz throttled); with the sim disconnected, variables render empty and `{{= … }}` parse errors stay visible. Full variable list: the website's Template Variables page (`packages/website/src/content/docs/docs/features/template-variables.md`, rendered at `/docs/features/template-variables/`).
+
 ## How to Use
 
 When asked about actions or controls:
@@ -69,7 +73,7 @@ Mode counts reflect the PI Mode/Setting dropdown choices documented in each acti
 | Action | Modes | Mode values |
 |--------|-------|-------------|
 | Session Info | 9 | incidents, time-remaining, laps, position, irating (estimated iRating gain/loss if the race ended now, green/red value, scored within the player's class; shown in race, qualifying, and race pre-green — `--` in practice/test or when no estimate is possible; #268, #872), fuel (Fuel Value sub-modes: current level / used last lap / average per lap over a configurable 1–20 lap window; #465), laps-to-empty (live tank level ÷ the same 1–20-lap average, two decimals, `--` until a clean lap exists; #748), flags, track-wetness |
-| Telemetry Display | 1 | template (Mustache-driven display, no Mode dropdown; templates also support `{{= expr }}` expressions — arithmetic, comparisons, ternary, round/floor/ceil/abs/min/max — #192) |
+| Telemetry Display | 1 | template (Mustache-driven display, no Mode dropdown; templates also support `{{= expr }}` expressions — arithmetic, comparisons, ternary, round/floor/ceil/abs/min/max — #192; the Title setting resolves templates too — #899) |
 
 ### Driving Controls
 

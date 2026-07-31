@@ -15,7 +15,7 @@ Welcome to the iRaceDeck documentation. Here you'll find guides for getting star
 - [Key Bindings](/docs/features/key-bindings/) — How keyboard shortcuts work and how to customize them
 - [Flags Overlay](/docs/features/flags-overlay/) — See yellow and blue flags flash on your Stream Deck buttons
 - [Focus iRacing Window](/docs/features/focus-iracing-window/) — Automatically focus iRacing before sending commands
-- [Template Variables](/docs/features/template-variables/) — iRacing telemetry variables for custom displays and chat messages
+- [Template Variables](/docs/features/template-variables/) — iRacing telemetry variables for key titles, custom displays, and chat messages
 
 ## Actions
 

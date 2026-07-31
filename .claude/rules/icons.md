@@ -124,6 +124,7 @@ Icons can declare title fields as `"locked"` in their `<desc>` title metadata to
 - Use `"locked"` when the title is an integral part of the icon design (e.g., DRS, Push-to-Pass) and hiding it or changing the font size would make the button unidentifiable
 - Supported lockable fields: `showTitle`, `showGraphics`, `bold`, `fontSize`, `position`, `customPosition`
 - Omitting `"locked"` or using `[]` means all title fields are globally overridable (backward compatible)
+- Icon `<desc>` title text is never template-resolved — `{{…}}` placeholders only resolve in **user-entered** Title Text (deck-core's `resolveTitleSettings` wrapper, issue #899), so a literal `{{` in `<desc>` text renders as-is. Don't put template syntax in icon metadata.
 
 ### Locked border fields (#755)
 

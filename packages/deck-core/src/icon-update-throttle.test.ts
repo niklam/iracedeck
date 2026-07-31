@@ -126,6 +126,34 @@ describe("IconUpdateThrottle", () => {
     expect(render).toHaveBeenCalledTimes(1);
   });
 
+  it("swallows a synchronous render throw and stays usable", async () => {
+    expect(() =>
+      throttle.schedule("ctx", () => {
+        throw new Error("boom");
+      }),
+    ).not.toThrow();
+
+    // The throttle window opened despite the throw; the next change coalesces
+    // and the trailing flush still fires.
+    const render = vi.fn();
+    vi.advanceTimersByTime(20);
+    throttle.schedule("ctx", render);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(render).toHaveBeenCalledTimes(1);
+  });
+
+  it("swallows a synchronous render throw in the trailing flush", async () => {
+    throttle.schedule("ctx", vi.fn());
+    vi.advanceTimersByTime(20);
+    throttle.schedule("ctx", () => {
+      throw new Error("boom");
+    });
+
+    // The pending flush must fire without an escaping throw.
+    await expect(vi.advanceTimersByTimeAsync(200)).resolves.not.toThrow();
+    expect(throttle.pendingFlush.size).toBe(0);
+  });
+
   it("clearAll cancels every pending flush", () => {
     throttle.schedule("a", vi.fn());
     throttle.schedule("b", vi.fn());

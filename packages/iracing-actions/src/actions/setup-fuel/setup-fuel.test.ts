@@ -37,6 +37,17 @@ vi.mock("@iracedeck/deck-core", async () => {
   const { z } = await import("zod");
 
   return {
+    IconUpdateThrottle: class {
+      schedule(_id: string, render: () => unknown): void {
+        try {
+          void Promise.resolve(render()).catch(() => {});
+        } catch {
+          // Swallow sync throws — matches the production render contract.
+        }
+      }
+      clear(): void {}
+      clearAll(): void {}
+    },
     CommonSettings: {
       // REAL zod semantics for the extended settings schema (defaults, enum
       // validation, keyStyle/pairPosition catch-degradation) — only the

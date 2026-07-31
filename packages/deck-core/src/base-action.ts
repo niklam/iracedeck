@@ -10,9 +10,11 @@ import { type FlagInfo, resolveAllActiveFlags } from "@iracedeck/iracing-sdk";
 import { type ILogger, silentLogger } from "@iracedeck/logger";
 
 import { getGlobalSettings, onGlobalSettingsChange } from "./global-settings.js";
+import { IconUpdateThrottle } from "./icon-update-throttle.js";
 import { applyInactiveOverlay, svgToDataUri } from "./overlay-utils.js";
 import { getPluginVersion, isPluginConfigInitialized } from "./plugin-config.js";
 import { getController } from "./sdk-singleton.js";
+import { resolveTitleTemplate, titleHasTemplate } from "./title-template.js";
 import type {
   IDeckActionContext,
   IDeckActionHandler,
@@ -95,9 +97,23 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
   /** Last flag state key for change detection */
   private lastFlagStateKey = "";
 
+  /** Contexts whose user-entered title contains a template: contextId -> raw template text (issue #899) */
+  private titleTemplateContexts = new Map<string, string>();
+
+  /** Last resolved title per templated context, for change detection */
+  private lastResolvedTitles = new Map<string, string>();
+
+  /** Shared telemetry subscription ID for title templates */
+  private titleTemplateSubId: string | null = null;
+
+  /** Caps template-driven icon re-renders at 10 Hz per context (issue #493 pattern) */
+  private readonly titleTemplateThrottle = new IconUpdateThrottle();
+
   private static readonly FLAG_FLASH_INTERVAL_MS = 500;
   private static readonly FLAG_SUBSCRIPTION_PREFIX = "__flag_overlay__";
   private static flagSubscriptionCounter = 0;
+  private static readonly TITLE_TEMPLATE_SUBSCRIPTION_PREFIX = "__title_template__";
+  private static titleTemplateSubscriptionCounter = 0;
 
   constructor(logger: ILogger = silentLogger) {
     this.logger = logger;
@@ -347,6 +363,8 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
       this.ensureFlagTelemetrySubscription();
       this.logger.debug(`Flag overlay enabled for context ${ev.action.id}`);
     }
+
+    this.syncTitleTemplateTracking(ev.action.id, settings);
   }
 
   /**
@@ -371,6 +389,8 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
 
       this.cleanupFlagSubscriptionIfUnneeded();
     }
+
+    this.syncTitleTemplateTracking(ev.action.id, settings);
   }
 
   /**
@@ -383,6 +403,7 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
     this.flagOverlayContexts.delete(ev.action.id);
     this.flagOverlayActive.delete(ev.action.id);
     this.cleanupFlagSubscriptionIfUnneeded();
+    this.untrackTitleTemplateContext(ev.action.id);
     this.contexts.delete(ev.action.id);
     this.logger.debug(`onWillDisappear: removed context ${ev.action.id}, remaining=${this.contexts.size}`);
   }
@@ -629,5 +650,129 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
     this.flagTelemetrySubId = null;
     this.stopFlagFlash();
     this.logger.debug("Flag overlay telemetry subscription stopped");
+  }
+
+  // -------------------------------------------------------------------------
+  // Title template live updates (issue #899)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Track or untrack a context for live title-template updates based on its
+   * user-entered title text. Called from onWillAppear and onDidReceiveSettings;
+   * contexts without a template in their title stay untracked and cost nothing.
+   */
+  private syncTitleTemplateTracking(contextId: string, settings: Record<string, unknown>): void {
+    const overrides = settings.titleOverrides as Record<string, unknown> | undefined;
+    const titleText = typeof overrides?.titleText === "string" ? overrides.titleText : undefined;
+
+    if (titleText && titleHasTemplate(titleText)) {
+      this.titleTemplateContexts.set(contextId, titleText);
+      this.ensureTitleTemplateSubscription();
+      this.logger.debug(`Title template tracked for context ${contextId}`);
+    } else {
+      this.untrackTitleTemplateContext(contextId);
+    }
+  }
+
+  /**
+   * Remove a context from title-template tracking and drop the shared
+   * subscription when it was the last one.
+   */
+  private untrackTitleTemplateContext(contextId: string): void {
+    if (!this.titleTemplateContexts.delete(contextId)) return;
+
+    this.lastResolvedTitles.delete(contextId);
+    this.titleTemplateThrottle.clear(contextId);
+    this.cleanupTitleTemplateSubscriptionIfUnneeded();
+  }
+
+  /**
+   * Ensure a single telemetry subscription exists for title templates.
+   */
+  private ensureTitleTemplateSubscription(): void {
+    if (this.titleTemplateSubId) return;
+
+    try {
+      const controller = getController();
+      const subId = `${BaseAction.TITLE_TEMPLATE_SUBSCRIPTION_PREFIX}${++BaseAction.titleTemplateSubscriptionCounter}`;
+
+      controller.subscribe(subId, () => this.onTitleTemplateTick());
+
+      this.titleTemplateSubId = subId;
+      this.logger.debug("Title template telemetry subscription started");
+    } catch (err) {
+      this.logger.debug(`Title template: skipping telemetry subscription: ${err}`);
+    }
+  }
+
+  /**
+   * Per-tick change detection: re-resolve each tracked template (cheap string
+   * work against the controller's cached context) and only when the resolved
+   * title actually changed, schedule a full icon regenerate through the
+   * 10 Hz throttle (issue #493 pattern).
+   */
+  private onTitleTemplateTick(): void {
+    for (const [contextId, template] of this.titleTemplateContexts) {
+      const resolved = resolveTitleTemplate(template);
+
+      if (this.lastResolvedTitles.get(contextId) === resolved) continue;
+
+      this.lastResolvedTitles.set(contextId, resolved);
+      this.titleTemplateThrottle.schedule(contextId, () => this.regenerateForTitleTemplate(contextId));
+    }
+  }
+
+  /**
+   * Re-run the context's regenerate callback (which re-resolves the title
+   * template against current telemetry) and push the image when it changed.
+   * Mirrors the setRegenerateCallback reconciliation path, including the
+   * flag-overlay gate.
+   *
+   * Teardown window: a subclass may await work in onWillDisappear before
+   * calling super, and during that window a pending trailing flush (or a
+   * telemetry tick) can still land here for the disappearing context — the
+   * base class has no earlier hook, so this window cannot be closed from
+   * here (the #493/#532 clear-before-await convention applies to
+   * action-owned throttles, which CAN clear at handler entry). That is
+   * accepted: the same window exists for every base-owned subscription
+   * (flag flash, readiness), and the worst case is a setImage to a dead
+   * context whose rejection is caught and logged below.
+   */
+  private regenerateForTitleTemplate(contextId: string): void {
+    const entry = this.contexts.get(contextId);
+
+    if (!entry?.regenerate) return;
+
+    try {
+      const newSvg = entry.regenerate();
+
+      if (newSvg === entry.svg) return;
+
+      entry.svg = newSvg;
+
+      if (this.flagOverlayActive.has(contextId)) return;
+
+      entry.action.setImage(this.applyOverlayIfNeeded(newSvg)).catch((err) => {
+        this.logger.warn(`Failed to update title-template image for context ${contextId}: ${err}`);
+      });
+    } catch {
+      // regenerate failed, keep existing svg
+    }
+  }
+
+  /**
+   * Unsubscribe from telemetry if no contexts have templated titles.
+   */
+  private cleanupTitleTemplateSubscriptionIfUnneeded(): void {
+    if (this.titleTemplateContexts.size > 0 || !this.titleTemplateSubId) return;
+
+    try {
+      getController().unsubscribe(this.titleTemplateSubId);
+    } catch (err) {
+      this.logger.trace(`Title template: unsubscription failed (SDK may not be initialized): ${err}`);
+    }
+
+    this.titleTemplateSubId = null;
+    this.logger.debug("Title template telemetry subscription stopped");
   }
 }
