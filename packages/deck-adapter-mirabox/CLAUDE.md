@@ -30,7 +30,7 @@ The protocol uses the same event names as Elgato (`willAppear`, `keyDown`, `setI
 ## Also Contains
 
 - `VSDClient` — Low-level WebSocket client for the VSD Craft protocol. `connect()` dynamically imports `ws` (avoids bundling issues) and auto-fires `requestGlobalSettings()` on open. Default `onClose` is `process.exit(0)` — the plugin process terminates when the host closes the socket.
-- `file-logger.ts` — `FileSink` (per-day `<dir>/<YYYY.M.D>.log` appender, unpadded month/day to match the host's `log/` convention) + `withFileSink` (tees an `ILogger` to the sink under the same live level gate)
+- `file-logger.ts` — `FileSink` (per-day `<dir>/<YYYY.M.D>.log` appender, unpadded month/day to match the host's `log/` convention; the first write of each run prunes files older than `LOG_RETENTION_DAYS` = 14, issue #904) + `withFileSink` (tees an `ILogger` to the sink under the same live level gate)
 - Public exports (`src/index.ts`) — besides `VSDPlatformAdapter` and `VSDClient`: `parseConnectionParams` and the types `VSDConnectionParams`, `VSDEvent`, `VSDEventHandler`
 
 ## Build

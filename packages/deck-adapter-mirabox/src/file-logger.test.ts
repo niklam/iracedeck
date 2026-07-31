@@ -1,5 +1,5 @@
 import { type ILogger, LogLevel } from "@iracedeck/logger";
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -15,6 +15,7 @@ describe("FileSink", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
     rmSync(dir, { recursive: true, force: true });
   });
 
@@ -63,6 +64,82 @@ describe("FileSink", () => {
     const sink = new FileSink("\0invalid");
 
     expect(() => sink.write("INFO", "boom")).not.toThrow();
+    expect(errorSpy).toHaveBeenCalled();
+  });
+});
+
+describe("FileSink pruning", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "vsd-log-"));
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-31T12:00:00"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("deletes log files older than the retention window on first write", () => {
+    writeFileSync(join(dir, "2026.7.16.log"), "15 days old\n");
+    writeFileSync(join(dir, "2026.7.17.log"), "exactly 14 days old\n");
+    writeFileSync(join(dir, "2025.12.31.log"), "ancient\n");
+
+    const sink = new FileSink(dir);
+    sink.write("INFO", "today");
+
+    expect(readdirSync(dir).sort()).toEqual(["2026.7.17.log", "2026.7.31.log"]);
+  });
+
+  it("leaves files that do not match the per-day log name pattern untouched", () => {
+    writeFileSync(join(dir, "notes.log"), "not a per-day log\n");
+    writeFileSync(join(dir, "readme.txt"), "hello\n");
+
+    const sink = new FileSink(dir);
+    sink.write("INFO", "today");
+
+    expect(readdirSync(dir).sort()).toEqual(["2026.7.31.log", "notes.log", "readme.txt"]);
+  });
+
+  it("leaves files with impossible dates untouched instead of letting Date roll them over", () => {
+    // new Date(2020, 1, 31) silently rolls over to Mar 2 — an impossible date
+    // must be treated as not-a-log-file, not as its rolled-over date.
+    writeFileSync(join(dir, "2020.2.31.log"), "impossible date\n");
+
+    const sink = new FileSink(dir);
+    sink.write("INFO", "today");
+
+    expect(readdirSync(dir).sort()).toEqual(["2020.2.31.log", "2026.7.31.log"]);
+  });
+
+  it("prunes only on the first write of a sink", () => {
+    const sink = new FileSink(dir);
+    sink.write("INFO", "first");
+
+    writeFileSync(join(dir, "2020.1.1.log"), "appeared after the first write\n");
+    sink.write("INFO", "second");
+
+    expect(readdirSync(dir)).toContain("2020.1.1.log");
+  });
+
+  it("swallows prune failures and keeps pruning the remaining files", () => {
+    // A directory named like an expired log file — unlink throws on it, and the
+    // sink must swallow that (logging never crashes the plugin), still delete
+    // the expired files on either side of it in directory order, and still
+    // write the log line.
+    mkdirSync(join(dir, "2020.1.1.log"));
+    writeFileSync(join(dir, "2019.1.1.log"), "expired, sorts before the bad entry\n");
+    writeFileSync(join(dir, "2021.1.1.log"), "expired, sorts after the bad entry\n");
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const sink = new FileSink(dir);
+    expect(() => sink.write("INFO", "still logged")).not.toThrow();
+
+    expect(readdirSync(dir).sort()).toEqual(["2020.1.1.log", "2026.7.31.log"]);
+    expect(readFileSync(join(dir, "2026.7.31.log"), "utf-8")).toContain("INFO still logged");
     expect(errorSpy).toHaveBeenCalled();
   });
 });

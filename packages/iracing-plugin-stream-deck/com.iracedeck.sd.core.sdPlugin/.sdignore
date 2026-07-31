@@ -62,3 +62,9 @@
 
 # Compiled object files
 *.obj
+
+# Runtime log files (issue #904): the Mirabox/Ulanzi FileSink per-day logs
+# (log/) and Elgato's host-managed logs/ must never ship in a packed plugin
+log/
+logs/
+*.log
