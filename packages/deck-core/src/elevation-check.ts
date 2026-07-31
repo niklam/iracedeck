@@ -7,9 +7,9 @@
  * flowing — so nothing else signals the cause. The probe is purely diagnostic:
  * it never gates or disables the plugin.
  *
- * Both outcomes are logged at the default (info) log level so a support log
- * always records that the check ran and what it found (#902): a mismatch logs
- * at warn, a pass at info. The raw status detail stays at debug.
+ * Both outcomes are captured at the default (info) log threshold so a support
+ * log always records that the check ran and what it found (#902): a mismatch
+ * logs at warn, a pass at info. The raw status detail stays at debug.
  *
  * `getStatus` is injected (structurally typed on `mismatch`, like
  * `evaluateElevationWarning`) so deck-core needs no dependency on
