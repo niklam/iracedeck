@@ -135,6 +135,10 @@ export class BlackBoxCaveat extends HTMLElement {
     document.addEventListener("input", this.onDomChange);
     window.addEventListener("pagehide", this.onPageHide);
     window.addEventListener("pageshow", this.onPageShow);
+    // A reconnect may have missed pageshow while detached (its listener was
+    // removed on disconnect). Script re-adding this element means the document
+    // is live, so clear any stale hidden-page state before polling.
+    this.pageHidden = false;
     this.startPolling();
 
     this.render();
