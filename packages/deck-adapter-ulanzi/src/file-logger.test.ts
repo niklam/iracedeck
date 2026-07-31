@@ -1,5 +1,5 @@
 import { type ILogger, LogLevel } from "@iracedeck/logger";
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -63,6 +63,68 @@ describe("FileSink", () => {
     const sink = new FileSink("\0invalid");
 
     expect(() => sink.write("INFO", "boom")).not.toThrow();
+    expect(errorSpy).toHaveBeenCalled();
+  });
+});
+
+describe("FileSink pruning", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "ulanzi-log-"));
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-31T12:00:00"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("deletes log files older than the retention window on first write", () => {
+    writeFileSync(join(dir, "2026.7.16.log"), "15 days old\n");
+    writeFileSync(join(dir, "2026.7.17.log"), "exactly 14 days old\n");
+    writeFileSync(join(dir, "2025.12.31.log"), "ancient\n");
+
+    const sink = new FileSink(dir);
+    sink.write("INFO", "today");
+
+    expect(readdirSync(dir).sort()).toEqual(["2026.7.17.log", "2026.7.31.log"]);
+  });
+
+  it("leaves files that do not match the per-day log name pattern untouched", () => {
+    writeFileSync(join(dir, "notes.log"), "not a per-day log\n");
+    writeFileSync(join(dir, "readme.txt"), "hello\n");
+
+    const sink = new FileSink(dir);
+    sink.write("INFO", "today");
+
+    expect(readdirSync(dir).sort()).toEqual(["2026.7.31.log", "notes.log", "readme.txt"]);
+  });
+
+  it("prunes only on the first write of a sink", () => {
+    const sink = new FileSink(dir);
+    sink.write("INFO", "first");
+
+    writeFileSync(join(dir, "2020.1.1.log"), "appeared after the first write\n");
+    sink.write("INFO", "second");
+
+    expect(readdirSync(dir)).toContain("2020.1.1.log");
+  });
+
+  it("swallows prune failures and still writes the log line", () => {
+    // A directory named like an expired log file — unlink throws on it, and the
+    // sink must swallow that (logging never crashes the plugin) and still write.
+    mkdirSync(join(dir, "2020.1.1.log"));
+    // spyOn returns the spy already installed by an earlier test — clear its
+    // recorded calls so this assertion can only see the prune failure.
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    errorSpy.mockClear();
+
+    const sink = new FileSink(dir);
+    expect(() => sink.write("INFO", "still logged")).not.toThrow();
+
+    expect(readFileSync(join(dir, "2026.7.31.log"), "utf-8")).toContain("INFO still logged");
     expect(errorSpy).toHaveBeenCalled();
   });
 });

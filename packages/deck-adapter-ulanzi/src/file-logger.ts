@@ -14,8 +14,14 @@
  */
 import type { ILogger } from "@iracedeck/logger";
 import { LogLevel } from "@iracedeck/logger";
-import { appendFileSync, mkdirSync } from "node:fs";
+import { appendFileSync, mkdirSync, readdirSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
+
+/** Per-day log files older than this many days are deleted on the sink's first write (issue #904). */
+export const LOG_RETENTION_DAYS = 14;
+
+/** Matches the per-day filenames this sink writes: `<YYYY.M.D>.log`, unpadded month/day. */
+const LOG_FILE_PATTERN = /^(\d{4})\.(\d{1,2})\.(\d{1,2})\.log$/;
 
 /**
  * Appends formatted log lines to a per-day file under `dir`.
@@ -25,6 +31,9 @@ import { join } from "node:path";
  * (`appendFileSync`) — debug logging is opt-in, so the volume is low and the
  * simplicity is worth more than streaming. The day rolls over automatically
  * because the target filename is recomputed on every write.
+ *
+ * The first write also prunes files older than `LOG_RETENTION_DAYS` (issue
+ * #904) — without it, per-day files accumulate on user machines forever.
  */
 export class FileSink {
   private ensuredDir = false;
@@ -37,17 +46,45 @@ export class FileSink {
    */
   write(level: string, message: string): void {
     try {
+      const now = new Date();
+
       if (!this.ensuredDir) {
         mkdirSync(this.dir, { recursive: true });
         this.ensuredDir = true;
+        this.prune(now);
       }
 
-      const now = new Date();
       const file = join(this.dir, `${now.getFullYear()}.${now.getMonth() + 1}.${now.getDate()}.log`);
       appendFileSync(file, `${now.toISOString()} ${level} ${message}\n`);
     } catch (err) {
       // Avoid recursing through the logger that's failing; surface directly.
       console.error(`[Ulanzi FileSink] write failed: ${String(err)}`);
+    }
+  }
+
+  /**
+   * Delete per-day log files whose filename date is older than
+   * `LOG_RETENTION_DAYS`. Runs once per sink (piggybacked on the first write's
+   * directory ensure). Only names matching the exact `<YYYY.M.D>.log` pattern
+   * are touched; the comparison is date-only, so a file exactly at the
+   * retention boundary is kept for the whole day. Failures are swallowed the
+   * same way write failures are — a stale log must never crash the plugin.
+   */
+  private prune(now: Date): void {
+    try {
+      const cutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate() - LOG_RETENTION_DAYS);
+
+      for (const name of readdirSync(this.dir)) {
+        const match = LOG_FILE_PATTERN.exec(name);
+
+        if (!match) continue;
+
+        const fileDate = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+
+        if (fileDate < cutoff) unlinkSync(join(this.dir, name));
+      }
+    } catch (err) {
+      console.error(`[Ulanzi FileSink] prune failed: ${String(err)}`);
     }
   }
 }
