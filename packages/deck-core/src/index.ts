@@ -326,13 +326,14 @@ export {
   type PlatformFeatures,
 } from "./plugin-config.js";
 
-// Version-check / changelog opener (issues #680, #742, #870)
+// Version-check / changelog opener (issues #680, #742, #870, #901)
 export {
   buildChangelogUrl,
   CHANGELOG_BASE_URL,
   CHANGELOG_NOTIFICATION_POLICIES,
   type ChangelogDecision,
   type ChangelogNotificationPolicy,
+  DEFAULT_CHANGELOG_NOTIFICATION_POLICY,
   MONTHLY_WINDOW_MS,
   resolveChangelogDecision,
   runVersionCheck,

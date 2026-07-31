@@ -26,7 +26,7 @@ import {
   DEFAULT_SETUP_WARNING_RACE_PATTERN,
 } from "./setup-warning-constants.js";
 import type { IDeckPlatformAdapter } from "./types.js";
-import { CHANGELOG_NOTIFICATION_POLICIES } from "./version-check.js";
+import { CHANGELOG_NOTIFICATION_POLICIES, DEFAULT_CHANGELOG_NOTIFICATION_POLICY } from "./version-check.js";
 
 /**
  * Schema for key binding values stored in global settings.
@@ -937,7 +937,10 @@ export const GlobalSettingsSchema = z
     // aborting the entire GlobalSettingsSchema.parse — which would stall
     // every setting, not just this one (the `spotterStillThereSeconds`
     // precedent).
-    changelogNotification: z.enum(CHANGELOG_NOTIFICATION_POLICIES).default("always").catch("always"),
+    changelogNotification: z
+      .enum(CHANGELOG_NOTIFICATION_POLICIES)
+      .default(DEFAULT_CHANGELOG_NOTIFICATION_POLICY)
+      .catch(DEFAULT_CHANGELOG_NOTIFICATION_POLICY),
   })
   .passthrough();
 
