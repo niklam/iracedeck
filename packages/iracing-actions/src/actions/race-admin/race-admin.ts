@@ -18,6 +18,7 @@ import {
   getGlobalSettings,
   getGlobalTitleSettings,
   getKeyboard,
+  IconUpdateThrottle,
   type IDeckActionContext,
   type IDeckDialDownEvent,
   type IDeckDidReceiveSettingsEvent,
@@ -69,7 +70,6 @@ import {
 import z from "zod";
 
 import { getSelectIntent } from "../../shared/car-select-intent.js";
-import { IconUpdateThrottle } from "../../shared/icon-update-throttle.js";
 import { profileEntriesEqual } from "../../shared/profile-entries.js";
 import { migrateUseViewedCarToDriverTarget } from "./migrate-use-viewed-car.js";
 import { buildAdminCommand, buildAdminCommandPrefix, resolveDriverTarget } from "./race-admin-commands.js";

@@ -9,6 +9,7 @@ import {
   getGlobalColors,
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
+  IconUpdateThrottle,
   type IDeckDialDownEvent,
   type IDeckDialRotateEvent,
   type IDeckDialUpEvent,
@@ -46,7 +47,6 @@ import {
   seedFreshKeyStyle,
   telemetryMemoValue,
 } from "../../shared/adjust-styles.js";
-import { IconUpdateThrottle } from "../../shared/icon-update-throttle.js";
 import { RepeatController } from "../../shared/repeat-controller.js";
 import { generateSetupViewSvg, getAdjustmentModeForView, isViewSetting } from "../../shared/setup-view.js";
 import { DialSettings, seedDialFromLegacySetting, SetupHybridDialSurface } from "./setup-hybrid-dial-surface.js";

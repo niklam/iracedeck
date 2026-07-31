@@ -158,7 +158,7 @@ Adds per-action title customization controls. Settings are stored under the `tit
 
 No parameters needed. The partial provides controls for:
 - **Show Title** / **Show Graphics** — three-state select (Inherit / Yes / No)
-- **Title Text** — multiline textarea to override default title (`titleText`, newline-separated)
+- **Title Text** — multiline textarea to override default title (`titleText`, newline-separated); resolves `{{…}}` template variables against live telemetry (#899), noted by a supporting-text line under the field
 - **Bold** — three-state select (Inherit / Yes / No)
 - **Font Size** — gated by "Override font size" checkbox; when enabled, shows range slider (5–100, doubled for SVG)
 - **Position** — select (Inherit / Top / Middle / Bottom / Custom); Custom reveals offset slider (−100 to +100)

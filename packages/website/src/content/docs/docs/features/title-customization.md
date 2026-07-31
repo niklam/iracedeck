@@ -11,7 +11,7 @@ iRaceDeck lets you customize the title text on every button. Change the text con
 |---------|-----------------|
 | **Show Title** | Whether title text appears on the button |
 | **Show Graphics** | Whether the icon artwork appears (status bars always stay visible) |
-| **Title Text** | Override the default label with custom text (supports multiple lines) |
+| **Title Text** | Override the default label with custom text (supports multiple lines and [template variables](/docs/features/template-variables/)) |
 | **Bold** | Bold or normal text weight |
 | **Font Size** | Size of the title text (5–100) |
 | **Position** | Where the title appears: top, middle, bottom, or custom offset |
@@ -47,6 +47,10 @@ Override title settings on individual buttons through **Title Overrides**, avail
 - **Title Text** — type custom text (leave empty to use the default). Press Enter for multiple lines
 - **Font Size** — check "Override font size" to set a custom size for this button
 - **Position** — choose Inherit (use global setting), or pick a specific position
+
+### Live Data in Titles
+
+Title Text supports [template variables](/docs/features/template-variables/): put `{{variable}}` placeholders or `{{= … }}` expressions in the text and the title resolves against live iRacing telemetry, updating on the key as the values change. For example, `{{track_ahead.car_number}}` on a Camera Controls next-car button shows which car the button will switch to. While iRacing is not connected, variables render as empty text; a syntax error in an expression stays visible so you can spot it.
 
 ## How Title Settings Resolve
 

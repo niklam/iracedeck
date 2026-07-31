@@ -16,6 +16,13 @@ vi.mock("@iracedeck/deck-core", async () => {
   const { z } = await import("zod");
 
   return {
+    IconUpdateThrottle: class {
+      schedule(_id: string, render: () => unknown): void {
+        void render();
+      }
+      clear(): void {}
+      clearAll(): void {}
+    },
     CommonSettings: {
       extend: (shape: never) => z.object(shape).passthrough(),
     },

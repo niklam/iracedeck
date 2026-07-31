@@ -9,6 +9,9 @@
 		<sdpi-item label="Title">
 			<sdpi-textfield setting="title" default="I AM"></sdpi-textfield>
 		</sdpi-item>
+		<div class="ird-supporting-text">
+			Supports template variables too — e.g. <b>CAR {{track_ahead.car_number}}</b>.
+		</div>
 
 		<sdpi-item label="Template">
 			<sdpi-textarea setting="template" rows="3" default="#{{self.car_number}}&#10;{{self.first_name}}"></sdpi-textarea>

@@ -77,6 +77,12 @@ export {
   type TitleOverrides,
 } from "./title-settings.js";
 
+// User-entered title template resolution (issue #899)
+export { resolveTitleTemplate, titleHasTemplate } from "./title-template.js";
+
+// Per-context icon-update throttle (issue #493; moved from iracing-actions in #899)
+export { IconUpdateThrottle } from "./icon-update-throttle.js";
+
 // Binding-missing warning overlay (issue #612, re-exports from icon-composer)
 export {
   applyBindingWarning,

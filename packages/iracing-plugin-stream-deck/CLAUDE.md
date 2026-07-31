@@ -348,7 +348,7 @@ this.lastState.delete(ev.action.id);
 Key points:
 - `updateKeyImage(contextId, svg)` updates without needing the event object (for telemetry callbacks)
 - `getCurrentTelemetry()` on `sdkController` for initial display in `updateDisplay`
-- State caching prevents re-rendering on every ~60 Hz frame when nothing changed; for values that legitimately change every frame (RPM, speed), throttle renders with the shared helper in `packages/iracing-actions/src/shared/icon-update-throttle.ts` (#493)
+- State caching prevents re-rendering on every ~60 Hz frame when nothing changed; for values that legitimately change every frame (RPM, speed), throttle renders with `IconUpdateThrottle` from `@iracedeck/deck-core` (#493, moved from `iracing-actions/src/shared/` in #899)
 - Update `activeContexts` in both `onWillAppear` and `onDidReceiveSettings`
 
 ### Telemetry-aware reference implementations

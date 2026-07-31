@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { generateTelemetryDisplaySvg, generateValueContent } from "./telemetry-display.js";
+import { generateTelemetryDisplaySvg, generateValueContent, TelemetryDisplay } from "./telemetry-display.js";
 
 vi.mock("../../../icons/telemetry-display.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">{{backgroundColor}} {{titleContent}} {{valueContent}}</svg>',
@@ -36,8 +36,21 @@ vi.mock("@iracedeck/deck-core", () => ({
     setKeyImage = vi.fn();
     setRegenerateCallback = vi.fn();
     updateKeyImage = vi.fn();
+    // Prototype methods (not instance fields) so subclass overrides win and
+    // super.onWillAppear(...) still resolves.
+    async onWillAppear(): Promise<void> {}
+    async onDidReceiveSettings(): Promise<void> {}
+    async onWillDisappear(): Promise<void> {}
   },
   escapeXml: vi.fn((str: string) => str),
+  IconUpdateThrottle: class {
+    schedule(_id: string, render: () => unknown): void {
+      void render();
+    }
+    clear(): void {}
+    clearAll(): void {}
+  },
+  resolveTitleTemplate: vi.fn((text: string) => text.replace("{{self.car_number}}", "34")),
   generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
   getGlobalBorderSettings: vi.fn(() => ({})),
   getGlobalColors: vi.fn(() => ({})),
@@ -173,6 +186,26 @@ describe("TelemetryDisplay", () => {
 
       expect(result).toContain("<text");
       expect(result.match(/<text /g)?.length).toBe(1);
+    });
+  });
+
+  describe("title template resolution (#899)", () => {
+    it("resolves {{…}} placeholders in the title setting when rendering", async () => {
+      const action = new TelemetryDisplay();
+      const ev = {
+        action: {
+          id: "ctx-td",
+          isKey: () => true,
+          setTitle: vi.fn().mockResolvedValue(undefined),
+        },
+        payload: { settings: { title: "CAR {{self.car_number}}", template: "", fontSize: 15 } },
+      } as never;
+
+      await action.onWillAppear(ev);
+
+      const mocked = action as unknown as { setKeyImage: ReturnType<typeof vi.fn> };
+      const svgArg = mocked.setKeyImage.mock.calls[0][1] as string;
+      expect(decodeURIComponent(svgArg)).toContain("CAR 34");
     });
   });
 });

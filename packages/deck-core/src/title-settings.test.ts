@@ -19,6 +19,14 @@ vi.mock("./global-settings.js", () => ({
   getGlobalSettings: vi.fn(() => ({})),
 }));
 
+const { mockGetCurrentTemplateContext } = vi.hoisted(() => ({
+  mockGetCurrentTemplateContext: vi.fn(),
+}));
+
+vi.mock("./sdk-singleton.js", () => ({
+  getController: () => ({ getCurrentTemplateContext: mockGetCurrentTemplateContext }),
+}));
+
 const GRAPHIC_WITH_TITLE = `<svg><desc>{"colors":{},"title":{"text":"TOGGLE\\nLAP TIMING"}}</desc></svg>`;
 const GRAPHIC_NO_TITLE = `<svg><desc>{"colors":{}}</desc></svg>`;
 
@@ -131,6 +139,44 @@ describe("resolveTitleSettings", () => {
     const result = resolveTitleSettings(GRAPHIC_WITH_TITLE, global);
     expect(result.position).toBe("bottom"); // TITLE_DEFAULTS
     expect(result.fontSize).toBe(9); // TITLE_DEFAULTS
+  });
+
+  describe("title template resolution (#899)", () => {
+    it("resolves {{…}} placeholders in user-entered titleText", () => {
+      mockGetCurrentTemplateContext.mockReturnValue({
+        display: { "self.car_number": "34" },
+        raw: {},
+      });
+      const action: TitleOverrides = { titleText: "CAR {{self.car_number}}" };
+      const result = resolveTitleSettings(GRAPHIC_WITH_TITLE, {}, action, "CODE\nDEFAULT");
+      expect(result.titleText).toBe("CAR 34");
+    });
+
+    it("keeps a template that resolves empty as an empty title instead of falling back to defaults", () => {
+      mockGetCurrentTemplateContext.mockReturnValue({ display: {}, raw: {} });
+      const action: TitleOverrides = { titleText: "{{unknown.variable}}" };
+      const result = resolveTitleSettings(GRAPHIC_WITH_TITLE, {}, action, "CODE\nDEFAULT");
+      expect(result.titleText).toBe("");
+    });
+
+    it("does not resolve templates in action default text", () => {
+      mockGetCurrentTemplateContext.mockReturnValue({
+        display: { "self.car_number": "34" },
+        raw: {},
+      });
+      const result = resolveTitleSettings(GRAPHIC_WITH_TITLE, {}, undefined, "CAR {{self.car_number}}");
+      expect(result.titleText).toBe("CAR {{self.car_number}}");
+    });
+
+    it("does not resolve templates in icon desc default titles", () => {
+      mockGetCurrentTemplateContext.mockReturnValue({
+        display: { "self.car_number": "34" },
+        raw: {},
+      });
+      const graphic = `<svg><desc>{"colors":{},"title":{"text":"CAR {{self.car_number}}"}}</desc></svg>`;
+      const result = resolveTitleSettings(graphic, {});
+      expect(result.titleText).toBe("CAR {{self.car_number}}");
+    });
   });
 });
 

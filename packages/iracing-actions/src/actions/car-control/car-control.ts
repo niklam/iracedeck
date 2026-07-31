@@ -11,6 +11,7 @@ import {
   getGlobalTitleSettings,
   getKeyboard,
   getSDK,
+  IconUpdateThrottle,
   type IDeckDialDownEvent,
   type IDeckDialUpEvent,
   type IDeckDidReceiveSettingsEvent,
@@ -49,7 +50,6 @@ import drsTemplate from "../../../icons/car-control-drs.svg";
 import pitLimiterTemplate from "../../../icons/car-control-pit-limiter.svg";
 import pushToPassTemplate from "../../../icons/car-control-push-to-pass.svg";
 import { borderColorForState, statusBarNA, statusBarOff, statusBarOn } from "../../icons/status-bar.js";
-import { IconUpdateThrottle } from "../../shared/icon-update-throttle.js";
 
 const WHITE = "#ffffff";
 const GRAY = "#888888";

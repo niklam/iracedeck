@@ -111,6 +111,12 @@ The `resolveTitleSettings()` resolution order for each field:
 
 Icons where the title is integral to the design (e.g., DRS, Push-to-Pass) should declare `"locked":["showTitle","fontSize"]` in their `<desc>` title metadata. See `icons.md` for details.
 
+### Title template variables (#899)
+
+deck-core's `resolveTitleSettings` is a wrapper over icon-composer's pure function: it resolves `{{variable}}` / `{{= expression }}` templates in the **user-entered** `titleOverrides.titleText` via `resolveTitleTemplate` (`getCurrentTemplateContext()` + `resolveTemplate`; empty context when disconnected, so variables render empty and expression parse errors stay verbatim). Action default text and icon `<desc>` titles are never resolved, and a template that resolves to `""` stays empty rather than falling back to the default title. Actions get this for free by importing `resolveTitleSettings` from `@iracedeck/deck-core` — never from `@iracedeck/icon-composer` directly.
+
+Live updates are also free: `BaseAction` tracks contexts whose user title contains `{{` (a shared SDK-tick watcher, string-comparing the resolved title and re-running the context's regenerate callback through a 10 Hz `IconUpdateThrottle`). This only works when the action registers `setRegenerateCallback` with a closure that re-runs icon generation against current settings — which the Settings Update Handler Pattern below already requires. Telemetry Display's own `title` setting resolves through the same `resolveTitleTemplate` in its `resolveDisplay`.
+
 ### Super Calls
 
 All actions must call `super.onWillAppear(ev)` and `super.onDidReceiveSettings(ev)` in their lifecycle hooks:

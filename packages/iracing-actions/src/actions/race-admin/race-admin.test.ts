@@ -169,6 +169,13 @@ const { mockGetGlobalSettings } = vi.hoisted(() => ({
 }));
 
 vi.mock("@iracedeck/deck-core", () => ({
+  IconUpdateThrottle: class {
+    schedule(_id: string, render: () => unknown): void {
+      void render();
+    }
+    clear(): void {}
+    clearAll(): void {}
+  },
   CommonSettings: {
     extend: (_fields: unknown) => {
       const schema = {

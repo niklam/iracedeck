@@ -7,7 +7,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BaseAction } from "./base-action.js";
-import type { IDeckActionContext, IDeckDidReceiveSettingsEvent, IDeckWillAppearEvent } from "./types.js";
+import type {
+  IDeckActionContext,
+  IDeckDidReceiveSettingsEvent,
+  IDeckWillAppearEvent,
+  IDeckWillDisappearEvent,
+} from "./types.js";
 
 type TelemetryCallback = (telemetry: { SessionFlags?: number } | undefined, isConnected: boolean) => void;
 
@@ -29,10 +34,15 @@ const { mockGetGlobalSettings } = vi.hoisted(() => ({
   mockGetGlobalSettings: vi.fn<() => Record<string, unknown>>(() => ({})),
 }));
 
+const { mockGetCurrentTemplateContext } = vi.hoisted(() => ({
+  mockGetCurrentTemplateContext: vi.fn(() => ({ display: {} as Record<string, string>, raw: {} })),
+}));
+
 vi.mock("./sdk-singleton.js", () => ({
   getController: () => ({
     subscribe: mockSubscribe,
     unsubscribe: mockUnsubscribe,
+    getCurrentTemplateContext: mockGetCurrentTemplateContext,
   }),
 }));
 
@@ -322,5 +332,178 @@ describe("BaseAction regenerate-callback reconciliation (issue #642)", () => {
 
     expect(action.getStoredSvg(fakeAction.id)).toBe("B");
     expect(setImageSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("BaseAction title template live updates (issue #899)", () => {
+  const CONTEXT_ID = "ctx-title";
+  const TITLE_TEMPLATE_PREFIX = "__title_template__";
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+    mockGetGlobalSettings.mockReturnValue({});
+    mockGetCurrentTemplateContext.mockReturnValue({ display: {}, raw: {} });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function createTitleContext(titleText: string | undefined): {
+    action: TestAction;
+    fakeAction: IDeckActionContext;
+    setImageSpy: ReturnType<typeof vi.fn>;
+    driveTick: () => void;
+  } {
+    const action = new TestAction();
+    const setImageSpy = vi.fn().mockResolvedValue(undefined);
+    const fakeAction: IDeckActionContext = {
+      id: CONTEXT_ID,
+      isKey: () => true,
+      isDial: () => false,
+      setImage: setImageSpy,
+      setTitle: vi.fn().mockResolvedValue(undefined),
+      setSettings: vi.fn().mockResolvedValue(undefined),
+      setFeedback: vi.fn().mockResolvedValue(undefined),
+      setFeedbackLayout: vi.fn().mockResolvedValue(undefined),
+      setTriggerDescription: vi.fn().mockResolvedValue(undefined),
+    };
+    const willAppear = {
+      action: fakeAction,
+      payload: { settings: titleText === undefined ? {} : { titleOverrides: { titleText } } },
+    } as unknown as IDeckWillAppearEvent<Record<string, unknown>>;
+
+    void action.onWillAppear(willAppear);
+    void action.registerKey(willAppear, "<svg>initial</svg>");
+
+    return {
+      action,
+      fakeAction,
+      setImageSpy,
+      driveTick: () => {
+        const call = mockSubscribe.mock.calls.find(([id]) => String(id).startsWith(TITLE_TEMPLATE_PREFIX));
+
+        if (!call) throw new Error("Title template callback was never captured — subscription did not register");
+
+        (call[1] as () => void)();
+      },
+    };
+  }
+
+  function setDisplayValue(value: string | undefined): void {
+    mockGetCurrentTemplateContext.mockReturnValue({
+      display: value === undefined ? {} : { "self.car_number": value },
+      raw: {},
+    });
+  }
+
+  it("subscribes to telemetry when a context's user title contains a template", () => {
+    createTitleContext("CAR {{self.car_number}}");
+
+    expect(mockSubscribe.mock.calls.some(([id]) => String(id).startsWith(TITLE_TEMPLATE_PREFIX))).toBe(true);
+  });
+
+  it("does not subscribe for titles without templates", () => {
+    createTitleContext("PLAIN TITLE");
+
+    expect(mockSubscribe.mock.calls.some(([id]) => String(id).startsWith(TITLE_TEMPLATE_PREFIX))).toBe(false);
+  });
+
+  it("does not subscribe when no title override is set", () => {
+    createTitleContext(undefined);
+
+    expect(mockSubscribe.mock.calls.some(([id]) => String(id).startsWith(TITLE_TEMPLATE_PREFIX))).toBe(false);
+  });
+
+  it("re-renders through the regenerate callback when the resolved title changes", () => {
+    const ctx = createTitleContext("{{self.car_number}}");
+
+    setDisplayValue("34");
+    ctx.action.registerRegenerateCallback(CONTEXT_ID, () => {
+      const context = mockGetCurrentTemplateContext();
+
+      return `<svg>${context.display["self.car_number"] ?? ""}</svg>`;
+    });
+    expect(ctx.setImageSpy).toHaveBeenLastCalledWith("<svg>34</svg>");
+
+    // Step past the 10 Hz window so the next change renders immediately.
+    vi.advanceTimersByTime(200);
+    setDisplayValue("35");
+    ctx.driveTick();
+
+    expect(ctx.setImageSpy).toHaveBeenLastCalledWith("<svg>35</svg>");
+  });
+
+  it("does not re-render when the resolved title is unchanged", () => {
+    const ctx = createTitleContext("{{self.car_number}}");
+
+    setDisplayValue("34");
+    ctx.action.registerRegenerateCallback(CONTEXT_ID, () => {
+      const context = mockGetCurrentTemplateContext();
+
+      return `<svg>${context.display["self.car_number"] ?? ""}</svg>`;
+    });
+
+    vi.advanceTimersByTime(200);
+    ctx.driveTick();
+    const callsAfterFirstTick = ctx.setImageSpy.mock.calls.length;
+
+    vi.advanceTimersByTime(200);
+    ctx.driveTick();
+
+    expect(ctx.setImageSpy.mock.calls.length).toBe(callsAfterFirstTick);
+  });
+
+  it("coalesces rapid changes through the 10 Hz throttle and renders the latest value", () => {
+    const ctx = createTitleContext("{{self.car_number}}");
+
+    setDisplayValue("34");
+    ctx.action.registerRegenerateCallback(CONTEXT_ID, () => {
+      const context = mockGetCurrentTemplateContext();
+
+      return `<svg>${context.display["self.car_number"] ?? ""}</svg>`;
+    });
+
+    vi.advanceTimersByTime(200);
+    setDisplayValue("35");
+    ctx.driveTick();
+    expect(ctx.setImageSpy).toHaveBeenLastCalledWith("<svg>35</svg>");
+    const callsAfterImmediate = ctx.setImageSpy.mock.calls.length;
+
+    // Second change inside the window — must coalesce, not render immediately.
+    setDisplayValue("36");
+    ctx.driveTick();
+    expect(ctx.setImageSpy.mock.calls.length).toBe(callsAfterImmediate);
+
+    // Trailing flush renders the latest value.
+    vi.advanceTimersByTime(100);
+    expect(ctx.setImageSpy).toHaveBeenLastCalledWith("<svg>36</svg>");
+  });
+
+  it("stops tracking when settings change to a non-templated title", () => {
+    const ctx = createTitleContext("{{self.car_number}}");
+
+    const settingsEvent = {
+      action: ctx.fakeAction,
+      payload: { settings: { titleOverrides: { titleText: "PLAIN" } } },
+    } as unknown as IDeckDidReceiveSettingsEvent<Record<string, unknown>>;
+
+    void ctx.action.onDidReceiveSettings(settingsEvent);
+
+    expect(mockUnsubscribe).toHaveBeenCalled();
+  });
+
+  it("unsubscribes when the last templated context disappears", () => {
+    const ctx = createTitleContext("{{self.car_number}}");
+
+    const disappearEvent = {
+      action: ctx.fakeAction,
+      payload: { settings: {} },
+    } as unknown as IDeckWillDisappearEvent<Record<string, unknown>>;
+
+    void ctx.action.onWillDisappear(disappearEvent);
+
+    expect(mockUnsubscribe).toHaveBeenCalled();
   });
 });

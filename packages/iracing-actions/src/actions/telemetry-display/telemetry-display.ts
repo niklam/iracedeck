@@ -7,6 +7,7 @@ import {
   getGlobalBorderSettings,
   getGlobalColors,
   getGlobalTitleSettings,
+  IconUpdateThrottle,
   type IDeckDidReceiveSettingsEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
@@ -14,13 +15,13 @@ import {
   resolveBorderSettings,
   resolveIconColors,
   resolveTitleSettings,
+  resolveTitleTemplate,
   svgToDataUri,
 } from "@iracedeck/deck-core";
 import { resolveTemplate } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
 import telemetryDisplayTemplate from "../../../icons/telemetry-display.svg";
-import { IconUpdateThrottle } from "../../shared/icon-update-throttle.js";
 
 const TelemetryDisplaySettings = CommonSettings.extend({
   template: z.string().default("#{{self.car_number}}\n{{self.first_name}}"),
@@ -176,12 +177,15 @@ export class TelemetryDisplay extends ConnectionStateAwareAction<TelemetryDispla
 
   private resolveDisplay(settings: TelemetryDisplaySettings): { title: string; value: string } {
     const context = this.sdkController.getCurrentTemplateContext();
+    // The title setting is user-entered text, so it resolves {{…}} templates
+    // too (issue #899) — including against the empty context when disconnected.
+    const title = resolveTitleTemplate(settings.title);
 
-    if (!context) return { title: settings.title, value: "---" };
+    if (!context) return { title, value: "---" };
 
     const value = resolveTemplate(settings.template, context);
 
-    return { title: settings.title, value: value || "---" };
+    return { title, value: value || "---" };
   }
 
   private buildStateKey(title: string, value: string, settings: TelemetryDisplaySettings): string {
