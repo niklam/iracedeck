@@ -720,6 +720,18 @@ export type SimEventMap = {
    */
   "fuel.lapsLeft.crossed": SimEvent<"fuel.lapsLeft.crossed", { count: number; lapsLeft: number }>;
   /**
+   * The tank covers what's left of the race (issue #880). Emitted at most
+   * once per stint, exactly when a laps-of-fuel-left warning in the spoken
+   * band (count ≤ 10) was suppressed by a positive race-coverage
+   * determination — the lap-counter comparison (issue #866) or the
+   * timed-race remaining-laps estimate (`SessionTimeRemain` over a
+   * leader-aware lap-time average). Re-armed by a refuel and by any later
+   * real warning, so a burn-rate spike arc speaks warning → reassurance
+   * again. Consumed by the "We have enough fuel to finish the race!" Race
+   * Engineer callout.
+   */
+  "fuel.lapsLeft.raceCovered": SimEvent<"fuel.lapsLeft.raceCovered", EmptySimEventPayload>;
+  /**
    * Track-wetness state changed (issue #526). Emitted on every step change in
    * the sim's track-wetness state. `from`/`to` carry the canonical
    * {@link TrackWetness} enum values. The translator suppresses transitions

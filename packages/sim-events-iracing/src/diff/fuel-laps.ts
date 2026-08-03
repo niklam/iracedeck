@@ -83,6 +83,14 @@ export type FuelStats = {
   lastLap: number | null;
   /** Mean fuel used over the last `windowLaps` VALID laps (L), or `null`. */
   avg: number | null;
+  /**
+   * Mean lap duration (s) over the SAME valid-lap window as `avg`, or `null`
+   * (issue #880). The validity gates (out/in/tow laps excluded, min-time
+   * floor) are exactly what a pace estimate wants, so the timed-race
+   * remaining-laps estimation reads its player pace here instead of keeping
+   * a second tracker.
+   */
+  avgLapTime: number | null;
   /** Number of valid laps actually included in `avg`. */
   samples: number;
 };
@@ -423,15 +431,17 @@ export function diffFuelLaps(t: FuelLapTracker, telemetry: TelemetryData): void 
 export function computeFuelStats(history: readonly FuelLap[], windowLaps: number): FuelStats {
   const valid = history.filter((lap) => lap.isValidForCalc);
 
-  if (valid.length === 0) return { lastLap: null, avg: null, samples: 0 };
+  if (valid.length === 0) return { lastLap: null, avg: null, avgLapTime: null, samples: 0 };
 
   const window = Number.isFinite(windowLaps) ? Math.max(1, Math.floor(windowLaps)) : 1;
   const included = valid.slice(-window);
   const sum = included.reduce((acc, lap) => acc + lap.fuelUsed, 0);
+  const timeSum = included.reduce((acc, lap) => acc + lap.lapTime, 0);
 
   return {
     lastLap: valid[valid.length - 1]!.fuelUsed,
     avg: sum / included.length,
+    avgLapTime: timeSum / included.length,
     samples: included.length,
   };
 }

@@ -293,7 +293,7 @@ export function getTrackDirection(): TrackDirection {
  * Only a disconnect (or the diff's Lap-decrease fence) clears it immediately.
  */
 export function getFuelStats(windowLaps: number): FuelStats {
-  if (!instance) return { lastLap: null, avg: null, samples: 0 };
+  if (!instance) return { lastLap: null, avg: null, avgLapTime: null, samples: 0 };
 
   return computeFuelStats(instance.fuelLaps.history, windowLaps);
 }
@@ -808,6 +808,34 @@ function resolvePlayerIsLeader(self: TranslatorInstance, telemetry: TelemetryDat
 }
 
 /**
+ * The race leader's recent lap time (s) for the timed-race fuel-coverage
+ * estimate (issue #880), or `null` when unknown. The leader comes from the
+ * canonical live order (`calculateFrozenRacePositions`, per
+ * `.claude/rules/race-positions.md`) — the OVERALL leader deliberately, since
+ * their clock expiry plus final crossing is what ends a timed race for every
+ * class. Pace preference: `CarIdxLastLapTime` (tracks a slowing leader —
+ * e.g. under caution — better than the session best) falling back to
+ * `CarIdxBestLapTime`; a `null` return lets the fuel diff fall back to the
+ * player's own validated average.
+ */
+function resolveLeaderLapTimeS(self: TranslatorInstance, telemetry: TelemetryData): number | null {
+  const positions = calculateFrozenRacePositions(self.state, telemetry);
+  const leaderIdx = positions.findIndex((position) => position === 1);
+
+  if (leaderIdx < 0) return null;
+
+  const last = telemetry.CarIdxLastLapTime?.[leaderIdx];
+
+  if (typeof last === "number" && Number.isFinite(last) && last > 0) return last;
+
+  const best = telemetry.CarIdxBestLapTime?.[leaderIdx];
+
+  if (typeof best === "number" && Number.isFinite(best) && best > 0) return best;
+
+  return null;
+}
+
+/**
  * Player's STARTING GRID position (overall + class, both 1-based) from the
  * qualifying results — the source the race-start callout already uses
  * ({@link resolveStartingGridPosition}). Exposed for the Session Info position
@@ -972,8 +1000,11 @@ function wipeStateForReplay(self: TranslatorInstance): void {
     flagLastCrossedAt: self.state.flagLastCrossedAt,
     // The white two-stage latch + raise timestamp (issue #772): a replay
     // glance during the last lap must not replay the last-lap line (latch)
-    // nor drop the heads-up gap guard (timestamp).
+    // nor drop the heads-up gap guard (timestamp). The sticky final-lap
+    // marker (issue #880) rides along — losing it at a replay flip would
+    // re-open the fuel family's final-lap suppression mid-final-lap.
     whiteLastLapFired: self.state.whiteLastLapFired,
+    playerFinalLapStarted: self.state.playerFinalLapStarted,
     whiteRaisedAt: self.state.whiteRaisedAt,
     // The standing-start countdown cluster (issue #829): the countdown runs
     // PRE-guard and keeps counting while the user sits in the garage (a
@@ -993,6 +1024,9 @@ function wipeStateForReplay(self: TranslatorInstance): void {
     // deliberately re-seed — the position jump made their edges meaningless.
     fuelCalloutLastFuelLevel: self.state.fuelCalloutLastFuelLevel,
     fuelCalloutLastAnnouncedCount: self.state.fuelCalloutLastAnnouncedCount,
+    // The enough-fuel reassurance latch (issue #880) is preserved with the
+    // floor: a replay glance must not let the reassurance speak twice.
+    fuelCalloutRaceCoveredAnnounced: self.state.fuelCalloutRaceCoveredAnnounced,
   };
 
   self.state = createInitialState();
@@ -1464,6 +1498,7 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     isRaceSession,
     () => computeFuelStats(self.fuelLaps.history, FUEL_LAPS_LEFT_WINDOW_LAPS),
     self.getFuelLapsLeftMarginLaps,
+    () => resolveLeaderLapTimeS(self, telemetry),
     emit,
   );
 

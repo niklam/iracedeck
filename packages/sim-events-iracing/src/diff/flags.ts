@@ -333,6 +333,7 @@ export function diffFlags(
           if (leaderTookTheLine) {
             emit({ event: "flag.white-last-lap.raised", data: {} });
             state.whiteLastLapFired = true;
+            state.playerFinalLapStarted = true;
           } else {
             emit({ event: "flag.white.raised", data: {} });
             state.whiteRaisedAt = now;
@@ -437,6 +438,10 @@ export function diffFlags(
   // ever spoken) allows the last-lap line immediately. The raise-tick leader
   // case above already latched, so it can't double-fire here.
   if (!current.has("white")) {
+    // NOTE: `playerFinalLapStarted` deliberately does NOT re-arm here (issue
+    // #880) — a caution replacing the white mid-final-lap must not resurrect
+    // the fuel family's final-lap suppression. Only the per-session reset
+    // clears the sticky marker.
     state.whiteLastLapFired = false;
     state.whiteRaisedAt = 0;
   } else if (
@@ -448,6 +453,7 @@ export function diffFlags(
   ) {
     emit({ event: "flag.white-last-lap.raised", data: {} });
     state.whiteLastLapFired = true;
+    state.playerFinalLapStarted = true;
   }
 
   // Yellow cleared transition (issue #671 — validated clear). The drop edge

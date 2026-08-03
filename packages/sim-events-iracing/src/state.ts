@@ -156,6 +156,17 @@ export type TranslatorState = {
    */
   whiteLastLapFired: boolean;
   /**
+   * STICKY per-session "the player started their final lap" latch (issue
+   * #880). Set alongside {@link whiteLastLapFired} but — unlike it — NEVER
+   * re-armed when the White bit drops: a caution replacing the white
+   * mid-final-lap re-arms the two-stage callout latch, and this marker is
+   * what keeps the fuel-callout family's final-lap suppression engaged
+   * through that flag change (the only reliable final-lap signal in a timed
+   * race). Preserved across `wipeStateForReplay`; cleared only by the
+   * per-session reset.
+   */
+  playerFinalLapStarted: boolean;
+  /**
    * Timestamp (ms) the white-flag heads-up (`flag.white.raised`) was emitted
    * for the current white episode (issue #772); `0` when none was (fresh
    * state, or the leader skip replaced it with the last-lap line). Drives
@@ -546,6 +557,15 @@ export type TranslatorState = {
    * repeat a count; a genuine session change still clears it.
    */
   fuelCalloutLastAnnouncedCount: number | null;
+  /**
+   * True once the enough-fuel reassurance (`fuel.lapsLeft.raceCovered`,
+   * issue #880) has been emitted for the current stint. Cleared by a refuel
+   * and by any later REAL warning emission (a burn-rate spike arc speaks
+   * warning → reassurance again once coverage recovers). Preserved across
+   * `wipeStateForReplay` alongside the announce floor so a replay glance
+   * can't repeat the reassurance; a genuine session change clears it.
+   */
+  fuelCalloutRaceCoveredAnnounced: boolean;
 
   // ── Lifecycle ───────────────────────────────────────────────────────────
   // `driver.firstOnTrack` is tracked on the translator instance, not here —
@@ -653,6 +673,7 @@ export function createInitialState(): TranslatorState {
     flagLastCrossedAt: 0,
     checkeredPendingCross: false,
     whiteLastLapFired: false,
+    playerFinalLapStarted: false,
     whiteRaisedAt: 0,
 
     paceLapInitialized: false,
@@ -752,6 +773,7 @@ export function createInitialState(): TranslatorState {
     fuelCalloutLastSampledLap: -1,
     fuelCalloutLastFuelLevel: null,
     fuelCalloutLastAnnouncedCount: null,
+    fuelCalloutRaceCoveredAnnounced: false,
 
     lifecycleInitialized: false,
     lastSessionNum: null,

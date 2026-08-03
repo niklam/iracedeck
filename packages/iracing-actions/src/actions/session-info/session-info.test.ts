@@ -31,7 +31,7 @@ vi.mock("@iracedeck/iracing-sdk", async () => {
 // getFuelStats is the validated fuel lap history accessor (issue #465).
 vi.mock("@iracedeck/sim-events-iracing", () => ({
   FUEL_LAP_HISTORY_CAP: 20,
-  getFuelStats: vi.fn(() => ({ lastLap: null, avg: null, samples: 0 })),
+  getFuelStats: vi.fn(() => ({ lastLap: null, avg: null, avgLapTime: null, samples: 0 })),
   getLivePosition: vi.fn(() => null),
   getLiveRacePositions: vi.fn(() => null),
   getStartingGridPosition: vi.fn(() => null),
@@ -1200,7 +1200,7 @@ describe("SessionInfo", () => {
       // vi.clearAllMocks() only clears call history, not implementations — a
       // mockReturnValue set in one test would otherwise leak into the next.
       beforeEach(() => {
-        vi.mocked(getFuelStats).mockReturnValue({ lastLap: null, avg: null, samples: 0 });
+        vi.mocked(getFuelStats).mockReturnValue({ lastLap: null, avg: null, avgLapTime: null, samples: 0 });
       });
 
       it("keeps showing the current fuel level in the default 'now' sub-mode", () => {
@@ -1211,14 +1211,14 @@ describe("SessionInfo", () => {
       });
 
       it("formats the last valid lap's consumption in liters", () => {
-        vi.mocked(getFuelStats).mockReturnValue({ lastLap: 2.84, avg: 2.9, samples: 5 });
+        vi.mocked(getFuelStats).mockReturnValue({ lastLap: 2.84, avg: 2.9, avgLapTime: null, samples: 5 });
         const settings = defaultSettings({ mode: "fuel", fuelSubMode: "lastLap" });
 
         expect(action["extractDisplayValue"](settings as any, telemetry)).toBe("2.84 L");
       });
 
       it("formats the last lap consumption in gallons under imperial DisplayUnits", () => {
-        vi.mocked(getFuelStats).mockReturnValue({ lastLap: 7.57082, avg: 7.6, samples: 5 });
+        vi.mocked(getFuelStats).mockReturnValue({ lastLap: 7.57082, avg: 7.6, avgLapTime: null, samples: 5 });
         const settings = defaultSettings({ mode: "fuel", fuelSubMode: "lastLap" });
         const imperial = { ...telemetry, DisplayUnits: 0 };
 
@@ -1226,7 +1226,7 @@ describe("SessionInfo", () => {
       });
 
       it("formats the rolling average and passes the configured window to getFuelStats", () => {
-        vi.mocked(getFuelStats).mockReturnValue({ lastLap: 2.8, avg: 2.53, samples: 10 });
+        vi.mocked(getFuelStats).mockReturnValue({ lastLap: 2.8, avg: 2.53, avgLapTime: null, samples: 10 });
         const settings = defaultSettings({ mode: "fuel", fuelSubMode: "avgN", fuelLapWindow: 10 });
 
         expect(action["extractDisplayValue"](settings as any, telemetry)).toBe("2.53 L");
@@ -1234,7 +1234,7 @@ describe("SessionInfo", () => {
       });
 
       it("formats the rolling average in gallons under imperial DisplayUnits", () => {
-        vi.mocked(getFuelStats).mockReturnValue({ lastLap: 7.6, avg: 7.57082, samples: 5 });
+        vi.mocked(getFuelStats).mockReturnValue({ lastLap: 7.6, avg: 7.57082, avgLapTime: null, samples: 5 });
         const settings = defaultSettings({ mode: "fuel", fuelSubMode: "avgN" });
         const imperial = { ...telemetry, DisplayUnits: 0 };
 
@@ -1242,7 +1242,7 @@ describe("SessionInfo", () => {
       });
 
       it("shows -- while no valid laps have been recorded", () => {
-        vi.mocked(getFuelStats).mockReturnValue({ lastLap: null, avg: null, samples: 0 });
+        vi.mocked(getFuelStats).mockReturnValue({ lastLap: null, avg: null, avgLapTime: null, samples: 0 });
 
         expect(
           action["extractDisplayValue"](defaultSettings({ mode: "fuel", fuelSubMode: "lastLap" }) as any, telemetry),
@@ -1262,7 +1262,7 @@ describe("SessionInfo", () => {
       });
 
       it("ignores the percentage fuelFormat in the consumption sub-modes", () => {
-        vi.mocked(getFuelStats).mockReturnValue({ lastLap: 2.8, avg: 2.5, samples: 5 });
+        vi.mocked(getFuelStats).mockReturnValue({ lastLap: 2.8, avg: 2.5, avgLapTime: null, samples: 5 });
         const settings = defaultSettings({ mode: "fuel", fuelSubMode: "lastLap", fuelFormat: "percentage" });
 
         expect(action["extractDisplayValue"](settings as any, telemetry)).toBe("2.80 L");
@@ -1275,7 +1275,7 @@ describe("SessionInfo", () => {
       // vi.clearAllMocks() only clears call history, not implementations — a
       // mockReturnValue set in one test would otherwise leak into the next.
       beforeEach(() => {
-        vi.mocked(getFuelStats).mockReturnValue({ lastLap: null, avg: null, samples: 0 });
+        vi.mocked(getFuelStats).mockReturnValue({ lastLap: null, avg: null, avgLapTime: null, samples: 0 });
       });
 
       it("parses the laps-to-empty mode from settings", async () => {
@@ -1285,7 +1285,7 @@ describe("SessionInfo", () => {
       });
 
       it("divides the live fuel level by the rolling average and shows two decimals", () => {
-        vi.mocked(getFuelStats).mockReturnValue({ lastLap: 3.4, avg: 3.4, samples: 5 });
+        vi.mocked(getFuelStats).mockReturnValue({ lastLap: 3.4, avg: 3.4, avgLapTime: null, samples: 5 });
         const settings = defaultSettings({ mode: "laps-to-empty" });
 
         // 42.3 / 3.4 = 12.4411…
@@ -1293,14 +1293,14 @@ describe("SessionInfo", () => {
       });
 
       it("rounds the estimate at the second decimal", () => {
-        vi.mocked(getFuelStats).mockReturnValue({ lastLap: 3, avg: 3, samples: 5 });
+        vi.mocked(getFuelStats).mockReturnValue({ lastLap: 3, avg: 3, avgLapTime: null, samples: 5 });
         const fuel = { ...telemetry, FuelLevel: 37.338 }; // 37.338 / 3 = 12.446
 
         expect(action["extractDisplayValue"](defaultSettings({ mode: "laps-to-empty" }) as any, fuel)).toBe("12.45");
       });
 
       it("passes the configured window through to getFuelStats", () => {
-        vi.mocked(getFuelStats).mockReturnValue({ lastLap: 2.8, avg: 2.5, samples: 10 });
+        vi.mocked(getFuelStats).mockReturnValue({ lastLap: 2.8, avg: 2.5, avgLapTime: null, samples: 10 });
         const settings = defaultSettings({ mode: "laps-to-empty", fuelLapWindow: 10 });
 
         action["extractDisplayValue"](settings as any, telemetry);
@@ -1311,7 +1311,7 @@ describe("SessionInfo", () => {
       it("is unit-independent — imperial DisplayUnits shows the same lap count", () => {
         // Both FuelLevel and the average are liters, so the ratio is a lap
         // count with no unit conversion — unlike the consumption sub-modes.
-        vi.mocked(getFuelStats).mockReturnValue({ lastLap: 3.4, avg: 3.4, samples: 5 });
+        vi.mocked(getFuelStats).mockReturnValue({ lastLap: 3.4, avg: 3.4, avgLapTime: null, samples: 5 });
         const imperial = { ...telemetry, DisplayUnits: 0 };
 
         expect(action["extractDisplayValue"](defaultSettings({ mode: "laps-to-empty" }) as any, imperial)).toBe(
@@ -1324,7 +1324,7 @@ describe("SessionInfo", () => {
       });
 
       it("shows -- when FuelLevel is unavailable", () => {
-        vi.mocked(getFuelStats).mockReturnValue({ lastLap: 3.4, avg: 3.4, samples: 5 });
+        vi.mocked(getFuelStats).mockReturnValue({ lastLap: 3.4, avg: 3.4, avgLapTime: null, samples: 5 });
 
         expect(
           action["extractDisplayValue"](defaultSettings({ mode: "laps-to-empty" }) as any, { DisplayUnits: 1 } as any),
@@ -1336,7 +1336,7 @@ describe("SessionInfo", () => {
       });
 
       it("re-renders as the live fuel level burns down between lap completions", async () => {
-        vi.mocked(getFuelStats).mockReturnValue({ lastLap: 3, avg: 3, samples: 5 });
+        vi.mocked(getFuelStats).mockReturnValue({ lastLap: 3, avg: 3, avgLapTime: null, samples: 5 });
         action["sdkController"].getCurrentTelemetry = vi.fn().mockReturnValue(null);
 
         await action.onWillAppear(fakeEvent("action-1", { mode: "laps-to-empty" }) as any);

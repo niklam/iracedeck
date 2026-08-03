@@ -566,11 +566,16 @@ describe("computeFuelStats", () => {
   }
 
   it("returns empty stats for an empty history", () => {
-    expect(computeFuelStats([], 5)).toEqual({ lastLap: null, avg: null, samples: 0 });
+    expect(computeFuelStats([], 5)).toEqual({ lastLap: null, avg: null, avgLapTime: null, samples: 0 });
   });
 
   it("returns empty stats when no laps are valid", () => {
-    expect(computeFuelStats([lap(3, false), lap(2.5, false)], 5)).toEqual({ lastLap: null, avg: null, samples: 0 });
+    expect(computeFuelStats([lap(3, false), lap(2.5, false)], 5)).toEqual({
+      lastLap: null,
+      avg: null,
+      avgLapTime: null,
+      samples: 0,
+    });
   });
 
   it("averages over the last N valid laps, skipping invalid ones", () => {
@@ -626,6 +631,31 @@ describe("computeFuelStats", () => {
   it("uses a single valid lap for both lastLap and avg", () => {
     const stats = computeFuelStats([lap(2.5)], 5);
 
-    expect(stats).toEqual({ lastLap: 2.5, avg: 2.5, samples: 1 });
+    expect(stats).toEqual({ lastLap: 2.5, avg: 2.5, avgLapTime: 90, samples: 1 });
+  });
+
+  it("averages lap time over the same valid window (issue #880)", () => {
+    const history = [
+      lap(3, true, { lapTime: 100 }),
+      lap(10, false, { lapTime: 500 }),
+      lap(2, true, { lapTime: 92 }),
+      lap(4, true, { lapTime: 94 }),
+    ];
+
+    const stats = computeFuelStats(history, 3);
+
+    // Window of 3 valid laps: 100, 92, 94 — the invalid 500 s lap never contributes.
+    expect(stats.avgLapTime).toBeCloseTo((100 + 92 + 94) / 3);
+  });
+
+  it("reports avgLapTime null when no valid laps exist (issue #880)", () => {
+    expect(computeFuelStats([], 5).avgLapTime).toBeNull();
+    expect(computeFuelStats([lap(3, false)], 5).avgLapTime).toBeNull();
+  });
+
+  it("windows avgLapTime like avg (issue #880)", () => {
+    const history = [lap(2, true, { lapTime: 120 }), lap(2, true, { lapTime: 90 })];
+
+    expect(computeFuelStats(history, 1).avgLapTime).toBeCloseTo(90);
   });
 });
