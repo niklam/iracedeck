@@ -44,6 +44,26 @@ function fuelLapsLeftScenario(subject: string, count: number, weight: number, in
   };
 }
 
+/**
+ * Enough-fuel reassurance (issue #880) — the diff emits
+ * `fuel.lapsLeft.raceCovered` at most once per stint, exactly when a warning
+ * in the spoken band was suppressed by a positive race-coverage
+ * determination. Ordinary commentary weight (good news never needs to cut
+ * anything), `queueable` for the same reason as the warnings: the diff
+ * latches on EMIT, so a dropped fire would never replay.
+ */
+const FUEL_RACE_COVERED_ALERT: Scenario = {
+  id: "pit-crew.fuel-laps-left-race-covered",
+  channel: AudioChannel.Voice,
+  bus: AudioBus.Voice,
+  base: "voice/{voice}",
+  weight: WEIGHT.NORMAL,
+  queueable: true,
+  family: "fuel",
+  sequence: ["@pit-crew.radio-open", "pool:fuel-laps-left-race-covered", "@pit-crew.radio-close"],
+  when: { event: "fuel.lapsLeft.raceCovered" },
+};
+
 export const FUEL_LAPS_LEFT_ALERTS: readonly Scenario[] = [
   fuelLapsLeftScenario("10", 10, WEIGHT.NORMAL),
   fuelLapsLeftScenario("9", 9, WEIGHT.NORMAL),
@@ -56,6 +76,7 @@ export const FUEL_LAPS_LEFT_ALERTS: readonly Scenario[] = [
   fuelLapsLeftScenario("2", 2, WEIGHT.SAFETY),
   fuelLapsLeftScenario("1", 1, WEIGHT.CRITICAL, true),
   fuelLapsLeftScenario("box", 0, WEIGHT.CRITICAL, true),
+  FUEL_RACE_COVERED_ALERT,
 ];
 
 /** Scenario ids exported for tests so a typo here surfaces as a test failure. */
@@ -64,6 +85,7 @@ export const FUEL_LAPS_LEFT_SCENARIO_IDS: readonly string[] = FUEL_LAPS_LEFT_ALE
 /** Pool names this catalog draws from — kept here so tests can register them
  *  on the scenario engine without duplicating the list. */
 export const FUEL_LAPS_LEFT_POOL_NAMES: readonly string[] = [
+  "fuel-laps-left-race-covered",
   "fuel-laps-left-10",
   "fuel-laps-left-9",
   "fuel-laps-left-8",

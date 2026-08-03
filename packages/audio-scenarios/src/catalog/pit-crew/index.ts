@@ -605,7 +605,8 @@ export type FuelCalloutId =
   | "laps-left-3"
   | "laps-left-2"
   | "laps-left-1"
-  | "laps-left-box";
+  | "laps-left-box"
+  | "race-covered";
 
 /**
  * Canonical mapping from `FuelCalloutId` to its plugin-global setting key in
@@ -626,6 +627,7 @@ export const FUEL_CALLOUT_SETTING_KEYS: Record<FuelCalloutId, string> = {
   "laps-left-2": "calloutEnabledFuelLapsLeft2",
   "laps-left-1": "calloutEnabledFuelLapsLeft1",
   "laps-left-box": "calloutEnabledFuelLapsLeftBox",
+  "race-covered": "calloutEnabledFuelLapsLeftRaceCovered",
 };
 
 const SCENARIO_ID_TO_FUEL_ID: Record<string, FuelCalloutId> = {
@@ -640,6 +642,7 @@ const SCENARIO_ID_TO_FUEL_ID: Record<string, FuelCalloutId> = {
   "pit-crew.fuel-laps-left-2": "laps-left-2",
   "pit-crew.fuel-laps-left-1": "laps-left-1",
   "pit-crew.fuel-laps-left-box": "laps-left-box",
+  "pit-crew.fuel-laps-left-race-covered": "race-covered",
 };
 
 /** Stable id for each spotter PI opt-in (issue #651). */

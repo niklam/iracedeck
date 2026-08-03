@@ -789,6 +789,13 @@ export const GlobalSettingsSchema = z
       .union([z.boolean(), z.string()])
       .transform((val) => val === true || val === "true")
       .default(true),
+    // "We have enough fuel to finish the race!" — fires once per stint in
+    // place of the first suppressed laps-of-fuel-left warning when the
+    // race-coverage determination is positive (issue #880).
+    calloutEnabledFuelLapsLeftRaceCovered: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
     /**
      * Safety margin in laps subtracted from the raw laps-of-fuel-left
      * estimate before the Race Engineer derives the spoken count (issue
