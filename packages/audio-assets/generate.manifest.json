@@ -11624,6 +11624,14 @@
       "textPreview": "Come on, Robbie.",
       "generatedAt": "2026-07-31T12:17:18.250Z",
       "requestId": "g0rhSYvJ4i5CSR7xy7zl"
+    },
+    "voice/default/fuel/race-covered-01.mp3": {
+      "hash": "a8ae6e1fb45447f4",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "We have enough fuel to finish the race!",
+      "generatedAt": "2026-08-03T13:13:59.486Z",
+      "requestId": "8doKGzvJZXWucl7cIJOi"
     }
   }
 }

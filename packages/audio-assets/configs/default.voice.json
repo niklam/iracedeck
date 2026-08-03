@@ -999,6 +999,11 @@
         "name": "laps-left-box-01",
         "text": "Box this lap for fuel. <break time=\"0.3s\" /> Box this lap.",
         "seed": 1
+      },
+      {
+        "name": "race-covered-01",
+        "text": "We have enough fuel to finish the race!",
+        "seed": 1
       }
     ],
     "incidents": [
