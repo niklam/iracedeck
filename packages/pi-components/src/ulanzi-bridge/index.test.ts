@@ -120,12 +120,13 @@ describe("UlanziBridgeSocket", () => {
     real.triggerOpen();
     real.sent.length = 0;
 
+    // Global-settings frames are plugin-scoped, not PI-identity-scoped (#868).
     bridge.send(JSON.stringify({ event: "getGlobalSettings", context: "x" }));
     expect(JSON.parse(real.sent[0])).toEqual({
       cmd: "getGlobalSettings",
-      uuid: "com.x.action",
-      key: "5",
-      actionid: "abc",
+      uuid: "com.iracedeck.sd.core",
+      key: "",
+      actionid: "",
     });
 
     bridge.send(JSON.stringify({ event: "registerPropertyInspector", uuid: "x" }));

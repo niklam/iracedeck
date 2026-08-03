@@ -15,6 +15,7 @@ const mockInstances: Array<Record<string, ReturnType<typeof vi.fn>>> = [];
 // Mock UlanziClient — factory must not reference variables defined after vi.mock
 vi.mock("./ulanzi-client.js", () => ({
   parseConnectionParams: () => ({ address: "127.0.0.1", port: "3906", language: "en" }),
+  PLUGIN_UUID: "com.iracedeck.sd.core",
   UlanziClient: class {
     onActionEvent = vi.fn();
     onGlobalEvent = vi.fn();
@@ -57,10 +58,82 @@ describe("UlanziPlatformAdapter", () => {
   });
 
   describe("setGlobalSettings", () => {
-    it("should delegate to UlanziClient.setGlobalSettings", () => {
+    const replyHandler = () =>
+      client.onGlobalEvent.mock.calls.find((call) => call[0] === "didReceiveGlobalSettings")?.[1];
+
+    it("should delegate to UlanziClient.setGlobalSettings once a reply has arrived", () => {
+      replyHandler()({ event: "didReceiveGlobalSettings", payload: { settings: { a: 1 } } });
+
       const settings = { foo: "bar" };
       adapter.setGlobalSettings(settings);
       expect(client.setGlobalSettings).toHaveBeenCalledWith(settings);
+    });
+  });
+
+  describe("global-settings write gate (#868 Ulanzi RCA root cause 2)", () => {
+    const replyHandler = () =>
+      client.onGlobalEvent.mock.calls.find((call) => call[0] === "didReceiveGlobalSettings")?.[1];
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("buffers plugin-initiated writes until the first reply arrives", () => {
+      // Before the first reply the deck-core cache holds schema defaults only —
+      // a full write would erase stored passthrough keys (key bindings,
+      // _lastSeenVersion) from the host's store.
+      adapter.setGlobalSettings({ foo: "defaults-only" });
+
+      expect(client.setGlobalSettings).not.toHaveBeenCalled();
+    });
+
+    it("drops the buffered write when the first reply arrives", () => {
+      // deck-core re-writes a fresh full snapshot right after the first
+      // arrival, so the stale defaults-based buffer must not be flushed.
+      adapter.setGlobalSettings({ foo: "defaults-only" });
+      replyHandler()({ event: "didReceiveGlobalSettings", payload: { settings: { stored: true } } });
+
+      vi.runAllTimers();
+
+      expect(client.setGlobalSettings).not.toHaveBeenCalled();
+    });
+
+    it("flushes only the latest buffered write after the timeout when no reply ever arrives", () => {
+      // Hosts that never answer reads keep legitimate persistence working —
+      // the flush restores today's behavior after a bounded wait.
+      adapter.setGlobalSettings({ push: 1 });
+      adapter.setGlobalSettings({ push: 2 });
+
+      vi.advanceTimersByTime(30_000);
+
+      expect(client.setGlobalSettings).toHaveBeenCalledTimes(1);
+      expect(client.setGlobalSettings).toHaveBeenCalledWith({ push: 2 });
+    });
+
+    it("passes writes straight through after the timeout has opened the gate", () => {
+      adapter.setGlobalSettings({ push: 1 });
+      vi.advanceTimersByTime(30_000);
+      client.setGlobalSettings.mockClear();
+
+      adapter.setGlobalSettings({ push: 3 });
+
+      expect(client.setGlobalSettings).toHaveBeenCalledWith({ push: 3 });
+    });
+
+    it("opens the gate on an action-scoped (bootstrap) reply too", () => {
+      // The gate opens on ANY reply — the action-scoped bootstrap fallback
+      // included — so deck-core's post-arrival snapshot write reaches the host.
+      adapter.setGlobalSettings({ foo: "defaults-only" });
+      replyHandler()({ event: "didReceiveGlobalSettings", action: "com.test.action", payload: { settings: { a: 1 } } });
+
+      adapter.setGlobalSettings({ foo: "post-reply" });
+
+      expect(client.setGlobalSettings).toHaveBeenCalledTimes(1);
+      expect(client.setGlobalSettings).toHaveBeenCalledWith({ foo: "post-reply" });
     });
   });
 
@@ -118,6 +191,92 @@ describe("UlanziPlatformAdapter", () => {
       handler({ event: "didReceiveGlobalSettings", payload: { settings: { key: "value" } } });
 
       expect(callback).toHaveBeenCalledWith({ key: "value" });
+    });
+
+    it("forwards a pre-settle action-scoped reply (boot bootstrap fallback)", () => {
+      // Before any plugin-scoped reply has arrived, an action-scoped reply is
+      // the only data the boot bootstrap read can produce — forward it (#868).
+      const callback = vi.fn();
+      adapter.onDidReceiveGlobalSettings(callback);
+
+      const handler = client.onGlobalEvent.mock.calls.find((call) => call[0] === "didReceiveGlobalSettings")?.[1];
+      handler({ event: "didReceiveGlobalSettings", action: "com.test.action", payload: { settings: { a: 1 } } });
+
+      expect(callback).toHaveBeenCalledWith({ a: 1 });
+    });
+
+    it("drops an action-scoped reply after a non-empty plugin-scoped reply has been applied", () => {
+      // A late action-scoped reply carries a per-action bucket's stale
+      // contents — it must not clobber authoritative plugin-scoped data (#868).
+      const callback = vi.fn();
+      adapter.onDidReceiveGlobalSettings(callback);
+
+      const handler = client.onGlobalEvent.mock.calls.find((call) => call[0] === "didReceiveGlobalSettings")?.[1];
+      handler({
+        event: "didReceiveGlobalSettings",
+        action: "com.iracedeck.sd.core",
+        payload: { settings: { debugLogging: true } },
+      });
+      handler({ event: "didReceiveGlobalSettings", action: "com.test.action", payload: { settings: { stale: 1 } } });
+
+      expect(callback).toHaveBeenCalledTimes(1);
+      expect(callback).toHaveBeenCalledWith({ debugLogging: true });
+    });
+
+    it("keeps forwarding plugin-scoped replies after settling", () => {
+      const callback = vi.fn();
+      adapter.onDidReceiveGlobalSettings(callback);
+
+      const handler = client.onGlobalEvent.mock.calls.find((call) => call[0] === "didReceiveGlobalSettings")?.[1];
+      handler({ event: "didReceiveGlobalSettings", payload: { settings: { debugLogging: true } } });
+      handler({ event: "didReceiveGlobalSettings", payload: { settings: { debugLogging: false } } });
+
+      expect(callback).toHaveBeenCalledTimes(2);
+      expect(callback).toHaveBeenLastCalledWith({ debugLogging: false });
+    });
+  });
+
+  describe("global-settings boot bootstrap (#868)", () => {
+    const willAppear = () =>
+      client.onActionEvent.mock.calls.find((call: [string, string, unknown]) => call[1] === "willAppear")?.[2] as (
+        data: unknown,
+      ) => Promise<void>;
+
+    const globalSettingsHandler = () =>
+      client.onGlobalEvent.mock.calls.find((call) => call[0] === "didReceiveGlobalSettings")?.[1];
+
+    it("re-requests global settings with the first appearing action's context when no reply has arrived", async () => {
+      // The host does not answer the connect-time plugin-scope read (the SDK
+      // requires an action context on main-service reads), so the earliest
+      // appearing context re-drives the read (#868).
+      adapter.registerAction("com.test.action", {});
+
+      await willAppear()({
+        event: "willAppear",
+        action: "com.test.action",
+        context: "com.test.action___5___abc",
+        payload: { settings: {} },
+      });
+
+      expect(client.requestGlobalSettings).toHaveBeenCalledWith("com.test.action___5___abc");
+    });
+
+    it("bootstraps only once even when more actions appear", async () => {
+      adapter.registerAction("com.test.action", {});
+
+      await willAppear()({ event: "willAppear", action: "com.test.action", context: "c1", payload: { settings: {} } });
+      await willAppear()({ event: "willAppear", action: "com.test.action", context: "c2", payload: { settings: {} } });
+
+      expect(client.requestGlobalSettings).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not bootstrap once a global-settings reply has arrived", async () => {
+      adapter.registerAction("com.test.action", {});
+      globalSettingsHandler()({ event: "didReceiveGlobalSettings", payload: { settings: { debugLogging: true } } });
+
+      await willAppear()({ event: "willAppear", action: "com.test.action", context: "c1", payload: { settings: {} } });
+
+      expect(client.requestGlobalSettings).not.toHaveBeenCalled();
     });
   });
 

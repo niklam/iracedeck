@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { type BridgeIdentity, elgatoToUlanzi, encodeContext, ulanziToElgato } from "./translate.js";
+import { type BridgeIdentity, elgatoToUlanzi, encodeContext, PLUGIN_UUID, ulanziToElgato } from "./translate.js";
 
 const identity: BridgeIdentity = {
   address: "127.0.0.1",
@@ -22,23 +22,36 @@ describe("encodeContext", () => {
 });
 
 describe("elgatoToUlanzi", () => {
-  it("translates settings reads/writes to Ulanzi cmds carrying the PI identity", () => {
+  it("scopes global-settings reads/writes to the plugin UUID, not the PI's action identity", () => {
+    // UlanziStudio persists global settings bucketed by the frame's `uuid`
+    // verbatim. The plugin main service reads with the plugin UUID, so a PI
+    // write carrying the action UUID lands in a per-action bucket the plugin
+    // never reads back at boot — key bindings then vanish on restart (#868).
+    expect(PLUGIN_UUID).toBe("com.iracedeck.sd.core");
+
     expect(elgatoToUlanzi({ event: "getGlobalSettings" }, identity)).toEqual({
       cmd: "getGlobalSettings",
-      uuid: identity.uuid,
-      key: "5",
-      actionid: "abc",
+      uuid: PLUGIN_UUID,
+      key: "",
+      actionid: "",
     });
 
     expect(elgatoToUlanzi({ event: "setGlobalSettings", payload: { debugLogging: true } }, identity)).toEqual({
       cmd: "setGlobalSettings",
+      uuid: PLUGIN_UUID,
+      key: "",
+      actionid: "",
+      settings: { debugLogging: true },
+    });
+  });
+
+  it("translates per-action settings reads/writes carrying the PI identity", () => {
+    expect(elgatoToUlanzi({ event: "getSettings" }, identity)).toEqual({
+      cmd: "getSettings",
       uuid: identity.uuid,
       key: "5",
       actionid: "abc",
-      settings: { debugLogging: true },
     });
-
-    expect(elgatoToUlanzi({ event: "getSettings" }, identity)).toMatchObject({ cmd: "getSettings" });
 
     expect(elgatoToUlanzi({ event: "setSettings", payload: { mode: "next" } }, identity)).toEqual({
       cmd: "setSettings",

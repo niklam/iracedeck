@@ -16,6 +16,17 @@ export interface BridgeIdentity {
   controller: string;
 }
 
+/**
+ * The iRaceDeck plugin UUID — must match the manifest and the plugin main
+ * service's `PLUGIN_UUID` (deck-adapter-ulanzi). UlanziStudio persists global
+ * settings bucketed by the frame's `uuid` verbatim, so the PI's global-settings
+ * reads/writes must carry this UUID (with empty key/actionid) to hit the same
+ * bucket the plugin main service reads at boot. Carrying the PI's per-action
+ * identity instead scatters key bindings into per-action buckets the plugin
+ * never reads back — they then vanish on restart (#868).
+ */
+export const PLUGIN_UUID = "com.iracedeck.sd.core";
+
 /** Build the Ulanzi context string: `uuid___key___actionid`. */
 export function encodeContext(uuid: string, key: string, actionid: string): string {
   return `${uuid}___${key}___${actionid}`;
@@ -41,12 +52,15 @@ export function elgatoToUlanzi(
   identity: BridgeIdentity,
 ): Record<string, unknown> | null {
   const base = { uuid: identity.uuid, key: identity.key, actionid: identity.actionid };
+  // Global settings are plugin-wide: scope them to the plugin UUID so PI writes
+  // land in the same UlanziStudio bucket the plugin main service reads (#868).
+  const globalScope = { uuid: PLUGIN_UUID, key: "", actionid: "" };
 
   switch (frame.event) {
     case "getGlobalSettings":
-      return { cmd: "getGlobalSettings", ...base };
+      return { cmd: "getGlobalSettings", ...globalScope };
     case "setGlobalSettings":
-      return { cmd: "setGlobalSettings", ...base, settings: asRecord(frame.payload) ?? {} };
+      return { cmd: "setGlobalSettings", ...globalScope, settings: asRecord(frame.payload) ?? {} };
     case "getSettings":
       return { cmd: "getSettings", ...base };
     case "setSettings":
