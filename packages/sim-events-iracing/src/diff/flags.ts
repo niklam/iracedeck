@@ -292,6 +292,20 @@ export function diffFlags(
           emit({ event: "flag.yellow.raised", data: { scope: yellowScope ?? "local" } });
           break;
         case "green":
+          // A green rising edge while the sticky final-lap marker is set
+          // means the race was EXTENDED or RESTARTED past the lap that
+          // latched it (oval overtime, a caution-interrupted final lap that
+          // resumes, an admin !restart with the same SessionNum — which the
+          // per-session reset never sees). Re-open the fuel family, and
+          // re-arm the enough-fuel confirmation with it: the pre-extension
+          // coverage determination no longer holds (issue #880 review).
+          // Deliberately BEFORE the start-suppression guard below — a full
+          // restart's green arrives with the start bits set.
+          if (state.playerFinalLapStarted) {
+            state.playerFinalLapStarted = false;
+            state.fuelCalloutRaceCoveredAnnounced = false;
+          }
+
           // Suppress green at a race start — the start-light family owns the
           // "go" (issue #480). Guard on StartGo OR StartSet so a green that
           // leads StartGo by a tick (still in the red-lights phase) is also
@@ -333,6 +347,7 @@ export function diffFlags(
           if (leaderTookTheLine) {
             emit({ event: "flag.white-last-lap.raised", data: {} });
             state.whiteLastLapFired = true;
+            state.playerFinalLapStarted = true;
           } else {
             emit({ event: "flag.white.raised", data: {} });
             state.whiteRaisedAt = now;
@@ -437,6 +452,12 @@ export function diffFlags(
   // ever spoken) allows the last-lap line immediately. The raise-tick leader
   // case above already latched, so it can't double-fire here.
   if (!current.has("white")) {
+    // NOTE: `playerFinalLapStarted` deliberately does NOT re-arm here (issue
+    // #880) — a caution replacing the white mid-final-lap must not resurrect
+    // the fuel family's final-lap suppression. The sticky marker is cleared
+    // only by the per-session reset and by a GREEN rising edge (the `case
+    // "green"` above) — a green past the latched lap means the race was
+    // extended or restarted.
     state.whiteLastLapFired = false;
     state.whiteRaisedAt = 0;
   } else if (
@@ -448,6 +469,7 @@ export function diffFlags(
   ) {
     emit({ event: "flag.white-last-lap.raised", data: {} });
     state.whiteLastLapFired = true;
+    state.playerFinalLapStarted = true;
   }
 
   // Yellow cleared transition (issue #671 — validated clear). The drop edge

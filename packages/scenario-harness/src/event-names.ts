@@ -200,6 +200,12 @@ export const EVENT_TEMPLATES = [
     data: { count: 3, lapsLeft: 3.4 },
   },
   {
+    name: "fuel.lapsLeft.raceCovered",
+    description:
+      "The tank covers what's left of the race (issue #880) — fires once per stint, inside the race's last 10 laps",
+    data: {},
+  },
+  {
     name: "track.wetness.changed",
     description: "Track-wetness state stepped (irsdk_TrackWetness 1..7)",
     data: { from: 1, to: 2 },

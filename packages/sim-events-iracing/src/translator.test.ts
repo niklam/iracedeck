@@ -368,7 +368,7 @@ describe("sim-events-iracing translator", () => {
     }
 
     it("returns empty stats before initialization", () => {
-      expect(getFuelStats(5)).toEqual({ lastLap: null, avg: null, samples: 0 });
+      expect(getFuelStats(5)).toEqual({ lastLap: null, avg: null, avgLapTime: null, samples: 0 });
     });
 
     it("tracks per-lap fuel consumption through handleTick", () => {
@@ -393,7 +393,7 @@ describe("sim-events-iracing translator", () => {
 
       controller.__tick(null, false);
 
-      expect(getFuelStats(5)).toEqual({ lastLap: null, avg: null, samples: 0 });
+      expect(getFuelStats(5)).toEqual({ lastLap: null, avg: null, avgLapTime: null, samples: 0 });
     });
 
     it("preserves the stats across a replay/garage visit", () => {
@@ -463,7 +463,7 @@ describe("sim-events-iracing translator", () => {
         telemetry({ SessionNum: 1, IsOnTrack: true, Lap: 0, LapDistPct: 0.4, SessionTime: 520, FuelLevel: 55 }),
       );
 
-      expect(getFuelStats(5)).toEqual({ lastLap: null, avg: null, samples: 0 });
+      expect(getFuelStats(5)).toEqual({ lastLap: null, avg: null, avgLapTime: null, samples: 0 });
     });
   });
 
@@ -1302,6 +1302,93 @@ describe("sim-events-iracing translator", () => {
       controller.__tick(telemetry({ Lap: 6, LapDistPct: 0.55, SessionTime: 405, FuelLevel: 38 }));
       expect(handler).toHaveBeenCalledTimes(3);
       expect((handler.mock.calls[2]![0] as SimEventOf<"fuel.lapsLeft.crossed">).data.count).toBe(1);
+    });
+
+    // Timed-race coverage (issue #880) end-to-end through the REAL leader
+    // resolver: the leader comes from the canonical live order and their
+    // CarIdxLastLapTime feeds the estimate. The two cases differ ONLY in the
+    // leader's pace, so a resolver that silently fell back to the player's
+    // own average would flip one of them.
+    function runTimedRaceToSample(leaderLastLapTime: number) {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const crossed = vi.fn();
+      const covered = vi.fn();
+      bus.subscribe("fuel.lapsLeft.crossed", crossed);
+      bus.subscribe("fuel.lapsLeft.raceCovered", covered);
+      controller.__setSessionInfo({
+        SessionInfo: { Sessions: [{ SessionType: "Race" }] },
+        DriverInfo: { DriverCarIdx: 0 },
+      });
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      // Leader (carIdx 1) runs two laps ahead of the player (carIdx 0).
+      const field = (playerLap: number, playerPct: number): Partial<TelemetryData> => ({
+        CarIdxLapCompleted: [playerLap - 1, playerLap + 1],
+        CarIdxLapDistPct: [playerPct, playerPct],
+        CarIdxTrackSurface: [TrkLoc.OnTrack, TrkLoc.OnTrack],
+        CarIdxLastLapTime: [88, leaderLastLapTime],
+        CarIdxBestLapTime: [87, leaderLastLapTime],
+      });
+
+      // Two validated ~87.5 s laps through the real #465 tracker.
+      controller.__tick(telemetry({ Lap: 1, LapDistPct: 0.9, SessionTime: 0, FuelLevel: 64, ...field(1, 0.9) }));
+      controller.__tick(telemetry({ Lap: 2, LapDistPct: 0.05, SessionTime: 5, FuelLevel: 63.9, ...field(2, 0.05) }));
+      controller.__tick(telemetry({ Lap: 2, LapDistPct: 0.55, SessionTime: 45, FuelLevel: 63, ...field(2, 0.55) }));
+      controller.__tick(telemetry({ Lap: 2, LapDistPct: 0.9, SessionTime: 80, FuelLevel: 62.2, ...field(2, 0.9) }));
+      controller.__tick(telemetry({ Lap: 3, LapDistPct: 0.05, SessionTime: 90, FuelLevel: 62, ...field(3, 0.05) }));
+      controller.__tick(telemetry({ Lap: 3, LapDistPct: 0.55, SessionTime: 135, FuelLevel: 61, ...field(3, 0.55) }));
+      controller.__tick(telemetry({ Lap: 3, LapDistPct: 0.9, SessionTime: 170, FuelLevel: 60.2, ...field(3, 0.9) }));
+      controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.05, SessionTime: 180, FuelLevel: 60, ...field(4, 0.05) }));
+
+      // Mid-lap sample: ~5 s on the clock, count 2 in the tank
+      // (floor(6.9/1.95 − 0.3 − 0.45) = 2). SessionLapsRemainEx reads the
+      // timed sentinel, so only the timed estimate can suppress.
+      controller.__tick(
+        telemetry({
+          Lap: 4,
+          LapDistPct: 0.45,
+          SessionTime: 200,
+          FuelLevel: 7.0,
+          SessionTimeRemain: 6,
+          SessionLapsRemainEx: 32767,
+          ...field(4, 0.45),
+        }),
+      );
+      controller.__tick(
+        telemetry({
+          Lap: 4,
+          LapDistPct: 0.55,
+          SessionTime: 210,
+          FuelLevel: 6.9,
+          SessionTimeRemain: 5,
+          SessionLapsRemainEx: 32767,
+          ...field(4, 0.55),
+        }),
+      );
+
+      return { crossed, covered };
+    }
+
+    it("suppresses and reassures when the LEADER's pace says the clock ends the race within the tank (issue #880)", () => {
+      // Fast leader (60 s): checkered bound 5 + 2×60 = 125 s →
+      // ceil((125 − 39.4) / 87.5) = 1 lap to run; count 2 covers it with a
+      // lap in hand, so the confirmation fires.
+      const { crossed, covered } = runTimedRaceToSample(60);
+
+      expect(crossed).not.toHaveBeenCalled();
+      expect(covered).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps warning when the LEADER's slow pace stretches the timed race past the tank (issue #880)", () => {
+      // Slow leader (200 s): checkered bound 5 + 2×200 = 405 s →
+      // ceil((405 − 39.4) / 87.5) = 5 laps to run; count 2 falls short — the
+      // warning must still fire. A resolver that fell back to the player's
+      // 87.5 s average would wrongly suppress.
+      const { crossed, covered } = runTimedRaceToSample(200);
+
+      expect(crossed).toHaveBeenCalledTimes(1);
+      expect(covered).not.toHaveBeenCalled();
     });
   });
 

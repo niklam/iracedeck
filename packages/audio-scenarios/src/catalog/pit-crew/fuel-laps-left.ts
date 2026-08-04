@@ -26,7 +26,10 @@ import type { SimEventOf } from "@iracedeck/event-bus";
 import type { Scenario } from "../../dsl.js";
 import { WEIGHT } from "../../dsl.js";
 
-function fuelLapsLeftScenario(subject: string, count: number, weight: number, interrupt?: boolean): Scenario {
+/** Single source for the fuel family's shared defaults (channel, bus, weight
+ *  band handling, queueable, family, radio-framed sequence) — every fuel
+ *  scenario must construct through this so the defaults can't diverge. */
+function fuelScenario(subject: string, weight: number, when: Scenario["when"], interrupt?: boolean): Scenario {
   return {
     id: `pit-crew.fuel-laps-left-${subject}`,
     channel: AudioChannel.Voice,
@@ -37,12 +40,34 @@ function fuelLapsLeftScenario(subject: string, count: number, weight: number, in
     queueable: true,
     family: "fuel",
     sequence: ["@pit-crew.radio-open", `pool:fuel-laps-left-${subject}`, "@pit-crew.radio-close"],
-    when: {
+    when,
+  };
+}
+
+function fuelLapsLeftScenario(subject: string, count: number, weight: number, interrupt?: boolean): Scenario {
+  return fuelScenario(
+    subject,
+    weight,
+    {
       event: "fuel.lapsLeft.crossed",
       where: (e) => (e as SimEventOf<"fuel.lapsLeft.crossed">).data.count === count,
     },
-  };
+    interrupt,
+  );
 }
+
+/**
+ * Enough-fuel confirmation (issue #880) — the diff emits
+ * `fuel.lapsLeft.raceCovered` at most once per stint, once the race is
+ * inside its last 10 laps (by the binding limit) and the tank covers the
+ * remaining distance with a lap in hand — regardless of how large the
+ * surplus is. Ordinary commentary weight (good news never needs to cut
+ * anything), `queueable` for the same reason as the warnings: the diff
+ * latches on EMIT, so a dropped fire would never replay.
+ */
+const FUEL_RACE_COVERED_ALERT: Scenario = fuelScenario("race-covered", WEIGHT.NORMAL, {
+  event: "fuel.lapsLeft.raceCovered",
+});
 
 export const FUEL_LAPS_LEFT_ALERTS: readonly Scenario[] = [
   fuelLapsLeftScenario("10", 10, WEIGHT.NORMAL),
@@ -56,6 +81,7 @@ export const FUEL_LAPS_LEFT_ALERTS: readonly Scenario[] = [
   fuelLapsLeftScenario("2", 2, WEIGHT.SAFETY),
   fuelLapsLeftScenario("1", 1, WEIGHT.CRITICAL, true),
   fuelLapsLeftScenario("box", 0, WEIGHT.CRITICAL, true),
+  FUEL_RACE_COVERED_ALERT,
 ];
 
 /** Scenario ids exported for tests so a typo here surfaces as a test failure. */
@@ -64,6 +90,7 @@ export const FUEL_LAPS_LEFT_SCENARIO_IDS: readonly string[] = FUEL_LAPS_LEFT_ALE
 /** Pool names this catalog draws from — kept here so tests can register them
  *  on the scenario engine without duplicating the list. */
 export const FUEL_LAPS_LEFT_POOL_NAMES: readonly string[] = [
+  "fuel-laps-left-race-covered",
   "fuel-laps-left-10",
   "fuel-laps-left-9",
   "fuel-laps-left-8",

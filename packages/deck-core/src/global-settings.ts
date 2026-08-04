@@ -789,6 +789,14 @@ export const GlobalSettingsSchema = z
       .union([z.boolean(), z.string()])
       .transform((val) => val === true || val === "true")
       .default(true),
+    // "We have enough fuel to finish the race. No need to box for fuel." —
+    // fires once per stint in the race endgame (10 or fewer laps to go by
+    // the binding limit) when the tank covers the remaining distance with a
+    // lap in hand — even when no warning was ever close (issue #880).
+    calloutEnabledFuelLapsLeftRaceCovered: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
     /**
      * Safety margin in laps subtracted from the raw laps-of-fuel-left
      * estimate before the Race Engineer derives the spoken count (issue

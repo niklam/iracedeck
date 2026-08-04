@@ -605,14 +605,16 @@ export type FuelCalloutId =
   | "laps-left-3"
   | "laps-left-2"
   | "laps-left-1"
-  | "laps-left-box";
+  | "laps-left-box"
+  | "race-covered";
 
 /**
  * Canonical mapping from `FuelCalloutId` to its plugin-global setting key in
  * `GlobalSettingsSchema`. Plugin entry points use this to read the live
  * opt-in for each count without duplicating the key strings. Defaults are
- * NOT uniform (unlike most callout families): 5, 3, 2, 1 and Box ship ON,
- * the rest OFF — see the schema fields in deck-core.
+ * NOT uniform (unlike most callout families): 5, 3, 2, 1, Box, and the
+ * enough-fuel confirmation (`race-covered`, issue #880) ship ON; counts
+ * 10–6 and 4 ship OFF — see the schema fields in deck-core.
  */
 export const FUEL_CALLOUT_SETTING_KEYS: Record<FuelCalloutId, string> = {
   "laps-left-10": "calloutEnabledFuelLapsLeft10",
@@ -626,6 +628,7 @@ export const FUEL_CALLOUT_SETTING_KEYS: Record<FuelCalloutId, string> = {
   "laps-left-2": "calloutEnabledFuelLapsLeft2",
   "laps-left-1": "calloutEnabledFuelLapsLeft1",
   "laps-left-box": "calloutEnabledFuelLapsLeftBox",
+  "race-covered": "calloutEnabledFuelLapsLeftRaceCovered",
 };
 
 const SCENARIO_ID_TO_FUEL_ID: Record<string, FuelCalloutId> = {
@@ -640,6 +643,7 @@ const SCENARIO_ID_TO_FUEL_ID: Record<string, FuelCalloutId> = {
   "pit-crew.fuel-laps-left-2": "laps-left-2",
   "pit-crew.fuel-laps-left-1": "laps-left-1",
   "pit-crew.fuel-laps-left-box": "laps-left-box",
+  "pit-crew.fuel-laps-left-race-covered": "race-covered",
 };
 
 /** Stable id for each spotter PI opt-in (issue #651). */
@@ -1099,12 +1103,13 @@ export function registerPitCrew(
     );
   }
 
-  // Laps-of-fuel-left callouts (issue #838). Eleven per-count scenarios, one
-  // opt-in each via `SCENARIO_ID_TO_FUEL_ID` — the fuel-laps-left pools are
-  // already registered en masse above via `registerPools(engine)`;
+  // Laps-of-fuel-left callouts (issue #838). Eleven per-count scenarios plus
+  // the enough-fuel confirmation (issue #880), one opt-in each via
+  // `SCENARIO_ID_TO_FUEL_ID` — the fuel-laps-left pools are already
+  // registered en masse above via `registerPools(engine)`;
   // `FUEL_LAPS_LEFT_POOL_NAMES` exists for the catalog tests. No
-  // registration-order concern — `fuel.lapsLeft.crossed` has no other
-  // subscribers.
+  // registration-order concern — `fuel.lapsLeft.crossed` and
+  // `fuel.lapsLeft.raceCovered` have no other subscribers.
   for (const s of FUEL_LAPS_LEFT_ALERTS) {
     engine.defineScenario(
       wrapWithMaster(wrapCalloutScenario(s, SCENARIO_ID_TO_FUEL_ID, getFuelCalloutEnabled, "fuel callout", logger)),

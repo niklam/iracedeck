@@ -25,7 +25,7 @@
  *   - history is capped at FUEL_LAP_HISTORY_CAP
  *   - computeFuelStats averages over the last N VALID laps only
  */
-import { SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { Flags, SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -350,6 +350,42 @@ describe("diffFuelLaps — validity gates", () => {
     expect(t.history[0]!.isValidForCalc).toBe(false);
   });
 
+  it("flags a full-course-caution lap as invalid (issue #880 review)", () => {
+    const t = createFuelLapTracker();
+
+    // Caution pace deflates fuel burn and inflates lap time — both would
+    // skew the race-coverage estimate toward a false "enough fuel".
+    prime(t, { lap: 5, time: 100, fuel: 50 });
+    diffFuelLaps(t, tick({ Lap: 5, LapDistPct: 0.6, SessionTime: 160, FuelLevel: 49, SessionFlags: Flags.Caution }));
+    cross(t, { lap: 5, time: 280, fuel: 48.8 });
+
+    expect(t.history).toHaveLength(1);
+    expect(t.history[0]!.wasCaution).toBe(true);
+    expect(t.history[0]!.isValidForCalc).toBe(false);
+  });
+
+  it("a one-tick caution mid-lap latches for the whole lap; a caution-free lap stays valid", () => {
+    const t = createFuelLapTracker();
+
+    prime(t, { lap: 5, time: 100, fuel: 50 });
+    diffFuelLaps(
+      t,
+      tick({ Lap: 5, LapDistPct: 0.4, SessionTime: 140, FuelLevel: 49, SessionFlags: Flags.CautionWaving }),
+    );
+    diffFuelLaps(t, tick({ Lap: 5, LapDistPct: 0.7, SessionTime: 170, FuelLevel: 48.4, SessionFlags: 0 }));
+    cross(t, { lap: 5, time: 220, fuel: 48 });
+
+    // The caution-free follow-up lap records normally (missing SessionFlags
+    // must not count as caution either — don't punish missing data).
+    cross(t, { lap: 6, time: 310, fuel: 46 });
+
+    expect(t.history).toHaveLength(2);
+    expect(t.history[0]!.wasCaution).toBe(true);
+    expect(t.history[0]!.isValidForCalc).toBe(false);
+    expect(t.history[1]!.wasCaution).toBe(false);
+    expect(t.history[1]!.isValidForCalc).toBe(true);
+  });
+
   it("flags a lap with non-positive fuelUsed as invalid", () => {
     const t = createFuelLapTracker();
 
@@ -561,16 +597,22 @@ describe("computeFuelStats", () => {
       isOutLap: false,
       isInLap: false,
       wasTowed: false,
+      wasCaution: false,
       ...extra,
     };
   }
 
   it("returns empty stats for an empty history", () => {
-    expect(computeFuelStats([], 5)).toEqual({ lastLap: null, avg: null, samples: 0 });
+    expect(computeFuelStats([], 5)).toEqual({ lastLap: null, avg: null, avgLapTime: null, samples: 0 });
   });
 
   it("returns empty stats when no laps are valid", () => {
-    expect(computeFuelStats([lap(3, false), lap(2.5, false)], 5)).toEqual({ lastLap: null, avg: null, samples: 0 });
+    expect(computeFuelStats([lap(3, false), lap(2.5, false)], 5)).toEqual({
+      lastLap: null,
+      avg: null,
+      avgLapTime: null,
+      samples: 0,
+    });
   });
 
   it("averages over the last N valid laps, skipping invalid ones", () => {
@@ -626,6 +668,31 @@ describe("computeFuelStats", () => {
   it("uses a single valid lap for both lastLap and avg", () => {
     const stats = computeFuelStats([lap(2.5)], 5);
 
-    expect(stats).toEqual({ lastLap: 2.5, avg: 2.5, samples: 1 });
+    expect(stats).toEqual({ lastLap: 2.5, avg: 2.5, avgLapTime: 90, samples: 1 });
+  });
+
+  it("averages lap time over the same valid window (issue #880)", () => {
+    const history = [
+      lap(3, true, { lapTime: 100 }),
+      lap(10, false, { lapTime: 500 }),
+      lap(2, true, { lapTime: 92 }),
+      lap(4, true, { lapTime: 94 }),
+    ];
+
+    const stats = computeFuelStats(history, 3);
+
+    // Window of 3 valid laps: 100, 92, 94 — the invalid 500 s lap never contributes.
+    expect(stats.avgLapTime).toBeCloseTo((100 + 92 + 94) / 3);
+  });
+
+  it("reports avgLapTime null when no valid laps exist (issue #880)", () => {
+    expect(computeFuelStats([], 5).avgLapTime).toBeNull();
+    expect(computeFuelStats([lap(3, false)], 5).avgLapTime).toBeNull();
+  });
+
+  it("windows avgLapTime like avg (issue #880)", () => {
+    const history = [lap(2, true, { lapTime: 120 }), lap(2, true, { lapTime: 90 })];
+
+    expect(computeFuelStats(history, 1).avgLapTime).toBeCloseTo(90);
   });
 });

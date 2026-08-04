@@ -1432,4 +1432,13 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     event: "fuel.lapsLeft.crossed",
     data: { count: 0, lapsLeft: 0.4 },
   },
+  {
+    id: "fuel-race-covered",
+    category: "Fuel",
+    label: "Enough fuel to finish",
+    description:
+      "The tank covers what's left of the race (issue #880) — the one-time confirmation spoken inside the last 10 laps.",
+    event: "fuel.lapsLeft.raceCovered",
+    data: {},
+  },
 ];

@@ -103,7 +103,9 @@ export const POOL_REGISTRY: Readonly<Record<string, PoolSource>> = {
   "pit-window-closed": { group: "pit-window", base: "closed" },
 
   // Laps-of-fuel-left callout pools (issue #838): one per spoken count
-  // 10 → 1 plus the dedicated count-0 "box this lap for fuel" call.
+  // 10 → 1 plus the dedicated count-0 "box this lap for fuel" call, and the
+  // enough-fuel reassurance (issue #880).
+  "fuel-laps-left-race-covered": { group: "fuel", base: "race-covered" },
   "fuel-laps-left-10": { group: "fuel", base: "laps-left-10" },
   "fuel-laps-left-9": { group: "fuel", base: "laps-left-9" },
   "fuel-laps-left-8": { group: "fuel", base: "laps-left-8" },

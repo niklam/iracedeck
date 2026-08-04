@@ -321,11 +321,13 @@ const PIT_WINDOW_CLIP_PATHS = [
 ] as const;
 
 // Laps-of-fuel-left clips referenced from `fuel-laps-left.ts` (issue #838).
-// One clip per spoken count 10 → 1 plus the count-0 box call.
+// One clip per spoken count 10 → 1 plus the count-0 box call, and the
+// enough-fuel reassurance (issue #880).
 const FUEL_LAPS_LEFT_CLIP_PATHS = [
   ...["10", "9", "8", "7", "6", "5", "4", "3", "2", "1", "box"].map(
     (subject) => `voice/${VOICE}/fuel/laps-left-${subject}-01.mp3`,
   ),
+  `voice/${VOICE}/fuel/race-covered-01.mp3`,
 ] as const;
 
 const manifest: AudioAssetsManifest = {
@@ -1191,6 +1193,30 @@ describe("laps-of-fuel-left family registration (issue #838)", () => {
   it("is suppressed when the master gate is off", () => {
     voiceMasterEnabled = false;
     bus.publishEvent("fuel.lapsLeft.crossed", { count: 0, lapsLeft: 0.2 } as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+  });
+
+  it("fires the enough-fuel reassurance on fuel.lapsLeft.raceCovered (issue #880)", () => {
+    bus.publishEvent("fuel.lapsLeft.raceCovered", {} as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed().some((p) => p.includes("/fuel/race-covered-"))).toBe(true);
+  });
+
+  it("the reassurance is suppressed when its opt-in is off (issue #880)", () => {
+    fuelEnabled.set("race-covered", false);
+    bus.publishEvent("fuel.lapsLeft.raceCovered", {} as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+    expect(mockLogger.debug).toHaveBeenCalledWith("fuel callout suppressed: race-covered");
+  });
+
+  it("the reassurance is suppressed when the master gate is off (issue #880)", () => {
+    voiceMasterEnabled = false;
+    bus.publishEvent("fuel.lapsLeft.raceCovered", {} as never);
     flush(audio);
 
     expect(voiceClipsPlayed()).toEqual([]);

@@ -775,6 +775,52 @@ describe("diffFlags — white two-stage (issue #772)", () => {
     expect(cross.events.filter(lastLap)).toHaveLength(0);
   });
 
+  it("latches the sticky final-lap marker at the crossing and keeps it when the white drops (issue #880)", () => {
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+    diffFlags(state, liveTick(0, { LapCompleted: 10 }), T0, () => {}, RACE, !LEADER);
+    diffFlags(state, liveTick(Flags.White, { LapCompleted: 10 }), T0 + 100, () => {}, RACE, !LEADER); // heads-up
+    diffFlags(state, liveTick(Flags.White, { LapCompleted: 11 }), T0 + 30_000, () => {}, RACE, !LEADER); // last-lap
+
+    expect(state.playerFinalLapStarted).toBe(true);
+
+    // A caution replacing the white mid-final-lap re-arms the two-stage
+    // latch, but the sticky marker must survive — it is the fuel family's
+    // only final-lap guard in a timed race (issue #880 limitation 3).
+    diffFlags(state, liveTick(Flags.Caution, { LapCompleted: 11 }), T0 + 40_000, () => {}, RACE, !LEADER);
+    expect(state.whiteLastLapFired).toBe(false);
+    expect(state.playerFinalLapStarted).toBe(true);
+  });
+
+  it("latches the sticky final-lap marker on the leader-skip raise path too (issue #880)", () => {
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+    diffFlags(state, liveTick(0, { LapCompleted: 10 }), T0, () => {}, RACE, LEADER);
+    diffFlags(state, liveTick(Flags.White, { LapCompleted: 11 }), T0 + 100, () => {}, RACE, LEADER);
+
+    expect(state.playerFinalLapStarted).toBe(true);
+  });
+
+  it("a green flag re-arms the sticky final-lap marker — the race was extended or restarted (issue #880 review)", () => {
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+    diffFlags(state, liveTick(0, { LapCompleted: 10 }), T0, () => {}, RACE, !LEADER);
+    diffFlags(state, liveTick(Flags.White, { LapCompleted: 10 }), T0 + 100, () => {}, RACE, !LEADER);
+    diffFlags(state, liveTick(Flags.White, { LapCompleted: 11 }), T0 + 30_000, () => {}, RACE, !LEADER);
+    expect(state.playerFinalLapStarted).toBe(true);
+
+    // Caution replaces the white; the sticky marker holds (limitation 3)…
+    diffFlags(state, liveTick(Flags.Caution, { LapCompleted: 11 }), T0 + 40_000, () => {}, RACE, !LEADER);
+    state.fuelCalloutRaceCoveredAnnounced = true;
+
+    // …but a NEW green means more racing is coming (overtime, restart) —
+    // the fuel family must re-open, and the pre-extension "enough fuel"
+    // determination no longer holds, so its latch re-arms with it.
+    diffFlags(state, liveTick(Flags.Green, { LapCompleted: 11 }), T0 + 120_000, () => {}, RACE, !LEADER);
+    expect(state.playerFinalLapStarted).toBe(false);
+    expect(state.fuelCalloutRaceCoveredAnnounced).toBe(false);
+  });
+
   it("the latch re-arms when the white drops — a fresh episode fires both stages again", () => {
     const state = createInitialState();
     state.flagStateInitialized = true;
