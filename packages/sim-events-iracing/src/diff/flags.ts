@@ -454,8 +454,10 @@ export function diffFlags(
   if (!current.has("white")) {
     // NOTE: `playerFinalLapStarted` deliberately does NOT re-arm here (issue
     // #880) — a caution replacing the white mid-final-lap must not resurrect
-    // the fuel family's final-lap suppression. Only the per-session reset
-    // clears the sticky marker.
+    // the fuel family's final-lap suppression. The sticky marker is cleared
+    // only by the per-session reset and by a GREEN rising edge (the `case
+    // "green"` above) — a green past the latched lap means the race was
+    // extended or restarted.
     state.whiteLastLapFired = false;
     state.whiteRaisedAt = 0;
   } else if (

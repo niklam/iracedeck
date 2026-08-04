@@ -26,7 +26,10 @@ import type { SimEventOf } from "@iracedeck/event-bus";
 import type { Scenario } from "../../dsl.js";
 import { WEIGHT } from "../../dsl.js";
 
-function fuelLapsLeftScenario(subject: string, count: number, weight: number, interrupt?: boolean): Scenario {
+/** Single source for the fuel family's shared defaults (channel, bus, weight
+ *  band handling, queueable, family, radio-framed sequence) — every fuel
+ *  scenario must construct through this so the defaults can't diverge. */
+function fuelScenario(subject: string, weight: number, when: Scenario["when"], interrupt?: boolean): Scenario {
   return {
     id: `pit-crew.fuel-laps-left-${subject}`,
     channel: AudioChannel.Voice,
@@ -37,11 +40,20 @@ function fuelLapsLeftScenario(subject: string, count: number, weight: number, in
     queueable: true,
     family: "fuel",
     sequence: ["@pit-crew.radio-open", `pool:fuel-laps-left-${subject}`, "@pit-crew.radio-close"],
-    when: {
+    when,
+  };
+}
+
+function fuelLapsLeftScenario(subject: string, count: number, weight: number, interrupt?: boolean): Scenario {
+  return fuelScenario(
+    subject,
+    weight,
+    {
       event: "fuel.lapsLeft.crossed",
       where: (e) => (e as SimEventOf<"fuel.lapsLeft.crossed">).data.count === count,
     },
-  };
+    interrupt,
+  );
 }
 
 /**
@@ -53,17 +65,9 @@ function fuelLapsLeftScenario(subject: string, count: number, weight: number, in
  * anything), `queueable` for the same reason as the warnings: the diff
  * latches on EMIT, so a dropped fire would never replay.
  */
-const FUEL_RACE_COVERED_ALERT: Scenario = {
-  id: "pit-crew.fuel-laps-left-race-covered",
-  channel: AudioChannel.Voice,
-  bus: AudioBus.Voice,
-  base: "voice/{voice}",
-  weight: WEIGHT.NORMAL,
-  queueable: true,
-  family: "fuel",
-  sequence: ["@pit-crew.radio-open", "pool:fuel-laps-left-race-covered", "@pit-crew.radio-close"],
-  when: { event: "fuel.lapsLeft.raceCovered" },
-};
+const FUEL_RACE_COVERED_ALERT: Scenario = fuelScenario("race-covered", WEIGHT.NORMAL, {
+  event: "fuel.lapsLeft.raceCovered",
+});
 
 export const FUEL_LAPS_LEFT_ALERTS: readonly Scenario[] = [
   fuelLapsLeftScenario("10", 10, WEIGHT.NORMAL),
