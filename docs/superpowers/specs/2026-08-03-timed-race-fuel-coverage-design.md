@@ -1,6 +1,6 @@
 # Timed-race fuel-coverage suppression + "enough fuel" reassurance — design (issue #880)
 
-Approved 2026-08-03. Follow-up to #866 (which followed #838). Adds a timed-race remaining-laps estimate to the laps-of-fuel-left race-coverage suppression, resolves the three limitations deferred from the #866 review, and adds a positive "We have enough fuel to finish the race!" callout.
+Approved 2026-08-03. Follow-up to #866 (which followed #838). Adds a timed-race remaining-laps estimate to the laps-of-fuel-left race-coverage suppression, resolves the three limitations deferred from the #866 review, and adds a positive "We have enough fuel to finish the race. No need to box for fuel." callout.
 
 ## Problem
 
@@ -28,7 +28,7 @@ All gating stays **diff-side** (`packages/sim-events-iracing/src/diff/fuel-laps-
 - New diff input: `getLeaderLapTimeS: () => number | null` closure from the translator.
 - Emission restructure: post-race / sticky-final-lap gates stay first and unconditional (no warning AND no reassurance there). Then `wouldWarn = count ≤ 10 && below floor`; if covered → maybe emit `fuel.lapsLeft.raceCovered` (latched via `fuelCalloutRaceCoveredAnnounced`), never advancing the warning floor (coverage re-evaluated every lap — a burn-rate spike still announces).
 - New bus event `fuel.lapsLeft.raceCovered` (EmptySimEventPayload); scenario `pit-crew.fuel-laps-left-race-covered` (`family: "fuel"`, `WEIGHT.NORMAL`, `queueable: true`, radio-framed); pool `fuel-laps-left-race-covered` → `fuel/race-covered`; opt-in `calloutEnabledFuelLapsLeftRaceCovered` (default ON) riding the existing fuel-family closure — no `registerPitCrew` signature change.
-- Clip: `fuel/race-covered-01.mp3` — "We have enough fuel to finish the race!"
+- Clip: `fuel/race-covered-01.mp3` — "We have enough fuel to finish the race. No need to box for fuel."
 
 ## Out of scope
 

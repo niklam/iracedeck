@@ -729,7 +729,7 @@ export type SimEventMap = {
    * so a surplus race still gets its confirmation at 10-to-go. Re-armed by
    * a refuel and by any later real warning, so a burn-rate spike arc speaks
    * warning → reassurance again. Consumed by the "We have enough fuel to
-   * finish the race!" Race Engineer callout.
+   * finish the race. No need to box for fuel." Race Engineer callout.
    */
   "fuel.lapsLeft.raceCovered": SimEvent<"fuel.lapsLeft.raceCovered", EmptySimEventPayload>;
   /**

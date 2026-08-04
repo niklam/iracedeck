@@ -1002,8 +1002,8 @@
       },
       {
         "name": "race-covered-01",
-        "text": "We have enough fuel to finish the race!",
-        "seed": 1
+        "text": "We have enough fuel to finish the race. <break time=\"0.3s\" /> No need to box for fuel.",
+        "seed": 9
       }
     ],
     "incidents": [
