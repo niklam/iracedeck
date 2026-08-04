@@ -1,6 +1,6 @@
 {
   "name": "@iracedeck/scenario-harness",
-  "version": "2.3.0",
+  "version": "2.4.0-dev.0",
   "description": "Local development tool for playing Race Engineer / Pit Crew audio scenarios without launching iRacing. Boots the real event-bus / audio-service / audio-scenarios / sim-events-iracing translator with a mock SDK controller and serves a web UI for live state mutation, ad-hoc event injection, and audio activity monitoring.",
   "type": "module",
   "private": true,
