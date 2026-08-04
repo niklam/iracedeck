@@ -810,16 +810,17 @@ function resolvePlayerIsLeader(self: TranslatorInstance, telemetry: TelemetryDat
 /**
  * The race leader's recent lap time (s) for the timed-race fuel-coverage
  * estimate (issue #880), or `null` when unknown. The leader comes from the
- * canonical live order (`calculateFrozenRacePositions`, per
- * `.claude/rules/race-positions.md`) — the OVERALL leader deliberately, since
- * their clock expiry plus final crossing is what ends a timed race for every
- * class. Pace preference: `CarIdxLastLapTime` (tracks a slowing leader —
- * e.g. under caution — better than the session best) falling back to
- * `CarIdxBestLapTime`; a `null` return lets the fuel diff fall back to the
- * player's own validated average.
+ * canonical live order (per `.claude/rules/race-positions.md`) — `positions`
+ * is the tick's already-computed `calculateFrozenRacePositions` result
+ * (threaded from `handleTick` like `diffOvertakes`', so a second call site
+ * can't diverge from the canonical per-tick order) — and the OVERALL leader
+ * deliberately, since their clock expiry plus final crossing is what ends a
+ * timed race for every class. Pace preference: `CarIdxLastLapTime` (tracks a
+ * slowing leader — e.g. under caution — better than the session best)
+ * falling back to `CarIdxBestLapTime`; a `null` return lets the fuel diff
+ * fall back to the player's own validated average.
  */
-function resolveLeaderLapTimeS(self: TranslatorInstance, telemetry: TelemetryData): number | null {
-  const positions = calculateFrozenRacePositions(self.state, telemetry);
+function resolveLeaderLapTimeS(telemetry: TelemetryData, positions: number[]): number | null {
   const leaderIdx = positions.findIndex((position) => position === 1);
 
   if (leaderIdx < 0) return null;
@@ -1498,7 +1499,7 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     isRaceSession,
     () => computeFuelStats(self.fuelLaps.history, FUEL_LAPS_LEFT_WINDOW_LAPS),
     self.getFuelLapsLeftMarginLaps,
-    () => resolveLeaderLapTimeS(self, telemetry),
+    () => resolveLeaderLapTimeS(telemetry, frozenPositions),
     emit,
   );
 

@@ -156,14 +156,17 @@ export type TranslatorState = {
    */
   whiteLastLapFired: boolean;
   /**
-   * STICKY per-session "the player started their final lap" latch (issue
-   * #880). Set alongside {@link whiteLastLapFired} but — unlike it — NEVER
-   * re-armed when the White bit drops: a caution replacing the white
-   * mid-final-lap re-arms the two-stage callout latch, and this marker is
-   * what keeps the fuel-callout family's final-lap suppression engaged
-   * through that flag change (the only reliable final-lap signal in a timed
-   * race). Preserved across `wipeStateForReplay`; cleared only by the
-   * per-session reset.
+   * STICKY "the player started their final lap" latch (issue #880). Set
+   * alongside {@link whiteLastLapFired} but — unlike it — NEVER re-armed
+   * when the White bit drops: a caution replacing the white mid-final-lap
+   * re-arms the two-stage callout latch, and this marker is what keeps the
+   * fuel-callout family's final-lap suppression engaged through that flag
+   * change (the only reliable final-lap signal in a timed race). Preserved
+   * across `wipeStateForReplay`; cleared by the per-session reset and by a
+   * GREEN rising edge (`diffFlags`) — a green past the latched lap means
+   * the race was extended (oval overtime) or restarted same-session (admin
+   * !restart never changes SessionNum), and the fuel family must re-open
+   * (#880 review).
    */
   playerFinalLapStarted: boolean;
   /**

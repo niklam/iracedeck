@@ -292,6 +292,20 @@ export function diffFlags(
           emit({ event: "flag.yellow.raised", data: { scope: yellowScope ?? "local" } });
           break;
         case "green":
+          // A green rising edge while the sticky final-lap marker is set
+          // means the race was EXTENDED or RESTARTED past the lap that
+          // latched it (oval overtime, a caution-interrupted final lap that
+          // resumes, an admin !restart with the same SessionNum — which the
+          // per-session reset never sees). Re-open the fuel family, and
+          // re-arm the enough-fuel confirmation with it: the pre-extension
+          // coverage determination no longer holds (issue #880 review).
+          // Deliberately BEFORE the start-suppression guard below — a full
+          // restart's green arrives with the start bits set.
+          if (state.playerFinalLapStarted) {
+            state.playerFinalLapStarted = false;
+            state.fuelCalloutRaceCoveredAnnounced = false;
+          }
+
           // Suppress green at a race start — the start-light family owns the
           // "go" (issue #480). Guard on StartGo OR StartSet so a green that
           // leads StartGo by a tick (still in the red-lights phase) is also

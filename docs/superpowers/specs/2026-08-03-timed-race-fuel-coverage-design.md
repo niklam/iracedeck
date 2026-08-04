@@ -30,6 +30,17 @@ All gating stays **diff-side** (`packages/sim-events-iracing/src/diff/fuel-laps-
 - New bus event `fuel.lapsLeft.raceCovered` (EmptySimEventPayload); scenario `pit-crew.fuel-laps-left-race-covered` (`family: "fuel"`, `WEIGHT.NORMAL`, `queueable: true`, radio-framed); pool `fuel-laps-left-race-covered` → `fuel/race-covered`; opt-in `calloutEnabledFuelLapsLeftRaceCovered` (default ON) riding the existing fuel-family closure — no `registerPitCrew` signature change.
 - Clip: `fuel/race-covered-01.mp3` — "We have enough fuel to finish the race. No need to box for fuel."
 
+## Review hardening (2026-08-04, xhigh code review)
+
+The review confirmed six correctness hazards in the first implementation; all are fixed:
+
+1. **Sticky-latch re-arm** — a GREEN rising edge clears `playerFinalLapStarted` (and the confirmation latch with it): a green past the latched lap means overtime or a same-SessionNum admin restart, which the per-session reset never sees.
+2. **Timed bound corrected** — the clock expiring does not end the race; the leader's checkered lands at most `SessionTimeRemain + 2 × leaderLap` away (white at their first crossing after expiry plus the white lap), or within one leader lap once the white is up.
+3. **Caution laps excluded from the averages** — `FuelLap.wasCaution` (full-course `Caution`/`CautionWaving` latched per segment) invalidates the lap, so pace-car laps can't deflate burn or inflate lap time into a false all-clear. Also keeps Session Info's Laps to Empty on green pace.
+4. **Confirmation clears the warning floor** — the all-clear retracts spoken warnings; a later coverage flip re-warns at any count (a kept floor made the count-0 box call unreachable after a box → reassure arc).
+5. **White-lap clamp** — while the white flies before the player's own crossing, the leader-relative counter reads 0 needed but the player still runs their own white lap; clamp to ≥ 1.
+6. **Lap-in-hand hysteresis** — the confirmation requires the unclamped count to cover the remaining distance + 1 (truth guard and anti-alternation in one); exact coverage suppresses silently.
+
 ## Out of scope
 
 - Other voices (only `default` exists).

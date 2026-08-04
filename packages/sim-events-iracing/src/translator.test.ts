@@ -1341,16 +1341,16 @@ describe("sim-events-iracing translator", () => {
       controller.__tick(telemetry({ Lap: 3, LapDistPct: 0.9, SessionTime: 170, FuelLevel: 60.2, ...field(3, 0.9) }));
       controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.05, SessionTime: 180, FuelLevel: 60, ...field(4, 0.05) }));
 
-      // Mid-lap sample: ~30 s on the clock, count 1 in the tank
-      // (floor(4.9/1.95 − 0.3 − 0.45) = 1). SessionLapsRemainEx reads the
+      // Mid-lap sample: ~5 s on the clock, count 2 in the tank
+      // (floor(6.9/1.95 − 0.3 − 0.45) = 2). SessionLapsRemainEx reads the
       // timed sentinel, so only the timed estimate can suppress.
       controller.__tick(
         telemetry({
           Lap: 4,
           LapDistPct: 0.45,
           SessionTime: 200,
-          FuelLevel: 5.0,
-          SessionTimeRemain: 32,
+          FuelLevel: 7.0,
+          SessionTimeRemain: 6,
           SessionLapsRemainEx: 32767,
           ...field(4, 0.45),
         }),
@@ -1360,8 +1360,8 @@ describe("sim-events-iracing translator", () => {
           Lap: 4,
           LapDistPct: 0.55,
           SessionTime: 210,
-          FuelLevel: 4.9,
-          SessionTimeRemain: 30,
+          FuelLevel: 6.9,
+          SessionTimeRemain: 5,
           SessionLapsRemainEx: 32767,
           ...field(4, 0.55),
         }),
@@ -1371,8 +1371,9 @@ describe("sim-events-iracing translator", () => {
     }
 
     it("suppresses and reassures when the LEADER's pace says the clock ends the race within the tank (issue #880)", () => {
-      // Fast leader (60 s): ceil((30 + 60 − 0.45×87.5) / 87.5) = 1 lap to
-      // run; count 1 covers it.
+      // Fast leader (60 s): checkered bound 5 + 2×60 = 125 s →
+      // ceil((125 − 39.4) / 87.5) = 1 lap to run; count 2 covers it with a
+      // lap in hand, so the confirmation fires.
       const { crossed, covered } = runTimedRaceToSample(60);
 
       expect(crossed).not.toHaveBeenCalled();
@@ -1380,9 +1381,10 @@ describe("sim-events-iracing translator", () => {
     });
 
     it("keeps warning when the LEADER's slow pace stretches the timed race past the tank (issue #880)", () => {
-      // Slow leader (200 s): ceil((30 + 200 − 39.4) / 87.5) = 3 laps to run;
-      // count 1 falls short — the warning must still fire. A resolver that
-      // fell back to the player's 87.5 s average would wrongly suppress.
+      // Slow leader (200 s): checkered bound 5 + 2×200 = 405 s →
+      // ceil((405 − 39.4) / 87.5) = 5 laps to run; count 2 falls short — the
+      // warning must still fire. A resolver that fell back to the player's
+      // 87.5 s average would wrongly suppress.
       const { crossed, covered } = runTimedRaceToSample(200);
 
       expect(crossed).toHaveBeenCalledTimes(1);

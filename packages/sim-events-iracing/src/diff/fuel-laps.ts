@@ -25,7 +25,7 @@
  *     increases so `fuelUsed = lapStartFuel + accumulatedRefuel − fuelLevel`
  *     stays correct (and non-negative) across a pit stop.
  *   - **Validity** — `fuelUsed > 0 && lapTime ≥ floor && !outLap && !inLap
- *     && !towed`. Invalid laps stay in the history (they carry the lap
+ *     && !towed && !caution`. Invalid laps stay in the history (they carry the lap
  *     number sequence) but never contribute to stats.
  *   - **Reset fencing** — a session restart (the `Lap` counter AND the
  *     session clock both rewinding) clears the history immediately; a lone
@@ -46,7 +46,7 @@
  * open in `computeFuelStats` — the gates above remove systematic error, so
  * IQR is out of scope here (issue #465).
  */
-import { isLiveOnTrack, isPreGreen, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { Flags, isLiveOnTrack, isPreGreen, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 /** Rolling history cap (laps). Also bounds the Session Info `fuelLapWindow` setting. */
 export const FUEL_LAP_HISTORY_CAP = 20;
@@ -113,6 +113,15 @@ export type FuelLap = {
   isInLap: boolean;
   /** Car was towed at some point during the lap (`PlayerCarTowTime > 0`). */
   wasTowed: boolean;
+  /**
+   * A full-course caution (`Flags.Caution` / `Flags.CautionWaving`) was up at
+   * some point during the lap (issue #880 review). Caution pace deflates
+   * fuel burn and inflates lap time, so such laps are excluded from the
+   * averages — both the displayed Laps to Empty and the race-coverage
+   * estimate want green-pace numbers. Local yellows don't count: the car is
+   * still broadly at racing speed.
+   */
+  wasCaution: boolean;
 };
 
 /**
@@ -150,6 +159,8 @@ export type FuelLapTracker = {
   enteredPits: boolean;
   /** Car was towed during the current segment. */
   wasTowed: boolean;
+  /** A full-course caution was up at some point during the current segment. */
+  wasCaution: boolean;
   /**
    * `SessionTime` of an observed `LapDistPct` wrap awaiting its `Lap` counter
    * increment; expires after `FUEL_LAP_CROSSING_WINDOW_S`. `null` = none pending.
@@ -203,6 +214,7 @@ export function createFuelLapTracker(): FuelLapTracker {
     leftPitRoad: true,
     enteredPits: false,
     wasTowed: false,
+    wasCaution: false,
     pendingWrapAt: null,
     pendingCounterAt: null,
     partial: true,
@@ -217,6 +229,7 @@ type SegmentAnchor = {
   fuelLevel: number;
   onPitRoad: boolean;
   towed: boolean;
+  caution: boolean;
   partial: boolean;
 };
 
@@ -229,6 +242,7 @@ function resetSegment(t: FuelLapTracker, anchor: SegmentAnchor): void {
   t.leftPitRoad = !anchor.onPitRoad;
   t.enteredPits = false;
   t.wasTowed = anchor.towed;
+  t.wasCaution = anchor.caution;
   t.pendingWrapAt = null;
   t.pendingCounterAt = null;
   t.partial = anchor.partial;
@@ -253,10 +267,11 @@ function finalizeCrossing(t: FuelLapTracker, anchor: Omit<SegmentAnchor, "partia
       lapNumber: t.lapStartLap,
       fuelUsed,
       lapTime,
-      isValidForCalc: fuelUsed > 0 && !t.isOutLap && !t.enteredPits && !t.wasTowed,
+      isValidForCalc: fuelUsed > 0 && !t.isOutLap && !t.enteredPits && !t.wasTowed && !t.wasCaution,
       isOutLap: t.isOutLap,
       isInLap: t.enteredPits,
       wasTowed: t.wasTowed,
+      wasCaution: t.wasCaution,
     };
 
     t.history.push(record);
@@ -301,7 +316,11 @@ export function diffFuelLaps(t: FuelLapTracker, telemetry: TelemetryData): void 
 
   const onPitRoad = telemetry.OnPitRoad === true;
   const towed = typeof telemetry.PlayerCarTowTime === "number" && telemetry.PlayerCarTowTime > 0;
-  const anchor = { lap, sessionTime, fuelLevel, onPitRoad, towed };
+  // Missing SessionFlags must not count as caution — don't punish missing data.
+  const caution =
+    typeof telemetry.SessionFlags === "number" &&
+    (telemetry.SessionFlags & (Flags.Caution | Flags.CautionWaving)) !== 0;
+  const anchor = { lap, sessionTime, fuelLevel, onPitRoad, towed, caution };
 
   if (!t.initialized) {
     t.initialized = true;
@@ -374,6 +393,8 @@ export function diffFuelLaps(t: FuelLapTracker, telemetry: TelemetryData): void 
   }
 
   if (towed) t.wasTowed = true;
+
+  if (caution) t.wasCaution = true;
 
   // Refuel-aware accounting: accumulate debounced mid-lap fuel increases.
   const fuelDelta = fuelLevel - t.lastFuelLevel;

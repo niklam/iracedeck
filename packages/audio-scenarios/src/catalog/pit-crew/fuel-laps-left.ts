@@ -45,10 +45,11 @@ function fuelLapsLeftScenario(subject: string, count: number, weight: number, in
 }
 
 /**
- * Enough-fuel reassurance (issue #880) — the diff emits
- * `fuel.lapsLeft.raceCovered` at most once per stint, exactly when a warning
- * in the spoken band was suppressed by a positive race-coverage
- * determination. Ordinary commentary weight (good news never needs to cut
+ * Enough-fuel confirmation (issue #880) — the diff emits
+ * `fuel.lapsLeft.raceCovered` at most once per stint, once the race is
+ * inside its last 10 laps (by the binding limit) and the tank covers the
+ * remaining distance with a lap in hand — regardless of how large the
+ * surplus is. Ordinary commentary weight (good news never needs to cut
  * anything), `queueable` for the same reason as the warnings: the diff
  * latches on EMIT, so a dropped fire would never replay.
  */

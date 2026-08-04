@@ -12,13 +12,15 @@
  *   - race-coverage suppression (issue #866): the lap-limited remaining-laps
  *     comparison, the sticky final-lap latch, and the post-race gate
  *   - timed-race coverage (issue #880): the leader-aware remaining-laps
- *     estimate from `SessionTimeRemain`, its fallbacks, and dual time+lap
- *     limits
- *   - the enough-fuel reassurance (issue #880): fires once in place of the
- *     first suppressed warning, re-arms on refuel and after a real warning
+ *     estimate from `SessionTimeRemain` (checkered bound: expiry + up to two
+ *     leader laps, or one once the white is up), its fallbacks, and dual
+ *     time+lap limits
+ *   - the enough-fuel confirmation (issue #880): fires once in the race
+ *     endgame (≤ 10 laps to go, covered with a lap in hand), clears the
+ *     warning floor, re-arms on refuel and after a real warning
  *   - margin sanitization (`sanitizeFuelCalloutMarginLaps`)
  */
-import { SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { Flags, SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { describe, expect, it } from "vitest";
 
 import { createInitialState, type TranslatorState } from "../state.js";
@@ -290,13 +292,26 @@ describe("diffFuelLapsLeft — race-coverage suppression (issue #866)", () => {
     expect(events).toEqual([]);
   });
 
-  it("suppresses a count that covers the remaining race laps and speaks the reassurance instead", () => {
+  it("suppresses silently at exact coverage — the reassurance needs a lap in hand", () => {
     const events: PendingEvent[] = [];
     const { run } = makeRunner(events);
 
     // 3 laps remain including the current one → 2 full laps needed after it;
-    // count 2 covers exactly → no warning, one enough-fuel reassurance.
+    // count 2 covers exactly → no warning, but at the estimator's precision
+    // an exact-coverage "enough fuel" promise is a coin flip, so the
+    // confirmation stays quiet too (hysteresis, #880 review).
     lapSample(run, 5, 6.1, {}, { SessionLapsRemainEx: 3 });
+
+    expect(events).toEqual([]);
+  });
+
+  it("speaks the reassurance when the tank covers the race with a lap to spare", () => {
+    const events: PendingEvent[] = [];
+    const { run } = makeRunner(events);
+
+    // 2 needed after the current lap; count 3 (unclamped 3 ≥ 2 + 1) → one
+    // enough-fuel confirmation, no warning.
+    lapSample(run, 5, 8.1, {}, { SessionLapsRemainEx: 3 });
 
     expect(counts(events)).toEqual([]);
     expect(reassured(events)).toBe(1);
@@ -375,44 +390,83 @@ describe("diffFuelLapsLeft — race-coverage suppression (issue #866)", () => {
     const events: PendingEvent[] = [];
     const { run } = makeRunner(events);
 
-    // Count 2 covers the 2 laps needed → suppressed (the reassurance speaks
-    // instead), floor NOT advanced.
+    // Count 2 covers the 2 laps needed exactly → suppressed silently, floor
+    // NOT advanced.
     lapSample(run, 5, 6.1, {}, { SessionLapsRemainEx: 3 });
-    expect(counts(events)).toEqual([]);
-    expect(reassured(events)).toBe(1);
+    expect(events).toEqual([]);
 
     // Next lap the counter reading is unavailable — coverage is unknown, so
     // the same count 2 must still announce (an advanced floor would eat it).
     lapSample(run, 6, 5.9);
     expect(counts(events)).toEqual([2]);
   });
+
+  it("clamps the lap counter to at least 1 needed while the white flag flies before the player's own crossing", () => {
+    const events: PendingEvent[] = [];
+    const { run } = makeRunner(events);
+
+    // The leader is on THEIR final lap (raw 1 → 0 needed), but a player who
+    // has not yet crossed under the white still runs current lap + their own
+    // full white lap. The clamp keeps a current-lap-only tank from drawing
+    // an "enough fuel" promise…
+    lapSample(run, 5, 4.1, {}, { SessionLapsRemainEx: 1, SessionFlags: Flags.White });
+    expect(events).toEqual([]); // count 1 covers the clamped 1 — silent, no reassurance without a lap in hand
+
+    // …while a genuinely short tank (count 0 < 1 needed) still warns: the
+    // box call before the final lap starts is actionable.
+    const short: PendingEvent[] = [];
+    const shortRunner = makeRunner(short);
+    lapSample(shortRunner.run, 5, 0.6, {}, { SessionLapsRemainEx: 1, SessionFlags: Flags.White });
+    expect(counts(short)).toEqual([0]);
+  });
 });
 
 describe("diffFuelLapsLeft — timed-race coverage (issue #880)", () => {
   // The worked numbers: player avg lap 100 s, sample lands at LapDistPct 0.55
-  // → 45 s left in the current lap. timedRemaining =
-  // ceil((SessionTimeRemain + leaderLap − 45) / 100), full laps after the
-  // current one.
+  // → 45 s left in the current lap. The leader's checkered upper bound is
+  // SessionTimeRemain + 2 × leaderLap (white at their first crossing AFTER
+  // expiry — up to one lap away — plus the white lap itself), or one leader
+  // lap once the White flag is already up. timedRemaining =
+  // ceil((bound − 45) / 100), full laps after the current one.
   const TIMED = { SessionLapsRemainEx: 32767 };
 
-  it("suppresses and reassures when the estimate covers a timed race (the white-flag repro)", () => {
+  it("suppresses the warning when the white flag is up and the tank covers the final lap (the field repro)", () => {
     const events: PendingEvent[] = [];
     const { run } = makeRunner(events);
 
-    // 30 s on the clock: the leader takes the white within this lap. count 1
-    // (fuel 4.1 / avg 2 → raw 2.05 → floor(2.05 − 0.75) = 1) covers the
-    // ceil((30 + 100 − 45) / 100) = 1 lap still to run → silent + reassured.
-    lapSample(run, 5, 4.1, { avgLapTime: 100, leaderLap: 100 }, { SessionTimeRemain: 30, ...TIMED });
+    // White up: the leader's checkered is at most one leader lap away →
+    // ceil((100 − 45) / 100) = 1 lap still to run. count 1 (fuel 4.1 / avg 2
+    // → floor(2.05 − 0.75) = 1) covers it exactly → silent (no "plan to
+    // box", and no reassurance either without a lap in hand).
+    lapSample(
+      run,
+      5,
+      4.1,
+      { avgLapTime: 100, leaderLap: 100 },
+      { SessionTimeRemain: 0, SessionFlags: Flags.White, ...TIMED },
+    );
 
-    expect(counts(events)).toEqual([]);
-    expect(reassured(events)).toBe(1);
+    expect(events).toEqual([]);
+  });
+
+  it("does NOT trust the pre-white clock alone: the leader may cross up to a full lap after expiry", () => {
+    const events: PendingEvent[] = [];
+    const { run } = makeRunner(events);
+
+    // 10 s on the clock but no white yet — the leader might have just missed
+    // the line, making the checkered land at ~10 + 2 × 100 s. That is
+    // ceil((210 − 45) / 100) = 2 laps still to run; count 1 falls short and
+    // the warning must fire (a tighter bound would falsely reassure here).
+    lapSample(run, 5, 4.1, { avgLapTime: 100, leaderLap: 100 }, { SessionTimeRemain: 10, ...TIMED });
+
+    expect(counts(events)).toEqual([1]);
   });
 
   it("still announces when the timed estimate says more laps remain than the tank covers", () => {
     const events: PendingEvent[] = [];
     const { run } = makeRunner(events);
 
-    // ceil((400 + 100 − 45) / 100) = 5 laps to run; count 1 falls short.
+    // ceil((400 + 200 − 45) / 100) = 6 laps to run; count 1 falls short.
     lapSample(run, 5, 4.1, { avgLapTime: 100, leaderLap: 100 }, { SessionTimeRemain: 400, ...TIMED });
 
     expect(counts(events)).toEqual([1]);
@@ -422,25 +476,31 @@ describe("diffFuelLapsLeft — timed-race coverage (issue #880)", () => {
     const events: PendingEvent[] = [];
     const { run } = makeRunner(events);
 
-    lapSample(run, 5, 4.1, { avgLapTime: 100, leaderLap: null }, { SessionTimeRemain: 30, ...TIMED });
+    // White up, leader pace unknown → bound = one PLAYER lap; count 1
+    // covers the 1 lap to run → silent.
+    lapSample(
+      run,
+      5,
+      4.1,
+      { avgLapTime: 100, leaderLap: null },
+      { SessionTimeRemain: 0, SessionFlags: Flags.White, ...TIMED },
+    );
 
-    expect(counts(events)).toEqual([]);
-    expect(reassured(events)).toBe(1);
+    expect(events).toEqual([]);
   });
 
   it("a faster overall leader (multiclass) shortens the estimate", () => {
     // Same clock, same player pace — only the leader lap time differs.
-    // leaderLap 60: ceil((150 + 60 − 45) / 100) = 2 → count 2 covers.
+    // leaderLap 60: ceil((100 + 120 − 45) / 100) = 2 → count 2 covers.
     const fast: PendingEvent[] = [];
     const fastRunner = makeRunner(fast);
-    lapSample(fastRunner.run, 5, 6.1, { avgLapTime: 100, leaderLap: 60 }, { SessionTimeRemain: 150, ...TIMED });
+    lapSample(fastRunner.run, 5, 6.1, { avgLapTime: 100, leaderLap: 60 }, { SessionTimeRemain: 100, ...TIMED });
     expect(counts(fast)).toEqual([]);
-    expect(reassured(fast)).toBe(1);
 
-    // leaderLap 100: ceil((150 + 100 − 45) / 100) = 3 → count 2 falls short.
+    // leaderLap 100: ceil((100 + 200 − 45) / 100) = 3 → count 2 falls short.
     const slow: PendingEvent[] = [];
     const slowRunner = makeRunner(slow);
-    lapSample(slowRunner.run, 5, 6.1, { avgLapTime: 100, leaderLap: 100 }, { SessionTimeRemain: 150, ...TIMED });
+    lapSample(slowRunner.run, 5, 6.1, { avgLapTime: 100, leaderLap: 100 }, { SessionTimeRemain: 100, ...TIMED });
     expect(counts(slow)).toEqual([2]);
   });
 
@@ -460,7 +520,8 @@ describe("diffFuelLapsLeft — timed-race coverage (issue #880)", () => {
 
   it("dual time+lap limits: whichever limit ends the race sooner binds (issue #866 limitation 1)", () => {
     // Lap counter says 10 laps remain (count 2 falls far short), but the
-    // clock ends the race within ~1 lap → covered by time → suppressed.
+    // clock ends the race within ceil((30 + 200 − 45) / 100) = 2 laps →
+    // covered by time → suppressed.
     const timeBinds: PendingEvent[] = [];
     const timeRunner = makeRunner(timeBinds);
     lapSample(
@@ -471,9 +532,8 @@ describe("diffFuelLapsLeft — timed-race coverage (issue #880)", () => {
       { SessionTimeRemain: 30, SessionLapsRemainEx: 10 },
     );
     expect(counts(timeBinds)).toEqual([]);
-    expect(reassured(timeBinds)).toBe(1);
 
-    // Clock says ~21 laps, but only 3 counted laps remain → covered by laps.
+    // Clock says ~22 laps, but only 3 counted laps remain → covered by laps.
     const lapsBind: PendingEvent[] = [];
     const lapsRunner = makeRunner(lapsBind);
     lapSample(
@@ -484,7 +544,6 @@ describe("diffFuelLapsLeft — timed-race coverage (issue #880)", () => {
       { SessionTimeRemain: 2000, SessionLapsRemainEx: 3 },
     );
     expect(counts(lapsBind)).toEqual([]);
-    expect(reassured(lapsBind)).toBe(1);
   });
 });
 
@@ -493,8 +552,8 @@ describe("diffFuelLapsLeft — enough-fuel reassurance (issue #880)", () => {
     const events: PendingEvent[] = [];
     const { run } = makeRunner(events);
 
-    lapSample(run, 5, 6.1, {}, { SessionLapsRemainEx: 3 });
-    lapSample(run, 6, 4.1, {}, { SessionLapsRemainEx: 2 });
+    lapSample(run, 5, 8.1, {}, { SessionLapsRemainEx: 3 }); // count 3 covers 2 with a lap in hand
+    lapSample(run, 6, 6.02, {}, { SessionLapsRemainEx: 2 }); // count 2 covers 1 with a lap in hand — latched
 
     expect(counts(events)).toEqual([]);
     expect(reassured(events)).toBe(1);
@@ -516,8 +575,8 @@ describe("diffFuelLapsLeft — enough-fuel reassurance (issue #880)", () => {
     const events: PendingEvent[] = [];
     const { run } = makeRunner(events);
 
-    // ceil((900 + 100 − 45) / 100) = 10 laps to run — the endgame edge.
-    lapSample(run, 5, 40, { avgLapTime: 100, leaderLap: 100 }, { SessionTimeRemain: 900, SessionLapsRemainEx: 32767 });
+    // ceil((800 + 200 − 45) / 100) = 10 laps to run — the endgame edge.
+    lapSample(run, 5, 40, { avgLapTime: 100, leaderLap: 100 }, { SessionTimeRemain: 800, SessionLapsRemainEx: 32767 });
 
     expect(counts(events)).toEqual([]);
     expect(reassured(events)).toBe(1);
@@ -534,7 +593,7 @@ describe("diffFuelLapsLeft — enough-fuel reassurance (issue #880)", () => {
     expect(events).toEqual([]);
   });
 
-  it("retracts a spoken warning once coverage turns positive, even at the same count", () => {
+  it("retracts a spoken warning once coverage turns positive with a lap in hand, even at the same count", () => {
     const events: PendingEvent[] = [];
     const { run } = makeRunner(events);
 
@@ -542,35 +601,55 @@ describe("diffFuelLapsLeft — enough-fuel reassurance (issue #880)", () => {
     lapSample(run, 5, 6.1);
     expect(counts(events)).toEqual([2]);
 
-    // The race got shorter: the same count 2 now covers what's left. The
-    // driver was told to plan a stop — retract it.
-    lapSample(run, 6, 6.02, {}, { SessionLapsRemainEx: 3 });
+    // The race got shorter: the same count 2 now covers the 1 lap left with
+    // a lap to spare. The driver was told to plan a stop — retract it.
+    lapSample(run, 6, 6.02, {}, { SessionLapsRemainEx: 2 });
     expect(reassured(events)).toBe(1);
   });
 
-  it("reassures a marginal final lap only when the tank genuinely covers the remaining fraction", () => {
+  it("clears the warning floor on the reassurance so a later coverage flip re-warns at any count", () => {
     const events: PendingEvent[] = [];
     const { run } = makeRunner(events);
 
-    // Final counted lap, effective 0.75 laps of fuel vs 0.45 lap remaining:
-    // the unclamped count (floor(0.75 − 0.45) = 0) meets the 0 laps needed —
-    // "enough fuel to finish" is a true statement here.
-    lapSample(run, 5, 2.1, {}, { SessionLapsRemainEx: 1 });
-
-    expect(counts(events)).toEqual([]);
+    // Warning at count 2 (floor 2), then the retraction.
+    lapSample(run, 5, 6.1);
+    lapSample(run, 6, 6.02, {}, { SessionLapsRemainEx: 2 });
+    expect(counts(events)).toEqual([2]);
     expect(reassured(events)).toBe(1);
+
+    // Coverage flips back to unknown with the count still at 2 — the
+    // all-clear was retracted the moment it was spoken, so the SAME count
+    // must warn again (a kept floor would silence the rest of the stint).
+    lapSample(run, 7, 5.9);
+    expect(counts(events)).toEqual([2, 2]);
+  });
+
+  it("reassures a marginal final lap only with a full lap in hand", () => {
+    // Exact coverage (effective 0.75 laps vs 0.45 lap remaining, unclamped
+    // 0 = the 0 needed): suppressed, but too tight to promise — silent.
+    const exact: PendingEvent[] = [];
+    const exactRunner = makeRunner(exact);
+    lapSample(exactRunner.run, 5, 2.1, {}, { SessionLapsRemainEx: 1 });
+    expect(exact).toEqual([]);
+
+    // A lap in hand (unclamped 1 ≥ 0 + 1): the confirmation speaks.
+    const spare: PendingEvent[] = [];
+    const spareRunner = makeRunner(spare);
+    lapSample(spareRunner.run, 5, 4.1, {}, { SessionLapsRemainEx: 1 });
+    expect(counts(spare)).toEqual([]);
+    expect(reassured(spare)).toBe(1);
   });
 
   it("re-arms after a refuel (new stint)", () => {
     const events: PendingEvent[] = [];
     const { run } = makeRunner(events);
 
-    lapSample(run, 5, 6.1, {}, { SessionLapsRemainEx: 3 });
+    lapSample(run, 5, 8.1, {}, { SessionLapsRemainEx: 3 });
     expect(reassured(events)).toBe(1);
 
     // A real refuel (+10 L in one tick) starts a new stint.
-    run(tick({ Lap: 6, LapDistPct: 0.2, FuelLevel: 16 }));
-    lapSample(run, 6, 6.1, {}, { SessionLapsRemainEx: 3 });
+    run(tick({ Lap: 6, LapDistPct: 0.2, FuelLevel: 18 }));
+    lapSample(run, 6, 8.1, {}, { SessionLapsRemainEx: 3 });
 
     expect(reassured(events)).toBe(2);
   });
@@ -579,7 +658,7 @@ describe("diffFuelLapsLeft — enough-fuel reassurance (issue #880)", () => {
     const events: PendingEvent[] = [];
     const { run } = makeRunner(events);
 
-    lapSample(run, 5, 6.1, {}, { SessionLapsRemainEx: 3 });
+    lapSample(run, 5, 8.1, {}, { SessionLapsRemainEx: 3 });
     expect(reassured(events)).toBe(1);
 
     // Burn-rate spike: the estimate shrinks below the race distance → a real
@@ -587,8 +666,9 @@ describe("diffFuelLapsLeft — enough-fuel reassurance (issue #880)", () => {
     lapSample(run, 6, 4.1, { avg: 3 }, { SessionLapsRemainEx: 3 }); // raw 1.37 → count 0, needs 2
     expect(counts(events)).toEqual([0]);
 
-    // Fuel save restores coverage → the reassurance speaks again.
-    lapSample(run, 7, 4.1, {}, { SessionLapsRemainEx: 2 }); // count 1 covers the 1 lap needed
+    // Fuel save restores coverage with a lap in hand (raw 4.05/1.2 = 3.375
+    // → unclamped 2 ≥ 1 + 1) → the reassurance speaks again.
+    lapSample(run, 7, 4.05, { avg: 1.2 }, { SessionLapsRemainEx: 2 });
     expect(reassured(events)).toBe(2);
   });
 });

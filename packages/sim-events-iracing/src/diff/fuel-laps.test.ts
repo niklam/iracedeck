@@ -25,7 +25,7 @@
  *   - history is capped at FUEL_LAP_HISTORY_CAP
  *   - computeFuelStats averages over the last N VALID laps only
  */
-import { SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { Flags, SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -350,6 +350,42 @@ describe("diffFuelLaps — validity gates", () => {
     expect(t.history[0]!.isValidForCalc).toBe(false);
   });
 
+  it("flags a full-course-caution lap as invalid (issue #880 review)", () => {
+    const t = createFuelLapTracker();
+
+    // Caution pace deflates fuel burn and inflates lap time — both would
+    // skew the race-coverage estimate toward a false "enough fuel".
+    prime(t, { lap: 5, time: 100, fuel: 50 });
+    diffFuelLaps(t, tick({ Lap: 5, LapDistPct: 0.6, SessionTime: 160, FuelLevel: 49, SessionFlags: Flags.Caution }));
+    cross(t, { lap: 5, time: 280, fuel: 48.8 });
+
+    expect(t.history).toHaveLength(1);
+    expect(t.history[0]!.wasCaution).toBe(true);
+    expect(t.history[0]!.isValidForCalc).toBe(false);
+  });
+
+  it("a one-tick caution mid-lap latches for the whole lap; a caution-free lap stays valid", () => {
+    const t = createFuelLapTracker();
+
+    prime(t, { lap: 5, time: 100, fuel: 50 });
+    diffFuelLaps(
+      t,
+      tick({ Lap: 5, LapDistPct: 0.4, SessionTime: 140, FuelLevel: 49, SessionFlags: Flags.CautionWaving }),
+    );
+    diffFuelLaps(t, tick({ Lap: 5, LapDistPct: 0.7, SessionTime: 170, FuelLevel: 48.4, SessionFlags: 0 }));
+    cross(t, { lap: 5, time: 220, fuel: 48 });
+
+    // The caution-free follow-up lap records normally (missing SessionFlags
+    // must not count as caution either — don't punish missing data).
+    cross(t, { lap: 6, time: 310, fuel: 46 });
+
+    expect(t.history).toHaveLength(2);
+    expect(t.history[0]!.wasCaution).toBe(true);
+    expect(t.history[0]!.isValidForCalc).toBe(false);
+    expect(t.history[1]!.wasCaution).toBe(false);
+    expect(t.history[1]!.isValidForCalc).toBe(true);
+  });
+
   it("flags a lap with non-positive fuelUsed as invalid", () => {
     const t = createFuelLapTracker();
 
@@ -561,6 +597,7 @@ describe("computeFuelStats", () => {
       isOutLap: false,
       isInLap: false,
       wasTowed: false,
+      wasCaution: false,
       ...extra,
     };
   }
