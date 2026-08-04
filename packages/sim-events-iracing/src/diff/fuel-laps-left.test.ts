@@ -500,12 +500,36 @@ describe("diffFuelLapsLeft — enough-fuel reassurance (issue #880)", () => {
     expect(reassured(events)).toBe(1);
   });
 
-  it("stays silent while the count is above the warning band (fuel was never a topic)", () => {
+  it("fires at the race endgame (≤10 laps to go) even with a huge surplus", () => {
     const events: PendingEvent[] = [];
     const { run } = makeRunner(events);
 
-    // count 19 covers the 2 laps needed, but no warning would have fired.
+    // count 19 — far above the spoken band — but only 2 laps are needed and
+    // the tank covers them: the endgame confirmation speaks.
     lapSample(run, 5, 40, {}, { SessionLapsRemainEx: 3 });
+
+    expect(counts(events)).toEqual([]);
+    expect(reassured(events)).toBe(1);
+  });
+
+  it("fires at the timed-race endgame with a huge surplus", () => {
+    const events: PendingEvent[] = [];
+    const { run } = makeRunner(events);
+
+    // ceil((900 + 100 − 45) / 100) = 10 laps to run — the endgame edge.
+    lapSample(run, 5, 40, { avgLapTime: 100, leaderLap: 100 }, { SessionTimeRemain: 900, SessionLapsRemainEx: 32767 });
+
+    expect(counts(events)).toEqual([]);
+    expect(reassured(events)).toBe(1);
+  });
+
+  it("stays silent while more than 10 laps remain, however big the surplus", () => {
+    const events: PendingEvent[] = [];
+    const { run } = makeRunner(events);
+
+    // 15 laps remain (14 needed after this one), count 19 covers them — but
+    // the endgame hasn't started; the confirmation waits for 10-to-go.
+    lapSample(run, 5, 40, {}, { SessionLapsRemainEx: 15 });
 
     expect(events).toEqual([]);
   });

@@ -721,14 +721,15 @@ export type SimEventMap = {
   "fuel.lapsLeft.crossed": SimEvent<"fuel.lapsLeft.crossed", { count: number; lapsLeft: number }>;
   /**
    * The tank covers what's left of the race (issue #880). Emitted at most
-   * once per stint, exactly when a laps-of-fuel-left warning in the spoken
-   * band (count ≤ 10) was suppressed by a positive race-coverage
-   * determination — the lap-counter comparison (issue #866) or the
-   * timed-race remaining-laps estimate (`SessionTimeRemain` over a
-   * leader-aware lap-time average). Re-armed by a refuel and by any later
-   * real warning, so a burn-rate spike arc speaks warning → reassurance
-   * again. Consumed by the "We have enough fuel to finish the race!" Race
-   * Engineer callout.
+   * once per stint, in the race ENDGAME — 10 or fewer laps to go by the
+   * binding limit — when the race-coverage determination is positive: the
+   * lap-counter comparison (issue #866) or the timed-race remaining-laps
+   * estimate (`SessionTimeRemain` over a leader-aware lap-time average).
+   * Fires even when the tank holds far more than the spoken warning band,
+   * so a surplus race still gets its confirmation at 10-to-go. Re-armed by
+   * a refuel and by any later real warning, so a burn-rate spike arc speaks
+   * warning → reassurance again. Consumed by the "We have enough fuel to
+   * finish the race!" Race Engineer callout.
    */
   "fuel.lapsLeft.raceCovered": SimEvent<"fuel.lapsLeft.raceCovered", EmptySimEventPayload>;
   /**

@@ -48,15 +48,17 @@
  *     announced floor is NOT advanced by a suppression, so coverage is
  *     re-evaluated every lap and a burn-rate spike that shrinks the
  *     estimate below the race distance still announces on the earlier laps.
- *   - Enough-fuel reassurance (issue #880): when a coverage determination
- *     suppresses a count inside the spoken band (≤ 10), the dedicated
- *     `fuel.lapsLeft.raceCovered` event fires INSTEAD — at most once per
- *     stint — so the driver hears "we have enough fuel to finish the race"
- *     rather than silence. It requires the UNCLAMPED count to cover the
- *     distance (the count-0 clamp can hide a tank that won't even finish
- *     the current lap — never reassure on that). A refuel re-arms it with
- *     the floor, and any later real warning re-arms it too, so a burn-spike
- *     arc speaks warning → reassurance again once coverage recovers.
+ *   - Enough-fuel reassurance (issue #880): when the coverage determination
+ *     is positive in the race ENDGAME — 10 or fewer laps to go by the
+ *     binding limit — the dedicated `fuel.lapsLeft.raceCovered` event fires
+ *     at most once per stint, so the driver hears "we have enough fuel to
+ *     finish the race" instead of silence (a huge surplus still gets its
+ *     confirmation at 10-to-go; an early-race positive stays quiet). It
+ *     requires the UNCLAMPED count to cover the distance (the count-0 clamp
+ *     can hide a tank that won't even finish the current lap — never
+ *     reassure on that). A refuel re-arms it with the floor, and any later
+ *     real warning re-arms it too, so a burn-spike arc speaks warning →
+ *     reassurance again once coverage recovers.
  *
  * Race sessions only, live in car, and silent until the tracker has valid
  * samples — no estimate, no callout, never a guess.
@@ -265,20 +267,31 @@ export function diffFuelLapsLeft(
   const coveredByTime = timedLapsAfterCurrent !== null && count >= timedLapsAfterCurrent;
 
   if (coveredByLaps || coveredByTime) {
-    // Enough-fuel reassurance (issue #880): a suppressed warning inside the
-    // spoken band becomes ONE positive "we have enough fuel to finish the
-    // race" per stint — the driver hears the topic closed instead of
-    // silence, and a spoken warning gets retracted when coverage turns
-    // positive later. Guards: the count must be in the band (a huge surplus
-    // was never a topic), the UNCLAMPED count must genuinely cover the
-    // distance (the count-0 clamp can hide a tank that won't finish even
-    // the current lap — never state "enough fuel" on that), and the latch
-    // must be unset (re-armed by refuels and by later real warnings).
+    // Enough-fuel reassurance (issue #880): a positive coverage
+    // determination in the race ENDGAME becomes ONE "we have enough fuel to
+    // finish the race" per stint — the driver hears the topic closed
+    // instead of silence, and a spoken warning gets retracted when coverage
+    // turns positive later. Guards: the race must be inside its last
+    // FUEL_LAPS_LEFT_MAX_COUNT laps (the binding remaining distance — the
+    // same 10-lap horizon the warnings speak over, anchored on the RACE
+    // rather than the tank, so even a huge surplus gets its confirmation at
+    // 10-to-go while an early-race positive stays quiet); the UNCLAMPED
+    // count must genuinely cover the distance (the count-0 clamp can hide a
+    // tank that won't finish even the current lap — never state "enough
+    // fuel" on that); and the latch must be unset (re-armed by refuels and
+    // by later real warnings).
     const genuinelyCovered =
       (lapsNeededAfterCurrent !== null && unclampedCount >= lapsNeededAfterCurrent) ||
       (timedLapsAfterCurrent !== null && unclampedCount >= timedLapsAfterCurrent);
 
-    if (count <= FUEL_LAPS_LEFT_MAX_COUNT && genuinelyCovered && !state.fuelCalloutRaceCoveredAnnounced) {
+    // Smallest KNOWN remaining distance — the limit that actually ends the
+    // race. `covered` guarantees at least one term is non-null.
+    const remainingLaps = Math.min(
+      lapsNeededAfterCurrent ?? Number.POSITIVE_INFINITY,
+      timedLapsAfterCurrent ?? Number.POSITIVE_INFINITY,
+    );
+
+    if (remainingLaps <= FUEL_LAPS_LEFT_MAX_COUNT && genuinelyCovered && !state.fuelCalloutRaceCoveredAnnounced) {
       state.fuelCalloutRaceCoveredAnnounced = true;
       emit({ event: "fuel.lapsLeft.raceCovered", data: {} });
     }

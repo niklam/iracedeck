@@ -202,7 +202,7 @@ export const EVENT_TEMPLATES = [
   {
     name: "fuel.lapsLeft.raceCovered",
     description:
-      "The tank covers what's left of the race (issue #880) — fires once per stint in place of the first suppressed fuel warning",
+      "The tank covers what's left of the race (issue #880) — fires once per stint, inside the race's last 10 laps",
     data: {},
   },
   {
