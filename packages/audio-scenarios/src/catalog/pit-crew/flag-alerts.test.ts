@@ -307,7 +307,7 @@ describe("FLAG_ALERTS structure", () => {
     expect(meatball.family).toBeUndefined();
   });
 
-  it("furled, furled-cleared, yellow-cleared, white-last-lap and meatball are queueable (defer behind a busy bus) — and they're the only flags that are", () => {
+  it("furled, furled-cleared, yellow-cleared, white-last-lap, meatball and the penalty raises are queueable (defer behind a busy bus) — and they're the only flags that are", () => {
     const queueableIds = [
       "pit-crew.flag-furled",
       "pit-crew.flag-furled-cleared",
@@ -319,6 +319,12 @@ describe("FLAG_ALERTS structure", () => {
       // Issue #867: a spotter proximity call outranks the meatball line; the
       // one-shot raise must defer/stash and replay instead of being lost.
       "pit-crew.flag-meatball",
+      // Issue #923: the penalty raises are one-shot edges that never re-fire
+      // and the penalty is a sustained state — a fire that can't take the bus
+      // must defer and replay at idle, never leave the driver untold.
+      "pit-crew.flag-black",
+      "pit-crew.flag-disqualify",
+      "pit-crew.flag-dq-scoring-invalid",
     ];
 
     for (const id of queueableIds) {
@@ -760,6 +766,61 @@ describe("FLAG_ALERTS yellow-cleared delivery + waving debounce (issue #671)", (
     flush(audio);
 
     expect(voiceClipsPlayed().filter((p) => p === clip)).toHaveLength(2);
+  });
+});
+
+// Issue #923 — a directly-issued black flag (pit-lane speeding, a race-admin
+// `!black`, escalation after an ignored meatball) landing while an equal- or
+// higher-weight line held the Voice bus was silently dropped, and the raise
+// is a one-shot edge that never re-fires — the driver was never told about
+// the penalty. The penalty scenarios are queueable so the fire defers and
+// replays when the bus idles; a black→DQ escalation while queued resolves
+// structurally (the queueable DQ fire replaces the pending black — equal
+// weight, ties → newest in the single pending slot).
+describe("FLAG_ALERTS penalty-flag delivery (issue #923)", () => {
+  // A stand-in for a spotter call / pit chatter: same Voice bus, same SAFETY
+  // weight, NOT in the flag family — so a penalty fire can't take the bus and
+  // can't family-preempt. Pre-#923 it was dropped here.
+  function defineBlocker(): void {
+    engine.defineScenario({
+      id: "test.blocker",
+      when: { event: "incident.occurred" },
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      base: "voice/{voice}",
+      weight: WEIGHT.SAFETY,
+      sequence: ["flags/red-01.mp3"],
+    });
+  }
+
+  it.each([
+    { event: "flag.black.raised" as const, clip: "voice/luca/flags/black-01.mp3" },
+    { event: "flag.disqualify.raised" as const, clip: "voice/luca/flags/disqualify-01.mp3" },
+    { event: "flag.dq-scoring-invalid.raised" as const, clip: "voice/luca/flags/dq-scoring-invalid-01.mp3" },
+  ])("$event defers behind an equal-weight non-flag line and replays at idle (queueable)", ({ event, clip }) => {
+    defineBlocker();
+
+    bus.publishEvent("incident.occurred", { delta: 1, type: "off-track" });
+    // Don't flush — the blocker holds the Voice bus.
+    bus.publishEvent(event, {});
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual(["voice/luca/flags/red-01.mp3", clip]);
+  });
+
+  it("a disqualify raised while the black line waits replaces it — only the DQ line plays (escalation)", () => {
+    defineBlocker();
+
+    bus.publishEvent("incident.occurred", { delta: 1, type: "off-track" });
+    // Don't flush — the blocker holds the Voice bus; the black fire defers.
+    bus.publishEvent("flag.black.raised", {});
+    // The penalty escalates while the black line waits: the queueable DQ fire
+    // takes the single pending slot (equal weight, ties → newest), so the
+    // driver hears the escalated line, never the stale black-flag one.
+    bus.publishEvent("flag.disqualify.raised", {});
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual(["voice/luca/flags/red-01.mp3", "voice/luca/flags/disqualify-01.mp3"]);
   });
 });
 
