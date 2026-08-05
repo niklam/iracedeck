@@ -381,10 +381,9 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   // delta-varied buttons (issue #922). The diff classifies the iRacing
   // report byte before publishing, so the harness mirrors that vocabulary
   // directly. Per-type point weights are NOT fixed across iRacing content
-  // (dirt-road car contact scores 2x, not 4x) and a coalesced burst carries
-  // the accumulated delta with the latest type — the spoken count is always
-  // composed from `delta`, so the varied buttons exercise count selection
-  // and the no-matching-clip skip path without iRacing.
+  // (dirt-road car contact scores 2x, not 4x) — the spoken count is always
+  // composed from `delta`, the new points detected for the incident, so the
+  // varied buttons exercise count selection without iRacing.
   {
     id: "incident-off-track",
     category: "Incidents",
@@ -418,14 +417,6 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     data: { delta: 2, type: "collision-world" },
   },
   {
-    id: "incident-collision-world-3x",
-    category: "Incidents",
-    label: "Collision — Wall (3x burst)",
-    description: "Burst-accumulated delta (e.g. off-track then wall) — announces three points.",
-    event: "incident.occurred",
-    data: { delta: 3, type: "collision-world" },
-  },
-  {
     id: "incident-contact-car",
     category: "Incidents",
     label: "Contact — Car (0x)",
@@ -456,14 +447,6 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     description: "The issue #922 repro: dirt-road car collision scoring 2x — announces two points, not four.",
     event: "incident.occurred",
     data: { delta: 2, type: "collision-car" },
-  },
-  {
-    id: "incident-collision-car-9x",
-    category: "Incidents",
-    label: "Collision — Car (9x, no count clip)",
-    description: "Delta with no matching value clip — collision intro plays with no count (#835 skip).",
-    event: "incident.occurred",
-    data: { delta: 9, type: "collision-car" },
   },
   {
     id: "off-track-started",

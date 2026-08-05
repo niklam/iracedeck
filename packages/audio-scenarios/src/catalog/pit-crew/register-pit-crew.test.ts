@@ -1021,14 +1021,20 @@ describe("incident point-count composition (issue #922)", () => {
     expect(clips.indexOf(`voice/${VOICE}/incidents/points-2.mp3`)).toBeGreaterThan(introIndex);
   });
 
-  it("collision-world speaks an accumulated burst delta", () => {
-    // Multi-step crash: off-track 1x then collision-world upgrade → delta 3.
-    bus.publishEvent("incident.occurred", { delta: 3, type: "collision-world" } as never);
+  it("collision-world speaks its detected count", () => {
+    bus.publishEvent("incident.occurred", { delta: 2, type: "collision-world" } as never);
     flush(audio);
 
     const clips = voiceClipsPlayed();
     expect(clips.some((p) => p.includes("/incidents/collision-world-"))).toBe(true);
-    expect(clips).toContain(`voice/${VOICE}/incidents/points-3.mp3`);
+    expect(clips).toContain(`voice/${VOICE}/incidents/points-2.mp3`);
+  });
+
+  it("collision-car with the full 4x award speaks four points", () => {
+    bus.publishEvent("incident.occurred", { delta: 4, type: "collision-car" } as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toContain(`voice/${VOICE}/incidents/points-4.mp3`);
   });
 
   it("contact-car with detected points speaks the count too", () => {

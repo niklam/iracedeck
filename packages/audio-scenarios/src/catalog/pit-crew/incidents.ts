@@ -21,12 +21,15 @@
  * incident.
  *
  * **Penalty wording (issue #922).** The spoken point count is composed from
- * the event payload's `delta` — the count the translator actually detected
- * across the crash burst — never a constant assumed from the incident type.
- * iRacing's per-type point weights are NOT fixed across content (dirt-road
- * car contact scores 2x, not the road-racing 4x), and a coalesced burst
- * carries the latest type with the accumulated delta, so a number baked into
- * a type pool's wording would eventually disagree with the sim. Each
+ * the event payload's `delta` — the new points the translator actually
+ * detected for the incident — never a constant assumed from the incident
+ * type. iRacing's per-type point weights are NOT fixed across content
+ * (dirt-road car contact scores 2x, not the road-racing 4x), and a
+ * multi-step crash coalesces into one emission whose delta is the points the
+ * episode scored in total (iRacing upgrades to the worst outcome — an
+ * off-track that ends in the wall is 2x, not 1x + 2x) while carrying only
+ * the latest type, so a number baked into a type pool's wording would
+ * eventually disagree with the sim. Each
  * contact/collision scenario therefore plays a type-flavored intro with no
  * number, then a count clause resolved at speak time from the stashed delta
  * via `pool:incidents/points-<delta>` (the #836 value-pool form). The clause
