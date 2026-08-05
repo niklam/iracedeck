@@ -25,6 +25,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AudioAssetsManifest } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
 import { _setFurledRaisedSpoken } from "./flag-alerts.js";
+import { _resetLastIncidentDelta } from "./incidents.js";
 import {
   type DamageCalloutId,
   type FlagCalloutId,
@@ -250,7 +251,9 @@ const DAMAGE_CLIP_PATHS = [
 ] as const;
 
 // Incident clips referenced from `incidents.ts` (issue #530). Three
-// alternating lines per category × six categories.
+// alternating lines per category × six categories, plus the point-count
+// value clips the contact/collision count clause resolves via
+// `pool:incidents/points-<delta>` (issue #922).
 const INCIDENT_CLIP_PATHS = [
   `voice/${VOICE}/incidents/off-track-01.mp3`,
   `voice/${VOICE}/incidents/off-track-02.mp3`,
@@ -270,6 +273,10 @@ const INCIDENT_CLIP_PATHS = [
   `voice/${VOICE}/incidents/collision-car-01.mp3`,
   `voice/${VOICE}/incidents/collision-car-02.mp3`,
   `voice/${VOICE}/incidents/collision-car-03.mp3`,
+  `voice/${VOICE}/incidents/points-1.mp3`,
+  `voice/${VOICE}/incidents/points-2.mp3`,
+  `voice/${VOICE}/incidents/points-3.mp3`,
+  `voice/${VOICE}/incidents/points-4.mp3`,
 ] as const;
 
 // Pit-box count-in clips referenced from `pit-box.ts` (issue #600). One per
@@ -478,6 +485,7 @@ afterEach(() => {
   _resetRadarEngine();
   _resetSpotterEngine();
   _setFurledRaisedSpoken(false);
+  _resetLastIncidentDelta();
   vi.clearAllMocks();
 });
 
@@ -991,6 +999,76 @@ describe("incident callout live gating (issue #530)", () => {
       expect(voiceClipsPlayed().some((p) => p.includes("/incidents/off-track-"))).toBe(true);
     },
   );
+});
+
+// Issue #922: the spoken point count is composed from the event payload's
+// `delta` (a `pool:incidents/points-<delta>` value clip appended after the
+// type-flavored intro), never a type-assumed constant baked into the intro
+// wording. A delta with no matching clip skips the count clause (issue #835
+// optional-group semantics) so the intro still plays with no number.
+describe("incident point-count composition (issue #922)", () => {
+  it("collision-car speaks the detected delta, not a type-assumed count", () => {
+    // The dirt-track case from the issue: car collision awarded 2x, not 4x.
+    bus.publishEvent("incident.occurred", { delta: 2, type: "collision-car" } as never);
+    flush(audio);
+
+    const clips = voiceClipsPlayed();
+    const introIndex = clips.findIndex((p) => p.includes("/incidents/collision-car-"));
+    expect(introIndex).toBeGreaterThanOrEqual(0);
+    expect(clips).toContain(`voice/${VOICE}/incidents/points-2.mp3`);
+    expect(clips).not.toContain(`voice/${VOICE}/incidents/points-4.mp3`);
+    // Count clause follows the intro.
+    expect(clips.indexOf(`voice/${VOICE}/incidents/points-2.mp3`)).toBeGreaterThan(introIndex);
+  });
+
+  it("collision-world speaks an accumulated burst delta", () => {
+    // Multi-step crash: off-track 1x then collision-world upgrade → delta 3.
+    bus.publishEvent("incident.occurred", { delta: 3, type: "collision-world" } as never);
+    flush(audio);
+
+    const clips = voiceClipsPlayed();
+    expect(clips.some((p) => p.includes("/incidents/collision-world-"))).toBe(true);
+    expect(clips).toContain(`voice/${VOICE}/incidents/points-3.mp3`);
+  });
+
+  it("contact-car with detected points speaks the count too", () => {
+    bus.publishEvent("incident.occurred", { delta: 1, type: "contact-car" } as never);
+    flush(audio);
+
+    const clips = voiceClipsPlayed();
+    expect(clips.some((p) => p.includes("/incidents/contact-car-"))).toBe(true);
+    expect(clips).toContain(`voice/${VOICE}/incidents/points-1.mp3`);
+  });
+
+  it("speaks no count when the delta has no matching value clip", () => {
+    bus.publishEvent("incident.occurred", { delta: 9, type: "collision-car" } as never);
+    flush(audio);
+
+    const clips = voiceClipsPlayed();
+    expect(clips.some((p) => p.includes("/incidents/collision-car-"))).toBe(true);
+    expect(clips.some((p) => p.includes("/incidents/points-"))).toBe(false);
+  });
+
+  it("speaks no count for a zero delta (harness-style light contact)", () => {
+    bus.publishEvent("incident.occurred", { delta: 0, type: "contact-world" } as never);
+    flush(audio);
+
+    const clips = voiceClipsPlayed();
+    expect(clips.some((p) => p.includes("/incidents/contact-world-"))).toBe(true);
+    expect(clips.some((p) => p.includes("/incidents/points-"))).toBe(false);
+  });
+
+  it("off-track and out-of-control keep their no-count lines", () => {
+    bus.publishEvent("incident.occurred", { delta: 1, type: "off-track" } as never);
+    flush(audio);
+    bus.publishEvent("incident.occurred", { delta: 2, type: "out-of-control" } as never);
+    flush(audio);
+
+    const clips = voiceClipsPlayed();
+    expect(clips.some((p) => p.includes("/incidents/off-track-"))).toBe(true);
+    expect(clips.some((p) => p.includes("/incidents/out-of-control-"))).toBe(true);
+    expect(clips.some((p) => p.includes("/incidents/points-"))).toBe(false);
+  });
 });
 
 // Issue #600: the pit-box count-in opt-in is a single subject (`count-in`)
