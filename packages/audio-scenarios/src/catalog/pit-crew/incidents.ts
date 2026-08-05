@@ -47,16 +47,27 @@ import { poolRef } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 
 /**
- * Point delta of the most recent `incident.occurred` arrival, stashed by the
- * scenarios' `where:` predicates for the `incident.points` var resolver —
- * var resolvers take no fire context (see `IScenarioEngine.defineVar`), so
- * the payload value is carried across module scope, the same shape as the
- * qualifying-invalidation per-lap latch. Every incident scenario writes the
- * same event's delta before its type check (idempotent across the six
- * subscribers), and expansion runs synchronously inside `attemptFire` right
- * after `where:` passes, so the resolver always reads the delta of the fire
- * being expanded. `null` when the payload carries no usable count (missing,
- * zero, or non-integer) — the count clause then skips via its optional group.
+ * Point delta of the incident fire most recently ADMITTED by a scenario's
+ * `where:` predicate, read by the `incident.points` var resolver at
+ * sequence-expansion time — var resolvers take no fire context (see
+ * `IScenarioEngine.defineVar`), so the payload value is carried across
+ * module scope, the same shape as the qualifying-invalidation per-lap latch.
+ *
+ * Only the MATCHING, fully-gated scenario writes the stash (the write sits
+ * AFTER the type check): a dispatch in which nothing fires must not touch
+ * it, because a fire that arrived while a lower-weight line held the bus
+ * waits in the engine's pending slot with its expansion deferred to the
+ * pending drain — which re-expands WITHOUT re-running `where:` — so a later
+ * suppressed or non-matching event overwriting the stash would make that
+ * queued fire speak the wrong count (issue #922 review). When a later
+ * incident DOES fire, the same synchronous dispatch that rewrites the stash
+ * also replaces the pending or in-flight family-mate, so stash and fire stay
+ * in lockstep — that replacement relies on all six scenarios sharing
+ * `family: "incident"` and the same (default) weight; keep both uniform.
+ * Imperative `engine.fire()` bypasses `where:` entirely and would read a
+ * stale value — no code path fires incident scenarios imperatively today.
+ * `null` when the admitted payload carries no usable count (zero or
+ * non-integer) — the count clause then skips via its optional group.
  */
 let lastIncidentDelta: number | null = null;
 
@@ -106,12 +117,15 @@ function incidentScenario(id: string, type: IncidentType, body: Step[]): Scenari
       where: (e) => {
         const data = (e as SimEventOf<"incident.occurred">).data;
 
-        // Stash the detected delta for the `incident.points` resolver (see
-        // `lastIncidentDelta`). Written before the type check so the stash is
-        // consistent no matter which of the six scenarios ends up firing.
+        if (data.type !== type) return false;
+
+        // Stash the detected delta for the `incident.points` resolver — only
+        // the matching, fully-gated scenario writes it, so a dispatch in
+        // which nothing fires can't corrupt a queued fire's count (see
+        // `lastIncidentDelta`).
         lastIncidentDelta = Number.isInteger(data.delta) && data.delta > 0 ? data.delta : null;
 
-        return data.type === type;
+        return true;
       },
     },
   };

@@ -18,12 +18,13 @@
  *     "engineer didn't say green!" reports)
  */
 import type { IAudioService } from "@iracedeck/audio-service";
-import { AudioChannel } from "@iracedeck/audio-service";
+import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest } from "../../interpreter.js";
-import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
+import { _resetAudioScenarios, getScenarioEngine, initializeAudioScenarios } from "../../interpreter.js";
 import { _setFurledRaisedSpoken } from "./flag-alerts.js";
 import { _resetLastIncidentDelta } from "./incidents.js";
 import {
@@ -1074,6 +1075,39 @@ describe("incident point-count composition (issue #922)", () => {
     expect(clips.some((p) => p.includes("/incidents/off-track-"))).toBe(true);
     expect(clips.some((p) => p.includes("/incidents/out-of-control-"))).toBe(true);
     expect(clips.some((p) => p.includes("/incidents/points-"))).toBe(false);
+  });
+
+  it("a later suppressed incident event does not corrupt a queued fire's count", () => {
+    // An incident that arrives while a LOWER-weight line holds the Voice bus
+    // waits in the pending slot with its expansion deferred to the drain —
+    // the delta stash must not be rewritten by a later dispatch in which
+    // nothing fires (here: the later event's own callout is toggled off), or
+    // the queued fire would speak the later event's count.
+    getScenarioEngine().defineScenario({
+      id: "test.chatter",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: WEIGHT.CHATTER,
+      sequence: [`voice/${VOICE}/incidents/off-track-01.mp3`],
+      when: { event: "offTrack.started" },
+    });
+    bus.publishEvent("offTrack.started", {} as never);
+
+    // Queued behind the in-flight chatter (higher weight, no interrupt).
+    bus.publishEvent("incident.occurred", { delta: 2, type: "contact-car" } as never);
+
+    // Later incident whose own callout is disabled — must not fire AND must
+    // not disturb the queued contact-car fire's count.
+    incidentEnabled.set("collision-car", false);
+    bus.publishEvent("incident.occurred", { delta: 4, type: "collision-car" } as never);
+
+    // Chatter finishes → the pending contact-car fire drains and expands.
+    flush(audio);
+
+    const clips = voiceClipsPlayed();
+    expect(clips.some((p) => p.includes("/incidents/contact-car-"))).toBe(true);
+    expect(clips).toContain(`voice/${VOICE}/incidents/points-2.mp3`);
+    expect(clips).not.toContain(`voice/${VOICE}/incidents/points-4.mp3`);
   });
 });
 
