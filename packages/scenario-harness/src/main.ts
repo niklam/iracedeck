@@ -13,11 +13,13 @@ import { initializeAudioScenarios } from "@iracedeck/audio-scenarios";
 import {
   type CornerNameSnapshot,
   type LapCompletedSnapshot,
+  type OpponentPitSnapshot,
   registerPitCrew,
   setRadarEnabled,
 } from "@iracedeck/audio-scenarios/pit-crew";
 import { AudioBus, initializeAudio } from "@iracedeck/audio-service";
 import { initGlobalSettings, onGlobalSettingsChange, resolveActiveRaceEngineerVoice } from "@iracedeck/deck-core";
+import type { SimEventOf } from "@iracedeck/event-bus";
 import { initializeEventBus } from "@iracedeck/event-bus";
 import type { SDKController } from "@iracedeck/iracing-sdk";
 import { createConsoleLogger, LogLevel } from "@iracedeck/logger";
@@ -107,6 +109,13 @@ async function main(): Promise<void> {
     lastCornerName = ev.data;
   });
 
+  // Latest opponent-pit payload (issue #622) — the harness snapshot resolver
+  // speaks the payload position directly (no live telemetry read here).
+  let lastOpponentPit: SimEventOf<"opponentPit.entered">["data"] | null = null;
+  eventBus.subscribe("opponentPit.entered", (ev) => {
+    lastOpponentPit = ev.data;
+  });
+
   // Wire the pit-action cooldown so the harness sees the same suppression
   // window the production plugins do, the readback-snapshot resolver so
   // deferred replays speak the current queue (issue #481), the
@@ -155,6 +164,11 @@ async function main(): Promise<void> {
     undefined, // getFuelCalloutEnabled
     undefined, // getCornerNameCalloutEnabled (issue #888)
     () => lastCornerName, // getCornerNameSnapshot (issue #888)
+    undefined, // getOpponentPitCalloutEnabled (issue #622)
+    (): OpponentPitSnapshot | null =>
+      lastOpponentPit && typeof lastOpponentPit.position === "number" && lastOpponentPit.position > 0
+        ? { position: lastOpponentPit.position }
+        : null, // getOpponentPitSnapshot (issue #622)
   );
 
   // ── deck-core global-settings pipeline ──────────────────────────────────
