@@ -778,17 +778,18 @@ describe("FLAG_ALERTS yellow-cleared delivery + waving debounce (issue #671)", (
 // structurally (the queueable DQ fire replaces the pending black — equal
 // weight, ties → newest in the single pending slot).
 describe("FLAG_ALERTS penalty-flag delivery (issue #923)", () => {
-  // A stand-in for a spotter call / pit chatter: same Voice bus, same SAFETY
-  // weight, NOT in the flag family — so a penalty fire can't take the bus and
-  // can't family-preempt. Pre-#923 it was dropped here.
-  function defineBlocker(): void {
+  // A stand-in for a spotter call / pit chatter: same Voice bus, NOT in the
+  // flag family — so a penalty fire can't take the bus and can't
+  // family-preempt. Equal weight (SAFETY) by default; pass CRITICAL to model
+  // the meatball / fuel-critical occupants. Pre-#923 it was dropped here.
+  function defineBlocker(weight: number = WEIGHT.SAFETY): void {
     engine.defineScenario({
       id: "test.blocker",
       when: { event: "incident.occurred" },
       channel: AudioChannel.Voice,
       bus: AudioBus.Voice,
       base: "voice/{voice}",
-      weight: WEIGHT.SAFETY,
+      weight,
       sequence: ["flags/red-01.mp3"],
     });
   }
@@ -802,6 +803,24 @@ describe("FLAG_ALERTS penalty-flag delivery (issue #923)", () => {
 
     bus.publishEvent("incident.occurred", { delta: 1, type: "off-track" });
     // Don't flush — the blocker holds the Voice bus.
+    bus.publishEvent(event, {});
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual(["voice/luca/flags/red-01.mp3", clip]);
+  });
+
+  // The issue's loss paths also include HIGHER-weight occupants (meatball,
+  // fuel-critical at CRITICAL; spotter calls at PROXIMITY) — same queueOrDrop
+  // branch, but cover it explicitly with a CRITICAL blocker.
+  it.each([
+    { event: "flag.black.raised" as const, clip: "voice/luca/flags/black-01.mp3" },
+    { event: "flag.disqualify.raised" as const, clip: "voice/luca/flags/disqualify-01.mp3" },
+    { event: "flag.dq-scoring-invalid.raised" as const, clip: "voice/luca/flags/dq-scoring-invalid-01.mp3" },
+  ])("$event defers behind a HIGHER-weight non-flag line and replays at idle (queueable)", ({ event, clip }) => {
+    defineBlocker(WEIGHT.CRITICAL);
+
+    bus.publishEvent("incident.occurred", { delta: 1, type: "off-track" });
+    // Don't flush — the critical blocker holds the Voice bus.
     bus.publishEvent(event, {});
     flush(audio);
 
@@ -830,11 +849,15 @@ describe("FLAG_ALERTS penalty-flag delivery (issue #923)", () => {
   // black scenario queueable must not change that.
   it("a black line cut mid-playback by disqualify is not stashed — no replay at idle (escalation)", () => {
     bus.publishEvent("flag.black.raised", {});
+    // Complete the radio-open tick (SFX) so the black VOICE clip is genuinely
+    // in flight when the escalation lands.
+    audio._triggerChannelEnd(AudioChannel.SFX);
     // Mid-playback (no flush): the DQ supersedes via the shared flag family.
     bus.publishEvent("flag.disqualify.raised", {});
     flush(audio);
 
-    expect(voiceClipsPlayed()).not.toContain("voice/luca/flags/black-01.mp3");
+    // The black clip started exactly once and was never stashed for replay.
+    expect(voiceClipsPlayed().filter((p) => p === "voice/luca/flags/black-01.mp3")).toHaveLength(1);
     expect(voiceClipsPlayed().at(-1)).toBe("voice/luca/flags/disqualify-01.mp3");
   });
 });
