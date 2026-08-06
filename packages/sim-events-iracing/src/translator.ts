@@ -765,6 +765,35 @@ export function getLivePosition(): LivePosition | null {
 }
 
 /**
+ * Live position of an ARBITRARY car from the same canonical frozen order as
+ * {@link getLivePosition} (issue #622 — the opponent-pit "P{n}" number
+ * resolves at speak time). Returns `null` when telemetry isn't resolvable,
+ * `carIdx` is invalid, or the car has no rank in the order. `classPosition`
+ * is `0` when underivable (no `CarIdxClass`) — there is no official per-car
+ * fallback here; consumers fall back to their emit-time payload instead.
+ */
+export function getLiveCarPosition(carIdx: number): LivePosition | null {
+  if (!instance || !instance.latestTelemetry) return null;
+
+  if (!Number.isInteger(carIdx) || carIdx < 0) return null;
+
+  const telemetry = instance.latestTelemetry;
+  const positions = calculateFrozenRacePositions(instance.state, telemetry);
+  const position = positions[carIdx] ?? 0;
+
+  if (position <= 0) return null;
+
+  const classPosition = classPositionFromOrder(positions, telemetry.CarIdxClass, carIdx);
+  const sessionInfo = instance.controller.getSessionInfo() as Record<string, unknown> | null;
+
+  return {
+    position,
+    classPosition: classPosition > 0 ? classPosition : 0,
+    isMultiClass: resolveIsMultiClass(sessionInfo) === true,
+  };
+}
+
+/**
  * The LIVE per-car race order — 1-based overall positions indexed by carIdx
  * (`0` for cars not in the order). This is the same frozen calculation that
  * backs {@link getLivePosition} (towed / finished / left-world cars keep their

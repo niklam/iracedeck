@@ -11,6 +11,7 @@ export {
   getDriverSetupName,
   getFuelStats,
   getLatestTelemetry,
+  getLiveCarPosition,
   getLivePosition,
   getLiveRacePositions,
   getNearestCarGapMeters,

@@ -28,6 +28,7 @@ import {
   getDriverSetupName,
   getFuelStats,
   getLatestTelemetry,
+  getLiveCarPosition,
   getLivePosition,
   getLiveRacePositions,
   getQualifyingInvalidationSnapshot,
@@ -217,6 +218,55 @@ describe("sim-events-iracing translator", () => {
       controller.__tick(multiClassTelemetry({ CarIdxClass: undefined, PlayerCarClassPosition: 5 }));
 
       expect(getLivePosition()?.classPosition).toBe(5);
+    });
+  });
+
+  describe("getLiveCarPosition", () => {
+    it("returns an arbitrary car's live position from the canonical order", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo({
+        DriverInfo: {
+          DriverCarIdx: 0,
+          Drivers: [
+            { CarIdx: 0, CarClassID: 10 },
+            { CarIdx: 1, CarClassID: 20 },
+            { CarIdx: 2, CarClassID: 10 },
+            { CarIdx: 3, CarClassID: 20 },
+          ],
+        },
+      });
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      // Overall: car1 P1, car2 P2, car0 P3, car3 P4 (multi-class field).
+      controller.__tick(
+        telemetry({
+          CarIdxLapCompleted: [10, 10, 10, 9],
+          CarIdxLapDistPct: [0.0, 0.5, 0.2, 0.5],
+          CarIdxClass: [10, 20, 10, 20],
+        }),
+      );
+
+      // car1: overall P1, class-20 leader.
+      expect(getLiveCarPosition(1)).toEqual({ position: 1, classPosition: 1, isMultiClass: true });
+      // car3: overall P4; class-20 cars ahead of it: car1 → class P2.
+      expect(getLiveCarPosition(3)).toEqual({ position: 4, classPosition: 2, isMultiClass: true });
+    });
+
+    it("returns null for unranked cars and invalid indices", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo({ DriverInfo: { DriverCarIdx: 0 } });
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(
+        telemetry({
+          CarIdxLapCompleted: [10, 10],
+          CarIdxLapDistPct: [0.0, 0.5],
+        }),
+      );
+
+      expect(getLiveCarPosition(63)).toBeNull(); // not in the order
+      expect(getLiveCarPosition(-1)).toBeNull();
+      expect(getLiveCarPosition(1.5)).toBeNull();
     });
   });
 
