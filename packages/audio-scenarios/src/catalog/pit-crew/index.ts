@@ -69,6 +69,13 @@ import {
   registerLapTimeVars,
   SCENARIO_ID_TO_LAP_TIME_ID,
 } from "./lap-time.js";
+import {
+  OPPONENT_PIT_ALERTS,
+  type OpponentPitCalloutId,
+  type OpponentPitSnapshotResolver,
+  registerOpponentPitVars,
+  SCENARIO_ID_TO_OPPONENT_PIT_ID,
+} from "./opponent-pit.js";
 import { type OvertakeGateResolver, PERMISSIVE_OVERTAKE_GATE } from "./overtake-gate.js";
 import {
   buildOvertakeGainedScenario,
@@ -184,6 +191,16 @@ export {
   type CornerNameSnapshot,
   type CornerNameSnapshotResolver,
 } from "./corner-name.js";
+export {
+  OPPONENT_PIT_ALERTS,
+  OPPONENT_PIT_CALLOUT_SETTING_KEYS,
+  OPPONENT_PIT_POOL_NAMES,
+  OPPONENT_PIT_SCENARIO_IDS,
+  type OpponentPitCalloutId,
+  type OpponentPitSnapshot,
+  type OpponentPitSnapshotResolver,
+  registerOpponentPitVars,
+} from "./opponent-pit.js";
 export {
   buildLapTimeScenario,
   LAP_TIME_CALLOUT_SETTING_KEYS,
@@ -919,6 +936,20 @@ export function registerPitCrew(
   // `() => null` makes the scenario's `where:` short-circuit — a safe stub
   // for tests.
   getCornerNameSnapshot: CornerNameSnapshotResolver = () => null,
+  // User opt-ins for the opponent-pit callouts (issue #622). Two subjects —
+  // `leader` (the race/class leader entering the pits) and `nearby` (same-lap
+  // cars within ±2 effective positions, incl. the aggregate tail). Same
+  // gate-at-event-arrival shape as the other callout families. Placed before
+  // the master gate so the master stays the last per-callout opt-in. Default
+  // `() => true` preserves legacy behavior for tests that don't supply a
+  // closure.
+  getOpponentPitCalloutEnabled: (id: OpponentPitCalloutId) => boolean = () => true,
+  // Opponent-pit snapshot (issue #622). Plugins cache the latest
+  // `opponentPit.entered` payload and compose a live `getLiveCarPosition`
+  // read with the emit-time payload as fallback; the nearby scenario's number
+  // var reads it at expansion time. Default `() => null` aborts the nearby
+  // callout at expansion — a safe stub for tests.
+  getOpponentPitSnapshot: OpponentPitSnapshotResolver = () => null,
   // Master gate for the Race Engineer voice subsystem (issue #515).
   // Plugins wire this to `pitCrewRaceEngineerEnabled === true`. Read live
   // on every event arrival and applied as the OUTERMOST wrapper around
@@ -1031,6 +1062,28 @@ export function registerPitCrew(
     engine.defineScenario(
       wrapWithMaster(
         wrapCalloutScenario(s, SCENARIO_ID_TO_PIT_WINDOW_ID, getPitWindowCalloutEnabled, "pit-window callout", logger),
+      ),
+    );
+  }
+
+  // Opponent-pit family (issue #622). The `opponent-pit-*` pools are already
+  // registered en masse above via `registerPools(engine)`;
+  // `OPPONENT_PIT_POOL_NAMES` exists for the catalog tests. Two subjects gate
+  // the five scenarios via `SCENARIO_ID_TO_OPPONENT_PIT_ID`; the leader
+  // scenario's separate family keeps the aggregate tail from preempting the
+  // leader line emitted in the same flush.
+  registerOpponentPitVars(engine, getOpponentPitSnapshot);
+
+  for (const s of OPPONENT_PIT_ALERTS) {
+    engine.defineScenario(
+      wrapWithMaster(
+        wrapCalloutScenario(
+          s,
+          SCENARIO_ID_TO_OPPONENT_PIT_ID,
+          getOpponentPitCalloutEnabled,
+          "opponent-pit callout",
+          logger,
+        ),
       ),
     );
   }
