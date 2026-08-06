@@ -39,6 +39,17 @@
  * silently dropped. The waving scenarios carry a 30 s `cooldown`
  * ({@link WAVING_FLAG_COOLDOWN_MS}) because iRacing re-raises the waving
  * bits on every re-approach of a persistent incident zone.
+ *
+ * **Penalty-flag delivery (issue #923).** The penalty raises — `BLACK`,
+ * `DISQUALIFY`, `DQ_SCORING_INVALID` — are `queueable`: each is a one-shot
+ * edge that never re-fires, and a raise landing while an equal- or
+ * higher-weight line held the Voice bus (another flag, a spotter call, a
+ * CRITICAL line) was silently dropped — a penalty the driver was never told
+ * about. The penalty is a sustained state (serving requires a pit visit), so
+ * a replay a few seconds late is always still correct and no speak-time gate
+ * is needed (the #867 meatball reasoning); a black→DQ escalation while
+ * queued resolves structurally — the queueable DQ fire replaces the pending
+ * black in the single pending slot (equal weight, ties → newest).
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventName, SimEventOf } from "@iracedeck/event-bus";
@@ -197,8 +208,20 @@ const RED: Scenario = {
   when: { event: "flag.red.raised" },
 };
 
+// `queueable: true` (issue #923): a directly-issued black flag — pit-lane
+// speeding, a race-admin `!black`, escalation after an ignored meatball —
+// arrives with no furled warning phase, and the raise is a one-shot edge that
+// never re-fires. Without queueable, a raise landing while an equal-weight
+// line (another flag, pit-approach, the spotter info line) or a higher-weight
+// line (meatball, a proximity call) held the Voice bus was dropped and the
+// driver never told about the penalty. Serving takes a pit visit (≥ 30 s),
+// far beyond the seconds a queued fire waits, so a replay at idle is always
+// still correct — no speak-time gate (the #867 meatball precedent); a
+// black→DQ escalation while queued is covered structurally (the queueable
+// DISQUALIFY fire replaces the pending black — equal weight, ties → newest).
 const BLACK: Scenario = {
   ...flagScenario("black", ["pool:flag-black"]),
+  queueable: true,
   when: { event: "flag.black.raised" },
 };
 
@@ -251,9 +274,11 @@ const MEATBALL: Scenario = {
 // `black` callout — "Disqualified. Pull off." carries different urgency than a
 // routine black flag. `Furled` and `DqScoringInvalid` are new bits the engineer
 // previously ignored. All share `family: "flag"` + `WEIGHT.SAFETY` like the
-// other flags.
+// other flags. `queueable: true` (issue #923): the same one-shot loss paths as
+// BLACK above — and a DQ is even more must-hear.
 const DISQUALIFY: Scenario = {
   ...flagScenario("disqualify", ["pool:flag-disqualify"]),
+  queueable: true,
   when: { event: "flag.disqualify.raised" },
 };
 
@@ -381,8 +406,11 @@ const FURLED_CLEARED: Scenario = {
   ],
 };
 
+// `queueable: true` (issue #923) — the same one-shot penalty edge as BLACK /
+// DISQUALIFY above, with the same loss paths and sustained-state reasoning.
 const DQ_SCORING_INVALID: Scenario = {
   ...flagScenario("dq-scoring-invalid", ["pool:flag-dq-scoring-invalid"]),
+  queueable: true,
   when: { event: "flag.dq-scoring-invalid.raised" },
 };
 

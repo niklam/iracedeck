@@ -16,6 +16,7 @@ _Unreleased_
 **Bug Fixes**
 
 - The Race Engineer's contact and collision callouts now announce the penalty point count iRacing actually awarded instead of a count assumed from the incident type — a dirt-road car collision scoring 2x is announced as two points (not four), a multi-step crash announces the points it actually scored, and when no matching count line exists the engineer describes the contact without naming a number.
+- The Race Engineer no longer misses a directly-issued black flag (a pit-lane speeding penalty, a race-admin black flag, or a disqualification) that lands while another callout is playing — the penalty line now waits its turn and plays as soon as the current line finishes.
 
 ## 2.3.0
 
