@@ -1466,52 +1466,52 @@
       "requestId": "yxcazygxXrDGRIXlqGNb"
     },
     "voice/default/incidents/contact-world-01.mp3": {
-      "hash": "cb19125e5f89088d",
+      "hash": "1d75b9c3aac747e9",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "A bit of rubbing on the wall there. <break time=\"0.3s\" /> No points.",
-      "generatedAt": "2026-05-14T18:37:25.783Z",
-      "requestId": "qCngTu7pUEoH8Trtfwod"
+      "textPreview": "A bit of rubbing on the wall there.",
+      "generatedAt": "2026-08-05T13:03:07.816Z",
+      "requestId": "cjITDRQY1HSxkC8gUdak"
     },
     "voice/default/incidents/contact-world-02.mp3": {
-      "hash": "30cf56e5f058b452",
+      "hash": "c80cb6381768c4d4",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "Just a touch on the wall. <break time=\"0.3s\" /> We're clean.",
-      "generatedAt": "2026-05-14T18:37:26.033Z",
-      "requestId": "ghhwwkLIYjKHDOoVkWHI"
+      "textPreview": "Just a touch on the wall.",
+      "generatedAt": "2026-08-05T13:03:07.995Z",
+      "requestId": "fQt4mUFB2eETdEsaI64Q"
     },
     "voice/default/incidents/contact-car-01.mp3": {
-      "hash": "dfe44c21cbebaed0",
+      "hash": "3cd473c4eaa45b4a",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "Some rubbing with the other car. <break time=\"0.3s\" /> No points.",
-      "generatedAt": "2026-05-14T18:37:26.532Z",
-      "requestId": "1yqlge2tlj0nDwtZ6PlD"
+      "textPreview": "Some rubbing with the other car.",
+      "generatedAt": "2026-08-05T13:03:08.388Z",
+      "requestId": "0lAvmPSGXllS2FvhpUN9"
     },
     "voice/default/incidents/contact-car-02.mp3": {
-      "hash": "93d7d2f07a5d7225",
+      "hash": "a36957ab1bf54a3c",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "Light contact with the other car. <break time=\"0.3s\" /> That's fine.",
-      "generatedAt": "2026-05-14T18:37:26.802Z",
-      "requestId": "puNTqYbPata99x2DUc7p"
+      "textPreview": "Light contact with the other car.",
+      "generatedAt": "2026-08-05T13:03:08.618Z",
+      "requestId": "sSBi5nxZ9y4SJSvGaSsj"
     },
     "voice/default/incidents/collision-world-01.mp3": {
-      "hash": "2b3e75c89978235a",
+      "hash": "af16e507638c5539",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "That hit on the wall cost us two penalty points.",
-      "generatedAt": "2026-05-14T18:37:27.297Z",
-      "requestId": "V8huzYHvethX6hMZkmxE"
+      "textPreview": "That's a hard hit on the wall.",
+      "generatedAt": "2026-08-05T13:03:09.017Z",
+      "requestId": "a2vNPT9u9o2etHecC3t4"
     },
     "voice/default/incidents/collision-car-01.mp3": {
-      "hash": "78dc3e4b1506bcb0",
+      "hash": "84d5898ab6763961",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "That collision with the other car cost us four penalty points.",
-      "generatedAt": "2026-05-14T18:37:28.050Z",
-      "requestId": "3mpRcip7SkGD9JKd9WnF"
+      "textPreview": "That's a collision with the other car.",
+      "generatedAt": "2026-08-05T13:03:09.701Z",
+      "requestId": "9XJzNqGzsH8glc0T5IUr"
     },
     "voice/default/incidents/penalty-2x-01.mp3": {
       "hash": "492dedf5bee01345",
@@ -1546,52 +1546,52 @@
       "requestId": "edyBiyttGUyvUlMy1ntQ"
     },
     "voice/default/incidents/contact-world-03.mp3": {
-      "hash": "795ce6754a16c6bb",
+      "hash": "445974e12f05ad84",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "Quick kiss with the wall. <break time=\"0.3s\" /> No penalty.",
-      "generatedAt": "2026-05-14T18:37:26.283Z",
-      "requestId": "gVVfaR1b2XJtrs1OGL8q"
+      "textPreview": "Quick kiss with the wall.",
+      "generatedAt": "2026-08-05T13:03:08.152Z",
+      "requestId": "fDduFmF8B2pkwN7ga8rp"
     },
     "voice/default/incidents/contact-car-03.mp3": {
-      "hash": "cecc424dcb2bb2f5",
+      "hash": "24dd7bfa5c70505f",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "Door-to-door but clean. <break time=\"0.3s\" /> No penalty.",
-      "generatedAt": "2026-05-14T18:37:27.048Z",
-      "requestId": "jJ7VAyoflKFrWCid5zIe"
+      "textPreview": "Door-to-door with the other car.",
+      "generatedAt": "2026-08-05T13:03:08.861Z",
+      "requestId": "8TTZv3BLivEOPtqE4OVK"
     },
     "voice/default/incidents/collision-world-02.mp3": {
-      "hash": "4be319b6ef2eec33",
+      "hash": "89b8da4cc12e48b3",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "We just received a two point penalty for that crash.",
-      "generatedAt": "2026-05-14T18:37:27.554Z",
-      "requestId": "qBRFuZI4n7lVgk24fh7d"
+      "textPreview": "Big impact with the wall there.",
+      "generatedAt": "2026-08-05T13:03:09.249Z",
+      "requestId": "9YnFwzM9oLrtF4SQUlFe"
     },
     "voice/default/incidents/collision-world-03.mp3": {
-      "hash": "b04f73f44f39c0a6",
+      "hash": "946444904a86aa42",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "Two points for catching the wall.",
-      "generatedAt": "2026-05-14T18:37:27.796Z",
-      "requestId": "o5zZ8lVPM3sZMkxkFoev"
+      "textPreview": "We caught the wall properly that time.",
+      "generatedAt": "2026-08-05T13:03:09.479Z",
+      "requestId": "bc6kgXXakzC2d2TjDeAE"
     },
     "voice/default/incidents/collision-car-02.mp3": {
-      "hash": "7945359f6dba3f69",
+      "hash": "95a3f990062f9883",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "We just received a four point penalty for that crash.",
-      "generatedAt": "2026-05-14T18:37:28.295Z",
-      "requestId": "hTxRxaHQZCHiRVdChnws"
+      "textPreview": "Heavy contact with the other car there.",
+      "generatedAt": "2026-08-05T13:03:09.935Z",
+      "requestId": "aANKhEJZ1kKvrlzV5AZ5"
     },
     "voice/default/incidents/collision-car-03.mp3": {
-      "hash": "d297d703b8e529ec",
+      "hash": "89de5085bfb61ef0",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "Four points for hitting the other car.",
-      "generatedAt": "2026-05-14T18:37:28.552Z",
-      "requestId": "y2EwIYo5k6ODuji0xAa3"
+      "textPreview": "We hit the other car hard.",
+      "generatedAt": "2026-08-05T13:03:10.113Z",
+      "requestId": "5HiZMHKYrhOdoNljf046"
     },
     "voice/default/session-start/session-practice.mp3": {
       "hash": "26d5584088343c3b",
@@ -11632,6 +11632,38 @@
       "textPreview": "We have enough fuel to finish the race. <break time=\"0.3s\" /> No need to box fo…",
       "generatedAt": "2026-08-04T08:07:37.874Z",
       "requestId": "ZDxmFozw3K2j2ToeGQdK"
+    },
+    "voice/default/incidents/points-1.mp3": {
+      "hash": "293d931338f19ae5",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "That cost us one penalty point.",
+      "generatedAt": "2026-08-05T13:03:10.339Z",
+      "requestId": "WpJIODfeeE2UFaOmlYZW"
+    },
+    "voice/default/incidents/points-2.mp3": {
+      "hash": "686164bd78ba58b0",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "That cost us two penalty points.",
+      "generatedAt": "2026-08-05T13:03:10.560Z",
+      "requestId": "DCW4LdY0akBfA7PZOfs3"
+    },
+    "voice/default/incidents/points-3.mp3": {
+      "hash": "ec8edd9c5970fcc6",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "That cost us three penalty points.",
+      "generatedAt": "2026-08-05T13:03:10.804Z",
+      "requestId": "jGtg0Hx7sRqLeJS5EGuY"
+    },
+    "voice/default/incidents/points-4.mp3": {
+      "hash": "81c7841ccd1121eb",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "That cost us four penalty points.",
+      "generatedAt": "2026-08-05T13:03:11.040Z",
+      "requestId": "b0I2pz2ZUdWMVNvMINQa"
     }
   }
 }

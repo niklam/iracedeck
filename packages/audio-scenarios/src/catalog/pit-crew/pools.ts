@@ -134,10 +134,11 @@ export const POOL_REGISTRY: Readonly<Record<string, PoolSource>> = {
   "pit-status-cant-fix-that": { group: "pit-status", base: "cant-fix-that" },
 
   // Incident callout pools (issue #530). One pool per IncidentType
-  // discriminator. Collision lines mention the deterministic penalty point
-  // count inline (CollisionWithWorld is always 2x, CollisionWithCar is
-  // always 4x per iRacing's `irsdk_IncidentFlags` enum), so no separate
-  // penalty follow-on pool is needed.
+  // discriminator — the type-flavored intro with no point count. The count
+  // is a separate clause composed from the event's detected `delta` via the
+  // dynamic value pools `pool:incidents/points-<n>` (issue #922; per-type
+  // point weights are NOT fixed across iRacing content), so those need no
+  // registry entries here.
   "incident-off-track": { group: "incidents", base: "off-track" },
   "incident-out-of-control": { group: "incidents", base: "out-of-control" },
   "incident-contact-world": { group: "incidents", base: "contact-world" },

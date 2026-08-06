@@ -18,13 +18,15 @@
  *     "engineer didn't say green!" reports)
  */
 import type { IAudioService } from "@iracedeck/audio-service";
-import { AudioChannel } from "@iracedeck/audio-service";
+import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest } from "../../interpreter.js";
-import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
+import { _resetAudioScenarios, getScenarioEngine, initializeAudioScenarios } from "../../interpreter.js";
 import { _setFurledRaisedSpoken } from "./flag-alerts.js";
+import { _resetLastIncidentDelta } from "./incidents.js";
 import {
   type DamageCalloutId,
   type FlagCalloutId,
@@ -250,7 +252,9 @@ const DAMAGE_CLIP_PATHS = [
 ] as const;
 
 // Incident clips referenced from `incidents.ts` (issue #530). Three
-// alternating lines per category × six categories.
+// alternating lines per category × six categories, plus the point-count
+// value clips the contact/collision count clause resolves via
+// `pool:incidents/points-<delta>` (issue #922).
 const INCIDENT_CLIP_PATHS = [
   `voice/${VOICE}/incidents/off-track-01.mp3`,
   `voice/${VOICE}/incidents/off-track-02.mp3`,
@@ -270,6 +274,10 @@ const INCIDENT_CLIP_PATHS = [
   `voice/${VOICE}/incidents/collision-car-01.mp3`,
   `voice/${VOICE}/incidents/collision-car-02.mp3`,
   `voice/${VOICE}/incidents/collision-car-03.mp3`,
+  `voice/${VOICE}/incidents/points-1.mp3`,
+  `voice/${VOICE}/incidents/points-2.mp3`,
+  `voice/${VOICE}/incidents/points-3.mp3`,
+  `voice/${VOICE}/incidents/points-4.mp3`,
 ] as const;
 
 // Pit-box count-in clips referenced from `pit-box.ts` (issue #600). One per
@@ -478,6 +486,7 @@ afterEach(() => {
   _resetRadarEngine();
   _resetSpotterEngine();
   _setFurledRaisedSpoken(false);
+  _resetLastIncidentDelta();
   vi.clearAllMocks();
 });
 
@@ -991,6 +1000,115 @@ describe("incident callout live gating (issue #530)", () => {
       expect(voiceClipsPlayed().some((p) => p.includes("/incidents/off-track-"))).toBe(true);
     },
   );
+});
+
+// Issue #922: the spoken point count is composed from the event payload's
+// `delta` (a `pool:incidents/points-<delta>` value clip appended after the
+// type-flavored intro), never a type-assumed constant baked into the intro
+// wording. A delta with no matching clip skips the count clause (issue #835
+// optional-group semantics) so the intro still plays with no number.
+describe("incident point-count composition (issue #922)", () => {
+  it("collision-car speaks the detected delta, not a type-assumed count", () => {
+    // The dirt-track case from the issue: car collision awarded 2x, not 4x.
+    bus.publishEvent("incident.occurred", { delta: 2, type: "collision-car" } as never);
+    flush(audio);
+
+    const clips = voiceClipsPlayed();
+    const introIndex = clips.findIndex((p) => p.includes("/incidents/collision-car-"));
+    expect(introIndex).toBeGreaterThanOrEqual(0);
+    expect(clips).toContain(`voice/${VOICE}/incidents/points-2.mp3`);
+    expect(clips).not.toContain(`voice/${VOICE}/incidents/points-4.mp3`);
+    // Count clause follows the intro.
+    expect(clips.indexOf(`voice/${VOICE}/incidents/points-2.mp3`)).toBeGreaterThan(introIndex);
+  });
+
+  it("collision-world speaks its detected count", () => {
+    bus.publishEvent("incident.occurred", { delta: 2, type: "collision-world" } as never);
+    flush(audio);
+
+    const clips = voiceClipsPlayed();
+    expect(clips.some((p) => p.includes("/incidents/collision-world-"))).toBe(true);
+    expect(clips).toContain(`voice/${VOICE}/incidents/points-2.mp3`);
+  });
+
+  it("collision-car with the full 4x award speaks four points", () => {
+    bus.publishEvent("incident.occurred", { delta: 4, type: "collision-car" } as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toContain(`voice/${VOICE}/incidents/points-4.mp3`);
+  });
+
+  it("contact-car with detected points speaks the count too", () => {
+    bus.publishEvent("incident.occurred", { delta: 1, type: "contact-car" } as never);
+    flush(audio);
+
+    const clips = voiceClipsPlayed();
+    expect(clips.some((p) => p.includes("/incidents/contact-car-"))).toBe(true);
+    expect(clips).toContain(`voice/${VOICE}/incidents/points-1.mp3`);
+  });
+
+  it("speaks no count when the delta has no matching value clip", () => {
+    bus.publishEvent("incident.occurred", { delta: 9, type: "collision-car" } as never);
+    flush(audio);
+
+    const clips = voiceClipsPlayed();
+    expect(clips.some((p) => p.includes("/incidents/collision-car-"))).toBe(true);
+    expect(clips.some((p) => p.includes("/incidents/points-"))).toBe(false);
+  });
+
+  it("speaks no count for a zero delta (harness-style light contact)", () => {
+    bus.publishEvent("incident.occurred", { delta: 0, type: "contact-world" } as never);
+    flush(audio);
+
+    const clips = voiceClipsPlayed();
+    expect(clips.some((p) => p.includes("/incidents/contact-world-"))).toBe(true);
+    expect(clips.some((p) => p.includes("/incidents/points-"))).toBe(false);
+  });
+
+  it("off-track and out-of-control keep their no-count lines", () => {
+    bus.publishEvent("incident.occurred", { delta: 1, type: "off-track" } as never);
+    flush(audio);
+    bus.publishEvent("incident.occurred", { delta: 2, type: "out-of-control" } as never);
+    flush(audio);
+
+    const clips = voiceClipsPlayed();
+    expect(clips.some((p) => p.includes("/incidents/off-track-"))).toBe(true);
+    expect(clips.some((p) => p.includes("/incidents/out-of-control-"))).toBe(true);
+    expect(clips.some((p) => p.includes("/incidents/points-"))).toBe(false);
+  });
+
+  it("a later suppressed incident event does not corrupt a queued fire's count", () => {
+    // An incident that arrives while a LOWER-weight line holds the Voice bus
+    // waits in the pending slot with its expansion deferred to the drain —
+    // the delta stash must not be rewritten by a later dispatch in which
+    // nothing fires (here: the later event's own callout is toggled off), or
+    // the queued fire would speak the later event's count.
+    getScenarioEngine().defineScenario({
+      id: "test.chatter",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: WEIGHT.CHATTER,
+      sequence: [`voice/${VOICE}/incidents/off-track-01.mp3`],
+      when: { event: "offTrack.started" },
+    });
+    bus.publishEvent("offTrack.started", {} as never);
+
+    // Queued behind the in-flight chatter (higher weight, no interrupt).
+    bus.publishEvent("incident.occurred", { delta: 2, type: "contact-car" } as never);
+
+    // Later incident whose own callout is disabled — must not fire AND must
+    // not disturb the queued contact-car fire's count.
+    incidentEnabled.set("collision-car", false);
+    bus.publishEvent("incident.occurred", { delta: 4, type: "collision-car" } as never);
+
+    // Chatter finishes → the pending contact-car fire drains and expands.
+    flush(audio);
+
+    const clips = voiceClipsPlayed();
+    expect(clips.some((p) => p.includes("/incidents/contact-car-"))).toBe(true);
+    expect(clips).toContain(`voice/${VOICE}/incidents/points-2.mp3`);
+    expect(clips).not.toContain(`voice/${VOICE}/incidents/points-4.mp3`);
+  });
 });
 
 // Issue #600: the pit-box count-in opt-in is a single subject (`count-in`)

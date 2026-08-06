@@ -61,7 +61,7 @@ import {
 import { DAMAGE_ALERTS } from "./damage-alerts.js";
 import { FLAG_ALERTS } from "./flag-alerts.js";
 import { FUEL_LAPS_LEFT_ALERTS } from "./fuel-laps-left.js";
-import { INCIDENT_ALERTS } from "./incidents.js";
+import { INCIDENT_ALERTS, registerIncidentVars } from "./incidents.js";
 import {
   buildLapTimeScenario,
   type LapCompletedSnapshotResolver,
@@ -1152,6 +1152,10 @@ export function registerPitCrew(
       ),
     ),
   );
+
+  // Incident scenarios read the `incident.points` count-clause var (issue
+  // #922) — register-vars-before-scenario ordering, same as session-start.
+  registerIncidentVars(engine);
 
   for (const s of INCIDENT_ALERTS) {
     engine.defineScenario(
