@@ -31,6 +31,7 @@ import {
   CarLeftRight,
   classPositionFromOrder,
   IRSDK_UNLIMITED_LAPS,
+  isPreGreen,
   nearestCarGapMeters,
   type SDKController,
   SessionState,
@@ -59,6 +60,7 @@ import { diffIncidents } from "./diff/incidents.js";
 import { diffLaps } from "./diff/laps.js";
 import { diffLifecycle } from "./diff/lifecycle.js";
 import { diffLimiter } from "./diff/limiter.js";
+import { diffOpponentPit } from "./diff/opponent-pit.js";
 import { diffOvertakes } from "./diff/overtakes.js";
 import { diffPaceLaps } from "./diff/pace-laps.js";
 import { diffPitBoxCountdown } from "./diff/pit-box-countdown.js";
@@ -1457,6 +1459,25 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   updatePositionTracking(self.state, telemetry);
   const frozenPositions = calculateFrozenRacePositions(self.state, telemetry);
 
+  // Opponent pit entries (issue #622) — consumes the same canonical frozen
+  // order as diffOvertakes on the same tick. Race-only + replay-only gating
+  // is diff-side (the diffPitsOpen precedent) plus a pre-green gate (#647 —
+  // grid/formation positions are meaningless); the pace car drives into the
+  // pits when picking up the field and must never announce.
+  diffOpponentPit(
+    self.state,
+    telemetry,
+    playerCarIdx,
+    resolvePaceCarIdx(sessionInfo),
+    isRaceSession,
+    replayOnlySession,
+    isPreGreen(telemetry),
+    resolveIsMultiClass(sessionInfo) === true,
+    frozenPositions,
+    now,
+    emit,
+  );
+
   diffOvertakes(
     self.state,
     telemetry,
@@ -1590,6 +1611,26 @@ function resolvePlayerCarIdx(sessionInfo: Record<string, unknown> | null): numbe
   const driverInfo = sessionInfo.DriverInfo as Record<string, unknown> | undefined;
 
   return (driverInfo?.DriverCarIdx as number) ?? -1;
+}
+
+/**
+ * CarIdx of the pace car from session YAML
+ * (`DriverInfo.Drivers[].CarIsPaceCar`), or `null` when unresolvable. The pace
+ * car drives into the pits when picking up the field, which must never
+ * announce as an opponent pit entry (issue #622).
+ */
+function resolvePaceCarIdx(sessionInfo: Record<string, unknown> | null): number | null {
+  const drivers = (
+    sessionInfo as { DriverInfo?: { Drivers?: Array<{ CarIdx?: number; CarIsPaceCar?: number }> } } | null
+  )?.DriverInfo?.Drivers;
+
+  if (!Array.isArray(drivers)) return null;
+
+  for (const d of drivers) {
+    if (d?.CarIsPaceCar === 1 && typeof d.CarIdx === "number") return d.CarIdx;
+  }
+
+  return null;
 }
 
 /**

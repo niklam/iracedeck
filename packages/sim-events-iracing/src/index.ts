@@ -48,6 +48,11 @@ export {
   sanitizeFuelCalloutMarginLaps,
 } from "./diff/fuel-laps-left.js";
 export { FUEL_LAP_HISTORY_CAP, type FuelLap, type FuelStats } from "./diff/fuel-laps.js";
+export {
+  OPPONENT_PIT_AGGREGATE_THRESHOLD,
+  OPPONENT_PIT_AGGREGATE_WINDOW_MS,
+  OPPONENT_PIT_CAR_COOLDOWN_MS,
+} from "./diff/opponent-pit.js";
 export { OVERTAKE_HOLD_MS, OVERTAKE_MAX_JUMP } from "./diff/overtakes.js";
 export { PIT_APPROACH_COOLDOWN_MS } from "./diff/pit-lane.js";
 export { resolveRadarState } from "./diff/radar.js";
