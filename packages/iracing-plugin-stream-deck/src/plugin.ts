@@ -17,6 +17,9 @@ import {
   LAP_TIME_CALLOUT_SETTING_KEYS,
   type LapCompletedSnapshot,
   type LapTimeCalloutId,
+  OPPONENT_PIT_CALLOUT_SETTING_KEYS,
+  type OpponentPitCalloutId,
+  type OpponentPitSnapshot,
   OVERTAKE_CALLOUT_SETTING_KEYS,
   type OvertakeCalloutId,
   type OvertakeGate,
@@ -85,7 +88,7 @@ import {
   validateSetupWarningPatterns,
   VERSION_CHECK_STARTUP_GRACE_MS,
 } from "@iracedeck/deck-core";
-import { initializeEventBus } from "@iracedeck/event-bus";
+import { initializeEventBus, type SimEventOf } from "@iracedeck/event-bus";
 import {
   AI_SPOTTER_CONTROLS_UUID,
   AiSpotterControls,
@@ -166,6 +169,7 @@ import { IRacingNative } from "@iracedeck/iracing-native";
 import { createSvgRasterizer } from "@iracedeck/rasterizer";
 import {
   getDriverSetupName,
+  getLiveCarPosition,
   getLivePosition,
   getLiveRacePositions,
   getNearestCarGapMeters,
@@ -351,6 +355,15 @@ eventBus.subscribe("lap.completed", (ev) => {
 let lastCornerName: CornerNameSnapshot | null = null;
 eventBus.subscribe("cornerName.approaching", (ev) => {
   lastCornerName = ev.data;
+});
+
+// Cache the most recent `opponentPit.entered` payload so the nearby
+// scenario's position number can resolve at speak time (issue #622) — the
+// corner-name subscription pattern. Subscribed BEFORE registerPitCrew so the
+// cache is fresh when the scenario evaluates.
+let lastOpponentPit: SimEventOf<"opponentPit.entered">["data"] | null = null;
+eventBus.subscribe("opponentPit.entered", (ev) => {
+  lastOpponentPit = ev.data;
 });
 
 // Cache the most recent `race.finished` payload so the race-end scenario's
@@ -600,6 +613,20 @@ registerPitCrew(
     (getGlobalSettings() as Record<string, unknown>)[CORNER_NAME_CALLOUT_SETTING_KEYS[id]] !== false,
   // Corner-name snapshot resolver (issue #888) — the cache populated above.
   () => lastCornerName,
+  // Opponent-pit callout opt-ins (issue #622). Live-read, two subjects.
+  (id: OpponentPitCalloutId) =>
+    (getGlobalSettings() as Record<string, unknown>)[OPPONENT_PIT_CALLOUT_SETTING_KEYS[id]] !== false,
+  // Opponent-pit snapshot resolver (issue #622) — prefer the live canonical
+  // position at speak time; fall back to the emit-time payload position.
+  (): OpponentPitSnapshot | null => {
+    if (!lastOpponentPit || typeof lastOpponentPit.carIdx !== "number") return null;
+
+    const live = getLiveCarPosition(lastOpponentPit.carIdx);
+    const liveN = live ? (live.isMultiClass ? live.classPosition : live.position) : 0;
+    const n = liveN > 0 ? liveN : (lastOpponentPit.position ?? 0);
+
+    return n > 0 ? { position: n } : null;
+  },
   // Race Engineer master gate (issue #515). Read live so a fresh install
   // (or a deck with no Pit Crew button mounted) suppresses every voice
   // scenario at dispatch time, independent of audio bus volumes.
