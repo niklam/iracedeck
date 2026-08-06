@@ -822,6 +822,21 @@ describe("FLAG_ALERTS penalty-flag delivery (issue #923)", () => {
 
     expect(voiceClipsPlayed()).toEqual(["voice/luca/flags/red-01.mp3", "voice/luca/flags/disqualify-01.mp3"]);
   });
+
+  // The #867 supersession guard pattern (see start-lights.test.ts): the DSL
+  // replays queueable fires unconditionally, so prove a black line cut
+  // MID-PLAYBACK by the escalating disqualify is never stashed for replay — a
+  // same-family replacement skips `stashRunningIfQueueable`, and making the
+  // black scenario queueable must not change that.
+  it("a black line cut mid-playback by disqualify is not stashed — no replay at idle (escalation)", () => {
+    bus.publishEvent("flag.black.raised", {});
+    // Mid-playback (no flush): the DQ supersedes via the shared flag family.
+    bus.publishEvent("flag.disqualify.raised", {});
+    flush(audio);
+
+    expect(voiceClipsPlayed()).not.toContain("voice/luca/flags/black-01.mp3");
+    expect(voiceClipsPlayed().at(-1)).toBe("voice/luca/flags/disqualify-01.mp3");
+  });
 });
 
 describe("FLAG_POOL_NAMES", () => {
