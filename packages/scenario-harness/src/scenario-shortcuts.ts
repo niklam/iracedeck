@@ -377,12 +377,13 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   },
 
   // ── Incidents ──
-  // One shortcut per IncidentType the bus publishes (issue #530). The
-  // diff classifies the iRacing report byte before publishing, so the
-  // harness mirrors that vocabulary directly. `delta` is the canonical
-  // point count for each type per iRacing's `irsdk_IncidentFlags` enum
-  // comments (off-track 1x, out-of-control 2x, contact 0x, collision 2x
-  // for world / 4x for car).
+  // One shortcut per IncidentType the bus publishes (issue #530), plus
+  // delta-varied buttons (issue #922). The diff classifies the iRacing
+  // report byte before publishing, so the harness mirrors that vocabulary
+  // directly. Per-type point weights are NOT fixed across iRacing content
+  // (dirt-road car contact scores 2x, not 4x) — the spoken count is always
+  // composed from `delta`, the new points detected for the incident, so the
+  // varied buttons exercise count selection without iRacing.
   {
     id: "incident-off-track",
     category: "Incidents",
@@ -403,7 +404,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     id: "incident-contact-world",
     category: "Incidents",
     label: "Contact — Wall (0x)",
-    description: "Light wall rub — engineer notes no penalty.",
+    description: "Light wall rub — intro only, no count clause for a zero delta.",
     event: "incident.occurred",
     data: { delta: 0, type: "contact-world" },
   },
@@ -411,7 +412,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     id: "incident-collision-world",
     category: "Incidents",
     label: "Collision — Wall (2x)",
-    description: "Heavier wall hit — engineer announces 2-point penalty.",
+    description: "Heavier wall hit — engineer announces the detected 2-point count.",
     event: "incident.occurred",
     data: { delta: 2, type: "collision-world" },
   },
@@ -419,17 +420,33 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     id: "incident-contact-car",
     category: "Incidents",
     label: "Contact — Car (0x)",
-    description: "Light car-to-car rub — engineer notes no penalty.",
+    description: "Light car-to-car rub — intro only, no count clause for a zero delta.",
     event: "incident.occurred",
     data: { delta: 0, type: "contact-car" },
+  },
+  {
+    id: "incident-contact-car-1x",
+    category: "Incidents",
+    label: "Contact — Car (1x)",
+    description: "Car contact that scored a point — contact intro plus one-point count.",
+    event: "incident.occurred",
+    data: { delta: 1, type: "contact-car" },
   },
   {
     id: "incident-collision-car",
     category: "Incidents",
     label: "Collision — Car (4x)",
-    description: "Heavier car-to-car hit — engineer announces 4-point penalty.",
+    description: "Heavier car-to-car hit — engineer announces the detected 4-point count.",
     event: "incident.occurred",
     data: { delta: 4, type: "collision-car" },
+  },
+  {
+    id: "incident-collision-car-2x",
+    category: "Incidents",
+    label: "Collision — Car (2x, dirt)",
+    description: "The issue #922 repro: dirt-road car collision scoring 2x — announces two points, not four.",
+    event: "incident.occurred",
+    data: { delta: 2, type: "collision-car" },
   },
   {
     id: "off-track-started",

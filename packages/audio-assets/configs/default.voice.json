@@ -1039,63 +1039,83 @@
       },
       {
         "name": "contact-world-01",
-        "text": "A bit of rubbing on the wall there. <break time=\"0.3s\" /> No points.",
+        "text": "A bit of rubbing on the wall there.",
         "seed": 4
       },
       {
         "name": "contact-world-02",
-        "text": "Just a touch on the wall. <break time=\"0.3s\" /> We're clean.",
+        "text": "Just a touch on the wall.",
         "seed": 6
       },
       {
         "name": "contact-world-03",
-        "text": "Quick kiss with the wall. <break time=\"0.3s\" /> No penalty.",
+        "text": "Quick kiss with the wall.",
         "seed": 7
       },
       {
         "name": "contact-car-01",
-        "text": "Some rubbing with the other car. <break time=\"0.3s\" /> No points.",
+        "text": "Some rubbing with the other car.",
         "seed": 3
       },
       {
         "name": "contact-car-02",
-        "text": "Light contact with the other car. <break time=\"0.3s\" /> That's fine.",
+        "text": "Light contact with the other car.",
         "seed": 7
       },
       {
         "name": "contact-car-03",
-        "text": "Door-to-door but clean. <break time=\"0.3s\" /> No penalty.",
+        "text": "Door-to-door with the other car.",
         "seed": 8
       },
       {
         "name": "collision-world-01",
-        "text": "That hit on the wall cost us two penalty points.",
+        "text": "That's a hard hit on the wall.",
         "seed": 5
       },
       {
         "name": "collision-world-02",
-        "text": "We just received a two point penalty for that crash.",
+        "text": "Big impact with the wall there.",
         "seed": 6
       },
       {
         "name": "collision-world-03",
-        "text": "Two points for catching the wall.",
+        "text": "We caught the wall properly that time.",
         "seed": 7
       },
       {
         "name": "collision-car-01",
-        "text": "That collision with the other car cost us four penalty points.",
+        "text": "That's a collision with the other car.",
         "seed": 6
       },
       {
         "name": "collision-car-02",
-        "text": "We just received a four point penalty for that crash.",
+        "text": "Heavy contact with the other car there.",
         "seed": 7
       },
       {
         "name": "collision-car-03",
-        "text": "Four points for hitting the other car.",
+        "text": "We hit the other car hard.",
         "seed": 8
+      },
+      {
+        "name": "points-1",
+        "text": "That cost us one penalty point.",
+        "seed": 1
+      },
+      {
+        "name": "points-2",
+        "text": "That cost us two penalty points.",
+        "seed": 1
+      },
+      {
+        "name": "points-3",
+        "text": "That cost us three penalty points.",
+        "seed": 1
+      },
+      {
+        "name": "points-4",
+        "text": "That cost us four penalty points.",
+        "seed": 1
       }
     ],
     "names": [
