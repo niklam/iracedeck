@@ -11,6 +11,8 @@ export {
   getDriverSetupName,
   getFuelStats,
   getLatestTelemetry,
+  getLiveGapBetween,
+  getLiveGaps,
   getLivePosition,
   getLiveRacePositions,
   getNearestCarGapMeters,
@@ -27,10 +29,19 @@ export {
   isPitActionsAllowed,
   isRaceFinished,
   isSimEventsIracingInitialized,
+  type GapNeighbor,
   type LivePosition,
+  type LiveGaps,
   type OvertakeTelemetryGate,
   type SimEventsIracingOptions,
 } from "./translator.js";
+export {
+  GAP_CALLOUT_TREND_DEADBAND_S,
+  GAP_CHECKPOINT_STEP,
+  GAP_DEFAULT_ALERT_THRESHOLD_S,
+  GAP_DISPLAY_TREND_DEADBAND_S,
+  GAP_THRESHOLD_HYSTERESIS_S,
+} from "./diff/gaps.js";
 export {
   CORNER_CALLOUT_DEFAULT_LEAD_SECONDS,
   CORNER_CALLOUT_LEAD_MAX_SECONDS,

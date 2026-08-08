@@ -7,7 +7,20 @@
  * first tick after connect seeds without firing spurious transition events.
  */
 import { type IncidentType, type PitBoxMark, type RadarState, TrackWetness } from "@iracedeck/event-bus";
+import type { GapTrendDirection, ProgressTrace } from "@iracedeck/iracing-sdk";
 import type { CornerMarker } from "@iracedeck/track-data";
+
+/** Live gap snapshot for one class-standings neighbor (issue #933). */
+export type GapNeighborState = {
+  /** The neighbor's car index. */
+  carIdx: number;
+  /** Crossing-time gap in seconds; null while the traces can't cover the lookup. */
+  gapSeconds: number | null;
+  /** Whole laps the pair is apart (0 = same racing lap). */
+  lapDelta: number;
+  /** Continuous display trend (gap now vs one lap ago at this track position). */
+  trend: GapTrendDirection | null;
+};
 
 export type MaterialSample = {
   t: number; // timestamp (ms since epoch)
@@ -462,6 +475,49 @@ export type TranslatorState = {
   /** Cache key (`${TrackID}|${SessionNum}`) for invalidating `trackLengthMeters`. */
   trackLengthKey: string;
 
+  // ── Gaps (issue #933) ───────────────────────────────────────────────────
+  /**
+   * Per-car crossing-time traces: rolling ~1.15-lap history of
+   * `lapCompleted + lapDistPct` progress against `SessionTime`, sparse-indexed
+   * by carIdx. Owned here; all math on them lives in
+   * `@iracedeck/iracing-sdk` `gap-utils.ts`.
+   */
+  gapTraces: (ProgressTrace | undefined)[];
+  /** Cached class-neighbor car indices from the last tick (−1 = none). */
+  gapAheadIdx: number;
+  gapBehindIdx: number;
+  /** Live gap snapshots `getLiveGaps()` reads; null = not computable this tick. */
+  gapLiveAhead: GapNeighborState | null;
+  gapLiveBehind: GapNeighborState | null;
+  /**
+   * Display-trend checkpoint rings (issue #933): the gap recorded at every
+   * 2% of player progress, so the continuous key-color trend compares the
+   * live gap against the checkpoint nearest one full lap back — same track
+   * position, so track-shape noise cancels. Reset on neighbor identity change.
+   */
+  gapCheckpointsAhead: { progress: number; gapSeconds: number }[];
+  gapCheckpointsBehind: { progress: number; gapSeconds: number }[];
+  /** Player progress at the last recorded checkpoint (−1 before seeding). */
+  gapLastCheckpointProgress: number;
+  /** Lap-over-lap callout samples: the gap at the player's previous lap completion. */
+  gapLapSampleAhead: number | null;
+  gapLapSampleBehind: number | null;
+  /** Direction of the previous lap's delta (per side), for the 2-lap confirmation. */
+  gapPrevLapDirectionAhead: GapTrendDirection | null;
+  gapPrevLapDirectionBehind: GapTrendDirection | null;
+  /** Last direction announced via gap.trendChanged (per side). */
+  gapAnnouncedDirectionAhead: GapTrendDirection | null;
+  gapAnnouncedDirectionBehind: GapTrendDirection | null;
+  /**
+   * Threshold episode armed flags — arm only after the gap has been observed
+   * beyond threshold + hysteresis, so a nose-to-tail race start can't fire a
+   * crossing on the first green-flag tick.
+   */
+  gapThresholdArmedAhead: boolean;
+  gapThresholdArmedBehind: boolean;
+  /** Player `LapCompleted` at the last lap-sample capture (−1 before seeding). */
+  gapLastLapCompleted: number;
+
   // ── Self-managed running order (issue #603) ─────────────────────────────
   /**
    * Per-car last-known good score (`CarIdxLapCompleted + CarIdxLapDistPct`) from
@@ -763,6 +819,24 @@ export function createInitialState(): TranslatorState {
     pendingLossPrevClassPos: 0,
     trackLengthMeters: null,
     trackLengthKey: "",
+
+    gapTraces: [],
+    gapAheadIdx: -1,
+    gapBehindIdx: -1,
+    gapLiveAhead: null,
+    gapLiveBehind: null,
+    gapCheckpointsAhead: [],
+    gapCheckpointsBehind: [],
+    gapLastCheckpointProgress: -1,
+    gapLapSampleAhead: null,
+    gapLapSampleBehind: null,
+    gapPrevLapDirectionAhead: null,
+    gapPrevLapDirectionBehind: null,
+    gapAnnouncedDirectionAhead: null,
+    gapAnnouncedDirectionBehind: null,
+    gapThresholdArmedAhead: false,
+    gapThresholdArmedBehind: false,
+    gapLastLapCompleted: -1,
 
     positionLastKnownScores: [],
     positionFrozen: new Set(),
