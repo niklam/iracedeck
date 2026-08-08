@@ -118,6 +118,17 @@ export const POOL_REGISTRY: Readonly<Record<string, PoolSource>> = {
   "fuel-laps-left-1": { group: "fuel", base: "laps-left-1" },
   "fuel-laps-left-box": { group: "fuel", base: "laps-left-box" },
 
+  // Gap callout pools (issue #933): trend-flip lines per side/direction,
+  // threshold alerts per side, and the "Gap is" intro for the number readout
+  // (the number itself reuses the lap-time-second / lap-time-decimal groups).
+  "gap-ahead-closing": { group: "gap", base: "ahead-closing" },
+  "gap-ahead-opening": { group: "gap", base: "ahead-opening" },
+  "gap-behind-closing": { group: "gap", base: "behind-closing" },
+  "gap-behind-opening": { group: "gap", base: "behind-opening" },
+  "gap-threshold-ahead": { group: "gap", base: "threshold-ahead" },
+  "gap-threshold-behind": { group: "gap", base: "threshold-behind" },
+  "gap-readout-intro": { group: "gap", base: "readout-intro" },
+
   // Damage callout pool (issue #489).
   "damage-repair-needed": { group: "damage", base: "repair-needed" },
 

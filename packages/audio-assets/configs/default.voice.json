@@ -1006,6 +1006,53 @@
         "seed": 9
       }
     ],
+    "gap": [
+      {
+        "name": "ahead-closing-01",
+        "text": "We're gaining on the car ahead."
+      },
+      {
+        "name": "ahead-closing-02",
+        "text": "Good pace — we're closing on the car ahead."
+      },
+      {
+        "name": "ahead-opening-01",
+        "text": "The car ahead is pulling away from us."
+      },
+      {
+        "name": "ahead-opening-02",
+        "text": "We're losing time to the car ahead."
+      },
+      {
+        "name": "behind-closing-01",
+        "text": "The car behind is closing in on us."
+      },
+      {
+        "name": "behind-closing-02",
+        "text": "The car behind is gaining. Keep your head down."
+      },
+      {
+        "name": "behind-opening-01",
+        "text": "We're pulling away from the car behind."
+      },
+      {
+        "name": "behind-opening-02",
+        "text": "Good — we're dropping the car behind."
+      },
+      {
+        "name": "threshold-ahead-01",
+        "text": "We've caught the car ahead."
+      },
+      {
+        "name": "threshold-behind-01",
+        "text": "The car behind is right with us."
+      },
+      {
+        "name": "readout-intro",
+        "text": "Gap is",
+        "next_request_ids": ["lap-time-second/1"]
+      }
+    ],
     "incidents": [
       {
         "name": "off-track-01",
