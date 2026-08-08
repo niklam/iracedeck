@@ -60,6 +60,9 @@ export type PitBoxMark = "five" | "four" | "three" | "two" | "one" | "pit-now";
 /** Flag scope — "local" is a sector/area yellow, "full" is a full-course yellow. */
 export type FlagScope = "local" | "full";
 
+/** Which standings neighbor a gap event refers to (issue #933). */
+export type GapSide = "ahead" | "behind";
+
 /**
  * Pre-start countdown thresholds (issue #480). One value per spoken number as
  * the standing-start `SessionTimeRemain` crosses each mark in the trustworthy
@@ -668,6 +671,51 @@ export type SimEventMap = {
       previousClassPosition?: number;
       /** True iff the current session has more than one car class. */
       isMultiClass?: boolean;
+    }
+  >;
+  /**
+   * The lap-over-lap gap trend to a class-standings neighbor flipped
+   * direction and held for 2 consecutive laps (issue #933). Emitted from the
+   * gap diff at the player's lap completion; race sessions only, never for a
+   * neighbor a lap or more apart, and suppressed while either car is on pit
+   * road or off track. `gapSeconds` is the crossing-time gap at emission;
+   * spoken numbers should read the LIVE gap at speak time instead (#574
+   * pattern).
+   */
+  "gap.trendChanged": SimEvent<
+    "gap.trendChanged",
+    {
+      /** Which neighbor the trend refers to. */
+      side: GapSide;
+      /** New sustained direction ("closing" = the gap is shrinking). */
+      direction: "closing" | "opening";
+      /** Gap in seconds at the emitting lap completion. */
+      gapSeconds: number;
+      /** Gap in seconds one lap earlier (the sample the flip was measured against). */
+      previousGapSeconds: number;
+      /** The neighbor's car index. */
+      carIdx: number;
+      /** Player lap (`LapCompleted`) at emission. */
+      lap: number;
+    }
+  >;
+  /**
+   * The live gap to a class-standings neighbor first dropped below the
+   * user's alert threshold (issue #933). Once per episode: re-arms only
+   * after the gap has grown back beyond threshold + hysteresis. Same
+   * suppression rules as `gap.trendChanged`.
+   */
+  "gap.thresholdCrossed": SimEvent<
+    "gap.thresholdCrossed",
+    {
+      /** Which neighbor crossed inside the threshold. */
+      side: GapSide;
+      /** Live gap in seconds at the crossing. */
+      gapSeconds: number;
+      /** The configured alert threshold in seconds. */
+      thresholdSeconds: number;
+      /** The neighbor's car index. */
+      carIdx: number;
     }
   >;
   /**
