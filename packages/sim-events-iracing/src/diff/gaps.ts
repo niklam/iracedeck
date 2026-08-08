@@ -269,16 +269,147 @@ function resetSideState(state: TranslatorState, side: Side): void {
 }
 
 /**
- * Lap-over-lap trend sampling + threshold episodes (issue #933, plan Task 4).
- * Implemented in the follow-up task; the per-tick sequencing hook is already
- * in place so Task 4 only fills in this function.
+ * Lap-over-lap trend sampling + threshold episodes (issue #933).
+ *
+ * Trend: the gap is sampled at each player lap completion; a direction
+ * (closing/opening, 0.2 s deadband) that differs from the last announced one
+ * and holds for 2 consecutive laps emits `gap.trendChanged`. Threshold: an
+ * episode arms only once the gap has been seen beyond threshold + hysteresis
+ * (so a nose-to-tail start can't fire at the green), fires
+ * `gap.thresholdCrossed` once when the live gap first drops below the
+ * threshold, and re-arms only past the hysteresis point. Both are silent
+ * while either car is on pit road / off track and for lapped neighbors.
  */
 function maybeEmitCalloutEvents(
-  _state: TranslatorState,
-  _telemetry: TelemetryData,
-  _playerPaused: boolean,
-  _getThresholdSeconds: () => number,
-  _emit: EmitFn,
+  state: TranslatorState,
+  telemetry: TelemetryData,
+  playerPaused: boolean,
+  getThresholdSeconds: () => number,
+  emit: EmitFn,
 ): void {
-  // Task 4.
+  processThresholdEpisode(state, telemetry, "ahead", playerPaused, getThresholdSeconds, emit);
+  processThresholdEpisode(state, telemetry, "behind", playerPaused, getThresholdSeconds, emit);
+
+  const lapCompleted = typeof telemetry.LapCompleted === "number" ? telemetry.LapCompleted : -1;
+
+  if (lapCompleted < 0 || lapCompleted === state.gapLastLapCompleted) return;
+
+  const seeding = state.gapLastLapCompleted < 0;
+
+  state.gapLastLapCompleted = lapCompleted;
+  processLapSample(state, telemetry, "ahead", lapCompleted, playerPaused, seeding, emit);
+  processLapSample(state, telemetry, "behind", lapCompleted, playerPaused, seeding, emit);
+}
+
+/** Capture one side's lap sample and emit a sustained trend flip. */
+function processLapSample(
+  state: TranslatorState,
+  telemetry: TelemetryData,
+  side: Side,
+  lapCompleted: number,
+  playerPaused: boolean,
+  seeding: boolean,
+  emit: EmitFn,
+): void {
+  const live = side === "ahead" ? state.gapLiveAhead : state.gapLiveBehind;
+  const idx = side === "ahead" ? state.gapAheadIdx : state.gapBehindIdx;
+  const suppressed = playerPaused || (idx >= 0 && neighborSuppressed(telemetry, idx));
+
+  if (!live || idx < 0 || suppressed || live.lapDelta !== 0 || live.gapSeconds === null) {
+    // The lap-over-lap series is broken — a comparison across the break
+    // would attribute pit/tow time to pace. Start fresh next lap.
+    setLapSample(state, side, null);
+    setPrevLapDirection(state, side, null);
+
+    return;
+  }
+
+  const prevSample = side === "ahead" ? state.gapLapSampleAhead : state.gapLapSampleBehind;
+
+  setLapSample(state, side, live.gapSeconds);
+
+  if (seeding || prevSample === null) {
+    setPrevLapDirection(state, side, null);
+
+    return;
+  }
+
+  const direction = classifyGapTrend(live.gapSeconds - prevSample, GAP_CALLOUT_TREND_DEADBAND_S);
+  const prevDirection = side === "ahead" ? state.gapPrevLapDirectionAhead : state.gapPrevLapDirectionBehind;
+  const announced = side === "ahead" ? state.gapAnnouncedDirectionAhead : state.gapAnnouncedDirectionBehind;
+
+  if ((direction === "closing" || direction === "opening") && direction === prevDirection && direction !== announced) {
+    emit({
+      event: "gap.trendChanged",
+      data: {
+        side,
+        direction,
+        gapSeconds: live.gapSeconds,
+        previousGapSeconds: prevSample,
+        carIdx: idx,
+        lap: lapCompleted,
+      },
+    });
+
+    if (side === "ahead") state.gapAnnouncedDirectionAhead = direction;
+    else state.gapAnnouncedDirectionBehind = direction;
+  }
+
+  setPrevLapDirection(state, side, direction);
+}
+
+/** Arm/fire one side's threshold episode against the live gap. */
+function processThresholdEpisode(
+  state: TranslatorState,
+  telemetry: TelemetryData,
+  side: Side,
+  playerPaused: boolean,
+  getThresholdSeconds: () => number,
+  emit: EmitFn,
+): void {
+  const live = side === "ahead" ? state.gapLiveAhead : state.gapLiveBehind;
+  const idx = side === "ahead" ? state.gapAheadIdx : state.gapBehindIdx;
+
+  if (!live || idx < 0 || live.lapDelta !== 0 || live.gapSeconds === null) return;
+
+  if (playerPaused || neighborSuppressed(telemetry, idx)) {
+    // A pit visit invalidates the episode — the huge, fast-moving gap of a
+    // car serving a stop must not fire a crossing on rejoin.
+    if (side === "ahead") state.gapThresholdArmedAhead = false;
+    else state.gapThresholdArmedBehind = false;
+
+    return;
+  }
+
+  const armed = side === "ahead" ? state.gapThresholdArmedAhead : state.gapThresholdArmedBehind;
+  const threshold = getThresholdSeconds();
+
+  if (!armed) {
+    if (live.gapSeconds > threshold + GAP_THRESHOLD_HYSTERESIS_S) {
+      if (side === "ahead") state.gapThresholdArmedAhead = true;
+      else state.gapThresholdArmedBehind = true;
+    }
+
+    return;
+  }
+
+  if (live.gapSeconds < threshold) {
+    emit({
+      event: "gap.thresholdCrossed",
+      data: { side, gapSeconds: live.gapSeconds, thresholdSeconds: threshold, carIdx: idx },
+    });
+
+    if (side === "ahead") state.gapThresholdArmedAhead = false;
+    else state.gapThresholdArmedBehind = false;
+  }
+}
+
+function setLapSample(state: TranslatorState, side: Side, value: number | null): void {
+  if (side === "ahead") state.gapLapSampleAhead = value;
+  else state.gapLapSampleBehind = value;
+}
+
+function setPrevLapDirection(state: TranslatorState, side: Side, value: GapTrendDirection | null): void {
+  if (side === "ahead") state.gapPrevLapDirectionAhead = value;
+  else state.gapPrevLapDirectionBehind = value;
 }
