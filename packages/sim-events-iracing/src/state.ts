@@ -526,6 +526,15 @@ export type TranslatorState = {
   gapBreakawayAnnouncedAhead: boolean;
   gapBreakawayAnnouncedBehind: boolean;
   /**
+   * Gap at the side's last `gap.trendChanged` emission — either direction
+   * (issue #933 follow-up): another trend announcement for the side is gated
+   * until the gap has moved at least `gapCalloutMinChangeSeconds` from this,
+   * so a rate wobbling around the bars can't ping-pong "pulling away" /
+   * "closing in" while the gap itself barely moves. Null = no baseline.
+   */
+  gapLastAnnouncedGapAhead: number | null;
+  gapLastAnnouncedGapBehind: number | null;
+  /**
    * Threshold episode armed flags — arm only after the gap has been observed
    * beyond threshold + hysteresis, so a nose-to-tail race start can't fire a
    * crossing on the first green-flag tick.
@@ -851,6 +860,8 @@ export function createInitialState(): TranslatorState {
     gapContactAnnouncedLapsBehind: null,
     gapBreakawayAnnouncedAhead: false,
     gapBreakawayAnnouncedBehind: false,
+    gapLastAnnouncedGapAhead: null,
+    gapLastAnnouncedGapBehind: null,
     gapThresholdArmedAhead: false,
     gapThresholdArmedBehind: false,
 

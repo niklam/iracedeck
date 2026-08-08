@@ -13,7 +13,7 @@ import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { describe, expect, it } from "vitest";
 
 import { createInitialState, type TranslatorState } from "../state.js";
-import { diffGaps, GAP_DEFAULT_ALERT_THRESHOLD_S } from "./gaps.js";
+import { diffGaps, GAP_DEFAULT_ALERT_THRESHOLD_S, GAP_DEFAULT_MIN_CHANGE_S } from "./gaps.js";
 import type { PendingEvent } from "./types.js";
 
 const PLAYER = 0;
@@ -73,6 +73,7 @@ function run(
     behindGapS: GapSpec;
     thresholdS?: number;
     lapsRemaining?: number | null;
+    minChangeS?: number;
     overrides?: Partial<TelemetryData>;
   },
 ): void {
@@ -99,6 +100,7 @@ function run(
       () => opts.thresholdS ?? GAP_DEFAULT_ALERT_THRESHOLD_S,
       emit,
       opts.lapsRemaining ?? null,
+      () => opts.minChangeS ?? GAP_DEFAULT_MIN_CHANGE_S,
     );
   }
 }
@@ -311,9 +313,10 @@ describe("diffGaps — relevance events (issue #933 follow-up)", () => {
     expect(openingEvents(events)).toHaveLength(1);
 
     // They claw back into battle range (which itself fires closing-threat
-    // calls — filtered out here), then get dropped again → second breakaway.
+    // calls — filtered out here), then get dropped again far enough to clear
+    // the minimum-movement gate → second breakaway.
     run(state, emit, { fromLap: 4, toLap: 7, aheadGapS: 8, behindGapS: [12, 4] });
-    run(state, emit, { fromLap: 7, toLap: 8, aheadGapS: 8, behindGapS: [4, 6] });
+    run(state, emit, { fromLap: 7, toLap: 9, aheadGapS: 8, behindGapS: [4, 8] });
 
     const after = openingEvents(events);
 
@@ -329,6 +332,35 @@ describe("diffGaps — relevance events (issue #933 follow-up)", () => {
     run(state, emit, { fromLap: 1, toLap: 4, aheadGapS: 8, behindGapS: [30, 36] });
 
     expect(trendEvents(events)).toHaveLength(0);
+  });
+
+  it("gates ping-ponging announcements until the gap has moved by the minimum change (issue #933 follow-up)", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+
+    // Breakaway announced shortly after the pull starts (gap ≈ 2.7 s)...
+    run(state, emit, { fromLap: 1, toLap: 2, aheadGapS: 8, behindGapS: [2.5, 4.0] });
+    expect(trendEvents(events)).toHaveLength(1);
+
+    // ...then the gap hovers around 3.7–4.0 — within the 1.5 s movement gate
+    // of the announcement — with hard short-term rates in both directions
+    // (the exact "dropping them" → "closing in" → "dropping them" ping-pong
+    // from track testing). Nothing new may be announced.
+    run(state, emit, { fromLap: 2, toLap: 2.1, aheadGapS: 8, behindGapS: [4.0, 3.7] });
+    run(state, emit, { fromLap: 2.1, toLap: 2.2, aheadGapS: 8, behindGapS: [3.7, 4.0] });
+    run(state, emit, { fromLap: 2.2, toLap: 2.3, aheadGapS: 8, behindGapS: [4.0, 3.7] });
+
+    expect(trendEvents(events)).toHaveLength(1);
+
+    // With the gate disabled (0), the same hover chatters — proving the gate
+    // is what holds it back.
+    const state2 = createInitialState();
+    const { events: events2, emit: emit2 } = collect();
+
+    run(state2, emit2, { fromLap: 1, toLap: 2, aheadGapS: 8, behindGapS: [2.5, 4.0], minChangeS: 0 });
+    run(state2, emit2, { fromLap: 2, toLap: 2.1, aheadGapS: 8, behindGapS: [4.0, 3.7], minChangeS: 0 });
+
+    expect(trendEvents(events2).length).toBeGreaterThan(1);
   });
 
   it("treats sub-bar rates as noise", () => {

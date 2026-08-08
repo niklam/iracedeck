@@ -50,6 +50,13 @@ export const GAP_BREAKAWAY_MIN_RATE_S_PER_LAP = 0.5;
 export const GAP_BREAKAWAY_MAX_GAP_S = 10;
 /** A breakaway episode re-arms once the pair closes back under this (seconds). */
 export const GAP_BREAKAWAY_REARM_GAP_S = 5;
+/**
+ * Default minimum gap movement (seconds) since a side's last trend
+ * announcement before another may fire — the anti-ping-pong gate
+ * (issue #933 follow-up). User-configurable via
+ * `gapCalloutMinChangeSeconds`; 0 disables.
+ */
+export const GAP_DEFAULT_MIN_CHANGE_S = 1.5;
 /** A threshold episode re-arms once the gap exceeds threshold + this margin. */
 export const GAP_THRESHOLD_HYSTERESIS_S = 0.5;
 /** Player-progress spacing (laps) between display-trend rate samples. */
@@ -103,6 +110,11 @@ export function diffGaps(
    * after the checkered is never announced.
    */
   lapsRemaining: number | null = null,
+  /**
+   * Live resolver for the minimum-movement gate in seconds (issue #933
+   * follow-up). Plugins wire the `gapCalloutMinChangeSeconds` setting.
+   */
+  getMinChangeSeconds: () => number = () => GAP_DEFAULT_MIN_CHANGE_S,
 ): void {
   const lc = telemetry.CarIdxLapCompleted as number[] | undefined;
   const pct = telemetry.CarIdxLapDistPct as number[] | undefined;
@@ -206,7 +218,7 @@ export function diffGaps(
   if (checkpointDue) state.gapLastCheckpointProgress = playerProgress;
 
   // 4) Relevance-driven callout events + threshold episodes.
-  maybeEmitCalloutEvents(state, telemetry, playerPaused, lapsRemaining, getThresholdSeconds, emit);
+  maybeEmitCalloutEvents(state, telemetry, playerPaused, lapsRemaining, getThresholdSeconds, getMinChangeSeconds, emit);
 }
 
 /** Compute one side's live snapshot, maintaining its checkpoint ring. */
@@ -379,10 +391,12 @@ function resetSideState(state: TranslatorState, side: Side): void {
   if (side === "ahead") {
     state.gapContactAnnouncedLapsAhead = null;
     state.gapBreakawayAnnouncedAhead = false;
+    state.gapLastAnnouncedGapAhead = null;
     state.gapThresholdArmedAhead = false;
   } else {
     state.gapContactAnnouncedLapsBehind = null;
     state.gapBreakawayAnnouncedBehind = false;
+    state.gapLastAnnouncedGapBehind = null;
     state.gapThresholdArmedBehind = false;
   }
 }
@@ -410,7 +424,10 @@ function resetSideState(state: TranslatorState, side: Side): void {
  *
  * All of it is evaluated continuously (no lap-boundary sampling) and stays
  * silent while either car is on pit road / off track, for lapped neighbors,
- * and while the smoothed rate has no signal.
+ * and while the smoothed rate has no signal. A per-side minimum-movement
+ * gate additionally holds any trend announcement until the gap has moved at
+ * least `getMinChangeSeconds()` from the side's last one, either direction —
+ * the anti-ping-pong rule.
  */
 function maybeEmitCalloutEvents(
   state: TranslatorState,
@@ -418,12 +435,13 @@ function maybeEmitCalloutEvents(
   playerPaused: boolean,
   lapsRemaining: number | null,
   getThresholdSeconds: () => number,
+  getMinChangeSeconds: () => number,
   emit: EmitFn,
 ): void {
   processThresholdEpisode(state, telemetry, "ahead", playerPaused, getThresholdSeconds, emit);
   processThresholdEpisode(state, telemetry, "behind", playerPaused, getThresholdSeconds, emit);
-  processRelevance(state, telemetry, "ahead", playerPaused, lapsRemaining, emit);
-  processRelevance(state, telemetry, "behind", playerPaused, lapsRemaining, emit);
+  processRelevance(state, telemetry, "ahead", playerPaused, lapsRemaining, getMinChangeSeconds, emit);
+  processRelevance(state, telemetry, "behind", playerPaused, lapsRemaining, getMinChangeSeconds, emit);
 }
 
 /** Evaluate one side's closing-threat projection and breakaway episode. */
@@ -433,6 +451,7 @@ function processRelevance(
   side: Side,
   playerPaused: boolean,
   lapsRemaining: number | null,
+  getMinChangeSeconds: () => number,
   emit: EmitFn,
 ): void {
   const live = side === "ahead" ? state.gapLiveAhead : state.gapLiveBehind;
@@ -446,6 +465,13 @@ function processRelevance(
   if (ema === null || samples < GAP_TREND_MIN_SAMPLES) return;
 
   const gap = live.gapSeconds;
+  // Anti-ping-pong gate (issue #933 follow-up): no trend announcement for
+  // this side, in EITHER direction, until the gap has moved at least the
+  // configured amount from the side's last one. A rate wobbling around the
+  // bars must not alternate "pulling away" / "closing in" while the gap
+  // itself hovers at the same value.
+  const lastAnnouncedGap = side === "ahead" ? state.gapLastAnnouncedGapAhead : state.gapLastAnnouncedGapBehind;
+  const movedEnough = lastAnnouncedGap === null || Math.abs(gap - lastAnnouncedGap) >= getMinChangeSeconds();
 
   // ── Closing threat: announce by projected time-to-contact. ──
   const announcedAt = side === "ahead" ? state.gapContactAnnouncedLapsAhead : state.gapContactAnnouncedLapsBehind;
@@ -455,6 +481,7 @@ function processRelevance(
     const lapsToContact = gap / closingRate;
     const horizon = Math.min(GAP_CONTACT_HORIZON_LAPS, lapsRemaining ?? Number.POSITIVE_INFINITY);
     const due =
+      movedEnough &&
       lapsToContact <= horizon &&
       (announcedAt === null || lapsToContact <= announcedAt * GAP_CONTACT_REANNOUNCE_FACTOR);
 
@@ -464,8 +491,13 @@ function processRelevance(
         data: { side, direction: "closing", gapSeconds: gap, ratePerLap: ema, lapsToContact, carIdx: idx },
       });
 
-      if (side === "ahead") state.gapContactAnnouncedLapsAhead = lapsToContact;
-      else state.gapContactAnnouncedLapsBehind = lapsToContact;
+      if (side === "ahead") {
+        state.gapContactAnnouncedLapsAhead = lapsToContact;
+        state.gapLastAnnouncedGapAhead = gap;
+      } else {
+        state.gapContactAnnouncedLapsBehind = lapsToContact;
+        state.gapLastAnnouncedGapBehind = gap;
+      }
     }
   } else if (announcedAt !== null && closingRate < GAP_CLOSING_MIN_RATE_S_PER_LAP / 2) {
     // The threat receded (they stopped closing) — re-arm with hysteresis so
@@ -483,14 +515,24 @@ function processRelevance(
     // the gap is still small and still opening.
     if (side === "ahead") state.gapBreakawayAnnouncedAhead = false;
     else state.gapBreakawayAnnouncedBehind = false;
-  } else if (!breakawayAnnounced && ema >= GAP_BREAKAWAY_MIN_RATE_S_PER_LAP && gap <= GAP_BREAKAWAY_MAX_GAP_S) {
+  } else if (
+    !breakawayAnnounced &&
+    movedEnough &&
+    ema >= GAP_BREAKAWAY_MIN_RATE_S_PER_LAP &&
+    gap <= GAP_BREAKAWAY_MAX_GAP_S
+  ) {
     emit({
       event: "gap.trendChanged",
       data: { side, direction: "opening", gapSeconds: gap, ratePerLap: ema, carIdx: idx },
     });
 
-    if (side === "ahead") state.gapBreakawayAnnouncedAhead = true;
-    else state.gapBreakawayAnnouncedBehind = true;
+    if (side === "ahead") {
+      state.gapBreakawayAnnouncedAhead = true;
+      state.gapLastAnnouncedGapAhead = gap;
+    } else {
+      state.gapBreakawayAnnouncedBehind = true;
+      state.gapLastAnnouncedGapBehind = gap;
+    }
   }
 }
 

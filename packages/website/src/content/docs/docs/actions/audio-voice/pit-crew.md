@@ -253,7 +253,7 @@ In race sessions the Race Engineer watches the time gaps to the cars one positio
 
 When the live gap is under a minute, the engineer follows the line with the number — *"Gap is one point five seconds."* — read at the moment it's spoken, not at the moment the event fired.
 
-The engineer keeps quiet when there's nothing worth saying: a shared **cooldown** (1–360 s, default 30) spaces all gap callouts; nothing is announced about a neighbor a lap or more away, while either car is on pit road or off track (a rival serving a pit stop is not a battle), during messy moments (a car alongside, you're crawling, a recent incident), or after the race has ended. A neighbor change — someone pits, you get passed — resets the measurement so the trend never mixes two different cars.
+The engineer keeps quiet when there's nothing worth saying: a shared **cooldown** (1–360 s, default 30) spaces all gap callouts; a **minimum-movement gate** (0–10 s, default 1.5) holds any new call about the same car until the gap has actually moved that much since the last one, so a gap hovering around one value can't ping-pong "pulling away" / "closing in"; nothing is announced about a neighbor a lap or more away, while either car is on pit road or off track (a rival serving a pit stop is not a battle), during messy moments (a car alongside, you're crawling, a recent incident), or after the race has ended. A neighbor change — someone pits, you get passed — resets the measurement so the trend never mixes two different cars.
 
 Both callouts are individually toggleable under **Race Engineer Callouts → Gaps**, enabled by default, with the threshold and cooldown sliders right below them.
 
@@ -393,6 +393,7 @@ Under **Gaps**, two callouts are toggleable, both enabled by default (see [Gap c
 - **Gap under threshold** (`calloutEnabledGapThreshold`) — the once-per-episode alert when a gap first drops under the configurable threshold.
 - **Gap alert threshold (s)** (`gapAlertThresholdSeconds`, 0.5–3, default 1.0) — the crossing point for the threshold alert. Read live.
 - **Gap callout cooldown (s)** (`gapCalloutCooldownSeconds`, 1–360, default 30) — minimum quiet time between any two gap callouts. Read live.
+- **Gap change to re-announce (s)** (`gapCalloutMinChangeSeconds`, 0–10, default 1.5) — a new call about the same car also waits until the gap has moved at least this much since the last one. 0 disables. Read live.
 
 Under **Pit Box**, one callout is toggleable, enabled by default:
 

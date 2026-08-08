@@ -699,6 +699,14 @@ export const GlobalSettingsSchema = z
      */
     gapCalloutCooldownSeconds: z.coerce.number().min(1).max(360).default(30).catch(30),
     /**
+     * Minimum gap movement (seconds) since a side's last gap announcement
+     * before another one may fire for that side (issue #933 follow-up: a
+     * rate wobbling around the bars ping-ponged "pulling away" / "closing
+     * in" while the gap itself barely moved). 0–10, default 1.5; 0 disables
+     * the gate. Read live by the translator's gap diff.
+     */
+    gapCalloutMinChangeSeconds: z.coerce.number().min(0).max(10).default(1.5).catch(1.5),
+    /**
      * Opt-in for the race-end final-result callout (issue #569). One boolean
      * for the family — the engineer greets the driver by name and speaks the
      * final result after the driver crosses S/F under the checkered flag in a

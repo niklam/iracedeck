@@ -250,6 +250,14 @@ initializeSimEventsIracing(eventBus, getController(), adapter.createLogger("SimE
 
     return Number.isFinite(raw) && raw >= 0.5 && raw <= 3 ? raw : 1;
   },
+  // Anti-ping-pong movement gate (issue #933 follow-up) — minimum gap change
+  // since a side's last trend announcement before another may fire. 0
+  // disables. Clamp mirrors the schema.
+  getGapMinChangeSeconds: () => {
+    const raw = Number((getGlobalSettings() as Record<string, unknown>).gapCalloutMinChangeSeconds);
+
+    return Number.isFinite(raw) && raw >= 0 && raw <= 10 ? raw : 1.5;
+  },
 });
 
 // Feed the translator's live per-car race order into the template-context builder

@@ -361,16 +361,19 @@ describe("gap callout settings (issue #933)", () => {
     expect(parsed.calloutEnabledGapThreshold).toBe(true);
     expect(parsed.gapAlertThresholdSeconds).toBe(1);
     expect(parsed.gapCalloutCooldownSeconds).toBe(30);
+    expect(parsed.gapCalloutMinChangeSeconds).toBe(1.5);
   });
 
   it("coerces numeric strings and falls back on malformed values", () => {
     const parsed = GlobalSettingsSchema.parse({
       gapAlertThresholdSeconds: "2.5",
       gapCalloutCooldownSeconds: "junk",
+      gapCalloutMinChangeSeconds: "0",
     }) as Record<string, unknown>;
 
     expect(parsed.gapAlertThresholdSeconds).toBe(2.5);
     expect(parsed.gapCalloutCooldownSeconds).toBe(30);
+    expect(parsed.gapCalloutMinChangeSeconds).toBe(0);
   });
 });
 

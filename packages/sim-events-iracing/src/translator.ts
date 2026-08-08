@@ -57,7 +57,7 @@ import {
   type FuelLapTracker,
   type FuelStats,
 } from "./diff/fuel-laps.js";
-import { diffGaps, GAP_DEFAULT_ALERT_THRESHOLD_S } from "./diff/gaps.js";
+import { diffGaps, GAP_DEFAULT_ALERT_THRESHOLD_S, GAP_DEFAULT_MIN_CHANGE_S } from "./diff/gaps.js";
 import { diffIncidents } from "./diff/incidents.js";
 import { diffLaps } from "./diff/laps.js";
 import { diffLifecycle } from "./diff/lifecycle.js";
@@ -175,6 +175,12 @@ type TranslatorInstance = {
    * setting; defaults to the constant when no closure is given.
    */
   getGapAlertThresholdSeconds: () => number;
+  /**
+   * Live-read minimum gap movement (seconds) between gap trend
+   * announcements — the anti-ping-pong gate (issue #933 follow-up). Plugins
+   * wire it to the `gapCalloutMinChangeSeconds` global setting.
+   */
+  getGapMinChangeSeconds: () => number;
 };
 
 /**
@@ -204,6 +210,13 @@ export type SimEventsIracingOptions = {
    * global setting. Default: a constant {@link GAP_DEFAULT_ALERT_THRESHOLD_S}.
    */
   getGapAlertThresholdSeconds?: () => number;
+  /**
+   * Live-read minimum gap movement (seconds) between gap trend
+   * announcements (issue #933 follow-up). Plugins compose it from the
+   * `gapCalloutMinChangeSeconds` global setting. Default: a constant
+   * {@link GAP_DEFAULT_MIN_CHANGE_S}.
+   */
+  getGapMinChangeSeconds?: () => number;
 };
 
 let instance: TranslatorInstance | null = null;
@@ -241,6 +254,7 @@ export function initializeSimEventsIracing(
     getFuelLapsLeftMarginLaps: options.getFuelLapsLeftMarginLaps ?? (() => FUEL_CALLOUT_DEFAULT_MARGIN_LAPS),
     getCornerCalloutLeadSeconds: options.getCornerCalloutLeadSeconds ?? (() => CORNER_CALLOUT_DEFAULT_LEAD_SECONDS),
     getGapAlertThresholdSeconds: options.getGapAlertThresholdSeconds ?? (() => GAP_DEFAULT_ALERT_THRESHOLD_S),
+    getGapMinChangeSeconds: options.getGapMinChangeSeconds ?? (() => GAP_DEFAULT_MIN_CHANGE_S),
   };
 
   instance = self;
@@ -1586,6 +1600,7 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     self.getGapAlertThresholdSeconds,
     emit,
     gapLapsRemaining,
+    self.getGapMinChangeSeconds,
   );
   // Pit-box count-in (issue #600). Reuses the cached `trackLengthMeters` to
   // convert the LapDistPct→box gap into meters; the box itself comes from
