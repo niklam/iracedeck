@@ -30,10 +30,13 @@ import {
 } from "@iracedeck/iracing-sdk";
 import {
   FUEL_LAP_HISTORY_CAP,
+  type GapNeighbor,
   getFuelStats,
+  getLiveGaps,
   getLivePosition,
   getLiveRacePositions,
   getStartingGridPosition,
+  type LiveGaps,
 } from "@iracedeck/sim-events-iracing";
 import z from "zod";
 
@@ -84,6 +87,7 @@ const SessionInfoSettings = CommonSettings.extend({
       "laps",
       "position",
       "irating",
+      "gaps",
       "fuel",
       "flags",
       "track-wetness",
@@ -118,6 +122,16 @@ const SessionInfoSettings = CommonSettings.extend({
     .union([z.boolean(), z.string()])
     .transform((val) => val === true || val === "true")
     .default(false),
+  // Gaps mode row toggles (issue #933): which of the two class-neighbor gap
+  // rows the key shows. Both default on; a single enabled row renders larger.
+  gapShowAhead: z
+    .union([z.boolean(), z.string()])
+    .transform((val) => val === true || val === "true")
+    .default(true),
+  gapShowBehind: z
+    .union([z.boolean(), z.string()])
+    .transform((val) => val === true || val === "true")
+    .default(true),
 });
 
 type SessionInfoSettings = z.infer<typeof SessionInfoSettings>;
@@ -285,6 +299,112 @@ export function generateTrackWetnessGraphic(state: TrackWetness | undefined): st
   return segments.join("\n    ");
 }
 
+/** Trend colors for the gaps mode — green when the gap moves the player's way. */
+const GAP_TREND_GAIN_COLOR = "#2ecc71";
+const GAP_TREND_LOSS_COLOR = "#e74c3c";
+
+/** Placeholder for a missing neighbor / not-yet-computable gap. */
+const GAP_PLACEHOLDER = "–";
+
+/**
+ * @internal Exported for testing
+ *
+ * Formats one gap row's value: `–` for a missing neighbor or a gap the
+ * traces can't cover yet (cold start / outside races), `NL` when the
+ * neighbor is N full laps away, one decimal below 100 s, whole seconds
+ * above.
+ */
+export function formatGapValue(side: GapNeighbor | null): string {
+  if (!side) return GAP_PLACEHOLDER;
+
+  if (side.lapDelta >= 1) return `${side.lapDelta}L`;
+
+  if (side.gapSeconds === null) return GAP_PLACEHOLDER;
+
+  if (side.gapSeconds < 99.95) return side.gapSeconds.toFixed(1);
+
+  return String(Math.round(side.gapSeconds));
+}
+
+/**
+ * Row color from the trend: color encodes whether the gap is moving in the
+ * player's favor (ahead shrinking / behind growing = green), never row
+ * identity. Steady / unknown renders in the theme text color.
+ */
+function gapRowColor(side: GapNeighbor | null, isAhead: boolean, textColor: string): string {
+  if (!side || side.trend === null || side.trend === "steady") return textColor;
+
+  const favorable = isAhead ? side.trend === "closing" : side.trend === "opening";
+
+  return favorable ? GAP_TREND_GAIN_COLOR : GAP_TREND_LOSS_COLOR;
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * Generates the gaps-mode graphic: one row per enabled side, each an
+ * ahead/behind triangle marker plus the gap value, trend-colored per row.
+ * The marker is drawn as an SVG polygon (not a text glyph) so it renders
+ * identically regardless of font glyph coverage. Rows center vertically in
+ * the same area the single-value modes use; a single enabled row renders at
+ * the full configured size.
+ */
+export function generateGapsGraphic(
+  gaps: LiveGaps | null,
+  showAhead: boolean,
+  showBehind: boolean,
+  fontSize: number | undefined,
+  textColor: string,
+): string {
+  const configuredSize = fontSize !== undefined ? fontSize * 2 : 28;
+  const rows: { up: boolean; value: string; fill: string }[] = [];
+
+  if (showAhead) {
+    rows.push({
+      up: true,
+      value: formatGapValue(gaps?.ahead ?? null),
+      fill: gapRowColor(gaps?.ahead ?? null, true, textColor),
+    });
+  }
+
+  if (showBehind) {
+    rows.push({
+      up: false,
+      value: formatGapValue(gaps?.behind ?? null),
+      fill: gapRowColor(gaps?.behind ?? null, false, textColor),
+    });
+  }
+
+  if (rows.length === 0) return "";
+
+  const rowSize = rows.length === 1 ? configuredSize : Math.min(configuredSize, 30);
+  // Same vertical anchor math as the template's single value slot /
+  // telemetry-display's multi-line generator.
+  const baseY = 88 + (rowSize - 44) / 3;
+  const lineHeight = rowSize * 1.2;
+  const startY = baseY - ((rows.length - 1) * lineHeight) / 2;
+  const parts: string[] = [];
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i]!;
+    const y = startY + i * lineHeight;
+    // Marker triangle vertically centered on the row's cap height.
+    const cy = y - rowSize * 0.32;
+    const h = rowSize * 0.26;
+    const markerX = 30;
+    const points = row.up
+      ? `${markerX - h},${cy + h * 0.8} ${markerX + h},${cy + h * 0.8} ${markerX},${cy - h}`
+      : `${markerX - h},${cy - h * 0.8} ${markerX + h},${cy - h * 0.8} ${markerX},${cy + h}`;
+
+    parts.push(`<polygon points="${points}" fill="${row.fill}"/>`);
+    parts.push(
+      `<text x="82" y="${y}" text-anchor="middle" fill="${row.fill}" font-family="Arial, sans-serif" font-size="${rowSize}" font-weight="bold">${row.value}</text>`,
+    );
+  }
+
+  return parts.join("\n    ");
+}
+
 /**
  * @internal Exported for testing
  *
@@ -297,6 +417,7 @@ export function generateSessionInfoSvg(
   colorOverride?: { background: string; text: string },
   trackWetnessState?: TrackWetness,
   valueColor?: string,
+  liveGaps?: LiveGaps | null,
 ): string {
   const titleLabels: Record<string, string> = {
     incidents: "INCIDENTS",
@@ -304,6 +425,7 @@ export function generateSessionInfoSvg(
     laps: "LAPS",
     position: "POSITION",
     irating: "IRATING",
+    gaps: "GAPS",
     fuel: "FUEL",
     flags: "FLAGS",
     "laps-to-empty": "LAPS TO\nEMPTY",
@@ -362,11 +484,23 @@ export function generateSessionInfoSvg(
   const border = resolveBorderSettings(sessionInfoTemplate, getGlobalBorderSettings(), settings.borderOverrides);
   const borderSvg = generateBorderParts(border);
 
-  const graphicContent = settings.mode === "track-wetness" ? generateTrackWetnessGraphic(trackWetnessState) : "";
+  let graphicContent = "";
 
-  // The graphic content carries its own label for track-wetness, so clear the value
-  // text slot to avoid drawing the label twice.
-  const valueText = settings.mode === "track-wetness" ? "" : value;
+  if (settings.mode === "track-wetness") {
+    graphicContent = generateTrackWetnessGraphic(trackWetnessState);
+  } else if (settings.mode === "gaps") {
+    graphicContent = generateGapsGraphic(
+      liveGaps ?? null,
+      settings.gapShowAhead,
+      settings.gapShowBehind,
+      settings.fontSize,
+      textColor,
+    );
+  }
+
+  // The graphic content carries the whole display for track-wetness and gaps,
+  // so clear the value text slot to avoid drawing anything twice.
+  const valueText = settings.mode === "track-wetness" || settings.mode === "gaps" ? "" : value;
 
   const svg = renderIconTemplate(sessionInfoTemplate, {
     backgroundColor,
@@ -473,6 +607,7 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
     const colorOverride = this.resolveFlagColorOverride(settings, telemetry);
     const trackWetnessState = telemetry?.TrackWetness as TrackWetness | undefined;
     const valueColor = settings.mode === "irating" ? iratingValueColor(value) : undefined;
+    const liveGaps = settings.mode === "gaps" ? getLiveGaps() : undefined;
 
     const svgDataUri = generateSessionInfoSvg(
       settings,
@@ -481,6 +616,7 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
       colorOverride,
       trackWetnessState,
       valueColor,
+      liveGaps,
     );
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
@@ -513,6 +649,22 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
     // (practice/testing, no positions yet, player not in a scored field).
     if (settings.mode === "irating") {
       return this.extractIRatingValue(telemetry);
+    }
+
+    // Gaps mode (issue #933): the graphic carries the whole display; this
+    // string only busts the state-key cache on a visible change (value or
+    // trend per row). getLiveGaps() is null outside race sessions / before
+    // green, so both rows fall back to the placeholder everywhere else.
+    if (settings.mode === "gaps") {
+      const gaps = getLiveGaps();
+      const ahead = settings.gapShowAhead
+        ? `${formatGapValue(gaps?.ahead ?? null)}:${gaps?.ahead?.trend ?? "-"}`
+        : "off";
+      const behind = settings.gapShowBehind
+        ? `${formatGapValue(gaps?.behind ?? null)}:${gaps?.behind?.trend ?? "-"}`
+        : "off";
+
+      return `${ahead}|${behind}`;
     }
 
     if (!telemetry) {
@@ -831,6 +983,7 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
     if (lastStateKey !== stateKey) {
       this.lastState.set(contextId, stateKey);
       const valueColor = settings.mode === "irating" ? iratingValueColor(value) : undefined;
+      const liveGaps = settings.mode === "gaps" ? getLiveGaps() : undefined;
       const svgDataUri = generateSessionInfoSvg(
         settings,
         value,
@@ -838,6 +991,7 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
         colorOverride,
         trackWetnessState,
         valueColor,
+        liveGaps,
       );
       await this.updateKeyImage(contextId, svgDataUri);
     }
