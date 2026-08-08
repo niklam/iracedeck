@@ -169,7 +169,12 @@ export function diffGaps(
     const laps = lc[i]!;
     const dist = pct[i]!;
 
-    if (laps < 0 || dist < 0) continue;
+    // Finite check first: `NaN < 0` is false, so a bare range guard lets a
+    // NaN sample through — and a NaN in a trace is permanent, since every
+    // comparison in `appendProgressSample` (backwards reset, dedupe, prune)
+    // is false against it. The trace would then grow unbounded and every
+    // crossing-time lookup on it would return garbage.
+    if (!Number.isFinite(laps) || !Number.isFinite(dist) || laps < 0 || dist < 0) continue;
 
     let trace = state.gapTraces[i];
 
@@ -184,7 +189,7 @@ export function diffGaps(
   const playerLc = lc[playerCarIdx];
   const playerPct = pct[playerCarIdx];
 
-  if (playerLc === undefined || playerLc < 0 || playerPct === undefined || playerPct < 0) {
+  if (!Number.isFinite(playerLc) || playerLc! < 0 || !Number.isFinite(playerPct) || playerPct! < 0) {
     state.gapLiveAhead = null;
     state.gapLiveBehind = null;
 
@@ -213,6 +218,19 @@ export function diffGaps(
 
   // 3) Compute the live gap per side (forward-only crossing-time model).
   const playerPaused = telemetry.OnPitRoad === true || telemetry.IsOnTrack === false;
+
+  // A backwards jump (tow, teleport to pits) leaves the checkpoint anchor
+  // AHEAD of the player: `checkpointDue` would then stay false until they
+  // re-passed it — up to a full lap — so the chain would never be sampled
+  // NOR reset, and the pre-tow EMA would keep coloring the rows and dating
+  // the callouts' ratePerLap. Break the chain here, the way the per-car
+  // traces already do in `appendProgressSample`.
+  if (state.gapLastCheckpointProgress >= 0 && playerProgress < state.gapLastCheckpointProgress - GAP_CHECKPOINT_STEP) {
+    resetTrendRate(state, "ahead");
+    resetTrendRate(state, "behind");
+    state.gapLastCheckpointProgress = -1;
+  }
+
   const checkpointDue =
     state.gapLastCheckpointProgress < 0 || playerProgress - state.gapLastCheckpointProgress >= GAP_CHECKPOINT_STEP;
 
@@ -482,18 +500,53 @@ function maybeEmitCalloutEvents(
     // or update any episode bookkeeping.
     if (!updateStability(state, side)) continue;
 
+    // Fold this tick's gap into the side's since-last-announcement extremes
+    // BEFORE either processor reads them. Both the threshold gate and the
+    // relevance gates compare against these extremes, so folding inside the
+    // relevance path (which is EMA-warm-only) would leave them stale — or
+    // never seeded at all — whenever the trend chain is cold, silently
+    // suppressing calls the user un-gated by setting the movement to 0.
+    const extremes = foldSideExtremes(state, telemetry, side, playerPaused, firstLap);
+
     processThresholdEpisode(
       state,
       telemetry,
       side,
       playerPaused,
       firstLap,
+      extremes,
       getThresholdSeconds,
       getMinChangeSeconds,
       emit,
     );
-    processRelevance(state, telemetry, side, playerPaused, firstLap, lapsRemaining, getMinChangeSeconds, emit);
+    processRelevance(state, telemetry, side, playerPaused, lapsRemaining, extremes, getMinChangeSeconds, emit);
   }
+}
+
+/** A side's gap extremes since its last announcement. */
+type GapExtremes = { min: number; max: number };
+
+/**
+ * Fold one side's live gap into its since-last-announcement extremes, or
+ * return null when this tick's reading must not count. Suppressed readings
+ * (player or neighbor in the pits / off track) are excluded deliberately: a
+ * pit-inflated gap folded as the "peak" would make every later closing call
+ * pass the consistency gate for free.
+ */
+function foldSideExtremes(
+  state: TranslatorState,
+  telemetry: TelemetryData,
+  side: Side,
+  playerPaused: boolean,
+  firstLap: boolean,
+): GapExtremes | null {
+  const live = side === "ahead" ? state.gapLiveAhead : state.gapLiveBehind;
+  const idx = side === "ahead" ? state.gapAheadIdx : state.gapBehindIdx;
+  const suppressed = playerPaused || (idx >= 0 && neighborSuppressed(telemetry, idx));
+
+  if (!live || idx < 0 || suppressed || live.lapDelta !== 0 || live.gapSeconds === null) return null;
+
+  return foldExtremes(state, side, live.gapSeconds, firstLap);
 }
 
 /**
@@ -531,8 +584,8 @@ function processRelevance(
   telemetry: TelemetryData,
   side: Side,
   playerPaused: boolean,
-  firstLap: boolean,
   lapsRemaining: number | null,
+  extremes: GapExtremes | null,
   getMinChangeSeconds: () => number,
   emit: EmitFn,
 ): void {
@@ -542,7 +595,7 @@ function processRelevance(
   const samples = side === "ahead" ? state.gapRateSamplesAhead : state.gapRateSamplesBehind;
   const suppressed = playerPaused || (idx >= 0 && neighborSuppressed(telemetry, idx));
 
-  if (!live || idx < 0 || suppressed || live.lapDelta !== 0 || live.gapSeconds === null) return;
+  if (!live || idx < 0 || suppressed || live.lapDelta !== 0 || live.gapSeconds === null || !extremes) return;
 
   if (ema === null || samples < GAP_TREND_MIN_SAMPLES) return;
 
@@ -552,10 +605,10 @@ function processRelevance(
   // the configured amount from its PEAK since the last announcement (a
   // sector-profile dip below a gap that sits above everything since the
   // last call must never say "they're closing"); "pulling away" requires it
-  // UP the same amount from its TROUGH. Lap 1 seeds the extremes at the
-  // assumed grid spacing — the start put the neighbors there. Only stable,
-  // unsuppressed readings ever reach this point, so glitches never fold in.
-  const extremes = foldExtremes(state, side, gap, firstLap);
+  // UP the same amount from its TROUGH. The extremes are folded once per
+  // tick by the caller, from stable unsuppressed readings only, and lap 1
+  // seeds them at the assumed grid spacing — the start put the neighbors
+  // there.
   const minChange = getMinChangeSeconds();
   const closingConsistent = gap <= extremes.max - minChange;
   const openingConsistent = gap >= extremes.min + minChange;
@@ -618,12 +671,7 @@ function processRelevance(
 }
 
 /** Fold the current gap into a side's since-last-announcement extremes. */
-function foldExtremes(
-  state: TranslatorState,
-  side: Side,
-  gap: number,
-  firstLap: boolean,
-): { min: number; max: number } {
+function foldExtremes(state: TranslatorState, side: Side, gap: number, firstLap: boolean): GapExtremes {
   const prevMin = side === "ahead" ? state.gapMinSinceAnnounceAhead : state.gapMinSinceAnnounceBehind;
   const prevMax = side === "ahead" ? state.gapMaxSinceAnnounceAhead : state.gapMaxSinceAnnounceBehind;
   const seed = prevMin === null || prevMax === null ? (firstLap ? GAP_ASSUMED_START_SPACING_S : gap) : null;
@@ -659,6 +707,7 @@ function processThresholdEpisode(
   side: Side,
   playerPaused: boolean,
   firstLap: boolean,
+  extremes: GapExtremes | null,
   getThresholdSeconds: () => number,
   getMinChangeSeconds: () => number,
   emit: EmitFn,
@@ -697,9 +746,7 @@ function processThresholdEpisode(
     // briefly opened past the re-arm point, and closed back is the field
     // sorting itself out, not a catch.
     if (firstLap) {
-      const maxSince =
-        (side === "ahead" ? state.gapMaxSinceAnnounceAhead : state.gapMaxSinceAnnounceBehind) ??
-        GAP_ASSUMED_START_SPACING_S;
+      const maxSince = extremes?.max ?? GAP_ASSUMED_START_SPACING_S;
 
       if (live.gapSeconds > maxSince - getMinChangeSeconds()) return;
     }

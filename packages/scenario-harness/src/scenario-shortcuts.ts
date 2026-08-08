@@ -1430,10 +1430,13 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
 
   // ── Gaps (issue #933) ──
   // Fire each gap callout path directly. The spoken gap number reads LIVE
-  // gaps at speak time, which the harness's mock translator doesn't compute —
-  // so the number readout clause skips and you hear the line alone. That
-  // mirrors the real cold-start behavior (issue #835: an unresolvable
-  // optional clause skips, never aborts the callout).
+  // gaps at speak time from the REAL translator the harness boots, so the
+  // readout clause is heard once the mock telemetry actually produces a gap
+  // for that side (green-flag race, neighbor on the lead lap, traces warm)
+  // AND the shortcut's `carIdx` still matches that live neighbor. Otherwise
+  // the clause skips and you hear the line alone — the real cold-start
+  // behavior (issue #835: an unresolvable optional clause skips, never
+  // aborts the callout).
   {
     id: "gap-trend-ahead-closing",
     category: "Gaps",

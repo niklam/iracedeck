@@ -870,15 +870,34 @@ export function getLiveGapBetween(aheadCarIdx: number, behindCarIdx: number): nu
   const behindLc = lapCompleted[behindCarIdx];
   const behindPct = lapDistPct[behindCarIdx];
 
-  if (typeof behindLc !== "number" || behindLc < 0 || typeof behindPct !== "number" || behindPct < 0) return null;
+  if (!hasLiveProgress(behindLc, behindPct)) return null;
+
+  // The ahead car must be live too. Its trace stops growing when it tows or
+  // exits (no backwards jump ever resets it), yet still covers the behind
+  // car's position for up to a lap — so without this check the lookup keeps
+  // returning a plausible gap that grows one second per second to a car that
+  // is no longer on track.
+  if (!hasLiveProgress(lapCompleted[aheadCarIdx], lapDistPct[aheadCarIdx])) return null;
 
   const trace = instance.state.gapTraces[aheadCarIdx];
 
   if (!trace) return null;
 
-  const crossed = crossingTimeAt(trace, behindLc + behindPct);
+  const crossed = crossingTimeAt(trace, behindLc! + behindPct!);
 
   return crossed === null ? null : Math.max(0, sessionTime - crossed);
+}
+
+/** Whether a car's raw lap/percent pair reports live on-track progress. */
+function hasLiveProgress(lapCompleted: number | undefined, lapDistPct: number | undefined): boolean {
+  return (
+    typeof lapCompleted === "number" &&
+    typeof lapDistPct === "number" &&
+    Number.isFinite(lapCompleted) &&
+    Number.isFinite(lapDistPct) &&
+    lapCompleted >= 0 &&
+    lapDistPct >= 0
+  );
 }
 
 /**

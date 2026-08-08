@@ -239,6 +239,81 @@ describe("diffGaps — live gaps", () => {
     expect(state.gapLiveAhead?.gapSeconds === null || state.gapLiveAhead!.gapSeconds! > 3).toBe(true);
   });
 
+  it("ignores a NaN telemetry sample instead of poisoning the car's trace (issue #933 review)", () => {
+    const state = createInitialState();
+    const { emit } = collect();
+    const lapTime = 90;
+
+    run(state, emit, { fromLap: 1, toLap: 2, aheadGapS: 2, behindGapS: 3 });
+
+    // One frame where the ahead car's lap percentage reads NaN. A range-only
+    // guard lets it through, and a NaN in a trace is permanent: every
+    // comparison against it is false, so it is never pruned or deduped and
+    // every later crossing lookup runs on non-monotonic data.
+    const p = 2.005;
+    const base = tick(p * lapTime, [p, p + 2 / lapTime, p - 3 / lapTime]);
+    const pct = base.CarIdxLapDistPct as number[];
+
+    diffGaps(
+      state,
+      { ...base, CarIdxLapDistPct: [pct[0]!, Number.NaN, pct[2]!] } as unknown as TelemetryData,
+      true,
+      PLAYER,
+      null,
+      [2, 1, 3],
+      () => GAP_DEFAULT_ALERT_THRESHOLD_S,
+      emit,
+    );
+
+    run(state, emit, { fromLap: 2.01, toLap: 3, aheadGapS: 2, behindGapS: 3 });
+
+    expect(state.gapTraces[AHEAD]!.every((s) => Number.isFinite(s.progress))).toBe(true);
+    expect(state.gapLiveAhead?.gapSeconds).toBeCloseTo(2.0, 1);
+  });
+
+  it("breaks the trend-rate chain when the player tows backwards (issue #933 review)", () => {
+    const state = createInitialState();
+    const { emit } = collect();
+    const lapTime = 90;
+
+    // A steady catch builds a rate on the ahead side.
+    run(state, emit, { fromLap: 1, toLap: 3, aheadGapS: [8, 6], behindGapS: 20 });
+    expect(state.gapRateSamplesAhead).toBeGreaterThan(5);
+
+    // Tow to an earlier point on the track. Without a reset the checkpoint
+    // anchor sits AHEAD of the player, so the chain is neither sampled nor
+    // reset for up to a lap and the pre-tow rate keeps coloring the rows.
+    diffGaps(
+      state,
+      tick(3 * lapTime + 30, [2.5, 3 + 6 / lapTime, 3 - 20 / lapTime]),
+      true,
+      PLAYER,
+      null,
+      [2, 1, 3],
+      () => GAP_DEFAULT_ALERT_THRESHOLD_S,
+      emit,
+    );
+
+    expect(state.gapRateEmaAhead).toBeNull();
+    expect(state.gapRateSamplesAhead).toBe(0);
+    expect(state.gapLiveAhead?.trend).toBeNull();
+  });
+
+  it("tracks the announcement extremes before the trend chain warms up (issue #933 review)", () => {
+    const state = createInitialState();
+    const { emit } = collect();
+
+    // Long enough for the gaps to resolve and the stability streak to pass,
+    // far short of the 5 checkpoints (0.1 lap) the trend EMA needs. The
+    // threshold gate compares against these extremes, so folding them only
+    // on the EMA-warm path would leave that gate reading a bare seed.
+    run(state, emit, { fromLap: 1, toLap: 1.09, aheadGapS: 2, behindGapS: 2 });
+
+    expect(state.gapRateSamplesAhead).toBeLessThan(5);
+    expect(state.gapMaxSinceAnnounceAhead).toBeCloseTo(2.0, 1);
+    expect(state.gapMinSinceAnnounceAhead).toBeCloseTo(2.0, 1);
+  });
+
   it("resets a side's trend state when the neighbor's identity changes", () => {
     const state = createInitialState();
     const { emit } = collect();
@@ -493,6 +568,30 @@ describe("diffGaps — threshold events", () => {
     run(state, emit, { fromLap: 6, toLap: 7, aheadGapS: [0.9, 1.7], behindGapS: 5 });
     run(state, emit, { fromLap: 7, toLap: 8, aheadGapS: [1.7, 0.9], behindGapS: 5 });
     expect(thresholdEvents(events)).toHaveLength(2);
+  });
+
+  it("honours a disabled movement gate on the opening lap — 0 means off (issue #933 review)", () => {
+    // Lap 1, and the neighbor only travels 0.7 s from its peak: the default
+    // 1.5 s gate calls that the field sorting itself out and stays silent...
+    const gated = createInitialState();
+    const gatedEvents = collect();
+
+    run(gated, gatedEvents.emit, { fromLap: 0.05, toLap: 0.5, aheadGapS: [0.7, 1.6], behindGapS: 30 });
+    run(gated, gatedEvents.emit, { fromLap: 0.5, toLap: 0.9, aheadGapS: [1.6, 0.9], behindGapS: 30 });
+    expect(thresholdEvents(gatedEvents.events)).toHaveLength(0);
+
+    // ...but a user who set the movement slider to 0 asked for every
+    // crossing, so the same run must announce.
+    const open = createInitialState();
+    const openEvents = collect();
+
+    run(open, openEvents.emit, { fromLap: 0.05, toLap: 0.5, aheadGapS: [0.7, 1.6], behindGapS: 30, minChangeS: 0 });
+    run(open, openEvents.emit, { fromLap: 0.5, toLap: 0.9, aheadGapS: [1.6, 0.9], behindGapS: 30, minChangeS: 0 });
+
+    const fired = thresholdEvents(openEvents.events);
+
+    expect(fired).toHaveLength(1);
+    expect(fired[0]!.data).toMatchObject({ side: "ahead", carIdx: AHEAD });
   });
 
   it("suppresses and disarms while the neighbor is on pit road", () => {

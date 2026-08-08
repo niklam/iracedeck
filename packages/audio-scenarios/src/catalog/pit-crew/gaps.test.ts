@@ -100,10 +100,10 @@ describe("gap var resolvers", () => {
   it("selects the trend line pool by side + direction", () => {
     const vars = captureVars(() => null);
 
-    _setLastGapEvent({ side: "ahead", direction: "closing" });
+    _setLastGapEvent({ side: "ahead", direction: "closing", carIdx: 3 });
     expect(vars.get("gap.line")!()).toBe("pool:gap/ahead-closing");
 
-    _setLastGapEvent({ side: "behind", direction: "opening" });
+    _setLastGapEvent({ side: "behind", direction: "opening", carIdx: 5 });
     expect(vars.get("gap.line")!()).toBe("pool:gap/behind-opening");
     expect(vars.get("gap.thresholdLine")!()).toBe("pool:gap/threshold-behind");
   });
@@ -111,7 +111,7 @@ describe("gap var resolvers", () => {
   it("resolves the readout trio from the live gap (1.55 s → 'one' + 'point six')", () => {
     const vars = captureVars(() => liveGaps(1.55, null));
 
-    _setLastGapEvent({ side: "ahead", direction: "closing" });
+    _setLastGapEvent({ side: "ahead", direction: "closing", carIdx: 3 });
     expect(vars.get("gap.readoutIntro")!()).toBe("pool:gap/readout-intro");
     expect(vars.get("gap.second")!()).toBe("pool:lap-time-second/1");
     expect(vars.get("gap.decimal")!()).toBe("pool:lap-time-decimal/6");
@@ -121,11 +121,27 @@ describe("gap var resolvers", () => {
     for (const gaps of [null, liveGaps(null, null), liveGaps(61.2, null)]) {
       const vars = captureVars(() => gaps);
 
-      _setLastGapEvent({ side: "ahead", direction: "closing" });
+      _setLastGapEvent({ side: "ahead", direction: "closing", carIdx: 3 });
       expect(vars.get("gap.readoutIntro")!()).toBeNull();
       expect(vars.get("gap.second")!()).toBeNull();
       expect(vars.get("gap.decimal")!()).toBeNull();
     }
+  });
+
+  it("skips the readout when the neighbor changed between claim and speak time", () => {
+    // Queued "we've caught the car ahead" (car 3) drains after the pass —
+    // the live ahead neighbor is now a different car, 6.4 s up the road.
+    const vars = captureVars(() => ({
+      ahead: { carIdx: 7, gapSeconds: 6.4, lapDelta: 0, trend: null },
+      behind: null,
+    }));
+
+    _setLastGapEvent({ side: "ahead", direction: "closing", carIdx: 3 });
+    expect(vars.get("gap.readoutIntro")!()).toBeNull();
+    expect(vars.get("gap.second")!()).toBeNull();
+    expect(vars.get("gap.decimal")!()).toBeNull();
+    // The line itself still plays — only the number clause is dropped.
+    expect(vars.get("gap.line")!()).toBe("pool:gap/ahead-closing");
   });
 });
 
@@ -183,6 +199,39 @@ describe("gap scenario gating", () => {
     );
 
     expect(whereOf(clean)(trendEvent("ahead", "closing") as never)).toBe(true);
+  });
+
+  it("does not let a suppressed event overwrite the accepted event's stash", () => {
+    // #922 convention: both scenarios are queueable, and a deferred fire
+    // re-resolves its vars at drain time without re-running `where:`. An
+    // event rejected by the shared cooldown must leave the stash alone.
+    const vars = captureVars(() => null);
+    const trend = buildGapTrendScenario(
+      () => false,
+      () => PERMISSIVE_OVERTAKE_GATE,
+      () => 30_000,
+    );
+    const threshold = buildGapThresholdScenario(
+      () => false,
+      () => PERMISSIVE_OVERTAKE_GATE,
+      () => 30_000,
+    );
+
+    expect(whereOf(trend)(trendEvent("ahead", "closing") as never)).toBe(true);
+    // Rejected on the shared cooldown — and on the race-finished latch.
+    expect(whereOf(threshold)(thresholdEvent("behind") as never)).toBe(false);
+    expect(
+      whereOf(
+        buildGapThresholdScenario(
+          () => true,
+          () => PERMISSIVE_OVERTAKE_GATE,
+          () => 0,
+        ),
+      )(thresholdEvent("behind") as never),
+    ).toBe(false);
+
+    // The queued fire still speaks the accepted event's side + direction.
+    expect(vars.get("gap.line")!()).toBe("pool:gap/ahead-closing");
   });
 });
 

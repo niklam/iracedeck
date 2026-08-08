@@ -3,8 +3,9 @@
  * the class-standings neighbors.
  *
  * Two scenarios, both `family: "gap"`:
- *   - `pit-crew.gap-trend` — fires on `gap.trendChanged` (a lap-over-lap
- *     direction flip sustained 2 laps in the translator's gap diff):
+ *   - `pit-crew.gap-trend` — fires on `gap.trendChanged` (the translator's
+ *     relevance model: a neighbor's closing projection entering the
+ *     time-to-contact horizon, or a breakaway opening up):
  *     "We're gaining on the car ahead. Gap is one point five seconds."
  *   - `pit-crew.gap-threshold` — fires on `gap.thresholdCrossed` (the live
  *     gap first dropped under the user's alert threshold): "We've caught the
@@ -76,11 +77,14 @@ export function _resetGapCalloutCooldown(): void {
   lastGapCalloutAt = null;
 }
 
+/** The stashed identity of the last ACCEPTED gap event. */
+type GapEventStash = { side: GapSide; direction: "closing" | "opening"; carIdx: number };
+
 /** Last accepted gap event — read by the var resolvers at expansion time. */
-let lastGapEvent: { side: GapSide; direction: "closing" | "opening" } | null = null;
+let lastGapEvent: GapEventStash | null = null;
 
 /** @internal Test-only stash override. */
-export function _setLastGapEvent(event: { side: GapSide; direction: "closing" | "opening" } | null): void {
+export function _setLastGapEvent(event: GapEventStash | null): void {
   lastGapEvent = event;
 }
 
@@ -89,6 +93,12 @@ export function _setLastGapEvent(event: { side: GapSide; direction: "closing" | 
  * gap for the stashed side is unavailable, negative, or ≥ 60 s (the reused
  * lap-time-second clips cover 0–59). All three readout vars resolve through
  * this one check so the clause always speaks whole or not at all.
+ *
+ * The live neighbor's `carIdx` must still match the announced one: a queued
+ * fire can drain after the player has passed (or been passed by) the car the
+ * line is about, and reading the NEW neighbor's gap would voice a number for
+ * a different car than the line names. A mismatch drops the readout clause
+ * and leaves the line itself intact.
  */
 function resolveSpeakableGap(getLiveGaps: LiveGapsResolver): { seconds: number; tenths: number } | null {
   if (!lastGapEvent) return null;
@@ -96,7 +106,9 @@ function resolveSpeakableGap(getLiveGaps: LiveGapsResolver): { seconds: number; 
   const live = getLiveGaps();
   const side = lastGapEvent.side === "ahead" ? live?.ahead : live?.behind;
 
-  if (!side || side.gapSeconds === null || side.lapDelta !== 0) return null;
+  if (!side || side.carIdx !== lastGapEvent.carIdx) return null;
+
+  if (side.gapSeconds === null || side.lapDelta !== 0) return null;
 
   const totalTenths = Math.round(side.gapSeconds * 10);
 
@@ -178,9 +190,16 @@ export function buildGapTrendScenario(
 
         const data = ev.data as SimEventOf<"gap.trendChanged">["data"];
 
-        lastGapEvent = { side: data.side, direction: data.direction };
+        if (!gapWhereGates(getRaceFinishedFired, getGate, getGapCooldownMs)) return false;
 
-        return gapWhereGates(getRaceFinishedFired, getGate, getGapCooldownMs);
+        // Stash AFTER every gate (the #922 convention, see `incidents.ts`):
+        // both gap scenarios are `queueable`, and a deferred fire re-resolves
+        // its vars at drain time WITHOUT re-running `where:`. A suppressed
+        // event writing the stash would make that queued fire speak the wrong
+        // side / direction / car.
+        lastGapEvent = { side: data.side, direction: data.direction, carIdx: data.carIdx };
+
+        return true;
       },
     },
     channel: AudioChannel.Voice,
@@ -208,9 +227,12 @@ export function buildGapThresholdScenario(
 
         const data = ev.data as SimEventOf<"gap.thresholdCrossed">["data"];
 
-        lastGapEvent = { side: data.side, direction: "closing" };
+        if (!gapWhereGates(getRaceFinishedFired, getGate, getGapCooldownMs)) return false;
 
-        return gapWhereGates(getRaceFinishedFired, getGate, getGapCooldownMs);
+        // Stash AFTER every gate — see the trend scenario above.
+        lastGapEvent = { side: data.side, direction: "closing", carIdx: data.carIdx };
+
+        return true;
       },
     },
     channel: AudioChannel.Voice,

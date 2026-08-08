@@ -21,7 +21,12 @@ import { initGlobalSettings, onGlobalSettingsChange, resolveActiveRaceEngineerVo
 import { initializeEventBus } from "@iracedeck/event-bus";
 import type { SDKController } from "@iracedeck/iracing-sdk";
 import { createConsoleLogger, LogLevel } from "@iracedeck/logger";
-import { getReadbackSnapshot, initializeSimEventsIracing, isPitActionsAllowed } from "@iracedeck/sim-events-iracing";
+import {
+  getLiveGaps,
+  getReadbackSnapshot,
+  initializeSimEventsIracing,
+  isPitActionsAllowed,
+} from "@iracedeck/sim-events-iracing";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -155,6 +160,12 @@ async function main(): Promise<void> {
     undefined, // getFuelCalloutEnabled
     undefined, // getCornerNameCalloutEnabled (issue #888)
     () => lastCornerName, // getCornerNameSnapshot (issue #888)
+    undefined, // getGapCalloutEnabled (issue #933)
+    undefined, // getGapCooldownMs (issue #933)
+    // The harness boots the REAL translator, so its live gaps are the real
+    // ones — wiring them here is what lets the spoken "gap is N seconds"
+    // readout clause be auditioned at all (issue #933).
+    () => getLiveGaps(),
   );
 
   // ── deck-core global-settings pipeline ──────────────────────────────────
