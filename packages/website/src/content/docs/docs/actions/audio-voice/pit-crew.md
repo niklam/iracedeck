@@ -247,7 +247,7 @@ In multi-class series the engineer reads your class position, not the overall �
 
 In race sessions the Race Engineer watches the time gaps to the cars one position ahead and behind you in your **class** standings — the same crossing-time measurement as Session Info's [Gaps display](/docs/actions/display-session/session-info/#gaps) — and speaks up on two kinds of change:
 
-- **Trend flip** — the lap-over-lap direction changed and held for two consecutive laps: *"We're gaining on the car ahead."*, *"The car ahead is pulling away from us."*, *"The car behind is closing in on us."*, *"We're pulling away from the car behind."* A brief one-lap wobble (under two tenths per lap) never triggers it.
+- **Trend flip** — the lap-over-lap direction changed: *"We're gaining on the car ahead."*, *"The car ahead is pulling away from us."*, *"The car behind is closing in on us."*, *"We're pulling away from the car behind."* A strong move (1.5 s or more in a single lap) is announced at the very next start/finish crossing; a gentle trend needs two consecutive laps in the same direction, so a brief one-lap wobble (under two tenths per lap) never triggers it.
 - **Threshold crossing** — a gap first drops under your alert threshold (0.5–3 s, default 1.0 s): *"We've caught the car ahead."* / *"The car behind is right with us."* Each crossing announces once; it re-arms only after the gap has opened about half a second beyond the threshold again, so a nose-to-tail battle doesn't repeat the alert every corner.
 
 When the live gap is under a minute, the engineer follows the line with the number — *"Gap is one point five seconds."* — read at the moment it's spoken, not at the moment the event fired.

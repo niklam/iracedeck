@@ -490,13 +490,22 @@ export type TranslatorState = {
   gapLiveAhead: GapNeighborState | null;
   gapLiveBehind: GapNeighborState | null;
   /**
-   * Display-trend checkpoint rings (issue #933): the gap recorded at every
-   * 2% of player progress, so the continuous key-color trend compares the
-   * live gap against the checkpoint nearest one full lap back — same track
-   * position, so track-shape noise cancels. Reset on neighbor identity change.
+   * Display-trend rate chain (issue #933 follow-up): the gap is sampled at
+   * every 2% of player progress; adjacent-sample deltas (a couple of seconds
+   * apart, where track-position noise is negligible) feed an exponential
+   * moving average of the gap rate in seconds-per-lap. The key color
+   * classifies that smoothed rate, so it goes live ~0.1 lap after any reset
+   * instead of needing a full same-spot lap of history. Reset on neighbor
+   * identity change and across any sampling break (pit visits, data gaps).
    */
-  gapCheckpointsAhead: { progress: number; gapSeconds: number }[];
-  gapCheckpointsBehind: { progress: number; gapSeconds: number }[];
+  gapLastCheckpointAhead: { progress: number; gapSeconds: number } | null;
+  gapLastCheckpointBehind: { progress: number; gapSeconds: number } | null;
+  /** Smoothed gap rate (s/lap; negative = closing). Null until seeded. */
+  gapRateEmaAhead: number | null;
+  gapRateEmaBehind: number | null;
+  /** Consecutive rate samples in the current chain (gates classification). */
+  gapRateSamplesAhead: number;
+  gapRateSamplesBehind: number;
   /** Player progress at the last recorded checkpoint (−1 before seeding). */
   gapLastCheckpointProgress: number;
   /** Lap-over-lap callout samples: the gap at the player's previous lap completion. */
@@ -825,8 +834,12 @@ export function createInitialState(): TranslatorState {
     gapBehindIdx: -1,
     gapLiveAhead: null,
     gapLiveBehind: null,
-    gapCheckpointsAhead: [],
-    gapCheckpointsBehind: [],
+    gapLastCheckpointAhead: null,
+    gapLastCheckpointBehind: null,
+    gapRateEmaAhead: null,
+    gapRateEmaBehind: null,
+    gapRateSamplesAhead: 0,
+    gapRateSamplesBehind: 0,
     gapLastCheckpointProgress: -1,
     gapLapSampleAhead: null,
     gapLapSampleBehind: null,

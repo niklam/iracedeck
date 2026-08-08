@@ -123,6 +123,24 @@ describe("diffGaps — live gaps", () => {
     expect(state.gapLiveBehind?.gapSeconds).toBeCloseTo(3.5, 1);
   });
 
+  it("shows a closing display trend within a fraction of a lap of a catch starting (issue #933 follow-up)", () => {
+    const state = createInitialState();
+    const { emit } = collect();
+
+    // One steady lap establishes the rate chain (trend reads "steady", which
+    // is a positive classification, not missing data)...
+    run(state, emit, { fromLap: 1, toLap: 2, aheadGapS: 8, behindGapS: 5 });
+    expect(state.gapLiveAhead?.trend).toBe("steady");
+
+    // ...then a 1 s/lap catch shows "closing" after only ~0.4 lap — no
+    // full-lap warmup (the smoothed-rate model, not same-spot-one-lap-ago).
+    run(state, emit, { fromLap: 2, toLap: 2.4, aheadGapS: [8, 7.6], behindGapS: 5 });
+    expect(state.gapLiveAhead?.trend).toBe("closing");
+
+    // The behind side is independent and still steady.
+    expect(state.gapLiveBehind?.trend).toBe("steady");
+  });
+
   it("reports null gapSeconds before the traces cover the lookup point (cold start)", () => {
     const state = createInitialState();
     const { emit } = collect();
@@ -169,13 +187,14 @@ describe("diffGaps — live gaps", () => {
     const { emit } = collect();
 
     run(state, emit, { fromLap: 1, toLap: 2.2, aheadGapS: 2, behindGapS: 2 });
-    expect(state.gapCheckpointsAhead.length).toBeGreaterThan(0);
+    expect(state.gapRateSamplesAhead).toBeGreaterThan(0);
 
     // Swap the ahead neighbor: the order now ranks car 2 directly ahead.
     diffGaps(state, tick(200, [2.2, 2.25, 2.22]), true, PLAYER, null, [2, 3, 1], () => 1.0, emit);
 
     expect(state.gapAheadIdx).toBe(BEHIND);
-    expect(state.gapCheckpointsAhead.length).toBeLessThanOrEqual(1);
+    expect(state.gapRateEmaAhead).toBeNull();
+    expect(state.gapRateSamplesAhead).toBe(0);
   });
 });
 
@@ -205,6 +224,21 @@ describe("diffGaps — trend flip events", () => {
 
     expect(after).toHaveLength(2);
     expect(after[1]!.data).toMatchObject({ side: "ahead", direction: "opening" });
+  });
+
+  it("announces a strong single-lap swing immediately, without the 2-lap confirmation (issue #933 follow-up: pulling 4 s/lap was never called)", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+
+    // One steady lap to seed the lap sample, then the player pulls away from
+    // the car behind at 4 s/lap — the very first classified lap must emit.
+    run(state, emit, { fromLap: 1, toLap: 2, aheadGapS: 8, behindGapS: 3 });
+    run(state, emit, { fromLap: 2, toLap: 3.05, aheadGapS: 8, behindGapS: [3, 7.2] });
+
+    const flips = trendEvents(events);
+
+    expect(flips).toHaveLength(1);
+    expect(flips[0]!.data).toMatchObject({ side: "behind", direction: "opening", carIdx: BEHIND });
   });
 
   it("stays silent inside the callout deadband", () => {

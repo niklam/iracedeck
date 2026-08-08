@@ -26,21 +26,35 @@ import {
 import type { GapNeighborState, TranslatorState } from "../state.js";
 import type { EmitFn } from "./types.js";
 
-/** Deadband for the continuous display trend (larger — it updates every tick). */
-export const GAP_DISPLAY_TREND_DEADBAND_S = 0.3;
+/**
+ * Deadband for the continuous display trend, in seconds-per-lap of smoothed
+ * gap rate. Rates inside it render "steady".
+ */
+export const GAP_DISPLAY_TREND_DEADBAND_S = 0.15;
 /** Deadband for the lap-over-lap callout trend. */
 export const GAP_CALLOUT_TREND_DEADBAND_S = 0.2;
+/**
+ * A single lap-over-lap delta at or beyond this emits the trend callout
+ * immediately, without the 2-consecutive-lap confirmation — a multi-second
+ * swing is far outside measurement noise and shouldn't wait a lap to be
+ * believed (issue #933 follow-up: pulling 4 s/lap never got announced).
+ */
+export const GAP_TREND_STRONG_DELTA_S = 1.5;
 /** A threshold episode re-arms once the gap exceeds threshold + this margin. */
 export const GAP_THRESHOLD_HYSTERESIS_S = 0.5;
-/** Player-progress spacing (laps) between display-trend checkpoints. */
+/** Player-progress spacing (laps) between display-trend rate samples. */
 export const GAP_CHECKPOINT_STEP = 0.02;
 /** Fallback alert threshold when no resolver is wired (seconds). */
 export const GAP_DEFAULT_ALERT_THRESHOLD_S = 1.0;
 
-/** Checkpoint ring capacity: one lap of checkpoints plus margin. */
-const GAP_CHECKPOINT_CAP = Math.ceil(1.05 / GAP_CHECKPOINT_STEP) + 2;
-/** Oldest usable checkpoint age (laps) for the one-lap-ago comparison. */
-const GAP_CHECKPOINT_MAX_AGE_LAPS = 1.1;
+/** EMA smoothing factor for the display gap rate (~last third of a lap). */
+const GAP_TREND_EMA_ALPHA = 0.15;
+/** Rate samples required before the display trend classifies. ~0.1 lap. */
+const GAP_TREND_MIN_SAMPLES = 5;
+/** A sampling break wider than this (laps) restarts the rate chain. */
+const GAP_TREND_MAX_STEP_LAPS = 0.1;
+/** Single rate samples beyond this (s/lap) are glitches — skipped. */
+const GAP_TREND_MAX_RATE_S_PER_LAP = 20;
 
 type Side = "ahead" | "behind";
 
@@ -210,33 +224,81 @@ function computeSide(
   }
 
   const suppressed = playerPaused || neighborSuppressed(telemetry, idx);
-  const checkpoints = side === "ahead" ? state.gapCheckpointsAhead : state.gapCheckpointsBehind;
   let trend: GapTrendDirection | null = null;
 
   if (!suppressed && lapDelta === 0 && gapSeconds !== null) {
-    // Continuous display trend: compare against the checkpoint nearest one
-    // full lap back — same track position, so track-shape noise cancels.
-    let reference: { progress: number; gapSeconds: number } | null = null;
+    // Continuous display trend: smoothed gap rate from adjacent checkpoint
+    // deltas (~2 s apart, where track-position noise is negligible),
+    // projected to seconds-per-lap. Live within ~0.1 lap of any reset.
+    if (checkpointDue) updateTrendRate(state, side, playerProgress, gapSeconds);
 
-    for (let i = checkpoints.length - 1; i >= 0; i--) {
-      if (checkpoints[i]!.progress <= playerProgress - 1) {
-        reference = checkpoints[i]!;
-        break;
-      }
+    const ema = side === "ahead" ? state.gapRateEmaAhead : state.gapRateEmaBehind;
+    const samples = side === "ahead" ? state.gapRateSamplesAhead : state.gapRateSamplesBehind;
+
+    if (ema !== null && samples >= GAP_TREND_MIN_SAMPLES) {
+      trend = classifyGapTrend(ema, GAP_DISPLAY_TREND_DEADBAND_S);
     }
-
-    if (reference !== null && playerProgress - reference.progress <= GAP_CHECKPOINT_MAX_AGE_LAPS) {
-      trend = classifyGapTrend(gapSeconds - reference.gapSeconds, GAP_DISPLAY_TREND_DEADBAND_S);
-    }
-
-    if (checkpointDue) {
-      checkpoints.push({ progress: playerProgress, gapSeconds });
-
-      if (checkpoints.length > GAP_CHECKPOINT_CAP) checkpoints.splice(0, checkpoints.length - GAP_CHECKPOINT_CAP);
-    }
+  } else if (checkpointDue) {
+    // A due checkpoint the side can't sample breaks the rate chain — a pit
+    // visit or data gap must not leak a stale rate into the next stint.
+    resetTrendRate(state, side);
   }
 
   return { carIdx: idx, gapSeconds, lapDelta, trend };
+}
+
+/** Fold one checkpoint into a side's smoothed gap rate (s/lap EMA). */
+function updateTrendRate(state: TranslatorState, side: Side, progress: number, gapSeconds: number): void {
+  const last = side === "ahead" ? state.gapLastCheckpointAhead : state.gapLastCheckpointBehind;
+  const checkpoint = { progress, gapSeconds };
+
+  if (side === "ahead") state.gapLastCheckpointAhead = checkpoint;
+  else state.gapLastCheckpointBehind = checkpoint;
+
+  if (!last) return;
+
+  const step = progress - last.progress;
+
+  if (step <= 0 || step > GAP_TREND_MAX_STEP_LAPS) {
+    // Went backwards (tow/teleport) or a wide sampling break — restart the
+    // chain anchored on this checkpoint.
+    resetTrendRate(state, side);
+
+    if (side === "ahead") state.gapLastCheckpointAhead = checkpoint;
+    else state.gapLastCheckpointBehind = checkpoint;
+
+    return;
+  }
+
+  const ratePerLap = (gapSeconds - last.gapSeconds) / step;
+
+  // A single absurd sample is a data glitch (e.g. a trace discontinuity
+  // after a blink) — skip it rather than poisoning the average.
+  if (!Number.isFinite(ratePerLap) || Math.abs(ratePerLap) > GAP_TREND_MAX_RATE_S_PER_LAP) return;
+
+  const ema = side === "ahead" ? state.gapRateEmaAhead : state.gapRateEmaBehind;
+  const next = ema === null ? ratePerLap : ema + GAP_TREND_EMA_ALPHA * (ratePerLap - ema);
+
+  if (side === "ahead") {
+    state.gapRateEmaAhead = next;
+    state.gapRateSamplesAhead++;
+  } else {
+    state.gapRateEmaBehind = next;
+    state.gapRateSamplesBehind++;
+  }
+}
+
+/** Clear one side's display-trend rate chain. */
+function resetTrendRate(state: TranslatorState, side: Side): void {
+  if (side === "ahead") {
+    state.gapLastCheckpointAhead = null;
+    state.gapRateEmaAhead = null;
+    state.gapRateSamplesAhead = 0;
+  } else {
+    state.gapLastCheckpointBehind = null;
+    state.gapRateEmaBehind = null;
+    state.gapRateSamplesBehind = 0;
+  }
 }
 
 /** Whether the neighbor's own state suppresses trend/threshold processing. */
@@ -253,14 +315,14 @@ function neighborSuppressed(telemetry: TelemetryData, idx: number): boolean {
 
 /** Reset one side's trend/threshold state (neighbor identity changed). */
 function resetSideState(state: TranslatorState, side: Side): void {
+  resetTrendRate(state, side);
+
   if (side === "ahead") {
-    state.gapCheckpointsAhead = [];
     state.gapLapSampleAhead = null;
     state.gapPrevLapDirectionAhead = null;
     state.gapAnnouncedDirectionAhead = null;
     state.gapThresholdArmedAhead = false;
   } else {
-    state.gapCheckpointsBehind = [];
     state.gapLapSampleBehind = null;
     state.gapPrevLapDirectionBehind = null;
     state.gapAnnouncedDirectionBehind = null;
@@ -273,7 +335,10 @@ function resetSideState(state: TranslatorState, side: Side): void {
  *
  * Trend: the gap is sampled at each player lap completion; a direction
  * (closing/opening, 0.2 s deadband) that differs from the last announced one
- * and holds for 2 consecutive laps emits `gap.trendChanged`. Threshold: an
+ * emits `gap.trendChanged` — immediately when the single-lap delta is at or
+ * beyond {@link GAP_TREND_STRONG_DELTA_S} (a multi-second swing needs no
+ * confirmation), otherwise once it has held for 2 consecutive laps (gentle
+ * trends still filter one-lap wobbles). Threshold: an
  * episode arms only once the gap has been seen beyond threshold + hysteresis
  * (so a nose-to-tail start can't fire at the green), fires
  * `gap.thresholdCrossed` once when the live gap first drops below the
@@ -334,11 +399,15 @@ function processLapSample(
     return;
   }
 
-  const direction = classifyGapTrend(live.gapSeconds - prevSample, GAP_CALLOUT_TREND_DEADBAND_S);
+  const delta = live.gapSeconds - prevSample;
+  const direction = classifyGapTrend(delta, GAP_CALLOUT_TREND_DEADBAND_S);
   const prevDirection = side === "ahead" ? state.gapPrevLapDirectionAhead : state.gapPrevLapDirectionBehind;
   const announced = side === "ahead" ? state.gapAnnouncedDirectionAhead : state.gapAnnouncedDirectionBehind;
+  // A strong single-lap swing (≥ GAP_TREND_STRONG_DELTA_S) announces without
+  // the 2-lap confirmation; gentle trends still need two consecutive laps.
+  const confirmed = Math.abs(delta) >= GAP_TREND_STRONG_DELTA_S || direction === prevDirection;
 
-  if ((direction === "closing" || direction === "opening") && direction === prevDirection && direction !== announced) {
+  if ((direction === "closing" || direction === "opening") && confirmed && direction !== announced) {
     emit({
       event: "gap.trendChanged",
       data: {
