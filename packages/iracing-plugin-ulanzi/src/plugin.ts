@@ -28,7 +28,7 @@ import {
   type LapTimeCalloutId,
   OPPONENT_PIT_CALLOUT_SETTING_KEYS,
   type OpponentPitCalloutId,
-  type OpponentPitSnapshot,
+  type OpponentPitPending,
   OVERTAKE_CALLOUT_SETTING_KEYS,
   type OvertakeCalloutId,
   type OvertakeGate,
@@ -96,7 +96,7 @@ import {
   validateSetupWarningPatterns,
   VERSION_CHECK_STARTUP_GRACE_MS,
 } from "@iracedeck/deck-core";
-import { initializeEventBus, type SimEventOf } from "@iracedeck/event-bus";
+import { initializeEventBus } from "@iracedeck/event-bus";
 import {
   AI_SPOTTER_CONTROLS_UUID,
   AiSpotterControls,
@@ -359,15 +359,6 @@ eventBus.subscribe("cornerName.approaching", (ev) => {
   lastCornerName = ev.data;
 });
 
-// Cache the most recent `opponentPit.entered` payload so the nearby
-// scenario's position number can resolve at speak time (issue #622) — the
-// corner-name subscription pattern. Subscribed BEFORE registerPitCrew so the
-// cache is fresh when the scenario evaluates.
-let lastOpponentPit: SimEventOf<"opponentPit.entered">["data"] | null = null;
-eventBus.subscribe("opponentPit.entered", (ev) => {
-  lastOpponentPit = ev.data;
-});
-
 // Cache the most recent `race.finished` payload so the race-end scenario's
 // snapshot resolver can compose it with the PI-picked driver name at fire
 // time (issue #569). Subscribed BEFORE `registerPitCrew` so this listener
@@ -607,16 +598,19 @@ registerPitCrew(
   // Opponent-pit callout opt-ins (issue #622). Live-read, two subjects.
   (id: OpponentPitCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[OPPONENT_PIT_CALLOUT_SETTING_KEYS[id]] !== false,
-  // Opponent-pit snapshot resolver (issue #622) — prefer the live canonical
-  // position at speak time; fall back to the emit-time payload position.
-  (): OpponentPitSnapshot | null => {
-    if (!lastOpponentPit || typeof lastOpponentPit.carIdx !== "number") return null;
+  // Opponent-pit live position resolver (issue #622) — the pitting car's
+  // canonical position at speak time, read in the projection the event was
+  // classified in (the pending stash's isMultiClass, so a transient
+  // session-info dropout can't flip a multi-class read to overall space).
+  // A null return falls back to the emit-time payload position.
+  (pending: OpponentPitPending): number | null => {
+    const live = getLiveCarPosition(pending.carIdx);
 
-    const live = getLiveCarPosition(lastOpponentPit.carIdx);
-    const liveN = live ? (live.isMultiClass ? live.classPosition : live.position) : 0;
-    const n = liveN > 0 ? liveN : (lastOpponentPit.position ?? 0);
+    if (!live) return null;
 
-    return n > 0 ? { position: n } : null;
+    const n = pending.isMultiClass ? live.classPosition : live.position;
+
+    return n > 0 ? n : null;
   },
   // Race Engineer master gate (issue #515).
   () => (getGlobalSettings() as Record<string, unknown>).pitCrewRaceEngineerEnabled === true,

@@ -15,15 +15,23 @@
  *
  * **Aggregation (the oval safety valve).** The incident-burst shape: a rolling
  * list of qualifying-entry timestamps pruned to the last 12 s on every tick.
- * Entries 1–2 in a window announce individually; a 3rd non-leader entry emits
- * one `"others"` aggregate per episode; later entries stay silent until the
- * window has been quiet for 12 s. The leader always announces individually
- * (leader-first, per the issue) and still counts toward the window total.
+ * While the aggregate hasn't fired this episode, entries below the threshold
+ * announce individually; the entry that reaches the threshold emits one
+ * `"others"` aggregate, and every later non-leader entry stays silent until
+ * the window has been quiet for 12 s (the `opponentPitAggregateAnnounced`
+ * flag, NOT the live window count, gates the silence — pruning old entries
+ * below the threshold mid-episode must not resume enumeration). The leader
+ * always announces individually and still counts toward the window total;
+ * within a tick the leader's emission is ordered first.
  *
  * **Gating in the diff** (the `diffPitsOpen` precedent): race sessions only,
  * replay-only sessions suppressed (#604), pre-green suppressed (#647 — grid
- * shuffles produce meaningless positions). Baselines advance every tick so a
- * gated transition is absorbed, never replayed when the gate opens.
+ * shuffles produce meaningless positions), post-race suppressed (the whole
+ * field pits after the checkered — announcing that is noise), and an
+ * unresolved player carIdx suppresses everything (classification is relative
+ * to the player; with `-1` the player's own car could classify as an
+ * opponent). Baselines advance every tick so a gated transition is absorbed,
+ * never replayed when the gate opens.
  */
 import { classPositionFromOrder, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
 
@@ -110,6 +118,7 @@ export function diffOpponentPit(
   isRaceSession: boolean,
   replayOnlySession: boolean,
   preGreen: boolean,
+  postRace: boolean,
   isMultiClass: boolean,
   frozenPositions: number[],
   now: number,
@@ -139,51 +148,67 @@ export function diffOpponentPit(
   }
 
   const prev = state.opponentPitLastSurface;
+  const gated = !isRaceSession || replayOnlySession || preGreen || postRace || playerCarIdx < 0;
 
-  // Advance the baseline every tick, even when gated, so a transition during a
-  // non-race / replay / pre-green window never replays once the gate opens.
-  state.opponentPitLastSurface = ts.slice();
+  if (!gated) {
+    const lc = telemetry.CarIdxLapCompleted;
+    const dp = telemetry.CarIdxLapDistPct;
+    const qualifying: Array<{ carIdx: number; c: Classification }> = [];
 
-  if (!isRaceSession || replayOnlySession || preGreen) return;
+    for (let i = 0; i < ts.length; i++) {
+      if (i === playerCarIdx || i === paceCarIdx) continue;
 
-  const lc = telemetry.CarIdxLapCompleted;
-  const dp = telemetry.CarIdxLapDistPct;
+      if (ts[i] !== TrkLoc.AproachingPits || prev[i] === TrkLoc.AproachingPits || prev[i] === undefined) continue;
 
-  for (let i = 0; i < ts.length; i++) {
-    if (i === playerCarIdx || i === paceCarIdx) continue;
+      // In-world test (the race-finish.ts shape) — blipped/vanished cars skip.
+      if ((lc?.[i] ?? -1) < 0 || (dp?.[i] ?? -1) < 0) continue;
 
-    if (ts[i] !== TrkLoc.AproachingPits || prev[i] === TrkLoc.AproachingPits || prev[i] === undefined) continue;
+      if (now < (state.opponentPitCarCooldownUntil[i] ?? 0)) continue;
 
-    // In-world test (the race-finish.ts shape) — blipped/vanished cars skip.
-    if ((lc?.[i] ?? -1) < 0 || (dp?.[i] ?? -1) < 0) continue;
+      const c = classify(telemetry, frozenPositions, playerCarIdx, i, isMultiClass);
 
-    if (now < (state.opponentPitCarCooldownUntil[i] ?? 0)) continue;
-
-    const c = classify(telemetry, frozenPositions, playerCarIdx, i, isMultiClass);
-
-    if (!c) continue;
-
-    state.opponentPitCarCooldownUntil[i] = now + OPPONENT_PIT_CAR_COOLDOWN_MS;
-    state.opponentPitRecentEntries.push(now);
-
-    if (c.relation === "leader") {
-      // Leader-first: always individual, even mid-aggregation.
-      emit({
-        event: "opponentPit.entered",
-        data: { relation: "leader", carIdx: i, position: c.position, isMultiClass },
-      });
-      continue;
+      if (c) qualifying.push({ carIdx: i, c });
     }
 
-    if (state.opponentPitRecentEntries.length < OPPONENT_PIT_AGGREGATE_THRESHOLD) {
-      emit({
-        event: "opponentPit.entered",
-        data: { relation: c.relation, carIdx: i, position: c.position, isMultiClass },
-      });
-    } else if (!state.opponentPitAggregateAnnounced) {
-      // 3rd+ qualifying entry: collapse to the aggregate tail, once per episode.
-      state.opponentPitAggregateAnnounced = true;
-      emit({ event: "opponentPit.entered", data: { relation: "others" } });
+    // Leader-first within the tick — the leader's individual line must never
+    // trail a same-tick aggregate (the docs' promised ordering).
+    if (qualifying.length > 1) {
+      qualifying.sort((a, b) => Number(b.c.relation === "leader") - Number(a.c.relation === "leader"));
+    }
+
+    for (const { carIdx, c } of qualifying) {
+      state.opponentPitCarCooldownUntil[carIdx] = now + OPPONENT_PIT_CAR_COOLDOWN_MS;
+      state.opponentPitRecentEntries.push(now);
+
+      if (c.relation === "leader") {
+        // Leader-first: always individual, even mid-aggregation.
+        emit({
+          event: "opponentPit.entered",
+          data: { relation: "leader", carIdx, position: c.position, isMultiClass },
+        });
+        continue;
+      }
+
+      if (state.opponentPitAggregateAnnounced) continue;
+
+      if (state.opponentPitRecentEntries.length < OPPONENT_PIT_AGGREGATE_THRESHOLD) {
+        emit({
+          event: "opponentPit.entered",
+          data: { relation: c.relation, carIdx, position: c.position, isMultiClass },
+        });
+      } else {
+        // Threshold reached: collapse to the aggregate tail, once per episode.
+        state.opponentPitAggregateAnnounced = true;
+        emit({ event: "opponentPit.entered", data: { relation: "others" } });
+      }
     }
   }
+
+  // Advance the baseline in place every tick — even when gated, so a
+  // transition during a non-race / replay / pre-green / post-race window
+  // never replays once the gate opens. Element-wise copy, no per-tick
+  // allocation (the other diffs' baseline convention).
+  for (let i = 0; i < ts.length; i++) prev[i] = ts[i];
+
+  prev.length = ts.length;
 }

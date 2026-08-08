@@ -31,6 +31,7 @@ import {
   CarLeftRight,
   classPositionFromOrder,
   IRSDK_UNLIMITED_LAPS,
+  isPostRace,
   isPreGreen,
   nearestCarGapMeters,
   type SDKController,
@@ -62,7 +63,7 @@ import { diffLifecycle } from "./diff/lifecycle.js";
 import { diffLimiter } from "./diff/limiter.js";
 import { diffOpponentPit } from "./diff/opponent-pit.js";
 import { diffOvertakes } from "./diff/overtakes.js";
-import { diffPaceLaps } from "./diff/pace-laps.js";
+import { diffPaceLaps, resolvePaceCarIdx } from "./diff/pace-laps.js";
 import { diffPitBoxCountdown } from "./diff/pit-box-countdown.js";
 import { diffPitLane } from "./diff/pit-lane.js";
 import { buildSnapshot as buildReadbackSnapshot, diffPitReadback } from "./diff/pit-readback.js";
@@ -741,27 +742,23 @@ export function getLivePosition(): LivePosition | null {
 
   if (playerCarIdx < 0) return null;
 
-  // Frozen positions (issue #603): finished cars that left the world stay
-  // counted at their finishing rank, so the spoken overall position is correct
-  // and stable while leaders peel into the garage.
-  const positions = calculateFrozenRacePositions(instance.state, telemetry);
-  const position = positions[playerCarIdx] ?? 0;
+  // One shared read path (issue #622): the frozen-order rank + derived class
+  // position come from getLiveCarPosition so the player readout and the
+  // per-car reads can never silently diverge.
+  const base = getLiveCarPosition(playerCarIdx);
 
-  if (position <= 0) return null;
+  if (!base) return null;
 
-  // Class position is derived from the SAME frozen order (count same-class cars
-  // ahead), so it updates continuously like the overall position instead of only
-  // at the start/finish line. Falls back to iRacing's official
-  // `PlayerCarClassPosition` when `CarIdxClass` isn't available to derive from.
-  const derivedClassPosition = classPositionFromOrder(positions, telemetry.CarIdxClass, playerCarIdx);
+  // Player-only extra: fall back to iRacing's official `PlayerCarClassPosition`
+  // when the class position can't be derived from the order (no `CarIdxClass`).
   const classPosition =
-    derivedClassPosition > 0
-      ? derivedClassPosition
+    base.classPosition > 0
+      ? base.classPosition
       : typeof telemetry.PlayerCarClassPosition === "number" && telemetry.PlayerCarClassPosition > 0
         ? telemetry.PlayerCarClassPosition
         : 0;
 
-  return { position, classPosition, isMultiClass: resolveIsMultiClass(sessionInfo) === true };
+  return { ...base, classPosition };
 }
 
 /**
@@ -1059,6 +1056,16 @@ function wipeStateForReplay(self: TranslatorInstance): void {
     // The enough-fuel reassurance latch (issue #880) is preserved with the
     // floor: a replay glance must not let the reassurance speak twice.
     fuelCalloutRaceCoveredAnnounced: self.state.fuelCalloutRaceCoveredAnnounced,
+    // The opponent-pit episode state (issue #622): glancing at the incident
+    // replay mid-caution-pit-train must not reset the aggregation window,
+    // the once-per-episode aggregate flag, or the per-car cooldowns — the
+    // wipe would make cars still streaming into the pits re-announce
+    // individually after the aggregate already covered them. The surface
+    // baseline (`opponentPitLastSurface` / `opponentPitInitialized`)
+    // deliberately re-seeds — replay-timeline surface values are meaningless.
+    opponentPitRecentEntries: self.state.opponentPitRecentEntries,
+    opponentPitAggregateAnnounced: self.state.opponentPitAggregateAnnounced,
+    opponentPitCarCooldownUntil: self.state.opponentPitCarCooldownUntil,
   };
 
   self.state = createInitialState();
@@ -1490,9 +1497,10 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
 
   // Opponent pit entries (issue #622) — consumes the same canonical frozen
   // order as diffOvertakes on the same tick. Race-only + replay-only gating
-  // is diff-side (the diffPitsOpen precedent) plus a pre-green gate (#647 —
-  // grid/formation positions are meaningless); the pace car drives into the
-  // pits when picking up the field and must never announce.
+  // is diff-side (the diffPitsOpen precedent) plus pre-green (#647 —
+  // grid/formation positions are meaningless) and post-race (the whole field
+  // pits after the checkered) gates; the pace car drives into the pits when
+  // picking up the field and must never announce.
   diffOpponentPit(
     self.state,
     telemetry,
@@ -1501,6 +1509,7 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     isRaceSession,
     replayOnlySession,
     isPreGreen(telemetry),
+    isPostRace(telemetry),
     resolveIsMultiClass(sessionInfo) === true,
     frozenPositions,
     now,
@@ -1640,26 +1649,6 @@ function resolvePlayerCarIdx(sessionInfo: Record<string, unknown> | null): numbe
   const driverInfo = sessionInfo.DriverInfo as Record<string, unknown> | undefined;
 
   return (driverInfo?.DriverCarIdx as number) ?? -1;
-}
-
-/**
- * CarIdx of the pace car from session YAML
- * (`DriverInfo.Drivers[].CarIsPaceCar`), or `null` when unresolvable. The pace
- * car drives into the pits when picking up the field, which must never
- * announce as an opponent pit entry (issue #622).
- */
-function resolvePaceCarIdx(sessionInfo: Record<string, unknown> | null): number | null {
-  const drivers = (
-    sessionInfo as { DriverInfo?: { Drivers?: Array<{ CarIdx?: number; CarIsPaceCar?: number }> } } | null
-  )?.DriverInfo?.Drivers;
-
-  if (!Array.isArray(drivers)) return null;
-
-  for (const d of drivers) {
-    if (d?.CarIsPaceCar === 1 && typeof d.CarIdx === "number") return d.CarIdx;
-  }
-
-  return null;
 }
 
 /**

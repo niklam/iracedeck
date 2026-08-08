@@ -2,23 +2,26 @@
  * Unit tests for the opponent-pit scenarios (issue #622).
  *
  * Five scenarios fire off the single `opponentPit.entered` event and branch on
- * `relation`. The leader scenario carries its own family so the aggregate tail
- * emitted in the same flush can never preempt the leader line mid-sentence;
- * the other four share `opponent-pit` so a newer entry supersedes a stale
- * in-flight one.
+ * `relation`. None carries a `family`: the lines describe DIFFERENT cars, so
+ * same-family preemption (which cuts regardless of `interrupt: false`) would
+ * truncate a pit train's lines mid-sentence — they queue instead. The nearby
+ * line's spoken number resolves from a module-scope stash written by the
+ * nearby scenario's own `where:` (the #922 shape), live-read-preferred with
+ * the emit-time payload as fallback.
  */
 import type { OpponentPitRelation, SimEventOf } from "@iracedeck/event-bus";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { poolRef } from "../../dsl.js";
 import type { Scenario } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 import {
+  _resetOpponentPitPending,
   OPPONENT_PIT_ALERTS,
   OPPONENT_PIT_CALLOUT_SETTING_KEYS,
   OPPONENT_PIT_POOL_NAMES,
   OPPONENT_PIT_SCENARIO_IDS,
-  type OpponentPitSnapshot,
+  type OpponentPitPending,
   registerOpponentPitVars,
   SCENARIO_ID_TO_OPPONENT_PIT_ID,
 } from "./opponent-pit.js";
@@ -33,14 +36,30 @@ function scenario(id: string): Scenario {
   return s;
 }
 
-function entered(relation: OpponentPitRelation): SimEventOf<"opponentPit.entered"> {
+function entered(
+  relation: OpponentPitRelation,
+  overrides: Partial<SimEventOf<"opponentPit.entered">["data"]> = {},
+): SimEventOf<"opponentPit.entered"> {
   return {
     event: "opponentPit.entered",
     timestamp: 0,
     telemetry: null,
-    data: relation === "others" ? { relation } : { relation, carIdx: 7, position: 4 },
+    data: relation === "others" ? { relation, ...overrides } : { relation, carIdx: 7, position: 4, ...overrides },
   };
 }
+
+function makeVarEngine(): { engine: IScenarioEngine; vars: Map<string, () => unknown> } {
+  const vars = new Map<string, () => unknown>();
+  const engine = {
+    defineVar: vi.fn((name: string, fn: () => unknown) => vars.set(name, fn)),
+  } as unknown as IScenarioEngine;
+
+  return { engine, vars };
+}
+
+beforeEach(() => {
+  _resetOpponentPitPending();
+});
 
 describe("opponent-pit scenarios", () => {
   it("exports the five scenario ids and six pool names", () => {
@@ -61,11 +80,9 @@ describe("opponent-pit scenarios", () => {
     ]);
   });
 
-  it("keeps the leader in its own family so the aggregate can't cut it", () => {
-    expect(scenario("pit-crew.opponent-pit-leader").family).toBe("opponent-pit-leader");
-
-    for (const id of OPPONENT_PIT_SCENARIO_IDS.filter((x) => x !== "pit-crew.opponent-pit-leader")) {
-      expect(scenario(id).family).toBe("opponent-pit");
+  it("carries no family — different cars queue, they never preempt each other", () => {
+    for (const s of OPPONENT_PIT_ALERTS) {
+      expect(s.family).toBeUndefined();
     }
   });
 
@@ -109,28 +126,70 @@ describe("opponent-pit scenarios", () => {
       "@pit-crew.radio-close",
     ]);
   });
+
+  it("nearby rejects events without a usable car or position", () => {
+    const where = scenario("pit-crew.opponent-pit-nearby").when?.where;
+
+    expect(where?.(entered("nearby", { carIdx: undefined }))).toBe(false);
+    expect(where?.(entered("nearby", { position: undefined }))).toBe(false);
+    expect(where?.(entered("nearby", { position: 0 }))).toBe(false);
+  });
 });
 
-describe("registerOpponentPitVars", () => {
-  it("resolves opponentPit.number from the snapshot, null without one", () => {
-    const vars = new Map<string, () => unknown>();
-    const engine = {
-      defineVar: vi.fn((name: string, fn: () => unknown) => vars.set(name, fn)),
-    } as unknown as IScenarioEngine;
-    let snapshot: OpponentPitSnapshot | null = null;
+describe("registerOpponentPitVars + the pending stash", () => {
+  it("resolves the number from the stash payload when no live read is wired", () => {
+    const { engine, vars } = makeVarEngine();
 
-    registerOpponentPitVars(engine, () => snapshot);
+    registerOpponentPitVars(engine);
 
     const resolve = vars.get("opponentPit.number");
 
     expect(resolve).toBeDefined();
+    // No stash yet — a nearby fire hasn't passed its where: → abort (#835).
     expect(resolve!()).toBeNull();
 
-    snapshot = { position: 4 };
+    scenario("pit-crew.opponent-pit-nearby").when?.where?.(entered("nearby", { position: 4 }));
     expect(resolve!()).toEqual(poolRef("position-number", "4"));
+  });
 
-    snapshot = { position: 0 };
-    expect(resolve!()).toBeNull();
+  it("prefers the live read and hands it the stashed projection context", () => {
+    const { engine, vars } = makeVarEngine();
+    const seen: OpponentPitPending[] = [];
+
+    registerOpponentPitVars(engine, (pending) => {
+      seen.push(pending);
+
+      return 6;
+    });
+
+    scenario("pit-crew.opponent-pit-nearby").when?.where?.(
+      entered("nearby", { carIdx: 12, position: 4, isMultiClass: true }),
+    );
+
+    expect(vars.get("opponentPit.number")!()).toEqual(poolRef("position-number", "6"));
+    expect(seen).toEqual([{ carIdx: 12, position: 4, isMultiClass: true }]);
+  });
+
+  it("falls back to the payload position when the live read returns null", () => {
+    const { engine, vars } = makeVarEngine();
+
+    registerOpponentPitVars(engine, () => null);
+
+    scenario("pit-crew.opponent-pit-nearby").when?.where?.(entered("nearby", { position: 4 }));
+    expect(vars.get("opponentPit.number")!()).toEqual(poolRef("position-number", "4"));
+  });
+
+  it("ignores non-nearby events — they never repoint the stash (#922 shape)", () => {
+    const { engine, vars } = makeVarEngine();
+
+    registerOpponentPitVars(engine);
+
+    scenario("pit-crew.opponent-pit-nearby").when?.where?.(entered("nearby", { carIdx: 12, position: 4 }));
+    // A later leader event (its own scenario may even be opt-in-suppressed)
+    // must not overwrite what the deferred nearby line speaks.
+    scenario("pit-crew.opponent-pit-leader").when?.where?.(entered("leader", { carIdx: 2, position: 1 }));
+
+    expect(vars.get("opponentPit.number")!()).toEqual(poolRef("position-number", "4"));
   });
 });
 

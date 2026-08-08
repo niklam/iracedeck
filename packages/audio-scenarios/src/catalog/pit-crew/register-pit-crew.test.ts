@@ -28,12 +28,12 @@ import { _resetAudioScenarios, getScenarioEngine, initializeAudioScenarios } fro
 import { _setFurledRaisedSpoken } from "./flag-alerts.js";
 import { _resetLastIncidentDelta } from "./incidents.js";
 import {
+  _resetOpponentPitPending,
   type DamageCalloutId,
   type FlagCalloutId,
   type FuelCalloutId,
   type IncidentCalloutId,
   type OpponentPitCalloutId,
-  type OpponentPitSnapshot,
   type PitWindowCalloutId,
   registerPitCrew,
   type RollingStartCalloutId,
@@ -433,7 +433,7 @@ let incidentEnabled: Map<IncidentCalloutId, boolean>;
 let pitBoxEnabled: boolean;
 let pitWindowEnabled: Map<PitWindowCalloutId, boolean>;
 let opponentPitEnabled: Map<OpponentPitCalloutId, boolean>;
-let opponentPitSnapshot: OpponentPitSnapshot | null;
+let opponentPitLivePosition: number | null;
 let rollingStartEnabled: Map<RollingStartCalloutId, boolean>;
 let fuelEnabled: Map<FuelCalloutId, boolean>;
 let voiceMasterEnabled: boolean;
@@ -449,7 +449,8 @@ beforeEach(() => {
     ["leader", true],
     ["nearby", true],
   ]);
-  opponentPitSnapshot = { position: 4 };
+  opponentPitLivePosition = 4;
+  _resetOpponentPitPending();
   rollingStartEnabled = new Map<RollingStartCalloutId, boolean>([["pace-car", true]]);
   fuelEnabled = new Map<FuelCalloutId, boolean>();
   voiceMasterEnabled = true;
@@ -499,7 +500,7 @@ beforeEach(() => {
     undefined, // getCornerNameCalloutEnabled (issue #888)
     undefined, // getCornerNameSnapshot (issue #888)
     (id) => opponentPitEnabled.get(id) ?? true, // getOpponentPitCalloutEnabled (issue #622)
-    () => opponentPitSnapshot, // getOpponentPitSnapshot (issue #622)
+    () => opponentPitLivePosition, // getOpponentPitLivePosition (issue #622)
     () => voiceMasterEnabled,
     undefined, // getRadarMasterEnabled
   );
@@ -1317,16 +1318,23 @@ describe("opponent-pit family registration (issue #622)", () => {
     const number = played.findIndex((p) => p.includes("/position-number/4.mp3"));
     const isPitting = played.findIndex((p) => p.includes("/opponent-pit/is-pitting-"));
 
-    // The number comes from the snapshot resolver (position 4), not the
+    // The number comes from the live resolver (position 4), not the
     // emit-time payload (position 6) — the speak-time freshness contract.
     expect(carIn).toBeGreaterThanOrEqual(0);
     expect(number).toBeGreaterThan(carIn);
     expect(isPitting).toBeGreaterThan(number);
   });
 
-  it("aborts the nearby callout entirely when no snapshot is available", () => {
-    opponentPitSnapshot = null;
+  it("falls back to the emit-time payload position when the live read fails", () => {
+    opponentPitLivePosition = null;
     bus.publishEvent("opponentPit.entered", { relation: "nearby", carIdx: 7, position: 4 } as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed().some((p) => p.includes("/position-number/4.mp3"))).toBe(true);
+  });
+
+  it("rejects a nearby event without a usable car or position", () => {
+    bus.publishEvent("opponentPit.entered", { relation: "nearby" } as never);
     flush(audio);
 
     expect(voiceClipsPlayed()).toEqual([]);

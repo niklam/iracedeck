@@ -34,9 +34,11 @@ function run(
   telemetry: MutableField,
   now: number,
   opts: Partial<{
+    player: number;
     isRace: boolean;
     replay: boolean;
     preGreen: boolean;
+    postRace: boolean;
     multi: boolean;
     pace: number | null;
     positions: number[];
@@ -47,11 +49,12 @@ function run(
   diffOpponentPit(
     state,
     telemetry as never,
-    PLAYER,
+    opts.player ?? PLAYER,
     opts.pace ?? null,
     opts.isRace ?? true,
     opts.replay ?? false,
     opts.preGreen ?? false,
+    opts.postRace ?? false,
     opts.multi ?? false,
     opts.positions ?? POSITIONS,
     now,
@@ -329,6 +332,67 @@ describe("diffOpponentPit", () => {
     const s3 = createInitialState();
     run(s3, makeField(), 1000);
     expect(run(s3, t, 2000, { preGreen: true })).toEqual([]);
+  });
+
+  it("stays silent after the checkered (post-race gate)", () => {
+    run(state, makeField(), 1000);
+    const t = makeField();
+    t.CarIdxTrackSurface[1] = TrkLoc.AproachingPits; // even the leader
+    t.CarIdxTrackSurface[3] = TrkLoc.AproachingPits;
+
+    expect(run(state, t, 2000, { postRace: true })).toEqual([]);
+    // Absorbed, not deferred — the gate reopening does not replay.
+    expect(run(state, t, 3000)).toEqual([]);
+  });
+
+  it("stays silent when the player carIdx is unresolved", () => {
+    run(state, makeField(), 1000, { player: -1 });
+    const t = makeField();
+    t.CarIdxTrackSurface[PLAYER] = TrkLoc.AproachingPits; // the player's own car
+    t.CarIdxTrackSurface[1] = TrkLoc.AproachingPits; // and the leader
+
+    expect(run(state, t, 2000, { player: -1 })).toEqual([]);
+  });
+
+  it("keeps non-leader entries silent for the whole episode once the aggregate fired", () => {
+    run(state, makeField(), 1000);
+
+    const t = makeField();
+    t.CarIdxTrackSurface[3] = TrkLoc.AproachingPits;
+    run(state, t, 2000);
+    t.CarIdxTrackSurface[4] = TrkLoc.AproachingPits;
+    run(state, t, 3000);
+    t.CarIdxTrackSurface[2] = TrkLoc.AproachingPits;
+    run(state, t, 4000); // aggregate fired
+
+    // 11.5 s later the first three entries have pruned out of the window
+    // (count is back below the threshold) but the episode never went quiet —
+    // the announced flag, not the live count, keeps enumeration collapsed.
+    const late = makeField();
+    late.CarIdxTrackSurface[5] = TrkLoc.AproachingPits;
+
+    expect(run(state, late, 15_000)).toEqual([]);
+    expect(state.opponentPitAggregateAnnounced).toBe(true);
+  });
+
+  it("orders the leader's emission before others in the same tick", () => {
+    run(state, makeField(), 1000);
+
+    // Leader (carIdx 1) and the car ahead (carIdx 3) enter on the same tick;
+    // carIdx order would put 1 first anyway, so ALSO test the reverse: a
+    // field where the leader has the higher carIdx.
+    const positions = [4, 5, 2, 3, 1, 6, 7, 8]; // carIdx 4 leads
+    const s2 = createInitialState();
+    run(s2, makeField(), 1000, { positions });
+    const t = makeField();
+    t.CarIdxTrackSurface[3] = TrkLoc.AproachingPits; // P3 → ahead
+    t.CarIdxTrackSurface[4] = TrkLoc.AproachingPits; // the leader, higher carIdx
+
+    const out = run(s2, t, 2000, { positions });
+
+    expect(out).toHaveLength(2);
+    expect(out[0]?.data).toMatchObject({ relation: "leader", carIdx: 4 });
+    expect(out[1]?.data).toMatchObject({ relation: "ahead", carIdx: 3 });
   });
 
   it("tolerates missing telemetry arrays", () => {

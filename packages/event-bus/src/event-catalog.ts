@@ -316,9 +316,12 @@ export type SimEventMap = {
    * for the leader plus same-lap cars within ±2 effective positions of the
    * player (class space in multi-class, #588). `position` is the car's
    * effective position at emit time — consumers prefer a live speak-time read
-   * and use this as the fallback. `carIdx`/`position` are absent for the
-   * `"others"` aggregate (3+ qualifying entries within the window collapse to
-   * one aggregate tail).
+   * and use this as the fallback. `isMultiClass` records the projection the
+   * classification ran in; speak-time live reads take their number in the
+   * SAME projection (a transient session-info dropout at read time must not
+   * flip a class-space number to overall space). `carIdx`/`position` are
+   * absent for the `"others"` aggregate (3+ qualifying entries within the
+   * window collapse to one aggregate tail).
    */
   "opponentPit.entered": SimEvent<
     "opponentPit.entered",

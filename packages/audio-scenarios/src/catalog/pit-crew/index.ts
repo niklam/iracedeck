@@ -72,7 +72,7 @@ import {
 import {
   OPPONENT_PIT_ALERTS,
   type OpponentPitCalloutId,
-  type OpponentPitSnapshotResolver,
+  type OpponentPitLivePositionResolver,
   registerOpponentPitVars,
   SCENARIO_ID_TO_OPPONENT_PIT_ID,
 } from "./opponent-pit.js";
@@ -192,13 +192,14 @@ export {
   type CornerNameSnapshotResolver,
 } from "./corner-name.js";
 export {
+  _resetOpponentPitPending,
   OPPONENT_PIT_ALERTS,
   OPPONENT_PIT_CALLOUT_SETTING_KEYS,
   OPPONENT_PIT_POOL_NAMES,
   OPPONENT_PIT_SCENARIO_IDS,
   type OpponentPitCalloutId,
-  type OpponentPitSnapshot,
-  type OpponentPitSnapshotResolver,
+  type OpponentPitLivePositionResolver,
+  type OpponentPitPending,
   registerOpponentPitVars,
 } from "./opponent-pit.js";
 export {
@@ -944,12 +945,15 @@ export function registerPitCrew(
   // `() => true` preserves legacy behavior for tests that don't supply a
   // closure.
   getOpponentPitCalloutEnabled: (id: OpponentPitCalloutId) => boolean = () => true,
-  // Opponent-pit snapshot (issue #622). Plugins cache the latest
-  // `opponentPit.entered` payload and compose a live `getLiveCarPosition`
-  // read with the emit-time payload as fallback; the nearby scenario's number
-  // var reads it at expansion time. Default `() => null` aborts the nearby
-  // callout at expansion — a safe stub for tests.
-  getOpponentPitSnapshot: OpponentPitSnapshotResolver = () => null,
+  // Opponent-pit live position resolver (issue #622). Plugins wire
+  // `getLiveCarPosition` so the nearby line's number is fresh at speak time,
+  // read in the projection the event was classified in (the pending stash's
+  // `isMultiClass`). The pitting car itself is carried by a module-scope
+  // stash written in the nearby scenario's `where:` (the #922 shape), so a
+  // later event of a different relation can never repoint a deferred line.
+  // Default `() => null` falls back to the emit-time payload position — a
+  // safe stub for tests and the harness.
+  getOpponentPitLivePosition: OpponentPitLivePositionResolver = () => null,
   // Master gate for the Race Engineer voice subsystem (issue #515).
   // Plugins wire this to `pitCrewRaceEngineerEnabled === true`. Read live
   // on every event arrival and applied as the OUTERMOST wrapper around
@@ -1069,10 +1073,10 @@ export function registerPitCrew(
   // Opponent-pit family (issue #622). The `opponent-pit-*` pools are already
   // registered en masse above via `registerPools(engine)`;
   // `OPPONENT_PIT_POOL_NAMES` exists for the catalog tests. Two subjects gate
-  // the five scenarios via `SCENARIO_ID_TO_OPPONENT_PIT_ID`; the leader
-  // scenario's separate family keeps the aggregate tail from preempting the
-  // leader line emitted in the same flush.
-  registerOpponentPitVars(engine, getOpponentPitSnapshot);
+  // the five scenarios via `SCENARIO_ID_TO_OPPONENT_PIT_ID`; the scenarios
+  // deliberately carry NO `family` so a pit train queues politely instead of
+  // truncating in-flight lines about different cars (see the module header).
+  registerOpponentPitVars(engine, getOpponentPitLivePosition);
 
   for (const s of OPPONENT_PIT_ALERTS) {
     engine.defineScenario(
