@@ -51,17 +51,19 @@ export const GAP_BREAKAWAY_MAX_GAP_S = 10;
 /** A breakaway episode re-arms once the pair closes back under this (seconds). */
 export const GAP_BREAKAWAY_REARM_GAP_S = 5;
 /**
- * Default minimum gap movement (seconds) since a side's last trend
- * announcement before another may fire — the anti-ping-pong gate
- * (issue #933 follow-up). User-configurable via
+ * Default minimum gap movement (seconds) IN THE ANNOUNCED DIRECTION from the
+ * gap's extreme since the side's last announcement (issue #933 follow-up):
+ * "closing" needs the gap down this much from its peak, "pulling away" up
+ * this much from its trough. Consistency with the previous call — kills
+ * hover ping-pong and sector-profile fakes alike. User-configurable via
  * `gapCalloutMinChangeSeconds`; 0 disables.
  */
 export const GAP_DEFAULT_MIN_CHANGE_S = 1.5;
 /**
  * Assumed grid spacing (seconds) between standings neighbors at the race
  * start (issue #933 follow-up). On lap 1, a side with no announcement
- * history uses this as its movement-gate baseline — being ~this close off
- * the start is expected, not news.
+ * history seeds its extremes here — being ~this close off the start is
+ * expected, not news.
  */
 export const GAP_ASSUMED_START_SPACING_S = 0.7;
 /** A threshold episode re-arms once the gap exceeds threshold + this margin. */
@@ -411,14 +413,16 @@ function resetSideState(state: TranslatorState, side: Side): void {
   if (side === "ahead") {
     state.gapContactAnnouncedLapsAhead = null;
     state.gapBreakawayAnnouncedAhead = false;
-    state.gapLastAnnouncedGapAhead = null;
+    state.gapMinSinceAnnounceAhead = null;
+    state.gapMaxSinceAnnounceAhead = null;
     state.gapThresholdArmedAhead = false;
     state.gapLastEvalGapAhead = null;
     state.gapStableTicksAhead = 0;
   } else {
     state.gapContactAnnouncedLapsBehind = null;
     state.gapBreakawayAnnouncedBehind = false;
-    state.gapLastAnnouncedGapBehind = null;
+    state.gapMinSinceAnnounceBehind = null;
+    state.gapMaxSinceAnnounceBehind = null;
     state.gapThresholdArmedBehind = false;
     state.gapLastEvalGapBehind = null;
     state.gapStableTicksBehind = 0;
@@ -543,15 +547,18 @@ function processRelevance(
   if (ema === null || samples < GAP_TREND_MIN_SAMPLES) return;
 
   const gap = live.gapSeconds;
-  // Anti-ping-pong gate (issue #933 follow-up): no trend announcement for
-  // this side, in EITHER direction, until the gap has moved at least the
-  // configured amount from the side's last one. A rate wobbling around the
-  // bars must not alternate "pulling away" / "closing in" while the gap
-  // itself hovers at the same value. On lap 1 an unannounced side is
-  // baselined at the assumed grid spacing — the start put them there.
-  const lastAnnouncedGap = side === "ahead" ? state.gapLastAnnouncedGapAhead : state.gapLastAnnouncedGapBehind;
-  const baseline = lastAnnouncedGap ?? (firstLap ? GAP_ASSUMED_START_SPACING_S : null);
-  const movedEnough = baseline === null || Math.abs(gap - baseline) >= getMinChangeSeconds();
+  // Consistency gate (issue #933 follow-up): a call must agree with the
+  // story since the previous one. "Closing" requires the gap DOWN at least
+  // the configured amount from its PEAK since the last announcement (a
+  // sector-profile dip below a gap that sits above everything since the
+  // last call must never say "they're closing"); "pulling away" requires it
+  // UP the same amount from its TROUGH. Lap 1 seeds the extremes at the
+  // assumed grid spacing — the start put the neighbors there. Only stable,
+  // unsuppressed readings ever reach this point, so glitches never fold in.
+  const extremes = foldExtremes(state, side, gap, firstLap);
+  const minChange = getMinChangeSeconds();
+  const closingConsistent = gap <= extremes.max - minChange;
+  const openingConsistent = gap >= extremes.min + minChange;
 
   // ── Closing threat: announce by projected time-to-contact. ──
   const announcedAt = side === "ahead" ? state.gapContactAnnouncedLapsAhead : state.gapContactAnnouncedLapsBehind;
@@ -561,7 +568,7 @@ function processRelevance(
     const lapsToContact = gap / closingRate;
     const horizon = Math.min(GAP_CONTACT_HORIZON_LAPS, lapsRemaining ?? Number.POSITIVE_INFINITY);
     const due =
-      movedEnough &&
+      closingConsistent &&
       lapsToContact <= horizon &&
       (announcedAt === null || lapsToContact <= announcedAt * GAP_CONTACT_REANNOUNCE_FACTOR);
 
@@ -571,13 +578,10 @@ function processRelevance(
         data: { side, direction: "closing", gapSeconds: gap, ratePerLap: ema, lapsToContact, carIdx: idx },
       });
 
-      if (side === "ahead") {
-        state.gapContactAnnouncedLapsAhead = lapsToContact;
-        state.gapLastAnnouncedGapAhead = gap;
-      } else {
-        state.gapContactAnnouncedLapsBehind = lapsToContact;
-        state.gapLastAnnouncedGapBehind = gap;
-      }
+      resetExtremes(state, side, gap);
+
+      if (side === "ahead") state.gapContactAnnouncedLapsAhead = lapsToContact;
+      else state.gapContactAnnouncedLapsBehind = lapsToContact;
     }
   } else if (announcedAt !== null && closingRate < GAP_CLOSING_MIN_RATE_S_PER_LAP / 2) {
     // The threat receded (they stopped closing) — re-arm with hysteresis so
@@ -597,7 +601,7 @@ function processRelevance(
     else state.gapBreakawayAnnouncedBehind = false;
   } else if (
     !breakawayAnnounced &&
-    movedEnough &&
+    openingConsistent &&
     ema >= GAP_BREAKAWAY_MIN_RATE_S_PER_LAP &&
     gap <= GAP_BREAKAWAY_MAX_GAP_S
   ) {
@@ -606,13 +610,45 @@ function processRelevance(
       data: { side, direction: "opening", gapSeconds: gap, ratePerLap: ema, carIdx: idx },
     });
 
-    if (side === "ahead") {
-      state.gapBreakawayAnnouncedAhead = true;
-      state.gapLastAnnouncedGapAhead = gap;
-    } else {
-      state.gapBreakawayAnnouncedBehind = true;
-      state.gapLastAnnouncedGapBehind = gap;
-    }
+    resetExtremes(state, side, gap);
+
+    if (side === "ahead") state.gapBreakawayAnnouncedAhead = true;
+    else state.gapBreakawayAnnouncedBehind = true;
+  }
+}
+
+/** Fold the current gap into a side's since-last-announcement extremes. */
+function foldExtremes(
+  state: TranslatorState,
+  side: Side,
+  gap: number,
+  firstLap: boolean,
+): { min: number; max: number } {
+  const prevMin = side === "ahead" ? state.gapMinSinceAnnounceAhead : state.gapMinSinceAnnounceBehind;
+  const prevMax = side === "ahead" ? state.gapMaxSinceAnnounceAhead : state.gapMaxSinceAnnounceBehind;
+  const seed = prevMin === null || prevMax === null ? (firstLap ? GAP_ASSUMED_START_SPACING_S : gap) : null;
+  const min = Math.min(seed ?? prevMin!, gap);
+  const max = Math.max(seed ?? prevMax!, gap);
+
+  if (side === "ahead") {
+    state.gapMinSinceAnnounceAhead = min;
+    state.gapMaxSinceAnnounceAhead = max;
+  } else {
+    state.gapMinSinceAnnounceBehind = min;
+    state.gapMaxSinceAnnounceBehind = max;
+  }
+
+  return { min, max };
+}
+
+/** Restart a side's extremes at the just-announced gap. */
+function resetExtremes(state: TranslatorState, side: Side, gap: number): void {
+  if (side === "ahead") {
+    state.gapMinSinceAnnounceAhead = gap;
+    state.gapMaxSinceAnnounceAhead = gap;
+  } else {
+    state.gapMinSinceAnnounceBehind = gap;
+    state.gapMaxSinceAnnounceBehind = gap;
   }
 }
 
@@ -655,15 +691,17 @@ function processThresholdEpisode(
 
   if (live.gapSeconds < threshold) {
     // Opening-lap grid assumption (issue #933 follow-up): on lap 1 the
-    // "we've caught them" call is held to the movement gate against the
-    // assumed grid spacing — a neighbor who was ~0.7 s away at the start
-    // briefly opening past the re-arm point and closing back is the field
+    // "we've caught them" call must be consistent with the assumed grid
+    // situation — the gap down at least the movement amount from its peak
+    // since the start (or the last call). A neighbor who was ~0.7 s away,
+    // briefly opened past the re-arm point, and closed back is the field
     // sorting itself out, not a catch.
     if (firstLap) {
-      const lastAnnouncedGap = side === "ahead" ? state.gapLastAnnouncedGapAhead : state.gapLastAnnouncedGapBehind;
-      const baseline = lastAnnouncedGap ?? GAP_ASSUMED_START_SPACING_S;
+      const maxSince =
+        (side === "ahead" ? state.gapMaxSinceAnnounceAhead : state.gapMaxSinceAnnounceBehind) ??
+        GAP_ASSUMED_START_SPACING_S;
 
-      if (Math.abs(live.gapSeconds - baseline) < getMinChangeSeconds()) return;
+      if (live.gapSeconds > maxSince - getMinChangeSeconds()) return;
     }
 
     emit({
@@ -671,12 +709,9 @@ function processThresholdEpisode(
       data: { side, gapSeconds: live.gapSeconds, thresholdSeconds: threshold, carIdx: idx },
     });
 
-    if (side === "ahead") {
-      state.gapThresholdArmedAhead = false;
-      state.gapLastAnnouncedGapAhead = live.gapSeconds;
-    } else {
-      state.gapThresholdArmedBehind = false;
-      state.gapLastAnnouncedGapBehind = live.gapSeconds;
-    }
+    resetExtremes(state, side, live.gapSeconds);
+
+    if (side === "ahead") state.gapThresholdArmedAhead = false;
+    else state.gapThresholdArmedBehind = false;
   }
 }

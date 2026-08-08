@@ -526,14 +526,20 @@ export type TranslatorState = {
   gapBreakawayAnnouncedAhead: boolean;
   gapBreakawayAnnouncedBehind: boolean;
   /**
-   * Gap at the side's last `gap.trendChanged` emission — either direction
-   * (issue #933 follow-up): another trend announcement for the side is gated
-   * until the gap has moved at least `gapCalloutMinChangeSeconds` from this,
-   * so a rate wobbling around the bars can't ping-pong "pulling away" /
-   * "closing in" while the gap itself barely moves. Null = no baseline.
+   * Gap extremes observed since the side's last announcement (issue #933
+   * follow-up): a "closing" call must be CONSISTENT with the story so far —
+   * the gap down at least `gapCalloutMinChangeSeconds` from its PEAK since
+   * the last call — and "pulling away" up the same amount from its TROUGH.
+   * This kills both hover ping-pong and sector-profile fakes ("they're
+   * closing" while the gap sits above everything since the last call) with
+   * no track-position dependence and no warmup. Reset to the announced gap
+   * on every emission; seeded at the assumed grid spacing on lap 1; null =
+   * no history. Only stable, unsuppressed readings fold in.
    */
-  gapLastAnnouncedGapAhead: number | null;
-  gapLastAnnouncedGapBehind: number | null;
+  gapMinSinceAnnounceAhead: number | null;
+  gapMinSinceAnnounceBehind: number | null;
+  gapMaxSinceAnnounceAhead: number | null;
+  gapMaxSinceAnnounceBehind: number | null;
   /**
    * Callout stability guard (issue #933 follow-up): the gap seen on the
    * previous tick and how many consecutive ticks the gap has evolved
@@ -871,8 +877,10 @@ export function createInitialState(): TranslatorState {
     gapContactAnnouncedLapsBehind: null,
     gapBreakawayAnnouncedAhead: false,
     gapBreakawayAnnouncedBehind: false,
-    gapLastAnnouncedGapAhead: null,
-    gapLastAnnouncedGapBehind: null,
+    gapMinSinceAnnounceAhead: null,
+    gapMinSinceAnnounceBehind: null,
+    gapMaxSinceAnnounceAhead: null,
+    gapMaxSinceAnnounceBehind: null,
     gapLastEvalGapAhead: null,
     gapLastEvalGapBehind: null,
     gapStableTicksAhead: 0,

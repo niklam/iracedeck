@@ -74,6 +74,8 @@ function run(
     thresholdS?: number;
     lapsRemaining?: number | null;
     minChangeS?: number;
+    /** Superimpose a lap-periodic ±amplitude oscillation on the behind gap (sector profiles). */
+    behindOscillateS?: number;
     overrides?: Partial<TelemetryData>;
   },
 ): void {
@@ -88,7 +90,7 @@ function run(
 
     const fraction = span > 0 ? (p - opts.fromLap) / span : 0;
     const aheadGap = gapAt(opts.aheadGapS, fraction);
-    const behindGap = gapAt(opts.behindGapS, fraction);
+    const behindGap = gapAt(opts.behindGapS, fraction) + (opts.behindOscillateS ?? 0) * Math.sin(2 * Math.PI * p);
 
     diffGaps(
       state,
@@ -111,6 +113,10 @@ function trendEvents(events: PendingEvent[]): PendingEvent[] {
 
 function openingEvents(events: PendingEvent[]): PendingEvent[] {
   return trendEvents(events).filter((e) => (e.data as { direction: string }).direction === "opening");
+}
+
+function closingEvents(events: PendingEvent[]): PendingEvent[] {
+  return trendEvents(events).filter((e) => (e.data as { direction: string }).direction === "closing");
 }
 
 function thresholdEvents(events: PendingEvent[]): PendingEvent[] {
@@ -338,17 +344,19 @@ describe("diffGaps — relevance events (issue #933 follow-up)", () => {
     const state = createInitialState();
     const { events, emit } = collect();
 
-    // Breakaway announced shortly after the pull starts (gap ≈ 2.7 s)...
-    run(state, emit, { fromLap: 1, toLap: 2, aheadGapS: 8, behindGapS: [2.5, 4.0] });
+    // Breakaway announced once the pull has genuinely traveled +1.5 s from
+    // its trough (gap ≈ 4.1)...
+    run(state, emit, { fromLap: 1, toLap: 2, aheadGapS: 8, behindGapS: [2.5, 4.4] });
     expect(trendEvents(events)).toHaveLength(1);
 
-    // ...then the gap hovers around 3.7–4.0 — within the 1.5 s movement gate
-    // of the announcement — with hard short-term rates in both directions
-    // (the exact "dropping them" → "closing in" → "dropping them" ping-pong
-    // from track testing). Nothing new may be announced.
-    run(state, emit, { fromLap: 2, toLap: 2.1, aheadGapS: 8, behindGapS: [4.0, 3.7] });
-    run(state, emit, { fromLap: 2.1, toLap: 2.2, aheadGapS: 8, behindGapS: [3.7, 4.0] });
-    run(state, emit, { fromLap: 2.2, toLap: 2.3, aheadGapS: 8, behindGapS: [4.0, 3.7] });
+    // ...then the gap hovers around 4.1–4.4 — inconsistent with either a new
+    // "closing" (not 1.5 s down from the peak) or a new "pulling away" (not
+    // 1.5 s up from the trough) — with hard short-term rates in both
+    // directions (the exact "dropping them" → "closing in" → "dropping them"
+    // ping-pong from track testing). Nothing new may be announced.
+    run(state, emit, { fromLap: 2, toLap: 2.1, aheadGapS: 8, behindGapS: [4.4, 4.1] });
+    run(state, emit, { fromLap: 2.1, toLap: 2.2, aheadGapS: 8, behindGapS: [4.1, 4.4] });
+    run(state, emit, { fromLap: 2.2, toLap: 2.3, aheadGapS: 8, behindGapS: [4.4, 4.1] });
 
     expect(trendEvents(events)).toHaveLength(1);
 
@@ -357,8 +365,8 @@ describe("diffGaps — relevance events (issue #933 follow-up)", () => {
     const state2 = createInitialState();
     const { events: events2, emit: emit2 } = collect();
 
-    run(state2, emit2, { fromLap: 1, toLap: 2, aheadGapS: 8, behindGapS: [2.5, 4.0], minChangeS: 0 });
-    run(state2, emit2, { fromLap: 2, toLap: 2.1, aheadGapS: 8, behindGapS: [4.0, 3.7], minChangeS: 0 });
+    run(state2, emit2, { fromLap: 1, toLap: 2, aheadGapS: 8, behindGapS: [2.5, 4.4], minChangeS: 0 });
+    run(state2, emit2, { fromLap: 2, toLap: 2.1, aheadGapS: 8, behindGapS: [4.4, 4.1], minChangeS: 0 });
 
     expect(trendEvents(events2).length).toBeGreaterThan(1);
   });
@@ -423,6 +431,27 @@ describe("diffGaps — relevance events (issue #933 follow-up)", () => {
     // A genuine sustained catch still fires once the reading has been stable.
     run(state, emit, { fromLap: 3.01, toLap: 3.5, aheadGapS: 30, behindGapS: [2.4, 0.8] });
     expect(thresholdEvents(events)).toHaveLength(1);
+  });
+
+  it("never says 'closing in' from sector-profile oscillation while the gap genuinely opens (issue #933 follow-up: false 'catching us' at 4.3 s)", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+
+    // The gap to the car behind opens steadily ~1 s/lap, but the
+    // crossing-time reading oscillates ±0.35 s with the pair's sector
+    // profiles — every downswing's short-window slope reads "closing hard"
+    // with a tiny contact projection. A closing call would contradict the
+    // story (the gap sits above everything since the last announcement), so
+    // only "pulling away" may ever fire.
+    run(state, emit, { fromLap: 1, toLap: 3, aheadGapS: 30, behindGapS: [2.0, 4.0], behindOscillateS: 0.35 });
+    run(state, emit, { fromLap: 3, toLap: 5, aheadGapS: 30, behindGapS: [4.0, 5.6], behindOscillateS: 0.35 });
+
+    expect(closingEvents(events)).toHaveLength(0);
+
+    const opens = openingEvents(events);
+
+    expect(opens.length).toBeGreaterThanOrEqual(1);
+    expect(opens[0]!.data).toMatchObject({ side: "behind", direction: "opening" });
   });
 
   it("treats sub-bar rates as noise", () => {
