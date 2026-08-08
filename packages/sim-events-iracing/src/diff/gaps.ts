@@ -18,6 +18,7 @@ import {
   type GapTrendDirection,
   isPreGreen,
   lapDeltaBetween,
+  recentProgressRate,
   resolveClassNeighbors,
   type TelemetryData,
   TrkLoc,
@@ -46,6 +47,20 @@ export const GAP_THRESHOLD_HYSTERESIS_S = 0.5;
 export const GAP_CHECKPOINT_STEP = 0.02;
 /** Fallback alert threshold when no resolver is wired (seconds). */
 export const GAP_DEFAULT_ALERT_THRESHOLD_S = 1.0;
+
+/** Window (s) for measuring a car's recent progress rate. */
+const GAP_RATE_WINDOW_S = 3;
+/**
+ * ETA-regime switch (issue #933 follow-up: a stopped player's behind gap
+ * froze while the pursuers physically closed): when the LEADING car of a
+ * pair is this much slower than the chaser, the crossing-time gap no longer
+ * tracks the pair's true time-distance (both `now` and the lookup advance at
+ * the chaser's pace), so the gap becomes the chaser's ETA over the
+ * separation at its current pace — counting down as it closes.
+ */
+const GAP_ETA_LEADER_SLOW_FACTOR = 0.5;
+/** Minimum chaser rate (laps/s) for the ETA regime — both-cars-stopped stays crossing-time. */
+const GAP_ETA_CHASER_MIN_RATE = 0.002;
 
 /** EMA smoothing factor for the display gap rate (~last third of a lap). */
 const GAP_TREND_EMA_ALPHA = 0.15;
@@ -212,6 +227,7 @@ function computeSide(
       : lapDeltaBetween(playerProgress, neighborProgress);
 
   let gapSeconds: number | null = null;
+  let etaRegime = false;
 
   if (lapDelta === 0) {
     // Ahead: how long ago did the neighbor cross MY position (their trace).
@@ -221,12 +237,40 @@ function computeSide(
     const crossed = trace ? crossingTimeAt(trace, lookupProgress) : null;
 
     if (crossed !== null) gapSeconds = Math.max(0, sessionTime - crossed);
+
+    // ETA regime: when the pair's LEADING car is dramatically slower than
+    // the chaser (stopped, wrecked, crawling), the crossing-time reading
+    // goes insensitive — replace it with the chaser's ETA over the
+    // separation at its current pace, which counts down as it closes.
+    const leaderIdx = side === "ahead" ? idx : playerCarIdx;
+    const chaserIdx = side === "ahead" ? playerCarIdx : idx;
+    const leaderProgress = side === "ahead" ? neighborProgress : playerProgress;
+    const chaserProgress = side === "ahead" ? playerProgress : neighborProgress;
+    const chaserRate = recentProgressRate(state.gapTraces[chaserIdx], chaserProgress, sessionTime, GAP_RATE_WINDOW_S);
+    const leaderRate = recentProgressRate(state.gapTraces[leaderIdx], leaderProgress, sessionTime, GAP_RATE_WINDOW_S);
+
+    if (
+      chaserRate !== null &&
+      chaserRate > GAP_ETA_CHASER_MIN_RATE &&
+      leaderRate !== null &&
+      leaderRate < chaserRate * GAP_ETA_LEADER_SLOW_FACTOR
+    ) {
+      etaRegime = true;
+      gapSeconds = Math.max(0, leaderProgress - chaserProgress) / chaserRate;
+    }
   }
 
   const suppressed = playerPaused || neighborSuppressed(telemetry, idx);
   let trend: GapTrendDirection | null = null;
 
-  if (!suppressed && lapDelta === 0 && gapSeconds !== null) {
+  if (etaRegime) {
+    // The chaser is closing on a slow/stopped leader by construction — the
+    // trend IS "closing". The EMA chain restarts clean when the regime ends
+    // so a cross-regime delta can never poison the smoothed rate.
+    resetTrendRate(state, side);
+
+    if (!suppressed) trend = "closing";
+  } else if (!suppressed && lapDelta === 0 && gapSeconds !== null) {
     // Continuous display trend: smoothed gap rate from adjacent checkpoint
     // deltas (~2 s apart, where track-position noise is negligible),
     // projected to seconds-per-lap. Live within ~0.1 lap of any reset.

@@ -1013,7 +1013,8 @@
       },
       {
         "name": "ahead-closing-02",
-        "text": "Good pace — we're closing on the car ahead."
+        "text": "Good pace. We're closing on the car ahead.",
+        "seed": 6
       },
       {
         "name": "ahead-opening-01",
@@ -1037,11 +1038,12 @@
       },
       {
         "name": "behind-opening-02",
-        "text": "Good — we're dropping the car behind."
+        "text": "Good. We're dropping the car behind."
       },
       {
         "name": "threshold-ahead-01",
-        "text": "We've caught the car ahead."
+        "text": "We've caught the car ahead.",
+        "seed": 3
       },
       {
         "name": "threshold-behind-01",

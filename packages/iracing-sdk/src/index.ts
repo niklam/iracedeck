@@ -132,6 +132,7 @@ export {
   lapDeltaBetween,
   type ProgressSample,
   type ProgressTrace,
+  recentProgressRate,
   resolveClassNeighbors,
   type StandingsNeighbors,
 } from "./gap-utils.js";

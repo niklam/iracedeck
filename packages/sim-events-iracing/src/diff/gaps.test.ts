@@ -182,6 +182,49 @@ describe("diffGaps — live gaps", () => {
     expect(state.gapBehindIdx).toBe(BEHIND);
   });
 
+  it("counts the behind gap down while the player sits stopped on track (issue #933 follow-up: gap froze while cars closed)", () => {
+    const state = createInitialState();
+    const { emit } = collect();
+    const lapTime = 90;
+
+    // Normal running to warm everything up: behind car 6 s back.
+    run(state, emit, { fromLap: 1, toLap: 2.5, aheadGapS: 3, behindGapS: 6 });
+
+    // Player stops at p=2.5; the other cars keep lapping at race pace.
+    const playerStop = 2.5;
+    const stopTime = playerStop * lapTime;
+    const readings: number[] = [];
+
+    for (let i = 1; i <= 800; i++) {
+      const t = stopTime + i * 0.045; // 45 ms ticks, 36 s total
+      const advance = (i * 0.045) / lapTime;
+      diffGaps(
+        state,
+        tick(t, [playerStop, playerStop + 3 / lapTime + advance, playerStop - 6 / lapTime + advance]),
+        true,
+        PLAYER,
+        null,
+        [2, 1, 3],
+        () => GAP_DEFAULT_ALERT_THRESHOLD_S,
+        emit,
+      );
+
+      if (i % 100 === 0 && state.gapLiveBehind?.gapSeconds !== null && state.gapLiveBehind !== null) {
+        readings.push(state.gapLiveBehind.gapSeconds);
+      }
+    }
+
+    // The behind gap must COUNT DOWN as the pursuer closes (ETA regime), not
+    // freeze at its crossing-time value.
+    expect(readings.length).toBeGreaterThanOrEqual(3);
+    expect(readings[readings.length - 1]!).toBeLessThan(readings[0]! - 1);
+    expect(state.gapLiveBehind?.trend).toBe("closing");
+
+    // The ahead side keeps a sane growing/large reading (the car ahead IS
+    // pulling away from a stopped player) — never a countdown.
+    expect(state.gapLiveAhead?.gapSeconds === null || state.gapLiveAhead!.gapSeconds! > 3).toBe(true);
+  });
+
   it("resets a side's trend state when the neighbor's identity changes", () => {
     const state = createInitialState();
     const { emit } = collect();

@@ -18,6 +18,7 @@ import {
   GAP_TRACE_SPAN_LAPS,
   lapDeltaBetween,
   type ProgressTrace,
+  recentProgressRate,
   resolveClassNeighbors,
 } from "./gap-utils.js";
 
@@ -112,6 +113,36 @@ describe("resolveClassNeighbors", () => {
   it("returns all -1 when the player is unclassified or class data is missing", () => {
     expect(resolveClassNeighbors([0, 1], [10, 10], 0)).toEqual({ aheadIdx: -1, behindIdx: -1, leaderIdx: -1 });
     expect(resolveClassNeighbors(positions, undefined, 0)).toEqual({ aheadIdx: -1, behindIdx: -1, leaderIdx: -1 });
+  });
+});
+
+describe("recentProgressRate", () => {
+  // 90 s/lap pace: 1/90 ≈ 0.0111 laps/s, sampled every 0.01 lap (0.9 s).
+  const racing: ProgressTrace = [];
+
+  for (let i = 0; i <= 20; i++) {
+    racing.push({ progress: 5 + i * 0.01, time: 100 + i * 0.9 });
+  }
+
+  it("measures a racing car's pace over the trailing window", () => {
+    const now = 100 + 20 * 0.9;
+    const rate = recentProgressRate(racing, 5.2, now, 3);
+
+    expect(rate).toBeCloseTo(1 / 90, 3);
+  });
+
+  it("decays toward zero for a stopped car (anchored on now, not the last sample)", () => {
+    // Car stopped at progress 5.2 at t=118; 10 s later the window straddles
+    // the stop, so the measured rate collapses.
+    const rate = recentProgressRate(racing, 5.2, 118 + 10, 3);
+
+    expect(rate).not.toBeNull();
+    expect(rate!).toBeLessThan(0.002);
+  });
+
+  it("returns null without enough history", () => {
+    expect(recentProgressRate([], 5, 100, 3)).toBeNull();
+    expect(recentProgressRate([{ progress: 5, time: 99 }], 5.01, 100, 3)).toBeNull();
   });
 });
 

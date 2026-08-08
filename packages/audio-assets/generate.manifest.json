@@ -11674,12 +11674,12 @@
       "requestId": "OAQuT1kSvSw5A2yhjYF4"
     },
     "voice/default/gap/ahead-closing-02.mp3": {
-      "hash": "4842230126ec47d3",
+      "hash": "cb818714073dd0ff",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "Good pace — we're closing on the car ahead.",
-      "generatedAt": "2026-08-08T11:38:26.908Z",
-      "requestId": "L61pTvWzfK4GUk6rKt8N"
+      "textPreview": "Good pace. We're closing on the car ahead.",
+      "generatedAt": "2026-08-08T13:08:18.729Z",
+      "requestId": "o2hzmJfqWy2lzlqwXUNo"
     },
     "voice/default/gap/ahead-opening-01.mp3": {
       "hash": "99dd27ac59225000",
@@ -11722,20 +11722,20 @@
       "requestId": "xrNbLrx2aCWiK40EXI7z"
     },
     "voice/default/gap/behind-opening-02.mp3": {
-      "hash": "a893b5468b6c6630",
+      "hash": "d7b3128ab0fa721e",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "Good — we're dropping the car behind.",
-      "generatedAt": "2026-08-08T11:38:28.523Z",
-      "requestId": "zswovH6HSXwZgYOOSSoJ"
+      "textPreview": "Good. We're dropping the car behind.",
+      "generatedAt": "2026-08-08T13:08:38.959Z",
+      "requestId": "oNAto1jsMTCDnMPVam1p"
     },
     "voice/default/gap/threshold-ahead-01.mp3": {
-      "hash": "b19d094b1ba03c6b",
+      "hash": "470eafed350b0175",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "We've caught the car ahead.",
-      "generatedAt": "2026-08-08T11:38:28.674Z",
-      "requestId": "966PlEtuAUFABp7uPzdg"
+      "generatedAt": "2026-08-08T13:09:32.930Z",
+      "requestId": "Vf3rTFSOESJ4jArHiS69"
     },
     "voice/default/gap/threshold-behind-01.mp3": {
       "hash": "7ee2499d5857882f",

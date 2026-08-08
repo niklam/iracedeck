@@ -161,6 +161,40 @@ export function resolveClassNeighbors(
   return { aheadIdx, behindIdx, leaderIdx };
 }
 
+/**
+ * A car's recent progress rate (laps per second) over roughly the trailing
+ * `windowSeconds` of wall clock, anchored on `now` — NOT on the trace's last
+ * sample, so a stopped car (whose trace stops growing) decays toward 0 as
+ * time passes instead of reporting its old racing pace. `null` when the
+ * trace doesn't reach back far enough to measure.
+ */
+export function recentProgressRate(
+  trace: ProgressTrace | undefined,
+  currentProgress: number,
+  now: number,
+  windowSeconds: number,
+): number | null {
+  if (!trace || trace.length === 0) return null;
+
+  const cutoff = now - windowSeconds;
+  let ref: ProgressSample | null = null;
+
+  for (let i = trace.length - 1; i >= 0; i--) {
+    if (trace[i]!.time <= cutoff) {
+      ref = trace[i]!;
+      break;
+    }
+  }
+
+  if (ref === null) return null;
+
+  const dt = now - ref.time;
+
+  if (dt <= 0) return null;
+
+  return Math.max(0, (currentProgress - ref.progress) / dt);
+}
+
 /** Direction the gap is moving. "closing" = shrinking, "opening" = growing. */
 export type GapTrendDirection = "closing" | "opening" | "steady";
 
