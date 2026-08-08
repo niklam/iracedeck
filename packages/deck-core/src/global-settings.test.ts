@@ -353,6 +353,27 @@ describe("corner-names toggle ack opt-in default (issue #897)", () => {
   });
 });
 
+describe("gap callout settings (issue #933)", () => {
+  it("defaults the toggles on with threshold 1.0 and cooldown 30", () => {
+    const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
+
+    expect(parsed.calloutEnabledGapTrend).toBe(true);
+    expect(parsed.calloutEnabledGapThreshold).toBe(true);
+    expect(parsed.gapAlertThresholdSeconds).toBe(1);
+    expect(parsed.gapCalloutCooldownSeconds).toBe(30);
+  });
+
+  it("coerces numeric strings and falls back on malformed values", () => {
+    const parsed = GlobalSettingsSchema.parse({
+      gapAlertThresholdSeconds: "2.5",
+      gapCalloutCooldownSeconds: "junk",
+    }) as Record<string, unknown>;
+
+    expect(parsed.gapAlertThresholdSeconds).toBe(2.5);
+    expect(parsed.gapCalloutCooldownSeconds).toBe(30);
+  });
+});
+
 describe("resolveActiveRaceEngineerVoice", () => {
   beforeEach(() => {
     _resetGlobalSettings();

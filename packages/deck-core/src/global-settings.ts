@@ -670,6 +670,35 @@ export const GlobalSettingsSchema = z
       .transform((val) => val === true || val === "true")
       .default(true),
     /**
+     * Opt-ins for the gap callout family (issue #933): the sustained
+     * trend-flip announcement ("we're gaining on the car ahead") and the
+     * threshold-crossing alert ("we've caught the car ahead"), both against
+     * the class-standings neighbors. Default `true`. Canonical id↔key
+     * mapping in `GAP_CALLOUT_SETTING_KEYS` (in `@iracedeck/audio-scenarios`).
+     */
+    calloutEnabledGapTrend: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledGapThreshold: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    /**
+     * Gap alert threshold in seconds (issue #933): the engineer calls out
+     * when a neighbor's gap first drops below this. 0.5–3.0, default 1.0.
+     * Read live by the translator's gap diff, so a slider change re-arms /
+     * fires without a restart.
+     */
+    // `.catch(1)` per #896 — a malformed persisted value must not abort the
+    // whole settings parse (the `spotterStillThereSeconds` precedent).
+    gapAlertThresholdSeconds: z.coerce.number().min(0.5).max(3).default(1).catch(1),
+    /**
+     * Shared cooldown between gap callouts in seconds (issue #933). 1–360,
+     * default 30. Read live at event arrival by the gap scenarios.
+     */
+    gapCalloutCooldownSeconds: z.coerce.number().min(1).max(360).default(30).catch(30),
+    /**
      * Opt-in for the race-end final-result callout (issue #569). One boolean
      * for the family — the engineer greets the driver by name and speaks the
      * final result after the driver crosses S/F under the checkered flag in a
