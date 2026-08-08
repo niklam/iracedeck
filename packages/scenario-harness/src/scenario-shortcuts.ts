@@ -1428,6 +1428,61 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     data: { name: "Turn 5", slug: "turn-5" },
   },
 
+  // ── Gaps (issue #933) ──
+  // Fire each gap callout path directly. The spoken gap number reads LIVE
+  // gaps at speak time, which the harness's mock translator doesn't compute —
+  // so the number readout clause skips and you hear the line alone. That
+  // mirrors the real cold-start behavior (issue #835: an unresolvable
+  // optional clause skips, never aborts the callout).
+  {
+    id: "gap-trend-ahead-closing",
+    category: "Gaps",
+    label: "Trend: closing on car ahead",
+    description: "Lap-over-lap gap ahead flipped to closing and held 2 laps.",
+    event: "gap.trendChanged",
+    data: { side: "ahead", direction: "closing", gapSeconds: 1.8, previousGapSeconds: 2.4, carIdx: 3, lap: 7 },
+  },
+  {
+    id: "gap-trend-ahead-opening",
+    category: "Gaps",
+    label: "Trend: car ahead pulling away",
+    description: "Lap-over-lap gap ahead flipped to opening and held 2 laps.",
+    event: "gap.trendChanged",
+    data: { side: "ahead", direction: "opening", gapSeconds: 3.1, previousGapSeconds: 2.2, carIdx: 3, lap: 9 },
+  },
+  {
+    id: "gap-trend-behind-closing",
+    category: "Gaps",
+    label: "Trend: car behind gaining",
+    description: "Lap-over-lap gap behind flipped to closing and held 2 laps.",
+    event: "gap.trendChanged",
+    data: { side: "behind", direction: "closing", gapSeconds: 1.4, previousGapSeconds: 2.0, carIdx: 5, lap: 8 },
+  },
+  {
+    id: "gap-trend-behind-opening",
+    category: "Gaps",
+    label: "Trend: dropping the car behind",
+    description: "Lap-over-lap gap behind flipped to opening and held 2 laps.",
+    event: "gap.trendChanged",
+    data: { side: "behind", direction: "opening", gapSeconds: 2.8, previousGapSeconds: 2.0, carIdx: 5, lap: 8 },
+  },
+  {
+    id: "gap-threshold-ahead",
+    category: "Gaps",
+    label: "Caught the car ahead (threshold)",
+    description: "Live gap ahead first dropped under the alert threshold.",
+    event: "gap.thresholdCrossed",
+    data: { side: "ahead", gapSeconds: 0.9, thresholdSeconds: 1.0, carIdx: 3 },
+  },
+  {
+    id: "gap-threshold-behind",
+    category: "Gaps",
+    label: "Car behind within threshold",
+    description: "Live gap behind first dropped under the alert threshold.",
+    event: "gap.thresholdCrossed",
+    data: { side: "behind", gapSeconds: 0.8, thresholdSeconds: 1.0, carIdx: 5 },
+  },
+
   // ── Fuel (issue #838) ──
   // Fire each laps-of-fuel-left count directly so you hear the clip without
   // burning down a real tank through `/api/telemetry`. Count 0 is the
