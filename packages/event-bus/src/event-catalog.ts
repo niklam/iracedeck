@@ -61,6 +61,14 @@ export type PitBoxMark = "five" | "four" | "three" | "two" | "one" | "pit-now";
 export type FlagScope = "local" | "full";
 
 /**
+ * Who a pitting opponent is relative to the player (issue #622). `"others"`
+ * is the aggregate tail once 3+ eligible cars entered the pits within the
+ * aggregation window. Sim-agnostic string union so future translators can
+ * emit the same `opponentPit.entered` shape.
+ */
+export type OpponentPitRelation = "leader" | "ahead" | "behind" | "nearby" | "others";
+
+/**
  * Pre-start countdown thresholds (issue #480). One value per spoken number as
  * the standing-start `SessionTimeRemain` crosses each mark in the trustworthy
  * pre-start window. Sim-agnostic literal union (mirrors {@link PitBoxMark}) so
@@ -302,6 +310,28 @@ export type SimEventMap = {
    * preempts the in-flight clip cleanly.
    */
   "pitBox.countdown": SimEvent<"pitBox.countdown", { mark: PitBoxMark }>;
+  /**
+   * Another driver is entering the pits (issue #622): a car's
+   * `CarIdxTrackSurface` transitioned INTO `TrkLoc.AproachingPits`. Announced
+   * for the leader plus same-lap cars within ±2 effective positions of the
+   * player (class space in multi-class, #588). `position` is the car's
+   * effective position at emit time — consumers prefer a live speak-time read
+   * and use this as the fallback. `isMultiClass` records the projection the
+   * classification ran in; speak-time live reads take their number in the
+   * SAME projection (a transient session-info dropout at read time must not
+   * flip a class-space number to overall space). `carIdx`/`position` are
+   * absent for the `"others"` aggregate (3+ eligible entries within the
+   * window collapse to one aggregate tail).
+   */
+  "opponentPit.entered": SimEvent<
+    "opponentPit.entered",
+    {
+      relation: OpponentPitRelation;
+      carIdx?: number;
+      position?: number;
+      isMultiClass?: boolean;
+    }
+  >;
   /**
    * Approaching a named corner in a practice/test session (issue #888).
    * Emitted by the sim translator when the speed-scaled lead point (current

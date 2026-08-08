@@ -9,6 +9,7 @@ paths:
   - "packages/iracing-actions/src/actions/pit-crew/**"
   - "packages/iracing-plugin-stream-deck/src/plugin.ts"
   - "packages/iracing-plugin-mirabox/src/plugin.ts"
+  - "packages/iracing-plugin-ulanzi/src/plugin.ts"
 ---
 # Race Engineer Callouts
 
@@ -55,7 +56,7 @@ voice scenario as the outermost short-circuit.
 | **Family wiring (id type, key map, scenario id map, registerPitCrew param)** | `packages/audio-scenarios/src/catalog/pit-crew/index.ts` |
 | **Per-callout opt-in (Zod field)** | `packages/deck-core/src/global-settings.ts` |
 | **PI checkbox row** | `packages/iracing-actions/src/actions/pit-crew/pit-crew.ejs` |
-| **Plugin closure (live-read)** | `packages/iracing-plugin-stream-deck/src/plugin.ts` AND `packages/iracing-plugin-mirabox/src/plugin.ts` (mirror each other) |
+| **Plugin closure (live-read)** | `packages/iracing-plugin-stream-deck/src/plugin.ts`, `packages/iracing-plugin-mirabox/src/plugin.ts`, AND `packages/iracing-plugin-ulanzi/src/plugin.ts` (byte-identical in code — mirror each other) |
 | **Scenario-harness button** | `packages/scenario-harness/src/scenario-shortcuts.ts` |
 | **Scenario-harness event template** | `packages/scenario-harness/src/event-names.ts` (compile-time completeness check enforces this) |
 
@@ -142,9 +143,9 @@ In `packages/iracing-actions/src/actions/pit-crew/pit-crew.ejs`:
 - Inside the Race Engineer Callouts accordion, add (or extend) an `sdpi-item` for the family.
 - Use the auto-balancing 2-column grid pattern already in the file: build the array of `{ setting, label }` once, then map to `<sdpi-checkbox>` rows. The grid template comes from `Math.ceil(items.length / 2)` so it scales without per-row maintenance.
 
-### 8. Plugin closure (BOTH plugins)
+### 8. Plugin closure (ALL THREE plugins)
 
-In **both** `packages/iracing-plugin-stream-deck/src/plugin.ts` AND `packages/iracing-plugin-mirabox/src/plugin.ts`:
+In **all three** plugin entry points — `packages/iracing-plugin-stream-deck/src/plugin.ts`, `packages/iracing-plugin-mirabox/src/plugin.ts`, AND `packages/iracing-plugin-ulanzi/src/plugin.ts` (byte-identical in code — mirror each other):
 - Import the `<FAMILY>_CALLOUT_SETTING_KEYS` map and `<Family>CalloutId` type.
 - Pass a closure to `registerPitCrew` that reads the setting **live on every event arrival**:
 

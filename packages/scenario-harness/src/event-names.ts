@@ -30,6 +30,12 @@ export const EVENT_TEMPLATES = [
     data: { mark: "three" },
   },
   {
+    name: "opponentPit.entered",
+    description:
+      "Another driver is entering the pits (issue #622) — relation: leader / ahead / behind / nearby / others",
+    data: { relation: "leader", carIdx: 3, position: 1 },
+  },
+  {
     name: "cornerName.approaching",
     description: "Approaching a named corner in practice/test (issue #888)",
     data: { name: "Eau Rouge", slug: "eau-rouge" },

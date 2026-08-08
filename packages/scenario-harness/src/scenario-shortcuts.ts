@@ -361,6 +361,52 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     data: { from: true, to: false },
   },
 
+  // ── Opponent Pit (issue #622) ──
+  // `opponentPit.entered` directly — bypasses the diff's race-only /
+  // aggregation gating so each relation line is auditionable on demand. The
+  // nearby number speaks the payload position (the harness snapshot resolver
+  // reads the cached payload; there's no live telemetry read here).
+  {
+    id: "opponent-pit-leader",
+    category: "Opponent Pit",
+    label: "Leader pitting",
+    description: 'The race leader dives into the pits — "The leader is pitting."',
+    event: "opponentPit.entered",
+    data: { relation: "leader", carIdx: 3, position: 1 },
+  },
+  {
+    id: "opponent-pit-ahead",
+    category: "Opponent Pit",
+    label: "Car ahead pitting",
+    description: 'The car directly ahead pits — "The car ahead is pitting."',
+    event: "opponentPit.entered",
+    data: { relation: "ahead", carIdx: 11, position: 4 },
+  },
+  {
+    id: "opponent-pit-behind",
+    category: "Opponent Pit",
+    label: "Car behind pitting",
+    description: 'The car directly behind pits — "The car behind is pitting."',
+    event: "opponentPit.entered",
+    data: { relation: "behind", carIdx: 12, position: 6 },
+  },
+  {
+    id: "opponent-pit-nearby",
+    category: "Opponent Pit",
+    label: "P7 pitting (±2)",
+    description: 'A car two positions away pits — "The car in, P7, is pitting."',
+    event: "opponentPit.entered",
+    data: { relation: "nearby", carIdx: 13, position: 7 },
+  },
+  {
+    id: "opponent-pit-others",
+    category: "Opponent Pit",
+    label: "Several cars pitting",
+    description: 'The aggregate tail — "And it seems there are other cars pitting as well."',
+    event: "opponentPit.entered",
+    data: { relation: "others" },
+  },
+
   // ── Damage ──
   // Bypasses the rising-edge + 3000 ms debounce in
   // `sim-events-iracing/diff/damage.ts` — fires the bus event directly

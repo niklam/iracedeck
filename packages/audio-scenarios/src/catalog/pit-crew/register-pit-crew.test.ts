@@ -28,10 +28,12 @@ import { _resetAudioScenarios, getScenarioEngine, initializeAudioScenarios } fro
 import { _setFurledRaisedSpoken } from "./flag-alerts.js";
 import { _resetLastIncidentDelta } from "./incidents.js";
 import {
+  _resetOpponentPitPending,
   type DamageCalloutId,
   type FlagCalloutId,
   type FuelCalloutId,
   type IncidentCalloutId,
+  type OpponentPitCalloutId,
   type PitWindowCalloutId,
   registerPitCrew,
   type RollingStartCalloutId,
@@ -328,6 +330,18 @@ const PIT_WINDOW_CLIP_PATHS = [
   `voice/${VOICE}/pit-window/closed-05.mp3`,
 ] as const;
 
+// Opponent-pit clips referenced from `opponent-pit.ts` (issue #622), plus the
+// shared position-number clip the nearby splice composes with.
+const OPPONENT_PIT_CLIP_PATHS = [
+  `voice/${VOICE}/opponent-pit/leader-01.mp3`,
+  `voice/${VOICE}/opponent-pit/ahead-01.mp3`,
+  `voice/${VOICE}/opponent-pit/behind-01.mp3`,
+  `voice/${VOICE}/opponent-pit/car-in-01.mp3`,
+  `voice/${VOICE}/opponent-pit/is-pitting-01.mp3`,
+  `voice/${VOICE}/opponent-pit/others-01.mp3`,
+  `voice/${VOICE}/position-number/4.mp3`,
+] as const;
+
 // Laps-of-fuel-left clips referenced from `fuel-laps-left.ts` (issue #838).
 // One clip per spoken count 10 → 1 plus the count-0 box call, and the
 // enough-fuel reassurance (issue #880).
@@ -352,6 +366,7 @@ const manifest: AudioAssetsManifest = {
     ...START_LIGHT_CLIP_PATHS,
     ...ROLLING_START_CLIP_PATHS,
     ...PIT_WINDOW_CLIP_PATHS,
+    ...OPPONENT_PIT_CLIP_PATHS,
     ...FUEL_LAPS_LEFT_CLIP_PATHS,
   ],
   ambientLoop: "sfx/IRD-ambient-pit.mp3",
@@ -417,6 +432,8 @@ let damageEnabled: Map<DamageCalloutId, boolean>;
 let incidentEnabled: Map<IncidentCalloutId, boolean>;
 let pitBoxEnabled: boolean;
 let pitWindowEnabled: Map<PitWindowCalloutId, boolean>;
+let opponentPitEnabled: Map<OpponentPitCalloutId, boolean>;
+let opponentPitLivePosition: number | null;
 let rollingStartEnabled: Map<RollingStartCalloutId, boolean>;
 let fuelEnabled: Map<FuelCalloutId, boolean>;
 let voiceMasterEnabled: boolean;
@@ -428,6 +445,12 @@ beforeEach(() => {
   incidentEnabled = makeIncidentEnabledMap(true);
   pitBoxEnabled = true;
   pitWindowEnabled = new Map<PitWindowCalloutId, boolean>([["pit-open-closed", true]]);
+  opponentPitEnabled = new Map<OpponentPitCalloutId, boolean>([
+    ["leader", true],
+    ["nearby", true],
+  ]);
+  opponentPitLivePosition = 4;
+  _resetOpponentPitPending();
   rollingStartEnabled = new Map<RollingStartCalloutId, boolean>([["pace-car", true]]);
   fuelEnabled = new Map<FuelCalloutId, boolean>();
   voiceMasterEnabled = true;
@@ -476,6 +499,8 @@ beforeEach(() => {
     (id) => fuelEnabled.get(id) ?? true, // getFuelCalloutEnabled (issue #838)
     undefined, // getCornerNameCalloutEnabled (issue #888)
     undefined, // getCornerNameSnapshot (issue #888)
+    (id) => opponentPitEnabled.get(id) ?? true, // getOpponentPitCalloutEnabled (issue #622)
+    () => opponentPitLivePosition, // getOpponentPitLivePosition (issue #622)
     () => voiceMasterEnabled,
     undefined, // getRadarMasterEnabled
   );
@@ -1260,6 +1285,88 @@ describe("pit-window family registration (issue #655)", () => {
   it("is suppressed when the master gate is off", () => {
     voiceMasterEnabled = false;
     bus.publishEvent("pitsOpen.changed", { from: true, to: false } as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+  });
+});
+
+// Issue #622: the opponent-pit family is registered by `registerPitCrew` and
+// wrapped by the master gate + two per-subject opt-ins (leader / nearby, the
+// latter covering ahead / behind / numbered / aggregate). These tests confirm
+// the wiring; relation branching + diff gating are covered in
+// `opponent-pit.test.ts` (audio) / `opponent-pit.test.ts` (sim-events).
+describe("opponent-pit family registration (issue #622)", () => {
+  it.each([
+    { relation: "leader", fragment: "/opponent-pit/leader-" },
+    { relation: "ahead", fragment: "/opponent-pit/ahead-" },
+    { relation: "behind", fragment: "/opponent-pit/behind-" },
+    { relation: "others", fragment: "/opponent-pit/others-" },
+  ])("fires the $fragment clip on relation=$relation when the opt-in is on", ({ relation, fragment }) => {
+    bus.publishEvent("opponentPit.entered", { relation, carIdx: 7, position: 4 } as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed().some((p) => p.includes(fragment))).toBe(true);
+  });
+
+  it("composes the nearby line as car-in + speak-time number + is-pitting", () => {
+    bus.publishEvent("opponentPit.entered", { relation: "nearby", carIdx: 7, position: 6 } as never);
+    flush(audio);
+
+    const played = voiceClipsPlayed();
+    const carIn = played.findIndex((p) => p.includes("/opponent-pit/car-in-"));
+    const number = played.findIndex((p) => p.includes("/position-number/4.mp3"));
+    const isPitting = played.findIndex((p) => p.includes("/opponent-pit/is-pitting-"));
+
+    // The number comes from the live resolver (position 4), not the
+    // emit-time payload (position 6) — the speak-time freshness contract.
+    expect(carIn).toBeGreaterThanOrEqual(0);
+    expect(number).toBeGreaterThan(carIn);
+    expect(isPitting).toBeGreaterThan(number);
+  });
+
+  it("falls back to the emit-time payload position when the live read fails", () => {
+    opponentPitLivePosition = null;
+    bus.publishEvent("opponentPit.entered", { relation: "nearby", carIdx: 7, position: 4 } as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed().some((p) => p.includes("/position-number/4.mp3"))).toBe(true);
+  });
+
+  it("rejects a nearby event without a usable car or position", () => {
+    bus.publishEvent("opponentPit.entered", { relation: "nearby" } as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+  });
+
+  it("nearby opt-in off suppresses the window lines but not the leader", () => {
+    opponentPitEnabled.set("nearby", false);
+
+    bus.publishEvent("opponentPit.entered", { relation: "ahead", carIdx: 7, position: 4 } as never);
+    flush(audio);
+    expect(voiceClipsPlayed()).toEqual([]);
+
+    bus.publishEvent("opponentPit.entered", { relation: "leader", carIdx: 2, position: 1 } as never);
+    flush(audio);
+    expect(voiceClipsPlayed().some((p) => p.includes("/opponent-pit/leader-"))).toBe(true);
+  });
+
+  it("leader opt-in off suppresses only the leader line", () => {
+    opponentPitEnabled.set("leader", false);
+
+    bus.publishEvent("opponentPit.entered", { relation: "leader", carIdx: 2, position: 1 } as never);
+    flush(audio);
+    expect(voiceClipsPlayed()).toEqual([]);
+
+    bus.publishEvent("opponentPit.entered", { relation: "behind", carIdx: 7, position: 5 } as never);
+    flush(audio);
+    expect(voiceClipsPlayed().some((p) => p.includes("/opponent-pit/behind-"))).toBe(true);
+  });
+
+  it("is suppressed when the master gate is off", () => {
+    voiceMasterEnabled = false;
+    bus.publishEvent("opponentPit.entered", { relation: "leader", carIdx: 2, position: 1 } as never);
     flush(audio);
 
     expect(voiceClipsPlayed()).toEqual([]);
