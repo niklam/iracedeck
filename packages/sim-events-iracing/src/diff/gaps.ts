@@ -4,9 +4,10 @@
  * Owns the stateful side of the crossing-time gap model: records every live
  * car's progress→SessionTime trace each tick, resolves the player's
  * class-standings neighbors from the canonical frozen order, computes the
- * live gaps the `getLiveGaps()` accessor exposes, maintains the continuous
- * display trend (gap now vs. one lap ago at the same track position), and
- * emits the `gap.trendChanged` / `gap.thresholdCrossed` callout events.
+ * live gaps the `getLiveGaps()` accessor exposes (switching to a chaser-ETA
+ * reading when the pair's leading car is stopped/crawling), maintains the
+ * continuous display trend (a smoothed gap-rate EMA), and emits the
+ * relevance-driven `gap.trendChanged` / `gap.thresholdCrossed` events.
  *
  * All math primitives are pure and live in `@iracedeck/iracing-sdk`
  * `gap-utils.ts`; this module only sequences them against state.
