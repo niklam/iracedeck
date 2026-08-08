@@ -18,7 +18,7 @@ export type GapNeighborState = {
   gapSeconds: number | null;
   /** Whole laps the pair is apart (0 = same racing lap). */
   lapDelta: number;
-  /** Continuous display trend (gap now vs one lap ago at this track position). */
+  /** Continuous display trend ("closing" | "opening" | "steady"), null without data. */
   trend: GapTrendDirection | null;
 };
 

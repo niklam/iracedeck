@@ -44,8 +44,9 @@ import sessionInfoTemplate from "../../../icons/session-info.svg";
 
 const BACKGROUND_FLASH = "#e74c3c";
 
-const IRATING_GAIN_COLOR = "#2ecc71";
-const IRATING_LOSS_COLOR = "#e74c3c";
+/** Favorable / unfavorable value colors, shared by the irating and gaps modes. */
+const GAIN_COLOR = "#2ecc71";
+const LOSS_COLOR = "#e74c3c";
 
 /** Value shown by the irating mode when no estimate is possible (#872). */
 const IRATING_NO_ESTIMATE = "--";
@@ -59,9 +60,9 @@ const IRATING_NO_ESTIMATE = "--";
 export function iratingValueColor(value: string): string | undefined {
   if (value === IRATING_NO_ESTIMATE) return undefined;
 
-  if (value.startsWith("+")) return IRATING_GAIN_COLOR;
+  if (value.startsWith("+")) return GAIN_COLOR;
 
-  if (value.startsWith("-")) return IRATING_LOSS_COLOR;
+  if (value.startsWith("-")) return LOSS_COLOR;
 
   return undefined;
 }
@@ -299,10 +300,6 @@ export function generateTrackWetnessGraphic(state: TrackWetness | undefined): st
   return segments.join("\n    ");
 }
 
-/** Trend colors for the gaps mode — green when the gap moves the player's way. */
-const GAP_TREND_GAIN_COLOR = "#2ecc71";
-const GAP_TREND_LOSS_COLOR = "#e74c3c";
-
 /** Placeholder for a missing neighbor / not-yet-computable gap. */
 const GAP_PLACEHOLDER = "–";
 
@@ -336,7 +333,7 @@ function gapRowColor(side: GapNeighbor | null, isAhead: boolean, textColor: stri
 
   const favorable = isAhead ? side.trend === "closing" : side.trend === "opening";
 
-  return favorable ? GAP_TREND_GAIN_COLOR : GAP_TREND_LOSS_COLOR;
+  return favorable ? GAIN_COLOR : LOSS_COLOR;
 }
 
 /**

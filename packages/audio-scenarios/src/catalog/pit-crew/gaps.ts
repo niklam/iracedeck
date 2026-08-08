@@ -33,6 +33,7 @@ import { poolRef, WEIGHT } from "../../dsl.js";
 import type { Scenario, Step } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 import { overtakeContextAllows, type OvertakeGateResolver } from "./overtake-gate.js";
+import { POOL_REGISTRY } from "./pools.js";
 
 const GAP_GROUP = "gap";
 const LAP_TIME_GROUP_SECOND = "lap-time-second";
@@ -267,3 +268,12 @@ export const SCENARIO_ID_TO_GAP_ID: Record<(typeof GAP_SCENARIO_IDS)[number], Ga
   "pit-crew.gap-trend": "trend",
   "pit-crew.gap-threshold": "threshold",
 };
+
+/**
+ * Pool names this family draws from — the builder-family convention every
+ * other catalog here follows, so the catalog tests can register them without
+ * a hand-maintained list. Derived from `POOL_REGISTRY` by the `gap-` prefix
+ * (the `FLAG_POOL_NAMES` shape), so adding or renaming a gap pool there flows
+ * through automatically.
+ */
+export const GAP_POOL_NAMES: readonly string[] = Object.keys(POOL_REGISTRY).filter((name) => name.startsWith("gap-"));

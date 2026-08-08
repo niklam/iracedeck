@@ -31,8 +31,8 @@ import {
   CarLeftRight,
   classPositionFromOrder,
   crossingTimeAt,
-  type GapTrendDirection,
   IRSDK_UNLIMITED_LAPS,
+  IRSDK_UNLIMITED_TIME,
   nearestCarGapMeters,
   type SDKController,
   SessionState,
@@ -77,7 +77,7 @@ import { diffToggles } from "./diff/toggles.js";
 import { diffTrackWetness } from "./diff/track-wetness.js";
 import type { PendingEvent } from "./diff/types.js";
 import { resolveStandingStart } from "./start-lights.js";
-import { createInitialState, type TranslatorState } from "./state.js";
+import { createInitialState, type GapNeighborState, type TranslatorState } from "./state.js";
 import { resolveTrackDirection, resolveTrackType, type TrackDirection } from "./track-type.js";
 
 const SUBSCRIPTION_ID = "__sim-events-iracing__";
@@ -818,17 +818,12 @@ export function getLiveRacePositions(): number[] | null {
   return calculateFrozenRacePositions(instance.state, instance.latestTelemetry);
 }
 
-/** Live gap snapshot for one class-standings neighbor (issue #933). */
-export type GapNeighbor = {
-  /** The neighbor's car index. */
-  carIdx: number;
-  /** Crossing-time gap in seconds; null while the traces can't cover the lookup. */
-  gapSeconds: number | null;
-  /** Whole laps the pair is apart (0 = same racing lap). */
-  lapDelta: number;
-  /** Continuous display trend ("closing" | "opening" | "steady"), null without data. */
-  trend: GapTrendDirection | null;
-};
+/**
+ * Live gap snapshot for one class-standings neighbor (issue #933). The public
+ * name for the state's own snapshot shape — an alias, not a copy, so the two
+ * can't drift.
+ */
+export type GapNeighbor = GapNeighborState;
 
 /** Live gaps to the class-standings neighbors (issue #933). */
 export type LiveGaps = { ahead: GapNeighbor | null; behind: GapNeighbor | null };
@@ -1600,7 +1595,7 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   } else if (
     typeof telemetry.SessionTimeRemain === "number" &&
     telemetry.SessionTimeRemain > 0 &&
-    telemetry.SessionTimeRemain < 604800 // iRacing's 7-day "unlimited" sentinel
+    telemetry.SessionTimeRemain < IRSDK_UNLIMITED_TIME
   ) {
     const leaderLapTimeS = resolveLeaderLapTimeS(telemetry, frozenPositions);
 

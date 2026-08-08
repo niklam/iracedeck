@@ -85,6 +85,38 @@ export const GAP_STABLE_TICKS_FOR_CALLOUTS = 10;
 export const GAP_CHECKPOINT_STEP = 0.02;
 /** Fallback alert threshold when no resolver is wired (seconds). */
 export const GAP_DEFAULT_ALERT_THRESHOLD_S = 1.0;
+/** Alert-threshold slider bounds; mirror `gapAlertThresholdSeconds` in the schema. */
+export const GAP_ALERT_THRESHOLD_MIN_S = 0.5;
+export const GAP_ALERT_THRESHOLD_MAX_S = 3;
+/** Movement-gate slider bounds; mirror `gapCalloutMinChangeSeconds` in the schema. */
+export const GAP_MIN_CHANGE_MIN_S = 0;
+export const GAP_MIN_CHANGE_MAX_S = 10;
+
+/**
+ * Sanitize the `gapAlertThresholdSeconds` global setting. Clamps to the
+ * slider's range; anything unparseable falls back to the default. Shared by
+ * every plugin so the bounds live in exactly one place (the
+ * `sanitizeCornerCalloutLeadSeconds` shape).
+ */
+export function sanitizeGapAlertThresholdSeconds(value: unknown): number {
+  const n = Number(value);
+
+  if (!Number.isFinite(n)) return GAP_DEFAULT_ALERT_THRESHOLD_S;
+
+  return Math.min(GAP_ALERT_THRESHOLD_MAX_S, Math.max(GAP_ALERT_THRESHOLD_MIN_S, n));
+}
+
+/**
+ * Sanitize the `gapCalloutMinChangeSeconds` global setting (0 disables the
+ * consistency gate). Same shape as {@link sanitizeGapAlertThresholdSeconds}.
+ */
+export function sanitizeGapMinChangeSeconds(value: unknown): number {
+  const n = Number(value);
+
+  if (!Number.isFinite(n)) return GAP_DEFAULT_MIN_CHANGE_S;
+
+  return Math.min(GAP_MIN_CHANGE_MAX_S, Math.max(GAP_MIN_CHANGE_MIN_S, n));
+}
 
 /** Window (s) for measuring a car's recent progress rate. */
 const GAP_RATE_WINDOW_S = 3;

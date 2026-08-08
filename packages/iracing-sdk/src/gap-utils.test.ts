@@ -43,6 +43,23 @@ describe("appendProgressSample", () => {
     expect(trace).toEqual([{ progress: 4.2, time: 20 }]);
   });
 
+  it("clears the trace on a forward jump the car cannot have driven (issue #933 review)", () => {
+    // Samples land every ~0.002 lap while a car is in the world, so a 0.6-lap
+    // step means the car was ABSENT for that span (towing, a long telemetry
+    // gap). Keeping the pre-jump samples would let `crossingTimeAt`
+    // interpolate across undriven track and report a crossing time off by the
+    // whole absence.
+    const trace: ProgressTrace = [];
+    appendProgressSample(trace, 5.3, 100);
+    appendProgressSample(trace, 5.9, 145);
+
+    expect(trace).toEqual([{ progress: 5.9, time: 145 }]);
+
+    // A normal racing step is untouched.
+    appendProgressSample(trace, 5.93, 147.7);
+    expect(trace).toHaveLength(2);
+  });
+
   it("prunes samples older than GAP_TRACE_SPAN_LAPS behind the head", () => {
     const trace: ProgressTrace = [];
 

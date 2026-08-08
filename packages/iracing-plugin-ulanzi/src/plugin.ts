@@ -191,6 +191,8 @@ import {
   isRaceFinished,
   sanitizeCornerCalloutLeadSeconds,
   sanitizeFuelCalloutMarginLaps,
+  sanitizeGapAlertThresholdSeconds,
+  sanitizeGapMinChangeSeconds,
 } from "@iracedeck/sim-events-iracing";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -257,19 +259,13 @@ initializeSimEventsIracing(eventBus, getController(), adapter.createLogger("SimE
     sanitizeCornerCalloutLeadSeconds((getGlobalSettings() as Record<string, unknown>).cornerCalloutLeadSeconds),
   // Gap alert threshold (issue #933) — read live so a PI slider change takes
   // effect on the next tick without a restart. Clamp mirrors the schema.
-  getGapAlertThresholdSeconds: () => {
-    const raw = Number((getGlobalSettings() as Record<string, unknown>).gapAlertThresholdSeconds);
-
-    return Number.isFinite(raw) && raw >= 0.5 && raw <= 3 ? raw : 1;
-  },
-  // Anti-ping-pong movement gate (issue #933 follow-up) — minimum gap change
-  // since a side's last trend announcement before another may fire. 0
-  // disables. Clamp mirrors the schema.
-  getGapMinChangeSeconds: () => {
-    const raw = Number((getGlobalSettings() as Record<string, unknown>).gapCalloutMinChangeSeconds);
-
-    return Number.isFinite(raw) && raw >= 0 && raw <= 10 ? raw : 1.5;
-  },
+  getGapAlertThresholdSeconds: () =>
+    sanitizeGapAlertThresholdSeconds((getGlobalSettings() as Record<string, unknown>).gapAlertThresholdSeconds),
+  // Consistency gate (issue #933 follow-up) — minimum gap movement in the
+  // announced direction from its extreme since the side's last call. 0
+  // disables.
+  getGapMinChangeSeconds: () =>
+    sanitizeGapMinChangeSeconds((getGlobalSettings() as Record<string, unknown>).gapCalloutMinChangeSeconds),
 });
 
 // Feed the translator's live per-car race order into the template-context builder

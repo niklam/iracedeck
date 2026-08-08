@@ -29,18 +29,33 @@ export const GAP_TRACE_SPAN_LAPS = 1.15;
 export const GAP_TRACE_MIN_STEP = 0.002;
 
 /**
+ * Largest forward progress step, in laps, that can be a car actually driving
+ * between two recorded samples. Samples land ~every {@link GAP_TRACE_MIN_STEP}
+ * lap while a car is in the world, so a bigger jump means the car was ABSENT
+ * (towing, teleported to the pit stall, a multi-second telemetry gap) and the
+ * span between the two samples was never driven.
+ */
+export const GAP_TRACE_MAX_STEP = 0.05;
+
+/**
  * Append a progress sample to a trace, keeping it ascending and pruned to
- * {@link GAP_TRACE_SPAN_LAPS}. A backwards progress jump (tow, teleport,
- * session reset) resets the trace — stale pre-jump samples would lie about
- * crossing times.
+ * {@link GAP_TRACE_SPAN_LAPS}. A DISCONTINUITY in either direction — a
+ * backwards jump (tow, teleport, session reset) or a forward jump past
+ * {@link GAP_TRACE_MAX_STEP} (a car towed to a pit stall further around the
+ * lap, or a long telemetry gap) — resets the trace. Stale samples across a
+ * discontinuity would lie about crossing times: `crossingTimeAt` interpolates
+ * linearly between adjacent samples, so a lookup landing inside an undriven
+ * span would return a time off by the whole absence.
  */
 export function appendProgressSample(trace: ProgressTrace, progress: number, time: number): void {
   const last = trace.length > 0 ? trace[trace.length - 1] : undefined;
 
   if (last !== undefined) {
-    if (progress < last.progress - GAP_TRACE_MIN_STEP) {
+    const step = progress - last.progress;
+
+    if (step < -GAP_TRACE_MIN_STEP || step > GAP_TRACE_MAX_STEP) {
       trace.length = 0;
-    } else if (progress - last.progress < GAP_TRACE_MIN_STEP) {
+    } else if (step < GAP_TRACE_MIN_STEP) {
       return;
     }
   }

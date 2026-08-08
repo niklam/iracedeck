@@ -13,7 +13,13 @@ import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { describe, expect, it } from "vitest";
 
 import { createInitialState, type TranslatorState } from "../state.js";
-import { diffGaps, GAP_DEFAULT_ALERT_THRESHOLD_S, GAP_DEFAULT_MIN_CHANGE_S } from "./gaps.js";
+import {
+  diffGaps,
+  GAP_DEFAULT_ALERT_THRESHOLD_S,
+  GAP_DEFAULT_MIN_CHANGE_S,
+  sanitizeGapAlertThresholdSeconds,
+  sanitizeGapMinChangeSeconds,
+} from "./gaps.js";
 import type { PendingEvent } from "./types.js";
 
 const PLAYER = 0;
@@ -612,5 +618,24 @@ describe("diffGaps — threshold events", () => {
 
     expect(thresholdEvents(events)).toHaveLength(0);
     expect(state.gapThresholdArmedAhead).toBe(false);
+  });
+});
+
+describe("gap setting sanitizers (issue #933 review)", () => {
+  it("clamps the alert threshold to the slider range and falls back on junk", () => {
+    expect(sanitizeGapAlertThresholdSeconds(2.5)).toBe(2.5);
+    expect(sanitizeGapAlertThresholdSeconds("1.8")).toBe(1.8);
+    expect(sanitizeGapAlertThresholdSeconds(0.1)).toBe(0.5);
+    expect(sanitizeGapAlertThresholdSeconds(99)).toBe(3);
+    expect(sanitizeGapAlertThresholdSeconds("junk")).toBe(GAP_DEFAULT_ALERT_THRESHOLD_S);
+    expect(sanitizeGapAlertThresholdSeconds(undefined)).toBe(GAP_DEFAULT_ALERT_THRESHOLD_S);
+  });
+
+  it("clamps the movement gate, keeping 0 (the user's 'off') intact", () => {
+    expect(sanitizeGapMinChangeSeconds(0)).toBe(0);
+    expect(sanitizeGapMinChangeSeconds(3.2)).toBe(3.2);
+    expect(sanitizeGapMinChangeSeconds(-5)).toBe(0);
+    expect(sanitizeGapMinChangeSeconds(50)).toBe(10);
+    expect(sanitizeGapMinChangeSeconds("junk")).toBe(GAP_DEFAULT_MIN_CHANGE_S);
   });
 });
