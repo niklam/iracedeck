@@ -399,6 +399,75 @@
         "seed": 1
       }
     ],
+    "opponent-pit": [
+      {
+        "name": "leader-01",
+        "text": "The leader is pitting.",
+        "seed": 1
+      },
+      {
+        "name": "leader-02",
+        "text": "Leader's coming in.",
+        "seed": 1
+      },
+      {
+        "name": "leader-03",
+        "text": "Heads up. <break time=\"0.3s\" /> The leader is pitting.",
+        "seed": 1
+      },
+      {
+        "name": "ahead-01",
+        "text": "The car ahead is pitting.",
+        "seed": 1
+      },
+      {
+        "name": "ahead-02",
+        "text": "Car ahead's coming into the pits.",
+        "seed": 1
+      },
+      {
+        "name": "ahead-03",
+        "text": "The car ahead is peeling in.",
+        "seed": 1
+      },
+      {
+        "name": "behind-01",
+        "text": "The car behind is pitting.",
+        "seed": 1
+      },
+      {
+        "name": "behind-02",
+        "text": "Car behind's coming into the pits.",
+        "seed": 1
+      },
+      {
+        "name": "behind-03",
+        "text": "The car behind is heading for the pits.",
+        "seed": 1
+      },
+      {
+        "name": "car-in-01",
+        "text": "The car in",
+        "seed": 1,
+        "next_request_ids": ["position-number/4"]
+      },
+      {
+        "name": "is-pitting-01",
+        "text": "is pitting.",
+        "seed": 1,
+        "previous_request_ids": ["position-number/4"]
+      },
+      {
+        "name": "others-01",
+        "text": "And it seems there are other cars pitting as well.",
+        "seed": 1
+      },
+      {
+        "name": "others-02",
+        "text": "Looks like more cars are coming in too.",
+        "seed": 1
+      }
+    ],
     "pit-limiter": [
       {
         "name": "pit-entry-001",
