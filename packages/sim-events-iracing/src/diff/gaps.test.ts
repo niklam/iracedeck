@@ -363,6 +363,32 @@ describe("diffGaps — relevance events (issue #933 follow-up)", () => {
     expect(trendEvents(events2).length).toBeGreaterThan(1);
   });
 
+  it("assumes grid spacing on the opening lap: no 'right with us' off the start, but a genuine lap-1 breakaway still announces", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+
+    // Lap 1 (LapCompleted = 0): the car behind starts at grid spacing, drops
+    // back past the threshold re-arm point, then closes right back under the
+    // 1.0 s threshold — the field sorting itself out. Without the grid
+    // assumption this fires "the car behind is right with us" (threshold) and
+    // closing/opening trend calls; with it, everything stays gated because
+    // nothing moved 1.5 s from the assumed 0.7 s spacing.
+    run(state, emit, { fromLap: 0.05, toLap: 0.45, aheadGapS: 30, behindGapS: [0.7, 1.7] });
+    run(state, emit, { fromLap: 0.45, toLap: 0.75, aheadGapS: 30, behindGapS: [1.7, 0.8] });
+
+    expect(trendEvents(events)).toHaveLength(0);
+    expect(thresholdEvents(events)).toHaveLength(0);
+
+    // Still on lap 1: a genuine pull to 3 s clears the movement gate from the
+    // assumed spacing → the breakaway announces before the line.
+    run(state, emit, { fromLap: 0.75, toLap: 1.0, aheadGapS: 30, behindGapS: [0.8, 3.0] });
+
+    const calls = openingEvents(events);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.data).toMatchObject({ side: "behind", direction: "opening", carIdx: BEHIND });
+  });
+
   it("treats sub-bar rates as noise", () => {
     const state = createInitialState();
     const { events, emit } = collect();

@@ -57,6 +57,13 @@ export const GAP_BREAKAWAY_REARM_GAP_S = 5;
  * `gapCalloutMinChangeSeconds`; 0 disables.
  */
 export const GAP_DEFAULT_MIN_CHANGE_S = 1.5;
+/**
+ * Assumed grid spacing (seconds) between standings neighbors at the race
+ * start (issue #933 follow-up). On lap 1, a side with no announcement
+ * history uses this as its movement-gate baseline — being ~this close off
+ * the start is expected, not news.
+ */
+export const GAP_ASSUMED_START_SPACING_S = 0.7;
 /** A threshold episode re-arms once the gap exceeds threshold + this margin. */
 export const GAP_THRESHOLD_HYSTERESIS_S = 0.5;
 /** Player-progress spacing (laps) between display-trend rate samples. */
@@ -438,10 +445,38 @@ function maybeEmitCalloutEvents(
   getMinChangeSeconds: () => number,
   emit: EmitFn,
 ): void {
-  processThresholdEpisode(state, telemetry, "ahead", playerPaused, getThresholdSeconds, emit);
-  processThresholdEpisode(state, telemetry, "behind", playerPaused, getThresholdSeconds, emit);
-  processRelevance(state, telemetry, "ahead", playerPaused, lapsRemaining, getMinChangeSeconds, emit);
-  processRelevance(state, telemetry, "behind", playerPaused, lapsRemaining, getMinChangeSeconds, emit);
+  // Opening-lap grid assumption (issue #933 follow-up): on lap 1 the field
+  // is close BY CONSTRUCTION — the grid put everyone ~a car length apart, so
+  // "the car behind is right with us" off the start is not news. A side with
+  // no announcement history yet is treated as if its last announcement
+  // happened at the assumed grid spacing, and on lap 1 the threshold call is
+  // held to the same movement gate — only genuine movement from the grid
+  // situation announces. A real lap-1 breakaway still fires the moment it
+  // clears the gate.
+  const firstLap = typeof telemetry.LapCompleted === "number" && telemetry.LapCompleted < 1;
+
+  processThresholdEpisode(
+    state,
+    telemetry,
+    "ahead",
+    playerPaused,
+    firstLap,
+    getThresholdSeconds,
+    getMinChangeSeconds,
+    emit,
+  );
+  processThresholdEpisode(
+    state,
+    telemetry,
+    "behind",
+    playerPaused,
+    firstLap,
+    getThresholdSeconds,
+    getMinChangeSeconds,
+    emit,
+  );
+  processRelevance(state, telemetry, "ahead", playerPaused, firstLap, lapsRemaining, getMinChangeSeconds, emit);
+  processRelevance(state, telemetry, "behind", playerPaused, firstLap, lapsRemaining, getMinChangeSeconds, emit);
 }
 
 /** Evaluate one side's closing-threat projection and breakaway episode. */
@@ -450,6 +485,7 @@ function processRelevance(
   telemetry: TelemetryData,
   side: Side,
   playerPaused: boolean,
+  firstLap: boolean,
   lapsRemaining: number | null,
   getMinChangeSeconds: () => number,
   emit: EmitFn,
@@ -469,9 +505,11 @@ function processRelevance(
   // this side, in EITHER direction, until the gap has moved at least the
   // configured amount from the side's last one. A rate wobbling around the
   // bars must not alternate "pulling away" / "closing in" while the gap
-  // itself hovers at the same value.
+  // itself hovers at the same value. On lap 1 an unannounced side is
+  // baselined at the assumed grid spacing — the start put them there.
   const lastAnnouncedGap = side === "ahead" ? state.gapLastAnnouncedGapAhead : state.gapLastAnnouncedGapBehind;
-  const movedEnough = lastAnnouncedGap === null || Math.abs(gap - lastAnnouncedGap) >= getMinChangeSeconds();
+  const baseline = lastAnnouncedGap ?? (firstLap ? GAP_ASSUMED_START_SPACING_S : null);
+  const movedEnough = baseline === null || Math.abs(gap - baseline) >= getMinChangeSeconds();
 
   // ── Closing threat: announce by projected time-to-contact. ──
   const announcedAt = side === "ahead" ? state.gapContactAnnouncedLapsAhead : state.gapContactAnnouncedLapsBehind;
@@ -542,7 +580,9 @@ function processThresholdEpisode(
   telemetry: TelemetryData,
   side: Side,
   playerPaused: boolean,
+  firstLap: boolean,
   getThresholdSeconds: () => number,
+  getMinChangeSeconds: () => number,
   emit: EmitFn,
 ): void {
   const live = side === "ahead" ? state.gapLiveAhead : state.gapLiveBehind;
@@ -572,12 +612,29 @@ function processThresholdEpisode(
   }
 
   if (live.gapSeconds < threshold) {
+    // Opening-lap grid assumption (issue #933 follow-up): on lap 1 the
+    // "we've caught them" call is held to the movement gate against the
+    // assumed grid spacing — a neighbor who was ~0.7 s away at the start
+    // briefly opening past the re-arm point and closing back is the field
+    // sorting itself out, not a catch.
+    if (firstLap) {
+      const lastAnnouncedGap = side === "ahead" ? state.gapLastAnnouncedGapAhead : state.gapLastAnnouncedGapBehind;
+      const baseline = lastAnnouncedGap ?? GAP_ASSUMED_START_SPACING_S;
+
+      if (Math.abs(live.gapSeconds - baseline) < getMinChangeSeconds()) return;
+    }
+
     emit({
       event: "gap.thresholdCrossed",
       data: { side, gapSeconds: live.gapSeconds, thresholdSeconds: threshold, carIdx: idx },
     });
 
-    if (side === "ahead") state.gapThresholdArmedAhead = false;
-    else state.gapThresholdArmedBehind = false;
+    if (side === "ahead") {
+      state.gapThresholdArmedAhead = false;
+      state.gapLastAnnouncedGapAhead = live.gapSeconds;
+    } else {
+      state.gapThresholdArmedBehind = false;
+      state.gapLastAnnouncedGapBehind = live.gapSeconds;
+    }
   }
 }
