@@ -66,6 +66,19 @@ export const GAP_DEFAULT_MIN_CHANGE_S = 1.5;
 export const GAP_ASSUMED_START_SPACING_S = 0.7;
 /** A threshold episode re-arms once the gap exceeds threshold + this margin. */
 export const GAP_THRESHOLD_HYSTERESIS_S = 0.5;
+/**
+ * Stability guard (issue #933 follow-up: a one-frame telemetry glitch read a
+ * 2.4 s gap as 0.9 s and fired "right with us"): a per-tick gap step beyond
+ * this is physically implausible — real gaps evolve by milliseconds per
+ * frame — and resets the stability streak.
+ */
+export const GAP_GLITCH_JUMP_S = 0.5;
+/**
+ * Consecutive plausible ticks required before the gap may drive any callout
+ * emission (~170 ms at 60 Hz). A glitch resets the streak on the way in AND
+ * on the way back, so a frame or two of bad data can never confirm.
+ */
+export const GAP_STABLE_TICKS_FOR_CALLOUTS = 10;
 /** Player-progress spacing (laps) between display-trend rate samples. */
 export const GAP_CHECKPOINT_STEP = 0.02;
 /** Fallback alert threshold when no resolver is wired (seconds). */
@@ -400,11 +413,15 @@ function resetSideState(state: TranslatorState, side: Side): void {
     state.gapBreakawayAnnouncedAhead = false;
     state.gapLastAnnouncedGapAhead = null;
     state.gapThresholdArmedAhead = false;
+    state.gapLastEvalGapAhead = null;
+    state.gapStableTicksAhead = 0;
   } else {
     state.gapContactAnnouncedLapsBehind = null;
     state.gapBreakawayAnnouncedBehind = false;
     state.gapLastAnnouncedGapBehind = null;
     state.gapThresholdArmedBehind = false;
+    state.gapLastEvalGapBehind = null;
+    state.gapStableTicksBehind = 0;
   }
 }
 
@@ -455,28 +472,53 @@ function maybeEmitCalloutEvents(
   // clears the gate.
   const firstLap = typeof telemetry.LapCompleted === "number" && telemetry.LapCompleted < 1;
 
-  processThresholdEpisode(
-    state,
-    telemetry,
-    "ahead",
-    playerPaused,
-    firstLap,
-    getThresholdSeconds,
-    getMinChangeSeconds,
-    emit,
-  );
-  processThresholdEpisode(
-    state,
-    telemetry,
-    "behind",
-    playerPaused,
-    firstLap,
-    getThresholdSeconds,
-    getMinChangeSeconds,
-    emit,
-  );
-  processRelevance(state, telemetry, "ahead", playerPaused, firstLap, lapsRemaining, getMinChangeSeconds, emit);
-  processRelevance(state, telemetry, "behind", playerPaused, firstLap, lapsRemaining, getMinChangeSeconds, emit);
+  for (const side of ["ahead", "behind"] as const) {
+    // Stability guard: skip a side entirely while its gap hasn't evolved
+    // plausibly for a short streak — a glitched frame must not arm, fire,
+    // or update any episode bookkeeping.
+    if (!updateStability(state, side)) continue;
+
+    processThresholdEpisode(
+      state,
+      telemetry,
+      side,
+      playerPaused,
+      firstLap,
+      getThresholdSeconds,
+      getMinChangeSeconds,
+      emit,
+    );
+    processRelevance(state, telemetry, side, playerPaused, firstLap, lapsRemaining, getMinChangeSeconds, emit);
+  }
+}
+
+/**
+ * Advance one side's stability streak and report whether its gap is currently
+ * trustworthy for callout decisions. A missing gap (suppressed / cold start /
+ * lapped) resets the streak — the first readings after any data gap are
+ * exactly where glitches live.
+ */
+function updateStability(state: TranslatorState, side: Side): boolean {
+  const live = side === "ahead" ? state.gapLiveAhead : state.gapLiveBehind;
+  const gap = live && live.lapDelta === 0 ? live.gapSeconds : null;
+  const lastGap = side === "ahead" ? state.gapLastEvalGapAhead : state.gapLastEvalGapBehind;
+  let ticks = side === "ahead" ? state.gapStableTicksAhead : state.gapStableTicksBehind;
+
+  if (gap === null || lastGap === null || Math.abs(gap - lastGap) > GAP_GLITCH_JUMP_S) {
+    ticks = 0;
+  } else {
+    ticks++;
+  }
+
+  if (side === "ahead") {
+    state.gapLastEvalGapAhead = gap;
+    state.gapStableTicksAhead = ticks;
+  } else {
+    state.gapLastEvalGapBehind = gap;
+    state.gapStableTicksBehind = ticks;
+  }
+
+  return ticks >= GAP_STABLE_TICKS_FOR_CALLOUTS;
 }
 
 /** Evaluate one side's closing-threat projection and breakaway episode. */

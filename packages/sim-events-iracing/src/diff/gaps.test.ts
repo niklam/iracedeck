@@ -389,6 +389,42 @@ describe("diffGaps — relevance events (issue #933 follow-up)", () => {
     expect(calls[0]!.data).toMatchObject({ side: "behind", direction: "opening", carIdx: BEHIND });
   });
 
+  it("ignores a one-or-two-frame telemetry glitch (issue #933 follow-up: 2.4 s read as 0.9 s fired 'right with us')", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    const lapTime = 90;
+
+    // Steady 2.4 s gap behind — the threshold episode is armed (2.4 > 1.5).
+    run(state, emit, { fromLap: 1, toLap: 3, aheadGapS: 30, behindGapS: 2.4 });
+    expect(state.gapThresholdArmedBehind).toBe(true);
+
+    // Two glitched frames: the behind car's telemetry briefly reads 1.5 s
+    // closer (gap 0.9 — under the threshold), then corrects back.
+    const p = 3.005;
+
+    for (const glitchGap of [0.9, 0.9, 2.4, 2.4]) {
+      diffGaps(
+        state,
+        tick(p * lapTime, [p, p + 30 / lapTime, p - glitchGap / lapTime]),
+        true,
+        PLAYER,
+        null,
+        [2, 1, 3],
+        () => GAP_DEFAULT_ALERT_THRESHOLD_S,
+        emit,
+        null,
+        () => GAP_DEFAULT_MIN_CHANGE_S,
+      );
+    }
+
+    expect(thresholdEvents(events)).toHaveLength(0);
+    expect(trendEvents(events)).toHaveLength(0);
+
+    // A genuine sustained catch still fires once the reading has been stable.
+    run(state, emit, { fromLap: 3.01, toLap: 3.5, aheadGapS: 30, behindGapS: [2.4, 0.8] });
+    expect(thresholdEvents(events)).toHaveLength(1);
+  });
+
   it("treats sub-bar rates as noise", () => {
     const state = createInitialState();
     const { events, emit } = collect();

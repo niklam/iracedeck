@@ -535,6 +535,17 @@ export type TranslatorState = {
   gapLastAnnouncedGapAhead: number | null;
   gapLastAnnouncedGapBehind: number | null;
   /**
+   * Callout stability guard (issue #933 follow-up): the gap seen on the
+   * previous tick and how many consecutive ticks the gap has evolved
+   * plausibly (per-tick step ≤ the glitch bound). A one-or-two-frame
+   * telemetry glitch resets the counter on the way in AND on the way back,
+   * so it can never confirm; emissions require a short stable streak.
+   */
+  gapLastEvalGapAhead: number | null;
+  gapLastEvalGapBehind: number | null;
+  gapStableTicksAhead: number;
+  gapStableTicksBehind: number;
+  /**
    * Threshold episode armed flags — arm only after the gap has been observed
    * beyond threshold + hysteresis, so a nose-to-tail race start can't fire a
    * crossing on the first green-flag tick.
@@ -862,6 +873,10 @@ export function createInitialState(): TranslatorState {
     gapBreakawayAnnouncedBehind: false,
     gapLastAnnouncedGapAhead: null,
     gapLastAnnouncedGapBehind: null,
+    gapLastEvalGapAhead: null,
+    gapLastEvalGapBehind: null,
+    gapStableTicksAhead: 0,
+    gapStableTicksBehind: 0,
     gapThresholdArmedAhead: false,
     gapThresholdArmedBehind: false,
 
