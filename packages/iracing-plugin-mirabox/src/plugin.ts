@@ -19,6 +19,8 @@ import {
   type FlagCalloutId,
   FUEL_CALLOUT_SETTING_KEYS,
   type FuelCalloutId,
+  GAP_CALLOUT_SETTING_KEYS,
+  type GapCalloutId,
   INCIDENT_CALLOUT_SETTING_KEYS,
   type IncidentCalloutId,
   LAP_TIME_CALLOUT_SETTING_KEYS,
@@ -47,6 +49,7 @@ import {
   type RaceStartCalloutId,
   type RaceStatusCalloutId,
   registerPitCrew,
+  resolveGapCooldownMs,
   resolveStillThereIntervalMs,
   ROLLING_START_CALLOUT_SETTING_KEYS,
   type RollingStartCalloutId,
@@ -171,6 +174,7 @@ import { LogLevel } from "@iracedeck/logger";
 import { createSvgRasterizer } from "@iracedeck/rasterizer";
 import {
   getDriverSetupName,
+  getLiveGaps,
   getLivePosition,
   getLiveRacePositions,
   getNearestCarGapMeters,
@@ -249,6 +253,13 @@ initializeSimEventsIracing(eventBus, getController(), adapter.createLogger("SimE
   // shape as the fuel margin above.
   getCornerCalloutLeadSeconds: () =>
     sanitizeCornerCalloutLeadSeconds((getGlobalSettings() as Record<string, unknown>).cornerCalloutLeadSeconds),
+  // Gap alert threshold (issue #933) — read live so a PI slider change takes
+  // effect on the next tick without a restart. Clamp mirrors the schema.
+  getGapAlertThresholdSeconds: () => {
+    const raw = Number((getGlobalSettings() as Record<string, unknown>).gapAlertThresholdSeconds);
+
+    return Number.isFinite(raw) && raw >= 0.5 && raw <= 3 ? raw : 1;
+  },
 });
 
 // Feed the translator's live per-car race order into the template-context builder
@@ -589,6 +600,14 @@ registerPitCrew(
     (getGlobalSettings() as Record<string, unknown>)[CORNER_NAME_CALLOUT_SETTING_KEYS[id]] !== false,
   // Corner-name snapshot resolver (issue #888) — the cache populated above.
   () => lastCornerName,
+  // Gap callout opt-ins (issue #933). Per-type live-read — same gate-at-
+  // event-arrival pattern as the other callout families.
+  (id: GapCalloutId) => (getGlobalSettings() as Record<string, unknown>)[GAP_CALLOUT_SETTING_KEYS[id]] !== false,
+  // Shared gap-callout cooldown (issue #933) — 1–360 s, default 30 s.
+  () => resolveGapCooldownMs((getGlobalSettings() as Record<string, unknown>).gapCalloutCooldownSeconds),
+  // Live gaps resolver (issue #933) — the spoken gap number reads the live
+  // crossing-time gap at speak time, not the event-time snapshot.
+  () => getLiveGaps(),
   // Race Engineer master gate (issue #515).
   () => (getGlobalSettings() as Record<string, unknown>).pitCrewRaceEngineerEnabled === true,
   // Radar master gate (issue #515).
