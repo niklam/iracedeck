@@ -217,6 +217,28 @@ describe("diffOpponentPit", () => {
     expect(run(state, t, 2000)).toEqual([]);
   });
 
+  it("suppresses non-leader classification when the player's lap progress is missing", () => {
+    // A CarIdxLapDistPct array without the player entry must not default the
+    // player's distance to 0 — that could misread a lapped car as same-lap.
+    run(state, makeField(), 1000);
+
+    const t = makeField();
+    t.CarIdxLapDistPct = [] as number[];
+    t.CarIdxTrackSurface[3] = TrkLoc.AproachingPits; // P3 → would be "ahead"
+    t.CarIdxTrackSurface[1] = TrkLoc.AproachingPits; // the leader — exempt from the same-lap check
+
+    // The in-world check also reads dp, so give the entering cars their own
+    // entries while the PLAYER's stays missing.
+    t.CarIdxLapDistPct[3] = 0.6;
+    t.CarIdxLapDistPct[1] = 0.9;
+
+    const out = run(state, t, 2000);
+
+    expect(out).toEqual([
+      { event: "opponentPit.entered", data: { relation: "leader", carIdx: 1, position: 1, isMultiClass: false } },
+    ]);
+  });
+
   it("applies a per-car re-announce cooldown", () => {
     run(state, makeField(), 1000);
     const enter = makeField();

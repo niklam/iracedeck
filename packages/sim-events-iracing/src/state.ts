@@ -537,7 +537,7 @@ export type TranslatorState = {
    */
   opponentPitCarCooldownUntil: number[];
   /**
-   * Timestamps (epoch ms) of qualifying pit entries inside the rolling
+   * Timestamps (epoch ms) of eligible pit entries inside the rolling
    * aggregation window (the incident-burst shape). Pruned every tick; 12 s
    * of quiet ends the episode.
    */

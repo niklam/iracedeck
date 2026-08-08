@@ -62,7 +62,7 @@ export type FlagScope = "local" | "full";
 
 /**
  * Who a pitting opponent is relative to the player (issue #622). `"others"`
- * is the aggregate tail once 3+ qualifying cars entered the pits within the
+ * is the aggregate tail once 3+ eligible cars entered the pits within the
  * aggregation window. Sim-agnostic string union so future translators can
  * emit the same `opponentPit.entered` shape.
  */
@@ -320,7 +320,7 @@ export type SimEventMap = {
    * classification ran in; speak-time live reads take their number in the
    * SAME projection (a transient session-info dropout at read time must not
    * flip a class-space number to overall space). `carIdx`/`position` are
-   * absent for the `"others"` aggregate (3+ qualifying entries within the
+   * absent for the `"others"` aggregate (3+ eligible entries within the
    * window collapse to one aggregate tail).
    */
   "opponentPit.entered": SimEvent<

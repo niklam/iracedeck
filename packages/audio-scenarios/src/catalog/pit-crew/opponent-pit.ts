@@ -124,8 +124,19 @@ export const OPPONENT_PIT_ALERTS: readonly Scenario[] = [
     (ev) => {
       const { carIdx, position, isMultiClass } = ev.data;
 
-      // No usable car/position → nothing to speak; reject before firing.
-      if (typeof carIdx !== "number" || typeof position !== "number" || position <= 0) return false;
+      // No usable car/position → nothing to speak; reject before firing. A
+      // fractional position would build a `position-number/4.5` lookup with
+      // no clip behind it, so non-negative integers only.
+      if (
+        typeof carIdx !== "number" ||
+        !Number.isInteger(carIdx) ||
+        carIdx < 0 ||
+        typeof position !== "number" ||
+        !Number.isInteger(position) ||
+        position <= 0
+      ) {
+        return false;
+      }
 
       // Stash AFTER the relation + validity checks and behind the opt-in
       // wrappers (#922's shape), so only a fully-gated nearby fire can

@@ -249,7 +249,7 @@ Knowing who is diving into the pits is strategically valuable: it tells you when
 
 The trigger is the car **entering the pit-approach zone** (the same track-surface state your own approaching-pits callout uses), so the call lands as the car commits to pit entry — earlier than waiting for it to be on pit road. Cars three or more positions away, lapped cars, and cars far ahead (other than the leader) are never announced, and each car announces at most once per stop.
 
-On ovals, a full-course caution can send half the field down pit road at once — enumerating every car would be unbearable. When **three or more** qualifying cars enter the pits within a short window, the engineer collapses the calls into a single *"And it seems there are other cars pitting as well."* after the first two individual announcements, then stays quiet until the rush is over. The leader is always announced individually, even during such a pit train.
+On ovals, a full-course caution can send half the field down pit road at once — enumerating every car would be unbearable. When **three or more** eligible cars enter the pits within a short window, the engineer collapses the calls into a single *"And it seems there are other cars pitting as well."* after the first two individual announcements, then stays quiet until the rush is over. The leader is always announced individually, even during such a pit train (and ahead of same-moment pit entries).
 
 Nothing is announced in practice or qualifying, before the green flag, or while watching a replay. Two opt-ins live under **Race Engineer Callouts → Opponent Pits**, both enabled by default — see [the opt-in list below](#race-engineer-callouts-per-subject-opt-inout).
 

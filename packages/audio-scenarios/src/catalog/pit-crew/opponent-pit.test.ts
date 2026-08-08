@@ -133,6 +133,11 @@ describe("opponent-pit scenarios", () => {
     expect(where?.(entered("nearby", { carIdx: undefined }))).toBe(false);
     expect(where?.(entered("nearby", { position: undefined }))).toBe(false);
     expect(where?.(entered("nearby", { position: 0 }))).toBe(false);
+    // Non-integer / negative values would build clip lookups with no clip
+    // behind them (`position-number/4.5`) — reject them outright.
+    expect(where?.(entered("nearby", { carIdx: -1 }))).toBe(false);
+    expect(where?.(entered("nearby", { carIdx: 6.5 }))).toBe(false);
+    expect(where?.(entered("nearby", { position: 4.5 }))).toBe(false);
   });
 });
 

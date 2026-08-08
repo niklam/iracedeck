@@ -14,7 +14,7 @@
  * same order via `classPositionFromOrder` (#588's class space).
  *
  * **Aggregation (the oval safety valve).** The incident-burst shape: a rolling
- * list of qualifying-entry timestamps pruned to the last 12 s on every tick.
+ * list of eligible-entry timestamps pruned to the last 12 s on every tick.
  * While the aggregate hasn't fired this episode, entries below the threshold
  * announce individually; the entry that reaches the threshold emits one
  * `"others"` aggregate, and every later non-leader entry stays silent until
@@ -38,10 +38,10 @@ import { classPositionFromOrder, type TelemetryData, TrkLoc } from "@iracedeck/i
 import type { TranslatorState } from "../state.js";
 import type { EmitFn } from "./types.js";
 
-/** Rolling window for counting near-simultaneous qualifying pit entries. */
+/** Rolling window for counting near-simultaneous eligible pit entries. */
 export const OPPONENT_PIT_AGGREGATE_WINDOW_MS = 12_000;
 
-/** Qualifying entries within the window at which enumeration collapses. */
+/** Eligible entries within the window at which enumeration collapses. */
 export const OPPONENT_PIT_AGGREGATE_THRESHOLD = 3;
 
 /**
@@ -92,10 +92,14 @@ function classify(
   const dp = telemetry.CarIdxLapDistPct;
   const carLc = lc?.[carIdx] ?? -1;
   const playerLc = lc?.[playerCarIdx] ?? -1;
+  const carDp = dp?.[carIdx] ?? -1;
+  const playerDp = dp?.[playerCarIdx] ?? -1;
 
-  if (carLc < 0 || playerLc < 0) return null;
+  // Both cars need complete lap-progress data — defaulting a missing
+  // distance to 0 could misread a lapped car as same-lap.
+  if (carLc < 0 || playerLc < 0 || carDp < 0 || playerDp < 0) return null;
 
-  const scoreGap = Math.abs(carLc + (dp?.[carIdx] ?? 0) - (playerLc + (dp?.[playerCarIdx] ?? 0)));
+  const scoreGap = Math.abs(carLc + carDp - (playerLc + playerDp));
 
   if (scoreGap >= 1.0) return null;
 
