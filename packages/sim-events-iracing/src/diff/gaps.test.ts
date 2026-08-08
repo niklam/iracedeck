@@ -72,6 +72,7 @@ function run(
     aheadGapS: GapSpec;
     behindGapS: GapSpec;
     thresholdS?: number;
+    lapsRemaining?: number | null;
     overrides?: Partial<TelemetryData>;
   },
 ): void {
@@ -97,12 +98,17 @@ function run(
       [2, 1, 3],
       () => opts.thresholdS ?? GAP_DEFAULT_ALERT_THRESHOLD_S,
       emit,
+      opts.lapsRemaining ?? null,
     );
   }
 }
 
 function trendEvents(events: PendingEvent[]): PendingEvent[] {
   return events.filter((e) => e.event === "gap.trendChanged");
+}
+
+function openingEvents(events: PendingEvent[]): PendingEvent[] {
+  return trendEvents(events).filter((e) => (e.data as { direction: string }).direction === "opening");
 }
 
 function thresholdEvents(events: PendingEvent[]): PendingEvent[] {
@@ -241,58 +247,98 @@ describe("diffGaps — live gaps", () => {
   });
 });
 
-describe("diffGaps — trend flip events", () => {
-  it("emits gap.trendChanged after two consecutive closing laps and not before, without re-emitting while the direction holds", () => {
+describe("diffGaps — relevance events (issue #933 follow-up)", () => {
+  it("announces a closing threat when the contact projection enters the horizon, escalating as it halves", () => {
     const state = createInitialState();
     const { events, emit } = collect();
 
-    // Laps 1–4 steady at 5.0 s, then closing 1 s/lap for three laps (5→2 over
-    // laps 4–7). Directions: lap 5 = closing (prev steady, no emit), lap 6 =
-    // closing sustained → EMIT, lap 7 = closing but already announced.
-    run(state, emit, { fromLap: 1, toLap: 4, aheadGapS: 5, behindGapS: 3 });
-    run(state, emit, { fromLap: 4, toLap: 7, aheadGapS: [5, 2], behindGapS: 3 });
+    // Catching the car ahead at 1 s/lap from 12 s out. Projection enters the
+    // 8-lap horizon when the gap reaches ~8 s, and halves to ≤4 laps at ~4 s.
+    run(state, emit, { fromLap: 1, toLap: 10, aheadGapS: [12, 3], behindGapS: 30 });
 
-    const flips = trendEvents(events);
+    const calls = trendEvents(events);
 
-    expect(flips).toHaveLength(1);
-    expect(flips[0]!.data).toMatchObject({ side: "ahead", direction: "closing", carIdx: AHEAD });
+    expect(calls).toHaveLength(2);
+    expect(calls[0]!.data).toMatchObject({ side: "ahead", direction: "closing", carIdx: AHEAD });
 
-    // Keep closing two more laps — still announced, no second emission.
-    run(state, emit, { fromLap: 7, toLap: 9, aheadGapS: [2, 1.8], behindGapS: 3 });
-    expect(trendEvents(events)).toHaveLength(1);
+    const first = calls[0]!.data as { gapSeconds: number; lapsToContact?: number };
 
-    // Two opening laps: lap +1 (prev closing, no emit), lap +2 sustained → EMIT.
-    run(state, emit, { fromLap: 9, toLap: 11, aheadGapS: [1.8, 3.8], behindGapS: 3 });
-    const after = trendEvents(events);
+    expect(first.lapsToContact).toBeDefined();
+    expect(first.lapsToContact!).toBeGreaterThan(6.5);
+    expect(first.lapsToContact!).toBeLessThanOrEqual(8.2);
+
+    const second = calls[1]!.data as { lapsToContact?: number };
+
+    expect(second.lapsToContact!).toBeLessThanOrEqual(first.lapsToContact! * 0.55);
+  });
+
+  it("stays silent about a catch that completes after the race ends", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+
+    // Same 1 s/lap catch, but only 3 laps remain: the projection never gets
+    // inside min(horizon, lapsRemaining) = 3 laps.
+    run(state, emit, { fromLap: 1, toLap: 9, aheadGapS: [12, 4], behindGapS: 30, lapsRemaining: 3 });
+
+    expect(trendEvents(events)).toHaveLength(0);
+  });
+
+  it("stays silent about a fast catch on a huge gap (projection outside the horizon)", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+
+    // 2 s/lap eaten from a 30 s gap — contact in ~15 laps. Irrelevant.
+    run(state, emit, { fromLap: 1, toLap: 4, aheadGapS: [30, 24], behindGapS: 30 });
+
+    expect(trendEvents(events)).toHaveLength(0);
+  });
+
+  it("announces a breakaway once per episode, mid-lap, with no crossing needed (the lap-1 pull-away case)", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+
+    // Pulling away from a 1.5 s battle at ~3 s/lap on the FIRST lap — the
+    // call must come mid-lap, without any start/finish sampling.
+    run(state, emit, { fromLap: 1, toLap: 1.7, aheadGapS: 8, behindGapS: [1.5, 3.6] });
+
+    const calls = openingEvents(events);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.data).toMatchObject({ side: "behind", direction: "opening", carIdx: BEHIND });
+
+    // Keep opening past battle range — still one announcement.
+    run(state, emit, { fromLap: 1.7, toLap: 4, aheadGapS: 8, behindGapS: [3.6, 12] });
+    expect(openingEvents(events)).toHaveLength(1);
+
+    // They claw back into battle range (which itself fires closing-threat
+    // calls — filtered out here), then get dropped again → second breakaway.
+    run(state, emit, { fromLap: 4, toLap: 7, aheadGapS: 8, behindGapS: [12, 4] });
+    run(state, emit, { fromLap: 7, toLap: 8, aheadGapS: 8, behindGapS: [4, 6] });
+
+    const after = openingEvents(events);
 
     expect(after).toHaveLength(2);
-    expect(after[1]!.data).toMatchObject({ side: "ahead", direction: "opening" });
+    expect(after[1]!.data).toMatchObject({ side: "behind", direction: "opening" });
   });
 
-  it("announces a strong single-lap swing immediately, without the 2-lap confirmation (issue #933 follow-up: pulling 4 s/lap was never called)", () => {
+  it("never announces pulling away on an already-broken gap", () => {
     const state = createInitialState();
     const { events, emit } = collect();
 
-    // One steady lap to seed the lap sample, then the player pulls away from
-    // the car behind at 4 s/lap — the very first classified lap must emit.
-    run(state, emit, { fromLap: 1, toLap: 2, aheadGapS: 8, behindGapS: 3 });
-    run(state, emit, { fromLap: 2, toLap: 3.05, aheadGapS: 8, behindGapS: [3, 7.2] });
+    // Opening 2 s/lap on a 30 s gap — nothing changes, stay quiet.
+    run(state, emit, { fromLap: 1, toLap: 4, aheadGapS: 8, behindGapS: [30, 36] });
 
-    const flips = trendEvents(events);
-
-    expect(flips).toHaveLength(1);
-    expect(flips[0]!.data).toMatchObject({ side: "behind", direction: "opening", carIdx: BEHIND });
+    expect(trendEvents(events)).toHaveLength(0);
   });
 
-  it("stays silent inside the callout deadband", () => {
+  it("treats sub-bar rates as noise", () => {
     const state = createInitialState();
     const { events, emit } = collect();
 
-    // ±0.1 s/lap oscillation is inside the 0.2 s callout deadband.
+    // ±0.1 s/lap wobble is below both the closing (0.2) and breakaway (0.5) bars.
     run(state, emit, { fromLap: 1, toLap: 4, aheadGapS: 5, behindGapS: 3 });
-    run(state, emit, { fromLap: 4, toLap: 5, aheadGapS: [5, 5.1], behindGapS: 3 });
-    run(state, emit, { fromLap: 5, toLap: 6, aheadGapS: [5.1, 5.0], behindGapS: 3 });
-    run(state, emit, { fromLap: 6, toLap: 7, aheadGapS: [5.0, 5.1], behindGapS: 3 });
+    run(state, emit, { fromLap: 4, toLap: 5, aheadGapS: [5, 5.1], behindGapS: [3, 3.1] });
+    run(state, emit, { fromLap: 5, toLap: 6, aheadGapS: [5.1, 5.0], behindGapS: [3.1, 3.0] });
 
     expect(trendEvents(events)).toHaveLength(0);
   });

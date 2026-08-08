@@ -674,29 +674,33 @@ export type SimEventMap = {
     }
   >;
   /**
-   * The lap-over-lap gap trend to a class-standings neighbor flipped
-   * direction and held for 2 consecutive laps (issue #933). Emitted from the
-   * gap diff at the player's lap completion; race sessions only, never for a
-   * neighbor a lap or more apart, and suppressed while either car is on pit
-   * road or off track. `gapSeconds` is the crossing-time gap at emission;
-   * spoken numbers should read the LIVE gap at speak time instead (#574
-   * pattern).
+   * A RELEVANT gap development against a class-standings neighbor
+   * (issue #933). Evaluated continuously from the smoothed gap rate — not at
+   * lap boundaries. "closing" fires when the projected contact
+   * (`gapSeconds ÷ rate`) drops inside the announcement horizon (capped by
+   * the laps actually remaining — a catch that completes after the race is
+   * never announced), and re-fires as the projection roughly halves.
+   * "opening" fires once per episode when a small gap is being opened hard —
+   * a breakaway from a battle; a big gap opening further never fires. Race
+   * sessions only, never for a neighbor a lap or more apart, suppressed
+   * while either car is on pit road / off track. Spoken numbers should read
+   * the LIVE gap at speak time (#574 pattern).
    */
   "gap.trendChanged": SimEvent<
     "gap.trendChanged",
     {
-      /** Which neighbor the trend refers to. */
+      /** Which neighbor the development refers to. */
       side: GapSide;
-      /** New sustained direction ("closing" = the gap is shrinking). */
+      /** "closing" = the gap is shrinking toward contact; "opening" = a breakaway. */
       direction: "closing" | "opening";
-      /** Gap in seconds at the emitting lap completion. */
+      /** Gap in seconds at emission. */
       gapSeconds: number;
-      /** Gap in seconds one lap earlier (the sample the flip was measured against). */
-      previousGapSeconds: number;
+      /** Smoothed gap rate in seconds per lap (negative = shrinking). */
+      ratePerLap: number;
+      /** Projected laps until contact (closing only). */
+      lapsToContact?: number;
       /** The neighbor's car index. */
       carIdx: number;
-      /** Player lap (`LapCompleted`) at emission. */
-      lap: number;
     }
   >;
   /**

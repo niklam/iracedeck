@@ -32,15 +32,23 @@ import type { EmitFn } from "./types.js";
  * gap rate. Rates inside it render "steady".
  */
 export const GAP_DISPLAY_TREND_DEADBAND_S = 0.15;
-/** Deadband for the lap-over-lap callout trend. */
-export const GAP_CALLOUT_TREND_DEADBAND_S = 0.2;
+/** Minimum sustained closing rate (s/lap) before a contact projection exists. */
+export const GAP_CLOSING_MIN_RATE_S_PER_LAP = 0.2;
 /**
- * A single lap-over-lap delta at or beyond this emits the trend callout
- * immediately, without the 2-consecutive-lap confirmation — a multi-second
- * swing is far outside measurement noise and shouldn't wait a lap to be
- * believed (issue #933 follow-up: pulling 4 s/lap never got announced).
+ * Closing announcements fire when the projected contact is within this many
+ * laps (and within the laps actually remaining) — "someone is eating a 10 s
+ * gap" is news, "someone gains 2 s/lap on a 30 s gap with 5 laps left" is
+ * not (issue #933 follow-up).
  */
-export const GAP_TREND_STRONG_DELTA_S = 1.5;
+export const GAP_CONTACT_HORIZON_LAPS = 8;
+/** A closing threat re-announces when its projection halves since the last call. */
+export const GAP_CONTACT_REANNOUNCE_FACTOR = 0.5;
+/** Minimum opening rate (s/lap) for a breakaway announcement. */
+export const GAP_BREAKAWAY_MIN_RATE_S_PER_LAP = 0.5;
+/** Breakaways only matter while the gap is still battle-sized (seconds). */
+export const GAP_BREAKAWAY_MAX_GAP_S = 10;
+/** A breakaway episode re-arms once the pair closes back under this (seconds). */
+export const GAP_BREAKAWAY_REARM_GAP_S = 5;
 /** A threshold episode re-arms once the gap exceeds threshold + this margin. */
 export const GAP_THRESHOLD_HYSTERESIS_S = 0.5;
 /** Player-progress spacing (laps) between display-trend rate samples. */
@@ -88,6 +96,12 @@ export function diffGaps(
   frozenPositions: number[] | null,
   getThresholdSeconds: () => number,
   emit: EmitFn,
+  /**
+   * Estimated laps left in the race (fractional; null = unknown/unlimited).
+   * Caps the closing-announcement horizon — a projected catch that completes
+   * after the checkered is never announced.
+   */
+  lapsRemaining: number | null = null,
 ): void {
   const lc = telemetry.CarIdxLapCompleted as number[] | undefined;
   const pct = telemetry.CarIdxLapDistPct as number[] | undefined;
@@ -190,8 +204,8 @@ export function diffGaps(
 
   if (checkpointDue) state.gapLastCheckpointProgress = playerProgress;
 
-  // 4) Lap-over-lap callout sampling + threshold episodes.
-  maybeEmitCalloutEvents(state, telemetry, playerPaused, getThresholdSeconds, emit);
+  // 4) Relevance-driven callout events + threshold episodes.
+  maybeEmitCalloutEvents(state, telemetry, playerPaused, lapsRemaining, getThresholdSeconds, emit);
 }
 
 /** Compute one side's live snapshot, maintaining its checkpoint ring. */
@@ -362,113 +376,121 @@ function resetSideState(state: TranslatorState, side: Side): void {
   resetTrendRate(state, side);
 
   if (side === "ahead") {
-    state.gapLapSampleAhead = null;
-    state.gapPrevLapDirectionAhead = null;
-    state.gapAnnouncedDirectionAhead = null;
+    state.gapContactAnnouncedLapsAhead = null;
+    state.gapBreakawayAnnouncedAhead = false;
     state.gapThresholdArmedAhead = false;
   } else {
-    state.gapLapSampleBehind = null;
-    state.gapPrevLapDirectionBehind = null;
-    state.gapAnnouncedDirectionBehind = null;
+    state.gapContactAnnouncedLapsBehind = null;
+    state.gapBreakawayAnnouncedBehind = false;
     state.gapThresholdArmedBehind = false;
   }
 }
 
 /**
- * Lap-over-lap trend sampling + threshold episodes (issue #933).
+ * Relevance-driven callout events (issue #933): what deserves the driver's
+ * attention is not the gap's derivative but its PROJECTION.
  *
- * Trend: the gap is sampled at each player lap completion; a direction
- * (closing/opening, 0.2 s deadband) that differs from the last announced one
- * emits `gap.trendChanged` — immediately when the single-lap delta is at or
- * beyond {@link GAP_TREND_STRONG_DELTA_S} (a multi-second swing needs no
- * confirmation), otherwise once it has held for 2 consecutive laps (gentle
- * trends still filter one-lap wobbles). Threshold: an
- * episode arms only once the gap has been seen beyond threshold + hysteresis
- * (so a nose-to-tail start can't fire at the green), fires
- * `gap.thresholdCrossed` once when the live gap first drops below the
- * threshold, and re-arms only past the hysteresis point. Both are silent
- * while either car is on pit road / off track and for lapped neighbors.
+ * Closing: with a sustained closing rate, `gapSeconds ÷ rate` projects the
+ * laps until contact. An announcement fires when that projection first
+ * drops inside {@link GAP_CONTACT_HORIZON_LAPS} — capped by the laps
+ * actually remaining, so a catch that completes after the checkered is
+ * never announced — and again each time the projection roughly halves.
+ * The episode re-arms once the threat clearly recedes.
+ *
+ * Opening: a breakaway — a small gap (≤ {@link GAP_BREAKAWAY_MAX_GAP_S})
+ * being opened hard (≥ {@link GAP_BREAKAWAY_MIN_RATE_S_PER_LAP}) — fires
+ * once per episode; re-arms when the pair closes back into battle range. A
+ * big gap opening further is never news.
+ *
+ * Threshold: an episode arms only once the gap has been seen beyond
+ * threshold + hysteresis (so a nose-to-tail start can't fire at the green),
+ * fires `gap.thresholdCrossed` once when the live gap first drops below the
+ * threshold, and re-arms only past the hysteresis point.
+ *
+ * All of it is evaluated continuously (no lap-boundary sampling) and stays
+ * silent while either car is on pit road / off track, for lapped neighbors,
+ * and while the smoothed rate has no signal.
  */
 function maybeEmitCalloutEvents(
   state: TranslatorState,
   telemetry: TelemetryData,
   playerPaused: boolean,
+  lapsRemaining: number | null,
   getThresholdSeconds: () => number,
   emit: EmitFn,
 ): void {
   processThresholdEpisode(state, telemetry, "ahead", playerPaused, getThresholdSeconds, emit);
   processThresholdEpisode(state, telemetry, "behind", playerPaused, getThresholdSeconds, emit);
-
-  const lapCompleted = typeof telemetry.LapCompleted === "number" ? telemetry.LapCompleted : -1;
-
-  if (lapCompleted < 0 || lapCompleted === state.gapLastLapCompleted) return;
-
-  const seeding = state.gapLastLapCompleted < 0;
-
-  state.gapLastLapCompleted = lapCompleted;
-  processLapSample(state, telemetry, "ahead", lapCompleted, playerPaused, seeding, emit);
-  processLapSample(state, telemetry, "behind", lapCompleted, playerPaused, seeding, emit);
+  processRelevance(state, telemetry, "ahead", playerPaused, lapsRemaining, emit);
+  processRelevance(state, telemetry, "behind", playerPaused, lapsRemaining, emit);
 }
 
-/** Capture one side's lap sample and emit a sustained trend flip. */
-function processLapSample(
+/** Evaluate one side's closing-threat projection and breakaway episode. */
+function processRelevance(
   state: TranslatorState,
   telemetry: TelemetryData,
   side: Side,
-  lapCompleted: number,
   playerPaused: boolean,
-  seeding: boolean,
+  lapsRemaining: number | null,
   emit: EmitFn,
 ): void {
   const live = side === "ahead" ? state.gapLiveAhead : state.gapLiveBehind;
   const idx = side === "ahead" ? state.gapAheadIdx : state.gapBehindIdx;
+  const ema = side === "ahead" ? state.gapRateEmaAhead : state.gapRateEmaBehind;
+  const samples = side === "ahead" ? state.gapRateSamplesAhead : state.gapRateSamplesBehind;
   const suppressed = playerPaused || (idx >= 0 && neighborSuppressed(telemetry, idx));
 
-  if (!live || idx < 0 || suppressed || live.lapDelta !== 0 || live.gapSeconds === null) {
-    // The lap-over-lap series is broken — a comparison across the break
-    // would attribute pit/tow time to pace. Start fresh next lap.
-    setLapSample(state, side, null);
-    setPrevLapDirection(state, side, null);
+  if (!live || idx < 0 || suppressed || live.lapDelta !== 0 || live.gapSeconds === null) return;
 
-    return;
+  if (ema === null || samples < GAP_TREND_MIN_SAMPLES) return;
+
+  const gap = live.gapSeconds;
+
+  // ── Closing threat: announce by projected time-to-contact. ──
+  const announcedAt = side === "ahead" ? state.gapContactAnnouncedLapsAhead : state.gapContactAnnouncedLapsBehind;
+  const closingRate = -ema;
+
+  if (closingRate >= GAP_CLOSING_MIN_RATE_S_PER_LAP) {
+    const lapsToContact = gap / closingRate;
+    const horizon = Math.min(GAP_CONTACT_HORIZON_LAPS, lapsRemaining ?? Number.POSITIVE_INFINITY);
+    const due =
+      lapsToContact <= horizon &&
+      (announcedAt === null || lapsToContact <= announcedAt * GAP_CONTACT_REANNOUNCE_FACTOR);
+
+    if (due) {
+      emit({
+        event: "gap.trendChanged",
+        data: { side, direction: "closing", gapSeconds: gap, ratePerLap: ema, lapsToContact, carIdx: idx },
+      });
+
+      if (side === "ahead") state.gapContactAnnouncedLapsAhead = lapsToContact;
+      else state.gapContactAnnouncedLapsBehind = lapsToContact;
+    }
+  } else if (announcedAt !== null && closingRate < GAP_CLOSING_MIN_RATE_S_PER_LAP / 2) {
+    // The threat receded (they stopped closing) — re-arm with hysteresis so
+    // a rate hovering at the bar can't re-announce on every wobble.
+    if (side === "ahead") state.gapContactAnnouncedLapsAhead = null;
+    else state.gapContactAnnouncedLapsBehind = null;
   }
 
-  const prevSample = side === "ahead" ? state.gapLapSampleAhead : state.gapLapSampleBehind;
+  // ── Breakaway: a small gap being opened hard, once per episode. ──
+  const breakawayAnnounced = side === "ahead" ? state.gapBreakawayAnnouncedAhead : state.gapBreakawayAnnouncedBehind;
 
-  setLapSample(state, side, live.gapSeconds);
-
-  if (seeding || prevSample === null) {
-    setPrevLapDirection(state, side, null);
-
-    return;
-  }
-
-  const delta = live.gapSeconds - prevSample;
-  const direction = classifyGapTrend(delta, GAP_CALLOUT_TREND_DEADBAND_S);
-  const prevDirection = side === "ahead" ? state.gapPrevLapDirectionAhead : state.gapPrevLapDirectionBehind;
-  const announced = side === "ahead" ? state.gapAnnouncedDirectionAhead : state.gapAnnouncedDirectionBehind;
-  // A strong single-lap swing (≥ GAP_TREND_STRONG_DELTA_S) announces without
-  // the 2-lap confirmation; gentle trends still need two consecutive laps.
-  const confirmed = Math.abs(delta) >= GAP_TREND_STRONG_DELTA_S || direction === prevDirection;
-
-  if ((direction === "closing" || direction === "opening") && confirmed && direction !== announced) {
+  if (breakawayAnnounced && gap <= GAP_BREAKAWAY_REARM_GAP_S && ema < GAP_BREAKAWAY_MIN_RATE_S_PER_LAP) {
+    // Back into battle range with the breakaway over — a later one is news
+    // again. The rate condition keeps a just-announced episode latched while
+    // the gap is still small and still opening.
+    if (side === "ahead") state.gapBreakawayAnnouncedAhead = false;
+    else state.gapBreakawayAnnouncedBehind = false;
+  } else if (!breakawayAnnounced && ema >= GAP_BREAKAWAY_MIN_RATE_S_PER_LAP && gap <= GAP_BREAKAWAY_MAX_GAP_S) {
     emit({
       event: "gap.trendChanged",
-      data: {
-        side,
-        direction,
-        gapSeconds: live.gapSeconds,
-        previousGapSeconds: prevSample,
-        carIdx: idx,
-        lap: lapCompleted,
-      },
+      data: { side, direction: "opening", gapSeconds: gap, ratePerLap: ema, carIdx: idx },
     });
 
-    if (side === "ahead") state.gapAnnouncedDirectionAhead = direction;
-    else state.gapAnnouncedDirectionBehind = direction;
+    if (side === "ahead") state.gapBreakawayAnnouncedAhead = true;
+    else state.gapBreakawayAnnouncedBehind = true;
   }
-
-  setPrevLapDirection(state, side, direction);
 }
 
 /** Arm/fire one side's threshold episode against the live gap. */
@@ -515,14 +537,4 @@ function processThresholdEpisode(
     if (side === "ahead") state.gapThresholdArmedAhead = false;
     else state.gapThresholdArmedBehind = false;
   }
-}
-
-function setLapSample(state: TranslatorState, side: Side, value: number | null): void {
-  if (side === "ahead") state.gapLapSampleAhead = value;
-  else state.gapLapSampleBehind = value;
-}
-
-function setPrevLapDirection(state: TranslatorState, side: Side, value: GapTrendDirection | null): void {
-  if (side === "ahead") state.gapPrevLapDirectionAhead = value;
-  else state.gapPrevLapDirectionBehind = value;
 }

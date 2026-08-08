@@ -508,15 +508,23 @@ export type TranslatorState = {
   gapRateSamplesBehind: number;
   /** Player progress at the last recorded checkpoint (−1 before seeding). */
   gapLastCheckpointProgress: number;
-  /** Lap-over-lap callout samples: the gap at the player's previous lap completion. */
-  gapLapSampleAhead: number | null;
-  gapLapSampleBehind: number | null;
-  /** Direction of the previous lap's delta (per side), for the 2-lap confirmation. */
-  gapPrevLapDirectionAhead: GapTrendDirection | null;
-  gapPrevLapDirectionBehind: GapTrendDirection | null;
-  /** Last direction announced via gap.trendChanged (per side). */
-  gapAnnouncedDirectionAhead: GapTrendDirection | null;
-  gapAnnouncedDirectionBehind: GapTrendDirection | null;
+  /**
+   * Closing-threat announcement latch (issue #933): the laps-to-contact
+   * projection at the last `gap.trendChanged` "closing" emission for the
+   * side, or null when the episode is armed (nothing announced yet /
+   * re-armed after the threat receded). A new announcement fires when the
+   * projection first enters the horizon and again each time it roughly
+   * halves relative to this value.
+   */
+  gapContactAnnouncedLapsAhead: number | null;
+  gapContactAnnouncedLapsBehind: number | null;
+  /**
+   * Breakaway announcement latch (issue #933): true once the side's
+   * "opening" emission fired for the current episode; re-arms when the pair
+   * closes back into battle range.
+   */
+  gapBreakawayAnnouncedAhead: boolean;
+  gapBreakawayAnnouncedBehind: boolean;
   /**
    * Threshold episode armed flags — arm only after the gap has been observed
    * beyond threshold + hysteresis, so a nose-to-tail race start can't fire a
@@ -524,8 +532,6 @@ export type TranslatorState = {
    */
   gapThresholdArmedAhead: boolean;
   gapThresholdArmedBehind: boolean;
-  /** Player `LapCompleted` at the last lap-sample capture (−1 before seeding). */
-  gapLastLapCompleted: number;
 
   // ── Self-managed running order (issue #603) ─────────────────────────────
   /**
@@ -841,15 +847,12 @@ export function createInitialState(): TranslatorState {
     gapRateSamplesAhead: 0,
     gapRateSamplesBehind: 0,
     gapLastCheckpointProgress: -1,
-    gapLapSampleAhead: null,
-    gapLapSampleBehind: null,
-    gapPrevLapDirectionAhead: null,
-    gapPrevLapDirectionBehind: null,
-    gapAnnouncedDirectionAhead: null,
-    gapAnnouncedDirectionBehind: null,
+    gapContactAnnouncedLapsAhead: null,
+    gapContactAnnouncedLapsBehind: null,
+    gapBreakawayAnnouncedAhead: false,
+    gapBreakawayAnnouncedBehind: false,
     gapThresholdArmedAhead: false,
     gapThresholdArmedBehind: false,
-    gapLastLapCompleted: -1,
 
     positionLastKnownScores: [],
     positionFrozen: new Set(),

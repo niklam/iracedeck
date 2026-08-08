@@ -187,14 +187,14 @@ export const EVENT_TEMPLATES = [
   },
   {
     name: "gap.trendChanged",
-    description: "Gap trend to a standings neighbor flipped and held 2 laps (issue #933)",
+    description: "Relevant gap development — a contact projection entered the horizon, or a breakaway (issue #933)",
     data: {
       side: "ahead",
       direction: "closing",
       gapSeconds: 1.8,
-      previousGapSeconds: 2.4,
+      ratePerLap: -0.8,
+      lapsToContact: 2.3,
       carIdx: 3,
-      lap: 7,
     },
   },
   {

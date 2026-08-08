@@ -57,7 +57,7 @@ function trendEvent(side: "ahead" | "behind", direction: "closing" | "opening"):
     event: "gap.trendChanged",
     timestamp: 0,
     telemetry: {},
-    data: { side, direction, gapSeconds: 1.8, previousGapSeconds: 2.4, carIdx: 3, lap: 7 },
+    data: { side, direction, gapSeconds: 1.8, ratePerLap: direction === "closing" ? -0.8 : 0.8, carIdx: 3 },
   };
 }
 

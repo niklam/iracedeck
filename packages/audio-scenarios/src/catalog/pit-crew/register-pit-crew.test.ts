@@ -1460,9 +1460,9 @@ describe("gap callouts fire end-to-end (issue #933)", () => {
       side: "ahead",
       direction: "closing",
       gapSeconds: 1.8,
-      previousGapSeconds: 2.4,
+      ratePerLap: -0.8,
+      lapsToContact: 2.3,
       carIdx: 3,
-      lap: 7,
     });
     flush(audio);
 
@@ -1486,9 +1486,8 @@ describe("gap callouts fire end-to-end (issue #933)", () => {
       side: "behind",
       direction: "opening",
       gapSeconds: 7.0,
-      previousGapSeconds: 3.0,
+      ratePerLap: 1.6,
       carIdx: 5,
-      lap: 8,
     });
     flush(audio);
     bus.publishEvent("gap.thresholdCrossed", { side: "ahead", gapSeconds: 0.9, thresholdSeconds: 1.0, carIdx: 3 });
@@ -1506,9 +1505,8 @@ describe("gap callouts fire end-to-end (issue #933)", () => {
       side: "ahead",
       direction: "opening",
       gapSeconds: 3.0,
-      previousGapSeconds: 2.0,
+      ratePerLap: 1.0,
       carIdx: 3,
-      lap: 9,
     });
     flush(audio);
 

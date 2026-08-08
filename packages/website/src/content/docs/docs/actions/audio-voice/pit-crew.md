@@ -245,9 +245,10 @@ In multi-class series the engineer reads your class position, not the overall �
 
 ## Gap callouts (car ahead / car behind)
 
-In race sessions the Race Engineer watches the time gaps to the cars one position ahead and behind you in your **class** standings — the same crossing-time measurement as Session Info's [Gaps display](/docs/actions/display-session/session-info/#gaps) — and speaks up on two kinds of change:
+In race sessions the Race Engineer watches the time gaps to the cars one position ahead and behind you in your **class** standings — the same crossing-time measurement as Session Info's [Gaps display](/docs/actions/display-session/session-info/#gaps). What he says is decided by **relevance**, not by raw change: the question he keeps asking is *will this development actually reach us, and how soon?* Everything is evaluated continuously from a smoothed gap rate — mid-lap, with no waiting for the start/finish line.
 
-- **Trend flip** — the lap-over-lap direction changed: *"We're gaining on the car ahead."*, *"The car ahead is pulling away from us."*, *"The car behind is closing in on us."*, *"We're pulling away from the car behind."* A strong move (1.5 s or more in a single lap) is announced at the very next start/finish crossing; a gentle trend needs two consecutive laps in the same direction, so a brief one-lap wobble (under two tenths per lap) never triggers it.
+- **Closing in (either side)** — with a sustained closing rate, the engineer projects when contact would happen (the gap divided by how fast it's shrinking). The first call comes when that projection drops inside roughly **8 laps**, and never for a catch that would only complete after the race ends — someone eating 2 seconds a lap out of a 30-second gap with 5 laps to go stays unmentioned. A rival steadily grinding down a 10-second gap does get called: *"The car behind is closing in on us."* / *"We're gaining on the car ahead."* As the situation develops, he follows up roughly each time the projected laps-to-contact halve, so the calls naturally get more frequent as it gets serious. Once the threat fades (they stop closing), the episode resets.
+- **Breaking away** — escaping a battle is announced once, as it happens: a small gap (up to ~10 seconds) being opened hard (half a second per lap or more) fires *"We're pulling away from the car behind."* / *"The car ahead is pulling away from us."* the moment the rate is established — on lap one if that's when it happens. Stretching an already broken gap is never news: opening 30 seconds into 36 says nothing. A new breakaway is only announced again after the pair has first closed back into battle range (under ~5 seconds).
 - **Threshold crossing** — a gap first drops under your alert threshold (0.5–3 s, default 1.0 s): *"We've caught the car ahead."* / *"The car behind is right with us."* Each crossing announces once; it re-arms only after the gap has opened about half a second beyond the threshold again, so a nose-to-tail battle doesn't repeat the alert every corner.
 
 When the live gap is under a minute, the engineer follows the line with the number — *"Gap is one point five seconds."* — read at the moment it's spoken, not at the moment the event fired.
@@ -388,7 +389,7 @@ Each direction is independent — drivers who want the congratulations but not t
 
 Under **Gaps**, two callouts are toggleable, both enabled by default (see [Gap callouts](#gap-callouts-car-ahead--car-behind) above for the full behavior):
 
-- **Gap trend (gaining/losing)** (`calloutEnabledGapTrend`) — the sustained lap-over-lap trend flip announcements against the class-standings neighbors.
+- **Gap trend (gaining/losing)** (`calloutEnabledGapTrend`) — the closing-in projections and breakaway announcements against the class-standings neighbors.
 - **Gap under threshold** (`calloutEnabledGapThreshold`) — the once-per-episode alert when a gap first drops under the configurable threshold.
 - **Gap alert threshold (s)** (`gapAlertThresholdSeconds`, 0.5–3, default 1.0) — the crossing point for the threshold alert. Read live.
 - **Gap callout cooldown (s)** (`gapCalloutCooldownSeconds`, 1–360, default 30) — minimum quiet time between any two gap callouts. Read live.

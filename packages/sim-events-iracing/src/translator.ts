@@ -1549,9 +1549,33 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     frozenPositions,
   );
   // Gap tracking (issue #933): crossing-time traces + class-neighbor live
-  // gaps + trend/threshold callout events. Consumes the same canonical
+  // gaps + relevance/threshold callout events. Consumes the same canonical
   // frozen order as diffOvertakes; the pace car is excluded explicitly
-  // because the canonical order carries no pace-car filter of its own.
+  // because the canonical order carries no pace-car filter of its own. The
+  // laps-remaining estimate caps the closing-announcement horizon (a catch
+  // that completes after the checkered is never announced): lap-limited
+  // races read the counter, time-limited races divide the clock by the
+  // leader's lap time (the #880 fuel-coverage resolver).
+  let gapLapsRemaining: number | null = null;
+
+  if (
+    typeof telemetry.SessionLapsRemainEx === "number" &&
+    telemetry.SessionLapsRemainEx > 0 &&
+    telemetry.SessionLapsRemainEx < IRSDK_UNLIMITED_LAPS
+  ) {
+    gapLapsRemaining = telemetry.SessionLapsRemainEx;
+  } else if (
+    typeof telemetry.SessionTimeRemain === "number" &&
+    telemetry.SessionTimeRemain > 0 &&
+    telemetry.SessionTimeRemain < 604800 // iRacing's 7-day "unlimited" sentinel
+  ) {
+    const leaderLapTimeS = resolveLeaderLapTimeS(telemetry, frozenPositions);
+
+    if (leaderLapTimeS !== null && leaderLapTimeS > 0) {
+      gapLapsRemaining = telemetry.SessionTimeRemain / leaderLapTimeS;
+    }
+  }
+
   diffGaps(
     self.state,
     telemetry,
@@ -1561,6 +1585,7 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     frozenPositions,
     self.getGapAlertThresholdSeconds,
     emit,
+    gapLapsRemaining,
   );
   // Pit-box count-in (issue #600). Reuses the cached `trackLengthMeters` to
   // convert the LapDistPct→box gap into meters; the box itself comes from
