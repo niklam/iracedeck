@@ -1,9 +1,9 @@
 ---
 title: Session Info
-description: Display live session information — incidents, time, laps, position, estimated iRating gain/loss, fuel, laps to empty, flags, and track wetness.
+description: Display live session information — incidents, time, laps, position, estimated iRating gain/loss, gaps to the cars ahead/behind, fuel, laps to empty, flags, and track wetness.
 sidebar:
   badge:
-    text: "9 modes"
+    text: "10 modes"
     variant: tip
 ---
 
@@ -106,6 +106,33 @@ The same estimate is available as [template variables](/docs/features/template-v
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** Yes — the value updates live as positions change, green for a gain and red for a loss
+
+#### Setting: Font Size
+
+Size of the rendered value, in PI units (5–36, doubled for SVG render). Defaults to `14`.
+
+---
+
+### Gaps
+
+Show the live time gap to the car one position ahead and one position behind you in your **class** standings — the cars you're actually racing for position (e.g. P6 and P8 when you're P7). The gap is measured as a true crossing-time difference: how long after the other car you reach the same point on track, accurate to about a tenth of a second. Each row is color coded by **trend**, compared against the same track position one lap earlier so track shape doesn't fake a trend: green when the gap is moving your way (the car ahead coming closer, the car behind dropping back), red when it's moving against you, and the normal text color while it's steady.
+
+An upward triangle marks the gap ahead and a downward triangle the gap behind. When the neighbor is a full lap or more away the row shows a lap count (e.g. `1L`) instead of a time. Race sessions only — in practice and qualifying, before the green flag, and on the first lap (while the measurement warms up) the rows show `–`. If you lead your class or run last in it, the empty side shows `–` too.
+
+The same measurement drives the Race Engineer's [gap callouts](/docs/actions/audio-voice/pit-crew/#gap-callouts-car-ahead--car-behind).
+
+#### Details
+
+- **Dial:** No rotation support
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** Yes — both gaps and their trend colors update continuously
+
+#### Setting: Show
+
+Which rows the key shows. Both default to **On**; with a single row enabled the value renders larger.
+
+- **Gap ahead** — the car one class position up the standings
+- **Gap behind** — the car one class position down the standings
 
 #### Setting: Font Size
 
