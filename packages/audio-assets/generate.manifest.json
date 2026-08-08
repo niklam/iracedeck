@@ -11738,12 +11738,12 @@
       "requestId": "Kas6rBSTHfDtRR4a1meZ"
     },
     "voice/default/opponent-pit/car-in-01.mp3": {
-      "hash": "bb5f9703bb3256f2",
+      "hash": "a5aaed1cbf460149",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "The car in",
-      "generatedAt": "2026-08-08T06:35:05.203Z",
-      "requestId": "VZjrOZQ1TYyQ6IqSIV3x"
+      "generatedAt": "2026-08-08T06:50:53.588Z",
+      "requestId": "5Q3Sdh4d6DECOXFoYBRK"
     },
     "voice/default/opponent-pit/is-pitting-01.mp3": {
       "hash": "1c11fd57903cd12c",
