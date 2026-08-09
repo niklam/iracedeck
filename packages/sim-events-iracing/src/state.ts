@@ -642,6 +642,29 @@ export type TranslatorState = {
   /** Whether the aggregate tail already fired for the current episode. */
   opponentPitAggregateAnnounced: boolean;
 
+  // ── Opponent penalty flags (issue #936) ───────────────────────────────
+  /** First tick seeds the per-car penalty-bit store silently. */
+  opponentFlagsInitialized: boolean;
+  /**
+   * Masked penalty bits (`PENALTY_FLAG_MASK`) per carIdx as of the last
+   * tick — the flag-state STORE `getLiveOpponentFlags()` reads (truth), and
+   * the edge baseline the qualifier diffs against (policy). Advances every
+   * tick even when the callout gates are closed.
+   */
+  opponentFlagBits: number[];
+  /** Epoch ms the car's Furled bit rose; 0 while down. Debounces flicker (#669). */
+  opponentFlagFurledSinceAt: number[];
+  /** Penalty bits already announced for the current episode, per car. Cleared per bit as the bit drops. */
+  opponentFlagAnnouncedMask: number[];
+  /** Per-car, per-flag re-announce cooldown deadlines (epoch ms) — per-flag so an escalation (black → DQ) is never suppressed. */
+  opponentFlagCooldownUntil: { furled: number[]; black: number[]; repair: number[]; disqualify: number[] };
+  /** Whether the car was inside the qualification window last tick (trigger classification + hysteresis). */
+  opponentFlagInWindow: boolean[];
+  /** Timestamps of announced entries inside the rolling aggregation window (the #622 burst shape). */
+  opponentFlagRecentEntries: number[];
+  /** Whether the aggregate tail already fired for the current episode. */
+  opponentFlagAggregateAnnounced: boolean;
+
   // ── Radar ─────────────────────────────────────────────────────────────
   radarState: RadarState;
 
@@ -919,6 +942,15 @@ export function createInitialState(): TranslatorState {
     opponentPitCarCooldownUntil: [],
     opponentPitRecentEntries: [],
     opponentPitAggregateAnnounced: false,
+
+    opponentFlagsInitialized: false,
+    opponentFlagBits: [],
+    opponentFlagFurledSinceAt: [],
+    opponentFlagAnnouncedMask: [],
+    opponentFlagCooldownUntil: { furled: [], black: [], repair: [], disqualify: [] },
+    opponentFlagInWindow: [],
+    opponentFlagRecentEntries: [],
+    opponentFlagAggregateAnnounced: false,
 
     radarState: "clear",
 

@@ -26,11 +26,12 @@ import type {
   SimEventMap,
   SimEventName,
 } from "@iracedeck/event-bus";
-import { TrackWetness } from "@iracedeck/event-bus";
+import { OpponentPenaltyFlag, TrackWetness } from "@iracedeck/event-bus";
 import {
   CarLeftRight,
   classPositionFromOrder,
   crossingTimeAt,
+  decodePenaltyFlags,
   IRSDK_UNLIMITED_LAPS,
   IRSDK_UNLIMITED_TIME,
   isPostRace,
@@ -64,6 +65,7 @@ import { diffIncidents } from "./diff/incidents.js";
 import { diffLaps } from "./diff/laps.js";
 import { diffLifecycle } from "./diff/lifecycle.js";
 import { diffLimiter } from "./diff/limiter.js";
+import { diffOpponentFlags } from "./diff/opponent-flags.js";
 import { diffOpponentPit } from "./diff/opponent-pit.js";
 import { diffOvertakes } from "./diff/overtakes.js";
 import { diffPaceLaps, resolvePaceCarIdx } from "./diff/pace-laps.js";
@@ -872,6 +874,42 @@ export function getLiveGaps(): LiveGaps | null {
   return { ahead: instance.state.gapLiveAhead, behind: instance.state.gapLiveBehind };
 }
 
+/** One car currently showing a penalty flag (issue #936). */
+export type LiveOpponentFlagCar = { carIdx: number; flags: OpponentPenaltyFlag[] };
+
+/** Live opponent penalty-flag snapshot (issue #936). */
+export type LiveOpponentFlags = { cars: LiveOpponentFlagCar[] };
+
+/**
+ * Cars currently showing any penalty flag (issue #936) — the reusable
+ * flag-data seam. Raw decoded truth from the store (no debounce/episodes —
+ * announcement policy stays private to the diff). `null` before the store's
+ * first tick. Consumers read this; never re-derive from `CarIdxSessionFlags`.
+ */
+export function getLiveOpponentFlags(): LiveOpponentFlags | null {
+  if (!instance || !instance.state.opponentFlagsInitialized) return null;
+
+  const bits = instance.state.opponentFlagBits;
+  const cars: LiveOpponentFlagCar[] = [];
+
+  for (let i = 0; i < bits.length; i++) {
+    const d = decodePenaltyFlags(bits[i]);
+    const flags: OpponentPenaltyFlag[] = [];
+
+    if (d.furled) flags.push(OpponentPenaltyFlag.Furled);
+
+    if (d.black) flags.push(OpponentPenaltyFlag.Black);
+
+    if (d.repair) flags.push(OpponentPenaltyFlag.Repair);
+
+    if (d.disqualify) flags.push(OpponentPenaltyFlag.Disqualify);
+
+    if (flags.length > 0) cars.push({ carIdx: i, flags });
+  }
+
+  return { cars };
+}
+
 /**
  * Crossing-time gap in seconds between any two cars (issue #933): how long
  * ago `aheadCarIdx` crossed `behindCarIdx`'s current track position. The
@@ -1619,6 +1657,26 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     isPostRace(telemetry),
     resolveIsMultiClass(sessionInfo) === true,
     frozenPositions,
+    now,
+    emit,
+  );
+
+  // Opponent penalty flags (issue #936) — the store advance runs every tick
+  // (Task 4); trigger classification, gating, and emission land in Tasks
+  // 5–6 on top of this call. Consumes the same canonical frozen order and
+  // track length as the diffs above.
+  diffOpponentFlags(
+    self.state,
+    telemetry,
+    playerCarIdx,
+    resolvePaceCarIdx(sessionInfo),
+    isRaceSession,
+    replayOnlySession,
+    isPreGreen(telemetry),
+    isPostRace(telemetry),
+    resolveIsMultiClass(sessionInfo) === true,
+    frozenPositions,
+    trackLengthMeters,
     now,
     emit,
   );

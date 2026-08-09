@@ -859,6 +859,9 @@ importers:
         specifier: workspace:*
         version: link:../track-data
     devDependencies:
+      '@iracedeck/iracing-native':
+        specifier: workspace:*
+        version: link:../iracing-native
       '@tsconfig/node22':
         specifier: 22.0.5
         version: 22.0.5
