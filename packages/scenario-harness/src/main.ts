@@ -160,6 +160,8 @@ async function main(): Promise<void> {
     undefined, // getFuelCalloutEnabled
     undefined, // getCornerNameCalloutEnabled (issue #888)
     () => lastCornerName, // getCornerNameSnapshot (issue #888)
+    undefined, // getOpponentPitCalloutEnabled (issue #622)
+    undefined, // getOpponentPitLivePosition (issue #622) — payload position via the pending stash
     undefined, // getGapCalloutEnabled (issue #933)
     undefined, // getGapCooldownMs (issue #933)
     // The harness boots the REAL translator, so its live gaps are the real

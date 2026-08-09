@@ -655,7 +655,8 @@ export interface TelemetryData {
   SteeringWheelPctTorque?: number;
   SteeringWheelPctDamper?: number;
 
-  // Car Index Arrays (64 cars)
+  // Car Index Arrays (one entry per car — sessions can exceed the historical
+  // 64-car bound; always use the actual array length, never a hardcoded 64)
   CarIdxLap?: number[];
   CarIdxLapCompleted?: number[];
   CarIdxLapDistPct?: number[];

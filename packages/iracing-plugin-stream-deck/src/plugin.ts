@@ -19,6 +19,9 @@ import {
   LAP_TIME_CALLOUT_SETTING_KEYS,
   type LapCompletedSnapshot,
   type LapTimeCalloutId,
+  OPPONENT_PIT_CALLOUT_SETTING_KEYS,
+  type OpponentPitCalloutId,
+  type OpponentPitPending,
   OVERTAKE_CALLOUT_SETTING_KEYS,
   type OvertakeCalloutId,
   type OvertakeGate,
@@ -169,6 +172,7 @@ import { IRacingNative } from "@iracedeck/iracing-native";
 import { createSvgRasterizer } from "@iracedeck/rasterizer";
 import {
   getDriverSetupName,
+  getLiveCarPosition,
   getLiveGaps,
   getLivePosition,
   getLiveRacePositions,
@@ -615,6 +619,23 @@ registerPitCrew(
     (getGlobalSettings() as Record<string, unknown>)[CORNER_NAME_CALLOUT_SETTING_KEYS[id]] !== false,
   // Corner-name snapshot resolver (issue #888) — the cache populated above.
   () => lastCornerName,
+  // Opponent-pit callout opt-ins (issue #622). Live-read, two subjects.
+  (id: OpponentPitCalloutId) =>
+    (getGlobalSettings() as Record<string, unknown>)[OPPONENT_PIT_CALLOUT_SETTING_KEYS[id]] !== false,
+  // Opponent-pit live position resolver (issue #622) — the pitting car's
+  // canonical position at speak time, read in the projection the event was
+  // classified in (the pending stash's isMultiClass, so a transient
+  // session-info dropout can't flip a multi-class read to overall space).
+  // A null return falls back to the emit-time payload position.
+  (pending: OpponentPitPending): number | null => {
+    const live = getLiveCarPosition(pending.carIdx);
+
+    if (!live) return null;
+
+    const n = pending.isMultiClass ? live.classPosition : live.position;
+
+    return n > 0 ? n : null;
+  },
   // Gap callout opt-ins (issue #933). Per-type live-read — same gate-at-
   // event-arrival pattern as the other callout families.
   (id: GapCalloutId) => (getGlobalSettings() as Record<string, unknown>)[GAP_CALLOUT_SETTING_KEYS[id]] !== false,

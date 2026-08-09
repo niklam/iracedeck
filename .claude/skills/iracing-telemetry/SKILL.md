@@ -44,8 +44,10 @@ Templates also support `{{= expression }}` evaluation (arithmetic, comparisons, 
 | Length | Meaning | TypeScript Type |
 |--------|---------|-----------------|
 | 1 | Scalar value | `number` or `boolean` |
-| 64 | Per-car array (indexed by car index) | `number[]` or `boolean[]` |
+| 64 | Per-car array (indexed by car index) — see the caveat below | `number[]` or `boolean[]` |
 | 6 | High-frequency 360Hz samples (`countAsTime: true`) | `number[]` |
+
+**Per-car array length caveat:** the `64` in the reference JSON is the historical `IRSDK_MAX_CARS` bound from an old snapshot — modern iRacing sessions can exceed 64 cars, and the live var headers size per-car arrays to the actual field. Never hardcode 64 (allocation, loop bounds, validation): iterate the actual array length at runtime. The vendored `telemetry-vars.json` still says `length: 64`; treat that value as "per-car array", not as a count.
 
 ## Variable Categories
 

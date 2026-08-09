@@ -404,6 +404,18 @@ export const GlobalSettingsSchema = z
       .union([z.boolean(), z.string()])
       .transform((val) => val === true || val === "true")
       .default(true),
+    // Opponent-pit callout opt-ins (issue #622). Two subjects — the race
+    // leader entering the pits, and same-lap competitors within ±2 effective
+    // positions (class space in multi-class, incl. the aggregate tail).
+    // Canonical id↔key mapping in `OPPONENT_PIT_CALLOUT_SETTING_KEYS`.
+    calloutEnabledOpponentPitLeader: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledOpponentPitNearby: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
     /**
      * Damage callout opt-in (issue #489). Fires after the rising-edge
      * debounce on `EngineWarnings & (MandRepNeeded | OptRepNeeded)`. Same

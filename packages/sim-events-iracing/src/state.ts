@@ -622,6 +622,26 @@ export type TranslatorState = {
    */
   positionJustReleased: Set<number>;
 
+  // ── Opponent pit entries (issue #622) ─────────────────────────────────
+  /** First eligible tick seeds the per-car surface baseline silently. */
+  opponentPitInitialized: boolean;
+  /** Previous-tick `CarIdxTrackSurface` per carIdx. */
+  opponentPitLastSurface: number[];
+  /**
+   * Per-car re-announce cooldown deadlines (epoch ms), indexed by carIdx —
+   * a car crawling back and forth across the approach-zone boundary can't
+   * re-announce (the #650 `<x>CooldownUntil` pattern, per car).
+   */
+  opponentPitCarCooldownUntil: number[];
+  /**
+   * Timestamps (epoch ms) of eligible pit entries inside the rolling
+   * aggregation window (the incident-burst shape). Pruned every tick; 12 s
+   * of quiet ends the episode.
+   */
+  opponentPitRecentEntries: number[];
+  /** Whether the aggregate tail already fired for the current episode. */
+  opponentPitAggregateAnnounced: boolean;
+
   // ── Radar ─────────────────────────────────────────────────────────────
   radarState: RadarState;
 
@@ -893,6 +913,12 @@ export function createInitialState(): TranslatorState {
     lastFrozenPositions: [],
     positionPrevScore: [],
     positionJustReleased: new Set(),
+
+    opponentPitInitialized: false,
+    opponentPitLastSurface: [],
+    opponentPitCarCooldownUntil: [],
+    opponentPitRecentEntries: [],
+    opponentPitAggregateAnnounced: false,
 
     radarState: "clear",
 

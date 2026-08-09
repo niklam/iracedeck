@@ -11665,6 +11665,110 @@
       "generatedAt": "2026-08-05T13:03:11.040Z",
       "requestId": "b0I2pz2ZUdWMVNvMINQa"
     },
+    "voice/default/opponent-pit/leader-01.mp3": {
+      "hash": "a78966fae44f4868",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "The leader is pitting.",
+      "generatedAt": "2026-08-08T06:35:03.506Z",
+      "requestId": "jcCbu4X6JanaxHF63nup"
+    },
+    "voice/default/opponent-pit/leader-02.mp3": {
+      "hash": "42bfa337e529c004",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Leader's coming in.",
+      "generatedAt": "2026-08-08T06:35:03.664Z",
+      "requestId": "qIguK6ikFtHWFfc0Xs9X"
+    },
+    "voice/default/opponent-pit/leader-03.mp3": {
+      "hash": "6388cb915e54bdf2",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Heads up. <break time=\"0.3s\" /> The leader is pitting.",
+      "generatedAt": "2026-08-08T06:35:03.913Z",
+      "requestId": "2DNVkJmvcqVe8d04v0jj"
+    },
+    "voice/default/opponent-pit/ahead-01.mp3": {
+      "hash": "d40464265ba04683",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "The car ahead is pitting.",
+      "generatedAt": "2026-08-08T06:35:04.059Z",
+      "requestId": "PNr1gVbLDCanaa2dujBL"
+    },
+    "voice/default/opponent-pit/ahead-02.mp3": {
+      "hash": "6a0442a71b88bd6b",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Car ahead's coming into the pits.",
+      "generatedAt": "2026-08-08T06:35:04.299Z",
+      "requestId": "vdDegESAeQtDxpP0Zxow"
+    },
+    "voice/default/opponent-pit/ahead-03.mp3": {
+      "hash": "f3f985b6a7de4d9d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "The car ahead is peeling in.",
+      "generatedAt": "2026-08-08T06:35:04.443Z",
+      "requestId": "koYPRYbtdRsMGGnAR4qi"
+    },
+    "voice/default/opponent-pit/behind-01.mp3": {
+      "hash": "b98ef3059e9e46f1",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "The car behind is pitting.",
+      "generatedAt": "2026-08-08T06:35:04.600Z",
+      "requestId": "2uZaYUK2ljH7awoJzwGu"
+    },
+    "voice/default/opponent-pit/behind-02.mp3": {
+      "hash": "e278397497ba2022",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Car behind's coming into the pits.",
+      "generatedAt": "2026-08-08T06:35:04.817Z",
+      "requestId": "WIVNlCc1wEIN7iRNlgix"
+    },
+    "voice/default/opponent-pit/behind-03.mp3": {
+      "hash": "6b9382d4894f6e8f",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "The car behind is heading for the pits.",
+      "generatedAt": "2026-08-08T06:35:05.063Z",
+      "requestId": "Kas6rBSTHfDtRR4a1meZ"
+    },
+    "voice/default/opponent-pit/car-in-01.mp3": {
+      "hash": "a5aaed1cbf460149",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "The car in",
+      "generatedAt": "2026-08-08T06:50:53.588Z",
+      "requestId": "5Q3Sdh4d6DECOXFoYBRK"
+    },
+    "voice/default/opponent-pit/is-pitting-01.mp3": {
+      "hash": "1c11fd57903cd12c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "is pitting.",
+      "generatedAt": "2026-08-08T06:35:05.358Z",
+      "requestId": "5KBmxtoK2G2KX2MqAph5"
+    },
+    "voice/default/opponent-pit/others-01.mp3": {
+      "hash": "08060d3856b129e0",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "And it seems there are other cars pitting as well.",
+      "generatedAt": "2026-08-08T06:35:05.578Z",
+      "requestId": "EC131aAcOUIOACb9dr2B"
+    },
+    "voice/default/opponent-pit/others-02.mp3": {
+      "hash": "500b6e208e307b43",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Looks like more cars are coming in too.",
+      "generatedAt": "2026-08-08T06:35:05.813Z",
+      "requestId": "wfrTgoDSKxACe4Epo3Ql"
+    },
     "voice/default/gap/ahead-closing-01.mp3": {
       "hash": "4c633e19563e9b34",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",

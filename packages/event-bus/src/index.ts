@@ -12,6 +12,7 @@ export type {
   FlagScope,
   GapSide,
   IncidentType,
+  OpponentPitRelation,
   PitBoxMark,
   PitReadbackSnapshot,
   PitServiceKind,

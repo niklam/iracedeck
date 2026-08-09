@@ -438,6 +438,8 @@ describe("START_LIGHT_ALERTS opt-in gating (issue #480)", () => {
       undefined, // getFuelCalloutEnabled (issue #838)
       undefined, // getCornerNameCalloutEnabled (issue #888)
       undefined, // getCornerNameSnapshot (issue #888)
+      undefined, // getOpponentPitCalloutEnabled (issue #622)
+      undefined, // getOpponentPitLivePosition (issue #622)
       undefined, // getGapCalloutEnabled (issue #933)
       undefined, // getGapCooldownMs (issue #933)
       undefined, // getLiveGaps (issue #933)

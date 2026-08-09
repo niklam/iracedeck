@@ -102,6 +102,16 @@ export const POOL_REGISTRY: Readonly<Record<string, PoolSource>> = {
   "pit-window-opened": { group: "pit-window", base: "opened" },
   "pit-window-closed": { group: "pit-window", base: "closed" },
 
+  // Opponent-pit callout pools (issue #622): other drivers entering the pits.
+  // `car-in` / `is-pitting` are the splice intro/tail around the shared
+  // position-number clip ("The car in, P4, is pitting.").
+  "opponent-pit-leader": { group: "opponent-pit", base: "leader" },
+  "opponent-pit-ahead": { group: "opponent-pit", base: "ahead" },
+  "opponent-pit-behind": { group: "opponent-pit", base: "behind" },
+  "opponent-pit-car-in": { group: "opponent-pit", base: "car-in" },
+  "opponent-pit-is-pitting": { group: "opponent-pit", base: "is-pitting" },
+  "opponent-pit-others": { group: "opponent-pit", base: "others" },
+
   // Laps-of-fuel-left callout pools (issue #838): one per spoken count
   // 10 → 1 plus the dedicated count-0 "box this lap for fuel" call, and the
   // enough-fuel reassurance (issue #880).

@@ -243,6 +243,15 @@ A 10 m physical-gap check on top of the three-second sustainment also filters th
 
 In multi-class series the engineer reads your class position, not the overall — including the leader line: taking your **class** lead plays *"Nice pass! We're now leading our class. Let's keep it that way!"* (the overall-leader wording is reserved for single-class races). The gain and loss callouts have independent opt-outs in the Property Inspector — disable one without affecting the other.
 
+## Opponent pit entries (races)
+
+Knowing who is diving into the pits is strategically valuable: it tells you when track position is about to change, whether to stay out or react, and when the leader has handed you the lead. In **race sessions** the Race Engineer announces when the drivers that matter enter the pits — the race leader, and same-lap competitors within **two positions** of you. The wording follows the car's relation to you: *"The leader is pitting."*, *"The car ahead is pitting."*, *"The car behind is pitting."*, and for a car two positions away, *"The car in, P4, is pitting."* — the position number is read live at the moment the line is spoken, from the same live race order the position callouts use. In multi-class races everything is read in **your class**: only class rivals are announced, and "the leader" means your class leader.
+
+The trigger is the car **entering the pit-approach zone** (the same track-surface state your own approaching-pits callout uses), so the call lands as the car commits to pit entry — earlier than waiting for it to be on pit road. Cars three or more positions away, lapped cars, and cars far ahead (other than the leader) are never announced, and each car announces at most once per stop.
+
+On ovals, a full-course caution can send half the field down pit road at once — enumerating every car would be unbearable. When **three or more** eligible cars enter the pits within a short window, the engineer collapses the calls into a single *"And it seems there are other cars pitting as well."* after the first two individual announcements, then stays quiet until the rush is over. The leader is always announced individually, even during such a pit train (and ahead of same-moment pit entries).
+
+Nothing is announced in practice or qualifying, before the green flag, or while watching a replay. Two opt-ins live under **Race Engineer Callouts → Opponent Pits**, both enabled by default — see [the opt-in list below](#race-engineer-callouts-per-subject-opt-inout).
 ## Gap callouts (car ahead / car behind)
 
 In race sessions the Race Engineer watches the time gaps to the cars one position ahead and behind you in your **class** standings — the same crossing-time measurement as Session Info's [Gaps display](/docs/actions/display-session/session-info/#gaps). What he says is decided by **relevance**, not by raw change: the question he keeps asking is *will this development actually reach us, and how soon?* Everything is evaluated continuously from a smoothed gap rate — mid-lap, with no waiting for the start/finish line.
@@ -329,6 +338,11 @@ Under **Start Lights**, two callouts are toggleable independently, both enabled 
 - **Start countdown** — the four numeric marks (ninety / sixty / thirty / ten) spoken during the standing-start countdown window. Disabling silences the numbers without affecting the gantry lines.
 
 Disabling either does not affect the other. Both are moot on rolling starts, where the lead-in comes from the **One pace lap to go** / **Green held** flag callouts instead.
+
+Under **Opponent Pits**, two callouts are toggleable, both enabled by default (see [Opponent pit entries (races)](#opponent-pit-entries-races) above for the full behavior):
+
+- **Leader pitting** (`calloutEnabledOpponentPitLeader`) — the race/class leader entering the pits.
+- **Nearby competitor pitting** (`calloutEnabledOpponentPitNearby`) — same-lap cars within two positions of you (ahead / behind / numbered), including the aggregate "other cars pitting as well" call.
 
 Under **Pit Service**, three callouts are toggleable independently:
 
