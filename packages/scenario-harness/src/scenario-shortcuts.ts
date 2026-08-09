@@ -317,6 +317,14 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   flag("DQ — Scoring Invalid", "flag.dq-scoring-invalid.raised"),
   flag("Yellow Waving", "flag.yellow-waving.raised"),
   flag("Caution Waving", "flag.caution-waving.raised"),
+  {
+    id: "flag-white-leader",
+    category: "Flags",
+    label: "Leader's final lap",
+    description: 'The overall leader starts their final lap — "The leader is about to start their final lap."',
+    event: "flag.white-leader.raised",
+    data: {},
+  },
 
   // ── Start (issues #480 / #673) ──
   // Start-gantry lines + the per-number start countdown. The gantry lines carry
@@ -404,6 +412,118 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     label: "Several cars pitting",
     description: 'The aggregate tail — "And it seems there are other cars pitting as well."',
     event: "opponentPit.entered",
+    data: { relation: "others" },
+  },
+
+  // ── Opponent Flags (issue #936) ──
+  // `opponentFlag.flagged` directly — bypasses the diff's aggregation gating so
+  // each relation × flag line is auditionable on demand. The flags are: black,
+  // furled, meatball, disqualify. The relations are: ahead / behind / track-ahead
+  // for flags that matter to race strategy, plus "others" for aggregate. The
+  // trigger types are: raised (black/furled/meatball/disqualify), entered-range
+  // (track-ahead only). Similar payload style to opponent-pit.
+  {
+    id: "opponent-flag-ahead-black",
+    category: "Opponent Flags",
+    label: "P5 ahead: black flag",
+    description: 'Car ahead got black-flagged — "The car ahead has been black-flagged."',
+    event: "opponentFlag.flagged",
+    data: { relation: "ahead", carIdx: 7, flag: "black", trigger: "raised", position: 5 },
+  },
+  {
+    id: "opponent-flag-ahead-furled",
+    category: "Opponent Flags",
+    label: "P5 ahead: furled",
+    description: 'Car ahead got a furled warning — "The car ahead has a black flag warning."',
+    event: "opponentFlag.flagged",
+    data: { relation: "ahead", carIdx: 7, flag: "furled", trigger: "raised", position: 5 },
+  },
+  {
+    id: "opponent-flag-ahead-meatball",
+    category: "Opponent Flags",
+    label: "P5 ahead: meatball",
+    description: 'Car ahead got penalized pit-stop call — "The car ahead has been given a pit stop."',
+    event: "opponentFlag.flagged",
+    data: { relation: "ahead", carIdx: 7, flag: "meatball", trigger: "raised", position: 5 },
+  },
+  {
+    id: "opponent-flag-ahead-disqualify",
+    category: "Opponent Flags",
+    label: "P5 ahead: DQ",
+    description: 'Car ahead was disqualified — "The car ahead has been disqualified."',
+    event: "opponentFlag.flagged",
+    data: { relation: "ahead", carIdx: 7, flag: "disqualify", trigger: "raised", position: 5 },
+  },
+  {
+    id: "opponent-flag-behind-black",
+    category: "Opponent Flags",
+    label: "Behind: black flag",
+    description: 'Car behind got black-flagged — "The car behind has been black-flagged."',
+    event: "opponentFlag.flagged",
+    data: { relation: "behind", carIdx: 12, flag: "black", trigger: "raised" },
+  },
+  {
+    id: "opponent-flag-behind-furled",
+    category: "Opponent Flags",
+    label: "Behind: furled",
+    description: 'Car behind got a furled warning — "The car behind has a black flag warning."',
+    event: "opponentFlag.flagged",
+    data: { relation: "behind", carIdx: 12, flag: "furled", trigger: "raised" },
+  },
+  {
+    id: "opponent-flag-behind-meatball",
+    category: "Opponent Flags",
+    label: "Behind: meatball",
+    description: 'Car behind got penalized pit-stop call — "The car behind has been given a pit stop."',
+    event: "opponentFlag.flagged",
+    data: { relation: "behind", carIdx: 12, flag: "meatball", trigger: "raised" },
+  },
+  {
+    id: "opponent-flag-behind-disqualify",
+    category: "Opponent Flags",
+    label: "Behind: DQ",
+    description: 'Car behind was disqualified — "The car behind has been disqualified."',
+    event: "opponentFlag.flagged",
+    data: { relation: "behind", carIdx: 12, flag: "disqualify", trigger: "raised" },
+  },
+  {
+    id: "opponent-flag-track-ahead-black",
+    category: "Opponent Flags",
+    label: "Track ahead: black flag",
+    description: 'Car on track ahead has a black flag — "The car on track ahead has a black flag."',
+    event: "opponentFlag.flagged",
+    data: { relation: "track-ahead", carIdx: 13, flag: "black", trigger: "entered-range", gapSeconds: 8 },
+  },
+  {
+    id: "opponent-flag-track-ahead-furled",
+    category: "Opponent Flags",
+    label: "Track ahead: furled",
+    description: 'Car on track ahead has a furled warning — "The car on track ahead has a black flag warning."',
+    event: "opponentFlag.flagged",
+    data: { relation: "track-ahead", carIdx: 13, flag: "furled", trigger: "entered-range", gapSeconds: 8 },
+  },
+  {
+    id: "opponent-flag-track-ahead-meatball",
+    category: "Opponent Flags",
+    label: "Track ahead: meatball",
+    description: 'Car on track ahead got penalized pit-stop call — "The car on track ahead has a meatball."',
+    event: "opponentFlag.flagged",
+    data: { relation: "track-ahead", carIdx: 13, flag: "meatball", trigger: "entered-range", gapSeconds: 8 },
+  },
+  {
+    id: "opponent-flag-track-ahead-disqualify",
+    category: "Opponent Flags",
+    label: "Track ahead: DQ",
+    description: 'Car on track ahead was disqualified — "The car on track ahead has been disqualified."',
+    event: "opponentFlag.flagged",
+    data: { relation: "track-ahead", carIdx: 13, flag: "disqualify", trigger: "entered-range", gapSeconds: 8 },
+  },
+  {
+    id: "opponent-flag-others",
+    category: "Opponent Flags",
+    label: "Several cars flagged",
+    description: 'The aggregate tail — "And it seems there are other cars with flags as well."',
+    event: "opponentFlag.flagged",
     data: { relation: "others" },
   },
 
