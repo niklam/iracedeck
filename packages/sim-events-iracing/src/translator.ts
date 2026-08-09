@@ -885,7 +885,9 @@ export type LiveOpponentFlags = { cars: LiveOpponentFlagCar[] };
  * Cars currently showing any penalty flag (issue #936) — the reusable
  * flag-data seam. Raw decoded truth from the store (no debounce/episodes —
  * announcement policy stays private to the diff). `null` before the store's
- * first tick. Consumers read this; never re-derive from `CarIdxSessionFlags`.
+ * first tick. The snapshot includes the player's own car when it carries a
+ * penalty flag; consumers that want opponents only must filter by carIdx.
+ * Consumers read this; never re-derive from `CarIdxSessionFlags`.
  */
 export function getLiveOpponentFlags(): LiveOpponentFlags | null {
   if (!instance || !instance.state.opponentFlagsInitialized) return null;
