@@ -323,31 +323,33 @@ describe("diffGaps — live gaps", () => {
     expect(thresholdEvents(events)).toHaveLength(1);
   });
 
-  it("ignores a non-finite SessionTime instead of stamping NaN into every trace (issue #933 review)", () => {
+  it("ignores every non-finite SessionTime instead of stamping it into every trace (issue #933 review)", () => {
     const state = createInitialState();
     const { emit } = collect();
     const lapTime = 90;
 
     run(state, emit, { fromLap: 1, toLap: 2, aheadGapS: 2, behindGapS: 3 });
 
-    // `typeof NaN === "number"`, so a bare numeric check would accept this and
-    // stamp it into every car's trace at once.
+    // `typeof x === "number"` holds for all three, so a bare numeric check
+    // would accept them and stamp one into every car's trace at once.
     const p = 2.005;
     const base = tick(p * lapTime, [p, p + 2 / lapTime, p - 3 / lapTime]);
 
-    diffGaps(
-      state,
-      { ...base, SessionTime: Number.NaN } as unknown as TelemetryData,
-      true,
-      PLAYER,
-      null,
-      [2, 1, 3],
-      () => GAP_DEFAULT_ALERT_THRESHOLD_S,
-      emit,
-    );
+    for (const sessionTime of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+      diffGaps(
+        state,
+        { ...base, SessionTime: sessionTime } as unknown as TelemetryData,
+        true,
+        PLAYER,
+        null,
+        [2, 1, 3],
+        () => GAP_DEFAULT_ALERT_THRESHOLD_S,
+        emit,
+      );
 
-    for (const trace of state.gapTraces) {
-      if (trace) expect(trace.every((s) => Number.isFinite(s.time))).toBe(true);
+      for (const trace of state.gapTraces) {
+        if (trace) expect(trace.every((s) => Number.isFinite(s.time))).toBe(true);
+      }
     }
 
     run(state, emit, { fromLap: 2.01, toLap: 3, aheadGapS: 2, behindGapS: 3 });
