@@ -26,7 +26,10 @@ import {
   LAP_TIME_CALLOUT_SETTING_KEYS,
   type LapCompletedSnapshot,
   type LapTimeCalloutId,
+  OPPONENT_FLAG_CALLOUT_SETTING_KEYS,
   OPPONENT_PIT_CALLOUT_SETTING_KEYS,
+  type OpponentFlagCalloutId,
+  type OpponentFlagPending,
   type OpponentPitCalloutId,
   type OpponentPitPending,
   OVERTAKE_CALLOUT_SETTING_KEYS,
@@ -633,6 +636,19 @@ registerPitCrew(
   // Live gaps resolver (issue #933) — the spoken gap number reads the live
   // crossing-time gap at speak time, not the event-time snapshot.
   () => getLiveGaps(),
+  // Opponent-flag callout opt-ins (issue #936). Live-read, four subjects.
+  (id: OpponentFlagCalloutId) =>
+    (getGlobalSettings() as Record<string, unknown>)[OPPONENT_FLAG_CALLOUT_SETTING_KEYS[id]] !== false,
+  // Opponent-flag live position resolver (issue #936).
+  (pending: OpponentFlagPending): number | null => {
+    const live = getLiveCarPosition(pending.carIdx);
+
+    if (!live) return null;
+
+    const n = pending.isMultiClass ? live.classPosition : live.position;
+
+    return n > 0 ? n : null;
+  },
   // Race Engineer master gate (issue #515).
   () => (getGlobalSettings() as Record<string, unknown>).pitCrewRaceEngineerEnabled === true,
   // Radar master gate (issue #515).

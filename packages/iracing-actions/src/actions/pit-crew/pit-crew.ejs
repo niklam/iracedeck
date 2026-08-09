@@ -150,6 +150,19 @@
 				return '<sdpi-checkbox setting="' + c.setting + '" label="' + c.label + '" global default="true"></sdpi-checkbox>';
 			}).join('');
 
+			// Opponent-flag callouts (issue #936). Four subjects — penalty flags
+			// on cars near us. Same 2-column auto-balancing grid as above.
+			var opponentFlagCallouts = [
+				{ setting: "calloutEnabledOpponentFlagFurled", label: "Furled black flag (warning)" },
+				{ setting: "calloutEnabledOpponentFlagBlack", label: "Black flag" },
+				{ setting: "calloutEnabledOpponentFlagMeatball", label: "Meatball (repairs)" },
+				{ setting: "calloutEnabledOpponentFlagDisqualify", label: "Disqualified" },
+			];
+			var opponentFlagRowCount = Math.ceil(opponentFlagCallouts.length / 2);
+			var opponentFlagCheckboxes = opponentFlagCallouts.map(function (c) {
+				return '<sdpi-checkbox setting="' + c.setting + '" label="' + c.label + '" global default="true"></sdpi-checkbox>';
+			}).join('');
+
 			// Pit-service callouts (readback entry/exit from issue #476, plus
 			// the family-wide pit-service-requests toggle from issue #468).
 			// Same source-of-truth 2-column grid as flag callouts — adding a
@@ -434,6 +447,11 @@
 				'<sdpi-item label="Opponent Pits">' +
 					'<div style="display:grid;grid-template-rows:repeat(' + opponentPitRowCount + ',auto);grid-auto-flow:column;gap:4px 12px;width:100%;">' +
 						opponentPitCheckboxes +
+					'</div>' +
+				'</sdpi-item>' +
+				'<sdpi-item label="Opponent Flags">' +
+					'<div style="display:grid;grid-template-rows:repeat(' + opponentFlagRowCount + ',auto);grid-auto-flow:column;gap:4px 12px;width:100%;">' +
+						opponentFlagCheckboxes +
 					'</div>' +
 				'</sdpi-item>' +
 				'<sdpi-item label="Pit Service">' +
