@@ -151,6 +151,8 @@ const FLAG_CLIP_NAMES = [
   "white-race-02",
   "white-last-lap-01",
   "white-last-lap-02",
+  "white-leader-01",
+  "white-leader-02",
   "red-01",
   "black-01",
   "checkered-practice-01",
@@ -249,8 +251,8 @@ function findScenario(id: string): (typeof FLAG_ALERTS)[number] {
 }
 
 describe("FLAG_ALERTS structure", () => {
-  it("defines 23 scenarios", () => {
-    expect(FLAG_ALERTS).toHaveLength(23);
+  it("defines 24 scenarios", () => {
+    expect(FLAG_ALERTS).toHaveLength(24);
   });
 
   it("exposes a stable list of ids", () => {
@@ -262,6 +264,7 @@ describe("FLAG_ALERTS structure", () => {
       "pit-crew.flag-blue",
       "pit-crew.flag-white",
       "pit-crew.flag-white-last-lap",
+      "pit-crew.flag-white-leader",
       "pit-crew.flag-red",
       "pit-crew.flag-black",
       "pit-crew.flag-checkered",
@@ -307,7 +310,7 @@ describe("FLAG_ALERTS structure", () => {
     expect(meatball.family).toBeUndefined();
   });
 
-  it("furled, furled-cleared, yellow-cleared, white-last-lap, meatball and the penalty raises are queueable (defer behind a busy bus) — and they're the only flags that are", () => {
+  it("furled, furled-cleared, yellow-cleared, white-last-lap, white-leader, meatball and the penalty raises are queueable (defer behind a busy bus) — and they're the only flags that are", () => {
     const queueableIds = [
       "pit-crew.flag-furled",
       "pit-crew.flag-furled-cleared",
@@ -316,6 +319,10 @@ describe("FLAG_ALERTS structure", () => {
       // latch never re-fires, so a fire displaced by an equal-weight line
       // (spotter call) must replay at idle instead of being dropped.
       "pit-crew.flag-white-last-lap",
+      // Issue #936: the leader's last-lap crossing is one-shot and the
+      // translator latch never re-fires, so must replay on deferral like
+      // white-last-lap.
+      "pit-crew.flag-white-leader",
       // Issue #867: a spotter proximity call outranks the meatball line; the
       // one-shot raise must defer/stash and replay instead of being lost.
       "pit-crew.flag-meatball",
@@ -637,6 +644,30 @@ describe("FLAG_ALERTS white last-lap (issue #772)", () => {
   );
 });
 
+describe("FLAG_ALERTS white leader (issue #936)", () => {
+  it("plays a leader clip when the leader crosses S/F under the white flag in a race", () => {
+    bus.publishEvent("flag.white-leader.raised", {});
+    flush(audio);
+
+    const played = voiceClipsPlayed();
+    expect(
+      played.includes("voice/luca/flags/white-leader-01.mp3") ||
+        played.includes("voice/luca/flags/white-leader-02.mp3"),
+    ).toBe(true);
+  });
+
+  it.each([{ sessionType: "Practice" }, { sessionType: "Open Qualify" }, { sessionType: "Lone Qualify" }])(
+    "stays silent in a $sessionType session (race-only stage)",
+    ({ sessionType }) => {
+      mockSessionType.mockReturnValue(sessionType);
+      bus.publishEvent("flag.white-leader.raised", {});
+      flush(audio);
+
+      expect(voiceClipsPlayed()).toEqual([]);
+    },
+  );
+});
+
 describe("FLAG_ALERTS checkered session-type branch", () => {
   it.each([
     { sessionType: "Race", expected: "voice/luca/flags/checkered-race-01.mp3" },
@@ -880,6 +911,7 @@ describe("FLAG_POOL_NAMES", () => {
       "flag-white-qualifying",
       "flag-white-race",
       "flag-white-last-lap",
+      "flag-white-leader",
       "flag-checkered-practice",
       "flag-checkered-qualifying",
       "flag-checkered-race",

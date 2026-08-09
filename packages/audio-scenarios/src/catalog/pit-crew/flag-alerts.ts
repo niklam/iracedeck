@@ -203,6 +203,20 @@ const WHITE_LAST_LAP: Scenario = {
   when: { event: "flag.white-last-lap.raised", where: () => raceOnly() },
 };
 
+// The leader's final lap (issue #936, stage 3 of the white family): fired by
+// the translator's lap-count detection — most valuable when we're far behind
+// the leader and our own white is still minutes away. The diff latches once
+// per race (green re-arms) and suppresses when the player IS the leader or
+// already has their own white up, so this can never double up with the
+// #772 heads-up. Rides `calloutEnabledFlagWhite` (one subject, the #772
+// precedent); `queueable: true` for the same one-shot-latch reason as
+// WHITE_LAST_LAP.
+const WHITE_LEADER: Scenario = {
+  ...flagScenario("white-leader", ["pool:flag-white-leader"]),
+  queueable: true,
+  when: { event: "flag.white-leader.raised", where: () => raceOnly() },
+};
+
 const RED: Scenario = {
   ...flagScenario("red", ["pool:flag-red"]),
   when: { event: "flag.red.raised" },
@@ -479,6 +493,7 @@ export const FLAG_ALERTS: readonly Scenario[] = [
   BLUE,
   WHITE,
   WHITE_LAST_LAP,
+  WHITE_LEADER,
   RED,
   BLACK,
   CHECKERED,

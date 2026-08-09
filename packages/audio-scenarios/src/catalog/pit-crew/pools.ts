@@ -66,6 +66,8 @@ export const POOL_REGISTRY: Readonly<Record<string, PoolSource>> = {
   // Stage 2 of the two-stage white (issue #772) — the player crosses S/F
   // under the white flag and starts THEIR last lap.
   "flag-white-last-lap": { group: "flags", base: "white-last-lap" },
+  // Stage 3 — the leader's final lap (issue #936), same subject/opt-in.
+  "flag-white-leader": { group: "flags", base: "white-leader" },
   "flag-checkered-practice": { group: "flags", base: "checkered-practice" },
   "flag-checkered-qualifying": { group: "flags", base: "checkered-qualifying" },
   "flag-checkered-race": { group: "flags", base: "checkered-race" },

@@ -395,6 +395,8 @@ const SCENARIO_ID_TO_FLAG_ID: Record<string, FlagCalloutId> = {
   "pit-crew.flag-white": "white",
   // Stage 2 of the two-stage white (issue #772) — same subject, same opt-in.
   "pit-crew.flag-white-last-lap": "white",
+  // Stage 3 — the leader's final lap (issue #936), same subject/opt-in.
+  "pit-crew.flag-white-leader": "white",
   "pit-crew.flag-red": "red",
   "pit-crew.flag-black": "black",
   "pit-crew.flag-checkered": "checkered",
