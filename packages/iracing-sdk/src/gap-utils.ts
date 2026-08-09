@@ -239,3 +239,41 @@ export function lapDeltaBetween(progressAhead: number, progressBehind: number): 
   // and must still count as 3 laps.
   return Math.max(0, Math.floor(progressAhead - progressBehind + 1e-9));
 }
+
+/**
+ * Coarse forward track gap from the player to a car ahead, in seconds (issue
+ * #936): the forward `LapDistPct` delta folded around the lap × track length
+ * ÷ the player's speed, floored at `minSpeedMps` so a stationary player
+ * can't divide by zero. Deliberately NOT the crossing-time trace model (#933)
+ * — this is a window boundary, never a spoken value, and it must cover
+ * track-relative traffic on any lap. `null` when the track length or either
+ * progress value is unusable; a missing/invalid speed uses the floor.
+ */
+export function coarseForwardGapSeconds(
+  playerLapDistPct: number,
+  carLapDistPct: number,
+  trackLengthMeters: number | null,
+  playerSpeedMps: number | null | undefined,
+  minSpeedMps: number,
+): number | null {
+  if (typeof trackLengthMeters !== "number" || !Number.isFinite(trackLengthMeters) || trackLengthMeters <= 0) {
+    return null;
+  }
+
+  if (
+    !Number.isFinite(playerLapDistPct) ||
+    !Number.isFinite(carLapDistPct) ||
+    playerLapDistPct < 0 ||
+    carLapDistPct < 0
+  ) {
+    return null;
+  }
+
+  const forwardFraction = (((carLapDistPct - playerLapDistPct) % 1) + 1) % 1;
+  const speed =
+    typeof playerSpeedMps === "number" && Number.isFinite(playerSpeedMps)
+      ? Math.max(playerSpeedMps, minSpeedMps)
+      : minSpeedMps;
+
+  return (forwardFraction * trackLengthMeters) / speed;
+}

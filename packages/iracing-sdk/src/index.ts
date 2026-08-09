@@ -125,6 +125,7 @@ export { calculateRacePositions, classPositionFromOrder } from "./position-utils
 export {
   appendProgressSample,
   classifyGapTrend,
+  coarseForwardGapSeconds,
   crossingTimeAt,
   GAP_TRACE_MIN_STEP,
   GAP_TRACE_SPAN_LAPS,
