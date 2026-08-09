@@ -13,6 +13,7 @@
  */
 import type { QualifyingInvalidationSnapshot } from "@iracedeck/audio-scenarios/pit-crew";
 import {
+  OpponentPenaltyFlag,
   type RaceStartSnapshot,
   type SimEventName,
   type StartCountdownSeconds,
@@ -418,17 +419,18 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   // ── Opponent Flags (issue #936) ──
   // `opponentFlag.flagged` directly — bypasses the diff's aggregation gating so
   // each relation × flag line is auditionable on demand. The flags are: black,
-  // furled, meatball, disqualify. The relations are: ahead / behind / track-ahead
-  // for flags that matter to race strategy, plus "others" for aggregate. The
-  // trigger types are: raised (black/furled/meatball/disqualify), entered-range
-  // (track-ahead only). Similar payload style to opponent-pit.
+  // furled, repair (meatball), disqualify. The relations are: ahead / behind /
+  // track-ahead for flags that matter to race strategy, plus "others" for
+  // aggregate. The trigger types are: raised (all), entered-range (track-ahead
+  // only). Similar payload style to opponent-pit. Flag strings use the
+  // OpponentPenaltyFlag enum for drift-proofing future enum changes.
   {
     id: "opponent-flag-ahead-black",
     category: "Opponent Flags",
     label: "P5 ahead: black flag",
     description: 'Car ahead got black-flagged — "The car ahead has been black-flagged."',
     event: "opponentFlag.flagged",
-    data: { relation: "ahead", carIdx: 7, flag: "black", trigger: "raised", position: 5 },
+    data: { relation: "ahead", carIdx: 7, flag: OpponentPenaltyFlag.Black, trigger: "raised", position: 5 },
   },
   {
     id: "opponent-flag-ahead-furled",
@@ -436,15 +438,15 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     label: "P5 ahead: furled",
     description: 'Car ahead got a furled warning — "The car ahead has a black flag warning."',
     event: "opponentFlag.flagged",
-    data: { relation: "ahead", carIdx: 7, flag: "furled", trigger: "raised", position: 5 },
+    data: { relation: "ahead", carIdx: 7, flag: OpponentPenaltyFlag.Furled, trigger: "raised", position: 5 },
   },
   {
     id: "opponent-flag-ahead-meatball",
     category: "Opponent Flags",
     label: "P5 ahead: meatball",
-    description: 'Car ahead got penalized pit-stop call — "The car ahead has been given a pit stop."',
+    description: 'Car ahead has a meatball — mandatory repairs — "The car ahead has been given a pit stop."', // "meatball" is OpponentPenaltyFlag.Repair — the sim bit's name.
     event: "opponentFlag.flagged",
-    data: { relation: "ahead", carIdx: 7, flag: "meatball", trigger: "raised", position: 5 },
+    data: { relation: "ahead", carIdx: 7, flag: OpponentPenaltyFlag.Repair, trigger: "raised", position: 5 },
   },
   {
     id: "opponent-flag-ahead-disqualify",
@@ -452,7 +454,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     label: "P5 ahead: DQ",
     description: 'Car ahead was disqualified — "The car ahead has been disqualified."',
     event: "opponentFlag.flagged",
-    data: { relation: "ahead", carIdx: 7, flag: "disqualify", trigger: "raised", position: 5 },
+    data: { relation: "ahead", carIdx: 7, flag: OpponentPenaltyFlag.Disqualify, trigger: "raised", position: 5 },
   },
   {
     id: "opponent-flag-behind-black",
@@ -460,7 +462,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     label: "Behind: black flag",
     description: 'Car behind got black-flagged — "The car behind has been black-flagged."',
     event: "opponentFlag.flagged",
-    data: { relation: "behind", carIdx: 12, flag: "black", trigger: "raised" },
+    data: { relation: "behind", carIdx: 12, flag: OpponentPenaltyFlag.Black, trigger: "raised" },
   },
   {
     id: "opponent-flag-behind-furled",
@@ -468,15 +470,15 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     label: "Behind: furled",
     description: 'Car behind got a furled warning — "The car behind has a black flag warning."',
     event: "opponentFlag.flagged",
-    data: { relation: "behind", carIdx: 12, flag: "furled", trigger: "raised" },
+    data: { relation: "behind", carIdx: 12, flag: OpponentPenaltyFlag.Furled, trigger: "raised" },
   },
   {
     id: "opponent-flag-behind-meatball",
     category: "Opponent Flags",
     label: "Behind: meatball",
-    description: 'Car behind got penalized pit-stop call — "The car behind has been given a pit stop."',
+    description: 'Car behind has a meatball — mandatory repairs — "The car behind has been given a pit stop."', // "meatball" is OpponentPenaltyFlag.Repair — the sim bit's name.
     event: "opponentFlag.flagged",
-    data: { relation: "behind", carIdx: 12, flag: "meatball", trigger: "raised" },
+    data: { relation: "behind", carIdx: 12, flag: OpponentPenaltyFlag.Repair, trigger: "raised" },
   },
   {
     id: "opponent-flag-behind-disqualify",
@@ -484,7 +486,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     label: "Behind: DQ",
     description: 'Car behind was disqualified — "The car behind has been disqualified."',
     event: "opponentFlag.flagged",
-    data: { relation: "behind", carIdx: 12, flag: "disqualify", trigger: "raised" },
+    data: { relation: "behind", carIdx: 12, flag: OpponentPenaltyFlag.Disqualify, trigger: "raised" },
   },
   {
     id: "opponent-flag-track-ahead-black",
@@ -492,7 +494,13 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     label: "Track ahead: black flag",
     description: 'Car on track ahead has a black flag — "The car on track ahead has a black flag."',
     event: "opponentFlag.flagged",
-    data: { relation: "track-ahead", carIdx: 13, flag: "black", trigger: "entered-range", gapSeconds: 8 },
+    data: {
+      relation: "track-ahead",
+      carIdx: 13,
+      flag: OpponentPenaltyFlag.Black,
+      trigger: "entered-range",
+      gapSeconds: 8,
+    },
   },
   {
     id: "opponent-flag-track-ahead-furled",
@@ -500,15 +508,27 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     label: "Track ahead: furled",
     description: 'Car on track ahead has a furled warning — "The car on track ahead has a black flag warning."',
     event: "opponentFlag.flagged",
-    data: { relation: "track-ahead", carIdx: 13, flag: "furled", trigger: "entered-range", gapSeconds: 8 },
+    data: {
+      relation: "track-ahead",
+      carIdx: 13,
+      flag: OpponentPenaltyFlag.Furled,
+      trigger: "entered-range",
+      gapSeconds: 8,
+    },
   },
   {
     id: "opponent-flag-track-ahead-meatball",
     category: "Opponent Flags",
     label: "Track ahead: meatball",
-    description: 'Car on track ahead got penalized pit-stop call — "The car on track ahead has a meatball."',
+    description: 'Car on track ahead has a meatball — mandatory repairs — "The car on track ahead has a meatball."', // "meatball" is OpponentPenaltyFlag.Repair — the sim bit's name.
     event: "opponentFlag.flagged",
-    data: { relation: "track-ahead", carIdx: 13, flag: "meatball", trigger: "entered-range", gapSeconds: 8 },
+    data: {
+      relation: "track-ahead",
+      carIdx: 13,
+      flag: OpponentPenaltyFlag.Repair,
+      trigger: "entered-range",
+      gapSeconds: 8,
+    },
   },
   {
     id: "opponent-flag-track-ahead-disqualify",
@@ -516,7 +536,13 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     label: "Track ahead: DQ",
     description: 'Car on track ahead was disqualified — "The car on track ahead has been disqualified."',
     event: "opponentFlag.flagged",
-    data: { relation: "track-ahead", carIdx: 13, flag: "disqualify", trigger: "entered-range", gapSeconds: 8 },
+    data: {
+      relation: "track-ahead",
+      carIdx: 13,
+      flag: OpponentPenaltyFlag.Disqualify,
+      trigger: "entered-range",
+      gapSeconds: 8,
+    },
   },
   {
     id: "opponent-flag-others",

@@ -8,6 +8,7 @@
  * bottom of this file fails if a name is missing or extra, so this list
  * cannot drift silently.
  */
+import { OpponentPenaltyFlag } from "@iracedeck/event-bus";
 import type { SimEventName } from "@iracedeck/event-bus";
 
 export type EventTemplate = {
@@ -39,7 +40,7 @@ export const EVENT_TEMPLATES = [
     name: "opponentFlag.flagged",
     description:
       "A penalty flag on another car matters to us (issue #936) — relation: ahead / behind / track-ahead / others",
-    data: { relation: "ahead", carIdx: 7, flag: "black", trigger: "raised", position: 5 },
+    data: { relation: "ahead", carIdx: 7, flag: OpponentPenaltyFlag.Black, trigger: "raised", position: 5 },
   },
   {
     name: "cornerName.approaching",
