@@ -53,7 +53,7 @@ When asked about actions or controls:
 
 | Category | Actions | Modes | Description |
 |----------|---------|-------|-------------|
-| Display & Session | 2 | 10 | Live session data: incidents, laps, position, estimated iRating gain/loss, fuel, laps to empty, flags, track wetness |
+| Display & Session | 2 | 11 | Live session data: incidents, laps, position, estimated iRating gain/loss, gaps, fuel, laps to empty, flags, track wetness, wind |
 | Driving Controls | 6 | 36 | AI spotter, audio (incl. Race Engineer & Radar volume), black boxes, look direction, car control, pit crew (Race Engineer toggle + radar + corner names) |
 | Cockpit & Interface | 5 | 32 | Wipers, force feedback, splits & reference, telemetry, UI toggles |
 | View & Camera | 5 | 89 | FOV, replay, camera controls, broadcast tools |

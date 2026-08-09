@@ -137,6 +137,21 @@ export {
   type StandingsNeighbors,
 } from "./gap-utils.js";
 
+// Wind utilities (#947)
+export {
+  absoluteWindBearingDeg,
+  type CompassPoint,
+  COMPASS_POINTS,
+  compassPoint,
+  convertWindSpeed,
+  formatWindSpeed,
+  normalizeDegrees,
+  normalizeSignedDegrees,
+  relativeWindAngleDeg,
+  type WindSpeedUnit,
+  windSpeedUnitLabel,
+} from "./wind-utils.js";
+
 // iRating estimation utilities (#268, #872)
 export {
   calculateIRatingChanges,

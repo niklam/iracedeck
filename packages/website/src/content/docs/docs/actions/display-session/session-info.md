@@ -1,9 +1,9 @@
 ---
 title: Session Info
-description: Display live session information — incidents, time, laps, position, estimated iRating gain/loss, gaps to the cars ahead/behind, fuel, laps to empty, flags, and track wetness.
+description: Display live session information — incidents, time, laps, position, estimated iRating gain/loss, gaps to the cars ahead/behind, fuel, laps to empty, flags, track wetness, and wind.
 sidebar:
   badge:
-    text: "10 modes"
+    text: "11 modes"
     variant: tip
 ---
 
@@ -247,3 +247,49 @@ Show the current track-wetness state with a centered vertical 6-segment bar that
 #### Settings
 
 - No additional settings. The Font Size slider does not apply (the graphic carries its own label).
+
+---
+
+### Wind
+
+Show the wind as an arrow with the wind speed below it. **The arrow always points the way the wind pushes your car** — so an arrow pointing up means the wind is behind you, and an arrow pointing down means you're driving into it. The arrow rotates smoothly to the exact angle rather than snapping to a handful of fixed positions.
+
+Two direction modes are available, selected with the **Direction** setting.
+
+**Relative to car** (the default) shows the wind against your car's current heading, which is what matters while you drive:
+
+| Arrow | Meaning |
+|-------|---------|
+| Up | Tailwind — the wind is pushing you along |
+| Down | Headwind — you're driving into it |
+| Right | Crosswind blowing in from your left, pushing you right |
+| Left | Crosswind blowing in from your right, pushing you left |
+
+Because it's measured against your heading, the arrow turns as you go through a corner — useful for knowing which way the wind will push you on the way in. This mode needs you to be in the car; on the session screen or in the garage the key shows `--`.
+
+**Compass** shows the wind in the world instead of relative to you, with **north up**. The label names the direction the wind blows *from* — matching how iRacing itself reports wind, so a wind labelled `N` is a northerly, with the arrow pointing down (south) to show where it is actually travelling. This mode works anywhere, including in the garage.
+
+#### Details
+
+- **Dial:** No rotation support
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** Yes — the arrow and speed update live; in relative mode the arrow tracks your heading as you drive
+
+#### Setting: Direction
+
+How the arrow and label are measured. Defaults to **Relative to car**.
+
+- **Relative to car** — the arrow points where the wind pushes you, measured against your car's heading. Requires being in the car.
+- **Compass** — the arrow points where the wind travels in the world with north up, and the label names the compass direction it blows from (e.g. `NE 11 km/h`).
+
+#### Setting: Wind Speed
+
+The unit the wind speed is shown in. Defaults to **km/h**.
+
+- **m/s** — iRacing's native unit, shown with one decimal (e.g. `3.1 m/s`)
+- **km/h** — whole units (e.g. `11 km/h`)
+- **mph** — whole units (e.g. `7 mph`)
+
+#### Setting: Font Size
+
+Size of the label under the arrow, in PI units (5–36, doubled for SVG render). Defaults to `14`. A long compass label shrinks automatically so it still fits the key.
