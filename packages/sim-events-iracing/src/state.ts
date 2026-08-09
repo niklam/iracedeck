@@ -690,6 +690,21 @@ export type TranslatorState = {
   /** Whether the aggregate tail already fired for the current episode. */
   opponentFlagAggregateAnnounced: boolean;
 
+  // ── Leader's white flag (issue #936) ────────────────────────────────────
+  /** Leader carIdx observed last tick (re-baselines silently on leader change). */
+  leaderWhiteLastLeaderIdx: number;
+  /** The leader's `CarIdxLapCompleted` last tick (timed-race crossing detection). */
+  leaderWhiteLastLeaderLap: number;
+  /** `SessionLapsRemainEx` last tick (lap-limited falling-to-1 edge); null until seeded. */
+  leaderWhiteLastLapsRemainEx: number | null;
+  /**
+   * Once-per-race latch. STICKY: preserved across the replay wipe; cleared
+   * per-session (a fresh `createInitialState()`) and by a GREEN rising edge
+   * in `diffFlags` (the #880 lesson — oval overtime / a same-session admin
+   * restart means a new final lap is coming).
+   */
+  leaderWhiteFired: boolean;
+
   // ── Radar ─────────────────────────────────────────────────────────────
   radarState: RadarState;
 
@@ -977,6 +992,11 @@ export function createInitialState(): TranslatorState {
     opponentFlagEffectiveMask: [],
     opponentFlagRecentEntries: [],
     opponentFlagAggregateAnnounced: false,
+
+    leaderWhiteLastLeaderIdx: -1,
+    leaderWhiteLastLeaderLap: -1,
+    leaderWhiteLastLapsRemainEx: null,
+    leaderWhiteFired: false,
 
     radarState: "clear",
 

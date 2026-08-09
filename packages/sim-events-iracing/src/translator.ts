@@ -63,6 +63,7 @@ import {
 import { diffGaps, GAP_DEFAULT_ALERT_THRESHOLD_S, GAP_DEFAULT_MIN_CHANGE_S } from "./diff/gaps.js";
 import { diffIncidents } from "./diff/incidents.js";
 import { diffLaps } from "./diff/laps.js";
+import { diffLeaderWhite } from "./diff/leader-white.js";
 import { diffLifecycle } from "./diff/lifecycle.js";
 import { diffLimiter } from "./diff/limiter.js";
 import { diffOpponentFlags } from "./diff/opponent-flags.js";
@@ -1228,6 +1229,14 @@ function wipeStateForReplay(self: TranslatorInstance): void {
     opponentFlagInWindow: self.state.opponentFlagInWindow,
     opponentFlagRecentEntries: self.state.opponentFlagRecentEntries,
     opponentFlagAggregateAnnounced: self.state.opponentFlagAggregateAnnounced,
+    // The leader's white-flag once-per-race latch (issue #936) is STICKY,
+    // the same shape as `playerFinalLapStarted` above: a replay glance
+    // mid-final-lap must not replay the announcement. The three baseline
+    // fields (`leaderWhiteLastLeaderIdx` / `Lap` / `LapsRemainEx`)
+    // deliberately re-seed — replay-timeline leader/lap-count values are as
+    // meaningless as the opponent-flag bits baseline (see that field's
+    // JSDoc in state.ts).
+    leaderWhiteFired: self.state.leaderWhiteFired,
   };
 
   self.state = createInitialState();
@@ -1695,6 +1704,23 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     frozenPositions,
     trackLengthMeters,
     now,
+    emit,
+  );
+
+  // Leader's white flag (issue #936) — detected by lap counting against the
+  // OVERALL leader (never the per-car White bit, which can't answer this for
+  // anyone but the leader themselves). Consumes the same canonical frozen
+  // order as the diffs above; runs directly after diffOpponentFlags since
+  // both read the leader-relative race-limit fields.
+  diffLeaderWhite(
+    self.state,
+    telemetry,
+    playerCarIdx,
+    isRaceSession,
+    replayOnlySession,
+    isPreGreen(telemetry),
+    isPostRace(telemetry),
+    frozenPositions,
     emit,
   );
 

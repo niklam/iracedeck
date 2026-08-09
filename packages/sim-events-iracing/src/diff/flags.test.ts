@@ -812,13 +812,18 @@ describe("diffFlags — white two-stage (issue #772)", () => {
     // Caution replaces the white; the sticky marker holds (limitation 3)…
     diffFlags(state, liveTick(Flags.Caution, { LapCompleted: 11 }), T0 + 40_000, () => {}, RACE, !LEADER);
     state.fuelCalloutRaceCoveredAnnounced = true;
+    // The leader's white-flag once-per-race latch (issue #936) is the same
+    // kind of sticky marker — simulate it having already fired this race.
+    state.leaderWhiteFired = true;
 
     // …but a NEW green means more racing is coming (overtime, restart) —
     // the fuel family must re-open, and the pre-extension "enough fuel"
-    // determination no longer holds, so its latch re-arms with it.
+    // determination no longer holds, so its latch re-arms with it. The
+    // leader's white-flag latch re-arms alongside it for the same reason.
     diffFlags(state, liveTick(Flags.Green, { LapCompleted: 11 }), T0 + 120_000, () => {}, RACE, !LEADER);
     expect(state.playerFinalLapStarted).toBe(false);
     expect(state.fuelCalloutRaceCoveredAnnounced).toBe(false);
+    expect(state.leaderWhiteFired).toBe(false);
   });
 
   it("the latch re-arms when the white drops — a fresh episode fires both stages again", () => {
