@@ -263,7 +263,7 @@ Show the wind as an arrow with the wind speed below it. The arrow points the way
 | Right | Crosswind blowing in from your left, pushing you right |
 | Left | Crosswind blowing in from your right, pushing you left |
 
-Because it's measured against your heading, the arrow turns as you go through a corner — useful for knowing which way the wind will push you on the way in. This mode needs you to be in the car; on the session screen or in the garage the key shows `--`.
+Because it's measured against your heading, the arrow turns as you go through a corner — useful for knowing which way the wind will push you on the way in. This mode needs you to be in the car and driving: in the garage, on the session screen, or while you are watching a replay, the key shows `--`. Running wide off the racing surface does not affect it — only leaving the car does.
 
 **Compass** shows the wind in the world instead of relative to you, with **north up**. The label names the direction the wind blows *from* — matching how iRacing itself reports wind, so a wind labelled `N` is a northerly, with the arrow pointing down (south) to show where it is actually travelling. This mode works anywhere, including in the garage.
 
@@ -279,7 +279,7 @@ When the wind is calm enough to round to zero in your chosen unit, the key shows
 
 How the arrow and label are measured. Defaults to **Relative to car**.
 
-- **Relative to car** — the arrow points where the wind pushes you, measured against your car's heading. Requires being in the car.
+- **Relative to car** — the arrow points where the wind pushes you, measured against your car's heading. Requires being in the car and driving; blank in the garage, on the session screen, and during replay playback.
 - **Compass** — the arrow points where the wind travels in the world with north up, and the label names the compass direction it blows from (e.g. `NE 11 km/h`).
 
 #### Setting: Wind Speed
