@@ -494,7 +494,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     id: "opponent-flag-track-ahead-black",
     category: "Opponent Flags",
     label: "Track ahead: black flag",
-    description: 'Car on track ahead has a black flag — "The car on track ahead has a black flag."',
+    description: 'Car ahead on track has a black flag — "The car ahead on track has a black flag."',
     event: "opponentFlag.flagged",
     data: {
       relation: "track-ahead",
