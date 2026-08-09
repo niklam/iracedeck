@@ -18,6 +18,7 @@
 				<option value="laps-to-empty">Laps to Empty</option>
 				<option value="flags">Race Flags</option>
 				<option value="track-wetness">Track Wetness</option>
+				<option value="wind">Wind</option>
 			</sdpi-select>
 		</sdpi-item>
 
@@ -70,12 +71,37 @@
 			Time gap to the car one class position ahead/behind (race sessions only). Green = the gap is moving your way, red = against you.
 		</div>
 
+		<sdpi-item id="wind-direction-settings" label="Direction" class="hidden">
+			<sdpi-select id="wind-direction-select" setting="windDirectionMode" default="relative">
+				<option value="relative">Relative to car</option>
+				<option value="absolute">Compass</option>
+			</sdpi-select>
+		</sdpi-item>
+		<div id="wind-direction-help" class="ird-supporting-text hidden">
+			The arrow always points the way the wind pushes you.
+		</div>
+		<div id="wind-relative-help" class="ird-supporting-text hidden">
+			Relative to car: up is a tailwind, down is a headwind, sideways is a crosswind. Needs you to be in the car and driving.
+		</div>
+		<div id="wind-absolute-help" class="ird-supporting-text hidden">
+			Compass: north is up, and the label names the direction the wind blows from (a north wind reads "N").
+		</div>
+
+		<sdpi-item id="wind-unit-settings" label="Wind Speed" class="hidden">
+			<sdpi-select setting="windSpeedUnit" default="kmh">
+				<option value="ms">m/s</option>
+				<option value="kmh">km/h</option>
+				<option value="mph">mph</option>
+			</sdpi-select>
+		</sdpi-item>
+
 		<script>
 			async function initialize() {
 				await customElements.whenDefined("sdpi-select");
 
 				const modeSelect = document.getElementById("mode-select");
 				const fuelSubModeSelect = document.getElementById("fuel-submode-select");
+				const windDirectionSelect = document.getElementById("wind-direction-select");
 				if (!modeSelect) return;
 
 				updateVisibility();
@@ -84,18 +110,24 @@
 				modeSelect.addEventListener("input", updateVisibility);
 				fuelSubModeSelect?.addEventListener("change", updateVisibility);
 				fuelSubModeSelect?.addEventListener("input", updateVisibility);
+				windDirectionSelect?.addEventListener("change", updateVisibility);
+				windDirectionSelect?.addEventListener("input", updateVisibility);
 
 				let lastMode = modeSelect.value || "incidents";
 				let lastFuelSubMode = fuelSubModeSelect?.value || "now";
+				let lastWindDirection = windDirectionSelect?.value || "relative";
 				window.irdPoll(() => {
 					const currentMode = modeSelect.value;
 					const currentFuelSubMode = fuelSubModeSelect?.value;
+					const currentWindDirection = windDirectionSelect?.value;
 					if (
 						(currentMode && currentMode !== lastMode) ||
-						(currentFuelSubMode && currentFuelSubMode !== lastFuelSubMode)
+						(currentFuelSubMode && currentFuelSubMode !== lastFuelSubMode) ||
+						(currentWindDirection && currentWindDirection !== lastWindDirection)
 					) {
 						lastMode = currentMode || lastMode;
 						lastFuelSubMode = currentFuelSubMode || lastFuelSubMode;
+						lastWindDirection = currentWindDirection || lastWindDirection;
 						updateVisibility();
 					}
 				});
@@ -104,6 +136,7 @@
 			function updateVisibility() {
 				const mode = document.getElementById("mode-select")?.value || "incidents";
 				const fuelSubMode = document.getElementById("fuel-submode-select")?.value || "now";
+				const windDirection = document.getElementById("wind-direction-select")?.value || "relative";
 				const positionTypeSettings = document.getElementById("position-type-settings");
 				const positionSettings = document.getElementById("position-settings");
 				const fuelSubModeSettings = document.getElementById("fuel-submode-settings");
@@ -145,6 +178,19 @@
 				if (gapsHelp) {
 					gapsHelp.classList.toggle("hidden", mode !== "gaps");
 				}
+
+				const hideWind = mode !== "wind";
+				document.getElementById("wind-direction-settings")?.classList.toggle("hidden", hideWind);
+				document.getElementById("wind-direction-help")?.classList.toggle("hidden", hideWind);
+				document.getElementById("wind-unit-settings")?.classList.toggle("hidden", hideWind);
+				// Only the explanation for the selected direction mode is shown,
+				// so the panel stays short.
+				document
+					.getElementById("wind-relative-help")
+					?.classList.toggle("hidden", hideWind || windDirection !== "relative");
+				document
+					.getElementById("wind-absolute-help")
+					?.classList.toggle("hidden", hideWind || windDirection !== "absolute");
 			}
 
 			if (document.readyState === "loading") {

@@ -9,7 +9,7 @@ description: Use when looking up Stream Deck actions, sub-actions, modes, catego
 
 Complete action definitions: `docs/reference/actions.json`
 
-This skill file documents **32 actions with 297 modes** using a detailed per-mode count (the totals in the category table below). The user-facing website (`packages/website/src/content/docs/`) uses a coarser counting convention and shows a lower total (**265 modes**) — treat the website as the source of truth for user-facing copy and this skill file as the detailed inventory. `docs/reference/actions.json` has not yet been re-synced to the per-mode counting convention; treat it as a detailed inventory of individual mode values that is occasionally out of date.
+This skill file documents **32 actions with 299 modes** using a detailed per-mode count (the totals in the category table below). The user-facing website (`packages/website/src/content/docs/`) uses a coarser counting convention and shows a lower total (**268 modes**) — treat the website as the source of truth for user-facing copy and this skill file as the detailed inventory. `docs/reference/actions.json` has not yet been re-synced to the per-mode counting convention; treat it as a detailed inventory of individual mode values that is occasionally out of date.
 
 Each action entry:
 ```json
@@ -53,7 +53,7 @@ When asked about actions or controls:
 
 | Category | Actions | Modes | Description |
 |----------|---------|-------|-------------|
-| Display & Session | 2 | 10 | Live session data: incidents, laps, position, estimated iRating gain/loss, fuel, laps to empty, flags, track wetness |
+| Display & Session | 2 | 11 | Live session data: incidents, laps, position, estimated iRating gain/loss, gaps, fuel, laps to empty, flags, track wetness, wind |
 | Driving Controls | 6 | 36 | AI spotter, audio (incl. Race Engineer & Radar volume), black boxes, look direction, car control, pit crew (Race Engineer toggle + radar + corner names) |
 | Cockpit & Interface | 5 | 32 | Wipers, force feedback, splits & reference, telemetry, UI toggles |
 | View & Camera | 5 | 89 | FOV, replay, camera controls, broadcast tools |
@@ -62,7 +62,7 @@ When asked about actions or controls:
 | Car Setup | 7 | 73 | Brakes (button and dial surface, #730/#775), chassis, aero, engine, fuel mix, hybrid/ERS, traction control — adjustment modes plus live-display "View …" sub-modes; each View sub-mode also supports dual-press (tap = configured direction, long-press = opposite) so one key both shows the value and adjusts it (#540); adjustment/View modes with a live telemetry value can also render as paired +/− key styles (2-key and 3-key layouts, several selectable styles, hold-to-repeat) — Phase 1 covers these seven setup actions (#810) |
 | Communication | 2 | 35 | Chat, macros (15), whisper, toggle, reply, race admin commands, car selector |
 | Stream Deck | 1 | 1 | Switch Profile — switch to a bundled iRaceDeck profile or back to the previous one (Elgato-only, no iRacing command) |
-| **Total** | **32** | **298** | |
+| **Total** | **32** | **299** | |
 
 Mode counts reflect the PI Mode/Setting dropdown choices documented in each action page. Directional variants (Increase/Decrease) are treated as a single mode with a Direction sub-setting, matching the per-mode website format. Legacy replay actions (Replay Transport, Replay Speed, Replay Navigation) and Camera Cycle (Legacy) still exist in the plugin manifest for backward compatibility but are not counted as documented actions.
 
@@ -72,7 +72,7 @@ Mode counts reflect the PI Mode/Setting dropdown choices documented in each acti
 
 | Action | Modes | Mode values |
 |--------|-------|-------------|
-| Session Info | 9 | incidents, time-remaining, laps, position, irating (estimated iRating gain/loss if the race ended now, green/red value, scored within the player's class; shown in race, qualifying, and race pre-green — `--` in practice/test or when no estimate is possible; #268, #872), fuel (Fuel Value sub-modes: current level / used last lap / average per lap over a configurable 1–20 lap window; #465), laps-to-empty (live tank level ÷ the same 1–20-lap average, two decimals, `--` until a clean lap exists; #748), flags, track-wetness |
+| Session Info | 11 | incidents, time-remaining, laps, position, irating (estimated iRating gain/loss if the race ended now, green/red value, scored within the player's class; shown in race, qualifying, and race pre-green — `--` in practice/test or when no estimate is possible; #268, #872), fuel (Fuel Value sub-modes: current level / used last lap / average per lap over a configurable 1–20 lap window; #465), laps-to-empty (live tank level ÷ the same 1–20-lap average, two decimals, `--` until a clean lap exists; #748), gaps (live time gap to the class-standings neighbours ahead/behind, trend-coloured; #933), flags, track-wetness, wind (arrow pointing where the wind pushes the car plus its speed; relative-to-car or compass, m/s / km/h / mph; #947) |
 | Telemetry Display | 1 | template (Mustache-driven display, no Mode dropdown; templates also support `{{= expr }}` expressions — arithmetic, comparisons, ternary, round/floor/ceil/abs/min/max — #192; the Title setting resolves templates too — #899) |
 
 ### Driving Controls

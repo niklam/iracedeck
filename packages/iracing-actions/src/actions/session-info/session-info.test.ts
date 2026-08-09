@@ -18,9 +18,12 @@ import {
   generateGapsGraphic,
   generateSessionInfoSvg,
   generateTrackWetnessGraphic,
+  generateWindGraphic,
   iratingValueColor,
+  resolveWindDisplay,
   SessionInfo,
   trackWetnessLabel,
+  WIND_ARROW_STEP_DEG,
 } from "./session-info.js";
 
 vi.mock("@iracedeck/iracing-sdk", async () => {
@@ -43,6 +46,15 @@ vi.mock("@iracedeck/sim-events-iracing", () => ({
 }));
 
 vi.mock("@iracedeck/deck-core", () => ({
+  // Pass-through stand-in: renders immediately so tests observe pushes without
+  // waiting on the 10 Hz coalescing window.
+  IconUpdateThrottle: class {
+    schedule(_contextId: string, render: () => Promise<void> | void) {
+      void render();
+    }
+    clear() {}
+    clearAll() {}
+  },
   CommonSettings: {
     extend: () => {
       const defaults = {
@@ -55,6 +67,8 @@ vi.mock("@iracedeck/deck-core", () => ({
         blankWhenNoFlag: false,
         gapShowAhead: true,
         gapShowBehind: true,
+        windDirectionMode: "relative",
+        windSpeedUnit: "kmh",
       };
       const validModes = [
         "incidents",
@@ -67,6 +81,7 @@ vi.mock("@iracedeck/deck-core", () => ({
         "flags",
         "track-wetness",
         "laps-to-empty",
+        "wind",
       ];
       const coerceBool = (v: unknown): boolean => v === true || v === "true";
       const merge = (data: Record<string, unknown>) => {
@@ -166,7 +181,8 @@ function defaultSettings(
       | "fuel"
       | "flags"
       | "track-wetness"
-      | "laps-to-empty";
+      | "laps-to-empty"
+      | "wind";
     fontSize: number;
     positionType: "class" | "overall";
     positionShowTotal: boolean;
@@ -176,6 +192,8 @@ function defaultSettings(
     blankWhenNoFlag: boolean;
     gapShowAhead: boolean;
     gapShowBehind: boolean;
+    windDirectionMode: "relative" | "absolute";
+    windSpeedUnit: "ms" | "kmh" | "mph";
   }> = {},
 ) {
   return {
@@ -189,6 +207,8 @@ function defaultSettings(
     blankWhenNoFlag: false,
     gapShowAhead: true,
     gapShowBehind: true,
+    windDirectionMode: "relative" as const,
+    windSpeedUnit: "kmh" as const,
     ...overrides,
   };
 }
@@ -760,16 +780,14 @@ describe("SessionInfo", () => {
 
     it("should use the live state name as the title for track-wetness mode", () => {
       const dry = decodeURIComponent(
-        generateSessionInfoSvg(defaultSettings({ mode: "track-wetness" }), "DRY", false, undefined, TrackWetness.Dry),
+        generateSessionInfoSvg(defaultSettings({ mode: "track-wetness" }), "DRY", false, undefined, {
+          trackWetness: TrackWetness.Dry,
+        }),
       );
       const wet = decodeURIComponent(
-        generateSessionInfoSvg(
-          defaultSettings({ mode: "track-wetness" }),
-          "MOSTLY DRY",
-          false,
-          undefined,
-          TrackWetness.MostlyDry,
-        ),
+        generateSessionInfoSvg(defaultSettings({ mode: "track-wetness" }), "MOSTLY DRY", false, undefined, {
+          trackWetness: TrackWetness.MostlyDry,
+        }),
       );
 
       expect(dry).toContain("DRY");
@@ -783,7 +801,7 @@ describe("SessionInfo", () => {
         "MOSTLY DRY",
         false,
         undefined,
-        TrackWetness.MostlyDry,
+        { trackWetness: TrackWetness.MostlyDry },
       );
       const decoded = decodeURIComponent(result);
 
@@ -796,13 +814,9 @@ describe("SessionInfo", () => {
     });
 
     it("should include bar segments in the graphicContent for track-wetness", () => {
-      const result = generateSessionInfoSvg(
-        defaultSettings({ mode: "track-wetness" }),
-        "DRY",
-        false,
-        undefined,
-        TrackWetness.Dry,
-      );
+      const result = generateSessionInfoSvg(defaultSettings({ mode: "track-wetness" }), "DRY", false, undefined, {
+        trackWetness: TrackWetness.Dry,
+      });
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("<rect");
@@ -1899,15 +1913,237 @@ describe("gaps mode (issue #933)", () => {
         "1.2:closing|3.5:steady",
         false,
         undefined,
-        undefined,
-        undefined,
-        gaps({ gapSeconds: 1.2, trend: "closing" }, { gapSeconds: 3.5, trend: "steady" }),
+        { gaps: gaps({ gapSeconds: 1.2, trend: "closing" }, { gapSeconds: 3.5, trend: "steady" }) },
       );
       const decoded = decodeURIComponent(result);
 
       // The state-key string must never render; the rows carry the values.
       expect(decoded).not.toContain("1.2:closing");
       expect(decoded).toContain("polygon");
+    });
+  });
+
+  describe("resolveWindDisplay", () => {
+    /** Telemetry shaped like the issue #947 captures. */
+    function windTelemetry(overrides: Record<string, unknown> = {}) {
+      return { WindDir: 0, WindVel: 3, YawNorth: 0, IsOnTrack: true, ...overrides } as never;
+    }
+
+    it("returns the pushed-toward angle and speed in relative mode", () => {
+      // Wind out of the north onto a north-pointing car: a headwind, so the
+      // arrow points back down the car (180°), and 3 m/s is 11 km/h.
+      const display = resolveWindDisplay(defaultSettings({ mode: "wind" }), windTelemetry());
+
+      expect(display).toEqual({ arrowDeg: 180, label: "11 km/h" });
+    });
+
+    it("reads a tailwind as an arrow pointing forward", () => {
+      const display = resolveWindDisplay(defaultSettings({ mode: "wind" }), windTelemetry({ WindDir: Math.PI }));
+
+      expect(display?.arrowDeg).toBe(0);
+    });
+
+    it("points the arrow left when the wind comes from the right", () => {
+      // Wind from the east onto a north-pointing car pushes it west (left).
+      const display = resolveWindDisplay(defaultSettings({ mode: "wind" }), windTelemetry({ WindDir: Math.PI / 2 }));
+
+      expect(display?.arrowDeg).toBe(270);
+    });
+
+    it("blanks relative mode when the player is not in the car", () => {
+      // YawNorth reads a flat 0 out of the car, which would otherwise render a
+      // confident arrow computed from a heading of due north.
+      expect(resolveWindDisplay(defaultSettings({ mode: "wind" }), windTelemetry({ IsOnTrack: false }))).toBeNull();
+    });
+
+    it("names the source direction and points where the wind travels in absolute mode", () => {
+      const display = resolveWindDisplay(
+        defaultSettings({ mode: "wind", windDirectionMode: "absolute" }),
+        windTelemetry({ WindDir: Math.PI / 2 }),
+      );
+
+      // An east wind is labelled "E" (where it comes from) with the arrow
+      // pointing west (where it goes) — the pairing iRacing's panel uses.
+      expect(display).toEqual({ arrowDeg: 270, label: "E 11 km/h" });
+    });
+
+    it("keeps working out of the car in absolute mode", () => {
+      const display = resolveWindDisplay(
+        defaultSettings({ mode: "wind", windDirectionMode: "absolute" }),
+        windTelemetry({ IsOnTrack: false, YawNorth: 0 }),
+      );
+
+      expect(display?.label).toBe("N 11 km/h");
+    });
+
+    it("honors the speed unit", () => {
+      const settings = (unit: "ms" | "kmh" | "mph") => defaultSettings({ mode: "wind", windSpeedUnit: unit });
+
+      expect(resolveWindDisplay(settings("ms"), windTelemetry())?.label).toBe("3.0 m/s");
+      expect(resolveWindDisplay(settings("kmh"), windTelemetry())?.label).toBe("11 km/h");
+      expect(resolveWindDisplay(settings("mph"), windTelemetry())?.label).toBe("7 mph");
+    });
+
+    it("quantizes the arrow so a turning car does not re-render every tick", () => {
+      const nudge = ((WIND_ARROW_STEP_DEG / 3) * Math.PI) / 180;
+      const a = resolveWindDisplay(defaultSettings({ mode: "wind" }), windTelemetry());
+      const b = resolveWindDisplay(defaultSettings({ mode: "wind" }), windTelemetry({ YawNorth: nudge }));
+
+      expect(a?.arrowDeg).toBe(b?.arrowDeg);
+    });
+
+    it("always reports an arrow angle within [0, 360)", () => {
+      for (let deg = 0; deg < 360; deg += 11) {
+        const display = resolveWindDisplay(
+          defaultSettings({ mode: "wind" }),
+          windTelemetry({ WindDir: (deg * Math.PI) / 180 }),
+        );
+
+        expect(display!.arrowDeg).toBeGreaterThanOrEqual(0);
+        expect(display!.arrowDeg).toBeLessThan(360);
+      }
+    });
+
+    it("drops the arrow but keeps the reading when the wind is calm", () => {
+      const display = resolveWindDisplay(defaultSettings({ mode: "wind" }), windTelemetry({ WindVel: 0 }));
+
+      expect(display).toEqual({ arrowDeg: null, label: "0 km/h" });
+    });
+
+    it("omits the compass name too when calm, since there is no direction to name", () => {
+      const display = resolveWindDisplay(
+        defaultSettings({ mode: "wind", windDirectionMode: "absolute" }),
+        windTelemetry({ WindVel: 0 }),
+      );
+
+      expect(display).toEqual({ arrowDeg: null, label: "0 km/h" });
+    });
+
+    it("still shows a direction for a light breeze that survives m/s precision", () => {
+      const display = resolveWindDisplay(
+        defaultSettings({ mode: "wind", windSpeedUnit: "ms" }),
+        windTelemetry({ WindVel: 0.3 }),
+      );
+
+      expect(display).toEqual({ arrowDeg: 180, label: "0.3 m/s" });
+    });
+
+    it("blanks relative mode during replay playback", () => {
+      // YawNorth follows the replay-scrubbed car, so a confident arrow there
+      // would describe a moment the driver isn't living through.
+      const display = resolveWindDisplay(defaultSettings({ mode: "wind" }), windTelemetry({ IsReplayPlaying: true }));
+
+      expect(display).toBeNull();
+    });
+
+    it.each([
+      ["telemetry is null", null],
+      ["wind speed is missing", { WindDir: 0, YawNorth: 0, IsOnTrack: true }],
+      ["wind direction is missing", { WindVel: 3, YawNorth: 0, IsOnTrack: true }],
+      ["yaw is missing", { WindDir: 0, WindVel: 3, IsOnTrack: true }],
+    ])("returns null when %s", (_label, telemetry) => {
+      expect(resolveWindDisplay(defaultSettings({ mode: "wind" }), telemetry as never)).toBeNull();
+    });
+  });
+
+  describe("generateWindGraphic", () => {
+    it("draws a rotated arrow and the label", () => {
+      const svg = generateWindGraphic({ arrowDeg: 135, label: "11 km/h" }, undefined, "#ffffff");
+
+      expect(svg).toContain("<polygon");
+      expect(svg).toMatch(/rotate\(135 72 [\d.]+\)/);
+      expect(svg).toContain(">11 km/h</text>");
+    });
+
+    it("rotates to any angle rather than snapping to fixed states", () => {
+      const angles = [0, 5, 95, 180, 355];
+      const rendered = angles.map((deg) => generateWindGraphic({ arrowDeg: deg, label: "5 m/s" }, undefined, "#fff"));
+
+      expect(new Set(rendered).size).toBe(angles.length);
+
+      for (const deg of angles) {
+        expect(generateWindGraphic({ arrowDeg: deg, label: "5 m/s" }, undefined, "#fff")).toContain(`rotate(${deg} `);
+      }
+    });
+
+    it("shrinks the label so a long absolute-mode reading still fits", () => {
+      const short = generateWindGraphic({ arrowDeg: 0, label: "9 mph" }, undefined, "#fff");
+      const long = generateWindGraphic({ arrowDeg: 0, label: "NNE 11 km/h" }, undefined, "#fff");
+      const sizeOf = (svg: string) => Number(/font-size="(\d+)"/.exec(svg)![1]);
+
+      expect(sizeOf(long)).toBeLessThan(sizeOf(short));
+    });
+
+    it("renders a placeholder and no arrow when wind data is unavailable", () => {
+      const svg = generateWindGraphic(null, undefined, "#ffffff");
+
+      expect(svg).not.toContain("<polygon");
+      expect(svg).toContain(">--</text>");
+    });
+
+    it("uses the resolved text color for both the arrow and the label", () => {
+      const svg = generateWindGraphic({ arrowDeg: 0, label: "11 km/h" }, undefined, "#ff0000");
+
+      expect((svg.match(/#ff0000/g) ?? []).length).toBe(2);
+    });
+
+    it("draws no arrow when the wind is calm, but still shows the reading", () => {
+      const svg = generateWindGraphic({ arrowDeg: null, label: "0 km/h" }, undefined, "#ffffff");
+
+      expect(svg).not.toContain("<polygon");
+      expect(svg).toContain(">0 km/h</text>");
+    });
+
+    it("honors the Font Size setting across its whole documented range", () => {
+      const sizeOf = (svg: string) => Number(/font-size="(\d+)"/.exec(svg)![1]);
+      const at = (fontSize: number) => sizeOf(generateWindGraphic({ arrowDeg: 0, label: "7 mph" }, fontSize, "#fff"));
+
+      // A short label is width-limited only at the very top of the range, so
+      // the slider must keep having an effect well past its midpoint.
+      expect(at(20)).toBeGreaterThan(at(15));
+      expect(at(30)).toBeGreaterThan(at(20));
+    });
+
+    it("sizes the placeholder by the same rule as a label so text doesn't jump", () => {
+      const sizeOf = (svg: string) => Number(/font-size="(\d+)"/.exec(svg)![1]);
+      const placeholder = sizeOf(generateWindGraphic(null, 36, "#fff"));
+      const label = sizeOf(generateWindGraphic({ arrowDeg: 0, label: "7 mph" }, 36, "#fff"));
+
+      // Both are width-fitted from the same configured size; the placeholder is
+      // the shorter string so it may be larger. What matters is that neither is
+      // clamped to a fixed cap — only each string's own width limits it.
+      expect(placeholder).toBeGreaterThanOrEqual(label);
+      expect(label).toBeGreaterThan(30);
+    });
+
+    it("shrinks the arrow instead of overlapping a large label", () => {
+      const yOf = (svg: string) => Number(/rotate\(0 72 ([\d.]+)\)/.exec(svg)![1]);
+
+      expect(yOf(generateWindGraphic({ arrowDeg: 0, label: "7 mph" }, 36, "#fff"))).toBeLessThan(
+        yOf(generateWindGraphic({ arrowDeg: 0, label: "7 mph" }, 10, "#fff")),
+      );
+    });
+  });
+
+  describe("generateSessionInfoSvg wind routing", () => {
+    it("blanks the value slot and carries the display in graphicContent", () => {
+      const result = generateSessionInfoSvg(defaultSettings({ mode: "wind" }), "180|11 km/h", false, undefined, {
+        wind: { arrowDeg: 180, label: "11 km/h" },
+      });
+      const decoded = decodeURIComponent(result);
+
+      // The state-key string must never render; the graphic carries the value.
+      expect(decoded).not.toContain("180|11 km/h");
+      expect(decoded).toContain("<polygon");
+      expect(decoded).toContain(">11 km/h</text>");
+    });
+
+    it("titles the key WIND", () => {
+      const decoded = decodeURIComponent(
+        generateSessionInfoSvg(defaultSettings({ mode: "wind" }), "--", false, undefined, { wind: null }),
+      );
+
+      expect(decoded).toContain("WIND");
     });
   });
 
