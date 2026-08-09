@@ -46,6 +46,15 @@ vi.mock("@iracedeck/sim-events-iracing", () => ({
 }));
 
 vi.mock("@iracedeck/deck-core", () => ({
+  // Pass-through stand-in: renders immediately so tests observe pushes without
+  // waiting on the 10 Hz coalescing window.
+  IconUpdateThrottle: class {
+    schedule(_contextId: string, render: () => Promise<void> | void) {
+      void render();
+    }
+    clear() {}
+    clearAll() {}
+  },
   CommonSettings: {
     extend: () => {
       const defaults = {
@@ -58,6 +67,8 @@ vi.mock("@iracedeck/deck-core", () => ({
         blankWhenNoFlag: false,
         gapShowAhead: true,
         gapShowBehind: true,
+        windDirectionMode: "relative",
+        windSpeedUnit: "kmh",
       };
       const validModes = [
         "incidents",
@@ -70,6 +81,7 @@ vi.mock("@iracedeck/deck-core", () => ({
         "flags",
         "track-wetness",
         "laps-to-empty",
+        "wind",
       ];
       const coerceBool = (v: unknown): boolean => v === true || v === "true";
       const merge = (data: Record<string, unknown>) => {
@@ -1992,6 +2004,38 @@ describe("gaps mode (issue #933)", () => {
       }
     });
 
+    it("drops the arrow but keeps the reading when the wind is calm", () => {
+      const display = resolveWindDisplay(defaultSettings({ mode: "wind" }), windTelemetry({ WindVel: 0 }));
+
+      expect(display).toEqual({ arrowDeg: null, label: "0 km/h" });
+    });
+
+    it("omits the compass name too when calm, since there is no direction to name", () => {
+      const display = resolveWindDisplay(
+        defaultSettings({ mode: "wind", windDirectionMode: "absolute" }),
+        windTelemetry({ WindVel: 0 }),
+      );
+
+      expect(display).toEqual({ arrowDeg: null, label: "0 km/h" });
+    });
+
+    it("still shows a direction for a light breeze that survives m/s precision", () => {
+      const display = resolveWindDisplay(
+        defaultSettings({ mode: "wind", windSpeedUnit: "ms" }),
+        windTelemetry({ WindVel: 0.3 }),
+      );
+
+      expect(display).toEqual({ arrowDeg: 180, label: "0.3 m/s" });
+    });
+
+    it("blanks relative mode during replay playback", () => {
+      // YawNorth follows the replay-scrubbed car, so a confident arrow there
+      // would describe a moment the driver isn't living through.
+      const display = resolveWindDisplay(defaultSettings({ mode: "wind" }), windTelemetry({ IsReplayPlaying: true }));
+
+      expect(display).toBeNull();
+    });
+
     it.each([
       ["telemetry is null", null],
       ["wind speed is missing", { WindDir: 0, YawNorth: 0, IsOnTrack: true }],
@@ -2007,7 +2051,7 @@ describe("gaps mode (issue #933)", () => {
       const svg = generateWindGraphic({ arrowDeg: 135, label: "11 km/h" }, undefined, "#ffffff");
 
       expect(svg).toContain("<polygon");
-      expect(svg).toContain("rotate(135 72 46)");
+      expect(svg).toMatch(/rotate\(135 72 [\d.]+\)/);
       expect(svg).toContain(">11 km/h</text>");
     });
 
@@ -2041,6 +2085,43 @@ describe("gaps mode (issue #933)", () => {
       const svg = generateWindGraphic({ arrowDeg: 0, label: "11 km/h" }, undefined, "#ff0000");
 
       expect((svg.match(/#ff0000/g) ?? []).length).toBe(2);
+    });
+
+    it("draws no arrow when the wind is calm, but still shows the reading", () => {
+      const svg = generateWindGraphic({ arrowDeg: null, label: "0 km/h" }, undefined, "#ffffff");
+
+      expect(svg).not.toContain("<polygon");
+      expect(svg).toContain(">0 km/h</text>");
+    });
+
+    it("honors the Font Size setting across its whole documented range", () => {
+      const sizeOf = (svg: string) => Number(/font-size="(\d+)"/.exec(svg)![1]);
+      const at = (fontSize: number) => sizeOf(generateWindGraphic({ arrowDeg: 0, label: "7 mph" }, fontSize, "#fff"));
+
+      // A short label is width-limited only at the very top of the range, so
+      // the slider must keep having an effect well past its midpoint.
+      expect(at(20)).toBeGreaterThan(at(15));
+      expect(at(30)).toBeGreaterThan(at(20));
+    });
+
+    it("sizes the placeholder by the same rule as a label so text doesn't jump", () => {
+      const sizeOf = (svg: string) => Number(/font-size="(\d+)"/.exec(svg)![1]);
+      const placeholder = sizeOf(generateWindGraphic(null, 36, "#fff"));
+      const label = sizeOf(generateWindGraphic({ arrowDeg: 0, label: "7 mph" }, 36, "#fff"));
+
+      // Both are width-fitted from the same configured size; the placeholder is
+      // the shorter string so it may be larger. What matters is that neither is
+      // clamped to a fixed cap — only each string's own width limits it.
+      expect(placeholder).toBeGreaterThanOrEqual(label);
+      expect(label).toBeGreaterThan(30);
+    });
+
+    it("shrinks the arrow instead of overlapping a large label", () => {
+      const yOf = (svg: string) => Number(/rotate\(0 72 ([\d.]+)\)/.exec(svg)![1]);
+
+      expect(yOf(generateWindGraphic({ arrowDeg: 0, label: "7 mph" }, 36, "#fff"))).toBeLessThan(
+        yOf(generateWindGraphic({ arrowDeg: 0, label: "7 mph" }, 10, "#fff")),
+      );
     });
   });
 

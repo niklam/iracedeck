@@ -252,9 +252,7 @@ Show the current track-wetness state with a centered vertical 6-segment bar that
 
 ### Wind
 
-Show the wind as an arrow with the wind speed below it. **The arrow always points the way the wind pushes your car** — so an arrow pointing up means the wind is behind you, and an arrow pointing down means you're driving into it. The arrow rotates smoothly to the exact angle rather than snapping to a handful of fixed positions.
-
-Two direction modes are available, selected with the **Direction** setting.
+Show the wind as an arrow with the wind speed below it. The arrow points the way the wind is travelling, turning in fine 5° steps — 72 positions rather than a handful of fixed ones. What it is measured against depends on the **Direction** setting below; in the default **Relative to car** mode it points where the wind pushes your car.
 
 **Relative to car** (the default) shows the wind against your car's current heading, which is what matters while you drive:
 
@@ -268,6 +266,8 @@ Two direction modes are available, selected with the **Direction** setting.
 Because it's measured against your heading, the arrow turns as you go through a corner — useful for knowing which way the wind will push you on the way in. This mode needs you to be in the car; on the session screen or in the garage the key shows `--`.
 
 **Compass** shows the wind in the world instead of relative to you, with **north up**. The label names the direction the wind blows *from* — matching how iRacing itself reports wind, so a wind labelled `N` is a northerly, with the arrow pointing down (south) to show where it is actually travelling. This mode works anywhere, including in the garage.
+
+When the wind is calm enough to round to zero in your chosen unit, the key shows the speed with no arrow — a direction would be meaningless at that point.
 
 #### Details
 

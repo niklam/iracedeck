@@ -178,3 +178,20 @@ export function formatWindSpeed(windVelMps: number | undefined, unit: WindSpeedU
 
   return `${rounded} ${windSpeedUnitLabel(unit)}`;
 }
+
+/**
+ * True when the wind rounds away to nothing at the display precision of
+ * `unit` — i.e. {@link formatWindSpeed} would read "0 km/h" / "0.0 m/s".
+ *
+ * A direction is meaningless at that point, so callers should suppress the
+ * arrow rather than draw a confident heading over a zero reading. Note the
+ * threshold is unit-dependent: 0.1 m/s is calm in km/h (0.36 → "0 km/h") but
+ * not in m/s ("0.1 m/s").
+ */
+export function isCalmWind(windVelMps: number | undefined, unit: WindSpeedUnit): boolean {
+  const converted = convertWindSpeed(windVelMps, unit);
+
+  if (converted === null) return false;
+
+  return unit === "ms" ? Number(converted.toFixed(1)) === 0 : Math.round(converted) === 0;
+}

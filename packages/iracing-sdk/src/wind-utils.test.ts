@@ -6,6 +6,7 @@ import {
   compassPoint,
   convertWindSpeed,
   formatWindSpeed,
+  isCalmWind,
   normalizeDegrees,
   normalizeSignedDegrees,
   relativeWindAngleDeg,
@@ -217,5 +218,36 @@ describe("formatWindSpeed", () => {
     ["not finite", Number.NaN],
   ])("returns null when the speed is %s", (_label, input) => {
     expect(formatWindSpeed(input, "kmh")).toBeNull();
+  });
+});
+
+describe("isCalmWind", () => {
+  it("reports calm when the speed rounds away at the unit's precision", () => {
+    expect(isCalmWind(0, "kmh")).toBe(true);
+    expect(isCalmWind(0.1, "kmh")).toBe(true); // 0.36 km/h → "0 km/h"
+    expect(isCalmWind(0, "ms")).toBe(true);
+  });
+
+  it("is not calm once the reading shows a non-zero value", () => {
+    expect(isCalmWind(0.89408, "kmh")).toBe(false); // 3.22 km/h
+    expect(isCalmWind(0.1, "ms")).toBe(false); // "0.1 m/s" still reads
+  });
+
+  it("agrees with what formatWindSpeed prints", () => {
+    for (const mps of [0, 0.04, 0.1, 0.2, 0.5, 3]) {
+      for (const unit of ["ms", "kmh", "mph"] as const) {
+        const printed = formatWindSpeed(mps, unit)!;
+        const printsZero = /^0(\.0)? /.test(printed);
+
+        expect(isCalmWind(mps, unit)).toBe(printsZero);
+      }
+    }
+  });
+
+  it.each([
+    ["missing", undefined],
+    ["not finite", Number.NaN],
+  ])("is not calm when the speed is %s (unknown, not zero)", (_label, input) => {
+    expect(isCalmWind(input, "kmh")).toBe(false);
   });
 });
