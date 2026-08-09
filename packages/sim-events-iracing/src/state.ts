@@ -704,6 +704,20 @@ export type TranslatorState = {
    * restart means a new final lap is coming).
    */
   leaderWhiteFired: boolean;
+  /**
+   * Whether a same-leader crossing has been OBSERVED while the session clock
+   * read expired (timed races only) — the leader's FIRST post-expiry
+   * crossing is the white, the second is the checkered. Set the instant such
+   * a crossing is observed, unconditionally — including under a closed gate
+   * or after `leaderWhiteFired` already latched — because observation must
+   * absorb, never defer: a missed white (a leader change landing on the
+   * crossing tick, or a gated window covering it) must become permanent
+   * silence for this race, not a phantom "final lap" spoken at the
+   * checkered. Same lifetime as {@link leaderWhiteFired}: STICKY across the
+   * replay wipe, cleared per-session, and re-armed by a GREEN rising edge in
+   * `diffFlags`.
+   */
+  leaderWhitePostExpiryCrossed: boolean;
 
   // ── Radar ─────────────────────────────────────────────────────────────
   radarState: RadarState;
@@ -997,6 +1011,7 @@ export function createInitialState(): TranslatorState {
     leaderWhiteLastLeaderLap: -1,
     leaderWhiteLastLapsRemainEx: null,
     leaderWhiteFired: false,
+    leaderWhitePostExpiryCrossed: false,
 
     radarState: "clear",
 

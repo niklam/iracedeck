@@ -1231,12 +1231,16 @@ function wipeStateForReplay(self: TranslatorInstance): void {
     opponentFlagAggregateAnnounced: self.state.opponentFlagAggregateAnnounced,
     // The leader's white-flag once-per-race latch (issue #936) is STICKY,
     // the same shape as `playerFinalLapStarted` above: a replay glance
-    // mid-final-lap must not replay the announcement. The three baseline
-    // fields (`leaderWhiteLastLeaderIdx` / `Lap` / `LapsRemainEx`)
-    // deliberately re-seed — replay-timeline leader/lap-count values are as
-    // meaningless as the opponent-flag bits baseline (see that field's
-    // JSDoc in state.ts).
+    // mid-final-lap must not replay the announcement. `leaderWhitePostExpiryCrossed`
+    // rides along with the same lifetime — it's the literal first-crossing
+    // guard, and losing it at a replay flip would re-arm a timed race's
+    // checkered crossing to fire as if it were the still-unseen white. The
+    // three baseline fields (`leaderWhiteLastLeaderIdx` / `Lap` /
+    // `LapsRemainEx`) deliberately re-seed — replay-timeline leader/lap-count
+    // values are as meaningless as the opponent-flag bits baseline (see that
+    // field's JSDoc in state.ts).
     leaderWhiteFired: self.state.leaderWhiteFired,
+    leaderWhitePostExpiryCrossed: self.state.leaderWhitePostExpiryCrossed,
   };
 
   self.state = createInitialState();

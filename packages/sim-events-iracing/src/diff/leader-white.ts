@@ -17,26 +17,49 @@
  *     to 1 (a `>= 2` → `1` edge) — a race connected already at 1 seeds
  *     silently (this race's episode is missed, never guessed retroactively).
  *   - **Timed**: the clock has no lap-boundary of its own — the leader takes
- *     the white at their first S/F crossing AFTER `SessionTimeRemain`
- *     expires (the #880 model). This diff tracks the leader's own
- *     `CarIdxLapCompleted` and fires on its next genuine increment once the
- *     clock has expired, but only for a same-TRACKED-leader increment: a
- *     leader change mid-race re-baselines silently rather than crediting the
- *     new leader with a crossing that happened before they were tracked —
- *     the NEXT crossing of the newly-tracked leader (while still expired)
- *     fires normally.
+ *     the white at their FIRST S/F crossing AFTER `SessionTimeRemain`
+ *     expires, and the checkered at their SECOND (the #880 model). This diff
+ *     tracks the leader's own `CarIdxLapCompleted` and fires on a genuine
+ *     same-TRACKED-leader increment once the clock has expired, but ONLY for
+ *     that first post-expiry crossing — see `leaderWhitePostExpiryCrossed`
+ *     below. A leader change mid-race re-baselines the crossing detector
+ *     silently rather than crediting the new leader with a crossing that
+ *     happened before they were tracked — the NEXT crossing of the
+ *     newly-tracked leader (while still expired) is evaluated normally.
+ *
+ * **`leaderWhitePostExpiryCrossed`: literal first-crossing rule.** A timed
+ * race's leader has exactly two post-expiry crossings — the white, then the
+ * checkered — so any detection path that can MISS the white (a leader change
+ * landing exactly on the crossing tick, or a gated window covering it) must
+ * not leave the checkered crossing armed: speaking "leader starting their
+ * final lap" as the race actually ends would be a strictly worse failure
+ * than staying silent. `state.leaderWhitePostExpiryCrossed` is set to `true`
+ * the INSTANT a same-leader crossing is observed while `clockExpired` —
+ * unconditionally, including under a closed gate and even after
+ * `leaderWhiteFired` has already latched. Observation absorbs, it never
+ * defers: once a post-expiry crossing has been seen, whether or not THIS
+ * diff got to act on it, the timed edge can never fire again this race. The
+ * accepted residual: a full replay-ENTRY wipe (`wipeStateForReplay`, which
+ * re-seeds the crossing-detector baselines) that happens to swallow the
+ * white crossing itself cannot retroactively mark the miss — the crossing
+ * was never observed by any tick, gated or not. The remaining defenses for
+ * that narrow window are the unconditional postRace gate (the checkered
+ * itself is always suppressed once the race is over) and the player's own
+ * White-bit suppression below (a player who WAS present for the crossing
+ * hears their own white-flag family instead).
  *
  * Once-per-race latch (`leaderWhiteFired`): the callout is a single
  * headline moment, and unlike the player's own two-stage white (which
  * re-arms per episode) there's no second "final lap" to speak. STICKY
  * across `wipeStateForReplay` (a replay glance mid-final-lap must not
- * replay the announcement) but re-armed on a GREEN rising edge in
- * `diffFlags` (the #880 precedent — oval overtime / a same-session admin
- * restart means a new final lap is coming). When BOTH the lap and timed
- * edges are true on the same tick (a race carrying both limits), only ONE
- * event is emitted — the latch check gates the whole detection block, and
- * the `if (lapEdge || timedEdge)` body emits exactly once regardless of how
- * many of the two conditions are true.
+ * replay the announcement) but re-armed — alongside
+ * `leaderWhitePostExpiryCrossed` — on a GREEN rising edge in `diffFlags`
+ * (the #880 precedent — oval overtime / a same-session admin restart means a
+ * new final lap is coming). When BOTH the lap and timed edges are true on
+ * the same tick (a race carrying both limits), only ONE event is emitted —
+ * the latch check gates the whole detection block, and the
+ * `if (lapEdge || timedEdge)` body emits exactly once regardless of how many
+ * of the two conditions are true.
  *
  * Suppression is checked INSIDE the fire block — after the edge is detected
  * and the latch is set — so a suppressed moment still latches (no repeated
@@ -44,16 +67,21 @@
  * player's own two-stage white in `diffFlags` already owns that callout) or
  * the player's own `SessionFlags & Flags.White` is already up at the
  * detection tick (same reasoning — the player is about to hear their own
- * white-flag family fire).
+ * white-flag family fire). An unresolved leader (`leaderIdx < 0`, no car
+ * currently holds position 1) never fires either — the lap-limited edge
+ * doesn't otherwise depend on `leaderIdx` at all, so this guard is what
+ * keeps it from firing leaderless with the leader/player suppression
+ * vacuously satisfied.
  *
  * Gating mirrors `diffOpponentPit` / `diffOpponentFlags`: race sessions
  * only, replay-only suppressed, pre-green suppressed (no leader is
  * meaningful before the green), post-race suppressed, and an unresolved
- * player carIdx suppresses everything. The three baseline fields
+ * player carIdx suppresses everything. The three crossing/baseline fields
  * (`leaderWhiteLastLeaderIdx` / `leaderWhiteLastLeaderLap` /
  * `leaderWhiteLastLapsRemainEx`) advance every tick regardless of gating so
  * a gated tick's edge is absorbed into the baseline, never replayed once the
- * gate reopens.
+ * gate reopens — `leaderWhitePostExpiryCrossed` observation follows the same
+ * unconditional-advance rule, for the reason explained above.
  *
  * **`clockExpired` guard.** `SessionTimeRemain` has no documented negative
  * sentinel in this codebase — unlike `SessionLapsRemainEx`, whose "no lap
@@ -104,13 +132,23 @@ export function diffLeaderWhite(
   const leaderCrossed =
     sameLeader && leaderLap >= 0 && state.leaderWhiteLastLeaderLap >= 0 && leaderLap > state.leaderWhiteLastLeaderLap;
 
+  // Literal first-crossing rule: capture whether THIS crossing is the first
+  // one observed post-expiry BEFORE marking it observed, then mark it
+  // observed unconditionally — regardless of gating or the `leaderWhiteFired`
+  // latch. Observation absorbs, it never defers (see the module doc).
+  const isFirstPostExpiryCrossing = clockExpired && leaderCrossed && !state.leaderWhitePostExpiryCrossed;
+
+  if (clockExpired && leaderCrossed) {
+    state.leaderWhitePostExpiryCrossed = true;
+  }
+
   const gated = !isRaceSession || replayOnlySession || preGreen || postRace || playerCarIdx < 0;
 
   if (!gated && !state.leaderWhiteFired) {
     const lapEdge = lapsRemain === 1 && prevLapsRemain !== null && prevLapsRemain >= 2;
-    const timedEdge = clockExpired && leaderCrossed;
+    const timedEdge = isFirstPostExpiryCrossing;
 
-    if (lapEdge || timedEdge) {
+    if ((lapEdge || timedEdge) && leaderIdx >= 0) {
       state.leaderWhiteFired = true;
 
       const playerWhiteUp = hasFlag(telemetry.SessionFlags, Flags.White);

@@ -1,4 +1,4 @@
-import { Flags } from "@iracedeck/iracing-sdk";
+import { Flags, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { createInitialState, type TranslatorState } from "../state.js";
@@ -37,7 +37,7 @@ function run(
 
   diffLeaderWhite(
     state,
-    telemetry as never,
+    telemetry as unknown as TelemetryData,
     opts.player ?? PLAYER,
     opts.isRace ?? true,
     opts.replay ?? false,
@@ -165,6 +165,63 @@ describe("diffLeaderWhite", () => {
 
       // A later tick that would ALSO satisfy the timed edge on its own never re-fires.
       expect(run(state, field([10, 22, 10, 10], { SessionLapsRemainEx: 1, SessionTimeRemain: 0 }))).toEqual([]);
+    });
+  });
+
+  describe("post-expiry crossing — literal first-crossing rule (issue #936 review, finding 1)", () => {
+    it("normal path: the leader's first post-expiry crossing still fires (unchanged behavior)", () => {
+      run(state, field([10, 20, 10, 10], { SessionTimeRemain: 5 }));
+      expect(run(state, field([10, 21, 10, 10], { SessionTimeRemain: 0 }))).toEqual([RAISED]);
+      expect(state.leaderWhitePostExpiryCrossed).toBe(true);
+    });
+
+    it("a gated tick covering the white crossing absorbs it — the later (checkered) crossing does NOT fire", () => {
+      run(state, field([10, 20, 10, 10], { SessionTimeRemain: 5 })); // seed, clock still running
+
+      // The white crossing happens while the tick is gated (replay-only) —
+      // observation still absorbs (leaderWhitePostExpiryCrossed flips),
+      // but nothing can fire because the whole detection block is skipped.
+      expect(run(state, field([10, 21, 10, 10], { SessionTimeRemain: 0 }), { replay: true })).toEqual([]);
+      expect(state.leaderWhitePostExpiryCrossed).toBe(true);
+      expect(state.leaderWhiteFired).toBe(false);
+
+      // Gate reopens; the SAME leader's next crossing (the actual checkered)
+      // must NOT be treated as a fresh first crossing.
+      expect(run(state, field([10, 22, 10, 10], { SessionTimeRemain: 0 }))).toEqual([]);
+      expect(state.leaderWhiteFired).toBe(false);
+    });
+
+    it("a leader change spanning a missed (gated) white crossing: the newly-tracked leader's own crossing does NOT fire either", () => {
+      run(state, field([10, 20, 10, 10], { SessionTimeRemain: 5 })); // carIdx 1 leads, seed
+
+      // carIdx 1's white crossing happens while gated — absorbed silently,
+      // never fired, but the session-wide flag is now set.
+      expect(run(state, field([10, 21, 10, 10], { SessionTimeRemain: 0 }), { replay: true })).toEqual([]);
+      expect(state.leaderWhitePostExpiryCrossed).toBe(true);
+
+      // Leadership changes to carIdx 2 — re-baselines silently (existing behavior).
+      const newPositions = [4, 2, 1, 3];
+
+      expect(run(state, field([10, 21, 18, 10], { SessionTimeRemain: 0 }), { positions: newPositions })).toEqual([]);
+
+      // carIdx 2 (the newly-tracked leader) has its own first OBSERVED
+      // crossing — under the old per-identity-only model this would look
+      // like a fresh "first" crossing and fire as if it were the white, but
+      // the race's white was already (silently) observed via carIdx 1
+      // earlier, so the session-wide flag must block it — this crossing is
+      // actually the checkered.
+      expect(run(state, field([10, 21, 19, 10], { SessionTimeRemain: 0 }), { positions: newPositions })).toEqual([]);
+      expect(state.leaderWhiteFired).toBe(false);
+    });
+  });
+
+  describe("unresolved leader", () => {
+    it("never fires when no car currently holds position 1 (leaderless lap-limited edge)", () => {
+      const noLeader = [0, 2, 3, 4]; // no car reports position 1
+      run(state, field([10, 10, 10, 10], { SessionLapsRemainEx: 3 }), { positions: noLeader });
+      run(state, field([10, 10, 10, 10], { SessionLapsRemainEx: 2 }), { positions: noLeader });
+      expect(run(state, field([10, 10, 10, 10], { SessionLapsRemainEx: 1 }), { positions: noLeader })).toEqual([]);
+      expect(state.leaderWhiteFired).toBe(false);
     });
   });
 
