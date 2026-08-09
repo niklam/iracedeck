@@ -120,6 +120,21 @@ export enum TrackWetness {
 }
 
 /**
+ * Penalty/status flags another car can carry in `CarIdxSessionFlags` (issue
+ * #936). String-valued so payloads read naturally in logs and the harness;
+ * `Repair` is the meatball — the canonical name follows the sim bit.
+ */
+export enum OpponentPenaltyFlag {
+  Furled = "furled",
+  Black = "black",
+  Repair = "repair",
+  Disqualify = "disqualify",
+}
+
+/** Who a flagged car is relative to the player. `"others"` is the aggregate tail. */
+export type OpponentFlagRelation = "ahead" | "behind" | "track-ahead" | "others";
+
+/**
  * Pit-service readback snapshot — the queued-services view the readback
  * scenarios speak to (issue #476). Lives next to the catalog because it's
  * shared between the sim translator (which builds it from current
@@ -336,6 +351,29 @@ export type SimEventMap = {
     }
   >;
   /**
+   * A penalty flag on another car matters to the player (issue #936):
+   * either the flag rose on a car already in the qualification window
+   * (`trigger: "raised"`), or a car with an active flag entered the window
+   * (`trigger: "entered-range"`). `position` is the car's effective position
+   * at emit time (class position in multi-class) — consumers prefer a live
+   * speak-time read and use this as the fallback; `isMultiClass` records the
+   * projection the classification ran in. `gapSeconds` is the coarse forward
+   * track gap, present for `"track-ahead"` only. `carIdx`/`flag`/`trigger`
+   * are absent for the `"others"` aggregate.
+   */
+  "opponentFlag.flagged": SimEvent<
+    "opponentFlag.flagged",
+    {
+      relation: OpponentFlagRelation;
+      carIdx?: number;
+      flag?: OpponentPenaltyFlag;
+      trigger?: "raised" | "entered-range";
+      position?: number;
+      gapSeconds?: number;
+      isMultiClass?: boolean;
+    }
+  >;
+  /**
    * Approaching a named corner in a practice/test session (issue #888).
    * Emitted by the sim translator when the speed-scaled lead point (current
    * position + lead-seconds × speed) crosses a corner's start marker from the
@@ -382,6 +420,15 @@ export type SimEventMap = {
    * "this is the last lap" moment. Fired once per white episode.
    */
   "flag.white-last-lap.raised": SimEvent<"flag.white-last-lap.raised", EmptySimEventPayload>;
+  /**
+   * The OVERALL race leader is starting their final lap (issue #936) —
+   * detected from lap counting (leader-relative `SessionLapsRemainEx`, or the
+   * leader's first scored crossing after clock expiry in timed races), never
+   * from the unconfirmed per-car White bit. Once per race, re-armed by a
+   * green rising edge. Suppressed when the player IS the leader or already
+   * has their own White up (the #772 heads-up owns that moment).
+   */
+  "flag.white-leader.raised": SimEvent<"flag.white-leader.raised", EmptySimEventPayload>;
   "flag.red.raised": SimEvent<"flag.red.raised", EmptySimEventPayload>;
   /**
    * Track-debris flag (`Flags.Debris`). Persistent until the flag drops;
