@@ -192,6 +192,23 @@ export const EVENT_TEMPLATES = [
     data: { lap: 5, position: 4, previousPosition: 5 },
   },
   {
+    name: "gap.trendChanged",
+    description: "Relevant gap development — a contact projection entered the horizon, or a breakaway (issue #933)",
+    data: {
+      side: "ahead",
+      direction: "closing",
+      gapSeconds: 1.8,
+      ratePerLap: -0.8,
+      lapsToContact: 2.3,
+      carIdx: 3,
+    },
+  },
+  {
+    name: "gap.thresholdCrossed",
+    description: "Live gap to a standings neighbor dropped under the alert threshold (issue #933)",
+    data: { side: "behind", gapSeconds: 0.9, thresholdSeconds: 1.0, carIdx: 5 },
+  },
+  {
     name: "race.finished",
     description: "Race finished — fires once when checkered + S/F crossing land in a race session (issue #569)",
     data: { position: 3 },

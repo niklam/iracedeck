@@ -26,6 +26,7 @@ import { WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest } from "../../interpreter.js";
 import { _resetAudioScenarios, getScenarioEngine, initializeAudioScenarios } from "../../interpreter.js";
 import { _setFurledRaisedSpoken } from "./flag-alerts.js";
+import { _resetGapCalloutCooldown, _setLastGapEvent } from "./gaps.js";
 import { _resetLastIncidentDelta } from "./incidents.js";
 import {
   _resetOpponentPitPending,
@@ -352,6 +353,20 @@ const FUEL_LAPS_LEFT_CLIP_PATHS = [
   `voice/${VOICE}/fuel/race-covered-01.mp3`,
 ] as const;
 
+// Gap callout clips referenced from `gaps.ts` (issue #933): trend lines per
+// side/direction, threshold alerts per side, and the readout intro. The
+// spoken number reuses the lap-time clip groups (not fixtured here — the
+// readout clause is optional and skips without them).
+const GAP_CLIP_PATHS = [
+  `voice/${VOICE}/gap/ahead-closing-01.mp3`,
+  `voice/${VOICE}/gap/ahead-opening-01.mp3`,
+  `voice/${VOICE}/gap/behind-closing-01.mp3`,
+  `voice/${VOICE}/gap/behind-opening-01.mp3`,
+  `voice/${VOICE}/gap/threshold-ahead-01.mp3`,
+  `voice/${VOICE}/gap/threshold-behind-01.mp3`,
+  `voice/${VOICE}/gap/readout-intro.mp3`,
+] as const;
+
 const manifest: AudioAssetsManifest = {
   clips: [
     "sfx/IRD-tick-open.mp3",
@@ -368,6 +383,7 @@ const manifest: AudioAssetsManifest = {
     ...PIT_WINDOW_CLIP_PATHS,
     ...OPPONENT_PIT_CLIP_PATHS,
     ...FUEL_LAPS_LEFT_CLIP_PATHS,
+    ...GAP_CLIP_PATHS,
   ],
   ambientLoop: "sfx/IRD-ambient-pit.mp3",
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
@@ -501,6 +517,9 @@ beforeEach(() => {
     undefined, // getCornerNameSnapshot (issue #888)
     (id) => opponentPitEnabled.get(id) ?? true, // getOpponentPitCalloutEnabled (issue #622)
     () => opponentPitLivePosition, // getOpponentPitLivePosition (issue #622)
+    undefined, // getGapCalloutEnabled (issue #933)
+    undefined, // getGapCooldownMs (issue #933)
+    undefined, // getLiveGaps (issue #933)
     () => voiceMasterEnabled,
     undefined, // getRadarMasterEnabled
   );
@@ -1534,5 +1553,73 @@ describe("Race Engineer master gate (issue #515)", () => {
     bus.publishEvent("flag.green.raised", {} as never);
     flush(audio);
     expect(voiceClipsPlayed().some((p) => p.includes("green-"))).toBe(true);
+  });
+});
+
+describe("gap callouts fire end-to-end (issue #933)", () => {
+  afterEach(() => {
+    _resetGapCalloutCooldown();
+    _setLastGapEvent(null);
+    // The master-gate test in this block leaves the flag off; restore it so a
+    // test added after this describe isn't silenced by the leftover state.
+    voiceMasterEnabled = true;
+  });
+
+  it("plays the trend line on gap.trendChanged", () => {
+    bus.publishEvent("gap.trendChanged", {
+      side: "ahead",
+      direction: "closing",
+      gapSeconds: 1.8,
+      ratePerLap: -0.8,
+      lapsToContact: 2.3,
+      carIdx: 3,
+    });
+    flush(audio);
+
+    expect(voiceClipsPlayed().some((p) => p.includes("gap/ahead-closing"))).toBe(true);
+  });
+
+  it("plays the threshold line on gap.thresholdCrossed", () => {
+    bus.publishEvent("gap.thresholdCrossed", {
+      side: "behind",
+      gapSeconds: 0.9,
+      thresholdSeconds: 1.0,
+      carIdx: 5,
+    });
+    flush(audio);
+
+    expect(voiceClipsPlayed().some((p) => p.includes("gap/threshold-behind"))).toBe(true);
+  });
+
+  it("shares one cooldown across both gap scenarios", () => {
+    bus.publishEvent("gap.trendChanged", {
+      side: "behind",
+      direction: "opening",
+      gapSeconds: 7.0,
+      ratePerLap: 1.6,
+      carIdx: 5,
+    });
+    flush(audio);
+    bus.publishEvent("gap.thresholdCrossed", { side: "ahead", gapSeconds: 0.9, thresholdSeconds: 1.0, carIdx: 3 });
+    flush(audio);
+
+    const gapClips = voiceClipsPlayed().filter((p) => p.includes("gap/"));
+
+    expect(gapClips.some((p) => p.includes("gap/behind-opening"))).toBe(true);
+    expect(gapClips.some((p) => p.includes("gap/threshold-ahead"))).toBe(false);
+  });
+
+  it("suppresses when the Race Engineer master is off", () => {
+    voiceMasterEnabled = false;
+    bus.publishEvent("gap.trendChanged", {
+      side: "ahead",
+      direction: "opening",
+      gapSeconds: 3.0,
+      ratePerLap: 1.0,
+      carIdx: 3,
+    });
+    flush(audio);
+
+    expect(voiceClipsPlayed().some((p) => p.includes("gap/"))).toBe(false);
   });
 });

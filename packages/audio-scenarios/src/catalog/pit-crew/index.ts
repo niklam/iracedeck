@@ -61,6 +61,15 @@ import {
 import { DAMAGE_ALERTS } from "./damage-alerts.js";
 import { FLAG_ALERTS } from "./flag-alerts.js";
 import { FUEL_LAPS_LEFT_ALERTS } from "./fuel-laps-left.js";
+import {
+  buildGapThresholdScenario,
+  buildGapTrendScenario,
+  GAP_CALLOUT_DEFAULT_COOLDOWN_MS,
+  type GapCalloutId,
+  type LiveGapsResolver,
+  registerGapVars,
+  SCENARIO_ID_TO_GAP_ID,
+} from "./gaps.js";
 import { INCIDENT_ALERTS, registerIncidentVars } from "./incidents.js";
 import {
   buildLapTimeScenario,
@@ -248,6 +257,18 @@ export {
   type RaceStatusCalloutId,
   raceStatusCadenceHits,
 } from "./race-status.js";
+export {
+  _resetGapCalloutCooldown,
+  _setLastGapEvent,
+  buildGapThresholdScenario,
+  buildGapTrendScenario,
+  GAP_CALLOUT_DEFAULT_COOLDOWN_MS,
+  GAP_CALLOUT_SETTING_KEYS,
+  type GapCalloutId,
+  type LiveGapsResolver,
+  resolveGapCooldownMs,
+  tryClaimGapCallout,
+} from "./gaps.js";
 export {
   buildSessionStartScenario,
   SESSION_START_CALLOUT_SETTING_KEYS,
@@ -954,6 +975,23 @@ export function registerPitCrew(
   // Default `() => null` falls back to the emit-time payload position — a
   // safe stub for tests and the harness.
   getOpponentPitLivePosition: OpponentPitLivePositionResolver = () => null,
+  // Gap callout opt-ins (issue #933). One boolean per callout type (trend
+  // flip / threshold crossing); same gate-at-event-arrival shape as the
+  // other callout families — read live so a toggle off mid-session takes
+  // effect on the next event without cutting an in-flight clip. Placed
+  // before the master gates so the masters stay the last args. Default
+  // `() => true` preserves legacy behavior for tests that don't supply a
+  // closure.
+  getGapCalloutEnabled: (id: GapCalloutId) => boolean = () => true,
+  // Shared gap-callout cooldown in ms (issue #933). Plugins wire this to
+  // `resolveGapCooldownMs(gapCalloutCooldownSeconds)`; read live at event
+  // arrival so a slider change applies to the next callout. Default 30 s.
+  getGapCooldownMs: () => number = () => GAP_CALLOUT_DEFAULT_COOLDOWN_MS,
+  // Live gaps resolver (issue #933). Plugins wire `getLiveGaps()` from the
+  // translator; the spoken gap number reads it at speak time (the #574
+  // live-at-speak-time pattern). Default `() => null` skips the readout
+  // clause — a safe stub for tests.
+  getLiveGaps: LiveGapsResolver = () => null,
   // Master gate for the Race Engineer voice subsystem (issue #515).
   // Plugins wire this to `pitCrewRaceEngineerEnabled === true`. Read live
   // on every event arrival and applied as the OUTERMOST wrapper around
@@ -1314,6 +1352,21 @@ export function registerPitCrew(
       ),
     ),
   );
+
+  // Gap callouts (issue #933): sustained trend flips + threshold crossings
+  // against the class-standings neighbors. The decision reads the event
+  // payload; the spoken gap number reads LIVE gaps at speak time. Both
+  // scenarios share one cooldown, claimed as the last where: gate.
+  registerGapVars(engine, getLiveGaps);
+
+  for (const s of [
+    buildGapTrendScenario(getRaceFinishedFired, getOvertakeGate, getGapCooldownMs),
+    buildGapThresholdScenario(getRaceFinishedFired, getOvertakeGate, getGapCooldownMs),
+  ]) {
+    engine.defineScenario(
+      wrapWithMaster(wrapCalloutScenario(s, SCENARIO_ID_TO_GAP_ID, getGapCalloutEnabled, "gap callout", logger)),
+    );
+  }
 
   // Race-end final-result callout (issue #569). Snapshot resolver is owned by
   // the plugin (caches `race.finished` payload via event-bus subscription,

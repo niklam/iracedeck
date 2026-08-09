@@ -330,6 +330,18 @@
 				return '<sdpi-checkbox setting="' + c.setting + '" label="' + c.label + '" global default="true"></sdpi-checkbox>';
 			}).join('');
 
+			// Gap callouts (issue #933). Two subjects — the sustained trend flip
+			// ("we're gaining on the car ahead") and the threshold crossing
+			// ("we've caught the car ahead") — independently toggleable.
+			var gapCallouts = [
+				{ setting: "calloutEnabledGapTrend",     label: "Gap trend (gaining/losing)" },
+				{ setting: "calloutEnabledGapThreshold", label: "Gap under threshold" },
+			];
+			var gapRowCount = Math.ceil(gapCallouts.length / 2);
+			var gapCheckboxes = gapCallouts.map(function (c) {
+				return '<sdpi-checkbox setting="' + c.setting + '" label="' + c.label + '" global default="true"></sdpi-checkbox>';
+			}).join('');
+
 			// Spotter callouts (issue #651). Two subjects — the per-lap "cars
 			// around you" announcement and the "still there" reminder repeated
 			// while alongside — independently toggleable. Same 2-column
@@ -489,6 +501,23 @@
 						overtakeCheckboxes +
 					'</div>' +
 				'</sdpi-item>' +
+				'<sdpi-item label="Gaps">' +
+					'<div style="display:grid;grid-template-rows:repeat(' + gapRowCount + ',auto);grid-auto-flow:column;gap:4px 12px;width:100%;">' +
+						gapCheckboxes +
+					'</div>' +
+				'</sdpi-item>' +
+				'<sdpi-item label="Gap alert threshold (s)">' +
+					'<ird-range-input setting="gapAlertThresholdSeconds" min="0.5" max="3" step="0.1" default="1" global showlabels></ird-range-input>' +
+				'</sdpi-item>' +
+				'<div class="ird-supporting-text">The engineer calls out when the gap to the car ahead or behind first drops under this. Re-arms once the gap opens about half a second beyond it.</div>' +
+				'<sdpi-item label="Gap callout cooldown (s)">' +
+					'<ird-range-input setting="gapCalloutCooldownSeconds" min="1" max="360" step="1" default="30" global showlabels></ird-range-input>' +
+				'</sdpi-item>' +
+				'<div class="ird-supporting-text">Minimum quiet time between any two gap callouts.</div>' +
+				'<sdpi-item label="Gap change to re-announce (s)">' +
+					'<ird-range-input setting="gapCalloutMinChangeSeconds" min="0" max="10" step="0.1" default="1.5" global showlabels></ird-range-input>' +
+				'</sdpi-item>' +
+				'<div class="ird-supporting-text">A new call must agree with the story: closing-in needs the gap down this much from its high point since the last call, pulling-away up this much from its low point. Stops back-and-forth announcements while a gap hovers. 0 disables.</div>' +
 				'<sdpi-item label="Spotter">' +
 					'<div style="display:grid;grid-template-rows:repeat(' + spotterRowCount + ',auto);grid-auto-flow:column;gap:4px 12px;width:100%;">' +
 						spotterCheckboxes +

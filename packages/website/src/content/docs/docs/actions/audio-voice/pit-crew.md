@@ -252,6 +252,19 @@ The trigger is the car **entering the pit-approach zone** (the same track-surfac
 On ovals, a full-course caution can send half the field down pit road at once — enumerating every car would be unbearable. When **three or more** eligible cars enter the pits within a short window, the engineer collapses the calls into a single *"And it seems there are other cars pitting as well."* after the first two individual announcements, then stays quiet until the rush is over. The leader is always announced individually, even during such a pit train (and ahead of same-moment pit entries).
 
 Nothing is announced in practice or qualifying, before the green flag, or while watching a replay. Two opt-ins live under **Race Engineer Callouts → Opponent Pits**, both enabled by default — see [the opt-in list below](#race-engineer-callouts-per-subject-opt-inout).
+## Gap callouts (car ahead / car behind)
+
+In race sessions the Race Engineer watches the time gaps to the cars one position ahead and behind you in your **class** standings — the same crossing-time measurement as Session Info's [Gaps display](/docs/actions/display-session/session-info/#gaps). What he says is decided by **relevance**, not by raw change: the question he keeps asking is *will this development actually reach us, and how soon?* Everything is evaluated continuously from a smoothed gap rate — mid-lap, with no waiting for the start/finish line.
+
+- **Closing in (either side)** — with a sustained closing rate, the engineer projects when contact would happen (the gap divided by how fast it's shrinking). The first call comes when that projection drops inside roughly **8 laps**, and never for a catch that would only complete after the race ends — someone eating 2 seconds a lap out of a 30-second gap with 5 laps to go stays unmentioned. A rival steadily grinding down a 10-second gap does get called: *"The car behind is closing in on us."* / *"We're gaining on the car ahead."* As the situation develops, he follows up roughly each time the projected laps-to-contact halve, so the calls naturally get more frequent as it gets serious. Once the threat fades (they stop closing), the episode resets.
+- **Breaking away** — escaping a battle is announced once, as it happens: a small gap (up to ~10 seconds) being opened hard (half a second per lap or more) fires *"We're pulling away from the car behind."* / *"The car ahead is pulling away from us."* the moment the rate is established — on lap one if that's when it happens. Stretching an already broken gap is never news: opening 30 seconds into 36 says nothing. A new breakaway is only announced again after the pair has first closed back into battle range (under ~5 seconds).
+- **Threshold crossing** — a gap first drops under your alert threshold (0.5–3 s, default 1.0 s): *"We've caught the car ahead."* / *"The car behind is right with us."* Each crossing announces once; it re-arms only after the gap has opened about half a second beyond the threshold again, so a nose-to-tail battle doesn't repeat the alert every corner.
+
+When the live gap is under a minute, the engineer follows the line with the number — *"Gap is one point five seconds."* — read at the moment it's spoken, not at the moment the event fired. If the call was queued behind another one and you have swapped places with that car in the meantime, he gives you the line without a number rather than reading a different car's gap.
+
+The engineer keeps quiet when there's nothing worth saying: a shared **cooldown** (1–360 s, default 30) spaces all gap callouts; a **consistency gate** (0–10 s, default 1.5; set it to 0 to turn the gate off and hear every development) requires each new call about the same car to agree with the story so far — "closing in" only once the gap is down that much from its highest point since the previous call, "pulling away" only once it's up that much from its lowest — so a hovering gap can't ping-pong and a sector where your rival is always briefly quicker can never fake "they're catching us" while the gap is actually growing; on the **opening lap** the engineer assumes the grid put your neighbors about 0.7 s away — being close off the start is expected, so nothing (including "right with us") is announced until a gap has genuinely moved from that spacing; and a **stability guard** ignores telemetry glitches — a gap reading only counts toward a callout after it has evolved plausibly for a fraction of a second, so a frame or two of bad data can never fire a call; nothing is announced about a neighbor a lap or more away, while either car is on pit road or off track (a rival serving a pit stop is not a battle), during messy moments (a car alongside, you're crawling, a recent incident), or after the race has ended. A neighbor change — someone pits, you get passed — resets the measurement so the trend never mixes two different cars.
+
+Both callouts are individually toggleable under **Race Engineer Callouts → Gaps**, enabled by default, with the threshold and cooldown sliders right below them.
 
 ## Pit-box count-in
 
@@ -387,6 +400,14 @@ Under **Overtakes**, two callouts are toggleable, both enabled by default:
 - **Lost position** — the *"Come on, &lt;name&gt;. Don't give up positions like that. We're now in pee five."* line on a sustained mid-race loss.
 
 Each direction is independent — drivers who want the congratulations but not the chastisement (or vice versa) get per-direction control.
+
+Under **Gaps**, two callouts are toggleable, both enabled by default (see [Gap callouts](#gap-callouts-car-ahead--car-behind) above for the full behavior):
+
+- **Gap trend (gaining/losing)** (`calloutEnabledGapTrend`) — the closing-in projections and breakaway announcements against the class-standings neighbors.
+- **Gap under threshold** (`calloutEnabledGapThreshold`) — the once-per-episode alert when a gap first drops under the configurable threshold.
+- **Gap alert threshold (s)** (`gapAlertThresholdSeconds`, 0.5–3, default 1.0) — the crossing point for the threshold alert. Read live.
+- **Gap callout cooldown (s)** (`gapCalloutCooldownSeconds`, 1–360, default 30) — minimum quiet time between any two gap callouts. Read live.
+- **Gap change to re-announce (s)** (`gapCalloutMinChangeSeconds`, 0–10, default 1.5) — a new call about the same car requires the gap to have moved at least this much in the announced direction, measured from its best/worst point since the previous call. 0 disables. Read live.
 
 Under **Pit Box**, one callout is toggleable, enabled by default:
 

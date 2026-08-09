@@ -30,7 +30,7 @@
 
 | Category                | Actions | Modes | Examples                                                              |
 | ----------------------- | ------- | ----- | --------------------------------------------------------------------- |
-| **Display & Session**   | 2       | 8     | Incidents, laps, position, fuel, laps to empty, flags                 |
+| **Display & Session**   | 2       | 10    | Incidents, laps, position, iRating, gaps ahead/behind, fuel, flags    |
 | **Driving Controls**    | 6       | 32    | AI spotter, audio (incl. Race Engineer & Radar volume), black box cycling, look direction, car control, pit crew |
 | **Cockpit & Interface** | 5       | 34    | Wipers, FFB, splits & reference, telemetry, UI toggles                |
 | **View & Camera**       | 5       | 90    | FOV, replay, camera controls, broadcast tools                         |

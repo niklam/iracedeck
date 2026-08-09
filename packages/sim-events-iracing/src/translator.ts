@@ -30,7 +30,9 @@ import { TrackWetness } from "@iracedeck/event-bus";
 import {
   CarLeftRight,
   classPositionFromOrder,
+  crossingTimeAt,
   IRSDK_UNLIMITED_LAPS,
+  IRSDK_UNLIMITED_TIME,
   isPostRace,
   isPreGreen,
   nearestCarGapMeters,
@@ -57,6 +59,7 @@ import {
   type FuelLapTracker,
   type FuelStats,
 } from "./diff/fuel-laps.js";
+import { diffGaps, GAP_DEFAULT_ALERT_THRESHOLD_S, GAP_DEFAULT_MIN_CHANGE_S } from "./diff/gaps.js";
 import { diffIncidents } from "./diff/incidents.js";
 import { diffLaps } from "./diff/laps.js";
 import { diffLifecycle } from "./diff/lifecycle.js";
@@ -77,7 +80,7 @@ import { diffToggles } from "./diff/toggles.js";
 import { diffTrackWetness } from "./diff/track-wetness.js";
 import type { PendingEvent } from "./diff/types.js";
 import { resolveStandingStart } from "./start-lights.js";
-import { createInitialState, type TranslatorState } from "./state.js";
+import { createInitialState, type GapNeighborState, type TranslatorState } from "./state.js";
 import { resolveTrackDirection, resolveTrackType, type TrackDirection } from "./track-type.js";
 
 const SUBSCRIPTION_ID = "__sim-events-iracing__";
@@ -169,6 +172,18 @@ type TranslatorInstance = {
    * setting (sanitized); defaults to the constant when no closure is given.
    */
   getCornerCalloutLeadSeconds: () => number;
+  /**
+   * Live-read gap alert threshold (seconds) for the gap callouts
+   * (issue #933). Plugins wire it to the `gapAlertThresholdSeconds` global
+   * setting; defaults to the constant when no closure is given.
+   */
+  getGapAlertThresholdSeconds: () => number;
+  /**
+   * Live-read minimum gap movement (seconds) between gap trend
+   * announcements — the anti-ping-pong gate (issue #933 follow-up). Plugins
+   * wire it to the `gapCalloutMinChangeSeconds` global setting.
+   */
+  getGapMinChangeSeconds: () => number;
 };
 
 /**
@@ -192,6 +207,19 @@ export type SimEventsIracingOptions = {
    * constant {@link CORNER_CALLOUT_DEFAULT_LEAD_SECONDS}.
    */
   getCornerCalloutLeadSeconds?: () => number;
+  /**
+   * Live-read gap alert threshold (seconds) for the gap callouts
+   * (issue #933). Plugins compose it from the `gapAlertThresholdSeconds`
+   * global setting. Default: a constant {@link GAP_DEFAULT_ALERT_THRESHOLD_S}.
+   */
+  getGapAlertThresholdSeconds?: () => number;
+  /**
+   * Live-read minimum gap movement (seconds) between gap trend
+   * announcements (issue #933 follow-up). Plugins compose it from the
+   * `gapCalloutMinChangeSeconds` global setting. Default: a constant
+   * {@link GAP_DEFAULT_MIN_CHANGE_S}.
+   */
+  getGapMinChangeSeconds?: () => number;
 };
 
 let instance: TranslatorInstance | null = null;
@@ -228,6 +256,8 @@ export function initializeSimEventsIracing(
     fuelLaps: createFuelLapTracker(),
     getFuelLapsLeftMarginLaps: options.getFuelLapsLeftMarginLaps ?? (() => FUEL_CALLOUT_DEFAULT_MARGIN_LAPS),
     getCornerCalloutLeadSeconds: options.getCornerCalloutLeadSeconds ?? (() => CORNER_CALLOUT_DEFAULT_LEAD_SECONDS),
+    getGapAlertThresholdSeconds: options.getGapAlertThresholdSeconds ?? (() => GAP_DEFAULT_ALERT_THRESHOLD_S),
+    getGapMinChangeSeconds: options.getGapMinChangeSeconds ?? (() => GAP_DEFAULT_MIN_CHANGE_S),
   };
 
   instance = self;
@@ -814,6 +844,83 @@ export function getLiveRacePositions(): number[] | null {
   if (!instance || !instance.latestTelemetry) return null;
 
   return calculateFrozenRacePositions(instance.state, instance.latestTelemetry);
+}
+
+/**
+ * Live gap snapshot for one class-standings neighbor (issue #933). The public
+ * name for the state's own snapshot shape — an alias, not a copy, so the two
+ * can't drift.
+ */
+export type GapNeighbor = GapNeighborState;
+
+/** Live gaps to the class-standings neighbors (issue #933). */
+export type LiveGaps = { ahead: GapNeighbor | null; behind: GapNeighbor | null };
+
+/**
+ * Live crossing-time gaps to the cars one class position ahead and behind
+ * (issue #933). `null` when unavailable (not initialized, no telemetry, not
+ * a race session / pre-green). A side is `null` when there is no such
+ * neighbor; a side's `gapSeconds` is `null` while the traces can't cover the
+ * lookup (cold start) or the neighbor is a lap or more away (`lapDelta` then
+ * carries the count).
+ */
+export function getLiveGaps(): LiveGaps | null {
+  if (!instance || !instance.latestTelemetry) return null;
+
+  if (!instance.state.gapLiveAhead && !instance.state.gapLiveBehind) return null;
+
+  return { ahead: instance.state.gapLiveAhead, behind: instance.state.gapLiveBehind };
+}
+
+/**
+ * Crossing-time gap in seconds between any two cars (issue #933): how long
+ * ago `aheadCarIdx` crossed `behindCarIdx`'s current track position. The
+ * reusable primitive behind future consumers ("we're N seconds behind the
+ * leader") — resolve the target from the canonical order
+ * (`getLiveRacePositions()`), then call this. `null` when the traces don't
+ * cover the lookup or either car has no live progress.
+ */
+export function getLiveGapBetween(aheadCarIdx: number, behindCarIdx: number): number | null {
+  if (!instance || !instance.latestTelemetry) return null;
+
+  const telemetry = instance.latestTelemetry;
+  const lapCompleted = telemetry.CarIdxLapCompleted as number[] | undefined;
+  const lapDistPct = telemetry.CarIdxLapDistPct as number[] | undefined;
+  const sessionTime = typeof telemetry.SessionTime === "number" ? telemetry.SessionTime : null;
+
+  if (!Array.isArray(lapCompleted) || !Array.isArray(lapDistPct) || sessionTime === null) return null;
+
+  const behindLc = lapCompleted[behindCarIdx];
+  const behindPct = lapDistPct[behindCarIdx];
+
+  if (!hasLiveProgress(behindLc, behindPct)) return null;
+
+  // The ahead car must be live too. Its trace stops growing when it tows or
+  // exits (no backwards jump ever resets it), yet still covers the behind
+  // car's position for up to a lap — so without this check the lookup keeps
+  // returning a plausible gap that grows one second per second to a car that
+  // is no longer on track.
+  if (!hasLiveProgress(lapCompleted[aheadCarIdx], lapDistPct[aheadCarIdx])) return null;
+
+  const trace = instance.state.gapTraces[aheadCarIdx];
+
+  if (!trace) return null;
+
+  const crossed = crossingTimeAt(trace, behindLc! + behindPct!);
+
+  return crossed === null ? null : Math.max(0, sessionTime - crossed);
+}
+
+/** Whether a car's raw lap/percent pair reports live on-track progress. */
+function hasLiveProgress(lapCompleted: number | undefined, lapDistPct: number | undefined): boolean {
+  return (
+    typeof lapCompleted === "number" &&
+    typeof lapDistPct === "number" &&
+    Number.isFinite(lapCompleted) &&
+    Number.isFinite(lapDistPct) &&
+    lapCompleted >= 0 &&
+    lapDistPct >= 0
+  );
 }
 
 /**
@@ -1527,6 +1634,46 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     emit,
     startingGridPosition,
     frozenPositions,
+  );
+  // Gap tracking (issue #933): crossing-time traces + class-neighbor live
+  // gaps + relevance/threshold callout events. Consumes the same canonical
+  // frozen order as diffOvertakes; the pace car is excluded explicitly
+  // because the canonical order carries no pace-car filter of its own. The
+  // laps-remaining estimate caps the closing-announcement horizon (a catch
+  // that completes after the checkered is never announced): lap-limited
+  // races read the counter, time-limited races divide the clock by the
+  // leader's lap time (the #880 fuel-coverage resolver).
+  let gapLapsRemaining: number | null = null;
+
+  if (
+    typeof telemetry.SessionLapsRemainEx === "number" &&
+    telemetry.SessionLapsRemainEx > 0 &&
+    telemetry.SessionLapsRemainEx < IRSDK_UNLIMITED_LAPS
+  ) {
+    gapLapsRemaining = telemetry.SessionLapsRemainEx;
+  } else if (
+    typeof telemetry.SessionTimeRemain === "number" &&
+    telemetry.SessionTimeRemain > 0 &&
+    telemetry.SessionTimeRemain < IRSDK_UNLIMITED_TIME
+  ) {
+    const leaderLapTimeS = resolveLeaderLapTimeS(telemetry, frozenPositions);
+
+    if (leaderLapTimeS !== null && leaderLapTimeS > 0) {
+      gapLapsRemaining = telemetry.SessionTimeRemain / leaderLapTimeS;
+    }
+  }
+
+  diffGaps(
+    self.state,
+    telemetry,
+    isRaceSession,
+    playerCarIdx,
+    resolvePaceCarIdx(sessionInfo),
+    frozenPositions,
+    self.getGapAlertThresholdSeconds,
+    emit,
+    gapLapsRemaining,
+    self.getGapMinChangeSeconds,
   );
   // Pit-box count-in (issue #600). Reuses the cached `trackLengthMeters` to
   // convert the LapDistPct→box gap into meters; the box itself comes from

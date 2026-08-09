@@ -12,6 +12,8 @@ import {
   type FlagCalloutId,
   FUEL_CALLOUT_SETTING_KEYS,
   type FuelCalloutId,
+  GAP_CALLOUT_SETTING_KEYS,
+  type GapCalloutId,
   INCIDENT_CALLOUT_SETTING_KEYS,
   type IncidentCalloutId,
   LAP_TIME_CALLOUT_SETTING_KEYS,
@@ -43,6 +45,7 @@ import {
   type RaceStartCalloutId,
   type RaceStatusCalloutId,
   registerPitCrew,
+  resolveGapCooldownMs,
   resolveStillThereIntervalMs,
   ROLLING_START_CALLOUT_SETTING_KEYS,
   type RollingStartCalloutId,
@@ -170,6 +173,7 @@ import { createSvgRasterizer } from "@iracedeck/rasterizer";
 import {
   getDriverSetupName,
   getLiveCarPosition,
+  getLiveGaps,
   getLivePosition,
   getLiveRacePositions,
   getNearestCarGapMeters,
@@ -184,6 +188,8 @@ import {
   isRaceFinished,
   sanitizeCornerCalloutLeadSeconds,
   sanitizeFuelCalloutMarginLaps,
+  sanitizeGapAlertThresholdSeconds,
+  sanitizeGapMinChangeSeconds,
 } from "@iracedeck/sim-events-iracing";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -243,6 +249,15 @@ initializeSimEventsIracing(eventBus, getController(), adapter.createLogger("SimE
   // shape as the fuel margin above.
   getCornerCalloutLeadSeconds: () =>
     sanitizeCornerCalloutLeadSeconds((getGlobalSettings() as Record<string, unknown>).cornerCalloutLeadSeconds),
+  // Gap alert threshold (issue #933) — read live so a PI slider change takes
+  // effect on the next tick without a restart. Clamp mirrors the schema.
+  getGapAlertThresholdSeconds: () =>
+    sanitizeGapAlertThresholdSeconds((getGlobalSettings() as Record<string, unknown>).gapAlertThresholdSeconds),
+  // Consistency gate (issue #933 follow-up) — minimum gap movement in the
+  // announced direction from its extreme since the side's last call. 0
+  // disables.
+  getGapMinChangeSeconds: () =>
+    sanitizeGapMinChangeSeconds((getGlobalSettings() as Record<string, unknown>).gapCalloutMinChangeSeconds),
 });
 
 // Feed the translator's live per-car race order into the template-context builder
@@ -621,6 +636,14 @@ registerPitCrew(
 
     return n > 0 ? n : null;
   },
+  // Gap callout opt-ins (issue #933). Per-type live-read — same gate-at-
+  // event-arrival pattern as the other callout families.
+  (id: GapCalloutId) => (getGlobalSettings() as Record<string, unknown>)[GAP_CALLOUT_SETTING_KEYS[id]] !== false,
+  // Shared gap-callout cooldown (issue #933) — 1–360 s, default 30 s.
+  () => resolveGapCooldownMs((getGlobalSettings() as Record<string, unknown>).gapCalloutCooldownSeconds),
+  // Live gaps resolver (issue #933) — the spoken gap number reads the live
+  // crossing-time gap at speak time, not the event-time snapshot.
+  () => getLiveGaps(),
   // Race Engineer master gate (issue #515). Read live so a fresh install
   // (or a deck with no Pit Crew button mounted) suppresses every voice
   // scenario at dispatch time, independent of audio bus volumes.

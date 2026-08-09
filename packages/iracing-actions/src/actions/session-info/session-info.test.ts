@@ -1,9 +1,11 @@
 import { FLAG_DEFINITIONS, resolveActiveFlag, SessionState, TrackWetness } from "@iracedeck/iracing-sdk";
 import {
   getFuelStats,
+  getLiveGaps,
   getLivePosition,
   getLiveRacePositions,
   getStartingGridPosition,
+  type LiveGaps,
 } from "@iracedeck/sim-events-iracing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -11,7 +13,9 @@ import {
   countActiveDrivers,
   countActiveDriversInPlayerClass,
   formatFuelAmount,
+  formatGapValue,
   formatSessionTime,
+  generateGapsGraphic,
   generateSessionInfoSvg,
   generateTrackWetnessGraphic,
   iratingValueColor,
@@ -32,6 +36,7 @@ vi.mock("@iracedeck/iracing-sdk", async () => {
 vi.mock("@iracedeck/sim-events-iracing", () => ({
   FUEL_LAP_HISTORY_CAP: 20,
   getFuelStats: vi.fn(() => ({ lastLap: null, avg: null, avgLapTime: null, samples: 0 })),
+  getLiveGaps: vi.fn(() => null),
   getLivePosition: vi.fn(() => null),
   getLiveRacePositions: vi.fn(() => null),
   getStartingGridPosition: vi.fn(() => null),
@@ -48,6 +53,8 @@ vi.mock("@iracedeck/deck-core", () => ({
         fuelSubMode: "now",
         fuelLapWindow: 5,
         blankWhenNoFlag: false,
+        gapShowAhead: true,
+        gapShowBehind: true,
       };
       const validModes = [
         "incidents",
@@ -55,6 +62,7 @@ vi.mock("@iracedeck/deck-core", () => ({
         "laps",
         "position",
         "irating",
+        "gaps",
         "fuel",
         "flags",
         "track-wetness",
@@ -67,6 +75,10 @@ vi.mock("@iracedeck/deck-core", () => ({
         if ("positionShowTotal" in merged) merged.positionShowTotal = coerceBool(merged.positionShowTotal);
 
         if ("blankWhenNoFlag" in merged) merged.blankWhenNoFlag = coerceBool(merged.blankWhenNoFlag);
+
+        if ("gapShowAhead" in merged) merged.gapShowAhead = coerceBool(merged.gapShowAhead);
+
+        if ("gapShowBehind" in merged) merged.gapShowBehind = coerceBool(merged.gapShowBehind);
 
         if ("fuelLapWindow" in merged) {
           // Mirrors the real schema: round + clamp, never hard-fail.
@@ -150,6 +162,7 @@ function defaultSettings(
       | "laps"
       | "position"
       | "irating"
+      | "gaps"
       | "fuel"
       | "flags"
       | "track-wetness"
@@ -161,9 +174,12 @@ function defaultSettings(
     fuelSubMode: "now" | "lastLap" | "avgN";
     fuelLapWindow: number;
     blankWhenNoFlag: boolean;
+    gapShowAhead: boolean;
+    gapShowBehind: boolean;
   }> = {},
 ) {
   return {
+    addedWithVersion: "0.0.0",
     mode: "incidents" as const,
     positionType: "class" as const,
     positionShowTotal: false,
@@ -171,6 +187,8 @@ function defaultSettings(
     fuelSubMode: "now" as const,
     fuelLapWindow: 5,
     blankWhenNoFlag: false,
+    gapShowAhead: true,
+    gapShowBehind: true,
     ...overrides,
   };
 }
@@ -1801,6 +1819,135 @@ describe("SessionInfo", () => {
 
         expect(decoded).toContain("P-/-");
       });
+    });
+  });
+});
+
+describe("gaps mode (issue #933)", () => {
+  function gaps(
+    ahead: { gapSeconds: number | null; lapDelta?: number; trend?: "closing" | "opening" | "steady" | null } | null,
+    behind: { gapSeconds: number | null; lapDelta?: number; trend?: "closing" | "opening" | "steady" | null } | null,
+  ): LiveGaps {
+    return {
+      ahead: ahead
+        ? { carIdx: 3, gapSeconds: ahead.gapSeconds, lapDelta: ahead.lapDelta ?? 0, trend: ahead.trend ?? null }
+        : null,
+      behind: behind
+        ? { carIdx: 5, gapSeconds: behind.gapSeconds, lapDelta: behind.lapDelta ?? 0, trend: behind.trend ?? null }
+        : null,
+    };
+  }
+
+  describe("formatGapValue", () => {
+    it("formats the value table", () => {
+      expect(formatGapValue(null)).toBe("–");
+      expect(formatGapValue({ carIdx: 3, gapSeconds: null, lapDelta: 0, trend: null })).toBe("–");
+      expect(formatGapValue({ carIdx: 3, gapSeconds: 1.23, lapDelta: 0, trend: null })).toBe("1.2");
+      expect(formatGapValue({ carIdx: 3, gapSeconds: null, lapDelta: 2, trend: null })).toBe("2L");
+      expect(formatGapValue({ carIdx: 3, gapSeconds: 101.7, lapDelta: 0, trend: null })).toBe("102");
+    });
+  });
+
+  describe("generateGapsGraphic", () => {
+    it("renders two trend-colored rows when both sides are on", () => {
+      const svg = generateGapsGraphic(
+        gaps({ gapSeconds: 1.2, trend: "closing" }, { gapSeconds: 3.5, trend: "closing" }),
+        true,
+        true,
+        undefined,
+        "#ffffff",
+      );
+
+      // Ahead closing = favorable green; behind closing = unfavorable red.
+      expect(svg).toContain(">1.2</text>");
+      expect(svg).toContain(">3.5</text>");
+      expect(svg).toContain("#2ecc71");
+      expect(svg).toContain("#e74c3c");
+      expect((svg.match(/<polygon/g) ?? []).length).toBe(2);
+    });
+
+    it("renders one full-size row when only one side is on", () => {
+      const svg = generateGapsGraphic(gaps({ gapSeconds: 1.2 }, null), true, false, undefined, "#ffffff");
+
+      expect((svg.match(/<text/g) ?? []).length).toBe(1);
+      expect(svg).toContain('font-size="28"');
+    });
+
+    it("uses the theme text color for steady/unknown trends and placeholders", () => {
+      const svg = generateGapsGraphic(
+        gaps({ gapSeconds: 1.2, trend: "steady" }, null),
+        true,
+        true,
+        undefined,
+        "#ffffff",
+      );
+
+      expect(svg).not.toContain("#2ecc71");
+      expect(svg).not.toContain("#e74c3c");
+      expect(svg).toContain("–");
+    });
+
+    it("returns empty when both rows are disabled", () => {
+      expect(generateGapsGraphic(null, false, false, undefined, "#ffffff")).toBe("");
+    });
+  });
+
+  describe("generateSessionInfoSvg gaps routing", () => {
+    it("blanks the value slot and carries the display in graphicContent", () => {
+      const result = generateSessionInfoSvg(
+        defaultSettings({ mode: "gaps" }),
+        "1.2:closing|3.5:steady",
+        false,
+        undefined,
+        undefined,
+        undefined,
+        gaps({ gapSeconds: 1.2, trend: "closing" }, { gapSeconds: 3.5, trend: "steady" }),
+      );
+      const decoded = decodeURIComponent(result);
+
+      // The state-key string must never render; the rows carry the values.
+      expect(decoded).not.toContain("1.2:closing");
+      expect(decoded).toContain("polygon");
+    });
+  });
+
+  describe("live display integration", () => {
+    let action: SessionInfo;
+
+    beforeEach(() => {
+      action = new SessionInfo();
+    });
+
+    it("renders live gap rows from getLiveGaps via the telemetry subscription", async () => {
+      // Appear with no gap data (placeholder rows), THEN provide live gaps so
+      // the state-key cache sees a change and re-renders.
+      vi.mocked(getLiveGaps).mockReturnValue(null);
+
+      action["sdkController"].getCurrentTelemetry = vi.fn().mockReturnValue(null);
+      action["sdkController"].getSessionInfo = vi.fn().mockReturnValue(null);
+
+      await action.onWillAppear(fakeEvent("gap-action", { mode: "gaps" }) as never);
+
+      vi.mocked(getLiveGaps).mockReturnValue(
+        gaps({ gapSeconds: 1.8, trend: "closing" }, { gapSeconds: 2.4, trend: "opening" }),
+      );
+
+      const telemetry = { SessionNum: 0 };
+      const subscribeCall = (action["sdkController"].subscribe as ReturnType<typeof vi.fn>).mock.calls[0];
+      const telemetryCallback = subscribeCall[1];
+
+      await telemetryCallback(telemetry);
+
+      const calls = (action["updateKeyImage"] as ReturnType<typeof vi.fn>).mock.calls;
+
+      expect(calls.length).toBeGreaterThan(0);
+      const decoded = decodeURIComponent(calls[calls.length - 1][1] as string);
+
+      expect(decoded).toContain(">1.8</text>");
+      expect(decoded).toContain(">2.4</text>");
+      // Both rows favorable (ahead closing / behind opening) render green.
+      expect(decoded).toContain("#2ecc71");
+      expect(decoded).not.toContain("#e74c3c");
     });
   });
 });

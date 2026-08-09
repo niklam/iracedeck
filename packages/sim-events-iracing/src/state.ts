@@ -7,7 +7,20 @@
  * first tick after connect seeds without firing spurious transition events.
  */
 import { type IncidentType, type PitBoxMark, type RadarState, TrackWetness } from "@iracedeck/event-bus";
+import type { GapTrendDirection, ProgressTrace } from "@iracedeck/iracing-sdk";
 import type { CornerMarker } from "@iracedeck/track-data";
+
+/** Live gap snapshot for one class-standings neighbor (issue #933). */
+export type GapNeighborState = {
+  /** The neighbor's car index. */
+  carIdx: number;
+  /** Crossing-time gap in seconds; null while the traces can't cover the lookup. */
+  gapSeconds: number | null;
+  /** Whole laps the pair is apart (0 = same racing lap). */
+  lapDelta: number;
+  /** Continuous display trend ("closing" | "opening" | "steady"), null without data. */
+  trend: GapTrendDirection | null;
+};
 
 export type MaterialSample = {
   t: number; // timestamp (ms since epoch)
@@ -462,6 +475,90 @@ export type TranslatorState = {
   /** Cache key (`${TrackID}|${SessionNum}`) for invalidating `trackLengthMeters`. */
   trackLengthKey: string;
 
+  // ── Gaps (issue #933) ───────────────────────────────────────────────────
+  /**
+   * Per-car crossing-time traces: rolling ~1.15-lap history of
+   * `lapCompleted + lapDistPct` progress against `SessionTime`, sparse-indexed
+   * by carIdx. Owned here; all math on them lives in
+   * `@iracedeck/iracing-sdk` `gap-utils.ts`.
+   */
+  gapTraces: (ProgressTrace | undefined)[];
+  /** Cached class-neighbor car indices from the last tick (−1 = none). */
+  gapAheadIdx: number;
+  gapBehindIdx: number;
+  /** Live gap snapshots `getLiveGaps()` reads; null = not computable this tick. */
+  gapLiveAhead: GapNeighborState | null;
+  gapLiveBehind: GapNeighborState | null;
+  /**
+   * Display-trend rate chain (issue #933 follow-up): the gap is sampled at
+   * every 2% of player progress; adjacent-sample deltas (a couple of seconds
+   * apart, where track-position noise is negligible) feed an exponential
+   * moving average of the gap rate in seconds-per-lap. The key color
+   * classifies that smoothed rate, so it goes live ~0.1 lap after any reset
+   * instead of needing a full same-spot lap of history. Reset on neighbor
+   * identity change and across any sampling break (pit visits, data gaps).
+   */
+  gapLastCheckpointAhead: { progress: number; gapSeconds: number } | null;
+  gapLastCheckpointBehind: { progress: number; gapSeconds: number } | null;
+  /** Smoothed gap rate (s/lap; negative = closing). Null until seeded. */
+  gapRateEmaAhead: number | null;
+  gapRateEmaBehind: number | null;
+  /** Consecutive rate samples in the current chain (gates classification). */
+  gapRateSamplesAhead: number;
+  gapRateSamplesBehind: number;
+  /** Player progress at the last recorded checkpoint (−1 before seeding). */
+  gapLastCheckpointProgress: number;
+  /**
+   * Closing-threat announcement latch (issue #933): the laps-to-contact
+   * projection at the last `gap.trendChanged` "closing" emission for the
+   * side, or null when the episode is armed (nothing announced yet /
+   * re-armed after the threat receded). A new announcement fires when the
+   * projection first enters the horizon and again each time it roughly
+   * halves relative to this value.
+   */
+  gapContactAnnouncedLapsAhead: number | null;
+  gapContactAnnouncedLapsBehind: number | null;
+  /**
+   * Breakaway announcement latch (issue #933): true once the side's
+   * "opening" emission fired for the current episode; re-arms when the pair
+   * closes back into battle range.
+   */
+  gapBreakawayAnnouncedAhead: boolean;
+  gapBreakawayAnnouncedBehind: boolean;
+  /**
+   * Gap extremes observed since the side's last announcement (issue #933
+   * follow-up): a "closing" call must be CONSISTENT with the story so far —
+   * the gap down at least `gapCalloutMinChangeSeconds` from its PEAK since
+   * the last call — and "pulling away" up the same amount from its TROUGH.
+   * This kills both hover ping-pong and sector-profile fakes ("they're
+   * closing" while the gap sits above everything since the last call) with
+   * no track-position dependence and no warmup. Reset to the announced gap
+   * on every emission; seeded at the assumed grid spacing on lap 1; null =
+   * no history. Only stable, unsuppressed readings fold in.
+   */
+  gapMinSinceAnnounceAhead: number | null;
+  gapMinSinceAnnounceBehind: number | null;
+  gapMaxSinceAnnounceAhead: number | null;
+  gapMaxSinceAnnounceBehind: number | null;
+  /**
+   * Callout stability guard (issue #933 follow-up): the gap seen on the
+   * previous tick and how many consecutive ticks the gap has evolved
+   * plausibly (per-tick step ≤ the glitch bound). A one-or-two-frame
+   * telemetry glitch resets the counter on the way in AND on the way back,
+   * so it can never confirm; emissions require a short stable streak.
+   */
+  gapLastEvalGapAhead: number | null;
+  gapLastEvalGapBehind: number | null;
+  gapStableTicksAhead: number;
+  gapStableTicksBehind: number;
+  /**
+   * Threshold episode armed flags — arm only after the gap has been observed
+   * beyond threshold + hysteresis, so a nose-to-tail race start can't fire a
+   * crossing on the first green-flag tick.
+   */
+  gapThresholdArmedAhead: boolean;
+  gapThresholdArmedBehind: boolean;
+
   // ── Self-managed running order (issue #603) ─────────────────────────────
   /**
    * Per-car last-known good score (`CarIdxLapCompleted + CarIdxLapDistPct`) from
@@ -783,6 +880,33 @@ export function createInitialState(): TranslatorState {
     pendingLossPrevClassPos: 0,
     trackLengthMeters: null,
     trackLengthKey: "",
+
+    gapTraces: [],
+    gapAheadIdx: -1,
+    gapBehindIdx: -1,
+    gapLiveAhead: null,
+    gapLiveBehind: null,
+    gapLastCheckpointAhead: null,
+    gapLastCheckpointBehind: null,
+    gapRateEmaAhead: null,
+    gapRateEmaBehind: null,
+    gapRateSamplesAhead: 0,
+    gapRateSamplesBehind: 0,
+    gapLastCheckpointProgress: -1,
+    gapContactAnnouncedLapsAhead: null,
+    gapContactAnnouncedLapsBehind: null,
+    gapBreakawayAnnouncedAhead: false,
+    gapBreakawayAnnouncedBehind: false,
+    gapMinSinceAnnounceAhead: null,
+    gapMinSinceAnnounceBehind: null,
+    gapMaxSinceAnnounceAhead: null,
+    gapMaxSinceAnnounceBehind: null,
+    gapLastEvalGapAhead: null,
+    gapLastEvalGapBehind: null,
+    gapStableTicksAhead: 0,
+    gapStableTicksBehind: 0,
+    gapThresholdArmedAhead: false,
+    gapThresholdArmedBehind: false,
 
     positionLastKnownScores: [],
     positionFrozen: new Set(),

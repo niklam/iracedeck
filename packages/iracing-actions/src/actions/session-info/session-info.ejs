@@ -13,6 +13,7 @@
 				<option value="laps">Laps</option>
 				<option value="position">Position</option>
 				<option value="irating">iRating Gain/Loss</option>
+				<option value="gaps">Gaps (Ahead/Behind)</option>
 				<option value="fuel">Fuel</option>
 				<option value="laps-to-empty">Laps to Empty</option>
 				<option value="flags">Race Flags</option>
@@ -61,6 +62,14 @@
 			<sdpi-checkbox setting="blankWhenNoFlag" label="Blank when no flag"></sdpi-checkbox>
 		</sdpi-item>
 
+		<sdpi-item id="gaps-settings" label="Show" class="hidden">
+			<sdpi-checkbox setting="gapShowAhead" label="Gap ahead" default="true"></sdpi-checkbox>
+			<sdpi-checkbox setting="gapShowBehind" label="Gap behind" default="true"></sdpi-checkbox>
+		</sdpi-item>
+		<div id="gaps-help" class="ird-supporting-text hidden">
+			Time gap to the car one class position ahead/behind (race sessions only). Green = the gap is moving your way, red = against you.
+		</div>
+
 		<script>
 			async function initialize() {
 				await customElements.whenDefined("sdpi-select");
@@ -102,6 +111,8 @@
 				const fuelWindowSettings = document.getElementById("fuel-window-settings");
 				const fuelWindowHelp = document.getElementById("fuel-window-help");
 				const flagsSettings = document.getElementById("flags-settings");
+				const gapsSettings = document.getElementById("gaps-settings");
+				const gapsHelp = document.getElementById("gaps-help");
 
 				if (positionTypeSettings) {
 					positionTypeSettings.classList.toggle("hidden", mode !== "position");
@@ -127,6 +138,12 @@
 				}
 				if (flagsSettings) {
 					flagsSettings.classList.toggle("hidden", mode !== "flags");
+				}
+				if (gapsSettings) {
+					gapsSettings.classList.toggle("hidden", mode !== "gaps");
+				}
+				if (gapsHelp) {
+					gapsHelp.classList.toggle("hidden", mode !== "gaps");
 				}
 			}
 

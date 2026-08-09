@@ -60,6 +60,9 @@ export type PitBoxMark = "five" | "four" | "three" | "two" | "one" | "pit-now";
 /** Flag scope — "local" is a sector/area yellow, "full" is a full-course yellow. */
 export type FlagScope = "local" | "full";
 
+/** Which standings neighbor a gap event refers to (issue #933). */
+export type GapSide = "ahead" | "behind";
+
 /**
  * Who a pitting opponent is relative to the player (issue #622). `"others"`
  * is the aggregate tail once 3+ eligible cars entered the pits within the
@@ -698,6 +701,55 @@ export type SimEventMap = {
       previousClassPosition?: number;
       /** True iff the current session has more than one car class. */
       isMultiClass?: boolean;
+    }
+  >;
+  /**
+   * A RELEVANT gap development against a class-standings neighbor
+   * (issue #933). Evaluated continuously from the smoothed gap rate — not at
+   * lap boundaries. "closing" fires when the projected contact
+   * (`gapSeconds ÷ rate`) drops inside the announcement horizon (capped by
+   * the laps actually remaining — a catch that completes after the race is
+   * never announced), and re-fires as the projection roughly halves.
+   * "opening" fires once per episode when a small gap is being opened hard —
+   * a breakaway from a battle; a big gap opening further never fires. Race
+   * sessions only, never for a neighbor a lap or more apart, suppressed
+   * while either car is on pit road / off track. Spoken numbers should read
+   * the LIVE gap at speak time (#574 pattern).
+   */
+  "gap.trendChanged": SimEvent<
+    "gap.trendChanged",
+    {
+      /** Which neighbor the development refers to. */
+      side: GapSide;
+      /** "closing" = the gap is shrinking toward contact; "opening" = a breakaway. */
+      direction: "closing" | "opening";
+      /** Gap in seconds at emission. */
+      gapSeconds: number;
+      /** Smoothed gap rate in seconds per lap (negative = shrinking). */
+      ratePerLap: number;
+      /** Projected laps until contact (closing only). */
+      lapsToContact?: number;
+      /** The neighbor's car index. */
+      carIdx: number;
+    }
+  >;
+  /**
+   * The live gap to a class-standings neighbor first dropped below the
+   * user's alert threshold (issue #933). Once per episode: re-arms only
+   * after the gap has grown back beyond threshold + hysteresis. Same
+   * suppression rules as `gap.trendChanged`.
+   */
+  "gap.thresholdCrossed": SimEvent<
+    "gap.thresholdCrossed",
+    {
+      /** Which neighbor crossed inside the threshold. */
+      side: GapSide;
+      /** Live gap in seconds at the crossing. */
+      gapSeconds: number;
+      /** The configured alert threshold in seconds. */
+      thresholdSeconds: number;
+      /** The neighbor's car index. */
+      carIdx: number;
     }
   >;
   /**

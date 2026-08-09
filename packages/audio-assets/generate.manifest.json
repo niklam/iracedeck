@@ -11768,6 +11768,94 @@
       "textPreview": "Looks like more cars are coming in too.",
       "generatedAt": "2026-08-08T06:35:05.813Z",
       "requestId": "wfrTgoDSKxACe4Epo3Ql"
+    },
+    "voice/default/gap/ahead-closing-01.mp3": {
+      "hash": "4c633e19563e9b34",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "We're gaining on the car ahead.",
+      "generatedAt": "2026-08-08T11:38:26.649Z",
+      "requestId": "OAQuT1kSvSw5A2yhjYF4"
+    },
+    "voice/default/gap/ahead-closing-02.mp3": {
+      "hash": "cb818714073dd0ff",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Good pace. We're closing on the car ahead.",
+      "generatedAt": "2026-08-08T13:08:18.729Z",
+      "requestId": "o2hzmJfqWy2lzlqwXUNo"
+    },
+    "voice/default/gap/ahead-opening-01.mp3": {
+      "hash": "99dd27ac59225000",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "The car ahead is pulling away from us.",
+      "generatedAt": "2026-08-08T11:38:27.133Z",
+      "requestId": "WEg2luQv03729l9Qvj3d"
+    },
+    "voice/default/gap/ahead-opening-02.mp3": {
+      "hash": "aae2ff8c101b552c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "We're losing time to the car ahead.",
+      "generatedAt": "2026-08-08T11:38:27.354Z",
+      "requestId": "TT0s8fkZgiRbRphx4YLQ"
+    },
+    "voice/default/gap/behind-closing-01.mp3": {
+      "hash": "d235605b63418fe9",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "The car behind is closing in on us.",
+      "generatedAt": "2026-08-08T11:38:27.575Z",
+      "requestId": "GRcVRwjB0OgvpvIi8iUU"
+    },
+    "voice/default/gap/behind-closing-02.mp3": {
+      "hash": "16dcfb0349f7440b",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "The car behind is gaining. Keep your head down.",
+      "generatedAt": "2026-08-08T11:38:28.052Z",
+      "requestId": "ZOSJ1uYyKfPx4z4cisYQ"
+    },
+    "voice/default/gap/behind-opening-01.mp3": {
+      "hash": "00b61fb4a5c5287a",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "We're pulling away from the car behind.",
+      "generatedAt": "2026-08-08T11:38:28.283Z",
+      "requestId": "xrNbLrx2aCWiK40EXI7z"
+    },
+    "voice/default/gap/behind-opening-02.mp3": {
+      "hash": "d7b3128ab0fa721e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Good. We're dropping the car behind.",
+      "generatedAt": "2026-08-08T13:08:38.959Z",
+      "requestId": "oNAto1jsMTCDnMPVam1p"
+    },
+    "voice/default/gap/threshold-ahead-01.mp3": {
+      "hash": "470eafed350b0175",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "We've caught the car ahead.",
+      "generatedAt": "2026-08-08T13:09:32.930Z",
+      "requestId": "Vf3rTFSOESJ4jArHiS69"
+    },
+    "voice/default/gap/threshold-behind-01.mp3": {
+      "hash": "7ee2499d5857882f",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "The car behind is right with us.",
+      "generatedAt": "2026-08-08T11:38:28.905Z",
+      "requestId": "aSI7olhmZc0N2SNRvi5S"
+    },
+    "voice/default/gap/readout-intro.mp3": {
+      "hash": "4208a1b510d9068b",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Gap is",
+      "generatedAt": "2026-08-08T11:38:29.057Z",
+      "requestId": "zkFZAiEp5WKt9kp6LigW"
     }
   }
 }

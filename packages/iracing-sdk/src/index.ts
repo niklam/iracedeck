@@ -121,6 +121,22 @@ export { findNearestCarOnTrack, type FindNearestCarOptions, nearestCarGapMeters 
 // Position utilities
 export { calculateRacePositions, classPositionFromOrder } from "./position-utils.js";
 
+// Gap utilities (#933)
+export {
+  appendProgressSample,
+  classifyGapTrend,
+  crossingTimeAt,
+  GAP_TRACE_MIN_STEP,
+  GAP_TRACE_SPAN_LAPS,
+  type GapTrendDirection,
+  lapDeltaBetween,
+  type ProgressSample,
+  type ProgressTrace,
+  recentProgressRate,
+  resolveClassNeighbors,
+  type StandingsNeighbors,
+} from "./gap-utils.js";
+
 // iRating estimation utilities (#268, #872)
 export {
   calculateIRatingChanges,

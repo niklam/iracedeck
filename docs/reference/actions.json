@@ -27,6 +27,16 @@
               "label": "Position",
               "description": "Class (default) or overall race position, optionally shows total cars (scoped to class or full field)"
             },
+            {
+              "value": "irating",
+              "label": "iRating Gain/Loss",
+              "description": "Estimated iRating change for the current race — green for a gain, red for a loss, -- when no estimate is possible"
+            },
+            {
+              "value": "gaps",
+              "label": "Gaps",
+              "description": "Live crossing-time gap to the car one class position ahead/behind with gaining/losing trend colors (race sessions only)"
+            },
             { "value": "fuel", "label": "Fuel", "description": "Fuel level as amount or percentage" },
             {
               "value": "laps-to-empty",
