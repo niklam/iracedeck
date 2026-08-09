@@ -660,6 +660,19 @@ export type TranslatorState = {
   opponentFlagCooldownUntil: { furled: number[]; black: number[]; repair: number[]; disqualify: number[] };
   /** Whether the car was inside the qualification window last tick (trigger classification + hysteresis). */
   opponentFlagInWindow: boolean[];
+  /**
+   * Bitmask (same bit values as {@link opponentFlagBits} / `PENALTY_FLAG_MASK`)
+   * of flags that were EFFECTIVELY active — debounce-adjusted for Furled —
+   * as of the last tick, per carIdx. Lets the qualifier detect "became
+   * effectively active THIS tick" (the raised-vs-entered-range trigger)
+   * without conflating it with the raw bit, which for Furled can rise long
+   * before the debounce clears. Recomputed and advances every tick, even
+   * while the callout gates are closed, so a flag that turns effectively
+   * active during a gated window is already reflected by the time the gate
+   * reopens — the reopened tick reports `entered-range`, never a replayed
+   * `raised`.
+   */
+  opponentFlagEffectiveMask: number[];
   /** Timestamps of announced entries inside the rolling aggregation window (the #622 burst shape). */
   opponentFlagRecentEntries: number[];
   /** Whether the aggregate tail already fired for the current episode. */
@@ -949,6 +962,7 @@ export function createInitialState(): TranslatorState {
     opponentFlagAnnouncedMask: [],
     opponentFlagCooldownUntil: { furled: [], black: [], repair: [], disqualify: [] },
     opponentFlagInWindow: [],
+    opponentFlagEffectiveMask: [],
     opponentFlagRecentEntries: [],
     opponentFlagAggregateAnnounced: false,
 
