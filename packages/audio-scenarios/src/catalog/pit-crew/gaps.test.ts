@@ -86,6 +86,13 @@ describe("resolveGapCooldownMs", () => {
     expect(resolveGapCooldownMs("junk")).toBe(GAP_CALLOUT_DEFAULT_COOLDOWN_MS);
     expect(resolveGapCooldownMs(undefined)).toBe(GAP_CALLOUT_DEFAULT_COOLDOWN_MS);
   });
+
+  it("treats a cleared field as missing, not as a 1 s cooldown", () => {
+    // `Number("")` and `Number(null)` are a finite 0, which the clamp would
+    // turn into the 1 s minimum — a gap callout every second.
+    expect(resolveGapCooldownMs("")).toBe(GAP_CALLOUT_DEFAULT_COOLDOWN_MS);
+    expect(resolveGapCooldownMs(null)).toBe(GAP_CALLOUT_DEFAULT_COOLDOWN_MS);
+  });
 });
 
 describe("tryClaimGapCallout", () => {

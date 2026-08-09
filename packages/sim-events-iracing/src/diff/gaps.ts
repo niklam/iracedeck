@@ -99,9 +99,9 @@ export const GAP_MIN_CHANGE_MAX_S = 10;
  * `sanitizeCornerCalloutLeadSeconds` shape).
  */
 export function sanitizeGapAlertThresholdSeconds(value: unknown): number {
-  const n = Number(value);
+  const n = coerceSettingNumber(value);
 
-  if (!Number.isFinite(n)) return GAP_DEFAULT_ALERT_THRESHOLD_S;
+  if (n === null) return GAP_DEFAULT_ALERT_THRESHOLD_S;
 
   return Math.min(GAP_ALERT_THRESHOLD_MAX_S, Math.max(GAP_ALERT_THRESHOLD_MIN_S, n));
 }
@@ -111,11 +111,25 @@ export function sanitizeGapAlertThresholdSeconds(value: unknown): number {
  * consistency gate). Same shape as {@link sanitizeGapAlertThresholdSeconds}.
  */
 export function sanitizeGapMinChangeSeconds(value: unknown): number {
-  const n = Number(value);
+  const n = coerceSettingNumber(value);
 
-  if (!Number.isFinite(n)) return GAP_DEFAULT_MIN_CHANGE_S;
+  if (n === null) return GAP_DEFAULT_MIN_CHANGE_S;
 
   return Math.min(GAP_MIN_CHANGE_MAX_S, Math.max(GAP_MIN_CHANGE_MIN_S, n));
+}
+
+/**
+ * Coerce a raw global-settings value to a finite number, or `null` when it is
+ * MISSING. Empty string and `null` must not become `0`: `Number("")` and
+ * `Number(null)` are both a finite zero, so a cleared Property Inspector field
+ * would silently mean "0 seconds" — which for the movement gate is the value
+ * that turns the consistency gate OFF, and for the threshold clamps to its
+ * minimum. Mirrors `sanitizeCornerCalloutLeadSeconds`.
+ */
+function coerceSettingNumber(value: unknown): number | null {
+  const n = typeof value === "string" && value !== "" ? Number(value) : value;
+
+  return typeof n === "number" && Number.isFinite(n) ? n : null;
 }
 
 /** Window (s) for measuring a car's recent progress rate. */
@@ -172,7 +186,10 @@ export function diffGaps(
 ): void {
   const lc = telemetry.CarIdxLapCompleted as number[] | undefined;
   const pct = telemetry.CarIdxLapDistPct as number[] | undefined;
-  const sessionTime = typeof telemetry.SessionTime === "number" ? telemetry.SessionTime : null;
+  // Finite, not merely numeric: `typeof NaN === "number"`, and a NaN session
+  // time would be stamped into every trace and surface as a NaN gap.
+  const rawSessionTime = telemetry.SessionTime;
+  const sessionTime = typeof rawSessionTime === "number" && Number.isFinite(rawSessionTime) ? rawSessionTime : null;
   const playerRacing = !(typeof telemetry.LapCompleted === "number" && telemetry.LapCompleted < 0);
 
   if (
@@ -251,15 +268,22 @@ export function diffGaps(
   // 3) Compute the live gap per side (forward-only crossing-time model).
   const playerPaused = telemetry.OnPitRoad === true || telemetry.IsOnTrack === false;
 
-  // A backwards jump (tow, teleport to pits) leaves the checkpoint anchor
-  // AHEAD of the player: `checkpointDue` would then stay false until they
-  // re-passed it — up to a full lap — so the chain would never be sampled
-  // NOR reset, and the pre-tow EMA would keep coloring the rows and dating
-  // the callouts' ratePerLap. Break the chain here, the way the per-car
-  // traces already do in `appendProgressSample`.
+  // A backwards jump (tow, teleport to pits, session restart) leaves the
+  // checkpoint anchor AHEAD of the player: `checkpointDue` would then stay
+  // false until they re-passed it — up to a full lap — so the chain would
+  // never be sampled NOR reset, and the pre-tow EMA would keep coloring the
+  // rows and dating the callouts' ratePerLap. Break the chain here, the way
+  // the per-car traces already do in `appendProgressSample`.
+  //
+  // Reset the WHOLE side state, not just the rate chain: every piece of
+  // callout bookkeeping means "since the last announcement, in this racing
+  // situation", and a discontinuity voids that situation. An armed threshold
+  // carried across it would let the first stable gap afterwards fire a
+  // crossing that belongs to a race that no longer exists, and the
+  // consistency extremes would be measured against a vanished story.
   if (state.gapLastCheckpointProgress >= 0 && playerProgress < state.gapLastCheckpointProgress - GAP_CHECKPOINT_STEP) {
-    resetTrendRate(state, "ahead");
-    resetTrendRate(state, "behind");
+    resetSideState(state, "ahead");
+    resetSideState(state, "behind");
     state.gapLastCheckpointProgress = -1;
   }
 

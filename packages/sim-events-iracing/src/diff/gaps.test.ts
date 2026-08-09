@@ -277,14 +277,16 @@ describe("diffGaps — live gaps", () => {
     expect(state.gapLiveAhead?.gapSeconds).toBeCloseTo(2.0, 1);
   });
 
-  it("breaks the trend-rate chain when the player tows backwards (issue #933 review)", () => {
+  it("clears the trend chain AND the callout episodes when the player tows backwards (issue #933 review)", () => {
     const state = createInitialState();
-    const { emit } = collect();
+    const { events, emit } = collect();
     const lapTime = 90;
 
-    // A steady catch builds a rate on the ahead side.
+    // A steady catch builds a rate on the ahead side, and the gap sits well
+    // above threshold + hysteresis, so the threshold episode is armed.
     run(state, emit, { fromLap: 1, toLap: 3, aheadGapS: [8, 6], behindGapS: 20 });
     expect(state.gapRateSamplesAhead).toBeGreaterThan(5);
+    expect(state.gapThresholdArmedAhead).toBe(true);
 
     // Tow to an earlier point on the track. Without a reset the checkpoint
     // anchor sits AHEAD of the player, so the chain is neither sampled nor
@@ -303,6 +305,53 @@ describe("diffGaps — live gaps", () => {
     expect(state.gapRateEmaAhead).toBeNull();
     expect(state.gapRateSamplesAhead).toBe(0);
     expect(state.gapLiveAhead?.trend).toBeNull();
+
+    // The whole episode is void, not just the rate chain: a threshold armed
+    // before the tow must not survive it, or the first stable gap afterwards
+    // fires a crossing belonging to a race that no longer exists.
+    expect(state.gapThresholdArmedAhead).toBe(false);
+    expect(state.gapMaxSinceAnnounceAhead).toBeNull();
+    expect(state.gapMinSinceAnnounceAhead).toBeNull();
+
+    // Running below the threshold afterwards stays silent — it has to re-arm.
+    run(state, emit, { fromLap: 2.55, toLap: 3.6, aheadGapS: 0.8, behindGapS: 20 });
+    expect(thresholdEvents(events)).toHaveLength(0);
+
+    // Re-arm above threshold + hysteresis, then close back under it → one call.
+    run(state, emit, { fromLap: 3.6, toLap: 4.3, aheadGapS: [0.8, 2.0], behindGapS: 20 });
+    run(state, emit, { fromLap: 4.3, toLap: 5.2, aheadGapS: [2.0, 0.8], behindGapS: 20 });
+    expect(thresholdEvents(events)).toHaveLength(1);
+  });
+
+  it("ignores a non-finite SessionTime instead of stamping NaN into every trace (issue #933 review)", () => {
+    const state = createInitialState();
+    const { emit } = collect();
+    const lapTime = 90;
+
+    run(state, emit, { fromLap: 1, toLap: 2, aheadGapS: 2, behindGapS: 3 });
+
+    // `typeof NaN === "number"`, so a bare numeric check would accept this and
+    // stamp it into every car's trace at once.
+    const p = 2.005;
+    const base = tick(p * lapTime, [p, p + 2 / lapTime, p - 3 / lapTime]);
+
+    diffGaps(
+      state,
+      { ...base, SessionTime: Number.NaN } as unknown as TelemetryData,
+      true,
+      PLAYER,
+      null,
+      [2, 1, 3],
+      () => GAP_DEFAULT_ALERT_THRESHOLD_S,
+      emit,
+    );
+
+    for (const trace of state.gapTraces) {
+      if (trace) expect(trace.every((s) => Number.isFinite(s.time))).toBe(true);
+    }
+
+    run(state, emit, { fromLap: 2.01, toLap: 3, aheadGapS: 2, behindGapS: 3 });
+    expect(state.gapLiveAhead?.gapSeconds).toBeCloseTo(2.0, 1);
   });
 
   it("tracks the announcement extremes before the trend chain warms up (issue #933 review)", () => {
@@ -629,6 +678,19 @@ describe("gap setting sanitizers (issue #933 review)", () => {
     expect(sanitizeGapAlertThresholdSeconds(99)).toBe(3);
     expect(sanitizeGapAlertThresholdSeconds("junk")).toBe(GAP_DEFAULT_ALERT_THRESHOLD_S);
     expect(sanitizeGapAlertThresholdSeconds(undefined)).toBe(GAP_DEFAULT_ALERT_THRESHOLD_S);
+  });
+
+  it("treats a cleared field as missing, never as zero", () => {
+    // `Number("")` and `Number(null)` are a finite 0, which would clamp to the
+    // minimum instead of falling back to the default.
+    expect(sanitizeGapAlertThresholdSeconds("")).toBe(GAP_DEFAULT_ALERT_THRESHOLD_S);
+    expect(sanitizeGapAlertThresholdSeconds(null)).toBe(GAP_DEFAULT_ALERT_THRESHOLD_S);
+    // For the movement gate a stray 0 is worse than a clamp — it is the value
+    // that turns the consistency gate off.
+    expect(sanitizeGapMinChangeSeconds("")).toBe(GAP_DEFAULT_MIN_CHANGE_S);
+    expect(sanitizeGapMinChangeSeconds(null)).toBe(GAP_DEFAULT_MIN_CHANGE_S);
+    // An explicit 0 still means "off".
+    expect(sanitizeGapMinChangeSeconds(0)).toBe(0);
   });
 
   it("clamps the movement gate, keeping 0 (the user's 'off') intact", () => {

@@ -48,13 +48,19 @@ export const GAP_CALLOUT_DEFAULT_COOLDOWN_MS = 30_000;
 /**
  * Sanitize the `gapCalloutCooldownSeconds` global setting into milliseconds.
  * Clamps to 1–360 s; a missing / NaN value falls back to the 30 s default.
+ *
+ * Empty string and `null` are MISSING, not zero: `Number("")` and
+ * `Number(null)` are both `0`, which is finite, so a bare numeric conversion
+ * would clamp a cleared Property Inspector field to the 1 s minimum and
+ * produce a callout every second. Same guard shape as
+ * `sanitizeCornerCalloutLeadSeconds`.
  */
 export function resolveGapCooldownMs(rawSeconds: unknown): number {
-  const n = Number(rawSeconds);
+  const raw = typeof rawSeconds === "string" && rawSeconds !== "" ? Number(rawSeconds) : rawSeconds;
 
-  if (!Number.isFinite(n)) return GAP_CALLOUT_DEFAULT_COOLDOWN_MS;
+  if (typeof raw !== "number" || !Number.isFinite(raw)) return GAP_CALLOUT_DEFAULT_COOLDOWN_MS;
 
-  return Math.min(360, Math.max(1, n)) * 1000;
+  return Math.min(360, Math.max(1, raw)) * 1000;
 }
 
 /** Shared-cooldown state across BOTH gap scenarios. */

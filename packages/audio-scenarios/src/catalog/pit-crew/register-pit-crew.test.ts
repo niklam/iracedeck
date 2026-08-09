@@ -1560,6 +1560,9 @@ describe("gap callouts fire end-to-end (issue #933)", () => {
   afterEach(() => {
     _resetGapCalloutCooldown();
     _setLastGapEvent(null);
+    // The master-gate test in this block leaves the flag off; restore it so a
+    // test added after this describe isn't silenced by the leftover state.
+    voiceMasterEnabled = true;
   });
 
   it("plays the trend line on gap.trendChanged", () => {

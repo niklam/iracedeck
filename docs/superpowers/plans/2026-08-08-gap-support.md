@@ -919,7 +919,7 @@ export function getLiveGapBetween(aheadCarIdx: number, behindCarIdx: number): nu
 }
 ```
 
-  - Export `diffGaps` constants nothing; export from `packages/sim-events-iracing/src/index.ts`: `getLiveGaps`, `getLiveGapBetween`, `type GapNeighbor`, `type LiveGaps`.
+- Export `diffGaps` constants nothing; export from `packages/sim-events-iracing/src/index.ts`: `getLiveGaps`, `getLiveGapBetween`, `type GapNeighbor`, `type LiveGaps`.
 
 - [ ] **Step 6: Run tests**
 
@@ -1145,7 +1145,7 @@ git -C /c/Users/Niklas/Projects/iRaceDeck/ir-933 commit -m "feat(audio): gap cal
 **Module design (`gaps.ts`):**
 - Module-level `lastGapEvent: { side, direction? } | null` stash + `lastGapCalloutAtMs = 0`; `tryClaimGapCallout(now, cooldownMs)` claims the shared cooldown as the LAST `where:` gate (the `tryClaimPositionAnnouncement` pattern — deferred queueable replays never re-run `where:`).
 - Vars:
-  - `gap.line` → for a trend event: `poolRef("gap", \`${side}-${direction}\`)` — wait, pools are registered by NAME (`gap-ahead-closing`), and `poolRef(group, base)` builds `pool:gap/ahead-closing` dynamically from the manifest; use `poolRef("gap", `${side}-${direction}`)` directly (no POOL_REGISTRY need for var-driven refs — the registry entries from Task 6 additionally make the static pools available; keep both consistent).
+  - `gap.line` → for a trend event, build the pool ref dynamically from the manifest with `poolRef(group, base)`, which yields `pool:gap/ahead-closing`. Pools are registered by NAME (`gap-ahead-closing`), so pass the group and base separately: `` poolRef("gap", `${side}-${direction}`) ``. No POOL_REGISTRY entry is needed for var-driven refs — the registry entries from Task 6 additionally make the static pools available; keep both consistent.
   - `gap.thresholdLine` → `poolRef("gap", \`threshold-${side}\`)`.
   - `gap.readoutIntro` → `poolRef("gap", "readout-intro")`.
   - `gap.second` / `gap.decimal` → read the LIVE gap for the stashed side via `getLiveGaps()`; `null` unless `0 <= gap < 60`; split with `Math.round(gap*10)` into whole seconds + tenths; return `poolRef("lap-time-second", String(sec))` / `poolRef("lap-time-decimal", String(tenths))`.
