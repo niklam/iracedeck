@@ -155,6 +155,9 @@ export {
 // Flag utilities
 export { type FlagInfo, FLAG_DEFINITIONS, resolveActiveFlag, resolveAllActiveFlags } from "./flag-utils.js";
 
+// Penalty flag utilities (#936)
+export { decodePenaltyFlags, PENALTY_FLAG_MASK, type CarPenaltyFlags } from "./penalty-flag-utils.js";
+
 // Telemetry feature detection (car-capability + session-phase helpers)
 export {
   hasPitLimiter,
