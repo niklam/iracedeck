@@ -1211,6 +1211,23 @@ function wipeStateForReplay(self: TranslatorInstance): void {
     opponentPitRecentEntries: self.state.opponentPitRecentEntries,
     opponentPitAggregateAnnounced: self.state.opponentPitAggregateAnnounced,
     opponentPitCarCooldownUntil: self.state.opponentPitCarCooldownUntil,
+    // The opponent-flag episode state (issue #936, Task 6) — the #622
+    // rationale, verbatim-adapted: glancing at the replay mid-burst must not
+    // reset the aggregation window, the once-per-episode aggregate flag, the
+    // per-(car, flag) episode latch, or the per-(car, flag) cooldowns — the
+    // wipe would make cars whose flags the aggregate already covered
+    // re-announce individually, and a car whose flag cooldown hasn't expired
+    // would re-announce the same episode. `opponentFlagBits` /
+    // `opponentFlagsInitialized` / `opponentFlagFurledSinceAt` /
+    // `opponentFlagEffectiveMask` deliberately re-seed — replay-timeline bit
+    // and debounce-timer values are meaningless (see `opponentFlagEffectiveMask`'s
+    // JSDoc in `state.ts` for why the effective-mask baseline must re-seed in
+    // lockstep with the raw-bit baseline rather than being preserved here).
+    opponentFlagAnnouncedMask: self.state.opponentFlagAnnouncedMask,
+    opponentFlagCooldownUntil: self.state.opponentFlagCooldownUntil,
+    opponentFlagInWindow: self.state.opponentFlagInWindow,
+    opponentFlagRecentEntries: self.state.opponentFlagRecentEntries,
+    opponentFlagAggregateAnnounced: self.state.opponentFlagAggregateAnnounced,
   };
 
   self.state = createInitialState();

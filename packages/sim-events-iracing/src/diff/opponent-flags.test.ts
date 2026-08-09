@@ -122,13 +122,17 @@ describe("diffOpponentFlags", () => {
     ]);
   });
 
-  it("announces every car within the 1-3 class-position ahead window", () => {
+  it("announces every car within the 1-3 class-position ahead window (the 3rd collapses to the burst aggregate, issue #936 Task 6)", () => {
     const t = makeField();
     run(state, t, 1000);
     t.CarIdxSessionFlags[3] = Flags.Black; // P3, delta 1
     t.CarIdxSessionFlags[2] = Flags.Black; // P2, delta 2
     t.CarIdxSessionFlags[1] = Flags.Black; // P1, delta 3
 
+    // Three simultaneous eligible announces in one tick hit the burst-
+    // aggregation threshold (`OPPONENT_FLAG_AGGREGATE_THRESHOLD` = 3) just
+    // like three spread across separate ticks would — the loop visits carIdx
+    // ascending, so the third (carIdx 3, delta 1) is the one that collapses.
     expect(run(state, t, 2000)).toEqual([
       {
         event: "opponentFlag.flagged",
@@ -152,17 +156,7 @@ describe("diffOpponentFlags", () => {
           isMultiClass: false,
         },
       },
-      {
-        event: "opponentFlag.flagged",
-        data: {
-          relation: "ahead",
-          carIdx: 3,
-          flag: OpponentPenaltyFlag.Black,
-          trigger: "raised",
-          position: 3,
-          isMultiClass: false,
-        },
-      },
+      { event: "opponentFlag.flagged", data: { relation: "others" } },
     ]);
   });
 
@@ -648,5 +642,107 @@ describe("diffOpponentFlags", () => {
     t.CarIdxLapDistPct[3] = -1;
 
     expect(run(state, t, 2000)).toEqual([]);
+  });
+
+  // Burst aggregation (Task 6, the #622 `diffOpponentPit` shape): 3+ eligible
+  // announces within a rolling 12s window collapse to a single "others" tail.
+  describe("burst aggregation (issue #936)", () => {
+    it("collapses the 3rd eligible announce within the window to one 'others' aggregate; a 4th stays silent", () => {
+      const t = makeField();
+      run(state, t, 1000);
+
+      t.CarIdxSessionFlags[3] = Flags.Black; // P3, ahead delta 1
+      expect(run(state, t, 2000)).toEqual([
+        {
+          event: "opponentFlag.flagged",
+          data: {
+            relation: "ahead",
+            carIdx: 3,
+            flag: OpponentPenaltyFlag.Black,
+            trigger: "raised",
+            position: 3,
+            isMultiClass: false,
+          },
+        },
+      ]);
+
+      t.CarIdxSessionFlags[2] = Flags.Black; // P2, ahead delta 2
+      expect(run(state, t, 3000)).toEqual([
+        {
+          event: "opponentFlag.flagged",
+          data: {
+            relation: "ahead",
+            carIdx: 2,
+            flag: OpponentPenaltyFlag.Black,
+            trigger: "raised",
+            position: 2,
+            isMultiClass: false,
+          },
+        },
+      ]);
+
+      // Third eligible announce inside the window reaches the threshold —
+      // collapses to the aggregate tail instead of carIdx 1's individual line.
+      t.CarIdxSessionFlags[1] = Flags.Black; // P1, ahead delta 3
+      expect(run(state, t, 4000)).toEqual([{ event: "opponentFlag.flagged", data: { relation: "others" } }]);
+      expect(state.opponentFlagAggregateAnnounced).toBe(true);
+      // Cooldown/latch are still stamped for the collapsed car even though
+      // its individual line never went out.
+      expect(state.opponentFlagAnnouncedMask[1]! & Flags.Black).toBe(Flags.Black);
+      expect(state.opponentFlagCooldownUntil.black[1]).toBe(4000 + 30_000);
+
+      // A 4th eligible announce (a different car) inside the same episode is silent.
+      t.CarIdxSessionFlags[4] = Flags.Black; // P5, behind delta 1
+      expect(run(state, t, 5000)).toEqual([]);
+    });
+
+    it("holds the collapse via the episode flag, not the live window count — pruning below threshold mid-episode must not resume enumeration", () => {
+      const t = makeField();
+      run(state, t, 1000);
+
+      t.CarIdxSessionFlags[3] = Flags.Black;
+      run(state, t, 2000); // individual — window=[2000]
+      t.CarIdxSessionFlags[2] = Flags.Black;
+      run(state, t, 3000); // individual — window=[2000,3000]
+      t.CarIdxSessionFlags[1] = Flags.Black;
+      expect(run(state, t, 4000)).toEqual([{ event: "opponentFlag.flagged", data: { relation: "others" } }]); // window=[2000,3000,4000]
+
+      // 11.5s after the last push: 2000 and 3000 fall outside the 12s window
+      // (pruned below the threshold count) but the episode flag stays set.
+      t.CarIdxSessionFlags[4] = Flags.Black; // P5, behind — a fresh eligible car
+      expect(run(state, t, 15500)).toEqual([]);
+      expect(state.opponentFlagRecentEntries.length).toBeLessThan(3);
+      expect(state.opponentFlagAggregateAnnounced).toBe(true);
+    });
+
+    it("resumes individual announces once the window has been quiet for the full 12s", () => {
+      const t = makeField();
+      run(state, t, 1000);
+
+      t.CarIdxSessionFlags[3] = Flags.Black;
+      run(state, t, 2000);
+      t.CarIdxSessionFlags[2] = Flags.Black;
+      run(state, t, 3000);
+      t.CarIdxSessionFlags[1] = Flags.Black;
+      expect(run(state, t, 4000)).toEqual([{ event: "opponentFlag.flagged", data: { relation: "others" } }]);
+
+      // 12s+ of quiet since the last push (4000) — the window empties and the
+      // episode flag lowers, so a fresh eligible car resumes individual lines.
+      t.CarIdxSessionFlags[4] = Flags.Black; // P5, behind
+      expect(run(state, t, 16001)).toEqual([
+        {
+          event: "opponentFlag.flagged",
+          data: {
+            relation: "behind",
+            carIdx: 4,
+            flag: OpponentPenaltyFlag.Black,
+            trigger: "raised",
+            position: 5,
+            isMultiClass: false,
+          },
+        },
+      ]);
+      expect(state.opponentFlagAggregateAnnounced).toBe(false);
+    });
   });
 });

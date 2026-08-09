@@ -81,6 +81,20 @@
  * way as a gated tick (seed the store silently, no announce pass) so a
  * flag that's already active before the plugin ever attached doesn't
  * spuriously read as "just activated".
+ *
+ * **Aggregation (Task 6, the #622 `diffOpponentPit` shape).** A rolling list
+ * of announce timestamps (`opponentFlagRecentEntries`) is pruned to the last
+ * `OPPONENT_FLAG_AGGREGATE_WINDOW_MS` on every tick; when pruning empties it,
+ * `opponentFlagAggregateAnnounced` lowers. Every eligible announce — whether
+ * it ends up individual or collapsed — pushes `now` into the window and
+ * stamps that (car, flag)'s episode latch and cooldown. Below the threshold
+ * the announce goes out individually; the announce that brings the window
+ * count TO `OPPONENT_FLAG_AGGREGATE_THRESHOLD` collapses to one `"others"`
+ * aggregate instead (setting the flag, once per episode); every later
+ * would-be individual announce stays silent while the flag is set. The flag
+ * — NOT the live window count — gates the silence, so pruning old entries
+ * below the threshold mid-episode must not resume enumeration; only a full
+ * 12s of quiet (the window emptying) does.
  */
 import { OpponentPenaltyFlag } from "@iracedeck/event-bus";
 import {
@@ -238,6 +252,17 @@ export function diffOpponentFlags(
   now: number,
   emit: EmitFn,
 ): void {
+  // Prune the aggregation window every tick; a quiet window ends the episode.
+  if (state.opponentFlagRecentEntries.length > 0) {
+    state.opponentFlagRecentEntries = state.opponentFlagRecentEntries.filter(
+      (t) => now - t <= OPPONENT_FLAG_AGGREGATE_WINDOW_MS,
+    );
+
+    if (state.opponentFlagRecentEntries.length === 0) {
+      state.opponentFlagAggregateAnnounced = false;
+    }
+  }
+
   const raw = telemetry.CarIdxSessionFlags as number[] | undefined;
 
   if (!raw) return;
@@ -340,19 +365,28 @@ export function diffOpponentFlags(
 
       announced[i] |= def.bit;
       cooldownArr[i] = now + OPPONENT_FLAG_CAR_COOLDOWN_MS;
+      state.opponentFlagRecentEntries.push(now);
 
-      emit({
-        event: "opponentFlag.flagged",
-        data: {
-          relation: classification.relation,
-          carIdx: i,
-          flag: def.flag,
-          trigger: activatedThisTick ? "raised" : "entered-range",
-          isMultiClass,
-          ...(classification.position > 0 ? { position: classification.position } : {}),
-          ...(classification.relation === "track-ahead" ? { gapSeconds: classification.gapSeconds } : {}),
-        },
-      });
+      if (state.opponentFlagAggregateAnnounced) continue; // collapsed for this episode — silent
+
+      if (state.opponentFlagRecentEntries.length < OPPONENT_FLAG_AGGREGATE_THRESHOLD) {
+        emit({
+          event: "opponentFlag.flagged",
+          data: {
+            relation: classification.relation,
+            carIdx: i,
+            flag: def.flag,
+            trigger: activatedThisTick ? "raised" : "entered-range",
+            isMultiClass,
+            ...(classification.position > 0 ? { position: classification.position } : {}),
+            ...(classification.relation === "track-ahead" ? { gapSeconds: classification.gapSeconds } : {}),
+          },
+        });
+      } else {
+        // Threshold reached: collapse to the aggregate tail, once per episode.
+        state.opponentFlagAggregateAnnounced = true;
+        emit({ event: "opponentFlag.flagged", data: { relation: "others" } });
+      }
     }
   }
 }
