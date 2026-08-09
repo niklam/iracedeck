@@ -671,6 +671,18 @@ export type TranslatorState = {
    * active during a gated window is already reflected by the time the gate
    * reopens — the reopened tick reports `entered-range`, never a replayed
    * `raised`.
+   *
+   * **Replay-wipe obligation (Task 6):** `wipeStateForReplay` MUST treat
+   * this field like the `opponentFlagBits` baseline it derives from — reseed
+   * it (never carry it through `preservedAcrossReplay`) exactly in lockstep
+   * with `opponentFlagBits`/`opponentFlagFurledSinceAt`, since a
+   * replay-timeline "was it effectively active" reading is as meaningless as
+   * the bits baseline itself. Preserving this mask while `opponentFlagBits`
+   * re-seeds (or the reverse) would desync the two: a flag whose raw bit
+   * re-seeds to down but whose effective mask still claims it was active
+   * mislabels the first post-wipe raise as `entered-range` instead of
+   * `raised`, and the opposite split can manufacture a phantom `raised` for
+   * a flag that never actually re-activated.
    */
   opponentFlagEffectiveMask: number[];
   /** Timestamps of announced entries inside the rolling aggregation window (the #622 burst shape). */

@@ -255,6 +255,27 @@ describe("diffOpponentFlags", () => {
     ]);
   });
 
+  it("announces Furled at exactly the debounce boundary (now - sinceAt === 1000ms, integer-exact)", () => {
+    const t = makeField();
+    run(state, t, 1000);
+    t.CarIdxSessionFlags[3] = Flags.Furled;
+    run(state, t, 2000); // rises — furledSinceAt seeds to exactly 2000
+
+    expect(run(state, t, 3000)).toEqual([
+      {
+        event: "opponentFlag.flagged",
+        data: {
+          relation: "ahead",
+          carIdx: 3,
+          flag: OpponentPenaltyFlag.Furled,
+          trigger: "raised",
+          position: 3,
+          isMultiClass: false,
+        },
+      },
+    ]);
+  });
+
   it("never announces a Furled flicker that clears before the debounce window elapses", () => {
     const t = makeField();
     run(state, t, 1000);
@@ -428,6 +449,80 @@ describe("diffOpponentFlags", () => {
         },
       },
     ]);
+  });
+
+  it("uses the wider exit bound to keep a car in-window at 11s once it has already qualified (hysteresis pinned, not just the enter bound)", () => {
+    const t = makeField();
+    const positions = [4, 1, 2, 3, 5, 0, 7, 8]; // carIdx 5 unclassified — track-ahead only
+    t.LapDistPct = 0.5;
+    t.Speed = 40; // gapSeconds = forwardFraction * 100
+
+    run(state, t, 1000, { positions, trackLength: 4000 });
+
+    // Establish window membership via the ENTER bound at 9s, and announce.
+    t.CarIdxSessionFlags[5] = Flags.Black;
+    t.CarIdxLapDistPct[5] = 0.59; // 9s
+    expect(run(state, t, 2000, { positions, trackLength: 4000 })).toEqual([
+      {
+        event: "opponentFlag.flagged",
+        data: {
+          relation: "track-ahead",
+          carIdx: 5,
+          flag: OpponentPenaltyFlag.Black,
+          trigger: "raised",
+          gapSeconds: expect.closeTo(9, 5),
+          isMultiClass: false,
+        },
+      },
+    ]);
+
+    // Move out to 11s while still active. The enter bound (10) alone would
+    // drop this car out of the window; only the wider exit bound (12) — used
+    // because the car was already in-window — keeps it in. The episode
+    // latch silences the emission either way, but this tick is what sets
+    // `opponentFlagInWindow` for the step below, which is what actually
+    // distinguishes the two bounds.
+    t.CarIdxLapDistPct[5] = 0.61; // 11s
+    expect(run(state, t, 10000, { positions, trackLength: 4000 })).toEqual([]);
+
+    // Flag clears, still sitting at 11s.
+    t.CarIdxSessionFlags[5] = 0;
+    expect(run(state, t, 20000, { positions, trackLength: 4000 })).toEqual([]);
+
+    // Cooldown now expired (32000 >= the 32000 stamped at the first
+    // announce); flag re-raises, still at 11s. With real hysteresis the car
+    // is still in-window (11 <= the 12s exit bound) and this announces; a
+    // bound hardcoded to the enter value (10) would keep 11s out and stay
+    // silent — this is the assertion that kills that mutant.
+    t.CarIdxSessionFlags[5] = Flags.Black;
+    expect(run(state, t, 32000, { positions, trackLength: 4000 })).toEqual([
+      {
+        event: "opponentFlag.flagged",
+        data: {
+          relation: "track-ahead",
+          carIdx: 5,
+          flag: OpponentPenaltyFlag.Black,
+          trigger: "raised",
+          gapSeconds: expect.closeTo(11, 5),
+          isMultiClass: false,
+        },
+      },
+    ]);
+  });
+
+  it("never opens the track-ahead window at 11s for a car that was never previously in-window (enter bound pinned, not the wider exit bound)", () => {
+    const t = makeField();
+    const positions = [4, 1, 2, 3, 5, 0, 7, 8]; // carIdx 5 unclassified — track-ahead only
+    t.LapDistPct = 0.5;
+    t.Speed = 40;
+
+    run(state, t, 1000, { positions, trackLength: 4000 });
+    t.CarIdxSessionFlags[5] = Flags.Black;
+    t.CarIdxLapDistPct[5] = 0.61; // 11s — outside the 10s enter bound, never previously in window
+
+    // A bound hardcoded to the exit value (12) would let this in (11 <= 12)
+    // and announce; this assertion kills that mutant.
+    expect(run(state, t, 2000, { positions, trackLength: 4000 })).toEqual([]);
   });
 
   it("stays silent across a window exit/re-entry while the same flag episode continues (episode latch across triggers)", () => {
