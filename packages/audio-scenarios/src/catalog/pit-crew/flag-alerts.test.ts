@@ -152,7 +152,6 @@ const FLAG_CLIP_NAMES = [
   "white-last-lap-01",
   "white-last-lap-02",
   "white-leader-01",
-  "white-leader-02",
   "red-01",
   "black-01",
   "checkered-practice-01",
