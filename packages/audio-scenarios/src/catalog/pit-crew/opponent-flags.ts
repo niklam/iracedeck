@@ -209,6 +209,27 @@ export const OPPONENT_FLAG_CALLOUT_SETTING_KEYS: Record<OpponentFlagCalloutId, s
   disqualify: "calloutEnabledOpponentFlagDisqualify",
 };
 
+/**
+ * Bus enum value → callout id, for the translator-side opt-in resolver the
+ * plugins inject into `initializeSimEventsIracing` (#936 review): the diff
+ * speaks `OpponentPenaltyFlag` (sim-bit names — the meatball is `Repair`),
+ * the settings speak callout ids.
+ */
+export const OPPONENT_PENALTY_FLAG_TO_CALLOUT_ID: Record<OpponentPenaltyFlag, OpponentFlagCalloutId> = {
+  [OpponentPenaltyFlag.Furled]: "furled",
+  [OpponentPenaltyFlag.Black]: "black",
+  [OpponentPenaltyFlag.Repair]: "meatball",
+  [OpponentPenaltyFlag.Disqualify]: "disqualify",
+};
+
+/**
+ * The aggregate (`pit-crew.opponent-flag-others`) is deliberately ABSENT:
+ * per-flag opt-ins are enforced in the translator diff (#936 review), so the
+ * aggregate only ever describes flags the user opted into — it registers
+ * master-gated but not per-flag-gated (see `registerPitCrew`). Mapping it to
+ * one subject (the earlier #622-shaped `others → black` ride-along) let a
+ * disabled Black opt-in silence an aggregate built from ENABLED subjects.
+ */
 export const SCENARIO_ID_TO_OPPONENT_FLAG_ID: Record<string, OpponentFlagCalloutId> = {
   "pit-crew.opponent-flag-furled-ahead": "furled",
   "pit-crew.opponent-flag-furled-behind": "furled",
@@ -222,11 +243,10 @@ export const SCENARIO_ID_TO_OPPONENT_FLAG_ID: Record<string, OpponentFlagCallout
   "pit-crew.opponent-flag-disqualify-ahead": "disqualify",
   "pit-crew.opponent-flag-disqualify-behind": "disqualify",
   "pit-crew.opponent-flag-disqualify-track-ahead": "disqualify",
-  // Aggregate tail rides one subject rather than getting its own opt-in (the
-  // #622 aggregate-rides-a-subject shape) — wording is penalty-generic and
-  // `black` is the central subject.
-  "pit-crew.opponent-flag-others": "black",
 };
+
+/** The aggregate scenario id — registered master-gated only (see above). */
+export const OPPONENT_FLAG_OTHERS_SCENARIO_ID = "pit-crew.opponent-flag-others";
 
 export const OPPONENT_FLAG_SCENARIO_IDS: readonly string[] = OPPONENT_FLAG_ALERTS.map((s) => s.id);
 

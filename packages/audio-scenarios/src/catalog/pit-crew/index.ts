@@ -80,6 +80,7 @@ import {
 } from "./lap-time.js";
 import {
   OPPONENT_FLAG_ALERTS,
+  OPPONENT_FLAG_OTHERS_SCENARIO_ID,
   type OpponentFlagCalloutId,
   type OpponentFlagLivePositionResolver,
   registerOpponentFlagVars,
@@ -213,6 +214,7 @@ export {
   OPPONENT_FLAG_CALLOUT_SETTING_KEYS,
   OPPONENT_FLAG_POOL_NAMES,
   OPPONENT_FLAG_SCENARIO_IDS,
+  OPPONENT_PENALTY_FLAG_TO_CALLOUT_ID,
   type OpponentFlagCalloutId,
   type OpponentFlagLivePositionResolver,
   type OpponentFlagPending,
@@ -1172,20 +1174,27 @@ export function registerPitCrew(
   // every line is individually harness-firable and the safety-relevant
   // track-ahead lines carry SAFETY weight; both diff triggers ride the same
   // scenarios. Family-less + queueable for the same reason as opponent-pit:
-  // the lines describe DIFFERENT cars — queue, never chop.
+  // the lines describe DIFFERENT cars — queue, never chop. The aggregate
+  // (`opponent-flag-others`) registers master-gated but NOT per-flag-gated:
+  // the translator diff enforces the per-flag opt-ins before anything feeds
+  // the aggregation, so the aggregate by construction only describes enabled
+  // flags — gating it on one subject's toggle would let a disabled subject
+  // silence it (#936 review).
   registerOpponentFlagVars(engine, getOpponentFlagLivePosition);
 
   for (const s of OPPONENT_FLAG_ALERTS) {
     engine.defineScenario(
-      wrapWithMaster(
-        wrapCalloutScenario(
-          s,
-          SCENARIO_ID_TO_OPPONENT_FLAG_ID,
-          getOpponentFlagCalloutEnabled,
-          "opponent-flag callout",
-          logger,
-        ),
-      ),
+      s.id === OPPONENT_FLAG_OTHERS_SCENARIO_ID
+        ? wrapWithMaster(s)
+        : wrapWithMaster(
+            wrapCalloutScenario(
+              s,
+              SCENARIO_ID_TO_OPPONENT_FLAG_ID,
+              getOpponentFlagCalloutEnabled,
+              "opponent-flag callout",
+              logger,
+            ),
+          ),
     );
   }
 

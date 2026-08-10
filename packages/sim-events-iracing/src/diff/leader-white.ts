@@ -22,10 +22,11 @@
  *     tracks the leader's own `CarIdxLapCompleted` and fires on a genuine
  *     same-TRACKED-leader increment once the clock has expired, but ONLY for
  *     that first post-expiry crossing — see `leaderWhitePostExpiryCrossed`
- *     below. A leader change mid-race re-baselines the crossing detector
- *     silently rather than crediting the new leader with a crossing that
- *     happened before they were tracked — the NEXT crossing of the
- *     newly-tracked leader (while still expired) is evaluated normally.
+ *     below. A leader change BEFORE expiry re-baselines the crossing
+ *     detector silently; a leader change WHILE expired ABSORBS (sets the
+ *     marker — see the inline comment): the detector cannot observe a
+ *     crossing across the flip, and an unobservable white crossing must
+ *     become silence, never leave the checkered armed.
  *
  * **`leaderWhitePostExpiryCrossed`: literal first-crossing rule.** A timed
  * race's leader has exactly two post-expiry crossings — the white, then the
@@ -89,12 +90,17 @@
  * lap-limited-only race instead reads `SessionTimeRemain` as the large
  * POSITIVE `IRSDK_UNLIMITED_TIME` sentinel (validated in
  * `fuel-laps-left.test.ts`), which a plain `<= 0` check already excludes —
- * no upper-bound guard is needed on that side. A genuinely-expired timed
- * race can read a small negative value for a tick or two (the transient
- * `SessionTimeRemain <= 0` blip precedent in `start-lights.ts`, issue #666),
- * so treating ANY finite `<= 0` reading as "expired" is the correct
- * behavior — a lower floor would risk the opposite mistake of treating a
- * genuinely-expired clock as invalid.
+ * no upper-bound guard is needed on that side. Against the OPPOSITE hazard —
+ * iRacing can blip `SessionTimeRemain <= 0` for a tick mid-race (the #666
+ * transient in `start-lights.ts`) — two defenses stack (#936 review): the
+ * expiry only counts once it has held for TWO consecutive ticks
+ * (`leaderWhiteLastClockExpired`), so a one-tick blip coinciding with a
+ * crossing can neither fire prematurely nor latch the marker; and a clock
+ * reading back ABOVE zero clears `leaderWhitePostExpiryCrossed`, so even a
+ * sustained blip's spurious latch is undone the moment the clock recovers —
+ * after a genuine expiry the clock never recovers, so the clear is inert
+ * exactly when the marker is load-bearing (and correctly re-arms when an
+ * overtime extension adds real time back).
  */
 import { Flags, hasFlag, IRSDK_UNLIMITED_LAPS, type TelemetryData } from "@iracedeck/iracing-sdk";
 
@@ -125,7 +131,13 @@ export function diffLeaderWhite(
       : null;
 
   const timeRemain = telemetry.SessionTimeRemain;
-  const clockExpired = typeof timeRemain === "number" && Number.isFinite(timeRemain) && timeRemain <= 0;
+  const clockExpiredNow = typeof timeRemain === "number" && Number.isFinite(timeRemain) && timeRemain <= 0;
+  // Two-consecutive-tick confirmation (#936 review): a one-tick `<= 0` blip
+  // (the #666 transient) coinciding with a leader crossing must neither fire
+  // a premature callout nor latch the post-expiry marker. A genuine expiry
+  // holds `<= 0` for thousands of ticks before the leader's crossing, so the
+  // one-tick confirmation delay is unobservable in practice.
+  const clockExpired = clockExpiredNow && state.leaderWhiteLastClockExpired;
 
   const prevLapsRemain = state.leaderWhiteLastLapsRemainEx;
   const sameLeader = leaderIdx >= 0 && leaderIdx === state.leaderWhiteLastLeaderIdx;
@@ -138,8 +150,30 @@ export function diffLeaderWhite(
   // latch. Observation absorbs, it never defers (see the module doc).
   const isFirstPostExpiryCrossing = clockExpired && leaderCrossed && !state.leaderWhitePostExpiryCrossed;
 
-  if (clockExpired && leaderCrossed) {
+  // A LEADER CHANGE while the clock is expired also absorbs (#936 review):
+  // a swap at the front after expiry is overwhelmingly the white-flag
+  // scramble at the line, and the crossing detector cannot observe the
+  // crossing across the flip (no baseline exists for the incoming leader),
+  // so leaving the marker unset would arm the CHECKERED crossing as the
+  // "first" one — the phantom the marker exists to prevent. The cost is the
+  // safe direction: a genuine mid-lap post-expiry lead change silences the
+  // callout for that race (silence beats a phantom, per the module doc).
+  const leaderChanged =
+    leaderIdx >= 0 && state.leaderWhiteLastLeaderIdx >= 0 && leaderIdx !== state.leaderWhiteLastLeaderIdx;
+
+  if (clockExpired && (leaderCrossed || leaderChanged)) {
     state.leaderWhitePostExpiryCrossed = true;
+  }
+
+  // A clock reading back ABOVE zero un-absorbs (#936 review): iRacing can
+  // blip `SessionTimeRemain <= 0` for a tick or two mid-race (the #666
+  // transient) — if that blip coincides with a leader crossing or change,
+  // the marker latches spuriously and would silence the REAL white crossing
+  // laps later. After a genuine expiry the clock never recovers, so this
+  // clear only ever undoes blip-latched markers (and re-arms correctly when
+  // an overtime extension adds time back).
+  if (typeof timeRemain === "number" && Number.isFinite(timeRemain) && timeRemain > 0) {
+    state.leaderWhitePostExpiryCrossed = false;
   }
 
   const gated = !isRaceSession || replayOnlySession || preGreen || postRace || playerCarIdx < 0;
@@ -162,4 +196,5 @@ export function diffLeaderWhite(
   state.leaderWhiteLastLeaderIdx = leaderIdx;
   state.leaderWhiteLastLeaderLap = leaderLap;
   state.leaderWhiteLastLapsRemainEx = lapsRemain;
+  state.leaderWhiteLastClockExpired = clockExpiredNow;
 }

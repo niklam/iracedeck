@@ -95,10 +95,38 @@ describe("diffLeaderWhite", () => {
   });
 
   describe("timed", () => {
-    it("emits on a genuine leader-lap increment once the clock has expired", () => {
+    it("emits on a genuine leader-lap increment once the clock has expired (expiry held two ticks)", () => {
       run(state, field([10, 20, 10, 10], { SessionTimeRemain: 5 })); // seed baseline, clock still running
+      run(state, field([10, 20, 10, 10], { SessionTimeRemain: 0 })); // expiry tick one — confirmation baseline
       expect(run(state, field([10, 21, 10, 10], { SessionTimeRemain: 0 }))).toEqual([RAISED]);
       expect(state.leaderWhiteFired).toBe(true);
+    });
+
+    it("a one-tick clock blip coinciding with a leader crossing neither fires nor latches (two-tick confirmation)", () => {
+      run(state, field([10, 20, 10, 10], { SessionTimeRemain: 40 })); // seed, clock running
+      // The blip tick: clock reads 0 for exactly one tick AND the leader
+      // happens to cross — unconfirmed expiry, so nothing fires and the
+      // post-expiry marker must NOT latch.
+      expect(run(state, field([10, 21, 10, 10], { SessionTimeRemain: 0 }))).toEqual([]);
+      expect(state.leaderWhitePostExpiryCrossed).toBe(false);
+      // Clock recovers; race continues.
+      run(state, field([10, 21, 10, 10], { SessionTimeRemain: 35 }));
+      // The genuine expiry laps later still announces the real white crossing.
+      run(state, field([10, 21, 10, 10], { SessionTimeRemain: 0 }));
+      run(state, field([10, 21, 10, 10], { SessionTimeRemain: 0 }));
+      expect(run(state, field([10, 22, 10, 10], { SessionTimeRemain: 0 }))).toEqual([RAISED]);
+    });
+
+    it("a sustained clock blip's latched marker is un-absorbed when the clock recovers", () => {
+      run(state, field([10, 20, 10, 10], { SessionTimeRemain: 0 })); // blip tick one
+      // Blip tick two + crossing: expiry looks confirmed, the marker latches
+      // (and the callout fires — indistinguishable from a real expiry here).
+      run(state, field([10, 21, 10, 10], { SessionTimeRemain: 0 }));
+      expect(state.leaderWhitePostExpiryCrossed).toBe(true);
+      // The clock recovering above zero proves it was a blip — un-absorb so
+      // the REAL white crossing after the genuine expiry isn't silenced.
+      run(state, field([10, 21, 10, 10], { SessionTimeRemain: 30 }));
+      expect(state.leaderWhitePostExpiryCrossed).toBe(false);
     });
 
     it("stays silent on a leader-lap increment while the clock has not expired", () => {
@@ -106,14 +134,32 @@ describe("diffLeaderWhite", () => {
       expect(run(state, field([10, 21, 10, 10], { SessionTimeRemain: 3 }))).toEqual([]);
     });
 
-    it("a leader change re-baselines silently — only the NEXT crossing of the newly-tracked leader fires", () => {
-      run(state, field([10, 20, 10, 10], { SessionTimeRemain: 0 })); // carIdx 1 leads, seeds lap 20
+    it("a leader change while the clock is expired ABSORBS — later crossings of the new leader stay silent", () => {
+      run(state, field([10, 20, 10, 10], { SessionTimeRemain: 0 })); // carIdx 1 leads, seeds lap 20; expiry tick one
       const newPositions = [4, 2, 1, 3]; // carIdx 2 now leads
 
-      // Leader-change tick: carIdx 2 becomes the tracked leader; re-baselines silently.
+      // Leader-change tick under a confirmed-expired clock: the detector
+      // cannot observe a crossing across the flip, so the swap absorbs —
+      // an unobservable white must become silence, never leave the
+      // checkered armed (#936 review, the swap-at-the-line case).
       expect(run(state, field([10, 20, 21, 10], { SessionTimeRemain: 0 }), { positions: newPositions })).toEqual([]);
+      expect(state.leaderWhitePostExpiryCrossed).toBe(true);
 
-      // The NEXT genuine crossing of the now-tracked leader (carIdx 2), clock still expired, fires.
+      // The newly-tracked leader's next crossing — possibly the checkered —
+      // must NOT fire.
+      expect(run(state, field([10, 20, 22, 10], { SessionTimeRemain: 0 }), { positions: newPositions })).toEqual([]);
+      expect(state.leaderWhiteFired).toBe(false);
+    });
+
+    it("a leader change while the clock is RUNNING re-baselines without absorbing — the new leader's first post-expiry crossing still fires", () => {
+      run(state, field([10, 20, 10, 10], { SessionTimeRemain: 30 })); // carIdx 1 leads
+      const newPositions = [4, 2, 1, 3]; // carIdx 2 now leads
+
+      expect(run(state, field([10, 20, 21, 10], { SessionTimeRemain: 20 }), { positions: newPositions })).toEqual([]);
+      expect(state.leaderWhitePostExpiryCrossed).toBe(false);
+
+      // Clock expires (held two ticks); the tracked leader's crossing is the genuine white.
+      run(state, field([10, 20, 21, 10], { SessionTimeRemain: 0 }), { positions: newPositions });
       expect(run(state, field([10, 20, 22, 10], { SessionTimeRemain: 0 }), { positions: newPositions })).toEqual([
         RAISED,
       ]);
@@ -157,9 +203,10 @@ describe("diffLeaderWhite", () => {
     it("whichever edge lands first wins the latch — a same-tick double-true edge emits exactly once, and the latch blocks the other mechanism's later edge too", () => {
       run(state, field([10, 20, 10, 10], { SessionLapsRemainEx: 3, SessionTimeRemain: 50 }));
       run(state, field([10, 20, 10, 10], { SessionLapsRemainEx: 2, SessionTimeRemain: 20 }));
+      run(state, field([10, 20, 10, 10], { SessionLapsRemainEx: 2, SessionTimeRemain: 0 })); // expiry tick one
 
-      // Both the lap edge (2 → 1) AND the timed edge (clock expired + leader
-      // crossed) are true on this exact tick — exactly one event fires.
+      // Both the lap edge (2 → 1) AND the timed edge (confirmed-expired clock
+      // + leader crossed) are true on this exact tick — exactly one event fires.
       expect(run(state, field([10, 21, 10, 10], { SessionLapsRemainEx: 1, SessionTimeRemain: 0 }))).toEqual([RAISED]);
       expect(state.leaderWhiteFired).toBe(true);
 
@@ -171,12 +218,14 @@ describe("diffLeaderWhite", () => {
   describe("post-expiry crossing — literal first-crossing rule (issue #936 review, finding 1)", () => {
     it("normal path: the leader's first post-expiry crossing still fires (unchanged behavior)", () => {
       run(state, field([10, 20, 10, 10], { SessionTimeRemain: 5 }));
+      run(state, field([10, 20, 10, 10], { SessionTimeRemain: 0 })); // expiry tick one
       expect(run(state, field([10, 21, 10, 10], { SessionTimeRemain: 0 }))).toEqual([RAISED]);
       expect(state.leaderWhitePostExpiryCrossed).toBe(true);
     });
 
     it("a gated tick covering the white crossing absorbs it — the later (checkered) crossing does NOT fire", () => {
       run(state, field([10, 20, 10, 10], { SessionTimeRemain: 5 })); // seed, clock still running
+      run(state, field([10, 20, 10, 10], { SessionTimeRemain: 0 })); // expiry tick one
 
       // The white crossing happens while the tick is gated (replay-only) —
       // observation still absorbs (leaderWhitePostExpiryCrossed flips),
@@ -193,6 +242,7 @@ describe("diffLeaderWhite", () => {
 
     it("a leader change spanning a missed (gated) white crossing: the newly-tracked leader's own crossing does NOT fire either", () => {
       run(state, field([10, 20, 10, 10], { SessionTimeRemain: 5 })); // carIdx 1 leads, seed
+      run(state, field([10, 20, 10, 10], { SessionTimeRemain: 0 })); // expiry tick one
 
       // carIdx 1's white crossing happens while gated — absorbed silently,
       // never fired, but the session-wide flag is now set.

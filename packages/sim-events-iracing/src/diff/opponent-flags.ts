@@ -9,10 +9,9 @@
  * qualification-window classification (standings-relative + coarse
  * track-relative, with enter/exit hysteresis), the Furled debounce, the
  * per-(car, flag) episode latch + re-announce cooldown, and `raised` vs
- * `entered-range` trigger classification. Burst aggregation
- * (`opponentFlagRecentEntries` / threshold collapse, the #622 shape) is a
- * separate concern layered on top (Task 6) — this module only emits
- * individual `opponentFlag.flagged` lines.
+ * `entered-range` trigger classification, and the burst aggregation
+ * (`opponentFlagRecentEntries` / distinct-car threshold collapse, the #622
+ * shape — see the aggregation section below).
  *
  * The store advances every tick from the live array length (never a fixed
  * 64 — a real capture showed length 72 with the pace car at index 64) and
@@ -82,19 +81,34 @@
  * flag that's already active before the plugin ever attached doesn't
  * spuriously read as "just activated".
  *
- * **Aggregation (Task 6, the #622 `diffOpponentPit` shape).** A rolling list
- * of announce timestamps (`opponentFlagRecentEntries`) is pruned to the last
- * `OPPONENT_FLAG_AGGREGATE_WINDOW_MS` on every tick; when pruning empties it,
- * `opponentFlagAggregateAnnounced` lowers. Every eligible announce — whether
- * it ends up individual or collapsed — pushes `now` into the window and
- * stamps that (car, flag)'s episode latch and cooldown. Below the threshold
- * the announce goes out individually; the announce that brings the window
- * count TO `OPPONENT_FLAG_AGGREGATE_THRESHOLD` collapses to one `"others"`
- * aggregate instead (setting the flag, once per episode); every later
- * would-be individual announce stays silent while the flag is set. The flag
- * — NOT the live window count — gates the silence, so pruning old entries
- * below the threshold mid-episode must not resume enumeration; only a full
- * 12s of quiet (the window emptying) does.
+ * **Aggregation (the #622 `diffOpponentPit` shape, per DISTINCT CAR).** A
+ * rolling list of `{ at, carIdx }` entries — one per distinct recently-
+ * announced car, a later flag on a listed car refreshing its timestamp
+ * rather than adding an entry — is pruned to the last
+ * `OPPONENT_FLAG_AGGREGATE_WINDOW_MS` on every tick; when pruning empties
+ * it, `opponentFlagAggregateAnnounced` lowers. Every eligible announce
+ * stamps its (car, flag) episode latch + cooldown and refreshes-or-adds the
+ * car's window entry. Below `OPPONENT_FLAG_AGGREGATE_THRESHOLD` distinct
+ * cars the announce goes out individually; the non-escalation announce that
+ * brings the DISTINCT-CAR count to the threshold collapses to one
+ * `"others"` aggregate instead (setting the flag, once per episode); later
+ * would-be individual announces stay silent while the flag is set. The flag
+ * — NOT the live count — gates the silence, so pruning below the threshold
+ * mid-episode must not resume enumeration; only a full 12 s of quiet does.
+ *
+ * Two classes of announce are exempt from the collapse:
+ * - **Opt-outs never reach it.** The injected `getCalloutEnabled` resolver
+ *   (live-read from the plugin's global settings per announce) is checked
+ *   before any stamping, so a disabled subject never consumes the
+ *   aggregation budget and can never redirect an enabled subject into a
+ *   collapsed tail — the aggregate line by construction only ever describes
+ *   flags the user opted into, which is why the audio side plays it master-
+ *   gated but NOT per-flag-gated.
+ * - **Escalations always get through.** A further flag on a car that
+ *   already has an announced flag this episode (black → DQ, furled → black)
+ *   emits individually even mid-collapse and never counts as a new distinct
+ *   car: "the car ahead's warning just became a real penalty" is per-car
+ *   news, not burst noise — and the website docs promise exactly this.
  */
 import { OpponentPenaltyFlag } from "@iracedeck/event-bus";
 import {
@@ -104,15 +118,16 @@ import {
   Flags,
   PENALTY_FLAG_MASK,
   type TelemetryData,
+  TrkLoc,
 } from "@iracedeck/iracing-sdk";
 
 import type { TranslatorState } from "../state.js";
 import type { EmitFn } from "./types.js";
 
-/** Rolling window for counting near-simultaneous eligible flag announcements (Task 6). */
+/** Rolling window for counting recently-announced flagged cars. */
 export const OPPONENT_FLAG_AGGREGATE_WINDOW_MS = 12_000;
 
-/** Eligible announcements within the window at which enumeration collapses (Task 6). */
+/** Distinct flagged cars within the window at which enumeration collapses. */
 export const OPPONENT_FLAG_AGGREGATE_THRESHOLD = 3;
 
 /** Per-(car, flag) re-announce cooldown — an escalation (black → DQ) is never suppressed by it. */
@@ -136,8 +151,13 @@ export const OPPONENT_FLAG_MIN_PLAYER_SPEED_MPS = 10;
 /** The four per-driver penalty/status bits this module tracks, keyed to their `CarPenaltyFlags` field name. */
 type FlagKey = "furled" | "black" | "repair" | "disqualify";
 
-/** Table-driven flag catalog — one entry per bit, no copy-paste per flag in the loops below. */
-const FLAG_DEFS: Array<{ key: FlagKey; bit: number; flag: OpponentPenaltyFlag }> = [
+/**
+ * Table-driven flag catalog — one entry per bit, no copy-paste per flag in
+ * the loops below. Exported so `getLiveOpponentFlags()` (the reusable seam
+ * in `translator.ts`) derives its bit→enum mapping from the SAME table the
+ * announcer uses — a fifth penalty bit added here reaches both in lockstep.
+ */
+export const OPPONENT_FLAG_DEFS: Array<{ key: FlagKey; bit: number; flag: OpponentPenaltyFlag }> = [
   { key: "furled", bit: Flags.Furled, flag: OpponentPenaltyFlag.Furled },
   { key: "black", bit: Flags.Black, flag: OpponentPenaltyFlag.Black },
   { key: "repair", bit: Flags.Repair, flag: OpponentPenaltyFlag.Repair },
@@ -210,6 +230,17 @@ function classify(
   // Track-relative fallback — independent of class and lap. `null` when the
   // car's own progress is missing (not in world) or the track length/player
   // progress isn't usable (coarseForwardGapSeconds's own validation).
+  //
+  // A car on pit road or in its stall is NOT "ahead on track" — the pit lane
+  // is exactly where penalized cars go to serve, so without this check every
+  // pass of the pit entry would speak a false SAFETY-weight hazard about a
+  // parked car. Off-track still qualifies (a spun car ahead IS the hazard
+  // this relation exists for); a missing surface reading stays eligible —
+  // don't punish missing data.
+  const surface = telemetry.CarIdxTrackSurface?.[carIdx];
+
+  if (surface !== undefined && surface !== TrkLoc.OnTrack && surface !== TrkLoc.OffTrack) return null;
+
   const carDp = telemetry.CarIdxLapDistPct?.[carIdx];
 
   if (typeof carDp !== "number") return null;
@@ -249,13 +280,14 @@ export function diffOpponentFlags(
   isMultiClass: boolean,
   frozenPositions: number[],
   trackLengthMeters: number | null,
+  getCalloutEnabled: (flag: OpponentPenaltyFlag) => boolean,
   now: number,
   emit: EmitFn,
 ): void {
   // Prune the aggregation window every tick; a quiet window ends the episode.
   if (state.opponentFlagRecentEntries.length > 0) {
     state.opponentFlagRecentEntries = state.opponentFlagRecentEntries.filter(
-      (t) => now - t <= OPPONENT_FLAG_AGGREGATE_WINDOW_MS,
+      (e) => now - e.at <= OPPONENT_FLAG_AGGREGATE_WINDOW_MS,
     );
 
     if (state.opponentFlagRecentEntries.length === 0) {
@@ -307,7 +339,7 @@ export function diffOpponentFlags(
 
     let newEffective = 0;
 
-    for (const def of FLAG_DEFS) {
+    for (const def of OPPONENT_FLAG_DEFS) {
       const active =
         def.key === "furled"
           ? furledSinceAt[i] > 0 && now - furledSinceAt[i] >= OPPONENT_FLAG_FURLED_DEBOUNCE_MS
@@ -334,8 +366,25 @@ export function diffOpponentFlags(
   for (let i = 0; i < raw.length; i++) {
     if (i === playerCarIdx || i === paceCarIdx) continue;
 
-    // In-world test (the race-finish.ts shape) — blipped/vanished cars skip.
-    if ((lc?.[i] ?? -1) < 0 || (dp?.[i] ?? -1) < 0) continue;
+    // In-world test (the race-finish.ts shape) — blipped/vanished/towed cars
+    // skip, and their hysteresis memory resets: a car that tows out and
+    // rejoins starts back at the ENTER bound instead of inheriting the wider
+    // exit bound from before the tow.
+    if ((lc?.[i] ?? -1) < 0 || (dp?.[i] ?? -1) < 0) {
+      state.opponentFlagInWindow[i] = false;
+      continue;
+    }
+
+    // Only effectively-flagged cars can announce — skip the O(field)
+    // classify for everyone else and reset their hysteresis memory, so a
+    // car's FIRST effective flag always opens the window at the ENTER bound:
+    // the hysteresis is per-flag-episode memory, not a lifetime property of
+    // the car (a car that once drifted through the 10–12 s band must not
+    // carry the wider bound to a flag it picks up minutes later).
+    if ((effectiveMask[i] ?? 0) === 0) {
+      state.opponentFlagInWindow[i] = false;
+      continue;
+    }
 
     const wasInWindow = state.opponentFlagInWindow[i] ?? false;
     const classification = classify(
@@ -352,36 +401,66 @@ export function diffOpponentFlags(
 
     if (!classification) continue;
 
-    for (const def of FLAG_DEFS) {
+    for (const def of OPPONENT_FLAG_DEFS) {
       if ((effectiveMask[i] & def.bit) === 0) continue; // not effectively active
 
       if ((announced[i] & def.bit) !== 0) continue; // episode already announced
+
+      // Opt-outs are enforced HERE, not only at the audio layer: a disabled
+      // subject must never stamp state, consume the aggregation budget, or
+      // redirect an enabled subject into a collapsed tail. Live-read per
+      // announce so a PI toggle takes effect on the next event; a flag
+      // re-enabled mid-episode simply announces then (level-trigger).
+      if (!getCalloutEnabled(def.flag)) continue;
 
       const cooldownArr = cooldownUntil[def.key];
 
       if (now < (cooldownArr[i] ?? 0)) continue; // per-(car, flag) cooldown
 
       const activatedThisTick = (prevEffective[i] & def.bit) === 0;
+      // A further flag on a car that already has an announced flag this
+      // episode — evaluated BEFORE this flag's own latch bit is set.
+      const isEscalation = (announced[i] & ~def.bit) !== 0;
 
       announced[i] |= def.bit;
       cooldownArr[i] = now + OPPONENT_FLAG_CAR_COOLDOWN_MS;
-      state.opponentFlagRecentEntries.push(now);
+
+      // Distinct-car window bookkeeping: refresh the car's entry if it's
+      // already listed (keeping the episode alive), add it otherwise — the
+      // collapse threshold counts CARS, never per-(car, flag) announces.
+      const existing = state.opponentFlagRecentEntries.find((e) => e.carIdx === i);
+
+      if (existing) {
+        existing.at = now;
+      } else {
+        state.opponentFlagRecentEntries.push({ at: now, carIdx: i });
+      }
+
+      const individual = {
+        event: "opponentFlag.flagged" as const,
+        data: {
+          relation: classification.relation,
+          carIdx: i,
+          flag: def.flag,
+          trigger: activatedThisTick ? ("raised" as const) : ("entered-range" as const),
+          isMultiClass,
+          ...(classification.position > 0 ? { position: classification.position } : {}),
+          ...(classification.relation === "track-ahead" ? { gapSeconds: classification.gapSeconds } : {}),
+        },
+      };
+
+      // Escalations bypass the collapse entirely (see the module header) —
+      // they play individually even while the aggregate episode is open and
+      // never trip the distinct-car threshold themselves.
+      if (isEscalation) {
+        emit(individual);
+        continue;
+      }
 
       if (state.opponentFlagAggregateAnnounced) continue; // collapsed for this episode — silent
 
       if (state.opponentFlagRecentEntries.length < OPPONENT_FLAG_AGGREGATE_THRESHOLD) {
-        emit({
-          event: "opponentFlag.flagged",
-          data: {
-            relation: classification.relation,
-            carIdx: i,
-            flag: def.flag,
-            trigger: activatedThisTick ? "raised" : "entered-range",
-            isMultiClass,
-            ...(classification.position > 0 ? { position: classification.position } : {}),
-            ...(classification.relation === "track-ahead" ? { gapSeconds: classification.gapSeconds } : {}),
-          },
-        });
+        emit(individual);
       } else {
         // Threshold reached: collapse to the aggregate tail, once per episode.
         state.opponentFlagAggregateAnnounced = true;

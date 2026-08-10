@@ -31,7 +31,6 @@ import {
   CarLeftRight,
   classPositionFromOrder,
   crossingTimeAt,
-  decodePenaltyFlags,
   IRSDK_UNLIMITED_LAPS,
   IRSDK_UNLIMITED_TIME,
   isPostRace,
@@ -66,7 +65,7 @@ import { diffLaps } from "./diff/laps.js";
 import { diffLeaderWhite } from "./diff/leader-white.js";
 import { diffLifecycle } from "./diff/lifecycle.js";
 import { diffLimiter } from "./diff/limiter.js";
-import { diffOpponentFlags } from "./diff/opponent-flags.js";
+import { diffOpponentFlags, OPPONENT_FLAG_DEFS } from "./diff/opponent-flags.js";
 import { diffOpponentPit } from "./diff/opponent-pit.js";
 import { diffOvertakes } from "./diff/overtakes.js";
 import { diffPaceLaps, resolvePaceCarIdx } from "./diff/pace-laps.js";
@@ -187,6 +186,13 @@ type TranslatorInstance = {
    * wire it to the `gapCalloutMinChangeSeconds` global setting.
    */
   getGapMinChangeSeconds: () => number;
+  /**
+   * Live-read per-flag opt-in for the opponent penalty-flag callouts
+   * (issue #936). Enforced in the diff — not only at the audio layer — so a
+   * disabled subject never consumes the burst-aggregation budget. Plugins
+   * wire it to the `calloutEnabledOpponentFlag*` global settings.
+   */
+  getOpponentFlagCalloutEnabled: (flag: OpponentPenaltyFlag) => boolean;
 };
 
 /**
@@ -223,6 +229,12 @@ export type SimEventsIracingOptions = {
    * {@link GAP_DEFAULT_MIN_CHANGE_S}.
    */
   getGapMinChangeSeconds?: () => number;
+  /**
+   * Live-read per-flag opt-in for the opponent penalty-flag callouts
+   * (issue #936). Plugins compose it from the `calloutEnabledOpponentFlag*`
+   * global settings. Default: everything enabled.
+   */
+  getOpponentFlagCalloutEnabled?: (flag: OpponentPenaltyFlag) => boolean;
 };
 
 let instance: TranslatorInstance | null = null;
@@ -261,6 +273,7 @@ export function initializeSimEventsIracing(
     getCornerCalloutLeadSeconds: options.getCornerCalloutLeadSeconds ?? (() => CORNER_CALLOUT_DEFAULT_LEAD_SECONDS),
     getGapAlertThresholdSeconds: options.getGapAlertThresholdSeconds ?? (() => GAP_DEFAULT_ALERT_THRESHOLD_S),
     getGapMinChangeSeconds: options.getGapMinChangeSeconds ?? (() => GAP_DEFAULT_MIN_CHANGE_S),
+    getOpponentFlagCalloutEnabled: options.getOpponentFlagCalloutEnabled ?? (() => true),
   };
 
   instance = self;
@@ -896,16 +909,18 @@ export function getLiveOpponentFlags(): LiveOpponentFlags | null {
   const cars: LiveOpponentFlagCar[] = [];
 
   for (let i = 0; i < bits.length; i++) {
-    const d = decodePenaltyFlags(bits[i]);
+    const masked = bits[i] ?? 0;
+
+    if (masked === 0) continue;
+
+    // Derived from the announcer's own flag table (`OPPONENT_FLAG_DEFS`) so
+    // a future fifth penalty bit reaches the seam and the callouts in
+    // lockstep — never a hand-maintained parallel mapping.
     const flags: OpponentPenaltyFlag[] = [];
 
-    if (d.furled) flags.push(OpponentPenaltyFlag.Furled);
-
-    if (d.black) flags.push(OpponentPenaltyFlag.Black);
-
-    if (d.repair) flags.push(OpponentPenaltyFlag.Repair);
-
-    if (d.disqualify) flags.push(OpponentPenaltyFlag.Disqualify);
+    for (const def of OPPONENT_FLAG_DEFS) {
+      if ((masked & def.bit) !== 0) flags.push(def.flag);
+    }
 
     if (flags.length > 0) cars.push({ carIdx: i, flags });
   }
@@ -1214,7 +1229,7 @@ function wipeStateForReplay(self: TranslatorInstance): void {
     opponentPitRecentEntries: self.state.opponentPitRecentEntries,
     opponentPitAggregateAnnounced: self.state.opponentPitAggregateAnnounced,
     opponentPitCarCooldownUntil: self.state.opponentPitCarCooldownUntil,
-    // The opponent-flag episode state (issue #936, Task 6) — the #622
+    // The opponent-flag episode state (issue #936) — the #622
     // rationale, verbatim-adapted: glancing at the replay mid-burst must not
     // reset the aggregation window, the once-per-episode aggregate flag, the
     // per-(car, flag) episode latch, or the per-(car, flag) cooldowns — the
@@ -1693,10 +1708,12 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     emit,
   );
 
-  // Opponent penalty flags (issue #936) — the store advance runs every tick
-  // (Task 4); trigger classification, gating, and emission land in Tasks
-  // 5–6 on top of this call. Consumes the same canonical frozen order and
-  // track length as the diffs above.
+  // Opponent penalty flags (issue #936) — advances the per-car flag store
+  // (the `getLiveOpponentFlags()` seam) every tick, then classifies the
+  // qualification window and emits `opponentFlag.flagged` (individual lines
+  // + the distinct-car burst aggregate). Consumes the same canonical frozen
+  // order and track length as the diffs above; the per-flag opt-in resolver
+  // is enforced here so disabled subjects never feed the aggregation.
   diffOpponentFlags(
     self.state,
     telemetry,
@@ -1709,6 +1726,7 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     resolveIsMultiClass(sessionInfo) === true,
     frozenPositions,
     trackLengthMeters,
+    self.getOpponentFlagCalloutEnabled,
     now,
     emit,
   );

@@ -672,7 +672,7 @@ export type TranslatorState = {
    * reopens — the reopened tick reports `entered-range`, never a replayed
    * `raised`.
    *
-   * **Replay-wipe obligation (Task 6):** `wipeStateForReplay` MUST treat
+   * **Replay-wipe obligation:** `wipeStateForReplay` MUST treat
    * this field like the `opponentFlagBits` baseline it derives from — reseed
    * it (never carry it through `preservedAcrossReplay`) exactly in lockstep
    * with `opponentFlagBits`/`opponentFlagFurledSinceAt`, since a
@@ -685,8 +685,13 @@ export type TranslatorState = {
    * a flag that never actually re-activated.
    */
   opponentFlagEffectiveMask: number[];
-  /** Timestamps of announced entries inside the rolling aggregation window (the #622 burst shape). */
-  opponentFlagRecentEntries: number[];
+  /**
+   * Announced entries inside the rolling aggregation window (the #622 burst
+   * shape), one per DISTINCT flagged car — a later flag on an already-listed
+   * car refreshes its timestamp rather than adding an entry, so the
+   * "several cars" collapse can only be reached by several actual cars.
+   */
+  opponentFlagRecentEntries: Array<{ at: number; carIdx: number }>;
   /** Whether the aggregate tail already fired for the current episode. */
   opponentFlagAggregateAnnounced: boolean;
 
@@ -697,6 +702,14 @@ export type TranslatorState = {
   leaderWhiteLastLeaderLap: number;
   /** `SessionLapsRemainEx` last tick (lap-limited falling-to-1 edge); null until seeded. */
   leaderWhiteLastLapsRemainEx: number | null;
+  /**
+   * Whether `SessionTimeRemain` read as expired on the PREVIOUS tick — the
+   * timed-edge machinery only trusts an expiry confirmed on two consecutive
+   * ticks, so a one-tick `<= 0` blip (the #666 transient) coinciding with a
+   * leader crossing can neither fire a premature callout nor latch the
+   * post-expiry marker. Baseline: advances every tick, re-seeds on wipe.
+   */
+  leaderWhiteLastClockExpired: boolean;
   /**
    * Once-per-race latch. STICKY: preserved across the replay wipe; cleared
    * per-session (a fresh `createInitialState()`) and by a GREEN rising edge
@@ -1010,6 +1023,7 @@ export function createInitialState(): TranslatorState {
     leaderWhiteLastLeaderIdx: -1,
     leaderWhiteLastLeaderLap: -1,
     leaderWhiteLastLapsRemainEx: null,
+    leaderWhiteLastClockExpired: false,
     leaderWhiteFired: false,
     leaderWhitePostExpiryCrossed: false,
 

@@ -23,8 +23,10 @@ import {
   _resetOpponentFlagPending,
   OPPONENT_FLAG_ALERTS,
   OPPONENT_FLAG_CALLOUT_SETTING_KEYS,
+  OPPONENT_FLAG_OTHERS_SCENARIO_ID,
   OPPONENT_FLAG_POOL_NAMES,
   OPPONENT_FLAG_SCENARIO_IDS,
+  OPPONENT_PENALTY_FLAG_TO_CALLOUT_ID,
   type OpponentFlagCalloutId,
   type OpponentFlagPending,
   registerOpponentFlagVars,
@@ -296,20 +298,36 @@ describe("registerOpponentFlagVars + the pending stash", () => {
 });
 
 describe("family wiring", () => {
-  it("maps every subject-relation scenario to its subject and the aggregate to black", () => {
+  it("maps every subject-relation scenario to its subject; the aggregate is deliberately unmapped (master-gated only)", () => {
     for (const subject of SUBJECTS) {
       for (const relation of RELATIONS) {
         expect(SCENARIO_ID_TO_OPPONENT_FLAG_ID[`pit-crew.opponent-flag-${subject}-${relation}`]).toBe(subject);
       }
     }
 
-    expect(SCENARIO_ID_TO_OPPONENT_FLAG_ID["pit-crew.opponent-flag-others"]).toBe("black");
+    // The translator diff enforces the per-flag opt-ins before anything can
+    // feed the aggregation, so the aggregate only ever describes enabled
+    // flags — mapping it to one subject's toggle (the earlier others →
+    // black ride-along) let a disabled Black silence an aggregate built
+    // from ENABLED subjects (#936 review).
+    expect(SCENARIO_ID_TO_OPPONENT_FLAG_ID[OPPONENT_FLAG_OTHERS_SCENARIO_ID]).toBeUndefined();
   });
 
-  it("maps every scenario id present in OPPONENT_FLAG_SCENARIO_IDS", () => {
+  it("maps every scenario id except the aggregate (which registers without the per-flag opt-in wrapper)", () => {
     for (const id of OPPONENT_FLAG_SCENARIO_IDS) {
+      if (id === OPPONENT_FLAG_OTHERS_SCENARIO_ID) continue;
+
       expect(SCENARIO_ID_TO_OPPONENT_FLAG_ID[id]).toBeDefined();
     }
+  });
+
+  it("maps every bus enum value to its callout id (the translator-side opt-in resolver's table)", () => {
+    expect(OPPONENT_PENALTY_FLAG_TO_CALLOUT_ID).toEqual({
+      furled: "furled",
+      black: "black",
+      repair: "meatball",
+      disqualify: "disqualify",
+    });
   });
 
   it("exposes the canonical setting keys", () => {
