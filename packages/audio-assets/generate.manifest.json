@@ -11858,28 +11858,28 @@
       "requestId": "zkFZAiEp5WKt9kp6LigW"
     },
     "voice/default/opponent-flags/furled-ahead-tail-01.mp3": {
-      "hash": "030ce8b60f97df49",
+      "hash": "5d7cb12315fa6e21",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "has a furled black flag. They're on notice.",
-      "generatedAt": "2026-08-09T18:16:22.407Z",
-      "requestId": "caXH61N1cuJBxgjAQTNv"
+      "textPreview": "has a furled black flag. They're gonna have to give that time back.",
+      "generatedAt": "2026-08-10T15:35:10.495Z",
+      "requestId": "xEuzcrAEJquRFFbcaMUA"
     },
     "voice/default/opponent-flags/black-ahead-tail-01.mp3": {
-      "hash": "67cc5caf238f29c5",
+      "hash": "986bde72945a134b",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "has a black flag. They'll be serving a penalty.",
-      "generatedAt": "2026-08-09T18:16:22.661Z",
-      "requestId": "BbngKbUq9W2op3dKeca7"
+      "textPreview": "has a black flag. <break time=\"0.3s\" /> They'll be serving a penalty.",
+      "generatedAt": "2026-08-10T15:31:16.310Z",
+      "requestId": "7ESzBBU1EUq4Y8YSTkxQ"
     },
     "voice/default/opponent-flags/meatball-ahead-tail-01.mp3": {
-      "hash": "9b53b73ea4ea3dee",
+      "hash": "2afce5a2b983582b",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "has a meatball. Expect them to slow.",
-      "generatedAt": "2026-08-09T18:16:22.887Z",
-      "requestId": "ZRhQ504Ocs7J4PcG9UEf"
+      "textPreview": "has the meatball flag. Expect them to be slow.",
+      "generatedAt": "2026-08-10T15:36:00.797Z",
+      "requestId": "AQOd4DlGkPlw6jipKrl2"
     },
     "voice/default/opponent-flags/disqualify-ahead-tail-01.mp3": {
       "hash": "02c2176357927af1",
@@ -11898,20 +11898,20 @@
       "requestId": "h7uA69lvh0ORPAMbxXKs"
     },
     "voice/default/opponent-flags/black-behind-01.mp3": {
-      "hash": "32caa9ae61d558a7",
+      "hash": "cadb972b24c2bc34",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "The car behind has a black flag. That pressure should ease.",
-      "generatedAt": "2026-08-09T18:16:23.611Z",
-      "requestId": "hy6STv9YlpDkSdQ4FPDH"
+      "textPreview": "The car behind has a black flag. <break time=\"0.3s\" /> That pressure should eas…",
+      "generatedAt": "2026-08-10T15:32:43.382Z",
+      "requestId": "9yTKL1BFNB0BCcjjnTMQ"
     },
     "voice/default/opponent-flags/meatball-behind-01.mp3": {
-      "hash": "7504c5a66c7f6601",
+      "hash": "7b3ec007c0e51dd9",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "The car behind has a meatball. They'll be coming in for repairs.",
-      "generatedAt": "2026-08-09T18:16:23.911Z",
-      "requestId": "J4aWwA2Zv4R7KRUPyjOW"
+      "textPreview": "The car behind has the meatball flag. They'll be coming in for repairs.",
+      "generatedAt": "2026-08-10T15:36:56.170Z",
+      "requestId": "DCYgjfHPKZnA32dbL4cx"
     },
     "voice/default/opponent-flags/disqualify-behind-01.mp3": {
       "hash": "439e4e9b616fd22c",
@@ -11938,20 +11938,20 @@
       "requestId": "k9SzP4t6JvLR4yKphsVN"
     },
     "voice/default/opponent-flags/meatball-track-01.mp3": {
-      "hash": "dec1759f864def7d",
+      "hash": "de4c82b6305ff4bd",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "Careful. <break time=\"0.3s\" /> The car ahead on track has a meatball. They coul…",
-      "generatedAt": "2026-08-09T18:16:24.884Z",
-      "requestId": "o0CeddjadDwIrtQRDNXq"
+      "textPreview": "Careful. <break time=\"0.3s\" /> The car ahead on track has the meatball flag. Th…",
+      "generatedAt": "2026-08-10T15:37:39.621Z",
+      "requestId": "I1fPHLaEilHZqDWixeLe"
     },
     "voice/default/opponent-flags/disqualify-track-01.mp3": {
-      "hash": "32a3cf60a8a1364c",
+      "hash": "e66765de86024a78",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "The car ahead on track has been disqualified. They may pull off.",
-      "generatedAt": "2026-08-09T18:16:25.138Z",
-      "requestId": "aeEbo1qrSLSSVJtnzhlg"
+      "textPreview": "The car ahead on track has been disqualified. <break time=\"0.2s\" /> They may pu…",
+      "generatedAt": "2026-08-10T15:34:22.520Z",
+      "requestId": "gH2WttI5EM9hEhMUM9un"
     },
     "voice/default/opponent-flags/others-01.mp3": {
       "hash": "511244102b31e684",

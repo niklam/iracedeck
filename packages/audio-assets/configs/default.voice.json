@@ -295,18 +295,20 @@
     "opponent-flags": [
       {
         "name": "furled-ahead-tail-01",
-        "text": "has a furled black flag. They're on notice.",
+        "text": "has a furled black flag. They're gonna have to give that time back.",
         "previous_request_ids": ["position-number/4"]
       },
       {
         "name": "black-ahead-tail-01",
-        "text": "has a black flag. They'll be serving a penalty.",
-        "previous_request_ids": ["position-number/4"]
+        "text": "has a black flag. <break time=\"0.3s\" /> They'll be serving a penalty.",
+        "previous_request_ids": ["position-number/4"],
+        "seed": 2
       },
       {
         "name": "meatball-ahead-tail-01",
-        "text": "has a meatball. Expect them to slow.",
-        "previous_request_ids": ["position-number/4"]
+        "text": "has the meatball flag. Expect them to be slow.",
+        "previous_request_ids": ["position-number/4"],
+        "seed": 2
       },
       {
         "name": "disqualify-ahead-tail-01",
@@ -319,11 +321,13 @@
       },
       {
         "name": "black-behind-01",
-        "text": "The car behind has a black flag. That pressure should ease."
+        "text": "The car behind has a black flag. <break time=\"0.3s\" /> That pressure should ease.",
+        "seed": 5
       },
       {
         "name": "meatball-behind-01",
-        "text": "The car behind has a meatball. They'll be coming in for repairs."
+        "text": "The car behind has the meatball flag. They'll be coming in for repairs.",
+        "seed": 2
       },
       {
         "name": "disqualify-behind-01",
@@ -339,11 +343,12 @@
       },
       {
         "name": "meatball-track-01",
-        "text": "Careful. <break time=\"0.3s\" /> The car ahead on track has a meatball. They could be slow."
+        "text": "Careful. <break time=\"0.3s\" /> The car ahead on track has the meatball flag. They could be slow."
       },
       {
         "name": "disqualify-track-01",
-        "text": "The car ahead on track has been disqualified. They may pull off."
+        "text": "The car ahead on track has been disqualified. <break time=\"0.2s\" /> They may pull off.",
+        "seed": 4
       },
       {
         "name": "others-01",
