@@ -443,6 +443,8 @@ describe("START_LIGHT_ALERTS opt-in gating (issue #480)", () => {
       undefined, // getGapCalloutEnabled (issue #933)
       undefined, // getGapCooldownMs (issue #933)
       undefined, // getLiveGaps (issue #933)
+      undefined, // getOpponentFlagCalloutEnabled (issue #936)
+      undefined, // getOpponentFlagLivePosition (issue #936)
       undefined, // getRaceEngineerMasterEnabled
       undefined, // getRadarMasterEnabled
     );

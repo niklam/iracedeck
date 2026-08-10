@@ -416,6 +416,25 @@ export const GlobalSettingsSchema = z
       .union([z.boolean(), z.string()])
       .transform((val) => val === true || val === "true")
       .default(true),
+    // Opponent-flag callout opt-ins (issue #936). Four subjects — penalty
+    // flags on cars that matter to us (standings neighbours + slow traffic
+    // ahead). Canonical id↔key mapping in `OPPONENT_FLAG_CALLOUT_SETTING_KEYS`.
+    calloutEnabledOpponentFlagFurled: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledOpponentFlagBlack: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledOpponentFlagMeatball: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledOpponentFlagDisqualify: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
     /**
      * Damage callout opt-in (issue #489). Fires after the rising-edge
      * debounce on `EngineWarnings & (MandRepNeeded | OptRepNeeded)`. Same

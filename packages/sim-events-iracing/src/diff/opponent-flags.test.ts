@@ -1,0 +1,901 @@
+import { OpponentPenaltyFlag } from "@iracedeck/event-bus";
+import { Flags } from "@iracedeck/iracing-native";
+import { TrkLoc } from "@iracedeck/iracing-sdk";
+import { beforeEach, describe, expect, it } from "vitest";
+
+import { createInitialState, type TranslatorState } from "../state.js";
+import { diffOpponentFlags } from "./opponent-flags.js";
+import type { PendingEvent } from "./types.js";
+
+const PLAYER = 0;
+
+type MutableField = {
+  CarIdxSessionFlags: number[];
+  CarIdxLapCompleted: number[];
+  CarIdxLapDistPct: number[];
+  CarIdxClass: number[];
+  CarIdxTrackSurface?: number[];
+  LapDistPct?: number;
+  Speed?: number;
+  SessionFlags?: number;
+};
+
+/** n-car field: player (carIdx 0) is P4 in the default 8-car shape. */
+function makeField(n = 8): MutableField {
+  return {
+    CarIdxSessionFlags: Array<number>(n).fill(0),
+    CarIdxLapCompleted: Array<number>(n).fill(10),
+    CarIdxLapDistPct: Array<number>(n).fill(0.5),
+    CarIdxClass: Array<number>(n).fill(100),
+  };
+}
+
+/** frozenPositions indexed by carIdx (1-based ranks) — the 8-car field's canonical order. */
+const POSITIONS = [4, 1, 2, 3, 5, 6, 7, 8];
+
+function run(
+  state: TranslatorState,
+  telemetry: MutableField,
+  now: number,
+  opts: Partial<{
+    player: number;
+    isRace: boolean;
+    replay: boolean;
+    preGreen: boolean;
+    postRace: boolean;
+    multi: boolean;
+    pace: number | null;
+    positions: number[];
+    trackLength: number | null;
+    enabled: (flag: OpponentPenaltyFlag) => boolean;
+  }> = {},
+): PendingEvent[] {
+  const out: PendingEvent[] = [];
+
+  diffOpponentFlags(
+    state,
+    telemetry as never,
+    opts.player ?? PLAYER,
+    opts.pace ?? null,
+    opts.isRace ?? true,
+    opts.replay ?? false,
+    opts.preGreen ?? false,
+    opts.postRace ?? false,
+    opts.multi ?? false,
+    opts.positions ?? POSITIONS,
+    opts.trackLength ?? 4000,
+    opts.enabled ?? (() => true),
+    now,
+    (ev) => out.push(ev),
+  );
+
+  return out;
+}
+
+describe("diffOpponentFlags", () => {
+  let state: TranslatorState;
+
+  beforeEach(() => {
+    state = createInitialState();
+  });
+
+  it("seeds the store silently on the first tick, flags included", () => {
+    const t = makeField();
+    t.CarIdxSessionFlags[3] = 0x50000; // Black + Servicible (the Step 0 capture value)
+
+    expect(run(state, t, 1000)).toEqual([]);
+    expect(state.opponentFlagsInitialized).toBe(true);
+    expect(state.opponentFlagBits[3]).toBe(Flags.Black);
+  });
+
+  it("keeps the store truthful even when the callout gates are closed", () => {
+    const t = makeField();
+    run(state, t, 1000);
+    t.CarIdxSessionFlags[3] = Flags.Repair;
+
+    expect(run(state, t, 2000, { isRace: false })).toEqual([]);
+    expect(state.opponentFlagBits[3]).toBe(Flags.Repair);
+  });
+
+  it("sizes per-car state from the live array length (72 cars, pace car at 64)", () => {
+    const t = makeField(72);
+    t.CarIdxSessionFlags[70] = Flags.Black;
+    run(state, t, 1000);
+
+    expect(state.opponentFlagBits.length).toBe(72);
+    expect(state.opponentFlagBits[70]).toBe(Flags.Black);
+  });
+
+  it("announces a black flag rising on the car directly ahead (raised trigger)", () => {
+    const t = makeField();
+    run(state, t, 1000);
+    t.CarIdxSessionFlags[3] = 0x50000; // carIdx 3 = P3, directly ahead of P4
+
+    expect(run(state, t, 2000)).toEqual([
+      {
+        event: "opponentFlag.flagged",
+        data: {
+          relation: "ahead",
+          carIdx: 3,
+          flag: OpponentPenaltyFlag.Black,
+          trigger: "raised",
+          position: 3,
+          isMultiClass: false,
+        },
+      },
+    ]);
+  });
+
+  it("announces every car within the 1-3 class-position ahead window (the 3rd collapses to the burst aggregate, issue #936 Task 6)", () => {
+    const t = makeField();
+    run(state, t, 1000);
+    t.CarIdxSessionFlags[3] = Flags.Black; // P3, delta 1
+    t.CarIdxSessionFlags[2] = Flags.Black; // P2, delta 2
+    t.CarIdxSessionFlags[1] = Flags.Black; // P1, delta 3
+
+    // Three simultaneous eligible announces in one tick hit the burst-
+    // aggregation threshold (`OPPONENT_FLAG_AGGREGATE_THRESHOLD` = 3) just
+    // like three spread across separate ticks would — the loop visits carIdx
+    // ascending, so the third (carIdx 3, delta 1) is the one that collapses.
+    expect(run(state, t, 2000)).toEqual([
+      {
+        event: "opponentFlag.flagged",
+        data: {
+          relation: "ahead",
+          carIdx: 1,
+          flag: OpponentPenaltyFlag.Black,
+          trigger: "raised",
+          position: 1,
+          isMultiClass: false,
+        },
+      },
+      {
+        event: "opponentFlag.flagged",
+        data: {
+          relation: "ahead",
+          carIdx: 2,
+          flag: OpponentPenaltyFlag.Black,
+          trigger: "raised",
+          position: 2,
+          isMultiClass: false,
+        },
+      },
+      { event: "opponentFlag.flagged", data: { relation: "others" } },
+    ]);
+  });
+
+  it("does not announce a car 4 class positions ahead (outside the standings window, no track-ahead fallback)", () => {
+    const t = makeField(10);
+    const positions = [6, 1, 2, 3, 4, 5, 7, 8, 9, 10]; // player carIdx 0 = P6; carIdx 2 = P2, delta 4
+
+    run(state, t, 1000, { positions });
+    t.CarIdxSessionFlags[2] = Flags.Black;
+
+    expect(run(state, t, 2000, { positions })).toEqual([]);
+  });
+
+  it("announces only the car directly behind (P+1), not P+2", () => {
+    const t = makeField();
+    run(state, t, 1000);
+    t.CarIdxSessionFlags[4] = Flags.Black; // P5, one behind
+    t.CarIdxSessionFlags[5] = Flags.Black; // P6, two behind — does not qualify
+
+    expect(run(state, t, 2000)).toEqual([
+      {
+        event: "opponentFlag.flagged",
+        data: {
+          relation: "behind",
+          carIdx: 4,
+          flag: OpponentPenaltyFlag.Black,
+          trigger: "raised",
+          position: 5,
+          isMultiClass: false,
+        },
+      },
+    ]);
+  });
+
+  it("multi-class: an other-class car ahead in standings needs track-ahead, not standings; position maps through classPositionFromOrder", () => {
+    const t = makeField(10);
+    t.CarIdxClass = [100, 100, 100, 100, 100, 200, 200, 200, 200, 200];
+    const positions = [5, 1, 2, 8, 9, 3, 4, 6, 7, 10]; // overall ranks; player (carIdx 0, class 100) is class-pos 3
+    t.LapDistPct = 0.5;
+    t.Speed = 50;
+
+    run(state, t, 1000, { multi: true, positions });
+    t.CarIdxSessionFlags[5] = Flags.Black; // class 200, overall pos 3 — standings-ahead of the player but different class
+    t.CarIdxLapDistPct[5] = 0.6; // 8s forward gap at Speed 50, trackLength 4000
+
+    expect(run(state, t, 2000, { multi: true, positions })).toEqual([
+      {
+        event: "opponentFlag.flagged",
+        data: {
+          relation: "track-ahead",
+          carIdx: 5,
+          flag: OpponentPenaltyFlag.Black,
+          trigger: "raised",
+          position: 1, // carIdx 5's class-200 position, via classPositionFromOrder
+          gapSeconds: expect.closeTo(8, 5),
+          isMultiClass: true,
+        },
+      },
+    ]);
+  });
+
+  it("same-lap gate: a standings-adjacent car a full lap off fails standings qualification (and has no track-ahead telemetry)", () => {
+    const t = makeField();
+    run(state, t, 1000);
+    t.CarIdxSessionFlags[3] = Flags.Black; // P3, would otherwise be "ahead" at delta 1
+    t.CarIdxLapCompleted[3] = 9; // one lap down, and the progress-score gap is >= 1.0
+
+    expect(run(state, t, 2000)).toEqual([]);
+  });
+
+  it("debounces Furled: no emission until it's been continuously up for the debounce window, then announces as raised", () => {
+    const t = makeField();
+    run(state, t, 1000);
+    t.CarIdxSessionFlags[3] = Flags.Furled;
+
+    expect(run(state, t, 2000)).toEqual([]); // just rose — debounce not met
+
+    expect(run(state, t, 3100)).toEqual([
+      {
+        event: "opponentFlag.flagged",
+        data: {
+          relation: "ahead",
+          carIdx: 3,
+          flag: OpponentPenaltyFlag.Furled,
+          trigger: "raised",
+          position: 3,
+          isMultiClass: false,
+        },
+      },
+    ]);
+  });
+
+  it("announces Furled at exactly the debounce boundary (now - sinceAt === 1000ms, integer-exact)", () => {
+    const t = makeField();
+    run(state, t, 1000);
+    t.CarIdxSessionFlags[3] = Flags.Furled;
+    run(state, t, 2000); // rises — furledSinceAt seeds to exactly 2000
+
+    expect(run(state, t, 3000)).toEqual([
+      {
+        event: "opponentFlag.flagged",
+        data: {
+          relation: "ahead",
+          carIdx: 3,
+          flag: OpponentPenaltyFlag.Furled,
+          trigger: "raised",
+          position: 3,
+          isMultiClass: false,
+        },
+      },
+    ]);
+  });
+
+  it("never announces a Furled flicker that clears before the debounce window elapses", () => {
+    const t = makeField();
+    run(state, t, 1000);
+    t.CarIdxSessionFlags[3] = Flags.Furled;
+    run(state, t, 2000);
+    t.CarIdxSessionFlags[3] = 0;
+
+    expect(run(state, t, 2500)).toEqual([]);
+    expect(run(state, t, 3600)).toEqual([]);
+  });
+
+  it("handles the furled-clears + black-sets escalation in one tick with exactly one emission (#846)", () => {
+    const t = makeField();
+    run(state, t, 1000);
+    t.CarIdxSessionFlags[3] = Flags.Furled;
+    run(state, t, 2000);
+
+    expect(run(state, t, 3100)).toEqual([
+      {
+        event: "opponentFlag.flagged",
+        data: {
+          relation: "ahead",
+          carIdx: 3,
+          flag: OpponentPenaltyFlag.Furled,
+          trigger: "raised",
+          position: 3,
+          isMultiClass: false,
+        },
+      },
+    ]);
+
+    // Escalation: Furled clears + Black sets in the same tick.
+    t.CarIdxSessionFlags[3] = Flags.Black;
+
+    expect(run(state, t, 4000)).toEqual([
+      {
+        event: "opponentFlag.flagged",
+        data: {
+          relation: "ahead",
+          carIdx: 3,
+          flag: OpponentPenaltyFlag.Black,
+          trigger: "raised",
+          position: 3,
+          isMultiClass: false,
+        },
+      },
+    ]);
+
+    // Furled rises again later (its own episode + cooldown have both fully
+    // reset) — a fresh episode, so it announces again.
+    t.CarIdxSessionFlags[3] = Flags.Furled;
+    expect(run(state, t, 40000)).toEqual([]); // debounce not yet met
+
+    expect(run(state, t, 41200)).toEqual([
+      {
+        event: "opponentFlag.flagged",
+        data: {
+          relation: "ahead",
+          carIdx: 3,
+          flag: OpponentPenaltyFlag.Furled,
+          trigger: "raised",
+          position: 3,
+          isMultiClass: false,
+        },
+      },
+    ]);
+  });
+
+  it("announces meatball as entered-range once the car's position shifts into the window (level trigger)", () => {
+    const t = makeField(10);
+    const initial = [6, 2, 1, 3, 4, 5, 7, 8, 9, 10]; // player carIdx 0 = P6; carIdx 2 = P1, delta 5
+
+    run(state, t, 1000, { positions: initial });
+    t.CarIdxSessionFlags[2] = Flags.Repair;
+
+    expect(run(state, t, 2000, { positions: initial })).toEqual([]);
+
+    const shifted = [6, 2, 5, 3, 4, 1, 7, 8, 9, 10]; // carIdx 2 now P5, delta 1 — ahead
+
+    expect(run(state, t, 3000, { positions: shifted })).toEqual([
+      {
+        event: "opponentFlag.flagged",
+        data: {
+          relation: "ahead",
+          carIdx: 2,
+          flag: OpponentPenaltyFlag.Repair,
+          trigger: "entered-range",
+          position: 5,
+          isMultiClass: false,
+        },
+      },
+    ]);
+  });
+
+  it("classifies a flagged car purely by track proximity when standings can't place it (position omitted when unclassified)", () => {
+    const t = makeField();
+    const positions = [4, 1, 2, 3, 5, 0, 7, 8]; // carIdx 5 unclassified — no standings path
+    t.LapDistPct = 0.5;
+    t.Speed = 50;
+
+    run(state, t, 1000, { positions, trackLength: 5000 });
+    t.CarIdxSessionFlags[5] = Flags.Black;
+    t.CarIdxLapDistPct[5] = 0.58; // 8s forward gap at Speed 50, trackLength 5000
+    t.CarIdxLapCompleted[5] = 8; // a different lap than the player's
+
+    expect(run(state, t, 2000, { positions, trackLength: 5000 })).toEqual([
+      {
+        event: "opponentFlag.flagged",
+        data: {
+          relation: "track-ahead",
+          carIdx: 5,
+          flag: OpponentPenaltyFlag.Black,
+          trigger: "raised",
+          gapSeconds: expect.closeTo(8, 5),
+          isMultiClass: false,
+        },
+      },
+    ]);
+  });
+
+  it("applies enter/exit hysteresis to the track-ahead window without re-announcing across a small gap wobble", () => {
+    const t = makeField();
+    const positions = [4, 1, 2, 3, 5, 0, 7, 8]; // carIdx 5 unclassified — track-ahead only
+    t.LapDistPct = 0.5;
+    t.Speed = 40;
+
+    run(state, t, 1000, { positions, trackLength: 4000 });
+    t.CarIdxSessionFlags[5] = Flags.Black;
+    t.CarIdxLapDistPct[5] = 0.59; // 9s — inside the 10s enter bound
+
+    expect(run(state, t, 2000, { positions, trackLength: 4000 })).toEqual([
+      {
+        event: "opponentFlag.flagged",
+        data: {
+          relation: "track-ahead",
+          carIdx: 5,
+          flag: OpponentPenaltyFlag.Black,
+          trigger: "raised",
+          gapSeconds: expect.closeTo(9, 5),
+          isMultiClass: false,
+        },
+      },
+    ]);
+
+    // Hovers at 10.5s — inside the 12s exit bound, hysteresis keeps it in
+    // the window. Already announced this episode — silent either way.
+    t.CarIdxLapDistPct[5] = 0.605;
+    expect(run(state, t, 10000, { positions, trackLength: 4000 })).toEqual([]);
+
+    // Leaves to 13s — past the exit bound, the window closes.
+    t.CarIdxLapDistPct[5] = 0.63;
+    expect(run(state, t, 20000, { positions, trackLength: 4000 })).toEqual([]);
+
+    // Flag clears (episode + cooldown both long since spent) then re-raises,
+    // re-entering at 9s — inside the enter bound — announces again.
+    t.CarIdxSessionFlags[5] = 0;
+    run(state, t, 32000, { positions, trackLength: 4000 });
+
+    t.CarIdxSessionFlags[5] = Flags.Black;
+    t.CarIdxLapDistPct[5] = 0.59;
+    expect(run(state, t, 40000, { positions, trackLength: 4000 })).toEqual([
+      {
+        event: "opponentFlag.flagged",
+        data: {
+          relation: "track-ahead",
+          carIdx: 5,
+          flag: OpponentPenaltyFlag.Black,
+          trigger: "raised",
+          gapSeconds: expect.closeTo(9, 5),
+          isMultiClass: false,
+        },
+      },
+    ]);
+  });
+
+  it("uses the wider exit bound to keep a car in-window at 11s once it has already qualified (hysteresis pinned, not just the enter bound)", () => {
+    const t = makeField();
+    const positions = [4, 1, 2, 3, 5, 0, 7, 8]; // carIdx 5 unclassified — track-ahead only
+    t.LapDistPct = 0.5;
+    t.Speed = 40; // gapSeconds = forwardFraction * 100
+
+    run(state, t, 1000, { positions, trackLength: 4000 });
+
+    // Establish window membership via the ENTER bound at 9s, and announce.
+    t.CarIdxSessionFlags[5] = Flags.Black;
+    t.CarIdxLapDistPct[5] = 0.59; // 9s
+    expect(run(state, t, 2000, { positions, trackLength: 4000 })).toEqual([
+      {
+        event: "opponentFlag.flagged",
+        data: {
+          relation: "track-ahead",
+          carIdx: 5,
+          flag: OpponentPenaltyFlag.Black,
+          trigger: "raised",
+          gapSeconds: expect.closeTo(9, 5),
+          isMultiClass: false,
+        },
+      },
+    ]);
+
+    // Move out to 11s while the flag stays active. The enter bound (10)
+    // alone would drop this car out of the window; only the wider exit
+    // bound (12) — used because the car was already in-window — keeps it
+    // in. The episode latch silences the emission either way, but this tick
+    // is what sets `opponentFlagInWindow` for the step below. (Hysteresis
+    // memory only survives while the car stays effectively flagged — a
+    // clear resets it to the enter bound, per the flagless-guard in the
+    // announce loop — so the exit bound is pinned via an escalation on the
+    // still-active car, not a clear/re-raise.)
+    t.CarIdxLapDistPct[5] = 0.61; // 11s
+    expect(run(state, t, 10000, { positions, trackLength: 4000 })).toEqual([]);
+
+    // A meatball rises on the same still-black car at 11s. With real
+    // hysteresis the car is still in-window (11 <= the 12s exit bound) and
+    // the escalation announces; a bound hardcoded to the enter value (10)
+    // would have dropped the car out of the window on the 11s tick above
+    // and classify nothing here — this is the assertion that kills that
+    // mutant.
+    t.CarIdxSessionFlags[5] = Flags.Black | Flags.Repair;
+    expect(run(state, t, 12000, { positions, trackLength: 4000 })).toEqual([
+      {
+        event: "opponentFlag.flagged",
+        data: {
+          relation: "track-ahead",
+          carIdx: 5,
+          flag: OpponentPenaltyFlag.Repair,
+          trigger: "raised",
+          gapSeconds: expect.closeTo(11, 5),
+          isMultiClass: false,
+        },
+      },
+    ]);
+  });
+
+  it("never opens the track-ahead window at 11s for a car that was never previously in-window (enter bound pinned, not the wider exit bound)", () => {
+    const t = makeField();
+    const positions = [4, 1, 2, 3, 5, 0, 7, 8]; // carIdx 5 unclassified — track-ahead only
+    t.LapDistPct = 0.5;
+    t.Speed = 40;
+
+    run(state, t, 1000, { positions, trackLength: 4000 });
+    t.CarIdxSessionFlags[5] = Flags.Black;
+    t.CarIdxLapDistPct[5] = 0.61; // 11s — outside the 10s enter bound, never previously in window
+
+    // A bound hardcoded to the exit value (12) would let this in (11 <= 12)
+    // and announce; this assertion kills that mutant.
+    expect(run(state, t, 2000, { positions, trackLength: 4000 })).toEqual([]);
+  });
+
+  it("stays silent across a window exit/re-entry while the same flag episode continues (episode latch across triggers)", () => {
+    const t = makeField();
+    run(state, t, 1000);
+    t.CarIdxSessionFlags[3] = Flags.Black;
+
+    expect(run(state, t, 2000)).toEqual([
+      {
+        event: "opponentFlag.flagged",
+        data: {
+          relation: "ahead",
+          carIdx: 3,
+          flag: OpponentPenaltyFlag.Black,
+          trigger: "raised",
+          position: 3,
+          isMultiClass: false,
+        },
+      },
+    ]);
+
+    const shifted = [4, 1, 2, 8, 5, 6, 7, 3]; // carIdx 3 now P8 — well outside the window
+
+    expect(run(state, t, 3000, { positions: shifted })).toEqual([]); // left the window
+
+    expect(run(state, t, 4000)).toEqual([]); // back in the window, same episode — silent
+  });
+
+  it("does not suppress an escalation via the first flag's cooldown, but does suppress a same-flag re-raise within the cooldown", () => {
+    const t = makeField();
+    run(state, t, 1000);
+    t.CarIdxSessionFlags[3] = Flags.Black;
+
+    expect(run(state, t, 2000)).toEqual([
+      {
+        event: "opponentFlag.flagged",
+        data: {
+          relation: "ahead",
+          carIdx: 3,
+          flag: OpponentPenaltyFlag.Black,
+          trigger: "raised",
+          position: 3,
+          isMultiClass: false,
+        },
+      },
+    ]);
+
+    // DQ rises on the same car — a different flag, own cooldown, announces
+    // immediately (the black cooldown never suppresses it).
+    t.CarIdxSessionFlags[3] = Flags.Black | Flags.Disqualify;
+
+    expect(run(state, t, 5000)).toEqual([
+      {
+        event: "opponentFlag.flagged",
+        data: {
+          relation: "ahead",
+          carIdx: 3,
+          flag: OpponentPenaltyFlag.Disqualify,
+          trigger: "raised",
+          position: 3,
+          isMultiClass: false,
+        },
+      },
+    ]);
+
+    // Black clears then re-raises well inside its own 30s cooldown — suppressed.
+    t.CarIdxSessionFlags[3] = Flags.Disqualify;
+    run(state, t, 10000);
+    t.CarIdxSessionFlags[3] = Flags.Black | Flags.Disqualify;
+
+    expect(run(state, t, 15000)).toEqual([]);
+  });
+
+  it("suppresses the whole announce pass under every gate, replaying as entered-range (not a raise) once the gate opens", () => {
+    const gateOptions: Array<
+      Partial<{ isRace: boolean; replay: boolean; preGreen: boolean; postRace: boolean; player: number }>
+    > = [
+      { isRace: false },
+      { replay: true },
+      { preGreen: true },
+      { postRace: true },
+      { player: -1 },
+    ];
+
+    for (const gateOpt of gateOptions) {
+      const s = createInitialState();
+      const t = makeField();
+      run(s, t, 1000); // seed — carIdx 3 (P3) established as directly-ahead
+      t.CarIdxSessionFlags[3] = Flags.Black;
+
+      expect(run(s, t, 2000, gateOpt)).toEqual([]); // rise absorbed under the gate
+
+      expect(run(s, t, 3000)).toEqual([
+        {
+          event: "opponentFlag.flagged",
+          data: {
+            relation: "ahead",
+            carIdx: 3,
+            flag: OpponentPenaltyFlag.Black,
+            trigger: "entered-range",
+            position: 3,
+            isMultiClass: false,
+          },
+        },
+      ]);
+    }
+  });
+
+  it("excludes the pace car and the player's own car from announcements", () => {
+    const t = makeField();
+    run(state, t, 1000, { pace: 6 });
+    t.CarIdxSessionFlags[6] = Flags.Black; // pace car
+    t.CarIdxSessionFlags[0] = Flags.Black; // player's own car
+
+    expect(run(state, t, 2000, { pace: 6 })).toEqual([]);
+  });
+
+  it("skips a car with negative lap-completed/lap-dist-pct telemetry (not in world)", () => {
+    const t = makeField();
+    run(state, t, 1000);
+    t.CarIdxSessionFlags[3] = Flags.Black;
+    t.CarIdxLapCompleted[3] = -1;
+    t.CarIdxLapDistPct[3] = -1;
+
+    expect(run(state, t, 2000)).toEqual([]);
+  });
+
+  // Burst aggregation (Task 6, the #622 `diffOpponentPit` shape): 3+ eligible
+  // announces within a rolling 12s window collapse to a single "others" tail.
+  describe("burst aggregation (issue #936)", () => {
+    it("collapses the 3rd eligible announce within the window to one 'others' aggregate; a 4th stays silent", () => {
+      const t = makeField();
+      run(state, t, 1000);
+
+      t.CarIdxSessionFlags[3] = Flags.Black; // P3, ahead delta 1
+      expect(run(state, t, 2000)).toEqual([
+        {
+          event: "opponentFlag.flagged",
+          data: {
+            relation: "ahead",
+            carIdx: 3,
+            flag: OpponentPenaltyFlag.Black,
+            trigger: "raised",
+            position: 3,
+            isMultiClass: false,
+          },
+        },
+      ]);
+
+      t.CarIdxSessionFlags[2] = Flags.Black; // P2, ahead delta 2
+      expect(run(state, t, 3000)).toEqual([
+        {
+          event: "opponentFlag.flagged",
+          data: {
+            relation: "ahead",
+            carIdx: 2,
+            flag: OpponentPenaltyFlag.Black,
+            trigger: "raised",
+            position: 2,
+            isMultiClass: false,
+          },
+        },
+      ]);
+
+      // Third eligible announce inside the window reaches the threshold —
+      // collapses to the aggregate tail instead of carIdx 1's individual line.
+      t.CarIdxSessionFlags[1] = Flags.Black; // P1, ahead delta 3
+      expect(run(state, t, 4000)).toEqual([{ event: "opponentFlag.flagged", data: { relation: "others" } }]);
+      expect(state.opponentFlagAggregateAnnounced).toBe(true);
+      // Cooldown/latch are still stamped for the collapsed car even though
+      // its individual line never went out.
+      expect(state.opponentFlagAnnouncedMask[1]! & Flags.Black).toBe(Flags.Black);
+      expect(state.opponentFlagCooldownUntil.black[1]).toBe(4000 + 30_000);
+
+      // A 4th eligible announce (a different car) inside the same episode is silent.
+      t.CarIdxSessionFlags[4] = Flags.Black; // P5, behind delta 1
+      expect(run(state, t, 5000)).toEqual([]);
+    });
+
+    it("holds the collapse via the episode flag, not the live window count — pruning below threshold mid-episode must not resume enumeration", () => {
+      const t = makeField();
+      run(state, t, 1000);
+
+      t.CarIdxSessionFlags[3] = Flags.Black;
+      run(state, t, 2000); // individual — window=[2000]
+      t.CarIdxSessionFlags[2] = Flags.Black;
+      run(state, t, 3000); // individual — window=[2000,3000]
+      t.CarIdxSessionFlags[1] = Flags.Black;
+      expect(run(state, t, 4000)).toEqual([{ event: "opponentFlag.flagged", data: { relation: "others" } }]); // window=[2000,3000,4000]
+
+      // 11.5s after the last push: 2000 and 3000 fall outside the 12s window
+      // (pruned below the threshold count) but the episode flag stays set.
+      t.CarIdxSessionFlags[4] = Flags.Black; // P5, behind — a fresh eligible car
+      expect(run(state, t, 15500)).toEqual([]);
+      expect(state.opponentFlagRecentEntries.length).toBeLessThan(3);
+      expect(state.opponentFlagAggregateAnnounced).toBe(true);
+    });
+
+    it("resumes individual announces once the window has been quiet for the full 12s", () => {
+      const t = makeField();
+      run(state, t, 1000);
+
+      t.CarIdxSessionFlags[3] = Flags.Black;
+      run(state, t, 2000);
+      t.CarIdxSessionFlags[2] = Flags.Black;
+      run(state, t, 3000);
+      t.CarIdxSessionFlags[1] = Flags.Black;
+      expect(run(state, t, 4000)).toEqual([{ event: "opponentFlag.flagged", data: { relation: "others" } }]);
+
+      // 12s+ of quiet since the last push (4000) — the window empties and the
+      // episode flag lowers, so a fresh eligible car resumes individual lines.
+      t.CarIdxSessionFlags[4] = Flags.Black; // P5, behind
+      expect(run(state, t, 16001)).toEqual([
+        {
+          event: "opponentFlag.flagged",
+          data: {
+            relation: "behind",
+            carIdx: 4,
+            flag: OpponentPenaltyFlag.Black,
+            trigger: "raised",
+            position: 5,
+            isMultiClass: false,
+          },
+        },
+      ]);
+      expect(state.opponentFlagAggregateAnnounced).toBe(false);
+    });
+
+    it("counts DISTINCT cars, not per-(car, flag) announces — one multi-flagged car never trips the 'several cars' collapse", () => {
+      const t = makeField();
+      run(state, t, 1000);
+
+      // The same car (P3 ahead) accumulates three penalty flags across 12s.
+      // Every announce is individual — flag 2 and 3 are escalations on a car
+      // the driver already knows about, and one car can never be "several".
+      t.CarIdxSessionFlags[3] = Flags.Black;
+      expect(run(state, t, 2000)).toHaveLength(1);
+      t.CarIdxSessionFlags[3] = Flags.Black | Flags.Repair;
+      expect(run(state, t, 3000)).toEqual([
+        {
+          event: "opponentFlag.flagged",
+          data: {
+            relation: "ahead",
+            carIdx: 3,
+            flag: OpponentPenaltyFlag.Repair,
+            trigger: "raised",
+            position: 3,
+            isMultiClass: false,
+          },
+        },
+      ]);
+      t.CarIdxSessionFlags[3] = Flags.Black | Flags.Repair | Flags.Disqualify;
+      expect(run(state, t, 4000)).toHaveLength(1);
+
+      expect(state.opponentFlagRecentEntries).toHaveLength(1);
+      expect(state.opponentFlagAggregateAnnounced).toBe(false);
+    });
+
+    it("lets an escalation through individually even while the burst episode is collapsed (the docs' promise)", () => {
+      const t = makeField();
+      run(state, t, 1000);
+
+      t.CarIdxSessionFlags[3] = Flags.Black;
+      run(state, t, 2000);
+      t.CarIdxSessionFlags[2] = Flags.Black;
+      run(state, t, 3000);
+      t.CarIdxSessionFlags[1] = Flags.Black;
+      expect(run(state, t, 4000)).toEqual([{ event: "opponentFlag.flagged", data: { relation: "others" } }]);
+
+      // Mid-collapse, the first announced car's black escalates to a DQ —
+      // per-car news that must cut through the burst silence.
+      t.CarIdxSessionFlags[3] = Flags.Black | Flags.Disqualify;
+      expect(run(state, t, 5000)).toEqual([
+        {
+          event: "opponentFlag.flagged",
+          data: {
+            relation: "ahead",
+            carIdx: 3,
+            flag: OpponentPenaltyFlag.Disqualify,
+            trigger: "raised",
+            position: 3,
+            isMultiClass: false,
+          },
+        },
+      ]);
+    });
+
+    it("never lets a disabled subject consume the aggregation budget or stamp state (opt-outs enforced diff-side)", () => {
+      const t = makeField();
+      const enabled = (flag: OpponentPenaltyFlag) => flag !== OpponentPenaltyFlag.Black;
+
+      run(state, t, 1000, { enabled });
+
+      // Two black flags on distinct nearby cars: fully skipped — no
+      // emission, no latch, no cooldown, no window entry.
+      t.CarIdxSessionFlags[3] = Flags.Black;
+      t.CarIdxSessionFlags[2] = Flags.Black;
+      expect(run(state, t, 2000, { enabled })).toEqual([]);
+      expect(state.opponentFlagRecentEntries).toHaveLength(0);
+      expect(state.opponentFlagAnnouncedMask[3]).toBe(0);
+      expect(state.opponentFlagCooldownUntil.black[3] ?? 0).toBe(0);
+
+      // The enabled meatball on a third car is only the FIRST window entry —
+      // it must play individually, never collapse into an aggregate built
+      // from events the user disabled.
+      t.CarIdxSessionFlags[4] = Flags.Repair;
+      expect(run(state, t, 3000, { enabled })).toEqual([
+        {
+          event: "opponentFlag.flagged",
+          data: {
+            relation: "behind",
+            carIdx: 4,
+            flag: OpponentPenaltyFlag.Repair,
+            trigger: "raised",
+            position: 5,
+            isMultiClass: false,
+          },
+        },
+      ]);
+      expect(state.opponentFlagRecentEntries).toHaveLength(1);
+    });
+  });
+
+  describe("track-surface and tow handling (issue #936 review)", () => {
+    it("excludes pit-road and pit-stall cars from the track-ahead window, but keeps off-track cars", () => {
+      const t = makeField();
+      const positions = [4, 1, 2, 3, 5, 0, 7, 8]; // carIdx 5 unclassified — track-ahead only
+      t.LapDistPct = 0.5;
+      t.Speed = 40;
+      t.CarIdxLapDistPct[5] = 0.58; // 8s ahead
+      t.CarIdxTrackSurface = Array<number>(8).fill(TrkLoc.OnTrack);
+
+      run(state, t, 1000, { positions });
+      t.CarIdxSessionFlags[5] = Flags.Black;
+
+      // Serving in the pit stall: not "ahead on track" — no false hazard.
+      t.CarIdxTrackSurface[5] = TrkLoc.InPitStall;
+      expect(run(state, t, 2000, { positions })).toEqual([]);
+
+      // On pit road (approaching pits): still excluded.
+      t.CarIdxTrackSurface[5] = TrkLoc.AproachingPits;
+      expect(run(state, t, 3000, { positions })).toEqual([]);
+
+      // Spun off track ahead: exactly the hazard this relation exists for.
+      t.CarIdxTrackSurface[5] = TrkLoc.OffTrack;
+      expect(run(state, t, 4000, { positions })).toHaveLength(1);
+    });
+
+    it("resets hysteresis memory while a car is towed — it rejoins under the ENTER bound, not the stale exit bound", () => {
+      const t = makeField();
+      const positions = [4, 1, 2, 3, 5, 0, 7, 8];
+      t.LapDistPct = 0.5;
+      t.Speed = 40;
+
+      run(state, t, 1000, { positions });
+
+      // Announce at 9s — the car is in-window.
+      t.CarIdxSessionFlags[5] = Flags.Black;
+      t.CarIdxLapDistPct[5] = 0.59;
+      expect(run(state, t, 2000, { positions })).toHaveLength(1);
+
+      // Tow: lap data goes negative; the in-world skip must clear the
+      // window memory, not leave a stale `true` behind.
+      t.CarIdxLapCompleted[5] = -1;
+      t.CarIdxLapDistPct[5] = -1;
+      expect(run(state, t, 3000, { positions })).toEqual([]);
+
+      // Rejoins 11s ahead, still black-flagged; a second flag rises. With
+      // the stale pre-tow memory the 12s exit bound would classify 11s as
+      // in-window and announce — the reset makes the fresh ENTER bound (10)
+      // apply, so the car is out of range and stays silent.
+      t.CarIdxLapCompleted[5] = 10;
+      t.CarIdxLapDistPct[5] = 0.61;
+      t.CarIdxSessionFlags[5] = Flags.Black | Flags.Repair;
+      expect(run(state, t, 4000, { positions })).toEqual([]);
+    });
+  });
+});

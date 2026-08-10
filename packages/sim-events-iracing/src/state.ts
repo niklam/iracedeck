@@ -642,6 +642,96 @@ export type TranslatorState = {
   /** Whether the aggregate tail already fired for the current episode. */
   opponentPitAggregateAnnounced: boolean;
 
+  // ── Opponent penalty flags (issue #936) ───────────────────────────────
+  /** First tick seeds the per-car penalty-bit store silently. */
+  opponentFlagsInitialized: boolean;
+  /**
+   * Masked penalty bits (`PENALTY_FLAG_MASK`) per carIdx as of the last
+   * tick — the flag-state STORE `getLiveOpponentFlags()` reads (truth), and
+   * the edge baseline the qualifier diffs against (policy). Advances every
+   * tick even when the callout gates are closed.
+   */
+  opponentFlagBits: number[];
+  /** Epoch ms the car's Furled bit rose; 0 while down. Debounces flicker (#669). */
+  opponentFlagFurledSinceAt: number[];
+  /** Penalty bits already announced for the current episode, per car. Cleared per bit as the bit drops. */
+  opponentFlagAnnouncedMask: number[];
+  /** Per-car, per-flag re-announce cooldown deadlines (epoch ms) — per-flag so an escalation (black → DQ) is never suppressed. */
+  opponentFlagCooldownUntil: { furled: number[]; black: number[]; repair: number[]; disqualify: number[] };
+  /** Whether the car was inside the qualification window last tick (trigger classification + hysteresis). */
+  opponentFlagInWindow: boolean[];
+  /**
+   * Bitmask (same bit values as {@link opponentFlagBits} / `PENALTY_FLAG_MASK`)
+   * of flags that were EFFECTIVELY active — debounce-adjusted for Furled —
+   * as of the last tick, per carIdx. Lets the qualifier detect "became
+   * effectively active THIS tick" (the raised-vs-entered-range trigger)
+   * without conflating it with the raw bit, which for Furled can rise long
+   * before the debounce clears. Recomputed and advances every tick, even
+   * while the callout gates are closed, so a flag that turns effectively
+   * active during a gated window is already reflected by the time the gate
+   * reopens — the reopened tick reports `entered-range`, never a replayed
+   * `raised`.
+   *
+   * **Replay-wipe obligation:** `wipeStateForReplay` MUST treat
+   * this field like the `opponentFlagBits` baseline it derives from — reseed
+   * it (never carry it through `preservedAcrossReplay`) exactly in lockstep
+   * with `opponentFlagBits`/`opponentFlagFurledSinceAt`, since a
+   * replay-timeline "was it effectively active" reading is as meaningless as
+   * the bits baseline itself. Preserving this mask while `opponentFlagBits`
+   * re-seeds (or the reverse) would desync the two: a flag whose raw bit
+   * re-seeds to down but whose effective mask still claims it was active
+   * mislabels the first post-wipe raise as `entered-range` instead of
+   * `raised`, and the opposite split can manufacture a phantom `raised` for
+   * a flag that never actually re-activated.
+   */
+  opponentFlagEffectiveMask: number[];
+  /**
+   * Announced entries inside the rolling aggregation window (the #622 burst
+   * shape), one per DISTINCT flagged car — a later flag on an already-listed
+   * car refreshes its timestamp rather than adding an entry, so the
+   * "several cars" collapse can only be reached by several actual cars.
+   */
+  opponentFlagRecentEntries: Array<{ at: number; carIdx: number }>;
+  /** Whether the aggregate tail already fired for the current episode. */
+  opponentFlagAggregateAnnounced: boolean;
+
+  // ── Leader's white flag (issue #936) ────────────────────────────────────
+  /** Leader carIdx observed last tick (re-baselines silently on leader change). */
+  leaderWhiteLastLeaderIdx: number;
+  /** The leader's `CarIdxLapCompleted` last tick (timed-race crossing detection). */
+  leaderWhiteLastLeaderLap: number;
+  /** `SessionLapsRemainEx` last tick (lap-limited falling-to-1 edge); null until seeded. */
+  leaderWhiteLastLapsRemainEx: number | null;
+  /**
+   * Whether `SessionTimeRemain` read as expired on the PREVIOUS tick — the
+   * timed-edge machinery only trusts an expiry confirmed on two consecutive
+   * ticks, so a one-tick `<= 0` blip (the #666 transient) coinciding with a
+   * leader crossing can neither fire a premature callout nor latch the
+   * post-expiry marker. Baseline: advances every tick, re-seeds on wipe.
+   */
+  leaderWhiteLastClockExpired: boolean;
+  /**
+   * Once-per-race latch. STICKY: preserved across the replay wipe; cleared
+   * per-session (a fresh `createInitialState()`) and by a GREEN rising edge
+   * in `diffFlags` (the #880 lesson — oval overtime / a same-session admin
+   * restart means a new final lap is coming).
+   */
+  leaderWhiteFired: boolean;
+  /**
+   * Whether a same-leader crossing has been OBSERVED while the session clock
+   * read expired (timed races only) — the leader's FIRST post-expiry
+   * crossing is the white, the second is the checkered. Set the instant such
+   * a crossing is observed, unconditionally — including under a closed gate
+   * or after `leaderWhiteFired` already latched — because observation must
+   * absorb, never defer: a missed white (a leader change landing on the
+   * crossing tick, or a gated window covering it) must become permanent
+   * silence for this race, not a phantom "final lap" spoken at the
+   * checkered. Same lifetime as {@link leaderWhiteFired}: STICKY across the
+   * replay wipe, cleared per-session, and re-armed by a GREEN rising edge in
+   * `diffFlags`.
+   */
+  leaderWhitePostExpiryCrossed: boolean;
+
   // ── Radar ─────────────────────────────────────────────────────────────
   radarState: RadarState;
 
@@ -919,6 +1009,23 @@ export function createInitialState(): TranslatorState {
     opponentPitCarCooldownUntil: [],
     opponentPitRecentEntries: [],
     opponentPitAggregateAnnounced: false,
+
+    opponentFlagsInitialized: false,
+    opponentFlagBits: [],
+    opponentFlagFurledSinceAt: [],
+    opponentFlagAnnouncedMask: [],
+    opponentFlagCooldownUntil: { furled: [], black: [], repair: [], disqualify: [] },
+    opponentFlagInWindow: [],
+    opponentFlagEffectiveMask: [],
+    opponentFlagRecentEntries: [],
+    opponentFlagAggregateAnnounced: false,
+
+    leaderWhiteLastLeaderIdx: -1,
+    leaderWhiteLastLeaderLap: -1,
+    leaderWhiteLastLapsRemainEx: null,
+    leaderWhiteLastClockExpired: false,
+    leaderWhiteFired: false,
+    leaderWhitePostExpiryCrossed: false,
 
     radarState: "clear",
 

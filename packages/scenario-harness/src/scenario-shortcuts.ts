@@ -13,6 +13,7 @@
  */
 import type { QualifyingInvalidationSnapshot } from "@iracedeck/audio-scenarios/pit-crew";
 import {
+  OpponentPenaltyFlag,
   type RaceStartSnapshot,
   type SimEventName,
   type StartCountdownSeconds,
@@ -317,6 +318,14 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   flag("DQ — Scoring Invalid", "flag.dq-scoring-invalid.raised"),
   flag("Yellow Waving", "flag.yellow-waving.raised"),
   flag("Caution Waving", "flag.caution-waving.raised"),
+  {
+    id: "flag-white-leader",
+    category: "Flags",
+    label: "Leader's final lap",
+    description: 'The overall leader starts their final lap — "The leader is about to start their final lap."',
+    event: "flag.white-leader.raised",
+    data: {},
+  },
 
   // ── Start (issues #480 / #673) ──
   // Start-gantry lines + the per-number start countdown. The gantry lines carry
@@ -404,6 +413,147 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     label: "Several cars pitting",
     description: 'The aggregate tail — "And it seems there are other cars pitting as well."',
     event: "opponentPit.entered",
+    data: { relation: "others" },
+  },
+
+  // ── Opponent Flags (issue #936) ──
+  // `opponentFlag.flagged` directly — bypasses the diff's aggregation gating so
+  // each relation × flag line is auditionable on demand. The flags are: black,
+  // furled, repair (meatball), disqualify. The relations are: ahead / behind /
+  // track-ahead for flags that matter to race strategy, plus "others" for
+  // aggregate. Trigger types occur for any relation and audio ignores the field.
+  // Similar payload style to opponent-pit. Flag strings use the
+  // OpponentPenaltyFlag enum for drift-proofing future enum changes.
+  {
+    id: "opponent-flag-ahead-black",
+    category: "Opponent Flags",
+    label: "P5 ahead: black flag",
+    description: 'Car ahead got black-flagged — "The car in, P5, has a black flag. They\'ll be serving a penalty."',
+    event: "opponentFlag.flagged",
+    data: { relation: "ahead", carIdx: 7, flag: OpponentPenaltyFlag.Black, trigger: "raised", position: 5 },
+  },
+  {
+    id: "opponent-flag-ahead-furled",
+    category: "Opponent Flags",
+    label: "P5 ahead: furled",
+    description: 'Car ahead got a furled warning — "The car in, P5, has a furled black flag. They\'re on notice."',
+    event: "opponentFlag.flagged",
+    data: { relation: "ahead", carIdx: 7, flag: OpponentPenaltyFlag.Furled, trigger: "raised", position: 5 },
+  },
+  {
+    id: "opponent-flag-ahead-meatball",
+    category: "Opponent Flags",
+    label: "P5 ahead: meatball",
+    description:
+      'Car ahead has a meatball — mandatory repairs — "The car in, P5, has a meatball. Expect them to slow."', // "meatball" is OpponentPenaltyFlag.Repair — the sim bit's name.
+    event: "opponentFlag.flagged",
+    data: { relation: "ahead", carIdx: 7, flag: OpponentPenaltyFlag.Repair, trigger: "raised", position: 5 },
+  },
+  {
+    id: "opponent-flag-ahead-disqualify",
+    category: "Opponent Flags",
+    label: "P5 ahead: DQ",
+    description: 'Car ahead was disqualified — "The car in, P5, has been disqualified. They\'re out of the fight."',
+    event: "opponentFlag.flagged",
+    data: { relation: "ahead", carIdx: 7, flag: OpponentPenaltyFlag.Disqualify, trigger: "raised", position: 5 },
+  },
+  {
+    id: "opponent-flag-behind-black",
+    category: "Opponent Flags",
+    label: "Behind: black flag",
+    description: 'Car behind got black-flagged — "The car behind has a black flag. That pressure should ease."',
+    event: "opponentFlag.flagged",
+    data: { relation: "behind", carIdx: 12, flag: OpponentPenaltyFlag.Black, trigger: "raised" },
+  },
+  {
+    id: "opponent-flag-behind-furled",
+    category: "Opponent Flags",
+    label: "Behind: furled",
+    description: 'Car behind got a furled warning — "The car behind has a furled black flag."',
+    event: "opponentFlag.flagged",
+    data: { relation: "behind", carIdx: 12, flag: OpponentPenaltyFlag.Furled, trigger: "raised" },
+  },
+  {
+    id: "opponent-flag-behind-meatball",
+    category: "Opponent Flags",
+    label: "Behind: meatball",
+    description:
+      'Car behind has a meatball — mandatory repairs — "The car behind has a meatball. They\'ll be coming in for repairs."', // "meatball" is OpponentPenaltyFlag.Repair — the sim bit's name.
+    event: "opponentFlag.flagged",
+    data: { relation: "behind", carIdx: 12, flag: OpponentPenaltyFlag.Repair, trigger: "raised" },
+  },
+  {
+    id: "opponent-flag-behind-disqualify",
+    category: "Opponent Flags",
+    label: "Behind: DQ",
+    description: 'Car behind was disqualified — "The car behind has been disqualified."',
+    event: "opponentFlag.flagged",
+    data: { relation: "behind", carIdx: 12, flag: OpponentPenaltyFlag.Disqualify, trigger: "raised" },
+  },
+  {
+    id: "opponent-flag-track-ahead-black",
+    category: "Opponent Flags",
+    label: "Track ahead: black flag",
+    description: 'Car ahead on track has a black flag — "The car ahead on track has a black flag."',
+    event: "opponentFlag.flagged",
+    data: {
+      relation: "track-ahead",
+      carIdx: 13,
+      flag: OpponentPenaltyFlag.Black,
+      trigger: "entered-range",
+      gapSeconds: 8,
+    },
+  },
+  {
+    id: "opponent-flag-track-ahead-furled",
+    category: "Opponent Flags",
+    label: "Track ahead: furled",
+    description: 'Car on track ahead has a furled warning — "The car ahead on track has a furled black flag."',
+    event: "opponentFlag.flagged",
+    data: {
+      relation: "track-ahead",
+      carIdx: 13,
+      flag: OpponentPenaltyFlag.Furled,
+      trigger: "entered-range",
+      gapSeconds: 8,
+    },
+  },
+  {
+    id: "opponent-flag-track-ahead-meatball",
+    category: "Opponent Flags",
+    label: "Track ahead: meatball",
+    description:
+      'Car on track ahead has a meatball — mandatory repairs — "Careful. The car ahead on track has a meatball. They could be slow."', // "meatball" is OpponentPenaltyFlag.Repair — the sim bit's name.
+    event: "opponentFlag.flagged",
+    data: {
+      relation: "track-ahead",
+      carIdx: 13,
+      flag: OpponentPenaltyFlag.Repair,
+      trigger: "entered-range",
+      gapSeconds: 8,
+    },
+  },
+  {
+    id: "opponent-flag-track-ahead-disqualify",
+    category: "Opponent Flags",
+    label: "Track ahead: DQ",
+    description:
+      'Car on track ahead was disqualified — "The car ahead on track has been disqualified. They may pull off."',
+    event: "opponentFlag.flagged",
+    data: {
+      relation: "track-ahead",
+      carIdx: 13,
+      flag: OpponentPenaltyFlag.Disqualify,
+      trigger: "entered-range",
+      gapSeconds: 8,
+    },
+  },
+  {
+    id: "opponent-flag-others",
+    category: "Opponent Flags",
+    label: "Several cars flagged",
+    description: 'The aggregate tail — "Several cars around us have penalty flags."',
+    event: "opponentFlag.flagged",
     data: { relation: "others" },
   },
 

@@ -26,7 +26,7 @@ import type {
   SimEventMap,
   SimEventName,
 } from "@iracedeck/event-bus";
-import { TrackWetness } from "@iracedeck/event-bus";
+import { OpponentPenaltyFlag, TrackWetness } from "@iracedeck/event-bus";
 import {
   CarLeftRight,
   classPositionFromOrder,
@@ -62,8 +62,10 @@ import {
 import { diffGaps, GAP_DEFAULT_ALERT_THRESHOLD_S, GAP_DEFAULT_MIN_CHANGE_S } from "./diff/gaps.js";
 import { diffIncidents } from "./diff/incidents.js";
 import { diffLaps } from "./diff/laps.js";
+import { diffLeaderWhite } from "./diff/leader-white.js";
 import { diffLifecycle } from "./diff/lifecycle.js";
 import { diffLimiter } from "./diff/limiter.js";
+import { diffOpponentFlags, OPPONENT_FLAG_DEFS } from "./diff/opponent-flags.js";
 import { diffOpponentPit } from "./diff/opponent-pit.js";
 import { diffOvertakes } from "./diff/overtakes.js";
 import { diffPaceLaps, resolvePaceCarIdx } from "./diff/pace-laps.js";
@@ -184,6 +186,13 @@ type TranslatorInstance = {
    * wire it to the `gapCalloutMinChangeSeconds` global setting.
    */
   getGapMinChangeSeconds: () => number;
+  /**
+   * Live-read per-flag opt-in for the opponent penalty-flag callouts
+   * (issue #936). Enforced in the diff — not only at the audio layer — so a
+   * disabled subject never consumes the burst-aggregation budget. Plugins
+   * wire it to the `calloutEnabledOpponentFlag*` global settings.
+   */
+  getOpponentFlagCalloutEnabled: (flag: OpponentPenaltyFlag) => boolean;
 };
 
 /**
@@ -220,6 +229,12 @@ export type SimEventsIracingOptions = {
    * {@link GAP_DEFAULT_MIN_CHANGE_S}.
    */
   getGapMinChangeSeconds?: () => number;
+  /**
+   * Live-read per-flag opt-in for the opponent penalty-flag callouts
+   * (issue #936). Plugins compose it from the `calloutEnabledOpponentFlag*`
+   * global settings. Default: everything enabled.
+   */
+  getOpponentFlagCalloutEnabled?: (flag: OpponentPenaltyFlag) => boolean;
 };
 
 let instance: TranslatorInstance | null = null;
@@ -258,6 +273,7 @@ export function initializeSimEventsIracing(
     getCornerCalloutLeadSeconds: options.getCornerCalloutLeadSeconds ?? (() => CORNER_CALLOUT_DEFAULT_LEAD_SECONDS),
     getGapAlertThresholdSeconds: options.getGapAlertThresholdSeconds ?? (() => GAP_DEFAULT_ALERT_THRESHOLD_S),
     getGapMinChangeSeconds: options.getGapMinChangeSeconds ?? (() => GAP_DEFAULT_MIN_CHANGE_S),
+    getOpponentFlagCalloutEnabled: options.getOpponentFlagCalloutEnabled ?? (() => true),
   };
 
   instance = self;
@@ -872,6 +888,46 @@ export function getLiveGaps(): LiveGaps | null {
   return { ahead: instance.state.gapLiveAhead, behind: instance.state.gapLiveBehind };
 }
 
+/** One car currently showing a penalty flag (issue #936). */
+export type LiveOpponentFlagCar = { carIdx: number; flags: OpponentPenaltyFlag[] };
+
+/** Live opponent penalty-flag snapshot (issue #936). */
+export type LiveOpponentFlags = { cars: LiveOpponentFlagCar[] };
+
+/**
+ * Cars currently showing any penalty flag (issue #936) — the reusable
+ * flag-data seam. Raw decoded truth from the store (no debounce/episodes —
+ * announcement policy stays private to the diff). `null` before the store's
+ * first tick. The snapshot includes the player's own car when it carries a
+ * penalty flag; consumers that want opponents only must filter by carIdx.
+ * Consumers read this; never re-derive from `CarIdxSessionFlags`.
+ */
+export function getLiveOpponentFlags(): LiveOpponentFlags | null {
+  if (!instance || !instance.state.opponentFlagsInitialized) return null;
+
+  const bits = instance.state.opponentFlagBits;
+  const cars: LiveOpponentFlagCar[] = [];
+
+  for (let i = 0; i < bits.length; i++) {
+    const masked = bits[i] ?? 0;
+
+    if (masked === 0) continue;
+
+    // Derived from the announcer's own flag table (`OPPONENT_FLAG_DEFS`) so
+    // a future fifth penalty bit reaches the seam and the callouts in
+    // lockstep — never a hand-maintained parallel mapping.
+    const flags: OpponentPenaltyFlag[] = [];
+
+    for (const def of OPPONENT_FLAG_DEFS) {
+      if ((masked & def.bit) !== 0) flags.push(def.flag);
+    }
+
+    if (flags.length > 0) cars.push({ carIdx: i, flags });
+  }
+
+  return { cars };
+}
+
 /**
  * Crossing-time gap in seconds between any two cars (issue #933): how long
  * ago `aheadCarIdx` crossed `behindCarIdx`'s current track position. The
@@ -1173,6 +1229,35 @@ function wipeStateForReplay(self: TranslatorInstance): void {
     opponentPitRecentEntries: self.state.opponentPitRecentEntries,
     opponentPitAggregateAnnounced: self.state.opponentPitAggregateAnnounced,
     opponentPitCarCooldownUntil: self.state.opponentPitCarCooldownUntil,
+    // The opponent-flag episode state (issue #936) — the #622
+    // rationale, verbatim-adapted: glancing at the replay mid-burst must not
+    // reset the aggregation window, the once-per-episode aggregate flag, the
+    // per-(car, flag) episode latch, or the per-(car, flag) cooldowns — the
+    // wipe would make cars whose flags the aggregate already covered
+    // re-announce individually, and a car whose flag cooldown hasn't expired
+    // would re-announce the same episode. `opponentFlagBits` /
+    // `opponentFlagsInitialized` / `opponentFlagFurledSinceAt` /
+    // `opponentFlagEffectiveMask` deliberately re-seed — replay-timeline bit
+    // and debounce-timer values are meaningless (see `opponentFlagEffectiveMask`'s
+    // JSDoc in `state.ts` for why the effective-mask baseline must re-seed in
+    // lockstep with the raw-bit baseline rather than being preserved here).
+    opponentFlagAnnouncedMask: self.state.opponentFlagAnnouncedMask,
+    opponentFlagCooldownUntil: self.state.opponentFlagCooldownUntil,
+    opponentFlagInWindow: self.state.opponentFlagInWindow,
+    opponentFlagRecentEntries: self.state.opponentFlagRecentEntries,
+    opponentFlagAggregateAnnounced: self.state.opponentFlagAggregateAnnounced,
+    // The leader's white-flag once-per-race latch (issue #936) is STICKY,
+    // the same shape as `playerFinalLapStarted` above: a replay glance
+    // mid-final-lap must not replay the announcement. `leaderWhitePostExpiryCrossed`
+    // rides along with the same lifetime — it's the literal first-crossing
+    // guard, and losing it at a replay flip would re-arm a timed race's
+    // checkered crossing to fire as if it were the still-unseen white. The
+    // three baseline fields (`leaderWhiteLastLeaderIdx` / `Lap` /
+    // `LapsRemainEx`) deliberately re-seed — replay-timeline leader/lap-count
+    // values are as meaningless as the opponent-flag bits baseline (see that
+    // field's JSDoc in state.ts).
+    leaderWhiteFired: self.state.leaderWhiteFired,
+    leaderWhitePostExpiryCrossed: self.state.leaderWhitePostExpiryCrossed,
   };
 
   self.state = createInitialState();
@@ -1620,6 +1705,46 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     resolveIsMultiClass(sessionInfo) === true,
     frozenPositions,
     now,
+    emit,
+  );
+
+  // Opponent penalty flags (issue #936) — advances the per-car flag store
+  // (the `getLiveOpponentFlags()` seam) every tick, then classifies the
+  // qualification window and emits `opponentFlag.flagged` (individual lines
+  // + the distinct-car burst aggregate). Consumes the same canonical frozen
+  // order and track length as the diffs above; the per-flag opt-in resolver
+  // is enforced here so disabled subjects never feed the aggregation.
+  diffOpponentFlags(
+    self.state,
+    telemetry,
+    playerCarIdx,
+    resolvePaceCarIdx(sessionInfo),
+    isRaceSession,
+    replayOnlySession,
+    isPreGreen(telemetry),
+    isPostRace(telemetry),
+    resolveIsMultiClass(sessionInfo) === true,
+    frozenPositions,
+    trackLengthMeters,
+    self.getOpponentFlagCalloutEnabled,
+    now,
+    emit,
+  );
+
+  // Leader's white flag (issue #936) — detected by lap counting against the
+  // OVERALL leader (never the per-car White bit, which can't answer this for
+  // anyone but the leader themselves). Consumes the same canonical frozen
+  // order as the diffs above; runs directly after diffOpponentFlags since
+  // both read the leader-relative race-limit fields.
+  diffLeaderWhite(
+    self.state,
+    telemetry,
+    playerCarIdx,
+    isRaceSession,
+    replayOnlySession,
+    isPreGreen(telemetry),
+    isPostRace(telemetry),
+    frozenPositions,
     emit,
   );
 

@@ -24,6 +24,7 @@
     "@iracedeck/track-data": "workspace:*"
   },
   "devDependencies": {
+    "@iracedeck/iracing-native": "workspace:*",
     "@tsconfig/node22": "22.0.5",
     "@types/node": "26.1.2",
     "rimraf": "6.1.3",

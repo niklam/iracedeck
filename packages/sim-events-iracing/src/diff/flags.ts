@@ -306,6 +306,14 @@ export function diffFlags(
             state.fuelCalloutRaceCoveredAnnounced = false;
           }
 
+          // #936: overtime/admin-restart re-arm — the leader's white-flag
+          // once-per-race latch AND its post-expiry-crossing observation are
+          // the same kind of sticky marker, so a green past the latched lap
+          // must reopen both (a new final lap, with its own white and
+          // checkered crossings, is coming).
+          state.leaderWhiteFired = false;
+          state.leaderWhitePostExpiryCrossed = false;
+
           // Suppress green at a race start — the start-light family owns the
           // "go" (issue #480). Guard on StartGo OR StartSet so a green that
           // leads StartGo by a tick (still in the red-lights phase) is also

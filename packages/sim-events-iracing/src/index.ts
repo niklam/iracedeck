@@ -14,6 +14,7 @@ export {
   getLiveCarPosition,
   getLiveGapBetween,
   getLiveGaps,
+  getLiveOpponentFlags,
   getLivePosition,
   getLiveRacePositions,
   getNearestCarGapMeters,
@@ -33,6 +34,8 @@ export {
   type GapNeighbor,
   type LivePosition,
   type LiveGaps,
+  type LiveOpponentFlagCar,
+  type LiveOpponentFlags,
   type OvertakeTelemetryGate,
   type SimEventsIracingOptions,
 } from "./translator.js";

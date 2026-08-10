@@ -14,6 +14,7 @@ import { describe, expect, it } from "vitest";
 import {
   appendProgressSample,
   classifyGapTrend,
+  coarseForwardGapSeconds,
   crossingTimeAt,
   GAP_TRACE_SPAN_LAPS,
   lapDeltaBetween,
@@ -183,5 +184,34 @@ describe("lapDeltaBetween", () => {
     expect(lapDeltaBetween(6.3, 5.2)).toBe(1);
     expect(lapDeltaBetween(7.1, 5.2)).toBe(1); // 1.9 laps ahead → floor = 1
     expect(lapDeltaBetween(8.2, 5.2)).toBe(3);
+  });
+});
+
+describe("coarseForwardGapSeconds", () => {
+  it("computes the folded forward gap at speed", () => {
+    // Car 2% ahead on a 5000 m track at 50 m/s → 100 m / 50 = 2 s.
+    expect(coarseForwardGapSeconds(0.5, 0.52, 5000, 50, 10)).toBeCloseTo(2, 5);
+  });
+
+  it("folds around the start/finish line", () => {
+    // Player at 0.99, car at 0.01 → forward 2%.
+    expect(coarseForwardGapSeconds(0.99, 0.01, 5000, 50, 10)).toBeCloseTo(2, 5);
+  });
+
+  it("a car just behind reads as nearly a full lap ahead (never negative)", () => {
+    const gap = coarseForwardGapSeconds(0.5, 0.48, 5000, 50, 10);
+    expect(gap).toBeCloseTo(4900 / 50, 5);
+  });
+
+  it("floors the player speed so a stationary player cannot divide by zero", () => {
+    expect(coarseForwardGapSeconds(0.5, 0.52, 5000, 0, 10)).toBeCloseTo(10, 5);
+    expect(coarseForwardGapSeconds(0.5, 0.52, 5000, null, 10)).toBeCloseTo(10, 5);
+  });
+
+  it("returns null without a track length or with invalid progress", () => {
+    expect(coarseForwardGapSeconds(0.5, 0.52, null, 50, 10)).toBeNull();
+    expect(coarseForwardGapSeconds(0.5, 0.52, 0, 50, 10)).toBeNull();
+    expect(coarseForwardGapSeconds(-1, 0.52, 5000, 50, 10)).toBeNull();
+    expect(coarseForwardGapSeconds(0.5, Number.NaN, 5000, 50, 10)).toBeNull();
   });
 });

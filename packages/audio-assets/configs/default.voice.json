@@ -286,6 +286,73 @@
         "name": "caution-waving-01",
         "text": "Caution is out. <break time=\"0.3s\" /> Slow down and close up safely.",
         "seed": 3
+      },
+      {
+        "name": "white-leader-01",
+        "text": "The leader is about to start their final lap."
+      }
+    ],
+    "opponent-flags": [
+      {
+        "name": "furled-ahead-tail-01",
+        "text": "has a furled black flag. They're gonna have to give that time back.",
+        "previous_request_ids": ["position-number/4"]
+      },
+      {
+        "name": "black-ahead-tail-01",
+        "text": "has a black flag. <break time=\"0.3s\" /> They'll be serving a penalty.",
+        "previous_request_ids": ["position-number/4"],
+        "seed": 2
+      },
+      {
+        "name": "meatball-ahead-tail-01",
+        "text": "has the meatball flag. Expect them to be slow.",
+        "previous_request_ids": ["position-number/4"],
+        "seed": 2
+      },
+      {
+        "name": "disqualify-ahead-tail-01",
+        "text": "has been disqualified. They're out of the fight.",
+        "previous_request_ids": ["position-number/4"]
+      },
+      {
+        "name": "furled-behind-01",
+        "text": "The car behind has a furled black flag."
+      },
+      {
+        "name": "black-behind-01",
+        "text": "The car behind has a black flag. <break time=\"0.3s\" /> That pressure should ease.",
+        "seed": 5
+      },
+      {
+        "name": "meatball-behind-01",
+        "text": "The car behind has the meatball flag. They'll be coming in for repairs.",
+        "seed": 2
+      },
+      {
+        "name": "disqualify-behind-01",
+        "text": "The car behind has been disqualified."
+      },
+      {
+        "name": "furled-track-01",
+        "text": "The car ahead on track has a furled black flag."
+      },
+      {
+        "name": "black-track-01",
+        "text": "The car ahead on track has a black flag."
+      },
+      {
+        "name": "meatball-track-01",
+        "text": "Careful. <break time=\"0.3s\" /> The car ahead on track has the meatball flag. They could be slow."
+      },
+      {
+        "name": "disqualify-track-01",
+        "text": "The car ahead on track has been disqualified. <break time=\"0.2s\" /> They may pull off.",
+        "seed": 4
+      },
+      {
+        "name": "others-01",
+        "text": "Several cars around us have penalty flags."
       }
     ],
     "start-lights": [

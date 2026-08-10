@@ -79,6 +79,14 @@ import {
   SCENARIO_ID_TO_LAP_TIME_ID,
 } from "./lap-time.js";
 import {
+  OPPONENT_FLAG_ALERTS,
+  OPPONENT_FLAG_OTHERS_SCENARIO_ID,
+  type OpponentFlagCalloutId,
+  type OpponentFlagLivePositionResolver,
+  registerOpponentFlagVars,
+  SCENARIO_ID_TO_OPPONENT_FLAG_ID,
+} from "./opponent-flags.js";
+import {
   OPPONENT_PIT_ALERTS,
   type OpponentPitCalloutId,
   type OpponentPitLivePositionResolver,
@@ -200,6 +208,18 @@ export {
   type CornerNameSnapshot,
   type CornerNameSnapshotResolver,
 } from "./corner-name.js";
+export {
+  _resetOpponentFlagPending,
+  OPPONENT_FLAG_ALERTS,
+  OPPONENT_FLAG_CALLOUT_SETTING_KEYS,
+  OPPONENT_FLAG_POOL_NAMES,
+  OPPONENT_FLAG_SCENARIO_IDS,
+  OPPONENT_PENALTY_FLAG_TO_CALLOUT_ID,
+  type OpponentFlagCalloutId,
+  type OpponentFlagLivePositionResolver,
+  type OpponentFlagPending,
+  registerOpponentFlagVars,
+} from "./opponent-flags.js";
 export {
   _resetOpponentPitPending,
   OPPONENT_PIT_ALERTS,
@@ -377,6 +397,8 @@ const SCENARIO_ID_TO_FLAG_ID: Record<string, FlagCalloutId> = {
   "pit-crew.flag-white": "white",
   // Stage 2 of the two-stage white (issue #772) — same subject, same opt-in.
   "pit-crew.flag-white-last-lap": "white",
+  // Stage 3 — the leader's final lap (issue #936), same subject/opt-in.
+  "pit-crew.flag-white-leader": "white",
   "pit-crew.flag-red": "red",
   "pit-crew.flag-black": "black",
   "pit-crew.flag-checkered": "checkered",
@@ -992,6 +1014,24 @@ export function registerPitCrew(
   // live-at-speak-time pattern). Default `() => null` skips the readout
   // clause — a safe stub for tests.
   getLiveGaps: LiveGapsResolver = () => null,
+  // User opt-ins for the opponent-flag callouts (issue #936). Four
+  // subjects — `furled`, `black`, `meatball`, `disqualify` — each gating its
+  // own three relation scenarios (ahead/behind/track-ahead) plus (for
+  // `black`) the aggregate tail. Same gate-at-event-arrival shape as the
+  // other callout families. Placed before the master gate so the master
+  // stays the last per-callout opt-in. Default `() => true` preserves
+  // legacy behavior for tests that don't supply a closure.
+  getOpponentFlagCalloutEnabled: (id: OpponentFlagCalloutId) => boolean = () => true,
+  // Opponent-flag live position resolver (issue #936). Plugins wire
+  // `getLiveCarPosition` so the ahead line's number is fresh at speak time,
+  // read in the projection the event was classified in (the pending
+  // stash's `isMultiClass`). The flagged car itself is carried by a
+  // module-scope stash written in the firing ahead scenario's `where:`
+  // (the #922 shape, shared across all four subjects), so an event that
+  // fails its own scenario's gates can never repoint a deferred line.
+  // Default `() => null` falls back to the emit-time payload position — a
+  // safe stub for tests and the harness.
+  getOpponentFlagLivePosition: OpponentFlagLivePositionResolver = () => null,
   // Master gate for the Race Engineer voice subsystem (issue #515).
   // Plugins wire this to `pitCrewRaceEngineerEnabled === true`. Read live
   // on every event arrival and applied as the OUTERMOST wrapper around
@@ -1127,6 +1167,34 @@ export function registerPitCrew(
           logger,
         ),
       ),
+    );
+  }
+
+  // Opponent-flag family (issue #936). One scenario per flag × relation so
+  // every line is individually harness-firable and the safety-relevant
+  // track-ahead lines carry SAFETY weight; both diff triggers ride the same
+  // scenarios. Family-less + queueable for the same reason as opponent-pit:
+  // the lines describe DIFFERENT cars — queue, never chop. The aggregate
+  // (`opponent-flag-others`) registers master-gated but NOT per-flag-gated:
+  // the translator diff enforces the per-flag opt-ins before anything feeds
+  // the aggregation, so the aggregate by construction only describes enabled
+  // flags — gating it on one subject's toggle would let a disabled subject
+  // silence it (#936 review).
+  registerOpponentFlagVars(engine, getOpponentFlagLivePosition);
+
+  for (const s of OPPONENT_FLAG_ALERTS) {
+    engine.defineScenario(
+      s.id === OPPONENT_FLAG_OTHERS_SCENARIO_ID
+        ? wrapWithMaster(s)
+        : wrapWithMaster(
+            wrapCalloutScenario(
+              s,
+              SCENARIO_ID_TO_OPPONENT_FLAG_ID,
+              getOpponentFlagCalloutEnabled,
+              "opponent-flag callout",
+              logger,
+            ),
+          ),
     );
   }
 

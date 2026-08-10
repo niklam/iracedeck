@@ -520,6 +520,8 @@ beforeEach(() => {
     undefined, // getGapCalloutEnabled (issue #933)
     undefined, // getGapCooldownMs (issue #933)
     undefined, // getLiveGaps (issue #933)
+    undefined, // getOpponentFlagCalloutEnabled (issue #936)
+    undefined, // getOpponentFlagLivePosition (issue #936)
     () => voiceMasterEnabled,
     undefined, // getRadarMasterEnabled
   );

@@ -12,6 +12,7 @@ export type {
   FlagScope,
   GapSide,
   IncidentType,
+  OpponentFlagRelation,
   OpponentPitRelation,
   PitBoxMark,
   PitReadbackSnapshot,
@@ -28,4 +29,4 @@ export type {
   RadarState,
   StartCountdownSeconds,
 } from "./event-catalog.js";
-export { TrackWetness } from "./event-catalog.js";
+export { OpponentPenaltyFlag, TrackWetness } from "./event-catalog.js";

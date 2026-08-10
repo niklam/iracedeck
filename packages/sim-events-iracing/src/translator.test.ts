@@ -6,7 +6,14 @@
  *
  * Per-diff-module unit tests (pure functions) live next to their modules.
  */
-import { _resetEventBus, getEventBus, initializeEventBus, type SimEventOf, TrackWetness } from "@iracedeck/event-bus";
+import {
+  _resetEventBus,
+  getEventBus,
+  initializeEventBus,
+  OpponentPenaltyFlag,
+  type SimEventOf,
+  TrackWetness,
+} from "@iracedeck/event-bus";
 import {
   CarLeftRight,
   EngineWarnings,
@@ -29,6 +36,7 @@ import {
   getFuelStats,
   getLatestTelemetry,
   getLiveCarPosition,
+  getLiveOpponentFlags,
   getLivePosition,
   getLiveRacePositions,
   getQualifyingInvalidationSnapshot,
@@ -267,6 +275,45 @@ describe("sim-events-iracing translator", () => {
       expect(getLiveCarPosition(63)).toBeNull(); // not in the order
       expect(getLiveCarPosition(-1)).toBeNull();
       expect(getLiveCarPosition(1.5)).toBeNull();
+    });
+  });
+
+  describe("getLiveOpponentFlags (issue #936)", () => {
+    it("returns null before the flag store's first tick", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo({ DriverInfo: { DriverCarIdx: 0 } });
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      // A tick with no CarIdxSessionFlags never seeds the store.
+      controller.__tick(telemetry({ CarIdxSessionFlags: undefined }));
+
+      expect(getLiveOpponentFlags()).toBeNull();
+    });
+
+    it("returns the sparse flagged-car list — penalty bits only, player's own car included, table-decoded", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo({ DriverInfo: { DriverCarIdx: 0 } });
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(
+        telemetry({
+          CarIdxLapCompleted: [10, 10, 10, 10],
+          CarIdxLapDistPct: [0.1, 0.2, 0.3, 0.4],
+          // car0 (the player): Black + Servicible (the Step 0 capture value) —
+          // Servicible is not a penalty bit and must be masked out, while the
+          // player's own car IS included in the whole-field truth snapshot.
+          // car1: unflagged. car2: Furled + Repair. car3: Disqualify.
+          CarIdxSessionFlags: [0x50000, 0, Flags.Furled | Flags.Repair, Flags.Disqualify],
+        }),
+      );
+
+      expect(getLiveOpponentFlags()).toEqual({
+        cars: [
+          { carIdx: 0, flags: [OpponentPenaltyFlag.Black] },
+          { carIdx: 2, flags: [OpponentPenaltyFlag.Furled, OpponentPenaltyFlag.Repair] },
+          { carIdx: 3, flags: [OpponentPenaltyFlag.Disqualify] },
+        ],
+      });
     });
   });
 

@@ -8,6 +8,7 @@
  * bottom of this file fails if a name is missing or extra, so this list
  * cannot drift silently.
  */
+import { OpponentPenaltyFlag } from "@iracedeck/event-bus";
 import type { SimEventName } from "@iracedeck/event-bus";
 
 export type EventTemplate = {
@@ -34,6 +35,12 @@ export const EVENT_TEMPLATES = [
     description:
       "Another driver is entering the pits (issue #622) — relation: leader / ahead / behind / nearby / others",
     data: { relation: "leader", carIdx: 3, position: 1 },
+  },
+  {
+    name: "opponentFlag.flagged",
+    description:
+      "A penalty flag on another car matters to us (issue #936) — relation: ahead / behind / track-ahead / others",
+    data: { relation: "ahead", carIdx: 7, flag: OpponentPenaltyFlag.Black, trigger: "raised", position: 5 },
   },
   {
     name: "cornerName.approaching",
@@ -77,6 +84,11 @@ export const EVENT_TEMPLATES = [
   { name: "flag.dq-scoring-invalid.raised", description: "Disqualified — scoring invalid", data: {} },
   { name: "flag.yellow-waving.raised", description: "Yellow flag waving (slow down now)", data: {} },
   { name: "flag.caution-waving.raised", description: "Full-course caution waving", data: {} },
+  {
+    name: "flag.white-leader.raised",
+    description: "The overall leader is starting their final lap (issue #936)",
+    data: {},
+  },
 
   // ── Start lights ──
   { name: "startLight.start-ready.raised", description: "Start gantry: Ready", data: {} },

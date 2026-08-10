@@ -66,6 +66,8 @@ export const POOL_REGISTRY: Readonly<Record<string, PoolSource>> = {
   // Stage 2 of the two-stage white (issue #772) — the player crosses S/F
   // under the white flag and starts THEIR last lap.
   "flag-white-last-lap": { group: "flags", base: "white-last-lap" },
+  // Stage 3 — the leader's final lap (issue #936), same subject/opt-in.
+  "flag-white-leader": { group: "flags", base: "white-leader" },
   "flag-checkered-practice": { group: "flags", base: "checkered-practice" },
   "flag-checkered-qualifying": { group: "flags", base: "checkered-qualifying" },
   "flag-checkered-race": { group: "flags", base: "checkered-race" },
@@ -111,6 +113,28 @@ export const POOL_REGISTRY: Readonly<Record<string, PoolSource>> = {
   "opponent-pit-car-in": { group: "opponent-pit", base: "car-in" },
   "opponent-pit-is-pitting": { group: "opponent-pit", base: "is-pitting" },
   "opponent-pit-others": { group: "opponent-pit", base: "others" },
+
+  // Opponent-flag callout pools (issue #936): another car's penalty flag
+  // matters to the player. `car-in` deliberately REUSES the opponent-pit
+  // clip group above (the #568 clip-group-reuse precedent) — "the car in,
+  // P4," reads identically whether the car is pitting or flagged, so no new
+  // clip is recorded for it. `-ahead-tail` is the splice tail after the
+  // shared position-number clip ("…, P4, has gone black."); `-behind` and
+  // `-track` are single full-line pools (no number splice).
+  "opponent-flag-car-in": { group: "opponent-pit", base: "car-in" },
+  "opponent-flag-furled-ahead-tail": { group: "opponent-flags", base: "furled-ahead-tail" },
+  "opponent-flag-black-ahead-tail": { group: "opponent-flags", base: "black-ahead-tail" },
+  "opponent-flag-meatball-ahead-tail": { group: "opponent-flags", base: "meatball-ahead-tail" },
+  "opponent-flag-disqualify-ahead-tail": { group: "opponent-flags", base: "disqualify-ahead-tail" },
+  "opponent-flag-furled-behind": { group: "opponent-flags", base: "furled-behind" },
+  "opponent-flag-black-behind": { group: "opponent-flags", base: "black-behind" },
+  "opponent-flag-meatball-behind": { group: "opponent-flags", base: "meatball-behind" },
+  "opponent-flag-disqualify-behind": { group: "opponent-flags", base: "disqualify-behind" },
+  "opponent-flag-furled-track": { group: "opponent-flags", base: "furled-track" },
+  "opponent-flag-black-track": { group: "opponent-flags", base: "black-track" },
+  "opponent-flag-meatball-track": { group: "opponent-flags", base: "meatball-track" },
+  "opponent-flag-disqualify-track": { group: "opponent-flags", base: "disqualify-track" },
+  "opponent-flag-others": { group: "opponent-flags", base: "others" },
 
   // Laps-of-fuel-left callout pools (issue #838): one per spoken count
   // 10 → 1 plus the dedicated count-0 "box this lap for fuel" call, and the

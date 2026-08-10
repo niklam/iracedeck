@@ -26,9 +26,11 @@ import {
   LAP_TIME_CALLOUT_SETTING_KEYS,
   type LapCompletedSnapshot,
   type LapTimeCalloutId,
+  OPPONENT_FLAG_CALLOUT_SETTING_KEYS,
+  OPPONENT_PENALTY_FLAG_TO_CALLOUT_ID,
   OPPONENT_PIT_CALLOUT_SETTING_KEYS,
+  type OpponentFlagCalloutId,
   type OpponentPitCalloutId,
-  type OpponentPitPending,
   OVERTAKE_CALLOUT_SETTING_KEYS,
   type OvertakeCalloutId,
   type OvertakeGate,
@@ -268,6 +270,12 @@ initializeSimEventsIracing(eventBus, getController(), adapter.createLogger("SimE
   // disables.
   getGapMinChangeSeconds: () =>
     sanitizeGapMinChangeSeconds((getGlobalSettings() as Record<string, unknown>).gapCalloutMinChangeSeconds),
+  // Opponent-flag opt-ins enforced translator-side (issue #936 review) — a
+  // disabled subject must never feed the burst aggregation.
+  getOpponentFlagCalloutEnabled: (flag) =>
+    (getGlobalSettings() as Record<string, unknown>)[
+      OPPONENT_FLAG_CALLOUT_SETTING_KEYS[OPPONENT_PENALTY_FLAG_TO_CALLOUT_ID[flag]]
+    ] !== false,
 });
 
 // Feed the translator's live per-car race order into the template-context builder
@@ -418,6 +426,23 @@ const getOvertakeGate = (): OvertakeGate | null => {
   if (!gate) return null;
 
   return { ...gate, msSinceIncident: lastIncidentAt === null ? null : Date.now() - lastIncidentAt };
+};
+
+// Live speak-time position resolver shared by the opponent-pit (#622) and
+// opponent-flag (#936) families — one definition so the projection/fallback
+// logic can never drift (#936 review).
+const resolvePendingCarLivePosition = (pending: {
+  carIdx: number;
+  position: number;
+  isMultiClass: boolean;
+}): number | null => {
+  const live = getLiveCarPosition(pending.carIdx);
+
+  if (!live) return null;
+
+  const n = pending.isMultiClass ? live.classPosition : live.position;
+
+  return n > 0 ? n : null;
 };
 
 // Pass a live-reading closure so per-flag opt-ins (issue #467) take
@@ -611,20 +636,9 @@ registerPitCrew(
   // Opponent-pit callout opt-ins (issue #622). Live-read, two subjects.
   (id: OpponentPitCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[OPPONENT_PIT_CALLOUT_SETTING_KEYS[id]] !== false,
-  // Opponent-pit live position resolver (issue #622) — the pitting car's
-  // canonical position at speak time, read in the projection the event was
-  // classified in (the pending stash's isMultiClass, so a transient
-  // session-info dropout can't flip a multi-class read to overall space).
-  // A null return falls back to the emit-time payload position.
-  (pending: OpponentPitPending): number | null => {
-    const live = getLiveCarPosition(pending.carIdx);
-
-    if (!live) return null;
-
-    const n = pending.isMultiClass ? live.classPosition : live.position;
-
-    return n > 0 ? n : null;
-  },
+  // Opponent-pit live position resolver (issue #622) — shared with the
+  // opponent-flag family below (#936 review).
+  resolvePendingCarLivePosition,
   // Gap callout opt-ins (issue #933). Per-type live-read — same gate-at-
   // event-arrival pattern as the other callout families.
   (id: GapCalloutId) => (getGlobalSettings() as Record<string, unknown>)[GAP_CALLOUT_SETTING_KEYS[id]] !== false,
@@ -633,6 +647,11 @@ registerPitCrew(
   // Live gaps resolver (issue #933) — the spoken gap number reads the live
   // crossing-time gap at speak time, not the event-time snapshot.
   () => getLiveGaps(),
+  // Opponent-flag callout opt-ins (issue #936). Live-read, four subjects.
+  (id: OpponentFlagCalloutId) =>
+    (getGlobalSettings() as Record<string, unknown>)[OPPONENT_FLAG_CALLOUT_SETTING_KEYS[id]] !== false,
+  // Opponent-flag live position resolver (issue #936) — the shared resolver.
+  resolvePendingCarLivePosition,
   // Race Engineer master gate (issue #515).
   () => (getGlobalSettings() as Record<string, unknown>).pitCrewRaceEngineerEnabled === true,
   // Radar master gate (issue #515).
