@@ -138,6 +138,19 @@ export {
   type StandingsNeighbors,
 } from "./gap-utils.js";
 
+// Wind utilities (#947). Only the symbols with production consumers are
+// re-exported here — the rest stay module-local so they don't become public
+// API nothing calls; the unit tests import them from the module directly.
+export {
+  absoluteWindBearingDeg,
+  compassPoint,
+  formatWindSpeed,
+  isCalmWind,
+  normalizeDegrees,
+  relativeWindAngleDeg,
+  type WindSpeedUnit,
+} from "./wind-utils.js";
+
 // iRating estimation utilities (#268, #872)
 export {
   calculateIRatingChanges,

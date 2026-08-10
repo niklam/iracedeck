@@ -48,6 +48,11 @@
               "value": "track-wetness",
               "label": "Track Wetness",
               "description": "Track wetness state with a centered vertical 6-segment bar; the current state is the icon title"
+            },
+            {
+              "value": "wind",
+              "label": "Wind",
+              "description": "Wind as an arrow pointing where the wind pushes the car with the speed below it; relative-to-car or compass direction, in m/s, km/h, or mph"
             }
           ]
         },

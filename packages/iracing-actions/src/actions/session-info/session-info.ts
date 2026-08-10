@@ -6,6 +6,7 @@ import {
   getGlobalBorderSettings,
   getGlobalColors,
   getGlobalTitleSettings,
+  IconUpdateThrottle,
   type IDeckDidReceiveSettingsEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
@@ -16,13 +17,20 @@ import {
   svgToDataUri,
 } from "@iracedeck/deck-core";
 import {
+  absoluteWindBearingDeg,
+  compassPoint,
   DisplayUnits,
   estimateIRatingChanges,
   extractQualifyResults,
   type FlagInfo,
+  formatWindSpeed,
   type SessionInfo as IRacingSessionInfo,
   type IRatingFieldDriver,
+  isCalmWind,
+  isLiveOnTrack,
   isPreGreen,
+  normalizeDegrees,
+  relativeWindAngleDeg,
   resolveActiveFlag,
   resolveIRatingEstimateOrder,
   type TelemetryData,
@@ -93,6 +101,7 @@ const SessionInfoSettings = CommonSettings.extend({
       "flags",
       "track-wetness",
       "laps-to-empty",
+      "wind",
     ])
     .default("incidents"),
   fontSize: z.preprocess(
@@ -133,6 +142,12 @@ const SessionInfoSettings = CommonSettings.extend({
     .union([z.boolean(), z.string()])
     .transform((val) => val === true || val === "true")
     .default(true),
+  // Wind mode (issue #947). "relative" points the arrow where the wind pushes
+  // the car (the useful reading mid-corner); "absolute" points it where the
+  // wind travels in world space, north up, and names the compass direction it
+  // blows FROM — matching how iRacing itself labels wind.
+  windDirectionMode: z.enum(["relative", "absolute"]).default("relative"),
+  windSpeedUnit: z.enum(["ms", "kmh", "mph"]).default("kmh"),
 });
 
 type SessionInfoSettings = z.infer<typeof SessionInfoSettings>;
@@ -300,6 +315,16 @@ export function generateTrackWetnessGraphic(state: TrackWetness | undefined): st
   return segments.join("\n    ");
 }
 
+/**
+ * The icon's value size in SVG units for a given PI font-size setting: the PI
+ * value is doubled for the 144-unit canvas, and an unset value falls back to
+ * the template default. Single source of truth for every mode that sizes text
+ * itself rather than through the template's value slot.
+ */
+function resolveValueFontSize(fontSize: number | undefined): number {
+  return fontSize !== undefined ? fontSize * 2 : 28;
+}
+
 /** Placeholder for a missing neighbor / not-yet-computable gap. */
 const GAP_PLACEHOLDER = "–";
 
@@ -353,7 +378,7 @@ export function generateGapsGraphic(
   fontSize: number | undefined,
   textColor: string,
 ): string {
-  const configuredSize = fontSize !== undefined ? fontSize * 2 : 28;
+  const configuredSize = resolveValueFontSize(fontSize);
   const rows: { up: boolean; value: string; fill: string }[] = [];
 
   if (showAhead) {
@@ -403,6 +428,195 @@ export function generateGapsGraphic(
 }
 
 /**
+ * Everything the wind graphic needs, resolved from telemetry once so the
+ * renderer stays free of unit and convention logic.
+ */
+export type WindDisplay = {
+  /**
+   * Arrow rotation in degrees clockwise from "pointing up". Up is forward in
+   * relative mode and north in absolute mode; the arrow always points where
+   * the wind TRAVELS, never where it comes from.
+   *
+   * `null` when the wind is calm at the chosen unit's display precision — a
+   * direction is meaningless once the speed reads zero, so the renderer draws
+   * the reading without an arrow rather than asserting a heading.
+   */
+  arrowDeg: number | null;
+  /** Single text line under the arrow, e.g. `"11 km/h"` or `"NE 11 km/h"`. */
+  label: string;
+};
+
+/**
+ * Arrow rotation is quantized to this many degrees. Relative wind direction
+ * changes continuously while cornering, so an unquantized angle would rebuild
+ * and re-push the key image on essentially every telemetry tick. 5° still
+ * gives 72 distinct headings — far finer than the eye resolves on a 72 px key,
+ * and far more than the 8 states the feature request asked for.
+ */
+export const WIND_ARROW_STEP_DEG = 5;
+
+/** Placeholder shown when wind data isn't available. */
+const WIND_PLACEHOLDER = "--";
+
+/**
+ * Modes whose `graphicContent` draws the entire display, including any text.
+ * The template's shared value slot is cleared for these so nothing is drawn
+ * twice.
+ */
+const GRAPHIC_ONLY_MODES: ReadonlySet<SessionInfoSettings["mode"]> = new Set<SessionInfoSettings["mode"]>([
+  "track-wetness",
+  "gaps",
+  "wind",
+]);
+
+function quantizeArrowDeg(degrees: number): number {
+  return normalizeDegrees(Math.round(degrees / WIND_ARROW_STEP_DEG) * WIND_ARROW_STEP_DEG);
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * Resolves the wind display model, or `null` when the key should blank.
+ *
+ * Relative mode requires the car to be on track: `YawNorth` reads a flat `0`
+ * whenever the player isn't in the car (verified across the issue's captures),
+ * which would otherwise render a confident arrow computed from a heading of
+ * "due north". Absolute mode needs only `WindDir`, so it keeps working in the
+ * garage and on the session screen.
+ */
+export function resolveWindDisplay(settings: SessionInfoSettings, telemetry: TelemetryData | null): WindDisplay | null {
+  if (!telemetry) return null;
+
+  const speed = formatWindSpeed(telemetry.WindVel, settings.windSpeedUnit);
+
+  if (speed === null) return null;
+
+  // A calm reading still shows the speed, but with no arrow — pointing one
+  // would assert a direction the number says doesn't exist.
+  const calm = isCalmWind(telemetry.WindVel, settings.windSpeedUnit);
+
+  if (settings.windDirectionMode === "absolute") {
+    const bearing = absoluteWindBearingDeg(telemetry.WindDir);
+    const name = compassPoint(bearing);
+
+    if (bearing === null || name === null) return null;
+
+    // The bearing names where the wind comes FROM; the arrow shows where it
+    // goes, hence the 180° rotation (the same pairing iRacing's own weather
+    // panel uses: a north wind is labelled "N" with the arrow pointing down).
+    return {
+      arrowDeg: calm ? null : quantizeArrowDeg(bearing + 180),
+      label: calm ? speed : `${name} ${speed}`,
+    };
+  }
+
+  if (!isLiveOnTrack(telemetry)) return null;
+
+  const relative = relativeWindAngleDeg(telemetry.WindDir, telemetry.YawNorth);
+
+  if (relative === null) return null;
+
+  return { arrowDeg: calm ? null : quantizeArrowDeg(relative), label: speed };
+}
+
+/**
+ * Largest font size, in SVG units, that renders `text` within `maxWidth` for
+ * the icon's bold Arial, never below `MIN_LABEL_SIZE`. The 0.62em average
+ * advance is measured from the existing value-slot text; auto-fitting is what
+ * lets a long compass label ("NNE 11 km/h") share one sizing rule with a short
+ * one ("7 mph") instead of hand-tuning a size per mode.
+ */
+function fitFontSize(text: string, maxWidth: number, maxSize: number): number {
+  if (text.length === 0) return maxSize;
+
+  return Math.max(MIN_LABEL_SIZE, Math.min(maxSize, Math.floor(maxWidth / (text.length * 0.62))));
+}
+
+/** Smallest label size the wind graphic will shrink to before overflowing. */
+const MIN_LABEL_SIZE = 10;
+
+/** Usable label width inside the key, leaving a margin on both sides. */
+const LABEL_MAX_WIDTH = 128;
+
+/** Baseline the wind label sits on. */
+const WIND_LABEL_BASELINE = 106;
+
+/** Top of the area the arrow may occupy. */
+const WIND_GRAPHIC_TOP = 10;
+
+/** Gap between the bottom of the arrow and the top of the label. */
+const WIND_LABEL_GAP = 6;
+
+/**
+ * @internal Exported for testing
+ *
+ * Generates the wind-mode graphic: a bold arrow rotated to the wind direction
+ * with the speed (and, in absolute mode, the compass name) on one line below.
+ * The arrow is a single filled polygon rotated by an SVG transform — both are
+ * in the always-safe SVG feature set, so it renders identically on every
+ * platform and at any angle rather than snapping to a sprite set.
+ *
+ * Both the label and the placeholder are sized by the same `fitFontSize` rule
+ * so the text doesn't change size when a reading appears, and the arrow shrinks
+ * to whatever room the label leaves — which is what lets the Font Size setting
+ * work across its whole documented range instead of saturating at a fixed cap.
+ */
+export function generateWindGraphic(
+  display: WindDisplay | null,
+  fontSize: number | undefined,
+  textColor: string,
+): string {
+  const configuredSize = resolveValueFontSize(fontSize);
+  const label = display?.label ?? WIND_PLACEHOLDER;
+  const labelSize = fitFontSize(label, LABEL_MAX_WIDTH, configuredSize);
+  const text = `<text x="72" y="${WIND_LABEL_BASELINE}" text-anchor="middle" fill="${textColor}" font-family="Arial, sans-serif" font-size="${labelSize}" font-weight="bold">${label}</text>`;
+
+  // No arrow when there's no reading, or when the wind is calm enough that its
+  // direction is meaningless — the label alone carries the display.
+  if (!display || display.arrowDeg === null) return text;
+
+  // The arrow fills the space above the label's cap height, so a large font
+  // shrinks it rather than overlapping it.
+  const labelTop = WIND_LABEL_BASELINE - labelSize * 0.72;
+  const available = labelTop - WIND_LABEL_GAP - WIND_GRAPHIC_TOP;
+  const half = Math.min(34, Math.max(12, available / 2));
+  const cx = 72;
+  const cy = WIND_GRAPHIC_TOP + half;
+  const scale = half / 34;
+  const headHalf = 22 * scale; // half width across the head's barbs
+  const headDepth = 30 * scale; // tip to the barb line
+  const shaftHalf = 8 * scale;
+  const barbY = cy - half + headDepth;
+  const round = (n: number) => Math.round(n * 10) / 10;
+  const points = [
+    `${cx},${round(cy - half)}`,
+    `${round(cx + headHalf)},${round(barbY)}`,
+    `${round(cx + shaftHalf)},${round(barbY)}`,
+    `${round(cx + shaftHalf)},${round(cy + half)}`,
+    `${round(cx - shaftHalf)},${round(cy + half)}`,
+    `${round(cx - shaftHalf)},${round(barbY)}`,
+    `${round(cx - headHalf)},${round(barbY)}`,
+  ].join(" ");
+
+  return [
+    `<polygon points="${points}" fill="${textColor}" transform="rotate(${display.arrowDeg} ${cx} ${round(cy)})"/>`,
+    text,
+  ].join("\n    ");
+}
+
+/** Mode-specific state the icon needs beyond the plain value string. */
+export type SessionInfoModeState = {
+  /** Track-wetness state for the wetness bar. */
+  trackWetness?: TrackWetness;
+  /** Overrides the value text color (irating gain/loss). */
+  valueColor?: string;
+  /** Live gaps for the gaps rows. */
+  gaps?: LiveGaps | null;
+  /** Resolved wind arrow + label. */
+  wind?: WindDisplay | null;
+};
+
+/**
  * @internal Exported for testing
  *
  * Generates an SVG data URI for the session info display.
@@ -412,10 +626,9 @@ export function generateSessionInfoSvg(
   value: string,
   isFlashing: boolean,
   colorOverride?: { background: string; text: string },
-  trackWetnessState?: TrackWetness,
-  valueColor?: string,
-  liveGaps?: LiveGaps | null,
+  modeState: SessionInfoModeState = {},
 ): string {
+  const { trackWetness: trackWetnessState, valueColor, gaps: liveGaps, wind: windDisplay } = modeState;
   const titleLabels: Record<string, string> = {
     incidents: "INCIDENTS",
     "time-remaining": "TIME LEFT",
@@ -426,6 +639,7 @@ export function generateSessionInfoSvg(
     fuel: "FUEL",
     flags: "FLAGS",
     "laps-to-empty": "LAPS TO\nEMPTY",
+    wind: "WIND",
   };
   // Track-wetness uses the live state name as its title so the icon shows the
   // current state in one line. The fuel consumption sub-modes carry their own
@@ -443,7 +657,7 @@ export function generateSessionInfoSvg(
     actionDefaultTitle = titleLabels[settings.mode] ?? "INCIDENTS";
   }
 
-  const valueFontSizeNum = settings.fontSize !== undefined ? settings.fontSize * 2 : 28;
+  const valueFontSizeNum = resolveValueFontSize(settings.fontSize);
   const valueFontSize = String(valueFontSizeNum);
   const valueY = String(88 + (valueFontSizeNum - 44) / 3);
 
@@ -493,11 +707,13 @@ export function generateSessionInfoSvg(
       settings.fontSize,
       textColor,
     );
+  } else if (settings.mode === "wind") {
+    graphicContent = generateWindGraphic(windDisplay ?? null, settings.fontSize, textColor);
   }
 
-  // The graphic content carries the whole display for track-wetness and gaps,
-  // so clear the value text slot to avoid drawing anything twice.
-  const valueText = settings.mode === "track-wetness" || settings.mode === "gaps" ? "" : value;
+  // The graphic content carries the whole display for these modes, so clear
+  // the value text slot to avoid drawing anything twice.
+  const valueText = GRAPHIC_ONLY_MODES.has(settings.mode) ? "" : value;
 
   const svg = renderIconTemplate(sessionInfoTemplate, {
     backgroundColor,
@@ -547,6 +763,13 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
   /** Active flag pulse interval IDs per context */
   private flagPulseTimers = new Map<string, ReturnType<typeof setInterval>>();
 
+  /**
+   * Coalesces telemetry-driven image pushes to 10 Hz per context. Modes whose
+   * value varies continuously (wind direction, gaps) would otherwise re-render
+   * and re-rasterize on most sim ticks.
+   */
+  private readonly iconThrottle = new IconUpdateThrottle();
+
   override async onWillAppear(ev: IDeckWillAppearEvent<SessionInfoSettings>): Promise<void> {
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
@@ -565,6 +788,9 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
   override async onWillDisappear(ev: IDeckWillDisappearEvent<SessionInfoSettings>): Promise<void> {
     this.cancelFlash(ev.action.id);
     this.cancelFlagPulse(ev.action.id);
+    // Drop any coalesced push still pending so it can't fire for a context
+    // that no longer exists.
+    this.iconThrottle.clear(ev.action.id);
     await super.onWillDisappear(ev);
     this.sdkController.unsubscribe(ev.action.id);
     this.activeContexts.delete(ev.action.id);
@@ -597,26 +823,30 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
     settings: SessionInfoSettings,
   ): Promise<void> {
     const telemetry = this.sdkController.getCurrentTelemetry();
-    const value = this.extractDisplayValue(settings, telemetry);
+    const wind = this.resolveWind(settings, telemetry);
+    const value = this.extractDisplayValue(settings, telemetry, wind);
     const isFlashing = this.flashStates.get(ev.action.id) ?? false;
 
     // Resolve flag colors for flags mode
     const colorOverride = this.resolveFlagColorOverride(settings, telemetry);
-    const trackWetnessState = telemetry?.TrackWetness as TrackWetness | undefined;
-    const valueColor = settings.mode === "irating" ? iratingValueColor(value) : undefined;
-    const liveGaps = settings.mode === "gaps" ? getLiveGaps() : undefined;
 
     const svgDataUri = generateSessionInfoSvg(
       settings,
       value,
       isFlashing,
       colorOverride,
-      trackWetnessState,
-      valueColor,
-      liveGaps,
+      this.resolveModeState(settings, telemetry, value, wind),
     );
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
+    // Re-render against CURRENT settings and telemetry when the global icon
+    // colors / title / border defaults change, rather than closing over the
+    // SVG generated above (@.claude/rules/stream-deck-actions.md).
+    this.setRegenerateCallback(ev.action.id, () => {
+      const current = this.activeContexts.get(ev.action.id) ?? settings;
+
+      return this.renderIcon(ev.action.id, current, this.sdkController.getCurrentTelemetry());
+    });
 
     const stateKey = this.buildStateKey(settings, value, isFlashing, colorOverride?.background);
     this.lastState.set(ev.action.id, stateKey);
@@ -633,7 +863,11 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
     }
   }
 
-  private extractDisplayValue(settings: SessionInfoSettings, telemetry: TelemetryData | null): string {
+  private extractDisplayValue(
+    settings: SessionInfoSettings,
+    telemetry: TelemetryData | null,
+    wind?: WindDisplay | null,
+  ): string {
     // Track wetness renders its label inside the graphic content. The label is still
     // returned here so the state-key cache busts on state transitions; generateSessionInfoSvg
     // clears the value text slot for this mode to avoid drawing it twice.
@@ -662,6 +896,15 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
         : "off";
 
       return `${ahead}|${behind}`;
+    }
+
+    // Wind mode (issue #947): the graphic carries the whole display, so this
+    // string exists purely to bust the state-key cache. The model is resolved
+    // once by the caller and passed in, so the key and the rendered arrow can
+    // never disagree. The arrow angle is already quantized, which is what
+    // keeps a car turning through a corner from busting the key every tick.
+    if (settings.mode === "wind") {
+      return wind ? `${wind.arrowDeg ?? "calm"}|${wind.label}` : WIND_PLACEHOLDER;
     }
 
     if (!telemetry) {
@@ -970,28 +1213,78 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
       if (this.flagPulseTimers.has(contextId) || this.flashTimers.has(contextId)) return;
     }
 
-    const value = this.extractDisplayValue(settings, telemetry);
+    const wind = this.resolveWind(settings, telemetry);
+    const value = this.extractDisplayValue(settings, telemetry, wind);
     const isFlashing = this.flashStates.get(contextId) ?? false;
     const colorOverride = this.resolveFlagColorOverride(settings, telemetry);
-    const trackWetnessState = telemetry?.TrackWetness as TrackWetness | undefined;
     const stateKey = this.buildStateKey(settings, value, isFlashing, colorOverride?.background);
     const lastStateKey = this.lastState.get(contextId);
 
     if (lastStateKey !== stateKey) {
       this.lastState.set(contextId, stateKey);
-      const valueColor = settings.mode === "irating" ? iratingValueColor(value) : undefined;
-      const liveGaps = settings.mode === "gaps" ? getLiveGaps() : undefined;
       const svgDataUri = generateSessionInfoSvg(
         settings,
         value,
         isFlashing,
         colorOverride,
-        trackWetnessState,
-        valueColor,
-        liveGaps,
+        this.resolveModeState(settings, telemetry, value, wind),
       );
-      await this.updateKeyImage(contextId, svgDataUri);
+
+      // Telemetry arrives at the sim's tick rate, and a continuously-varying
+      // display (the wind arrow through a corner, a moving gap) can change on
+      // most of those ticks. Rasterizing and pushing an image that often is
+      // wasted work that also churns the shared rasterizer cache, so coalesce
+      // to the same 10 Hz ceiling the rest of the plugin renders at. Leading
+      // edge fires immediately, so a one-off change is never delayed.
+      this.iconThrottle.schedule(contextId, async () => {
+        await this.updateKeyImage(contextId, svgDataUri);
+      });
     }
+  }
+
+  /**
+   * Collects the mode-specific extras the icon needs beyond the value string.
+   * Centralizing this keeps the two render paths (settings-driven and
+   * telemetry-driven) from drifting apart as modes are added.
+   */
+  private resolveModeState(
+    settings: SessionInfoSettings,
+    telemetry: TelemetryData | null,
+    value: string,
+    wind: WindDisplay | null | undefined,
+  ): SessionInfoModeState {
+    return {
+      trackWetness: telemetry?.TrackWetness as TrackWetness | undefined,
+      valueColor: settings.mode === "irating" ? iratingValueColor(value) : undefined,
+      gaps: settings.mode === "gaps" ? getLiveGaps() : undefined,
+      wind,
+    };
+  }
+
+  /**
+   * Resolves the wind model once per render pass. Both the state key and the
+   * rendered graphic derive from this single value, so a change to the
+   * quantization or unit handling can't make the cache and the icon disagree.
+   */
+  private resolveWind(settings: SessionInfoSettings, telemetry: TelemetryData | null): WindDisplay | null | undefined {
+    return settings.mode === "wind" ? resolveWindDisplay(settings, telemetry) : undefined;
+  }
+
+  /**
+   * Renders the icon for the given settings/telemetry, resolving the value,
+   * flag colors and mode state the same way on every path.
+   */
+  private renderIcon(contextId: string, settings: SessionInfoSettings, telemetry: TelemetryData | null): string {
+    const wind = this.resolveWind(settings, telemetry);
+    const value = this.extractDisplayValue(settings, telemetry, wind);
+
+    return generateSessionInfoSvg(
+      settings,
+      value,
+      this.flashStates.get(contextId) ?? false,
+      this.resolveFlagColorOverride(settings, telemetry),
+      this.resolveModeState(settings, telemetry, value, wind),
+    );
   }
 
   private startFlash(contextId: string, settings: SessionInfoSettings, telemetry: TelemetryData | null): void {
