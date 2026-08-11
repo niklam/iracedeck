@@ -12,7 +12,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test-native": "node -e \"import('@iracedeck/iracing-native').then(console.log).catch(console.error)\"",
-    "telemetry-snapshot": "node dist/cli/telemetry-snapshot.js"
+    "telemetry-snapshot": "node dist/cli/telemetry-snapshot.js",
+    "telemetry-watch": "node dist/cli/telemetry-watch.js"
   },
   "files": [
     "dist"
