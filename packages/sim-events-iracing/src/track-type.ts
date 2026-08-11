@@ -46,6 +46,22 @@ export function resolveTrackType(sessionInfo: Record<string, unknown> | null): T
   }
 }
 
+/**
+ * Whether the session runs on a dirt surface (`WeekendInfo.TrackType`
+ * contains "dirt"). Drives the discipline-dependent `collision-car`
+ * incident value (Sporting Code §3.5.1: heavy car contact scores 2x on
+ * dirt, 4x on pavement — issue #938). Null/missing/unrecognized session
+ * info reads as pavement.
+ */
+export function isDirtTrack(sessionInfo: Record<string, unknown> | null): boolean {
+  if (!sessionInfo) return false;
+
+  const weekendInfo = sessionInfo.WeekendInfo as Record<string, unknown> | undefined;
+  const raw = weekendInfo?.TrackType;
+
+  return typeof raw === "string" && raw.toLowerCase().includes("dirt");
+}
+
 /** Track rotation direction. Unknown/neutral tracks (road courses) map to `Neutral`. */
 export enum TrackDirection {
   Neutral = "neutral",

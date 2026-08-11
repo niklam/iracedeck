@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveTrackDirection, resolveTrackType, TrackDirection, TrackType } from "./track-type.js";
+import { isDirtTrack, resolveTrackDirection, resolveTrackType, TrackDirection, TrackType } from "./track-type.js";
 
 describe("resolveTrackType", () => {
   it("maps 'road course' to RoadCourse", () => {
@@ -32,6 +32,23 @@ describe("resolveTrackType", () => {
 
   it("returns Unknown when TrackType is not a string", () => {
     expect(resolveTrackType({ WeekendInfo: { TrackType: 3 } })).toBe(TrackType.Unknown);
+  });
+});
+
+describe("isDirtTrack", () => {
+  it.each([
+    ["dirt oval", true],
+    ["Dirt Road", true],
+    ["road course", false],
+    ["short oval", false],
+  ])("classifies TrackType %s as dirt=%s", (trackType, expected) => {
+    expect(isDirtTrack({ WeekendInfo: { TrackType: trackType } })).toBe(expected);
+  });
+
+  it("treats null / missing session info as pavement", () => {
+    expect(isDirtTrack(null)).toBe(false);
+    expect(isDirtTrack({})).toBe(false);
+    expect(isDirtTrack({ WeekendInfo: { TrackType: 7 } })).toBe(false);
   });
 });
 
