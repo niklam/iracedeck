@@ -104,6 +104,18 @@ describe("parseWatchArgs", () => {
     expect(options.help).toBe(true);
   });
 
+  it("errors on an empty --output path instead of silently falling back to stdout", () => {
+    const { error } = parseWatchArgs(["--vars=Speed", "--output="]);
+
+    expect(error).toMatch(/--output/);
+  });
+
+  it("errors on an empty --output-dir path", () => {
+    const { error } = parseWatchArgs(["--vars=Speed", "--output-dir="]);
+
+    expect(error).toMatch(/--output-dir/);
+  });
+
   it("accepts -h and -v shorthands", () => {
     const { options } = parseWatchArgs(["--vars=Speed", "-h", "-v"]);
 
@@ -126,6 +138,18 @@ describe("pickWatchValues", () => {
     const telemetry = { Speed: 42.5 } as TelemetryData;
 
     expect(pickWatchValues(telemetry, ["Speed", "NoSuchVar"])).toEqual({ Speed: 42.5, NoSuchVar: null });
+  });
+
+  it("encodes non-finite numbers as strings so they never alias the absent-var null", () => {
+    const telemetry = { A: Number.NaN, B: Number.POSITIVE_INFINITY, C: Number.NEGATIVE_INFINITY } as TelemetryData;
+
+    expect(pickWatchValues(telemetry, ["A", "B", "C"])).toEqual({ A: "NaN", B: "Infinity", C: "-Infinity" });
+  });
+
+  it("treats Object.prototype member names as missing, not inherited values", () => {
+    const telemetry = { Speed: 1 } as TelemetryData;
+
+    expect(pickWatchValues(telemetry, ["toString"])).toEqual({ toString: null });
   });
 });
 
@@ -150,6 +174,11 @@ describe("watchValuesChanged", () => {
   it("treats a var flipping to null as a change", () => {
     expect(watchValuesChanged({ Speed: 42.5 }, { Speed: null })).toBe(true);
   });
+
+  it("does not treat a NaN-valued var as changing every frame", () => {
+    expect(watchValuesChanged({ Speed: Number.NaN }, { Speed: Number.NaN })).toBe(false);
+    expect(watchValuesChanged({ Speed: Number.NaN }, { Speed: 1 })).toBe(true);
+  });
 });
 
 describe("findMissingVars", () => {
@@ -163,6 +192,12 @@ describe("findMissingVars", () => {
     const telemetry = { Speed: 1 } as TelemetryData;
 
     expect(findMissingVars(telemetry, ["Speed"])).toEqual([]);
+  });
+
+  it("reports Object.prototype member names as missing (own properties only)", () => {
+    const telemetry = { Speed: 1 } as TelemetryData;
+
+    expect(findMissingVars(telemetry, ["Speed", "toString", "constructor"])).toEqual(["toString", "constructor"]);
   });
 });
 

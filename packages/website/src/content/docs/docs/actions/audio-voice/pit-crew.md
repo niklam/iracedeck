@@ -140,7 +140,7 @@ Drivers focused on the racing line can miss small impacts — a tap on the wall,
 When iRacing charges you with an incident, the Race Engineer tells you what it saw and what it cost — one line per incident category, spoken a moment after the sim reports it (a quick multi-stage crash collapses into a single call with the worst outcome):
 
 - **Off track** — the track-limits nudge ("Watch the curbs.") when four wheels leave the racing surface. No point count — you felt it.
-- **Out of control** — a composure line after a spin. No point count. Off by default — a spin is usually obvious to the driver.
+- **Out of control** — a composure line after a spin. No point count.
 - **Contact (wall)** — a light brush against the wall or an object; it carries no penalty points, so no count is spoken.
 - **Collision (wall)** — a proper wall hit, with the point count spoken: *"That cost us two penalty points."*
 - **Contact (car)** — light car-to-car contact; no points, no count.
@@ -395,9 +395,9 @@ Under **Damage**, one callout is toggleable, enabled by default:
 
 - **Repair needed** — the spoken heads-up the engineer plays the first time iRacing reports damage that requires repair (rising edge of `EngineWarnings & (MandRepNeeded | OptRepNeeded)`). Disabling this only silences the live damage callout; the pit-service readback's damage-aware fast-repair line is unaffected.
 
-Under **Incidents**, six callouts are toggleable — one per incident category (see [Incident callouts](#incident-callouts) above for the full behavior). All are enabled by default except Out of control:
+Under **Incidents**, six callouts are toggleable — one per incident category, all enabled by default (see [Incident callouts](#incident-callouts) above for the full behavior):
 
-- **Off track** (`calloutEnabledIncidentOffTrack`), **Out of control** (`calloutEnabledIncidentOutOfControl`, off by default — a spin is usually obvious to the driver)
+- **Off track** (`calloutEnabledIncidentOffTrack`), **Out of control** (`calloutEnabledIncidentOutOfControl`)
 - **Contact (wall)** (`calloutEnabledIncidentContactWorld`), **Collision (wall)** (`calloutEnabledIncidentCollisionWorld`)
 - **Contact (car)** (`calloutEnabledIncidentContactCar`), **Collision (car)** (`calloutEnabledIncidentCollisionCar`)
 

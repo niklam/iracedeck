@@ -334,14 +334,22 @@ export function diffIncidents(
     // delta, typed or not (#938: the capture showed the report byte can
     // trail its count increment, so dropping an untyped delta here lost
     // real incidents; the late-type branch below supplies the type
-    // moments later). Most-recent type wins — a typical incident
-    // progresses light → heavy (off-track → collision-car) so the latest
-    // classification is the most informative one to announce.
+    // moments later). WORST-severity type wins, ties → latest: a light →
+    // heavy escalation naturally ends at the worst outcome, but a lighter
+    // FOLLOW-UP — a separate sim incident coalesced into the same
+    // announcement window — must not downgrade the spoken type and points
+    // (#938 review; the lighter incident goes unannounced, an accepted
+    // trade-off over under-reporting the heavy one).
     if (state.incidentBurstFirstAt === 0) {
       state.incidentBurstFirstAt = now;
     }
 
-    if (resolvedType !== null) {
+    if (
+      resolvedType !== null &&
+      (state.incidentBurstType === null ||
+        incidentTypeValue(resolvedType, collisionCarValue) >=
+          incidentTypeValue(state.incidentBurstType, collisionCarValue))
+    ) {
       state.incidentBurstType = resolvedType;
     }
 
@@ -350,14 +358,20 @@ export function diffIncidents(
   } else if (
     currentType !== null &&
     state.incidentBurstFirstAt > 0 &&
-    now - state.incidentBurstLatestAt <= INCIDENT_LATE_TYPE_MS
+    now - state.incidentBurstLatestAt <= INCIDENT_LATE_TYPE_MS &&
+    (state.incidentBurstType === null ||
+      incidentTypeValue(currentType, collisionCarValue) >=
+        incidentTypeValue(state.incidentBurstType, collisionCarValue))
   ) {
     // The report byte can land 1–2 frames AFTER its count increment
     // (#938 capture, sequence C). Adopt it into the pending burst and
     // consume the latch — it belongs to the increment just recorded, not
     // to some future count change. The tight window keeps an unrelated
-    // later report (e.g. a 0x contact that moves no count) from
-    // repainting a burst it doesn't belong to.
+    // later report from repainting a burst it doesn't belong to, and the
+    // same worst-severity guard as the increment path keeps a lesser byte
+    // (e.g. a 0x contact that moves no count) from downgrading an
+    // already-typed burst (#938 review); a non-adopted byte simply stays
+    // in the pending latch for a possible future increment of its own.
     state.incidentBurstType = currentType;
     state.pendingIncidentType = null;
     state.pendingIncidentTypeAt = 0;
@@ -372,7 +386,15 @@ export function diffIncidents(
     const quietElapsed = now - state.incidentBurstLatestAt;
     const burstAge = now - state.incidentBurstFirstAt;
 
-    if (quietElapsed >= INCIDENT_BURST_QUIET_MS || burstAge >= INCIDENT_BURST_MAX_MS) {
+    // The quiet window always exceeds the late-type window, so only the
+    // hard cap could otherwise flush while a just-recorded increment's
+    // trailing report byte (#938 capture ordering) is still due — hold the
+    // cap flush until the late-type window has passed too, bounding the
+    // total delay at INCIDENT_BURST_MAX_MS + INCIDENT_LATE_TYPE_MS.
+    if (
+      quietElapsed >= INCIDENT_BURST_QUIET_MS ||
+      (burstAge >= INCIDENT_BURST_MAX_MS && quietElapsed >= INCIDENT_LATE_TYPE_MS)
+    ) {
       flushIncidentBurst(state, emit, collisionCarValue);
     }
   }

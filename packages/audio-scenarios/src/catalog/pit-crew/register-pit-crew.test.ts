@@ -1116,7 +1116,7 @@ describe("incident point-count composition (issue #922)", () => {
     expect(clips.some((p) => p.includes("/incidents/points-"))).toBe(false);
   });
 
-  it("speaks no count for a zero delta (harness-style light contact)", () => {
+  it("speaks no count for zero points (light contact)", () => {
     bus.publishEvent("incident.occurred", { delta: 0, points: 0, type: "contact-world" } as never);
     flush(audio);
 

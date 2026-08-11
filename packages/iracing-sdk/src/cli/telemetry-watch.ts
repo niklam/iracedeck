@@ -23,7 +23,7 @@
  */
 import { silentLogger } from "@iracedeck/logger";
 import { createWriteStream, mkdirSync, type WriteStream } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 import { createSDK } from "../factory.js";
 import {
@@ -103,7 +103,15 @@ async function main(): Promise<void> {
   }
 
   if (outputPath) {
+    mkdirSync(dirname(outputPath), { recursive: true });
     fileStream = createWriteStream(outputPath, { flags: "a" });
+    // Without an error listener a failing sink (permissions, disk full)
+    // would raise an unhandled 'error' event and crash with a raw stack
+    // trace mid-capture instead of reporting cleanly.
+    fileStream.on("error", (streamError) => {
+      console.error(`Error writing capture: ${streamError.message}`);
+      process.exit(1);
+    });
     console.error(`Recording to: ${outputPath}`);
   }
 
@@ -182,8 +190,13 @@ async function main(): Promise<void> {
         process.exit(0);
       });
     } else {
-      console.error(summary);
-      process.exit(0);
+      // Drain stdout before exiting — on platforms where pipes are
+      // asynchronous a bare process.exit(0) can truncate the tail of a
+      // piped capture (the incident the user just provoked on purpose).
+      process.stdout.write("", () => {
+        console.error(summary);
+        process.exit(0);
+      });
     }
   };
 

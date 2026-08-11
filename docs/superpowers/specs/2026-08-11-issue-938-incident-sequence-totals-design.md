@@ -81,7 +81,7 @@ Capture: `local/telemetry-watch-20260811-125031-041.jsonl` (offline AI session, 
 | Contact with other object | `collision-world` | 2x | 2x |
 | Heavy contact with another driver | `collision-car` | **4x** | **2x** |
 
-`contact-world` (light object touch) is not in the table — value 0. The ONLY discipline difference is `collision-car`, resolved at runtime from the session's track category (`WeekendInfo` category contains "Dirt" → 2, else 4; unknown → pavement 4). These values are used ONLY to classify new-vs-upgrade — the spoken number is always the count arithmetic, never a type constant (#922).
+`contact-world` (light object touch) is not in the table — value 0. The ONLY discipline difference is `collision-car`, resolved at runtime from the session's track type (`WeekendInfo.TrackType` contains "dirt" → 2, else 4; unknown → pavement 4). In the shipped model these values ARE the spoken number (`points = V(type, discipline)`, see Phase 2 below) — resolved live at emission time, never baked into clip wording (#922) and never reconstructed from count deltas.
 
 ## Phase 2 — detection model (final, simplified — Niklas's type-value model)
 
@@ -91,8 +91,8 @@ Capture: `local/telemetry-watch-20260811-125031-041.jsonl` (offline AI session, 
 
 - **New helpers:** `resolveCollisionCarValue(sessionInfo)` (via `isDirtTrack`; pavement 4 / dirt 2, unknown → pavement) and `incidentTypeValue(type, collisionCarValue)` (the §3.5.1 table). The value resolves per tick in the translator and is passed as a `diffIncidents` parameter.
 - **Untyped increments extend the burst** (capture fix 1): a count delta with no resolvable type still accumulates into `incidentBurstDelta` and updates the pacing — today it is silently dropped, which lost capture C's spin entirely.
-- **Late-byte retype** (capture fix 2): a classified byte arriving within `INCIDENT_LATE_TYPE_MS` (**200 ms**) of the burst's last increment (with no count delta of its own) retypes the pending burst (latest wins) and consumes the latch — the capture showed the byte trailing its increment by ~2 frames.
-- **Flush emits `{ delta, points, type }`**: `delta` = the burst's raw accumulated count delta (today's semantics, informational), `points` = `incidentTypeValue(burstType, collisionCarValue)` — **the spoken value**, `type` = latest classified type. An untyped burst stays silent (unchanged).
+- **Late-byte retype** (capture fix 2): a classified byte arriving within `INCIDENT_LATE_TYPE_MS` (**200 ms**) of the burst's last increment (with no count delta of its own) retypes the pending burst (worst-severity wins, ties → latest — a lesser byte never downgrades an already-typed burst, #938 review) and consumes the latch — the capture showed the byte trailing its increment by ~2 frames.
+- **Flush emits `{ delta, points, type }`**: `delta` = the burst's raw accumulated count delta (today's semantics, informational), `points` = `incidentTypeValue(burstType, collisionCarValue)` — **the spoken value**, `type` = the worst-severity classified type (ties → latest). An untyped burst stays silent (unchanged).
 - **Escalation across bursts needs no linkage**: each burst independently announces its own type's value — a wall hit 4 s after the off-track announces 2x (or a car collision 4x) no matter how many announcement windows the crash spanned. The correction trumps an in-flight earlier call via `family: "incident"` preemption (audio, unchanged).
 - **Cadence unchanged** (`INCIDENT_BURST_QUIET_MS` 1500 / `INCIDENT_BURST_MAX_MS` 3000): intermediate calls with corrections (Niklas approved over a single delayed call).
 - **No state changes**: the existing burst cluster is untouched (comment updates only). Pit/off-world clearing and the replay-wipe policy stay as they are.
@@ -101,6 +101,8 @@ Capture: `local/telemetry-watch-20260811-125031-041.jsonl` (offline AI session, 
 
 - A missed report byte (no type within 200 ms) leaves the burst with its earlier or no type — same class of behavior as today; at 100 Hz polling the byte is reliably observed.
 - Content whose scoring deviates from the two Sporting Code tables (future disciplines) announces the table value; §3.5.7 reserves iRacing's right to add systems — revisit then.
+- Contact types always announce `points: 0` (both tables list light contact as 0x, so the count clause skips). If content ever awards a point on a contact report byte, the intro plays with no number — accepted (#938 review); the pre-#938 delta model would have spoken the awarded count in that hypothetical.
+- A lighter incident coalescing into the same announcement window AFTER a heavier one goes unannounced (worst-severity type wins, so the heavy incident keeps its type and value — #938 review); the reverse, light → heavy, is the normal escalation and announces the worst outcome.
 
 ### Event payload
 
@@ -120,7 +122,7 @@ Consumers updated:
 - Penalty byte: unreliable (inconsistent/absent) — not used.
 - `Ongoing` values: never emitted — remain suppressed in `classifyIncident`.
 - Flag-duration model: disproved — replaced by the arithmetic-classified sequence model above (approved by Niklas: tight open window per the support article's "followed very quickly" + the Sporting Code value tables).
-- Final type: latest classified wins (the capture showed escalation runs light → heavy).
+- Final type: worst-severity classified wins, ties → latest (escalation runs light → heavy, so the worst is normally also the latest; the severity guard keeps a lighter coalesced follow-up from downgrading — #938 review).
 
 ## Testing
 
@@ -136,7 +138,7 @@ Consumers updated:
   - pit-lane entry clears the pending burst (existing behavior, re-pinned);
   - `incidentTypeValue` / `resolveCollisionCarValue` unit cases;
   - existing `classifyIncident` cases unchanged.
-- Audio-scenarios tests: the stash reads `total`; zero/missing total skips the count clause.
+- Audio-scenarios tests: the stash reads `points`; a zero/missing value skips the count clause.
 
 ## Affected artifacts (beyond code)
 

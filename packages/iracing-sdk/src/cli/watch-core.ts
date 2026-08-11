@@ -83,8 +83,18 @@ export function parseWatchArgs(args: string[]): { options: WatchOptions; error: 
       }
     } else if (arg.startsWith("--output-dir=")) {
       options.outputDir = arg.slice("--output-dir=".length);
+
+      if (options.outputDir.length === 0) {
+        // An empty path (e.g. an unset shell variable) must not silently
+        // fall back to stdout — a long capture would end with no file.
+        error ??= "Empty --output-dir path.";
+      }
     } else if (arg.startsWith("--output=")) {
       options.output = arg.slice("--output=".length);
+
+      if (options.output.length === 0) {
+        error ??= "Empty --output path.";
+      }
     } else {
       error ??= `Unknown argument: ${arg}`;
     }
@@ -100,20 +110,29 @@ export function parseWatchArgs(args: string[]): { options: WatchOptions; error: 
 /**
  * Extracts the requested vars from a frame, in request order. A var the
  * frame doesn't carry records as `null` so every tick record has the same
- * shape — analysis code never needs existence checks.
+ * shape — analysis code never needs existence checks. Only OWN properties
+ * count (a var name colliding with an Object.prototype member must read as
+ * missing, not as an inherited function that JSON.stringify would drop).
+ * Non-finite numbers are encoded as strings ("NaN"/"Infinity"/"-Infinity"):
+ * JSON.stringify would write them as `null`, aliasing the deliberate
+ * absent-var encoding and corrupting the analysis this tool exists to feed.
  */
 export function pickWatchValues(telemetry: TelemetryData, vars: string[]): Record<string, unknown> {
   const values: Record<string, unknown> = {};
 
   for (const name of vars) {
-    values[name] = telemetry[name] ?? null;
+    const value = Object.hasOwn(telemetry, name) ? telemetry[name] : undefined;
+
+    values[name] = typeof value === "number" && !Number.isFinite(value) ? String(value) : (value ?? null);
   }
 
   return values;
 }
 
 /**
- * Change detection for `changes` mode. Strict equality per key; arrays are
+ * Change detection for `changes` mode. `Object.is` per key (NOT `!==` —
+ * `NaN !== NaN` would mark a NaN-valued var changed on every frame,
+ * silently degrading changes mode to full-rate recording); arrays are
  * compared by JSON content (telemetry arrays are flat primitive arrays).
  * `prev === null` (first frame) always counts as changed.
  */
@@ -129,7 +148,7 @@ export function watchValuesChanged(prev: Record<string, unknown> | null, next: R
       if (JSON.stringify(before) !== JSON.stringify(value)) {
         return true;
       }
-    } else if (before !== value) {
+    } else if (!Object.is(before, value)) {
       return true;
     }
   }
@@ -137,9 +156,13 @@ export function watchValuesChanged(prev: Record<string, unknown> | null, next: R
   return false;
 }
 
-/** Requested vars absent from the frame — for the one-time startup warning. */
+/**
+ * Requested vars absent from the frame — for the one-time startup warning.
+ * Own properties only: `in` would walk the prototype chain and let a var
+ * name colliding with an Object.prototype member evade the warning.
+ */
 export function findMissingVars(telemetry: TelemetryData, vars: string[]): string[] {
-  return vars.filter((name) => !(name in telemetry));
+  return vars.filter((name) => !Object.hasOwn(telemetry, name));
 }
 
 export function buildMetaRecord(startedAt: Date, vars: string[], mode: WatchMode): WatchMetaRecord {

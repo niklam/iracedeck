@@ -162,6 +162,83 @@ describe("diffIncidents — type-value announcements (issue #938)", () => {
     expect(occurred(events)).toEqual([{ delta: 1, points: 1, type: "off-track" }]);
   });
 
+  it("does not let a lesser late byte downgrade an already-typed burst", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    seed(state, emit);
+
+    // Hard car collision types the burst at 4x...
+    diffIncidents(state, tick({ PlayerIncidents: IncidentFlags.RepCollisionWithCar }), 2_000, emit);
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 4 }), 2_033, emit);
+    // ...then a light rub reports 100 ms later with no count movement — it
+    // must not repaint the burst down to a 0-point contact.
+    diffIncidents(
+      state,
+      tick({ PlayerCarMyIncidentCount: 4, PlayerIncidents: IncidentFlags.RepContactWithCar }),
+      2_133,
+      emit,
+    );
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 4 }), 2_133 + INCIDENT_BURST_QUIET_MS, emit);
+
+    expect(occurred(events)).toEqual([{ delta: 4, points: 4, type: "collision-car" }]);
+  });
+
+  it("keeps the worst type when a lighter incident coalesces after a heavier one", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    seed(state, emit);
+
+    // Wall collision (2x)...
+    diffIncidents(state, tick({ PlayerIncidents: IncidentFlags.RepCollisionWithWorld }), 2_000, emit);
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 2 }), 2_033, emit);
+    // ...then a separate off-track 1 s later, inside the same quiet window.
+    // The heavier wall hit must stay the announced type and value.
+    diffIncidents(
+      state,
+      tick({ PlayerCarMyIncidentCount: 2, PlayerIncidents: IncidentFlags.RepOffTrack }),
+      3_000,
+      emit,
+    );
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 3 }), 3_033, emit);
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 3 }), 3_033 + INCIDENT_BURST_QUIET_MS, emit);
+
+    expect(occurred(events)).toEqual([{ delta: 3, points: 2, type: "collision-world" }]);
+  });
+
+  it("holds the hard-cap flush open for a trailing report byte", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    seed(state, emit);
+
+    // A sustained crash keeps the burst alive to the hard cap: increments at
+    // 2000 (typed off-track), 3300, 4600, and 4990 — the last one untyped,
+    // its collision byte trailing by 2 frames, right as the cap expires.
+    diffIncidents(
+      state,
+      tick({ PlayerCarMyIncidentCount: 1, PlayerIncidents: IncidentFlags.RepOffTrack }),
+      2_000,
+      emit,
+    );
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 2 }), 3_300, emit);
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 3 }), 4_600, emit);
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 4 }), 4_990, emit);
+
+    // Cap expired (age 3010 ms) but the late-type window is still open — the
+    // flush must wait for the trailing byte instead of announcing off-track.
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 4 }), 5_010, emit);
+    expect(occurred(events)).toEqual([]);
+
+    diffIncidents(
+      state,
+      tick({ PlayerCarMyIncidentCount: 4, PlayerIncidents: IncidentFlags.RepCollisionWithCar }),
+      5_023,
+      emit,
+    );
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 4 }), 5_200, emit);
+
+    expect(occurred(events)).toEqual([{ delta: 4, points: 4, type: "collision-car" }]);
+  });
+
   it("announces the discipline-resolved collision-car value", () => {
     const run = (collisionCarValue: number): Array<{ delta: number; points: number; type: string }> => {
       const state = createInitialState();
