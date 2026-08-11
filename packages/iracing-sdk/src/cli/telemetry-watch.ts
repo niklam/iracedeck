@@ -40,6 +40,14 @@ import {
 
 const SUBSCRIBER_ID = "telemetry-watch-cli";
 
+/**
+ * Abort threshold for a permanently stalled sink. Tick records are a few
+ * hundred bytes at ~60 Hz worst case (`--mode=all`), so a healthy sink never
+ * accumulates anywhere near this much — reaching it means the consumer
+ * stopped reading and buffering further would only exhaust memory.
+ */
+const MAX_BUFFERED_BYTES = 64 * 1024 * 1024;
+
 function showHelp(): void {
   console.log(`
 iRacing Telemetry Watch
@@ -117,11 +125,19 @@ async function main(): Promise<void> {
 
   const writeLine = (record: unknown): void => {
     const line = `${JSON.stringify(record)}\n`;
+    const sink = fileStream ?? process.stdout;
 
-    if (fileStream) {
-      fileStream.write(line);
-    } else {
-      process.stdout.write(line);
+    // Backpressure: a capture must be lossless, so a sink that momentarily
+    // can't keep up is answered by buffering (write() returning false), not
+    // by dropping frames. A PERMANENTLY stalled sink (e.g. a piped consumer
+    // that stopped reading) would grow that buffer without bound — stop the
+    // capture with a clear error once it exceeds a generous cap instead of
+    // exhausting memory.
+    if (!sink.write(line) && sink.writableLength > MAX_BUFFERED_BYTES) {
+      console.error(
+        `Error: the capture sink cannot keep up (${sink.writableLength} bytes buffered) — stopping the capture.`,
+      );
+      process.exit(1);
     }
   };
 

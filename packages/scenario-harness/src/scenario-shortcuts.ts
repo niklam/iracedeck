@@ -112,6 +112,22 @@ function pitStatus(id: string, label: string, target: PitSvStatus, description?:
   };
 }
 
+/**
+ * Sporting Code §3.5.1 pavement values by incident type — the same table the
+ * translator's `incidentTypeValue` speaks from (#938). The harness mirrors
+ * the translator's vocabulary, so a shortcut's `points` defaults from the
+ * TYPE (never from `delta`, which is the raw count movement and can differ
+ * on an escalation); pass `options.points` explicitly for dirt values.
+ */
+const INCIDENT_TYPE_POINTS: Record<string, number> = {
+  "off-track": 1,
+  "out-of-control": 2,
+  "contact-world": 0,
+  "collision-world": 2,
+  "contact-car": 0,
+  "collision-car": 4,
+};
+
 function qualifyingInvalidation(
   id: string,
   label: string,
@@ -121,6 +137,8 @@ function qualifyingInvalidation(
   },
   options: { description?: string; incidentType?: string; delta?: number; points?: number } = {},
 ): ScenarioShortcut {
+  const incidentType = options.incidentType ?? "off-track";
+
   return {
     id: `qualifying-invalidation-${id}`,
     category: "Qualifying Invalidation",
@@ -129,8 +147,8 @@ function qualifyingInvalidation(
     event: "incident.occurred",
     data: {
       delta: options.delta ?? 1,
-      points: options.points ?? options.delta ?? 1,
-      type: options.incidentType ?? "off-track",
+      points: options.points ?? INCIDENT_TYPE_POINTS[incidentType] ?? 0,
+      type: incidentType,
     },
     qualifyingInvalidationSnapshot: { lapStartedFromPits: false, lapCounted: true, ...snapshot },
   };

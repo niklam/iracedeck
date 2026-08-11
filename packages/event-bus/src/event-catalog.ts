@@ -530,10 +530,10 @@ export type SimEventMap = {
    * count is spoken. `delta` carries the raw count movement the emission
    * coalesced (informational — it under-reports an escalation that spans
    * announcement windows, which is why it is never spoken). `type` carries
-   * the latest classified {@link IncidentType} discriminator so audio
-   * scenarios can branch one callout per category. Translators must omit
-   * emission when the incident type is unknown — every fire MUST set
-   * `type`.
+   * the highest-scored classified {@link IncidentType} of the coalesced
+   * burst (ties → latest) so audio scenarios can branch one callout per
+   * category. Translators must omit emission when the incident type is
+   * unknown — every fire MUST set `type`.
    */
   "incident.occurred": SimEvent<"incident.occurred", { delta: number; points: number; type: IncidentType }>;
   "offTrack.started": SimEvent<"offTrack.started", EmptySimEventPayload>;

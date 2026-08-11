@@ -7,10 +7,10 @@
  * suppresses unknown / Ongoing variants, so every event that reaches a
  * scenario carries a known type. The translator also coalesces multi-step
  * incident bursts (off-track → out-of-control → collision) into a single
- * emission with the most-recent type, so a quick crash announces once
- * rather than three times in a row; an escalation slow enough to span
- * announcement windows (#938) arrives as a second emission whose
- * family-preemption trumps the earlier line.
+ * emission with the highest-scored type (ties → latest), so a quick crash
+ * announces once rather than three times in a row; an escalation slow
+ * enough to span announcement windows (#938) arrives as a second emission
+ * whose family-preemption trumps the earlier line.
  *
  * **Family preemption.** All six share `family: "incident"` so a fast
  * sequence (light contact → harder collision a second later) supersedes
