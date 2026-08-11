@@ -83,50 +83,37 @@ Capture: `local/telemetry-watch-20260811-125031-041.jsonl` (offline AI session, 
 
 `contact-world` (light object touch) is not in the table — value 0. The ONLY discipline difference is `collision-car`, resolved at runtime from the session's track category (`WeekendInfo` category contains "Dirt" → 2, else 4; unknown → pavement 4). These values are used ONLY to classify new-vs-upgrade — the spoken number is always the count arithmetic, never a type constant (#922).
 
-## Phase 2 — detection model (final)
+## Phase 2 — detection model (final, simplified — Niklas's type-value model)
 
-### Sequence machine (in `diff/incidents.ts`)
+**Key insight (Niklas):** in iRacing's model an incident sequence's total IS the value of its worst outcome. With the discipline resolved (pavement/dirt) and the type classified, the spoken number is simply `V(type, discipline)` from the authoritative table — no baselines, no sequence windows, no count arithmetic. The count delta remains the *trigger* (a 0x byte with no count movement stays silent, as today) but never the *spoken number*.
 
-Let **P** = the open sequence's running total (`count − baseline`), **D** = an increment's delta, **V(T)** = the classified type's value from the table above.
+### Changes in `diff/incidents.ts` (the existing burst machinery stays)
 
-- **Open sequence:** a sequence stays open for `INCIDENT_SEQUENCE_OPEN_MS` (**6000 ms**) after its last increment (Niklas: the sim merges only quick follow-ups; observed real upgrade gap 4.1 s).
-- **Classification of an increment while a sequence is open:**
-  - `P + D == V(T)` → **upgrade**: same sequence, total becomes `P + D`.
-  - `D == V(T)` → **new**: flush the old sequence's pending announcement immediately (its total, its type), then open fresh with baseline = `count − D`.
-  - neither, or `T` unresolved → **continue conservatively**: same sequence, total `P + D` (the total is the points the driver actually gained; bounded by the 6 s window).
-- **Arithmetic reopen:** when no sequence is open but the previous one closed within `INCIDENT_SEQUENCE_REOPEN_MAX_MS` (**30 000 ms**) and `P_prev + D == V(T)` with `D < V(T)` — the sim itself has declared an upgrade (a marginal smaller than the type's own value is impossible otherwise) — reopen: total `P_prev + D`, emitted-total `P_prev`, so the flush announces the corrected total. This is what keeps a slow gather-then-crash correct despite the tight open window.
-- **Value cap:** a sequence whose total has reached the discipline's maximum value cannot upgrade — any further increment (typed or not) starts a new sequence.
-- **Late type adoption:** a classified byte arriving within `INCIDENT_LATE_TYPE_MS` (**200 ms**) after an untyped or lesser-typed increment (the C ordering) is adopted into the pending sequence/burst: the classification re-runs with the now-known type — an "upgrade" verdict keeps the accumulated total, a "new" verdict splits (flush old, re-baseline). The pending burst cannot have flushed yet (quiet window 1500 ms > 200 ms).
-- **Announcement cadence unchanged:** increments coalesce under `INCIDENT_BURST_QUIET_MS` (1500 ms) / `INCIDENT_BURST_MAX_MS` (3000 ms). Each flush emits `{ delta: total − emittedTotal, total, type: latest }` and advances the emitted total. A later flush in the same sequence announces the corrected, higher total; `family: "incident"` preemption trumps an in-flight callout.
-- **Untyped sequences stay silent** at flush (no resolvable type ever) — but do NOT advance the emitted total, so a type arriving with a later increment in the same sequence announces the full total.
-- **Pit / off-world suppression:** entering pit lane / pit stall / leaving the world clears all sequence state including the reopen memory (existing behavior extended).
-- **Replay wipe:** all sequence state re-seeds (NOT preserved across `wipeStateForReplay`), same policy as today's burst fields.
+- **New helpers:** `resolveCollisionCarValue(sessionInfo)` (via `isDirtTrack`; pavement 4 / dirt 2, unknown → pavement) and `incidentTypeValue(type, collisionCarValue)` (the §3.5.1 table). The value resolves per tick in the translator and is passed as a `diffIncidents` parameter.
+- **Untyped increments extend the burst** (capture fix 1): a count delta with no resolvable type still accumulates into `incidentBurstDelta` and updates the pacing — today it is silently dropped, which lost capture C's spin entirely.
+- **Late-byte retype** (capture fix 2): a classified byte arriving within `INCIDENT_LATE_TYPE_MS` (**200 ms**) of the burst's last increment (with no count delta of its own) retypes the pending burst (latest wins) and consumes the latch — the capture showed the byte trailing its increment by ~2 frames.
+- **Flush emits `{ delta, points, type }`**: `delta` = the burst's raw accumulated count delta (today's semantics, informational), `points` = `incidentTypeValue(burstType, collisionCarValue)` — **the spoken value**, `type` = latest classified type. An untyped burst stays silent (unchanged).
+- **Escalation across bursts needs no linkage**: each burst independently announces its own type's value — a wall hit 4 s after the off-track announces 2x (or a car collision 4x) no matter how many announcement windows the crash spanned. The correction trumps an in-flight earlier call via `family: "incident"` preemption (audio, unchanged).
+- **Cadence unchanged** (`INCIDENT_BURST_QUIET_MS` 1500 / `INCIDENT_BURST_MAX_MS` 3000): intermediate calls with corrections (Niklas approved over a single delayed call).
+- **No state changes**: the existing burst cluster is untouched (comment updates only). Pit/off-world clearing and the replay-wipe policy stay as they are.
 
-### State (in `state.ts`, both `TranslatorState` and `createInitialState`)
+### Accepted degradations (documented, not handled)
 
-The burst cluster (`incidentBurstType`/`incidentBurstDelta`) is replaced by the sequence cluster; burst timing fields remain for cadence:
-
-- `incidentSeqBaseline: number` — count at sequence open; `-1` = no open sequence.
-- `incidentSeqEmittedTotal: number` — total already announced for this sequence.
-- `incidentSeqLatestType: IncidentType | null` — latest classified type.
-- `incidentSeqLastIncrementAt: number` — for the open window; `0` = none.
-- `incidentSeqLastIncrementDelta: number` — for late-type re-classification.
-- `incidentSeqClosedTotal: number` / `incidentSeqClosedAt: number` — reopen memory (`0` = none).
-- `incidentCollisionCarValue: number` + a session cache key — the discipline-resolved `collision-car` value (the `trackLengthKey` pattern).
-- `incidentBurstFirstAt` / `incidentBurstLatestAt` — kept (announcement pacing only).
+- A missed report byte (no type within 200 ms) leaves the burst with its earlier or no type — same class of behavior as today; at 100 Hz polling the byte is reliably observed.
+- Content whose scoring deviates from the two Sporting Code tables (future disciplines) announces the table value; §3.5.7 reserves iRacing's right to add systems — revisit then.
 
 ### Event payload
 
-`incident.occurred` becomes `{ delta: number; total: number; type: IncidentType }`:
+`incident.occurred` becomes `{ delta: number; points: number; type: IncidentType }`:
 
-- `total` — the sequence's running total against the pre-sequence baseline. **This is what the engineer speaks.**
-- `delta` — points added since the sequence's previous emission (the current field's per-flush semantics, kept for consumers that want the marginal change).
+- `points` — `V(type, discipline)`: the incident's value as iRacing scores it. **This is what the engineer speaks.** `0` (contact types) means the count clause skips.
+- `delta` — the burst's raw accumulated count delta (unchanged semantics, informational).
 
 Consumers updated:
 
 - `packages/event-bus/src/event-catalog.ts` — payload shape + docs.
-- `packages/audio-scenarios/src/catalog/pit-crew/incidents.ts` — the `where:` stash carries `total` instead of `delta` (same #922 stash discipline: write after the type check only); header comment rewritten to describe sequence totals. `points-1…4` clips cover every reachable total; an out-of-range or missing total degrades to no count per #835.
-- `packages/scenario-harness/src/event-names.ts` — payload template gains `total`.
+- `packages/audio-scenarios/src/catalog/pit-crew/incidents.ts` — the `where:` stash carries `points` instead of `delta` (same #922 stash discipline: write after the type check only); header comment rewritten. `points-1/2/4` clips cover every reachable value; zero/missing degrades to no count per #835.
+- `packages/scenario-harness/src/event-names.ts` — payload template gains `points`.
 
 ### Contingencies — RESOLVED by the capture + Sporting Code
 
@@ -138,17 +125,16 @@ Consumers updated:
 ## Testing
 
 - `watch-core.test.ts` — arg parsing, change detection, record building, summary.
-- New diff-level tests in `packages/sim-events-iracing/src/diff/incidents.test.ts` (or a sibling file) driving `diffIncidents` with explicit `now` values (the `diff/pit-lane.test.ts` pattern), covering at minimum:
-  - the capture's sequence B replayed: off-track +1 (flush → total 1), collision-car +3 at +4.1 s (flush → **total 4**, `collision-car`) — the reported bug;
-  - the capture's sequence C replayed: off-track +1, then +1 with the byte arriving 2 frames AFTER the count (flush → total 2, `out-of-control`) — the late-type/dropped-increment bug;
-  - `D == V(T)` starts a new sequence even inside the open window (two off-tracks 5 s apart → two total-1 announcements);
-  - arithmetic reopen: off-track, >6 s quiet, collision-car +3 → corrected total 4;
-  - reopen window expiry: same but past 30 s → new sequence, total 3 (accepted degradation);
-  - dirt discipline: `collision-car` D=2 with a Dirt category resolves as a NEW 2x sequence, not an upgrade;
-  - value cap: a sequence at the discipline max never upgrades;
-  - conservative continuation for an unknown-arithmetic increment inside the window;
-  - untyped-only sequence stays silent; a later typed increment announces the full total;
-  - pit-lane suppression clears all sequence state including reopen memory;
+- New diff-level tests in `packages/sim-events-iracing/src/diff/incidents.test.ts` driving `diffIncidents` with explicit `now` values (the `diff/pit-lane.test.ts` pattern), covering at minimum:
+  - the capture's sequence B replayed: off-track +1 (flush → points 1), collision-car +3 at +4.1 s (flush → **points 4**, `collision-car`) — the reported bug;
+  - the capture's sequence C replayed: off-track +1, then an untyped +1 whose `out-of-control` byte arrives 2 frames later (single flush → points 2, `out-of-control`) — the dropped-increment/late-type bug;
+  - a late byte beyond the 200 ms window does NOT retype the burst;
+  - dirt vs pavement: the same collision-car burst announces points 2 with the dirt value and points 4 with the pavement value;
+  - a contact type (value 0) announces `points: 0` (audio skips the count clause);
+  - an untyped-only burst stays silent;
+  - two off-tracks separated by more than the quiet window → two independent points-1 announcements;
+  - pit-lane entry clears the pending burst (existing behavior, re-pinned);
+  - `incidentTypeValue` / `resolveCollisionCarValue` unit cases;
   - existing `classifyIncident` cases unchanged.
 - Audio-scenarios tests: the stash reads `total`; zero/missing total skips the count clause.
 
