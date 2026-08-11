@@ -53,34 +53,67 @@ Drive, in order: (a) a lone off-track, then wait clean; (b) the reported sequenc
 3. What does the penalty byte (`PenZeroX`/`PenOneX`/`PenTwoX`/`PenFourX`) carry at each step — in particular, does it carry the sequence's *current value*?
 4. Does the byte return to 0 only when the sim's on-screen incident indication ends?
 
-## Phase 2 — detection model
+## Capture findings (2026-08-11, validated — supersedes the flag-duration model)
 
-Implemented as specified below **if the capture confirms flag-bounded sequences**; contingencies at the end.
+Capture: `local/telemetry-watch-20260811-125031-041.jsonl` (offline AI session, deliberate incidents). Decoded:
+
+| SessionTime | `PlayerIncidents` | Count | Meaning |
+|---|---|---|---|
+| 188.9 | `RepOffTrack \| Pen1x` | 0 → 1 | A: lone off-track (1x) |
+| 204.4 | `RepOffTrack \| Pen2x` | 1 → 2 (+1) | B opens: off-track |
+| 208.5 | `RepCollisionWithCar`, pen absent | 2 → 5 (**+3**) | B upgrades: heavy car contact — marginal 4−1, sequence total 4 |
+| 238.75 | `RepOffTrack`, pen absent | 5 → 6 (+1) | C opens: off-track |
+| 239.78 | `RepOutOfControl`, pen absent | 6 → 7 (+1) | C upgrades: spin — total 2. **Count moved ~2 frames BEFORE the byte** |
+
+1. **The flag-duration model is disproved.** Every report byte was visible for exactly one frame (~16 ms), even mid-sequence. The in-code observation was correct; flags cannot bound sequences.
+2. **`Ongoing` report values never appeared**, including across repeated off-track excursions. `classifyIncident` keeps suppressing them.
+3. **The penalty byte is unreliable**: present with inconsistent values on two of five reports, absent on three. Never use it for announcements.
+4. **Ordering is not guaranteed**: the count increment can precede its report byte (C's upgrade). Today's code silently DROPS an increment it cannot type — C's spin was never counted or spoken (a second, previously unreported bug this fix removes).
+5. **The count arithmetic is exact**: every count move equals *(new worst outcome − sequence value so far)*, confirming the upgrade model (Sporting Code §3.5.2: "In the event of multiple concurrent incidents (ie: 2x that causes a 4x), only the most serious is counted (ie: 4x).").
+
+### Authoritative incident values (Sporting Code §3.5.1)
+
+| Incident type | `IncidentType` | Pavement | Dirt |
+|---|---|---|---|
+| Light contact with another driver | `contact-car` | 0x | 0x |
+| Wheels off the racing surface | `off-track` | 1x | 1x |
+| Loss of control | `out-of-control` | 2x | 2x |
+| Contact with other object | `collision-world` | 2x | 2x |
+| Heavy contact with another driver | `collision-car` | **4x** | **2x** |
+
+`contact-world` (light object touch) is not in the table — value 0. The ONLY discipline difference is `collision-car`, resolved at runtime from the session's track category (`WeekendInfo` category contains "Dirt" → 2, else 4; unknown → pavement 4). These values are used ONLY to classify new-vs-upgrade — the spoken number is always the count arithmetic, never a type constant (#922).
+
+## Phase 2 — detection model (final)
 
 ### Sequence machine (in `diff/incidents.ts`)
 
-- **Sequence opens** when `PlayerIncidents` goes non-zero. Snapshot `PlayerCarMyIncidentCount` at that moment as the pre-sequence baseline.
-- **Fallback open:** a count increment with no observed flag-up opens a sequence with baseline = the pre-increment count (never miss an announcement because a flag edge was missed).
-- **Cadence unchanged:** increments still coalesce under `INCIDENT_BURST_QUIET_MS` (1500 ms) and `INCIDENT_BURST_MAX_MS` (3000 ms).
-- **Each flush emits the running total** `count − baseline` with the latest classified type (latest wins, as today — escalation runs light → heavy). A later escalation in the same sequence flushes again with the corrected, higher total; `family: "incident"` preemption trumps an in-flight callout, otherwise the correction plays next.
-- **Baseline resets only when the flags go down** (sequence close) — never at a flush.
+Let **P** = the open sequence's running total (`count − baseline`), **D** = an increment's delta, **V(T)** = the classified type's value from the table above.
 
-### Invariants and edge cases
-
-- **Flush-before-reset:** the baseline a flush computes against is always the baseline of the sequence its increments belong to. A flags-down with a burst still pending defers the sequence reset until that burst flushes; a flags-down with nothing pending closes immediately.
-- **Re-raise during a pending burst:** a new flag-up while the previous sequence's burst is still pending (flags dropped and re-raised inside the quiet window) flushes the old burst immediately (emitting the old sequence's total), then opens the fresh sequence — no cross-sequence contamination.
-- **Fallback close:** a sequence opened via the fallback (no flag-up ever observed) closes when its burst flushes while the flags read down — degenerating to today's one-burst-one-sequence behavior if the flag model fails in practice.
-- **Pit / off-track-world suppression:** entering pit lane / pit stall / leaving the world clears the sequence state along with the pending burst and type latch (existing behavior extended).
-- **Unclassified increments** inside a sequence still count toward the total (it is `count − baseline`); if no increment in a sequence ever resolves a type, nothing is emitted (existing stay-silent rule).
-- **Replay wipe:** sequence state re-seeds (NOT preserved across `wipeStateForReplay`), same policy as today's burst fields — by the time a driver is glancing at a replay, the incident flags are down.
+- **Open sequence:** a sequence stays open for `INCIDENT_SEQUENCE_OPEN_MS` (**6000 ms**) after its last increment (Niklas: the sim merges only quick follow-ups; observed real upgrade gap 4.1 s).
+- **Classification of an increment while a sequence is open:**
+  - `P + D == V(T)` → **upgrade**: same sequence, total becomes `P + D`.
+  - `D == V(T)` → **new**: flush the old sequence's pending announcement immediately (its total, its type), then open fresh with baseline = `count − D`.
+  - neither, or `T` unresolved → **continue conservatively**: same sequence, total `P + D` (the total is the points the driver actually gained; bounded by the 6 s window).
+- **Arithmetic reopen:** when no sequence is open but the previous one closed within `INCIDENT_SEQUENCE_REOPEN_MAX_MS` (**30 000 ms**) and `P_prev + D == V(T)` with `D < V(T)` — the sim itself has declared an upgrade (a marginal smaller than the type's own value is impossible otherwise) — reopen: total `P_prev + D`, emitted-total `P_prev`, so the flush announces the corrected total. This is what keeps a slow gather-then-crash correct despite the tight open window.
+- **Value cap:** a sequence whose total has reached the discipline's maximum value cannot upgrade — any further increment (typed or not) starts a new sequence.
+- **Late type adoption:** a classified byte arriving within `INCIDENT_LATE_TYPE_MS` (**200 ms**) after an untyped or lesser-typed increment (the C ordering) is adopted into the pending sequence/burst: the classification re-runs with the now-known type — an "upgrade" verdict keeps the accumulated total, a "new" verdict splits (flush old, re-baseline). The pending burst cannot have flushed yet (quiet window 1500 ms > 200 ms).
+- **Announcement cadence unchanged:** increments coalesce under `INCIDENT_BURST_QUIET_MS` (1500 ms) / `INCIDENT_BURST_MAX_MS` (3000 ms). Each flush emits `{ delta: total − emittedTotal, total, type: latest }` and advances the emitted total. A later flush in the same sequence announces the corrected, higher total; `family: "incident"` preemption trumps an in-flight callout.
+- **Untyped sequences stay silent** at flush (no resolvable type ever) — but do NOT advance the emitted total, so a type arriving with a later increment in the same sequence announces the full total.
+- **Pit / off-world suppression:** entering pit lane / pit stall / leaving the world clears all sequence state including the reopen memory (existing behavior extended).
+- **Replay wipe:** all sequence state re-seeds (NOT preserved across `wipeStateForReplay`), same policy as today's burst fields.
 
 ### State (in `state.ts`, both `TranslatorState` and `createInitialState`)
 
-New fields alongside the existing burst cluster (final names at implementation):
+The burst cluster (`incidentBurstType`/`incidentBurstDelta`) is replaced by the sequence cluster; burst timing fields remain for cadence:
 
-- `incidentSeqBaseline: number` — pre-sequence `PlayerCarMyIncidentCount`; `-1` = no open sequence.
-- `incidentSeqFlagsWereUp: boolean` — whether this sequence was opened by an observed flag-up (drives the fallback close).
-- `incidentSeqEmittedTotal: number` — total already emitted for this sequence; each flush emits `delta = total − emittedTotal` and advances it.
+- `incidentSeqBaseline: number` — count at sequence open; `-1` = no open sequence.
+- `incidentSeqEmittedTotal: number` — total already announced for this sequence.
+- `incidentSeqLatestType: IncidentType | null` — latest classified type.
+- `incidentSeqLastIncrementAt: number` — for the open window; `0` = none.
+- `incidentSeqLastIncrementDelta: number` — for late-type re-classification.
+- `incidentSeqClosedTotal: number` / `incidentSeqClosedAt: number` — reopen memory (`0` = none).
+- `incidentCollisionCarValue: number` + a session cache key — the discipline-resolved `collision-car` value (the `trackLengthKey` pattern).
+- `incidentBurstFirstAt` / `incidentBurstLatestAt` — kept (announcement pacing only).
 
 ### Event payload
 
@@ -95,24 +128,28 @@ Consumers updated:
 - `packages/audio-scenarios/src/catalog/pit-crew/incidents.ts` — the `where:` stash carries `total` instead of `delta` (same #922 stash discipline: write after the type check only); header comment rewritten to describe sequence totals. `points-1…4` clips cover every reachable total; an out-of-range or missing total degrades to no count per #835.
 - `packages/scenario-harness/src/event-names.ts` — payload template gains `total`.
 
-### Contingencies (decided by the capture)
+### Contingencies — RESOLVED by the capture + Sporting Code
 
-- **Penalty byte carries the sequence value** (e.g. `RepCollisionWithWorld | PenTwoX`): use it to corroborate the count arithmetic (log a mismatch at debug); replacing the arithmetic outright is only on the table if the capture shows the byte is *more* reliable than the count.
-- **`Ongoing` values appear:** map `RepOffTrackOngoing` → `"off-track"` and `RepCollisionWithWorldOngoing` → `"collision-world"` in `classifyIncident` instead of suppressing.
-- **Flag-duration model disproved** (byte genuinely transient): the flags cannot bound sequences; fall back to a time-window sequence boundary sized from the observed inter-report spacing. **This variant goes back to Niklas for approval before implementation.**
-- **Final type latest-vs-worst:** keep latest (current behavior) unless the capture shows a sequence whose last report is *less* severe than an earlier one.
+- Penalty byte: unreliable (inconsistent/absent) — not used.
+- `Ongoing` values: never emitted — remain suppressed in `classifyIncident`.
+- Flag-duration model: disproved — replaced by the arithmetic-classified sequence model above (approved by Niklas: tight open window per the support article's "followed very quickly" + the Sporting Code value tables).
+- Final type: latest classified wins (the capture showed escalation runs light → heavy).
 
 ## Testing
 
 - `watch-core.test.ts` — arg parsing, change detection, record building, summary.
 - New diff-level tests in `packages/sim-events-iracing/src/diff/incidents.test.ts` (or a sibling file) driving `diffIncidents` with explicit `now` values (the `diff/pit-lane.test.ts` pattern), covering at minimum:
-  - the reported escalation-across-flush case: off-track (flush, total 1) → wall inside the same flag-up (flush, **total 2**, type `collision-world`);
-  - flag-up/flag-down sequence boundaries (second flag-up = fresh baseline);
-  - fallback open on a count increment with no flag-up;
-  - flags-down with a pending burst (flush-before-reset);
-  - re-raise during a pending burst (old total flushed, fresh sequence);
-  - pit-lane suppression clearing sequence state;
-  - existing `classifyIncident` cases unchanged (plus `Ongoing` mapping if the contingency lands).
+  - the capture's sequence B replayed: off-track +1 (flush → total 1), collision-car +3 at +4.1 s (flush → **total 4**, `collision-car`) — the reported bug;
+  - the capture's sequence C replayed: off-track +1, then +1 with the byte arriving 2 frames AFTER the count (flush → total 2, `out-of-control`) — the late-type/dropped-increment bug;
+  - `D == V(T)` starts a new sequence even inside the open window (two off-tracks 5 s apart → two total-1 announcements);
+  - arithmetic reopen: off-track, >6 s quiet, collision-car +3 → corrected total 4;
+  - reopen window expiry: same but past 30 s → new sequence, total 3 (accepted degradation);
+  - dirt discipline: `collision-car` D=2 with a Dirt category resolves as a NEW 2x sequence, not an upgrade;
+  - value cap: a sequence at the discipline max never upgrades;
+  - conservative continuation for an unknown-arithmetic increment inside the window;
+  - untyped-only sequence stays silent; a later typed increment announces the full total;
+  - pit-lane suppression clears all sequence state including reopen memory;
+  - existing `classifyIncident` cases unchanged.
 - Audio-scenarios tests: the stash reads `total`; zero/missing total skips the count clause.
 
 ## Affected artifacts (beyond code)
