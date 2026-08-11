@@ -135,6 +135,19 @@ The fast-repair line in both readbacks is **damage-aware**: the engineer stays s
 
 Drivers focused on the racing line can miss small impacts — a tap on the wall, an inside-line bump. The Race Engineer fires a spoken heads-up the first time iRacing reports damage that requires repair, so you know to consider a pit stop without having to look away from the track. The callout fires once on each clean → damaged transition (after a short debounce window that filters frame-rate flicker), and re-fires after a repair if you pick up new damage later.
 
+## Incident callouts
+
+When iRacing charges you with an incident, the Race Engineer tells you what it saw and what it cost — one line per incident category, spoken a moment after the sim reports it (a quick multi-stage crash collapses into a single call with the worst outcome):
+
+- **Off track** — the track-limits nudge ("Watch the curbs.") when four wheels leave the racing surface. No point count — you felt it.
+- **Out of control** — a composure line after a spin. No point count. Off by default — a spin is usually obvious to the driver.
+- **Contact (wall)** — a light brush against the wall or an object; it carries no penalty points, so no count is spoken.
+- **Collision (wall)** — a proper wall hit, with the point count spoken: *"That cost us two penalty points."*
+- **Contact (car)** — light car-to-car contact; no points, no count.
+- **Collision (car)** — heavy car-to-car contact, with the point count spoken.
+
+The spoken count is **the value iRacing actually scores for the incident** — the Sporting Code value of the detected incident category, resolved per discipline, so heavy car contact is announced as four points on pavement but two points in dirt racing. iRacing scores a multi-stage crash as one incident that escalates to its worst outcome: go off track and end up in the wall a few seconds later and the whole thing is a single two-point incident, not one plus two. The engineer follows that model — each escalation announces the incident's full current value, and a worse outcome that lands after an earlier stage was already announced corrects it, cutting the earlier line off mid-sentence if it's still playing. If no matching count line exists for the active voice, the engineer describes the contact without naming a number.
+
 ## Pit Service Status
 
 Once the car is in the box, iRacing's status display tells you whether the crew is working, whether you're parked correctly, and whether the queued damage repair is actually feasible. The Race Engineer reads each of those state transitions out loud so you don't have to glance at the status box mid-stop:
@@ -381,6 +394,12 @@ Disabling a status only suppresses future events of that subject; an in-flight c
 Under **Damage**, one callout is toggleable, enabled by default:
 
 - **Repair needed** — the spoken heads-up the engineer plays the first time iRacing reports damage that requires repair (rising edge of `EngineWarnings & (MandRepNeeded | OptRepNeeded)`). Disabling this only silences the live damage callout; the pit-service readback's damage-aware fast-repair line is unaffected.
+
+Under **Incidents**, six callouts are toggleable — one per incident category (see [Incident callouts](#incident-callouts) above for the full behavior). All are enabled by default except Out of control:
+
+- **Off track** (`calloutEnabledIncidentOffTrack`), **Out of control** (`calloutEnabledIncidentOutOfControl`, off by default — a spin is usually obvious to the driver)
+- **Contact (wall)** (`calloutEnabledIncidentContactWorld`), **Collision (wall)** (`calloutEnabledIncidentCollisionWorld`)
+- **Contact (car)** (`calloutEnabledIncidentContactCar`), **Collision (car)** (`calloutEnabledIncidentCollisionCar`)
 
 Under **Session Start**, one callout is toggleable, enabled by default:
 
