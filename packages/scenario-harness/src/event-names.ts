@@ -146,8 +146,9 @@ export const EVENT_TEMPLATES = [
   // ── Incidents / off-track ──
   {
     name: "incident.occurred",
-    description: "Player picked up an incident — `type` is the IncidentType discriminator (issue #530)",
-    data: { delta: 1, type: "off-track" },
+    description:
+      "Player picked up an incident — `type` is the IncidentType discriminator (issue #530); `points` is the spoken Sporting Code value of the type, `delta` the raw count movement (issue #938)",
+    data: { delta: 1, points: 1, type: "off-track" },
   },
   { name: "offTrack.started", description: "Player went off track", data: {} },
   { name: "offTrack.ended", description: "Player returned to track", data: {} },

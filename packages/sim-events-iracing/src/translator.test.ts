@@ -1524,6 +1524,8 @@ describe("sim-events-iracing translator", () => {
       vi.advanceTimersByTime(1500);
       controller.__tick(telemetry({ PlayerCarMyIncidentCount: 1 }));
       expect(handler).toHaveBeenCalledTimes(1);
+      const data = (handler.mock.calls[0]![0] as SimEventOf<"incident.occurred">).data;
+      expect(data).toEqual({ delta: 1, points: 1, type: "off-track" });
     });
 
     it("coalesces a multi-step incident burst into a single emission with the most-recent type", () => {
@@ -1534,30 +1536,31 @@ describe("sim-events-iracing translator", () => {
       bus.subscribe("incident.occurred", handler);
       initializeSimEventsIracing(bus, controller, createMockLogger());
 
-      // A typical iRacing crash arrives as a stream of count increments
-      // over a few hundred ms. Without coalescing each step would fire
-      // its own callout — three lines on top of each other.
+      // A typical iRacing crash arrives as a stream of count increments over
+      // a few hundred ms, each the MARGINAL upgrade toward the sequence's
+      // worst outcome (#938 capture): off-track +1, out-of-control +1
+      // (2 − 1), car collision +2 (4 − 2). Without coalescing each step
+      // would fire its own callout — three lines on top of each other.
       controller.__tick(telemetry({ PlayerCarMyIncidentCount: 0 }));
       // off-track first (1x)
       controller.__tick(telemetry({ PlayerCarMyIncidentCount: 1, PlayerIncidents: IncidentFlags.RepOffTrack }));
       vi.advanceTimersByTime(200);
-      // out-of-control (2x more) shortly after
-      controller.__tick(telemetry({ PlayerCarMyIncidentCount: 3, PlayerIncidents: IncidentFlags.RepOutOfControl }));
+      // upgraded to out-of-control (2x total) shortly after
+      controller.__tick(telemetry({ PlayerCarMyIncidentCount: 2, PlayerIncidents: IncidentFlags.RepOutOfControl }));
       vi.advanceTimersByTime(200);
-      // car collision (4x more) lands the worst classification last
-      controller.__tick(telemetry({ PlayerCarMyIncidentCount: 7, PlayerIncidents: IncidentFlags.RepCollisionWithCar }));
+      // upgraded to a car collision (4x total) — the worst classification last
+      controller.__tick(telemetry({ PlayerCarMyIncidentCount: 4, PlayerIncidents: IncidentFlags.RepCollisionWithCar }));
 
       // Still inside the burst window — no emit yet.
       expect(handler).not.toHaveBeenCalled();
 
-      // Quiet window elapses; one emit with the accumulated delta and the
-      // most recent type.
+      // Quiet window elapses; one emit with the most recent type and its
+      // Sporting Code value as the spoken points.
       vi.advanceTimersByTime(1500);
-      controller.__tick(telemetry({ PlayerCarMyIncidentCount: 7 }));
+      controller.__tick(telemetry({ PlayerCarMyIncidentCount: 4 }));
       expect(handler).toHaveBeenCalledTimes(1);
       const data = (handler.mock.calls[0]![0] as SimEventOf<"incident.occurred">).data;
-      expect(data.delta).toBe(7);
-      expect(data.type).toBe("collision-car");
+      expect(data).toEqual({ delta: 4, points: 4, type: "collision-car" });
     });
 
     it("treats two incidents separated by more than the quiet window as separate emissions", () => {
@@ -1583,10 +1586,8 @@ describe("sim-events-iracing translator", () => {
       expect(handler).toHaveBeenCalledTimes(2);
       const first = (handler.mock.calls[0]![0] as SimEventOf<"incident.occurred">).data;
       const second = (handler.mock.calls[1]![0] as SimEventOf<"incident.occurred">).data;
-      expect(first.delta).toBe(1);
-      expect(first.type).toBe("off-track");
-      expect(second.delta).toBe(4);
-      expect(second.type).toBe("collision-car");
+      expect(first).toEqual({ delta: 1, points: 1, type: "off-track" });
+      expect(second).toEqual({ delta: 4, points: 4, type: "collision-car" });
     });
 
     it("suppresses incident.occurred when PlayerIncidents is zero or unknown", () => {

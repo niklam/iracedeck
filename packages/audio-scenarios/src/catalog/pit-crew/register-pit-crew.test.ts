@@ -27,7 +27,7 @@ import type { AudioAssetsManifest } from "../../interpreter.js";
 import { _resetAudioScenarios, getScenarioEngine, initializeAudioScenarios } from "../../interpreter.js";
 import { _setFurledRaisedSpoken } from "./flag-alerts.js";
 import { _resetGapCalloutCooldown, _setLastGapEvent } from "./gaps.js";
-import { _resetLastIncidentDelta } from "./incidents.js";
+import { _resetLastIncidentPoints } from "./incidents.js";
 import {
   _resetOpponentPitPending,
   type DamageCalloutId,
@@ -532,7 +532,7 @@ afterEach(() => {
   _resetRadarEngine();
   _resetSpotterEngine();
   _setFurledRaisedSpoken(false);
-  _resetLastIncidentDelta();
+  _resetLastIncidentPoints();
   vi.clearAllMocks();
 });
 
@@ -974,7 +974,7 @@ describe("damage callout live gating (issue #489)", () => {
 
 describe("incident callout live gating (issue #530)", () => {
   it.each(ALL_INCIDENT_IDS)("%s fires when its toggle is enabled", (id) => {
-    bus.publishEvent("incident.occurred", { delta: 1, type: id } as never);
+    bus.publishEvent("incident.occurred", { delta: 1, points: 1, type: id } as never);
     flush(audio);
 
     const matched = voiceClipsPlayed().some((p) => p.includes(`/incidents/${id}-`));
@@ -983,7 +983,7 @@ describe("incident callout live gating (issue #530)", () => {
 
   it.each(ALL_INCIDENT_IDS)("%s is suppressed when its toggle is off", (id) => {
     incidentEnabled.set(id, false);
-    bus.publishEvent("incident.occurred", { delta: 1, type: id } as never);
+    bus.publishEvent("incident.occurred", { delta: 1, points: 1, type: id } as never);
     flush(audio);
 
     expect(voiceClipsPlayed()).toEqual([]);
@@ -991,21 +991,21 @@ describe("incident callout live gating (issue #530)", () => {
 
   it("logs a debug line on suppression", () => {
     incidentEnabled.set("collision-car", false);
-    bus.publishEvent("incident.occurred", { delta: 4, type: "collision-car" } as never);
+    bus.publishEvent("incident.occurred", { delta: 4, points: 4, type: "collision-car" } as never);
 
     expect(mockLogger.debug).toHaveBeenCalledWith("incident callout suppressed: collision-car");
   });
 
   it("disabling one category does not affect another (per-id isolation)", () => {
     incidentEnabled.set("out-of-control", false);
-    bus.publishEvent("incident.occurred", { delta: 1, type: "off-track" } as never);
+    bus.publishEvent("incident.occurred", { delta: 1, points: 1, type: "off-track" } as never);
     flush(audio);
 
     expect(voiceClipsPlayed().some((p) => p.includes("/incidents/off-track-"))).toBe(true);
   });
 
   it("toggling off mid-clip does not cut the in-flight callout", () => {
-    bus.publishEvent("incident.occurred", { delta: 4, type: "collision-car" } as never);
+    bus.publishEvent("incident.occurred", { delta: 4, points: 4, type: "collision-car" } as never);
     expect(audio._played.length).toBeGreaterThan(0);
 
     incidentEnabled.set("collision-car", false);
@@ -1016,12 +1016,12 @@ describe("incident callout live gating (issue #530)", () => {
 
   it("re-enabling restores future fires", () => {
     incidentEnabled.set("off-track", false);
-    bus.publishEvent("incident.occurred", { delta: 1, type: "off-track" } as never);
+    bus.publishEvent("incident.occurred", { delta: 1, points: 1, type: "off-track" } as never);
     flush(audio);
     expect(voiceClipsPlayed()).toEqual([]);
 
     incidentEnabled.set("off-track", true);
-    bus.publishEvent("incident.occurred", { delta: 1, type: "off-track" } as never);
+    bus.publishEvent("incident.occurred", { delta: 1, points: 1, type: "off-track" } as never);
     flush(audio);
 
     expect(voiceClipsPlayed().some((p) => p.includes("/incidents/off-track-"))).toBe(true);
@@ -1040,7 +1040,7 @@ describe("incident callout live gating (issue #530)", () => {
     (sessionType) => {
       mockSessionType.mockReturnValue(sessionType);
       audio._played.length = 0;
-      bus.publishEvent("incident.occurred", { delta: 1, type: "off-track" } as never);
+      bus.publishEvent("incident.occurred", { delta: 1, points: 1, type: "off-track" } as never);
       flush(audio);
 
       expect(voiceClipsPlayed().some((p) => p.includes("/incidents/off-track-"))).toBe(true);
@@ -1048,15 +1048,18 @@ describe("incident callout live gating (issue #530)", () => {
   );
 });
 
-// Issue #922: the spoken point count is composed from the event payload's
-// `delta` (a `pool:incidents/points-<delta>` value clip appended after the
-// type-flavored intro), never a type-assumed constant baked into the intro
-// wording. A delta with no matching clip skips the count clause (issue #835
-// optional-group semantics) so the intro still plays with no number.
+// Issue #922 / #938: the spoken point count is composed from the event
+// payload's `points` — the incident's value as the sim scores it (the
+// discipline-resolved Sporting Code value of the classified type) — as a
+// `pool:incidents/points-<points>` value clip appended after the
+// type-flavored intro, never a type-assumed constant baked into the intro
+// wording and never the raw count `delta`. A points value with no matching
+// clip skips the count clause (issue #835 optional-group semantics) so the
+// intro still plays with no number.
 describe("incident point-count composition (issue #922)", () => {
-  it("collision-car speaks the detected delta, not a type-assumed count", () => {
+  it("collision-car speaks the payload's points, not a type-assumed count", () => {
     // The dirt-track case from the issue: car collision awarded 2x, not 4x.
-    bus.publishEvent("incident.occurred", { delta: 2, type: "collision-car" } as never);
+    bus.publishEvent("incident.occurred", { delta: 2, points: 2, type: "collision-car" } as never);
     flush(audio);
 
     const clips = voiceClipsPlayed();
@@ -1069,7 +1072,7 @@ describe("incident point-count composition (issue #922)", () => {
   });
 
   it("collision-world speaks its detected count", () => {
-    bus.publishEvent("incident.occurred", { delta: 2, type: "collision-world" } as never);
+    bus.publishEvent("incident.occurred", { delta: 2, points: 2, type: "collision-world" } as never);
     flush(audio);
 
     const clips = voiceClipsPlayed();
@@ -1078,14 +1081,25 @@ describe("incident point-count composition (issue #922)", () => {
   });
 
   it("collision-car with the full 4x award speaks four points", () => {
-    bus.publishEvent("incident.occurred", { delta: 4, type: "collision-car" } as never);
+    bus.publishEvent("incident.occurred", { delta: 4, points: 4, type: "collision-car" } as never);
     flush(audio);
 
     expect(voiceClipsPlayed()).toContain(`voice/${VOICE}/incidents/points-4.mp3`);
   });
 
+  it("speaks points, not delta, when an escalation's marginal differs (issue #938)", () => {
+    // Off-track upgraded to a car collision: the count moved +3 (4 − 1) but
+    // the incident is worth 4x — the engineer must say four, never three.
+    bus.publishEvent("incident.occurred", { delta: 3, points: 4, type: "collision-car" } as never);
+    flush(audio);
+
+    const clips = voiceClipsPlayed();
+    expect(clips).toContain(`voice/${VOICE}/incidents/points-4.mp3`);
+    expect(clips).not.toContain(`voice/${VOICE}/incidents/points-3.mp3`);
+  });
+
   it("contact-car with detected points speaks the count too", () => {
-    bus.publishEvent("incident.occurred", { delta: 1, type: "contact-car" } as never);
+    bus.publishEvent("incident.occurred", { delta: 1, points: 1, type: "contact-car" } as never);
     flush(audio);
 
     const clips = voiceClipsPlayed();
@@ -1094,7 +1108,7 @@ describe("incident point-count composition (issue #922)", () => {
   });
 
   it("speaks no count when the delta has no matching value clip", () => {
-    bus.publishEvent("incident.occurred", { delta: 9, type: "collision-car" } as never);
+    bus.publishEvent("incident.occurred", { delta: 9, points: 9, type: "collision-car" } as never);
     flush(audio);
 
     const clips = voiceClipsPlayed();
@@ -1103,7 +1117,7 @@ describe("incident point-count composition (issue #922)", () => {
   });
 
   it("speaks no count for a zero delta (harness-style light contact)", () => {
-    bus.publishEvent("incident.occurred", { delta: 0, type: "contact-world" } as never);
+    bus.publishEvent("incident.occurred", { delta: 0, points: 0, type: "contact-world" } as never);
     flush(audio);
 
     const clips = voiceClipsPlayed();
@@ -1112,9 +1126,9 @@ describe("incident point-count composition (issue #922)", () => {
   });
 
   it("off-track and out-of-control keep their no-count lines", () => {
-    bus.publishEvent("incident.occurred", { delta: 1, type: "off-track" } as never);
+    bus.publishEvent("incident.occurred", { delta: 1, points: 1, type: "off-track" } as never);
     flush(audio);
-    bus.publishEvent("incident.occurred", { delta: 2, type: "out-of-control" } as never);
+    bus.publishEvent("incident.occurred", { delta: 2, points: 2, type: "out-of-control" } as never);
     flush(audio);
 
     const clips = voiceClipsPlayed();
@@ -1140,12 +1154,12 @@ describe("incident point-count composition (issue #922)", () => {
     bus.publishEvent("offTrack.started", {} as never);
 
     // Queued behind the in-flight chatter (higher weight, no interrupt).
-    bus.publishEvent("incident.occurred", { delta: 2, type: "contact-car" } as never);
+    bus.publishEvent("incident.occurred", { delta: 2, points: 2, type: "contact-car" } as never);
 
     // Later incident whose own callout is disabled — must not fire AND must
     // not disturb the queued contact-car fire's count.
     incidentEnabled.set("collision-car", false);
-    bus.publishEvent("incident.occurred", { delta: 4, type: "collision-car" } as never);
+    bus.publishEvent("incident.occurred", { delta: 4, points: 4, type: "collision-car" } as never);
 
     // Chatter finishes → the pending contact-car fire drains and expands.
     flush(audio);
@@ -1512,7 +1526,7 @@ describe("Race Engineer master gate (issue #515)", () => {
 
   it.each(ALL_INCIDENT_IDS)("master gate off blocks incident callouts (%s)", (id) => {
     voiceMasterEnabled = false;
-    bus.publishEvent("incident.occurred", { delta: 1, type: id } as never);
+    bus.publishEvent("incident.occurred", { delta: 1, points: 1, type: id } as never);
     flush(audio);
 
     expect(voiceClipsPlayed()).toEqual([]);

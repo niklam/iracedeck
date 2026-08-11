@@ -119,7 +119,7 @@ function qualifyingInvalidation(
     lapStartedFromPits?: boolean;
     lapCounted?: boolean;
   },
-  options: { description?: string; incidentType?: string; delta?: number } = {},
+  options: { description?: string; incidentType?: string; delta?: number; points?: number } = {},
 ): ScenarioShortcut {
   return {
     id: `qualifying-invalidation-${id}`,
@@ -127,7 +127,11 @@ function qualifyingInvalidation(
     label,
     description: options.description,
     event: "incident.occurred",
-    data: { delta: options.delta ?? 1, type: options.incidentType ?? "off-track" },
+    data: {
+      delta: options.delta ?? 1,
+      points: options.points ?? options.delta ?? 1,
+      type: options.incidentType ?? "off-track",
+    },
     qualifyingInvalidationSnapshot: { lapStartedFromPits: false, lapCounted: true, ...snapshot },
   };
 }
@@ -574,11 +578,11 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
 
   // ── Incidents ──
   // One shortcut per IncidentType the bus publishes (issue #530), plus
-  // delta-varied buttons (issue #922). The diff classifies the iRacing
-  // report byte before publishing, so the harness mirrors that vocabulary
-  // directly. Per-type point weights are NOT fixed across iRacing content
-  // (dirt-road car contact scores 2x, not 4x) — the spoken count is always
-  // composed from `delta`, the new points detected for the incident, so the
+  // value-varied buttons (issues #922 / #938). The diff classifies the
+  // iRacing report byte before publishing, so the harness mirrors that
+  // vocabulary directly. The spoken count is always composed from `points`
+  // — the incident's value as the sim scores it (discipline-resolved:
+  // dirt car contact is 2x, not 4x) — never the raw count `delta`, so the
   // varied buttons exercise count selection without iRacing.
   {
     id: "incident-off-track",
@@ -586,7 +590,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     label: "Off Track (1x)",
     description: "Track-limits nudge — `Mind the track limits` etc.",
     event: "incident.occurred",
-    data: { delta: 1, type: "off-track" },
+    data: { delta: 1, points: 1, type: "off-track" },
   },
   {
     id: "incident-out-of-control",
@@ -594,7 +598,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     label: "Out of Control (2x)",
     description: "Spin / loss of control — composure callout (default off in PI).",
     event: "incident.occurred",
-    data: { delta: 2, type: "out-of-control" },
+    data: { delta: 2, points: 2, type: "out-of-control" },
   },
   {
     id: "incident-contact-world",
@@ -602,7 +606,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     label: "Contact — Wall (0x)",
     description: "Light wall rub — intro only, no count clause for a zero delta.",
     event: "incident.occurred",
-    data: { delta: 0, type: "contact-world" },
+    data: { delta: 0, points: 0, type: "contact-world" },
   },
   {
     id: "incident-collision-world",
@@ -610,7 +614,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     label: "Collision — Wall (2x)",
     description: "Heavier wall hit — engineer announces the detected 2-point count.",
     event: "incident.occurred",
-    data: { delta: 2, type: "collision-world" },
+    data: { delta: 2, points: 2, type: "collision-world" },
   },
   {
     id: "incident-contact-car",
@@ -618,7 +622,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     label: "Contact — Car (0x)",
     description: "Light car-to-car rub — intro only, no count clause for a zero delta.",
     event: "incident.occurred",
-    data: { delta: 0, type: "contact-car" },
+    data: { delta: 0, points: 0, type: "contact-car" },
   },
   {
     id: "incident-contact-car-1x",
@@ -626,7 +630,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     label: "Contact — Car (1x)",
     description: "Car contact that scored a point — contact intro plus one-point count.",
     event: "incident.occurred",
-    data: { delta: 1, type: "contact-car" },
+    data: { delta: 1, points: 1, type: "contact-car" },
   },
   {
     id: "incident-collision-car",
@@ -634,7 +638,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     label: "Collision — Car (4x)",
     description: "Heavier car-to-car hit — engineer announces the detected 4-point count.",
     event: "incident.occurred",
-    data: { delta: 4, type: "collision-car" },
+    data: { delta: 4, points: 4, type: "collision-car" },
   },
   {
     id: "incident-collision-car-2x",
@@ -642,7 +646,16 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     label: "Collision — Car (2x, dirt)",
     description: "The issue #922 repro: dirt-road car collision scoring 2x — announces two points, not four.",
     event: "incident.occurred",
-    data: { delta: 2, type: "collision-car" },
+    data: { delta: 2, points: 2, type: "collision-car" },
+  },
+  {
+    id: "incident-collision-car-escalated",
+    category: "Incidents",
+    label: "Collision — Car (escalated)",
+    description:
+      "The issue #938 repro: an off-track upgraded to a car collision — the count moved +3 but the incident is worth 4x, so the engineer announces four points, never three.",
+    event: "incident.occurred",
+    data: { delta: 3, points: 4, type: "collision-car" },
   },
   {
     id: "off-track-started",
