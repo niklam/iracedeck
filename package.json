@@ -42,7 +42,7 @@
     "switch-test-env:stream-deck": "pnpm install && pnpm build && pnpm relink:stream-deck",
     "switch-test-env:mirabox": "pnpm install && pnpm build && pnpm relink:mirabox",
     "telemetry-snapshot": "pnpm --filter @iracedeck/iracing-sdk telemetry-snapshot -- --include-session --output-dir=local",
-    "telemetry-watch": "pnpm --filter @iracedeck/iracing-sdk telemetry-watch -- --output-dir=local",
+    "telemetry-watch": "pnpm --filter @iracedeck/iracing-sdk telemetry-watch --output-dir=local",
     "watch:stream-deck": "pnpm --filter \"@iracedeck/iracing-plugin-stream-deck\" run watch",
     "release": "node scripts/release.mjs",
     "release:dry": "node scripts/release.mjs --dry-run",

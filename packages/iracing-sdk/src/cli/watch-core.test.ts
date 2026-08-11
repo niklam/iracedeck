@@ -46,6 +46,33 @@ describe("parseWatchArgs", () => {
     expect(options.vars).toEqual(["Speed", "Gear"]);
   });
 
+  it("splits space-separated vars (pnpm run mangles commas into spaces when forwarding args)", () => {
+    const { options, error } = parseWatchArgs(["--vars=PlayerIncidents PlayerCarMyIncidentCount IsOnTrack"]);
+
+    expect(error).toBeNull();
+    expect(options.vars).toEqual(["PlayerIncidents", "PlayerCarMyIncidentCount", "IsOnTrack"]);
+  });
+
+  it("splits mixed comma/space separators", () => {
+    const { options } = parseWatchArgs(["--vars=Speed, Gear  RPM"]);
+
+    expect(options.vars).toEqual(["Speed", "Gear", "RPM"]);
+  });
+
+  it("accumulates repeated --vars flags", () => {
+    const { options } = parseWatchArgs(["--vars=Speed", "--vars=Gear,RPM"]);
+
+    expect(options.vars).toEqual(["Speed", "Gear", "RPM"]);
+  });
+
+  it("skips a literal -- separator (pnpm run forwards it verbatim)", () => {
+    const { options, error } = parseWatchArgs(["--", "--output-dir=local", "--vars=Speed"]);
+
+    expect(error).toBeNull();
+    expect(options.outputDir).toBe("local");
+    expect(options.vars).toEqual(["Speed"]);
+  });
+
   it("errors when --vars is missing", () => {
     const { error } = parseWatchArgs([]);
 

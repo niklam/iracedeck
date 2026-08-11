@@ -56,16 +56,23 @@ export function parseWatchArgs(args: string[]): { options: WatchOptions; error: 
   let error: string | null = null;
 
   for (const arg of args) {
-    if (arg === "--help" || arg === "-h") {
+    if (arg === "--") {
+      // pnpm run forwards a `--` separator to the script verbatim — skip it.
+      continue;
+    } else if (arg === "--help" || arg === "-h") {
       options.help = true;
     } else if (arg === "--verbose" || arg === "-v") {
       options.verbose = true;
     } else if (arg.startsWith("--vars=")) {
-      options.vars = arg
-        .slice("--vars=".length)
-        .split(",")
-        .map((v) => v.trim())
-        .filter((v) => v.length > 0);
+      // Split on commas AND whitespace: pnpm run mangles a comma-separated
+      // value into a space-separated one when forwarding args to a script,
+      // so `--vars=A,B` can arrive as `--vars=A B`. Repeated flags append.
+      options.vars.push(
+        ...arg
+          .slice("--vars=".length)
+          .split(/[\s,]+/)
+          .filter((v) => v.length > 0),
+      );
     } else if (arg.startsWith("--mode=")) {
       const mode = arg.slice("--mode=".length);
 
