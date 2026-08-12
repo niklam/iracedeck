@@ -555,9 +555,10 @@ const SCENARIO_ID_TO_PIT_STATUS_ID: Record<string, PitStatusCalloutId> = {
 
 /**
  * Stable identifier for each user-toggleable incident callout (issue #530).
- * Mirrors the bus's `IncidentType` discriminator one-to-one. `out-of-control`
- * defaults `false` in the schema (the spin is usually obvious to the
- * driver); the other five default `true`.
+ * Mirrors the bus's `IncidentType` discriminator one-to-one. All six
+ * default `true` in `GlobalSettingsSchema` (verified in the #938 review —
+ * an earlier revision of this comment wrongly claimed `out-of-control`
+ * defaulted off).
  */
 export type IncidentCalloutId =
   "off-track" | "out-of-control" | "contact-world" | "collision-world" | "contact-car" | "collision-car";

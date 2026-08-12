@@ -521,15 +521,21 @@ export type SimEventMap = {
   "damage.repairNeeded.raised": SimEvent<"damage.repairNeeded.raised", EmptySimEventPayload>;
 
   /**
-   * Player incident bumped the count (issue #530). `delta` carries the raw
-   * count delta (1 / 2 / 4 in iRacing's scoring) so consumers that only care
-   * about magnitude can use it directly. `type` carries the {@link IncidentType}
-   * discriminator so audio scenarios can branch one callout per category
-   * (off-track nudge, composure prompt, light contact, penalty-bearing
-   * collision). Translators must omit emission when the incident type is
+   * Player incident announcement (issue #530; value model #938). `points` is
+   * the incident's value as the sim scores it — for iRacing, the Sporting
+   * Code §3.5.1 table value of the classified type, discipline-resolved
+   * (heavy car contact: 4x pavement / 2x dirt). An incident sequence
+   * escalates to its worst outcome (§3.5.2), so this IS the sequence's
+   * total, and it is the number audio speaks; `0` (contact types) means no
+   * count is spoken. `delta` carries the raw count movement the emission
+   * coalesced (informational — it under-reports an escalation that spans
+   * announcement windows, which is why it is never spoken). `type` carries
+   * the highest-scored classified {@link IncidentType} of the coalesced
+   * burst (ties → latest) so audio scenarios can branch one callout per
+   * category. Translators must omit emission when the incident type is
    * unknown — every fire MUST set `type`.
    */
-  "incident.occurred": SimEvent<"incident.occurred", { delta: number; type: IncidentType }>;
+  "incident.occurred": SimEvent<"incident.occurred", { delta: number; points: number; type: IncidentType }>;
   "offTrack.started": SimEvent<"offTrack.started", EmptySimEventPayload>;
   "offTrack.ended": SimEvent<"offTrack.ended", EmptySimEventPayload>;
 

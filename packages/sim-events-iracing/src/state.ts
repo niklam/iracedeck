@@ -380,17 +380,20 @@ export type TranslatorState = {
   // `pendingIncidentTypeAt` is 0 when no type is pending.
   pendingIncidentType: IncidentType | null;
   pendingIncidentTypeAt: number; // 0 = no pending; >0 = ms timestamp captured at
-  // Burst-coalesce buffer (issue #530). A single physical incident in
-  // iRacing (one crash) often arrives as a stream of count increments
-  // over ~hundreds of ms — e.g. off-track (1x) → out-of-control (2x) →
-  // collision-with-car (4x). Without coalescing, each step fires a
-  // separate callout and the engineer talks over himself. We hold the
-  // most recent classification + accumulated delta in a buffer and only
-  // emit once `INCIDENT_BURST_QUIET_MS` has passed without a new
-  // increment, or once `INCIDENT_BURST_MAX_MS` has passed since the
-  // first increment in the burst (hard cap so a sustained roll can't
-  // delay the announcement indefinitely). `incidentBurstFirstAt` is 0
-  // when no burst is pending.
+  // Burst-coalesce buffer (issue #530; value model #938). A single physical
+  // incident in iRacing (one crash) often arrives as a stream of count
+  // increments — each step the MARGINAL upgrade toward the sequence's worst
+  // outcome. Without coalescing, each step fires a separate callout and the
+  // engineer talks over himself. We hold the most recent classification +
+  // accumulated raw delta in a buffer and only emit once
+  // `INCIDENT_BURST_QUIET_MS` has passed without a new increment, or once
+  // `INCIDENT_BURST_MAX_MS` has passed since the first increment (hard cap
+  // so a sustained roll can't delay the announcement indefinitely). The
+  // burst may be UNTYPED (the report byte can trail its count increment;
+  // the late-type window retypes it) — an untyped burst flushes silently.
+  // The emitted `points` value is the type's discipline-resolved Sporting
+  // Code value, never the accumulated delta (#938). `incidentBurstFirstAt`
+  // is 0 when no burst is pending.
   incidentBurstType: IncidentType | null;
   incidentBurstDelta: number;
   incidentBurstFirstAt: number; // 0 = no pending burst; >0 = ms timestamp of first increment

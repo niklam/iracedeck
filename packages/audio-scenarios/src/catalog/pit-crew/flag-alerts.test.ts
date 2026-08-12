@@ -760,7 +760,7 @@ describe("FLAG_ALERTS yellow-cleared delivery + waving debounce (issue #671)", (
       sequence: ["flags/red-01.mp3"],
     });
 
-    bus.publishEvent("incident.occurred", { delta: 1, type: "off-track" });
+    bus.publishEvent("incident.occurred", { delta: 1, points: 1, type: "off-track" });
     // Don't flush — the blocker holds the Voice bus.
     bus.publishEvent("flag.yellow.cleared", {});
     flush(audio);
@@ -831,7 +831,7 @@ describe("FLAG_ALERTS penalty-flag delivery (issue #923)", () => {
   ])("$event defers behind an equal-weight non-flag line and replays at idle (queueable)", ({ event, clip }) => {
     defineBlocker();
 
-    bus.publishEvent("incident.occurred", { delta: 1, type: "off-track" });
+    bus.publishEvent("incident.occurred", { delta: 1, points: 1, type: "off-track" });
     // Don't flush — the blocker holds the Voice bus.
     bus.publishEvent(event, {});
     flush(audio);
@@ -849,7 +849,7 @@ describe("FLAG_ALERTS penalty-flag delivery (issue #923)", () => {
   ])("$event defers behind a HIGHER-weight non-flag line and replays at idle (queueable)", ({ event, clip }) => {
     defineBlocker(WEIGHT.CRITICAL);
 
-    bus.publishEvent("incident.occurred", { delta: 1, type: "off-track" });
+    bus.publishEvent("incident.occurred", { delta: 1, points: 1, type: "off-track" });
     // Don't flush — the critical blocker holds the Voice bus.
     bus.publishEvent(event, {});
     flush(audio);
@@ -860,7 +860,7 @@ describe("FLAG_ALERTS penalty-flag delivery (issue #923)", () => {
   it("a disqualify raised while the black line waits replaces it — only the DQ line plays (escalation)", () => {
     defineBlocker();
 
-    bus.publishEvent("incident.occurred", { delta: 1, type: "off-track" });
+    bus.publishEvent("incident.occurred", { delta: 1, points: 1, type: "off-track" });
     // Don't flush — the blocker holds the Voice bus; the black fire defers.
     bus.publishEvent("flag.black.raised", {});
     // The penalty escalates while the black line waits: the queueable DQ fire

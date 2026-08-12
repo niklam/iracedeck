@@ -171,7 +171,7 @@ let qualifyingEnabled: boolean;
 
 function fire(data: QualifyingInvalidationSnapshot | null): void {
   lastSnapshot = data;
-  bus.publishEvent("incident.occurred", { delta: 1, type: "off-track" });
+  bus.publishEvent("incident.occurred", { delta: 1, points: 1, type: "off-track" });
   flush(audio);
 }
 
