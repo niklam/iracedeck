@@ -106,6 +106,10 @@ The Mirabox (Stream Dock) store description renders **no markdown**, so anything
 - Write variable tokens and quoted names as plain text — e.g. `focused`, "Your Name" — not in backticks or italics.
 - Same content as the Marketplace version, stripped of all formatting. No footer link.
 
+## Store descriptions — drift check (every release)
+
+The permanent product descriptions on the Elgato Marketplace and Mirabox Space listings live only in the store dashboards, so nothing forces them to track the product. **As part of every release's notes preparation, check them for drift** against `docs/reference/store-descriptions.md` — the canonical copies plus a table of the embedded facts that go stale (action counts, dial-capable count, headline features, supported devices, requirements versions). If the release changed any of those facts, propose refreshed description texts alongside the release notes and update the canonical file (and its "Last synced" line) when they're published.
+
 ## Reference example
 
 The v1.21.0 Discord post is the canonical style reference. Match its tone (concise, benefit-led, racing-flavored) and its `## :emoji: Section` structure. (Its old closing cross-promoted the stores "in a couple of days" — that line is dropped; announcements now end with just the **Download** link, plus `@everyone` on Discord.)
