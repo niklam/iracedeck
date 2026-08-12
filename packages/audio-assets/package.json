@@ -1,6 +1,6 @@
 {
   "name": "@iracedeck/audio-assets",
-  "version": "2.4.0-dev.0",
+  "version": "2.4.0",
   "description": "Shared audio assets (MP3) for iRaceDeck plugins",
   "type": "module",
   "exports": {

@@ -1,6 +1,6 @@
 {
   "name": "@iracedeck/event-bus",
-  "version": "2.4.0-dev.0",
+  "version": "2.4.0",
   "description": "Typed pub/sub with a canonical sim-event catalog. Platform- and sim-agnostic.",
   "type": "module",
   "main": "dist/index.js",
