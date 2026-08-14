@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   generateSetupChassisSvg,
+  migrateLegacySpringIds,
   parseSetupChassisSettings,
   SETUP_CHASSIS_GLOBAL_KEYS,
   SetupChassis,
@@ -46,11 +47,11 @@ vi.mock("@iracedeck/icons/setup-chassis/front-arb-decrease.svg", () => ({
 vi.mock("@iracedeck/icons/setup-chassis/front-arb-increase.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">front-arb-increase {{mainLabel}} {{subLabel}}</svg>',
 }));
-vi.mock("@iracedeck/icons/setup-chassis/left-spring-decrease.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">left-spring-decrease {{mainLabel}} {{subLabel}}</svg>',
+vi.mock("@iracedeck/icons/setup-chassis/lr-spring-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">lr-spring-decrease {{mainLabel}} {{subLabel}}</svg>',
 }));
-vi.mock("@iracedeck/icons/setup-chassis/left-spring-increase.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">left-spring-increase {{mainLabel}} {{subLabel}}</svg>',
+vi.mock("@iracedeck/icons/setup-chassis/lr-spring-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">lr-spring-increase {{mainLabel}} {{subLabel}}</svg>',
 }));
 vi.mock("@iracedeck/icons/setup-chassis/lf-shock-decrease.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">lf-shock-decrease {{mainLabel}} {{subLabel}}</svg>',
@@ -82,11 +83,11 @@ vi.mock("@iracedeck/icons/setup-chassis/rf-shock-decrease.svg", () => ({
 vi.mock("@iracedeck/icons/setup-chassis/rf-shock-increase.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">rf-shock-increase {{mainLabel}} {{subLabel}}</svg>',
 }));
-vi.mock("@iracedeck/icons/setup-chassis/right-spring-decrease.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">right-spring-decrease {{mainLabel}} {{subLabel}}</svg>',
+vi.mock("@iracedeck/icons/setup-chassis/rr-spring-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">rr-spring-decrease {{mainLabel}} {{subLabel}}</svg>',
 }));
-vi.mock("@iracedeck/icons/setup-chassis/right-spring-increase.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">right-spring-increase {{mainLabel}} {{subLabel}}</svg>',
+vi.mock("@iracedeck/icons/setup-chassis/rr-spring-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">rr-spring-increase {{mainLabel}} {{subLabel}}</svg>',
 }));
 vi.mock("@iracedeck/icons/setup-chassis/rr-shock-decrease.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">rr-shock-decrease {{mainLabel}} {{subLabel}}</svg>',
@@ -296,20 +297,20 @@ describe("SetupChassis", () => {
       expect(SETUP_CHASSIS_GLOBAL_KEYS["rear-arb-decrease"]).toBe("setupChassisRearArbDecrease");
     });
 
-    it("should have correct mapping for left-spring-increase", () => {
-      expect(SETUP_CHASSIS_GLOBAL_KEYS["left-spring-increase"]).toBe("setupChassisLeftSpringIncrease");
+    it("should have correct mapping for lr-spring-increase", () => {
+      expect(SETUP_CHASSIS_GLOBAL_KEYS["lr-spring-increase"]).toBe("setupChassisLrSpringIncrease");
     });
 
-    it("should have correct mapping for left-spring-decrease", () => {
-      expect(SETUP_CHASSIS_GLOBAL_KEYS["left-spring-decrease"]).toBe("setupChassisLeftSpringDecrease");
+    it("should have correct mapping for lr-spring-decrease", () => {
+      expect(SETUP_CHASSIS_GLOBAL_KEYS["lr-spring-decrease"]).toBe("setupChassisLrSpringDecrease");
     });
 
-    it("should have correct mapping for right-spring-increase", () => {
-      expect(SETUP_CHASSIS_GLOBAL_KEYS["right-spring-increase"]).toBe("setupChassisRightSpringIncrease");
+    it("should have correct mapping for rr-spring-increase", () => {
+      expect(SETUP_CHASSIS_GLOBAL_KEYS["rr-spring-increase"]).toBe("setupChassisRrSpringIncrease");
     });
 
-    it("should have correct mapping for right-spring-decrease", () => {
-      expect(SETUP_CHASSIS_GLOBAL_KEYS["right-spring-decrease"]).toBe("setupChassisRightSpringDecrease");
+    it("should have correct mapping for rr-spring-decrease", () => {
+      expect(SETUP_CHASSIS_GLOBAL_KEYS["rr-spring-decrease"]).toBe("setupChassisRrSpringDecrease");
     });
 
     it("should have correct mapping for lf-shock-increase", () => {
@@ -391,8 +392,8 @@ describe("SetupChassis", () => {
         "differential-exit",
         "front-arb",
         "rear-arb",
-        "left-spring",
-        "right-spring",
+        "lr-spring",
+        "rr-spring",
         "lf-shock",
         "rf-shock",
         "lr-shock",
@@ -431,8 +432,8 @@ describe("SetupChassis", () => {
         "differential-exit",
         "front-arb",
         "rear-arb",
-        "left-spring",
-        "right-spring",
+        "lr-spring",
+        "rr-spring",
         "lf-shock",
         "rf-shock",
         "lr-shock",
@@ -489,13 +490,13 @@ describe("SetupChassis", () => {
           increase: { line1: "REAR ARB", line2: "REAR ARB</svg>" },
           decrease: { line1: "REAR ARB", line2: "REAR ARB</svg>" },
         },
-        "left-spring": {
-          increase: { line1: "LEFT SPRING", line2: "LEFT SPRING</svg>" },
-          decrease: { line1: "LEFT SPRING", line2: "LEFT SPRING</svg>" },
+        "lr-spring": {
+          increase: { line1: "LR SPRING", line2: "LR SPRING</svg>" },
+          decrease: { line1: "LR SPRING", line2: "LR SPRING</svg>" },
         },
-        "right-spring": {
-          increase: { line1: "RIGHT SPRING", line2: "RIGHT SPRING</svg>" },
-          decrease: { line1: "RIGHT SPRING", line2: "RIGHT SPRING</svg>" },
+        "rr-spring": {
+          increase: { line1: "RR SPRING", line2: "RR SPRING</svg>" },
+          decrease: { line1: "RR SPRING", line2: "RR SPRING</svg>" },
         },
         "lf-shock": {
           increase: { line1: "LF SHOCK", line2: "LF SHOCK</svg>" },
@@ -727,6 +728,49 @@ describe("SetupChassis", () => {
       const degraded = parseSetupChassisSettings({ setting: "differential-preload", keyStyle: "hologram" });
       expect(degraded.keyStyle).toBe("legacy");
       expect(degraded.setting).toBe("differential-preload"); // catch keeps the rest of the parse alive
+    });
+  });
+
+  describe("legacy spring id migration (#953)", () => {
+    it("maps persisted left-spring to lr-spring at parse time", () => {
+      const parsed = parseSetupChassisSettings({ setting: "left-spring", direction: "decrease" });
+
+      expect(parsed.setting).toBe("lr-spring");
+      expect(parsed.direction).toBe("decrease");
+    });
+
+    it("maps persisted right-spring to rr-spring at parse time", () => {
+      expect(parseSetupChassisSettings({ setting: "right-spring" }).setting).toBe("rr-spring");
+    });
+
+    it("maps a persisted legacy dial.setting", () => {
+      expect(parseSetupChassisSettings({ dial: { setting: "right-spring" } }).dial.setting).toBe("rr-spring");
+    });
+
+    it("returns a migrated object preserving other fields, and null when nothing is legacy", () => {
+      expect(migrateLegacySpringIds({ setting: "left-spring", direction: "increase", keyStyle: "split" })).toEqual({
+        setting: "lr-spring",
+        direction: "increase",
+        keyStyle: "split",
+      });
+      expect(migrateLegacySpringIds({ dial: { setting: "right-spring", pressAction: "none" } })).toEqual({
+        dial: { setting: "rr-spring", pressAction: "none" },
+      });
+      expect(migrateLegacySpringIds({ setting: "lr-spring" })).toBeNull();
+      expect(migrateLegacySpringIds({ setting: "differential-preload" })).toBeNull();
+      expect(migrateLegacySpringIds(undefined)).toBeNull();
+    });
+
+    it("persists the migrated keypad setting on willAppear", async () => {
+      const action = new SetupChassis();
+      const ev = fakeEvent("action-1", { setting: "left-spring", direction: "increase", keyStyle: "legacy" });
+      (ev.action as Record<string, unknown>).setSettings = vi.fn();
+
+      await action.onWillAppear(ev as any);
+
+      expect((ev.action as unknown as { setSettings: ReturnType<typeof vi.fn> }).setSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ setting: "lr-spring", direction: "increase" }),
+      );
     });
   });
 

@@ -35,22 +35,22 @@ import differentialPreloadDecreaseIconSvg from "@iracedeck/icons/setup-chassis/d
 import differentialPreloadIncreaseIconSvg from "@iracedeck/icons/setup-chassis/differential-preload-increase.svg";
 import frontArbDecreaseIconSvg from "@iracedeck/icons/setup-chassis/front-arb-decrease.svg";
 import frontArbIncreaseIconSvg from "@iracedeck/icons/setup-chassis/front-arb-increase.svg";
-import leftSpringDecreaseIconSvg from "@iracedeck/icons/setup-chassis/left-spring-decrease.svg";
-import leftSpringIncreaseIconSvg from "@iracedeck/icons/setup-chassis/left-spring-increase.svg";
 import lfShockDecreaseIconSvg from "@iracedeck/icons/setup-chassis/lf-shock-decrease.svg";
 import lfShockIncreaseIconSvg from "@iracedeck/icons/setup-chassis/lf-shock-increase.svg";
 import lrShockDecreaseIconSvg from "@iracedeck/icons/setup-chassis/lr-shock-decrease.svg";
 import lrShockIncreaseIconSvg from "@iracedeck/icons/setup-chassis/lr-shock-increase.svg";
+import lrSpringDecreaseIconSvg from "@iracedeck/icons/setup-chassis/lr-spring-decrease.svg";
+import lrSpringIncreaseIconSvg from "@iracedeck/icons/setup-chassis/lr-spring-increase.svg";
 import powerSteeringDecreaseIconSvg from "@iracedeck/icons/setup-chassis/power-steering-decrease.svg";
 import powerSteeringIncreaseIconSvg from "@iracedeck/icons/setup-chassis/power-steering-increase.svg";
 import rearArbDecreaseIconSvg from "@iracedeck/icons/setup-chassis/rear-arb-decrease.svg";
 import rearArbIncreaseIconSvg from "@iracedeck/icons/setup-chassis/rear-arb-increase.svg";
 import rfShockDecreaseIconSvg from "@iracedeck/icons/setup-chassis/rf-shock-decrease.svg";
 import rfShockIncreaseIconSvg from "@iracedeck/icons/setup-chassis/rf-shock-increase.svg";
-import rightSpringDecreaseIconSvg from "@iracedeck/icons/setup-chassis/right-spring-decrease.svg";
-import rightSpringIncreaseIconSvg from "@iracedeck/icons/setup-chassis/right-spring-increase.svg";
 import rrShockDecreaseIconSvg from "@iracedeck/icons/setup-chassis/rr-shock-decrease.svg";
 import rrShockIncreaseIconSvg from "@iracedeck/icons/setup-chassis/rr-shock-increase.svg";
+import rrSpringDecreaseIconSvg from "@iracedeck/icons/setup-chassis/rr-spring-decrease.svg";
+import rrSpringIncreaseIconSvg from "@iracedeck/icons/setup-chassis/rr-spring-increase.svg";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
@@ -86,10 +86,10 @@ const SETUP_CHASSIS_ICONS: Record<string, string> = {
   "front-arb-decrease": frontArbDecreaseIconSvg,
   "rear-arb-increase": rearArbIncreaseIconSvg,
   "rear-arb-decrease": rearArbDecreaseIconSvg,
-  "left-spring-increase": leftSpringIncreaseIconSvg,
-  "left-spring-decrease": leftSpringDecreaseIconSvg,
-  "right-spring-increase": rightSpringIncreaseIconSvg,
-  "right-spring-decrease": rightSpringDecreaseIconSvg,
+  "lr-spring-increase": lrSpringIncreaseIconSvg,
+  "lr-spring-decrease": lrSpringDecreaseIconSvg,
+  "rr-spring-increase": rrSpringIncreaseIconSvg,
+  "rr-spring-decrease": rrSpringDecreaseIconSvg,
   "lf-shock-increase": lfShockIncreaseIconSvg,
   "lf-shock-decrease": lfShockDecreaseIconSvg,
   "rf-shock-increase": rfShockIncreaseIconSvg,
@@ -118,10 +118,10 @@ const SETUP_CHASSIS_TITLES: Record<string, string> = {
   "front-arb-decrease": "FRONT ARB",
   "rear-arb-increase": "REAR ARB",
   "rear-arb-decrease": "REAR ARB",
-  "left-spring-increase": "LEFT SPRING",
-  "left-spring-decrease": "LEFT SPRING",
-  "right-spring-increase": "RIGHT SPRING",
-  "right-spring-decrease": "RIGHT SPRING",
+  "lr-spring-increase": "LR SPRING",
+  "lr-spring-decrease": "LR SPRING",
+  "rr-spring-increase": "RR SPRING",
+  "rr-spring-decrease": "RR SPRING",
   "lf-shock-increase": "LF SHOCK",
   "lf-shock-decrease": "LF SHOCK",
   "rf-shock-increase": "RF SHOCK",
@@ -153,10 +153,10 @@ export const SETUP_CHASSIS_GLOBAL_KEYS: Record<string, string> = {
   "front-arb-decrease": "setupChassisFrontArbDecrease",
   "rear-arb-increase": "setupChassisRearArbIncrease",
   "rear-arb-decrease": "setupChassisRearArbDecrease",
-  "left-spring-increase": "setupChassisLeftSpringIncrease",
-  "left-spring-decrease": "setupChassisLeftSpringDecrease",
-  "right-spring-increase": "setupChassisRightSpringIncrease",
-  "right-spring-decrease": "setupChassisRightSpringDecrease",
+  "lr-spring-increase": "setupChassisLrSpringIncrease",
+  "lr-spring-decrease": "setupChassisLrSpringDecrease",
+  "rr-spring-increase": "setupChassisRrSpringIncrease",
+  "rr-spring-decrease": "setupChassisRrSpringDecrease",
   "lf-shock-increase": "setupChassisLfShockIncrease",
   "lf-shock-decrease": "setupChassisLfShockDecrease",
   "rf-shock-increase": "setupChassisRfShockIncrease",
@@ -197,8 +197,8 @@ const SetupChassisSettings = CommonSettings.extend({
       "differential-exit",
       "front-arb",
       "rear-arb",
-      "left-spring",
-      "right-spring",
+      "lr-spring",
+      "rr-spring",
       "lf-shock",
       "rf-shock",
       "lr-shock",
@@ -228,13 +228,58 @@ const SetupChassisSettings = CommonSettings.extend({
 
 type SetupChassisSettings = z.infer<typeof SetupChassisSettings>;
 
+/** Pre-#953 spring sub-mode ids, persisted by older builds. */
+const LEGACY_SPRING_IDS: Record<string, string> = {
+  "left-spring": "lr-spring",
+  "right-spring": "rr-spring",
+};
+
+/**
+ * @internal Exported for testing
+ *
+ * Maps pre-#953 spring ids (`left-spring`/`right-spring`) to their renamed
+ * `lr-spring`/`rr-spring` values in both the keypad `setting` and the nested
+ * `dial.setting`. Returns the migrated object (for a `setSettings` write-back,
+ * so the PI selects show the stored value) or `null` when nothing is legacy.
+ * Must run before Zod parsing — an unknown enum value would otherwise fail the
+ * whole parse and reset the key to defaults.
+ */
+export function migrateLegacySpringIds(raw: unknown): Record<string, unknown> | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+
+  const obj = raw as Record<string, unknown>;
+  const mappedSetting = typeof obj.setting === "string" ? LEGACY_SPRING_IDS[obj.setting] : undefined;
+
+  const dial = obj.dial;
+  let mappedDialSetting: string | undefined;
+
+  if (dial && typeof dial === "object" && !Array.isArray(dial)) {
+    const dialSetting = (dial as Record<string, unknown>).setting;
+    mappedDialSetting = typeof dialSetting === "string" ? LEGACY_SPRING_IDS[dialSetting] : undefined;
+  }
+
+  if (mappedSetting === undefined && mappedDialSetting === undefined) return null;
+
+  const migrated: Record<string, unknown> = { ...obj };
+
+  if (mappedSetting !== undefined) migrated.setting = mappedSetting;
+
+  if (mappedDialSetting !== undefined) {
+    migrated.dial = { ...(dial as Record<string, unknown>), setting: mappedDialSetting };
+  }
+
+  return migrated;
+}
+
 /**
  * @internal Exported for testing
  *
  * Parses raw settings, falling back to full defaults when the whole parse fails.
+ * Legacy spring ids are mapped first so pre-#953 settings keep their sub-mode.
  */
 export function parseSetupChassisSettings(raw: unknown): SetupChassisSettings {
-  const parsed = SetupChassisSettings.safeParse(raw);
+  const effective = migrateLegacySpringIds(raw) ?? raw;
+  const parsed = SetupChassisSettings.safeParse(effective);
 
   return parsed.success ? parsed.data : SetupChassisSettings.parse({});
 }
@@ -313,12 +358,16 @@ export class SetupChassis extends ConnectionStateAwareAction<SetupChassisSetting
 
   override async onWillAppear(ev: IDeckWillAppearEvent<SetupChassisSettings>): Promise<void> {
     await super.onWillAppear(ev);
-    let settings = this.parseSettings(ev.payload.settings);
+    // #953 rename migration first, so the later seeds and the PI see the
+    // current ids; write back so the stored settings converge.
+    const migrated = migrateLegacySpringIds(ev.payload.settings);
+    const rawSettings = migrated ?? ev.payload.settings;
+    let settings = this.parseSettings(rawSettings);
 
     if (ev.action.isDial()) {
       // #800 dial migration: a pre-dial-surface encoder placement drove the flat
       // keypad `setting` — carry a valid rotation value over to `dial.setting`.
-      const seededDial = seedDialFromLegacySetting(ev.payload.settings);
+      const seededDial = seedDialFromLegacySetting(rawSettings) ?? migrated;
 
       if (seededDial) {
         await ev.action.setSettings(seededDial);
@@ -335,7 +384,7 @@ export class SetupChassis extends ConnectionStateAwareAction<SetupChassisSetting
 
     // One-shot default seeding (spec 2026-07-07): a never-configured keypad key
     // gets the modern `split` style; keys with any persisted settings stay legacy.
-    const seeded = seedFreshKeyStyle(ev.payload.settings);
+    const seeded = seedFreshKeyStyle(rawSettings) ?? migrated;
 
     if (seeded) {
       await ev.action.setSettings(seeded);

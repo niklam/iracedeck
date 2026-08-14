@@ -422,28 +422,28 @@
       "setting": "setupChassisRearArbDecrease"
     },
     {
-      "id": "leftSpringIncrease",
-      "label": "Left Spring +",
+      "id": "lrSpringIncrease",
+      "label": "LR Spring +",
       "default": "",
-      "setting": "setupChassisLeftSpringIncrease"
+      "setting": "setupChassisLrSpringIncrease"
     },
     {
-      "id": "leftSpringDecrease",
-      "label": "Left Spring -",
+      "id": "lrSpringDecrease",
+      "label": "LR Spring -",
       "default": "",
-      "setting": "setupChassisLeftSpringDecrease"
+      "setting": "setupChassisLrSpringDecrease"
     },
     {
-      "id": "rightSpringIncrease",
-      "label": "Right Spring +",
+      "id": "rrSpringIncrease",
+      "label": "RR Spring +",
       "default": "",
-      "setting": "setupChassisRightSpringIncrease"
+      "setting": "setupChassisRrSpringIncrease"
     },
     {
-      "id": "rightSpringDecrease",
-      "label": "Right Spring -",
+      "id": "rrSpringDecrease",
+      "label": "RR Spring -",
       "default": "",
-      "setting": "setupChassisRightSpringDecrease"
+      "setting": "setupChassisRrSpringDecrease"
     },
     {
       "id": "lfShockIncrease",

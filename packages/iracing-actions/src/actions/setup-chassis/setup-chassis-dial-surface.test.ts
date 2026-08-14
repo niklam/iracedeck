@@ -111,7 +111,7 @@ describe("setup-chassis dial-surface pure helpers", () => {
     });
 
     it("returns empty (identity-only) for springs and shocks", () => {
-      expect(formatDialValue("left-spring", { dcDiffPreload: 3 } as never)).toBe("");
+      expect(formatDialValue("lr-spring", { dcDiffPreload: 3 } as never)).toBe("");
       expect(formatDialValue("lf-shock", { dcDiffPreload: 3 } as never)).toBe("");
       expect(formatDialValue("rr-shock", { dcDiffPreload: 3 } as never)).toBe("");
     });

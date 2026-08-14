@@ -300,8 +300,8 @@
 
 | Action | Shortcut(s) | Available via SDK | iRacing Setting |
 |--------|-------------|-------------------|-----------------|
-| Adjust Left Spring | - | No | Left Spring Set |
-| Adjust Right Spring | - | No | Right Spring Set |
+| Adjust LR Spring | - | No | Left Spring Set |
+| Adjust RR Spring | - | No | Right Spring Set |
 | Adjust Left Front Shock | - | No | Left Front Shock Set |
 | Adjust Right Front Shock | - | No | Right Front Shock Set |
 | Adjust Left Rear Shock | - | No | Left Rear Shock Set |
