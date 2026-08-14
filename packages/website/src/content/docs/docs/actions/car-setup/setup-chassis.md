@@ -24,6 +24,10 @@ The **View …** entries turn the key into a continuously updating display of th
 | View Power Steering | `dcPowerSteering` | integer | car-dependent slot |
 | View Weight Jacker Left | `dcWeightJackerLeft` | signed percent | ±a few % |
 | View Weight Jacker Right | `dcWeightJackerRight` | signed percent | ±a few % |
+| View LR Spring Offset | `dpWeightJackerLeft` | mm or inches, per the sim's display units | pending next-stop value |
+| View RR Spring Offset | `dpWeightJackerRight` | mm or inches, per the sim's display units | pending next-stop value |
+
+The two **Spring Offset** Views show the *pending next-pit-stop* LR/RR spring adjustment — the value you dial into iRacing's F7 Pit Stop black box — formatted exactly as the sim displays it (whole millimeters, or three-decimal inches with english display units). Only cars with the F7 spring rows (the stock-car family) expose these fields; on other cars the key shows `---`, and some cars expose only one side.
 
 ### Dual-press control
 
@@ -145,15 +149,15 @@ Adjust the rear anti-roll bar stiffness.
 
 ---
 
-### Left Spring
+### LR Spring
 
-Adjust the left-side spring preload.
+Adjust the left-rear spring offset applied at the next pit stop (iRacing's F7 *LR Spring Offset* row).
 
 #### Details
 
 - **Method:** Key binding
 - **Dial:** No rotation support
-- **Default binding:** No default key binding — both Left Spring + and Left Spring - must be configured in iRacing and in the Property Inspector
+- **Default binding:** No default key binding — both LR Spring + and LR Spring - must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** No
 
 #### Setting: Direction
@@ -163,15 +167,15 @@ Adjust the left-side spring preload.
 
 ---
 
-### Right Spring
+### RR Spring
 
-Adjust the right-side spring preload.
+Adjust the right-rear spring offset applied at the next pit stop (iRacing's F7 *RR Spring Offset* row).
 
 #### Details
 
 - **Method:** Key binding
 - **Dial:** No rotation support
-- **Default binding:** No default key binding — both Right Spring + and Right Spring - must be configured in iRacing and in the Property Inspector
+- **Default binding:** No default key binding — both RR Spring + and RR Spring - must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** No
 
 #### Setting: Direction
@@ -277,7 +281,7 @@ Placed on a Stream Deck+ dial, Setup Chassis becomes a chassis-setup dial. Pick 
 
 - **Method:** Key binding — the same Setup Chassis increase/decrease bindings the keypad modes use. Configure them in the **Related Key Bindings** section; the Property Inspector shows a status line indicating whether each is set.
 - **Dial:** Rotating adjusts the selected component (clockwise = increase, counter-clockwise = decrease). Both the increase and decrease key bindings must be set.
-- **Telemetry-aware:** Yes for the differential, anti-roll bars, and power steering — the touch strip shows the live value from telemetry (see the table below). Springs and shocks have no telemetry, so their strips show the label only.
+- **Telemetry-aware:** Yes for the differential, anti-roll bars, power steering, and the LR/RR springs — the touch strip shows the live value from telemetry (see the table below; the springs show the pending next-pit-stop offset). Shocks have no telemetry, so their strips show the label only.
 
 #### Controls
 
@@ -297,23 +301,23 @@ The chassis component the dial controls. Each renders as a color-coded "dash box
 | Differential Exit | D-OUT | `dcDiffExit` | integer |
 | Front ARB | FARB | `dcAntiRollFront` | integer |
 | Rear ARB | RARB | `dcAntiRollRear` | integer |
-| Left Spring | LSPR | *(none)* | label only |
-| Right Spring | RSPR | *(none)* | label only |
+| LR Spring | LRSPR | `dpWeightJackerLeft` | mm or inches, pending next stop |
+| RR Spring | RRSPR | `dpWeightJackerRight` | mm or inches, pending next stop |
 | LF Shock | LF | *(none)* | label only |
 | RF Shock | RF | *(none)* | label only |
 | LR Shock | LR | *(none)* | label only |
 | RR Shock | RR | *(none)* | label only |
 | Power Steering | PWR | `dcPowerSteering` | integer |
 
-When a telemetry-backed component has no data the box shows `---`. Springs and shocks still rotate (they use their increase/decrease bindings); their strips just can't show a live number.
+When a telemetry-backed component has no data the box shows `---` — including the springs on cars that don't expose the F7 spring rows (only the stock-car family does, and some cars expose one side only). Shocks still rotate (they use their increase/decrease bindings); their strips just can't show a live number.
 
 #### Press and touch gestures
 
-Setup Chassis has no on/off toggle, so the dial press and touchscreen taps do nothing — the dial is rotation-only.
+Each gesture slot (**Press Action**, **Long Press**, **Tap Display**, **Long Touch**) can be set to **Show Pit Stop Black Box**, which brings up iRacing's F7 Pit Stop box — the screen the spring offsets live on — regardless of which box was open before. It uses the Black Box key bindings (at minimum *Pit Stop*, plus one other box binding used to switch deterministically), configured in **Global Settings → Black Box**. All slots default to **None**.
 
 ## Key Styles — paired +/− buttons
 
-Adjustment modes with a live value (on Setup Chassis: Differential Preload, Differential Entry, Differential Middle, Differential Exit, Front ARB, Rear ARB, and Power Steering) can render as **paired keys**: place two keys with opposite directions next to each other (or three, with a View key in the middle) and both show the live value — no separate display key needed. Choose the look under **Key Style**:
+Adjustment modes with a live value (on Setup Chassis: Differential Preload, Differential Entry, Differential Middle, Differential Exit, Front ARB, Rear ARB, Power Steering, and the LR/RR Springs) can render as **paired keys**: place two keys with opposite directions next to each other (or three, with a View key in the middle) and both show the live value — no separate display key needed. Choose the look under **Key Style**:
 
 - **Legacy (arrows)** — the classic static arrow icon (default for existing keys).
 - **Split** — label on top, live value in the middle, a big +/− below (default for newly placed keys).
@@ -322,4 +326,4 @@ Adjustment modes with a live value (on Setup Chassis: Differential Preload, Diff
 
 Values are shown without units for maximum size. **Edge chevrons**, **Joined pill**, **Pill end**, and **Big chevrons** take a **Position in Pair** setting (*Auto* follows the direction: increase right, decrease left; pick *Top*/*Bottom* for vertical stacks). Holding a paired key repeats the adjustment until released. Colors follow the normal color overrides (the +/− accent is the *Graphic 1* slot); pill styles disable the normal border — the pill itself is the frame.
 
-Springs and shocks have no live telemetry value, so they stay legacy-only — no Key Style control appears for them. Weight Jacker Left / Right exist only as View sub-modes here; their Display Style dropdown offers the pill-middle options like any other View.
+Shocks have no live telemetry value, so they stay legacy-only — no Key Style control appears for them. Weight Jacker Left / Right exist only as View sub-modes here; their Display Style dropdown offers the pill-middle options like any other View.
