@@ -177,6 +177,18 @@ export const SETUP_CHASSIS_GLOBAL_KEYS: Record<string, string> = {
   "weight-jacker-right-decrease": "setupChassisWeightJackerRightDecrease",
 };
 
+/**
+ * Pre-#953 → current global binding key renames. Every plugin passes this to
+ * `migrateGlobalSettingsKeys` at startup so existing users' spring bindings
+ * survive the Left/Right → LR/RR rename without reconfiguration.
+ */
+export const SETUP_CHASSIS_BINDING_KEY_RENAMES: Record<string, string> = {
+  setupChassisLeftSpringIncrease: "setupChassisLrSpringIncrease",
+  setupChassisLeftSpringDecrease: "setupChassisLrSpringDecrease",
+  setupChassisRightSpringIncrease: "setupChassisRrSpringIncrease",
+  setupChassisRightSpringDecrease: "setupChassisRrSpringDecrease",
+};
+
 const SetupChassisSettings = CommonSettings.extend({
   setting: z
     .enum([
