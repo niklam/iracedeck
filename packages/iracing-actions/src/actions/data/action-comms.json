@@ -2529,6 +2529,13 @@
           "setupChassisPowerSteeringDecrease"
         ]
       }
+    },
+    "show-pit-stop-black-box": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "blackBoxPitStop"
+      }
     }
   },
   "setup-engine": {

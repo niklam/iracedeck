@@ -567,6 +567,7 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     "lr-shock": pair("setupChassisLrShockIncrease", "setupChassisLrShockDecrease"),
     "rr-shock": pair("setupChassisRrShockIncrease", "setupChassisRrShockDecrease"),
     "power-steering": pair("setupChassisPowerSteeringIncrease", "setupChassisPowerSteeringDecrease"),
+    "show-pit-stop-black-box": keybind("blackBoxPitStop"),
   }),
 
   "setup-engine": entry("setting", {

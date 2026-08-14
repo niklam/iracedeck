@@ -3,14 +3,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildTriggerDescription, DialSettings, formatDialValue } from "./setup-chassis-dial-surface.js";
 import { SetupChassis } from "./setup-chassis.js";
 
-const { mockGetCurrentTelemetry, mockTapBinding, mockIsBindingMissing, mockDualPressThreshold, globalListeners } =
-  vi.hoisted(() => ({
-    mockGetCurrentTelemetry: vi.fn<() => unknown>(() => null),
-    mockTapBinding: vi.fn().mockResolvedValue(undefined),
-    mockIsBindingMissing: vi.fn(() => false),
-    mockDualPressThreshold: { value: 500 },
-    globalListeners: [] as Array<() => void>,
-  }));
+const {
+  mockGetCurrentTelemetry,
+  mockTapBinding,
+  mockTapBindingSequence,
+  mockIsBindingMissing,
+  mockDualPressThreshold,
+  globalListeners,
+} = vi.hoisted(() => ({
+  mockGetCurrentTelemetry: vi.fn<() => unknown>(() => null),
+  mockTapBinding: vi.fn().mockResolvedValue(undefined),
+  mockTapBindingSequence: vi.fn().mockResolvedValue(true),
+  mockIsBindingMissing: vi.fn(() => false),
+  mockDualPressThreshold: { value: 500 },
+  globalListeners: [] as Array<() => void>,
+}));
 
 vi.mock("@iracedeck/deck-core", async () => {
   const { z } = await import("zod");
@@ -43,6 +50,7 @@ vi.mock("@iracedeck/deck-core", async () => {
       updateKeyImage = vi.fn().mockResolvedValue(false);
       setActiveBinding = vi.fn();
       tapBinding = mockTapBinding;
+      tapBindingSequence = mockTapBindingSequence;
       isBindingMissing = mockIsBindingMissing;
       async onWillAppear() {}
       async onDidReceiveSettings() {}
@@ -142,6 +150,14 @@ describe("setup-chassis dial-surface pure helpers", () => {
 
       expect(desc.rotate).toBe("Adjust LF Shock");
     });
+
+    it("names the pit-stop gesture on push (#953)", () => {
+      const desc = buildTriggerDescription(
+        DialSettings.parse({ setting: "lr-spring", pressAction: "show-pit-stop-black-box" }),
+      );
+
+      expect(desc.push).toBe("Show Pit Stop Box");
+    });
   });
 });
 
@@ -166,6 +182,35 @@ describe("SetupChassis dial surface", () => {
   async function appear(ctx: DialContext, settings: Record<string, unknown> = {}) {
     await action.onWillAppear(basicEvent(ctx, settings) as never);
   }
+
+  describe("Show Pit Stop Black Box gesture (#953)", () => {
+    it("accepts the gesture in the dial schema", () => {
+      expect(DialSettings.parse({ pressAction: "show-pit-stop-black-box" }).pressAction).toBe(
+        "show-pit-stop-black-box",
+      );
+    });
+
+    it("shows the Pit Stop black box on a short press via the atomic prime+target sequence", async () => {
+      const ctx = dialContext("d1");
+      const settings = dialSettings({ setting: "lr-spring", pressAction: "show-pit-stop-black-box" });
+      await appear(ctx, settings);
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(mockTapBindingSequence).toHaveBeenCalledWith(["blackBoxLapTiming", "blackBoxPitStop"], 0);
+    });
+
+    it("shows the box on a touch tap", async () => {
+      const ctx = dialContext("d1");
+      const settings = dialSettings({ setting: "lr-spring", tapAction: "show-pit-stop-black-box" });
+      await appear(ctx, settings);
+
+      await action.onTouchTap({ action: ctx, payload: { settings, hold: false } } as never);
+
+      expect(mockTapBindingSequence).toHaveBeenCalledWith(["blackBoxLapTiming", "blackBoxPitStop"], 0);
+    });
+  });
 
   describe("onDialRotate", () => {
     it("taps the increase binding on a clockwise turn", async () => {

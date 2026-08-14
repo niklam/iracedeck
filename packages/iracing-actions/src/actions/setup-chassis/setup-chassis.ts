@@ -364,6 +364,7 @@ export class SetupChassis extends ConnectionStateAwareAction<SetupChassisSetting
     logger: this.logger,
     getTelemetry: () => this.sdkController.getCurrentTelemetry(),
     tapBinding: (settingKey) => this.tapBinding(settingKey),
+    tapBindingSequence: (settingKeys, holdMs) => this.tapBindingSequence(settingKeys, holdMs),
     isBindingMissing: (keys) => this.isBindingMissing(keys),
   });
 

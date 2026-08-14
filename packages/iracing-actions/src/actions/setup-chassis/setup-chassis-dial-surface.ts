@@ -6,8 +6,7 @@
  * Self-contained leaf (owns the `dial` schema + dial key bindings; operates on
  * the `dial` sub-object). Rotating adjusts one of the 13 chassis setup values
  * via the same key bindings as the keypad surface; the touch strip shows the
- * live value. Setup Chassis has no natural toggle, so no press gesture is
- * offered.
+ * live value. The press/touch gestures can open the Pit Stop black box (#953).
  *
  * Four settings (the four shocks) have no telemetry, so they render label-only
  * via the dash box's identity-only branch (#782). The seven diff/ARB/
@@ -26,6 +25,7 @@ import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 import z from "zod";
 
+import { showBlackBox } from "../../shared/black-box.js";
 import { dialAppearanceFields, renderDialBox, resolveDialBoxColors } from "../../shared/dial-box.js";
 import { renderDialNameIcon } from "../../shared/dial-name-icon.js";
 import { formatViewValue, type ViewSettingId } from "../../shared/setup-view.js";
@@ -49,8 +49,13 @@ export const ROTATION_SETTINGS = [
 ] as const;
 export type SetupChassisDialSetting = (typeof ROTATION_SETTINGS)[number];
 
-/** Setup Chassis has no natural toggle gesture, so `none` is the only option. */
-export const GESTURE_ACTIONS = ["none"] as const;
+/**
+ * Setup Chassis has no natural toggle, but its adjustments are pit-stop
+ * pending values — the gesture opens iRacing's F7 Pit Stop black box (the
+ * screen those values live on) via the deterministic #818 prime+target
+ * sequence. Defaults to `none` per the dial gesture convention.
+ */
+export const GESTURE_ACTIONS = ["show-pit-stop-black-box", "none"] as const;
 export type GestureSlot = (typeof GESTURE_ACTIONS)[number];
 
 export type SetupChassisDirection = "increase" | "decrease";
@@ -224,6 +229,8 @@ export function buildTriggerDescription(dial: DialSettings): DeckTriggerDescript
 
 function gestureLabel(action: GestureSlot): string | undefined {
   switch (action) {
+    case "show-pit-stop-black-box":
+      return "Show Pit Stop Box";
     case "none":
       return undefined;
   }
@@ -242,6 +249,8 @@ export interface SetupChassisDialHost {
   readonly logger: ILogger;
   getTelemetry(): TelemetryData | null;
   tapBinding(settingKey: string): Promise<void>;
+  /** Atomic multi-chord sequence (#818) — the show-black-box gesture's dispatch. */
+  tapBindingSequence(settingKeys: string[], holdMs?: number): Promise<boolean>;
   isBindingMissing(keys: string | string[] | null | undefined): boolean;
 }
 
@@ -396,6 +405,15 @@ export class SetupChassisDialSurface {
 
   private async doGesture(action: GestureSlot): Promise<void> {
     if (action === "none") return;
+
+    if (action === "show-pit-stop-black-box") {
+      this.host.logger.info("Setup chassis dial showing Pit Stop black box");
+      await showBlackBox("pit-stop", {
+        isConfigured: (key) => !this.host.isBindingMissing(key),
+        tapSequence: (keys, holdMs) => this.host.tapBindingSequence(keys, holdMs),
+        logger: this.host.logger,
+      });
+    }
   }
 
   private computeBindingMissing(dial: DialSettings): boolean {
