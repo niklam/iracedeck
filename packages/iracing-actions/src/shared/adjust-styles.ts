@@ -109,7 +109,7 @@ export function getViewIdForAdjustment(adjustmentMode: string): ViewSettingId | 
 /**
  * A mode can use paired styles only when a live value exists for it: either it
  * IS a View id, or it's an adjust mode with a matching View def. Directional
- * modes without telemetry (qualifying-tape, boost-level, springs/shocks) stay
+ * modes without telemetry (qualifying-tape, boost-level, shocks) stay
  * legacy-only by design.
  */
 export function hasPairedValueSource(setting: string): boolean {

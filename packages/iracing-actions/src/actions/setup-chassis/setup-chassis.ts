@@ -202,6 +202,8 @@ const SetupChassisSettings = CommonSettings.extend({
       "view-power-steering",
       "view-weight-jacker-left",
       "view-weight-jacker-right",
+      "view-lr-spring-offset",
+      "view-rr-spring-offset",
       // Adjustment sub-modes.
       "differential-preload",
       "differential-entry",

@@ -2206,6 +2206,26 @@
         ]
       }
     },
+    "view-lr-spring-offset": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupChassisLrSpringIncrease",
+          "setupChassisLrSpringDecrease"
+        ]
+      }
+    },
+    "view-rr-spring-offset": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupChassisRrSpringIncrease",
+          "setupChassisRrSpringDecrease"
+        ]
+      }
+    },
     "differential-preload": {
       "method": "keybind",
       "binding": {

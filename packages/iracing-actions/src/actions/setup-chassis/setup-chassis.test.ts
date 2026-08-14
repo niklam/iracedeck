@@ -774,6 +774,38 @@ describe("SetupChassis", () => {
     });
   });
 
+  describe("spring offset View sub-modes (#953)", () => {
+    let action: SetupChassis;
+
+    beforeEach(() => {
+      action = new SetupChassis();
+    });
+
+    it("accepts the new View ids in the settings enum", () => {
+      expect(parseSetupChassisSettings({ setting: "view-lr-spring-offset" }).setting).toBe("view-lr-spring-offset");
+      expect(parseSetupChassisSettings({ setting: "view-rr-spring-offset" }).setting).toBe("view-rr-spring-offset");
+    });
+
+    it("renders the pending pit-stop offset for the LR spring View", async () => {
+      (action.sdkController.getCurrentTelemetry as any).mockReturnValue({ dpWeightJackerLeft: 2.54, DisplayUnits: 1 });
+
+      await action.onWillAppear(fakeEvent("action-1", { setting: "view-lr-spring-offset" }) as any);
+
+      const svg = decodeURIComponent((action.setKeyImage as any).mock.calls[0][1] as string);
+      expect(svg).toContain("3 mm");
+    });
+
+    it("dispatches dual-press to the renamed spring bindings", async () => {
+      const tracker = (action as any).dualPress as { computeOutcome: ReturnType<typeof vi.fn> };
+      mockGetDualPressDirections.mockReturnValue("tap-increases");
+      tracker.computeOutcome.mockReturnValue("increase");
+
+      await action.onKeyUp(fakeEvent("action-1", { setting: "view-rr-spring-offset", dualPressEnabled: true }) as any);
+
+      expect(mockTapBinding).toHaveBeenCalledWith("setupChassisRrSpringIncrease");
+    });
+  });
+
   describe("hold-to-repeat wiring", () => {
     it("arms repeat for a paired-style key and fires repeatedly while held", async () => {
       vi.useFakeTimers();

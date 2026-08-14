@@ -533,6 +533,8 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     "view-power-steering": pair("setupChassisPowerSteeringIncrease", "setupChassisPowerSteeringDecrease"),
     "view-weight-jacker-left": pair("setupChassisWeightJackerLeftIncrease", "setupChassisWeightJackerLeftDecrease"),
     "view-weight-jacker-right": pair("setupChassisWeightJackerRightIncrease", "setupChassisWeightJackerRightDecrease"),
+    "view-lr-spring-offset": pair("setupChassisLrSpringIncrease", "setupChassisLrSpringDecrease"),
+    "view-rr-spring-offset": pair("setupChassisRrSpringIncrease", "setupChassisRrSpringDecrease"),
     "differential-preload": dir("setupChassisDifferentialPreloadIncrease", "setupChassisDifferentialPreloadDecrease"),
     "differential-entry": dir("setupChassisDifferentialEntryIncrease", "setupChassisDifferentialEntryDecrease"),
     "differential-middle": dir("setupChassisDifferentialMiddleIncrease", "setupChassisDifferentialMiddleDecrease"),
@@ -548,9 +550,9 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     "power-steering": dir("setupChassisPowerSteeringIncrease", "setupChassisPowerSteeringDecrease"),
   }),
 
-  // The dial surface of the merged Setup Chassis action (#800). No press gesture;
-  // springs and shocks rotate too (their strips are label-only — iRacing exposes
-  // no telemetry for them).
+  // The dial surface of the merged Setup Chassis action (#800). The LR/RR
+  // springs show the pending next-pit-stop offset (#953); shocks rotate too but
+  // their strips are label-only (iRacing exposes no telemetry for them).
   "setup-chassis-dial": entry("dial.setting", {
     "differential-preload": pair("setupChassisDifferentialPreloadIncrease", "setupChassisDifferentialPreloadDecrease"),
     "differential-entry": pair("setupChassisDifferentialEntryIncrease", "setupChassisDifferentialEntryDecrease"),
