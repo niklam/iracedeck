@@ -110,10 +110,18 @@ describe("setup-chassis dial-surface pure helpers", () => {
       expect(formatDialValue("power-steering", { dcPowerSteering: 2 } as never)).toBe("2");
     });
 
-    it("returns empty (identity-only) for springs and shocks", () => {
-      expect(formatDialValue("lr-spring", { dcDiffPreload: 3 } as never)).toBe("");
+    it("returns empty (identity-only) for the shocks", () => {
       expect(formatDialValue("lf-shock", { dcDiffPreload: 3 } as never)).toBe("");
       expect(formatDialValue("rr-shock", { dcDiffPreload: 3 } as never)).toBe("");
+    });
+
+    it("formats the pending pit-stop spring offset per the sim's display units (#953)", () => {
+      expect(formatDialValue("lr-spring", { dpWeightJackerLeft: 2.54, DisplayUnits: 1 } as never)).toBe("3 mm");
+      expect(formatDialValue("rr-spring", { dpWeightJackerRight: 3.175, DisplayUnits: 0 } as never)).toBe('0.125"');
+    });
+
+    it("shows the placeholder for a spring whose field the car does not expose (SRX one-sided case)", () => {
+      expect(formatDialValue("lr-spring", { dpWeightJackerRight: 157, DisplayUnits: 1 } as never)).toBe("---");
     });
 
     it("shows the placeholder when a readback setting has no telemetry", () => {

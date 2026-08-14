@@ -9,9 +9,10 @@
  * live value. Setup Chassis has no natural toggle, so no press gesture is
  * offered.
  *
- * Six settings have no `dc*` telemetry (both springs and all four shocks), so
- * they render label-only via the dash box's identity-only branch (#782). The
- * seven diff/ARB/power-steering settings show the live value.
+ * Four settings (the four shocks) have no telemetry, so they render label-only
+ * via the dash box's identity-only branch (#782). The seven diff/ARB/
+ * power-steering settings show the live `dc*` value, and the LR/RR springs
+ * show the pending next-pit-stop offset from `dpWeightJacker*` (#953).
  */
 import {
   classifyDialRelease,
@@ -115,7 +116,7 @@ export function seedDialFromLegacySetting(raw: unknown): Record<string, unknown>
   return { ...obj, dial: { setting: legacy } };
 }
 
-/** Springs and shocks have no `view-*` entry (no `dc*` readback) → identity-only. */
+/** The shocks have no `view-*` entry (no telemetry readback) → identity-only. */
 const VIEW_ID: Record<SetupChassisDialSetting, ViewSettingId | undefined> = {
   "differential-preload": "view-diff-preload",
   "differential-entry": "view-diff-entry",
@@ -123,8 +124,8 @@ const VIEW_ID: Record<SetupChassisDialSetting, ViewSettingId | undefined> = {
   "differential-exit": "view-diff-exit",
   "front-arb": "view-anti-roll-front",
   "rear-arb": "view-anti-roll-rear",
-  "lr-spring": undefined,
-  "rr-spring": undefined,
+  "lr-spring": "view-lr-spring-offset",
+  "rr-spring": "view-rr-spring-offset",
   "lf-shock": undefined,
   "rf-shock": undefined,
   "lr-shock": undefined,
