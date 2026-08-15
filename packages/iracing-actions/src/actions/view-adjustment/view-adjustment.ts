@@ -26,14 +26,16 @@ import fovDecreaseIconSvg from "@iracedeck/icons/view-adjustment/fov-decrease.sv
 import fovIncreaseIconSvg from "@iracedeck/icons/view-adjustment/fov-increase.svg";
 import horizonDecreaseIconSvg from "@iracedeck/icons/view-adjustment/horizon-decrease.svg";
 import horizonIncreaseIconSvg from "@iracedeck/icons/view-adjustment/horizon-increase.svg";
+import mouseToSimIconSvg from "@iracedeck/icons/view-adjustment/mouse-to-sim.svg";
 import recenterVrIconSvg from "@iracedeck/icons/view-adjustment/recenter-vr.svg";
 import uiSizeDecreaseIconSvg from "@iracedeck/icons/view-adjustment/ui-size-decrease.svg";
 import uiSizeIncreaseIconSvg from "@iracedeck/icons/view-adjustment/ui-size-increase.svg";
 import z from "zod";
 
+import { bringPointerToSim } from "../../shared/mouse-to-sim.js";
 import { DialSettings, seedDialFromLegacySetting, ViewAdjustmentDialSurface } from "./view-adjustment-dial-surface.js";
 
-type AdjustmentType = "fov" | "horizon" | "driver-height" | "recenter-vr" | "ui-size";
+type AdjustmentType = "fov" | "horizon" | "driver-height" | "recenter-vr" | "ui-size" | "mouse-to-sim";
 type DirectionType = "increase" | "decrease";
 
 /**
@@ -50,6 +52,9 @@ const VIEW_ADJUSTMENT_ICONS: Record<string, string> = {
   "recenter-vr-decrease": recenterVrIconSvg,
   "ui-size-increase": uiSizeIncreaseIconSvg,
   "ui-size-decrease": uiSizeDecreaseIconSvg,
+  // Non-directional one-shot: one icon for both directions, like recenter-vr.
+  "mouse-to-sim-increase": mouseToSimIconSvg,
+  "mouse-to-sim-decrease": mouseToSimIconSvg,
 };
 
 /**
@@ -76,14 +81,22 @@ const VIEW_ADJUSTMENT_TITLES: Record<AdjustmentType, Record<DirectionType, strin
     increase: "UI SIZE\nINCREASE",
     decrease: "UI SIZE\nDECREASE",
   },
+  "mouse-to-sim": {
+    increase: "MOUSE\nTO SIM",
+    decrease: "MOUSE\nTO SIM",
+  },
 };
 
 /**
  * @internal Exported for testing
  *
  * Mapping from adjustment + direction to global settings keys.
+ *
+ * Partial by design: `mouse-to-sim` is a native window/pointer call rather than an
+ * iRacing command (#926), so it has no binding, no comms descriptor, and never
+ * shows the #612 missing-binding warning.
  */
-export const VIEW_ADJUSTMENT_GLOBAL_KEYS: Record<AdjustmentType, Record<DirectionType, string>> = {
+export const VIEW_ADJUSTMENT_GLOBAL_KEYS: Partial<Record<AdjustmentType, Record<DirectionType, string>>> = {
   fov: {
     increase: "viewAdjustFovIncrease",
     decrease: "viewAdjustFovDecrease",
@@ -107,7 +120,7 @@ export const VIEW_ADJUSTMENT_GLOBAL_KEYS: Record<AdjustmentType, Record<Directio
 };
 
 const ViewAdjustmentSettings = CommonSettings.extend({
-  adjustment: z.enum(["fov", "horizon", "driver-height", "recenter-vr", "ui-size"]).default("fov"),
+  adjustment: z.enum(["fov", "horizon", "driver-height", "recenter-vr", "ui-size", "mouse-to-sim"]).default("fov"),
   direction: z.enum(["increase", "decrease"]).default("increase"),
   // Dial-surface settings (#806), under the `dial` root so keypad and dial keys
   // can't collide. catch: dial garbage degrades to dial defaults instead of
@@ -188,7 +201,7 @@ export class ViewAdjustment extends ConnectionStateAwareAction<ViewAdjustmentSet
       return;
     }
 
-    this.setActiveBinding(VIEW_ADJUSTMENT_GLOBAL_KEYS[settings.adjustment]?.[settings.direction]);
+    this.setActiveBinding(VIEW_ADJUSTMENT_GLOBAL_KEYS[settings.adjustment]?.[settings.direction] ?? null);
     await this.updateDisplay(ev, settings);
   }
 
@@ -208,7 +221,7 @@ export class ViewAdjustment extends ConnectionStateAwareAction<ViewAdjustmentSet
       return;
     }
 
-    this.setActiveBinding(VIEW_ADJUSTMENT_GLOBAL_KEYS[settings.adjustment]?.[settings.direction]);
+    this.setActiveBinding(VIEW_ADJUSTMENT_GLOBAL_KEYS[settings.adjustment]?.[settings.direction] ?? null);
     await this.updateDisplay(ev, settings);
   }
 
@@ -244,6 +257,14 @@ export class ViewAdjustment extends ConnectionStateAwareAction<ViewAdjustmentSet
   }
 
   private async executeAdjustment(adjustment: AdjustmentType, direction: DirectionType): Promise<void> {
+    // A native window/pointer call, not an iRacing command — so it taps no binding
+    // and carries no comms descriptor (the Telemetry Control `snapshot` precedent).
+    if (adjustment === "mouse-to-sim") {
+      bringPointerToSim(this.logger);
+
+      return;
+    }
+
     const settingKey = VIEW_ADJUSTMENT_GLOBAL_KEYS[adjustment]?.[direction];
 
     if (!settingKey) {
