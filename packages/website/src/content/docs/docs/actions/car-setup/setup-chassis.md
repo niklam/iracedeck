@@ -27,7 +27,7 @@ The **View …** entries turn the key into a continuously updating display of th
 | View LR Spring Offset | `dpWeightJackerLeft` | mm or inches, per the sim's display units | pending next-stop value |
 | View RR Spring Offset | `dpWeightJackerRight` | mm or inches, per the sim's display units | pending next-stop value |
 
-The two **Spring Offset** Views show the *pending next-pit-stop* LR/RR spring adjustment — the value you dial into iRacing's F7 Pit Stop black box — formatted exactly as the sim displays it (whole millimeters, or three-decimal inches with english display units). Only cars with the F7 spring rows (the stock-car family) expose these fields; on other cars the key shows `---`, and some cars expose only one side.
+The two **Spring Offset** Views show the *pending next-pit-stop* LR/RR spring adjustment — the value you dial into iRacing's F7 Pit Stop black box — formatted exactly as the sim displays it (whole millimeters, or three-decimal inches with english display units). A **Units** setting (visible for the spring modes) can force metric or imperial instead of following the sim — the same choice exists separately for the dial. Only cars with the F7 spring rows (the stock-car family) expose these fields; on other cars the key shows `---`, and some cars expose only one side.
 
 ### Dual-press control
 
@@ -317,7 +317,7 @@ The chassis component the dial controls (the **Mode** dropdown). Each renders as
 | RR Shock | RR | *(none)* | label only |
 | Power Steering | PWR | `dcPowerSteering` | integer |
 
-The two spring boxes carry fixed left/right arrow markers flanking the label — the side you're editing lights up while the other stays dim, so LR and RR are distinguishable at a glance mid-race. When a telemetry-backed component has no data the box shows `---` — including the springs on cars that don't expose the F7 spring rows (only the stock-car family does, and some cars expose one side only). Shocks still rotate (they use their increase/decrease bindings); their strips just can't show a live number.
+A **Units** dropdown in the dial settings picks how the spring offset renders: Auto follows the sim's display units, or force Metric (mm) / Imperial (inches). The two spring boxes carry fixed left/right arrow markers flanking the label — the side you're editing lights up while the other stays dim, so LR and RR are distinguishable at a glance mid-race. When a telemetry-backed component has no data the box shows `---` — including the springs on cars that don't expose the F7 spring rows (only the stock-car family does, and some cars expose one side only). Shocks still rotate (they use their increase/decrease bindings); their strips just can't show a live number.
 
 #### Press and touch gestures
 

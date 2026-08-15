@@ -132,6 +132,26 @@ describe("setup-chassis dial-surface pure helpers", () => {
       expect(formatDialValue("lr-spring", { dpWeightJackerRight: 157, DisplayUnits: 1 } as never)).toBe("---");
     });
 
+    it("forces the spring units when the dial units setting is not auto (#953)", () => {
+      const metricSim = { dpWeightJackerLeft: 3.175, DisplayUnits: 1 } as never;
+      const imperialSim = { dpWeightJackerLeft: 2.54, DisplayUnits: 0 } as never;
+
+      expect(formatDialValue("lr-spring", metricSim, "imperial")).toBe('0.125"');
+      expect(formatDialValue("lr-spring", imperialSim, "metric")).toBe("3 mm");
+      expect(formatDialValue("lr-spring", metricSim, "auto")).toBe("3 mm");
+      expect(formatDialValue("lr-spring", imperialSim, "auto")).toBe('0.100"');
+    });
+
+    it("parses the dial units setting with an auto default", () => {
+      expect(DialSettings.parse({}).units).toBe("auto");
+      expect(DialSettings.parse({ units: "imperial" }).units).toBe("imperial");
+      // A value from a newer plugin version degrades to auto instead of
+      // resetting the whole dial object (the 2.0-contamination lesson).
+      const degraded = DialSettings.parse({ setting: "rr-spring", units: "furlongs" });
+      expect(degraded.units).toBe("auto");
+      expect(degraded.setting).toBe("rr-spring");
+    });
+
     it("shows the placeholder when a readback setting has no telemetry", () => {
       expect(formatDialValue("differential-preload", null)).toBe("---");
     });
@@ -190,6 +210,18 @@ describe("SetupChassis dial surface", () => {
   async function appear(ctx: DialContext, settings: Record<string, unknown> = {}) {
     await action.onWillAppear(basicEvent(ctx, settings) as never);
   }
+
+  describe("dial units on the strip (#953)", () => {
+    it("renders the forced imperial value on a metric-display sim", async () => {
+      mockGetCurrentTelemetry.mockReturnValue({ dpWeightJackerLeft: 3.175, DisplayUnits: 1 });
+      const ctx = dialContext("d1");
+      await appear(ctx, dialSettings({ setting: "lr-spring", units: "imperial" }));
+
+      const feedback = (ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box;
+
+      expect(decodeURIComponent(feedback)).toContain('>0.125"<');
+    });
+  });
 
   describe("Switch LR/RR Spring gesture (#953)", () => {
     it("accepts the gesture in the dial schema", () => {

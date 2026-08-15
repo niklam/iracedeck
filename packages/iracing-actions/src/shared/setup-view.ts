@@ -119,6 +119,24 @@ export function formatInteger(value: unknown): string {
   return String(Math.round(value));
 }
 
+/** User units preference for DisplayUnits-aware formatters (#953). */
+export type UnitsPreference = "auto" | "metric" | "imperial";
+
+/**
+ * Apply a units preference to a telemetry snapshot: `auto` passes it through
+ * (formatters follow the sim's `DisplayUnits`), `metric`/`imperial` return a
+ * copy with `DisplayUnits` forced so the same formatters render the chosen
+ * units regardless of the sim setting (#953).
+ */
+export function withUnitsPreference(
+  telemetry: TelemetryData | null | undefined,
+  units: UnitsPreference,
+): TelemetryData | null | undefined {
+  if (!telemetry || units === "auto") return telemetry;
+
+  return { ...telemetry, DisplayUnits: units === "imperial" ? 0 : 1 };
+}
+
 /**
  * Format a pending pit-stop spring offset (`dpWeightJacker*`, raw millimeters)
  * exactly the way iRacing's F7 box renders it (#953): metric display units

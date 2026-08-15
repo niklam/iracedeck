@@ -60,6 +60,14 @@
 				viewModes: ['view-diff-preload', 'view-diff-entry', 'view-diff-middle', 'view-diff-exit', 'view-anti-roll-front', 'view-anti-roll-rear', 'view-power-steering', 'view-weight-jacker-left', 'view-weight-jacker-right', 'view-lr-spring-offset', 'view-rr-spring-offset']
 			}) %>
 
+			<sdpi-item label="Units" id="units-item" class="hidden">
+				<sdpi-select setting="units" default="auto">
+					<option value="auto">Auto (follow iRacing)</option>
+					<option value="metric">Metric (mm)</option>
+					<option value="imperial">Imperial (inches)</option>
+				</sdpi-select>
+			</sdpi-item>
+
 			<sdpi-item label="Show black box">
 				<sdpi-checkbox
 					id="show-black-box"
@@ -132,6 +140,17 @@
 				decrease key bindings must be set below.
 			</div>
 			<% } %>
+
+			<sdpi-item label="Units">
+				<sdpi-select setting="dial.units" default="auto">
+					<option value="auto">Auto (follow iRacing)</option>
+					<option value="metric">Metric (mm)</option>
+					<option value="imperial">Imperial (inches)</option>
+				</sdpi-select>
+			</sdpi-item>
+			<div class="ird-supporting-text">
+				Applies to the spring offset readout on the touch strip.
+			</div>
 
 			<sdpi-item label="Press Action">
 				<sdpi-select setting="dial.pressAction" default="none">
@@ -233,13 +252,23 @@
 				"view-rr-spring-offset",
 			]);
 
+			// Only the spring modes have a unit-bearing value (mm/inches).
+			const SPRING_UNIT_MODES = new Set([
+				"lr-spring",
+				"rr-spring",
+				"view-lr-spring-offset",
+				"view-rr-spring-offset",
+			]);
+
 			function updateVisibility(setting) {
 				const directionItem = document.getElementById("direction-item");
 				const dualEnabledItem = document.getElementById("dual-press-enabled-item");
+				const unitsItem = document.getElementById("units-item");
 
 				const view = isViewSetting(setting);
 				directionItem?.classList.toggle("hidden", view);
 				dualEnabledItem?.classList.toggle("hidden", !view);
+				unitsItem?.classList.toggle("hidden", !SPRING_UNIT_MODES.has(setting));
 
 				// The Show-Black-Box caveat re-reads its attributes every poll, so
 				// retargeting it per mode keeps one element covering both boxes.

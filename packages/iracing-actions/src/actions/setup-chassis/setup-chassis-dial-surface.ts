@@ -28,7 +28,12 @@ import z from "zod";
 import { showBlackBox } from "../../shared/black-box.js";
 import { dialAppearanceFields, renderDialBox, resolveDialBoxColors } from "../../shared/dial-box.js";
 import { renderDialNameIcon } from "../../shared/dial-name-icon.js";
-import { formatViewValue, type ViewSettingId } from "../../shared/setup-view.js";
+import {
+  formatViewValue,
+  type UnitsPreference,
+  type ViewSettingId,
+  withUnitsPreference,
+} from "../../shared/setup-view.js";
 
 const CHANGE_RENDER_MIN_INTERVAL_MS = 100;
 
@@ -104,6 +109,12 @@ export const DialSettings = z
     longPressAction: z.enum(GESTURE_ACTIONS).default("none"),
     tapAction: z.enum(GESTURE_ACTIONS).default("none"),
     longTouchAction: z.enum(GESTURE_ACTIONS).default("none"),
+    /**
+     * Units for the spring offset readout: `auto` follows the sim's
+     * DisplayUnits; metric/imperial force it (#953). `.catch` so a value from
+     * a newer version degrades to auto instead of resetting the whole dial.
+     */
+    units: z.enum(["auto", "metric", "imperial"]).default("auto").catch("auto"),
     // Dash-box appearance overrides (colors, issue #811).
     ...dialAppearanceFields,
   })
@@ -201,12 +212,16 @@ const MODE_LABEL: Record<SetupChassisDialSetting, string> = {
 };
 
 /** @internal Exported for testing */
-export function formatDialValue(setting: SetupChassisDialSetting, telemetry: TelemetryData | null): string {
+export function formatDialValue(
+  setting: SetupChassisDialSetting,
+  telemetry: TelemetryData | null,
+  units: UnitsPreference = "auto",
+): string {
   const viewId = VIEW_ID[setting];
 
   if (!viewId) return "";
 
-  return formatViewValue(viewId, telemetry).replace(/%$/, "");
+  return formatViewValue(viewId, withUnitsPreference(telemetry, units)).replace(/%$/, "");
 }
 
 /** @internal Exported for testing */
@@ -477,7 +492,7 @@ export class SetupChassisDialSurface {
   }
 
   private displayedSignature(ctx: SetupChassisDialContext): string {
-    const value = formatDialValue(ctx.dial.setting, this.host.getTelemetry());
+    const value = formatDialValue(ctx.dial.setting, this.host.getTelemetry(), ctx.dial.units);
 
     return [ctx.dial.setting, value, this.computeBindingMissing(ctx.dial) ? "warn" : ""].join("|");
   }
@@ -498,7 +513,7 @@ export class SetupChassisDialSurface {
       width: 200,
       height: 100,
       abbr: MODE_ABBR[setting],
-      value: formatDialValue(setting, this.host.getTelemetry()),
+      value: formatDialValue(setting, this.host.getTelemetry(), ctx.dial.units),
       colors: resolveDialBoxColors(ctx.dial.colors, MODE_COLOR[setting]),
       identityLabelScale: 0.22,
       bindingMissing: this.computeBindingMissing(ctx.dial),

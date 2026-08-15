@@ -66,7 +66,12 @@ import {
 } from "../../shared/adjust-styles.js";
 import { type BlackBoxId, showBlackBox } from "../../shared/black-box.js";
 import { RepeatController } from "../../shared/repeat-controller.js";
-import { generateSetupViewSvg, getAdjustmentModeForView, isViewSetting } from "../../shared/setup-view.js";
+import {
+  generateSetupViewSvg,
+  getAdjustmentModeForView,
+  isViewSetting,
+  withUnitsPreference,
+} from "../../shared/setup-view.js";
 import { DialSettings, seedDialFromLegacySetting, SetupChassisDialSurface } from "./setup-chassis-dial-surface.js";
 
 type DirectionType = "increase" | "decrease";
@@ -247,6 +252,12 @@ const SetupChassisSettings = CommonSettings.extend({
     .transform((v) => v === true || v === "true")
     .default(false)
     .catch(false),
+  /**
+   * Units for the spring offset display (#953): `auto` follows the sim's
+   * DisplayUnits; metric/imperial force it. Applies to the spring Views and
+   * paired key styles; other modes have unitless values.
+   */
+  units: z.enum(["auto", "metric", "imperial"]).default("auto").catch("auto"),
   // Dial-surface settings (#800), under the `dial` root so keypad and dial keys
   // can't collide. catch: dial garbage degrades to dial defaults instead of
   // failing the whole parse (which would reset a keypad instance).
@@ -664,7 +675,10 @@ export class SetupChassis extends ConnectionStateAwareAction<SetupChassisSetting
   ): Promise<void> {
     const svgDataUri = this.renderIcon(settings);
 
-    const memo = telemetryMemoValue(settings, this.sdkController.getCurrentTelemetry());
+    const memo = telemetryMemoValue(
+      settings,
+      withUnitsPreference(this.sdkController.getCurrentTelemetry(), settings.units) ?? null,
+    );
 
     if (memo !== null) {
       this.lastRenderedValue.set(ev.action.id, memo);
@@ -677,13 +691,14 @@ export class SetupChassis extends ConnectionStateAwareAction<SetupChassisSetting
 
   private renderIcon(settings: SetupChassisSettings): string {
     const bindingMissing = this.computeBindingMissing(settings);
+    const telemetry = withUnitsPreference(this.sdkController.getCurrentTelemetry(), settings.units) ?? null;
 
     const paired = renderPairedIconOrNull({
       setting: settings.setting,
       direction: settings.direction,
       keyStyle: settings.keyStyle,
       pairPosition: settings.pairPosition,
-      telemetry: this.sdkController.getCurrentTelemetry(),
+      telemetry,
       colorSourceSvg: differentialPreloadIncreaseIconSvg,
       colorOverrides: settings.colorOverrides,
       titleOverrides: settings.titleOverrides,
@@ -696,7 +711,7 @@ export class SetupChassis extends ConnectionStateAwareAction<SetupChassisSetting
     if (isViewSetting(settings.setting)) {
       return generateSetupViewSvg({
         viewId: settings.setting,
-        telemetry: this.sdkController.getCurrentTelemetry(),
+        telemetry,
         colorSourceSvg: differentialPreloadIncreaseIconSvg,
         colorOverrides: settings.colorOverrides,
         titleOverrides: settings.titleOverrides,
@@ -713,7 +728,7 @@ export class SetupChassis extends ConnectionStateAwareAction<SetupChassisSetting
     telemetry: TelemetryData | null,
     settings: SetupChassisSettings,
   ): Promise<void> {
-    const memo = telemetryMemoValue(settings, telemetry);
+    const memo = telemetryMemoValue(settings, withUnitsPreference(telemetry, settings.units) ?? null);
 
     if (memo === null) return;
 

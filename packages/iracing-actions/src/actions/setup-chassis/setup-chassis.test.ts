@@ -889,6 +889,36 @@ describe("SetupChassis", () => {
     });
   });
 
+  describe("units preference (#953)", () => {
+    it("parses the keypad units setting with an auto default and degradation", () => {
+      expect(parseSetupChassisSettings({}).units).toBe("auto");
+      expect(parseSetupChassisSettings({ units: "imperial" }).units).toBe("imperial");
+      const degraded = parseSetupChassisSettings({ setting: "lr-spring", units: "furlongs" });
+      expect(degraded.units).toBe("auto");
+      expect(degraded.setting).toBe("lr-spring");
+    });
+
+    it("forces the spring View to imperial on a metric-display sim", async () => {
+      const action = new SetupChassis();
+      (action.sdkController.getCurrentTelemetry as any).mockReturnValue({ dpWeightJackerLeft: 3.175, DisplayUnits: 1 });
+
+      await action.onWillAppear(fakeEvent("action-1", { setting: "view-lr-spring-offset", units: "imperial" }) as any);
+
+      const svg = decodeURIComponent((action.setKeyImage as any).mock.calls[0][1] as string);
+      expect(svg).toContain('0.125"');
+    });
+
+    it("keeps following the sim's display units on auto", async () => {
+      const action = new SetupChassis();
+      (action.sdkController.getCurrentTelemetry as any).mockReturnValue({ dpWeightJackerLeft: 3.175, DisplayUnits: 1 });
+
+      await action.onWillAppear(fakeEvent("action-1", { setting: "view-lr-spring-offset" }) as any);
+
+      const svg = decodeURIComponent((action.setKeyImage as any).mock.calls[0][1] as string);
+      expect(svg).toContain("3 mm");
+    });
+  });
+
   describe("hold-to-repeat wiring", () => {
     it("arms repeat for a paired-style key and fires repeatedly while held", async () => {
       vi.useFakeTimers();
