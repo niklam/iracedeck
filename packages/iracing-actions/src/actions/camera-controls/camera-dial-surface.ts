@@ -61,9 +61,15 @@
  *     frozen rank (and their session-info entry) but iRacing silently ignores
  *     a camera switch to them, so a detent targeting one would dead-loop —
  *     the walk continues along the ordering to the next present car, and the
- *     side previews show that same skipped-to target. track-order reads the
+ *     side previews show that same skipped-to target. car-number and
+ *     race-position judge presence with the shared `carPresence` predicate;
+ *     track-order inherits the primitive's own in-world test (a valid lap
+ *     distance and a surface other than `NotInWorld` — deliberately without
+ *     `carPresence`'s lap-count condition, since `CarIdxLapCompleted` is still
+ *     -1 for every car on the pace lap, the #307 fix). track-order reads the
  *     LIVE car placement, so during an in-session replay it follows the live
- *     field rather than the replay cursor (the #307 finding).
+ *     field rather than the replay cursor (the #492 finding — the reason
+ *     Replay Control's Next/Prev Car defer to iRacing's keystroke).
  *
  * Everything the dial does is an iRacing SDK camera command, so — unlike the
  * Setup dials — the surface taps no key bindings and never shows a
@@ -133,8 +139,9 @@ function isCycleMode(mode: DialMode): mode is CycleDialMode {
 
 /**
  * A rotation's dispatch direction in the cycled ordering (camera list, car
- * numbers ascending, race positions ascending). Which PHYSICAL turn maps to
- * which direction is decided by `clockwiseDirection` (issue #884).
+ * numbers ascending, race positions ascending, or — track-order — the road,
+ * where `next` is the car ahead; see `trackOrderDirection`). Which PHYSICAL
+ * turn maps to which direction is decided by `clockwiseDirection` (issue #884).
  */
 export type Direction = "next" | "previous";
 
@@ -461,7 +468,9 @@ export interface CarCarouselView {
   /**
    * Optional small captions drawn beneath the side numbers (track-order's
    * AHEAD / BEHIND, #886) — each on the side its number is on; a side with no
-   * number draws no caption either.
+   * number draws no caption either. Omitted when both sides show the SAME
+   * car (the primitive's no-track-position re-entry, or a two-car field),
+   * where one car can't honestly be captioned both ahead and behind.
    */
   sideCaptions?: { left: string; right: string };
 }
@@ -634,17 +643,15 @@ export function renderSubCameraCarousel(args: {
  * Falls back to a centred identity label out of a session (no focused car
  * number).
  */
-export function renderCarCarousel(args: {
-  width: number;
-  height: number;
-  colors: DialBoxColors;
-  title: string;
-  identityLabel: string;
-  center: string | null;
-  left: string | null;
-  right: string | null;
-  sideCaptions?: { left: string; right: string };
-}): string {
+export function renderCarCarousel(
+  args: {
+    width: number;
+    height: number;
+    colors: DialBoxColors;
+    title: string;
+    identityLabel: string;
+  } & CarCarouselView,
+): string {
   const { width: w, height: h, colors } = args;
 
   if (!args.center) return identityBox(w, h, args.identityLabel, colors);
@@ -989,20 +996,17 @@ export class CameraDialSurface {
     // silently ignored by iRacing and the dial would dead-loop on it.
     const isPresent = carPresence(telemetry);
 
-    if (mode === "car-number") {
+    if (mode === "car-number" || mode === "track-order") {
+      // Both walk the SAME competitor list the carousel previews — ascending
+      // car number, or (#886) the physical road order: the competitor nearest
+      // ahead / behind on the lap — so the detent lands on the car the side
+      // badge showed. track-order's presence test lives in the primitive
+      // (see the file header), hence no `isPresent` there.
       const cars = getAllCarNumbers(this.host.getSessionInfo(), true, true);
-      const target = computeCarNumberTarget(camCarIdx, cars, direction, isPresent);
-
-      if (target) this.host.focusCarNumber(target.carNumberRaw);
-
-      return;
-    }
-
-    if (mode === "track-order") {
-      // Physical road order (#886): the competitor nearest ahead / behind on
-      // the lap — the SAME shared computation the carousel previews, so the
-      // detent lands on the car the side badge showed.
-      const target = this.trackOrderTarget(telemetry, direction);
+      const target =
+        mode === "car-number"
+          ? computeCarNumberTarget(camCarIdx, cars, direction, isPresent)
+          : this.trackOrderTarget(telemetry, cars, direction);
 
       if (target) this.host.focusCarNumber(target.carNumberRaw);
 
@@ -1032,15 +1036,29 @@ export class CameraDialSurface {
 
   /**
    * The competitor a track-order detent in `direction` lands on (issue #886):
-   * the focused car's nearest neighbour ahead / behind on the road among the
-   * SAME competitor set the car-number mode cycles (pace car and spectators
-   * excluded), through the shared `computeTrackOrderTarget`. Used by both the
-   * rotation dispatch and the carousel preview.
+   * the focused car's nearest neighbour ahead / behind on the road among
+   * `cars` — the SAME competitor set the car-number mode cycles
+   * (`getAllCarNumbers(sessionInfo, true, true)`, pace car and spectators
+   * excluded; the caller resolves it once per view / detent) — through the
+   * shared `computeTrackOrderTarget`. Used by both the rotation dispatch and
+   * the carousel preview.
    */
-  private trackOrderTarget(telemetry: TelemetryData | null, direction: Direction): TrackOrderTarget | null {
-    const cars = getAllCarNumbers(this.host.getSessionInfo(), true, true);
-
+  private trackOrderTarget(
+    telemetry: TelemetryData | null,
+    cars: ReadonlyArray<{ carIdx: number; carNumber: string; carNumberRaw: number }>,
+    direction: Direction,
+  ): TrackOrderTarget | null {
     return computeTrackOrderTarget(telemetry, telemetry?.CamCarIdx, cars, trackOrderDirection(direction));
+  }
+
+  /**
+   * The focused car's display number (no `#`), or null out of a session / when
+   * no car is focused (`CamCarIdx` unset or a negative sentinel).
+   */
+  private focusedCarNumber(sessionInfo: unknown, telemetry: TelemetryData | null): string | null {
+    const camCarIdx = telemetry?.CamCarIdx;
+
+    return typeof camCarIdx === "number" && camCarIdx >= 0 ? getCarNumberFromSessionInfo(sessionInfo, camCarIdx) : null;
   }
 
   /** Runs a configured press / touch gesture through the keypad's own dispatch. */
@@ -1112,8 +1130,7 @@ export class CameraDialSurface {
   private carNumberCarouselView(telemetry: TelemetryData | null, dial: DialSettings): CarCarouselView {
     const sessionInfo = this.host.getSessionInfo();
     const camCarIdx = telemetry?.CamCarIdx;
-    const center =
-      typeof camCarIdx === "number" && camCarIdx >= 0 ? getCarNumberFromSessionInfo(sessionInfo, camCarIdx) : null;
+    const center = this.focusedCarNumber(sessionInfo, telemetry);
     const cars = getAllCarNumbers(sessionInfo, true, true);
     const clockwise = clockwiseDirection(dial.mode, dial.reverseRotation);
     // The same world-presence walk the rotation dispatches (#885), so the side
@@ -1134,29 +1151,46 @@ export class CameraDialSurface {
    * Builds the track-order carousel view (issue #886): the focused car plus
    * the competitors physically ahead of / behind it on the road — the SAME
    * per-direction targets the rotation focuses — each on the side its detent
-   * lands on (#884), captioned AHEAD / BEHIND on that same side.
+   * lands on (#884), captioned AHEAD / BEHIND on that same side. When both
+   * detents resolve to the SAME car (the focused car has no track position, so
+   * the primitive re-enters at the car nearest start/finish for both
+   * directions — or the field has only one other car), the captions are
+   * dropped: one car captioned both AHEAD and BEHIND would contradict itself,
+   * while the bare number on both sides still previews exactly what either
+   * detent focuses.
    */
   private trackOrderCarouselView(telemetry: TelemetryData | null, dial: DialSettings): CarCarouselView {
-    const camCarIdx = telemetry?.CamCarIdx;
-    const center =
-      typeof camCarIdx === "number" && camCarIdx >= 0
-        ? getCarNumberFromSessionInfo(this.host.getSessionInfo(), camCarIdx)
-        : null;
+    const sessionInfo = this.host.getSessionInfo();
+    const center = this.focusedCarNumber(sessionInfo, telemetry);
+    const cars = getAllCarNumbers(sessionInfo, true, true);
+    const behind = this.trackOrderTarget(telemetry, cars, "previous");
+    const ahead = this.trackOrderTarget(telemetry, cars, "next");
     const clockwise = clockwiseDirection(dial.mode, dial.reverseRotation);
+    const sameCarBothWays = behind !== null && ahead !== null && behind.carIdx === ahead.carIdx;
 
     return {
       center,
-      ...orientSides(
-        clockwise,
-        this.trackOrderTarget(telemetry, "previous")?.carNumber ?? null,
-        this.trackOrderTarget(telemetry, "next")?.carNumber ?? null,
-      ),
-      sideCaptions: orientSides(
-        clockwise,
-        TRACK_ORDER_CAPTIONS[trackOrderDirection("previous")],
-        TRACK_ORDER_CAPTIONS[trackOrderDirection("next")],
-      ),
+      ...orientSides(clockwise, behind?.carNumber ?? null, ahead?.carNumber ?? null),
+      ...(sameCarBothWays
+        ? {}
+        : {
+            sideCaptions: orientSides(
+              clockwise,
+              TRACK_ORDER_CAPTIONS[trackOrderDirection("previous")],
+              TRACK_ORDER_CAPTIONS[trackOrderDirection("next")],
+            ),
+          }),
     };
+  }
+
+  /**
+   * The car-carousel view for the two number-primary car modes: car-number
+   * (ascending car number) or track-order (the physical road order, #886).
+   */
+  private carCarouselView(telemetry: TelemetryData | null, dial: DialSettings): CarCarouselView {
+    return dial.mode === "track-order"
+      ? this.trackOrderCarouselView(telemetry, dial)
+      : this.carNumberCarouselView(telemetry, dial);
   }
 
   /**
@@ -1170,8 +1204,7 @@ export class CameraDialSurface {
   private racePositionCarouselView(telemetry: TelemetryData | null, dial: DialSettings): RacePositionCarouselView {
     const sessionInfo = this.host.getSessionInfo();
     const camCarIdx = telemetry?.CamCarIdx;
-    const centerCarNumber =
-      typeof camCarIdx === "number" && camCarIdx >= 0 ? getCarNumberFromSessionInfo(sessionInfo, camCarIdx) : null;
+    const centerCarNumber = this.focusedCarNumber(sessionInfo, telemetry);
 
     const order = this.resolveOrder(telemetry);
     // The same world-presence walk the rotation dispatches (#885), so the side
@@ -1253,16 +1286,12 @@ export class CameraDialSurface {
       return ["camera", left?.name ?? "", current?.name ?? "", right?.name ?? ""].join("|");
     }
 
-    if (dial.mode === "car-number") {
-      const v = this.carNumberCarouselView(telemetry, dial);
+    if (dial.mode === "car-number" || dial.mode === "track-order") {
+      const v = this.carCarouselView(telemetry, dial);
 
-      return ["car-number", v.center ?? "", v.left ?? "", v.right ?? ""].join("|");
-    }
-
-    if (dial.mode === "track-order") {
-      const v = this.trackOrderCarouselView(telemetry, dial);
-
-      return ["track-order", v.center ?? "", v.left ?? "", v.right ?? ""].join("|");
+      // The caption marker covers track-order's same-car-both-ways case, where
+      // the captions come and go while the numbers on the sides don't change.
+      return [dial.mode, v.center ?? "", v.left ?? "", v.right ?? "", v.sideCaptions ? "captions" : ""].join("|");
     }
 
     if (dial.mode === "race-position") {
@@ -1306,16 +1335,10 @@ export class CameraDialSurface {
       return renderCameraCarousel({ ...base, identityLabel: MODE_IDENTITY.camera, ...slots });
     }
 
-    if (dial.mode === "car-number") {
-      const view = this.carNumberCarouselView(telemetry, dial);
+    if (dial.mode === "car-number" || dial.mode === "track-order") {
+      const view = this.carCarouselView(telemetry, dial);
 
-      return renderCarCarousel({ ...base, identityLabel: MODE_IDENTITY["car-number"], ...view });
-    }
-
-    if (dial.mode === "track-order") {
-      const view = this.trackOrderCarouselView(telemetry, dial);
-
-      return renderCarCarousel({ ...base, identityLabel: MODE_IDENTITY["track-order"], ...view });
+      return renderCarCarousel({ ...base, identityLabel: MODE_IDENTITY[dial.mode], ...view });
     }
 
     if (dial.mode === "race-position") {
