@@ -6,14 +6,16 @@
   Collapsed by default.
 
   Parameters:
-    - keyBindings: Array with objects containing id, label, default, setting
+    - keyBindings: Array with objects containing id, label, default, setting,
+      and an optional `class` applied to the row's sdpi-item (e.g. to let a
+      template show a row only on one surface)
 -->
 <%- include('accordion', {
   title: 'Related Key Bindings',
   open: false,
   content: keyBindings.map(function(binding) {
     return `
-    <sdpi-item label="${binding.label}">
+    <sdpi-item label="${binding.label}"${binding.class ? ` class="${binding.class}"` : ''}>
       <ird-key-binding setting="${binding.setting}" default="${binding.default}" global></ird-key-binding>
     </sdpi-item>`;
   }).join('')

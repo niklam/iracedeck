@@ -816,7 +816,7 @@ export interface CameraDialHost {
    * the Sub-Camera mode is binding-driven (issue #852) — every other mode is an
    * SDK command — so this gates that one strip's warning overlay.
    */
-  isBindingMissing(keys: string | string[] | null | undefined): boolean;
+  isBindingMissing(keys: string | readonly string[] | null | undefined): boolean;
   /**
    * Focus a car by its raw car number (the keypad Switch by Car Number
    * dispatch). Also the race-position mode's execution path: it resolves its
