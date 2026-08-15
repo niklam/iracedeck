@@ -45,7 +45,7 @@
  *     `findNearestCarOnTrack` primitive via `computeTrackOrderTarget`, issue
  *     #886 — a distinct concept from the race order, so the canonical-order
  *     rule doesn't apply, but the computation stays that one shared helper) —
- *     and focus it directly via the keypad's Switch-by-Number dispatch.
+ *     and focus it directly via the keypad's Switch by Car Number dispatch (`camera.switchNum`).
  *     race-position also resolves to a car NUMBER (never a bare position)
  *     before dispatching: the SDK's own `switchPos` resolves positions from a
  *     potentially different (official) order than the canonical one the
