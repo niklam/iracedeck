@@ -174,6 +174,29 @@ describe("IRacingNativeMock", () => {
     });
   });
 
+  describe("window management (mock)", () => {
+    beforeEach(() => {
+      vi.spyOn(console, "debug").mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it("focusIRacingWindow should report AlreadyFocused", () => {
+      expect(mock.focusIRacingWindow()).toBe(0);
+    });
+
+    it("moveMouseToIRacingWindow should report a successful move", () => {
+      expect(mock.moveMouseToIRacingWindow(0.5, 0.125)).toBe(0);
+    });
+
+    it("moveMouseToIRacingWindow should log the requested fractions", () => {
+      mock.moveMouseToIRacingWindow(0.25, 0.75);
+      expect(console.debug).toHaveBeenCalledWith(expect.stringContaining("0.25"));
+    });
+  });
+
   describe("snapshot rotation", () => {
     it("should rotate snapshots after the configured interval", () => {
       // Use a very short rotation interval for testing

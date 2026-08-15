@@ -34,6 +34,18 @@ export enum FocusResult {
   FocusTimedOut = 3,
 }
 
+/**
+ * Result codes from moveMouseToIRacingWindow().
+ */
+export enum PointerMoveResult {
+  /** The cursor was placed inside the sim's client area */
+  Moved = 0,
+  /** No window with the expected title exists */
+  WindowNotFound = 1,
+  /** The window was found but the move failed (including a minimized window) */
+  Failed = 2,
+}
+
 // Try to load native addon (only on Windows, with safety catch).
 // Force mock mode by creating a `.mock` file in the sdPlugin folder,
 // or by setting IRACEDECK_MOCK=1 in the environment.
@@ -223,6 +235,22 @@ export class IRacingNative {
    */
   focusIRacingWindow(): number {
     return addon ? addon.focusIRacingWindow() : this.getMock().focusIRacingWindow();
+  }
+
+  /**
+   * Move the OS mouse pointer into the iRacing window's client area.
+   *
+   * The target is given as fractions of the client area (0..1, clamped natively),
+   * so the placement policy stays in TypeScript rather than in the addon.
+   *
+   * @param xFraction - horizontal position, 0 = left edge, 1 = right edge
+   * @param yFraction - vertical position, 0 = top edge, 1 = bottom edge
+   * @returns PointerMoveResult status code (0=moved, 1=not found, 2=failed)
+   */
+  moveMouseToIRacingWindow(xFraction: number, yFraction: number): number {
+    return addon
+      ? addon.moveMouseToIRacingWindow(xFraction, yFraction)
+      : this.getMock().moveMouseToIRacingWindow(xFraction, yFraction);
   }
 
   // ============================================================================

@@ -109,6 +109,12 @@ export class IRacingNativeMock {
     return 0; // AlreadyFocused
   }
 
+  moveMouseToIRacingWindow(xFraction: number, yFraction: number): number {
+    console.debug(`[IRacingNativeMock] moveMouseToIRacingWindow(${xFraction}, ${yFraction})`);
+
+    return 0; // Moved
+  }
+
   sendScanKeys(scanCodes: number[]): void {
     console.debug(`[IRacingNativeMock] sendScanKeys([${scanCodes.join(", ")}])`);
   }
