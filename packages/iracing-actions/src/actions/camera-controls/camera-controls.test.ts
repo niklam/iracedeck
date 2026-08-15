@@ -1,8 +1,10 @@
 import { getCommands, requestProfileSwitch, resolveProfileNameForDevice } from "@iracedeck/deck-core";
-import { getAllCarNumbers, getCamerasInGroup, getCarNumberRawFromSessionInfo } from "@iracedeck/iracing-sdk";
+import * as deckCore from "@iracedeck/deck-core";
+import { getAllCarNumbers, getCarNumberRawFromSessionInfo } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { _resetSelectIntents, getSelectIntent } from "../../shared/car-select-intent.js";
+import keyBindings from "../data/key-bindings.json" with { type: "json" };
 import {
   CAMERA_GROUP_MAP,
   CAMERA_GROUPS_SETTING_KEY,
@@ -16,6 +18,8 @@ import {
   getEnabledGroupNames,
   getNextSelectedGroup,
   parseGroupSubset,
+  resolveBindingKey,
+  SUB_CAMERA_BINDING_KEYS,
 } from "./camera-controls.js";
 
 // Cycle icon mocks
@@ -134,7 +138,6 @@ const { mockGetGlobalSettings, mockCamera } = vi.hoisted(() => ({
   // same object every call; `vi.clearAllMocks()` in beforeEach resets its history.
   mockCamera: {
     cycleCamera: vi.fn(() => true),
-    cycleSubCamera: vi.fn(() => true),
     cycleCar: vi.fn(() => true),
     cycleDrivingCamera: vi.fn(() => true),
     switchPos: vi.fn(() => true),
@@ -163,6 +166,9 @@ vi.mock("@iracedeck/deck-core", () => ({
     logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
     sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn(), getCurrentTelemetry: vi.fn(), getSessionInfo: vi.fn() };
     updateConnectionState = vi.fn();
+    setActiveBinding = vi.fn();
+    tapBinding = vi.fn().mockResolvedValue(undefined);
+    isBindingMissing = vi.fn(() => false);
     setKeyImage = vi.fn();
     setRegenerateCallback = vi.fn();
     updateKeyImage = vi.fn();
@@ -1050,13 +1056,20 @@ describe("CameraControls dial surface (host integration)", () => {
 });
 
 // Shared root of the reported dial "Cycle Sub-Camera" pace-car stall (#803):
-// executeCycle's cycle-sub-camera branch used `cycleSubCamera` → switchPos(carIdx)
-// (carIdx-as-position), which iRacing can't resolve for the pace car (no valid
-// race position) — unlike the cycle-camera branch, which resolves the focused
-// car's number and uses switchNum to KEEP focus. This is shared by the keypad
-// and the dial (both go through executeCycle), so the fix lands here and covers
-// both surfaces.
-describe("cycle-sub-camera keeps focus by car number (pace-car stall #803)", () => {
+// #852: sub-camera cycling never switched the camera on hardware, in any of
+// three SDK dispatch shapes. The unified explanation, from four rounds of live
+// evidence: the `camera` argument of CamSwitchPos/CamSwitchNum does not select
+// a sub-camera at all — only the focus and group arguments take effect. What
+// looked like working sub-camera cycling before #803 was the FOCUS jumping to
+// another car (carIdx passed where a race position belongs), which makes the
+// sim re-pick the in-group shot.
+//
+// iRacing exposes sub-camera stepping only as a key binding (B / Shift+B,
+// "Next Sub Camera" / "Previous Sub Camera"), so this mode is keyboard-driven
+// per the SDK-first rule's own carve-out. Shared by the keypad Cycle
+// Sub-Camera mode and the dial's Sub-Camera mode (both go through
+// executeCycle), so the dispatch lands in one place and covers both surfaces.
+describe("cycle-sub-camera taps the iRacing sub-camera binding (#852)", () => {
   function dialContext() {
     return {
       id: "dial-1",
@@ -1083,6 +1096,13 @@ describe("cycle-sub-camera keeps focus by car number (pace-car stall #803)", () 
     ).sdkController;
   }
 
+  function bindings(action: CameraControls) {
+    return action as unknown as {
+      tapBinding: ReturnType<typeof vi.fn>;
+      setActiveBinding: ReturnType<typeof vi.fn>;
+    };
+  }
+
   beforeEach(() => {
     // This describe is a top-level sibling of `CameraControls`, so that block's
     // beforeEach doesn't reach it — clear the shared hoisted camera mock here so
@@ -1091,180 +1111,194 @@ describe("cycle-sub-camera keeps focus by car number (pace-car stall #803)", () 
   });
 
   afterEach(() => {
-    // Restore the module defaults so a switched return can't leak forward.
+    // Restore the module default so a switched return can't leak forward.
     vi.mocked(getCarNumberRawFromSessionInfo).mockReturnValue(null);
-    vi.mocked(getCamerasInGroup).mockReturnValue([]);
   });
 
-  it("dispatches switchNum with the focused car's raw number on a dial rotation (pace car focused)", async () => {
+  it("exposes the iRacing sub-camera binding keys", () => {
+    expect(SUB_CAMERA_BINDING_KEYS.next).toBe("cameraControlsSubCameraNext");
+    expect(SUB_CAMERA_BINDING_KEYS.previous).toBe("cameraControlsSubCameraPrevious");
+  });
+
+  // The bindings must exist in the PI's global key-binding catalog, or the user
+  // has no way to configure them and the mode is dead on arrival.
+  it("registers both bindings in the Property Inspector key-binding catalog", () => {
+    const settings = keyBindings.cameraControls.map((b) => b.setting);
+    expect(settings).toContain(SUB_CAMERA_BINDING_KEYS.next);
+    expect(settings).toContain(SUB_CAMERA_BINDING_KEYS.previous);
+    // iRacing's own defaults, so an untouched install works out of the box.
+    expect(keyBindings.cameraControls.find((b) => b.setting === SUB_CAMERA_BINDING_KEYS.next)?.default).toBe("B");
+    expect(keyBindings.cameraControls.find((b) => b.setting === SUB_CAMERA_BINDING_KEYS.previous)?.default).toBe(
+      "Shift+B",
+    );
+  });
+
+  it("taps the Next Sub-Camera binding on a next detent — no camera broadcast", async () => {
     const action = new CameraControls();
     sdk(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 0, CamGroupNumber: 9, CamCameraNumber: 2 });
     sdk(action).getSessionInfo.mockReturnValue({});
-    vi.mocked(getCarNumberRawFromSessionInfo).mockReturnValue(0); // the pace car's raw number
 
     await action.onDialRotate({
       action: dialContext(),
       payload: { settings: { dial: { mode: "sub-camera" } }, ticks: 1 },
     } as never);
 
-    // Keeps the focused (pace) car #0, same group 9, sub-camera 2 → 3. NOT switchPos-by-carIdx.
-    expect(mockCamera.switchNum).toHaveBeenCalledWith(0, 9, 3);
-    expect(mockCamera.cycleSubCamera).not.toHaveBeenCalled();
+    expect(bindings(action).tapBinding).toHaveBeenCalledWith(SUB_CAMERA_BINDING_KEYS.next);
+    // The broadcast camera argument is inert for sub-cameras — never dispatch one.
+    expect(mockCamera.switchNum).not.toHaveBeenCalled();
+    expect(mockCamera.switchPos).not.toHaveBeenCalled();
   });
 
-  it("decrements the sub-camera on a previous detent", async () => {
+  it("taps the Previous Sub-Camera binding on a previous detent", async () => {
     const action = new CameraControls();
     sdk(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 0, CamGroupNumber: 9, CamCameraNumber: 2 });
     sdk(action).getSessionInfo.mockReturnValue({});
-    vi.mocked(getCarNumberRawFromSessionInfo).mockReturnValue(0);
 
     await action.onDialRotate({
       action: dialContext(),
       payload: { settings: { dial: { mode: "sub-camera" } }, ticks: -1 },
     } as never);
 
-    expect(mockCamera.switchNum).toHaveBeenCalledWith(0, 9, 1);
+    expect(bindings(action).tapBinding).toHaveBeenCalledWith(SUB_CAMERA_BINDING_KEYS.previous);
   });
 
-  it("the keypad Cycle Sub-Camera uses the SAME switchNum dispatch (shared fix)", async () => {
+  it("the keypad Cycle Sub-Camera taps the SAME bindings (shared dispatch)", async () => {
     const action = new CameraControls();
     sdk(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 0, CamGroupNumber: 9, CamCameraNumber: 2 });
     sdk(action).getSessionInfo.mockReturnValue({});
-    vi.mocked(getCarNumberRawFromSessionInfo).mockReturnValue(0);
 
     await action.onKeyDown({
       action: { id: "k1" },
       payload: { settings: { target: "cycle-sub-camera", direction: "next" } },
     } as never);
 
-    expect(mockCamera.switchNum).toHaveBeenCalledWith(0, 9, 3);
-    expect(mockCamera.cycleSubCamera).not.toHaveBeenCalled();
-  });
-
-  it("falls back to the raw cycle helper when the focused car's number can't be resolved", async () => {
-    const action = new CameraControls();
-    sdk(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 3, CamGroupNumber: 9, CamCameraNumber: 2 });
-    sdk(action).getSessionInfo.mockReturnValue({});
-    vi.mocked(getCarNumberRawFromSessionInfo).mockReturnValue(null);
-
-    await action.onDialRotate({
-      action: dialContext(),
-      payload: { settings: { dial: { mode: "sub-camera" } }, ticks: 1 },
-    } as never);
-
-    expect(mockCamera.cycleSubCamera).toHaveBeenCalledWith(3, 9, 2, 1);
+    expect(bindings(action).tapBinding).toHaveBeenCalledWith(SUB_CAMERA_BINDING_KEYS.next);
     expect(mockCamera.switchNum).not.toHaveBeenCalled();
   });
 
-  it("focuses the camera the sub-camera carousel resolves — same source as the dial preview, including wrap (#803 strip)", async () => {
+  it("works with the pace car focused — the binding needs no car, position, or camera number", async () => {
     const action = new CameraControls();
-    // Focused on the LAST camera (cameraNum 3); the carousel wraps next → cameraNum 1.
-    sdk(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 0, CamGroupNumber: 9, CamCameraNumber: 3 });
+    // carIdx 64 (pace car): no classified race position, which stalled every
+    // position-addressed dispatch. A key tap is focus-independent.
+    sdk(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 64, CamGroupNumber: 10, CamCameraNumber: 3 });
     sdk(action).getSessionInfo.mockReturnValue({});
-    vi.mocked(getCarNumberRawFromSessionInfo).mockReturnValue(0);
-    vi.mocked(getCamerasInGroup).mockReturnValue([
-      { cameraNum: 1, cameraName: "Cockpit" },
-      { cameraNum: 2, cameraName: "Roll Bar" },
-      { cameraNum: 3, cameraName: "Gyro" },
-    ]);
 
     await action.onDialRotate({
       action: dialContext(),
       payload: { settings: { dial: { mode: "sub-camera" } }, ticks: 1 },
     } as never);
 
-    // Wraps to cameraNum 1 (the carousel target) — NOT the raw 3 + 1 = 4, so the
-    // camera the strip previews and the camera the dispatch switches to agree.
-    expect(mockCamera.switchNum).toHaveBeenCalledWith(0, 9, 1);
+    expect(bindings(action).tapBinding).toHaveBeenCalledWith(SUB_CAMERA_BINDING_KEYS.next);
+    expect(getCarNumberRawFromSessionInfo).not.toHaveBeenCalled();
   });
 
-  // The Scenic regression (#803): a large multi-camera group whose active
-  // CamCameraNumber is NOT a member of the group's Cameras[] list (Scenic camera
-  // numbers are a group-specific block, e.g. 18–22, that the current camera value
-  // doesn't index into). Before the recovery fix the carousel returned null
-  // neighbours and the dispatch fell back to a synthetic `cameraNum + dir` (31) —
-  // not a real camera of the group, so iRacing rejected it and the sub-camera did
-  // NOTHING. The dispatch must now target a REAL camera from the list.
-  it("targets a real group camera (not a synthetic cameraNum ± 1) when the current camera isn't in the list — Scenic no-op fix", async () => {
+  it("dispatches even with no session info at all (out of session)", async () => {
     const action = new CameraControls();
-    // CamCameraNumber 30 is not in the Scenic camera list [18..22].
     sdk(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 0, CamGroupNumber: 20, CamCameraNumber: 30 });
-    sdk(action).getSessionInfo.mockReturnValue({});
-    vi.mocked(getCarNumberRawFromSessionInfo).mockReturnValue(44);
-    vi.mocked(getCamerasInGroup).mockReturnValue([
-      { cameraNum: 18, cameraName: "Scenic 1" },
-      { cameraNum: 19, cameraName: "Scenic 2" },
-      { cameraNum: 20, cameraName: "Scenic 3" },
-      { cameraNum: 21, cameraName: "Scenic 4" },
-      { cameraNum: 22, cameraName: "Scenic 5" },
-    ]);
+    sdk(action).getSessionInfo.mockReturnValue(undefined);
 
     await action.onDialRotate({
       action: dialContext(),
       payload: { settings: { dial: { mode: "sub-camera" } }, ticks: 1 },
     } as never);
 
-    // next detent recovers to the FIRST camera (18), a real member of the group —
-    // NOT the synthetic 30 + 1 = 31 that iRacing rejects.
-    expect(mockCamera.switchNum).toHaveBeenCalledWith(44, 20, 18);
-    expect(mockCamera.switchNum).not.toHaveBeenCalledWith(44, 20, 31);
+    expect(bindings(action).tapBinding).toHaveBeenCalledWith(SUB_CAMERA_BINDING_KEYS.next);
   });
 
-  it("recovers to the LAST group camera on a previous detent when the current camera isn't in the list", async () => {
+  it("steps exactly once per detent regardless of the group camera list (iRacing owns the wrap)", async () => {
     const action = new CameraControls();
-    sdk(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 0, CamGroupNumber: 20, CamCameraNumber: 30 });
-    sdk(action).getSessionInfo.mockReturnValue({});
-    vi.mocked(getCarNumberRawFromSessionInfo).mockReturnValue(44);
-    vi.mocked(getCamerasInGroup).mockReturnValue([
-      { cameraNum: 18, cameraName: "Scenic 1" },
-      { cameraNum: 19, cameraName: "Scenic 2" },
-      { cameraNum: 20, cameraName: "Scenic 3" },
-      { cameraNum: 21, cameraName: "Scenic 4" },
-      { cameraNum: 22, cameraName: "Scenic 5" },
-    ]);
-
-    await action.onDialRotate({
-      action: dialContext(),
-      payload: { settings: { dial: { mode: "sub-camera" } }, ticks: -1 },
-    } as never);
-
-    // previous detent recovers to the LAST camera (22), NOT the synthetic 30 - 1 = 29.
-    expect(mockCamera.switchNum).toHaveBeenCalledWith(44, 20, 22);
-    expect(mockCamera.switchNum).not.toHaveBeenCalledWith(44, 20, 29);
-  });
-
-  it("no-ops for a located single-camera group instead of dispatching a synthetic neighbour", async () => {
-    const action = new CameraControls();
-    // The focused camera IS the group's only camera — nothing to cycle to. The
-    // carousel (and the strip preview) show current-only, so the dispatch must
-    // not fall back to the synthetic cameraNum ± 1 iRacing would reject.
+    // A single-camera group used to no-op, and an unlisted current camera used
+    // to trigger a recovery target. Neither applies now: the sim decides what
+    // the next sub-camera is, so every detent is exactly one tap and the
+    // dispatch never reads the group's camera list.
     sdk(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 0, CamGroupNumber: 5, CamCameraNumber: 7 });
     sdk(action).getSessionInfo.mockReturnValue({});
-    vi.mocked(getCarNumberRawFromSessionInfo).mockReturnValue(44);
-    vi.mocked(getCamerasInGroup).mockReturnValue([{ cameraNum: 7, cameraName: "Solo" }]);
 
     await action.onDialRotate({
       action: dialContext(),
       payload: { settings: { dial: { mode: "sub-camera" } }, ticks: 1 },
     } as never);
 
-    expect(mockCamera.switchNum).not.toHaveBeenCalled();
-    expect(mockCamera.cycleSubCamera).not.toHaveBeenCalled();
+    expect(bindings(action).tapBinding).toHaveBeenCalledTimes(1);
+    expect(bindings(action).tapBinding).toHaveBeenCalledWith(SUB_CAMERA_BINDING_KEYS.next);
   });
 
-  it("keeps the raw ± 1 fallback for a genuinely empty camera list (iRacing wraps internally)", async () => {
+  // setActiveBinding writes ONE value per action-class instance and re-evaluates
+  // readiness for every context, so a mixed API/binding action must not touch it:
+  // an unbound sub-camera key would dim the twelve SDK-driven camera keys around
+  // it, and an SDK-mode button appearing later would clear the tracking. The
+  // binding state reaches the user per button through the icon warning instead.
+  it("never writes the shared readiness state, whichever mode a button uses", async () => {
     const action = new CameraControls();
-    sdk(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 0, CamGroupNumber: 5, CamCameraNumber: 2 });
+    sdk(action).getCurrentTelemetry.mockReturnValue(null);
     sdk(action).getSessionInfo.mockReturnValue({});
-    vi.mocked(getCarNumberRawFromSessionInfo).mockReturnValue(44);
-    vi.mocked(getCamerasInGroup).mockReturnValue([]);
 
-    await action.onDialRotate({
-      action: dialContext(),
-      payload: { settings: { dial: { mode: "sub-camera" } }, ticks: 1 },
+    for (const [id, settings] of [
+      ["k1", { target: "cycle-sub-camera", direction: "previous" }],
+      ["k2", { target: "focus-your-car" }],
+    ] as const) {
+      await action.onWillAppear({
+        action: { id, isKey: () => true, isDial: () => false, setTitle: vi.fn(async () => {}) },
+        payload: { settings },
+      } as never);
+    }
+
+    expect(bindings(action).setActiveBinding).not.toHaveBeenCalled();
+  });
+
+  // The tap reads no telemetry, so a gap in the SDK feed (reconnect window,
+  // menus, a stalled tick) must not swallow the press the way it must for the
+  // telemetry-derived cycle modes.
+  it("still taps the binding while telemetry is unavailable", async () => {
+    const action = new CameraControls();
+    sdk(action).getCurrentTelemetry.mockReturnValue(null);
+    sdk(action).getSessionInfo.mockReturnValue({});
+
+    await action.onKeyDown({
+      action: { id: "k1" },
+      payload: { settings: { target: "cycle-sub-camera", direction: "next" } },
     } as never);
 
-    expect(mockCamera.switchNum).toHaveBeenCalledWith(44, 5, 3);
+    expect(bindings(action).tapBinding).toHaveBeenCalledWith(SUB_CAMERA_BINDING_KEYS.next);
+  });
+
+  it("sends nothing and warns when the binding is unset, instead of logging a cycle", async () => {
+    const action = new CameraControls();
+    const spy = action as unknown as {
+      isBindingMissing: ReturnType<typeof vi.fn>;
+      logger: { info: ReturnType<typeof vi.fn>; warn: ReturnType<typeof vi.fn> };
+    };
+    spy.isBindingMissing.mockReturnValue(true);
+    sdk(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 0, CamGroupNumber: 9, CamCameraNumber: 2 });
+    sdk(action).getSessionInfo.mockReturnValue({});
+
+    await action.onKeyDown({
+      action: { id: "k1" },
+      payload: { settings: { target: "cycle-sub-camera", direction: "next" } },
+    } as never);
+
+    expect(bindings(action).tapBinding).not.toHaveBeenCalled();
+    expect(spy.logger.warn).toHaveBeenCalledWith(expect.stringContaining("not configured"));
+    expect(spy.logger.info).not.toHaveBeenCalledWith("Sub-camera cycled");
+  });
+
+  // The overlay itself is icon-composer's (tested there); what matters here is
+  // that the key's missing-binding state reaches assembleIcon at all (#612).
+  it("passes the missing-binding flag through to the key icon", () => {
+    const assembleIcon = vi.mocked(deckCore.assembleIcon);
+
+    generateCameraControlsSvg({ target: "cycle-sub-camera", direction: "next" }, true);
+    expect(assembleIcon).toHaveBeenLastCalledWith(expect.objectContaining({ bindingMissing: true }));
+
+    generateCameraControlsSvg({ target: "cycle-sub-camera", direction: "next" }, false);
+    expect(assembleIcon).toHaveBeenLastCalledWith(expect.objectContaining({ bindingMissing: false }));
+
+    // generateCameraControlsSvg forwards the flag unconditionally, so what keeps
+    // an SDK-driven key from ever warning is resolveBindingKey returning null
+    // for it (isBindingMissing(null) is false). Assert that, not the forwarding.
+    expect(resolveBindingKey("focus-your-car")).toBeNull();
+    expect(resolveBindingKey("cycle-sub-camera", "next")).toBe(SUB_CAMERA_BINDING_KEYS.next);
+    expect(resolveBindingKey("cycle-sub-camera", "previous")).toBe(SUB_CAMERA_BINDING_KEYS.previous);
   });
 });
 

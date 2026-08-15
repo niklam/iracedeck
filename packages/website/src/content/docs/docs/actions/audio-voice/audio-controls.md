@@ -1,17 +1,17 @@
 ---
 title: Audio Controls
-description: Adjust iRacing voice chat and master volume, hold push-to-talk, and adjust iRaceDeck's own Race Engineer and Radar volume.
+description: Adjust iRacing voice chat, master, and (on a dial) spotter volume, hold push-to-talk, and adjust iRaceDeck's own Race Engineer and Radar volume.
 sidebar:
   badge:
     text: "5 modes"
     variant: tip
 ---
 
-Quick access to audio levels: hold push-to-talk, raise / lower / mute iRacing voice chat volume, raise / lower the iRacing master volume, and adjust iRaceDeck's own **Race Engineer** voice and **Radar** tick levels — all without navigating menus. Placed on a Stream Deck+ dial, it becomes a volume dial: rotate to adjust the selected audio, press to talk or mute — see [On a dial](#on-a-dial).
+Quick access to audio levels: hold push-to-talk, raise / lower / mute iRacing voice chat volume, raise / lower the iRacing master volume, and adjust iRaceDeck's own **Race Engineer** voice and **Radar** tick levels — all without navigating menus. Placed on a Stream Deck+ dial, it becomes a volume dial: rotate to adjust the selected audio — voice chat, master, iRacing's AI spotter, or iRaceDeck's own levels — and press to talk or mute — see [On a dial](#on-a-dial).
 
 The Mode dropdown is split into two groups:
 
-- **iRacing audio** — Push to Talk, Voice Chat, Master. These send key presses to iRacing, so they follow your configured key bindings.
+- **iRacing audio** — Push to Talk, Voice Chat, Master (and, on a dial, Spotter). These send key presses to iRacing, so they follow your configured key bindings.
 - **iRaceDeck audio** — Race Engineer Volume, Radar Volume. These adjust iRaceDeck's own audio buses directly, so they need no iRacing key binding. (These mirror the volume sliders in the Pit Crew settings.)
 
 ## Modes
@@ -112,15 +112,15 @@ Adjust iRaceDeck's own proximity **Radar** tick level — the same level as the 
 
 Placed on a Stream Deck+ dial, Audio Controls becomes a volume dial: rotating adjusts the selected audio category, and the press is configurable as **Push to Talk** or **Mute / Unmute**. The Property Inspector automatically shows the dial settings below (instead of the keypad Mode settings) when the instance sits on a dial.
 
-Rotate the dial to adjust the volume of the category selected in the **Volume** setting. For **Voice Chat** and **Master**, each detent taps the matching iRacing volume key binding — iRacing steps its volume a fixed amount per press, and it exposes no current volume state, so the touch strip shows the category name only (there is no level to display; this is an iRacing limitation, not a missing feature). For **Race Engineer** and **Radar**, each detent steps iRaceDeck's own level by 5% — and because these levels are iRaceDeck's, the touch strip shows a **live level bar** with the current value, updating immediately when the level changes anywhere (the dial itself, the keypad buttons, the Pit Crew sliders). When the Race Engineer or Radar feature is disabled, the bar dims and reads **OFF**.
+Rotate the dial to adjust the volume of the category selected in the dial's **Mode** setting. For **Voice Chat**, **Master**, and **Spotter**, each detent taps the matching iRacing volume key binding — iRacing steps its volume a fixed amount per press, and it exposes no current volume state, so the touch strip shows the category name only (there is no level to display; this is an iRacing limitation, not a missing feature). The **Spotter** mode drives iRacing's AI spotter through the same *Spotter Louder* / *Spotter Quieter* / *Spotter Silence* key bindings as the [AI Spotter Controls](/docs/actions/audio-voice/ai-spotter-controls/) action — they are shared plugin-wide, so configure them once (in either action's Related Key Bindings section) and both actions use them; the spotter volume dial lives here, on the audio dial, rather than on a separate AI Spotter dial. For **Race Engineer** and **Radar**, each detent steps iRaceDeck's own level by 5% — and because these levels are iRaceDeck's, the touch strip shows a **live level bar** with the current value, updating immediately when the level changes anywhere (the dial itself, the keypad buttons, the Pit Crew sliders). When the Race Engineer or Radar feature is disabled, the bar dims and reads **OFF**.
 
 While **Push to Talk** is held, the strip's top band turns red and reads **ON AIR** — transmit state is plugin-owned, so it can always be shown. If a key binding the dial needs is not configured, the strip dims and shows the standard warning triangle.
 
 #### Details
 
-- **Method:** Key binding for Voice Chat / Master rotation (both volume keys required), Push to Talk, and Voice Chat Mute / Unmute; iRaceDeck audio (no iRacing command) for Race Engineer / Radar rotation and their Mute / Unmute
+- **Method:** Key binding for Voice Chat / Master / Spotter rotation (both volume keys required), Push to Talk, and Voice Chat / Spotter Mute / Unmute; iRaceDeck audio (no iRacing command) for Race Engineer / Radar rotation and their Mute / Unmute
 - **Dial:** Rotation adjusts the selected category's volume, scaled by detents; press runs the configured Press Action
-- **Default binding:** The shared Audio Controls bindings (`audioVoiceChatVolumeUp` / `Down`, `audioMasterVolumeUp` / `Down`, `audioControlsPushToTalk`, `audioVoiceChatMute`); none for Race Engineer / Radar
+- **Default binding:** The shared Audio Controls bindings (`audioVoiceChatVolumeUp` / `Down`, `audioMasterVolumeUp` / `Down`, `audioControlsPushToTalk`, `audioVoiceChatMute`) and the AI Spotter Controls bindings (`spotterLouder` / `spotterQuieter` / `spotterSilence` — no default keys, so assign them in iRacing's controls and here); none for Race Engineer / Radar
 - **Telemetry-aware icon:** The touch strip shows the live Race Engineer / Radar level (iRaceDeck state, not telemetry); no level display is possible for the iRacing categories
 
 #### Controls
@@ -129,12 +129,13 @@ While **Push to Talk** is held, the strip's top band turns red and reads **ON AI
 
 Dials are currently Stream Deck+ only — the action can't be placed on Mirabox knobs or Ulanzi dials yet (see [Dials](/docs/features/dials/)).
 
-#### Setting: Volume
+#### Setting: Mode
 
 Which audio the rotation adjusts. Defaults to **Voice Chat**.
 
 - **Voice Chat** (default) — Each detent taps the iRacing voice chat volume up / down binding
 - **Master** — Each detent taps the iRacing master volume up / down binding
+- **Spotter** — Each detent taps the iRacing spotter louder / quieter binding (clockwise = louder), shared with the AI Spotter Controls action's Spotter Louder / Spotter Quieter modes; iRacing exposes no spotter volume, so the touch strip shows the mode name only
 - **Race Engineer** — Each detent steps iRaceDeck's Race Engineer voice level by 5% (live bar on the touch strip)
 - **Radar** — Each detent steps iRaceDeck's Radar tick level by 5% (live bar on the touch strip)
 
@@ -143,5 +144,5 @@ Which audio the rotation adjusts. Defaults to **Voice Chat**.
 What a dial press does. Defaults to **None**.
 
 - **Push to Talk** — Holds the push-to-talk binding while the dial is pressed; release to stop transmitting. The strip shows **ON AIR** while held.
-- **Mute / Unmute** — For **Voice Chat**, taps the voice chat mute binding. For **Race Engineer** / **Radar**, toggles the feature on or off — exactly like the Pit Crew toggle keys (the Race Engineer speaks its going-silent / resuming acknowledgment, and Pit Crew toggle buttons reflect the new state). Not available for **Master** — iRacing has no master-mute key binding.
+- **Mute / Unmute** — For **Voice Chat**, taps the voice chat mute binding. For **Spotter**, taps the spotter silence binding — the same key as the AI Spotter Controls action's Spotter Silence mode (iRacing exposes no spotter mute state, so, like voice chat mute, the strip can't show whether the spotter is currently silenced). For **Race Engineer** / **Radar**, toggles the feature on or off — exactly like the Pit Crew toggle keys (the Race Engineer speaks its going-silent / resuming acknowledgment, and Pit Crew toggle buttons reflect the new state). Not available for **Master** — iRacing has no master-mute key binding.
 - **None** (default) — The press does nothing.

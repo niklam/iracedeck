@@ -699,6 +699,15 @@
     { "id": "whisper", "label": "Whisper", "default": "", "setting": "chatWhisper" },
     { "id": "toggle", "label": "Toggle Chat On/Off", "default": "", "setting": "chatToggle" }
   ],
+  "cameraControls": [
+    { "id": "subCameraNext", "label": "Next Sub-Camera", "default": "B", "setting": "cameraControlsSubCameraNext" },
+    {
+      "id": "subCameraPrevious",
+      "label": "Previous Sub-Camera",
+      "default": "Shift+B",
+      "setting": "cameraControlsSubCameraPrevious"
+    }
+  ],
   "cameraEditorAdjustments": [
     { "id": "latitudeIncrease", "label": "Latitude +", "default": "D", "setting": "camEditLatitudeIncrease" },
     { "id": "latitudeDecrease", "label": "Latitude -", "default": "A", "setting": "camEditLatitudeDecrease" },

@@ -2,20 +2,20 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AUDIO_CONTROLS_GLOBAL_KEYS, AudioControls, generateAudioControlsSvg } from "./audio-controls.js";
 
-const { mockTapBinding, mockHoldBinding, mockReleaseBinding, mockStepRadarVolume, mockStepRaceEngineerVolume } =
+const { mockTapBinding, mockHoldBinding, mockReleaseBinding, mockStepRadarVolumeBy, mockStepRaceEngineerVolumeBy } =
   vi.hoisted(() => ({
     mockTapBinding: vi.fn().mockResolvedValue(undefined),
     mockHoldBinding: vi.fn().mockResolvedValue(undefined),
     mockReleaseBinding: vi.fn().mockResolvedValue(undefined),
-    mockStepRadarVolume: vi.fn(() => 50),
-    mockStepRaceEngineerVolume: vi.fn(() => 50),
+    mockStepRadarVolumeBy: vi.fn((_steps: number) => 50),
+    mockStepRaceEngineerVolumeBy: vi.fn((_steps: number) => 50),
   }));
 
 vi.mock("../../audio/audio-volume.js", () => ({
-  stepRadarVolume: mockStepRadarVolume,
-  stepRaceEngineerVolume: mockStepRaceEngineerVolume,
-  stepRadarVolumeBy: vi.fn(() => 50),
-  stepRaceEngineerVolumeBy: vi.fn(() => 50),
+  stepRadarVolume: vi.fn(() => 50),
+  stepRaceEngineerVolume: vi.fn(() => 50),
+  stepRadarVolumeBy: mockStepRadarVolumeBy,
+  stepRaceEngineerVolumeBy: mockStepRaceEngineerVolumeBy,
   readRadarVolume: vi.fn(() => 50),
   readRaceEngineerVolume: vi.fn(() => 50),
   isRadarEnabled: vi.fn(() => true),
@@ -437,7 +437,9 @@ describe("AudioControls", () => {
     it("steps the Race Engineer volume up on keyDown", async () => {
       await action.onKeyDown(fakeEvent("action-1", { category: "race-engineer", action: "volume-up" }) as any);
 
-      expect(mockStepRaceEngineerVolume).toHaveBeenCalledWith("up");
+      // One detent up through the shared bus table (the dial rotates the same
+      // wiring), and no key binding is involved for an internal bus.
+      expect(mockStepRaceEngineerVolumeBy).toHaveBeenCalledWith(1);
       expect(mockTapBinding).not.toHaveBeenCalled();
       expect(mockHoldBinding).not.toHaveBeenCalled();
     });
@@ -445,20 +447,29 @@ describe("AudioControls", () => {
     it("steps the Race Engineer volume down on keyDown", async () => {
       await action.onKeyDown(fakeEvent("action-1", { category: "race-engineer", action: "volume-down" }) as any);
 
-      expect(mockStepRaceEngineerVolume).toHaveBeenCalledWith("down");
+      expect(mockStepRaceEngineerVolumeBy).toHaveBeenCalledWith(-1);
     });
 
     it("steps the Radar volume up on keyDown", async () => {
       await action.onKeyDown(fakeEvent("action-1", { category: "radar", action: "volume-up" }) as any);
 
-      expect(mockStepRadarVolume).toHaveBeenCalledWith("up");
+      expect(mockStepRadarVolumeBy).toHaveBeenCalledWith(1);
       expect(mockTapBinding).not.toHaveBeenCalled();
     });
 
     it("steps the Radar volume down on keyDown", async () => {
       await action.onKeyDown(fakeEvent("action-1", { category: "radar", action: "volume-down" }) as any);
 
-      expect(mockStepRadarVolume).toHaveBeenCalledWith("down");
+      expect(mockStepRadarVolumeBy).toHaveBeenCalledWith(-1);
+    });
+
+    it("leaves the internal buses alone when the mute action is persisted (PI never offers it)", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { category: "radar", action: "mute" }) as any);
+
+      // `mute` can only arrive from a stale/hand-edited profile; treat it as a
+      // step up rather than dropping the press.
+      expect(mockStepRadarVolumeBy).toHaveBeenCalledWith(1);
+      expect(mockTapBinding).not.toHaveBeenCalled();
     });
   });
 });

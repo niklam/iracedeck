@@ -30,10 +30,12 @@ import voiceChatMuteIconSvg from "@iracedeck/icons/audio-controls/voice-chat-mut
 import voiceChatVolumeDownIconSvg from "@iracedeck/icons/audio-controls/voice-chat-volume-down.svg";
 import voiceChatVolumeUpIconSvg from "@iracedeck/icons/audio-controls/voice-chat-volume-up.svg";
 
-import { stepRaceEngineerVolume, stepRadarVolume } from "../../audio/audio-volume.js";
+import { INTERNAL_AUDIO_BUSES } from "./audio-buses.js";
 import {
   AUDIO_CONTROLS_GLOBAL_KEYS,
   type AudioControlsSettings,
+  type InternalAudioCategory,
+  isInternalAudioCategory,
   parseAudioControlsSettings,
 } from "./audio-controls-settings.js";
 import { AudioDialSurface } from "./audio-dial-surface.js";
@@ -43,17 +45,6 @@ export { AUDIO_CONTROLS_GLOBAL_KEYS };
 
 type AudioCategory = "push-to-talk" | "voice-chat" | "master" | "race-engineer" | "radar";
 type AudioAction = "volume-up" | "volume-down" | "mute";
-
-/**
- * Categories that adjust iRaceDeck's own internal audio buses (Race Engineer
- * voice, Radar ticks) rather than sending keyboard shortcuts to iRacing.
- * These step a global setting and apply it to the audio engine directly via
- * the shared {@link stepRaceEngineerVolume} / {@link stepRadarVolume} helpers,
- * so they have no entry in {@link AUDIO_CONTROLS_GLOBAL_KEYS} and no keyboard
- * binding. Dial/encoder control for them lives in the dial surface (#782),
- * which steps the same globals via the signed multi-step helpers.
- */
-const INTERNAL_VOLUME_CATEGORIES: Set<AudioCategory> = new Set(["race-engineer", "radar"]);
 
 /**
  * Flat record mapping "{category}-{action}" keys to imported SVGs.
@@ -189,7 +180,12 @@ export class AudioControls extends ConnectionStateAwareAction<AudioControlsSetti
       }
 
       await this.holdBinding(ev.action.id, settingKey);
-    } else if (INTERNAL_VOLUME_CATEGORIES.has(settings.category)) {
+    } else if (isInternalAudioCategory(settings.category)) {
+      // iRaceDeck's own audio buses (Race Engineer voice, Radar ticks): step
+      // the global and apply it to the audio engine directly via the shared
+      // helpers — no keyboard binding is involved, hence no entry in
+      // AUDIO_CONTROLS_GLOBAL_KEYS. The dial surface (#782) steps the same
+      // globals through the signed multi-step helpers.
       this.stepInternalVolume(settings.category, settings.action);
     } else {
       await this.executeControl(settings.category, settings.action);
@@ -231,23 +227,18 @@ export class AudioControls extends ConnectionStateAwareAction<AudioControlsSetti
 
   /**
    * Step an iRaceDeck-internal audio bus (Race Engineer voice or Radar ticks)
-   * up or down via the shared volume helpers. The helper persists the new
-   * value and applies it to the audio engine — Race Engineer stepping respects
-   * the master enable gate (the value updates but Voice stays muted while the
-   * Race Engineer feature is off). `mute` never reaches here (these categories
-   * expose only volume-up/down in the Property Inspector); treat anything that
-   * isn't `volume-down` as a step up.
+   * one detent up or down through the shared {@link INTERNAL_AUDIO_BUSES}
+   * table — the same wiring the dial rotates, so the two surfaces can't drift.
+   * The helper persists the new value and applies it to the audio engine;
+   * Race Engineer stepping respects the master enable gate (the value updates
+   * but Voice stays muted while the Race Engineer feature is off). `mute`
+   * never reaches here (these categories expose only volume-up/down in the
+   * Property Inspector); treat anything that isn't `volume-down` as a step up.
    */
-  private stepInternalVolume(category: AudioCategory, audioAction: AudioAction): void {
-    const direction = audioAction === "volume-down" ? "down" : "up";
-
-    if (category === "race-engineer") {
-      const next = stepRaceEngineerVolume(direction);
-      this.logger.info(`Race Engineer volume ${direction} → ${next}`);
-    } else if (category === "radar") {
-      const next = stepRadarVolume(direction);
-      this.logger.info(`Radar volume ${direction} → ${next}`);
-    }
+  private stepInternalVolume(category: InternalAudioCategory, audioAction: AudioAction): void {
+    const down = audioAction === "volume-down";
+    const next = INTERNAL_AUDIO_BUSES[category].stepBy(down ? -1 : 1);
+    this.logger.info(`${category} volume ${down ? "down" : "up"} → ${next}`);
   }
 
   private async executeControl(category: AudioCategory, audioAction: AudioAction): Promise<void> {

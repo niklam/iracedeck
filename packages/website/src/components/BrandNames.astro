@@ -1,0 +1,25 @@
+---
+// Renders the hardware brands of one or more ecosystems as an inline prose list
+// ("**A**, **B**, and **C**") for pages that want the names in a sentence rather
+// than as tiles. Shares src/data/brands.ts with BrandStrip.astro, so the two
+// never drift apart.
+import { brandsFor, type Ecosystem, toSentenceList } from "../data/brands";
+
+interface Props {
+  /** Ecosystem(s) to list, in the order given. */
+  ecosystem: Ecosystem | Ecosystem[];
+}
+
+const { ecosystem } = Astro.props;
+
+const segments = toSentenceList(brandsFor(ecosystem).map((brand) => brand.name));
+---
+
+{
+  segments.map(({ value, separator }) => (
+    <Fragment>
+      <strong>{value}</strong>
+      {separator}
+    </Fragment>
+  ))
+}

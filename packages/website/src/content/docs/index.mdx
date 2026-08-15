@@ -19,6 +19,7 @@ hero:
       variant: secondary
 ---
 
+import BrandStrip from "../../components/BrandStrip.astro";
 
 <hr class="section-divider" />
 
@@ -48,6 +49,18 @@ hero:
     <span class="stat-label">iRating Gain*</span>
   </div>
 </div>
+
+<hr class="section-divider" />
+
+## Works with
+
+<p class="works-with-lead">Elgato Stream Deck, Ulanzi Deck, and the Mirabox Stream Dock ecosystem — one plugin build for each.</p>
+
+{/* Mirabox last: its brand list is open-ended, so the trailing "and more" tile lands next to the brands it applies to. */}
+
+<BrandStrip ecosystem={["elgato", "ulanzi", "mirabox"]} label="Supported hardware brands" />
+
+<p class="works-with-note">See the <a href="/docs/getting-started/installation/">installation guide</a> for the devices each ecosystem covers.</p>
 
 <hr class="section-divider" />
 
@@ -123,5 +136,5 @@ hero:
 <footer class="landing-footer">
   <p>Works with <a href="https://www.elgato.com/stream-deck" target="_blank">Elgato Stream Deck</a> (Stream Deck, Mini, XL, and +), <a href="https://www.miraboxbuy.com/" target="_blank">Mirabox</a> ecosystem devices (<a href="https://www.vsdinside.com/collections/streamdock" target="_blank">VSDinside Stream Dock</a>, <a href="https://www.soomfon.com/" target="_blank">SOOMFON</a>, VAPOURD, and more), and <a href="https://www.ulanzi.com/" target="_blank">Ulanzi Deck</a> devices (D200, D200H, D200X, and Dial).</p>
   <p>* iRating gains not guaranteed.</p>
-  <p>iRaceDeck is not affiliated with or endorsed by iRacing.com, Elgato, Mirabox, or Ulanzi. All trademarks are property of their respective owners.</p>
+  <p>iRaceDeck is not affiliated with or endorsed by iRacing.com, Elgato, Mirabox, Ulanzi, or any other hardware brand named on this site. Product names, logos, and brands are the property of their respective owners and are used here only to identify compatible hardware.</p>
 </footer>

@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
+import { DIAL_CATEGORIES } from "./audio-controls/audio-controls-settings.js";
 import { COMMS_CATALOG } from "./comms-catalog.js";
 
 const JSON_PATH = new URL("./data/action-comms.json", import.meta.url);
@@ -86,5 +87,14 @@ describe("action-comms catalog", () => {
     // A catalog key absent from key-bindings.json means the status line can't
     // find an ird-key-binding for it → wrong/empty state. Catches typos too.
     expect(missing, `binding keys missing from key-bindings.json: ${missing.join(", ")}`).toEqual([]);
+  });
+
+  it("describes every Audio Controls dial category (#782, #809)", () => {
+    // The descriptors themselves are derived from the settings tables, but a
+    // category could still be added to DIAL_CATEGORIES (and to the PI) without
+    // an entry here — which renders no status line at all for that mode.
+    const dial = COMMS_CATALOG["audio-controls-dial"];
+
+    for (const category of DIAL_CATEGORIES) expect(dial[category], category).toBeDefined();
   });
 });

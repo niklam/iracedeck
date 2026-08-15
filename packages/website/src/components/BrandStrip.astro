@@ -1,0 +1,79 @@
+---
+// Renders the hardware brands of one or more ecosystems as a row of uniform
+// tiles — the visual answer to "will iRaceDeck work with my device?".
+//
+// A brand with a logo asset renders the logo; a brand without one renders a
+// styled wordmark in the same box and the same tone. Both are drawn in a single
+// neutral colour per theme (see the `.brand-strip` rules in custom.css) so the
+// row reads as a compatibility statement rather than a sponsor wall.
+//
+// Brand data — including which ecosystems have brands we cannot name — comes
+// from src/data/brands.ts. Do not hardcode brand names here.
+import { brandsFor, type Ecosystem, hasIncompleteList } from "../data/brands";
+
+interface Props {
+  /** Ecosystem(s) to render, in the order given. */
+  ecosystem: Ecosystem | Ecosystem[];
+  /** Accessible name for the list. */
+  label?: string;
+  /** Optional CSS class forwarded to the list element. */
+  class?: string;
+}
+
+const { ecosystem, label = "Supported hardware brands", class: className } = Astro.props;
+
+const brands = brandsFor(ecosystem);
+const showsMoreTile = hasIncompleteList(ecosystem);
+
+// Logo assets go through Vite so they are content-hashed and cache-busted. The
+// `?url` query keeps SVG and raster assets on one code path (an unqueried .svg
+// import would resolve to a component instead of a URL).
+const logoUrls = import.meta.glob<string>("../assets/brands/*.{svg,png,webp,avif}", {
+  eager: true,
+  query: "?url",
+  import: "default",
+});
+
+// A declared-but-missing asset would silently degrade to a wordmark, which is
+// indistinguishable from a brand that never had a logo. Fail the build instead.
+const tiles = brands.map((brand) => {
+  if (!brand.logo) return { brand, logoUrl: undefined };
+
+  const logoUrl = logoUrls[`../assets/brands/${brand.logo}`];
+  if (!logoUrl) {
+    throw new Error(
+      `Brand "${brand.name}" declares logo "${brand.logo}", but no such file exists in src/assets/brands/.`,
+    );
+  }
+
+  return { brand, logoUrl };
+});
+---
+
+<ul class:list={["brand-strip", className]} aria-label={label}>
+  {
+    tiles.map(({ brand, logoUrl }) => (
+      <li class="brand-tile">
+        {logoUrl && (
+          <img
+            class:list={[
+              "brand-logo",
+              brand.logoNeedsName && "brand-logo-inline",
+              brand.preserveBrandColor && "brand-logo-color",
+            ]}
+            src={logoUrl}
+            alt={brand.logoNeedsName ? "" : brand.name}
+          />
+        )}
+        {(!logoUrl || brand.logoNeedsName) && <span class="brand-wordmark">{brand.name}</span>}
+      </li>
+    ))
+  }
+  {
+    showsMoreTile && (
+      <li class="brand-tile brand-tile-more">
+        <span class="brand-wordmark">and more</span>
+      </li>
+    )
+  }
+</ul>

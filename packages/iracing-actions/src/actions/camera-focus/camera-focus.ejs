@@ -71,7 +71,9 @@
 
 		<%# The car-selector focus mode rides on Stream Deck profiles, so it is gated to Elgato (see platform-feature-flags.md). %>
 		<% var showFocusSelectCar = locals.platform?.features?.profiles !== false; %>
-		<%# Dial comms map (#803): the dial surface is entirely SDK-driven, so every mode is `api`. %>
+		<%# Comms maps (#612): every camera mode is an SDK command except Cycle Sub-Camera, %>
+		<%# which taps iRacing's own Next / Previous Sub Camera bindings (#852). %>
+		<% var __comms = require('./data/action-comms.json')['camera-focus']; %>
 		<% var __dialComms = require('./data/action-comms.json')['camera-focus-dial']; %>
 
 		<!-- Keypad settings — hidden when this instance is a dial (#803). -->
@@ -95,6 +97,8 @@
 				<option value="set-camera-state">Set Camera State</option>
 			</sdpi-select>
 		</sdpi-item>
+
+		<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
 
 		<sdpi-item label="Direction" id="direction-item" class="hidden">
 			<sdpi-select setting="direction" default="next">
@@ -182,6 +186,10 @@
 					<option value="driving">Cycle Driving Camera</option>
 				</sdpi-select>
 			</sdpi-item>
+
+			<%# Restored in #852: the line was dropped in #803 as redundant when every %>
+			<%# dial mode was `api`. Sub-Camera is binding-driven now, so it says something. %>
+			<ird-binding-status mode-setting="<%= __dialComms._meta.modeSetting %>" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
 			<% if (locals.platform?.features?.dialFeedback !== false) { %>
 			<div class="ird-supporting-text">
 				Turn the dial to cycle the selected target — clockwise for next, counter-clockwise for previous. In Race Position mode clockwise selects the car ahead (lower position number); in Track Order mode it selects the car physically ahead on track, regardless of standings. Where previewable, the touch strip shows the current camera, sub-camera, or focused car in the centre with the target for each turn direction at its side; Cycle Driving Camera shows only the current group.
@@ -272,6 +280,13 @@
 		</div>
 
 		<%- include('section-header', { title: 'Global Settings' }) %>
+
+		<%# Cycle Sub-Camera is the one keyboard-driven camera mode (#852) — the %>
+		<%# switch broadcasts cannot step a sub-camera, so iRacing's own bindings %>
+		<%# drive it. Defaults match the sim's (B / Shift+B). %>
+		<%- include('global-key-bindings', {
+			keyBindings: require('./data/key-bindings.json').cameraControls
+		}) %>
 
 		<div id="keypad-global-appearance">
 		<%- include('global-title-defaults') %>

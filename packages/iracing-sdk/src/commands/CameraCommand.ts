@@ -2,6 +2,15 @@
  * CameraCommand - Camera control commands for iRacing
  *
  * Note: Camera commands only work when you are out of your car (spectating/replay)
+ *
+ * Scope limit (issue #852): `CamSwitchPos` / `CamSwitchNum` change WHAT is
+ * focused and WHICH camera group is active. Their third argument is documented
+ * as a camera number, but iRacing does not act on it — verified on hardware
+ * across three dispatch shapes, with the focused camera never moving. There is
+ * therefore no SDK command that steps a sub-camera; iRacing exposes that only
+ * as its own "Next / Previous Sub Camera" key bindings. Pass `0` for the camera
+ * argument (as the official SDK sample does) and do not build a sub-camera
+ * feature on it.
  */
 import { ILogger } from "@iracedeck/logger";
 
@@ -126,23 +135,6 @@ export class CameraCommand extends BroadcastCommand {
     this.logger.debug(`carIdx=${currentCarIdx}, group=${currentGroup}, direction=${direction}`);
 
     return this.switchPos(currentCarIdx, currentGroup + direction, 0);
-  }
-
-  /**
-   * Cycle to the next or previous sub-camera within the current group.
-   * iRacing wraps automatically when the value goes out of range.
-   * @param currentCarIdx Current car index from telemetry (CamCarIdx)
-   * @param currentGroup Current camera group from telemetry (CamGroupNumber)
-   * @param currentCamera Current camera number from telemetry (CamCameraNumber)
-   * @param direction 1 for next, -1 for previous
-   */
-  cycleSubCamera(currentCarIdx: number, currentGroup: number, currentCamera: number, direction: 1 | -1): boolean {
-    this.logger.info("Cycle sub-camera");
-    this.logger.debug(
-      `carIdx=${currentCarIdx}, group=${currentGroup}, camera=${currentCamera}, direction=${direction}`,
-    );
-
-    return this.switchPos(currentCarIdx, currentGroup, currentCamera + direction);
   }
 
   /**
