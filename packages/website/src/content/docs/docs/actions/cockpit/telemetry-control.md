@@ -115,4 +115,4 @@ The mode only reads data the plugin already has and sends nothing to iRacing, so
 
 The folder the snapshot files are written to. Leave it blank to use the default — an `iRaceDeck\telemetry-snapshots` folder in your user home folder (for example `C:\Users\<you>\iRaceDeck\telemetry-snapshots`). Any folder path works: environment variables such as `%USERPROFILE%` and a leading `~` are expanded, and a relative path is resolved against your home folder rather than the plugin's own folder. The folder is created if it doesn't exist.
 
-Files are named `telemetry-snapshot-YYYYMMDD-HHMMSS-mmm.json` and `.md` — local time, with milliseconds, so two presses in quick succession never overwrite each other.
+Files are named `telemetry-snapshot-YYYYMMDD-HHMMSS-mmm.json` and `.md` — local time with millisecond resolution, so presses in quick succession normally get their own files rather than overwriting the previous one.
