@@ -11,7 +11,7 @@
 
 		<!-- Keypad settings — hidden when this instance is a dial (#800). -->
 		<div id="keypad-settings">
-			<sdpi-item label="Component">
+			<sdpi-item label="Mode">
 				<sdpi-select id="setting-select" setting="setting" default="differential-preload">
 					<optgroup label="Adjust">
 						<option value="differential-entry">Differential Entry</option>
@@ -97,7 +97,7 @@
 		</div>
 
 		<!-- Dial settings — shown only when this instance is a dial (#800). Setup
-		     Chassis has no press gesture, so only the rotation Component is offered. -->
+		     Chassis dial: rotation Mode, gestures, units, and appearance. -->
 		<div id="dial-settings" class="hidden">
 			<sdpi-item label="Mode">
 				<sdpi-select setting="dial.setting" default="differential-preload">
