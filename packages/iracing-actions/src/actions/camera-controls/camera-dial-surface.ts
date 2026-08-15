@@ -6,14 +6,16 @@
  * cycle modes' explicit next/previous setting. Clockwise = next for every mode
  * EXCEPT race-position, whose default is flipped (issue #884): clockwise
  * selects the car AHEAD (decreasing position number), because "next position"
- * would otherwise mean losing places. The `reverseRotation` setting inverts
- * the active mode's default mapping (see `clockwiseDirection`). The touch
- * strip's small top line is always the MODE name (CAMERA / SUB-CAMERA / CAR #
- * / POSITION / DRIVING CAM); the main content identifies the thing that mode
- * acts on, flanked by dimmed side previews that follow the EFFECTIVE mapping —
- * the left slot is always the counter-clockwise detent's target and the right
- * slot the clockwise one, so preview == execution holds under both the
- * race-position default flip and the reverse option:
+ * would otherwise mean losing places. In track-order (issue #886) "next" IS
+ * the car ahead on the road (the direction of travel), so clockwise lands on
+ * the car ahead there too without a flip. The `reverseRotation` setting
+ * inverts the active mode's default mapping (see `clockwiseDirection`). The
+ * touch strip's small top line is always the MODE name (CAMERA / SUB-CAMERA /
+ * CAR # / POSITION / TRACK ORDER / DRIVING CAM); the main content identifies
+ * the thing that mode acts on, flanked by dimmed side previews that follow the
+ * EFFECTIVE mapping — the left slot is always the counter-clockwise detent's
+ * target and the right slot the clockwise one, so preview == execution holds
+ * under both the race-position default flip and the reverse option:
  *   - camera → the current camera group's icon + name, flanked by the dimmed
  *     enabled-subset neighbours one detent either way,
  *   - sub-camera → the current camera's NAME within the focused group, flanked
@@ -24,6 +26,10 @@
  *     (`P<pos>`, the primary readout — issue #803 rework) with its car number
  *     smaller beneath it, flanked by the dimmed POSITION previews one detent
  *     either way (no car numbers at side size),
+ *   - track-order → the focused car's number large in the centre, flanked by
+ *     the numbers of the competitors physically ahead of / behind it on the
+ *     road, each captioned AHEAD / BEHIND beneath so the strip reads correctly
+ *     under either rotation mapping (issue #886),
  *   - driving → the current camera group's icon + name ONLY. The driving cycle
  *     hands `group ± 1` to iRacing, which resolves and wraps it internally, so
  *     there is no coherent neighbour to preview — better none than a lying one.
@@ -31,26 +37,33 @@
  * Two families of mode:
  *   - Cycle modes (camera / sub-camera / driving) rotate via the keypad's own
  *     `executeCycle` SDK dispatch (reuse, don't duplicate).
- *   - Car modes (car-number / race-position) compute the neighbouring car from
- *     an explicit ordering — car number ascending, or the canonical live race
- *     order (`getLiveRacePositions`, per `.claude/rules/race-positions.md`,
- *     official `CarIdxPosition` only as the documented fallback) — and focus it
- *     directly via the keypad's Switch-by-Number dispatch. race-position also
- *     resolves to a car NUMBER (never a bare position) before dispatching: the
- *     SDK's own `switchPos` resolves positions from a potentially different
- *     (official) order than the canonical one the carousel previews, so
- *     execution resolves the car number from the SAME canonical-first order
- *     and target position the preview's side badges show (issue #803 rework
- *     review) — preview and execution can't land on different cars. When the
+ *   - Car modes (car-number / race-position / track-order) compute the
+ *     neighbouring car from an explicit ordering — car number ascending, the
+ *     canonical live race order (`getLiveRacePositions`, per
+ *     `.claude/rules/race-positions.md`, official `CarIdxPosition` only as the
+ *     documented fallback), or the PHYSICAL track order (the shared
+ *     `findNearestCarOnTrack` primitive via `computeTrackOrderTarget`, issue
+ *     #886 — a distinct concept from the race order, so the canonical-order
+ *     rule doesn't apply, but the computation stays that one shared helper) —
+ *     and focus it directly via the keypad's Switch-by-Number dispatch.
+ *     race-position also resolves to a car NUMBER (never a bare position)
+ *     before dispatching: the SDK's own `switchPos` resolves positions from a
+ *     potentially different (official) order than the canonical one the
+ *     carousel previews, so execution resolves the car number from the SAME
+ *     canonical-first order and target position the preview's side badges
+ *     show (issue #803 rework review) — preview and execution can't land on
+ *     different cars. When the
  *     focused car has no classified position (the pace / safety car, or a car
  *     missing from the order), a detent still acts by re-entering the running
  *     order at its end — next → the leader, previous → last place — rather
- *     than stalling (#803). Both car modes walk past cars that are no longer
+ *     than stalling (#803). All car modes walk past cars that are no longer
  *     in the sim world (issue #885): post-race, finished/towed cars keep their
  *     frozen rank (and their session-info entry) but iRacing silently ignores
  *     a camera switch to them, so a detent targeting one would dead-loop —
  *     the walk continues along the ordering to the next present car, and the
- *     side previews show that same skipped-to target.
+ *     side previews show that same skipped-to target. track-order reads the
+ *     LIVE car placement, so during an in-session replay it follows the live
+ *     field rather than the replay cursor (the #307 finding).
  *
  * Everything the dial does is an iRacing SDK camera command, so — unlike the
  * Setup dials — the surface taps no key bindings and never shows a
@@ -77,7 +90,13 @@ import {
 import type { ILogger } from "@iracedeck/logger";
 import { z } from "zod";
 
-import { carPresence, computeCarNumberTarget } from "../../shared/car-cycling.js";
+import {
+  carPresence,
+  computeCarNumberTarget,
+  computeTrackOrderTarget,
+  type TrackOrderDirection,
+  type TrackOrderTarget,
+} from "../../shared/car-cycling.js";
 import { dialAppearanceFields, type DialBoxColors, resolveDialBoxColors } from "../../shared/dial-box.js";
 import { renderDialNameIcon } from "../../shared/dial-name-icon.js";
 import { computeCameraCarousel, computeSubCameraCarousel } from "./camera-groups.js";
@@ -92,7 +111,7 @@ import { computeCameraCarousel, computeSubCameraCarousel } from "./camera-groups
 const CHANGE_RENDER_MIN_INTERVAL_MS = 100;
 
 /** The cycle target the dial rotates through. */
-export const DIAL_MODES = ["camera", "sub-camera", "car-number", "race-position", "driving"] as const;
+export const DIAL_MODES = ["camera", "sub-camera", "car-number", "race-position", "track-order", "driving"] as const;
 export type DialMode = (typeof DIAL_MODES)[number];
 
 /**
@@ -124,14 +143,27 @@ function oppositeDirection(direction: Direction): Direction {
 }
 
 /**
+ * The physical-track reading of a `Direction` for the track-order mode (issue
+ * #886): `next` is the car AHEAD on the road (the direction of travel),
+ * `previous` the car BEHIND. The one place that mapping lives — the dispatch
+ * and the carousel preview both route through it, so preview == execution.
+ */
+function trackOrderDirection(direction: Direction): TrackOrderDirection {
+  return direction === "next" ? "ahead" : "behind";
+}
+
+/**
  * @internal Exported for testing
  *
  * The `Direction` a clockwise detent dispatches for a mode. Race-position's
  * default is flipped (issue #884): clockwise selects the car AHEAD — its
  * "next" means the position NUMBER increases, i.e. falling back through the
  * field, which nobody reads as forward. Every other mode keeps clockwise =
- * next. `reverseRotation` inverts the active mode's default mapping (for
- * race-position, that restores the pre-#884 clockwise → P# increases feel).
+ * next — including track-order, whose "next" already IS the car ahead on the
+ * road (`trackOrderDirection`, issue #886), so both car-neighbour modes land
+ * on the car ahead clockwise. `reverseRotation` inverts the active mode's
+ * default mapping (for race-position, that restores the pre-#884 clockwise →
+ * P# increases feel).
  */
 export function clockwiseDirection(mode: DialMode, reverseRotation: boolean): Direction {
   const defaultClockwise: Direction = mode === "race-position" ? "previous" : "next";
@@ -174,6 +206,7 @@ const MODE_IDENTITY: Record<DialMode, string> = {
   "sub-camera": "SUB CAM",
   "car-number": "CAR #",
   "race-position": "POSITION",
+  "track-order": "TRACK ORDER",
   driving: "DRIVING",
 };
 
@@ -187,6 +220,7 @@ const MODE_COLOR: Record<DialMode, string> = {
   "sub-camera": "#9b59b6",
   "car-number": "#2ecc71",
   "race-position": "#e74c3c",
+  "track-order": "#1abc9c",
   driving: "#e67e22",
 };
 
@@ -196,6 +230,7 @@ const MODE_LABEL: Record<DialMode, string> = {
   "sub-camera": "Sub-Cameras",
   "car-number": "Cars by Number",
   "race-position": "Cars by Position",
+  "track-order": "Cars by Track Order",
   driving: "Driving Cameras",
 };
 
@@ -209,8 +244,18 @@ const MODE_TITLE: Record<DialMode, string> = {
   "sub-camera": "SUB-CAMERA",
   "car-number": "CAR #",
   "race-position": "POSITION",
+  "track-order": "TRACK ORDER",
   driving: "DRIVING CAM",
 };
+
+/**
+ * The track-order strip's side captions (issue #886): a bare pair of numbers
+ * either side of the focused car says nothing about WHICH way is which, so
+ * each side is captioned with the road relation its detent lands on. Assigned
+ * to the strip sides through the same `orientSides` rule as the numbers, so
+ * the captions follow the effective rotation mapping too.
+ */
+const TRACK_ORDER_CAPTIONS: Record<TrackOrderDirection, string> = { ahead: "AHEAD", behind: "BEHIND" };
 
 /**
  * Dial-surface settings, stored under the `dial` root key. All fields default,
@@ -413,6 +458,12 @@ export interface CarCarouselView {
   center: string | null;
   left: string | null;
   right: string | null;
+  /**
+   * Optional small captions drawn beneath the side numbers (track-order's
+   * AHEAD / BEHIND, #886) — each on the side its number is on; a side with no
+   * number draws no caption either.
+   */
+  sideCaptions?: { left: string; right: string };
 }
 
 /**
@@ -573,12 +624,15 @@ export function renderSubCameraCarousel(args: {
 /**
  * @internal Exported for testing
  *
- * Renders the car-number carousel strip: the mode-name title on top, the
- * focused car's number large in the centre, flanked by the smaller dimmed
- * numbers of the cars one detent away (the nearest PRESENT cars, #885) —
- * `left` is the counter-clockwise detent's target, `right` the clockwise one
- * (#884). Falls back to a centred identity label out of a session (no focused
- * car number).
+ * Renders the car-number carousel strip (shared by the car-number and
+ * track-order modes): the mode-name title on top, the focused car's number
+ * large in the centre, flanked by the smaller dimmed numbers of the cars one
+ * detent away (the nearest PRESENT cars, #885) — `left` is the
+ * counter-clockwise detent's target, `right` the clockwise one (#884). With
+ * `sideCaptions`, each side number gets a small caption beneath it (the
+ * track-order AHEAD / BEHIND, #886) — only where that side has a number.
+ * Falls back to a centred identity label out of a session (no focused car
+ * number).
  */
 export function renderCarCarousel(args: {
   width: number;
@@ -589,6 +643,7 @@ export function renderCarCarousel(args: {
   center: string | null;
   left: string | null;
   right: string | null;
+  sideCaptions?: { left: string; right: string };
 }): string {
   const { width: w, height: h, colors } = args;
 
@@ -596,15 +651,21 @@ export function renderCarCarousel(args: {
 
   const parts: string[] = [dialPanel(w, h, colors), titleLine(w, h, args.title, colors)];
 
-  for (const [num, cx] of [
-    [args.left, w * 0.16],
-    [args.right, w * 0.84],
+  for (const [num, caption, cx] of [
+    [args.left, args.sideCaptions?.left, w * 0.16],
+    [args.right, args.sideCaptions?.right, w * 0.84],
   ] as const) {
     if (!num) continue;
 
     parts.push(
       `<text x="${cx}" y="${Math.round(h * 0.62)}" text-anchor="middle" fill="${colors.label}" font-family="Arial, sans-serif" font-size="18" font-weight="bold" opacity="0.45">#${escapeXml(num)}</text>`,
     );
+
+    if (caption) {
+      parts.push(
+        `<text x="${cx}" y="${Math.round(h * 0.8)}" text-anchor="middle" fill="${colors.label}" font-family="Arial, sans-serif" font-size="9" font-weight="bold" opacity="0.45">${escapeXml(caption)}</text>`,
+      );
+    }
   }
 
   parts.push(
@@ -937,6 +998,17 @@ export class CameraDialSurface {
       return;
     }
 
+    if (mode === "track-order") {
+      // Physical road order (#886): the competitor nearest ahead / behind on
+      // the lap — the SAME shared computation the carousel previews, so the
+      // detent lands on the car the side badge showed.
+      const target = this.trackOrderTarget(telemetry, direction);
+
+      if (target) this.host.focusCarNumber(target.carNumberRaw);
+
+      return;
+    }
+
     // race-position: canonical live order, official CarIdxPosition as fallback.
     // Resolve the target car NUMBER from that SAME order (never dispatch a bare
     // position) — the carousel preview's side badges show this SAME
@@ -956,6 +1028,19 @@ export class CameraDialSurface {
   /** The live order, canonical first, official `CarIdxPosition` as fallback. */
   private resolveOrder(telemetry: TelemetryData | null): number[] | null {
     return this.host.getRacePositions() ?? telemetry?.CarIdxPosition ?? null;
+  }
+
+  /**
+   * The competitor a track-order detent in `direction` lands on (issue #886):
+   * the focused car's nearest neighbour ahead / behind on the road among the
+   * SAME competitor set the car-number mode cycles (pace car and spectators
+   * excluded), through the shared `computeTrackOrderTarget`. Used by both the
+   * rotation dispatch and the carousel preview.
+   */
+  private trackOrderTarget(telemetry: TelemetryData | null, direction: Direction): TrackOrderTarget | null {
+    const cars = getAllCarNumbers(this.host.getSessionInfo(), true, true);
+
+    return computeTrackOrderTarget(telemetry, telemetry?.CamCarIdx, cars, trackOrderDirection(direction));
   }
 
   /** Runs a configured press / touch gesture through the keypad's own dispatch. */
@@ -1041,6 +1126,35 @@ export class CameraDialSurface {
         clockwise,
         computeCarNumberTarget(camCarIdx, cars, "previous", isPresent)?.carNumber ?? null,
         computeCarNumberTarget(camCarIdx, cars, "next", isPresent)?.carNumber ?? null,
+      ),
+    };
+  }
+
+  /**
+   * Builds the track-order carousel view (issue #886): the focused car plus
+   * the competitors physically ahead of / behind it on the road — the SAME
+   * per-direction targets the rotation focuses — each on the side its detent
+   * lands on (#884), captioned AHEAD / BEHIND on that same side.
+   */
+  private trackOrderCarouselView(telemetry: TelemetryData | null, dial: DialSettings): CarCarouselView {
+    const camCarIdx = telemetry?.CamCarIdx;
+    const center =
+      typeof camCarIdx === "number" && camCarIdx >= 0
+        ? getCarNumberFromSessionInfo(this.host.getSessionInfo(), camCarIdx)
+        : null;
+    const clockwise = clockwiseDirection(dial.mode, dial.reverseRotation);
+
+    return {
+      center,
+      ...orientSides(
+        clockwise,
+        this.trackOrderTarget(telemetry, "previous")?.carNumber ?? null,
+        this.trackOrderTarget(telemetry, "next")?.carNumber ?? null,
+      ),
+      sideCaptions: orientSides(
+        clockwise,
+        TRACK_ORDER_CAPTIONS[trackOrderDirection("previous")],
+        TRACK_ORDER_CAPTIONS[trackOrderDirection("next")],
       ),
     };
   }
@@ -1145,6 +1259,12 @@ export class CameraDialSurface {
       return ["car-number", v.center ?? "", v.left ?? "", v.right ?? ""].join("|");
     }
 
+    if (dial.mode === "track-order") {
+      const v = this.trackOrderCarouselView(telemetry, dial);
+
+      return ["track-order", v.center ?? "", v.left ?? "", v.right ?? ""].join("|");
+    }
+
     if (dial.mode === "race-position") {
       const v = this.racePositionCarouselView(telemetry, dial);
 
@@ -1190,6 +1310,12 @@ export class CameraDialSurface {
       const view = this.carNumberCarouselView(telemetry, dial);
 
       return renderCarCarousel({ ...base, identityLabel: MODE_IDENTITY["car-number"], ...view });
+    }
+
+    if (dial.mode === "track-order") {
+      const view = this.trackOrderCarouselView(telemetry, dial);
+
+      return renderCarCarousel({ ...base, identityLabel: MODE_IDENTITY["track-order"], ...view });
     }
 
     if (dial.mode === "race-position") {
