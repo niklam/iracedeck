@@ -600,11 +600,22 @@ describe("CameraDialSurface", () => {
         Record<string, unknown>
       >;
 
+      // Sub-Camera is the one keyboard-driven mode (#852): iRacing's camera
+      // switch broadcasts never select a sub-camera, so it taps the sim's own
+      // bindings while every other mode stays an SDK command.
       for (const mode of DIAL_MODES) {
-        expect(comms["camera-focus-dial"][mode], `camera-focus-dial has no entry for dial mode "${mode}"`).toEqual({
-          method: "api",
-        });
+        const record = comms["camera-focus-dial"][mode] as { method?: string } | undefined;
+
+        expect(record, `camera-focus-dial has no entry for dial mode "${mode}"`).toBeDefined();
+        expect(record?.method, `unexpected communication method for dial mode "${mode}"`).toBe(
+          mode === "sub-camera" ? "keybind" : "api",
+        );
       }
+
+      expect(comms["camera-focus-dial"]["sub-camera"]).toEqual({
+        method: "keybind",
+        binding: { scope: "global", keys: [SUB_CAMERA_DIAL_KEYS.next, SUB_CAMERA_DIAL_KEYS.previous] },
+      });
     });
 
     it("defaults to car-number for a fresh dial", () => {
