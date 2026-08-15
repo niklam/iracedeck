@@ -244,6 +244,23 @@ export {
   type ClipboardWriter,
 } from "./clipboard-service.js";
 
+// Window service singleton (focus + mouse pointer placement, issue #926)
+export {
+  initializeWindowService,
+  getWindowService,
+  isWindowServiceInitialized,
+  focusIRacingIfEnabled,
+  _resetWindowService,
+  WindowFocusResult,
+  PointerMoveResult,
+  DEFAULT_POINTER_X_FRACTION,
+  DEFAULT_POINTER_Y_FRACTION,
+  type IWindowService,
+  type WindowServiceDelegates,
+  type WindowFocuser,
+  type SimPointerMover,
+} from "./window-service.js";
+
 // App monitor for iRacing process detection
 export {
   _resetAppMonitor,
