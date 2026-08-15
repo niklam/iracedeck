@@ -26,7 +26,7 @@ import {
   svgToDataUri,
   type TitleOverrides,
 } from "@iracedeck/deck-core";
-import type { TelemetryData } from "@iracedeck/iracing-sdk";
+import { DisplayUnits, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 import setupViewTemplate from "../../icons/setup-view.svg";
 
@@ -64,6 +64,8 @@ export type ViewSettingId =
   | "view-power-steering"
   | "view-weight-jacker-left"
   | "view-weight-jacker-right"
+  | "view-lr-spring-offset"
+  | "view-rr-spring-offset"
   // setup-hybrid
   | "view-mguk-deploy-mode"
   | "view-mguk-regen-gain"
@@ -117,13 +119,58 @@ export function formatInteger(value: unknown): string {
   return String(Math.round(value));
 }
 
+/** User units preference for DisplayUnits-aware formatters (#953). */
+export type UnitsPreference = "auto" | "metric" | "imperial";
+
+/**
+ * Apply a units preference to a telemetry snapshot: `auto` passes it through
+ * (formatters follow the sim's `DisplayUnits`), `metric`/`imperial` return a
+ * copy with `DisplayUnits` forced so the same formatters render the chosen
+ * units regardless of the sim setting (#953).
+ */
+export function withUnitsPreference(
+  telemetry: TelemetryData | null | undefined,
+  units: UnitsPreference,
+): TelemetryData | null | undefined {
+  if (!telemetry || units === "auto") return telemetry;
+
+  const forced = units === "imperial" ? DisplayUnits.English : DisplayUnits.Metric;
+
+  // Skip the (full-snapshot) copy when the sim already displays the chosen
+  // units — this runs on the per-tick render paths.
+  if (telemetry.DisplayUnits === forced) return telemetry;
+
+  return { ...telemetry, DisplayUnits: forced };
+}
+
+/**
+ * Format a pending pit-stop spring offset (`dpWeightJacker*`, raw millimeters)
+ * exactly the way iRacing's F7 box renders it (#953): metric display units
+ * show rounded whole millimeters ("3 mm" for raw 2.54), english shows exact
+ * three-decimal inch fractions (`0.125"` for raw 3.175). Falls back to metric
+ * when `DisplayUnits` is unavailable.
+ */
+export function formatSpringOffsetMm(value: unknown, telemetry?: TelemetryData | null): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return VIEW_NULL_VALUE;
+
+  if (telemetry?.DisplayUnits === DisplayUnits.English) {
+    return `${(value / 25.4).toFixed(3)}"`;
+  }
+
+  return `${Math.round(value)} mm`;
+}
+
 interface ViewDef {
   /** TelemetryData field that holds the live value. */
   readonly telemetryField: keyof TelemetryData;
   /** Short label rendered at the top of the icon (e.g. "BRAKE BIAS"). */
   readonly label: string;
-  /** Formats the raw telemetry value into the on-icon display string. */
-  readonly format: (value: unknown) => string;
+  /**
+   * Formats the raw telemetry value into the on-icon display string. The full
+   * snapshot is passed as the second argument for formatters whose rendering
+   * depends on another field (e.g. `DisplayUnits` for the spring offsets).
+   */
+  readonly format: (value: unknown, telemetry?: TelemetryData | null) => string;
   /**
    * Per-view font size override for the centered value text. Falls back to
    * `VIEW_VALUE_FONT_SIZE_DEFAULT` (36) when omitted. Bump it up on entries
@@ -345,6 +392,23 @@ export const VIEW_DEFS: Record<ViewSettingId, ViewDef> = {
     valueFontSize: VIEW_VALUE_FONT_SIZE_MEDIUM,
     adjustmentMode: "weight-jacker-right",
   },
+  // Pending next-pit-stop LR/RR spring offsets (#953) — the `dp*` pitstop
+  // family, distinct from the immediate in-car `dcWeightJacker*` Views above.
+  // Raw values are millimeters regardless of the sim's display units; the
+  // formatter mirrors iRacing's per-unit F7 rendering. Either field may be
+  // absent per car (the SRX exposes only the Right one) → `---`.
+  "view-lr-spring-offset": {
+    telemetryField: "dpWeightJackerLeft",
+    label: "LR SPRING",
+    format: formatSpringOffsetMm,
+    adjustmentMode: "lr-spring",
+  },
+  "view-rr-spring-offset": {
+    telemetryField: "dpWeightJackerRight",
+    label: "RR SPRING",
+    format: formatSpringOffsetMm,
+    adjustmentMode: "rr-spring",
+  },
   // setup-hybrid — `view-mguk-deploy-fixed` maps to the existing `mguk-fixed-deploy`
   // adjustment mode (the View id was named in the noun-verb order to read more
   // naturally on the icon, the adjustment id keeps the original verb-noun order).
@@ -396,7 +460,7 @@ export function formatViewValue(viewId: ViewSettingId, telemetry: TelemetryData 
 
   const def = VIEW_DEFS[viewId];
 
-  return def.format(telemetry[def.telemetryField]);
+  return def.format(telemetry[def.telemetryField], telemetry);
 }
 
 /**

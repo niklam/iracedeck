@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 85.5 51">
-  <desc>{"colors":{"backgroundColor":"#1a3a1a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"locked":["graphic1Color"],"title":{"text":"RIGHT SPRING"},"border":{"color":"#3a6a3a"}}</desc>
+  <desc>{"colors":{"backgroundColor":"#1a3a1a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"locked":["graphic1Color"],"title":{"text":"RR SPRING"},"border":{"color":"#3a6a3a"}}</desc>
   <defs>
     
   </defs>
@@ -21,6 +21,6 @@
     <line x1="63" y1="8" x2="77" y2="8" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
     <polyline points="70,8 80,14 60,20 80,26 60,32 80,38 60,44 70,49" fill="none" stroke="{{graphic1Color}}" stroke-width="3.2" stroke-linejoin="round"/>
     <line x1="63" y1="50" x2="77" y2="50" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
-  </g><path d="M65 32.5h24" stroke="{{graphic1Color}}" stroke-width="6" stroke-linecap="round"/>
+  </g><path d="M65 32.5h24M77 20.5v24" stroke="{{graphic1Color}}" stroke-width="6" stroke-linecap="round"/>
   </g>
 </svg>

@@ -2206,6 +2206,26 @@
         ]
       }
     },
+    "view-lr-spring-offset": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupChassisLrSpringIncrease",
+          "setupChassisLrSpringDecrease"
+        ]
+      }
+    },
+    "view-rr-spring-offset": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupChassisRrSpringIncrease",
+          "setupChassisRrSpringDecrease"
+        ]
+      }
+    },
     "differential-preload": {
       "method": "keybind",
       "binding": {
@@ -2284,28 +2304,28 @@
         }
       }
     },
-    "left-spring": {
+    "lr-spring": {
       "method": "keybind",
       "binding": {
         "scope": "global",
         "keyBy": {
           "setting": "direction",
           "map": {
-            "increase": "setupChassisLeftSpringIncrease",
-            "decrease": "setupChassisLeftSpringDecrease"
+            "increase": "setupChassisLrSpringIncrease",
+            "decrease": "setupChassisLrSpringDecrease"
           }
         }
       }
     },
-    "right-spring": {
+    "rr-spring": {
       "method": "keybind",
       "binding": {
         "scope": "global",
         "keyBy": {
           "setting": "direction",
           "map": {
-            "increase": "setupChassisRightSpringIncrease",
-            "decrease": "setupChassisRightSpringDecrease"
+            "increase": "setupChassisRrSpringIncrease",
+            "decrease": "setupChassisRrSpringDecrease"
           }
         }
       }
@@ -2440,23 +2460,23 @@
         ]
       }
     },
-    "left-spring": {
+    "lr-spring": {
       "method": "keybind",
       "binding": {
         "scope": "global",
         "keys": [
-          "setupChassisLeftSpringIncrease",
-          "setupChassisLeftSpringDecrease"
+          "setupChassisLrSpringIncrease",
+          "setupChassisLrSpringDecrease"
         ]
       }
     },
-    "right-spring": {
+    "rr-spring": {
       "method": "keybind",
       "binding": {
         "scope": "global",
         "keys": [
-          "setupChassisRightSpringIncrease",
-          "setupChassisRightSpringDecrease"
+          "setupChassisRrSpringIncrease",
+          "setupChassisRrSpringDecrease"
         ]
       }
     },
@@ -2509,6 +2529,19 @@
           "setupChassisPowerSteeringDecrease"
         ]
       }
+    },
+    "show-pit-stop-black-box": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "blackBoxLapTiming",
+          "blackBoxPitStop"
+        ]
+      }
+    },
+    "toggle-spring-side": {
+      "method": "keybind"
     }
   },
   "setup-engine": {

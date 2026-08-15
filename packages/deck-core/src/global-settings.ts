@@ -1320,6 +1320,16 @@ export function getGlobalSettings(): GlobalSettings {
 }
 
 /**
+ * Whether the host has delivered at least one real global-settings payload
+ * this session. Before that the cache is pure schema defaults (passthrough
+ * keys absent), so any consumer deciding on the ABSENCE of a key — e.g. a
+ * one-shot key migration — must wait for the first arrival.
+ */
+export function hasReceivedHostSettings(): boolean {
+  return hostSettingsReceived;
+}
+
+/**
  * Subscribe to global settings changes.
  *
  * @param listener - Function called when settings change

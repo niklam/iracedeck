@@ -531,8 +531,8 @@ Suspension and handling adjustments.
 | Differential Exit +/-    | -           | Adjustment      | Repeat     | -     |
 | Front ARB +/-            | -           | Adjustment      | Repeat     | -     |
 | Rear ARB +/-             | -           | Adjustment      | Repeat     | -     |
-| Left Spring +/-          | -           | Adjustment      | Repeat     | -     |
-| Right Spring +/-         | -           | Adjustment      | Repeat     | -     |
+| LR Spring +/-            | -           | Adjustment      | Repeat     | -     |
+| RR Spring +/-            | -           | Adjustment      | Repeat     | -     |
 | LF Shock +/-             | -           | Adjustment      | Repeat     | -     |
 | RF Shock +/-             | -           | Adjustment      | Repeat     | -     |
 | LR Shock +/-             | -           | Adjustment      | Repeat     | -     |

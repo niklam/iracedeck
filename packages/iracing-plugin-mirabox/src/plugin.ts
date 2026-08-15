@@ -88,6 +88,7 @@ import {
   initializeSimHub,
   initPluginConfig,
   isIRacingActive,
+  migrateGlobalSettingsKeys,
   onGlobalSettingsChange,
   onIRacingTerminated,
   type PluginConfig,
@@ -149,6 +150,7 @@ import {
   SessionInfo,
   SETUP_AERO_UUID,
   SETUP_BRAKES_UUID,
+  SETUP_CHASSIS_BINDING_KEY_RENAMES,
   SETUP_CHASSIS_UUID,
   SETUP_ENGINE_UUID,
   SETUP_FUEL_UUID,
@@ -956,6 +958,9 @@ adapter.registerAction(VIEW_ADJUSTMENT_UUID, new ViewAdjustment(adapter.createLo
 
 // Initialize global settings listener BEFORE connect - handlers must be registered first
 initGlobalSettings(adapter, adapter.createLogger("GlobalSettings"));
+
+// Migrate the pre-#953 spring binding keys (Left/Right -> LR/RR) once real settings arrive
+migrateGlobalSettingsKeys(SETUP_CHASSIS_BINDING_KEY_RENAMES, adapter.createLogger("SettingsMigration"));
 
 // Initialize SimHub AFTER global settings so health check uses configured host/port
 initializeSimHub(adapter.createLogger("SimHub"));

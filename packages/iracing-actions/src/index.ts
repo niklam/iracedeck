@@ -46,7 +46,11 @@ export { REPLAY_TRANSPORT_UUID, ReplayTransport } from "./actions/replay-transpo
 export { SESSION_INFO_UUID, SessionInfo } from "./actions/session-info/session-info.js";
 export { SETUP_AERO_UUID, SetupAero } from "./actions/setup-aero/setup-aero.js";
 export { SETUP_BRAKES_UUID, SetupBrakes } from "./actions/setup-brakes/setup-brakes.js";
-export { SETUP_CHASSIS_UUID, SetupChassis } from "./actions/setup-chassis/setup-chassis.js";
+export {
+  SETUP_CHASSIS_BINDING_KEY_RENAMES,
+  SETUP_CHASSIS_UUID,
+  SetupChassis,
+} from "./actions/setup-chassis/setup-chassis.js";
 export { SETUP_ENGINE_UUID, SetupEngine } from "./actions/setup-engine/setup-engine.js";
 export { SETUP_FUEL_UUID, SetupFuel } from "./actions/setup-fuel/setup-fuel.js";
 export { SETUP_HYBRID_UUID, SetupHybrid } from "./actions/setup-hybrid/setup-hybrid.js";
