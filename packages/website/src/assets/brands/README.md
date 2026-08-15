@@ -43,6 +43,12 @@ back to a wordmark.
   as a compatibility statement rather than a sponsor wall. Where a brand's
   guidelines forbid recolouring, set `preserveBrandColor: true` on its entry and
   supply the approved full-colour asset — or leave it as a wordmark tile.
-- **Size for optical weight, not bounding box.** The tile constrains height and
-  caps width; a logo with an unusual aspect ratio may need its own tweak in the
-  `.brand-strip` rules in `src/styles/custom.css`.
+- **Trim the canvas.** Tiles size logos by a shared box, so any transparent
+  padding left in the file shows up as that one logo rendering smaller than the
+  rest.
+- **Size for optical weight, not bounding box.** `--brand-logo-box` in
+  `src/styles/custom.css` is kept short relative to the tile width so the height
+  is what limits each logo — that is what makes differently-shaped marks come
+  out equally tall. A logo wider than about 5:1 runs out of tile width first and
+  lands shorter (VSDinside does); one far outside that range may need its own
+  rule.
