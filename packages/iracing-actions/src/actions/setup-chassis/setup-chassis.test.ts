@@ -2,6 +2,7 @@ import { getDualPressDirections } from "@iracedeck/deck-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  blackBoxForSetting,
   generateSetupChassisSvg,
   migrateLegacySpringIds,
   parseSetupChassisSettings,
@@ -13,8 +14,9 @@ import {
 // way the runtime does (via the @iracedeck/deck-core getDualPressDirections reader).
 const mockGetDualPressDirections = getDualPressDirections as unknown as ReturnType<typeof vi.fn>;
 
-const { mockTapBinding } = vi.hoisted(() => ({
+const { mockTapBinding, mockTapBindingSequence } = vi.hoisted(() => ({
   mockTapBinding: vi.fn().mockResolvedValue(undefined),
+  mockTapBindingSequence: vi.fn().mockResolvedValue(true),
 }));
 
 vi.mock("@iracedeck/icons/setup-chassis/differential-entry-decrease.svg", () => ({
@@ -125,6 +127,7 @@ vi.mock("@iracedeck/deck-core", async () => {
       setRegenerateCallback = vi.fn();
       updateKeyImage = vi.fn().mockResolvedValue(true);
       tapBinding = mockTapBinding;
+      tapBindingSequence = mockTapBindingSequence;
       holdBinding = vi.fn().mockResolvedValue(undefined);
       releaseBinding = vi.fn().mockResolvedValue(undefined);
       setActiveBinding = vi.fn();
@@ -803,6 +806,86 @@ describe("SetupChassis", () => {
       await action.onKeyUp(fakeEvent("action-1", { setting: "view-rr-spring-offset", dualPressEnabled: true }) as any);
 
       expect(mockTapBinding).toHaveBeenCalledWith("setupChassisRrSpringIncrease");
+    });
+  });
+
+  describe("show black box on value change (#953)", () => {
+    it("maps each mode to the box its value lives in", () => {
+      expect(blackBoxForSetting("lr-spring")).toBe("pit-stop");
+      expect(blackBoxForSetting("rr-spring")).toBe("pit-stop");
+      expect(blackBoxForSetting("rr-shock")).toBe("pit-stop");
+      expect(blackBoxForSetting("view-rr-spring-offset")).toBe("pit-stop");
+      expect(blackBoxForSetting("differential-preload")).toBe("in-car");
+      expect(blackBoxForSetting("view-diff-entry")).toBe("in-car");
+      expect(blackBoxForSetting("view-weight-jacker-left")).toBe("in-car");
+      expect(blackBoxForSetting("power-steering")).toBe("in-car");
+    });
+
+    it("shows the Pit Stop box once on key down when enabled", async () => {
+      const action = new SetupChassis();
+
+      await action.onKeyDown(
+        fakeEvent("action-1", { setting: "lr-spring", direction: "increase", showBlackBox: true }) as any,
+      );
+
+      expect(mockTapBindingSequence).toHaveBeenCalledWith(["blackBoxLapTiming", "blackBoxPitStop"], 0);
+      expect(mockTapBindingSequence).toHaveBeenCalledTimes(1);
+      expect(mockTapBinding).toHaveBeenCalledWith("setupChassisLrSpringIncrease");
+    });
+
+    it("shows the In-Car box for an in-car adjustment mode", async () => {
+      const action = new SetupChassis();
+
+      await action.onKeyDown(
+        fakeEvent("action-1", { setting: "front-arb", direction: "decrease", showBlackBox: true }) as any,
+      );
+
+      expect(mockTapBindingSequence).toHaveBeenCalledWith(["blackBoxLapTiming", "blackBoxInCar"], 0);
+    });
+
+    it("does nothing when the checkbox is off", async () => {
+      const action = new SetupChassis();
+
+      await action.onKeyDown(fakeEvent("action-1", { setting: "lr-spring", direction: "increase" }) as any);
+
+      expect(mockTapBindingSequence).not.toHaveBeenCalled();
+    });
+
+    it("shows the box on a dual-press dispatch from a View key", async () => {
+      const action = new SetupChassis();
+      const tracker = (action as any).dualPress as { computeOutcome: ReturnType<typeof vi.fn> };
+      mockGetDualPressDirections.mockReturnValue("tap-increases");
+      tracker.computeOutcome.mockReturnValue("increase");
+
+      await action.onKeyUp(
+        fakeEvent("action-1", {
+          setting: "view-rr-spring-offset",
+          dualPressEnabled: true,
+          showBlackBox: true,
+        }) as any,
+      );
+
+      expect(mockTapBindingSequence).toHaveBeenCalledWith(["blackBoxLapTiming", "blackBoxPitStop"], 0);
+      expect(mockTapBinding).toHaveBeenCalledWith("setupChassisRrSpringIncrease");
+    });
+
+    it("does not re-show on hold-to-repeat iterations", async () => {
+      vi.useFakeTimers();
+      const action = new SetupChassis();
+      const ev = fakeEvent("action-1", {
+        setting: "lr-spring",
+        direction: "increase",
+        keyStyle: "split",
+        showBlackBox: true,
+      });
+
+      await action.onKeyDown(ev as any);
+      await vi.advanceTimersByTimeAsync(500 + 150 * 3 + 20);
+      expect(mockTapBinding.mock.calls.length).toBeGreaterThanOrEqual(3);
+      expect(mockTapBindingSequence).toHaveBeenCalledTimes(1);
+
+      await action.onKeyUp(ev as any);
+      vi.useRealTimers();
     });
   });
 

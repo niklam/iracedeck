@@ -64,6 +64,7 @@ import {
   seedFreshKeyStyle,
   telemetryMemoValue,
 } from "../../shared/adjust-styles.js";
+import { type BlackBoxId, showBlackBox } from "../../shared/black-box.js";
 import { RepeatController } from "../../shared/repeat-controller.js";
 import { generateSetupViewSvg, getAdjustmentModeForView, isViewSetting } from "../../shared/setup-view.js";
 import { DialSettings, seedDialFromLegacySetting, SetupChassisDialSurface } from "./setup-chassis-dial-surface.js";
@@ -234,6 +235,18 @@ const SetupChassisSettings = CommonSettings.extend({
     .union([z.boolean(), z.string()])
     .transform((v) => v === true || v === "true")
     .default(true),
+  /**
+   * Show the black box the adjusted value lives in when the key is pressed
+   * (#953, the Fuel Service #818 pattern) — In-Car Adjustments for the `dc*`
+   * modes, Pit Stop Adjustments for the springs and shocks. NOT
+   * z.coerce.boolean(): it maps the string "false" to true. `.catch` keeps a
+   * malformed persisted value from failing the whole parse.
+   */
+  showBlackBox: z
+    .union([z.boolean(), z.string()])
+    .transform((v) => v === true || v === "true")
+    .default(false)
+    .catch(false),
   // Dial-surface settings (#800), under the `dial` root so keypad and dial keys
   // can't collide. catch: dial garbage degrades to dial defaults instead of
   // failing the whole parse (which would reset a keypad instance).
@@ -283,6 +296,31 @@ export function migrateLegacySpringIds(raw: unknown): Record<string, unknown> | 
   }
 
   return migrated;
+}
+
+/**
+ * Modes whose value lives in iRacing's F7 Pit Stop Adjustments box — the
+ * pending pit-stop family (springs and shocks). Everything else on this action
+ * is an immediate in-car (`dc*`) adjustment shown in the F8 In-Car box.
+ */
+const PIT_STOP_BOX_SETTINGS: ReadonlySet<string> = new Set([
+  "lr-spring",
+  "rr-spring",
+  "lf-shock",
+  "rf-shock",
+  "lr-shock",
+  "rr-shock",
+  "view-lr-spring-offset",
+  "view-rr-spring-offset",
+]);
+
+/**
+ * @internal Exported for testing
+ *
+ * The black box a mode's value is displayed in, for the Show Black Box option.
+ */
+export function blackBoxForSetting(setting: string): BlackBoxId {
+  return PIT_STOP_BOX_SETTINGS.has(setting) ? "pit-stop" : "in-car";
 }
 
 /**
@@ -478,6 +516,14 @@ export class SetupChassis extends ConnectionStateAwareAction<SetupChassisSetting
       });
     }
 
+    // Show the box the value lives in BEFORE it changes, so the driver watches
+    // it tick. In onKeyDown rather than executeSetting so the hold-to-repeat
+    // loop never re-shows it, and after repeat.onKeyDown so the timers are
+    // armed before the first await (the Fuel Service #818 position).
+    if (settings.showBlackBox) {
+      await this.showValueBlackBox(settings.setting);
+    }
+
     await this.executeSetting(settings.setting, settings.direction);
   }
 
@@ -515,7 +561,22 @@ export class SetupChassis extends ConnectionStateAwareAction<SetupChassisSetting
       return;
     }
 
+    // A dual-press dispatch is a value change too — same show-before-change
+    // semantics as the adjust modes (#953).
+    if (settings.showBlackBox) {
+      await this.showValueBlackBox(settings.setting);
+    }
+
     await this.tapBinding(settingKey);
+  }
+
+  /** Show the black box `setting`'s value lives in (Fuel Service #818 pattern). */
+  private async showValueBlackBox(setting: string): Promise<void> {
+    await showBlackBox(blackBoxForSetting(setting), {
+      isConfigured: (key) => !this.isBindingMissing(key),
+      tapSequence: (keys, holdMs) => this.tapBindingSequence(keys, holdMs),
+      logger: this.logger,
+    });
   }
 
   override async onDialRotate(ev: IDeckDialRotateEvent<SetupChassisSettings>): Promise<void> {

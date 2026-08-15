@@ -56,9 +56,36 @@
 
 			<%- include('adjust-style', {
 				modeSelectId: 'setting-select',
-				pairedModes: ['differential-preload', 'differential-entry', 'differential-middle', 'differential-exit', 'front-arb', 'rear-arb', 'power-steering'],
-				viewModes: ['view-diff-preload', 'view-diff-entry', 'view-diff-middle', 'view-diff-exit', 'view-anti-roll-front', 'view-anti-roll-rear', 'view-power-steering', 'view-weight-jacker-left', 'view-weight-jacker-right']
+				pairedModes: ['differential-preload', 'differential-entry', 'differential-middle', 'differential-exit', 'front-arb', 'rear-arb', 'lr-spring', 'rr-spring', 'power-steering'],
+				viewModes: ['view-diff-preload', 'view-diff-entry', 'view-diff-middle', 'view-diff-exit', 'view-anti-roll-front', 'view-anti-roll-rear', 'view-power-steering', 'view-weight-jacker-left', 'view-weight-jacker-right', 'view-lr-spring-offset', 'view-rr-spring-offset']
 			}) %>
+
+			<sdpi-item label="Show black box">
+				<sdpi-checkbox
+					id="show-black-box"
+					setting="showBlackBox"
+					label="Show the matching black box when this key is pressed"
+				></sdpi-checkbox>
+			</sdpi-item>
+			<div class="ird-supporting-text">
+				Lets you see the value change in iRacing — In-Car Adjustments for the
+				differential, ARBs, power steering, and weight jackers; Pit Stop Adjustments
+				for the springs and shocks. iRacing never says which black box is open, so
+				iRaceDeck switches through another box first; both keypresses are sent
+				together, so you effectively never see it.
+			</div>
+			<%
+			var __primeCandidates = require('./data/key-bindings.json').blackBox
+				.filter(function (b) { return b.id !== 'cycleNext' && b.id !== 'cyclePrevious'; })
+				.map(function (b) { return b.setting; });
+			%>
+			<ird-black-box-caveat
+				id="chassis-black-box-caveat"
+				enabled-setting="showBlackBox"
+				target="blackBoxInCar"
+				candidates='<%= JSON.stringify(__primeCandidates) %>'
+				message="Showing the black box needs keyboard bindings for the In-Car black box and at least one other black box. Set them under Related Key Bindings. The value still changes without them."
+			></ird-black-box-caveat>
 		</div>
 
 		<!-- Dial settings — shown only when this instance is a dial (#800). Setup
@@ -157,8 +184,20 @@
 
 		<%- include('section-header', { title: 'Global Settings' }) %>
 
+		<%
+		var __kb = require('./data/key-bindings.json');
+		// The black-box rows are here so this PI SEEDS their defaults (#818/#953):
+		// ird-key-binding writes its `default` into global settings the first time
+		// it renders. Lap Timing is the preferred prime, In-Car and Pit Stop are
+		// this action's Show-Black-Box / dial-gesture targets.
+		var __blackBoxRows = __kb.blackBox
+			.filter(function (b) { return b.id === 'lapTiming' || b.id === 'inCar' || b.id === 'pitStop'; })
+			.map(function (b) {
+				return { id: b.id, label: 'Black Box: ' + b.label, default: b.default, setting: b.setting };
+			});
+		%>
 		<%- include('global-key-bindings', {
-			keyBindings: require('./data/key-bindings.json').setupChassis
+			keyBindings: __kb.setupChassis.concat(__blackBoxRows)
 		}) %>
 
 		<div id="keypad-global-appearance">
@@ -177,6 +216,19 @@
 				return typeof setting === "string" && setting.startsWith("view-");
 			}
 
+			// Modes whose value lives in the F7 Pit Stop box (springs and shocks);
+			// everything else shows in the F8 In-Car box. Mirrors blackBoxForSetting.
+			const PIT_STOP_BOX_MODES = new Set([
+				"lr-spring",
+				"rr-spring",
+				"lf-shock",
+				"rf-shock",
+				"lr-shock",
+				"rr-shock",
+				"view-lr-spring-offset",
+				"view-rr-spring-offset",
+			]);
+
 			function updateVisibility(setting) {
 				const directionItem = document.getElementById("direction-item");
 				const dualEnabledItem = document.getElementById("dual-press-enabled-item");
@@ -184,6 +236,19 @@
 				const view = isViewSetting(setting);
 				directionItem?.classList.toggle("hidden", view);
 				dualEnabledItem?.classList.toggle("hidden", !view);
+
+				// The Show-Black-Box caveat re-reads its attributes every poll, so
+				// retargeting it per mode keeps one element covering both boxes.
+				const caveat = document.getElementById("chassis-black-box-caveat");
+				if (caveat) {
+					const pitStop = PIT_STOP_BOX_MODES.has(setting);
+					const boxName = pitStop ? "Pit Stop" : "In-Car";
+					caveat.setAttribute("target", pitStop ? "blackBoxPitStop" : "blackBoxInCar");
+					caveat.setAttribute(
+						"message",
+						"Showing the black box needs keyboard bindings for the " + boxName + " black box and at least one other black box. Set them under Related Key Bindings. The value still changes without them.",
+					);
+				}
 			}
 
 			// Which surface this instance sits on: the PI registration's

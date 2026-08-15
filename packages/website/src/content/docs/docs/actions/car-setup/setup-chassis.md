@@ -37,6 +37,14 @@ Each View sub-mode exposes a single extra setting in the Property Inspector:
 
 The tap direction is a single plugin-wide setting under **Global Common Settings → Dual-Press → Directions** (default *Tap increases, long-press decreases*; the long-press always fires the opposite of the tap). The threshold separating "short" from "long" is a sibling setting **Long-press threshold (ms)** (200–2000 ms, default 500 ms). Both take effect on the next press without needing a restart.
 
+## Show black box
+
+Off by default. When enabled, pressing the key opens the iRacing black box the adjusted value lives in, so you can watch it change: **In-Car Adjustments** (F8) for the differential, ARBs, power steering, and weight jackers; **Pit Stop Adjustments** (F7) for the springs and shocks. One checkbox covers every mode of the key, including dual-press adjustments from a View key; hold-to-repeat shows the box once per press, not on every step.
+
+iRacing never reveals which black box is open, and a black box hotkey is a toggle, so iRaceDeck presses a different box first and then the target box. Both keypresses are sent together as one keystroke, so iRacing almost always applies them in the same frame and you never see the first box.
+
+Requires keyboard bindings for the target black box and at least one other black box — set them under **Related Key Bindings** (the In-Car, Pit Stop, and Lap Timing rows are listed there). If either is missing, or is bound to a SimHub role instead of a key, the value still changes but no black box opens.
+
 ## Modes
 
 Select the mode from the **Setting** dropdown in the Property Inspector. **Adjust** modes are directional — pick **Increase** or **Decrease** in the **Direction** setting to control what a button press does. **View** modes show a live readout and, with **Enable dual-press** on (default), also accept short / long presses — see [View sub-modes](#view-sub-modes) above. They don't use the per-action **Direction** setting; the tap direction is the plugin-wide **Global Common Settings → Dual-Press → Directions**.
