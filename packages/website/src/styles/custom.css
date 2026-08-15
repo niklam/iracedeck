@@ -213,6 +213,115 @@ starlight-theme-select label select {
   color: var(--sl-color-gray-3);
 }
 
+/* ── Brand strip (see src/components/BrandStrip.astro) ── */
+
+.brand-strip {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: stretch;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.brand-tile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Fixed box so wide wordmarks and square marks carry the same optical weight
+     regardless of their aspect ratio. */
+  min-height: 3rem;
+  min-width: 7rem;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--sl-color-gray-5);
+  border-radius: 0.5rem;
+}
+
+.brand-wordmark {
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-align: center;
+  line-height: 1.2;
+  color: var(--sl-color-gray-2);
+}
+
+[data-theme="light"] .brand-wordmark {
+  color: var(--sl-color-gray-3);
+}
+
+.brand-tile-more .brand-wordmark {
+  font-weight: 400;
+  font-style: italic;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* One neutral tone per theme, applied to any transparent-background asset with
+   no per-logo work. `.brand-logo-color` opts out for brands whose guidelines
+   forbid recolouring. */
+.brand-logo {
+  max-height: 2rem;
+  max-width: 8rem;
+  width: auto;
+  height: auto;
+  filter: brightness(0) invert(1);
+  opacity: 0.8;
+}
+
+[data-theme="light"] .brand-logo {
+  filter: brightness(0);
+  opacity: 0.7;
+}
+
+.brand-logo-color,
+[data-theme="light"] .brand-logo-color {
+  filter: none;
+  opacity: 1;
+}
+
+@media (max-width: 600px) {
+  .brand-strip {
+    gap: 0.5rem;
+  }
+
+  .brand-tile {
+    min-height: 2.5rem;
+    min-width: 5.5rem;
+    padding: 0.4rem 0.75rem;
+  }
+
+  .brand-wordmark {
+    font-size: 0.7rem;
+  }
+
+  .brand-logo {
+    max-height: 1.6rem;
+    max-width: 6rem;
+  }
+}
+
+/* ── Works with section (landing page) ── */
+
+.works-with-lead,
+.works-with-note {
+  text-align: center;
+  color: var(--sl-color-gray-3);
+  font-size: 0.9rem;
+}
+
+.works-with-lead {
+  margin-bottom: 1.5rem;
+}
+
+.works-with-note {
+  margin-top: 1.5rem;
+  font-size: 0.8rem;
+}
+
 /* ── Community cards ── */
 
 .community-grid {
@@ -333,6 +442,11 @@ starlight-theme-select label select {
   font-size: 0.875rem;
   color: var(--sl-color-gray-2);
   line-height: 1.5;
+  margin-bottom: 0.75rem;
+}
+
+/* The brand strip sits between a card's description and its download button. */
+.download-brands {
   margin-bottom: 1.5rem;
 }
 
