@@ -68,6 +68,8 @@ vi.mock("@iracedeck/iracing-sdk", async (importOriginal) => ({
   // The REAL track-order primitive (#886): the dial's track-order mode is a
   // composition over it, and the tests below assert real on-track geometry.
   findNearestCarOnTrack: (await importOriginal<typeof import("@iracedeck/iracing-sdk")>()).findNearestCarOnTrack,
+  // The REAL in-world predicate (#968) for the same reason.
+  carInWorld: (await importOriginal<typeof import("@iracedeck/iracing-sdk")>()).carInWorld,
   getCameraGroupsFromSessionInfo: vi.fn(() => mockGroups.value),
   getCamerasInGroup: vi.fn(() => mockCameras.value),
   getCarNumberFromSessionInfo: vi.fn((_s: unknown, carIdx: number) =>

@@ -7,6 +7,49 @@ export interface FindNearestCarOptions {
 }
 
 /**
+ * Whether a car currently exists in the sim world — the project's single
+ * "is this car really there" test (issue #968).
+ *
+ * A car counts as present when it has a valid lap distance and a track surface
+ * other than `NotInWorld`. Those two signals move together: iRacing zeroes a
+ * car's `CarIdxLapCompleted` / `CarIdxLapDistPct` / `CarIdxTrackSurface` to
+ * `-1` in the same tick it leaves the world (dump-file inspection recorded in
+ * `sim-events-iracing`'s `race-finish.ts`), so a despawned car fails this test
+ * even while a stale lap count lingers.
+ *
+ * **There is deliberately NO `CarIdxLapCompleted` condition — do not add one.**
+ * That field counts COMPLETED laps, so it reads `-1` for every active car until
+ * its first start/finish crossing. A lap-count condition therefore marks the
+ * entire formation lap as "nobody is here": it was removed from
+ * `findNearestCarOnTrack` for that reason in issue #307 (snapshot
+ * `20260417-081043`, every car at `laps = -1`), and re-adding it to the camera /
+ * replay cycling predicate silently killed those cycles for a whole lap
+ * (issue #968). It also earns nothing — the surface check already rejects every
+ * despawn it would.
+ *
+ * This is a per-tick snapshot with deliberately NO freeze/debounce, unlike the
+ * translator's position tracking (`sim-events-iracing`'s `race-finish.ts`),
+ * which starts from the same signals but remembers a last-known-good score: a
+ * one-tick `NotInWorld` blink here at worst makes one detent skip a live car,
+ * and the next detent recovers — which doesn't justify carrying per-car history
+ * in a camera-targeting predicate.
+ *
+ * Callers get a per-car closure so the telemetry arrays are resolved once per
+ * walk rather than per candidate. With no per-car arrays at all (out of
+ * session) every car counts as present: there is nothing to judge absence by,
+ * and the consumers' own fallbacks handle that case.
+ */
+export function carInWorld(telemetry: TelemetryData | null): (carIdx: number) => boolean {
+  const lapDistPct = telemetry?.CarIdxLapDistPct as number[] | undefined;
+
+  if (!Array.isArray(lapDistPct)) return () => true;
+
+  const trackSurface = telemetry?.CarIdxTrackSurface as number[] | undefined;
+
+  return (carIdx) => lapDistPct[carIdx] >= 0 && trackSurface?.[carIdx] !== TrkLoc.NotInWorld;
+}
+
+/**
  * Find the physically closest car on track ahead or behind a reference car.
  * Uses circular track distance based on CarIdxLapDistPct (0.0–1.0), regardless of lap count.
  *
@@ -30,7 +73,7 @@ export function findNearestCarOnTrack(
   if (referenceCarIdx < 0) return null;
 
   const lapDistPct = telemetry.CarIdxLapDistPct as number[];
-  const trackSurface = telemetry.CarIdxTrackSurface as number[] | undefined;
+  const inWorld = carInWorld(telemetry);
   const skipIdx = options?.skipIdx;
 
   const currentDist = lapDistPct[referenceCarIdx];
@@ -42,12 +85,9 @@ export function findNearestCarOnTrack(
   for (let idx = 0; idx < lapDistPct.length; idx++) {
     if (idx === referenceCarIdx) continue;
 
-    if (lapDistPct[idx] === undefined || lapDistPct[idx] < 0) continue;
-
-    // Skip disconnected/empty slots. During a warmup/pace lap CarIdxLapCompleted is
-    // still -1 for active cars, so lap count is not a safe "is active" signal — the
-    // authoritative signals are CarIdxLapDistPct and CarIdxTrackSurface.
-    if (trackSurface?.[idx] === TrkLoc.NotInWorld) continue;
+    // Skip disconnected/empty slots and cars that have left the world. Lap count
+    // is deliberately not part of this test — see `carInWorld` (#307, #968).
+    if (lapDistPct[idx] === undefined || !inWorld(idx)) continue;
 
     if (skipIdx?.(idx)) continue;
 
@@ -90,7 +130,7 @@ export function nearestCarGapMeters(
   if (!telemetry?.CarIdxLapDistPct || referenceCarIdx < 0 || !(trackLengthMeters > 0)) return null;
 
   const lapDistPct = telemetry.CarIdxLapDistPct as number[];
-  const trackSurface = telemetry.CarIdxTrackSurface as number[] | undefined;
+  const inWorld = carInWorld(telemetry);
   const me = lapDistPct[referenceCarIdx];
 
   if (me === undefined || me < 0) return null;
@@ -102,9 +142,8 @@ export function nearestCarGapMeters(
 
     const pct = lapDistPct[idx];
 
-    if (pct === undefined || pct < 0) continue;
-
-    if (trackSurface?.[idx] === TrkLoc.NotInWorld) continue;
+    // Same in-world rule as every other consumer (`carInWorld`, #968).
+    if (pct === undefined || !inWorld(idx)) continue;
 
     let frac = Math.abs(pct - me);
 

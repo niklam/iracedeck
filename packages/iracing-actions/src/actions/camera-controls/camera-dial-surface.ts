@@ -61,12 +61,12 @@
  *     frozen rank (and their session-info entry) but iRacing silently ignores
  *     a camera switch to them, so a detent targeting one would dead-loop —
  *     the walk continues along the ordering to the next present car, and the
- *     side previews show that same skipped-to target. car-number and
- *     race-position judge presence with the shared `carPresence` predicate;
- *     track-order inherits the primitive's own in-world test (a valid lap
- *     distance and a surface other than `NotInWorld` — deliberately without
- *     `carPresence`'s lap-count condition, since `CarIdxLapCompleted` is still
- *     -1 for every car on the pace lap, the #307 fix). track-order reads the
+ *     side previews show that same skipped-to target. All three car modes
+ *     judge presence with the one shared `carInWorld` predicate — a valid lap
+ *     distance and a surface other than `NotInWorld`, deliberately WITHOUT a
+ *     `CarIdxLapCompleted` condition, since that field is still -1 for every
+ *     car on the pace lap (the #307 fix; a lap-count term here killed cycling
+ *     for the whole formation lap, #968). track-order reads the
  *     LIVE car placement, so during an in-session replay it follows the live
  *     field rather than the replay cursor (the #492 finding — the reason
  *     Replay Control's Next/Prev Car defer to iRacing's keystroke).
@@ -86,6 +86,7 @@ import {
   svgToDataUri,
 } from "@iracedeck/deck-core";
 import {
+  carInWorld,
   getAllCarNumbers,
   getCameraGroupsFromSessionInfo,
   getCamerasInGroup,
@@ -97,7 +98,6 @@ import type { ILogger } from "@iracedeck/logger";
 import { z } from "zod";
 
 import {
-  carPresence,
   computeCarNumberTarget,
   computeTrackOrderTarget,
   type TrackOrderDirection,
@@ -994,7 +994,7 @@ export class CameraDialSurface {
     // Skip cars that left the world (#885): post-race the frozen order (and
     // session info) still lists them, but a switch to an absent car is
     // silently ignored by iRacing and the dial would dead-loop on it.
-    const isPresent = carPresence(telemetry);
+    const isPresent = carInWorld(telemetry);
 
     if (mode === "car-number" || mode === "track-order") {
       // Both walk the SAME competitor list the carousel previews — ascending
@@ -1135,7 +1135,7 @@ export class CameraDialSurface {
     const clockwise = clockwiseDirection(dial.mode, dial.reverseRotation);
     // The same world-presence walk the rotation dispatches (#885), so the side
     // previews show the car a detent actually lands on.
-    const isPresent = carPresence(telemetry);
+    const isPresent = carInWorld(telemetry);
 
     return {
       center,
@@ -1209,7 +1209,7 @@ export class CameraDialSurface {
     const order = this.resolveOrder(telemetry);
     // The same world-presence walk the rotation dispatches (#885), so the side
     // previews show the position a detent actually lands on.
-    const isPresent = carPresence(telemetry);
+    const isPresent = carInWorld(telemetry);
     const nextTarget = computeRacePositionTarget(camCarIdx, order, "next", isPresent);
     const prevTarget = computeRacePositionTarget(camCarIdx, order, "previous", isPresent);
 

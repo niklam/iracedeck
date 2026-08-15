@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { findNearestCarOnTrack, nearestCarGapMeters } from "./track-utils.js";
+import { carInWorld, findNearestCarOnTrack, nearestCarGapMeters } from "./track-utils.js";
 import type { TelemetryData } from "./types.js";
 import { TrkLoc } from "./types.js";
 
@@ -26,6 +26,63 @@ function makeTelemetry(
     CarIdxTrackSurface: trackSurface,
   };
 }
+
+describe("carInWorld", () => {
+  /** Per-car telemetry arrays; index 0 is unused padding. */
+  function telemetry(cars: Array<{ idx: number; dist: number; surface?: TrkLoc; laps?: number }>): TelemetryData {
+    const size = 8;
+    const lapDistPct = new Array<number>(size).fill(-1);
+    const trackSurface = new Array<number>(size).fill(TrkLoc.NotInWorld);
+    const lapCompleted = new Array<number>(size).fill(-1);
+
+    for (const car of cars) {
+      lapDistPct[car.idx] = car.dist;
+      trackSurface[car.idx] = car.surface ?? TrkLoc.OnTrack;
+      lapCompleted[car.idx] = car.laps ?? -1;
+    }
+
+    return {
+      CarIdxLapDistPct: lapDistPct,
+      CarIdxTrackSurface: trackSurface,
+      CarIdxLapCompleted: lapCompleted,
+    } as unknown as TelemetryData;
+  }
+
+  it("counts a car with a valid distance and an in-world surface as present", () => {
+    expect(carInWorld(telemetry([{ idx: 2, dist: 0.4, laps: 7 }]))(2)).toBe(true);
+  });
+
+  it("counts a car that has completed no laps as present (the #307 / #968 rule)", () => {
+    // Formation lap: valid distance, on track, but CarIdxLapCompleted is still -1.
+    // Lap count must not enter this test.
+    expect(carInWorld(telemetry([{ idx: 2, dist: 0.4, laps: -1 }]))(2)).toBe(true);
+  });
+
+  it("rejects a car whose surface is NotInWorld even with stale valid lap telemetry (#885)", () => {
+    expect(carInWorld(telemetry([{ idx: 2, dist: 0.4, surface: TrkLoc.NotInWorld, laps: 7 }]))(2)).toBe(false);
+  });
+
+  it("rejects a car with no valid lap distance", () => {
+    expect(carInWorld(telemetry([{ idx: 2, dist: -1 }]))(2)).toBe(false);
+  });
+
+  it("accepts every off-track-but-in-world surface (a car in the pits is still there)", () => {
+    for (const surface of [TrkLoc.OffTrack, TrkLoc.InPitStall, TrkLoc.AproachingPits] as const) {
+      expect(carInWorld(telemetry([{ idx: 2, dist: 0.4, surface }]))(2), `surface ${surface}`).toBe(true);
+    }
+  });
+
+  it("counts every car as present when the per-car arrays are missing (out of session)", () => {
+    expect(carInWorld(null)(2)).toBe(true);
+    expect(carInWorld({} as unknown as TelemetryData)(2)).toBe(true);
+  });
+
+  it("treats a missing track-surface array as no evidence of absence", () => {
+    const noSurface = { CarIdxLapDistPct: [0.1, 0.2, 0.3] } as unknown as TelemetryData;
+
+    expect(carInWorld(noSurface)(1)).toBe(true);
+  });
+});
 
 describe("findNearestCarOnTrack", () => {
   it("should find the physically closest car ahead", () => {

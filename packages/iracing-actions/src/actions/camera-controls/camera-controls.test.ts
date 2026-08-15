@@ -103,8 +103,11 @@ vi.mock("../race-admin/race-admin-selector.js", () => ({
   deviceProfileEntries: vi.fn(() => [{ name: "iRaceDeck Car Selector XL", label: "iRaceDeck Car Selector" }]),
 }));
 
-vi.mock("@iracedeck/iracing-sdk", () => ({
+vi.mock("@iracedeck/iracing-sdk", async (importOriginal) => ({
   TrkLoc: { NotInWorld: -1, OffTrack: 0, InPitStall: 1, AproachingPits: 2, OnTrack: 3 },
+  // The REAL in-world predicate (#968): presence is the behaviour under test in
+  // the world-walk cases, so mocking it would assert the mock, not the rule.
+  carInWorld: (await importOriginal<typeof import("@iracedeck/iracing-sdk")>()).carInWorld,
   getCameraGroupsFromSessionInfo: vi.fn(() => []),
   getCamerasInGroup: vi.fn(() => []),
   getCarNumberRawFromSessionInfo: vi.fn(() => null),
