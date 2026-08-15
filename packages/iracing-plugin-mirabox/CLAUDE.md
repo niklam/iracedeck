@@ -56,4 +56,4 @@ On Windows, `link:mirabox` creates a directory **junction** (via `fs.symlinkSync
 
 ## Window Focus
 
-The `window-focus.ts` module is duplicated from `iracing-plugin-stream-deck` rather than shared via `deck-core`, to avoid adding test infrastructure to `deck-core`. Extraction is planned as a follow-up.
+Window focusing lives in `@iracedeck/deck-core` (`initWindowFocus` / `focusIRacingIfEnabled`); `plugin.ts` injects the native focuser. It was previously duplicated per plugin as `src/shared/window-focus.ts` — extracted in #930, which is why this package no longer has a `src/shared/` folder.

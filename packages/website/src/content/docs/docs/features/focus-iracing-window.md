@@ -1,18 +1,28 @@
 ---
 title: Focus iRacing Window
-description: Automatically focus the iRacing window before sending commands.
+description: iRaceDeck brings iRacing to the foreground before sending commands, so button presses are never lost to another window.
 ---
 
-The Focus iRacing Window feature shifts focus to the iRacing window before sending any commands. This ensures that actions reach iRacing and are not lost to another application.
+Focus iRacing Window brings the iRacing window to the foreground before iRaceDeck sends anything to the sim. Windows discards keystrokes and sim commands aimed at a window that isn't in focus, so without it a button press can simply do nothing — with no error, and nothing on screen to explain why.
 
-## When to Use
+**This is on by default.** New installations of iRaceDeck focus iRacing automatically, so actions work out of the box.
 
-This feature is especially useful if you run iRacing in **windowed mode**, where another application may have focus when you press a Stream Deck button. Without this feature, actions may not work if iRacing isn't the active window.
+## Why It Matters
 
-If you run iRacing in fullscreen, this is less of a concern — but enabling it doesn't hurt.
+It applies to every iRaceDeck action — both the ones that send keyboard shortcuts and the ones that talk to iRacing directly. Windows blocks background applications from sending either kind of input, so both are affected.
 
-## Enabling It
+It matters most if you run iRacing in **windowed mode**, where another application can easily hold focus when you reach for the deck. It also covers the moments you might not think about: you tabbed out to check a message, clicked something on a second monitor, or a notification popped up and took focus.
 
-Focus iRacing Window is a **global setting** that applies to all iRaceDeck actions — both keyboard-based and SDK-based. Enable it in the Global Settings section of any action's Property Inspector.
+When iRacing is already the active window — which is most of the time while you're driving — focusing costs nothing and changes nothing. It only does something when focus was somewhere else.
 
-Once enabled, iRaceDeck will bring the iRacing window to the foreground before executing any action.
+## Turning It Off
+
+Focus iRacing Window is a **global setting**: one switch that applies to all of iRaceDeck, not per button. You'll find it in the Property Inspector of any action, under **Common Settings** in the Global Settings section, as **Focus iRacing window before sending keys**.
+
+Turn it off if you'd rather iRaceDeck never changed which window has focus — for example if you regularly press deck buttons while working in another application on a second monitor and don't want iRacing pulled to the front each time.
+
+## Upgrading From an Earlier Version
+
+If you already had iRaceDeck installed, **your existing setting is kept as-is.** The new on-by-default behavior only applies to fresh installations, so an upgrade never changes how your deck behaves. Since the setting used to be off unless you switched it on, that most likely means it is still off for you.
+
+To switch it on, open any action's Property Inspector, expand **Common Settings** under Global Settings, and tick **Focus iRacing window before sending keys**. The change takes effect immediately — no restart needed.

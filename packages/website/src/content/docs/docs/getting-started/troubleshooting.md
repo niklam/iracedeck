@@ -36,7 +36,7 @@ Then restart the one you changed. The warning clears automatically once the leve
 If an action uses keyboard shortcuts (like black box selection), make sure:
 
 1. The key binding in the action's Property Inspector matches your iRacing key configuration
-2. iRacing is the focused window when you press the button
+2. iRacing is the focused window when you press the button — [Focus iRacing Window](/docs/features/focus-iracing-window/) handles this for you and is on by default on new installations, but upgrades keep whatever setting you already had
 3. You haven't changed the default iRacing key bindings without updating the action settings
 
 ## Known issues

@@ -144,7 +144,7 @@ describe("global-settings cache (synchronous update on local writes)", () => {
       radarVolume: 50,
       backgroundVolume: 25,
       disableWhenDisconnected: true,
-      focusIRacingWindow: false,
+      focusIRacingWindow: true,
       enableFuelingOnChange: true,
       simHubHost: "127.0.0.1",
       simHubPort: 8888,
@@ -982,5 +982,24 @@ describe("schema hardening (issue #896)", () => {
   it("simHubHost falls back to the default on a non-string value", () => {
     const parsed = GlobalSettingsSchema.parse({ simHubHost: 42 }) as Record<string, unknown>;
     expect(parsed.simHubHost).toBe("127.0.0.1");
+  });
+});
+
+describe("focus iRacing window default (issue #930)", () => {
+  it("defaults focusIRacingWindow to true", () => {
+    const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
+    expect(parsed.focusIRacingWindow).toBe(true);
+  });
+
+  it("keeps an explicitly persisted false, so upgrades don't flip existing installs", () => {
+    const parsedBoolean = GlobalSettingsSchema.parse({ focusIRacingWindow: false }) as Record<string, unknown>;
+    expect(parsedBoolean.focusIRacingWindow).toBe(false);
+    const parsedString = GlobalSettingsSchema.parse({ focusIRacingWindow: "false" }) as Record<string, unknown>;
+    expect(parsedString.focusIRacingWindow).toBe(false);
+  });
+
+  it("falls back to true on an unparseable value rather than aborting the parse", () => {
+    const parsed = GlobalSettingsSchema.parse({ focusIRacingWindow: 42 }) as Record<string, unknown>;
+    expect(parsed.focusIRacingWindow).toBe(true);
   });
 });

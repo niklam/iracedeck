@@ -101,14 +101,24 @@ export const GlobalSettingsSchema = z
       .transform((val) => val === true || val === "true")
       .default(false),
     /**
-     * When true, focus the iRacing window before sending keyboard inputs.
-     * Ensures key presses reach iRacing even when another window is in the foreground.
-     * Default: false (opt-in)
+     * When true, focus the iRacing window before sending inputs.
+     *
+     * Default: true (issue #930). Windows UIPI silently drops both keystrokes
+     * and SDK broadcasts when iRacing is not the foreground window, so with
+     * this off a button press can vanish with no error to report — a recurring
+     * support pattern. Focusing costs nothing when iRacing is already in front
+     * (`FocusResult.AlreadyFocused`), so on-by-default makes actions work out
+     * of the box.
+     *
+     * Existing installs are unaffected: writes persist the whole parsed cache,
+     * so their stored `false` predates this flip and keeps winning. Only fresh
+     * installs (and any settings blob without the key) see the new default.
      */
     focusIRacingWindow: z
       .union([z.boolean(), z.string()])
       .transform((val) => val === true || val === "true")
-      .default(false),
+      .default(true)
+      .catch(true),
     /**
      * Hostname or IP address of the SimHub instance for Control Mapper integration.
      * Default: "127.0.0.1"
