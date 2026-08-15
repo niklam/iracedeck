@@ -106,4 +106,15 @@ describe("brand data", () => {
       expect(existsSync(join(brandAssetsDir, brand.logo)), `${brand.name} logo ${brand.logo}`).toBe(true);
     }
   });
+
+  // Both flags describe how a logo is rendered, so neither means anything on a
+  // brand that has none — setting one there reads as an effect that never lands.
+  it("only sets the logo rendering flags on brands that have a logo", () => {
+    for (const brand of BRANDS) {
+      if (brand.logo) continue;
+
+      expect(brand.logoNeedsName, `${brand.name} sets logoNeedsName without a logo`).toBeUndefined();
+      expect(brand.preserveBrandColor, `${brand.name} sets preserveBrandColor without a logo`).toBeUndefined();
+    }
+  });
 });
