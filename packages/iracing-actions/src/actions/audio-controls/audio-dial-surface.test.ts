@@ -185,6 +185,13 @@ describe("renderAudioStripSvg", () => {
     expect(svg).not.toContain("#2ecc71");
   });
 
+  it("renders the spotter category identity-only (iRacing exposes no spotter volume, #809)", () => {
+    const svg = renderAudioStripSvg({ category: "spotter", pttHeld: false, bindingMissing: false });
+    expect(svg).toContain(">SPOTTER<");
+    expect(svg).toContain("Turn to adjust");
+    expect(svg).not.toContain("#2ecc71");
+  });
+
   it("renders the ON AIR band while PTT is held", () => {
     const svg = renderAudioStripSvg({ category: "voice-chat", pttHeld: true, bindingMissing: false });
     expect(svg).toContain("ON AIR");
@@ -212,6 +219,13 @@ describe("buildAudioTriggerDescription", () => {
   it("omits push for none", () => {
     expect(buildAudioTriggerDescription({ category: "voice-chat", pressAction: "none" })).toEqual({
       rotate: "Adjust voice chat volume",
+    });
+  });
+
+  it("describes spotter rotation (#809)", () => {
+    expect(buildAudioTriggerDescription({ category: "spotter", pressAction: "mute-unmute" })).toEqual({
+      rotate: "Adjust spotter volume",
+      push: "Mute / unmute",
     });
   });
 });
@@ -254,6 +268,33 @@ describe("AudioDialSurface (through AudioControls)", () => {
     });
   });
 
+  describe("willAppear (spotter, #809)", () => {
+    it("shows the SPOTTER identity strip and the spotter trigger description", async () => {
+      const ctx = dialAction();
+      await action.onWillAppear(ev(ctx, { dial: { category: "spotter", pressAction: "mute-unmute" } }));
+      await flush();
+
+      expect(ctx.setTriggerDescription).toHaveBeenCalledWith({
+        rotate: "Adjust spotter volume",
+        push: "Mute / unmute",
+      });
+      expect(lastFeedbackSvg(ctx)).toContain(">SPOTTER<");
+      expect(lastFeedbackSvg(ctx)).not.toContain("<binding-warning/>");
+    });
+
+    it("dims the strip with the binding warning when a spotter binding is unset", async () => {
+      mockIsBindingMissing.mockImplementation((keys: unknown) =>
+        Array.isArray(keys) ? keys.includes("spotterSilence") : keys === "spotterSilence",
+      );
+      const ctx = dialAction();
+      await action.onWillAppear(ev(ctx, { dial: { category: "spotter", pressAction: "mute-unmute" } }));
+      await flush();
+
+      expect(mockIsBindingMissing).toHaveBeenCalledWith(["spotterLouder", "spotterQuieter", "spotterSilence"]);
+      expect(lastFeedbackSvg(ctx)).toContain("<binding-warning/>");
+    });
+  });
+
   describe("rotate", () => {
     it("steps the internal volumes by the signed tick count", async () => {
       const ctx = dialAction();
@@ -292,6 +333,32 @@ describe("AudioDialSurface (through AudioControls)", () => {
       const ctx = dialAction();
       await action.onDialRotate(ev(ctx, { dial: { category: "master" } }, { ticks: 9 }));
       expect(mockTapBinding).toHaveBeenCalledTimes(5);
+    });
+
+    it("taps spotter louder / quieter once per detent for the spotter category (#809)", async () => {
+      const ctx = dialAction();
+      await action.onDialRotate(ev(ctx, { dial: { category: "spotter" } }, { ticks: 2 }));
+      expect(mockTapBinding).toHaveBeenCalledTimes(2);
+      expect(mockTapBinding).toHaveBeenCalledWith("spotterLouder");
+
+      mockTapBinding.mockClear();
+      await action.onDialRotate(ev(ctx, { dial: { category: "spotter" } }, { ticks: -3 }));
+      expect(mockTapBinding).toHaveBeenCalledTimes(3);
+      expect(mockTapBinding).toHaveBeenCalledWith("spotterQuieter");
+      expect(mockStepRaceEngineerVolumeBy).not.toHaveBeenCalled();
+      expect(mockStepRadarVolumeBy).not.toHaveBeenCalled();
+    });
+
+    it("caps spotter taps and skips them when the spotter binding is unset (#809)", async () => {
+      const ctx = dialAction();
+      await action.onDialRotate(ev(ctx, { dial: { category: "spotter" } }, { ticks: -12 }));
+      expect(mockTapBinding).toHaveBeenCalledTimes(5);
+      expect(mockTapBinding).toHaveBeenLastCalledWith("spotterQuieter");
+
+      mockTapBinding.mockClear();
+      mockIsBindingMissing.mockReturnValue(true);
+      await action.onDialRotate(ev(ctx, { dial: { category: "spotter" } }, { ticks: 1 }));
+      expect(mockTapBinding).not.toHaveBeenCalled();
     });
 
     it("taps nothing when the volume binding is not configured", async () => {
@@ -337,6 +404,26 @@ describe("AudioDialSurface (through AudioControls)", () => {
       await action.onDialDown(ev(ctx, { dial: { category: "voice-chat", pressAction: "mute-unmute" } }));
       expect(mockTapBinding).toHaveBeenCalledWith("audioVoiceChatMute");
       await flush();
+    });
+
+    it("taps the spotter silence binding for spotter Mute / Unmute (#809)", async () => {
+      const ctx = dialAction();
+      await action.onDialDown(ev(ctx, { dial: { category: "spotter", pressAction: "mute-unmute" } }));
+      expect(mockTapBinding).toHaveBeenCalledTimes(1);
+      expect(mockTapBinding).toHaveBeenCalledWith("spotterSilence");
+      expect(mockToggleRaceEngineerFeature).not.toHaveBeenCalled();
+      expect(mockToggleRadarFeature).not.toHaveBeenCalled();
+      await flush();
+    });
+
+    it("skips spotter Mute / Unmute when the silence binding is unset (#809)", async () => {
+      mockIsBindingMissing.mockReturnValue(true);
+      const ctx = dialAction();
+      await action.onDialDown(ev(ctx, { dial: { category: "spotter", pressAction: "mute-unmute" } }));
+      expect(mockTapBinding).not.toHaveBeenCalled();
+      expect((action as unknown as { logger: { warn: ReturnType<typeof vi.fn> } }).logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining("not configured"),
+      );
     });
 
     it("toggles the Race Engineer feature gate for Mute / Unmute", async () => {

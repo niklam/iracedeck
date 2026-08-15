@@ -7,7 +7,7 @@ sidebar:
     variant: tip
 ---
 
-Manage iRacing's AI spotter directly from your Stream Deck. Trigger reports, toggle announcements, or adjust spotter volume without leaving the track.
+Manage iRacing's AI spotter directly from your Stream Deck. Trigger reports, toggle announcements, or adjust spotter volume without leaving the track. On a Stream Deck+, the spotter volume also lives on the [Audio Controls dial](/docs/actions/audio-voice/audio-controls/#on-a-dial): its **Spotter** mode rotates through the same Spotter Louder / Spotter Quieter bindings and can press to Spotter Silence.
 
 ## Modes
 
@@ -88,7 +88,7 @@ Raise the spotter volume.
 #### Details
 
 - **Method:** Key binding
-- **Dial:** No rotation support
+- **Dial:** Not on this action — turn the [Audio Controls dial](/docs/actions/audio-voice/audio-controls/#on-a-dial) in its **Spotter** mode (clockwise taps this same binding)
 - **Default binding:** No default key binding
 - **Telemetry-aware icon:** No
 
@@ -105,7 +105,7 @@ Lower the spotter volume.
 #### Details
 
 - **Method:** Key binding
-- **Dial:** No rotation support
+- **Dial:** Not on this action — turn the [Audio Controls dial](/docs/actions/audio-voice/audio-controls/#on-a-dial) in its **Spotter** mode (counter-clockwise taps this same binding)
 - **Default binding:** No default key binding
 - **Telemetry-aware icon:** No
 
@@ -122,7 +122,7 @@ Silence the spotter entirely.
 #### Details
 
 - **Method:** Key binding
-- **Dial:** No rotation support
+- **Dial:** Not on this action — the [Audio Controls dial](/docs/actions/audio-voice/audio-controls/#on-a-dial) in its **Spotter** mode taps this same binding when its Press Action is Mute / Unmute
 - **Default binding:** No default key binding
 - **Telemetry-aware icon:** No
 

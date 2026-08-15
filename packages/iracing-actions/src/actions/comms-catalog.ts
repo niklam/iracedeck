@@ -433,16 +433,18 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
   // #759 shared-map pattern). A separate entry from the keypad map because
   // the same category values need different descriptors per surface (keypad
   // resolves one key via the `action` setting; dial rotation needs the pair).
-  // The PI hides the press status line for internal-category Mute / Unmute
-  // (plugin audio, nothing to configure); "none" is omitted so its line
-  // renders nothing.
+  // The spotter category (#809) reuses the AI Spotter Controls bindings —
+  // louder/quieter for rotation, silence for Mute / Unmute. The PI hides the
+  // press status line for internal-category Mute / Unmute (plugin audio,
+  // nothing to configure); "none" is omitted so its line renders nothing.
   "audio-controls-dial": entry("dial.category", {
     "voice-chat": pair("audioVoiceChatVolumeUp", "audioVoiceChatVolumeDown"),
     master: pair("audioMasterVolumeUp", "audioMasterVolumeDown"),
+    spotter: pair("spotterLouder", "spotterQuieter"),
     "race-engineer": keybindFixed(),
     radar: keybindFixed(),
     "push-to-talk": keybind("audioControlsPushToTalk"),
-    "mute-unmute": keybindBy("dial.category", { "voice-chat": "audioVoiceChatMute" }),
+    "mute-unmute": keybindBy("dial.category", { "voice-chat": "audioVoiceChatMute", spotter: "spotterSilence" }),
   }),
 
   "toggle-ui-elements": entry("element", {

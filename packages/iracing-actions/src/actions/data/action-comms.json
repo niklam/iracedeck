@@ -1626,6 +1626,16 @@
         ]
       }
     },
+    "spotter": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "spotterLouder",
+          "spotterQuieter"
+        ]
+      }
+    },
     "race-engineer": {
       "method": "keybind"
     },
@@ -1646,7 +1656,8 @@
         "keyBy": {
           "setting": "dial.category",
           "map": {
-            "voice-chat": "audioVoiceChatMute"
+            "voice-chat": "audioVoiceChatMute",
+            "spotter": "spotterSilence"
           }
         }
       }

@@ -42,11 +42,12 @@
 
 		<!-- Dial settings — shown only when this instance is a dial (#782). -->
 		<div id="dial-settings" class="hidden">
-			<sdpi-item label="Volume">
+			<sdpi-item label="Mode">
 				<sdpi-select id="dial-category-select" setting="dial.category" default="voice-chat">
 					<optgroup label="iRacing audio">
 						<option value="voice-chat">Voice Chat</option>
 						<option value="master">Master</option>
+						<option value="spotter">Spotter</option>
 					</optgroup>
 					<optgroup label="iRaceDeck audio">
 						<option value="race-engineer">Race Engineer</option>
@@ -83,8 +84,19 @@
 
 		<%- include('section-header', { title: 'Global Settings' }) %>
 
+		<%
+		var __kb = require('./data/key-bindings.json');
+		// The dial's Spotter mode (#809) rotates/mutes through the AI Spotter
+		// Controls bindings — surface them here so the dial's binding-status line
+		// can read them and its "set it here" link has somewhere to land. Same
+		// global keys as the AI Spotter Controls PI (their defaults are empty, so
+		// rendering them here seeds nothing).
+		var __spotterRows = __kb.aiSpotterControls.filter(function (b) {
+			return b.id === 'louder' || b.id === 'quieter' || b.id === 'silence';
+		});
+		%>
 		<%- include('global-key-bindings', {
-			keyBindings: require('./data/key-bindings.json').audioControls
+			keyBindings: __kb.audioControls.concat(__spotterRows)
 		}) %>
 
 		<div id="keypad-global-appearance">
@@ -168,9 +180,10 @@
 
 			// Master has no Mute / Unmute (iRacing has no master-mute keybind): detach
 			// the option (same sdpi-select re-render caveat as the keypad mute option).
-			// The press status line is hidden for internal-category Mute / Unmute —
-			// that mute is plugin-internal, there is nothing to configure.
-			const DIAL_MUTABLE_CATEGORIES = new Set(["voice-chat", "race-engineer", "radar"]);
+			// Spotter mutes via Spotter Silence (#809). The press status line is
+			// hidden for internal-category Mute / Unmute — that mute is
+			// plugin-internal, there is nothing to configure.
+			const DIAL_MUTABLE_CATEGORIES = new Set(["voice-chat", "spotter", "race-engineer", "radar"]);
 			let dialMuteOption = null;
 			let dialMuteOptionParent = null;
 
