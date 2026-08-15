@@ -6,12 +6,12 @@
  * Self-contained leaf (owns the `dial` schema + dial key bindings; operates on
  * the `dial` sub-object). Rotating adjusts one of the 13 chassis setup values
  * via the same key bindings as the keypad surface; the touch strip shows the
- * live value. Setup Chassis has no natural toggle, so no press gesture is
- * offered.
+ * live value. The press/touch gestures can open the Pit Stop black box (#953).
  *
- * Six settings have no `dc*` telemetry (both springs and all four shocks), so
- * they render label-only via the dash box's identity-only branch (#782). The
- * seven diff/ARB/power-steering settings show the live value.
+ * Four settings (the four shocks) have no telemetry, so they render label-only
+ * via the dash box's identity-only branch (#782). The seven diff/ARB/
+ * power-steering settings show the live `dc*` value, and the LR/RR springs
+ * show the pending next-pit-stop offset from `dpWeightJacker*` (#953).
  */
 import {
   classifyDialRelease,
@@ -25,9 +25,15 @@ import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 import z from "zod";
 
+import { showBlackBox } from "../../shared/black-box.js";
 import { dialAppearanceFields, renderDialBox, resolveDialBoxColors } from "../../shared/dial-box.js";
 import { renderDialNameIcon } from "../../shared/dial-name-icon.js";
-import { formatViewValue, type ViewSettingId } from "../../shared/setup-view.js";
+import {
+  formatViewValue,
+  type UnitsPreference,
+  type ViewSettingId,
+  withUnitsPreference,
+} from "../../shared/setup-view.js";
 
 const CHANGE_RENDER_MIN_INTERVAL_MS = 100;
 
@@ -38,8 +44,8 @@ export const ROTATION_SETTINGS = [
   "differential-exit",
   "front-arb",
   "rear-arb",
-  "left-spring",
-  "right-spring",
+  "lr-spring",
+  "rr-spring",
   "lf-shock",
   "rf-shock",
   "lr-shock",
@@ -48,8 +54,17 @@ export const ROTATION_SETTINGS = [
 ] as const;
 export type SetupChassisDialSetting = (typeof ROTATION_SETTINGS)[number];
 
-/** Setup Chassis has no natural toggle gesture, so `none` is the only option. */
-export const GESTURE_ACTIONS = ["none"] as const;
+/**
+ * Setup Chassis gestures (#953), all defaulting to `none` per the dial gesture
+ * convention:
+ * - `show-pit-stop-black-box` opens iRacing's F7 Pit Stop black box (the
+ *   screen the pending spring/shock values live on) via the deterministic
+ *   #818 prime+target sequence.
+ * - `toggle-spring-side` flips the dial's mode between the LR and RR spring
+ *   (a non-spring mode jumps to LR) and persists it, so one dial covers both
+ *   rear springs — the lit side-arrow shows which one is active.
+ */
+export const GESTURE_ACTIONS = ["show-pit-stop-black-box", "toggle-spring-side", "none"] as const;
 export type GestureSlot = (typeof GESTURE_ACTIONS)[number];
 
 export type SetupChassisDirection = "increase" | "decrease";
@@ -67,10 +82,10 @@ const DIAL_ROTATION_KEYS: Record<string, string> = {
   "front-arb-decrease": "setupChassisFrontArbDecrease",
   "rear-arb-increase": "setupChassisRearArbIncrease",
   "rear-arb-decrease": "setupChassisRearArbDecrease",
-  "left-spring-increase": "setupChassisLeftSpringIncrease",
-  "left-spring-decrease": "setupChassisLeftSpringDecrease",
-  "right-spring-increase": "setupChassisRightSpringIncrease",
-  "right-spring-decrease": "setupChassisRightSpringDecrease",
+  "lr-spring-increase": "setupChassisLrSpringIncrease",
+  "lr-spring-decrease": "setupChassisLrSpringDecrease",
+  "rr-spring-increase": "setupChassisRrSpringIncrease",
+  "rr-spring-decrease": "setupChassisRrSpringDecrease",
   "lf-shock-increase": "setupChassisLfShockIncrease",
   "lf-shock-decrease": "setupChassisLfShockDecrease",
   "rf-shock-increase": "setupChassisRfShockIncrease",
@@ -90,10 +105,20 @@ export function rotationKey(setting: SetupChassisDialSetting, direction: SetupCh
 export const DialSettings = z
   .object({
     setting: z.enum(ROTATION_SETTINGS).default("differential-preload"),
-    pressAction: z.enum(GESTURE_ACTIONS).default("none"),
-    longPressAction: z.enum(GESTURE_ACTIONS).default("none"),
-    tapAction: z.enum(GESTURE_ACTIONS).default("none"),
-    longTouchAction: z.enum(GESTURE_ACTIONS).default("none"),
+    // `.catch("none")` on every gesture slot: a value from a newer version
+    // must degrade to none instead of failing the field and resetting the
+    // whole dial object via the outer `DialSettings.catch` (the
+    // 2.0-contamination lesson — same rationale as `units` below).
+    pressAction: z.enum(GESTURE_ACTIONS).default("none").catch("none"),
+    longPressAction: z.enum(GESTURE_ACTIONS).default("none").catch("none"),
+    tapAction: z.enum(GESTURE_ACTIONS).default("none").catch("none"),
+    longTouchAction: z.enum(GESTURE_ACTIONS).default("none").catch("none"),
+    /**
+     * Units for the spring offset readout: `auto` follows the sim's
+     * DisplayUnits; metric/imperial force it (#953). `.catch` so a value from
+     * a newer version degrades to auto instead of resetting the whole dial.
+     */
+    units: z.enum(["auto", "metric", "imperial"]).default("auto").catch("auto"),
     // Dash-box appearance overrides (colors, issue #811).
     ...dialAppearanceFields,
   })
@@ -115,7 +140,7 @@ export function seedDialFromLegacySetting(raw: unknown): Record<string, unknown>
   return { ...obj, dial: { setting: legacy } };
 }
 
-/** Springs and shocks have no `view-*` entry (no `dc*` readback) → identity-only. */
+/** The shocks have no `view-*` entry (no telemetry readback) → identity-only. */
 const VIEW_ID: Record<SetupChassisDialSetting, ViewSettingId | undefined> = {
   "differential-preload": "view-diff-preload",
   "differential-entry": "view-diff-entry",
@@ -123,8 +148,8 @@ const VIEW_ID: Record<SetupChassisDialSetting, ViewSettingId | undefined> = {
   "differential-exit": "view-diff-exit",
   "front-arb": "view-anti-roll-front",
   "rear-arb": "view-anti-roll-rear",
-  "left-spring": undefined,
-  "right-spring": undefined,
+  "lr-spring": "view-lr-spring-offset",
+  "rr-spring": "view-rr-spring-offset",
   "lf-shock": undefined,
   "rf-shock": undefined,
   "lr-shock": undefined,
@@ -139,8 +164,8 @@ const MODE_ABBR: Record<SetupChassisDialSetting, string> = {
   "differential-exit": "D-OUT",
   "front-arb": "FARB",
   "rear-arb": "RARB",
-  "left-spring": "LSPR",
-  "right-spring": "RSPR",
+  "lr-spring": "LR SPR",
+  "rr-spring": "RR SPR",
   "lf-shock": "LF",
   "rf-shock": "RF",
   "lr-shock": "LR",
@@ -155,13 +180,23 @@ const MODE_COLOR: Record<SetupChassisDialSetting, string> = {
   "differential-exit": "#3498db",
   "front-arb": "#e67e22",
   "rear-arb": "#e67e22",
-  "left-spring": "#2ecc71",
-  "right-spring": "#2ecc71",
+  "lr-spring": "#2ecc71",
+  "rr-spring": "#2ecc71",
   "lf-shock": "#9b59b6",
   "rf-shock": "#9b59b6",
   "lr-shock": "#9b59b6",
   "rr-shock": "#9b59b6",
   "power-steering": "#f39c12",
+};
+
+/**
+ * Which spring side a rotation setting edits — drives the dash box's lit
+ * side-arrow so the driver can tell LR from RR at a glance mid-race (#953).
+ * Only the springs get markers; the other settings are side-less.
+ */
+const SIDE_MARKER: Partial<Record<SetupChassisDialSetting, "left" | "right">> = {
+  "lr-spring": "left",
+  "rr-spring": "right",
 };
 
 const MODE_LABEL: Record<SetupChassisDialSetting, string> = {
@@ -171,8 +206,8 @@ const MODE_LABEL: Record<SetupChassisDialSetting, string> = {
   "differential-exit": "Diff Exit",
   "front-arb": "Front ARB",
   "rear-arb": "Rear ARB",
-  "left-spring": "Left Spring",
-  "right-spring": "Right Spring",
+  "lr-spring": "LR Spring",
+  "rr-spring": "RR Spring",
   "lf-shock": "LF Shock",
   "rf-shock": "RF Shock",
   "lr-shock": "LR Shock",
@@ -181,12 +216,16 @@ const MODE_LABEL: Record<SetupChassisDialSetting, string> = {
 };
 
 /** @internal Exported for testing */
-export function formatDialValue(setting: SetupChassisDialSetting, telemetry: TelemetryData | null): string {
+export function formatDialValue(
+  setting: SetupChassisDialSetting,
+  telemetry: TelemetryData | null,
+  units: UnitsPreference = "auto",
+): string {
   const viewId = VIEW_ID[setting];
 
   if (!viewId) return "";
 
-  return formatViewValue(viewId, telemetry).replace(/%$/, "");
+  return formatViewValue(viewId, withUnitsPreference(telemetry, units)).replace(/%$/, "");
 }
 
 /** @internal Exported for testing */
@@ -223,6 +262,10 @@ export function buildTriggerDescription(dial: DialSettings): DeckTriggerDescript
 
 function gestureLabel(action: GestureSlot): string | undefined {
   switch (action) {
+    case "show-pit-stop-black-box":
+      return "Show Pit Stop Box";
+    case "toggle-spring-side":
+      return "Switch LR/RR";
     case "none":
       return undefined;
   }
@@ -241,6 +284,8 @@ export interface SetupChassisDialHost {
   readonly logger: ILogger;
   getTelemetry(): TelemetryData | null;
   tapBinding(settingKey: string): Promise<void>;
+  /** Atomic multi-chord sequence (#818) — the show-black-box gesture's dispatch. */
+  tapBindingSequence(settingKeys: string[], holdMs?: number): Promise<boolean>;
   isBindingMissing(keys: string | string[] | null | undefined): boolean;
 }
 
@@ -251,6 +296,7 @@ export class SetupChassisDialSurface {
 
   async willAppear(action: IDeckActionContext, dial: DialSettings): Promise<void> {
     const ctx = this.ensureContext(action, dial);
+    ctx.dial = dial;
 
     action
       .setImage(renderDialNameIcon({ line1: "SETUP", line2: "CHASSIS", backgroundColor: "#3a1a2a" }))
@@ -268,6 +314,7 @@ export class SetupChassisDialSurface {
 
   async didReceiveSettings(action: IDeckActionContext, dial: DialSettings): Promise<void> {
     const ctx = this.ensureContext(action, dial);
+    ctx.dial = dial;
     ctx.lastRenderSig = null;
 
     await this.applyTriggerDescription(ctx);
@@ -292,7 +339,7 @@ export class SetupChassisDialSurface {
     ctx.rotatedWhilePressed = false;
   }
 
-  async up(actionId: string): Promise<void> {
+  async up(actionId: string, rawSettings?: unknown): Promise<void> {
     const ctx = this.contextsState.get(actionId);
 
     if (!ctx) return;
@@ -316,19 +363,21 @@ export class SetupChassisDialSurface {
     if (action === "none") return;
 
     this.host.logger.info(kind === "long" ? "Setup chassis dial long-pressed" : "Setup chassis dial pressed");
-    await this.doGesture(action);
+    await this.doGesture(action, ctx, rawSettings);
   }
 
-  async touchTap(action: IDeckActionContext, dial: DialSettings, hold: boolean): Promise<void> {
+  async touchTap(action: IDeckActionContext, dial: DialSettings, hold: boolean, rawSettings?: unknown): Promise<void> {
     if (!__FEATURE_DIAL_FEEDBACK__) return;
 
-    const gesture = hold ? dial.longTouchAction : dial.tapAction;
+    // Read the gesture from ctx.dial, not the event payload — the same
+    // stale-settings model `up()` follows (see ensureContext).
+    const ctx = this.ensureContext(action, dial);
+    const gesture = hold ? ctx.dial.longTouchAction : ctx.dial.tapAction;
 
     if (gesture === "none") return;
 
-    this.ensureContext(action, dial);
     this.host.logger.info(hold ? "Setup chassis dial long touch" : "Setup chassis dial tap");
-    await this.doGesture(gesture);
+    await this.doGesture(gesture, ctx, rawSettings);
   }
 
   onTelemetry(actionId: string, _telemetry: TelemetryData | null): void {
@@ -358,6 +407,14 @@ export class SetupChassisDialSurface {
     }
   }
 
+  /**
+   * Look up or create the per-context state. An EXISTING context keeps its
+   * `dial` — settings changes only flow in through `willAppear` /
+   * `didReceiveSettings` (which assign `ctx.dial` explicitly). Event payloads
+   * must not refresh it: hosts with per-context settings caches can deliver
+   * stale settings in dial events, which would silently undo the
+   * `toggle-spring-side` gesture's plugin-side setSettings (#953).
+   */
   private ensureContext(action: IDeckActionContext, dial: DialSettings): SetupChassisDialContext {
     let ctx = this.contextsState.get(action.id);
 
@@ -373,7 +430,6 @@ export class SetupChassisDialSurface {
       this.contextsState.set(action.id, ctx);
     } else {
       ctx.action = action;
-      ctx.dial = dial;
     }
 
     return ctx;
@@ -393,8 +449,52 @@ export class SetupChassisDialSurface {
     await this.host.tapBinding(key);
   }
 
-  private async doGesture(action: GestureSlot): Promise<void> {
+  private async doGesture(action: GestureSlot, ctx: SetupChassisDialContext, rawSettings?: unknown): Promise<void> {
     if (action === "none") return;
+
+    if (action === "show-pit-stop-black-box") {
+      this.host.logger.info("Setup chassis dial showing Pit Stop black box");
+      await showBlackBox("pit-stop", {
+        isConfigured: (key) => !this.host.isBindingMissing(key),
+        tapSequence: (keys, holdMs) => this.host.tapBindingSequence(keys, holdMs),
+        logger: this.host.logger,
+      });
+
+      return;
+    }
+
+    if (action === "toggle-spring-side") {
+      const next: SetupChassisDialSetting = ctx.dial.setting === "lr-spring" ? "rr-spring" : "lr-spring";
+      this.host.logger.info("Setup chassis dial switched spring side");
+      this.host.logger.debug(`${ctx.dial.setting} -> ${next}`);
+
+      // Persist by merging over the RAW settings so the keypad half of the
+      // instance's settings object survives untouched. The host never echoes
+      // plugin-side setSettings back as didReceiveSettings, so the local dial
+      // state and the strip are updated here.
+      const raw =
+        rawSettings && typeof rawSettings === "object" && !Array.isArray(rawSettings)
+          ? (rawSettings as Record<string, unknown>)
+          : null;
+
+      if (raw) {
+        const rawDial =
+          raw.dial && typeof raw.dial === "object" && !Array.isArray(raw.dial)
+            ? (raw.dial as Record<string, unknown>)
+            : {};
+        await ctx.action.setSettings({ ...raw, dial: { ...rawDial, setting: next } });
+      } else {
+        // No settings in the event payload — flip only in memory. Persisting a
+        // merge over {} would replace the whole stored object with just the
+        // dial half, wiping the keypad settings.
+        this.host.logger.warn("Dial event carried no settings; spring-side flip not persisted");
+      }
+
+      ctx.dial = { ...ctx.dial, setting: next };
+      ctx.lastRenderSig = null;
+      await this.applyTriggerDescription(ctx);
+      await this.renderFeedback(ctx);
+    }
   }
 
   private computeBindingMissing(dial: DialSettings): boolean {
@@ -406,7 +506,7 @@ export class SetupChassisDialSurface {
   }
 
   private displayedSignature(ctx: SetupChassisDialContext): string {
-    const value = formatDialValue(ctx.dial.setting, this.host.getTelemetry());
+    const value = formatDialValue(ctx.dial.setting, this.host.getTelemetry(), ctx.dial.units);
 
     return [ctx.dial.setting, value, this.computeBindingMissing(ctx.dial) ? "warn" : ""].join("|");
   }
@@ -427,10 +527,11 @@ export class SetupChassisDialSurface {
       width: 200,
       height: 100,
       abbr: MODE_ABBR[setting],
-      value: formatDialValue(setting, this.host.getTelemetry()),
+      value: formatDialValue(setting, this.host.getTelemetry(), ctx.dial.units),
       colors: resolveDialBoxColors(ctx.dial.colors, MODE_COLOR[setting]),
       identityLabelScale: 0.22,
       bindingMissing: this.computeBindingMissing(ctx.dial),
+      sideMarker: SIDE_MARKER[setting],
     });
     const feedback: DeckFeedbackPayload = { box: svgToDataUri(boxSvg) };
     await ctx.action.setFeedback(feedback);

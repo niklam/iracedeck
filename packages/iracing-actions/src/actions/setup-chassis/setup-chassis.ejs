@@ -11,7 +11,7 @@
 
 		<!-- Keypad settings — hidden when this instance is a dial (#800). -->
 		<div id="keypad-settings">
-			<sdpi-item label="Component">
+			<sdpi-item label="Mode">
 				<sdpi-select id="setting-select" setting="setting" default="differential-preload">
 					<optgroup label="Adjust">
 						<option value="differential-entry">Differential Entry</option>
@@ -19,13 +19,13 @@
 						<option value="differential-middle">Differential Middle</option>
 						<option value="differential-preload">Differential Preload</option>
 						<option value="front-arb">Front ARB</option>
-						<option value="left-spring">Left Spring</option>
+						<option value="lr-spring">LR Spring</option>
 						<option value="lf-shock">LF Shock</option>
 						<option value="lr-shock">LR Shock</option>
 						<option value="power-steering">Power Steering</option>
 						<option value="rear-arb">Rear ARB</option>
 						<option value="rf-shock">RF Shock</option>
-						<option value="right-spring">Right Spring</option>
+						<option value="rr-spring">RR Spring</option>
 						<option value="rr-shock">RR Shock</option>
 					</optgroup>
 					<optgroup label="Display value">
@@ -35,7 +35,9 @@
 						<option value="view-diff-exit">View Diff Exit</option>
 						<option value="view-diff-middle">View Diff Middle</option>
 						<option value="view-diff-preload">View Diff Preload</option>
+						<option value="view-lr-spring-offset">View LR Spring Offset</option>
 						<option value="view-power-steering">View Power Steering</option>
+						<option value="view-rr-spring-offset">View RR Spring Offset</option>
 						<option value="view-weight-jacker-left">View Weight Jacker Left</option>
 						<option value="view-weight-jacker-right">View Weight Jacker Right</option>
 					</optgroup>
@@ -54,15 +56,50 @@
 
 			<%- include('adjust-style', {
 				modeSelectId: 'setting-select',
-				pairedModes: ['differential-preload', 'differential-entry', 'differential-middle', 'differential-exit', 'front-arb', 'rear-arb', 'power-steering'],
-				viewModes: ['view-diff-preload', 'view-diff-entry', 'view-diff-middle', 'view-diff-exit', 'view-anti-roll-front', 'view-anti-roll-rear', 'view-power-steering', 'view-weight-jacker-left', 'view-weight-jacker-right']
+				pairedModes: ['differential-preload', 'differential-entry', 'differential-middle', 'differential-exit', 'front-arb', 'rear-arb', 'lr-spring', 'rr-spring', 'power-steering'],
+				viewModes: ['view-diff-preload', 'view-diff-entry', 'view-diff-middle', 'view-diff-exit', 'view-anti-roll-front', 'view-anti-roll-rear', 'view-power-steering', 'view-weight-jacker-left', 'view-weight-jacker-right', 'view-lr-spring-offset', 'view-rr-spring-offset']
 			}) %>
+
+			<sdpi-item label="Units" id="units-item" class="hidden">
+				<sdpi-select setting="units" default="auto">
+					<option value="auto">Auto (follow iRacing)</option>
+					<option value="metric">Metric (mm)</option>
+					<option value="imperial">Imperial (inches)</option>
+				</sdpi-select>
+			</sdpi-item>
+
+			<sdpi-item label="Show black box">
+				<sdpi-checkbox
+					id="show-black-box"
+					setting="showBlackBox"
+					label="Show the matching black box when this key is pressed"
+				></sdpi-checkbox>
+			</sdpi-item>
+			<div class="ird-supporting-text">
+				Lets you see the value change in iRacing — In-Car Adjustments for the
+				differential, ARBs, power steering, and weight jackers; Pit Stop Adjustments
+				for the springs and shocks. iRacing never says which black box is open, so
+				iRaceDeck switches through another box first; both keypresses are sent
+				together, so you effectively never see it.
+			</div>
+			<%
+			var __primeCandidates = require('./data/key-bindings.json').blackBox
+				.filter(function (b) { return b.id !== 'cycleNext' && b.id !== 'cyclePrevious'; })
+				.map(function (b) { return b.setting; });
+			%>
+			<ird-black-box-caveat
+				id="chassis-black-box-caveat"
+				enabled-setting="showBlackBox"
+				target="blackBoxInCar"
+				candidates='<%= JSON.stringify(__primeCandidates) %>'
+				message="Showing the black box needs keyboard bindings for the In-Car black box and at least one other black box. Set them under Related Key Bindings. The value still changes without them."
+			></ird-black-box-caveat>
 		</div>
 
 		<!-- Dial settings — shown only when this instance is a dial (#800). Setup
-		     Chassis has no press gesture, so only the rotation Component is offered. -->
+		     Chassis dial: rotation Mode, gestures, units, and appearance. -->
 		<div id="dial-settings" class="hidden">
-			<sdpi-item label="Component">
+			<sdpi-item label="Mode">
 				<sdpi-select setting="dial.setting" default="differential-preload">
 					<optgroup label="Differential">
 						<option value="differential-preload">Differential Preload</option>
@@ -75,8 +112,8 @@
 						<option value="rear-arb">Rear ARB</option>
 					</optgroup>
 					<optgroup label="Springs">
-						<option value="left-spring">Left Spring</option>
-						<option value="right-spring">Right Spring</option>
+						<option value="lr-spring">LR Spring</option>
+						<option value="rr-spring">RR Spring</option>
 					</optgroup>
 					<optgroup label="Shocks">
 						<option value="lf-shock">LF Shock</option>
@@ -93,14 +130,64 @@
 			<% if (locals.platform?.features?.dialFeedback !== false) { %>
 			<div class="ird-supporting-text">
 				Turn the dial to adjust the selected chassis component; the touch strip shows
-				its live value. Springs and shocks have no telemetry, so their strips show
-				the label only. Both the increase and decrease key bindings must be set below.
+				its live value. The LR/RR springs show the pending next-pit-stop offset;
+				shocks have no telemetry, so their strips show the label only. Both the
+				increase and decrease key bindings must be set below.
 			</div>
 			<% } else { %>
 			<div class="ird-supporting-text">
 				Turn the knob to adjust the selected chassis component. Both the increase and
 				decrease key bindings must be set below.
 			</div>
+			<% } %>
+
+			<sdpi-item label="Units">
+				<sdpi-select setting="dial.units" default="auto">
+					<option value="auto">Auto (follow iRacing)</option>
+					<option value="metric">Metric (mm)</option>
+					<option value="imperial">Imperial (inches)</option>
+				</sdpi-select>
+			</sdpi-item>
+			<div class="ird-supporting-text">
+				Applies to the spring offset readout on the touch strip.
+			</div>
+
+			<sdpi-item label="Press Action">
+				<sdpi-select setting="dial.pressAction" default="none">
+					<option value="none">None</option>
+					<option value="show-pit-stop-black-box">Show Pit Stop Black Box</option>
+					<option value="toggle-spring-side">Switch LR / RR Spring</option>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="dial.pressAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+
+			<sdpi-item label="Long Press">
+				<sdpi-select setting="dial.longPressAction" default="none">
+					<option value="none">None</option>
+					<option value="show-pit-stop-black-box">Show Pit Stop Black Box</option>
+					<option value="toggle-spring-side">Switch LR / RR Spring</option>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="dial.longPressAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+
+			<% if (locals.platform?.features?.dialFeedback !== false) { %>
+			<sdpi-item label="Tap Display">
+				<sdpi-select setting="dial.tapAction" default="none">
+					<option value="none">None</option>
+					<option value="show-pit-stop-black-box">Show Pit Stop Black Box</option>
+					<option value="toggle-spring-side">Switch LR / RR Spring</option>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="dial.tapAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+
+			<sdpi-item label="Long Touch">
+				<sdpi-select setting="dial.longTouchAction" default="none">
+					<option value="none">None</option>
+					<option value="show-pit-stop-black-box">Show Pit Stop Black Box</option>
+					<option value="toggle-spring-side">Switch LR / RR Spring</option>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="dial.longTouchAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
 			<% } %>
 
 			<% if (locals.platform?.features?.dialFeedback !== false) { %>
@@ -120,8 +207,20 @@
 
 		<%- include('section-header', { title: 'Global Settings' }) %>
 
+		<%
+		var __kb = require('./data/key-bindings.json');
+		// The black-box rows are here so this PI SEEDS their defaults (#818/#953):
+		// ird-key-binding writes its `default` into global settings the first time
+		// it renders. Lap Timing is the preferred prime, In-Car and Pit Stop are
+		// this action's Show-Black-Box / dial-gesture targets.
+		var __blackBoxRows = __kb.blackBox
+			.filter(function (b) { return b.id === 'lapTiming' || b.id === 'inCar' || b.id === 'pitStop'; })
+			.map(function (b) {
+				return { id: b.id, label: 'Black Box: ' + b.label, default: b.default, setting: b.setting };
+			});
+		%>
 		<%- include('global-key-bindings', {
-			keyBindings: require('./data/key-bindings.json').setupChassis
+			keyBindings: __kb.setupChassis.concat(__blackBoxRows)
 		}) %>
 
 		<div id="keypad-global-appearance">
@@ -140,13 +239,49 @@
 				return typeof setting === "string" && setting.startsWith("view-");
 			}
 
+			// Modes whose value lives in the F7 Pit Stop box (springs and shocks);
+			// everything else shows in the F8 In-Car box. Mirrors blackBoxForSetting.
+			const PIT_STOP_BOX_MODES = new Set([
+				"lr-spring",
+				"rr-spring",
+				"lf-shock",
+				"rf-shock",
+				"lr-shock",
+				"rr-shock",
+				"view-lr-spring-offset",
+				"view-rr-spring-offset",
+			]);
+
+			// Only the spring modes have a unit-bearing value (mm/inches).
+			const SPRING_UNIT_MODES = new Set([
+				"lr-spring",
+				"rr-spring",
+				"view-lr-spring-offset",
+				"view-rr-spring-offset",
+			]);
+
 			function updateVisibility(setting) {
 				const directionItem = document.getElementById("direction-item");
 				const dualEnabledItem = document.getElementById("dual-press-enabled-item");
+				const unitsItem = document.getElementById("units-item");
 
 				const view = isViewSetting(setting);
 				directionItem?.classList.toggle("hidden", view);
 				dualEnabledItem?.classList.toggle("hidden", !view);
+				unitsItem?.classList.toggle("hidden", !SPRING_UNIT_MODES.has(setting));
+
+				// The Show-Black-Box caveat re-reads its attributes every poll, so
+				// retargeting it per mode keeps one element covering both boxes.
+				const caveat = document.getElementById("chassis-black-box-caveat");
+				if (caveat) {
+					const pitStop = PIT_STOP_BOX_MODES.has(setting);
+					const boxName = pitStop ? "Pit Stop" : "In-Car";
+					caveat.setAttribute("target", pitStop ? "blackBoxPitStop" : "blackBoxInCar");
+					caveat.setAttribute(
+						"message",
+						"Showing the black box needs keyboard bindings for the " + boxName + " black box and at least one other black box. Set them under Related Key Bindings. The value still changes without them.",
+					);
+				}
 			}
 
 			// Which surface this instance sits on: the PI registration's

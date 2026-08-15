@@ -633,6 +633,11 @@ export interface TelemetryData {
   FastRepairUsed?: number;
   dpFuelAutoFillActive?: number;
   dpFuelAutoFillEnabled?: number;
+  // Pending next-pit-stop LR/RR spring offset in mm ("wedge/weight jacker",
+  // stock-car family). Absolute or delta semantics vary per car; either field
+  // may be absent — the SRX exposes only the Right one (#953).
+  dpWeightJackerLeft?: number;
+  dpWeightJackerRight?: number;
 
   // Camera & Replay
   CamCameraNumber?: number;

@@ -152,10 +152,14 @@ export {
   updateGlobalSettings,
   deleteGlobalSettings,
   isGlobalSettingsInitialized,
+  hasReceivedHostSettings,
   resolveActiveDriverName,
   resolveActiveRaceEngineerVoice,
   _resetGlobalSettings,
 } from "./global-settings.js";
+
+// One-shot renamed-key migrations (issue #953)
+export { migrateGlobalSettingsKeys } from "./global-settings-migrations.js";
 
 // Per-mode sim-communication descriptors (issue #612)
 export {

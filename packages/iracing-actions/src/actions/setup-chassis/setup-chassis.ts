@@ -35,22 +35,22 @@ import differentialPreloadDecreaseIconSvg from "@iracedeck/icons/setup-chassis/d
 import differentialPreloadIncreaseIconSvg from "@iracedeck/icons/setup-chassis/differential-preload-increase.svg";
 import frontArbDecreaseIconSvg from "@iracedeck/icons/setup-chassis/front-arb-decrease.svg";
 import frontArbIncreaseIconSvg from "@iracedeck/icons/setup-chassis/front-arb-increase.svg";
-import leftSpringDecreaseIconSvg from "@iracedeck/icons/setup-chassis/left-spring-decrease.svg";
-import leftSpringIncreaseIconSvg from "@iracedeck/icons/setup-chassis/left-spring-increase.svg";
 import lfShockDecreaseIconSvg from "@iracedeck/icons/setup-chassis/lf-shock-decrease.svg";
 import lfShockIncreaseIconSvg from "@iracedeck/icons/setup-chassis/lf-shock-increase.svg";
 import lrShockDecreaseIconSvg from "@iracedeck/icons/setup-chassis/lr-shock-decrease.svg";
 import lrShockIncreaseIconSvg from "@iracedeck/icons/setup-chassis/lr-shock-increase.svg";
+import lrSpringDecreaseIconSvg from "@iracedeck/icons/setup-chassis/lr-spring-decrease.svg";
+import lrSpringIncreaseIconSvg from "@iracedeck/icons/setup-chassis/lr-spring-increase.svg";
 import powerSteeringDecreaseIconSvg from "@iracedeck/icons/setup-chassis/power-steering-decrease.svg";
 import powerSteeringIncreaseIconSvg from "@iracedeck/icons/setup-chassis/power-steering-increase.svg";
 import rearArbDecreaseIconSvg from "@iracedeck/icons/setup-chassis/rear-arb-decrease.svg";
 import rearArbIncreaseIconSvg from "@iracedeck/icons/setup-chassis/rear-arb-increase.svg";
 import rfShockDecreaseIconSvg from "@iracedeck/icons/setup-chassis/rf-shock-decrease.svg";
 import rfShockIncreaseIconSvg from "@iracedeck/icons/setup-chassis/rf-shock-increase.svg";
-import rightSpringDecreaseIconSvg from "@iracedeck/icons/setup-chassis/right-spring-decrease.svg";
-import rightSpringIncreaseIconSvg from "@iracedeck/icons/setup-chassis/right-spring-increase.svg";
 import rrShockDecreaseIconSvg from "@iracedeck/icons/setup-chassis/rr-shock-decrease.svg";
 import rrShockIncreaseIconSvg from "@iracedeck/icons/setup-chassis/rr-shock-increase.svg";
+import rrSpringDecreaseIconSvg from "@iracedeck/icons/setup-chassis/rr-spring-decrease.svg";
+import rrSpringIncreaseIconSvg from "@iracedeck/icons/setup-chassis/rr-spring-increase.svg";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
@@ -64,8 +64,14 @@ import {
   seedFreshKeyStyle,
   telemetryMemoValue,
 } from "../../shared/adjust-styles.js";
+import { type BlackBoxId, showBlackBox } from "../../shared/black-box.js";
 import { RepeatController } from "../../shared/repeat-controller.js";
-import { generateSetupViewSvg, getAdjustmentModeForView, isViewSetting } from "../../shared/setup-view.js";
+import {
+  generateSetupViewSvg,
+  getAdjustmentModeForView,
+  isViewSetting,
+  withUnitsPreference,
+} from "../../shared/setup-view.js";
 import { DialSettings, seedDialFromLegacySetting, SetupChassisDialSurface } from "./setup-chassis-dial-surface.js";
 
 type DirectionType = "increase" | "decrease";
@@ -86,10 +92,10 @@ const SETUP_CHASSIS_ICONS: Record<string, string> = {
   "front-arb-decrease": frontArbDecreaseIconSvg,
   "rear-arb-increase": rearArbIncreaseIconSvg,
   "rear-arb-decrease": rearArbDecreaseIconSvg,
-  "left-spring-increase": leftSpringIncreaseIconSvg,
-  "left-spring-decrease": leftSpringDecreaseIconSvg,
-  "right-spring-increase": rightSpringIncreaseIconSvg,
-  "right-spring-decrease": rightSpringDecreaseIconSvg,
+  "lr-spring-increase": lrSpringIncreaseIconSvg,
+  "lr-spring-decrease": lrSpringDecreaseIconSvg,
+  "rr-spring-increase": rrSpringIncreaseIconSvg,
+  "rr-spring-decrease": rrSpringDecreaseIconSvg,
   "lf-shock-increase": lfShockIncreaseIconSvg,
   "lf-shock-decrease": lfShockDecreaseIconSvg,
   "rf-shock-increase": rfShockIncreaseIconSvg,
@@ -118,10 +124,10 @@ const SETUP_CHASSIS_TITLES: Record<string, string> = {
   "front-arb-decrease": "FRONT ARB",
   "rear-arb-increase": "REAR ARB",
   "rear-arb-decrease": "REAR ARB",
-  "left-spring-increase": "LEFT SPRING",
-  "left-spring-decrease": "LEFT SPRING",
-  "right-spring-increase": "RIGHT SPRING",
-  "right-spring-decrease": "RIGHT SPRING",
+  "lr-spring-increase": "LR SPRING",
+  "lr-spring-decrease": "LR SPRING",
+  "rr-spring-increase": "RR SPRING",
+  "rr-spring-decrease": "RR SPRING",
   "lf-shock-increase": "LF SHOCK",
   "lf-shock-decrease": "LF SHOCK",
   "rf-shock-increase": "RF SHOCK",
@@ -153,10 +159,10 @@ export const SETUP_CHASSIS_GLOBAL_KEYS: Record<string, string> = {
   "front-arb-decrease": "setupChassisFrontArbDecrease",
   "rear-arb-increase": "setupChassisRearArbIncrease",
   "rear-arb-decrease": "setupChassisRearArbDecrease",
-  "left-spring-increase": "setupChassisLeftSpringIncrease",
-  "left-spring-decrease": "setupChassisLeftSpringDecrease",
-  "right-spring-increase": "setupChassisRightSpringIncrease",
-  "right-spring-decrease": "setupChassisRightSpringDecrease",
+  "lr-spring-increase": "setupChassisLrSpringIncrease",
+  "lr-spring-decrease": "setupChassisLrSpringDecrease",
+  "rr-spring-increase": "setupChassisRrSpringIncrease",
+  "rr-spring-decrease": "setupChassisRrSpringDecrease",
   "lf-shock-increase": "setupChassisLfShockIncrease",
   "lf-shock-decrease": "setupChassisLfShockDecrease",
   "rf-shock-increase": "setupChassisRfShockIncrease",
@@ -177,6 +183,18 @@ export const SETUP_CHASSIS_GLOBAL_KEYS: Record<string, string> = {
   "weight-jacker-right-decrease": "setupChassisWeightJackerRightDecrease",
 };
 
+/**
+ * Pre-#953 → current global binding key renames. Every plugin passes this to
+ * `migrateGlobalSettingsKeys` at startup so existing users' spring bindings
+ * survive the Left/Right → LR/RR rename without reconfiguration.
+ */
+export const SETUP_CHASSIS_BINDING_KEY_RENAMES: Record<string, string> = {
+  setupChassisLeftSpringIncrease: "setupChassisLrSpringIncrease",
+  setupChassisLeftSpringDecrease: "setupChassisLrSpringDecrease",
+  setupChassisRightSpringIncrease: "setupChassisRrSpringIncrease",
+  setupChassisRightSpringDecrease: "setupChassisRrSpringDecrease",
+};
+
 const SetupChassisSettings = CommonSettings.extend({
   setting: z
     .enum([
@@ -190,6 +208,8 @@ const SetupChassisSettings = CommonSettings.extend({
       "view-power-steering",
       "view-weight-jacker-left",
       "view-weight-jacker-right",
+      "view-lr-spring-offset",
+      "view-rr-spring-offset",
       // Adjustment sub-modes.
       "differential-preload",
       "differential-entry",
@@ -197,8 +217,8 @@ const SetupChassisSettings = CommonSettings.extend({
       "differential-exit",
       "front-arb",
       "rear-arb",
-      "left-spring",
-      "right-spring",
+      "lr-spring",
+      "rr-spring",
       "lf-shock",
       "rf-shock",
       "lr-shock",
@@ -220,6 +240,24 @@ const SetupChassisSettings = CommonSettings.extend({
     .union([z.boolean(), z.string()])
     .transform((v) => v === true || v === "true")
     .default(true),
+  /**
+   * Show the black box the adjusted value lives in when the key is pressed
+   * (#953, the Fuel Service #818 pattern) — In-Car Adjustments for the `dc*`
+   * modes, Pit Stop Adjustments for the springs and shocks. NOT
+   * z.coerce.boolean(): it maps the string "false" to true. `.catch` keeps a
+   * malformed persisted value from failing the whole parse.
+   */
+  showBlackBox: z
+    .union([z.boolean(), z.string()])
+    .transform((v) => v === true || v === "true")
+    .default(false)
+    .catch(false),
+  /**
+   * Units for the spring offset display (#953): `auto` follows the sim's
+   * DisplayUnits; metric/imperial force it. Applies to the spring Views and
+   * paired key styles; other modes have unitless values.
+   */
+  units: z.enum(["auto", "metric", "imperial"]).default("auto").catch("auto"),
   // Dial-surface settings (#800), under the `dial` root so keypad and dial keys
   // can't collide. catch: dial garbage degrades to dial defaults instead of
   // failing the whole parse (which would reset a keypad instance).
@@ -228,13 +266,83 @@ const SetupChassisSettings = CommonSettings.extend({
 
 type SetupChassisSettings = z.infer<typeof SetupChassisSettings>;
 
+/** Pre-#953 spring sub-mode ids, persisted by older builds. */
+const LEGACY_SPRING_IDS: Record<string, string> = {
+  "left-spring": "lr-spring",
+  "right-spring": "rr-spring",
+};
+
+/**
+ * @internal Exported for testing
+ *
+ * Maps pre-#953 spring ids (`left-spring`/`right-spring`) to their renamed
+ * `lr-spring`/`rr-spring` values in both the keypad `setting` and the nested
+ * `dial.setting`. Returns the migrated object (for a `setSettings` write-back,
+ * so the PI selects show the stored value) or `null` when nothing is legacy.
+ * Must run before Zod parsing — an unknown enum value would otherwise fail the
+ * whole parse and reset the key to defaults.
+ */
+export function migrateLegacySpringIds(raw: unknown): Record<string, unknown> | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+
+  const obj = raw as Record<string, unknown>;
+  const mappedSetting = typeof obj.setting === "string" ? LEGACY_SPRING_IDS[obj.setting] : undefined;
+
+  const dial = obj.dial;
+  let mappedDialSetting: string | undefined;
+
+  if (dial && typeof dial === "object" && !Array.isArray(dial)) {
+    const dialSetting = (dial as Record<string, unknown>).setting;
+    mappedDialSetting = typeof dialSetting === "string" ? LEGACY_SPRING_IDS[dialSetting] : undefined;
+  }
+
+  if (mappedSetting === undefined && mappedDialSetting === undefined) return null;
+
+  const migrated: Record<string, unknown> = { ...obj };
+
+  if (mappedSetting !== undefined) migrated.setting = mappedSetting;
+
+  if (mappedDialSetting !== undefined) {
+    migrated.dial = { ...(dial as Record<string, unknown>), setting: mappedDialSetting };
+  }
+
+  return migrated;
+}
+
+/**
+ * Modes whose value lives in iRacing's F7 Pit Stop Adjustments box — the
+ * pending pit-stop family (springs and shocks). Everything else on this action
+ * is an immediate in-car (`dc*`) adjustment shown in the F8 In-Car box.
+ */
+const PIT_STOP_BOX_SETTINGS: ReadonlySet<string> = new Set([
+  "lr-spring",
+  "rr-spring",
+  "lf-shock",
+  "rf-shock",
+  "lr-shock",
+  "rr-shock",
+  "view-lr-spring-offset",
+  "view-rr-spring-offset",
+]);
+
+/**
+ * @internal Exported for testing
+ *
+ * The black box a mode's value is displayed in, for the Show Black Box option.
+ */
+export function blackBoxForSetting(setting: string): BlackBoxId {
+  return PIT_STOP_BOX_SETTINGS.has(setting) ? "pit-stop" : "in-car";
+}
+
 /**
  * @internal Exported for testing
  *
  * Parses raw settings, falling back to full defaults when the whole parse fails.
+ * Legacy spring ids are mapped first so pre-#953 settings keep their sub-mode.
  */
 export function parseSetupChassisSettings(raw: unknown): SetupChassisSettings {
-  const parsed = SetupChassisSettings.safeParse(raw);
+  const effective = migrateLegacySpringIds(raw) ?? raw;
+  const parsed = SetupChassisSettings.safeParse(effective);
 
   return parsed.success ? parsed.data : SetupChassisSettings.parse({});
 }
@@ -305,6 +413,7 @@ export class SetupChassis extends ConnectionStateAwareAction<SetupChassisSetting
     logger: this.logger,
     getTelemetry: () => this.sdkController.getCurrentTelemetry(),
     tapBinding: (settingKey) => this.tapBinding(settingKey),
+    tapBindingSequence: (settingKeys, holdMs) => this.tapBindingSequence(settingKeys, holdMs),
     isBindingMissing: (keys) => this.isBindingMissing(keys),
   });
 
@@ -313,12 +422,16 @@ export class SetupChassis extends ConnectionStateAwareAction<SetupChassisSetting
 
   override async onWillAppear(ev: IDeckWillAppearEvent<SetupChassisSettings>): Promise<void> {
     await super.onWillAppear(ev);
-    let settings = this.parseSettings(ev.payload.settings);
+    // #953 rename migration first, so the later seeds and the PI see the
+    // current ids; write back so the stored settings converge.
+    const migrated = migrateLegacySpringIds(ev.payload.settings);
+    const rawSettings = migrated ?? ev.payload.settings;
+    let settings = this.parseSettings(rawSettings);
 
     if (ev.action.isDial()) {
       // #800 dial migration: a pre-dial-surface encoder placement drove the flat
       // keypad `setting` — carry a valid rotation value over to `dial.setting`.
-      const seededDial = seedDialFromLegacySetting(ev.payload.settings);
+      const seededDial = seedDialFromLegacySetting(rawSettings) ?? migrated;
 
       if (seededDial) {
         await ev.action.setSettings(seededDial);
@@ -335,7 +448,7 @@ export class SetupChassis extends ConnectionStateAwareAction<SetupChassisSetting
 
     // One-shot default seeding (spec 2026-07-07): a never-configured keypad key
     // gets the modern `split` style; keys with any persisted settings stay legacy.
-    const seeded = seedFreshKeyStyle(ev.payload.settings);
+    const seeded = seedFreshKeyStyle(rawSettings) ?? migrated;
 
     if (seeded) {
       await ev.action.setSettings(seeded);
@@ -414,6 +527,14 @@ export class SetupChassis extends ConnectionStateAwareAction<SetupChassisSetting
       });
     }
 
+    // Show the box the value lives in BEFORE it changes, so the driver watches
+    // it tick. In onKeyDown rather than executeSetting so the hold-to-repeat
+    // loop never re-shows it, and after repeat.onKeyDown so the timers are
+    // armed before the first await (the Fuel Service #818 position).
+    if (settings.showBlackBox) {
+      await this.showValueBlackBox(settings.setting);
+    }
+
     await this.executeSetting(settings.setting, settings.direction);
   }
 
@@ -451,7 +572,22 @@ export class SetupChassis extends ConnectionStateAwareAction<SetupChassisSetting
       return;
     }
 
+    // A dual-press dispatch is a value change too — same show-before-change
+    // semantics as the adjust modes (#953).
+    if (settings.showBlackBox) {
+      await this.showValueBlackBox(settings.setting);
+    }
+
     await this.tapBinding(settingKey);
+  }
+
+  /** Show the black box `setting`'s value lives in (Fuel Service #818 pattern). */
+  private async showValueBlackBox(setting: string): Promise<void> {
+    await showBlackBox(blackBoxForSetting(setting), {
+      isConfigured: (key) => !this.isBindingMissing(key),
+      tapSequence: (keys, holdMs) => this.tapBindingSequence(keys, holdMs),
+      logger: this.logger,
+    });
   }
 
   override async onDialRotate(ev: IDeckDialRotateEvent<SetupChassisSettings>): Promise<void> {
@@ -465,12 +601,12 @@ export class SetupChassis extends ConnectionStateAwareAction<SetupChassisSetting
   }
 
   override async onDialUp(ev: IDeckDialUpEvent<SetupChassisSettings>): Promise<void> {
-    await this.dialSurface.up(ev.action.id);
+    await this.dialSurface.up(ev.action.id, ev.payload.settings);
   }
 
   override async onTouchTap(ev: IDeckTouchTapEvent<SetupChassisSettings>): Promise<void> {
     const settings = this.parseSettings(ev.payload.settings);
-    await this.dialSurface.touchTap(ev.action, settings.dial, ev.payload.hold === true);
+    await this.dialSurface.touchTap(ev.action, settings.dial, ev.payload.hold === true, ev.payload.settings);
   }
 
   private parseSettings(settings: unknown): SetupChassisSettings {
@@ -537,9 +673,12 @@ export class SetupChassis extends ConnectionStateAwareAction<SetupChassisSetting
     ev: IDeckWillAppearEvent<SetupChassisSettings> | IDeckDidReceiveSettingsEvent<SetupChassisSettings>,
     settings: SetupChassisSettings,
   ): Promise<void> {
-    const svgDataUri = this.renderIcon(settings);
+    // One snapshot for both the icon and the memo, so they can't straddle a
+    // telemetry tick (and the units-forced copy is built once, not twice).
+    const telemetry = withUnitsPreference(this.sdkController.getCurrentTelemetry(), settings.units) ?? null;
+    const svgDataUri = this.renderIcon(settings, telemetry);
 
-    const memo = telemetryMemoValue(settings, this.sdkController.getCurrentTelemetry());
+    const memo = telemetryMemoValue(settings, telemetry);
 
     if (memo !== null) {
       this.lastRenderedValue.set(ev.action.id, memo);
@@ -550,15 +689,25 @@ export class SetupChassis extends ConnectionStateAwareAction<SetupChassisSetting
     this.setRegenerateCallback(ev.action.id, () => this.renderIcon(settings));
   }
 
-  private renderIcon(settings: SetupChassisSettings): string {
+  /**
+   * Renders the key icon. `telemetry` (already units-adjusted via
+   * `withUnitsPreference`) may be passed by callers that also need the same
+   * snapshot for the memo; omitted, a fresh one is fetched — the
+   * regenerate-callback and throttled-tick paths rely on that.
+   */
+  private renderIcon(settings: SetupChassisSettings, telemetry?: TelemetryData | null): string {
     const bindingMissing = this.computeBindingMissing(settings);
+    const resolvedTelemetry =
+      telemetry !== undefined
+        ? telemetry
+        : (withUnitsPreference(this.sdkController.getCurrentTelemetry(), settings.units) ?? null);
 
     const paired = renderPairedIconOrNull({
       setting: settings.setting,
       direction: settings.direction,
       keyStyle: settings.keyStyle,
       pairPosition: settings.pairPosition,
-      telemetry: this.sdkController.getCurrentTelemetry(),
+      telemetry: resolvedTelemetry,
       colorSourceSvg: differentialPreloadIncreaseIconSvg,
       colorOverrides: settings.colorOverrides,
       titleOverrides: settings.titleOverrides,
@@ -571,7 +720,7 @@ export class SetupChassis extends ConnectionStateAwareAction<SetupChassisSetting
     if (isViewSetting(settings.setting)) {
       return generateSetupViewSvg({
         viewId: settings.setting,
-        telemetry: this.sdkController.getCurrentTelemetry(),
+        telemetry: resolvedTelemetry,
         colorSourceSvg: differentialPreloadIncreaseIconSvg,
         colorOverrides: settings.colorOverrides,
         titleOverrides: settings.titleOverrides,
@@ -588,7 +737,7 @@ export class SetupChassis extends ConnectionStateAwareAction<SetupChassisSetting
     telemetry: TelemetryData | null,
     settings: SetupChassisSettings,
   ): Promise<void> {
-    const memo = telemetryMemoValue(settings, telemetry);
+    const memo = telemetryMemoValue(settings, withUnitsPreference(telemetry, settings.units) ?? null);
 
     if (memo === null) return;
 

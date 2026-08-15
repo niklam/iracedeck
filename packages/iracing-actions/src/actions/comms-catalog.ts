@@ -534,14 +534,16 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     "view-power-steering": pair("setupChassisPowerSteeringIncrease", "setupChassisPowerSteeringDecrease"),
     "view-weight-jacker-left": pair("setupChassisWeightJackerLeftIncrease", "setupChassisWeightJackerLeftDecrease"),
     "view-weight-jacker-right": pair("setupChassisWeightJackerRightIncrease", "setupChassisWeightJackerRightDecrease"),
+    "view-lr-spring-offset": pair("setupChassisLrSpringIncrease", "setupChassisLrSpringDecrease"),
+    "view-rr-spring-offset": pair("setupChassisRrSpringIncrease", "setupChassisRrSpringDecrease"),
     "differential-preload": dir("setupChassisDifferentialPreloadIncrease", "setupChassisDifferentialPreloadDecrease"),
     "differential-entry": dir("setupChassisDifferentialEntryIncrease", "setupChassisDifferentialEntryDecrease"),
     "differential-middle": dir("setupChassisDifferentialMiddleIncrease", "setupChassisDifferentialMiddleDecrease"),
     "differential-exit": dir("setupChassisDifferentialExitIncrease", "setupChassisDifferentialExitDecrease"),
     "front-arb": dir("setupChassisFrontArbIncrease", "setupChassisFrontArbDecrease"),
     "rear-arb": dir("setupChassisRearArbIncrease", "setupChassisRearArbDecrease"),
-    "left-spring": dir("setupChassisLeftSpringIncrease", "setupChassisLeftSpringDecrease"),
-    "right-spring": dir("setupChassisRightSpringIncrease", "setupChassisRightSpringDecrease"),
+    "lr-spring": dir("setupChassisLrSpringIncrease", "setupChassisLrSpringDecrease"),
+    "rr-spring": dir("setupChassisRrSpringIncrease", "setupChassisRrSpringDecrease"),
     "lf-shock": dir("setupChassisLfShockIncrease", "setupChassisLfShockDecrease"),
     "rf-shock": dir("setupChassisRfShockIncrease", "setupChassisRfShockDecrease"),
     "lr-shock": dir("setupChassisLrShockIncrease", "setupChassisLrShockDecrease"),
@@ -549,9 +551,9 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     "power-steering": dir("setupChassisPowerSteeringIncrease", "setupChassisPowerSteeringDecrease"),
   }),
 
-  // The dial surface of the merged Setup Chassis action (#800). No press gesture;
-  // springs and shocks rotate too (their strips are label-only — iRacing exposes
-  // no telemetry for them).
+  // The dial surface of the merged Setup Chassis action (#800). The LR/RR
+  // springs show the pending next-pit-stop offset (#953); shocks rotate too but
+  // their strips are label-only (iRacing exposes no telemetry for them).
   "setup-chassis-dial": entry("dial.setting", {
     "differential-preload": pair("setupChassisDifferentialPreloadIncrease", "setupChassisDifferentialPreloadDecrease"),
     "differential-entry": pair("setupChassisDifferentialEntryIncrease", "setupChassisDifferentialEntryDecrease"),
@@ -559,13 +561,20 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     "differential-exit": pair("setupChassisDifferentialExitIncrease", "setupChassisDifferentialExitDecrease"),
     "front-arb": pair("setupChassisFrontArbIncrease", "setupChassisFrontArbDecrease"),
     "rear-arb": pair("setupChassisRearArbIncrease", "setupChassisRearArbDecrease"),
-    "left-spring": pair("setupChassisLeftSpringIncrease", "setupChassisLeftSpringDecrease"),
-    "right-spring": pair("setupChassisRightSpringIncrease", "setupChassisRightSpringDecrease"),
+    "lr-spring": pair("setupChassisLrSpringIncrease", "setupChassisLrSpringDecrease"),
+    "rr-spring": pair("setupChassisRrSpringIncrease", "setupChassisRrSpringDecrease"),
     "lf-shock": pair("setupChassisLfShockIncrease", "setupChassisLfShockDecrease"),
     "rf-shock": pair("setupChassisRfShockIncrease", "setupChassisRfShockDecrease"),
     "lr-shock": pair("setupChassisLrShockIncrease", "setupChassisLrShockDecrease"),
     "rr-shock": pair("setupChassisRrShockIncrease", "setupChassisRrShockDecrease"),
     "power-steering": pair("setupChassisPowerSteeringIncrease", "setupChassisPowerSteeringDecrease"),
+    // The #818 sequence needs the target box AND a prime box (Lap Timing is
+    // the preferred prime) — declare both so the status line can't show a
+    // green check while showBlackBox() would skip for want of a prime.
+    "show-pit-stop-black-box": keybindKeys(["blackBoxLapTiming", "blackBoxPitStop"]),
+    // Plugin-internal flip of dial.setting — no binding needed; declared so
+    // the status line renders the explicit confirmation instead of nothing.
+    "toggle-spring-side": keybindFixed(),
   }),
 
   "setup-engine": entry("setting", {

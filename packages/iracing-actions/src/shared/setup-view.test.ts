@@ -6,8 +6,10 @@ import {
   formatPercent,
   formatPercentRaw,
   formatSignedPercent,
+  formatSpringOffsetMm,
   formatViewValue,
   generateSetupViewSvg,
+  getAdjustmentModeForView,
   isViewSetting,
   VIEW_DEFS,
   VIEW_NULL_VALUE,
@@ -212,5 +214,45 @@ describe("generateSetupViewSvg — title-aware value centering (#810)", () => {
     // unchanged from before #810 — same baseline math as the hidden/top cases above.
     const shown = dataUriToSvg(generateSetupViewSvg({ viewId: "view-brake-bias", telemetry }));
     expect(shown).toContain('x="72" y="73"');
+  });
+});
+
+describe("formatSpringOffsetMm (#953)", () => {
+  it("renders whole millimeters in metric display units, matching iRacing's F7 rounding", () => {
+    expect(formatSpringOffsetMm(2.54, { DisplayUnits: 1 })).toBe("3 mm");
+    expect(formatSpringOffsetMm(-3.175, { DisplayUnits: 1 })).toBe("-3 mm");
+    expect(formatSpringOffsetMm(0, { DisplayUnits: 1 })).toBe("0 mm");
+  });
+
+  it("renders three-decimal inches in english display units", () => {
+    expect(formatSpringOffsetMm(3.175, { DisplayUnits: 0 })).toBe('0.125"');
+    expect(formatSpringOffsetMm(-4.445, { DisplayUnits: 0 })).toBe('-0.175"');
+  });
+
+  it("defaults to metric when DisplayUnits is unavailable", () => {
+    expect(formatSpringOffsetMm(156.675, undefined)).toBe("157 mm");
+  });
+
+  it("returns the null placeholder for non-numeric values", () => {
+    expect(formatSpringOffsetMm(undefined, { DisplayUnits: 1 })).toBe(VIEW_NULL_VALUE);
+    expect(formatSpringOffsetMm(NaN, { DisplayUnits: 1 })).toBe(VIEW_NULL_VALUE);
+  });
+});
+
+describe("spring offset views (#953)", () => {
+  it("formats the pending pit-stop value per the sim's display units", () => {
+    expect(formatViewValue("view-lr-spring-offset", { dpWeightJackerLeft: 2.54, DisplayUnits: 1 })).toBe("3 mm");
+    expect(formatViewValue("view-rr-spring-offset", { dpWeightJackerRight: 3.175, DisplayUnits: 0 })).toBe('0.125"');
+  });
+
+  it("degrades to the null placeholder when the car omits the field (one-sided SRX case)", () => {
+    expect(formatViewValue("view-lr-spring-offset", { dpWeightJackerRight: 157, DisplayUnits: 1 })).toBe(
+      VIEW_NULL_VALUE,
+    );
+  });
+
+  it("maps to the renamed adjustment modes for dual-press dispatch", () => {
+    expect(getAdjustmentModeForView("view-lr-spring-offset")).toBe("lr-spring");
+    expect(getAdjustmentModeForView("view-rr-spring-offset")).toBe("rr-spring");
   });
 });

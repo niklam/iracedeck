@@ -3,14 +3,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildTriggerDescription, DialSettings, formatDialValue } from "./setup-chassis-dial-surface.js";
 import { SetupChassis } from "./setup-chassis.js";
 
-const { mockGetCurrentTelemetry, mockTapBinding, mockIsBindingMissing, mockDualPressThreshold, globalListeners } =
-  vi.hoisted(() => ({
-    mockGetCurrentTelemetry: vi.fn<() => unknown>(() => null),
-    mockTapBinding: vi.fn().mockResolvedValue(undefined),
-    mockIsBindingMissing: vi.fn(() => false),
-    mockDualPressThreshold: { value: 500 },
-    globalListeners: [] as Array<() => void>,
-  }));
+const {
+  mockGetCurrentTelemetry,
+  mockTapBinding,
+  mockTapBindingSequence,
+  mockIsBindingMissing,
+  mockDualPressThreshold,
+  globalListeners,
+} = vi.hoisted(() => ({
+  mockGetCurrentTelemetry: vi.fn<() => unknown>(() => null),
+  mockTapBinding: vi.fn().mockResolvedValue(undefined),
+  mockTapBindingSequence: vi.fn().mockResolvedValue(true),
+  mockIsBindingMissing: vi.fn(() => false),
+  mockDualPressThreshold: { value: 500 },
+  globalListeners: [] as Array<() => void>,
+}));
 
 vi.mock("@iracedeck/deck-core", async () => {
   const { z } = await import("zod");
@@ -43,6 +50,7 @@ vi.mock("@iracedeck/deck-core", async () => {
       updateKeyImage = vi.fn().mockResolvedValue(false);
       setActiveBinding = vi.fn();
       tapBinding = mockTapBinding;
+      tapBindingSequence = mockTapBindingSequence;
       isBindingMissing = mockIsBindingMissing;
       async onWillAppear() {}
       async onDidReceiveSettings() {}
@@ -110,10 +118,38 @@ describe("setup-chassis dial-surface pure helpers", () => {
       expect(formatDialValue("power-steering", { dcPowerSteering: 2 } as never)).toBe("2");
     });
 
-    it("returns empty (identity-only) for springs and shocks", () => {
-      expect(formatDialValue("left-spring", { dcDiffPreload: 3 } as never)).toBe("");
+    it("returns empty (identity-only) for the shocks", () => {
       expect(formatDialValue("lf-shock", { dcDiffPreload: 3 } as never)).toBe("");
       expect(formatDialValue("rr-shock", { dcDiffPreload: 3 } as never)).toBe("");
+    });
+
+    it("formats the pending pit-stop spring offset per the sim's display units (#953)", () => {
+      expect(formatDialValue("lr-spring", { dpWeightJackerLeft: 2.54, DisplayUnits: 1 } as never)).toBe("3 mm");
+      expect(formatDialValue("rr-spring", { dpWeightJackerRight: 3.175, DisplayUnits: 0 } as never)).toBe('0.125"');
+    });
+
+    it("shows the placeholder for a spring whose field the car does not expose (SRX one-sided case)", () => {
+      expect(formatDialValue("lr-spring", { dpWeightJackerRight: 157, DisplayUnits: 1 } as never)).toBe("---");
+    });
+
+    it("forces the spring units when the dial units setting is not auto (#953)", () => {
+      const metricSim = { dpWeightJackerLeft: 3.175, DisplayUnits: 1 } as never;
+      const imperialSim = { dpWeightJackerLeft: 2.54, DisplayUnits: 0 } as never;
+
+      expect(formatDialValue("lr-spring", metricSim, "imperial")).toBe('0.125"');
+      expect(formatDialValue("lr-spring", imperialSim, "metric")).toBe("3 mm");
+      expect(formatDialValue("lr-spring", metricSim, "auto")).toBe("3 mm");
+      expect(formatDialValue("lr-spring", imperialSim, "auto")).toBe('0.100"');
+    });
+
+    it("parses the dial units setting with an auto default", () => {
+      expect(DialSettings.parse({}).units).toBe("auto");
+      expect(DialSettings.parse({ units: "imperial" }).units).toBe("imperial");
+      // A value from a newer plugin version degrades to auto instead of
+      // resetting the whole dial object (the 2.0-contamination lesson).
+      const degraded = DialSettings.parse({ setting: "rr-spring", units: "furlongs" });
+      expect(degraded.units).toBe("auto");
+      expect(degraded.setting).toBe("rr-spring");
     });
 
     it("shows the placeholder when a readback setting has no telemetry", () => {
@@ -133,6 +169,22 @@ describe("setup-chassis dial-surface pure helpers", () => {
       const desc = buildTriggerDescription(DialSettings.parse({ setting: "lf-shock" }));
 
       expect(desc.rotate).toBe("Adjust LF Shock");
+    });
+
+    it("names the pit-stop gesture on push (#953)", () => {
+      const desc = buildTriggerDescription(
+        DialSettings.parse({ setting: "lr-spring", pressAction: "show-pit-stop-black-box" }),
+      );
+
+      expect(desc.push).toBe("Show Pit Stop Box");
+    });
+
+    it("names the spring-side toggle on push (#953)", () => {
+      const desc = buildTriggerDescription(
+        DialSettings.parse({ setting: "lr-spring", pressAction: "toggle-spring-side" }),
+      );
+
+      expect(desc.push).toBe("Switch LR/RR");
     });
   });
 });
@@ -158,6 +210,137 @@ describe("SetupChassis dial surface", () => {
   async function appear(ctx: DialContext, settings: Record<string, unknown> = {}) {
     await action.onWillAppear(basicEvent(ctx, settings) as never);
   }
+
+  describe("dial units on the strip (#953)", () => {
+    it("renders the forced imperial value on a metric-display sim", async () => {
+      mockGetCurrentTelemetry.mockReturnValue({ dpWeightJackerLeft: 3.175, DisplayUnits: 1 });
+      const ctx = dialContext("d1");
+      await appear(ctx, dialSettings({ setting: "lr-spring", units: "imperial" }));
+
+      const feedback = (ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box;
+
+      expect(decodeURIComponent(feedback)).toContain('>0.125"<');
+    });
+  });
+
+  describe("Switch LR/RR Spring gesture (#953)", () => {
+    it("accepts the gesture in the dial schema", () => {
+      expect(DialSettings.parse({ pressAction: "toggle-spring-side" }).pressAction).toBe("toggle-spring-side");
+      expect(DialSettings.parse({ longPressAction: "toggle-spring-side" }).longPressAction).toBe("toggle-spring-side");
+    });
+
+    it("flips the dial from LR to RR spring on a short press, preserving the keypad settings", async () => {
+      const ctx = dialContext("d1");
+      const settings = {
+        setting: "differential-preload",
+        dial: { setting: "lr-spring", pressAction: "toggle-spring-side" },
+      };
+      await appear(ctx, settings);
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(ctx.setSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          setting: "differential-preload",
+          dial: expect.objectContaining({ setting: "rr-spring", pressAction: "toggle-spring-side" }),
+        }),
+      );
+    });
+
+    it("re-renders the strip for the new side after the flip", async () => {
+      const ctx = dialContext("d1");
+      const settings = { dial: { setting: "lr-spring", pressAction: "toggle-spring-side" } };
+      await appear(ctx, settings);
+      ctx.setFeedback.mockClear();
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      const feedback = (ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box;
+      const svg = decodeURIComponent(feedback);
+      const litRight = /<polygon data-side="right"[^>]*>/.exec(svg)?.[0];
+      expect(litRight).toBeDefined();
+      expect(litRight).not.toContain("opacity");
+      expect(svg).toContain("RR SPR");
+    });
+
+    it("toggles back on the next press without a settings echo", async () => {
+      const ctx = dialContext("d1");
+      const settings = { dial: { setting: "lr-spring", pressAction: "toggle-spring-side" } };
+      await appear(ctx, settings);
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      const lastWrite = ctx.setSettings.mock.calls.at(-1)?.[0] as { dial: { setting: string } };
+      expect(lastWrite.dial.setting).toBe("lr-spring");
+    });
+
+    it("jumps to the LR spring when a non-spring setting is selected", async () => {
+      const ctx = dialContext("d1");
+      const settings = { dial: { setting: "differential-preload", tapAction: "toggle-spring-side" } };
+      await appear(ctx, settings);
+
+      await action.onTouchTap({ action: ctx, payload: { settings, hold: false } } as never);
+
+      const lastWrite = ctx.setSettings.mock.calls.at(-1)?.[0] as { dial: { setting: string } };
+      expect(lastWrite.dial.setting).toBe("lr-spring");
+    });
+  });
+
+  describe("spring side-arrow markers (#953)", () => {
+    it("renders both side triangles for a spring setting, lighting the edited side", async () => {
+      const ctx = dialContext("d1");
+      await appear(ctx, dialSettings({ setting: "lr-spring" }));
+
+      const feedback = (ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box;
+      const svg = decodeURIComponent(feedback);
+
+      expect(svg).toContain('data-side="left"');
+      expect(svg).toContain('data-side="right"');
+    });
+
+    it("renders no side markers for non-spring settings", async () => {
+      const ctx = dialContext("d1");
+      await appear(ctx, dialSettings({ setting: "differential-preload" }));
+
+      const feedback = (ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box;
+
+      expect(decodeURIComponent(feedback)).not.toContain("data-side");
+    });
+  });
+
+  describe("Show Pit Stop Black Box gesture (#953)", () => {
+    it("accepts the gesture in the dial schema", () => {
+      expect(DialSettings.parse({ pressAction: "show-pit-stop-black-box" }).pressAction).toBe(
+        "show-pit-stop-black-box",
+      );
+    });
+
+    it("shows the Pit Stop black box on a short press via the atomic prime+target sequence", async () => {
+      const ctx = dialContext("d1");
+      const settings = dialSettings({ setting: "lr-spring", pressAction: "show-pit-stop-black-box" });
+      await appear(ctx, settings);
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(mockTapBindingSequence).toHaveBeenCalledWith(["blackBoxLapTiming", "blackBoxPitStop"], 0);
+    });
+
+    it("shows the box on a touch tap", async () => {
+      const ctx = dialContext("d1");
+      const settings = dialSettings({ setting: "lr-spring", tapAction: "show-pit-stop-black-box" });
+      await appear(ctx, settings);
+
+      await action.onTouchTap({ action: ctx, payload: { settings, hold: false } } as never);
+
+      expect(mockTapBindingSequence).toHaveBeenCalledWith(["blackBoxLapTiming", "blackBoxPitStop"], 0);
+    });
+  });
 
   describe("onDialRotate", () => {
     it("taps the increase binding on a clockwise turn", async () => {

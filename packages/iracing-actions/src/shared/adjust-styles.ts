@@ -89,9 +89,11 @@ export function seedFreshKeyStyle(raw: unknown): Record<string, unknown> | null 
 }
 
 /**
- * Unit-less display value: strips a trailing "%" (the only unit VIEW_DEFS
- * formatters emit), keeps signs and decimals. "Everyone knows the unit, so
- * bigger value is more important."
+ * Unit-less display value: strips a trailing "%", keeps signs and decimals.
+ * "Everyone knows the unit, so bigger value is more important." The spring
+ * offsets (#953) are the deliberate exception: their formatter emits " mm" /
+ * `"` and the unit is KEPT — it is what tells a metric reading from an
+ * imperial one under the per-key/per-dial units preference.
  */
 export function stripUnit(value: string): string {
   return value.endsWith("%") ? value.slice(0, -1) : value;
@@ -109,7 +111,7 @@ export function getViewIdForAdjustment(adjustmentMode: string): ViewSettingId | 
 /**
  * A mode can use paired styles only when a live value exists for it: either it
  * IS a View id, or it's an adjust mode with a matching View def. Directional
- * modes without telemetry (qualifying-tape, boost-level, springs/shocks) stay
+ * modes without telemetry (qualifying-tape, boost-level, shocks) stay
  * legacy-only by design.
  */
 export function hasPairedValueSource(setting: string): boolean {

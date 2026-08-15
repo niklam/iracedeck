@@ -2,7 +2,9 @@ import { getDualPressDirections } from "@iracedeck/deck-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  blackBoxForSetting,
   generateSetupChassisSvg,
+  migrateLegacySpringIds,
   parseSetupChassisSettings,
   SETUP_CHASSIS_GLOBAL_KEYS,
   SetupChassis,
@@ -12,8 +14,9 @@ import {
 // way the runtime does (via the @iracedeck/deck-core getDualPressDirections reader).
 const mockGetDualPressDirections = getDualPressDirections as unknown as ReturnType<typeof vi.fn>;
 
-const { mockTapBinding } = vi.hoisted(() => ({
+const { mockTapBinding, mockTapBindingSequence } = vi.hoisted(() => ({
   mockTapBinding: vi.fn().mockResolvedValue(undefined),
+  mockTapBindingSequence: vi.fn().mockResolvedValue(true),
 }));
 
 vi.mock("@iracedeck/icons/setup-chassis/differential-entry-decrease.svg", () => ({
@@ -46,11 +49,11 @@ vi.mock("@iracedeck/icons/setup-chassis/front-arb-decrease.svg", () => ({
 vi.mock("@iracedeck/icons/setup-chassis/front-arb-increase.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">front-arb-increase {{mainLabel}} {{subLabel}}</svg>',
 }));
-vi.mock("@iracedeck/icons/setup-chassis/left-spring-decrease.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">left-spring-decrease {{mainLabel}} {{subLabel}}</svg>',
+vi.mock("@iracedeck/icons/setup-chassis/lr-spring-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">lr-spring-decrease {{mainLabel}} {{subLabel}}</svg>',
 }));
-vi.mock("@iracedeck/icons/setup-chassis/left-spring-increase.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">left-spring-increase {{mainLabel}} {{subLabel}}</svg>',
+vi.mock("@iracedeck/icons/setup-chassis/lr-spring-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">lr-spring-increase {{mainLabel}} {{subLabel}}</svg>',
 }));
 vi.mock("@iracedeck/icons/setup-chassis/lf-shock-decrease.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">lf-shock-decrease {{mainLabel}} {{subLabel}}</svg>',
@@ -82,11 +85,11 @@ vi.mock("@iracedeck/icons/setup-chassis/rf-shock-decrease.svg", () => ({
 vi.mock("@iracedeck/icons/setup-chassis/rf-shock-increase.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">rf-shock-increase {{mainLabel}} {{subLabel}}</svg>',
 }));
-vi.mock("@iracedeck/icons/setup-chassis/right-spring-decrease.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">right-spring-decrease {{mainLabel}} {{subLabel}}</svg>',
+vi.mock("@iracedeck/icons/setup-chassis/rr-spring-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">rr-spring-decrease {{mainLabel}} {{subLabel}}</svg>',
 }));
-vi.mock("@iracedeck/icons/setup-chassis/right-spring-increase.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">right-spring-increase {{mainLabel}} {{subLabel}}</svg>',
+vi.mock("@iracedeck/icons/setup-chassis/rr-spring-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">rr-spring-increase {{mainLabel}} {{subLabel}}</svg>',
 }));
 vi.mock("@iracedeck/icons/setup-chassis/rr-shock-decrease.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">rr-shock-decrease {{mainLabel}} {{subLabel}}</svg>',
@@ -124,6 +127,7 @@ vi.mock("@iracedeck/deck-core", async () => {
       setRegenerateCallback = vi.fn();
       updateKeyImage = vi.fn().mockResolvedValue(true);
       tapBinding = mockTapBinding;
+      tapBindingSequence = mockTapBindingSequence;
       holdBinding = vi.fn().mockResolvedValue(undefined);
       releaseBinding = vi.fn().mockResolvedValue(undefined);
       setActiveBinding = vi.fn();
@@ -296,20 +300,20 @@ describe("SetupChassis", () => {
       expect(SETUP_CHASSIS_GLOBAL_KEYS["rear-arb-decrease"]).toBe("setupChassisRearArbDecrease");
     });
 
-    it("should have correct mapping for left-spring-increase", () => {
-      expect(SETUP_CHASSIS_GLOBAL_KEYS["left-spring-increase"]).toBe("setupChassisLeftSpringIncrease");
+    it("should have correct mapping for lr-spring-increase", () => {
+      expect(SETUP_CHASSIS_GLOBAL_KEYS["lr-spring-increase"]).toBe("setupChassisLrSpringIncrease");
     });
 
-    it("should have correct mapping for left-spring-decrease", () => {
-      expect(SETUP_CHASSIS_GLOBAL_KEYS["left-spring-decrease"]).toBe("setupChassisLeftSpringDecrease");
+    it("should have correct mapping for lr-spring-decrease", () => {
+      expect(SETUP_CHASSIS_GLOBAL_KEYS["lr-spring-decrease"]).toBe("setupChassisLrSpringDecrease");
     });
 
-    it("should have correct mapping for right-spring-increase", () => {
-      expect(SETUP_CHASSIS_GLOBAL_KEYS["right-spring-increase"]).toBe("setupChassisRightSpringIncrease");
+    it("should have correct mapping for rr-spring-increase", () => {
+      expect(SETUP_CHASSIS_GLOBAL_KEYS["rr-spring-increase"]).toBe("setupChassisRrSpringIncrease");
     });
 
-    it("should have correct mapping for right-spring-decrease", () => {
-      expect(SETUP_CHASSIS_GLOBAL_KEYS["right-spring-decrease"]).toBe("setupChassisRightSpringDecrease");
+    it("should have correct mapping for rr-spring-decrease", () => {
+      expect(SETUP_CHASSIS_GLOBAL_KEYS["rr-spring-decrease"]).toBe("setupChassisRrSpringDecrease");
     });
 
     it("should have correct mapping for lf-shock-increase", () => {
@@ -391,8 +395,8 @@ describe("SetupChassis", () => {
         "differential-exit",
         "front-arb",
         "rear-arb",
-        "left-spring",
-        "right-spring",
+        "lr-spring",
+        "rr-spring",
         "lf-shock",
         "rf-shock",
         "lr-shock",
@@ -431,8 +435,8 @@ describe("SetupChassis", () => {
         "differential-exit",
         "front-arb",
         "rear-arb",
-        "left-spring",
-        "right-spring",
+        "lr-spring",
+        "rr-spring",
         "lf-shock",
         "rf-shock",
         "lr-shock",
@@ -489,13 +493,13 @@ describe("SetupChassis", () => {
           increase: { line1: "REAR ARB", line2: "REAR ARB</svg>" },
           decrease: { line1: "REAR ARB", line2: "REAR ARB</svg>" },
         },
-        "left-spring": {
-          increase: { line1: "LEFT SPRING", line2: "LEFT SPRING</svg>" },
-          decrease: { line1: "LEFT SPRING", line2: "LEFT SPRING</svg>" },
+        "lr-spring": {
+          increase: { line1: "LR SPRING", line2: "LR SPRING</svg>" },
+          decrease: { line1: "LR SPRING", line2: "LR SPRING</svg>" },
         },
-        "right-spring": {
-          increase: { line1: "RIGHT SPRING", line2: "RIGHT SPRING</svg>" },
-          decrease: { line1: "RIGHT SPRING", line2: "RIGHT SPRING</svg>" },
+        "rr-spring": {
+          increase: { line1: "RR SPRING", line2: "RR SPRING</svg>" },
+          decrease: { line1: "RR SPRING", line2: "RR SPRING</svg>" },
         },
         "lf-shock": {
           increase: { line1: "LF SHOCK", line2: "LF SHOCK</svg>" },
@@ -727,6 +731,191 @@ describe("SetupChassis", () => {
       const degraded = parseSetupChassisSettings({ setting: "differential-preload", keyStyle: "hologram" });
       expect(degraded.keyStyle).toBe("legacy");
       expect(degraded.setting).toBe("differential-preload"); // catch keeps the rest of the parse alive
+    });
+  });
+
+  describe("legacy spring id migration (#953)", () => {
+    it("maps persisted left-spring to lr-spring at parse time", () => {
+      const parsed = parseSetupChassisSettings({ setting: "left-spring", direction: "decrease" });
+
+      expect(parsed.setting).toBe("lr-spring");
+      expect(parsed.direction).toBe("decrease");
+    });
+
+    it("maps persisted right-spring to rr-spring at parse time", () => {
+      expect(parseSetupChassisSettings({ setting: "right-spring" }).setting).toBe("rr-spring");
+    });
+
+    it("maps a persisted legacy dial.setting", () => {
+      expect(parseSetupChassisSettings({ dial: { setting: "right-spring" } }).dial.setting).toBe("rr-spring");
+    });
+
+    it("returns a migrated object preserving other fields, and null when nothing is legacy", () => {
+      expect(migrateLegacySpringIds({ setting: "left-spring", direction: "increase", keyStyle: "split" })).toEqual({
+        setting: "lr-spring",
+        direction: "increase",
+        keyStyle: "split",
+      });
+      expect(migrateLegacySpringIds({ dial: { setting: "right-spring", pressAction: "none" } })).toEqual({
+        dial: { setting: "rr-spring", pressAction: "none" },
+      });
+      expect(migrateLegacySpringIds({ setting: "lr-spring" })).toBeNull();
+      expect(migrateLegacySpringIds({ setting: "differential-preload" })).toBeNull();
+      expect(migrateLegacySpringIds(undefined)).toBeNull();
+    });
+
+    it("persists the migrated keypad setting on willAppear", async () => {
+      const action = new SetupChassis();
+      const ev = fakeEvent("action-1", { setting: "left-spring", direction: "increase", keyStyle: "legacy" });
+      (ev.action as Record<string, unknown>).setSettings = vi.fn();
+
+      await action.onWillAppear(ev as any);
+
+      expect((ev.action as unknown as { setSettings: ReturnType<typeof vi.fn> }).setSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ setting: "lr-spring", direction: "increase" }),
+      );
+    });
+  });
+
+  describe("spring offset View sub-modes (#953)", () => {
+    let action: SetupChassis;
+
+    beforeEach(() => {
+      action = new SetupChassis();
+    });
+
+    it("accepts the new View ids in the settings enum", () => {
+      expect(parseSetupChassisSettings({ setting: "view-lr-spring-offset" }).setting).toBe("view-lr-spring-offset");
+      expect(parseSetupChassisSettings({ setting: "view-rr-spring-offset" }).setting).toBe("view-rr-spring-offset");
+    });
+
+    it("renders the pending pit-stop offset for the LR spring View", async () => {
+      (action.sdkController.getCurrentTelemetry as any).mockReturnValue({ dpWeightJackerLeft: 2.54, DisplayUnits: 1 });
+
+      await action.onWillAppear(fakeEvent("action-1", { setting: "view-lr-spring-offset" }) as any);
+
+      const svg = decodeURIComponent((action.setKeyImage as any).mock.calls[0][1] as string);
+      expect(svg).toContain("3 mm");
+    });
+
+    it("dispatches dual-press to the renamed spring bindings", async () => {
+      const tracker = (action as any).dualPress as { computeOutcome: ReturnType<typeof vi.fn> };
+      mockGetDualPressDirections.mockReturnValue("tap-increases");
+      tracker.computeOutcome.mockReturnValue("increase");
+
+      await action.onKeyUp(fakeEvent("action-1", { setting: "view-rr-spring-offset", dualPressEnabled: true }) as any);
+
+      expect(mockTapBinding).toHaveBeenCalledWith("setupChassisRrSpringIncrease");
+    });
+  });
+
+  describe("show black box on value change (#953)", () => {
+    it("maps each mode to the box its value lives in", () => {
+      expect(blackBoxForSetting("lr-spring")).toBe("pit-stop");
+      expect(blackBoxForSetting("rr-spring")).toBe("pit-stop");
+      expect(blackBoxForSetting("rr-shock")).toBe("pit-stop");
+      expect(blackBoxForSetting("view-rr-spring-offset")).toBe("pit-stop");
+      expect(blackBoxForSetting("differential-preload")).toBe("in-car");
+      expect(blackBoxForSetting("view-diff-entry")).toBe("in-car");
+      expect(blackBoxForSetting("view-weight-jacker-left")).toBe("in-car");
+      expect(blackBoxForSetting("power-steering")).toBe("in-car");
+    });
+
+    it("shows the Pit Stop box once on key down when enabled", async () => {
+      const action = new SetupChassis();
+
+      await action.onKeyDown(
+        fakeEvent("action-1", { setting: "lr-spring", direction: "increase", showBlackBox: true }) as any,
+      );
+
+      expect(mockTapBindingSequence).toHaveBeenCalledWith(["blackBoxLapTiming", "blackBoxPitStop"], 0);
+      expect(mockTapBindingSequence).toHaveBeenCalledTimes(1);
+      expect(mockTapBinding).toHaveBeenCalledWith("setupChassisLrSpringIncrease");
+    });
+
+    it("shows the In-Car box for an in-car adjustment mode", async () => {
+      const action = new SetupChassis();
+
+      await action.onKeyDown(
+        fakeEvent("action-1", { setting: "front-arb", direction: "decrease", showBlackBox: true }) as any,
+      );
+
+      expect(mockTapBindingSequence).toHaveBeenCalledWith(["blackBoxLapTiming", "blackBoxInCar"], 0);
+    });
+
+    it("does nothing when the checkbox is off", async () => {
+      const action = new SetupChassis();
+
+      await action.onKeyDown(fakeEvent("action-1", { setting: "lr-spring", direction: "increase" }) as any);
+
+      expect(mockTapBindingSequence).not.toHaveBeenCalled();
+    });
+
+    it("shows the box on a dual-press dispatch from a View key", async () => {
+      const action = new SetupChassis();
+      const tracker = (action as any).dualPress as { computeOutcome: ReturnType<typeof vi.fn> };
+      mockGetDualPressDirections.mockReturnValue("tap-increases");
+      tracker.computeOutcome.mockReturnValue("increase");
+
+      await action.onKeyUp(
+        fakeEvent("action-1", {
+          setting: "view-rr-spring-offset",
+          dualPressEnabled: true,
+          showBlackBox: true,
+        }) as any,
+      );
+
+      expect(mockTapBindingSequence).toHaveBeenCalledWith(["blackBoxLapTiming", "blackBoxPitStop"], 0);
+      expect(mockTapBinding).toHaveBeenCalledWith("setupChassisRrSpringIncrease");
+    });
+
+    it("does not re-show on hold-to-repeat iterations", async () => {
+      vi.useFakeTimers();
+      const action = new SetupChassis();
+      const ev = fakeEvent("action-1", {
+        setting: "lr-spring",
+        direction: "increase",
+        keyStyle: "split",
+        showBlackBox: true,
+      });
+
+      await action.onKeyDown(ev as any);
+      await vi.advanceTimersByTimeAsync(500 + 150 * 3 + 20);
+      expect(mockTapBinding.mock.calls.length).toBeGreaterThanOrEqual(3);
+      expect(mockTapBindingSequence).toHaveBeenCalledTimes(1);
+
+      await action.onKeyUp(ev as any);
+      vi.useRealTimers();
+    });
+  });
+
+  describe("units preference (#953)", () => {
+    it("parses the keypad units setting with an auto default and degradation", () => {
+      expect(parseSetupChassisSettings({}).units).toBe("auto");
+      expect(parseSetupChassisSettings({ units: "imperial" }).units).toBe("imperial");
+      const degraded = parseSetupChassisSettings({ setting: "lr-spring", units: "furlongs" });
+      expect(degraded.units).toBe("auto");
+      expect(degraded.setting).toBe("lr-spring");
+    });
+
+    it("forces the spring View to imperial on a metric-display sim", async () => {
+      const action = new SetupChassis();
+      (action.sdkController.getCurrentTelemetry as any).mockReturnValue({ dpWeightJackerLeft: 3.175, DisplayUnits: 1 });
+
+      await action.onWillAppear(fakeEvent("action-1", { setting: "view-lr-spring-offset", units: "imperial" }) as any);
+
+      const svg = decodeURIComponent((action.setKeyImage as any).mock.calls[0][1] as string);
+      expect(svg).toContain('0.125"');
+    });
+
+    it("keeps following the sim's display units on auto", async () => {
+      const action = new SetupChassis();
+      (action.sdkController.getCurrentTelemetry as any).mockReturnValue({ dpWeightJackerLeft: 3.175, DisplayUnits: 1 });
+
+      await action.onWillAppear(fakeEvent("action-1", { setting: "view-lr-spring-offset" }) as any);
+
+      const svg = decodeURIComponent((action.setKeyImage as any).mock.calls[0][1] as string);
+      expect(svg).toContain("3 mm");
     });
   });
 
