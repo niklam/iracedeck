@@ -404,18 +404,34 @@ export class ViewAdjustmentDialSurface {
     }
   }
 
+  /**
+   * Dispatches one gesture slot.
+   *
+   * The `default` branch is an exhaustiveness guard, not dead code: assigning the
+   * slot to `never` makes adding a {@link GESTURE_ACTIONS} value without a case
+   * here a COMPILE error. A bare switch would not — this package does not enable
+   * `noImplicitReturns`, so an unhandled slot would otherwise fall through and
+   * ship as a gesture that silently does nothing.
+   */
   private async doGesture(action: GestureSlot): Promise<void> {
-    if (action === "none") return;
+    switch (action) {
+      case "recenter-vr":
+        this.host.logger.info("View adjustment dial recentered VR");
+        await this.host.tapBinding(RECENTER_VR_KEY);
 
-    if (action === "recenter-vr") {
-      this.host.logger.info("View adjustment dial recentered VR");
-      await this.host.tapBinding(RECENTER_VR_KEY);
+        return;
+      case "mouse-to-sim":
+        bringPointerToSim(this.host.logger);
 
-      return;
-    }
+        return;
+      case "none":
+        return;
+      default: {
+        const unhandled: never = action;
+        this.host.logger.warn(`Unhandled gesture slot: ${String(unhandled)}`);
 
-    if (action === "mouse-to-sim") {
-      bringPointerToSim(this.host.logger);
+        return;
+      }
     }
   }
 

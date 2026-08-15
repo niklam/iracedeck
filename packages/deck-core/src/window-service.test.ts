@@ -91,19 +91,33 @@ describe("Window Service", () => {
       expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining("Unexpected"));
     });
 
-    it("reports WindowNotFound and warns when no focuser is configured", () => {
+    it("reports Unavailable, not WindowNotFound, when no focuser is configured", () => {
       initializeWindowService(mockLogger, {});
-      expect(getWindowService().focus()).toBe(WindowFocusResult.WindowNotFound);
+      // Distinct from WindowNotFound: we never looked, so callers must not treat
+      // this as evidence that iRacing is absent.
+      expect(getWindowService().focus()).toBe(WindowFocusResult.Unavailable);
       expect(mockLogger.warn).toHaveBeenCalled();
     });
 
-    it("catches a throwing focuser", () => {
+    it("warns only once about a missing focuser, however many calls", () => {
+      initializeWindowService(mockLogger, {});
+      const service = getWindowService();
+
+      service.focus();
+      service.focus();
+      service.focus();
+
+      // focusIfEnabled() runs before EVERY key press — a per-call warning would flood the log.
+      expect(mockLogger.warn).toHaveBeenCalledTimes(1);
+    });
+
+    it("reports Unavailable when the focuser throws", () => {
       initializeWindowService(mockLogger, {
         focuser: () => {
           throw new Error("boom");
         },
       });
-      expect(getWindowService().focus()).toBe(WindowFocusResult.WindowNotFound);
+      expect(getWindowService().focus()).toBe(WindowFocusResult.Unavailable);
       expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining("boom"));
     });
   });
@@ -180,20 +194,30 @@ describe("Window Service", () => {
       expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining("minimized"));
     });
 
-    it("catches a throwing pointer mover", () => {
+    it("reports Unavailable when the pointer mover throws", () => {
       initializeWindowService(mockLogger, {
         pointerMover: () => {
           throw new Error("boom");
         },
       });
-      expect(getWindowService().movePointerToSim()).toBe(PointerMoveResult.Failed);
+      expect(getWindowService().movePointerToSim()).toBe(PointerMoveResult.Unavailable);
       expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining("boom"));
     });
 
-    it("reports Failed and warns when no mover is configured", () => {
+    it("reports Unavailable, not Failed, when no mover is configured", () => {
       initializeWindowService(mockLogger, {});
-      expect(getWindowService().movePointerToSim()).toBe(PointerMoveResult.Failed);
+      expect(getWindowService().movePointerToSim()).toBe(PointerMoveResult.Unavailable);
       expect(mockLogger.warn).toHaveBeenCalled();
+    });
+
+    it("warns only once about a missing pointer mover", () => {
+      initializeWindowService(mockLogger, {});
+      const service = getWindowService();
+
+      service.movePointerToSim();
+      service.movePointerToSim();
+
+      expect(mockLogger.warn).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -209,6 +233,13 @@ describe("Window Service", () => {
       expect(PointerMoveResult.Moved).toBe(0);
       expect(PointerMoveResult.WindowNotFound).toBe(1);
       expect(PointerMoveResult.Failed).toBe(2);
+    });
+
+    it("keeps the Unavailable sentinels outside the native contract range", () => {
+      // The native layer only ever returns 0..3 / 0..2, so a negative sentinel can
+      // never collide with a real result code.
+      expect(WindowFocusResult.Unavailable).toBe(-1);
+      expect(PointerMoveResult.Unavailable).toBe(-1);
     });
   });
 });

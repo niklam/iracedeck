@@ -5,8 +5,8 @@ const movePointerToSim = vi.fn();
 
 vi.mock("@iracedeck/deck-core", () => ({
   getWindowService: () => ({ focus, movePointerToSim }),
-  WindowFocusResult: { AlreadyFocused: 0, Focused: 1, WindowNotFound: 2, FocusTimedOut: 3 },
-  PointerMoveResult: { Moved: 0, WindowNotFound: 1, Failed: 2 },
+  WindowFocusResult: { Unavailable: -1, AlreadyFocused: 0, Focused: 1, WindowNotFound: 2, FocusTimedOut: 3 },
+  PointerMoveResult: { Unavailable: -1, Moved: 0, WindowNotFound: 1, Failed: 2 },
 }));
 
 const { bringPointerToSim } = await import("./mouse-to-sim.js");
@@ -66,6 +66,16 @@ describe("bringPointerToSim", () => {
 
     expect(movePointerToSim).not.toHaveBeenCalled();
     expect(logger.info).not.toHaveBeenCalled();
+  });
+
+  it("still moves the pointer when focus could not be attempted", () => {
+    focus.mockReturnValue(-1); // Unavailable — no focuser injected, or it threw
+
+    bringPointerToSim(logger);
+
+    // Only WindowNotFound is evidence the sim is absent. An unattempted focus says
+    // nothing about the window, so an independently working pointer mover must run.
+    expect(movePointerToSim).toHaveBeenCalledTimes(1);
   });
 
   it("still moves the pointer when the window was already focused", () => {

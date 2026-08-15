@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { VarType } from "./defines.js";
+import { FocusResult, PointerMoveResult } from "./index.js";
 import { MOCK_SNAPSHOTS } from "./mock-data/snapshots.js";
 import { MOCK_VAR_HEADERS } from "./mock-data/telemetry.js";
 import { IRacingNativeMock } from "./mock-impl.js";
@@ -194,6 +195,26 @@ describe("IRacingNativeMock", () => {
     it("moveMouseToIRacingWindow should log the requested fractions", () => {
       mock.moveMouseToIRacingWindow(0.25, 0.75);
       expect(console.debug).toHaveBeenCalledWith(expect.stringContaining("0.25"));
+    });
+  });
+
+  // The numbering is a cross-package contract: addon.cc's FOCUS_*/POINTER_*
+  // constants, these enums, and deck-core's WindowFocusResult/PointerMoveResult
+  // (window-service.ts, #926) must agree. deck-core asserts its own copy; these
+  // assertions are the other side of that pair, so a rename or reorder here
+  // breaks a test rather than a user.
+  describe("result code contract", () => {
+    it("numbers FocusResult as the addon does", () => {
+      expect(FocusResult.AlreadyFocused).toBe(0);
+      expect(FocusResult.Focused).toBe(1);
+      expect(FocusResult.WindowNotFound).toBe(2);
+      expect(FocusResult.FocusTimedOut).toBe(3);
+    });
+
+    it("numbers PointerMoveResult as the addon does", () => {
+      expect(PointerMoveResult.Moved).toBe(0);
+      expect(PointerMoveResult.WindowNotFound).toBe(1);
+      expect(PointerMoveResult.Failed).toBe(2);
     });
   });
 

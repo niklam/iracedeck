@@ -48,6 +48,13 @@ import { getGlobalSettings, isGlobalSettingsInitialized } from "./global-setting
  * is asserted by tests on both sides, so a drift breaks a test rather than a user.
  */
 export enum WindowFocusResult {
+  /**
+   * The call could not be attempted at all: no focuser was injected, or it threw.
+   * A deck-core-only sentinel — the native layer never returns it, which is why it
+   * sits outside the 0..3 contract range. Distinct from {@link WindowFocusResult.WindowNotFound},
+   * which means we DID look and iRacing was not running.
+   */
+  Unavailable = -1,
   /** Window was already in the foreground */
   AlreadyFocused = 0,
   /** Window was found and successfully focused */
@@ -63,6 +70,8 @@ export enum WindowFocusResult {
  * See {@link WindowFocusResult} on why the numbering is duplicated here.
  */
 export enum PointerMoveResult {
+  /** The call could not be attempted: no pointer mover was injected, or it threw. See {@link WindowFocusResult.Unavailable}. */
+  Unavailable = -1,
   /** The cursor was placed inside the sim's client area */
   Moved = 0,
   /** No window with the expected title exists */
@@ -124,6 +133,9 @@ export interface IWindowService {
 }
 
 class WindowService implements IWindowService {
+  /** Delegate names already reported as missing, so the warning fires once per service. */
+  private readonly warnedMissing = new Set<string>();
+
   constructor(
     private readonly logger: ILogger,
     private readonly delegates: WindowServiceDelegates,
@@ -133,9 +145,11 @@ class WindowService implements IWindowService {
     const focuser = this.delegates.focuser;
 
     if (!focuser) {
-      this.logger.warn("Window service has no focuser configured");
+      // Warn once per service, not once per call: focusIfEnabled() runs before
+      // EVERY key press, so a per-call warning would flood the log.
+      this.warnOnce("focuser", "Window service has no focuser configured");
 
-      return WindowFocusResult.WindowNotFound;
+      return WindowFocusResult.Unavailable;
     }
 
     let result: number;
@@ -145,7 +159,7 @@ class WindowService implements IWindowService {
     } catch (error) {
       this.logger.warn(`Failed to focus iRacing window: ${error instanceof Error ? error.message : error}`);
 
-      return WindowFocusResult.WindowNotFound;
+      return WindowFocusResult.Unavailable;
     }
 
     this.logFocusResult(result);
@@ -168,9 +182,9 @@ class WindowService implements IWindowService {
     const pointerMover = this.delegates.pointerMover;
 
     if (!pointerMover) {
-      this.logger.warn("Window service has no pointer mover configured");
+      this.warnOnce("pointerMover", "Window service has no pointer mover configured");
 
-      return PointerMoveResult.Failed;
+      return PointerMoveResult.Unavailable;
     }
 
     let result: number;
@@ -180,12 +194,20 @@ class WindowService implements IWindowService {
     } catch (error) {
       this.logger.warn(`Failed to move pointer to iRacing window: ${error instanceof Error ? error.message : error}`);
 
-      return PointerMoveResult.Failed;
+      return PointerMoveResult.Unavailable;
     }
 
     this.logPointerResult(result);
 
     return result as PointerMoveResult;
+  }
+
+  /** Warns about a missing delegate the first time only — these run per key press. */
+  private warnOnce(key: string, message: string): void {
+    if (this.warnedMissing.has(key)) return;
+
+    this.warnedMissing.add(key);
+    this.logger.warn(message);
   }
 
   private logFocusResult(result: number): void {

@@ -33,14 +33,17 @@ export function bringPointerToSim(logger: ILogger): void {
     const windowService = getWindowService();
     const focusResult = windowService.focus();
 
-    // Nothing to point at. The window service already warned about the missing
-    // window, so a second warning for the same cause would only be noise.
+    // Nothing to point at — we looked and iRacing is not running. The window
+    // service already warned, so a second warning here would only be noise.
+    // ONLY this code short-circuits: WindowFocusResult.Unavailable means the focus
+    // call could not be attempted (no focuser injected, or it threw), which says
+    // nothing about the window and must not suppress an independent pointer move.
     if (focusResult === WindowFocusResult.WindowNotFound) {
       return;
     }
 
-    // A focus timeout is not fatal here: the window exists, so its client area
-    // is still a valid pointer target even if the foreground swap lagged.
+    // A focus timeout is not fatal here either: the window exists, so its client
+    // area is still a valid pointer target even if the foreground swap lagged.
     const moveResult = windowService.movePointerToSim();
 
     if (moveResult === PointerMoveResult.Moved) {

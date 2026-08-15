@@ -110,7 +110,7 @@ In VR you cannot see the mouse pointer, and on a multi-monitor desktop it can be
 
 #### Details
 
-- **Method:** No iRacing command — this is a Windows window/pointer call, so there is nothing to bind and nothing to configure
+- **Method:** Windows window/pointer call (focuses iRacing, moves the cursor) — no iRacing command, so there is nothing to bind and nothing to configure
 - **Dial:** Not a rotation setting — it's available as a press or touch gesture; see [On a dial](#on-a-dial)
 - **Default binding:** None needed
 - **Telemetry-aware icon:** No

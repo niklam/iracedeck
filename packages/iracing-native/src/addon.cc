@@ -741,9 +741,23 @@ static int moveMouseToIRacingWindow(double xFraction, double yFraction)
         return POINTER_FAILED;
     }
 
+    // A client area of W pixels spans columns 0..W-1, so a fraction of exactly
+    // 1.0 must land on the last pixel INSIDE the area, never one past its edge
+    // (which would put the cursor on the frame, or on the neighbouring monitor).
+    LONG offsetX = (LONG)(width * clampFraction(xFraction, kDefaultPointerXFraction));
+    LONG offsetY = (LONG)(height * clampFraction(yFraction, kDefaultPointerYFraction));
+    if (offsetX > width - 1)
+    {
+        offsetX = width - 1;
+    }
+    if (offsetY > height - 1)
+    {
+        offsetY = height - 1;
+    }
+
     POINT target;
-    target.x = client.left + (LONG)(width * clampFraction(xFraction, kDefaultPointerXFraction));
-    target.y = client.top + (LONG)(height * clampFraction(yFraction, kDefaultPointerYFraction));
+    target.x = client.left + offsetX;
+    target.y = client.top + offsetY;
 
     // Client coordinates -> virtual-desktop coordinates, which is what SetCursorPos
     // consumes. This is what makes a multi-monitor setup land on the right screen.

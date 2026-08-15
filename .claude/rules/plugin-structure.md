@@ -159,6 +159,7 @@ import { getAudio, initializeAudio } from "@iracedeck/audio-service";
 import { MY_ACTION_UUID, MyAction } from "@iracedeck/iracing-actions";
 import { ElgatoPlatformAdapter } from "@iracedeck/deck-adapter-elgato";
 import {
+  focusIRacingIfEnabled,
   getController,
   initAppMonitor,
   initGlobalSettings,
