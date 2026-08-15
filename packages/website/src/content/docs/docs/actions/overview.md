@@ -3,7 +3,7 @@ title: Actions Overview
 description: All iRaceDeck actions organized by category
 ---
 
-iRaceDeck provides 32 actions with 268 modes for iRacing, organized into 10 categories.
+iRaceDeck provides 32 actions with 269 modes for iRacing, organized into 10 categories.
 
 ## Categories
 
@@ -12,7 +12,7 @@ iRaceDeck provides 32 actions with 268 modes for iRacing, organized into 10 cate
 | [Audio & Voice](/docs/actions/audio-voice/ai-spotter-controls/) | 3 | 15 | AI spotter, audio controls (incl. Race Engineer & Radar volume), race engineer, radar & corner names |
 | [Display & Session](/docs/actions/display-session/session-info/) | 2 | 11 | Live session data: incidents, time remaining, laps, position, estimated iRating gain/loss, gaps, fuel, laps to empty, flags, track wetness, wind |
 | [Driving Controls](/docs/actions/driving/black-box-selector/) | 3 | 21 | Black boxes, look direction, car control |
-| [Cockpit & Interface](/docs/actions/cockpit/cockpit-misc/) | 5 | 30 | Wipers, force feedback, splits & reference, telemetry, UI toggles |
+| [Cockpit & Interface](/docs/actions/cockpit/cockpit-misc/) | 5 | 31 | Wipers, force feedback, splits & reference, telemetry, UI toggles |
 | [View & Camera](/docs/actions/view-camera/view-adjustment/) | 5 | 89 | FOV, replay, camera controls, broadcast tools |
 | [Media](/docs/actions/media/media-capture/) | 1 | 7 | Video recording, screenshots, texture management |
 | [Pit Service](/docs/actions/pit-service/pit-quick-actions/) | 3 | 15 | Fuel (button and dial), tires, compounds, tearoff, fast repair |
