@@ -31,9 +31,10 @@ export interface Brand {
   name: string;
   ecosystem: Ecosystem;
   /**
-   * File name of a logo under `src/assets/brands/`. Optional: a brand without
-   * one renders as a wordmark tile, which is the common case for the smaller
-   * Mirabox OEM brands that publish no usable asset.
+   * File name of a logo under `src/assets/brands/`, with one of the extensions
+   * in {@link BRAND_LOGO_EXTENSIONS}. Optional: a brand without one renders as a
+   * wordmark tile, which is the common case for the smaller Mirabox OEM brands
+   * that publish no usable asset.
    */
   logo?: string;
   /**
@@ -48,6 +49,14 @@ export interface Brand {
    */
   preserveBrandColor?: boolean;
 }
+
+/**
+ * Logo file extensions `BrandStrip.astro` can resolve. Its `import.meta.glob`
+ * pattern has to be a literal (Vite requires a static pattern), so this list is
+ * the mirror that `brands.test.ts` checks every declared logo against — an
+ * extension outside it exists on disk but never reaches the strip.
+ */
+export const BRAND_LOGO_EXTENSIONS = [".svg", ".png", ".webp", ".avif"] as const;
 
 /** Declaration order is display order. */
 export const ECOSYSTEMS: Record<Ecosystem, EcosystemInfo> = {
@@ -98,17 +107,38 @@ function toList(ecosystem: Ecosystem | readonly Ecosystem[]): readonly Ecosystem
   return typeof ecosystem === "string" ? [ecosystem] : ecosystem;
 }
 
+/** One ecosystem's brands, carrying that ecosystem's own completeness flag. */
+export interface BrandGroup {
+  ecosystem: Ecosystem;
+  /** The ecosystem's brands, in declaration order. */
+  brands: readonly Brand[];
+  /** Mirrors {@link EcosystemInfo.listIsComplete} for this ecosystem. */
+  listIsComplete: boolean;
+}
+
+/**
+ * The requested ecosystems as separate groups, in the order requested and, within
+ * a group, in declaration order.
+ *
+ * Grouping keeps `listIsComplete` attached to the brands it describes, so a
+ * surface can mark an open-ended list where it actually is instead of at the end
+ * of the whole strip — where it would silently attribute the unnamed brands to
+ * whichever ecosystem happened to be rendered last.
+ */
+export function brandGroupsFor(ecosystem: Ecosystem | readonly Ecosystem[]): BrandGroup[] {
+  return toList(ecosystem).map((wanted) => ({
+    ecosystem: wanted,
+    brands: BRANDS.filter((brand) => brand.ecosystem === wanted),
+    listIsComplete: ECOSYSTEMS[wanted].listIsComplete,
+  }));
+}
+
 /**
  * The brands of one or more ecosystems, grouped in the order the ecosystems were
  * requested and, within a group, in declaration order.
  */
 export function brandsFor(ecosystem: Ecosystem | readonly Ecosystem[]): readonly Brand[] {
-  return toList(ecosystem).flatMap((wanted) => BRANDS.filter((brand) => brand.ecosystem === wanted));
-}
-
-/** Whether any of the given ecosystems ships hardware under brands we cannot name. */
-export function hasIncompleteList(ecosystem: Ecosystem | readonly Ecosystem[]): boolean {
-  return toList(ecosystem).some((wanted) => !ECOSYSTEMS[wanted].listIsComplete);
+  return brandGroupsFor(ecosystem).flatMap((group) => group.brands);
 }
 
 /** An item of a natural-language list, paired with the text that follows it. */

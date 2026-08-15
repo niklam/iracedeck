@@ -33,7 +33,9 @@ grid as Mirabox's and would read as a duplicate beside it, so it does too.
 That is the whole change — the strip switches that brand from a wordmark tile to
 the image, and the tile keeps its size and tone. A `logo` pointing at a file that
 is not here fails the build (and `brands.test.ts`) rather than silently falling
-back to a wordmark.
+back to a wordmark. So does one whose extension is outside the four above:
+`BrandStrip.astro` resolves logos through a glob with a fixed extension list, and
+`BRAND_LOGO_EXTENSIONS` in `src/data/brands.ts` mirrors it for the test.
 
 ## Conventions
 

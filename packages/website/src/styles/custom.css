@@ -220,14 +220,34 @@ starlight-theme-select label select {
    with a fixed track (not `1fr`) keeps that width constant however many tiles
    fit, and centring the tracks keeps the block centred under its heading. */
 .brand-strip {
+  /* Every dimension the strip has a smaller variant of lives here as a custom
+     property, so a compact strip only re-declares this block instead of
+     restating the tile and wordmark rules (see `.brand-strip-compact`). */
+  --brand-tile-width: 10rem;
+  --brand-logo-box: 1.6rem;
+  --brand-tile-min-height: 3.25rem;
+  --brand-tile-padding: 0.5rem 0.75rem;
+  --brand-wordmark-size: 0.8rem;
+  --brand-strip-gap: 0.75rem;
+
   display: grid;
-  grid-template-columns: repeat(auto-fit, var(--brand-tile-width, 10rem));
+  grid-template-columns: repeat(auto-fit, var(--brand-tile-width));
   justify-content: center;
   align-items: stretch;
-  gap: 0.75rem;
+  gap: var(--brand-strip-gap);
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+/* The one-size-down strip, for anywhere a full-width row does not fit. */
+.brand-strip-compact {
+  --brand-tile-width: 7.5rem;
+  --brand-logo-box: 1.35rem;
+  --brand-tile-min-height: 2.75rem;
+  --brand-tile-padding: 0.4rem 0.6rem;
+  --brand-wordmark-size: 0.7rem;
+  --brand-strip-gap: 0.5rem;
 }
 
 /* Starlight's markdown list styles put vertical margins on `li`, which eat into
@@ -245,19 +265,22 @@ starlight-theme-select label select {
   /* Gap only matters for an icon-only mark shown beside its name. */
   gap: 0.5rem;
   min-width: 0;
-  min-height: 3.25rem;
-  padding: 0.5rem 0.75rem;
+  min-height: var(--brand-tile-min-height);
+  padding: var(--brand-tile-padding);
   border: 1px solid var(--sl-color-gray-5);
   border-radius: 0.5rem;
 }
 
 .brand-wordmark {
-  font-size: 0.8rem;
+  font-size: var(--brand-wordmark-size);
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   text-align: center;
   line-height: 1.2;
+  /* Brand names come from data, so a name longer than the tile must wrap inside
+     the border rather than spill past it. */
+  overflow-wrap: anywhere;
   color: var(--sl-color-gray-2);
 }
 
@@ -281,7 +304,7 @@ starlight-theme-select label select {
    need a tile half again as wide to reach the same height. */
 .brand-logo {
   width: 100%;
-  height: var(--brand-logo-box, 1.6rem);
+  height: var(--brand-logo-box);
   object-fit: contain;
   /* Starlight gives markdown images a bottom margin. Inside a centred tile that
      margin is centred along with the image, so the logo rides half the margin
@@ -294,7 +317,7 @@ starlight-theme-select label select {
 /* An icon-only mark shown beside its name takes only the width it needs. */
 .brand-logo-inline {
   width: auto;
-  max-width: var(--brand-logo-box, 1.6rem);
+  max-width: var(--brand-logo-box);
 }
 
 [data-theme="light"] .brand-logo {
@@ -312,16 +335,10 @@ starlight-theme-select label select {
   .brand-strip {
     --brand-tile-width: 7.5rem;
     --brand-logo-box: 1.35rem;
-    gap: 0.5rem;
-  }
-
-  .brand-tile {
-    min-height: 2.75rem;
-    padding: 0.4rem 0.6rem;
-  }
-
-  .brand-wordmark {
-    font-size: 0.7rem;
+    --brand-tile-min-height: 2.75rem;
+    --brand-tile-padding: 0.4rem 0.6rem;
+    --brand-wordmark-size: 0.7rem;
+    --brand-strip-gap: 0.5rem;
   }
 }
 
@@ -467,23 +484,13 @@ starlight-theme-select label select {
 }
 
 /* The brand strip sits between a card's description and its download button.
-   Cards are narrow, so the tiles run one size down to keep the Mirabox list
-   from stretching its card far past the others. */
+   Cards are narrow, so the tiles run one size down (via `.brand-strip-compact`
+   in the markup) to keep the Mirabox list from stretching its card far past the
+   others. */
 .download-brands {
-  --brand-tile-width: 7.5rem;
-  --brand-logo-box: 1.35rem;
   /* The card centres its children, which would shrink the grid to one track. */
   align-self: stretch;
   margin-bottom: 1.5rem;
-}
-
-.download-brands .brand-tile {
-  min-height: 2.75rem;
-  padding: 0.4rem 0.6rem;
-}
-
-.download-brands .brand-wordmark {
-  font-size: 0.7rem;
 }
 
 [data-theme="light"] .download-desc {
