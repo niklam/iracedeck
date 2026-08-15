@@ -23,7 +23,12 @@ import toggleReportLapsIconSvg from "@iracedeck/icons/ai-spotter-controls/toggle
 import weatherReportIconSvg from "@iracedeck/icons/ai-spotter-controls/weather-report.svg";
 import z from "zod";
 
-import { SPOTTER_BINDING_KEYS, SPOTTER_CONTROLS, type SpotterControl } from "../../shared/spotter-bindings.js";
+import { SPOTTER_CONTROLS, SPOTTER_GLOBAL_KEYS, type SpotterControl } from "../../shared/spotter-bindings.js";
+
+// The spotter id↔global-key map lives in `shared/spotter-bindings.ts` (also
+// consumed by the Audio Controls dial's Spotter mode, #809); re-exported here
+// so tests and callers keep importing it from the action.
+export { SPOTTER_GLOBAL_KEYS };
 
 /**
  * @internal Exported for testing
@@ -54,15 +59,6 @@ export const SPOTTER_TITLES: Record<SpotterControl, string> = {
   quieter: "VOL DOWN\nSPOTTER",
   silence: "MUTE\nSPOTTER",
 };
-
-/**
- * @internal Exported for testing
- *
- * Mapping from spotter control to global settings keys — the shared record
- * from `shared/spotter-bindings.ts` (also consumed by the Audio Controls
- * dial's Spotter category, #809), re-exported under the historical name.
- */
-export const SPOTTER_GLOBAL_KEYS: Record<SpotterControl, string> = SPOTTER_BINDING_KEYS;
 
 const AiSpotterControlsSettings = CommonSettings.extend({
   control: z.enum(SPOTTER_CONTROLS).default("damage-report"),

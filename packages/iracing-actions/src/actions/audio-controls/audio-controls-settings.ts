@@ -9,7 +9,7 @@
 import { CommonSettings } from "@iracedeck/deck-core";
 import z from "zod";
 
-import { SPOTTER_BINDING_KEYS } from "../../shared/spotter-bindings.js";
+import { SPOTTER_GLOBAL_KEYS } from "../../shared/spotter-bindings.js";
 
 /** Global-settings keys for the shared audio key bindings (both surfaces). */
 export const PUSH_TO_TALK_KEY = "audioControlsPushToTalk";
@@ -34,24 +34,30 @@ export const AUDIO_CONTROLS_GLOBAL_KEYS: Record<string, string> = {
 };
 
 /**
+ * The iRaceDeck-internal audio categories, shared by both surfaces: they step
+ * plugin-owned volume globals (Race Engineer voice, Radar ticks) and toggle a
+ * feature gate instead of sending anything to iRacing.
+ */
+export const INTERNAL_AUDIO_CATEGORIES = ["race-engineer", "radar"] as const;
+export type InternalAudioCategory = (typeof INTERNAL_AUDIO_CATEGORIES)[number];
+
+const INTERNAL_AUDIO_CATEGORY_SET: ReadonlySet<string> = new Set<string>(INTERNAL_AUDIO_CATEGORIES);
+
+/** Type guard: is this (keypad or dial) category one of iRaceDeck's own audio buses? */
+export function isInternalAudioCategory(category: string): category is InternalAudioCategory {
+  return INTERNAL_AUDIO_CATEGORY_SET.has(category);
+}
+
+/**
  * What a dial ROTATION can control. No `push-to-talk` here — on the dial, PTT
  * is a press action, not a rotate category. `spotter` (#809) is the iRacing
  * AI Spotter volume, driven by the AI Spotter Controls bindings.
  */
-export const DIAL_CATEGORIES = ["voice-chat", "master", "spotter", "race-engineer", "radar"] as const;
+export const DIAL_CATEGORIES = ["voice-chat", "master", "spotter", ...INTERNAL_AUDIO_CATEGORIES] as const;
 export type DialCategory = (typeof DIAL_CATEGORIES)[number];
 
-/**
- * The iRaceDeck-internal categories: they step plugin-owned volume globals
- * (Race Engineer voice, Radar ticks) and toggle a feature gate on Mute /
- * Unmute — no iRacing binding is ever involved. Every other category is an
- * iRacing one, reached through blind key bindings.
- */
-const INTERNAL_DIAL_CATEGORIES: ReadonlySet<DialCategory> = new Set<DialCategory>(["race-engineer", "radar"]);
-
-export function isInternalDialCategory(category: DialCategory): boolean {
-  return INTERNAL_DIAL_CATEGORIES.has(category);
-}
+/** The dial categories that reach iRacing through blind key bindings. */
+export type KeybindDialCategory = Exclude<DialCategory, InternalAudioCategory>;
 
 /** The up/down binding pair a keybind category's ROTATION taps. */
 interface RotationBindings {
@@ -62,35 +68,31 @@ interface RotationBindings {
 }
 
 /**
- * Rotation bindings per iRacing category. Adding a keybind category is one
- * entry here (plus its mute binding below, if iRacing offers one) — the dial
- * surface never branches on the category name for rotation. The internal
- * categories are absent: they step plugin audio, not a binding.
+ * Rotation bindings per keybind category. A total record over
+ * `KeybindDialCategory`, so adding a keybind category to `DIAL_CATEGORIES`
+ * fails to compile until its pair is listed here.
  */
-const DIAL_ROTATION_BINDINGS: Partial<Record<DialCategory, RotationBindings>> = {
+const DIAL_ROTATION_BINDINGS: Record<KeybindDialCategory, RotationBindings> = {
   "voice-chat": { up: VOICE_CHAT_VOLUME_UP_KEY, down: VOICE_CHAT_VOLUME_DOWN_KEY },
   master: { up: MASTER_VOLUME_UP_KEY, down: MASTER_VOLUME_DOWN_KEY },
-  spotter: { up: SPOTTER_BINDING_KEYS.louder, down: SPOTTER_BINDING_KEYS.quieter },
+  spotter: { up: SPOTTER_GLOBAL_KEYS.louder, down: SPOTTER_GLOBAL_KEYS.quieter },
 };
 
 /**
- * Mute / Unmute binding per iRacing category. Voice chat taps iRacing's
- * voice-chat mute; the spotter taps Spotter Silence (#809). Both are blind
- * one-way taps — iRacing exposes no mute state for either. Master has no
- * entry because iRacing has no master-mute keybind, so the PI never offers
- * Mute / Unmute for it.
+ * Mute / Unmute binding per keybind category — a blind one-way tap, since
+ * iRacing exposes no mute state for either. Master has no entry: iRacing has
+ * no master-mute keybind, so the PI never offers Mute / Unmute for it.
  */
-export const DIAL_MUTE_BINDINGS: Partial<Record<DialCategory, string>> = {
+export const DIAL_MUTE_BINDINGS: Partial<Record<KeybindDialCategory, string>> = {
   "voice-chat": VOICE_CHAT_MUTE_KEY,
-  spotter: SPOTTER_BINDING_KEYS.silence,
+  spotter: SPOTTER_GLOBAL_KEYS.silence,
 };
 
 /**
  * What the dial PRESS runs. `push-to-talk` holds the PTT binding for the
  * duration of the press; `mute-unmute` taps the category's mute binding
- * (voice-chat mute, spotter silence — see `DIAL_MUTE_BINDINGS`) or toggles
- * the Race Engineer / Radar feature gate (master offers no mute — iRacing has
- * no master-mute keybind). Default `none` (blind-safe).
+ * (`DIAL_MUTE_BINDINGS`) or toggles the internal category's feature gate.
+ * Default `none` (blind-safe).
  */
 export const DIAL_PRESS_ACTIONS = ["push-to-talk", "mute-unmute", "none"] as const;
 export type DialPressAction = (typeof DIAL_PRESS_ACTIONS)[number];
@@ -101,8 +103,12 @@ export type DialPressAction = (typeof DIAL_PRESS_ACTIONS)[number];
  */
 export const AudioDialSettings = z
   .object({
-    category: z.enum(DIAL_CATEGORIES).default("voice-chat"),
-    pressAction: z.enum(DIAL_PRESS_ACTIONS).default("none"),
+    // .catch per field, not just .default: an unrecognized value (a dial
+    // configured on a newer build, or a hand-edited profile) then degrades
+    // only that field instead of failing the whole parse, which would drop the
+    // instance to full defaults and silently reset the keypad half too.
+    category: z.enum(DIAL_CATEGORIES).default("voice-chat").catch("voice-chat"),
+    pressAction: z.enum(DIAL_PRESS_ACTIONS).default("none").catch("none"),
   })
   // prefault (not default): a missing `dial` parses {} THROUGH the schema so
   // the per-field defaults apply — same shape as a partially-persisted object.
@@ -111,7 +117,7 @@ export const AudioDialSettings = z
 export type AudioDialSettings = z.infer<typeof AudioDialSettings>;
 
 export const AudioControlsSettings = CommonSettings.extend({
-  category: z.enum(["push-to-talk", "voice-chat", "master", "race-engineer", "radar"]).default("push-to-talk"),
+  category: z.enum(["push-to-talk", "voice-chat", "master", ...INTERNAL_AUDIO_CATEGORIES]).default("push-to-talk"),
   action: z.enum(["volume-up", "volume-down", "mute"]).default("volume-up"),
   dial: AudioDialSettings,
 });
@@ -126,40 +132,37 @@ export function parseAudioControlsSettings(raw: unknown): AudioControlsSettings 
 }
 
 /**
- * Binding keys the dial ROTATION requires for a category. Both volume keys are
- * required for the keybind categories; the internal categories (plugin audio)
- * require none.
+ * Binding keys the dial ROTATION requires for a category: both volume keys
+ * for a keybind category, none for the internal ones (plugin audio).
  */
 export function rotationBindingKeys(category: DialCategory): string[] {
-  const bindings = DIAL_ROTATION_BINDINGS[category];
+  if (isInternalAudioCategory(category)) return [];
 
-  return bindings ? [bindings.up, bindings.down] : [];
+  const { up, down } = DIAL_ROTATION_BINDINGS[category];
+
+  return [up, down];
 }
 
 /**
- * The binding one rotate event should tap for a keybind category: the `up`
- * key for a clockwise turn (positive ticks), `down` for counter-clockwise.
- * `undefined` for the internal categories (they step plugin audio instead)
- * and for a zero tick delta.
+ * The binding one rotate event taps for a keybind category: the `up` key for
+ * a clockwise turn (positive ticks), `down` otherwise.
  */
-export function resolveRotationBinding(category: DialCategory, ticks: number): string | undefined {
-  const bindings = DIAL_ROTATION_BINDINGS[category];
+export function resolveRotationBinding(category: KeybindDialCategory, ticks: number): string {
+  const { up, down } = DIAL_ROTATION_BINDINGS[category];
 
-  if (!bindings || ticks === 0) return undefined;
-
-  return ticks > 0 ? bindings.up : bindings.down;
+  return ticks > 0 ? up : down;
 }
 
 /**
  * Binding keys the dial PRESS requires. PTT always needs its binding;
- * Mute/Unmute needs the category's mute binding when it has one (voice chat,
- * spotter) — the internal categories toggle the feature gate (no binding) and
- * master has no mute at all.
+ * Mute / Unmute needs the keybind category's mute binding when it has one —
+ * the internal categories toggle their feature gate (no binding) and master
+ * has no mute at all.
  */
 export function pressBindingKeys(dial: AudioDialSettings): string[] {
   if (dial.pressAction === "push-to-talk") return [PUSH_TO_TALK_KEY];
 
-  if (dial.pressAction === "mute-unmute") {
+  if (dial.pressAction === "mute-unmute" && !isInternalAudioCategory(dial.category)) {
     const muteKey = DIAL_MUTE_BINDINGS[dial.category];
 
     return muteKey ? [muteKey] : [];

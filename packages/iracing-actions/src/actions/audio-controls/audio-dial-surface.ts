@@ -35,7 +35,8 @@ import {
   DIAL_MUTE_BINDINGS,
   type DialCategory,
   type DialPressAction,
-  isInternalDialCategory,
+  type InternalAudioCategory,
+  isInternalAudioCategory,
   pressBindingKeys,
   PUSH_TO_TALK_KEY,
   resolveRotationBinding,
@@ -74,6 +75,38 @@ const ROTATE_LABELS: Record<DialCategory, string> = {
   spotter: "Adjust spotter volume",
   "race-engineer": "Adjust Race Engineer volume",
   radar: "Adjust radar volume",
+};
+
+/** The plugin-owned audio bus behind an internal category. */
+interface InternalAudioBus {
+  /** Steps the 0–100 level by a signed detent count; returns the new level. */
+  stepBy(ticks: number): number;
+  /** Current 0–100 level (for the strip bar). */
+  read(): number;
+  /** Feature-gate state (the strip's dimmed OFF rendering). */
+  isEnabled(): boolean;
+  /** Flips the feature gate — the dial's Mute / Unmute for this bus. */
+  toggle(logger: ILogger): void;
+}
+
+/**
+ * Internal categories → their bus. Rotation, Mute / Unmute, and the strip
+ * readback all resolve through this table, so no path re-branches on the
+ * category name (and a new internal bus is one entry).
+ */
+const INTERNAL_AUDIO_BUSES: Record<InternalAudioCategory, InternalAudioBus> = {
+  "race-engineer": {
+    stepBy: stepRaceEngineerVolumeBy,
+    read: readRaceEngineerVolume,
+    isEnabled: isRaceEngineerEnabled,
+    toggle: toggleRaceEngineerFeature,
+  },
+  radar: {
+    stepBy: stepRadarVolumeBy,
+    read: readRadarVolume,
+    isEnabled: isRadarEnabled,
+    toggle: toggleRadarFeature,
+  },
 };
 
 const PRESS_LABELS: Record<DialPressAction, string | undefined> = {
@@ -250,8 +283,8 @@ export class AudioDialSurface {
 
     // Internal categories step the plugin-owned volume globals directly (the
     // #590 deferral this closes) — one signed multi-step persist+apply.
-    if (isInternalDialCategory(category)) {
-      const next = category === "race-engineer" ? stepRaceEngineerVolumeBy(ticks) : stepRadarVolumeBy(ticks);
+    if (isInternalAudioCategory(category)) {
+      const next = INTERNAL_AUDIO_BUSES[category].stepBy(ticks);
       this.host.logger.debug(`${category} volume → ${next} (ticks=${ticks})`);
       this.scheduleRender(ctx);
 
@@ -262,12 +295,6 @@ export class AudioDialSurface {
     // fast spin can't queue a long tap burst (iRacing steps a fixed amount per
     // press — there is no absolute-volume command to scale instead).
     const key = resolveRotationBinding(category, ticks);
-
-    if (!key) {
-      this.host.logger.warn(`Rotate ignored — no volume binding for the ${category} category`);
-
-      return;
-    }
 
     if (this.host.isBindingMissing(key)) {
       this.host.logger.debug(`Rotate ignored — ${key} binding not configured`);
@@ -322,44 +349,38 @@ export class AudioDialSurface {
   }
 
   /**
-   * Runs Mute / Unmute for the current category: the iRacing categories with
-   * a mute binding (voice chat mute, spotter silence — #809) tap it blind; the
-   * internal categories toggle their feature gate with semantics identical to
-   * the Pit Crew toggle keys (shared pathway). Master has no mute (no iRacing
+   * Runs Mute / Unmute for the current category: the internal categories flip
+   * their feature gate with semantics identical to the Pit Crew toggle keys
+   * (shared pathway); the iRacing categories tap their mute binding blind
+   * (voice chat mute, spotter silence — #809). Master has no mute (no iRacing
    * keybind exists) — the PI never offers it, so a reached master here is a
    * stale persisted value: log + no-op.
    */
   private async doMute(ctx: AudioDialContext): Promise<void> {
     const category = ctx.settings.dial.category;
+
+    if (isInternalAudioCategory(category)) {
+      INTERNAL_AUDIO_BUSES[category].toggle(this.host.logger);
+      this.scheduleRender(ctx);
+
+      return;
+    }
+
     const muteKey = DIAL_MUTE_BINDINGS[category];
 
-    if (muteKey) {
-      if (this.host.isBindingMissing(muteKey)) {
-        this.host.logger.warn(`Mute press ignored — ${muteKey} binding not configured`);
-
-        return;
-      }
-
-      await this.host.tapBinding(muteKey);
+    if (!muteKey) {
+      this.host.logger.warn(`Mute / Unmute is not available for the ${category} category`);
 
       return;
     }
 
-    if (category === "race-engineer") {
-      toggleRaceEngineerFeature(this.host.logger);
-      this.scheduleRender(ctx);
+    if (this.host.isBindingMissing(muteKey)) {
+      this.host.logger.warn(`Mute press ignored — ${muteKey} binding not configured`);
 
       return;
     }
 
-    if (category === "radar") {
-      toggleRadarFeature(this.host.logger);
-      this.scheduleRender(ctx);
-
-      return;
-    }
-
-    this.host.logger.warn(`Mute / Unmute is not available for the ${category} category`);
+    await this.host.tapBinding(muteKey);
   }
 
   private ensureContext(action: IDeckActionContext, settings: AudioControlsSettings): AudioDialContext {
@@ -419,12 +440,12 @@ export class AudioDialSurface {
   /** Resolve everything the strip renderer needs for this context. */
   private stripState(ctx: AudioDialContext): AudioStripState {
     const category = ctx.settings.dial.category;
-    const internal = isInternalDialCategory(category);
+    const bus = isInternalAudioCategory(category) ? INTERNAL_AUDIO_BUSES[category] : undefined;
 
     return {
       category,
-      volume: internal ? (category === "race-engineer" ? readRaceEngineerVolume() : readRadarVolume()) : undefined,
-      enabled: internal ? (category === "race-engineer" ? isRaceEngineerEnabled() : isRadarEnabled()) : undefined,
+      volume: bus?.read(),
+      enabled: bus?.isEnabled(),
       pttHeld: ctx.pttHeld,
       bindingMissing: this.host.isBindingMissing([
         ...rotationBindingKeys(category),

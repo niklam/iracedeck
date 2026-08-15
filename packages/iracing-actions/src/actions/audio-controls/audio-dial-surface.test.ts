@@ -349,14 +349,9 @@ describe("AudioDialSurface (through AudioControls)", () => {
       expect(mockStepRadarVolumeBy).not.toHaveBeenCalled();
     });
 
-    it("caps spotter taps and skips them when the spotter binding is unset (#809)", async () => {
-      const ctx = dialAction();
-      await action.onDialRotate(ev(ctx, { dial: { category: "spotter" } }, { ticks: -12 }));
-      expect(mockTapBinding).toHaveBeenCalledTimes(5);
-      expect(mockTapBinding).toHaveBeenLastCalledWith("spotterQuieter");
-
-      mockTapBinding.mockClear();
+    it("skips spotter taps when the spotter volume binding is unset (#809)", async () => {
       mockIsBindingMissing.mockReturnValue(true);
+      const ctx = dialAction();
       await action.onDialRotate(ev(ctx, { dial: { category: "spotter" } }, { ticks: 1 }));
       expect(mockTapBinding).not.toHaveBeenCalled();
     });

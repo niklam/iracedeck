@@ -44,6 +44,7 @@ icons/                                   # Dynamic SVG templates (telemetry-driv
 - `dial-name-icon.ts` — plain two-line action-name image that dual-surface actions push for dial contexts (#775)
 - `profile-entries.ts` — shared `_deviceProfiles` PI-dropdown entry building + echo-loop change guard (#790)
 - `repeat-controller.ts` — long-press hold-to-repeat timing controller
+- `spotter-bindings.ts` — canonical AI Spotter control↔global-key map (`SPOTTER_GLOBAL_KEYS`, also consumed by `comms-catalog.ts`): the spotter has no SDK surface, and two actions dispatch its bindings — AI Spotter Controls (every control, keypad) and the Audio Controls dial's Spotter mode (louder/quieter on rotation, silence on press, #809)
 - `setup-view.ts` — registry, formatters, and render helper for the setup actions' "View …" sub-modes (#541)
 
 The former `icon-update-throttle.ts` (per-context 10 Hz throttle + trailing-edge coalescer for telemetry-driven `setKeyImage` bursts, #493) moved to `@iracedeck/deck-core` in #899 — import `IconUpdateThrottle` from there.

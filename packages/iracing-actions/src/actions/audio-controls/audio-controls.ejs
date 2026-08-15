@@ -6,8 +6,11 @@
 	<body>
 		<%- include('section-header', { title: 'Action Settings' }) %>
 
-		<% var __comms = require('./data/action-comms.json')['audio-controls']; %>
-		<% var __dialComms = require('./data/action-comms.json')['audio-controls-dial']; %>
+		<%
+		var __allComms = require('./data/action-comms.json');
+		var __comms = __allComms['audio-controls'];
+		var __dialComms = __allComms['audio-controls-dial'];
+		%>
 
 		<!-- Keypad settings — hidden when this instance is a dial (#782). -->
 		<div id="keypad-settings">
@@ -86,17 +89,40 @@
 
 		<%
 		var __kb = require('./data/key-bindings.json');
-		// The dial's Spotter mode (#809) rotates/mutes through the AI Spotter
-		// Controls bindings — surface them here so the dial's binding-status line
-		// can read them and its "set it here" link has somewhere to land. Same
-		// global keys as the AI Spotter Controls PI (their defaults are empty, so
-		// rendering them here seeds nothing).
-		var __spotterRows = __kb.aiSpotterControls.filter(function (b) {
-			return b.id === 'louder' || b.id === 'quieter' || b.id === 'silence';
+		// Some DIAL modes tap bindings owned by another action — the Spotter mode
+		// (#809) uses the AI Spotter Controls louder / quieter / silence keys. Those
+		// rows must exist here too, or the dial's binding-status line reads an
+		// absent input and its "set it here" link has nowhere to land. Derive them
+		// from the dial comms entry (rather than a hand-kept list) so the accordion
+		// always covers exactly what the status line looks up, and take each row
+		// from the shared catalog so its label stays owned by one place. Dial-only:
+		// hosts without a dial surface (#786) never render these.
+		var __ownKeys = {};
+		__kb.audioControls.forEach(function (row) { __ownKeys[row.setting] = true; });
+		var __catalogRows = [];
+		Object.keys(__kb).forEach(function (group) { __catalogRows = __catalogRows.concat(__kb[group]); });
+		var __borrowedKeys = [];
+		Object.keys(__dialComms).forEach(function (mode) {
+			if (mode === '_meta') return;
+			var ref = (__dialComms[mode] || {}).binding;
+			if (!ref) return;
+			var keys = ref.key ? [ref.key] : (ref.keys || []);
+			if (ref.keyBy) {
+				keys = keys.concat(Object.keys(ref.keyBy.map).map(function (k) { return ref.keyBy.map[k]; }));
+			}
+			keys.forEach(function (key) {
+				if (!__ownKeys[key] && __borrowedKeys.indexOf(key) === -1) __borrowedKeys.push(key);
+			});
 		});
+		var __borrowedRows = __borrowedKeys.map(function (key) {
+			var row = __catalogRows.filter(function (b) { return b.setting === key; })[0];
+			if (!row) throw new Error('audio-controls PI: no key-bindings.json row for dial binding ' + key);
+			return row;
+		});
+		var __dialSurfaceAvailable = (locals.platform?.features?.dialFeedback !== false);
 		%>
 		<%- include('global-key-bindings', {
-			keyBindings: __kb.audioControls.concat(__spotterRows)
+			keyBindings: __dialSurfaceAvailable ? __kb.audioControls.concat(__borrowedRows) : __kb.audioControls
 		}) %>
 
 		<div id="keypad-global-appearance">

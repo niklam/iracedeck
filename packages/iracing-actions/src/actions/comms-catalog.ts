@@ -34,6 +34,7 @@ import {
 } from "@iracedeck/deck-core";
 
 import { BLACK_BOX_GLOBAL_KEYS } from "../shared/black-box.js";
+import { SPOTTER_GLOBAL_KEYS } from "../shared/spotter-bindings.js";
 
 const api: CommDescriptor = { method: "api" };
 const chat: CommDescriptor = { method: "chat" };
@@ -440,11 +441,14 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
   "audio-controls-dial": entry("dial.category", {
     "voice-chat": pair("audioVoiceChatVolumeUp", "audioVoiceChatVolumeDown"),
     master: pair("audioMasterVolumeUp", "audioMasterVolumeDown"),
-    spotter: pair("spotterLouder", "spotterQuieter"),
+    spotter: pair(SPOTTER_GLOBAL_KEYS.louder, SPOTTER_GLOBAL_KEYS.quieter),
     "race-engineer": keybindFixed(),
     radar: keybindFixed(),
     "push-to-talk": keybind("audioControlsPushToTalk"),
-    "mute-unmute": keybindBy("dial.category", { "voice-chat": "audioVoiceChatMute", spotter: "spotterSilence" }),
+    "mute-unmute": keybindBy("dial.category", {
+      "voice-chat": "audioVoiceChatMute",
+      spotter: SPOTTER_GLOBAL_KEYS.silence,
+    }),
   }),
 
   "toggle-ui-elements": entry("element", {
@@ -461,13 +465,13 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
   }),
 
   "ai-spotter-controls": entry("control", {
-    "damage-report": keybind("spotterDamageReport"),
-    "weather-report": keybind("spotterWeatherReport"),
-    "toggle-report-laps": keybind("spotterToggleReportLaps"),
-    "announce-leader": keybind("spotterAnnounceLeader"),
-    louder: keybind("spotterLouder"),
-    quieter: keybind("spotterQuieter"),
-    silence: keybind("spotterSilence"),
+    "damage-report": keybind(SPOTTER_GLOBAL_KEYS["damage-report"]),
+    "weather-report": keybind(SPOTTER_GLOBAL_KEYS["weather-report"]),
+    "toggle-report-laps": keybind(SPOTTER_GLOBAL_KEYS["toggle-report-laps"]),
+    "announce-leader": keybind(SPOTTER_GLOBAL_KEYS["announce-leader"]),
+    louder: keybind(SPOTTER_GLOBAL_KEYS.louder),
+    quieter: keybind(SPOTTER_GLOBAL_KEYS.quieter),
+    silence: keybind(SPOTTER_GLOBAL_KEYS.silence),
   }),
 
   // --- Setup actions (mode setting "setting"): view-* modes nudge-and-read via

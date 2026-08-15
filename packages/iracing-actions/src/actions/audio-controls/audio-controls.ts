@@ -34,6 +34,7 @@ import { stepRaceEngineerVolume, stepRadarVolume } from "../../audio/audio-volum
 import {
   AUDIO_CONTROLS_GLOBAL_KEYS,
   type AudioControlsSettings,
+  isInternalAudioCategory,
   parseAudioControlsSettings,
 } from "./audio-controls-settings.js";
 import { AudioDialSurface } from "./audio-dial-surface.js";
@@ -43,17 +44,6 @@ export { AUDIO_CONTROLS_GLOBAL_KEYS };
 
 type AudioCategory = "push-to-talk" | "voice-chat" | "master" | "race-engineer" | "radar";
 type AudioAction = "volume-up" | "volume-down" | "mute";
-
-/**
- * Categories that adjust iRaceDeck's own internal audio buses (Race Engineer
- * voice, Radar ticks) rather than sending keyboard shortcuts to iRacing.
- * These step a global setting and apply it to the audio engine directly via
- * the shared {@link stepRaceEngineerVolume} / {@link stepRadarVolume} helpers,
- * so they have no entry in {@link AUDIO_CONTROLS_GLOBAL_KEYS} and no keyboard
- * binding. Dial/encoder control for them lives in the dial surface (#782),
- * which steps the same globals via the signed multi-step helpers.
- */
-const INTERNAL_VOLUME_CATEGORIES: Set<AudioCategory> = new Set(["race-engineer", "radar"]);
 
 /**
  * Flat record mapping "{category}-{action}" keys to imported SVGs.
@@ -189,7 +179,12 @@ export class AudioControls extends ConnectionStateAwareAction<AudioControlsSetti
       }
 
       await this.holdBinding(ev.action.id, settingKey);
-    } else if (INTERNAL_VOLUME_CATEGORIES.has(settings.category)) {
+    } else if (isInternalAudioCategory(settings.category)) {
+      // iRaceDeck's own audio buses (Race Engineer voice, Radar ticks): step
+      // the global and apply it to the audio engine directly via the shared
+      // helpers — no keyboard binding is involved, hence no entry in
+      // AUDIO_CONTROLS_GLOBAL_KEYS. The dial surface (#782) steps the same
+      // globals through the signed multi-step helpers.
       this.stepInternalVolume(settings.category, settings.action);
     } else {
       await this.executeControl(settings.category, settings.action);

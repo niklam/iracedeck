@@ -11,7 +11,7 @@ Quick access to audio levels: hold push-to-talk, raise / lower / mute iRacing vo
 
 The Mode dropdown is split into two groups:
 
-- **iRacing audio** — Push to Talk, Voice Chat, Master. These send key presses to iRacing, so they follow your configured key bindings.
+- **iRacing audio** — Push to Talk, Voice Chat, Master (and, on a dial, Spotter). These send key presses to iRacing, so they follow your configured key bindings.
 - **iRaceDeck audio** — Race Engineer Volume, Radar Volume. These adjust iRaceDeck's own audio buses directly, so they need no iRacing key binding. (These mirror the volume sliders in the Pit Crew settings.)
 
 ## Modes

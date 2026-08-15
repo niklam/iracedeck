@@ -1,6 +1,12 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
+import {
+  DIAL_CATEGORIES,
+  DIAL_MUTE_BINDINGS,
+  isInternalAudioCategory,
+  rotationBindingKeys,
+} from "./audio-controls/audio-controls-settings.js";
 import { COMMS_CATALOG } from "./comms-catalog.js";
 
 const JSON_PATH = new URL("./data/action-comms.json", import.meta.url);
@@ -86,5 +92,27 @@ describe("action-comms catalog", () => {
     // A catalog key absent from key-bindings.json means the status line can't
     // find an ird-key-binding for it → wrong/empty state. Catches typos too.
     expect(missing, `binding keys missing from key-bindings.json: ${missing.join(", ")}`).toEqual([]);
+  });
+
+  describe("audio-controls-dial mirrors the dial settings tables (#782, #809)", () => {
+    // The dial surface (rotation pair + mute key per category) and the PI
+    // status line (this catalog entry) must agree, or the strip warns about a
+    // key the PI says is fine — or vice versa. Both sides are hand-authored.
+    const dial = COMMS_CATALOG["audio-controls-dial"] as Record<string, { binding?: Record<string, unknown> }>;
+
+    it("lists every rotation category with exactly the settings module's binding pair", () => {
+      for (const category of DIAL_CATEGORIES) {
+        const keys = (dial[category]?.binding as { keys?: string[] } | undefined)?.keys;
+
+        if (isInternalAudioCategory(category)) expect(keys, category).toBeUndefined();
+        else expect(keys, category).toEqual(rotationBindingKeys(category));
+      }
+    });
+
+    it("keys mute-unmute by exactly the settings module's mute bindings", () => {
+      const keyBy = dial["mute-unmute"].binding?.keyBy as { setting: string; map: Record<string, string> };
+      expect(keyBy.setting).toBe("dial.category");
+      expect(keyBy.map).toEqual(DIAL_MUTE_BINDINGS);
+    });
   });
 });

@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   AUDIO_CONTROLS_GLOBAL_KEYS,
-  isInternalDialCategory,
+  DIAL_CATEGORIES,
+  isInternalAudioCategory,
   parseAudioControlsSettings,
   pressBindingKeys,
   resolveRotationBinding,
@@ -38,9 +39,18 @@ describe("audio-controls settings", () => {
     expect(s.dial.pressAction).toBe("none");
   });
 
-  it("falls back to full defaults when the parse fails", () => {
-    const s = parseAudioControlsSettings({ dial: { category: "bogus" } });
+  it("keeps the rest of the instance when a dial field holds an unknown value", () => {
+    // A dial configured on a newer build (or a hand-edited profile) must not
+    // reset the whole instance — only the offending field falls back.
+    const s = parseAudioControlsSettings({
+      category: "master",
+      action: "volume-down",
+      dial: { category: "bogus", pressAction: "push-to-talk" },
+    });
     expect(s.dial.category).toBe("voice-chat");
+    expect(s.dial.pressAction).toBe("push-to-talk");
+    expect(s.category).toBe("master");
+    expect(s.action).toBe("volume-down");
   });
 
   it("accepts the spotter dial category (#809)", () => {
@@ -67,6 +77,12 @@ describe("audio-controls settings", () => {
     it("requires no keys for the internal categories", () => {
       expect(rotationBindingKeys("race-engineer")).toEqual([]);
       expect(rotationBindingKeys("radar")).toEqual([]);
+    });
+
+    it("gives every dial category either a full up/down pair or nothing (internal)", () => {
+      for (const category of DIAL_CATEGORIES) {
+        expect(rotationBindingKeys(category), category).toHaveLength(isInternalAudioCategory(category) ? 0 : 2);
+      }
     });
   });
 
@@ -105,20 +121,16 @@ describe("audio-controls settings", () => {
       expect(resolveRotationBinding("spotter", 2)).toBe("spotterLouder");
       expect(resolveRotationBinding("spotter", -1)).toBe("spotterQuieter");
     });
-
-    it("has no binding for the internal categories", () => {
-      expect(resolveRotationBinding("race-engineer", 1)).toBeUndefined();
-      expect(resolveRotationBinding("radar", -1)).toBeUndefined();
-    });
   });
 
-  describe("isInternalDialCategory", () => {
-    it("is true only for the plugin-audio categories", () => {
-      expect(isInternalDialCategory("race-engineer")).toBe(true);
-      expect(isInternalDialCategory("radar")).toBe(true);
-      expect(isInternalDialCategory("voice-chat")).toBe(false);
-      expect(isInternalDialCategory("master")).toBe(false);
-      expect(isInternalDialCategory("spotter")).toBe(false);
+  describe("isInternalAudioCategory", () => {
+    it("is true only for the plugin-audio categories, on either surface", () => {
+      expect(isInternalAudioCategory("race-engineer")).toBe(true);
+      expect(isInternalAudioCategory("radar")).toBe(true);
+      expect(isInternalAudioCategory("voice-chat")).toBe(false);
+      expect(isInternalAudioCategory("master")).toBe(false);
+      expect(isInternalAudioCategory("spotter")).toBe(false);
+      expect(isInternalAudioCategory("push-to-talk")).toBe(false);
     });
   });
 });

@@ -25,9 +25,10 @@ export type SpotterControl = (typeof SPOTTER_CONTROLS)[number];
 
 /**
  * Global-settings key holding each control's binding (the `setting` of the
- * matching `aiSpotterControls` row in `data/key-bindings.json`).
+ * matching `aiSpotterControls` row in `data/key-bindings.json`; also consumed
+ * by `comms-catalog.ts`).
  */
-export const SPOTTER_BINDING_KEYS: Record<SpotterControl, string> = {
+export const SPOTTER_GLOBAL_KEYS: Record<SpotterControl, string> = {
   "damage-report": "spotterDamageReport",
   "weather-report": "spotterWeatherReport",
   "toggle-report-laps": "spotterToggleReportLaps",
