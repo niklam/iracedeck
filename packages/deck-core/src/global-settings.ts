@@ -99,16 +99,19 @@ export const GlobalSettingsSchema = z
     debugLogging: z
       .union([z.boolean(), z.string()])
       .transform((val) => val === true || val === "true")
-      .default(false),
+      .default(false)
+      .catch(false),
     /**
      * When true, focus the iRacing window before sending inputs.
      *
-     * Default: true (issue #930). Windows UIPI silently drops both keystrokes
-     * and SDK broadcasts when iRacing is not the foreground window, so with
-     * this off a button press can vanish with no error to report — a recurring
+     * Default: true (issue #930). Keystrokes go to whatever window has focus,
+     * so every keybind- and chat-driven action silently does nothing when
+     * iRacing is in the background — no error, nothing on screen, a recurring
      * support pattern. Focusing costs nothing when iRacing is already in front
-     * (`FocusResult.AlreadyFocused`), so on-by-default makes actions work out
-     * of the box.
+     * (`FocusResult.AlreadyFocused`), so on-by-default makes those actions work
+     * out of the box. Note this does NOT apply to pure SDK broadcasts, which
+     * reach iRacing regardless of focus (`SendNotifyMessage(HWND_BROADCAST, …)`);
+     * those fail only on an integrity-level mismatch, which focusing can't fix.
      *
      * Existing installs are unaffected: writes persist the whole parsed cache,
      * so their stored `false` predates this flip and keeps winning. Only fresh

@@ -3,17 +3,21 @@ title: Focus iRacing Window
 description: iRaceDeck brings iRacing to the foreground before sending commands, so button presses are never lost to another window.
 ---
 
-Focus iRacing Window brings the iRacing window to the foreground before iRaceDeck sends anything to the sim. Windows discards keystrokes and sim commands aimed at a window that isn't in focus, so without it a button press can simply do nothing — with no error, and nothing on screen to explain why.
+Focus iRacing Window brings the iRacing window to the foreground before iRaceDeck sends a command. Windows delivers keystrokes only to the window that has focus, so without it a button press can simply do nothing — with no error, and nothing on screen to explain why.
 
 **This is on by default.** New installations of iRaceDeck focus iRacing automatically, so actions work out of the box.
 
 ## Why It Matters
 
-It applies to every iRaceDeck action — both the ones that send keyboard shortcuts and the ones that talk to iRacing directly. Windows blocks background applications from sending either kind of input, so both are affected.
+It matters for any action that works by pressing keys — anything driven by a key binding, and anything that sends a chat message or pit macro. Those reach iRacing as keystrokes, and Windows hands keystrokes to whichever window is in front. Actions that talk to iRacing directly through its own command interface (most pit service, camera, and replay controls) are unaffected: those arrive whatever has focus.
 
 It matters most if you run iRacing in **windowed mode**, where another application can easily hold focus when you reach for the deck. It also covers the moments you might not think about: you tabbed out to check a message, clicked something on a second monitor, or a notification popped up and took focus.
 
 When iRacing is already the active window — which is most of the time while you're driving — focusing costs nothing and changes nothing. It only does something when focus was somewhere else.
+
+One gap worth knowing: gestures on the Stream Deck+ **touch strip** are not covered yet, so a touch gesture bound to a key still needs iRacing in front on its own. Buttons and dial rotation and presses are all covered.
+
+If your actions still don't reach iRacing with this on, focusing is not your problem — check that iRaceDeck and iRacing run at the same Windows privilege level. See [Troubleshooting](/docs/getting-started/troubleshooting/).
 
 ## Turning It Off
 
@@ -23,6 +27,6 @@ Turn it off if you'd rather iRaceDeck never changed which window has focus — f
 
 ## Upgrading From an Earlier Version
 
-If you already had iRaceDeck installed, **your existing setting is kept as-is.** The new on-by-default behavior only applies to fresh installations, so an upgrade never changes how your deck behaves. Since the setting used to be off unless you switched it on, that most likely means it is still off for you.
+If you already had iRaceDeck installed, **your existing setting is kept as-is** — the new on-by-default behavior applies to fresh installations. Since the setting used to be off unless you switched it on, that most likely means it is still off for you. Check the box to be sure: if it is ticked, focusing is active.
 
 To switch it on, open any action's Property Inspector, expand **Common Settings** under Global Settings, and tick **Focus iRacing window before sending keys**. The change takes effect immediately — no restart needed.

@@ -3,9 +3,14 @@
  *
  * Focuses the iRacing window before inputs are sent. Plugins call
  * `focusIRacingIfEnabled()` from their platform-level key/dial handlers, so it
- * runs before every action regardless of whether that action sends keystrokes
- * or an SDK broadcast — both are dropped by Windows UIPI when iRacing is not
- * the foreground window.
+ * runs before every action.
+ *
+ * What actually needs the foreground: **keystrokes** (`SendInput` goes to the
+ * focused window) and therefore every keybind- and chat-driven action. Pure SDK
+ * broadcasts do NOT — `irsdk_broadcastMsg` uses `SendNotifyMessage(HWND_BROADCAST,
+ * …)`, which reaches iRacing whatever has focus. Those are blocked only by a
+ * Windows integrity-level (UIPI) mismatch, which focusing cannot fix; that's what
+ * the `getElevationStatus()` probe is for (see `.claude/rules/keyboard-shortcuts.md`).
  *
  * The focuser itself is injected at startup (same dependency-injection shape as
  * `keyboard-service`): the actual window handling lives in the native addon,
@@ -16,7 +21,7 @@ import type { ILogger } from "@iracedeck/logger";
 import { silentLogger } from "@iracedeck/logger";
 
 import { isIRacingActive } from "./app-monitor.js";
-import { getGlobalSettings, isGlobalSettingsInitialized } from "./global-settings.js";
+import { getGlobalSettings, hasReceivedHostSettings } from "./global-settings.js";
 
 /**
  * Status codes a {@link WindowFocuser} may return.
@@ -46,10 +51,12 @@ export type FocusResult = (typeof FocusResult)[keyof typeof FocusResult];
  * Function that focuses the iRacing window.
  * Returns a {@link FocusResult} status code.
  */
-export type WindowFocuser = () => number;
+export type WindowFocuser = () => FocusResult;
 
 let focuser: WindowFocuser | null = null;
 let logger: ILogger = silentLogger;
+/** True once a timeout has been reported; reset by the next successful focus. */
+let timeoutReported = false;
 
 /**
  * Initialize the window focus service.
@@ -59,6 +66,10 @@ let logger: ILogger = silentLogger;
  * @param windowFocuser - Function that focuses the iRacing window
  */
 export function initWindowFocus(log: ILogger, windowFocuser: WindowFocuser): void {
+  if (focuser) {
+    throw new Error("Window focus service already initialized. initWindowFocus() should only be called once.");
+  }
+
   logger = log;
   focuser = windowFocuser;
 }
@@ -71,13 +82,19 @@ export function initWindowFocus(log: ILogger, windowFocuser: WindowFocuser): voi
 export function focusIRacingIfEnabled(): void {
   if (!focuser) return;
 
-  if (!isGlobalSettingsInitialized()) return;
+  // Gate on the host's first real payload, NOT on `isGlobalSettingsInitialized()`:
+  // that flag flips true before `adapter.getGlobalSettings()` has even been
+  // called, while the cache is still pure schema defaults — and since #930 the
+  // default says focus is ON. Acting on it would yank iRacing forward for a
+  // user who explicitly opted out, every time the deck host restarts or
+  // auto-updates the plugin mid-session. Fail closed until the real value is in.
+  if (!hasReceivedHostSettings()) return;
 
   const settings = getGlobalSettings();
 
   if (!settings.focusIRacingWindow) return;
 
-  let result: number;
+  let result: FocusResult;
 
   try {
     result = focuser();
@@ -89,9 +106,11 @@ export function focusIRacingIfEnabled(): void {
 
   switch (result) {
     case FocusResult.AlreadyFocused:
+      timeoutReported = false;
       logger.debug("iRacing window already focused");
       break;
     case FocusResult.Focused:
+      timeoutReported = false;
       logger.debug("iRacing window focused successfully");
       break;
     case FocusResult.WindowNotFound:
@@ -110,7 +129,21 @@ export function focusIRacingIfEnabled(): void {
 
       break;
     case FocusResult.FocusTimedOut:
-      logger.warn("iRacing window found but focus timed out (1000ms)");
+      // A timeout is always worth reporting, but it does not occur in isolation:
+      // its usual cause is an integrity-level mismatch (iRacing elevated, the
+      // plugin not), which makes EVERY press time out. Warn once per episode and
+      // drop to debug until a focus succeeds, so one persistent condition can't
+      // bury the rest of the log — including the elevation warning that explains
+      // it. Each of these also costs the native focuser's full 1000 ms wait.
+      if (timeoutReported) {
+        logger.debug("iRacing window found but focus timed out (1000ms)");
+      } else {
+        timeoutReported = true;
+        logger.warn(
+          "iRacing window found but focus timed out (1000ms) — if iRacing runs as Administrator, run the deck app elevated too",
+        );
+      }
+
       break;
     default:
       logger.warn(`Unexpected focus result: ${result}`);
@@ -126,4 +159,5 @@ export function focusIRacingIfEnabled(): void {
 export function _resetWindowFocus(): void {
   focuser = null;
   logger = silentLogger;
+  timeoutReported = false;
 }

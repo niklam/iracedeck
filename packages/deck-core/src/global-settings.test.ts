@@ -1002,4 +1002,21 @@ describe("focus iRacing window default (issue #930)", () => {
     const parsed = GlobalSettingsSchema.parse({ focusIRacingWindow: 42 }) as Record<string, unknown>;
     expect(parsed.focusIRacingWindow).toBe(true);
   });
+
+  // `.catch(<default>)` is the repo-wide rule (#896), so an unreadable value
+  // resolves to the field default regardless of how it looks. Pinned because a
+  // falsy non-boolean is the case where that reads counter-intuitively: nothing
+  // in the stack persists numbers for this flag, but if something ever did, `0`
+  // would resolve to ON rather than OFF.
+  it("resolves a falsy non-boolean to the default too, not to off", () => {
+    const parsed = GlobalSettingsSchema.parse({ focusIRacingWindow: 0 }) as Record<string, unknown>;
+    expect(parsed.focusIRacingWindow).toBe(true);
+  });
+});
+
+describe("debugLogging hardening (issue #896 convention)", () => {
+  it("falls back to false on an unparseable value rather than aborting the parse", () => {
+    const parsed = GlobalSettingsSchema.parse({ debugLogging: 42 }) as Record<string, unknown>;
+    expect(parsed.debugLogging).toBe(false);
+  });
 });

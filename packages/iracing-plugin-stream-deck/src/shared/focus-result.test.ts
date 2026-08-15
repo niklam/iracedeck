@@ -24,10 +24,17 @@ describe("FocusResult mirror (issue #930)", () => {
     expect(memberNames(CoreFocusResult)).toEqual(memberNames(NativeFocusResult as unknown as Record<string, unknown>));
   });
 
+  // Derived from the member list rather than written out, so a member added to
+  // both enums with MISMATCHED values fails here instead of slipping through on
+  // a name-only comparison.
   it("assigns each member the same value as the native enum", () => {
-    expect(CoreFocusResult.AlreadyFocused).toBe(NativeFocusResult.AlreadyFocused);
-    expect(CoreFocusResult.Focused).toBe(NativeFocusResult.Focused);
-    expect(CoreFocusResult.WindowNotFound).toBe(NativeFocusResult.WindowNotFound);
-    expect(CoreFocusResult.FocusTimedOut).toBe(NativeFocusResult.FocusTimedOut);
+    const names = memberNames(CoreFocusResult);
+    expect(names.length).toBeGreaterThan(0);
+
+    for (const name of names) {
+      expect(CoreFocusResult[name as keyof typeof CoreFocusResult], name).toBe(
+        (NativeFocusResult as unknown as Record<string, number>)[name],
+      );
+    }
   });
 });
