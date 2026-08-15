@@ -3,6 +3,9 @@ title: Installation
 description: How to install iRaceDeck on your Elgato Stream Deck, Mirabox, or Ulanzi Deck device.
 ---
 
+import BrandNames from "../../../../components/BrandNames.astro";
+import { ECOSYSTEMS } from "../../../../data/brands";
+
 iRaceDeck is available for **Elgato Stream Deck**, **Mirabox**, and **Ulanzi Deck** devices. Choose the installation method that matches your hardware.
 
 ## Elgato Stream Deck
@@ -10,7 +13,7 @@ iRaceDeck is available for **Elgato Stream Deck**, **Mirabox**, and **Ulanzi Dec
 ### Requirements
 
 - **Stream Deck software** version 7.1 or newer
-- Any Stream Deck device: Stream Deck, Stream Deck Mini, Stream Deck XL, or Stream Deck+
+- Any Stream Deck device: {ECOSYSTEMS.elgato.devices}
 
 ### Option 1: Install from Elgato Marketplace
 
@@ -42,11 +45,13 @@ GitHub Releases may have a newer version available before it appears on the Elga
 
 ### Stream Deck+ Dials
 
-iRaceDeck works on the Stream Deck+, but its actions are key (button) actions only — they cannot currently be placed on the rotary dials (encoders). Dial support is planned for a future release.
+Many iRaceDeck actions can go on a Stream Deck+ rotary dial as well as on a key. Turning, pressing, holding, and pushing while turning each do something useful, and the touch strip above the dials shows a live readout. A dial action dropped on a key still works as an ordinary button.
+
+See [Dials](/docs/features/dials/) for the gestures every dial action shares, and each action's own page for what its dial does.
 
 ## Mirabox Ecosystem
 
-The Mirabox ecosystem covers devices from brands including **Stream Dock**, **SOOMFON**, **VAPOURD**, **KILOGOGRAPH**, **HALCONTORNO**, **VSDinside**, and **Nouvolo**.
+The Mirabox ecosystem covers devices from brands including <BrandNames ecosystem="mirabox" />. They all run the same Stream Dock hardware, so one plugin build serves every one of them.
 
 ### Requirements
 
@@ -64,7 +69,7 @@ You can also download the Mirabox plugin (`.sdPlugin` file) directly from the [i
 
 ## Ulanzi Deck
 
-iRaceDeck runs on **Ulanzi Deck** devices (D200, D200H, D200X, and Dial) through the UlanziStudio app.
+iRaceDeck runs on **{ECOSYSTEMS.ulanzi.devices}** through the UlanziStudio app.
 
 ### Requirements
 
