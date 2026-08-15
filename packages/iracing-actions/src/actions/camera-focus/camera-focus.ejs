@@ -178,16 +178,17 @@
 					<option value="sub-camera">Cycle Sub-Camera</option>
 					<option value="car-number">Cycle by Car #</option>
 					<option value="race-position">Cycle by Race Position</option>
+					<option value="track-order">Cycle by Track Order</option>
 					<option value="driving">Cycle Driving Camera</option>
 				</sdpi-select>
 			</sdpi-item>
 			<% if (locals.platform?.features?.dialFeedback !== false) { %>
 			<div class="ird-supporting-text">
-				Turn the dial to cycle the selected target — clockwise for next, counter-clockwise for previous. In Race Position mode clockwise selects the car ahead (lower position number). Where previewable, the touch strip shows the current camera, sub-camera, or focused car in the centre with the target for each turn direction at its side; Cycle Driving Camera shows only the current group.
+				Turn the dial to cycle the selected target — clockwise for next, counter-clockwise for previous. In Race Position mode clockwise selects the car ahead (lower position number); in Track Order mode it selects the car physically ahead on track, regardless of standings. Where previewable, the touch strip shows the current camera, sub-camera, or focused car in the centre with the target for each turn direction at its side; Cycle Driving Camera shows only the current group.
 			</div>
 			<% } else { %>
 			<div class="ird-supporting-text">
-				Turn the knob to cycle the selected target — clockwise for next, counter-clockwise for previous. In Race Position mode clockwise selects the car ahead (lower position number).
+				Turn the knob to cycle the selected target — clockwise for next, counter-clockwise for previous. In Race Position mode clockwise selects the car ahead (lower position number); in Track Order mode it selects the car physically ahead on track, regardless of standings.
 			</div>
 			<% } %>
 

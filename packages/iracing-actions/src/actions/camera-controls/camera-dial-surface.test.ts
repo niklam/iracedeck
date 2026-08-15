@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { computeCarNumberTarget } from "../../shared/car-cycling.js";
@@ -6,6 +7,7 @@ import {
   CameraDialSurface,
   clockwiseDirection,
   computeRacePositionTarget,
+  DIAL_MODES,
   DialSettings,
   renderCameraCarousel,
   renderCarCarousel,
@@ -61,8 +63,11 @@ vi.mock("@iracedeck/deck-core", () => ({
   svgToDataUri: (svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`,
 }));
 
-vi.mock("@iracedeck/iracing-sdk", () => ({
+vi.mock("@iracedeck/iracing-sdk", async (importOriginal) => ({
   TrkLoc: { NotInWorld: -1, OffTrack: 0, InPitStall: 1, AproachingPits: 2, OnTrack: 3 },
+  // The REAL track-order primitive (#886): the dial's track-order mode is a
+  // composition over it, and the tests below assert real on-track geometry.
+  findNearestCarOnTrack: (await importOriginal<typeof import("@iracedeck/iracing-sdk")>()).findNearestCarOnTrack,
   getCameraGroupsFromSessionInfo: vi.fn(() => mockGroups.value),
   getCamerasInGroup: vi.fn(() => mockCameras.value),
   getCarNumberFromSessionInfo: vi.fn((_s: unknown, carIdx: number) =>
@@ -89,6 +94,20 @@ function dialContext(id: string) {
 }
 
 const TELEMETRY = { CamGroupNumber: 9, CamCarIdx: 3 };
+
+/**
+ * An on-track field for the track-order tests (#886). Competitors by number:
+ * #3 (carIdx 1), #42 (carIdx 3, focused), #99 (carIdx 5). On the ROAD the
+ * order is the opposite of the number order: #42 at 0.30 is followed by #3 at
+ * 0.55, then #99 at 0.80 (which wraps back to #42) — so a number-ordered walk
+ * and a track-ordered walk land on DIFFERENT cars.
+ */
+const ON_TRACK = {
+  CamCarIdx: 3,
+  CamGroupNumber: 9,
+  CarIdxLapDistPct: [-1, 0.55, -1, 0.3, -1, 0.8],
+  CarIdxTrackSurface: [-1, 3, -1, 3, -1, 3],
+};
 
 /**
  * Matches a strip text element at one of the renderers' side slots. The x
@@ -263,9 +282,16 @@ describe("camera dial-surface pure helpers", () => {
     it("maps clockwise to previous for race-position (the car ahead, #884) and to next for every other mode", () => {
       expect(clockwiseDirection("race-position", false)).toBe("previous");
 
-      for (const mode of ["camera", "sub-camera", "car-number", "driving"] as const) {
+      for (const mode of ["camera", "sub-camera", "car-number", "track-order", "driving"] as const) {
         expect(clockwiseDirection(mode, false)).toBe("next");
       }
+    });
+
+    it("maps clockwise to next for track-order — the car AHEAD on the road (#886)", () => {
+      // "next" IS ahead in track order (the direction of travel), so clockwise
+      // lands on the car ahead just like race-position's flipped default does.
+      expect(clockwiseDirection("track-order", false)).toBe("next");
+      expect(clockwiseDirection("track-order", true)).toBe("previous");
     });
 
     it("flips the active mode's default mapping when reverseRotation is set", () => {
@@ -296,6 +322,10 @@ describe("camera dial-surface pure helpers", () => {
       expect(desc.rotate).toBe("Cycle Cars by Position");
       expect(desc.touch).toBe("Focus on Incident");
       expect(desc.longTouch).toBe("Focus on Most Exciting");
+    });
+
+    it("names the track-order target (#886)", () => {
+      expect(buildTriggerDescription(dial({ mode: "track-order" })).rotate).toBe("Cycle Cars by Track Order");
     });
   });
 
@@ -427,6 +457,46 @@ describe("camera dial-surface pure helpers", () => {
       expect(svg).toContain(">#3<");
       expect(svg).toContain(">#99<");
       expect(svg).not.toMatch(/>P\d/); // never a position badge — car-number mode is number-primary
+      expect(svg).not.toMatch(/AHEAD|BEHIND/); // no side captions unless asked for
+    });
+
+    it("draws the side captions beneath the side numbers when given (track-order, #886)", () => {
+      const svg = renderCarCarousel({
+        width: 200,
+        height: 100,
+        colors,
+        title: "TRACK ORDER",
+        identityLabel: "TRACK ORDER",
+        center: "42",
+        left: "99",
+        right: "3",
+        sideCaptions: { left: "BEHIND", right: "AHEAD" },
+      });
+
+      expect(svg).toContain(">TRACK ORDER<");
+      expect(svg).toContain(">#42<");
+      // Each caption sits on the SAME side as its number (left x = 0.16 w, right x = 0.84 w).
+      expect(svg).toMatch(sideText(0.16, "#99"));
+      expect(svg).toMatch(sideText(0.16, "BEHIND"));
+      expect(svg).toMatch(sideText(0.84, "#3"));
+      expect(svg).toMatch(sideText(0.84, "AHEAD"));
+    });
+
+    it("draws no caption on a side that has no car to preview", () => {
+      const svg = renderCarCarousel({
+        width: 200,
+        height: 100,
+        colors,
+        title: "TRACK ORDER",
+        identityLabel: "TRACK ORDER",
+        center: "42",
+        left: null,
+        right: "3",
+        sideCaptions: { left: "BEHIND", right: "AHEAD" },
+      });
+
+      expect(svg).not.toContain("BEHIND");
+      expect(svg).toMatch(sideText(0.84, "AHEAD"));
     });
 
     it("falls back to the identity label with no focused car", () => {
@@ -514,6 +584,25 @@ describe("CameraDialSurface", () => {
       expect(parsed.mode).toBe("car-number");
       expect(parsed.pressAction).toBe("focus-my-car");
       expect(parsed.longTouchAction).toBe("change-camera");
+    });
+
+    it("accepts the track-order mode (#886)", () => {
+      expect(DialSettings.parse({ mode: "track-order" }).mode).toBe("track-order");
+    });
+
+    it("has a communication-method record for every dial mode (comms-catalog `camera-focus-dial`, #612)", () => {
+      // The catalog is a loose object literal, so a new DIAL_MODES member is not
+      // a compile error there — guard the per-mode record here instead.
+      const comms = JSON.parse(readFileSync(new URL("../data/action-comms.json", import.meta.url), "utf-8")) as Record<
+        string,
+        Record<string, unknown>
+      >;
+
+      for (const mode of DIAL_MODES) {
+        expect(comms["camera-focus-dial"][mode], `camera-focus-dial has no entry for dial mode "${mode}"`).toEqual({
+          method: "api",
+        });
+      }
     });
 
     it("defaults to car-number for a fresh dial", () => {
@@ -644,6 +733,85 @@ describe("CameraDialSurface", () => {
       surface.rotate(dialContext("c3") as never, dial({ mode: "car-number" }), -1, false);
 
       expect(host.focusCarNumber).toHaveBeenLastCalledWith(99); // last car by number (#99)
+    });
+  });
+
+  describe("rotation → track-order mode (#886)", () => {
+    // Field layout: see the module-level ON_TRACK fixture.
+
+    it("focuses the car physically AHEAD on a clockwise detent and the car BEHIND counter-clockwise", () => {
+      const host = makeHost({ getTelemetry: vi.fn(() => ON_TRACK as never) });
+      const surface = new CameraDialSurface(host as never);
+      surface.rotate(dialContext("t1") as never, dial({ mode: "track-order" }), 1, false);
+
+      expect(host.focusCarNumber).toHaveBeenCalledWith(3); // ahead of #42 on the road is #3
+
+      surface.rotate(dialContext("t1") as never, dial({ mode: "track-order" }), -1, false);
+
+      expect(host.focusCarNumber).toHaveBeenLastCalledWith(99); // behind #42 (wrapping) is #99
+    });
+
+    it("focuses the car BEHIND on a clockwise detent when reverseRotation is set", () => {
+      const host = makeHost({ getTelemetry: vi.fn(() => ON_TRACK as never) });
+      const surface = new CameraDialSurface(host as never);
+      surface.rotate(dialContext("t2") as never, dial({ mode: "track-order", reverseRotation: true }), 1, false);
+
+      expect(host.focusCarNumber).toHaveBeenCalledWith(99);
+    });
+
+    it("does not cycle in track-order mode", () => {
+      const host = makeHost({ getTelemetry: vi.fn(() => ON_TRACK as never) });
+      const surface = new CameraDialSurface(host as never);
+      surface.rotate(dialContext("t3") as never, dial({ mode: "track-order" }), 1, false);
+
+      expect(host.cycle).not.toHaveBeenCalled();
+    });
+
+    it("skips the pace car sitting between two competitors on the road (not a competitor)", async () => {
+      // carIdx 0 is the pace car: it is on track at 0.40 (between #42 and #3) but
+      // getAllCarNumbers(…, true, true) excludes it, so a detent lands on #3.
+      const withPaceCar = {
+        ...ON_TRACK,
+        CarIdxLapDistPct: [0.4, 0.55, -1, 0.3, -1, 0.8],
+        CarIdxTrackSurface: [3, 3, -1, 3, -1, 3],
+      };
+      const host = makeHost({ getTelemetry: vi.fn(() => withPaceCar as never) });
+      const surface = new CameraDialSurface(host as never);
+      surface.rotate(dialContext("t4") as never, dial({ mode: "track-order" }), 1, false);
+
+      expect(host.focusCarNumber).toHaveBeenCalledWith(3);
+      // The competitor set is the pace-car/spectator-EXCLUDING list — the mock
+      // ignores the flags, so pin them explicitly: this is what keeps the pace
+      // car (absent from mockAllCars) out of the road walk.
+      const { getAllCarNumbers } = await import("@iracedeck/iracing-sdk");
+      expect(getAllCarNumbers).toHaveBeenLastCalledWith(expect.anything(), true, true);
+    });
+
+    it("skips a competitor that left the world and focuses the next one along the road (#885)", () => {
+      // #3 (carIdx1) despawned: stale lap distance but a NotInWorld surface.
+      const towed = { ...ON_TRACK, CarIdxTrackSurface: [-1, -1, -1, 3, -1, 3] };
+      const host = makeHost({ getTelemetry: vi.fn(() => towed as never) });
+      const surface = new CameraDialSurface(host as never);
+      surface.rotate(dialContext("t5") as never, dial({ mode: "track-order" }), 1, false);
+
+      expect(host.focusCarNumber).toHaveBeenCalledWith(99);
+    });
+
+    it("does nothing when no other competitor is on track", () => {
+      const alone = { ...ON_TRACK, CarIdxLapDistPct: [-1, -1, -1, 0.3, -1, -1] };
+      const host = makeHost({ getTelemetry: vi.fn(() => alone as never) });
+      const surface = new CameraDialSurface(host as never);
+      surface.rotate(dialContext("t6") as never, dial({ mode: "track-order" }), 1, false);
+
+      expect(host.focusCarNumber).not.toHaveBeenCalled();
+    });
+
+    it("does nothing without on-track telemetry", () => {
+      const host = makeHost(); // TELEMETRY has no CarIdxLapDistPct
+      const surface = new CameraDialSurface(host as never);
+      surface.rotate(dialContext("t7") as never, dial({ mode: "track-order" }), 1, false);
+
+      expect(host.focusCarNumber).not.toHaveBeenCalled();
     });
   });
 
@@ -932,6 +1100,103 @@ describe("CameraDialSurface", () => {
       // Clockwise now goes to the PREVIOUS car by number, so it previews right.
       expect(decoded).toMatch(sideText(0.84, "#3"));
       expect(decoded).toMatch(sideText(0.16, "#99"));
+    });
+
+    it("renders the track-order carousel: the focused #number centred, the car ahead on the clockwise side with AHEAD / BEHIND captions (#886)", async () => {
+      // On the road (ON_TRACK): #42 (0.30) → #3 (0.55) → #99 (0.80) → wraps. Ahead of #42 is #3, behind is #99.
+      const host = makeHost({ getTelemetry: vi.fn(() => ON_TRACK as never) });
+      const surface = new CameraDialSurface(host as never);
+      const ctx = dialContext("f2t");
+      await surface.willAppear(ctx as never, dial({ mode: "track-order" }));
+
+      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+
+      expect(decoded).toContain(">TRACK ORDER<"); // mode-name title
+      expect(decoded).toContain(">#42<"); // focused car
+      expect(decoded).toMatch(sideText(0.84, "#3")); // clockwise = the car AHEAD on the road → right
+      expect(decoded).toMatch(sideText(0.84, "AHEAD"));
+      expect(decoded).toMatch(sideText(0.16, "#99")); // counter-clockwise = the car BEHIND → left
+      expect(decoded).toMatch(sideText(0.16, "BEHIND"));
+    });
+
+    it("swaps the track-order preview sides AND captions when reverseRotation is set (#886)", async () => {
+      const host = makeHost({ getTelemetry: vi.fn(() => ON_TRACK as never) });
+      const surface = new CameraDialSurface(host as never);
+      const ctx = dialContext("f2u");
+      await surface.willAppear(ctx as never, dial({ mode: "track-order", reverseRotation: true }));
+
+      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+
+      // Clockwise now goes to the car BEHIND, so it (and its caption) previews right.
+      expect(decoded).toMatch(sideText(0.84, "#99"));
+      expect(decoded).toMatch(sideText(0.84, "BEHIND"));
+      expect(decoded).toMatch(sideText(0.16, "#3"));
+      expect(decoded).toMatch(sideText(0.16, "AHEAD"));
+    });
+
+    it("re-renders the track-order strip when the car ahead changes on the road (#886)", async () => {
+      // A moving field: the car ahead of #42 flips from #3 to #99 between two
+      // ticks (with #3 dropping behind), so the strip must redraw — the readout
+      // signature has to track the ROAD neighbours, not just the focused car.
+      const telemetry = { value: { ...ON_TRACK } as Record<string, unknown> };
+      const host = makeHost({ getTelemetry: vi.fn(() => telemetry.value as never) });
+      const surface = new CameraDialSurface(host as never);
+      const ctx = dialContext("f2v");
+      const nowSpy = vi.spyOn(Date, "now").mockReturnValue(10_000);
+      await surface.willAppear(ctx as never, dial({ mode: "track-order" }));
+      const pushesAfterAppear = ctx.setFeedback.mock.calls.length;
+
+      // #3 falls behind #42, #99 is now the car ahead.
+      telemetry.value = { ...telemetry.value, CarIdxLapDistPct: [-1, 0.2, -1, 0.3, -1, 0.5] };
+      nowSpy.mockReturnValue(10_500);
+      surface.onTelemetry("f2v", telemetry.value as never);
+      await Promise.resolve();
+
+      expect(ctx.setFeedback.mock.calls.length).toBe(pushesAfterAppear + 1);
+      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      expect(decoded).toMatch(sideText(0.84, "#99"));
+      expect(decoded).toMatch(sideText(0.16, "#3"));
+      nowSpy.mockRestore();
+    });
+
+    it("shows an identity-only label box out of session (track-order)", async () => {
+      const host = makeHost({ getTelemetry: vi.fn(() => null) });
+      const surface = new CameraDialSurface(host as never);
+      const ctx = dialContext("f5t");
+      await surface.willAppear(ctx as never, dial({ mode: "track-order" }));
+
+      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+
+      expect(decoded).toContain(">TRACK ORDER<");
+      expect(decoded).not.toMatch(/>#/); // no car number readout without a focused car
+    });
+
+    it("drops the AHEAD / BEHIND captions when both detents land on the same car (focused car has no track position, #886)", async () => {
+      // The focused #42 (carIdx 3) has towed: still in session info (so the centre
+      // reads #42) but no lap distance / NotInWorld. The primitive then re-enters
+      // at the car nearest start/finish for BOTH directions — #99 at 0.80 (0.20
+      // from the line) beats #3 at 0.55 — so both sides preview #99, and one car
+      // can't be captioned both AHEAD and BEHIND.
+      const towedFocus = {
+        ...ON_TRACK,
+        CarIdxLapDistPct: [-1, 0.55, -1, -1, -1, 0.8],
+        CarIdxTrackSurface: [-1, 3, -1, -1, -1, 3],
+      };
+      const host = makeHost({ getTelemetry: vi.fn(() => towedFocus as never) });
+      const surface = new CameraDialSurface(host as never);
+      const ctx = dialContext("f2w");
+      await surface.willAppear(ctx as never, dial({ mode: "track-order" }));
+
+      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+
+      expect(decoded).toContain(">#42<");
+      expect(decoded).toMatch(sideText(0.16, "#99"));
+      expect(decoded).toMatch(sideText(0.84, "#99"));
+      expect(decoded).not.toMatch(/AHEAD|BEHIND/);
+      // …and both detents really do focus that same car.
+      surface.rotate(ctx as never, dial({ mode: "track-order" }), 1, false);
+      surface.rotate(ctx as never, dial({ mode: "track-order" }), -1, false);
+      expect(host.focusCarNumber.mock.calls).toEqual([[99], [99]]);
     });
 
     it("renders the race-position carousel with the mode-name title, position primary, and car number secondary", async () => {
