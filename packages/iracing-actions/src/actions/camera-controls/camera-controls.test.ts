@@ -1,4 +1,5 @@
 import { getCommands, requestProfileSwitch, resolveProfileNameForDevice } from "@iracedeck/deck-core";
+import * as deckCore from "@iracedeck/deck-core";
 import { getAllCarNumbers, getCamerasInGroup, getCarNumberRawFromSessionInfo } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -1233,6 +1234,22 @@ describe("cycle-sub-camera taps the iRacing sub-camera binding (#852)", () => {
     } as never);
 
     expect(bindings(action).setActiveBinding).toHaveBeenCalledWith(GLOBAL_KEY_NAMES.SUB_CAMERA_PREVIOUS);
+  });
+
+  // The overlay itself is icon-composer's (tested there); what matters here is
+  // that the key's missing-binding state reaches assembleIcon at all (#612).
+  it("passes the missing-binding flag through to the key icon", () => {
+    const assembleIcon = vi.mocked(deckCore.assembleIcon);
+
+    generateCameraControlsSvg({ target: "cycle-sub-camera", direction: "next" }, true);
+    expect(assembleIcon).toHaveBeenLastCalledWith(expect.objectContaining({ bindingMissing: true }));
+
+    generateCameraControlsSvg({ target: "cycle-sub-camera", direction: "next" }, false);
+    expect(assembleIcon).toHaveBeenLastCalledWith(expect.objectContaining({ bindingMissing: false }));
+
+    // An SDK-driven mode never warns, whatever is passed.
+    generateCameraControlsSvg({ target: "focus-your-car" }, false);
+    expect(assembleIcon).toHaveBeenLastCalledWith(expect.objectContaining({ bindingMissing: false }));
   });
 
   it("declares no active binding for the API-driven modes", async () => {

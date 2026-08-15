@@ -67,7 +67,7 @@ Cycle sub-cameras within the currently active camera group (e.g., left / right /
 
 iRacing's camera commands can change **which car** is focused and **which camera group** is active, but they have no working control over the individual camera within a group — the sim ignores that part of the command. Sub-camera stepping is only reachable through iRacing's own **Next Sub Camera** / **Previous Sub Camera** controls, so the button triggers those instead. iRacing decides which camera comes next and wraps around at the ends of the group, exactly as if you had pressed the key yourself.
 
-Both keys are preconfigured to iRacing's defaults, so the mode works without setup. If you have rebound these functions in iRacing, set the matching keys under **Related Key Bindings** in the Property Inspector. When a binding is cleared, the key shows a warning icon and the Property Inspector says which binding is missing.
+Both keys are preconfigured to iRacing's defaults, so the mode works without setup — the bindings are stored the first time you open this action's Property Inspector. If you already had a Cycle Sub-Camera button before this update, open its Property Inspector once to store them (the key shows a warning icon until you do). If you have rebound these functions in iRacing, set the matching keys under **Related Key Bindings** in the Property Inspector.
 
 #### Setting: Direction
 
