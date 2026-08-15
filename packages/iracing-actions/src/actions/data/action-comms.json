@@ -1270,6 +1270,57 @@
       }
     }
   },
+  "camera-focus": {
+    "_meta": {
+      "modeSetting": "target"
+    },
+    "change-camera": {
+      "method": "api"
+    },
+    "cycle-camera": {
+      "method": "api"
+    },
+    "cycle-sub-camera": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "next": "cameraControlsSubCameraNext",
+            "previous": "cameraControlsSubCameraPrevious"
+          }
+        }
+      }
+    },
+    "cycle-car": {
+      "method": "api"
+    },
+    "cycle-driving": {
+      "method": "api"
+    },
+    "focus-your-car": {
+      "method": "api"
+    },
+    "focus-on-leader": {
+      "method": "api"
+    },
+    "focus-on-incident": {
+      "method": "api"
+    },
+    "focus-on-most-exciting": {
+      "method": "api"
+    },
+    "switch-by-position": {
+      "method": "api"
+    },
+    "switch-by-car-number": {
+      "method": "api"
+    },
+    "set-camera-state": {
+      "method": "api"
+    }
+  },
   "camera-focus-dial": {
     "_meta": {
       "modeSetting": "dial.mode"
@@ -1278,7 +1329,14 @@
       "method": "api"
     },
     "sub-camera": {
-      "method": "api"
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "cameraControlsSubCameraNext",
+          "cameraControlsSubCameraPrevious"
+        ]
+      }
     },
     "car-number": {
       "method": "api"

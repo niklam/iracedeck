@@ -77,6 +77,7 @@
  * identity label.
  */
 import {
+  applyBindingWarning,
   classifyDialRelease,
   type DeckFeedbackPayload,
   type DeckTriggerDescription,
@@ -106,6 +107,17 @@ import {
 import { dialAppearanceFields, type DialBoxColors, resolveDialBoxColors } from "../../shared/dial-box.js";
 import { renderDialNameIcon } from "../../shared/dial-name-icon.js";
 import { computeCameraCarousel, computeSubCameraCarousel } from "./camera-groups.js";
+
+/**
+ * The iRacing sub-camera bindings the dial's Sub-Camera rotation taps (#852).
+ * Declared here rather than imported from `camera-controls.ts` — the action
+ * imports this surface, so importing back would be a cycle. A test asserts
+ * these stay identical to the action's `GLOBAL_KEY_NAMES`.
+ */
+export const SUB_CAMERA_DIAL_KEYS = {
+  next: "cameraControlsSubCameraNext",
+  previous: "cameraControlsSubCameraPrevious",
+} as const;
 
 /**
  * Minimum gap (ms) between change-driven feedback pushes. Cycling a car or a
@@ -605,8 +617,14 @@ export function renderSubCameraCarousel(args: {
   current: string | null;
   left: string | null;
   right: string | null;
+  /** #612 overlay: the Sub-Camera bindings (#852) are unset, so a detent would do nothing. */
+  bindingMissing?: boolean;
 }): string {
   const { width: w, height: h, colors } = args;
+
+  if (args.bindingMissing) {
+    return svgWrap(w, h, applyBindingWarning(dialPanel(w, h, colors) + titleLine(w, h, args.title, colors)));
+  }
 
   if (!args.current) return identityBox(w, h, args.identityLabel, colors);
 
@@ -785,6 +803,12 @@ export interface CameraDialHost {
   getGroupGlyph(groupName: string): CarouselGlyph | null;
   /** Cycle the given target one step (the keypad's own `executeCycle`). */
   cycle(target: DialCycleTarget, direction: Direction): void;
+  /**
+   * Whether any of the given global binding keys is unconfigured (#612). Only
+   * the Sub-Camera mode is binding-driven (issue #852) — every other mode is an
+   * SDK command — so this gates that one strip's warning overlay.
+   */
+  isBindingMissing(keys: string | string[] | null | undefined): boolean;
   /**
    * Focus a car by its raw car number (the keypad Switch by Car Number
    * dispatch). Also the race-position mode's execution path: it resolves its
@@ -1350,7 +1374,14 @@ export class CameraDialSurface {
     if (dial.mode === "sub-camera") {
       const view = this.subCameraView(telemetry, dial);
 
-      return renderSubCameraCarousel({ ...base, identityLabel: MODE_IDENTITY["sub-camera"], ...view });
+      return renderSubCameraCarousel({
+        ...base,
+        identityLabel: MODE_IDENTITY["sub-camera"],
+        ...view,
+        // Rotation taps BOTH bindings depending on direction, so either one
+        // missing makes the dial half-dead — warn on either (#612).
+        bindingMissing: this.host.isBindingMissing([SUB_CAMERA_DIAL_KEYS.next, SUB_CAMERA_DIAL_KEYS.previous]),
+      });
     }
 
     // driving: the current camera group icon + name only. The driving cycle

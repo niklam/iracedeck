@@ -22,6 +22,10 @@ _Unreleased_
 
 - The Telemetry Control page on iracedeck.com now documents the Take Snapshot mode (shipped in 1.21.0 but missing from the action page): what the JSON and Markdown files contain, where they go, and how the Output Folder setting is resolved.
 
+**Bug Fixes**
+
+- Cycle Sub-Camera now actually switches the camera, on both the keypad mode and the camera dial. iRacing's camera commands turned out to have no working control over the individual camera within a group, so the mode now triggers the sim's own Next / Previous Sub Camera controls instead — preconfigured to iRacing's defaults (`B` and `Shift+B`), so it works without setup, and configurable under Related Key Bindings if you have rebound them. The camera focus stays put while the shot changes, so it works with any car, the pace car, or a scenic view focused.
+
 ## 2.4.0
 
 _2026-08-12_

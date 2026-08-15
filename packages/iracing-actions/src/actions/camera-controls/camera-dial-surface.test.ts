@@ -13,6 +13,7 @@ import {
   renderCarCarousel,
   renderRacePositionCarousel,
   renderSubCameraCarousel,
+  SUB_CAMERA_DIAL_KEYS,
   wrapPosition,
 } from "./camera-dial-surface.js";
 
@@ -128,6 +129,7 @@ function makeHost(over: Partial<Record<string, unknown>> = {}) {
     getEnabledCameraGroups: vi.fn(() => ["Nose", "Cockpit", "Chase"]),
     getGroupGlyph: vi.fn((name: string) => ({ width: 68, height: 68, artwork: `<path data-group="${name}"/>` })),
     cycle: vi.fn(),
+    isBindingMissing: vi.fn(() => false),
     focusCarNumber: vi.fn(),
     focusMyCar: vi.fn(),
     changeCamera: vi.fn(),
@@ -1283,6 +1285,37 @@ describe("CameraDialSurface", () => {
 
       expect(decoded).toMatch(sideText(0.84, "P5")); // clockwise walks past dead P1 to P5
       expect(decoded).toMatch(sideText(0.16, "P4")); // counter-clockwise walks past dead P3 to P4
+    });
+
+    // #852: Sub-Camera is the one binding-driven dial mode (iRacing exposes
+    // sub-camera stepping only as a key binding), so its strip carries the
+    // standard #612 missing-binding warning; the other modes are SDK commands
+    // and must never show one.
+    it("warns on the sub-camera strip when the sub-camera bindings are unset (#852)", async () => {
+      const host = makeHost({ isBindingMissing: vi.fn(() => true) });
+      const surface = new CameraDialSurface(host as never);
+      const ctx = dialContext("d-warn");
+      await surface.willAppear(ctx as never, dial({ mode: "sub-camera" }));
+
+      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      expect(decoded).toContain("binding-warning");
+      // Both rotation directions tap a binding, so either missing must warn.
+      expect(host.isBindingMissing).toHaveBeenCalledWith([
+        SUB_CAMERA_DIAL_KEYS.next,
+        SUB_CAMERA_DIAL_KEYS.previous,
+      ]);
+    });
+
+    it("never warns on the SDK-driven modes even when bindings are unset", async () => {
+      const host = makeHost({ isBindingMissing: vi.fn(() => true) });
+      const surface = new CameraDialSurface(host as never);
+
+      for (const mode of ["camera", "car-number", "race-position", "driving"] as const) {
+        const ctx = dialContext(`d-nowarn-${mode}`);
+        await surface.willAppear(ctx as never, dial({ mode }));
+        const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+        expect(decoded).not.toContain("binding-warning");
+      }
     });
 
     it("renders the sub-camera name carousel from the group's camera list", async () => {
