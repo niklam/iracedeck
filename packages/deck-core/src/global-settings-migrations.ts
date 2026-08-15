@@ -13,6 +13,14 @@
  * (`hasReceivedHostSettings`), subscribing to settings changes until then.
  * All writes go through `updateGlobalSettings`/`deleteGlobalSettings`, so the
  * #896 stale-cache protections (pending-write overlay, shrink guard) apply.
+ *
+ * PASSTHROUGH KEYS ONLY. Both the "old key stored?" and "new key already
+ * set?" checks read the parsed cache, where a `GlobalSettingsSchema`-declared
+ * field ALWAYS holds at least its schema default — so for a schema-backed
+ * rename the old value would never be copied (the default at the new key
+ * counts as "already set") while the old key would still be deleted. Renaming
+ * a schema-backed field needs a bespoke migration that reads the raw host
+ * payload instead.
  */
 import type { ILogger } from "@iracedeck/logger";
 

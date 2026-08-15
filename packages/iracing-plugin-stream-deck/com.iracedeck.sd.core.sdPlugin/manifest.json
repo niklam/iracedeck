@@ -519,7 +519,9 @@
         "Icon": "imgs/actions/setup-chassis/dial",
         "layout": "layouts/setup-chassis.json",
         "TriggerDescription": {
-          "Rotate": "Adjust the selected chassis setting"
+          "Rotate": "Adjust the selected chassis setting",
+          "Push": "Configured action",
+          "Touch": "Configured action"
         }
       },
       "States": [

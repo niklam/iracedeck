@@ -673,12 +673,12 @@ export class SetupChassis extends ConnectionStateAwareAction<SetupChassisSetting
     ev: IDeckWillAppearEvent<SetupChassisSettings> | IDeckDidReceiveSettingsEvent<SetupChassisSettings>,
     settings: SetupChassisSettings,
   ): Promise<void> {
-    const svgDataUri = this.renderIcon(settings);
+    // One snapshot for both the icon and the memo, so they can't straddle a
+    // telemetry tick (and the units-forced copy is built once, not twice).
+    const telemetry = withUnitsPreference(this.sdkController.getCurrentTelemetry(), settings.units) ?? null;
+    const svgDataUri = this.renderIcon(settings, telemetry);
 
-    const memo = telemetryMemoValue(
-      settings,
-      withUnitsPreference(this.sdkController.getCurrentTelemetry(), settings.units) ?? null,
-    );
+    const memo = telemetryMemoValue(settings, telemetry);
 
     if (memo !== null) {
       this.lastRenderedValue.set(ev.action.id, memo);
@@ -689,16 +689,25 @@ export class SetupChassis extends ConnectionStateAwareAction<SetupChassisSetting
     this.setRegenerateCallback(ev.action.id, () => this.renderIcon(settings));
   }
 
-  private renderIcon(settings: SetupChassisSettings): string {
+  /**
+   * Renders the key icon. `telemetry` (already units-adjusted via
+   * `withUnitsPreference`) may be passed by callers that also need the same
+   * snapshot for the memo; omitted, a fresh one is fetched — the
+   * regenerate-callback and throttled-tick paths rely on that.
+   */
+  private renderIcon(settings: SetupChassisSettings, telemetry?: TelemetryData | null): string {
     const bindingMissing = this.computeBindingMissing(settings);
-    const telemetry = withUnitsPreference(this.sdkController.getCurrentTelemetry(), settings.units) ?? null;
+    const resolvedTelemetry =
+      telemetry !== undefined
+        ? telemetry
+        : (withUnitsPreference(this.sdkController.getCurrentTelemetry(), settings.units) ?? null);
 
     const paired = renderPairedIconOrNull({
       setting: settings.setting,
       direction: settings.direction,
       keyStyle: settings.keyStyle,
       pairPosition: settings.pairPosition,
-      telemetry,
+      telemetry: resolvedTelemetry,
       colorSourceSvg: differentialPreloadIncreaseIconSvg,
       colorOverrides: settings.colorOverrides,
       titleOverrides: settings.titleOverrides,
@@ -711,7 +720,7 @@ export class SetupChassis extends ConnectionStateAwareAction<SetupChassisSetting
     if (isViewSetting(settings.setting)) {
       return generateSetupViewSvg({
         viewId: settings.setting,
-        telemetry,
+        telemetry: resolvedTelemetry,
         colorSourceSvg: differentialPreloadIncreaseIconSvg,
         colorOverrides: settings.colorOverrides,
         titleOverrides: settings.titleOverrides,

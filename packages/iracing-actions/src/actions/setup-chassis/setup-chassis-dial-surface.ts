@@ -105,10 +105,14 @@ export function rotationKey(setting: SetupChassisDialSetting, direction: SetupCh
 export const DialSettings = z
   .object({
     setting: z.enum(ROTATION_SETTINGS).default("differential-preload"),
-    pressAction: z.enum(GESTURE_ACTIONS).default("none"),
-    longPressAction: z.enum(GESTURE_ACTIONS).default("none"),
-    tapAction: z.enum(GESTURE_ACTIONS).default("none"),
-    longTouchAction: z.enum(GESTURE_ACTIONS).default("none"),
+    // `.catch("none")` on every gesture slot: a value from a newer version
+    // must degrade to none instead of failing the field and resetting the
+    // whole dial object via the outer `DialSettings.catch` (the
+    // 2.0-contamination lesson — same rationale as `units` below).
+    pressAction: z.enum(GESTURE_ACTIONS).default("none").catch("none"),
+    longPressAction: z.enum(GESTURE_ACTIONS).default("none").catch("none"),
+    tapAction: z.enum(GESTURE_ACTIONS).default("none").catch("none"),
+    longTouchAction: z.enum(GESTURE_ACTIONS).default("none").catch("none"),
     /**
      * Units for the spring offset readout: `auto` follows the sim's
      * DisplayUnits; metric/imperial force it (#953). `.catch` so a value from
@@ -365,11 +369,13 @@ export class SetupChassisDialSurface {
   async touchTap(action: IDeckActionContext, dial: DialSettings, hold: boolean, rawSettings?: unknown): Promise<void> {
     if (!__FEATURE_DIAL_FEEDBACK__) return;
 
-    const gesture = hold ? dial.longTouchAction : dial.tapAction;
+    // Read the gesture from ctx.dial, not the event payload — the same
+    // stale-settings model `up()` follows (see ensureContext).
+    const ctx = this.ensureContext(action, dial);
+    const gesture = hold ? ctx.dial.longTouchAction : ctx.dial.tapAction;
 
     if (gesture === "none") return;
 
-    const ctx = this.ensureContext(action, dial);
     this.host.logger.info(hold ? "Setup chassis dial long touch" : "Setup chassis dial tap");
     await this.doGesture(gesture, ctx, rawSettings);
   }
@@ -469,12 +475,20 @@ export class SetupChassisDialSurface {
       const raw =
         rawSettings && typeof rawSettings === "object" && !Array.isArray(rawSettings)
           ? (rawSettings as Record<string, unknown>)
-          : {};
-      const rawDial =
-        raw.dial && typeof raw.dial === "object" && !Array.isArray(raw.dial)
-          ? (raw.dial as Record<string, unknown>)
-          : {};
-      await ctx.action.setSettings({ ...raw, dial: { ...rawDial, setting: next } });
+          : null;
+
+      if (raw) {
+        const rawDial =
+          raw.dial && typeof raw.dial === "object" && !Array.isArray(raw.dial)
+            ? (raw.dial as Record<string, unknown>)
+            : {};
+        await ctx.action.setSettings({ ...raw, dial: { ...rawDial, setting: next } });
+      } else {
+        // No settings in the event payload — flip only in memory. Persisting a
+        // merge over {} would replace the whole stored object with just the
+        // dial half, wiping the keypad settings.
+        this.host.logger.warn("Dial event carried no settings; spring-side flip not persisted");
+      }
 
       ctx.dial = { ...ctx.dial, setting: next };
       ctx.lastRenderSig = null;

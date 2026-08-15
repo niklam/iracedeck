@@ -26,7 +26,7 @@ import {
   svgToDataUri,
   type TitleOverrides,
 } from "@iracedeck/deck-core";
-import type { TelemetryData } from "@iracedeck/iracing-sdk";
+import { DisplayUnits, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 import setupViewTemplate from "../../icons/setup-view.svg";
 
@@ -134,7 +134,13 @@ export function withUnitsPreference(
 ): TelemetryData | null | undefined {
   if (!telemetry || units === "auto") return telemetry;
 
-  return { ...telemetry, DisplayUnits: units === "imperial" ? 0 : 1 };
+  const forced = units === "imperial" ? DisplayUnits.English : DisplayUnits.Metric;
+
+  // Skip the (full-snapshot) copy when the sim already displays the chosen
+  // units — this runs on the per-tick render paths.
+  if (telemetry.DisplayUnits === forced) return telemetry;
+
+  return { ...telemetry, DisplayUnits: forced };
 }
 
 /**
@@ -147,7 +153,7 @@ export function withUnitsPreference(
 export function formatSpringOffsetMm(value: unknown, telemetry?: TelemetryData | null): string {
   if (typeof value !== "number" || !Number.isFinite(value)) return VIEW_NULL_VALUE;
 
-  if (telemetry?.DisplayUnits === 0) {
+  if (telemetry?.DisplayUnits === DisplayUnits.English) {
     return `${(value / 25.4).toFixed(3)}"`;
   }
 

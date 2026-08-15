@@ -567,7 +567,13 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     "lr-shock": pair("setupChassisLrShockIncrease", "setupChassisLrShockDecrease"),
     "rr-shock": pair("setupChassisRrShockIncrease", "setupChassisRrShockDecrease"),
     "power-steering": pair("setupChassisPowerSteeringIncrease", "setupChassisPowerSteeringDecrease"),
-    "show-pit-stop-black-box": keybind("blackBoxPitStop"),
+    // The #818 sequence needs the target box AND a prime box (Lap Timing is
+    // the preferred prime) — declare both so the status line can't show a
+    // green check while showBlackBox() would skip for want of a prime.
+    "show-pit-stop-black-box": keybindKeys(["blackBoxLapTiming", "blackBoxPitStop"]),
+    // Plugin-internal flip of dial.setting — no binding needed; declared so
+    // the status line renders the explicit confirmation instead of nothing.
+    "toggle-spring-side": keybindFixed(),
   }),
 
   "setup-engine": entry("setting", {

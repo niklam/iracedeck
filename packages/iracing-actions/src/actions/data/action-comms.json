@@ -2534,8 +2534,14 @@
       "method": "keybind",
       "binding": {
         "scope": "global",
-        "key": "blackBoxPitStop"
+        "keys": [
+          "blackBoxLapTiming",
+          "blackBoxPitStop"
+        ]
       }
+    },
+    "toggle-spring-side": {
+      "method": "keybind"
     }
   },
   "setup-engine": {
