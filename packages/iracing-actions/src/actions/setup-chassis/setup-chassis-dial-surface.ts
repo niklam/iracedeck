@@ -50,12 +50,16 @@ export const ROTATION_SETTINGS = [
 export type SetupChassisDialSetting = (typeof ROTATION_SETTINGS)[number];
 
 /**
- * Setup Chassis has no natural toggle, but its adjustments are pit-stop
- * pending values — the gesture opens iRacing's F7 Pit Stop black box (the
- * screen those values live on) via the deterministic #818 prime+target
- * sequence. Defaults to `none` per the dial gesture convention.
+ * Setup Chassis gestures (#953), all defaulting to `none` per the dial gesture
+ * convention:
+ * - `show-pit-stop-black-box` opens iRacing's F7 Pit Stop black box (the
+ *   screen the pending spring/shock values live on) via the deterministic
+ *   #818 prime+target sequence.
+ * - `toggle-spring-side` flips the dial's mode between the LR and RR spring
+ *   (a non-spring mode jumps to LR) and persists it, so one dial covers both
+ *   rear springs — the lit side-arrow shows which one is active.
  */
-export const GESTURE_ACTIONS = ["show-pit-stop-black-box", "none"] as const;
+export const GESTURE_ACTIONS = ["show-pit-stop-black-box", "toggle-spring-side", "none"] as const;
 export type GestureSlot = (typeof GESTURE_ACTIONS)[number];
 
 export type SetupChassisDirection = "increase" | "decrease";
@@ -241,6 +245,8 @@ function gestureLabel(action: GestureSlot): string | undefined {
   switch (action) {
     case "show-pit-stop-black-box":
       return "Show Pit Stop Box";
+    case "toggle-spring-side":
+      return "Switch LR/RR";
     case "none":
       return undefined;
   }
@@ -271,6 +277,7 @@ export class SetupChassisDialSurface {
 
   async willAppear(action: IDeckActionContext, dial: DialSettings): Promise<void> {
     const ctx = this.ensureContext(action, dial);
+    ctx.dial = dial;
 
     action
       .setImage(renderDialNameIcon({ line1: "SETUP", line2: "CHASSIS", backgroundColor: "#3a1a2a" }))
@@ -288,6 +295,7 @@ export class SetupChassisDialSurface {
 
   async didReceiveSettings(action: IDeckActionContext, dial: DialSettings): Promise<void> {
     const ctx = this.ensureContext(action, dial);
+    ctx.dial = dial;
     ctx.lastRenderSig = null;
 
     await this.applyTriggerDescription(ctx);
@@ -312,7 +320,7 @@ export class SetupChassisDialSurface {
     ctx.rotatedWhilePressed = false;
   }
 
-  async up(actionId: string): Promise<void> {
+  async up(actionId: string, rawSettings?: unknown): Promise<void> {
     const ctx = this.contextsState.get(actionId);
 
     if (!ctx) return;
@@ -336,19 +344,19 @@ export class SetupChassisDialSurface {
     if (action === "none") return;
 
     this.host.logger.info(kind === "long" ? "Setup chassis dial long-pressed" : "Setup chassis dial pressed");
-    await this.doGesture(action);
+    await this.doGesture(action, ctx, rawSettings);
   }
 
-  async touchTap(action: IDeckActionContext, dial: DialSettings, hold: boolean): Promise<void> {
+  async touchTap(action: IDeckActionContext, dial: DialSettings, hold: boolean, rawSettings?: unknown): Promise<void> {
     if (!__FEATURE_DIAL_FEEDBACK__) return;
 
     const gesture = hold ? dial.longTouchAction : dial.tapAction;
 
     if (gesture === "none") return;
 
-    this.ensureContext(action, dial);
+    const ctx = this.ensureContext(action, dial);
     this.host.logger.info(hold ? "Setup chassis dial long touch" : "Setup chassis dial tap");
-    await this.doGesture(gesture);
+    await this.doGesture(gesture, ctx, rawSettings);
   }
 
   onTelemetry(actionId: string, _telemetry: TelemetryData | null): void {
@@ -378,6 +386,14 @@ export class SetupChassisDialSurface {
     }
   }
 
+  /**
+   * Look up or create the per-context state. An EXISTING context keeps its
+   * `dial` — settings changes only flow in through `willAppear` /
+   * `didReceiveSettings` (which assign `ctx.dial` explicitly). Event payloads
+   * must not refresh it: hosts with per-context settings caches can deliver
+   * stale settings in dial events, which would silently undo the
+   * `toggle-spring-side` gesture's plugin-side setSettings (#953).
+   */
   private ensureContext(action: IDeckActionContext, dial: DialSettings): SetupChassisDialContext {
     let ctx = this.contextsState.get(action.id);
 
@@ -393,7 +409,6 @@ export class SetupChassisDialSurface {
       this.contextsState.set(action.id, ctx);
     } else {
       ctx.action = action;
-      ctx.dial = dial;
     }
 
     return ctx;
@@ -413,7 +428,7 @@ export class SetupChassisDialSurface {
     await this.host.tapBinding(key);
   }
 
-  private async doGesture(action: GestureSlot): Promise<void> {
+  private async doGesture(action: GestureSlot, ctx: SetupChassisDialContext, rawSettings?: unknown): Promise<void> {
     if (action === "none") return;
 
     if (action === "show-pit-stop-black-box") {
@@ -423,6 +438,33 @@ export class SetupChassisDialSurface {
         tapSequence: (keys, holdMs) => this.host.tapBindingSequence(keys, holdMs),
         logger: this.host.logger,
       });
+
+      return;
+    }
+
+    if (action === "toggle-spring-side") {
+      const next: SetupChassisDialSetting = ctx.dial.setting === "lr-spring" ? "rr-spring" : "lr-spring";
+      this.host.logger.info("Setup chassis dial switched spring side");
+      this.host.logger.debug(`${ctx.dial.setting} -> ${next}`);
+
+      // Persist by merging over the RAW settings so the keypad half of the
+      // instance's settings object survives untouched. The host never echoes
+      // plugin-side setSettings back as didReceiveSettings, so the local dial
+      // state and the strip are updated here.
+      const raw =
+        rawSettings && typeof rawSettings === "object" && !Array.isArray(rawSettings)
+          ? (rawSettings as Record<string, unknown>)
+          : {};
+      const rawDial =
+        raw.dial && typeof raw.dial === "object" && !Array.isArray(raw.dial)
+          ? (raw.dial as Record<string, unknown>)
+          : {};
+      await ctx.action.setSettings({ ...raw, dial: { ...rawDial, setting: next } });
+
+      ctx.dial = { ...ctx.dial, setting: next };
+      ctx.lastRenderSig = null;
+      await this.applyTriggerDescription(ctx);
+      await this.renderFeedback(ctx);
     }
   }
 

@@ -158,6 +158,14 @@ describe("setup-chassis dial-surface pure helpers", () => {
 
       expect(desc.push).toBe("Show Pit Stop Box");
     });
+
+    it("names the spring-side toggle on push (#953)", () => {
+      const desc = buildTriggerDescription(
+        DialSettings.parse({ setting: "lr-spring", pressAction: "toggle-spring-side" }),
+      );
+
+      expect(desc.push).toBe("Switch LR/RR");
+    });
   });
 });
 
@@ -182,6 +190,74 @@ describe("SetupChassis dial surface", () => {
   async function appear(ctx: DialContext, settings: Record<string, unknown> = {}) {
     await action.onWillAppear(basicEvent(ctx, settings) as never);
   }
+
+  describe("Switch LR/RR Spring gesture (#953)", () => {
+    it("accepts the gesture in the dial schema", () => {
+      expect(DialSettings.parse({ pressAction: "toggle-spring-side" }).pressAction).toBe("toggle-spring-side");
+      expect(DialSettings.parse({ longPressAction: "toggle-spring-side" }).longPressAction).toBe("toggle-spring-side");
+    });
+
+    it("flips the dial from LR to RR spring on a short press, preserving the keypad settings", async () => {
+      const ctx = dialContext("d1");
+      const settings = {
+        setting: "differential-preload",
+        dial: { setting: "lr-spring", pressAction: "toggle-spring-side" },
+      };
+      await appear(ctx, settings);
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(ctx.setSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          setting: "differential-preload",
+          dial: expect.objectContaining({ setting: "rr-spring", pressAction: "toggle-spring-side" }),
+        }),
+      );
+    });
+
+    it("re-renders the strip for the new side after the flip", async () => {
+      const ctx = dialContext("d1");
+      const settings = { dial: { setting: "lr-spring", pressAction: "toggle-spring-side" } };
+      await appear(ctx, settings);
+      ctx.setFeedback.mockClear();
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      const feedback = (ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box;
+      const svg = decodeURIComponent(feedback);
+      const litRight = /<polygon data-side="right"[^>]*>/.exec(svg)?.[0];
+      expect(litRight).toBeDefined();
+      expect(litRight).not.toContain("opacity");
+      expect(svg).toContain("RR SPR");
+    });
+
+    it("toggles back on the next press without a settings echo", async () => {
+      const ctx = dialContext("d1");
+      const settings = { dial: { setting: "lr-spring", pressAction: "toggle-spring-side" } };
+      await appear(ctx, settings);
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      const lastWrite = ctx.setSettings.mock.calls.at(-1)?.[0] as { dial: { setting: string } };
+      expect(lastWrite.dial.setting).toBe("lr-spring");
+    });
+
+    it("jumps to the LR spring when a non-spring setting is selected", async () => {
+      const ctx = dialContext("d1");
+      const settings = { dial: { setting: "differential-preload", tapAction: "toggle-spring-side" } };
+      await appear(ctx, settings);
+
+      await action.onTouchTap({ action: ctx, payload: { settings, hold: false } } as never);
+
+      const lastWrite = ctx.setSettings.mock.calls.at(-1)?.[0] as { dial: { setting: string } };
+      expect(lastWrite.dial.setting).toBe("lr-spring");
+    });
+  });
 
   describe("spring side-arrow markers (#953)", () => {
     it("renders both side triangles for a spring setting, lighting the edited side", async () => {

@@ -91,7 +91,7 @@
 		<!-- Dial settings — shown only when this instance is a dial (#800). Setup
 		     Chassis has no press gesture, so only the rotation Component is offered. -->
 		<div id="dial-settings" class="hidden">
-			<sdpi-item label="Component">
+			<sdpi-item label="Mode">
 				<sdpi-select setting="dial.setting" default="differential-preload">
 					<optgroup label="Differential">
 						<option value="differential-preload">Differential Preload</option>
@@ -137,6 +137,7 @@
 				<sdpi-select setting="dial.pressAction" default="none">
 					<option value="none">None</option>
 					<option value="show-pit-stop-black-box">Show Pit Stop Black Box</option>
+					<option value="toggle-spring-side">Switch LR / RR Spring</option>
 				</sdpi-select>
 			</sdpi-item>
 			<ird-binding-status mode-setting="dial.pressAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
@@ -145,6 +146,7 @@
 				<sdpi-select setting="dial.longPressAction" default="none">
 					<option value="none">None</option>
 					<option value="show-pit-stop-black-box">Show Pit Stop Black Box</option>
+					<option value="toggle-spring-side">Switch LR / RR Spring</option>
 				</sdpi-select>
 			</sdpi-item>
 			<ird-binding-status mode-setting="dial.longPressAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
@@ -154,6 +156,7 @@
 				<sdpi-select setting="dial.tapAction" default="none">
 					<option value="none">None</option>
 					<option value="show-pit-stop-black-box">Show Pit Stop Black Box</option>
+					<option value="toggle-spring-side">Switch LR / RR Spring</option>
 				</sdpi-select>
 			</sdpi-item>
 			<ird-binding-status mode-setting="dial.tapAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
@@ -162,6 +165,7 @@
 				<sdpi-select setting="dial.longTouchAction" default="none">
 					<option value="none">None</option>
 					<option value="show-pit-stop-black-box">Show Pit Stop Black Box</option>
+					<option value="toggle-spring-side">Switch LR / RR Spring</option>
 				</sdpi-select>
 			</sdpi-item>
 			<ird-binding-status mode-setting="dial.longTouchAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>

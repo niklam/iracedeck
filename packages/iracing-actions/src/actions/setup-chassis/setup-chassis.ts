@@ -590,12 +590,12 @@ export class SetupChassis extends ConnectionStateAwareAction<SetupChassisSetting
   }
 
   override async onDialUp(ev: IDeckDialUpEvent<SetupChassisSettings>): Promise<void> {
-    await this.dialSurface.up(ev.action.id);
+    await this.dialSurface.up(ev.action.id, ev.payload.settings);
   }
 
   override async onTouchTap(ev: IDeckTouchTapEvent<SetupChassisSettings>): Promise<void> {
     const settings = this.parseSettings(ev.payload.settings);
-    await this.dialSurface.touchTap(ev.action, settings.dial, ev.payload.hold === true);
+    await this.dialSurface.touchTap(ev.action, settings.dial, ev.payload.hold === true, ev.payload.settings);
   }
 
   private parseSettings(settings: unknown): SetupChassisSettings {

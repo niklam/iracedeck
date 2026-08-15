@@ -283,7 +283,7 @@ Adjust the power steering assist level.
 
 ## On a dial
 
-Placed on a Stream Deck+ dial, Setup Chassis becomes a chassis-setup dial. Pick one component with the dial's **Component** dropdown; turning the dial steps it up or down in the car, and the touch strip shows that value live as a big, color-coded number. It uses the same key bindings as the keypad modes, so no extra configuration is needed if you already use them. The Property Inspector automatically shows the dial settings below (instead of the keypad Component and Direction) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
+Placed on a Stream Deck+ dial, Setup Chassis becomes a chassis-setup dial. Pick one component with the dial's **Mode** dropdown; turning the dial steps it up or down in the car, and the touch strip shows that value live as a big, color-coded number. It uses the same key bindings as the keypad modes, so no extra configuration is needed if you already use them. The Property Inspector automatically shows the dial settings below (instead of the keypad Component and Direction) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
 
 #### Details
 
@@ -297,9 +297,9 @@ Placed on a Stream Deck+ dial, Setup Chassis becomes a chassis-setup dial. Pick 
 
 Dials are currently Stream Deck+ only — the action can't be placed on Mirabox knobs or Ulanzi dials yet (see [Dials](/docs/features/dials/)).
 
-#### Setting: Component
+#### Setting: Mode
 
-The chassis component the dial controls. Each renders as a color-coded "dash box": a short label on top and the live value as a large number. Each setting has a built-in accent color, but you can override the border, label, value, and background colors in the **Dash Box Appearance** section of the dial settings. Weight jackers and the View sub-modes aren't offered as rotation settings.
+The chassis component the dial controls (the **Mode** dropdown). Each renders as a color-coded "dash box": a short label on top and the live value as a large number. Each setting has a built-in accent color, but you can override the border, label, value, and background colors in the **Dash Box Appearance** section of the dial settings. Weight jackers and the View sub-modes aren't offered as rotation settings.
 
 | Component | Label | Telemetry source | Shown as |
 |---|---|---|---|
@@ -321,7 +321,10 @@ The two spring boxes carry fixed left/right arrow markers flanking the label —
 
 #### Press and touch gestures
 
-Each gesture slot (**Press Action**, **Long Press**, **Tap Display**, **Long Touch**) can be set to **Show Pit Stop Black Box**, which brings up iRacing's F7 Pit Stop box — the screen the spring offsets live on — regardless of which box was open before. It uses the Black Box key bindings (at minimum *Pit Stop*, plus one other box binding used to switch deterministically), configured in **Global Settings → Black Box**. All slots default to **None**.
+Each gesture slot (**Press Action**, **Long Press**, **Tap Display**, **Long Touch**) offers two actions, and all slots default to **None**:
+
+- **Show Pit Stop Black Box** — brings up iRacing's F7 Pit Stop box (the screen the spring offsets live on) regardless of which box was open before. It uses the Black Box key bindings (at minimum *Pit Stop*, plus one other box binding used to switch deterministically), configured under **Related Key Bindings**.
+- **Switch LR / RR Spring** — flips the dial's Mode between the LR and RR spring (from any other mode it jumps to LR Spring) and remembers the choice, so one dial covers both rear springs; the lit side-arrow on the strip shows which spring you're editing. Needs no key bindings.
 
 ## Key Styles — paired +/− buttons
 
