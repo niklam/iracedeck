@@ -283,6 +283,10 @@ starlight-theme-select label select {
   width: 100%;
   height: var(--brand-logo-box, 1.6rem);
   object-fit: contain;
+  /* Starlight gives markdown images a bottom margin. Inside a centred tile that
+     margin is centred along with the image, so the logo rides half the margin
+     above the middle while the wordmark tiles sit dead centre. */
+  margin: 0;
   filter: brightness(0) invert(1);
   opacity: 0.8;
 }
