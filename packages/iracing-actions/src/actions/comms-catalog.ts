@@ -325,6 +325,7 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     "sub-camera": api,
     "car-number": api,
     "race-position": api,
+    "track-order": api,
     driving: api,
     // Gesture-slot values (dial.pressAction / .longPressAction / .tapAction /
     // .longTouchAction) — each an SDK camera command. "none" is omitted (it
