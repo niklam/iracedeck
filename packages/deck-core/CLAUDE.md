@@ -59,7 +59,7 @@ deck-core adds global settings readers on top of the pure functions:
 - `device-profiles.ts` — Canonical Stream Deck device + profile reference (#736, #753, #790): `DeviceType`, `DEVICE_SPECS`, `DEVICE_SUPPORT`, `PROFILE_NAMES` / `PROFILE_TARGET_DEVICES` / `PROFILE_NAV_ACTIONS`, `CAR_SELECTOR_PROFILE`, `shipsBundledProfiles`, lookup helpers, and the device-suffixed profile-name helpers (`PROFILE_DEVICE_SUFFIXES`, `profileDeviceSuffix`, `deviceProfileName`, `profileDisplayName`, `resolveProfileNameForDevice`); details in `.claude/rules/profiles-and-devices.md` (Elgato-only)
 - `profile-switcher.ts` — Profile-switch singleton (#736): `requestProfileSwitch`, `requestProfileSwitchBack`, `notifyProfileVisible` — the layer above the adapters' `switchToProfile`; a safe no-op where unregistered (non-Elgato)
 
-**Not in deck-core:** `initWindowFocus` / `focusIRacingIfEnabled` live in each plugin's own `src/shared/window-focus.ts` module — import them from there, never from `@iracedeck/deck-core` (some rules-file snippets show a deck-core import; that's wrong).
+- `window-service.ts` — Window/pointer singleton (#926): `initializeWindowService` (injected `focuser` / `pointerMover` delegates, the `initializeClipboard` pattern), `getWindowService` (`focus` / `focusIfEnabled` / `movePointerToSim`), and the free `focusIRacingIfEnabled` the plugin-level key/dial listeners register. Owns the `WindowFocusResult` / `PointerMoveResult` codes and the `DEFAULT_POINTER_X_FRACTION` / `DEFAULT_POINTER_Y_FRACTION` pointer target. Replaced the three duplicated per-plugin `shared/window-focus.ts` modules, which action code could not reach.
 
 ## Build
 

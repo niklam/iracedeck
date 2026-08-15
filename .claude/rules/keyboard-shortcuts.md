@@ -161,17 +161,16 @@ await getKeyboard().sendKeySequence([comboA, comboB]);     // atomic multi-chord
 ## Plugin Setup for Keyboard Support
 
 When using `getKeyboard()` in a plugin, you MUST:
-1. Import `initializeKeyboard` from `@iracedeck/deck-core`; `initWindowFocus` and `focusIRacingIfEnabled` are **per-plugin** modules (each plugin's `src/shared/window-focus.ts`, imported via `./shared/index.js`) — they do NOT live in deck-core
+1. Import `initializeKeyboard`, `initializeWindowService`, and `focusIRacingIfEnabled` from `@iracedeck/deck-core` — since #926 the window service lives in deck-core, replacing the three duplicated per-plugin `src/shared/window-focus.ts` modules
 2. Call `initializeKeyboard()` before registering actions
-3. Call `initWindowFocus()` to set up window focusing
+3. Call `initializeWindowService()` to set up window focusing and mouse-pointer placement
 4. Register `focusIRacingIfEnabled()` listeners on the adapter before registering actions
 
 ```typescript
 // plugin.ts
 import { ElgatoPlatformAdapter } from "@iracedeck/deck-adapter-elgato";
-import { initializeKeyboard } from "@iracedeck/deck-core";
+import { focusIRacingIfEnabled, initializeKeyboard, initializeWindowService } from "@iracedeck/deck-core";
 import { IRacingNative } from "@iracedeck/iracing-native";
-import { focusIRacingIfEnabled, initWindowFocus } from "./shared/index.js";
 
 const adapter = new ElgatoPlatformAdapter(streamDeck);
 const native = new IRacingNative();
@@ -184,7 +183,10 @@ initializeKeyboard(
   (chords, holdMs) => native.sendScanKeySequence(chords, holdMs), // atomic multi-chord sequence (#818)
 );
 
-initWindowFocus(adapter.createLogger("WindowFocus"), () => native.focusIRacingWindow());
+initializeWindowService(adapter.createLogger("WindowService"), {
+  focuser: () => native.focusIRacingWindow(),
+  pointerMover: (x, y) => native.moveMouseToIRacingWindow(x, y), // Mouse to Sim (#926)
+});
 
 // Focus iRacing before any action (BEFORE registering actions)
 adapter.onKeyDown(() => focusIRacingIfEnabled());
@@ -194,7 +196,7 @@ adapter.onDialRotate(() => focusIRacingIfEnabled());
 // Then register actions...
 ```
 
-When the `focusIRacingWindow` global setting is enabled, `focusIRacingIfEnabled()` is called before any action handler fires. This is registered as a listener on the adapter's key/dial events.
+When the `focusIRacingWindow` global setting is enabled, `focusIRacingIfEnabled()` is called before any action handler fires. This is registered as a listener on the adapter's key/dial events. Action code that needs explicit, unconditional control — the View Adjustment **Mouse to Sim** mode is the only consumer today — calls `getWindowService().focus()` / `.movePointerToSim()` instead, which ignore that setting because pressing such a key is explicit intent.
 
 ## Global Key Bindings (Shared Across Actions)
 

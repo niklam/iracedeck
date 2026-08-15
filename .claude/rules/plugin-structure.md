@@ -167,13 +167,12 @@ import {
   initializeRasterizer,
   initializeSDK,
   initializeSimHub,
+  initializeWindowService,
 } from "@iracedeck/deck-core";
 import { initializeEventBus } from "@iracedeck/event-bus";
 import { IRacingNative } from "@iracedeck/iracing-native";
 import { createSvgRasterizer } from "@iracedeck/rasterizer";
 import { initializeSimEventsIracing } from "@iracedeck/sim-events-iracing";
-// Per-plugin module — NOT in deck-core (each plugin has its own src/shared/window-focus.ts)
-import { focusIRacingIfEnabled, initWindowFocus } from "./shared/index.js";
 
 // 1. Create the Elgato platform adapter
 const adapter = new ElgatoPlatformAdapter(streamDeck);
@@ -220,8 +219,11 @@ const audioNative = new AudioNative();
 initializeAudio(adapter.createLogger("Audio"), audioNative, join(__binDir, "..", "assets", "audio"));
 getAudio().init();
 
-// 9. Initialize window focus service
-initWindowFocus(adapter.createLogger("WindowFocus"), () => native.focusIRacingWindow());
+// 9. Initialize the window service: focus + mouse-pointer placement (#926)
+initializeWindowService(adapter.createLogger("WindowService"), {
+  focuser: () => native.focusIRacingWindow(),
+  pointerMover: (x, y) => native.moveMouseToIRacingWindow(x, y),
+});
 
 // 10. Register focus-before-action listeners (BEFORE registering actions)
 adapter.onKeyDown(() => focusIRacingIfEnabled());
@@ -253,7 +255,7 @@ adapter.connect();
 - `initializeEventBus()` must come before any publisher (e.g. `initializeSimEventsIracing`) or subscriber (actions via `getEventBus().subscribe(...)`)
 - `initializeSimEventsIracing()` must come after `initializeSDK()` (requires `getController()`) and after `initializeEventBus()`; it's the only package that reads `sdkController` ticks on behalf of action consumers
 - `initializeAudio()` creates the audio service singleton (third argument = audio-assets base path); `getAudio().init()` starts the miniaudio engine. Both must be called before actions that use audio (e.g., Pit Engineer)
-- `initWindowFocus` / `focusIRacingIfEnabled` come from the plugin's own `src/shared/window-focus.ts` (via `./shared/index.js`), not from `@iracedeck/deck-core`
+- `initializeWindowService()` / `focusIRacingIfEnabled` / `getWindowService()` come from `@iracedeck/deck-core` (#926 replaced the three duplicated per-plugin `src/shared/window-focus.ts` modules). It must be initialized before `adapter.connect()` and before any action that calls `getWindowService()` — `getWindowService()` throws when uninitialized, while the listener-facing `focusIRacingIfEnabled()` is a safe no-op
 - `initializeRasterizer()` is gated by `__FEATURE_PNG_RASTERIZATION__` and must come before any code that renders a device image (it can run anywhere before `adapter.connect()`, since `toDeviceImage()` passes images through unchanged until it's called); see `@.claude/rules/platform-feature-flags.md`
 - `initializeSimHub()` must come AFTER `initGlobalSettings()` (reads host/port from settings)
 - `initializeBindingDispatcher()` must come AFTER `initGlobalSettings()`, `initializeKeyboard()`, and `initializeSimHub()`

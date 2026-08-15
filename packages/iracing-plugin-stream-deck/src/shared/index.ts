@@ -104,10 +104,13 @@ export {
   // Key binding utilities
   formatKeyBinding,
   parseKeyBinding,
+  // Window service (focus + mouse pointer placement, #926)
+  initializeWindowService,
+  getWindowService,
+  isWindowServiceInitialized,
+  focusIRacingIfEnabled,
+  type IWindowService,
 } from "@iracedeck/deck-core";
 
 // Re-export from deck-adapter-elgato
 export { createSDLogger, type SDLoggerLike } from "@iracedeck/deck-adapter-elgato";
-
-// Window focus service (depends on @iracedeck/iracing-native)
-export { initWindowFocus, focusIRacingIfEnabled } from "./window-focus.js";
