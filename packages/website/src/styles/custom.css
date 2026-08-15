@@ -223,10 +223,18 @@ starlight-theme-select label select {
   display: grid;
   grid-template-columns: repeat(auto-fit, var(--brand-tile-width, 9.5rem));
   justify-content: center;
+  align-items: stretch;
   gap: 0.75rem;
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+/* Starlight's markdown list styles put vertical margins on `li`, which eat into
+   the stretched row height — every tile but the first ends up shorter than its
+   row. Reset them so the tiles fill their row exactly. */
+.brand-strip > li {
+  margin: 0;
 }
 
 .brand-tile {
@@ -264,16 +272,24 @@ starlight-theme-select label select {
   letter-spacing: 0;
 }
 
-/* One neutral tone per theme, applied to any transparent-background asset with
-   no per-logo work. `.brand-logo-color` opts out for brands whose guidelines
-   forbid recolouring. */
+/* Every logo gets the same box and is scaled to fit inside it, so tiles end up
+   the same height and each mark keeps the same inset from its tile's edges no
+   matter what its aspect ratio is. Sizing to the raw image instead lets a wide
+   wordmark run edge to edge while a square mark floats in the middle.
+   `--brand-logo-box` is the height; the width cap leaves the breathing room. */
 .brand-logo {
-  max-height: 2rem;
-  max-width: 100%;
-  width: auto;
-  height: auto;
+  width: 100%;
+  max-width: 7rem;
+  height: var(--brand-logo-box, 2.25rem);
+  object-fit: contain;
   filter: brightness(0) invert(1);
   opacity: 0.8;
+}
+
+/* An icon-only mark shown beside its name takes only the width it needs. */
+.brand-logo-inline {
+  width: auto;
+  max-width: var(--brand-logo-box, 2.25rem);
 }
 
 [data-theme="light"] .brand-logo {
@@ -290,6 +306,7 @@ starlight-theme-select label select {
 @media (max-width: 600px) {
   .brand-strip {
     --brand-tile-width: 7.5rem;
+    --brand-logo-box: 1.75rem;
     gap: 0.5rem;
   }
 
@@ -303,7 +320,7 @@ starlight-theme-select label select {
   }
 
   .brand-logo {
-    max-height: 1.6rem;
+    max-width: 5.25rem;
   }
 }
 
@@ -453,6 +470,7 @@ starlight-theme-select label select {
    from stretching its card far past the others. */
 .download-brands {
   --brand-tile-width: 7.5rem;
+  --brand-logo-box: 1.75rem;
   /* The card centres its children, which would shrink the grid to one track. */
   align-self: stretch;
   margin-bottom: 1.5rem;
@@ -464,7 +482,7 @@ starlight-theme-select label select {
 }
 
 .download-brands .brand-logo {
-  max-height: 1.6rem;
+  max-width: 5.25rem;
 }
 
 .download-brands .brand-wordmark {

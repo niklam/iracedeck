@@ -56,7 +56,11 @@ const tiles = brands.map((brand) => {
       <li class="brand-tile">
         {logoUrl && (
           <img
-            class:list={["brand-logo", brand.preserveBrandColor && "brand-logo-color"]}
+            class:list={[
+              "brand-logo",
+              brand.logoNeedsName && "brand-logo-inline",
+              brand.preserveBrandColor && "brand-logo-color",
+            ]}
             src={logoUrl}
             alt={brand.logoNeedsName ? "" : brand.name}
           />
