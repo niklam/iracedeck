@@ -30,10 +30,11 @@ import voiceChatMuteIconSvg from "@iracedeck/icons/audio-controls/voice-chat-mut
 import voiceChatVolumeDownIconSvg from "@iracedeck/icons/audio-controls/voice-chat-volume-down.svg";
 import voiceChatVolumeUpIconSvg from "@iracedeck/icons/audio-controls/voice-chat-volume-up.svg";
 
-import { stepRaceEngineerVolume, stepRadarVolume } from "../../audio/audio-volume.js";
+import { INTERNAL_AUDIO_BUSES } from "./audio-buses.js";
 import {
   AUDIO_CONTROLS_GLOBAL_KEYS,
   type AudioControlsSettings,
+  type InternalAudioCategory,
   isInternalAudioCategory,
   parseAudioControlsSettings,
 } from "./audio-controls-settings.js";
@@ -226,23 +227,18 @@ export class AudioControls extends ConnectionStateAwareAction<AudioControlsSetti
 
   /**
    * Step an iRaceDeck-internal audio bus (Race Engineer voice or Radar ticks)
-   * up or down via the shared volume helpers. The helper persists the new
-   * value and applies it to the audio engine — Race Engineer stepping respects
-   * the master enable gate (the value updates but Voice stays muted while the
-   * Race Engineer feature is off). `mute` never reaches here (these categories
-   * expose only volume-up/down in the Property Inspector); treat anything that
-   * isn't `volume-down` as a step up.
+   * one detent up or down through the shared {@link INTERNAL_AUDIO_BUSES}
+   * table — the same wiring the dial rotates, so the two surfaces can't drift.
+   * The helper persists the new value and applies it to the audio engine;
+   * Race Engineer stepping respects the master enable gate (the value updates
+   * but Voice stays muted while the Race Engineer feature is off). `mute`
+   * never reaches here (these categories expose only volume-up/down in the
+   * Property Inspector); treat anything that isn't `volume-down` as a step up.
    */
-  private stepInternalVolume(category: AudioCategory, audioAction: AudioAction): void {
-    const direction = audioAction === "volume-down" ? "down" : "up";
-
-    if (category === "race-engineer") {
-      const next = stepRaceEngineerVolume(direction);
-      this.logger.info(`Race Engineer volume ${direction} → ${next}`);
-    } else if (category === "radar") {
-      const next = stepRadarVolume(direction);
-      this.logger.info(`Radar volume ${direction} → ${next}`);
-    }
+  private stepInternalVolume(category: InternalAudioCategory, audioAction: AudioAction): void {
+    const down = audioAction === "volume-down";
+    const next = INTERNAL_AUDIO_BUSES[category].stepBy(down ? -1 : 1);
+    this.logger.info(`${category} volume ${down ? "down" : "up"} → ${next}`);
   }
 
   private async executeControl(category: AudioCategory, audioAction: AudioAction): Promise<void> {

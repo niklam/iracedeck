@@ -89,6 +89,17 @@ export const DIAL_MUTE_BINDINGS: Partial<Record<KeybindDialCategory, string>> = 
 };
 
 /**
+ * The mute map as a total record, for callers that can't accept the optional
+ * values of {@link DIAL_MUTE_BINDINGS} (the comms catalog builds its
+ * `keyBy` map from this).
+ */
+export function dialMuteBindingMap(): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(DIAL_MUTE_BINDINGS).filter((entry): entry is [string, string] => entry[1] !== undefined),
+  );
+}
+
+/**
  * What the dial PRESS runs. `push-to-talk` holds the PTT binding for the
  * duration of the press; `mute-unmute` taps the category's mute binding
  * (`DIAL_MUTE_BINDINGS`) or toggles the internal category's feature gate.
@@ -117,8 +128,14 @@ export const AudioDialSettings = z
 export type AudioDialSettings = z.infer<typeof AudioDialSettings>;
 
 export const AudioControlsSettings = CommonSettings.extend({
-  category: z.enum(["push-to-talk", "voice-chat", "master", ...INTERNAL_AUDIO_CATEGORIES]).default("push-to-talk"),
-  action: z.enum(["volume-up", "volume-down", "mute"]).default("volume-up"),
+  // Same per-field .catch as the dial fields: the two surfaces share one
+  // settings blob, so an unrecognized keypad value must not take the dial's
+  // configuration down with it (or vice versa).
+  category: z
+    .enum(["push-to-talk", "voice-chat", "master", ...INTERNAL_AUDIO_CATEGORIES])
+    .default("push-to-talk")
+    .catch("push-to-talk"),
+  action: z.enum(["volume-up", "volume-down", "mute"]).default("volume-up").catch("volume-up"),
   dial: AudioDialSettings,
 });
 
@@ -136,11 +153,12 @@ export function parseAudioControlsSettings(raw: unknown): AudioControlsSettings 
  * for a keybind category, none for the internal ones (plugin audio).
  */
 export function rotationBindingKeys(category: DialCategory): string[] {
-  if (isInternalAudioCategory(category)) return [];
+  // Fail-soft (unlike resolveRotationBinding): this feeds the touch-strip
+  // render, so an unexpected category must degrade to "no bindings needed"
+  // rather than throw and kill the strip.
+  const bindings = isInternalAudioCategory(category) ? undefined : DIAL_ROTATION_BINDINGS[category];
 
-  const { up, down } = DIAL_ROTATION_BINDINGS[category];
-
-  return [up, down];
+  return bindings ? [bindings.up, bindings.down] : [];
 }
 
 /**

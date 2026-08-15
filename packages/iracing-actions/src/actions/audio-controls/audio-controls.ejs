@@ -95,8 +95,9 @@
 		// absent input and its "set it here" link has nowhere to land. Derive them
 		// from the dial comms entry (rather than a hand-kept list) so the accordion
 		// always covers exactly what the status line looks up, and take each row
-		// from the shared catalog so its label stays owned by one place. Dial-only:
-		// hosts without a dial surface (#786) never render these.
+		// from the shared catalog so its label stays owned by one place. They are
+		// marked dial-only and hidden unless this instance IS a dial (see
+		// applyDialView) - a keypad Audio Controls key can't use them.
 		var __ownKeys = {};
 		__kb.audioControls.forEach(function (row) { __ownKeys[row.setting] = true; });
 		var __catalogRows = [];
@@ -117,12 +118,11 @@
 		var __borrowedRows = __borrowedKeys.map(function (key) {
 			var row = __catalogRows.filter(function (b) { return b.setting === key; })[0];
 			if (!row) throw new Error('audio-controls PI: no key-bindings.json row for dial binding ' + key);
-			return row;
+			return Object.assign({}, row, { class: 'dial-only-binding hidden' });
 		});
-		var __dialSurfaceAvailable = (locals.platform?.features?.dialFeedback !== false);
 		%>
 		<%- include('global-key-bindings', {
-			keyBindings: __dialSurfaceAvailable ? __kb.audioControls.concat(__borrowedRows) : __kb.audioControls
+			keyBindings: __kb.audioControls.concat(__borrowedRows)
 		}) %>
 
 		<div id="keypad-global-appearance">
@@ -202,14 +202,30 @@
 				document.getElementById("keypad-appearance")?.classList.add("hidden");
 				document.getElementById("keypad-global-appearance")?.classList.add("hidden");
 				document.getElementById("dial-settings")?.classList.remove("hidden");
+				// Bindings only a DIAL mode taps (the Spotter mode's spotter keys, #809)
+				// ship hidden and appear here, so they show on exactly the surface that
+				// can use them - on every host, whether or not it has a touch strip.
+				document.querySelectorAll(".dial-only-binding").forEach(function (el) {
+					el.classList.remove("hidden");
+				});
 			}
 
-			// Master has no Mute / Unmute (iRacing has no master-mute keybind): detach
-			// the option (same sdpi-select re-render caveat as the keypad mute option).
-			// Spotter mutes via Spotter Silence (#809). The press status line is
-			// hidden for internal-category Mute / Unmute — that mute is
-			// plugin-internal, there is nothing to configure.
-			const DIAL_MUTABLE_CATEGORIES = new Set(["voice-chat", "spotter", "race-engineer", "radar"]);
+			// Which categories offer Mute / Unmute, derived from the same comms entry
+			// the plugin generates from its dial tables: a category with a mute
+			// binding (voice chat, spotter) plus the iRaceDeck-internal ones (they
+			// flip a feature gate, so they mute with no binding at all). Master is
+			// absent - iRacing has no master-mute keybind - and for it the option is
+			// detached (same sdpi-select re-render caveat as the keypad mute option).
+			// The press status line is hidden for internal-category Mute / Unmute:
+			// that mute is plugin-internal, there is nothing to configure.
+			const DIAL_MUTABLE_CATEGORIES = new Set(
+				<%- JSON.stringify(
+					Object.keys((__dialComms['mute-unmute'].binding.keyBy || {}).map || {})
+						.concat(Object.keys(__dialComms).filter(function (mode) {
+							return mode !== '_meta' && !__dialComms[mode].binding;
+						}))
+				) %>
+			);
 			let dialMuteOption = null;
 			let dialMuteOptionParent = null;
 

@@ -33,10 +33,32 @@ describe("audio-controls settings", () => {
     );
   });
 
+  it("falls back to full defaults when the object itself can't be parsed", () => {
+    // The per-field .catch guards the action's own enums; a non-object (or a
+    // malformed CommonSettings field) still fails the parse outright, and the
+    // action must keep working on defaults rather than throw.
+    const s = parseAudioControlsSettings("not an object");
+    expect(s.category).toBe("push-to-talk");
+    expect(s.action).toBe("volume-up");
+    expect(s.dial).toEqual({ category: "voice-chat", pressAction: "none" });
+  });
+
   it("keeps persisted dial fields and defaults the rest", () => {
     const s = parseAudioControlsSettings({ dial: { category: "radar" } });
     expect(s.dial.category).toBe("radar");
     expect(s.dial.pressAction).toBe("none");
+  });
+
+  it("keeps the rest of the instance when a keypad field holds an unknown value", () => {
+    // The two surfaces share one settings blob: an unrecognized keypad value
+    // (e.g. a profile written by a newer build) must not wipe the dial half.
+    const s = parseAudioControlsSettings({
+      category: "not-a-category",
+      dial: { category: "spotter", pressAction: "mute-unmute" },
+    });
+    expect(s.category).toBe("push-to-talk");
+    expect(s.dial.category).toBe("spotter");
+    expect(s.dial.pressAction).toBe("mute-unmute");
   });
 
   it("keeps the rest of the instance when a dial field holds an unknown value", () => {

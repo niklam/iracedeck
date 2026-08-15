@@ -35,6 +35,11 @@ import {
 
 import { BLACK_BOX_GLOBAL_KEYS } from "../shared/black-box.js";
 import { SPOTTER_GLOBAL_KEYS } from "../shared/spotter-bindings.js";
+import {
+  dialMuteBindingMap,
+  type KeybindDialCategory,
+  rotationBindingKeys,
+} from "./audio-controls/audio-controls-settings.js";
 
 const api: CommDescriptor = { method: "api" };
 const chat: CommDescriptor = { method: "chat" };
@@ -71,6 +76,15 @@ function dir(increase: string, decrease: string): CommDescriptor {
  */
 function pair(increase: string, decrease: string): CommDescriptor {
   return keybindKeys([increase, decrease]);
+}
+
+/**
+ * The Audio Controls dial's rotation descriptor for a keybind category, taken
+ * from the settings module's own binding table (the surface dispatches from
+ * that table, so the PI status line can't describe a different key).
+ */
+function dialRotation(category: KeybindDialCategory): CommDescriptor {
+  return keybindKeys(rotationBindingKeys(category));
 }
 
 export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
@@ -435,20 +449,19 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
   // the same category values need different descriptors per surface (keypad
   // resolves one key via the `action` setting; dial rotation needs the pair).
   // The spotter category (#809) reuses the AI Spotter Controls bindings —
-  // louder/quieter for rotation, silence for Mute / Unmute. The PI hides the
+  // louder/quieter for rotation, silence for Mute / Unmute. Every keybind
+  // descriptor here is DERIVED from the settings module's tables, so the PI
+  // status line and the surface's dispatch can't disagree. The PI hides the
   // press status line for internal-category Mute / Unmute (plugin audio,
   // nothing to configure); "none" is omitted so its line renders nothing.
   "audio-controls-dial": entry("dial.category", {
-    "voice-chat": pair("audioVoiceChatVolumeUp", "audioVoiceChatVolumeDown"),
-    master: pair("audioMasterVolumeUp", "audioMasterVolumeDown"),
-    spotter: pair(SPOTTER_GLOBAL_KEYS.louder, SPOTTER_GLOBAL_KEYS.quieter),
+    "voice-chat": dialRotation("voice-chat"),
+    master: dialRotation("master"),
+    spotter: dialRotation("spotter"),
     "race-engineer": keybindFixed(),
     radar: keybindFixed(),
     "push-to-talk": keybind("audioControlsPushToTalk"),
-    "mute-unmute": keybindBy("dial.category", {
-      "voice-chat": "audioVoiceChatMute",
-      spotter: SPOTTER_GLOBAL_KEYS.silence,
-    }),
+    "mute-unmute": keybindBy("dial.category", dialMuteBindingMap()),
   }),
 
   "toggle-ui-elements": entry("element", {

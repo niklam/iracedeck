@@ -20,22 +20,13 @@ import {
 } from "@iracedeck/deck-core";
 import type { ILogger } from "@iracedeck/logger";
 
-import { toggleRaceEngineerFeature, toggleRadarFeature } from "../../audio/audio-toggles.js";
-import {
-  isRaceEngineerEnabled,
-  isRadarEnabled,
-  readRaceEngineerVolume,
-  readRadarVolume,
-  stepRaceEngineerVolumeBy,
-  stepRadarVolumeBy,
-} from "../../audio/audio-volume.js";
+import { INTERNAL_AUDIO_BUSES } from "./audio-buses.js";
 import {
   type AudioControlsSettings,
   type AudioDialSettings,
   DIAL_MUTE_BINDINGS,
   type DialCategory,
   type DialPressAction,
-  type InternalAudioCategory,
   isInternalAudioCategory,
   pressBindingKeys,
   PUSH_TO_TALK_KEY,
@@ -75,38 +66,6 @@ const ROTATE_LABELS: Record<DialCategory, string> = {
   spotter: "Adjust spotter volume",
   "race-engineer": "Adjust Race Engineer volume",
   radar: "Adjust radar volume",
-};
-
-/** The plugin-owned audio bus behind an internal category. */
-interface InternalAudioBus {
-  /** Steps the 0–100 level by a signed detent count; returns the new level. */
-  stepBy(ticks: number): number;
-  /** Current 0–100 level (for the strip bar). */
-  read(): number;
-  /** Feature-gate state (the strip's dimmed OFF rendering). */
-  isEnabled(): boolean;
-  /** Flips the feature gate — the dial's Mute / Unmute for this bus. */
-  toggle(logger: ILogger): void;
-}
-
-/**
- * Internal categories → their bus. Rotation, Mute / Unmute, and the strip
- * readback all resolve through this table, so no path re-branches on the
- * category name (and a new internal bus is one entry).
- */
-const INTERNAL_AUDIO_BUSES: Record<InternalAudioCategory, InternalAudioBus> = {
-  "race-engineer": {
-    stepBy: stepRaceEngineerVolumeBy,
-    read: readRaceEngineerVolume,
-    isEnabled: isRaceEngineerEnabled,
-    toggle: toggleRaceEngineerFeature,
-  },
-  radar: {
-    stepBy: stepRadarVolumeBy,
-    read: readRadarVolume,
-    isEnabled: isRadarEnabled,
-    toggle: toggleRadarFeature,
-  },
 };
 
 const PRESS_LABELS: Record<DialPressAction, string | undefined> = {
@@ -375,7 +334,7 @@ export class AudioDialSurface {
     }
 
     if (this.host.isBindingMissing(muteKey)) {
-      this.host.logger.warn(`Mute press ignored — ${muteKey} binding not configured`);
+      this.host.logger.warn(`Mute press ignored — the ${category} mute binding (${muteKey}) is not configured`);
 
       return;
     }
