@@ -7,7 +7,7 @@ sidebar:
     variant: tip
 ---
 
-Camera Controls combines camera group selection, camera cycling, and focus targeting into one action. Everything is driven by the iRacing SDK camera commands — no keyboard shortcuts and no configurable bindings. Placed on a Stream Deck+ dial it becomes a camera dial — turn to flip through cameras or cars with the live focus on the touch strip ([On a dial](#on-a-dial)).
+Camera Controls combines camera group selection, camera cycling, and focus targeting into one action. Every mode is driven by the iRacing SDK camera commands and needs no configuration — with one exception: **Cycle Sub-Camera** uses iRacing's own Next / Previous Sub Camera key bindings, because the sim's camera commands cannot step a sub-camera (see [that mode](#cycle-sub-camera)). It comes preconfigured with iRacing's default keys, so it works out of the box. Placed on a Stream Deck+ dial the action becomes a camera dial — turn to flip through cameras or cars with the live focus on the touch strip ([On a dial](#on-a-dial)).
 
 ## Modes
 
@@ -19,6 +19,7 @@ Switch the active camera group to a specific numeric group (1–20). Useful when
 
 #### Details
 
+- **Method:** iRacing API — no key binding needed
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -35,7 +36,8 @@ Cycle through camera groups. The **Direction** setting picks whether pressing th
 
 #### Details
 
-- **Dial:** No rotation support
+- **Method:** iRacing API — no key binding needed
+- **Dial:** Rotation supported ([On a dial](#on-a-dial))
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** Yes — the button shows a preview icon for the currently active camera group (Nose, Cockpit, TV1, etc.)
 
@@ -54,18 +56,32 @@ Each button stores its own subset, so different buttons can cycle different sets
 
 ### Cycle Sub-Camera
 
-Cycle sub-cameras within the currently active camera group (e.g., left / right / front nose variants).
+Cycle sub-cameras within the currently active camera group (e.g., left / right / front nose variants) — the same step iRacing's own `B` / `Shift+B` keys make. The camera focus stays exactly where it is; only the shot changes, so it works the same whether a car, the pace car, or a scenic view is focused.
 
 #### Details
 
-- **Dial:** No rotation support
-- **Default binding:** No keyboard binding
+- **Method:** Key binding — this is the one Camera Controls mode that is not an SDK command
+- **Dial:** Rotation supported ([On a dial](#on-a-dial))
+- **Default binding:** `B` (next) / `Shift+B` (previous) — iRacing's own defaults
 - **Telemetry-aware icon:** No
+
+#### Why this mode uses a key binding
+
+iRacing's camera commands can change **which car** is focused and **which camera group** is active, but they have no working control over the individual camera within a group — the sim ignores that part of the command. Sub-camera stepping is only reachable through iRacing's own **Next Sub Camera** / **Previous Sub Camera** controls, so the button triggers those instead. iRacing decides which camera comes next and wraps around at the ends of the group, exactly as if you had pressed the key yourself.
+
+Both keys are preconfigured to iRacing's defaults, so the mode works without setup — the bindings are stored the first time you open this action's Property Inspector. If you already had a Cycle Sub-Camera button before this update, open its Property Inspector once to store them (the key shows a warning icon until you do). If you have rebound these functions in iRacing, set the matching keys under **Related Key Bindings** in the Property Inspector.
 
 #### Setting: Direction
 
 - **Next** (default) — Pressing the button advances to the next sub-camera
 - **Previous** — Pressing the button goes back to the previous sub-camera
+
+#### Keyboard simulation
+
+| Action | Default Key | iRacing Setting |
+|--------|-------------|-----------------|
+| Next sub-camera | B | Next Sub Camera |
+| Previous sub-camera | Shift+B | Previous Sub Camera |
 
 ---
 
@@ -75,7 +91,8 @@ Switch camera focus to the next / previous car in the field.
 
 #### Details
 
-- **Dial:** No rotation support
+- **Method:** iRacing API — no key binding needed
+- **Dial:** Rotation supported ([On a dial](#on-a-dial))
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
 
@@ -92,7 +109,8 @@ Cycle through the driving-style cameras (cockpit, bumper, nose, chase, etc.).
 
 #### Details
 
-- **Dial:** No rotation support
+- **Method:** iRacing API — no key binding needed
+- **Dial:** Rotation supported ([On a dial](#on-a-dial))
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
 
@@ -109,6 +127,7 @@ Center the camera on your own car.
 
 #### Details
 
+- **Method:** iRacing API — no key binding needed
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -125,6 +144,7 @@ Focus the camera on the current race leader.
 
 #### Details
 
+- **Method:** iRacing API — no key binding needed
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -141,6 +161,7 @@ Focus the camera on the latest incident reported by iRacing.
 
 #### Details
 
+- **Method:** iRacing API — no key binding needed
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -157,6 +178,7 @@ Focus the camera on the car the iRacing director rates as most exciting in the m
 
 #### Details
 
+- **Method:** iRacing API — no key binding needed
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -190,6 +212,7 @@ Switch camera focus to the car currently running in a specific race position.
 
 #### Details
 
+- **Method:** iRacing API — no key binding needed
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -206,6 +229,7 @@ Switch camera focus to a car by its car number.
 
 #### Details
 
+- **Method:** iRacing API — no key binding needed
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -222,6 +246,7 @@ Apply a predefined iRacing camera state bit flag. Useful for scripting camera se
 
 #### Details
 
+- **Method:** iRacing API — no key binding needed
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -232,13 +257,13 @@ The numeric camera state value passed to the iRacing SDK. Integer. Defaults to `
 
 ## On a dial
 
-Placed on a Stream Deck+ dial, Camera Controls becomes a camera dial for spectating and broadcasting. Turn the dial to flip through cameras or cars — the dial's own **Mode** setting picks the target, and the turn direction replaces the keypad cycle modes' Next / Previous setting: clockwise = next, counter-clockwise = previous. In the two car-neighbour modes clockwise always means *the car ahead*: in **Cycle by Race Position** the car one place ahead in the standings (the position number decreases), in **Cycle by Track Order** the car physically ahead on the road. A **Reverse rotation** checkbox flips the direction of whichever mode is selected. The touch strip's top line always names the current mode; below it the main content is whatever that mode acts on — the current camera, sub-camera, or car — flanked by what a turn in each direction would switch to, where it can be previewed. Everything is an iRacing SDK camera command, so no bindings are needed. The Property Inspector automatically shows the dial settings (instead of the keypad Mode) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
+Placed on a Stream Deck+ dial, Camera Controls becomes a camera dial for spectating and broadcasting. Turn the dial to flip through cameras or cars — the dial's own **Mode** setting picks the target, and the turn direction replaces the keypad cycle modes' Next / Previous setting: clockwise = next, counter-clockwise = previous. In the two car-neighbour modes clockwise always means *the car ahead*: in **Cycle by Race Position** the car one place ahead in the standings (the position number decreases), in **Cycle by Track Order** the car physically ahead on the road. A **Reverse rotation** checkbox flips the direction of whichever mode is selected. The touch strip's top line always names the current mode; below it the main content is whatever that mode acts on — the current camera, sub-camera, or car — flanked by what a turn in each direction would switch to, where it can be previewed. Every mode is an iRacing SDK camera command except **Cycle Sub-Camera**, which triggers iRacing's Next / Previous Sub Camera bindings (preconfigured to `B` / `Shift+B` — see the [keypad mode](#cycle-sub-camera)). The Property Inspector automatically shows the dial settings (instead of the keypad Mode) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
 
 #### Details
 
-- **Method:** iRacing API — the dial reuses the same SDK camera commands as the keypad cycle modes; no key bindings, nothing to configure
+- **Method:** iRacing API for every mode except Cycle Sub-Camera, which uses a key binding — the dial reuses the same dispatch as the keypad cycle modes, so both surfaces behave identically
 - **Dial:** Rotating cycles the selected target one step per detent — clockwise = next (in Cycle by Race Position and Cycle by Track Order, the car ahead), counter-clockwise the other way; the **Reverse rotation** setting flips the selected mode's direction
-- **Default binding:** No keyboard binding
+- **Default binding:** `B` / `Shift+B` in Cycle Sub-Camera mode (iRacing's own defaults); none in the other modes
 - **Telemetry-aware icon:** Yes — the touch strip is a live carousel of the current camera / focused car and its neighbours from telemetry, falling back to a mode label when out of a session
 
 #### Controls
@@ -252,7 +277,7 @@ Dials are currently Stream Deck+ only — the action can't be placed on Mirabox 
 Which target the dial cycles. Defaults to **Cycle by Car #** — the marquee flip-through-the-field control.
 
 - **Cycle Camera** — steps through the camera groups (Nose, Cockpit, TV1, …). Only the groups you enable in the **Camera Groups** selector take part — the plugin-global camera set (keypad Cycle Camera buttons without their own per-button selection follow it too).
-- **Cycle Sub-Camera** — steps through the sub-cameras within the active group
+- **Cycle Sub-Camera** — steps through the sub-cameras within the active group, leaving the camera focus untouched. The one binding-driven dial mode (see the [keypad mode](#cycle-sub-camera)); if its bindings are cleared, the touch strip shows the missing-binding warning instead of the camera carousel
 - **Cycle by Car #** (default) — moves camera focus to the next / previous car ordered by car number
 - **Cycle by Race Position** — moves camera focus through the live running order (the plugin's canonical race order, with iRacing's official position as a fallback when no live order is available). Clockwise selects the car ahead — the position number decreases
 - **Cycle by Track Order** — moves camera focus to the car physically ahead of or behind the focused car *on the road*, regardless of standings or lap count — the order you see in front of you during a race or replay. Clockwise selects the car ahead on track, counter-clockwise the car behind. Handy for jumping between the cars involved in an incident, where the running order says nothing about who is next to whom. Only competitors are cycled — the pace car and cars that have left the world are skipped, the same as the other car modes — and the neighbours come from live car placement, so while you scrub a replay *inside a live session* the mode follows the live field, not the replay cursor (in a replay you open outside a session, the replay is the live data)
@@ -261,7 +286,7 @@ Which target the dial cycles. Defaults to **Cycle by Car #** — the marquee fli
 The touch strip's small top line always names the current mode (`CAMERA`, `SUB-CAMERA`, `CAR #`, `POSITION`, `TRACK ORDER`, or `DRIVING CAM`). Below it, the main content is whatever that mode acts on:
 
 - **Cycle Camera** — the current camera group's icon and name in the centre, flanked by the smaller dimmed neighbour groups from your enabled set — each side shows exactly what a turn that way would switch to.
-- **Cycle Sub-Camera** — the current camera's name within the focused group, flanked by the adjacent cameras (the same order a turn steps through).
+- **Cycle Sub-Camera** — the current camera's name within the focused group, flanked by the adjacent cameras. iRacing owns the actual stepping order, so treat the side names as a guide to the group's camera list rather than a guarantee of where the next detent lands.
 - **Cycle by Car #** — the focused car's number large in the centre (`#number`) flanked by the neighbouring car numbers, each on the side its turn direction lands on.
 - **Cycle by Race Position** — the focused car's race position large in the centre (`P4`), with its car number shown smaller beneath it, flanked by the smaller dimmed position previews (`P3` / `P5`) — each side the exact position a turn that way would focus. When the focused car has no classified position (the pace / safety car), the centre falls back to a number-only readout instead of a misleading position badge.
 - **Cycle by Track Order** — the focused car's number large in the centre (`#number`) flanked by the numbers of the cars physically ahead of and behind it on the road, each on the side its turn direction lands on and captioned `AHEAD` / `BEHIND` beneath — so the strip reads correctly whichever way rotation is mapped. If the focused car has no track position of its own (it has towed or left the world), both directions re-enter the field at the same car; the strip then shows that car on both sides without the captions, rather than labelling one car both ahead and behind.
