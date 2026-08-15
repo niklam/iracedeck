@@ -145,8 +145,8 @@ const MODE_ABBR: Record<SetupChassisDialSetting, string> = {
   "differential-exit": "D-OUT",
   "front-arb": "FARB",
   "rear-arb": "RARB",
-  "lr-spring": "LRSPR",
-  "rr-spring": "RRSPR",
+  "lr-spring": "LR SPR",
+  "rr-spring": "RR SPR",
   "lf-shock": "LF",
   "rf-shock": "RF",
   "lr-shock": "LR",
@@ -168,6 +168,16 @@ const MODE_COLOR: Record<SetupChassisDialSetting, string> = {
   "lr-shock": "#9b59b6",
   "rr-shock": "#9b59b6",
   "power-steering": "#f39c12",
+};
+
+/**
+ * Which spring side a rotation setting edits — drives the dash box's lit
+ * side-arrow so the driver can tell LR from RR at a glance mid-race (#953).
+ * Only the springs get markers; the other settings are side-less.
+ */
+const SIDE_MARKER: Partial<Record<SetupChassisDialSetting, "left" | "right">> = {
+  "lr-spring": "left",
+  "rr-spring": "right",
 };
 
 const MODE_LABEL: Record<SetupChassisDialSetting, string> = {
@@ -450,6 +460,7 @@ export class SetupChassisDialSurface {
       colors: resolveDialBoxColors(ctx.dial.colors, MODE_COLOR[setting]),
       identityLabelScale: 0.22,
       bindingMissing: this.computeBindingMissing(ctx.dial),
+      sideMarker: SIDE_MARKER[setting],
     });
     const feedback: DeckFeedbackPayload = { box: svgToDataUri(boxSvg) };
     await ctx.action.setFeedback(feedback);

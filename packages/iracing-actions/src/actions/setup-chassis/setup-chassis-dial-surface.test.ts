@@ -183,6 +183,28 @@ describe("SetupChassis dial surface", () => {
     await action.onWillAppear(basicEvent(ctx, settings) as never);
   }
 
+  describe("spring side-arrow markers (#953)", () => {
+    it("renders both side triangles for a spring setting, lighting the edited side", async () => {
+      const ctx = dialContext("d1");
+      await appear(ctx, dialSettings({ setting: "lr-spring" }));
+
+      const feedback = (ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box;
+      const svg = decodeURIComponent(feedback);
+
+      expect(svg).toContain('data-side="left"');
+      expect(svg).toContain('data-side="right"');
+    });
+
+    it("renders no side markers for non-spring settings", async () => {
+      const ctx = dialContext("d1");
+      await appear(ctx, dialSettings({ setting: "differential-preload" }));
+
+      const feedback = (ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box;
+
+      expect(decodeURIComponent(feedback)).not.toContain("data-side");
+    });
+  });
+
   describe("Show Pit Stop Black Box gesture (#953)", () => {
     it("accepts the gesture in the dial schema", () => {
       expect(DialSettings.parse({ pressAction: "show-pit-stop-black-box" }).pressAction).toBe(

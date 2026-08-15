@@ -85,6 +85,13 @@ export function renderDialBox(args: {
   colors: DialBoxColors;
   identityLabelScale?: number;
   bindingMissing?: boolean;
+  /**
+   * Draw fixed left/right triangles flanking the label, lighting the given
+   * side and dimming the other (#953: the LR/RR spring dials). The label stays
+   * centered — the markers occupy fixed slots so the text never shifts when
+   * the user switches between the two sides.
+   */
+  sideMarker?: "left" | "right";
 }): string {
   const {
     width: w,
@@ -94,6 +101,7 @@ export function renderDialBox(args: {
     colors,
     identityLabelScale = DEFAULT_IDENTITY_LABEL_SCALE,
     bindingMissing = false,
+    sideMarker,
   } = args;
 
   const minSide = Math.min(w, h);
@@ -123,7 +131,25 @@ export function renderDialBox(args: {
     valueText = `<text x="${w / 2}" y="${valueY}" text-anchor="middle" fill="${colors.value}" font-family="Arial, sans-serif" font-size="${valueFontSize}" font-weight="bold">${value}</text>`;
   }
 
-  const content = labelText + valueText;
+  let markerContent = "";
+
+  if (sideMarker) {
+    const markerH = Math.round(labelFontSize * 0.9);
+    const markerW = Math.round(markerH * 0.7);
+    // The label's visual center (its baseline minus the ~0.36em bold-Arial offset).
+    const markerCy = labelY - Math.round(labelFontSize * 0.36);
+    const offset = Math.round(w * 0.3);
+    const leftCx = w / 2 - offset;
+    const rightCx = w / 2 + offset;
+    const dim = ' opacity="0.22"';
+    const leftPoints = `${leftCx - markerW / 2},${markerCy} ${leftCx + markerW / 2},${markerCy - markerH / 2} ${leftCx + markerW / 2},${markerCy + markerH / 2}`;
+    const rightPoints = `${rightCx + markerW / 2},${markerCy} ${rightCx - markerW / 2},${markerCy - markerH / 2} ${rightCx - markerW / 2},${markerCy + markerH / 2}`;
+    markerContent =
+      `<polygon data-side="left" points="${leftPoints}" fill="${colors.label}"${sideMarker === "left" ? "" : dim}/>` +
+      `<polygon data-side="right" points="${rightPoints}" fill="${colors.label}"${sideMarker === "right" ? "" : dim}/>`;
+  }
+
+  const content = labelText + valueText + markerContent;
 
   const innerW = w - 2 * inset;
   const innerH = h - 2 * inset;

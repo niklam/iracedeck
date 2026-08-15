@@ -309,15 +309,15 @@ The chassis component the dial controls. Each renders as a color-coded "dash box
 | Differential Exit | D-OUT | `dcDiffExit` | integer |
 | Front ARB | FARB | `dcAntiRollFront` | integer |
 | Rear ARB | RARB | `dcAntiRollRear` | integer |
-| LR Spring | LRSPR | `dpWeightJackerLeft` | mm or inches, pending next stop |
-| RR Spring | RRSPR | `dpWeightJackerRight` | mm or inches, pending next stop |
+| LR Spring | ◀ LR SPR | `dpWeightJackerLeft` | mm or inches, pending next stop |
+| RR Spring | RR SPR ▶ | `dpWeightJackerRight` | mm or inches, pending next stop |
 | LF Shock | LF | *(none)* | label only |
 | RF Shock | RF | *(none)* | label only |
 | LR Shock | LR | *(none)* | label only |
 | RR Shock | RR | *(none)* | label only |
 | Power Steering | PWR | `dcPowerSteering` | integer |
 
-When a telemetry-backed component has no data the box shows `---` — including the springs on cars that don't expose the F7 spring rows (only the stock-car family does, and some cars expose one side only). Shocks still rotate (they use their increase/decrease bindings); their strips just can't show a live number.
+The two spring boxes carry fixed left/right arrow markers flanking the label — the side you're editing lights up while the other stays dim, so LR and RR are distinguishable at a glance mid-race. When a telemetry-backed component has no data the box shows `---` — including the springs on cars that don't expose the F7 spring rows (only the stock-car family does, and some cars expose one side only). Shocks still rotate (they use their increase/decrease bindings); their strips just can't show a live number.
 
 #### Press and touch gestures
 

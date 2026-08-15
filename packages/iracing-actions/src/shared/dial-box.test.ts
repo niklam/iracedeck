@@ -112,6 +112,48 @@ describe("renderDialBox", () => {
   });
 });
 
+describe("side markers (#953 spring arrows)", () => {
+  const base = {
+    width: 200,
+    height: 100,
+    abbr: "LR SPR",
+    value: "3 mm",
+    colors: { border: "#2ecc71", label: "#2ecc71", value: "#2ecc71", background: "#0d0d0d" },
+  };
+
+  it("draws no triangles without a side marker", () => {
+    expect(renderDialBox(base)).not.toContain("<polygon");
+  });
+
+  it("draws both triangles with the active LEFT side lit and the right side dimmed", () => {
+    const svg = renderDialBox({ ...base, sideMarker: "left" });
+    const polygons = svg.match(/<polygon[^>]*>/g) ?? [];
+
+    expect(polygons).toHaveLength(2);
+    const dimmed = polygons.filter((poly) => poly.includes("opacity"));
+    expect(dimmed).toHaveLength(1);
+    expect(dimmed[0]).toContain('data-side="right"');
+  });
+
+  it("lights the RIGHT triangle for the right marker", () => {
+    const svg = renderDialBox({ ...base, sideMarker: "right" });
+    const polygons = svg.match(/<polygon[^>]*>/g) ?? [];
+
+    expect(polygons).toHaveLength(2);
+    const dimmed = polygons.filter((poly) => poly.includes("opacity"));
+    expect(dimmed).toHaveLength(1);
+    expect(dimmed[0]).toContain('data-side="left"');
+  });
+
+  it("keeps the label centered at the same x with and without markers", () => {
+    const plain = renderDialBox(base);
+    const marked = renderDialBox({ ...base, sideMarker: "left" });
+    const labelX = (svg: string) => /<text x="([\d.]+)"/.exec(svg)?.[1];
+
+    expect(labelX(marked)).toBe(labelX(plain));
+  });
+});
+
 describe("resolveDialBoxColors", () => {
   it("falls back to the accent for border/label/value and the dark default for background", () => {
     expect(resolveDialBoxColors(undefined, ACCENT)).toEqual({
