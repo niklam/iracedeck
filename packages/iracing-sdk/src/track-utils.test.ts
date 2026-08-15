@@ -77,6 +77,12 @@ describe("carInWorld", () => {
     expect(carInWorld({} as unknown as TelemetryData)(2)).toBe(true);
   });
 
+  it("rejects a carIdx past the end of the per-car arrays", () => {
+    // The competitor list can outrun the telemetry arrays (a sparse / shorter
+    // capture); an out-of-range slot is absence, not a pass.
+    expect(carInWorld(telemetry([{ idx: 2, dist: 0.4 }]))(99)).toBe(false);
+  });
+
   it("treats a missing track-surface array as no evidence of absence", () => {
     const noSurface = { CarIdxLapDistPct: [0.1, 0.2, 0.3] } as unknown as TelemetryData;
 

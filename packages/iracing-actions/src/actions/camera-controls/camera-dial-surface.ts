@@ -1029,9 +1029,30 @@ export class CameraDialSurface {
     if (carNumberRaw !== null) this.host.focusCarNumber(carNumberRaw);
   }
 
-  /** The live order, canonical first, official `CarIdxPosition` as fallback. */
+  /**
+   * The live order, canonical first, official `CarIdxPosition` as fallback.
+   *
+   * The canonical order is a dense array of 1-based ranks with `0` for every
+   * car it omits, so "no live order at all" arrives as a NON-NULL array of
+   * zeros — `??` alone accepts it and strands the mode at `maxPosition = 0`.
+   * That is exactly the formation lap: the canonical calculation scores cars by
+   * `CarIdxLapCompleted + CarIdxLapDistPct` and omits every car whose lap count
+   * is still -1, so nobody is ranked until the first start/finish crossing
+   * (#968 — the same `CarIdxLapCompleted` trap `carInWorld` avoids). An order
+   * that ranks NOBODY is therefore "no live order at all" in the sense
+   * `race-positions.md` means it, and the official counter takes over.
+   */
   private resolveOrder(telemetry: TelemetryData | null): number[] | null {
-    return this.host.getRacePositions() ?? telemetry?.CarIdxPosition ?? null;
+    // An all-zero canonical array means "no live order at all" — the condition
+    // race-positions.md defines the official counters as the fallback for — so
+    // test for a ranked car rather than for null (#968). Note neither order
+    // exists before the green flag (both are all zeros on a real parade lap),
+    // so this mode still has nothing to cycle there; see #974.
+    const canonical = this.host.getRacePositions();
+
+    if (canonical?.some((position) => position > 0)) return canonical;
+
+    return telemetry?.CarIdxPosition ?? canonical ?? null;
   }
 
   /**

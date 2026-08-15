@@ -166,6 +166,11 @@ describe("car cycling on the formation lap (#968)", () => {
     const towed = telemetryWith(Object.fromEntries(PACE_LAP_CARS.map((c) => [c.idx, c.dist])), {
       17: TrkLoc.NotInWorld,
     });
+    // Same formation-lap marker as the fixture above — the skip must survive it,
+    // not be waved through because the lap-count array happens to be absent.
+    (towed as unknown as Record<string, number[]>).CarIdxLapCompleted = new Array<number>(
+      (towed as unknown as Record<string, number[]>).CarIdxLapDistPct.length,
+    ).fill(-1);
 
     expect(computeCarNumberTarget(14, cars, "next", carInWorld(towed))?.carNumber).toBe("1");
     expect(computeTrackOrderTarget(towed, 14, cars, "ahead")?.carNumber).toBe("1");

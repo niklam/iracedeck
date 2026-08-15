@@ -20,7 +20,8 @@ _Unreleased_
 
 **Bug Fixes**
 
-- Cycling the camera between cars works again while the field is still on its first lap. Cycle by Car # and Cycle by Race Position (on the dial and the keypad) and Replay Control's Next / Previous Car Number were doing nothing during the formation lap, because a car that has not yet completed a lap was treated as not being on track — so on the pace lap the plugin considered the whole field absent. Track-order cycling was never affected.
+- Cycling the camera between cars works again while the field is still on its first lap. The Camera Controls dial's Cycle by Car # mode, the keypad's Cycle Car mode, and Replay Control's Next / Previous Car (Number Order) modes were doing nothing during the formation lap, because a car that had not yet completed a lap was treated as not being on track — so on the pace lap the plugin considered the whole field absent. Cycle by Track Order was never affected.
+- The Camera Controls dial's Cycle by Race Position mode now falls back to iRacing's own position numbers whenever the plugin's live running order has nobody ranked — for example after the race finishes, where the mode previously stopped responding. (Before the green flag neither order exists yet, so this mode still has nothing to cycle during the parade lap.)
 
 **Maintenance**
 

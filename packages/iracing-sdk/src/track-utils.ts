@@ -7,15 +7,21 @@ export interface FindNearestCarOptions {
 }
 
 /**
- * Whether a car currently exists in the sim world — the project's single
- * "is this car really there" test (issue #968).
+ * Whether a car currently exists in the sim world — the one in-world test every
+ * car-targeting walk shares (issue #968: camera / replay cycling, the
+ * track-order primitive below, and the nearest-gap helper).
  *
- * A car counts as present when it has a valid lap distance and a track surface
- * other than `NotInWorld`. Those two signals move together: iRacing zeroes a
- * car's `CarIdxLapCompleted` / `CarIdxLapDistPct` / `CarIdxTrackSurface` to
- * `-1` in the same tick it leaves the world (dump-file inspection recorded in
- * `sim-events-iracing`'s `race-finish.ts`), so a despawned car fails this test
- * even while a stale lap count lingers.
+ * A car counts as present when it has a valid lap distance AND a track surface
+ * other than `NotInWorld`. Both halves earn their place: iRacing normally
+ * clears a car's `CarIdxLapCompleted` / `CarIdxLapDistPct` /
+ * `CarIdxTrackSurface` together as it leaves the world (dump-file inspection
+ * recorded in `sim-events-iracing`'s `race-finish.ts`), but a despawned car can
+ * be observed holding a stale, still-valid `CarIdxLapDistPct` for a tick — the
+ * #885 report — and only the surface rejects that one.
+ *
+ * The translator keeps its OWN in-world tests (`race-finish.ts`,
+ * `hasLiveProgress`) because position scoring genuinely needs the lap count;
+ * this predicate is the shared rule for "may the camera be pointed at it".
  *
  * **There is deliberately NO `CarIdxLapCompleted` condition — do not add one.**
  * That field counts COMPLETED laps, so it reads `-1` for every active car until
@@ -85,9 +91,10 @@ export function findNearestCarOnTrack(
   for (let idx = 0; idx < lapDistPct.length; idx++) {
     if (idx === referenceCarIdx) continue;
 
-    // Skip disconnected/empty slots and cars that have left the world. Lap count
-    // is deliberately not part of this test — see `carInWorld` (#307, #968).
-    if (lapDistPct[idx] === undefined || !inWorld(idx)) continue;
+    // Skip disconnected/empty slots and cars that have left the world (an
+    // absent or negative lap distance fails `inWorld` on its own). Lap count is
+    // deliberately not part of this test — see `carInWorld` (#307, #968).
+    if (!inWorld(idx)) continue;
 
     if (skipIdx?.(idx)) continue;
 
@@ -140,10 +147,11 @@ export function nearestCarGapMeters(
   for (let idx = 0; idx < lapDistPct.length; idx++) {
     if (idx === referenceCarIdx) continue;
 
-    const pct = lapDistPct[idx];
+    // Same in-world rule as every other consumer (`carInWorld`, #968) — it
+    // already rejects an absent or negative lap distance.
+    if (!inWorld(idx)) continue;
 
-    // Same in-world rule as every other consumer (`carInWorld`, #968).
-    if (pct === undefined || !inWorld(idx)) continue;
+    const pct = lapDistPct[idx];
 
     let frac = Math.abs(pct - me);
 
