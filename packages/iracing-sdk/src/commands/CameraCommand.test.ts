@@ -243,30 +243,6 @@ describe("CameraCommand", () => {
     });
   });
 
-  describe("cycleSubCamera", () => {
-    it("should send CamSwitchPos with incremented camera for next", () => {
-      cameraCommand.cycleSubCamera(5, 3, 2, 1);
-
-      expect(mockNative.broadcastMsg).toHaveBeenCalledWith(BroadcastMsg.CamSwitchPos, 5, 3, 3);
-    });
-
-    it("should send CamSwitchPos with decremented camera for previous", () => {
-      cameraCommand.cycleSubCamera(5, 3, 2, -1);
-
-      expect(mockNative.broadcastMsg).toHaveBeenCalledWith(BroadcastMsg.CamSwitchPos, 5, 3, 1);
-    });
-
-    it("should preserve current group", () => {
-      cameraCommand.cycleSubCamera(0, 7, 4, 1);
-
-      expect(mockNative.broadcastMsg).toHaveBeenCalledWith(BroadcastMsg.CamSwitchPos, 0, 7, 5);
-    });
-
-    it("should return true", () => {
-      expect(cameraCommand.cycleSubCamera(1, 1, 1, 1)).toBe(true);
-    });
-  });
-
   describe("cycleCar", () => {
     it("should send CamSwitchPos with incremented car position for next", () => {
       cameraCommand.cycleCar(5, 1);
@@ -332,7 +308,6 @@ describe("CameraCommand", () => {
       expect(cameraCommand.focusOnIncident(1, 1)).toBe(true);
       expect(cameraCommand.focusOnMostExciting(1, 1)).toBe(true);
       expect(cameraCommand.cycleCamera(1, 1, 1)).toBe(true);
-      expect(cameraCommand.cycleSubCamera(1, 1, 1, 1)).toBe(true);
       expect(cameraCommand.cycleCar(1, 1)).toBe(true);
       expect(cameraCommand.cycleDrivingCamera(1, 1, 1)).toBe(true);
     });

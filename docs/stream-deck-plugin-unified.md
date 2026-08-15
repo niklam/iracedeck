@@ -321,12 +321,14 @@ Cycle through cameras and cars.
 | ----------------------- | ----------- | --------------- | ---------- | ----- |
 | Next Camera             | C           | SDK             | None       | -     |
 | Previous Camera         | Shift+C     | SDK             | None       | -     |
-| Next Sub-Camera         | B           | SDK             | None       | -     |
-| Previous Sub-Camera     | Shift+B     | SDK             | None       | -     |
+| Next Sub-Camera         | B           | Key binding     | None       | No SDK equivalent — see note below |
+| Previous Sub-Camera     | Shift+B     | Key binding     | None       | No SDK equivalent — see note below |
 | Next Car                | V           | SDK             | None       | -     |
 | Previous Car            | Shift+V     | SDK             | None       | -     |
 | Next Driving Camera     | PageDown    | SDK             | None       | -     |
 | Previous Driving Camera | PageUp      | SDK             | None       | -     |
+
+> **Sub-cameras have no SDK path (issue #852).** `CamSwitchPos` / `CamSwitchNum` act on the focused car and the camera group only — iRacing ignores their camera argument, so sub-camera stepping must go through the sim's own Next / Previous Sub Camera bindings.
 
 **Type:** +/- (camera type + direction selector)
 

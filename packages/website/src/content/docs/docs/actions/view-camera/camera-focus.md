@@ -19,6 +19,7 @@ Switch the active camera group to a specific numeric group (1–20). Useful when
 
 #### Details
 
+- **Method:** iRacing API — no key binding needed
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -35,7 +36,8 @@ Cycle through camera groups. The **Direction** setting picks whether pressing th
 
 #### Details
 
-- **Dial:** No rotation support
+- **Method:** iRacing API — no key binding needed
+- **Dial:** Rotation supported ([On a dial](#on-a-dial))
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** Yes — the button shows a preview icon for the currently active camera group (Nose, Cockpit, TV1, etc.)
 
@@ -89,7 +91,8 @@ Switch camera focus to the next / previous car in the field.
 
 #### Details
 
-- **Dial:** No rotation support
+- **Method:** iRacing API — no key binding needed
+- **Dial:** Rotation supported ([On a dial](#on-a-dial))
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
 
@@ -106,7 +109,8 @@ Cycle through the driving-style cameras (cockpit, bumper, nose, chase, etc.).
 
 #### Details
 
-- **Dial:** No rotation support
+- **Method:** iRacing API — no key binding needed
+- **Dial:** Rotation supported ([On a dial](#on-a-dial))
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
 
@@ -123,6 +127,7 @@ Center the camera on your own car.
 
 #### Details
 
+- **Method:** iRacing API — no key binding needed
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -139,6 +144,7 @@ Focus the camera on the current race leader.
 
 #### Details
 
+- **Method:** iRacing API — no key binding needed
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -155,6 +161,7 @@ Focus the camera on the latest incident reported by iRacing.
 
 #### Details
 
+- **Method:** iRacing API — no key binding needed
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -171,6 +178,7 @@ Focus the camera on the car the iRacing director rates as most exciting in the m
 
 #### Details
 
+- **Method:** iRacing API — no key binding needed
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -204,6 +212,7 @@ Switch camera focus to the car currently running in a specific race position.
 
 #### Details
 
+- **Method:** iRacing API — no key binding needed
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -220,6 +229,7 @@ Switch camera focus to a car by its car number.
 
 #### Details
 
+- **Method:** iRacing API — no key binding needed
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -236,6 +246,7 @@ Apply a predefined iRacing camera state bit flag. Useful for scripting camera se
 
 #### Details
 
+- **Method:** iRacing API — no key binding needed
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No

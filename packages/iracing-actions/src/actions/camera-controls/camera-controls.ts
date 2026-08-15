@@ -89,6 +89,7 @@ import {
   parseGroupSubset,
 } from "./camera-groups.js";
 import { migrateFocusOnExitingToMostExciting } from "./migrate-focus-on-exiting.js";
+import { subCameraBindingKey } from "./sub-camera-bindings.js";
 
 // Re-exported from the shared leaf so existing importers (and tests) keep their
 // `camera-controls.js` import path (issue #803 rework).
@@ -100,20 +101,9 @@ export {
   parseGroupSubset,
 } from "./camera-groups.js";
 
-/**
- * @internal Exported for testing
- *
- * Global key-binding settings for the one Camera Controls mode iRacing does not
- * expose through the SDK (issue #852). Every other camera mode is an SDK
- * broadcast; sub-camera stepping is reachable only through iRacing's own
- * "Next / Previous Sub Camera" bindings (B / Shift+B by default) — the switch
- * broadcasts ignore their `camera` argument entirely, so no dispatch built on
- * them can step a sub-camera. See `SUB_CAMERA_KEY_MAP` for the direction map.
- */
-export const GLOBAL_KEY_NAMES = {
-  SUB_CAMERA_NEXT: "cameraControlsSubCameraNext",
-  SUB_CAMERA_PREVIOUS: "cameraControlsSubCameraPrevious",
-} as const;
+// Re-exported so consumers (and tests) can reach the keys through the action,
+// while `sub-camera-bindings.ts` stays their single definition (issue #852).
+export { SUB_CAMERA_BINDING_KEYS } from "./sub-camera-bindings.js";
 
 // --- Target types ---
 
@@ -139,23 +129,14 @@ type Target = (typeof TARGET_VALUES)[number];
 type Direction = "next" | "previous";
 
 /**
- * The sub-camera binding a cycle direction taps. The single source of truth for
- * both surfaces: the keypad reads it via the action's `direction` setting, the
- * dial via its rotation direction (both arrive through `executeCycle`).
- */
-const SUB_CAMERA_KEY_MAP: Record<Direction, string> = {
-  next: GLOBAL_KEY_NAMES.SUB_CAMERA_NEXT,
-  previous: GLOBAL_KEY_NAMES.SUB_CAMERA_PREVIOUS,
-};
-
-/**
  * The binding key a keypad button depends on, or `null` for the SDK-driven
- * modes (which need no binding). Drives both readiness tracking
- * (`setActiveBinding`) and the per-button missing-binding icon warning
- * (`isBindingMissing`), so the two can never disagree.
+ * modes (which need no binding). Drives the per-button missing-binding icon
+ * warning (`isBindingMissing`) — deliberately NOT `setActiveBinding`, whose
+ * state is one value per action-class instance and would bleed one button's
+ * mode onto every other Camera Controls key (see the note in `updateDisplay`).
  */
 export function resolveBindingKey(target: Target, direction: Direction = "next"): string | null {
-  return target === "cycle-sub-camera" ? SUB_CAMERA_KEY_MAP[direction] : null;
+  return target === "cycle-sub-camera" ? subCameraBindingKey(direction) : null;
 }
 
 function isCycleTarget(target: Target): target is CycleTarget {
@@ -736,7 +717,6 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
     await this.persistMigratedSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
-    this.setActiveBinding(resolveBindingKey(settings.target, settings.direction));
     await this.pushDeviceProfiles(ev, settings);
     await this.updateDisplay(ev, settings);
 
@@ -770,7 +750,6 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
     await this.persistMigratedSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
-    this.setActiveBinding(resolveBindingKey(settings.target, settings.direction));
     this.lastDisplayedGroup.delete(ev.action.id);
     await this.pushDeviceProfiles(ev, settings);
     await this.updateDisplay(ev, settings);
@@ -850,6 +829,18 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
     direction: Direction,
     cameraGroupSubset?: string | Record<string, unknown>,
   ): Promise<void> {
+    // Sub-camera is dispatched BEFORE the telemetry guard: it taps an iRacing
+    // key binding (issue #852) and reads no telemetry at all, so a momentary
+    // gap in the SDK feed (reconnect window, menus, a stalled tick) must not
+    // swallow the press — every other keyboard-driven action taps
+    // unconditionally, and the plugin-wide offline handling already gates
+    // presses while iRacing is not running.
+    if (target === "cycle-sub-camera") {
+      await this.cycleSubCamera(direction);
+
+      return;
+    }
+
     const telemetry = this.sdkController.getCurrentTelemetry();
 
     if (!telemetry) {
@@ -899,23 +890,6 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
           this.logger.info("Camera group cycled (car number fallback)");
           this.logger.debug(`Result: ${success}, direction: ${direction}`);
         }
-
-        break;
-      }
-      case "cycle-sub-camera": {
-        // Keyboard-only by necessity (issue #852). iRacing's camera switch
-        // broadcasts act on the FOCUS and the camera GROUP; their `camera`
-        // argument does not select a sub-camera, so no SDK dispatch can step
-        // one — four rounds of live testing across three dispatch shapes never
-        // moved the camera, and the pre-#803 "working" behavior was the focus
-        // jumping to another car (carIdx passed where a race position belongs),
-        // which makes the sim re-pick the in-group shot. iRacing exposes the
-        // real function only as a key binding, so tap it: the sim owns the
-        // stepping and the wrap, which also makes this independent of the focus
-        // target (pace car, Scenic, or a classified car all behave the same).
-        await this.tapBinding(SUB_CAMERA_KEY_MAP[direction]);
-        this.logger.info("Sub-camera cycled");
-        this.logger.debug(`direction: ${direction}, binding: ${SUB_CAMERA_KEY_MAP[direction]}`);
 
         break;
       }
@@ -972,6 +946,39 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
         break;
       }
     }
+  }
+
+  /**
+   * Step one sub-camera within the focused camera group.
+   *
+   * Keyboard-only by necessity (issue #852). iRacing's camera switch broadcasts
+   * act on the FOCUS and the camera GROUP; their `camera` argument does not
+   * select a sub-camera, so no SDK dispatch can step one — four rounds of live
+   * testing across three dispatch shapes never moved the camera, and the
+   * pre-#803 "working" behavior was the focus jumping to another car (carIdx
+   * passed where a race position belongs), which makes the sim re-pick the
+   * in-group shot. iRacing exposes the real function only as a key binding, so
+   * tap it: the sim owns the stepping and the wrap, which also makes this
+   * independent of the focus target (pace car, scenic view, or a classified car
+   * all behave the same).
+   *
+   * Shared by the keypad Cycle Sub-Camera mode and the dial's Sub-Camera mode.
+   */
+  private async cycleSubCamera(direction: Direction): Promise<void> {
+    const settingKey = subCameraBindingKey(direction);
+
+    // `tapBinding` returns void, so check first: without this an unset binding
+    // logs a successful cycle and a support log hides the real cause.
+    if (this.isBindingMissing(settingKey)) {
+      this.logger.warn("Sub-camera binding not configured — nothing sent");
+      this.logger.debug(`direction: ${direction}, binding: ${settingKey}`);
+
+      return;
+    }
+
+    await this.tapBinding(settingKey);
+    this.logger.info("Sub-camera cycled");
+    this.logger.debug(`direction: ${direction}, binding: ${settingKey}`);
   }
 
   /**
@@ -1295,6 +1302,15 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
     // Per-BUTTON missing-binding state (#612): never the shared
     // isActiveBindingMissing(), which is one value per action-class instance and
     // would bleed one button's mode onto every other Camera Controls button.
+    //
+    // For the same reason this action never calls `setActiveBinding`: readiness
+    // would then be governed class-wide by whichever button appeared last, so a
+    // single unbound Cycle Sub-Camera key would dim the twelve SDK-driven camera
+    // keys around it (and an SDK-mode button would clear the tracking the
+    // sub-camera key needs). Readiness stays tied to the iRacing connection —
+    // correct for every mode, since no camera control works out of a session —
+    // and the binding state is surfaced per button by this warning and by the
+    // PI's own status line.
     const bindingKey = resolveBindingKey(settings.target, settings.direction);
     const svgDataUri = generateCameraControlsSvg(settings, this.isBindingMissing(bindingKey));
     await ev.action.setTitle("");

@@ -33,6 +33,7 @@ import {
 } from "@iracedeck/deck-core";
 
 import { BLACK_BOX_GLOBAL_KEYS } from "../shared/black-box.js";
+import { SUB_CAMERA_BINDING_KEYS } from "./camera-controls/sub-camera-bindings.js";
 
 const api: CommDescriptor = { method: "api" };
 const chat: CommDescriptor = { method: "chat" };
@@ -70,16 +71,6 @@ function dir(increase: string, decrease: string): CommDescriptor {
 function pair(increase: string, decrease: string): CommDescriptor {
   return keybindKeys([increase, decrease]);
 }
-
-/**
- * iRacing's own Next / Previous Sub Camera bindings — the only mechanism that
- * steps a sub-camera (issue #852). Shared by the Camera Controls keypad and
- * dial maps so the two surfaces can't drift apart.
- */
-const CAMERA_SUB_CAMERA_KEYS = {
-  next: "cameraControlsSubCameraNext",
-  previous: "cameraControlsSubCameraPrevious",
-} as const;
 
 export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
   // One entry for BOTH Fuel Service surfaces (#759): the keypad modes (keyed by
@@ -328,8 +319,8 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     "change-camera": api,
     "cycle-camera": api,
     "cycle-sub-camera": keybindBy("direction", {
-      next: CAMERA_SUB_CAMERA_KEYS.next,
-      previous: CAMERA_SUB_CAMERA_KEYS.previous,
+      next: SUB_CAMERA_BINDING_KEYS.next,
+      previous: SUB_CAMERA_BINDING_KEYS.previous,
     }),
     "cycle-car": api,
     "cycle-driving": api,
@@ -352,7 +343,7 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     camera: api,
     // Rotation taps BOTH sub-camera bindings depending on direction (#852), so
     // either one unset warns — the `pair` form the other cycle dials use.
-    "sub-camera": pair(CAMERA_SUB_CAMERA_KEYS.next, CAMERA_SUB_CAMERA_KEYS.previous),
+    "sub-camera": pair(SUB_CAMERA_BINDING_KEYS.next, SUB_CAMERA_BINDING_KEYS.previous),
     "car-number": api,
     "race-position": api,
     "track-order": api,

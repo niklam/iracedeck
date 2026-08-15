@@ -1,3 +1,4 @@
+import { applyBindingWarning } from "@iracedeck/deck-core";
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -13,9 +14,9 @@ import {
   renderCarCarousel,
   renderRacePositionCarousel,
   renderSubCameraCarousel,
-  SUB_CAMERA_DIAL_KEYS,
   wrapPosition,
 } from "./camera-dial-surface.js";
+import { SUB_CAMERA_BINDING_KEY_LIST, SUB_CAMERA_BINDING_KEYS } from "./sub-camera-bindings.js";
 
 const { mockGroups, mockCameras, mockCarNumber, mockCarNumberByIdx, mockCarNumberRawByIdx, mockAllCars } = vi.hoisted(
   () => ({
@@ -59,7 +60,7 @@ vi.mock("@iracedeck/deck-core", () => ({
     return args.nowMs - args.pressStartMs >= (args.thresholdMs ?? 500) ? "long" : "short";
   },
   getDualPressThresholdMs: () => 500,
-  applyBindingWarning: (content: string) => `${content}<binding-warning/>`,
+  applyBindingWarning: vi.fn((content: string) => `${content}<binding-warning/>`),
   escapeXml: (str: string) => str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"),
   svgToDataUri: (svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`,
 }));
@@ -614,7 +615,7 @@ describe("CameraDialSurface", () => {
 
       expect(comms["camera-focus-dial"]["sub-camera"]).toEqual({
         method: "keybind",
-        binding: { scope: "global", keys: [SUB_CAMERA_DIAL_KEYS.next, SUB_CAMERA_DIAL_KEYS.previous] },
+        binding: { scope: "global", keys: [SUB_CAMERA_BINDING_KEYS.next, SUB_CAMERA_BINDING_KEYS.previous] },
       });
     });
 
@@ -1311,10 +1312,13 @@ describe("CameraDialSurface", () => {
       const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
       expect(decoded).toContain("binding-warning");
       // Both rotation directions tap a binding, so either missing must warn.
-      expect(host.isBindingMissing).toHaveBeenCalledWith([
-        SUB_CAMERA_DIAL_KEYS.next,
-        SUB_CAMERA_DIAL_KEYS.previous,
-      ]);
+      expect(host.isBindingMissing).toHaveBeenCalledWith(SUB_CAMERA_BINDING_KEY_LIST);
+      // The glyph is authored for the 144×144 key canvas — the strip canvas
+      // MUST be passed, or the triangle renders off-centre and clipped (#775).
+      expect(vi.mocked(applyBindingWarning)).toHaveBeenLastCalledWith(expect.any(String), {
+        width: 200,
+        height: 100,
+      });
     });
 
     it("never warns on the SDK-driven modes even when bindings are unset", async () => {
