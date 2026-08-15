@@ -54,15 +54,14 @@ const tiles = brands.map((brand) => {
   {
     tiles.map(({ brand, logoUrl }) => (
       <li class="brand-tile">
-        {logoUrl ? (
+        {logoUrl && (
           <img
             class:list={["brand-logo", brand.preserveBrandColor && "brand-logo-color"]}
             src={logoUrl}
-            alt={brand.name}
+            alt={brand.logoNeedsName ? "" : brand.name}
           />
-        ) : (
-          <span class="brand-wordmark">{brand.name}</span>
         )}
+        {(!logoUrl || brand.logoNeedsName) && <span class="brand-wordmark">{brand.name}</span>}
       </li>
     ))
   }

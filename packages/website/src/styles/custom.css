@@ -215,11 +215,14 @@ starlight-theme-select label select {
 
 /* ── Brand strip (see src/components/BrandStrip.astro) ── */
 
+/* A fixed-track grid rather than a flex row: every tile is the same size, so the
+   rows line up and a wide wordmark cannot dominate a square mark. `auto-fit`
+   with a fixed track (not `1fr`) keeps that width constant however many tiles
+   fit, and centring the tracks keeps the block centred under its heading. */
 .brand-strip {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, var(--brand-tile-width, 9.5rem));
   justify-content: center;
-  align-items: stretch;
   gap: 0.75rem;
   margin: 0;
   padding: 0;
@@ -227,14 +230,15 @@ starlight-theme-select label select {
 }
 
 .brand-tile {
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: center;
-  /* Fixed box so wide wordmarks and square marks carry the same optical weight
-     regardless of their aspect ratio. */
-  min-height: 3rem;
-  min-width: 7rem;
-  padding: 0.5rem 1rem;
+  /* Gap only matters for an icon-only mark shown beside its name. */
+  gap: 0.5rem;
+  min-width: 0;
+  min-height: 3.25rem;
+  padding: 0.5rem 0.75rem;
   border: 1px solid var(--sl-color-gray-5);
   border-radius: 0.5rem;
 }
@@ -265,7 +269,7 @@ starlight-theme-select label select {
    forbid recolouring. */
 .brand-logo {
   max-height: 2rem;
-  max-width: 8rem;
+  max-width: 100%;
   width: auto;
   height: auto;
   filter: brightness(0) invert(1);
@@ -285,13 +289,13 @@ starlight-theme-select label select {
 
 @media (max-width: 600px) {
   .brand-strip {
+    --brand-tile-width: 7.5rem;
     gap: 0.5rem;
   }
 
   .brand-tile {
-    min-height: 2.5rem;
-    min-width: 5.5rem;
-    padding: 0.4rem 0.75rem;
+    min-height: 2.75rem;
+    padding: 0.4rem 0.6rem;
   }
 
   .brand-wordmark {
@@ -300,7 +304,6 @@ starlight-theme-select label select {
 
   .brand-logo {
     max-height: 1.6rem;
-    max-width: 6rem;
   }
 }
 
@@ -445,9 +448,27 @@ starlight-theme-select label select {
   margin-bottom: 0.75rem;
 }
 
-/* The brand strip sits between a card's description and its download button. */
+/* The brand strip sits between a card's description and its download button.
+   Cards are narrow, so the tiles run one size down to keep the Mirabox list
+   from stretching its card far past the others. */
 .download-brands {
+  --brand-tile-width: 7.5rem;
+  /* The card centres its children, which would shrink the grid to one track. */
+  align-self: stretch;
   margin-bottom: 1.5rem;
+}
+
+.download-brands .brand-tile {
+  min-height: 2.75rem;
+  padding: 0.4rem 0.6rem;
+}
+
+.download-brands .brand-logo {
+  max-height: 1.6rem;
+}
+
+.download-brands .brand-wordmark {
+  font-size: 0.7rem;
 }
 
 [data-theme="light"] .download-desc {

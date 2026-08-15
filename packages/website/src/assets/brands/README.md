@@ -3,6 +3,27 @@
 Logos for the hardware brands shown by `BrandStrip.astro`. Everything about the
 brand list itself lives in `src/data/brands.ts` — this folder only holds files.
 
+These are third-party trademarks, shown to identify compatible hardware
+(nominative use). They are not iRaceDeck's, and the landing page footer says so.
+
+## Provenance
+
+Each asset is the brand's own logo, taken from that brand's own website on
+2026-08-15, then trimmed of transparent padding and scaled down to 120 px tall.
+
+| File | Source |
+|------|--------|
+| `elgato.svg` | Header logo on <https://www.elgato.com/> (inline SVG; site-specific classes stripped, `currentColor` fixed to black) |
+| `mirabox.png` | <https://mirabox.net/cdn/shop/files/MiraBox_Logo_white.png> |
+| `soomfon.png` | <https://soomfon.com/cdn/shop/files/LOGO-RGB1.png> |
+| `vsdinside.png` | <https://www.vsdinside.com/cdn/shop/files/VSD_LOGO.png> |
+| `nouvolo.png` | <https://www.nouvolo.com/cdn/shop/files/MM_Nouvolo_d4310abe-1f59-4211-8ca3-043736b12d87.png> |
+| `ulanzi.png` | Header logo on <https://www.ulanzi.com/> — an icon-only mark, so its entry sets `logoNeedsName`. The white counter inside the mark was made transparent so the monochrome filter keeps the shape readable; the outline is unchanged. |
+
+VAPOURD, KILOGOGRAPH, and HALCONTORNO sell only through marketplaces and publish
+no logo asset, so they render as wordmark tiles. Stream Dock's mark is the same
+grid as Mirabox's and would read as a duplicate beside it, so it does too.
+
 ## Adding a logo
 
 1. Drop the asset here as `<brand>.svg` (preferred) or `.png` / `.webp` / `.avif`.

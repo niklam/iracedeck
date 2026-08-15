@@ -37,6 +37,12 @@ export interface Brand {
    */
   logo?: string;
   /**
+   * Set when {@link logo} is an icon-only mark that does not spell the brand
+   * out, so the tile shows the name beside it. Without this a visitor has to
+   * already recognise the mark to know which brand it is.
+   */
+  logoNeedsName?: boolean;
+  /**
    * Set when the brand's guidelines forbid recoloring its mark. Such a logo is
    * shown in its own colors instead of the strip's uniform monochrome tone.
    */
@@ -64,20 +70,28 @@ export const ECOSYSTEMS: Record<Ecosystem, EcosystemInfo> = {
   },
 };
 
-/** Declaration order is display order within an ecosystem. */
+/**
+ * Declaration order is display order within an ecosystem.
+ *
+ * Logos are each brand's own asset, taken from that brand's own site (see
+ * `src/assets/brands/README.md`). VAPOURD, KILOGOGRAPH, and HALCONTORNO sell
+ * only through marketplaces and publish no logo asset, so they render as
+ * wordmark tiles — as does Stream Dock, whose mark is the same grid as
+ * Mirabox's and would read as a duplicate next to it.
+ */
 export const BRANDS: readonly Brand[] = [
-  { name: "Elgato", ecosystem: "elgato" },
+  { name: "Elgato", ecosystem: "elgato", logo: "elgato.svg" },
 
-  { name: "Mirabox", ecosystem: "mirabox" },
+  { name: "Mirabox", ecosystem: "mirabox", logo: "mirabox.png" },
   { name: "Stream Dock", ecosystem: "mirabox" },
-  { name: "SOOMFON", ecosystem: "mirabox" },
+  { name: "SOOMFON", ecosystem: "mirabox", logo: "soomfon.png" },
   { name: "VAPOURD", ecosystem: "mirabox" },
   { name: "KILOGOGRAPH", ecosystem: "mirabox" },
   { name: "HALCONTORNO", ecosystem: "mirabox" },
-  { name: "VSDinside", ecosystem: "mirabox" },
-  { name: "Nouvolo", ecosystem: "mirabox" },
+  { name: "VSDinside", ecosystem: "mirabox", logo: "vsdinside.png" },
+  { name: "Nouvolo", ecosystem: "mirabox", logo: "nouvolo.png" },
 
-  { name: "Ulanzi", ecosystem: "ulanzi" },
+  { name: "Ulanzi", ecosystem: "ulanzi", logo: "ulanzi.png", logoNeedsName: true },
 ];
 
 function toList(ecosystem: Ecosystem | readonly Ecosystem[]): readonly Ecosystem[] {
