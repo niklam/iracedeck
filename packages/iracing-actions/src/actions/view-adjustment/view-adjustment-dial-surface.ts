@@ -34,6 +34,7 @@ import z from "zod";
 
 import { dialAppearanceFields, renderDialBox, resolveDialBoxColors } from "../../shared/dial-box.js";
 import { renderDialNameIcon } from "../../shared/dial-name-icon.js";
+import { bringPointerToSim } from "../../shared/mouse-to-sim.js";
 
 /** Minimum gap (ms) between change-driven feedback pushes (≤10 setFeedback/s/dial). */
 const CHANGE_RENDER_MIN_INTERVAL_MS = 100;
@@ -54,8 +55,13 @@ const MAX_TAPS_PER_EVENT = 5;
 export const ROTATION_SETTINGS = ["fov", "horizon", "driver-height", "ui-size"] as const;
 export type ViewAdjustmentDialSetting = (typeof ROTATION_SETTINGS)[number];
 
-/** Gesture slots. `recenter-vr` taps the shared View Adjustment Recenter VR binding. */
-export const GESTURE_ACTIONS = ["recenter-vr", "none"] as const;
+/**
+ * Gesture slots. `recenter-vr` taps the shared View Adjustment Recenter VR
+ * binding; `mouse-to-sim` focuses the sim window and parks the mouse pointer
+ * inside it (#926) — a native window call, so it taps no binding and carries no
+ * comms descriptor.
+ */
+export const GESTURE_ACTIONS = ["recenter-vr", "mouse-to-sim", "none"] as const;
 export type GestureSlot = (typeof GESTURE_ACTIONS)[number];
 
 export type ViewAdjustmentDirection = "increase" | "decrease";
@@ -206,6 +212,8 @@ function gestureLabel(action: GestureSlot): string | undefined {
   switch (action) {
     case "recenter-vr":
       return "Recenter VR";
+    case "mouse-to-sim":
+      return "Mouse to Sim";
     case "none":
       return undefined;
   }
@@ -402,6 +410,12 @@ export class ViewAdjustmentDialSurface {
     if (action === "recenter-vr") {
       this.host.logger.info("View adjustment dial recentered VR");
       await this.host.tapBinding(RECENTER_VR_KEY);
+
+      return;
+    }
+
+    if (action === "mouse-to-sim") {
+      bringPointerToSim(this.host.logger);
     }
   }
 
