@@ -16,13 +16,12 @@
  *
  * Display-only / internal actions (session-info, telemetry-display, pit-crew,
  * camera-cycle) are intentionally absent: they issue no iRacing command, so they
- * get no status line and no icon warning. Camera Controls' KEYPAD surface is
- * likewise absent (every camera mode is an SDK command, nothing to configure);
- * its DIAL surface still carries an all-API `camera-focus-dial` entry (#803) —
- * the dial PI dropped its status line as redundant (every dial mode is `api`,
- * so the line never said anything useful), but the entry stays as this file's
- * per-mode communication-method record and still feeds the generated
- * `action-comms.json`.
+ * get no status line and no icon warning. Camera Controls carries BOTH surfaces
+ * (`camera-focus` keypad, `camera-focus-dial`): almost every camera mode is an
+ * SDK command, but Cycle Sub-Camera is a key binding — iRacing's camera switch
+ * broadcasts act on the focus and the group only, their `camera` argument never
+ * selects a sub-camera, so the sim's own Next / Previous Sub Camera bindings
+ * are the only working mechanism (issue #852).
  */
 import {
   type ActionCommMap,
@@ -40,6 +39,7 @@ import {
   type KeybindDialCategory,
   rotationBindingKeys,
 } from "./audio-controls/audio-controls-settings.js";
+import { SUB_CAMERA_BINDING_KEYS } from "./camera-controls/sub-camera-bindings.js";
 
 const api: CommDescriptor = { method: "api" };
 const chat: CommDescriptor = { method: "chat" };
@@ -325,19 +325,40 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     "load-car-camera": keybind("camCtrlLoadCarCamera"),
   }),
 
+  // Camera Controls' KEYPAD surface. Every mode is an SDK camera broadcast
+  // (`getCommands().camera.*`) except Cycle Sub-Camera, which taps iRacing's
+  // own Next / Previous Sub Camera bindings (#852) — see the header note.
+  // `focus-select-car` opens a Stream Deck profile rather than talking to
+  // iRacing, so it is deliberately absent (nothing to report).
+  "camera-focus": entry("target", {
+    "change-camera": api,
+    "cycle-camera": api,
+    "cycle-sub-camera": keybindBy("direction", {
+      next: SUB_CAMERA_BINDING_KEYS.next,
+      previous: SUB_CAMERA_BINDING_KEYS.previous,
+    }),
+    "cycle-car": api,
+    "cycle-driving": api,
+    "focus-your-car": api,
+    "focus-on-leader": api,
+    "focus-on-incident": api,
+    "focus-on-most-exciting": api,
+    "switch-by-position": api,
+    "switch-by-car-number": api,
+    "set-camera-state": api,
+  }),
+
   // The dial surface of Camera Controls (#803). Rotation cycles the camera or
   // the focused car and the press gestures center on the player's car / switch
-  // camera — every one an iRacing SDK camera command (`getCommands().camera.*`),
-  // so all modes are `api`. The dial reuses the keypad's own cycle/focus
-  // dispatch (no key bindings, nothing to configure); the map documents that
-  // per-mode communication method and feeds the generated `action-comms.json`
-  // (the dial PI's status line under its Mode selector was dropped as
-  // redundant since every mode reads the same "iRacing API" — see the header
-  // note). _meta.modeSetting = "dial.mode". The keypad surface has no entry
-  // (its modes are equally binding-free — see the header note).
+  // camera — all iRacing SDK camera commands (`getCommands().camera.*`) except
+  // Sub-Camera rotation, which taps iRacing's sub-camera bindings (#852). The
+  // dial reuses the keypad's own cycle/focus dispatch, so both surfaces share
+  // one mechanism per mode. _meta.modeSetting = "dial.mode".
   "camera-focus-dial": entry("dial.mode", {
     camera: api,
-    "sub-camera": api,
+    // Rotation taps BOTH sub-camera bindings depending on direction (#852), so
+    // either one unset warns — the `pair` form the other cycle dials use.
+    "sub-camera": pair(SUB_CAMERA_BINDING_KEYS.next, SUB_CAMERA_BINDING_KEYS.previous),
     "car-number": api,
     "race-position": api,
     "track-order": api,

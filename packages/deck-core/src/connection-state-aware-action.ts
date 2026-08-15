@@ -229,9 +229,12 @@ export abstract class ConnectionStateAwareAction<T = Record<string, unknown>> ex
    * would bleed one button's missing-binding state onto all the others. This
    * variant derives solely from its arguments + global settings (#612).
    *
+   * Accepts a readonly array so callers can pass a shared `as const` /
+   * `readonly string[]` key list straight in — the check only reads.
+   *
    * @param keys - The binding setting key(s) for a specific button's mode.
    */
-  protected isBindingMissing(keys: string | string[] | null | undefined): boolean {
+  protected isBindingMissing(keys: string | readonly string[] | null | undefined): boolean {
     const list = (Array.isArray(keys) ? keys : keys ? [keys] : []).filter(
       (k): k is string => typeof k === "string" && k.length > 0,
     );
