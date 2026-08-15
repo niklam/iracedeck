@@ -359,6 +359,14 @@ export type TranslatorState = {
   // diff itself, not via baseline juggling.
   pitStatusInitialized: boolean;
   lastPitSvStatus: number; // PitSvStatus enum value
+  // Positioning-error repeat cadence (issue #951). `pitStatusRepeatDueAt` is
+  // the timestamp the next `pitService.positioningRepeat` may fire (0 =
+  // disarmed — the latched status isn't a positioning error). `pitStatusRestSince`
+  // is when the car was last observed to come to rest (0 = currently moving),
+  // which gates the repeat so the engineer stays quiet while the driver is
+  // already correcting.
+  pitStatusRepeatDueAt: number;
+  pitStatusRestSince: number;
 
   // ── Pit limiter warnings ────────────────────────────────────────────────
   limiterInitialized: boolean;
@@ -934,6 +942,8 @@ export function createInitialState(): TranslatorState {
 
     pitStatusInitialized: false,
     lastPitSvStatus: 0, // PitSvStatus.None
+    pitStatusRepeatDueAt: 0,
+    pitStatusRestSince: 0,
 
     limiterInitialized: false,
     lastOnPitRoadForLimiter: false,

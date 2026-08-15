@@ -103,7 +103,7 @@ import {
   SCENARIO_ID_TO_OVERTAKE_ID,
 } from "./overtake.js";
 import { PIT_BOX_ALERTS } from "./pit-box.js";
-import { PIT_STATUS_ALERTS } from "./pit-status.js";
+import { PIT_STATUS_ALERTS, PIT_STATUS_REPEAT_ALERTS } from "./pit-status.js";
 import { PIT_WINDOW_ALERTS } from "./pit-window.js";
 import { registerPools } from "./pools.js";
 import {
@@ -551,6 +551,14 @@ const SCENARIO_ID_TO_PIT_STATUS_ID: Record<string, PitStatusCalloutId> = {
   "pit-crew.pit-status-too-far-back": "too-far-back",
   "pit-crew.pit-status-bad-angle": "bad-angle",
   "pit-crew.pit-status-cant-fix-that": "cant-fix-that",
+  // The repeat nags (issue #951) map onto the SAME subject as their
+  // transition sibling — one opt-in silences both stages of a positioning
+  // callout, the #772 two-stage white-flag precedent.
+  "pit-crew.pit-status-too-far-left-repeat": "too-far-left",
+  "pit-crew.pit-status-too-far-right-repeat": "too-far-right",
+  "pit-crew.pit-status-too-far-forward-repeat": "too-far-forward",
+  "pit-crew.pit-status-too-far-back-repeat": "too-far-back",
+  "pit-crew.pit-status-bad-angle-repeat": "bad-angle",
 };
 
 /**
@@ -1234,7 +1242,11 @@ export function registerPitCrew(
     );
   }
 
-  for (const s of PIT_STATUS_ALERTS) {
+  // The repeat nags (issue #951) ride the SAME per-status opt-ins as their
+  // transition siblings — they're a modifier of one callout, not a new
+  // subject (the #572 precedent), so `SCENARIO_ID_TO_PIT_STATUS_ID` maps both
+  // spellings of each id onto the same `PitStatusCalloutId`.
+  for (const s of [...PIT_STATUS_ALERTS, ...PIT_STATUS_REPEAT_ALERTS]) {
     engine.defineScenario(
       wrapWithMaster(
         wrapCalloutScenario(s, SCENARIO_ID_TO_PIT_STATUS_ID, getPitStatusCalloutEnabled, "pit-status callout", logger),

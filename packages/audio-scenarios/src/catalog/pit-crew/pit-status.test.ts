@@ -18,10 +18,19 @@ import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedec
 import { PitSvStatus } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
 import { type PitStatusCalloutId, registerPitCrew } from "./index.js";
-import { PIT_STATUS_ALERTS, PIT_STATUS_POOL_NAMES, PIT_STATUS_SCENARIO_IDS } from "./pit-status.js";
+import {
+  PIT_STATUS_ALERTS,
+  PIT_STATUS_POOL_NAMES,
+  PIT_STATUS_REPEAT_ALERTS,
+  PIT_STATUS_REPEAT_POOL_NAMES,
+  PIT_STATUS_REPEAT_SCENARIO_IDS,
+  PIT_STATUS_REPEAT_WEIGHT,
+  PIT_STATUS_SCENARIO_IDS,
+} from "./pit-status.js";
 import { POOL_REGISTRY } from "./pools.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import { RADIO_CLOSE, RADIO_OPEN } from "./radio-frame.js";
@@ -141,6 +150,13 @@ const PIT_STATUS_CLIP_NAMES = [
   "too-far-back-01",
   "bad-angle-01",
   "cant-fix-that-01",
+  // The repeat nags (issue #951). One variant each here so pool draws stay
+  // deterministic; the shipped voice config carries several per pool.
+  "too-far-left-repeat-01",
+  "too-far-right-repeat-01",
+  "too-far-forward-repeat-01",
+  "too-far-back-repeat-01",
+  "bad-angle-repeat-01",
 ] as const;
 
 const manifest: AudioAssetsManifest = {
@@ -218,7 +234,7 @@ describe("PIT_STATUS_ALERTS triggers (engine-level, no opt-out gating)", () => {
     audio = createFakeAudio();
     engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
 
-    for (const name of PIT_STATUS_POOL_NAMES) {
+    for (const name of [...PIT_STATUS_POOL_NAMES, ...PIT_STATUS_REPEAT_POOL_NAMES]) {
       const { group, base } = POOL_REGISTRY[name];
       engine.definePoolFromManifest(name, group, base);
     }
@@ -226,7 +242,7 @@ describe("PIT_STATUS_ALERTS triggers (engine-level, no opt-out gating)", () => {
     engine.defineScenario(RADIO_OPEN);
     engine.defineScenario(RADIO_CLOSE);
 
-    for (const s of PIT_STATUS_ALERTS) engine.defineScenario(s);
+    for (const s of [...PIT_STATUS_ALERTS, ...PIT_STATUS_REPEAT_ALERTS]) engine.defineScenario(s);
   });
 
   afterEach(() => {
@@ -275,6 +291,144 @@ describe("PIT_STATUS_ALERTS triggers (engine-level, no opt-out gating)", () => {
     flush(audio);
 
     expect(voiceClipsPlayed(audio).at(-1)).toBe(`voice/${VOICE}/pit-status/too-far-right-01.mp3`);
+  });
+});
+
+describe("PIT_STATUS_REPEAT_ALERTS structure (#951)", () => {
+  it("defines exactly 5 scenarios — one per positioning error", () => {
+    expect(PIT_STATUS_REPEAT_ALERTS).toHaveLength(5);
+  });
+
+  it("ids are unique, stable, and suffixed so they grep next to their transition sibling", () => {
+    expect(PIT_STATUS_REPEAT_SCENARIO_IDS).toEqual([
+      "pit-crew.pit-status-too-far-left-repeat",
+      "pit-crew.pit-status-too-far-right-repeat",
+      "pit-crew.pit-status-too-far-forward-repeat",
+      "pit-crew.pit-status-too-far-back-repeat",
+      "pit-crew.pit-status-bad-angle-repeat",
+    ]);
+    expect(new Set(PIT_STATUS_REPEAT_SCENARIO_IDS).size).toBe(PIT_STATUS_REPEAT_SCENARIO_IDS.length);
+  });
+
+  it("uses its own family so a nag never same-family-preempts the full transition call", () => {
+    for (const s of PIT_STATUS_REPEAT_ALERTS) {
+      expect(s.family).toBe("pit-status-repeat");
+      expect(s.family).not.toBe("pit-status");
+    }
+  });
+
+  it("sits strictly below the transition calls so a fresh error always wins the bus", () => {
+    for (const s of PIT_STATUS_REPEAT_ALERTS) {
+      expect(s.weight).toBe(PIT_STATUS_REPEAT_WEIGHT);
+    }
+
+    // The transition calls take the default band, which must outrank the nag.
+    expect(PIT_STATUS_REPEAT_WEIGHT).toBeLessThan(WEIGHT.NORMAL);
+  });
+
+  it("never cuts an in-flight line and never replays late", () => {
+    for (const s of PIT_STATUS_REPEAT_ALERTS) {
+      expect(s.interrupt).not.toBe(true);
+      expect(s.queueable).not.toBe(true);
+    }
+  });
+
+  it("is terse — a single pool step with no radio frame", () => {
+    for (const s of PIT_STATUS_REPEAT_ALERTS) {
+      expect(s.sequence).toHaveLength(1);
+      expect(s.sequence[0]).not.toBe(RADIO_OPEN.id);
+      expect(String(s.sequence[0]).startsWith("pool:")).toBe(true);
+    }
+  });
+
+  it("every pool name has a POOL_REGISTRY entry sourced from the pit-status group", () => {
+    for (const name of PIT_STATUS_REPEAT_POOL_NAMES) {
+      expect(POOL_REGISTRY[name]).toBeDefined();
+      expect(POOL_REGISTRY[name].group).toBe("pit-status");
+      expect(POOL_REGISTRY[name].base.endsWith("-repeat")).toBe(true);
+    }
+  });
+});
+
+describe("PIT_STATUS_REPEAT_ALERTS triggers (engine-level, no opt-out gating)", () => {
+  beforeEach(() => {
+    bus = createMockBus();
+    audio = createFakeAudio();
+    engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
+
+    for (const name of [...PIT_STATUS_POOL_NAMES, ...PIT_STATUS_REPEAT_POOL_NAMES]) {
+      const { group, base } = POOL_REGISTRY[name];
+      engine.definePoolFromManifest(name, group, base);
+    }
+
+    engine.defineScenario(RADIO_OPEN);
+    engine.defineScenario(RADIO_CLOSE);
+
+    for (const s of [...PIT_STATUS_ALERTS, ...PIT_STATUS_REPEAT_ALERTS]) engine.defineScenario(s);
+  });
+
+  afterEach(() => {
+    _resetAudioScenarios();
+    vi.clearAllMocks();
+  });
+
+  it.each([
+    { status: PitSvStatus.TooFarLeft, expected: `voice/${VOICE}/pit-status/too-far-left-repeat-01.mp3` },
+    { status: PitSvStatus.TooFarRight, expected: `voice/${VOICE}/pit-status/too-far-right-repeat-01.mp3` },
+    { status: PitSvStatus.TooFarForward, expected: `voice/${VOICE}/pit-status/too-far-forward-repeat-01.mp3` },
+    { status: PitSvStatus.TooFarBack, expected: `voice/${VOICE}/pit-status/too-far-back-repeat-01.mp3` },
+    { status: PitSvStatus.BadAngle, expected: `voice/${VOICE}/pit-status/bad-angle-repeat-01.mp3` },
+  ])("status=$status fires the matching nag clip on its own", ({ status, expected }) => {
+    bus.publishEvent("pitService.positioningRepeat", { status });
+    flush(audio);
+
+    // Terse delivery: the nag clip only, no radio frame around it.
+    expect(voiceClipsPlayed(audio)).toEqual([expected]);
+  });
+
+  it("a non-matching status does not fire another error's nag", () => {
+    bus.publishEvent("pitService.positioningRepeat", { status: PitSvStatus.BadAngle });
+    flush(audio);
+
+    expect(voiceClipsPlayed(audio)).not.toContain(`voice/${VOICE}/pit-status/too-far-left-repeat-01.mp3`);
+  });
+
+  it("is dropped rather than cutting the full transition call it belongs to", () => {
+    bus.publishEvent("pitService.statusChanged", {
+      from: PitSvStatus.None,
+      to: PitSvStatus.TooFarForward,
+    });
+    // Don't flush — the full call is mid-playback. The nag must NOT chop it.
+    bus.publishEvent("pitService.positioningRepeat", { status: PitSvStatus.TooFarForward });
+    flush(audio);
+
+    const played = voiceClipsPlayed(audio);
+
+    expect(played).toContain(`voice/${VOICE}/pit-status/too-far-forward-01.mp3`);
+    expect(played).not.toContain(`voice/${VOICE}/pit-status/too-far-forward-repeat-01.mp3`);
+  });
+
+  it("lets a fresh positioning error speak in full right after an in-flight nag", () => {
+    bus.publishEvent("pitService.positioningRepeat", { status: PitSvStatus.TooFarForward });
+    // Don't flush — the driver over-corrects while the nag is still playing.
+    bus.publishEvent("pitService.statusChanged", {
+      from: PitSvStatus.TooFarForward,
+      to: PitSvStatus.TooFarBack,
+    });
+    flush(audio);
+
+    const played = voiceClipsPlayed(audio);
+
+    expect(played).toContain(`voice/${VOICE}/pit-status/too-far-forward-repeat-01.mp3`);
+    expect(played.at(-1)).toBe(`voice/${VOICE}/pit-status/too-far-back-01.mp3`);
+  });
+
+  it("replaces its own in-flight predecessor rather than stacking nags", () => {
+    bus.publishEvent("pitService.positioningRepeat", { status: PitSvStatus.TooFarLeft });
+    bus.publishEvent("pitService.positioningRepeat", { status: PitSvStatus.TooFarLeft });
+    flush(audio);
+
+    expect(voiceClipsPlayed(audio).at(-1)).toBe(`voice/${VOICE}/pit-status/too-far-left-repeat-01.mp3`);
   });
 });
 
@@ -354,6 +508,20 @@ describe("PIT_STATUS_ALERTS per-callout opt-out (via registerPitCrew)", () => {
     flush(audio);
 
     expect(voiceClipsPlayed(audio)).toEqual([]);
+  });
+
+  it("disabling a status suppresses its repeat nag too — the repeats ride the same opt-in (#951)", () => {
+    enabled.set("too-far-forward", false);
+    bus.publishEvent("pitService.positioningRepeat", { status: PitSvStatus.TooFarForward });
+    flush(audio);
+
+    expect(voiceClipsPlayed(audio)).toEqual([]);
+
+    enabled.set("too-far-forward", true);
+    bus.publishEvent("pitService.positioningRepeat", { status: PitSvStatus.TooFarForward });
+    flush(audio);
+
+    expect(voiceClipsPlayed(audio)).toEqual([`voice/${VOICE}/pit-status/too-far-forward-repeat-01.mp3`]);
   });
 
   it("re-enabling restores firing on the next event", () => {

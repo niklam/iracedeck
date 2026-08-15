@@ -76,6 +76,11 @@ export {
 } from "./diff/opponent-pit.js";
 export { OVERTAKE_HOLD_MS, OVERTAKE_MAX_JUMP } from "./diff/overtakes.js";
 export { PIT_APPROACH_COOLDOWN_MS } from "./diff/pit-lane.js";
+export {
+  PIT_STATUS_MOVEMENT_SPEED_MPS,
+  PIT_STATUS_REPEAT_INTERVAL_MS,
+  PIT_STATUS_REST_SETTLE_MS,
+} from "./diff/pit-status.js";
 export { resolveRadarState } from "./diff/radar.js";
 export { resolveIsAiRace, resolveStandingStart } from "./start-lights.js";
 export { resolveTrackDirection, resolveTrackType, TrackDirection, TrackType } from "./track-type.js";
