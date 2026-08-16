@@ -172,7 +172,7 @@ flowchart LR
   boot -->|"mirror once per start — full object + _settingsChannel"| core
   core --> host
   host -.->|"one bootstrap read — _settingsChannel"| pi
-  pi -->|"per-action settings only"| host
+  pi -->|"per-action settings, sendToPlugin, the bootstrap read"| host
 
   classDef ext fill:#33404d,color:#fff,stroke:#1d262e;
   classDef seam fill:#8e44ad,color:#fff,stroke:#5e2d73,stroke-width:3px;
