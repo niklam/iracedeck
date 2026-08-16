@@ -8,6 +8,7 @@ class FakeNativeWebSocket {
   static instances: FakeNativeWebSocket[] = [];
   readonly url: string;
   readonly sent: string[] = [];
+  closed = 0;
   onopen: ((ev: unknown) => void) | null = null;
   onmessage: ((ev: { data: string }) => void) | null = null;
   onclose: ((ev: unknown) => void) | null = null;
@@ -22,7 +23,9 @@ class FakeNativeWebSocket {
     this.sent.push(data);
   }
 
-  close(): void {}
+  close(): void {
+    this.closed++;
+  }
 
   triggerOpen(): void {
     this.onopen?.({});
@@ -47,6 +50,13 @@ const identity: BridgeIdentity = {
 beforeEach(() => {
   FakeNativeWebSocket.instances = [];
 });
+
+/** Shared by the `UlanziBridgeSocket` behavior tests and the settings-channel tests below. */
+function makeBridge(): { bridge: UlanziBridgeSocket; real: FakeNativeWebSocket } {
+  const bridge = new UlanziBridgeSocket(identity, FakeNativeWebSocket as unknown as typeof WebSocket);
+
+  return { bridge, real: FakeNativeWebSocket.instances[0] };
+}
 
 describe("readIdentity", () => {
   it("parses every param from the query string", () => {
@@ -79,12 +89,6 @@ describe("readIdentity", () => {
 });
 
 describe("UlanziBridgeSocket", () => {
-  const makeBridge = (): { bridge: UlanziBridgeSocket; real: FakeNativeWebSocket } => {
-    const bridge = new UlanziBridgeSocket(identity, FakeNativeWebSocket as unknown as typeof WebSocket);
-
-    return { bridge, real: FakeNativeWebSocket.instances[0] };
-  };
-
   it("opens the real socket to the Ulanzi address/port", () => {
     const { real } = makeBridge();
     expect(real.url).toBe("ws://127.0.0.1:49200");
@@ -111,6 +115,14 @@ describe("UlanziBridgeSocket", () => {
       actionid: "abc",
       payload: { event: "propertyInspectorDidAppear" },
     });
+    // Bootstrap read of the host's global-settings copy (plugin scope) — the
+    // settings-channel router decides from here where global settings go (#993 phase 2).
+    expect(JSON.parse(real.sent[2])).toEqual({
+      cmd: "getGlobalSettings",
+      uuid: "com.iracedeck.sd.core",
+      key: "",
+      actionid: "",
+    });
     expect(onopen).toHaveBeenCalledOnce();
     expect(bridge.readyState).toBe(1);
   });
@@ -118,6 +130,9 @@ describe("UlanziBridgeSocket", () => {
   it("translates outbound Elgato frames to Ulanzi and swallows the registration frame", () => {
     const { bridge, real } = makeBridge();
     real.triggerOpen();
+    // No _settingsChannel in the host's copy — the router falls back to the
+    // host path immediately, so the queued bootstrap frame flushes to Ulanzi.
+    real.triggerMessage(JSON.stringify({ cmd: "didReceiveGlobalSettings", settings: {} }));
     real.sent.length = 0;
 
     // Global-settings frames are plugin-scoped, not PI-identity-scoped (#868).
@@ -198,5 +213,92 @@ describe("installUlanziBridge", () => {
     expect(bridgeDuringConnect).toBeInstanceOf(UlanziBridgeSocket);
     // Native WebSocket restored after install.
     expect(fakeWin.WebSocket).toBe(FakeNativeWebSocket);
+  });
+});
+
+describe("UlanziBridgeSocket — settings channel (#993 phase 2)", () => {
+  const CHANNEL = { port: 55762, token: "cc29ab52f34a2a927663a0832b86a807b4cc329ebe68a98d" };
+  const parsed = (s: string[]) => s.map((x) => JSON.parse(x) as Record<string, unknown>);
+
+  it("bootstraps with a plugin-scoped Ulanzi getGlobalSettings right after the handshake", () => {
+    const { bridge, real } = makeBridge();
+    bridge.onopen = () => {};
+    real.triggerOpen();
+
+    expect(parsed(real.sent).at(-1)).toEqual({
+      cmd: "getGlobalSettings",
+      uuid: "com.iracedeck.sd.core",
+      key: "",
+      actionid: "",
+    });
+  });
+
+  it("switches to the loopback when the host reply carries _settingsChannel and routes global frames there", () => {
+    const { bridge, real } = makeBridge();
+    const received: Record<string, unknown>[] = [];
+    bridge.onmessage = (ev) => received.push(JSON.parse(String(ev.data)) as Record<string, unknown>);
+    real.triggerOpen();
+    bridge.send(JSON.stringify({ event: "getGlobalSettings", context: "c", action: "a" })); // queued
+    real.triggerMessage(
+      JSON.stringify({ cmd: "didReceiveGlobalSettings", settings: { _settingsChannel: CHANNEL, driverName: "host" } }),
+    );
+
+    const loop = FakeNativeWebSocket.instances[1]!;
+    expect(loop.url).toBe(`ws://127.0.0.1:${CHANNEL.port}/ws?t=${CHANNEL.token}`);
+    expect(received).toEqual([]); // the host copy is not delivered
+    loop.triggerOpen();
+    expect(parsed(loop.sent)[0]).toMatchObject({ event: "getGlobalSettings" });
+
+    bridge.send(JSON.stringify({ event: "setGlobalSettings", payload: { driverName: "n" } }));
+    expect(parsed(loop.sent).at(-1)).toEqual({ event: "setGlobalSettings", payload: { driverName: "n" } });
+    // and NOT translated to the Ulanzi host
+    expect(parsed(real.sent).some((f) => f.cmd === "setGlobalSettings")).toBe(false);
+
+    loop.triggerMessage(
+      JSON.stringify({ event: "didReceiveGlobalSettings", payload: { settings: { driverName: "file" } } }),
+    );
+    real.triggerMessage(JSON.stringify({ cmd: "didReceiveGlobalSettings", settings: { driverName: "stale" } }));
+    expect(received).toEqual([{ event: "didReceiveGlobalSettings", payload: { settings: { driverName: "file" } } }]);
+  });
+
+  it("falls back to today's host path when the host copy has no channel", () => {
+    const { bridge, real } = makeBridge();
+    const received: Record<string, unknown>[] = [];
+    bridge.onmessage = (ev) => received.push(JSON.parse(String(ev.data)) as Record<string, unknown>);
+    real.triggerOpen();
+    real.triggerMessage(JSON.stringify({ cmd: "didReceiveGlobalSettings", settings: { driverName: "host-only" } }));
+    bridge.send(JSON.stringify({ event: "setGlobalSettings", payload: { a: 1 } }));
+
+    expect(FakeNativeWebSocket.instances).toHaveLength(1);
+    expect(received).toEqual([
+      { event: "didReceiveGlobalSettings", payload: { settings: { driverName: "host-only" } } },
+    ]);
+    expect(parsed(real.sent).at(-1)).toEqual({
+      cmd: "setGlobalSettings",
+      uuid: "com.iracedeck.sd.core",
+      key: "",
+      actionid: "",
+      settings: { a: 1 },
+    });
+  });
+
+  it("keeps per-action settings, sendToPlugin markers, and openUrl relay on the host path", () => {
+    const { bridge, real } = makeBridge();
+    const received: Record<string, unknown>[] = [];
+    bridge.onmessage = (ev) => received.push(JSON.parse(String(ev.data)) as Record<string, unknown>);
+    real.triggerOpen();
+    real.triggerMessage(JSON.stringify({ cmd: "didReceiveGlobalSettings", settings: { _settingsChannel: CHANNEL } }));
+    FakeNativeWebSocket.instances[1]!.triggerOpen();
+
+    bridge.send(JSON.stringify({ event: "openUrl", payload: { url: "https://iracedeck.com/" } }));
+    bridge.send(JSON.stringify({ event: "setSettings", payload: { mode: "x" } }));
+    real.triggerMessage(JSON.stringify({ cmd: "didReceiveSettings", settings: { mode: "x" } }));
+
+    expect(parsed(real.sent).at(-2)).toMatchObject({
+      cmd: "sendToPlugin",
+      payload: { event: "openUrl", url: "https://iracedeck.com/" },
+    });
+    expect(parsed(real.sent).at(-1)).toMatchObject({ cmd: "setSettings", settings: { mode: "x" } });
+    expect(received.at(-1)).toMatchObject({ event: "didReceiveSettings", payload: { settings: { mode: "x" } } });
   });
 });
