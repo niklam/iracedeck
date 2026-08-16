@@ -3,19 +3,21 @@
  *
  * On a Stream Deck+ dial, rotation cycles the camera or the focused car — the
  * dial's `mode` selects the target and the turn direction replaces the keypad
- * cycle modes' explicit next/previous setting. Clockwise = next for every mode
- * EXCEPT race-position, whose default is flipped (issue #884): clockwise
- * selects the car AHEAD (decreasing position number), because "next position"
- * would otherwise mean losing places. In track-order (issue #886) "next" IS
- * the car ahead on the road (the direction of travel), so clockwise lands on
- * the car ahead there too without a flip. The `reverseRotation` setting
- * inverts the active mode's default mapping (see `clockwiseDirection`). The
- * touch strip's small top line is always the MODE name (CAMERA / SUB-CAMERA /
- * CAR # / POSITION / TRACK ORDER / DRIVING CAM); the main content identifies
- * the thing that mode acts on, flanked by dimmed side previews that follow the
- * EFFECTIVE mapping — the left slot is always the counter-clockwise detent's
- * target and the right slot the clockwise one, so preview == execution holds
- * under both the race-position default flip and the reverse option:
+ * cycle modes' explicit next/previous setting. On the number-primary modes —
+ * race-position and car-number — a clockwise detent makes the number on the
+ * strip go DOWN (`P4 → P3`, `#94 → #77`; issues #884, #973, see
+ * `NUMBER_PRIMARY_MODES`). The list modes (camera / sub-camera / driving) have
+ * no number to shrink and keep clockwise = next, and in track-order (issue
+ * #886) "next" IS the car ahead on the road (the direction of travel), so
+ * clockwise lands on the car ahead there too without a flip. The
+ * `reverseRotation` setting inverts the active mode's default mapping (see
+ * `clockwiseDirection`). The touch strip's small top line is always the MODE
+ * name (CAMERA / SUB-CAMERA / CAR # / POSITION / TRACK ORDER / DRIVING CAM);
+ * the main content identifies the thing that mode acts on, flanked by dimmed
+ * side previews that follow the EFFECTIVE mapping — the left slot is always the
+ * counter-clockwise detent's target and the right slot the clockwise one, so
+ * preview == execution holds under both the number-primary default flip and the
+ * reverse option:
  *   - camera → the current camera group's icon + name, flanked by the dimmed
  *     enabled-subset neighbours one detent either way,
  *   - sub-camera → the current camera's NAME within the focused group, flanked
@@ -149,7 +151,7 @@ function isCycleMode(mode: DialMode): mode is CycleDialMode {
  * A rotation's dispatch direction in the cycled ordering (camera list, car
  * numbers ascending, race positions ascending, or — track-order — the road,
  * where `next` is the car ahead; see `trackOrderDirection`). Which PHYSICAL
- * turn maps to which direction is decided by `clockwiseDirection` (issue #884).
+ * turn maps to which direction is decided by `clockwiseDirection` (#884, #973).
  */
 export type Direction = "next" | "previous";
 
@@ -168,20 +170,31 @@ function trackOrderDirection(direction: Direction): TrackOrderDirection {
 }
 
 /**
+ * Modes whose strip readout is a NUMBER the user reads as they turn — the race
+ * position (`P4`) and the car number (`#94`). Their default mapping is flipped
+ * so that a clockwise detent makes that number go DOWN: `P4 → P3`, `#94 → #77`
+ * (issues #884, #973). One rule, learned once, for both.
+ *
+ * The list modes (camera / sub-camera / driving) have no number to shrink, so
+ * they keep the plain "clockwise = next". Track-order is a car mode but not a
+ * number-primary one — its readout is a car number it never orders BY, and its
+ * `next` already IS the car ahead on the road (`trackOrderDirection`, #886), so
+ * clockwise lands on the car ahead there without a flip.
+ */
+const NUMBER_PRIMARY_MODES: ReadonlySet<DialMode> = new Set<DialMode>(["car-number", "race-position"]);
+
+/**
  * @internal Exported for testing
  *
- * The `Direction` a clockwise detent dispatches for a mode. Race-position's
- * default is flipped (issue #884): clockwise selects the car AHEAD — its
- * "next" means the position NUMBER increases, i.e. falling back through the
- * field, which nobody reads as forward. Every other mode keeps clockwise =
- * next — including track-order, whose "next" already IS the car ahead on the
- * road (`trackOrderDirection`, issue #886), so both car-neighbour modes land
- * on the car ahead clockwise. `reverseRotation` inverts the active mode's
- * default mapping (for race-position, that restores the pre-#884 clockwise →
- * P# increases feel).
+ * The `Direction` a clockwise detent dispatches for a mode — the single place
+ * the physical turn is mapped onto the cycled ordering. Both the dispatch and
+ * the carousel side previews route through it, so preview == execution holds
+ * for every mode. `reverseRotation` inverts the active mode's default mapping
+ * (on a number-primary mode that restores the pre-flip feel, where clockwise
+ * raises the number).
  */
 export function clockwiseDirection(mode: DialMode, reverseRotation: boolean): Direction {
-  const defaultClockwise: Direction = mode === "race-position" ? "previous" : "next";
+  const defaultClockwise: Direction = NUMBER_PRIMARY_MODES.has(mode) ? "previous" : "next";
 
   return reverseRotation ? oppositeDirection(defaultClockwise) : defaultClockwise;
 }
@@ -283,12 +296,14 @@ export const DialSettings = z
     // preprocess maps the pre-rework enum value "car" onto "car-number" so a
     // persisted legacy dial keeps working (its gestures / colors untouched).
     mode: z.preprocess((v) => (v === "car" ? "car-number" : v), z.enum(DIAL_MODES).default("car-number")),
-    // Inverts the active mode's rotation mapping (issue #884). Deliberately NO
-    // migration: an unchecked box means the NEW race-position default
-    // (clockwise = the car ahead); checking it restores the pre-#884 feel
-    // there, and flips clockwise to "previous" in every other mode. The
-    // union+transform is the sdpi checkbox convention — z.coerce.boolean()
-    // would turn the persisted string "false" into true.
+    // Inverts the active mode's rotation mapping (issues #884, #973).
+    // Deliberately NO migration, for either flip: an unchecked box means the
+    // CURRENT default, so on a number-primary mode checking it restores the
+    // pre-flip feel (clockwise raises the number) and on every other mode it
+    // flips clockwise to "previous". A migration keyed on the stored mode would
+    // be unsound anyway — the flag is per-dial, and the user can change
+    // `mode` afterwards. The union+transform is the sdpi checkbox convention —
+    // z.coerce.boolean() would turn the persisted string "false" into true.
     reverseRotation: z
       .union([z.boolean(), z.string()])
       .transform((val) => val === true || val === "true")
@@ -333,7 +348,7 @@ export function wrapPosition(current: number, dir: 1 | -1, max: number): number 
  * its natural end — `next` → the leader (P1), `previous` → last place (issue
  * #803, so the pace car in focus doesn't stall cycling). Which physical turn
  * dispatches which direction is decided by `clockwiseDirection` (#884): under
- * the race-position default, a clockwise detent dispatches `previous`, so it
+ * the number-primary default, a clockwise detent dispatches `previous`, so it
  * re-enters at last place and walks up the field. `currentPosition` is then
  * `null` (no position badge). Returns `null` when there is no usable order at
  * all (no order, or an empty field), or when no present car exists anywhere
@@ -1178,7 +1193,8 @@ export class CameraDialSurface {
 
   /**
    * Builds the car-number carousel view: the focused car plus its
-   * ascending-order neighbours, each on the side its detent lands on (#884).
+   * ascending-order neighbours, each on the side its detent lands on (#884) —
+   * so under the #973 default the LOWER number sits on the clockwise side.
    */
   private carNumberCarouselView(telemetry: TelemetryData | null, dial: DialSettings): CarCarouselView {
     const sessionInfo = this.host.getSessionInfo();

@@ -163,20 +163,38 @@ const REPLAY_CONTROL_TITLES: Record<ReplayControlMode, string> = {
 };
 
 /**
- * Directional pairs for encoder rotation support.
- * Modes in this map support clockwise=next / counter-clockwise=prev.
+ * Which mode each detent of a rotation fires, for the modes that come in a
+ * bidirectional pair. Keyed by the mode the key/dial is SET to; both members of
+ * a pair map to the same two targets, so a dial behaves identically whichever
+ * half of the pair it sits on.
+ *
+ * The fields name the physical gesture rather than the pair's "next" member on
+ * purpose: most pairs read clockwise = next, but the car-number pair is
+ * deliberately inverted (issue #973). On the number-primary controls a
+ * clockwise detent makes the number on screen go DOWN — matching the Camera
+ * Controls dial's Cycle by Car # and Cycle by Race Position modes (#884, #973)
+ * — so one turn direction means the same thing across every car control.
+ *
+ * `next-car` / `prev-car` are NOT inverted: they tap iRacing's own Next /
+ * Previous Car bindings (V / Shift-V by default), so the sim owns that ordering
+ * and its "next" is not a number to shrink.
+ *
+ * The keypad is unaffected — a key dispatches `settings.mode` directly, so the
+ * named modes ("CAR # NEXT" / "CAR # PREVIOUS") keep meaning what they say.
  */
-const DIRECTIONAL_PAIRS: Partial<Record<ReplayControlMode, { next: ReplayControlMode; prev: ReplayControlMode }>> = {
-  "next-session": { next: "next-session", prev: "prev-session" },
-  "prev-session": { next: "next-session", prev: "prev-session" },
-  "next-lap": { next: "next-lap", prev: "prev-lap" },
-  "prev-lap": { next: "next-lap", prev: "prev-lap" },
-  "next-incident": { next: "next-incident", prev: "prev-incident" },
-  "prev-incident": { next: "next-incident", prev: "prev-incident" },
-  "next-car": { next: "next-car", prev: "prev-car" },
-  "prev-car": { next: "next-car", prev: "prev-car" },
-  "next-car-number": { next: "next-car-number", prev: "prev-car-number" },
-  "prev-car-number": { next: "next-car-number", prev: "prev-car-number" },
+const DIRECTIONAL_PAIRS: Partial<
+  Record<ReplayControlMode, { clockwise: ReplayControlMode; counterClockwise: ReplayControlMode }>
+> = {
+  "next-session": { clockwise: "next-session", counterClockwise: "prev-session" },
+  "prev-session": { clockwise: "next-session", counterClockwise: "prev-session" },
+  "next-lap": { clockwise: "next-lap", counterClockwise: "prev-lap" },
+  "prev-lap": { clockwise: "next-lap", counterClockwise: "prev-lap" },
+  "next-incident": { clockwise: "next-incident", counterClockwise: "prev-incident" },
+  "prev-incident": { clockwise: "next-incident", counterClockwise: "prev-incident" },
+  "next-car": { clockwise: "next-car", counterClockwise: "prev-car" },
+  "prev-car": { clockwise: "next-car", counterClockwise: "prev-car" },
+  "next-car-number": { clockwise: "prev-car-number", counterClockwise: "next-car-number" },
+  "prev-car-number": { clockwise: "prev-car-number", counterClockwise: "next-car-number" },
 };
 
 /**
@@ -1844,7 +1862,7 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
       });
     } else if (DIRECTIONAL_PAIRS[mode]) {
       const pair = DIRECTIONAL_PAIRS[mode]!;
-      const nav = ticks > 0 ? pair.next : pair.prev;
+      const nav = ticks > 0 ? pair.clockwise : pair.counterClockwise;
       this.executeMode("__dial__", {
         mode: nav,
         speed: "1",

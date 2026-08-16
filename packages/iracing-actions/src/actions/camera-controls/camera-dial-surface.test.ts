@@ -289,10 +289,12 @@ describe("camera dial-surface pure helpers", () => {
   });
 
   describe("clockwiseDirection", () => {
-    it("maps clockwise to previous for race-position (the car ahead, #884) and to next for every other mode", () => {
-      expect(clockwiseDirection("race-position", false)).toBe("previous");
+    it("maps clockwise to previous for the number-primary modes — the strip's number goes down (#884, #973)", () => {
+      for (const mode of ["race-position", "car-number"] as const) {
+        expect(clockwiseDirection(mode, false)).toBe("previous");
+      }
 
-      for (const mode of ["camera", "sub-camera", "car-number", "track-order", "driving"] as const) {
+      for (const mode of ["camera", "sub-camera", "track-order", "driving"] as const) {
         expect(clockwiseDirection(mode, false)).toBe("next");
       }
     });
@@ -305,9 +307,10 @@ describe("camera dial-surface pure helpers", () => {
     });
 
     it("flips the active mode's default mapping when reverseRotation is set", () => {
-      // race-position reversed = the pre-#884 feel (clockwise → P# increases).
+      // The number-primary modes reversed = the pre-flip feel, where a clockwise
+      // detent raises the number (race-position pre-#884, car-number pre-#973).
       expect(clockwiseDirection("race-position", true)).toBe("next");
-      expect(clockwiseDirection("car-number", true)).toBe("previous");
+      expect(clockwiseDirection("car-number", true)).toBe("next");
       expect(clockwiseDirection("camera", true)).toBe("previous");
       expect(clockwiseDirection("sub-camera", true)).toBe("previous");
       expect(clockwiseDirection("driving", true)).toBe("previous");
@@ -691,24 +694,24 @@ describe("CameraDialSurface", () => {
   });
 
   describe("rotation → car-number mode", () => {
-    it("focuses the next / previous car by ascending number", () => {
+    it("lowers the car number on a clockwise detent and raises it counter-clockwise (#973)", () => {
       const host = makeHost();
       const surface = new CameraDialSurface(host as never);
       surface.rotate(dialContext("c1") as never, dial({ mode: "car-number" }), 1, false);
 
-      expect(host.focusCarNumber).toHaveBeenCalledWith(99); // focused = #42, next = #99
+      expect(host.focusCarNumber).toHaveBeenCalledWith(3); // focused = #42, clockwise → #3
 
       surface.rotate(dialContext("c1") as never, dial({ mode: "car-number" }), -1, false);
 
-      expect(host.focusCarNumber).toHaveBeenLastCalledWith(3); // previous = #3
+      expect(host.focusCarNumber).toHaveBeenLastCalledWith(99); // counter-clockwise → #99
     });
 
-    it("focuses the previous car by number on a clockwise detent when reverseRotation is set (#884)", () => {
+    it("raises the car number on a clockwise detent when reverseRotation is set (#973)", () => {
       const host = makeHost();
       const surface = new CameraDialSurface(host as never);
       surface.rotate(dialContext("c1b") as never, dial({ mode: "car-number", reverseRotation: true }), 1, false);
 
-      expect(host.focusCarNumber).toHaveBeenCalledWith(3); // focused = #42, previous = #3
+      expect(host.focusCarNumber).toHaveBeenCalledWith(99); // focused = #42, reversed clockwise → #99
     });
 
     it("does not cycle in car-number mode", () => {
@@ -719,11 +722,12 @@ describe("CameraDialSurface", () => {
       expect(host.cycle).not.toHaveBeenCalled();
     });
 
-    it("skips a car that left the world (post-race) and focuses the next present one (#885)", () => {
+    it("skips a car that left the world (post-race) on a counter-clockwise detent (#885)", () => {
       // Cars by number: #3 (carIdx1), #42 (carIdx3, focused), #99 (carIdx5).
       // carIdx5 despawned (TrackSurface NotInWorld) with stale-but-valid lap
-      // telemetry — the surface signal alone must mark it absent, so a
-      // clockwise detent wraps past it to #3 instead of dead-switching.
+      // telemetry — the surface signal alone must mark it absent. Counter-
+      // clockwise walks UP the number order since #973, so it wraps past #99
+      // to #3 instead of dead-switching.
       const host = makeHost({
         getTelemetry: vi.fn(
           () =>
@@ -736,9 +740,30 @@ describe("CameraDialSurface", () => {
         ),
       });
       const surface = new CameraDialSurface(host as never);
-      surface.rotate(dialContext("c885") as never, dial({ mode: "car-number" }), 1, false);
+      surface.rotate(dialContext("c885") as never, dial({ mode: "car-number" }), -1, false);
 
       expect(host.focusCarNumber).toHaveBeenCalledWith(3);
+    });
+
+    it("skips a car that left the world (post-race) on a clockwise detent (#885)", () => {
+      // Mirror of the case above for the default direction: carIdx1 (#3) is the
+      // despawned one, so a clockwise detent — which walks DOWN the number order
+      // since #973 — wraps past #3 to #99.
+      const host = makeHost({
+        getTelemetry: vi.fn(
+          () =>
+            ({
+              CamCarIdx: 3,
+              CarIdxLapCompleted: [-1, 10, -1, 10, -1, 10],
+              CarIdxLapDistPct: [-1, 0.2, -1, 0.4, -1, 0.6],
+              CarIdxTrackSurface: [-1, -1, -1, 3, -1, 3],
+            }) as never,
+        ),
+      });
+      const surface = new CameraDialSurface(host as never);
+      surface.rotate(dialContext("c885b") as never, dial({ mode: "car-number" }), 1, false);
+
+      expect(host.focusCarNumber).toHaveBeenCalledWith(99);
     });
 
     it("recovers to an end of the field when the pace car (not in the number list) has focus (#803)", () => {
@@ -749,11 +774,12 @@ describe("CameraDialSurface", () => {
       const surface = new CameraDialSurface(host as never);
       surface.rotate(dialContext("c3") as never, dial({ mode: "car-number" }), 1, false);
 
-      expect(host.focusCarNumber).toHaveBeenCalledWith(3); // first car by number (#3)
+      // Clockwise walks DOWN the number order since #973, so it re-enters at the end.
+      expect(host.focusCarNumber).toHaveBeenCalledWith(99); // last car by number (#99)
 
       surface.rotate(dialContext("c3") as never, dial({ mode: "car-number" }), -1, false);
 
-      expect(host.focusCarNumber).toHaveBeenLastCalledWith(99); // last car by number (#99)
+      expect(host.focusCarNumber).toHaveBeenLastCalledWith(3); // first car by number (#3)
     });
   });
 
@@ -1143,8 +1169,8 @@ describe("CameraDialSurface", () => {
 
       expect(decoded).toContain(">CAR #<"); // mode-name title
       expect(decoded).toContain(">#42<"); // focused car
-      expect(decoded).toMatch(sideText(0.84, "#99")); // clockwise (next by number) on the right
-      expect(decoded).toMatch(sideText(0.16, "#3")); // counter-clockwise (previous by number) on the left
+      expect(decoded).toMatch(sideText(0.84, "#3")); // clockwise (down the number order, #973) on the right
+      expect(decoded).toMatch(sideText(0.16, "#99")); // counter-clockwise (up the number order) on the left
     });
 
     it("swaps the car-number preview sides when reverseRotation is set (#884)", async () => {
@@ -1155,9 +1181,9 @@ describe("CameraDialSurface", () => {
 
       const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
 
-      // Clockwise now goes to the PREVIOUS car by number, so it previews right.
-      expect(decoded).toMatch(sideText(0.84, "#3"));
-      expect(decoded).toMatch(sideText(0.16, "#99"));
+      // Reversed: clockwise goes UP the number order again, so #99 previews right.
+      expect(decoded).toMatch(sideText(0.84, "#99"));
+      expect(decoded).toMatch(sideText(0.16, "#3"));
     });
 
     it("renders the track-order carousel: the focused #number centred, the car ahead on the clockwise side with AHEAD / BEHIND captions (#886)", async () => {
