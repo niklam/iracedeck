@@ -11,7 +11,7 @@ Precise control over every adjustable camera parameter in iRacing's camera edito
 
 ## Modes
 
-Select the mode from the **Adjustment** dropdown in the Property Inspector. Every adjustment except Auto Set Mic Gain exposes a **Direction** setting for Increase / Decrease.
+Select the mode from the **Mode** dropdown in the Property Inspector. Every adjustment except Auto Set Mic Gain exposes a **Direction** setting for Increase / Decrease.
 
 ### Latitude
 
@@ -282,7 +282,7 @@ Adjust the focus depth.
 
 ## On a dial
 
-Placed on a Stream Deck+ dial, Camera Editor Adjustments becomes a precision camera-tool dial — ideal for a broadcast operator mapping latitude, yaw, zoom, and focus across the four dials. Pick one parameter with the dial's **Adjustment** dropdown; turning the dial steps it up or down in the camera editor. It uses the same key bindings as the keypad modes, so no extra configuration is needed if you already use them. The Property Inspector automatically shows the dial settings below (instead of the keypad Adjustment and Direction) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
+Placed on a Stream Deck+ dial, Camera Editor Adjustments becomes a precision camera-tool dial — ideal for a broadcast operator mapping latitude, yaw, zoom, and focus across the four dials. Pick one parameter with the dial's **Mode** dropdown; turning the dial steps it up or down in the camera editor. It uses the same key bindings as the keypad modes, so no extra configuration is needed if you already use them. The Property Inspector automatically shows the dial settings below (instead of the keypad Mode and Direction) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
 
 #### Details
 
@@ -296,11 +296,11 @@ Placed on a Stream Deck+ dial, Camera Editor Adjustments becomes a precision cam
 
 Dials are currently Stream Deck+ only — the action can't be placed on Mirabox knobs or Ulanzi dials yet (see [Dials](/docs/features/dials/)).
 
-#### Setting: Adjustment
+#### Setting: Mode
 
-The camera-tool parameter the dial controls. Each renders as a color-coded "dash box" showing the parameter's full name — because iRacing exposes no camera-tool values, the box shows the name only, never a number. Each setting has a built-in accent color, but you can override the border, label, value, and background colors in the **Dash Box Appearance** section of the dial settings. Only the 14 rotatable parameters are offered — Auto Set Mic Gain is a one-shot with no direction, so it's available as a press gesture instead.
+The camera-tool parameter the dial controls (the **Mode** dropdown). Each renders as a color-coded "dash box" showing the parameter's full name — because iRacing exposes no camera-tool values, the box shows the name only, never a number. Each setting has a built-in accent color, but you can override the border, label, value, and background colors in the **Dash Box Appearance** section of the dial settings. Only the 14 rotatable parameters are offered — Auto Set Mic Gain is a one-shot with no direction, so it's available as a press gesture instead.
 
-| Setting | Strip name | Telemetry source | Shown as |
+| Mode | Strip name | Telemetry source | Shown as |
 |---|---|---|---|
 | Latitude | Latitude | *(none — iRacing exposes no camera-tool state)* | label only |
 | Longitude | Longitude | *(none)* | label only |

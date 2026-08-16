@@ -11,7 +11,7 @@
 
 		<!-- Keypad settings — hidden when this instance is a dial (#798). -->
 		<div id="keypad-settings">
-			<sdpi-item label="Setting">
+			<sdpi-item label="Mode">
 				<sdpi-select id="setting-select" setting="setting" default="engine-power">
 					<optgroup label="Adjust">
 						<option value="boost-level">Boost Level</option>
@@ -45,9 +45,9 @@
 		</div>
 
 		<!-- Dial settings — shown only when this instance is a dial (#798). Setup
-		     Engine has no press gesture, so only the rotation Setting is offered. -->
+		     Engine has no press gesture, so only the rotation Mode is offered. -->
 		<div id="dial-settings" class="hidden">
-			<sdpi-item label="Setting">
+			<sdpi-item label="Mode">
 				<sdpi-select setting="dial.setting" default="engine-power">
 					<option value="engine-power">Engine Power</option>
 					<option value="throttle-shaping">Throttle Shaping</option>

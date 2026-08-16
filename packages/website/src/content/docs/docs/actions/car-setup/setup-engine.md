@@ -29,7 +29,7 @@ The tap direction is a single plugin-wide setting under **Global Common Settings
 
 ## Modes
 
-Select the mode from the **Setting** dropdown in the Property Inspector. **Adjust** modes are directional — pick **Increase** or **Decrease** in the **Direction** setting to control what a button press does. **View** modes show a live readout and, with **Enable dual-press** on (default), also accept short / long presses — see [View sub-modes](#view-sub-modes) above. They don't use the per-action **Direction** setting; the tap direction is the plugin-wide **Global Common Settings → Dual-Press → Directions**.
+Select the mode from the **Mode** dropdown in the Property Inspector. **Adjust** modes are directional — pick **Increase** or **Decrease** in the **Direction** setting to control what a button press does. **View** modes show a live readout and, with **Enable dual-press** on (default), also accept short / long presses — see [View sub-modes](#view-sub-modes) above. They don't use the per-action **Direction** setting; the tap direction is the plugin-wide **Global Common Settings → Dual-Press → Directions**.
 
 ### Engine Power
 
@@ -103,7 +103,7 @@ Adjust the launch control RPM target.
 
 ## On a dial
 
-Placed on a Stream Deck+ dial, Setup Engine becomes an engine-setup dial. Pick one value with the dial's **Setting** dropdown; turning the dial steps it up or down in the car, and the touch strip shows that value live as a big, color-coded number. It uses the same key bindings as the keypad modes, so no extra configuration is needed if you already use them. The Property Inspector automatically shows the dial settings below (instead of the keypad Setting and Direction) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
+Placed on a Stream Deck+ dial, Setup Engine becomes an engine-setup dial. Pick one value with the dial's **Mode** dropdown; turning the dial steps it up or down in the car, and the touch strip shows that value live as a big, color-coded number. It uses the same key bindings as the keypad modes, so no extra configuration is needed if you already use them. The Property Inspector automatically shows the dial settings below (instead of the keypad Mode and Direction) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
 
 #### Details
 
@@ -117,11 +117,11 @@ Placed on a Stream Deck+ dial, Setup Engine becomes an engine-setup dial. Pick o
 
 Dials are currently Stream Deck+ only — the action can't be placed on Mirabox knobs or Ulanzi dials yet (see [Dials](/docs/features/dials/)).
 
-#### Setting: Setting
+#### Setting: Mode
 
-The engine value the dial controls. Each renders as a color-coded "dash box": a short label on top and the live value as a large number. Each setting has a built-in accent color, but you can override the border, label, value, and background colors in the **Dash Box Appearance** section of the dial settings.
+The engine value the dial controls (the **Mode** dropdown). Each renders as a color-coded "dash box": a short label on top and the live value as a large number. Each setting has a built-in accent color, but you can override the border, label, value, and background colors in the **Dash Box Appearance** section of the dial settings.
 
-| Setting | Label | Telemetry source | Shown as |
+| Mode | Label | Telemetry source | Shown as |
 |---|---|---|---|
 | Engine Power | POWER | `dcEnginePower` | integer |
 | Throttle Shaping | THR | `dcThrottleShape` | integer |

@@ -11,7 +11,7 @@
 
 		<!-- Keypad settings — hidden when this instance is a dial (#796). -->
 		<div id="keypad-settings">
-			<sdpi-item label="Setting">
+			<sdpi-item label="Mode">
 				<sdpi-select id="setting-select" setting="setting" default="mguk-regen-gain">
 					<optgroup label="Adjust">
 						<option value="hys-boost">HYS Boost</option>
@@ -47,9 +47,9 @@
 		</div>
 
 		<!-- Dial settings — shown only when this instance is a dial (#796). Setup
-		     Hybrid has no press gesture, so only the rotation Setting is offered. -->
+		     Hybrid has no press gesture, so only the rotation Mode is offered. -->
 		<div id="dial-settings" class="hidden">
-			<sdpi-item label="Setting">
+			<sdpi-item label="Mode">
 				<sdpi-select setting="dial.setting" default="mguk-deploy-mode">
 					<option value="mguk-deploy-mode">MGU-K Deploy Mode</option>
 					<option value="mguk-regen-gain">MGU-K Regen Gain</option>

@@ -11,7 +11,7 @@ Adjust brake-related setup options from the cockpit — ABS level, brake bias (c
 
 ## View sub-modes
 
-The **View …** entries at the top of the Setting dropdown turn the key into a continuously updating display of the current value in the car. With **dual-press** enabled (default) the same key also adjusts the value: a short press fires one direction and a long press fires the opposite — so one key replaces the separate Increase / Decrease keys you'd otherwise need.
+The **View …** entries at the top of the Mode dropdown turn the key into a continuously updating display of the current value in the car. With **dual-press** enabled (default) the same key also adjusts the value: a short press fires one direction and a long press fires the opposite — so one key replaces the separate Increase / Decrease keys you'd otherwise need.
 
 | View setting | Telemetry source | Format | Typical range |
 |---|---|---|---|
@@ -32,7 +32,7 @@ The tap direction is a single plugin-wide setting under **Global Common Settings
 
 ## Modes
 
-Select the mode from the **Setting** dropdown in the Property Inspector. Directional modes also expose a **Direction** setting for Increase / Decrease. Modes apply to keypad instances; a dial instance uses the dial behavior described in [On a dial](#on-a-dial).
+Select the mode from the **Mode** dropdown in the Property Inspector. Directional modes also expose a **Direction** setting for Increase / Decrease. Modes apply to keypad instances; a dial instance uses the dial behavior described in [On a dial](#on-a-dial).
 
 ### ABS Toggle
 
@@ -152,7 +152,7 @@ Adjust the engine braking level.
 
 ## On a dial
 
-Placed on a Stream Deck+ dial, Setup Brakes becomes a brake-setup dial. Pick one brake value with the dial's **Setting** dropdown; turning the dial steps it up or down in the car, and the touch strip shows that value live as a big, color-coded number. It uses the same key bindings as the keypad modes, so no extra configuration is needed if you already use them. The Property Inspector automatically shows the dial settings below (instead of the keypad Setting and Direction) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
+Placed on a Stream Deck+ dial, Setup Brakes becomes a brake-setup dial. Pick one brake value with the dial's **Mode** dropdown; turning the dial steps it up or down in the car, and the touch strip shows that value live as a big, color-coded number. It uses the same key bindings as the keypad modes, so no extra configuration is needed if you already use them. The Property Inspector automatically shows the dial settings below (instead of the keypad Mode and Direction) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
 
 #### Details
 
@@ -167,11 +167,11 @@ Placed on a Stream Deck+ dial, Setup Brakes becomes a brake-setup dial. Pick one
 
 Dials are currently Stream Deck+ only — the action can't be placed on Mirabox knobs or Ulanzi dials yet (see [Dials](/docs/features/dials/)).
 
-#### Setting: Setting
+#### Setting: Mode
 
-The brake value the dial controls. Each setting renders as a color-coded "dash box": a short label on top and the live value as a large number. The `%` is dropped (bias values read as percentages). Each setting has a built-in accent color so multiple dials stay distinguishable at a glance; you can override the border, label, value, and background colors in the **Dash Box Appearance** section of the dial settings.
+The brake value the dial controls (the **Mode** dropdown). Each setting renders as a color-coded "dash box": a short label on top and the live value as a large number. The `%` is dropped (bias values read as percentages). Each setting has a built-in accent color so multiple dials stay distinguishable at a glance; you can override the border, label, value, and background colors in the **Dash Box Appearance** section of the dial settings.
 
-| Setting | Label | Color | Telemetry source | Shown as |
+| Mode | Label | Color | Telemetry source | Shown as |
 |---|---|---|---|---|
 | Brake Bias | BB | red | `dcBrakeBias` | e.g. `54.0` |
 | Brake Bias Fine | BBF | amber | `dcBrakeBiasFine` | e.g. `0.5` |
