@@ -114,6 +114,12 @@ export function focusIRacingIfEnabled(): void {
       logger.debug("iRacing window focused successfully");
       break;
     case FocusResult.WindowNotFound:
+      // A window that no longer exists ends any in-flight timeout episode: the
+      // condition that caused the timeouts (a window present but unfocusable)
+      // is gone. A timeout after this is a new episode and must warn again, or
+      // a relaunch-as-Administrator would never surface the elevation hint.
+      timeoutReported = false;
+
       // The setting is on by default (#930), so this runs before every key and
       // dial press — including every press made while iRacing is closed, where
       // a missing window is the expected outcome rather than a fault. Log by

@@ -1,6 +1,6 @@
 ---
 title: Focus iRacing Window
-description: iRaceDeck brings iRacing to the foreground before sending commands, so button presses are never lost to another window.
+description: iRaceDeck can bring iRacing to the foreground before sending keystrokes, to keep keyboard-driven actions from being lost to another window.
 ---
 
 Focus iRacing Window brings the iRacing window to the foreground before iRaceDeck sends a command. Windows delivers keystrokes only to the window that has focus, so without it a button press can simply do nothing — with no error, and nothing on screen to explain why.
@@ -17,7 +17,7 @@ When iRacing is already the active window — which is most of the time while yo
 
 One gap worth knowing: gestures on the Stream Deck+ **touch strip** are not covered yet, so a touch gesture bound to a key still needs iRacing in front on its own. Buttons and dial rotation and presses are all covered.
 
-If your actions still don't reach iRacing with this on, focusing is not your problem — check that iRaceDeck and iRacing run at the same Windows privilege level. See [Troubleshooting](/docs/getting-started/troubleshooting/).
+Focusing is best-effort, not a guarantee — it can't help if iRacing isn't running, and it can't take the foreground away from an application Windows won't let it. If your actions still don't reach iRacing with this on, the usual cause is iRaceDeck and iRacing running at different Windows privilege levels; iRaceDeck detects that and shows a warning at the top of the Property Inspector. See [Troubleshooting](/docs/getting-started/troubleshooting/).
 
 ## Turning It Off
 

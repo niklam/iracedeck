@@ -146,6 +146,22 @@ describe("window focus service", () => {
       expect(logger.debug).toHaveBeenCalledTimes(2);
     });
 
+    // Closing iRacing ends the episode: a timeout after a relaunch (e.g. now as
+    // Administrator) is a new problem and must surface the remediation hint.
+    it("warns again after the window disappears in between", () => {
+      const logger = createLogger();
+      let result: number = FocusResult.FocusTimedOut;
+      initWindowFocus(logger, () => result as FocusResult);
+
+      focusIRacingIfEnabled();
+      result = FocusResult.WindowNotFound;
+      focusIRacingIfEnabled();
+      result = FocusResult.FocusTimedOut;
+      focusIRacingIfEnabled();
+
+      expect(logger.warn).toHaveBeenCalledTimes(2);
+    });
+
     it("warns again after a focus succeeds in between", () => {
       const logger = createLogger();
       let result: number = FocusResult.FocusTimedOut;
