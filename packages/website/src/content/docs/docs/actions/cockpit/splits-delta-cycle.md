@@ -118,7 +118,7 @@ Teleport the car back to the saved active reset snapshot. Solo practice sessions
 
 ## On a dial
 
-Placed on a Stream Deck+ dial, Splits & Reference becomes a splits-delta cycle dial. Turning the dial steps through iRacing's delta display modes — one detent per mode — using the same **Next** and **Previous** key bindings the keypad **Cycle Splits Delta** mode uses, so no extra configuration is needed if you already use them. It has a single rotation behaviour, so there is no dial **Setting** dropdown; the Property Inspector automatically shows the dial gesture options (instead of the keypad Mode and Direction) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
+Placed on a Stream Deck+ dial, Splits & Reference becomes a splits-delta cycle dial. Turning the dial steps through iRacing's delta display modes — one detent per mode — using the same **Next** and **Previous** key bindings the keypad **Cycle Splits Delta** mode uses, so no extra configuration is needed if you already use them. It has a single rotation behaviour, so there is no dial **Mode** dropdown; the Property Inspector automatically shows the dial gesture options (instead of the keypad Mode and Direction) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
 
 #### Details
 

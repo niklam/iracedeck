@@ -330,6 +330,26 @@ describe("resolveIRatingEstimateOrder (#872)", () => {
     expect(order).toEqual([1]);
   });
 
+  it("keeps the grid candidate free of duplicate ranks (#974)", () => {
+    // The grid candidate now comes from the shared `calculateGridPositions`,
+    // which enforces one rank per slot and one rank per car. Both matter HERE
+    // and not only for the canonical order: a car left at rank 0 drops out of
+    // `estimateIRatingChanges`' class field entirely, changing its own estimate
+    // AND every same-class car's SOF — so the dedup rule is pinned at this
+    // consumer too.
+    const order = resolveIRatingEstimateOrder({
+      sessionType: "Race",
+      qualifyResults: [
+        { CarIdx: 0, Position: 0 },
+        { CarIdx: 1, Position: 0 }, // same grid slot — the later claim is dropped
+        { CarIdx: 2, Position: 1 },
+        { CarIdx: 2, Position: 2 }, // repeated car — keeps its FIRST (best) slot
+      ],
+    });
+
+    expect(order).toEqual([1, 0, 2]);
+  });
+
   it("anchors on the player when playerCarIdx is given: skips sources that do not classify the player", () => {
     // Green-flag run to the line (#647): the leader (carIdx 1) has crossed S/F so the
     // live order classifies one car, but the player (carIdx 0) is still rank 0.

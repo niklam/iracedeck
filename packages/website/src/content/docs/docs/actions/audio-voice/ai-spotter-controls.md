@@ -11,7 +11,7 @@ Manage iRacing's AI spotter directly from your Stream Deck. Trigger reports, tog
 
 ## Modes
 
-Select the mode from the **Control** dropdown in the Property Inspector.
+Select the mode from the **Mode** dropdown in the Property Inspector.
 
 ### Damage Report
 

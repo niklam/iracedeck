@@ -935,10 +935,11 @@ describe("CameraDialSurface", () => {
       // — it ranks by CarIdxLapCompleted + CarIdxLapDistPct, so a field with no
       // completed laps (or a post-race cooldown where the counts are cleared)
       // yields all zeros. A plain `??` accepts that non-null array and the mode
-      // dies with maxPosition = 0. NOTE this fallback does NOT rescue the
-      // parade lap: there iRacing's own CarIdxPosition is all zeros too
-      // (capture 20260815-203305), so the mode legitimately has nothing to
-      // cycle until positions exist at all — tracked separately in #974.
+      // dies with maxPosition = 0. NOTE the parade lap no longer reaches this
+      // path: since #974 the canonical order holds the qualifying grid before
+      // the green, so the formation cycles like any other phase. What remains
+      // here is the rarer all-zero case — a non-race session, or a race whose
+      // grid can't be resolved — where iRacing's counter is the last resort.
       mockCarNumberRawByIdx.value = { 2: 11, 3: 42 };
       const host = makeHost({
         getRacePositions: vi.fn(() => [0, 0, 0, 0]),

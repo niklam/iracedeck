@@ -32,7 +32,7 @@ The tap direction is a single plugin-wide setting under **Global Common Settings
 
 ## Modes
 
-Select the mode from the **Setting** dropdown in the Property Inspector. TC1–TC4 modes expose a **Direction** setting for Increase / Decrease; TC Toggle does not.
+Select the mode from the **Mode** dropdown in the Property Inspector. TC1–TC4 modes expose a **Direction** setting for Increase / Decrease; TC Toggle does not.
 
 ### TC Toggle
 
@@ -123,7 +123,7 @@ Adjust TC slot 4.
 
 ## On a dial
 
-Placed on a Stream Deck+ dial, Setup Traction becomes a traction-control dial. Pick one TC slot with the dial's **Setting** dropdown; turning the dial steps it up or down in the car, and the touch strip shows that slot's value live as a big, color-coded number. It uses the same key bindings as the keypad modes, so no extra configuration is needed if you already use them. The Property Inspector automatically shows the dial settings below (instead of the keypad Setting and Direction) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
+Placed on a Stream Deck+ dial, Setup Traction becomes a traction-control dial. Pick one TC slot with the dial's **Mode** dropdown; turning the dial steps it up or down in the car, and the touch strip shows that slot's value live as a big, color-coded number. It uses the same key bindings as the keypad modes, so no extra configuration is needed if you already use them. The Property Inspector automatically shows the dial settings below (instead of the keypad Mode and Direction) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
 
 #### Details
 
@@ -137,11 +137,11 @@ Placed on a Stream Deck+ dial, Setup Traction becomes a traction-control dial. P
 
 Dials are currently Stream Deck+ only — the action can't be placed on Mirabox knobs or Ulanzi dials yet (see [Dials](/docs/features/dials/)).
 
-#### Setting: Setting
+#### Setting: Mode
 
-The TC slot the dial controls. Each renders as a color-coded "dash box": a short label on top and the live value as a large number. Each setting has a built-in accent color, but you can override the border, label, value, and background colors in the **Dash Box Appearance** section of the dial settings.
+The TC slot the dial controls (the **Mode** dropdown). Each renders as a color-coded "dash box": a short label on top and the live value as a large number. Each setting has a built-in accent color, but you can override the border, label, value, and background colors in the **Dash Box Appearance** section of the dial settings.
 
-| Setting | Label | Telemetry source | Shown as |
+| Mode | Label | Telemetry source | Shown as |
 |---|---|---|---|
 | TC1 | TC1 | `dcTractionControl` | integer |
 | TC2 | TC2 | `dcTractionControl2` | integer |

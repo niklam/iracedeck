@@ -144,9 +144,9 @@ Dials are currently Stream Deck+ only — the action can't be placed on Mirabox 
 
 #### Setting: Mode
 
-The view value the dial controls. Each renders as a color-coded "dash box" showing the setting's label — there is no value to display, since iRacing reports none. Each setting has a built-in accent color, but you can override the border, label, value, and background colors in the **Dash Box Appearance** section of the dial settings. Recenter VR isn't offered here — it's non-directional, so it's a press gesture instead.
+The view value the dial controls (the **Mode** dropdown). Each renders as a color-coded "dash box" showing the setting's label — there is no value to display, since iRacing reports none. Each setting has a built-in accent color, but you can override the border, label, value, and background colors in the **Dash Box Appearance** section of the dial settings. Recenter VR isn't offered here — it's non-directional, so it's a press gesture instead.
 
-| Setting | Label | Telemetry source | Shown as |
+| Mode | Label | Telemetry source | Shown as |
 |---|---|---|---|
 | FOV | FOV | None | label only |
 | Horizon | HORIZON | None | label only |

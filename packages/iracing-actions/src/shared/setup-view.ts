@@ -30,7 +30,7 @@ import { DisplayUnits, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 import setupViewTemplate from "../../icons/setup-view.svg";
 
-/** Identifier shared between the Setting dropdown values, the icon route, and the VIEW_DEFS keys. */
+/** Identifier shared between the Mode dropdown values, the icon route, and the VIEW_DEFS keys. */
 export type ViewSettingId =
   // setup-brakes
   | "view-brake-bias"
