@@ -212,10 +212,20 @@ When key bindings should be shared across all instances of an action type (e.g.,
 
 ### Plugin Setup
 ```typescript
-// plugin.ts - MUST pass adapter and call BEFORE connect()
-import { initGlobalSettings } from "@iracedeck/deck-core";
+// plugin.ts - MUST pass adapter + settings store, and call BEFORE connect()
+import {
+  createFileSettingsStore,
+  getPluginPlatform,
+  initGlobalSettings,
+  resolveSettingsStorePath,
+} from "@iracedeck/deck-core";
 
-initGlobalSettings(adapter, adapter.createLogger("GlobalSettings"));
+const settingsStore = createFileSettingsStore({
+  path: resolveSettingsStorePath({ platform: getPluginPlatform(), env: process.env }),
+  logger: adapter.createLogger("SettingsStore"),
+});
+
+initGlobalSettings(adapter, adapter.createLogger("GlobalSettings"), settingsStore);
 adapter.connect();
 ```
 

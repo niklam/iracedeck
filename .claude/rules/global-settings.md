@@ -149,18 +149,53 @@ The `.passthrough()` allows dynamic key binding properties (e.g., `blackBoxLapTi
 
 **Every plain-value schema field must end in `.catch(<default>)`** (or be otherwise throw-proof, like the union+transform booleans and the `preprocess`-guarded strings). A single throwing field aborts the entire settings parse, which stalls the cache at defaults and makes every key binding look unset (#896). Follow the `spotterStillThereSeconds` / `changelogNotification` precedent when adding fields.
 
-## Write semantics — stale-cache safety (#896)
+## Single writer — the plugin-owned settings store (#993)
 
-Global settings are one JSON blob with two independent full-object writers — the PI (sdpi-components saves its whole page snapshot) and the plugin (`updateGlobalSettings` sends the whole cache). Since #992 the settings window is a third UI, but it writes *through the plugin*: its fake host **diffs** sdpi's snapshot against the cache and calls `updateGlobalSettings` with only the changed keys — a full-object write would mark every key pending and let the overlay below misread a later PI edit (restoring a previous value) as a stale echo. See `settings-window.md` rule 4. A write from a stale cache silently deletes keys the other side saved (the "key bindings not saved" bug). `global-settings.ts` defends every plugin-side write path; when touching that module, preserve these four mechanisms:
+**The plugin owns global settings; the deck host does not.** They live in one JSON file per ecosystem — `%LOCALAPPDATA%\iRaceDeck\Settings\<Stream Deck|Mirabox|Ulanzi>\global-settings.json`, resolved by `resolveSettingsStorePath()` and overridable for development with the `IRACEDECK_SETTINGS_PATH` env var (a full file path) — outside every host's plugin folder, so settings survive plugin updates and reinstalls and the three ecosystems never share state. The host's own store is read **at most once** — only when there is no file yet, to migrate an existing installation — and ignored from then on. That ends the two-independent-writers problem, so the machinery that existed to survive it was **deleted** in #993: the #896 first-arrival gate, the pending-write overlay and its reconciliation, `lastHostSettings`/the shrink guard, plus the Ulanzi adapter's write gate. Don't reintroduce them.
 
-- **First-arrival gate.** Writes (`updateGlobalSettings` / `deleteGlobalSettings`) before the host's first `didReceiveGlobalSettings` response are applied to the cache (read-your-writes) but **queued, not persisted** — the cache is pure schema defaults until then, and persisting would wipe storage. The first arrival flushes queued writes merged over the real settings. Consequence: plugin code may write global settings at any time, including before startup settings arrive (the #610 elevation probe does), without wiping anything.
-- **Pending-write overlay.** Every written key stays pending until a host payload confirms it. A stale echo (key missing, or still carrying the pre-write value) gets the local write re-applied; a genuinely different value is a newer foreign write and wins; on the first arrival local writes always win. This is what stops the delayed host echo (#419) from rolling back local writes.
-- **Per-key salvage.** Host payloads are parsed with `parseWithSalvage`: when the strict parse fails, the offending top-level keys are dropped (falling back to their schema defaults) and the parse retried, so one corrupt value can't stall every setting. Passthrough keys (bindings) are never validated, so they can never be dropped.
-- **Shrink guard.** Outgoing writes restore any key the last host payload held that is missing from the cache and was not explicitly deleted — logged at `warn` with the key names at `debug`. Defense-in-depth against any future path that loses keys from the cache.
+Plugin setup — the store is a required third argument to `initGlobalSettings`, created before it:
 
-**Changing a schema default reaches new installs only.** Every write persists the whole *parsed* cache, so each schema field's default is written into storage the first time any plugin-side write happens — and one always does (`_audioDeviceList` at startup, `_lastSeenVersion` on upgrade), whether or not the user has ever opened a Property Inspector. Flipping a `.default(...)` therefore changes behavior for fresh installs only; every existing install keeps the old default, now persisted as an explicit value. There is no way to tell that stored value apart from a deliberate user choice, so reaching existing users needs an explicit one-shot migration guarded by a passthrough marker key (see `global-settings-migrations.ts` for the renames case). #930 flipped `focusIRacingWindow` to `true` accepting exactly this: new installs get it, upgrades keep what they had.
+```typescript
+import {
+  createFileSettingsStore,
+  getPluginPlatform,
+  initGlobalSettings,
+  resolveSettingsStorePath,
+} from "@iracedeck/deck-core";
 
-Diagnostics: with `debugLogging` on, the module logs raw payloads, queued/flushed writes, re-applied pending keys, salvage-dropped keys, and shrink-guard restores — enough to tell which failure path a "bindings not saved" report actually hit.
+const settingsStore = createFileSettingsStore({
+  path: resolveSettingsStorePath({ platform: getPluginPlatform(), env: process.env }),
+  logger: adapter.createLogger("SettingsStore"),
+});
+
+// Still BEFORE adapter.connect()
+initGlobalSettings(adapter, adapter.createLogger("GlobalSettings"), settingsStore);
+```
+
+`createMemorySettingsStore()` is the store for tests and the scenario harness.
+
+**Startup.** `initGlobalSettings` returns the (default) cache immediately and finishes loading in the background; listeners fire once when the cache first reflects the store:
+
+- **File present** → parsed with per-key salvage → cache → listeners. The file is re-saved, which heals a file whose salvage dropped keys.
+- **No file** → ONE `adapter.getGlobalSettings()`; the first `didReceiveGlobalSettings` payload is salvaged, becomes the cache, and is written as the file ("Migrated global settings from the deck host"). If the host doesn't answer within `MIGRATION_TIMEOUT_MS` (10 s) the plugin starts fresh and writes a defaults file. A payload that arrives without having been asked for — a PI's save echo, or one racing the file load — is **ignored** for the cache and logged at debug; a host answer can never migrate over an existing file.
+- **File unreadable** (a read error other than ENOENT — locked, permission denied) → retried `LOAD_RETRY_DELAY_MS` (1 s) apart, 3 attempts, then the session runs on schema defaults and **never saves**, logged at error. Fail closed on purpose: `save` replaces the file atomically, so writing defaults over settings we merely failed to READ would destroy them. The store never becomes ready, so every gate below stays closed.
+- **File unparseable** → moved aside as `global-settings.corrupt-<iso>.json` (copied aside if the rename fails) and reported as "no file", so a user's file is never silently discarded.
+
+**Writes.** `updateGlobalSettings(partial)` / `deleteGlobalSettings(keys)` → merge → parse with salvage → cache → listeners → `store.save(cache)`. Read-your-writes is trivial (the cache is truth). The file write is **debounced** (250 ms, trailing) and **atomic** (temp file + rename), so a slider drag or a key-binding recording can't hammer the disk and no reader ever sees a partial file; `flush()` forces it out. A write made before the store is ready updates the cache and notifies listeners as usual, and is additionally recorded and re-applied over the loaded/migrated settings — so a startup write (the audio-device list, the #610 elevation probe) is neither lost nor able to persist schema defaults over the file. No write path calls `adapter.setGlobalSettings`.
+
+**The one host write.** Each plugin's startup-defaults block publishes `_settingsChannel: { port, token }` — the loopback settings server's address, once `settingsWindow.ensureStarted()` resolves — into the store AND, exactly once per start, through `adapter.setGlobalSettings`. That host copy is the bootstrap the phase-2 PI bridge reads before switching its global-settings frames to the loopback socket; it is the only remaining write to the deck host. `_settingsStorePath` is published unconditionally (not inside the server's `then`, so a bind/firewall failure still leaves the path visible) for the Diagnostics "Settings file" row and its **Open folder** button — see `settings-window.md`.
+
+**`isSettingsStoreReady()`** reports whether the cache reflects the store — loaded, migrated, or fresh. It replaced `hasReceivedHostSettings()`, which is **removed**. Before it flips, the cache is pure schema defaults with no passthrough keys, so anything that must not act on defaults gates on it: `focusIRacingIfEnabled()`, the one-shot key migrations in `global-settings-migrations.ts`, and each plugin's `startupDefaultsApplied` block. Any consumer deciding on the ABSENCE of a key must wait for it. `isGlobalSettingsInitialized()` is the weaker, different thing (`initGlobalSettings` has been called) — never use it as this gate.
+
+**Per-key salvage stays.** Stored settings are parsed with `parseWithSalvage`: when the strict parse fails, the offending top-level keys are dropped (falling back to their schema defaults) and the parse retried, so one corrupt value can't stall every setting. Passthrough keys (bindings) are never validated, so they can never be dropped. It now guards a partially-bad **file** — hand-edited, or written by an older schema — instead of a partially-bad host payload.
+
+**Changing a schema default still reaches new installs only.** Every write persists the whole _parsed_ cache, so each schema field's default is written into the file the first time any write happens — and one always does at startup (`_audioDeviceList`, `_settingsStorePath`). On an upgrade the migrated file carries whatever the host had, so existing installs keep their old values too. Flipping a `.default(...)` therefore changes behavior for fresh installs only; there is no way to tell a persisted default apart from a deliberate user choice, so reaching existing users needs an explicit one-shot migration guarded by a passthrough marker key (see `global-settings-migrations.ts` for the renames case). #930 flipped `focusIRacingWindow` to `true` accepting exactly this.
+
+**Passthrough keys the store introduces:** `_settingsStorePath` (the resolved file path, shown on Diagnostics) and `_settingsChannel` (`{ port, token }`). Both plugin-written; not user settings.
+
+**Phase-1 caveat — this is not shippable on its own.** Property Inspectors still write global settings to the deck host (their sdpi is unchanged until the phase-2 PI bridge reroutes them to the loopback server), and the plugin no longer reads the host after migration — so a PI edit today reaches neither the plugin nor the file. The settings window is the working editing path until phase 2 lands.
+
+Diagnostics: with `debugLogging` on, the module logs the store path and stored-key count on load, the raw host payload during migration, every ignored host payload, salvage-dropped keys, and each `Settings saved: <path>` — enough to tell which path a "settings not saved" report actually hit.
 
 ## Title Settings Keys
 

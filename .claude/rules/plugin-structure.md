@@ -159,8 +159,10 @@ import { getAudio, initializeAudio } from "@iracedeck/audio-service";
 import { MY_ACTION_UUID, MyAction } from "@iracedeck/iracing-actions";
 import { ElgatoPlatformAdapter } from "@iracedeck/deck-adapter-elgato";
 import {
+  createFileSettingsStore,
   focusIRacingIfEnabled,
   getController,
+  getPluginPlatform,
   initAppMonitor,
   initGlobalSettings,
   initializeBindingDispatcher,
@@ -170,6 +172,7 @@ import {
   initializeSimHub,
   initMousePointer,
   initWindowFocus,
+  resolveSettingsStorePath,
 } from "@iracedeck/deck-core";
 import { initializeEventBus } from "@iracedeck/event-bus";
 import { IRacingNative } from "@iracedeck/iracing-native";
@@ -235,8 +238,15 @@ adapter.onDialRotate(() => focusIRacingIfEnabled());
 // 11. Register actions via the adapter (logger injected via constructor)
 adapter.registerAction(MY_ACTION_UUID, new MyAction(adapter.createLogger("MyAction")));
 
-// 12. Initialize global settings BEFORE connect() - pass adapter!
-initGlobalSettings(adapter, adapter.createLogger("GlobalSettings"));
+// 12. Initialize global settings BEFORE connect() - pass adapter AND the
+//     plugin-owned settings store (#993; the file is truth, the host is only a
+//     one-time migration source — see @.claude/rules/global-settings.md)
+const settingsStore = createFileSettingsStore({
+  path: resolveSettingsStorePath({ platform: getPluginPlatform(), env: process.env }),
+  logger: adapter.createLogger("SettingsStore"),
+});
+
+initGlobalSettings(adapter, adapter.createLogger("GlobalSettings"), settingsStore);
 
 // 13. Initialize SimHub service AFTER global settings (reads host/port from settings)
 initializeSimHub(adapter.createLogger("SimHub"));
@@ -253,6 +263,7 @@ adapter.connect();
 
 **CRITICAL**:
 - Both `initGlobalSettings()` and `initAppMonitor()` take an `IDeckPlatformAdapter` (not `typeof StreamDeck`)
+- `initGlobalSettings()` also takes a required `SettingsStore` (#993). It returns the schema-default cache immediately and loads the file in the background, so nothing may assume settings are present right after the call — gate on `isSettingsStoreReady()` or react in `onGlobalSettingsChange`. The store must be created before the settings-window controller, whose command-handler deps read `settingsStore.path` eagerly
 - All init calls must be BEFORE `adapter.connect()` (handlers must register first)
 - `initializeEventBus()` must come before any publisher (e.g. `initializeSimEventsIracing`) or subscriber (actions via `getEventBus().subscribe(...)`)
 - `initializeSimEventsIracing()` must come after `initializeSDK()` (requires `getController()`) and after `initializeEventBus()`; it's the only package that reads `sdkController` ticks on behalf of action consumers

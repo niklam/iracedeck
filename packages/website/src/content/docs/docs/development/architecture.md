@@ -145,33 +145,38 @@ The render path is fully abstracted: `iracing-actions` hands a finished icon —
 
 ### The settings path (the settings window)
 
-Since #992 there is a third outbound path that has nothing to do with iRacing: the plugin **serves a web page** and the user's browser is a client of the plugin. Plugin-global settings live in the deck host's store; two UIs edit them — the Property Inspector (which writes to the host over its own socket) and the settings window (which writes *through the plugin*).
+Since #992 there is a third outbound path that has nothing to do with iRacing: the plugin **serves a web page** and the user's browser is a client of the plugin. And since #993 the plugin also **owns the settings themselves**: plugin-global settings live in one JSON file per ecosystem (`SettingsStore` → `%LOCALAPPDATA%\iRaceDeck\Settings\<Stream Deck | Mirabox | Ulanzi>\global-settings.json`), loaded at startup and saved — debounced and atomically — on every change. The deck host's own store is now touched at most twice: it is **read once** — only when there is no file yet, to migrate an existing installation's settings across on the first start after the upgrade — and **written once per start** with `_settingsChannel` (the loopback server's port and token), the bootstrap every Property Inspector will use to find the plugin.
 
 ```mermaid
 flowchart LR
   pi["Property Inspector<br/>(sdpi-components)"]:::ext
   win["Settings window<br/>(browser --app=, same sdpi-components<br/>+ settings-window-bridge)"]:::ext
-  srv["deck-core<br/>settings-window server<br/>loopback · token+cookie · Origin"]:::core
-  gs["deck-core<br/>global-settings<br/>(#896 write safety)"]:::core
+  srv["deck-core<br/>settings-window server<br/>loopback · token+cookie · Origin<br/>(runs for the plugin's lifetime)"]:::core
+  gs["deck-core<br/>global-settings<br/>(single writer)"]:::core
+  store["SettingsStore<br/>global-settings.json<br/>(per ecosystem, under LOCALAPPDATA)"]:::core
   core(["IDeckPlatformAdapter — SEAM 2"]):::seam
   host["deck host store"]:::ext
 
-  pi -->|"setGlobalSettings (whole snapshot)"| host
-  host -->|"didReceiveGlobalSettings"| core
-  core --> gs
   win -->|"PI protocol over ws://127.0.0.1"| srv
   srv -->|"changed keys only"| gs
-  gs -->|"updateGlobalSettings"| core
-  core --> host
+  gs -->|"save (debounced, atomic)"| store
+  store -->|"load at startup"| gs
   gs -->|"push on any change"| srv
   srv --> win
+  host -->|"read ONCE — migration"| core
+  core --> gs
+  gs -->|"write ONCE per start — _settingsChannel"| core
+  core --> host
+  pi -->|"setGlobalSettings (rerouted to the server next)"| host
 
   classDef ext fill:#33404d,color:#fff,stroke:#1d262e;
   classDef seam fill:#8e44ad,color:#fff,stroke:#5e2d73,stroke-width:3px;
   classDef core fill:#2d7dd2,color:#fff,stroke:#1f5793;
 ```
 
-The window is the PI framework re-hosted: the same `sdpi-components.js`, `pi-components.js`, and `global-*.ejs` partials, talking to a **fake host** inside the plugin that speaks the global-settings subset of the Elgato PI protocol. Anything the plugin does on the window's behalf — persist its bounds, switch a deck's profile, play an audio preview, answer SimHub reachability (a direct fetch from the window's origin is cross-origin) — arrives as a `sendToPlugin` command and is validated in `deck-core`. The page is opened as a chromeless app window in a Chromium browser with a dedicated profile, and closes itself when its socket to the plugin dies. Details, security model, and rules: `.claude/rules/settings-window.md`.
+The window is the PI framework re-hosted: the same `sdpi-components.js`, `pi-components.js`, and `global-*.ejs` partials, talking to a **fake host** inside the plugin that speaks the global-settings subset of the Elgato PI protocol. Anything the plugin does on the window's behalf — persist its bounds, switch a deck's profile, play an audio preview, reveal the settings file in Explorer, answer SimHub reachability (a direct fetch from the window's origin is cross-origin) — arrives as a `sendToPlugin` command and is validated in `deck-core`. The page is opened as a chromeless app window in a Chromium browser with a dedicated profile, and closes itself when its socket to the plugin dies. The server is no longer started on demand: it comes up with the plugin and stays up, so its address is known before any UI asks for it.
+
+Property Inspectors are the one client not yet rerouted: their `sdpi-components` still saves to the deck host's copy, which the plugin no longer reads. The next phase gives every PI the same loopback socket the window uses, bootstrapped from `_settingsChannel`; until then the settings window is the editing surface that reaches the plugin. Details, security model, and rules: `.claude/rules/settings-window.md` and `.claude/rules/global-settings.md`.
 
 ## The Race Engineer branch
 

@@ -104,12 +104,12 @@ sd.logger.warn("[AppMonitor] Already initialized");
 
 ```typescript
 // GOOD: Use scoped logger
-export function initGlobalSettings(adapter: IDeckPlatformAdapter, logger: ILogger): void {
+export function initGlobalSettings(adapter: IDeckPlatformAdapter, logger: ILogger, store: SettingsStore): void {
   logger.info("initGlobalSettings called");
 }
 
 // In plugin.ts
-initGlobalSettings(adapter, adapter.createLogger("GlobalSettings"));
+initGlobalSettings(adapter, adapter.createLogger("GlobalSettings"), settingsStore);
 ```
 
 ### Do NOT Use SDK Logger Directly in Modules

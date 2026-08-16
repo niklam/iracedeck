@@ -330,16 +330,27 @@ Global settings are plugin-level settings shared across all action instances. Us
 
 ### Plugin Setup (CRITICAL)
 
-**IMPORTANT**: You MUST pass the platform adapter to `initGlobalSettings()`:
+**IMPORTANT**: You MUST pass the platform adapter and the plugin-owned settings store to `initGlobalSettings()`:
 
 ```typescript
 // plugin.ts
 import { ElgatoPlatformAdapter } from "@iracedeck/deck-adapter-elgato";
-import { initGlobalSettings } from "@iracedeck/deck-core";
+import {
+  createFileSettingsStore,
+  getPluginPlatform,
+  initGlobalSettings,
+  resolveSettingsStorePath,
+} from "@iracedeck/deck-core";
+
+// The settings file is the single source of truth (#993)
+const settingsStore = createFileSettingsStore({
+  path: resolveSettingsStorePath({ platform: getPluginPlatform(), env: process.env }),
+  logger: adapter.createLogger("SettingsStore"),
+});
 
 // MUST call BEFORE adapter.connect() - handlers must be registered first
-// MUST pass the adapter (IDeckPlatformAdapter)
-initGlobalSettings(adapter, adapter.createLogger("GlobalSettings"));
+// MUST pass the adapter (IDeckPlatformAdapter) and the store
+initGlobalSettings(adapter, adapter.createLogger("GlobalSettings"), settingsStore);
 
 adapter.connect();
 ```
@@ -375,9 +386,9 @@ const binding = parseBinding(globalSettings["blackBoxLapTiming"]);
 
 ### Common Pitfalls
 
-1. **Settings cache empty on startup**: `initGlobalSettings()` must call `adapter.getGlobalSettings()` after registering the listener to fetch initial values
+1. **Settings cache empty right after startup**: expected — `initGlobalSettings()` returns schema defaults and loads the store in the background (the deck host is only asked when there is no file yet). Never read settings straight after the call; gate on `isSettingsStoreReady()` or react in `onGlobalSettingsChange` (see `@.claude/rules/global-settings.md`)
 2. **Callback never fires**: Handlers must be registered BEFORE `adapter.connect()`
-3. **Wrong adapter instance**: Always pass the `IDeckPlatformAdapter` to `initGlobalSettings(adapter, logger)`
+3. **Wrong adapter instance**: Always pass the `IDeckPlatformAdapter` to `initGlobalSettings(adapter, logger, store)`
 
 ## Encoder (Dial) & Touchscreen Support
 
