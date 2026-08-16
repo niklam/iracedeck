@@ -59,18 +59,19 @@ export class OpenSettings extends HTMLElement {
       ird-open-settings { display: block; }
       ird-open-settings button {
         width: 100%;
-        padding: 6px 10px;
-        border: 1px solid #4a90d9;
+        min-width: 200px;
+        padding: 6px 16px;
+        border: 1px solid #ce2128; /* iRaceDeck brand red (website --sl-color-accent) */
         border-radius: 4px;
         cursor: pointer;
         font-size: 11px;
         font-weight: 600;
-        background: #2a3a4a;
+        background: #3a2426;
         color: #ffffff;
         box-sizing: border-box;
       }
       ird-open-settings button:hover {
-        background: #34495e;
+        background: #ce2128;
       }
     `;
     document.head.appendChild(style);
