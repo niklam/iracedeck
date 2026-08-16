@@ -27,7 +27,7 @@
     "@iracedeck/pi-components": "workspace:*",
     "@iracedeck/rasterizer": "workspace:*",
     "@iracedeck/sim-events-iracing": "workspace:*",
-    "ws": "8.21.1",
+    "ws": "8.21.3",
     "zod": "4.4.3"
   },
   "devDependencies": {
@@ -38,7 +38,7 @@
     "@rollup/plugin-terser": "1.0.0",
     "@rollup/plugin-typescript": "12.3.0",
     "@tsconfig/node22": "22.0.5",
-    "@types/node": "26.1.2",
+    "@types/node": "26.2.0",
     "rimraf": "6.1.3",
     "rollup": "4.62.4",
     "tslib": "2.8.1",
