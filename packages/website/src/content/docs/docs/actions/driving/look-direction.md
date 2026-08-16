@@ -11,7 +11,7 @@ Look Direction simulates holding a look-direction key for as long as the button 
 
 ## Modes
 
-Select the mode from the **Direction** dropdown in the Property Inspector.
+Select the mode from the **Mode** dropdown in the Property Inspector.
 
 ### Look Left
 

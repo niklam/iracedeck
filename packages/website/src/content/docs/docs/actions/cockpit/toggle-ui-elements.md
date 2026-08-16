@@ -11,7 +11,7 @@ Show or hide iRacing's on-screen overlays and displays. Clean up your view or br
 
 ## Modes
 
-Select the mode from the **Element** dropdown in the Property Inspector.
+Select the mode from the **Mode** dropdown in the Property Inspector.
 
 ### Dash Box
 
