@@ -409,3 +409,28 @@ export {
   requestProfileSwitchBack,
   type ProfileSwitcher,
 } from "./profile-switcher.js";
+
+// Settings window (issue #992): loopback-served, chromeless-app-window settings UI
+export {
+  findChromiumBrowser,
+  findChromiumBrowserOnThisMachine,
+  queryWindowsAppPath,
+  spawnAppWindow,
+  type ChromiumLookupDeps,
+} from "./chromium-browser.js";
+export {
+  authorizeSettingsRequest,
+  type SettingsRequestDecision,
+  type SettingsRequestDenial,
+  type SettingsRequestInput,
+} from "./settings-window-guard.js";
+export {
+  launchSettingsWindow,
+  type SettingsWindowLaunch,
+  type SettingsWindowLaunchInput,
+} from "./settings-window-launcher.js";
+export {
+  startSettingsWindowServer,
+  type SettingsWindowServer,
+  type SettingsWindowServerOptions,
+} from "./settings-window-server.js";
