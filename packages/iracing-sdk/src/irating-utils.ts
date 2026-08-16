@@ -6,6 +6,7 @@
  * calculator spreadsheet). Pure functions — the canonical live race order is
  * passed in as data, never computed here (see .claude/rules/race-positions.md).
  */
+import { calculateGridPositions, type QualifyResult } from "./grid-utils.js";
 
 /** Elo-style base factor: 1600 / ln(2). */
 const BR1 = 1600 / Math.LN2;
@@ -99,12 +100,6 @@ export interface IRatingEstimates {
   sofs: (number | null)[];
 }
 
-/** Session-YAML qualifying result entry (`QualifyResultsInfo.Results[]`); `Position` is 0-indexed. */
-export interface IRatingQualifyResult {
-  CarIdx?: number;
-  Position?: number;
-}
-
 export interface IRatingEstimateOrderSources {
   /** Raw iRacing SessionType ("Race", "Open Qualify", "Lone Qualify", "Practice", …). */
   sessionType: string | undefined;
@@ -113,30 +108,13 @@ export interface IRatingEstimateOrderSources {
   /** Official standings counters (telemetry `CarIdxPosition`). */
   officialPositions?: ArrayLike<number> | null;
   /** Qualifying results from the top-level session-YAML `QualifyResultsInfo.Results` key. */
-  qualifyResults?: IRatingQualifyResult[] | null;
+  qualifyResults?: QualifyResult[] | null;
   /**
    * Player's carIdx. When given, a source only wins if it classifies the
    * player — the #647 hold that keeps the pre-green fallback on screen through
    * the green-flag run to the line instead of dipping to "no estimate".
    */
   playerCarIdx?: number;
-}
-
-/** Upper bound for a plausible carIdx — guards corrupt session YAML from sizing huge arrays. */
-const MAX_QUALIFY_CAR_IDX = 255;
-
-/**
- * Extract the qualifying grid from parsed session info — the top-level
- * session-YAML `QualifyResultsInfo.Results` key (a sibling of `SessionInfo`,
- * not nested inside it). Shared by every `resolveIRatingEstimateOrder` caller
- * so the shape knowledge lives in one place.
- */
-export function extractQualifyResults(sessionInfo: unknown): IRatingQualifyResult[] | undefined {
-  const qualifyInfo = (sessionInfo as Record<string, unknown> | null | undefined)?.QualifyResultsInfo as
-    Record<string, unknown> | undefined;
-  const results = qualifyInfo?.Results;
-
-  return Array.isArray(results) ? (results as IRatingQualifyResult[]) : undefined;
 }
 
 function hasClassifiedCar(order: ArrayLike<number> | null | undefined): order is ArrayLike<number> {
@@ -151,33 +129,6 @@ function hasClassifiedCar(order: ArrayLike<number> | null | undefined): order is
 
 function normalizeOfficialOrder(positions: ArrayLike<number>): number[] {
   return Array.from(positions, (p) => (typeof p === "number" && p > 0 ? p : 0));
-}
-
-function orderFromQualifyResults(results: IRatingQualifyResult[]): number[] | null {
-  // One strict validity rule for sizing AND filling: session YAML can contain
-  // null list items, fractional/absurd indices, or NaN positions, and this runs
-  // inside the per-tick render path — skip anything malformed, never throw.
-  const ranks = new Map<number, number>();
-
-  for (const entry of results as unknown[]) {
-    if (typeof entry !== "object" || entry === null) continue;
-
-    const { CarIdx: carIdx, Position: position } = entry as IRatingQualifyResult;
-
-    if (!Number.isInteger(carIdx) || (carIdx as number) < 0 || (carIdx as number) > MAX_QUALIFY_CAR_IDX) continue;
-
-    if (!Number.isInteger(position) || (position as number) < 0) continue;
-
-    ranks.set(carIdx as number, (position as number) + 1); // Position is 0-indexed
-  }
-
-  if (ranks.size === 0) return null;
-
-  const order = new Array<number>(Math.max(...ranks.keys()) + 1).fill(0);
-
-  for (const [carIdx, rank] of ranks) order[carIdx] = rank;
-
-  return order;
 }
 
 /**
@@ -207,7 +158,7 @@ export function resolveIRatingEstimateOrder(sources: IRatingEstimateOrderSources
     () =>
       hasClassifiedCar(officialPositions) ? normalizeOfficialOrder(officialPositions) : null,
     () =>
-      Array.isArray(qualifyResults) ? orderFromQualifyResults(qualifyResults) : null,
+      Array.isArray(qualifyResults) ? calculateGridPositions(qualifyResults) : null,
   ];
   const anchored = typeof playerCarIdx === "number" && playerCarIdx >= 0;
   let firstUsable: number[] | null = null;

@@ -348,6 +348,132 @@ describe("sim-events-iracing translator", () => {
     });
   });
 
+  describe("pre-green grid order (issue #974)", () => {
+    /** A race session whose grid puts car2 on pole, then car1, then the player (car0). */
+    function raceSessionWithGrid(): Record<string, unknown> {
+      return {
+        DriverInfo: { DriverCarIdx: 0, Drivers: [{ CarIdx: 0 }, { CarIdx: 1 }, { CarIdx: 2 }] },
+        SessionInfo: { Sessions: [{ SessionNum: 0, SessionType: "Race" }] },
+        QualifyResultsInfo: {
+          Results: [
+            { CarIdx: 2, Position: 0 },
+            { CarIdx: 1, Position: 1 },
+            { CarIdx: 0, Position: 2 },
+          ],
+        },
+      };
+    }
+
+    /** Parade lap: nobody has completed a lap, so the lap-progress order ranks nobody. */
+    function paradeLap(): TelemetryData {
+      return telemetry({
+        SessionState: SessionState.ParadeLaps,
+        CarIdxLapCompleted: [-1, -1, -1],
+        CarIdxLapDistPct: [0.94, 0.95, 0.96],
+        CarIdxTrackSurface: [TrkLoc.OnTrack, TrkLoc.OnTrack, TrkLoc.OnTrack],
+        CarIdxClass: [0, 0, 0],
+      });
+    }
+
+    it("serves the whole field its grid slot during the parade lap", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(raceSessionWithGrid());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(paradeLap());
+
+      expect(getLiveRacePositions()).toEqual([3, 2, 1]);
+    });
+
+    it("reports the player's grid slot and class slot pre-green", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(raceSessionWithGrid());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(paradeLap());
+
+      expect(getLivePosition()).toEqual({ position: 3, classPosition: 3, isMultiClass: false });
+      expect(getLiveCarPosition(2)).toEqual({ position: 1, classPosition: 1, isMultiClass: false });
+    });
+
+    it("keeps the lap-progress order in a non-race session", () => {
+      const controller = createMockController();
+      const practice = raceSessionWithGrid();
+      practice.SessionInfo = { Sessions: [{ SessionNum: 0, SessionType: "Practice" }] };
+      controller.__setSessionInfo(practice);
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      // Same pre-green state, but a stale qualifying grid must not surface here.
+      controller.__tick(
+        telemetry({
+          SessionState: SessionState.ParadeLaps,
+          CarIdxLapCompleted: [3, 3, 3],
+          CarIdxLapDistPct: [0.1, 0.5, 0.9],
+          CarIdxTrackSurface: [TrkLoc.OnTrack, TrkLoc.OnTrack, TrkLoc.OnTrack],
+        }),
+      );
+
+      expect(getLiveRacePositions()).toEqual([3, 2, 1]);
+    });
+
+    it("rolls to the live running order once the green flies", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(raceSessionWithGrid());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(paradeLap());
+      controller.__tick(
+        telemetry({
+          SessionState: SessionState.Racing,
+          CarIdxLapCompleted: [0, 0, 0],
+          CarIdxLapDistPct: [0.3, 0.2, 0.1],
+          CarIdxTrackSurface: [TrkLoc.OnTrack, TrkLoc.OnTrack, TrkLoc.OnTrack],
+        }),
+      );
+
+      // The player (car0) led lap 1 off the line despite starting third.
+      expect(getLiveRacePositions()).toEqual([1, 2, 3]);
+    });
+
+    it("does not read the grid-to-live handover at the green as a position change", () => {
+      // The grid and the live order legitimately disagree, so the switch at the
+      // green must not surface as an overtake. `diffOvertakes` rolls its
+      // baselines silently while pre-green and leaves itself uninitialized, so
+      // the first racing tick seeds fresh from the green-flag order.
+      const controller = createMockController();
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("overtake.completed", handler);
+      controller.__setSessionInfo(raceSessionWithGrid());
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      controller.__tick(paradeLap());
+      controller.__tick(paradeLap());
+
+      // Green, and the player is suddenly the live leader — a two-place "gain"
+      // that exists only because the order SOURCE changed.
+      const racing = (): TelemetryData =>
+        telemetry({
+          SessionState: SessionState.Racing,
+          CarIdxLapCompleted: [0, 0, 0],
+          CarIdxLapDistPct: [0.3, 0.2, 0.1],
+          CarIdxTrackSurface: [TrkLoc.OnTrack, TrkLoc.OnTrack, TrkLoc.OnTrack],
+          CarIdxClass: [0, 0, 0],
+        });
+
+      controller.__tick(racing());
+
+      // Hold well past OVERTAKE_HOLD_MS: an unseeded baseline would confirm the
+      // pending "gain" here.
+      vi.useFakeTimers();
+      vi.setSystemTime(Date.now() + 5000);
+      controller.__tick(racing());
+      vi.useRealTimers();
+
+      expect(handler).not.toHaveBeenCalled();
+    });
+  });
+
   describe("getStartingGridPosition (issue #647)", () => {
     it("returns the overall grid slot (1-indexed) in a single-class field", () => {
       const controller = createMockController();

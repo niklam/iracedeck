@@ -151,17 +151,18 @@ export {
   type WindSpeedUnit,
 } from "./wind-utils.js";
 
+// Qualifying-grid utilities (#974) — the pre-green starting order from session YAML
+export { calculateGridPositions, extractQualifyResults, type QualifyResult } from "./grid-utils.js";
+
 // iRating estimation utilities (#268, #872)
 export {
   calculateIRatingChanges,
   calculateSof,
   estimateIRatingChanges,
-  extractQualifyResults,
   type IRatingEstimateInput,
   type IRatingEstimateOrderSources,
   type IRatingEstimates,
   type IRatingFieldDriver,
-  type IRatingQualifyResult,
   type IRatingRaceResult,
   resolveIRatingEstimateOrder,
 } from "./irating-utils.js";

@@ -31,11 +31,13 @@ import {
   CarLeftRight,
   classPositionFromOrder,
   crossingTimeAt,
+  extractQualifyResults,
   IRSDK_UNLIMITED_LAPS,
   IRSDK_UNLIMITED_TIME,
   isPostRace,
   isPreGreen,
   nearestCarGapMeters,
+  type QualifyResult,
   type SDKController,
   SessionState,
   type TelemetryData,
@@ -74,13 +76,14 @@ import { diffPitLane } from "./diff/pit-lane.js";
 import { buildSnapshot as buildReadbackSnapshot, diffPitReadback } from "./diff/pit-readback.js";
 import { diffPitStatus } from "./diff/pit-status.js";
 import { diffPitsOpen } from "./diff/pits-open.js";
-import { calculateFrozenRacePositions, updatePositionTracking } from "./diff/race-finish.js";
+import { updatePositionTracking } from "./diff/race-finish.js";
 import { diffRadar, resolveRadarState } from "./diff/radar.js";
 import { diffRollingStart } from "./diff/rolling-start.js";
 import { diffStartCountdown, diffStartLights } from "./diff/start-lights.js";
 import { diffToggles } from "./diff/toggles.js";
 import { diffTrackWetness } from "./diff/track-wetness.js";
 import type { PendingEvent } from "./diff/types.js";
+import { calculateCanonicalRacePositions } from "./race-order.js";
 import { resolveStandingStart } from "./start-lights.js";
 import { createInitialState, type GapNeighborState, type TranslatorState } from "./state.js";
 import { resolveTrackDirection, resolveTrackType, type TrackDirection } from "./track-type.js";
@@ -612,6 +615,11 @@ function resolveStartingGridPosition(sessionInfo: Record<string, unknown>): numb
  * Returns `undefined` when any step misses (no driver info, no qualify results,
  * no entry for the player, or a negative `Position` sentinel).
  *
+ * The grid itself is read through `extractQualifyResults` (`grid-utils.ts`), the
+ * one place that knows where `QualifyResultsInfo` lives — this resolver only adds
+ * the player-slot arithmetic the whole-field {@link calculateCanonicalRacePositions}
+ * has no use for.
+ *
  * @internal Exported for testing.
  */
 function resolveStartingGridSlots(
@@ -622,10 +630,9 @@ function resolveStartingGridSlots(
 
   if (typeof playerCarIdx !== "number" || playerCarIdx < 0) return undefined;
 
-  const qualifyInfo = sessionInfo.QualifyResultsInfo as Record<string, unknown> | undefined;
-  const results = qualifyInfo?.Results as Array<Record<string, unknown>> | undefined;
+  const results = extractQualifyResults(sessionInfo);
 
-  if (!Array.isArray(results)) return undefined;
+  if (!results) return undefined;
 
   const entry = results.find((r) => r.CarIdx === playerCarIdx);
 
@@ -659,7 +666,7 @@ function resolveStartingGridSlots(
  */
 function resolveStartingClassPosition(
   sessionInfo: Record<string, unknown>,
-  results: Array<Record<string, unknown>>,
+  results: QualifyResult[],
   playerCarIdx: number,
   playerPosition: number,
 ): number | undefined {
@@ -821,13 +828,13 @@ export function getLiveCarPosition(carIdx: number): LivePosition | null {
   if (!Number.isInteger(carIdx) || carIdx < 0) return null;
 
   const telemetry = instance.latestTelemetry;
-  const positions = calculateFrozenRacePositions(instance.state, telemetry);
+  const sessionInfo = instance.controller.getSessionInfo() as Record<string, unknown> | null;
+  const positions = resolveCanonicalOrder(instance.state, telemetry, sessionInfo);
   const position = positions[carIdx] ?? 0;
 
   if (position <= 0) return null;
 
   const classPosition = classPositionFromOrder(positions, telemetry.CarIdxClass, carIdx);
-  const sessionInfo = instance.controller.getSessionInfo() as Record<string, unknown> | null;
 
   return {
     position,
@@ -838,13 +845,15 @@ export function getLiveCarPosition(carIdx: number): LivePosition | null {
 
 /**
  * The LIVE per-car race order — 1-based overall positions indexed by carIdx
- * (`0` for cars not in the order). This is the same frozen calculation that
+ * (`0` for cars not in the order). This is the same canonical calculation that
  * backs {@link getLivePosition} (towed / finished / left-world cars keep their
- * rank instead of churning the order — issues #574, #603), but exposed for the
- * WHOLE field so callers that need an arbitrary car's live position can index
- * it directly — e.g. the Telemetry Display / Chat / Race Admin template prefixes
- * (`self`, `track_ahead/behind`, `race_ahead/behind`, `focused`), which would
- * otherwise see only iRacing's start/finish-line-frozen `CarIdxPosition`.
+ * rank instead of churning the order — issues #574, #603; before the green flag
+ * of a race the whole field holds its qualifying grid slot — issue #974), but
+ * exposed for the WHOLE field so callers that need an arbitrary car's live
+ * position can index it directly — e.g. the Telemetry Display / Chat / Race
+ * Admin template prefixes (`self`, `track_ahead/behind`, `race_ahead/behind`,
+ * `focused`), which would otherwise see only iRacing's start/finish-line-frozen
+ * `CarIdxPosition`.
  *
  * Returns `null` when telemetry isn't resolvable yet. The array is meaningful
  * for race sessions; callers gate non-race sessions themselves (where the
@@ -859,7 +868,31 @@ export function getLiveCarPosition(carIdx: number): LivePosition | null {
 export function getLiveRacePositions(): number[] | null {
   if (!instance || !instance.latestTelemetry) return null;
 
-  return calculateFrozenRacePositions(instance.state, instance.latestTelemetry);
+  return resolveCanonicalOrder(
+    instance.state,
+    instance.latestTelemetry,
+    instance.controller.getSessionInfo() as Record<string, unknown> | null,
+  );
+}
+
+/**
+ * The canonical race order for this telemetry — the ONE place the translator
+ * decides which source is in play (issue #974). `calculateCanonicalRacePositions`
+ * stays a pure decision function taking an explicit `isRaceSession`; this is the
+ * single spot that derives it, so no caller can accidentally reach for a
+ * different source (`.claude/rules/race-positions.md`).
+ */
+function resolveCanonicalOrder(
+  state: TranslatorState,
+  telemetry: TelemetryData,
+  sessionInfo: Record<string, unknown> | null,
+): number[] {
+  return calculateCanonicalRacePositions(
+    state,
+    telemetry,
+    sessionInfo,
+    resolveSessionType(sessionInfo, telemetry) === "Race",
+  );
 }
 
 /**
@@ -982,14 +1015,19 @@ function hasLiveProgress(lapCompleted: number | undefined, lapDistPct: number | 
 /**
  * Whether the player currently LEADS the race per the canonical live order
  * (issue #771 — the winner grace on the checkered deferral). Consumes the
- * same frozen calculation as {@link getLivePosition} per
+ * same canonical calculation as {@link getLivePosition} per
  * `.claude/rules/race-positions.md`; the official `PlayerCarPosition` is the
  * fallback only when the player's slot can't be read from the live order
  * (no car index yet / not classified).
  */
-function resolvePlayerIsLeader(self: TranslatorInstance, telemetry: TelemetryData, playerCarIdx: number): boolean {
+function resolvePlayerIsLeader(
+  self: TranslatorInstance,
+  telemetry: TelemetryData,
+  playerCarIdx: number,
+  sessionInfo: Record<string, unknown> | null,
+): boolean {
   if (playerCarIdx >= 0) {
-    const positions = calculateFrozenRacePositions(self.state, telemetry);
+    const positions = resolveCanonicalOrder(self.state, telemetry, sessionInfo);
     const position = positions[playerCarIdx] ?? 0;
 
     if (position > 0) return position === 1;
@@ -1624,7 +1662,7 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     now,
     emit,
     isRaceSession,
-    isRaceSession && resolvePlayerIsLeader(self, telemetry, playerCarIdx),
+    isRaceSession && resolvePlayerIsLeader(self, telemetry, playerCarIdx, sessionInfo),
     sessionType.includes("Practice") || sessionType.includes("Testing"),
   );
   // Start-light gantry edges (issue #480). Sits beside diffFlags (after the
@@ -1689,7 +1727,11 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // tow `-isTowed`, NotInWorld-blink churn). Runs every tick before the frozen
   // positions are read.
   updatePositionTracking(self.state, telemetry);
-  const frozenPositions = calculateFrozenRacePositions(self.state, telemetry);
+  // Before the green flag of a race the lap-progress order ranks nobody (every
+  // `CarIdxLapCompleted` is -1 until the car crosses S/F), so the canonical
+  // order falls back to the qualifying grid there — issue #974, see
+  // `race-order.ts`. Everywhere else this IS `calculateFrozenRacePositions`.
+  const canonicalPositions = calculateCanonicalRacePositions(self.state, telemetry, sessionInfo, isRaceSession);
 
   // Opponent pit entries (issue #622) — consumes the same canonical frozen
   // order as diffOvertakes on the same tick. Race-only + replay-only gating
@@ -1707,7 +1749,7 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     isPreGreen(telemetry),
     isPostRace(telemetry),
     resolveIsMultiClass(sessionInfo) === true,
-    frozenPositions,
+    canonicalPositions,
     now,
     emit,
   );
@@ -1728,7 +1770,7 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     isPreGreen(telemetry),
     isPostRace(telemetry),
     resolveIsMultiClass(sessionInfo) === true,
-    frozenPositions,
+    canonicalPositions,
     trackLengthMeters,
     self.getOpponentFlagCalloutEnabled,
     now,
@@ -1748,7 +1790,7 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     replayOnlySession,
     isPreGreen(telemetry),
     isPostRace(telemetry),
-    frozenPositions,
+    canonicalPositions,
     emit,
   );
 
@@ -1762,7 +1804,7 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     now,
     emit,
     startingGridPosition,
-    frozenPositions,
+    canonicalPositions,
   );
   // Gap tracking (issue #933): crossing-time traces + class-neighbor live
   // gaps + relevance/threshold callout events. Consumes the same canonical
@@ -1785,7 +1827,7 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     telemetry.SessionTimeRemain > 0 &&
     telemetry.SessionTimeRemain < IRSDK_UNLIMITED_TIME
   ) {
-    const leaderLapTimeS = resolveLeaderLapTimeS(telemetry, frozenPositions);
+    const leaderLapTimeS = resolveLeaderLapTimeS(telemetry, canonicalPositions);
 
     if (leaderLapTimeS !== null && leaderLapTimeS > 0) {
       gapLapsRemaining = telemetry.SessionTimeRemain / leaderLapTimeS;
@@ -1798,7 +1840,7 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     isRaceSession,
     playerCarIdx,
     resolvePaceCarIdx(sessionInfo),
-    frozenPositions,
+    canonicalPositions,
     self.getGapAlertThresholdSeconds,
     emit,
     gapLapsRemaining,
@@ -1834,7 +1876,7 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     isRaceSession,
     () => computeFuelStats(self.fuelLaps.history, FUEL_LAPS_LEFT_WINDOW_LAPS),
     self.getFuelLapsLeftMarginLaps,
-    () => resolveLeaderLapTimeS(telemetry, frozenPositions),
+    () => resolveLeaderLapTimeS(telemetry, canonicalPositions),
     emit,
   );
 
