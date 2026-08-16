@@ -20,6 +20,7 @@
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
+import { PitSvStatus } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { WEIGHT } from "../../dsl.js";
@@ -35,6 +36,7 @@ import {
   type FuelCalloutId,
   type IncidentCalloutId,
   type OpponentPitCalloutId,
+  type PitStatusCalloutId,
   type PitWindowCalloutId,
   registerPitCrew,
   type RollingStartCalloutId,
@@ -285,6 +287,18 @@ const INCIDENT_CLIP_PATHS = [
 
 // Pit-box count-in clips referenced from `pit-box.ts` (issue #600). One per
 // distance mark.
+const PIT_STATUS_CLIP_PATHS = [
+  `voice/${VOICE}/pit-status/in-progress-01.mp3`,
+  `voice/${VOICE}/pit-status/too-far-forward-01.mp3`,
+  `voice/${VOICE}/pit-status/too-far-back-01.mp3`,
+  // The #951 repeat nags — one variant each so pool draws stay deterministic.
+  `voice/${VOICE}/pit-status/too-far-left-repeat-01.mp3`,
+  `voice/${VOICE}/pit-status/too-far-right-repeat-01.mp3`,
+  `voice/${VOICE}/pit-status/too-far-forward-repeat-01.mp3`,
+  `voice/${VOICE}/pit-status/too-far-back-repeat-01.mp3`,
+  `voice/${VOICE}/pit-status/bad-angle-repeat-01.mp3`,
+];
+
 const PIT_BOX_CLIP_PATHS = [
   `voice/${VOICE}/pit-box/five-01.mp3`,
   `voice/${VOICE}/pit-box/four-01.mp3`,
@@ -377,6 +391,7 @@ const manifest: AudioAssetsManifest = {
     ...TOGGLE_CLIP_PATHS,
     ...DAMAGE_CLIP_PATHS,
     ...INCIDENT_CLIP_PATHS,
+    ...PIT_STATUS_CLIP_PATHS,
     ...PIT_BOX_CLIP_PATHS,
     ...START_LIGHT_CLIP_PATHS,
     ...ROLLING_START_CLIP_PATHS,
@@ -446,6 +461,7 @@ let enabled: Map<FlagCalloutId, boolean>;
 let pitServiceRequestsEnabled: boolean;
 let damageEnabled: Map<DamageCalloutId, boolean>;
 let incidentEnabled: Map<IncidentCalloutId, boolean>;
+let pitStatusEnabled: Map<PitStatusCalloutId, boolean>;
 let pitBoxEnabled: boolean;
 let pitWindowEnabled: Map<PitWindowCalloutId, boolean>;
 let opponentPitEnabled: Map<OpponentPitCalloutId, boolean>;
@@ -459,6 +475,7 @@ beforeEach(() => {
   pitServiceRequestsEnabled = true;
   damageEnabled = new Map<DamageCalloutId, boolean>([["repair-needed", true]]);
   incidentEnabled = makeIncidentEnabledMap(true);
+  pitStatusEnabled = new Map<PitStatusCalloutId, boolean>();
   pitBoxEnabled = true;
   pitWindowEnabled = new Map<PitWindowCalloutId, boolean>([["pit-open-closed", true]]);
   opponentPitEnabled = new Map<OpponentPitCalloutId, boolean>([
@@ -483,7 +500,7 @@ beforeEach(() => {
     () => pitServiceRequestsEnabled,
     () => null,
     (id) => damageEnabled.get(id) ?? true,
-    undefined,
+    (id) => pitStatusEnabled.get(id) ?? true, // getPitStatusCalloutEnabled (issue #479 / #951)
     undefined,
     (id) => incidentEnabled.get(id) ?? true,
     undefined, // getSessionStartCalloutEnabled
@@ -1227,6 +1244,104 @@ describe("pit-box count-in live gating (issue #600)", () => {
     flush(audio);
 
     expect(voiceClipsPlayed()).toEqual([]);
+  });
+});
+
+// Issue #479 / #951: the pit-status family — both the transition callouts and
+// their repeat nags — is registered by `registerPitCrew` and wrapped by the
+// master gate. These tests confirm that WIRING; the per-scenario behavior
+// (weights, families, the speak-time validity gate) is covered in
+// `pit-status.test.ts`. The repeats matter here because they are a second
+// array threaded through the SAME wrapper: registering them outside
+// `wrapWithMaster` / `wrapCalloutScenario` would be invisible to the family
+// test, which registers scenarios on the engine directly.
+describe("pit-status family registration (issue #479 / #951)", () => {
+  const REPEAT = { status: PitSvStatus.TooFarForward } as const;
+
+  // `wrapCalloutScenario` THROWS on a scenario id missing from
+  // `SCENARIO_ID_TO_PIT_STATUS_ID`, so `registerPitCrew` succeeding in
+  // `beforeEach` already proves every repeat id is mapped. This sweep proves
+  // the stronger property: each one is mapped to the RIGHT subject, so its
+  // sibling's checkbox actually silences it.
+  it.each([
+    ["too-far-left", PitSvStatus.TooFarLeft],
+    ["too-far-right", PitSvStatus.TooFarRight],
+    ["too-far-forward", PitSvStatus.TooFarForward],
+    ["too-far-back", PitSvStatus.TooFarBack],
+    ["bad-angle", PitSvStatus.BadAngle],
+  ] as const)("the %s repeat is gated by its own subject's opt-in", (subject, status) => {
+    bus.publishEvent("pitService.positioningRepeat", { status });
+    flush(audio);
+    expect(voiceClipsPlayed().some((p) => p.includes(`/pit-status/${subject}-repeat-`))).toBe(true);
+
+    audio._played.length = 0;
+    pitStatusEnabled.set(subject, false);
+    bus.publishEvent("pitService.positioningRepeat", { status });
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+  });
+
+  it("a transition callout fires through the real registration", () => {
+    bus.publishEvent("pitService.statusChanged", { from: PitSvStatus.None, to: PitSvStatus.TooFarForward });
+    flush(audio);
+
+    expect(voiceClipsPlayed().some((p) => p.includes("/pit-status/too-far-forward-01"))).toBe(true);
+  });
+
+  it("a repeat nag fires through the real registration", () => {
+    bus.publishEvent("pitService.positioningRepeat", REPEAT);
+    flush(audio);
+
+    expect(voiceClipsPlayed().some((p) => p.includes("/pit-status/too-far-forward-repeat-"))).toBe(true);
+  });
+
+  it("the per-status opt-in suppresses the repeat as well as the transition call", () => {
+    pitStatusEnabled.set("too-far-forward", false);
+
+    bus.publishEvent("pitService.statusChanged", { from: PitSvStatus.None, to: PitSvStatus.TooFarForward });
+    bus.publishEvent("pitService.positioningRepeat", REPEAT);
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+  });
+
+  it("disabling one status leaves another status's repeat firing", () => {
+    pitStatusEnabled.set("too-far-forward", false);
+
+    bus.publishEvent("pitService.positioningRepeat", REPEAT);
+    bus.publishEvent("pitService.positioningRepeat", { status: PitSvStatus.TooFarBack });
+    flush(audio);
+
+    const played = voiceClipsPlayed();
+
+    expect(played.some((p) => p.includes("/pit-status/too-far-forward-repeat-"))).toBe(false);
+    expect(played.some((p) => p.includes("/pit-status/too-far-back-repeat-"))).toBe(true);
+  });
+
+  it("logs a debug line when a repeat is suppressed", () => {
+    pitStatusEnabled.set("too-far-forward", false);
+    bus.publishEvent("pitService.positioningRepeat", REPEAT);
+
+    expect(mockLogger.debug).toHaveBeenCalledWith("pit-status callout suppressed: too-far-forward");
+  });
+
+  it("is suppressed when the master gate is off", () => {
+    voiceMasterEnabled = false;
+    bus.publishEvent("pitService.positioningRepeat", REPEAT);
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+  });
+
+  it("toggling the status off mid-nag does not cut the in-flight clip", () => {
+    bus.publishEvent("pitService.positioningRepeat", REPEAT);
+    expect(audio._played.length).toBeGreaterThan(0);
+
+    pitStatusEnabled.set("too-far-forward", false);
+    flush(audio);
+
+    expect(voiceClipsPlayed().some((p) => p.includes("/pit-status/too-far-forward-repeat-"))).toBe(true);
   });
 });
 
