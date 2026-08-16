@@ -405,16 +405,19 @@ describe("sim-events-iracing translator", () => {
       initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
 
       // Same pre-green state, but a stale qualifying grid must not surface here.
+      // The lap distances deliberately rank the field the exact INVERSE of the
+      // grid, so a leaked grid order fails the assertion instead of coinciding
+      // with it.
       controller.__tick(
         telemetry({
           SessionState: SessionState.ParadeLaps,
           CarIdxLapCompleted: [3, 3, 3],
-          CarIdxLapDistPct: [0.1, 0.5, 0.9],
+          CarIdxLapDistPct: [0.9, 0.5, 0.1],
           CarIdxTrackSurface: [TrkLoc.OnTrack, TrkLoc.OnTrack, TrkLoc.OnTrack],
         }),
       );
 
-      expect(getLiveRacePositions()).toEqual([3, 2, 1]);
+      expect(getLiveRacePositions()).toEqual([1, 2, 3]);
     });
 
     it("rolls to the live running order once the green flies", () => {
