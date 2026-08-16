@@ -28,7 +28,7 @@ The tap direction is a single plugin-wide setting under **Global Common Settings
 
 ## Modes
 
-Select the mode from the **Setting** dropdown in the Property Inspector. Directional modes (Fuel Mixture, Fuel Cut Position) also expose a **Direction** setting for Increase / Decrease.
+Select the mode from the **Mode** dropdown in the Property Inspector. Directional modes (Fuel Mixture, Fuel Cut Position) also expose a **Direction** setting for Increase / Decrease.
 
 ### Fuel Mixture
 
@@ -117,7 +117,7 @@ Toggle full-course yellow mode on or off.
 
 ## On a dial
 
-Placed on a Stream Deck+ dial, Setup Fuel becomes a fuel-setup dial (distinct from the Fuel Service pit-fuel dial — this adjusts the in-car fuel mixture and cut). Pick one value with the dial's **Setting** dropdown; turning the dial steps it up or down in the car, and the touch strip shows that value live as a big, color-coded number. It uses the same key bindings as the keypad modes, so no extra configuration is needed if you already use them. The Property Inspector automatically shows the dial settings below (instead of the keypad Setting and Direction) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
+Placed on a Stream Deck+ dial, Setup Fuel becomes a fuel-setup dial (distinct from the Fuel Service pit-fuel dial — this adjusts the in-car fuel mixture and cut). Pick one value with the dial's **Mode** dropdown; turning the dial steps it up or down in the car, and the touch strip shows that value live as a big, color-coded number. It uses the same key bindings as the keypad modes, so no extra configuration is needed if you already use them. The Property Inspector automatically shows the dial settings below (instead of the keypad Mode and Direction) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
 
 #### Details
 
@@ -131,11 +131,11 @@ Placed on a Stream Deck+ dial, Setup Fuel becomes a fuel-setup dial (distinct fr
 
 Dials are currently Stream Deck+ only — the action can't be placed on Mirabox knobs or Ulanzi dials yet (see [Dials](/docs/features/dials/)).
 
-#### Setting: Setting
+#### Setting: Mode
 
-The fuel value the dial controls. Each renders as a color-coded "dash box": a short label on top and the live value as a large number. Each setting has a built-in accent color, but you can override the border, label, value, and background colors in the **Dash Box Appearance** section of the dial settings. Only the two adjustable values are offered — the one-shot toggles (Disable Fuel Cut, Low Fuel Accept, FCY Mode Toggle) don't map to a rotary.
+The fuel value the dial controls (the **Mode** dropdown). Each renders as a color-coded "dash box": a short label on top and the live value as a large number. Each setting has a built-in accent color, but you can override the border, label, value, and background colors in the **Dash Box Appearance** section of the dial settings. Only the two adjustable values are offered — the one-shot toggles (Disable Fuel Cut, Low Fuel Accept, FCY Mode Toggle) don't map to a rotary.
 
-| Setting | Label | Telemetry source | Shown as |
+| Mode | Label | Telemetry source | Shown as |
 |---|---|---|---|
 | Fuel Mixture | MIX | `dcFuelMixture` | integer |
 | Fuel Cut Position | CUT | `dcFuelCutPosition` | integer |

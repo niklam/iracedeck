@@ -11,7 +11,7 @@ Tweak your in-car view settings without leaving the cockpit. Each mode maps to a
 
 ## Modes
 
-Select the mode from the **Adjustment** dropdown in the Property Inspector. Directional modes (FOV, Horizon, Driver Height, UI Size) also expose a **Direction** setting for Increase / Decrease.
+Select the mode from the **Mode** dropdown in the Property Inspector. Directional modes (FOV, Horizon, Driver Height, UI Size) also expose a **Direction** setting for Increase / Decrease.
 
 ### FOV
 
@@ -102,7 +102,7 @@ Adjust the in-sim UI element size.
 
 ## On a dial
 
-Placed on a Stream Deck+ dial, View Adjustment becomes a view-tuning dial — ideal in VR, where FOV and seating tune best by feel. Pick one value with the dial's **Adjustment** dropdown; turning the dial nudges it up or down in the sim, and a press recenters your VR headset. It uses the same key bindings as the keypad modes, so no extra configuration is needed if you already use them. The Property Inspector automatically shows the dial settings below (instead of the keypad Adjustment and Direction) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
+Placed on a Stream Deck+ dial, View Adjustment becomes a view-tuning dial — ideal in VR, where FOV and seating tune best by feel. Pick one value with the dial's **Mode** dropdown; turning the dial nudges it up or down in the sim, and a press recenters your VR headset. It uses the same key bindings as the keypad modes, so no extra configuration is needed if you already use them. The Property Inspector automatically shows the dial settings below (instead of the keypad Mode and Direction) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
 
 #### Details
 
@@ -116,11 +116,11 @@ Placed on a Stream Deck+ dial, View Adjustment becomes a view-tuning dial — id
 
 Dials are currently Stream Deck+ only — the action can't be placed on Mirabox knobs or Ulanzi dials yet (see [Dials](/docs/features/dials/)).
 
-#### Setting: Adjustment
+#### Setting: Mode
 
-The view value the dial controls. Each renders as a color-coded "dash box" showing the setting's label — there is no value to display, since iRacing reports none. Each setting has a built-in accent color, but you can override the border, label, value, and background colors in the **Dash Box Appearance** section of the dial settings. Recenter VR isn't offered here — it's non-directional, so it's a press gesture instead.
+The view value the dial controls (the **Mode** dropdown). Each renders as a color-coded "dash box" showing the setting's label — there is no value to display, since iRacing reports none. Each setting has a built-in accent color, but you can override the border, label, value, and background colors in the **Dash Box Appearance** section of the dial settings. Recenter VR isn't offered here — it's non-directional, so it's a press gesture instead.
 
-| Setting | Label | Telemetry source | Shown as |
+| Mode | Label | Telemetry source | Shown as |
 |---|---|---|---|
 | FOV | FOV | None | label only |
 | Horizon | HORIZON | None | label only |

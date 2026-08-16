@@ -29,7 +29,7 @@ The tap direction is a single plugin-wide setting under **Global Common Settings
 
 ## Modes
 
-Select the mode from the **Setting** dropdown in the Property Inspector. Directional modes (MGU-K Re-Gen Gain, MGU-K Deploy Mode, MGU-K Fixed Deploy) also expose a **Direction** setting for Increase / Decrease. HYS Boost and HYS Regen use a hold pattern — the key is held while the button is pressed and released when you release it.
+Select the mode from the **Mode** dropdown in the Property Inspector. Directional modes (MGU-K Re-Gen Gain, MGU-K Deploy Mode, MGU-K Fixed Deploy) also expose a **Direction** setting for Increase / Decrease. HYS Boost and HYS Regen use a hold pattern — the key is held while the button is pressed and released when you release it.
 
 ### MGU-K Re-Gen Gain
 
@@ -136,7 +136,7 @@ Toggle the "no boost" mode on or off.
 
 ## On a dial
 
-Placed on a Stream Deck+ dial, Setup Hybrid becomes an MGU-K dial. Pick one value with the dial's **Setting** dropdown; turning the dial steps it up or down in the car, and the touch strip shows that value live as a big, color-coded number. It uses the same key bindings as the keypad modes, so no extra configuration is needed if you already use them. The Property Inspector automatically shows the dial settings below (instead of the keypad Setting and Direction) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
+Placed on a Stream Deck+ dial, Setup Hybrid becomes an MGU-K dial. Pick one value with the dial's **Mode** dropdown; turning the dial steps it up or down in the car, and the touch strip shows that value live as a big, color-coded number. It uses the same key bindings as the keypad modes, so no extra configuration is needed if you already use them. The Property Inspector automatically shows the dial settings below (instead of the keypad Mode and Direction) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
 
 #### Details
 
@@ -150,11 +150,11 @@ Placed on a Stream Deck+ dial, Setup Hybrid becomes an MGU-K dial. Pick one valu
 
 Dials are currently Stream Deck+ only — the action can't be placed on Mirabox knobs or Ulanzi dials yet (see [Dials](/docs/features/dials/)).
 
-#### Setting: Setting
+#### Setting: Mode
 
-The MGU-K value the dial controls. Each renders as a color-coded "dash box": a short label on top and the live value as a large number. Each setting has a built-in accent color, but you can override the border, label, value, and background colors in the **Dash Box Appearance** section of the dial settings. Only the three adjustable MGU-K values are offered — the HYS hold controls have no rotary sense.
+The MGU-K value the dial controls (the **Mode** dropdown). Each renders as a color-coded "dash box": a short label on top and the live value as a large number. Each setting has a built-in accent color, but you can override the border, label, value, and background colors in the **Dash Box Appearance** section of the dial settings. Only the three adjustable MGU-K values are offered — the HYS hold controls have no rotary sense.
 
-| Setting | Label | Telemetry source | Shown as |
+| Mode | Label | Telemetry source | Shown as |
 |---|---|---|---|
 | MGU-K Deploy Mode | DEPLOY | `dcMGUKDeployMode` | integer |
 | MGU-K Regen Gain | REGEN | `dcMGUKRegenGain` | integer |

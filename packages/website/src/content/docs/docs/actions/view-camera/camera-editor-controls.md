@@ -11,7 +11,7 @@ Comprehensive access to iRacing's built-in camera editor. Designed for broadcast
 
 ## Modes
 
-Select the mode from the **Control** dropdown in the Property Inspector. Each mode's Details bullet lists the default iRacing key for that function; every key can be reconfigured as a global setting shared across all Camera Editor Controls instances.
+Select the mode from the **Mode** dropdown in the Property Inspector. Each mode's Details bullet lists the default iRacing key for that function; every key can be reconfigured as a global setting shared across all Camera Editor Controls instances.
 
 ### Open Camera Tool
 

@@ -11,7 +11,7 @@ Quick access to essential car functions: toggle the pit speed limiter, headlight
 
 ## Modes
 
-Select the mode from the **Control** dropdown in the Property Inspector.
+Select the mode from the **Mode** dropdown in the Property Inspector.
 
 ### Pit Speed Limiter
 
