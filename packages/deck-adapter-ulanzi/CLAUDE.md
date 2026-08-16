@@ -16,7 +16,7 @@ Mirrors `@iracedeck/deck-adapter-mirabox`. The key difference: VSD Craft speaks 
 - **`createLogger(scope)`** — `createConsoleLogger()` teed to `<plugin>/log/<YYYY.M.D>.log` (`file-logger.ts`) when a log dir is passed to the constructor (issue #609). The UlanziStudio host discards plugin stdout, same as Mirabox's Stream Dock host. Console + file share the live `logLevel` (`setLogLevel`). The sink's first write each run prunes log files older than `LOG_RETENTION_DAYS` (14, issue #904).
 - **Broadcast callbacks** — `onKeyDown`, `onDialDown`, `onDialRotate` fire before per-action handlers (for window focus).
 - **Plugin UUID** — `PLUGIN_UUID` (`com.iracedeck.sd.core`, the canonical UUID reused verbatim — see the root `CLAUDE.md`) is sent in the `connected` handshake and the global-settings frames.
-- **Global-settings scope + boot bootstrap (#868)** — UlanziStudio persists global settings bucketed by the frame's `uuid` verbatim, so **writes are always plugin-scoped** (`PLUGIN_UUID`, empty key/actionid; the Ulanzi PI bridge in `@iracedeck/pi-components` uses the same scope). The host does not answer the connect-time plugin-scope read (the Ulanzi SDK requires an action context on main-service `getGlobalSettings`), so the adapter re-drives the read once with the **first appearing action's context**. Reply routing: plugin-scoped replies (uuid absent or `PLUGIN_UUID`) are authoritative and always forwarded; action-scoped replies are only the bootstrap fallback and are dropped once a non-empty plugin-scoped reply has been applied — a per-action bucket's stale contents must not clobber it. Ack-shaped (`code`-stamped) `didReceiveGlobalSettings` frames that carry settings are exempt from the ack drop-filter. Finally, plugin-initiated **writes are gated until the first reply** (Ulanzi's own RCA "root cause 2"): before it, the deck-core cache holds schema defaults only, and a full-snapshot write would erase stored passthrough keys (key bindings, `_lastSeenVersion`) — the latest write is buffered, discarded when the reply arrives (deck-core re-writes a fresh snapshot anyway), or flushed after a 30 s timeout on hosts that never answer reads.
+- **Global-settings scope + boot bootstrap (#868)** — UlanziStudio persists global settings bucketed by the frame's `uuid` verbatim, so **writes are always plugin-scoped** (`PLUGIN_UUID`, empty key/actionid; the Ulanzi PI bridge in `@iracedeck/pi-components` uses the same scope). The host does not answer the connect-time plugin-scope read (the Ulanzi SDK requires an action context on main-service `getGlobalSettings`), so the adapter re-drives the read once with the **first appearing action's context**. Reply routing: plugin-scoped replies (uuid absent or `PLUGIN_UUID`) are authoritative and always forwarded; action-scoped replies are only the bootstrap fallback and are dropped once a non-empty plugin-scoped reply has been applied — a per-action bucket's stale contents must not clobber it. Ack-shaped (`code`-stamped) `didReceiveGlobalSettings` frames that carry settings are exempt from the ack drop-filter. Since #993 the plugin owns its settings in a file and reads the host store once for migration; it writes the host exactly once per start (`_settingsChannel`, the PI-bridge bootstrap), so no write gate is needed — `setGlobalSettings` forwards straight to `client.setGlobalSettings`.
 - **Public exports** — besides the two classes, `encodeContext` / `decodeContext` / `normalizeFrame` / `parseConnectionParams` (and `PLUGIN_UUID`) are exported from `src/index.ts` — useful for tests and PI-bridge work.
 
 ## UlanziStudio WebSocket Protocol
@@ -31,19 +31,19 @@ On open the client sends the handshake `{ code: 0, cmd: "connected", uuid }` (no
 
 ### Frame normalization (`normalizeFrame`)
 
-| Ulanzi `cmd`                                              | normalized event             | notes                                                      |
-| --------------------------------------------------------- | ---------------------------- | ---------------------------------------------------------- |
-| `add`                                                     | `willAppear`                 | settings in `param`                                        |
-| `keydown` / `keyup`                                       | `keyDown` / `keyUp`          | no settings on the wire — backfilled from cache            |
-| `dialdown` / `dialup`                                     | `dialDown` / `dialUp`        |                                                            |
-| `dialrotate`                                              | `dialRotate`                 | `rotateEvent` (left/right/hold-left/hold-right) → ±1 ticks |
-| `clear`                                                   | `willDisappear` (per item)   | `param` is an **array**                                    |
-| `didReceiveSettings` / `paramfromapp` / `paramfromplugin` | `didReceiveSettings`         | settings in `param`                                        |
-| `didReceiveGlobalSettings`                                | global event                 | settings in `settings`                                     |
-| `sendToPlugin` (PI-appear marker)                         | `propertyInspectorDidAppear` | see below                                                  |
-| `sendToPlugin` (openUrl marker)                           | `openUrl` (global event)     | url in `payload.url` — see below                           |
+| Ulanzi `cmd`                                              | normalized event              | notes                                                      |
+| --------------------------------------------------------- | ----------------------------- | ---------------------------------------------------------- |
+| `add`                                                     | `willAppear`                  | settings in `param`                                        |
+| `keydown` / `keyup`                                       | `keyDown` / `keyUp`           | no settings on the wire — backfilled from cache            |
+| `dialdown` / `dialup`                                     | `dialDown` / `dialUp`         |                                                            |
+| `dialrotate`                                              | `dialRotate`                  | `rotateEvent` (left/right/hold-left/hold-right) → ±1 ticks |
+| `clear`                                                   | `willDisappear` (per item)    | `param` is an **array**                                    |
+| `didReceiveSettings` / `paramfromapp` / `paramfromplugin` | `didReceiveSettings`          | settings in `param`                                        |
+| `didReceiveGlobalSettings`                                | global event                  | settings in `settings`                                     |
+| `sendToPlugin` (PI-appear marker)                         | `propertyInspectorDidAppear`  | see below                                                  |
+| `sendToPlugin` (openUrl marker)                           | `openUrl` (global event)      | url in `payload.url` — see below                           |
 | `sendToPlugin` (openSettings marker)                      | `openSettings` (global event) | the settings-window button (#992) — see below              |
-| `run` / `setactive` / acks                                | (ignored)                    |                                                            |
+| `run` / `setactive` / acks                                | (ignored)                     |                                                            |
 
 Frames with `code` set and no `cmdType === "REQUEST"` are ack/responses and are dropped — except a `didReceiveGlobalSettings` that carries settings, which is a request reply the client must keep (#868).
 
