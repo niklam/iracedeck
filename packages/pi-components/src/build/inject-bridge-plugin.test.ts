@@ -1,11 +1,10 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { assertBridgeInjectionPlugin, injectBridgeScriptPlugin } from "./inject-bridge-plugin.mjs";
 import { PI_SETTINGS_BRIDGE } from "./index.mjs";
+import { assertBridgeInjectionPlugin, injectBridgeScriptPlugin } from "./inject-bridge-plugin.mjs";
 
 const SDPI = '<script src="sdpi-components.js"></script>';
 
@@ -80,8 +79,22 @@ describe("assertBridgeInjectionPlugin (#993 phase 2)", () => {
   const expected = (f: string) =>
     f === "settings-window.html" ? "settings-window-bridge.js" : "pi-settings-bridge.js";
 
+  const dirs: string[] = [];
+
+  function tmpDir(): string {
+    const d = mkdtempSync(path.join(os.tmpdir(), "ird-assert-"));
+
+    dirs.push(d);
+
+    return d;
+  }
+
+  afterEach(() => {
+    for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+  });
+
   it("passes when every page carries exactly its bridge immediately before sdpi", async () => {
-    const dir = mkdtempSync(path.join(os.tmpdir(), "ird-assert-"));
+    const dir = tmpDir();
     writeFileSync(path.join(dir, "car-control.html"), `<head>${tag("pi-settings-bridge.js")}\n    ${SDPI}</head>`);
     writeFileSync(
       path.join(dir, "settings-window.html"),
@@ -100,7 +113,7 @@ describe("assertBridgeInjectionPlugin (#993 phase 2)", () => {
       `<head>${tag("pi-settings-bridge.js")}\n    ${SDPI}\n${tag("ulanzi-pi-bridge.js")}</head>`,
     ];
     for (const html of cases) {
-      const dir = mkdtempSync(path.join(os.tmpdir(), "ird-assert-"));
+      const dir = tmpDir();
       writeFileSync(path.join(dir, "car-control.html"), html);
       const plugin = assertBridgeInjectionPlugin({ outputDir: dir, expectedBridge: expected });
 
@@ -109,7 +122,7 @@ describe("assertBridgeInjectionPlugin (#993 phase 2)", () => {
   });
 
   it("skips pages without an sdpi tag", () => {
-    const dir = mkdtempSync(path.join(os.tmpdir(), "ird-assert-"));
+    const dir = tmpDir();
     writeFileSync(path.join(dir, "plain.html"), "<head></head>");
     expect(() =>
       assertBridgeInjectionPlugin({ outputDir: dir, expectedBridge: expected }).closeBundle.call({}),

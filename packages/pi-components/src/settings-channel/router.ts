@@ -21,7 +21,9 @@
  * `onOpen`/`onClose` — a stalled connect, however it was entered — still
  * resolves within `bootstrapTimeoutMs` instead of leaving sdpi's
  * `getGlobalSettings()` promise, and every `global` control, unresolved
- * forever.
+ * forever. That fallback also closes and forgets the stalled loopback (see
+ * `fallbackWith`), so a late `onOpen` arriving after the timeout can't hijack
+ * whatever connection attempt is current by then.
  *
  * Fallback rule: no channel, a refused/failed/stalled loopback, or a silent
  * host → the PI keeps working against the host path exactly as before, with a
@@ -167,6 +169,16 @@ export function createSettingsChannelRouter(deps: SettingsChannelRouterDeps): Se
 
   const fallbackWith = (frame: PiFrame | undefined, why: string): void => {
     clearTimer();
+    // Close and forget any loopback still tracked (the connect-timeout path:
+    // openLoopback returned a socket that never called onOpen/onClose before
+    // the settle timer fired). Without this, a late onOpen from that stalled
+    // socket would find `loop` still set and, since the check below only
+    // guards on `state`, run switchToLoopback() against whatever the CURRENT
+    // `loop` is at that point — a real reconnect's socket the same shared
+    // `loop` variable now points to — falsely marking an unrelated attempt
+    // "open" before its own transport ever confirmed it.
+    loop?.close();
+    loop = undefined;
     state = "fallback";
     deps.warn(why);
 

@@ -141,8 +141,10 @@ describe("createSettingsChannelRouter", () => {
     h.loopOpen();
 
     expect(h.router.state).toBe("loopback");
-    // the connecting-phase settle timer (armed inside connect()) is cleared once the loopback opens
-    expect(h.timers[0]?.cleared).toBe(true);
+    // the connecting-phase settle timer (armed inside connect(), the most
+    // recently-created timer — timers[0] is the bootstrap timer, already
+    // cleared when connect() armed this one) is cleared once the loopback opens
+    expect(h.timers.at(-1)?.cleared).toBe(true);
     expect(h.loop).toEqual([
       BOOTSTRAP, // the router's own read of the file's values
       { event: "getGlobalSettings", context: "ctx-1" },
@@ -165,15 +167,38 @@ describe("createSettingsChannelRouter", () => {
     expect(h.warnings[0]).toMatch(/did not open/);
   });
 
+  it("closes the stalled loopback on the connect-timeout fallback, so a late onOpen from it is inert", () => {
+    const h = harness({ bootstrapTimeoutMs: 10 });
+    h.router.onHostOpen();
+    h.router.onHostMessage(hostReply({ _settingsChannel: CHANNEL }));
+    expect(h.router.state).toBe("connecting");
+
+    h.fireTimer(); // openLoopback returned a socket that never called onOpen or onClose
+
+    expect(h.router.state).toBe("fallback");
+    expect(h.closedLoop()).toBe(1); // the stalled socket was told to close, not just forgotten
+
+    // The stale handler from the timed-out attempt fires late (against the
+    // documented contract, but defensively guarded against anyway): it must
+    // not resurrect the loopback path or send anything.
+    h.loopOpen();
+
+    expect(h.router.state).toBe("fallback");
+    expect(h.loop).toEqual([]);
+  });
+
   it("clears the settle timer once the loopback actually opens", () => {
     const h = harness();
     h.router.onHostOpen();
     h.router.onHostMessage(hostReply({ _settingsChannel: CHANNEL }));
     h.loopOpen();
 
-    expect(h.timers[0]?.cleared).toBe(true);
+    // timers[0] is the bootstrap timer (cleared when connect() armed the
+    // connecting-phase one); the connecting-phase timer — the most recently
+    // armed one — is what loopOpen() clears.
+    expect(h.timers.at(-1)?.cleared).toBe(true);
 
-    h.fireTimer(); // no-op: the only timer is filtered out because it's cleared
+    h.fireTimer(); // no-op: both timers are cleared by now
 
     expect(h.router.state).toBe("loopback");
     expect(h.warnings).toEqual([]);
@@ -313,15 +338,19 @@ describe("createSettingsChannelRouter", () => {
     h.router.onHostMessage(hostReply({ noChannel: true })); // -> fallback
     expect(h.router.state).toBe("fallback");
 
-    h.router.onPiSend({ event: "getGlobalSettings" });
     h.router.onHostMessage(hostReply({ _settingsChannel: CHANNEL })); // late switch -> connecting, no onOpen
     expect(h.router.state).toBe("connecting");
+
+    // Sent while "connecting", so it's queued rather than going straight to
+    // the host — the fallback below must flush it FROM the queue, not merely
+    // observe a frame that already reached the host via the "fallback" default.
+    h.router.onPiSend({ event: "getGlobalSettings" });
 
     h.fireTimer(); // the loopback never opened or closed
 
     expect(h.router.state).toBe("fallback");
     expect(h.pi.at(-1)).toEqual(hostReply({ _settingsChannel: CHANNEL }));
-    expect(h.host.at(-1)).toEqual({ event: "getGlobalSettings" });
+    expect(h.host.at(-1)).toEqual({ event: "getGlobalSettings" }); // flushed from the queue
     expect(h.warnings.at(-1)).toMatch(/did not open/);
   });
 

@@ -69,11 +69,7 @@ export class UlanziBridgeSocket {
   private readonly real: WebSocket;
   private readonly router: SettingsChannelRouter;
 
-  constructor(
-    private readonly identity: BridgeIdentity,
-    Native: typeof WebSocket,
-    options: UlanziBridgeOptions = {},
-  ) {
+  constructor(identity: BridgeIdentity, Native: typeof WebSocket, options: UlanziBridgeOptions = {}) {
     this.real = new Native(`ws://${identity.address}:${identity.port}`);
     this.router = createSettingsChannelRouter({
       identity: { context: encodeContext(identity.uuid, identity.key, identity.actionid), action: identity.uuid },

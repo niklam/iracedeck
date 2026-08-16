@@ -1083,6 +1083,17 @@ export type SettingsStoreSource = "file" | "host" | "fresh";
 /** How the cache was filled — set by becomeReady(); null until then. */
 let storeSource: SettingsStoreSource | null = null;
 
+/**
+ * True when becomeReady()'s parseWithSalvage() came back null — a WHOLESALE
+ * parse failure, so the cache is pure schema defaults rather than anything
+ * read from the store. hostMirrorPayload() must never mirror that: a host
+ * write would broadcast schema defaults to every Property Inspector as if
+ * they were the real settings. Set once in becomeReady(); cleared only by
+ * `_resetGlobalSettings()` (tests) — there is no path back to a healthy cache
+ * within a single run once the store is marked ready on a null salvage.
+ */
+let storeSalvageFailed = false;
+
 /** Writes made before the store is ready; applied over the loaded settings when it is. */
 let earlyWrites: Record<string, unknown> | null = null;
 
@@ -1242,6 +1253,7 @@ export function initGlobalSettings(
     const salvage = parseWithSalvage(merged);
 
     if (salvage === null) {
+      storeSalvageFailed = true;
       logger?.error(
         "Stored settings could not be parsed at all; starting from schema defaults and LEAVING the stored copy untouched for inspection",
       );
@@ -1292,8 +1304,10 @@ export function initGlobalSettings(
     if (!isCurrent()) return;
 
     if (storeReady || migrationDone || !migrationRequested) {
-      // Not worth an info line: until the PI bridge lands (#993 phase 2) every
-      // Property Inspector save echoes here, and none of them are ingested.
+      // Not worth an info line: only fallback-path PI saves (a PI that never
+      // switched to the loopback channel) and, on hosts that echo, the
+      // plugin's own mirror write arrive here now, and none of them are
+      // ingested.
       logger?.debug("Ignoring host settings payload: the settings store is authoritative");
 
       return;
@@ -1425,10 +1439,14 @@ export function getSettingsStoreSource(): SettingsStoreSource | null {
  * whole stored object, so this must never be a partial — and it must be
  * skipped when the store started fresh (the host never answered the migration
  * read): writing defaults over a host copy we could not read would destroy it.
+ * Also skipped when the stored file failed to parse at all
+ * (`storeSalvageFailed`) — that cache is pure schema defaults too, and
+ * mirroring it would broadcast those defaults to every Property Inspector as
+ * if they were real settings, the same failure mode as the fresh-start case.
  * Returns undefined when the write must be skipped.
  */
 export function hostMirrorPayload(channel: { port: number; token: string }): Record<string, unknown> | undefined {
-  if (!storeReady || storeSource === "fresh") return undefined;
+  if (!storeReady || storeSource === "fresh" || storeSalvageFailed) return undefined;
 
   return { ...(currentSettings as Record<string, unknown>), _settingsChannel: { ...channel } };
 }
@@ -1663,6 +1681,7 @@ export function _resetGlobalSettings(): void {
   storeRef = null;
   storeReady = false;
   storeSource = null;
+  storeSalvageFailed = false;
   earlyWrites = null;
   earlyDeletes = null;
 
