@@ -193,7 +193,7 @@ initGlobalSettings(adapter, adapter.createLogger("GlobalSettings"), settingsStor
 
 **Passthrough keys the store introduces:** `_settingsStorePath` (the resolved file path, shown on Diagnostics) and `_settingsChannel` (`{ port, token }`). Both plugin-written; not user settings.
 
-**Phase-1 caveat — this is not shippable on its own.** Property Inspectors still write global settings to the deck host (their sdpi is unchanged until the phase-2 PI bridge reroutes them to the loopback server), and the plugin no longer reads the host after migration — so a PI edit today reaches neither the plugin nor the file. The settings window is the working editing path until phase 2 lands.
+**Phase-1 caveat — this is not shippable on its own.** Property Inspectors still read and write global settings through the deck host (their sdpi is unchanged until the phase-2 PI bridge reroutes them to the loopback server), and the plugin now neither reads that store after migration nor writes it beyond the one `_settingsChannel` publish. Both directions are therefore broken until phase 2 lands: a PI edit reaches neither the plugin nor the file, and a PI sees only the host copy — frozen at migration time as far as the plugin and the window are concerned (PI edits still land there) — so it never receives a plugin-published passthrough key. Practical consequences in a PI today: the Diagnostics "Settings file" row renders empty (`_settingsStorePath`), the `ird-warnings` banner reaches only the settings window (`_warnings`), and `_audioDeviceList` / `_deckDevices` stay at whatever the host held. The settings window is the working editing path until phase 2 lands.
 
 Diagnostics: with `debugLogging` on, the module logs the store path and stored-key count on load, the raw host payload during migration, every ignored host payload, salvage-dropped keys, and each `Settings saved: <path>` — enough to tell which path a "settings not saved" report actually hit.
 
@@ -248,7 +248,7 @@ Global settings use flat key names (e.g., `blackBoxLapTiming`), not nested paths
 
 ## PI Warning Banners — `_warnings` + `setWarning`/`clearWarning`
 
-Plugin code can surface a banner at the top of every Property Inspector (issue #610). Warnings are persisted in the `_warnings` global setting as a JSON array of `{ id, level, message }` records (`level` is `"info" | "warning" | "error"`). `_warnings` is a passthrough key — no `GlobalSettingsSchema` field is needed (same as `_audioDeviceList`).
+Plugin code can surface a banner at the top of every Property Inspector (issue #610). Warnings are persisted in the `_warnings` global setting as a JSON array of `{ id, level, message }` records (`level` is `"info" | "warning" | "error"`). `_warnings` is a passthrough key — no `GlobalSettingsSchema` field is needed (same as `_audioDeviceList`). Phase-1 caveat: since the plugin stopped writing the deck host (#993), a banner reaches the settings window only — see the phase-1 caveat above.
 
 Manage warnings from `@iracedeck/deck-core`:
 

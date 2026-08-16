@@ -153,6 +153,7 @@ flowchart LR
   win["Settings window<br/>(browser --app=, same sdpi-components<br/>+ settings-window-bridge)"]:::ext
   srv["deck-core<br/>settings-window server<br/>loopback · token+cookie · Origin<br/>(runs for the plugin's lifetime)"]:::core
   gs["deck-core<br/>global-settings<br/>(single writer)"]:::core
+  boot["plugin.ts<br/>store-ready startup block"]:::core
   store["SettingsStore<br/>global-settings.json<br/>(per ecosystem, under LOCALAPPDATA)"]:::core
   core(["IDeckPlatformAdapter — SEAM 2"]):::seam
   host["deck host store"]:::ext
@@ -165,7 +166,8 @@ flowchart LR
   srv --> win
   host -->|"read ONCE — migration"| core
   core --> gs
-  gs -->|"write ONCE per start — _settingsChannel"| core
+  gs -->|"store ready"| boot
+  boot -->|"write ONCE per start — _settingsChannel"| core
   core --> host
   pi -->|"setGlobalSettings (rerouted to the server next)"| host
 
@@ -174,7 +176,7 @@ flowchart LR
   classDef core fill:#2d7dd2,color:#fff,stroke:#1f5793;
 ```
 
-The window is the PI framework re-hosted: the same `sdpi-components.js`, `pi-components.js`, and `global-*.ejs` partials, talking to a **fake host** inside the plugin that speaks the global-settings subset of the Elgato PI protocol. Anything the plugin does on the window's behalf — persist its bounds, switch a deck's profile, play an audio preview, reveal the settings file in Explorer, answer SimHub reachability (a direct fetch from the window's origin is cross-origin) — arrives as a `sendToPlugin` command and is validated in `deck-core`. The page is opened as a chromeless app window in a Chromium browser with a dedicated profile, and closes itself when its socket to the plugin dies. The server is no longer started on demand: it comes up with the plugin and stays up, so its address is known before any UI asks for it.
+The window is the PI framework re-hosted: the same `sdpi-components.js`, `pi-components.js`, and `global-*.ejs` partials, talking to a **fake host** inside the plugin that speaks the global-settings subset of the Elgato PI protocol. Anything the plugin does on the window's behalf — persist its bounds, switch a deck's profile, play an audio preview, reveal the settings file in Explorer, answer SimHub reachability (a direct fetch from the window's origin is cross-origin) — arrives as a `sendToPlugin` command and is validated in `deck-core`. The page is opened as a chromeless app window in a Chromium browser with a dedicated profile, and closes itself when its socket to the plugin dies. The server is no longer started on demand: it comes up from the plugin's store-ready startup block and stays up, so its address is known before any UI asks for it — and that same block, in each plugin's `plugin.ts` rather than `deck-core`'s global-settings module, is what issues the one `_settingsChannel` write to the deck host. If the settings file can't be read, the block never runs: no server, no channel.
 
 Property Inspectors are the one client not yet rerouted: their `sdpi-components` still saves to the deck host's copy, which the plugin no longer reads. The next phase gives every PI the same loopback socket the window uses, bootstrapped from `_settingsChannel`; until then the settings window is the editing surface that reaches the plugin. Details, security model, and rules: `.claude/rules/settings-window.md` and `.claude/rules/global-settings.md`.
 

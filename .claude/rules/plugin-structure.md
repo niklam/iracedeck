@@ -171,13 +171,20 @@ import {
   initializeSDK,
   initializeSimHub,
   initMousePointer,
+  initPluginConfig,
   initWindowFocus,
+  type PluginConfig,
   resolveSettingsStorePath,
 } from "@iracedeck/deck-core";
 import { initializeEventBus } from "@iracedeck/event-bus";
 import { IRacingNative } from "@iracedeck/iracing-native";
 import { createSvgRasterizer } from "@iracedeck/rasterizer";
 import { initializeSimEventsIracing } from "@iracedeck/sim-events-iracing";
+
+// 0. Load the build-time plugin config (version + platform) FIRST — `getPluginVersion()`
+//    and `getPluginPlatform()` throw until this has run, and step 12 uses the latter
+const pluginConfig: PluginConfig = JSON.parse(readFileSync(join(__binDir, "config.json"), "utf-8"));
+initPluginConfig(pluginConfig);
 
 // 1. Create the Elgato platform adapter
 const adapter = new ElgatoPlatformAdapter(streamDeck);
@@ -263,7 +270,7 @@ adapter.connect();
 
 **CRITICAL**:
 - Both `initGlobalSettings()` and `initAppMonitor()` take an `IDeckPlatformAdapter` (not `typeof StreamDeck`)
-- `initGlobalSettings()` also takes a required `SettingsStore` (#993). It returns the schema-default cache immediately and loads the file in the background, so nothing may assume settings are present right after the call — gate on `isSettingsStoreReady()` or react in `onGlobalSettingsChange`. The store must be created before the settings-window controller, whose command-handler deps read `settingsStore.path` eagerly
+- `initGlobalSettings()` also takes a required `SettingsStore` (#993). It returns the schema-default cache immediately and loads the file in the background, so nothing may assume settings are present right after the call — gate on `isSettingsStoreReady()` or react in `onGlobalSettingsChange`. The store must be created before the settings-window controller, whose command-handler deps read `settingsStore.path` eagerly, and after `initPluginConfig()` — `getPluginPlatform()` throws without it
 - All init calls must be BEFORE `adapter.connect()` (handlers must register first)
 - `initializeEventBus()` must come before any publisher (e.g. `initializeSimEventsIracing`) or subscriber (actions via `getEventBus().subscribe(...)`)
 - `initializeSimEventsIracing()` must come after `initializeSDK()` (requires `getController()`) and after `initializeEventBus()`; it's the only package that reads `sdkController` ticks on behalf of action consumers
