@@ -139,6 +139,7 @@ import {
   ForceFeedback,
   FUEL_SERVICE_UUID,
   FuelService,
+  isAudioPreviewKind,
   LOOK_DIRECTION_UUID,
   LookDirection,
   MEDIA_CAPTURE_UUID,
@@ -158,6 +159,7 @@ import {
   ReplayNavigation,
   ReplaySpeed,
   ReplayTransport,
+  runAudioPreview,
   SESSION_INFO_UUID,
   SessionInfo,
   SETUP_AERO_UUID,
@@ -996,7 +998,13 @@ const settingsWindow = createSettingsWindowController({
   // Reopen where the user left it (the page reports bounds on resize).
   getWindowBounds: () =>
     parseSettingsWindowBounds((getGlobalSettings() as Record<string, unknown>)[SETTINGS_WINDOW_BOUNDS_KEY]),
-  onSendToPlugin: createSettingsWindowCommandHandler({ writeSettings: (partial) => updateGlobalSettings(partial) }),
+  onSendToPlugin: createSettingsWindowCommandHandler({
+    writeSettings: (partial) => updateGlobalSettings(partial),
+    // The window's Race Engineer Test buttons — same runner as the Pit Crew action.
+    previewAudio: (kind) => {
+      if (isAudioPreviewKind(kind)) runAudioPreview(kind, adapter.createLogger("AudioPreview"));
+    },
+  }),
   // The page can't probe SimHub itself (cross-origin, no CORS) — answer from the plugin's own view.
   simHub: { isReachable: isSimHubReachable, getRoles: () => getSimHub().getRoles() },
   logger: adapter.createLogger("SettingsWindow"),

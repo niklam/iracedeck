@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import url from "node:url";
@@ -108,5 +108,55 @@ describe("global-common-settings.ejs", () => {
       expect(html, partial).not.toContain("<details");
       for (const key of keys) expect(html, `${partial} → ${key}`).toContain(`setting="${key}"`);
     }
+  });
+});
+
+/**
+ * The Race Engineer / Pit Crew plugin-wide settings used to be authored
+ * inline in pit-crew.ejs. They are now three partials (#992) so the settings
+ * window can show them on a Race Engineer tab while pit-crew.ejs keeps its
+ * three accordions. Pin representative keys per partial so neither surface
+ * can silently lose a control.
+ */
+describe("race-engineer partials", () => {
+  // The templates `require()` shared data (callout ids etc.); the real build
+  // resolves that from iracing-actions' data dir — point the test there.
+  const dataRequire = (spec: string): unknown => {
+    const rel = spec.replace(/^\.\//, "");
+    const file = path.resolve(partialsDir, "../../iracing-actions/src/actions", rel);
+
+    return JSON.parse(readFileSync(file, "utf-8"));
+  };
+  const withRequire = { require: dataRequire };
+
+  it("race-engineer-settings emits the voice, name, device, volume and on-startup controls", () => {
+    const html = render("<%- include('race-engineer-settings') %>", withRequire);
+
+    for (const key of [
+      "pitCrewRaceEngineerEnabledOnStartup",
+      "pitCrewRadarEnabledOnStartup",
+      "raceEngineerVoice",
+      "driverName",
+      "audioOutputDevice",
+    ]) {
+      expect(html, key).toContain(`setting="${key}"`);
+    }
+    expect(html).not.toContain("<details");
+  });
+
+  it("race-engineer-callouts emits the per-callout opt-ins", () => {
+    const html = render("<%- include('race-engineer-callouts') %>", withRequire);
+
+    expect(html).toContain('setting="calloutEnabledFlag');
+    expect((html.match(/setting="calloutEnabled/g) ?? []).length).toBeGreaterThan(40);
+    expect(html).not.toContain("<details");
+  });
+
+  it("setup-warning-patterns emits the two pattern fields", () => {
+    const html = render("<%- include('setup-warning-patterns') %>", withRequire);
+
+    expect(html).toContain('setting="setupWarningQualifyingPattern"');
+    expect(html).toContain('setting="setupWarningRacePattern"');
+    expect(html).not.toContain("<details");
   });
 });

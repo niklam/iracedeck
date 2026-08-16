@@ -22,6 +22,20 @@
  * - label: Button text (default "Test").
  */
 
+/** Minimal shape of the sdpi-components client this component uses in window mode. */
+interface StreamDeckClientLike {
+  send(event: string, payload?: Record<string, unknown>): unknown;
+}
+
+interface SDPIComponentsGlobal {
+  SDPIComponents?: { streamDeckClient?: StreamDeckClientLike };
+}
+
+/** True inside the dedicated settings window (flag set by its bridge). */
+function inSettingsWindow(): boolean {
+  return typeof window !== "undefined" && (window as unknown as Record<string, unknown>).__irdSettingsWindow === true;
+}
+
 let styleInjected = false;
 
 export class AudioTest extends HTMLElement {
@@ -74,6 +88,20 @@ export class AudioTest extends HTMLElement {
 
   private attachListeners(): void {
     this.button?.addEventListener("click", () => {
+      // Settings window (#992): there is no action context, so a per-action
+      // settings bump reaches nothing. Ask the plugin to run the preview
+      // directly instead. `preview` names the kind ("radar"|"voice"|"background").
+      if (inSettingsWindow()) {
+        const kind = this.getAttribute("preview");
+        const client = (globalThis as SDPIComponentsGlobal).SDPIComponents?.streamDeckClient;
+
+        if (kind && client) {
+          void Promise.resolve(client.send("sendToPlugin", { event: "audioPreview", kind })).catch(() => {});
+        }
+
+        return;
+      }
+
       const targetId = this.getAttribute("target");
 
       if (!targetId) return;

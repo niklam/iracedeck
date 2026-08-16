@@ -67,6 +67,25 @@ describe("createSettingsWindowCommandHandler", () => {
     expect(switchProfile).not.toHaveBeenCalled();
   });
 
+  it("routes audioPreview to the injected preview runner", () => {
+    const previewAudio = vi.fn();
+    const handle = createSettingsWindowCommandHandler({ writeSettings: vi.fn(), previewAudio });
+
+    handle({ event: "audioPreview", kind: "voice" });
+
+    expect(previewAudio).toHaveBeenCalledWith("voice");
+  });
+
+  it("drops audioPreview without a string kind — validation of the kind itself is the runner's job", () => {
+    const previewAudio = vi.fn();
+    const handle = createSettingsWindowCommandHandler({ writeSettings: vi.fn(), previewAudio });
+
+    handle({ event: "audioPreview" });
+    handle({ event: "audioPreview", kind: 3 });
+
+    expect(previewAudio).not.toHaveBeenCalled();
+  });
+
   it("ignores unknown events", () => {
     const write = vi.fn();
     const switchProfile = vi.fn();

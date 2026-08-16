@@ -45,6 +45,12 @@ export interface SettingsWindowCommandDeps {
   writeSettings: (partial: Record<string, unknown>) => void;
   /** Elgato only: switch `deviceId` to `profile` (page optional). Omit where profiles don't exist. */
   switchProfile?: (deviceId: string, profile: string, page?: number) => void;
+  /**
+   * Play an audio preview ("radar" | "voice" | "background") — the window's
+   * Test buttons. The kind is passed through as a string; the runner owns
+   * the allow-list (deck-core has no audio dependency).
+   */
+  previewAudio?: (kind: string) => void;
 }
 
 /** Build the handler the settings-window server's `onSendToPlugin` is bound to. */
@@ -78,6 +84,11 @@ export function createSettingsWindowCommandHandler(
 
         break;
       }
+
+      case "audioPreview":
+        if (deps.previewAudio && typeof payload.kind === "string") deps.previewAudio(payload.kind);
+
+        break;
 
       default:
         break;

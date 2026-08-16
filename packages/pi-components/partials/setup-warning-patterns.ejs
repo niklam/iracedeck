@@ -1,0 +1,25 @@
+<%#
+  Setup-name mismatch warning patterns (issue #625; #992 split). Emits items
+  only — pit-crew.ejs wraps them in its "Setup Warning Patterns" accordion,
+  the settings window in a card.
+%>
+<% var setupWarningResetStyle = 'padding:4px 10px;border:1px solid #555;border-radius:4px;cursor:pointer;font-size:11px;background:#2a2a2a;color:#d0d0d0;'; %>
+<%- (
+'<div class="ird-supporting-text">' +
+  	'Case-insensitive patterns matched against the loaded setup name. Edit them to fit your naming. An invalid pattern is shown as a warning above and the callout is skipped until you fix it or press Reset.' +
+  '</div>' +
+  '<sdpi-item label="Qualifying session">' +
+  	'<sdpi-textfield setting="setupWarningQualifyingPattern" default="(^|[ ._-])(race|r)([ ._-]|$)" global></sdpi-textfield>' +
+  '</sdpi-item>' +
+  '<div class="ird-supporting-text">A match during qualifying warns that the setup name looks like a race setup.</div>' +
+  '<sdpi-item label=" ">' +
+  	'<button class="ird-setup-warning-reset" data-target="setupWarningQualifyingPattern" style="' + setupWarningResetStyle + '">Reset to default</button>' +
+  '</sdpi-item>' +
+  '<sdpi-item label="Race session">' +
+  	'<sdpi-textfield setting="setupWarningRacePattern" default="(^|[ ._-])(qualifying|quali|qual|q)([ ._-]|$)" global></sdpi-textfield>' +
+  '</sdpi-item>' +
+  '<div class="ird-supporting-text">A match during a race warns that the setup name looks like a qualifying setup.</div>' +
+  '<sdpi-item label=" ">' +
+  	'<button class="ird-setup-warning-reset" data-target="setupWarningRacePattern" style="' + setupWarningResetStyle + '">Reset to default</button>' +
+  '</sdpi-item>'
+) %>

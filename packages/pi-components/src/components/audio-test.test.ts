@@ -61,6 +61,28 @@ describe("ird-audio-test", () => {
       expect(handler).toHaveBeenCalledTimes(1);
     });
 
+    it("in the settings window, sends an audioPreview command instead of bumping a per-action field (#992)", () => {
+      // The window has no action context, so a per-action settings bump reaches
+      // nothing; the plugin runs the preview from a sendToPlugin command instead.
+      (window as unknown as Record<string, unknown>).__irdSettingsWindow = true;
+      const send = vi.fn();
+      (window as unknown as Record<string, unknown>).SDPIComponents = { streamDeckClient: { send } };
+      const el = document.createElement("ird-audio-test");
+      el.setAttribute("target", "target-field");
+      el.setAttribute("preview", "voice");
+      document.body.appendChild(el);
+
+      try {
+        el.querySelector("button")!.click();
+
+        expect(send).toHaveBeenCalledWith("sendToPlugin", { event: "audioPreview", kind: "voice" });
+        expect(field.value).toBe("");
+      } finally {
+        delete (window as unknown as Record<string, unknown>).__irdSettingsWindow;
+        delete (window as unknown as Record<string, unknown>).SDPIComponents;
+      }
+    });
+
     it("does nothing when the target id does not resolve to a field", () => {
       while (document.body.firstChild) {
         document.body.removeChild(document.body.firstChild);

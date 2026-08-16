@@ -135,6 +135,7 @@ import {
   ForceFeedback,
   FUEL_SERVICE_UUID,
   FuelService,
+  isAudioPreviewKind,
   LOOK_DIRECTION_UUID,
   LookDirection,
   MEDIA_CAPTURE_UUID,
@@ -154,6 +155,7 @@ import {
   ReplayNavigation,
   ReplaySpeed,
   ReplayTransport,
+  runAudioPreview,
   SESSION_INFO_UUID,
   SessionInfo,
   SETUP_AERO_UUID,
@@ -1050,6 +1052,10 @@ const settingsWindow = createSettingsWindowController({
     parseSettingsWindowBounds((getGlobalSettings() as Record<string, unknown>)[SETTINGS_WINDOW_BOUNDS_KEY]),
   onSendToPlugin: createSettingsWindowCommandHandler({
     writeSettings: (partial) => updateGlobalSettings(partial),
+    // The window's Race Engineer Test buttons — same runner as the Pit Crew action.
+    previewAudio: (kind) => {
+      if (isAudioPreviewKind(kind)) runAudioPreview(kind, adapter.createLogger("AudioPreview"));
+    },
     // Unlike a PI, the window has no implicit device: it names one, and the
     // display name still gets the device-type suffix exactly as the PI path does (#753).
     switchProfile: (deviceId, profile, page) => {

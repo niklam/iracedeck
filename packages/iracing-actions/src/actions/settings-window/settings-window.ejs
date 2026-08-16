@@ -164,6 +164,7 @@
 				<button class="sw-nav-item active" data-pane="general" type="button">General</button>
 				<button class="sw-nav-item" data-pane="bindings" type="button">Key Bindings<span class="sw-badge"><%= __total %></span></button>
 				<button class="sw-nav-item" data-pane="appearance" type="button">Appearance</button>
+				<button class="sw-nav-item" data-pane="engineer" type="button">Race Engineer</button>
 				<% if (locals.platform?.features?.profiles !== false) { %>
 				<button class="sw-nav-item" data-pane="profiles" type="button">Profiles</button>
 				<% } %>
@@ -223,6 +224,19 @@
 					<%- include('global-border-defaults', __sw) %>
 					<%- include('global-graphic-defaults', __sw) %>
 					<%- include('global-flag-flash', __sw) %>
+				</div>
+			</section>
+
+			<%# ---- Race Engineer: the three partials pit-crew.ejs wraps in its accordions ---- %>
+			<section class="sw-pane" id="pane-engineer" hidden>
+				<h2>Race Engineer</h2>
+				<p class="sw-sub">Voice, radar, per-callout opt-ins and setup warnings — plugin-wide, the same settings the Pit Crew action's inspector shows.</p>
+				<div class="sw-grid">
+					<%- include('accordion', { title: 'Race Engineer & Radar', content: include('race-engineer-settings'), settingsWindow: true }) %>
+					<%- include('accordion', { title: 'Setup Warning Patterns', content: include('setup-warning-patterns'), settingsWindow: true }) %>
+				</div>
+				<div class="sw-grid single" style="margin-top:14px">
+					<%- include('accordion', { title: 'Callouts', content: include('race-engineer-callouts'), settingsWindow: true }) %>
 				</div>
 			</section>
 
