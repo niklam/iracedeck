@@ -5,6 +5,7 @@
  * Cycles through telemetry snapshots to simulate a car driving around the track.
  */
 import type { BroadcastMsg, ElevationStatus, IRSDKHeader, VarHeader } from "./defines.js";
+import { FocusResult, PointerMoveResult } from "./defines.js";
 import { MOCK_SESSION_INFO_YAML } from "./mock-data/session-info.js";
 import { MOCK_SNAPSHOTS } from "./mock-data/snapshots.js";
 import { buildTelemetryBuffer, getBufferSize, MOCK_VAR_HEADERS, MOCK_VAR_INDEX_MAP } from "./mock-data/telemetry.js";
@@ -103,16 +104,16 @@ export class IRacingNativeMock {
     return true;
   }
 
-  focusIRacingWindow(): number {
+  focusIRacingWindow(): FocusResult {
     console.debug("[IRacingNativeMock] focusIRacingWindow()");
 
-    return 0; // AlreadyFocused
+    return FocusResult.AlreadyFocused;
   }
 
-  moveMouseToIRacingWindow(xFraction: number, yFraction: number): number {
+  moveMouseToIRacingWindow(xFraction: number, yFraction: number): PointerMoveResult {
     console.debug(`[IRacingNativeMock] moveMouseToIRacingWindow(${xFraction}, ${yFraction})`);
 
-    return 0; // Moved
+    return PointerMoveResult.Moved;
   }
 
   sendScanKeys(scanCodes: number[]): void {

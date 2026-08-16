@@ -14,37 +14,12 @@ import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
 import type { BroadcastMsg, ElevationStatus, IRSDKHeader, VarHeader } from "./defines.js";
+import { FocusResult, PointerMoveResult } from "./defines.js";
 import { IRacingNativeMock } from "./mock-impl.js";
 
 // Re-export all types and enums from defines
 export * from "./defines.js";
 export { IRacingNativeMock } from "./mock-impl.js";
-
-/**
- * Result codes from focusIRacingWindow().
- */
-export enum FocusResult {
-  /** Window was already in the foreground */
-  AlreadyFocused = 0,
-  /** Window was found and successfully focused */
-  Focused = 1,
-  /** No window with the expected title exists */
-  WindowNotFound = 2,
-  /** Window was found but focus did not transfer within timeout */
-  FocusTimedOut = 3,
-}
-
-/**
- * Result codes from moveMouseToIRacingWindow().
- */
-export enum PointerMoveResult {
-  /** The cursor was placed inside the sim's client area */
-  Moved = 0,
-  /** No window with the expected title exists */
-  WindowNotFound = 1,
-  /** The window was found but the move failed (including a minimized window) */
-  Failed = 2,
-}
 
 // Try to load native addon (only on Windows, with safety catch).
 // Force mock mode by creating a `.mock` file in the sdPlugin folder,
@@ -233,7 +208,7 @@ export class IRacingNative {
    *
    * @returns FocusResult status code (0=already focused, 1=focused, 2=not found, 3=timed out)
    */
-  focusIRacingWindow(): number {
+  focusIRacingWindow(): FocusResult {
     return addon ? addon.focusIRacingWindow() : this.getMock().focusIRacingWindow();
   }
 
@@ -247,7 +222,7 @@ export class IRacingNative {
    * @param yFraction - vertical position, 0 = top edge, 1 = bottom edge
    * @returns PointerMoveResult status code (0=moved, 1=not found, 2=failed)
    */
-  moveMouseToIRacingWindow(xFraction: number, yFraction: number): number {
+  moveMouseToIRacingWindow(xFraction: number, yFraction: number): PointerMoveResult {
     return addon
       ? addon.moveMouseToIRacingWindow(xFraction, yFraction)
       : this.getMock().moveMouseToIRacingWindow(xFraction, yFraction);

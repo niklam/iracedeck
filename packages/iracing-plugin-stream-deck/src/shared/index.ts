@@ -109,9 +109,7 @@ export {
   // Key binding utilities
   formatKeyBinding,
   parseKeyBinding,
-  // Window focus service (#930) and mouse pointer service (#926)
-  initWindowFocus,
-  focusIRacingIfEnabled,
+  // Unconditional focus + mouse pointer placement (#926)
   focusIRacingNow,
   initMousePointer,
   movePointerToSim,
