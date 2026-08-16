@@ -3,7 +3,15 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-import { BRANDS, brandsFor, type Ecosystem, ECOSYSTEMS, hasIncompleteList, toSentenceList } from "./brands.js";
+import {
+  BRAND_LOGO_EXTENSIONS,
+  brandGroupsFor,
+  BRANDS,
+  brandsFor,
+  type Ecosystem,
+  ECOSYSTEMS,
+  toSentenceList,
+} from "./brands.js";
 
 const dataDir = dirname(fileURLToPath(import.meta.url));
 const brandAssetsDir = join(dataDir, "..", "assets", "brands");
@@ -34,14 +42,25 @@ describe("brandsFor", () => {
   });
 });
 
-describe("hasIncompleteList", () => {
-  it("is false when every requested ecosystem lists all of its brands", () => {
-    expect(hasIncompleteList(["elgato", "ulanzi"])).toBe(false);
+describe("brandGroupsFor", () => {
+  it("keeps one group per requested ecosystem, in the requested order", () => {
+    expect(brandGroupsFor(["ulanzi", "elgato"]).map((group) => group.ecosystem)).toEqual(["ulanzi", "elgato"]);
   });
 
-  it("is true when any requested ecosystem has more brands than it lists", () => {
-    expect(hasIncompleteList(["mirabox"])).toBe(true);
-    expect(hasIncompleteList(["elgato", "mirabox", "ulanzi"])).toBe(true);
+  it("wraps a single ecosystem in one group", () => {
+    const groups = brandGroupsFor("mirabox");
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0].brands).toEqual(brandsFor("mirabox"));
+  });
+
+  // The "and more" tile is rendered per group, so completeness has to travel
+  // with the brands it describes — otherwise a caller that lists Mirabox first
+  // would end up marking the last ecosystem as the open-ended one.
+  it("carries each ecosystem's own completeness flag", () => {
+    const groups = brandGroupsFor(["mirabox", "elgato"]);
+
+    expect(groups.map((group) => group.listIsComplete)).toEqual([false, true]);
   });
 });
 
@@ -104,6 +123,19 @@ describe("brand data", () => {
       if (!brand.logo) continue;
 
       expect(existsSync(join(brandAssetsDir, brand.logo)), `${brand.name} logo ${brand.logo}`).toBe(true);
+    }
+  });
+
+  // Existing on disk is not enough: BrandStrip resolves logos through a glob
+  // with a fixed extension list, so a `.jpg` next to the others would pass the
+  // existence check above and still fail the Astro build.
+  it("gives every declared logo an extension the strip can resolve", () => {
+    for (const brand of BRANDS) {
+      if (!brand.logo) continue;
+
+      const extension = brand.logo.slice(brand.logo.lastIndexOf("."));
+
+      expect(BRAND_LOGO_EXTENSIONS, `${brand.name} logo ${brand.logo}`).toContain(extension);
     }
   });
 

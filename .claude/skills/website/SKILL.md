@@ -46,7 +46,7 @@ src/content/docs/
 └── docs/
     ├── index.md                     # Docs landing page at /docs/
     ├── getting-started/
-    │   ├── installation.md
+    │   ├── installation.mdx
     │   └── troubleshooting.md
     ├── features/
     │   ├── key-bindings.md

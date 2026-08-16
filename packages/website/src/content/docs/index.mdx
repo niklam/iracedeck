@@ -56,7 +56,7 @@ import BrandStrip from "../../components/BrandStrip.astro";
 
 <p class="works-with-lead">Elgato Stream Deck, Ulanzi Deck, and the Mirabox Stream Dock ecosystem — one plugin build for each.</p>
 
-{/* Mirabox last: its brand list is open-ended, so the trailing "and more" tile lands next to the brands it applies to. */}
+{/* Order is presentation only — each ecosystem carries its own "and more" tile, so Mirabox's open-ended list stays marked wherever it sits. */}
 
 <BrandStrip ecosystem={["elgato", "ulanzi", "mirabox"]} label="Supported hardware brands" />
 

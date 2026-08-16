@@ -9,7 +9,7 @@
 //
 // Brand data — including which ecosystems have brands we cannot name — comes
 // from src/data/brands.ts. Do not hardcode brand names here.
-import { brandsFor, type Ecosystem, hasIncompleteList } from "../data/brands";
+import { BRAND_LOGO_EXTENSIONS, brandGroupsFor, type Ecosystem } from "../data/brands";
 
 interface Props {
   /** Ecosystem(s) to render, in the order given. */
@@ -22,12 +22,13 @@ interface Props {
 
 const { ecosystem, label = "Supported hardware brands", class: className } = Astro.props;
 
-const brands = brandsFor(ecosystem);
-const showsMoreTile = hasIncompleteList(ecosystem);
-
 // Logo assets go through Vite so they are content-hashed and cache-busted. The
 // `?url` query keeps SVG and raster assets on one code path (an unqueried .svg
 // import would resolve to a component instead of a URL).
+//
+// The extension list has to be a literal here (Vite needs a static pattern);
+// BRAND_LOGO_EXTENSIONS mirrors it so brands.test.ts can catch a logo declared
+// with an extension this glob would skip.
 const logoUrls = import.meta.glob<string>("../assets/brands/*.{svg,png,webp,avif}", {
   eager: true,
   query: "?url",
@@ -36,44 +37,54 @@ const logoUrls = import.meta.glob<string>("../assets/brands/*.{svg,png,webp,avif
 
 // A declared-but-missing asset would silently degrade to a wordmark, which is
 // indistinguishable from a brand that never had a logo. Fail the build instead.
-const tiles = brands.map((brand) => {
-  if (!brand.logo) return { brand, logoUrl: undefined };
+function resolveLogo(name: string, logo: string): string {
+  const logoUrl = logoUrls[`../assets/brands/${logo}`];
+  if (logoUrl) return logoUrl;
 
-  const logoUrl = logoUrls[`../assets/brands/${brand.logo}`];
-  if (!logoUrl) {
-    throw new Error(
-      `Brand "${brand.name}" declares logo "${brand.logo}", but no such file exists in src/assets/brands/.`,
-    );
-  }
+  const reason = BRAND_LOGO_EXTENSIONS.some((extension) => logo.endsWith(extension))
+    ? `no such file exists in src/assets/brands/`
+    : `its extension is not one of ${BRAND_LOGO_EXTENSIONS.join(", ")}`;
 
-  return { brand, logoUrl };
-});
+  throw new Error(`Brand "${name}" declares logo "${logo}", but ${reason}.`);
+}
+
+// Each ecosystem keeps its own "and more" tile, so the open-ended list is marked
+// next to the brands it applies to however the caller orders the ecosystems.
+const groups = brandGroupsFor(ecosystem).map((group) => ({
+  listIsComplete: group.listIsComplete,
+  tiles: group.brands.map((brand) => ({
+    brand,
+    logoUrl: brand.logo ? resolveLogo(brand.name, brand.logo) : undefined,
+  })),
+}));
 ---
 
-<ul class:list={["brand-strip", className]} aria-label={label}>
+<ul class:list={["brand-strip", className]} role="list" aria-label={label}>
   {
-    tiles.map(({ brand, logoUrl }) => (
-      <li class="brand-tile">
-        {logoUrl && (
-          <img
-            class:list={[
-              "brand-logo",
-              brand.logoNeedsName && "brand-logo-inline",
-              brand.preserveBrandColor && "brand-logo-color",
-            ]}
-            src={logoUrl}
-            alt={brand.logoNeedsName ? "" : brand.name}
-          />
+    groups.map(({ listIsComplete, tiles }) => (
+      <Fragment>
+        {tiles.map(({ brand, logoUrl }) => (
+          <li class="brand-tile">
+            {logoUrl && (
+              <img
+                class:list={[
+                  "brand-logo",
+                  brand.logoNeedsName && "brand-logo-inline",
+                  brand.preserveBrandColor && "brand-logo-color",
+                ]}
+                src={logoUrl}
+                alt={brand.logoNeedsName ? "" : brand.name}
+              />
+            )}
+            {(!logoUrl || brand.logoNeedsName) && <span class="brand-wordmark">{brand.name}</span>}
+          </li>
+        ))}
+        {!listIsComplete && (
+          <li class="brand-tile brand-tile-more">
+            <span class="brand-wordmark">and more</span>
+          </li>
         )}
-        {(!logoUrl || brand.logoNeedsName) && <span class="brand-wordmark">{brand.name}</span>}
-      </li>
+      </Fragment>
     ))
-  }
-  {
-    showsMoreTile && (
-      <li class="brand-tile brand-tile-more">
-        <span class="brand-wordmark">and more</span>
-      </li>
-    )
   }
 </ul>
