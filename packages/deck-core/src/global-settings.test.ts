@@ -5,7 +5,9 @@ import {
   _resetGlobalSettings,
   deleteGlobalSettings,
   getGlobalSettings,
+  getSettingsStoreSource,
   GlobalSettingsSchema,
+  hostMirrorPayload,
   initGlobalSettings,
   isSettingsStoreReady,
   LOAD_RETRY_DELAY_MS,
@@ -1136,5 +1138,58 @@ describe("single-writer store (issue #993)", () => {
 
   it("LOAD_RETRY_DELAY_MS is one second", () => {
     expect(LOAD_RETRY_DELAY_MS).toBe(1_000);
+  });
+
+  it("getSettingsStoreSource is null before ready, then names how the cache was filled", async () => {
+    const mock = createMockAdapter();
+    initGlobalSettings(mock.adapter, createMockLogger(), createMemorySettingsStore({ driverName: "nick" }));
+
+    expect(getSettingsStoreSource()).toBeNull();
+    await tick();
+    expect(getSettingsStoreSource()).toBe("file");
+  });
+
+  it("hostMirrorPayload is the WHOLE cache plus _settingsChannel once ready from the file or the host", async () => {
+    const mock = createMockAdapter();
+    initGlobalSettings(mock.adapter, createMockLogger(), createMemorySettingsStore({ driverName: "nick" }));
+    await tick();
+
+    const mirror = hostMirrorPayload({ port: 4242, token: "t".repeat(48) });
+
+    expect(mirror).toMatchObject({ driverName: "nick", _settingsChannel: { port: 4242, token: "t".repeat(48) } });
+    expect(Object.keys(mirror ?? {}).length).toBeGreaterThan(50); // schema defaults are part of the mirror
+  });
+
+  it("hostMirrorPayload is undefined before the store is ready", () => {
+    const mock = createMockAdapter();
+    initGlobalSettings(mock.adapter, createMockLogger(), createMemorySettingsStore({ driverName: "nick" }));
+
+    expect(hostMirrorPayload({ port: 1, token: "t".repeat(48) })).toBeUndefined();
+  });
+
+  it("hostMirrorPayload is undefined when the store started FRESH (migration timeout) — never write defaults over a host copy we could not read", async () => {
+    vi.useFakeTimers();
+
+    try {
+      const mock = createMockAdapter();
+      initGlobalSettings(mock.adapter, createMockLogger(), createMemorySettingsStore(), { migrationTimeoutMs: 20 });
+      await vi.advanceTimersByTimeAsync(30);
+
+      expect(getSettingsStoreSource()).toBe("fresh");
+      expect(hostMirrorPayload({ port: 1, token: "t".repeat(48) })).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("hostMirrorPayload after a host migration carries the migrated keys", async () => {
+    const mock = createMockAdapter();
+    initGlobalSettings(mock.adapter, createMockLogger(), createMemorySettingsStore());
+    await tick();
+    mock.echo?.({ driverName: "host-nick" });
+    await tick();
+
+    expect(getSettingsStoreSource()).toBe("host");
+    expect(hostMirrorPayload({ port: 1, token: "t".repeat(48) })).toMatchObject({ driverName: "host-nick" });
   });
 });

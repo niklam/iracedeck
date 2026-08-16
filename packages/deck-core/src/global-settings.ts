@@ -1078,6 +1078,11 @@ let storeRef: SettingsStore | null = null;
  */
 let storeReady = false;
 
+export type SettingsStoreSource = "file" | "host" | "fresh";
+
+/** How the cache was filled — set by becomeReady(); null until then. */
+let storeSource: SettingsStoreSource | null = null;
+
 /** Writes made before the store is ready; applied over the loaded settings when it is. */
 let earlyWrites: Record<string, unknown> | null = null;
 
@@ -1250,6 +1255,7 @@ export function initGlobalSettings(
     }
 
     storeReady = true;
+    storeSource = source;
     earlyWrites = null;
     earlyDeletes = null;
     logger?.info(
@@ -1404,6 +1410,27 @@ export function getGlobalSettings(): GlobalSettings {
  */
 export function isSettingsStoreReady(): boolean {
   return storeReady;
+}
+
+/** How the cache was filled once ready ("file" | "host" | "fresh"); null before. */
+export function getSettingsStoreSource(): SettingsStoreSource | null {
+  return storeSource;
+}
+
+/**
+ * The ONE write the plugin makes to the deck host per start (#993 phase 2):
+ * a full mirror of the cache plus `_settingsChannel`, so Property Inspectors
+ * can bootstrap the loopback channel from a plain host read and a downgraded
+ * plugin still finds its settings. Every host's setGlobalSettings REPLACES the
+ * whole stored object, so this must never be a partial — and it must be
+ * skipped when the store started fresh (the host never answered the migration
+ * read): writing defaults over a host copy we could not read would destroy it.
+ * Returns undefined when the write must be skipped.
+ */
+export function hostMirrorPayload(channel: { port: number; token: string }): Record<string, unknown> | undefined {
+  if (!storeReady || storeSource === "fresh") return undefined;
+
+  return { ...(currentSettings as Record<string, unknown>), _settingsChannel: { ...channel } };
 }
 
 /**
@@ -1635,6 +1662,7 @@ export function _resetGlobalSettings(): void {
   initialized = false;
   storeRef = null;
   storeReady = false;
+  storeSource = null;
   earlyWrites = null;
   earlyDeletes = null;
 
