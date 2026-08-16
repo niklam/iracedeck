@@ -7,16 +7,23 @@
  * Usage:
  * 1. Call initGlobalSettings(adapter, logger, store) once at plugin startup
  * 2. Use getGlobalSettings() to access current settings
- * 3. Settings are automatically updated when changed in Property Inspector
+ * 3. Change them with updateGlobalSettings()/deleteGlobalSettings(): each write
+ *    updates the cache, notifies subscribers, and saves the file
  *
- * Write-safety model (issue #896): global settings are one JSON blob with two
- * independent full-object writers (the PI via sdpi-components, and this
- * module), so every write path here defends against stale-cache lost updates —
- * a first-arrival gate queues writes made before the host has delivered real
- * settings, pending local writes are re-applied over stale host echoes,
- * unparseable persisted values are salvaged per-key instead of aborting the
- * whole parse, and a shrink guard restores host-known keys into outgoing
- * writes so they can never be silently deleted from storage.
+ * Single-writer model (issue #993): the plugin owns the settings, in the
+ * `SettingsStore` file passed to `initGlobalSettings`. That file is the only
+ * persistent copy — every UI (the settings window, every Property Inspector)
+ * reaches it through this module, so the two-independent-writers problem the
+ * #896 machinery existed to survive is gone: no first-arrival gate, no
+ * pending-write overlay, no shrink guard. The deck host's own global-settings
+ * store is read exactly ONCE, to migrate an existing installation's settings
+ * into the file, and is ignored from then on. Per-key salvage stays — it now
+ * protects against a partially-bad file instead of a partially-bad host
+ * payload.
+ *
+ * Until the Property Inspector bridge lands (#993 phase 3) a PI still saves to
+ * the deck host's copy, which this module now ignores; the settings window
+ * (#992) already writes through the plugin.
  */
 import type { ILogger } from "@iracedeck/logger";
 import { z } from "zod";
@@ -1037,7 +1044,7 @@ export const GlobalSettingsSchema = z
 export type GlobalSettings = z.infer<typeof GlobalSettingsSchema>;
 
 /**
- * Current settings cache - updated when settings change
+ * Current settings cache — truth for every reader, backed by the store.
  */
 let currentSettings: GlobalSettings = GlobalSettingsSchema.parse({});
 
@@ -1058,74 +1065,43 @@ let initialized = false;
 let logger: ILogger | null = null;
 
 /**
- * Stored adapter reference for writing settings back
+ * The plugin-owned settings store (issue #993): the single persistent copy of
+ * global settings, and the only thing this module ever writes to.
  */
-let adapterRef: IDeckPlatformAdapter | null = null;
-
-/**
- * Plugin-owned settings store (issue #993). Not yet used — wired in a later
- * task; recorded here so callers can pass it in ahead of the core rewrite.
- */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- read by the Task 4 core rewrite
 let storeRef: SettingsStore | null = null;
 
 /**
- * Whether the host has delivered at least one real settings payload this
- * session (issue #896). Until it has, `currentSettings` is nothing but schema
- * defaults — persisting a merge over defaults would overwrite host storage
- * and wipe every key the user ever saved (key bindings included). Local
- * writes before this flips are applied to the cache and queued; they flush
- * once the first arrival lands.
+ * True once the cache reflects the store — loaded from the file, or migrated
+ * once from the deck host (issue #993). Until then the cache is pure schema
+ * defaults; anything that must not act on defaults (window focus, one-shot
+ * migrations, the plugins' startup-defaults block) gates on this.
  */
-let hostSettingsReceived = false;
+let storeReady = false;
+
+/** Writes made before the store is ready; applied over the loaded settings when it is. */
+let earlyWrites: Record<string, unknown> | null = null;
+
+/** Keys deleted before the store is ready; dropped from the loaded settings when it is. */
+let earlyDeletes: Set<string> | null = null;
 
 /**
- * Whether any local write was queued while waiting for the first host
- * settings arrival (issue #896). Drives the one-shot flush on first arrival.
+ * Deadline for the one-time host migration read. Module-level so
+ * `_resetGlobalSettings()` can clear it — a timer surviving a reset would
+ * fire `becomeReady` into an unrelated run (tests) long after its store is gone.
  */
-let hasQueuedWrites = false;
+let migrationTimer: ReturnType<typeof setTimeout> | undefined;
+
+/** How long to wait for the deck host to answer the one-time migration read. */
+export const MIGRATION_TIMEOUT_MS = 10_000;
 
 /**
- * A local write not yet confirmed by a host echo (issue #896). `value` is
- * what this module last wrote for the key; `supersededValues` is every value
- * this write episode replaced — the pre-episode baseline plus each coalesced
- * intermediate own value. A host payload still carrying any of these (or
- * missing the key) is a stale echo and must not roll the write back; only a
- * value outside the episode is a genuinely newer foreign write.
- */
-interface PendingLocalWrite {
-  value: unknown;
-  supersededValues: unknown[];
-}
-
-/**
- * Local writes awaiting host confirmation, keyed by setting name (#896).
- */
-const pendingLocalWrites = new Map<string, PendingLocalWrite>();
-
-/**
- * Keys explicitly removed via `deleteGlobalSettings` and not yet confirmed
- * gone by a host payload (issue #896). The shrink guard must not resurrect
- * these, and stale echoes still carrying them must re-drop them.
- */
-const pendingLocalDeletes = new Set<string>();
-
-/**
- * The raw (unparsed) settings object from the most recent host delivery
- * (issue #896). This is the shrink guard's reference: any key the host knows
- * that is missing from an outgoing write — and not explicitly deleted — is
- * restored into the write so it can never be silently dropped from storage.
- */
-let lastHostSettings: Record<string, unknown> | null = null;
-
-/**
- * Value equality for pending-write reconciliation (#896). Primitives compare
- * by their string form because the PI persists numbers and booleans as
- * strings ("80", "true") while plugin writes persist parsed values (80,
- * true) — a strict comparison would misread a stale echo carrying the
- * string form of the pre-write value as a newer foreign write and roll the
- * local write back. The JSON fallback covers the few object-shaped
- * passthrough values (e.g. `_selectedCar`).
+ * Value equality across the persisted/parsed divide. Primitives compare by
+ * their string form because a Property Inspector saves numbers and booleans
+ * as strings ("80", "true") while this module persists parsed values (80,
+ * true) — a strict comparison would report a difference where there is none.
+ * The JSON fallback covers the few object-shaped passthrough values (e.g.
+ * `_selectedCar`). Used by the settings window's save diff
+ * (`settings-window-server.ts`), which only forwards genuinely changed keys.
  */
 export function sameValue(a: unknown, b: unknown): boolean {
   if (Object.is(a, b)) return true;
@@ -1150,8 +1126,10 @@ export function sameValue(a: unknown, b: unknown): boolean {
  * Zod issue paths) are dropped and the parse retried, so one corrupt value
  * degrades to its schema default instead of stalling every setting — before
  * this, a single bad field left the cache at defaults forever and every key
- * binding looked unset. Returns null only when the failure isn't attributable
- * to specific keys (e.g. the payload isn't an object).
+ * binding looked unset. Still load-bearing under the single-writer model: it
+ * now guards the stored file (hand-edited, or written by an older schema)
+ * instead of a host payload. Returns null only when the failure isn't
+ * attributable to specific keys (e.g. the payload isn't an object).
  */
 function parseWithSalvage(raw: Record<string, unknown>): { settings: GlobalSettings; droppedKeys: string[] } | null {
   let candidate = raw;
@@ -1187,147 +1165,155 @@ function parseWithSalvage(raw: Record<string, unknown>): { settings: GlobalSetti
   return null;
 }
 
-/**
- * Send the live cache to the host, with the shrink guard applied (issue
- * #896): keys the host is known to hold that are missing from the outgoing
- * object — and were not explicitly deleted — are restored into the write.
- * This is the last line of defense against a write silently deleting
- * settings (the "key bindings not saved" bug), and it also carries values
- * the cache had to drop as unparseable back to storage untouched.
- */
-function persistCurrentSettings(): void {
-  if (!adapterRef) return;
-
-  const outgoing: Record<string, unknown> = { ...(currentSettings as Record<string, unknown>) };
-
-  if (lastHostSettings) {
-    const restored: string[] = [];
-
-    for (const key of Object.keys(lastHostSettings)) {
-      if (!(key in outgoing) && !pendingLocalDeletes.has(key)) {
-        outgoing[key] = lastHostSettings[key];
-        restored.push(key);
-      }
-    }
-
-    if (restored.length > 0) {
-      logger?.warn("Restored host-known keys missing from outgoing global settings write");
-      logger?.debug(`Restored keys: ${restored.join(", ")}`);
-    }
-  }
-
-  adapterRef.setGlobalSettings(outgoing);
+export interface InitGlobalSettingsOptions {
+  /** Test hook; production uses {@link MIGRATION_TIMEOUT_MS}. */
+  migrationTimeoutMs?: number;
 }
 
 /**
- * Initialize global settings manager.
- * Sets up the listener for global settings changes.
- * The platform adapter will send current settings via the onDidReceiveGlobalSettings callback.
- * Should be called once at plugin startup, before adapter.connect().
+ * Initialize the global settings manager against the plugin-owned store.
  *
- * @param adapter - The platform adapter instance
+ * Returns immediately with the current (default) cache and finishes loading in
+ * the background: the store is read, or — when there is no file yet — the deck
+ * host is asked once so an existing installation's settings migrate into the
+ * file. Listeners fire once when the cache first reflects the store, and
+ * {@link isSettingsStoreReady} reports when that has happened. Should be called
+ * once at plugin startup, before adapter.connect().
+ *
+ * @param adapter - The platform adapter instance (migration source only)
  * @param log - Logger instance for this module
- * @param store - Plugin-owned settings store (issue #993); not yet used
- * @returns Current global settings (may be defaults until adapter sends actual values)
+ * @param store - The plugin-owned settings store (issue #993)
+ * @param opts - Test hooks
+ * @returns Current global settings (schema defaults until the store has loaded)
  */
-export function initGlobalSettings(adapter: IDeckPlatformAdapter, log: ILogger, store: SettingsStore): GlobalSettings {
-  logger = log;
-  adapterRef = adapter;
-  storeRef = store;
-  logger.info("Initializing");
-
+export function initGlobalSettings(
+  adapter: IDeckPlatformAdapter,
+  log: ILogger,
+  store: SettingsStore,
+  opts: InitGlobalSettingsOptions = {},
+): GlobalSettings {
   if (initialized) {
-    logger.debug("Already initialized, returning cached");
+    logger?.warn("Global settings already initialized");
 
     return currentSettings;
   }
 
-  // Listen for changes from Property Inspector
-  adapter.onDidReceiveGlobalSettings((settings: unknown) => {
-    logger?.info("Settings received");
-    logger?.debug(`Raw settings: ${JSON.stringify(settings)}`);
+  logger = log;
+  storeRef = store;
+  initialized = true;
+  logger.info("Initializing");
 
-    const raw = (settings !== null && typeof settings === "object" ? settings : {}) as Record<string, unknown>;
-    const firstArrival = !hostSettingsReceived;
-    hostSettingsReceived = true;
-    lastHostSettings = { ...raw };
+  const migrationTimeoutMs = opts.migrationTimeoutMs ?? MIGRATION_TIMEOUT_MS;
+  let migrationRequested = false;
+  let migrationDone = false;
 
-    const merged: Record<string, unknown> = { ...raw };
+  // A `_resetGlobalSettings()` (tests) retargets `storeRef`, so an in-flight
+  // load or a late host payload from THIS init must not write to module state
+  // that now belongs to a different run.
+  const isCurrent = (): boolean => storeRef === store;
 
-    // Reconcile pending local deletes (#896): a payload still carrying a
-    // deleted key is a stale echo — re-drop it; a payload without it
-    // confirms the delete.
-    for (const key of [...pendingLocalDeletes]) {
-      if (key in merged) {
-        delete merged[key];
-        logger?.debug(`Re-dropped pending local delete over stale host settings: ${key}`);
-      } else {
-        pendingLocalDeletes.delete(key);
-      }
-    }
+  const becomeReady = (raw: Record<string, unknown>, source: "file" | "host" | "fresh"): void => {
+    if (storeReady || !isCurrent()) return;
 
-    // Reconcile pending local writes (#896): confirmed values drop off the
-    // pending map; stale echoes (key missing, or still the pre-write value)
-    // get the local write re-applied; a genuinely different value is a
-    // newer foreign write and wins. On the FIRST arrival local writes
-    // always win — anything queued this session is newer than storage.
-    const reappliedKeys: string[] = [];
+    const merged = { ...raw };
 
-    for (const [key, pending] of [...pendingLocalWrites]) {
-      const rawHasKey = key in raw;
+    // Early writes/deletes (made before ready) win over the loaded settings —
+    // anything written this session is newer than storage.
+    if (earlyDeletes) for (const key of earlyDeletes) delete merged[key];
 
-      if (rawHasKey && sameValue(raw[key], pending.value)) {
-        pendingLocalWrites.delete(key);
-      } else if (
-        firstArrival ||
-        !rawHasKey ||
-        pending.supersededValues.some((superseded) => sameValue(raw[key], superseded))
-      ) {
-        merged[key] = pending.value;
-        reappliedKeys.push(key);
-      } else {
-        pendingLocalWrites.delete(key);
-        logger?.debug(`Pending local write superseded by newer host value: ${key}`);
-      }
-    }
-
-    if (reappliedKeys.length > 0) {
-      logger?.info("Re-applied pending local writes over stale host settings");
-      logger?.debug(`Re-applied keys: ${reappliedKeys.join(", ")}`);
-    }
+    if (earlyWrites) Object.assign(merged, earlyWrites);
 
     const salvage = parseWithSalvage(merged);
 
-    if (!salvage) {
-      // Not attributable to specific keys — keep the previous cache rather
-      // than resetting every setting to defaults. lastHostSettings still
-      // remembers the payload, so the shrink guard preserves its keys.
-      logger?.error("Host settings payload unparseable; keeping previous settings");
+    if (salvage === null) {
+      logger?.error("Stored settings unparseable; starting from schema defaults");
+    } else {
+      if (salvage.droppedKeys.length > 0) {
+        logger?.warn("Some stored settings were invalid and reset to defaults");
+        logger?.debug(`Dropped keys: ${salvage.droppedKeys.join(", ")}`);
+      }
+
+      currentSettings = salvage.settings;
+    }
+
+    storeReady = true;
+    earlyWrites = null;
+    earlyDeletes = null;
+    logger?.info(
+      source === "file"
+        ? "Global settings loaded from the settings file"
+        : source === "host"
+          ? "Migrated global settings from the deck host"
+          : "No stored settings found; starting fresh",
+    );
+    logger?.debug(`Settings store: ${store.path} (${Object.keys(raw).length} stored keys)`);
+
+    // Migration and fresh start both write the file so the next start loads
+    // it directly. A file load re-saves too — harmless, and it heals a file
+    // whose salvage dropped keys.
+    store.save({ ...currentSettings } as Record<string, unknown>);
+    notifyListeners();
+  };
+
+  // The host is consulted ONLY as a migration source, and only when we asked
+  // (i.e. there is no file). Every other payload — a PI's save echo, an
+  // unsolicited push racing the file load — is ignored for the cache; the
+  // store is truth (#993).
+  adapter.onDidReceiveGlobalSettings((settings: unknown) => {
+    if (!isCurrent()) return;
+
+    logger?.info("Settings received from host");
+    logger?.debug(`Raw host settings: ${JSON.stringify(settings)}`);
+
+    if (storeReady || migrationDone || !migrationRequested) {
+      logger?.debug("Ignoring host settings payload: the settings store is authoritative");
 
       return;
     }
 
-    if (salvage.droppedKeys.length > 0) {
-      logger?.warn("Dropped unparseable global settings values (schema defaults used)");
-      logger?.debug(`Dropped keys: ${salvage.droppedKeys.join(", ")}`);
+    migrationDone = true;
+
+    if (migrationTimer !== undefined) {
+      clearTimeout(migrationTimer);
+      migrationTimer = undefined;
     }
 
-    applyParsedSettings(salvage.settings);
+    const raw = (settings !== null && typeof settings === "object" ? settings : {}) as Record<string, unknown>;
 
-    // Flush writes queued before the first arrival (#896) — now merged over
-    // the real settings instead of clobbering them with defaults.
-    if (firstArrival && hasQueuedWrites) {
-      hasQueuedWrites = false;
-      logger?.info("Flushing global settings writes queued before first host settings arrival");
-      persistCurrentSettings();
-    }
+    becomeReady(raw, "host");
   });
 
-  initialized = true;
+  void store
+    .load()
+    .then((loaded) => {
+      if (!isCurrent()) return;
 
-  // Request current global settings - this triggers the onDidReceiveGlobalSettings callback
-  adapter.getGlobalSettings();
-  logger.info("Initialized");
+      if (loaded !== undefined) {
+        becomeReady(loaded, "file");
+
+        return;
+      }
+
+      // No file yet: migrate once from the host, or start fresh on timeout.
+      logger?.info("No settings file yet; requesting the deck host's settings for a one-time migration");
+      migrationRequested = true;
+      adapter.getGlobalSettings();
+      migrationTimer = setTimeout(() => {
+        migrationTimer = undefined;
+
+        if (storeReady || migrationDone || !isCurrent()) return;
+
+        migrationDone = true;
+        logger?.warn("Deck host did not answer the migration read; starting fresh");
+        becomeReady({}, "fresh");
+      }, migrationTimeoutMs);
+    })
+    .catch((error: unknown) => {
+      if (!isCurrent()) return;
+
+      logger?.error(`Settings store load failed: ${String(error)}`);
+      becomeReady({}, "fresh");
+    });
 
   return currentSettings;
 }
@@ -1343,13 +1329,13 @@ export function getGlobalSettings(): GlobalSettings {
 }
 
 /**
- * Whether the host has delivered at least one real global-settings payload
- * this session. Before that the cache is pure schema defaults (passthrough
- * keys absent), so any consumer deciding on the ABSENCE of a key — e.g. a
- * one-shot key migration — must wait for the first arrival.
+ * Whether the cache reflects the settings store yet — loaded from the file, or
+ * migrated once from the deck host (issue #993). Before that it is pure schema
+ * defaults (passthrough keys absent), so any consumer deciding on the ABSENCE
+ * of a key — e.g. a one-shot key migration — must wait for this.
  */
-export function hasReceivedHostSettings(): boolean {
-  return hostSettingsReceived;
+export function isSettingsStoreReady(): boolean {
+  return storeReady;
 }
 
 /**
@@ -1368,186 +1354,115 @@ export function onGlobalSettingsChange(listener: GlobalSettingsListener): () => 
 
 /**
  * Update global settings by merging partial values into current settings.
- * Writes the merged result back to the platform adapter **and** updates the
- * in-memory cache synchronously so subsequent reads in the same task see the
- * new value. The host's `onDidReceiveGlobalSettings` echo is not guaranteed to
- * fire promptly — in observed Stream Deck sessions the echo has arrived
- * minutes after the write — and without the synchronous cache update every
- * read-modify-write toggle (Pit Crew Radar, Race Engineer) gets stuck because
- * subsequent presses re-read the stale value and compute the same "next"
- * again. See #419.
+ * The merged result is parsed, applied to the cache synchronously (so
+ * subsequent reads in the same task see the new value — see #419), handed to
+ * the listeners, and saved to the store.
  *
- * Writes are guarded against the stale-cache clobber (#896): before the
- * first real host settings arrival they are queued instead of persisted (a
- * defaults-based write would wipe storage), each written key stays pending
- * until a host payload confirms it (stale echoes can't roll it back), and
- * the outgoing object passes the shrink guard so host-known keys can never
- * silently vanish from storage.
+ * Writes made before the store has loaded are additionally recorded as early
+ * writes and re-applied over the loaded/migrated settings, so a startup write
+ * (e.g. the audio-device list) is neither lost nor able to overwrite the file
+ * with schema defaults.
  *
  * @param partial - Partial settings to merge into current settings
  */
 export function updateGlobalSettings(partial: Record<string, unknown>): void {
-  if (!adapterRef) {
-    logger?.warn("Cannot update global settings: adapter not initialized");
-
-    return;
-  }
-
-  const base = currentSettings as Record<string, unknown>;
-  const merged = { ...base, ...partial };
   logger?.info("Updating global settings");
   logger?.debug(`Partial update: ${JSON.stringify(partial)}`);
 
-  // Parse + apply synchronously so the cache and listeners reflect the
-  // new value immediately. The later `onDidReceiveGlobalSettings` echo
-  // re-parses the same payload and reconciles as a no-op.
+  if (!storeReady) {
+    // Applied over the loaded settings when the store is ready — read-your-writes now.
+    earlyWrites = { ...(earlyWrites ?? {}), ...partial };
+
+    for (const key of Object.keys(partial)) earlyDeletes?.delete(key);
+  }
+
+  const merged = { ...(currentSettings as Record<string, unknown>), ...partial };
   const salvage = parseWithSalvage(merged);
 
-  if (!salvage) {
-    logger?.error("Global settings update unparseable; write skipped");
+  if (salvage === null) {
+    logger?.error("Global settings update rejected: result unparseable");
 
     return;
   }
 
   if (salvage.droppedKeys.length > 0) {
-    logger?.warn("Dropped unparseable values from global settings update");
+    logger?.warn("Some updated settings were invalid and kept their previous values");
     logger?.debug(`Dropped keys: ${salvage.droppedKeys.join(", ")}`);
-  }
-
-  // Record the surviving partial keys as pending until a host payload
-  // confirms them (#896) — a stale echo arriving later must not roll them
-  // back. A write supersedes any pending delete of the same key. Record the
-  // PARSED value, not the raw input: the outgoing write sends the parsed
-  // cache, so the host echo carries the parsed form — recording the raw
-  // input (e.g. an out-of-range number the schema `.catch()`-ed) would
-  // leave the key pending forever, re-applied and logged on every echo.
-  const parsedView = salvage.settings as Record<string, unknown>;
-
-  for (const key of Object.keys(partial)) {
-    if (salvage.droppedKeys.includes(key)) continue;
-
-    pendingLocalDeletes.delete(key);
-
-    // Coalesce with an existing pending write for the key: keep every value
-    // the episode superseded — the pre-episode baseline AND each
-    // intermediate own value — so a delayed echo of either form (the host
-    // state from before the episode, or the echo of an earlier write in it)
-    // is recognized as stale rather than as a foreign write that would roll
-    // the whole episode back.
-    const existing = pendingLocalWrites.get(key);
-    let supersededValues: unknown[];
-
-    if (existing === undefined) {
-      supersededValues = [base[key]];
-    } else if (existing.supersededValues.some((superseded) => sameValue(superseded, existing.value))) {
-      supersededValues = existing.supersededValues;
-    } else {
-      supersededValues = [...existing.supersededValues, existing.value];
-    }
-
-    pendingLocalWrites.set(key, { value: parsedView[key], supersededValues });
   }
 
   applyParsedSettings(salvage.settings);
 
-  // Before the first real host settings arrival the cache is defaults —
-  // persisting now would overwrite storage with those defaults and wipe
-  // every key the user ever saved (#896). Queue instead; the first arrival
-  // flushes the write merged over the real settings.
-  if (!hostSettingsReceived) {
-    hasQueuedWrites = true;
-    logger?.info("Global settings write queued until first host settings arrival");
-
-    return;
-  }
-
-  // Persist the LIVE cache, not a snapshot from above. A listener fired by
+  // Save the LIVE cache, not a snapshot from above: a listener fired by
   // `applyParsedSettings` may itself call `updateGlobalSettings`, layering
-  // more partials on top — sending a snapshot would clobber those nested
-  // updates back to the snapshot's stale view (#441 bug:
-  // `_raceEngineerVoices` push from inside the audio-device push listener
-  // was being overwritten by the outer audio-device-only payload).
-  persistCurrentSettings();
+  // more partials on top — saving a snapshot would drop those nested updates
+  // (#441).
+  if (storeReady) storeRef?.save({ ...currentSettings } as Record<string, unknown>);
 }
 
 /**
- * Remove the listed keys from the global settings cache and persist the
- * trimmed result. Used for one-shot schema migrations (#515) — pass the
- * old key names that have been renamed away, the keys vanish from storage
- * on the first call, and subsequent calls are no-ops because the keys are
- * no longer present.
+ * Remove the listed keys from the global settings cache and save the trimmed
+ * result. Used for one-shot schema migrations (#515) — pass the old key names
+ * that have been renamed away, the keys vanish from storage on the first call,
+ * and subsequent calls are no-ops because the keys are no longer present.
  *
  * Idempotent: when none of the listed keys are in the cache, the function
- * returns without writing to the adapter or notifying listeners. Only an
- * actual deletion triggers a re-parse + write — same shape as
- * `updateGlobalSettings`.
+ * returns without saving or notifying listeners. Only an actual deletion
+ * triggers a re-parse + save — the startup migrations call this on every
+ * launch, long after the keys are gone.
  *
  * @param keys - Names of keys to drop from the cache
  */
 export function deleteGlobalSettings(keys: readonly string[]): void {
-  if (!adapterRef) {
-    logger?.warn("Cannot delete global settings: adapter not initialized");
+  if (!storeReady) {
+    // The cache is still defaults, so a key that lives only in storage isn't
+    // visible yet — record the delete and apply it to the loaded settings.
+    earlyDeletes = new Set([...(earlyDeletes ?? []), ...keys]);
 
-    return;
+    if (earlyWrites) for (const key of keys) delete earlyWrites[key];
   }
 
-  const next: Record<string, unknown> = { ...(currentSettings as Record<string, unknown>) };
-  const deleted: string[] = [];
-
-  for (const key of keys) {
-    if (key in next) {
-      delete next[key];
-      deleted.push(key);
-    } else if (lastHostSettings && key in lastHostSettings && !pendingLocalDeletes.has(key)) {
-      // The cache never held the key (e.g. its value was unparseable and
-      // salvaged away), but the host still stores it — record the delete so
-      // the shrink guard stops preserving it (#896).
-      deleted.push(key);
-    }
-  }
+  const next = { ...(currentSettings as Record<string, unknown>) };
+  const deleted = keys.filter((key) => key in next);
 
   if (deleted.length === 0) return;
-
-  for (const key of deleted) {
-    pendingLocalDeletes.add(key);
-    pendingLocalWrites.delete(key);
-  }
 
   logger?.info("Deleting global settings keys");
   logger?.debug(`Deleted: ${deleted.join(", ")}`);
 
+  for (const key of deleted) delete next[key];
+
   const salvage = parseWithSalvage(next);
 
-  if (!salvage) {
-    logger?.error("Global settings delete left an unparseable object; write skipped");
+  if (salvage === null) {
+    logger?.error("Global settings delete left an unparseable object; save skipped");
 
     return;
   }
 
   applyParsedSettings(salvage.settings);
 
-  // Same first-arrival gate as updateGlobalSettings (#896).
-  if (!hostSettingsReceived) {
-    hasQueuedWrites = true;
-    logger?.info("Global settings delete queued until first host settings arrival");
+  if (storeReady) storeRef?.save({ ...currentSettings } as Record<string, unknown>);
+}
 
-    return;
+/**
+ * Hand the live cache to every subscriber. Reads `currentSettings` rather than
+ * a snapshot so a listener that writes during the fan-out doesn't leave the
+ * listeners after it looking at a stale object.
+ */
+function notifyListeners(): void {
+  for (const listener of listeners) {
+    listener(currentSettings);
   }
-
-  persistCurrentSettings();
 }
 
 /**
  * Apply a parsed settings object: update the cache and notify listeners.
- * Shared between the host-echo path (`onDidReceiveGlobalSettings`) and the
- * local-write path (`updateGlobalSettings`) so both stay in sync.
+ * Shared by `updateGlobalSettings` and `deleteGlobalSettings` so both stay
+ * in sync; the store load has its own path (`becomeReady`).
  */
 function applyParsedSettings(parsed: GlobalSettings): GlobalSettings {
   currentSettings = parsed;
-
-  for (const listener of listeners) {
-    listener(parsed);
-  }
+  notifyListeners();
 
   return parsed;
 }
@@ -1650,11 +1565,13 @@ export function _resetGlobalSettings(): void {
   currentSettings = GlobalSettingsSchema.parse({});
   listeners.clear();
   initialized = false;
-  adapterRef = null;
   storeRef = null;
-  hostSettingsReceived = false;
-  hasQueuedWrites = false;
-  pendingLocalWrites.clear();
-  pendingLocalDeletes.clear();
-  lastHostSettings = null;
+  storeReady = false;
+  earlyWrites = null;
+  earlyDeletes = null;
+
+  if (migrationTimer !== undefined) {
+    clearTimeout(migrationTimer);
+    migrationTimer = undefined;
+  }
 }

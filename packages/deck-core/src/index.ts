@@ -152,7 +152,7 @@ export {
   updateGlobalSettings,
   deleteGlobalSettings,
   isGlobalSettingsInitialized,
-  hasReceivedHostSettings,
+  isSettingsStoreReady,
   resolveActiveDriverName,
   resolveActiveRaceEngineerVoice,
   sameValue,

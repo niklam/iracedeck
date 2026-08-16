@@ -96,6 +96,7 @@ import {
   initPluginConfig,
   initWindowFocus,
   isIRacingActive,
+  isSettingsStoreReady,
   isSimHubReachable,
   migrateGlobalSettingsKeys,
   onGlobalSettingsChange,
@@ -809,7 +810,11 @@ onGlobalSettingsChange((settings) => {
   // defaults below so the renamed `pitCrew*Enabled` keys take their
   // schema defaults (`false`) for everyone, regardless of what the
   // pre-rename keys held.
-  if (!startupDefaultsApplied) {
+  // Also gate on the settings store: a write made before it has loaded still
+  // notifies listeners (read-your-writes), and running the startup defaults
+  // against schema defaults would layer those computed values over the
+  // loaded/migrated settings (#993).
+  if (!startupDefaultsApplied && isSettingsStoreReady()) {
     startupDefaultsApplied = true;
 
     deleteGlobalSettings([
