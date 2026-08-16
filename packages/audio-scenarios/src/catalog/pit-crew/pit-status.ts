@@ -46,7 +46,8 @@
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventOf } from "@iracedeck/event-bus";
-import { PitSvStatus } from "@iracedeck/iracing-sdk";
+import { PitSvStatus, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { getLatestTelemetry } from "@iracedeck/sim-events-iracing";
 
 import type { Scenario, Step } from "../../dsl.js";
 
@@ -89,6 +90,33 @@ function pitStatusScenario(id: string, target: PitSvStatus, body: Step[]): Scena
   };
 }
 
+/**
+ * Speak-time validity check for a nag (the #669 furled precedent).
+ *
+ * `queueable: false` does NOT guarantee a nag is dropped when it can't play:
+ * the engine sets it as the bus's PENDING fire whenever it outranks the
+ * in-flight line without interrupting (`weight > runningWeight &&
+ * interrupt !== true`), and a pending fire replays WITHOUT re-running
+ * `where:`. A nag queued behind the long, CHATTER-weight pit-service readback
+ * could therefore speak seconds later, after the driver had already corrected
+ * — telling them to back up when they are sitting perfectly in the box.
+ *
+ * `if:` predicates expand at speak time, deferred replays included, so
+ * wrapping the whole sequence in one re-checks the LIVE status just before the
+ * clip plays. Unknown telemetry means play: a callout is never suppressed by
+ * absent data (#574), which also keeps the scenario harness able to audition
+ * every nag without iRacing running.
+ */
+function stillMisalignedAs(target: PitSvStatus): boolean {
+  const telemetry = getLatestTelemetry() as TelemetryData | null;
+
+  if (telemetry === null) return true;
+
+  const status = telemetry.PlayerCarPitSvStatus;
+
+  return status === undefined || status === target;
+}
+
 function pitStatusRepeatScenario(id: string, target: PitSvStatus): Scenario {
   return {
     id: `pit-crew.pit-status-${id}-repeat`,
@@ -97,7 +125,7 @@ function pitStatusRepeatScenario(id: string, target: PitSvStatus): Scenario {
     base: "voice/{voice}",
     weight: PIT_STATUS_REPEAT_WEIGHT,
     family: "pit-status-repeat",
-    sequence: [`pool:pit-status-${id}-repeat`],
+    sequence: [{ if: () => stillMisalignedAs(target), then: [`pool:pit-status-${id}-repeat`] }],
     when: {
       event: "pitService.positioningRepeat",
       where: (e) => (e as SimEventOf<"pitService.positioningRepeat">).data.status === target,

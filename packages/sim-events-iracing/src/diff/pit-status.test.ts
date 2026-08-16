@@ -12,6 +12,12 @@
  *   - re-emit on subsequent transitions after a closing-to-`None`
  *   - the positioning-error repeat cadence, its movement hold, and its
  *     cycle reset (issue #951)
+ *   - that the repeat is armed from the LEVEL, so a re-seed mid-stop (plugin
+ *     restart, SDK reconnect, off-track blip, replay wipe) can't silence a
+ *     still-latched error — and still waits a full interval when it does
+ *   - the `OnPitRoad` bound, which stops a latched status nagging forever
+ *     once the car has left the pit lane, without breaking the overshoot
+ *     case that reads `PlayerCarInPitStall: false`
  */
 import { PitSvStatus, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { describe, expect, it } from "vitest";
@@ -263,7 +269,22 @@ const ONE_SHOT_STATUSES = [PitSvStatus.InProgress, PitSvStatus.Complete, PitSvSt
 
 /** Telemetry for a car parked in its box with the given latched status. */
 function parked(status: PitSvStatus, speedMps = 0): TelemetryData {
-  return tick({ PlayerCarInPitStall: true, PlayerCarPitSvStatus: status, Speed: speedMps });
+  return tick({ OnPitRoad: true, PlayerCarInPitStall: true, PlayerCarPitSvStatus: status, Speed: speedMps });
+}
+
+/** Drive `count` stationary ticks from `from`, 100 ms apart, and return the end time. */
+function idleFor(
+  state: ReturnType<typeof createInitialState>,
+  status: PitSvStatus,
+  from: number,
+  durationMs: number,
+  emit: (e: PendingEvent) => void,
+): number {
+  for (let at = from; at <= from + durationMs; at += 100) {
+    diffPitStatus(state, parked(status), at, emit);
+  }
+
+  return from + durationMs;
 }
 
 /**
@@ -278,6 +299,117 @@ function enterError(status: PitSvStatus, emit: (e: PendingEvent) => void): Retur
 
   return state;
 }
+
+describe("diffPitStatus — positioning repeat survives a re-seed (#951)", () => {
+  // The cycle used to be armed ONLY on a status transition, while the
+  // seed / off-track branch disarmed it — so anything that re-seeded the diff
+  // mid-stop (plugin restart on a deck-host auto-update per #870, an SDK
+  // reconnect, a one-tick `IsOnTrack: false` blip, or the replay-flip
+  // `wipeStateForReplay`, which does NOT preserve `pitStatusInitialized`) left
+  // a latched error with no edge to re-arm on: permanent silence, the exact
+  // failure this issue exists to remove.
+  it("re-arms after an off-track blip with the error still latched", () => {
+    const { events, emit } = collect();
+    const state = enterError(PitSvStatus.TooFarForward, emit);
+
+    diffPitStatus(
+      state,
+      tick({ IsOnTrack: false, OnPitRoad: true, PlayerCarPitSvStatus: PitSvStatus.TooFarForward }),
+      T0 + 100,
+      emit,
+    );
+    expect(state.pitStatusRepeatDueAt).toBe(0);
+
+    idleFor(
+      state,
+      PitSvStatus.TooFarForward,
+      T0 + 200,
+      PIT_STATUS_REPEAT_INTERVAL_MS + PIT_STATUS_REST_SETTLE_MS,
+      emit,
+    );
+
+    expect(repeatEvents(events).length).toBeGreaterThan(0);
+  });
+
+  it("re-arms after a full state re-seed (plugin restart mid-stop)", () => {
+    const { events, emit } = collect();
+    const state = createInitialState();
+
+    // A fresh translator state that first sees the car ALREADY parked wrong:
+    // the seed swallows the status, so no transition ever occurs.
+    diffPitStatus(state, parked(PitSvStatus.BadAngle), T0, emit);
+    expect(statusEvents(events)).toHaveLength(0);
+
+    idleFor(state, PitSvStatus.BadAngle, T0 + 100, PIT_STATUS_REPEAT_INTERVAL_MS + PIT_STATUS_REST_SETTLE_MS, emit);
+
+    const fired = repeatEvents(events);
+
+    expect(fired.length).toBeGreaterThan(0);
+    expect(fired[0].data).toEqual({ status: PitSvStatus.BadAngle });
+  });
+
+  it("still waits a full interval before the first re-armed repeat", () => {
+    const { events, emit } = collect();
+    const state = createInitialState();
+
+    diffPitStatus(state, parked(PitSvStatus.TooFarLeft), T0, emit);
+    idleFor(state, PitSvStatus.TooFarLeft, T0 + 100, PIT_STATUS_REPEAT_INTERVAL_MS - 200, emit);
+
+    expect(repeatEvents(events)).toHaveLength(0);
+  });
+});
+
+describe("diffPitStatus — positioning repeat pit-road gate (#951)", () => {
+  // A latched status on a car that has left pit road must not nag forever
+  // wherever the car happens to stop (spin, red flag, off-track recovery).
+  // The gate is `OnPitRoad`, NOT `PlayerCarInPitStall` — an overshot car may
+  // well read false for the stall, which is the very repro case.
+  it("does not repeat once the car has left pit road", () => {
+    const { events, emit } = collect();
+    const state = enterError(PitSvStatus.TooFarForward, emit);
+
+    for (let elapsed = 100; elapsed <= PIT_STATUS_REPEAT_INTERVAL_MS * 3; elapsed += 100) {
+      diffPitStatus(
+        state,
+        tick({ OnPitRoad: false, PlayerCarPitSvStatus: PitSvStatus.TooFarForward, Speed: 0 }),
+        T0 + elapsed,
+        emit,
+      );
+    }
+
+    expect(repeatEvents(events)).toHaveLength(0);
+  });
+
+  it("still repeats for an overshooting car that is on pit road but not in the stall", () => {
+    const { events, emit } = collect();
+    const state = createInitialState();
+    const overshot = (): TelemetryData =>
+      tick({ OnPitRoad: true, PlayerCarInPitStall: false, PlayerCarPitSvStatus: PitSvStatus.TooFarForward, Speed: 0 });
+
+    diffPitStatus(state, tick({ OnPitRoad: true }), T0 - 100, emit);
+    diffPitStatus(state, overshot(), T0, emit);
+
+    for (let elapsed = 100; elapsed <= PIT_STATUS_REPEAT_INTERVAL_MS + PIT_STATUS_REST_SETTLE_MS; elapsed += 100) {
+      diffPitStatus(state, overshot(), T0 + elapsed, emit);
+    }
+
+    expect(repeatEvents(events).length).toBeGreaterThan(0);
+  });
+
+  it("treats missing OnPitRoad telemetry as on pit road rather than suppressing", () => {
+    const { events, emit } = collect();
+    const state = createInitialState();
+
+    diffPitStatus(state, tick(), T0 - 100, emit);
+    diffPitStatus(state, tick({ PlayerCarPitSvStatus: PitSvStatus.TooFarBack }), T0, emit);
+
+    for (let elapsed = 100; elapsed <= PIT_STATUS_REPEAT_INTERVAL_MS + PIT_STATUS_REST_SETTLE_MS; elapsed += 100) {
+      diffPitStatus(state, tick({ PlayerCarPitSvStatus: PitSvStatus.TooFarBack }), T0 + elapsed, emit);
+    }
+
+    expect(repeatEvents(events).length).toBeGreaterThan(0);
+  });
+});
 
 describe("diffPitStatus — positioning repeat (#951)", () => {
   it.each(POSITIONING_ERRORS)("repeats %s once the interval elapses while the car sits still", (status) => {

@@ -166,10 +166,14 @@ A positioning error is the one status that needs saying twice. iRacing announces
 
 While one of the five positioning errors is still uncorrected, the Race Engineer therefore keeps nudging you with a short follow-up roughly **every two seconds** — *"Still too far forward."*, *"Back it up."*, *"Back up, you're too far."* — until the car is in the box or iRacing reports a different error. These are terse and deliberately have no radio beeps around them, since at that cadence the beeps would drown the words.
 
-Two things keep it from becoming noise:
+Four things keep it from becoming noise:
 
 - **It goes quiet while you're moving.** As soon as the car is rolling — even at the inch-by-inch crawl a box correction takes — the repeats stop, because you're already fixing it. They pick up again about half a second after the car comes to rest, if the error is still there.
 - **A different error starts over.** Over-correct from *too far forward* into *too far back* and you get the new error's full call, spoken in the usual conversational form, and the repeat cycle restarts from there. A repeat never talks over that full call.
+- **It stops when you leave the pit lane.** Give up on the stop and drive out and the corrections stop with you — they'll never follow you onto the track and start up again the next time you happen to come to a stop.
+- **It won't tell you something that's stopped being true.** Each correction re-checks how the car is actually parked in the moment before it speaks, so one that had to wait behind a longer message is dropped rather than telling you to back up when you're already sitting correctly in the box.
+
+The corrections also survive the plugin restarting mid-stop — an automatic Stream Deck update in the middle of a pit stop won't leave you parked wrong in silence for the rest of it.
 
 There is **no separate setting** for the repeats — they're part of the same callout, so turning off e.g. **Too far forward** under Pit Service Status silences both its initial call and its follow-ups. *In progress*, *Complete*, and *Can't fix that* never repeat: they state a fact rather than an error waiting to be fixed.
 

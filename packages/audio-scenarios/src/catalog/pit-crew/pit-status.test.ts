@@ -1,5 +1,6 @@
 /**
- * Unit tests for the pit-service status callout catalog (issue #479).
+ * Unit tests for the pit-service status callout catalog (issue #479) and its
+ * positioning-error repeat nags (issue #951).
  *
  * Pins:
  *   - structure: 8 scenarios, shared family / priority / base
@@ -11,6 +12,13 @@
  *     TooFarRight) supersedes the in-flight callout
  *   - per-callout opt-out via `registerPitCrew(... getPitStatusCalloutEnabled)`:
  *     disabling one id suppresses only that callout
+ *   - repeat nags (#951): 5 scenarios in their own `pit-status-repeat` family
+ *     at a weight strictly below the transition calls, terse (no radio frame),
+ *     fired by `pitService.positioningRepeat` and filtered on `data.status`
+ *   - the scheduling consequences of that split — a nag is dropped rather than
+ *     cutting the full transition call, a fresh error still speaks in full
+ *     after an in-flight nag, and nags replace each other
+ *   - the repeats ride their transition sibling's opt-in (no new setting)
  */
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioChannel } from "@iracedeck/audio-service";
@@ -36,8 +44,14 @@ import { _resetRadarEngine } from "./radar-engine.js";
 import { RADIO_CLOSE, RADIO_OPEN } from "./radio-frame.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
 
+// `latestTelemetry` backs the repeat nags' speak-time gate. `null` (the
+// default, and what the scenario harness sees) means "unknown" — the gate must
+// then let the line play rather than suppress on missing data.
+const simMocks = vi.hoisted(() => ({ latestTelemetry: null as { PlayerCarPitSvStatus?: number } | null }));
+
 vi.mock("@iracedeck/sim-events-iracing", () => ({
   getSessionType: () => "Race",
+  getLatestTelemetry: () => simMocks.latestTelemetry,
 }));
 
 const mockLogger = {
@@ -333,11 +347,24 @@ describe("PIT_STATUS_REPEAT_ALERTS structure (#951)", () => {
     }
   });
 
-  it("is terse — a single pool step with no radio frame", () => {
+  it("is terse — a single pool step, gated but never framed by the radio beeps", () => {
     for (const s of PIT_STATUS_REPEAT_ALERTS) {
+      // One speak-time-gated step wrapping one pool step: the gate is the
+      // #951 validity check, and the body must stay a bare clip.
       expect(s.sequence).toHaveLength(1);
-      expect(s.sequence[0]).not.toBe(RADIO_OPEN.id);
-      expect(String(s.sequence[0]).startsWith("pool:")).toBe(true);
+
+      const step = s.sequence[0] as { if?: unknown; then?: unknown[] };
+
+      expect(typeof step.if).toBe("function");
+      expect(step.then).toHaveLength(1);
+
+      // `@`-prefixed include form — comparing against the bare scenario id
+      // would pass even for a sequence that DID open the radio frame.
+      const everyStep = JSON.stringify([...s.sequence, ...(step.then ?? [])]);
+
+      expect(everyStep).not.toContain(`@${RADIO_OPEN.id}`);
+      expect(everyStep).not.toContain(`@${RADIO_CLOSE.id}`);
+      expect(String(step.then?.[0]).startsWith("pool:")).toBe(true);
     }
   });
 
@@ -390,7 +417,9 @@ describe("PIT_STATUS_REPEAT_ALERTS triggers (engine-level, no opt-out gating)", 
     bus.publishEvent("pitService.positioningRepeat", { status: PitSvStatus.BadAngle });
     flush(audio);
 
-    expect(voiceClipsPlayed(audio)).not.toContain(`voice/${VOICE}/pit-status/too-far-left-repeat-01.mp3`);
+    // Exact match, not `not.toContain` — the loose form also passes when the
+    // matching nag never fired at all, or when a THIRD error's nag fired.
+    expect(voiceClipsPlayed(audio)).toEqual([`voice/${VOICE}/pit-status/bad-angle-repeat-01.mp3`]);
   });
 
   it("is dropped rather than cutting the full transition call it belongs to", () => {
@@ -424,11 +453,91 @@ describe("PIT_STATUS_REPEAT_ALERTS triggers (engine-level, no opt-out gating)", 
   });
 
   it("replaces its own in-flight predecessor rather than stacking nags", () => {
+    // No flush between the two — the second nag arrives mid-playback of the
+    // first, so same-family preemption must CUT it. The cut is the assertable
+    // signal: both fires start a clip either way, so a clip-list assertion
+    // alone can't tell a replacement from two nags queued back to back.
     bus.publishEvent("pitService.positioningRepeat", { status: PitSvStatus.TooFarLeft });
     bus.publishEvent("pitService.positioningRepeat", { status: PitSvStatus.TooFarLeft });
+
+    expect(audio.stopChannel).toHaveBeenCalledWith(AudioChannel.Voice);
+
     flush(audio);
 
     expect(voiceClipsPlayed(audio).at(-1)).toBe(`voice/${VOICE}/pit-status/too-far-left-repeat-01.mp3`);
+  });
+});
+
+describe("PIT_STATUS_REPEAT_ALERTS speak-time validity gate (#951)", () => {
+  // `queueable: false` does NOT drop a nag behind a LOWER-weight line: the
+  // engine sets it as the pending fire whenever `weight > runningWeight` and
+  // `interrupt !== true`, and a pending fire replays WITHOUT re-running
+  // `where:`. So a nag queued behind the (CHATTER-weight, long) pit-service
+  // readback could speak after the driver had already corrected. The whole
+  // sequence is wrapped in an `if:` — those expand at speak time, including on
+  // a deferred replay — which re-checks the live status.
+  beforeEach(() => {
+    bus = createMockBus();
+    audio = createFakeAudio();
+    engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
+
+    for (const name of PIT_STATUS_REPEAT_POOL_NAMES) {
+      const { group, base } = POOL_REGISTRY[name];
+      engine.definePoolFromManifest(name, group, base);
+    }
+
+    for (const s of PIT_STATUS_REPEAT_ALERTS) engine.defineScenario(s);
+  });
+
+  afterEach(() => {
+    simMocks.latestTelemetry = null;
+    _resetAudioScenarios();
+    vi.clearAllMocks();
+  });
+
+  it("stays silent when the driver has already corrected by the time it speaks", () => {
+    simMocks.latestTelemetry = { PlayerCarPitSvStatus: PitSvStatus.None };
+
+    bus.publishEvent("pitService.positioningRepeat", { status: PitSvStatus.TooFarForward });
+    flush(audio);
+
+    expect(voiceClipsPlayed(audio)).toEqual([]);
+  });
+
+  it("stays silent when the live error is no longer the one it names", () => {
+    simMocks.latestTelemetry = { PlayerCarPitSvStatus: PitSvStatus.TooFarBack };
+
+    bus.publishEvent("pitService.positioningRepeat", { status: PitSvStatus.TooFarForward });
+    flush(audio);
+
+    expect(voiceClipsPlayed(audio)).toEqual([]);
+  });
+
+  it("speaks when the live status still reports the same error", () => {
+    simMocks.latestTelemetry = { PlayerCarPitSvStatus: PitSvStatus.TooFarForward };
+
+    bus.publishEvent("pitService.positioningRepeat", { status: PitSvStatus.TooFarForward });
+    flush(audio);
+
+    expect(voiceClipsPlayed(audio)).toEqual([`voice/${VOICE}/pit-status/too-far-forward-repeat-01.mp3`]);
+  });
+
+  it("speaks when telemetry is unavailable — never suppress on missing data", () => {
+    simMocks.latestTelemetry = null;
+
+    bus.publishEvent("pitService.positioningRepeat", { status: PitSvStatus.BadAngle });
+    flush(audio);
+
+    expect(voiceClipsPlayed(audio)).toEqual([`voice/${VOICE}/pit-status/bad-angle-repeat-01.mp3`]);
+  });
+
+  it("speaks when telemetry omits the status field — keeps the scenario harness firable", () => {
+    simMocks.latestTelemetry = {};
+
+    bus.publishEvent("pitService.positioningRepeat", { status: PitSvStatus.TooFarLeft });
+    flush(audio);
+
+    expect(voiceClipsPlayed(audio)).toEqual([`voice/${VOICE}/pit-status/too-far-left-repeat-01.mp3`]);
   });
 });
 

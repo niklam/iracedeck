@@ -513,7 +513,7 @@ export type SimEventMap = {
    * silence.
    *
    * Deliberately a SEPARATE event rather than a flag on
-   * {@link SimEventMap["pitService.statusChanged"]}: a repeat is not a
+   * `pitService.statusChanged`: a repeat is not a
    * transition, and transition consumers must not have to filter repeats out
    * of a shared payload. `status` is the same sim-defined numeric id
    * `statusChanged` carries (iRacing's `irsdk_PitSvStatus`), and is always one

@@ -144,7 +144,45 @@ export function diffPitStatus(state: TranslatorState, telemetry: TelemetryData, 
     return;
   }
 
-  if (state.pitStatusRepeatDueAt === 0 || now < state.pitStatusRepeatDueAt || !isAtRest(state, now)) return;
+  // Only the five positioning errors repeat. Checked explicitly rather than
+  // inferred from the arm flag, so no arming site can silently start nagging
+  // on `InProgress` / `Complete` / `CantFixThat` — none of which has a
+  // scenario, a pool, or a clip.
+  if (!isPositioningError(status)) {
+    state.pitStatusRepeatDueAt = 0;
+
+    return;
+  }
+
+  // A latched error is only actionable while the car is still in the pit
+  // lane. Without this, a status that stays latched after the driver gives up
+  // and drives out would nag forever wherever the car next comes to rest — a
+  // spin, a red flag, an off-track recovery. The gate is `OnPitRoad` and
+  // deliberately NOT `PlayerCarInPitStall`: an overshooting car may well read
+  // false for the stall, and that is precisely the case this issue exists to
+  // fix. Missing telemetry counts as on pit road — a callout must never be
+  // suppressed by absent data.
+  if (telemetry.OnPitRoad === false) {
+    state.pitStatusRepeatDueAt = 0;
+
+    return;
+  }
+
+  // LEVEL-armed, not edge-armed. The transition above arms the clock for the
+  // normal case, but a diff that gets RE-SEEDED mid-stop has no transition
+  // left to arm on — `pitStatusInitialized` resets on a plugin restart (a
+  // deck-host auto-update, #870), an SDK reconnect, a one-tick
+  // `IsOnTrack: false` blip, and the replay-flip `wipeStateForReplay`, which
+  // does not preserve it. Edge-arming alone left the driver parked wrong in
+  // permanent silence — the exact failure this issue removes — so a latched
+  // error with no armed clock starts one here, a full interval out.
+  if (state.pitStatusRepeatDueAt === 0) {
+    state.pitStatusRepeatDueAt = now + PIT_STATUS_REPEAT_INTERVAL_MS;
+
+    return;
+  }
+
+  if (now < state.pitStatusRepeatDueAt || !isAtRest(state, now)) return;
 
   emit({ event: "pitService.positioningRepeat", data: { status } });
   // Re-arm from NOW, not from the missed due time: a repeat held back through
