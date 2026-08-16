@@ -7,7 +7,7 @@ sidebar:
     variant: tip
 ---
 
-Manage iRacing's AI spotter directly from your Stream Deck. Trigger reports, toggle announcements, or adjust spotter volume without leaving the track.
+Manage iRacing's AI spotter directly from your Stream Deck. Trigger reports, toggle announcements, or adjust spotter volume without leaving the track. This action is keypad-only, but the spotter volume is also available on a Stream Deck+ dial: the [Audio Controls dial](/docs/actions/audio-voice/audio-controls/#on-a-dial)'s **Spotter** mode turns through these same Spotter Louder / Spotter Quieter bindings, and its press can tap Spotter Silence.
 
 ## Modes
 

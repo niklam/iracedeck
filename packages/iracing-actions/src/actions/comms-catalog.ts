@@ -16,13 +16,12 @@
  *
  * Display-only / internal actions (session-info, telemetry-display, pit-crew,
  * camera-cycle) are intentionally absent: they issue no iRacing command, so they
- * get no status line and no icon warning. Camera Controls' KEYPAD surface is
- * likewise absent (every camera mode is an SDK command, nothing to configure);
- * its DIAL surface still carries an all-API `camera-focus-dial` entry (#803) —
- * the dial PI dropped its status line as redundant (every dial mode is `api`,
- * so the line never said anything useful), but the entry stays as this file's
- * per-mode communication-method record and still feeds the generated
- * `action-comms.json`.
+ * get no status line and no icon warning. Camera Controls carries BOTH surfaces
+ * (`camera-focus` keypad, `camera-focus-dial`): almost every camera mode is an
+ * SDK command, but Cycle Sub-Camera is a key binding — iRacing's camera switch
+ * broadcasts act on the focus and the group only, their `camera` argument never
+ * selects a sub-camera, so the sim's own Next / Previous Sub Camera bindings
+ * are the only working mechanism (issue #852).
  */
 import {
   type ActionCommMap,
@@ -34,6 +33,13 @@ import {
 } from "@iracedeck/deck-core";
 
 import { BLACK_BOX_GLOBAL_KEYS } from "../shared/black-box.js";
+import { SPOTTER_GLOBAL_KEYS } from "../shared/spotter-bindings.js";
+import {
+  dialMuteBindingMap,
+  type KeybindDialCategory,
+  rotationBindingKeys,
+} from "./audio-controls/audio-controls-settings.js";
+import { SUB_CAMERA_BINDING_KEYS } from "./camera-controls/sub-camera-bindings.js";
 
 const api: CommDescriptor = { method: "api" };
 const chat: CommDescriptor = { method: "chat" };
@@ -70,6 +76,15 @@ function dir(increase: string, decrease: string): CommDescriptor {
  */
 function pair(increase: string, decrease: string): CommDescriptor {
   return keybindKeys([increase, decrease]);
+}
+
+/**
+ * The Audio Controls dial's rotation descriptor for a keybind category, taken
+ * from the settings module's own binding table (the surface dispatches from
+ * that table, so the PI status line can't describe a different key).
+ */
+function dialRotation(category: KeybindDialCategory): CommDescriptor {
+  return keybindKeys(rotationBindingKeys(category));
 }
 
 export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
@@ -310,19 +325,40 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     "load-car-camera": keybind("camCtrlLoadCarCamera"),
   }),
 
+  // Camera Controls' KEYPAD surface. Every mode is an SDK camera broadcast
+  // (`getCommands().camera.*`) except Cycle Sub-Camera, which taps iRacing's
+  // own Next / Previous Sub Camera bindings (#852) — see the header note.
+  // `focus-select-car` opens a Stream Deck profile rather than talking to
+  // iRacing, so it is deliberately absent (nothing to report).
+  "camera-focus": entry("target", {
+    "change-camera": api,
+    "cycle-camera": api,
+    "cycle-sub-camera": keybindBy("direction", {
+      next: SUB_CAMERA_BINDING_KEYS.next,
+      previous: SUB_CAMERA_BINDING_KEYS.previous,
+    }),
+    "cycle-car": api,
+    "cycle-driving": api,
+    "focus-your-car": api,
+    "focus-on-leader": api,
+    "focus-on-incident": api,
+    "focus-on-most-exciting": api,
+    "switch-by-position": api,
+    "switch-by-car-number": api,
+    "set-camera-state": api,
+  }),
+
   // The dial surface of Camera Controls (#803). Rotation cycles the camera or
   // the focused car and the press gestures center on the player's car / switch
-  // camera — every one an iRacing SDK camera command (`getCommands().camera.*`),
-  // so all modes are `api`. The dial reuses the keypad's own cycle/focus
-  // dispatch (no key bindings, nothing to configure); the map documents that
-  // per-mode communication method and feeds the generated `action-comms.json`
-  // (the dial PI's status line under its Mode selector was dropped as
-  // redundant since every mode reads the same "iRacing API" — see the header
-  // note). _meta.modeSetting = "dial.mode". The keypad surface has no entry
-  // (its modes are equally binding-free — see the header note).
+  // camera — all iRacing SDK camera commands (`getCommands().camera.*`) except
+  // Sub-Camera rotation, which taps iRacing's sub-camera bindings (#852). The
+  // dial reuses the keypad's own cycle/focus dispatch, so both surfaces share
+  // one mechanism per mode. _meta.modeSetting = "dial.mode".
   "camera-focus-dial": entry("dial.mode", {
     camera: api,
-    "sub-camera": api,
+    // Rotation taps BOTH sub-camera bindings depending on direction (#852), so
+    // either one unset warns — the `pair` form the other cycle dials use.
+    "sub-camera": pair(SUB_CAMERA_BINDING_KEYS.next, SUB_CAMERA_BINDING_KEYS.previous),
     "car-number": api,
     "race-position": api,
     "track-order": api,
@@ -434,16 +470,20 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
   // #759 shared-map pattern). A separate entry from the keypad map because
   // the same category values need different descriptors per surface (keypad
   // resolves one key via the `action` setting; dial rotation needs the pair).
-  // The PI hides the press status line for internal-category Mute / Unmute
-  // (plugin audio, nothing to configure); "none" is omitted so its line
-  // renders nothing.
+  // The spotter category (#809) reuses the AI Spotter Controls bindings —
+  // louder/quieter for rotation, silence for Mute / Unmute. Every keybind
+  // descriptor here is DERIVED from the settings module's tables, so the PI
+  // status line and the surface's dispatch can't disagree. The PI hides the
+  // press status line for internal-category Mute / Unmute (plugin audio,
+  // nothing to configure); "none" is omitted so its line renders nothing.
   "audio-controls-dial": entry("dial.category", {
-    "voice-chat": pair("audioVoiceChatVolumeUp", "audioVoiceChatVolumeDown"),
-    master: pair("audioMasterVolumeUp", "audioMasterVolumeDown"),
+    "voice-chat": dialRotation("voice-chat"),
+    master: dialRotation("master"),
+    spotter: dialRotation("spotter"),
     "race-engineer": keybindFixed(),
     radar: keybindFixed(),
     "push-to-talk": keybind("audioControlsPushToTalk"),
-    "mute-unmute": keybindBy("dial.category", { "voice-chat": "audioVoiceChatMute" }),
+    "mute-unmute": keybindBy("dial.category", dialMuteBindingMap()),
   }),
 
   "toggle-ui-elements": entry("element", {
@@ -460,13 +500,13 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
   }),
 
   "ai-spotter-controls": entry("control", {
-    "damage-report": keybind("spotterDamageReport"),
-    "weather-report": keybind("spotterWeatherReport"),
-    "toggle-report-laps": keybind("spotterToggleReportLaps"),
-    "announce-leader": keybind("spotterAnnounceLeader"),
-    louder: keybind("spotterLouder"),
-    quieter: keybind("spotterQuieter"),
-    silence: keybind("spotterSilence"),
+    "damage-report": keybind(SPOTTER_GLOBAL_KEYS["damage-report"]),
+    "weather-report": keybind(SPOTTER_GLOBAL_KEYS["weather-report"]),
+    "toggle-report-laps": keybind(SPOTTER_GLOBAL_KEYS["toggle-report-laps"]),
+    "announce-leader": keybind(SPOTTER_GLOBAL_KEYS["announce-leader"]),
+    louder: keybind(SPOTTER_GLOBAL_KEYS.louder),
+    quieter: keybind(SPOTTER_GLOBAL_KEYS.quieter),
+    silence: keybind(SPOTTER_GLOBAL_KEYS.silence),
   }),
 
   // --- Setup actions (mode setting "setting"): view-* modes nudge-and-read via

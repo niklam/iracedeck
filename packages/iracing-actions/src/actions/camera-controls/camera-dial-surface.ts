@@ -19,7 +19,9 @@
  *   - camera → the current camera group's icon + name, flanked by the dimmed
  *     enabled-subset neighbours one detent either way,
  *   - sub-camera → the current camera's NAME within the focused group, flanked
- *     by the dimmed adjacent cameras (same `Cameras[]` order the dispatch steps),
+ *     by the dimmed adjacent cameras from the group's `Cameras[]` list. This
+ *     one is a GUIDE, not a promise: since #852 the detent taps iRacing's own
+ *     Next / Previous Sub Camera binding, so the sim owns the stepping order,
  *   - car-number → the focused car's number large in the centre, flanked by the
  *     neighbouring car numbers,
  *   - race-position → the focused car's race POSITION large in the centre
@@ -36,7 +38,10 @@
  *
  * Two families of mode:
  *   - Cycle modes (camera / sub-camera / driving) rotate via the keypad's own
- *     `executeCycle` SDK dispatch (reuse, don't duplicate).
+ *     `executeCycle` dispatch (reuse, don't duplicate) — an SDK camera command
+ *     for camera / driving, and iRacing's own sub-camera key binding for
+ *     sub-camera (issue #852: the switch broadcasts' `camera` argument never
+ *     selects a sub-camera, so only the sim's binding can step one).
  *   - Car modes (car-number / race-position / track-order) compute the
  *     neighbouring car from an explicit ordering — car number ascending, the
  *     canonical live race order (`getLiveRacePositions`, per
@@ -61,22 +66,24 @@
  *     frozen rank (and their session-info entry) but iRacing silently ignores
  *     a camera switch to them, so a detent targeting one would dead-loop —
  *     the walk continues along the ordering to the next present car, and the
- *     side previews show that same skipped-to target. car-number and
- *     race-position judge presence with the shared `carPresence` predicate;
- *     track-order inherits the primitive's own in-world test (a valid lap
- *     distance and a surface other than `NotInWorld` — deliberately without
- *     `carPresence`'s lap-count condition, since `CarIdxLapCompleted` is still
- *     -1 for every car on the pace lap, the #307 fix). track-order reads the
+ *     side previews show that same skipped-to target. All three car modes
+ *     judge presence with the one shared `carInWorld` predicate — a valid lap
+ *     distance and a surface other than `NotInWorld`, deliberately WITHOUT a
+ *     `CarIdxLapCompleted` condition, since that field is still -1 for every
+ *     car on the pace lap (the #307 fix; a lap-count term here killed cycling
+ *     for the whole formation lap, #968). track-order reads the
  *     LIVE car placement, so during an in-session replay it follows the live
  *     field rather than the replay cursor (the #492 finding — the reason
  *     Replay Control's Next/Prev Car defer to iRacing's keystroke).
  *
- * Everything the dial does is an iRacing SDK camera command, so — unlike the
- * Setup dials — the surface taps no key bindings and never shows a
- * missing-binding warning; out of a session each mode falls back to a plain
- * identity label.
+ * Every mode but sub-camera is an iRacing SDK camera command, so only the
+ * sub-camera strip can carry the #612 missing-binding warning (its detent taps
+ * the sim's own Next / Previous Sub Camera bindings since #852; the owning
+ * action answers `isBindingMissing` for it). Out of a session each mode falls
+ * back to a plain identity label.
  */
 import {
+  applyBindingWarning,
   classifyDialRelease,
   type DeckFeedbackPayload,
   type DeckTriggerDescription,
@@ -86,6 +93,7 @@ import {
   svgToDataUri,
 } from "@iracedeck/deck-core";
 import {
+  carInWorld,
   getAllCarNumbers,
   getCameraGroupsFromSessionInfo,
   getCamerasInGroup,
@@ -97,7 +105,6 @@ import type { ILogger } from "@iracedeck/logger";
 import { z } from "zod";
 
 import {
-  carPresence,
   computeCarNumberTarget,
   computeTrackOrderTarget,
   type TrackOrderDirection,
@@ -106,6 +113,7 @@ import {
 import { dialAppearanceFields, type DialBoxColors, resolveDialBoxColors } from "../../shared/dial-box.js";
 import { renderDialNameIcon } from "../../shared/dial-name-icon.js";
 import { computeCameraCarousel, computeSubCameraCarousel } from "./camera-groups.js";
+import { SUB_CAMERA_BINDING_KEY_LIST } from "./sub-camera-bindings.js";
 
 /**
  * Minimum gap (ms) between change-driven feedback pushes. Cycling a car or a
@@ -591,10 +599,13 @@ export function renderCameraCarousel(args: {
  *
  * Renders the sub-camera carousel: the mode-name title on top, the current
  * camera's NAME within the focused group large in the centre, flanked by the
- * smaller dimmed adjacent camera names (the same `Cameras[]` order the
- * dispatch steps through) — `left` is the counter-clockwise detent's target,
- * `right` the clockwise one (#884). Falls back to a centred identity label
- * out of a session (no current camera).
+ * smaller dimmed adjacent camera names from the group's `Cameras[]` list —
+ * `left` is the counter-clockwise detent's target, `right` the clockwise one
+ * (#884). Since #852 the detent taps iRacing's own sub-camera binding, so the
+ * sim owns the stepping order and the sides are a guide to the group's camera
+ * list rather than a guaranteed landing spot. Falls back to a centred identity
+ * label out of a session (no current camera), or to the #612 missing-binding
+ * warning when `bindingMissing` is set.
  */
 export function renderSubCameraCarousel(args: {
   width: number;
@@ -605,8 +616,21 @@ export function renderSubCameraCarousel(args: {
   current: string | null;
   left: string | null;
   right: string | null;
+  /** #612 overlay: the Sub-Camera bindings (#852) are unset, so a detent would do nothing. */
+  bindingMissing?: boolean;
 }): string {
   const { width: w, height: h, colors } = args;
+
+  if (args.bindingMissing) {
+    // Pass the strip canvas: the glyph is authored for the 144×144 key canvas
+    // and only recentres/rescales onto the 200×100 strip when it is given
+    // (#775) — without it the triangle lands off-centre and clipped.
+    return svgWrap(
+      w,
+      h,
+      applyBindingWarning(dialPanel(w, h, colors) + titleLine(w, h, args.title, colors), { width: w, height: h }),
+    );
+  }
 
   if (!args.current) return identityBox(w, h, args.identityLabel, colors);
 
@@ -762,11 +786,13 @@ interface CameraDialContext {
 
 /**
  * The delegates the surface needs from its owning action. Camera cycling and
- * focus stay on the action (the SDK camera commands), so the dial reuses the
- * SAME dispatch as the keypad rather than duplicating it. Deliberately NO
- * `setActiveBinding` / `tapBinding`: the surface issues no key bindings, and
- * readiness state is one value per action-class instance that a dial context
- * would bleed onto the keypad buttons (see global-settings.md).
+ * focus stay on the action (the SDK camera commands, plus the sub-camera key
+ * binding since #852), so the dial reuses the SAME dispatch as the keypad
+ * rather than duplicating it. Deliberately NO `setActiveBinding` / `tapBinding`:
+ * the surface never dispatches a binding itself (the action's `cycle` does),
+ * and readiness state is one value per action-class instance that a dial
+ * context would bleed onto the keypad buttons (see global-settings.md) —
+ * `isBindingMissing` is delegated instead, because it is stateless.
  */
 export interface CameraDialHost {
   readonly logger: ILogger;
@@ -785,6 +811,12 @@ export interface CameraDialHost {
   getGroupGlyph(groupName: string): CarouselGlyph | null;
   /** Cycle the given target one step (the keypad's own `executeCycle`). */
   cycle(target: DialCycleTarget, direction: Direction): void;
+  /**
+   * Whether any of the given global binding keys is unconfigured (#612). Only
+   * the Sub-Camera mode is binding-driven (issue #852) — every other mode is an
+   * SDK command — so this gates that one strip's warning overlay.
+   */
+  isBindingMissing(keys: string | readonly string[] | null | undefined): boolean;
   /**
    * Focus a car by its raw car number (the keypad Switch by Car Number
    * dispatch). Also the race-position mode's execution path: it resolves its
@@ -994,7 +1026,7 @@ export class CameraDialSurface {
     // Skip cars that left the world (#885): post-race the frozen order (and
     // session info) still lists them, but a switch to an absent car is
     // silently ignored by iRacing and the dial would dead-loop on it.
-    const isPresent = carPresence(telemetry);
+    const isPresent = carInWorld(telemetry);
 
     if (mode === "car-number" || mode === "track-order") {
       // Both walk the SAME competitor list the carousel previews — ascending
@@ -1029,9 +1061,30 @@ export class CameraDialSurface {
     if (carNumberRaw !== null) this.host.focusCarNumber(carNumberRaw);
   }
 
-  /** The live order, canonical first, official `CarIdxPosition` as fallback. */
+  /**
+   * The live order, canonical first, official `CarIdxPosition` as fallback.
+   *
+   * The canonical order is a dense array of 1-based ranks with `0` for every
+   * car it omits, so "no live order at all" arrives as a NON-NULL array of
+   * zeros — `??` alone accepts it and strands the mode at `maxPosition = 0`.
+   * That is exactly the formation lap: the canonical calculation scores cars by
+   * `CarIdxLapCompleted + CarIdxLapDistPct` and omits every car whose lap count
+   * is still -1, so nobody is ranked until the first start/finish crossing
+   * (#968 — the same `CarIdxLapCompleted` trap `carInWorld` avoids). An order
+   * that ranks NOBODY is therefore "no live order at all" in the sense
+   * `race-positions.md` means it, and the official counter takes over.
+   */
   private resolveOrder(telemetry: TelemetryData | null): number[] | null {
-    return this.host.getRacePositions() ?? telemetry?.CarIdxPosition ?? null;
+    // An all-zero canonical array means "no live order at all" — the condition
+    // race-positions.md defines the official counters as the fallback for — so
+    // test for a ranked car rather than for null (#968). Note neither order
+    // exists before the green flag (both are all zeros on a real parade lap),
+    // so this mode still has nothing to cycle there; see #974.
+    const canonical = this.host.getRacePositions();
+
+    if (canonical?.some((position) => position > 0)) return canonical;
+
+    return telemetry?.CarIdxPosition ?? canonical ?? null;
   }
 
   /**
@@ -1135,7 +1188,7 @@ export class CameraDialSurface {
     const clockwise = clockwiseDirection(dial.mode, dial.reverseRotation);
     // The same world-presence walk the rotation dispatches (#885), so the side
     // previews show the car a detent actually lands on.
-    const isPresent = carPresence(telemetry);
+    const isPresent = carInWorld(telemetry);
 
     return {
       center,
@@ -1209,7 +1262,7 @@ export class CameraDialSurface {
     const order = this.resolveOrder(telemetry);
     // The same world-presence walk the rotation dispatches (#885), so the side
     // previews show the position a detent actually lands on.
-    const isPresent = carPresence(telemetry);
+    const isPresent = carInWorld(telemetry);
     const nextTarget = computeRacePositionTarget(camCarIdx, order, "next", isPresent);
     const prevTarget = computeRacePositionTarget(camCarIdx, order, "previous", isPresent);
 
@@ -1232,10 +1285,12 @@ export class CameraDialSurface {
 
   /**
    * Builds the sub-camera carousel view: the current camera's name within the
-   * focused group plus the adjacent camera names, from the SAME
-   * `computeSubCameraCarousel` the keypad/dial sub-camera dispatch steps through
+   * focused group plus the adjacent camera names from `computeSubCameraCarousel`
    * (over the group's `CameraInfo.Cameras[]`), each on the side its detent
-   * lands on (#884) — so preview == execution.
+   * would land on (#884). Unlike the other modes this is a PREVIEW, not the
+   * execution path: since #852 the detent taps iRacing's own sub-camera
+   * binding and the sim decides the next camera, so the sides read as a guide
+   * to the group's camera list.
    */
   private subCameraView(
     telemetry: TelemetryData | null,
@@ -1350,7 +1405,14 @@ export class CameraDialSurface {
     if (dial.mode === "sub-camera") {
       const view = this.subCameraView(telemetry, dial);
 
-      return renderSubCameraCarousel({ ...base, identityLabel: MODE_IDENTITY["sub-camera"], ...view });
+      return renderSubCameraCarousel({
+        ...base,
+        identityLabel: MODE_IDENTITY["sub-camera"],
+        ...view,
+        // Rotation taps BOTH bindings depending on direction, so either one
+        // missing makes the dial half-dead — warn on either (#612).
+        bindingMissing: this.host.isBindingMissing(SUB_CAMERA_BINDING_KEY_LIST),
+      });
     }
 
     // driving: the current camera group icon + name only. The driving cycle

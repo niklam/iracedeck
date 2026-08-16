@@ -74,6 +74,7 @@ import {
   createElevationCheckSubscriber,
   deleteGlobalSettings,
   evaluateSetupWarning,
+  focusIRacingIfEnabled,
   getController,
   getGlobalSettings,
   getPluginPlatform,
@@ -87,6 +88,7 @@ import {
   initializeSDK,
   initializeSimHub,
   initPluginConfig,
+  initWindowFocus,
   isIRacingActive,
   migrateGlobalSettingsKeys,
   onGlobalSettingsChange,
@@ -203,8 +205,6 @@ import {
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-
-import { focusIRacingIfEnabled, initWindowFocus } from "./shared/window-focus.js";
 
 // Load build-time config (version, platform)
 const __binDir = dirname(fileURLToPath(import.meta.url));

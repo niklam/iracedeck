@@ -1,3 +1,4 @@
+import { applyBindingWarning } from "@iracedeck/deck-core";
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -15,6 +16,7 @@ import {
   renderSubCameraCarousel,
   wrapPosition,
 } from "./camera-dial-surface.js";
+import { SUB_CAMERA_BINDING_KEY_LIST, SUB_CAMERA_BINDING_KEYS } from "./sub-camera-bindings.js";
 
 const { mockGroups, mockCameras, mockCarNumber, mockCarNumberByIdx, mockCarNumberRawByIdx, mockAllCars } = vi.hoisted(
   () => ({
@@ -58,26 +60,33 @@ vi.mock("@iracedeck/deck-core", () => ({
     return args.nowMs - args.pressStartMs >= (args.thresholdMs ?? 500) ? "long" : "short";
   },
   getDualPressThresholdMs: () => 500,
-  applyBindingWarning: (content: string) => `${content}<binding-warning/>`,
+  applyBindingWarning: vi.fn((content: string) => `${content}<binding-warning/>`),
   escapeXml: (str: string) => str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"),
   svgToDataUri: (svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`,
 }));
 
-vi.mock("@iracedeck/iracing-sdk", async (importOriginal) => ({
-  TrkLoc: { NotInWorld: -1, OffTrack: 0, InPitStall: 1, AproachingPits: 2, OnTrack: 3 },
-  // The REAL track-order primitive (#886): the dial's track-order mode is a
-  // composition over it, and the tests below assert real on-track geometry.
-  findNearestCarOnTrack: (await importOriginal<typeof import("@iracedeck/iracing-sdk")>()).findNearestCarOnTrack,
-  getCameraGroupsFromSessionInfo: vi.fn(() => mockGroups.value),
-  getCamerasInGroup: vi.fn(() => mockCameras.value),
-  getCarNumberFromSessionInfo: vi.fn((_s: unknown, carIdx: number) =>
-    mockCarNumberByIdx.value ? (mockCarNumberByIdx.value[carIdx] ?? null) : mockCarNumber.value,
-  ),
-  getCarNumberRawFromSessionInfo: vi.fn((_s: unknown, carIdx: number) =>
-    mockCarNumberRawByIdx.value ? (mockCarNumberRawByIdx.value[carIdx] ?? null) : null,
-  ),
-  getAllCarNumbers: vi.fn(() => mockAllCars.value),
-}));
+vi.mock("@iracedeck/iracing-sdk", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@iracedeck/iracing-sdk")>();
+
+  return {
+    TrkLoc: actual.TrkLoc,
+    // The REAL track-order primitive (#886): the dial's track-order mode is a
+    // composition over it, and the tests below assert real on-track geometry.
+    findNearestCarOnTrack: actual.findNearestCarOnTrack,
+    // The REAL in-world predicate (#968) for the same reason — and the primitive
+    // above consumes it, so a stub here would silently change its behaviour.
+    carInWorld: actual.carInWorld,
+    getCameraGroupsFromSessionInfo: vi.fn(() => mockGroups.value),
+    getCamerasInGroup: vi.fn(() => mockCameras.value),
+    getCarNumberFromSessionInfo: vi.fn((_s: unknown, carIdx: number) =>
+      mockCarNumberByIdx.value ? (mockCarNumberByIdx.value[carIdx] ?? null) : mockCarNumber.value,
+    ),
+    getCarNumberRawFromSessionInfo: vi.fn((_s: unknown, carIdx: number) =>
+      mockCarNumberRawByIdx.value ? (mockCarNumberRawByIdx.value[carIdx] ?? null) : null,
+    ),
+    getAllCarNumbers: vi.fn(() => mockAllCars.value),
+  };
+});
 
 /** Fake dial (encoder) action context. */
 function dialContext(id: string) {
@@ -128,6 +137,7 @@ function makeHost(over: Partial<Record<string, unknown>> = {}) {
     getEnabledCameraGroups: vi.fn(() => ["Nose", "Cockpit", "Chase"]),
     getGroupGlyph: vi.fn((name: string) => ({ width: 68, height: 68, artwork: `<path data-group="${name}"/>` })),
     cycle: vi.fn(),
+    isBindingMissing: vi.fn(() => false),
     focusCarNumber: vi.fn(),
     focusMyCar: vi.fn(),
     changeCamera: vi.fn(),
@@ -598,11 +608,22 @@ describe("CameraDialSurface", () => {
         Record<string, unknown>
       >;
 
+      // Sub-Camera is the one keyboard-driven mode (#852): iRacing's camera
+      // switch broadcasts never select a sub-camera, so it taps the sim's own
+      // bindings while every other mode stays an SDK command.
       for (const mode of DIAL_MODES) {
-        expect(comms["camera-focus-dial"][mode], `camera-focus-dial has no entry for dial mode "${mode}"`).toEqual({
-          method: "api",
-        });
+        const record = comms["camera-focus-dial"][mode] as { method?: string } | undefined;
+
+        expect(record, `camera-focus-dial has no entry for dial mode "${mode}"`).toBeDefined();
+        expect(record?.method, `unexpected communication method for dial mode "${mode}"`).toBe(
+          mode === "sub-camera" ? "keybind" : "api",
+        );
       }
+
+      expect(comms["camera-focus-dial"]["sub-camera"]).toEqual({
+        method: "keybind",
+        binding: { scope: "global", keys: [SUB_CAMERA_BINDING_KEYS.next, SUB_CAMERA_BINDING_KEYS.previous] },
+      });
     });
 
     it("defaults to car-number for a fresh dial", () => {
@@ -881,6 +902,43 @@ describe("CameraDialSurface", () => {
       // order stays coherent between preview and execution too. Clockwise →
       // the car ahead (P1 → carIdx2).
       expect(host.focusCarNumber).toHaveBeenCalledWith(11);
+    });
+
+    it("falls back to official CarIdxPosition when the canonical order ranks nobody (#968)", () => {
+      // The canonical order is a DENSE array of zeros whenever no car is scored
+      // — it ranks by CarIdxLapCompleted + CarIdxLapDistPct, so a field with no
+      // completed laps (or a post-race cooldown where the counts are cleared)
+      // yields all zeros. A plain `??` accepts that non-null array and the mode
+      // dies with maxPosition = 0. NOTE this fallback does NOT rescue the
+      // parade lap: there iRacing's own CarIdxPosition is all zeros too
+      // (capture 20260815-203305), so the mode legitimately has nothing to
+      // cycle until positions exist at all — tracked separately in #974.
+      mockCarNumberRawByIdx.value = { 2: 11, 3: 42 };
+      const host = makeHost({
+        getRacePositions: vi.fn(() => [0, 0, 0, 0]),
+        getTelemetry: vi.fn(() => ({ CamCarIdx: 3, CarIdxPosition: [0, 3, 1, 2] }) as never),
+      });
+      const surface = new CameraDialSurface(host as never);
+      surface.rotate(dialContext("r2") as never, dial({ mode: "race-position" }), 1, false);
+
+      // Clockwise → the car ahead (P2 → P1 → carIdx2).
+      expect(host.focusCarNumber).toHaveBeenCalledWith(11);
+    });
+
+    it("keeps using the canonical order once ANY car is ranked, never the official one", () => {
+      // Guards the fallback above from widening: a partially-populated
+      // canonical order (only the ranked cars) is still the authority.
+      mockCarNumberRawByIdx.value = { 1: 3, 2: 11, 3: 42 };
+      const host = makeHost({
+        getRacePositions: vi.fn(() => [0, 0, 1, 2]),
+        getTelemetry: vi.fn(() => ({ CamCarIdx: 3, CarIdxPosition: [0, 1, 3, 2] }) as never),
+      });
+      const surface = new CameraDialSurface(host as never);
+      surface.rotate(dialContext("r2") as never, dial({ mode: "race-position" }), 1, false);
+
+      // Canonical P1 is carIdx2 (#11); the official order would say carIdx1 (#3).
+      expect(host.focusCarNumber).toHaveBeenCalledWith(11);
+      expect(host.focusCarNumber).not.toHaveBeenCalledWith(3);
     });
 
     it("walks past a car that left the world (post-race tow) instead of dispatching a dead switch (#885)", () => {
@@ -1283,6 +1341,40 @@ describe("CameraDialSurface", () => {
 
       expect(decoded).toMatch(sideText(0.84, "P5")); // clockwise walks past dead P1 to P5
       expect(decoded).toMatch(sideText(0.16, "P4")); // counter-clockwise walks past dead P3 to P4
+    });
+
+    // #852: Sub-Camera is the one binding-driven dial mode (iRacing exposes
+    // sub-camera stepping only as a key binding), so its strip carries the
+    // standard #612 missing-binding warning; the other modes are SDK commands
+    // and must never show one.
+    it("warns on the sub-camera strip when the sub-camera bindings are unset (#852)", async () => {
+      const host = makeHost({ isBindingMissing: vi.fn(() => true) });
+      const surface = new CameraDialSurface(host as never);
+      const ctx = dialContext("d-warn");
+      await surface.willAppear(ctx as never, dial({ mode: "sub-camera" }));
+
+      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      expect(decoded).toContain("binding-warning");
+      // Both rotation directions tap a binding, so either missing must warn.
+      expect(host.isBindingMissing).toHaveBeenCalledWith(SUB_CAMERA_BINDING_KEY_LIST);
+      // The glyph is authored for the 144×144 key canvas — the strip canvas
+      // MUST be passed, or the triangle renders off-centre and clipped (#775).
+      expect(vi.mocked(applyBindingWarning)).toHaveBeenLastCalledWith(expect.any(String), {
+        width: 200,
+        height: 100,
+      });
+    });
+
+    it("never warns on the SDK-driven modes even when bindings are unset", async () => {
+      const host = makeHost({ isBindingMissing: vi.fn(() => true) });
+      const surface = new CameraDialSurface(host as never);
+
+      for (const mode of ["camera", "car-number", "race-position", "driving"] as const) {
+        const ctx = dialContext(`d-nowarn-${mode}`);
+        await surface.willAppear(ctx as never, dial({ mode }));
+        const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+        expect(decoded).not.toContain("binding-warning");
+      }
     });
 
     it("renders the sub-camera name carousel from the group's camera list", async () => {

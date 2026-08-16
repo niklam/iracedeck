@@ -240,7 +240,7 @@
 | Action | Shortcut(s) | Available via SDK | iRacing Setting |
 |--------|-------------|-------------------|-----------------|
 | Cycle Camera | C / Shift+C | Yes | Next Camera / Previous Camera |
-| Cycle Sub Camera | B / Shift+B | Yes | Next Sub Camera / Previous Sub Camera |
+| Cycle Sub Camera | B / Shift+B | No | Next Sub Camera / Previous Sub Camera |
 | Cycle Car | V / Shift+V | Yes | Next Car / Previous Car |
 | Focus on Your Car | Ctrl+V | Yes | Your Car |
 | Cycle Driving Camera | PageDown / PageUp | Yes | Next Driving Camera / Previous Driving Camera |
@@ -252,6 +252,12 @@
 | Focus on Leader | - | Yes | - |
 | Focus on Incident | - | Yes | - |
 | Focus on Most Exciting | - | Yes | - |
+
+> **Sub-camera stepping is keyboard-only.** The `CamSwitchPos` / `CamSwitchNum`
+> broadcasts take a `camera` argument, but iRacing acts only on their focus and
+> camera-group arguments — the camera argument never selects a sub-camera
+> (verified on hardware across three dispatch shapes, issue #852). Use the
+> `B` / `Shift+B` bindings above.
 
 ### Texture Reload
 

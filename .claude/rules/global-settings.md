@@ -132,7 +132,8 @@ const GlobalSettingsSchema = z.object({
     .default(false), // opt-in verbose logging (issue #609)
   focusIRacingWindow: z.union([z.boolean(), z.string()])
     .transform((val) => val === true || val === "true")
-    .default(false),
+    .default(true) // on by default since #930
+    .catch(true),
   simHubHost: z.preprocess(
     (val) => (val === "" ? undefined : val),
     z.string().default("127.0.0.1").catch("127.0.0.1"),
@@ -156,6 +157,8 @@ Global settings are one JSON blob with two independent full-object writers — t
 - **Pending-write overlay.** Every written key stays pending until a host payload confirms it. A stale echo (key missing, or still carrying the pre-write value) gets the local write re-applied; a genuinely different value is a newer foreign write and wins; on the first arrival local writes always win. This is what stops the delayed host echo (#419) from rolling back local writes.
 - **Per-key salvage.** Host payloads are parsed with `parseWithSalvage`: when the strict parse fails, the offending top-level keys are dropped (falling back to their schema defaults) and the parse retried, so one corrupt value can't stall every setting. Passthrough keys (bindings) are never validated, so they can never be dropped.
 - **Shrink guard.** Outgoing writes restore any key the last host payload held that is missing from the cache and was not explicitly deleted — logged at `warn` with the key names at `debug`. Defense-in-depth against any future path that loses keys from the cache.
+
+**Changing a schema default reaches new installs only.** Every write persists the whole *parsed* cache, so each schema field's default is written into storage the first time any plugin-side write happens — and one always does (`_audioDeviceList` at startup, `_lastSeenVersion` on upgrade), whether or not the user has ever opened a Property Inspector. Flipping a `.default(...)` therefore changes behavior for fresh installs only; every existing install keeps the old default, now persisted as an explicit value. There is no way to tell that stored value apart from a deliberate user choice, so reaching existing users needs an explicit one-shot migration guarded by a passthrough marker key (see `global-settings-migrations.ts` for the renames case). #930 flipped `focusIRacingWindow` to `true` accepting exactly this: new installs get it, upgrades keep what they had.
 
 Diagnostics: with `debugLogging` on, the module logs raw payloads, queued/flushed writes, re-applied pending keys, salvage-dropped keys, and shrink-guard restores — enough to tell which failure path a "bindings not saved" report actually hit.
 
