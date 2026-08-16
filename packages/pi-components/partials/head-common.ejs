@@ -102,12 +102,15 @@
     border-top: 1px solid #3a3a3a;
   }
   /* "Open iRaceDeck Settings" under the Global Settings header (#992): a
-     centred block like .ird-docs-link, not an sdpi-item (no label column). */
+     centred block like .ird-docs-link, not an sdpi-item (no label column).
+     Reused verbatim as the wrapper for the Storage card's Open Folder
+     button (#993, ird-open-folder) — narrow both to an inline pill. */
   .ird-open-settings {
     text-align: center;
     margin: 6px 0 10px;
   }
-  .ird-open-settings ird-open-settings {
+  .ird-open-settings ird-open-settings,
+  .ird-open-settings ird-open-folder {
     display: inline-block;
     width: auto;
   }
