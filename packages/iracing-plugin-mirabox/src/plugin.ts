@@ -72,6 +72,7 @@ import { getAudio, initializeAudio } from "@iracedeck/audio-service";
 import { VSDPlatformAdapter } from "@iracedeck/deck-adapter-mirabox";
 import {
   createElevationCheckSubscriber,
+  createSettingsWindowCommandHandler,
   createSettingsWindowController,
   deleteGlobalSettings,
   evaluateSetupWarning,
@@ -81,6 +82,7 @@ import {
   getGlobalSettings,
   getPluginPlatform,
   getPluginVersion,
+  getSimHub,
   initAppMonitor,
   initGlobalSettings,
   initializeBindingDispatcher,
@@ -93,13 +95,16 @@ import {
   initPluginConfig,
   initWindowFocus,
   isIRacingActive,
+  isSimHubReachable,
   migrateGlobalSettingsKeys,
   onGlobalSettingsChange,
   onIRacingTerminated,
+  parseSettingsWindowBounds,
   type PluginConfig,
   resolveActiveDriverName,
   resolveActiveRaceEngineerVoice,
   runVersionCheck,
+  SETTINGS_WINDOW_BOUNDS_KEY,
   SETTINGS_WINDOW_HTML,
   shouldOpenChangelog,
   spawnAppWindow,
@@ -988,6 +993,12 @@ const settingsWindow = createSettingsWindowController({
   findBrowser: findChromiumBrowserOnThisMachine,
   spawnApp: spawnAppWindow,
   openUrl: (url) => adapter.openUrl(url),
+  // Reopen where the user left it (the page reports bounds on resize).
+  getWindowBounds: () =>
+    parseSettingsWindowBounds((getGlobalSettings() as Record<string, unknown>)[SETTINGS_WINDOW_BOUNDS_KEY]),
+  onSendToPlugin: createSettingsWindowCommandHandler({ writeSettings: (partial) => updateGlobalSettings(partial) }),
+  // The page can't probe SimHub itself (cross-origin, no CORS) — answer from the plugin's own view.
+  simHub: { isReachable: isSimHubReachable, getRoles: () => getSimHub().getRoles() },
   logger: adapter.createLogger("SettingsWindow"),
 });
 

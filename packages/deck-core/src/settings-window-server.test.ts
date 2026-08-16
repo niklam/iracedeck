@@ -335,3 +335,65 @@ describe("settings-window static assets", () => {
     expect(res.status).toBe(404);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Plugin-bound extras the page needs and cannot reach itself.
+// ---------------------------------------------------------------------------
+describe("settings-window sendToPlugin + SimHub proxy", () => {
+  it("forwards a sendToPlugin frame's payload to the injected handler", async () => {
+    const received: unknown[] = [];
+    server = await startSettingsWindowServer({
+      page: PAGE,
+      settingsHost: fakeSettingsHost(),
+      onSendToPlugin: (payload) => {
+        received.push(payload);
+      },
+    });
+    const token = new URL(server.url).searchParams.get("t") ?? "";
+    const ws = await connectWs(server.url, token);
+
+    ws.send(JSON.stringify({ event: "sendToPlugin", payload: { event: "windowBounds", width: 1200, height: 800 } }));
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(received).toEqual([{ event: "windowBounds", width: 1200, height: 800 }]);
+    ws.close();
+  });
+
+  it("answers /simhub/roles from the plugin's own SimHub service — the page never talks to SimHub (CORS)", async () => {
+    server = await startSettingsWindowServer({
+      page: PAGE,
+      simHub: { isReachable: () => true, getRoles: async () => ["Pit Limiter", "Wipers"] },
+    });
+    const cookie = (await fetch(server.url)).headers.get("set-cookie")?.split(";")[0] ?? "";
+    const u = new URL(server.url);
+
+    const res = await fetch(`${u.origin}/simhub/roles`, { headers: { cookie } });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ reachable: true, roles: ["Pit Limiter", "Wipers"] });
+  });
+
+  it("reports unreachable with no roles when the SimHub service says so", async () => {
+    server = await startSettingsWindowServer({
+      page: PAGE,
+      simHub: { isReachable: () => false, getRoles: async () => [] },
+    });
+    const cookie = (await fetch(server.url)).headers.get("set-cookie")?.split(";")[0] ?? "";
+    const u = new URL(server.url);
+
+    expect(await (await fetch(`${u.origin}/simhub/roles`, { headers: { cookie } })).json()).toEqual({
+      reachable: false,
+      roles: [],
+    });
+  });
+
+  it("still requires authorization on /simhub/roles", async () => {
+    server = await startSettingsWindowServer({
+      page: PAGE,
+      simHub: { isReachable: () => true, getRoles: async () => ["x"] },
+    });
+    const u = new URL(server.url);
+
+    expect((await fetch(`${u.origin}/simhub/roles`)).status).toBe(403);
+  });
+});

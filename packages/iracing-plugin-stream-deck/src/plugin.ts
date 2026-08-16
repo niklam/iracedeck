@@ -65,8 +65,10 @@ import { getAudio, initializeAudio } from "@iracedeck/audio-service";
 import { ElgatoPlatformAdapter } from "@iracedeck/deck-adapter-elgato";
 import {
   createElevationCheckSubscriber,
+  createSettingsWindowCommandHandler,
   createSettingsWindowController,
   deleteGlobalSettings,
+  deviceProfileName,
   evaluateSetupWarning,
   findChromiumBrowserOnThisMachine,
   focusIRacingIfEnabled,
@@ -74,6 +76,7 @@ import {
   getGlobalSettings,
   getPluginPlatform,
   getPluginVersion,
+  getSimHub,
   initAppMonitor,
   initGlobalSettings,
   initializeBindingDispatcher,
@@ -87,13 +90,17 @@ import {
   initProfileSwitcher,
   initWindowFocus,
   isIRacingActive,
+  isSimHubReachable,
   migrateGlobalSettingsKeys,
   onGlobalSettingsChange,
   onIRacingTerminated,
+  parseSettingsWindowBounds,
   type PluginConfig,
+  requestProfileSwitch,
   resolveActiveDriverName,
   resolveActiveRaceEngineerVoice,
   runVersionCheck,
+  SETTINGS_WINDOW_BOUNDS_KEY,
   SETTINGS_WINDOW_HTML,
   shouldOpenChangelog,
   spawnAppWindow,
@@ -1038,10 +1045,47 @@ const settingsWindow = createSettingsWindowController({
   findBrowser: findChromiumBrowserOnThisMachine,
   spawnApp: spawnAppWindow,
   openUrl: (url) => adapter.openUrl(url),
+  // Reopen where the user left it (the page reports bounds on resize).
+  getWindowBounds: () =>
+    parseSettingsWindowBounds((getGlobalSettings() as Record<string, unknown>)[SETTINGS_WINDOW_BOUNDS_KEY]),
+  onSendToPlugin: createSettingsWindowCommandHandler({
+    writeSettings: (partial) => updateGlobalSettings(partial),
+    // Unlike a PI, the window has no implicit device: it names one, and the
+    // display name still gets the device-type suffix exactly as the PI path does (#753).
+    switchProfile: (deviceId, profile, page) => {
+      const type = streamDeck.devices.getDeviceById(deviceId)?.type;
+
+      void requestProfileSwitch(deviceId, deviceProfileName(profile, type), page);
+    },
+  }),
+  // The page can't probe SimHub itself (cross-origin, no CORS) — answer from the plugin's own view.
+  simHub: { isReachable: isSimHubReachable, getRoles: () => getSimHub().getRoles() },
   logger: adapter.createLogger("SettingsWindow"),
 });
 
+// Publish the connected decks for the settings window's profile device picker,
+// the same way `_audioDeviceList` is published for the audio device picker:
+// a passthrough global setting, deduped by content, refreshed on every device
+// change and whenever the window opens.
+let lastPushedDeckDevicesJson = "";
+
+function pushDeckDevicesIfChanged(): void {
+  const devices = [...streamDeck.devices]
+    .filter((d) => d.isConnected)
+    .map((d) => ({ id: d.id, name: d.name, type: d.type }));
+  const json = JSON.stringify(devices);
+
+  if (json === lastPushedDeckDevicesJson) return;
+
+  lastPushedDeckDevicesJson = json;
+  updateGlobalSettings({ _deckDevices: json });
+}
+
+streamDeck.devices.onDeviceDidConnect(() => pushDeckDevicesIfChanged());
+streamDeck.devices.onDeviceDidDisconnect(() => pushDeckDevicesIfChanged());
+
 adapter.onOpenSettingsRequest(() => {
+  pushDeckDevicesIfChanged();
   void settingsWindow.open().catch((error: unknown) => {
     adapter.createLogger("SettingsWindow").error(`Failed to open settings window: ${String(error)}`);
   });

@@ -38,6 +38,7 @@ import {
   UI_TEXT,
 } from "./key-binding-utils.js";
 import { KEY_CODE_MAP, type Modifier, resolveEventCode } from "./key-maps.js";
+import { fetchSimHubReachable, fetchSimHubRoles } from "./simhub-probe.js";
 
 /**
  * SYNC NOTE: The types below (SimHubBindingValue, BindingValue) and the
@@ -181,31 +182,17 @@ async function ensureSimHubRolesFetched(): Promise<void> {
   }
 
   simHubFetchPromise = (async () => {
+    // One fetch path for every surface (#992): inside the settings window the
+    // probe answers from the plugin's same-origin proxy, since a direct fetch
+    // to SimHub is cross-origin there and always looked unreachable.
     try {
-      const url = `http://${simHubHost}:${simHubPort}/api/ControlMapper/GetRoles/`;
-      const response = await fetch(url, { signal: AbortSignal.timeout(500) });
+      // The probe never throws: unreachable → [] and false.
+      const roles = await fetchSimHubRoles(simHubHost, simHubPort);
 
-      if (response.ok) {
-        const json: unknown = await response.json();
+      simHubReachable = roles.length > 0 || (await fetchSimHubReachable(simHubHost, simHubPort));
+      simHubRoles = roles.slice().sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
 
-        if (Array.isArray(json) && json.every((item) => typeof item === "string")) {
-          simHubRoles = (json as string[])
-            .slice()
-            .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
-          simHubReachable = true;
-        } else {
-          console.warn("[ird-key-binding] SimHub GetRoles returned unexpected format");
-          simHubRoles = [];
-          simHubReachable = false;
-        }
-      } else {
-        simHubRoles = [];
-        simHubReachable = false;
-      }
-    } catch (error) {
-      console.warn("[ird-key-binding] Failed to fetch SimHub roles:", error);
-      simHubRoles = [];
-      simHubReachable = false;
+      if (!simHubReachable) console.warn("[ird-key-binding] SimHub not reachable; role list empty");
     } finally {
       simHubFetchDone = true;
       simHubFetchPromise = null;

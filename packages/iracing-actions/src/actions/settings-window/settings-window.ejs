@@ -21,8 +21,9 @@
 		    - The PI's single "Common Settings" accordion is spread over tabs
 		      (General / Delays / SimHub / What's New / Diagnostics) using the same
 		      per-group partials the accordion assembles.
-		    - No Stream Deck Profiles accordion: switchToProfile targets the device
-		      whose PI is open, and this window has no device.
+		    - Stream Deck Profiles (Elgato builds only, per the `profiles` flag) get a
+		      device picker: switchToProfile targets the device whose PI is open, and
+		      this window has no device, so the page names one.
 		  Passing `settingsWindow: true` at each top-level include makes accordion.ejs
 		  render flat cards (inherited by nested includes — see accordion.ejs).
 		%>
@@ -162,6 +163,9 @@
 				<button class="sw-nav-item active" data-pane="general" type="button">General</button>
 				<button class="sw-nav-item" data-pane="bindings" type="button">Key Bindings<span class="sw-badge"><%= __total %></span></button>
 				<button class="sw-nav-item" data-pane="appearance" type="button">Appearance</button>
+				<% if (locals.platform?.features?.profiles !== false) { %>
+				<button class="sw-nav-item" data-pane="profiles" type="button">Profiles</button>
+				<% } %>
 				<button class="sw-nav-item" data-pane="delays" type="button">Delays</button>
 				<button class="sw-nav-item" data-pane="simhub" type="button">SimHub</button>
 				<button class="sw-nav-item" data-pane="updates" type="button">What's New</button>
@@ -220,6 +224,17 @@
 					<%- include('global-flag-flash', __sw) %>
 				</div>
 			</section>
+
+			<%# ---- Profiles (Elgato only): the same partial as the PI, in device-picker mode ---- %>
+			<% if (locals.platform?.features?.profiles !== false) { %>
+			<section class="sw-pane" id="pane-profiles" hidden>
+				<h2>Profiles</h2>
+				<p class="sw-sub">Install or switch to a ready-made iRaceDeck profile on a connected Stream Deck.</p>
+				<div class="sw-grid single">
+					<%- include('global-stream-deck-profiles', __sw) %>
+				</div>
+			</section>
+			<% } %>
 
 			<%# ---- Delays ---- %>
 			<section class="sw-pane" id="pane-delays" hidden>

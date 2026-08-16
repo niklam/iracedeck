@@ -9,7 +9,11 @@
  */
 import type { ILogger } from "@iracedeck/logger";
 
-import { launchSettingsWindow, type SettingsWindowLaunch } from "./settings-window-launcher.js";
+import {
+  launchSettingsWindow,
+  type SettingsWindowBounds,
+  type SettingsWindowLaunch,
+} from "./settings-window-launcher.js";
 import {
   type SettingsWindowHost,
   type SettingsWindowServer,
@@ -38,11 +42,17 @@ export interface SettingsWindowControllerOptions {
   assetsDir?: string;
   pageFile?: string;
   findBrowser: () => string | undefined;
-  spawnApp: (browserPath: string, url: string) => void;
+  spawnApp: (browserPath: string, url: string, bounds?: SettingsWindowBounds) => void;
   /** Host URL opener — used both as the launch fallback and for the page's external links. */
   openUrl: (url: string) => Promise<void>;
   /** Settings I/O for the page's fake host; omit for an HTTP-only (placeholder) page. */
   settingsHost?: SettingsWindowHost;
+  /** Where the user last left the window (persisted by the plugin), read at each open. */
+  getWindowBounds?: () => SettingsWindowBounds | undefined;
+  /** Receives page `sendToPlugin` payloads (window bounds, profile switches, …). */
+  onSendToPlugin?: (payload: Record<string, unknown>) => void;
+  /** The plugin's SimHub view for the page's `/simhub/roles` proxy. */
+  simHub?: { isReachable: () => boolean; getRoles: () => Promise<string[]> };
   logger: ILogger;
 }
 
@@ -65,6 +75,8 @@ export function createSettingsWindowController(options: SettingsWindowController
           pageFile: options.pageFile,
           settingsHost: options.settingsHost,
           openUrl: options.openUrl,
+          onSendToPlugin: options.onSendToPlugin,
+          simHub: options.simHub,
         });
         options.logger.info("Settings window server started");
         options.logger.debug(`Settings window URL: ${server.url}`);
@@ -75,6 +87,7 @@ export function createSettingsWindowController(options: SettingsWindowController
         findBrowser: options.findBrowser,
         spawnApp: options.spawnApp,
         openUrl: options.openUrl,
+        bounds: options.getWindowBounds?.(),
       });
 
       options.logger.info(`Settings window opened (${launch})`);

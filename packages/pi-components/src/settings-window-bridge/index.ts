@@ -30,6 +30,50 @@ export const SETTINGS_WINDOW_ACTION = "com.iracedeck.sd.core.settings-window";
 /** Synthetic PI context for the window (sdpi sends it as `context` on every frame). */
 export const SETTINGS_WINDOW_CONTEXT = "settings-window";
 
+/**
+ * Set to `true` on `window` so shared PI code can tell it is running inside the
+ * settings window (e.g. simhub-probe routes through the plugin's proxy there).
+ * Kept in sync with `SETTINGS_WINDOW_FLAG` in components/simhub-probe.ts.
+ */
+export const SETTINGS_WINDOW_FLAG = "__irdSettingsWindow";
+
+/** Debounce for resize → windowBounds reports (ms). */
+const BOUNDS_REPORT_DEBOUNCE_MS = 400;
+
+/**
+ * Report the window's outer bounds to the plugin (debounced) so the next open
+ * can restore them. Sent as a `sendToPlugin` frame the fake host forwards to
+ * the plugin's command handler, which validates and persists it.
+ */
+function watchWindowBounds(win: Window & typeof globalThis, socket: WebSocket): void {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const report = (): void => {
+    if (socket.readyState !== 1 /* OPEN */) return;
+
+    socket.send(
+      JSON.stringify({
+        event: "sendToPlugin",
+        context: SETTINGS_WINDOW_CONTEXT,
+        action: SETTINGS_WINDOW_ACTION,
+        payload: {
+          event: "windowBounds",
+          width: win.outerWidth,
+          height: win.outerHeight,
+          x: win.screenX,
+          y: win.screenY,
+        },
+      }),
+    );
+  };
+
+  win.addEventListener("resize", () => {
+    if (timer !== undefined) win.clearTimeout(timer);
+
+    timer = win.setTimeout(report, BOUNDS_REPORT_DEBOUNCE_MS);
+  });
+}
+
 export interface SettingsWindowIdentity {
   /** The per-launch token from the page URL's `t` query parameter. */
   token: string;
@@ -76,6 +120,8 @@ export function closeSettingsWindow(win: Window & typeof globalThis): void {
  * Exposed (with an injectable `win`) so it can be unit-tested without a DOM.
  */
 export function installSettingsWindowBridge(win: Window & typeof globalThis = window): void {
+  (win as unknown as Record<string, unknown>)[SETTINGS_WINDOW_FLAG] = true;
+
   const identity = readSettingsWindowIdentity(win.location.search);
   const host = win.location.host; // "127.0.0.1:<port>" — same origin as the page
   const port = host.split(":")[1] ?? "";
@@ -93,6 +139,7 @@ export function installSettingsWindowBridge(win: Window & typeof globalThis = wi
     // just handed off to it, so the plugin holds no handle to close. Close from
     // the inside: an `--app=` window with one history entry is script-closable.
     socket.addEventListener("close", () => closeSettingsWindow(win));
+    watchWindowBounds(win, socket);
 
     return socket;
   } as unknown as typeof WebSocket;

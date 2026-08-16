@@ -428,9 +428,16 @@ export {
 } from "./settings-window-guard.js";
 export {
   launchSettingsWindow,
+  type SettingsWindowBounds,
   type SettingsWindowLaunch,
   type SettingsWindowLaunchInput,
 } from "./settings-window-launcher.js";
+export {
+  createSettingsWindowCommandHandler,
+  parseSettingsWindowBounds,
+  SETTINGS_WINDOW_BOUNDS_KEY,
+  type SettingsWindowCommandDeps,
+} from "./settings-window-commands.js";
 export {
   startSettingsWindowServer,
   type SettingsWindowHost,

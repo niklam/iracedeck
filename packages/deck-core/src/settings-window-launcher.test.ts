@@ -16,7 +16,7 @@ describe("launchSettingsWindow", () => {
       openUrl,
     });
 
-    expect(spawnApp).toHaveBeenCalledWith("C:/Program Files/Microsoft/Edge/Application/msedge.exe", URL);
+    expect(spawnApp).toHaveBeenCalledWith("C:/Program Files/Microsoft/Edge/Application/msedge.exe", URL, undefined);
     expect(openUrl).not.toHaveBeenCalled();
     expect(result).toBe("app-window");
   });

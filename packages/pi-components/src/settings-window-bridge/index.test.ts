@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { installSettingsWindowBridge, readSettingsWindowIdentity, SETTINGS_WINDOW_ACTION } from "./index.js";
+import {
+  installSettingsWindowBridge,
+  readSettingsWindowIdentity,
+  SETTINGS_WINDOW_ACTION,
+  SETTINGS_WINDOW_FLAG,
+} from "./index.js";
 
 /** Fake native WebSocket capturing the URL it was opened with. */
 class FakeNativeWebSocket {
@@ -17,11 +22,23 @@ class FakeNativeWebSocket {
     (this.listeners[type] ??= []).push(fn);
   }
 
+  /** 0 CONNECTING → 1 OPEN on "open", 3 CLOSED on "close" — like the real thing. */
+  readyState = 0;
+
   fire(type: string): void {
+    if (type === "open") this.readyState = 1;
+
+    if (type === "close") this.readyState = 3;
+
     for (const fn of this.listeners[type] ?? []) fn();
   }
 
-  send(): void {}
+  readonly sent: string[] = [];
+
+  send(data: string): void {
+    this.sent.push(data);
+  }
+
   close(): void {}
 }
 
@@ -54,10 +71,22 @@ describe("installSettingsWindowBridge", () => {
 
         return 0;
       },
+      clearTimeout: () => {},
+      outerWidth: 1300,
+      outerHeight: 900,
+      screenX: 40,
+      screenY: 60,
+      listeners: {} as Record<string, Array<() => void>>,
+      addEventListener(type: string, fn: () => void) {
+        (this.listeners[type] ??= []).push(fn);
+      },
+      fire(type: string) {
+        for (const fn of this.listeners[type] ?? []) fn();
+      },
       document: { body: { appendChild: vi.fn() }, createElement: () => ({ style: {}, textContent: "" }) },
     };
 
-    return { win: win as unknown as Window & typeof globalThis, connect, close };
+    return { win: win as unknown as Window & typeof globalThis & { fire: (t: string) => void }, connect, close };
   }
 
   it("redirects sdpi's socket to the same host with the launch token, then restores WebSocket", () => {
@@ -100,6 +129,31 @@ describe("installSettingsWindowBridge", () => {
     FakeNativeWebSocket.instances[0]?.fire("close");
 
     expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it("marks the page as the settings window so shared components can adapt (SimHub proxy)", () => {
+    const { win } = fakeWindow("?t=tok");
+
+    installSettingsWindowBridge(win);
+
+    expect((win as unknown as Record<string, unknown>)[SETTINGS_WINDOW_FLAG]).toBe(true);
+  });
+
+  it("reports the window's outer bounds to the plugin on resize so the next open matches", () => {
+    const { win, connect } = fakeWindow("?t=tok");
+
+    connect.mockImplementation((port: string) => {
+      new (win as unknown as { WebSocket: typeof FakeNativeWebSocket }).WebSocket(`ws://localhost:${port}`);
+    });
+    installSettingsWindowBridge(win);
+    const socket = FakeNativeWebSocket.instances[0];
+
+    socket?.fire("open");
+    win.fire("resize");
+
+    const frames = (socket?.sent ?? []).map((f) => JSON.parse(f) as { event: string; payload: unknown });
+    const bounds = frames.find((f) => f.event === "sendToPlugin");
+    expect(bounds?.payload).toEqual({ event: "windowBounds", width: 1300, height: 900, x: 40, y: 60 });
   });
 
   it("restores the native WebSocket even when connect throws", () => {

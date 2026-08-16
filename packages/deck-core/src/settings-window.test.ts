@@ -121,3 +121,59 @@ describe("createSettingsWindowController — assets dir", () => {
     expect(await (await fetch(url)).text()).toBe("<!doctype html><title>compiled</title>");
   });
 });
+
+describe("createSettingsWindowController — plugin-bound extras", () => {
+  it("passes the persisted window bounds to the spawner so a resized window reopens where it was", async () => {
+    const spawnApp = vi.fn();
+    const controller = createSettingsWindowController({
+      renderPage: () => PAGE,
+      findBrowser: () => "C:/edge/msedge.exe",
+      spawnApp,
+      openUrl: vi.fn(async (_url: string) => {}),
+      getWindowBounds: () => ({ width: 1300, height: 900, x: 40, y: 60 }),
+      logger: silentLogger,
+    });
+    teardown = () => controller.close();
+
+    await controller.open();
+
+    expect(spawnApp).toHaveBeenCalledWith("C:/edge/msedge.exe", expect.any(String), {
+      width: 1300,
+      height: 900,
+      x: 40,
+      y: 60,
+    });
+  });
+
+  it("forwards page sendToPlugin frames and serves the SimHub proxy through the server", async () => {
+    const { WebSocket } = await import("ws");
+    const onSendToPlugin = vi.fn();
+    const openUrl = vi.fn(async (_url: string) => {});
+    const controller = createSettingsWindowController({
+      renderPage: () => PAGE,
+      findBrowser: () => undefined,
+      spawnApp: vi.fn(),
+      openUrl,
+      settingsHost: { read: () => ({}), write: vi.fn(), subscribe: () => () => {} },
+      onSendToPlugin,
+      simHub: { isReachable: () => true, getRoles: async () => ["A"] },
+      logger: silentLogger,
+    });
+    teardown = () => controller.close();
+
+    await controller.open();
+    const url = new URL(openUrl.mock.calls[0]?.[0] as string);
+    const cookie = (await fetch(url)).headers.get("set-cookie")?.split(";")[0] ?? "";
+    const ws = new WebSocket(`ws://${url.host}/ws?t=${url.searchParams.get("t")}`);
+    await new Promise((r) => ws.once("open", r));
+    ws.send(JSON.stringify({ event: "sendToPlugin", payload: { event: "windowBounds", width: 1, height: 2 } }));
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(onSendToPlugin).toHaveBeenCalledWith({ event: "windowBounds", width: 1, height: 2 });
+    expect(await (await fetch(`${url.origin}/simhub/roles`, { headers: { cookie } })).json()).toEqual({
+      reachable: true,
+      roles: ["A"],
+    });
+    ws.close();
+  });
+});

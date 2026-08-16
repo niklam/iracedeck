@@ -63,6 +63,9 @@ export { ProfileSelect } from "./profile-select.js";
 // Open Settings - button that asks the plugin to open the dedicated settings window (#992)
 export { OpenSettings } from "./open-settings.js";
 
+// Deck Device Select - settings-window picker for which Stream Deck a profile switch targets (#992)
+export { DeckDeviceSelect } from "./deck-device-select.js";
+
 // Shared Poller - one per-page polling interval with page-lifecycle cleanup
 export { createSharedPoller, installSharedPoller, POLL_INTERVAL_MS } from "./poller.js";
 

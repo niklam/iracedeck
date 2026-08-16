@@ -15,6 +15,8 @@ import { execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 
+import type { SettingsWindowBounds } from "./settings-window-launcher.js";
+
 export interface ChromiumLookupDeps {
   exists: (path: string) => boolean;
   /** Resolves `HKLM\...\App Paths\<exe>` default value, or undefined. */
@@ -92,14 +94,21 @@ export const SETTINGS_WINDOW_SIZE = { width: 1172, height: 788 } as const;
  * also isolates the window's cookies from the user's browsing profile, keeps
  * extensions out of it, and gives it its own taskbar entry.
  */
-export function appWindowArgs(url: string, profileDir: string): string[] {
-  return [
+export function appWindowArgs(url: string, profileDir: string, bounds?: SettingsWindowBounds): string[] {
+  const size = bounds ?? SETTINGS_WINDOW_SIZE;
+  const args = [
     `--app=${url}`,
     `--user-data-dir=${profileDir}`,
-    `--window-size=${SETTINGS_WINDOW_SIZE.width},${SETTINGS_WINDOW_SIZE.height}`,
+    `--window-size=${Math.round(size.width)},${Math.round(size.height)}`,
     "--no-first-run",
     "--no-default-browser-check",
   ];
+
+  if (bounds?.x !== undefined && bounds.y !== undefined) {
+    args.push(`--window-position=${Math.round(bounds.x)},${Math.round(bounds.y)}`);
+  }
+
+  return args;
 }
 
 /**
@@ -114,12 +123,12 @@ export function defaultSettingsWindowProfileDir(env: Record<string, string | und
 }
 
 /** Spawn the app window detached so it outlives — and never blocks — the plugin. */
-export function spawnAppWindow(browserPath: string, url: string): void {
+export function spawnAppWindow(browserPath: string, url: string, bounds?: SettingsWindowBounds): void {
   const profileDir = defaultSettingsWindowProfileDir();
 
   mkdirSync(profileDir, { recursive: true });
 
-  const child = spawn(browserPath, appWindowArgs(url, profileDir), {
+  const child = spawn(browserPath, appWindowArgs(url, profileDir, bounds), {
     detached: true,
     stdio: "ignore",
     windowsHide: false,

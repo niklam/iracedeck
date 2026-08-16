@@ -15,11 +15,14 @@
   the home for switch buttons for ALL bundled profiles; a new profile template
   gets a row automatically once its files are registered in the manifest.
 
-  Also suppressed inside the dedicated settings window (#992): switchToProfile
-  resolves its target from the device whose PI is open, and the window has no
-  device — faking one would switch the wrong deck for a multi-device user.
+  Inside the dedicated settings window (#992) the same accordion renders as a
+  card WITH a device picker: switchToProfile resolves its target from the device
+  whose PI is open, and the window has no device, so the page names one via
+  ird-deck-device-select (populated from the `_deckDevices` global the Elgato
+  plugin publishes) and each button carries it (`device-from`). The plugin's
+  command handler drops a switch without a device.
 %>
-<% if (locals.platform?.features?.profiles !== false && !locals.settingsWindow) { %>
+<% if (locals.platform?.features?.profiles !== false) { %>
 <%
   // Unique bundled profile templates (display names), sourced from the
   // generated (manifest-derived) profiles.json so this list can't drift — add
@@ -40,8 +43,12 @@
       Switch your Stream Deck to a ready-made iRaceDeck profile. The Stream Deck app
       asks to install the profile the first time you switch to it.
     </div>
+    ${locals.settingsWindow
+      ? '<sdpi-item label="Stream Deck"><ird-deck-device-select select-id="sw-deck-device"></ird-deck-device-select></sdpi-item>'
+      : ''}
     ${profiles.map(function (p) {
-      return '<sdpi-item label="' + p.name + '"><ird-profile-switch profile="' + p.name + '" label="Switch"></ird-profile-switch></sdpi-item>';
+      var device = locals.settingsWindow ? ' device-from="sw-deck-device"' : '';
+      return '<sdpi-item label="' + p.name + '"><ird-profile-switch profile="' + p.name + '" label="Switch"' + device + '></ird-profile-switch></sdpi-item>';
     }).join('')}
   `
 }) %>

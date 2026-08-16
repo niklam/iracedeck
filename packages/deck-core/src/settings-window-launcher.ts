@@ -11,13 +11,23 @@
 
 export type SettingsWindowLaunch = "app-window" | "browser-tab";
 
+/** Outer window bounds (CSS px). Position is optional — size-only is fine. */
+export interface SettingsWindowBounds {
+  width: number;
+  height: number;
+  x?: number;
+  y?: number;
+}
+
 export interface SettingsWindowLaunchInput {
   /** Fully formed page URL, token included. */
   url: string;
   /** Returns the path of a Chromium-based browser executable, or undefined. */
   findBrowser: () => string | undefined;
-  /** Spawns `<browserPath> --app=<url>`, detached. */
-  spawnApp: (browserPath: string, url: string) => void;
+  /** Spawns `<browserPath> --app=<url>`, detached, at `bounds` when given. */
+  spawnApp: (browserPath: string, url: string, bounds?: SettingsWindowBounds) => void;
+  /** Where the user last left the window, if known. */
+  bounds?: SettingsWindowBounds;
   /** The host's own URL opener — the fallback. */
   openUrl: (url: string) => Promise<void>;
 }
@@ -27,7 +37,7 @@ export async function launchSettingsWindow(input: SettingsWindowLaunchInput): Pr
 
   if (browserPath !== undefined) {
     try {
-      input.spawnApp(browserPath, input.url);
+      input.spawnApp(browserPath, input.url, input.bounds);
 
       return "app-window";
     } catch {

@@ -60,6 +60,20 @@ export interface SettingsWindowServerOptions {
   settingsHost?: SettingsWindowHost;
   /** Opener for `openUrl` frames (external links on the page). http(s) only. */
   openUrl?: (url: string) => Promise<void>;
+  /**
+   * Receives the payload of any `sendToPlugin` frame the page sends — the
+   * page's channel for things that are the plugin's to do (persist window
+   * bounds, switch a deck's profile). Validation is the handler's job.
+   */
+  onSendToPlugin?: (payload: Record<string, unknown>) => void;
+  /**
+   * The plugin's SimHub view, served at `GET /simhub/roles` as
+   * `{ reachable, roles }`. The page must NOT probe SimHub itself: from this
+   * origin that is a cross-origin fetch SimHub answers with no CORS headers,
+   * so it always looks unreachable. No host/port is taken from the page —
+   * the plugin only ever talks to its configured SimHub, so no SSRF surface.
+   */
+  simHub?: { isReachable: () => boolean; getRoles: () => Promise<string[]> };
 }
 
 export interface SettingsWindowServer {
@@ -173,6 +187,20 @@ export async function startSettingsWindowServer(options: SettingsWindowServerOpt
       res.setHeader("set-cookie", `${SESSION_COOKIE}=${token}; Path=/; SameSite=Strict; HttpOnly`);
     }
 
+    if (pathname === "/simhub/roles" && options.simHub) {
+      const simHub = options.simHub;
+
+      void (async () => {
+        const reachable = simHub.isReachable();
+        const roles = reachable ? await simHub.getRoles().catch(() => []) : [];
+
+        res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+        res.end(JSON.stringify({ reachable, roles }));
+      })();
+
+      return;
+    }
+
     if (options.assetsDir) {
       const name = pathname === "/" ? (options.pageFile ?? "index.html") : decodeURIComponent(pathname.slice(1));
 
@@ -186,7 +214,7 @@ export async function startSettingsWindowServer(options: SettingsWindowServerOpt
   });
 
   const wss = options.settingsHost
-    ? attachFakeHost(server, options.settingsHost, options.openUrl, authorize)
+    ? attachFakeHost(server, options.settingsHost, options.openUrl, options.onSendToPlugin, authorize)
     : undefined;
 
   await new Promise<void>((resolve, reject) => {
@@ -223,6 +251,7 @@ function attachFakeHost(
   server: Server,
   host: SettingsWindowHost,
   openUrl: ((url: string) => Promise<void>) | undefined,
+  onSendToPlugin: ((payload: Record<string, unknown>) => void) | undefined,
   authorize: (req: IncomingMessage) => { allowed: boolean },
 ): { close: () => void } {
   const wss = new WebSocketServer({ noServer: true });
@@ -283,6 +312,18 @@ function attachFakeHost(
 
             break;
           }
+
+          case "sendToPlugin":
+            if (
+              onSendToPlugin &&
+              frame.payload !== null &&
+              typeof frame.payload === "object" &&
+              !Array.isArray(frame.payload)
+            ) {
+              onSendToPlugin(frame.payload as Record<string, unknown>);
+            }
+
+            break;
 
           // registerPropertyInspector, logMessage, and anything else: nothing to do.
           default:
