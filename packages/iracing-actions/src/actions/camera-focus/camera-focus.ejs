@@ -192,11 +192,11 @@
 			<ird-binding-status mode-setting="<%= __dialComms._meta.modeSetting %>" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
 			<% if (locals.platform?.features?.dialFeedback !== false) { %>
 			<div class="ird-supporting-text">
-				Turn the dial to cycle the selected target — clockwise for next, counter-clockwise for previous. In Race Position mode clockwise selects the car ahead (lower position number); in Track Order mode it selects the car physically ahead on track, regardless of standings. Where previewable, the touch strip shows the current camera, sub-camera, or focused car in the centre with the target for each turn direction at its side; Cycle Driving Camera shows only the current group.
+				Turn the dial to cycle the selected target. In the modes that cycle by a number — Cycle by Car # and Cycle by Race Position — clockwise makes that number go down (P4 → P3, #94 → #77); Track Order is ordered by the road rather than by a number, so there clockwise selects the car physically ahead on track, regardless of standings; the camera modes simply step to the next in the list. Where previewable, the touch strip shows the current camera, sub-camera, or focused car in the centre with the target for each turn direction at its side; Cycle Driving Camera shows only the current group.
 			</div>
 			<% } else { %>
 			<div class="ird-supporting-text">
-				Turn the knob to cycle the selected target — clockwise for next, counter-clockwise for previous. In Race Position mode clockwise selects the car ahead (lower position number); in Track Order mode it selects the car physically ahead on track, regardless of standings.
+				Turn the knob to cycle the selected target. In the modes that cycle by a number — Cycle by Car # and Cycle by Race Position — clockwise makes that number go down (P4 → P3, #94 → #77); Track Order is ordered by the road rather than by a number, so there clockwise selects the car physically ahead on track, regardless of standings; the camera modes simply step to the next in the list.
 			</div>
 			<% } %>
 

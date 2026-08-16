@@ -34,6 +34,10 @@ _Unreleased_
 - The Camera Controls dial's Cycle by Race Position mode now falls back to iRacing's own position numbers whenever the plugin's live running order has nobody ranked — for example after the race finishes, where the mode previously stopped responding.
 - The Race Engineer no longer calls a pit-box positioning error only once: while the car sits too far left, right, forward, back, or at a bad angle, a short correction now repeats every couple of seconds — "Still too far forward.", "Back it up." — until you're in the box or iRacing reports a different error, so backing up and stopping short no longer leaves you parked in silence getting no service. The repeats stay quiet while you're moving the car and pick up again once it comes to rest, over-correcting into a different error plays that error's full call instead, and they ride the existing per-status toggles rather than adding new ones.
 
+**Breaking changes**
+
+- The Camera Controls dial's Cycle by Car # mode now counts *down* when turned clockwise — `#94` to `#77` instead of the other way around — so the two modes that cycle *by* a number follow one rule: clockwise makes that number go down, matching Cycle by Race Position (which has worked that way since 2.3.0). Cycle by Track Order is ordered by the road rather than by a number, so it keeps taking you to the car physically ahead. Every existing Cycle by Car # dial changes direction with this update — including one that already has **Reverse rotation** ticked — so flip that checkbox in the dial settings, whichever way it is set today, to get the old feel back. The touch-strip previews follow whichever direction is in effect.
+
 **Maintenance**
 
 - The Telemetry Control page on iracedeck.com now documents the Take Snapshot mode (shipped in 1.21.0 but missing from the action page): what the JSON and Markdown files contain, where they go, and how the Output Folder setting is resolved.
