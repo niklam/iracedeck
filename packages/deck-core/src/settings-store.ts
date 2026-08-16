@@ -195,8 +195,10 @@ export function createFileSettingsStore(opts: FileSettingsStoreOptions): Setting
 
       // Same atomic shape as writeNow(), synchronously: a shutdown must not be
       // the one write that can leave a half-written settings file behind. An
-      // already-in-flight async write is left alone — it is a strictly older
-      // payload, and both end with a rename, so the last rename wins.
+      // already-in-flight async write is left alone (it cannot be awaited
+      // here): its rename landing after ours would win with an older payload,
+      // but the only caller is process.on("exit"), where the async chain never
+      // gets another turn — so in practice this sync write is the last one.
       try {
         mkdirSync(dirname(path), { recursive: true });
         const tmp = `${path}.${process.pid}.sync.tmp`;

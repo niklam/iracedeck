@@ -15,7 +15,7 @@
 - Branch `release/3.0`, worktree `C:/Users/Niklas/Projects/iRaceDeck/ir-release-3.0`. Commit locally; **do not push, do not open a PR** (Niklas asks for that explicitly).
 - File location: `%LOCALAPPDATA%\iRaceDeck\Settings\<Stream Deck | Mirabox | Ulanzi>\global-settings.json`; env override `IRACEDECK_SETTINGS_PATH` (full file path). No configurable location.
 - Migration: copy once from the host, **leave the host copy untouched**; 10 s timeout when the host never answers.
-- After migration the adapter's `setGlobalSettings` is called **exactly once per start**, with `{ _settingsChannel: { port, token } }`. Later `onDidReceiveGlobalSettings` payloads are ignored for the cache (logged at debug).
+- ~~After migration the adapter's `setGlobalSettings` is called **exactly once per start**, with `{ _settingsChannel: { port, token } }`.~~ **Superseded by the phase-1 final review (2026-08-16):** every deck host's `setGlobalSettings` REPLACES the whole stored object, so that write wiped the migrated host copy. Phase 1 writes NOTHING to the host; phase 2 adds the bootstrap write as a guarded mirror `{ ...cache, _settingsChannel }`, skipped when the store became ready via the migration timeout — see the spec's Amendment. Later `onDidReceiveGlobalSettings` payloads are ignored for the cache (logged at debug).
 - Delete: pending-write overlay, pending-delete reconciliation, first-arrival write queue, shrink guard, `lastHostSettings`, and the Ulanzi adapter's write gate. Keep per-key salvage.
 - Rename `hasReceivedHostSettings()` → `isSettingsStoreReady()` and retarget every in-repo caller; the old name is removed.
 - Every plain-value schema field keeps `.catch(...)` (unchanged rule). Exact dependency versions (`save-exact`). Run `pnpm build` (not only tests) after type edits — vitest is more permissive than tsc. `pnpm build --force` after a `GlobalSettingsSchema` change (turbo caches deck-core).
@@ -1009,7 +1009,7 @@ git commit -m "refactor(deck-adapter-ulanzi): remove the global-settings write g
 
 **Interfaces:**
 
-- Produces: `SettingsWindowServer.token: string`; `SettingsWindowController.ensureStarted(): Promise<{ port: number; token: string }>`; the plugins publish `updateGlobalSettings({ _settingsChannel: { port, token } })` **and** `adapter.setGlobalSettings({ _settingsChannel: { port, token } })` once the store is ready.
+- Produces: `SettingsWindowServer.token: string`; `SettingsWindowController.ensureStarted(): Promise<{ port: number; token: string }>`; the plugins publish `updateGlobalSettings({ _settingsChannel: { port, token } })` once the store is ready (~~**and** `adapter.setGlobalSettings({ _settingsChannel: { port, token } })`~~ — removed in the phase-1 final review, see the note under Global Constraints).
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1064,12 +1064,14 @@ In each `plugin.ts`, inside the `if (!startupDefaultsApplied) { … }` first-arr
 
 ```ts
 // #993: the settings server is the channel every UI uses; publish where it
-// is. `_settingsChannel` in the store is for the window's own use; the
-// ONE write to the deck host is the bootstrap the PI bridge (phase 2)
-// reads before switching to the loopback socket.
+// is. `_settingsChannel` in the store is for the window's own use.
+// SUPERSEDED (phase-1 final review): the `adapter.setGlobalSettings(...)`
+// line below was REMOVED — host setGlobalSettings replaces the whole object
+// and wiped the migrated copy. Phase 2 adds a guarded-mirror bootstrap
+// write instead (see the spec Amendment). Shipped shape: store write only.
 void settingsWindow.ensureStarted().then(({ port, token }) => {
   updateGlobalSettings({ _settingsChannel: { port, token } });
-  adapter.setGlobalSettings({ _settingsChannel: { port, token } });
+  // adapter.setGlobalSettings({ _settingsChannel: { port, token } }); // removed, see above
 });
 ```
 

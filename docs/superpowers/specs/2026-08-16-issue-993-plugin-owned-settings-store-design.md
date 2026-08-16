@@ -46,8 +46,8 @@ Plugin-global settings live in the **deck host's** store, and two independent fu
 
 ### 4.1 `deck-core/src/settings-store.ts` (new)
 
-- `interface SettingsStore { load(): Promise<Record<string,unknown> | undefined>; save(settings): void; flush(): Promise<void>; readonly path: string }` — `undefined` from `load` means "no file yet" (→ migration).
-- `createFileSettingsStore({ path, logger })`: JSON, pretty-printed; **atomic** write (write `.tmp`, `rename`); **debounced** save (250 ms, trailing) with `flush()` awaited on shutdown paths; a malformed file logs `error` and loads as `undefined` **after moving it aside** to `global-settings.corrupt-<timestamp>.json` (never silently discard a user's file).
+- `interface SettingsStore { load(): Promise<Record<string,unknown> | undefined>; save(settings): void; flush(): Promise<void>; flushSync(): void; readonly path: string }` — `undefined` from `load` means "no file yet" (→ migration).
+- `createFileSettingsStore({ path, logger })`: JSON, pretty-printed; **atomic** write (write `.tmp`, `rename`); **debounced** save (250 ms, trailing) with `flush()` awaited where a shutdown path is async and `flushSync()` on `process.on("exit")` (the hosts stop the plugin via `process.exit`, so only a synchronous drain can run — added in the phase-1 fix wave); a malformed file logs `error` and loads as `undefined` **after moving it aside** to `global-settings.corrupt-<timestamp>.json` (never silently discard a user's file).
 - `resolveSettingsStorePath({ platform, env })`: env override first, else the default above. Pure, tested.
 - Per-key salvage stays in `global-settings.ts` (it protects against a partially-bad file exactly as it did against a partially-bad host payload).
 
