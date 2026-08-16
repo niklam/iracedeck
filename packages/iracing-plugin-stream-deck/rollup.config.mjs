@@ -6,6 +6,7 @@ import {
   piTemplatePlugin,
   SETTINGS_WINDOW_BRIDGE,
   SETTINGS_WINDOW_HTML,
+  SETTINGS_WINDOW_LOGO,
 } from "@iracedeck/pi-components/build";
 import commonjs from "@rollup/plugin-commonjs";
 import json from "@rollup/plugin-json";
@@ -249,7 +250,7 @@ const config = {
       generateBundle() {
         const uiDir = `${sdPlugin}/ui`;
         if (!existsSync(uiDir)) mkdirSync(uiDir, { recursive: true });
-        for (const file of ["sdpi-components.js", "pi-components.js", SETTINGS_WINDOW_BRIDGE]) {
+        for (const file of ["sdpi-components.js", "pi-components.js", SETTINGS_WINDOW_BRIDGE, SETTINGS_WINDOW_LOGO]) {
           const src = path.join(browserDir, file);
           if (!existsSync(src)) {
             this.error(

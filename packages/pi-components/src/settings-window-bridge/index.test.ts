@@ -72,6 +72,14 @@ describe("installSettingsWindowBridge", () => {
         return 0;
       },
       clearTimeout: () => {},
+      // The bounds watcher polls; capture the tick so tests drive it by hand.
+      tick: undefined as (() => void) | undefined,
+      setInterval(fn: () => void) {
+        this.tick = fn;
+
+        return 1;
+      },
+      clearInterval: () => {},
       outerWidth: 1300,
       outerHeight: 900,
       screenX: 40,
@@ -86,7 +94,11 @@ describe("installSettingsWindowBridge", () => {
       document: { body: { appendChild: vi.fn() }, createElement: () => ({ style: {}, textContent: "" }) },
     };
 
-    return { win: win as unknown as Window & typeof globalThis & { fire: (t: string) => void }, connect, close };
+    return {
+      win: win as unknown as Window & typeof globalThis & { fire: (t: string) => void; tick?: () => void },
+      connect,
+      close,
+    };
   }
 
   it("redirects sdpi's socket to the same host with the launch token, then restores WebSocket", () => {
@@ -139,7 +151,14 @@ describe("installSettingsWindowBridge", () => {
     expect((win as unknown as Record<string, unknown>)[SETTINGS_WINDOW_FLAG]).toBe(true);
   });
 
-  it("reports the window's outer bounds to the plugin on resize so the next open matches", () => {
+  function boundsFrames(socket: FakeNativeWebSocket | undefined): unknown[] {
+    return (socket?.sent ?? [])
+      .map((f) => JSON.parse(f) as { event: string; payload: { event?: string } })
+      .filter((f) => f.event === "sendToPlugin" && f.payload.event === "windowBounds")
+      .map((f) => f.payload);
+  }
+
+  it("reports the window's outer bounds when they change — a MOVE has no DOM event, so it polls", () => {
     const { win, connect } = fakeWindow("?t=tok");
 
     connect.mockImplementation((port: string) => {
@@ -149,11 +168,47 @@ describe("installSettingsWindowBridge", () => {
     const socket = FakeNativeWebSocket.instances[0];
 
     socket?.fire("open");
-    win.fire("resize");
+    win.tick?.(); // first tick: nothing changed since load → no report
+    expect(boundsFrames(socket)).toEqual([]);
 
-    const frames = (socket?.sent ?? []).map((f) => JSON.parse(f) as { event: string; payload: unknown });
-    const bounds = frames.find((f) => f.event === "sendToPlugin");
-    expect(bounds?.payload).toEqual({ event: "windowBounds", width: 1300, height: 900, x: 40, y: 60 });
+    (win as unknown as { screenX: number }).screenX = 400; // user dragged the window
+    win.tick?.();
+
+    expect(boundsFrames(socket)).toEqual([{ event: "windowBounds", width: 1300, height: 900, x: 400, y: 60 }]);
+  });
+
+  it("does not repeat a report while nothing changes", () => {
+    const { win, connect } = fakeWindow("?t=tok");
+
+    connect.mockImplementation((port: string) => {
+      new (win as unknown as { WebSocket: typeof FakeNativeWebSocket }).WebSocket(`ws://localhost:${port}`);
+    });
+    installSettingsWindowBridge(win);
+    const socket = FakeNativeWebSocket.instances[0];
+
+    socket?.fire("open");
+    (win as unknown as { outerWidth: number }).outerWidth = 1400;
+    win.tick?.();
+    win.tick?.();
+    win.tick?.();
+
+    expect(boundsFrames(socket)).toHaveLength(1);
+  });
+
+  it("sends a final report on pagehide so a move right before closing is kept", () => {
+    const { win, connect } = fakeWindow("?t=tok");
+
+    connect.mockImplementation((port: string) => {
+      new (win as unknown as { WebSocket: typeof FakeNativeWebSocket }).WebSocket(`ws://localhost:${port}`);
+    });
+    installSettingsWindowBridge(win);
+    const socket = FakeNativeWebSocket.instances[0];
+
+    socket?.fire("open");
+    (win as unknown as { screenY: number }).screenY = 300;
+    win.fire("pagehide");
+
+    expect(boundsFrames(socket)).toEqual([{ event: "windowBounds", width: 1300, height: 900, x: 40, y: 300 }]);
   });
 
   it("restores the native WebSocket even when connect throws", () => {

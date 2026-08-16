@@ -37,41 +37,48 @@ export const SETTINGS_WINDOW_CONTEXT = "settings-window";
  */
 export const SETTINGS_WINDOW_FLAG = "__irdSettingsWindow";
 
-/** Debounce for resize → windowBounds reports (ms). */
-const BOUNDS_REPORT_DEBOUNCE_MS = 400;
+/** How often the bounds watcher looks for a move/resize (ms). */
+const BOUNDS_POLL_MS = 1000;
 
 /**
- * Report the window's outer bounds to the plugin (debounced) so the next open
- * can restore them. Sent as a `sendToPlugin` frame the fake host forwards to
- * the plugin's command handler, which validates and persists it.
+ * Report the window's outer bounds to the plugin whenever they change, so the
+ * next open can restore them. A window MOVE has no DOM event, so this polls
+ * (cheap: four integer reads a second) instead of listening for `resize`,
+ * which would miss every drag. A final report on `pagehide` keeps a move made
+ * right before closing. Sent as a `sendToPlugin` frame the fake host forwards
+ * to the plugin's command handler, which validates and persists it.
  */
 function watchWindowBounds(win: Window & typeof globalThis, socket: WebSocket): void {
-  let timer: ReturnType<typeof setTimeout> | undefined;
+  const read = (): { width: number; height: number; x: number; y: number } => ({
+    width: win.outerWidth,
+    height: win.outerHeight,
+    x: win.screenX,
+    y: win.screenY,
+  });
+  const key = (b: ReturnType<typeof read>): string => `${b.width},${b.height},${b.x},${b.y}`;
+
+  // Baseline at load: only CHANGES are reported.
+  let last = key(read());
 
   const report = (): void => {
-    if (socket.readyState !== 1 /* OPEN */) return;
+    const bounds = read();
+    const k = key(bounds);
 
+    if (k === last || socket.readyState !== 1 /* OPEN */) return;
+
+    last = k;
     socket.send(
       JSON.stringify({
         event: "sendToPlugin",
         context: SETTINGS_WINDOW_CONTEXT,
         action: SETTINGS_WINDOW_ACTION,
-        payload: {
-          event: "windowBounds",
-          width: win.outerWidth,
-          height: win.outerHeight,
-          x: win.screenX,
-          y: win.screenY,
-        },
+        payload: { event: "windowBounds", ...bounds },
       }),
     );
   };
 
-  win.addEventListener("resize", () => {
-    if (timer !== undefined) win.clearTimeout(timer);
-
-    timer = win.setTimeout(report, BOUNDS_REPORT_DEBOUNCE_MS);
-  });
+  win.setInterval(report, BOUNDS_POLL_MS);
+  win.addEventListener("pagehide", report);
 }
 
 export interface SettingsWindowIdentity {

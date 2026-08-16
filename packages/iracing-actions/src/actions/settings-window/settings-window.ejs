@@ -31,7 +31,8 @@
 			:root {
 				--sw-bg: #2d2d2d; --sw-bg-alt: #262626; --sw-bg-nav: #232323; --sw-panel: #333333;
 				--sw-fg: #ffffff; --sw-fg-dim: #c8c8c8; --sw-fg-mute: #808080;
-				--sw-line: #3a3a3a; --sw-accent: #4a90d9;
+				/* iRaceDeck brand: white, black, red — the accent is the website's #ce2128. */
+				--sw-line: #3a3a3a; --sw-accent: #ce2128;
 				--sw-font: "Segoe UI", Arial, Roboto, Helvetica, sans-serif;
 				/* Narrowest layout before the window scrolls horizontally instead of
 				   letting cards squash their contents into each other. */
@@ -57,14 +58,14 @@
 				display: flex; align-items: center; gap: 12px;
 				padding: 12px 20px; border-bottom: 1px solid var(--sw-line); background: var(--sw-bg-alt);
 			}
-			.sw-mark {
-				width: 26px; height: 26px; border-radius: 5px; flex: none;
-				background: linear-gradient(135deg, #4a90d9, #2c5f96);
-				display: grid; place-items: center; font-weight: 700; font-size: 11px;
+			.sw-logo { height: 26px; width: auto; display: block; }
+			.sw-header h1 {
+				font-size: 10pt; font-weight: 500; margin: 0 0 0 4px; color: var(--sw-fg-dim);
+				text-transform: uppercase; letter-spacing: 1.2px;
 			}
-			.sw-header h1 { font-size: 12pt; font-weight: 600; margin: 0; letter-spacing: .2px; }
 			.sw-header-links { margin-left: auto; display: flex; align-items: center; gap: 14px; }
-			.sw-header-links a { color: var(--ird-link-color); text-decoration: none; font-size: 9pt; }
+			.sw-header-links a { color: var(--sw-fg-dim); text-decoration: none; font-size: 9pt; }
+			.sw-header-links a:hover { color: var(--sw-fg); }
 			.sw-header-links a:hover { text-decoration: underline; }
 			.sw-version { color: var(--sw-fg-mute); font-size: 8pt; }
 			.sw-main { display: grid; grid-template-columns: 200px minmax(0, 1fr); min-height: 0; }
@@ -124,14 +125,14 @@
 			}
 			.sw-changelog { width: 100%; height: 70vh; min-height: 360px; border: 1px solid var(--sw-line); border-radius: 6px; background: #fff; }
 			.sw-links { display: flex; gap: 14px; margin: 0 0 12px; }
-			.sw-links a { color: var(--ird-link-color); text-decoration: none; }
+			.sw-links a { color: var(--sw-fg-dim); text-decoration: none; }
 			.sw-links a:hover { text-decoration: underline; }
 		</style>
 	</head>
 	<body>
 		<header class="sw-header">
-			<div class="sw-mark">iR</div>
-			<h1>iRaceDeck Settings</h1>
+			<img class="sw-logo" src="iracedeck-logo.png" alt="iRaceDeck" width="95" height="26" />
+			<h1>Settings</h1>
 			<div class="sw-header-links">
 				<%# External links open in the OS default browser via the shared PI
 				    external-link handler → openUrl → the plugin's fake host. %>
