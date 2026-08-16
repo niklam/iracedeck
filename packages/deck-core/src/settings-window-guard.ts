@@ -28,27 +28,32 @@ export interface SettingsRequestInput {
    * holding the same token, and every same-origin request after that (the
    * page's relative `<script src>` fetches, the WebSocket upgrade) carries the
    * cookie instead. A Strict cookie is never sent cross-site, and a
-   * DNS-rebound hostname is a different cookie host, so this is at least as
-   * strong as the query token — and the Origin check still runs first.
+   * DNS-rebound hostname is a different cookie host — the Origin check below
+   * is what makes that guarantee hold, so it always runs before the cookie is
+   * even looked at. The query token, unlike the cookie, is checked BEFORE the
+   * Origin check (#993 phase 2) — see the token comment below.
    */
   cookie?: string | undefined;
 }
 
 export function authorizeSettingsRequest(input: SettingsRequestInput): SettingsRequestDecision {
-  // Origin FIRST. A browser navigating top-level sends no Origin header; a
-  // cross-site fetch or WebSocket upgrade always does. This check — not the
-  // token — is the DNS-rebinding mitigation, so it must never be skipped
-  // because the token happened to be wrong too.
+  // A valid launch token authenticates on its own, whatever the Origin: the
+  // token is the secret (per-launch, 48 hex chars, reachable only through the
+  // window's URL and the plugin's own settings store), and the Property
+  // Inspectors that carry it are file:// (Origin "null") or host-served pages
+  // (#993 phase 2). No CORS header is ever emitted, so a page cannot read a
+  // response it was not meant to see.
+  if (input.token !== undefined && input.token === input.expectedToken) return { allowed: true };
+
+  // Without the token, Origin FIRST. A browser navigating top-level sends no
+  // Origin header; a cross-site fetch or WebSocket upgrade always does. This
+  // check is the DNS-rebinding mitigation for the cookie path, so it must
+  // never be skipped for it.
   if (input.origin !== undefined && input.origin !== input.expectedOrigin) {
     return { allowed: false, reason: "bad-origin" };
   }
 
-  const tokenOk = input.token !== undefined && input.token === input.expectedToken;
-  const cookieOk = input.cookie !== undefined && input.cookie === input.expectedToken;
+  if (input.cookie !== undefined && input.cookie === input.expectedToken) return { allowed: true };
 
-  if (!tokenOk && !cookieOk) {
-    return { allowed: false, reason: "bad-token" };
-  }
-
-  return { allowed: true };
+  return { allowed: false, reason: "bad-token" };
 }
