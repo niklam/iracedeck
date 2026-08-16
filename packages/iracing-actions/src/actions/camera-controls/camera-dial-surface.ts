@@ -6,7 +6,7 @@
  * cycle modes' explicit next/previous setting. On the number-primary modes —
  * race-position and car-number — a clockwise detent makes the number on the
  * strip go DOWN (`P4 → P3`, `#94 → #77`; issues #884, #973, see
- * `NUMBER_PRIMARY_MODES`). The list modes (camera / sub-camera / driving) have
+ * `MODE_NUMBER_PRIMARY`). The list modes (camera / sub-camera / driving) have
  * no number to shrink and keep clockwise = next, and in track-order (issue
  * #886) "next" IS the car ahead on the road (the direction of travel), so
  * clockwise lands on the car ahead there too without a flip. The
@@ -170,18 +170,29 @@ function trackOrderDirection(direction: Direction): TrackOrderDirection {
 }
 
 /**
- * Modes whose strip readout is a NUMBER the user reads as they turn — the race
- * position (`P4`) and the car number (`#94`). Their default mapping is flipped
- * so that a clockwise detent makes that number go DOWN: `P4 → P3`, `#94 → #77`
- * (issues #884, #973). One rule, learned once, for both.
+ * Whether a mode's cycling ORDER is itself a number the user reads on the strip
+ * — the race position (`P4`) or the car number (`#94`). Those two flip their
+ * default mapping so a clockwise detent makes that number go DOWN: `P4 → P3`,
+ * `#94 → #77` (issues #884, #973). One rule, learned once, for both.
  *
- * The list modes (camera / sub-camera / driving) have no number to shrink, so
- * they keep the plain "clockwise = next". Track-order is a car mode but not a
- * number-primary one — its readout is a car number it never orders BY, and its
- * `next` already IS the car ahead on the road (`trackOrderDirection`, #886), so
- * clockwise lands on the car ahead there without a flip.
+ * The list modes (camera / sub-camera / driving) walk a list, not a number, so
+ * they keep the plain "clockwise = next". Track-order is `false` on purpose: it
+ * SHOWS a car number but never orders by one — it walks the road, and its
+ * `next` already IS the car ahead (`trackOrderDirection`, #886), so clockwise
+ * lands on the car ahead there without a flip.
+ *
+ * Exhaustive by type (the `Record<DialMode, …>` shape the tables below use) so
+ * a new dial mode cannot silently inherit "clockwise = next" — adding one is a
+ * compile error until its rotation direction is classified here.
  */
-const NUMBER_PRIMARY_MODES: ReadonlySet<DialMode> = new Set<DialMode>(["car-number", "race-position"]);
+const MODE_NUMBER_PRIMARY: Record<DialMode, boolean> = {
+  camera: false,
+  "sub-camera": false,
+  "car-number": true,
+  "race-position": true,
+  "track-order": false,
+  driving: false,
+};
 
 /**
  * @internal Exported for testing
@@ -194,7 +205,7 @@ const NUMBER_PRIMARY_MODES: ReadonlySet<DialMode> = new Set<DialMode>(["car-numb
  * raises the number).
  */
 export function clockwiseDirection(mode: DialMode, reverseRotation: boolean): Direction {
-  const defaultClockwise: Direction = NUMBER_PRIMARY_MODES.has(mode) ? "previous" : "next";
+  const defaultClockwise: Direction = MODE_NUMBER_PRIMARY[mode] ? "previous" : "next";
 
   return reverseRotation ? oppositeDirection(defaultClockwise) : defaultClockwise;
 }
@@ -1253,8 +1264,11 @@ export class CameraDialSurface {
   }
 
   /**
-   * The car-carousel view for the two number-primary car modes: car-number
-   * (ascending car number) or track-order (the physical road order, #886).
+   * The car-carousel view for the two car modes drawn as a NUMBER carousel:
+   * car-number (ascending car number) or track-order (the physical road order,
+   * #886). Deliberately NOT the same grouping as `MODE_NUMBER_PRIMARY` —
+   * track-order shows a car number but is not ordered by one, so it draws the
+   * same strip without taking the clockwise-counts-down flip.
    */
   private carCarouselView(telemetry: TelemetryData | null, dial: DialSettings): CarCarouselView {
     return dial.mode === "track-order"

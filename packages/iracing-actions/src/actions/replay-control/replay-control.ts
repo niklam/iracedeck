@@ -173,14 +173,19 @@ const REPLAY_CONTROL_TITLES: Record<ReplayControlMode, string> = {
  * deliberately inverted (issue #973). On the number-primary controls a
  * clockwise detent makes the number on screen go DOWN — matching the Camera
  * Controls dial's Cycle by Car # and Cycle by Race Position modes (#884, #973)
- * — so one turn direction means the same thing across every car control.
+ * — so one turn direction means the same thing across every control that
+ * cycles BY a number.
  *
  * `next-car` / `prev-car` are NOT inverted: they tap iRacing's own Next /
  * Previous Car bindings (V / Shift-V by default), so the sim owns that ordering
  * and its "next" is not a number to shrink.
  *
  * The keypad is unaffected — a key dispatches `settings.mode` directly, so the
- * named modes ("CAR # NEXT" / "CAR # PREVIOUS") keep meaning what they say.
+ * named modes ("CAR # NEXT" / "CAR # PREVIOUS") keep meaning what they say. So
+ * does a dial PUSH (`executeDialDown`), which is deliberate but worth stating:
+ * on a `next-car-number` dial the button walks UP the number order while a
+ * clockwise turn walks DOWN it. The button keeps its printed meaning; only the
+ * rotation follows the cross-action turn rule.
  */
 const DIRECTIONAL_PAIRS: Partial<
   Record<ReplayControlMode, { clockwise: ReplayControlMode; counterClockwise: ReplayControlMode }>
@@ -1842,6 +1847,12 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
   }
 
   private executeDialRotate(contextId: string, mode: ReplayControlMode, ticks: number): void {
+    // A zero-tick rotate carries no direction; every branch below reads
+    // `ticks > 0` as clockwise and anything else as counter-clockwise, so
+    // without this guard a 0 would silently dispatch the counter-clockwise
+    // half (the same guard the camera dial surface applies).
+    if (ticks === 0) return;
+
     const replay = getCommands().replay;
 
     if (mode === "jump-to-fastest-lap") {

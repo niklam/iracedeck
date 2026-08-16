@@ -5,7 +5,7 @@ import {
   getCarNumberRawFromSessionInfo,
   TrkLoc,
 } from "@iracedeck/iracing-sdk";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   _getFastestLapSessionCache,
@@ -1518,13 +1518,6 @@ describe("ReplayControl", () => {
   });
 
   describe("car number cycling (dial rotation)", () => {
-    function fakeEvent(actionId: string, settings: Record<string, unknown> = {}) {
-      return {
-        action: { id: actionId, setTitle: vi.fn(), setImage: vi.fn() },
-        payload: { settings },
-      };
-    }
-
     function rotate(mode: string, ticks: number) {
       return action.onDialRotate({
         action: { id: "ctx-1", setTitle: vi.fn(), setImage: vi.fn() },
@@ -1563,7 +1556,21 @@ describe("ReplayControl", () => {
       action = new ReplayControl();
       action.sdkController.getCurrentTelemetry = vi.fn(() => TELEMETRY);
       action.sdkController.getSessionInfo = vi.fn(() => ({}));
-      await action.onWillAppear(fakeEvent("ctx-1", { mode: "next-car-number" }) as never);
+      await action.onWillAppear({
+        action: { id: "ctx-1", setTitle: vi.fn(), setImage: vi.fn() },
+        payload: { settings: { mode: "next-car-number" } },
+      } as never);
+    });
+
+    afterEach(async () => {
+      // `vi.clearAllMocks()` (the suite-wide beforeEach) clears recorded calls
+      // but NOT return values, so this block's pinned command surface and
+      // three-car field would otherwise leak into every later describe. Reset
+      // both back to their module-factory implementations.
+      const { getCommands } = await import("@iracedeck/deck-core");
+
+      vi.mocked(getCommands).mockReset();
+      vi.mocked(getAllCarNumbers).mockReset();
     });
 
     it("lowers the car number on a clockwise detent (#973)", async () => {
