@@ -37,12 +37,21 @@
 				--sw-min-width: 720px;
 			}
 			html, body { height: 100%; margin: 0; }
+			/* Rows are NAMED and assigned explicitly: head-common.ejs injects an
+			   <ird-warnings> element as the body's first child at load, and with
+			   positional rows that element took `auto` while the header stole the
+			   `1fr` — a header centred in a huge empty band. Named areas make the
+			   layout independent of what gets injected in front. */
 			body {
 				background: var(--sw-bg); color: var(--sw-fg);
 				font-family: var(--sw-font); font-size: 9pt;
-				display: grid; grid-template-rows: auto 1fr; overflow: hidden;
-				min-width: var(--sw-min-width);
+				display: grid; grid-template-rows: auto auto minmax(0, 1fr);
+				grid-template-areas: "warnings" "header" "main";
+				overflow: hidden; min-width: var(--sw-min-width);
 			}
+			body > ird-warnings { grid-area: warnings; }
+			.sw-header { grid-area: header; }
+			.sw-main { grid-area: main; }
 			.sw-header {
 				display: flex; align-items: center; gap: 12px;
 				padding: 12px 20px; border-bottom: 1px solid var(--sw-line); background: var(--sw-bg-alt);

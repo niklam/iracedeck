@@ -4,10 +4,18 @@ import { appWindowArgs, findChromiumBrowser, SETTINGS_WINDOW_SIZE } from "./chro
 
 describe("appWindowArgs", () => {
   it("opens the URL in app mode with an explicit, sensible window size", () => {
-    const args = appWindowArgs("http://127.0.0.1:1/?t=x");
+    const args = appWindowArgs("http://127.0.0.1:1/?t=x", "C:/data/profile");
 
     expect(args).toContain("--app=http://127.0.0.1:1/?t=x");
     expect(args).toContain(`--window-size=${SETTINGS_WINDOW_SIZE.width},${SETTINGS_WINDOW_SIZE.height}`);
+  });
+
+  it("uses a dedicated browser profile so a running browser can't swallow the launch (and its size)", () => {
+    const args = appWindowArgs("http://127.0.0.1:1/?t=x", "C:/data/profile");
+
+    expect(args).toContain("--user-data-dir=C:/data/profile");
+    expect(args).toContain("--no-first-run");
+    expect(args).toContain("--no-default-browser-check");
   });
 
   it("opens at the size the owner settled on by hand (outer bounds; the OS clamps on smaller displays)", () => {

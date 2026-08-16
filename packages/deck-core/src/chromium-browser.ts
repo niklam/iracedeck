@@ -12,7 +12,7 @@
  * itself to the plugin's lifetime.
  */
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 
 export interface ChromiumLookupDeps {
@@ -80,14 +80,50 @@ export function findChromiumBrowserOnThisMachine(): string | undefined {
  */
 export const SETTINGS_WINDOW_SIZE = { width: 1172, height: 788 } as const;
 
-/** The exact argument list for a chromeless app window — pure, so it can be tested without spawning. */
-export function appWindowArgs(url: string): string[] {
-  return [`--app=${url}`, `--window-size=${SETTINGS_WINDOW_SIZE.width},${SETTINGS_WINDOW_SIZE.height}`];
+/**
+ * The exact argument list for a chromeless app window — pure, so it can be
+ * tested without spawning.
+ *
+ * `--user-data-dir` is the load-bearing flag: when the user's browser is
+ * already running, a plain `--app=` launch just hands the URL to that process
+ * and exits, and Chromium honours `--window-size` only for a NEW process — so
+ * the window opened at whatever size the browser last had (observed: huge).
+ * A dedicated profile directory forces a separate process every time, which
+ * also isolates the window's cookies from the user's browsing profile, keeps
+ * extensions out of it, and gives it its own taskbar entry.
+ */
+export function appWindowArgs(url: string, profileDir: string): string[] {
+  return [
+    `--app=${url}`,
+    `--user-data-dir=${profileDir}`,
+    `--window-size=${SETTINGS_WINDOW_SIZE.width},${SETTINGS_WINDOW_SIZE.height}`,
+    "--no-first-run",
+    "--no-default-browser-check",
+  ];
 }
 
-/** Spawn `<browserPath> --app=<url>` detached so it outlives — and never blocks — the plugin. */
+/**
+ * Where the settings window's private browser profile lives:
+ * `%LOCALAPPDATA%\iRaceDeck\settings-window-profile`. Per-user, survives
+ * plugin updates (it is not inside the plugin folder), safe to delete.
+ */
+export function defaultSettingsWindowProfileDir(env: Record<string, string | undefined> = process.env): string {
+  const base = env.LOCALAPPDATA ?? join(env.USERPROFILE ?? ".", "AppData", "Local");
+
+  return join(base, "iRaceDeck", "settings-window-profile");
+}
+
+/** Spawn the app window detached so it outlives — and never blocks — the plugin. */
 export function spawnAppWindow(browserPath: string, url: string): void {
-  const child = spawn(browserPath, appWindowArgs(url), { detached: true, stdio: "ignore", windowsHide: false });
+  const profileDir = defaultSettingsWindowProfileDir();
+
+  mkdirSync(profileDir, { recursive: true });
+
+  const child = spawn(browserPath, appWindowArgs(url, profileDir), {
+    detached: true,
+    stdio: "ignore",
+    windowsHide: false,
+  });
 
   child.unref();
 }
