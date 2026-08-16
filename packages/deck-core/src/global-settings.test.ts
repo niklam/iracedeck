@@ -8,6 +8,7 @@ import {
   GlobalSettingsSchema,
   initGlobalSettings,
   isSettingsStoreReady,
+  LOAD_RETRY_DELAY_MS,
   MIGRATION_TIMEOUT_MS,
   onGlobalSettingsChange,
   resolveActiveDriverName,
@@ -81,6 +82,30 @@ async function initWithStore(initial: Record<string, unknown> = {}): Promise<{
   await tick();
 
   return { mock, store };
+}
+
+/**
+ * Memory store whose first `failures` `load()` calls reject: a settings file
+ * that exists but cannot be READ (locked by a scanner, permission denied).
+ * `saved` stays observable so a test can prove nothing was written over it.
+ */
+function createUnreadableStore(failures: number, initial?: Record<string, unknown>) {
+  const inner = createMemorySettingsStore(initial);
+  let attempts = 0;
+
+  return {
+    ...inner,
+    get attempts() {
+      return attempts;
+    },
+    load: async () => {
+      attempts += 1;
+
+      if (attempts <= failures) throw new Error("EBUSY: the settings file is locked");
+
+      return inner.load();
+    },
+  };
 }
 
 // Every init leaves module state behind (including a pending migration
@@ -1021,5 +1046,95 @@ describe("single-writer store (issue #993)", () => {
 
     expect(getGlobalSettings().driverName).toBe("nick");
     expect(second.saved).toHaveLength(0);
+  });
+
+  it("a host payload racing the file load never overrides the file", async () => {
+    const mock = createMockAdapter();
+    const store = createMemorySettingsStore({ driverName: "file-nick" });
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store);
+    // A Property Inspector save echoes before the file load resolves. It was
+    // never asked for, so it is not a migration source — the file wins.
+    mock.echo?.({ driverName: "host-nick" });
+    await tick();
+
+    expect(getGlobalSettings().driverName).toBe("file-nick");
+    expect(store.saved).toHaveLength(1);
+    expect(store.saved[0]).toMatchObject({ driverName: "file-nick" });
+  });
+
+  it("migrates from a host that answers getGlobalSettings synchronously, arming no deadline", async () => {
+    vi.useFakeTimers();
+
+    try {
+      const holder: { echo: EchoCallback | null } = { echo: null };
+      const adapter = {
+        onDidReceiveGlobalSettings: (cb: EchoCallback) => {
+          holder.echo = cb;
+        },
+        setGlobalSettings: vi.fn<(settings: Record<string, unknown>) => void>(),
+        getGlobalSettings: vi.fn<() => void>(() => holder.echo?.({ driverName: "harness-nick" })),
+      } as unknown as IDeckPlatformAdapter;
+
+      initGlobalSettings(adapter, createMockLogger(), createMemorySettingsStore());
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(isSettingsStoreReady()).toBe(true);
+      expect(getGlobalSettings().driverName).toBe("harness-nick");
+      expect(vi.getTimerCount()).toBe(0); // no migration deadline left ticking
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("an UNREADABLE file is retried, then the session runs on defaults WITHOUT saving over it", async () => {
+    vi.useFakeTimers();
+
+    try {
+      const mock = createMockAdapter();
+      const store = createUnreadableStore(3, { driverName: "nick" });
+
+      initGlobalSettings(mock.adapter, createMockLogger(), store, { loadRetryDelayMs: 10 });
+      await vi.advanceTimersByTimeAsync(100);
+
+      expect(store.attempts).toBe(3);
+      expect(isSettingsStoreReady()).toBe(false);
+      expect(getGlobalSettings().driverName).toBe(""); // schema default
+      // The whole point: a file we could not READ is never replaced with defaults.
+      expect(store.saved).toHaveLength(0);
+      expect(vi.getTimerCount()).toBe(0);
+
+      updateGlobalSettings({ driverName: "typed-this-session" });
+
+      expect(getGlobalSettings().driverName).toBe("typed-this-session"); // read-your-writes
+      expect(store.saved).toHaveLength(0); // still nothing may reach the file
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("recovers when a transient read failure clears before the attempts run out", async () => {
+    vi.useFakeTimers();
+
+    try {
+      const mock = createMockAdapter();
+      const store = createUnreadableStore(1, { driverName: "nick" });
+
+      initGlobalSettings(mock.adapter, createMockLogger(), store, { loadRetryDelayMs: 10 });
+      await vi.advanceTimersByTimeAsync(5);
+      expect(isSettingsStoreReady()).toBe(false);
+      await vi.advanceTimersByTimeAsync(20);
+
+      expect(store.attempts).toBe(2);
+      expect(isSettingsStoreReady()).toBe(true);
+      expect(getGlobalSettings().driverName).toBe("nick");
+      expect(mock.getGlobalSettings).not.toHaveBeenCalled(); // the file was found, no migration
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("LOAD_RETRY_DELAY_MS is one second", () => {
+    expect(LOAD_RETRY_DELAY_MS).toBe(1_000);
   });
 });

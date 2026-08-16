@@ -24,8 +24,8 @@
  *
  * Settings I/O goes through an injected `SettingsWindowHost` — the plugin binds
  * it to `getGlobalSettings` / `updateGlobalSettings` / `onGlobalSettingsChange`
- * — so this module never touches the global-settings singleton and the #896
- * single-writer guarantees hold by construction.
+ * — so this module never touches the global-settings singleton, and every
+ * edit made here lands in the plugin-owned store like any other write (#993).
  */
 import { randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
@@ -411,12 +411,12 @@ function attachFakeHost(
             if (frame.payload !== null && typeof frame.payload === "object" && !Array.isArray(frame.payload)) {
               // sdpi-components saves its WHOLE snapshot on every change. Hand
               // deck-core only the keys that actually differ from the current
-              // cache: a full-object write marks every key pending with its
-              // previous value as "superseded", and a later foreign write (a PI
-              // setting a key BACK to that previous value) is then misread as a
-              // stale echo and rolled back (#896 — observed with driverName).
-              // `sameValue` is deck-core's own equality (string forms match
-              // parsed values), so the diff can't disagree with the overlay.
+              // cache — an optimisation, not a correctness guard (the plugin
+              // is the single writer since #993): a full-snapshot write would
+              // re-parse, re-notify every subscriber and re-save the file on
+              // every keystroke-sized change. `sameValue` is deck-core's own
+              // equality, so a value the PI persisted as a string ("80") does
+              // not read as a change against the parsed cache value (80).
               const changed = diffAgainst(host.read(), frame.payload as Record<string, unknown>);
 
               if (Object.keys(changed).length > 0) {

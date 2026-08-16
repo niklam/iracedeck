@@ -1085,14 +1085,22 @@ let earlyWrites: Record<string, unknown> | null = null;
 let earlyDeletes: Set<string> | null = null;
 
 /**
- * Deadline for the one-time host migration read. Module-level so
- * `_resetGlobalSettings()` can clear it — a timer surviving a reset would
- * fire `becomeReady` into an unrelated run (tests) long after its store is gone.
+ * Deadline for the one-time host migration read, and the settings-file read
+ * retry. Module-level so `_resetGlobalSettings()` can clear them — a timer
+ * surviving a reset would fire into an unrelated run (tests) long after its
+ * store is gone.
  */
 let migrationTimer: ReturnType<typeof setTimeout> | undefined;
+let loadRetryTimer: ReturnType<typeof setTimeout> | undefined;
 
 /** How long to wait for the deck host to answer the one-time migration read. */
 export const MIGRATION_TIMEOUT_MS = 10_000;
+
+/** How long to wait before retrying a failed settings-file read. */
+export const LOAD_RETRY_DELAY_MS = 1_000;
+
+/** How many times the settings file is read before giving up on it. */
+const LOAD_ATTEMPTS = 3;
 
 /**
  * Value equality across the persisted/parsed divide. Primitives compare by
@@ -1168,6 +1176,8 @@ function parseWithSalvage(raw: Record<string, unknown>): { settings: GlobalSetti
 export interface InitGlobalSettingsOptions {
   /** Test hook; production uses {@link MIGRATION_TIMEOUT_MS}. */
   migrationTimeoutMs?: number;
+  /** Test hook; production uses {@link LOAD_RETRY_DELAY_MS}. */
+  loadRetryDelayMs?: number;
 }
 
 /**
@@ -1204,6 +1214,7 @@ export function initGlobalSettings(
   logger.info("Initializing");
 
   const migrationTimeoutMs = opts.migrationTimeoutMs ?? MIGRATION_TIMEOUT_MS;
+  const loadRetryDelayMs = opts.loadRetryDelayMs ?? LOAD_RETRY_DELAY_MS;
   let migrationRequested = false;
   let migrationDone = false;
 
@@ -1229,7 +1240,7 @@ export function initGlobalSettings(
       logger?.error("Stored settings unparseable; starting from schema defaults");
     } else {
       if (salvage.droppedKeys.length > 0) {
-        logger?.warn("Some stored settings were invalid and reset to defaults");
+        logger?.warn("Some stored settings were invalid and reset to their defaults");
         logger?.debug(`Dropped keys: ${salvage.droppedKeys.join(", ")}`);
       }
 
@@ -1262,14 +1273,16 @@ export function initGlobalSettings(
   adapter.onDidReceiveGlobalSettings((settings: unknown) => {
     if (!isCurrent()) return;
 
-    logger?.info("Settings received from host");
-    logger?.debug(`Raw host settings: ${JSON.stringify(settings)}`);
-
     if (storeReady || migrationDone || !migrationRequested) {
+      // Not worth an info line: until the PI bridge lands (#993 phase 3) every
+      // Property Inspector save echoes here, and none of them are ingested.
       logger?.debug("Ignoring host settings payload: the settings store is authoritative");
 
       return;
     }
+
+    logger?.info("Settings received from host for migration");
+    logger?.debug(`Raw host settings: ${JSON.stringify(settings)}`);
 
     migrationDone = true;
 
@@ -1283,37 +1296,80 @@ export function initGlobalSettings(
     becomeReady(raw, "host");
   });
 
-  void store
-    .load()
-    .then((loaded) => {
-      if (!isCurrent()) return;
+  const onLoaded = (loaded: Record<string, unknown> | undefined): void => {
+    if (!isCurrent()) return;
 
-      if (loaded !== undefined) {
-        becomeReady(loaded, "file");
+    if (loaded !== undefined) {
+      becomeReady(loaded, "file");
 
-        return;
-      }
+      return;
+    }
 
-      // No file yet: migrate once from the host, or start fresh on timeout.
-      logger?.info("No settings file yet; requesting the deck host's settings for a one-time migration");
-      migrationRequested = true;
-      adapter.getGlobalSettings();
-      migrationTimer = setTimeout(() => {
-        migrationTimer = undefined;
+    // No file yet: migrate once from the host, or start fresh on timeout.
+    logger?.info("No settings file yet; requesting the deck host's settings for a one-time migration");
+    migrationRequested = true;
+    adapter.getGlobalSettings();
 
-        if (storeReady || migrationDone || !isCurrent()) return;
+    // A host that answers synchronously (the scenario harness, test mocks) has
+    // already migrated us — there is no deadline left to arm.
+    if (migrationDone) return;
 
-        migrationDone = true;
-        logger?.warn("Deck host did not answer the migration read; starting fresh");
-        becomeReady({}, "fresh");
-      }, migrationTimeoutMs);
-    })
-    .catch((error: unknown) => {
-      if (!isCurrent()) return;
+    migrationTimer = setTimeout(() => {
+      migrationTimer = undefined;
 
-      logger?.error(`Settings store load failed: ${String(error)}`);
+      if (storeReady || migrationDone || !isCurrent()) return;
+
+      migrationDone = true;
+      logger?.warn("Deck host did not answer the migration read; starting fresh");
       becomeReady({}, "fresh");
-    });
+    }, migrationTimeoutMs);
+  };
+
+  const onLoadFailed = (attempt: number, error: unknown): void => {
+    if (!isCurrent()) return;
+
+    if (attempt < LOAD_ATTEMPTS) {
+      logger?.warn("Could not read the settings file; retrying");
+      logger?.debug(`Read attempt ${attempt}/${LOAD_ATTEMPTS} of ${store.path} failed: ${String(error)}`);
+      loadRetryTimer = setTimeout(() => {
+        loadRetryTimer = undefined;
+
+        if (isCurrent()) attemptLoad(attempt + 1);
+      }, loadRetryDelayMs);
+
+      return;
+    }
+
+    // Out of attempts. Deliberately NOT ready and NOT saved: `save` replaces
+    // the file atomically, so writing schema defaults over settings we merely
+    // failed to READ (a locked or permission-denied file — AV scanner, backup
+    // agent, stale handle) would destroy them. Not-ready keeps every gate
+    // closed; the session runs on defaults and the file is left untouched.
+    logger?.error(
+      "Settings file could not be read; running on defaults WITHOUT saving so the file is not overwritten — check the file's permissions/locks and restart",
+    );
+    logger?.debug(`Settings store: ${store.path}; last error: ${String(error)}`);
+  };
+
+  // Two-arg `then`, not `.catch`: only a store READ failure may reach
+  // `onLoadFailed`. A throw from applying the settings (a subscriber, say)
+  // is a different fault — it must not be reported as a store failure, and
+  // must never trigger a re-read.
+  function attemptLoad(attempt: number): void {
+    void store.load().then(
+      (loaded) => {
+        try {
+          onLoaded(loaded);
+        } catch (error: unknown) {
+          logger?.error("Failed to apply the loaded global settings");
+          logger?.debug(`Apply error: ${String(error)}`);
+        }
+      },
+      (error: unknown) => onLoadFailed(attempt, error),
+    );
+  }
+
+  attemptLoad(1);
 
   return currentSettings;
 }
@@ -1386,7 +1442,7 @@ export function updateGlobalSettings(partial: Record<string, unknown>): void {
   }
 
   if (salvage.droppedKeys.length > 0) {
-    logger?.warn("Some updated settings were invalid and kept their previous values");
+    logger?.warn("Some updated settings were invalid and reset to their defaults");
     logger?.debug(`Dropped keys: ${salvage.droppedKeys.join(", ")}`);
   }
 
@@ -1573,5 +1629,10 @@ export function _resetGlobalSettings(): void {
   if (migrationTimer !== undefined) {
     clearTimeout(migrationTimer);
     migrationTimer = undefined;
+  }
+
+  if (loadRetryTimer !== undefined) {
+    clearTimeout(loadRetryTimer);
+    loadRetryTimer = undefined;
   }
 }
