@@ -38,3 +38,44 @@ export function injectBridgeScriptPlugin({ outputDir, bridge, include }) {
     },
   };
 }
+
+const KNOWN_BRIDGES = ["pi-settings-bridge.js", "ulanzi-pi-bridge.js", "settings-window-bridge.js"];
+
+/**
+ * Build-time guard (#993 phase 2): every generated PI page carries EXACTLY the
+ * one bridge it is meant to, immediately before sdpi-components.js, and no
+ * other bridge — two bridges on one page double-patch WebSocket. Runs in
+ * closeBundle (after every writeBundle-stage injector has finished).
+ *
+ * @param {{ outputDir: string, expectedBridge: (fileName: string) => string }} options
+ */
+export function assertBridgeInjectionPlugin({ outputDir, expectedBridge }) {
+  const sdpiTag = '<script src="sdpi-components.js"></script>';
+
+  return {
+    name: "assert-bridge-injection",
+    closeBundle() {
+      const problems = [];
+
+      for (const file of readdirSync(outputDir).filter((f) => f.endsWith(".html"))) {
+        const content = readFileSync(path.join(outputDir, file), "utf-8");
+
+        if (!content.includes(sdpiTag)) continue;
+
+        const bridge = expectedBridge(file);
+        const bridgeTag = `<script src="${bridge}"></script>`;
+        const count = content.split(bridgeTag).length - 1;
+        const ordered = content.includes(`${bridgeTag}\n    ${sdpiTag}`);
+        const others = KNOWN_BRIDGES.filter((b) => b !== bridge && content.includes(`<script src="${b}"></script>`));
+
+        if (count !== 1 || !ordered || others.length > 0) {
+          problems.push(
+            `${file}: expected ${bridge} exactly once before sdpi-components.js (found ${count}${ordered ? "" : ", wrong order"}${others.length ? `, also ${others.join("+")}` : ""})`,
+          );
+        }
+      }
+
+      if (problems.length > 0) throw new Error(`PI bridge injection check failed:\n${problems.join("\n")}`);
+    },
+  };
+}

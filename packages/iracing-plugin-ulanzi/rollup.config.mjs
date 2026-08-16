@@ -1,5 +1,6 @@
 import { processAndCopyAudioAssetsPlugin } from "@iracedeck/audio-assets/build";
 import {
+  assertBridgeInjectionPlugin,
   browserDir,
   injectBridgeScriptPlugin,
   partialsDir,
@@ -356,6 +357,12 @@ const config = {
         this.emitFile({ fileName: "config.json", source: JSON.stringify(config, null, 2), type: "asset" });
       },
     },
+    // Build-time guard (#993 phase 2): every generated PI page carries exactly
+    // its one bridge, immediately before sdpi-components.js, and no other bridge.
+    assertBridgeInjectionPlugin({
+      outputDir: `${sdPlugin}/ui`,
+      expectedBridge: (file) => (file === SETTINGS_WINDOW_HTML ? SETTINGS_WINDOW_BRIDGE : "ulanzi-pi-bridge.js"),
+    }),
   ],
 };
 

@@ -11,6 +11,7 @@ node_modules/
 *.sdPlugin/ui/pi-components.js
 *.sdPlugin/ui/sdpi-components.js
 *.sdPlugin/ui/settings-window-bridge.js
+*.sdPlugin/ui/pi-settings-bridge.js
 *.sdPlugin/ui/iracedeck-logo.png
 
 # Per-action static icons copied at build time (source of truth in @iracedeck/iracing-actions)
