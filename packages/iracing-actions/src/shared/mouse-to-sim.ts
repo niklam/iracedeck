@@ -8,9 +8,11 @@
  *
  * The composition order (focus first, then move) and the decision to focus
  * unconditionally are FEATURE policy, which is why they live here rather than in
- * deck-core's window service: pressing this key is explicit user intent, so it
- * deliberately ignores the `focusIRacingWindow` global setting that gates the
- * plugin-level before-every-action focus.
+ * deck-core: `window-focus-service` and `mouse-pointer-service` are deliberately
+ * independent, and this is the only place that says the two belong together.
+ * `focusIRacingNow()` rather than `focusIRacingIfEnabled()` because pressing this
+ * key is explicit user intent, so it ignores the `focusIRacingWindow` opt-out that
+ * gates the implicit before-every-action focus.
  *
  * Best-effort throughout: every failure is logged and swallowed. Moving a pointer
  * has no effect on the car, so degrading to a no-op is always safe.
@@ -20,7 +22,7 @@
  * `focusIRacingIfEnabled()` already does exactly this before every key press when
  * the global setting is on.
  */
-import { getWindowService, PointerMoveResult, WindowFocusResult } from "@iracedeck/deck-core";
+import { focusIRacingNow, FocusResult, movePointerToSim, PointerMoveResult } from "@iracedeck/deck-core";
 import type { ILogger } from "@iracedeck/logger";
 
 /**
@@ -30,23 +32,20 @@ import type { ILogger } from "@iracedeck/logger";
  */
 export function bringPointerToSim(logger: ILogger): void {
   try {
-    const windowService = getWindowService();
-    const focusResult = windowService.focus();
+    const focusResult = focusIRacingNow();
 
-    // Nothing to point at — we looked and iRacing is not running. The window
-    // service already warned, so a second warning here would only be noise.
-    // ONLY this code short-circuits: WindowFocusResult.Unavailable means the focus
-    // call could not be attempted (no focuser injected, or it threw), which says
-    // nothing about the window and must not suppress an independent pointer move.
-    if (focusResult === WindowFocusResult.WindowNotFound) {
+    // Nothing to point at — we looked and iRacing is not running. The focus
+    // service already logged it, so a second message here would only be noise.
+    // ONLY this code short-circuits: a `null` result means the focus call could
+    // not be made at all (no focuser injected, or it threw), which says nothing
+    // about the window and must not suppress an independent pointer move.
+    if (focusResult === FocusResult.WindowNotFound) {
       return;
     }
 
     // A focus timeout is not fatal here either: the window exists, so its client
     // area is still a valid pointer target even if the foreground swap lagged.
-    const moveResult = windowService.movePointerToSim();
-
-    if (moveResult === PointerMoveResult.Moved) {
+    if (movePointerToSim() === PointerMoveResult.Moved) {
       logger.info("Mouse pointer brought to the iRacing window");
     }
   } catch (error) {

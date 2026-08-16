@@ -161,15 +161,15 @@ await getKeyboard().sendKeySequence([comboA, comboB]);     // atomic multi-chord
 ## Plugin Setup for Keyboard Support
 
 When using `getKeyboard()` in a plugin, you MUST:
-1. Import `initializeKeyboard`, `initializeWindowService`, and `focusIRacingIfEnabled` from `@iracedeck/deck-core` — since #926 the window service lives in deck-core, replacing the three duplicated per-plugin `src/shared/window-focus.ts` modules
+1. Import `initializeKeyboard`, `initWindowFocus`, `focusIRacingIfEnabled`, and `initMousePointer` from `@iracedeck/deck-core` (the window focus service moved there in #930 and the mouse pointer service arrived in #926; both delegates are injected, so deck-core never imports `@iracedeck/iracing-native`)
 2. Call `initializeKeyboard()` before registering actions
-3. Call `initializeWindowService()` to set up window focusing and mouse-pointer placement
+3. Call `initWindowFocus()` to set up window focusing, and `initMousePointer()` for mouse-pointer placement
 4. Register `focusIRacingIfEnabled()` listeners on the adapter before registering actions
 
 ```typescript
 // plugin.ts
 import { ElgatoPlatformAdapter } from "@iracedeck/deck-adapter-elgato";
-import { focusIRacingIfEnabled, initializeKeyboard, initializeWindowService } from "@iracedeck/deck-core";
+import { focusIRacingIfEnabled, initializeKeyboard, initMousePointer, initWindowFocus } from "@iracedeck/deck-core";
 import { IRacingNative } from "@iracedeck/iracing-native";
 
 const adapter = new ElgatoPlatformAdapter(streamDeck);
@@ -183,10 +183,10 @@ initializeKeyboard(
   (chords, holdMs) => native.sendScanKeySequence(chords, holdMs), // atomic multi-chord sequence (#818)
 );
 
-initializeWindowService(adapter.createLogger("WindowService"), {
-  focuser: () => native.focusIRacingWindow(),
-  pointerMover: (x, y) => native.moveMouseToIRacingWindow(x, y), // Mouse to Sim (#926)
-});
+initWindowFocus(adapter.createLogger("WindowFocus"), () => native.focusIRacingWindow());
+
+// Mouse pointer placement for the View Adjustment Mouse to Sim mode (#926)
+initMousePointer(adapter.createLogger("MousePointer"), (x, y) => native.moveMouseToIRacingWindow(x, y));
 
 // Focus iRacing before any action (BEFORE registering actions)
 adapter.onKeyDown(() => focusIRacingIfEnabled());
@@ -196,7 +196,9 @@ adapter.onDialRotate(() => focusIRacingIfEnabled());
 // Then register actions...
 ```
 
-When the `focusIRacingWindow` global setting is enabled, `focusIRacingIfEnabled()` is called before any action handler fires. This is registered as a listener on the adapter's key/dial events. Action code that needs explicit, unconditional control — the View Adjustment **Mouse to Sim** mode is the only consumer today — calls `getWindowService().focus()` / `.movePointerToSim()` instead, which ignore that setting because pressing such a key is explicit intent.
+When the `focusIRacingWindow` global setting is enabled, `focusIRacingIfEnabled()` is called before any action handler fires. This is registered as a listener on the adapter's key/dial events. The setting defaults to **on** since #930 (existing installs keep their persisted value), so this path runs on essentially every press — hence two logging rules: a `WindowNotFound` result logs at `warn` only when `isIRacingActive()` says iRacing is running and at `debug` otherwise, and `FocusTimedOut` warns once per episode then drops to `debug` until a focus succeeds (its usual cause, an elevation mismatch, makes *every* press time out). The gate is `hasReceivedHostSettings()`, **not** `isGlobalSettingsInitialized()`: the latter flips true before the host's first payload, while the cache is still schema defaults — which now say focus is on — so it would override an explicit opt-out during startup. Note what focusing does and doesn't fix: keystrokes (keybind and chat actions) go to the focused window, but pure SDK broadcasts use `SendNotifyMessage(HWND_BROADCAST, …)` and arrive regardless of focus — those fail only on an integrity-level mismatch, which is what the elevation probe above covers.
+
+Action code where focusing IS the pressed action calls `focusIRacingNow()` instead (#926) — the View Adjustment **Mouse to Sim** mode is the only consumer today. It shares the same result handling and logging but skips BOTH gates: the opt-out setting and the `hasReceivedHostSettings()` startup gate exist to keep the *implicit* before-every-action focus from surprising anyone, and there is nothing implicit about pressing that key. Pointer placement is a separate service (`initMousePointer` / `movePointerToSim`), never gated on the focus setting for the same reason.
 
 ## Global Key Bindings (Shared Across Actions)
 

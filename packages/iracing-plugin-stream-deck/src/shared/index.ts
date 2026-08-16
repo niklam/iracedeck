@@ -101,15 +101,20 @@ export {
   isIRacingRunning,
   isAppMonitorInitialized,
   _resetAppMonitor,
+  // Window focus service
+  initWindowFocus,
+  focusIRacingIfEnabled,
+  FocusResult,
+  type WindowFocuser,
   // Key binding utilities
   formatKeyBinding,
   parseKeyBinding,
-  // Window service (focus + mouse pointer placement, #926)
-  initializeWindowService,
-  getWindowService,
-  isWindowServiceInitialized,
+  // Window focus service (#930) and mouse pointer service (#926)
+  initWindowFocus,
   focusIRacingIfEnabled,
-  type IWindowService,
+  focusIRacingNow,
+  initMousePointer,
+  movePointerToSim,
 } from "@iracedeck/deck-core";
 
 // Re-export from deck-adapter-elgato

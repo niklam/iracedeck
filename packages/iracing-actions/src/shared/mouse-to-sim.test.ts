@@ -4,9 +4,10 @@ const focus = vi.fn();
 const movePointerToSim = vi.fn();
 
 vi.mock("@iracedeck/deck-core", () => ({
-  getWindowService: () => ({ focus, movePointerToSim }),
-  WindowFocusResult: { Unavailable: -1, AlreadyFocused: 0, Focused: 1, WindowNotFound: 2, FocusTimedOut: 3 },
-  PointerMoveResult: { Unavailable: -1, Moved: 0, WindowNotFound: 1, Failed: 2 },
+  focusIRacingNow: focus,
+  movePointerToSim,
+  FocusResult: { AlreadyFocused: 0, Focused: 1, WindowNotFound: 2, FocusTimedOut: 3 },
+  PointerMoveResult: { Moved: 0, WindowNotFound: 1, Failed: 2 },
 }));
 
 const { bringPointerToSim } = await import("./mouse-to-sim.js");
@@ -69,7 +70,7 @@ describe("bringPointerToSim", () => {
   });
 
   it("still moves the pointer when focus could not be attempted", () => {
-    focus.mockReturnValue(-1); // Unavailable — no focuser injected, or it threw
+    focus.mockReturnValue(null); // no focuser injected, or it threw
 
     bringPointerToSim(logger);
 

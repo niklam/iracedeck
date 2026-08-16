@@ -16,11 +16,13 @@
         setting="focusIRacingWindow"
         label="Focus iRacing window before sending keys"
         global
+        default="true"
       ></sdpi-checkbox>
     </sdpi-item>
     <div class="ird-supporting-text">
-      Automatically focuses the iRacing window before sending key inputs.
-      Enable if actions aren't working when iRacing is in the background.
+      Brings iRacing to the foreground before sending inputs, so button presses aren't
+      lost to whichever window happens to be active. Turn this off if you'd rather
+      iRaceDeck never changed which window has focus.
     </div>
     <div class="ird-section-subtitle">SimHub Server</div>
     <sdpi-item label="Host">

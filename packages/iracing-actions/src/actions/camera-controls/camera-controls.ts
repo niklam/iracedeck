@@ -70,6 +70,7 @@ import tv1Svg from "@iracedeck/icons/camera-select/tv1.svg";
 import tv2Svg from "@iracedeck/icons/camera-select/tv2.svg";
 import tv3Svg from "@iracedeck/icons/camera-select/tv3.svg";
 import {
+  carInWorld,
   getAllCarNumbers,
   getCameraGroupsFromSessionInfo,
   getCarNumberRawFromSessionInfo,
@@ -77,7 +78,7 @@ import {
 import { getLiveRacePositions } from "@iracedeck/sim-events-iracing";
 import z from "zod";
 
-import { carPresence, computeCarNumberTarget } from "../../shared/car-cycling.js";
+import { computeCarNumberTarget } from "../../shared/car-cycling.js";
 import { setSelectIntent } from "../../shared/car-select-intent.js";
 import { profileEntriesEqual } from "../../shared/profile-entries.js";
 import { availableProfilesForDevice, deviceProfileEntries } from "../race-admin/race-admin-selector.js";
@@ -900,12 +901,12 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
         // car INDEX as a race POSITION, so it lands on whatever car sits at that
         // position and stalls when the focused (pace) car has no valid position.
         // Reuses the dial car-number mode's ordering (computeCarNumberTarget)
-        // and its world-presence walk (carPresence, #885) so both surfaces
+        // and its world-presence walk (carInWorld, #885/#968) so both surfaces
         // agree — including skipping cars that left the world post-race; falls
         // back to the raw cycle helper only out of session (no car list).
         const sessionInfo = this.sdkController.getSessionInfo();
         const cars = getAllCarNumbers(sessionInfo, true, true);
-        const targetCar = computeCarNumberTarget(carIdx, cars, direction, carPresence(telemetry));
+        const targetCar = computeCarNumberTarget(carIdx, cars, direction, carInWorld(telemetry));
 
         if (targetCar) {
           const success = camera.switchNum(targetCar.carNumberRaw, groupNum, cameraNum);

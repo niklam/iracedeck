@@ -65,21 +65,28 @@ vi.mock("@iracedeck/deck-core", () => ({
   svgToDataUri: (svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`,
 }));
 
-vi.mock("@iracedeck/iracing-sdk", async (importOriginal) => ({
-  TrkLoc: { NotInWorld: -1, OffTrack: 0, InPitStall: 1, AproachingPits: 2, OnTrack: 3 },
-  // The REAL track-order primitive (#886): the dial's track-order mode is a
-  // composition over it, and the tests below assert real on-track geometry.
-  findNearestCarOnTrack: (await importOriginal<typeof import("@iracedeck/iracing-sdk")>()).findNearestCarOnTrack,
-  getCameraGroupsFromSessionInfo: vi.fn(() => mockGroups.value),
-  getCamerasInGroup: vi.fn(() => mockCameras.value),
-  getCarNumberFromSessionInfo: vi.fn((_s: unknown, carIdx: number) =>
-    mockCarNumberByIdx.value ? (mockCarNumberByIdx.value[carIdx] ?? null) : mockCarNumber.value,
-  ),
-  getCarNumberRawFromSessionInfo: vi.fn((_s: unknown, carIdx: number) =>
-    mockCarNumberRawByIdx.value ? (mockCarNumberRawByIdx.value[carIdx] ?? null) : null,
-  ),
-  getAllCarNumbers: vi.fn(() => mockAllCars.value),
-}));
+vi.mock("@iracedeck/iracing-sdk", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@iracedeck/iracing-sdk")>();
+
+  return {
+    TrkLoc: actual.TrkLoc,
+    // The REAL track-order primitive (#886): the dial's track-order mode is a
+    // composition over it, and the tests below assert real on-track geometry.
+    findNearestCarOnTrack: actual.findNearestCarOnTrack,
+    // The REAL in-world predicate (#968) for the same reason — and the primitive
+    // above consumes it, so a stub here would silently change its behaviour.
+    carInWorld: actual.carInWorld,
+    getCameraGroupsFromSessionInfo: vi.fn(() => mockGroups.value),
+    getCamerasInGroup: vi.fn(() => mockCameras.value),
+    getCarNumberFromSessionInfo: vi.fn((_s: unknown, carIdx: number) =>
+      mockCarNumberByIdx.value ? (mockCarNumberByIdx.value[carIdx] ?? null) : mockCarNumber.value,
+    ),
+    getCarNumberRawFromSessionInfo: vi.fn((_s: unknown, carIdx: number) =>
+      mockCarNumberRawByIdx.value ? (mockCarNumberRawByIdx.value[carIdx] ?? null) : null,
+    ),
+    getAllCarNumbers: vi.fn(() => mockAllCars.value),
+  };
+});
 
 /** Fake dial (encoder) action context. */
 function dialContext(id: string) {
@@ -895,6 +902,43 @@ describe("CameraDialSurface", () => {
       // order stays coherent between preview and execution too. Clockwise →
       // the car ahead (P1 → carIdx2).
       expect(host.focusCarNumber).toHaveBeenCalledWith(11);
+    });
+
+    it("falls back to official CarIdxPosition when the canonical order ranks nobody (#968)", () => {
+      // The canonical order is a DENSE array of zeros whenever no car is scored
+      // — it ranks by CarIdxLapCompleted + CarIdxLapDistPct, so a field with no
+      // completed laps (or a post-race cooldown where the counts are cleared)
+      // yields all zeros. A plain `??` accepts that non-null array and the mode
+      // dies with maxPosition = 0. NOTE this fallback does NOT rescue the
+      // parade lap: there iRacing's own CarIdxPosition is all zeros too
+      // (capture 20260815-203305), so the mode legitimately has nothing to
+      // cycle until positions exist at all — tracked separately in #974.
+      mockCarNumberRawByIdx.value = { 2: 11, 3: 42 };
+      const host = makeHost({
+        getRacePositions: vi.fn(() => [0, 0, 0, 0]),
+        getTelemetry: vi.fn(() => ({ CamCarIdx: 3, CarIdxPosition: [0, 3, 1, 2] }) as never),
+      });
+      const surface = new CameraDialSurface(host as never);
+      surface.rotate(dialContext("r2") as never, dial({ mode: "race-position" }), 1, false);
+
+      // Clockwise → the car ahead (P2 → P1 → carIdx2).
+      expect(host.focusCarNumber).toHaveBeenCalledWith(11);
+    });
+
+    it("keeps using the canonical order once ANY car is ranked, never the official one", () => {
+      // Guards the fallback above from widening: a partially-populated
+      // canonical order (only the ranked cars) is still the authority.
+      mockCarNumberRawByIdx.value = { 1: 3, 2: 11, 3: 42 };
+      const host = makeHost({
+        getRacePositions: vi.fn(() => [0, 0, 1, 2]),
+        getTelemetry: vi.fn(() => ({ CamCarIdx: 3, CarIdxPosition: [0, 1, 3, 2] }) as never),
+      });
+      const surface = new CameraDialSurface(host as never);
+      surface.rotate(dialContext("r2") as never, dial({ mode: "race-position" }), 1, false);
+
+      // Canonical P1 is carIdx2 (#11); the official order would say carIdx1 (#3).
+      expect(host.focusCarNumber).toHaveBeenCalledWith(11);
+      expect(host.focusCarNumber).not.toHaveBeenCalledWith(3);
     });
 
     it("walks past a car that left the world (post-race tow) instead of dispatching a dead switch (#885)", () => {

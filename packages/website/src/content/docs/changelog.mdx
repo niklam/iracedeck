@@ -20,9 +20,15 @@ _Unreleased_
 - The Camera Controls dial gains a Cycle by Track Order mode: turn to jump to the car physically ahead of or behind the focused car on the road, regardless of standings — the order you see in front of you, ideal for hopping between the cars involved in an incident while reviewing a replay. It reads live car placement, so scrubbing a replay from inside a live session follows the live field rather than the replay cursor. Clockwise selects the car ahead (Reverse rotation flips it), the pace car and cars that have left the world are skipped, and the touch strip shows the focused car number with the ahead / behind cars previewed on the side each turn lands on.
 - View Adjustment gains a Mouse to Sim mode: one press focuses the iRacing window and moves your mouse pointer into it, near the top centre of the sim window where iRacing's own on-screen UI sits — for VR drivers who can't see where the pointer wandered off to across their monitors. It moves the pointer without clicking, so it's safe to hit blind, and it needs no key binding. Also available as a Stream Deck+ dial press or touch gesture.
 
+**Improvements**
+
+- iRaceDeck now brings iRacing to the foreground before sending keystrokes out of the box: the *Focus iRacing window before sending keys* setting is enabled by default on new installations, so key-binding and chat actions are no longer silently swallowed when another window has focus. Existing installations keep whatever setting they already had — to switch it on, tick the box under Common Settings in any action's Property Inspector.
+
 **Bug Fixes**
 
 - Cycle Sub-Camera now actually switches the camera, on both the keypad mode and the camera dial. iRacing's camera commands turned out to have no working control over the individual camera within a group, so the mode now triggers the sim's own Next / Previous Sub Camera controls instead — preconfigured to iRacing's defaults (`B` and `Shift+B`), so it works without setup, and configurable under Related Key Bindings if you have rebound them. The camera focus stays put while the shot changes, so it works with any car, the pace car, or a scenic view focused.
+- Cycling the camera between cars works again while the field is still on its first lap. The Camera Controls dial's Cycle by Car # mode, the keypad's Cycle Car mode, and Replay Control's Next / Previous Car (Number Order) modes were doing nothing during the formation lap, because a car that had not yet completed a lap was treated as not being on track — so on the pace lap the plugin considered the whole field absent. Cycle by Track Order was never affected.
+- The Camera Controls dial's Cycle by Race Position mode now falls back to iRacing's own position numbers whenever the plugin's live running order has nobody ranked — for example after the race finishes, where the mode previously stopped responding. (Before the green flag neither order exists yet, so this mode still has nothing to cycle during the parade lap.)
 
 **Maintenance**
 
