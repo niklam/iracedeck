@@ -141,7 +141,7 @@ describe("createSettingsChannelRouter", () => {
     h.loopOpen();
 
     expect(h.router.state).toBe("loopback");
-    // the settle timer bridges bootstrapping+connecting; only cleared once the loopback opens
+    // the connecting-phase settle timer (armed inside connect()) is cleared once the loopback opens
     expect(h.timers[0]?.cleared).toBe(true);
     expect(h.loop).toEqual([
       BOOTSTRAP, // the router's own read of the file's values
@@ -150,7 +150,7 @@ describe("createSettingsChannelRouter", () => {
     ]);
   });
 
-  it("falls back when the loopback connect stalls (settle timer bridges bootstrapping and connecting)", () => {
+  it("falls back when the loopback connect stalls (a fresh settle timer arms on entering connecting)", () => {
     const h = harness({ bootstrapTimeoutMs: 10 });
     h.router.onHostOpen();
     h.router.onPiSend({ event: "getGlobalSettings" });
@@ -307,6 +307,24 @@ describe("createSettingsChannelRouter", () => {
     expect(h.router.state).toBe("connecting");
   });
 
+  it("arms a fresh settle timer on a late-switch/reconnect connect, so a stall from fallback still falls back", () => {
+    const h = harness({ bootstrapTimeoutMs: 10 });
+    h.router.onHostOpen();
+    h.router.onHostMessage(hostReply({ noChannel: true })); // -> fallback
+    expect(h.router.state).toBe("fallback");
+
+    h.router.onPiSend({ event: "getGlobalSettings" });
+    h.router.onHostMessage(hostReply({ _settingsChannel: CHANNEL })); // late switch -> connecting, no onOpen
+    expect(h.router.state).toBe("connecting");
+
+    h.fireTimer(); // the loopback never opened or closed
+
+    expect(h.router.state).toBe("fallback");
+    expect(h.pi.at(-1)).toEqual(hostReply({ _settingsChannel: CHANNEL }));
+    expect(h.host.at(-1)).toEqual({ event: "getGlobalSettings" });
+    expect(h.warnings.at(-1)).toMatch(/did not open/);
+  });
+
   it("a loopback close after switch-over falls back to the host for later frames and warns once", () => {
     const h = harness();
     h.router.onHostOpen();
@@ -346,5 +364,15 @@ describe("createSettingsChannelRouter", () => {
     h.router.onPiSend({ event: "getGlobalSettings" });
 
     expect(h.host.at(-1)).toEqual({ event: "getGlobalSettings" });
+  });
+
+  it("onHostClose before the bootstrap completes returns to idle, so a retried onHostOpen bootstraps again", () => {
+    const h = harness();
+    h.router.onHostOpen();
+    h.router.onHostClose();
+    h.router.onHostOpen();
+
+    expect(h.router.state).toBe("bootstrapping");
+    expect(h.host).toEqual([BOOTSTRAP, BOOTSTRAP]);
   });
 });

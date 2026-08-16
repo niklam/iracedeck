@@ -12,10 +12,13 @@
  * the truth, so host pushes are dropped after the switch. Everything else a PI
  * sends or receives passes through untouched.
  *
- * One settle timer bridges both the `bootstrapping` and `connecting` states:
- * it is armed on the bootstrap read and only cleared once the loopback
- * actually opens (or the router falls back for any other reason). A loopback
- * transport that never calls `onOpen`/`onClose` — a stalled connect — still
+ * A settle timer is armed on every entrance to `bootstrapping` (the initial
+ * bootstrap read, in `onHostOpen()`) and to `connecting` (every `connect()`
+ * call — the first attempt straight out of `bootstrapping`, a late switch
+ * from `fallback`, or a reconnect after a post-switch loopback close), and is
+ * cleared once that phase resolves (the loopback opens, or the router falls
+ * back for any other reason). A loopback transport that never calls
+ * `onOpen`/`onClose` — a stalled connect, however it was entered — still
  * resolves within `bootstrapTimeoutMs` instead of leaving sdpi's
  * `getGlobalSettings()` promise, and every `global` control, unresolved
  * forever.
@@ -28,6 +31,15 @@
  * opened) so a host push repeating the same channel doesn't retry a dead end.
  * A clean close AFTER a successful switch-over is not a refusal, so it resets
  * `lastTried` — a later push repeating that channel is free to reconnect.
+ *
+ * `onHostClose()` closes any open loopback and clears the timer. If the host
+ * socket closes before the bootstrap ever completed (`idle`/`bootstrapping` —
+ * e.g. a bridge's first connection attempt failing outright), the router
+ * returns to `idle` so a retried `onHostOpen()` can bootstrap again instead of
+ * being permanently refused; any already-queued sdpi frames stay queued and
+ * replay once that retry resolves. A close from any later state
+ * (`connecting`, `loopback`, `fallback`) lands in `fallback`, since the page
+ * already had a live settings surface that just went away.
  *
  * Pure: no DOM, no sockets — both bridges (Elgato/Mirabox `pi-settings-bridge`
  * and the Ulanzi PI bridge) supply the transports.
@@ -83,14 +95,17 @@ export interface SettingsChannelRouter {
   /** Every Elgato-shape frame the host delivered. */
   onHostMessage(frame: PiFrame): void;
   /**
-   * The host socket closed. Closes any open loopback and lands the router in
-   * `fallback` so later frames take the host path instead of being dropped
-   * (rather than leaving state pointed at a surface that no longer exists).
+   * The host socket closed. Closes any open loopback and clears the settle
+   * timer. Lands in `idle` if the bootstrap never completed
+   * (`idle`/`bootstrapping`) so a retried `onHostOpen()` can bootstrap again;
+   * otherwise lands in `fallback` so later frames take the host path instead
+   * of being dropped (rather than leaving state pointed at a surface that no
+   * longer exists).
    */
   onHostClose(): void;
 }
 
-/** How long a PI waits — across both the bootstrap read and the loopback connect — before falling back to the host path. */
+/** How long a PI waits, per phase (the bootstrap read, and separately each loopback connect attempt), before that phase falls back to the host path. */
 export const BOOTSTRAP_TIMEOUT_MS = 3000;
 
 const GLOBAL_EVENTS = new Set(["getGlobalSettings", "setGlobalSettings"]);
@@ -160,9 +175,28 @@ export function createSettingsChannelRouter(deps: SettingsChannelRouterDeps): Se
     flushTo(deps.toHost);
   };
 
+  /** Arms the settle timer for the current phase, clearing any existing handle first. */
+  const armTimer = (): void => {
+    clearTimer();
+    timer = deps.setTimeout(() => {
+      timer = undefined;
+
+      if (state === "bootstrapping") {
+        fallbackWith(undefined, "iRaceDeck: deck host did not answer the settings bootstrap — using the host copy");
+      } else if (state === "connecting") {
+        fallbackWith(lastHostPayload, "iRaceDeck: settings channel did not open — using the deck host's copy");
+      }
+    }, timeoutMs);
+  };
+
   const connect = (channel: SettingsChannel): void => {
     state = "connecting";
     lastTried = channel;
+    // Every entrance to "connecting" gets its own settle timer — the first
+    // attempt straight out of "bootstrapping", a late switch from "fallback",
+    // or a reconnect after a post-switch close — none of which onHostOpen()'s
+    // own arm covers, so a stalled loopback could otherwise queue forever.
+    armTimer();
 
     let openedEarly = false;
 
@@ -234,15 +268,7 @@ export function createSettingsChannelRouter(deps: SettingsChannelRouterDeps): Se
 
       state = "bootstrapping";
       deps.toHost(bootstrapFrame());
-      timer = deps.setTimeout(() => {
-        timer = undefined;
-
-        if (state === "bootstrapping") {
-          fallbackWith(undefined, "iRaceDeck: deck host did not answer the settings bootstrap — using the host copy");
-        } else if (state === "connecting") {
-          fallbackWith(lastHostPayload, "iRaceDeck: settings channel did not open — using the deck host's copy");
-        }
-      }, timeoutMs);
+      armTimer();
     },
 
     onPiSend(frame) {
@@ -300,10 +326,16 @@ export function createSettingsChannelRouter(deps: SettingsChannelRouterDeps): Se
     },
 
     onHostClose() {
+      const was = state;
+
       clearTimer();
       loop?.close();
       loop = undefined;
-      state = "fallback";
+      // A close before the bootstrap ever completed (e.g. a bridge's first
+      // connection attempt failing outright) returns to "idle" so a retried
+      // onHostOpen() can bootstrap again; a close from any later state means
+      // the page had a live settings surface that just went away.
+      state = was === "idle" || was === "bootstrapping" ? "idle" : "fallback";
     },
   };
 }
