@@ -5,8 +5,14 @@
  * file per ecosystem under the user's local app data. The host store is
  * read once (migration) and otherwise unused; see the design doc
  * docs/superpowers/specs/2026-08-16-issue-993-plugin-owned-settings-store-design.md.
+ *
+ * Writes are debounced, so a shutdown can strand the last one: every plugin
+ * registers `process.on("exit", () => store.flushSync())` to land it. Only the
+ * synchronous variant works there — `exit` handlers get no event-loop turn, so
+ * the async `flush()` would never run.
  */
 import type { ILogger } from "@iracedeck/logger";
+import { mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { copyFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
@@ -46,6 +52,13 @@ export interface SettingsStore {
   load(): Promise<Record<string, unknown> | undefined>;
   save(settings: Record<string, unknown>): void;
   flush(): Promise<void>;
+  /**
+   * Write any debounced save immediately and SYNCHRONOUSLY. For shutdown paths
+   * that cannot await — `process.on("exit")` runs handlers synchronously, and
+   * the Mirabox/Ulanzi clients terminate via `process.exit(0)` on socket close
+   * — where the async `flush()` would never get its turn on the event loop.
+   */
+  flushSync(): void;
 }
 
 export interface FileSettingsStoreOptions {
@@ -167,6 +180,34 @@ export function createFileSettingsStore(opts: FileSettingsStoreOptions): Setting
 
       await inFlight;
     },
+
+    flushSync() {
+      if (timer !== undefined) {
+        clearTimeout(timer);
+        timer = undefined;
+      }
+
+      const toWrite = pending;
+
+      pending = undefined;
+
+      if (toWrite === undefined) return;
+
+      // Same atomic shape as writeNow(), synchronously: a shutdown must not be
+      // the one write that can leave a half-written settings file behind. An
+      // already-in-flight async write is left alone — it is a strictly older
+      // payload, and both end with a rename, so the last rename wins.
+      try {
+        mkdirSync(dirname(path), { recursive: true });
+        const tmp = `${path}.${process.pid}.sync.tmp`;
+
+        writeFileSync(tmp, JSON.stringify(toWrite, null, 2) + "\n", "utf-8");
+        renameSync(tmp, path);
+        logger.debug(`Settings flushed on shutdown: ${path}`);
+      } catch (error: unknown) {
+        logger.error(`Settings shutdown flush failed: ${String(error)}`);
+      }
+    },
   };
 }
 
@@ -184,5 +225,7 @@ export function createMemorySettingsStore(
       saved.push({ ...settings });
     },
     flush: async () => {},
+    // save() records immediately, so there is never anything pending to land.
+    flushSync: () => {},
   };
 }

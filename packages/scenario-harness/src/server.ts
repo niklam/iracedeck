@@ -10,7 +10,7 @@ import fastifyStatic from "@fastify/static";
 import fastifyWebsocket from "@fastify/websocket";
 import type { AudioBus, IAudioService } from "@iracedeck/audio-service";
 import { AudioChannel } from "@iracedeck/audio-service";
-import { getGlobalSettings, updateGlobalSettings } from "@iracedeck/deck-core";
+import { getGlobalSettings, onGlobalSettingsChange, updateGlobalSettings } from "@iracedeck/deck-core";
 import type { IEventBus, PitReadbackSnapshot, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import type { SessionInfo, TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
@@ -201,8 +201,16 @@ export async function createServer(ctx: HarnessContext): Promise<FastifyInstance
   ctx.controller.onStateChange((state) => {
     broadcast({ kind: "state", section: "controller", value: state });
   });
-  ctx.adapter.onDidReceiveGlobalSettings((settings) => {
+  // Settings come from the plugin-owned store, not the host: since #993 the
+  // core ignores host payloads, so the adapter's onDidReceiveGlobalSettings
+  // never fires for an edit and the panel would go stale. Subscribe to the
+  // settings singleton itself.
+  const unsubscribeSettings = onGlobalSettingsChange((settings) => {
     broadcast({ kind: "state", section: "settings", value: settings });
+  });
+
+  app.addHook("onClose", async () => {
+    unsubscribeSettings();
   });
 
   // ── Forward audio playback start/complete to WS ─────────────────────────

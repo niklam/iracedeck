@@ -21,7 +21,7 @@
  * protects against a partially-bad file instead of a partially-bad host
  * payload.
  *
- * Until the Property Inspector bridge lands (#993 phase 3) a PI still saves to
+ * Until the Property Inspector bridge lands (#993 phase 2) a PI still saves to
  * the deck host's copy, which this module now ignores; the settings window
  * (#992) already writes through the plugin.
  */
@@ -1237,7 +1237,9 @@ export function initGlobalSettings(
     const salvage = parseWithSalvage(merged);
 
     if (salvage === null) {
-      logger?.error("Stored settings unparseable; starting from schema defaults");
+      logger?.error(
+        "Stored settings could not be parsed at all; starting from schema defaults and LEAVING the stored copy untouched for inspection",
+      );
     } else {
       if (salvage.droppedKeys.length > 0) {
         logger?.warn("Some stored settings were invalid and reset to their defaults");
@@ -1262,7 +1264,17 @@ export function initGlobalSettings(
     // Migration and fresh start both write the file so the next start loads
     // it directly. A file load re-saves too — harmless, and it heals a file
     // whose salvage dropped keys.
-    store.save({ ...currentSettings } as Record<string, unknown>);
+    //
+    // The one exception is a WHOLESALE parse failure: the cache is then pure
+    // schema defaults, and writing those would destroy the very file someone
+    // needs to look at to find out why. Leave it alone; the user keeps their
+    // settings on disk, and a fixed file loads normally next start. (Defensive:
+    // parseWithSalvage only fails wholesale on a root-level type error, and
+    // `merged` above is always a fresh object literal — so this is unreachable
+    // today. It stops being unreachable the moment the schema grows a
+    // root-level refinement.)
+    if (salvage !== null) store.save({ ...currentSettings } as Record<string, unknown>);
+
     notifyListeners();
   };
 
@@ -1274,7 +1286,7 @@ export function initGlobalSettings(
     if (!isCurrent()) return;
 
     if (storeReady || migrationDone || !migrationRequested) {
-      // Not worth an info line: until the PI bridge lands (#993 phase 3) every
+      // Not worth an info line: until the PI bridge lands (#993 phase 2) every
       // Property Inspector save echoes here, and none of them are ingested.
       logger?.debug("Ignoring host settings payload: the settings store is authoritative");
 

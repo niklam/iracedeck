@@ -124,6 +124,33 @@ describe("createFileSettingsStore", () => {
     await expect(store.flush()).resolves.toBeUndefined();
   });
 
+  it("flushSync() writes the pending save synchronously — the shutdown path", () => {
+    store.save({ shutdown: "saved" });
+
+    // No await anywhere: process.on("exit") can only run synchronous work.
+    store.flushSync();
+
+    expect(JSON.parse(readFileSync(store.path, "utf-8"))).toEqual({ shutdown: "saved" });
+    expect(readdirSync(join(dir, "sub")).filter((f) => f.endsWith(".tmp"))).toEqual([]);
+  });
+
+  it("flushSync() clears the debounce timer so the pending write cannot fire twice", async () => {
+    store.save({ n: 1 });
+    store.flushSync();
+    rmSync(store.path, { force: true });
+
+    // Well past the 10 ms debounce: a surviving timer would recreate the file.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(existsSync(store.path)).toBe(false);
+  });
+
+  it("flushSync() with nothing pending writes nothing", () => {
+    store.flushSync();
+
+    expect(existsSync(store.path)).toBe(false);
+  });
+
   it("load() resolves to undefined when rename fails (copy fallback)", async () => {
     // Setup: write a valid file, then corrupt it
     store.save({ ok: true });
@@ -185,6 +212,7 @@ describe("createMemorySettingsStore", () => {
     expect(await store.load()).toEqual({ a: 1 });
     store.save({ a: 2 });
     await store.flush();
+    store.flushSync();
     expect(store.saved).toEqual([{ a: 2 }]);
   });
 
