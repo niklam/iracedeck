@@ -14,8 +14,8 @@ Check these descriptions for drift as part of **every release's** release-notes 
 | Action count (Mirabox) | 31 (no Switch Profile) | Mirabox manifest `Actions` |
 | Dial-capable actions (Elgato only) | 16 | `iracedeck-actions` skill / actions with `encoder: true` |
 | Headline features | Race Engineer, live data on keys, template variables, dials, profiles | changelog / website |
-| Supported Elgato devices | Stream Deck, Mini, XL, + | website footer |
-| Supported Mirabox devices | VSDinside Stream Dock, SOOMFON, VAPOURD | website footer |
+| Supported Elgato devices | Stream Deck, Mini, XL, + | `packages/website/src/data/brands.ts` (`ECOSYSTEMS.elgato.devices`) |
+| Supported Mirabox brands | Mirabox, Stream Dock, SOOMFON, VAPOURD, KILOGOGRAPH, HALCONTORNO, VSDinside, Nouvolo (list is open-ended) | `packages/website/src/data/brands.ts` (`BRANDS`) |
 | Elgato requirements | Stream Deck software 7.1+, Windows 10+ | Elgato manifest `Software`/`OS` |
 | Mirabox requirements | Stream Dock software 3.10.188+, Windows 10+ | Mirabox manifest `Software`/`OS` |
 
