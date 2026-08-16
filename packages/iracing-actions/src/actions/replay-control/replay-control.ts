@@ -58,6 +58,7 @@ import speedDisplayIconSvg from "@iracedeck/icons/replay-control/speed-display.s
 import speedIncreaseIconSvg from "@iracedeck/icons/replay-control/speed-increase.svg";
 import stopIconSvg from "@iracedeck/icons/replay-control/stop.svg";
 import {
+  carInWorld,
   findNearestCarOnTrack,
   getAllCarNumbers,
   getCarNumberRawFromSessionInfo,
@@ -66,7 +67,7 @@ import {
 } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
-import { carPresence, computeCarNumberTarget } from "../../shared/car-cycling.js";
+import { computeCarNumberTarget } from "../../shared/car-cycling.js";
 import { RepeatController } from "../../shared/repeat-controller.js";
 
 const REPLAY_CONTROL_MODES = [
@@ -680,7 +681,7 @@ export function findFastestLapForCar(
  * Returns the CarNumberRaw value for camera API use, or null if not found.
  *
  * Delegates to the shared `computeCarNumberTarget` walk (#885), so an
- * `isPresent` predicate (see `carPresence`) makes it skip cars that are no
+ * `isPresent` predicate (the shared `carInWorld`) makes it skip cars that are no
  * longer in the sim world — session info keeps every driver listed after they
  * tow out or leave post-race, but iRacing silently ignores a camera switch to
  * an absent car, which would dead-loop the cycle on the same target.
@@ -1767,7 +1768,7 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
         const navDirection = mode === "next-car-number" ? "next" : "prev";
         // Skip cars that left the world (#885) — switching to one is silently
         // ignored by iRacing and would dead-loop the cycle on the same target.
-        const carNum = findAdjacentCarByNumber(sessionInfo, camCarIdx, navDirection, carPresence(telemetry));
+        const carNum = findAdjacentCarByNumber(sessionInfo, camCarIdx, navDirection, carInWorld(telemetry));
 
         if (carNum === null) {
           this.logger.warn("Could not find adjacent car by number");
