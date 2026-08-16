@@ -151,6 +151,29 @@ describe("createSettingsWindowController — assets dir", () => {
   });
 });
 
+describe("createSettingsWindowController.ensureStarted (#993)", () => {
+  it("starts the server without opening a window and returns the channel", async () => {
+    const spawnApp = vi.fn();
+    const controller = createSettingsWindowController({
+      renderPage: () => PAGE,
+      findBrowser: () => "C:/edge/msedge.exe",
+      spawnApp,
+      openUrl: vi.fn(async (_url: string) => {}),
+      logger: silentLogger,
+    });
+    teardown = () => controller.close();
+
+    const channel = await controller.ensureStarted();
+
+    expect(channel.port).toBeGreaterThan(0);
+    expect(channel.token).toMatch(/^[0-9a-f]{32,}$/);
+    expect(spawnApp).not.toHaveBeenCalled();
+    // A later open() reuses the same server.
+    await controller.open();
+    expect(new URL(spawnApp.mock.calls[0]?.[1] as string).port).toBe(String(channel.port));
+  });
+});
+
 describe("createSettingsWindowController — plugin-bound extras", () => {
   it("passes the persisted window bounds to the spawner so a resized window reopens where it was", async () => {
     const spawnApp = vi.fn();
