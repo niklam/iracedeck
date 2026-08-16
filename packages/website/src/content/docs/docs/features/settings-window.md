@@ -39,7 +39,7 @@ iRaceDeck keeps every setting on this page in a file of its own, in your user pr
 
 The **Diagnostics** tab shows the exact path for your installation and has an **Open folder** button that reveals the file in Explorer.
 
-The first time you start a version that stores settings this way, iRaceDeck copies your existing settings over from the deck software automatically — there is nothing to do, and nothing is taken away from the deck software's own copy. From then on your settings live with you rather than inside the deck software's own storage, so they survive plugin updates and reinstalls.
+The first time you start a version that stores settings this way, iRaceDeck copies your existing settings over from the deck software automatically — there is nothing to do. Your deck software's own copy is read that once and then left exactly as it was, so nothing is taken away from it. From then on your settings live with you rather than inside the deck software's own storage, so they survive plugin updates and reinstalls.
 
 To back up your configuration, copy that one file somewhere safe; to restore it, put it back and restart the deck software. Each deck ecosystem gets its own folder, so a Stream Deck and an Ulanzi Deck installation on the same PC never share settings.
 

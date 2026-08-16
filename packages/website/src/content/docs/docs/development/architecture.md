@@ -145,7 +145,7 @@ The render path is fully abstracted: `iracing-actions` hands a finished icon —
 
 ### The settings path (the settings window)
 
-Since #992 there is a third outbound path that has nothing to do with iRacing: the plugin **serves a web page** and the user's browser is a client of the plugin. And since #993 the plugin also **owns the settings themselves**: plugin-global settings live in one JSON file per ecosystem (`SettingsStore` → `%LOCALAPPDATA%\iRaceDeck\Settings\<Stream Deck | Mirabox | Ulanzi>\global-settings.json`), loaded at startup and saved — debounced and atomically — on every change. The deck host's own store is now touched at most twice: it is **read once** — only when there is no file yet, to migrate an existing installation's settings across on the first start after the upgrade — and **written once per start** with `_settingsChannel` (the loopback server's port and token), the bootstrap every Property Inspector will use to find the plugin.
+Since #992 there is a third outbound path that has nothing to do with iRacing: the plugin **serves a web page** and the user's browser is a client of the plugin. And since #993 the plugin also **owns the settings themselves**: plugin-global settings live in one JSON file per ecosystem (`SettingsStore` → `%LOCALAPPDATA%\iRaceDeck\Settings\<Stream Deck | Mirabox | Ulanzi>\global-settings.json`), loaded at startup and saved — debounced and atomically — on every change. The deck host's own store is now **read once and never written**: the read happens only when there is no file yet, to migrate an existing installation's settings across on the first start after the upgrade. Its copy is left exactly as the migration found it, which keeps it usable as a downgrade safety net. The next phase adds one write per start — `_settingsChannel` (the loopback server's port and token), the bootstrap every Property Inspector will use to find the plugin — and because a deck host's `setGlobalSettings` replaces the whole stored object rather than merging into it, that write has to mirror the plugin's full cache alongside the new key.
 
 ```mermaid
 flowchart LR
@@ -167,8 +167,8 @@ flowchart LR
   host -->|"read ONCE — migration"| core
   core --> gs
   gs -->|"store ready"| boot
-  boot -->|"write ONCE per start — _settingsChannel"| core
-  core --> host
+  boot -.->|"phase 2: guarded-mirror bootstrap write"| core
+  core -.-> host
   pi -->|"setGlobalSettings (rerouted to the server next)"| host
 
   classDef ext fill:#33404d,color:#fff,stroke:#1d262e;
@@ -176,7 +176,7 @@ flowchart LR
   classDef core fill:#2d7dd2,color:#fff,stroke:#1f5793;
 ```
 
-The window is the PI framework re-hosted: the same `sdpi-components.js`, `pi-components.js`, and `global-*.ejs` partials, talking to a **fake host** inside the plugin that speaks the global-settings subset of the Elgato PI protocol. Anything the plugin does on the window's behalf — persist its bounds, switch a deck's profile, play an audio preview, reveal the settings file in Explorer, answer SimHub reachability (a direct fetch from the window's origin is cross-origin) — arrives as a `sendToPlugin` command and is validated in `deck-core`. The page is opened as a chromeless app window in a Chromium browser with a dedicated profile, and closes itself when its socket to the plugin dies. The server is no longer started on demand: it comes up from the plugin's store-ready startup block and stays up, so its address is known before any UI asks for it — and that same block, in each plugin's `plugin.ts` rather than `deck-core`'s global-settings module, is what issues the one `_settingsChannel` write to the deck host. If the settings file can't be read, the block never runs: no server, no channel.
+The window is the PI framework re-hosted: the same `sdpi-components.js`, `pi-components.js`, and `global-*.ejs` partials, talking to a **fake host** inside the plugin that speaks the global-settings subset of the Elgato PI protocol. Anything the plugin does on the window's behalf — persist its bounds, switch a deck's profile, play an audio preview, reveal the settings file in Explorer, answer SimHub reachability (a direct fetch from the window's origin is cross-origin) — arrives as a `sendToPlugin` command and is validated in `deck-core`. The page is opened as a chromeless app window in a Chromium browser with a dedicated profile, and closes itself when its socket to the plugin dies. The server is no longer started on demand: it comes up from the plugin's store-ready startup block and stays up, so its address is known before any UI asks for it — and that same block, in each plugin's `plugin.ts` rather than `deck-core`'s global-settings module, is what publishes `_settingsChannel` (into the plugin's own store, and in the next phase into the deck host as the PI bootstrap). If the settings file can't be read, the block never runs: no server, no channel.
 
 Property Inspectors are the one client not yet rerouted: their `sdpi-components` still saves to the deck host's copy, which the plugin no longer reads. The next phase gives every PI the same loopback socket the window uses, bootstrapped from `_settingsChannel`; until then the settings window is the editing surface that reaches the plugin. Details, security model, and rules: `.claude/rules/settings-window.md` and `.claude/rules/global-settings.md`.
 

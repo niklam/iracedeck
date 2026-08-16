@@ -1235,8 +1235,12 @@ Not code. Restart Stream Deck on the build; confirm in order:
 
 1. Plugin log: `No settings file yet; requesting …` → `Migrated global settings from the deck host` → the file exists at `%LOCALAPPDATA%\iRaceDeck\Settings\Stream Deck\global-settings.json` with the expected keys.
 2. Window and PIs both show the migrated values (PIs still read the host copy in phase 1 — expected to match right after migration).
-3. Change a setting in the **window** → file changes (watch the file's mtime) → survives a restart. **This is the Ulanzi-fixing path.**
-4. Downgrade sanity: the host copy still holds the migrated values.
-5. Known phase-1 limitation to confirm, not fix: a change made in a **PI** goes to the host copy only and is **not** picked up by the plugin (the host is no longer read) — this is exactly what phase 2 (PI bridge) addresses; the PIs must be rerouted before release.
+3. PIs are still **populated** after that first start — open two or three different actions' PIs and confirm their global sections are not blank or reset. Phase 1 writes nothing to the host, so nothing may have truncated its copy.
+4. Change a setting in the **window** → the file changes → survives a restart. **This is the Ulanzi-fixing path.** Verify by **CONTENT, not mtime**: the file is re-saved on every start (the load-time re-save), so its mtime always looks fresh. Diff the JSON, or read back the specific key.
+5. A change made in the window survives a plugin **restart initiated by the deck host** (not just a settings-window close) — that exercises the `process.on("exit")` → `flushSync()` path that lands a save still inside the 250 ms debounce.
+6. Downgrade sanity: the host copy still holds the migrated values after a restart or two. In phase 1 this is expected to hold by construction, since the plugin never writes there.
+7. Diagnostics → **Storage**: the settings-file path text is selectable/copyable. (It renders in a disabled `sdpi-textfield`, which may not be selectable — if it isn't, note it as a phase-2 polish item rather than a blocker.)
+8. Diagnostics → **Open folder** opens Explorer with the settings file **selected**, not just the folder listed. The default path contains a space (`…\Settings\Stream Deck\…`), which is exactly the case the quoted `/select,"<path>"` argument form exists for.
+9. Known phase-1 limitation to confirm, not fix: a change made in a **PI** goes to the host copy only and is **not** picked up by the plugin (the host is no longer read) — this is exactly what phase 2 (PI bridge) addresses; the PIs must be rerouted before release.
 
 Then write the phase-2 plan (PI bridge, all hosts).

@@ -23,7 +23,7 @@ Plugin-global settings live in the **deck host's** store, and two independent fu
 | Configurable location        | **No.** Env override `IRACEDECK_SETTINGS_PATH` only (dev/testing).                                                                                                                                                                                                                              | Niklas dropped it; a pointer-file indirection isn't worth its own failure modes. The window shows **where the file is** (a link/path on Diagnostics) so users can back it up by hand until #996.                                                              |
 | Migration                    | **Copy once, leave the host copy.**                                                                                                                                                                                                                                                             | Downgrade to a pre-#993 plugin still finds settings. On Ulanzi the host has nothing → the file starts at schema defaults (already better than today).                                                                                                         |
 | PI reroute                   | **(L) PIs connect to the plugin's loopback server** exactly like the window.                                                                                                                                                                                                                    | One channel for every UI on every host; doesn't bet on Mirabox/Ulanzi plugin→PI push, which is unverified. The server runs for the plugin's lifetime rather than on demand.                                                                                   |
-| Port + token delivery to PIs | One **bootstrap read of the host store**: the plugin writes `_settingsChannel = {port, token}` there at startup — the _only_ remaining host write — and the PI bridge reads it with a plain host `getGlobalSettings` before switching every later global-settings frame to the loopback socket. | The PI is a host-hosted page whose URL and per-action payload we don't control; the host store is the one universal channel that reaches it. Within-session host writes land on Ulanzi (the write gate's own history proves it — early writes wiped storage). |
+| Port + token delivery to PIs | One **bootstrap read of the host store**: the plugin writes `_settingsChannel = {port, token}` there at startup — the _only_ remaining host write, and **phase 2 only**; see the Amendment under §4.2, it must mirror the whole cache — and the PI bridge reads it with a plain host `getGlobalSettings` before switching every later global-settings frame to the loopback socket. | The PI is a host-hosted page whose URL and per-action payload we don't control; the host store is the one universal channel that reaches it. Within-session host writes land on Ulanzi (the write gate's own history proves it — early writes wiped storage). |
 | Ecosystem folder names       | from `getPluginPlatform()`: `stream-deck`→`Stream Deck`, `mirabox`→`Mirabox`, `ulanzi`→`Ulanzi`                                                                                                                                                                                                 | Human-readable on disk; the mapping is a tested pure function.                                                                                                                                                                                                |
 
 ## 4. Architecture
@@ -38,7 +38,8 @@ Plugin-global settings live in the **deck host's** store, and two independent fu
                                                             SettingsStore (file)        │
                                                         %LOCALAPPDATA%\iRaceDeck\…      │
                                                                                           │
-  deck host store  ──(read ONCE: migration)──▶ global-settings ; ◀──(write ONCE per start:│
+  deck host store  ──(read ONCE: migration)──▶ global-settings ; ◀──(PHASE 2 only, one       │
+                                                                    guarded-mirror write:  │
                                                                     _settingsChannel)     │
                  └──────────────────────────────────────────────────────────────────────┘
 ```
@@ -56,8 +57,22 @@ Plugin-global settings live in the **deck host's** store, and two independent fu
 - Startup: `store.load()` → parsed with salvage → cache; listeners notified once. If `undefined` → **migration**: `adapter.getGlobalSettings()`; on the first `didReceiveGlobalSettings` (or a 10 s timeout, logged) parse the payload with salvage, write it as the file, proceed. Migration state is a module flag; the file's existence is the marker.
 - Writes: `updateGlobalSettings(partial)` / `deleteGlobalSettings(keys)` → merge → parse+salvage → cache → listeners → `store.save(cache)`. **No** pending overlay, first-arrival gate, shrink guard, queued writes. Read-your-writes is trivial (cache is truth).
 - `hasReceivedHostSettings()` becomes `isSettingsStoreReady()` ("the store has loaded — migration done") and the old name is **removed**; its callers in-repo (`focusIRacingIfEnabled`, the plugins' `startupDefaultsApplied` block) are retargeted in the same change. The gate itself is still right: don't act on schema defaults before the real settings are in.
-- After startup the adapter's `setGlobalSettings` is called **exactly once**: `{ _settingsChannel: { port, token } }` for the PIs' bootstrap. `adapter.onDidReceiveGlobalSettings` after migration is **ignored** for the cache (logged at debug) — the host is not truth.
+- ~~After startup the adapter's `setGlobalSettings` is called **exactly once**: `{ _settingsChannel: { port, token } }` for the PIs' bootstrap.~~ **Superseded — see the Amendment below:** phase 1 writes the host not at all, and phase 2's write must mirror the whole cache. `adapter.onDidReceiveGlobalSettings` after migration is **ignored** for the cache (logged at debug) — the host is not truth.
 - Every schema default now reaches existing installs? **No, and that's deliberate:** the migrated file carries whatever the host had, exactly as before; the "changing a default reaches new installs only" rule in `global-settings.md` stays true and gets a note.
+
+#### Amendment (phase-1 final review, 2026-08-16)
+
+The bullet above — "after startup the adapter's `setGlobalSettings` is called **exactly once**: `{ _settingsChannel: { port, token } }`" — is **wrong as written, and phase 1 ships no host write at all.**
+
+A deck host's `setGlobalSettings` **replaces** the entire stored global-settings object; it does not merge. (That is the #896 history in `global-settings.md`, and `scenario-harness/src/mock-platform-adapter.test.ts` asserts it outright: "setGlobalSettings replaces rather than merges".) Writing the bare partial `{ _settingsChannel }` would therefore truncate the host's copy to that one key on the first start after the upgrade — immediately after the migration read — blanking every Property Inspector, which in phase 1 still reads the host, and destroying the copy that is the whole downgrade safety net.
+
+Consequently:
+
+- **Phase 1 writes nothing to the deck host.** The startup block publishes `_settingsChannel` into the plugin's own store only. The host's copy is read once for migration and then left exactly as found.
+- **Phase 2 owns the bootstrap write, as a guarded mirror.** The PI bridge genuinely needs `_settingsChannel` in the host store to find the loopback socket, so phase 2 adds one write per start, and it must:
+  1. send `{ ...getGlobalSettings(), _settingsChannel }` — the plugin's full cache plus the new key — never a bare partial; and
+  2. **skip the write entirely when the store became ready via the migration timeout**, i.e. the host never answered the read. The cache is then pure schema defaults, and mirroring it would overwrite a host copy the plugin never got to see.
+- The Ulanzi adapter needs no write gate either way; its `setGlobalSettings` forwarding is a correct adapter capability and stays as-is.
 
 ### 4.3 The settings server (existing, `settings-window-server.ts`)
 
