@@ -63,6 +63,9 @@ export { ProfileSelect } from "./profile-select.js";
 // Open Settings - button that asks the plugin to open the dedicated settings window (#992)
 export { OpenSettings } from "./open-settings.js";
 
+// Open Folder - button that asks the plugin to reveal the settings file in Explorer (#993)
+export { OpenFolder } from "./open-folder.js";
+
 // Deck Device Select - settings-window picker for which Stream Deck a profile switch targets (#992)
 export { DeckDeviceSelect } from "./deck-device-select.js";
 

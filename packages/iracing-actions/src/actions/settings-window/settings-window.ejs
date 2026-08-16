@@ -302,7 +302,18 @@
 				<h2>Diagnostics</h2>
 				<p class="sw-sub">For troubleshooting and support.</p>
 				<div class="sw-grid">
-					<%- include('accordion', { title: 'Logging', content: include('global-common-diagnostics'), settingsWindow: true }) %>
+					<%#
+					  #993: unlike the Appearance/Race-Engineer panes above, this nests the
+					  group partial's own include() INSIDE the object literal passed to the
+					  accordion's include, rather than calling it directly with its own data
+					  (as __sw is passed elsewhere on this page). That nested call runs in
+					  this page's own top-level scope, which never itself carries
+					  settingsWindow, so it must be told explicitly here; the accordion's own
+					  settingsWindow: true alongside it only makes the CARD flat, it does not
+					  reach the nested include. Without this, the partial's Open Folder
+					  button (guarded on locals.settingsWindow) silently never renders here.
+					%>
+					<%- include('accordion', { title: 'Logging', content: include('global-common-diagnostics', { settingsWindow: true }), settingsWindow: true }) %>
 				</div>
 			</section>
 		</main>

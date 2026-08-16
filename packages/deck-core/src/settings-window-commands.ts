@@ -70,6 +70,10 @@ export interface SettingsWindowCommandDeps {
    * the allow-list (deck-core has no audio dependency).
    */
   previewAudio?: (kind: string) => void;
+  /** Reveal `storePath` in Explorer — the window's "Open folder" button (#993). */
+  openFolder?: (path: string) => void;
+  /** The plugin's own settings-file path; the page never supplies one. */
+  storePath?: string;
 }
 
 /** Build the handler the settings-window server's `onSendToPlugin` is bound to. */
@@ -106,6 +110,11 @@ export function createSettingsWindowCommandHandler(
 
       case "audioPreview":
         if (deps.previewAudio && typeof payload.kind === "string") deps.previewAudio(payload.kind);
+
+        break;
+
+      case "openSettingsFolder":
+        if (deps.openFolder && deps.storePath) deps.openFolder(deps.storePath);
 
         break;
 

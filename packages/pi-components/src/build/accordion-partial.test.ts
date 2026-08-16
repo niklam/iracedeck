@@ -111,6 +111,18 @@ describe("global-common-settings.ejs", () => {
   });
 });
 
+describe("global-common-diagnostics.ejs storage row (#993)", () => {
+  it("shows the settings file path on both surfaces, and the Open folder button only in the window", () => {
+    const pi = render("<%- include('global-common-diagnostics') %>");
+    const win = render("<%- include('global-common-diagnostics', { settingsWindow: true }) %>");
+
+    expect(pi).toContain('setting="_settingsStorePath"');
+    expect(pi).not.toContain("<ird-open-folder");
+    expect(win).toContain('setting="_settingsStorePath"');
+    expect(win).toContain("<ird-open-folder");
+  });
+});
+
 /**
  * The Race Engineer / Pit Crew plugin-wide settings used to be authored
  * inline in pit-crew.ejs. They are now three partials (#992) so the settings

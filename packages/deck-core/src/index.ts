@@ -465,3 +465,5 @@ export {
   type SettingsWindowController,
   type SettingsWindowControllerOptions,
 } from "./settings-window.js";
+// Reveal the settings file in Explorer (issue #993)
+export { explorerSelectArgs, openFolderInExplorer } from "./open-folder.js";
