@@ -984,6 +984,66 @@
         "name": "cant-fix-that-01",
         "text": "We can't fix this car... We're gonna have to retire.",
         "seed": 2
+      },
+      {
+        "name": "too-far-left-repeat-01",
+        "text": "Still too far left."
+      },
+      {
+        "name": "too-far-left-repeat-02",
+        "text": "Nudge it right."
+      },
+      {
+        "name": "too-far-left-repeat-03",
+        "text": "Line it up, still left."
+      },
+      {
+        "name": "too-far-right-repeat-01",
+        "text": "Still too far right."
+      },
+      {
+        "name": "too-far-right-repeat-02",
+        "text": "Nudge it left."
+      },
+      {
+        "name": "too-far-right-repeat-03",
+        "text": "Line it up, still right."
+      },
+      {
+        "name": "too-far-forward-repeat-01",
+        "text": "Still too far forward."
+      },
+      {
+        "name": "too-far-forward-repeat-02",
+        "text": "Back it up."
+      },
+      {
+        "name": "too-far-forward-repeat-03",
+        "text": "Back up, you're too far."
+      },
+      {
+        "name": "too-far-back-repeat-01",
+        "text": "Still too far back."
+      },
+      {
+        "name": "too-far-back-repeat-02",
+        "text": "Ease it forward."
+      },
+      {
+        "name": "too-far-back-repeat-03",
+        "text": "Forward a bit more."
+      },
+      {
+        "name": "bad-angle-repeat-01",
+        "text": "Still at a bad angle."
+      },
+      {
+        "name": "bad-angle-repeat-02",
+        "text": "Straighten it up."
+      },
+      {
+        "name": "bad-angle-repeat-03",
+        "text": "Get it straight."
       }
     ],
     "track-conditions": [
