@@ -127,23 +127,25 @@ describe("createFileSettingsStore", () => {
     // Setup: write a valid file, then corrupt it
     store.save({ ok: true });
     await store.flush();
-    writeFileSync(store.path, "{ not json", "utf-8");
+    const corruptText = "{ not json";
+    writeFileSync(store.path, corruptText, "utf-8");
+
+    // Capture the mocked rename function to verify it was called
+    let mockRename: ReturnType<typeof vi.fn> | undefined;
 
     // Mock node:fs/promises with rename failing, copyFile succeeding
-    await vi.doMock(
-      "node:fs/promises",
-      async () => {
-        const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+    await vi.doMock("node:fs/promises", async () => {
+      const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
 
-        return {
-          ...actual,
-          rename: vi.fn(async () => {
-            throw Object.assign(new Error("EPERM: operation not permitted"), { code: "EPERM" });
-          }),
-        };
-      },
-      { spy: true },
-    );
+      mockRename = vi.fn(async () => {
+        throw Object.assign(new Error("EPERM: operation not permitted"), { code: "EPERM" });
+      });
+
+      return {
+        ...actual,
+        rename: mockRename,
+      };
+    });
 
     vi.resetModules();
     const { createFileSettingsStore: createStoreMocked } = await import("./settings-store.js");
@@ -157,9 +159,19 @@ describe("createFileSettingsStore", () => {
     // load() should return undefined despite rename failure (copy fallback applies)
     expect(await storeWithFailedRename.load()).toBeUndefined();
 
-    // Verify the corrupt file was moved aside (copied, since rename failed)
+    // Assertions unique to copy-fallback path:
+    // (a) Original corrupt file still exists (copy leaves source in place, unlike rename)
+    expect(existsSync(store.path)).toBe(true);
+
+    // (b) The mocked rename was called (proves the failure path was triggered)
+    expect(mockRename).toBeDefined();
+    expect(mockRename?.mock.calls.length).toBeGreaterThan(0);
+
+    // (c) Verify the corrupt file was copied aside with correct content
     const aside = readdirSync(dirname(store.path)).filter((f) => /^global-settings\.corrupt-.*\.json$/.test(f));
     expect(aside.length).toBeGreaterThan(0);
+    const asideContent = readFileSync(join(dirname(store.path), aside[0]), "utf-8");
+    expect(asideContent).toBe(corruptText);
 
     vi.doUnmock("node:fs/promises");
   });
