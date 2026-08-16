@@ -64,6 +64,20 @@ describe("calculateGridPositions", () => {
     expect(order).toEqual([1]);
   });
 
+  it("rejects an absurd Position so no consumer walks a billion ranks", () => {
+    // `Position` becomes the RANK, and consumers iterate rank 1..max (the camera
+    // dial's computeRacePositionTarget) — an unbounded value would hang them, so
+    // it is bounded exactly like CarIdx is.
+    const order = calculateGridPositions([
+      { CarIdx: 0, Position: 0 },
+      { CarIdx: 1, Position: 1e9 },
+      { CarIdx: 2, Position: 256 },
+    ]);
+
+    expect(order).toEqual([1]);
+    expect(Math.max(...(order ?? []))).toBe(1);
+  });
+
   it("keeps ranks unique when two cars claim the same grid slot", () => {
     // Duplicate ranks would break position-relative selection (race-positions.md),
     // so the first valid claimant keeps the slot and the later one is dropped.

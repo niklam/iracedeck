@@ -31,21 +31,40 @@ export interface QualifyResult {
   Position?: number;
 }
 
-/** Upper bound for a plausible carIdx — guards corrupt session YAML from sizing huge arrays. */
-const MAX_QUALIFY_CAR_IDX = 255;
+/**
+ * One RAW list item as it can actually arrive. Session YAML emits an empty list
+ * item as `null`, so the entries are only *probably* records — every consumer
+ * must null-check before reading a field (a bare `.CarIdx` throws, and the
+ * translator's per-tick path has no try/catch above it). Modelling the hole in
+ * the type is what stops that being forgotten at a new call site.
+ */
+export type QualifyResultEntry = QualifyResult | null | undefined;
+
+/**
+ * Upper bound for both 0-based quantities a grid entry carries — `CarIdx` and
+ * `Position` — since neither can plausibly exceed the field size. It guards
+ * corrupt session YAML from sizing a huge array (`CarIdx`) or publishing an
+ * absurd rank (`Position`). The rank bound matters as much as the index one:
+ * consumers walk the order by RANK (the camera dial's
+ * `computeRacePositionTarget` loops from 1 to the highest rank present), so a
+ * single `Position: 1e9` entry would hang them.
+ */
+const MAX_QUALIFY_FIELD_INDEX = 255;
 
 /**
  * Extract the qualifying grid from parsed session info — the top-level
  * session-YAML `QualifyResultsInfo.Results` key.
  *
  * @returns The raw entries, or `undefined` when the key is absent or not a list.
+ *          Individual entries can still be `null` (an empty YAML list item) —
+ *          see {@link QualifyResultEntry}.
  */
-export function extractQualifyResults(sessionInfo: unknown): QualifyResult[] | undefined {
+export function extractQualifyResults(sessionInfo: unknown): QualifyResultEntry[] | undefined {
   const qualifyInfo = (sessionInfo as Record<string, unknown> | null | undefined)?.QualifyResultsInfo as
     Record<string, unknown> | undefined;
   const results = qualifyInfo?.Results;
 
-  return Array.isArray(results) ? (results as QualifyResult[]) : undefined;
+  return Array.isArray(results) ? (results as QualifyResultEntry[]) : undefined;
 }
 
 /**
@@ -65,6 +84,10 @@ export function extractQualifyResults(sessionInfo: unknown): QualifyResult[] | u
  *   order.
  * - **One rank per car.** A repeated `CarIdx` keeps its first (best) slot.
  *
+ * `Position` is bounded by {@link MAX_QUALIFY_FIELD_INDEX} for the same reason
+ * `CarIdx` is: it becomes the car's RANK, and consumers iterate the order from
+ * rank 1 to the highest rank present, so one absurd value would hang them.
+ *
  * Ranks are NOT compacted: a grid with an unusable entry keeps a hole in the
  * numbering rather than renumbering everyone behind it, so every car that IS
  * listed reports its true grid slot. Consumers already tolerate holes — they
@@ -73,18 +96,20 @@ export function extractQualifyResults(sessionInfo: unknown): QualifyResult[] | u
  * @returns The order, or `null` when no entry was usable (the caller then falls
  *          back to whatever live order it has).
  */
-export function calculateGridPositions(results: QualifyResult[]): number[] | null {
+export function calculateGridPositions(results: readonly QualifyResultEntry[]): number[] | null {
   const ranks = new Map<number, number>();
   const claimed = new Set<number>();
 
-  for (const entry of results as unknown[]) {
+  for (const entry of results as readonly unknown[]) {
     if (typeof entry !== "object" || entry === null) continue;
 
     const { CarIdx: carIdx, Position: position } = entry as QualifyResult;
 
-    if (!Number.isInteger(carIdx) || (carIdx as number) < 0 || (carIdx as number) > MAX_QUALIFY_CAR_IDX) continue;
+    if (!Number.isInteger(carIdx) || (carIdx as number) < 0 || (carIdx as number) > MAX_QUALIFY_FIELD_INDEX) continue;
 
-    if (!Number.isInteger(position) || (position as number) < 0) continue;
+    if (!Number.isInteger(position) || (position as number) < 0 || (position as number) > MAX_QUALIFY_FIELD_INDEX) {
+      continue;
+    }
 
     if (ranks.has(carIdx as number) || claimed.has(position as number)) continue;
 

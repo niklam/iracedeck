@@ -6,7 +6,7 @@
  * calculator spreadsheet). Pure functions — the canonical live race order is
  * passed in as data, never computed here (see .claude/rules/race-positions.md).
  */
-import { calculateGridPositions, type QualifyResult } from "./grid-utils.js";
+import { calculateGridPositions, type QualifyResultEntry } from "./grid-utils.js";
 
 /** Elo-style base factor: 1600 / ln(2). */
 const BR1 = 1600 / Math.LN2;
@@ -108,7 +108,7 @@ export interface IRatingEstimateOrderSources {
   /** Official standings counters (telemetry `CarIdxPosition`). */
   officialPositions?: ArrayLike<number> | null;
   /** Qualifying results from the top-level session-YAML `QualifyResultsInfo.Results` key. */
-  qualifyResults?: QualifyResult[] | null;
+  qualifyResults?: QualifyResultEntry[] | null;
   /**
    * Player's carIdx. When given, a source only wins if it classifies the
    * player — the #647 hold that keeps the pre-green fallback on screen through

@@ -45,6 +45,7 @@ import {
   getStartingGridPosition,
   initializeSimEventsIracing,
   isSimEventsIracingInitialized,
+  resolveLeaderLapTimeS,
 } from "./translator.js";
 
 function createMockLogger(): ILogger {
@@ -472,6 +473,25 @@ describe("sim-events-iracing translator", () => {
 
       expect(handler).not.toHaveBeenCalled();
     });
+
+    it("reports no leader pace pre-green, so a parade lap can't pass as racing pace", () => {
+      // The grid order names a leader before the green, where the frozen order
+      // named nobody — so `CarIdxLastLapTime` for the pole sitter is now
+      // readable, and on a rolling start it holds the PARADE lap (minutes). The
+      // timed-race fuel-coverage estimate divides the remaining clock by this,
+      // so an inflated lap time UNDER-counts the laps left and suppresses fuel
+      // warnings — the opposite of that estimate's documented safe direction.
+      const paceTelemetry = (sessionState: SessionState): TelemetryData =>
+        telemetry({
+          SessionState: sessionState,
+          CarIdxLastLapTime: [92.5, 180.4, 92.9],
+          CarIdxBestLapTime: [92.1, 91.8, 92.4],
+        });
+
+      // car1 leads: the pole sitter pre-green, the race leader after it.
+      expect(resolveLeaderLapTimeS(paceTelemetry(SessionState.ParadeLaps), [2, 1, 3])).toBeNull();
+      expect(resolveLeaderLapTimeS(paceTelemetry(SessionState.Racing), [2, 1, 3])).toBe(180.4);
+    });
   });
 
   describe("getStartingGridPosition (issue #647)", () => {
@@ -539,6 +559,28 @@ describe("sim-events-iracing translator", () => {
       initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
 
       expect(getStartingGridPosition()).toBeNull();
+    });
+
+    it("survives an empty YAML list item in the qualifying results", () => {
+      // Session YAML emits an empty list item as `null` — reading `.CarIdx` off
+      // it would throw inside the per-tick path, and nothing above `handleTick`
+      // catches that. Both the player lookup and the class count must skip it.
+      const controller = createMockController();
+      controller.__setSessionInfo({
+        DriverInfo: {
+          DriverCarIdx: 0,
+          Drivers: [
+            { CarIdx: 0, CarClassID: 10 },
+            { CarIdx: 2, CarClassID: 10 },
+          ],
+        },
+        QualifyResultsInfo: {
+          Results: [null, { CarIdx: 2, Position: 0 }, null, { CarIdx: 0, Position: 1 }],
+        },
+      });
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      expect(getStartingGridPosition()).toEqual({ overall: 2, class: 2 });
     });
   });
 

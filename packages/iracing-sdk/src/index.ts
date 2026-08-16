@@ -152,7 +152,12 @@ export {
 } from "./wind-utils.js";
 
 // Qualifying-grid utilities (#974) — the pre-green starting order from session YAML
-export { calculateGridPositions, extractQualifyResults, type QualifyResult } from "./grid-utils.js";
+export {
+  calculateGridPositions,
+  extractQualifyResults,
+  type QualifyResult,
+  type QualifyResultEntry,
+} from "./grid-utils.js";
 
 // iRating estimation utilities (#268, #872)
 export {
