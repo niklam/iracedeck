@@ -234,6 +234,15 @@ export {
   type ScanKeyReleaser,
 } from "./keyboard-service.js";
 
+// Window focus service singleton
+export {
+  _resetWindowFocus,
+  FocusResult,
+  focusIRacingIfEnabled,
+  initWindowFocus,
+  type WindowFocuser,
+} from "./window-focus-service.js";
+
 // Clipboard service singleton
 export {
   initializeClipboard,

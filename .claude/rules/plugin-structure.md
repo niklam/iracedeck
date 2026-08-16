@@ -159,6 +159,7 @@ import { getAudio, initializeAudio } from "@iracedeck/audio-service";
 import { MY_ACTION_UUID, MyAction } from "@iracedeck/iracing-actions";
 import { ElgatoPlatformAdapter } from "@iracedeck/deck-adapter-elgato";
 import {
+  focusIRacingIfEnabled,
   getController,
   initAppMonitor,
   initGlobalSettings,
@@ -167,13 +168,12 @@ import {
   initializeRasterizer,
   initializeSDK,
   initializeSimHub,
+  initWindowFocus,
 } from "@iracedeck/deck-core";
 import { initializeEventBus } from "@iracedeck/event-bus";
 import { IRacingNative } from "@iracedeck/iracing-native";
 import { createSvgRasterizer } from "@iracedeck/rasterizer";
 import { initializeSimEventsIracing } from "@iracedeck/sim-events-iracing";
-// Per-plugin module — NOT in deck-core (each plugin has its own src/shared/window-focus.ts)
-import { focusIRacingIfEnabled, initWindowFocus } from "./shared/index.js";
 
 // 1. Create the Elgato platform adapter
 const adapter = new ElgatoPlatformAdapter(streamDeck);
@@ -253,7 +253,7 @@ adapter.connect();
 - `initializeEventBus()` must come before any publisher (e.g. `initializeSimEventsIracing`) or subscriber (actions via `getEventBus().subscribe(...)`)
 - `initializeSimEventsIracing()` must come after `initializeSDK()` (requires `getController()`) and after `initializeEventBus()`; it's the only package that reads `sdkController` ticks on behalf of action consumers
 - `initializeAudio()` creates the audio service singleton (third argument = audio-assets base path); `getAudio().init()` starts the miniaudio engine. Both must be called before actions that use audio (e.g., Pit Engineer)
-- `initWindowFocus` / `focusIRacingIfEnabled` come from the plugin's own `src/shared/window-focus.ts` (via `./shared/index.js`), not from `@iracedeck/deck-core`
+- `initWindowFocus` / `focusIRacingIfEnabled` come from `@iracedeck/deck-core` (moved there in #930). The focuser is injected, exactly like `initializeKeyboard`'s callbacks, so deck-core stays free of a native import; deck-core mirrors the native `FocusResult` codes and `focus-result.test.ts` in the Stream Deck plugin guards that mirror
 - `initializeRasterizer()` is gated by `__FEATURE_PNG_RASTERIZATION__` and must come before any code that renders a device image (it can run anywhere before `adapter.connect()`, since `toDeviceImage()` passes images through unchanged until it's called); see `@.claude/rules/platform-feature-flags.md`
 - `initializeSimHub()` must come AFTER `initGlobalSettings()` (reads host/port from settings)
 - `initializeBindingDispatcher()` must come AFTER `initGlobalSettings()`, `initializeKeyboard()`, and `initializeSimHub()`

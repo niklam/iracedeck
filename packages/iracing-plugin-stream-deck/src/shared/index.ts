@@ -101,6 +101,11 @@ export {
   isIRacingRunning,
   isAppMonitorInitialized,
   _resetAppMonitor,
+  // Window focus service
+  initWindowFocus,
+  focusIRacingIfEnabled,
+  FocusResult,
+  type WindowFocuser,
   // Key binding utilities
   formatKeyBinding,
   parseKeyBinding,
@@ -108,6 +113,3 @@ export {
 
 // Re-export from deck-adapter-elgato
 export { createSDLogger, type SDLoggerLike } from "@iracedeck/deck-adapter-elgato";
-
-// Window focus service (depends on @iracedeck/iracing-native)
-export { initWindowFocus, focusIRacingIfEnabled } from "./window-focus.js";
