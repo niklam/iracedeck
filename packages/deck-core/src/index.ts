@@ -434,3 +434,8 @@ export {
   type SettingsWindowServer,
   type SettingsWindowServerOptions,
 } from "./settings-window-server.js";
+export {
+  createSettingsWindowController,
+  type SettingsWindowController,
+  type SettingsWindowControllerOptions,
+} from "./settings-window.js";

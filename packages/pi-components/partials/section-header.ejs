@@ -2,3 +2,14 @@
   <div class="ird-section-header-label"><%= title %></div>
   <div class="ird-section-header-rule"></div>
 </div>
+<%# Optional "Open iRaceDeck Settings" button under the header (issue #992). Pass
+    `openSettings: true` — the Global Settings header does, so every action's PI
+    links to the dedicated settings window from one place. %>
+<% if (locals.openSettings) { %>
+<sdpi-item label="">
+  <ird-open-settings></ird-open-settings>
+</sdpi-item>
+<div class="ird-supporting-text">
+  All plugin-wide settings in one full-size window. The sections below stay here too.
+</div>
+<% } %>

@@ -203,13 +203,12 @@ export function piTemplatePlugin(options) {
             platform: platformFeatures,
             // Also expose a require function for inline requires (resolved from templatesDir)
             require: createTemplateRequire(templatesDir),
-            // Expose locals for checking if variables are defined
-            locals: {
-              data: dataFiles,
-              version: version,
-              docsUrl,
-              platform: platformFeatures,
-            },
+            // NOTE: do NOT add a hand-built `locals` key here. EJS already binds
+            // `locals` (its `localsName`) to the full data object at every scope,
+            // and an include merges its parameters into it — so partials can
+            // guard on optional include params via `locals.foo`. A literal
+            // `locals: {...}` entry would shadow that with a fixed subset and
+            // silently hide every include parameter (#992).
           }, {
             // Search directories for includes
             views: [templateDir, ...partialSearchDirs],

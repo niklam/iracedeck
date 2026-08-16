@@ -446,3 +446,27 @@ describe("ElgatoPlatformAdapter sendToPlugin → switchToProfile routing", () =>
     expect(switchToProfile).not.toHaveBeenCalled();
   });
 });
+
+describe("ElgatoPlatformAdapter sendToPlugin → openSettings routing (#992)", () => {
+  it("invokes the registered listener when the PI sends an openSettings command", () => {
+    const { sd, emitSendToPlugin } = createSdMock();
+    const adapter = new ElgatoPlatformAdapter(sd);
+    const listener = vi.fn();
+
+    adapter.onOpenSettingsRequest(listener);
+    emitSendToPlugin("dev-1", { event: "openSettings" });
+
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not invoke the openSettings listener for other commands", () => {
+    const { sd, emitSendToPlugin } = createSdMock();
+    const adapter = new ElgatoPlatformAdapter(sd);
+    const listener = vi.fn();
+
+    adapter.onOpenSettingsRequest(listener);
+    emitSendToPlugin("dev-1", { event: "switchToProfile", profile: "iRaceDeck Default" });
+
+    expect(listener).not.toHaveBeenCalled();
+  });
+});

@@ -262,6 +262,8 @@ function wrapTouchTapEvent<T>(ev: TouchTapEvent<T & JsonObject>): IDeckTouchTapE
  * Implements IDeckPlatformAdapter by delegating to the Elgato SDK.
  */
 export class ElgatoPlatformAdapter implements IDeckPlatformAdapter {
+  private openSettingsListeners: Array<() => void> = [];
+
   constructor(private readonly sd: typeof StreamDeck) {
     // Route "Stream Deck Profiles" settings-accordion button presses — sent from
     // the Property Inspector via `sendToPlugin` — to `switchToProfile`, targeting
@@ -274,8 +276,20 @@ export class ElgatoPlatformAdapter implements IDeckPlatformAdapter {
   }
 
   /**
-   * Handle a Property Inspector `sendToPlugin` payload. Currently only the
-   * `switchToProfile` command is recognised; anything else is ignored.
+   * Register a listener for the Property Inspector's "Open iRaceDeck Settings"
+   * request (issue #992). Like `openUrl`, this is a concrete-adapter method
+   * rather than an `IDeckPlatformAdapter` member: the PI→plugin transport
+   * differs per host, and keeping it off the interface avoids touching every
+   * typed mock adapter.
+   */
+  onOpenSettingsRequest(listener: () => void): void {
+    this.openSettingsListeners.push(listener);
+  }
+
+  /**
+   * Handle a Property Inspector `sendToPlugin` payload. Recognises the
+   * `switchToProfile` (#736) and `openSettings` (#992) commands; anything else
+   * is ignored.
    */
   private handleSendToPlugin(deviceId: string, deviceType: number | undefined, payload: unknown): void {
     if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
@@ -283,6 +297,12 @@ export class ElgatoPlatformAdapter implements IDeckPlatformAdapter {
     }
 
     const message = payload as { event?: unknown; profile?: unknown; page?: unknown };
+
+    if (message.event === "openSettings") {
+      for (const listener of this.openSettingsListeners) listener();
+
+      return;
+    }
 
     if (message.event !== "switchToProfile") {
       return;
