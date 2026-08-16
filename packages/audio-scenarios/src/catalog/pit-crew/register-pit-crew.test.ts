@@ -1339,6 +1339,11 @@ describe("pit-status family registration (issue #479 / #951)", () => {
     expect(audio._played.length).toBeGreaterThan(0);
 
     pitStatusEnabled.set("too-far-forward", false);
+    // `_played` is append-only and `stopChannel` never removes from it, so a
+    // clip-list assertion alone would pass even if the gate HAD cut the line.
+    // `stopChannel(Voice)` is reachable only from `cancelActiveFire`, so its
+    // absence is the precise observable for "nothing was cut".
+    expect(audio.stopChannel).not.toHaveBeenCalledWith(AudioChannel.Voice);
     flush(audio);
 
     expect(voiceClipsPlayed().some((p) => p.includes("/pit-status/too-far-forward-repeat-"))).toBe(true);
