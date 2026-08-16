@@ -19,7 +19,7 @@ function hostReply(settings: Record<string, unknown>): PiFrame {
 }
 
 /** A router harness with fake host, fake sdpi, fake loopback and manual timers. */
-function harness(opts: { openThrows?: boolean; bootstrapTimeoutMs?: number } = {}) {
+function harness(opts: { openThrows?: boolean; bootstrapTimeoutMs?: number; openCallsOnOpenSync?: boolean } = {}) {
   const host: PiFrame[] = [];
   const pi: PiFrame[] = [];
   const loop: PiFrame[] = [];
@@ -39,6 +39,10 @@ function harness(opts: { openThrows?: boolean; bootstrapTimeoutMs?: number } = {
       if (opts.openThrows) throw new Error("refused");
 
       handlers = h;
+
+      // Simulates a transport that (against the documented contract) calls
+      // onOpen synchronously, before openLoopback has returned the socket.
+      if (opts.openCallsOnOpenSync) h.onOpen();
 
       return { send: (f) => loop.push(f), close: () => closedLoop++ };
     },
@@ -99,6 +103,14 @@ describe("createSettingsChannelRouter", () => {
     expect(h.timers[0]?.ms).toBe(BOOTSTRAP_TIMEOUT_MS);
   });
 
+  it("delivers a pre-open sdpi registration to the host before the bootstrap read", () => {
+    const h = harness();
+    h.router.onPiSend({ event: "registerPropertyInspector", uuid: "ctx-1" });
+    h.router.onHostOpen();
+
+    expect(h.host).toEqual([{ event: "registerPropertyInspector", uuid: "ctx-1" }, BOOTSTRAP]);
+  });
+
   it("passes every non-global frame straight through in both directions", () => {
     const h = harness();
     h.router.onHostOpen();
@@ -124,17 +136,57 @@ describe("createSettingsChannelRouter", () => {
 
     expect(h.router.state).toBe("connecting");
     expect(h.opened).toEqual([CHANNEL]);
-    expect(h.timers[0]?.cleared).toBe(true);
     expect(h.pi).toEqual([]); // the host's payload is NOT delivered — the store is truth
 
     h.loopOpen();
 
     expect(h.router.state).toBe("loopback");
+    // the settle timer bridges bootstrapping+connecting; only cleared once the loopback opens
+    expect(h.timers[0]?.cleared).toBe(true);
     expect(h.loop).toEqual([
       BOOTSTRAP, // the router's own read of the file's values
       { event: "getGlobalSettings", context: "ctx-1" },
       { event: "setGlobalSettings", context: "ctx-1", payload: { driverName: "n" } },
     ]);
+  });
+
+  it("falls back when the loopback connect stalls (settle timer bridges bootstrapping and connecting)", () => {
+    const h = harness({ bootstrapTimeoutMs: 10 });
+    h.router.onHostOpen();
+    h.router.onPiSend({ event: "getGlobalSettings" });
+    h.router.onHostMessage(hostReply({ _settingsChannel: CHANNEL, driverName: "host" }));
+    expect(h.router.state).toBe("connecting");
+
+    h.fireTimer(); // openLoopback returned a socket that never called onOpen or onClose
+
+    expect(h.router.state).toBe("fallback");
+    expect(h.pi).toEqual([hostReply({ _settingsChannel: CHANNEL, driverName: "host" })]);
+    expect(h.host).toEqual([BOOTSTRAP, { event: "getGlobalSettings" }]);
+    expect(h.warnings[0]).toMatch(/did not open/);
+  });
+
+  it("clears the settle timer once the loopback actually opens", () => {
+    const h = harness();
+    h.router.onHostOpen();
+    h.router.onHostMessage(hostReply({ _settingsChannel: CHANNEL }));
+    h.loopOpen();
+
+    expect(h.timers[0]?.cleared).toBe(true);
+
+    h.fireTimer(); // no-op: the only timer is filtered out because it's cleared
+
+    expect(h.router.state).toBe("loopback");
+    expect(h.warnings).toEqual([]);
+  });
+
+  it("tolerates a loopback transport that calls onOpen synchronously from inside openLoopback", () => {
+    const h = harness({ openCallsOnOpenSync: true });
+    h.router.onHostOpen();
+    h.router.onPiSend({ event: "getGlobalSettings", context: "ctx-1" });
+    h.router.onHostMessage(hostReply({ _settingsChannel: CHANNEL }));
+
+    expect(h.router.state).toBe("loopback");
+    expect(h.loop).toEqual([BOOTSTRAP, { event: "getGlobalSettings", context: "ctx-1" }]);
   });
 
   it("in loopback state: sdpi's global frames go to the loopback, loopback pushes reach sdpi, host pushes are dropped", () => {
@@ -220,6 +272,16 @@ describe("createSettingsChannelRouter", () => {
     expect(h.pi).toHaveLength(2); // the fallback delivery continues until the loopback is up
   });
 
+  it("keeps lastHostPayload fresh on a late switch, so a refused reconnect replays the newest host payload", () => {
+    const h = harness();
+    h.router.onHostOpen();
+    h.router.onHostMessage(hostReply({ noChannel: true }));
+    h.router.onHostMessage(hostReply({ _settingsChannel: CHANNEL, marker: "second" }));
+    h.loopClose(); // refused before it ever opened
+
+    expect(h.pi.at(-1)).toEqual(hostReply({ _settingsChannel: CHANNEL, marker: "second" }));
+  });
+
   it("does not retry the same channel that already failed, but tries a new one", () => {
     const h = harness();
     h.router.onHostOpen();
@@ -231,6 +293,18 @@ describe("createSettingsChannelRouter", () => {
     expect(h.opened).toHaveLength(1);
     h.router.onHostMessage(hostReply({ _settingsChannel: { ...CHANNEL, port: 60000 } }));
     expect(h.opened).toHaveLength(2);
+  });
+
+  it("resets lastTried on a post-switch close, so a later push with the same channel reconnects", () => {
+    const h = harness();
+    h.router.onHostOpen();
+    h.router.onHostMessage(hostReply({ _settingsChannel: CHANNEL }));
+    h.loopOpen();
+    h.loopClose(); // clean close AFTER a successful switch-over — not a refusal
+    h.router.onHostMessage(hostReply({ _settingsChannel: CHANNEL }));
+
+    expect(h.opened).toHaveLength(2);
+    expect(h.router.state).toBe("connecting");
   });
 
   it("a loopback close after switch-over falls back to the host for later frames and warns once", () => {
@@ -258,5 +332,19 @@ describe("createSettingsChannelRouter", () => {
     h2.router.onHostOpen();
     h2.router.onHostClose();
     expect(h2.timers[0]?.cleared).toBe(true);
+  });
+
+  it("onHostClose puts the router on the host path so later sdpi sends aren't dropped", () => {
+    const h = harness();
+    h.router.onHostOpen();
+    h.router.onHostMessage(hostReply({ _settingsChannel: CHANNEL }));
+    h.loopOpen();
+    h.router.onHostClose();
+
+    expect(h.router.state).toBe("fallback");
+
+    h.router.onPiSend({ event: "getGlobalSettings" });
+
+    expect(h.host.at(-1)).toEqual({ event: "getGlobalSettings" });
   });
 });

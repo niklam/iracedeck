@@ -12,9 +12,22 @@
  * the truth, so host pushes are dropped after the switch. Everything else a PI
  * sends or receives passes through untouched.
  *
- * Fallback rule: no channel, a refused/failed loopback, or a silent host → the
- * PI keeps working against the host path exactly as before, with a warning.
- * Never a blank PI.
+ * One settle timer bridges both the `bootstrapping` and `connecting` states:
+ * it is armed on the bootstrap read and only cleared once the loopback
+ * actually opens (or the router falls back for any other reason). A loopback
+ * transport that never calls `onOpen`/`onClose` — a stalled connect — still
+ * resolves within `bootstrapTimeoutMs` instead of leaving sdpi's
+ * `getGlobalSettings()` promise, and every `global` control, unresolved
+ * forever.
+ *
+ * Fallback rule: no channel, a refused/failed/stalled loopback, or a silent
+ * host → the PI keeps working against the host path exactly as before, with a
+ * warning. Never a blank PI.
+ *
+ * `lastTried` remembers a channel that was REFUSED (closed before it ever
+ * opened) so a host push repeating the same channel doesn't retry a dead end.
+ * A clean close AFTER a successful switch-over is not a refusal, so it resets
+ * `lastTried` — a later push repeating that channel is free to reconnect.
  *
  * Pure: no DOM, no sockets — both bridges (Elgato/Mirabox `pi-settings-bridge`
  * and the Ulanzi PI bridge) supply the transports.
@@ -45,7 +58,12 @@ export interface SettingsChannelRouterDeps {
   toHost(frame: PiFrame): void;
   /** Deliver an Elgato-shape frame to sdpi. */
   toPi(frame: PiFrame): void;
-  /** Open the loopback socket. Must call the handlers; a throw counts as an immediate close. */
+  /**
+   * Open the loopback socket. Must invoke `onClose` on connect failure, error,
+   * or close (exactly once); must NOT invoke handlers synchronously from
+   * inside `openLoopback` — a throw counts as an immediate close. (The router
+   * defensively tolerates a synchronous `onOpen` call anyway; see `connect()`.)
+   */
   openLoopback(channel: SettingsChannel, handlers: LoopbackHandlers): LoopbackSocket;
   warn(message: string): void;
   setTimeout(fn: () => void, ms: number): unknown;
@@ -64,15 +82,23 @@ export interface SettingsChannelRouter {
   onPiSend(frame: PiFrame): void;
   /** Every Elgato-shape frame the host delivered. */
   onHostMessage(frame: PiFrame): void;
-  /** The host socket closed. */
+  /**
+   * The host socket closed. Closes any open loopback and lands the router in
+   * `fallback` so later frames take the host path instead of being dropped
+   * (rather than leaving state pointed at a surface that no longer exists).
+   */
   onHostClose(): void;
 }
 
-/** How long a PI waits for the deck host to answer the bootstrap read before using the host path. */
+/** How long a PI waits — across both the bootstrap read and the loopback connect — before falling back to the host path. */
 export const BOOTSTRAP_TIMEOUT_MS = 3000;
 
 const GLOBAL_EVENTS = new Set(["getGlobalSettings", "setGlobalSettings"]);
-const TOKEN_RE = /^[0-9a-f]{32,}$/i;
+const TOKEN_RE = /^[0-9a-f]{32,}$/i; // tolerance: the producer always emits lowercase hex
+
+function isValidPort(value: unknown): value is number {
+  return Number.isInteger(value) && (value as number) >= 1 && (value as number) <= 65535;
+}
 
 export function parseSettingsChannel(settings: unknown): SettingsChannel | undefined {
   if (settings === null || typeof settings !== "object") return undefined;
@@ -83,7 +109,7 @@ export function parseSettingsChannel(settings: unknown): SettingsChannel | undef
 
   const { port, token } = raw as Record<string, unknown>;
 
-  if (typeof port !== "number" || !Number.isInteger(port) || port < 1 || port > 65535) return undefined;
+  if (!isValidPort(port)) return undefined;
 
   if (typeof token !== "string" || !TOKEN_RE.test(token)) return undefined;
 
@@ -138,13 +164,35 @@ export function createSettingsChannelRouter(deps: SettingsChannelRouterDeps): Se
     state = "connecting";
     lastTried = channel;
 
+    let openedEarly = false;
+
+    const switchToLoopback = (): void => {
+      clearTimer();
+      state = "loopback";
+      loop?.send(bootstrapFrame());
+      // A setGlobalSettings sdpi issues during the connecting window still carries
+      // the deck host's settings snapshot (sdpi always saves its whole settings
+      // object), so replaying it here can briefly let a stale host value win for a
+      // differing key until sdpi's next debounced save (~250ms). Narrow,
+      // self-correcting race — accepted.
+      flushTo((frame) => loop?.send(frame));
+    };
+
     const handlers: LoopbackHandlers = {
       onOpen: () => {
         if (state !== "connecting") return;
 
-        state = "loopback";
-        loop?.send(bootstrapFrame());
-        flushTo((frame) => loop?.send(frame));
+        if (!loop) {
+          // Defensive only: openLoopback's contract forbids invoking handlers
+          // synchronously, but if a transport does it anyway (before the `loop`
+          // assignment below completes), finish the switch once openLoopback
+          // returns instead of silently dropping the read and the queue.
+          openedEarly = true;
+
+          return;
+        }
+
+        switchToLoopback();
       },
       onMessage: (frame) => {
         if (state === "loopback") deps.toPi(frame);
@@ -157,6 +205,7 @@ export function createSettingsChannelRouter(deps: SettingsChannelRouterDeps): Se
         if (was === "connecting") {
           fallbackWith(lastHostPayload, "iRaceDeck: settings channel refused — using the deck host's copy");
         } else if (was === "loopback") {
+          lastTried = undefined; // a clean close is not a refusal — allow a later push to reconnect
           state = "fallback";
           deps.warn("iRaceDeck: settings channel closed — falling back to the deck host's copy");
         }
@@ -168,7 +217,11 @@ export function createSettingsChannelRouter(deps: SettingsChannelRouterDeps): Se
     } catch {
       loop = undefined;
       handlers.onClose();
+
+      return;
     }
+
+    if (openedEarly && state === "connecting") switchToLoopback();
   };
 
   return {
@@ -184,9 +237,11 @@ export function createSettingsChannelRouter(deps: SettingsChannelRouterDeps): Se
       timer = deps.setTimeout(() => {
         timer = undefined;
 
-        if (state !== "bootstrapping") return;
-
-        fallbackWith(undefined, "iRaceDeck: deck host did not answer the settings bootstrap — using the host copy");
+        if (state === "bootstrapping") {
+          fallbackWith(undefined, "iRaceDeck: deck host did not answer the settings bootstrap — using the host copy");
+        } else if (state === "connecting") {
+          fallbackWith(lastHostPayload, "iRaceDeck: settings channel did not open — using the deck host's copy");
+        }
       }, timeoutMs);
     },
 
@@ -222,7 +277,6 @@ export function createSettingsChannelRouter(deps: SettingsChannelRouterDeps): Se
 
       switch (state) {
         case "bootstrapping":
-          clearTimer();
           lastHostPayload = frame;
 
           if (channel) connect(channel);
@@ -237,7 +291,10 @@ export function createSettingsChannelRouter(deps: SettingsChannelRouterDeps): Se
         default: {
           deps.toPi(frame);
 
-          if (channel && !sameChannel(lastTried, channel)) connect(channel);
+          if (channel && !sameChannel(lastTried, channel)) {
+            lastHostPayload = frame;
+            connect(channel);
+          }
         }
       }
     },
@@ -246,6 +303,7 @@ export function createSettingsChannelRouter(deps: SettingsChannelRouterDeps): Se
       clearTimer();
       loop?.close();
       loop = undefined;
+      state = "fallback";
     },
   };
 }
