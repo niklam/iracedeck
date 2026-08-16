@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { migrateGlobalSettingsKeys } from "./global-settings-migrations.js";
 import { _resetGlobalSettings, getGlobalSettings, initGlobalSettings } from "./global-settings.js";
+import { createMemorySettingsStore } from "./settings-store.js";
 import type { IDeckPlatformAdapter } from "./types.js";
 
 type EchoCallback = (settings: unknown) => void;
@@ -58,7 +59,7 @@ describe("migrateGlobalSettingsKeys", () => {
   beforeEach(() => {
     _resetGlobalSettings();
     mock = createMockAdapter();
-    initGlobalSettings(mock.adapter, createMockLogger());
+    initGlobalSettings(mock.adapter, createMockLogger(), createMemorySettingsStore());
   });
 
   it("copies a stored old-key value to the new key and deletes the old key", () => {

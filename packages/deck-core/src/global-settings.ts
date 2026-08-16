@@ -5,7 +5,7 @@
  * Platform-agnostic: uses IDeckPlatformAdapter instead of a specific SDK.
  *
  * Usage:
- * 1. Call initGlobalSettings(adapter, logger) once at plugin startup
+ * 1. Call initGlobalSettings(adapter, logger, store) once at plugin startup
  * 2. Use getGlobalSettings() to access current settings
  * 3. Settings are automatically updated when changed in Property Inspector
  *
@@ -21,6 +21,7 @@
 import type { ILogger } from "@iracedeck/logger";
 import { z } from "zod";
 
+import type { SettingsStore } from "./settings-store.js";
 import {
   DEFAULT_SETUP_WARNING_QUALIFYING_PATTERN,
   DEFAULT_SETUP_WARNING_RACE_PATTERN,
@@ -1062,6 +1063,13 @@ let logger: ILogger | null = null;
 let adapterRef: IDeckPlatformAdapter | null = null;
 
 /**
+ * Plugin-owned settings store (issue #993). Not yet used — wired in a later
+ * task; recorded here so callers can pass it in ahead of the core rewrite.
+ */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- read by the Task 4 core rewrite
+let storeRef: SettingsStore | null = null;
+
+/**
  * Whether the host has delivered at least one real settings payload this
  * session (issue #896). Until it has, `currentSettings` is nothing but schema
  * defaults — persisting a merge over defaults would overwrite host storage
@@ -1219,11 +1227,13 @@ function persistCurrentSettings(): void {
  *
  * @param adapter - The platform adapter instance
  * @param log - Logger instance for this module
+ * @param store - Plugin-owned settings store (issue #993); not yet used
  * @returns Current global settings (may be defaults until adapter sends actual values)
  */
-export function initGlobalSettings(adapter: IDeckPlatformAdapter, log: ILogger): GlobalSettings {
+export function initGlobalSettings(adapter: IDeckPlatformAdapter, log: ILogger, store: SettingsStore): GlobalSettings {
   logger = log;
   adapterRef = adapter;
+  storeRef = store;
   logger.info("Initializing");
 
   if (initialized) {
@@ -1641,6 +1651,7 @@ export function _resetGlobalSettings(): void {
   listeners.clear();
   initialized = false;
   adapterRef = null;
+  storeRef = null;
   hostSettingsReceived = false;
   hasQueuedWrites = false;
   pendingLocalWrites.clear();

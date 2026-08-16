@@ -169,3 +169,20 @@ export function createFileSettingsStore(opts: FileSettingsStoreOptions): Setting
     },
   };
 }
+
+/** Test / harness store: no disk. `saved` records every save() payload in order. */
+export function createMemorySettingsStore(
+  initial?: Record<string, unknown>,
+): SettingsStore & { readonly saved: Array<Record<string, unknown>> } {
+  const saved: Array<Record<string, unknown>> = [];
+
+  return {
+    path: "<memory>",
+    saved,
+    load: async () => (initial === undefined ? undefined : { ...initial }),
+    save: (settings) => {
+      saved.push({ ...settings });
+    },
+    flush: async () => {},
+  };
+}

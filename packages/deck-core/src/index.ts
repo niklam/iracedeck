@@ -165,6 +165,7 @@ export { migrateGlobalSettingsKeys } from "./global-settings-migrations.js";
 // Plugin-owned settings store (issue #993)
 export {
   createFileSettingsStore,
+  createMemorySettingsStore,
   resolveSettingsStorePath,
   settingsStoreFolderName,
   type FileSettingsStoreOptions,

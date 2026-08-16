@@ -12,6 +12,7 @@ import {
   resolveActiveRaceEngineerVoice,
   updateGlobalSettings,
 } from "./global-settings.js";
+import { createMemorySettingsStore } from "./settings-store.js";
 import type { IDeckPlatformAdapter } from "./types.js";
 import { CHANGELOG_NOTIFICATION_POLICIES } from "./version-check.js";
 
@@ -63,7 +64,7 @@ describe("global-settings cache (synchronous update on local writes)", () => {
   beforeEach(() => {
     _resetGlobalSettings();
     mock = createMockAdapter();
-    initGlobalSettings(mock.adapter, createMockLogger());
+    initGlobalSettings(mock.adapter, createMockLogger(), createMemorySettingsStore());
   });
 
   it("updateGlobalSettings reflects the new value on the very next getGlobalSettings call", () => {
@@ -185,7 +186,7 @@ describe("deleteGlobalSettings (issue #515 migration helper)", () => {
   beforeEach(() => {
     _resetGlobalSettings();
     mock = createMockAdapter();
-    initGlobalSettings(mock.adapter, createMockLogger());
+    initGlobalSettings(mock.adapter, createMockLogger(), createMemorySettingsStore());
     mock.setGlobalSettings.mockClear();
   });
 
@@ -392,7 +393,7 @@ describe("resolveActiveRaceEngineerVoice", () => {
 
   it("returns the persisted voice when it's in the available list", () => {
     const mock = createMockAdapter();
-    initGlobalSettings(mock.adapter, createMockLogger());
+    initGlobalSettings(mock.adapter, createMockLogger(), createMemorySettingsStore());
     mock.echo!({ raceEngineerVoice: "titan" });
 
     expect(resolveActiveRaceEngineerVoice(["luca", "titan"])).toBe("titan");
@@ -400,7 +401,7 @@ describe("resolveActiveRaceEngineerVoice", () => {
 
   it("falls back to the first available voice when the persisted one is gone", () => {
     const mock = createMockAdapter();
-    initGlobalSettings(mock.adapter, createMockLogger());
+    initGlobalSettings(mock.adapter, createMockLogger(), createMemorySettingsStore());
     mock.echo!({ raceEngineerVoice: "removed-voice" });
 
     expect(resolveActiveRaceEngineerVoice(["luca", "titan"])).toBe("luca");
@@ -408,7 +409,7 @@ describe("resolveActiveRaceEngineerVoice", () => {
 
   it("treats empty string as 'no preference' and falls back to first", () => {
     const mock = createMockAdapter();
-    initGlobalSettings(mock.adapter, createMockLogger());
+    initGlobalSettings(mock.adapter, createMockLogger(), createMemorySettingsStore());
     mock.echo!({ raceEngineerVoice: "" });
 
     expect(resolveActiveRaceEngineerVoice(["luca", "titan"])).toBe("luca");
@@ -422,7 +423,7 @@ describe("resolveActiveRaceEngineerVoice", () => {
   // the fallback fails loudly.
   it("falls back to 'default' when persisted value is the legacy 'luca' (post-rename)", () => {
     const mock = createMockAdapter();
-    initGlobalSettings(mock.adapter, createMockLogger());
+    initGlobalSettings(mock.adapter, createMockLogger(), createMemorySettingsStore());
     mock.echo!({ raceEngineerVoice: "luca" });
 
     expect(resolveActiveRaceEngineerVoice(["default"])).toBe("default");
@@ -444,7 +445,7 @@ describe("resolveActiveDriverName", () => {
 
   it("returns the persisted name when it's in the available list", () => {
     const mock = createMockAdapter();
-    initGlobalSettings(mock.adapter, createMockLogger());
+    initGlobalSettings(mock.adapter, createMockLogger(), createMemorySettingsStore());
     mock.echo!({ driverName: "niklas" });
 
     expect(resolveActiveDriverName(["adam", "niklas"])).toBe("niklas");
@@ -460,7 +461,7 @@ describe("resolveActiveDriverName", () => {
 
   it("prefers the persisted name over the supplied default", () => {
     const mock = createMockAdapter();
-    initGlobalSettings(mock.adapter, createMockLogger());
+    initGlobalSettings(mock.adapter, createMockLogger(), createMemorySettingsStore());
     mock.echo!({ driverName: "niklas" });
 
     expect(resolveActiveDriverName(["adam", "driver", "niklas"], "driver")).toBe("niklas");
@@ -468,7 +469,7 @@ describe("resolveActiveDriverName", () => {
 
   it("falls back to the supplied default when the persisted name is gone", () => {
     const mock = createMockAdapter();
-    initGlobalSettings(mock.adapter, createMockLogger());
+    initGlobalSettings(mock.adapter, createMockLogger(), createMemorySettingsStore());
     mock.echo!({ driverName: "removed" });
 
     expect(resolveActiveDriverName(["adam", "driver"], "driver")).toBe("driver");
@@ -721,7 +722,7 @@ describe("first-arrival write gate (issue #896)", () => {
   beforeEach(() => {
     _resetGlobalSettings();
     mock = createMockAdapter();
-    initGlobalSettings(mock.adapter, createMockLogger());
+    initGlobalSettings(mock.adapter, createMockLogger(), createMemorySettingsStore());
   });
 
   it("queues a write that happens before the first host settings arrival instead of persisting defaults", () => {
@@ -762,7 +763,7 @@ describe("pending-write overlay on host echoes (issue #896)", () => {
   beforeEach(() => {
     _resetGlobalSettings();
     mock = createMockAdapter();
-    initGlobalSettings(mock.adapter, createMockLogger());
+    initGlobalSettings(mock.adapter, createMockLogger(), createMemorySettingsStore());
     // Open the first-arrival gate so writes persist immediately.
     mock.echo!({});
     mock.setGlobalSettings.mockClear();
@@ -856,7 +857,7 @@ describe("pending-delete reconciliation on host echoes (issue #896)", () => {
   beforeEach(() => {
     _resetGlobalSettings();
     mock = createMockAdapter();
-    initGlobalSettings(mock.adapter, createMockLogger());
+    initGlobalSettings(mock.adapter, createMockLogger(), createMemorySettingsStore());
   });
 
   it("re-drops a deleted key from a stale echo, then confirms once an echo omits it", () => {
@@ -881,7 +882,7 @@ describe("host payload salvage (issue #896)", () => {
   beforeEach(() => {
     _resetGlobalSettings();
     mock = createMockAdapter();
-    initGlobalSettings(mock.adapter, createMockLogger());
+    initGlobalSettings(mock.adapter, createMockLogger(), createMemorySettingsStore());
   });
 
   it("keeps the good keys when one persisted value is unparseable", () => {
@@ -911,7 +912,7 @@ describe("shrink guard on outgoing writes (issue #896)", () => {
   beforeEach(() => {
     _resetGlobalSettings();
     mock = createMockAdapter();
-    initGlobalSettings(mock.adapter, createMockLogger());
+    initGlobalSettings(mock.adapter, createMockLogger(), createMemorySettingsStore());
   });
 
   it("keeps bindings in outgoing writes when the same payload carried an unparseable value", () => {

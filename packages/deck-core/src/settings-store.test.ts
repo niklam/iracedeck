@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   createFileSettingsStore,
+  createMemorySettingsStore,
   resolveSettingsStorePath,
   type SettingsStore,
   settingsStoreFolderName,
@@ -174,5 +175,20 @@ describe("createFileSettingsStore", () => {
     expect(asideContent).toBe(corruptText);
 
     vi.doUnmock("node:fs/promises");
+  });
+});
+
+describe("createMemorySettingsStore", () => {
+  it("returns the seed from load(), records every save(), and flush() resolves", async () => {
+    const store = createMemorySettingsStore({ a: 1 });
+
+    expect(await store.load()).toEqual({ a: 1 });
+    store.save({ a: 2 });
+    await store.flush();
+    expect(store.saved).toEqual([{ a: 2 }]);
+  });
+
+  it("load() is undefined with no seed", async () => {
+    expect(await createMemorySettingsStore().load()).toBeUndefined();
   });
 });

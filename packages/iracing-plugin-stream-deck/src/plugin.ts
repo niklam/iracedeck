@@ -65,6 +65,7 @@ import { getAudio, initializeAudio } from "@iracedeck/audio-service";
 import { ElgatoPlatformAdapter } from "@iracedeck/deck-adapter-elgato";
 import {
   createElevationCheckSubscriber,
+  createFileSettingsStore,
   createSettingsWindowCommandHandler,
   createSettingsWindowController,
   deleteGlobalSettings,
@@ -97,6 +98,7 @@ import {
   type PluginConfig,
   resolveActiveDriverName,
   resolveActiveRaceEngineerVoice,
+  resolveSettingsStorePath,
   runVersionCheck,
   SETTINGS_WINDOW_BOUNDS_KEY,
   SETTINGS_WINDOW_HTML,
@@ -1015,7 +1017,11 @@ adapter.registerAction(TOGGLE_UI_ELEMENTS_UUID, new ToggleUiElements(adapter.cre
 adapter.registerAction(VIEW_ADJUSTMENT_UUID, new ViewAdjustment(adapter.createLogger("ViewAdjustment")));
 
 // Initialize global settings listener BEFORE connect - handlers must be registered first
-initGlobalSettings(adapter, adapter.createLogger("GlobalSettings"));
+const settingsStore = createFileSettingsStore({
+  path: resolveSettingsStorePath({ platform: getPluginPlatform(), env: process.env }),
+  logger: adapter.createLogger("SettingsStore"),
+});
+initGlobalSettings(adapter, adapter.createLogger("GlobalSettings"), settingsStore);
 
 // Migrate the pre-#953 spring binding keys (Left/Right -> LR/RR) once real settings arrive
 migrateGlobalSettingsKeys(SETUP_CHASSIS_BINDING_KEY_RENAMES, adapter.createLogger("SettingsMigration"));
