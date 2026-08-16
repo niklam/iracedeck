@@ -208,6 +208,59 @@ describe("settings-window WebSocket host", () => {
     ws.close();
   });
 
+  it("writes only the keys that actually CHANGED — sdpi sends its whole snapshot, and a full-object write would mark every key pending (#896 rollback of the other surface's edits)", async () => {
+    // Real symptom (16 Aug): the window saved a 310-key snapshot; deck-core marked
+    // driverName pending with the previous value as "superseded"; the PI then set
+    // driverName BACK to that previous value; deck-core read the host echo as a
+    // stale echo and rolled the PI's edit back to the window's value.
+    const host = fakeSettingsHost({ driverName: "niklas", focusIRacingWindow: true, titleBold: "false" });
+    server = await startSettingsWindowServer({ page: PAGE, settingsHost: host });
+    const token = new URL(server.url).searchParams.get("t") ?? "";
+    const ws = await connectWs(server.url, token);
+
+    ws.send(
+      JSON.stringify({
+        event: "setGlobalSettings",
+        payload: { driverName: "nick", focusIRacingWindow: true, titleBold: "false" }, // only driverName differs
+      }),
+    );
+    await nextMessage(ws);
+
+    expect(host.written).toEqual([{ driverName: "nick" }]);
+    ws.close();
+  });
+
+  it("treats the PI's string forms as equal to the cache's parsed values when diffing ('true' == true, '80' == 80)", async () => {
+    const host = fakeSettingsHost({ debugLogging: true, titleFontSize: 80, driverName: "niklas" });
+    server = await startSettingsWindowServer({ page: PAGE, settingsHost: host });
+    const token = new URL(server.url).searchParams.get("t") ?? "";
+    const ws = await connectWs(server.url, token);
+
+    ws.send(
+      JSON.stringify({
+        event: "setGlobalSettings",
+        payload: { debugLogging: "true", titleFontSize: "80", driverName: "nick" },
+      }),
+    );
+    await nextMessage(ws);
+
+    expect(host.written).toEqual([{ driverName: "nick" }]);
+    ws.close();
+  });
+
+  it("does not write at all when nothing changed", async () => {
+    const host = fakeSettingsHost({ driverName: "niklas" });
+    server = await startSettingsWindowServer({ page: PAGE, settingsHost: host });
+    const token = new URL(server.url).searchParams.get("t") ?? "";
+    const ws = await connectWs(server.url, token);
+
+    ws.send(JSON.stringify({ event: "setGlobalSettings", payload: { driverName: "niklas" } }));
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(host.written).toEqual([]);
+    ws.close();
+  });
+
   it("pushes didReceiveGlobalSettings to the window when settings change elsewhere in the plugin", async () => {
     const host = fakeSettingsHost({ debugLogging: false });
     server = await startSettingsWindowServer({ page: PAGE, settingsHost: host });

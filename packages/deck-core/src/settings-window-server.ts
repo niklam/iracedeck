@@ -32,6 +32,7 @@ import { extname, normalize, resolve, sep } from "node:path";
 import type { Duplex } from "node:stream";
 import { type WebSocket, WebSocketServer } from "ws";
 
+import { sameValue } from "./global-settings.js";
 import { authorizeSettingsRequest } from "./settings-window-guard.js";
 
 /** The plugin-side settings surface the fake host is bound to. */
@@ -126,6 +127,17 @@ async function serveAsset(assetsDir: string, name: string, res: ServerResponse):
     res.writeHead(404);
     res.end();
   }
+}
+
+/** The subset of `incoming` whose values differ from `current` (deck-core equality). */
+function diffAgainst(current: Record<string, unknown>, incoming: Record<string, unknown>): Record<string, unknown> {
+  const changed: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(incoming)) {
+    if (!(key in current) || !sameValue(current[key], value)) changed[key] = value;
+  }
+
+  return changed;
 }
 
 function tokenOf(req: IncomingMessage, origin: string): string | undefined {
@@ -297,8 +309,18 @@ function attachFakeHost(
 
           case "setGlobalSettings":
             if (frame.payload !== null && typeof frame.payload === "object" && !Array.isArray(frame.payload)) {
+              // sdpi-components saves its WHOLE snapshot on every change. Hand
+              // deck-core only the keys that actually differ from the current
+              // cache: a full-object write marks every key pending with its
+              // previous value as "superseded", and a later foreign write (a PI
+              // setting a key BACK to that previous value) is then misread as a
+              // stale echo and rolled back (#896 — observed with driverName).
+              // `sameValue` is deck-core's own equality (string forms match
+              // parsed values), so the diff can't disagree with the overlay.
+              const changed = diffAgainst(host.read(), frame.payload as Record<string, unknown>);
+
               // The subscribe() listener echoes the result back — same as the real host.
-              host.write(frame.payload as Record<string, unknown>);
+              if (Object.keys(changed).length > 0) host.write(changed);
             }
 
             break;

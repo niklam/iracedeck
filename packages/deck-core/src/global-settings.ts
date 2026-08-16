@@ -1119,7 +1119,7 @@ let lastHostSettings: Record<string, unknown> | null = null;
  * local write back. The JSON fallback covers the few object-shaped
  * passthrough values (e.g. `_selectedCar`).
  */
-function sameValue(a: unknown, b: unknown): boolean {
+export function sameValue(a: unknown, b: unknown): boolean {
   if (Object.is(a, b)) return true;
 
   const isComparablePrimitive = (v: unknown): v is string | number | boolean =>

@@ -155,6 +155,7 @@ export {
   hasReceivedHostSettings,
   resolveActiveDriverName,
   resolveActiveRaceEngineerVoice,
+  sameValue,
   _resetGlobalSettings,
 } from "./global-settings.js";
 
