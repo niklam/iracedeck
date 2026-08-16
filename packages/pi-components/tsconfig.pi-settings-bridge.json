@@ -7,6 +7,6 @@
     "declarationMap": false,
     "noEmit": false
   },
-  "include": ["src/ulanzi-bridge/**/*", "src/settings-channel/**/*"],
+  "include": ["src/pi-settings-bridge/**/*", "src/settings-channel/**/*"],
   "exclude": ["src/**/*.test.ts"]
 }
