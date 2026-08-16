@@ -162,6 +162,16 @@ export {
 // One-shot renamed-key migrations (issue #953)
 export { migrateGlobalSettingsKeys } from "./global-settings-migrations.js";
 
+// Plugin-owned settings store (issue #993)
+export {
+  createFileSettingsStore,
+  resolveSettingsStorePath,
+  settingsStoreFolderName,
+  type FileSettingsStoreOptions,
+  type ResolveSettingsStorePathOptions,
+  type SettingsStore,
+} from "./settings-store.js";
+
 // Per-mode sim-communication descriptors (issue #612)
 export {
   isConstantBindingKey,

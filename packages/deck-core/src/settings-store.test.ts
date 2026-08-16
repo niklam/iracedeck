@@ -1,6 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { silentLogger } from "@iracedeck/logger";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { resolveSettingsStorePath, settingsStoreFolderName } from "./settings-store.js";
+import {
+  createFileSettingsStore,
+  resolveSettingsStorePath,
+  type SettingsStore,
+  settingsStoreFolderName,
+} from "./settings-store.js";
 
 describe("settingsStoreFolderName", () => {
   it("maps the plugin platform id to a human-readable per-ecosystem folder", () => {
@@ -37,5 +46,80 @@ describe("resolveSettingsStorePath", () => {
     });
 
     expect(p).toBe("D:\\test\\fresh.json");
+  });
+});
+
+describe("createFileSettingsStore", () => {
+  let dir: string;
+  let store: SettingsStore;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "ird-settings-store-"));
+    store = createFileSettingsStore({
+      path: join(dir, "sub", "global-settings.json"),
+      logger: silentLogger,
+      debounceMs: 10,
+    });
+  });
+
+  afterEach(async () => {
+    await store.flush();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("load() is undefined when the file does not exist yet — that is the migration signal", async () => {
+    expect(await store.load()).toBeUndefined();
+  });
+
+  it("save() then flush() writes pretty-printed JSON, creating the folder", async () => {
+    store.save({ driverName: "nick", debugLogging: true });
+    await store.flush();
+
+    const text = readFileSync(store.path, "utf-8");
+
+    expect(JSON.parse(text)).toEqual({ driverName: "nick", debugLogging: true });
+    expect(text).toContain("\n"); // pretty-printed
+  });
+
+  it("load() returns what was saved", async () => {
+    store.save({ a: 1 });
+    await store.flush();
+
+    expect(await store.load()).toEqual({ a: 1 });
+  });
+
+  it("debounces: rapid saves produce one file write with the LAST value", async () => {
+    store.save({ n: 1 });
+    store.save({ n: 2 });
+    store.save({ n: 3 });
+    await store.flush();
+
+    expect(await store.load()).toEqual({ n: 3 });
+    // No stray temp files left behind by the atomic write.
+    expect(readdirSync(join(dir, "sub")).filter((f) => f.endsWith(".tmp"))).toEqual([]);
+  });
+
+  it("writes atomically — a reader never sees a partial file (temp + rename)", async () => {
+    store.save({ big: "x".repeat(200_000) });
+    await store.flush();
+
+    expect(readdirSync(join(dir, "sub"))).toEqual(["global-settings.json"]);
+    expect(JSON.parse(readFileSync(store.path, "utf-8"))).toEqual({ big: "x".repeat(200_000) });
+  });
+
+  it("moves a corrupt file aside and returns undefined — never silently discards a user's file", async () => {
+    const dirty = join(dir, "sub");
+    store.save({ ok: true });
+    await store.flush();
+    writeFileSync(store.path, "{ not json", "utf-8");
+
+    expect(await store.load()).toBeUndefined();
+    const aside = readdirSync(dirty).filter((f) => /^global-settings\.corrupt-.*\.json$/.test(f));
+    expect(aside).toHaveLength(1);
+    expect(existsSync(store.path)).toBe(false);
+  });
+
+  it("flush() with nothing pending resolves immediately", async () => {
+    await expect(store.flush()).resolves.toBeUndefined();
   });
 });
