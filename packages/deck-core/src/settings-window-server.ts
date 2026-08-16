@@ -1,22 +1,65 @@
 /**
  * Settings-window server (issue #992).
  *
- * A loopback HTTP server the plugin process starts ON DEMAND — when the user
- * opens the settings window — and tears down when the window closes. Binding
- * at open-time rather than plugin startup keeps the surface alive only while
- * it is actually in use.
+ * A loopback HTTP + WebSocket server the plugin process starts ON DEMAND —
+ * when the user opens the settings window — and tears down when the window
+ * closes. Binding at open-time rather than plugin startup keeps the surface
+ * alive only while it is actually in use.
  *
- * Every request passes through `authorizeSettingsRequest` (Origin first, then
- * the per-launch token). No CORS header is ever emitted.
+ * Two roles:
+ *  - HTTP: serve the settings page (and later its assets).
+ *  - WebSocket `/ws`: the "fake deck host". sdpi-components on the page speaks
+ *    the Elgato Property Inspector protocol to it exactly as it would to the
+ *    real host, so every existing partial and `ird-*` component works
+ *    unchanged. Only the global-settings subset is needed (every control on
+ *    the settings page carries `global`): `getGlobalSettings` /
+ *    `setGlobalSettings` / `didReceiveGlobalSettings`, plus `openUrl` and
+ *    `logMessage`.
+ *
+ * Every HTTP request AND every WebSocket upgrade passes through
+ * `authorizeSettingsRequest` (Origin first, then the per-launch token). No
+ * CORS header is ever emitted.
+ *
+ * Settings I/O goes through an injected `SettingsWindowHost` — the plugin binds
+ * it to `getGlobalSettings` / `updateGlobalSettings` / `onGlobalSettingsChange`
+ * — so this module never touches the global-settings singleton and the #896
+ * single-writer guarantees hold by construction.
  */
 import { randomBytes } from "node:crypto";
-import { createServer, type Server } from "node:http";
+import { readFile } from "node:fs/promises";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { extname, normalize, resolve, sep } from "node:path";
+import type { Duplex } from "node:stream";
+import { type WebSocket, WebSocketServer } from "ws";
 
 import { authorizeSettingsRequest } from "./settings-window-guard.js";
 
+/** The plugin-side settings surface the fake host is bound to. */
+export interface SettingsWindowHost {
+  read(): Record<string, unknown>;
+  write(partial: Record<string, unknown>): void;
+  /** Subscribe to settings changes from ANY writer; returns an unsubscribe. */
+  subscribe(listener: (settings: Record<string, unknown>) => void): () => void;
+}
+
 export interface SettingsWindowServerOptions {
-  /** The fully rendered settings page HTML. */
-  page: string;
+  /**
+   * Inline page HTML. Used for the placeholder page; when `assetsDir` is
+   * given this is ignored and the page comes from `pageFile` instead.
+   */
+  page?: string;
+  /**
+   * Directory whose files are served by name (`/pi-components.js` etc.). The
+   * plugin points this at its `ui/` folder so the compiled page's relative
+   * `<script src>` tags resolve. Requests are confined to this directory.
+   */
+  assetsDir?: string;
+  /** File inside `assetsDir` served at `/`. Read fresh on every request. */
+  pageFile?: string;
+  /** Settings I/O; when omitted the WebSocket host is not started (HTTP only). */
+  settingsHost?: SettingsWindowHost;
+  /** Opener for `openUrl` frames (external links on the page). http(s) only. */
+  openUrl?: (url: string) => Promise<void>;
 }
 
 export interface SettingsWindowServer {
@@ -27,6 +70,53 @@ export interface SettingsWindowServer {
 }
 
 const HOST = "127.0.0.1";
+const WS_PATH = "/ws";
+
+/** Frame shape sdpi-components sends. Everything else is ignored. */
+interface PiFrame {
+  event?: unknown;
+  payload?: unknown;
+}
+
+const CONTENT_TYPES: Record<string, string> = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".woff2": "font/woff2",
+  ".json": "application/json; charset=utf-8",
+};
+
+/**
+ * Serve one file from `assetsDir`, confined to that directory (a normalized
+ * resolved path that escapes it is a 404, never a read). Missing → 404.
+ */
+async function serveAsset(assetsDir: string, name: string, res: ServerResponse): Promise<void> {
+  const root = resolve(assetsDir);
+  const target = resolve(root, normalize(name));
+
+  if (target !== root && !target.startsWith(root + sep)) {
+    res.writeHead(404);
+    res.end();
+
+    return;
+  }
+
+  try {
+    const body = await readFile(target);
+
+    res.writeHead(200, { "content-type": CONTENT_TYPES[extname(target)] ?? "application/octet-stream" });
+    res.end(body);
+  } catch {
+    res.writeHead(404);
+    res.end();
+  }
+}
+
+function tokenOf(req: IncomingMessage, origin: string): string | undefined {
+  return new URL(req.url ?? "/", origin).searchParams.get("t") ?? undefined;
+}
 
 export async function startSettingsWindowServer(options: SettingsWindowServerOptions): Promise<SettingsWindowServer> {
   const token = randomBytes(24).toString("hex");
@@ -34,25 +124,39 @@ export async function startSettingsWindowServer(options: SettingsWindowServerOpt
   // before listen() resolves.
   let origin = "";
 
-  const server: Server = createServer((req, res) => {
-    const requestUrl = new URL(req.url ?? "/", origin);
-    const decision = authorizeSettingsRequest({
+  const authorize = (req: IncomingMessage) =>
+    authorizeSettingsRequest({
       origin: req.headers.origin,
       expectedOrigin: origin,
-      token: requestUrl.searchParams.get("t") ?? undefined,
+      token: tokenOf(req, origin),
       expectedToken: token,
     });
 
-    if (!decision.allowed) {
+  const server: Server = createServer((req, res) => {
+    if (!authorize(req).allowed) {
       res.writeHead(403, { "content-type": "text/plain" });
       res.end("forbidden");
 
       return;
     }
 
+    const pathname = new URL(req.url ?? "/", origin).pathname;
+
+    if (options.assetsDir) {
+      const name = pathname === "/" ? (options.pageFile ?? "index.html") : decodeURIComponent(pathname.slice(1));
+
+      void serveAsset(options.assetsDir, name, res);
+
+      return;
+    }
+
     res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-    res.end(options.page);
+    res.end(options.page ?? "");
   });
+
+  const wss = options.settingsHost
+    ? attachFakeHost(server, options.settingsHost, options.openUrl, authorize)
+    : undefined;
 
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
@@ -74,7 +178,96 @@ export async function startSettingsWindowServer(options: SettingsWindowServerOpt
     url: `${origin}/?t=${token}`,
     close: () =>
       new Promise<void>((resolve) => {
+        wss?.close();
         server.close(() => resolve());
       }),
+  };
+}
+
+/**
+ * Wire the WebSocket fake host onto the HTTP server. Returns a closer that
+ * unsubscribes from settings changes and terminates every socket.
+ */
+function attachFakeHost(
+  server: Server,
+  host: SettingsWindowHost,
+  openUrl: ((url: string) => Promise<void>) | undefined,
+  authorize: (req: IncomingMessage) => { allowed: boolean },
+): { close: () => void } {
+  const wss = new WebSocketServer({ noServer: true });
+  const sockets = new Set<WebSocket>();
+
+  const push = (ws: WebSocket, settings: Record<string, unknown>): void => {
+    if (ws.readyState === ws.OPEN) {
+      ws.send(JSON.stringify({ event: "didReceiveGlobalSettings", payload: { settings } }));
+    }
+  };
+
+  // Any writer anywhere in the plugin (a PI, an action, a migration) updates
+  // the window live — the same push the real host performs.
+  const unsubscribe = host.subscribe((settings) => {
+    for (const ws of sockets) push(ws, settings);
+  });
+
+  server.on("upgrade", (req: IncomingMessage, socket: Duplex, head: Buffer) => {
+    if (new URL(req.url ?? "/", "http://x").pathname !== WS_PATH || !authorize(req).allowed) {
+      socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
+      socket.destroy();
+
+      return;
+    }
+
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      sockets.add(ws);
+      ws.on("close", () => sockets.delete(ws));
+
+      ws.on("message", (raw) => {
+        let frame: PiFrame;
+
+        try {
+          frame = JSON.parse(String(raw)) as PiFrame;
+        } catch {
+          return;
+        }
+
+        switch (frame.event) {
+          case "getGlobalSettings":
+            push(ws, host.read());
+            break;
+
+          case "setGlobalSettings":
+            if (frame.payload !== null && typeof frame.payload === "object" && !Array.isArray(frame.payload)) {
+              // The subscribe() listener echoes the result back — same as the real host.
+              host.write(frame.payload as Record<string, unknown>);
+            }
+
+            break;
+
+          case "openUrl": {
+            const url = (frame.payload as { url?: unknown } | undefined)?.url;
+
+            if (typeof url === "string" && /^https?:\/\//i.test(url) && openUrl) {
+              void openUrl(url).catch(() => {});
+            }
+
+            break;
+          }
+
+          // registerPropertyInspector, logMessage, and anything else: nothing to do.
+          default:
+            break;
+        }
+      });
+    });
+  });
+
+  return {
+    close: () => {
+      unsubscribe();
+
+      for (const ws of sockets) ws.terminate();
+
+      wss.close();
+    },
   };
 }

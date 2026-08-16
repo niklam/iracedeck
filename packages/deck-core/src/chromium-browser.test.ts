@@ -1,6 +1,20 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { findChromiumBrowser } from "./chromium-browser.js";
+import { appWindowArgs, findChromiumBrowser, SETTINGS_WINDOW_SIZE } from "./chromium-browser.js";
+
+describe("appWindowArgs", () => {
+  it("opens the URL in app mode with an explicit, sensible window size", () => {
+    const args = appWindowArgs("http://127.0.0.1:1/?t=x");
+
+    expect(args).toContain("--app=http://127.0.0.1:1/?t=x");
+    expect(args).toContain(`--window-size=${SETTINGS_WINDOW_SIZE.width},${SETTINGS_WINDOW_SIZE.height}`);
+  });
+
+  it("uses a size that fits a 1366×768 laptop display with room for the OS chrome", () => {
+    expect(SETTINGS_WINDOW_SIZE.width).toBeLessThanOrEqual(1280);
+    expect(SETTINGS_WINDOW_SIZE.height).toBeLessThanOrEqual(720);
+  });
+});
 
 describe("findChromiumBrowser", () => {
   it("prefers the App Paths registry entry when the registry answers", () => {

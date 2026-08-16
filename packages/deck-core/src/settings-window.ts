@@ -10,14 +10,39 @@
 import type { ILogger } from "@iracedeck/logger";
 
 import { launchSettingsWindow, type SettingsWindowLaunch } from "./settings-window-launcher.js";
-import { type SettingsWindowServer, startSettingsWindowServer } from "./settings-window-server.js";
+import {
+  type SettingsWindowHost,
+  type SettingsWindowServer,
+  startSettingsWindowServer,
+} from "./settings-window-server.js";
+
+/**
+ * File name of the compiled settings-window page inside each plugin's `ui/`
+ * folder (built from `settings-window.ejs` by the shared PI template plugin,
+ * with `settings-window-bridge.js` injected before `sdpi-components.js`).
+ * The build side declares the same string in `@iracedeck/pi-components/build`;
+ * a shared test guards that they never drift.
+ */
+export const SETTINGS_WINDOW_HTML = "settings-window.html";
 
 export interface SettingsWindowControllerOptions {
-  /** Produces the settings page HTML at open-time (so it can reflect live state). */
-  renderPage: () => string;
+  /**
+   * Inline page HTML producer — the placeholder / test path. Ignored when
+   * `assetsDir` is given.
+   */
+  renderPage?: () => string;
+  /**
+   * Directory served as static assets (the plugin's `ui/`), with `pageFile`
+   * served at `/`. This is the real-page path.
+   */
+  assetsDir?: string;
+  pageFile?: string;
   findBrowser: () => string | undefined;
   spawnApp: (browserPath: string, url: string) => void;
+  /** Host URL opener — used both as the launch fallback and for the page's external links. */
   openUrl: (url: string) => Promise<void>;
+  /** Settings I/O for the page's fake host; omit for an HTTP-only (placeholder) page. */
+  settingsHost?: SettingsWindowHost;
   logger: ILogger;
 }
 
@@ -34,7 +59,13 @@ export function createSettingsWindowController(options: SettingsWindowController
   return {
     async open() {
       if (server === undefined) {
-        server = await startSettingsWindowServer({ page: options.renderPage() });
+        server = await startSettingsWindowServer({
+          page: options.renderPage?.(),
+          assetsDir: options.assetsDir,
+          pageFile: options.pageFile,
+          settingsHost: options.settingsHost,
+          openUrl: options.openUrl,
+        });
         options.logger.info("Settings window server started");
         options.logger.debug(`Settings window URL: ${server.url}`);
       }

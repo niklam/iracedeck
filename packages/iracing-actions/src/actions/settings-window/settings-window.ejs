@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<%- include('head-common') %>
+		<title>iRaceDeck Settings</title>
+		<%#
+		  The dedicated settings window (issue #992). Served by the plugin process
+		  over loopback and opened as a chromeless browser app window; NOT a
+		  Property Inspector, though it reuses the PI framework verbatim. The plugin
+		  injects settings-window-bridge.js before sdpi-components.js at build time
+		  (same mechanism as the Ulanzi PI bridge), which redirects sdpi's socket to
+		  the plugin's fake host and drives connectElgatoStreamDeckSocket.
+
+		  Every control here is `global`, so only the global-settings subset of the
+		  PI protocol is ever exercised. Renders the same global-*.ejs partials the
+		  35 action PIs render — with two deliberate differences:
+		    - ALL key-binding categories, not one action's subset.
+		    - No Stream Deck Profiles accordion: switchToProfile targets the device
+		      whose PI is open, and this window has no device.
+		%>
+		<style>
+			/* A real window has room: cap the content column so long forms stay readable
+			   on a wide display, and let the page scroll rather than the panel. */
+			body { max-width: 1120px; margin: 0 auto; padding: 16px 24px 32px; }
+			.ird-settings-window-title {
+				font-family: "Segoe UI", Arial, Roboto, Helvetica, sans-serif;
+				font-size: 13pt; font-weight: 600; color: #ffffff; margin: 8px 0 2px;
+			}
+			.ird-settings-window-subtitle {
+				font-family: "Segoe UI", Arial, Roboto, Helvetica, sans-serif;
+				font-size: 9pt; color: #808080; margin: 0 0 12px;
+			}
+		</style>
+	</head>
+	<body>
+		<div class="ird-settings-window-title">iRaceDeck Settings</div>
+		<div class="ird-settings-window-subtitle">
+			Plugin-wide settings. Every iRaceDeck key uses these unless it overrides them individually.
+		</div>
+
+		<%- include('section-header', { title: 'Key Bindings' }) %>
+		<%
+		  // Every category, in one place — the view the per-action PI cannot offer.
+		  var __allBindings = require('./data/key-bindings.json');
+		  var __labels = {
+		    blackBox: 'Black Box', splitsDelta: 'Splits & Delta', toggleUi: 'Toggle UI',
+		    lookDirection: 'Look Direction', carControl: 'Car Control',
+		    cameraControls: 'Camera Controls', cameraEditorControls: 'Camera Editor Controls',
+		    cameraEditorAdjustments: 'Camera Editor Adjustments', setupChassis: 'Setup — Chassis',
+		    setupBrakes: 'Setup — Brakes', replayNavigation: 'Replay Navigation',
+		    audioControls: 'Audio Controls'
+		  };
+		  var __label = function (k) {
+		    return __labels[k] || k.replace(/([A-Z])/g, ' $1').replace(/^./, function (c) { return c.toUpperCase(); });
+		  };
+		%>
+		<% Object.keys(__allBindings).forEach(function (category) { %>
+			<%- include('accordion', {
+			  title: __label(category),
+			  accordionId: 'Settings Window Bindings ' + category,
+			  open: false,
+			  content: __allBindings[category].map(function (binding) {
+			    return `
+			    <sdpi-item label="${binding.label}">
+			      <ird-key-binding setting="${binding.setting}" default="${binding.default}" global></ird-key-binding>
+			    </sdpi-item>`;
+			  }).join('')
+			}) %>
+		<% }); %>
+
+		<%- include('section-header', { title: 'Appearance' }) %>
+		<%- include('global-title-defaults') %>
+		<%- include('global-color-defaults') %>
+		<%- include('global-border-defaults') %>
+		<%- include('global-graphic-defaults') %>
+		<%- include('global-flag-flash') %>
+
+		<%- include('section-header', { title: 'General' }) %>
+		<%- include('global-common-settings', { settingsWindow: true }) %>
+
+		<%- include('version') %>
+	</body>
+</html>

@@ -94,6 +94,7 @@ import {
   resolveActiveDriverName,
   resolveActiveRaceEngineerVoice,
   runVersionCheck,
+  SETTINGS_WINDOW_HTML,
   shouldOpenChangelog,
   spawnAppWindow,
   updateGlobalSettings,
@@ -1019,16 +1020,21 @@ initProfileSwitcher(
   adapter.createLogger("ProfileSwitcher"),
 );
 
-// Settings window (#992): a loopback-served page opened as a chromeless app
-// window. Started lazily on the PI's "Open iRaceDeck Settings" request and
-// torn down with the plugin. The page is a placeholder until the settings
-// bridge lands — this slice proves the in-plugin listener survives under the
-// deck host.
+// Settings window (#992): the plugin serves ui/settings-window.html (compiled
+// from settings-window.ejs, with settings-window-bridge.js injected before
+// sdpi-components.js) over a loopback server started lazily on the PI's "Open
+// iRaceDeck Settings" request, and opens it as a chromeless app window. The
+// page's sdpi-components talks to the server's fake host, which is bound here
+// to the real global-settings singleton — so every write goes through
+// updateGlobalSettings and the #896 single-writer guarantees hold.
 const settingsWindow = createSettingsWindowController({
-  renderPage: () =>
-    `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>iRaceDeck Settings</title>` +
-    `<style>body{background:#2d2d2d;color:#fff;font:10pt "Segoe UI",sans-serif;padding:24px}</style></head>` +
-    `<body><h1>iRaceDeck Settings</h1><p>Served from the plugin process. Full settings UI coming next.</p></body></html>`,
+  assetsDir: join(__binDir, "..", "ui"),
+  pageFile: SETTINGS_WINDOW_HTML,
+  settingsHost: {
+    read: () => getGlobalSettings() as Record<string, unknown>,
+    write: (partial) => updateGlobalSettings(partial),
+    subscribe: (listener) => onGlobalSettingsChange((s) => listener(s as Record<string, unknown>)),
+  },
   findBrowser: findChromiumBrowserOnThisMachine,
   spawnApp: spawnAppWindow,
   openUrl: (url) => adapter.openUrl(url),

@@ -1,12 +1,12 @@
 import { silentLogger } from "@iracedeck/logger";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createSettingsWindowController } from "./settings-window.js";
+import { createSettingsWindowController, SETTINGS_WINDOW_HTML } from "./settings-window.js";
 
 const PAGE = "<!doctype html><title>t</title>";
 
 function setup() {
-  const openUrl = vi.fn(async () => {});
+  const openUrl = vi.fn(async (_url: string) => {});
   const spawnApp = vi.fn();
   const controller = createSettingsWindowController({
     renderPage: () => PAGE,
@@ -64,5 +64,60 @@ describe("createSettingsWindowController", () => {
     await controller.close();
 
     await expect(fetch(url)).rejects.toThrow();
+  });
+});
+
+describe("createSettingsWindowController — settings host wiring", () => {
+  it("starts the WebSocket fake host bound to the injected settingsHost", async () => {
+    const { WebSocket } = await import("ws");
+    const openUrl = vi.fn(async (_url: string) => {});
+    const controller = createSettingsWindowController({
+      renderPage: () => PAGE,
+      findBrowser: () => undefined,
+      spawnApp: vi.fn(),
+      openUrl,
+      settingsHost: { read: () => ({ debugLogging: true }), write: vi.fn(), subscribe: () => () => {} },
+      logger: silentLogger,
+    });
+    teardown = () => controller.close();
+
+    await controller.open();
+    const url = new URL(openUrl.mock.calls[0]?.[0] as string);
+    const ws = new WebSocket(`ws://${url.host}/ws?t=${url.searchParams.get("t")}`);
+    await new Promise((r) => ws.once("open", r));
+
+    ws.send(JSON.stringify({ event: "getGlobalSettings" }));
+    const reply = await new Promise<Record<string, unknown>>((r) =>
+      ws.once("message", (raw) => r(JSON.parse(String(raw)) as Record<string, unknown>)),
+    );
+
+    expect(reply).toEqual({ event: "didReceiveGlobalSettings", payload: { settings: { debugLogging: true } } });
+    ws.close();
+  });
+});
+
+describe("createSettingsWindowController — assets dir", () => {
+  it("serves the compiled page from assetsDir/pageFile instead of an inline page", async () => {
+    const { mkdtempSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "ird-sw-ctrl-"));
+    writeFileSync(join(dir, SETTINGS_WINDOW_HTML), "<!doctype html><title>compiled</title>", "utf-8");
+
+    const openUrl = vi.fn(async (_url: string) => {});
+    const controller = createSettingsWindowController({
+      assetsDir: dir,
+      pageFile: SETTINGS_WINDOW_HTML,
+      findBrowser: () => undefined,
+      spawnApp: vi.fn(),
+      openUrl,
+      logger: silentLogger,
+    });
+    teardown = () => controller.close();
+
+    await controller.open();
+    const url = openUrl.mock.calls[0]?.[0] as string;
+
+    expect(await (await fetch(url)).text()).toBe("<!doctype html><title>compiled</title>");
   });
 });

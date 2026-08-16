@@ -72,8 +72,22 @@ export function findChromiumBrowserOnThisMachine(): string | undefined {
   return findChromiumBrowser({ exists: existsSync, queryAppPath: queryWindowsAppPath, env: process.env });
 }
 
+/**
+ * Initial settings-window size. Chosen to fit a 1366×768 laptop display with
+ * room for the taskbar and window chrome; without an explicit size Chromium
+ * reuses its last window size, which on a big monitor opens far too large.
+ * The user can still resize; this is only the first-open default.
+ */
+export const SETTINGS_WINDOW_SIZE = { width: 1180, height: 700 } as const;
+
+/** The exact argument list for a chromeless app window — pure, so it can be tested without spawning. */
+export function appWindowArgs(url: string): string[] {
+  return [`--app=${url}`, `--window-size=${SETTINGS_WINDOW_SIZE.width},${SETTINGS_WINDOW_SIZE.height}`];
+}
+
 /** Spawn `<browserPath> --app=<url>` detached so it outlives — and never blocks — the plugin. */
 export function spawnAppWindow(browserPath: string, url: string): void {
-  const child = spawn(browserPath, [`--app=${url}`], { detached: true, stdio: "ignore", windowsHide: false });
+  const child = spawn(browserPath, appWindowArgs(url), { detached: true, stdio: "ignore", windowsHide: false });
+
   child.unref();
 }

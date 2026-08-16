@@ -14,8 +14,12 @@
   hosts have no profile system. See .claude/rules/profiles-and-devices.md — this is
   the home for switch buttons for ALL bundled profiles; a new profile template
   gets a row automatically once its files are registered in the manifest.
+
+  Also suppressed inside the dedicated settings window (#992): switchToProfile
+  resolves its target from the device whose PI is open, and the window has no
+  device — faking one would switch the wrong deck for a multi-device user.
 %>
-<% if (locals.platform?.features?.profiles !== false) { %>
+<% if (locals.platform?.features?.profiles !== false && !locals.settingsWindow) { %>
 <%
   // Unique bundled profile templates (display names), sourced from the
   // generated (manifest-derived) profiles.json so this list can't drift — add

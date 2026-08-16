@@ -125,7 +125,8 @@
 <%#
   Rendered here so every action's Global Settings section gets the Stream Deck
   Profiles accordion via a single include (all action PIs include this partial).
-  The accordion self-gates to Elgato via the `profiles` feature flag. See
+  The accordion self-gates to Elgato via the `profiles` feature flag, and to
+  "not the settings window" via the forwarded `settingsWindow` flag (#992). See
   .claude/rules/profiles-and-devices.md. EJS comment so it isn't emitted.
 %>
-<%- include('global-stream-deck-profiles') %>
+<%- include('global-stream-deck-profiles', { settingsWindow: !!locals.settingsWindow }) %>
