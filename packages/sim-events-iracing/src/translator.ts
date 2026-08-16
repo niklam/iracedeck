@@ -1652,8 +1652,10 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // diffPitStatus emits `pitService.statusChanged` for in-progress / complete
   // / positioning / can't-fix-that transitions (issue #479). Independent of
   // diffToggles' bit-flag world; placed adjacent for cohesion of the
-  // pit-service event group.
-  diffPitStatus(self.state, telemetry, emit);
+  // pit-service event group. `now` drives the positioning-error repeat
+  // cadence and its movement hold (issue #951) — the `diffPitLane` /
+  // `diffLimiter` threading precedent.
+  diffPitStatus(self.state, telemetry, now, emit);
   // diffPitReadback runs after diffToggles so it sees the per-tick toggle
   // emissions (`pitService.toggled` / `tireService.changed` /
   // `tireService.compoundChanged`) in `pending` — those signal user intent

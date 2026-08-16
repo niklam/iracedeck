@@ -1,16 +1,33 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { buildTriggerDescription, DialSettings, formatDialValue } from "./view-adjustment-dial-surface.js";
+import {
+  buildTriggerDescription,
+  DialSettings,
+  formatDialValue,
+  GESTURE_ACTIONS,
+  ROTATION_SETTINGS,
+} from "./view-adjustment-dial-surface.js";
 import { ViewAdjustment } from "./view-adjustment.js";
 
-const { mockGetCurrentTelemetry, mockTapBinding, mockIsBindingMissing, mockDualPressThreshold, globalListeners } =
-  vi.hoisted(() => ({
-    mockGetCurrentTelemetry: vi.fn<() => unknown>(() => null),
-    mockTapBinding: vi.fn().mockResolvedValue(undefined),
-    mockIsBindingMissing: vi.fn(() => false),
-    mockDualPressThreshold: { value: 500 },
-    globalListeners: [] as Array<() => void>,
-  }));
+const {
+  mockGetCurrentTelemetry,
+  mockTapBinding,
+  mockIsBindingMissing,
+  mockDualPressThreshold,
+  globalListeners,
+  mockBringPointerToSim,
+} = vi.hoisted(() => ({
+  mockGetCurrentTelemetry: vi.fn<() => unknown>(() => null),
+  mockTapBinding: vi.fn().mockResolvedValue(undefined),
+  mockIsBindingMissing: vi.fn(() => false),
+  mockDualPressThreshold: { value: 500 },
+  globalListeners: [] as Array<() => void>,
+  mockBringPointerToSim: vi.fn(),
+}));
+
+vi.mock("../../shared/mouse-to-sim.js", () => ({
+  bringPointerToSim: mockBringPointerToSim,
+}));
 
 vi.mock("@iracedeck/deck-core", async () => {
   const { z } = await import("zod");
@@ -128,6 +145,15 @@ describe("view-adjustment dial-surface pure helpers", () => {
       expect(desc.longTouch).toBe("Recenter VR");
     });
 
+    it("names the Mouse to Sim gesture", () => {
+      const desc = buildTriggerDescription(
+        DialSettings.parse({ setting: "fov", pressAction: "mouse-to-sim", tapAction: "mouse-to-sim" }),
+      );
+
+      expect(desc.push).toBe("Mouse to Sim");
+      expect(desc.touch).toBe("Mouse to Sim");
+    });
+
     it("offers no push when both press slots are none", () => {
       const desc = buildTriggerDescription(
         DialSettings.parse({ setting: "ui-size", pressAction: "none", longPressAction: "none" }),
@@ -135,6 +161,16 @@ describe("view-adjustment dial-surface pure helpers", () => {
 
       expect(desc.rotate).toBe("Adjust UI Size");
       expect(desc.push).toBeUndefined();
+    });
+  });
+
+  describe("GESTURE_ACTIONS", () => {
+    it("offers Recenter VR, Mouse to Sim, and None", () => {
+      expect([...GESTURE_ACTIONS]).toEqual(["recenter-vr", "mouse-to-sim", "none"]);
+    });
+
+    it("does not offer Mouse to Sim as a rotation setting", () => {
+      expect(ROTATION_SETTINGS as readonly string[]).not.toContain("mouse-to-sim");
     });
   });
 
@@ -277,6 +313,20 @@ describe("ViewAdjustment dial surface", () => {
       await action.onDialUp(basicEvent(ctx, settings) as never);
 
       expect(mockTapBinding).toHaveBeenCalledWith("viewAdjustRecenterVr");
+    });
+
+    it("brings the mouse to the sim when the press gesture is mouse-to-sim", async () => {
+      const ctx = dialContext("p-mouse");
+      const settings = dialSettings({ setting: "fov", pressAction: "mouse-to-sim" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+      mockBringPointerToSim.mockClear();
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(mockBringPointerToSim).toHaveBeenCalledTimes(1);
+      expect(mockTapBinding).not.toHaveBeenCalled();
     });
 
     it("fires the long-press action when held past the threshold", async () => {

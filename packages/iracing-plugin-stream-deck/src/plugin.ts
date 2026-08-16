@@ -67,6 +67,7 @@ import {
   createElevationCheckSubscriber,
   deleteGlobalSettings,
   evaluateSetupWarning,
+  focusIRacingIfEnabled,
   getController,
   getGlobalSettings,
   getPluginPlatform,
@@ -79,8 +80,10 @@ import {
   initializeRasterizer,
   initializeSDK,
   initializeSimHub,
+  initMousePointer,
   initPluginConfig,
   initProfileSwitcher,
+  initWindowFocus,
   isIRacingActive,
   migrateGlobalSettingsKeys,
   onGlobalSettingsChange,
@@ -198,8 +201,6 @@ import {
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-
-import { focusIRacingIfEnabled, initWindowFocus } from "./shared/index.js";
 
 // Load build-time config (version, platform)
 const __binDir = dirname(fileURLToPath(import.meta.url));
@@ -944,6 +945,9 @@ adapter.onPropertyInspectorDidAppear(() => {
 
 // Initialize window focus service for focusing iRacing before any action
 initWindowFocus(adapter.createLogger("WindowFocus"), () => native.focusIRacingWindow());
+
+// Initialize the mouse pointer service for the Mouse to Sim mode (#926)
+initMousePointer(adapter.createLogger("MousePointer"), (x, y) => native.moveMouseToIRacingWindow(x, y));
 
 // Focus iRacing window before any action executes (when enabled in global settings)
 // MUST be registered BEFORE actions so the listener fires first in the EventEmitter chain.

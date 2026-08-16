@@ -779,3 +779,28 @@ export interface ElevationStatus {
   /** !selfElevated && iracingFound && (iracingQueryDenied || iracingElevated). */
   mismatch: boolean;
 }
+/**
+ * Result codes from focusIRacingWindow().
+ */
+export enum FocusResult {
+  /** Window was already in the foreground */
+  AlreadyFocused = 0,
+  /** Window was found and successfully focused */
+  Focused = 1,
+  /** No window with the expected title exists */
+  WindowNotFound = 2,
+  /** Window was found but focus did not transfer within timeout */
+  FocusTimedOut = 3,
+}
+
+/**
+ * Result codes from moveMouseToIRacingWindow().
+ */
+export enum PointerMoveResult {
+  /** The cursor was placed inside the sim's client area */
+  Moved = 0,
+  /** No window with the expected title exists */
+  WindowNotFound = 1,
+  /** The window was found but the move failed (including a minimized window) */
+  Failed = 2,
+}

@@ -12328,6 +12328,126 @@
       "textPreview": "Come on, Schumi.",
       "generatedAt": "2026-08-16T06:43:45.443Z",
       "requestId": "RpiBXv8LfPxp1kxugs8Z"
+    },
+    "voice/default/pit-status/too-far-left-repeat-01.mp3": {
+      "hash": "920f69e59ec2ac0b",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Still too far left.",
+      "generatedAt": "2026-08-15T16:22:32.472Z",
+      "requestId": "sUCGdaZ2BfCw7KybUajf"
+    },
+    "voice/default/pit-status/too-far-left-repeat-02.mp3": {
+      "hash": "c4a8899a37f15f74",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Nudge it right.",
+      "generatedAt": "2026-08-15T16:22:32.634Z",
+      "requestId": "vTsKAEEHESyv8Y19rqn4"
+    },
+    "voice/default/pit-status/too-far-left-repeat-03.mp3": {
+      "hash": "04c62db3949792a0",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Line it up, still left.",
+      "generatedAt": "2026-08-15T16:22:32.798Z",
+      "requestId": "e4Wp9RgEmx8GBuoBy0kK"
+    },
+    "voice/default/pit-status/too-far-right-repeat-01.mp3": {
+      "hash": "77abf96dd4b27e16",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Still too far right.",
+      "generatedAt": "2026-08-15T16:22:32.944Z",
+      "requestId": "9KmJo8MwlvwP7fokQ2Tz"
+    },
+    "voice/default/pit-status/too-far-right-repeat-02.mp3": {
+      "hash": "f11f84ca836a7940",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Nudge it left.",
+      "generatedAt": "2026-08-15T16:22:33.104Z",
+      "requestId": "eRlyljLELEOoA79zjCty"
+    },
+    "voice/default/pit-status/too-far-right-repeat-03.mp3": {
+      "hash": "e69b94815f5b9ac9",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Line it up, still right.",
+      "generatedAt": "2026-08-15T16:22:33.258Z",
+      "requestId": "6HY0NF3V5HBs3ZmF8Aln"
+    },
+    "voice/default/pit-status/too-far-forward-repeat-01.mp3": {
+      "hash": "86bba6097c4ffea6",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Still too far forward.",
+      "generatedAt": "2026-08-15T16:22:33.419Z",
+      "requestId": "zPA4YkFf8UeCLbF1jCu7"
+    },
+    "voice/default/pit-status/too-far-forward-repeat-02.mp3": {
+      "hash": "c8a84195422969a3",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Back it up.",
+      "generatedAt": "2026-08-15T16:22:33.568Z",
+      "requestId": "H9z3S5vhvmCTmkEGX2pz"
+    },
+    "voice/default/pit-status/too-far-forward-repeat-03.mp3": {
+      "hash": "bbe63442fbf5efe4",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Back up, you're too far.",
+      "generatedAt": "2026-08-15T16:22:33.732Z",
+      "requestId": "nn1bC3Iuv5HdQqvBl0By"
+    },
+    "voice/default/pit-status/too-far-back-repeat-01.mp3": {
+      "hash": "59a91ee1e4a1b0ff",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Still too far back.",
+      "generatedAt": "2026-08-15T16:22:33.876Z",
+      "requestId": "XVIeL7xRB6ABbzBQZVrK"
+    },
+    "voice/default/pit-status/too-far-back-repeat-02.mp3": {
+      "hash": "a5daabe5122a1fe5",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Ease it forward.",
+      "generatedAt": "2026-08-15T16:22:34.041Z",
+      "requestId": "NjGPF0R4lqbMzMbfYVb3"
+    },
+    "voice/default/pit-status/too-far-back-repeat-03.mp3": {
+      "hash": "662760fce895c628",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Forward a bit more.",
+      "generatedAt": "2026-08-15T16:22:34.187Z",
+      "requestId": "DYuvjOFIKxGtDNTZSIh7"
+    },
+    "voice/default/pit-status/bad-angle-repeat-01.mp3": {
+      "hash": "f33b3248220a78b2",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Still at a bad angle.",
+      "generatedAt": "2026-08-15T16:22:34.353Z",
+      "requestId": "OFDNjRSIx91tpjXlZq8E"
+    },
+    "voice/default/pit-status/bad-angle-repeat-02.mp3": {
+      "hash": "e698249cc0225066",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Straighten it up.",
+      "generatedAt": "2026-08-15T16:22:34.494Z",
+      "requestId": "vgxvin6vSvqSfWc5lLaE"
+    },
+    "voice/default/pit-status/bad-angle-repeat-03.mp3": {
+      "hash": "df0cce8b8cc06ed2",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Get it straight.",
+      "generatedAt": "2026-08-15T16:22:34.652Z",
+      "requestId": "LbS2yG7XW0Kfr2Vw6wTE"
     }
   }
 }

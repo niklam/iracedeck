@@ -128,6 +128,12 @@ export const EVENT_TEMPLATES = [
       "Pit-service status transition (PlayerCarPitSvStatus). 0=None, 1=InProgress, 2=Complete, 100..105=positioning/cantFix",
     data: { from: 0, to: 1 },
   },
+  {
+    name: "pitService.positioningRepeat",
+    description:
+      "Pit-box positioning error still uncorrected (issue #951). Repeats every ~2 s while the car sits misaligned. 100=TooFarLeft, 101=TooFarRight, 102=TooFarForward, 103=TooFarBack, 104=BadAngle",
+    data: { status: 102 },
+  },
   { name: "carControl.drsToggled", description: "DRS toggled", data: { on: true } },
   { name: "carControl.p2pToggled", description: "Push-to-pass toggled", data: { on: true } },
   { name: "carControl.limiterToggled", description: "Pit limiter toggled", data: { on: true } },

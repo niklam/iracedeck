@@ -504,6 +504,23 @@ export type SimEventMap = {
    * translator so the silent idle state never fires.
    */
   "pitService.statusChanged": SimEvent<"pitService.statusChanged", { from: number; to: number }>;
+  /**
+   * A pit-box positioning error is STILL uncorrected (issue #951). Fired by
+   * the sim translator on a repeating cadence while the player's pit-service
+   * status stays latched on one of the positioning errors and the car is at
+   * rest — iRacing reports the error once and never repeats it, so a driver
+   * who backs up but stops short of the box would otherwise sit unserved in
+   * silence.
+   *
+   * Deliberately a SEPARATE event rather than a flag on
+   * `pitService.statusChanged`: a repeat is not a
+   * transition, and transition consumers must not have to filter repeats out
+   * of a shared payload. `status` is the same sim-defined numeric id
+   * `statusChanged` carries (iRacing's `irsdk_PitSvStatus`), and is always one
+   * of the five positioning errors — `InProgress` / `Complete` /
+   * `CantFixThat` stay one-shot.
+   */
+  "pitService.positioningRepeat": SimEvent<"pitService.positioningRepeat", { status: number }>;
   "carControl.drsToggled": SimEvent<"carControl.drsToggled", { on: boolean }>;
   "carControl.p2pToggled": SimEvent<"carControl.p2pToggled", { on: boolean }>;
   "carControl.limiterToggled": SimEvent<"carControl.limiterToggled", { on: boolean }>;

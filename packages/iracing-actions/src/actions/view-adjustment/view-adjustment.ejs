@@ -15,16 +15,23 @@
 
 		<!-- Keypad settings — hidden when this instance is a dial (#806). -->
 		<div id="keypad-settings">
-			<sdpi-item label="Adjustment">
+			<sdpi-item label="Mode">
 				<sdpi-select id="adjustment-select" setting="adjustment" default="fov">
 					<option value="fov">FOV</option>
 					<option value="horizon">Horizon</option>
 					<option value="driver-height">Driver Height</option>
 					<option value="recenter-vr">Recenter VR</option>
 					<option value="ui-size">UI Size</option>
+					<option value="mouse-to-sim">Mouse to Sim</option>
 				</sdpi-select>
 			</sdpi-item>
 			<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
+			<div class="ird-supporting-text hidden" id="mouse-to-sim-help">
+				Focuses the iRacing window and moves the mouse pointer into it, near the top
+				centre of the sim window. Useful in VR, where you cannot see where the pointer
+				is. It moves the pointer only — it never clicks. Uses no iRacing command, so it
+				needs no key binding.
+			</div>
 
 			<sdpi-item label="Direction" id="direction-item">
 				<sdpi-select setting="direction" default="increase">
@@ -36,7 +43,7 @@
 
 		<!-- Dial settings — shown only when this instance is a dial (#806). -->
 		<div id="dial-settings" class="hidden">
-			<sdpi-item label="Adjustment">
+			<sdpi-item label="Mode">
 				<sdpi-select setting="dial.setting" default="fov">
 					<option value="fov">FOV</option>
 					<option value="horizon">Horizon</option>
@@ -61,6 +68,7 @@
 			<sdpi-item label="Press Action">
 				<sdpi-select setting="dial.pressAction" default="recenter-vr">
 					<option value="recenter-vr">Recenter VR</option>
+					<option value="mouse-to-sim">Mouse to Sim</option>
 					<option value="none">None</option>
 				</sdpi-select>
 			</sdpi-item>
@@ -69,6 +77,7 @@
 			<sdpi-item label="Long Press">
 				<sdpi-select setting="dial.longPressAction" default="none">
 					<option value="recenter-vr">Recenter VR</option>
+					<option value="mouse-to-sim">Mouse to Sim</option>
 					<option value="none">None</option>
 				</sdpi-select>
 			</sdpi-item>
@@ -79,6 +88,7 @@
 				<sdpi-select setting="dial.tapAction" default="none">
 					<option value="none">None</option>
 					<option value="recenter-vr">Recenter VR</option>
+					<option value="mouse-to-sim">Mouse to Sim</option>
 				</sdpi-select>
 			</sdpi-item>
 			<ird-binding-status mode-setting="dial.tapAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
@@ -87,6 +97,7 @@
 				<sdpi-select setting="dial.longTouchAction" default="none">
 					<option value="none">None</option>
 					<option value="recenter-vr">Recenter VR</option>
+					<option value="mouse-to-sim">Mouse to Sim</option>
 				</sdpi-select>
 			</sdpi-item>
 			<ird-binding-status mode-setting="dial.longTouchAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
@@ -122,10 +133,15 @@
 		<%- include('global-common-settings') %>
 
 		<script>
-			// Recenter VR is a non-directional one-shot on the keypad — hide Direction for it.
+			// Non-directional one-shots on the keypad — they have no Direction.
+			const NON_DIRECTIONAL = new Set(["recenter-vr", "mouse-to-sim"]);
+
 			function updateVisibility(adjustment) {
 				const directionItem = document.getElementById("direction-item");
-				directionItem?.classList.toggle("hidden", adjustment === "recenter-vr");
+				directionItem?.classList.toggle("hidden", NON_DIRECTIONAL.has(adjustment));
+
+				const mouseHelp = document.getElementById("mouse-to-sim-help");
+				mouseHelp?.classList.toggle("hidden", adjustment !== "mouse-to-sim");
 			}
 
 			// Which surface this instance sits on: the PI registration's
