@@ -68,6 +68,24 @@ describe("PiSettingsBridgeSocket", () => {
     ]);
   });
 
+  it("drops sends to the host until it opens, then delivers (readyState guard) — both the router path and the raw pass-through path", () => {
+    const { socket, host } = make();
+
+    socket.send(JSON.stringify({ event: "sendToPlugin", payload: {} }));
+    socket.send("not json");
+    expect(host.sent).toEqual([]);
+
+    host.triggerOpen();
+    const afterOpen = host.sent.length; // includes the router's own bootstrap frame
+
+    socket.send(JSON.stringify({ event: "sendToPlugin", payload: {} }));
+    socket.send("not json");
+
+    expect(host.sent.length).toBe(afterOpen + 2);
+    expect(json(host.sent.slice(afterOpen, afterOpen + 1))).toEqual([{ event: "sendToPlugin", payload: {} }]);
+    expect(host.sent.at(-1)).toBe("not json");
+  });
+
   it("switches to the loopback on a channel and routes global frames there; host pushes are dropped; loopback pushes reach sdpi", () => {
     const { socket, host, received } = make();
     host.triggerOpen();
@@ -180,20 +198,46 @@ describe("installPiSettingsBridge", () => {
   });
 
   it("runs before sdpi's connect and turns sdpi's host socket into a bridged socket, then restores WebSocket", () => {
+    // The bridged socket arms the router's real (uncanceled, ~3s) bootstrap timer
+    // once opened below; fake timers keep that off the real clock so nothing
+    // fires — and nothing warns to the console — after this test ends.
+    vi.useFakeTimers();
+
+    try {
+      const win = fakeWin();
+      installPiSettingsBridge(win);
+      loadSdpi(win);
+
+      win.connectElgatoStreamDeckSocket!("28196", "pi-uuid-1", "registerPropertyInspector", "{}", ACTION_INFO);
+
+      expect(FakeNativeWebSocket.instances).toHaveLength(1);
+      expect(FakeNativeWebSocket.instances[0]!.url).toBe("ws://localhost:28196");
+      expect(win.WebSocket).toBe(Native);
+      // the socket sdpi got is the bridge: opening the host triggers the bootstrap read
+      FakeNativeWebSocket.instances[0]!.triggerOpen();
+      expect(json(FakeNativeWebSocket.instances[0]!.sent)).toEqual([
+        { event: "getGlobalSettings", context: "pi-uuid-1", action: "com.iracedeck.sd.core.car-control" },
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("chains a prior definition of connectElgatoStreamDeckSocket, then still intercepts sdpi's connect", () => {
     const win = fakeWin();
+    const priorSpy = vi.fn();
+
+    win.connectElgatoStreamDeckSocket = priorSpy;
     installPiSettingsBridge(win);
     loadSdpi(win);
 
     win.connectElgatoStreamDeckSocket!("28196", "pi-uuid-1", "registerPropertyInspector", "{}", ACTION_INFO);
 
+    expect(priorSpy).toHaveBeenCalledTimes(1);
+    expect(priorSpy).toHaveBeenCalledWith("28196", "pi-uuid-1", "registerPropertyInspector", "{}", ACTION_INFO);
+    // interception still works alongside the chained prior definition
     expect(FakeNativeWebSocket.instances).toHaveLength(1);
     expect(FakeNativeWebSocket.instances[0]!.url).toBe("ws://localhost:28196");
-    expect(win.WebSocket).toBe(Native);
-    // the socket sdpi got is the bridge: opening the host triggers the bootstrap read
-    FakeNativeWebSocket.instances[0]!.triggerOpen();
-    expect(json(FakeNativeWebSocket.instances[0]!.sent)).toEqual([
-      { event: "getGlobalSettings", context: "pi-uuid-1", action: "com.iracedeck.sd.core.car-control" },
-    ]);
   });
 
   it("does not intercept sockets to other URLs and restores WebSocket even if sdpi never connects", async () => {
@@ -201,8 +245,12 @@ describe("installPiSettingsBridge", () => {
     installPiSettingsBridge(win);
     // no sdpi: the pre-hook is the only definition
     win.connectElgatoStreamDeckSocket!("28196", "pi-uuid-1", "registerPropertyInspector", "{}", ACTION_INFO);
-    new win.WebSocket("ws://127.0.0.1:9999/other");
+    expect(win.WebSocket).not.toBe(Native); // interceptor still armed
 
+    const other = new win.WebSocket("ws://127.0.0.1:9999/other");
+
+    expect(other).toBeInstanceOf(FakeNativeWebSocket);
+    expect(other).toBe(FakeNativeWebSocket.instances[0]);
     expect(FakeNativeWebSocket.instances[0]!.url).toBe("ws://127.0.0.1:9999/other");
     await new Promise((r) => setTimeout(r, 0));
     expect(win.WebSocket).toBe(Native);

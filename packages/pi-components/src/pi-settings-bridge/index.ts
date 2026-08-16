@@ -103,7 +103,7 @@ export class PiSettingsBridgeSocket {
     try {
       frame = JSON.parse(data) as PiFrame;
     } catch {
-      this.host.send(data);
+      if (this.readyState === WS_OPEN) this.host.send(data);
 
       return;
     }
@@ -112,6 +112,7 @@ export class PiSettingsBridgeSocket {
   }
 
   close(): void {
+    this.readyState = WS_CLOSED;
     this.router.onHostClose();
     this.host.close();
   }
