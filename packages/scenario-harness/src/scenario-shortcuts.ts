@@ -113,6 +113,24 @@ function pitStatus(id: string, label: string, target: PitSvStatus, description?:
 }
 
 /**
+ * The terse "you're STILL parked wrong" nag (issue #951). The translator
+ * emits these on a ~2 s cadence while the error stays latched and the car is
+ * at rest; firing one here plays a single nag so the wording can be
+ * auditioned without driving `PlayerCarPitSvStatus` through `/api/telemetry`.
+ * Fire the matching `pitStatus` shortcut first to hear the full sequence.
+ */
+function pitStatusRepeat(id: string, label: string, target: PitSvStatus): ScenarioShortcut {
+  return {
+    id: `pit-status-repeat-${id}`,
+    category: "Pit Status",
+    label,
+    description: "Repeat nag — the positioning error is still uncorrected",
+    event: "pitService.positioningRepeat",
+    data: { status: target },
+  };
+}
+
+/**
  * Sporting Code §3.5.1 pavement values by incident type — the same table the
  * translator's `incidentTypeValue` speaks from (#938). The harness mirrors
  * the translator's vocabulary, so a shortcut's `points` defaults from the
@@ -796,6 +814,13 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     PitSvStatus.CantFixThat,
     "Crew won't perform the queued repair this stop",
   ),
+  // The repeat nags (issue #951) — terse, no radio frame, own family so they
+  // never chop the full transition call above.
+  pitStatusRepeat("too-far-left", "Still Too Far Left", PitSvStatus.TooFarLeft),
+  pitStatusRepeat("too-far-right", "Still Too Far Right", PitSvStatus.TooFarRight),
+  pitStatusRepeat("too-far-forward", "Still Too Far Forward", PitSvStatus.TooFarForward),
+  pitStatusRepeat("too-far-back", "Still Too Far Back", PitSvStatus.TooFarBack),
+  pitStatusRepeat("bad-angle", "Still Bad Angle", PitSvStatus.BadAngle),
 
   // ── Radar ──
   // `from` is the previous radar state; `to` is the new one. The radar

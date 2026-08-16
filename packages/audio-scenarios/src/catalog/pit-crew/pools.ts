@@ -178,6 +178,16 @@ export const POOL_REGISTRY: Readonly<Record<string, PoolSource>> = {
   "pit-status-bad-angle": { group: "pit-status", base: "bad-angle" },
   "pit-status-cant-fix-that": { group: "pit-status", base: "cant-fix-that" },
 
+  // Positioning-error repeat nags (issue #951). Terse "you're STILL parked
+  // wrong" lines the translator re-emits every ~2 s while the car sits
+  // misaligned. Only the five positioning errors repeat — `in-progress` /
+  // `complete` / `cant-fix-that` state a fact, not an uncorrected error.
+  "pit-status-too-far-left-repeat": { group: "pit-status", base: "too-far-left-repeat" },
+  "pit-status-too-far-right-repeat": { group: "pit-status", base: "too-far-right-repeat" },
+  "pit-status-too-far-forward-repeat": { group: "pit-status", base: "too-far-forward-repeat" },
+  "pit-status-too-far-back-repeat": { group: "pit-status", base: "too-far-back-repeat" },
+  "pit-status-bad-angle-repeat": { group: "pit-status", base: "bad-angle-repeat" },
+
   // Incident callout pools (issue #530). One pool per IncidentType
   // discriminator — the type-flavored intro with no point count. The count
   // is a separate clause composed from the event's detected `delta` via the

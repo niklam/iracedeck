@@ -52,9 +52,29 @@ Brings the iRacing simulator window (`"iRacing.com Simulator"`) to the foregroun
 - `2` (`WindowNotFound`) — no window with the expected title exists
 - `3` (`FocusTimedOut`) — window was found but focus did not transfer within 1000ms
 
-Used by the window focus service when the `focusIRacingWindow` global setting is enabled. Called before every action to ensure inputs reach iRacing.
+Used by deck-core's window service (`focusIfEnabled()`) when the `focusIRacingWindow` global setting is enabled, and unconditionally by the View Adjustment **Mouse to Sim** mode. Called before every action to ensure inputs reach iRacing.
 
-Internally, a static C++ helper does the `FindWindowA(NULL, "iRacing.com Simulator")` lookup and the 1000ms (100 × 10ms) focus-confirmation poll.
+The 1000ms (100 × 10ms) focus-confirmation poll lives in the same C++ function.
+
+### `moveMouseToIRacingWindow(xFraction: number, yFraction: number): number`
+
+Moves the OS mouse pointer to a point inside the iRacing window's client area (issue #926). Motivated by VR: from inside a headset the pointer is invisible, so a driver on a multi-monitor desktop cannot find it to click anything in the sim.
+
+`findIRacingWindow()` → `GetClientRect` → `ClientToScreen` → `SetCursorPos`. The conversion to virtual-desktop coordinates is what makes a multi-monitor setup land on the right screen. Returns a `PointerMoveResult` status code:
+
+- `0` (`Moved`) — the cursor was placed inside the sim's client area
+- `1` (`WindowNotFound`) — no window with the expected title exists
+- `2` (`Failed`) — the window was found but a Win32 call failed, **or** its client area has no usable size. An empty client rect is what a minimized window reports, so this code covers that case too.
+
+Both fractions are read as **doubles** (never `Uint32Value()`, which would let a negative value wrap) and are clamped natively into `[0,1]`, with `NaN` and missing/non-numeric arguments falling back to `0.5` / `0.125`.
+
+**Why the target is a parameter and not a native constant.** The placement policy — iRaceDeck parks the pointer horizontally centered, one eighth down from the top, on iRacing's own top-of-screen UI band — belongs to the caller, exactly like the caller-supplied `sendChatMessage` delays and `sendScanKeySequence`'s `holdMs`. It keeps iRacing UI knowledge out of the addon and means a future configurable target needs no native rebuild. The constants live in `deck-core`'s window service as `DEFAULT_POINTER_X_FRACTION` / `DEFAULT_POINTER_Y_FRACTION`.
+
+This is **not** a keyboard function: steps 3–5 of the Cross-Package Sync below (keyboard-service types, `initializeKeyboard` wiring, `keyboard-service.test.ts`) do not apply — the `getElevationStatus` precedent. It reaches action code through deck-core's injected window service instead.
+
+### Shared window lookup
+
+`findIRacingWindow()` is a static C++ helper wrapping `FindWindowA(NULL, kIRacingWindowTitle)` where `kIRacingWindowTitle` is `"iRacing.com Simulator"`. Every feature that needs the window goes through it: `focusIRacingWindow()`, `moveMouseToIRacingWindow()`, and the elevation probe.
 
 ## Keyboard Input Functions
 

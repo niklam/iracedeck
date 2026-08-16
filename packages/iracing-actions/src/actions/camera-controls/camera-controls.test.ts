@@ -107,14 +107,23 @@ vi.mock("../race-admin/race-admin-selector.js", () => ({
   deviceProfileEntries: vi.fn(() => [{ name: "iRaceDeck Car Selector XL", label: "iRaceDeck Car Selector" }]),
 }));
 
-vi.mock("@iracedeck/iracing-sdk", () => ({
-  TrkLoc: { NotInWorld: -1, OffTrack: 0, InPitStall: 1, AproachingPits: 2, OnTrack: 3 },
-  getCameraGroupsFromSessionInfo: vi.fn(() => []),
-  getCamerasInGroup: vi.fn(() => []),
-  getCarNumberRawFromSessionInfo: vi.fn(() => null),
-  getCarNumberFromSessionInfo: vi.fn(() => null),
-  getAllCarNumbers: vi.fn(() => []),
-}));
+vi.mock("@iracedeck/iracing-sdk", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@iracedeck/iracing-sdk")>();
+
+  return {
+    TrkLoc: actual.TrkLoc,
+    // The REAL in-world predicate (#968) and track-order primitive (#886):
+    // presence and road order are the behaviour under test in the world-walk
+    // cases, so mocking them would assert the mock, not the rule.
+    carInWorld: actual.carInWorld,
+    findNearestCarOnTrack: actual.findNearestCarOnTrack,
+    getCameraGroupsFromSessionInfo: vi.fn(() => []),
+    getCamerasInGroup: vi.fn(() => []),
+    getCarNumberRawFromSessionInfo: vi.fn(() => null),
+    getCarNumberFromSessionInfo: vi.fn(() => null),
+    getAllCarNumbers: vi.fn(() => []),
+  };
+});
 
 // The camera dial surface consumes the canonical live race order (#803); with
 // no translator instance in tests it returns null (the CarIdxPosition fallback).

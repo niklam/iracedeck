@@ -50,4 +50,4 @@ Still to verify in the UlanziStudio host (no device needed): the #845 fixes — 
 
 ## Window Focus
 
-The `window-focus.ts` module is duplicated from `iracing-plugin-stream-deck` / `iracing-plugin-mirabox` rather than shared via `deck-core`, to avoid adding test infrastructure to `deck-core`. Extraction is planned as a follow-up.
+Window focusing lives in `@iracedeck/deck-core` (`initWindowFocus` / `focusIRacingIfEnabled`); `plugin.ts` injects the native focuser. It was previously duplicated per plugin as `src/shared/window-focus.ts` — extracted in #930, which is why this package no longer has a `src/shared/` folder. `plugin.ts` also injects the native pointer mover via `initMousePointer` (#926), for the View Adjustment **Mouse to Sim** mode.

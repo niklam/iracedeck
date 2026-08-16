@@ -152,13 +152,30 @@ The spoken count is **the value iRacing actually scores for the incident** — t
 
 Once the car is in the box, iRacing's status display tells you whether the crew is working, whether you're parked correctly, and whether the queued damage repair is actually feasible. The Race Engineer reads each of those state transitions out loud so you don't have to glance at the status box mid-stop:
 
-- **In progress** — the crew is working on the car ("Crew working.").
-- **Complete** — service finished, ready to leave the box ("All done, ready to roll.").
-- **Too far left / right / forward / back** — positioning correction; line the car up so the crew can reach the wheels.
+- **In progress** — the crew is working on the car (*"Pit stop in progress."*).
+- **Complete** — service finished, ready to leave the box (*"Done. Go."*).
+- **Too far left / right / forward / back** — positioning correction; line the car up so the crew can reach the wheels (*"Car's too far forward, back it up."*).
 - **Bad angle** — the car is parked at an angle the crew can't reach properly.
 - **Can't fix that** — iRacing has decided the queued damage repair won't actually be performed this stop. This is the only iRacing-exposed signal that fast-repair / damage repair will fail, and it has no other audio surface.
 
 The eight callouts share a single family so a positioning correction (e.g. *"too far left"* → *"too far right"* while you wiggle into the box) cleanly preempts the previous one without queueing. Closing transitions back to the idle state are silent.
+
+### Repeated positioning corrections
+
+A positioning error is the one status that needs saying twice. iRacing announces it **once** — its own spotter says *"You are too far forward, back up!"* and then goes quiet — so a driver who backs up but stops with the wheels still short of the box sits there getting no service, with nothing to tell them they're still in the wrong spot.
+
+While one of the five positioning errors is still uncorrected, the Race Engineer therefore keeps nudging you with a short follow-up roughly **every two seconds** — *"Still too far forward."*, *"Back it up."*, *"Back up, you're too far."* — until the car is in the box or iRacing reports a different error. These are terse and deliberately have no radio beeps around them, since at that cadence the beeps would drown the words.
+
+Four things keep it from becoming noise:
+
+- **It goes quiet while you're moving.** As soon as the car is rolling — even at the inch-by-inch crawl a box correction takes — the repeats stop, because you're already fixing it. They pick up again about half a second after the car comes to rest, if the error is still there.
+- **A different error starts over.** Over-correct from *too far forward* into *too far back* and you get the new error's full call, spoken in the usual conversational form, and the repeat cycle restarts from there. A repeat never talks over that full call.
+- **It stops when you leave the pit lane.** Give up on the stop and drive out and the corrections stop with you — they'll never follow you onto the track and start up again the next time you happen to come to a stop.
+- **It won't tell you something that's stopped being true.** Each correction re-checks how the car is actually parked in the moment before it speaks, so one that had to wait behind a longer message is dropped rather than telling you to back up when you're already sitting correctly in the box.
+
+The corrections also survive the plugin restarting mid-stop — an automatic Stream Deck update in the middle of a pit stop won't leave you parked wrong in silence for the rest of it.
+
+There is **no separate setting** for the repeats — they're part of the same callout, so turning off e.g. **Too far forward** under Pit Service Status silences both its initial call and its follow-ups. *In progress*, *Complete*, and *Can't fix that* never repeat: they state a fact rather than an error waiting to be fixed.
 
 ## Session Start
 
@@ -389,7 +406,7 @@ Under **Pit Service Status**, eight callouts are toggleable independently — on
 - **Too far left**, **Too far right**, **Too far forward**, **Too far back**
 - **Bad angle**, **Can't fix that**
 
-Disabling a status only suppresses future events of that subject; an in-flight callout completes naturally. Disabling all eight silences the in-stop status family while leaving readbacks, flag callouts, and damage heads-ups intact.
+Disabling a status only suppresses future events of that subject; an in-flight callout completes naturally. Disabling all eight silences the in-stop status family while leaving readbacks, flag callouts, and damage heads-ups intact. Each of the four positioning statuses and **Bad angle** also covers its [repeated correction](#repeated-positioning-corrections) — one checkbox governs both the initial call and the follow-ups.
 
 Under **Damage**, one callout is toggleable, enabled by default:
 

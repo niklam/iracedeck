@@ -1,4 +1,5 @@
 import {
+  carInWorld,
   getAllCarNumbers,
   getCarNumberFromSessionInfo,
   getCarNumberRawFromSessionInfo,
@@ -959,6 +960,32 @@ describe("ReplayControl", () => {
 
       // #7 (carIdx 1) despawned post-race — next from #4 walks past it to #42.
       expect(findAdjacentCarByNumber({}, 0, "next", (carIdx) => carIdx !== 1)).toBe(42);
+    });
+
+    it("steps through the field on the formation lap, where no car has completed a lap (#968)", () => {
+      // The regressed path: Next / Previous Car (Number Order) went dead for the
+      // whole pace lap because the presence predicate demanded a completed lap.
+      // Snapshot 20260417-081043 — four cars on track, every CarIdxLapCompleted -1.
+      vi.mocked(getAllCarNumbers).mockReturnValue([
+        { carIdx: 1, carNumber: "1", carNumberRaw: 1 },
+        { carIdx: 11, carNumber: "11", carNumberRaw: 11 },
+        { carIdx: 14, carNumber: "14", carNumberRaw: 14 },
+        { carIdx: 17, carNumber: "17", carNumberRaw: 17 },
+      ]);
+      vi.mocked(getCarNumberFromSessionInfo).mockReturnValue("14");
+
+      const size = 18;
+      const dist: Record<number, number> = { 1: 0.8173747, 11: 0.8009607, 14: 0.8019581, 17: 0.8063871 };
+      const telemetry = {
+        CarIdxLapCompleted: new Array<number>(size).fill(-1),
+        CarIdxLapDistPct: Array.from({ length: size }, (_, i) => dist[i] ?? -1),
+        CarIdxTrackSurface: Array.from({ length: size }, (_, i) =>
+          dist[i] === undefined ? TrkLoc.NotInWorld : TrkLoc.OnTrack,
+        ),
+      };
+
+      expect(findAdjacentCarByNumber({}, 14, "next", carInWorld(telemetry as never))).toBe(17);
+      expect(findAdjacentCarByNumber({}, 14, "prev", carInWorld(telemetry as never))).toBe(11);
     });
 
     it("returns null when no other car is present in the world (#885)", () => {
