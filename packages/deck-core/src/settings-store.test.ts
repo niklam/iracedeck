@@ -1,8 +1,8 @@
 import { silentLogger } from "@iracedeck/logger";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { dirname, join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   createFileSettingsStore,
@@ -121,5 +121,46 @@ describe("createFileSettingsStore", () => {
 
   it("flush() with nothing pending resolves immediately", async () => {
     await expect(store.flush()).resolves.toBeUndefined();
+  });
+
+  it("load() resolves to undefined when rename fails (copy fallback)", async () => {
+    // Setup: write a valid file, then corrupt it
+    store.save({ ok: true });
+    await store.flush();
+    writeFileSync(store.path, "{ not json", "utf-8");
+
+    // Mock node:fs/promises with rename failing, copyFile succeeding
+    await vi.doMock(
+      "node:fs/promises",
+      async () => {
+        const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+
+        return {
+          ...actual,
+          rename: vi.fn(async () => {
+            throw Object.assign(new Error("EPERM: operation not permitted"), { code: "EPERM" });
+          }),
+        };
+      },
+      { spy: true },
+    );
+
+    vi.resetModules();
+    const { createFileSettingsStore: createStoreMocked } = await import("./settings-store.js");
+
+    const storeWithFailedRename = createStoreMocked({
+      path: store.path,
+      logger: silentLogger,
+      debounceMs: 10,
+    });
+
+    // load() should return undefined despite rename failure (copy fallback applies)
+    expect(await storeWithFailedRename.load()).toBeUndefined();
+
+    // Verify the corrupt file was moved aside (copied, since rename failed)
+    const aside = readdirSync(dirname(store.path)).filter((f) => /^global-settings\.corrupt-.*\.json$/.test(f));
+    expect(aside.length).toBeGreaterThan(0);
+
+    vi.doUnmock("node:fs/promises");
   });
 });

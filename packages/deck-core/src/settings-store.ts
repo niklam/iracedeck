@@ -7,7 +7,7 @@
  * docs/superpowers/specs/2026-08-16-issue-993-plugin-owned-settings-store-design.md.
  */
 import type { ILogger } from "@iracedeck/logger";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 const FOLDER_NAMES: Record<string, string> = {
@@ -124,7 +124,19 @@ export function createFileSettingsStore(opts: FileSettingsStoreOptions): Setting
 
         logger.error("Settings file is not valid JSON; moving it aside and starting fresh");
         logger.debug(`Corrupt settings file ${path} → ${aside}: ${String(error)}`);
-        await rename(path, aside);
+
+        try {
+          await rename(path, aside);
+        } catch (renameError: unknown) {
+          try {
+            await copyFile(path, aside);
+            logger.error("Settings file could not be moved; preserving as copy instead");
+            logger.debug(`Copy fallback: ${String(renameError)}`);
+          } catch (copyError: unknown) {
+            logger.error("Settings file could not be preserved — moving on with fresh defaults");
+            logger.debug(`Copy also failed: ${String(copyError)}`);
+          }
+        }
 
         return undefined;
       }
