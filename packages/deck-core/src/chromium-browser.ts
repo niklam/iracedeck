@@ -73,12 +73,12 @@ export function findChromiumBrowserOnThisMachine(): string | undefined {
 }
 
 /**
- * Initial settings-window size. Chosen to fit a 1366×768 laptop display with
- * room for the taskbar and window chrome; without an explicit size Chromium
- * reuses its last window size, which on a big monitor opens far too large.
- * The user can still resize; this is only the first-open default.
+ * Initial settings-window size (outer bounds). Without an explicit size
+ * Chromium reuses its last window size, which on a big monitor opens far too
+ * large. 1172×788 is the size the page was designed and reviewed at; the OS
+ * clamps it on smaller displays and the user can still resize afterwards.
  */
-export const SETTINGS_WINDOW_SIZE = { width: 1180, height: 700 } as const;
+export const SETTINGS_WINDOW_SIZE = { width: 1172, height: 788 } as const;
 
 /** The exact argument list for a chromeless app window — pure, so it can be tested without spawning. */
 export function appWindowArgs(url: string): string[] {

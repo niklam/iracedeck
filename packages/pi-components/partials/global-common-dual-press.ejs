@@ -1,0 +1,21 @@
+<%#
+  Common settings — Dual-Press (issue #992 split). Emits items only.
+%>
+<sdpi-item label="Long-press threshold (ms)">
+  <ird-range-input setting="dualPressThresholdMs" min="200" max="2000" step="50" default="500" global showlabels></ird-range-input>
+</sdpi-item>
+<div class="ird-supporting-text">
+  How long a key must be held before a setup View sub-mode treats it as a long-press
+  (firing the opposite direction). Shorter values feel snappier; longer values are
+  more forgiving against accidental long-presses.
+</div>
+<sdpi-item label="Directions">
+  <sdpi-select setting="dualPressDirections" default="tap-increases" global>
+    <option value="tap-increases">Tap increases, long-press decreases</option>
+    <option value="tap-decreases">Tap decreases, long-press increases</option>
+  </sdpi-select>
+</sdpi-item>
+<div class="ird-supporting-text">
+  Which direction a short press fires on a setup View sub-mode; the long-press
+  always fires the opposite. Applies plugin-wide to every dual-press View.
+</div>

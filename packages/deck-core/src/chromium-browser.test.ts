@@ -10,9 +10,8 @@ describe("appWindowArgs", () => {
     expect(args).toContain(`--window-size=${SETTINGS_WINDOW_SIZE.width},${SETTINGS_WINDOW_SIZE.height}`);
   });
 
-  it("uses a size that fits a 1366×768 laptop display with room for the OS chrome", () => {
-    expect(SETTINGS_WINDOW_SIZE.width).toBeLessThanOrEqual(1280);
-    expect(SETTINGS_WINDOW_SIZE.height).toBeLessThanOrEqual(720);
+  it("opens at the size the owner settled on by hand (outer bounds; the OS clamps on smaller displays)", () => {
+    expect(SETTINGS_WINDOW_SIZE).toEqual({ width: 1172, height: 788 });
   });
 });
 

@@ -14,10 +14,13 @@
 		  Every control here is `global`, so only the global-settings subset of the
 		  PI protocol is ever exercised. The REAL global-*.ejs partials and ird-*
 		  components render inside this shell — a header, a sidebar, and one pane
-		  per section — with two deliberate differences from the action PIs:
+		  per tab — with these deliberate differences from the action PIs:
 		    - ALL key-binding categories in one searchable table, not one action's
 		      subset in an accordion. Every row hosts a real ird-key-binding, so
 		      each cell saves exactly as it does in a PI.
+		    - The PI's single "Common Settings" accordion is spread over tabs
+		      (General / Delays / SimHub / What's New / Diagnostics) using the same
+		      per-group partials the accordion assembles.
 		    - No Stream Deck Profiles accordion: switchToProfile targets the device
 		      whose PI is open, and this window has no device.
 		  Passing `settingsWindow: true` at each top-level include makes accordion.ejs
@@ -29,12 +32,16 @@
 				--sw-fg: #ffffff; --sw-fg-dim: #c8c8c8; --sw-fg-mute: #808080;
 				--sw-line: #3a3a3a; --sw-accent: #4a90d9;
 				--sw-font: "Segoe UI", Arial, Roboto, Helvetica, sans-serif;
+				/* Narrowest layout before the window scrolls horizontally instead of
+				   letting cards squash their contents into each other. */
+				--sw-min-width: 720px;
 			}
 			html, body { height: 100%; margin: 0; }
 			body {
 				background: var(--sw-bg); color: var(--sw-fg);
 				font-family: var(--sw-font); font-size: 9pt;
 				display: grid; grid-template-rows: auto 1fr; overflow: hidden;
+				min-width: var(--sw-min-width);
 			}
 			.sw-header {
 				display: flex; align-items: center; gap: 12px;
@@ -46,8 +53,11 @@
 				display: grid; place-items: center; font-weight: 700; font-size: 11px;
 			}
 			.sw-header h1 { font-size: 12pt; font-weight: 600; margin: 0; letter-spacing: .2px; }
-			.sw-version { color: var(--sw-fg-mute); font-size: 8pt; margin-left: auto; }
-			.sw-main { display: grid; grid-template-columns: 200px 1fr; min-height: 0; }
+			.sw-header-links { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+			.sw-header-links a { color: var(--ird-link-color); text-decoration: none; font-size: 9pt; }
+			.sw-header-links a:hover { text-decoration: underline; }
+			.sw-version { color: var(--sw-fg-mute); font-size: 8pt; }
+			.sw-main { display: grid; grid-template-columns: 200px minmax(0, 1fr); min-height: 0; }
 			.sw-nav {
 				background: var(--sw-bg-nav); border-right: 1px solid var(--sw-line);
 				padding: 12px 8px; display: flex; flex-direction: column; gap: 2px; overflow-y: auto;
@@ -63,7 +73,7 @@
 				margin-left: auto; background: rgba(255,255,255,.14);
 				border-radius: 9px; padding: 1px 7px; font-size: 7.5pt;
 			}
-			.sw-pane { padding: 18px 24px 32px; overflow-y: auto; min-height: 0; }
+			.sw-pane { padding: 18px 24px 32px; overflow: auto; min-height: 0; min-width: 0; }
 			.sw-pane[hidden] { display: none; }
 			.sw-pane h2 {
 				font-size: 10pt; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; margin: 0 0 4px;
@@ -74,7 +84,7 @@
 				background: var(--sw-panel); border: 1px solid var(--sw-line); color: var(--sw-fg);
 				font: inherit; padding: 6px 10px; border-radius: 4px;
 			}
-			.sw-toolbar input { flex: 1; }
+			.sw-toolbar input { flex: 1; min-width: 0; }
 			.sw-table { width: 100%; border-collapse: collapse; }
 			.sw-table thead th {
 				position: sticky; top: 0; z-index: 1; background: var(--sw-bg);
@@ -88,23 +98,37 @@
 			.sw-table td.bind ird-key-binding { display: block; max-width: 420px; }
 			.sw-table tr[hidden] { display: none; }
 			.sw-empty { color: var(--sw-fg-mute); padding: 18px 10px; }
-			.sw-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 24px; align-items: start; }
+			/* Cards: two columns when there is room, one when there isn't. minmax()
+			   floors each column at a card's natural width so controls can never
+			   overflow into the neighbouring card; below one column the pane scrolls. */
+			.sw-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(440px, 1fr)); gap: 14px 24px; align-items: start; }
 			.sw-grid.single { grid-template-columns: minmax(0, 1fr); }
 			/* accordion.ejs in settingsWindow mode renders these */
-			.ird-sw-card { background: var(--sw-bg-alt); border: 1px solid var(--sw-line); border-radius: 6px; padding: 12px 16px 6px; }
+			.ird-sw-card {
+				background: var(--sw-bg-alt); border: 1px solid var(--sw-line); border-radius: 6px;
+				padding: 12px 16px 6px; min-width: 0; overflow: hidden;
+			}
 			.ird-sw-card-title {
 				font-family: var(--sw-font); font-size: 9pt; text-transform: uppercase; letter-spacing: .4px;
 				color: var(--sw-fg-dim); margin: 0 0 8px; font-weight: 600;
 			}
-			/* Inside a card the PI's per-item label column can be a little wider */
-			.ird-sw-card sdpi-item { --sdpi-item-label-width: 110px; }
+			.sw-changelog { width: 100%; height: 70vh; min-height: 360px; border: 1px solid var(--sw-line); border-radius: 6px; background: #fff; }
+			.sw-links { display: flex; gap: 14px; margin: 0 0 12px; }
+			.sw-links a { color: var(--ird-link-color); text-decoration: none; }
+			.sw-links a:hover { text-decoration: underline; }
 		</style>
 	</head>
 	<body>
 		<header class="sw-header">
 			<div class="sw-mark">iR</div>
 			<h1>iRaceDeck Settings</h1>
-			<span class="sw-version">v<%= version %></span>
+			<div class="sw-header-links">
+				<%# External links open in the OS default browser via the shared PI
+				    external-link handler → openUrl → the plugin's fake host. %>
+				<a href="https://iracedeck.com/" target="_blank" rel="noopener noreferrer">iracedeck.com</a>
+				<a href="https://iracedeck.com/docs/" target="_blank" rel="noopener noreferrer">Documentation</a>
+				<span class="sw-version">v<%= version %></span>
+			</div>
 		</header>
 
 		<main class="sw-main">
@@ -123,15 +147,30 @@
 			  var __label = function (k) {
 			    return __labels[k] || k.replace(/([A-Z])/g, ' $1').replace(/^./, function (c) { return c.toUpperCase(); });
 			  };
+			  var __sw = { settingsWindow: true };
 			%>
 			<nav class="sw-nav" aria-label="Settings sections">
-				<button class="sw-nav-item active" data-pane="bindings" type="button">Key Bindings<span class="sw-badge"><%= __total %></span></button>
+				<button class="sw-nav-item active" data-pane="general" type="button">General</button>
+				<button class="sw-nav-item" data-pane="bindings" type="button">Key Bindings<span class="sw-badge"><%= __total %></span></button>
 				<button class="sw-nav-item" data-pane="appearance" type="button">Appearance</button>
-				<button class="sw-nav-item" data-pane="general" type="button">General</button>
+				<button class="sw-nav-item" data-pane="delays" type="button">Delays</button>
+				<button class="sw-nav-item" data-pane="simhub" type="button">SimHub</button>
+				<button class="sw-nav-item" data-pane="updates" type="button">What's New</button>
+				<button class="sw-nav-item" data-pane="diagnostics" type="button">Diagnostics</button>
 			</nav>
 
+			<%# ---- General ---- %>
+			<section class="sw-pane" id="pane-general">
+				<h2>General</h2>
+				<p class="sw-sub">Behaviour that applies to every key.</p>
+				<div class="sw-grid">
+					<%- include('accordion', { title: 'Window Focus & Connection', content: include('global-common-window-focus'), settingsWindow: true }) %>
+					<%- include('accordion', { title: 'Dual-Press', content: include('global-common-dual-press'), settingsWindow: true }) %>
+				</div>
+			</section>
+
 			<%# ---- Key Bindings: one searchable table, every row a real ird-key-binding ---- %>
-			<section class="sw-pane" id="pane-bindings">
+			<section class="sw-pane" id="pane-bindings" hidden>
 				<h2>Key Bindings</h2>
 				<p class="sw-sub">All <%= __total %> bindings across <%= __categories.length %> categories. Each row saves as you change it, exactly like the Property Inspector.</p>
 				<%#
@@ -165,20 +204,53 @@
 				<h2>Appearance</h2>
 				<p class="sw-sub">Plugin-wide defaults. Any key can still override these individually in its Property Inspector.</p>
 				<div class="sw-grid">
-					<%- include('global-title-defaults', { settingsWindow: true }) %>
-					<%- include('global-color-defaults', { settingsWindow: true }) %>
-					<%- include('global-border-defaults', { settingsWindow: true }) %>
-					<%- include('global-graphic-defaults', { settingsWindow: true }) %>
-					<%- include('global-flag-flash', { settingsWindow: true }) %>
+					<%- include('global-title-defaults', __sw) %>
+					<%- include('global-color-defaults', __sw) %>
+					<%- include('global-border-defaults', __sw) %>
+					<%- include('global-graphic-defaults', __sw) %>
+					<%- include('global-flag-flash', __sw) %>
 				</div>
 			</section>
 
-			<%# ---- General: the common settings partial (window focus, SimHub, dual-press, replay, chat, updates, diagnostics) ---- %>
-			<section class="sw-pane" id="pane-general" hidden>
-				<h2>General</h2>
-				<p class="sw-sub">Behaviour that applies to every key.</p>
+			<%# ---- Delays ---- %>
+			<section class="sw-pane" id="pane-delays" hidden>
+				<h2>Delays</h2>
+				<p class="sw-sub">Timing tunables for actions that drive iRacing's own UI. The defaults suit most machines.</p>
+				<div class="sw-grid">
+					<%- include('accordion', { title: 'Chat', content: include('global-common-chat'), settingsWindow: true }) %>
+					<%- include('accordion', { title: 'Replay', content: include('global-common-replay'), settingsWindow: true }) %>
+				</div>
+			</section>
+
+			<%# ---- SimHub ---- %>
+			<section class="sw-pane" id="pane-simhub" hidden>
+				<h2>SimHub</h2>
+				<p class="sw-sub">Where iRaceDeck reaches SimHub Control Mapper for SimHub-role bindings.</p>
+				<div class="sw-grid">
+					<%- include('accordion', { title: 'Control Mapper Server', content: include('global-common-simhub'), settingsWindow: true }) %>
+				</div>
+			</section>
+
+			<%# ---- What's New: the notification setting + the changelog itself ---- %>
+			<section class="sw-pane" id="pane-updates" hidden>
+				<h2>What's New</h2>
+				<p class="sw-sub">Release notes, and when iRaceDeck should show them to you after an update.</p>
 				<div class="sw-grid single">
-					<%- include('global-common-settings', { settingsWindow: true }) %>
+					<%- include('accordion', { title: 'After an update', content: include('global-common-updates'), settingsWindow: true }) %>
+				</div>
+				<p class="sw-links" style="margin-top:14px">
+					<a href="https://iracedeck.com/changelog/" target="_blank" rel="noopener noreferrer">Open the changelog in your browser</a>
+				</p>
+				<%# The live changelog page, embedded. Needs internet; the link above is the fallback. %>
+				<iframe class="sw-changelog" src="https://iracedeck.com/changelog/" title="iRaceDeck changelog" loading="lazy" referrerpolicy="no-referrer"></iframe>
+			</section>
+
+			<%# ---- Diagnostics ---- %>
+			<section class="sw-pane" id="pane-diagnostics" hidden>
+				<h2>Diagnostics</h2>
+				<p class="sw-sub">For troubleshooting and support.</p>
+				<div class="sw-grid">
+					<%- include('accordion', { title: 'Logging', content: include('global-common-diagnostics'), settingsWindow: true }) %>
 				</div>
 			</section>
 		</main>

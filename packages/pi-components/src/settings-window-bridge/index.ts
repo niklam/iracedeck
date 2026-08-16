@@ -41,6 +41,35 @@ export function readSettingsWindowIdentity(search: string): SettingsWindowIdenti
 }
 
 /**
+ * Close the window because its plugin has gone away. `window.close()` is
+ * honoured for a script-closable top-level window (the normal `--app=` case);
+ * if the browser refuses, leave an unmistakable overlay rather than a page that
+ * looks alive but saves nothing.
+ */
+export function closeSettingsWindow(win: Window & typeof globalThis): void {
+  win.close();
+
+  win.setTimeout(() => {
+    if (win.closed) return;
+
+    const overlay = win.document.createElement("div");
+
+    overlay.textContent = "iRaceDeck is no longer running — you can close this window.";
+    Object.assign(overlay.style, {
+      position: "fixed",
+      inset: "0",
+      display: "grid",
+      placeItems: "center",
+      background: "rgba(0,0,0,.85)",
+      color: "#fff",
+      font: '11pt "Segoe UI", Arial, sans-serif',
+      zIndex: "2147483647",
+    });
+    win.document.body.appendChild(overlay);
+  }, 250);
+}
+
+/**
  * Install the bridge on `win`: monkeypatch `WebSocket` so sdpi's socket opens
  * `ws://<page host>/ws?t=<token>` instead of `ws://localhost:<port>`, drive
  * `connectElgatoStreamDeckSocket` with a synthetic identity, then restore.
@@ -55,7 +84,17 @@ export function installSettingsWindowBridge(win: Window & typeof globalThis = wi
 
   // sdpi opens `new WebSocket("ws://localhost:{port}")`; open the real target instead.
   (win as unknown as { WebSocket: unknown }).WebSocket = function settingsWindowWebSocket(): WebSocket {
-    return new Native(target);
+    const socket = new Native(target);
+
+    // The socket only ever closes when the plugin process is gone (the deck host
+    // shut down, restarted, or the server was torn down). The page is then dead
+    // and would otherwise linger — a detached app window is not tied to the
+    // plugin's lifetime, and when the browser was already running our spawn
+    // just handed off to it, so the plugin holds no handle to close. Close from
+    // the inside: an `--app=` window with one history entry is script-closable.
+    socket.addEventListener("close", () => closeSettingsWindow(win));
+
+    return socket;
   } as unknown as typeof WebSocket;
 
   const info = JSON.stringify({

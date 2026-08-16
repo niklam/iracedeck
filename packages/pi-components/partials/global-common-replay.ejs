@@ -1,0 +1,13 @@
+<%#
+  Common settings — Replay (issue #992 split). Emits items only.
+%>
+<sdpi-item label="Fastest Lap Search Delay (ms)">
+  <ird-range-input setting="fastestLapSearchDelayMs" min="50" max="1000" step="50" default="400" global showlabels></ird-range-input>
+</sdpi-item>
+<div class="ird-supporting-text">
+  Time the Replay Control "Jump to Fastest Lap" mode waits between each lap-search
+  broadcast while walking the cursor. iRacing resolves the exact lap-boundary
+  position asynchronously after each step, so a too-short delay can leave the
+  cursor parked mid-lap. Default 400 ms. Slower computers and longer tracks may
+  need to increase the value.
+</div>

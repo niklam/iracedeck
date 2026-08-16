@@ -1,125 +1,25 @@
-<!--
+<%#
   Global Common Settings
 
-  Plugin-wide common settings (window focus, SimHub) in a collapsible "Common Settings" accordion.
-  Settings are stored in global settings (shared across all action instances).
-  Collapsed by default.
--->
+  Plugin-wide common settings in a collapsible "Common Settings" accordion,
+  collapsed by default. Since #992 each group lives in its own partial
+  (global-common-<group>.ejs, items only) so the dedicated settings window can
+  place them on separate tabs; this partial adds the group headings and wraps
+  them in the one accordion the 35 action PIs have always shown.
+%>
 <%- include('accordion', {
   title: 'Common Settings',
   accordionId: 'Global Common Settings',
   open: false,
-  content: `
-    <div class="ird-section-subtitle">Window Focus</div>
-    <sdpi-item label="Focus iRacing">
-      <sdpi-checkbox
-        setting="focusIRacingWindow"
-        label="Focus iRacing window before sending keys"
-        global
-        default="true"
-      ></sdpi-checkbox>
-    </sdpi-item>
-    <div class="ird-supporting-text">
-      Brings iRacing to the foreground before sending inputs, so button presses aren't
-      lost to whichever window happens to be active. Turn this off if you'd rather
-      iRaceDeck never changed which window has focus.
-    </div>
-    <div class="ird-section-subtitle">SimHub Server</div>
-    <sdpi-item label="Host">
-      <sdpi-textfield setting="simHubHost" default="127.0.0.1" global></sdpi-textfield>
-    </sdpi-item>
-    <sdpi-item label="Port">
-      <sdpi-textfield setting="simHubPort" default="8888" global pattern="[0-9]{1,5}" inputmode="numeric"></sdpi-textfield>
-    </sdpi-item>
-    <div class="ird-supporting-text">
-      Connection settings for SimHub Control Mapper integration.
-      Default: 127.0.0.1:8888
-    </div>
-    <div class="ird-section-subtitle">Dual-Press</div>
-    <sdpi-item label="Long-press threshold (ms)">
-      <ird-range-input setting="dualPressThresholdMs" min="200" max="2000" step="50" default="500" global showlabels></ird-range-input>
-    </sdpi-item>
-    <div class="ird-supporting-text">
-      How long a key must be held before a setup View sub-mode treats it as a long-press
-      (firing the opposite direction). Shorter values feel snappier; longer values are
-      more forgiving against accidental long-presses.
-    </div>
-    <sdpi-item label="Directions">
-      <sdpi-select setting="dualPressDirections" default="tap-increases" global>
-        <option value="tap-increases">Tap increases, long-press decreases</option>
-        <option value="tap-decreases">Tap decreases, long-press increases</option>
-      </sdpi-select>
-    </sdpi-item>
-    <div class="ird-supporting-text">
-      Which direction a short press fires on a setup View sub-mode; the long-press
-      always fires the opposite. Applies plugin-wide to every dual-press View.
-    </div>
-    <div class="ird-section-subtitle">Replay</div>
-    <sdpi-item label="Fastest Lap Search Delay (ms)">
-      <ird-range-input setting="fastestLapSearchDelayMs" min="50" max="1000" step="50" default="400" global showlabels></ird-range-input>
-    </sdpi-item>
-    <div class="ird-supporting-text">
-      Time the Replay Control "Jump to Fastest Lap" mode waits between each lap-search
-      broadcast while walking the cursor. iRacing resolves the exact lap-boundary
-      position asynchronously after each step, so a too-short delay can leave the
-      cursor parked mid-lap. Default 400 ms. Slower computers and longer tracks may
-      need to increase the value.
-    </div>
-    <div class="ird-section-subtitle">Chat</div>
-    <sdpi-item label="Open → Paste delay (ms)">
-      <ird-range-input setting="chatOpenToPasteDelayMs" min="0" max="2000" step="100" default="200" global showlabels></ird-range-input>
-    </sdpi-item>
-    <div class="ird-supporting-text">
-      Time the chat pipeline waits after opening the chat window before pasting the
-      message. Also used by Race Admin "Type in Chat". Too short and the paste can
-      land before iRacing has focused the chat input, dropping the text. Default 200 ms;
-      raise it on slower machines or if a clipboard-manager app interferes.
-    </div>
-    <sdpi-item label="Paste → Enter delay (ms)">
-      <ird-range-input setting="chatPasteToEnterDelayMs" min="0" max="2000" step="100" default="200" global showlabels></ird-range-input>
-    </sdpi-item>
-    <div class="ird-supporting-text">
-      Time the Send Message pipeline waits after pasting before pressing Enter. Too short
-      and Enter can fire before the paste registers, sending an empty or partial message.
-      Default 200 ms. (Race Admin doesn't press Enter, so this delay doesn't affect it.)
-    </div>
-    <sdpi-item label="Enter → Close delay (ms)">
-      <ird-range-input setting="chatEnterToCloseDelayMs" min="0" max="2000" step="100" default="200" global showlabels></ird-range-input>
-    </sdpi-item>
-    <div class="ird-supporting-text">
-      Time the Send Message pipeline waits after pressing Enter before closing the chat box.
-      Too short and the close can fire before iRacing has processed the message, leaving the
-      chat window with focus after sending. Default 200 ms; raise it if the chat window keeps
-      focus after you send. (Race Admin doesn't close the chat, so this delay doesn't affect it.)
-    </div>
-    <div class="ird-section-subtitle">Updates</div>
-    <sdpi-item label="What's New page">
-      <sdpi-select setting="changelogNotification" default="features" global>
-        <option value="always">Open after every update</option>
-        <option value="features">Only after updates with new features</option>
-        <option value="monthly">Open at most once a month</option>
-        <option value="never">Never open</option>
-      </sdpi-select>
-    </sdpi-item>
-    <div class="ird-supporting-text">
-      After iRaceDeck updates, the What's New page (changelog) can open once in your browser
-      to show what changed. "Only after updates with new features" skips small bug-fix
-      updates; either way the page always lists everything since your last visit.
-    </div>
-    <div class="ird-section-subtitle">Diagnostics</div>
-    <sdpi-item label="Debug Logging">
-      <sdpi-checkbox
-        setting="debugLogging"
-        label="Enable debug logging"
-        global
-      ></sdpi-checkbox>
-    </sdpi-item>
-    <div class="ird-supporting-text">
-      Writes verbose debug detail to the plugin log. Leave it off for normal use; enable it
-      only to capture a log when troubleshooting or reporting an issue, then turn it back off.
-      Production logs at info level by default. Takes effect immediately — no restart needed.
-    </div>
-  `
+  content: [
+    ['Window Focus', include('global-common-window-focus')],
+    ['SimHub Server', include('global-common-simhub')],
+    ['Dual-Press', include('global-common-dual-press')],
+    ['Replay', include('global-common-replay')],
+    ['Chat', include('global-common-chat')],
+    ['Updates', include('global-common-updates')],
+    ['Diagnostics', include('global-common-diagnostics')],
+  ].map(function (g) { return '<div class="ird-section-subtitle">' + g[0] + '</div>' + g[1]; }).join('')
 }) %>
 
 <%#

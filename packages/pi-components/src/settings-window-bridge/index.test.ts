@@ -6,10 +6,19 @@ import { installSettingsWindowBridge, readSettingsWindowIdentity, SETTINGS_WINDO
 class FakeNativeWebSocket {
   static instances: FakeNativeWebSocket[] = [];
   readonly url: string;
+  private listeners: Record<string, Array<() => void>> = {};
 
   constructor(url: string) {
     this.url = url;
     FakeNativeWebSocket.instances.push(this);
+  }
+
+  addEventListener(type: string, fn: () => void): void {
+    (this.listeners[type] ??= []).push(fn);
+  }
+
+  fire(type: string): void {
+    for (const fn of this.listeners[type] ?? []) fn();
   }
 
   send(): void {}
@@ -33,13 +42,22 @@ describe("readSettingsWindowIdentity", () => {
 describe("installSettingsWindowBridge", () => {
   function fakeWindow(search: string, host = "127.0.0.1:61708") {
     const connect = vi.fn();
+    const close = vi.fn();
     const win = {
       location: { search, host },
       WebSocket: FakeNativeWebSocket,
       connectElgatoStreamDeckSocket: connect,
+      close,
+      closed: false,
+      setTimeout: (fn: () => void) => {
+        fn();
+
+        return 0;
+      },
+      document: { body: { appendChild: vi.fn() }, createElement: () => ({ style: {}, textContent: "" }) },
     };
 
-    return { win: win as unknown as Window & typeof globalThis, connect };
+    return { win: win as unknown as Window & typeof globalThis, connect, close };
   }
 
   it("redirects sdpi's socket to the same host with the launch token, then restores WebSocket", () => {
@@ -69,6 +87,19 @@ describe("installSettingsWindowBridge", () => {
     expect(typeof context).toBe("string");
     expect(registerEvent).toBe("registerPropertyInspector");
     expect(JSON.parse(actionInfo ?? "{}")).toMatchObject({ action: SETTINGS_WINDOW_ACTION, payload: { settings: {} } });
+  });
+
+  it("closes the window when the plugin's socket closes — the plugin (or the deck host) has gone away", () => {
+    const { win, connect, close } = fakeWindow("?t=tok");
+
+    connect.mockImplementation((port: string) => {
+      new (win as unknown as { WebSocket: typeof FakeNativeWebSocket }).WebSocket(`ws://localhost:${port}`);
+    });
+    installSettingsWindowBridge(win);
+
+    FakeNativeWebSocket.instances[0]?.fire("close");
+
+    expect(close).toHaveBeenCalledTimes(1);
   });
 
   it("restores the native WebSocket even when connect throws", () => {
