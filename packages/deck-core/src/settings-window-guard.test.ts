@@ -72,3 +72,41 @@ describe("authorizeSettingsRequest", () => {
     expect(result).toEqual({ allowed: false, reason: "bad-origin" });
   });
 });
+
+describe("authorizeSettingsRequest — session cookie", () => {
+  it("allows a same-origin request that carries the session cookie but no token (relative script src)", () => {
+    const result = authorizeSettingsRequest({
+      origin: undefined,
+      expectedOrigin: EXPECTED_ORIGIN,
+      token: undefined,
+      expectedToken: EXPECTED_TOKEN,
+      cookie: EXPECTED_TOKEN,
+    });
+
+    expect(result).toEqual({ allowed: true });
+  });
+
+  it("rejects a request whose cookie does not match", () => {
+    const result = authorizeSettingsRequest({
+      origin: undefined,
+      expectedOrigin: EXPECTED_ORIGIN,
+      token: undefined,
+      expectedToken: EXPECTED_TOKEN,
+      cookie: "stale",
+    });
+
+    expect(result).toEqual({ allowed: false, reason: "bad-token" });
+  });
+
+  it("still checks origin first — a hostile origin loses even with a valid cookie", () => {
+    const result = authorizeSettingsRequest({
+      origin: "https://evil.example",
+      expectedOrigin: EXPECTED_ORIGIN,
+      token: undefined,
+      expectedToken: EXPECTED_TOKEN,
+      cookie: EXPECTED_TOKEN,
+    });
+
+    expect(result).toEqual({ allowed: false, reason: "bad-origin" });
+  });
+});

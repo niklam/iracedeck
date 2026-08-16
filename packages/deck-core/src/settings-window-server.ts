@@ -118,6 +118,30 @@ function tokenOf(req: IncomingMessage, origin: string): string | undefined {
   return new URL(req.url ?? "/", origin).searchParams.get("t") ?? undefined;
 }
 
+/**
+ * Session cookie carrying the launch token. The URL token authenticates only
+ * the first navigation; the page's relative `<script src>` fetches and the
+ * WebSocket upgrade carry no query string, so they authenticate by this cookie
+ * instead. `SameSite=Strict` — never sent cross-site; `HttpOnly` — never
+ * readable by page script; scoped to this loopback host, which a DNS-rebound
+ * hostname is not.
+ */
+const SESSION_COOKIE = "ird_sw";
+
+function cookieOf(req: IncomingMessage): string | undefined {
+  const header = req.headers.cookie;
+
+  if (!header) return undefined;
+
+  for (const part of header.split(";")) {
+    const [name, ...rest] = part.trim().split("=");
+
+    if (name === SESSION_COOKIE) return rest.join("=");
+  }
+
+  return undefined;
+}
+
 export async function startSettingsWindowServer(options: SettingsWindowServerOptions): Promise<SettingsWindowServer> {
   const token = randomBytes(24).toString("hex");
   // Set once the port is known; the guard needs it and requests can't arrive
@@ -130,6 +154,7 @@ export async function startSettingsWindowServer(options: SettingsWindowServerOpt
       expectedOrigin: origin,
       token: tokenOf(req, origin),
       expectedToken: token,
+      cookie: cookieOf(req),
     });
 
   const server: Server = createServer((req, res) => {
@@ -141,6 +166,12 @@ export async function startSettingsWindowServer(options: SettingsWindowServerOpt
     }
 
     const pathname = new URL(req.url ?? "/", origin).pathname;
+
+    // The page load is the one request that carries the URL token; hand back
+    // the session cookie so every subsequent same-origin request can skip it.
+    if (pathname === "/") {
+      res.setHeader("set-cookie", `${SESSION_COOKIE}=${token}; Path=/; SameSite=Strict; HttpOnly`);
+    }
 
     if (options.assetsDir) {
       const name = pathname === "/" ? (options.pageFile ?? "index.html") : decodeURIComponent(pathname.slice(1));

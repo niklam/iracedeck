@@ -22,6 +22,16 @@ export interface SettingsRequestInput {
   token: string | undefined;
   /** The per-launch token the server generated. */
   expectedToken: string;
+  /**
+   * The session cookie value, if any. The URL token authenticates only the
+   * FIRST navigation; the server then sets a `SameSite=Strict; HttpOnly` cookie
+   * holding the same token, and every same-origin request after that (the
+   * page's relative `<script src>` fetches, the WebSocket upgrade) carries the
+   * cookie instead. A Strict cookie is never sent cross-site, and a
+   * DNS-rebound hostname is a different cookie host, so this is at least as
+   * strong as the query token — and the Origin check still runs first.
+   */
+  cookie?: string | undefined;
 }
 
 export function authorizeSettingsRequest(input: SettingsRequestInput): SettingsRequestDecision {
@@ -33,7 +43,10 @@ export function authorizeSettingsRequest(input: SettingsRequestInput): SettingsR
     return { allowed: false, reason: "bad-origin" };
   }
 
-  if (input.token === undefined || input.token !== input.expectedToken) {
+  const tokenOk = input.token !== undefined && input.token === input.expectedToken;
+  const cookieOk = input.cookie !== undefined && input.cookie === input.expectedToken;
+
+  if (!tokenOk && !cookieOk) {
     return { allowed: false, reason: "bad-token" };
   }
 

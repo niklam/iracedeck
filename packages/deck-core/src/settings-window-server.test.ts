@@ -143,6 +143,21 @@ describe("settings-window WebSocket host", () => {
     ws.close();
   });
 
+  it("accepts a WebSocket upgrade authenticated by the session cookie alone", async () => {
+    server = await startSettingsWindowServer({ page: PAGE, settingsHost: fakeSettingsHost() });
+    const cookie = (await fetch(server.url)).headers.get("set-cookie")?.split(";")[0] ?? "";
+    const u = new URL(server.url);
+    const ws = new WebSocket(`ws://${u.host}/ws`, { headers: { cookie } });
+
+    await new Promise<void>((resolve, reject) => {
+      ws.once("open", () => resolve());
+      ws.once("error", reject);
+    });
+
+    expect(ws.readyState).toBe(WebSocket.OPEN);
+    ws.close();
+  });
+
   it("refuses a WebSocket upgrade with the wrong token", async () => {
     server = await startSettingsWindowServer({ page: PAGE, settingsHost: fakeSettingsHost() });
 
@@ -262,15 +277,38 @@ describe("settings-window static assets", () => {
     return dir;
   }
 
-  it("serves a JS asset from the assets dir with the launch token", async () => {
+  it("sets a SameSite=Strict HttpOnly session cookie on the tokenised page load", async () => {
+    server = await startSettingsWindowServer({ assetsDir: assetsDir(), pageFile: "settings-window.html" });
+
+    const res = await fetch(server.url);
+    const setCookie = res.headers.get("set-cookie") ?? "";
+
+    expect(res.status).toBe(200);
+    expect(setCookie).toMatch(/^ird_sw=[0-9a-f]{32,};/);
+    expect(setCookie).toContain("SameSite=Strict");
+    expect(setCookie).toContain("HttpOnly");
+    expect(setCookie).toContain("Path=/");
+  });
+
+  it("serves a JS asset requested the way a browser does — relative src, cookie, NO token", async () => {
     server = await startSettingsWindowServer({ assetsDir: assetsDir(), pageFile: "settings-window.html" });
     const u = new URL(server.url);
+    const cookie = (await fetch(server.url)).headers.get("set-cookie")?.split(";")[0] ?? "";
 
-    const res = await fetch(`${u.origin}/pi-components.js?t=${u.searchParams.get("t")}`);
+    const res = await fetch(`${u.origin}/pi-components.js`, { headers: { cookie } });
 
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("javascript");
     expect(await res.text()).toBe("console.log('pi');");
+  });
+
+  it("refuses an asset request with neither token nor cookie", async () => {
+    server = await startSettingsWindowServer({ assetsDir: assetsDir(), pageFile: "settings-window.html" });
+    const u = new URL(server.url);
+
+    const res = await fetch(`${u.origin}/pi-components.js`);
+
+    expect(res.status).toBe(403);
   });
 
   it("serves the page file at / and reads it fresh on each request", async () => {
