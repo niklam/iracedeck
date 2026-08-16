@@ -7,7 +7,7 @@ sidebar:
     variant: tip
 ---
 
-Tweak your in-car view settings without leaving the cockpit. Each mode maps to a specific view parameter so you can dial in the perfect perspective. Placed on a **Stream Deck+ dial**, the same action becomes a view-tuning dial — especially handy in VR, where you can adjust driver height and recenter the headset by feel — see [On a dial](#on-a-dial) below.
+Tweak your in-car view settings without leaving the cockpit. Most modes adjust a specific view parameter up or down so you can dial in the perfect perspective; Recenter VR and Mouse to Sim are one-shot actions instead. Placed on a **Stream Deck+ dial**, the same action becomes a view-tuning dial — especially handy in VR, where you can adjust driver height and recenter the headset by feel — see [On a dial](#on-a-dial) below.
 
 ## Modes
 
@@ -128,7 +128,7 @@ In VR you cannot see the mouse pointer, and on a multi-monitor desktop it can be
 
 ## On a dial
 
-Placed on a Stream Deck+ dial, View Adjustment becomes a view-tuning dial — ideal in VR, where FOV and seating tune best by feel. Pick one value with the dial's **Mode** dropdown; turning the dial nudges it up or down in the sim, and a press recenters your VR headset. It uses the same key bindings as the keypad modes, so no extra configuration is needed if you already use them. The Property Inspector automatically shows the dial settings below (instead of the keypad Mode and Direction) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
+Placed on a Stream Deck+ dial, View Adjustment becomes a view-tuning dial — ideal in VR, where FOV and seating tune best by feel. Pick one value with the dial's **Mode** dropdown; turning the dial nudges it up or down in the sim, and a press recenters your VR headset by default (you can set it to Mouse to Sim or None instead). It uses the same key bindings as the keypad modes, so no extra configuration is needed if you already use them. The Property Inspector automatically shows the dial settings below (instead of the keypad Mode and Direction) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
 
 #### Details
 
