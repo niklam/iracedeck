@@ -34,6 +34,7 @@ import z from "zod";
 
 import { dialAppearanceFields, renderDialBox, resolveDialBoxColors } from "../../shared/dial-box.js";
 import { renderDialNameIcon } from "../../shared/dial-name-icon.js";
+import { bringPointerToSim } from "../../shared/mouse-to-sim.js";
 
 /** Minimum gap (ms) between change-driven feedback pushes (≤10 setFeedback/s/dial). */
 const CHANGE_RENDER_MIN_INTERVAL_MS = 100;
@@ -54,8 +55,13 @@ const MAX_TAPS_PER_EVENT = 5;
 export const ROTATION_SETTINGS = ["fov", "horizon", "driver-height", "ui-size"] as const;
 export type ViewAdjustmentDialSetting = (typeof ROTATION_SETTINGS)[number];
 
-/** Gesture slots. `recenter-vr` taps the shared View Adjustment Recenter VR binding. */
-export const GESTURE_ACTIONS = ["recenter-vr", "none"] as const;
+/**
+ * Gesture slots. `recenter-vr` taps the shared View Adjustment Recenter VR
+ * binding; `mouse-to-sim` focuses the sim window and parks the mouse pointer
+ * inside it (#926) — a native window call, so it taps no binding and carries no
+ * comms descriptor.
+ */
+export const GESTURE_ACTIONS = ["recenter-vr", "mouse-to-sim", "none"] as const;
 export type GestureSlot = (typeof GESTURE_ACTIONS)[number];
 
 export type ViewAdjustmentDirection = "increase" | "decrease";
@@ -206,6 +212,8 @@ function gestureLabel(action: GestureSlot): string | undefined {
   switch (action) {
     case "recenter-vr":
       return "Recenter VR";
+    case "mouse-to-sim":
+      return "Mouse to Sim";
     case "none":
       return undefined;
   }
@@ -396,12 +404,34 @@ export class ViewAdjustmentDialSurface {
     }
   }
 
+  /**
+   * Dispatches one gesture slot.
+   *
+   * The `default` branch is an exhaustiveness guard, not dead code: assigning the
+   * slot to `never` makes adding a {@link GESTURE_ACTIONS} value without a case
+   * here a COMPILE error. A bare switch would not — this package does not enable
+   * `noImplicitReturns`, so an unhandled slot would otherwise fall through and
+   * ship as a gesture that silently does nothing.
+   */
   private async doGesture(action: GestureSlot): Promise<void> {
-    if (action === "none") return;
+    switch (action) {
+      case "recenter-vr":
+        this.host.logger.info("View adjustment dial recentered VR");
+        await this.host.tapBinding(RECENTER_VR_KEY);
 
-    if (action === "recenter-vr") {
-      this.host.logger.info("View adjustment dial recentered VR");
-      await this.host.tapBinding(RECENTER_VR_KEY);
+        return;
+      case "mouse-to-sim":
+        bringPointerToSim(this.host.logger);
+
+        return;
+      case "none":
+        return;
+      default: {
+        const unhandled: never = action;
+        this.host.logger.warn(`Unhandled gesture slot: ${String(unhandled)}`);
+
+        return;
+      }
     }
   }
 

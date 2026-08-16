@@ -570,6 +570,22 @@ Napi::Value SendChatMessage(const Napi::CallbackInfo &info)
 // Window Management Functions
 // ============================================================================
 
+/** The iRacing simulator's main window title — the only handle we have on the process. */
+static const char *kIRacingWindowTitle = "iRacing.com Simulator";
+
+/**
+ * Locate the iRacing simulator's main window.
+ *
+ * Shared by every feature that needs the window: focus, the elevation probe,
+ * and the pointer move.
+ *
+ * @returns the window handle, or NULL when iRacing is not running.
+ */
+static HWND findIRacingWindow()
+{
+    return FindWindowA(NULL, kIRacingWindowTitle);
+}
+
 /**
  * Focus result codes returned by focusIRacingWindow().
  *
@@ -593,7 +609,7 @@ static const int FOCUS_TIMED_OUT = 3;
  */
 static int focusIRacingWindow()
 {
-    HWND hwnd = FindWindowA(NULL, "iRacing.com Simulator");
+    HWND hwnd = findIRacingWindow();
     if (!hwnd)
     {
         return FOCUS_WINDOW_NOT_FOUND;
@@ -653,6 +669,137 @@ Napi::Value FocusIRacingWindow(const Napi::CallbackInfo &info)
 {
     Napi::Env env = info.Env();
     return Napi::Number::New(env, focusIRacingWindow());
+}
+
+/**
+ * Pointer move result codes returned by moveMouseToIRacingWindow().
+ *
+ * 0 = Moved          — the cursor was placed inside the sim's client area
+ * 1 = WindowNotFound — no window with the expected title exists
+ * 2 = Failed         — the window was found but a Win32 call failed, or its
+ *                      client area has no usable size (a minimized window)
+ */
+static const int POINTER_MOVED = 0;
+static const int POINTER_WINDOW_NOT_FOUND = 1;
+static const int POINTER_FAILED = 2;
+
+/** Default pointer target: horizontally centered, one eighth down from the top. */
+static const double kDefaultPointerXFraction = 0.5;
+static const double kDefaultPointerYFraction = 0.125;
+
+/**
+ * Clamp a caller-supplied fraction into [0,1], mapping NaN to the fallback.
+ */
+static double clampFraction(double value, double fallback)
+{
+    if (value != value) // NaN — the only value not equal to itself
+    {
+        return fallback;
+    }
+    if (value < 0.0)
+    {
+        return 0.0;
+    }
+    if (value > 1.0)
+    {
+        return 1.0;
+    }
+    return value;
+}
+
+/**
+ * Move the OS mouse pointer to a point inside the iRacing window's client area.
+ *
+ * The target is expressed as fractions of the client area so the caller owns the
+ * placement policy and this stays a plain OS primitive — the same split as the
+ * caller-supplied chat delays and sendScanKeySequence's holdMs.
+ *
+ * @param xFraction - horizontal position, 0 = left edge, 1 = right edge
+ * @param yFraction - vertical position, 0 = top edge, 1 = bottom edge
+ * @returns int status code (see POINTER_* constants above)
+ */
+static int moveMouseToIRacingWindow(double xFraction, double yFraction)
+{
+    HWND hwnd = findIRacingWindow();
+    if (!hwnd)
+    {
+        return POINTER_WINDOW_NOT_FOUND;
+    }
+
+    RECT client;
+    if (!GetClientRect(hwnd, &client))
+    {
+        return POINTER_FAILED;
+    }
+
+    const LONG width = client.right - client.left;
+    const LONG height = client.bottom - client.top;
+
+    // A minimized window reports an empty client rect — there is nowhere to point.
+    if (width <= 0 || height <= 0)
+    {
+        return POINTER_FAILED;
+    }
+
+    // A client area of W pixels spans columns 0..W-1, so a fraction of exactly
+    // 1.0 must land on the last pixel INSIDE the area, never one past its edge
+    // (which would put the cursor on the frame, or on the neighbouring monitor).
+    LONG offsetX = (LONG)(width * clampFraction(xFraction, kDefaultPointerXFraction));
+    LONG offsetY = (LONG)(height * clampFraction(yFraction, kDefaultPointerYFraction));
+    if (offsetX > width - 1)
+    {
+        offsetX = width - 1;
+    }
+    if (offsetY > height - 1)
+    {
+        offsetY = height - 1;
+    }
+
+    POINT target;
+    target.x = client.left + offsetX;
+    target.y = client.top + offsetY;
+
+    // Client coordinates -> virtual-desktop coordinates, which is what SetCursorPos
+    // consumes. This is what makes a multi-monitor setup land on the right screen.
+    if (!ClientToScreen(hwnd, &target))
+    {
+        return POINTER_FAILED;
+    }
+
+    if (!SetCursorPos(target.x, target.y))
+    {
+        return POINTER_FAILED;
+    }
+
+    return POINTER_MOVED;
+}
+
+/**
+ * N-API wrapper: move the mouse pointer into the iRacing window.
+ *
+ * Both arguments are read as doubles (never Uint32Value(), which would let a
+ * negative value wrap into a huge unsigned value) and fall back to the defaults
+ * when absent or non-numeric.
+ *
+ * @returns number - status code (0=moved, 1=not found, 2=failed)
+ */
+Napi::Value MoveMouseToIRacingWindow(const Napi::CallbackInfo &info)
+{
+    Napi::Env env = info.Env();
+
+    double xFraction = kDefaultPointerXFraction;
+    double yFraction = kDefaultPointerYFraction;
+
+    if (info.Length() > 0 && info[0].IsNumber())
+    {
+        xFraction = info[0].As<Napi::Number>().DoubleValue();
+    }
+    if (info.Length() > 1 && info[1].IsNumber())
+    {
+        yFraction = info[1].As<Napi::Number>().DoubleValue();
+    }
+
+    return Napi::Number::New(env, moveMouseToIRacingWindow(xFraction, yFraction));
 }
 
 // ============================================================================
@@ -1048,7 +1195,7 @@ static ElevationStatus getElevationStatus()
     queryTokenElevation(GetCurrentProcess(), status.selfElevated);
 
     // Locate iRacing via its window, then resolve the owning PID.
-    HWND hwnd = FindWindowA(NULL, "iRacing.com Simulator");
+    HWND hwnd = findIRacingWindow();
     if (!hwnd)
     {
         return status; // iracingFound stays false
@@ -1128,6 +1275,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports)
 
     // Window Management
     exports.Set("focusIRacingWindow", Napi::Function::New(env, FocusIRacingWindow));
+    exports.Set("moveMouseToIRacingWindow", Napi::Function::New(env, MoveMouseToIRacingWindow));
 
     // Keyboard Input
     exports.Set("sendScanKeys", Napi::Function::New(env, SendScanKeys));

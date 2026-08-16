@@ -239,6 +239,7 @@ export {
   _resetWindowFocus,
   FocusResult,
   focusIRacingIfEnabled,
+  focusIRacingNow,
   initWindowFocus,
   type WindowFocuser,
 } from "./window-focus-service.js";
@@ -252,6 +253,17 @@ export {
   type IClipboardService,
   type ClipboardWriter,
 } from "./clipboard-service.js";
+
+// Mouse pointer service singleton (issue #926)
+export {
+  _resetMousePointer,
+  DEFAULT_POINTER_X_FRACTION,
+  DEFAULT_POINTER_Y_FRACTION,
+  initMousePointer,
+  movePointerToSim,
+  PointerMoveResult,
+  type SimPointerMover,
+} from "./mouse-pointer-service.js";
 
 // App monitor for iRacing process detection
 export {

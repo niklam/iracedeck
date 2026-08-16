@@ -89,6 +89,7 @@ import {
   initializeRasterizer,
   initializeSDK,
   initializeSimHub,
+  initMousePointer,
   initPluginConfig,
   initWindowFocus,
   isIRacingActive,
@@ -905,6 +906,9 @@ adapter.onPropertyInspectorDidAppear(() => {
 
 // Initialize window focus service for focusing iRacing before any action
 initWindowFocus(adapter.createLogger("WindowFocus"), () => native.focusIRacingWindow());
+
+// Initialize the mouse pointer service for the Mouse to Sim mode (#926)
+initMousePointer(adapter.createLogger("MousePointer"), (x, y) => native.moveMouseToIRacingWindow(x, y));
 
 // Focus iRacing window before any action executes (when enabled in global settings)
 // MUST be registered BEFORE actions so the listener fires first.

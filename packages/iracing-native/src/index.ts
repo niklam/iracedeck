@@ -14,25 +14,12 @@ import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
 import type { BroadcastMsg, ElevationStatus, IRSDKHeader, VarHeader } from "./defines.js";
+import { FocusResult, PointerMoveResult } from "./defines.js";
 import { IRacingNativeMock } from "./mock-impl.js";
 
 // Re-export all types and enums from defines
 export * from "./defines.js";
 export { IRacingNativeMock } from "./mock-impl.js";
-
-/**
- * Result codes from focusIRacingWindow().
- */
-export enum FocusResult {
-  /** Window was already in the foreground */
-  AlreadyFocused = 0,
-  /** Window was found and successfully focused */
-  Focused = 1,
-  /** No window with the expected title exists */
-  WindowNotFound = 2,
-  /** Window was found but focus did not transfer within timeout */
-  FocusTimedOut = 3,
-}
 
 // Try to load native addon (only on Windows, with safety catch).
 // Force mock mode by creating a `.mock` file in the sdPlugin folder,
@@ -221,8 +208,24 @@ export class IRacingNative {
    *
    * @returns FocusResult status code (0=already focused, 1=focused, 2=not found, 3=timed out)
    */
-  focusIRacingWindow(): number {
+  focusIRacingWindow(): FocusResult {
     return addon ? addon.focusIRacingWindow() : this.getMock().focusIRacingWindow();
+  }
+
+  /**
+   * Move the OS mouse pointer into the iRacing window's client area.
+   *
+   * The target is given as fractions of the client area (0..1, clamped natively),
+   * so the placement policy stays in TypeScript rather than in the addon.
+   *
+   * @param xFraction - horizontal position, 0 = left edge, 1 = right edge
+   * @param yFraction - vertical position, 0 = top edge, 1 = bottom edge
+   * @returns PointerMoveResult status code (0=moved, 1=not found, 2=failed)
+   */
+  moveMouseToIRacingWindow(xFraction: number, yFraction: number): PointerMoveResult {
+    return addon
+      ? addon.moveMouseToIRacingWindow(xFraction, yFraction)
+      : this.getMock().moveMouseToIRacingWindow(xFraction, yFraction);
   }
 
   // ============================================================================

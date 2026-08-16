@@ -109,6 +109,10 @@ export {
   // Key binding utilities
   formatKeyBinding,
   parseKeyBinding,
+  // Unconditional focus + mouse pointer placement (#926)
+  focusIRacingNow,
+  initMousePointer,
+  movePointerToSim,
 } from "@iracedeck/deck-core";
 
 // Re-export from deck-adapter-elgato

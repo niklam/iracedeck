@@ -94,6 +94,38 @@ export function focusIRacingIfEnabled(): void {
 
   if (!settings.focusIRacingWindow) return;
 
+  runFocuser();
+}
+
+/**
+ * Focus the iRacing window **unconditionally**, ignoring the
+ * `focusIRacingWindow` global setting (issue #926).
+ *
+ * For action code where focusing IS the thing the user pressed the key for — the
+ * View Adjustment *Mouse to Sim* mode is the only consumer today. That is an
+ * explicit request to go to the sim, so neither the opt-out setting nor the
+ * `hasReceivedHostSettings()` startup gate applies: both exist to keep the
+ * *implicit* before-every-action focus from surprising someone, and there is
+ * nothing implicit about pressing this key.
+ *
+ * Shares {@link focusIRacingIfEnabled}'s result handling and logging exactly.
+ *
+ * @returns the {@link FocusResult}, or `null` when the call could not be made at
+ *   all (no focuser injected, or it threw). `null` says nothing about the window
+ *   — callers must not read it as "iRacing is not running".
+ */
+export function focusIRacingNow(): FocusResult | null {
+  return runFocuser();
+}
+
+/**
+ * Invokes the injected focuser and logs the outcome.
+ *
+ * @returns the result, or `null` when no focuser is configured or it threw.
+ */
+function runFocuser(): FocusResult | null {
+  if (!focuser) return null;
+
   let result: FocusResult;
 
   try {
@@ -101,7 +133,7 @@ export function focusIRacingIfEnabled(): void {
   } catch (error) {
     logger.warn(`Failed to focus iRacing window: ${error}`);
 
-    return;
+    return null;
   }
 
   switch (result) {
@@ -155,6 +187,8 @@ export function focusIRacingIfEnabled(): void {
       logger.warn(`Unexpected focus result: ${result}`);
       break;
   }
+
+  return result;
 }
 
 /**

@@ -189,6 +189,10 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     escape: keybindFixed(),
   }),
 
+  // `mouse-to-sim` is intentionally absent from BOTH View Adjustment maps (#926):
+  // it is a native Windows window/pointer call, not an iRacing command, so it has
+  // no binding and the status line renders nothing for it (the Telemetry Control
+  // `snapshot` precedent). The same value is also a dial gesture-slot option.
   "view-adjustment": entry("adjustment", {
     fov: keybindBy("direction", { increase: "viewAdjustFovIncrease", decrease: "viewAdjustFovDecrease" }),
     horizon: keybindBy("direction", { increase: "viewAdjustHorizonUp", decrease: "viewAdjustHorizonDown" }),

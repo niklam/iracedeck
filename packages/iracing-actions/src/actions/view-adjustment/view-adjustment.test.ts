@@ -1,6 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { generateViewAdjustmentSvg, VIEW_ADJUSTMENT_GLOBAL_KEYS } from "./view-adjustment.js";
+import { generateViewAdjustmentSvg, VIEW_ADJUSTMENT_GLOBAL_KEYS, ViewAdjustment } from "./view-adjustment.js";
+
+const { mockTapBinding, mockBringPointerToSim } = vi.hoisted(() => ({
+  mockTapBinding: vi.fn().mockResolvedValue(undefined),
+  mockBringPointerToSim: vi.fn(),
+}));
+
+vi.mock("../../shared/mouse-to-sim.js", () => ({
+  bringPointerToSim: mockBringPointerToSim,
+}));
 
 vi.mock("@iracedeck/icons/view-adjustment/driver-height-decrease.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">driver-height-decrease {{mainLabel}} {{subLabel}}</svg>',
@@ -19,6 +28,9 @@ vi.mock("@iracedeck/icons/view-adjustment/horizon-decrease.svg", () => ({
 }));
 vi.mock("@iracedeck/icons/view-adjustment/horizon-increase.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">horizon-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/view-adjustment/mouse-to-sim.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">mouse-to-sim {{mainLabel}} {{subLabel}}</svg>',
 }));
 vi.mock("@iracedeck/icons/view-adjustment/recenter-vr.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">recenter-vr {{mainLabel}} {{subLabel}}</svg>',
@@ -52,6 +64,7 @@ vi.mock("@iracedeck/deck-core", () => ({
     setRegenerateCallback = vi.fn();
     setActiveBinding = vi.fn();
     isBindingMissing = vi.fn(() => false);
+    tapBinding = mockTapBinding;
   },
   formatKeyBinding: vi.fn((b: { key: string; modifiers: string[] }) => {
     if (b.modifiers?.length) {
@@ -65,6 +78,7 @@ vi.mock("@iracedeck/deck-core", () => ({
   getGlobalColors: vi.fn(() => ({})),
   getGlobalGraphicSettings: vi.fn(() => ({})),
   getGlobalSettings: vi.fn(() => ({})),
+  onGlobalSettingsChange: vi.fn(() => vi.fn()),
   getKeyboard: vi.fn(() => ({
     sendKeyCombination: vi.fn().mockResolvedValue(true),
   })),
@@ -150,8 +164,14 @@ describe("ViewAdjustment", () => {
       expect(VIEW_ADJUSTMENT_GLOBAL_KEYS["ui-size"].decrease).toBe("viewAdjustUiSizeDecrease");
     });
 
-    it("should have exactly 5 adjustment types", () => {
+    it("should map exactly the 5 binding-backed adjustment types", () => {
+      // Six modes exist; mouse-to-sim is deliberately absent because it is a
+      // native window/pointer call with no iRacing command and no key binding (#926).
       expect(Object.keys(VIEW_ADJUSTMENT_GLOBAL_KEYS)).toHaveLength(5);
+    });
+
+    it("should have no mapping for mouse-to-sim", () => {
+      expect(VIEW_ADJUSTMENT_GLOBAL_KEYS["mouse-to-sim"]).toBeUndefined();
     });
 
     it("should have increase and decrease for each adjustment type", () => {
@@ -179,7 +199,7 @@ describe("ViewAdjustment", () => {
     });
 
     it("should generate valid data URIs for all adjustment + direction combinations", () => {
-      const adjustments = ["fov", "horizon", "driver-height", "recenter-vr", "ui-size"] as const;
+      const adjustments = ["fov", "horizon", "driver-height", "recenter-vr", "ui-size", "mouse-to-sim"] as const;
       const directions = ["increase", "decrease"] as const;
 
       for (const adjustment of adjustments) {
@@ -188,6 +208,23 @@ describe("ViewAdjustment", () => {
           expect(result).toContain("data:image/svg+xml");
         }
       }
+    });
+
+    it("should generate a valid data URI for mouse-to-sim", () => {
+      const result = generateViewAdjustmentSvg({
+        adjustment: "mouse-to-sim",
+        direction: "increase",
+      });
+
+      expect(result).toContain("data:image/svg+xml");
+      expect(decodeURIComponent(result)).toContain("mouse-to-sim");
+    });
+
+    it("should use the same mouse-to-sim icon for both directions", () => {
+      const increase = generateViewAdjustmentSvg({ adjustment: "mouse-to-sim", direction: "increase" });
+      const decrease = generateViewAdjustmentSvg({ adjustment: "mouse-to-sim", direction: "decrease" });
+
+      expect(increase).toBe(decrease);
     });
 
     it("should produce different icons for different adjustments", () => {
@@ -266,6 +303,10 @@ describe("ViewAdjustment", () => {
           increase: { line1: "INCREASE", line2: "UI SIZE" },
           decrease: { line1: "DECREASE", line2: "UI SIZE" },
         },
+        "mouse-to-sim": {
+          increase: { line1: "TO SIM", line2: "MOUSE" },
+          decrease: { line1: "TO SIM", line2: "MOUSE" },
+        },
       };
 
       for (const [adjustment, directions] of Object.entries(expectedLabels)) {
@@ -280,6 +321,39 @@ describe("ViewAdjustment", () => {
           expect(decoded).toContain(labels.line2);
         }
       }
+    });
+  });
+
+  describe("keypad dispatch", () => {
+    function keyEvent(settings: Record<string, unknown>) {
+      return { action: { id: "k1", isKey: () => true, isDial: () => false }, payload: { settings } } as never;
+    }
+
+    it("taps the mapped binding for a directional mode", async () => {
+      const action = new ViewAdjustment({} as never);
+
+      await action.onKeyDown(keyEvent({ adjustment: "fov", direction: "increase" }));
+
+      expect(mockTapBinding).toHaveBeenCalledWith("viewAdjustFovIncrease");
+      expect(mockBringPointerToSim).not.toHaveBeenCalled();
+    });
+
+    it("brings the pointer to the sim for mouse-to-sim and taps no binding (#926)", async () => {
+      const action = new ViewAdjustment({} as never);
+
+      await action.onKeyDown(keyEvent({ adjustment: "mouse-to-sim", direction: "increase" }));
+
+      expect(mockBringPointerToSim).toHaveBeenCalledTimes(1);
+      expect(mockTapBinding).not.toHaveBeenCalled();
+    });
+
+    it("ignores the stored direction for mouse-to-sim (it is non-directional)", async () => {
+      const action = new ViewAdjustment({} as never);
+
+      await action.onKeyDown(keyEvent({ adjustment: "mouse-to-sim", direction: "decrease" }));
+
+      expect(mockBringPointerToSim).toHaveBeenCalledTimes(1);
+      expect(mockTapBinding).not.toHaveBeenCalled();
     });
   });
 });

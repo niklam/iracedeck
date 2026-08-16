@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 81.5 65.5">
+  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"title":{"text":"MOUSE\nTO SIM"},"border":{"color":"#3a5a6a"}}</desc>
+  <g transform="translate(-7.25 -9.25)">
+
+    <rect x="10" y="12" width="76" height="60" rx="4" fill="none" stroke="#ffffff" stroke-width="3.5"/>
+    <rect x="12" y="14" width="72" height="8" fill="#4fc3f7" opacity="0.5"/>
+    <circle cx="34" cy="56" r="2.2" fill="#4fc3f7" opacity="0.4"/>
+    <circle cx="40" cy="50" r="2.6" fill="#4fc3f7" opacity="0.6"/>
+    <circle cx="46" cy="44" r="3" fill="#4fc3f7" opacity="0.8"/>
+    <polygon points="44,22 44,42 48.8,37.6 52.2,45 55.6,43.4 52.2,36 58,35.6" fill="#4fc3f7" stroke="#ffffff" stroke-width="2" stroke-linejoin="round"/>
+  </g>
+</svg>

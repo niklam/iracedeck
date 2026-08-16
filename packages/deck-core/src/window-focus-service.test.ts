@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   _resetWindowFocus,
   focusIRacingIfEnabled,
+  focusIRacingNow,
   FocusResult,
   initWindowFocus,
   type WindowFocuser,
@@ -203,5 +204,59 @@ describe("window focus service", () => {
 
       expect(logger.warn).toHaveBeenCalledWith("iRacing window not found — is iRacing running?");
     });
+  });
+});
+
+describe("focusIRacingNow (issue #926)", () => {
+  beforeEach(() => {
+    _resetWindowFocus();
+    state.settings = { focusIRacingWindow: true };
+    state.hostSettingsReceived = true;
+    state.iRacingActive = false;
+  });
+
+  it("focuses even when the setting is disabled", () => {
+    // The opt-out governs the IMPLICIT before-every-action focus. This entry point
+    // only ever runs from an explicit press, so it deliberately ignores it (#926).
+    state.settings = { focusIRacingWindow: false };
+    const { focuser } = arrange(FocusResult.Focused);
+
+    expect(focusIRacingNow()).toBe(FocusResult.Focused);
+    expect(focuser).toHaveBeenCalledOnce();
+  });
+
+  it("focuses before the host's first settings payload has arrived", () => {
+    state.hostSettingsReceived = false;
+    const { focuser } = arrange(FocusResult.Focused);
+
+    expect(focusIRacingNow()).toBe(FocusResult.Focused);
+    expect(focuser).toHaveBeenCalledOnce();
+  });
+
+  it("returns the focuser's result code", () => {
+    arrange(FocusResult.WindowNotFound);
+    expect(focusIRacingNow()).toBe(FocusResult.WindowNotFound);
+  });
+
+  it("returns null when the service was never initialized", () => {
+    expect(focusIRacingNow()).toBeNull();
+  });
+
+  it("returns null when the focuser throws", () => {
+    const logger = createLogger();
+    initWindowFocus(logger, () => {
+      throw new Error("boom");
+    });
+
+    expect(focusIRacingNow()).toBeNull();
+    expect(logger.warn).toHaveBeenCalled();
+  });
+
+  it("shares the enabled path's logging", () => {
+    const { logger } = arrange(FocusResult.FocusTimedOut);
+
+    focusIRacingNow();
+
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("timed out"));
   });
 });
