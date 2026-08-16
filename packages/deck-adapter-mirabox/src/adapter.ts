@@ -250,6 +250,24 @@ export class VSDPlatformAdapter implements IDeckPlatformAdapter {
     });
   }
 
+  /**
+   * Register a listener for the Property Inspector's "Open iRaceDeck Settings"
+   * request (issue #992). VSD Craft mimics the Elgato PI protocol, so the
+   * button's `sendToPlugin { event: "openSettings" }` arrives as a
+   * `sendToPlugin` frame that `routeEvent` fans out to global handlers. Like
+   * `openUrl`, this is a concrete-adapter method, not an `IDeckPlatformAdapter`
+   * member — the PI→plugin transport differs per host.
+   */
+  onOpenSettingsRequest(listener: () => void): void {
+    this.client.onGlobalEvent("sendToPlugin", (data) => {
+      const payload = data.payload;
+
+      if (payload === null || typeof payload !== "object" || Array.isArray(payload)) return;
+
+      if ((payload as { event?: unknown }).event === "openSettings") listener();
+    });
+  }
+
   createLogger(scope: string): ILogger {
     // Resolver (not a fixed level) so setLogLevel affects already-created loggers.
     return this.buildLogger(scope);

@@ -74,8 +74,10 @@ import { getAudio, initializeAudio } from "@iracedeck/audio-service";
 import { UlanziPlatformAdapter } from "@iracedeck/deck-adapter-ulanzi";
 import {
   createElevationCheckSubscriber,
+  createSettingsWindowController,
   deleteGlobalSettings,
   evaluateSetupWarning,
+  findChromiumBrowserOnThisMachine,
   focusIRacingIfEnabled,
   getController,
   getGlobalSettings,
@@ -101,6 +103,7 @@ import {
   resolveActiveRaceEngineerVoice,
   runVersionCheck,
   shouldOpenChangelog,
+  spawnAppWindow,
   updateGlobalSettings,
   validateSetupWarningPatterns,
   VERSION_CHECK_STARTUP_GRACE_MS,
@@ -971,6 +974,28 @@ initGlobalSettings(adapter, adapter.createLogger("GlobalSettings"));
 
 // Migrate the pre-#953 spring binding keys (Left/Right -> LR/RR) once real settings arrive
 migrateGlobalSettingsKeys(SETUP_CHASSIS_BINDING_KEY_RENAMES, adapter.createLogger("SettingsMigration"));
+
+// Settings window (#992): a loopback-served page opened as a chromeless app
+// window. Started lazily on the PI's "Open iRaceDeck Settings" request and
+// torn down with the plugin. The page is a placeholder until the settings
+// bridge lands — this slice proves the in-plugin listener survives under the
+// deck host.
+const settingsWindow = createSettingsWindowController({
+  renderPage: () =>
+    `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>iRaceDeck Settings</title>` +
+    `<style>body{background:#2d2d2d;color:#fff;font:10pt "Segoe UI",sans-serif;padding:24px}</style></head>` +
+    `<body><h1>iRaceDeck Settings</h1><p>Served from the plugin process. Full settings UI coming next.</p></body></html>`,
+  findBrowser: findChromiumBrowserOnThisMachine,
+  spawnApp: spawnAppWindow,
+  openUrl: (url) => adapter.openUrl(url),
+  logger: adapter.createLogger("SettingsWindow"),
+});
+
+adapter.onOpenSettingsRequest(() => {
+  void settingsWindow.open().catch((error: unknown) => {
+    adapter.createLogger("SettingsWindow").error(`Failed to open settings window: ${String(error)}`);
+  });
+});
 
 // Initialize SimHub AFTER global settings so health check uses configured host/port
 initializeSimHub(adapter.createLogger("SimHub"));

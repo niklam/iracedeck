@@ -138,6 +138,40 @@ describe("VSDPlatformAdapter", () => {
     });
   });
 
+  describe("onOpenSettingsRequest (#992)", () => {
+    it("registers a global handler for the PI's sendToPlugin frames", () => {
+      adapter.onOpenSettingsRequest(vi.fn());
+
+      expect(client.onGlobalEvent).toHaveBeenCalledWith("sendToPlugin", expect.any(Function));
+    });
+
+    it("invokes the listener when the PI sends an openSettings command", () => {
+      const listener = vi.fn();
+      adapter.onOpenSettingsRequest(listener);
+
+      const handler = client.onGlobalEvent.mock.calls[0][1];
+      handler({
+        event: "sendToPlugin",
+        action: "com.iracedeck.sd.core.car-control",
+        payload: { event: "openSettings" },
+      });
+
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+
+    it("ignores other sendToPlugin commands and malformed payloads", () => {
+      const listener = vi.fn();
+      adapter.onOpenSettingsRequest(listener);
+
+      const handler = client.onGlobalEvent.mock.calls[0][1];
+      handler({ event: "sendToPlugin", payload: { event: "switchToProfile", profile: "x" } });
+      handler({ event: "sendToPlugin", payload: "not-an-object" });
+      handler({ event: "sendToPlugin" });
+
+      expect(listener).not.toHaveBeenCalled();
+    });
+  });
+
   describe("createLogger", () => {
     it("should create a logger with the given scope", () => {
       const logger = adapter.createLogger("TestScope");
