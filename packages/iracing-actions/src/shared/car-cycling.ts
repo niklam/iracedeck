@@ -5,7 +5,9 @@
  *   - by ascending CAR NUMBER — the Camera Controls dial's car-number mode, the
  *     keypad Cycle Car mode, and Replay Control's next/previous-car-by-number
  *     modes all walk the same ordering with the same world-presence rule, so a
- *     car that left the sim world can't dead-loop any of them;
+ *     car that left the sim world can't dead-loop any of them (presence is
+ *     judged by the shared `carInWorld` predicate — see #968 for why lap count
+ *     is not part of that test);
  *   - by PHYSICAL TRACK ORDER — the Camera Controls dial's track-order mode
  *     (#886) steps to the competitor physically ahead of / behind the focused
  *     car on the road, via the SAME `findNearestCarOnTrack` primitive behind
@@ -13,34 +15,10 @@
  *     (`findNearestDriverOnTrack`) and Replay Control's dial handler (never a
  *     second track-order computation).
  */
-import { findNearestCarOnTrack, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
+import { findNearestCarOnTrack, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 /** A rotation/press dispatch direction in the ascending car-number ordering. */
 export type CarCycleDirection = "next" | "previous";
-
-/**
- * Presence predicate for the car cycling target walks (issue #885): whether a
- * car currently exists in the sim world — valid lap telemetry and a track
- * surface other than `NotInWorld`, the same per-tick in-world formula the
- * translator's position tracking starts from (`race-finish.ts`), deliberately
- * WITHOUT its freeze/debounce: a one-tick `NotInWorld` blink at worst makes a
- * detent skip one live car (the next detent recovers), which doesn't justify
- * carrying per-car history here. Post-race, finished/towed cars despawn but
- * keep their frozen rank in the canonical order (and stay listed in session
- * info), and iRacing silently ignores a camera switch to them. Without the
- * per-car world arrays (out of session) there is nothing to judge presence by,
- * so every car counts as present.
- */
-export function carPresence(telemetry: TelemetryData | null): (carIdx: number) => boolean {
-  const lc = telemetry?.CarIdxLapCompleted;
-  const dp = telemetry?.CarIdxLapDistPct;
-
-  if (!Array.isArray(lc) || !Array.isArray(dp)) return () => true;
-
-  const ts = telemetry?.CarIdxTrackSurface as number[] | undefined;
-
-  return (carIdx) => lc[carIdx] >= 0 && dp[carIdx] >= 0 && ts?.[carIdx] !== TrkLoc.NotInWorld;
-}
 
 /**
  * Compute the neighbouring car by ascending car number. The list is the
@@ -108,13 +86,11 @@ export interface TrackOrderTarget {
  * `cars` is the competitor list (`getAllCarNumbers(sessionInfo, true, true)` —
  * pace car and spectators excluded); any car outside it is skipped even when it
  * is physically closer, so the pace car under caution is never targeted. Cars
- * no longer in the sim world are skipped by the primitive's own in-world test
- * (an invalid lap distance or a `NotInWorld` surface), so a towed / exited car
- * can't dead-loop the cycle (the #885 concern). Note that this is deliberately
- * NOT `carPresence`: the primitive has no lap-count condition, because
- * `CarIdxLapCompleted` is still -1 for every active car on the pace lap (#307),
- * whereas `carPresence` — the car-number / race-position rule — requires it to
- * be >= 0. When the focused car has no track position of its own (not in the
+ * no longer in the sim world are skipped by the primitive's own use of the
+ * shared `carInWorld` predicate (a valid lap distance and a surface other than
+ * `NotInWorld`), so a towed / exited car can't dead-loop the cycle (the #885
+ * concern) — the same rule the car-number walk applies, since #968 made it one
+ * predicate. When the focused car has no track position of its own (not in the
  * world), the primitive's documented fallback re-enters the field at the car
  * nearest the start/finish line for BOTH directions. Returns `null` without
  * telemetry, without a focused car, or when no other competitor is on track —

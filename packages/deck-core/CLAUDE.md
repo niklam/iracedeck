@@ -59,7 +59,7 @@ deck-core adds global settings readers on top of the pure functions:
 - `device-profiles.ts` — Canonical Stream Deck device + profile reference (#736, #753, #790): `DeviceType`, `DEVICE_SPECS`, `DEVICE_SUPPORT`, `PROFILE_NAMES` / `PROFILE_TARGET_DEVICES` / `PROFILE_NAV_ACTIONS`, `CAR_SELECTOR_PROFILE`, `shipsBundledProfiles`, lookup helpers, and the device-suffixed profile-name helpers (`PROFILE_DEVICE_SUFFIXES`, `profileDeviceSuffix`, `deviceProfileName`, `profileDisplayName`, `resolveProfileNameForDevice`); details in `.claude/rules/profiles-and-devices.md` (Elgato-only)
 - `profile-switcher.ts` — Profile-switch singleton (#736): `requestProfileSwitch`, `requestProfileSwitchBack`, `notifyProfileVisible` — the layer above the adapters' `switchToProfile`; a safe no-op where unregistered (non-Elgato)
 
-**Not in deck-core:** `initWindowFocus` / `focusIRacingIfEnabled` live in each plugin's own `src/shared/window-focus.ts` module — import them from there, never from `@iracedeck/deck-core` (some rules-file snippets show a deck-core import; that's wrong).
+- `window-focus-service.ts` — Window focus singleton (#930): `initWindowFocus`, `focusIRacingIfEnabled`, `FocusResult`, `_resetWindowFocus`. Plugins inject the focuser (same DI shape as `keyboard-service`), so deck-core never imports `@iracedeck/iracing-native` — importing that package loads the native addon as a module side effect. `FocusResult` is therefore a hand-kept **mirror** of the native enum; `packages/iracing-plugin-stream-deck/src/shared/focus-result.test.ts` asserts the two stay identical. Previously duplicated in all three plugins' `src/shared/window-focus.ts`.
 
 ## Build
 
