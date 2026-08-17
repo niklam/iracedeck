@@ -179,7 +179,7 @@ describe("settings-window WebSocket host", () => {
     });
     const u = new URL(server.url);
     const ws = new WebSocket(`ws://${u.host}/ws`, {
-      headers: { origin: "https://evil.example", cookie: `ird_sw=${server.token}` },
+      headers: { origin: "https://evil.example", cookie: `ird_sw_${u.port}=${server.token}` },
     });
     const status = await new Promise<number>((resolve) => {
       ws.once("unexpected-response", (_req, res) => resolve(res.statusCode ?? 0));
@@ -188,6 +188,24 @@ describe("settings-window WebSocket host", () => {
 
     expect(status).toBe(403);
     expect(decisions.at(-1)).toEqual({ allowed: false, reason: "bad-origin", origin: "https://evil.example" });
+  });
+
+  it("reports a distinct reason when a well-authenticated upgrade targets the wrong path", async () => {
+    const decisions: Array<{ allowed: boolean; reason?: string }> = [];
+    server = await startSettingsWindowServer({
+      page: PAGE,
+      settingsHost: fakeSettingsHost(),
+      onUpgradeDecision: (d) => decisions.push({ allowed: d.allowed, reason: d.reason }),
+    });
+    const port = new URL(server.url).port;
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/not-ws?t=${server.token}`);
+    const status = await new Promise<number>((resolve) => {
+      ws.once("unexpected-response", (_req, res) => resolve(res.statusCode ?? 0));
+      ws.once("error", () => resolve(403));
+    });
+
+    expect(status).toBe(403);
+    expect(decisions.at(-1)).toEqual({ allowed: false, reason: "bad-path" });
   });
 
   it("accepts a WebSocket upgrade authenticated by the session cookie alone", async () => {

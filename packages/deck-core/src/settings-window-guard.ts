@@ -38,11 +38,12 @@ export interface SettingsRequestInput {
 
 export function authorizeSettingsRequest(input: SettingsRequestInput): SettingsRequestDecision {
   // A valid launch token authenticates on its own, whatever the Origin: the
-  // token is the secret (per-launch, 48 hex chars, reachable only through the
-  // window's URL and the plugin's own settings store), and the Property
-  // Inspectors that carry it are file:// (Origin "null") or host-served pages
-  // (#993 phase 2). No CORS header is ever emitted, so a page cannot read a
-  // response it was not meant to see.
+  // token IS the authorization boundary (per-launch, 48 hex chars, reachable
+  // only through the window's URL and the deck host's mirror of the plugin's
+  // settings), and the Property Inspectors that carry it are file:// (Origin
+  // "null") or host-served pages (#993 phase 2). A page without the token gets
+  // neither a WebSocket nor an HTTP response body: the upgrade is refused
+  // outright, and no CORS header is ever emitted for the HTTP routes.
   if (input.token !== undefined && input.token === input.expectedToken) return { allowed: true };
 
   // Without the token, Origin FIRST. A browser navigating top-level sends no

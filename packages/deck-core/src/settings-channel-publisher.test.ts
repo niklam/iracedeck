@@ -31,7 +31,7 @@ function mockAdapter() {
 afterEach(() => _resetGlobalSettings());
 
 describe("createSettingsChannelPublisher (#993 phase 2)", () => {
-  it("writes the channel to the store and mirrors store + channel to the host exactly once per channel", async () => {
+  it("mirrors store + channel to the host exactly once per channel, and keeps the transient channel OUT of the store", async () => {
     const { adapter, setGlobalSettings } = mockAdapter();
     const store = createMemorySettingsStore({ driverName: "nick" });
     initGlobalSettings(adapter, silentLogger, store);
@@ -41,9 +41,23 @@ describe("createSettingsChannelPublisher (#993 phase 2)", () => {
     publisher.publish(CHANNEL);
     publisher.publish(CHANNEL); // idempotent: the store-ready block and onStarted may both call it
 
-    expect((getGlobalSettings() as Record<string, unknown>)[SETTINGS_CHANNEL_KEY]).toEqual(CHANNEL);
+    expect((getGlobalSettings() as Record<string, unknown>)[SETTINGS_CHANNEL_KEY]).toBeUndefined();
     expect(setGlobalSettings).toHaveBeenCalledTimes(1);
     expect(setGlobalSettings.mock.calls[0]?.[0]).toMatchObject({ driverName: "nick", [SETTINGS_CHANNEL_KEY]: CHANNEL });
+  });
+
+  it("removes a stale channel an older build persisted into the store, so the file never advertises a dead port", async () => {
+    const { adapter } = mockAdapter();
+    const store = createMemorySettingsStore({ driverName: "nick", [SETTINGS_CHANNEL_KEY]: { port: 1, token: "old" } });
+    initGlobalSettings(adapter, silentLogger, store);
+    await tick();
+    const publisher = createSettingsChannelPublisher({ adapter, logger: silentLogger });
+
+    publisher.publish(CHANNEL);
+    await store.flush();
+
+    expect((getGlobalSettings() as Record<string, unknown>)[SETTINGS_CHANNEL_KEY]).toBeUndefined();
+    expect(store.saved.at(-1)).not.toHaveProperty(SETTINGS_CHANNEL_KEY);
   });
 
   it("a server that started before the store was ready is mirrored by the later call, not lost", async () => {
@@ -73,7 +87,8 @@ describe("createSettingsChannelPublisher (#993 phase 2)", () => {
     publisher.publish({ ...CHANNEL, port: 60000 });
 
     expect(setGlobalSettings).toHaveBeenCalledTimes(2);
-    expect((getGlobalSettings() as Record<string, unknown>)[SETTINGS_CHANNEL_KEY]).toEqual({ ...CHANNEL, port: 60000 });
+    expect(setGlobalSettings.mock.calls[1]?.[0]).toMatchObject({ [SETTINGS_CHANNEL_KEY]: { ...CHANNEL, port: 60000 } });
+    expect((getGlobalSettings() as Record<string, unknown>)[SETTINGS_CHANNEL_KEY]).toBeUndefined();
   });
 
   it("never mirrors a store that holds no host-derived settings (pending-migration marker)", async () => {
@@ -93,9 +108,13 @@ describe("createSettingsChannelPublisher (#993 phase 2)", () => {
     }
   });
 
-  it("a throwing settings listener during the store write is logged, not thrown, and the mirror still goes out", async () => {
+  it("a throwing settings listener during the stale-channel cleanup is logged, not thrown, and the mirror still goes out", async () => {
     const { adapter, setGlobalSettings } = mockAdapter();
-    initGlobalSettings(adapter, silentLogger, createMemorySettingsStore({}));
+    initGlobalSettings(
+      adapter,
+      silentLogger,
+      createMemorySettingsStore({ [SETTINGS_CHANNEL_KEY]: { port: 1, token: "old" } }),
+    );
     await tick();
     onGlobalSettingsChange(() => {
       throw new Error("listener fault");
@@ -105,7 +124,7 @@ describe("createSettingsChannelPublisher (#993 phase 2)", () => {
 
     expect(() => createSettingsChannelPublisher({ adapter, logger }).publish(CHANNEL)).not.toThrow();
 
-    expect(error).toHaveBeenCalledWith("Publishing the settings channel to the store failed");
+    expect(error).toHaveBeenCalledWith("Cleaning the stale settings channel from the store failed");
     expect(setGlobalSettings).toHaveBeenCalledTimes(1);
   });
 });

@@ -6,21 +6,11 @@
  * outside the settings model. This factory keeps their DOM/CSS/click wiring
  * in exactly one place so the two stay trivially consistent, without either
  * one growing outside its own tiny file.
+ *
+ * The client lookup and the fire-and-forget send live in `sdpi-client.ts`,
+ * shared with every other `ird-*` component that talks to the host (#992).
  */
-
-/** Minimal shape of the sdpi-components client this component depends on. */
-interface StreamDeckClientLike {
-  send(event: string, payload?: Record<string, unknown>): unknown;
-}
-
-interface SDPIComponentsGlobal {
-  SDPIComponents?: { streamDeckClient?: StreamDeckClientLike };
-}
-
-/** Read the sdpi-components client off the global scope, if it has loaded. */
-function defaultClient(): StreamDeckClientLike | undefined {
-  return (globalThis as SDPIComponentsGlobal).SDPIComponents?.streamDeckClient;
-}
+import { sendToPlugin } from "./sdpi-client.js";
 
 export interface SendToPluginButtonOptions {
   /** Custom element tag name, e.g. `"ird-open-settings"`. Also scopes the injected CSS. */
@@ -91,14 +81,8 @@ export function defineSendToPluginButton(options: SendToPluginButtonOptions): Cu
 
     private attachListeners(): void {
       this.button?.addEventListener("click", () => {
-        const client = defaultClient();
-
-        // No client (sdpi-components unavailable): do nothing rather than throw.
-        if (!client) return;
-
-        // Fire-and-forget; swallow rejections so a failed send never surfaces as
-        // an unhandled promise rejection.
-        void Promise.resolve(client.send("sendToPlugin", payload)).catch(() => {});
+        // Fire-and-forget; no client (sdpi-components unavailable) is a no-op.
+        sendToPlugin(payload);
       });
     }
   }
