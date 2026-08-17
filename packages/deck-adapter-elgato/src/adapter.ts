@@ -333,7 +333,11 @@ export class ElgatoPlatformAdapter implements IDeckPlatformAdapter {
     const type = deviceType ?? this.sd.devices.getDeviceById(deviceId)?.type;
     const manifestName = profile !== undefined ? deviceProfileName(profile, type) : undefined;
 
-    void requestProfileSwitch(deviceId, manifestName, page);
+    // The registered switcher awaits `sd.profiles.switchToProfile`; a rejected
+    // SDK call must be logged, not left as an unhandled rejection.
+    requestProfileSwitch(deviceId, manifestName, page).catch((error: unknown) => {
+      this.createLogger("ProfileSwitch").error(`Profile switch failed: ${String(error)}`);
+    });
   }
 
   onDidReceiveGlobalSettings(callback: (settings: unknown) => void): void {

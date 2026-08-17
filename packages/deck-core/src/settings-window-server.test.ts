@@ -377,7 +377,8 @@ describe("settings-window WebSocket host", () => {
 
     ws.send(JSON.stringify({ event: "logMessage", payload: { message: "hi" } }));
     ws.send(JSON.stringify({ event: "openUrl", payload: { url: "https://iracedeck.com/docs/" } }));
-    // Give the server a tick to process both frames.
+    // The valid one lands (event-driven); the invalid one must NOT — settle briefly for that half.
+    await waitFor(() => opened.length >= 1);
     await new Promise((r) => setTimeout(r, 50));
 
     expect(opened).toEqual(["https://iracedeck.com/docs/"]);
@@ -507,7 +508,7 @@ describe("settings-window sendToPlugin + SimHub proxy", () => {
     const ws = await connectWs(server.url, token);
 
     ws.send(JSON.stringify({ event: "sendToPlugin", payload: { event: "windowBounds", width: 1200, height: 800 } }));
-    await new Promise((r) => setTimeout(r, 50));
+    await waitFor(() => received.length >= 1);
 
     expect(received).toEqual([{ event: "windowBounds", width: 1200, height: 800 }]);
     ws.close();
@@ -539,6 +540,25 @@ describe("settings-window sendToPlugin + SimHub proxy", () => {
       reachable: false,
       roles: [],
     });
+  });
+
+  it("answers 500 (and never hangs or throws) when the SimHub delegate itself throws", async () => {
+    server = await startSettingsWindowServer({
+      page: PAGE,
+      simHub: {
+        isReachable: () => {
+          throw new Error("simhub service exploded");
+        },
+        getRoles: async () => [],
+      },
+    });
+    const cookie = (await fetch(server.url)).headers.get("set-cookie")?.split(";")[0] ?? "";
+    const u = new URL(server.url);
+
+    const res = await fetch(`${u.origin}/simhub/roles`, { headers: { cookie } });
+
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ reachable: false, roles: [] });
   });
 
   it("still requires authorization on /simhub/roles", async () => {

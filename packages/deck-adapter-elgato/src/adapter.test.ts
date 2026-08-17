@@ -320,7 +320,19 @@ describe("ElgatoPlatformAdapter", () => {
 function createSdMock() {
   let sendToPluginListener: ((ev: unknown) => void) | undefined;
 
+  const errorLog = vi.fn();
   const sd = {
+    logger: {
+      createScope: vi.fn(() => ({
+        trace: vi.fn(),
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: errorLog,
+        createScope: vi.fn(),
+        setLevel: vi.fn(),
+      })),
+    },
     system: { openUrl: vi.fn().mockResolvedValue(undefined) },
     profiles: { switchToProfile: vi.fn().mockResolvedValue(undefined) },
     // The settings window names a device explicitly; its type is looked up here (#992).
@@ -336,6 +348,7 @@ function createSdMock() {
     sd: sd as unknown as typeof StreamDeck,
     switchToProfile: sd.profiles.switchToProfile,
     openUrl: sd.system.openUrl,
+    errorLog,
     /** Simulate a Property Inspector `sendToPlugin` message from the given device (an XL by default). */
     emitSendToPlugin(deviceId: string, payload: unknown, deviceType: number | undefined = 2) {
       sendToPluginListener?.({ action: { device: { id: deviceId, type: deviceType } }, payload });
@@ -424,6 +437,26 @@ describe("ElgatoPlatformAdapter sendToPlugin → switchToProfile routing", () =>
     emitSendToPlugin("dev-1", { event: "switchToProfile" });
 
     expect(switchToProfile).toHaveBeenCalledWith("dev-1", undefined, undefined);
+  });
+
+  it("switchToBundledProfile logs a rejected SDK switch instead of leaving an unhandled rejection", async () => {
+    const { sd, switchToProfile, errorLog } = createSdMock();
+    switchToProfile.mockRejectedValueOnce(new Error("device busy"));
+    const adapter = new ElgatoPlatformAdapter(sd);
+    initProfileSwitcher((deviceId, profile, page) => adapter.switchToProfile(deviceId, profile, page));
+    const unhandled = vi.fn();
+    process.on("unhandledRejection", unhandled);
+
+    try {
+      adapter.switchToBundledProfile("dev-xl", "iRaceDeck Default");
+      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(errorLog).toHaveBeenCalledWith(expect.stringMatching(/Profile switch failed: .*device busy/));
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off("unhandledRejection", unhandled);
+    }
   });
 
   it("switchToBundledProfile is the same dispatch for an explicitly named device (the settings window, #992)", async () => {

@@ -181,6 +181,12 @@ async function ensureSimHubRolesFetched(): Promise<void> {
     return;
   }
 
+  // The endpoint this probe is for. If the host/port setting changes while the
+  // request is in flight, its answer describes the OLD endpoint and is dropped
+  // (fetchDone stays false, so the next call probes the new one).
+  const host = simHubHost;
+  const port = simHubPort;
+
   simHubFetchPromise = (async () => {
     // One fetch path for every surface (#992): inside the settings window the
     // probe answers from the plugin's same-origin proxy, since a direct fetch
@@ -189,14 +195,16 @@ async function ensureSimHubRolesFetched(): Promise<void> {
       // The probe never throws: unreachable → { reachable: false, roles: [] }.
       // ONE request answers both — a second probe would only repeat what the
       // first response already said (and double the wait when SimHub is down).
-      const { reachable, roles } = await probeSimHub(simHubHost, simHubPort);
+      const { reachable, roles } = await probeSimHub(host, port);
+
+      if (host !== simHubHost || port !== simHubPort) return;
 
       simHubReachable = reachable;
       simHubRoles = roles.slice().sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+      simHubFetchDone = true;
 
       if (!simHubReachable) console.warn("[ird-key-binding] SimHub not reachable; role list empty");
     } finally {
-      simHubFetchDone = true;
       simHubFetchPromise = null;
     }
   })();
@@ -716,3 +724,25 @@ if (typeof customElements !== "undefined") {
 }
 
 export { KeyBindingInput };
+
+/** @internal Exported for testing — the SimHub probe state machine. */
+export const _simHubProbe = {
+  ensureFetched: ensureSimHubRolesFetched,
+  subscribe: subscribeToSimHubSettings,
+  state: () => ({
+    host: simHubHost,
+    port: simHubPort,
+    done: simHubFetchDone,
+    reachable: simHubReachable,
+    roles: simHubRoles.slice(),
+  }),
+  reset: () => {
+    simHubHost = "127.0.0.1";
+    simHubPort = 8888;
+    simHubRoles = [];
+    simHubReachable = false;
+    simHubFetchDone = false;
+    simHubFetchPromise = null;
+    simHubSettingsSubscribed = false;
+  },
+};

@@ -232,11 +232,19 @@ export async function startSettingsWindowServer(options: SettingsWindowServerOpt
       const simHub = options.simHub;
 
       void (async () => {
-        const reachable = simHub.isReachable();
-        const roles = reachable ? await simHub.getRoles().catch(() => []) : [];
+        try {
+          const reachable = simHub.isReachable();
+          const roles = reachable ? await simHub.getRoles().catch(() => []) : [];
 
-        res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
-        res.end(JSON.stringify({ reachable, roles }));
+          res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+          res.end(JSON.stringify({ reachable, roles }));
+        } catch {
+          // A throwing SimHub delegate must not become an unhandled rejection
+          // (which would take the plugin down) nor leave the request hanging.
+          if (!res.headersSent) res.writeHead(500, { "content-type": "application/json; charset=utf-8" });
+
+          res.end(JSON.stringify({ reachable: false, roles: [] }));
+        }
       })();
 
       return;

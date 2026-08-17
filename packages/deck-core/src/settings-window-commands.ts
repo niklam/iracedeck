@@ -7,6 +7,8 @@
  * those commands are validated and routed — pure over injected delegates so
  * the three plugins share it and it is tested without a socket.
  */
+import { z } from "zod";
+
 import type { SettingsWindowBounds } from "./settings-window-launcher.js";
 
 /** Passthrough global-settings key holding the last window bounds. */
@@ -15,26 +17,43 @@ export const SETTINGS_WINDOW_BOUNDS_KEY = "_settingsWindowBounds";
 /** Sanity limits: anything outside is a corrupt or hostile blob, not a window. */
 const MIN_SIZE = 320;
 const MAX_SIZE = 16_384;
+/**
+ * Windows virtual-screen coordinates are 16-bit signed (+/-32767); anything
+ * beyond can only reopen the window somewhere no display reaches, so such a
+ * persisted position is dropped and the size alone is honoured (the launcher
+ * then lets the browser place the window).
+ */
+export const MAX_ABS_POSITION = 32_767;
 
+const SizeSchema = z.object({
+  width: z.number().finite().min(MIN_SIZE).max(MAX_SIZE),
+  height: z.number().finite().min(MIN_SIZE).max(MAX_SIZE),
+});
 function isFiniteNumber(v: unknown): v is number {
   return typeof v === "number" && Number.isFinite(v);
 }
 
-/** Validate a bounds-shaped value; undefined when anything is off. */
+const PositionSchema = z.object({
+  x: z.number().finite().min(-MAX_ABS_POSITION).max(MAX_ABS_POSITION),
+  y: z.number().finite().min(-MAX_ABS_POSITION).max(MAX_ABS_POSITION),
+});
+
+/**
+ * Validate a bounds-shaped value: undefined when the SIZE is off (a corrupt
+ * blob), size-only when the position is missing or outside the documented
+ * range.
+ */
 export function parseSettingsWindowBounds(value: unknown): SettingsWindowBounds | undefined {
-  if (value === null || typeof value !== "object") return undefined;
+  const size = SizeSchema.safeParse(value);
 
-  const { width, height, x, y } = value as Record<string, unknown>;
+  if (!size.success) return undefined;
 
-  if (!isFiniteNumber(width) || !isFiniteNumber(height)) return undefined;
+  const bounds: SettingsWindowBounds = { width: size.data.width, height: size.data.height };
+  const position = PositionSchema.safeParse(value);
 
-  if (width < MIN_SIZE || width > MAX_SIZE || height < MIN_SIZE || height > MAX_SIZE) return undefined;
-
-  const bounds: SettingsWindowBounds = { width, height };
-
-  if (isFiniteNumber(x) && isFiniteNumber(y)) {
-    bounds.x = x;
-    bounds.y = y;
+  if (position.success) {
+    bounds.x = position.data.x;
+    bounds.y = position.data.y;
   }
 
   return bounds;

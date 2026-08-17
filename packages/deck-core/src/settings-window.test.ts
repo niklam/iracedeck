@@ -196,9 +196,7 @@ describe("createSettingsWindowController — plugin-bound extras", () => {
     const ws = new WebSocket(`ws://${url.host}/ws?t=${url.searchParams.get("t")}`);
     await new Promise((r) => ws.once("open", r));
     ws.send(JSON.stringify({ event: "sendToPlugin", payload: { event: "windowBounds", width: 1, height: 2 } }));
-    await new Promise((r) => setTimeout(r, 50));
-
-    expect(onSendToPlugin).toHaveBeenCalledWith({ event: "windowBounds", width: 1, height: 2 });
+    await vi.waitFor(() => expect(onSendToPlugin).toHaveBeenCalledWith({ event: "windowBounds", width: 1, height: 2 }));
     expect(await (await fetch(`${url.origin}/simhub/roles`, { headers: { cookie } })).json()).toEqual({
       reachable: true,
       roles: ["A"],

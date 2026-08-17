@@ -20,6 +20,27 @@ describe("parseSettingsWindowBounds", () => {
     expect(parseSettingsWindowBounds({ width: 1200, height: 800 })).toEqual({ width: 1200, height: 800 });
   });
 
+  it("drops an off-screen position (beyond the 16-bit virtual-screen range) but keeps the size", () => {
+    expect(parseSettingsWindowBounds({ width: 1200, height: 800, x: 40_000, y: 20 })).toEqual({
+      width: 1200,
+      height: 800,
+    });
+    expect(parseSettingsWindowBounds({ width: 1200, height: 800, x: 20, y: -40_000 })).toEqual({
+      width: 1200,
+      height: 800,
+    });
+    expect(parseSettingsWindowBounds({ width: 1200, height: 800, x: 32_767, y: -32_767 })).toEqual({
+      width: 1200,
+      height: 800,
+      x: 32_767,
+      y: -32_767,
+    });
+    expect(parseSettingsWindowBounds({ width: 1200, height: 800, x: "10", y: 20 })).toEqual({
+      width: 1200,
+      height: 800,
+    });
+  });
+
   it("rejects absurd or malformed values so a bad persisted blob can't produce an unusable window", () => {
     expect(parseSettingsWindowBounds({ width: 50, height: 800 })).toBeUndefined();
     expect(parseSettingsWindowBounds({ width: 1200, height: -1 })).toBeUndefined();
