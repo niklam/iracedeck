@@ -11,7 +11,12 @@
  * 1. Any `_settingsChannel` left in the STORE by an older build is removed —
  *    the channel is per-process (port + token change every start) and nothing
  *    reads it from the store, so persisting it only ever offered stale
- *    bootstrap data to whoever looked at the file.
+ *    bootstrap data to whoever looked at the file. The removal is issued
+ *    UNCONDITIONALLY (no "is it in the cache?" pre-check): before the store is
+ *    ready the cache is schema defaults and cannot show a key that lives only
+ *    in the file, so a pre-check would wrongly conclude there is nothing to do
+ *    — `deleteGlobalSettings` records an early delete instead and applies it
+ *    over the loaded file; once ready it is a no-op when the key is absent.
  * 2. The ONE host write per start: the whole cache plus the channel, mirrored
  *    to the deck host so PIs can bootstrap the loopback socket from a plain
  *    host read (`hostMirrorPayload` decides when that write must be skipped —
@@ -21,8 +26,8 @@
  *    and switches over when the fresh mirror is pushed (router late switch).
  *
  * `publish()` is idempotent per channel and re-entrant across readiness: the
- * store cleanup happens once, and the mirror is retried on every call until it
- * actually goes out — so a server started before the store was ready (an early
+ * store cleanup is issued once (retried on a later call if it threw), and the
+ * mirror is retried on every call until it actually goes out — so a server started before the store was ready (an early
  * `open()`) is mirrored by the store-ready block's own call, and one started
  * after it by the controller's `onStarted` hook. Faults in a settings listener
  * during the store cleanup, or in the host write, are logged here on their own
@@ -30,7 +35,7 @@
  */
 import type { ILogger } from "@iracedeck/logger";
 
-import { deleteGlobalSettings, getGlobalSettings, hostMirrorPayload, SETTINGS_CHANNEL_KEY } from "./global-settings.js";
+import { deleteGlobalSettings, hostMirrorPayload, SETTINGS_CHANNEL_KEY } from "./global-settings.js";
 import type { IDeckPlatformAdapter } from "./types.js";
 
 export interface SettingsChannel {
@@ -44,12 +49,13 @@ export interface SettingsChannelPublisherDeps {
 }
 
 export interface SettingsChannelPublisher {
-  /** Publish `channel` to the store and mirror the store + channel to the deck host (see module doc). */
+  /** Mirror the store + `channel` to the deck host, dropping any stale persisted channel first (see module doc). */
   publish(channel: SettingsChannel): void;
 }
 
 export function createSettingsChannelPublisher(deps: SettingsChannelPublisherDeps): SettingsChannelPublisher {
   const keyOf = (channel: SettingsChannel): string => `${channel.port}:${channel.token}`;
+  let announced: string | undefined;
   let cleaned = false;
   let mirrored: string | undefined;
 
@@ -57,21 +63,25 @@ export function createSettingsChannelPublisher(deps: SettingsChannelPublisherDep
     publish(channel) {
       const key = keyOf(channel);
 
-      try {
-        if (!cleaned) {
-          cleaned = true;
+      if (announced !== key) {
+        announced = key;
+        deps.logger.debug(`Settings channel published on port ${channel.port}`);
+      }
 
+      if (!cleaned) {
+        try {
           // Older builds persisted the channel into the settings file; drop it so
-          // the file never advertises a dead port/token (idempotent when absent).
-          if (SETTINGS_CHANNEL_KEY in (getGlobalSettings() as Record<string, unknown>)) {
-            deleteGlobalSettings([SETTINGS_CHANNEL_KEY]);
-          }
-
-          deps.logger.debug(`Settings channel published on port ${channel.port}`);
+          // the file never advertises a dead port/token. No cache pre-check (see
+          // module doc): before the store is ready this is recorded as an early
+          // delete and applied over the loaded file; afterwards it is a no-op
+          // when the key is absent. `cleaned` flips only once the call succeeded,
+          // so a throwing settings listener here is retried by the next publish.
+          deleteGlobalSettings([SETTINGS_CHANNEL_KEY]);
+          cleaned = true;
+        } catch (error: unknown) {
+          deps.logger.error("Cleaning the stale settings channel from the store failed");
+          deps.logger.debug(String(error));
         }
-      } catch (error: unknown) {
-        deps.logger.error("Cleaning the stale settings channel from the store failed");
-        deps.logger.debug(String(error));
       }
 
       if (mirrored === key) return;

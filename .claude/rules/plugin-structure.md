@@ -260,8 +260,9 @@ process.on("exit", () => settingsStore.flushSync());
 
 initGlobalSettings(adapter, adapter.createLogger("GlobalSettings"), settingsStore);
 
-// 12b. Settings-channel publisher (#993 phase 2): writes `_settingsChannel` to the
-//      store and mirrors store + channel to the deck host once per start. Handed to
+// 12b. Settings-channel publisher (#993 phase 2): mirrors store + `_settingsChannel`
+//      to the deck host once per start (the channel is never persisted in the
+//      store; a stale copy from an older build is removed). Handed to
 //      the settings-window controller's `onStarted` hook AND called from the
 //      store-ready block's `ensureStarted().then(...)` — idempotent, so whichever
 //      side actually started the server publishes it.

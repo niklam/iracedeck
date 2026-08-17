@@ -816,8 +816,9 @@ process.on("exit", () => settingsStore.flushSync());
 // listener below, because that listener's store-ready block starts the server
 // (ensureStarted()).
 const settingsWindowLogger = adapter.createLogger("SettingsWindow");
-// Publishes the loopback channel to the store and mirrors the store to the deck
-// host once per start (#993 phase 2) — from wherever the server actually
+// Mirrors the store + the loopback channel to the deck host once per start
+// (#993 phase 2; the channel is never persisted in the store — a stale copy an
+// older build left there is removed) — from wherever the server actually
 // started (see the onStarted hook below and the store-ready block).
 const settingsChannel = createSettingsChannelPublisher({ adapter, logger: settingsWindowLogger });
 const settingsWindow = createSettingsWindowController({
@@ -926,8 +927,9 @@ onGlobalSettingsChange((settings) => {
     updateGlobalSettings({ _settingsStorePath: settingsStore.path });
 
     // #993: the settings server is the channel every UI uses; publish where it
-    // is (`_settingsChannel` in the store, plus the ONE host mirror per start
-    // the PI bridge bootstraps from — see createSettingsChannelPublisher). The
+    // is (the ONE host mirror per start — full store + `_settingsChannel` —
+    // that the PI bridge bootstraps from; the channel itself is never persisted
+    // in the store — see createSettingsChannelPublisher). The
     // controller's onStarted hook publishes a server that starts LATER too (a
     // failed startup bind followed by a successful "Open Settings"), and the
     // publisher is idempotent, so calling it here as well only ensures a

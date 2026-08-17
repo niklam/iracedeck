@@ -9,6 +9,7 @@ import {
   MIGRATION_PENDING_KEY,
   onGlobalSettingsChange,
   SETTINGS_CHANNEL_KEY,
+  updateGlobalSettings,
 } from "./global-settings.js";
 import { createSettingsChannelPublisher } from "./settings-channel-publisher.js";
 import { createMemorySettingsStore } from "./settings-store.js";
@@ -66,7 +67,7 @@ describe("createSettingsChannelPublisher (#993 phase 2)", () => {
     initGlobalSettings(adapter, silentLogger, store);
     const publisher = createSettingsChannelPublisher({ adapter, logger: silentLogger });
 
-    publisher.publish(CHANNEL); // early open(): store not ready → channel written (early write), mirror skipped
+    publisher.publish(CHANNEL); // early open(): store not ready → mirror skipped, nothing written to the store
     expect(isSettingsStoreReady()).toBe(false);
     expect(setGlobalSettings).not.toHaveBeenCalled();
 
@@ -75,6 +76,45 @@ describe("createSettingsChannelPublisher (#993 phase 2)", () => {
 
     expect(setGlobalSettings).toHaveBeenCalledTimes(1);
     expect(setGlobalSettings.mock.calls[0]?.[0]).toMatchObject({ driverName: "nick", [SETTINGS_CHANNEL_KEY]: CHANNEL });
+  });
+
+  it("removes a stale persisted channel even when the ONLY publish happened before the store was ready (early delete)", async () => {
+    const { adapter, setGlobalSettings } = mockAdapter();
+    const store = createMemorySettingsStore({ driverName: "nick", [SETTINGS_CHANNEL_KEY]: { port: 1, token: "old" } });
+    initGlobalSettings(adapter, silentLogger, store);
+    const publisher = createSettingsChannelPublisher({ adapter, logger: silentLogger });
+
+    publisher.publish(CHANNEL); // before the file has loaded: the cache can't show the legacy key yet
+    expect(isSettingsStoreReady()).toBe(false);
+    expect(setGlobalSettings).not.toHaveBeenCalled();
+
+    await tick(); // the store loads — the early delete is applied over the file's contents
+    await store.flush();
+
+    expect((getGlobalSettings() as Record<string, unknown>)[SETTINGS_CHANNEL_KEY]).toBeUndefined();
+    expect(store.saved.at(-1)).not.toHaveProperty(SETTINGS_CHANNEL_KEY);
+    expect(store.saved.at(-1)).toMatchObject({ driverName: "nick" });
+  });
+
+  it("retries the stale-channel cleanup on the next publish when the first attempt threw", async () => {
+    const { adapter } = mockAdapter();
+    const store = createMemorySettingsStore({ [SETTINGS_CHANNEL_KEY]: { port: 1, token: "old" } });
+    initGlobalSettings(adapter, silentLogger, store);
+    await tick();
+    let faults = 1;
+    onGlobalSettingsChange(() => {
+      if (faults-- > 0) throw new Error("listener fault");
+    });
+    const publisher = createSettingsChannelPublisher({ adapter, logger: silentLogger });
+
+    publisher.publish(CHANNEL); // the delete lands in the cache but the listener throws → cleanup not marked done
+    // Re-seed the legacy key behind the publisher's back to prove the retry really deletes again.
+    updateGlobalSettings({ [SETTINGS_CHANNEL_KEY]: { port: 2, token: "older" } });
+    publisher.publish(CHANNEL);
+    await store.flush();
+
+    expect((getGlobalSettings() as Record<string, unknown>)[SETTINGS_CHANNEL_KEY]).toBeUndefined();
+    expect(store.saved.at(-1)).not.toHaveProperty(SETTINGS_CHANNEL_KEY);
   });
 
   it("a NEW channel (the server restarted on another port) is written and mirrored again", async () => {
