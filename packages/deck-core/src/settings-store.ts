@@ -13,8 +13,9 @@
  */
 import type { ILogger } from "@iracedeck/logger";
 import { mkdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
-import { copyFile, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { copyFile, mkdir, readdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { basename, dirname, join } from "node:path";
 
 const FOLDER_NAMES: Record<string, string> = {
   "stream-deck": "Stream Deck",
@@ -44,8 +45,10 @@ export function resolveSettingsStorePath({ platform, env }: ResolveSettingsStore
 
   // A set-but-blank variable must count as unset, same as the override above:
   // `join("", "iRaceDeck", …)` would be a RELATIVE path resolved against the
-  // deck host's working directory (Program Files, the plugin bundle, …).
-  const base = nonBlank(env.LOCALAPPDATA) ?? join(nonBlank(env.USERPROFILE) ?? ".", "AppData", "Local");
+  // deck host's working directory (Program Files, the plugin bundle, …). The
+  // last resort is the OS's own answer for the home directory, so the path
+  // stays absolute even with both variables missing.
+  const base = nonBlank(env.LOCALAPPDATA) ?? join(nonBlank(env.USERPROFILE) ?? homedir(), "AppData", "Local");
 
   return join(base, "iRaceDeck", "Settings", settingsStoreFolderName(platform), "global-settings.json");
 }
@@ -97,6 +100,26 @@ export const WRITE_RETRY_DELAYS_MS: readonly number[] = [1_000, 2_000, 5_000, 10
  * `global-settings.corrupt-<iso>.json` and reported as "no file" — a user's
  * file is never silently discarded; a UTF-8 BOM is tolerated.
  */
+/**
+ * The name of an existing `<file>.corrupt-*.json` sibling whose bytes equal the
+ * (corrupt) file at `path`, or undefined. Used by the copy fallback of
+ * `load()` so a corrupt file that survives every start (locked, undeletable)
+ * is preserved once, not once per start.
+ */
+async function findIdenticalAside(path: string): Promise<string | undefined> {
+  const dir = dirname(path);
+  const prefix = basename(path).replace(/\.json$/, "") + ".corrupt-";
+  const original = await readFile(path);
+
+  for (const name of await readdir(dir)) {
+    if (!name.startsWith(prefix) || !name.endsWith(".json")) continue;
+
+    if (original.equals(await readFile(join(dir, name)))) return name;
+  }
+
+  return undefined;
+}
+
 export function createFileSettingsStore(opts: FileSettingsStoreOptions): SettingsStore {
   const { path, logger } = opts;
   const debounceMs = opts.debounceMs ?? DEFAULT_DEBOUNCE_MS;
@@ -236,10 +259,32 @@ export function createFileSettingsStore(opts: FileSettingsStoreOptions): Setting
         try {
           await rename(path, aside);
         } catch (renameError: unknown) {
+          // Copy fallback: the original could not be moved (held open by
+          // another process, or no rename right on the folder). Preserve a copy
+          // — unless an aside with the very same bytes already exists, which is
+          // what a start-after-start re-read of one stuck file produces — and
+          // then TRY to remove the original so the next start doesn't preserve
+          // it yet again. A file that can't be deleted either is locked; the
+          // identical-aside check is what keeps that case from growing one
+          // copy per start for as long as the lock lasts.
           try {
-            await copyFile(path, aside);
-            logger.error("Settings file could not be moved; preserving as copy instead");
+            const existing = await findIdenticalAside(path);
+
+            if (existing === undefined) {
+              await copyFile(path, aside);
+              logger.error("Settings file could not be moved; preserving as copy instead");
+            } else {
+              logger.error("Settings file could not be moved; an identical copy is already preserved");
+              logger.debug(`Identical aside: ${existing}`);
+            }
+
             logger.debug(`Copy fallback: ${String(renameError)}`);
+
+            try {
+              await unlink(path);
+            } catch (unlinkError: unknown) {
+              logger.debug(`Corrupt original could not be removed: ${String(unlinkError)}`);
+            }
           } catch (copyError: unknown) {
             logger.error("Settings file could not be preserved — moving on with fresh defaults");
             logger.debug(`Copy also failed: ${String(copyError)}`);

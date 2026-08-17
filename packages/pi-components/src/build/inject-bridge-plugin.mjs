@@ -41,6 +41,8 @@ export function injectBridgeScriptPlugin({ outputDir, bridge, include }) {
 
 const KNOWN_BRIDGES = ["pi-settings-bridge.js", "ulanzi-pi-bridge.js", "settings-window-bridge.js"];
 
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 /**
  * Build-time guard (#993 phase 2): every generated PI page carries EXACTLY the
  * one bridge it is meant to, immediately before sdpi-components.js, and no
@@ -55,6 +57,13 @@ export function assertBridgeInjectionPlugin({ outputDir, expectedBridge }) {
   return {
     name: "assert-bridge-injection",
     closeBundle() {
+      // No output directory means no PI page was generated at all — that is a
+      // wiring failure this guard exists to catch, reported on its own terms
+      // rather than as readdirSync's ENOENT.
+      if (!existsSync(outputDir)) {
+        throw new Error(`PI bridge injection check failed: output directory ${outputDir} does not exist (no PI pages generated?)`);
+      }
+
       const problems = [];
 
       for (const file of readdirSync(outputDir).filter((f) => f.endsWith(".html"))) {
@@ -65,7 +74,9 @@ export function assertBridgeInjectionPlugin({ outputDir, expectedBridge }) {
         const bridge = expectedBridge(file);
         const bridgeTag = `<script src="${bridge}"></script>`;
         const count = content.split(bridgeTag).length - 1;
-        const ordered = content.includes(`${bridgeTag}\n    ${sdpiTag}`);
+        // Ordered = the bridge tag directly precedes the sdpi tag with nothing
+        // but whitespace between them, however the page happens to be indented.
+        const ordered = new RegExp(`${escapeRegExp(bridgeTag)}\\s*${escapeRegExp(sdpiTag)}`).test(content);
         const others = KNOWN_BRIDGES.filter((b) => b !== bridge && content.includes(`<script src="${b}"></script>`));
 
         if (count !== 1 || !ordered || others.length > 0) {

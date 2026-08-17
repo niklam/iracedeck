@@ -1,7 +1,7 @@
 import { silentLogger } from "@iracedeck/logger";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { homedir, tmpdir } from "node:os";
+import { dirname, isAbsolute, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -47,6 +47,15 @@ describe("resolveSettingsStorePath", () => {
     });
 
     expect(p.replace(/\\/g, "/")).toBe("C:/Users/n/AppData/Local/iRaceDeck/Settings/Mirabox/global-settings.json");
+  });
+
+  it("stays absolute with BOTH LOCALAPPDATA and USERPROFILE missing — the OS home directory is the last resort", () => {
+    const p = resolveSettingsStorePath({ platform: "mirabox", env: {} });
+
+    expect(isAbsolute(p)).toBe(true);
+    expect(p.replace(/\\/g, "/")).toBe(
+      `${homedir().replace(/\\/g, "/")}/AppData/Local/iRaceDeck/Settings/Mirabox/global-settings.json`,
+    );
   });
 
   it("honours IRACEDECK_SETTINGS_PATH as a full file path override (dev / fresh-install testing)", () => {
@@ -294,8 +303,9 @@ describe("createFileSettingsStore", () => {
     expect(await storeWithFailedRename.load()).toBeUndefined();
 
     // Assertions unique to copy-fallback path:
-    // (a) Original corrupt file still exists (copy leaves source in place, unlike rename)
-    expect(existsSync(store.path)).toBe(true);
+    // (a) The original is removed after a successful copy (so the next start
+    //     doesn't preserve the same file again) — only the rename was refused here.
+    expect(existsSync(store.path)).toBe(false);
 
     // (b) The mocked rename was called (proves the failure path was triggered)
     expect(mockRename).toBeDefined();
@@ -306,6 +316,50 @@ describe("createFileSettingsStore", () => {
     expect(aside.length).toBeGreaterThan(0);
     const asideContent = readFileSync(join(dirname(store.path), aside[0]), "utf-8");
     expect(asideContent).toBe(corruptText);
+
+    vi.doUnmock("node:fs/promises");
+  });
+
+  it("copy fallback does not pile up asides: an undeletable corrupt file that is re-read every start is preserved once", async () => {
+    store.save({ ok: true });
+    await store.flush();
+    const corruptText = "{ not json";
+    writeFileSync(store.path, corruptText, "utf-8");
+
+    // rename AND unlink refused (the file is held open by another process);
+    // copyFile and everything else real.
+    await vi.doMock("node:fs/promises", async () => {
+      const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+      const locked = async () => {
+        throw Object.assign(new Error("EBUSY: resource busy or locked"), { code: "EBUSY" });
+      };
+
+      return { ...actual, rename: locked, unlink: locked };
+    });
+
+    vi.resetModules();
+    const { createFileSettingsStore: createStoreMocked } = await import("./settings-store.js");
+    const lockedStore = createStoreMocked({ path: store.path, logger: silentLogger, debounceMs: 10 });
+
+    // Three "starts" reading the same stuck file.
+    expect(await lockedStore.load()).toBeUndefined();
+    await new Promise((r) => setTimeout(r, 5)); // distinct ISO timestamps for the aside names
+    expect(await lockedStore.load()).toBeUndefined();
+    await new Promise((r) => setTimeout(r, 5));
+    expect(await lockedStore.load()).toBeUndefined();
+
+    expect(existsSync(store.path)).toBe(true); // still locked in place
+    const asides = readdirSync(dirname(store.path)).filter((f) => /^global-settings\.corrupt-.*\.json$/.test(f));
+    expect(asides).toHaveLength(1);
+    expect(readFileSync(join(dirname(store.path), asides[0]), "utf-8")).toBe(corruptText);
+
+    // A DIFFERENT corruption is a new aside, not deduplicated against the old one.
+    writeFileSync(store.path, "{ still not json, but different", "utf-8");
+    await new Promise((r) => setTimeout(r, 5));
+    expect(await lockedStore.load()).toBeUndefined();
+    expect(readdirSync(dirname(store.path)).filter((f) => /^global-settings\.corrupt-.*\.json$/.test(f))).toHaveLength(
+      2,
+    );
 
     vi.doUnmock("node:fs/promises");
   });

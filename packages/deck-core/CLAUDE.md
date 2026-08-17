@@ -1,6 +1,6 @@
 # @iracedeck/deck-core
 
-Platform-agnostic core interfaces, base classes, and utilities for deck device plugins. This package contains no platform-specific code — it defines the abstraction layer that platform adapters implement.
+Platform-agnostic core interfaces, base classes, and utilities for deck device plugins. "Platform" here means the **deck-host ecosystem** (Elgato / Mirabox / Ulanzi): this package contains no deck-host-specific code — it defines the abstraction layer that the platform adapters implement. It is not an OS-abstraction boundary: iRaceDeck is Windows-only (iRacing is), so shared Windows helpers the three plugins would otherwise triplicate live here behind injectable delegates — `settings-store.ts` (the `%LOCALAPPDATA%` path), `chromium-browser.ts` (the settings-window app-window spawn, #992), `open-folder.ts` (reveal the settings file in Explorer, #993) — while anything that needs the native addon stays injected from the plugin (`initializeKeyboard`, `initWindowFocus`, …).
 
 ## Package Contents
 
@@ -27,6 +27,7 @@ Pure icon assembly functions (assembleIcon, extractGraphicContent, generateTitle
 **Exception:** `resolveTitleSettings` is no longer a pure re-export (#899) — deck-core's `title-settings.ts` wraps icon-composer's pure function and template-resolves the user-entered `titleOverrides.titleText` against the live SDK template context (`title-template.ts`). Always import it from `@iracedeck/deck-core`, never from `@iracedeck/icon-composer` directly, or titles lose template support.
 
 deck-core adds global settings readers on top of the pure functions:
+
 - `getGlobalTitleSettings()` — reads title defaults from global settings store
 - `getGlobalBorderSettings()` — reads border defaults from global settings store
 - `getGlobalGraphicSettings()` — reads graphic scale default from global settings store

@@ -121,6 +121,25 @@ describe("assertBridgeInjectionPlugin (#993 phase 2)", () => {
     }
   });
 
+  it("accepts any whitespace between the bridge tag and the sdpi tag (indentation is not part of the contract)", () => {
+    for (const between of ["", " ", "\n", "\n\t\t", "\r\n        "]) {
+      const dir = tmpDir();
+      writeFileSync(path.join(dir, "car-control.html"), `<head>${tag("pi-settings-bridge.js")}${between}${SDPI}</head>`);
+
+      expect(() =>
+        assertBridgeInjectionPlugin({ outputDir: dir, expectedBridge: expected }).closeBundle.call({}),
+      ).not.toThrow();
+    }
+  });
+
+  it("reports a missing output directory as a bridge-check failure, not an ENOENT", () => {
+    const missing = path.join(tmpDir(), "never-created");
+
+    expect(() =>
+      assertBridgeInjectionPlugin({ outputDir: missing, expectedBridge: expected }).closeBundle.call({}),
+    ).toThrow(/PI bridge injection check failed: output directory .*never-created/);
+  });
+
   it("skips pages without an sdpi tag", () => {
     const dir = tmpDir();
     writeFileSync(path.join(dir, "plain.html"), "<head></head>");

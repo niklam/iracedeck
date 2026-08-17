@@ -44,7 +44,7 @@
 | `packages/deck-core/src/settings-window.ts` (+ server)                                 | `ensureStarted()` returning `{ port, token }`; server exposes `token`.                                                                                                                            |
 | `packages/deck-core/src/settings-window-commands.ts` (+ test)                          | `openSettingsFolder` command.                                                                                                                                                                     |
 | `packages/pi-components/partials/global-common-diagnostics.ejs`, `settings-window.ejs` | Storage card (path text + Open folder).                                                                                                                                                           |
-| Docs listed under Global Constraints.                                                  |
+| Docs listed under Global Constraints.                                                  | Kept in sync per the Global Constraints section.                                                             |
 
 ---
 
