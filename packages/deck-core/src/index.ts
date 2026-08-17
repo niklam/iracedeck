@@ -148,7 +148,11 @@ export {
   initGlobalSettings,
   type InitGlobalSettingsOptions,
   MIGRATION_TIMEOUT_MS,
+  MIGRATION_PENDING_KEY,
+  MIGRATION_RETRY_STARTS,
+  SETTINGS_CHANNEL_KEY,
   LOAD_RETRY_DELAY_MS,
+  LOAD_ATTEMPTS,
   getGlobalSettings,
   getGlobalColors,
   onGlobalSettingsChange,
@@ -174,6 +178,7 @@ export {
   createMemorySettingsStore,
   resolveSettingsStorePath,
   settingsStoreFolderName,
+  WRITE_RETRY_DELAYS_MS,
   type FileSettingsStoreOptions,
   type ResolveSettingsStorePathOptions,
   type SettingsStore,
@@ -470,3 +475,10 @@ export {
 } from "./settings-window.js";
 // Reveal the settings file in Explorer (issue #993)
 export { explorerSelectArgs, openFolderInExplorer } from "./open-folder.js";
+// Settings-channel publisher: store write + the one host mirror per start (issue #993 phase 2)
+export {
+  createSettingsChannelPublisher,
+  type SettingsChannel,
+  type SettingsChannelPublisher,
+  type SettingsChannelPublisherDeps,
+} from "./settings-channel-publisher.js";

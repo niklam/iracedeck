@@ -1112,11 +1112,41 @@ let loadRetryTimer: ReturnType<typeof setTimeout> | undefined;
 /** How long to wait for the deck host to answer the one-time migration read. */
 export const MIGRATION_TIMEOUT_MS = 10_000;
 
-/** How long to wait before retrying a failed settings-file read. */
+/**
+ * Base delay before retrying a failed settings-file read; each further retry
+ * doubles it (1 s, 2 s, 4 s, 8 s, 16 s — ~31 s in all), so a scanner or backup
+ * agent holding the file at login has time to let go before the session is
+ * written off as defaults-only.
+ */
 export const LOAD_RETRY_DELAY_MS = 1_000;
 
 /** How many times the settings file is read before giving up on it. */
-const LOAD_ATTEMPTS = 3;
+export const LOAD_ATTEMPTS = 6;
+
+/**
+ * Passthrough marker persisted into a settings file that was born WITHOUT the
+ * deck host's settings — the one-time migration read timed out (#993). Its
+ * value counts the starts that went unanswered. While it is present (and
+ * below {@link MIGRATION_RETRY_STARTS}) the migration is retried on every
+ * start — the host is asked again; a real answer merges under the file's own
+ * writes and clears the marker — and the host mirror is skipped, so a
+ * defaults file can never be mirrored over a host copy the plugin has not yet
+ * been able to read. A host that stays silent for that many starts is taken
+ * at its word: the file becomes authoritative, the marker clears, and the
+ * mirror resumes so Property Inspectors are not left channel-less forever.
+ */
+export const MIGRATION_PENDING_KEY = "_migrationPending";
+
+/** How many unanswered starts the pending migration is retried for before the file is accepted as-is. */
+export const MIGRATION_RETRY_STARTS = 3;
+
+/**
+ * Passthrough key holding the loopback settings server's `{ port, token }`
+ * (#993): written to the store and mirrored to the deck host by
+ * `createSettingsChannelPublisher`, read by the PI bridges' router
+ * (`pi-components/src/settings-channel/router.ts` pins the same literal).
+ */
+export const SETTINGS_CHANNEL_KEY = "_settingsChannel";
 
 /**
  * Value equality across the persisted/parsed divide. Primitives compare by
@@ -1189,6 +1219,40 @@ function parseWithSalvage(raw: Record<string, unknown>): { settings: GlobalSetti
   return null;
 }
 
+/**
+ * Merge the deck host's migration answer under a settings file that was born
+ * WITHOUT it (a fresh start, see MIGRATION_PENDING_KEY): the host supplies
+ * every key, and the file wins only where it deviates from the schema default —
+ * a value still at its default in a defaults-born file was almost certainly
+ * never touched, so the host's (the user's real, pre-#993) value is the one to
+ * keep; anything the user changed in the meantime survives. Passthrough keys
+ * the file added (device lists, `_lastSeenVersion`, …) have no default and so
+ * always win. With no file at all (`base` = {}) this is the plain host copy.
+ */
+/** How many unanswered starts a stored (or in-memory) settings object records; 0 without the marker. */
+function pendingMigrationStarts(settings: Record<string, unknown>): number {
+  const marker = settings[MIGRATION_PENDING_KEY];
+
+  if (marker === true) return 1;
+
+  return typeof marker === "number" && Number.isFinite(marker) && marker > 0 ? Math.floor(marker) : 0;
+}
+
+function mergeMigration(host: Record<string, unknown>, base: Record<string, unknown>): Record<string, unknown> {
+  const merged = { ...host };
+  const defaults = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
+
+  for (const [key, value] of Object.entries(base)) {
+    if (key === MIGRATION_PENDING_KEY) continue;
+
+    if (key in defaults && sameValue(defaults[key], value)) continue;
+
+    merged[key] = value;
+  }
+
+  return merged;
+}
+
 export interface InitGlobalSettingsOptions {
   /** Test hook; production uses {@link MIGRATION_TIMEOUT_MS}. */
   migrationTimeoutMs?: number;
@@ -1233,6 +1297,8 @@ export function initGlobalSettings(
   const loadRetryDelayMs = opts.loadRetryDelayMs ?? LOAD_RETRY_DELAY_MS;
   let migrationRequested = false;
   let migrationDone = false;
+  /** What the store held when the migration read went out: {} for no file, or a fresh-born file. */
+  let migrationBase: Record<string, unknown> = {};
 
   // A `_resetGlobalSettings()` (tests) retargets `storeRef`, so an in-flight
   // load or a late host payload from THIS init must not write to module state
@@ -1249,6 +1315,12 @@ export function initGlobalSettings(
     if (earlyDeletes) for (const key of earlyDeletes) delete merged[key];
 
     if (earlyWrites) Object.assign(merged, earlyWrites);
+
+    // A fresh start carries the pending-migration marker into the file so the
+    // next start asks the host again (see MIGRATION_PENDING_KEY) — counting
+    // the unanswered starts; a real load or a real host answer clears it.
+    if (source === "fresh") merged[MIGRATION_PENDING_KEY] = pendingMigrationStarts(raw) + 1;
+    else delete merged[MIGRATION_PENDING_KEY];
 
     const salvage = parseWithSalvage(merged);
 
@@ -1275,7 +1347,7 @@ export function initGlobalSettings(
         ? "Global settings loaded from the settings file"
         : source === "host"
           ? "Migrated global settings from the deck host"
-          : "No stored settings found; starting fresh",
+          : "No stored settings found; starting fresh (the deck host will be asked again next start)",
     );
     logger?.debug(`Settings store: ${store.path} (${Object.keys(raw).length} stored keys)`);
 
@@ -1325,20 +1397,44 @@ export function initGlobalSettings(
 
     const raw = (settings !== null && typeof settings === "object" ? settings : {}) as Record<string, unknown>;
 
-    becomeReady(raw, "host");
+    becomeReady(mergeMigration(raw, migrationBase), "host");
   });
 
   const onLoaded = (loaded: Record<string, unknown> | undefined): void => {
     if (!isCurrent()) return;
 
     if (loaded !== undefined) {
-      becomeReady(loaded, "file");
+      const unanswered = pendingMigrationStarts(loaded);
 
-      return;
+      if (unanswered === 0) {
+        becomeReady(loaded, "file");
+
+        return;
+      }
+
+      if (unanswered >= MIGRATION_RETRY_STARTS) {
+        // The host has now stayed silent for this many starts: stop paying
+        // the timeout on every launch and keeping PIs channel-less; the file
+        // is what we have. `becomeReady(…, "file")` drops the marker.
+        logger?.warn(
+          "Deck host never answered the migration read; keeping the settings file as-is and no longer asking",
+        );
+        becomeReady(loaded, "file");
+
+        return;
+      }
     }
 
-    // No file yet: migrate once from the host, or start fresh on timeout.
-    logger?.info("No settings file yet; requesting the deck host's settings for a one-time migration");
+    // No file yet — or a file born from a fresh start that never saw the
+    // host's settings: migrate once from the host, or start fresh on timeout.
+    // The file's own writes (if any) win over the host's answer; see
+    // mergeMigration.
+    migrationBase = loaded ?? {};
+    logger?.info(
+      loaded === undefined
+        ? "No settings file yet; requesting the deck host's settings for a one-time migration"
+        : "Settings file was written without the deck host's settings; requesting them again for the one-time migration",
+    );
     migrationRequested = true;
     adapter.getGlobalSettings();
 
@@ -1353,7 +1449,7 @@ export function initGlobalSettings(
 
       migrationDone = true;
       logger?.warn("Deck host did not answer the migration read; starting fresh");
-      becomeReady({}, "fresh");
+      becomeReady(migrationBase, "fresh");
     }, migrationTimeoutMs);
   };
 
@@ -1361,13 +1457,19 @@ export function initGlobalSettings(
     if (!isCurrent()) return;
 
     if (attempt < LOAD_ATTEMPTS) {
+      // Doubling back-off: a scanner/backup agent holding the file at login
+      // usually lets go within seconds, not within the first two.
+      const delayMs = loadRetryDelayMs * 2 ** (attempt - 1);
+
       logger?.warn("Could not read the settings file; retrying");
-      logger?.debug(`Read attempt ${attempt}/${LOAD_ATTEMPTS} of ${store.path} failed: ${String(error)}`);
+      logger?.debug(
+        `Read attempt ${attempt}/${LOAD_ATTEMPTS} of ${store.path} failed: ${String(error)}; next try in ${delayMs} ms`,
+      );
       loadRetryTimer = setTimeout(() => {
         loadRetryTimer = undefined;
 
         if (isCurrent()) attemptLoad(attempt + 1);
-      }, loadRetryDelayMs);
+      }, delayMs);
 
       return;
     }
@@ -1448,7 +1550,11 @@ export function getSettingsStoreSource(): SettingsStoreSource | null {
 export function hostMirrorPayload(channel: { port: number; token: string }): Record<string, unknown> | undefined {
   if (!storeReady || storeSource === "fresh" || storeSalvageFailed) return undefined;
 
-  return { ...(currentSettings as Record<string, unknown>), _settingsChannel: { ...channel } };
+  // Belt and braces with the "fresh" check above: a cache carrying the
+  // pending-migration marker is a defaults file, whatever path filled it.
+  if (pendingMigrationStarts(currentSettings as Record<string, unknown>) > 0) return undefined;
+
+  return { ...(currentSettings as Record<string, unknown>), [SETTINGS_CHANNEL_KEY]: { ...channel } };
 }
 
 /**
@@ -1482,13 +1588,6 @@ export function updateGlobalSettings(partial: Record<string, unknown>): void {
   logger?.info("Updating global settings");
   logger?.debug(`Partial update: ${JSON.stringify(partial)}`);
 
-  if (!storeReady) {
-    // Applied over the loaded settings when the store is ready — read-your-writes now.
-    earlyWrites = { ...(earlyWrites ?? {}), ...partial };
-
-    for (const key of Object.keys(partial)) earlyDeletes?.delete(key);
-  }
-
   const merged = { ...(currentSettings as Record<string, unknown>), ...partial };
   const salvage = parseWithSalvage(merged);
 
@@ -1501,6 +1600,23 @@ export function updateGlobalSettings(partial: Record<string, unknown>): void {
   if (salvage.droppedKeys.length > 0) {
     logger?.warn("Some updated settings were invalid and reset to their defaults");
     logger?.debug(`Dropped keys: ${salvage.droppedKeys.join(", ")}`);
+  }
+
+  if (!storeReady) {
+    // Applied over the loaded settings when the store is ready — read-your-writes
+    // now. Record what actually TOOK (the parsed value, only for keys salvage
+    // kept): replaying a value the schema rejected would drop it again in
+    // becomeReady and persist the default over the user's stored value.
+    const parsedView = salvage.settings as Record<string, unknown>;
+
+    earlyWrites ??= {};
+
+    for (const key of Object.keys(partial)) {
+      if (salvage.droppedKeys.includes(key)) continue;
+
+      earlyWrites[key] = parsedView[key];
+      earlyDeletes?.delete(key);
+    }
   }
 
   applyParsedSettings(salvage.settings);

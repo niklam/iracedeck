@@ -228,6 +228,13 @@ Persistence is by stable device id, not by enumeration index, so unplugging or r
 
 **`ird-open-settings`** - The "Open iRaceDeck Settings" button (#992). Sends `sendToPlugin {event:"openSettings"}`, routed per host by `onOpenSettingsRequest` on each concrete adapter. Rendered by `section-header.ejs` when `openSettings: true` — a centred block, never inside an `sdpi-item`.
 
+**`ird-open-folder`** - "Open folder" button for the settings window's Diagnostics card (#993). Sends `sendToPlugin` with `{ event: "openSettingsFolder" }`; the plugin's settings-window command handler reveals its OWN settings-file path in Explorer (`openFolderInExplorer`, `storePath` dep) — the page never supplies a path. Built on the shared `defineSendToPluginButton` factory together with `ird-open-settings`; rendered only under `locals.settingsWindow` in `global-common-diagnostics.ejs`.
+
+```html
+<ird-open-folder></ird-open-folder>
+<ird-open-folder label="Show in Explorer"></ird-open-folder>
+```
+
 **`ird-deck-device-select`** - Settings-window-only picker for which Stream Deck a profile switch targets (#992). Populated from the `_deckDevices` global (the Elgato plugin publishes it like `_audioDeviceList`); page-local, not persisted; auto-selects with one deck. `ird-profile-switch device-from="<select id>"` reads it. `ird-audio-test` accepts a `preview="radar|voice|background"` attribute and, inside the settings window, sends `audioPreview` instead of bumping a per-action field.
 
 **`ird-warnings`** - Global warning banner. Auto-injected at the top of every Property Inspector by `head-common.ejs` (no per-template markup). Subscribes to the `_warnings` global setting and renders one banner per `{ id, level, message }` record. Plugins post/clear warnings with `setWarning`/`clearWarning` from `@iracedeck/deck-core`. See `@.claude/rules/global-settings.md` for the data shape. Do not add `<ird-warnings>` to individual templates — it is injected globally.

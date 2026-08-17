@@ -50,7 +50,7 @@ packages/{iracing-plugin-stream-deck,iracing-plugin-mirabox}/
 
 Template `require('./data/...')` resolves relative to the shared data directory (`packages/iracing-actions/src/actions/data/`), regardless of how deeply the template is nested. The EJS compile plugin rewrites the base path so templates don't need to know their own depth.
 
-Inside a partial, `locals.foo` reads an optional **include parameter** (`include('x', { foo: true })`) — EJS copies include data into nested includes, so a flag passed at a top-level include is visible all the way down. (The compile plugin used to pass a hand-built `locals: {…}` that shadowed EJS's own and hid every include parameter; fixed in #992 with a regression test.)
+Inside a partial, `locals.foo` reads an optional **include parameter** (`include('x', { foo: true })`) — EJS copies include data into nested includes, so a flag passed at a top-level include is visible all the way down. The one exception is an `include()` nested inside another include's option object (`include('accordion', { content: include('x') })`): that inner call runs in the page's own scope and must be given the flag itself. (The compile plugin used to pass a hand-built `locals: {…}` that shadowed EJS's own and hid every include parameter; fixed in #992 with a regression test.)
 
 ## Creating a PI Template
 

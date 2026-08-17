@@ -27,6 +27,7 @@ function harness(opts: { openThrows?: boolean; bootstrapTimeoutMs?: number; open
   const timers: Array<{ fn: () => void; ms: number; cleared: boolean }> = [];
   const opened: SettingsChannel[] = [];
   let handlers: LoopbackHandlers | undefined;
+  const allHandlers: LoopbackHandlers[] = [];
   let closedLoop = 0;
 
   const router = createSettingsChannelRouter({
@@ -39,6 +40,7 @@ function harness(opts: { openThrows?: boolean; bootstrapTimeoutMs?: number; open
       if (opts.openThrows) throw new Error("refused");
 
       handlers = h;
+      allHandlers.push(h);
 
       // Simulates a transport that (against the documented contract) calls
       // onOpen synchronously, before openLoopback has returned the socket.
@@ -68,6 +70,8 @@ function harness(opts: { openThrows?: boolean; bootstrapTimeoutMs?: number; open
     timers,
     opened,
     closedLoop: () => closedLoop,
+    /** Handlers of every attempt in order, so a STALE attempt's late events can be replayed. */
+    allHandlers,
     loopOpen: () => handlers!.onOpen(),
     loopMessage: (f: PiFrame) => handlers!.onMessage(f),
     loopClose: () => handlers!.onClose(),
@@ -305,6 +309,55 @@ describe("createSettingsChannelRouter", () => {
     h.loopClose(); // refused before it ever opened
 
     expect(h.pi.at(-1)).toEqual(hostReply({ _settingsChannel: CHANNEL, marker: "second" }));
+  });
+
+  it("supersedes a connecting attempt when a NEWER channel is pushed mid-connect: closes the stale socket, dials the new one, keeps the queue, and ignores the stale socket's late close", () => {
+    const h = harness();
+    const NEWER = { ...CHANNEL, port: 60001 };
+    h.router.onHostOpen();
+    h.router.onPiSend({ event: "getGlobalSettings", context: "ctx-1" });
+    h.router.onHostMessage(hostReply({ _settingsChannel: CHANNEL })); // the previous run's stale channel
+    expect(h.router.state).toBe("connecting");
+    const stale = h.allHandlers[0]!;
+
+    h.router.onHostMessage(hostReply({ _settingsChannel: NEWER })); // the new plugin's mirror lands mid-connect
+
+    expect(h.closedLoop()).toBe(1); // stale attempt told to close
+    expect(h.opened).toEqual([CHANNEL, NEWER]);
+    expect(h.router.state).toBe("connecting");
+    expect(h.host).toEqual([BOOTSTRAP]); // nothing fell back to the host
+
+    stale.onClose(); // the stale socket's close arrives late — must not run the "refused" fallback on the live attempt
+    expect(h.router.state).toBe("connecting");
+    expect(h.warnings).toEqual([]);
+
+    h.loopOpen(); // the NEW attempt opens: switch-over, queue replays there
+    expect(h.router.state).toBe("loopback");
+    expect(h.loop).toEqual([BOOTSTRAP, { event: "getGlobalSettings", context: "ctx-1" }]);
+  });
+
+  it("rebases queued setGlobalSettings on switch-over: only keys that differ from the host snapshot go to the loopback, an unchanged snapshot is dropped", () => {
+    const h = harness();
+    h.router.onHostOpen();
+    h.router.onHostMessage(hostReply({ noChannel: true, driverName: "host", volume: 50 }));
+    expect(h.router.state).toBe("fallback");
+    // A late push (the plugin's mirror) hands sdpi the host copy H' and starts the connect...
+    h.router.onHostMessage(hostReply({ _settingsChannel: CHANNEL, driverName: "host", volume: 50 }));
+    expect(h.router.state).toBe("connecting");
+    // ...and sdpi's init-time writes, built from that whole snapshot, arrive while connecting.
+    h.router.onPiSend({
+      event: "setGlobalSettings",
+      payload: { _settingsChannel: CHANNEL, driverName: "host", volume: 50 },
+    });
+    h.router.onPiSend({
+      event: "setGlobalSettings",
+      payload: { _settingsChannel: CHANNEL, driverName: "edited", volume: 50 },
+    });
+
+    h.loopOpen();
+
+    // The verbatim snapshot was dropped; the edit went through as a partial.
+    expect(h.loop).toEqual([BOOTSTRAP, { event: "setGlobalSettings", payload: { driverName: "edited" } }]);
   });
 
   it("does not retry the same channel that already failed, but tries a new one", () => {

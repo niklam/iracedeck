@@ -253,7 +253,20 @@ const settingsStore = createFileSettingsStore({
   logger: adapter.createLogger("SettingsStore"),
 });
 
+// Land the last debounced save on the way out: "exit" handlers run synchronously
+// (the Mirabox/Ulanzi clients terminate via process.exit(0)), so only the
+// SYNCHRONOUS flush can run here — the async flush() would never get a turn.
+process.on("exit", () => settingsStore.flushSync());
+
 initGlobalSettings(adapter, adapter.createLogger("GlobalSettings"), settingsStore);
+
+// 12b. Settings-channel publisher (#993 phase 2): writes `_settingsChannel` to the
+//      store and mirrors store + channel to the deck host once per start. Handed to
+//      the settings-window controller's `onStarted` hook AND called from the
+//      store-ready block's `ensureStarted().then(...)` — idempotent, so whichever
+//      side actually started the server publishes it.
+const settingsChannel = createSettingsChannelPublisher({ adapter, logger: settingsWindowLogger });
+// createSettingsWindowController({ ..., onStarted: (channel) => settingsChannel.publish(channel) })
 
 // 13. Initialize SimHub service AFTER global settings (reads host/port from settings)
 initializeSimHub(adapter.createLogger("SimHub"));
@@ -271,6 +284,8 @@ adapter.connect();
 **CRITICAL**:
 - Both `initGlobalSettings()` and `initAppMonitor()` take an `IDeckPlatformAdapter` (not `typeof StreamDeck`)
 - `initGlobalSettings()` also takes a required `SettingsStore` (#993). It returns the schema-default cache immediately and loads the file in the background, so nothing may assume settings are present right after the call — gate on `isSettingsStoreReady()` or react in `onGlobalSettingsChange`. The store must be created before the settings-window controller, whose command-handler deps read `settingsStore.path` eagerly, and after `initPluginConfig()` — `getPluginPlatform()` throws without it
+- Every plugin registers `process.on("exit", () => settingsStore.flushSync())` right after creating the store — without it the last ≤250 ms of settings writes are lost when the host stops the plugin
+- The settings channel is published through `createSettingsChannelPublisher` (deck-core), never by hand-rolled `updateGlobalSettings({ _settingsChannel })` + `adapter.setGlobalSettings(...)` in the plugin: it must fire from the controller's `onStarted` hook as well as the store-ready block, and it owns the mirror-skip logging
 - All init calls must be BEFORE `adapter.connect()` (handlers must register first)
 - `initializeEventBus()` must come before any publisher (e.g. `initializeSimEventsIracing`) or subscriber (actions via `getEventBus().subscribe(...)`)
 - `initializeSimEventsIracing()` must come after `initializeSDK()` (requires `getController()`) and after `initializeEventBus()`; it's the only package that reads `sdkController` ticks on behalf of action consumers

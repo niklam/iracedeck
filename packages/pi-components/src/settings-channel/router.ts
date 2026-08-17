@@ -26,13 +26,37 @@
  * whatever connection attempt is current by then.
  *
  * Fallback rule: no channel, a refused/failed/stalled loopback, or a silent
- * host → the PI keeps working against the host path exactly as before, with a
- * warning. Never a blank PI.
+ * host → the PI drops back to the host path with a warning. Never a blank PI —
+ * but only half alive: the plugin ignores every host payload once its store is
+ * ready, so a global-settings edit made on the fallback path is echoed by the
+ * host (the PI shows it as saved) yet never reaches the plugin or its file.
+ * A late switch (a host push carrying an untried channel) recovers the page.
  *
  * `lastTried` remembers a channel that was REFUSED (closed before it ever
  * opened) so a host push repeating the same channel doesn't retry a dead end.
  * A clean close AFTER a successful switch-over is not a refusal, so it resets
- * `lastTried` — a later push repeating that channel is free to reconnect.
+ * `lastTried` — a later push repeating that channel is free to reconnect. A
+ * host push carrying a DIFFERENT channel while an attempt is still connecting
+ * (a PI that read the previous run's stale channel just before the new
+ * plugin's mirror landed) supersedes that attempt on the spot instead of
+ * waiting for it to be refused: the stale socket is closed and the new
+ * channel dialled.
+ *
+ * Every `connect()` is one numbered attempt; the loopback handlers it hands
+ * out ignore events once the attempt is no longer current (`attempt` moves
+ * on whenever the router closes or replaces a socket), so a late `onClose`
+ * from a socket the router already discarded can never run the "refused"
+ * fallback against a newer live attempt.
+ *
+ * On switch-over the frames sdpi queued while the channel was being set up
+ * replay to the loopback — but a queued `setGlobalSettings` carries sdpi's
+ * WHOLE snapshot, which at that point is the deck host's copy (delivered by
+ * the push that triggered a late switch). Replaying it verbatim would write
+ * every key on which that copy had drifted from the plugin's store back to
+ * the host-era value, and nothing later corrects it. So the replay is
+ * REBASED: only the keys that differ from the host snapshot sdpi based the
+ * write on are sent (a partial the plugin's fake host merges); a
+ * `setGlobalSettings` that changed nothing is dropped.
  *
  * `onHostClose()` closes any open loopback and clears the timer. If the host
  * socket closes before the bootstrap ever completed (`idle`/`bootstrapping` —
@@ -151,6 +175,8 @@ export function createSettingsChannelRouter(deps: SettingsChannelRouterDeps): Se
   let loop: LoopbackSocket | undefined;
   let lastHostPayload: PiFrame | undefined;
   let lastTried: SettingsChannel | undefined;
+  /** Identity of the current connect attempt; bumped whenever `loop` is closed or replaced. */
+  let attempt = 0;
 
   const clearTimer = (): void => {
     if (timer !== undefined) {
@@ -167,18 +193,60 @@ export function createSettingsChannelRouter(deps: SettingsChannelRouterDeps): Se
     for (const frame of pending) send(frame);
   };
 
+  /**
+   * Close and forget the tracked loopback socket (if any) and retire its
+   * attempt, so whatever that socket still reports later — a stalled
+   * connect's eventual close, a late open — is ignored by its handlers.
+   */
+  const dropLoop = (): void => {
+    const stale = loop;
+
+    // Retire the attempt BEFORE closing, so a transport whose close() reports
+    // onClose synchronously already finds its handlers inert.
+    loop = undefined;
+    attempt++;
+    stale?.close();
+  };
+
+  const hostSnapshotOf = (frame: PiFrame | undefined): Record<string, unknown> | undefined => {
+    const settings = (frame?.payload as { settings?: unknown } | undefined)?.settings;
+
+    return settings !== null && typeof settings === "object" && !Array.isArray(settings)
+      ? (settings as Record<string, unknown>)
+      : undefined;
+  };
+
+  /**
+   * A queued `setGlobalSettings` reduced to the keys that actually differ from
+   * the host snapshot sdpi built it from (see the module doc); undefined when
+   * nothing differs. Frames without a comparable snapshot pass through whole.
+   */
+  const rebaseForLoopback = (frame: PiFrame): PiFrame | undefined => {
+    if (frame.event !== "setGlobalSettings") return frame;
+
+    const base = hostSnapshotOf(lastHostPayload);
+    const payload = frame.payload;
+
+    if (base === undefined || payload === null || typeof payload !== "object" || Array.isArray(payload)) return frame;
+
+    const changed: Record<string, unknown> = {};
+
+    for (const [key, value] of Object.entries(payload as Record<string, unknown>)) {
+      if (!(key in base) || JSON.stringify(base[key]) !== JSON.stringify(value)) changed[key] = value;
+    }
+
+    if (Object.keys(changed).length === 0) return undefined;
+
+    return { ...frame, payload: changed };
+  };
+
   const fallbackWith = (frame: PiFrame | undefined, why: string): void => {
     clearTimer();
     // Close and forget any loopback still tracked (the connect-timeout path:
     // openLoopback returned a socket that never called onOpen/onClose before
-    // the settle timer fired). Without this, a late onOpen from that stalled
-    // socket would find `loop` still set and, since the check below only
-    // guards on `state`, run switchToLoopback() against whatever the CURRENT
-    // `loop` is at that point — a real reconnect's socket the same shared
-    // `loop` variable now points to — falsely marking an unrelated attempt
-    // "open" before its own transport ever confirmed it.
-    loop?.close();
-    loop = undefined;
+    // the settle timer fired), retiring its attempt so a late onOpen/onClose
+    // from it is inert.
+    dropLoop();
     state = "fallback";
     deps.warn(why);
 
@@ -210,23 +278,30 @@ export function createSettingsChannelRouter(deps: SettingsChannelRouterDeps): Se
     // own arm covers, so a stalled loopback could otherwise queue forever.
     armTimer();
 
+    // This attempt's identity: the handlers below act only while it is the
+    // current one, so a socket the router has since closed or replaced
+    // (dropLoop) cannot disturb a newer attempt through the shared state.
+    const id = ++attempt;
+    const isCurrent = (): boolean => id === attempt;
     let openedEarly = false;
 
     const switchToLoopback = (): void => {
       clearTimer();
       state = "loopback";
       loop?.send(bootstrapFrame());
-      // A setGlobalSettings sdpi issues during the connecting window still carries
-      // the deck host's settings snapshot (sdpi always saves its whole settings
-      // object), so replaying it here can briefly let a stale host value win for a
-      // differing key until sdpi's next debounced save (~250ms). Narrow,
-      // self-correcting race — accepted.
-      flushTo((frame) => loop?.send(frame));
+      // Replay what sdpi queued while the channel was being set up — with
+      // any setGlobalSettings rebased onto the host snapshot it was built
+      // from (module doc), so a host-era value never overwrites the store.
+      flushTo((frame) => {
+        const rebased = rebaseForLoopback(frame);
+
+        if (rebased !== undefined) loop?.send(rebased);
+      });
     };
 
     const handlers: LoopbackHandlers = {
       onOpen: () => {
-        if (state !== "connecting") return;
+        if (!isCurrent() || state !== "connecting") return;
 
         if (!loop) {
           // Defensive only: openLoopback's contract forbids invoking handlers
@@ -241,9 +316,11 @@ export function createSettingsChannelRouter(deps: SettingsChannelRouterDeps): Se
         switchToLoopback();
       },
       onMessage: (frame) => {
-        if (state === "loopback") deps.toPi(frame);
+        if (isCurrent() && state === "loopback") deps.toPi(frame);
       },
       onClose: () => {
+        if (!isCurrent()) return;
+
         const was = state;
 
         loop = undefined;
@@ -267,7 +344,7 @@ export function createSettingsChannelRouter(deps: SettingsChannelRouterDeps): Se
       return;
     }
 
-    if (openedEarly && state === "connecting") switchToLoopback();
+    if (openedEarly && isCurrent() && state === "connecting") switchToLoopback();
   };
 
   return {
@@ -323,6 +400,17 @@ export function createSettingsChannelRouter(deps: SettingsChannelRouterDeps): Se
           break;
         case "connecting":
           lastHostPayload = frame;
+
+          // A different channel than the one being dialled means the copy we
+          // bootstrapped from was stale (a plugin restart landed its mirror
+          // mid-connect): supersede the attempt now rather than after it is
+          // refused, or the new channel would only be stashed and the PI left
+          // on the host path once the stale attempt fails.
+          if (channel && !sameChannel(lastTried, channel)) {
+            dropLoop();
+            connect(channel);
+          }
+
           break;
         case "loopback":
           break; // the store is truth; the host copy is not
@@ -341,8 +429,7 @@ export function createSettingsChannelRouter(deps: SettingsChannelRouterDeps): Se
       const was = state;
 
       clearTimer();
-      loop?.close();
-      loop = undefined;
+      dropLoop();
       // A close before the bootstrap ever completed (e.g. a bridge's first
       // connection attempt failing outright) returns to "idle" so a retried
       // onHostOpen() can bootstrap again; a close from any later state means

@@ -179,6 +179,42 @@ describe("createSettingsWindowController.ensureStarted (#993)", () => {
   });
 });
 
+describe("createSettingsWindowController.onStarted (#993)", () => {
+  it("fires once per actual server start with the channel, whichever caller started it — a late open() after a failed startup start included", async () => {
+    let failOnce = true;
+    const startServer = vi.fn((serverOptions: SettingsWindowServerOptions): Promise<SettingsWindowServer> => {
+      if (failOnce) {
+        failOnce = false;
+
+        return Promise.reject(new Error("EADDRINUSE"));
+      }
+
+      return startSettingsWindowServer(serverOptions);
+    });
+    const onStarted = vi.fn();
+    const controller = createSettingsWindowController({
+      renderPage: () => PAGE,
+      findBrowser: () => "C:/edge/msedge.exe",
+      spawnApp: vi.fn(),
+      openUrl: vi.fn(async (_url: string) => {}),
+      startServer,
+      onStarted,
+      logger: silentLogger,
+    });
+    teardown = () => controller.close();
+
+    await expect(controller.ensureStarted()).rejects.toThrow("EADDRINUSE"); // the startup start fails...
+    expect(onStarted).not.toHaveBeenCalled();
+
+    await controller.open(); // ...and the user's later "Open Settings" brings the server up
+    const channel = await controller.ensureStarted();
+
+    expect(onStarted).toHaveBeenCalledTimes(1);
+    expect(onStarted).toHaveBeenCalledWith(channel);
+    expect(channel.token).toMatch(/^[0-9a-f]{32,}$/);
+  });
+});
+
 describe("createSettingsWindowController — concurrent start dedup and failure handling (#993)", () => {
   it("starts exactly one server when ensureStarted() and open() race", async () => {
     const startServer = vi.fn((serverOptions: SettingsWindowServerOptions): Promise<SettingsWindowServer> =>

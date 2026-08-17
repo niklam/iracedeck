@@ -1,5 +1,5 @@
 import { silentLogger } from "@iracedeck/logger";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -36,6 +36,15 @@ describe("resolveSettingsStorePath", () => {
 
   it("falls back to USERPROFILE\\AppData\\Local when LOCALAPPDATA is unset", () => {
     const p = resolveSettingsStorePath({ platform: "mirabox", env: { USERPROFILE: "C:\\Users\\n" } });
+
+    expect(p.replace(/\\/g, "/")).toBe("C:/Users/n/AppData/Local/iRaceDeck/Settings/Mirabox/global-settings.json");
+  });
+
+  it("treats a set-but-blank LOCALAPPDATA like an unset one — never a relative path", () => {
+    const p = resolveSettingsStorePath({
+      platform: "mirabox",
+      env: { LOCALAPPDATA: "  ", USERPROFILE: "C:\\Users\\n" },
+    });
 
     expect(p.replace(/\\/g, "/")).toBe("C:/Users/n/AppData/Local/iRaceDeck/Settings/Mirabox/global-settings.json");
   });
@@ -118,6 +127,103 @@ describe("createFileSettingsStore", () => {
     const aside = readdirSync(dirty).filter((f) => /^global-settings\.corrupt-.*\.json$/.test(f));
     expect(aside).toHaveLength(1);
     expect(existsSync(store.path)).toBe(false);
+  });
+
+  it("load() tolerates a UTF-8 BOM (PowerShell 5.1 Set-Content / BOM-writing editors) instead of calling the file corrupt", async () => {
+    mkdirSync(join(dir, "sub"), { recursive: true });
+    writeFileSync(store.path, String.fromCharCode(0xfeff) + JSON.stringify({ restored: true }), "utf-8");
+
+    expect(await store.load()).toEqual({ restored: true });
+    expect(existsSync(store.path)).toBe(true);
+  });
+
+  it("flushSync() lands a write whose debounce already fired but whose async I/O has not finished (the process.exit window)", () => {
+    vi.useFakeTimers();
+
+    try {
+      store.save({ inFlight: "landed" });
+      // The debounce fires: the payload is handed to the async write chain, which
+      // has not touched the disk yet (its first await is still queued).
+      vi.advanceTimersByTime(10);
+      expect(existsSync(store.path)).toBe(false);
+
+      store.flushSync();
+
+      expect(JSON.parse(readFileSync(store.path, "utf-8"))).toEqual({ inFlight: "landed" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps a payload whose write failed, cleans up its temp file, and retries it", async () => {
+    // Make the destination un-renamable: the store path is a DIRECTORY, so
+    // writeFile(tmp) succeeds but rename(tmp, path) fails — the Windows
+    // "file held by another process" shape.
+    mkdirSync(store.path, { recursive: true });
+    const retrying = createFileSettingsStore({
+      path: store.path,
+      logger: silentLogger,
+      debounceMs: 10,
+      writeRetryDelaysMs: [20],
+    });
+
+    retrying.save({ survives: "the lock" });
+    await retrying.flush(); // the write fails and is logged, but the payload is kept
+
+    expect(readdirSync(join(dir, "sub")).filter((f) => f.endsWith(".tmp"))).toEqual([]);
+
+    rmSync(store.path, { recursive: true, force: true }); // the "lock" clears
+    await new Promise((resolve) => setTimeout(resolve, 60)); // past the 20 ms retry
+
+    expect(JSON.parse(readFileSync(store.path, "utf-8"))).toEqual({ survives: "the lock" });
+    await retrying.flush();
+  });
+
+  it("does not retry a failed payload that a newer save already superseded — the retry can never overwrite the newer write", async () => {
+    // Make the FIRST write fail: the store path is a directory when it runs.
+    // The second write, chained behind it, runs after the directory is gone
+    // and succeeds; the first must not be re-queued behind it.
+    mkdirSync(store.path, { recursive: true });
+    const racing = createFileSettingsStore({
+      path: store.path,
+      logger: silentLogger,
+      debounceMs: 10,
+      writeRetryDelaysMs: [20],
+    });
+
+    racing.save({ v: "older" });
+    const first = racing.flush(); // enqueued; rename will fail (destination is a directory)
+    racing.save({ v: "newer" });
+    const second = racing.flush(); // enqueued behind the first
+    // Clear the "lock" while both are queued so only the first write hits it.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    rmSync(store.path, { recursive: true, force: true });
+    await Promise.all([first, second]);
+
+    expect(JSON.parse(readFileSync(store.path, "utf-8"))).toEqual({ v: "newer" });
+    await new Promise((resolve) => setTimeout(resolve, 60)); // past any retry of the older payload
+
+    expect(JSON.parse(readFileSync(store.path, "utf-8"))).toEqual({ v: "newer" });
+    racing.flushSync(); // nor may the shutdown flush resurrect it
+    expect(JSON.parse(readFileSync(store.path, "utf-8"))).toEqual({ v: "newer" });
+  });
+
+  it("with the retry schedule exhausted the failed payload still lands on the shutdown flushSync()", async () => {
+    mkdirSync(store.path, { recursive: true });
+    const noRetry = createFileSettingsStore({
+      path: store.path,
+      logger: silentLogger,
+      debounceMs: 10,
+      writeRetryDelaysMs: [],
+    });
+
+    noRetry.save({ kept: "for shutdown" });
+    await noRetry.flush(); // fails, no retry timer, payload kept
+
+    rmSync(store.path, { recursive: true, force: true });
+    noRetry.flushSync();
+
+    expect(JSON.parse(readFileSync(store.path, "utf-8"))).toEqual({ kept: "for shutdown" });
   });
 
   it("flush() with nothing pending resolves immediately", async () => {

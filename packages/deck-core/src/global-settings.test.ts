@@ -10,7 +10,10 @@ import {
   hostMirrorPayload,
   initGlobalSettings,
   isSettingsStoreReady,
+  LOAD_ATTEMPTS,
   LOAD_RETRY_DELAY_MS,
+  MIGRATION_PENDING_KEY,
+  MIGRATION_RETRY_STARTS,
   MIGRATION_TIMEOUT_MS,
   onGlobalSettingsChange,
   resolveActiveDriverName,
@@ -945,9 +948,85 @@ describe("single-writer store (issue #993)", () => {
 
       expect(isSettingsStoreReady()).toBe(true);
       expect(store.saved).toHaveLength(1); // the fresh file was written
+      // ...carrying the marker that makes the next start ask the host again.
+      expect(store.saved[0]).toMatchObject({ [MIGRATION_PENDING_KEY]: 1 });
+      expect(hostMirrorPayload({ port: 1, token: "t" })).toBeUndefined();
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("a fresh-born file (pending-migration marker) asks the host again next start: the host fills in, the file's own edits win, the marker clears, and the mirror is allowed", async () => {
+    const mock = createMockAdapter();
+    const binding = JSON.stringify({ type: "keyboard", key: "f1", modifiers: [] });
+    // What a fresh start persisted: schema defaults + the marker, plus one value the user changed meanwhile.
+    const freshBorn = {
+      ...(GlobalSettingsSchema.parse({}) as Record<string, unknown>),
+      [MIGRATION_PENDING_KEY]: 1,
+      driverName: "typed-in-the-fresh-session",
+      _settingsStorePath: "C:/x/global-settings.json",
+    };
+    const store = createMemorySettingsStore(freshBorn);
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store);
+    await tick();
+
+    expect(isSettingsStoreReady()).toBe(false); // waiting for the host again
+    expect(mock.getGlobalSettings).toHaveBeenCalledTimes(1);
+
+    mock.echo?.({ driverName: "host-nick", blackBoxLapTiming: binding, focusIRacingWindow: false });
+    await store.flush();
+
+    expect(isSettingsStoreReady()).toBe(true);
+    const settings = getGlobalSettings() as unknown as Record<string, unknown>;
+    expect(settings.driverName).toBe("typed-in-the-fresh-session"); // the file's non-default value wins
+    expect(settings.blackBoxLapTiming).toBe(binding); // a binding the file never had comes from the host
+    expect(settings.focusIRacingWindow).toBe(false); // a key still at its default in the file takes the host's value
+    expect(settings._settingsStorePath).toBe("C:/x/global-settings.json"); // passthrough keys the file added survive
+    expect(settings[MIGRATION_PENDING_KEY]).toBeUndefined();
+    expect(store.saved.at(-1)).not.toHaveProperty(MIGRATION_PENDING_KEY);
+    expect(hostMirrorPayload({ port: 1, token: "t" })).toMatchObject({ blackBoxLapTiming: binding });
+  });
+
+  it("a fresh-born file whose host is STILL silent keeps the marker and still skips the mirror — defaults are never mirrored over an unread host copy", async () => {
+    vi.useFakeTimers();
+
+    try {
+      const mock = createMockAdapter();
+      const store = createMemorySettingsStore({
+        ...(GlobalSettingsSchema.parse({}) as Record<string, unknown>),
+        [MIGRATION_PENDING_KEY]: 1,
+      });
+
+      initGlobalSettings(mock.adapter, createMockLogger(), store, { migrationTimeoutMs: 50 });
+      await vi.advanceTimersByTimeAsync(60);
+
+      expect(isSettingsStoreReady()).toBe(true);
+      expect(getSettingsStoreSource()).toBe("fresh");
+      expect(store.saved.at(-1)).toMatchObject({ [MIGRATION_PENDING_KEY]: 2 }); // one more unanswered start
+      expect(hostMirrorPayload({ port: 1, token: "t" })).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("after MIGRATION_RETRY_STARTS unanswered starts the file is accepted as-is: no more waiting, marker cleared, mirror allowed", async () => {
+    const mock = createMockAdapter();
+    const store = createMemorySettingsStore({
+      ...(GlobalSettingsSchema.parse({}) as Record<string, unknown>),
+      [MIGRATION_PENDING_KEY]: MIGRATION_RETRY_STARTS,
+      driverName: "kept",
+    });
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store);
+    await tick();
+
+    expect(isSettingsStoreReady()).toBe(true);
+    expect(getSettingsStoreSource()).toBe("file");
+    expect(mock.getGlobalSettings).not.toHaveBeenCalled();
+    expect(store.saved.at(-1)).not.toHaveProperty(MIGRATION_PENDING_KEY);
+    expect(hostMirrorPayload({ port: 1, token: "t" })).toMatchObject({ driverName: "kept" });
+    expect(MIGRATION_RETRY_STARTS).toBe(3);
   });
 
   it("MIGRATION_TIMEOUT_MS is ten seconds", () => {
@@ -997,6 +1076,20 @@ describe("single-writer store (issue #993)", () => {
     expect(getGlobalSettings().driverName).toBe("host-nick");
     expect((getGlobalSettings() as Record<string, unknown>)._audioDeviceList).toBe("[]");
     expect(store.saved.at(-1)).toMatchObject({ driverName: "host-nick", _audioDeviceList: "[]" });
+  });
+
+  it("a pre-ready write the schema rejects is not replayed over the loaded settings — the stored value stays", async () => {
+    const mock = createMockAdapter();
+    const store = createMemorySettingsStore({ raceEngineerVoice: "stored-voice" });
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store);
+    // raceEngineerVoice has no .catch(): a non-string is DROPPED by salvage, not defaulted.
+    updateGlobalSettings({ raceEngineerVoice: 42 as unknown as string, driverName: "early" });
+    await tick();
+
+    expect(getGlobalSettings().raceEngineerVoice).toBe("stored-voice");
+    expect(getGlobalSettings().driverName).toBe("early");
+    expect(store.saved.at(-1)).toMatchObject({ raceEngineerVoice: "stored-voice", driverName: "early" });
   });
 
   it("deletes made BEFORE the store is ready are applied over the loaded settings too", async () => {
@@ -1089,17 +1182,21 @@ describe("single-writer store (issue #993)", () => {
     }
   });
 
-  it("an UNREADABLE file is retried, then the session runs on defaults WITHOUT saving over it", async () => {
+  it("an UNREADABLE file is retried with a doubling back-off, then the session runs on defaults WITHOUT saving over it", async () => {
     vi.useFakeTimers();
 
     try {
       const mock = createMockAdapter();
-      const store = createUnreadableStore(3, { driverName: "nick" });
+      const store = createUnreadableStore(LOAD_ATTEMPTS, { driverName: "nick" });
 
       initGlobalSettings(mock.adapter, createMockLogger(), store, { loadRetryDelayMs: 10 });
-      await vi.advanceTimersByTimeAsync(100);
+      // Retries at 10, 20, 40, 80, 160 ms after their predecessors: the second
+      // attempt has run by 15 ms, the last one only after ~310 ms.
+      await vi.advanceTimersByTimeAsync(15);
+      expect(store.attempts).toBe(2);
+      await vi.advanceTimersByTimeAsync(400);
 
-      expect(store.attempts).toBe(3);
+      expect(store.attempts).toBe(LOAD_ATTEMPTS);
       expect(isSettingsStoreReady()).toBe(false);
       expect(getGlobalSettings().driverName).toBe(""); // schema default
       // The whole point: a file we could not READ is never replaced with defaults.
@@ -1136,7 +1233,8 @@ describe("single-writer store (issue #993)", () => {
     }
   });
 
-  it("LOAD_RETRY_DELAY_MS is one second", () => {
+  it("LOAD_RETRY_DELAY_MS is one second and there are six attempts (~31 s of patience)", () => {
+    expect(LOAD_ATTEMPTS).toBe(6);
     expect(LOAD_RETRY_DELAY_MS).toBe(1_000);
   });
 
