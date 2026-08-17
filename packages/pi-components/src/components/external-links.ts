@@ -12,20 +12,7 @@
  * receives it, and the Ulanzi PI bridge translates it to its own `openurl` cmd
  * (`src/ulanzi-bridge/translate.ts`). No plugin-side code is needed.
  */
-
-/** Minimal shape of the sdpi-components client this handler depends on. */
-interface StreamDeckClientLike {
-  send(event: string, payload?: Record<string, unknown>): unknown;
-}
-
-interface SDPIComponentsGlobal {
-  SDPIComponents?: { streamDeckClient?: StreamDeckClientLike };
-}
-
-/** Read the sdpi-components client off the global scope, if it has loaded. */
-function defaultClient(): StreamDeckClientLike | undefined {
-  return (globalThis as SDPIComponentsGlobal).SDPIComponents?.streamDeckClient;
-}
+import { getStreamDeckClient, type StreamDeckClientLike } from "./sdpi-client.js";
 
 /**
  * Resolve the absolute URL to open for a clicked element, or `null` when the click
@@ -59,7 +46,7 @@ const installedDocs = new WeakSet<Document>();
  */
 export function installExternalLinkHandler(
   doc: Document = document,
-  getClient: () => StreamDeckClientLike | undefined = defaultClient,
+  getClient: () => StreamDeckClientLike | undefined = getStreamDeckClient,
 ): void {
   if (installedDocs.has(doc)) return;
 

@@ -20,7 +20,7 @@ export interface SettingsRequestInput {
   expectedOrigin: string;
   /** The `t` query parameter, if any. */
   token: string | undefined;
-  /** The per-launch token the server generated. */
+  /** The token the server generated when it started (reused for every later open). */
   expectedToken: string;
   /**
    * The session cookie value, if any. The URL token authenticates only the

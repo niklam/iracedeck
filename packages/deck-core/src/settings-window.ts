@@ -2,10 +2,12 @@
  * Settings-window controller (issue #992).
  *
  * Owns the lifecycle of the loopback settings server: one server per plugin
- * process, started lazily on the first open(), reused on subsequent opens
- * (so re-clicking "Open Settings" never binds a second port), and torn down
- * on close(). Every plugin wires one of these; the delegates keep it free of
- * host and platform specifics.
+ * process, started lazily on the first open() and reused on every later open
+ * (so re-clicking "Open Settings" never binds a second port — the port and
+ * its token live for the rest of the plugin run). close() releases it; it
+ * exists for tests and an explicit shutdown, no plugin calls it today. Every
+ * plugin wires one of these; the delegates keep it free of host and platform
+ * specifics.
  */
 import type { ILogger } from "@iracedeck/logger";
 
@@ -42,7 +44,8 @@ export interface SettingsWindowControllerOptions {
   assetsDir?: string;
   pageFile?: string;
   findBrowser: () => string | undefined;
-  spawnApp: (browserPath: string, url: string, bounds?: SettingsWindowBounds) => void;
+  /** Spawns the app window; a rejection (or throw) falls back to `openUrl`. */
+  spawnApp: (browserPath: string, url: string, bounds?: SettingsWindowBounds) => void | Promise<void>;
   /** Host URL opener — used both as the launch fallback and for the page's external links. */
   openUrl: (url: string) => Promise<void>;
   /** Settings I/O for the page's fake host; omit for an HTTP-only (placeholder) page. */
@@ -65,11 +68,17 @@ export interface SettingsWindowController {
 
 export function createSettingsWindowController(options: SettingsWindowControllerOptions): SettingsWindowController {
   let server: SettingsWindowServer | undefined;
+  // In-flight start, so two open() calls overlapping the listen() await share
+  // one server instead of each binding a port (the loser would leak: its port,
+  // WebSocketServer and settings subscription are only reachable through the
+  // handle the second assignment overwrote). Cleared on settle so a failed
+  // start is retried by the next open().
+  let starting: Promise<SettingsWindowServer> | undefined;
 
   return {
     async open() {
       if (server === undefined) {
-        server = await startSettingsWindowServer({
+        starting ??= startSettingsWindowServer({
           page: options.renderPage?.(),
           assetsDir: options.assetsDir,
           pageFile: options.pageFile,
@@ -77,9 +86,18 @@ export function createSettingsWindowController(options: SettingsWindowController
           openUrl: options.openUrl,
           onSendToPlugin: options.onSendToPlugin,
           simHub: options.simHub,
+        }).finally(() => {
+          starting = undefined;
         });
-        options.logger.info("Settings window server started");
-        options.logger.debug(`Settings window URL: ${server.url}`);
+
+        const started = await starting;
+
+        if (server === undefined) {
+          server = started;
+          options.logger.info("Settings window server started");
+          // Origin only — the URL carries the token, and debug logs get attached to support requests.
+          options.logger.debug(`Settings window origin: ${new URL(server.url).origin}`);
+        }
       }
 
       const launch = await launchSettingsWindow({
@@ -90,12 +108,16 @@ export function createSettingsWindowController(options: SettingsWindowController
         bounds: options.getWindowBounds?.(),
       });
 
-      options.logger.info(`Settings window opened (${launch})`);
+      options.logger.info("Settings window opened");
+      options.logger.debug(`Settings window launch: ${launch}`);
 
       return launch;
     },
 
     async close() {
+      // A close racing an in-flight start must not orphan the server it produces.
+      if (starting !== undefined) await starting.catch(() => undefined);
+
       if (server === undefined) return;
 
       const closing = server;

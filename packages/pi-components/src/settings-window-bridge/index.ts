@@ -9,7 +9,7 @@
  *
  * sdpi-components' only integration seam is `window.connectElgatoStreamDeckSocket`,
  * which then opens its OWN WebSocket to the hardcoded `ws://localhost:{port}` —
- * no path, no query string, so no way to carry the per-launch security token
+ * no path, no query string, so no way to carry the security token
  * the server requires on the upgrade. Same problem the Ulanzi bridge solves,
  * same solution: monkeypatch `WebSocket` for the duration of the synchronous
  * `connect()` call, hand sdpi a socket that actually opens the tokenised
@@ -41,12 +41,17 @@ export const SETTINGS_WINDOW_FLAG = "__irdSettingsWindow";
 const BOUNDS_POLL_MS = 1000;
 
 /**
- * Report the window's outer bounds to the plugin whenever they change, so the
+ * Report the window's outer bounds to the plugin when they change, so the
  * next open can restore them. A window MOVE has no DOM event, so this polls
  * (cheap: four integer reads a second) instead of listening for `resize`,
- * which would miss every drag. A final report on `pagehide` keeps a move made
- * right before closing. Sent as a `sendToPlugin` frame the fake host forwards
- * to the plugin's command handler, which validates and persists it.
+ * which would miss every drag. Only a SETTLED position is reported — bounds
+ * that read the same on two consecutive ticks — so a drag or resize costs one
+ * report when it ends, not one per second while it lasts: every report is a
+ * global-settings write in the plugin (whole-blob parse, fan-out to every
+ * action's re-render, a host round trip) and only the final position is ever
+ * read back. A final report on `pagehide` keeps a move made right before
+ * closing. Sent as a `sendToPlugin` frame the fake host forwards to the
+ * plugin's command handler, which validates and persists it.
  */
 function watchWindowBounds(win: Window & typeof globalThis, socket: WebSocket): void {
   const read = (): { width: number; height: number; x: number; y: number } => ({
@@ -58,31 +63,101 @@ function watchWindowBounds(win: Window & typeof globalThis, socket: WebSocket): 
   const key = (b: ReturnType<typeof read>): string => `${b.width},${b.height},${b.x},${b.y}`;
 
   // Baseline at load: only CHANGES are reported.
-  let last = key(read());
+  let lastReported = key(read());
+  let previousTick = lastReported;
 
-  const report = (): void => {
-    const bounds = read();
-    const k = key(bounds);
-
-    if (k === last || socket.readyState !== 1 /* OPEN */) return;
-
-    last = k;
+  const post = (payload: Record<string, unknown>): void => {
     socket.send(
       JSON.stringify({
         event: "sendToPlugin",
         context: SETTINGS_WINDOW_CONTEXT,
         action: SETTINGS_WINDOW_ACTION,
-        payload: { event: "windowBounds", ...bounds },
+        payload: { event: "windowBounds", ...payload },
       }),
     );
   };
 
-  win.setInterval(report, BOUNDS_POLL_MS);
-  win.addEventListener("pagehide", report);
+  const send = (bounds: ReturnType<typeof read>, k: string): void => {
+    if (k === lastReported || socket.readyState !== 1 /* OPEN */) return;
+
+    lastReported = k;
+    post(bounds);
+  };
+
+  const tick = (): void => {
+    const bounds = read();
+    const k = key(bounds);
+
+    // Settled = unchanged since the previous tick (the gesture has ended).
+    if (k === previousTick) send(bounds, k);
+
+    previousTick = k;
+  };
+
+  // The window is going away: whatever it reads now is final.
+  const flush = (): void => {
+    const bounds = read();
+
+    send(bounds, key(bounds));
+  };
+
+  win.setInterval(tick, BOUNDS_POLL_MS);
+  win.addEventListener("pagehide", flush);
+
+  // Bounds saved on a monitor that has since been unplugged reopen the window
+  // FULLY off-screen: Chromium applies `--window-position` unclamped and the
+  // OS does not relocate a new window. Nobody can drag an invisible window,
+  // and an unmoved window never re-reports (baseline above), so it would stay
+  // that way on every later open. Recover: pull it onto the display Chromium
+  // considers it nearest to, and persist a size-only report so the next open
+  // gets default placement even if the move was refused.
+  if (isOffScreen(win)) {
+    const { left, top } = availableArea(win);
+
+    win.moveTo(left, top);
+
+    const sizeOnly = (): void => post({ width: win.outerWidth, height: win.outerHeight });
+
+    if (socket.readyState === 1 /* OPEN */) sizeOnly();
+    else socket.addEventListener("open", sizeOnly, { once: true });
+  }
+}
+
+/** The usable rectangle of the display the window is (nearest to) on, in CSS px. */
+function availableArea(win: Window & typeof globalThis): { left: number; top: number; width: number; height: number } {
+  // `availLeft`/`availTop` are Chromium (and Firefox) extensions — exactly the
+  // engines this window runs in — not in the DOM lib typings.
+  const screen = win.screen as Screen & { availLeft?: number; availTop?: number };
+
+  return {
+    left: screen.availLeft ?? 0,
+    top: screen.availTop ?? 0,
+    width: screen.availWidth,
+    height: screen.availHeight,
+  };
+}
+
+/** True when the window's outer rectangle does not intersect its display at all. */
+function isOffScreen(win: Window & typeof globalThis): boolean {
+  if (typeof win.screen === "undefined" || typeof win.moveTo !== "function") return false;
+
+  const { left, top, width, height } = availableArea(win);
+
+  if (!(width > 0 && height > 0)) return false;
+
+  const right = left + width;
+  const bottom = top + height;
+
+  return (
+    win.screenX + win.outerWidth <= left ||
+    win.screenX >= right ||
+    win.screenY + win.outerHeight <= top ||
+    win.screenY >= bottom
+  );
 }
 
 export interface SettingsWindowIdentity {
-  /** The per-launch token from the page URL's `t` query parameter. */
+  /** The server's token from the page URL's `t` query parameter. */
   token: string;
 }
 

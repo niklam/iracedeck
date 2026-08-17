@@ -27,20 +27,7 @@
  *   PI's own context; the settings window has no device, so the page names one
  *   and the plugin's command handler requires it. No selection → no send.
  */
-
-/** Minimal shape of the sdpi-components client this component depends on. */
-interface StreamDeckClientLike {
-  send(event: string, payload?: Record<string, unknown>): unknown;
-}
-
-interface SDPIComponentsGlobal {
-  SDPIComponents?: { streamDeckClient?: StreamDeckClientLike };
-}
-
-/** Read the sdpi-components client off the global scope, if it has loaded. */
-function defaultClient(): StreamDeckClientLike | undefined {
-  return (globalThis as SDPIComponentsGlobal).SDPIComponents?.streamDeckClient;
-}
+import { sendToPlugin } from "./sdpi-client.js";
 
 let styleInjected = false;
 
@@ -99,11 +86,6 @@ export class ProfileSwitch extends HTMLElement {
 
       if (!profile) return;
 
-      const client = defaultClient();
-
-      // No client (sdpi-components unavailable): do nothing rather than throw.
-      if (!client) return;
-
       const payload: Record<string, unknown> = { event: "switchToProfile", profile };
       const deviceFrom = this.getAttribute("device-from");
 
@@ -118,9 +100,9 @@ export class ProfileSwitch extends HTMLElement {
         payload.deviceId = deviceId;
       }
 
-      // Fire-and-forget; swallow rejections (e.g. the PI socket isn't ready yet)
-      // so a failed send never surfaces as an unhandled promise rejection.
-      void Promise.resolve(client.send("sendToPlugin", payload)).catch(() => {});
+      // Fire-and-forget; no client (sdpi-components unavailable) is a no-op and
+      // a rejected send (e.g. the PI socket isn't ready yet) never surfaces.
+      sendToPlugin(payload);
     });
   }
 }

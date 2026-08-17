@@ -65,8 +65,7 @@
 			}
 			.sw-header-links { margin-left: auto; display: flex; align-items: center; gap: 14px; }
 			.sw-header-links a { color: var(--sw-fg-dim); text-decoration: none; font-size: 9pt; }
-			.sw-header-links a:hover { color: var(--sw-fg); }
-			.sw-header-links a:hover { text-decoration: underline; }
+			.sw-header-links a:hover { color: var(--sw-fg); text-decoration: underline; }
 			.sw-version { color: var(--sw-fg-mute); font-size: 8pt; }
 			.sw-main { display: grid; grid-template-columns: 200px minmax(0, 1fr); min-height: 0; }
 			.sw-nav {
@@ -114,6 +113,8 @@
 			   overflow into the neighbouring card; below one column the pane scrolls. */
 			.sw-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(440px, 1fr)); gap: 14px 24px; align-items: start; }
 			.sw-grid.single { grid-template-columns: minmax(0, 1fr); }
+			/* A second block under a pane's first grid (another grid, the links row). */
+			.sw-grid + .sw-grid, .sw-grid + .sw-links { margin-top: 14px; }
 			/* accordion.ejs in settingsWindow mode renders these */
 			.ird-sw-card {
 				background: var(--sw-bg-alt); border: 1px solid var(--sw-line); border-radius: 6px;
@@ -144,16 +145,28 @@
 
 		<main class="sw-main">
 			<%
-			  var __allBindings = require('./data/key-bindings.json');
+			  var __rawBindings = require('./data/key-bindings.json');
+			  // One row per SETTING. A binding that key-bindings.json lists under two
+			  // categories (the FFB force pair sits under both Cockpit Misc and Force
+			  // Feedback, for their two PIs) is ONE global setting; two live inputs bound
+			  // to it would just mirror each other and inflate the count.
+			  var __seenSettings = {};
+			  var __allBindings = {};
+			  Object.keys(__rawBindings).forEach(function (c) {
+			    __allBindings[c] = __rawBindings[c].filter(function (b) {
+			      if (__seenSettings[b.setting]) return false;
+			      __seenSettings[b.setting] = true;
+			      return true;
+			    });
+			  });
 			  var __categories = Object.keys(__allBindings);
 			  var __total = __categories.reduce(function (n, c) { return n + __allBindings[c].length; }, 0);
+			  // Category display names are the action names (as in the manifest). The
+			  // camelCase → Title Case fallback derives most of them; only the ones it
+			  // cannot are listed here.
 			  var __labels = {
-			    blackBox: 'Black Box', splitsDelta: 'Splits & Delta', toggleUi: 'Toggle UI',
-			    lookDirection: 'Look Direction', carControl: 'Car Control',
-			    cameraControls: 'Camera Controls', cameraEditorControls: 'Camera Editor Controls',
-			    cameraEditorAdjustments: 'Camera Editor Adjustments', setupChassis: 'Setup — Chassis',
-			    setupBrakes: 'Setup — Brakes', replayNavigation: 'Replay Navigation',
-			    audioControls: 'Audio Controls'
+			    aiSpotterControls: 'AI Spotter Controls', splitsDelta: 'Splits & Reference',
+			    toggleUi: 'Toggle UI Elements'
 			  };
 			  var __label = function (k) {
 			    return __labels[k] || k.replace(/([A-Z])/g, ' $1').replace(/^./, function (c) { return c.toUpperCase(); });
@@ -235,7 +248,7 @@
 					<%- include('accordion', { title: 'Race Engineer & Radar', content: include('race-engineer-settings'), settingsWindow: true }) %>
 					<%- include('accordion', { title: 'Setup Warning Patterns', content: include('setup-warning-patterns'), settingsWindow: true }) %>
 				</div>
-				<div class="sw-grid single" style="margin-top:14px">
+				<div class="sw-grid single">
 					<%- include('accordion', { title: 'Callouts', content: include('race-engineer-callouts'), settingsWindow: true }) %>
 				</div>
 			</section>
@@ -277,7 +290,7 @@
 				<div class="sw-grid single">
 					<%- include('accordion', { title: 'After an update', content: include('global-common-updates'), settingsWindow: true }) %>
 				</div>
-				<p class="sw-links" style="margin-top:14px">
+				<p class="sw-links">
 					<a href="https://iracedeck.com/changelog/" target="_blank" rel="noopener noreferrer">Open the changelog in your browser</a>
 				</p>
 				<%# The live changelog page, embedded. Needs internet; the link above is the fallback. %>

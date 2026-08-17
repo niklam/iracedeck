@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { fetchSimHubReachable, fetchSimHubRoles, SETTINGS_WINDOW_FLAG } from "./simhub-probe.js";
+import { fetchSimHubReachable, fetchSimHubRoles, probeSimHub, SETTINGS_WINDOW_FLAG } from "./simhub-probe.js";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -54,6 +54,39 @@ describe("SimHub probe", () => {
 
     expect(await fetchSimHubReachable("127.0.0.1", 8888)).toBe(false);
     expect(await fetchSimHubRoles("127.0.0.1", 8888)).toEqual([]);
+  });
+});
+
+describe("probeSimHub — one request answers reachability AND roles", () => {
+  it("makes exactly one request and reports both from it", async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ["Wipers", "Pit"] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    expect(await probeSimHub("127.0.0.1", 8888)).toEqual({ reachable: true, roles: ["Wipers", "Pit"] });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("is reachable with no roles when SimHub answers OK with an unexpected body (deck-core reads it the same way)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, json: async () => ({ nope: 1 }) })),
+    );
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    expect(await probeSimHub("127.0.0.1", 8888)).toEqual({ reachable: true, roles: [] });
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it("is unreachable with no roles when the request fails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("refused");
+      }),
+    );
+
+    expect(await probeSimHub("127.0.0.1", 8888)).toEqual({ reachable: false, roles: [] });
   });
 });
 

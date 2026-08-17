@@ -2,8 +2,11 @@
   Race Engineer per-callout opt-ins (issue #992 split). Authored inline in
   pit-crew.ejs until the settings window needed them too. Emits items only —
   pit-crew.ejs wraps them in its "Race Engineer Callouts" accordion, the
-  window in a card. The callout ids come from the shared data files, so the
-  two surfaces cannot drift. See .claude/rules/global-settings.md
+  window in a card. The per-family { setting, label } lists below are the
+  ONLY place the callout ids are authored for the PI/window (they mirror the
+  `calloutEnabled*` schema fields and the audio-scenarios setting-key maps —
+  add a new callout in all of them); both surfaces include this one partial,
+  so they cannot drift from each other. See .claude/rules/global-settings.md
   (per-callout opt-in convention).
 %>
 		<%

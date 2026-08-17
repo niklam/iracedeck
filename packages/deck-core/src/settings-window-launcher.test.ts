@@ -37,6 +37,23 @@ describe("launchSettingsWindow", () => {
     expect(result).toBe("browser-tab");
   });
 
+  it("falls back to the host's openUrl when the browser process fails to start (async spawn error)", async () => {
+    // The real spawner rejects on the child's `error` event — spawn() never
+    // throws synchronously for ENOENT/EACCES on Windows.
+    const spawnApp = vi.fn(() => Promise.reject(new Error("spawn EACCES")));
+    const openUrl = vi.fn(async () => {});
+
+    const result = await launchSettingsWindow({
+      url: URL,
+      findBrowser: () => "C:/blocked/msedge.exe",
+      spawnApp,
+      openUrl,
+    });
+
+    expect(openUrl).toHaveBeenCalledWith(URL);
+    expect(result).toBe("browser-tab");
+  });
+
   it("falls back to the host's openUrl when spawning the browser throws", async () => {
     const spawnApp = vi.fn(() => {
       throw new Error("ENOENT");

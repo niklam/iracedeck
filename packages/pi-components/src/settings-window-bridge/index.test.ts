@@ -158,7 +158,7 @@ describe("installSettingsWindowBridge", () => {
       .map((f) => f.payload);
   }
 
-  it("reports the window's outer bounds when they change — a MOVE has no DOM event, so it polls", () => {
+  it("reports the window's outer bounds once they SETTLE after a change — a MOVE has no DOM event, so it polls", () => {
     const { win, connect } = fakeWindow("?t=tok");
 
     connect.mockImplementation((port: string) => {
@@ -172,7 +172,31 @@ describe("installSettingsWindowBridge", () => {
     expect(boundsFrames(socket)).toEqual([]);
 
     (win as unknown as { screenX: number }).screenX = 400; // user dragged the window
-    win.tick?.();
+    win.tick?.(); // still moving as far as the watcher knows → not yet
+    expect(boundsFrames(socket)).toEqual([]);
+    win.tick?.(); // same reading twice: the drag has ended → one report
+
+    expect(boundsFrames(socket)).toEqual([{ event: "windowBounds", width: 1300, height: 900, x: 400, y: 60 }]);
+  });
+
+  it("collapses a drag to ONE report when it ends — every report is a global-settings write in the plugin", () => {
+    const { win, connect } = fakeWindow("?t=tok");
+
+    connect.mockImplementation((port: string) => {
+      new (win as unknown as { WebSocket: typeof FakeNativeWebSocket }).WebSocket(`ws://localhost:${port}`);
+    });
+    installSettingsWindowBridge(win);
+    const socket = FakeNativeWebSocket.instances[0];
+
+    socket?.fire("open");
+
+    for (const x of [100, 200, 300, 400]) {
+      (win as unknown as { screenX: number }).screenX = x; // one tick per second mid-drag
+      win.tick?.();
+    }
+
+    expect(boundsFrames(socket)).toEqual([]);
+    win.tick?.(); // drag over: the position repeats
 
     expect(boundsFrames(socket)).toEqual([{ event: "windowBounds", width: 1300, height: 900, x: 400, y: 60 }]);
   });
@@ -191,8 +215,60 @@ describe("installSettingsWindowBridge", () => {
     win.tick?.();
     win.tick?.();
     win.tick?.();
+    win.tick?.();
 
     expect(boundsFrames(socket)).toHaveLength(1);
+  });
+
+  it("pulls a fully off-screen window back onto its display and persists a size-only report (bounds from an unplugged monitor)", () => {
+    const { win, connect } = fakeWindow("?t=tok");
+    const moveTo = vi.fn();
+
+    // Chromium replays --window-position unclamped: the saved x=5000 is beyond
+    // the only display's 1920 px, so nobody can see or drag the window.
+    Object.assign(win, {
+      screen: { availLeft: 0, availTop: 0, availWidth: 1920, availHeight: 1080 },
+      moveTo,
+      screenX: 5000,
+      screenY: 200,
+    });
+    connect.mockImplementation((port: string) => {
+      new (win as unknown as { WebSocket: typeof FakeNativeWebSocket }).WebSocket(`ws://localhost:${port}`);
+    });
+    installSettingsWindowBridge(win);
+    const socket = FakeNativeWebSocket.instances[0];
+
+    expect(moveTo).toHaveBeenCalledWith(0, 0);
+    // Reported once the socket opens — with NO position, so the next open gets
+    // default placement even if the browser refused the move.
+    expect(boundsFrames(socket)).toEqual([]);
+    socket?.fire("open");
+    expect(boundsFrames(socket)).toEqual([{ event: "windowBounds", width: 1300, height: 900 }]);
+    // An unmoved window still never re-reports its off-screen position.
+    win.tick?.();
+    win.tick?.();
+    expect(boundsFrames(socket)).toHaveLength(1);
+  });
+
+  it("leaves a window that merely overhangs the display edge alone", () => {
+    const { win, connect } = fakeWindow("?t=tok");
+    const moveTo = vi.fn();
+
+    Object.assign(win, {
+      screen: { availLeft: 0, availTop: 0, availWidth: 1920, availHeight: 1080 },
+      moveTo,
+      screenX: 1800, // partly visible: 120 px of it are on the display
+      screenY: 200,
+    });
+    connect.mockImplementation((port: string) => {
+      new (win as unknown as { WebSocket: typeof FakeNativeWebSocket }).WebSocket(`ws://localhost:${port}`);
+    });
+    installSettingsWindowBridge(win);
+    const socket = FakeNativeWebSocket.instances[0];
+
+    socket?.fire("open");
+    expect(moveTo).not.toHaveBeenCalled();
+    expect(boundsFrames(socket)).toEqual([]);
   });
 
   it("sends a final report on pagehide so a move right before closing is kept", () => {

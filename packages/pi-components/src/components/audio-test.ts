@@ -20,21 +20,13 @@
  * - target: DOM id of the hidden `sdpi-textfield` whose value should be
  *   bumped to `Date.now()` on click.
  * - label: Button text (default "Test").
+ * - preview: "radar" | "voice" | "background" — inside the dedicated settings
+ *   window (#992) there is no action context, so the click instead sends
+ *   `sendToPlugin { event: "audioPreview", kind }` and the plugin runs the
+ *   preview directly.
  */
-
-/** Minimal shape of the sdpi-components client this component uses in window mode. */
-interface StreamDeckClientLike {
-  send(event: string, payload?: Record<string, unknown>): unknown;
-}
-
-interface SDPIComponentsGlobal {
-  SDPIComponents?: { streamDeckClient?: StreamDeckClientLike };
-}
-
-/** True inside the dedicated settings window (flag set by its bridge). */
-function inSettingsWindow(): boolean {
-  return typeof window !== "undefined" && (window as unknown as Record<string, unknown>).__irdSettingsWindow === true;
-}
+import { sendToPlugin } from "./sdpi-client.js";
+import { inSettingsWindow } from "./settings-window-context.js";
 
 let styleInjected = false;
 
@@ -93,11 +85,8 @@ export class AudioTest extends HTMLElement {
       // directly instead. `preview` names the kind ("radar"|"voice"|"background").
       if (inSettingsWindow()) {
         const kind = this.getAttribute("preview");
-        const client = (globalThis as SDPIComponentsGlobal).SDPIComponents?.streamDeckClient;
 
-        if (kind && client) {
-          void Promise.resolve(client.send("sendToPlugin", { event: "audioPreview", kind })).catch(() => {});
-        }
+        if (kind) sendToPlugin({ event: "audioPreview", kind });
 
         return;
       }

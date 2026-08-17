@@ -2,9 +2,11 @@
  * Settings-window server (issue #992).
  *
  * A loopback HTTP + WebSocket server the plugin process starts ON DEMAND —
- * when the user opens the settings window — and tears down when the window
- * closes. Binding at open-time rather than plugin startup keeps the surface
- * alive only while it is actually in use.
+ * lazily, on the first "Open Settings" — and then keeps for the rest of the
+ * plugin run (the controller reuses it, port and token, on every later open;
+ * `close()` releases it and is only called by tests / an explicit shutdown).
+ * Binding at first open rather than plugin startup means a user who never
+ * opens the window never has the port bound at all.
  *
  * Two roles:
  *  - HTTP: serve the settings page (and later its assets).
@@ -17,8 +19,8 @@
  *    `logMessage`.
  *
  * Every HTTP request AND every WebSocket upgrade passes through
- * `authorizeSettingsRequest` (Origin first, then the per-launch token). No
- * CORS header is ever emitted.
+ * `authorizeSettingsRequest` (Origin first, then the per-server-start token).
+ * No CORS header is ever emitted.
  *
  * Settings I/O goes through an injected `SettingsWindowHost` — the plugin binds
  * it to `getGlobalSettings` / `updateGlobalSettings` / `onGlobalSettingsChange`
@@ -140,8 +142,19 @@ function diffAgainst(current: Record<string, unknown>, incoming: Record<string, 
   return changed;
 }
 
-function tokenOf(req: IncomingMessage, origin: string): string | undefined {
-  return new URL(req.url ?? "/", origin).searchParams.get("t") ?? undefined;
+/**
+ * Parse the request target against `base`, or undefined when it is not a
+ * valid URL. `new URL()` THROWS on targets like `//[` — and an exception that
+ * escapes an `http` request/upgrade listener is an uncaught exception that
+ * ends the plugin process. Any local process can send such a target to the
+ * loopback port without a token, so parsing must never throw here.
+ */
+function requestUrl(req: IncomingMessage, base: string): URL | undefined {
+  try {
+    return new URL(req.url ?? "/", base);
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -151,10 +164,16 @@ function tokenOf(req: IncomingMessage, origin: string): string | undefined {
  * instead. `SameSite=Strict` — never sent cross-site; `HttpOnly` — never
  * readable by page script; scoped to this loopback host, which a DNS-rebound
  * hostname is not.
+ *
+ * The name carries the PORT: cookies are host-scoped, not port-scoped, and
+ * every plugin's window shares one browser profile (`--user-data-dir`), so
+ * a second plugin's server (another port, another token) would otherwise
+ * overwrite this window's cookie and its later cookie-authenticated fetches
+ * (`/simhub/roles`) would start failing with 403.
  */
-const SESSION_COOKIE = "ird_sw";
+const SESSION_COOKIE_PREFIX = "ird_sw_";
 
-function cookieOf(req: IncomingMessage): string | undefined {
+function cookieOf(req: IncomingMessage, cookieName: string): string | undefined {
   const header = req.headers.cookie;
 
   if (!header) return undefined;
@@ -162,7 +181,7 @@ function cookieOf(req: IncomingMessage): string | undefined {
   for (const part of header.split(";")) {
     const [name, ...rest] = part.trim().split("=");
 
-    if (name === SESSION_COOKIE) return rest.join("=");
+    if (name === cookieName) return rest.join("=");
   }
 
   return undefined;
@@ -173,30 +192,40 @@ export async function startSettingsWindowServer(options: SettingsWindowServerOpt
   // Set once the port is known; the guard needs it and requests can't arrive
   // before listen() resolves.
   let origin = "";
+  let cookieName = SESSION_COOKIE_PREFIX;
 
-  const authorize = (req: IncomingMessage) =>
+  const authorize = (req: IncomingMessage, url: URL | undefined) =>
     authorizeSettingsRequest({
       origin: req.headers.origin,
       expectedOrigin: origin,
-      token: tokenOf(req, origin),
+      token: url?.searchParams.get("t") ?? undefined,
       expectedToken: token,
-      cookie: cookieOf(req),
+      cookie: cookieOf(req, cookieName),
     });
 
-  const server: Server = createServer((req, res) => {
-    if (!authorize(req).allowed) {
+  const handleRequest = (req: IncomingMessage, res: ServerResponse): void => {
+    const url = requestUrl(req, origin);
+
+    if (url === undefined) {
+      res.writeHead(400);
+      res.end();
+
+      return;
+    }
+
+    if (!authorize(req, url).allowed) {
       res.writeHead(403, { "content-type": "text/plain" });
       res.end("forbidden");
 
       return;
     }
 
-    const pathname = new URL(req.url ?? "/", origin).pathname;
+    const pathname = url.pathname;
 
     // The page load is the one request that carries the URL token; hand back
     // the session cookie so every subsequent same-origin request can skip it.
     if (pathname === "/") {
-      res.setHeader("set-cookie", `${SESSION_COOKIE}=${token}; Path=/; SameSite=Strict; HttpOnly`);
+      res.setHeader("set-cookie", `${cookieName}=${token}; Path=/; SameSite=Strict; HttpOnly`);
     }
 
     if (pathname === "/simhub/roles" && options.simHub) {
@@ -214,7 +243,17 @@ export async function startSettingsWindowServer(options: SettingsWindowServerOpt
     }
 
     if (options.assetsDir) {
-      const name = pathname === "/" ? (options.pageFile ?? "index.html") : decodeURIComponent(pathname.slice(1));
+      let name: string;
+
+      try {
+        // Throws on a malformed percent-escape (`/%E0`) — a 404, not a crash.
+        name = pathname === "/" ? (options.pageFile ?? "index.html") : decodeURIComponent(pathname.slice(1));
+      } catch {
+        res.writeHead(404);
+        res.end();
+
+        return;
+      }
 
       void serveAsset(options.assetsDir, name, res);
 
@@ -223,9 +262,21 @@ export async function startSettingsWindowServer(options: SettingsWindowServerOpt
 
     res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
     res.end(options.page ?? "");
+  };
+
+  const server: Server = createServer((req, res) => {
+    // Belt and braces: nothing thrown while handling a request may escape the
+    // listener — that would take the whole plugin process down.
+    try {
+      handleRequest(req, res);
+    } catch {
+      if (!res.headersSent) res.writeHead(500);
+
+      res.end();
+    }
   });
 
-  const wss = options.settingsHost
+  const fakeHost = options.settingsHost
     ? attachFakeHost(server, options.settingsHost, options.openUrl, options.onSendToPlugin, authorize)
     : undefined;
 
@@ -244,12 +295,13 @@ export async function startSettingsWindowServer(options: SettingsWindowServerOpt
   }
 
   origin = `http://${HOST}:${address.port}`;
+  cookieName = `${SESSION_COOKIE_PREFIX}${address.port}`;
 
   return {
     url: `${origin}/?t=${token}`,
     close: () =>
       new Promise<void>((resolve) => {
-        wss?.close();
+        fakeHost?.close();
         server.close(() => resolve());
       }),
   };
@@ -264,25 +316,60 @@ function attachFakeHost(
   host: SettingsWindowHost,
   openUrl: ((url: string) => Promise<void>) | undefined,
   onSendToPlugin: ((payload: Record<string, unknown>) => void) | undefined,
-  authorize: (req: IncomingMessage) => { allowed: boolean },
+  authorize: (req: IncomingMessage, url: URL | undefined) => { allowed: boolean },
 ): { close: () => void } {
   const wss = new WebSocketServer({ noServer: true });
   const sockets = new Set<WebSocket>();
+  /** Last `didReceiveGlobalSettings` body sent per socket — identical pushes are skipped. */
+  const lastPushed = new WeakMap<WebSocket, string>();
+  /**
+   * The socket whose `setGlobalSettings` is being written right now. The real
+   * host never echoes a writer's own `setGlobalSettings` back to it (only the
+   * OTHER side sees a `didReceiveGlobalSettings`), and neither may we: the
+   * echo carries the PARSED cache, so a field the user just cleared (`""` →
+   * schema default, e.g. SimHub host → 127.0.0.1) would refill under the
+   * cursor and swallow the next keystrokes. `host.write` notifies listeners
+   * synchronously, so a plain variable is enough to recognise the echo.
+   */
+  let writingFrom: WebSocket | undefined;
 
-  const push = (ws: WebSocket, settings: Record<string, unknown>): void => {
-    if (ws.readyState === ws.OPEN) {
-      ws.send(JSON.stringify({ event: "didReceiveGlobalSettings", payload: { settings } }));
-    }
+  const bodyOf = (settings: Record<string, unknown>): string =>
+    JSON.stringify({ event: "didReceiveGlobalSettings", payload: { settings } });
+
+  const push = (ws: WebSocket, settings: Record<string, unknown>, force = false): void => {
+    if (ws.readyState !== ws.OPEN) return;
+
+    const body = bodyOf(settings);
+
+    // A payload the page already holds is a no-op for it — except that sdpi
+    // re-applies every control's value on receipt, which discards keystrokes
+    // still inside a text field's save debounce. Don't send what it has.
+    if (!force && lastPushed.get(ws) === body) return;
+
+    lastPushed.set(ws, body);
+    ws.send(body);
   };
 
   // Any writer anywhere in the plugin (a PI, an action, a migration) updates
-  // the window live — the same push the real host performs.
+  // the window live — the same push the real host performs to the OTHER side.
   const unsubscribe = host.subscribe((settings) => {
-    for (const ws of sockets) push(ws, settings);
+    for (const ws of sockets) {
+      if (ws === writingFrom) {
+        // No echo to the writer — but remember the state it produced, so a
+        // later identical fan-out (a host echo of this same write) is a no-op.
+        lastPushed.set(ws, bodyOf(settings));
+        continue;
+      }
+
+      push(ws, settings);
+    }
   });
 
   server.on("upgrade", (req: IncomingMessage, socket: Duplex, head: Buffer) => {
-    if (new URL(req.url ?? "/", "http://x").pathname !== WS_PATH || !authorize(req).allowed) {
+    // Same rule as the request listener: an exception here kills the process.
+    const url = requestUrl(req, "http://x");
+
+    if (url === undefined || url.pathname !== WS_PATH || !authorize(req, url).allowed) {
       socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
       socket.destroy();
 
@@ -292,6 +379,10 @@ function attachFakeHost(
     wss.handleUpgrade(req, socket, head, (ws) => {
       sockets.add(ws);
       ws.on("close", () => sockets.delete(ws));
+      // `ws` emits 'error' on a protocol violation (malformed frame, bad UTF-8);
+      // an EventEmitter 'error' with no listener is thrown — and would end the
+      // plugin process. Drop the peer instead.
+      ws.on("error", () => ws.terminate());
 
       ws.on("message", (raw) => {
         let frame: PiFrame;
@@ -304,7 +395,8 @@ function attachFakeHost(
 
         switch (frame.event) {
           case "getGlobalSettings":
-            push(ws, host.read());
+            // An explicit request is always answered, even with an unchanged payload.
+            push(ws, host.read(), true);
             break;
 
           case "setGlobalSettings":
@@ -319,8 +411,17 @@ function attachFakeHost(
               // parsed values), so the diff can't disagree with the overlay.
               const changed = diffAgainst(host.read(), frame.payload as Record<string, unknown>);
 
-              // The subscribe() listener echoes the result back — same as the real host.
-              if (Object.keys(changed).length > 0) host.write(changed);
+              if (Object.keys(changed).length > 0) {
+                // The subscribe() listener pushes the result to every OTHER
+                // socket — the writer itself gets no echo, same as the real host.
+                writingFrom = ws;
+
+                try {
+                  host.write(changed);
+                } finally {
+                  writingFrom = undefined;
+                }
+              }
             }
 
             break;

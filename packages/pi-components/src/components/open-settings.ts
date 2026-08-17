@@ -17,20 +17,7 @@
  * <ird-open-settings label="Settings…"></ird-open-settings>
  * ```
  */
-
-/** Minimal shape of the sdpi-components client this component depends on. */
-interface StreamDeckClientLike {
-  send(event: string, payload?: Record<string, unknown>): unknown;
-}
-
-interface SDPIComponentsGlobal {
-  SDPIComponents?: { streamDeckClient?: StreamDeckClientLike };
-}
-
-/** Read the sdpi-components client off the global scope, if it has loaded. */
-function defaultClient(): StreamDeckClientLike | undefined {
-  return (globalThis as SDPIComponentsGlobal).SDPIComponents?.streamDeckClient;
-}
+import { sendToPlugin } from "./sdpi-client.js";
 
 const DEFAULT_LABEL = "Open iRaceDeck Settings";
 
@@ -87,14 +74,8 @@ export class OpenSettings extends HTMLElement {
 
   private attachListeners(): void {
     this.button?.addEventListener("click", () => {
-      const client = defaultClient();
-
-      // No client (sdpi-components unavailable): do nothing rather than throw.
-      if (!client) return;
-
-      // Fire-and-forget; swallow rejections so a failed send never surfaces as
-      // an unhandled promise rejection.
-      void Promise.resolve(client.send("sendToPlugin", { event: "openSettings" })).catch(() => {});
+      // Fire-and-forget; no client (sdpi-components unavailable) is a no-op.
+      sendToPlugin({ event: "openSettings" });
     });
   }
 }

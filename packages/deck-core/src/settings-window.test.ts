@@ -54,6 +54,35 @@ describe("createSettingsWindowController", () => {
     expect(spawnApp).toHaveBeenCalledTimes(2);
   });
 
+  it("shares one server between two open() calls that overlap the start (no second port, nothing leaked)", async () => {
+    const { controller, spawnApp } = setup();
+    teardown = () => controller.close();
+
+    await Promise.all([controller.open(), controller.open()]);
+
+    const first = new URL(spawnApp.mock.calls[0]?.[1] as string);
+    const second = new URL(spawnApp.mock.calls[1]?.[1] as string);
+    expect(second.port).toBe(first.port);
+    expect(second.searchParams.get("t")).toBe(first.searchParams.get("t"));
+  });
+
+  it("falls back to the host's openUrl when the browser process fails to start asynchronously", async () => {
+    const openUrl = vi.fn(async (_url: string) => {});
+    const controller = createSettingsWindowController({
+      renderPage: () => PAGE,
+      findBrowser: () => "C:/blocked/msedge.exe",
+      // The real spawner rejects on the child's `error` event (ENOENT/EACCES);
+      // that must reach the tab fallback instead of escaping as an uncaught error.
+      spawnApp: () => Promise.reject(new Error("spawn EACCES")),
+      openUrl,
+      logger: silentLogger,
+    });
+    teardown = () => controller.close();
+
+    expect(await controller.open()).toBe("browser-tab");
+    expect(openUrl).toHaveBeenCalledTimes(1);
+  });
+
   it("releases the port on close() and is safe to close twice", async () => {
     const { controller, spawnApp } = setup();
 

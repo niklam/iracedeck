@@ -35,4 +35,4 @@ The window runs in its own private browser profile, separate from your everyday 
 
 ## Security
 
-Because the window is a local web page, the plugin only serves it to the window it just opened: each launch uses a fresh secret token, requests from any other website are refused, and nothing is reachable from outside your PC. Every setting written from the window goes through the plugin, the same way it would if a Property Inspector had written it — so the window can never store anything the plugin itself wouldn't.
+Because the window is a local web page, the plugin only serves it to the window it just opened: the plugin generates a fresh secret token when it starts serving the window (once per plugin run) that only that window's requests carry, requests from any other website are refused, and nothing is reachable from outside your PC. Every setting written from the window goes through the plugin, the same way it would if a Property Inspector had written it — so the window can never store anything the plugin itself wouldn't.

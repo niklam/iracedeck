@@ -132,6 +132,17 @@ function nextMessage(ws: WebSocket): Promise<Record<string, unknown>> {
   });
 }
 
+/** Poll until `predicate` holds (the writer gets no echo to await, so tests wait on the host instead). */
+async function waitFor(predicate: () => boolean, timeoutMs = 1000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+
+  while (!predicate()) {
+    if (Date.now() > deadline) throw new Error("waitFor: timed out");
+
+    await new Promise((r) => setTimeout(r, 5));
+  }
+}
+
 describe("settings-window WebSocket host", () => {
   it("accepts a WebSocket upgrade that carries the launch token", async () => {
     server = await startSettingsWindowServer({ page: PAGE, settingsHost: fakeSettingsHost() });
@@ -193,6 +204,12 @@ describe("settings-window WebSocket host", () => {
     const token = new URL(server.url).searchParams.get("t") ?? "";
     const ws = await connectWs(server.url, token);
 
+    // A second window (or a second socket) is the OTHER side: it gets the push.
+    const other = await connectWs(server.url, token);
+    const pushedToOther = nextMessage(other);
+    const echoedToWriter: unknown[] = [];
+
+    ws.on("message", (raw) => echoedToWriter.push(JSON.parse(String(raw))));
     ws.send(
       JSON.stringify({
         event: "setGlobalSettings",
@@ -200,12 +217,16 @@ describe("settings-window WebSocket host", () => {
         payload: { focusIRacingWindow: false, titleBold: "true" },
       }),
     );
-    // The write echoes back as a didReceiveGlobalSettings, exactly like the real host.
-    const echo = await nextMessage(ws);
 
+    expect(await pushedToOther).toMatchObject({ event: "didReceiveGlobalSettings" });
     expect(host.written).toEqual([{ focusIRacingWindow: false, titleBold: "true" }]);
-    expect(echo).toMatchObject({ event: "didReceiveGlobalSettings" });
+    // The writer itself gets NO echo — exactly like the real host, and because
+    // the echo carries the PARSED cache: a field the user just cleared ("" ->
+    // schema default) would otherwise refill under the cursor.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(echoedToWriter).toEqual([]);
     ws.close();
+    other.close();
   });
 
   it("writes only the keys that actually CHANGED — sdpi sends its whole snapshot, and a full-object write would mark every key pending (#896 rollback of the other surface's edits)", async () => {
@@ -224,7 +245,7 @@ describe("settings-window WebSocket host", () => {
         payload: { driverName: "nick", focusIRacingWindow: true, titleBold: "false" }, // only driverName differs
       }),
     );
-    await nextMessage(ws);
+    await waitFor(() => host.written.length > 0);
 
     expect(host.written).toEqual([{ driverName: "nick" }]);
     ws.close();
@@ -242,7 +263,7 @@ describe("settings-window WebSocket host", () => {
         payload: { debugLogging: "true", titleFontSize: "80", driverName: "nick" },
       }),
     );
-    await nextMessage(ws);
+    await waitFor(() => host.written.length > 0);
 
     expect(host.written).toEqual([{ driverName: "nick" }]);
     ws.close();
@@ -272,6 +293,74 @@ describe("settings-window WebSocket host", () => {
 
     expect(await pushed).toEqual({ event: "didReceiveGlobalSettings", payload: { settings: { debugLogging: true } } });
     ws.close();
+  });
+
+  it("does not re-push a payload the window already holds (identical fan-outs are no-ops for the page)", async () => {
+    const host = fakeSettingsHost({ debugLogging: false });
+    server = await startSettingsWindowServer({ page: PAGE, settingsHost: host });
+    const token = new URL(server.url).searchParams.get("t") ?? "";
+    const ws = await connectWs(server.url, token);
+    const received: unknown[] = [];
+
+    ws.on("message", (raw) => received.push(JSON.parse(String(raw))));
+    host.emit({ debugLogging: true });
+    host.emit({ debugLogging: true }); // e.g. the deck host's echo of the same state
+    host.emit({ debugLogging: false });
+    await waitFor(() => received.length >= 2);
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(received).toEqual([
+      { event: "didReceiveGlobalSettings", payload: { settings: { debugLogging: true } } },
+      { event: "didReceiveGlobalSettings", payload: { settings: { debugLogging: false } } },
+    ]);
+    ws.close();
+  });
+
+  it("always answers an explicit getGlobalSettings, even when nothing changed since the last push", async () => {
+    const host = fakeSettingsHost({ debugLogging: false });
+    server = await startSettingsWindowServer({ page: PAGE, settingsHost: host });
+    const token = new URL(server.url).searchParams.get("t") ?? "";
+    const ws = await connectWs(server.url, token);
+
+    ws.send(JSON.stringify({ event: "getGlobalSettings" }));
+    await nextMessage(ws);
+    ws.send(JSON.stringify({ event: "getGlobalSettings" }));
+
+    expect(await nextMessage(ws)).toEqual({
+      event: "didReceiveGlobalSettings",
+      payload: { settings: { debugLogging: false } },
+    });
+    ws.close();
+  });
+
+  it("survives a malformed request target and a malformed WebSocket frame (never an uncaught exception)", async () => {
+    const host = fakeSettingsHost({ debugLogging: false });
+    server = await startSettingsWindowServer({ page: PAGE, settingsHost: host });
+    const token = new URL(server.url).searchParams.get("t") ?? "";
+    const u = new URL(server.url);
+
+    // `new URL("//[", origin)` throws — must be a 400, not a crash, and it needs no token.
+    const { connect } = await import("node:net");
+    const status = await new Promise<string>((resolve) => {
+      const s = connect(Number(u.port), u.hostname, () => s.write("GET //[ HTTP/1.1\r\nHost: x\r\n\r\n"));
+
+      s.once("data", (d) => {
+        resolve(String(d).split("\r\n")[0] ?? "");
+        s.end();
+      });
+    });
+
+    expect(status).toContain("400");
+
+    // A protocol-violating frame drops the peer; the server keeps serving.
+    const ws = await connectWs(server.url, token);
+    const closed = new Promise<void>((r) => ws.once("close", () => r()));
+
+    // Bypass ws' own validation: write raw bytes with the RSV1 bit set (no extension negotiated).
+    (ws as unknown as { _socket: { write: (b: Buffer) => void } })._socket.write(Buffer.from([0xc1, 0x80, 0, 0, 0, 0]));
+    await closed;
+
+    expect((await fetch(server.url)).status).toBe(200);
   });
 
   it("forwards openUrl to the injected opener and ignores logMessage", async () => {
@@ -337,7 +426,10 @@ describe("settings-window static assets", () => {
     const setCookie = res.headers.get("set-cookie") ?? "";
 
     expect(res.status).toBe(200);
-    expect(setCookie).toMatch(/^ird_sw=[0-9a-f]{32,};/);
+    // Port-scoped name: cookies are host- not port-scoped, and every plugin's
+    // window shares one browser profile — a second plugin's server must not
+    // overwrite this one's cookie.
+    expect(setCookie).toMatch(new RegExp(`^ird_sw_${new URL(server.url).port}=[0-9a-f]{32,};`));
     expect(setCookie).toContain("SameSite=Strict");
     expect(setCookie).toContain("HttpOnly");
     expect(setCookie).toContain("Path=/");
@@ -377,6 +469,15 @@ describe("settings-window static assets", () => {
     const res = await fetch(`${u.origin}/..%2F..%2Fpackage.json?t=${u.searchParams.get("t")}`);
 
     expect(res.status).toBe(404);
+  });
+
+  it("returns 404 (not a crash) for a malformed percent-escape in an asset path", async () => {
+    server = await startSettingsWindowServer({ assetsDir: assetsDir(), pageFile: "settings-window.html" });
+    const u = new URL(server.url);
+
+    // decodeURIComponent("%E0%A4%A") throws URIError; the request listener must not.
+    expect((await fetch(`${u.origin}/%E0%A4%A?t=${u.searchParams.get("t")}`)).status).toBe(404);
+    expect((await fetch(server.url)).status).toBe(200);
   });
 
   it("returns 404 for an unknown asset", async () => {

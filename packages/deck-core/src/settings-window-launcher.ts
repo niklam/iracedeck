@@ -24,8 +24,13 @@ export interface SettingsWindowLaunchInput {
   url: string;
   /** Returns the path of a Chromium-based browser executable, or undefined. */
   findBrowser: () => string | undefined;
-  /** Spawns `<browserPath> --app=<url>`, detached, at `bounds` when given. */
-  spawnApp: (browserPath: string, url: string, bounds?: SettingsWindowBounds) => void;
+  /**
+   * Spawns `<browserPath> --app=<url>`, detached, at `bounds` when given.
+   * May throw synchronously or return a promise that rejects — `spawn()`
+   * reports "can't start this exe" asynchronously, so the real spawner
+   * resolves on the child's `spawn` event and rejects on its `error` event.
+   */
+  spawnApp: (browserPath: string, url: string, bounds?: SettingsWindowBounds) => void | Promise<void>;
   /** Where the user last left the window, if known. */
   bounds?: SettingsWindowBounds;
   /** The host's own URL opener — the fallback. */
@@ -37,7 +42,7 @@ export async function launchSettingsWindow(input: SettingsWindowLaunchInput): Pr
 
   if (browserPath !== undefined) {
     try {
-      input.spawnApp(browserPath, input.url, input.bounds);
+      await input.spawnApp(browserPath, input.url, input.bounds);
 
       return "app-window";
     } catch {

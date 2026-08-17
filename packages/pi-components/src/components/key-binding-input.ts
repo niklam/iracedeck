@@ -38,7 +38,7 @@ import {
   UI_TEXT,
 } from "./key-binding-utils.js";
 import { KEY_CODE_MAP, type Modifier, resolveEventCode } from "./key-maps.js";
-import { fetchSimHubReachable, fetchSimHubRoles } from "./simhub-probe.js";
+import { probeSimHub } from "./simhub-probe.js";
 
 /**
  * SYNC NOTE: The types below (SimHubBindingValue, BindingValue) and the
@@ -186,10 +186,12 @@ async function ensureSimHubRolesFetched(): Promise<void> {
     // probe answers from the plugin's same-origin proxy, since a direct fetch
     // to SimHub is cross-origin there and always looked unreachable.
     try {
-      // The probe never throws: unreachable → [] and false.
-      const roles = await fetchSimHubRoles(simHubHost, simHubPort);
+      // The probe never throws: unreachable → { reachable: false, roles: [] }.
+      // ONE request answers both — a second probe would only repeat what the
+      // first response already said (and double the wait when SimHub is down).
+      const { reachable, roles } = await probeSimHub(simHubHost, simHubPort);
 
-      simHubReachable = roles.length > 0 || (await fetchSimHubReachable(simHubHost, simHubPort));
+      simHubReachable = reachable;
       simHubRoles = roles.slice().sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
 
       if (!simHubReachable) console.warn("[ird-key-binding] SimHub not reachable; role list empty");

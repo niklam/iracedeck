@@ -69,9 +69,27 @@ export function queryWindowsAppPath(exe: string): string | undefined {
   }
 }
 
-/** Convenience: the lookup bound to the real filesystem, registry, and env. */
+let cachedBrowserPath: string | undefined;
+
+/**
+ * Convenience: the lookup bound to the real filesystem, registry, and env.
+ *
+ * Memoized per process: the registry lookup shells out to `reg query` (up to
+ * three synchronous process spawns, ~15 ms each here) on the plugin's main
+ * thread, and browsers don't move between opens. A cached path that has since
+ * vanished (`existsSync` false) is dropped and the lookup runs again.
+ */
 export function findChromiumBrowserOnThisMachine(): string | undefined {
-  return findChromiumBrowser({ exists: existsSync, queryAppPath: queryWindowsAppPath, env: process.env });
+  if (cachedBrowserPath !== undefined && existsSync(cachedBrowserPath)) return cachedBrowserPath;
+
+  cachedBrowserPath = findChromiumBrowser({ exists: existsSync, queryAppPath: queryWindowsAppPath, env: process.env });
+
+  return cachedBrowserPath;
+}
+
+/** @internal Exported for testing — forget the memoized browser path. */
+export function _resetChromiumBrowserCache(): void {
+  cachedBrowserPath = undefined;
 }
 
 /**
@@ -122,8 +140,17 @@ export function defaultSettingsWindowProfileDir(env: Record<string, string | und
   return join(base, "iRaceDeck", "settings-window-profile");
 }
 
-/** Spawn the app window detached so it outlives — and never blocks — the plugin. */
-export function spawnAppWindow(browserPath: string, url: string, bounds?: SettingsWindowBounds): void {
+/**
+ * Spawn the app window detached so it outlives — and never blocks — the plugin.
+ *
+ * Resolves once the process has actually started and rejects when it could
+ * not (ENOENT/EACCES — the exe vanished since lookup, or policy blocks it).
+ * `spawn()` reports those failures as an asynchronous `'error'` event, NOT a
+ * synchronous throw; with no listener that event is an uncaught exception
+ * that ends the plugin process. Surfacing it as a rejection lets the launcher
+ * fall back to the host's `openUrl` instead.
+ */
+export function spawnAppWindow(browserPath: string, url: string, bounds?: SettingsWindowBounds): Promise<void> {
   const profileDir = defaultSettingsWindowProfileDir();
 
   mkdirSync(profileDir, { recursive: true });
@@ -134,5 +161,14 @@ export function spawnAppWindow(browserPath: string, url: string, bounds?: Settin
     windowsHide: false,
   });
 
-  child.unref();
+  return new Promise<void>((resolve, reject) => {
+    child.once("spawn", () => {
+      child.unref();
+      resolve();
+    });
+    child.once("error", (error) => {
+      child.unref();
+      reject(error);
+    });
+  });
 }

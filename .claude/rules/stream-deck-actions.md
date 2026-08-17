@@ -232,7 +232,7 @@ Persistence is by stable device id, not by enumeration index, so unplugging or r
 
 **`ird-warnings`** - Global warning banner. Auto-injected at the top of every Property Inspector by `head-common.ejs` (no per-template markup). Subscribes to the `_warnings` global setting and renders one banner per `{ id, level, message }` record. Plugins post/clear warnings with `setWarning`/`clearWarning` from `@iracedeck/deck-core`. See `@.claude/rules/global-settings.md` for the data shape. Do not add `<ird-warnings>` to individual templates — it is injected globally.
 
-**Never** use raw `<button>`, `<select>`, `<input>`, or `<textarea>` in a PI `.ejs`. Use an `sdpi-*` component or introduce a new `ird-*` component in `packages/pi-components/src/components/` if no suitable one exists.
+**Never** use raw `<button>`, `<select>`, `<input>`, or `<textarea>` in a PI `.ejs`. Use an `sdpi-*` component or introduce a new `ird-*` component in `packages/pi-components/src/components/` if no suitable one exists. The one deliberate exception is the settings window's own page chrome (`settings-window.ejs`, #992: the sidebar tab buttons and the key-binding search/category filter) — page-local UI that binds to no setting, on a page that is not a Property Inspector; every control there that stores a setting is still `sdpi-*`/`ird-*`.
 
 ### sdpi-components Library
 

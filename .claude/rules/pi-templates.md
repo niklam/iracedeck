@@ -78,7 +78,7 @@ Inside a partial, `locals.foo` reads an optional **include parameter** (`include
     <%- include('graphic-overrides') %>
     <%- include('common-settings') %>
 
-    <%- include('section-header', { title: 'Global Settings' }) %>
+    <%- include('section-header', { title: 'Global Settings', openSettings: true }) %>
 
     <%- include('global-key-bindings', {
       keyBindings: require('./data/key-bindings.json').category
@@ -106,7 +106,7 @@ Located in `packages/pi-components/partials/`:
 
 - **head-common.ejs** - Required scripts, common styles, and color preset/reset handlers
 - **accordion.ejs** - Collapsible section component. Accepts an optional `accordionId` parameter (defaults to `title`) used as the persistence key in global settings (`_accordionState`). The `accordionId` must be unique per PI page — use it when two accordions share the same display title (e.g., per-action vs global "Common Settings"). State is shared across action types since most actions use the same accordion IDs. When `settingsWindow` is truthy in scope (the settings window passes it at its top-level includes; nested includes inherit it) it renders a flat `.ird-sw-card` instead of a `<details>` — see `settings-window.md`.
-- **section-header.ejs** - Section divider with title label and horizontal rule. Parameters: `title` (string). Used to separate "Action Settings" from "Global Settings".
+- **section-header.ejs** - Section divider with title label and horizontal rule. Parameters: `title` (string); `openSettings` (boolean, optional) renders the "Open iRaceDeck Settings" button under the header — every action's **Global Settings** header passes it (#992). Used to separate "Action Settings" from "Global Settings".
 - **common-settings.ejs** - Common settings shared by all actions (flags overlay), wrapped in accordion
 - **color-overrides.ejs** - Per-action color override controls with Default/White/Black presets
 - **border-overrides.ejs** - Per-action border settings (enable, width, color). Place after color-overrides.
@@ -138,6 +138,9 @@ Common style classes are defined in `head-common.ejs` (loaded by every PI page).
     Which direction a short press fires; the long-press always fires the opposite.
   </div>
   ```
+
+- **`ird-open-settings`** — the centred block that wraps the `<ird-open-settings>` button under the Global Settings header (rendered by `section-header.ejs` with `openSettings: true`, #992) — a block like `.ird-docs-link`, never an `sdpi-item`.
+- **`ird-sw-card` / `ird-sw-card-title` / `ird-sw-card-body`** — the flat card `accordion.ejs` emits in `settingsWindow` mode (#992). Styled by the settings-window page itself (`settings-window.ejs`), which is the only page that renders that mode; a second consumer of `settingsWindow: true` would have to move those rules into `head-common.ejs`.
 
 When a new shared style is needed, add the class to `head-common.ejs` and document it here — do not introduce inline styles in partials or per-action templates.
 

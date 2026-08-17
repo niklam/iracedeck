@@ -990,6 +990,7 @@ migrateGlobalSettingsKeys(SETUP_CHASSIS_BINDING_KEY_RENAMES, adapter.createLogge
 // page's sdpi-components talks to the server's fake host, which is bound here
 // to the real global-settings singleton — so every write goes through
 // updateGlobalSettings and the #896 single-writer guarantees hold.
+const settingsWindowLogger = adapter.createLogger("SettingsWindow");
 const settingsWindow = createSettingsWindowController({
   assetsDir: join(__binDir, "..", "ui"),
   pageFile: SETTINGS_WINDOW_HTML,
@@ -1013,12 +1014,12 @@ const settingsWindow = createSettingsWindowController({
   }),
   // The page can't probe SimHub itself (cross-origin, no CORS) — answer from the plugin's own view.
   simHub: { isReachable: isSimHubReachable, getRoles: () => getSimHub().getRoles() },
-  logger: adapter.createLogger("SettingsWindow"),
+  logger: settingsWindowLogger,
 });
 
 adapter.onOpenSettingsRequest(() => {
   void settingsWindow.open().catch((error: unknown) => {
-    adapter.createLogger("SettingsWindow").error(`Failed to open settings window: ${String(error)}`);
+    settingsWindowLogger.error(`Failed to open settings window: ${String(error)}`);
   });
 });
 

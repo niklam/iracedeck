@@ -308,16 +308,32 @@ export class ElgatoPlatformAdapter implements IDeckPlatformAdapter {
       return;
     }
 
-    // The "Stream Deck Profiles" accordion sends clean display names (one row
-    // per template); resolve to the pressing device's manifest name by
-    // appending its suffix (#753). Idempotent for already-suffixed names.
-    const profile = typeof message.profile === "string" ? deviceProfileName(message.profile, deviceType) : undefined;
-    const page = typeof message.page === "number" ? message.page : undefined;
+    this.switchToBundledProfile(
+      deviceId,
+      typeof message.profile === "string" ? message.profile : undefined,
+      typeof message.page === "number" ? message.page : undefined,
+      deviceType,
+    );
+  }
 
-    // Route through the deck-core switcher singleton (not this.switchToProfile
-    // directly) so the switch is recorded in the per-device profile history and
-    // the Switch Profile "Back to previous" mode can walk back to it (#762).
-    void requestProfileSwitch(deviceId, profile, page);
+  /**
+   * Switch `deviceId` to a bundled profile named by its clean DISPLAY name
+   * (one row per template in the "Stream Deck Profiles" accordion): resolve it
+   * to the device's manifest name by appending the device-type suffix (#753 —
+   * idempotent for already-suffixed names) and route through the deck-core
+   * switcher singleton (not `this.switchToProfile` directly) so the switch is
+   * recorded in the per-device profile history and the Switch Profile "Back to
+   * previous" mode can walk back to it (#762).
+   *
+   * The ONE dispatch for both surfaces (#992): the PI path passes the pressing
+   * device's type from its event; the settings window names the device
+   * explicitly and the type is looked up here.
+   */
+  switchToBundledProfile(deviceId: string, profile: string | undefined, page?: number, deviceType?: number): void {
+    const type = deviceType ?? this.sd.devices.getDeviceById(deviceId)?.type;
+    const manifestName = profile !== undefined ? deviceProfileName(profile, type) : undefined;
+
+    void requestProfileSwitch(deviceId, manifestName, page);
   }
 
   onDidReceiveGlobalSettings(callback: (settings: unknown) => void): void {

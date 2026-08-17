@@ -1,8 +1,10 @@
 <%#
   Race Engineer / Pit Crew plugin-wide settings (issue #992 split): on-startup
-  toggles, voice, driver name, output device, volumes and their Test buttons,
-  spotter/gap/fuel/corner tuning. Emits items only — pit-crew.ejs wraps them in
-  its "Pit Crew Settings" accordion, the settings window in a card.
+  toggles, voice, driver name, output device, volumes and their Test buttons.
+  The per-callout opt-ins AND the tuning sliders (gap alert, spotter
+  still-there, fuel margin, corner lead) live in race-engineer-callouts.ejs.
+  Emits items only — pit-crew.ejs wraps them in its "Pit Crew Settings"
+  accordion, the settings window in a card.
 %>
 <%- (
 '<sdpi-item label="On startup">' +

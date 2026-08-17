@@ -323,6 +323,8 @@ function createSdMock() {
   const sd = {
     system: { openUrl: vi.fn().mockResolvedValue(undefined) },
     profiles: { switchToProfile: vi.fn().mockResolvedValue(undefined) },
+    // The settings window names a device explicitly; its type is looked up here (#992).
+    devices: { getDeviceById: vi.fn((id: string) => (id === "dev-xl" ? { type: 2 } : undefined)) },
     ui: {
       onSendToPlugin: vi.fn((listener: (ev: unknown) => void) => {
         sendToPluginListener = listener;
@@ -422,6 +424,25 @@ describe("ElgatoPlatformAdapter sendToPlugin → switchToProfile routing", () =>
     emitSendToPlugin("dev-1", { event: "switchToProfile" });
 
     expect(switchToProfile).toHaveBeenCalledWith("dev-1", undefined, undefined);
+  });
+
+  it("switchToBundledProfile is the same dispatch for an explicitly named device (the settings window, #992)", async () => {
+    const { sd, switchToProfile } = createSdMock();
+    const adapter = new ElgatoPlatformAdapter(sd);
+    initProfileSwitcher((deviceId, profile, page) => adapter.switchToProfile(deviceId, profile, page));
+
+    adapter.switchToBundledProfile("dev-xl", "iRaceDeck Default");
+    adapter.switchToBundledProfile("dev-xl", "iRaceDeck Replay", 2);
+    adapter.switchToBundledProfile("dev-unknown", "iRaceDeck Replay");
+    await Promise.resolve();
+
+    // Type resolved via the SDK's device store → suffixed like the PI path; unknown device → passed through.
+    expect(switchToProfile).toHaveBeenNthCalledWith(1, "dev-xl", "iRaceDeck Default XL", undefined);
+    expect(switchToProfile).toHaveBeenNthCalledWith(2, "dev-xl", "iRaceDeck Replay XL", 2);
+    expect(switchToProfile).toHaveBeenNthCalledWith(3, "dev-unknown", "iRaceDeck Replay", undefined);
+    // Recorded in the history exactly like an accordion switch (#762).
+    await requestProfileSwitchBack("dev-xl");
+    expect(switchToProfile).toHaveBeenLastCalledWith("dev-xl", "iRaceDeck Default XL", undefined);
   });
 
   it("records accordion switches in the profile history so Back can walk them (#762)", async () => {
