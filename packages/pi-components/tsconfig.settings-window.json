@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src/settings-window-bridge",
+    "lib": ["ES2022", "DOM"],
+    "declaration": false,
+    "declarationMap": false,
+    "noEmit": false
+  },
+  "include": ["src/settings-window-bridge/**/*"],
+  "exclude": ["src/settings-window-bridge/**/*.test.ts"]
+}

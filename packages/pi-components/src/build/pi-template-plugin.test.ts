@@ -449,4 +449,46 @@ describe("piTemplatePlugin", () => {
     const content = readFileSync(outputPath, "utf-8");
     expect(content).toContain("<title>My Page</title>");
   });
+
+  it("should expose optional include parameters through locals so partials can guard on them (#992)", async () => {
+    // A partial that renders extra markup only when an optional parameter is passed.
+    writeFileSync(
+      path.join(partialsDir, "header.ejs"),
+      "<h1><%= title %></h1><% if (locals.extra) { %><p>extra</p><% } %>",
+    );
+
+    writeFileSync(
+      path.join(templatesDir, "with-extra.ejs"),
+      "<!DOCTYPE html><html><body><%- include('header', { title: 'A', extra: true }) %></body></html>",
+    );
+    writeFileSync(
+      path.join(templatesDir, "without-extra.ejs"),
+      "<!DOCTYPE html><html><body><%- include('header', { title: 'B' }) %></body></html>",
+    );
+
+    const plugin = piTemplatePlugin({
+      templatesDir,
+      outputDir,
+      partialsDir,
+      version: "1.0.0",
+    });
+
+    const context = {
+      addWatchFile: vi.fn(),
+      warn: vi.fn(),
+      info: vi.fn(),
+      error: vi.fn(),
+    };
+
+    if (plugin.buildStart) {
+      await (plugin.buildStart as AnyFunction).call(context);
+    }
+    if (plugin.generateBundle) {
+      await (plugin.generateBundle as AnyFunction).call(context);
+    }
+
+    expect(context.error).not.toHaveBeenCalled();
+    expect(readFileSync(path.join(outputDir, "with-extra.html"), "utf-8")).toContain("<p>extra</p>");
+    expect(readFileSync(path.join(outputDir, "without-extra.html"), "utf-8")).not.toContain("<p>extra</p>");
+  });
 });

@@ -80,6 +80,13 @@ const PI_APPEAR_MARKER = "propertyInspectorDidAppear";
  */
 const PI_OPEN_URL_MARKER = "openUrl";
 
+/**
+ * Marker the shared `ird-open-settings` PI button sends (via `sendToPlugin`)
+ * to ask the plugin to open the dedicated settings window (#992). Surfaced as
+ * a global `openSettings` event for the adapter's `onOpenSettingsRequest`.
+ */
+const PI_OPEN_SETTINGS_MARKER = "openSettings";
+
 /** Parse UlanziStudio connection parameters from process.argv. */
 export function parseConnectionParams(): UlanziConnectionParams {
   return {
@@ -210,6 +217,8 @@ export function normalizeFrame(frame: Record<string, unknown>): UlanziEvent[] {
       if (payload?.event === PI_OPEN_URL_MARKER && typeof payload.url === "string") {
         return [{ event: "openUrl", action, context, payload: { url: payload.url } }];
       }
+
+      if (payload?.event === PI_OPEN_SETTINGS_MARKER) return [{ event: "openSettings", action, context }];
 
       return [];
     }

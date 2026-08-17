@@ -42,6 +42,7 @@ On open the client sends the handshake `{ code: 0, cmd: "connected", uuid }` (no
 | `didReceiveGlobalSettings`                                | global event                 | settings in `settings`                                     |
 | `sendToPlugin` (PI-appear marker)                         | `propertyInspectorDidAppear` | see below                                                  |
 | `sendToPlugin` (openUrl marker)                           | `openUrl` (global event)     | url in `payload.url` — see below                           |
+| `sendToPlugin` (openSettings marker)                      | `openSettings` (global event) | the settings-window button (#992) — see below              |
 | `run` / `setactive` / acks                                | (ignored)                    |                                                            |
 
 Frames with `code` set and no `cmdType === "REQUEST"` are ack/responses and are dropped — except a `didReceiveGlobalSettings` that carries settings, which is a request reply the client must keep (#868).
@@ -54,7 +55,7 @@ Ulanzi only carries settings on `add` / `paramfromapp`; `keydown` / `keyup` / `d
 
 UlanziStudio has no host-generated "PI appeared" event. The Ulanzi PI bridge (in `@iracedeck/pi-components`) sends a `sendToPlugin` marker (`payload.event === "propertyInspectorDidAppear"`) on connect; the client normalizes that into the `propertyInspectorDidAppear` global event so `onPropertyInspectorDidAppear` (e.g. audio-device re-enumeration) works.
 
-External PI links use the same relay (#845): UlanziStudio ignores `openurl` sent on the PI socket but honours it from the plugin socket, so the bridge translates sdpi's `openUrl` event into a `sendToPlugin` openUrl marker, the client normalizes it to an `openUrl` global event (string urls only — no coercion), and the adapter constructor forwards the url via `client.openUrl` after validating it parses as `http:`/`https:` (matching the PI external-link contract, #243; the debug log redacts to origin + path). Any other `sendToPlugin` payload normalizes to nothing.
+External PI links use the same relay (#845): UlanziStudio ignores `openurl` sent on the PI socket but honours it from the plugin socket, so the bridge translates sdpi's `openUrl` event into a `sendToPlugin` openUrl marker, the client normalizes it to an `openUrl` global event (string urls only — no coercion), and the adapter constructor forwards the url via `client.openUrl` after validating it parses as `http:`/`https:` (matching the PI external-link contract, #243; the debug log redacts to origin + path). The settings-window button (`ird-open-settings`, #992) uses the same relay: its `sendToPlugin { event: "openSettings" }` normalizes to an `openSettings` global event that `onOpenSettingsRequest` consumes. **Any other `sendToPlugin` payload normalizes to nothing — a new PI→plugin command on Ulanzi needs a marker added to `normalizeFrame`, not just an adapter listener.**
 
 ### Outbound icons
 

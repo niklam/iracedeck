@@ -1,4 +1,4 @@
-<!--
+<%#
   Collapsible Component - A collapsible section with divider and arrow.
   Parameters:
     - title (String) — display label
@@ -6,9 +6,25 @@
     - open (Boolean, optional)
     - accordionId (String, optional) — persistence key; defaults to title.
       Must be unique per PI page when sections share the same title.
+    - settingsWindow (Boolean, optional, usually INHERITED) — render as a flat
+      titled card instead of a <details>. The dedicated settings window (#992)
+      passes it at its top-level includes; because an EJS include's data is
+      copied into nested includes, the global-*.ejs partials forward it here
+      without any change of their own. A wide window wants every section
+      visible, and the PI's _accordionState persistence must not leak between
+      the two surfaces — a flat card has no open/closed state to persist.
   Accordion open/closed state is persisted via Stream Deck global settings
   (_accordionState key) so it survives PI reloads when switching between keys.
--->
+  (EJS comment so this documentation is never emitted into the HTML.)
+%>
+<% if (locals.settingsWindow) { %>
+<section class="ird-sw-card">
+  <h3 class="ird-sw-card-title"><%= title %></h3>
+  <div class="ird-sw-card-body">
+    <%- content %>
+  </div>
+</section>
+<% } else { %>
 <details class="ird-collapsible" data-accordion-id="<%= (typeof accordionId !== 'undefined' && accordionId) ? accordionId : title %>" <%= (typeof open !== 'undefined' && open) ? 'open' : '' %>>
   <summary class="ird-collapsible-header">
     <span class="ird-collapsible-icon">&#9654;</span>
@@ -18,3 +34,4 @@
     <%- content %>
   </div>
 </details>
+<% } %>

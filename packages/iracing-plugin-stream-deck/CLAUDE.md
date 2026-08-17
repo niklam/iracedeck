@@ -166,7 +166,7 @@ Match the include set of the reference `splits-delta-cycle/splits-delta-cycle.ej
     <%- include('graphic-overrides') %>
     <%- include('common-settings') %>
 
-    <%- include('section-header', { title: 'Global Settings' }) %>
+    <%- include('section-header', { title: 'Global Settings', openSettings: true }) %>
 
     <%- include('global-key-bindings', {
       keyBindings: require('./data/key-bindings.json').{camelCaseCategory}

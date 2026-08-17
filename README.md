@@ -116,7 +116,7 @@ packages/
 | Package                           | Role                                                                                      |
 | --------------------------------- | ----------------------------------------------------------------------------------------- |
 | `@iracedeck/iracing-actions`              | All 32 action implementations, platform-agnostic                                          |
-| `@iracedeck/deck-core`            | Base classes, types, keyboard service, icon templates, global settings                    |
+| `@iracedeck/deck-core`            | Base classes, types, keyboard service, icon templates, global settings, settings window   |
 | `@iracedeck/deck-adapter-elgato`  | Bridges the Elgato SDK to deck-core's `IDeckPlatformAdapter` interface                    |
 | `@iracedeck/deck-adapter-mirabox` | Bridges the Mirabox VSD Craft WebSocket protocol to deck-core                             |
 | `@iracedeck/deck-adapter-ulanzi`  | Bridges the UlanziStudio WebSocket protocol to deck-core                                  |
@@ -125,7 +125,7 @@ packages/
 | `@iracedeck/iracing-native`       | C++ Node.js addon for Win32 APIs (memory-mapped files, window messaging, scan-code input) |
 | `@iracedeck/iracing-sdk`          | TypeScript SDK for reading telemetry and sending iRacing broadcast commands               |
 | `@iracedeck/logger`               | Shared logging interface with scoped loggers                                              |
-| `@iracedeck/pi-components`        | Shared PI web components, EJS templates + partials, template data, and Rollup EJS plugin  |
+| `@iracedeck/pi-components`        | Shared PI web components, EJS partials, Rollup EJS plugin, and the Ulanzi + settings-window bridges |
 | `@iracedeck/iracing-plugin-stream-deck`   | Elgato Stream Deck plugin — registers actions, PI templates, manifest                     |
 | `@iracedeck/iracing-plugin-mirabox`       | Mirabox plugin — registers the same actions for Mirabox devices                           |
 | `@iracedeck/iracing-plugin-ulanzi`        | Ulanzi Deck plugin — registers the same actions for Ulanzi devices                         |

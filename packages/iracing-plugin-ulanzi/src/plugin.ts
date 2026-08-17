@@ -74,13 +74,17 @@ import { getAudio, initializeAudio } from "@iracedeck/audio-service";
 import { UlanziPlatformAdapter } from "@iracedeck/deck-adapter-ulanzi";
 import {
   createElevationCheckSubscriber,
+  createSettingsWindowCommandHandler,
+  createSettingsWindowController,
   deleteGlobalSettings,
   evaluateSetupWarning,
+  findChromiumBrowserOnThisMachine,
   focusIRacingIfEnabled,
   getController,
   getGlobalSettings,
   getPluginPlatform,
   getPluginVersion,
+  getSimHub,
   initAppMonitor,
   initGlobalSettings,
   initializeBindingDispatcher,
@@ -93,14 +97,19 @@ import {
   initPluginConfig,
   initWindowFocus,
   isIRacingActive,
+  isSimHubReachable,
   migrateGlobalSettingsKeys,
   onGlobalSettingsChange,
   onIRacingTerminated,
+  parseSettingsWindowBounds,
   type PluginConfig,
   resolveActiveDriverName,
   resolveActiveRaceEngineerVoice,
   runVersionCheck,
+  SETTINGS_WINDOW_BOUNDS_KEY,
+  SETTINGS_WINDOW_HTML,
   shouldOpenChangelog,
+  spawnAppWindow,
   updateGlobalSettings,
   validateSetupWarningPatterns,
   VERSION_CHECK_STARTUP_GRACE_MS,
@@ -132,6 +141,7 @@ import {
   ForceFeedback,
   FUEL_SERVICE_UUID,
   FuelService,
+  isAudioPreviewKind,
   LOOK_DIRECTION_UUID,
   LookDirection,
   MEDIA_CAPTURE_UUID,
@@ -151,6 +161,7 @@ import {
   ReplayNavigation,
   ReplaySpeed,
   ReplayTransport,
+  runAudioPreview,
   SESSION_INFO_UUID,
   SessionInfo,
   SETUP_AERO_UUID,
@@ -971,6 +982,46 @@ initGlobalSettings(adapter, adapter.createLogger("GlobalSettings"));
 
 // Migrate the pre-#953 spring binding keys (Left/Right -> LR/RR) once real settings arrive
 migrateGlobalSettingsKeys(SETUP_CHASSIS_BINDING_KEY_RENAMES, adapter.createLogger("SettingsMigration"));
+
+// Settings window (#992): the plugin serves ui/settings-window.html (compiled
+// from settings-window.ejs, with settings-window-bridge.js injected before
+// sdpi-components.js) over a loopback server started lazily on the PI's "Open
+// iRaceDeck Settings" request, and opens it as a chromeless app window. The
+// page's sdpi-components talks to the server's fake host, which is bound here
+// to the real global-settings singleton — so every write goes through
+// updateGlobalSettings and the #896 single-writer guarantees hold.
+const settingsWindowLogger = adapter.createLogger("SettingsWindow");
+const settingsWindow = createSettingsWindowController({
+  assetsDir: join(__binDir, "..", "ui"),
+  pageFile: SETTINGS_WINDOW_HTML,
+  settingsHost: {
+    read: () => getGlobalSettings() as Record<string, unknown>,
+    write: (partial) => updateGlobalSettings(partial),
+    subscribe: (listener) => onGlobalSettingsChange((s) => listener(s as Record<string, unknown>)),
+  },
+  findBrowser: findChromiumBrowserOnThisMachine,
+  spawnApp: spawnAppWindow,
+  openUrl: (url) => adapter.openUrl(url),
+  // Reopen where the user left it (the page reports bounds on resize).
+  getWindowBounds: () =>
+    parseSettingsWindowBounds((getGlobalSettings() as Record<string, unknown>)[SETTINGS_WINDOW_BOUNDS_KEY]),
+  onSendToPlugin: createSettingsWindowCommandHandler({
+    writeSettings: (partial) => updateGlobalSettings(partial),
+    // The window's Race Engineer Test buttons — same runner as the Pit Crew action.
+    previewAudio: (kind) => {
+      if (isAudioPreviewKind(kind)) runAudioPreview(kind, adapter.createLogger("AudioPreview"));
+    },
+  }),
+  // The page can't probe SimHub itself (cross-origin, no CORS) — answer from the plugin's own view.
+  simHub: { isReachable: isSimHubReachable, getRoles: () => getSimHub().getRoles() },
+  logger: settingsWindowLogger,
+});
+
+adapter.onOpenSettingsRequest(() => {
+  void settingsWindow.open().catch((error: unknown) => {
+    settingsWindowLogger.error(`Failed to open settings window: ${String(error)}`);
+  });
+});
 
 // Initialize SimHub AFTER global settings so health check uses configured host/port
 initializeSimHub(adapter.createLogger("SimHub"));

@@ -20,7 +20,13 @@
  * - target: DOM id of the hidden `sdpi-textfield` whose value should be
  *   bumped to `Date.now()` on click.
  * - label: Button text (default "Test").
+ * - preview: "radar" | "voice" | "background" — inside the dedicated settings
+ *   window (#992) there is no action context, so the click instead sends
+ *   `sendToPlugin { event: "audioPreview", kind }` and the plugin runs the
+ *   preview directly.
  */
+import { sendToPlugin } from "./sdpi-client.js";
+import { inSettingsWindow } from "./settings-window-context.js";
 
 let styleInjected = false;
 
@@ -74,6 +80,17 @@ export class AudioTest extends HTMLElement {
 
   private attachListeners(): void {
     this.button?.addEventListener("click", () => {
+      // Settings window (#992): there is no action context, so a per-action
+      // settings bump reaches nothing. Ask the plugin to run the preview
+      // directly instead. `preview` names the kind ("radar"|"voice"|"background").
+      if (inSettingsWindow()) {
+        const kind = this.getAttribute("preview");
+
+        if (kind) sendToPlugin({ event: "audioPreview", kind });
+
+        return;
+      }
+
       const targetId = this.getAttribute("target");
 
       if (!targetId) return;

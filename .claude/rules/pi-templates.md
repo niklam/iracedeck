@@ -50,6 +50,8 @@ packages/{iracing-plugin-stream-deck,iracing-plugin-mirabox}/
 
 Template `require('./data/...')` resolves relative to the shared data directory (`packages/iracing-actions/src/actions/data/`), regardless of how deeply the template is nested. The EJS compile plugin rewrites the base path so templates don't need to know their own depth.
 
+Inside a partial, `locals.foo` reads an optional **include parameter** (`include('x', { foo: true })`) — EJS copies include data into nested includes, so a flag passed at a top-level include is visible all the way down. (The compile plugin used to pass a hand-built `locals: {…}` that shadowed EJS's own and hid every include parameter; fixed in #992 with a regression test.)
+
 ## Creating a PI Template
 
 ### Basic Template Structure
@@ -76,7 +78,7 @@ Template `require('./data/...')` resolves relative to the shared data directory 
     <%- include('graphic-overrides') %>
     <%- include('common-settings') %>
 
-    <%- include('section-header', { title: 'Global Settings' }) %>
+    <%- include('section-header', { title: 'Global Settings', openSettings: true }) %>
 
     <%- include('global-key-bindings', {
       keyBindings: require('./data/key-bindings.json').category
@@ -103,8 +105,8 @@ Template `require('./data/...')` resolves relative to the shared data directory 
 Located in `packages/pi-components/partials/`:
 
 - **head-common.ejs** - Required scripts, common styles, and color preset/reset handlers
-- **accordion.ejs** - Collapsible section component. Accepts an optional `accordionId` parameter (defaults to `title`) used as the persistence key in global settings (`_accordionState`). The `accordionId` must be unique per PI page — use it when two accordions share the same display title (e.g., per-action vs global "Common Settings"). State is shared across action types since most actions use the same accordion IDs.
-- **section-header.ejs** - Section divider with title label and horizontal rule. Parameters: `title` (string). Used to separate "Action Settings" from "Global Settings".
+- **accordion.ejs** - Collapsible section component. Accepts an optional `accordionId` parameter (defaults to `title`) used as the persistence key in global settings (`_accordionState`). The `accordionId` must be unique per PI page — use it when two accordions share the same display title (e.g., per-action vs global "Common Settings"). State is shared across action types since most actions use the same accordion IDs. When `settingsWindow` is truthy in scope (the settings window passes it at its top-level includes; nested includes inherit it) it renders a flat `.ird-sw-card` instead of a `<details>` — see `settings-window.md`.
+- **section-header.ejs** - Section divider with title label and horizontal rule. Parameters: `title` (string); `openSettings` (boolean, optional) renders the "Open iRaceDeck Settings" button under the header — every action's **Global Settings** header passes it (#992). Used to separate "Action Settings" from "Global Settings".
 - **common-settings.ejs** - Common settings shared by all actions (flags overlay), wrapped in accordion
 - **color-overrides.ejs** - Per-action color override controls with Default/White/Black presets
 - **border-overrides.ejs** - Per-action border settings (enable, width, color). Place after color-overrides.
@@ -116,7 +118,8 @@ Located in `packages/pi-components/partials/`:
 - **global-border-defaults.ejs** - Global border defaults (enable, width, color, glow) in accordion
 - **global-graphic-defaults.ejs** - Global graphic scale default (50-150%, default 100%) in accordion
 - **global-flag-flash.ejs** - Global flag-flash duration default (0-30 seconds, default 15, step 1; `0` = flash forever) in accordion. See issue #490.
-- **global-common-settings.ejs** - Global common settings (window focus, SimHub server, dual-press, replay/chat delays, What's New page preference, diagnostics) in accordion
+- **global-common-settings.ejs** - Global common settings in one accordion, assembled from the per-group partials **global-common-{window-focus,simhub,dual-press,replay,chat,updates,diagnostics}.ejs** (items only, no heading) so the settings window can place the same groups on separate tabs (#992). Add a new common setting to the right group partial, never to the assembler.
+- **race-engineer-settings.ejs / race-engineer-callouts.ejs / setup-warning-patterns.ejs** - The Race Engineer plugin-wide settings (items only), wrapped by `pit-crew.ejs` in its three accordions and by the settings window in cards (#992). `race-engineer-callouts.ejs` owns the callout-list computation.
 - **docs-link.ejs** - Documentation link to the action's page on iracedeck.com (conditional, hidden when no URL mapped). Opens in the default browser (see _External Links_ below).
 - **version.ejs** - Version footer with downloads link. Opens in the default browser (see _External Links_ below).
 
@@ -135,6 +138,9 @@ Common style classes are defined in `head-common.ejs` (loaded by every PI page).
     Which direction a short press fires; the long-press always fires the opposite.
   </div>
   ```
+
+- **`ird-open-settings`** — the centred block that wraps the `<ird-open-settings>` button under the Global Settings header (rendered by `section-header.ejs` with `openSettings: true`, #992) — a block like `.ird-docs-link`, never an `sdpi-item`.
+- **`ird-sw-card` / `ird-sw-card-title` / `ird-sw-card-body`** — the flat card `accordion.ejs` emits in `settingsWindow` mode (#992). Styled by the settings-window page itself (`settings-window.ejs`), which is the only page that renders that mode; a second consumer of `settingsWindow: true` would have to move those rules into `head-common.ejs`.
 
 When a new shared style is needed, add the class to `head-common.ejs` and document it here — do not introduce inline styles in partials or per-action templates.
 

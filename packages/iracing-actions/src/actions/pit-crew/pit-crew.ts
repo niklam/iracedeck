@@ -1,5 +1,4 @@
-import { playBackgroundTest, playRadarTest, setRadarEnabled } from "@iracedeck/audio-scenarios/pit-crew";
-import { AudioBus, getAudio } from "@iracedeck/audio-service";
+import { setRadarEnabled } from "@iracedeck/audio-scenarios/pit-crew";
 import {
   applyGraphicTransform,
   CommonSettings,
@@ -29,6 +28,7 @@ import {
 import { z } from "zod";
 
 import pitCrewTemplate from "../../../icons/pit-crew.svg";
+import { runAudioPreview } from "../../audio/audio-previews.js";
 import {
   isCornerNamesEnabled,
   playVoiceSequence,
@@ -42,8 +42,6 @@ import {
   applyRadarVolume,
   isRaceEngineerEnabled,
   isRadarEnabled,
-  readBackgroundVolume,
-  readRaceEngineerVolume,
   readRadarVolume,
   setRaceEngineerTestInFlight,
   setRaceEngineerToggleInFlight,
@@ -134,38 +132,6 @@ export function _setLastTelemetryConnectedForTests(value: boolean | null): void 
 
 /** SDK subscription id prefix for the per-instance radio-check listener. */
 const RADIO_CHECK_SUB_PREFIX = "pitCrewRadioCheck:";
-
-/**
- * @internal Exported for testing.
- *
- * Play the engineer-voice preview sequence on `AudioChannel.Voice`:
- *
- *   <driver name>? <combined greeting clip>
- *
- * Lets the user audition the active voice + radio filter + current bus
- * volume from the PI. Skips the driver-name clip when no name is
- * available (e.g. fresh install before names are pushed). `greeting-01`
- * needs TTS generation — `pnpm --filter @iracedeck/audio-assets generate`
- * produces it per voice. Until then `playVoiceSequence` silently stops
- * at the missing step.
- *
- * Returns false only when no voice is available — the test button logs
- * a warning in that case.
- */
-export function playRaceEngineerVoiceTest(onComplete?: () => void): boolean {
-  const voice = resolveActiveRaceEngineerVoice(readJsonStringArray("_raceEngineerVoices"));
-
-  if (!voice) return false;
-
-  const driverName = resolveActiveDriverName(readJsonStringArray("_driverNames"), "driver");
-
-  const paths = [
-    ...(driverName ? [`voice/${voice}/names/${driverName}.mp3`] : []),
-    `voice/${voice}/welcome/greeting-01.mp3`,
-  ];
-
-  return playVoiceSequence(paths, onComplete);
-}
 
 /**
  * @internal Exported for testing.
@@ -459,8 +425,7 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
     const lastRadarTestTimestamp = this.lastRadarTestTimestamps.get(contextId) ?? 0;
 
     if (radarTestTimestamp > 0 && radarTestTimestamp !== lastRadarTestTimestamp) {
-      this.logger.info("Playing radar test: left → right → both");
-      playRadarTest();
+      runAudioPreview("radar", this.logger);
     }
 
     this.lastRadarTestTimestamps.set(contextId, radarTestTimestamp);
@@ -470,42 +435,17 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
     const lastVoiceTestTimestamp = this.lastRaceEngineerTestTimestamps.get(contextId) ?? 0;
 
     if (voiceTestTimestamp > 0 && voiceTestTimestamp !== lastVoiceTestTimestamp) {
-      this.logger.info("Playing race engineer voice test");
-
-      // Force the Voice bus to the slider value so the preview is audible
-      // even when Race Engineer is off (the master gate would otherwise
-      // hold it at 0). Set the in-flight flag first so any global-settings
-      // listener firing mid-preview (e.g. user dragging the volume slider)
-      // doesn't re-mute the bus via applyRaceEngineerAudio.
-      setRaceEngineerTestInFlight(true);
-      getAudio().setBusVolume(AudioBus.Voice, readRaceEngineerVolume() / 100);
-
-      const started = playRaceEngineerVoiceTest(() => {
-        setRaceEngineerTestInFlight(false);
-        applyRaceEngineerAudio();
-      });
-
-      if (!started) {
-        setRaceEngineerTestInFlight(false);
-        applyRaceEngineerAudio();
-        this.logger.warn("Race engineer voice test skipped — no voice available");
-      }
+      runAudioPreview("voice", this.logger);
     }
 
     this.lastRaceEngineerTestTimestamps.set(contextId, voiceTestTimestamp);
 
-    // Same edge-trigger pattern for the Background Volume Test button
-    // (#471). isBackgroundTestInFlight (set inside playBackgroundTest)
-    // bypasses the Background-mute branch of applyRaceEngineerAudio while
-    // the preview is playing, so dragging the slider mid-preview updates
-    // the bus volume live instead of cutting the test off.
+    // Same edge-trigger pattern for the Background Volume Test button (#471).
     const backgroundTestTimestamp = Number(raw._testBackgroundVolume ?? 0);
     const lastBackgroundTestTimestamp = this.lastBackgroundTestTimestamps.get(contextId) ?? 0;
 
     if (backgroundTestTimestamp > 0 && backgroundTestTimestamp !== lastBackgroundTestTimestamp) {
-      this.logger.info("Playing background test: tick-open + ambient + tick-close");
-      getAudio().setBusVolume(AudioBus.Background, readBackgroundVolume() / 100);
-      playBackgroundTest(() => applyRaceEngineerAudio());
+      runAudioPreview("background", this.logger);
     }
 
     this.lastBackgroundTestTimestamps.set(contextId, backgroundTestTimestamp);

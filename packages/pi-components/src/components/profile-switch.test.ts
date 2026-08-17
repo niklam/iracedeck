@@ -74,4 +74,34 @@ describe("ird-profile-switch", () => {
       expect(() => el.querySelector("button")!.click()).not.toThrow();
     });
   });
+
+  describe("explicit device (settings window, #992)", () => {
+    it("includes the deviceId chosen in the referenced <select> when device-from is set", () => {
+      const select = document.createElement("select");
+      select.id = "deck";
+      select.innerHTML = '<option value="dev-1">Deck 1</option><option value="dev-2" selected>Deck 2</option>';
+      document.body.appendChild(select);
+      const el = mount({ profile: "iRaceDeck Replay", "device-from": "deck" });
+
+      el.querySelector("button")!.click();
+
+      expect(send).toHaveBeenCalledWith("sendToPlugin", {
+        event: "switchToProfile",
+        profile: "iRaceDeck Replay",
+        deviceId: "dev-2",
+      });
+    });
+
+    it("does nothing when device-from is set but no device is chosen — the window has no implicit device", () => {
+      const select = document.createElement("select");
+      select.id = "deck";
+      select.innerHTML = '<option value="">Choose a deck…</option>';
+      document.body.appendChild(select);
+      const el = mount({ profile: "iRaceDeck Replay", "device-from": "deck" });
+
+      el.querySelector("button")!.click();
+
+      expect(send).not.toHaveBeenCalled();
+    });
+  });
 });

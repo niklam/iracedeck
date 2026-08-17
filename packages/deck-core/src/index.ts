@@ -155,6 +155,7 @@ export {
   hasReceivedHostSettings,
   resolveActiveDriverName,
   resolveActiveRaceEngineerVoice,
+  sameValue,
   _resetGlobalSettings,
 } from "./global-settings.js";
 
@@ -409,3 +410,44 @@ export {
   requestProfileSwitchBack,
   type ProfileSwitcher,
 } from "./profile-switcher.js";
+
+// Settings window (issue #992): loopback-served, chromeless-app-window settings UI
+export {
+  appWindowArgs,
+  findChromiumBrowser,
+  findChromiumBrowserOnThisMachine,
+  queryWindowsAppPath,
+  SETTINGS_WINDOW_SIZE,
+  spawnAppWindow,
+  type ChromiumLookupDeps,
+} from "./chromium-browser.js";
+export {
+  authorizeSettingsRequest,
+  type SettingsRequestDecision,
+  type SettingsRequestDenial,
+  type SettingsRequestInput,
+} from "./settings-window-guard.js";
+export {
+  launchSettingsWindow,
+  type SettingsWindowBounds,
+  type SettingsWindowLaunch,
+  type SettingsWindowLaunchInput,
+} from "./settings-window-launcher.js";
+export {
+  createSettingsWindowCommandHandler,
+  parseSettingsWindowBounds,
+  SETTINGS_WINDOW_BOUNDS_KEY,
+  type SettingsWindowCommandDeps,
+} from "./settings-window-commands.js";
+export {
+  startSettingsWindowServer,
+  type SettingsWindowHost,
+  type SettingsWindowServer,
+  type SettingsWindowServerOptions,
+} from "./settings-window-server.js";
+export {
+  createSettingsWindowController,
+  SETTINGS_WINDOW_HTML,
+  type SettingsWindowController,
+  type SettingsWindowControllerOptions,
+} from "./settings-window.js";

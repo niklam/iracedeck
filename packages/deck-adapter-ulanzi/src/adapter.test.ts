@@ -328,6 +328,24 @@ describe("UlanziPlatformAdapter", () => {
     });
   });
 
+  describe("onOpenSettingsRequest (#992)", () => {
+    it("registers a global handler for the normalized openSettings event", () => {
+      adapter.onOpenSettingsRequest(vi.fn());
+
+      expect(client.onGlobalEvent).toHaveBeenCalledWith("openSettings", expect.any(Function));
+    });
+
+    it("invokes the listener when the openSettings event arrives", () => {
+      const listener = vi.fn();
+      adapter.onOpenSettingsRequest(listener);
+
+      const handler = client.onGlobalEvent.mock.calls.find((call) => call[0] === "openSettings")?.[1];
+      handler({ event: "openSettings", action: "com.iracedeck.sd.core.car-control", context: "abc" });
+
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe("createLogger", () => {
     it("should create a logger with the given scope", () => {
       const logger = adapter.createLogger("TestScope");

@@ -1,12 +1,20 @@
 import { processAndCopyAudioAssetsPlugin } from "@iracedeck/audio-assets/build";
-import { browserDir, partialsDir, piTemplatePlugin } from "@iracedeck/pi-components/build";
+import {
+  browserDir,
+  injectBridgeScriptPlugin,
+  partialsDir,
+  piTemplatePlugin,
+  SETTINGS_WINDOW_BRIDGE,
+  SETTINGS_WINDOW_HTML,
+  SETTINGS_WINDOW_LOGO,
+} from "@iracedeck/pi-components/build";
 import commonjs from "@rollup/plugin-commonjs";
 import json from "@rollup/plugin-json";
 import nodeResolve from "@rollup/plugin-node-resolve";
 import replace from "@rollup/plugin-replace";
 import terser from "@rollup/plugin-terser";
 import typescript from "@rollup/plugin-typescript";
-import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import url from "node:url";
@@ -161,7 +169,7 @@ function copyAssetsPlugin(sdPlugin) {
       if (!existsSync(uiDir)) {
         mkdirSync(uiDir, { recursive: true });
       }
-      for (const jsFile of ["sdpi-components.js", "pi-components.js", "ulanzi-pi-bridge.js"]) {
+      for (const jsFile of ["sdpi-components.js", "pi-components.js", "ulanzi-pi-bridge.js", SETTINGS_WINDOW_BRIDGE, SETTINGS_WINDOW_LOGO]) {
         const src = path.join(browserDir, jsFile);
         if (!existsSync(src)) {
           this.error(
@@ -171,33 +179,6 @@ function copyAssetsPlugin(sdPlugin) {
         copyFileSync(src, path.join(uiDir, jsFile));
       }
       this.info?.("Copied PI browser assets from @iracedeck/pi-components");
-    },
-  };
-}
-
-/**
- * Rollup plugin to inject the Ulanzi PI bridge before sdpi-components.js in every
- * generated PI HTML. UlanziStudio does not call connectElgatoStreamDeckSocket and
- * speaks its own `cmd` WebSocket protocol, so the bridge (which monkeypatches
- * window.WebSocket and translates frames) must be present in the DOM before
- * sdpi-components connects. Keeps the shared PI partials untouched — the same
- * post-generation approach Mirabox uses to strip lang="en".
- */
-function injectUlanziBridgePlugin(outputDir) {
-  return {
-    name: "inject-ulanzi-bridge",
-    writeBundle() {
-      if (!existsSync(outputDir)) return;
-
-      const bridgeTag = '<script src="ulanzi-pi-bridge.js"></script>';
-      const sdpiTag = '<script src="sdpi-components.js"></script>';
-      const htmlFiles = readdirSync(outputDir).filter((f) => f.endsWith(".html"));
-      for (const file of htmlFiles) {
-        const filePath = path.join(outputDir, file);
-        const content = readFileSync(filePath, "utf-8");
-        if (content.includes("ulanzi-pi-bridge.js") || !content.includes(sdpiTag)) continue;
-        writeFileSync(filePath, content.replace(sdpiTag, `${bridgeTag}\n    ${sdpiTag}`), "utf-8");
-      }
     },
   };
 }
@@ -332,7 +313,18 @@ const config = {
       },
     }),
     // Inject the Ulanzi PI bridge script before sdpi-components.js
-    injectUlanziBridgePlugin(`${sdPlugin}/ui`),
+    // Ulanzi PI bridge into every action PI — but NOT the settings window, which
+    // gets its own bridge; two bridges must never share a page (#992).
+    injectBridgeScriptPlugin({
+      outputDir: `${sdPlugin}/ui`,
+      bridge: "ulanzi-pi-bridge.js",
+      include: (file) => file !== SETTINGS_WINDOW_HTML,
+    }),
+    injectBridgeScriptPlugin({
+      outputDir: `${sdPlugin}/ui`,
+      bridge: SETTINGS_WINDOW_BRIDGE,
+      include: (file) => file === SETTINGS_WINDOW_HTML,
+    }),
     !isWatching && terser(),
     {
       name: "emit-module-package-file",

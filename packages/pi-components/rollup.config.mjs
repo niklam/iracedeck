@@ -10,6 +10,11 @@ import typescript from "@rollup/plugin-typescript";
  * - ulanzi-pi-bridge.js  — the Ulanzi-only shim that adapts sdpi-components'
  *                          Elgato PI socket to UlanziStudio's `cmd` protocol.
  *                          Injected before sdpi-components.js in Ulanzi PI HTML.
+ * - settings-window-bridge.js — the shim for the dedicated settings window (#992):
+ *                          redirects sdpi-components' socket to the plugin's
+ *                          loopback fake host (carrying the launch token) and
+ *                          drives connectElgatoStreamDeckSocket. Injected before
+ *                          sdpi-components.js in settings-window.html on all hosts.
  */
 const terserPlugin = terser({ format: { comments: false } });
 
@@ -33,5 +38,15 @@ export default [
       sourcemap: false,
     },
     plugins: [typescript({ tsconfig: "./tsconfig.ulanzi.json" }), terserPlugin],
+  },
+  {
+    input: "src/settings-window-bridge/index.ts",
+    output: {
+      file: "browser/settings-window-bridge.js",
+      format: "iife",
+      name: "IRaceDeckSettingsWindowBridge",
+      sourcemap: false,
+    },
+    plugins: [typescript({ tsconfig: "./tsconfig.settings-window.json" }), terserPlugin],
   },
 ];

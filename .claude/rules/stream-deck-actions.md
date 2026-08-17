@@ -226,9 +226,13 @@ Always include both scripts in PI HTML files:
 
 Persistence is by stable device id, not by enumeration index, so unplugging or reordering devices can't silently repoint the selection at a different device. When a saved id is no longer present in the current list, the component falls back to System Default and writes that fallback back through the bound setting.
 
+**`ird-open-settings`** - The "Open iRaceDeck Settings" button (#992). Sends `sendToPlugin {event:"openSettings"}`, routed per host by `onOpenSettingsRequest` on each concrete adapter. Rendered by `section-header.ejs` when `openSettings: true` — a centred block, never inside an `sdpi-item`.
+
+**`ird-deck-device-select`** - Settings-window-only picker for which Stream Deck a profile switch targets (#992). Populated from the `_deckDevices` global (the Elgato plugin publishes it like `_audioDeviceList`); page-local, not persisted; auto-selects with one deck. `ird-profile-switch device-from="<select id>"` reads it. `ird-audio-test` accepts a `preview="radar|voice|background"` attribute and, inside the settings window, sends `audioPreview` instead of bumping a per-action field.
+
 **`ird-warnings`** - Global warning banner. Auto-injected at the top of every Property Inspector by `head-common.ejs` (no per-template markup). Subscribes to the `_warnings` global setting and renders one banner per `{ id, level, message }` record. Plugins post/clear warnings with `setWarning`/`clearWarning` from `@iracedeck/deck-core`. See `@.claude/rules/global-settings.md` for the data shape. Do not add `<ird-warnings>` to individual templates — it is injected globally.
 
-**Never** use raw `<button>`, `<select>`, `<input>`, or `<textarea>` in a PI `.ejs`. Use an `sdpi-*` component or introduce a new `ird-*` component in `packages/pi-components/src/components/` if no suitable one exists.
+**Never** use raw `<button>`, `<select>`, `<input>`, or `<textarea>` in a PI `.ejs`. Use an `sdpi-*` component or introduce a new `ird-*` component in `packages/pi-components/src/components/` if no suitable one exists. The one deliberate exception is the settings window's own page chrome (`settings-window.ejs`, #992: the sidebar tab buttons and the key-binding search/category filter) — page-local UI that binds to no setting, on a page that is not a Property Inspector; every control there that stores a setting is still `sdpi-*`/`ird-*`.
 
 ### sdpi-components Library
 

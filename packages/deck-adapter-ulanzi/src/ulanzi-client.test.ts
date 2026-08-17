@@ -229,6 +229,18 @@ describe("normalizeFrame", () => {
     }
   });
 
+  it("surfaces the `sendToPlugin` openSettings marker as a global openSettings event (#992)", () => {
+    const events = normalizeFrame({
+      cmd: "sendToPlugin",
+      uuid: "u",
+      key: "5",
+      actionid: "a",
+      payload: { event: "openSettings" },
+    });
+
+    expect(events).toEqual([{ event: "openSettings", action: "u", context: "u___5___a" }]);
+  });
+
   it("ignores unused frames (`run`, `setactive`, acks)", () => {
     expect(normalizeFrame({ cmd: "run", uuid: "u", key: "5", actionid: "a" })).toEqual([]);
     expect(normalizeFrame({ cmd: "setactive", uuid: "u", key: "5", actionid: "a", active: true })).toEqual([]);

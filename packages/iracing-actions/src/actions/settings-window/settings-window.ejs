@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<%- include('head-common') %>
+		<title>iRaceDeck Settings</title>
+		<%#
+		  The dedicated settings window (issue #992). Served by the plugin process
+		  over loopback and opened as a chromeless browser app window; NOT a
+		  Property Inspector, though it reuses the PI framework verbatim. The plugin
+		  injects settings-window-bridge.js before sdpi-components.js at build time
+		  (same mechanism as the Ulanzi PI bridge), which redirects sdpi's socket to
+		  the plugin's fake host and drives connectElgatoStreamDeckSocket.
+
+		  Every control here is `global`, so only the global-settings subset of the
+		  PI protocol is ever exercised. The REAL global-*.ejs partials and ird-*
+		  components render inside this shell — a header, a sidebar, and one pane
+		  per tab — with these deliberate differences from the action PIs:
+		    - ALL key-binding categories in one searchable table, not one action's
+		      subset in an accordion. Every row hosts a real ird-key-binding, so
+		      each cell saves exactly as it does in a PI.
+		    - The PI's single "Common Settings" accordion is spread over tabs
+		      (General / Delays / SimHub / What's New / Diagnostics) using the same
+		      per-group partials the accordion assembles.
+		    - Stream Deck Profiles (Elgato builds only, per the `profiles` flag) get a
+		      device picker: switchToProfile targets the device whose PI is open, and
+		      this window has no device, so the page names one.
+		  Passing `settingsWindow: true` at each top-level include makes accordion.ejs
+		  render flat cards (inherited by nested includes — see accordion.ejs).
+		%>
+		<style>
+			:root {
+				--sw-bg: #2d2d2d; --sw-bg-alt: #262626; --sw-bg-nav: #232323; --sw-panel: #333333;
+				--sw-fg: #ffffff; --sw-fg-dim: #c8c8c8; --sw-fg-mute: #808080;
+				/* iRaceDeck brand: white, black, red — the accent is the website's #ce2128. */
+				--sw-line: #3a3a3a; --sw-accent: #ce2128;
+				--sw-font: "Segoe UI", Arial, Roboto, Helvetica, sans-serif;
+				/* Narrowest layout before the window scrolls horizontally instead of
+				   letting cards squash their contents into each other. */
+				--sw-min-width: 720px;
+			}
+			html, body { height: 100%; margin: 0; }
+			/* Rows are NAMED and assigned explicitly: head-common.ejs injects an
+			   <ird-warnings> element as the body's first child at load, and with
+			   positional rows that element took `auto` while the header stole the
+			   `1fr` — a header centred in a huge empty band. Named areas make the
+			   layout independent of what gets injected in front. */
+			body {
+				background: var(--sw-bg); color: var(--sw-fg);
+				font-family: var(--sw-font); font-size: 9pt;
+				display: grid; grid-template-rows: auto auto minmax(0, 1fr);
+				grid-template-areas: "warnings" "header" "main";
+				overflow: hidden; min-width: var(--sw-min-width);
+			}
+			body > ird-warnings { grid-area: warnings; }
+			.sw-header { grid-area: header; }
+			.sw-main { grid-area: main; }
+			.sw-header {
+				display: flex; align-items: center; gap: 12px;
+				padding: 12px 20px; border-bottom: 1px solid var(--sw-line); background: var(--sw-bg-alt);
+			}
+			.sw-logo { height: 26px; width: auto; display: block; }
+			.sw-header h1 {
+				font-size: 10pt; font-weight: 500; margin: 0 0 0 4px; color: var(--sw-fg-dim);
+				text-transform: uppercase; letter-spacing: 1.2px;
+			}
+			.sw-header-links { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+			.sw-header-links a { color: var(--sw-fg-dim); text-decoration: none; font-size: 9pt; }
+			.sw-header-links a:hover { color: var(--sw-fg); text-decoration: underline; }
+			.sw-version { color: var(--sw-fg-mute); font-size: 8pt; }
+			.sw-main { display: grid; grid-template-columns: 200px minmax(0, 1fr); min-height: 0; }
+			.sw-nav {
+				background: var(--sw-bg-nav); border-right: 1px solid var(--sw-line);
+				padding: 12px 8px; display: flex; flex-direction: column; gap: 2px; overflow-y: auto;
+			}
+			.sw-nav-item {
+				display: flex; align-items: center; width: 100%; text-align: left;
+				background: none; border: 0; color: var(--sw-fg-dim); font: inherit;
+				padding: 8px 12px; border-radius: 5px; cursor: pointer;
+			}
+			.sw-nav-item:hover { background: #2e2e2e; color: var(--sw-fg); }
+			.sw-nav-item.active { background: var(--sw-accent); color: #fff; }
+			.sw-badge {
+				margin-left: auto; background: rgba(255,255,255,.14);
+				border-radius: 9px; padding: 1px 7px; font-size: 7.5pt;
+			}
+			.sw-pane { padding: 18px 24px 32px; overflow: auto; min-height: 0; min-width: 0; }
+			.sw-pane[hidden] { display: none; }
+			.sw-pane h2 {
+				font-size: 10pt; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; margin: 0 0 4px;
+			}
+			.sw-sub { color: var(--sw-fg-mute); margin: 0 0 14px; }
+			.sw-toolbar { display: flex; gap: 8px; margin-bottom: 10px; }
+			.sw-toolbar input, .sw-toolbar select {
+				background: var(--sw-panel); border: 1px solid var(--sw-line); color: var(--sw-fg);
+				font: inherit; padding: 6px 10px; border-radius: 4px;
+			}
+			.sw-toolbar input { flex: 1; min-width: 0; }
+			.sw-table { width: 100%; border-collapse: collapse; }
+			.sw-table thead th {
+				position: sticky; top: 0; z-index: 1; background: var(--sw-bg);
+				text-align: left; font-size: 8pt; text-transform: uppercase; letter-spacing: .4px;
+				color: var(--sw-fg-mute); font-weight: 600; padding: 6px 10px; border-bottom: 1px solid var(--sw-line);
+			}
+			.sw-table tbody td { padding: 4px 10px; border-bottom: 1px solid #303030; vertical-align: middle; }
+			.sw-table tbody tr:hover { background: #313131; }
+			.sw-table td.cat { color: var(--sw-fg-mute); width: 200px; white-space: nowrap; }
+			.sw-table td.act { width: 220px; }
+			.sw-table td.bind ird-key-binding { display: block; max-width: 420px; }
+			.sw-table tr[hidden] { display: none; }
+			.sw-empty { color: var(--sw-fg-mute); padding: 18px 10px; }
+			/* Cards: two columns when there is room, one when there isn't. minmax()
+			   floors each column at a card's natural width so controls can never
+			   overflow into the neighbouring card; below one column the pane scrolls. */
+			.sw-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(440px, 1fr)); gap: 14px 24px; align-items: start; }
+			.sw-grid.single { grid-template-columns: minmax(0, 1fr); }
+			/* A second block under a pane's first grid (another grid, the links row). */
+			.sw-grid + .sw-grid, .sw-grid + .sw-links { margin-top: 14px; }
+			/* accordion.ejs in settingsWindow mode renders these */
+			.ird-sw-card {
+				background: var(--sw-bg-alt); border: 1px solid var(--sw-line); border-radius: 6px;
+				padding: 12px 16px 6px; min-width: 0; overflow: hidden;
+			}
+			.ird-sw-card-title {
+				font-family: var(--sw-font); font-size: 9pt; text-transform: uppercase; letter-spacing: .4px;
+				color: var(--sw-fg-dim); margin: 0 0 8px; font-weight: 600;
+			}
+			.sw-changelog { width: 100%; height: 70vh; min-height: 360px; border: 1px solid var(--sw-line); border-radius: 6px; background: #fff; }
+			.sw-links { display: flex; gap: 14px; margin: 0 0 12px; }
+			.sw-links a { color: var(--sw-fg-dim); text-decoration: none; }
+			.sw-links a:hover { text-decoration: underline; }
+		</style>
+	</head>
+	<body>
+		<header class="sw-header">
+			<img class="sw-logo" src="iracedeck-logo.png" alt="iRaceDeck" width="95" height="26" />
+			<h1>Settings</h1>
+			<div class="sw-header-links">
+				<%# External links open in the OS default browser via the shared PI
+				    external-link handler → openUrl → the plugin's fake host. %>
+				<a href="https://iracedeck.com/" target="_blank" rel="noopener noreferrer">iracedeck.com</a>
+				<a href="https://iracedeck.com/docs/" target="_blank" rel="noopener noreferrer">Documentation</a>
+				<span class="sw-version">v<%= version %></span>
+			</div>
+		</header>
+
+		<main class="sw-main">
+			<%
+			  var __rawBindings = require('./data/key-bindings.json');
+			  // One row per SETTING. A binding that key-bindings.json lists under two
+			  // categories (the FFB force pair sits under both Cockpit Misc and Force
+			  // Feedback, for their two PIs) is ONE global setting; two live inputs bound
+			  // to it would just mirror each other and inflate the count.
+			  var __seenSettings = {};
+			  var __allBindings = {};
+			  Object.keys(__rawBindings).forEach(function (c) {
+			    __allBindings[c] = __rawBindings[c].filter(function (b) {
+			      if (__seenSettings[b.setting]) return false;
+			      __seenSettings[b.setting] = true;
+			      return true;
+			    });
+			  });
+			  var __categories = Object.keys(__allBindings);
+			  var __total = __categories.reduce(function (n, c) { return n + __allBindings[c].length; }, 0);
+			  // Category display names are the action names (as in the manifest). The
+			  // camelCase → Title Case fallback derives most of them; only the ones it
+			  // cannot are listed here.
+			  var __labels = {
+			    aiSpotterControls: 'AI Spotter Controls', splitsDelta: 'Splits & Reference',
+			    toggleUi: 'Toggle UI Elements'
+			  };
+			  var __label = function (k) {
+			    return __labels[k] || k.replace(/([A-Z])/g, ' $1').replace(/^./, function (c) { return c.toUpperCase(); });
+			  };
+			  var __sw = { settingsWindow: true };
+			%>
+			<nav class="sw-nav" aria-label="Settings sections">
+				<button class="sw-nav-item active" data-pane="general" type="button">General</button>
+				<button class="sw-nav-item" data-pane="bindings" type="button">Key Bindings<span class="sw-badge"><%= __total %></span></button>
+				<button class="sw-nav-item" data-pane="appearance" type="button">Appearance</button>
+				<button class="sw-nav-item" data-pane="engineer" type="button">Race Engineer</button>
+				<% if (locals.platform?.features?.profiles !== false) { %>
+				<button class="sw-nav-item" data-pane="profiles" type="button">Profiles</button>
+				<% } %>
+				<button class="sw-nav-item" data-pane="delays" type="button">Delays</button>
+				<button class="sw-nav-item" data-pane="simhub" type="button">SimHub</button>
+				<button class="sw-nav-item" data-pane="updates" type="button">What's New</button>
+				<button class="sw-nav-item" data-pane="diagnostics" type="button">Diagnostics</button>
+			</nav>
+
+			<%# ---- General ---- %>
+			<section class="sw-pane" id="pane-general">
+				<h2>General</h2>
+				<p class="sw-sub">Behaviour that applies to every key.</p>
+				<div class="sw-grid">
+					<%- include('accordion', { title: 'Window Focus & Connection', content: include('global-common-window-focus'), settingsWindow: true }) %>
+					<%- include('accordion', { title: 'Dual-Press', content: include('global-common-dual-press'), settingsWindow: true }) %>
+				</div>
+			</section>
+
+			<%# ---- Key Bindings: one searchable table, every row a real ird-key-binding ---- %>
+			<section class="sw-pane" id="pane-bindings" hidden>
+				<h2>Key Bindings</h2>
+				<p class="sw-sub">All <%= __total %> bindings across <%= __categories.length %> categories. Each row saves as you change it, exactly like the Property Inspector.</p>
+				<%#
+				  Page-local filter UI, not settings — so plain form controls rather than
+				  sdpi-* (which bind to a setting). The window is not a Property Inspector.
+				%>
+				<div class="sw-toolbar">
+					<input type="search" id="sw-q" placeholder="Search bindings…" aria-label="Search bindings" autocomplete="off" />
+					<select id="sw-cat" aria-label="Filter by category">
+						<option value="">All categories</option>
+						<% __categories.forEach(function (c) { %><option value="<%= c %>"><%= __label(c) %></option><% }); %>
+					</select>
+				</div>
+				<table class="sw-table">
+					<thead><tr><th>Category</th><th>Action</th><th>Binding</th></tr></thead>
+					<tbody id="sw-rows">
+					<% __categories.forEach(function (c) { __allBindings[c].forEach(function (b) { %>
+						<tr data-cat="<%= c %>" data-text="<%= (__label(c) + ' ' + b.label).toLowerCase() %>">
+							<td class="cat"><%= __label(c) %></td>
+							<td class="act"><%= b.label %></td>
+							<td class="bind"><ird-key-binding setting="<%= b.setting %>" default="<%= b.default %>" global></ird-key-binding></td>
+						</tr>
+					<% }); }); %>
+					</tbody>
+				</table>
+				<div class="sw-empty" id="sw-empty" hidden>No bindings match.</div>
+			</section>
+
+			<%# ---- Appearance: the real global-* partials, rendered as flat cards ---- %>
+			<section class="sw-pane" id="pane-appearance" hidden>
+				<h2>Appearance</h2>
+				<p class="sw-sub">Plugin-wide defaults. Any key can still override these individually in its Property Inspector.</p>
+				<div class="sw-grid">
+					<%- include('global-title-defaults', __sw) %>
+					<%- include('global-color-defaults', __sw) %>
+					<%- include('global-border-defaults', __sw) %>
+					<%- include('global-graphic-defaults', __sw) %>
+					<%- include('global-flag-flash', __sw) %>
+				</div>
+			</section>
+
+			<%# ---- Race Engineer: the three partials pit-crew.ejs wraps in its accordions ---- %>
+			<section class="sw-pane" id="pane-engineer" hidden>
+				<h2>Race Engineer</h2>
+				<p class="sw-sub">Voice, radar, per-callout opt-ins and setup warnings — plugin-wide, the same settings the Pit Crew action's inspector shows.</p>
+				<div class="sw-grid">
+					<%- include('accordion', { title: 'Race Engineer & Radar', content: include('race-engineer-settings'), settingsWindow: true }) %>
+					<%- include('accordion', { title: 'Setup Warning Patterns', content: include('setup-warning-patterns'), settingsWindow: true }) %>
+				</div>
+				<div class="sw-grid single">
+					<%- include('accordion', { title: 'Callouts', content: include('race-engineer-callouts'), settingsWindow: true }) %>
+				</div>
+			</section>
+
+			<%# ---- Profiles (Elgato only): the same partial as the PI, in device-picker mode ---- %>
+			<% if (locals.platform?.features?.profiles !== false) { %>
+			<section class="sw-pane" id="pane-profiles" hidden>
+				<h2>Profiles</h2>
+				<p class="sw-sub">Install or switch to a ready-made iRaceDeck profile on a connected Stream Deck.</p>
+				<div class="sw-grid single">
+					<%- include('global-stream-deck-profiles', __sw) %>
+				</div>
+			</section>
+			<% } %>
+
+			<%# ---- Delays ---- %>
+			<section class="sw-pane" id="pane-delays" hidden>
+				<h2>Delays</h2>
+				<p class="sw-sub">Timing tunables for actions that drive iRacing's own UI. The defaults suit most machines.</p>
+				<div class="sw-grid">
+					<%- include('accordion', { title: 'Chat', content: include('global-common-chat'), settingsWindow: true }) %>
+					<%- include('accordion', { title: 'Replay', content: include('global-common-replay'), settingsWindow: true }) %>
+				</div>
+			</section>
+
+			<%# ---- SimHub ---- %>
+			<section class="sw-pane" id="pane-simhub" hidden>
+				<h2>SimHub</h2>
+				<p class="sw-sub">Where iRaceDeck reaches SimHub Control Mapper for SimHub-role bindings.</p>
+				<div class="sw-grid">
+					<%- include('accordion', { title: 'Control Mapper Server', content: include('global-common-simhub'), settingsWindow: true }) %>
+				</div>
+			</section>
+
+			<%# ---- What's New: the notification setting + the changelog itself ---- %>
+			<section class="sw-pane" id="pane-updates" hidden>
+				<h2>What's New</h2>
+				<p class="sw-sub">Release notes, and when iRaceDeck should show them to you after an update.</p>
+				<div class="sw-grid single">
+					<%- include('accordion', { title: 'After an update', content: include('global-common-updates'), settingsWindow: true }) %>
+				</div>
+				<p class="sw-links">
+					<a href="https://iracedeck.com/changelog/" target="_blank" rel="noopener noreferrer">Open the changelog in your browser</a>
+				</p>
+				<%# The live changelog page, embedded. Needs internet; the link above is the fallback. %>
+				<iframe class="sw-changelog" src="https://iracedeck.com/changelog/" title="iRaceDeck changelog" loading="lazy" referrerpolicy="no-referrer"></iframe>
+			</section>
+
+			<%# ---- Diagnostics ---- %>
+			<section class="sw-pane" id="pane-diagnostics" hidden>
+				<h2>Diagnostics</h2>
+				<p class="sw-sub">For troubleshooting and support.</p>
+				<div class="sw-grid">
+					<%- include('accordion', { title: 'Logging', content: include('global-common-diagnostics'), settingsWindow: true }) %>
+				</div>
+			</section>
+		</main>
+
+		<script>
+			(function () {
+				var panes = Array.prototype.slice.call(document.querySelectorAll(".sw-pane"));
+				var items = Array.prototype.slice.call(document.querySelectorAll(".sw-nav-item"));
+				items.forEach(function (btn) {
+					btn.addEventListener("click", function () {
+						items.forEach(function (b) { b.classList.remove("active"); });
+						btn.classList.add("active");
+						panes.forEach(function (p) { p.hidden = p.id !== "pane-" + btn.dataset.pane; });
+					});
+				});
+				var q = document.getElementById("sw-q"), cat = document.getElementById("sw-cat");
+				var rows = Array.prototype.slice.call(document.querySelectorAll("#sw-rows tr"));
+				var empty = document.getElementById("sw-empty");
+				function filter() {
+					var term = q.value.trim().toLowerCase(), c = cat.value, shown = 0;
+					rows.forEach(function (tr) {
+						var ok = (!c || tr.dataset.cat === c) && (!term || tr.dataset.text.indexOf(term) !== -1);
+						tr.hidden = !ok;
+						if (ok) shown++;
+					});
+					empty.hidden = shown !== 0;
+				}
+				q.addEventListener("input", filter);
+				cat.addEventListener("change", filter);
+			})();
+		</script>
+	</body>
+</html>

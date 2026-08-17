@@ -38,6 +38,7 @@ import {
   UI_TEXT,
 } from "./key-binding-utils.js";
 import { KEY_CODE_MAP, type Modifier, resolveEventCode } from "./key-maps.js";
+import { probeSimHub } from "./simhub-probe.js";
 
 /**
  * SYNC NOTE: The types below (SimHubBindingValue, BindingValue) and the
@@ -180,34 +181,30 @@ async function ensureSimHubRolesFetched(): Promise<void> {
     return;
   }
 
+  // The endpoint this probe is for. If the host/port setting changes while the
+  // request is in flight, its answer describes the OLD endpoint and is dropped
+  // (fetchDone stays false, so the next call probes the new one).
+  const host = simHubHost;
+  const port = simHubPort;
+
   simHubFetchPromise = (async () => {
+    // One fetch path for every surface (#992): inside the settings window the
+    // probe answers from the plugin's same-origin proxy, since a direct fetch
+    // to SimHub is cross-origin there and always looked unreachable.
     try {
-      const url = `http://${simHubHost}:${simHubPort}/api/ControlMapper/GetRoles/`;
-      const response = await fetch(url, { signal: AbortSignal.timeout(500) });
+      // The probe never throws: unreachable → { reachable: false, roles: [] }.
+      // ONE request answers both — a second probe would only repeat what the
+      // first response already said (and double the wait when SimHub is down).
+      const { reachable, roles } = await probeSimHub(host, port);
 
-      if (response.ok) {
-        const json: unknown = await response.json();
+      if (host !== simHubHost || port !== simHubPort) return;
 
-        if (Array.isArray(json) && json.every((item) => typeof item === "string")) {
-          simHubRoles = (json as string[])
-            .slice()
-            .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
-          simHubReachable = true;
-        } else {
-          console.warn("[ird-key-binding] SimHub GetRoles returned unexpected format");
-          simHubRoles = [];
-          simHubReachable = false;
-        }
-      } else {
-        simHubRoles = [];
-        simHubReachable = false;
-      }
-    } catch (error) {
-      console.warn("[ird-key-binding] Failed to fetch SimHub roles:", error);
-      simHubRoles = [];
-      simHubReachable = false;
-    } finally {
+      simHubReachable = reachable;
+      simHubRoles = roles.slice().sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
       simHubFetchDone = true;
+
+      if (!simHubReachable) console.warn("[ird-key-binding] SimHub not reachable; role list empty");
+    } finally {
       simHubFetchPromise = null;
     }
   })();
@@ -727,3 +724,25 @@ if (typeof customElements !== "undefined") {
 }
 
 export { KeyBindingInput };
+
+/** @internal Exported for testing — the SimHub probe state machine. */
+export const _simHubProbe = {
+  ensureFetched: ensureSimHubRolesFetched,
+  subscribe: subscribeToSimHubSettings,
+  state: () => ({
+    host: simHubHost,
+    port: simHubPort,
+    done: simHubFetchDone,
+    reachable: simHubReachable,
+    roles: simHubRoles.slice(),
+  }),
+  reset: () => {
+    simHubHost = "127.0.0.1";
+    simHubPort = 8888;
+    simHubRoles = [];
+    simHubReachable = false;
+    simHubFetchDone = false;
+    simHubFetchPromise = null;
+    simHubSettingsSubscribed = false;
+  },
+};

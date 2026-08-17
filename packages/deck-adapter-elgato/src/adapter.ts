@@ -262,6 +262,8 @@ function wrapTouchTapEvent<T>(ev: TouchTapEvent<T & JsonObject>): IDeckTouchTapE
  * Implements IDeckPlatformAdapter by delegating to the Elgato SDK.
  */
 export class ElgatoPlatformAdapter implements IDeckPlatformAdapter {
+  private openSettingsListeners: Array<() => void> = [];
+
   constructor(private readonly sd: typeof StreamDeck) {
     // Route "Stream Deck Profiles" settings-accordion button presses — sent from
     // the Property Inspector via `sendToPlugin` — to `switchToProfile`, targeting
@@ -274,8 +276,20 @@ export class ElgatoPlatformAdapter implements IDeckPlatformAdapter {
   }
 
   /**
-   * Handle a Property Inspector `sendToPlugin` payload. Currently only the
-   * `switchToProfile` command is recognised; anything else is ignored.
+   * Register a listener for the Property Inspector's "Open iRaceDeck Settings"
+   * request (issue #992). Like `openUrl`, this is a concrete-adapter method
+   * rather than an `IDeckPlatformAdapter` member: the PI→plugin transport
+   * differs per host, and keeping it off the interface avoids touching every
+   * typed mock adapter.
+   */
+  onOpenSettingsRequest(listener: () => void): void {
+    this.openSettingsListeners.push(listener);
+  }
+
+  /**
+   * Handle a Property Inspector `sendToPlugin` payload. Recognises the
+   * `switchToProfile` (#736) and `openSettings` (#992) commands; anything else
+   * is ignored.
    */
   private handleSendToPlugin(deviceId: string, deviceType: number | undefined, payload: unknown): void {
     if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
@@ -284,20 +298,46 @@ export class ElgatoPlatformAdapter implements IDeckPlatformAdapter {
 
     const message = payload as { event?: unknown; profile?: unknown; page?: unknown };
 
+    if (message.event === "openSettings") {
+      for (const listener of this.openSettingsListeners) listener();
+
+      return;
+    }
+
     if (message.event !== "switchToProfile") {
       return;
     }
 
-    // The "Stream Deck Profiles" accordion sends clean display names (one row
-    // per template); resolve to the pressing device's manifest name by
-    // appending its suffix (#753). Idempotent for already-suffixed names.
-    const profile = typeof message.profile === "string" ? deviceProfileName(message.profile, deviceType) : undefined;
-    const page = typeof message.page === "number" ? message.page : undefined;
+    this.switchToBundledProfile(
+      deviceId,
+      typeof message.profile === "string" ? message.profile : undefined,
+      typeof message.page === "number" ? message.page : undefined,
+      deviceType,
+    );
+  }
 
-    // Route through the deck-core switcher singleton (not this.switchToProfile
-    // directly) so the switch is recorded in the per-device profile history and
-    // the Switch Profile "Back to previous" mode can walk back to it (#762).
-    void requestProfileSwitch(deviceId, profile, page);
+  /**
+   * Switch `deviceId` to a bundled profile named by its clean DISPLAY name
+   * (one row per template in the "Stream Deck Profiles" accordion): resolve it
+   * to the device's manifest name by appending the device-type suffix (#753 —
+   * idempotent for already-suffixed names) and route through the deck-core
+   * switcher singleton (not `this.switchToProfile` directly) so the switch is
+   * recorded in the per-device profile history and the Switch Profile "Back to
+   * previous" mode can walk back to it (#762).
+   *
+   * The ONE dispatch for both surfaces (#992): the PI path passes the pressing
+   * device's type from its event; the settings window names the device
+   * explicitly and the type is looked up here.
+   */
+  switchToBundledProfile(deviceId: string, profile: string | undefined, page?: number, deviceType?: number): void {
+    const type = deviceType ?? this.sd.devices.getDeviceById(deviceId)?.type;
+    const manifestName = profile !== undefined ? deviceProfileName(profile, type) : undefined;
+
+    // The registered switcher awaits `sd.profiles.switchToProfile`; a rejected
+    // SDK call must be logged, not left as an unhandled rejection.
+    requestProfileSwitch(deviceId, manifestName, page).catch((error: unknown) => {
+      this.createLogger("ProfileSwitch").error(`Profile switch failed: ${String(error)}`);
+    });
   }
 
   onDidReceiveGlobalSettings(callback: (settings: unknown) => void): void {

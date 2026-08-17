@@ -1,0 +1,15 @@
+<%#
+  Common settings — Diagnostics (issue #992 split). Emits items only.
+%>
+<sdpi-item label="Debug Logging">
+  <sdpi-checkbox
+    setting="debugLogging"
+    label="Enable debug logging"
+    global
+  ></sdpi-checkbox>
+</sdpi-item>
+<div class="ird-supporting-text">
+  Writes verbose debug detail to the plugin log. Leave it off for normal use; enable it
+  only to capture a log when troubleshooting or reporting an issue, then turn it back off.
+  Production logs at info level by default. Takes effect immediately — no restart needed.
+</div>

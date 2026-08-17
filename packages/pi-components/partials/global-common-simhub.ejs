@@ -1,0 +1,13 @@
+<%#
+  Common settings — SimHub Server (issue #992 split). Emits items only.
+%>
+<sdpi-item label="Host">
+  <sdpi-textfield setting="simHubHost" default="127.0.0.1" global></sdpi-textfield>
+</sdpi-item>
+<sdpi-item label="Port">
+  <sdpi-textfield setting="simHubPort" default="8888" global pattern="[0-9]{1,5}" inputmode="numeric"></sdpi-textfield>
+</sdpi-item>
+<div class="ird-supporting-text">
+  Connection settings for SimHub Control Mapper integration.
+  Default: 127.0.0.1:8888
+</div>

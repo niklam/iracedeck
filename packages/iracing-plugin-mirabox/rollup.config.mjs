@@ -1,15 +1,23 @@
+import { processAndCopyAudioAssetsPlugin } from "@iracedeck/audio-assets/build";
+import {
+  browserDir,
+  injectBridgeScriptPlugin,
+  partialsDir,
+  piTemplatePlugin,
+  SETTINGS_WINDOW_BRIDGE,
+  SETTINGS_WINDOW_HTML,
+  SETTINGS_WINDOW_LOGO,
+} from "@iracedeck/pi-components/build";
 import commonjs from "@rollup/plugin-commonjs";
 import json from "@rollup/plugin-json";
 import nodeResolve from "@rollup/plugin-node-resolve";
 import replace from "@rollup/plugin-replace";
 import terser from "@rollup/plugin-terser";
 import typescript from "@rollup/plugin-typescript";
+import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import url from "node:url";
 import process from "node:process";
-import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
-import { processAndCopyAudioAssetsPlugin } from "@iracedeck/audio-assets/build";
-import { browserDir, partialsDir, piTemplatePlugin } from "@iracedeck/pi-components/build";
+import url from "node:url";
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 const rootPackageJson = JSON.parse(readFileSync(path.resolve(__dirname, "../../package.json"), "utf-8"));
@@ -23,20 +31,20 @@ const elgatoPluginPath = path.resolve(__dirname, "../iracing-plugin-stream-deck"
  * objects are merged recursively; arrays and primitives are replaced.
  */
 function deepMergeObjects(base, override) {
-	const result = { ...base };
-	for (const key of Object.keys(override)) {
-		const overrideVal = override[key];
-		if (overrideVal && typeof overrideVal === "object" && !Array.isArray(overrideVal)) {
-			result[key] = deepMergeObjects(base[key] ?? {}, overrideVal);
-		} else {
-			result[key] = overrideVal;
-		}
-	}
-	return result;
+  const result = { ...base };
+  for (const key of Object.keys(override)) {
+    const overrideVal = override[key];
+    if (overrideVal && typeof overrideVal === "object" && !Array.isArray(overrideVal)) {
+      result[key] = deepMergeObjects(base[key] ?? {}, overrideVal);
+    } else {
+      result[key] = overrideVal;
+    }
+  }
+  return result;
 }
 
 function isPlainObject(value) {
-	return value !== null && typeof value === "object" && !Array.isArray(value);
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 /**
@@ -46,32 +54,32 @@ function isPlainObject(value) {
  * leak into the merged flags or crash the build.
  */
 function partitionOverride(committed, override, prefix = "") {
-	const known = {};
-	const unknown = [];
-	for (const key of Object.keys(override)) {
-		if (!Object.prototype.hasOwnProperty.call(committed, key)) {
-			unknown.push(`${prefix}${key}`);
-			continue;
-		}
-		const committedVal = committed[key];
-		const overrideVal = override[key];
-		if (isPlainObject(overrideVal)) {
-			if (!isPlainObject(committedVal)) {
-				// Nested object where committed has a leaf → treat as unknown
-				unknown.push(`${prefix}${key}`);
-				continue;
-			}
-			const nested = partitionOverride(committedVal, overrideVal, `${prefix}${key}.`);
-			known[key] = nested.known;
-			unknown.push(...nested.unknown);
-		} else if (isPlainObject(committedVal)) {
-			// Leaf override for a nested branch → treat as unknown
-			unknown.push(`${prefix}${key}`);
-		} else {
-			known[key] = overrideVal;
-		}
-	}
-	return { known, unknown };
+  const known = {};
+  const unknown = [];
+  for (const key of Object.keys(override)) {
+    if (!Object.prototype.hasOwnProperty.call(committed, key)) {
+      unknown.push(`${prefix}${key}`);
+      continue;
+    }
+    const committedVal = committed[key];
+    const overrideVal = override[key];
+    if (isPlainObject(overrideVal)) {
+      if (!isPlainObject(committedVal)) {
+        // Nested object where committed has a leaf → treat as unknown
+        unknown.push(`${prefix}${key}`);
+        continue;
+      }
+      const nested = partitionOverride(committedVal, overrideVal, `${prefix}${key}.`);
+      known[key] = nested.known;
+      unknown.push(...nested.unknown);
+    } else if (isPlainObject(committedVal)) {
+      // Leaf override for a nested branch → treat as unknown
+      unknown.push(`${prefix}${key}`);
+    } else {
+      known[key] = overrideVal;
+    }
+  }
+  return { known, unknown };
 }
 
 /**
@@ -88,14 +96,12 @@ const localFeaturesPath = path.resolve(__dirname, "../../feature-flags.local.jso
 const committedFeatures = JSON.parse(readFileSync(platformFeaturesPath, "utf-8"));
 let platformFeatures = committedFeatures;
 if (existsSync(localFeaturesPath)) {
-	const localFeatures = JSON.parse(readFileSync(localFeaturesPath, "utf-8"));
-	const { known, unknown } = partitionOverride(committedFeatures, localFeatures);
-	if (unknown.length > 0) {
-		console.warn(
-			`[platform-features] feature-flags.local.json has unknown keys (ignored): ${unknown.join(", ")}`,
-		);
-	}
-	platformFeatures = deepMergeObjects(committedFeatures, known);
+  const localFeatures = JSON.parse(readFileSync(localFeaturesPath, "utf-8"));
+  const { known, unknown } = partitionOverride(committedFeatures, localFeatures);
+  if (unknown.length > 0) {
+    console.warn(`[platform-features] feature-flags.local.json has unknown keys (ignored): ${unknown.join(", ")}`);
+  }
+  platformFeatures = deepMergeObjects(committedFeatures, known);
 }
 
 /**
@@ -103,26 +109,26 @@ if (existsSync(localFeaturesPath)) {
  * Handles both relative imports and @iracedeck/icons/ package imports.
  */
 function svgPlugin() {
-	return {
-		name: "svg",
-		resolveId(source, importer) {
-			if (source.endsWith(".svg")) {
-				if (source.startsWith("@iracedeck/icons/")) {
-					const relativePath = source.replace("@iracedeck/icons/", "");
-					return path.join(iconsPackagePath, relativePath);
-				}
-				if (importer) {
-					return path.resolve(path.dirname(importer), source);
-				}
-			}
-		},
-		load(id) {
-			if (id.endsWith(".svg")) {
-				const content = readFileSync(id, "utf-8");
-				return `export default ${JSON.stringify(content)};`;
-			}
-		}
-	};
+  return {
+    name: "svg",
+    resolveId(source, importer) {
+      if (source.endsWith(".svg")) {
+        if (source.startsWith("@iracedeck/icons/")) {
+          const relativePath = source.replace("@iracedeck/icons/", "");
+          return path.join(iconsPackagePath, relativePath);
+        }
+        if (importer) {
+          return path.resolve(path.dirname(importer), source);
+        }
+      }
+    },
+    load(id) {
+      if (id.endsWith(".svg")) {
+        const content = readFileSync(id, "utf-8");
+        return `export default ${JSON.stringify(content)};`;
+      }
+    },
+  };
 }
 
 /**
@@ -133,46 +139,48 @@ function svgPlugin() {
  * - PI browser assets (`sdpi-components.js`, `pi-components.js`) come from `@iracedeck/pi-components`.
  */
 function copyAssetsPlugin(sdPlugin) {
-	return {
-		name: "copy-assets",
-		generateBundle() {
-			// Copy per-action static icons from @iracedeck/iracing-actions into {sdPlugin}/imgs/actions/<name>/.
-			const destActions = path.join(sdPlugin, "imgs", "actions");
-			for (const entry of readdirSync(actionTemplatesDir, { withFileTypes: true })) {
-				if (!entry.isDirectory() || entry.name === "data") continue;
-				const actionDir = path.join(actionTemplatesDir, entry.name);
-				for (const file of ["icon.svg", "key.svg"]) {
-					const src = path.join(actionDir, file);
-					if (!existsSync(src)) continue;
-					const destDir = path.join(destActions, entry.name);
-					mkdirSync(destDir, { recursive: true });
-					copyFileSync(src, path.join(destDir, file));
-				}
-			}
+  return {
+    name: "copy-assets",
+    generateBundle() {
+      // Copy per-action static icons from @iracedeck/iracing-actions into {sdPlugin}/imgs/actions/<name>/.
+      const destActions = path.join(sdPlugin, "imgs", "actions");
+      for (const entry of readdirSync(actionTemplatesDir, { withFileTypes: true })) {
+        if (!entry.isDirectory() || entry.name === "data") continue;
+        const actionDir = path.join(actionTemplatesDir, entry.name);
+        for (const file of ["icon.svg", "key.svg"]) {
+          const src = path.join(actionDir, file);
+          if (!existsSync(src)) continue;
+          const destDir = path.join(destActions, entry.name);
+          mkdirSync(destDir, { recursive: true });
+          copyFileSync(src, path.join(destDir, file));
+        }
+      }
 
-			// Copy plugin-level icons (category-icon, marketplace, etc.) from the Elgato plugin.
-			// TODO: move to a dedicated branding package when that refactor lands.
-			const srcPluginImgs = path.join(elgatoPluginPath, "com.iracedeck.sd.core.sdPlugin", "imgs", "plugin");
-			const destPluginImgs = path.join(sdPlugin, "imgs", "plugin");
-			if (existsSync(srcPluginImgs)) {
-				cpSync(srcPluginImgs, destPluginImgs, { recursive: true });
-			}
+      // Copy plugin-level icons (category-icon, marketplace, etc.) from the Elgato plugin.
+      // TODO: move to a dedicated branding package when that refactor lands.
+      const srcPluginImgs = path.join(elgatoPluginPath, "com.iracedeck.sd.core.sdPlugin", "imgs", "plugin");
+      const destPluginImgs = path.join(sdPlugin, "imgs", "plugin");
+      if (existsSync(srcPluginImgs)) {
+        cpSync(srcPluginImgs, destPluginImgs, { recursive: true });
+      }
 
-			// Copy PI browser assets from @iracedeck/pi-components
-			const uiDir = path.join(sdPlugin, "ui");
-			if (!existsSync(uiDir)) {
-				mkdirSync(uiDir, { recursive: true });
-			}
-			for (const jsFile of ["sdpi-components.js", "pi-components.js"]) {
-				const src = path.join(browserDir, jsFile);
-				if (!existsSync(src)) {
-					this.error(`Missing ${jsFile} in @iracedeck/pi-components. Build it first: pnpm --filter @iracedeck/pi-components build`);
-				}
-				copyFileSync(src, path.join(uiDir, jsFile));
-			}
-			this.info?.("Copied PI browser assets from @iracedeck/pi-components");
-		},
-	};
+      // Copy PI browser assets from @iracedeck/pi-components
+      const uiDir = path.join(sdPlugin, "ui");
+      if (!existsSync(uiDir)) {
+        mkdirSync(uiDir, { recursive: true });
+      }
+      for (const jsFile of ["sdpi-components.js", "pi-components.js", SETTINGS_WINDOW_BRIDGE, SETTINGS_WINDOW_LOGO]) {
+        const src = path.join(browserDir, jsFile);
+        if (!existsSync(src)) {
+          this.error(
+            `Missing ${jsFile} in @iracedeck/pi-components. Build it first: pnpm --filter @iracedeck/pi-components build`,
+          );
+        }
+        copyFileSync(src, path.join(uiDir, jsFile));
+      }
+      this.info?.("Copied PI browser assets from @iracedeck/pi-components");
+    },
+  };
 }
 
 /**
@@ -180,22 +188,22 @@ function copyAssetsPlugin(sdPlugin) {
  * VSD Craft requires <html> without a lang attribute.
  */
 function stripHtmlLangPlugin(outputDir) {
-	return {
-		name: "strip-html-lang",
-		writeBundle() {
-			if (!existsSync(outputDir)) return;
+  return {
+    name: "strip-html-lang",
+    writeBundle() {
+      if (!existsSync(outputDir)) return;
 
-			const htmlFiles = readdirSync(outputDir).filter(f => f.endsWith(".html"));
-			for (const file of htmlFiles) {
-				const filePath = path.join(outputDir, file);
-				const content = readFileSync(filePath, "utf-8");
-				const updated = content.replace(/<html\s+lang="[^"]*"/, "<html");
-				if (updated !== content) {
-					writeFileSync(filePath, updated, "utf-8");
-				}
-			}
-		},
-	};
+      const htmlFiles = readdirSync(outputDir).filter((f) => f.endsWith(".html"));
+      for (const file of htmlFiles) {
+        const filePath = path.join(outputDir, file);
+        const content = readFileSync(filePath, "utf-8");
+        const updated = content.replace(/<html\s+lang="[^"]*"/, "<html");
+        if (updated !== content) {
+          writeFileSync(filePath, updated, "utf-8");
+        }
+      }
+    },
+  };
 }
 
 const isWatching = !!process.env.ROLLUP_WATCH;
@@ -205,152 +213,170 @@ const sdPlugin = "com.iracedeck.sd.core.sdPlugin";
  * @type {import('rollup').RollupOptions}
  */
 const config = {
-	input: "src/plugin.ts",
-	onwarn(warning, warn) {
-		// Suppress circular dependency warnings from zod and semver internals
-		if (warning.code === "CIRCULAR_DEPENDENCY" && warning.ids?.some(id => id.includes("node_modules\\zod\\") || id.includes("node_modules/zod/") || id.includes("node_modules\\semver\\") || id.includes("node_modules/semver/"))) return;
-		warn(warning);
-	},
-	output: {
-		file: `${sdPlugin}/bin/plugin.js`,
-		sourcemap: isWatching,
-		sourcemapPathTransform: (relativeSourcePath, sourcemapPath) => {
-			return url.pathToFileURL(path.resolve(path.dirname(sourcemapPath), relativeSourcePath)).href;
-		},
-		inlineDynamicImports: true
-	},
-	external: ["@iracedeck/audio-native", "@iracedeck/iracing-native", "@resvg/resvg-js", "yaml", "keysender", "ws"],
-	plugins: [
-		// Resolve .js imports to .ts files for the raw-TypeScript actions package.
-		// Only applies to relative imports (starting with ".") within the actions package.
-		{
-			name: "resolve-actions-ts",
-			resolveId(source, importer) {
-				if (!importer || !source.startsWith(".") || !source.endsWith(".js")) return null;
-				// Only handle imports from the actions package
-				const normalizedImporter = importer.replace(/\\/g, "/");
-				if (!normalizedImporter.includes("/iracing-actions/src/")) return null;
-				const tsPath = path.resolve(path.dirname(importer), source.replace(/\.js$/, ".ts"));
-				return tsPath;
-			},
-		},
-		svgPlugin(),
-		json(),
-		replace({
-			preventAssignment: true,
-			values: {
-				__FEATURE_DIAL_FEEDBACK__: JSON.stringify(platformFeatures.features.dialFeedback),
-				__FEATURE_PNG_RASTERIZATION__: JSON.stringify(platformFeatures.features.pngRasterization),
-			},
-		}),
-		// Compile PI templates from @iracedeck/iracing-actions
-		piTemplatePlugin({
-			templatesDir: actionTemplatesDir,
-			outputDir: `${sdPlugin}/ui`,
-			partialsDir,
-			version: rootPackageJson.version,
-			platformFeatures,
-		}),
-		// Copy imgs/ from the Elgato plugin and PI browser assets from @iracedeck/pi-components
-		copyAssetsPlugin(sdPlugin),
-		// Copy shared audio assets from @iracedeck/audio-assets, applying the
-		// radio-engineer ffmpeg treatment to voice categories and caching output.
-		processAndCopyAudioAssetsPlugin({ sdPlugin }),
-		// Copy the bundled Arimo fonts from @iracedeck/rasterizer into {sdPlugin}/assets/fonts
-		{
-			name: "copy-rasterizer-fonts",
-			generateBundle() {
-				const fontsSrc = path.resolve(__dirname, "../rasterizer/fonts");
-				const destDir = path.join(sdPlugin, "assets", "fonts");
-				mkdirSync(destDir, { recursive: true });
-				for (const file of readdirSync(fontsSrc)) {
-					copyFileSync(path.join(fontsSrc, file), path.join(destDir, file));
-				}
-			},
-		},
-		// Ship the project license and aggregated third-party notices at the plugin root (#905)
-		{
-			name: "copy-license-files",
-			generateBundle() {
-				for (const file of ["LICENSE", "THIRD-PARTY-LICENSES.md"]) {
-					copyFileSync(path.resolve(__dirname, "../..", file), path.join(sdPlugin, file));
-				}
-			},
-		},
-		{
-			name: "watch-externals",
-			buildStart: function () {
-				this.addWatchFile(`${sdPlugin}/manifest.json`);
-				this.addWatchFile(platformFeaturesPath);
-				if (existsSync(localFeaturesPath)) this.addWatchFile(localFeaturesPath);
-				// Recursively watch SVG files in a directory
-				const watchSvgsRecursive = (dir) => {
-					try {
-						for (const entry of readdirSync(dir, { withFileTypes: true })) {
-							const fullPath = path.join(dir, entry.name);
-							if (entry.isDirectory()) watchSvgsRecursive(fullPath);
-							else if (entry.name.endsWith(".svg")) this.addWatchFile(fullPath);
-						}
-					} catch {
-						// directory may not exist
-					}
-				};
-				// Watch local icons directory, shared icons package, and per-action static assets
-				watchSvgsRecursive(path.resolve("icons"));
-				watchSvgsRecursive(iconsPackagePath);
-				watchSvgsRecursive(actionTemplatesDir);
-			},
-		},
-		typescript({
-			mapRoot: isWatching ? "./" : undefined,
-			// Include both the plugin source and the raw-TypeScript actions package
-			include: ["src/**/*.ts", "../iracing-actions/src/**/*.ts"],
-		}),
-		nodeResolve({
-			browser: false,
-			exportConditions: ["node"],
-			preferBuiltins: true
-		}),
-		commonjs({
-			ignore: (id) => {
-				// Exclude .node native modules from bundling
-				return id.endsWith(".node");
-			},
-		}),
-		// Strip lang="en" from generated HTML (VSD Craft requirement)
-		stripHtmlLangPlugin(`${sdPlugin}/ui`),
-		!isWatching && terser(),
-		{
-			name: "emit-module-package-file",
-			generateBundle() {
-				const pkg = {
-					type: "module",
-					dependencies: {
-						"@iracedeck/audio-native": "file:../../../audio-native",
-						"@iracedeck/iracing-native": "file:../../../iracing-native",
-						"@resvg/resvg-js": "2.6.2",
-						ws: "8.18.2",
-						yaml: "2.8.2",
-					},
-					optionalDependencies: {
-						"keysender": "2.4.0",
-					}
-				};
-				this.emitFile({ fileName: "package.json", source: JSON.stringify(pkg, null, 2), type: "asset" });
-			},
-		},
-		{
-			name: "emit-plugin-config",
-			generateBundle() {
-				const config = {
-					version: rootPackageJson.version,
-					platform: "mirabox",
-					featureFlags: platformFeatures,
-				};
-				this.emitFile({ fileName: "config.json", source: JSON.stringify(config, null, 2), type: "asset" });
-			},
-		},
-	],
+  input: "src/plugin.ts",
+  onwarn(warning, warn) {
+    // Suppress circular dependency warnings from zod and semver internals
+    if (
+      warning.code === "CIRCULAR_DEPENDENCY" &&
+      warning.ids?.some(
+        (id) =>
+          id.includes("node_modules\\zod\\") ||
+          id.includes("node_modules/zod/") ||
+          id.includes("node_modules\\semver\\") ||
+          id.includes("node_modules/semver/"),
+      )
+    )
+      return;
+    warn(warning);
+  },
+  output: {
+    file: `${sdPlugin}/bin/plugin.js`,
+    sourcemap: isWatching,
+    sourcemapPathTransform: (relativeSourcePath, sourcemapPath) => {
+      return url.pathToFileURL(path.resolve(path.dirname(sourcemapPath), relativeSourcePath)).href;
+    },
+    inlineDynamicImports: true,
+  },
+  external: ["@iracedeck/audio-native", "@iracedeck/iracing-native", "@resvg/resvg-js", "yaml", "keysender", "ws"],
+  plugins: [
+    // Resolve .js imports to .ts files for the raw-TypeScript actions package.
+    // Only applies to relative imports (starting with ".") within the actions package.
+    {
+      name: "resolve-actions-ts",
+      resolveId(source, importer) {
+        if (!importer || !source.startsWith(".") || !source.endsWith(".js")) return null;
+        // Only handle imports from the actions package
+        const normalizedImporter = importer.replace(/\\/g, "/");
+        if (!normalizedImporter.includes("/iracing-actions/src/")) return null;
+        const tsPath = path.resolve(path.dirname(importer), source.replace(/\.js$/, ".ts"));
+        return tsPath;
+      },
+    },
+    svgPlugin(),
+    json(),
+    replace({
+      preventAssignment: true,
+      values: {
+        __FEATURE_DIAL_FEEDBACK__: JSON.stringify(platformFeatures.features.dialFeedback),
+        __FEATURE_PNG_RASTERIZATION__: JSON.stringify(platformFeatures.features.pngRasterization),
+      },
+    }),
+    // Compile PI templates from @iracedeck/iracing-actions
+    piTemplatePlugin({
+      templatesDir: actionTemplatesDir,
+      outputDir: `${sdPlugin}/ui`,
+      partialsDir,
+      version: rootPackageJson.version,
+      platformFeatures,
+    }),
+    // Settings-window bridge into settings-window.html only (#992): it must load
+    // before sdpi-components.js so it can redirect the socket to the plugin's
+    // loopback fake host with the launch token.
+    injectBridgeScriptPlugin({
+      outputDir: `${sdPlugin}/ui`,
+      bridge: SETTINGS_WINDOW_BRIDGE,
+      include: (file) => file === SETTINGS_WINDOW_HTML,
+    }),
+    // Copy imgs/ from the Elgato plugin and PI browser assets from @iracedeck/pi-components
+    copyAssetsPlugin(sdPlugin),
+    // Copy shared audio assets from @iracedeck/audio-assets, applying the
+    // radio-engineer ffmpeg treatment to voice categories and caching output.
+    processAndCopyAudioAssetsPlugin({ sdPlugin }),
+    // Copy the bundled Arimo fonts from @iracedeck/rasterizer into {sdPlugin}/assets/fonts
+    {
+      name: "copy-rasterizer-fonts",
+      generateBundle() {
+        const fontsSrc = path.resolve(__dirname, "../rasterizer/fonts");
+        const destDir = path.join(sdPlugin, "assets", "fonts");
+        mkdirSync(destDir, { recursive: true });
+        for (const file of readdirSync(fontsSrc)) {
+          copyFileSync(path.join(fontsSrc, file), path.join(destDir, file));
+        }
+      },
+    },
+    // Ship the project license and aggregated third-party notices at the plugin root (#905)
+    {
+      name: "copy-license-files",
+      generateBundle() {
+        for (const file of ["LICENSE", "THIRD-PARTY-LICENSES.md"]) {
+          copyFileSync(path.resolve(__dirname, "../..", file), path.join(sdPlugin, file));
+        }
+      },
+    },
+    {
+      name: "watch-externals",
+      buildStart: function () {
+        this.addWatchFile(`${sdPlugin}/manifest.json`);
+        this.addWatchFile(platformFeaturesPath);
+        if (existsSync(localFeaturesPath)) this.addWatchFile(localFeaturesPath);
+        // Recursively watch SVG files in a directory
+        const watchSvgsRecursive = (dir) => {
+          try {
+            for (const entry of readdirSync(dir, { withFileTypes: true })) {
+              const fullPath = path.join(dir, entry.name);
+              if (entry.isDirectory()) watchSvgsRecursive(fullPath);
+              else if (entry.name.endsWith(".svg")) this.addWatchFile(fullPath);
+            }
+          } catch {
+            // directory may not exist
+          }
+        };
+        // Watch local icons directory, shared icons package, and per-action static assets
+        watchSvgsRecursive(path.resolve("icons"));
+        watchSvgsRecursive(iconsPackagePath);
+        watchSvgsRecursive(actionTemplatesDir);
+      },
+    },
+    typescript({
+      mapRoot: isWatching ? "./" : undefined,
+      // Include both the plugin source and the raw-TypeScript actions package
+      include: ["src/**/*.ts", "../iracing-actions/src/**/*.ts"],
+    }),
+    nodeResolve({
+      browser: false,
+      exportConditions: ["node"],
+      preferBuiltins: true,
+    }),
+    commonjs({
+      ignore: (id) => {
+        // Exclude .node native modules from bundling
+        return id.endsWith(".node");
+      },
+    }),
+    // Strip lang="en" from generated HTML (VSD Craft requirement)
+    stripHtmlLangPlugin(`${sdPlugin}/ui`),
+    !isWatching && terser(),
+    {
+      name: "emit-module-package-file",
+      generateBundle() {
+        const pkg = {
+          type: "module",
+          dependencies: {
+            "@iracedeck/audio-native": "file:../../../audio-native",
+            "@iracedeck/iracing-native": "file:../../../iracing-native",
+            "@resvg/resvg-js": "2.6.2",
+            ws: "8.18.2",
+            yaml: "2.8.2",
+          },
+          optionalDependencies: {
+            keysender: "2.4.0",
+          },
+        };
+        this.emitFile({ fileName: "package.json", source: JSON.stringify(pkg, null, 2), type: "asset" });
+      },
+    },
+    {
+      name: "emit-plugin-config",
+      generateBundle() {
+        const config = {
+          version: rootPackageJson.version,
+          platform: "mirabox",
+          featureFlags: platformFeatures,
+        };
+        this.emitFile({ fileName: "config.json", source: JSON.stringify(config, null, 2), type: "asset" });
+      },
+    },
+  ],
 };
 
 export default config;

@@ -320,9 +320,23 @@ describe("ElgatoPlatformAdapter", () => {
 function createSdMock() {
   let sendToPluginListener: ((ev: unknown) => void) | undefined;
 
+  const errorLog = vi.fn();
   const sd = {
+    logger: {
+      createScope: vi.fn(() => ({
+        trace: vi.fn(),
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: errorLog,
+        createScope: vi.fn(),
+        setLevel: vi.fn(),
+      })),
+    },
     system: { openUrl: vi.fn().mockResolvedValue(undefined) },
     profiles: { switchToProfile: vi.fn().mockResolvedValue(undefined) },
+    // The settings window names a device explicitly; its type is looked up here (#992).
+    devices: { getDeviceById: vi.fn((id: string) => (id === "dev-xl" ? { type: 2 } : undefined)) },
     ui: {
       onSendToPlugin: vi.fn((listener: (ev: unknown) => void) => {
         sendToPluginListener = listener;
@@ -334,6 +348,7 @@ function createSdMock() {
     sd: sd as unknown as typeof StreamDeck,
     switchToProfile: sd.profiles.switchToProfile,
     openUrl: sd.system.openUrl,
+    errorLog,
     /** Simulate a Property Inspector `sendToPlugin` message from the given device (an XL by default). */
     emitSendToPlugin(deviceId: string, payload: unknown, deviceType: number | undefined = 2) {
       sendToPluginListener?.({ action: { device: { id: deviceId, type: deviceType } }, payload });
@@ -424,6 +439,45 @@ describe("ElgatoPlatformAdapter sendToPlugin → switchToProfile routing", () =>
     expect(switchToProfile).toHaveBeenCalledWith("dev-1", undefined, undefined);
   });
 
+  it("switchToBundledProfile logs a rejected SDK switch instead of leaving an unhandled rejection", async () => {
+    const { sd, switchToProfile, errorLog } = createSdMock();
+    switchToProfile.mockRejectedValueOnce(new Error("device busy"));
+    const adapter = new ElgatoPlatformAdapter(sd);
+    initProfileSwitcher((deviceId, profile, page) => adapter.switchToProfile(deviceId, profile, page));
+    const unhandled = vi.fn();
+    process.on("unhandledRejection", unhandled);
+
+    try {
+      adapter.switchToBundledProfile("dev-xl", "iRaceDeck Default");
+      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(errorLog).toHaveBeenCalledWith(expect.stringMatching(/Profile switch failed: .*device busy/));
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off("unhandledRejection", unhandled);
+    }
+  });
+
+  it("switchToBundledProfile is the same dispatch for an explicitly named device (the settings window, #992)", async () => {
+    const { sd, switchToProfile } = createSdMock();
+    const adapter = new ElgatoPlatformAdapter(sd);
+    initProfileSwitcher((deviceId, profile, page) => adapter.switchToProfile(deviceId, profile, page));
+
+    adapter.switchToBundledProfile("dev-xl", "iRaceDeck Default");
+    adapter.switchToBundledProfile("dev-xl", "iRaceDeck Replay", 2);
+    adapter.switchToBundledProfile("dev-unknown", "iRaceDeck Replay");
+    await Promise.resolve();
+
+    // Type resolved via the SDK's device store → suffixed like the PI path; unknown device → passed through.
+    expect(switchToProfile).toHaveBeenNthCalledWith(1, "dev-xl", "iRaceDeck Default XL", undefined);
+    expect(switchToProfile).toHaveBeenNthCalledWith(2, "dev-xl", "iRaceDeck Replay XL", 2);
+    expect(switchToProfile).toHaveBeenNthCalledWith(3, "dev-unknown", "iRaceDeck Replay", undefined);
+    // Recorded in the history exactly like an accordion switch (#762).
+    await requestProfileSwitchBack("dev-xl");
+    expect(switchToProfile).toHaveBeenLastCalledWith("dev-xl", "iRaceDeck Default XL", undefined);
+  });
+
   it("records accordion switches in the profile history so Back can walk them (#762)", async () => {
     const { switchToProfile, emitSendToPlugin } = setup();
 
@@ -444,5 +498,29 @@ describe("ElgatoPlatformAdapter sendToPlugin → switchToProfile routing", () =>
     emitSendToPlugin("dev-1", ["array"]);
 
     expect(switchToProfile).not.toHaveBeenCalled();
+  });
+});
+
+describe("ElgatoPlatformAdapter sendToPlugin → openSettings routing (#992)", () => {
+  it("invokes the registered listener when the PI sends an openSettings command", () => {
+    const { sd, emitSendToPlugin } = createSdMock();
+    const adapter = new ElgatoPlatformAdapter(sd);
+    const listener = vi.fn();
+
+    adapter.onOpenSettingsRequest(listener);
+    emitSendToPlugin("dev-1", { event: "openSettings" });
+
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not invoke the openSettings listener for other commands", () => {
+    const { sd, emitSendToPlugin } = createSdMock();
+    const adapter = new ElgatoPlatformAdapter(sd);
+    const listener = vi.fn();
+
+    adapter.onOpenSettingsRequest(listener);
+    emitSendToPlugin("dev-1", { event: "switchToProfile", profile: "iRaceDeck Default" });
+
+    expect(listener).not.toHaveBeenCalled();
   });
 });

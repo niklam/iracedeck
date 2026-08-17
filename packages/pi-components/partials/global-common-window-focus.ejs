@@ -1,0 +1,30 @@
+<%#
+  Common settings — Window Focus + Connection (issue #992 split). One group of the
+  PI's "Common Settings" accordion; also a card on the settings window's General
+  tab. Emits items only — the includer supplies the heading.
+%>
+<sdpi-item label="Focus iRacing">
+  <sdpi-checkbox
+    setting="focusIRacingWindow"
+    label="Focus iRacing window before sending keys"
+    global
+    default="true"
+  ></sdpi-checkbox>
+</sdpi-item>
+<div class="ird-supporting-text">
+  Brings iRacing to the foreground before sending inputs, so button presses aren't
+  lost to whichever window happens to be active. Turn this off if you'd rather
+  iRaceDeck never changed which window has focus.
+</div>
+<sdpi-item label="Connection">
+  <sdpi-checkbox
+    setting="disableWhenDisconnected"
+    label="Disable buttons when iRacing is not connected"
+    global
+    default="true"
+  ></sdpi-checkbox>
+</sdpi-item>
+<div class="ird-supporting-text">
+  Greys out keys and ignores presses while iRacing isn't running, so a stray press
+  can't send keystrokes to whatever else is in the foreground.
+</div>

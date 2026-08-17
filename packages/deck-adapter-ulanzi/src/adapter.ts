@@ -393,6 +393,20 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
     });
   }
 
+  /**
+   * Register a listener for the Property Inspector's "Open iRaceDeck Settings"
+   * request (issue #992). The shared button's `sendToPlugin { event:
+   * "openSettings" }` reaches the plugin as a `sendToPlugin` frame that the
+   * client normalizes to a global `openSettings` event (same path as the
+   * PI-appear and openUrl markers). Like `openUrl`, this is a concrete-adapter
+   * method, not an `IDeckPlatformAdapter` member.
+   */
+  onOpenSettingsRequest(listener: () => void): void {
+    this.client.onGlobalEvent("openSettings", () => {
+      listener();
+    });
+  }
+
   createLogger(scope: string): ILogger {
     // Resolver (not a fixed level) so setLogLevel affects already-created loggers.
     return this.buildLogger(scope);

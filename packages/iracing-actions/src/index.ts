@@ -37,6 +37,14 @@ export {
   PIT_CREW_UUID,
   PitCrew,
 } from "./actions/pit-crew/pit-crew.js";
+// Audio preview runner (#992): the Test buttons' sequences, shared by the Pit
+// Crew action and the settings window's `audioPreview` command.
+export {
+  AUDIO_PREVIEW_KINDS,
+  isAudioPreviewKind,
+  runAudioPreview,
+  type AudioPreviewKind,
+} from "./audio/audio-previews.js";
 export { PIT_QUICK_ACTIONS_UUID, PitQuickActions } from "./actions/pit-quick-actions/pit-quick-actions.js";
 export { RACE_ADMIN_UUID, RaceAdmin } from "./actions/race-admin/race-admin.js";
 export { REPLAY_CONTROL_UUID, ReplayControl } from "./actions/replay-control/replay-control.js";

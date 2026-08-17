@@ -4,6 +4,8 @@
 		<%- include('head-common') %>
 	</head>
 	<body>
+		<%- include('section-header', { title: 'iRaceDeck Settings', openSettings: true }) %>
+
 		<sdpi-item label="Connection">
 			<sdpi-checkbox
 				setting="disableWhenDisconnected"
