@@ -70,3 +70,78 @@ describe("VSDClient.openUrl", () => {
     });
   });
 });
+
+describe("VSDClient.setGlobalSettings before the socket is open (#993)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("defers a call made before connect(), then flushes it after the register + getGlobalSettings frames once open", async () => {
+    const client = new VSDClient(params, undefined, () => {});
+
+    // No socket exists yet — must not throw, and must not send anything.
+    client.setGlobalSettings({ debugLogging: true });
+
+    await client.connect();
+    lastSocket.emit("open");
+
+    expect(sentMessages()).toEqual([
+      { uuid: params.pluginUuid, event: params.registerEvent },
+      { event: "getGlobalSettings", context: params.pluginUuid },
+      { event: "setGlobalSettings", context: params.pluginUuid, payload: { debugLogging: true } },
+    ]);
+  });
+
+  it("keeps only the latest payload when called twice before the socket is open", async () => {
+    const client = new VSDClient(params, undefined, () => {});
+    await client.connect();
+    lastSocket.readyState = 0; // CONNECTING — not open yet
+
+    client.setGlobalSettings({ debugLogging: false });
+    client.setGlobalSettings({ debugLogging: true });
+    expect(lastSocket.sent).toEqual([]);
+
+    lastSocket.readyState = WS_OPEN;
+    lastSocket.emit("open");
+
+    const flushed = sentMessages().filter((m) => m.event === "setGlobalSettings");
+    expect(flushed).toEqual([
+      { event: "setGlobalSettings", context: params.pluginUuid, payload: { debugLogging: true } },
+    ]);
+  });
+
+  it("sends immediately once open, and does not re-flush on a later open", async () => {
+    const client = new VSDClient(params, undefined, () => {});
+    await client.connect();
+    lastSocket.emit("open");
+    lastSocket.sent.length = 0;
+
+    client.setGlobalSettings({ debugLogging: true });
+    expect(sentMessages()).toEqual([
+      { event: "setGlobalSettings", context: params.pluginUuid, payload: { debugLogging: true } },
+    ]);
+
+    lastSocket.sent.length = 0;
+    lastSocket.emit("open"); // a spurious/repeated open must not resend a stale value
+
+    expect(sentMessages().filter((m) => m.event === "setGlobalSettings")).toEqual([]);
+  });
+
+  it("defers when readyState is CONNECTING even though a socket already exists, then flushes on open", async () => {
+    const client = new VSDClient(params, undefined, () => {});
+    await client.connect();
+    lastSocket.readyState = 0; // CONNECTING
+
+    client.setGlobalSettings({ debugLogging: true });
+    expect(lastSocket.sent).toEqual([]);
+
+    lastSocket.readyState = WS_OPEN;
+    lastSocket.emit("open");
+
+    expect(sentMessages()).toContainEqual({
+      event: "setGlobalSettings",
+      context: params.pluginUuid,
+      payload: { debugLogging: true },
+    });
+  });
+});

@@ -82,6 +82,14 @@ export class VSDClient {
   private readonly logger: ILogger;
   private readonly onClose: () => void;
 
+  /**
+   * The most recent `setGlobalSettings` call made while the host socket wasn't
+   * open yet, held until `open` fires. Only the latest payload matters — every
+   * caller sends the whole settings object, so an earlier stashed call is
+   * always superseded rather than queued (#993).
+   */
+  private pendingGlobalSettings: Record<string, unknown> | null = null;
+
   constructor(
     params: VSDConnectionParams,
     logger: ILogger = silentLogger,
@@ -129,6 +137,14 @@ export class VSDClient {
       this.logger.info("Connected to VSD Craft");
       this.send({ uuid: this.params.pluginUuid, event: this.params.registerEvent });
       this.requestGlobalSettings();
+
+      if (this.pendingGlobalSettings) {
+        const settings = this.pendingGlobalSettings;
+
+        this.pendingGlobalSettings = null;
+        this.setGlobalSettings(settings);
+        this.logger.debug("Flushed the deferred setGlobalSettings");
+      }
     });
 
     this.ws.on("message", (raw: Buffer | string) => {
@@ -225,12 +241,36 @@ export class VSDClient {
     });
   }
 
+  /**
+   * Persist global settings on the deck host.
+   *
+   * Each plugin sends exactly one host-mirror `setGlobalSettings` write per
+   * start, right after the settings server's `ensureStarted()` resolves — and
+   * that write can race the host connect. On Mirabox the log showed the mirror
+   * leaving ~3s before `VSDClient` logged "Connected to VSD Craft"; `send()`
+   * silently drops any frame while the socket isn't open, so the race quietly
+   * ate the write and every Property Inspector bootstrapped against a
+   * channel-less host copy (#993). Elgato never hits this — its SDK's own
+   * `setGlobalSettings` awaits the connection internally.
+   *
+   * Defer instead: if the socket isn't open yet, stash the settings and flush
+   * them once `open` fires. Only the latest call is kept — every caller
+   * replaces the whole settings object, so an earlier stashed call is already
+   * stale.
+   */
   setGlobalSettings(settings: Record<string, unknown>): void {
-    this.send({
-      event: "setGlobalSettings",
-      context: this.params.pluginUuid,
-      payload: settings,
-    });
+    if (this.ws?.readyState === WS_OPEN) {
+      this.send({
+        event: "setGlobalSettings",
+        context: this.params.pluginUuid,
+        payload: settings,
+      });
+
+      return;
+    }
+
+    this.pendingGlobalSettings = settings;
+    this.logger.debug("Deferring setGlobalSettings until the host socket is open");
   }
 
   /**
