@@ -6,12 +6,8 @@
  * and {{= expression }} calculations (raw map).
  */
 import type { ExpressionValue } from "./expression-evaluator.js";
-import {
-  estimateIRatingChanges,
-  extractQualifyResults,
-  type IRatingEstimates,
-  resolveIRatingEstimateOrder,
-} from "./irating-utils.js";
+import { extractQualifyResults } from "./grid-utils.js";
+import { estimateIRatingChanges, type IRatingEstimates, resolveIRatingEstimateOrder } from "./irating-utils.js";
 import { classPositionFromOrder } from "./position-utils.js";
 import type { SDKController } from "./SDKController.js";
 import { findNearestCarOnTrack } from "./track-utils.js";

@@ -5,7 +5,7 @@ import {
   getCarNumberRawFromSessionInfo,
   TrkLoc,
 } from "@iracedeck/iracing-sdk";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   _getFastestLapSessionCache,
@@ -1514,6 +1514,87 @@ describe("ReplayControl", () => {
       await action.onDidReceiveSettings(fakeEvent("ctx-1", { mode: "next-session" }) as any);
 
       expect(action.setActiveBinding).toHaveBeenCalledWith(null);
+    });
+  });
+
+  describe("car number cycling (dial rotation)", () => {
+    function rotate(mode: string, ticks: number) {
+      return action.onDialRotate({
+        action: { id: "ctx-1", setTitle: vi.fn(), setImage: vi.fn() },
+        payload: { settings: { mode }, ticks },
+      } as never);
+    }
+
+    // Cars by number: #4 (carIdx 0), #7 (carIdx 1, focused), #42 (carIdx 2).
+    const TELEMETRY = {
+      CamCarIdx: 1,
+      CarIdxLapCompleted: [-1, -1, -1],
+      CarIdxLapDistPct: [0.1, 0.2, 0.3],
+      CarIdxTrackSurface: [TrkLoc.OnTrack, TrkLoc.OnTrack, TrkLoc.OnTrack],
+    };
+
+    let action: ReplayControl;
+    let mockCamera: { switchNum: ReturnType<typeof vi.fn> };
+
+    beforeEach(async () => {
+      vi.clearAllMocks();
+      mockCamera = { switchNum: vi.fn(() => true) };
+
+      const { getCommands } = await import("@iracedeck/deck-core");
+
+      vi.mocked(getCommands).mockReturnValue({
+        replay: { play: vi.fn(() => true) },
+        camera: mockCamera,
+      } as never);
+
+      vi.mocked(getAllCarNumbers).mockReturnValue([
+        { carIdx: 0, carNumber: "4", carNumberRaw: 4, userName: "a" },
+        { carIdx: 1, carNumber: "7", carNumberRaw: 7, userName: "b" },
+        { carIdx: 2, carNumber: "42", carNumberRaw: 42, userName: "c" },
+      ]);
+
+      action = new ReplayControl();
+      action.sdkController.getCurrentTelemetry = vi.fn(() => TELEMETRY);
+      action.sdkController.getSessionInfo = vi.fn(() => ({}));
+      await action.onWillAppear({
+        action: { id: "ctx-1", setTitle: vi.fn(), setImage: vi.fn() },
+        payload: { settings: { mode: "next-car-number" } },
+      } as never);
+    });
+
+    afterEach(async () => {
+      // `vi.clearAllMocks()` (the suite-wide beforeEach) clears recorded calls
+      // but NOT return values, so this block's pinned command surface and
+      // three-car field would otherwise leak into every later describe. Reset
+      // both back to their module-factory implementations.
+      const { getCommands } = await import("@iracedeck/deck-core");
+
+      vi.mocked(getCommands).mockReset();
+      vi.mocked(getAllCarNumbers).mockReset();
+    });
+
+    it("lowers the car number on a clockwise detent (#973)", async () => {
+      await rotate("next-car-number", 1);
+
+      expect(mockCamera.switchNum).toHaveBeenCalledWith(4, 0, 0); // focused #7 → #4
+    });
+
+    it("raises the car number on a counter-clockwise detent (#973)", async () => {
+      await rotate("next-car-number", -1);
+
+      expect(mockCamera.switchNum).toHaveBeenCalledWith(42, 0, 0); // focused #7 → #42
+    });
+
+    it("maps both detents the same way whichever car-number mode the key sits on (#973)", async () => {
+      // The pair is one bidirectional control: rotation direction decides the
+      // target, so a `prev-car-number` key on a dial must behave identically.
+      await rotate("prev-car-number", 1);
+
+      expect(mockCamera.switchNum).toHaveBeenCalledWith(4, 0, 0);
+
+      await rotate("prev-car-number", -1);
+
+      expect(mockCamera.switchNum).toHaveBeenLastCalledWith(42, 0, 0);
     });
   });
 

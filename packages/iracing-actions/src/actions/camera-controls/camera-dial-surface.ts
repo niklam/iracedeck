@@ -3,19 +3,21 @@
  *
  * On a Stream Deck+ dial, rotation cycles the camera or the focused car — the
  * dial's `mode` selects the target and the turn direction replaces the keypad
- * cycle modes' explicit next/previous setting. Clockwise = next for every mode
- * EXCEPT race-position, whose default is flipped (issue #884): clockwise
- * selects the car AHEAD (decreasing position number), because "next position"
- * would otherwise mean losing places. In track-order (issue #886) "next" IS
- * the car ahead on the road (the direction of travel), so clockwise lands on
- * the car ahead there too without a flip. The `reverseRotation` setting
- * inverts the active mode's default mapping (see `clockwiseDirection`). The
- * touch strip's small top line is always the MODE name (CAMERA / SUB-CAMERA /
- * CAR # / POSITION / TRACK ORDER / DRIVING CAM); the main content identifies
- * the thing that mode acts on, flanked by dimmed side previews that follow the
- * EFFECTIVE mapping — the left slot is always the counter-clockwise detent's
- * target and the right slot the clockwise one, so preview == execution holds
- * under both the race-position default flip and the reverse option:
+ * cycle modes' explicit next/previous setting. On the number-primary modes —
+ * race-position and car-number — a clockwise detent makes the number on the
+ * strip go DOWN (`P4 → P3`, `#94 → #77`; issues #884, #973, see
+ * `MODE_NUMBER_PRIMARY`). The list modes (camera / sub-camera / driving) have
+ * no number to shrink and keep clockwise = next, and in track-order (issue
+ * #886) "next" IS the car ahead on the road (the direction of travel), so
+ * clockwise lands on the car ahead there too without a flip. The
+ * `reverseRotation` setting inverts the active mode's default mapping (see
+ * `clockwiseDirection`). The touch strip's small top line is always the MODE
+ * name (CAMERA / SUB-CAMERA / CAR # / POSITION / TRACK ORDER / DRIVING CAM);
+ * the main content identifies the thing that mode acts on, flanked by dimmed
+ * side previews that follow the EFFECTIVE mapping — the left slot is always the
+ * counter-clockwise detent's target and the right slot the clockwise one, so
+ * preview == execution holds under both the number-primary default flip and the
+ * reverse option:
  *   - camera → the current camera group's icon + name, flanked by the dimmed
  *     enabled-subset neighbours one detent either way,
  *   - sub-camera → the current camera's NAME within the focused group, flanked
@@ -149,7 +151,7 @@ function isCycleMode(mode: DialMode): mode is CycleDialMode {
  * A rotation's dispatch direction in the cycled ordering (camera list, car
  * numbers ascending, race positions ascending, or — track-order — the road,
  * where `next` is the car ahead; see `trackOrderDirection`). Which PHYSICAL
- * turn maps to which direction is decided by `clockwiseDirection` (issue #884).
+ * turn maps to which direction is decided by `clockwiseDirection` (#884, #973).
  */
 export type Direction = "next" | "previous";
 
@@ -168,20 +170,42 @@ function trackOrderDirection(direction: Direction): TrackOrderDirection {
 }
 
 /**
+ * Whether a mode's cycling ORDER is itself a number the user reads on the strip
+ * — the race position (`P4`) or the car number (`#94`). Those two flip their
+ * default mapping so a clockwise detent makes that number go DOWN: `P4 → P3`,
+ * `#94 → #77` (issues #884, #973). One rule, learned once, for both.
+ *
+ * The list modes (camera / sub-camera / driving) walk a list, not a number, so
+ * they keep the plain "clockwise = next". Track-order is `false` on purpose: it
+ * SHOWS a car number but never orders by one — it walks the road, and its
+ * `next` already IS the car ahead (`trackOrderDirection`, #886), so clockwise
+ * lands on the car ahead there without a flip.
+ *
+ * Exhaustive by type (the `Record<DialMode, …>` shape the tables below use) so
+ * a new dial mode cannot silently inherit "clockwise = next" — adding one is a
+ * compile error until its rotation direction is classified here.
+ */
+const MODE_NUMBER_PRIMARY: Record<DialMode, boolean> = {
+  camera: false,
+  "sub-camera": false,
+  "car-number": true,
+  "race-position": true,
+  "track-order": false,
+  driving: false,
+};
+
+/**
  * @internal Exported for testing
  *
- * The `Direction` a clockwise detent dispatches for a mode. Race-position's
- * default is flipped (issue #884): clockwise selects the car AHEAD — its
- * "next" means the position NUMBER increases, i.e. falling back through the
- * field, which nobody reads as forward. Every other mode keeps clockwise =
- * next — including track-order, whose "next" already IS the car ahead on the
- * road (`trackOrderDirection`, issue #886), so both car-neighbour modes land
- * on the car ahead clockwise. `reverseRotation` inverts the active mode's
- * default mapping (for race-position, that restores the pre-#884 clockwise →
- * P# increases feel).
+ * The `Direction` a clockwise detent dispatches for a mode — the single place
+ * the physical turn is mapped onto the cycled ordering. Both the dispatch and
+ * the carousel side previews route through it, so preview == execution holds
+ * for every mode. `reverseRotation` inverts the active mode's default mapping
+ * (on a number-primary mode that restores the pre-flip feel, where clockwise
+ * raises the number).
  */
 export function clockwiseDirection(mode: DialMode, reverseRotation: boolean): Direction {
-  const defaultClockwise: Direction = mode === "race-position" ? "previous" : "next";
+  const defaultClockwise: Direction = MODE_NUMBER_PRIMARY[mode] ? "previous" : "next";
 
   return reverseRotation ? oppositeDirection(defaultClockwise) : defaultClockwise;
 }
@@ -283,12 +307,14 @@ export const DialSettings = z
     // preprocess maps the pre-rework enum value "car" onto "car-number" so a
     // persisted legacy dial keeps working (its gestures / colors untouched).
     mode: z.preprocess((v) => (v === "car" ? "car-number" : v), z.enum(DIAL_MODES).default("car-number")),
-    // Inverts the active mode's rotation mapping (issue #884). Deliberately NO
-    // migration: an unchecked box means the NEW race-position default
-    // (clockwise = the car ahead); checking it restores the pre-#884 feel
-    // there, and flips clockwise to "previous" in every other mode. The
-    // union+transform is the sdpi checkbox convention — z.coerce.boolean()
-    // would turn the persisted string "false" into true.
+    // Inverts the active mode's rotation mapping (issues #884, #973).
+    // Deliberately NO migration, for either flip: an unchecked box means the
+    // CURRENT default, so on a number-primary mode checking it restores the
+    // pre-flip feel (clockwise raises the number) and on every other mode it
+    // flips clockwise to "previous". A migration keyed on the stored mode would
+    // be unsound anyway — the flag is per-dial, and the user can change
+    // `mode` afterwards. The union+transform is the sdpi checkbox convention —
+    // z.coerce.boolean() would turn the persisted string "false" into true.
     reverseRotation: z
       .union([z.boolean(), z.string()])
       .transform((val) => val === true || val === "true")
@@ -333,7 +359,7 @@ export function wrapPosition(current: number, dir: 1 | -1, max: number): number 
  * its natural end — `next` → the leader (P1), `previous` → last place (issue
  * #803, so the pace car in focus doesn't stall cycling). Which physical turn
  * dispatches which direction is decided by `clockwiseDirection` (#884): under
- * the race-position default, a clockwise detent dispatches `previous`, so it
+ * the number-primary default, a clockwise detent dispatches `previous`, so it
  * re-enters at last place and walks up the field. `currentPosition` is then
  * `null` (no position badge). Returns `null` when there is no usable order at
  * all (no order, or an empty field), or when no present car exists anywhere
@@ -1062,24 +1088,22 @@ export class CameraDialSurface {
   }
 
   /**
-   * The live order, canonical first, official `CarIdxPosition` as fallback.
+   * The race order, canonical first, official `CarIdxPosition` as fallback.
    *
    * The canonical order is a dense array of 1-based ranks with `0` for every
-   * car it omits, so "no live order at all" arrives as a NON-NULL array of
-   * zeros — `??` alone accepts it and strands the mode at `maxPosition = 0`.
-   * That is exactly the formation lap: the canonical calculation scores cars by
-   * `CarIdxLapCompleted + CarIdxLapDistPct` and omits every car whose lap count
-   * is still -1, so nobody is ranked until the first start/finish crossing
-   * (#968 — the same `CarIdxLapCompleted` trap `carInWorld` avoids). An order
+   * car it omits, so "no order at all" arrives as a NON-NULL array of zeros —
+   * `??` alone accepts it and strands the mode at `maxPosition = 0`. An order
    * that ranks NOBODY is therefore "no live order at all" in the sense
-   * `race-positions.md` means it, and the official counter takes over.
+   * `race-positions.md` means it, and the official counter takes over (#968).
+   *
+   * Before the green flag of a race the canonical order is the qualifying grid
+   * (issue #974), so this mode cycles the formation exactly as it does the
+   * race; the all-zero case is now the rarer one — a non-race session, or a
+   * race whose grid can't be resolved — where the official counter is the last
+   * resort and is itself all-zero pre-green (iRacing scores positions at
+   * start/finish).
    */
   private resolveOrder(telemetry: TelemetryData | null): number[] | null {
-    // An all-zero canonical array means "no live order at all" — the condition
-    // race-positions.md defines the official counters as the fallback for — so
-    // test for a ranked car rather than for null (#968). Note neither order
-    // exists before the green flag (both are all zeros on a real parade lap),
-    // so this mode still has nothing to cycle there; see #974.
     const canonical = this.host.getRacePositions();
 
     if (canonical?.some((position) => position > 0)) return canonical;
@@ -1178,7 +1202,8 @@ export class CameraDialSurface {
 
   /**
    * Builds the car-number carousel view: the focused car plus its
-   * ascending-order neighbours, each on the side its detent lands on (#884).
+   * ascending-order neighbours, each on the side its detent lands on (#884) —
+   * so under the #973 default the LOWER number sits on the clockwise side.
    */
   private carNumberCarouselView(telemetry: TelemetryData | null, dial: DialSettings): CarCarouselView {
     const sessionInfo = this.host.getSessionInfo();
@@ -1237,8 +1262,11 @@ export class CameraDialSurface {
   }
 
   /**
-   * The car-carousel view for the two number-primary car modes: car-number
-   * (ascending car number) or track-order (the physical road order, #886).
+   * The car-carousel view for the two car modes drawn as a NUMBER carousel:
+   * car-number (ascending car number) or track-order (the physical road order,
+   * #886). Deliberately NOT the same grouping as `MODE_NUMBER_PRIMARY` —
+   * track-order shows a car number but is not ordered by one, so it draws the
+   * same strip without taking the clockwise-counts-down flip.
    */
   private carCarouselView(telemetry: TelemetryData | null, dial: DialSettings): CarCarouselView {
     return dial.mode === "track-order"
