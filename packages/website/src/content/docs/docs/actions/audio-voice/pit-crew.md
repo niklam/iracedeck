@@ -353,7 +353,7 @@ While a car is alongside, the spotter also holds an exclusive focus on the engin
 
 The spotter reads the **same proximity signal as the Radar mode** but is otherwise independent: Radar is the non-vocal proximity tick on the Alerts bus, the spotter is a spoken voice call on the Voice bus. Run either, both, or neither — with both enabled you'll hear a tick *and* a spoken call when a car pulls alongside.
 
-Two opt-ins live under **Race Engineer Callouts → Spotter** in the Settings window, both on by default:
+Two callout opt-ins live under **Race Engineer Callouts → Spotter** in the Settings window, both on by default, plus one timing setting:
 
 - **Announce cars around you** (`calloutEnabledSpotterCars`) — every transition call (car / two cars / one car / three wide / clear / combined). Turning this off silences the spoken calls while leaving the focus gate and the "still there" reminder logic intact.
 - **Repeat reminder while alongside** (`calloutEnabledSpotterStillThere`) — the "Still there." / "Hold your line." loop that repeats for as long as a car stays beside you.

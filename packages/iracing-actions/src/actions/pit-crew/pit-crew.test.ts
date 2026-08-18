@@ -584,6 +584,9 @@ describe("PitCrew action", () => {
 
       expect(hoisted.playRadarTest).not.toHaveBeenCalled();
       expect(hoisted.playBackgroundTest).not.toHaveBeenCalled();
+      // The voice preview has no dedicated mock — it reaches the engine through
+      // playOnChannel, so this is what pins the third removed route.
+      expect(hoisted.playOnChannel).not.toHaveBeenCalled();
     });
   });
 

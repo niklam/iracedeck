@@ -34,7 +34,7 @@ A key's Property Inspector is now about that key. It has its own settings at the
 
 Actions that use no key bindings at all say so, and just show the button.
 
-Bindings edited in either place are the same settings: change one and the other updates live.
+Bindings edited in either place are the same settings: on Stream Deck and Mirabox, change one and the other updates live. On Ulanzi Deck that link is still pending confirmation — see [Where Your Settings Are Stored](#where-your-settings-are-stored) — so set bindings from the Settings window there.
 
 ## Where Your Settings Are Stored
 

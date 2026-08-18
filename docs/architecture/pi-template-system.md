@@ -1,7 +1,7 @@
 # PI Template System for Stream Deck Plugins
 
 > **Current state (as of issue #340):** The template sources, partials, data files, Rollup EJS plugin, web components, and vendored `sdpi-components.js` listed in the original file structure below were extracted from the plugins in issue #329 (into `@iracedeck/pi-components`), and then in issue #340 the per-action templates and per-action static icons were co-located into `@iracedeck/iracing-actions` under `src/actions/<name>/`, with shared template data under `src/actions/data/`. `@iracedeck/pi-components` is now the PI framework package (partials, EJS compile plugin, web components). Consumer plugins import `piTemplatePlugin`, `partialsDir`, and `browserDir` from `@iracedeck/pi-components/build`, and compute `actionTemplatesDir` locally. See `.claude/rules/pi-templates.md` for the current layout and integration snippet. The sections below describe the original design and remain accurate in intent, with one exception noted below.
-
+>
 > **Superseded (issue #1003):** design decision 1 no longer holds. The plugin-global settings moved to the dedicated settings window (#992, #993), and the action PIs stopped rendering their own copies of them. What remains in a PI is one `key-bindings-section` include — the action's OWN key bindings plus an "Open iRaceDeck Settings" button — so the convenience argument below now applies only to key bindings, which are contextual to the action being configured. The `global-common-settings.ejs` assembler was deleted; `settings-window-scripts.ejs` holds the JS for the global controls. Every other `global-*.ejs` partial in the structure below is settings-window-only.
 
 ## Goal

@@ -234,7 +234,16 @@
 				}
 			}
 
+			// Latched by applyDialView(). `#mode-select` stays in the DOM on a dial
+			// (applyDialView only hides its container), so a later `mode` value
+			// arriving from the host would otherwise re-run the keypad gates and
+			// re-hide the bindings this surface needs — leaving the dial with no way
+			// to reach them. Init deliberately runs the keypad path first, so this
+			// only takes effect once the controller has resolved as a dial.
+			let isDialSurface = false;
+
 			function applyDialView() {
+				isDialSurface = true;
 				document.getElementById("keypad-settings")?.classList.add("hidden");
 				document.getElementById("keypad-appearance")?.classList.add("hidden");
 				document.getElementById("dial-settings")?.classList.remove("hidden");
@@ -312,7 +321,11 @@
 			}
 
 			function updateVisibility(mode) {
+				// Tracked on both surfaces — the black-box caveat reads it — but the
+				// gates below belong to the keypad view only.
 				currentMode = mode;
+
+				if (isDialSurface) return;
 
 				const fuelSettings = document.getElementById("fuel-settings");
 				const keyBindings = document.getElementById("key-bindings-section");
