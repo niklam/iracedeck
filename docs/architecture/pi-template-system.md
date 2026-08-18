@@ -40,7 +40,7 @@ packages/
           global-border-defaults.ejs   # Global border defaults accordion
           global-color-defaults.ejs    # Global icon color defaults accordion
           global-key-bindings.ejs      # Key binding controls in accordion
-          global-common-settings.ejs   # Global common settings (window focus, SimHub server) accordion
+          global-common-*.ejs          # Global common settings groups (deleted assembler: global-common-settings.ejs, #1003)
           global-title-defaults.ejs    # Global title defaults accordion
           head-common.ejs              # Common <head> content + CSS + JS
           section-header.ejs           # Section divider (Action/Global Settings)
@@ -178,15 +178,10 @@ plugins: [
   <%- include('border-overrides', { defaults: ... }) %>
   <%- include('common-settings') %>
 
-  <%- include('section-header', { title: 'Global Settings' }) %>
-
-  <%- include('global-key-bindings', {
+  <%# Superseded by #1003 — a PI now ends with one key-bindings-section include: %>
+  <%- include('key-bindings-section', {
     keyBindings: require('./data/key-bindings.json').blackBox
   }) %>
-  <%- include('global-title-defaults') %>
-  <%- include('global-color-defaults') %>
-  <%- include('global-border-defaults') %>
-  <%- include('global-common-settings') %>
 
   <%- include('docs-link') %>
   <%- include('version') %>

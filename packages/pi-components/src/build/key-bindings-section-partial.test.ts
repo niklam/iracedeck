@@ -131,14 +131,29 @@ describe("key-bindings-section.ejs", () => {
       expect(html).toContain('<div id="key-bindings-section">');
     });
 
-    it("starts hidden when the caller asks, leaving the header visible", () => {
+    it("starts hidden when the caller asks", () => {
       const html = render("<%- include('key-bindings-section', { keyBindings: BINDINGS, hidden: true }) %>", {
         BINDINGS,
       });
 
       expect(html).toContain('<div id="key-bindings-section" class="hidden">');
-      // The header must NOT be inside the hidden wrapper — it stays on screen.
-      expect(html.indexOf("Key Bindings")).toBeLessThan(html.indexOf('id="key-bindings-section"'));
+    });
+
+    it("hides the HEADING along with the bindings, so no empty labelled section is left behind", () => {
+      // Fuel Service hides this per mode. With the heading outside the wrapper,
+      // an API-only mode rendered "KEY BINDINGS" above a divider with nothing
+      // between — a labelled section with no content, which is exactly what the
+      // empty-state line exists to prevent.
+      const html = render("<%- include('key-bindings-section', { keyBindings: BINDINGS, hidden: true }) %>", {
+        BINDINGS,
+      });
+
+      const wrapper = html.indexOf('id="key-bindings-section"');
+
+      expect(wrapper).toBeGreaterThanOrEqual(0);
+      // Nothing of the section renders before its own hideable wrapper.
+      expect(html.slice(0, wrapper)).not.toContain("Key Bindings");
+      expect(html.slice(wrapper)).toContain("Key Bindings");
     });
   });
 

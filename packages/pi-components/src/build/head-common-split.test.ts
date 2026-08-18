@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import url from "node:url";
 
@@ -25,6 +25,17 @@ const read = (file: string): string => readFileSync(file, "utf-8");
 const headCommon = read(path.join(partialsDir, "head-common.ejs"));
 const windowScripts = read(path.join(partialsDir, "settings-window-scripts.ejs"));
 const settingsWindow = read(path.join(actionsDir, "settings-window/settings-window.ejs"));
+
+/** Every action Property Inspector template, one entry per `.ejs` under `actions/`. */
+function actionTemplates(): Array<{ name: string; file: string }> {
+  return readdirSync(actionsDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && entry.name !== "data")
+    .flatMap((dir) =>
+      readdirSync(path.join(actionsDir, dir.name))
+        .filter((file) => file.endsWith(".ejs"))
+        .map((file) => ({ name: file, file: path.join(actionsDir, dir.name, file) })),
+    );
+}
 
 /** Hooks that only ever exist on the settings window's page. */
 const WINDOW_ONLY_HOOKS = [
@@ -71,14 +82,17 @@ describe("head-common / settings-window-scripts split (#1003)", () => {
   });
 
   describe("no action Property Inspector includes the window-only scripts", () => {
-    it("keeps the partial out of the PI templates", () => {
-      const offenders = readFileSync(path.join(partialsDir, "head-common.ejs"), "utf-8").includes(
-        "settings-window-scripts",
-      )
-        ? ["head-common.ejs"]
-        : [];
+    it("keeps the partial out of every action template", () => {
+      const offenders = actionTemplates()
+        .filter(({ name }) => name !== "settings-window.ejs")
+        .filter(({ file }) => read(file).includes("settings-window-scripts"))
+        .map(({ name }) => name);
 
       expect(offenders).toEqual([]);
+    });
+
+    it("keeps it out of head-common, which every PI loads", () => {
+      expect(headCommon).not.toContain("settings-window-scripts");
     });
   });
 });

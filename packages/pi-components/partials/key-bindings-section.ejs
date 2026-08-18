@@ -21,10 +21,12 @@
       `global-key-bindings` expects: { id, label, default, setting, class? }.
       Omit it (or pass an empty array) for an action with no bindings; the
       section then says so rather than rendering an empty accordion.
-    - hidden (Boolean, optional) — start the bindings wrapper hidden so the PI
-      can reveal it per mode (Fuel Service does this). Only the bindings hide:
-      the header and the settings button are outside that wrapper, so the way
-      out never disappears.
+    - hidden (Boolean, optional) — start the section hidden so the PI can reveal
+      it per mode (Fuel Service does this). The HEADING hides with the bindings,
+      deliberately: leaving it behind renders a labelled "Key Bindings" section
+      with nothing in it, which is the same defect the empty-state line exists
+      to prevent. The settings button sits outside the wrapper, so the way out
+      never disappears.
 
   The wrapper's `key-bindings-section` id is defined here and nowhere else —
   PI scripts toggle it by that id.
@@ -36,9 +38,8 @@
   title. Retitling it breaks that link and the _accordionState key.
   (EJS comment so this documentation is never emitted into the HTML.)
 %>
-<%- include('section-header', { title: 'Key Bindings' }) %>
-
 <div id="key-bindings-section"<% if (locals.hidden) { %> class="hidden"<% } %>>
+<%- include('section-header', { title: 'Key Bindings' }) %>
 <% if (locals.keyBindings && keyBindings.length) { %>
 <%- include('global-key-bindings', { keyBindings: keyBindings }) %>
 <% } else { %>

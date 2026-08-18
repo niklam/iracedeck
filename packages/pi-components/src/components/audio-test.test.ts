@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Import the module to trigger custom element registration
 import "./audio-test.js";
@@ -19,6 +19,12 @@ describe("ird-audio-test", () => {
     button = document.createElement("ird-audio-test");
     button.setAttribute("preview", "radar");
     document.body.appendChild(button);
+  });
+
+  afterEach(() => {
+    // The window global is real global state — one test deletes it on purpose,
+    // so clear it here rather than relying on the next beforeEach.
+    delete (window as unknown as Record<string, unknown>).SDPIComponents;
   });
 
   describe("DOM structure", () => {

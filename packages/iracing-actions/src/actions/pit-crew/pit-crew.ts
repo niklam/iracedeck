@@ -321,8 +321,7 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
   override async onWillAppear(ev: IDeckWillAppearEvent<PitCrewSettings>): Promise<void> {
     await super.onWillAppear(ev);
 
-    const raw = ev.payload.settings as Record<string, unknown>;
-    const settings = Settings.parse(raw);
+    const settings = Settings.parse(ev.payload.settings);
     const contextId = ev.action.id;
 
     this.settingsCache.set(contextId, settings);
@@ -388,8 +387,7 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<PitCrewSettings>): Promise<void> {
     await super.onDidReceiveSettings(ev);
 
-    const raw = ev.payload.settings as Record<string, unknown>;
-    const settings = Settings.parse(raw);
+    const settings = Settings.parse(ev.payload.settings);
     const contextId = ev.action.id;
 
     this.settingsCache.set(contextId, settings);
