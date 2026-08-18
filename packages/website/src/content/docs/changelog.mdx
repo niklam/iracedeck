@@ -39,7 +39,7 @@ _Unreleased_
 **Breaking changes**
 
 - The Camera Controls dial's Cycle by Car # mode now counts *down* when turned clockwise — `#94` to `#77` instead of the other way around — so the two modes that cycle *by* a number follow one rule: clockwise makes that number go down, matching Cycle by Race Position (which has worked that way since 2.3.0). Cycle by Track Order is ordered by the road rather than by a number, so it keeps taking you to the car physically ahead. Every existing Cycle by Car # dial changes direction with this update — including one that already has **Reverse rotation** ticked — so flip that checkbox in the dial settings, whichever way it is set today, to get the old feel back. The touch-strip previews follow whichever direction is in effect.
-- The Stream Deck plugin no longer declares macOS support: it is offered and installable on Windows only, matching what the Mirabox and Ulanzi plugins already declared. Nothing changes for Windows users — the macOS entry only ever existed so the plugin could be built on a Mac, and every action depends on iRacing, which does not run on macOS.
+- The Stream Deck plugin no longer declares macOS support: from this version it is offered and installable on Windows only, matching what the Mirabox and Ulanzi plugins already declared. Nothing changes for Windows users — the macOS entry only ever told the Stream Deck software it was allowed to install the plugin on a Mac, where it could do nothing useful, because iRaceDeck controls iRacing and iRacing has no macOS build.
 
 **Maintenance**
 
