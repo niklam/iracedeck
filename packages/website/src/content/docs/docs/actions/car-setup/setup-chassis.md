@@ -33,9 +33,9 @@ The two **Spring Offset** Views show the *pending next-pit-stop* LR/RR spring ad
 
 Each View sub-mode exposes a single extra setting in the Property Inspector:
 
-- **Enable dual-press** (default *on*) — when off, the key stays a pure read-only display and presses do nothing. When on, presses dispatch to the matching adjustment binding (e.g. View Diff Preload dispatches to *Diff Preload +* / *Diff Preload −*), so configure those bindings in the **Global Settings → Setup Chassis** section. Weight Jacker Left / Right do not appear as adjustment modes in the Mode dropdown; their +/- bindings still live in **Global Settings → Setup Chassis** so the View can drive them via dual-press.
+- **Enable dual-press** (default *on*) — when off, the key stays a pure read-only display and presses do nothing. When on, presses dispatch to the matching adjustment binding (e.g. View Diff Preload dispatches to *Diff Preload +* / *Diff Preload −*), so configure those bindings in the Property Inspector's **Key Bindings** section, or on the Settings window's **Key Bindings** tab under *Setup Chassis*. Weight Jacker Left / Right do not appear as adjustment modes in the Mode dropdown; their +/- bindings still live under *Setup Chassis* in the **Key Bindings** section so the View can drive them via dual-press.
 
-The tap direction is a single plugin-wide setting under **Global Common Settings → Dual-Press → Directions** (default *Tap increases, long-press decreases*; the long-press always fires the opposite of the tap). The threshold separating "short" from "long" is a sibling setting **Long-press threshold (ms)** (200–2000 ms, default 500 ms). Both take effect on the next press without needing a restart.
+The tap direction is a single plugin-wide setting, **Dual-Press → Directions** on the Settings window's **General** tab (default *Tap increases, long-press decreases*; the long-press always fires the opposite of the tap). The threshold separating "short" from "long" is a sibling setting **Long-press threshold (ms)** (200–2000 ms, default 500 ms). Both take effect on the next press without needing a restart.
 
 ## Show black box
 
@@ -47,7 +47,7 @@ Requires keyboard bindings for the target black box and at least one other black
 
 ## Modes
 
-Select the mode from the **Mode** dropdown in the Property Inspector. **Adjust** modes are directional — pick **Increase** or **Decrease** in the **Direction** setting to control what a button press does. **View** modes show a live readout and, with **Enable dual-press** on (default), also accept short / long presses — see [View sub-modes](#view-sub-modes) above. They don't use the per-action **Direction** setting; the tap direction is the plugin-wide **Global Common Settings → Dual-Press → Directions**.
+Select the mode from the **Mode** dropdown in the Property Inspector. **Adjust** modes are directional — pick **Increase** or **Decrease** in the **Direction** setting to control what a button press does. **View** modes show a live readout and, with **Enable dual-press** on (default), also accept short / long presses — see [View sub-modes](#view-sub-modes) above. They don't use the per-action **Direction** setting; the tap direction is the plugin-wide **Dual-Press → Directions** setting in the Settings window.
 
 ### Differential Preload
 

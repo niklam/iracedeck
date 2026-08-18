@@ -97,7 +97,7 @@ The `title.text` field is the default title text. Prefer short, single-line titl
 Colors resolve at render time via `resolveIconColors()`:
 
 1. **Per-action override** — user sets in Color Overrides PI section
-2. **Global default** — user sets in Global Settings PI section (skipped for locked slots)
+2. **Global default** — user sets in the settings window's Appearance tab (skipped for locked slots)
 3. **Icon `<desc>` default** — fallback from SVG metadata
 
 ### Locked slots

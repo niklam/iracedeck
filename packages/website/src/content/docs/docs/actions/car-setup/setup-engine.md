@@ -23,13 +23,13 @@ The **View …** entries turn the key into a continuously updating display of th
 
 Each View sub-mode exposes a single extra setting in the Property Inspector:
 
-- **Enable dual-press** (default *on*) — when off, the key stays a pure read-only display and presses do nothing. When on, presses dispatch to the matching adjustment binding (e.g. View Engine Power dispatches to *Engine Power +* / *Engine Power −*), so configure those bindings in the **Global Settings → Setup Engine** section.
+- **Enable dual-press** (default *on*) — when off, the key stays a pure read-only display and presses do nothing. When on, presses dispatch to the matching adjustment binding (e.g. View Engine Power dispatches to *Engine Power +* / *Engine Power −*), so configure those bindings in the Property Inspector's **Key Bindings** section, or on the Settings window's **Key Bindings** tab under *Setup Engine*.
 
-The tap direction is a single plugin-wide setting under **Global Common Settings → Dual-Press → Directions** (default *Tap increases, long-press decreases*; the long-press always fires the opposite of the tap). The threshold separating "short" from "long" is a sibling setting **Long-press threshold (ms)** (200–2000 ms, default 500 ms). Both take effect on the next press without needing a restart.
+The tap direction is a single plugin-wide setting, **Dual-Press → Directions** on the Settings window's **General** tab (default *Tap increases, long-press decreases*; the long-press always fires the opposite of the tap). The threshold separating "short" from "long" is a sibling setting **Long-press threshold (ms)** (200–2000 ms, default 500 ms). Both take effect on the next press without needing a restart.
 
 ## Modes
 
-Select the mode from the **Mode** dropdown in the Property Inspector. **Adjust** modes are directional — pick **Increase** or **Decrease** in the **Direction** setting to control what a button press does. **View** modes show a live readout and, with **Enable dual-press** on (default), also accept short / long presses — see [View sub-modes](#view-sub-modes) above. They don't use the per-action **Direction** setting; the tap direction is the plugin-wide **Global Common Settings → Dual-Press → Directions**.
+Select the mode from the **Mode** dropdown in the Property Inspector. **Adjust** modes are directional — pick **Increase** or **Decrease** in the **Direction** setting to control what a button press does. **View** modes show a live readout and, with **Enable dual-press** on (default), also accept short / long presses — see [View sub-modes](#view-sub-modes) above. They don't use the per-action **Direction** setting; the tap direction is the plugin-wide **Dual-Press → Directions** setting in the Settings window.
 
 ### Engine Power
 
