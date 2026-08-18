@@ -790,10 +790,6 @@
     {
       "Platform": "windows",
       "MinimumVersion": "10"
-    },
-    {
-      "Platform": "mac",
-      "MinimumVersion": "15"
     }
   ],
   "Nodejs": {
