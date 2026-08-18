@@ -1,6 +1,11 @@
 import { silentLogger } from "@iracedeck/logger";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import {
+  type SettingsWindowServer,
+  type SettingsWindowServerOptions,
+  startSettingsWindowServer,
+} from "./settings-window-server.js";
 import { createSettingsWindowController, SETTINGS_WINDOW_HTML } from "./settings-window.js";
 
 const PAGE = "<!doctype html><title>t</title>";
@@ -148,6 +153,145 @@ describe("createSettingsWindowController — assets dir", () => {
     const url = openUrl.mock.calls[0]?.[0] as string;
 
     expect(await (await fetch(url)).text()).toBe("<!doctype html><title>compiled</title>");
+  });
+});
+
+describe("createSettingsWindowController.ensureStarted (#993)", () => {
+  it("starts the server without opening a window and returns the channel", async () => {
+    const spawnApp = vi.fn();
+    const controller = createSettingsWindowController({
+      renderPage: () => PAGE,
+      findBrowser: () => "C:/edge/msedge.exe",
+      spawnApp,
+      openUrl: vi.fn(async (_url: string) => {}),
+      logger: silentLogger,
+    });
+    teardown = () => controller.close();
+
+    const channel = await controller.ensureStarted();
+
+    expect(channel.port).toBeGreaterThan(0);
+    expect(channel.token).toMatch(/^[0-9a-f]{32,}$/);
+    expect(spawnApp).not.toHaveBeenCalled();
+    // A later open() reuses the same server.
+    await controller.open();
+    expect(new URL(spawnApp.mock.calls[0]?.[1] as string).port).toBe(String(channel.port));
+  });
+});
+
+describe("createSettingsWindowController.onStarted (#993)", () => {
+  it("fires once per actual server start with the channel, whichever caller started it — a late open() after a failed startup start included", async () => {
+    let failOnce = true;
+    const startServer = vi.fn((serverOptions: SettingsWindowServerOptions): Promise<SettingsWindowServer> => {
+      if (failOnce) {
+        failOnce = false;
+
+        return Promise.reject(new Error("EADDRINUSE"));
+      }
+
+      return startSettingsWindowServer(serverOptions);
+    });
+    const onStarted = vi.fn();
+    const controller = createSettingsWindowController({
+      renderPage: () => PAGE,
+      findBrowser: () => "C:/edge/msedge.exe",
+      spawnApp: vi.fn(),
+      openUrl: vi.fn(async (_url: string) => {}),
+      startServer,
+      onStarted,
+      logger: silentLogger,
+    });
+    teardown = () => controller.close();
+
+    await expect(controller.ensureStarted()).rejects.toThrow("EADDRINUSE"); // the startup start fails...
+    expect(onStarted).not.toHaveBeenCalled();
+
+    await controller.open(); // ...and the user's later "Open Settings" brings the server up
+    const channel = await controller.ensureStarted();
+
+    expect(onStarted).toHaveBeenCalledTimes(1);
+    expect(onStarted).toHaveBeenCalledWith(channel);
+    expect(channel.token).toMatch(/^[0-9a-f]{32,}$/);
+  });
+});
+
+describe("createSettingsWindowController — concurrent start dedup and failure handling (#993)", () => {
+  it("starts exactly one server when ensureStarted() and open() race", async () => {
+    const startServer = vi.fn((serverOptions: SettingsWindowServerOptions): Promise<SettingsWindowServer> =>
+      startSettingsWindowServer(serverOptions),
+    );
+    const spawnApp = vi.fn();
+    const controller = createSettingsWindowController({
+      renderPage: () => PAGE,
+      findBrowser: () => "C:/edge/msedge.exe",
+      spawnApp,
+      openUrl: vi.fn(async (_url: string) => {}),
+      startServer,
+      logger: silentLogger,
+    });
+    teardown = () => controller.close();
+
+    const [channel] = await Promise.all([controller.ensureStarted(), controller.open()]);
+
+    expect(startServer).toHaveBeenCalledTimes(1);
+    expect(spawnApp).toHaveBeenCalledTimes(1);
+    expect(new URL(spawnApp.mock.calls[0]?.[1] as string).port).toBe(String(channel.port));
+  });
+
+  it("retries after a failed start so a later call can still succeed", async () => {
+    let calls = 0;
+    const startServer = vi.fn((serverOptions: SettingsWindowServerOptions): Promise<SettingsWindowServer> => {
+      calls += 1;
+
+      return calls === 1 ? Promise.reject(new Error("boom")) : startSettingsWindowServer(serverOptions);
+    });
+    const controller = createSettingsWindowController({
+      renderPage: () => PAGE,
+      findBrowser: () => "C:/edge/msedge.exe",
+      spawnApp: vi.fn(),
+      openUrl: vi.fn(async (_url: string) => {}),
+      startServer,
+      logger: silentLogger,
+    });
+    teardown = () => controller.close();
+
+    await expect(controller.ensureStarted()).rejects.toThrow("boom");
+
+    const channel = await controller.ensureStarted();
+
+    expect(channel.port).toBeGreaterThan(0);
+    expect(startServer).toHaveBeenCalledTimes(2);
+  });
+
+  it("close() while a start is in flight leaves no server running", async () => {
+    let releaseStart: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => {
+      releaseStart = resolve;
+    });
+    const startServer = vi.fn(async (serverOptions: SettingsWindowServerOptions): Promise<SettingsWindowServer> => {
+      await gate;
+
+      return startSettingsWindowServer(serverOptions);
+    });
+    const controller = createSettingsWindowController({
+      renderPage: () => PAGE,
+      findBrowser: () => "C:/edge/msedge.exe",
+      spawnApp: vi.fn(),
+      openUrl: vi.fn(async (_url: string) => {}),
+      startServer,
+      logger: silentLogger,
+    });
+
+    const ensureStartedPromise = controller.ensureStarted();
+    const closePromise = controller.close();
+
+    releaseStart?.();
+
+    const channel = await ensureStartedPromise;
+
+    await closePromise;
+
+    await expect(fetch(`http://127.0.0.1:${channel.port}/?t=${channel.token}`)).rejects.toThrow();
   });
 });
 

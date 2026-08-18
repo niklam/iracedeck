@@ -74,6 +74,8 @@ import { getAudio, initializeAudio } from "@iracedeck/audio-service";
 import { UlanziPlatformAdapter } from "@iracedeck/deck-adapter-ulanzi";
 import {
   createElevationCheckSubscriber,
+  createFileSettingsStore,
+  createSettingsChannelPublisher,
   createSettingsWindowCommandHandler,
   createSettingsWindowController,
   deleteGlobalSettings,
@@ -97,14 +99,17 @@ import {
   initPluginConfig,
   initWindowFocus,
   isIRacingActive,
+  isSettingsStoreReady,
   isSimHubReachable,
   migrateGlobalSettingsKeys,
   onGlobalSettingsChange,
   onIRacingTerminated,
+  openFolderInExplorer,
   parseSettingsWindowBounds,
   type PluginConfig,
   resolveActiveDriverName,
   resolveActiveRaceEngineerVoice,
+  resolveSettingsStorePath,
   runVersionCheck,
   SETTINGS_WINDOW_BOUNDS_KEY,
   SETTINGS_WINDOW_HTML,
@@ -786,6 +791,69 @@ onIRacingTerminated(() => {
   runChangelogVersionCheck();
 });
 
+// Plugin-owned global-settings store (issue #993). Declared here — above the
+// settings-window controller below, whose command-handler deps read
+// settingsStore.path eagerly (not from inside a deferred callback) — so it is
+// already initialized wherever it's referenced.
+const settingsStore = createFileSettingsStore({
+  path: resolveSettingsStorePath({ platform: getPluginPlatform(), env: process.env }),
+  logger: adapter.createLogger("SettingsStore"),
+});
+
+// Land the last debounced save on the way out. Node runs "exit" handlers
+// synchronously, which is exactly why the store has a SYNCHRONOUS flush — the
+// async flush() would never get an event-loop turn here. This covers every
+// orderly exit, including the Mirabox/Ulanzi clients' outright process.exit(0)
+// when their host socket closes. A hard kill by the host can't be caught by
+// anything, so a <=250 ms window remains there by construction.
+process.on("exit", () => settingsStore.flushSync());
+
+// Settings window (#992): the plugin serves ui/settings-window.html (compiled
+// from settings-window.ejs, with settings-window-bridge.js injected before
+// sdpi-components.js) over a loopback server started at plugin startup (#993 —
+// see the ensureStarted() call below) and opens it as a chromeless app window.
+// The page's sdpi-components talks to the server's fake host, which is bound
+// here to the real global-settings singleton — so every write goes through
+// updateGlobalSettings and lands in the plugin-owned settings store (#993),
+// the one persistent copy. Declared here, above the onGlobalSettingsChange
+// listener below, because that listener's store-ready block starts the server
+// (ensureStarted()).
+const settingsWindowLogger = adapter.createLogger("SettingsWindow");
+// Mirrors the store + the loopback channel to the deck host once per start
+// (#993 phase 2; the channel is never persisted in the store — a stale copy an
+// older build left there is removed) — from wherever the server actually
+// started (see the onStarted hook below and the store-ready block).
+const settingsChannel = createSettingsChannelPublisher({ adapter, logger: settingsWindowLogger });
+const settingsWindow = createSettingsWindowController({
+  assetsDir: join(__binDir, "..", "ui"),
+  pageFile: SETTINGS_WINDOW_HTML,
+  settingsHost: {
+    read: () => getGlobalSettings() as Record<string, unknown>,
+    write: (partial) => updateGlobalSettings(partial),
+    subscribe: (listener) => onGlobalSettingsChange((s) => listener(s as Record<string, unknown>)),
+  },
+  findBrowser: findChromiumBrowserOnThisMachine,
+  spawnApp: spawnAppWindow,
+  openUrl: (url) => adapter.openUrl(url),
+  // Reopen where the user left it (the page reports bounds on resize).
+  getWindowBounds: () =>
+    parseSettingsWindowBounds((getGlobalSettings() as Record<string, unknown>)[SETTINGS_WINDOW_BOUNDS_KEY]),
+  onSendToPlugin: createSettingsWindowCommandHandler({
+    writeSettings: (partial) => updateGlobalSettings(partial),
+    // The window's Race Engineer Test buttons — same runner as the Pit Crew action.
+    previewAudio: (kind) => {
+      if (isAudioPreviewKind(kind)) runAudioPreview(kind, adapter.createLogger("AudioPreview"));
+    },
+    // Storage card's Open folder button (#993) — the path is always the plugin's own.
+    openFolder: openFolderInExplorer,
+    storePath: settingsStore.path,
+  }),
+  // The page can't probe SimHub itself (cross-origin, no CORS) — answer from the plugin's own view.
+  simHub: { isReachable: isSimHubReachable, getRoles: () => getSimHub().getRoles() },
+  onStarted: (channel) => settingsChannel.publish(channel),
+  logger: settingsWindowLogger,
+});
+
 onGlobalSettingsChange((settings) => {
   const s = settings as Record<string, unknown>;
 
@@ -810,7 +878,11 @@ onGlobalSettingsChange((settings) => {
   // defaults below so the renamed `pitCrew*Enabled` keys take their
   // schema defaults (`false`) for everyone, regardless of what the
   // pre-rename keys held.
-  if (!startupDefaultsApplied) {
+  // Also gate on the settings store: a write made before it has loaded still
+  // notifies listeners (read-your-writes), and running the startup defaults
+  // against schema defaults would layer those computed values over the
+  // loaded/migrated settings (#993).
+  if (!startupDefaultsApplied && isSettingsStoreReady()) {
     startupDefaultsApplied = true;
 
     deleteGlobalSettings([
@@ -849,6 +921,32 @@ onGlobalSettingsChange((settings) => {
     // deck-host auto-update case) can't run the check before the sim-running
     // signals are up and open the page over a live session.
     setTimeout(runChangelogVersionCheck, VERSION_CHECK_STARTUP_GRACE_MS);
+
+    // #993: the Diagnostics "Storage" card's path is known synchronously (no
+    // I/O at construction) — publish it unconditionally here, NOT inside the
+    // ensureStarted().then() below, so a bind/firewall failure that rejects
+    // the settings server still leaves the path visible for the rest of the
+    // process life. That's exactly when a diagnostic aid matters most.
+    updateGlobalSettings({ _settingsStorePath: settingsStore.path });
+
+    // #993: the settings server is the channel every UI uses; publish where it
+    // is (the ONE host mirror per start — full store + `_settingsChannel` —
+    // that the PI bridge bootstraps from; the channel itself is never persisted
+    // in the store — see createSettingsChannelPublisher). The
+    // controller's onStarted hook publishes a server that starts LATER too (a
+    // failed startup bind followed by a successful "Open Settings"), and the
+    // publisher is idempotent, so calling it here as well only ensures a
+    // server that came up before the store was ready still gets mirrored.
+    // Two-arg then: a bind/firewall failure is logged as such and must not
+    // crash the plugin process (Node throws on an unobserved rejection);
+    // publish() logs its own faults and never throws.
+    void settingsWindow.ensureStarted().then(
+      (channel) => settingsChannel.publish(channel),
+      (error: unknown) => {
+        settingsWindowLogger.error("Settings server failed to start; the settings channel was not published");
+        settingsWindowLogger.debug(String(error));
+      },
+    );
   }
 
   // Mirror "On startup" PI edits into the runtime toggles immediately so
@@ -977,45 +1075,12 @@ adapter.registerAction(TIRE_SERVICE_UUID, new TireService(adapter.createLogger("
 adapter.registerAction(TOGGLE_UI_ELEMENTS_UUID, new ToggleUiElements(adapter.createLogger("ToggleUiElements")));
 adapter.registerAction(VIEW_ADJUSTMENT_UUID, new ViewAdjustment(adapter.createLogger("ViewAdjustment")));
 
-// Initialize global settings listener BEFORE connect - handlers must be registered first
-initGlobalSettings(adapter, adapter.createLogger("GlobalSettings"));
+// Initialize global settings listener BEFORE connect - handlers must be registered first.
+// settingsStore itself is declared earlier, above the settingsWindow controller.
+initGlobalSettings(adapter, adapter.createLogger("GlobalSettings"), settingsStore);
 
 // Migrate the pre-#953 spring binding keys (Left/Right -> LR/RR) once real settings arrive
 migrateGlobalSettingsKeys(SETUP_CHASSIS_BINDING_KEY_RENAMES, adapter.createLogger("SettingsMigration"));
-
-// Settings window (#992): the plugin serves ui/settings-window.html (compiled
-// from settings-window.ejs, with settings-window-bridge.js injected before
-// sdpi-components.js) over a loopback server started lazily on the PI's "Open
-// iRaceDeck Settings" request, and opens it as a chromeless app window. The
-// page's sdpi-components talks to the server's fake host, which is bound here
-// to the real global-settings singleton — so every write goes through
-// updateGlobalSettings and the #896 single-writer guarantees hold.
-const settingsWindowLogger = adapter.createLogger("SettingsWindow");
-const settingsWindow = createSettingsWindowController({
-  assetsDir: join(__binDir, "..", "ui"),
-  pageFile: SETTINGS_WINDOW_HTML,
-  settingsHost: {
-    read: () => getGlobalSettings() as Record<string, unknown>,
-    write: (partial) => updateGlobalSettings(partial),
-    subscribe: (listener) => onGlobalSettingsChange((s) => listener(s as Record<string, unknown>)),
-  },
-  findBrowser: findChromiumBrowserOnThisMachine,
-  spawnApp: spawnAppWindow,
-  openUrl: (url) => adapter.openUrl(url),
-  // Reopen where the user left it (the page reports bounds on resize).
-  getWindowBounds: () =>
-    parseSettingsWindowBounds((getGlobalSettings() as Record<string, unknown>)[SETTINGS_WINDOW_BOUNDS_KEY]),
-  onSendToPlugin: createSettingsWindowCommandHandler({
-    writeSettings: (partial) => updateGlobalSettings(partial),
-    // The window's Race Engineer Test buttons — same runner as the Pit Crew action.
-    previewAudio: (kind) => {
-      if (isAudioPreviewKind(kind)) runAudioPreview(kind, adapter.createLogger("AudioPreview"));
-    },
-  }),
-  // The page can't probe SimHub itself (cross-origin, no CORS) — answer from the plugin's own view.
-  simHub: { isReachable: isSimHubReachable, getRoles: () => getSimHub().getRoles() },
-  logger: settingsWindowLogger,
-});
 
 adapter.onOpenSettingsRequest(() => {
   void settingsWindow.open().catch((error: unknown) => {

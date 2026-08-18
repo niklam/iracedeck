@@ -13,3 +13,10 @@
   only to capture a log when troubleshooting or reporting an issue, then turn it back off.
   Production logs at info level by default. Takes effect immediately — no restart needed.
 </div>
+<sdpi-item label="Settings file">
+  <sdpi-textfield setting="_settingsStorePath" global disabled></sdpi-textfield>
+</sdpi-item>
+<div class="ird-supporting-text">Where iRaceDeck stores every setting on this page. Back this file up to keep your configuration.</div>
+<% if (locals.settingsWindow) { %>
+<div class="ird-open-settings"><ird-open-folder></ird-open-folder></div>
+<% } %>

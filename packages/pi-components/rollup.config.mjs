@@ -15,6 +15,14 @@ import typescript from "@rollup/plugin-typescript";
  *                          loopback fake host (carrying the launch token) and
  *                          drives connectElgatoStreamDeckSocket. Injected before
  *                          sdpi-components.js in settings-window.html on all hosts.
+ * - pi-settings-bridge.js — the Elgato/Mirabox PI shim (#993, phase 2): pre-defines
+ *                          connectElgatoStreamDeckSocket so it runs before sdpi's
+ *                          own definition, then arms a one-shot WebSocket
+ *                          interceptor that hands sdpi a PiSettingsBridgeSocket
+ *                          routing global-settings frames through the shared
+ *                          settings-channel router to the plugin's loopback
+ *                          settings server. Injected before sdpi-components.js
+ *                          in every other action PI HTML on Elgato and Mirabox.
  */
 const terserPlugin = terser({ format: { comments: false } });
 
@@ -48,5 +56,15 @@ export default [
       sourcemap: false,
     },
     plugins: [typescript({ tsconfig: "./tsconfig.settings-window.json" }), terserPlugin],
+  },
+  {
+    input: "src/pi-settings-bridge/index.ts",
+    output: {
+      file: "browser/pi-settings-bridge.js",
+      format: "iife",
+      name: "IRaceDeckPiSettingsBridge",
+      sourcemap: false,
+    },
+    plugins: [typescript({ tsconfig: "./tsconfig.pi-settings-bridge.json" }), terserPlugin],
   },
 ];

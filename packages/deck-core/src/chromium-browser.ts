@@ -7,9 +7,10 @@
  * per-user, channels), so the primary lookup is the `App Paths` registry key
  * — the OS's own answer — with the common install paths as a fallback.
  *
- * `spawnAppWindow` is the ONLY child_process usage in the plugin. It is kept
- * to one function, detached, stdio ignored, so the browser process never ties
- * itself to the plugin's lifetime.
+ * `spawnAppWindow` is one of two `child_process` uses in the plugin — see
+ * `open-folder.ts` for the other (revealing the settings file in Explorer,
+ * issue #993). It is kept to one function, detached, stdio ignored, so the
+ * browser process never ties itself to the plugin's lifetime.
  */
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";

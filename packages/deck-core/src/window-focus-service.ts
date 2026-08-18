@@ -21,7 +21,7 @@ import type { ILogger } from "@iracedeck/logger";
 import { silentLogger } from "@iracedeck/logger";
 
 import { isIRacingActive } from "./app-monitor.js";
-import { getGlobalSettings, hasReceivedHostSettings } from "./global-settings.js";
+import { getGlobalSettings, isSettingsStoreReady } from "./global-settings.js";
 
 /**
  * Status codes a {@link WindowFocuser} may return.
@@ -82,13 +82,13 @@ export function initWindowFocus(log: ILogger, windowFocuser: WindowFocuser): voi
 export function focusIRacingIfEnabled(): void {
   if (!focuser) return;
 
-  // Gate on the host's first real payload, NOT on `isGlobalSettingsInitialized()`:
-  // that flag flips true before `adapter.getGlobalSettings()` has even been
-  // called, while the cache is still pure schema defaults — and since #930 the
-  // default says focus is ON. Acting on it would yank iRacing forward for a
-  // user who explicitly opted out, every time the deck host restarts or
-  // auto-updates the plugin mid-session. Fail closed until the real value is in.
-  if (!hasReceivedHostSettings()) return;
+  // Gate on the stored settings having loaded, NOT on `isGlobalSettingsInitialized()`:
+  // that flag flips true before the settings store has been read, while the
+  // cache is still pure schema defaults — and since #930 the default says focus
+  // is ON. Acting on it would yank iRacing forward for a user who explicitly
+  // opted out, every time the deck host restarts or auto-updates the plugin
+  // mid-session. Fail closed until the real value is in.
+  if (!isSettingsStoreReady()) return;
 
   const settings = getGlobalSettings();
 
@@ -104,7 +104,7 @@ export function focusIRacingIfEnabled(): void {
  * For action code where focusing IS the thing the user pressed the key for — the
  * View Adjustment *Mouse to Sim* mode is the only consumer today. That is an
  * explicit request to go to the sim, so neither the opt-out setting nor the
- * `hasReceivedHostSettings()` startup gate applies: both exist to keep the
+ * `isSettingsStoreReady()` startup gate applies: both exist to keep the
  * *implicit* before-every-action focus from surprising someone, and there is
  * nothing implicit about pressing this key.
  *

@@ -13,14 +13,14 @@ import {
 const { state } = vi.hoisted(() => ({
   state: {
     settings: { focusIRacingWindow: false } as Record<string, unknown>,
-    hostSettingsReceived: true,
+    storeReady: true,
     iRacingActive: false,
   },
 }));
 
 vi.mock("./global-settings.js", () => ({
   getGlobalSettings: () => state.settings,
-  hasReceivedHostSettings: () => state.hostSettingsReceived,
+  isSettingsStoreReady: () => state.storeReady,
 }));
 
 vi.mock("./app-monitor.js", () => ({
@@ -56,7 +56,7 @@ describe("window focus service", () => {
   beforeEach(() => {
     _resetWindowFocus();
     state.settings = { focusIRacingWindow: true };
-    state.hostSettingsReceived = true;
+    state.storeReady = true;
     state.iRacingActive = false;
   });
 
@@ -82,14 +82,14 @@ describe("window focus service", () => {
     // which say focus is ON (#930). Acting on that would override an explicit
     // opt-out during the startup window, so the gate must fail closed.
     it("does not focus before the host's first settings payload arrives", () => {
-      state.hostSettingsReceived = false;
+      state.storeReady = false;
       const { focuser } = arrange(FocusResult.AlreadyFocused);
       focusIRacingIfEnabled();
       expect(focuser).not.toHaveBeenCalled();
     });
 
     it("does not focus a user who opted out, even while the cache still holds defaults", () => {
-      state.hostSettingsReceived = false;
+      state.storeReady = false;
       state.settings = { focusIRacingWindow: true }; // schema default, not the user's value
       const { focuser } = arrange(FocusResult.AlreadyFocused);
       focusIRacingIfEnabled();
@@ -211,7 +211,7 @@ describe("focusIRacingNow (issue #926)", () => {
   beforeEach(() => {
     _resetWindowFocus();
     state.settings = { focusIRacingWindow: true };
-    state.hostSettingsReceived = true;
+    state.storeReady = true;
     state.iRacingActive = false;
   });
 
@@ -226,7 +226,7 @@ describe("focusIRacingNow (issue #926)", () => {
   });
 
   it("focuses before the host's first settings payload has arrived", () => {
-    state.hostSettingsReceived = false;
+    state.storeReady = false;
     const { focuser } = arrange(FocusResult.Focused);
 
     expect(focusIRacingNow()).toBe(FocusResult.Focused);

@@ -143,35 +143,45 @@ flowchart TB
 
 The render path is fully abstracted: `iracing-actions` hands a finished icon — an SVG data URI — to `deck-core`, and whichever adapter is loaded paints it on the real hardware. The icon crosses SEAM 2 unchanged, still as SVG; inside each adapter's context implementation (`setImage`, Elgato's `setFeedback`), `deck-core`'s rasterizer service converts it to PNG in-plugin (`@iracedeck/rasterizer`, wrapping `@resvg/resvg-js`, via the render function the plugin injected at startup) and sends the device pixels rather than an SVG string, so every key and dial looks identical regardless of which host's own SVG engine it's running on. The command path has three mechanisms — the SDK broadcast (`getCommands()`) is preferred, native keyboard injection (`getKeyboard()`) covers what the SDK can't, and chat macros cover the rest.
 
-### The settings path (the settings window)
+### The settings path (the settings window and the Property Inspectors)
 
-Since #992 there is a third outbound path that has nothing to do with iRacing: the plugin **serves a web page** and the user's browser is a client of the plugin. Plugin-global settings live in the deck host's store; two UIs edit them — the Property Inspector (which writes to the host over its own socket) and the settings window (which writes *through the plugin*).
+Since #992 there is a third outbound path that has nothing to do with iRacing: the plugin **serves a web page** and the user's browser is a client of the plugin. And since #993 the plugin also **owns the settings themselves**: plugin-global settings live in one JSON file per ecosystem (`SettingsStore` → `%LOCALAPPDATA%\iRaceDeck\Settings\<Stream Deck | Mirabox | Ulanzi>\global-settings.json`), loaded at startup and saved — debounced and atomically — on every change. Both editing surfaces reach it the same way: the settings window and **every Property Inspector** speak the PI protocol to the plugin's own loopback server. The deck host's store is **read once and written once**: read only when there is no file yet, to migrate an existing installation across on the first start after the upgrade; written exactly once per start with a full mirror of the cache plus `_settingsChannel` (the loopback server's port and token), which is the bootstrap a Property Inspector needs to find the plugin. The mirror is a whole object because a deck host's `setGlobalSettings` replaces rather than merges, and it is skipped entirely when the migration read went unanswered — mirroring schema defaults would destroy a copy the plugin never got to see. That copy doubles as the downgrade safety net.
 
 ```mermaid
 flowchart LR
-  pi["Property Inspector<br/>(sdpi-components)"]:::ext
+  pi["Property Inspectors<br/>(sdpi-components<br/>+ pi-settings-bridge / ulanzi-pi-bridge)"]:::ext
   win["Settings window<br/>(browser --app=, same sdpi-components<br/>+ settings-window-bridge)"]:::ext
-  srv["deck-core<br/>settings-window server<br/>loopback · token+cookie · Origin"]:::core
-  gs["deck-core<br/>global-settings<br/>(#896 write safety)"]:::core
+  srv["deck-core<br/>settings-window server<br/>loopback · token · Origin/cookie<br/>(runs for the plugin's lifetime)"]:::core
+  gs["deck-core<br/>global-settings<br/>(single writer)"]:::core
+  boot["plugin.ts<br/>store-ready startup block"]:::core
+  store["SettingsStore<br/>global-settings.json<br/>(per ecosystem, under LOCALAPPDATA)"]:::core
   core(["IDeckPlatformAdapter — SEAM 2"]):::seam
   host["deck host store"]:::ext
 
-  pi -->|"setGlobalSettings (whole snapshot)"| host
-  host -->|"didReceiveGlobalSettings"| core
-  core --> gs
   win -->|"PI protocol over ws://127.0.0.1"| srv
+  pi -->|"global settings over ws://127.0.0.1, token on the upgrade"| srv
   srv -->|"changed keys only"| gs
-  gs -->|"updateGlobalSettings"| core
-  core --> host
+  gs -->|"save (debounced, atomic)"| store
+  store -->|"load at startup"| gs
   gs -->|"push on any change"| srv
   srv --> win
+  srv --> pi
+  host -->|"read ONCE — migration"| core
+  core --> gs
+  gs -->|"store ready"| boot
+  boot -->|"mirror once per start — full object + _settingsChannel"| core
+  core --> host
+  host -.->|"one bootstrap read — _settingsChannel"| pi
+  pi -->|"per-action settings, sendToPlugin, the bootstrap read"| host
 
   classDef ext fill:#33404d,color:#fff,stroke:#1d262e;
   classDef seam fill:#8e44ad,color:#fff,stroke:#5e2d73,stroke-width:3px;
   classDef core fill:#2d7dd2,color:#fff,stroke:#1f5793;
 ```
 
-The window is the PI framework re-hosted: the same `sdpi-components.js`, `pi-components.js`, and `global-*.ejs` partials, talking to a **fake host** inside the plugin that speaks the global-settings subset of the Elgato PI protocol. Anything the plugin does on the window's behalf — persist its bounds, switch a deck's profile, play an audio preview, answer SimHub reachability (a direct fetch from the window's origin is cross-origin) — arrives as a `sendToPlugin` command and is validated in `deck-core`. The page is opened as a chromeless app window in a Chromium browser with a dedicated profile, and closes itself when its socket to the plugin dies. Details, security model, and rules: `.claude/rules/settings-window.md`.
+The window is the PI framework re-hosted: the same `sdpi-components.js`, `pi-components.js`, and `global-*.ejs` partials, talking to a **fake host** inside the plugin that speaks the global-settings subset of the Elgato PI protocol. Anything the plugin does on the window's behalf — persist its bounds, switch a deck's profile, play an audio preview, reveal the settings file in Explorer, answer SimHub reachability (a direct fetch from the window's origin is cross-origin) — arrives as a `sendToPlugin` command and is validated in `deck-core`. The page is opened as a chromeless app window in a Chromium browser with a dedicated profile, and closes itself when its socket to the plugin dies. The server is no longer started on demand: it comes up from the plugin's store-ready startup block and stays up, so its address is known before any UI asks for it — and that same block, in each plugin's `plugin.ts` rather than `deck-core`'s global-settings module, is what mirrors the store, plus the server's `_settingsChannel`, to the deck host for the PIs to bootstrap from — the channel itself is never persisted in the plugin's own file. If the settings file can't be read, the block never runs: no server, no channel.
+
+Property Inspectors reach the same server through a bridge script the build injects ahead of `sdpi-components.js` (`pi-settings-bridge.js` on Elgato and Mirabox, the Ulanzi PI bridge on Ulanzi). Both run one shared state machine: when the PI's host socket opens it makes a single plain `getGlobalSettings` read, takes `_settingsChannel` out of the answer, opens the loopback socket, and from then on global-settings frames go to the plugin and the plugin's pushes go to sdpi — the host's are dropped, because the file is truth. Everything else a PI does (per-action settings, `sendToPlugin`, `openUrl`) still goes to the deck host untouched. If there is no channel, the socket is refused, or a phase doesn't settle within three seconds, the PI falls back to the host path with a console warning — it keeps displaying and per-action settings keep working, but global-settings edits made there stay in the deck host's copy, which the plugin no longer reads; a later push carrying a channel it hasn't tried switches it over. So the loopback server is the one writer's front door for every surface, and the guard that protects it accepts a valid token whatever the request's `Origin` — Property Inspectors are `file://` or host-served pages — while a token-less request must still match the loopback origin before its `SameSite=Strict` cookie counts. Details, security model, and rules: `.claude/rules/settings-window.md` and `.claude/rules/global-settings.md`.
 
 ## The Race Engineer branch
 

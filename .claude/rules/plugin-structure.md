@@ -159,8 +159,10 @@ import { getAudio, initializeAudio } from "@iracedeck/audio-service";
 import { MY_ACTION_UUID, MyAction } from "@iracedeck/iracing-actions";
 import { ElgatoPlatformAdapter } from "@iracedeck/deck-adapter-elgato";
 import {
+  createFileSettingsStore,
   focusIRacingIfEnabled,
   getController,
+  getPluginPlatform,
   initAppMonitor,
   initGlobalSettings,
   initializeBindingDispatcher,
@@ -169,12 +171,20 @@ import {
   initializeSDK,
   initializeSimHub,
   initMousePointer,
+  initPluginConfig,
   initWindowFocus,
+  type PluginConfig,
+  resolveSettingsStorePath,
 } from "@iracedeck/deck-core";
 import { initializeEventBus } from "@iracedeck/event-bus";
 import { IRacingNative } from "@iracedeck/iracing-native";
 import { createSvgRasterizer } from "@iracedeck/rasterizer";
 import { initializeSimEventsIracing } from "@iracedeck/sim-events-iracing";
+
+// 0. Load the build-time plugin config (version + platform) FIRST — `getPluginVersion()`
+//    and `getPluginPlatform()` throw until this has run, and step 12 uses the latter
+const pluginConfig: PluginConfig = JSON.parse(readFileSync(join(__binDir, "config.json"), "utf-8"));
+initPluginConfig(pluginConfig);
 
 // 1. Create the Elgato platform adapter
 const adapter = new ElgatoPlatformAdapter(streamDeck);
@@ -235,8 +245,29 @@ adapter.onDialRotate(() => focusIRacingIfEnabled());
 // 11. Register actions via the adapter (logger injected via constructor)
 adapter.registerAction(MY_ACTION_UUID, new MyAction(adapter.createLogger("MyAction")));
 
-// 12. Initialize global settings BEFORE connect() - pass adapter!
-initGlobalSettings(adapter, adapter.createLogger("GlobalSettings"));
+// 12. Initialize global settings BEFORE connect() - pass adapter AND the
+//     plugin-owned settings store (#993; the file is truth, the host is only a
+//     one-time migration source — see @.claude/rules/global-settings.md)
+const settingsStore = createFileSettingsStore({
+  path: resolveSettingsStorePath({ platform: getPluginPlatform(), env: process.env }),
+  logger: adapter.createLogger("SettingsStore"),
+});
+
+// Land the last debounced save on the way out: "exit" handlers run synchronously
+// (the Mirabox/Ulanzi clients terminate via process.exit(0)), so only the
+// SYNCHRONOUS flush can run here — the async flush() would never get a turn.
+process.on("exit", () => settingsStore.flushSync());
+
+initGlobalSettings(adapter, adapter.createLogger("GlobalSettings"), settingsStore);
+
+// 12b. Settings-channel publisher (#993 phase 2): mirrors store + `_settingsChannel`
+//      to the deck host once per start (the channel is never persisted in the
+//      store; a stale copy from an older build is removed). Handed to
+//      the settings-window controller's `onStarted` hook AND called from the
+//      store-ready block's `ensureStarted().then(...)` — idempotent, so whichever
+//      side actually started the server publishes it.
+const settingsChannel = createSettingsChannelPublisher({ adapter, logger: settingsWindowLogger });
+// createSettingsWindowController({ ..., onStarted: (channel) => settingsChannel.publish(channel) })
 
 // 13. Initialize SimHub service AFTER global settings (reads host/port from settings)
 initializeSimHub(adapter.createLogger("SimHub"));
@@ -253,6 +284,9 @@ adapter.connect();
 
 **CRITICAL**:
 - Both `initGlobalSettings()` and `initAppMonitor()` take an `IDeckPlatformAdapter` (not `typeof StreamDeck`)
+- `initGlobalSettings()` also takes a required `SettingsStore` (#993). It returns the schema-default cache immediately and loads the file in the background, so nothing may assume settings are present right after the call — gate on `isSettingsStoreReady()` or react in `onGlobalSettingsChange`. The store must be created before the settings-window controller, whose command-handler deps read `settingsStore.path` eagerly, and after `initPluginConfig()` — `getPluginPlatform()` throws without it
+- Every plugin registers `process.on("exit", () => settingsStore.flushSync())` right after creating the store — without it the last ≤250 ms of settings writes are lost when the host stops the plugin
+- The settings channel is published through `createSettingsChannelPublisher` (deck-core), never by hand-rolled `updateGlobalSettings({ _settingsChannel })` + `adapter.setGlobalSettings(...)` in the plugin: it must fire from the controller's `onStarted` hook as well as the store-ready block, and it owns the mirror-skip logging
 - All init calls must be BEFORE `adapter.connect()` (handlers must register first)
 - `initializeEventBus()` must come before any publisher (e.g. `initializeSimEventsIracing`) or subscriber (actions via `getEventBus().subscribe(...)`)
 - `initializeSimEventsIracing()` must come after `initializeSDK()` (requires `getController()`) and after `initializeEventBus()`; it's the only package that reads `sdkController` ticks on behalf of action consumers

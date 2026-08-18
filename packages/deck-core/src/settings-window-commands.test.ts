@@ -118,4 +118,17 @@ describe("createSettingsWindowCommandHandler", () => {
     expect(write).not.toHaveBeenCalled();
     expect(switchProfile).not.toHaveBeenCalled();
   });
+
+  it("routes openSettingsFolder to the injected opener with the PLUGIN's store path — never a path from the page", () => {
+    const openFolder = vi.fn();
+    const handle = createSettingsWindowCommandHandler({
+      writeSettings: vi.fn(),
+      openFolder,
+      storePath: "C:\\s\\global-settings.json",
+    });
+
+    handle({ event: "openSettingsFolder", path: "C:\\Windows\\evil" });
+
+    expect(openFolder).toHaveBeenCalledWith("C:\\s\\global-settings.json");
+  });
 });

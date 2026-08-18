@@ -1,8 +1,10 @@
 import { processAndCopyAudioAssetsPlugin } from "@iracedeck/audio-assets/build";
 import {
+  assertBridgeInjectionPlugin,
   browserDir,
   injectBridgeScriptPlugin,
   partialsDir,
+  PI_SETTINGS_BRIDGE,
   piTemplatePlugin,
   SETTINGS_WINDOW_BRIDGE,
   SETTINGS_WINDOW_HTML,
@@ -169,7 +171,13 @@ function copyAssetsPlugin(sdPlugin) {
       if (!existsSync(uiDir)) {
         mkdirSync(uiDir, { recursive: true });
       }
-      for (const jsFile of ["sdpi-components.js", "pi-components.js", SETTINGS_WINDOW_BRIDGE, SETTINGS_WINDOW_LOGO]) {
+      for (const jsFile of [
+        "sdpi-components.js",
+        "pi-components.js",
+        PI_SETTINGS_BRIDGE,
+        SETTINGS_WINDOW_BRIDGE,
+        SETTINGS_WINDOW_LOGO,
+      ]) {
         const src = path.join(browserDir, jsFile);
         if (!existsSync(src)) {
           this.error(
@@ -277,6 +285,13 @@ const config = {
       bridge: SETTINGS_WINDOW_BRIDGE,
       include: (file) => file === SETTINGS_WINDOW_HTML,
     }),
+    // PI settings bridge into every action PI — but NOT the settings window,
+    // which has its own bridge; two bridges must never share a page (#992, #993).
+    injectBridgeScriptPlugin({
+      outputDir: `${sdPlugin}/ui`,
+      bridge: PI_SETTINGS_BRIDGE,
+      include: (file) => file !== SETTINGS_WINDOW_HTML,
+    }),
     // Copy imgs/ from the Elgato plugin and PI browser assets from @iracedeck/pi-components
     copyAssetsPlugin(sdPlugin),
     // Copy shared audio assets from @iracedeck/audio-assets, applying the
@@ -376,6 +391,12 @@ const config = {
         this.emitFile({ fileName: "config.json", source: JSON.stringify(config, null, 2), type: "asset" });
       },
     },
+    // Build-time guard (#993 phase 2): every generated PI page carries exactly
+    // its one bridge, immediately before sdpi-components.js, and no other bridge.
+    assertBridgeInjectionPlugin({
+      outputDir: `${sdPlugin}/ui`,
+      expectedBridge: (file) => (file === SETTINGS_WINDOW_HTML ? SETTINGS_WINDOW_BRIDGE : PI_SETTINGS_BRIDGE),
+    }),
   ],
 };
 

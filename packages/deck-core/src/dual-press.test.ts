@@ -11,6 +11,7 @@ import {
 // Namespace import so the unrecognised-value test can spy on getGlobalSettings;
 // the named bindings below keep the rest of the file unchanged.
 import * as globalSettings from "./global-settings.js";
+import { createMemorySettingsStore } from "./settings-store.js";
 import type { IDeckPlatformAdapter } from "./types.js";
 
 const { _resetGlobalSettings, initGlobalSettings, updateGlobalSettings } = globalSettings;
@@ -47,7 +48,7 @@ describe("DualPressTracker", () => {
 
   beforeEach(() => {
     _resetGlobalSettings();
-    initGlobalSettings(createMockAdapter(), createMockLogger());
+    initGlobalSettings(createMockAdapter(), createMockLogger(), createMemorySettingsStore());
     nowValue = 0;
   });
 
@@ -161,7 +162,7 @@ describe("getDualPressThresholdMs", () => {
   });
 
   it("reflects the live value after updateGlobalSettings", () => {
-    initGlobalSettings(createMockAdapter(), createMockLogger());
+    initGlobalSettings(createMockAdapter(), createMockLogger(), createMemorySettingsStore());
     updateGlobalSettings({ dualPressThresholdMs: 1200 });
     expect(getDualPressThresholdMs()).toBe(1200);
   });
@@ -182,7 +183,7 @@ describe("getDualPressDirections", () => {
   });
 
   it("reflects the live value after updateGlobalSettings", () => {
-    initGlobalSettings(createMockAdapter(), createMockLogger());
+    initGlobalSettings(createMockAdapter(), createMockLogger(), createMemorySettingsStore());
     updateGlobalSettings({ dualPressDirections: "tap-decreases" });
     expect(getDualPressDirections()).toBe("tap-decreases");
   });

@@ -57,12 +57,12 @@ describe("startSettingsWindowServer", () => {
     expect(res.status).toBe(403);
   });
 
-  it("refuses a cross-site request even with the right token", async () => {
+  it("allows a cross-site request that carries the right token — PIs are file:// or host-served pages (#993 phase 2)", async () => {
     server = await startSettingsWindowServer({ page: PAGE });
 
     const res = await fetch(server.url, { headers: { origin: "https://evil.example" } });
 
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(200);
   });
 
   it("never emits a CORS allow-origin header", async () => {
@@ -154,6 +154,60 @@ describe("settings-window WebSocket host", () => {
     ws.close();
   });
 
+  it("accepts a token-only upgrade from a foreign Origin (a PI page) and reports the decision", async () => {
+    const decisions: Array<{ allowed: boolean; origin: string | undefined }> = [];
+    server = await startSettingsWindowServer({
+      page: PAGE,
+      settingsHost: fakeSettingsHost(),
+      onUpgradeDecision: (d) => decisions.push({ allowed: d.allowed, origin: d.origin }),
+    });
+    const token = new URL(server.url).searchParams.get("t") ?? "";
+
+    const ws = await connectWs(server.url, token, { origin: "null" });
+
+    expect(ws.readyState).toBe(WebSocket.OPEN);
+    ws.close();
+    expect(decisions.at(-1)).toEqual({ allowed: true, origin: "null" });
+  });
+
+  it("still rejects a cookie-only upgrade from a foreign Origin", async () => {
+    const decisions: Array<{ allowed: boolean; reason?: string; origin: string | undefined }> = [];
+    server = await startSettingsWindowServer({
+      page: PAGE,
+      settingsHost: fakeSettingsHost(),
+      onUpgradeDecision: (d) => decisions.push({ allowed: d.allowed, reason: d.reason, origin: d.origin }),
+    });
+    const u = new URL(server.url);
+    const ws = new WebSocket(`ws://${u.host}/ws`, {
+      headers: { origin: "https://evil.example", cookie: `ird_sw_${u.port}=${server.token}` },
+    });
+    const status = await new Promise<number>((resolve) => {
+      ws.once("unexpected-response", (_req, res) => resolve(res.statusCode ?? 0));
+      ws.once("error", () => resolve(403));
+    });
+
+    expect(status).toBe(403);
+    expect(decisions.at(-1)).toEqual({ allowed: false, reason: "bad-origin", origin: "https://evil.example" });
+  });
+
+  it("reports a distinct reason when a well-authenticated upgrade targets the wrong path", async () => {
+    const decisions: Array<{ allowed: boolean; reason?: string }> = [];
+    server = await startSettingsWindowServer({
+      page: PAGE,
+      settingsHost: fakeSettingsHost(),
+      onUpgradeDecision: (d) => decisions.push({ allowed: d.allowed, reason: d.reason }),
+    });
+    const port = new URL(server.url).port;
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/not-ws?t=${server.token}`);
+    const status = await new Promise<number>((resolve) => {
+      ws.once("unexpected-response", (_req, res) => resolve(res.statusCode ?? 0));
+      ws.once("error", () => resolve(403));
+    });
+
+    expect(status).toBe(403);
+    expect(decisions.at(-1)).toEqual({ allowed: false, reason: "bad-path" });
+  });
+
   it("accepts a WebSocket upgrade authenticated by the session cookie alone", async () => {
     server = await startSettingsWindowServer({ page: PAGE, settingsHost: fakeSettingsHost() });
     const cookie = (await fetch(server.url)).headers.get("set-cookie")?.split(";")[0] ?? "";
@@ -175,11 +229,14 @@ describe("settings-window WebSocket host", () => {
     await expect(connectWs(server.url, "deadbeef")).rejects.toThrow();
   });
 
-  it("refuses a WebSocket upgrade from a hostile Origin even with the right token", async () => {
+  it("accepts a WebSocket upgrade from a hostile Origin when it carries the right token (#993 phase 2)", async () => {
     server = await startSettingsWindowServer({ page: PAGE, settingsHost: fakeSettingsHost() });
     const token = new URL(server.url).searchParams.get("t") ?? "";
 
-    await expect(connectWs(server.url, token, { origin: "https://evil.example" })).rejects.toThrow();
+    const ws = await connectWs(server.url, token, { origin: "https://evil.example" });
+
+    expect(ws.readyState).toBe(WebSocket.OPEN);
+    ws.close();
   });
 
   it("answers getGlobalSettings with a didReceiveGlobalSettings carrying the current settings", async () => {

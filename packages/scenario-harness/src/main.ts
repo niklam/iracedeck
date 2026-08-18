@@ -17,7 +17,12 @@ import {
   setRadarEnabled,
 } from "@iracedeck/audio-scenarios/pit-crew";
 import { AudioBus, initializeAudio } from "@iracedeck/audio-service";
-import { initGlobalSettings, onGlobalSettingsChange, resolveActiveRaceEngineerVoice } from "@iracedeck/deck-core";
+import {
+  createMemorySettingsStore,
+  initGlobalSettings,
+  onGlobalSettingsChange,
+  resolveActiveRaceEngineerVoice,
+} from "@iracedeck/deck-core";
 import { initializeEventBus } from "@iracedeck/event-bus";
 import type { SDKController } from "@iracedeck/iracing-sdk";
 import { createConsoleLogger, LogLevel } from "@iracedeck/logger";
@@ -173,7 +178,7 @@ async function main(): Promise<void> {
   // ── deck-core global-settings pipeline ──────────────────────────────────
   // Done AFTER seeding so the listener delivers the seeded values to the
   // scenario engine on the very first tick.
-  initGlobalSettings(adapter, logger.createScope("GlobalSettings"));
+  initGlobalSettings(adapter, logger.createScope("GlobalSettings"), createMemorySettingsStore());
 
   // ── Settings → radar/audio sync ─────────────────────────────────────────
   // The production Pit Crew action does this on mount + on every settings

@@ -512,3 +512,80 @@ describe("UlanziClient outbound commands", () => {
     expect(sentMessages()).toContainEqual({ cmd: "openurl", url: "https://iracedeck.com/", local: false, param: "" });
   });
 });
+
+describe("UlanziClient.setGlobalSettings before the socket is open (#993)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("defers a call made before connect(), then flushes it after the connected + getGlobalSettings frames once open", async () => {
+    const client = new UlanziClient(params, undefined, () => {});
+
+    // No socket exists yet — must not throw, and must not send anything.
+    client.setGlobalSettings({ debugLogging: true });
+
+    await client.connect();
+    lastSocket.emit("open");
+
+    expect(sentMessages()).toEqual([
+      { code: 0, cmd: "connected", uuid: PLUGIN_UUID },
+      { cmd: "getGlobalSettings", uuid: PLUGIN_UUID, key: "", actionid: "" },
+      { cmd: "setGlobalSettings", uuid: PLUGIN_UUID, key: "", actionid: "", settings: { debugLogging: true } },
+    ]);
+  });
+
+  it("keeps only the latest payload when called twice before the socket is open", async () => {
+    const client = new UlanziClient(params, undefined, () => {});
+    await client.connect();
+    lastSocket.readyState = 0; // CONNECTING — not open yet
+
+    client.setGlobalSettings({ debugLogging: false });
+    client.setGlobalSettings({ debugLogging: true });
+    expect(lastSocket.sent).toEqual([]);
+
+    lastSocket.readyState = WS_OPEN;
+    lastSocket.emit("open");
+
+    const flushed = sentMessages().filter((m) => m.cmd === "setGlobalSettings");
+    expect(flushed).toEqual([
+      { cmd: "setGlobalSettings", uuid: PLUGIN_UUID, key: "", actionid: "", settings: { debugLogging: true } },
+    ]);
+  });
+
+  it("sends immediately once open, and does not re-flush on a later open", async () => {
+    const client = new UlanziClient(params, undefined, () => {});
+    await client.connect();
+    lastSocket.emit("open");
+    lastSocket.sent.length = 0;
+
+    client.setGlobalSettings({ debugLogging: true });
+    expect(sentMessages()).toEqual([
+      { cmd: "setGlobalSettings", uuid: PLUGIN_UUID, key: "", actionid: "", settings: { debugLogging: true } },
+    ]);
+
+    lastSocket.sent.length = 0;
+    lastSocket.emit("open"); // a spurious/repeated open must not resend a stale value
+
+    expect(sentMessages().filter((m) => m.cmd === "setGlobalSettings")).toEqual([]);
+  });
+
+  it("defers when readyState is CONNECTING even though a socket already exists, then flushes on open", async () => {
+    const client = new UlanziClient(params, undefined, () => {});
+    await client.connect();
+    lastSocket.readyState = 0; // CONNECTING
+
+    client.setGlobalSettings({ debugLogging: true });
+    expect(lastSocket.sent).toEqual([]);
+
+    lastSocket.readyState = WS_OPEN;
+    lastSocket.emit("open");
+
+    expect(sentMessages()).toContainEqual({
+      cmd: "setGlobalSettings",
+      uuid: PLUGIN_UUID,
+      key: "",
+      actionid: "",
+      settings: { debugLogging: true },
+    });
+  });
+});

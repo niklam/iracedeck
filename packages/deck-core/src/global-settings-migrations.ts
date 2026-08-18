@@ -7,12 +7,12 @@
  * copies each stored old-key value to its new key (unless the new key already
  * holds a value — a newer write wins) and deletes the old key, exactly once.
  *
- * Timing: before the host's first real settings payload the cache is pure
- * schema defaults with no passthrough keys, so absence of an old key proves
- * nothing. The migration therefore runs only once real settings have arrived
- * (`hasReceivedHostSettings`), subscribing to settings changes until then.
- * All writes go through `updateGlobalSettings`/`deleteGlobalSettings`, so the
- * #896 stale-cache protections (pending-write overlay, shrink guard) apply.
+ * Timing: before the settings store has loaded the cache is pure schema
+ * defaults with no passthrough keys, so absence of an old key proves
+ * nothing. The migration therefore runs only once the stored settings are in
+ * (`isSettingsStoreReady`), subscribing to settings changes until then.
+ * All writes go through `updateGlobalSettings`/`deleteGlobalSettings`, so they
+ * land in the plugin-owned store like every other write (#993).
  *
  * PASSTHROUGH KEYS ONLY. Both the "old key stored?" and "new key already
  * set?" checks read the parsed cache, where a `GlobalSettingsSchema`-declared
@@ -27,7 +27,7 @@ import type { ILogger } from "@iracedeck/logger";
 import {
   deleteGlobalSettings,
   getGlobalSettings,
-  hasReceivedHostSettings,
+  isSettingsStoreReady,
   onGlobalSettingsChange,
   updateGlobalSettings,
 } from "./global-settings.js";
@@ -45,7 +45,7 @@ export function migrateGlobalSettingsKeys(renames: Record<string, string>, logge
   let unsubscribe: (() => void) | null = null;
 
   const run = (): void => {
-    if (!hasReceivedHostSettings() || pending.size === 0) return;
+    if (!isSettingsStoreReady() || pending.size === 0) return;
 
     const settings = getGlobalSettings() as unknown as Record<string, unknown>;
     const writes: Record<string, unknown> = {};
@@ -53,7 +53,7 @@ export function migrateGlobalSettingsKeys(renames: Record<string, string>, logge
     const migrated: string[] = [];
 
     for (const [oldKey, newKey] of [...pending]) {
-      // Real settings are here — this key is settled either way.
+      // Stored settings are here — this key is settled either way.
       pending.delete(oldKey);
       const oldValue = settings[oldKey];
 

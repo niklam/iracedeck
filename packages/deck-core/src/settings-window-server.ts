@@ -1,12 +1,14 @@
 /**
  * Settings-window server (issue #992).
  *
- * A loopback HTTP + WebSocket server the plugin process starts ON DEMAND —
- * lazily, on the first "Open Settings" — and then keeps for the rest of the
- * plugin run (the controller reuses it, port and token, on every later open;
- * `close()` releases it and is only called by tests / an explicit shutdown).
- * Binding at first open rather than plugin startup means a user who never
- * opens the window never has the port bound at all.
+ * A loopback HTTP + WebSocket server the plugin starts once and then keeps for
+ * the rest of the plugin run: the plugin starts it at startup (#993 —
+ * `SettingsWindowController.ensureStarted()`, so the `_settingsChannel`
+ * port/token are known before any UI needs them), and a later "Open Settings"
+ * starts it only if that startup start failed. `close()` releases the port and
+ * is only called by tests / an explicit shutdown. The port is still ephemeral
+ * (bound to `0`) and the per-server-start token still authenticates every
+ * request — only the *lifetime* changed, not the auth model.
  *
  * Two roles:
  *  - HTTP: serve the settings page (and later its assets).
@@ -24,8 +26,8 @@
  *
  * Settings I/O goes through an injected `SettingsWindowHost` — the plugin binds
  * it to `getGlobalSettings` / `updateGlobalSettings` / `onGlobalSettingsChange`
- * — so this module never touches the global-settings singleton and the #896
- * single-writer guarantees hold by construction.
+ * — so this module never touches the global-settings singleton, and every
+ * edit made here lands in the plugin-owned store like any other write (#993).
  */
 import { randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
@@ -35,7 +37,7 @@ import type { Duplex } from "node:stream";
 import { type WebSocket, WebSocketServer } from "ws";
 
 import { sameValue } from "./global-settings.js";
-import { authorizeSettingsRequest } from "./settings-window-guard.js";
+import { authorizeSettingsRequest, type SettingsRequestDenial } from "./settings-window-guard.js";
 
 /** The plugin-side settings surface the fake host is bound to. */
 export interface SettingsWindowHost {
@@ -77,11 +79,28 @@ export interface SettingsWindowServerOptions {
    * the plugin only ever talks to its configured SimHub, so no SSRF surface.
    */
   simHub?: { isReachable: () => boolean; getRoles: () => Promise<string[]> };
+  /**
+   * Called for every WebSocket upgrade with the guard's decision and the
+   * request's Origin (a PI page shows up as "null" or a host-served origin,
+   * the window as the loopback origin). Diagnostics only — the controller logs
+   * it at debug (#993 phase 2).
+   */
+  onUpgradeDecision?: (decision: {
+    allowed: boolean;
+    reason?: SettingsRequestDenial | "bad-path";
+    origin: string | undefined;
+  }) => void;
 }
 
 export interface SettingsWindowServer {
   /** Fully formed page URL, token included — hand this to the launcher. */
   readonly url: string;
+  /**
+   * The per-launch auth token, standalone — for callers (the plugin's
+   * `_settingsChannel` publisher, #993) that need the token without parsing
+   * it back out of `url`.
+   */
+  readonly token: string;
   /** Release the port. Safe to call more than once. */
   close(): Promise<void>;
 }
@@ -285,7 +304,14 @@ export async function startSettingsWindowServer(options: SettingsWindowServerOpt
   });
 
   const fakeHost = options.settingsHost
-    ? attachFakeHost(server, options.settingsHost, options.openUrl, options.onSendToPlugin, authorize)
+    ? attachFakeHost(
+        server,
+        options.settingsHost,
+        options.openUrl,
+        options.onSendToPlugin,
+        authorize,
+        options.onUpgradeDecision,
+      )
     : undefined;
 
   await new Promise<void>((resolve, reject) => {
@@ -307,6 +333,7 @@ export async function startSettingsWindowServer(options: SettingsWindowServerOpt
 
   return {
     url: `${origin}/?t=${token}`,
+    token,
     close: () =>
       new Promise<void>((resolve) => {
         fakeHost?.close();
@@ -324,7 +351,8 @@ function attachFakeHost(
   host: SettingsWindowHost,
   openUrl: ((url: string) => Promise<void>) | undefined,
   onSendToPlugin: ((payload: Record<string, unknown>) => void) | undefined,
-  authorize: (req: IncomingMessage, url: URL | undefined) => { allowed: boolean },
+  authorize: (req: IncomingMessage, url: URL | undefined) => ReturnType<typeof authorizeSettingsRequest>,
+  onUpgradeDecision: SettingsWindowServerOptions["onUpgradeDecision"],
 ): { close: () => void } {
   const wss = new WebSocketServer({ noServer: true });
   const sockets = new Set<WebSocket>();
@@ -376,8 +404,16 @@ function attachFakeHost(
   server.on("upgrade", (req: IncomingMessage, socket: Duplex, head: Buffer) => {
     // Same rule as the request listener: an exception here kills the process.
     const url = requestUrl(req, "http://x");
+    const onPath = url?.pathname === WS_PATH;
+    const decision = authorize(req, url);
 
-    if (url === undefined || url.pathname !== WS_PATH || !authorize(req, url).allowed) {
+    onUpgradeDecision?.({
+      allowed: onPath && decision.allowed,
+      reason: !decision.allowed ? decision.reason : onPath ? undefined : "bad-path",
+      origin: req.headers.origin,
+    });
+
+    if (!onPath || !decision.allowed) {
       socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
       socket.destroy();
 
@@ -411,12 +447,12 @@ function attachFakeHost(
             if (frame.payload !== null && typeof frame.payload === "object" && !Array.isArray(frame.payload)) {
               // sdpi-components saves its WHOLE snapshot on every change. Hand
               // deck-core only the keys that actually differ from the current
-              // cache: a full-object write marks every key pending with its
-              // previous value as "superseded", and a later foreign write (a PI
-              // setting a key BACK to that previous value) is then misread as a
-              // stale echo and rolled back (#896 — observed with driverName).
-              // `sameValue` is deck-core's own equality (string forms match
-              // parsed values), so the diff can't disagree with the overlay.
+              // cache — an optimisation, not a correctness guard (the plugin
+              // is the single writer since #993): a full-snapshot write would
+              // re-parse, re-notify every subscriber and re-save the file on
+              // every keystroke-sized change. `sameValue` is deck-core's own
+              // equality, so a value the PI persisted as a string ("80") does
+              // not read as a change against the parsed cache value (80).
               const changed = diffAgainst(host.read(), frame.payload as Record<string, unknown>);
 
               if (Object.keys(changed).length > 0) {

@@ -6,15 +6,35 @@ const EXPECTED_ORIGIN = "http://127.0.0.1:61708";
 const EXPECTED_TOKEN = "b6f1c0d2e3a4958677889900aabbccdd";
 
 describe("authorizeSettingsRequest", () => {
-  it("rejects a cross-site request even when it carries a valid token", () => {
-    const result = authorizeSettingsRequest({
-      origin: "https://evil.example",
-      expectedOrigin: EXPECTED_ORIGIN,
-      token: EXPECTED_TOKEN,
-      expectedToken: EXPECTED_TOKEN,
-    });
+  it("allows a request that carries the valid token regardless of Origin — PIs are file:// or host-served pages (#993 phase 2)", () => {
+    expect(
+      authorizeSettingsRequest({
+        origin: "null",
+        expectedOrigin: EXPECTED_ORIGIN,
+        token: EXPECTED_TOKEN,
+        expectedToken: EXPECTED_TOKEN,
+      }),
+    ).toEqual({ allowed: true });
+    expect(
+      authorizeSettingsRequest({
+        origin: "https://evil.example",
+        expectedOrigin: EXPECTED_ORIGIN,
+        token: EXPECTED_TOKEN,
+        expectedToken: EXPECTED_TOKEN,
+      }),
+    ).toEqual({ allowed: true });
+  });
 
-    expect(result).toEqual({ allowed: false, reason: "bad-origin" });
+  it("without a valid token, a foreign Origin is rejected before the cookie is even looked at", () => {
+    expect(
+      authorizeSettingsRequest({
+        origin: "https://evil.example",
+        expectedOrigin: EXPECTED_ORIGIN,
+        token: undefined,
+        expectedToken: EXPECTED_TOKEN,
+        cookie: EXPECTED_TOKEN,
+      }),
+    ).toEqual({ allowed: false, reason: "bad-origin" });
   });
 
   it("rejects a request that carries no token", () => {

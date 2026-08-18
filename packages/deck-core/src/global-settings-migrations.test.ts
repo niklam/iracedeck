@@ -1,8 +1,14 @@
 import type { ILogger } from "@iracedeck/logger";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { migrateGlobalSettingsKeys } from "./global-settings-migrations.js";
-import { _resetGlobalSettings, getGlobalSettings, initGlobalSettings } from "./global-settings.js";
+import {
+  _resetGlobalSettings,
+  getGlobalSettings,
+  initGlobalSettings,
+  updateGlobalSettings,
+} from "./global-settings.js";
+import { createMemorySettingsStore } from "./settings-store.js";
 import type { IDeckPlatformAdapter } from "./types.js";
 
 type EchoCallback = (settings: unknown) => void;
@@ -17,32 +23,26 @@ function createMockLogger(): ILogger {
   } as unknown as ILogger;
 }
 
-interface MockAdapter {
-  adapter: IDeckPlatformAdapter;
-  echo: EchoCallback | null;
-  setGlobalSettings: ReturnType<typeof vi.fn<(settings: Record<string, unknown>) => void>>;
+function createMockAdapter(): IDeckPlatformAdapter {
+  return {
+    onDidReceiveGlobalSettings: (_cb: EchoCallback) => {},
+    setGlobalSettings: vi.fn<(settings: Record<string, unknown>) => void>(),
+    getGlobalSettings: vi.fn<() => void>(),
+  } as unknown as IDeckPlatformAdapter;
 }
 
-function createMockAdapter(): MockAdapter {
-  const echoHolder: { echo: EchoCallback | null } = { echo: null };
-  const setGlobalSettings = vi.fn<(settings: Record<string, unknown>) => void>();
-  const getGlobalSettings = vi.fn<() => void>();
+type MemoryStore = ReturnType<typeof createMemorySettingsStore>;
 
-  const adapter = {
-    onDidReceiveGlobalSettings: (cb: EchoCallback) => {
-      echoHolder.echo = cb;
-    },
-    setGlobalSettings,
-    getGlobalSettings,
-  } as unknown as IDeckPlatformAdapter;
+/** Let the async load inside initGlobalSettings settle. */
+const tick = () => new Promise((r) => setTimeout(r, 0));
 
-  return {
-    adapter,
-    get echo() {
-      return echoHolder.echo;
-    },
-    setGlobalSettings,
-  };
+/** Initialize against a settings file seeded with `initial` (issue #993). */
+function initWithStore(initial: Record<string, unknown> = {}): MemoryStore {
+  const store = createMemorySettingsStore(initial);
+
+  initGlobalSettings(createMockAdapter(), createMockLogger(), store);
+
+  return store;
 }
 
 const RENAMES = {
@@ -53,16 +53,17 @@ const RENAMES = {
 const cache = (): Record<string, unknown> => getGlobalSettings() as Record<string, unknown>;
 
 describe("migrateGlobalSettingsKeys", () => {
-  let mock: MockAdapter;
-
   beforeEach(() => {
     _resetGlobalSettings();
-    mock = createMockAdapter();
-    initGlobalSettings(mock.adapter, createMockLogger());
   });
 
-  it("copies a stored old-key value to the new key and deletes the old key", () => {
-    mock.echo?.({ setupChassisLeftSpringIncrease: "OLD-BINDING" });
+  afterEach(() => {
+    _resetGlobalSettings();
+  });
+
+  it("copies a stored old-key value to the new key and deletes the old key", async () => {
+    initWithStore({ setupChassisLeftSpringIncrease: "OLD-BINDING" });
+    await tick();
 
     migrateGlobalSettingsKeys(RENAMES, createMockLogger());
 
@@ -70,21 +71,23 @@ describe("migrateGlobalSettingsKeys", () => {
     expect(cache().setupChassisLeftSpringIncrease).toBeUndefined();
   });
 
-  it("persists the migrated value through the adapter", () => {
-    mock.echo?.({ setupChassisLeftSpringIncrease: "OLD-BINDING" });
+  it("persists the migrated value to the settings store", async () => {
+    const store = initWithStore({ setupChassisLeftSpringIncrease: "OLD-BINDING" });
+    await tick();
 
     migrateGlobalSettingsKeys(RENAMES, createMockLogger());
 
-    const lastWrite = mock.setGlobalSettings.mock.calls.at(-1)?.[0] as Record<string, unknown>;
-    expect(lastWrite.setupChassisLrSpringIncrease).toBe("OLD-BINDING");
-    expect(lastWrite).not.toHaveProperty("setupChassisLeftSpringIncrease");
+    const lastSave = store.saved.at(-1) as Record<string, unknown>;
+    expect(lastSave.setupChassisLrSpringIncrease).toBe("OLD-BINDING");
+    expect(lastSave).not.toHaveProperty("setupChassisLeftSpringIncrease");
   });
 
-  it("lets an already-set new key win and still deletes the old key", () => {
-    mock.echo?.({
+  it("lets an already-set new key win and still deletes the old key", async () => {
+    initWithStore({
       setupChassisLeftSpringIncrease: "OLD-BINDING",
       setupChassisLrSpringIncrease: "NEW-BINDING",
     });
+    await tick();
 
     migrateGlobalSettingsKeys(RENAMES, createMockLogger());
 
@@ -92,38 +95,44 @@ describe("migrateGlobalSettingsKeys", () => {
     expect(cache().setupChassisLeftSpringIncrease).toBeUndefined();
   });
 
-  it("writes nothing when the settings have arrived without any old key", () => {
-    mock.echo?.({ someOtherKey: "value" });
-    mock.setGlobalSettings.mockClear();
+  it("writes nothing when the stored settings hold no old key", async () => {
+    const store = initWithStore({ someOtherKey: "value" });
+    await tick();
+    const savesBefore = store.saved.length;
 
     migrateGlobalSettingsKeys(RENAMES, createMockLogger());
 
-    expect(mock.setGlobalSettings).not.toHaveBeenCalled();
+    expect(store.saved).toHaveLength(savesBefore);
   });
 
-  it("defers until the first host settings arrival, then migrates", () => {
+  it("defers until the settings store has loaded, then migrates", async () => {
+    initWithStore({ setupChassisRightSpringIncrease: "RIGHT-BINDING" });
+
     migrateGlobalSettingsKeys(RENAMES, createMockLogger());
 
-    // Nothing stored yet — the cache is pure defaults and nothing may persist.
-    expect(cache().setupChassisLrSpringIncrease).toBeUndefined();
+    // The store hasn't loaded yet — the cache is pure defaults, where the
+    // absence of an old key proves nothing, so nothing may be migrated.
+    expect(cache().setupChassisRrSpringIncrease).toBeUndefined();
 
-    mock.echo?.({ setupChassisRightSpringIncrease: "RIGHT-BINDING" });
+    await tick();
 
     expect(cache().setupChassisRrSpringIncrease).toBe("RIGHT-BINDING");
     expect(cache().setupChassisRightSpringIncrease).toBeUndefined();
   });
 
-  it("migrates each key at most once across repeated change events", () => {
-    mock.echo?.({ setupChassisLeftSpringIncrease: "OLD-BINDING" });
+  it("migrates each key at most once across repeated change events", async () => {
+    const store = initWithStore({ setupChassisLeftSpringIncrease: "OLD-BINDING" });
+    await tick();
 
     migrateGlobalSettingsKeys(RENAMES, createMockLogger());
-    const writesAfterMigration = mock.setGlobalSettings.mock.calls.length;
+    const savesAfterMigration = store.saved.length;
 
-    // A stale echo still carrying the old key must not re-trigger a migration write.
-    mock.echo?.({ setupChassisLeftSpringIncrease: "OLD-BINDING" });
+    // Any later settings change re-runs the subscribed migration; a settled
+    // key must not be migrated (or written) a second time.
+    updateGlobalSettings({ someOtherKey: "value" });
 
     expect(cache().setupChassisLrSpringIncrease).toBe("OLD-BINDING");
     expect(cache().setupChassisLeftSpringIncrease).toBeUndefined();
-    expect(mock.setGlobalSettings.mock.calls.length).toBe(writesAfterMigration);
+    expect(store.saved).toHaveLength(savesAfterMigration + 1); // only the unrelated write
   });
 });

@@ -1,8 +1,10 @@
 import { processAndCopyAudioAssetsPlugin } from "@iracedeck/audio-assets/build";
 import {
+  assertBridgeInjectionPlugin,
   browserDir,
   injectBridgeScriptPlugin,
   partialsDir,
+  PI_SETTINGS_BRIDGE,
   piTemplatePlugin,
   SETTINGS_WINDOW_BRIDGE,
   SETTINGS_WINDOW_HTML,
@@ -200,6 +202,13 @@ const config = {
       bridge: SETTINGS_WINDOW_BRIDGE,
       include: (file) => file === SETTINGS_WINDOW_HTML,
     }),
+    // PI settings bridge into every action PI — but NOT the settings window,
+    // which has its own bridge; two bridges must never share a page (#992, #993).
+    injectBridgeScriptPlugin({
+      outputDir: `${sdPlugin}/ui`,
+      bridge: PI_SETTINGS_BRIDGE,
+      include: (file) => file !== SETTINGS_WINDOW_HTML,
+    }),
     // Copy per-action static icons from @iracedeck/iracing-actions into {sdPlugin}/imgs/actions/<name>/.
     // Source of truth: `packages/iracing-actions/src/actions/<name>/{icon,key,dial}.svg`.
     // dial.svg (optional) is the manifest `Encoder.Icon` default for dual-surface actions (#775).
@@ -250,7 +259,13 @@ const config = {
       generateBundle() {
         const uiDir = `${sdPlugin}/ui`;
         if (!existsSync(uiDir)) mkdirSync(uiDir, { recursive: true });
-        for (const file of ["sdpi-components.js", "pi-components.js", SETTINGS_WINDOW_BRIDGE, SETTINGS_WINDOW_LOGO]) {
+        for (const file of [
+          "sdpi-components.js",
+          "pi-components.js",
+          PI_SETTINGS_BRIDGE,
+          SETTINGS_WINDOW_BRIDGE,
+          SETTINGS_WINDOW_LOGO,
+        ]) {
           const src = path.join(browserDir, file);
           if (!existsSync(src)) {
             this.error(
@@ -332,6 +347,12 @@ const config = {
         this.emitFile({ fileName: "config.json", source: JSON.stringify(config, null, 2), type: "asset" });
       },
     },
+    // Build-time guard (#993 phase 2): every generated PI page carries exactly
+    // its one bridge, immediately before sdpi-components.js, and no other bridge.
+    assertBridgeInjectionPlugin({
+      outputDir: `${sdPlugin}/ui`,
+      expectedBridge: (file) => (file === SETTINGS_WINDOW_HTML ? SETTINGS_WINDOW_BRIDGE : PI_SETTINGS_BRIDGE),
+    }),
   ],
 };
 

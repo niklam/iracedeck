@@ -9,14 +9,22 @@
  * from the page URL and speaks the flat `cmd` protocol.
  *
  * This shim bridges the two: it monkeypatches `window.WebSocket` with a class
- * that opens the REAL Ulanzi socket and TRANSLATES every frame both ways
- * (see ./translate), then calls `connectElgatoStreamDeckSocket` with synthesized
- * Elgato-shape args. Everything downstream — sdpi-components and every `ird-*`
- * component — then works unchanged.
+ * that opens the REAL Ulanzi socket and translates frames both ways (see
+ * ./translate) — EXCEPT global-settings frames (`getGlobalSettings` /
+ * `setGlobalSettings` / `didReceiveGlobalSettings`), which the shared
+ * settings-channel router (../settings-channel/router.ts) redirects to the
+ * plugin's loopback settings server once it has read `_settingsChannel` from
+ * the host's copy; until then — and if no channel is ever offered — they keep
+ * going through the Ulanzi host exactly as before (issue #993, phase 2). It
+ * then calls `connectElgatoStreamDeckSocket` with synthesized Elgato-shape
+ * args. Everything downstream — sdpi-components and every `ird-*` component —
+ * then works unchanged.
  *
  * The Ulanzi plugin's rollup build injects `<script src="ulanzi-pi-bridge.js">`
  * before `sdpi-components.js` into each generated PI HTML.
  */
+import { openLoopbackSocket } from "../settings-channel/loopback.js";
+import { createSettingsChannelRouter, type PiFrame, type SettingsChannelRouter } from "../settings-channel/router.js";
 import { type BridgeIdentity, elgatoToUlanzi, encodeContext, PLUGIN_UUID, ulanziToElgato } from "./translate.js";
 
 const WS_OPEN = 1;
@@ -38,10 +46,18 @@ export function readIdentity(search: string): BridgeIdentity {
   };
 }
 
+export interface UlanziBridgeOptions {
+  warn?: (message: string) => void;
+  /** Test hook; production uses the router's BOOTSTRAP_TIMEOUT_MS. */
+  bootstrapTimeoutMs?: number;
+}
+
 /**
  * A WebSocket stand-in handed to sdpi-components. It mimics the WebSocket API
  * sdpi uses (`onopen` / `onmessage` / `send` / `readyState`) but internally opens
- * the REAL Ulanzi socket and translates every frame both ways.
+ * the REAL Ulanzi socket and translates every frame both ways — except
+ * global-settings frames, which the settings-channel router may redirect to
+ * the plugin's loopback server (see the module doc above).
  */
 export class UlanziBridgeSocket {
   onopen: ((ev: Event) => void) | null = null;
@@ -51,12 +67,27 @@ export class UlanziBridgeSocket {
   readyState = 0;
 
   private readonly real: WebSocket;
+  private readonly router: SettingsChannelRouter;
 
-  constructor(
-    private readonly identity: BridgeIdentity,
-    Native: typeof WebSocket,
-  ) {
+  constructor(identity: BridgeIdentity, Native: typeof WebSocket, options: UlanziBridgeOptions = {}) {
     this.real = new Native(`ws://${identity.address}:${identity.port}`);
+    this.router = createSettingsChannelRouter({
+      identity: { context: encodeContext(identity.uuid, identity.key, identity.actionid), action: identity.uuid },
+      // sdpi never sends before its own onopen fires (after our onopen forwards
+      // it, below), and a native WebSocket.send only throws while CONNECTING —
+      // but guard on readyState anyway rather than relying on that ordering.
+      toHost: (frame) => {
+        const ulanzi = elgatoToUlanzi(frame, identity);
+
+        if (ulanzi && this.readyState === WS_OPEN) this.real.send(JSON.stringify(ulanzi));
+      },
+      toPi: (frame) => this.onmessage?.({ data: JSON.stringify(frame) } as MessageEvent),
+      openLoopback: (channel, handlers) => openLoopbackSocket(channel, handlers, Native),
+      warn: options.warn ?? ((m: string) => console.warn(m)),
+      setTimeout: (fn, ms) => setTimeout(fn, ms),
+      clearTimeout: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
+      bootstrapTimeoutMs: options.bootstrapTimeoutMs,
+    });
 
     this.real.onopen = (ev): void => {
       this.readyState = WS_OPEN;
@@ -68,6 +99,10 @@ export class UlanziBridgeSocket {
         JSON.stringify({ cmd: "sendToPlugin", ...base, payload: { event: "propertyInspectorDidAppear" } }),
       );
       this.onopen?.(ev);
+      // Bootstrap read of the host's global-settings copy (plugin scope) — the
+      // router decides from here whether global settings stay on the host path
+      // or switch to the plugin's loopback server.
+      this.router.onHostOpen();
     };
 
     this.real.onmessage = (ev: MessageEvent): void => {
@@ -81,13 +116,12 @@ export class UlanziBridgeSocket {
 
       const elgato = ulanziToElgato(frame, identity);
 
-      if (elgato) {
-        this.onmessage?.({ data: JSON.stringify(elgato) } as MessageEvent);
-      }
+      if (elgato) this.router.onHostMessage(elgato as PiFrame);
     };
 
     this.real.onclose = (ev): void => {
       this.readyState = WS_CLOSED;
+      this.router.onHostClose();
       this.onclose?.(ev as CloseEvent);
     };
 
@@ -95,22 +129,20 @@ export class UlanziBridgeSocket {
   }
 
   send(data: string): void {
-    let frame: Record<string, unknown>;
+    let frame: PiFrame;
 
     try {
-      frame = JSON.parse(data) as Record<string, unknown>;
+      frame = JSON.parse(data) as PiFrame;
     } catch {
       return;
     }
 
-    const ulanzi = elgatoToUlanzi(frame, this.identity);
-
-    if (ulanzi) {
-      this.real.send(JSON.stringify(ulanzi));
-    }
+    this.router.onPiSend(frame);
   }
 
   close(): void {
+    this.readyState = WS_CLOSED;
+    this.router.onHostClose();
     this.real.close();
   }
 }

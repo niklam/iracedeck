@@ -1,17 +1,26 @@
 import type { ILogger } from "@iracedeck/logger";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   _resetGlobalSettings,
   deleteGlobalSettings,
   getGlobalSettings,
+  getSettingsStoreSource,
   GlobalSettingsSchema,
+  hostMirrorPayload,
   initGlobalSettings,
+  isSettingsStoreReady,
+  LOAD_ATTEMPTS,
+  LOAD_RETRY_DELAY_MS,
+  MIGRATION_PENDING_KEY,
+  MIGRATION_RETRY_STARTS,
+  MIGRATION_TIMEOUT_MS,
   onGlobalSettingsChange,
   resolveActiveDriverName,
   resolveActiveRaceEngineerVoice,
   updateGlobalSettings,
 } from "./global-settings.js";
+import { createMemorySettingsStore } from "./settings-store.js";
 import type { IDeckPlatformAdapter } from "./types.js";
 import { CHANGELOG_NOTIFICATION_POLICIES } from "./version-check.js";
 
@@ -57,13 +66,66 @@ function createMockAdapter(): MockAdapter {
   };
 }
 
+type MemoryStore = ReturnType<typeof createMemorySettingsStore>;
+
+/** Let the async load/migration inside initGlobalSettings settle. */
+const tick = () => new Promise((r) => setTimeout(r, 0));
+
+/**
+ * Initialize against a memory store seeded with `initial` (the "settings file
+ * already exists" path) and wait for it to become ready — the store, not the
+ * deck host, is what loads settings now (#993).
+ */
+async function initWithStore(initial: Record<string, unknown> = {}): Promise<{
+  mock: MockAdapter;
+  store: MemoryStore;
+}> {
+  const mock = createMockAdapter();
+  const store = createMemorySettingsStore(initial);
+
+  initGlobalSettings(mock.adapter, createMockLogger(), store);
+  await tick();
+
+  return { mock, store };
+}
+
+/**
+ * Memory store whose first `failures` `load()` calls reject: a settings file
+ * that exists but cannot be READ (locked by a scanner, permission denied).
+ * `saved` stays observable so a test can prove nothing was written over it.
+ */
+function createUnreadableStore(failures: number, initial?: Record<string, unknown>) {
+  const inner = createMemorySettingsStore(initial);
+  let attempts = 0;
+
+  return {
+    ...inner,
+    get attempts() {
+      return attempts;
+    },
+    load: async () => {
+      attempts += 1;
+
+      if (attempts <= failures) throw new Error("EBUSY: the settings file is locked");
+
+      return inner.load();
+    },
+  };
+}
+
+// Every init leaves module state behind (including a pending migration
+// timer on the no-file path) — clear it so nothing bleeds into the next test.
+afterEach(() => {
+  _resetGlobalSettings();
+});
+
 describe("global-settings cache (synchronous update on local writes)", () => {
   let mock: MockAdapter;
+  let store: MemoryStore;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     _resetGlobalSettings();
-    mock = createMockAdapter();
-    initGlobalSettings(mock.adapter, createMockLogger());
+    ({ mock, store } = await initWithStore());
   });
 
   it("updateGlobalSettings reflects the new value on the very next getGlobalSettings call", () => {
@@ -114,7 +176,7 @@ describe("global-settings cache (synchronous update on local writes)", () => {
     expect((getGlobalSettings() as Record<string, unknown>).pitCrewRaceEngineerEnabled).toBe(true);
   });
 
-  it("notifies listeners on every local write, not just on host echoes", () => {
+  it("notifies listeners on every local write", () => {
     const listener = vi.fn();
     onGlobalSettingsChange(listener);
 
@@ -126,16 +188,12 @@ describe("global-settings cache (synchronous update on local writes)", () => {
     expect(listener.mock.calls[1][0].radarVolume).toBe(75);
   });
 
-  it("forwards the full merged+parsed settings payload to the adapter", () => {
-    // Open the #896 first-arrival gate — writes before the first host
-    // settings arrival are queued, not persisted.
-    mock.echo!({});
+  it("saves the full merged+parsed settings payload to the store", () => {
     updateGlobalSettings({ pitCrewRadarEnabled: false });
 
-    expect(mock.setGlobalSettings).toHaveBeenCalledTimes(1);
-    const sent = mock.setGlobalSettings.mock.calls[0][0] as Record<string, unknown>;
+    const sent = store.saved.at(-1) as Record<string, unknown>;
     // Assert both the partial override and the Zod-produced defaults are
-    // all present — this proves the adapter receives the parsed result,
+    // all present — this proves the store receives the parsed result,
     // not just the caller's bare partial.
     expect(sent).toMatchObject({
       pitCrewRadarEnabled: false,
@@ -151,16 +209,17 @@ describe("global-settings cache (synchronous update on local writes)", () => {
     });
   });
 
-  it("reconciles on host echo without losing later local writes' semantics", () => {
+  it("keeps local write semantics when a host payload arrives (the host is not truth)", () => {
     updateGlobalSettings({ pitCrewRadarEnabled: false });
     expect((getGlobalSettings() as Record<string, unknown>).pitCrewRadarEnabled).toBe(false);
 
-    // initGlobalSettings must register an echo callback; fail loudly if
-    // not, otherwise the reconciliation step below silently skips.
+    // initGlobalSettings must still register a host callback (it is the
+    // migration source); fail loudly if not, otherwise the step below
+    // silently skips.
     expect(mock.echo).not.toBeNull();
 
-    // Host finally echoes the earlier write — cache stays false.
-    mock.echo!({ pitCrewRadarEnabled: false });
+    // A host payload lands after the store is ready — ignored for the cache.
+    mock.echo!({ pitCrewRadarEnabled: true });
     expect((getGlobalSettings() as Record<string, unknown>).pitCrewRadarEnabled).toBe(false);
 
     // New local write still flips immediately.
@@ -168,31 +227,24 @@ describe("global-settings cache (synchronous update on local writes)", () => {
     expect((getGlobalSettings() as Record<string, unknown>).pitCrewRadarEnabled).toBe(true);
   });
 
-  it("no-ops when the adapter is not initialized", () => {
+  it("does not throw when called before initialization, and persists nothing", () => {
     _resetGlobalSettings();
-    // Not calling initGlobalSettings — adapterRef stays null.
+    // Not calling initGlobalSettings — there is no store to save to.
 
-    updateGlobalSettings({ pitCrewRadarEnabled: true });
+    expect(() => updateGlobalSettings({ pitCrewRadarEnabled: true })).not.toThrow();
 
-    // No throw; cache stays at the schema default (false per #378).
-    expect((getGlobalSettings() as Record<string, unknown>).pitCrewRadarEnabled).toBe(false);
+    // Read-your-writes still holds; the write is kept as an early write and
+    // would be applied over whatever a later store load brings in.
+    expect((getGlobalSettings() as Record<string, unknown>).pitCrewRadarEnabled).toBe(true);
+    expect(store.saved).toHaveLength(1); // only the load-time save
   });
 });
 
 describe("deleteGlobalSettings (issue #515 migration helper)", () => {
-  let mock: MockAdapter;
-
-  beforeEach(() => {
-    _resetGlobalSettings();
-    mock = createMockAdapter();
-    initGlobalSettings(mock.adapter, createMockLogger());
-    mock.setGlobalSettings.mockClear();
-  });
-
-  it("removes the listed keys from the cache", () => {
-    // Seed the cache via the host-echo path so the keys exist as
-    // passthrough values (the schema doesn't define them).
-    mock.echo!({ legacyA: 1, legacyB: 2, keepMe: 3 });
+  it("removes the listed keys from the cache", async () => {
+    // Seed the store so the keys exist as passthrough values (the schema
+    // doesn't define them) — the file is what loads settings now.
+    await initWithStore({ legacyA: 1, legacyB: 2, keepMe: 3 });
     expect((getGlobalSettings() as Record<string, unknown>).legacyA).toBe(1);
 
     deleteGlobalSettings(["legacyA", "legacyB"]);
@@ -203,43 +255,41 @@ describe("deleteGlobalSettings (issue #515 migration helper)", () => {
     expect(settings.keepMe).toBe(3);
   });
 
-  it("writes the trimmed cache to the adapter exactly once per call", () => {
-    mock.echo!({ legacyA: 1 });
-    mock.setGlobalSettings.mockClear();
+  it("saves the trimmed cache to the store exactly once per call", async () => {
+    const { store } = await initWithStore({ legacyA: 1 });
+    const savesBefore = store.saved.length;
 
     deleteGlobalSettings(["legacyA"]);
 
-    expect(mock.setGlobalSettings).toHaveBeenCalledTimes(1);
-    const written = mock.setGlobalSettings.mock.calls[0][0] as Record<string, unknown>;
-    expect(written.legacyA).toBeUndefined();
+    expect(store.saved).toHaveLength(savesBefore + 1);
+    expect(store.saved.at(-1)).not.toHaveProperty("legacyA");
   });
 
-  it("is a no-op when none of the listed keys are present", () => {
-    mock.echo!({ keepMe: 3 });
-    mock.setGlobalSettings.mockClear();
+  it("is a no-op when none of the listed keys are present", async () => {
+    const { store } = await initWithStore({ keepMe: 3 });
+    const savesBefore = store.saved.length;
     const listener = vi.fn();
     onGlobalSettingsChange(listener);
 
     deleteGlobalSettings(["legacyA", "legacyB"]);
 
-    // No write to the adapter, no listener fire — the cache is unchanged.
-    expect(mock.setGlobalSettings).not.toHaveBeenCalled();
+    // No save, no listener fire — the cache is unchanged.
+    expect(store.saved).toHaveLength(savesBefore);
     expect(listener).not.toHaveBeenCalled();
     expect((getGlobalSettings() as Record<string, unknown>).keepMe).toBe(3);
   });
 
-  it("removes only the listed keys when same-prefix keys also exist", () => {
+  it("removes only the listed keys when same-prefix keys also exist", async () => {
     // Specifically exercises the issue #515 migration shape: the renamed
     // pitCrew* keys can coexist with their legacy counterparts during
     // the transition; deleting the legacy names must not touch the new
     // ones.
-    mock.echo!({
+    await initWithStore({
       pitCrewRaceEngineerEnabled: false,
       pitCrewRadarEnabled: false,
       raceEngineerEnabled: true,
       radarEnabled: true,
     });
-    mock.setGlobalSettings.mockClear();
 
     deleteGlobalSettings(["raceEngineerEnabled", "radarEnabled"]);
 
@@ -250,18 +300,18 @@ describe("deleteGlobalSettings (issue #515 migration helper)", () => {
     expect(settings.pitCrewRadarEnabled).toBe(false);
   });
 
-  it("subsequent call with the same key list is a no-op (idempotent)", () => {
-    mock.echo!({ legacyA: 1 });
+  it("subsequent call with the same key list is a no-op (idempotent)", async () => {
+    const { store } = await initWithStore({ legacyA: 1 });
     deleteGlobalSettings(["legacyA"]);
-    mock.setGlobalSettings.mockClear();
+    const savesBefore = store.saved.length;
 
     deleteGlobalSettings(["legacyA"]);
 
-    expect(mock.setGlobalSettings).not.toHaveBeenCalled();
+    expect(store.saved).toHaveLength(savesBefore);
   });
 
-  it("notifies listeners with the trimmed payload", () => {
-    mock.echo!({ legacyA: 1, keepMe: 3 });
+  it("notifies listeners with the trimmed payload", async () => {
+    await initWithStore({ legacyA: 1, keepMe: 3 });
     const listener = vi.fn();
     onGlobalSettingsChange(listener);
 
@@ -273,9 +323,9 @@ describe("deleteGlobalSettings (issue #515 migration helper)", () => {
     expect(payload.keepMe).toBe(3);
   });
 
-  it("no-ops when the adapter is not initialized", () => {
+  it("does not throw when called before initialization", () => {
     _resetGlobalSettings();
-    // No initGlobalSettings call.
+    // No initGlobalSettings call — there is no store to save to.
 
     expect(() => deleteGlobalSettings(["whatever"])).not.toThrow();
   });
@@ -390,26 +440,20 @@ describe("resolveActiveRaceEngineerVoice", () => {
     expect(resolveActiveRaceEngineerVoice(["luca", "titan"])).toBe("luca");
   });
 
-  it("returns the persisted voice when it's in the available list", () => {
-    const mock = createMockAdapter();
-    initGlobalSettings(mock.adapter, createMockLogger());
-    mock.echo!({ raceEngineerVoice: "titan" });
+  it("returns the persisted voice when it's in the available list", async () => {
+    await initWithStore({ raceEngineerVoice: "titan" });
 
     expect(resolveActiveRaceEngineerVoice(["luca", "titan"])).toBe("titan");
   });
 
-  it("falls back to the first available voice when the persisted one is gone", () => {
-    const mock = createMockAdapter();
-    initGlobalSettings(mock.adapter, createMockLogger());
-    mock.echo!({ raceEngineerVoice: "removed-voice" });
+  it("falls back to the first available voice when the persisted one is gone", async () => {
+    await initWithStore({ raceEngineerVoice: "removed-voice" });
 
     expect(resolveActiveRaceEngineerVoice(["luca", "titan"])).toBe("luca");
   });
 
-  it("treats empty string as 'no preference' and falls back to first", () => {
-    const mock = createMockAdapter();
-    initGlobalSettings(mock.adapter, createMockLogger());
-    mock.echo!({ raceEngineerVoice: "" });
+  it("treats empty string as 'no preference' and falls back to first", async () => {
+    await initWithStore({ raceEngineerVoice: "" });
 
     expect(resolveActiveRaceEngineerVoice(["luca", "titan"])).toBe("luca");
   });
@@ -420,10 +464,8 @@ describe("resolveActiveRaceEngineerVoice", () => {
   // first available voice" path covers this without code changes — this
   // test pins the behaviour explicitly so a future refactor that breaks
   // the fallback fails loudly.
-  it("falls back to 'default' when persisted value is the legacy 'luca' (post-rename)", () => {
-    const mock = createMockAdapter();
-    initGlobalSettings(mock.adapter, createMockLogger());
-    mock.echo!({ raceEngineerVoice: "luca" });
+  it("falls back to 'default' when persisted value is the legacy 'luca' (post-rename)", async () => {
+    await initWithStore({ raceEngineerVoice: "luca" });
 
     expect(resolveActiveRaceEngineerVoice(["default"])).toBe("default");
   });
@@ -442,10 +484,8 @@ describe("resolveActiveDriverName", () => {
     expect(resolveActiveDriverName(["adam", "niklas"])).toBe("adam");
   });
 
-  it("returns the persisted name when it's in the available list", () => {
-    const mock = createMockAdapter();
-    initGlobalSettings(mock.adapter, createMockLogger());
-    mock.echo!({ driverName: "niklas" });
+  it("returns the persisted name when it's in the available list", async () => {
+    await initWithStore({ driverName: "niklas" });
 
     expect(resolveActiveDriverName(["adam", "niklas"])).toBe("niklas");
   });
@@ -458,18 +498,14 @@ describe("resolveActiveDriverName", () => {
     expect(resolveActiveDriverName(["adam", "niklas"], "driver")).toBe("adam");
   });
 
-  it("prefers the persisted name over the supplied default", () => {
-    const mock = createMockAdapter();
-    initGlobalSettings(mock.adapter, createMockLogger());
-    mock.echo!({ driverName: "niklas" });
+  it("prefers the persisted name over the supplied default", async () => {
+    await initWithStore({ driverName: "niklas" });
 
     expect(resolveActiveDriverName(["adam", "driver", "niklas"], "driver")).toBe("niklas");
   });
 
-  it("falls back to the supplied default when the persisted name is gone", () => {
-    const mock = createMockAdapter();
-    initGlobalSettings(mock.adapter, createMockLogger());
-    mock.echo!({ driverName: "removed" });
+  it("falls back to the supplied default when the persisted name is gone", async () => {
+    await initWithStore({ driverName: "removed" });
 
     expect(resolveActiveDriverName(["adam", "driver"], "driver")).toBe("driver");
   });
@@ -715,180 +751,12 @@ describe("debugLogging (issue #609)", () => {
   });
 });
 
-describe("first-arrival write gate (issue #896)", () => {
-  let mock: MockAdapter;
-
-  beforeEach(() => {
-    _resetGlobalSettings();
-    mock = createMockAdapter();
-    initGlobalSettings(mock.adapter, createMockLogger());
-  });
-
-  it("queues a write that happens before the first host settings arrival instead of persisting defaults", () => {
-    updateGlobalSettings({ radarVolume: 80 });
-
-    // Nothing persisted — a write here would overwrite host storage with a
-    // defaults-based object, wiping every key binding (the #896 wipe).
-    expect(mock.setGlobalSettings).not.toHaveBeenCalled();
-    // Read-your-writes: the cache still reflects the new value immediately.
-    expect((getGlobalSettings() as Record<string, unknown>).radarVolume).toBe(80);
-  });
-
-  it("flushes the queued write merged over the real settings once they arrive", () => {
-    const binding = '{"type":"keyboard","key":"f1","modifiers":[]}';
-    updateGlobalSettings({ radarVolume: 80 });
-
-    mock.echo!({ blackBoxLapTiming: binding, radarVolume: 50 });
-
-    expect(mock.setGlobalSettings).toHaveBeenCalledTimes(1);
-    const sent = mock.setGlobalSettings.mock.calls[0][0] as Record<string, unknown>;
-    // The host's stored binding survives, and the queued local write wins
-    // over the (older) stored value.
-    expect(sent.blackBoxLapTiming).toBe(binding);
-    expect(sent.radarVolume).toBe(80);
-  });
-
-  it("does not write back on the first arrival when nothing was queued", () => {
-    mock.echo!({ radarVolume: 60 });
-
-    expect(mock.setGlobalSettings).not.toHaveBeenCalled();
-    expect((getGlobalSettings() as Record<string, unknown>).radarVolume).toBe(60);
-  });
-});
-
-describe("pending-write overlay on host echoes (issue #896)", () => {
-  let mock: MockAdapter;
-
-  beforeEach(() => {
-    _resetGlobalSettings();
-    mock = createMockAdapter();
-    initGlobalSettings(mock.adapter, createMockLogger());
-    // Open the first-arrival gate so writes persist immediately.
-    mock.echo!({});
-    mock.setGlobalSettings.mockClear();
-  });
-
-  it("re-applies a pending local write when a stale echo omits the key", () => {
-    updateGlobalSettings({ pitCrewRadarEnabled: true });
-
-    mock.echo!({});
-
-    expect((getGlobalSettings() as Record<string, unknown>).pitCrewRadarEnabled).toBe(true);
-  });
-
-  it("re-applies a pending local write when a stale echo carries the pre-write value", () => {
-    updateGlobalSettings({ radarVolume: 80 });
-
-    mock.echo!({ radarVolume: 50 });
-
-    expect((getGlobalSettings() as Record<string, unknown>).radarVolume).toBe(80);
-  });
-
-  it("accepts a genuinely newer foreign value for the same key", () => {
-    updateGlobalSettings({ radarVolume: 80 });
-
-    // Neither our written value (80) nor the pre-write value (50): a newer
-    // write from another party — the echo wins.
-    mock.echo!({ radarVolume: 65 });
-
-    expect((getGlobalSettings() as Record<string, unknown>).radarVolume).toBe(65);
-  });
-
-  it("drops the pending write once an echo confirms it", () => {
-    updateGlobalSettings({ radarVolume: 80 });
-
-    mock.echo!({ radarVolume: 80 });
-    // With the pending write confirmed and dropped, a later echo wins.
-    mock.echo!({ radarVolume: 30 });
-
-    expect((getGlobalSettings() as Record<string, unknown>).radarVolume).toBe(30);
-  });
-
-  it("keeps the latest of two coalesced local writes when a stale echo carries the original host value", () => {
-    // Real host baseline, then two local writes before any echo.
-    mock.echo!({ radarVolume: 50 });
-    updateGlobalSettings({ radarVolume: 60 });
-    updateGlobalSettings({ radarVolume: 70 });
-
-    // Stale echo from before the write episode — must not read as a
-    // foreign write just because the second write moved the baseline.
-    mock.echo!({ radarVolume: 50 });
-
-    expect((getGlobalSettings() as Record<string, unknown>).radarVolume).toBe(70);
-  });
-
-  it("keeps the latest of two coalesced local writes when the echo of the first write arrives", () => {
-    updateGlobalSettings({ radarVolume: 60 });
-    updateGlobalSettings({ radarVolume: 70 });
-
-    // The first write's own echo carries an intermediate episode value —
-    // stale, not foreign.
-    mock.echo!({ radarVolume: 60 });
-
-    expect((getGlobalSettings() as Record<string, unknown>).radarVolume).toBe(70);
-  });
-
-  it("treats string-typed echo values as equal to their parsed counterparts", () => {
-    // The PI persists numbers as strings ("50") while plugin writes persist
-    // parsed numbers — a stale echo carrying the string form of the
-    // pre-write value must still be recognized as stale, not as a newer
-    // foreign write.
-    updateGlobalSettings({ radarVolume: 80 });
-
-    mock.echo!({ radarVolume: "50" });
-
-    expect((getGlobalSettings() as Record<string, unknown>).radarVolume).toBe(80);
-  });
-
-  it("confirms a pending write from its string-typed echo form", () => {
-    updateGlobalSettings({ radarVolume: 80 });
-
-    mock.echo!({ radarVolume: "80" });
-    mock.echo!({ radarVolume: "30" });
-
-    expect((getGlobalSettings() as Record<string, unknown>).radarVolume).toBe(30);
-  });
-});
-
-describe("pending-delete reconciliation on host echoes (issue #896)", () => {
-  let mock: MockAdapter;
-
-  beforeEach(() => {
-    _resetGlobalSettings();
-    mock = createMockAdapter();
-    initGlobalSettings(mock.adapter, createMockLogger());
-  });
-
-  it("re-drops a deleted key from a stale echo, then confirms once an echo omits it", () => {
-    mock.echo!({ legacyA: 1 });
-    deleteGlobalSettings(["legacyA"]);
-
-    // Stale echo still carrying the deleted key — the delete is re-applied.
-    mock.echo!({ legacyA: 1 });
-    expect("legacyA" in (getGlobalSettings() as Record<string, unknown>)).toBe(false);
-
-    // An echo without the key confirms the delete and clears the pending
-    // record — a later (foreign) re-add of the key is then accepted.
-    mock.echo!({});
-    mock.echo!({ legacyA: 5 });
-    expect((getGlobalSettings() as Record<string, unknown>).legacyA).toBe(5);
-  });
-});
-
-describe("host payload salvage (issue #896)", () => {
-  let mock: MockAdapter;
-
-  beforeEach(() => {
-    _resetGlobalSettings();
-    mock = createMockAdapter();
-    initGlobalSettings(mock.adapter, createMockLogger());
-  });
-
-  it("keeps the good keys when one persisted value is unparseable", () => {
+describe("stored-settings salvage (issue #896 protection, now over the file)", () => {
+  it("keeps the good keys when one stored value is unparseable", async () => {
     // debugLogging: 42 fails its union (no per-field catch) — the salvage
     // path must drop that key rather than abort the whole parse and leave
     // the cache at defaults (failure path 3 in #896).
-    mock.echo!({ blackBoxLapTiming: "b1", debugLogging: 42, radarVolume: 80 });
+    await initWithStore({ blackBoxLapTiming: "b1", debugLogging: 42, radarVolume: 80 });
 
     const settings = getGlobalSettings() as Record<string, unknown>;
     expect(settings.blackBoxLapTiming).toBe("b1");
@@ -896,51 +764,21 @@ describe("host payload salvage (issue #896)", () => {
     expect(settings.debugLogging).toBe(false);
   });
 
-  it("a malformed hardened field degrades to its default without touching bindings in the same payload", () => {
-    mock.echo!({ simHubPort: "not-a-port", lookDirectionLeft: "b2" });
+  it("a malformed hardened field degrades to its default without touching bindings in the same file", async () => {
+    await initWithStore({ simHubPort: "not-a-port", lookDirectionLeft: "b2" });
 
     const settings = getGlobalSettings() as Record<string, unknown>;
     expect(settings.lookDirectionLeft).toBe("b2");
     expect(settings.simHubPort).toBe(8888);
   });
-});
 
-describe("shrink guard on outgoing writes (issue #896)", () => {
-  let mock: MockAdapter;
+  it("heals the file: the salvaged result is what gets saved back", async () => {
+    const { store } = await initWithStore({ blackBoxLapTiming: "b1", debugLogging: 42 });
 
-  beforeEach(() => {
-    _resetGlobalSettings();
-    mock = createMockAdapter();
-    initGlobalSettings(mock.adapter, createMockLogger());
-  });
-
-  it("keeps bindings in outgoing writes when the same payload carried an unparseable value", () => {
-    mock.echo!({ blackBoxLapTiming: "b1", debugLogging: 42 });
-    mock.setGlobalSettings.mockClear();
-
-    updateGlobalSettings({ radarVolume: 80 });
-
-    const sent = mock.setGlobalSettings.mock.calls[0][0] as Record<string, unknown>;
-    // The binding (a passthrough key — salvage can never drop those) rides
-    // along untouched.
-    expect(sent.blackBoxLapTiming).toBe("b1");
-    // The unparseable schema field heals to its default in storage — the
-    // salvage dropped the corrupt value and the schema materialized the
-    // default, so the next session parses cleanly.
-    expect(sent.debugLogging).toBe(false);
-    expect(sent.radarVolume).toBe(80);
-  });
-
-  it("does not resurrect explicitly deleted keys", () => {
-    mock.echo!({ legacyA: 1, keepMe: 2 });
-    deleteGlobalSettings(["legacyA"]);
-    mock.setGlobalSettings.mockClear();
-
-    updateGlobalSettings({ radarVolume: 80 });
-
-    const sent = mock.setGlobalSettings.mock.calls[0][0] as Record<string, unknown>;
-    expect("legacyA" in sent).toBe(false);
-    expect(sent.keepMe).toBe(2);
+    // The corrupt value is gone from storage and the schema default took
+    // its place, so the next start parses cleanly. The binding (a
+    // passthrough key — salvage can never drop those) rides along untouched.
+    expect(store.saved.at(-1)).toMatchObject({ blackBoxLapTiming: "b1", debugLogging: false });
   });
 });
 
@@ -1018,5 +856,438 @@ describe("debugLogging hardening (issue #896 convention)", () => {
   it("falls back to false on an unparseable value rather than aborting the parse", () => {
     const parsed = GlobalSettingsSchema.parse({ debugLogging: 42 }) as Record<string, unknown>;
     expect(parsed.debugLogging).toBe(false);
+  });
+});
+
+describe("single-writer store (issue #993)", () => {
+  beforeEach(() => _resetGlobalSettings());
+
+  it("loads the cache from the store and marks the store ready; the host is NOT asked", async () => {
+    const mock = createMockAdapter();
+    const store = createMemorySettingsStore({ driverName: "nick", debugLogging: "true" });
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store);
+    await tick();
+
+    expect(isSettingsStoreReady()).toBe(true);
+    expect(getGlobalSettings().driverName).toBe("nick");
+    expect(getGlobalSettings().debugLogging).toBe(true); // parsed
+    expect(mock.getGlobalSettings).not.toHaveBeenCalled();
+  });
+
+  it("fires onGlobalSettingsChange listeners exactly once when the store is ready", async () => {
+    const mock = createMockAdapter();
+    const listener = vi.fn();
+
+    initGlobalSettings(mock.adapter, createMockLogger(), createMemorySettingsStore({ driverName: "nick" }));
+    onGlobalSettingsChange(listener);
+    await tick();
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener.mock.calls[0]?.[0]).toMatchObject({ driverName: "nick" });
+  });
+
+  it("with no file, migrates ONCE from the host: asks, writes the host payload to the store, then is ready", async () => {
+    const mock = createMockAdapter();
+    const store = createMemorySettingsStore(); // no file
+    const binding = JSON.stringify({ type: "keyboard", key: "f1", modifiers: [] });
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store);
+    await tick();
+
+    expect(isSettingsStoreReady()).toBe(false);
+    expect(mock.getGlobalSettings).toHaveBeenCalledTimes(1);
+
+    mock.echo?.({ driverName: "host-nick", blackBoxLapTiming: binding });
+    await store.flush();
+
+    expect(isSettingsStoreReady()).toBe(true);
+    expect(getGlobalSettings().driverName).toBe("host-nick");
+    expect(store.saved.at(-1)).toMatchObject({ driverName: "host-nick", blackBoxLapTiming: binding });
+  });
+
+  it("migrates only once — a later host payload no longer re-asks or re-migrates", async () => {
+    const mock = createMockAdapter();
+    const store = createMemorySettingsStore();
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store);
+    await tick();
+    mock.echo?.({ driverName: "host-nick" });
+    const savesAfterMigration = store.saved.length;
+
+    mock.echo?.({ driverName: "second-payload" });
+
+    expect(getGlobalSettings().driverName).toBe("host-nick");
+    expect(store.saved).toHaveLength(savesAfterMigration);
+    expect(mock.getGlobalSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it("migration leaves the host copy alone — no host write happens during or after migration", async () => {
+    const mock = createMockAdapter();
+
+    initGlobalSettings(mock.adapter, createMockLogger(), createMemorySettingsStore());
+    await tick();
+    mock.echo?.({ driverName: "host-nick" });
+    await tick();
+    updateGlobalSettings({ driverName: "later" });
+
+    expect(mock.setGlobalSettings).not.toHaveBeenCalled();
+  });
+
+  it("with no file and a silent host, becomes ready with schema defaults after the migration timeout", async () => {
+    vi.useFakeTimers();
+
+    try {
+      const mock = createMockAdapter();
+      const store = createMemorySettingsStore();
+
+      initGlobalSettings(mock.adapter, createMockLogger(), store, { migrationTimeoutMs: 50 });
+      await vi.advanceTimersByTimeAsync(10);
+      expect(isSettingsStoreReady()).toBe(false);
+      await vi.advanceTimersByTimeAsync(60);
+
+      expect(isSettingsStoreReady()).toBe(true);
+      expect(store.saved).toHaveLength(1); // the fresh file was written
+      // ...carrying the marker that makes the next start ask the host again.
+      expect(store.saved[0]).toMatchObject({ [MIGRATION_PENDING_KEY]: 1 });
+      expect(hostMirrorPayload({ port: 1, token: "t" })).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a fresh-born file (pending-migration marker) asks the host again next start: the host fills in, the file's own edits win, the marker clears, and the mirror is allowed", async () => {
+    const mock = createMockAdapter();
+    const binding = JSON.stringify({ type: "keyboard", key: "f1", modifiers: [] });
+    // What a fresh start persisted: schema defaults + the marker, plus one value the user changed meanwhile.
+    const freshBorn = {
+      ...(GlobalSettingsSchema.parse({}) as Record<string, unknown>),
+      [MIGRATION_PENDING_KEY]: 1,
+      driverName: "typed-in-the-fresh-session",
+      _settingsStorePath: "C:/x/global-settings.json",
+    };
+    const store = createMemorySettingsStore(freshBorn);
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store);
+    await tick();
+
+    expect(isSettingsStoreReady()).toBe(false); // waiting for the host again
+    expect(mock.getGlobalSettings).toHaveBeenCalledTimes(1);
+
+    mock.echo?.({ driverName: "host-nick", blackBoxLapTiming: binding, focusIRacingWindow: false });
+    await store.flush();
+
+    expect(isSettingsStoreReady()).toBe(true);
+    const settings = getGlobalSettings() as unknown as Record<string, unknown>;
+    expect(settings.driverName).toBe("typed-in-the-fresh-session"); // the file's non-default value wins
+    expect(settings.blackBoxLapTiming).toBe(binding); // a binding the file never had comes from the host
+    expect(settings.focusIRacingWindow).toBe(false); // a key still at its default in the file takes the host's value
+    expect(settings._settingsStorePath).toBe("C:/x/global-settings.json"); // passthrough keys the file added survive
+    expect(settings[MIGRATION_PENDING_KEY]).toBeUndefined();
+    expect(store.saved.at(-1)).not.toHaveProperty(MIGRATION_PENDING_KEY);
+    expect(hostMirrorPayload({ port: 1, token: "t" })).toMatchObject({ blackBoxLapTiming: binding });
+  });
+
+  it("a fresh-born file whose host is STILL silent keeps the marker and still skips the mirror — defaults are never mirrored over an unread host copy", async () => {
+    vi.useFakeTimers();
+
+    try {
+      const mock = createMockAdapter();
+      const store = createMemorySettingsStore({
+        ...(GlobalSettingsSchema.parse({}) as Record<string, unknown>),
+        [MIGRATION_PENDING_KEY]: 1,
+      });
+
+      initGlobalSettings(mock.adapter, createMockLogger(), store, { migrationTimeoutMs: 50 });
+      await vi.advanceTimersByTimeAsync(60);
+
+      expect(isSettingsStoreReady()).toBe(true);
+      expect(getSettingsStoreSource()).toBe("fresh");
+      expect(store.saved.at(-1)).toMatchObject({ [MIGRATION_PENDING_KEY]: 2 }); // one more unanswered start
+      expect(hostMirrorPayload({ port: 1, token: "t" })).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("after MIGRATION_RETRY_STARTS unanswered starts the file is accepted as-is: no more waiting, marker cleared, mirror allowed", async () => {
+    const mock = createMockAdapter();
+    const store = createMemorySettingsStore({
+      ...(GlobalSettingsSchema.parse({}) as Record<string, unknown>),
+      [MIGRATION_PENDING_KEY]: MIGRATION_RETRY_STARTS,
+      driverName: "kept",
+    });
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store);
+    await tick();
+
+    expect(isSettingsStoreReady()).toBe(true);
+    expect(getSettingsStoreSource()).toBe("file");
+    expect(mock.getGlobalSettings).not.toHaveBeenCalled();
+    expect(store.saved.at(-1)).not.toHaveProperty(MIGRATION_PENDING_KEY);
+    expect(hostMirrorPayload({ port: 1, token: "t" })).toMatchObject({ driverName: "kept" });
+    expect(MIGRATION_RETRY_STARTS).toBe(3);
+  });
+
+  it("MIGRATION_TIMEOUT_MS is ten seconds", () => {
+    expect(MIGRATION_TIMEOUT_MS).toBe(10_000);
+  });
+
+  it("updateGlobalSettings merges, parses, notifies, and saves the WHOLE cache to the store", async () => {
+    const mock = createMockAdapter();
+    const store = createMemorySettingsStore({ driverName: "nick" });
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store);
+    await tick();
+    const listener = vi.fn();
+    onGlobalSettingsChange(listener);
+
+    updateGlobalSettings({ debugLogging: "true" });
+
+    expect(getGlobalSettings().debugLogging).toBe(true);
+    expect(getGlobalSettings().driverName).toBe("nick");
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(store.saved.at(-1)).toMatchObject({ driverName: "nick", debugLogging: true });
+  });
+
+  it("deleteGlobalSettings removes passthrough keys from the cache and saves", async () => {
+    const mock = createMockAdapter();
+    const store = createMemorySettingsStore({ _legacyKey: 1, driverName: "nick" });
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store);
+    await tick();
+
+    deleteGlobalSettings(["_legacyKey"]);
+
+    expect((getGlobalSettings() as Record<string, unknown>)._legacyKey).toBeUndefined();
+    expect(store.saved.at(-1)).not.toHaveProperty("_legacyKey");
+  });
+
+  it("writes made BEFORE the store is ready are applied over the loaded/migrated settings, not lost", async () => {
+    const mock = createMockAdapter();
+    const store = createMemorySettingsStore(); // migration path
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store);
+    updateGlobalSettings({ _audioDeviceList: "[]" }); // the plugin does this at startup (#610 probe etc.)
+    await tick();
+    mock.echo?.({ driverName: "host-nick" });
+    await store.flush();
+
+    expect(getGlobalSettings().driverName).toBe("host-nick");
+    expect((getGlobalSettings() as Record<string, unknown>)._audioDeviceList).toBe("[]");
+    expect(store.saved.at(-1)).toMatchObject({ driverName: "host-nick", _audioDeviceList: "[]" });
+  });
+
+  it("a pre-ready write the schema rejects is not replayed over the loaded settings — the stored value stays", async () => {
+    const mock = createMockAdapter();
+    const store = createMemorySettingsStore({ raceEngineerVoice: "stored-voice" });
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store);
+    // raceEngineerVoice has no .catch(): a non-string is DROPPED by salvage, not defaulted.
+    updateGlobalSettings({ raceEngineerVoice: 42 as unknown as string, driverName: "early" });
+    await tick();
+
+    expect(getGlobalSettings().raceEngineerVoice).toBe("stored-voice");
+    expect(getGlobalSettings().driverName).toBe("early");
+    expect(store.saved.at(-1)).toMatchObject({ raceEngineerVoice: "stored-voice", driverName: "early" });
+  });
+
+  it("deletes made BEFORE the store is ready are applied over the loaded settings too", async () => {
+    const mock = createMockAdapter();
+    const store = createMemorySettingsStore({ _legacyKey: 1, driverName: "nick" });
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store);
+    deleteGlobalSettings(["_legacyKey"]);
+    await tick();
+
+    expect((getGlobalSettings() as Record<string, unknown>)._legacyKey).toBeUndefined();
+    expect(getGlobalSettings().driverName).toBe("nick");
+    expect(store.saved.at(-1)).not.toHaveProperty("_legacyKey");
+  });
+
+  it("host payloads arriving after the store is ready are ignored for the cache (the host is not truth)", async () => {
+    const mock = createMockAdapter();
+
+    initGlobalSettings(mock.adapter, createMockLogger(), createMemorySettingsStore({ driverName: "nick" }));
+    await tick();
+
+    mock.echo?.({ driverName: "stale-host" });
+
+    expect(getGlobalSettings().driverName).toBe("nick");
+  });
+
+  it("per-key salvage still applies to a partially-bad file: one bad value drops to its default, the rest load", async () => {
+    const mock = createMockAdapter();
+
+    initGlobalSettings(
+      mock.adapter,
+      createMockLogger(),
+      createMemorySettingsStore({ driverName: "nick", changelogNotification: { bogus: true } }),
+    );
+    await tick();
+
+    expect(getGlobalSettings().driverName).toBe("nick");
+    expect(getGlobalSettings().changelogNotification).toBe("features");
+  });
+
+  it("a second initGlobalSettings is a no-op — the first store stays authoritative", async () => {
+    const mock = createMockAdapter();
+    const first = createMemorySettingsStore({ driverName: "nick" });
+    const second = createMemorySettingsStore({ driverName: "other" });
+
+    initGlobalSettings(mock.adapter, createMockLogger(), first);
+    initGlobalSettings(mock.adapter, createMockLogger(), second);
+    await tick();
+
+    expect(getGlobalSettings().driverName).toBe("nick");
+    expect(second.saved).toHaveLength(0);
+  });
+
+  it("a host payload racing the file load never overrides the file", async () => {
+    const mock = createMockAdapter();
+    const store = createMemorySettingsStore({ driverName: "file-nick" });
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store);
+    // A Property Inspector save echoes before the file load resolves. It was
+    // never asked for, so it is not a migration source — the file wins.
+    mock.echo?.({ driverName: "host-nick" });
+    await tick();
+
+    expect(getGlobalSettings().driverName).toBe("file-nick");
+    expect(store.saved).toHaveLength(1);
+    expect(store.saved[0]).toMatchObject({ driverName: "file-nick" });
+  });
+
+  it("migrates from a host that answers getGlobalSettings synchronously, arming no deadline", async () => {
+    vi.useFakeTimers();
+
+    try {
+      const holder: { echo: EchoCallback | null } = { echo: null };
+      const adapter = {
+        onDidReceiveGlobalSettings: (cb: EchoCallback) => {
+          holder.echo = cb;
+        },
+        setGlobalSettings: vi.fn<(settings: Record<string, unknown>) => void>(),
+        getGlobalSettings: vi.fn<() => void>(() => holder.echo?.({ driverName: "harness-nick" })),
+      } as unknown as IDeckPlatformAdapter;
+
+      initGlobalSettings(adapter, createMockLogger(), createMemorySettingsStore());
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(isSettingsStoreReady()).toBe(true);
+      expect(getGlobalSettings().driverName).toBe("harness-nick");
+      expect(vi.getTimerCount()).toBe(0); // no migration deadline left ticking
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("an UNREADABLE file is retried with a doubling back-off, then the session runs on defaults WITHOUT saving over it", async () => {
+    vi.useFakeTimers();
+
+    try {
+      const mock = createMockAdapter();
+      const store = createUnreadableStore(LOAD_ATTEMPTS, { driverName: "nick" });
+
+      initGlobalSettings(mock.adapter, createMockLogger(), store, { loadRetryDelayMs: 10 });
+      // Retries at 10, 20, 40, 80, 160 ms after their predecessors: the second
+      // attempt has run by 15 ms, the last one only after ~310 ms.
+      await vi.advanceTimersByTimeAsync(15);
+      expect(store.attempts).toBe(2);
+      await vi.advanceTimersByTimeAsync(400);
+
+      expect(store.attempts).toBe(LOAD_ATTEMPTS);
+      expect(isSettingsStoreReady()).toBe(false);
+      expect(getGlobalSettings().driverName).toBe(""); // schema default
+      // The whole point: a file we could not READ is never replaced with defaults.
+      expect(store.saved).toHaveLength(0);
+      expect(vi.getTimerCount()).toBe(0);
+
+      updateGlobalSettings({ driverName: "typed-this-session" });
+
+      expect(getGlobalSettings().driverName).toBe("typed-this-session"); // read-your-writes
+      expect(store.saved).toHaveLength(0); // still nothing may reach the file
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("recovers when a transient read failure clears before the attempts run out", async () => {
+    vi.useFakeTimers();
+
+    try {
+      const mock = createMockAdapter();
+      const store = createUnreadableStore(1, { driverName: "nick" });
+
+      initGlobalSettings(mock.adapter, createMockLogger(), store, { loadRetryDelayMs: 10 });
+      await vi.advanceTimersByTimeAsync(5);
+      expect(isSettingsStoreReady()).toBe(false);
+      await vi.advanceTimersByTimeAsync(20);
+
+      expect(store.attempts).toBe(2);
+      expect(isSettingsStoreReady()).toBe(true);
+      expect(getGlobalSettings().driverName).toBe("nick");
+      expect(mock.getGlobalSettings).not.toHaveBeenCalled(); // the file was found, no migration
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("LOAD_RETRY_DELAY_MS is one second and there are six attempts (~31 s of patience)", () => {
+    expect(LOAD_ATTEMPTS).toBe(6);
+    expect(LOAD_RETRY_DELAY_MS).toBe(1_000);
+  });
+
+  it("getSettingsStoreSource is null before ready, then names how the cache was filled", async () => {
+    const mock = createMockAdapter();
+    initGlobalSettings(mock.adapter, createMockLogger(), createMemorySettingsStore({ driverName: "nick" }));
+
+    expect(getSettingsStoreSource()).toBeNull();
+    await tick();
+    expect(getSettingsStoreSource()).toBe("file");
+  });
+
+  it("hostMirrorPayload is the WHOLE cache plus _settingsChannel once ready from the file or the host", async () => {
+    const mock = createMockAdapter();
+    initGlobalSettings(mock.adapter, createMockLogger(), createMemorySettingsStore({ driverName: "nick" }));
+    await tick();
+
+    const mirror = hostMirrorPayload({ port: 4242, token: "t".repeat(48) });
+
+    expect(mirror).toMatchObject({ driverName: "nick", _settingsChannel: { port: 4242, token: "t".repeat(48) } });
+    expect(Object.keys(mirror ?? {}).length).toBeGreaterThan(50); // schema defaults are part of the mirror
+  });
+
+  it("hostMirrorPayload is undefined before the store is ready", () => {
+    const mock = createMockAdapter();
+    initGlobalSettings(mock.adapter, createMockLogger(), createMemorySettingsStore({ driverName: "nick" }));
+
+    expect(hostMirrorPayload({ port: 1, token: "t".repeat(48) })).toBeUndefined();
+  });
+
+  it("hostMirrorPayload is undefined when the store started FRESH (migration timeout) — never write defaults over a host copy we could not read", async () => {
+    vi.useFakeTimers();
+
+    try {
+      const mock = createMockAdapter();
+      initGlobalSettings(mock.adapter, createMockLogger(), createMemorySettingsStore(), { migrationTimeoutMs: 20 });
+      await vi.advanceTimersByTimeAsync(30);
+
+      expect(getSettingsStoreSource()).toBe("fresh");
+      expect(hostMirrorPayload({ port: 1, token: "t".repeat(48) })).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("hostMirrorPayload after a host migration carries the migrated keys", async () => {
+    const mock = createMockAdapter();
+    initGlobalSettings(mock.adapter, createMockLogger(), createMemorySettingsStore());
+    await tick();
+    mock.echo?.({ driverName: "host-nick" });
+    await tick();
+
+    expect(getSettingsStoreSource()).toBe("host");
+    expect(hostMirrorPayload({ port: 1, token: "t".repeat(48) })).toMatchObject({ driverName: "host-nick" });
   });
 });

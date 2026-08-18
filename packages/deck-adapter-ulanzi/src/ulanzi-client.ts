@@ -261,6 +261,14 @@ export class UlanziClient {
    */
   private readonly contextSettings = new Map<string, Record<string, unknown>>();
 
+  /**
+   * The most recent `setGlobalSettings` call made while the host socket wasn't
+   * open yet, held until `open` fires. Only the latest payload matters — every
+   * caller sends the whole settings object, so an earlier stashed call is
+   * always superseded rather than queued (#993).
+   */
+  private pendingGlobalSettings: Record<string, unknown> | null = null;
+
   constructor(
     params: UlanziConnectionParams,
     logger: ILogger = silentLogger,
@@ -304,6 +312,14 @@ export class UlanziClient {
       // parsed manifest.json from disk).
       this.send({ code: 0, cmd: "connected", uuid: PLUGIN_UUID });
       this.requestGlobalSettings();
+
+      if (this.pendingGlobalSettings) {
+        const settings = this.pendingGlobalSettings;
+
+        this.pendingGlobalSettings = null;
+        this.setGlobalSettings(settings);
+        this.logger.debug("Flushed the deferred setGlobalSettings");
+      }
     });
 
     this.ws.on("message", (raw: Buffer | string) => {
@@ -458,9 +474,30 @@ export class UlanziClient {
    * store by the frame's `uuid`, and the boot-time restore reads the plugin
    * bucket — a write scoped any other way would be invisible after a restart
    * (#868, the original key-bindings-lost bug).
+   *
+   * Each plugin sends exactly one host-mirror `setGlobalSettings` write per
+   * start, right after the settings server's `ensureStarted()` resolves — and
+   * that write can race the host connect. `send()` silently drops any frame
+   * while the socket isn't open (the same latent bug observed on the Mirabox
+   * client's identical `send()`, #993), so a mirror sent before `open`
+   * quietly vanished, leaving Property Inspectors to bootstrap against a
+   * channel-less host copy. Elgato never hits this — its SDK's own
+   * `setGlobalSettings` awaits the connection internally.
+   *
+   * Defer instead: if the socket isn't open yet, stash the settings and flush
+   * them once `open` fires. Only the latest call is kept — every caller
+   * replaces the whole settings object, so an earlier stashed call is already
+   * stale.
    */
   setGlobalSettings(settings: Record<string, unknown>): void {
-    this.send({ cmd: "setGlobalSettings", uuid: PLUGIN_UUID, key: "", actionid: "", settings });
+    if (this.ws?.readyState === WS_OPEN) {
+      this.send({ cmd: "setGlobalSettings", uuid: PLUGIN_UUID, key: "", actionid: "", settings });
+
+      return;
+    }
+
+    this.pendingGlobalSettings = settings;
+    this.logger.debug("Deferring setGlobalSettings until the host socket is open");
   }
 
   /**

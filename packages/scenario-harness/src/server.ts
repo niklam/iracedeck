@@ -10,6 +10,7 @@ import fastifyStatic from "@fastify/static";
 import fastifyWebsocket from "@fastify/websocket";
 import type { AudioBus, IAudioService } from "@iracedeck/audio-service";
 import { AudioChannel } from "@iracedeck/audio-service";
+import { getGlobalSettings, onGlobalSettingsChange, updateGlobalSettings } from "@iracedeck/deck-core";
 import type { IEventBus, PitReadbackSnapshot, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import type { SessionInfo, TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
@@ -200,8 +201,16 @@ export async function createServer(ctx: HarnessContext): Promise<FastifyInstance
   ctx.controller.onStateChange((state) => {
     broadcast({ kind: "state", section: "controller", value: state });
   });
-  ctx.adapter.onDidReceiveGlobalSettings((settings) => {
+  // Settings come from the plugin-owned store, not the host: since #993 the
+  // core ignores host payloads, so the adapter's onDidReceiveGlobalSettings
+  // never fires for an edit and the panel would go stale. Subscribe to the
+  // settings singleton itself.
+  const unsubscribeSettings = onGlobalSettingsChange((settings) => {
     broadcast({ kind: "state", section: "settings", value: settings });
+  });
+
+  app.addHook("onClose", async () => {
+    unsubscribeSettings();
   });
 
   // ── Forward audio playback start/complete to WS ─────────────────────────
@@ -220,7 +229,7 @@ export async function createServer(ctx: HarnessContext): Promise<FastifyInstance
   app.get("/api/state", () => {
     return {
       controller: ctx.controller.getState(),
-      settings: ctx.adapter.readSettings(),
+      settings: getGlobalSettings() as Record<string, unknown>,
       audio: {
         devices: ctx.audio.getAudioDevices(),
         busVolumes: audioBusVolumeMap(ctx.audio),
@@ -340,10 +349,12 @@ export async function createServer(ctx: HarnessContext): Promise<FastifyInstance
       return reply.code(400).send({ error: "patch must be an object" });
     }
 
-    const merged = { ...ctx.adapter.readSettings(), ...(body.patch as Record<string, unknown>) };
-    ctx.adapter.setGlobalSettings(merged);
+    // Write through the plugin, like every other settings UI (#993): the
+    // plugin-owned store is truth and host payloads are ignored, so pushing
+    // straight into the mock adapter would never reach the running scenarios.
+    updateGlobalSettings(body.patch as Record<string, unknown>);
 
-    return ctx.adapter.readSettings();
+    return getGlobalSettings() as Record<string, unknown>;
   });
 
   app.post("/api/audio/device", async (req, reply) => {
@@ -362,9 +373,8 @@ export async function createServer(ctx: HarnessContext): Promise<FastifyInstance
       if (!ok) return reply.code(400).send({ error: `unknown device id: ${id}` });
     }
 
-    // Persist the selection in the in-memory settings so a re-reading scenario sees it.
-    const merged = { ...ctx.adapter.readSettings(), audioOutputDevice: id ?? "" };
-    ctx.adapter.setGlobalSettings(merged);
+    // Persist the selection through the plugin so a re-reading scenario sees it.
+    updateGlobalSettings({ audioOutputDevice: id ?? "" });
 
     broadcast({ kind: "state", section: "audioDevices", value: ctx.audio.getAudioDevices() });
 

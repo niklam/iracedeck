@@ -57,83 +57,11 @@ describe("UlanziPlatformAdapter", () => {
     });
   });
 
-  describe("setGlobalSettings", () => {
-    const replyHandler = () =>
-      client.onGlobalEvent.mock.calls.find((call) => call[0] === "didReceiveGlobalSettings")?.[1];
+  describe("setGlobalSettings (#993: no write gate)", () => {
+    it("forwards immediately — the plugin owns the settings store, so an early write can no longer wipe anything", () => {
+      adapter.setGlobalSettings({ _settingsChannel: { port: 1, token: "t" } });
 
-    it("should delegate to UlanziClient.setGlobalSettings once a reply has arrived", () => {
-      replyHandler()({ event: "didReceiveGlobalSettings", payload: { settings: { a: 1 } } });
-
-      const settings = { foo: "bar" };
-      adapter.setGlobalSettings(settings);
-      expect(client.setGlobalSettings).toHaveBeenCalledWith(settings);
-    });
-  });
-
-  describe("global-settings write gate (#868 Ulanzi RCA root cause 2)", () => {
-    const replyHandler = () =>
-      client.onGlobalEvent.mock.calls.find((call) => call[0] === "didReceiveGlobalSettings")?.[1];
-
-    beforeEach(() => {
-      vi.useFakeTimers();
-    });
-
-    afterEach(() => {
-      vi.useRealTimers();
-    });
-
-    it("buffers plugin-initiated writes until the first reply arrives", () => {
-      // Before the first reply the deck-core cache holds schema defaults only —
-      // a full write would erase stored passthrough keys (key bindings,
-      // _lastSeenVersion) from the host's store.
-      adapter.setGlobalSettings({ foo: "defaults-only" });
-
-      expect(client.setGlobalSettings).not.toHaveBeenCalled();
-    });
-
-    it("drops the buffered write when the first reply arrives", () => {
-      // deck-core re-writes a fresh full snapshot right after the first
-      // arrival, so the stale defaults-based buffer must not be flushed.
-      adapter.setGlobalSettings({ foo: "defaults-only" });
-      replyHandler()({ event: "didReceiveGlobalSettings", payload: { settings: { stored: true } } });
-
-      vi.runAllTimers();
-
-      expect(client.setGlobalSettings).not.toHaveBeenCalled();
-    });
-
-    it("flushes only the latest buffered write after the timeout when no reply ever arrives", () => {
-      // Hosts that never answer reads keep legitimate persistence working —
-      // the flush restores today's behavior after a bounded wait.
-      adapter.setGlobalSettings({ push: 1 });
-      adapter.setGlobalSettings({ push: 2 });
-
-      vi.advanceTimersByTime(30_000);
-
-      expect(client.setGlobalSettings).toHaveBeenCalledTimes(1);
-      expect(client.setGlobalSettings).toHaveBeenCalledWith({ push: 2 });
-    });
-
-    it("passes writes straight through after the timeout has opened the gate", () => {
-      adapter.setGlobalSettings({ push: 1 });
-      vi.advanceTimersByTime(30_000);
-      client.setGlobalSettings.mockClear();
-
-      adapter.setGlobalSettings({ push: 3 });
-
-      expect(client.setGlobalSettings).toHaveBeenCalledWith({ push: 3 });
-    });
-
-    it("opens the gate on an action-scoped (bootstrap) reply too", () => {
-      // The gate opens on ANY reply — the action-scoped bootstrap fallback
-      // included — so deck-core's post-arrival snapshot write reaches the host.
-      adapter.setGlobalSettings({ foo: "defaults-only" });
-      replyHandler()({ event: "didReceiveGlobalSettings", action: "com.test.action", payload: { settings: { a: 1 } } });
-
-      adapter.setGlobalSettings({ foo: "post-reply" });
-
-      expect(client.setGlobalSettings).toHaveBeenCalledTimes(1);
-      expect(client.setGlobalSettings).toHaveBeenCalledWith({ foo: "post-reply" });
+      expect(client.setGlobalSettings).toHaveBeenCalledWith({ _settingsChannel: { port: 1, token: "t" } });
     });
   });
 

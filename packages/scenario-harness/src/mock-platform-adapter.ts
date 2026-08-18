@@ -34,8 +34,10 @@ export class MockPlatformAdapter implements IDeckPlatformAdapter {
   /**
    * Mirror Stream Deck's behaviour: requesting settings causes the host to
    * deliver the current value via the `onDidReceiveGlobalSettings`
-   * callback. Fired synchronously here — `initGlobalSettings()` calls this
-   * during initialization, immediately after registering its listener.
+   * callback. Fired synchronously here. Since #993 the core asks only once,
+   * as the one-time migration read, and only after its async store `load()`
+   * has reported no settings file — so this is a migration source, not the
+   * ongoing settings channel.
    */
   getGlobalSettings(): void {
     const snapshot = this.settings;
