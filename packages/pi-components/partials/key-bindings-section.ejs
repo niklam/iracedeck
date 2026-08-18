@@ -11,14 +11,20 @@
   25 PIs that have bindings and the 10 that do not consistent by construction,
   instead of by 35 copies of the same markup.
 
+  Order is header → the section's own content → divider → settings button. The
+  button closes the section rather than sitting under its heading, so it reads
+  as a sibling of the docs link that follows it instead of looking like the
+  first thing the Key Bindings section has to offer.
+
   Parameters:
     - keyBindings (Array, optional) — rows to render, in the shape
       `global-key-bindings` expects: { id, label, default, setting, class? }.
       Omit it (or pass an empty array) for an action with no bindings; the
       section then says so rather than rendering an empty accordion.
     - hidden (Boolean, optional) — start the bindings wrapper hidden so the PI
-      can reveal it per mode (Fuel Service does this). The section HEADER stays
-      visible either way, so the link to the settings window never disappears.
+      can reveal it per mode (Fuel Service does this). Only the bindings hide:
+      the header and the settings button are outside that wrapper, so the way
+      out never disappears.
 
   The wrapper's `key-bindings-section` id is defined here and nowhere else —
   PI scripts toggle it by that id.
@@ -30,7 +36,7 @@
   title. Retitling it breaks that link and the _accordionState key.
   (EJS comment so this documentation is never emitted into the HTML.)
 %>
-<%- include('section-header', { title: 'Key Bindings', openSettings: true }) %>
+<%- include('section-header', { title: 'Key Bindings' }) %>
 
 <div id="key-bindings-section"<% if (locals.hidden) { %> class="hidden"<% } %>>
 <% if (locals.keyBindings && keyBindings.length) { %>
@@ -38,4 +44,10 @@
 <% } else { %>
 <div class="ird-supporting-text">This action has no key bindings.</div>
 <% } %>
+</div>
+
+<%# The way out to everything else, below this section's own content and under
+    its own divider — the same shape as the docs link that follows it. %>
+<div class="ird-open-settings ird-section-footer">
+  <ird-open-settings></ird-open-settings>
 </div>

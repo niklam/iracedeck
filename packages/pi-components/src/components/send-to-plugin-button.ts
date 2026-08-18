@@ -60,12 +60,12 @@ export function defineSendToPluginButton(options: SendToPluginButtonOptions): Cu
           cursor: pointer;
           font-size: 11px;
           font-weight: 600;
-          background: #3a2426;
+          background: #ce2128;
           color: #ffffff;
           box-sizing: border-box;
         }
         ${tag} button:hover {
-          background: #ce2128;
+          background: #3a2426;
         }
       `;
       document.head.appendChild(style);

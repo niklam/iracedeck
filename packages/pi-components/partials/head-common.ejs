@@ -114,6 +114,15 @@
     display: inline-block;
     width: auto;
   }
+  /* Divider above a block that CLOSES a section — the same rule .ird-docs-link
+     uses, so the settings button and the docs link read as siblings. Compose it
+     with .ird-open-settings (#1003 puts the button below the section's own
+     content). Declared after .ird-open-settings so its margin-top wins. */
+  .ird-section-footer {
+    margin-top: 16px;
+    padding-top: 8px;
+    border-top: 1px solid #3a3a3a;
+  }
   .ird-docs-link a {
     color: var(--ird-link-color);
     font-family: "Segoe UI", Arial, Roboto, Helvetica, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";

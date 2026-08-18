@@ -44,6 +44,31 @@ describe("key-bindings-section.ejs", () => {
     });
   });
 
+  describe("settings button placement", () => {
+    it("closes the section rather than sitting under the heading", () => {
+      // Header → the section's own content → the button. Under the heading it
+      // read as the first thing Key Bindings had to offer.
+      const html = render("<%- include('key-bindings-section', { keyBindings: BINDINGS }) %>", { BINDINGS });
+
+      expect(html.indexOf('id="key-bindings-section"')).toBeLessThan(html.indexOf("<ird-open-settings>"));
+    });
+
+    it("is separated by a divider, like the docs link it sits next to", () => {
+      const html = render("<%- include('key-bindings-section') %>");
+
+      expect(html).toContain("ird-section-footer");
+    });
+
+    it("stays put when the bindings are hidden — it is outside that wrapper", () => {
+      const html = render("<%- include('key-bindings-section', { keyBindings: BINDINGS, hidden: true }) %>", {
+        BINDINGS,
+      });
+
+      expect(html).toContain("<ird-open-settings>");
+      expect(html.indexOf('class="hidden"')).toBeLessThan(html.indexOf("<ird-open-settings>"));
+    });
+  });
+
   describe("with bindings", () => {
     it("renders a row per binding", () => {
       const html = render("<%- include('key-bindings-section', { keyBindings: BINDINGS }) %>", { BINDINGS });
