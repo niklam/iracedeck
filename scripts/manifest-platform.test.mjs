@@ -29,8 +29,12 @@ describe("plugin manifest supported operating systems", () => {
     expect(manifests.length).toBeGreaterThan(0);
   });
 
-  it.each(manifests)("declares Windows and nothing else: %s", (manifestRelPath) => {
-    expect(readManifest(manifestRelPath).OS.map((os) => os.Platform)).toEqual(["windows"]);
+  // One assertion covers both halves of the invariant: the only platform is
+  // Windows, and the floor stays at 10. Pinning the version means a bump to
+  // Windows 11 has to be a deliberate edit here rather than a silent narrowing
+  // of who is offered the plugin.
+  it.each(manifests)("declares Windows 10 and nothing else: %s", (manifestRelPath) => {
+    expect(readManifest(manifestRelPath).OS).toEqual([{ Platform: "windows", MinimumVersion: "10" }]);
   });
 
   // The Elgato schema also allows a per-action `OS` list, which could re-introduce
