@@ -101,7 +101,7 @@
     padding-top: 8px;
     border-top: 1px solid #3a3a3a;
   }
-  /* "Open iRaceDeck Settings" under the Global Settings header (#992): a
+  /* "Open iRaceDeck Settings" under the Key Bindings header (#992, #1003): a
      centred block like .ird-docs-link, not an sdpi-item (no label column).
      Reused verbatim as the wrapper for the Storage card's Open Folder
      button (#993, ird-open-folder) — narrow both to an inline pill. */
@@ -158,7 +158,7 @@
     letter-spacing: 0.5px;
   }
 
-  /* Section header (divides Action Settings from Global Settings) */
+  /* Section header (divides Action Settings from Key Bindings) */
   .ird-section-header {
     margin: 20px 0 10px 0;
   }
@@ -290,26 +290,6 @@
     });
   });
 
-  // Global color preset buttons — apply a full set of global colors at once
-  document.addEventListener('click', function(ev) {
-    var btn = ev.target.closest('.ird-color-preset');
-    if (!btn) return;
-    var mapping = {
-      bg: 'global-color-bg',
-      text: 'global-color-text',
-      g1: 'global-color-g1',
-      g2: 'global-color-g2'
-    };
-    ['bg', 'text', 'g1', 'g2'].forEach(function(key) {
-      var color = btn.getAttribute('data-' + key);
-      var el = document.getElementById(mapping[key]);
-      if (el && color !== null) {
-        el.value = color;
-        el.save();
-      }
-    });
-  });
-
   // Custom position visibility: per-action title position select
   (function() {
     function updateTitleCustomPosition(value) {
@@ -345,42 +325,6 @@
       document.addEventListener('DOMContentLoaded', initTitlePosition);
     } else {
       initTitlePosition();
-    }
-  })();
-
-  // Custom position visibility: global title position select
-  (function() {
-    function updateGlobalTitleCustomPosition(value) {
-      var item = document.getElementById('global-title-custom-position-item');
-      if (!item) return;
-      if (value === 'custom') {
-        item.classList.remove('hidden');
-      } else {
-        item.classList.add('hidden');
-      }
-    }
-
-    async function initGlobalTitlePosition() {
-      await customElements.whenDefined('sdpi-select');
-      var select = document.getElementById('global-title-position');
-      if (!select) return;
-      updateGlobalTitleCustomPosition(select.value || 'default');
-      select.addEventListener('change', function(e) { updateGlobalTitleCustomPosition(e.target.value); });
-      select.addEventListener('input', function(e) { updateGlobalTitleCustomPosition(e.target.value); });
-      var lastVal = select.value || 'default';
-      window.irdPoll(function() {
-        var cur = select.value;
-        if (cur && cur !== lastVal) {
-          lastVal = cur;
-          updateGlobalTitleCustomPosition(cur);
-        }
-      });
-    }
-
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', initGlobalTitlePosition);
-    } else {
-      initGlobalTitlePosition();
     }
   })();
 
@@ -438,154 +382,7 @@
     }
   })();
 
-  // Global Font Size "Use icon default" checkbox gate
-  // When checked: hide range (fontSize = "default", defers to icon).
-  // When unchecked: show range, use the global fontSize value.
-  (function() {
-    async function initGlobalFontSizeToggle() {
-      await customElements.whenDefined('sdpi-checkbox');
-      var toggle = document.getElementById('global-title-fontSize-default');
-      var item = document.getElementById('global-title-fontSize-item');
-      if (!toggle || !item) return;
-
-      function isChecked() {
-        return toggle.checked === true || toggle.value === true || toggle.value === 'true';
-      }
-
-      function showRange(show) {
-        if (show) {
-          item.classList.remove('hidden');
-        } else {
-          item.classList.add('hidden');
-        }
-      }
-
-      toggle.addEventListener('change', function() { showRange(!isChecked()); });
-      toggle.addEventListener('input', function() { showRange(!isChecked()); });
-
-      // Initial state check
-      showRange(!isChecked());
-
-      var lastChecked = isChecked();
-      window.irdPoll(function() {
-        var cur = isChecked();
-        if (cur !== lastChecked) {
-          lastChecked = cur;
-          showRange(!cur);
-        }
-      });
-    }
-
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', initGlobalFontSizeToggle);
-    } else {
-      initGlobalFontSizeToggle();
-    }
-  })();
-
-  // Global title defaults Reset button
-  document.addEventListener('click', function(ev) {
-    var btn = ev.target.closest('.ird-title-global-reset');
-    if (!btn) return;
-
-    var defaults = {
-      'titleShowTitle': 'true',
-      'titleShowGraphics': 'true',
-      'titleBold': 'default',
-      'titleFontSizeDefault': 'true',
-      'titleFontSize': '9',
-      'titlePosition': 'default',
-      'titleCustomPosition': '0'
-    };
-
-    Object.entries(defaults).forEach(function([setting, value]) {
-      var el = document.querySelector('[setting="' + setting + '"]');
-      if (el) {
-        el.value = value;
-        if (typeof el.save === 'function') {
-          el.save();
-        } else {
-          el.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-      }
-    });
-
-  });
-
-  // Setup-warning pattern Reset buttons (issue #625). Each button names its
-  // target setting via data-target; the handler restores that field's own
-  // template `default` attribute — so the default lives only in the template,
-  // never duplicated here — and persists it via the component's .save().
-  document.addEventListener('click', function(ev) {
-    var btn = ev.target.closest('.ird-setup-warning-reset');
-    if (!btn) return;
-
-    var setting = btn.getAttribute('data-target');
-    if (!setting) return;
-
-    var el = document.querySelector('[setting="' + setting + '"]');
-    if (!el) return;
-
-    el.value = el.getAttribute('default') || '';
-    if (typeof el.save === 'function') {
-      el.save();
-    } else {
-      el.dispatchEvent(new Event('change', { bubbles: true }));
-    }
-  });
-
   // Note: titleOverrides.titleText uses sdpi-textarea with setting attribute.
   // Persistence is handled automatically by sdpi-components.
 
-  // Global Border Defaults — show/hide sub-settings based on Show Border and Show Glow
-  (function() {
-    async function initGlobalBorderToggle() {
-      await customElements.whenDefined('sdpi-select');
-      var borderSelect = document.getElementById('global-border-enabled');
-      var glowSelect = document.getElementById('global-border-glow-enabled');
-      if (!borderSelect) return;
-
-      function updateGlobalBorderVisibility() {
-        var show = borderSelect.value === 'true';
-        [
-          'global-border-width-item',
-          'global-border-color-item',
-          'global-border-glow-item'
-        ].forEach(function(id) {
-          var el = document.getElementById(id);
-          if (el) el.classList.toggle('hidden', !show);
-        });
-        var glowVal = glowSelect ? glowSelect.value : 'default';
-        var showGlowWidth = show && glowVal === 'true';
-        var glowWidthEl = document.getElementById('global-border-glow-width-item');
-        if (glowWidthEl) glowWidthEl.classList.toggle('hidden', !showGlowWidth);
-      }
-
-      updateGlobalBorderVisibility();
-      borderSelect.addEventListener('change', updateGlobalBorderVisibility);
-      borderSelect.addEventListener('input', updateGlobalBorderVisibility);
-      if (glowSelect) {
-        glowSelect.addEventListener('change', updateGlobalBorderVisibility);
-        glowSelect.addEventListener('input', updateGlobalBorderVisibility);
-      }
-
-      var lastBorder = borderSelect.value || 'default';
-      var lastGlow = glowSelect ? (glowSelect.value || 'default') : 'default';
-      window.irdPoll(function() {
-        var curBorder = borderSelect.value || 'default';
-        var curGlow = glowSelect ? (glowSelect.value || 'default') : 'default';
-        if (curBorder !== lastBorder || curGlow !== lastGlow) {
-          lastBorder = curBorder;
-          lastGlow = curGlow;
-          updateGlobalBorderVisibility();
-        }
-      });
-    }
-
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', initGlobalBorderToggle);
-    } else {
-      initGlobalBorderToggle();
-    }
-  })();
 </script>

@@ -25,31 +25,12 @@
 			</sdpi-select>
 		</sdpi-item>
 
-		<%- include('accordion', {
-			title: 'Pit Crew Settings',
-			accordionId: 'pitCrewSettings',
-			open: true,
-			content: include('race-engineer-settings')
-		}) %>
-		<%- include('accordion', {
-			title: 'Race Engineer Callouts',
-			accordionId: 'raceEngineerCallouts',
-			open: false,
-			content: include('race-engineer-callouts')
-		}) %>
-
-		<%- include('accordion', {
-			title: 'Setup Warning Patterns',
-			accordionId: 'setupWarningPatterns',
-			open: false,
-			content: include('setup-warning-patterns')
-		}) %>
-
-		<div style="display:none;">
-			<sdpi-textfield id="test-radar-field" setting="_testRadarVolume"></sdpi-textfield>
-			<sdpi-textfield id="test-race-engineer-voice-field" setting="_testRaceEngineerVoice"></sdpi-textfield>
-			<sdpi-textfield id="test-background-field" setting="_testBackgroundVolume"></sdpi-textfield>
-		</div>
+		<%# The Race Engineer voice, volumes, callout opt-ins and setup-warning
+		    patterns are plugin-global, so since #1003 they live only in the
+		    settings window — reachable from the button below. Their audio
+		    previews moved with them: ird-audio-test sends `audioPreview` to the
+		    plugin from the window, which is why the hidden `_test*` fields and
+		    this action's timestamp watchers are gone too. %>
 
 		<script>
 		(function() {
@@ -113,14 +94,7 @@
 		<%- include('graphic-overrides') %>
 		<%- include('common-settings') %>
 
-		<%- include('section-header', { title: 'Global Settings', openSettings: true }) %>
-
-		<%- include('global-title-defaults') %>
-		<%- include('global-color-defaults') %>
-		<%- include('global-border-defaults') %>
-		<%- include('global-graphic-defaults') %>
-		<%- include('global-flag-flash') %>
-		<%- include('global-common-settings') %>
+		<%- include('key-bindings-section') %>
 
 		<%- include('docs-link') %>
 

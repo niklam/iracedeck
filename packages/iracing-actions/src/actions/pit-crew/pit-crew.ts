@@ -28,7 +28,6 @@ import {
 import { z } from "zod";
 
 import pitCrewTemplate from "../../../icons/pit-crew.svg";
-import { runAudioPreview } from "../../audio/audio-previews.js";
 import {
   isCornerNamesEnabled,
   playVoiceSequence,
@@ -319,19 +318,6 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
   /** Per-context unsubscribe callback for the global-settings listener. */
   private readonly listenerUnsubs = new Map<string, () => void>();
 
-  /**
-   * Last radar test-volume timestamp per context. Keyed per visible instance
-   * so two Pit Crew buttons on different pages don't overwrite each other's
-   * baseline and spuriously replay the preview on a settings echo.
-   */
-  private readonly lastRadarTestTimestamps = new Map<string, number>();
-
-  /** Per-context baseline for the engineer-voice test button (mirrors radar). */
-  private readonly lastRaceEngineerTestTimestamps = new Map<string, number>();
-
-  /** Per-context baseline for the Background Volume test button (issue #471). */
-  private readonly lastBackgroundTestTimestamps = new Map<string, number>();
-
   override async onWillAppear(ev: IDeckWillAppearEvent<PitCrewSettings>): Promise<void> {
     await super.onWillAppear(ev);
 
@@ -341,12 +327,6 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
 
     this.settingsCache.set(contextId, settings);
     this.visibleContexts.add(contextId);
-
-    // Seed test-button timestamps so the first onDidReceiveSettings doesn't
-    // replay the previous play when the PI rehydrates the hidden textfields.
-    this.lastRadarTestTimestamps.set(contextId, Number(raw._testRadarVolume ?? 0));
-    this.lastRaceEngineerTestTimestamps.set(contextId, Number(raw._testRaceEngineerVoice ?? 0));
-    this.lastBackgroundTestTimestamps.set(contextId, Number(raw._testBackgroundVolume ?? 0));
 
     // Re-render on any global-settings change — every mode depends on at
     // least one global, so every change can affect the rendered state bar
@@ -400,9 +380,6 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
     this.listenerUnsubs.delete(contextId);
     this.settingsCache.delete(contextId);
     this.visibleContexts.delete(contextId);
-    this.lastRadarTestTimestamps.delete(contextId);
-    this.lastRaceEngineerTestTimestamps.delete(contextId);
-    this.lastBackgroundTestTimestamps.delete(contextId);
     this.sdkController.unsubscribe(RADIO_CHECK_SUB_PREFIX + contextId);
 
     await super.onWillDisappear(ev);
@@ -416,39 +393,6 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
     const contextId = ev.action.id;
 
     this.settingsCache.set(contextId, settings);
-
-    // `_testRadarVolume` is written by the PI as `String(Date.now())` — the
-    // Stream Deck settings round-trip preserves strings, so coerce to a number
-    // on both sides of the compare. A raw `string !== number` mismatch would
-    // fire the preview on every PI rehydrate.
-    const radarTestTimestamp = Number(raw._testRadarVolume ?? 0);
-    const lastRadarTestTimestamp = this.lastRadarTestTimestamps.get(contextId) ?? 0;
-
-    if (radarTestTimestamp > 0 && radarTestTimestamp !== lastRadarTestTimestamp) {
-      runAudioPreview("radar", this.logger);
-    }
-
-    this.lastRadarTestTimestamps.set(contextId, radarTestTimestamp);
-
-    // Same edge-trigger pattern for the engineer-voice Test button.
-    const voiceTestTimestamp = Number(raw._testRaceEngineerVoice ?? 0);
-    const lastVoiceTestTimestamp = this.lastRaceEngineerTestTimestamps.get(contextId) ?? 0;
-
-    if (voiceTestTimestamp > 0 && voiceTestTimestamp !== lastVoiceTestTimestamp) {
-      runAudioPreview("voice", this.logger);
-    }
-
-    this.lastRaceEngineerTestTimestamps.set(contextId, voiceTestTimestamp);
-
-    // Same edge-trigger pattern for the Background Volume Test button (#471).
-    const backgroundTestTimestamp = Number(raw._testBackgroundVolume ?? 0);
-    const lastBackgroundTestTimestamp = this.lastBackgroundTestTimestamps.get(contextId) ?? 0;
-
-    if (backgroundTestTimestamp > 0 && backgroundTestTimestamp !== lastBackgroundTestTimestamp) {
-      runAudioPreview("background", this.logger);
-    }
-
-    this.lastBackgroundTestTimestamps.set(contextId, backgroundTestTimestamp);
 
     await this.setKeyImage(ev, generatePitCrewSvg(settings));
   }

@@ -60,37 +60,13 @@ describe("accordion.ejs", () => {
 });
 
 /**
- * Renders the REAL global-common-settings.ejs. Its seven groups are being split
- * into per-group partials (#992) so the settings window can place them on
- * separate tabs while the PI keeps assembling them into one accordion — this
- * pins every setting key so the split can't silently drop a control.
+ * Renders the REAL per-group common-settings partials. The `global-common-settings`
+ * assembler that used to gather them into one PI accordion is gone since #1003 —
+ * the action PIs no longer carry plugin-global settings at all, and the settings
+ * window includes each group directly. These tests pin every setting key so the
+ * window can't silently lose a control.
  */
-const COMMON_SETTING_KEYS = [
-  "focusIRacingWindow",
-  "disableWhenDisconnected",
-  "simHubHost",
-  "simHubPort",
-  "dualPressThresholdMs",
-  "dualPressDirections",
-  "fastestLapSearchDelayMs",
-  "chatOpenToPasteDelayMs",
-  "chatPasteToEnterDelayMs",
-  "chatEnterToCloseDelayMs",
-  "changelogNotification",
-  "debugLogging",
-];
-
-describe("global-common-settings.ejs", () => {
-  it("still exposes every common setting inside one accordion in PI mode", () => {
-    // The nested profiles accordion `require()`s build-time data the real
-    // template plugin provides; gate it off here exactly as the Mirabox/Ulanzi
-    // builds do, since this test is about the common-settings groups.
-    const html = render("<%- include('global-common-settings') %>", { platform: { features: { profiles: false } } });
-
-    expect(html).toContain('data-accordion-id="Global Common Settings"');
-    for (const key of COMMON_SETTING_KEYS) expect(html, key).toContain(`setting="${key}"`);
-  });
-
+describe("global-common-* group partials", () => {
   it("each per-group partial renders on its own without an accordion, for the settings window", () => {
     const groups: Record<string, string[]> = {
       "global-common-window-focus": ["focusIRacingWindow", "disableWhenDisconnected"],

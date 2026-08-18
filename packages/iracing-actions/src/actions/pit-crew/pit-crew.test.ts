@@ -558,95 +558,32 @@ describe("PitCrew action", () => {
   });
 
   describe("onDidReceiveSettings", () => {
-    it("invokes playRadarTest when the hidden _testRadarVolume timestamp changes", async () => {
+    it("re-renders the key for the delivered settings", async () => {
+      const action = new PitCrew();
+      await action.onWillAppear(buildAppearEvent({ mode: "radar" }) as never);
+      vi.clearAllMocks();
+
+      await action.onDidReceiveSettings(buildAppearEvent({ mode: "radar" }) as never);
+
+      expect((action as unknown as { setKeyImage: ReturnType<typeof vi.fn> }).setKeyImage).toHaveBeenCalledTimes(1);
+    });
+
+    it("no longer plays audio previews from settings — they moved to the settings window (#1003)", async () => {
+      // The Race Engineer voice/volume controls used to live in this action's PI,
+      // which triggered previews by bumping hidden `_test*` timestamp settings.
+      // They are settings-window-only now, and its Test buttons call the plugin
+      // directly via `audioPreview` (see audio-previews.test.ts). A stale value
+      // arriving from an older stored payload must not replay anything.
       const action = new PitCrew();
       await action.onWillAppear(buildAppearEvent({ _testRadarVolume: 0 }) as never);
-
-      await action.onDidReceiveSettings(buildAppearEvent({ _testRadarVolume: 7 }) as never);
-
-      expect(hoisted.playRadarTest).toHaveBeenCalledTimes(1);
-    });
-
-    it("does not re-fire on unrelated settings echoes", async () => {
-      const action = new PitCrew();
-      await action.onWillAppear(buildAppearEvent({ _testRadarVolume: 100 }) as never);
-
-      await action.onDidReceiveSettings(buildAppearEvent({ _testRadarVolume: 100 }) as never);
-
-      expect(hoisted.playRadarTest).not.toHaveBeenCalled();
-    });
-
-    it("tracks the test baseline per context so two instances don't interfere", async () => {
-      const action = new PitCrew();
-      await action.onWillAppear(buildAppearEvent({ _testRadarVolume: 100 }, "ctx-A") as never);
-      await action.onWillAppear(buildAppearEvent({ _testRadarVolume: 200 }, "ctx-B") as never);
       vi.clearAllMocks();
 
-      await action.onDidReceiveSettings(buildAppearEvent({ _testRadarVolume: 100 }, "ctx-A") as never);
+      await action.onDidReceiveSettings(
+        buildAppearEvent({ _testRadarVolume: 7, _testRaceEngineerVoice: 7, _testBackgroundVolume: 7 }) as never,
+      );
+
       expect(hoisted.playRadarTest).not.toHaveBeenCalled();
-
-      await action.onDidReceiveSettings(buildAppearEvent({ _testRadarVolume: 999 }, "ctx-A") as never);
-      expect(hoisted.playRadarTest).toHaveBeenCalledTimes(1);
-    });
-
-    it("coerces the string _testRadarVolume from the PI before comparing (no spurious replays)", async () => {
-      // `pit-crew.ejs` writes `String(Date.now())`, so the SDK round-trip
-      // delivers a string payload. Without coercion, every PI rehydrate
-      // would `"1710..." !== 1710...` and spuriously replay.
-      const action = new PitCrew();
-      await action.onWillAppear(buildAppearEvent({ _testRadarVolume: "1710000000000" }) as never);
-
-      // Same timestamp, now as a number — must NOT trigger another play.
-      await action.onDidReceiveSettings(buildAppearEvent({ _testRadarVolume: 1710000000000 }) as never);
-      expect(hoisted.playRadarTest).not.toHaveBeenCalled();
-
-      // Different timestamp string — must trigger.
-      await action.onDidReceiveSettings(buildAppearEvent({ _testRadarVolume: "1710000000500" }) as never);
-      expect(hoisted.playRadarTest).toHaveBeenCalledTimes(1);
-    });
-
-    it("invokes playBackgroundTest when _testBackgroundVolume timestamp changes (#471)", async () => {
-      hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: false, backgroundVolume: 70 });
-      const action = new PitCrew();
-      await action.onWillAppear(buildAppearEvent({ _testBackgroundVolume: 0 }) as never);
-      vi.clearAllMocks();
-
-      await action.onDidReceiveSettings(buildAppearEvent({ _testBackgroundVolume: 42 }) as never);
-
-      expect(hoisted.playBackgroundTest).toHaveBeenCalledTimes(1);
-      // Background bus is forced to backgroundVolume/100 so the preview is
-      // audible even when the Race Engineer master gate would otherwise
-      // hold it at 0.
-      expect(hoisted.setBusVolume).toHaveBeenCalledWith(1, 0.7);
-    });
-
-    it("does not re-fire playBackgroundTest on unrelated settings echoes (#471)", async () => {
-      const action = new PitCrew();
-      await action.onWillAppear(buildAppearEvent({ _testBackgroundVolume: 100 }) as never);
-      vi.clearAllMocks();
-
-      await action.onDidReceiveSettings(buildAppearEvent({ _testBackgroundVolume: 100 }) as never);
-
       expect(hoisted.playBackgroundTest).not.toHaveBeenCalled();
-    });
-
-    it("restores the Race Engineer audio gate after the background test completes (#471)", async () => {
-      hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: false, backgroundVolume: 80 });
-      hoisted.playBackgroundTest.mockImplementation((onComplete?: () => void) => {
-        onComplete?.();
-      });
-      const action = new PitCrew();
-      await action.onWillAppear(buildAppearEvent({ _testBackgroundVolume: 0 }) as never);
-      vi.clearAllMocks();
-
-      await action.onDidReceiveSettings(buildAppearEvent({ _testBackgroundVolume: 1 }) as never);
-
-      // The forced-audible push (backgroundVolume/100) plus the post-test
-      // applyRaceEngineerAudio() restore (Voice=0, Background=0 because
-      // Race Engineer is off) must both have run.
-      expect(hoisted.setBusVolume).toHaveBeenCalledWith(1, 0.8);
-      expect(hoisted.setBusVolume).toHaveBeenCalledWith(0, 0);
-      expect(hoisted.setBusVolume).toHaveBeenCalledWith(1, 0);
     });
   });
 
