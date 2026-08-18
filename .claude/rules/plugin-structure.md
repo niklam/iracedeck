@@ -134,6 +134,18 @@ Every plugin artifact must ship the project `LICENSE` and the aggregated `THIRD-
 
 When a shipped third-party dependency or vendored component is added or removed, update the repo-root `THIRD-PARTY-LICENSES.md` in the same change. `scripts/third-party-licenses.test.mjs` guards the wiring: every non-workspace rollup `external` must have an entry in the file, every plugin config must contain the copy step, and no `.sdignore` pattern may exclude the two files from the packed plugin.
 
+### Supported Operating Systems
+
+Every plugin manifest declares **Windows and nothing else** (issue #994):
+
+```json
+{
+  "OS": [{ "Platform": "windows", "MinimumVersion": "10" }]
+}
+```
+
+iRaceDeck exists to control iRacing, which has no macOS build, and the keyboard/window/audio addons are Windows-native. The `@iracedeck/iracing-native` / `@iracedeck/audio-native` mocks exist so the repo can be installed, built, and tested on a Mac or Linux machine (see the `cross-platform-development` skill) — they are **not** a reason to add a `mac` entry, which would only offer host users an install that can do nothing. `scripts/manifest-platform.test.mjs` guards this across every discovered plugin manifest (plugin-level `OS` and per-action `OS` alike), so a new plugin folder is covered automatically.
+
 ### Application Monitoring
 
 To enable app monitoring (for features like conditional reconnection that pauses when iRacing isn't running), add to manifest.json:

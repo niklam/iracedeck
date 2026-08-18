@@ -7,6 +7,8 @@ description: Use when working with native dependencies, handling platform differ
 
 ## Why the mock exists
 
+**The mock is development tooling, not a support claim.** iRaceDeck ships Windows-only — all three plugin manifests declare `windows` and nothing else (#994) — because iRaceDeck exists to control iRacing, which has no macOS build. The mock exists so the repo can still be installed, built, and tested on a Mac or Linux machine; it is not there to make the plugin usable off Windows, and it is not a reason to re-add a `mac` entry to a manifest. `scripts/manifest-platform.test.mjs` fails the build if one comes back.
+
 `@iracedeck/iracing-native` wraps the iRacing SDK (Windows-only C++ N-API addon). Without the mock layer, `pnpm install`, `pnpm build`, and `pnpm test` all fail on macOS/Linux because:
 - `node-gyp` can't compile the Windows-specific C++ code
 - `keysender` (native keyboard module) is Windows-only
