@@ -18,12 +18,28 @@ The sidebar has one tab per area:
 - **General** — Focus iRacing window before sending keys, disable buttons when iRacing isn't connected, and the dual-press behaviour.
 - **Key Bindings** — every binding for every action in one searchable table (search by action or category, or filter to one category). Each row saves as you change it, exactly like the Property Inspector's _Related Key Bindings_.
 - **Appearance** — the plugin-wide title, colour, border, graphic-scale, and flag-flash defaults. Any key can still override these individually in its own Property Inspector.
-- **Race Engineer** — voice, driver name, output device, volumes and their Test buttons, the radar, every per-callout opt-in, and the setup-warning patterns.
+- **Race Engineer** — the live on/off toggles and startup policies (below), voice, driver name, output device, volumes and their Test buttons, the radar, every per-callout opt-in, and the setup-warning patterns.
 - **Profiles** _(Stream Deck only)_ — install or switch to a bundled iRaceDeck profile. Because the window isn't tied to one deck, pick which Stream Deck to switch first; with a single deck connected it's pre-selected.
 - **Delays** — the chat and replay timing tunables.
 - **SimHub** — the Control Mapper host and port.
 - **What's New** — when the [What's New page](/docs/features/whats-new-page/) opens after an update, and the changelog itself.
 - **Diagnostics** — debug logging, and where your settings file is stored.
+
+### Race Engineer and Radar: Now Versus On Startup
+
+The Race Engineer and the radar each have two separate controls, because they answer two different questions.
+
+**Enabled** is live. Ticking it turns the feature on or off there and then — the same thing a Pit Crew [**Race Engineer Toggle** or **Radar Toggle**](/docs/actions/audio-voice/pit-crew/) key does, including the spoken "resuming" / "going silent" acknowledgment. Press the key and the checkbox follows; tick the checkbox and the key's icon follows.
+
+**On startup** decides what the feature comes up as the next time the plugin starts, and never touches the session you are in:
+
+- **Remember last used** — it comes back however you left it.
+- **Always on** — every session starts with it on, whatever you did last time.
+- **Always off** — every session starts with it off.
+
+So you can run with the engineer on for the rest of tonight and still have it start silent tomorrow, without the two settings fighting each other.
+
+If you upgraded from an earlier version, your old **On startup** checkbox carries over as **Always on** or **Always off**, so nothing changes until you pick something else.
 
 ## What Stays in the Property Inspector
 

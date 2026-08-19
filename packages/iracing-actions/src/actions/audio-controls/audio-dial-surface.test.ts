@@ -44,7 +44,7 @@ vi.mock("../../audio/audio-volume.js", () => ({
   isRadarEnabled: mockIsRadarEnabled,
 }));
 
-vi.mock("../../audio/audio-toggles.js", () => ({
+vi.mock("../../audio/feature-gates.js", () => ({
   toggleRaceEngineerFeature: mockToggleRaceEngineerFeature,
   toggleRadarFeature: mockToggleRadarFeature,
 }));

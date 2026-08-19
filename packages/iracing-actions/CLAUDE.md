@@ -26,9 +26,10 @@ src/
       profiles.json                      # GENERATED bundled-profile registry (pnpm generate:action-profiles)
     settings/                            # Plugin-global PI template
       settings.ejs
-  audio/                                 # Shared audio helpers: Race Engineer/Radar feature-gate
-                                         # toggles + voice-sequence player (audio-toggles), bus
-                                         # volume steppers (audio-volume)
+  audio/                                 # Shared audio helpers: Race Engineer/Radar master gates and
+                                         # the side effects of a gate change (feature-gates, #1007),
+                                         # voice-sequence player + toggle acknowledgment
+                                         # (audio-toggles), bus volume steppers (audio-volume)
   icons/                                 # status-bar: tri-state (on/off/na) toggle indication shared
                                          # by status bars, state borders, and dial bar styling
   shared/                                # Cross-action utilities (see below)
