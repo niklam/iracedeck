@@ -403,7 +403,7 @@ If the target car hasn't completed a lap yet, the press is a no-op (nothing move
 
 The cursor lands a heartbeat **before** the start of the fastest lap — about 150 ms of approach to the S/F line — so you can hit Play and watch the car cross into the timed lap. The replay is left **paused** at that frame; press your Play button to start, or use the frame-step buttons to scrub.
 
-The button first pauses the replay, then jumps to the first and last frames of the buffer to learn its extent, then bisects (≈ log₂ N jumps — typically a handful regardless of how long the replay is). Each jump is followed by a short settle gap before the next read, tunable via **Common Settings → Replay → Fastest Lap Search Delay** (default 400 ms, range 50–1000 ms in 50 ms steps). Slower computers and longer tracks may need a longer gap to give iRacing time to deliver fresh telemetry after each jump.
+The button first pauses the replay, then jumps to the first and last frames of the buffer to learn its extent, then bisects (≈ log₂ N jumps — typically a handful regardless of how long the replay is). Each jump is followed by a short settle gap before the next read, tunable in the [Settings window](/docs/features/settings-window/#delays) on the **Delays** tab, as **Fastest Lap Search Delay** (default 400 ms, range 50–1000 ms in 50 ms steps). Slower computers and longer tracks may need a longer gap to give iRacing time to deliver fresh telemetry after each jump.
 
 #### Details
 

@@ -11,21 +11,54 @@ In any iRaceDeck action's Property Inspector, scroll to **Key Bindings** at the 
 
 It is a real window — its own entry in the taskbar, resizable, and it remembers its size and position for next time. It closes itself when the deck software shuts down or restarts.
 
-## What's Inside
+## The Tabs
 
-The sidebar has one tab per area:
+The sidebar has one tab per area. Everything here applies to the **whole plugin**; the appearance defaults are the only ones an individual key can override in its own Property Inspector.
 
-- **General** — Focus iRacing window before sending keys, disable buttons when iRacing isn't connected, and the dual-press behaviour.
-- **Key Bindings** — every binding for every action in one searchable table (search by action or category, or filter to one category). Each row saves as you change it, exactly like the Property Inspector's _Related Key Bindings_.
-- **Appearance** — the plugin-wide title, colour, border, graphic-scale, and flag-flash defaults. Any key can still override these individually in its own Property Inspector.
-- **Race Engineer** — the live on/off toggles and startup policies (below), voice, driver name, output device, volumes and their Test buttons, the radar, every per-callout opt-in, and the setup-warning patterns.
-- **Profiles** _(Stream Deck only)_ — install or switch to a bundled iRaceDeck profile. Because the window isn't tied to one deck, pick which Stream Deck to switch first; with a single deck connected it's pre-selected.
-- **Delays** — the chat and replay timing tunables.
-- **SimHub** — the Control Mapper host and port.
-- **What's New** — when the [What's New page](/docs/features/whats-new-page/) opens after an update, and the changelog itself.
-- **Diagnostics** — debug logging, and where your settings file is stored.
+### General
 
-### Race Engineer and Radar: Now Versus On Startup
+![The General tab of the iRaceDeck Settings window](../../../../assets/settings-window/general.png)
+
+Two things that affect every key you press.
+
+**Focus iRacing window before sending keys** brings iRacing to the foreground before iRaceDeck sends any input, so a press isn't lost to whatever window happened to have focus. Leave it on unless you specifically don't want iRaceDeck changing which window is active. It only matters for actions that send keystrokes — actions that talk to iRacing over its own API arrive regardless of focus.
+
+**Disable buttons when iRacing is not connected** greys out your keys and ignores presses while iRacing isn't running, so a stray press can't fire keystrokes into whatever else is in the foreground.
+
+**Dual-press** governs the setup keys that do one thing on a tap and the opposite on a hold. The **long-press threshold** is how long you must hold before it counts as a hold — shorter feels snappier, longer is more forgiving if you catch keys accidentally. **Directions** picks which way a tap goes; the hold always fires the opposite.
+
+### Key Bindings
+
+![The Key Bindings tab, showing the searchable table of every binding](../../../../assets/settings-window/key-bindings.png)
+
+Every binding in the plugin, in one searchable table — search by action or category, or filter to a single category with the dropdown. Each row saves the moment you change it, exactly as it would in a Property Inspector.
+
+Each row takes either a **keyboard** shortcut or a **SimHub** Control Mapper role; the small icon at the left of a row switches between the two. A binding set here is the same setting the action's own panel shows, so there is never a need to set it twice.
+
+The same bindings also appear in each key's Property Inspector, filtered to just that action — see [What Stays in the Property Inspector](#what-stays-in-the-property-inspector).
+
+### Appearance
+
+![The Appearance tab, showing title, colour, border, graphic and flag-flash defaults](../../../../assets/settings-window/appearance.png)
+
+The look every key inherits. Anything set here is a **default**: a key that has its own override in its Property Inspector keeps it.
+
+- **Title defaults** — whether keys show their title text and graphics at all, plus bold, font size and vertical position. *Default* means "leave it to the icon", which is usually what you want; icons whose title is part of the artwork ignore these deliberately.
+- **Colour defaults** — background, text and the two graphic slots, with **Default / White / Black** presets as a quick way to recolour the whole plugin. Some icons lock individual slots so their semantic colours (a green arrow, a red indicator) survive a preset.
+- **Border defaults** and **Graphic scale** — the border drawn around keys, and how large the artwork is drawn inside them (50–150%).
+- **Flag flash** — how long the flag overlay flashes after a new flag. Set it to `0` to keep flashing for as long as the flag is out.
+
+### Race Engineer
+
+![The Race Engineer tab, showing the live toggles, startup policies, voice and callout opt-ins](../../../../assets/settings-window/race-engineer.png)
+
+Everything about the Race Engineer and the radar: the live on/off toggles and their startup policies, the voice, your name, the output device and the three volumes with **Test** buttons beside them, the setup-warning patterns, and the per-callout opt-ins.
+
+**Race Engineer Voice** and **Your Name** choose who talks to you and what they call you. **Output Device** sends the engineer to a specific device — useful if you want him in your headset while the sim runs on speakers. The three volumes are independent: **Race Engineer** is the voice, **Background** the pit ambience behind it, **Radar** the proximity ticks.
+
+**Callouts** is the long list at the bottom: one checkbox per thing the engineer can tell you, grouped by family — flags, incidents, fuel, spotter and the rest. Turning one off silences that call without touching any other, and takes effect immediately; it never cuts off a callout already playing.
+
+#### Race Engineer and Radar: Now Versus On Startup
 
 The Race Engineer and the radar each have two separate controls, because they answer two different questions.
 
@@ -40,6 +73,55 @@ The Race Engineer and the radar each have two separate controls, because they an
 So you can run with the engineer on for the rest of tonight and still have it start silent tomorrow, without the two settings fighting each other.
 
 If you upgraded from an earlier version, your old **On startup** checkbox carries over as **Always on** or **Always off**, so nothing changes until you pick something else.
+
+### Profiles
+
+![The Profiles tab, showing the deck picker and the bundled profiles](../../../../assets/settings-window/profiles.png)
+
+**Stream Deck only.** Mirabox and Ulanzi Deck have no profile system, so this tab is not shown there.
+
+Switch a connected Stream Deck to one of the ready-made iRaceDeck layouts. Because the window is not tied to a particular deck the way a Property Inspector is, it asks which one to switch — with a single deck connected it is already picked for you.
+
+The Stream Deck app asks to install a profile the first time you switch to it. Each bundled profile is built for a specific device, so the list shows the ones that fit the deck you selected.
+
+### Delays
+
+![The Delays tab, showing the chat and replay timing tunables](../../../../assets/settings-window/delays.png)
+
+Timing for the actions that drive iRacing's own interface rather than talking to it directly. **The defaults suit most machines** — come here only if something misbehaves.
+
+The three **Chat** delays space out the steps of sending a chat message: opening the box, pasting, pressing Enter, closing. Two symptoms worth recognising: text arriving empty or half-typed usually means the paste-to-Enter delay is too short, and the chat box keeping focus after you send means the Enter-to-close delay is. Raise them on a slower machine, or if a clipboard manager gets in the way.
+
+**Fastest Lap Search Delay** is how long Replay Control's *Jump to Fastest Lap* waits between steps while it walks the cursor. iRacing resolves each lap boundary after the fact, so too short a delay leaves the cursor parked mid-lap. Longer tracks and slower machines may need more than the default.
+
+### SimHub
+
+![The SimHub tab, showing the Control Mapper host and port](../../../../assets/settings-window/simhub.png)
+
+Where iRaceDeck reaches [SimHub](https://www.simhubdash.com/) Control Mapper, for bindings you have set to a SimHub role rather than a keyboard shortcut. The default `127.0.0.1:8888` is right when SimHub runs on the same PC; point it elsewhere if SimHub lives on another machine.
+
+This only matters if you actually use SimHub roles — a purely keyboard-bound setup can ignore this tab entirely.
+
+### What's New
+
+![The What's New tab, showing the update preference and the embedded changelog](../../../../assets/settings-window/whats-new.png)
+
+**After an update** controls when the changelog opens by itself once iRaceDeck has updated:
+
+- **Every update** — after any new version.
+- **Only after updates with new features** — the default; small bug-fix releases pass silently.
+- **At most once a month** — a quieter option if updates land often.
+- **Never** — it never opens on its own.
+
+Whichever you pick, the page always lists everything since your last visit, so a quieter setting never means missing anything. The changelog itself is embedded below the setting, so this tab doubles as a convenient place to read it — see [the What's New page](/docs/features/whats-new-page/).
+
+### Diagnostics
+
+![The Diagnostics tab, showing the debug logging toggle and the settings file path](../../../../assets/settings-window/diagnostics.png)
+
+**Enable debug logging** writes verbose detail to the plugin log. Leave it off for normal use — it takes effect immediately, with no restart, so switch it on only to capture a log when reporting a problem, then switch it back off.
+
+**Settings file** shows exactly where your configuration lives, with an **Open folder** button that reveals it in Explorer. Copying that one file backs up everything on this page — see [Where Your Settings Are Stored](#where-your-settings-are-stored).
 
 ## What Stays in the Property Inspector
 

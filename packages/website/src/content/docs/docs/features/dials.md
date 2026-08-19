@@ -37,4 +37,4 @@ When a gesture needs a key binding, the Property Inspector shows a small status 
 
 ## The Long-press threshold
 
-How long you must hold the dial button for a press to count as a **Long Press** is set by the plugin-wide **Long-press threshold** (in the global _Common Settings_ section, default 500 ms, range 200–2000 ms). The same threshold is shared with other long-press features, so one setting tunes them all.
+How long you must hold the dial button for a press to count as a **Long Press** is set by the plugin-wide **Long-press threshold** (in the [Settings window](/docs/features/settings-window/#general) on the **General** tab, default 500 ms, range 200–2000 ms). The same threshold is shared with other long-press features, so one setting tunes them all.
