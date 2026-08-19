@@ -181,6 +181,7 @@ export {
   type FeatureStartupGate,
   type FeatureStartupPolicy,
 } from "./feature-startup-policy.js";
+export { applyStartupFeatureGates, migrateStartupPolicies } from "./feature-startup-gates.js";
 
 // Plugin-owned settings store (issue #993)
 export {
