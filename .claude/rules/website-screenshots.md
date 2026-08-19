@@ -32,7 +32,7 @@ Three properties a manual screenshot can't give:
 
 1. **Capture from the Stream Deck plugin build.** The Profiles tab only renders where the `profiles` platform flag is on, so a Mirabox or Ulanzi build is missing a tab. The harness hard-codes the Stream Deck `ui/` path for this reason.
 2. **Never hand-edit the PNGs**, and never crop or annotate them. Change the seed or the page and recapture.
-3. **Add a tab → add it to `SETTINGS_WINDOW_TABS`** in `scripts/lib/settings-window-capture/tabs.mjs`, recapture, and write the matching `###` section on `docs/features/settings-window.md`. `tabs.test.mjs` fails until the list matches the built page, which is the automated nudge — the images themselves can't be diffed reliably across machines (fonts, GPU), so refreshing them stays a deliberate act.
+3. **Add a tab → add it to `SETTINGS_WINDOW_TABS`** in `scripts/lib/settings-window-capture/tabs.mjs`, recapture, and write the matching `###` section on `docs/getting-started/settings.md`. `tabs.test.mjs` fails until the list matches the built page, which is the automated nudge — the images themselves can't be diffed reliably across machines (fonts, GPU), so refreshing them stays a deliberate act.
 4. **The What's New tab embeds a live `iframe`** of the published changelog, so that one shot is not byte-reproducible — it shows whatever the site served at capture time. Expected; don't chase it.
 5. **Alt text describes the tab**, not the act of screenshotting ("The General tab of the iRaceDeck Settings window", not "Screenshot of settings").
 

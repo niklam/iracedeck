@@ -64,7 +64,7 @@ const browserPath = findChromiumBrowserOnThisMachine();
 if (!browserPath) {
   console.error(
     "No Chromium-based browser (Edge or Chrome) was found on this machine, so the page cannot be rendered.\n" +
-      "The Settings window itself has the same requirement — see docs/features/settings-window.md.",
+      "The Settings window itself has the same requirement — see docs/getting-started/settings.md.",
   );
   process.exit(1);
 }

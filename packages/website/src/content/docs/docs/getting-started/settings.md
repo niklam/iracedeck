@@ -1,6 +1,6 @@
 ---
-title: Settings Window
-description: One full-size window for every plugin-wide setting — key bindings, appearance, the Race Engineer, profiles, and more — instead of hunting through Property Inspectors.
+title: Settings
+description: Every plugin-wide setting in one full-size window — key bindings, appearance, the Race Engineer, profiles, and more — instead of hunting through Property Inspectors.
 ---
 
 Every iRaceDeck key has its own settings in the deck software's Property Inspector, but many settings apply to the **whole plugin**: your key bindings, the appearance defaults every key inherits, the Race Engineer's voice and callouts, timing tunables, SimHub, and so on. Those used to live inside each Property Inspector — repeated in every one, stacked in a narrow panel. The **Settings window** is their home now.
@@ -100,7 +100,7 @@ The three **Chat** delays space out the steps of sending a chat message: opening
 
 Where iRaceDeck reaches [SimHub](https://www.simhubdash.com/) Control Mapper, for bindings you have set to a SimHub role rather than a keyboard shortcut. The default `127.0.0.1:8888` is right when SimHub runs on the same PC; point it elsewhere if SimHub lives on another machine.
 
-This only matters if you actually use SimHub roles — a purely keyboard-bound setup can ignore this tab entirely.
+This only matters if you actually use SimHub roles — a purely keyboard-bound setup can ignore this tab entirely. For what a SimHub role is and how to set one up, see [Binding modes: keyboard vs SimHub](/docs/features/key-bindings/#binding-modes-keyboard-vs-simhub).
 
 ### What's New
 

@@ -53,7 +53,7 @@ If you need to keep something on your clipboard, copy it again **after** using a
 
 The chat-send pipeline opens the chat window, pastes the message, presses Enter, then closes the chat window — each step on a short timer. On slower machines, under load, or when a clipboard-manager app briefly steals focus, the default timing can be too tight: the paste lands before the chat input is focused (text lost), Enter fires before the paste registers (empty or partial send), the keypress is dropped entirely, or the window closes before iRacing processes the message and keeps focus afterward.
 
-If you hit this, increase the three delays in the [Settings window](/docs/features/settings-window/#delays), on the **Delays** tab under **Chat**:
+If you hit this, increase the three delays in the [Settings window](/docs/getting-started/settings/#delays), on the **Delays** tab under **Chat**:
 
 - **Open → Paste delay** (default 200 ms) — the wait after opening chat before pasting.
 - **Paste → Enter delay** (default 200 ms) — the wait after pasting before pressing Enter.
@@ -65,7 +65,7 @@ All accept 0–2000 ms. The Enter keypress is also held briefly so it registers 
 
 iRaceDeck logs at the **info** level by default, which keeps the log file focused on the events that matter and avoids bloating it with internal detail. When you're troubleshooting a problem — or a maintainer asks for a log — enable verbose debug logging to capture the detail needed to diagnose it:
 
-1. Open the [Settings window](/docs/features/settings-window/#diagnostics) (**Open iRaceDeck Settings** at the bottom of any action's Property Inspector) and pick the **Diagnostics** tab.
+1. Open the [Settings window](/docs/getting-started/settings/#diagnostics) (**Open iRaceDeck Settings** at the bottom of any action's Property Inspector) and pick the **Diagnostics** tab.
 2. Turn on **Enable debug logging**. It takes effect immediately — no restart needed.
 3. Reproduce the issue, then attach the plugin's log file to your report.
 4. Turn the setting back off afterward to keep your logs clean.
