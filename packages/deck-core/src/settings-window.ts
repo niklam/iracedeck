@@ -27,6 +27,22 @@ import {
 } from "./settings-window-server.js";
 
 /**
+ * What the controller just tried, and how it went (issue #1005).
+ *
+ * Reported for every attempt at both stages so a consumer can tell a settings
+ * service that never bound from a machine where no browser would open the
+ * page. That distinction is invisible from outside: `open()` starts the server
+ * first, so it rejects for BOTH causes and a caller's own `.catch` cannot tell
+ * them apart. `createSettingsWindowWarningReporter` turns these into the
+ * Property Inspector warning banner.
+ */
+export type SettingsWindowStatus =
+  | { stage: "server"; ok: true }
+  | { stage: "server"; ok: false; error: unknown }
+  | { stage: "open"; ok: true; launch: SettingsWindowLaunch }
+  | { stage: "open"; ok: false; error: unknown };
+
+/**
  * File name of the compiled settings-window page inside each plugin's `ui/`
  * folder (built from `settings-window.ejs` by the shared PI template plugin,
  * with `settings-window-bridge.js` injected before `sdpi-components.js`).
@@ -76,6 +92,16 @@ export interface SettingsWindowControllerOptions {
    * came up late is still published and mirrored, not just the startup one.
    */
   onStarted?: (channel: { port: number; token: string }) => void;
+  /**
+   * Fired for every server-start and window-open attempt, success or failure
+   * (#1005). The controller is the only place that knows WHICH stage failed,
+   * so this is what lets a consumer say something accurate about a settings
+   * window the user cannot reach — plugins pass
+   * `createSettingsWindowWarningReporter(...)`. Purely observational: a
+   * throwing hook is logged and swallowed, never allowed to turn a healthy
+   * start or open into a failure.
+   */
+  onStatus?: (status: SettingsWindowStatus) => void;
   logger: ILogger;
 }
 
@@ -106,6 +132,20 @@ export function createSettingsWindowController(options: SettingsWindowController
   // start is retried by the next caller.
   let starting: Promise<SettingsWindowServer> | undefined;
 
+  /**
+   * Report an outcome to the observer. A faulty observer is the observer's
+   * problem: it is logged and swallowed so it can never turn a server that
+   * IS up into a rejected start, nor a window that DID open into a failure.
+   */
+  function report(status: SettingsWindowStatus): void {
+    try {
+      options.onStatus?.(status);
+    } catch (error: unknown) {
+      options.logger.error("Settings window onStatus hook failed");
+      options.logger.debug(String(error));
+    }
+  }
+
   async function ensureServer(): Promise<SettingsWindowServer> {
     if (server !== undefined) return server;
 
@@ -123,24 +163,47 @@ export function createSettingsWindowController(options: SettingsWindowController
             ? `Settings socket accepted (origin: ${d.origin ?? "none"})`
             : `Settings socket rejected: ${d.reason} (origin: ${d.origin ?? "none"})`,
         ),
-    }).then((started) => {
-      server = started;
-      options.logger.info("Settings window server started");
-      // Origin only — the URL carries the auth token, and debug logs get
-      // attached to support requests.
-      options.logger.debug(`Settings window origin: ${new URL(started.url).origin}`);
+    }).then(
+      (started) => {
+        server = started;
+        options.logger.info("Settings window server started");
+        // Origin only — the URL carries the auth token, and debug logs get
+        // attached to support requests.
+        options.logger.debug(`Settings window origin: ${new URL(started.url).origin}`);
 
-      // A hook fault must not turn a started server into a rejected start
-      // (every awaiting caller would see a failure for a server that is up).
-      try {
-        options.onStarted?.(channelOf(started));
-      } catch (error: unknown) {
-        options.logger.error("Settings window onStarted hook failed");
+        // BEFORE onStarted, not after (#1005). onStarted is where the plugins
+        // publish the once-per-start deck-host mirror, and that mirror is a
+        // snapshot of the settings cache — while this report is what clears a
+        // settings-window banner the PREVIOUS run persisted. Reporting second
+        // would mirror that stale banner to the host and never correct it (the
+        // mirror goes out once), leaving a PI on the host fallback path warning
+        // about a service that is up.
+        report({ stage: "server", ok: true });
+
+        // A hook fault must not turn a started server into a rejected start
+        // (every awaiting caller would see a failure for a server that is up).
+        try {
+          options.onStarted?.(channelOf(started));
+        } catch (error: unknown) {
+          options.logger.error("Settings window onStarted hook failed");
+          options.logger.debug(String(error));
+        }
+
+        return started;
+      },
+      // Two-arg then, deliberately: this handler must see a failure of the
+      // START only. A fault thrown by the success handler above is not a
+      // "server failed to bind" and must not be reported as one (nor logged as
+      // one) — with a chained .catch it would be. Rethrown so every awaiting
+      // caller still sees the rejection, and so `starting` is retried later.
+      (error: unknown) => {
+        options.logger.error("Settings window server failed to start; the settings window cannot be opened");
         options.logger.debug(String(error));
-      }
+        report({ stage: "server", ok: false, error });
 
-      return started;
-    });
+        throw error;
+      },
+    );
 
     try {
       return await starting;
@@ -155,18 +218,37 @@ export function createSettingsWindowController(options: SettingsWindowController
     },
 
     async open() {
+      // Outside the try below on purpose: a rejection here is a SERVER failure,
+      // already logged and reported as such by ensureServer() — which is what
+      // raises BOTH the page-wide error and the note above the button, since a
+      // dead service determines the state of both (#1005). Reporting it again
+      // as an open failure would say "no browser would open the page", which is
+      // the wrong cause and the wrong advice.
       const started = await ensureServer();
 
-      const launch = await launchSettingsWindow({
-        url: started.url,
-        findBrowser: options.findBrowser,
-        spawnApp: options.spawnApp,
-        openUrl: options.openUrl,
-        bounds: options.getWindowBounds?.(),
-      });
+      let launch: SettingsWindowLaunch;
+
+      try {
+        launch = await launchSettingsWindow({
+          url: started.url,
+          findBrowser: options.findBrowser,
+          spawnApp: options.spawnApp,
+          openUrl: options.openUrl,
+          bounds: options.getWindowBounds?.(),
+        });
+      } catch (error: unknown) {
+        // Both routes are gone: no Chromium-based browser would spawn the app
+        // window AND the host's openUrl fallback failed too.
+        options.logger.error("Settings window failed to open");
+        options.logger.debug(String(error));
+        report({ stage: "open", ok: false, error });
+
+        throw error;
+      }
 
       options.logger.info("Settings window opened");
       options.logger.debug(`Settings window launch: ${launch}`);
+      report({ stage: "open", ok: true, launch });
 
       return launch;
     },

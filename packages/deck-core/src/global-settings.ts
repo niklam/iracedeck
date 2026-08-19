@@ -1549,15 +1549,33 @@ export function getSettingsStoreSource(): SettingsStoreSource | null {
  * mirroring it would broadcast those defaults to every Property Inspector as
  * if they were real settings, the same failure mode as the fresh-start case.
  * Returns undefined when the write must be skipped.
+ *
+ * Called with NO channel when the settings server failed to start (#1005).
+ * That mirror still matters — arguably more: with no server there is no
+ * loopback channel, so every Property Inspector falls back to reading the host
+ * copy, and this is the only way anything the plugin has written (notably the
+ * `_warnings` banner explaining why the settings window will not open) reaches
+ * it at all. Any channel is stripped rather than carried over, so a PI does not
+ * spend a bootstrap attempt dialling the previous run's dead port. The skip
+ * guards above apply unchanged: a defaults cache must never be broadcast as if
+ * it were real settings, banner or no banner.
  */
-export function hostMirrorPayload(channel: { port: number; token: string }): Record<string, unknown> | undefined {
+export function hostMirrorPayload(channel?: { port: number; token: string }): Record<string, unknown> | undefined {
   if (!storeReady || storeSource === "fresh" || storeSalvageFailed) return undefined;
 
   // Belt and braces with the "fresh" check above: a cache carrying the
   // pending-migration marker is a defaults file, whatever path filled it.
   if (pendingMigrationStarts(currentSettings as Record<string, unknown>) > 0) return undefined;
 
-  return { ...(currentSettings as Record<string, unknown>), [SETTINGS_CHANNEL_KEY]: { ...channel } };
+  const mirror = { ...(currentSettings as Record<string, unknown>) };
+
+  if (channel === undefined) {
+    delete mirror[SETTINGS_CHANNEL_KEY];
+
+    return mirror;
+  }
+
+  return { ...mirror, [SETTINGS_CHANNEL_KEY]: { ...channel } };
 }
 
 /**

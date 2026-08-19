@@ -263,15 +263,25 @@ Plugin code can surface a banner at the top of every Property Inspector (issue #
 Manage warnings from `@iracedeck/deck-core`:
 
 ```typescript
-import { setWarning, clearWarning } from "@iracedeck/deck-core";
+import { setWarning, clearWarning, reconcileWarnings } from "@iracedeck/deck-core";
 
 setWarning("elevation-mismatch", "warning", "…message…"); // upsert, keyed by id
 clearWarning("elevation-mismatch");                         // remove by id
+
+// One producer's whole family of ids, reconciled in a SINGLE write: every id
+// in the scope is dropped, then the given records posted. Use it whenever one
+// condition raises more than one banner (#1005) — a setWarning/clearWarning
+// per id is one full global-settings write each, i.e. a store persist plus a
+// synchronous fan-out to every onGlobalSettingsChange listener, per banner.
+reconcileWarnings(["settings-window-server", "settings-window-open"], warnings);
 ```
 
-Records are keyed by `id` so independent producers coexist. `setWarning` skips the write when an identical record already exists; `clearWarning` is a no-op when the id is absent. The `ird-warnings` PI web component (auto-injected by `head-common.ejs`) renders the array and prepends a per-level icon — so warning **messages must not start with their own emoji**. Banners are state-driven and not dismissible: a warning persists until its condition clears.
+Records are keyed by `id` so independent producers coexist. `setWarning` skips the write when an identical record already exists; `clearWarning` is a no-op when the id is absent; `reconcileWarnings` skips it when the scope's records already say what it would write (compared by content, not array order, so another producer posting after you is not a change). The `ird-warnings` PI web component (auto-injected by `head-common.ejs`) renders the array and prepends a per-level icon — so warning **messages must not start with their own emoji**. Banners are state-driven and not dismissible: a warning persists until its condition clears. **`_warnings` is persisted** (it is an ordinary passthrough key in the settings file since #993), so a record outlives the run that wrote it — which makes **retiring or renaming a warning id a breaking change**: nothing clears an id no producer knows about any more, and the orphan renders as a banner the user cannot dismiss, forever. Rename one only with a `deleteGlobalSettings`-style one-shot cleanup of the old id, the same as any other renamed key. Ids that only ever existed on an unmerged branch need no cleanup, but do check a dev machine's own settings file after iterating on one. A warning about one specific control belongs beside it rather than only in the top strip — see the `only`/`except` placement filters in `@.claude/rules/stream-deck-actions.md`; the settings-window **open** failure sits directly above the *Open iRaceDeck Settings* button, which in an action PI is a full scroll from the top, while its page-wide **server** sibling stays in the strip (#1005).
 
-Reference producer: the elevation-mismatch detector — deck-core's `createElevationCheckSubscriber` (wrapping `evaluateElevationWarning()` + the injected `getElevationStatus()`), wired in every plugin's `plugin.ts`.
+Reference producers, both in deck-core and both wired in every plugin's `plugin.ts`, and both following the same two-module split — a **pure** evaluator returning `PiWarning | null`, plus a thin adapter that is the only part touching the warning store:
+
+- **Elevation mismatch** (#610) — `createElevationCheckSubscriber` wrapping `evaluateElevationWarning()` + the injected `getElevationStatus()`.
+- **Unreachable settings window** (#1005) — `createSettingsWindowWarningReporter({ getStorePath })` wrapping `evaluateSettingsWindowWarning()`, wired as the settings-window controller's `onStatus` hook. Note the shape when a condition has several failure modes: the controller reports *what it tried and how it went* (`SettingsWindowStatus`) rather than deciding anything, because it is the only place that knows which stage failed — `open()` starts the server first, so it rejects both for a service that never bound and for a machine where no browser would open the page, and a caller's own `.catch` cannot tell those apart. The two modes get **separate ids** — not because they can coexist (they can't: `open()` starts the server first) but because **placement is keyed by id** and they belong in different parts of the page. The dead service is page-wide (`error`, top strip: with no channel every PI edit is inert), the failed open is about one button (`warning`, rendered directly above it). Where two exclusive conditions render in the SAME place, prefer one state-driven id that replaces itself; split only when they need different homes, and then make the reporter clear the sibling id so the user still never sees two banners for one broken thing.
 
 ## Version-upgrade changelog — `_lastSeenVersion` + `runVersionCheck` (#680, #742, #870, #901)
 

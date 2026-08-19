@@ -1,0 +1,43 @@
+<%#
+  Open Settings button + its warning banner (issues #992, #1005)
+
+  The one definition of the way through to the iRaceDeck Settings window, used
+  by every place that offers it: `key-bindings-section.ejs` (the 35 action PIs,
+  where it closes the bottom section) and `section-header.ejs` (the plugin-level
+  `settings.ejs` page, where it sits under the heading).
+
+  The banner above it carries the OPEN failure and only that: the window could
+  not be displayed although the settings service is healthy. It has to be HERE
+  rather than in the page-top strip that `head-common.ejs` injects, because in
+  an action PI that strip is a full scroll away from this button — a user who
+  presses it and gets no window would see no explanation at all, which is the
+  very failure this warning exists to end.
+
+  The SERVER failure deliberately stays in the top strip instead. It is not
+  about this button: with no service a PI has no channel to the plugin, so
+  every setting the page can change is inert, and that belongs where the page
+  announces page-wide problems.
+
+  `head-common.ejs` gives the top strip the matching `except`, so the open
+  banner appears in exactly one place per page. The id literal is duplicated
+  from deck-core's SETTINGS_WINDOW_OPEN_WARNING_ID (this bundle is browser code
+  and cannot import it); `settings-window-constants.test.ts` guards the pair.
+
+  Banner and button share ONE outer block, and `extraClass` goes on that block
+  rather than on the button's own wrapper. `.ird-section-footer` draws the
+  divider that closes the Key Bindings section with a `border-top`, so putting
+  the banner outside the block would render it ABOVE that rule — reading as
+  the tail of the key-bindings list, with a horizontal line between it and the
+  button it explains. The button wrapper also centres its content, which is
+  right for a button and wrong for a paragraph of warning text, so the banner
+  stays a sibling of that wrapper rather than a child of it.
+
+  Parameters:
+    - extraClass (String, optional) — class list for the outer block.
+%>
+<div<% if (locals.extraClass) { %> class="<%= extraClass %>"<% } %>>
+  <ird-warnings only="settings-window-open"></ird-warnings>
+  <div class="ird-open-settings">
+    <ird-open-settings></ird-open-settings>
+  </div>
+</div>

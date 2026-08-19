@@ -346,7 +346,7 @@ export {
 
 // Key binding utilities
 export { formatKeyBinding, parseKeyBinding, parseBinding } from "./key-binding-utils.js";
-export { setWarning, clearWarning, type PiWarning, type PiWarningLevel } from "./pi-warnings.js";
+export { setWarning, clearWarning, reconcileWarnings, type PiWarning, type PiWarningLevel } from "./pi-warnings.js";
 
 // Setup-name mismatch warning (issue #625)
 export {
@@ -483,7 +483,25 @@ export {
   SETTINGS_WINDOW_HTML,
   type SettingsWindowController,
   type SettingsWindowControllerOptions,
+  type SettingsWindowStatus,
 } from "./settings-window.js";
+// Settings-window failure banner: the controller's lifecycle outcomes surfaced
+// as a PI warning, so an unreachable settings window is diagnosable rather than
+// a dead button (issue #1005)
+export {
+  evaluateSettingsWindowWarnings,
+  SETTINGS_WINDOW_OPEN_BLOCKED_MESSAGE,
+  SETTINGS_WINDOW_OPEN_FAILURE_MESSAGE,
+  SETTINGS_WINDOW_SERVER_FAILURE_MESSAGE,
+  SETTINGS_WINDOW_OPEN_WARNING_ID,
+  SETTINGS_WINDOW_SERVER_WARNING_ID,
+  settingsWindowWarningScope,
+  type SettingsWindowWarningContext,
+} from "./settings-window-warning.js";
+export {
+  createSettingsWindowWarningReporter,
+  type SettingsWindowWarningReporterOptions,
+} from "./settings-window-warning-reporter.js";
 // Reveal the settings file in Explorer (issue #993)
 export { explorerSelectArgs, openFolderInExplorer } from "./open-folder.js";
 // Settings-channel publisher: store write + the one host mirror per start (issue #993 phase 2)

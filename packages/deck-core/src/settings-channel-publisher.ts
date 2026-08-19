@@ -32,6 +32,15 @@
  * after it by the controller's `onStarted` hook. Faults in a settings listener
  * during the store cleanup, or in the host write, are logged here on their own
  * terms instead of being mistaken for a server-start failure.
+ *
+ * `publishUnavailable()` is the same mirror for the run where the server never
+ * came up at all (#1005) — everything above minus the channel. It is the only
+ * write the host copy gets in that case, and therefore the only way anything
+ * the plugin has written reaches a Property Inspector, which by then has
+ * nothing to connect to and is reading the host copy. The two are deduped
+ * against each other, so a failed startup bind followed by a successful "Open
+ * Settings" mirrors twice — once without a channel, then again with the real
+ * one — and never more.
  */
 import type { ILogger } from "@iracedeck/logger";
 
@@ -51,57 +60,107 @@ export interface SettingsChannelPublisherDeps {
 export interface SettingsChannelPublisher {
   /** Mirror the store + `channel` to the deck host, dropping any stale persisted channel first (see module doc). */
   publish(channel: SettingsChannel): void;
+  /**
+   * Mirror the store to the deck host with NO channel — the settings server
+   * failed to start this run (#1005).
+   *
+   * Without it that failure is invisible exactly where it must be seen: no
+   * server means no loopback channel, so every Property Inspector falls back
+   * to the deck host's copy, and the host copy is written ONLY from here. The
+   * `_warnings` banner explaining why the settings window will not open would
+   * otherwise sit in the plugin's own file, read by nobody. Deduped like
+   * `publish`, and superseded by the real thing if a later "Open Settings"
+   * brings the server up after all — never the other way round: once a real
+   * channel has been mirrored this is ignored, since sending it would strip
+   * that channel back off the host copy.
+   */
+  publishUnavailable(): void;
 }
 
+/** Mirror-dedup key for the channel-less mirror. No `port:token` can collide with it. */
+const NO_CHANNEL_KEY = "none";
+
 export function createSettingsChannelPublisher(deps: SettingsChannelPublisherDeps): SettingsChannelPublisher {
-  const keyOf = (channel: SettingsChannel): string => `${channel.port}:${channel.token}`;
+  const keyOf = (channel: SettingsChannel | undefined): string =>
+    channel === undefined ? NO_CHANNEL_KEY : `${channel.port}:${channel.token}`;
   let announced: string | undefined;
   let cleaned = false;
   let mirrored: string | undefined;
 
-  return {
-    publish(channel) {
-      const key = keyOf(channel);
+  /** Both entry points differ only in whether a channel goes into the mirror. */
+  function mirrorToHost(channel: SettingsChannel | undefined): void {
+    const key = keyOf(channel);
 
-      if (announced !== key) {
-        announced = key;
-        deps.logger.debug(`Settings channel published on port ${channel.port}`);
-      }
+    // A channel-less mirror can only ever ADD to what the host knows — the
+    // store, minus a channel there is none of. Once a REAL channel has gone
+    // out, sending one would take it away again and drop every Property
+    // Inspector that bootstraps afterwards onto the fallback path for the rest
+    // of the run. Today's plugins cannot call it in that order (the startup
+    // `ensureStarted()` settles exactly one way), but this is a public API and
+    // that failure would be silent and total, so it is refused here rather
+    // than left to every caller's ordering.
+    if (channel === undefined && mirrored !== undefined && mirrored !== NO_CHANNEL_KEY) {
+      deps.logger.debug("Channel-less mirror skipped: a live settings channel is already mirrored");
 
-      if (!cleaned) {
-        try {
-          // Older builds persisted the channel into the settings file; drop it so
-          // the file never advertises a dead port/token. No cache pre-check (see
-          // module doc): before the store is ready this is recorded as an early
-          // delete and applied over the loaded file; afterwards it is a no-op
-          // when the key is absent. `cleaned` flips only once the call succeeded,
-          // so a throwing settings listener here is retried by the next publish.
-          deleteGlobalSettings([SETTINGS_CHANNEL_KEY]);
-          cleaned = true;
-        } catch (error: unknown) {
-          deps.logger.error("Cleaning the stale settings channel from the store failed");
-          deps.logger.debug(String(error));
-        }
-      }
+      return;
+    }
 
-      if (mirrored === key) return;
+    if (announced !== key) {
+      announced = key;
+      deps.logger.debug(
+        channel === undefined
+          ? "Settings channel unavailable; mirroring the store to the deck host without one"
+          : `Settings channel published on port ${channel.port}`,
+      );
+    }
 
+    if (!cleaned) {
       try {
-        const mirror = hostMirrorPayload(channel);
-
-        if (mirror === undefined) {
-          deps.logger.info("Host mirror skipped: the store holds no host-derived settings yet");
-
-          return;
-        }
-
-        deps.adapter.setGlobalSettings(mirror);
-        mirrored = key;
-        deps.logger.info("Mirrored settings + channel to the deck host");
+        // Older builds persisted the channel into the settings file; drop it so
+        // the file never advertises a dead port/token. No cache pre-check (see
+        // module doc): before the store is ready this is recorded as an early
+        // delete and applied over the loaded file; afterwards it is a no-op
+        // when the key is absent. `cleaned` flips only once the call succeeded,
+        // so a throwing settings listener here is retried by the next publish.
+        deleteGlobalSettings([SETTINGS_CHANNEL_KEY]);
+        cleaned = true;
       } catch (error: unknown) {
-        deps.logger.error("Mirroring the settings to the deck host failed");
+        deps.logger.error("Cleaning the stale settings channel from the store failed");
         deps.logger.debug(String(error));
       }
+    }
+
+    if (mirrored === key) return;
+
+    try {
+      const mirror = hostMirrorPayload(channel);
+
+      if (mirror === undefined) {
+        deps.logger.info("Host mirror skipped: the store holds no host-derived settings yet");
+
+        return;
+      }
+
+      deps.adapter.setGlobalSettings(mirror);
+      mirrored = key;
+      deps.logger.info(
+        channel === undefined
+          ? "Mirrored settings to the deck host (no settings channel this run)"
+          : "Mirrored settings + channel to the deck host",
+      );
+    } catch (error: unknown) {
+      deps.logger.error("Mirroring the settings to the deck host failed");
+      deps.logger.debug(String(error));
+    }
+  }
+
+  return {
+    publish(channel) {
+      mirrorToHost(channel);
+    },
+
+    publishUnavailable() {
+      mirrorToHost(undefined);
     },
   };
 }

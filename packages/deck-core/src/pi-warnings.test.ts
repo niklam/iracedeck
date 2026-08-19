@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { clearWarning, setWarning } from "./pi-warnings.js";
+import { clearWarning, reconcileWarnings, setWarning } from "./pi-warnings.js";
 
 const { store, updateSpy } = vi.hoisted(() => {
   const store = { current: {} as Record<string, unknown> };
@@ -92,5 +92,84 @@ describe("pi-warnings store", () => {
     store.current._warnings = JSON.stringify([null, { id: "a", level: "warning", message: "m" }]);
     expect(() => clearWarning("a")).not.toThrow();
     expect(warnings()).toEqual([]);
+  });
+});
+
+describe("reconcileWarnings", () => {
+  beforeEach(() => {
+    store.current = {};
+    updateSpy.mockClear();
+  });
+
+  it("posts a producer's whole family in ONE write", () => {
+    reconcileWarnings(
+      ["a", "b"],
+      [
+        { id: "a", level: "error", message: "A" },
+        { id: "b", level: "warning", message: "B" },
+      ],
+    );
+
+    expect(updateSpy).toHaveBeenCalledTimes(1);
+    expect(warnings()).toEqual([
+      { id: "a", level: "error", message: "A" },
+      { id: "b", level: "warning", message: "B" },
+    ]);
+  });
+
+  it("drops the scope's ids that the caller no longer returns", () => {
+    reconcileWarnings(["a", "b"], [{ id: "a", level: "error", message: "A" }]);
+    reconcileWarnings(["a", "b"], []);
+
+    expect(warnings()).toEqual([]);
+  });
+
+  it("never touches another producer's records", () => {
+    setWarning("elevation-mismatch", "warning", "other");
+    updateSpy.mockClear();
+
+    reconcileWarnings(["a"], [{ id: "a", level: "error", message: "A" }]);
+
+    expect(warnings()).toEqual([
+      { id: "elevation-mismatch", level: "warning", message: "other" },
+      { id: "a", level: "error", message: "A" },
+    ]);
+  });
+
+  it("writes nothing when the outcome is what is already stored", () => {
+    reconcileWarnings(["a"], [{ id: "a", level: "error", message: "A" }]);
+    updateSpy.mockClear();
+
+    reconcileWarnings(["a"], [{ id: "a", level: "error", message: "A" }]);
+
+    expect(updateSpy).not.toHaveBeenCalled();
+  });
+
+  it("writes nothing when another producer posted after us and nothing of ours changed", () => {
+    // The reconciled list moves our records to the end, so an order-sensitive
+    // comparison would rewrite the setting here for no change at all.
+    reconcileWarnings(["a"], [{ id: "a", level: "error", message: "A" }]);
+    setWarning("elevation-mismatch", "warning", "other");
+    updateSpy.mockClear();
+
+    reconcileWarnings(["a"], [{ id: "a", level: "error", message: "A" }]);
+
+    expect(updateSpy).not.toHaveBeenCalled();
+  });
+
+  it("writes when only the level or the message changed", () => {
+    reconcileWarnings(["a"], [{ id: "a", level: "error", message: "A" }]);
+    updateSpy.mockClear();
+
+    reconcileWarnings(["a"], [{ id: "a", level: "warning", message: "A" }]);
+
+    expect(updateSpy).toHaveBeenCalledTimes(1);
+    expect(warnings()).toEqual([{ id: "a", level: "warning", message: "A" }]);
+  });
+
+  it("is a no-op on an empty scope with nothing to post", () => {
+    reconcileWarnings([], []);
+
+    expect(updateSpy).not.toHaveBeenCalled();
   });
 });

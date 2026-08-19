@@ -168,3 +168,77 @@ describe("createSettingsChannelPublisher (#993 phase 2)", () => {
     expect(setGlobalSettings).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("createSettingsChannelPublisher.publishUnavailable (#1005)", () => {
+  it("mirrors the store to the host with NO channel, so a PI on the fallback path still sees the plugin's settings", async () => {
+    const { adapter, setGlobalSettings } = mockAdapter();
+    const store = createMemorySettingsStore({ driverName: "nick" });
+    initGlobalSettings(adapter, silentLogger, store);
+    await tick();
+    const publisher = createSettingsChannelPublisher({ adapter, logger: silentLogger });
+
+    // Without this mirror the warning banner written by the settings-window
+    // reporter would live only in the plugin's own file: with no server there
+    // is no loopback channel, so every PI reads the deck host's copy — which
+    // the plugin otherwise writes only from publish() (#1005).
+    updateGlobalSettings({ _warnings: '[{"id":"settings-window","level":"error","message":"m"}]' });
+    publisher.publishUnavailable();
+
+    expect(setGlobalSettings).toHaveBeenCalledTimes(1);
+
+    const mirror = setGlobalSettings.mock.calls[0]?.[0] as Record<string, unknown>;
+
+    expect(mirror.driverName).toBe("nick");
+    expect(mirror._warnings).toContain("settings-window");
+    expect(mirror[SETTINGS_CHANNEL_KEY]).toBeUndefined();
+  });
+
+  it("strips a stale channel from the mirror, so a PI does not dial last run's dead port", async () => {
+    const { adapter, setGlobalSettings } = mockAdapter();
+    const store = createMemorySettingsStore({ driverName: "nick", [SETTINGS_CHANNEL_KEY]: { port: 1, token: "old" } });
+    initGlobalSettings(adapter, silentLogger, store);
+    await tick();
+    const publisher = createSettingsChannelPublisher({ adapter, logger: silentLogger });
+
+    publisher.publishUnavailable();
+
+    expect((setGlobalSettings.mock.calls[0]?.[0] as Record<string, unknown>)[SETTINGS_CHANNEL_KEY]).toBeUndefined();
+    expect((getGlobalSettings() as Record<string, unknown>)[SETTINGS_CHANNEL_KEY]).toBeUndefined();
+  });
+
+  it("mirrors once however many times the start fails", async () => {
+    const { adapter, setGlobalSettings } = mockAdapter();
+    initGlobalSettings(adapter, silentLogger, createMemorySettingsStore({ driverName: "nick" }));
+    await tick();
+    const publisher = createSettingsChannelPublisher({ adapter, logger: silentLogger });
+
+    publisher.publishUnavailable();
+    publisher.publishUnavailable();
+
+    expect(setGlobalSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it("still mirrors the real channel when a later Open Settings brings the server up", async () => {
+    const { adapter, setGlobalSettings } = mockAdapter();
+    initGlobalSettings(adapter, silentLogger, createMemorySettingsStore({ driverName: "nick" }));
+    await tick();
+    const publisher = createSettingsChannelPublisher({ adapter, logger: silentLogger });
+
+    publisher.publishUnavailable();
+    publisher.publish(CHANNEL);
+
+    expect(setGlobalSettings).toHaveBeenCalledTimes(2);
+    expect(setGlobalSettings.mock.calls[1]?.[0]).toMatchObject({ [SETTINGS_CHANNEL_KEY]: CHANNEL });
+  });
+
+  it("never mirrors a store that holds no host-derived settings (pending-migration marker)", async () => {
+    const { adapter, setGlobalSettings } = mockAdapter();
+    initGlobalSettings(adapter, silentLogger, createMemorySettingsStore({ [MIGRATION_PENDING_KEY]: 1 }));
+    await tick();
+    const publisher = createSettingsChannelPublisher({ adapter, logger: silentLogger });
+
+    publisher.publishUnavailable();
+
+    expect(setGlobalSettings).not.toHaveBeenCalled();
+  });
+});

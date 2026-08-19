@@ -6,7 +6,7 @@ import {
   type SettingsWindowServerOptions,
   startSettingsWindowServer,
 } from "./settings-window-server.js";
-import { createSettingsWindowController, SETTINGS_WINDOW_HTML } from "./settings-window.js";
+import { createSettingsWindowController, SETTINGS_WINDOW_HTML, type SettingsWindowStatus } from "./settings-window.js";
 
 const PAGE = "<!doctype html><title>t</title>";
 
@@ -346,5 +346,109 @@ describe("createSettingsWindowController — plugin-bound extras", () => {
       roles: ["A"],
     });
     ws.close();
+  });
+});
+
+describe("createSettingsWindowController.onStatus (#1005)", () => {
+  function statusSetup(overrides: Partial<Parameters<typeof createSettingsWindowController>[0]> = {}) {
+    const onStatus = vi.fn((_status: SettingsWindowStatus) => {});
+    const controller = createSettingsWindowController({
+      renderPage: () => PAGE,
+      findBrowser: () => "C:/edge/msedge.exe",
+      spawnApp: vi.fn(),
+      openUrl: vi.fn(async (_url: string) => {}),
+      onStatus,
+      logger: silentLogger,
+      ...overrides,
+    });
+
+    return { controller, onStatus };
+  }
+
+  it("reports the server start and the launch as two separate successes on open()", async () => {
+    const { controller, onStatus } = statusSetup();
+    teardown = () => controller.close();
+
+    await controller.open();
+
+    expect(onStatus.mock.calls.map(([status]) => status)).toEqual([
+      { stage: "server", ok: true },
+      { stage: "open", ok: true, launch: "app-window" },
+    ]);
+  });
+
+  it("reports the server success BEFORE onStarted, so the host mirror is built from settings the report has updated", async () => {
+    // onStarted is where the plugins publish the once-per-start deck-host
+    // mirror, and that mirror is a snapshot of the settings cache. The status
+    // report clears any stale settings-window banner the previous run left in
+    // the store, so reporting after the publish would mirror last run's banner
+    // to the host and never correct it — a PI on the host fallback path would
+    // show a warning about a service that is up.
+    const order: string[] = [];
+    const controller = createSettingsWindowController({
+      renderPage: () => PAGE,
+      findBrowser: () => "C:/edge/msedge.exe",
+      spawnApp: vi.fn(),
+      openUrl: vi.fn(async (_url: string) => {}),
+      onStatus: (status) => order.push(`status:${status.stage}:${String(status.ok)}`),
+      onStarted: () => order.push("started"),
+      logger: silentLogger,
+    });
+    teardown = () => controller.close();
+
+    await controller.ensureStarted();
+
+    expect(order).toEqual(["status:server:true", "started"]);
+  });
+
+  it("reports a failed server start, and still rejects to the caller", async () => {
+    const error = new Error("EADDRINUSE");
+    const { controller, onStatus } = statusSetup({ startServer: () => Promise.reject(error) });
+    teardown = () => controller.close();
+
+    await expect(controller.ensureStarted()).rejects.toThrow("EADDRINUSE");
+    expect(onStatus).toHaveBeenCalledWith({ stage: "server", ok: false, error });
+  });
+
+  it("blames the server, not the launch, when open() fails because the server never came up", async () => {
+    const error = new Error("EADDRINUSE");
+    const { controller, onStatus } = statusSetup({ startServer: () => Promise.reject(error) });
+    teardown = () => controller.close();
+
+    await expect(controller.open()).rejects.toThrow("EADDRINUSE");
+
+    // One report, not two: the server-stage report already determines BOTH
+    // banners for this condition. A stray `open` failure here would say "no
+    // browser would open the page" — the wrong cause, and the wrong advice.
+    expect(onStatus.mock.calls.map(([status]) => status.stage)).toEqual(["server"]);
+  });
+
+  it("reports an open failure when the server is healthy but nothing would open the page", async () => {
+    const error = new Error("no browser on this machine");
+    const { controller, onStatus } = statusSetup({
+      findBrowser: () => undefined,
+      openUrl: () => Promise.reject(error),
+    });
+    teardown = () => controller.close();
+
+    await expect(controller.open()).rejects.toThrow("no browser on this machine");
+    expect(onStatus).toHaveBeenCalledWith({ stage: "server", ok: true });
+    expect(onStatus).toHaveBeenCalledWith({ stage: "open", ok: false, error });
+  });
+
+  it("survives a throwing onStatus hook — a reporting fault must not break a healthy start or open", async () => {
+    const controller = createSettingsWindowController({
+      renderPage: () => PAGE,
+      findBrowser: () => "C:/edge/msedge.exe",
+      spawnApp: vi.fn(),
+      openUrl: vi.fn(async (_url: string) => {}),
+      onStatus: () => {
+        throw new Error("hook boom");
+      },
+      logger: silentLogger,
+    });
+    teardown = () => controller.close();
+
+    await expect(controller.open()).resolves.toBe("app-window");
   });
 });
