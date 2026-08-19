@@ -23,11 +23,11 @@ import { existsSync } from "node:fs";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { captureSettingsWindow } from "./lib/settings-window-capture/capture.mjs";
 import { buildSeedSettings } from "./lib/settings-window-capture/seed.mjs";
-import { connectCdp, waitForDebuggerUrl } from "./lib/settings-window-capture/cdp.mjs";
+import { connectCdp, waitForDebuggerUrl, waitForDevToolsPort } from "./lib/settings-window-capture/cdp.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const deckCore = join(repoRoot, "packages", "deck-core", "dist", "index.js");
@@ -41,7 +41,15 @@ const assetsDir = join(
 const outDir = join(repoRoot, "packages", "website", "src", "assets", "settings-window");
 
 /** Actual size (1) or HiDPI (2). Override with `--scale=2`. */
-const scale = Number(process.argv.find((a) => a.startsWith("--scale="))?.split("=")[1] ?? 1);
+const scaleArg = process.argv.find((a) => a.startsWith("--scale="))?.split("=")[1];
+const scale = scaleArg === undefined ? 1 : Number(scaleArg);
+
+if (!Number.isFinite(scale) || scale <= 0) {
+  // Chromium takes deviceScaleFactor verbatim; NaN from a typo would fail deep
+  // inside the CDP call rather than here, where the mistake actually is.
+  console.error(`--scale must be a positive number; got "${scaleArg}".`);
+  process.exit(1);
+}
 
 if (!existsSync(join(assetsDir, "settings-window.html"))) {
   console.error(
@@ -56,8 +64,9 @@ if (!existsSync(deckCore)) {
   process.exit(1);
 }
 
-const { findChromiumBrowserOnThisMachine, SETTINGS_WINDOW_SIZE, startSettingsWindowServer } =
-  await import(`file://${deckCore.replace(/\\/g, "/")}`);
+const { findChromiumBrowserOnThisMachine, SETTINGS_WINDOW_SIZE, startSettingsWindowServer } = await import(
+  pathToFileURL(deckCore).href
+);
 
 const browserPath = findChromiumBrowserOnThisMachine();
 
@@ -74,50 +83,70 @@ await mkdir(outDir, { recursive: true });
 /** A throwaway profile, so the capture never touches a real browser profile. */
 const profileDir = join(tmpdir(), `iracedeck-capture-${process.pid}`);
 
-const written = await captureSettingsWindow(
-  {
-    assetsDir,
-    pageFile: "settings-window.html",
-    outDir,
-    settings: buildSeedSettings(),
-    size: SETTINGS_WINDOW_SIZE,
-    deviceScaleFactor: scale,
-  },
-  {
-    startServer: (options) => startSettingsWindowServer(options),
-    launchBrowser: async () => {
-      // Port 0 lets the OS pick, but Chromium then reports the real port only
-      // via DevToolsActivePort in the profile dir; asking for a fixed high
-      // port keeps the wiring simple and the harness is short-lived.
-      const port = 9222;
-      const child = spawn(
-        browserPath,
-        [
-          "--headless=new",
-          `--remote-debugging-port=${port}`,
-          `--user-data-dir=${profileDir}`,
-          "--no-first-run",
-          "--no-default-browser-check",
-          "--disable-extensions",
-          "--hide-scrollbars",
-          // Deterministic rendering across machines.
-          "--force-color-profile=srgb",
-          "--font-render-hinting=none",
-        ],
-        { stdio: "ignore" },
-      );
+let written;
 
-      child.unref();
-
-      return { port, kill: () => child.kill() };
+try {
+  written = await captureSettingsWindow(
+    {
+      assetsDir,
+      pageFile: "settings-window.html",
+      outDir,
+      settings: buildSeedSettings(),
+      size: SETTINGS_WINDOW_SIZE,
+      deviceScaleFactor: scale,
     },
-    debuggerUrl: (port) => waitForDebuggerUrl(port),
-    connect: (url) => connectCdp(url),
-    writeFile: (file, data) => writeFile(file, data),
-    log: (message) => console.log(message),
-  },
-);
+    {
+      startServer: (options) => startSettingsWindowServer(options),
+      launchBrowser: async () => {
+        const child = spawn(
+          browserPath,
+          [
+            "--headless=new",
+            // Let the OS pick the port. A FIXED port silently attaches the
+            // harness to whatever else already listens there — a leftover
+            // capture browser, or a Chrome the developer runs with
+            // --remote-debugging-port for their own work — and the capture
+            // would drive that browser's session instead of its own. Chromium
+            // reports the port it got in <profileDir>/DevToolsActivePort.
+            "--remote-debugging-port=0",
+            `--user-data-dir=${profileDir}`,
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--disable-extensions",
+            "--hide-scrollbars",
+            // Deterministic rendering across machines.
+            "--force-color-profile=srgb",
+            "--font-render-hinting=none",
+          ],
+          { stdio: "ignore" },
+        );
 
-await rm(profileDir, { recursive: true, force: true }).catch(() => {});
+        // spawn() reports ENOENT/EACCES asynchronously as an 'error' event, NOT
+        // a synchronous throw; with no listener that is an uncaught exception
+        // that ends the run with a raw stack instead of the message below. Same
+        // shape as deck-core's own spawnAppWindow.
+        await new Promise((resolve, reject) => {
+          child.once("spawn", resolve);
+          child.once("error", (error) => reject(new Error(`Could not launch ${browserPath}: ${error.message}`)));
+        });
+
+        const port = await waitForDevToolsPort(profileDir);
+
+        child.unref();
+
+        return { port, kill: () => child.kill() };
+      },
+      debuggerUrl: (port) => waitForDebuggerUrl(port),
+      connect: (url) => connectCdp(url),
+      writeFile: (file, data) => writeFile(file, data),
+      log: (message) => console.log(message),
+    },
+  );
+} finally {
+  // In a finally so a failed run does not leave ~100 MB of browser profile in
+  // %TEMP%, and with retries because Windows often still holds Chromium's
+  // files for a moment after kill().
+  await rm(profileDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }).catch(() => {});
+}
 
 console.log(`\nWrote ${written.length} screenshots to ${outDir}`);

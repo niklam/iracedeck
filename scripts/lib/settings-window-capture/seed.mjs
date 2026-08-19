@@ -22,9 +22,9 @@ export const SEED_STORE_PATH = "C:\\Users\\Driver\\AppData\\Local\\iRaceDeck\\Se
 /**
  * Build the settings object the capture serves to the page.
  *
- * Returned fresh on every call: the settings host mutates what it is given
- * when the page writes (sdpi saves a whole-page snapshot on any edit), so a
- * shared module-level object would let one capture run leak into the next.
+ * Returned fresh on every call: the page writes back as it renders (sdpi saves
+ * a whole-page snapshot on any edit), so a shared module-level object would let
+ * one capture run's writes leak into the next.
  *
  * @returns {Record<string, unknown>} A complete settings payload.
  */
@@ -42,9 +42,11 @@ export function buildSeedSettings() {
     _settingsStorePath: SEED_STORE_PATH,
 
     // ── General ──
+    // No dual-press ENABLE here on purpose: that one is a per-action setting
+    // (the setup actions own it), not a plugin-global, so the General tab shows
+    // only the threshold and the direction.
     focusIRacingWindow: true,
     disableWhenDisconnected: true,
-    dualPressEnabled: true,
     dualPressThresholdMs: 500,
     dualPressDirections: "tap-increases",
 

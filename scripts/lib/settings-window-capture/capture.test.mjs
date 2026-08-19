@@ -1,3 +1,5 @@
+import { join } from "node:path";
+
 import { describe, expect, it, vi } from "vitest";
 
 import { captureSettingsWindow, createSeedSettingsHost } from "./capture.mjs";
@@ -5,18 +7,48 @@ import { captureSettingsWindow, createSeedSettingsHost } from "./capture.mjs";
 const SIZE = { width: 1172, height: 788 };
 
 /** A CDP double that records commands and answers the two we depend on. */
-function createFakeCdp({ missingPane } = {}) {
+function createFakeCdp({ missingPane, emitLoadEvent = false, noEvents = false } = {}) {
   const sent = [];
+  const listeners = [];
+  let listenersAtLoadEvent = 0;
 
   return {
     sent,
+    listeners,
+    /** How many listeners were subscribed when the load event was dispatched. */
+    get listenersAtLoadEvent() {
+      return listenersAtLoadEvent;
+    },
     close: vi.fn(),
+    // `noEvents` models a connection that delivers no protocol events at all;
+    // the capture must fall back to its timeout rather than hang.
+    onEvent: noEvents
+      ? undefined
+      : vi.fn((listener) => {
+          listeners.push(listener);
+
+          return () => {
+            const index = listeners.indexOf(listener);
+
+            if (index >= 0) listeners.splice(index, 1);
+          };
+        }),
     send: vi.fn(async (method, params) => {
       sent.push({ method, params });
 
       if (method === "Target.createTarget") return { targetId: "T1" };
 
       if (method === "Target.attachToTarget") return { sessionId: "S1" };
+
+      if (method === "Page.navigate" && emitLoadEvent) {
+        // A loopback page can fire its load event before the navigate reply is
+        // even processed — the ordering the listener has to survive.
+        listenersAtLoadEvent = listeners.length;
+
+        for (const listener of [...listeners]) {
+          listener({ method: "Page.loadEventFired", sessionId: "S1", params: {} });
+        }
+      }
 
       if (method === "Runtime.evaluate") {
         const found = missingPane ? !params.expression.includes(`"${missingPane}"`) : true;
@@ -104,9 +136,41 @@ describe("captureSettingsWindow", () => {
 
     const written = await captureSettingsWindow(OPTIONS, deps);
 
-    expect(written).toEqual(["/out/general.png", "/out/simhub.png"]);
+    expect(written).toEqual([join("/out", "general.png"), join("/out", "simhub.png")]);
     expect(writeFile).toHaveBeenCalledTimes(2);
     expect(writeFile.mock.calls[0][1].toString()).toBe("png");
+  });
+
+  it("waits for the page's load event before the first capture", async () => {
+    const cdp = createFakeCdp({ emitLoadEvent: true });
+    const { deps } = createDeps({ cdp });
+
+    await captureSettingsWindow(OPTIONS, deps);
+
+    // Subscribed BEFORE navigating: a loopback page can fire load before the
+    // navigate reply, and a listener attached afterwards would miss it and
+    // stall on the fallback timeout every run.
+    expect(cdp.listenersAtLoadEvent).toBe(1);
+    // …and unsubscribed once it arrived, so nothing is left on the connection.
+    expect(cdp.listeners).toHaveLength(0);
+  });
+
+  it("still captures when no load event is ever delivered", async () => {
+    const { deps, writeFile } = createDeps({ cdp: createFakeCdp({ noEvents: true }) });
+
+    await captureSettingsWindow(OPTIONS, deps);
+
+    expect(writeFile).toHaveBeenCalledTimes(2);
+  });
+
+  it("closes the server when the browser cannot be launched", async () => {
+    const { deps, close } = createDeps();
+    deps.launchBrowser = vi.fn(async () => {
+      throw new Error("ENOENT");
+    });
+
+    await expect(captureSettingsWindow(OPTIONS, deps)).rejects.toThrow(/ENOENT/);
+    expect(close).toHaveBeenCalled();
   });
 
   it("clicks each tab's own nav button rather than un-hiding the pane", async () => {

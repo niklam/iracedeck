@@ -1,6 +1,42 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { connectCdp, waitForDebuggerUrl } from "./cdp.mjs";
+import { connectCdp, waitForDebuggerUrl, waitForDevToolsPort } from "./cdp.mjs";
+
+describe("waitForDevToolsPort", () => {
+  it("reads the port off the first line of DevToolsActivePort", async () => {
+    const readFileImpl = vi.fn(async () => "51234\n/devtools/browser/abc\n");
+
+    await expect(waitForDevToolsPort("/profile", { readFileImpl, delay: async () => {} })).resolves.toBe(51234);
+    expect(readFileImpl.mock.calls[0][0]).toContain("DevToolsActivePort");
+  });
+
+  it("keeps waiting while the file does not exist yet", async () => {
+    let attempts = 0;
+    const readFileImpl = vi.fn(async () => {
+      attempts += 1;
+
+      if (attempts < 3) throw new Error("ENOENT");
+
+      return "9999\n";
+    });
+
+    await expect(waitForDevToolsPort("/profile", { readFileImpl, delay: async () => {} })).resolves.toBe(9999);
+    expect(attempts).toBe(3);
+  });
+
+  it("gives up rather than driving a browser on an unknown port", async () => {
+    let clock = 0;
+
+    await expect(
+      waitForDevToolsPort("/profile", {
+        readFileImpl: async () => "",
+        now: () => (clock += 5_000),
+        delay: async () => {},
+        timeoutMs: 10_000,
+      }),
+    ).rejects.toThrow(/did not report a debugging port/);
+  });
+});
 
 describe("waitForDebuggerUrl", () => {
   it("returns the debugger URL once the endpoint answers", async () => {
@@ -142,6 +178,16 @@ describe("connectCdp", () => {
     socket.emit("message", { data: JSON.stringify({ method: "Page.loadEventFired", params: {} }) });
 
     expect(seen).toEqual(["Page.loadEventFired"]);
+  });
+
+  it("stops delivering events after unsubscribe", async () => {
+    const { cdp, socket } = await connectFake();
+    const seen = [];
+    cdp.onEvent((message) => seen.push(message.method))();
+
+    socket.emit("message", { data: JSON.stringify({ method: "Page.loadEventFired", params: {} }) });
+
+    expect(seen).toEqual([]);
   });
 
   it("ignores a malformed frame rather than tearing the run down", async () => {

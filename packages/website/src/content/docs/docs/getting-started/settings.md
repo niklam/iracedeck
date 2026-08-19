@@ -19,7 +19,7 @@ The sidebar has one tab per area. Everything here applies to the **whole plugin*
 
 ![The General tab of the iRaceDeck Settings window](../../../../assets/settings-window/general.png)
 
-Two things that affect every key you press.
+Behaviour that affects every key you press.
 
 **Focus iRacing window before sending keys** brings iRacing to the foreground before iRaceDeck sends any input, so a press isn't lost to whatever window happened to have focus. Leave it on unless you specifically don't want iRaceDeck changing which window is active. It only matters for actions that send keystrokes — actions that talk to iRacing over its own API arrive regardless of focus.
 
@@ -82,7 +82,7 @@ If you upgraded from an earlier version, your old **On startup** checkbox carrie
 
 Switch a connected Stream Deck to one of the ready-made iRaceDeck layouts. Because the window is not tied to a particular deck the way a Property Inspector is, it asks which one to switch — with a single deck connected it is already picked for you.
 
-The Stream Deck app asks to install a profile the first time you switch to it. Each bundled profile is built for a specific device, so the list shows the ones that fit the deck you selected.
+The Stream Deck app asks to install a profile the first time you switch to it. Every bundled profile is listed, whichever deck you pick: each one ships as a variant per supported device, and iRaceDeck resolves the variant that fits the deck you selected when you press **Switch**.
 
 ### Delays
 

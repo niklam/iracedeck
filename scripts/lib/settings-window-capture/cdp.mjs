@@ -10,12 +10,64 @@
  * and launches a Chromium itself (`chromium-browser.ts`), and this is the
  * matching "drive it" half.
  */
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 
 /** How long a single CDP command may take before we give up on it. */
 export const CDP_COMMAND_TIMEOUT_MS = 30_000;
 
 /** How long to wait for the browser's debugging endpoint to come up. */
 export const CDP_ENDPOINT_TIMEOUT_MS = 20_000;
+
+/**
+ * Read the port Chromium actually bound, from the `DevToolsActivePort` file it
+ * writes into its profile directory.
+ *
+ * This is what lets the browser be launched with `--remote-debugging-port=0`.
+ * A FIXED port is the trap: when anything else already listens there — a
+ * leftover capture browser, or a Chrome the developer runs with
+ * `--remote-debugging-port=9222` for their own work — Chromium fails to bind
+ * and the harness silently attaches to that other browser instead, creating
+ * targets in a real browsing session. An OS-assigned port cannot collide, and
+ * this file is where Chromium reports which one it got.
+ *
+ * The file's first line is the port; the second is the browser target's
+ * WebSocket path, which `waitForDebuggerUrl` fetches over HTTP anyway.
+ *
+ * @param {string} profileDir - `--user-data-dir` the browser was given.
+ * @param {object} [deps]
+ * @param {(file: string, encoding: string) => Promise<string>} [deps.readFileImpl] - Injected for tests.
+ * @param {() => number} [deps.now] - Injected clock, for tests.
+ * @param {(ms: number) => Promise<void>} [deps.delay] - Injected sleep.
+ * @param {number} [deps.timeoutMs]
+ * @returns {Promise<number>} The port Chromium is listening on.
+ */
+export async function waitForDevToolsPort(profileDir, deps = {}) {
+  const {
+    readFileImpl = (file, encoding) => readFile(file, encoding),
+    now = () => Date.now(),
+    delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    timeoutMs = CDP_ENDPOINT_TIMEOUT_MS,
+  } = deps;
+  const file = join(profileDir, "DevToolsActivePort");
+  const deadline = now() + timeoutMs;
+
+  for (;;) {
+    try {
+      const port = Number.parseInt((await readFileImpl(file, "utf-8")).split("\n")[0]?.trim() ?? "", 10);
+
+      if (Number.isInteger(port) && port > 0) return port;
+    } catch {
+      // Not written yet — keep waiting until the deadline.
+    }
+
+    if (now() >= deadline) {
+      throw new Error(`Chromium did not report a debugging port in ${file} within ${timeoutMs}ms`);
+    }
+
+    await delay(100);
+  }
+}
 
 /**
  * Poll the browser's HTTP debugging endpoint until it answers with the
@@ -70,7 +122,7 @@ export async function waitForDebuggerUrl(port, deps = {}) {
  * @param {object} [deps]
  * @param {new (url: string) => WebSocket} [deps.WebSocketImpl] - Injected for tests.
  * @param {number} [deps.commandTimeoutMs]
- * @returns {Promise<{send: (method: string, params?: object, sessionId?: string) => Promise<any>, close: () => void, onEvent: (listener: (message: any) => void) => void}>}
+ * @returns {Promise<{send: (method: string, params?: object, sessionId?: string) => Promise<any>, close: () => void, onEvent: (listener: (message: any) => void) => () => void}>}
  */
 export async function connectCdp(url, deps = {}) {
   const { WebSocketImpl = WebSocket, commandTimeoutMs = CDP_COMMAND_TIMEOUT_MS } = deps;
@@ -134,8 +186,15 @@ export async function connectCdp(url, deps = {}) {
         socket.send(JSON.stringify(sessionId ? { id, method, params, sessionId } : { id, method, params }));
       });
     },
+    /** Subscribe to unsolicited protocol events; returns an unsubscribe. */
     onEvent(listener) {
       eventListeners.push(listener);
+
+      return () => {
+        const index = eventListeners.indexOf(listener);
+
+        if (index >= 0) eventListeners.splice(index, 1);
+      };
     },
     close() {
       for (const { reject, timer } of pending.values()) {
