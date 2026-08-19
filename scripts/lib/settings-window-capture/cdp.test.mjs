@@ -229,10 +229,19 @@ describe("connectCdp", () => {
       throw new Error("socket is dead");
     };
 
-    await expect(cdp.send("Page.enable")).rejects.toThrow(/socket is dead/);
-    // A leaked timer would keep the loop alive and later fire against a
-    // pending entry that should already be gone.
-    await new Promise((resolve) => setTimeout(resolve, 80));
+    // Asserted on the timer itself, not by waiting it out: a leaked timer that
+    // fires would only reject an already-settled promise, which is a no-op, so
+    // any wait-and-see version of this test passes whether or not the timer was
+    // cleared. Fake timers are installed AFTER connectFake so the handshake
+    // above still runs on real ones.
+    vi.useFakeTimers();
+
+    try {
+      await expect(cdp.send("Page.enable")).rejects.toThrow(/socket is dead/);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("times out a command the browser never answers", async () => {
