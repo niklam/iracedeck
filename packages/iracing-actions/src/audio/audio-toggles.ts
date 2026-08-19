@@ -1,13 +1,16 @@
 /**
- * Shared Race Engineer / Radar feature-gate toggles (issue #782) — extracted
- * from Pit Crew so the Audio Controls dial's Mute/Unmute and the Pit Crew
- * toggle keys share one pathway (the same move #590 made for the volume
- * steppers). The voice-sequence player and its JSON-list reader travel with
- * the toggles because the toggle acknowledgment depends on them; Pit Crew
+ * Race Engineer voice plumbing: the sequence player, its JSON-list reader, the
+ * toggle acknowledgment, and the corner-name callout opt-in.
+ *
+ * Extracted from Pit Crew for issue #782 so the Audio Controls dial's
+ * Mute/Unmute and the Pit Crew toggle keys share one pathway (the same move
+ * #590 made for the volume steppers). The master gates themselves moved on to
+ * `feature-gates.ts` (issue #1007), which owns the side effects of a gate
+ * change so a settings-window checkbox behaves exactly like a deck key; this
+ * module keeps the voice plumbing those acknowledgments ride on. Pit Crew
  * re-exports {@link playVoiceSequence} for its own preview/radio-check paths
  * and test back-compat.
  */
-import { setRadarEnabled, stopRaceEngineerScenarios } from "@iracedeck/audio-scenarios/pit-crew";
 import { AudioBus, AudioChannel, getAudio } from "@iracedeck/audio-service";
 import { getGlobalSettings, resolveActiveRaceEngineerVoice, updateGlobalSettings } from "@iracedeck/deck-core";
 import type { ILogger } from "@iracedeck/logger";
@@ -15,7 +18,6 @@ import type { ILogger } from "@iracedeck/logger";
 import {
   applyRaceEngineerAudio,
   isRaceEngineerEnabled,
-  isRadarEnabled,
   readRaceEngineerVolume,
   setRaceEngineerToggleInFlight,
 } from "./audio-volume.js";
@@ -151,62 +153,6 @@ export function playToggleAck(clipName: "going-silent-01" | "resuming-01", logge
     setRaceEngineerToggleInFlight(false);
     applyRaceEngineerAudio();
   });
-}
-
-/**
- * Flip the Race Engineer master gate — the shared pathway behind the Pit Crew
- * toggle key and the Audio Controls dial's Mute/Unmute. Returns the NEW gate
- * state.
- */
-export function toggleRaceEngineerFeature(logger: ILogger): boolean {
-  const next = !isRaceEngineerEnabled();
-  logger.info(`Race Engineer ${next ? "enabled" : "disabled"}`);
-
-  // Mirror the radar pattern: flip the gate and apply it to Voice +
-  // Background synchronously so an in-flight engineer clip is silenced
-  // on the same tick the user pressed the key. Relying on the global-
-  // settings round-trip echo would let a clip continue for the IPC
-  // round trip and the user perceives the toggle as broken. The toggle
-  // acknowledgment (issue #554) layers on top via
-  // `raceEngineerToggleInFlight` — when set, `applyRaceEngineerAudio`
-  // leaves Voice audible so the "going silent" / "resuming" line plays
-  // through, but Background and every other Voice consumer still mute
-  // immediately on the same tick.
-  updateGlobalSettings({ pitCrewRaceEngineerEnabled: next });
-  applyRaceEngineerAudio();
-
-  // Toggling off mid-callout must stop the in-flight scenario (and its
-  // looping ambient bed) and free the scenario bus. applyRaceEngineerAudio
-  // only mutes the buses — it doesn't stop the ambient loop, so without this
-  // the ambient is orphaned (audible again on re-enable) and the stuck
-  // `playingId` drops every later callout as "bus busy". The going-silent
-  // ack below plays directly on Voice, not through the engine, so it is
-  // unaffected by the cancel (issue #587).
-  if (!next) {
-    stopRaceEngineerScenarios();
-  }
-
-  if (isToggleAckEnabled()) {
-    playToggleAck(next ? "resuming-01" : "going-silent-01", logger);
-  }
-
-  return next;
-}
-
-/**
- * Flip the Radar feature gate — the shared pathway behind the Pit Crew toggle
- * key and the Audio Controls dial's Mute/Unmute. Returns the NEW gate state.
- */
-export function toggleRadarFeature(logger: ILogger): boolean {
-  const next = !isRadarEnabled();
-  logger.info(`Radar ${next ? "enabled" : "disabled"}`);
-  // Flip the engine synchronously so the tick loop stops/starts
-  // immediately. Relying on the global-settings round-trip echo would let
-  // a tick fire after the user already released the key.
-  setRadarEnabled(next);
-  updateGlobalSettings({ pitCrewRadarEnabled: next });
-
-  return next;
 }
 
 /**

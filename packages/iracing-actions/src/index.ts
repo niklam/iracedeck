@@ -45,6 +45,14 @@ export {
   runAudioPreview,
   type AudioPreviewKind,
 } from "./audio/audio-previews.js";
+// Live Race Engineer / Radar master gates (#1007): plugins arm the sync once
+// the startup policies have been applied, then feed it global-settings changes.
+export {
+  armFeatureGateSync,
+  syncFeatureGates,
+  toggleRaceEngineerFeature,
+  toggleRadarFeature,
+} from "./audio/feature-gates.js";
 export { PIT_QUICK_ACTIONS_UUID, PitQuickActions } from "./actions/pit-quick-actions/pit-quick-actions.js";
 export { RACE_ADMIN_UUID, RaceAdmin } from "./actions/race-admin/race-admin.js";
 export { REPLAY_CONTROL_UUID, ReplayControl } from "./actions/replay-control/replay-control.js";

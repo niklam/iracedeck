@@ -1,0 +1,152 @@
+/**
+ * The Race Engineer / Radar live master gates (issue #1007).
+ *
+ * `pitCrewRaceEngineerEnabled` and `pitCrewRadarEnabled` are the runtime flags
+ * every scenario, the radar engine and the Pit Crew icon read. Three things
+ * write them: the Pit Crew toggle keys, the Audio Controls dial's Mute/Unmute,
+ * and the settings window's live checkboxes. This module makes all three
+ * behave identically by owning the side effects of a gate *change* — stopping
+ * in-flight scenarios, driving the radar engine, and the spoken
+ * acknowledgment — instead of leaving them in the key's own code path, where a
+ * settings-window write produced a half-toggle: buses muted (the plugin's
+ * `applyAudioState` listener) but the in-flight scenario and its looping
+ * ambient bed left running, exactly the bug #587 fixed.
+ *
+ * Exactly-once is a per-gate applied-value tracker, not a listener contract:
+ * `updateGlobalSettings` fires listeners synchronously, so when a plugin is
+ * armed the listener has already applied the edge by the time the toggle
+ * helper calls its applier, and the second call short-circuits. When nothing
+ * is armed — a press before the first settings arrival, or a unit test whose
+ * mocked `updateGlobalSettings` fires no listeners — the direct call does the
+ * work. A key press therefore never depends on a listener registered in
+ * another file.
+ *
+ * The voice plumbing the acknowledgment rides on (`playToggleAck`,
+ * `playVoiceSequence`) stays in `audio-toggles.ts`; the dependency runs one
+ * way, so there is no cycle.
+ */
+import { setRadarEnabled, stopRaceEngineerScenarios } from "@iracedeck/audio-scenarios/pit-crew";
+import { updateGlobalSettings } from "@iracedeck/deck-core";
+import type { ILogger } from "@iracedeck/logger";
+
+import { isToggleAckEnabled, playToggleAck } from "./audio-toggles.js";
+import { applyRaceEngineerAudio, isRaceEngineerEnabled, isRadarEnabled } from "./audio-volume.js";
+
+/**
+ * The gate values whose side effects have already been applied. `null` means
+ * "not applied yet", so the first application always runs — which is what lets
+ * a toggle work before {@link armFeatureGateSync} has ever been called.
+ */
+let appliedRaceEngineerGate: boolean | null = null;
+let appliedRadarGate: boolean | null = null;
+
+/**
+ * Whether {@link syncFeatureGates} reacts to changes. Dormant until
+ * {@link armFeatureGateSync}, so the startup application of the per-feature
+ * startup policies can never be mistaken for a user toggle and play an
+ * acknowledgment at plugin start.
+ */
+let armed = false;
+
+/**
+ * Apply the side effects of the Race Engineer gate landing on `next`.
+ * A no-op when those effects have already been applied for that value.
+ */
+function applyRaceEngineerGate(next: boolean, logger: ILogger): void {
+  if (appliedRaceEngineerGate === next) return;
+
+  appliedRaceEngineerGate = next;
+
+  // Apply the gate to Voice + Background synchronously so an in-flight
+  // engineer clip is silenced on the same tick the user pressed the key.
+  // The acknowledgment (issue #554) layers on top via
+  // `raceEngineerToggleInFlight` — when set, `applyRaceEngineerAudio` leaves
+  // Voice audible so the "going silent" / "resuming" line plays through,
+  // while Background and every other Voice consumer mute immediately.
+  applyRaceEngineerAudio();
+
+  // Turning off mid-callout must stop the in-flight scenario (and its looping
+  // ambient bed) and free the scenario bus. `applyRaceEngineerAudio` only
+  // mutes the buses — without this the ambient is orphaned (audible again on
+  // re-enable) and the stuck `playingId` drops every later callout as "bus
+  // busy". The going-silent acknowledgment below plays directly on Voice, not
+  // through the engine, so it is unaffected by the cancel (issue #587).
+  if (!next) {
+    stopRaceEngineerScenarios();
+  }
+
+  if (isToggleAckEnabled()) {
+    playToggleAck(next ? "resuming-01" : "going-silent-01", logger);
+  }
+}
+
+/**
+ * Apply the side effects of the Radar gate landing on `next`. Pushes the gate
+ * into the radar engine so the tick loop stops/starts immediately; the radar
+ * has no spoken acknowledgment.
+ */
+function applyRadarGate(next: boolean): void {
+  if (appliedRadarGate === next) return;
+
+  appliedRadarGate = next;
+  setRadarEnabled(next);
+}
+
+/**
+ * Flip the Race Engineer master gate — the shared pathway behind the Pit Crew
+ * toggle key and the Audio Controls dial's Mute/Unmute. Returns the NEW state.
+ */
+export function toggleRaceEngineerFeature(logger: ILogger): boolean {
+  const next = !isRaceEngineerEnabled();
+  logger.info(`Race Engineer ${next ? "enabled" : "disabled"}`);
+
+  updateGlobalSettings({ pitCrewRaceEngineerEnabled: next });
+  applyRaceEngineerGate(next, logger);
+
+  return next;
+}
+
+/** Flip the Radar master gate. Returns the NEW state. */
+export function toggleRadarFeature(logger: ILogger): boolean {
+  const next = !isRadarEnabled();
+  logger.info(`Radar ${next ? "enabled" : "disabled"}`);
+
+  updateGlobalSettings({ pitCrewRadarEnabled: next });
+  applyRadarGate(next);
+
+  return next;
+}
+
+/**
+ * Apply whatever the live gates now hold. Registered once per plugin on
+ * `onGlobalSettingsChange`, so a gate written by anything other than the
+ * toggle helpers — the settings window's live checkboxes — gets the same side
+ * effects a key press produces.
+ */
+export function syncFeatureGates(logger: ILogger): void {
+  if (!armed) return;
+
+  applyRaceEngineerGate(isRaceEngineerEnabled(), logger);
+  applyRadarGate(isRadarEnabled());
+}
+
+/**
+ * Start reacting to gate changes, seeding the trackers from the current
+ * values so the seeding itself is silent.
+ *
+ * Called once per plugin, immediately after the startup policies have been
+ * applied: that write fires the listener while still dormant, and arming then
+ * records the post-write values as already applied.
+ */
+export function armFeatureGateSync(): void {
+  appliedRaceEngineerGate = isRaceEngineerEnabled();
+  appliedRadarGate = isRadarEnabled();
+  armed = true;
+}
+
+/** @internal Reset the module state between tests. */
+export function _resetFeatureGateSync(): void {
+  appliedRaceEngineerGate = null;
+  appliedRadarGate = null;
+  armed = false;
+}

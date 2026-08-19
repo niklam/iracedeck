@@ -6,8 +6,6 @@ import {
   isToggleAckEnabled,
   readJsonStringArray,
   toggleCornerNamesFeature,
-  toggleRaceEngineerFeature,
-  toggleRadarFeature,
 } from "./audio-toggles.js";
 
 const hoisted = vi.hoisted(() => {
@@ -99,58 +97,6 @@ describe("audio-toggles", () => {
 
       hoisted.setGlobalSettings({ _bad: "{not json" });
       expect(readJsonStringArray("_bad")).toEqual([]);
-    });
-  });
-
-  describe("toggleRaceEngineerFeature", () => {
-    it("enables the gate, persists, applies audio, and returns true", () => {
-      hoisted.setGlobalSettings({ _raceEngineerVoices: JSON.stringify(["default"]) });
-
-      expect(toggleRaceEngineerFeature(logger)).toBe(true);
-      expect(hoisted.updateGlobalSettings).toHaveBeenCalledWith({ pitCrewRaceEngineerEnabled: true });
-      expect(hoisted.stopRaceEngineerScenarios).not.toHaveBeenCalled();
-      // Ack plays (opt-in defaults on): Voice bus forced audible + clip started.
-      expect(hoisted.playOnChannel).toHaveBeenCalledWith(0, "voice/default/toggle/resuming-01.mp3");
-    });
-
-    it("disables the gate, stops in-flight scenarios, and returns false", () => {
-      hoisted.setGlobalSettings({
-        pitCrewRaceEngineerEnabled: true,
-        _raceEngineerVoices: JSON.stringify(["default"]),
-      });
-
-      expect(toggleRaceEngineerFeature(logger)).toBe(false);
-      expect(hoisted.updateGlobalSettings).toHaveBeenCalledWith({ pitCrewRaceEngineerEnabled: false });
-      expect(hoisted.stopRaceEngineerScenarios).toHaveBeenCalledTimes(1);
-      expect(hoisted.playOnChannel).toHaveBeenCalledWith(0, "voice/default/toggle/going-silent-01.mp3");
-    });
-
-    it("skips the ack when the per-callout opt-in is off", () => {
-      hoisted.setGlobalSettings({ calloutEnabledToggleRaceEngineer: false });
-
-      toggleRaceEngineerFeature(logger);
-      expect(hoisted.playOnChannel).not.toHaveBeenCalled();
-    });
-
-    it("still toggles when no voice is available (ack skipped silently)", () => {
-      hoisted.resolveActiveRaceEngineerVoice.mockReturnValue(null as never);
-
-      expect(toggleRaceEngineerFeature(logger)).toBe(true);
-      expect(hoisted.updateGlobalSettings).toHaveBeenCalledWith({ pitCrewRaceEngineerEnabled: true });
-      expect(hoisted.playOnChannel).not.toHaveBeenCalled();
-    });
-  });
-
-  describe("toggleRadarFeature", () => {
-    it("flips the engine synchronously and persists the gate", () => {
-      expect(toggleRadarFeature(logger)).toBe(true);
-      expect(hoisted.setRadarEnabled).toHaveBeenCalledWith(true);
-      expect(hoisted.updateGlobalSettings).toHaveBeenCalledWith({ pitCrewRadarEnabled: true });
-
-      hoisted.setGlobalSettings({ pitCrewRadarEnabled: true });
-      expect(toggleRadarFeature(logger)).toBe(false);
-      expect(hoisted.setRadarEnabled).toHaveBeenCalledWith(false);
-      expect(hoisted.updateGlobalSettings).toHaveBeenCalledWith({ pitCrewRadarEnabled: false });
     });
   });
 

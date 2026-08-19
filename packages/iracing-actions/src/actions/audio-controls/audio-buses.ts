@@ -10,7 +10,6 @@
  */
 import type { ILogger } from "@iracedeck/logger";
 
-import { toggleRaceEngineerFeature, toggleRadarFeature } from "../../audio/audio-toggles.js";
 import {
   isRaceEngineerEnabled,
   isRadarEnabled,
@@ -19,6 +18,7 @@ import {
   stepRaceEngineerVolumeBy,
   stepRadarVolumeBy,
 } from "../../audio/audio-volume.js";
+import { toggleRaceEngineerFeature, toggleRadarFeature } from "../../audio/feature-gates.js";
 import type { InternalAudioCategory } from "./audio-controls-settings.js";
 
 /** One plugin-owned audio bus. */

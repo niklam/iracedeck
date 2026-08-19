@@ -22,7 +22,7 @@ vi.mock("../../audio/audio-volume.js", () => ({
   isRaceEngineerEnabled: vi.fn(() => true),
 }));
 
-vi.mock("../../audio/audio-toggles.js", () => ({
+vi.mock("../../audio/feature-gates.js", () => ({
   toggleRaceEngineerFeature: vi.fn(() => true),
   toggleRadarFeature: vi.fn(() => true),
 }));

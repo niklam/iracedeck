@@ -33,8 +33,6 @@ import {
   playVoiceSequence,
   readJsonStringArray,
   toggleCornerNamesFeature,
-  toggleRaceEngineerFeature,
-  toggleRadarFeature,
 } from "../../audio/audio-toggles.js";
 import {
   applyRaceEngineerAudio,
@@ -46,6 +44,7 @@ import {
   setRaceEngineerToggleInFlight,
   stepRadarVolume,
 } from "../../audio/audio-volume.js";
+import { toggleRaceEngineerFeature, toggleRadarFeature } from "../../audio/feature-gates.js";
 import { borderColorForState, statusBarOff, statusBarOn } from "../../icons/status-bar.js";
 
 // Re-export the shared audio-volume / audio-toggles helpers that the Pit Crew
