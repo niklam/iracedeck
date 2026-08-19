@@ -2,6 +2,10 @@
 <html lang="en">
 	<head>
 		<%- include('head-common') %>
+		<%# Behaviour for the plugin-global controls. Lives apart from head-common
+		    because since #1003 only this window renders them — a PI would ship
+		    ~200 lines of script whose elements are not on the page. %>
+		<%- include('settings-window-scripts') %>
 		<title>iRaceDeck Settings</title>
 		<%#
 		  The dedicated settings window (issue #992). Served by the plugin process

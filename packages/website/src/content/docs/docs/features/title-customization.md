@@ -18,10 +18,10 @@ iRaceDeck lets you customize the title text on every button. Change the text con
 
 ## Global Title Defaults
 
-Set default title settings for all buttons at once through **Global Settings**, available in the Property Inspector of any iRaceDeck action.
+Set default title settings for all buttons at once in the [Settings window](/docs/features/settings-window/), on the **Appearance** tab.
 
-1. Open the Property Inspector for any action
-2. Expand **Global Settings** at the bottom
+1. Open the [Settings window](/docs/features/settings-window/)
+2. Go to the **Appearance** tab
 3. Find the **Title Defaults** section
 
 ### Global Options
@@ -35,7 +35,7 @@ When set to **Default**, each icon uses the position and font size it was design
 
 ## Per-Button Overrides
 
-Override title settings on individual buttons through **Title Overrides**, available in the Property Inspector between the action settings and Global Settings.
+Override title settings on individual buttons through **Title Overrides**, in that button's own Property Inspector.
 
 1. Open the Property Inspector for the action you want to customize
 2. Expand **Title Overrides**

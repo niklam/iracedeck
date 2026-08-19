@@ -198,14 +198,13 @@ Always include both scripts in PI HTML files:
 - Keyboard mode stores: `{"type":"keyboard","key":"f1","modifiers":[]}`
 - SimHub mode stores: `{"type":"simhub","role":"My Role Name"}`
 
-**`ird-audio-test`** - Preview-playback trigger button. Writes `Date.now()` into a hidden `sdpi-textfield` so the action's `onDidReceiveSettings` handler detects the bump and plays the preview.
+**`ird-audio-test`** - Preview-playback trigger button. Sends `sendToPlugin { event: "audioPreview", kind }`; the plugin runs the preview itself (`runAudioPreview` in `iracing-actions/src/audio/audio-previews.ts`). Settings-window only since #1003 — the Race Engineer audio controls it serves live there, and a PI's `sendToPlugin` goes to its action instead of the window command handler.
 
 ```html
-<div style="display:none;"><sdpi-textfield id="test-radar-field" setting="_testRadarVolume"></sdpi-textfield></div>
-<ird-audio-test target="test-radar-field" label="Test"></ird-audio-test>
+<ird-audio-test preview="radar" label="Test"></ird-audio-test>
 ```
 
-- `target` - DOM id of the hidden `sdpi-textfield` to bump
+- `preview` - `"radar" | "voice" | "background"`, the preview to play. Without it the button is inert.
 - `label` - Button text (default "Test")
 
 **`ird-audio-device-select`** - Plugin-global audio output device dropdown. Binds to a global setting storing the selected device as a stable `ma_device_id` string (hex-encoded), and populates its options from a second global setting holding the device-list JSON (maintained by the plugin at runtime).
@@ -226,7 +225,7 @@ Always include both scripts in PI HTML files:
 
 Persistence is by stable device id, not by enumeration index, so unplugging or reordering devices can't silently repoint the selection at a different device. When a saved id is no longer present in the current list, the component falls back to System Default and writes that fallback back through the bound setting.
 
-**`ird-open-settings`** - The "Open iRaceDeck Settings" button (#992). Sends `sendToPlugin {event:"openSettings"}`, routed per host by `onOpenSettingsRequest` on each concrete adapter. Rendered by `section-header.ejs` when `openSettings: true` — a centred block, never inside an `sdpi-item`.
+**`ird-open-settings`** - The "Open iRaceDeck Settings" button (#992). Sends `sendToPlugin {event:"openSettings"}`, routed per host by `onOpenSettingsRequest` on each concrete adapter. In an action PI it is rendered by `key-bindings-section.ejs`, which closes the section with it (`.ird-open-settings.ird-section-footer`, #1003); `settings.ejs` renders it under its header via `section-header.ejs`'s `openSettings: true` slot. Either way a centred block, never inside an `sdpi-item`.
 
 **`ird-open-folder`** - "Open folder" button for the settings window's Diagnostics card (#993). Sends `sendToPlugin` with `{ event: "openSettingsFolder" }`; the plugin's settings-window command handler reveals its OWN settings-file path in Explorer (`openFolderInExplorer`, `storePath` dep) — the page never supplies a path. Built on the shared `defineSendToPluginButton` factory together with `ird-open-settings`; rendered only under `locals.settingsWindow` in `global-common-diagnostics.ejs`.
 

@@ -1,25 +1,30 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Import the module to trigger custom element registration
 import "./audio-test.js";
 
 describe("ird-audio-test", () => {
   let button: HTMLElement;
-  let field: HTMLInputElement;
+  let send: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     while (document.body.firstChild) {
       document.body.removeChild(document.body.firstChild);
     }
 
-    field = document.createElement("input");
-    field.id = "target-field";
-    document.body.appendChild(field);
+    send = vi.fn();
+    (window as unknown as Record<string, unknown>).SDPIComponents = { streamDeckClient: { send } };
 
     button = document.createElement("ird-audio-test");
-    button.setAttribute("target", "target-field");
+    button.setAttribute("preview", "radar");
     document.body.appendChild(button);
+  });
+
+  afterEach(() => {
+    // The window global is real global state — one test deletes it on purpose,
+    // so clear it here rather than relying on the next beforeEach.
+    delete (window as unknown as Record<string, unknown>).SDPIComponents;
   });
 
   describe("DOM structure", () => {
@@ -30,12 +35,8 @@ describe("ird-audio-test", () => {
     });
 
     it("uses the label attribute for button text", () => {
-      while (document.body.firstChild) {
-        document.body.removeChild(document.body.firstChild);
-      }
-
       const labeled = document.createElement("ird-audio-test");
-      labeled.setAttribute("target", "x");
+      labeled.setAttribute("preview", "voice");
       labeled.setAttribute("label", "Play preview");
       document.body.appendChild(labeled);
 
@@ -48,62 +49,38 @@ describe("ird-audio-test", () => {
   });
 
   describe("click behaviour", () => {
-    it("writes a timestamp into the target field and dispatches a change event", () => {
-      const before = Date.now();
-      const handler = vi.fn();
-      field.addEventListener("change", handler);
-
+    // Since #1003 there is one route only: the settings window owns these
+    // controls, so the click always asks the plugin to run the preview. The old
+    // per-action path (bumping a hidden `_test*` timestamp the Pit Crew action
+    // watched) went with the controls it served.
+    it("asks the plugin to play the named preview", () => {
       button.querySelector("button")!.click();
 
-      const written = Number(field.value);
-      expect(Number.isFinite(written)).toBe(true);
-      expect(written).toBeGreaterThanOrEqual(before);
-      expect(handler).toHaveBeenCalledTimes(1);
+      expect(send).toHaveBeenCalledWith("sendToPlugin", { event: "audioPreview", kind: "radar" });
     });
 
-    it("in the settings window, sends an audioPreview command instead of bumping a per-action field (#992)", () => {
-      // The window has no action context, so a per-action settings bump reaches
-      // nothing; the plugin runs the preview from a sendToPlugin command instead.
-      (window as unknown as Record<string, unknown>).__irdSettingsWindow = true;
-      const send = vi.fn();
-      (window as unknown as Record<string, unknown>).SDPIComponents = { streamDeckClient: { send } };
+    it.each(["radar", "voice", "background"])("forwards the %s kind verbatim", (kind) => {
       const el = document.createElement("ird-audio-test");
-      el.setAttribute("target", "target-field");
-      el.setAttribute("preview", "voice");
+      el.setAttribute("preview", kind);
       document.body.appendChild(el);
 
-      try {
-        el.querySelector("button")!.click();
+      el.querySelector("button")!.click();
 
-        expect(send).toHaveBeenCalledWith("sendToPlugin", { event: "audioPreview", kind: "voice" });
-        expect(field.value).toBe("");
-      } finally {
-        delete (window as unknown as Record<string, unknown>).__irdSettingsWindow;
-        delete (window as unknown as Record<string, unknown>).SDPIComponents;
-      }
+      expect(send).toHaveBeenCalledWith("sendToPlugin", { event: "audioPreview", kind });
     });
 
-    it("does nothing when the target id does not resolve to a field", () => {
-      while (document.body.firstChild) {
-        document.body.removeChild(document.body.firstChild);
-      }
-
-      const orphan = document.createElement("ird-audio-test");
-      orphan.setAttribute("target", "does-not-exist");
-      document.body.appendChild(orphan);
-
-      expect(() => orphan.querySelector("button")!.click()).not.toThrow();
-    });
-
-    it("does nothing when the target attribute is missing", () => {
-      while (document.body.firstChild) {
-        document.body.removeChild(document.body.firstChild);
-      }
-
+    it("is inert without a preview attribute, rather than sending a malformed command", () => {
       const untargeted = document.createElement("ird-audio-test");
       document.body.appendChild(untargeted);
 
       expect(() => untargeted.querySelector("button")!.click()).not.toThrow();
+      expect(send).not.toHaveBeenCalled();
+    });
+
+    it("does not throw when the client is unavailable", () => {
+      delete (window as unknown as Record<string, unknown>).SDPIComponents;
+
+      expect(() => button.querySelector("button")!.click()).not.toThrow();
     });
   });
 });

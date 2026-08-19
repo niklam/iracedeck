@@ -23,9 +23,9 @@ The **View …** entries turn the key into a continuously updating display of th
 
 Each View sub-mode exposes a single extra setting in the Property Inspector:
 
-- **Enable dual-press** (default *on*) — when off, the key stays a pure read-only display and presses do nothing. When on, presses dispatch to the matching adjustment binding (e.g. View MGU-K Regen Gain dispatches to *MGU-K Regen Gain +* / *MGU-K Regen Gain −*), so configure those bindings in the **Global Settings → Setup Hybrid** section.
+- **Enable dual-press** (default *on*) — when off, the key stays a pure read-only display and presses do nothing. When on, presses dispatch to the matching adjustment binding (e.g. View MGU-K Regen Gain dispatches to *MGU-K Regen Gain +* / *MGU-K Regen Gain −*), so configure those bindings in the Property Inspector's **Key Bindings** section, or on the Settings window's **Key Bindings** tab under *Setup Hybrid*.
 
-The tap direction is a single plugin-wide setting under **Global Common Settings → Dual-Press → Directions** (default *Tap increases, long-press decreases*; the long-press always fires the opposite of the tap). The threshold separating "short" from "long" is a sibling setting **Long-press threshold (ms)** (200–2000 ms, default 500 ms). Both take effect on the next press without needing a restart.
+The tap direction is a single plugin-wide setting, **Dual-Press → Directions** on the Settings window's **General** tab (default *Tap increases, long-press decreases*; the long-press always fires the opposite of the tap). The threshold separating "short" from "long" is a sibling setting **Long-press threshold (ms)** (200–2000 ms, default 500 ms). Both take effect on the next press without needing a restart.
 
 ## Modes
 

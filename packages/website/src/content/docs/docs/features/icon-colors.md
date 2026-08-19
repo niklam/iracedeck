@@ -22,10 +22,10 @@ Not all icons support all slots. Icons with complex or data-driven artwork (like
 
 ## Global Colors
 
-Set default colors for all icons at once through **Global Settings**, available in the Property Inspector of any iRaceDeck action.
+Set default colors for all icons at once in the [Settings window](/docs/features/settings-window/), on the **Appearance** tab.
 
-1. Open the Property Inspector for any action
-2. Expand **Global Settings** at the bottom
+1. Open the [Settings window](/docs/features/settings-window/)
+2. Go to the **Appearance** tab
 3. Find the **Icon Colors** section
 4. Use the preset buttons or pick individual colors
 
@@ -37,7 +37,7 @@ Set default colors for all icons at once through **Global Settings**, available 
 
 ## Per-Button Overrides
 
-Override colors on individual buttons through **Color Overrides**, available in the Property Inspector between the action settings and Global Settings.
+Override colors on individual buttons through **Color Overrides**, in that button's own Property Inspector.
 
 1. Open the Property Inspector for the action you want to customize
 2. Expand **Color Overrides**

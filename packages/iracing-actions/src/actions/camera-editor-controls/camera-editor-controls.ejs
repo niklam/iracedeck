@@ -51,18 +51,9 @@
 		<%- include('graphic-overrides') %>
 		<%- include('common-settings') %>
 
-		<%- include('section-header', { title: 'Global Settings', openSettings: true }) %>
-
-		<%- include('global-key-bindings', {
+		<%- include('key-bindings-section', {
 			keyBindings: require('./data/key-bindings.json').cameraEditorControls
 		}) %>
-
-		<%- include('global-title-defaults') %>
-		<%- include('global-color-defaults') %>
-		<%- include('global-border-defaults') %>
-		<%- include('global-graphic-defaults') %>
-		<%- include('global-flag-flash') %>
-		<%- include('global-common-settings') %>
 
 		<%- include('docs-link') %>
 

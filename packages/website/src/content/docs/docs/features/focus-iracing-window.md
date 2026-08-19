@@ -21,7 +21,7 @@ Focusing is best-effort, not a guarantee — it can't help if iRacing isn't runn
 
 ## Turning It Off
 
-Focus iRacing Window is a **global setting**: one switch that applies to all of iRaceDeck, not per button. You'll find it in the Property Inspector of any action, under **Common Settings** in the Global Settings section, as **Focus iRacing window before sending keys**.
+Focus iRacing Window is a **global setting**: one switch that applies to all of iRaceDeck, not per button. You'll find it in the [Settings window](/docs/features/settings-window/), on the **General** tab, as **Focus iRacing window before sending keys**.
 
 Turn it off if you'd rather iRaceDeck never changed which window has focus — for example if you regularly press deck buttons while working in another application on a second monitor and don't want iRacing pulled to the front each time.
 
@@ -29,4 +29,4 @@ Turn it off if you'd rather iRaceDeck never changed which window has focus — f
 
 If you already had iRaceDeck installed, **your existing setting is kept as-is** — the new on-by-default behavior applies to fresh installations. Since the setting used to be off unless you switched it on, that most likely means it is still off for you. Check the box to be sure: if it is ticked, focusing is active.
 
-To switch it on, open any action's Property Inspector, expand **Common Settings** under Global Settings, and tick **Focus iRacing window before sending keys**. The change takes effect immediately — no restart needed.
+To switch it on, open the [Settings window](/docs/features/settings-window/) and tick **Focus iRacing window before sending keys** on the **General** tab. The change takes effect immediately — no restart needed.

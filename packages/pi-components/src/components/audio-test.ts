@@ -1,32 +1,29 @@
 /// <reference lib="dom" />
 /**
- * Audio Test Button Web Component for Stream Deck Property Inspector
+ * Audio Test Button Web Component
  *
- * A styled button that, when clicked, writes a timestamp into a hidden
- * per-action setting (an `sdpi-textfield`) so the action's
- * `onDidReceiveSettings` handler can detect the bump and trigger a
- * preview. Used by Pit Crew to call `playRadarTest()` without adding a
- * richer RPC surface.
+ * A styled button that asks the plugin to play a short audio preview, so the
+ * user can hear a voice or volume setting without going on track.
+ *
+ * It lives on the settings window, which owns the Race Engineer audio settings.
+ * There is no action context there, so the click sends
+ * `sendToPlugin { event: "audioPreview", kind }` and the plugin runs the preview
+ * itself (`runAudioPreview`). Until #1003 the same button also appeared in the
+ * Pit Crew Property Inspector and took a second route — bumping a hidden
+ * `_test*` timestamp setting that the action watched. That route went with the
+ * controls it served.
  *
  * Usage in HTML:
  * ```html
- * <div style="display:none;">
- *   <sdpi-textfield id="test-radar-field" setting="_testRadarVolume"></sdpi-textfield>
- * </div>
- * <ird-audio-test target="test-radar-field" label="Test"></ird-audio-test>
+ * <ird-audio-test preview="radar" label="Test"></ird-audio-test>
  * ```
  *
  * Attributes:
- * - target: DOM id of the hidden `sdpi-textfield` whose value should be
- *   bumped to `Date.now()` on click.
+ * - preview: "radar" | "voice" | "background" — which preview to play. Without
+ *   it the button is inert.
  * - label: Button text (default "Test").
- * - preview: "radar" | "voice" | "background" — inside the dedicated settings
- *   window (#992) there is no action context, so the click instead sends
- *   `sendToPlugin { event: "audioPreview", kind }` and the plugin runs the
- *   preview directly.
  */
 import { sendToPlugin } from "./sdpi-client.js";
-import { inSettingsWindow } from "./settings-window-context.js";
 
 let styleInjected = false;
 
@@ -80,27 +77,9 @@ export class AudioTest extends HTMLElement {
 
   private attachListeners(): void {
     this.button?.addEventListener("click", () => {
-      // Settings window (#992): there is no action context, so a per-action
-      // settings bump reaches nothing. Ask the plugin to run the preview
-      // directly instead. `preview` names the kind ("radar"|"voice"|"background").
-      if (inSettingsWindow()) {
-        const kind = this.getAttribute("preview");
+      const kind = this.getAttribute("preview");
 
-        if (kind) sendToPlugin({ event: "audioPreview", kind });
-
-        return;
-      }
-
-      const targetId = this.getAttribute("target");
-
-      if (!targetId) return;
-
-      const field = document.getElementById(targetId) as HTMLInputElement | null;
-
-      if (!field) return;
-
-      field.value = String(Date.now());
-      field.dispatchEvent(new Event("change", { bubbles: true }));
+      if (kind) sendToPlugin({ event: "audioPreview", kind });
     });
   }
 }

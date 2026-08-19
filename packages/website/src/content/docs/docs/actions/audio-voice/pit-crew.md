@@ -21,7 +21,7 @@ Select the mode from the **Mode** dropdown in the Property Inspector.
 
 The default mode. Pressing the button flips `raceEngineerEnabled` in plugin-global settings (off by default). When off, both the engineer voice (Voice bus — messages, acknowledgments, toggle confirmations) and the pit ambience (Background bus — pit ambient loop and walkie-talkie SFX) are silenced synchronously, so any in-flight clip cuts off on the same key press. Radar ticks are unaffected — they have their own toggle. Re-enabling restores Voice to the configured Race Engineer Volume and Background to the configured Background Volume.
 
-The engineer plays a short voice acknowledgment on every press — *"Okay, going silent."* when you disable it and *"Roger, resuming communication."* when you re-enable. The disable line plays through after the gate flips off (every other Voice clip silences immediately so it's the only thing you hear), then Voice mutes once the line finishes. Disable from **Race Engineer Callouts → Race Engineer Toggle** in the Property Inspector to keep the toggle silent.
+The engineer plays a short voice acknowledgment on every press — *"Okay, going silent."* when you disable it and *"Roger, resuming communication."* when you re-enable. The disable line plays through after the gate flips off (every other Voice clip silences immediately so it's the only thing you hear), then Voice mutes once the line finishes. Disable from **Race Engineer Callouts → Race Engineer Toggle** in the Settings window to keep the toggle silent.
 
 When iRacing telemetry first starts flowing — typically a few seconds after you launch iRacing with Race Engineer already enabled — the engineer fires a short *"<name>, radio check. Standing by."* line so you have audible confirmation that the plugin is talking to iRacing. This is a separate opt-in (**Race Engineer Callouts → Telemetry Connect**) from the toggle acknowledgment, so you can keep one and silence the other. The line re-fires on a real reconnect (iRacing closed and reopened, or a transient SDK drop) but not on repeated telemetry ticks within the same connected session.
 
@@ -43,7 +43,7 @@ Toggles the directional proximity tick loop on/off. Pressing the button flips `r
 
 ### Corner Names
 
-Toggles the [corner-name callouts](#corner-names-practice--test) on/off. Pressing the button flips the same **Race Engineer Callouts → Corner Names** setting as the Property Inspector checkbox, so the key and the checkbox always mirror each other — and unlike the other two toggles, the callouts ship **enabled** by default. The status bar flips green ↔ red and follows the setting live, whichever surface changed it.
+Toggles the [corner-name callouts](#corner-names-practice--test) on/off. Pressing the button flips the same **Race Engineer Callouts → Corner Names** setting as the Settings window checkbox, so the key and the checkbox always mirror each other — and unlike the other two toggles, the callouts ship **enabled** by default. The status bar flips green ↔ red and follows the setting live, whichever surface changed it.
 
 The engineer confirms each press with a short line — *"Roger that. Corner calls coming up."* when you enable, *"Copy that. Dropping the corner calls."* when you disable — as long as the Race Engineer master is on. Disable the confirmation under **Race Engineer Callouts → Corner Names → Toggle on/off acknowledgment**. With the Race Engineer master off, the toggle still flips the setting silently — but the corner names themselves stay quiet regardless of this key, because every engineer callout requires the master.
 
@@ -55,7 +55,7 @@ The engineer confirms each press with a short line — *"Roger that. Corner call
 
 ## Global Audio Settings (shared across every Pit Crew button)
 
-The Pit Crew accordion in the Property Inspector exposes these plugin-global settings alongside the Mode selector (not under the generic Global Settings section):
+These apply to every Pit Crew button at once, so they live in the [Settings window](/docs/features/settings-window/) on the **Race Engineer** tab rather than in one button's Property Inspector. Open it with the **Open iRaceDeck Settings** button at the bottom of any iRaceDeck key's Property Inspector.
 
 - **Race Engineer Voice** — dropdown of voices available under `voice/<voice>/` in `@iracedeck/audio-assets`. Substituted into scenario `base: "voice/{voice}"` at clip-resolution time so a swap takes effect on the next scenario fire. Falls back to the first available voice if the persisted choice is gone.
 - **Your Name** — name the engineer addresses you by; resolves a clip from `voice/<voice>/names/`.
@@ -105,7 +105,7 @@ During the pre-start countdown the engineer also speaks the numeric marks — *"
 
 On a **rolling start** there's no light gantry and no numeric countdown — the lead-in comes from the race-progression flags instead: **One pace lap to go**, spoken once when one pace lap remains (the engineer assumes at most two pace laps, so it lands as the pace car begins the final pace lap), then **Green held** as the field bunches up, followed by the green flag.
 
-Two opt-ins live under **Race Engineer Callouts → Start Lights** in the Property Inspector, both on by default:
+Two opt-ins live under **Race Engineer Callouts → Start Lights** in the Settings window, both on by default:
 
 - **Start lights** — the two gantry lines (get ready / go).
 - **Start countdown** — the four numeric marks (ninety / sixty / thirty / ten).
@@ -114,7 +114,7 @@ Two opt-ins live under **Race Engineer Callouts → Start Lights** in the Proper
 
 On a **rolling start** the Race Engineer calls out once the moment the pace car starts moving and the field begins to roll into the formation lap — *"Pace car's rolling. Time to go, get moving and follow the car ahead."* and four more variants (picked at random) — so you know to get going and form up behind the car ahead. It fires only on rolling starts (a standing start gets the light gantry and numeric countdown above instead) and is distinct from the **One pace lap to go** call, which fires near the *end* of the formation lap as the field bunches up for the green.
 
-One opt-in lives under **Race Engineer Callouts → Rolling Start** in the Property Inspector, on by default:
+One opt-in lives under **Race Engineer Callouts → Rolling Start** in the Settings window, on by default:
 
 - **Pace car moving** — the start-of-formation call when the pace car begins rolling the field away.
 
@@ -201,7 +201,7 @@ Because the callout fires off the session-change event, it arrives in time to be
 
 Right after the qualifying or race intro, the Race Engineer adds a quick "double-check your setup" nudge when the loaded setup's **name** looks wrong for the session — *"Our setup name suggests that we're on a race setup. Please double-check."* in qualifying, or *"Our setup name suggests that we're on a qualifying setup. Please double-check."* in a race. It's an easy, costly mistake to line up for the race still trimmed out on the qualifying setup (or qualify on a heavy race setup), and a name-based heads-up catches it before it matters.
 
-This is a **heuristic on the setup name only** — it never reads the setup's actual contents and never changes anything, so it only ever asks you to verify. Matching is done by two **case-insensitive regular expressions** you can edit under **Setup Warning Patterns** — one applied during qualifying (default flags a race-looking name), one during a race (default flags a qualifying-looking name). By default a word is matched when it's bounded by the start or end of the name, a space, a period, a hyphen, or an underscore, so `qualifying.sto`, `Q.spa`, `quali-fast`, and `VRS_quali_v2` all match while `race.sto` and `baseline` don't. Each pattern has a **Reset to default** button, and if you enter a pattern that isn't valid regex the Property Inspector shows a warning banner and the callout is simply skipped until you fix it.
+This is a **heuristic on the setup name only** — it never reads the setup's actual contents and never changes anything, so it only ever asks you to verify. Matching is done by two **case-insensitive regular expressions** you can edit under **Setup Warning Patterns** — one applied during qualifying (default flags a race-looking name), one during a race (default flags a qualifying-looking name). By default a word is matched when it's bounded by the start or end of the name, a space, a period, a hyphen, or an underscore, so `qualifying.sto`, `Q.spa`, `quali-fast`, and `VRS_quali_v2` all match while `race.sto` and `baseline` don't. Each pattern has a **Reset to default** button, and if you enter a pattern that isn't valid regex the Settings window shows a warning banner and the callout is simply skipped until you fix it.
 
 Toggle the whole feature from **Race Engineer Callouts → Setup Warning**. It fires once at session entry (a mid-session setup reload doesn't re-trigger it), and practice sessions never warn.
 
@@ -252,7 +252,7 @@ When you cross start/finish under the checkered flag in a race session, the Race
 - **P3** — *"Niklas, we made it to the podium. We're third. Well done."*
 - **P4 and below** — *"Niklas, the race is over. The final result for us is pee seven."*
 
-In multi-class series the engineer reads your class position, not the overall — winning your class always plays the *"we won!"* line even if you crossed the line behind faster cars from another class. Disabling this in the Property Inspector silences only the final-result line; the periodic status callout above remains independent.
+In multi-class series the engineer reads your class position, not the overall — winning your class always plays the *"we won!"* line even if you crossed the line behind faster cars from another class. Disabling this in the Settings window silences only the final-result line; the periodic status callout above remains independent.
 
 ## Overtakes (gained / lost during a race)
 
@@ -271,7 +271,7 @@ The engineer stays quiet about a swap that wasn't a clean racing move. The whole
 
 A 10 m physical-gap check on top of the three-second sustainment also filters the "clean but still side-by-side" case where the swap could easily reverse, and sim-glitch position jumps (more than three places in a single tick — a tow or teleport) are ignored.
 
-In multi-class series the engineer reads your class position, not the overall — including the leader line: taking your **class** lead plays *"Nice pass! We're now leading our class. Let's keep it that way!"* (the overall-leader wording is reserved for single-class races). The gain and loss callouts have independent opt-outs in the Property Inspector — disable one without affecting the other.
+In multi-class series the engineer reads your class position, not the overall — including the leader line: taking your **class** lead plays *"Nice pass! We're now leading our class. Let's keep it that way!"* (the overall-leader wording is reserved for single-class races). The gain and loss callouts have independent opt-outs in the Settings window — disable one without affecting the other.
 
 ## Opponent pit entries (races)
 
@@ -341,7 +341,7 @@ Two opt-ins live under **Race Engineer Callouts → Corner Names** — the corne
 
 ## Spotter (side-awareness calls)
 
-The Race Engineer voices spoken side-awareness as cars come and go alongside you — "Car left.", "Two cars right.", "Three wide.", a de-escalation "One car left.", combined swaps like "Clear right. Car left.", and a final "Clear." — plus a short repeating "Still there." reminder for as long as a car stays beside you. This is a **Race Engineer voice callout family** (like flags, position, or lap time), not a separate Stream Deck mode or button: it's gated by the Race Engineer master (the **Race Engineer Toggle** button) plus two Property Inspector opt-ins, both on by default. With the engineer off, the spotter is silent.
+The Race Engineer voices spoken side-awareness as cars come and go alongside you — "Car left.", "Two cars right.", "Three wide.", a de-escalation "One car left.", combined swaps like "Clear right. Car left.", and a final "Clear." — plus a short repeating "Still there." reminder for as long as a car stays beside you. This is a **Race Engineer voice callout family** (like flags, position, or lap time), not a separate Stream Deck mode or button: it's gated by the Race Engineer master (the **Race Engineer Toggle** button) plus two Settings window opt-ins, both on by default. With the engineer off, the spotter is silent.
 
 The wording adapts to the track. On a **road course** (no track rotation) the calls use left/right. On an **oval** the engineer uses inside/outside, derived from `WeekendInfo.TrackDirection` — a left-going oval makes your left "inside", a right-going oval reverses it. You don't configure this; it follows the loaded track automatically.
 
@@ -353,7 +353,7 @@ While a car is alongside, the spotter also holds an exclusive focus on the engin
 
 The spotter reads the **same proximity signal as the Radar mode** but is otherwise independent: Radar is the non-vocal proximity tick on the Alerts bus, the spotter is a spoken voice call on the Voice bus. Run either, both, or neither — with both enabled you'll hear a tick *and* a spoken call when a car pulls alongside.
 
-Two opt-ins live under **Race Engineer Callouts → Spotter** in the Property Inspector, both on by default:
+Two callout opt-ins live under **Race Engineer Callouts → Spotter** in the Settings window, both on by default, plus one timing setting:
 
 - **Announce cars around you** (`calloutEnabledSpotterCars`) — every transition call (car / two cars / one car / three wide / clear / combined). Turning this off silences the spoken calls while leaving the focus gate and the "still there" reminder logic intact.
 - **Repeat reminder while alongside** (`calloutEnabledSpotterStillThere`) — the "Still there." / "Hold your line." loop that repeats for as long as a car stays beside you.
@@ -361,7 +361,7 @@ Two opt-ins live under **Race Engineer Callouts → Spotter** in the Property In
 
 ## Race Engineer Callouts (per-subject opt-in/out)
 
-Some sessions throw the same flag over and over — debris that goes on/off every lap, rolling local yellows in a busy multi-class race. The **Race Engineer Callouts** accordion in the Property Inspector lets you switch off any individual callout while keeping the rest. The choice is plugin-global (every Pit Crew button agrees) and takes effect **live**: unchecking a callout stops new ones of that subject on the next event, but does **not** cut a callout already playing.
+Some sessions throw the same flag over and over — debris that goes on/off every lap, rolling local yellows in a busy multi-class race. The **Race Engineer Callouts** section on the [Settings window](/docs/features/settings-window/)'s **Race Engineer** tab lets you switch off any individual callout while keeping the rest. The choice is plugin-global (every Pit Crew button agrees) and takes effect **live**: unchecking a callout stops new ones of that subject on the next event, but does **not** cut a callout already playing.
 
 Under **Flags**, all 22 flag callouts are toggleable, all enabled by default:
 

@@ -26,4 +26,4 @@ By default the flash plays for **15 seconds** after a new flag transition, then 
 
 A new flag transition during the window starts a fresh timer, so the driver always gets the announcement when something changes.
 
-You can change the duration in the **Flag Flash** section under any action's Global Settings (the slider ranges from 0 to 30 seconds in 1-second steps). Setting it to **0** disables the auto-stop and reverts to the original behaviour: the flash continues for as long as the flag is raised.
+You can change the duration in the [Settings window](/docs/features/settings-window/), on the **Appearance** tab under **Flag Flash** (the slider ranges from 0 to 30 seconds in 1-second steps). Setting it to **0** disables the auto-stop and reverts to the original behaviour: the flash continues for as long as the flag is raised.

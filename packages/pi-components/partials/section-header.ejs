@@ -2,9 +2,10 @@
   <div class="ird-section-header-label"><%= title %></div>
   <div class="ird-section-header-rule"></div>
 </div>
-<%# Optional "Open iRaceDeck Settings" button under the header (issue #992). Pass
-    `openSettings: true` — the Global Settings header does, so every action's PI
-    links to the dedicated settings window from one place. %>
+<%# Optional "Open iRaceDeck Settings" button under the header (issue #992).
+    Only `settings.ejs` passes `openSettings: true`. An action PI gets the button
+    from `key-bindings-section.ejs`, which renders it itself so it can close the
+    section with it rather than sit under the heading (#1003). %>
 <% if (locals.openSettings) { %>
 <div class="ird-open-settings">
   <ird-open-settings></ird-open-settings>

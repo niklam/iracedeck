@@ -85,8 +85,6 @@
 			<%- include('common-settings') %>
 		</div>
 
-		<%- include('section-header', { title: 'Global Settings', openSettings: true }) %>
-
 		<%
 		var __kb = require('./data/key-bindings.json');
 		// Some DIAL modes tap bindings owned by another action — the Spotter mode
@@ -121,19 +119,9 @@
 			return Object.assign({}, row, { class: 'dial-only-binding hidden' });
 		});
 		%>
-		<%- include('global-key-bindings', {
+		<%- include('key-bindings-section', {
 			keyBindings: __kb.audioControls.concat(__borrowedRows)
 		}) %>
-
-		<div id="keypad-global-appearance">
-			<%- include('global-title-defaults') %>
-			<%- include('global-color-defaults') %>
-			<%- include('global-border-defaults') %>
-			<%- include('global-graphic-defaults') %>
-			<%- include('global-flag-flash') %>
-		</div>
-
-		<%- include('global-common-settings') %>
 
 		<script>
 			// Only Voice Chat supports mute. For every other category the mute option is
@@ -200,7 +188,6 @@
 			function applyDialView() {
 				document.getElementById("keypad-settings")?.classList.add("hidden");
 				document.getElementById("keypad-appearance")?.classList.add("hidden");
-				document.getElementById("keypad-global-appearance")?.classList.add("hidden");
 				document.getElementById("dial-settings")?.classList.remove("hidden");
 				// Bindings only a DIAL mode taps (the Spotter mode's spotter keys, #809)
 				// ship hidden and appear here, so they show on exactly the surface that

@@ -28,8 +28,8 @@ Fine-tune the graphic size with the scale control (50%–150%). At 100%, the art
 
 Set a default graphic scale for all buttons:
 
-1. Open the Property Inspector for any action
-2. Expand **Global Settings** at the bottom
+1. Open the [Settings window](/docs/features/settings-window/)
+2. Go to the **Appearance** tab
 3. Find the **Graphic Defaults** section
 4. Adjust the **Graphic Scale** slider (default: 100%)
 

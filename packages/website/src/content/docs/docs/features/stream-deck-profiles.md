@@ -28,13 +28,13 @@ On other Stream Deck models, iRaceDeck's other actions work normally — there a
 
 There is nothing to import by hand. The first time you switch to a bundled profile, the Stream Deck app asks to install it — confirm, and the profile is added to your device's profile list. Updates work the same way: after an iRaceDeck update, switching to a profile installs its latest version.
 
-## Switching from any action's settings
+## Switching from the Settings window
 
-Every iRaceDeck action's settings include a **Stream Deck Profiles** section, so you can switch profiles without dedicating a key to it:
+The [Settings window](/docs/features/settings-window/) has a **Profiles** tab, so you can switch profiles without dedicating a key to it:
 
-1. Select any iRaceDeck key on your Stream Deck to open its settings (the Property Inspector).
-2. Scroll down past the action's own settings to the **Global Settings** area and expand the **Stream Deck Profiles** section.
-3. The section lists every bundled profile with a **Switch** button next to it.
+1. Open the [Settings window](/docs/features/settings-window/) — every iRaceDeck key's Property Inspector has an **Open iRaceDeck Settings** button at the bottom.
+2. Go to the **Profiles** tab. With more than one Stream Deck connected, pick which one you want to switch.
+3. The tab lists every bundled profile with a **Switch** button next to it.
 4. Press **Switch** — your Stream Deck changes to that profile immediately. If the profile isn't installed yet, the Stream Deck app asks to install it first.
 
 ## Switching with a key

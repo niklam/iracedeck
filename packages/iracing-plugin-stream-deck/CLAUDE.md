@@ -166,17 +166,10 @@ Match the include set of the reference `splits-delta-cycle/splits-delta-cycle.ej
     <%- include('graphic-overrides') %>
     <%- include('common-settings') %>
 
-    <%- include('section-header', { title: 'Global Settings', openSettings: true }) %>
-
-    <%- include('global-key-bindings', {
+    <%# Drop `keyBindings` if the action has none — the section then says so. %>
+    <%- include('key-bindings-section', {
       keyBindings: require('./data/key-bindings.json').{camelCaseCategory}
     }) %>
-    <%- include('global-title-defaults') %>
-    <%- include('global-color-defaults') %>
-    <%- include('global-border-defaults') %>
-    <%- include('global-graphic-defaults') %>
-    <%- include('global-flag-flash') %>
-    <%- include('global-common-settings') %>
 
     <%- include('docs-link') %>
     <%- include('version') %>
@@ -185,6 +178,7 @@ Match the include set of the reference `splits-delta-cycle/splits-delta-cycle.ej
 ```
 
 - The `ird-binding-status` line under the Mode selector is **mandatory** for any action with a comms-catalog entry (#612, see step 10). Always `<%=` (HTML-escaped) for the `comms` attribute, never `<%-`.
+- **Never add a plugin-global setting to an action PI** (#1003). `key-bindings-section` is the only global surface left, and only because an action's own bindings are contextual to it. Everything else belongs in the settings window — see `.claude/rules/settings-window.md`.
 - `require('./data/...')` resolves relative to `packages/iracing-actions/src/actions/data/` regardless of nesting depth.
 - Partial reference, shared CSS classes, and the conditional show/hide pattern for mode-dependent settings: `.claude/rules/pi-templates.md` and `.claude/rules/stream-deck-actions.md` (the reference `.ejs` has a working conditional-visibility script).
 

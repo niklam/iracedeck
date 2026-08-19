@@ -1,0 +1,54 @@
+<%#
+  Key Bindings Section (issue #1003)
+
+  The entire bottom section of every action Property Inspector. Since the
+  plugin-global settings moved to the dedicated settings window (#992, #993),
+  all that remains per-action is the action's own key bindings — genuinely
+  contextual, because each PI shows only its own category out of the full
+  catalog — plus the link out to everything else.
+
+  Owning the header, the accordion and the empty state in ONE partial keeps the
+  25 PIs that have bindings and the 10 that do not consistent by construction,
+  instead of by 35 copies of the same markup.
+
+  Order is header → the section's own content → divider → settings button. The
+  button closes the section rather than sitting under its heading, so it reads
+  as a sibling of the docs link that follows it instead of looking like the
+  first thing the Key Bindings section has to offer.
+
+  Parameters:
+    - keyBindings (Array, optional) — rows to render, in the shape
+      `global-key-bindings` expects: { id, label, default, setting, class? }.
+      Omit it (or pass an empty array) for an action with no bindings; the
+      section then says so rather than rendering an empty accordion.
+    - hidden (Boolean, optional) — start the section hidden so the PI can reveal
+      it per mode (Fuel Service does this). The HEADING hides with the bindings,
+      deliberately: leaving it behind renders a labelled "Key Bindings" section
+      with nothing in it, which is the same defect the empty-state line exists
+      to prevent. The settings button sits outside the wrapper, so the way out
+      never disappears.
+
+  The wrapper's `key-bindings-section` id is defined here and nowhere else —
+  PI scripts toggle it by that id.
+
+  NOTE: the accordion title inside `global-key-bindings` must stay exactly
+  "Related Key Bindings" — `ird-binding-status` pins that literal
+  (KEY_BINDINGS_ACCORDION_ID) to open and scroll the accordion from its
+  "set it here" link, and `accordion.ejs` derives data-accordion-id from the
+  title. Retitling it breaks that link and the _accordionState key.
+  (EJS comment so this documentation is never emitted into the HTML.)
+%>
+<div id="key-bindings-section"<% if (locals.hidden) { %> class="hidden"<% } %>>
+<%- include('section-header', { title: 'Key Bindings' }) %>
+<% if (locals.keyBindings && keyBindings.length) { %>
+<%- include('global-key-bindings', { keyBindings: keyBindings }) %>
+<% } else { %>
+<div class="ird-supporting-text">This action has no key bindings.</div>
+<% } %>
+</div>
+
+<%# The way out to everything else, below this section's own content and under
+    its own divider — the same shape as the docs link that follows it. %>
+<div class="ird-open-settings ird-section-footer">
+  <ird-open-settings></ird-open-settings>
+</div>

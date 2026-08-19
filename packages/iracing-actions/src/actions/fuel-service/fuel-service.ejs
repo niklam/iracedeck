@@ -195,36 +195,24 @@
 			<%- include('common-settings') %>
 		</div>
 
-		<%- include('section-header', { title: 'Global Settings', openSettings: true }) %>
-
-		<div id="key-bindings-section" class="hidden">
-			<%
-			var __kb = require('./data/key-bindings.json');
-			// The two black-box rows are here so this PI SEEDS their defaults (#818):
-			// ird-key-binding writes its `default` into global settings the first time it
-			// renders, and black-box-selector.ejs used to be the only template that did.
-			// Without this, "Show black box" would silently do nothing for anyone who
-			// never placed a Black Box Selector key.
-			var __blackBoxRows = __kb.blackBox
-				.filter(function (b) { return b.id === 'lapTiming' || b.id === 'fuel'; })
-				.map(function (b) {
-					return { id: b.id, label: 'Black Box: ' + b.label, default: b.default, setting: b.setting };
-				});
-			%>
-			<%- include('global-key-bindings', {
-				keyBindings: __kb.fuelService.concat(__blackBoxRows)
-			}) %>
-		</div>
-
-		<div id="keypad-global-appearance">
-			<%- include('global-title-defaults') %>
-			<%- include('global-color-defaults') %>
-			<%- include('global-border-defaults') %>
-			<%- include('global-graphic-defaults') %>
-			<%- include('global-flag-flash') %>
-		</div>
-
-		<%- include('global-common-settings') %>
+		<%
+		var __kb = require('./data/key-bindings.json');
+		// The two black-box rows are here so this PI SEEDS their defaults (#818):
+		// ird-key-binding writes its `default` into global settings the first time it
+		// renders, and black-box-selector.ejs used to be the only template that did.
+		// Without this, "Show black box" would silently do nothing for anyone who
+		// never placed a Black Box Selector key.
+		var __blackBoxRows = __kb.blackBox
+			.filter(function (b) { return b.id === 'lapTiming' || b.id === 'fuel'; })
+			.map(function (b) {
+				return { id: b.id, label: 'Black Box: ' + b.label, default: b.default, setting: b.setting };
+			});
+		%>
+		<%# Hidden until updateVisibility()/applyDialView() reveals it per mode. %>
+		<%- include('key-bindings-section', {
+			keyBindings: __kb.fuelService.concat(__blackBoxRows),
+			hidden: true
+		}) %>
 
 		<script>
 			const FUEL_AMOUNT_MODES = ["add-fuel", "reduce-fuel", "set-fuel-amount"];
@@ -246,10 +234,18 @@
 				}
 			}
 
+			// Latched by applyDialView(). `#mode-select` stays in the DOM on a dial
+			// (applyDialView only hides its container), so a later `mode` value
+			// arriving from the host would otherwise re-run the keypad gates and
+			// re-hide the bindings this surface needs — leaving the dial with no way
+			// to reach them. Init deliberately runs the keypad path first, so this
+			// only takes effect once the controller has resolved as a dial.
+			let isDialSurface = false;
+
 			function applyDialView() {
+				isDialSurface = true;
 				document.getElementById("keypad-settings")?.classList.add("hidden");
 				document.getElementById("keypad-appearance")?.classList.add("hidden");
-				document.getElementById("keypad-global-appearance")?.classList.add("hidden");
 				document.getElementById("dial-settings")?.classList.remove("hidden");
 				// The dial gestures use the shared fuel key bindings — always show them.
 				document.getElementById("key-bindings-section")?.classList.remove("hidden");
@@ -325,7 +321,11 @@
 			}
 
 			function updateVisibility(mode) {
+				// Tracked on both surfaces — the black-box caveat reads it — but the
+				// gates below belong to the keypad view only.
 				currentMode = mode;
+
+				if (isDialSurface) return;
 
 				const fuelSettings = document.getElementById("fuel-settings");
 				const keyBindings = document.getElementById("key-bindings-section");

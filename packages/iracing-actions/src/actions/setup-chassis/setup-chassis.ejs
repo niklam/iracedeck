@@ -205,8 +205,6 @@
 			<%- include('common-settings') %>
 		</div>
 
-		<%- include('section-header', { title: 'Global Settings', openSettings: true }) %>
-
 		<%
 		var __kb = require('./data/key-bindings.json');
 		// The black-box rows are here so this PI SEEDS their defaults (#818/#953):
@@ -219,19 +217,9 @@
 				return { id: b.id, label: 'Black Box: ' + b.label, default: b.default, setting: b.setting };
 			});
 		%>
-		<%- include('global-key-bindings', {
+		<%- include('key-bindings-section', {
 			keyBindings: __kb.setupChassis.concat(__blackBoxRows)
 		}) %>
-
-		<div id="keypad-global-appearance">
-			<%- include('global-title-defaults') %>
-			<%- include('global-color-defaults') %>
-			<%- include('global-border-defaults') %>
-			<%- include('global-graphic-defaults') %>
-			<%- include('global-flag-flash') %>
-		</div>
-
-		<%- include('global-common-settings') %>
 
 		<script>
 			// View sub-modes are read-only displays — hide Direction; show the dual-press opt-in.
@@ -302,7 +290,6 @@
 			function applyDialView() {
 				document.getElementById("keypad-settings")?.classList.add("hidden");
 				document.getElementById("keypad-appearance")?.classList.add("hidden");
-				document.getElementById("keypad-global-appearance")?.classList.add("hidden");
 				document.getElementById("dial-settings")?.classList.remove("hidden");
 			}
 

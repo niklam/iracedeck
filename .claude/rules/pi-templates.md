@@ -78,17 +78,10 @@ Inside a partial, `locals.foo` reads an optional **include parameter** (`include
     <%- include('graphic-overrides') %>
     <%- include('common-settings') %>
 
-    <%- include('section-header', { title: 'Global Settings', openSettings: true }) %>
-
-    <%- include('global-key-bindings', {
+    <%# Omit `keyBindings` when the action has none — the section then says so. %>
+    <%- include('key-bindings-section', {
       keyBindings: require('./data/key-bindings.json').category
     }) %>
-    <%- include('global-title-defaults') %>
-    <%- include('global-color-defaults') %>
-    <%- include('global-border-defaults') %>
-    <%- include('global-graphic-defaults') %>
-    <%- include('global-flag-flash') %>
-    <%- include('global-common-settings') %>
 
     <script>
       // PI-specific JavaScript
@@ -104,22 +97,25 @@ Inside a partial, `locals.foo` reads an optional **include parameter** (`include
 
 Located in `packages/pi-components/partials/`:
 
-- **head-common.ejs** - Required scripts, common styles, and color preset/reset handlers. It emits `sdpi-components.js` / `pi-components.js`; each plugin's build then injects ONE bridge `<script>` immediately before `sdpi-components.js` in every generated action PI — `pi-settings-bridge.js` on Elgato/Mirabox, `ulanzi-pi-bridge.js` on Ulanzi — so global settings route to the plugin's loopback settings server (#993). Don't add a bridge tag to a template; the build owns it and asserts it (see `settings-window.md`).
+- **head-common.ejs** - Required scripts, common styles, and the handlers BOTH surfaces need (per-action colour presets, per-action title position, accordion-state persistence, the warnings banner). Handlers for the plugin-global controls moved to `settings-window-scripts.ejs` in #1003. It emits `sdpi-components.js` / `pi-components.js`; each plugin's build then injects ONE bridge `<script>` immediately before `sdpi-components.js` in every generated action PI — `pi-settings-bridge.js` on Elgato/Mirabox, `ulanzi-pi-bridge.js` on Ulanzi — so global settings route to the plugin's loopback settings server (#993). Don't add a bridge tag to a template; the build owns it and asserts it (see `settings-window.md`).
 - **accordion.ejs** - Collapsible section component. Accepts an optional `accordionId` parameter (defaults to `title`) used as the persistence key in global settings (`_accordionState`). The `accordionId` must be unique per PI page — use it when two accordions share the same display title (e.g., per-action vs global "Common Settings"). State is shared across action types since most actions use the same accordion IDs. When `settingsWindow` is truthy in scope (the settings window passes it at its top-level includes; nested includes inherit it) it renders a flat `.ird-sw-card` instead of a `<details>` — see `settings-window.md`.
-- **section-header.ejs** - Section divider with title label and horizontal rule. Parameters: `title` (string); `openSettings` (boolean, optional) renders the "Open iRaceDeck Settings" button under the header — every action's **Global Settings** header passes it (#992). Used to separate "Action Settings" from "Global Settings".
+- **section-header.ejs** - Section divider with title label and horizontal rule. Parameters: `title` (string); `openSettings` (boolean, optional) renders the "Open iRaceDeck Settings" button under the header — only `settings.ejs` uses that slot. An action PI gets the button from `key-bindings-section.ejs`, which renders it itself so it can place it *below* the section's content (#1003). Used to separate "Action Settings" from "Key Bindings".
 - **common-settings.ejs** - Common settings shared by all actions (flags overlay), wrapped in accordion
 - **color-overrides.ejs** - Per-action color override controls with Default/White/Black presets
 - **border-overrides.ejs** - Per-action border settings (enable, width, color). Place after color-overrides.
 - **graphic-overrides.ejs** - Per-action graphic scale settings (Inherit/Icon Default/Override). Place after border-overrides, before common-settings.
 - **title-overrides.ejs** - Per-action title override controls (show/hide title and graphics, title text, bold, font size, position)
-- **global-key-bindings.ejs** - Key bindings in collapsible section
-- **global-color-defaults.ejs** - Global icon color defaults (presets, color pickers) in accordion
-- **global-title-defaults.ejs** - Global title defaults (show/hide, bold, font size, position) in accordion
-- **global-border-defaults.ejs** - Global border defaults (enable, width, color, glow) in accordion
-- **global-graphic-defaults.ejs** - Global graphic scale default (50-150%, default 100%) in accordion
-- **global-flag-flash.ejs** - Global flag-flash duration default (0-30 seconds, default 15, step 1; `0` = flash forever) in accordion. See issue #490.
-- **global-common-settings.ejs** - Global common settings in one accordion, assembled from the per-group partials **global-common-{window-focus,simhub,dual-press,replay,chat,updates,diagnostics}.ejs** (items only, no heading) so the settings window can place the same groups on separate tabs (#992). Add a new common setting to the right group partial, never to the assembler.
-- **race-engineer-settings.ejs / race-engineer-callouts.ejs / setup-warning-patterns.ejs** - The Race Engineer plugin-wide settings (items only), wrapped by `pit-crew.ejs` in its three accordions and by the settings window in cards (#992). `race-engineer-callouts.ejs` owns the callout-list computation.
+- **key-bindings-section.ejs** - The whole bottom section of an action PI (#1003): the "Key Bindings" header with its "Open iRaceDeck Settings" button, and either the `Related Key Bindings` accordion or a line saying the action has none. Takes an optional `keyBindings` array and an optional `hidden` flag (start the bindings wrapper hidden so the PI can reveal it per mode — Fuel Service does). This is the ONLY global surface left in an action PI; everything else lives in the settings window.
+- **global-key-bindings.ejs** - The `Related Key Bindings` accordion itself, rendered by `key-bindings-section`. Its title is load-bearing: `binding-status.ts` pins the literal `"Related Key Bindings"` to open and scroll it, and `accordion.ejs` derives `data-accordion-id` from the title.
+- **global-color-defaults.ejs** - Global icon color defaults (presets, color pickers) in accordion. **Settings window only** since #1003.
+- **global-title-defaults.ejs** - Global title defaults (show/hide, bold, font size, position) in accordion. **Settings window only** since #1003.
+- **global-border-defaults.ejs** - Global border defaults (enable, width, color, glow) in accordion. **Settings window only** since #1003.
+- **global-graphic-defaults.ejs** - Global graphic scale default (50-150%, default 100%) in accordion. **Settings window only** since #1003.
+- **global-flag-flash.ejs** - Global flag-flash duration default (0-30 seconds, default 15, step 1; `0` = flash forever) in accordion. See issue #490. **Settings window only** since #1003.
+- **global-common-{window-focus,simhub,dual-press,replay,chat,updates,diagnostics}.ejs** - The common-settings groups (items only, no heading), placed on separate tabs by the settings window (#992). Add a new common setting to the right group partial. The `global-common-settings.ejs` assembler that gathered them into one PI accordion was deleted in #1003 along with the PI section it served.
+- **global-stream-deck-profiles.ejs** - Bundled-profile install buttons, self-gated to Elgato by the `profiles` feature flag. **Settings window only** since #1003 (in device-picker mode).
+- **race-engineer-settings.ejs / race-engineer-callouts.ejs / setup-warning-patterns.ejs** - The Race Engineer plugin-wide settings (items only). **Settings window only** since #1003, which moved them out of `pit-crew.ejs`; the window renders them as cards. `race-engineer-callouts.ejs` owns the callout-list computation.
+- **settings-window-scripts.ejs** - Behaviour for the plugin-global controls: colour presets, the global title position / font-size gates, the title-defaults and setup-warning Reset buttons, border-defaults visibility. Split out of `head-common.ejs` in #1003 and included by `settings-window.ejs` only — a PI would ship ~200 lines of script whose elements are not on the page. Anything BOTH surfaces need belongs in `head-common.ejs` instead.
 - **docs-link.ejs** - Documentation link to the action's page on iracedeck.com (conditional, hidden when no URL mapped). Opens in the default browser (see _External Links_ below).
 - **version.ejs** - Version footer with downloads link. Opens in the default browser (see _External Links_ below).
 
@@ -139,7 +135,8 @@ Common style classes are defined in `head-common.ejs` (loaded by every PI page).
   </div>
   ```
 
-- **`ird-open-settings`** — the centred block that wraps the `<ird-open-settings>` button under the Global Settings header (rendered by `section-header.ejs` with `openSettings: true`, #992) — a block like `.ird-docs-link`, never an `sdpi-item`.
+- **`ird-open-settings`** — the centred block that wraps the `<ird-open-settings>` button (rendered by `key-bindings-section.ejs` at the end of the section, #992/#1003; `settings.ejs` uses `section-header.ejs`'s `openSettings: true` slot instead) — a block like `.ird-docs-link`, never an `sdpi-item`.
+- **`ird-section-footer`** — composed with `.ird-open-settings` on a block that CLOSES a section: the same divider rule `.ird-docs-link` carries, so the settings button and the docs link read as siblings (#1003). Declared after `.ird-open-settings` so its `margin-top` wins.
 - **`ird-sw-card` / `ird-sw-card-title` / `ird-sw-card-body`** — the flat card `accordion.ejs` emits in `settingsWindow` mode (#992). Styled by the settings-window page itself (`settings-window.ejs`), which is the only page that renders that mode; a second consumer of `settingsWindow: true` would have to move those rules into `head-common.ejs`.
 
 When a new shared style is needed, add the class to `head-common.ejs` and document it here — do not introduce inline styles in partials or per-action templates.
@@ -215,7 +212,7 @@ Adds a plugin-wide graphic scale default in a collapsible "Graphic Defaults" acc
 No parameters needed. The partial provides:
 - **Graphic Scale %** — range slider (50-150, step 5, default 100, stored globally)
 
-Place after `global-border-defaults`, before `global-common-settings`.
+Place after `global-border-defaults`. Settings window only since #1003.
 
 ## Color Overrides Partial
 
