@@ -46,7 +46,9 @@ This one has a consequence worth knowing about, which is why the banner spells i
 
 The **Open iRaceDeck Settings** button is marked as unusable at the same time, with a short note directly above it — _"The Settings window cannot open while iRaceDeck's settings service is not running. See the error at the top of this panel."_ — so you can see the button will not work before pressing it, without having scrolled back up to read the error.
 
-**"iRaceDeck could not open the Settings window."** Shown as a yellow warning directly above the button you just pressed, and much less serious. The service is running fine — iRaceDeck simply could not get any browser on the PC to display the page. This one is rare: it means the chromeless app window in Edge or Chrome _and_ the fallback to your default browser both failed. Everything else is unaffected, Property Inspectors included, so settings you change there apply as usual.
+**"iRaceDeck could not open the Settings window."** Shown as a yellow warning directly above the button you just pressed, and much less serious. The service is running fine — what failed is iRaceDeck handing the page over to a browser: the chromeless app window in Edge or Chrome would not start, _and_ passing the address to your default browser was refused as well. Everything else is unaffected, Property Inspectors included, so settings you change there apply as usual.
+
+This one is rare, and it is worth knowing what it does not cover. iRaceDeck can tell that a browser refused to take the address; it cannot tell what happened afterwards, because nothing reports back once the address has been handed over. So a browser that accepts the request and then shows nothing produces no banner at all. If the button appears to do nothing and neither banner is showing, check whether a browser window opened behind another one, and see [How It Works](#how-it-works) for what iRaceDeck tries.
 
 To clear either one:
 
