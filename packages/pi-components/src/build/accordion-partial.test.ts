@@ -117,12 +117,14 @@ describe("race-engineer partials", () => {
   };
   const withRequire = { require: dataRequire };
 
-  it("race-engineer-settings emits the voice, name, device, volume and on-startup controls", () => {
+  it("race-engineer-settings emits the live toggles, startup policies, voice, name, device and volumes", () => {
     const html = render("<%- include('race-engineer-settings') %>", withRequire);
 
     for (const key of [
-      "pitCrewRaceEngineerEnabledOnStartup",
-      "pitCrewRadarEnabledOnStartup",
+      "pitCrewRaceEngineerEnabled",
+      "pitCrewRaceEngineerStartupPolicy",
+      "pitCrewRadarEnabled",
+      "pitCrewRadarStartupPolicy",
       "raceEngineerVoice",
       "driverName",
       "audioOutputDevice",
