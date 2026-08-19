@@ -15,6 +15,7 @@
     "install:stream-deck": "pnpm --filter \"@iracedeck/iracing-sdk\" --filter \"@iracedeck/iracing-plugin-stream-deck\" install",
     "build:ts": "turbo run build --filter=!@iracedeck/iracing-native --filter=!@iracedeck/website",
     "build:force": "turbo run build --force",
+    "capture:settings": "node scripts/capture-settings-window.mjs",
     "build:native": "pnpm --filter @iracedeck/iracing-native build",
     "generate:action-comms": "tsx scripts/generate-action-comms.mjs",
     "generate:action-profiles": "node scripts/generate-action-profiles.mjs",

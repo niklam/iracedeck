@@ -38,7 +38,7 @@ Font size (5–36 px) used to render Message Text on the button. Defaults to `11
 
 #### Timing
 
-Sending a message opens the chat window, pastes the text, presses Enter, then closes the chat window. Three waits in that pipeline are configurable under **Common Settings → Chat** (all default 200 ms):
+Sending a message opens the chat window, pastes the text, presses Enter, then closes the chat window. Three waits in that pipeline are configurable in the [Settings window](/docs/getting-started/settings/#delays), on the **Delays** tab under **Chat** (all default 200 ms):
 
 - **Open → Paste delay** — wait after opening the chat window before pasting. Too short and the paste can land before iRacing has focused the chat input, dropping the text. (This delay is shared with Race Admin's "Type in Chat".)
 - **Paste → Enter delay** — wait after pasting before pressing Enter. Too short and Enter can fire before the paste registers, sending an empty or partial message.

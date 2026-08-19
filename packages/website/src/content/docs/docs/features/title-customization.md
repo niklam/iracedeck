@@ -18,9 +18,9 @@ iRaceDeck lets you customize the title text on every button. Change the text con
 
 ## Global Title Defaults
 
-Set default title settings for all buttons at once in the [Settings window](/docs/features/settings-window/), on the **Appearance** tab.
+Set default title settings for all buttons at once in the [Settings window](/docs/getting-started/settings/#appearance), on the **Appearance** tab.
 
-1. Open the [Settings window](/docs/features/settings-window/)
+1. Open the [Settings window](/docs/getting-started/settings/#appearance)
 2. Go to the **Appearance** tab
 3. Find the **Title Defaults** section
 

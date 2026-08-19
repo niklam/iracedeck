@@ -8,6 +8,7 @@ Welcome to the iRaceDeck documentation. Here you'll find guides for getting star
 ## Getting Started
 
 - [Installation](/docs/getting-started/installation/) — Install iRaceDeck from the Elgato Marketplace
+- [Settings](/docs/getting-started/settings/) — Every plugin-wide setting in one full-size window, opened from any Property Inspector
 - [Troubleshooting](/docs/getting-started/troubleshooting/) — Common issues and solutions
 
 ## Features
@@ -15,7 +16,6 @@ Welcome to the iRaceDeck documentation. Here you'll find guides for getting star
 - [Key Bindings](/docs/features/key-bindings/) — How keyboard shortcuts work and how to customize them
 - [Flags Overlay](/docs/features/flags-overlay/) — See yellow and blue flags flash on your Stream Deck buttons
 - [Focus iRacing Window](/docs/features/focus-iracing-window/) — On by default: iRacing is brought to the foreground so button presses aren't lost
-- [Settings Window](/docs/features/settings-window/) — Every plugin-wide setting in one full-size window, opened from any Property Inspector
 - [Template Variables](/docs/features/template-variables/) — iRacing telemetry variables for key titles, custom displays, and chat messages
 
 ## Actions

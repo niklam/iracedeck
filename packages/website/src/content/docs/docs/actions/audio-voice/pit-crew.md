@@ -23,7 +23,7 @@ The default mode. Pressing the button flips `raceEngineerEnabled` in plugin-glob
 
 The engineer plays a short voice acknowledgment on every press — *"Okay, going silent."* when you disable it and *"Roger, resuming communication."* when you re-enable. The disable line plays through after the gate flips off (every other Voice clip silences immediately so it's the only thing you hear), then Voice mutes once the line finishes. Disable from **Race Engineer Callouts → Race Engineer Toggle** in the Settings window to keep the toggle silent.
 
-The Settings window's **Race Engineer → Enabled** checkbox flips this same state, with the same acknowledgment, and its **On startup** setting decides what the engineer comes up as after a restart — see [Now versus on startup](/docs/features/settings-window/#race-engineer-and-radar-now-versus-on-startup).
+The Settings window's **Race Engineer → Enabled** checkbox flips this same state, with the same acknowledgment, and its **On startup** setting decides what the engineer comes up as after a restart — see [Now versus on startup](/docs/getting-started/settings/#race-engineer-and-radar-now-versus-on-startup).
 
 When iRacing telemetry first starts flowing — typically a few seconds after you launch iRacing with Race Engineer already enabled — the engineer fires a short *"<name>, radio check. Standing by."* line so you have audible confirmation that the plugin is talking to iRacing. This is a separate opt-in (**Race Engineer Callouts → Telemetry Connect**) from the toggle acknowledgment, so you can keep one and silence the other. The line re-fires on a real reconnect (iRacing closed and reopened, or a transient SDK drop) but not on repeated telemetry ticks within the same connected session.
 
@@ -37,7 +37,7 @@ When iRacing telemetry first starts flowing — typically a few seconds after yo
 
 Toggles the directional proximity tick loop on/off. Pressing the button flips `radarEnabled` in plugin-global settings (off by default) and synchronously stops or starts the tick loop on `AudioChannel.Radar` (so a tick can't fire after the user already muted it). The status bar flips green ↔ red.
 
-The Settings window's **Radar → Enabled** checkbox flips this same state, and its **On startup** setting decides what the radar comes up as after a restart — see [Now versus on startup](/docs/features/settings-window/#race-engineer-and-radar-now-versus-on-startup).
+The Settings window's **Radar → Enabled** checkbox flips this same state, and its **On startup** setting decides what the radar comes up as after a restart — see [Now versus on startup](/docs/getting-started/settings/#race-engineer-and-radar-now-versus-on-startup).
 
 #### Details
 
@@ -59,7 +59,7 @@ The engineer confirms each press with a short line — *"Roger that. Corner call
 
 ## Global Audio Settings (shared across every Pit Crew button)
 
-These apply to every Pit Crew button at once, so they live in the [Settings window](/docs/features/settings-window/) on the **Race Engineer** tab rather than in one button's Property Inspector. Open it with the **Open iRaceDeck Settings** button at the bottom of any iRaceDeck key's Property Inspector.
+These apply to every Pit Crew button at once, so they live in the [Settings window](/docs/getting-started/settings/#race-engineer) on the **Race Engineer** tab rather than in one button's Property Inspector. Open it with the **Open iRaceDeck Settings** button at the bottom of any iRaceDeck key's Property Inspector.
 
 - **Race Engineer Voice** — dropdown of voices available under `voice/<voice>/` in `@iracedeck/audio-assets`. Substituted into scenario `base: "voice/{voice}"` at clip-resolution time so a swap takes effect on the next scenario fire. Falls back to the first available voice if the persisted choice is gone.
 - **Your Name** — name the engineer addresses you by; resolves a clip from `voice/<voice>/names/`.
@@ -365,7 +365,7 @@ Two callout opt-ins live under **Race Engineer Callouts → Spotter** in the Set
 
 ## Race Engineer Callouts (per-subject opt-in/out)
 
-Some sessions throw the same flag over and over — debris that goes on/off every lap, rolling local yellows in a busy multi-class race. The **Race Engineer Callouts** section on the [Settings window](/docs/features/settings-window/)'s **Race Engineer** tab lets you switch off any individual callout while keeping the rest. The choice is plugin-global (every Pit Crew button agrees) and takes effect **live**: unchecking a callout stops new ones of that subject on the next event, but does **not** cut a callout already playing.
+Some sessions throw the same flag over and over — debris that goes on/off every lap, rolling local yellows in a busy multi-class race. The **Race Engineer Callouts** section on the [Settings window](/docs/getting-started/settings/#race-engineer)'s **Race Engineer** tab lets you switch off any individual callout while keeping the rest. The choice is plugin-global (every Pit Crew button agrees) and takes effect **live**: unchecking a callout stops new ones of that subject on the next event, but does **not** cut a callout already playing.
 
 Under **Flags**, all 22 flag callouts are toggleable, all enabled by default:
 

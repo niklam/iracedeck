@@ -103,6 +103,7 @@ export default defineConfig({
           label: "Getting Started",
           items: [
             { slug: "docs/getting-started/installation" },
+            { slug: "docs/getting-started/settings" },
             { slug: "docs/getting-started/troubleshooting" },
           ],
         },
@@ -121,7 +122,6 @@ export default defineConfig({
             { slug: "docs/features/border-indicator" },
             { slug: "docs/features/template-variables" },
             { slug: "docs/features/whats-new-page" },
-            { slug: "docs/features/settings-window" },
           ],
         },
         {
