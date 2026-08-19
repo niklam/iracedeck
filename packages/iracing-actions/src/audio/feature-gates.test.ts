@@ -228,5 +228,26 @@ describe("feature gates", () => {
 
       expect(hoisted.setRadarEnabled).toHaveBeenCalledWith(true);
     });
+
+    it("retries a gate change whose side effects failed", () => {
+      // The tracker is recorded only after the effects succeed, so a swallowed
+      // fault leaves the change pending instead of marking it done forever.
+      hoisted.setGlobalSettings(withVoices({ pitCrewRaceEngineerEnabled: true }));
+      armFeatureGateSync();
+      hoisted.stopRaceEngineerScenarios.mockImplementationOnce(() => {
+        throw new Error("audio engine unavailable");
+      });
+      hoisted.setGlobalSettings(withVoices({ pitCrewRaceEngineerEnabled: false }));
+
+      syncFeatureGates(logger);
+      expect(hoisted.playOnChannel).not.toHaveBeenCalled();
+
+      // Same (unchanged) gate value on the next settings arrival: the failed
+      // work runs again and completes this time.
+      syncFeatureGates(logger);
+
+      expect(hoisted.stopRaceEngineerScenarios).toHaveBeenCalledTimes(2);
+      expect(hoisted.playOnChannel).toHaveBeenCalledWith(VOICE, "voice/default/toggle/going-silent-01.mp3");
+    });
   });
 });

@@ -55,8 +55,6 @@ let armed = false;
 function applyRaceEngineerGate(next: boolean, logger: ILogger): void {
   if (appliedRaceEngineerGate === next) return;
 
-  appliedRaceEngineerGate = next;
-
   // Apply the gate to Voice + Background synchronously so an in-flight
   // engineer clip is silenced on the same tick the user pressed the key.
   // The acknowledgment (issue #554) layers on top via
@@ -78,6 +76,15 @@ function applyRaceEngineerGate(next: boolean, logger: ILogger): void {
   if (isToggleAckEnabled()) {
     playToggleAck(next ? "resuming-01" : "going-silent-01", logger);
   }
+
+  // LAST, once every side effect above has succeeded. Recording it first would
+  // make a swallowed fault permanent: the tracker would claim the change was
+  // applied, so the next sync would short-circuit and the audio layer would
+  // stay out of step with the persisted gate forever. Recording it last leaves
+  // the failed change pending, and the next settings arrival retries it. Safe
+  // to defer because none of the effects above writes global settings, so
+  // nothing can re-enter this function before the assignment.
+  appliedRaceEngineerGate = next;
 }
 
 /**
@@ -88,8 +95,10 @@ function applyRaceEngineerGate(next: boolean, logger: ILogger): void {
 function applyRadarGate(next: boolean): void {
   if (appliedRadarGate === next) return;
 
-  appliedRadarGate = next;
   setRadarEnabled(next);
+  // Recorded last, so a throw leaves the change pending for the next sync —
+  // see the note in `applyRaceEngineerGate`.
+  appliedRadarGate = next;
 }
 
 /**
@@ -101,7 +110,11 @@ export function toggleRaceEngineerFeature(logger: ILogger): boolean {
   logger.info(`Race Engineer ${next ? "enabled" : "disabled"}`);
 
   updateGlobalSettings({ pitCrewRaceEngineerEnabled: next });
-  applyRaceEngineerGate(next, logger);
+  // Guarded like the listener path: when armed this is already a no-op, and
+  // when it is not (a press before the first settings arrival) an audio fault
+  // must not throw out of a key handler — the gate is persisted by now, and
+  // the tracker leaves the effects pending for the next sync to retry.
+  guard(() => applyRaceEngineerGate(next, logger), logger);
 
   return next;
 }
@@ -112,7 +125,7 @@ export function toggleRadarFeature(logger: ILogger): boolean {
   logger.info(`Radar ${next ? "enabled" : "disabled"}`);
 
   updateGlobalSettings({ pitCrewRadarEnabled: next });
-  applyRadarGate(next);
+  guard(() => applyRadarGate(next), logger);
 
   return next;
 }
