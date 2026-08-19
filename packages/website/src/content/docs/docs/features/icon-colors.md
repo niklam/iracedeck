@@ -22,9 +22,9 @@ Not all icons support all slots. Icons with complex or data-driven artwork (like
 
 ## Global Colors
 
-Set default colors for all icons at once in the [Settings window](/docs/getting-started/settings/), on the **Appearance** tab.
+Set default colors for all icons at once in the [Settings window](/docs/getting-started/settings/#appearance), on the **Appearance** tab.
 
-1. Open the [Settings window](/docs/getting-started/settings/)
+1. Open the [Settings window](/docs/getting-started/settings/#appearance)
 2. Go to the **Appearance** tab
 3. Find the **Icon Colors** section
 4. Use the preset buttons or pick individual colors

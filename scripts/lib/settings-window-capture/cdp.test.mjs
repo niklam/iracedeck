@@ -207,6 +207,34 @@ describe("connectCdp", () => {
     expect(socket.closed).toBe(true);
   });
 
+  it("fails in-flight commands at once when the socket closes unexpectedly", async () => {
+    const { cdp, socket } = await connectFake();
+
+    const pending = cdp.send("Page.captureScreenshot");
+    socket.emit("close", {});
+
+    await expect(pending).rejects.toThrow(/connection closed unexpectedly/);
+  });
+
+  it("fails fast on a later command instead of waiting out the timeout", async () => {
+    const { cdp, socket } = await connectFake();
+    socket.emit("close", {});
+
+    await expect(cdp.send("Page.navigate")).rejects.toThrow(/closed unexpectedly \(while sending Page.navigate\)/);
+  });
+
+  it("clears the timer when the socket rejects the send", async () => {
+    const { cdp, socket } = await connectFake({ commandTimeoutMs: 50 });
+    socket.send = () => {
+      throw new Error("socket is dead");
+    };
+
+    await expect(cdp.send("Page.enable")).rejects.toThrow(/socket is dead/);
+    // A leaked timer would keep the loop alive and later fire against a
+    // pending entry that should already be gone.
+    await new Promise((resolve) => setTimeout(resolve, 80));
+  });
+
   it("times out a command the browser never answers", async () => {
     const { cdp } = await connectFake({ commandTimeoutMs: 10 });
 

@@ -237,9 +237,20 @@ export async function captureSettingsWindow(options, deps) {
       log(`Captured ${tab.label} → ${tab.file}`);
     }
   } finally {
-    cdp?.close();
-    browser?.kill();
-    await server.close();
+    // Isolated, not sequential: a throw from any one of these would otherwise
+    // skip the rest, leaving a headless Chromium running and the settings
+    // server holding its port for the life of the process.
+    for (const [what, step] of [
+      ["close the debugger connection", () => cdp?.close()],
+      ["stop the browser", () => browser?.kill()],
+      ["stop the settings server", () => server.close()],
+    ]) {
+      try {
+        await step();
+      } catch (error) {
+        log(`Warning: could not ${what}: ${String(error)}`);
+      }
+    }
   }
 
   return written;

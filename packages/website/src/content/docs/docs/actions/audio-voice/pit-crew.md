@@ -59,7 +59,7 @@ The engineer confirms each press with a short line — *"Roger that. Corner call
 
 ## Global Audio Settings (shared across every Pit Crew button)
 
-These apply to every Pit Crew button at once, so they live in the [Settings window](/docs/getting-started/settings/) on the **Race Engineer** tab rather than in one button's Property Inspector. Open it with the **Open iRaceDeck Settings** button at the bottom of any iRaceDeck key's Property Inspector.
+These apply to every Pit Crew button at once, so they live in the [Settings window](/docs/getting-started/settings/#race-engineer) on the **Race Engineer** tab rather than in one button's Property Inspector. Open it with the **Open iRaceDeck Settings** button at the bottom of any iRaceDeck key's Property Inspector.
 
 - **Race Engineer Voice** — dropdown of voices available under `voice/<voice>/` in `@iracedeck/audio-assets`. Substituted into scenario `base: "voice/{voice}"` at clip-resolution time so a swap takes effect on the next scenario fire. Falls back to the first available voice if the persisted choice is gone.
 - **Your Name** — name the engineer addresses you by; resolves a clip from `voice/<voice>/names/`.
@@ -365,7 +365,7 @@ Two callout opt-ins live under **Race Engineer Callouts → Spotter** in the Set
 
 ## Race Engineer Callouts (per-subject opt-in/out)
 
-Some sessions throw the same flag over and over — debris that goes on/off every lap, rolling local yellows in a busy multi-class race. The **Race Engineer Callouts** section on the [Settings window](/docs/getting-started/settings/)'s **Race Engineer** tab lets you switch off any individual callout while keeping the rest. The choice is plugin-global (every Pit Crew button agrees) and takes effect **live**: unchecking a callout stops new ones of that subject on the next event, but does **not** cut a callout already playing.
+Some sessions throw the same flag over and over — debris that goes on/off every lap, rolling local yellows in a busy multi-class race. The **Race Engineer Callouts** section on the [Settings window](/docs/getting-started/settings/#race-engineer)'s **Race Engineer** tab lets you switch off any individual callout while keeping the rest. The choice is plugin-global (every Pit Crew button agrees) and takes effect **live**: unchecking a callout stops new ones of that subject on the next event, but does **not** cut a callout already playing.
 
 Under **Flags**, all 22 flag callouts are toggleable, all enabled by default:
 

@@ -79,6 +79,11 @@ export function buildSeedSettings() {
     blackBoxTires: JSON.stringify({ type: "keyboard", key: "f2", modifiers: [] }),
     lookDirectionLeft: JSON.stringify({ type: "keyboard", key: "left", modifiers: ["alt"] }),
     lookDirectionRight: JSON.stringify({ type: "keyboard", key: "right", modifiers: ["alt"] }),
-    aiSpotterLouder: JSON.stringify({ type: "simhub", role: "Spotter Volume Up" }),
+    // On a binding the Key Bindings table shows in its FIRST screenful, so the
+    // screenshot actually demonstrates both binding types. `Cycle Next` also
+    // ships no keyboard default, so this fills a row that would otherwise read
+    // "Not set". A role on a binding further down the table is invisible in the
+    // capture — which is what the earlier `spotterLouder` seeding got wrong.
+    blackBoxCycleNext: JSON.stringify({ type: "simhub", role: "Black Box Next" }),
   };
 }

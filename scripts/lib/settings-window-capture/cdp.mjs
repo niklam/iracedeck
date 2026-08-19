@@ -132,6 +132,26 @@ export async function connectCdp(url, deps = {}) {
   /** @type {((message: any) => void)[]} */
   const eventListeners = [];
   let nextId = 1;
+  /** Set once the socket is gone, so later sends fail fast instead of timing out. */
+  let closedReason = null;
+
+  /**
+   * Fail every in-flight command at once. Without this a browser that exits
+   * mid-capture is invisible to the transport: `WebSocket.send` on a dead
+   * socket is discarded rather than throwing, so each command would sit out its
+   * full 30s timeout and report a misleading "timed out" for what is really a
+   * dead browser — minutes of hanging across nine tabs.
+   */
+  const failAllPending = (reason) => {
+    closedReason ??= reason;
+
+    for (const { reject, timer } of pending.values()) {
+      clearTimeout(timer);
+      reject(new Error(reason));
+    }
+
+    pending.clear();
+  };
 
   await new Promise((resolve, reject) => {
     socket.addEventListener("open", resolve, { once: true });
@@ -141,6 +161,8 @@ export async function connectCdp(url, deps = {}) {
       { once: true },
     );
   });
+
+  socket.addEventListener("close", () => failAllPending("The Chromium debugger connection closed unexpectedly"));
 
   socket.addEventListener("message", (event) => {
     let message;
@@ -174,6 +196,8 @@ export async function connectCdp(url, deps = {}) {
      * session rather than the browser itself.
      */
     send(method, params = {}, sessionId) {
+      if (closedReason) return Promise.reject(new Error(`${closedReason} (while sending ${method})`));
+
       const id = nextId++;
 
       return new Promise((resolve, reject) => {
@@ -183,7 +207,17 @@ export async function connectCdp(url, deps = {}) {
         }, commandTimeoutMs);
 
         pending.set(id, { resolve, reject, timer });
-        socket.send(JSON.stringify(sessionId ? { id, method, params, sessionId } : { id, method, params }));
+
+        try {
+          socket.send(JSON.stringify(sessionId ? { id, method, params, sessionId } : { id, method, params }));
+        } catch (error) {
+          // The executor's rejection alone would leave the timer armed and the
+          // pending entry behind, holding the event loop open for the whole
+          // timeout after a failure.
+          clearTimeout(timer);
+          pending.delete(id);
+          throw error;
+        }
       });
     },
     /** Subscribe to unsolicited protocol events; returns an unsubscribe. */
@@ -197,12 +231,7 @@ export async function connectCdp(url, deps = {}) {
       };
     },
     close() {
-      for (const { reject, timer } of pending.values()) {
-        clearTimeout(timer);
-        reject(new Error("CDP connection closed while the command was in flight"));
-      }
-
-      pending.clear();
+      failAllPending("CDP connection closed while the command was in flight");
       socket.close();
     },
   };

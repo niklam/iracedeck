@@ -19,6 +19,11 @@
         "type": 302
       },
       {
+        "source": "/docs/features/settings-window",
+        "destination": "/docs/getting-started/settings",
+        "type": 301
+      },
+      {
         "source": "/docs/actions/driving/ai-spotter-controls",
         "destination": "/docs/actions/audio-voice/ai-spotter-controls",
         "type": 301
