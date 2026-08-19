@@ -70,7 +70,9 @@ export interface SettingsChannelPublisher {
    * `_warnings` banner explaining why the settings window will not open would
    * otherwise sit in the plugin's own file, read by nobody. Deduped like
    * `publish`, and superseded by the real thing if a later "Open Settings"
-   * brings the server up after all.
+   * brings the server up after all — never the other way round: once a real
+   * channel has been mirrored this is ignored, since sending it would strip
+   * that channel back off the host copy.
    */
   publishUnavailable(): void;
 }
@@ -88,6 +90,20 @@ export function createSettingsChannelPublisher(deps: SettingsChannelPublisherDep
   /** Both entry points differ only in whether a channel goes into the mirror. */
   function mirrorToHost(channel: SettingsChannel | undefined): void {
     const key = keyOf(channel);
+
+    // A channel-less mirror can only ever ADD to what the host knows — the
+    // store, minus a channel there is none of. Once a REAL channel has gone
+    // out, sending one would take it away again and drop every Property
+    // Inspector that bootstraps afterwards onto the fallback path for the rest
+    // of the run. Today's plugins cannot call it in that order (the startup
+    // `ensureStarted()` settles exactly one way), but this is a public API and
+    // that failure would be silent and total, so it is refused here rather
+    // than left to every caller's ordering.
+    if (channel === undefined && mirrored !== undefined && mirrored !== NO_CHANNEL_KEY) {
+      deps.logger.debug("Channel-less mirror skipped: a live settings channel is already mirrored");
+
+      return;
+    }
 
     if (announced !== key) {
       announced = key;

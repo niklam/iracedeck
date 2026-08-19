@@ -53,7 +53,7 @@ To clear either one:
 1. **Restart your deck software.** Both conditions are re-checked on every start and on every click of the button, so a banner whose cause has gone disappears on its own — it is a live status, not a dismissible message.
 2. **Check your firewall or security software** for a rule blocking iRaceDeck, if it is the first banner.
 
-Each banner also names the full path to your settings file. It is plain text, so you can back it up by copying it, or edit it by hand as a last resort — but **close your deck software first**: while iRaceDeck is running it holds its own copy of your settings and will overwrite hand edits when it next saves.
+Whichever of the two failures you hit, its banner also names the full path to your settings file. It is plain text, so you can back it up by copying it, or edit it by hand as a last resort — but **close your deck software first**: while iRaceDeck is running it holds its own copy of your settings and will overwrite hand edits when it next saves.
 
 ## Where Your Settings Are Stored
 

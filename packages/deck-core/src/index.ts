@@ -335,7 +335,7 @@ export {
 
 // Key binding utilities
 export { formatKeyBinding, parseKeyBinding, parseBinding } from "./key-binding-utils.js";
-export { setWarning, clearWarning, type PiWarning, type PiWarningLevel } from "./pi-warnings.js";
+export { setWarning, clearWarning, reconcileWarnings, type PiWarning, type PiWarningLevel } from "./pi-warnings.js";
 
 // Setup-name mismatch warning (issue #625)
 export {

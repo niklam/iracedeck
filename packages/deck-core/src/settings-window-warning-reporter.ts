@@ -13,7 +13,7 @@
  * later. The evaluator stays the single decision point — set or clear is read
  * off its result, never re-derived from the status here.
  */
-import { clearWarning, setWarning } from "./pi-warnings.js";
+import { reconcileWarnings } from "./pi-warnings.js";
 import { evaluateSettingsWindowWarnings, settingsWindowWarningScope } from "./settings-window-warning.js";
 import type { SettingsWindowStatus } from "./settings-window.js";
 
@@ -25,9 +25,12 @@ export interface SettingsWindowWarningReporterOptions {
 /**
  * Create the controller's `onStatus` handler. The banners are state-driven:
  * each report reconciles the records its stage speaks for against what the
- * evaluator says should be showing, so a condition that has gone clears itself. A success with nothing posted writes nothing — both
- * `setWarning` and `clearWarning` are no-ops when they would not change the
- * record, so this never churns global settings.
+ * evaluator says should be showing, so a condition that has gone clears
+ * itself. A failed start posts TWO records, so the reconcile is one
+ * `reconcileWarnings` call rather than a `clearWarning`/`setWarning` per id:
+ * each of those is a full global-settings write, and this runs at the moment
+ * the plugin has just failed to start a service. A report that changes nothing
+ * writes nothing.
  */
 export function createSettingsWindowWarningReporter(
   options: SettingsWindowWarningReporterOptions,
@@ -35,14 +38,10 @@ export function createSettingsWindowWarningReporter(
   return (status) => {
     const warnings = evaluateSettingsWindowWarnings(status, { storePath: options.getStorePath() });
 
-    // Reconcile the scope this status speaks for: anything the evaluator did
-    // not return is no longer true and goes. Scoping is what keeps an
-    // open-stage report from clearing the page-wide error, which stays accurate
-    // whatever one press did.
-    for (const id of settingsWindowWarningScope(status.stage)) {
-      if (!warnings.some((w) => w.id === id)) clearWarning(id);
-    }
-
-    for (const warning of warnings) setWarning(warning.id, warning.level, warning.message);
+    // Reconcile only the scope this status speaks for: anything the evaluator
+    // did not return within it is no longer true and goes, and everything
+    // outside it — other producers, and the page-wide error when only one
+    // press failed — is left exactly as it was.
+    reconcileWarnings(settingsWindowWarningScope(status.stage), warnings);
   };
 }

@@ -54,6 +54,13 @@ export const SETTINGS_WINDOW_SERVER_FAILURE_MESSAGE =
 /**
  * Server is fine; the chromeless app window AND the default-browser tab
  * fallback both failed — i.e. no browser on the machine would open the page.
+ *
+ * Rarely reachable by construction, and deliberately kept anyway (#1005): the
+ * host openers resolve on send rather than on display, so the ordinary
+ * no-browser case is indistinguishable from success and this fires only when
+ * the opener itself rejects. It is a defensive net — correct whenever it does
+ * appear, and not a guarantee that a window which failed to appear is
+ * explained. See `openUrl` in `settings-window-launcher.ts`.
  */
 export const SETTINGS_WINDOW_OPEN_FAILURE_MESSAGE =
   "iRaceDeck could not open the Settings window. " +

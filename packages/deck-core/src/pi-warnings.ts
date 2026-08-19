@@ -81,3 +81,38 @@ export function clearWarning(id: string): void {
 
   updateGlobalSettings({ [WARNINGS_KEY]: JSON.stringify(next) });
 }
+
+/**
+ * Reconcile one producer's whole family of ids in a SINGLE write: every id in
+ * `scope` is dropped, then everything in `warnings` is appended. Records
+ * outside `scope` are untouched, so producers still coexist.
+ *
+ * A producer whose condition raises several banners at once (the settings
+ * window's page-wide error plus its button note, #1005) would otherwise call
+ * `setWarning` once per record, and every one of those is a full
+ * `updateGlobalSettings` — a store persist plus a synchronous fan-out to every
+ * `onGlobalSettingsChange` listener in the plugin. Reconciling first and
+ * writing once keeps that to one. Like its single-record siblings it skips the
+ * write entirely when the outcome is what is already stored.
+ */
+export function reconcileWarnings(scope: readonly string[], warnings: readonly PiWarning[]): void {
+  const list = readWarnings();
+  const next = [...list.filter((w) => !scope.includes(w.id)), ...warnings.map((w) => ({ ...w }))];
+
+  // Compared by CONTENT, not by array order: the reconciled list moves this
+  // producer's records to the end, so an order-sensitive check would rewrite
+  // the setting every time another producer happened to post after us, for a
+  // set of banners that had not changed at all.
+  if (sameRecords(list, next)) return;
+
+  updateGlobalSettings({ [WARNINGS_KEY]: JSON.stringify(next) });
+}
+
+function sameRecords(a: PiWarning[], b: PiWarning[]): boolean {
+  if (a.length !== b.length) return false;
+
+  const key = (list: PiWarning[]): string =>
+    JSON.stringify([...list].sort((x, y) => x.id.localeCompare(y.id)).map((w) => [w.id, w.level, w.message]));
+
+  return key(a) === key(b);
+}

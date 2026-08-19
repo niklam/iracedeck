@@ -55,4 +55,19 @@ describe("settings-window warning id (#1005)", () => {
   it("is the id the auto-injected top strip excludes, so the banner never renders twice", () => {
     expect(read("head-common.ejs")).toContain(`'except', '${SETTINGS_WINDOW_OPEN_WARNING_ID}'`);
   });
+
+  /**
+   * The top strip is injected only when the page has no `ird-warnings[data-auto]`
+   * yet. `data-auto` is what makes that guard specific: `open-settings.ejs` now
+   * puts a second, filtered `ird-warnings` in every PI body, and an unqualified
+   * `querySelector('ird-warnings')` would match THAT one and skip injecting the
+   * strip — losing every page-wide warning (elevation mismatch, setup names,
+   * the settings-service error) on all 36 pages at once. Nothing else fails
+   * loudly if the marker is dropped from either side.
+   */
+  it("marks the auto-injected strip so the button's banner cannot suppress it", () => {
+    expect(read("head-common.ejs")).toContain("ird-warnings[data-auto]");
+    expect(read("head-common.ejs")).toContain("'data-auto'");
+    expect(read("open-settings.ejs")).not.toContain("data-auto");
+  });
 });

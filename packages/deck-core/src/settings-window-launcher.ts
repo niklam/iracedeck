@@ -33,7 +33,22 @@ export interface SettingsWindowLaunchInput {
   spawnApp: (browserPath: string, url: string, bounds?: SettingsWindowBounds) => void | Promise<void>;
   /** Where the user last left the window, if known. */
   bounds?: SettingsWindowBounds;
-  /** The host's own URL opener — the fallback. */
+  /**
+   * The host's own URL opener — the fallback.
+   *
+   * Note what its resolution does and does not mean (#1005): every adapter
+   * resolves once the command has been SENT, not once a page has appeared —
+   * Elgato's on the WebSocket write, Mirabox's and Ulanzi's fire-and-forget. No
+   * host protocol reports whether a browser actually opened, so this function
+   * returning `"browser-tab"` is "handed off", not "displayed". A machine with
+   * no usable browser therefore looks like a success from here, and the
+   * open-failure warning banner it feeds is a DEFENSIVE net for the case where
+   * the opener itself rejects (a dead host socket, say) rather than a reliable
+   * detector of "nothing opened". Detecting the latter would need a signal that
+   * does not exist; do not add a proxy for it — falling back to a normal
+   * browser tab is a supported, working path, so treating "no Chromium found"
+   * as a failure would warn on machines where everything is fine.
+   */
   openUrl: (url: string) => Promise<void>;
 }
 

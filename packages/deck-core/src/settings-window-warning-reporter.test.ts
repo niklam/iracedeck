@@ -114,6 +114,27 @@ describe("createSettingsWindowWarningReporter", () => {
     );
   });
 
+  it("posts both banners in a SINGLE global-settings write", () => {
+    // Each write is a store persist plus a synchronous fan-out to every
+    // onGlobalSettingsChange listener, and this runs at the moment the plugin
+    // has just failed to start a service.
+    const report = createSettingsWindowWarningReporter({ getStorePath: () => undefined });
+
+    report({ stage: "server", ok: false, error: new Error("EADDRINUSE") });
+
+    expect(updateSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("writes nothing when the same failure is reported again", () => {
+    const report = createSettingsWindowWarningReporter({ getStorePath: () => undefined });
+
+    report({ stage: "server", ok: false, error: new Error("EADDRINUSE") });
+    updateSpy.mockClear();
+    report({ stage: "server", ok: false, error: new Error("EADDRINUSE") });
+
+    expect(updateSpy).not.toHaveBeenCalled();
+  });
+
   it("writes nothing when a success arrives with no banner posted", () => {
     const report = createSettingsWindowWarningReporter({ getStorePath: () => undefined });
 

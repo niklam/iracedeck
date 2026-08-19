@@ -23,10 +23,21 @@
   from deck-core's SETTINGS_WINDOW_OPEN_WARNING_ID (this bundle is browser code
   and cannot import it); `settings-window-constants.test.ts` guards the pair.
 
+  Banner and button share ONE outer block, and `extraClass` goes on that block
+  rather than on the button's own wrapper. `.ird-section-footer` draws the
+  divider that closes the Key Bindings section with a `border-top`, so putting
+  the banner outside the block would render it ABOVE that rule — reading as
+  the tail of the key-bindings list, with a horizontal line between it and the
+  button it explains. The button wrapper also centres its content, which is
+  right for a button and wrong for a paragraph of warning text, so the banner
+  stays a sibling of that wrapper rather than a child of it.
+
   Parameters:
-    - extraClass (String, optional) — appended to the wrapper's class list.
+    - extraClass (String, optional) — class list for the outer block.
 %>
-<ird-warnings only="settings-window-open"></ird-warnings>
-<div class="ird-open-settings<% if (locals.extraClass) { %> <%= extraClass %><% } %>">
-  <ird-open-settings></ird-open-settings>
+<div<% if (locals.extraClass) { %> class="<%= extraClass %>"<% } %>>
+  <ird-warnings only="settings-window-open"></ird-warnings>
+  <div class="ird-open-settings">
+    <ird-open-settings></ird-open-settings>
+  </div>
 </div>
