@@ -871,11 +871,12 @@ onGlobalSettingsChange((settings) => {
     pushAudioDevicesIfChanged();
   }
 
-  // Apply per-feature "On startup" defaults (issue #482). Overrides any
-  // runtime value the previous session's button toggles persisted. The
-  // Pit Crew action's own onGlobalSettingsChange listener picks up the
-  // echoed runtime keys and re-applies them to the audio buses / radar
-  // engine, so no further wiring is needed here.
+  // One-shot startup migrations and the per-feature startup policies
+  // (issue #1007, replacing the "On startup" defaults of #482 — a policy of
+  // `remember-last` now leaves the previous session's gate alone instead of
+  // overriding it). The Pit Crew action's own onGlobalSettingsChange listener
+  // picks up the echoed runtime keys and re-applies them to the audio buses /
+  // radar engine, so no further wiring is needed here.
   //
   // First step is the issue #515 migration: drop the four pre-rename Pit
   // Crew enable keys from persisted storage. Idempotent — once they're

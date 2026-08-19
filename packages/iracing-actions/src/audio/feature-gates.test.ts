@@ -111,6 +111,17 @@ describe("feature gates", () => {
       expect(hoisted.playOnChannel).not.toHaveBeenCalled();
     });
 
+    it("still flips the gate when no voice is available (acknowledgment skipped silently)", () => {
+      // `Once`, not `mockReturnValue` — vi.clearAllMocks() does not restore an
+      // overridden return value, so it would leak into the next test.
+      hoisted.resolveActiveRaceEngineerVoice.mockReturnValueOnce(null as never);
+
+      expect(toggleRaceEngineerFeature(logger)).toBe(true);
+
+      expect(hoisted.updateGlobalSettings).toHaveBeenCalledWith({ pitCrewRaceEngineerEnabled: true });
+      expect(hoisted.playOnChannel).not.toHaveBeenCalled();
+    });
+
     it("does not double-apply when an armed listener already handled the write", () => {
       armFeatureGateSync();
       // Reproduce the plugin wiring: updateGlobalSettings fires
@@ -200,6 +211,22 @@ describe("feature gates", () => {
 
       expect(hoisted.playOnChannel).not.toHaveBeenCalled();
       expect(hoisted.setRadarEnabled).not.toHaveBeenCalled();
+    });
+
+    it("swallows an audio fault and still syncs the other gate", () => {
+      // This runs inside updateGlobalSettings' listener fan-out, which has no
+      // try/catch and saves the cache only after it returns — a throw escaping
+      // here would abort the remaining listeners and lose the gate write.
+      hoisted.setGlobalSettings(withVoices({ pitCrewRaceEngineerEnabled: true }));
+      armFeatureGateSync();
+      hoisted.stopRaceEngineerScenarios.mockImplementationOnce(() => {
+        throw new Error("audio engine unavailable");
+      });
+      hoisted.setGlobalSettings(withVoices({ pitCrewRaceEngineerEnabled: false, pitCrewRadarEnabled: true }));
+
+      expect(() => syncFeatureGates(logger)).not.toThrow();
+
+      expect(hoisted.setRadarEnabled).toHaveBeenCalledWith(true);
     });
   });
 });

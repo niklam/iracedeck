@@ -4,8 +4,9 @@
   output device, volumes and their Test buttons.
   The per-callout opt-ins AND the tuning sliders (gap alert, spotter
   still-there, fuel margin, corner lead) live in race-engineer-callouts.ejs.
-  Emits items only — pit-crew.ejs wraps them in its "Pit Crew Settings"
-  accordion, the settings window in a card.
+  Emits items only — the settings window wraps them in a card. Since #1003 it
+  is the sole consumer: the Pit Crew Property Inspector no longer renders any
+  of these plugin-global controls.
 %>
 <%- (
 '<sdpi-item label="Race Engineer">' +

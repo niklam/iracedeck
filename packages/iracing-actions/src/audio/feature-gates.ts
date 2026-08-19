@@ -122,12 +122,32 @@ export function toggleRadarFeature(logger: ILogger): boolean {
  * `onGlobalSettingsChange`, so a gate written by anything other than the
  * toggle helpers — the settings window's live checkboxes — gets the same side
  * effects a key press produces.
+ *
+ * Faults are contained. This runs inside `updateGlobalSettings`' listener
+ * fan-out, which has no try/catch and persists the cache only AFTER the
+ * fan-out returns — so an audio fault thrown from here (a dead output device,
+ * an engine not yet initialised) would abort every later listener AND lose the
+ * very gate flip that triggered it. Same reasoning as the app monitor wrapping
+ * `setReconnectEnabled(false)`: a subscriber must never swallow the write it
+ * was notified about.
  */
 export function syncFeatureGates(logger: ILogger): void {
   if (!armed) return;
 
-  applyRaceEngineerGate(isRaceEngineerEnabled(), logger);
-  applyRadarGate(isRadarEnabled());
+  // Guarded per gate, not once around both: the two features are independent,
+  // so a Race Engineer fault must not leave the radar engine unsynced.
+  guard(() => applyRaceEngineerGate(isRaceEngineerEnabled(), logger), logger);
+  guard(() => applyRadarGate(isRadarEnabled()), logger);
+}
+
+/** Run `apply`, logging and swallowing anything it throws. */
+function guard(apply: () => void, logger: ILogger): void {
+  try {
+    apply();
+  } catch (error: unknown) {
+    logger.error("Applying a feature-gate change failed");
+    logger.debug(String(error));
+  }
 }
 
 /**

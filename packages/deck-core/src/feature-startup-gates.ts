@@ -66,8 +66,13 @@ export function applyStartupFeatureGates(logger?: ILogger): void {
  * fresh install (nothing stored) keeps the `remember-last` default.
  *
  * Idempotent by absence — once the retired key is gone there is nothing to
- * migrate, so a later user choice can never be clobbered and no marker key is
- * needed. The retired keys are deliberately NOT in `GlobalSettingsSchema`
+ * migrate, so no marker key is needed and repeated starts of THIS build can
+ * never clobber a later user choice. The one path that still can is a version
+ * round-trip: running a pre-#1007 build again re-persists its
+ * `…EnabledOnStartup` schema default (`false`), which the next upgrade then
+ * reads as an explicit `always-off`. Accepted — that downgrade already resets
+ * these gates by the same mechanism, and guarding it would cost a permanent
+ * marker key. The retired keys are deliberately NOT in `GlobalSettingsSchema`
  * anymore: while a key is schema-backed the parsed cache always holds at
  * least its default, so a stored `false` would be indistinguishable from a
  * defaulted one and `deleteGlobalSettings` could not remove it.

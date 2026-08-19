@@ -14,8 +14,8 @@ const hoisted = vi.hoisted(() => {
   const onChannelComplete = vi.fn();
   const getAudio = vi.fn(() => ({ setBusVolume, playOnChannel, onChannelComplete }));
 
-  const setRadarEnabled = vi.fn();
-  const stopRaceEngineerScenarios = vi.fn();
+  // audio-volume (imported transitively) reads this; the master-gate toggles
+  // that used the rest of this module moved to feature-gates.ts (#1007).
   const isBackgroundTestInFlight = vi.fn(() => false);
 
   let globalSettings: Record<string, unknown> = {};
@@ -30,8 +30,6 @@ const hoisted = vi.hoisted(() => {
     playOnChannel,
     onChannelComplete,
     getAudio,
-    setRadarEnabled,
-    stopRaceEngineerScenarios,
     isBackgroundTestInFlight,
     updateGlobalSettings,
     getGlobalSettings,
@@ -44,8 +42,6 @@ const hoisted = vi.hoisted(() => {
 
 vi.mock("@iracedeck/audio-scenarios/pit-crew", () => ({
   isBackgroundTestInFlight: hoisted.isBackgroundTestInFlight,
-  setRadarEnabled: hoisted.setRadarEnabled,
-  stopRaceEngineerScenarios: hoisted.stopRaceEngineerScenarios,
 }));
 
 vi.mock("@iracedeck/audio-service", () => ({
