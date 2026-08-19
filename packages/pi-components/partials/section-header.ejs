@@ -7,7 +7,5 @@
     from `key-bindings-section.ejs`, which renders it itself so it can close the
     section with it rather than sit under the heading (#1003). %>
 <% if (locals.openSettings) { %>
-<div class="ird-open-settings">
-  <ird-open-settings></ird-open-settings>
-</div>
+<%- include('open-settings') %>
 <% } %>

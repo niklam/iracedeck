@@ -478,10 +478,13 @@ export {
 // as a PI warning, so an unreachable settings window is diagnosable rather than
 // a dead button (issue #1005)
 export {
-  evaluateSettingsWindowWarning,
+  evaluateSettingsWindowWarnings,
+  SETTINGS_WINDOW_OPEN_BLOCKED_MESSAGE,
   SETTINGS_WINDOW_OPEN_FAILURE_MESSAGE,
   SETTINGS_WINDOW_SERVER_FAILURE_MESSAGE,
-  SETTINGS_WINDOW_WARNING_ID,
+  SETTINGS_WINDOW_OPEN_WARNING_ID,
+  SETTINGS_WINDOW_SERVER_WARNING_ID,
+  settingsWindowWarningScope,
   type SettingsWindowWarningContext,
 } from "./settings-window-warning.js";
 export {

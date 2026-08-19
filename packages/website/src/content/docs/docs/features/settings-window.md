@@ -38,13 +38,15 @@ Bindings edited in either place are the same settings: on Stream Deck and Mirabo
 
 ## If the Window Doesn't Open
 
-Clicking **Open iRaceDeck Settings** should always produce a window. If it doesn't, iRaceDeck now tells you why: a banner appears at the top of every iRaceDeck Property Inspector describing what failed. There are two, and they mean different things.
+Clicking **Open iRaceDeck Settings** should always produce a window. If it doesn't, iRaceDeck tells you why: a banner appears in every iRaceDeck Property Inspector describing what failed. There are two, they mean different things, and each shows up where it belongs.
 
-**"iRaceDeck could not start its settings service."** The more likely of the two, shown as an error. The window is a page iRaceDeck serves to itself on your own PC, so it needs a local connection — and something on this machine stopped it opening. A firewall or security suite blocking local connections is the usual cause; another program already occupying the port is the other.
+**"iRaceDeck could not start its settings service."** The more likely of the two, shown as a red error banner at the top of the panel — because this one is not just about the button. The window is a page iRaceDeck serves to itself on your own PC, so it needs a local connection — and something on this machine stopped it opening. A firewall or security suite blocking local connections is the usual cause; another program already occupying the port is the other.
 
 This one has a consequence worth knowing about, which is why the banner spells it out: **while it lasts, settings changed in a Property Inspector do not take effect either** — key bindings included. That same local connection is how a Property Inspector reaches the plugin. Without it a panel still opens and still shows your settings, and a change you make there still looks saved, but it never arrives. Take the banner as "iRaceDeck is not accepting settings changes right now" rather than only "the window won't open". What you configured earlier is untouched and your keys keep working normally.
 
-**"iRaceDeck could not open the Settings window."** Shown as a warning, and much less serious. The service is running fine — iRaceDeck simply could not get any browser on the PC to display the page. This one is rare: it means the chromeless app window in Edge or Chrome _and_ the fallback to your default browser both failed. Everything else is unaffected, Property Inspectors included, so settings you change there apply as usual.
+The **Open iRaceDeck Settings** button is marked as unusable at the same time, with a short note directly above it — _"The Settings window cannot open while iRaceDeck's settings service is not running. See the error at the top of this panel."_ — so you can see the button will not work before pressing it, without having scrolled back up to read the error.
+
+**"iRaceDeck could not open the Settings window."** Shown as a yellow warning directly above the button you just pressed, and much less serious. The service is running fine — iRaceDeck simply could not get any browser on the PC to display the page. This one is rare: it means the chromeless app window in Edge or Chrome _and_ the fallback to your default browser both failed. Everything else is unaffected, Property Inspectors included, so settings you change there apply as usual.
 
 To clear either one:
 

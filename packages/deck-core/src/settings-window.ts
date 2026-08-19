@@ -171,6 +171,15 @@ export function createSettingsWindowController(options: SettingsWindowController
         // attached to support requests.
         options.logger.debug(`Settings window origin: ${new URL(started.url).origin}`);
 
+        // BEFORE onStarted, not after (#1005). onStarted is where the plugins
+        // publish the once-per-start deck-host mirror, and that mirror is a
+        // snapshot of the settings cache — while this report is what clears a
+        // settings-window banner the PREVIOUS run persisted. Reporting second
+        // would mirror that stale banner to the host and never correct it (the
+        // mirror goes out once), leaving a PI on the host fallback path warning
+        // about a service that is up.
+        report({ stage: "server", ok: true });
+
         // A hook fault must not turn a started server into a rejected start
         // (every awaiting caller would see a failure for a server that is up).
         try {
@@ -179,8 +188,6 @@ export function createSettingsWindowController(options: SettingsWindowController
           options.logger.error("Settings window onStarted hook failed");
           options.logger.debug(String(error));
         }
-
-        report({ stage: "server", ok: true });
 
         return started;
       },
@@ -211,11 +218,12 @@ export function createSettingsWindowController(options: SettingsWindowController
     },
 
     async open() {
-      // Outside the try below on purpose: a rejection here is a SERVER
-      // failure, already logged and reported as such by ensureServer().
-      // Reporting it again as an open failure would replace "the settings
-      // service could not start" with "no browser would open the page" — the
-      // wrong cause, and the wrong advice (#1005).
+      // Outside the try below on purpose: a rejection here is a SERVER failure,
+      // already logged and reported as such by ensureServer() — which is what
+      // raises BOTH the page-wide error and the note above the button, since a
+      // dead service determines the state of both (#1005). Reporting it again
+      // as an open failure would say "no browser would open the page", which is
+      // the wrong cause and the wrong advice.
       const started = await ensureServer();
 
       let launch: SettingsWindowLaunch;

@@ -14,7 +14,7 @@
  * off its result, never re-derived from the status here.
  */
 import { clearWarning, setWarning } from "./pi-warnings.js";
-import { evaluateSettingsWindowWarning, SETTINGS_WINDOW_WARNING_ID } from "./settings-window-warning.js";
+import { evaluateSettingsWindowWarnings, settingsWindowWarningScope } from "./settings-window-warning.js";
 import type { SettingsWindowStatus } from "./settings-window.js";
 
 export interface SettingsWindowWarningReporterOptions {
@@ -23,9 +23,9 @@ export interface SettingsWindowWarningReporterOptions {
 }
 
 /**
- * Create the controller's `onStatus` handler. The banner is state-driven:
- * every failure replaces whatever the previous state was, and the first
- * success clears it. A success with nothing posted writes nothing — both
+ * Create the controller's `onStatus` handler. The banners are state-driven:
+ * each report reconciles the records its stage speaks for against what the
+ * evaluator says should be showing, so a condition that has gone clears itself. A success with nothing posted writes nothing — both
  * `setWarning` and `clearWarning` are no-ops when they would not change the
  * record, so this never churns global settings.
  */
@@ -33,12 +33,16 @@ export function createSettingsWindowWarningReporter(
   options: SettingsWindowWarningReporterOptions,
 ): (status: SettingsWindowStatus) => void {
   return (status) => {
-    const warning = evaluateSettingsWindowWarning(status, { storePath: options.getStorePath() });
+    const warnings = evaluateSettingsWindowWarnings(status, { storePath: options.getStorePath() });
 
-    if (warning) {
-      setWarning(warning.id, warning.level, warning.message);
-    } else {
-      clearWarning(SETTINGS_WINDOW_WARNING_ID);
+    // Reconcile the scope this status speaks for: anything the evaluator did
+    // not return is no longer true and goes. Scoping is what keeps an
+    // open-stage report from clearing the page-wide error, which stays accurate
+    // whatever one press did.
+    for (const id of settingsWindowWarningScope(status.stage)) {
+      if (!warnings.some((w) => w.id === id)) clearWarning(id);
     }
+
+    for (const warning of warnings) setWarning(warning.id, warning.level, warning.message);
   };
 }

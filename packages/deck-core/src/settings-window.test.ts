@@ -377,6 +377,30 @@ describe("createSettingsWindowController.onStatus (#1005)", () => {
     ]);
   });
 
+  it("reports the server success BEFORE onStarted, so the host mirror is built from settings the report has updated", async () => {
+    // onStarted is where the plugins publish the once-per-start deck-host
+    // mirror, and that mirror is a snapshot of the settings cache. The status
+    // report clears any stale settings-window banner the previous run left in
+    // the store, so reporting after the publish would mirror last run's banner
+    // to the host and never correct it — a PI on the host fallback path would
+    // show a warning about a service that is up.
+    const order: string[] = [];
+    const controller = createSettingsWindowController({
+      renderPage: () => PAGE,
+      findBrowser: () => "C:/edge/msedge.exe",
+      spawnApp: vi.fn(),
+      openUrl: vi.fn(async (_url: string) => {}),
+      onStatus: (status) => order.push(`status:${status.stage}:${String(status.ok)}`),
+      onStarted: () => order.push("started"),
+      logger: silentLogger,
+    });
+    teardown = () => controller.close();
+
+    await controller.ensureStarted();
+
+    expect(order).toEqual(["status:server:true", "started"]);
+  });
+
   it("reports a failed server start, and still rejects to the caller", async () => {
     const error = new Error("EADDRINUSE");
     const { controller, onStatus } = statusSetup({ startServer: () => Promise.reject(error) });
@@ -393,8 +417,9 @@ describe("createSettingsWindowController.onStatus (#1005)", () => {
 
     await expect(controller.open()).rejects.toThrow("EADDRINUSE");
 
-    // A stray `open` failure here would flip the banner from "server is down"
-    // (the real cause) to "no browser would open it" — the wrong advice.
+    // One report, not two: the server-stage report already determines BOTH
+    // banners for this condition. A stray `open` failure here would say "no
+    // browser would open the page" — the wrong cause, and the wrong advice.
     expect(onStatus.mock.calls.map(([status]) => status.stage)).toEqual(["server"]);
   });
 

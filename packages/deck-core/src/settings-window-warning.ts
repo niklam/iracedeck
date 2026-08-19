@@ -12,11 +12,12 @@
  * imported for typing only) and all three plugins share the exact same
  * wording — the same shape as `evaluateElevationWarning`.
  *
- * ONE warning id covers both failures rather than two. They are mutually
- * exclusive by construction — `open()` starts the server first, so a dead
- * server fails at the server stage and never reaches the launch — and a single
- * state-driven record means the user can never be shown two banners for one
- * broken thing, with the later state simply replacing the earlier one.
+ * Two ids, because they belong in different parts of a Property Inspector and
+ * the placement filters are keyed by id: the page-wide `error` renders in the
+ * top strip, the button-scoped `warning` directly above the Open Settings
+ * button. They are NOT alternatives — a dead service raises both at once, one
+ * explaining the page and one marking the button unusable — so this returns a
+ * LIST, and the caller reconciles it against `settingsWindowWarningScope`.
  *
  * The messages intentionally carry NO leading emoji — the `ird-warnings`
  * banner renders a per-level icon itself, so adding one here would double it.
@@ -26,7 +27,11 @@
 import type { PiWarning } from "./pi-warnings.js";
 import type { SettingsWindowStatus } from "./settings-window.js";
 
-export const SETTINGS_WINDOW_WARNING_ID = "settings-window";
+/** Page-wide: the service never bound. Rendered in the PI's top strip. */
+export const SETTINGS_WINDOW_SERVER_WARNING_ID = "settings-window-server";
+
+/** Button-scoped: the service is fine, nothing would open the page. Rendered above the Open Settings button. */
+export const SETTINGS_WINDOW_OPEN_WARNING_ID = "settings-window-open";
 
 /**
  * Server never bound. Nothing can be served, so there is no fallback UI to
@@ -55,6 +60,39 @@ export const SETTINGS_WINDOW_OPEN_FAILURE_MESSAGE =
   "The settings service is running, but no browser on this PC would open the page. " +
   "Restart your deck software to try again.";
 
+/**
+ * Shown above the button while the service is down, so it is visibly unusable
+ * BEFORE a press is wasted on it. Deliberately short and path-free: the
+ * page-wide error is on screen at the same time and already carries the cause,
+ * the advice and the settings-file path, so repeating any of it would put the
+ * same long text on the page twice — which is what splitting the two
+ * placements exists to avoid.
+ *
+ * It cannot be raised by the press itself, which is the tempting design: with
+ * no service there is no loopback channel, so the only thing that ever reaches
+ * a Property Inspector is the plugin's once-per-start deck-host mirror. A
+ * banner raised after that mirror has gone out has no route to the page at all.
+ */
+export const SETTINGS_WINDOW_OPEN_BLOCKED_MESSAGE =
+  "The Settings window cannot open while iRaceDeck's settings service is not running. " +
+  "See the error at the top of this panel.";
+
+/**
+ * The records a status is entitled to speak for — everything it does NOT
+ * return within this scope should be cleared.
+ *
+ * A server-stage report speaks for both: a dead service decides the page-wide
+ * error AND the note above the button, and a healthy one retires whatever a
+ * previous press (or previous run — `_warnings` is persisted) left behind. An
+ * open-stage report speaks only for its own record; it must never clear the
+ * error, which stays accurate regardless of what any single press did.
+ */
+export function settingsWindowWarningScope(stage: SettingsWindowStatus["stage"]): readonly string[] {
+  return stage === "server"
+    ? [SETTINGS_WINDOW_SERVER_WARNING_ID, SETTINGS_WINDOW_OPEN_WARNING_ID]
+    : [SETTINGS_WINDOW_OPEN_WARNING_ID];
+}
+
 export interface SettingsWindowWarningContext {
   /**
    * The plugin's settings-file path, when known. Appended to the message so
@@ -65,17 +103,40 @@ export interface SettingsWindowWarningContext {
   storePath?: string | undefined;
 }
 
-export function evaluateSettingsWindowWarning(
+/**
+ * Every banner that should be showing as a result of this status, within the
+ * scope the status speaks for. Empty means "clear that scope".
+ *
+ * A failed server start yields TWO: the page-wide error, and the short note
+ * that marks the Open Settings button as unusable. One condition, two
+ * placements — the button lives a full scroll from the top strip in an action
+ * PI, so a user down there would otherwise press a button that does nothing and
+ * see no explanation anywhere near it.
+ */
+export function evaluateSettingsWindowWarnings(
   status: SettingsWindowStatus,
   context: SettingsWindowWarningContext,
-): PiWarning | null {
-  if (status.ok) return null;
+): PiWarning[] {
+  if (status.ok) return [];
 
-  const level = status.stage === "server" ? "error" : "warning";
-  const message =
-    status.stage === "server" ? SETTINGS_WINDOW_SERVER_FAILURE_MESSAGE : SETTINGS_WINDOW_OPEN_FAILURE_MESSAGE;
+  if (status.stage === "server") {
+    return [
+      {
+        id: SETTINGS_WINDOW_SERVER_WARNING_ID,
+        level: "error",
+        message: withStorePath(SETTINGS_WINDOW_SERVER_FAILURE_MESSAGE, context.storePath),
+      },
+      { id: SETTINGS_WINDOW_OPEN_WARNING_ID, level: "warning", message: SETTINGS_WINDOW_OPEN_BLOCKED_MESSAGE },
+    ];
+  }
 
-  return { id: SETTINGS_WINDOW_WARNING_ID, level, message: withStorePath(message, context.storePath) };
+  return [
+    {
+      id: SETTINGS_WINDOW_OPEN_WARNING_ID,
+      level: "warning",
+      message: withStorePath(SETTINGS_WINDOW_OPEN_FAILURE_MESSAGE, context.storePath),
+    },
+  ];
 }
 
 function withStorePath(message: string, storePath: string | undefined): string {

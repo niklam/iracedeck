@@ -258,8 +258,18 @@
   (function() {
     function injectWarnings() {
       if (!document.body) return;
-      if (document.querySelector('ird-warnings')) return;
+      if (document.querySelector('ird-warnings[data-auto]')) return;
       var el = document.createElement('ird-warnings');
+      // Marked so the guard above matches THIS strip only: `open-settings.ejs`
+      // places its own <ird-warnings> in the body, and an unqualified selector
+      // would see that one and skip injecting the top strip entirely (#1005).
+      el.setAttribute('data-auto', '');
+      // The settings-window OPEN failure has a dedicated home directly above
+      // the Open Settings button (see open-settings.ejs); excluding it here is
+      // what keeps it from rendering twice on the same page. Its sibling, the
+      // SERVER failure, is page-wide (nothing the PI changes reaches the
+      // plugin) and stays in this strip, so it is deliberately not listed.
+      el.setAttribute('except', 'settings-window-open');
       document.body.insertBefore(el, document.body.firstChild);
     }
     if (document.readyState === 'loading') {

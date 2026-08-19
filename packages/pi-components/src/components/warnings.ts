@@ -10,6 +10,19 @@
  *
  * Auto-injected at the top of every PI body by `head-common.ejs`, so no
  * per-template markup is required.
+ *
+ * Placement filters (#1005). A warning about one specific control belongs
+ * beside that control, not only in a strip the user has to scroll back up to
+ * find: the settings-window banner explains why *Open iRaceDeck Settings* did
+ * nothing, and that button sits at the BOTTOM of an action's Property
+ * Inspector. So an instance can narrow what it shows:
+ *
+ * - `only="a,b"`   — render just these ids (the instance above the button).
+ * - `except="a,b"` — render everything else (the auto-injected top strip).
+ *
+ * Used as complements, which is what stops a filtered warning appearing twice
+ * on one page. A warning with no dedicated home is named in neither list and
+ * still shows in the top strip, unchanged.
  */
 
 let styleInjected = false;
@@ -100,12 +113,27 @@ export class WarningsBanner extends HTMLElement {
     }
   }
 
+  /** Comma-separated id list from an attribute; empty when unset or blank. */
+  private idList(attribute: string): string[] {
+    return (this.getAttribute(attribute) ?? "")
+      .split(",")
+      .map((id) => id.trim())
+      .filter((id) => id !== "");
+  }
+
+  private applyPlacementFilters(warnings: WarningRecord[]): WarningRecord[] {
+    const only = this.idList("only");
+    const except = this.idList("except");
+
+    return warnings.filter((w) => (only.length === 0 || only.includes(w.id)) && !except.includes(w.id));
+  }
+
   private render(warnings: WarningRecord[]): void {
     if (!this.container) return;
 
     this.container.replaceChildren();
 
-    for (const w of warnings) {
+    for (const w of this.applyPlacementFilters(warnings)) {
       const row = document.createElement("div");
       row.className = `ird-warning ird-warning-${w.level}`;
 
