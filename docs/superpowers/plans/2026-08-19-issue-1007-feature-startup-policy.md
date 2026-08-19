@@ -21,7 +21,7 @@
 - Live gate keys, unchanged: `pitCrewRaceEngineerEnabled`, `pitCrewRadarEnabled`.
 - PI copy rule: the mode/label wording is fixed by the spec; supporting text uses the shared `ird-supporting-text` class, never an inline `style` attribute.
 - Run a single test file from the repo root: `pnpm exec vitest run <path>` (`pnpm --filter @iracedeck/iracing-actions test` silently no-ops — that package has no test script).
-- After any `GlobalSettingsSchema` change, verify with `pnpm build --force` (turbo caches `deck-core`).
+- After any `GlobalSettingsSchema` change, verify with `pnpm build:force` (turbo caches `deck-core`).
 - When verifying a build through a pipe, use `set -o pipefail` — `pnpm build | tail` returns tail's exit code.
 - Commit messages end with the session trailer:
   `Claude-Session: https://claude.ai/code/session_013DfEgcdKE8JrdCP1ReYc7X`
@@ -1147,7 +1147,7 @@ Delete the whole block from the comment `// Mirror "On startup" PI edits into th
 - [ ] **Step 6: Verify the three plugins compile**
 
 ```bash
-cd /c/Users/Niklas/Projects/iRaceDeck/ir-1007 && set -o pipefail && pnpm build --force 2>&1 | tail -30
+cd /c/Users/Niklas/Projects/iRaceDeck/ir-1007 && set -o pipefail && pnpm build:force 2>&1 | tail -30
 ```
 
 Expected: exit 0, all packages built. A `pitCrewRaceEngineerEnabledOnStartup does not exist` error means a plugin still references a retired key — fix it rather than re-adding the field.
@@ -1364,10 +1364,10 @@ Expected: exit 0 for both. Fix every warning, including any that predate this br
 - [ ] **Step 2: Full build**
 
 ```bash
-cd /c/Users/Niklas/Projects/iRaceDeck/ir-1007 && set -o pipefail && pnpm build --force 2>&1 | tail -30
+cd /c/Users/Niklas/Projects/iRaceDeck/ir-1007 && set -o pipefail && pnpm build:force 2>&1 | tail -30
 ```
 
-Expected: exit 0. `--force` matters: turbo caches `deck-core`, and a `GlobalSettingsSchema` change can otherwise pass on a stale cache. If a deck host (UlanziStudio / Stream Deck) is running it locks `iracing_native.node` and the build fails with EPERM — quit the host and retry.
+Expected: exit 0. `build:force` matters: turbo caches `deck-core` (and the root `build` script drops CLI args, so `pnpm build --force` silently still uses the cache), and a `GlobalSettingsSchema` change can otherwise pass on a stale cache. If a deck host (UlanziStudio / Stream Deck) is running it locks `iracing_native.node` and the build fails with EPERM — quit the host and retry.
 
 - [ ] **Step 3: Full test suite**
 
