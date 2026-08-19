@@ -271,7 +271,10 @@ clearWarning("elevation-mismatch");                         // remove by id
 
 Records are keyed by `id` so independent producers coexist. `setWarning` skips the write when an identical record already exists; `clearWarning` is a no-op when the id is absent. The `ird-warnings` PI web component (auto-injected by `head-common.ejs`) renders the array and prepends a per-level icon — so warning **messages must not start with their own emoji**. Banners are state-driven and not dismissible: a warning persists until its condition clears.
 
-Reference producer: the elevation-mismatch detector — deck-core's `createElevationCheckSubscriber` (wrapping `evaluateElevationWarning()` + the injected `getElevationStatus()`), wired in every plugin's `plugin.ts`.
+Reference producers, both in deck-core and both wired in every plugin's `plugin.ts`, and both following the same two-module split — a **pure** evaluator returning `PiWarning | null`, plus a thin adapter that is the only part touching the warning store:
+
+- **Elevation mismatch** (#610) — `createElevationCheckSubscriber` wrapping `evaluateElevationWarning()` + the injected `getElevationStatus()`.
+- **Unreachable settings window** (#1005) — `createSettingsWindowWarningReporter({ getStorePath })` wrapping `evaluateSettingsWindowWarning()`, wired as the settings-window controller's `onStatus` hook. Note the shape when a condition has several failure modes: the controller reports *what it tried and how it went* (`SettingsWindowStatus`) rather than deciding anything, because it is the only place that knows which stage failed — `open()` starts the server first, so it rejects both for a service that never bound and for a machine where no browser would open the page, and a caller's own `.catch` cannot tell those apart. The two modes are mutually exclusive, so they share **one** warning id whose level and message describe the current state (`error` for the dead service, `warning` for the failed open), cleared on the first success. Prefer one state-driven id over several ids whenever the conditions can't be true at once — the user should never see two banners for one broken thing.
 
 ## Version-upgrade changelog — `_lastSeenVersion` + `runVersionCheck` (#680, #742, #870, #901)
 

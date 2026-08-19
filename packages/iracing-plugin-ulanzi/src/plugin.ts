@@ -78,6 +78,7 @@ import {
   createSettingsChannelPublisher,
   createSettingsWindowCommandHandler,
   createSettingsWindowController,
+  createSettingsWindowWarningReporter,
   deleteGlobalSettings,
   evaluateSetupWarning,
   findChromiumBrowserOnThisMachine,
@@ -851,6 +852,12 @@ const settingsWindow = createSettingsWindowController({
   // The page can't probe SimHub itself (cross-origin, no CORS) — answer from the plugin's own view.
   simHub: { isReachable: isSimHubReachable, getRoles: () => getSimHub().getRoles() },
   onStarted: (channel) => settingsChannel.publish(channel),
+  // Surface a settings window the user cannot reach as a PI warning banner
+  // instead of leaving them with a button that does nothing (#1005). The
+  // controller is the only place that knows WHICH stage failed — a settings
+  // service that never bound (error) vs. a machine where no browser would
+  // open the page (warning) — and the banner clears as soon as one succeeds.
+  onStatus: createSettingsWindowWarningReporter({ getStorePath: () => settingsStore.path }),
   logger: settingsWindowLogger,
 });
 
@@ -937,15 +944,18 @@ onGlobalSettingsChange((settings) => {
     // failed startup bind followed by a successful "Open Settings"), and the
     // publisher is idempotent, so calling it here as well only ensures a
     // server that came up before the store was ready still gets mirrored.
-    // Two-arg then: a bind/firewall failure is logged as such and must not
-    // crash the plugin process (Node throws on an unobserved rejection);
-    // publish() logs its own faults and never throws.
+    // Two-arg then: a bind/firewall failure must not crash the plugin process
+    // (Node throws on an unobserved rejection). The controller logs it and
+    // raises the PI warning banner itself (#1005), so there is nothing left
+    // to do here but observe it; publish() logs its own faults and never throws.
     void settingsWindow.ensureStarted().then(
       (channel) => settingsChannel.publish(channel),
-      (error: unknown) => {
-        settingsWindowLogger.error("Settings server failed to start; the settings channel was not published");
-        settingsWindowLogger.debug(String(error));
-      },
+      // Mirror the store to the host WITHOUT a channel (#1005). With no server
+      // there is nothing for a Property Inspector to connect to, so every PI
+      // falls back to reading the deck host's copy — and this is the only write
+      // the plugin makes to it. Without this the warning banner the controller
+      // just raised would never leave the plugin's own settings file.
+      () => settingsChannel.publishUnavailable(),
     );
   }
 
@@ -1083,9 +1093,9 @@ initGlobalSettings(adapter, adapter.createLogger("GlobalSettings"), settingsStor
 migrateGlobalSettingsKeys(SETUP_CHASSIS_BINDING_KEY_RENAMES, adapter.createLogger("SettingsMigration"));
 
 adapter.onOpenSettingsRequest(() => {
-  void settingsWindow.open().catch((error: unknown) => {
-    settingsWindowLogger.error(`Failed to open settings window: ${String(error)}`);
-  });
+  // Logged and surfaced as a PI warning banner by the controller itself
+  // (#1005); observed here only so Node never sees an unobserved rejection.
+  void settingsWindow.open().catch(() => undefined);
 });
 
 // Initialize SimHub AFTER global settings so health check uses configured host/port
