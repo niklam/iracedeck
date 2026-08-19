@@ -28,6 +28,7 @@
 import type { ILogger } from "@iracedeck/logger";
 import { z } from "zod";
 
+import { DEFAULT_FEATURE_STARTUP_POLICY, FEATURE_STARTUP_POLICIES } from "./feature-startup-policy.js";
 import type { SettingsStore } from "./settings-store.js";
 import {
   DEFAULT_SETUP_WARNING_QUALIFYING_PATTERN,
@@ -222,25 +223,27 @@ export const GlobalSettingsSchema = z
     // every setting, not just this one.
     spotterStillThereSeconds: z.coerce.number().min(1).max(10).default(3).catch(3),
     /**
-     * Startup defaults for `pitCrewRaceEngineerEnabled` /
-     * `pitCrewRadarEnabled` (issue #482). On every plugin start, after the
-     * first global-settings arrival, the plugin copies these values into
-     * the runtime keys above — overriding whatever the user toggled in the
-     * previous session. Editing these during a running session is also
-     * mirrored immediately into the runtime keys, so the checkbox has
-     * visible effect without waiting for a restart. Default false — fresh
-     * installs stay quiet on startup (matches the runtime keys'
-     * fresh-install posture from #378). Renamed from
-     * `raceEngineerEnabledOnStartup` / `radarEnabledOnStartup` (issue #515).
+     * Startup policy for `pitCrewRaceEngineerEnabled` / `pitCrewRadarEnabled`
+     * (issue #1007, replacing the `…EnabledOnStartup` booleans of #482).
+     * `remember-last` carries the previous session's gate over, `always-on` /
+     * `always-off` force it. Only the plugin's first-arrival block reads
+     * these — editing one mid-session deliberately does NOT touch the live
+     * gate, which is what the old booleans got wrong: they were labelled "On
+     * startup" but silently overrode the Pit Crew toggle key.
+     *
+     * `.catch(...)` so a malformed persisted value falls back to the default
+     * instead of throwing and aborting the entire GlobalSettingsSchema.parse
+     * — which would stall every setting, not just this one (the
+     * `spotterStillThereSeconds` / `changelogNotification` precedent).
      */
-    pitCrewRaceEngineerEnabledOnStartup: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(false),
-    pitCrewRadarEnabledOnStartup: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(false),
+    pitCrewRaceEngineerStartupPolicy: z
+      .enum(FEATURE_STARTUP_POLICIES)
+      .default(DEFAULT_FEATURE_STARTUP_POLICY)
+      .catch(DEFAULT_FEATURE_STARTUP_POLICY),
+    pitCrewRadarStartupPolicy: z
+      .enum(FEATURE_STARTUP_POLICIES)
+      .default(DEFAULT_FEATURE_STARTUP_POLICY)
+      .catch(DEFAULT_FEATURE_STARTUP_POLICY),
     /**
      * Volume for the directional Radar ticks, 0–100 (mapped to 0.0–1.0 on
      * `AudioBus.Alerts`). Stepped by the Radar Volume Up/Down modes of the

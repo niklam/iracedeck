@@ -172,6 +172,16 @@ export {
 // One-shot renamed-key migrations (issue #953)
 export { migrateGlobalSettingsKeys } from "./global-settings-migrations.js";
 
+// Per-feature startup policy for the Race Engineer / Radar gates (issue #1007)
+export {
+  DEFAULT_FEATURE_STARTUP_POLICY,
+  FEATURE_STARTUP_GATES,
+  FEATURE_STARTUP_POLICIES,
+  resolveStartupGate,
+  type FeatureStartupGate,
+  type FeatureStartupPolicy,
+} from "./feature-startup-policy.js";
+
 // Plugin-owned settings store (issue #993)
 export {
   createFileSettingsStore,
