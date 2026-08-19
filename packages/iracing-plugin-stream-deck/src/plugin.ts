@@ -64,6 +64,7 @@ import {
 import { getAudio, initializeAudio } from "@iracedeck/audio-service";
 import { ElgatoPlatformAdapter } from "@iracedeck/deck-adapter-elgato";
 import {
+  applyStartupFeatureGates,
   createElevationCheckSubscriber,
   createFileSettingsStore,
   createSettingsChannelPublisher,
@@ -94,6 +95,7 @@ import {
   isSettingsStoreReady,
   isSimHubReachable,
   migrateGlobalSettingsKeys,
+  migrateStartupPolicies,
   onGlobalSettingsChange,
   onIRacingTerminated,
   openFolderInExplorer,
@@ -118,6 +120,7 @@ import {
   applyRaceEngineerAudio,
   applyRadarEnabled,
   applyRadarVolume,
+  armFeatureGateSync,
   AUDIO_CONTROLS_UUID,
   AudioControls,
   BLACK_BOX_SELECTOR_UUID,
@@ -180,6 +183,7 @@ import {
   SplitsDeltaCycle,
   SWITCH_PROFILE_UUID,
   SwitchProfile,
+  syncFeatureGates,
   TELEMETRY_CONTROL_UUID,
   TELEMETRY_DISPLAY_UUID,
   TelemetryControl,
@@ -334,6 +338,8 @@ const audioNative = new AudioNative();
 initializeAudio(adapter.createLogger("Audio"), audioNative, join(__binDir, "..", "assets", "audio"));
 getAudio().init();
 
+const featureGateLogger = adapter.createLogger("FeatureGates");
+
 // Plugin-level audio-state syncer (issue #515). The Pit Crew action also
 // runs these helpers from its `onWillAppear` listener — but that path
 // only fires when a Pit Crew button is mounted on some page. With no
@@ -354,6 +360,15 @@ const applyAudioState = (): void => {
 };
 
 onGlobalSettingsChange(applyAudioState);
+
+// Live Race Engineer / Radar gate changes (#1007). `applyAudioState` above
+// re-applies the bus volumes on every settings arrival; this listener adds the
+// side effects only a gate CHANGE should have — stopping in-flight scenarios
+// and the spoken acknowledgment — so the settings window's live checkboxes
+// behave exactly like a Pit Crew toggle key. Dormant until
+// `armFeatureGateSync()` runs in the first-arrival block below, so applying
+// the startup policies is silent.
+onGlobalSettingsChange(() => syncFeatureGates(featureGateLogger));
 applyAudioState();
 
 // Derive the available Race Engineer voices and driver-name keys from
@@ -721,13 +736,6 @@ registerPitCrew(
 // and fire a redundant `setAudioDevice(-1)`.
 let initialDevicePushDone = false;
 let startupDefaultsApplied = false;
-// Previous-value trackers for the "On startup" PI checkboxes. Null until
-// the first global-settings arrival; on subsequent arrivals a value
-// change drives an immediate runtime-key sync (issue #482). Renamed
-// from `lastSeenRaceEngineerEnabledOnStartup` /
-// `lastSeenRadarEnabledOnStartup` for issue #515.
-let lastSeenPitCrewRaceEngineerEnabledOnStartup: boolean | null = null;
-let lastSeenPitCrewRadarEnabledOnStartup: boolean | null = null;
 let currentAudioDeviceId: string = "";
 // Cache the last pushed payload so identical re-enumerations (the common
 // case on repeated PI re-opens with no hardware change) don't churn the
@@ -904,11 +912,12 @@ onGlobalSettingsChange((settings) => {
     pushAudioDevicesIfChanged();
   }
 
-  // Apply per-feature "On startup" defaults (issue #482). Overrides any
-  // runtime value the previous session's button toggles persisted. The
-  // Pit Crew action's own onGlobalSettingsChange listener picks up the
-  // echoed runtime keys and re-applies them to the audio buses / radar
-  // engine, so no further wiring is needed here.
+  // One-shot startup migrations and the per-feature startup policies
+  // (issue #1007, replacing the "On startup" defaults of #482 — a policy of
+  // `remember-last` now leaves the previous session's gate alone instead of
+  // overriding it). The Pit Crew action's own onGlobalSettingsChange listener
+  // picks up the echoed runtime keys and re-applies them to the audio buses /
+  // radar engine, so no further wiring is needed here.
   //
   // First step is the issue #515 migration: drop the four pre-rename Pit
   // Crew enable keys from persisted storage. Idempotent — once they're
@@ -948,10 +957,14 @@ onGlobalSettingsChange((settings) => {
     // the retired keys. Idempotent.
     migrateLfeIntensityBindingKeys();
 
-    updateGlobalSettings({
-      pitCrewRaceEngineerEnabled: settings.pitCrewRaceEngineerEnabledOnStartup,
-      pitCrewRadarEnabled: settings.pitCrewRadarEnabledOnStartup,
-    });
+    // Issue #1007: the retired `…EnabledOnStartup` booleans became startup
+    // policies. Migrate first so the policies below are the user's real
+    // choice, apply them to the live gates, then arm the gate sync — in that
+    // order, because arming records the post-write values as already applied
+    // and a startup write must never sound like a user toggle.
+    migrateStartupPolicies(featureGateLogger);
+    applyStartupFeatureGates(featureGateLogger);
+    armFeatureGateSync();
 
     // Open the website changelog once when a newer stable version is
     // detected (issue #680) — via the shared runChangelogVersionCheck above,
@@ -985,37 +998,6 @@ onGlobalSettingsChange((settings) => {
         settingsWindowLogger.debug(String(error));
       },
     );
-  }
-
-  // Mirror "On startup" PI edits into the runtime toggles immediately so
-  // checking the box has visible effect mid-session, not just at next
-  // restart. The trackers MUST be updated before the recursive
-  // `updateGlobalSettings` call: that call synchronously re-fires every
-  // listener (including this one), and a stale tracker on re-entry would
-  // diff "changed → changed" forever, blowing the stack and aborting the
-  // listener chain in a partial state. Updating first means the re-entry
-  // sees a fresh tracker, the diff comes up unchanged, and the recursion
-  // unwinds cleanly. First-arrival is detected by the null sentinel and
-  // skips the runtime sync — the startup one-shot above already wrote
-  // both runtime keys.
-  const previousPitCrewRaceEngineerEnabledOnStartup = lastSeenPitCrewRaceEngineerEnabledOnStartup;
-  lastSeenPitCrewRaceEngineerEnabledOnStartup = settings.pitCrewRaceEngineerEnabledOnStartup;
-
-  if (
-    previousPitCrewRaceEngineerEnabledOnStartup !== null &&
-    settings.pitCrewRaceEngineerEnabledOnStartup !== previousPitCrewRaceEngineerEnabledOnStartup
-  ) {
-    updateGlobalSettings({ pitCrewRaceEngineerEnabled: settings.pitCrewRaceEngineerEnabledOnStartup });
-  }
-
-  const previousPitCrewRadarEnabledOnStartup = lastSeenPitCrewRadarEnabledOnStartup;
-  lastSeenPitCrewRadarEnabledOnStartup = settings.pitCrewRadarEnabledOnStartup;
-
-  if (
-    previousPitCrewRadarEnabledOnStartup !== null &&
-    settings.pitCrewRadarEnabledOnStartup !== previousPitCrewRadarEnabledOnStartup
-  ) {
-    updateGlobalSettings({ pitCrewRadarEnabled: settings.pitCrewRadarEnabledOnStartup });
   }
 
   pushRaceEngineerVoicesIfChanged();

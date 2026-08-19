@@ -23,6 +23,8 @@ The default mode. Pressing the button flips `raceEngineerEnabled` in plugin-glob
 
 The engineer plays a short voice acknowledgment on every press — *"Okay, going silent."* when you disable it and *"Roger, resuming communication."* when you re-enable. The disable line plays through after the gate flips off (every other Voice clip silences immediately so it's the only thing you hear), then Voice mutes once the line finishes. Disable from **Race Engineer Callouts → Race Engineer Toggle** in the Settings window to keep the toggle silent.
 
+The Settings window's **Race Engineer → Enabled** checkbox flips this same state, with the same acknowledgment, and its **On startup** setting decides what the engineer comes up as after a restart — see [Now versus on startup](/docs/features/settings-window/#race-engineer-and-radar-now-versus-on-startup).
+
 When iRacing telemetry first starts flowing — typically a few seconds after you launch iRacing with Race Engineer already enabled — the engineer fires a short *"<name>, radio check. Standing by."* line so you have audible confirmation that the plugin is talking to iRacing. This is a separate opt-in (**Race Engineer Callouts → Telemetry Connect**) from the toggle acknowledgment, so you can keep one and silence the other. The line re-fires on a real reconnect (iRacing closed and reopened, or a transient SDK drop) but not on repeated telemetry ticks within the same connected session.
 
 #### Details
@@ -34,6 +36,8 @@ When iRacing telemetry first starts flowing — typically a few seconds after yo
 ### Radar
 
 Toggles the directional proximity tick loop on/off. Pressing the button flips `radarEnabled` in plugin-global settings (off by default) and synchronously stops or starts the tick loop on `AudioChannel.Radar` (so a tick can't fire after the user already muted it). The status bar flips green ↔ red.
+
+The Settings window's **Radar → Enabled** checkbox flips this same state, and its **On startup** setting decides what the radar comes up as after a restart — see [Now versus on startup](/docs/features/settings-window/#race-engineer-and-radar-now-versus-on-startup).
 
 #### Details
 

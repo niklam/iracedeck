@@ -1,16 +1,39 @@
 <%#
-  Race Engineer / Pit Crew plugin-wide settings (issue #992 split): on-startup
-  toggles, voice, driver name, output device, volumes and their Test buttons.
+  Race Engineer / Pit Crew plugin-wide settings (issue #992 split): the live
+  master toggles and their startup policies (issue #1007), voice, driver name,
+  output device, volumes and their Test buttons.
   The per-callout opt-ins AND the tuning sliders (gap alert, spotter
   still-there, fuel margin, corner lead) live in race-engineer-callouts.ejs.
-  Emits items only — pit-crew.ejs wraps them in its "Pit Crew Settings"
-  accordion, the settings window in a card.
+  Emits items only — the settings window wraps them in a card. Since #1003 it
+  is the sole consumer: the Pit Crew Property Inspector no longer renders any
+  of these plugin-global controls.
 %>
 <%- (
-'<sdpi-item label="On startup">' +
-  	'<sdpi-checkbox setting="pitCrewRaceEngineerEnabledOnStartup" label="Race Engineer enabled" global></sdpi-checkbox>' +
-  	'<br>' +
-  	'<sdpi-checkbox setting="pitCrewRadarEnabledOnStartup" label="Radar enabled" global></sdpi-checkbox>' +
+'<sdpi-item label="Race Engineer">' +
+  	'<sdpi-checkbox setting="pitCrewRaceEngineerEnabled" label="Enabled" global></sdpi-checkbox>' +
+  '</sdpi-item>' +
+  '<div class="ird-supporting-text">' +
+  	'Turns the engineer on or off right now — the same as a Pit Crew Race Engineer Toggle key.' +
+  '</div>' +
+  '<sdpi-item label="On startup">' +
+  	'<sdpi-select setting="pitCrewRaceEngineerStartupPolicy" default="remember-last" global>' +
+  		'<option value="remember-last">Remember last used</option>' +
+  		'<option value="always-on">Always on</option>' +
+  		'<option value="always-off">Always off</option>' +
+  	'</sdpi-select>' +
+  '</sdpi-item>' +
+  '<sdpi-item label="Radar">' +
+  	'<sdpi-checkbox setting="pitCrewRadarEnabled" label="Enabled" global></sdpi-checkbox>' +
+  '</sdpi-item>' +
+  '<div class="ird-supporting-text">' +
+  	'Turns the proximity ticks on or off right now — the same as a Pit Crew Radar Toggle key.' +
+  '</div>' +
+  '<sdpi-item label="On startup">' +
+  	'<sdpi-select setting="pitCrewRadarStartupPolicy" default="remember-last" global>' +
+  		'<option value="remember-last">Remember last used</option>' +
+  		'<option value="always-on">Always on</option>' +
+  		'<option value="always-off">Always off</option>' +
+  	'</sdpi-select>' +
   '</sdpi-item>' +
   '<sdpi-item label="Race Engineer Voice">' +
   	'<ird-voice-select setting="raceEngineerVoice" voices="_raceEngineerVoices"></ird-voice-select>' +

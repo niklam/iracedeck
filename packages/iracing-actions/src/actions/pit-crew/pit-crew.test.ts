@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { _resetFeatureGateSync } from "../../audio/feature-gates.js";
 // Imports appear above the `vi.mock(...)` blocks because the repo-wide
 // prettier config (@elgato/prettier-config + @trivago/prettier-plugin-sort-imports)
 // hoists every import to the top and won't leave them interleaved with other
@@ -269,6 +270,12 @@ beforeEach(() => {
   // keep `applyRaceEngineerAudio` from muting Voice when it should.
   _setRaceEngineerTestInFlightForTests(false);
   _setRaceEngineerToggleInFlightForTests(false);
+  // Same reasoning for the feature-gate trackers (#1007): they record which
+  // gate value's side effects have already been applied, and these tests
+  // rewrite the settings cache directly rather than going through a toggle,
+  // so a tracker left over from the previous test would make the applier
+  // short-circuit and skip the bus mute / radar-engine push under test.
+  _resetFeatureGateSync();
   // Cold start for the telemetry-connect tracker — every radio-check test
   // can rely on null → first true firing the ack (no prior observation).
   _setLastTelemetryConnectedForTests(null);
