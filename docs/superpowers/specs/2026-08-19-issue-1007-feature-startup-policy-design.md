@@ -49,18 +49,29 @@ value verbatim — readable, and deletable for good.
 
 ### Source of truth
 
-A new `packages/deck-core/src/feature-startup-policy.ts`, following the `version-check.ts`
-precedent (the values array and the default constant live next to the logic; the schema imports
-them, so there is one source of truth):
+Two new deck-core modules, split so the schema's import can never form a cycle. `global-settings.ts`
+builds its Zod schema at module-init time, so anything it imports must not import it back — the same
+constraint `version-check.ts` satisfies by taking injected delegates.
+
+`packages/deck-core/src/feature-startup-policy.ts` — **pure**, imports nothing from
+`global-settings.ts` (the `version-check.ts` precedent: the values array and the default constant
+live next to the logic, and the schema imports them, so there is one source of truth):
 
 ```ts
 export const FEATURE_STARTUP_POLICIES = ["remember-last", "always-on", "always-off"] as const;
 export type FeatureStartupPolicy = (typeof FEATURE_STARTUP_POLICIES)[number];
 export const DEFAULT_FEATURE_STARTUP_POLICY: FeatureStartupPolicy = "remember-last";
 
+/** The live-gate key and its retired `…EnabledOnStartup` predecessor, per feature. */
+export const FEATURE_STARTUP_GATES: readonly FeatureStartupGate[];
+
 /** The gate value a policy produces from the value carried over from last session. */
 export function resolveStartupGate(policy: FeatureStartupPolicy, remembered: boolean): boolean;
+```
 
+`packages/deck-core/src/feature-startup-gates.ts` — stateful, imports both:
+
+```ts
 /** Write both live gates from their policies. Writes nothing under `remember-last`. */
 export function applyStartupFeatureGates(logger?: ILogger): void;
 
@@ -101,25 +112,48 @@ plugin-level `applyAudioState` listener mutes the buses, but the in-flight scena
 ambient bed keep running (the bug #587 fixed) and the stuck `playingId` drops every later callout as
 "bus busy". A settings-window checkbox bound to the live key would hit exactly that.
 
-So the edges move to a single owner: `packages/iracing-actions/src/audio/feature-gates.ts`.
+So the edges move to a single owner: a new `packages/iracing-actions/src/audio/feature-gates.ts`,
+which also takes over `toggleRaceEngineerFeature` / `toggleRadarFeature` from `audio-toggles.ts`.
+The split is by responsibility: `audio-toggles.ts` keeps the voice plumbing (`playVoiceSequence`,
+`playToggleAck`, the acknowledgment opt-ins, the corner-names toggle), `feature-gates.ts` owns the
+two master gates. The dependency runs one way, `feature-gates` → `audio-toggles`, so there is no
+cycle. Only `pit-crew.ts` and `audio-buses.ts` import the toggles today.
+
+The gate state machine is a per-gate **applied-value tracker** plus an idempotent applier:
 
 ```ts
-/** Global-settings listener that applies the side effects of a live gate CHANGE. */
-export function createFeatureGateSync(logger: ILogger): () => void;
+/** Apply the side effects of the gate landing on `next`. No-op if already applied. */
+function applyRaceEngineerGate(next: boolean, logger: ILogger): void;  // module-private
+function applyRadarGate(next: boolean, logger: ILogger): void;         // module-private
+
+/** Global-settings listener: apply whatever the live gates now say. */
+export function syncFeatureGates(logger: ILogger): void;
+/** Start reacting to gate changes, seeding the trackers from the current values. */
+export function armFeatureGateSync(): void;
+/** @internal Test reset. */
+export function _resetFeatureGateSync(): void;
 ```
 
-- Seeds its trackers on the first invocation and applies nothing, so the startup application can
-  never play an acknowledgment at plugin start.
-- On a change of `pitCrewRaceEngineerEnabled`: `stopRaceEngineerScenarios()` when it goes off, then
-  the toggle acknowledgment when `calloutEnabledToggleRaceEngineer` allows it.
-- On a change of `pitCrewRadarEnabled`: push the gate into the radar engine (`setRadarEnabled`).
-- Registered once per plugin: `onGlobalSettingsChange(createFeatureGateSync(logger))`.
+- `applyRaceEngineerGate(next)` returns immediately when the tracker already holds `next`;
+  otherwise it records `next`, calls `applyRaceEngineerAudio()`, `stopRaceEngineerScenarios()` on the
+  off edge, and the toggle acknowledgment when `calloutEnabledToggleRaceEngineer` allows it.
+  `applyRadarGate(next)` records and pushes the gate into the radar engine (`setRadarEnabled`); the
+  radar has no acknowledgment.
+- `syncFeatureGates` is registered once per plugin (`onGlobalSettingsChange`) and does nothing until
+  armed, so the startup application below can never play an acknowledgment at plugin start.
+- `toggleRaceEngineerFeature` / `toggleRadarFeature` write the new value and then call their applier
+  directly. `updateGlobalSettings` fires listeners **synchronously**, so when the plugin is armed the
+  listener has already applied the edge and the direct call is a no-op; when it is not (a press
+  before the first settings arrival, or a unit test with a mocked `updateGlobalSettings` that fires
+  no listeners) the direct call does the work. Exactly-once either way, on the same tick, and a key
+  press never depends on a listener registered in another file.
 
-`toggleRaceEngineerFeature` / `toggleRadarFeature` shrink to "compute next, write it, return it".
-`updateGlobalSettings` fires listeners **synchronously**, so a key press still stops the scenario and
-mutes the bus on the same tick — the latency guarantee those functions were written for is
-structural now rather than duplicated. The Audio Controls dial's Mute/Unmute rides the same pathway
-unchanged.
+**Arming** is explicit because the startup write must not look like an edge. Each plugin calls
+`armFeatureGateSync()` immediately after `applyStartupFeatureGates()` inside the first-arrival block:
+the startup write fires the listener while still dormant, and arming then seeds the trackers from the
+post-write values.
+
+The Audio Controls dial's Mute/Unmute rides the same pathway unchanged.
 
 Accepted consequence: the spoken **"Going silent" / "Resuming"** acknowledgment now also plays when
 the settings-window checkbox is ticked. That is intended — the checkbox *is* the master toggle, and
@@ -131,9 +165,10 @@ the existing per-callout opt-in still silences it.
 ## Plugin wiring (all three, identical)
 
 1. Delete the mirror block and both `lastSeenPitCrew…OnStartup` trackers.
-2. Replace the 4-line startup write with `applyStartupFeatureGates(logger)`.
-3. Add `migrateStartupPolicies(logger)` beside the existing first-arrival migrations.
-4. Register `onGlobalSettingsChange(createFeatureGateSync(logger))` once, near `applyAudioState`.
+2. In the first-arrival block, replace the 4-line startup write with, in this order:
+   `migrateStartupPolicies(logger)` → `applyStartupFeatureGates(logger)` → `armFeatureGateSync()`.
+3. Register `onGlobalSettingsChange(() => syncFeatureGates(logger))` once, beside the existing
+   `onGlobalSettingsChange(applyAudioState)`.
 
 Each `plugin.ts` ends up shorter than today, and the triplicated policy logic collapses into one
 shared module.
@@ -166,13 +201,17 @@ Supporting text uses the shared `ird-supporting-text` class — never an inline 
 
 ## Testing
 
-New: `feature-startup-policy.test.ts` (resolver for all three policies × both remembered values;
-migration mapping, deletion, idempotence, absence) and `feature-gates.test.ts` (first-call seeding
-applies nothing; off edge stops scenarios and acks; on edge acks; ack suppressed by the per-callout
-opt-in; radar edge drives the engine; no side effects when the value is unchanged).
+New: `feature-startup-policy.test.ts` (resolver for all three policies × both remembered values),
+`feature-startup-gates.test.ts` (`applyStartupFeatureGates` writing nothing under `remember-last`;
+migration mapping, deletion, idempotence, absence) and `feature-gates.test.ts` (dormant sync applies nothing; arming seeds
+silently; off edge stops scenarios and acks; on edge acks; ack suppressed by the per-callout opt-in;
+radar edge drives the engine; an unchanged value applies nothing; a toggle whose write already fired
+an armed listener does not double-ack).
 
-Updated: `simhub-service.test.ts` and `accordion-partial.test.ts` (retired key literals),
-`audio-toggles.test.ts` and `pit-crew.test.ts` (side effects moved out of the toggle functions).
+Updated: `simhub-service.test.ts` and `accordion-partial.test.ts` (retired key literals) and
+`audio-toggles.test.ts` (the toggle suites move to `feature-gates.test.ts`). `pit-crew.test.ts`
+should keep passing unchanged — that is the check that the direct-apply path preserved the key's
+behaviour.
 
 ## Manual verification
 
