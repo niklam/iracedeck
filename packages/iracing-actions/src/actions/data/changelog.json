@@ -6,7 +6,7 @@
   },
   "releases": [
     {
-      "version": "2.5.0",
+      "version": "3.0.0",
       "date": null,
       "categories": [
         {
@@ -37,7 +37,8 @@
             "Cycle Sub-Camera now actually switches the camera, on both the keypad mode and the camera dial. iRacing's camera commands turned out to have no working control over the individual camera within a group, so the mode now triggers the sim's own Next / Previous Sub Camera controls instead — preconfigured to iRacing's defaults (<code>B</code> and <code>Shift+B</code>), so it works without setup, and configurable under Related Key Bindings if you have rebound them. The camera focus stays put while the shot changes, so it works with any car, the pace car, or a scenic view focused.",
             "Cycling the camera between cars works again while the field is still on its first lap. The Camera Controls dial's Cycle by Car # mode, the keypad's Cycle Car mode, and Replay Control's Next / Previous Car (Number Order) modes were doing nothing during the formation lap, because a car that had not yet completed a lap was treated as not being on track — so on the pace lap the plugin considered the whole field absent. Cycle by Track Order was never affected.",
             "The Camera Controls dial's Cycle by Race Position mode now falls back to iRacing's own position numbers whenever the plugin's live running order has nobody ranked — for example after the race finishes, where the mode previously stopped responding.",
-            "The Race Engineer no longer calls a pit-box positioning error only once: while the car sits too far left, right, forward, back, or at a bad angle, a short correction now repeats every couple of seconds — &quot;Still too far forward.&quot;, &quot;Back it up.&quot; — until you're in the box or iRacing reports a different error, so backing up and stopping short no longer leaves you parked in silence getting no service. The repeats stay quiet while you're moving the car and pick up again once it comes to rest, over-correcting into a different error plays that error's full call instead, and they ride the existing per-status toggles rather than adding new ones."
+            "The Race Engineer no longer calls a pit-box positioning error only once: while the car sits too far left, right, forward, back, or at a bad angle, a short correction now repeats every couple of seconds — &quot;Still too far forward.&quot;, &quot;Back it up.&quot; — until you're in the box or iRacing reports a different error, so backing up and stopping short no longer leaves you parked in silence getting no service. The repeats stay quiet while you're moving the car and pick up again once it comes to rest, over-correcting into a different error plays that error's full call instead, and they ride the existing per-status toggles rather than adding new ones.",
+            "Warning banners no longer outlast what they were warning about. iRaceDeck now starts every session with none and re-checks each condition itself, so a banner raised by a previous run — or by an older version that had the check at all — can no longer come back on every restart with nothing in the interface able to clear it. A banner you see is always about the copy of iRaceDeck running right now."
           ]
         },
         {
