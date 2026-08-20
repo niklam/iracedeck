@@ -29,7 +29,7 @@ import type { ILogger } from "@iracedeck/logger";
 import { z } from "zod";
 
 import { DEFAULT_FEATURE_STARTUP_POLICY, FEATURE_STARTUP_POLICIES } from "./feature-startup-policy.js";
-import { stripRunScopedKeys } from "./run-scoped-settings.js";
+import { hasOnlyRunScopedKeys, stripRunScopedKeys } from "./run-scoped-settings.js";
 import type { SettingsStore } from "./settings-store.js";
 import {
   DEFAULT_SETUP_WARNING_QUALIFYING_PATTERN,
@@ -1667,7 +1667,12 @@ export function updateGlobalSettings(partial: Record<string, unknown>): void {
   // `applyParsedSettings` may itself call `updateGlobalSettings`, layering
   // more partials on top — saving a snapshot would drop those nested updates
   // (#441).
-  if (storeReady) persist(storeRef);
+  //
+  // A write touching ONLY run-scoped keys is skipped: the stripped payload is
+  // byte-for-byte what is already on disk, so it can only cost a rewrite and,
+  // on a locked file, a retry schedule (#1014). A layering listener still
+  // issues its own write, and that one persists the live cache.
+  if (storeReady && !hasOnlyRunScopedKeys(Object.keys(partial))) persist(storeRef);
 }
 
 /**

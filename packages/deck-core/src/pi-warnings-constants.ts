@@ -9,7 +9,9 @@
  * never need to know about the split.
  *
  * The `ird-warnings` PI component duplicates the literal (browser code cannot
- * import deck-core); `settings-window-constants.test.ts` in
- * `@iracedeck/pi-components` guards the pair.
+ * import deck-core) in its own `components/warnings-constants.ts`, split out
+ * of the element module for the same kind of reason;
+ * `settings-window-constants.test.ts` in `@iracedeck/pi-components` guards the
+ * pair.
  */
 export const PI_WARNINGS_KEY = "_warnings";

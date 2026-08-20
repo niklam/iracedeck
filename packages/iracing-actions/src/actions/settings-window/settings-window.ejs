@@ -43,11 +43,12 @@
 				--sw-min-width: 720px;
 			}
 			html, body { height: 100%; margin: 0; }
-			/* Rows are NAMED and assigned explicitly: head-common.ejs injects an
-			   <ird-warnings> element as the body's first child at load, and with
-			   positional rows that element took `auto` while the header stole the
-			   `1fr` — a header centred in a huge empty band. Named areas make the
-			   layout independent of what gets injected in front. */
+			/* Rows are NAMED and assigned explicitly: the warning strip is the
+			   body's first child (this page places its own — see the body markup,
+			   #1014 — and before that head-common.ejs injected one at load), and
+			   with positional rows that element took `auto` while the header stole
+			   the `1fr` — a header centred in a huge empty band. Named areas make
+			   the layout independent of what sits in front of the header. */
 			body {
 				background: var(--sw-bg); color: var(--sw-fg);
 				font-family: var(--sw-font); font-size: 9pt;

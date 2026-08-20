@@ -24,6 +24,9 @@
  * on one page. A warning with no dedicated home is named in neither list and
  * still shows in the top strip, unchanged.
  */
+import { WARNINGS_SETTING } from "./warnings-constants.js";
+
+export { WARNINGS_SETTING };
 
 let styleInjected = false;
 
@@ -33,8 +36,6 @@ interface WarningRecord {
   level: WarningLevel;
   message: string;
 }
-
-const WARNINGS_SETTING = "_warnings";
 
 const LEVEL_ICON: Record<WarningLevel, string> = {
   info: "ℹ️",

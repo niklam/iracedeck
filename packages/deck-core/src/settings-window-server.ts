@@ -37,6 +37,7 @@ import type { Duplex } from "node:stream";
 import { type WebSocket, WebSocketServer } from "ws";
 
 import { sameValue } from "./global-settings.js";
+import { stripRunScopedKeys } from "./run-scoped-settings.js";
 import { authorizeSettingsRequest, type SettingsRequestDenial } from "./settings-window-guard.js";
 
 /** The plugin-side settings surface the fake host is bound to. */
@@ -453,7 +454,16 @@ function attachFakeHost(
               // every keystroke-sized change. `sameValue` is deck-core's own
               // equality, so a value the PI persisted as a string ("80") does
               // not read as a change against the parsed cache value (80).
-              const changed = diffAgainst(host.read(), frame.payload as Record<string, unknown>);
+              //
+              // Run-scoped keys are dropped first (#1014): no UI is ever the
+              // producer of an observation about this run, and a page's
+              // snapshot can be OLDER than the cache — a Property Inspector
+              // that bootstrapped off the deck-host mirror is holding the
+              // PREVIOUS run's `_warnings` until the first loopback push
+              // replaces it, and any control the user touches in that window
+              // would write that array straight back into the live cache,
+              // resurrecting the very banner run-scoping exists to retire.
+              const changed = diffAgainst(host.read(), stripRunScopedKeys(frame.payload as Record<string, unknown>));
 
               if (Object.keys(changed).length > 0) {
                 // The subscribe() listener pushes the result to every OTHER

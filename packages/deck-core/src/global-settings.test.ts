@@ -1344,6 +1344,21 @@ describe("run-scoped keys never reach the settings file (issue #1014)", () => {
     expect(store.saved.at(-1)).toMatchObject({ driverName: "nick" });
   });
 
+  it("does not touch the store at all for a run-scoped-only write — the file cannot change", async () => {
+    const { store } = await initWithStore({ driverName: "nick" });
+    const before = store.saved.length;
+
+    setWarning("settings-window-server", "error", "raised this run");
+
+    expect(store.saved).toHaveLength(before);
+
+    // A durable key in the same write still saves, warning and all.
+    updateGlobalSettings({ driverName: "niklas" });
+
+    expect(store.saved).toHaveLength(before + 1);
+    expect(store.saved.at(-1)).not.toHaveProperty(PI_WARNINGS_KEY);
+  });
+
   it("keeps a warning raised before the store loaded, while still dropping the stored one", async () => {
     const mock = createMockAdapter();
     const store = createMemorySettingsStore({ [PI_WARNINGS_KEY]: stored("stale"), driverName: "nick" });

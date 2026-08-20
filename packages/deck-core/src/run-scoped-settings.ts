@@ -12,20 +12,32 @@
  * because a state-driven banner is only ever retired by its own producer
  * saying "not any more".
  *
- * Enrolling a key here settles that for good. It is stripped at BOTH ends of
- * the persistence boundary in `global-settings.ts`:
+ * Enrolling a key here settles that for good. It is stripped at every boundary
+ * an older value could cross back in through:
  *
- * - out of everything entering the cache (file load, the one-time deck-host
- *   migration, a salvaged parse), so a record written by an earlier run — or
- *   an earlier VERSION — can never be read back in; and
+ * - out of everything entering the cache in `global-settings.ts` (file load,
+ *   the one-time deck-host migration, a fresh start), so a record written by
+ *   an earlier run — or an earlier VERSION — can never be read back in;
  * - out of everything handed to `SettingsStore.save()`, so it stops being
  *   written in the first place and a file that already carries one is cleaned
- *   on the next save.
+ *   on the next save; and
+ * - out of every `setGlobalSettings` a UI sends the settings server
+ *   (`settings-window-server.ts`). No page is ever the producer of an
+ *   observation about this run, and sdpi saves its WHOLE snapshot on any
+ *   change — a snapshot that can predate the cache, since a Property
+ *   Inspector bootstraps off the once-per-start deck-host mirror before its
+ *   first loopback push arrives.
  *
  * Nothing else changes: the key still lives in the cache for the whole run,
  * still fans out to `onGlobalSettingsChange`, and still rides the once-per-start
- * deck-host mirror — which is what keeps warnings visible on the fallback path
- * where there is no settings server to read them from.
+ * deck-host mirror. Note what that last one does and does not buy on the
+ * fallback path (a UI with no loopback channel, which reads the host copy and
+ * nothing else): it carries whatever was raised BEFORE the mirror went out —
+ * the settings-window failure banners, which is the case it exists for — but
+ * an enrolled key written later in the run has no route there at all, and no
+ * longer arrives one run late the way a persisted copy used to. The elevation
+ * banner (raised on an iRacing connection, always after startup) is the one
+ * that loses by it.
  *
  * The rule this buys, and the one an enrolled key's producer owes in return:
  * **every producer must re-assert its state within the run.** A producer that
@@ -63,4 +75,23 @@ export function stripRunScopedKeys(settings: Record<string, unknown>): Record<st
   for (const key of RUN_SCOPED_SETTING_KEYS) delete copy[key];
 
   return copy;
+}
+
+/**
+ * True when `keys` is non-empty and every one of them is enrolled — i.e. the
+ * write it describes cannot change a single byte of the settings file.
+ *
+ * Used to skip the store save on such a write. Without it every
+ * `setWarning`/`clearWarning` costs a debounced atomic rewrite of an
+ * unchanged file, plus the write-retry schedule and its error logging on a
+ * machine where the file is momentarily locked — all for a key the file never
+ * contains. Safe with the "save the LIVE cache, never a snapshot" rule (#441):
+ * a listener that layers a durable partial on top during the fan-out issues
+ * its own write, which persists the live cache including everything above it.
+ *
+ * Empty means false: a caller with nothing to write should not be told its
+ * write was run-scoped.
+ */
+export function hasOnlyRunScopedKeys(keys: readonly string[]): boolean {
+  return keys.length > 0 && keys.every((key) => RUN_SCOPED_SETTING_KEYS.includes(key));
 }

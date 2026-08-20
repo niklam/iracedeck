@@ -285,7 +285,13 @@ Reference producers, both in deck-core and both wired in every plugin's `plugin.
 
 ### `_warnings` is run-scoped — never persisted (#1014)
 
-`_warnings` is enrolled in `RUN_SCOPED_SETTING_KEYS` (`deck-core/src/run-scoped-settings.ts`), so `global-settings.ts` strips it at **both** ends of the persistence boundary — out of everything entering the cache (file load, the one-time host migration, a salvaged parse) and out of everything handed to `SettingsStore.save()` via the single `persist()` funnel. Inside a run nothing changes: the key lives in the cache, fans out to `onGlobalSettingsChange`, and rides the once-per-start deck-host mirror (which is what keeps banners visible on the fallback path where no settings server is up).
+`_warnings` is enrolled in `RUN_SCOPED_SETTING_KEYS` (`deck-core/src/run-scoped-settings.ts`), and every boundary an older value could cross back in through strips it:
+
+- **into the cache** — `global-settings.ts` `becomeReady()` strips whatever filled it (file load, the one-time host migration, a fresh start), so a record from an earlier run or an earlier *version* can never be read back in;
+- **out to the file** — everything handed to `SettingsStore.save()` goes through the single `persist()` funnel, so the key is never written and a file that already carries one is cleaned on the next save. A write touching *only* run-scoped keys skips the save altogether (`hasOnlyRunScopedKeys`): the stripped payload is byte-identical to what is on disk;
+- **in from a UI** — the settings server strips them off every `setGlobalSettings` frame (`settings-window-server.ts`). No page is ever the producer of an observation about this run, and sdpi saves its WHOLE snapshot on any change — a snapshot that can predate the cache, because a Property Inspector bootstraps off the deck-host mirror before its first loopback push arrives.
+
+Inside a run nothing changes: the key lives in the cache, fans out to `onGlobalSettingsChange`, and rides the once-per-start deck-host mirror. Be precise about what that last one buys on the **fallback path** (a UI with no loopback channel, reading the host copy and nothing else): it carries whatever was raised *before* the mirror went out — the settings-window failure banners, which is the case it exists for — but a run-scoped key written later in the run has no route there at all, and no longer arrives one run late the way a persisted copy used to. The elevation banner (raised on an iRacing connection, always after startup) is the one that loses by it; re-mirroring on change would be the fix if that ever matters.
 
 It used to be an ordinary persisted key, and that let a record outlive both its condition and the producer that could retire it: a banner raised by one build reappeared under a build that had never heard of the id, with nothing in any UI able to dismiss it. Two consequences of the fix are worth knowing:
 

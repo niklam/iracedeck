@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { PI_WARNINGS_KEY } from "./pi-warnings-constants.js";
-import { RUN_SCOPED_SETTING_KEYS, stripRunScopedKeys } from "./run-scoped-settings.js";
+import { hasOnlyRunScopedKeys, RUN_SCOPED_SETTING_KEYS, stripRunScopedKeys } from "./run-scoped-settings.js";
 
 describe("run-scoped settings keys (issue #1014)", () => {
   it("enrols the PI warnings key", () => {
@@ -38,5 +38,19 @@ describe("run-scoped settings keys (issue #1014)", () => {
 
     expect(stripped).toEqual(input);
     expect(stripped).not.toBe(input);
+  });
+
+  describe("hasOnlyRunScopedKeys", () => {
+    it("is true for a write that touches nothing else", () => {
+      expect(hasOnlyRunScopedKeys([...RUN_SCOPED_SETTING_KEYS])).toBe(true);
+    });
+
+    it("is false as soon as one durable key rides along", () => {
+      expect(hasOnlyRunScopedKeys([PI_WARNINGS_KEY, "driverName"])).toBe(false);
+    });
+
+    it("is false for an empty write — nothing to write is not a run-scoped write", () => {
+      expect(hasOnlyRunScopedKeys([])).toBe(false);
+    });
   });
 });

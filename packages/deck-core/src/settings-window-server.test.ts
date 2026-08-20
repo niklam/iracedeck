@@ -326,6 +326,33 @@ describe("settings-window WebSocket host", () => {
     ws.close();
   });
 
+  it("never writes a run-scoped key a page sends back, however stale its snapshot is (#1014)", async () => {
+    // A Property Inspector that bootstrapped off the deck-host mirror holds the
+    // PREVIOUS run's `_warnings` until the first loopback push replaces it.
+    // Touching any control in that window sends the whole snapshot — and
+    // writing that array back would resurrect the banner run-scoping retires.
+    const host = fakeSettingsHost({ driverName: "niklas" });
+
+    server = await startSettingsWindowServer({ page: PAGE, settingsHost: host });
+
+    const token = new URL(server.url).searchParams.get("t") ?? "";
+    const ws = await connectWs(server.url, token);
+
+    ws.send(
+      JSON.stringify({
+        event: "setGlobalSettings",
+        payload: {
+          driverName: "nick",
+          _warnings: JSON.stringify([{ id: "elevation-mismatch", level: "warning", message: "from an earlier run" }]),
+        },
+      }),
+    );
+    await waitFor(() => host.written.length > 0);
+
+    expect(host.written).toEqual([{ driverName: "nick" }]);
+    ws.close();
+  });
+
   it("does not write at all when nothing changed", async () => {
     const host = fakeSettingsHost({ driverName: "niklas" });
     server = await startSettingsWindowServer({ page: PAGE, settingsHost: host });
