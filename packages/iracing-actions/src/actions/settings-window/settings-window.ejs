@@ -128,7 +128,39 @@
 				font-family: var(--sw-font); font-size: 9pt; text-transform: uppercase; letter-spacing: .4px;
 				color: var(--sw-fg-dim); margin: 0 0 8px; font-weight: 600;
 			}
-			.sw-changelog { width: 100%; height: 70vh; min-height: 360px; border: 1px solid var(--sw-line); border-radius: 6px; background: #fff; }
+			/* Built-in changelog (#1011). One card per release, newest first, so the
+			   running version — badged below — is what the pane opens on. */
+			.sw-changelog {
+				border: 1px solid var(--sw-line); border-radius: 6px; background: var(--sw-bg-alt);
+				padding: 4px 16px 12px;
+			}
+			.sw-cl-note, .sw-cl-empty { color: var(--sw-fg-mute); margin: 0 0 12px; }
+			.sw-cl-release {
+				padding: 12px 0 12px 10px; border-top: 1px solid var(--sw-line);
+				border-left: 3px solid transparent;
+			}
+			.sw-cl-release.installed { border-left-color: var(--sw-accent); }
+			.sw-cl-release:first-child { border-top: 0; }
+			.sw-cl-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 2px; }
+			.sw-cl-version { font-size: 11pt; font-weight: 600; margin: 0; color: var(--sw-fg); }
+			.sw-cl-date { color: var(--sw-fg-mute); font-size: 8pt; }
+			.sw-cl-badge {
+				background: var(--sw-accent); color: #fff; border-radius: 9px;
+				padding: 1px 8px; font-size: 7.5pt; text-transform: uppercase; letter-spacing: .4px;
+			}
+			.sw-cl-category {
+				font-size: 8pt; font-weight: 600; text-transform: uppercase; letter-spacing: .4px;
+				color: var(--sw-fg-dim); margin: 12px 0 4px;
+			}
+			.sw-cl-items { margin: 0; padding-left: 18px; }
+			.sw-cl-items li { margin: 0 0 6px; color: var(--sw-fg-dim); line-height: 1.5; }
+			.sw-cl-items strong { color: var(--sw-fg); }
+			.sw-cl-items code {
+				background: var(--sw-panel); border: 1px solid var(--sw-line); border-radius: 3px;
+				padding: 0 4px; font-family: Consolas, "Courier New", monospace; font-size: 8pt;
+				white-space: nowrap;
+			}
+			.sw-cl-items a { color: var(--sw-accent); }
 			.sw-links { display: flex; gap: 14px; margin: 0 0 12px; }
 			.sw-links a { color: var(--sw-fg-dim); text-decoration: none; }
 			.sw-links a:hover { text-decoration: underline; }
@@ -297,8 +329,9 @@
 				<p class="sw-links">
 					<a href="https://iracedeck.com/changelog/" target="_blank" rel="noopener noreferrer">Open the changelog in your browser</a>
 				</p>
-				<%# The live changelog page, embedded. Needs internet; the link above is the fallback. %>
-				<iframe class="sw-changelog" src="https://iracedeck.com/changelog/" title="iRaceDeck changelog" loading="lazy" referrerpolicy="no-referrer"></iframe>
+				<%# The release notes this build ships, generated from the website's changelog
+				    at build time (#1011): no network, and never a version the user does not have. %>
+				<%- include('settings-window-changelog') %>
 			</section>
 
 			<%# ---- Diagnostics ---- %>

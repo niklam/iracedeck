@@ -1,6 +1,6 @@
 ---
 title: What's New Page
-description: How the What's New page opens after an update, and how to control when it appears.
+description: How the What's New page opens after an update, how to control when it appears, and where to read the release notes any time.
 ---
 
 After iRaceDeck updates to a new version, the What's New page — the [changelog](/changelog/) on this website — can open once in your browser to show what changed. It opens at most once per release, and it always lists everything since your last visit, so you never miss a release even if you skip a few.
@@ -21,3 +21,9 @@ The **What's New page** setting controls when a due page actually opens. You'll 
 - **Never open** — the page never opens on its own. You can always read the [changelog](/changelog/) directly.
 
 Whichever option you pick, the page shows all changes since the last version you saw.
+
+## Reading the Notes Any Time
+
+You do not have to wait for an update, or be online. The [Settings window](/docs/getting-started/settings/#whats-new)'s **What's New** tab carries the release notes for every version, built into the plugin itself: the version you are running sits at the top marked **Installed**, and nothing on the tab describes a version you do not have.
+
+The [changelog](/changelog/) on this website is still the full archive — including releases newer than the one you have installed — and the **Open the changelog in your browser** link on that tab takes you straight to it.

@@ -1,0 +1,63 @@
+<%#
+  The Settings window's built-in changelog (issue #1011).
+
+  Replaces the <iframe> of https://iracedeck.com/changelog/ that used to sit on
+  the What's New tab. That iframe showed whatever the website said — which can be
+  a version the user does not have — needed internet, and dropped a white website
+  page into a dark window.
+
+  The notes rendered here are the ones this build ships: `changelog.json` is
+  generated from `packages/website/src/content/docs/changelog.mdx` by
+  `pnpm generate:changelog-data`, so the single source of truth is unchanged and
+  the pane works offline. Bullet `items` are HTML that the generator already
+  escaped (see scripts/lib/changelog-inline-html.mjs) — which is why they are
+  emitted raw here rather than re-escaped.
+
+  Releases come out newest first, so the release the user is running is normally
+  the first thing on the pane: no scrolling, and nothing to run at load. The
+  INSTALLED badge names it explicitly, and a build whose version has no section
+  yet (a `-dev` build on the next version) says so, rather than marking nothing
+  and leaving the reader to wonder which of these they have.
+
+  Included by settings-window.ejs only; its styling lives with the rest of the
+  window's CSS on that page.
+%>
+<%
+  var __changelog = require('./data/changelog.json');
+  var __releases = __changelog.releases || [];
+  // Match on the numeric version: a build reports `2.5.0-dev.0` while the
+  // changelog section is `## 2.5.0`. Same normalisation the release tooling uses
+  // to find the section to date-stamp (scripts/lib/changelog-stamp.mjs).
+  var __version = typeof version === 'undefined' ? '' : String(version);
+  var __installed = __version.replace(/[-+].*$/, '');
+  var __hasInstalled = __releases.some(function (r) { return r.version === __installed; });
+-%>
+<% if (__releases.length === 0) { -%>
+<p class="sw-cl-empty">Release notes are not available in this build.</p>
+<% } else { -%>
+<% if (!__hasInstalled) { -%>
+<p class="sw-cl-note">No release notes for version <%= __version %> yet — the releases below are the ones already published.</p>
+<% } -%>
+<div class="sw-changelog">
+<% __releases.forEach(function (release) { -%>
+<% var __isInstalled = release.version === __installed; -%>
+	<article class="sw-cl-release<%= __isInstalled ? ' installed' : '' %>">
+		<div class="sw-cl-head">
+			<h3 class="sw-cl-version"><%= release.version %></h3>
+			<span class="sw-cl-date"><%= release.date || 'Unreleased' %></span>
+<% if (__isInstalled) { -%>
+			<span class="sw-cl-badge">Installed</span>
+<% } -%>
+		</div>
+<% release.categories.forEach(function (category) { -%>
+		<h4 class="sw-cl-category"><%= category.title %></h4>
+		<ul class="sw-cl-items">
+<% category.items.forEach(function (item) { -%>
+			<li><%- item %></li>
+<% }); -%>
+		</ul>
+<% }); -%>
+	</article>
+<% }); -%>
+</div>
+<% } -%>
