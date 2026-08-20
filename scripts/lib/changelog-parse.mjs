@@ -42,6 +42,23 @@ const CATEGORY_LINE = /^\*\*(.+?)\*\*[ \t]*$/;
 const BULLET_LINE = /^-[ \t]+(.*\S)[ \t]*$/;
 
 /**
+ * Compare two plain `X.Y.Z` versions numerically. Both are known to match
+ * PLAIN_VERSION by the time this is called, so no parse guard is needed.
+ *
+ * @returns {number} negative when `a` is older than `b`, positive when newer.
+ */
+function compareVersions(a, b) {
+  const left = a.split(".").map(Number);
+  const right = b.split(".").map(Number);
+
+  for (let i = 0; i < 3; i++) {
+    if (left[i] !== right[i]) return left[i] - right[i];
+  }
+
+  return 0;
+}
+
+/**
  * @typedef {{ title: string, items: string[] }} ChangelogCategory
  * @typedef {{ version: string, date: string | null, categories: ChangelogCategory[] }} ChangelogRelease
  */
@@ -71,6 +88,18 @@ export function parseChangelog(source) {
   let highestCategoryIndex = -1;
   let sawDateLine = false;
 
+  // A category header with nothing under it renders as an empty bullet list in the
+  // pane, and the format allows a header "only when they have content" — so the
+  // open category is checked whenever we are about to leave it.
+  const closeCategory = (lineNumber) => {
+    if (category !== null && category.items.length === 0) {
+      throw new ChangelogParseError(
+        `category "${category.title}" in release ${release.version} has no bullets`,
+        lineNumber,
+      );
+    }
+  };
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const lineNumber = i + 1;
@@ -86,6 +115,17 @@ export function parseChangelog(source) {
       if (seenVersions.has(version)) {
         throw new ChangelogParseError(`version ${version} appears twice`, lineNumber);
       }
+      // The pane leans on the list being strictly newest-first: it renders in file
+      // order and calls the top entry the in-development one, so a section filed in
+      // the wrong place would show the running version buried mid-list.
+      const above = releases[releases.length - 1];
+      if (above && compareVersions(version, above.version) > 0) {
+        throw new ChangelogParseError(
+          `release ${version} is newer than ${above.version} above it — the list must be strictly newest-first`,
+          lineNumber,
+        );
+      }
+      closeCategory(lineNumber);
       seenVersions.add(version);
 
       release = { version, date: null, categories: [] };
@@ -133,6 +173,7 @@ export function parseChangelog(source) {
           lineNumber,
         );
       }
+      closeCategory(lineNumber);
       highestCategoryIndex = index;
       category = { title, items: [] };
       release.categories.push(category);
@@ -150,6 +191,8 @@ export function parseChangelog(source) {
 
     throw new ChangelogParseError(`Unrecognised line in release ${release.version}: ${JSON.stringify(line)}`, lineNumber);
   }
+
+  closeCategory(lines.length);
 
   return { releases };
 }

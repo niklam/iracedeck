@@ -53,6 +53,15 @@ describe("buildChangelogData", () => {
     expect(releases[1].categories[0].items[0]).toContain('href="https://iracedeck.com/docs/features/dials/"');
   });
 
+  it("names the release and the bullet when one cannot be rendered", () => {
+    // The renderer sees a bullet with no idea where it came from, so a bare
+    // "must start with /" would send the author hunting through 700 lines.
+    const broken = SOURCE.replace("- Fixed the [dials]", "- Fixed the [dials](docs/relative.html) [broken]");
+
+    expect(() => buildChangelogData(broken)).toThrow(/1\.9\.0 \/ Bug Fixes/);
+    expect(() => buildChangelogData(broken)).toThrow(/bullet: Fixed the \[dials\]/);
+  });
+
   it("records where the artifact came from, so nobody hand-edits it", () => {
     const { _meta } = buildChangelogData(SOURCE);
 

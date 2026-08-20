@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { buildChangelogData, CHANGELOG_DATA_PATH, serializeChangelogData } from "./lib/changelog-data.mjs";
 import { formatLocalDate, stampChangelog } from "./lib/changelog-stamp.mjs";
 import { allPluginManifestRelPaths, discoverVersionedFiles, pluginManifestRelPaths } from "./lib/version-discovery.mjs";
 
@@ -83,10 +84,24 @@ const changelogStamp = existsSync(changelogPath)
   ? stampChangelog(readFileSync(changelogPath, "utf-8"), version, formatLocalDate(new Date()))
   : { content: "", stamped: false, reason: `No changelog at ${changelogRel} — skipping date stamp` };
 
+// The plugin ships its OWN copy of these notes (issue #1011), generated from the
+// very file we just stamped — so the stamp has to be regenerated into it in the
+// same commit. Skipping it would ship a release whose What's New pane calls the
+// version the user just installed "Unreleased", and leave the freshness test
+// (`scripts/generate-changelog-data.test.mjs`) red on the release commit.
+// Built here, before the preflight and before any write, so a malformed
+// changelog aborts the release with a clean tree.
+const changelogDataPath = join(root, CHANGELOG_DATA_PATH);
+const changelogData =
+  changelogStamp.stamped && existsSync(changelogDataPath)
+    ? serializeChangelogData(buildChangelogData(changelogStamp.content))
+    : null;
+
 // Stage the changelog alongside the version files only when it was actually
 // stamped, so the preflight and the real `git add` both see it.
 const allPaths = [...packageJsonFiles, ...manifestFiles].map(({ rel }) => rel);
 if (changelogStamp.stamped) allPaths.push(changelogRel);
+if (changelogData !== null) allPaths.push(CHANGELOG_DATA_PATH);
 
 // Preflight (issue #701, defect 5): confirm every file we're about to bump can
 // be staged BEFORE writing anything. `git add --dry-run` mirrors the real
@@ -112,6 +127,11 @@ if (process.env.RELEASE_IT_DRY_RUN === "1") {
   console.log(`  [dry-run] Would bump ${manifestFiles.length} manifest.json files to version ${manifestVersion}:`);
   for (const { rel } of manifestFiles) console.log(`    - ${rel}`);
   console.log(`  [dry-run] Changelog: ${changelogStamp.reason}`);
+  console.log(
+    changelogData !== null
+      ? `  [dry-run] Would regenerate ${CHANGELOG_DATA_PATH} from the stamped changelog`
+      : `  [dry-run] ${CHANGELOG_DATA_PATH} unchanged (changelog not stamped)`,
+  );
   process.exit(0);
 }
 
@@ -132,6 +152,11 @@ if (changelogStamp.stamped) {
   writeFileSync(changelogPath, changelogStamp.content);
 }
 console.log(`  ${changelogStamp.reason}`);
+
+if (changelogData !== null) {
+  writeFileSync(changelogDataPath, changelogData, "utf-8");
+  console.log(`  Regenerated ${CHANGELOG_DATA_PATH} from the stamped changelog`);
+}
 
 // Stage all modified files. Use argv form (no shell) so package directory
 // names containing spaces or shell metacharacters can't break or inject into

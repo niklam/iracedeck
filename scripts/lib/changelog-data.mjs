@@ -48,7 +48,20 @@ export function buildChangelogData(mdxSource) {
       date: release.date,
       categories: release.categories.map((category) => ({
         title: category.title,
-        items: category.items.map((item) => renderInlineMarkdown(item)),
+        // The renderer sees one bullet at a time and has no idea where it came
+        // from; a bare "must start with /" against a 700-line changelog is a
+        // search. Name the release, the category and the bullet, so the failure
+        // points at the entry the way ChangelogParseError points at the line.
+        items: category.items.map((item) => {
+          try {
+            return renderInlineMarkdown(item);
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            throw new Error(`changelog ${release.version} / ${category.title}: ${message}\n  bullet: ${item}`, {
+              cause: error,
+            });
+          }
+        }),
       })),
     })),
   };

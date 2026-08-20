@@ -155,12 +155,18 @@
 			.sw-cl-items { margin: 0; padding-left: 18px; }
 			.sw-cl-items li { margin: 0 0 6px; color: var(--sw-fg-dim); line-height: 1.5; }
 			.sw-cl-items strong { color: var(--sw-fg); }
+			/* Code spans wrap: a bullet may quote a whole template expression, which is
+			   far wider than the pane and would otherwise scroll the page sideways. */
 			.sw-cl-items code {
 				background: var(--sw-panel); border: 1px solid var(--sw-line); border-radius: 3px;
 				padding: 0 4px; font-family: Consolas, "Courier New", monospace; font-size: 8pt;
-				white-space: nowrap;
+				overflow-wrap: anywhere;
 			}
-			.sw-cl-items a { color: var(--sw-accent); }
+			/* Same colour as every other link in the window — the brand accent is a dark
+			   red that reads at ~2.8:1 on this panel. The default underline carries the
+			   affordance instead. */
+			.sw-cl-items a { color: var(--sw-fg-dim); }
+			.sw-cl-items a:hover { color: var(--sw-fg); }
 			.sw-links { display: flex; gap: 14px; margin: 0 0 12px; }
 			.sw-links a { color: var(--sw-fg-dim); text-decoration: none; }
 			.sw-links a:hover { text-decoration: underline; }

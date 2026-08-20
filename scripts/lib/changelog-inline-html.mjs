@@ -73,14 +73,21 @@ export function renderInlineMarkdown(text) {
   //    later transform — nor the escaping of surrounding prose — may touch them.
   let working = String(text).replace(/`([^`]+)`/g, (_match, code) => hold(`<code>${escapeHtml(code)}</code>`));
 
-  // 2. Escape everything that is left before any markup is generated.
-  working = escapeHtml(working);
-
-  // 3. Links, also lifted out — a URL may legitimately contain `_` or `*`, which
-  //    the emphasis passes below would otherwise chew through.
+  // 2. Links, lifted out of the RAW text too — twice over. A URL may legitimately
+  //    contain `_` or `*`, which the emphasis passes below would otherwise chew
+  //    through; and the href must be escaped exactly ONCE, which it cannot be if
+  //    the target has already been through the prose escaping below (a `&` in a
+  //    query string would come back out as `&amp;amp;`). Label and href are each
+  //    escaped here instead — a code-span sentinel inside a label passes through
+  //    escapeHtml untouched, since it carries none of the characters it rewrites.
   working = working.replace(/\[([^\]\n]+)\]\(([^)\s]+)\)/g, (_match, label, target) =>
-    hold(`<a href="${escapeHtml(resolveHref(target))}" target="_blank" rel="noopener noreferrer">${label}</a>`),
+    hold(
+      `<a href="${escapeHtml(resolveHref(target))}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`,
+    ),
   );
+
+  // 3. Escape everything that is left before any markup is generated.
+  working = escapeHtml(working);
 
   // 4. Bold before emphasis, so `**x**` is never read as two `*x*`.
   working = working.replace(/\*\*(\S(?:[^*]*\S)?)\*\*/g, "<strong>$1</strong>");
@@ -88,6 +95,12 @@ export function renderInlineMarkdown(text) {
   // Underscore emphasis only at word boundaries, so `race_ahead` stays literal.
   working = working.replace(/(^|[^A-Za-z0-9_])_(\S(?:[^_]*\S)?)_(?![A-Za-z0-9_])/g, "$1<em>$2</em>");
 
-  // 5. Put the lifted fragments back.
-  return working.replace(/\u0000(\d+)\u0000/g, (_match, index) => placeholders[Number(index)]);
+  // 5. Put the lifted fragments back — recursively, because a lifted fragment can
+  //    itself hold one (a code span inside a link label). `String.replace` never
+  //    rescans what it substitutes, so a single pass would leave that inner
+  //    sentinel in the output verbatim.
+  const restore = (html) =>
+    html.replace(/\u0000(\d+)\u0000/g, (_match, index) => restore(placeholders[Number(index)]));
+
+  return restore(working);
 }

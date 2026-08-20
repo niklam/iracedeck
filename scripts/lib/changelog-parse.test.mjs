@@ -189,6 +189,55 @@ _2026-01-01_
       ).toThrow(/before any category/);
     });
 
+    it("throws on a release filed out of newest-first order", () => {
+      // The pane renders in file order and treats the top entry as the
+      // in-development one, so a misfiled section buries the running version.
+      expect(() =>
+        parseChangelog(`## 1.0.0
+
+_2026-01-01_
+
+**Features**
+
+- One.
+
+## 1.1.0
+
+_2026-01-02_
+
+**Features**
+
+- Two.
+`),
+      ).toThrow(/strictly newest-first/);
+    });
+
+    it("throws on a category header with no bullets under it", () => {
+      expect(() =>
+        parseChangelog(`## 1.0.0
+
+_2026-01-01_
+
+**Features**
+
+**Bug Fixes**
+
+- A fix.
+`),
+      ).toThrow(/category "Features" in release 1.0.0 has no bullets/);
+    });
+
+    it("throws on a category header left empty at the end of the file", () => {
+      expect(() =>
+        parseChangelog(`## 1.0.0
+
+_2026-01-01_
+
+**Features**
+`),
+      ).toThrow(/has no bullets/);
+    });
+
     it("throws on a heading that is not a plain version number", () => {
       expect(() => parseChangelog("## 1.0.0 (beta)\n")).toThrow(/not a version number/);
     });

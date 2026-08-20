@@ -108,6 +108,22 @@ describe("settings-window-changelog.ejs", () => {
     it("says Unreleased rather than inventing a date for the in-development version", () => {
       expect(render("2.5.0")).toContain('<span class="sw-cl-date">Unreleased</span>');
     });
+
+    it("says nothing at all for an older release that carries no date", () => {
+      // `## 0.13.0` in the real changelog predates the date convention. Only the
+      // TOP section can still be in development, so calling a release that
+      // shipped months ago "Unreleased" would simply be wrong.
+      const html = render("2.5.0", {
+        _meta: {},
+        releases: [
+          ...FIXTURE.releases,
+          { version: "0.13.0", date: null, categories: [{ title: "Features", items: ["Ancient."] }] },
+        ],
+      });
+
+      expect(html.match(/sw-cl-date">Unreleased</g)).toHaveLength(1);
+      expect(html).toContain('<h3 class="sw-cl-version">0.13.0</h3>\n\t\t</div>');
+    });
   });
 
   it("degrades to a plain line rather than an empty pane if the artifact carries nothing", () => {
@@ -128,6 +144,8 @@ describe("settings-window-changelog.ejs", () => {
 
     expect(html).toContain("sw-cl-release");
     expect(html).not.toContain("sw-cl-badge");
+    // …and no half-written note either: "No release notes for version  yet".
+    expect(html).not.toContain("No release notes for version");
   });
 
   it("renders the real committed artifact", () => {

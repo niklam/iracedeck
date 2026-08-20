@@ -70,6 +70,27 @@ describe("renderInlineMarkdown", () => {
       );
     });
 
+    it("keeps a code span that sits inside the link label", () => {
+      // Both are lifted behind sentinels, so the link's placeholder holds the code
+      // span's — a single restore pass would leave the inner sentinel in the HTML.
+      expect(renderInlineMarkdown("The [`Mode` dropdown](/docs/actions/) moved.")).toBe(
+        'The <a href="https://iracedeck.com/docs/actions/" target="_blank" rel="noopener noreferrer">' +
+          "<code>Mode</code> dropdown</a> moved.",
+      );
+    });
+
+    it("escapes an ampersand in the target exactly once, so the URL still works", () => {
+      expect(renderInlineMarkdown("[q](https://example.com/?a=1&b=2)")).toBe(
+        '<a href="https://example.com/?a=1&amp;b=2" target="_blank" rel="noopener noreferrer">q</a>',
+      );
+    });
+
+    it("escapes markup in the link label", () => {
+      expect(renderInlineMarkdown("[a <b> c](/docs/)")).toBe(
+        '<a href="https://iracedeck.com/docs/" target="_blank" rel="noopener noreferrer">a &lt;b&gt; c</a>',
+      );
+    });
+
     it("does not let emphasis markers in a URL break the anchor", () => {
       expect(renderInlineMarkdown("[q](/search/?q=a_b_c)")).toBe(
         '<a href="https://iracedeck.com/search/?q=a_b_c" target="_blank" rel="noopener noreferrer">q</a>',
