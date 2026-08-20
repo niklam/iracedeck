@@ -20,6 +20,7 @@ import {
   resolveActiveRaceEngineerVoice,
   updateGlobalSettings,
 } from "./global-settings.js";
+import { PI_WARNINGS_KEY, setWarning } from "./pi-warnings.js";
 import { createMemorySettingsStore } from "./settings-store.js";
 import type { IDeckPlatformAdapter } from "./types.js";
 import { CHANGELOG_NOTIFICATION_POLICIES } from "./version-check.js";
@@ -1289,5 +1290,72 @@ describe("single-writer store (issue #993)", () => {
 
     expect(getSettingsStoreSource()).toBe("host");
     expect(hostMirrorPayload({ port: 1, token: "t".repeat(48) })).toMatchObject({ driverName: "host-nick" });
+  });
+});
+
+describe("run-scoped keys never reach the settings file (issue #1014)", () => {
+  beforeEach(() => _resetGlobalSettings());
+
+  const stored = (id: string) => JSON.stringify([{ id, level: "error", message: "from an earlier run" }]);
+
+  it("drops a stored warning array instead of loading it into the cache", async () => {
+    await initWithStore({ [PI_WARNINGS_KEY]: stored("settings-window-server"), driverName: "nick" });
+
+    expect((getGlobalSettings() as Record<string, unknown>)[PI_WARNINGS_KEY]).toBeUndefined();
+    expect(getGlobalSettings().driverName).toBe("nick");
+  });
+
+  it("cleans the stored warning array out of the file on the load-time re-save", async () => {
+    const { store } = await initWithStore({ [PI_WARNINGS_KEY]: stored("settings-window-server"), driverName: "nick" });
+
+    expect(store.saved.at(-1)).not.toHaveProperty(PI_WARNINGS_KEY);
+    expect(store.saved.at(-1)).toMatchObject({ driverName: "nick" });
+  });
+
+  it("drops a warning array migrated from the deck host", async () => {
+    const mock = createMockAdapter();
+    const store = createMemorySettingsStore(); // no file: the host is asked once
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store);
+    await tick();
+    mock.echo?.({ driverName: "host-nick", [PI_WARNINGS_KEY]: stored("elevation-mismatch") });
+    await tick();
+
+    expect((getGlobalSettings() as Record<string, unknown>)[PI_WARNINGS_KEY]).toBeUndefined();
+    expect(getGlobalSettings().driverName).toBe("host-nick");
+    expect(store.saved.at(-1)).not.toHaveProperty(PI_WARNINGS_KEY);
+  });
+
+  it("keeps a warning raised this run in the cache and in the deck-host mirror", async () => {
+    await initWithStore({ driverName: "nick" });
+
+    setWarning("settings-window-server", "error", "raised this run");
+
+    expect((getGlobalSettings() as Record<string, unknown>)[PI_WARNINGS_KEY]).toContain("raised this run");
+    expect(hostMirrorPayload({ port: 1, token: "t".repeat(48) })?.[PI_WARNINGS_KEY]).toContain("raised this run");
+  });
+
+  it("never hands a warning raised this run to the store", async () => {
+    const { store } = await initWithStore({ driverName: "nick" });
+
+    setWarning("settings-window-server", "error", "raised this run");
+
+    expect(store.saved.at(-1)).not.toHaveProperty(PI_WARNINGS_KEY);
+    expect(store.saved.at(-1)).toMatchObject({ driverName: "nick" });
+  });
+
+  it("keeps a warning raised before the store loaded, while still dropping the stored one", async () => {
+    const mock = createMockAdapter();
+    const store = createMemorySettingsStore({ [PI_WARNINGS_KEY]: stored("stale"), driverName: "nick" });
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store);
+    setWarning("live", "warning", "raised before the file loaded");
+    await tick();
+
+    const live = (getGlobalSettings() as Record<string, unknown>)[PI_WARNINGS_KEY];
+
+    expect(live).toContain("raised before the file loaded");
+    expect(live).not.toContain("from an earlier run");
+    expect(store.saved.at(-1)).not.toHaveProperty(PI_WARNINGS_KEY);
   });
 });

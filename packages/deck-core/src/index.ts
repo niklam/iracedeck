@@ -346,7 +346,16 @@ export {
 
 // Key binding utilities
 export { formatKeyBinding, parseKeyBinding, parseBinding } from "./key-binding-utils.js";
-export { setWarning, clearWarning, reconcileWarnings, type PiWarning, type PiWarningLevel } from "./pi-warnings.js";
+export {
+  setWarning,
+  clearWarning,
+  reconcileWarnings,
+  PI_WARNINGS_KEY,
+  type PiWarning,
+  type PiWarningLevel,
+} from "./pi-warnings.js";
+// Settings keys that describe THIS RUN and are never persisted (#1014).
+export { RUN_SCOPED_SETTING_KEYS, stripRunScopedKeys } from "./run-scoped-settings.js";
 
 // Setup-name mismatch warning (issue #625)
 export {

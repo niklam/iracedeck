@@ -161,6 +161,12 @@ To clear either one:
 1. **Restart your deck software.** Both conditions are re-checked on every start and on every click of the button, so a banner whose cause has gone disappears on its own — it is a live status, not a dismissible message.
 2. **Check your firewall or security software** for a rule blocking iRaceDeck, if it is the first banner.
 
+### Banners only ever describe the session you are in
+
+This is true of every iRaceDeck banner, not just these two. Warnings are not remembered between runs: iRaceDeck starts each session with none, and each one you see was raised by the copy of iRaceDeck that is running right now, about conditions it has checked itself. Nothing is ever restored from your settings file, and there is nothing stale to clear out by hand.
+
+That makes a banner that comes back after a restart worth taking at face value — the cause really is still there — and it is why there is no dismiss button: dismissing a live status would only hide something that is still true. It also means a warning can be *missing* while its condition has not been ruled out yet. The Administrator-mismatch warning is the one to know about: iRaceDeck can only compare itself against a running iRacing, so after a restart that banner stays away until iRacing is up again, then reappears within a second if the mismatch is still there.
+
 Whichever of the two failures you hit, its banner also names the full path to your settings file. It is plain text, so you can back it up by copying it, or edit it by hand as a last resort — but **close your deck software first**: while iRaceDeck is running it holds its own copy of your settings and will overwrite hand edits when it next saves.
 
 ## Where Your Settings Are Stored

@@ -2,7 +2,11 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { SETTINGS_WINDOW_HTML as RUNTIME_HTML, SETTINGS_WINDOW_OPEN_WARNING_ID } from "@iracedeck/deck-core";
+import {
+  SETTINGS_WINDOW_HTML as RUNTIME_HTML,
+  SETTINGS_WINDOW_OPEN_WARNING_ID,
+  SETTINGS_WINDOW_SERVER_WARNING_ID,
+} from "@iracedeck/deck-core";
 import { describe, expect, it } from "vitest";
 
 import { SETTINGS_WINDOW_FLAG as COMPONENTS_FLAG } from "../components/settings-window-context.js";
@@ -69,5 +73,34 @@ describe("settings-window warning id (#1005)", () => {
     expect(read("head-common.ejs")).toContain("ird-warnings[data-auto]");
     expect(read("head-common.ejs")).toContain("'data-auto'");
     expect(read("open-settings.ejs")).not.toContain("data-auto");
+  });
+});
+
+/**
+ * The settings window is served BY the settings server, so a banner saying that
+ * server never started is disproved by the page the user is reading it on, and
+ * the OPEN-failure note is advice about a button that page does not have
+ * (issue #1014). Since the page has no `open-settings.ejs` include, neither has
+ * a home there — both are withheld.
+ *
+ * It suppresses them by placing its OWN top strip: `head-common.ejs` injects
+ * one only when the body has no `ird-warnings[data-auto]` yet, so the marker is
+ * what makes the page's element the strip rather than a second one below it.
+ * Both halves are pinned — a page that dropped `data-auto` would render two
+ * strips, the injected one unfiltered.
+ */
+describe("settings-window page withholds the settings-window banners (#1014)", () => {
+  const actions = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "iracing-actions", "src", "actions");
+  const page = readFileSync(join(actions, "settings-window", "settings-window.ejs"), "utf8");
+  const strip = /<ird-warnings\s[^>]*>/.exec(page)?.[0] ?? "";
+
+  it("places its own top strip instead of taking the injected one", () => {
+    expect(strip).toContain("data-auto");
+  });
+
+  it("excludes both settings-window ids from it", () => {
+    expect(strip).toContain(`except="`);
+    expect(strip).toContain(SETTINGS_WINDOW_SERVER_WARNING_ID);
+    expect(strip).toContain(SETTINGS_WINDOW_OPEN_WARNING_ID);
   });
 });

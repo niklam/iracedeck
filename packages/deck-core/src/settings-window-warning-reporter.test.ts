@@ -60,10 +60,11 @@ describe("createSettingsWindowWarningReporter", () => {
     expect(banners()).toHaveLength(0);
   });
 
-  it("drops a stale open-failure banner the previous run persisted, once the service starts", () => {
+  it("drops an open-failure banner from an earlier press, once the service starts", () => {
     const report = createSettingsWindowWarningReporter({ getStorePath: () => undefined });
 
-    // `_warnings` is persisted, so last run's failed press is still in the file.
+    // A press that failed earlier in THIS run: warnings never carry over from a
+    // previous one (`_warnings` is run-scoped, #1014).
     report({ stage: "open", ok: false, error: new Error("no browser") });
     report({ stage: "server", ok: true });
 
