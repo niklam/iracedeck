@@ -1359,6 +1359,34 @@ describe("run-scoped keys never reach the settings file (issue #1014)", () => {
     expect(store.saved.at(-1)).not.toHaveProperty(PI_WARNINGS_KEY);
   });
 
+  it("does not touch the store when a delete removes only run-scoped keys", async () => {
+    const { store } = await initWithStore({ driverName: "nick" });
+
+    setWarning("settings-window-server", "error", "raised this run");
+
+    const before = store.saved.length;
+
+    deleteGlobalSettings([PI_WARNINGS_KEY]);
+
+    expect((getGlobalSettings() as Record<string, unknown>)[PI_WARNINGS_KEY]).toBeUndefined();
+    expect(store.saved).toHaveLength(before);
+  });
+
+  it("still saves when a delete removes a durable key alongside a run-scoped one", async () => {
+    // A passthrough key, not a schema field: deleting a schema field only puts
+    // its default back, so the save would be indistinguishable from a no-op.
+    const { store } = await initWithStore({ _lastSeenVersion: "3.0.0" });
+
+    setWarning("settings-window-server", "error", "raised this run");
+
+    const before = store.saved.length;
+
+    deleteGlobalSettings([PI_WARNINGS_KEY, "_lastSeenVersion"]);
+
+    expect(store.saved).toHaveLength(before + 1);
+    expect(store.saved.at(-1)).not.toHaveProperty("_lastSeenVersion");
+  });
+
   it("keeps a warning raised before the store loaded, while still dropping the stored one", async () => {
     const mock = createMockAdapter();
     const store = createMemorySettingsStore({ [PI_WARNINGS_KEY]: stored("stale"), driverName: "nick" });

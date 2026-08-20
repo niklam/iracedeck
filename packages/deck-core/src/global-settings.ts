@@ -1717,7 +1717,11 @@ export function deleteGlobalSettings(keys: readonly string[]): void {
 
   applyParsedSettings(salvage.settings);
 
-  if (storeReady) persist(storeRef);
+  // Same skip as the update path: a delete that only removes run-scoped keys
+  // leaves the stripped payload byte-identical to the file, so writing it can
+  // only cost a rewrite and, on a locked file, the retry schedule (#1014).
+  // `deleted` — not `keys` — is what actually left the cache.
+  if (storeReady && !hasOnlyRunScopedKeys(deleted)) persist(storeRef);
 }
 
 /**
