@@ -104,7 +104,7 @@ This only matters if you actually use SimHub roles — a purely keyboard-bound s
 
 ### What's New
 
-![The What's New tab, showing the update preference and the embedded changelog](../../../../assets/settings-window/whats-new.png)
+![The What's New tab, showing the update preference and the built-in release notes](../../../../assets/settings-window/whats-new.png)
 
 **After an update** controls when the changelog opens by itself once iRaceDeck has updated:
 
@@ -113,7 +113,15 @@ This only matters if you actually use SimHub roles — a purely keyboard-bound s
 - **At most once a month** — a quieter option if updates land often.
 - **Never** — it never opens on its own.
 
-Whichever you pick, the page always lists everything since your last visit, so a quieter setting never means missing anything. The changelog itself is embedded below the setting, so this tab doubles as a convenient place to read it — see [the What's New page](/docs/features/whats-new-page/).
+Whichever you pick, the page always lists everything since your last visit, so a quieter setting never means missing anything — see [the What's New page](/docs/features/whats-new-page/).
+
+Below the setting are the **release notes for every version of iRaceDeck**, newest first. These ship inside the plugin rather than being fetched from this website, which means three things:
+
+- They work **offline**, and behind a firewall.
+- The version you are running is at the top, marked **Installed**, so what you just got is the first thing you read. The window header shows that version too.
+- Nothing here describes a version you do not have. (A test build whose notes are not published yet says so above the list.)
+
+**Open the changelog in your browser** opens the [full changelog](/changelog/) on this website, which is the place to look for versions newer than the one you have installed.
 
 ### Diagnostics
 

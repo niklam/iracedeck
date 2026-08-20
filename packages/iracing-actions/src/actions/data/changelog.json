@@ -1,0 +1,959 @@
+{
+  "_meta": {
+    "generatedFrom": "packages/website/src/content/docs/changelog.mdx",
+    "generatedBy": "pnpm generate:changelog-data",
+    "note": "Generated file — edit the source above, then regenerate. Bullet items are pre-escaped HTML."
+  },
+  "releases": [
+    {
+      "version": "2.5.0",
+      "date": null,
+      "categories": [
+        {
+          "title": "Features",
+          "items": [
+            "The Audio Controls dial gains a Spotter mode: turn to raise or lower iRacing's AI spotter volume (through the same Spotter Louder / Spotter Quieter key bindings as the AI Spotter Controls action, configured once and shared by both), and set the press to Mute / Unmute to tap Spotter Silence.",
+            "The Setup Chassis spring controls now show what you've dialed in: the modes are named LR Spring / RR Spring to match iRacing's pit-stop rows, the Stream Deck+ dial strip and two new View key modes display the pending next-pit-stop spring offset live (in whole millimeters or three-decimal inches — following the sim's display units, or forced metric/imperial per key and per dial) with lit left/right arrows showing which side you're editing, the spring keys support the paired +/− key styles, new dial gestures can bring up the Pit Stop black box or switch the dial between the two springs, and every Setup Chassis key gains a Show Black Box option that opens the box the adjusted value lives in (In-Car or Pit Stop) as you press it. Existing spring key bindings and placed keys carry over automatically.",
+            "The Camera Controls dial gains a Cycle by Track Order mode: turn to jump to the car physically ahead of or behind the focused car on the road, regardless of standings — the order you see in front of you, ideal for hopping between the cars involved in an incident while reviewing a replay. It reads live car placement, so scrubbing a replay from inside a live session follows the live field rather than the replay cursor. Clockwise selects the car ahead (Reverse rotation flips it), the pace car and cars that have left the world are skipped, and the touch strip shows the focused car number with the ahead / behind cars previewed on the side each turn lands on.",
+            "View Adjustment gains a Mouse to Sim mode: one press focuses the iRacing window and moves your mouse pointer into it, near the top centre of the sim window where iRacing's own on-screen UI sits — for VR drivers who can't see where the pointer wandered off to across their monitors. It moves the pointer without clicking, so it's safe to hit blind, and it needs no key binding. Also available as a Stream Deck+ dial press or touch gesture.",
+            "New Race Engineer driver names: Carl, Schumi, Craig, Holger, Alexei, Lex, Martin, Ivo, and Rickybobby.",
+            "iRaceDeck gains a dedicated <strong>Settings window</strong>: click <em>Open iRaceDeck Settings</em> at the bottom of any action's Property Inspector and every plugin-wide setting opens in a proper full-size window — key bindings for every action in one searchable table (236 across 25 categories), Appearance defaults, the Race Engineer voice, radar, callout opt-ins and Test buttons, Stream Deck Profiles with a picker for which deck to switch (Stream Deck only), timing tunables, SimHub, the What's New page preference alongside the release notes themselves — which ship inside the plugin, so they read the same offline, match the window's dark theme, and open on the version you are actually running, marked <em>Installed</em>, rather than on whatever the website currently says — and Diagnostics. It is served by the plugin itself and opened as a chromeless app window in your Edge or Chrome (falling back to a normal tab if neither is installed), remembers its size and position, closes itself when the deck software shuts down, and works the same on Elgato, Mirabox, and Ulanzi. On the rare machine where it cannot open at all — a firewall blocking the local connection it needs, or no browser accepting the page when iRaceDeck hands it over — every Property Inspector now shows a banner saying which of the two happened, what to try, and where your settings file is, instead of leaving you with a button that does nothing; where the blocked connection also stops Property Inspector edits reaching the plugin, the banner says that too rather than letting key binding changes look saved and quietly do nothing. It clears itself the moment the window opens again. With the window in place those settings are no longer repeated inside every Property Inspector: a key's panel is about that key now — its own settings, its per-key title, colour, border and graphic-scale overrides, and a single <strong>Key Bindings</strong> section at the bottom holding just the bindings that action uses, plus the button through to everything else. Actions that use no key bindings say so instead of showing an empty section, and the Race Engineer voice, volumes, callout opt-ins and setup-warning patterns have moved off the Pit Crew key's panel onto the window's Race Engineer tab. Bindings stay in sync both ways on Stream Deck and Mirabox — change one in the window and an open Property Inspector follows live, and the other way round; on Ulanzi Deck that follows once UlanziStudio's in-session settings read is confirmed, and until then set bindings from the window. Your plugin-wide settings now live in a file iRaceDeck owns (<code>%LOCALAPPDATA%\\iRaceDeck\\Settings\\…</code>, shown under Diagnostics with an <em>Open folder</em> button so you can back it up), migrated automatically from the deck software the first time this version starts: window edits and persistence reach the plugin-owned file on all three deck ecosystems, so settings survive plugin updates and reinstalls and no longer depend on the deck software's own storage, which also fixes settings not persisting at all on Ulanzi Deck.",
+            "The Race Engineer and the radar each get a live <strong>Enabled</strong> toggle in the Settings window plus a separate <strong>On startup</strong> setting — remember last used, always on, or always off. Ticking <strong>Enabled</strong> turns the feature on or off there and then, exactly like a Pit Crew toggle key and in sync with it, while <strong>On startup</strong> only decides what it comes up as next time. Previously the single <em>On startup</em> checkbox did both, silently overriding whatever your Pit Crew key had set mid-session. Upgrading carries your old checkbox over as Always on or Always off, so nothing changes until you pick something else."
+          ]
+        },
+        {
+          "title": "Improvements",
+          "items": [
+            "iRaceDeck now brings iRacing to the foreground before sending keystrokes out of the box: the <em>Focus iRacing window before sending keys</em> setting is enabled by default on new installations, so key-binding and chat actions are no longer silently swallowed when another window has focus. Existing installations keep whatever setting they already had — to switch it on, tick the box on the Settings window's General tab.",
+            "Every action's mode selector in the Property Inspector is now labeled <strong>Mode</strong> — on keypad and dial alike — instead of the inconsistent Setting, Adjustment, Control, Direction, or Element it used to show (the Car Setup keys and dials, Camera Editor Adjustments, View Adjustment, Cockpit Misc, Car Control, Camera Editor Controls, AI Spotter Controls, Look Direction, and Toggle UI Elements). Purely a label change — nothing else about how these actions work is different.",
+            "Race positions now exist before the green flag. From the moment the grid is set, through the formation and parade laps, the whole field holds its starting grid order instead of showing nothing: the <code>race_ahead</code> and <code>race_behind</code> template variables resolve to the cars you line up between, and the Camera Controls dial's Cycle by Race Position mode can flip through the field from pole backwards while the pace car is still leading them round — exactly when a broadcaster is setting up shots. The order comes from iRacing's starting grid rather than from how far round the lap each car happens to be, because on a double-file parade lap that would swap every single pair. Drivers still in the garage keep their grid number but are skipped when cycling the camera, and at the green the live running order takes over as usual.",
+            "The Settings window is now documented tab by tab on the website, with a screenshot of each: what every control does and when you would change it. Documentation elsewhere that still pointed at the old <em>Common Settings</em> section in a key's Property Inspector now points at the tab the setting actually lives on."
+          ]
+        },
+        {
+          "title": "Bug Fixes",
+          "items": [
+            "The <em>Disable buttons when iRacing is not connected</em> option is reachable again: it had no control anywhere in the Property Inspectors, and now sits on the Settings window's General tab.",
+            "Cycle Sub-Camera now actually switches the camera, on both the keypad mode and the camera dial. iRacing's camera commands turned out to have no working control over the individual camera within a group, so the mode now triggers the sim's own Next / Previous Sub Camera controls instead — preconfigured to iRacing's defaults (<code>B</code> and <code>Shift+B</code>), so it works without setup, and configurable under Related Key Bindings if you have rebound them. The camera focus stays put while the shot changes, so it works with any car, the pace car, or a scenic view focused.",
+            "Cycling the camera between cars works again while the field is still on its first lap. The Camera Controls dial's Cycle by Car # mode, the keypad's Cycle Car mode, and Replay Control's Next / Previous Car (Number Order) modes were doing nothing during the formation lap, because a car that had not yet completed a lap was treated as not being on track — so on the pace lap the plugin considered the whole field absent. Cycle by Track Order was never affected.",
+            "The Camera Controls dial's Cycle by Race Position mode now falls back to iRacing's own position numbers whenever the plugin's live running order has nobody ranked — for example after the race finishes, where the mode previously stopped responding.",
+            "The Race Engineer no longer calls a pit-box positioning error only once: while the car sits too far left, right, forward, back, or at a bad angle, a short correction now repeats every couple of seconds — &quot;Still too far forward.&quot;, &quot;Back it up.&quot; — until you're in the box or iRacing reports a different error, so backing up and stopping short no longer leaves you parked in silence getting no service. The repeats stay quiet while you're moving the car and pick up again once it comes to rest, over-correcting into a different error plays that error's full call instead, and they ride the existing per-status toggles rather than adding new ones."
+          ]
+        },
+        {
+          "title": "Breaking changes",
+          "items": [
+            "The Camera Controls dial's Cycle by Car # mode now counts <em>down</em> when turned clockwise — <code>#94</code> to <code>#77</code> instead of the other way around — so the two modes that cycle <em>by</em> a number follow one rule: clockwise makes that number go down, matching Cycle by Race Position (which has worked that way since 2.3.0). Cycle by Track Order is ordered by the road rather than by a number, so it keeps taking you to the car physically ahead. Every existing Cycle by Car # dial changes direction with this update — including one that already has <strong>Reverse rotation</strong> ticked — so flip that checkbox in the dial settings, whichever way it is set today, to get the old feel back. The touch-strip previews follow whichever direction is in effect.",
+            "The Stream Deck plugin no longer declares macOS support: from this version it is offered and installable on Windows only, matching what the Mirabox and Ulanzi plugins already declared. Nothing changes for Windows users — the macOS entry only ever told the Stream Deck software it was allowed to install the plugin on a Mac, where it could do nothing useful, because iRaceDeck controls iRacing and iRacing has no macOS build."
+          ]
+        },
+        {
+          "title": "Maintenance",
+          "items": [
+            "The Telemetry Control page on iracedeck.com now documents the Take Snapshot mode (shipped in 1.21.0 but missing from the action page): what the JSON and Markdown files contain, where they go, and how the Output Folder setting is resolved.",
+            "iracedeck.com answers &quot;will this work with my device?&quot; up front: a Works with strip on the front page and inside each download card names the supported hardware brands across the Elgato, Ulanzi, and Mirabox Stream Dock ecosystems.",
+            "The installation guide no longer claims Stream Deck+ dials are unsupported — it now points at the Dials page, which describes what turning, pressing, holding, and the touch strip do."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "2.4.0",
+      "date": "2026-08-12",
+      "categories": [
+        {
+          "title": "Features",
+          "items": [
+            "The Race Engineer now announces when other drivers enter the pits — the race leader plus same-lap competitors within two positions of you (your class in multi-class), with lines like &quot;The leader is pitting&quot; and &quot;The car in, P4, is pitting&quot; — and collapses caution pit trains into a single &quot;other cars pitting as well&quot; call. Two new per-callout toggles (Leader pitting / Nearby competitor pitting), both on by default.",
+            "Session Info gains a Wind mode: an arrow that always points the way the wind is pushing your car, with the wind speed below it in m/s, km/h, or mph. The arrow turns in fine 5° steps — 72 positions rather than a handful of fixed ones — and shows either the wind relative to your car — up is a tailwind, down a headwind, sideways a crosswind, turning with you through a corner — or the compass direction with north up (thanks @JCRTR for the request).",
+            "The Race Engineer now warns about penalty flags on cars around you — furled warnings, black flags, meatballs, and disqualifications for the cars you're racing or slow traffic you're catching — and announces when the race leader starts their final lap.",
+            "Session Info gains a Gaps mode showing the live time gap to the car one class position ahead and behind — measured as a true crossing-time difference accurate to about a tenth of a second — with each row color-coded green or red by whether the gap is moving in your favor, and the Race Engineer calls out what's actually relevant: when a rival is projected to catch you (or you them) within a handful of laps — escalating as it gets serious, and never for a catch that would only complete after the race ends — when either car breaks away from a battle, and when a gap first closes under a configurable threshold — all spaced by a configurable cooldown, with a configurable minimum gap movement between calls about the same car so a hovering gap never ping-pongs, and the opening lap assumes grid spacing so being close off the start is never treated as news."
+          ]
+        },
+        {
+          "title": "Bug Fixes",
+          "items": [
+            "The Race Engineer's contact and collision callouts now announce the penalty point count iRacing actually scores instead of a count assumed from the incident type — a dirt car collision is announced as two points (not four), and a crash that escalates after the first callout, like an off-track that ends in the wall a few seconds later, announces the incident's full value and corrects the earlier call instead of naming only the newly added points; when no matching count line exists the engineer describes the contact without naming a number.",
+            "The Race Engineer no longer misses a directly-issued black flag (a pit-lane speeding penalty, a race-admin black flag, or a disqualification) that lands while another callout is playing — the penalty line now waits its turn and plays as soon as the current line finishes."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "2.3.0",
+      "date": "2026-08-04",
+      "categories": [
+        {
+          "title": "Features",
+          "items": [
+            "Any key title can now show live iRacing data: put a template variable like <code>{{track_ahead.car_number}}</code> — or an <code>{{= … }}</code> expression — in the Title Text of any action's Title Overrides section (or the Telemetry Display Title setting) and the title resolves against live telemetry, updating on the key as the values change. See the <a href=\"https://iracedeck.com/docs/features/template-variables/\" target=\"_blank\" rel=\"noopener noreferrer\">Template Variables</a> reference.",
+            "The Race Engineer announces upcoming corner names in practice and test sessions (&quot;Eau Rouge&quot;, &quot;Turn five&quot;), timed to land just before each corner with a speed-scaled lead you can tune in the Pit Crew settings, and a new Corner Names mode on the Pit Crew action toggles the callouts from a deck key with a spoken confirmation. Corner data by Lovely Sim Racing's lovely-track-data (corner names by Racing Circuits, CC BY-NC-SA 4.0, used with permission) — covers roughly 68 iRacing track configurations.",
+            "New Race Engineer driver names: Dustin, Peter, Robbie, Carter, and Alex."
+          ]
+        },
+        {
+          "title": "Improvements",
+          "items": [
+            "Session Info's iRating Gain/Loss estimate no longer waits for the race to go green: during qualifying it scores the current qualifying standings as if they were the finish, and on the race grid and pace lap it starts from the qualifying grid, so a value shows the moment positions exist. The same applies to the <code>irating_change</code> / <code>irating_new</code> / <code>session.sof</code> template variables, and in practice and test sessions the key now shows <code>--</code> instead of staying empty.",
+            "Race Admin's Black Flag keys now label themselves with the configured penalty — <code>BLACK 30S</code> for a 30-second time penalty, <code>BLACK 3L</code> for a 3-lap penalty, <code>BLACK DT</code> for a drive-through — so a page of black-flag presets no longer needs custom titles. The bundled Race Admin Per Car profile's three black-flag keys drop their static titles and show the selected car's number again.",
+            "The Administrator-mismatch check (iRacing running as Administrator while the deck software is not, which silently blocks every button) now logs its outcome on every connection at the default log level — including a confirmation when everything matches — so a support log shows whether the check ran and what it found without turning on debug logging first.",
+            "The What's New page now defaults to opening only after updates with new features, so small bug-fix updates no longer pop up the page. If you've picked a different option in the What's New page setting (Common Settings → Updates), your choice is unchanged."
+          ]
+        },
+        {
+          "title": "Bug Fixes",
+          "items": [
+            "Key bindings (and other settings) no longer get lost or revert to defaults: the plugin no longer overwrites stored settings when it writes before the deck software has delivered them (e.g. right after a mid-session plugin update), a delayed settings sync from the deck software can no longer roll back or clobber recent changes, and one corrupt stored value no longer makes every key binding appear unset.",
+            "Spotter proximity calls (&quot;Car left.&quot;, &quot;Two cars right.&quot;, &quot;Three wide.&quot;) are now always heard immediately: they cut any other Race Engineer line mid-sentence — even critical ones — instead of being silently dropped when another callout occupied the voice channel. Critical lines they displace (meatball, fuel-critical, start-gantry calls) replay right after the proximity call instead of being lost, and the informational &quot;Clear.&quot; and &quot;Still there.&quot; lines yield to both critical calls and a proximity call still being spoken.",
+            "Template expressions no longer render as empty text when they reference a driver text field iRacing left blank — such as <code>abbrev_name</code> for AI drivers. Blank fields now count as empty strings in expressions, so fallback patterns like <code>{{= track_ahead.abbrev_name ? track_ahead.abbrev_name : track_ahead.name }}</code> work as expected.",
+            "The What's New page no longer pops up in your browser while iRacing is running — if the deck software updates the plugin mid-session, the page now waits and opens right after you exit the sim (or on the next start of the deck software without iRacing). How the page works, and the setting that controls when it opens, are now documented in the <a href=\"https://iracedeck.com/docs/features/whats-new-page/\" target=\"_blank\" rel=\"noopener noreferrer\">What's New Page</a> feature guide.",
+            "The Race Engineer no longer suggests pitting for fuel when the tank already covers the rest of the race — in every race format: lap-limited races compare against the laps left, timed races estimate the remaining laps from the session clock and recent lap times (leader-aware, so multiclass works), races with both limits use whichever ends sooner, and your own final lap and everything after the checkered stay quiet (even through a caution replacing the white flag). Instead of going silent, the engineer now says so: once the race is inside its last 10 laps and the tank covers them with a lap to spare, a one-time <em>&quot;We have enough fuel to finish the race. No need to box for fuel.&quot;</em> confirmation plays (new <strong>Enough fuel to finish</strong> checkbox under Race Engineer Callouts → Fuel, on by default), re-armed after refuels — and if consumption spikes, the warnings come back. The estimates ignore slow caution laps, and a race that gets extended past your white flag (overtime or a restart) re-opens the fuel callouts. When the remaining race length can't be determined, the callouts keep coming as before.",
+            "The Race Engineer no longer replays the session or race intro brief when the plugin reconnects mid-session (for example after a deck-software auto-update): connecting with the car already on track in practice or qualifying, or into a race that's already underway, stays silent. Connecting in the garage, or reconnecting on the pre-green race grid, still gets the brief.",
+            "Cycling the camera through cars no longer goes dead after the race: cars that have finished and left (or towed out mid-race) kept their spot in the running order, and a switch targeting one did nothing — over and over. Camera Controls (the dial's Cycle by Race Position and Cycle by Car Number modes and the keypad's Cycle Car mode) and Replay Control's Next/Previous Car (Number Order) modes now skip cars that are no longer in the sim world and move straight to the next present car, and the Camera Controls touch-strip side previews show the car a detent will actually land on.",
+            "Watching a replay no longer floods the plugin log with a repeated &quot;replay-only session&quot; line on every telemetry update (about sixty per second) — the note is now logged once per replay viewing.",
+            "Action settings panels (Property Inspectors) no longer leak polling timers: every opened panel used to start several timers that were never stopped, which made memory and CPU use grow over time in UlanziStudio the longer the app ran. Each panel's polling now runs on a single shared timer, and every timer stops when the panel goes away, which also trims the settings panels' background CPU use on every platform."
+          ]
+        },
+        {
+          "title": "Breaking changes",
+          "items": [
+            "The Camera Controls dial's Cycle by Race Position mode now selects the car ahead when turned clockwise (the position number decreases) instead of the car behind — existing race-position dials change direction with this update. A new Reverse rotation checkbox in the dial settings restores the old feel, and can also flip the rotation direction of any other dial mode. The touch-strip previews follow whichever direction is in effect."
+          ]
+        },
+        {
+          "title": "Maintenance",
+          "items": [
+            "The Mirabox and Ulanzi plugins now clean up their own log files — logs older than 14 days are deleted automatically, so the log folder no longer grows forever — and packed plugin downloads can no longer accidentally include log files.",
+            "Plugin downloads now include the iRaceDeck license and a <code>THIRD-PARTY-LICENSES.md</code> collecting every third-party license notice — the iRacing SDK, the audio and rendering libraries, the bundled Arimo fonts, and the Lovely Sim Racing corner-data attribution."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "2.2.0",
+      "date": "2026-07-16",
+      "categories": [
+        {
+          "title": "Features",
+          "items": [
+            "Force Feedback now works on a Stream Deck+ dial: turn it to adjust FFB strength or the wheel / bass-shaker LFE level through your existing key bindings, with the live max force shown in Nm on the touch strip for the FFB Force setting. An optional press can run Auto FFB (off by default, since it overwrites the force you've been tuning). Dials are Elgato Stream Deck+ only for now.",
+            "Camera Controls now works on a Stream Deck+ dial: turn it to flip through cameras or cars (clockwise for next, counter-clockwise for previous — pick the target with the dial's Mode setting, including cycle by car number or by live race position), and the touch strip names the mode on its top line and shows what that mode controls below — the current camera, the current sub-camera by name, or the car you're watching — with the previous and next either side where they can be previewed. For Cycle Camera you choose which camera groups it steps through, and a press, long-press, or touchscreen tap can jump the camera to your own car, the leader, the latest incident, the most exciting car, or the next camera angle. Dials are Elgato Stream Deck+ only for now.",
+            "Camera Editor Adjustments now works on a Stream Deck+ dial: turn it to nudge one camera-tool parameter (latitude, longitude, altitude, yaw, pitch, FOV zoom, F-number, focus depth, vanishing point, blimp radius/velocity, key step, or mic gain), pick which one from the dial's Adjustment dropdown, and optionally assign each press and touch gesture to auto-set the mic gain or fire any Camera Editor Controls command (open the camera tool, a toggle, save/load a camera, and so on). Because iRacing exposes no camera-tool values, the touch strip shows the selected parameter's full name rather than a live value. Dials are Elgato Stream Deck+ only for now.",
+            "Cockpit Misc now works on a Stream Deck+ dial: turning it cycles through the in-car dashboard pages (dash page 1 or 2, your choice) and the touch strip shows the live page number the car is on — or <code>---</code> when the car has no dash pages. The dial press and touchscreen can optionally run any of the keypad's one-shot controls — toggle or trigger the wipers, in-lap mode, or report latency. Dials are Elgato Stream Deck+ only for now.",
+            "View Adjustment now works on a Stream Deck+ dial: one action for buttons and dials. On a dial you pick which view setting it adjusts (FOV, horizon, driver height, or UI size) and turn to change it, and a press recenters your VR headset by default. Your existing View Adjustment key bindings are reused, and the settings panel shows dial settings on a dial and button settings on a button. iRacing reports no value for these, so the touch strip shows the setting's name. Dials are Elgato Stream Deck+ only for now.",
+            "Splits &amp; Reference now works on a Stream Deck+ dial: turning the dial cycles through iRacing's splits/delta display modes (clockwise for next, counter-clockwise for previous) and a press toggles the reference car by default. The touch strip shows the action label — iRacing doesn't report which delta mode is selected. Dials are Elgato Stream Deck+ only for now.",
+            "Black Box Selector now works on a Stream Deck+ dial: turn to step through iRacing's black boxes (clockwise for the next, counter-clockwise for the previous) and optionally press to open one box you pick. It reuses your existing black-box key bindings, and the settings panel shows dial settings on a dial and button settings on a button. Because iRacing reports no telemetry for which box is open, the touch strip shows the action's identity only. Dials are Elgato Stream Deck+ only for now.",
+            "The Race Engineer now estimates how many laps of fuel you have left and calls the count out mid-lap — <em>&quot;We're estimating that we have about 3 laps of fuel left after completing this lap.&quot;</em> — ending in a dedicated <em>&quot;Box this lap for fuel.&quot;</em> call when the tank won't cover another full lap. Each count from 10 down to 1 plus the box call has its own checkbox (5, 3, 2, 1 and Box on by default), and a safety-margin slider (0–3 laps, default 0.3) makes the spoken estimate deliberately conservative relative to Session Info's Laps to Empty display. Counts announce once per stint on the way down — saving fuel never repeats a higher count — and a refuel re-arms them all."
+          ]
+        },
+        {
+          "title": "Improvements",
+          "items": [
+            "The developer documentation on iracedeck.com now includes a searchable gallery of every icon shipped with the plugin, plus a designing-icons guide for contributing custom icons or a full alternative icon set."
+          ]
+        },
+        {
+          "title": "Bug Fixes",
+          "items": [
+            "Fixed the Race Engineer announcing &quot;Black flag cleared.&quot; when a furled black-flag warning escalated into the actual black flag — which also silenced the black-flag callout itself. The escalation now plays the black-flag (or disqualification) call and nothing else; a genuinely withdrawn warning still announces &quot;Black flag cleared.&quot; as before.",
+            "The Force Feedback action no longer offers separate Wheel/Haptic LFE Intensity modes — iRacing's &quot;More Intense / Less Intense&quot; options are the very same controls as Wheel LFE and BassShaker LFE Louder/Quieter, just labeled differently on another settings page, so the duplicates were merged into the Wheel LFE and BassShaker LFE modes. Existing buttons and key bindings saved under the old modes migrate automatically.",
+            "The plugin now shows its icon in Ulanzi Studio's Settings &gt; Plugins list.",
+            "The documentation and Downloads links at the bottom of an action's settings now open in the browser on Ulanzi Deck."
+          ]
+        },
+        {
+          "title": "Maintenance",
+          "items": [
+            "Reworked the Race Engineer's voice-clip catalog to be fully config-driven: which lines, variants, and values the engineer can speak now derives from the audio clips that actually ship instead of lists in code, a callout missing any required clip skips cleanly as a whole (never a half-sentence), and voices may carry different variant counts or omit lines entirely — groundwork for additional Race Engineer voices."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "2.1.1",
+      "date": "2026-07-15",
+      "categories": [
+        {
+          "title": "Bug Fixes",
+          "items": [
+            "The plugin no longer keeps an audio stream open while the Race Engineer is silent, so iRaceDeck no longer prevents your PC from going to sleep — the audio device now runs only while something is actually playing."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "2.1.0",
+      "date": "2026-07-14",
+      "categories": [
+        {
+          "title": "Features",
+          "items": [
+            "Redesigned over 170 key icons across sixteen icon sets — Force Feedback, Media Capture, Camera Editor Adjustments, Look Direction, Cockpit Misc dash pages and in-lap mode, Telemetry Control, all seven Setup actions, Chat, View Adjustment, and the Black Box selector — in a clean flat style with real per-setting artwork. Increase/decrease keys carry a big <code>+</code>/<code>-</code> mark beside the artwork and a single-line title (no more INCREASE/DECREASE words), automatic modes get an amber &quot;A&quot; badge, and pairs whose drawing already shows the direction (brake bias, FOV, horizon, driver height, UI size) keep direction-aware artwork instead. ABS Toggle and TC Toggle now show a live ON/OFF status bar with a matching key border (N/A when telemetry isn't available), and Cockpit Misc's duplicate FFB Max Force mode has been folded into Force Feedback (existing buttons keep working).",
+            "Setup actions can render increase/decrease keys as space-saving paired buttons that show the live value (unit-less) in several selectable styles, with three-key layouts around a value key, horizontal or vertical, plus hold-to-repeat.",
+            "Setup Traction, Setup Hybrid, Setup Fuel, Setup Engine, Setup Aero, and Setup Chassis now work on a <strong>Stream Deck+ dial</strong> — one action for buttons and dials each. On a dial you pick which value it adjusts and turn to change it, with the live value shown big and color-coded on the touch strip; settings with no telemetry (engine boost, qualifying tape, and the chassis springs and shocks) show the setting's label instead. Setup Fuel's dial can toggle FCY mode and Setup Aero's can toggle the RF brake ducts on press. Your existing setup key bindings are reused, and the settings panel shows dial settings on a dial and button settings on a button.",
+            "Fuel Service keys can optionally pop iRacing's Fuel black box when pressed (off by default), so you can see the value you just changed — including the autofuel lap margin, which no telemetry reports. The box is switched with a single atomic keystroke pair, so you effectively never see the box it switches through.",
+            "Added six more names the Race Engineer can call you by — Ant, Anthony, Bird, Brad, Kanki, and Shamoy — selectable from the Pit Crew action's <em>Your Name</em> setting.",
+            "Session Info gained an <strong>iRating Gain/Loss</strong> mode showing your estimated iRating change if the race ended now — green when gaining, red when losing, live from the opening lap onward, scored within your car class like iRacing does. The same estimate is available as template variables — <code>irating_change</code> and <code>irating_new</code> on every driver prefix, plus <code>session.sof</code> for your class's Strength of Field — for Telemetry Display, Chat, and Race Admin templates, expressions included."
+          ]
+        },
+        {
+          "title": "Improvements",
+          "items": [
+            "The Race Engineer's pre-start countdown (&quot;Ninety/Sixty/Thirty/Ten seconds to race start&quot;) now plays even while you're out of the car — in the garage, the session screen, or the in-session replay view — so it works as the &quot;get in the car&quot; reminder; watching a saved standalone replay stays silent, and the gantry lines (&quot;Lights…&quot; / &quot;Go, go, go!&quot;) remain in-car only.",
+            "Redesigned the Tire Service icons: Change Compound now shows the compound as a bold colour-coded badge (F1 style — soft red, medium yellow, hard white, inter green, wet blue, dry grey) with the compound initial, and says whether the next stop will change to it or stay on the fitted one; Change All Tires and Clear Tires became a matching four-corner tire set.",
+            "Redesigned the Toggle Wipers and Trigger Wipers key icons around a windshield, so the two keys are clearly distinct from each other and read unmistakably as wipers at deck size.",
+            "The Setup dial touch-strip &quot;dash box&quot; (Setup Brakes, Traction, Fuel, Engine, Aero, Chassis, and Hybrid) is now customizable: set the border, label, value, and background colors independently. The border, label, and value default to the setting's built-in accent and the background to the near-black panel, so existing dials look exactly as before until you change them.",
+            "Key and dial icons are now rendered to pixels by the plugin itself instead of each deck app's SVG engine, so icons look identical on every device and effects like the border glow work on Mirabox and Ulanzi decks too."
+          ]
+        },
+        {
+          "title": "Bug Fixes",
+          "items": [
+            "A Fuel Service dial in <strong>Target Amount</strong> mode no longer changes the fuel request while the car is being fueled during a pit stop. It used to keep re-sending the shrinking remaining amount as fuel was pumped in, which could stop fueling well short of the target; the target top-up now pauses during pit service and resumes afterward."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "2.0.0",
+      "date": "2026-07-08",
+      "categories": [
+        {
+          "title": "Features",
+          "items": [
+            "Setup Brakes now works on a <strong>Stream Deck+ dial</strong> — one brake action for buttons and dials. On a dial it adjusts one brake setup value — brake bias, peak brake bias, brake bias fine, brake misc, engine braking, or ABS adjust — by turning, with the live value shown big and color-coded on the touch strip. Pressing runs a configurable gesture (short and long press), defaulting to Toggle ABS, and your existing Setup Brakes key bindings are reused. The settings panel shows dial settings on a dial and button settings on a button.",
+            "Fuel Service now works on a <strong>Stream Deck+ dial</strong> — one fuel action for buttons and dials. On a dial, a bare turn adjusts fuel manually (Add Amount, or Target Amount kept topped up as fuel burns), or — when iRacing's autofuel is on — adjusts the autofuel lap margin, with a dedicated <code>AUTOFUEL: ON/OFF/N/A</code> status band and a two-segment fuel bar on the touch strip. Every gesture — Push, Long Press, Push + Turn, Tap Display, and Long Touch — is configurable, with Long Press defaulting to Toggle Autofuel (a blind-safe choice for VR) and the touch gestures off for VR safety. The readout shows the fuel iRacing actually banks (read live from telemetry), and whether fueling is on or off is unmistakable at a glance: a full-width status band across the top reads <code>REFUEL: ON</code> on green when the next stop takes fuel and <code>REFUEL: OFF</code> on red when it won't — with <code>AUTOFUEL</code> variants in autofuel mode and a gray <code>N/A</code> when it's unavailable. The settings panel shows dial settings on a dial and button settings on a button.",
+            "Audio Controls now works on a <strong>Stream Deck+ dial</strong>: rotate adjusts the volume of your chosen audio — iRacing voice chat or master, or iRaceDeck's Race Engineer and Radar levels — and the press is configurable as push-to-talk (with an <code>ON AIR</code> indicator on the touch strip while transmitting) or mute/unmute. The Race Engineer and Radar levels show a live level bar on the touch strip; iRacing exposes no volume state for voice chat and master, so those show the category name instead.",
+            "iRaceDeck now bundles ready-made Stream Deck profiles — <strong>iRaceDeck Default</strong> and <strong>iRaceDeck Replay</strong>, each tailored to your device (the classic Stream Deck, the Stream Deck XL, and the Stream Deck + XL) — so you get a full iRacing layout without building one yourself. A new <strong>Switch Profile</strong> action lets you put a profile switch on any key — it targets <strong>iRaceDeck Default</strong> out of the box (shown as a clean, title-less iRaceDeck logo), the icon reflects whichever profile you choose instead, and a <strong>Back to previous</strong> option walks back through the iRaceDeck profiles you visited, returning to <strong>iRaceDeck Default</strong> when there's nowhere further back — and a <strong>Stream Deck Profiles</strong> section in every action's settings lets you switch from there too. The Stream Deck app installs a profile the first time you switch to it. Switch Profile keys and the car-selector number keys stay border-less even when plugin-wide borders are enabled (per-key border overrides still apply).",
+            "Race Admin gained a dynamic car selector for race control (Elgato). A new <strong>Select Car</strong> mode auto-fills one key per car in the session — a big car number with the driver's name below, sorted by number and paged for large fields — and a new <strong>Selected Car</strong> target makes every admin command — black flag, EOL, DQ, clear penalty, wave-around, and the rest — act on whichever car you picked. Pick a car once and the whole admin page targets it, so there's no more hand-building a page per car number. Selector keys work in any layout: place any number of them anywhere on a page (each page can hold a different number), and page flips show quiet blank keys instead of flashing placeholder artwork. Ships with <strong>iRaceDeck Car Selector</strong> (the selector) and <strong>iRaceDeck Race Admin Per Car</strong> (the command page) profiles for the classic Stream Deck, the Stream Deck XL, and the Stream Deck + XL.",
+            "The Car Selector doubles as a camera director (Elgato): a new Camera Controls mode — <strong>Focus Car (pick from grid)</strong> — opens the selector with one key per car, and each press focuses the camera on that car. You stay on the grid to hop car to car, the key of the car you're watching is highlighted, and the Back key returns you to where you came from — ideal alongside the Replay profile.",
+            "Car Control gained four backup driver input modes — <strong>Handbrake</strong>, <strong>Second Clutch</strong>, <strong>Second Up Shift</strong>, and <strong>Second Down Shift</strong> — so you can keep driving when a shifter paddle, clutch pedal, or handbrake fails mid-session. Handbrake and Second Clutch stay engaged while the button is held; the shifts are single taps. None have default iRacing bindings, so set the binding in both iRacing and the Property Inspector.",
+            "Session Info's Fuel mode can now show your fuel consumption — <strong>Used last lap</strong> or <strong>Average per lap</strong> over a configurable window of 1–20 laps — alongside the existing tank-level display. Only clean flying laps count: laps with a pit stop, out-laps and in-laps, and towed laps are excluded automatically, so a stop never corrupts the average. The data survives garage visits and replays, and after a session change the previous values stay visible until you're back on track (in a race, until the green flag).",
+            "Session Info gained a <strong>Laps to Empty</strong> mode: how many laps the fuel in your tank will last, computed live from the tank level and your average consumption per lap (the same clean-laps-only average the Fuel mode shows, over the same configurable 1–20 lap window). The estimate shortens as you burn fuel, jumps up the moment you refuel, and shows <code>--</code> until the first clean lap exists."
+          ]
+        },
+        {
+          "title": "Improvements",
+          "items": [
+            "Fuel Service's Add Fuel, Reduce Fuel, and Set Fuel Amount now go through the iRacing API instead of typed <code>#fuel</code> chat commands — adjustments are instant, nothing flashes the chat window, and holding Add/Reduce repeats briskly. The fuel unit can also follow iRacing's display units automatically: <strong>Auto (from iRacing)</strong> is the new default for new buttons, kilograms convert via the car's fuel weight, and existing buttons keep the unit they were configured with.",
+            "You can now choose when this What's New page opens after an iRaceDeck update — after every update (the default), only after updates with new features, at most once a month, or never — via the new <strong>Updates</strong> setting in the Common Settings section of any action's settings.",
+            "The Race Engineer's white-flag call is now two-stage in races: a heads-up when the white flag comes out (“we're about to start the final lap”), then “this is the last lap” as you cross start/finish and begin yours — leader included. If you cross while the heads-up is still playing, the second call is skipped so the two lines never talk over each other. Both stages share the existing White callout toggle."
+          ]
+        },
+        {
+          "title": "Bug Fixes",
+          "items": [
+            "The Race Engineer's pit-box countdown now takes priority over the pit-service readback: a countdown mark cuts the readback instead of being silently dropped while it plays, and the interrupted readback resumes from where it left off once the countdown is done — so you always hear the countdown on your approach to the box.",
+            "Camera Controls' <strong>Cycle Camera</strong> mode now applies your custom Title Text to the button instead of always showing &quot;CYCLE CAM&quot;, and its mode selector is now labeled <strong>Mode</strong> (it was mislabeled <strong>Target</strong>).",
+            "Race Admin's driver-management commands — Grant Admin, Revoke Admin, Enable/Mute Chat for a driver, and Remove Driver — now refuse to send when the target is an AI car, the pace car, or a car number that isn't in the session (the key flashes a warning instead). iRacing applies these commands to <em>you</em> when the target isn't a real user, which could revoke your own admin and end your session. Revoke Admin additionally refuses your own car, so you can't accidentally revoke your own admin. Race-control commands (black flag, EOL, DQ, and the rest) still work against AI cars as before.",
+            "The Race Engineer's checkered-flag callout in qualifying and races now waits until you actually take the flag at the start/finish line instead of firing the moment the session ends — previously it could play most of a lap early, e.g. “that's it for qualifying” while you were still on your final flying lap. When your own finish ends the race, the call still lands right as you cross the line; practice sessions keep the immediate call, since the flag there just means the session is over.",
+            "During a rolling-start formation, the Race Engineer's “one pace lap to go” call now fires when the pace car crosses the start/finish line — the moment the field is committed to another pace lap — instead of when your own car reaches the line, so you hear it as the final pace lap actually begins rather than seconds later from the mid or back of the grid.",
+            "The Race Engineer no longer announces &quot;This lap will be invalidated. We're out of qualifying laps…&quot; for incidents picked up while circulating after your counted qualifying laps are done — those extra laps aren't timed attempts, so nothing is invalidated and the engineer stays quiet. An incident on your final counted lap still gets the out-of-laps announcement."
+          ]
+        },
+        {
+          "title": "Breaking changes",
+          "items": [
+            "Knobs and dials on Mirabox and Ulanzi devices no longer offer iRaceDeck actions. The rebuilt dial experience is Stream Deck+ only for now, because it has not been verified on Mirabox and Ulanzi dial hardware yet — so any knob or dial assignments made with 1.x on those devices will disappear. Dial support for them will return in a future release once verified."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "1.23.1",
+      "date": "2026-07-07",
+      "categories": [
+        {
+          "title": "Bug Fixes",
+          "items": [
+            "Fuel Service keys no longer fall back to the Toggle Fuel Fill (“REFUEL”) icon and behavior when their stored settings contain a fuel unit this version doesn't know — such as the <code>auto</code> unit written by iRaceDeck 2.0 pre-release builds sharing the same profiles. The unknown unit is now read as liters and the key's selected mode is kept."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "1.23.0",
+      "date": "2026-06-30",
+      "categories": [
+        {
+          "title": "Features",
+          "items": [
+            "Template variables gained a <code>focused</code> prefix that follows the car your camera is focused on (<code>{{focused.car_number}}</code>, <code>{{focused.name}}</code>, and the rest of the driver fields), usable anywhere templates are — Telemetry Display, Chat, and Race Admin. Pair a Telemetry Display with a Camera Focus button so it tracks whoever you're watching — handy for spotting, broadcasting, and race control. It works in replays too.",
+            "Added five more names the Race Engineer can call you by — Dean, Dylan, Ron, Jakub, and Tom — selectable from the Pit Crew action's <em>Your Name</em> setting."
+          ]
+        },
+        {
+          "title": "Improvements",
+          "items": [
+            "Driver-info template prefixes (<code>self</code>, <code>track_ahead</code>/<code>track_behind</code>, <code>race_ahead</code>/<code>race_behind</code>, <code>focused</code>) now report the live race order for both overall and class position — they update continuously as cars move (like the Session Info Position readout while racing on track), instead of only refreshing at the start/finish line.",
+            "The action list is now sorted alphabetically by name across all devices, so actions are easier to find when adding them to a key."
+          ]
+        },
+        {
+          "title": "Bug Fixes",
+          "items": [
+            "Cars that are towed into the pits no longer briefly jump ahead of you in the running order while they sit in their pit box — they hold their on-track position for the whole stop and drop back only once they rejoin the track. This keeps the Race Engineer's spoken position, the Session Info Position readout, and the driver-info template prefixes from reading a place too high during another car's pit stop.",
+            "Links in an action's settings (such as Documentation and Downloads) now open in your default web browser instead of the deck app's small built-in browser window."
+          ]
+        },
+        {
+          "title": "Maintenance",
+          "items": [
+            "Standardized on &quot;dial&quot; (instead of &quot;encoder&quot;) across the documentation and website, matching Stream Deck's own terminology and the SDK's dial event names."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "1.22.2",
+      "date": "2026-06-25",
+      "categories": [
+        {
+          "title": "Bug Fixes",
+          "items": [
+            "Fixed towed cars (and cars that briefly dropped out) staying stuck at their pre-tow position in the running order — which drifted the Race Engineer's spoken position and the Session Info display off, sometimes by several places over a long race. Positions now recover the moment the car is moving normally again."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "1.22.1",
+      "date": "2026-06-18",
+      "categories": [
+        {
+          "title": "Maintenance",
+          "items": [
+            "Expanded the Ulanzi Deck documentation (installation, troubleshooting, and developer guides) and renamed the Ulanzi plugin download to a self-describing <code>.zip</code> file. No functional changes to the plugin."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "1.22.0",
+      "date": "2026-06-15",
+      "categories": [
+        {
+          "title": "Features",
+          "items": [
+            "iRaceDeck now runs on <strong>Ulanzi Deck</strong> devices (D200, D200H, D200X, and Dial). A dedicated plugin for the UlanziStudio app brings the full action catalog and Property Inspector to the Ulanzi ecosystem.",
+            "Telemetry Display now supports expressions — use <code>{{= … }}</code> alongside the usual <code>{{variable}}</code> placeholders to compute and format values: arithmetic, comparisons, ternaries (<code>cond ? &quot;A&quot; : &quot;B&quot;</code>), string concatenation, and the <code>round</code>, <code>floor</code>, <code>ceil</code>, <code>abs</code>, <code>min</code>, and <code>max</code> functions. For example, <code>{{= round(telemetry.dpFuelAddKg / (sessionInfo.DriverInfo.DriverCarFuelKgPerLtr * 0.264172), 2) }}</code> shows the fuel to add in gallons. Expressions are evaluated safely — no arbitrary code execution.",
+            "New Changelog page (this one). When you update to a new version, iRaceDeck now opens it in your browser so you can see what's new at a glance."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "1.21.0",
+      "date": "2026-06-13",
+      "categories": [
+        {
+          "title": "Features",
+          "items": [
+            "Race-start voice callouts. Standing starts get a countdown into the lights (&quot;Ninety… sixty… thirty… ten seconds to race start.&quot;), &quot;Lights. Get ready to go.&quot; as the gantry comes alive, and &quot;Go, go, go!&quot; the instant they drop — and the countdown only speaks marks that fit the pre-start window, so short procedures never blurt stale numbers. Rolling starts get &quot;Pace car's rolling&quot;, &quot;One pace lap to go&quot;, and &quot;Green's coming&quot;.",
+            "Voice spotter — the Race Engineer spots traffic for you: &quot;Car left.&quot; / &quot;Car right.&quot;, &quot;Two cars left.&quot;, &quot;Three wide.&quot;, a &quot;Still there.&quot; reminder while you're side-by-side, and &quot;Clear.&quot; when you're free. Road courses use left/right, ovals inside/outside, and routine chatter is held back while a car is alongside so spotter calls and safety flags own the radio.",
+            "Pit window open/closed callouts, announced the moment they change so you can react under caution.",
+            "Black flag callouts — disqualification, a debounced furled black-flag warning with a paired &quot;furled cleared&quot; call, and late-race &quot;Ten to go&quot; / &quot;Five to go&quot; calls.",
+            "Setup sanity check — heading into a race on a qualifying setup (or the other way around), the engineer spots it from the setup name and asks you to double-check. Match patterns are configurable.",
+            "New Telemetry Control Snapshot mode — a developer/diagnostic key that saves the current telemetry and session info to disk, handy when reporting issues.",
+            "New Race Engineer driver names: Mike, Guido, and Fox.",
+            "As always, every new callout has its own on/off toggle in the Property Inspector."
+          ]
+        },
+        {
+          "title": "Improvements",
+          "items": [
+            "The Race Engineer now knows your car: no pit-limiter chatter on cars that don't have one, and the pit-entry service readback works on dirt ovals.",
+            "Reworked radio discipline — critical calls (meatball, &quot;Go, go, go!&quot;, fuel-critical) cut through instantly, while background commentary waits its turn instead of talking over them.",
+            "No more P0 on the grid — Session Info shows your qualifying grid slot through the formation lap, and the engineer no longer calls phantom position changes during the pre-green shuffle.",
+            "The Pit Limiter button is now tri-state — on cars without a pit limiter it greys out (keeping the pit-speed number) instead of pretending to toggle.",
+            "The practice and qualifying session-start brief now plays right at session start."
+          ]
+        },
+        {
+          "title": "Bug Fixes",
+          "items": [
+            "&quot;Yellow cleared.&quot; is back — it was silently dropped whenever the radio was busy, and now waits for a gap so it gets through.",
+            "The &quot;approaching pits&quot; call no longer repeats when you drift out of the pit entry and straight back in."
+          ]
+        },
+        {
+          "title": "Maintenance",
+          "items": [
+            "Dependency updates and assorted cleanup."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "1.20.0",
+      "date": "2026-06-02",
+      "categories": [
+        {
+          "title": "Features",
+          "items": [
+            "Session Info Position mode adds a Position Type setting (Class / Overall, with Class the default). Multi-class drivers see their live in-class position on the key, updating as you pass and get passed — not just at the start/finish line. Show Total Cars follows along: P2/8 for your class versus P5/24 for the whole field.",
+            "Every action's Property Inspector now shows its communication method (iRacing API, key binding, or chat command) under the Mode selector, with a live binding status and a &quot;set it here&quot; shortcut. A required key binding that isn't configured shows a ⚠️ on the key icon until you set one, and SimHub users get a live &quot;SimHub not connected&quot; indicator.",
+            "The Car Control Enter/Exit/Tow key is now context-aware, mirroring iRacing's own session button: out of the car it shows Test, Practice, Qualify, Grid, or Race; in the car the exit, reset-to-pits, and tow states switch to a red background.",
+            "An Administrator mismatch warning detects when iRacing runs as Administrator but Stream Deck doesn't (which silently blocks every command) and explains how to fix it in the Property Inspector."
+          ]
+        },
+        {
+          "title": "Improvements",
+          "items": [
+            "Plugin logs now default to info level instead of flooding with debug output. A new &quot;Enable debug logging&quot; checkbox under Common Settings → Diagnostics turns on verbose logs immediately, no restart needed."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "1.19.0",
+      "date": "2026-05-31",
+      "categories": [
+        {
+          "title": "Features",
+          "items": [
+            "Race Engineer race-start brief — at the green he greets you with your grid position and the conditions (track temp, air temp, wetness).",
+            "Race Engineer overtake calls — &quot;Nice pass!&quot; when you gain a spot and &quot;Come on, <code>&lt;name&gt;</code>!&quot; when you lose one, with a live position readout. Class-aware in multi-class and smart enough to ignore momentary position flickers.",
+            "Race Engineer race status and finish — periodic position updates through the race, plus a dedicated call when you take the checkered.",
+            "Race Engineer qualifying calls — your new position after each qualifying lap, and a heads-up when a lap is invalidated.",
+            "Race Engineer pit-box count-in — heading down pit lane he counts down the distance to your box (&quot;5, 4, 3, 2, 1, pit now&quot;).",
+            "New Race Engineer volume and Radar volume buttons in Audio Controls, so you can balance each voice independently.",
+            "New Jump to Fastest Lap action in Replay Control — skip straight to the fastest lap of your car or the car you're watching.",
+            "Chat Send Message timing is now configurable, so you can tune the Enter hold and delays for reliable delivery.",
+            "More driver names in the callout pool (Jon, James, Noj), and every new callout has its own on/off toggle."
+          ]
+        },
+        {
+          "title": "Bug Fixes",
+          "items": [
+            "The Race Engineer now stops mid-sentence (and kills ambient audio) the instant you toggle him off.",
+            "Multi-class overtake detection fixed."
+          ]
+        },
+        {
+          "title": "Maintenance",
+          "items": [
+            "Dependency updates and assorted cleanup."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "1.18.0",
+      "date": "2026-05-16",
+      "categories": [
+        {
+          "title": "Features",
+          "items": [
+            "Race Engineer session-start callout greets you the first time you go on track each session with a briefing: your name, session type, pit speed limit, track and air temperature, and track wetness. It fires once per session, about 3 seconds after going on track, and defaults on.",
+            "Race Engineer best-lap callout announces your time when you set a new personal best or complete your first valid lap. Sub-one-minute laps skip the minute clip; laps 11 minutes or longer stay silent. Defaults on.",
+            "Race Engineer toggle acknowledgement — pressing the toggle confirms the new state out loud.",
+            "Race Engineer telemetry-connect radio check plays a &quot;radio check, standing by&quot; line on a real SDK connection; reconnects re-fire.",
+            "Setup actions gain live-value View sub-modes that render the live telemetry value on the key — 28 new entries across Aero, Brakes, Chassis, Engine, Fuel, Hybrid, and Traction. The PI dropdowns are reorganized into Adjust and Display value groups.",
+            "Setup action View sub-modes double as one-key dual-press controls: a short press fires one direction, a long press the opposite. The threshold (200–2000 ms, default 500) and direction are configurable, with a per-action opt-out.",
+            "Toggle Driving Line added as a tenth mode on Toggle UI Elements (default keybind Ctrl+Alt+L).",
+            "Three new driver names — Dominic, Miguel, and Jasper."
+          ]
+        },
+        {
+          "title": "Improvements",
+          "items": [
+            "Voice clips re-encoded to 16 kHz mono 32 kbps (the radio filter band-limits them to 250–3500 Hz anyway), cutting file sizes about 64% with no audible difference."
+          ]
+        },
+        {
+          "title": "Maintenance",
+          "items": [
+            "The audio generator config was split into self-contained per-voice files, with a parity test ensuring every voice covers the same callouts; the voice &quot;luca&quot; was renamed to &quot;default&quot; (transparent to users).",
+            "No manual migration is needed; setup action layouts are backward-compatible, and TC Slot 1–4 was renamed to TC1–TC4 (cosmetic only)."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "1.17.0",
+      "date": "2026-05-11",
+      "categories": [
+        {
+          "title": "Features",
+          "items": [
+            "Race Engineer incident callouts react to six distinct situations: going off-track, spinning out, light contact with the wall or another car, and harder collisions. Collision lines mention the penalty points inline, multi-step crashes get one combined callout, and each category has its own toggle (all default on).",
+            "Race Engineer track wetness callouts announce every step transition as the track gets wetter or drier, with directional phrasing — twelve unique lines covering all the states.",
+            "Session Info gains a Track Wetness mode: a six-segment cyan-to-blue bar that fills as conditions worsen, with the live state name as the title.",
+            "Race Flags gains a &quot;Blank when no flag&quot; option to hide the &quot;--&quot; placeholder until a flag actually appears (opt-in, default off).",
+            "Replay Control gains progressive slow-motion stepping — Slow Motion walks from 1/2x down to 1/16x in configurable steps, and long-press holds it down the ladder; Slow Motion Rewind works the same in reverse."
+          ]
+        },
+        {
+          "title": "Improvements",
+          "items": [
+            "Volume sliders now follow a perceptual loudness curve, giving fine control at low volumes; radar SFX was re-mastered to match the engineer's loudness; and default levels were rebalanced (Race Engineer and Radar 100→50, Background 35→25).",
+            "Telemetry now polls at 100 Hz with frame-level de-duplication (up from 4 Hz), unlocking sub-100 ms features; Telemetry Display and Car Control icons are capped at 10 Hz for visibly smoother updates.",
+            "Every static icon was re-authored — viewBoxes trimmed to the artwork, padding added, and several redesigned (Ignition, Reset to Pits, Restart Recording, Launch RPM, and more); decrease-variant icons were rebuilt to mirror their increase counterparts."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "1.16.0",
+      "date": "2026-05-06",
+      "categories": [
+        {
+          "title": "Features",
+          "items": [
+            "Race Engineer pit-service status callouts: once the car is in the box he reads iRacing's pit-stop status out loud (&quot;Crew working&quot;, &quot;All done, ready to roll&quot;, &quot;Too far left/right/forward/back&quot;, &quot;Bad angle&quot;, &quot;Can't fix that this stop&quot;), each individually toggleable.",
+            "Replay Control gains a configurable Fast Forward / Rewind step rate and slow-motion rewind.",
+            "Chat gains an on/off toggle mode for cleaner one-button workflows.",
+            "Session Info gains display sizing, handy on the larger Mirabox touch surfaces (first contribution from @RCkanki)."
+          ]
+        },
+        {
+          "title": "Improvements",
+          "items": [
+            "SimHub Control Mapper roles are now sorted alphabetically in the binding dropdown."
+          ]
+        },
+        {
+          "title": "Bug Fixes",
+          "items": [
+            "Race Engineer and Radar now default off. A schema migration deletes persisted enable values from older versions, every voice scenario and radar tick is master-gated, and a plugin-level audio listener keeps a deck without a Pit Crew button silent. Re-enable with the Race Engineer Toggle or Radar Toggle (thanks @thesewheels and @Lazagna42 for reporting).",
+            "Autofuel no longer ships a default key binding, so there are no accidental conflicts on first install.",
+            "The camera focus labelled &quot;Focus on Exiting&quot; (a typo) is now &quot;Most Exciting&quot;, matching iRacing."
+          ]
+        },
+        {
+          "title": "Maintenance",
+          "items": [
+            "The &quot;Respond to Last PM&quot; Chat mode is hidden — the unified Reply mode covers it, and existing buttons auto-migrate to Reply."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "1.15.1",
+      "date": "2026-05-03",
+      "categories": [
+        {
+          "title": "Features",
+          "items": [
+            "New Pit Crew action with two features at launch: a Race Engineer voice assistant that reads out pit-action toggles, tells you what's planned for the next pit stop, calls out flags, and warns when your car is damaged; and Audio Radar, which ticks in your left or right ear when there's a car alongside so you can keep your eyes on the road. Both are off by default.",
+            "Race Admin gains a &quot;Type in Chat&quot; car-selection mode that types the command to the chat window for you; you fill in the car number and press Enter.",
+            "Flag overlay maximum flashing time limits how long flag overlays flash, useful on long tracks where green flags can persist for minutes (see Global Settings)."
+          ]
+        },
+        {
+          "title": "Bug Fixes",
+          "items": [
+            "Added default key bindings for Next and Previous car in replay (v and Shift+V); previously these had no defaults."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "1.14.0",
+      "date": "2026-04-19",
+      "categories": [
+        {
+          "title": "Features",
+          "items": [
+            "Auto-hold for the Enter/Exit/Tow Car mode, with per-state behavior (Exit in the pit stall, Reset on track in non-race sessions, Tow on track in a race). A single tap holds Shift+R for 1.5 s; tap again to cancel. Manual press-and-hold still works.",
+            "A build-time platform feature-flag system per plugin. Its first use strips border glow (QT6.7+ only) from the Mirabox bundle and Property Inspector while Stream Deck keeps it."
+          ]
+        },
+        {
+          "title": "Improvements",
+          "items": [
+            "All 12 audio-controls and AI spotter icons were redesigned with new, Mirabox-compatible artwork (artwork by Hesham).",
+            "Toggle Autofuel no longer shows the fuel amount, matching the Fast Repair look.",
+            "AI Spotter volume labels now follow the audio-controls convention (VOL UP / SPOTTER, and so on).",
+            "Black-box Next/Previous artwork is centered with the other black-box icons.",
+            "New Mirabox dev workflow scripts (relink, unlink, switch-test-env) with expanded setup docs."
+          ]
+        },
+        {
+          "title": "Bug Fixes",
+          "items": [
+            "Replay Next/Previous Car no longer becomes a no-op during the warmup/formation lap.",
+            "The Master &quot;Mute&quot; option was removed from Audio Controls (it had no key binding and was a silent no-op).",
+            "Icon title alignment fixed for 21 icons by stripping a phantom leading newline that pushed artwork about 11 px too high."
+          ]
+        },
+        {
+          "title": "Maintenance",
+          "items": [
+            "Long-press repeat logic extracted into a single shared RepeatController.",
+            "Shared PI assets moved into a dedicated @iracedeck/pi-components package consumed by both plugins.",
+            "Each action's PI template, icon, and key art now live alongside its code.",
+            "Package renames (@iracedeck/actions → @iracedeck/iracing-actions, plus the two plugin packages)."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "1.13.1",
+      "date": "2026-04-15",
+      "categories": [
+        {
+          "title": "Bug Fixes",
+          "items": [
+            "Fixed fuel and replay long-press sticking under rapid presses — the 1.13.0 fix wasn't enough. The root cause (a synchronous native chat send blocking the event loop just long enough for keyUp events to race past timer setup) is fixed, and held-button tracking is now the authoritative source of truth, so a release always stops the repeat immediately."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "1.13.0",
+      "date": "2026-04-12",
+      "categories": [
+        {
+          "title": "Features",
+          "items": [
+            "New Force Feedback action to adjust FFB from the Stream Deck. Modes: Auto-compute FFB Force, FFB Force (+/−), Wheel LFE (+/−), Bass Shaker LFE (+/−), Wheel LFE Intensity (+/−), and Haptic LFE Intensity (+/−).",
+            "New &quot;Auto-enable fueling on amount change&quot; global setting (off by default) that arms fueling when you adjust the fuel amount (thanks @navy-exe)."
+          ]
+        },
+        {
+          "title": "Improvements",
+          "items": [
+            "The color picker now remembers recently used colors and shows preset swatches.",
+            "Status-bar icons show a gray &quot;N/A&quot; indicator when telemetry isn't available, instead of stale or zero values.",
+            "Toggle Tires gains a Toggle Mode setting: Select (default for new actions) replaces the current selection, while Toggle (legacy) flips each configured tire individually.",
+            "Toggle Autofuel adopts the status-bar style with border color and shows the current fuel amount (thanks @navy-exe).",
+            "Replay Set Speed uses the configured speed as its default title (e.g., &quot;2×&quot;, &quot;8×&quot;).",
+            "The Silence icon exposes its two graphic colors for per-action and global overrides.",
+            "Action documentation on iracedeck.com is now organized per mode.",
+            "The primary selector on every action is consistently labelled &quot;Mode&quot;."
+          ]
+        },
+        {
+          "title": "Bug Fixes",
+          "items": [
+            "Fuel increase/decrease long-press looping now has a safety timeout.",
+            "The replay play/pause toggle correctly resets when iRacing disconnects.",
+            "Fuel Service global settings are no longer hidden in non-keyboard modes."
+          ]
+        },
+        {
+          "title": "Maintenance",
+          "items": [
+            "The build now generates a config.json carrying the plugin version and target platform, so the version is read at runtime rather than hardcoded.",
+            "Actions can declare addedWithVersion on CommonSettings, enabling version-dependent defaults without breaking existing settings."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "1.12.0",
+      "date": "2026-04-08",
+      "categories": [
+        {
+          "title": "Features",
+          "items": [
+            "New Push-to-Talk mode for Audio Controls — hold to talk, release to mute, with a dedicated mic icon.",
+            "Dynamic icon scaling: artwork automatically scales and repositions based on title visibility and placement. A per-action scale override (50–150%) and a global Graphic Scale default were added."
+          ]
+        },
+        {
+          "title": "Improvements",
+          "items": [
+            "The flags overlay now shows green, white, and checkered flags; the checkered flag uses a 2×2 pattern, and blue is suppressed when green is active (thanks @navy-exe).",
+            "Toggle Tires was redesigned with a race-car silhouette and per-tire color indicators (green changing, red configured but off, black not configured), and tire selection moved to a 2×2 checkbox grid (icon by Niklas, grid by @navy-exe).",
+            "Toggle Tires now sends shorthand iRacing pit macros when the selected tires match a recognized group (all four, left-side, right-side), fixing cars like the SF23 that only support all-or-nothing tire changes (reported by @rafeautie).",
+            "A new color picker adds a proper &quot;not set&quot; state, inline hex editing, and a clear button; legacy values auto-migrate.",
+            "A new synced slider-and-number range input replaces the old sliders across the Property Inspector."
+          ]
+        },
+        {
+          "title": "Bug Fixes",
+          "items": [
+            "Toggle Fuel, DRS, Push-to-Pass, Windshield Tearoff, and Fast Repair now lock their essential title fields so global title settings can't suppress them.",
+            "Fixed a race condition that overwrote the saved title font size when opening the Property Inspector.",
+            "Fixed opening an action's Property Inspector writing the icon's default border color to settings.",
+            "Fixed border and glow rects being half-clipped at the SVG viewBox edges."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "1.11.0",
+      "date": "2026-04-02",
+      "categories": [
+        {
+          "title": "Features",
+          "items": [
+            "Customizable button title text: override the default title on any action and control bold, font size, and position (top/middle/bottom/custom offset). Three-state Inherit/Yes/No controls and a four-level resolution chain (per-action → global → icon metadata → defaults) keep it predictable, with a global Title Defaults section.",
+            "Border indicator with inner glow: add a configurable border (width, color, optional glow) to any key icon. Toggle actions get state-driven border colors (green on, red off, gray N/A). Icon backgrounds also gain rounded corners.",
+            "Dynamic grid icon for Camera Cycling: the Cycle Camera target shows a miniature grid of your selected camera group icons, adapting the layout to the group count with a &quot;+N&quot; overflow indicator.",
+            "The Property Inspector was reorganized: Action and Global settings are separated by section headers, overrides are wrapped in collapsible accordions, global settings are split into focused sections, and accordion open/closed state persists across key selections."
+          ]
+        },
+        {
+          "title": "Improvements",
+          "items": [
+            "Black box icon titles simplified to concise one-line labels (e.g., &quot;LAP TIMING&quot;)."
+          ]
+        },
+        {
+          "title": "Bug Fixes",
+          "items": [
+            "Race position is now calculated in real time from laps completed plus track distance percentage, giving instant updates during races. Practice and qualifying still use the official positions, with the official position as a fallback on pit road."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "1.10.0",
+      "date": "2026-03-29",
+      "categories": [
+        {
+          "title": "Features",
+          "items": [
+            "Long-press repeat for fuel controls — hold Fuel Add/Reduce to continuously adjust the amount.",
+            "Escape control added to the Car Control action."
+          ]
+        },
+        {
+          "title": "Improvements",
+          "items": [
+            "Locked color slots protect semantic colors (like flag overlays) from global color overrides.",
+            "New artwork for the Report Laps, Damage Report, and Weather Report icons (artwork by @NAVY).",
+            "Bottom-positioned icon labels moved lower for better readability."
+          ]
+        },
+        {
+          "title": "Bug Fixes",
+          "items": [
+            "Fixed replay next/previous car track navigation.",
+            "The fuel toggle now shows a &quot;--&quot; placeholder when no telemetry is available.",
+            "Fixed a hardcoded background color in replay car icons not respecting color overrides."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "1.9.1",
+      "date": "2026-03-28",
+      "categories": [
+        {
+          "title": "Improvements",
+          "items": [
+            "Redesigned camera select icons and improved Property Inspector usability."
+          ]
+        },
+        {
+          "title": "Bug Fixes",
+          "items": [
+            "Fixed camera group selection being shared across all buttons instead of stored per-action."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "1.9.0",
+      "date": "2026-03-27",
+      "categories": [
+        {
+          "title": "Features",
+          "items": [
+            "Telemetry-driven pit service states: pit toggles (Windshield Tearoff, Fast Repair) and a new Toggle Fuel Fill action now show live ON/OFF status from telemetry, and Toggle Fuel Service also shows the amount of fuel to be added.",
+            "Context-aware Enter/Exit/Tow: the Car Control action adapts its icon and behavior to your current state, with updated icons."
+          ]
+        },
+        {
+          "title": "Improvements",
+          "items": [
+            "The plugin version and a downloads link are now shown in all Property Inspector panels.",
+            "A documentation link was added to all Property Inspector panels."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "1.8.0",
+      "date": "2026-03-26",
+      "categories": [
+        {
+          "title": "Bug Fixes",
+          "items": [
+            "Fixed the Enter / Exit / Tow button."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "1.7.0",
+      "date": "2026-03-24",
+      "categories": [
+        {
+          "title": "Features",
+          "items": [
+            "SimHub Control Mapper integration: every key binding can now be routed through SimHub's Control Mapper instead of keyboard shortcuts. A per-binding dropdown switches between Keyboard and SimHub mode; in SimHub mode you pick a Control Mapper role name (with autocomplete) and iRaceDeck sends the command over the network. Configure the SimHub host and port once in Global Settings (contributed by @kelchm)."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "1.6.0",
+      "date": "2026-03-23",
+      "categories": [
+        {
+          "title": "Features",
+          "items": [
+            "Change Camera: switch directly to a specific camera group (Cockpit, Chase, TV1, and so on) with a single press. Pick from all 20 iRacing camera groups via a dropdown; the key icon updates to match.",
+            "Camera Group Subset Cycling: choose which camera groups to cycle through via a checkbox grid.",
+            "Car Control gains four new modes — Headlight Flash, Push to Pass (with live status), DRS (with live status), and Tear Off Visor.",
+            "Splits &amp; Delta gains four new modes — Custom Sector Start/End for personalized split timing, and Active Reset for set-and-run reset points."
+          ]
+        },
+        {
+          "title": "Improvements",
+          "items": [
+            "Color overrides now work on dynamic template actions (Car Control, Session Info, Tire Service, Telemetry Display).",
+            "Telemetry Display updated with an improved default template, title, and font size."
+          ]
+        },
+        {
+          "title": "Maintenance",
+          "items": [
+            "The Stream Dock plugin was renamed to the Mirabox plugin to reflect the actual hardware brand."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "1.4.0",
+      "date": "2026-03-20",
+      "categories": [
+        {
+          "title": "Features",
+          "items": [
+            "Customizable icon colors: change background, text, and graphic colors on every action. Per-action overrides, global defaults, and preset buttons (Default / White / Black) make it easy to match your Stream Deck layout.",
+            "Splits &amp; Reference (renamed from Splits Delta Cycle) now includes a &quot;Toggle Reference Car&quot; mode alongside the cycle mode. Dial rotation always cycles splits delta regardless of mode."
+          ]
+        },
+        {
+          "title": "Improvements",
+          "items": [
+            "The global key bindings section now starts collapsed for a cleaner Property Inspector."
+          ]
+        },
+        {
+          "title": "Bug Fixes",
+          "items": [
+            "Windshield Tearoff and Fast Repair now correctly toggle on/off instead of always enabling, and tire compound cycling is fixed for multi-compound cars.",
+            "Leading zeros are preserved in car numbers (e.g., &quot;08&quot;) for Race Admin commands and camera operations."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "1.3.0",
+      "date": "2026-03-15",
+      "categories": [
+        {
+          "title": "Features",
+          "items": [
+            "New Race Admin action (27 modes): quick access to admin chat commands for league race directors and hosted-session admins — throw yellows, issue black flags, disqualify drivers, manage pits, control restarts, and more. It can target the currently viewed car or a pre-defined car number.",
+            "Jump to car by number added to Replay Control.",
+            "Configurable font size for Chat action key text."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "1.2.0",
+      "date": "2026-03-15",
+      "categories": [
+        {
+          "title": "Features",
+          "items": [
+            "Jump to next, previous, and my car: new camera sub-actions added to Replay Control."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "1.1.0",
+      "date": "2026-03-14",
+      "categories": [
+        {
+          "title": "Features",
+          "items": [
+            "Progressive replay speed control spanning the full 1/16x to 16x range.",
+            "Long-press repeat for replay speed and transport controls.",
+            "Play backward mode with improved play/pause behavior.",
+            "Direction-aware speed control with turtle/rabbit icons.",
+            "Redesigned replay icons — a film strip for frame forward/backward, an oval track for next/previous lap, and a dynamic needle gauge for set-speed."
+          ]
+        },
+        {
+          "title": "Improvements",
+          "items": [
+            "Improved iRacing window focus reliability.",
+            "New website with documentation at iracedeck.com."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "1.0.0",
+      "date": "2026-03-14",
+      "categories": [
+        {
+          "title": "Features",
+          "items": [
+            "New Replay Control action that replaces the three separate replay actions with a single, unified action covering transport, speed, and navigation.",
+            "New AI Spotter Controls action: volume, silence, damage report, weather report, toggle report laps, and announce leader at the start/finish line.",
+            "Flag overlay: optional live flag indicators available for every action, displayed directly on your Stream Deck buttons.",
+            "Change All Tires sub-action added to Tire Service.",
+            "Toggle Wipers option added to Cockpit Misc.",
+            "Focus iRacing window: an optional setting to automatically focus iRacing before sending inputs, great for drivers using windowed mode."
+          ]
+        },
+        {
+          "title": "Improvements",
+          "items": [
+            "Template variables now resolve in chat message icon display when Key Text is not defined.",
+            "Chat modes reordered with Send Message as the default, and the chat window now closes automatically after sending.",
+            "Differentiated louder/quieter icons for audio controls, plus various icon improvements."
+          ]
+        },
+        {
+          "title": "Breaking changes",
+          "items": [
+            "Existing Replay Transport, Replay Speed, and Replay Navigation buttons still work but are hidden from the action list. Use the new Replay Control action going forward.",
+            "Spotter controls have moved from Audio Controls to the new AI Spotter Controls action. Reconfigure any existing spotter buttons using the new action."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "0.13.0",
+      "date": null,
+      "categories": [
+        {
+          "title": "Features",
+          "items": [
+            "New Telemetry Display action: show any iRacing data on your Stream Deck using custom templates, with multiline support, configurable font size, and text color.",
+            "Template variables: use dynamic variables like car number, track name, and session info in chat messages."
+          ]
+        },
+        {
+          "title": "Improvements",
+          "items": [
+            "Boolean telemetry values now display as Yes/No instead of 0/1.",
+            "Updated fuel service icon designs and improved sub-label readability.",
+            "Reduced plugin package size."
+          ]
+        },
+        {
+          "title": "Bug Fixes",
+          "items": [
+            "Fixed an installation issue preventing some users from installing via Marketplace or by double-clicking the downloaded file.",
+            "Fixed the settings panel not showing default options on first load."
+          ]
+        }
+      ]
+    }
+  ]
+}

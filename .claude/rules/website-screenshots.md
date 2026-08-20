@@ -16,7 +16,7 @@ pnpm build             # the harness reads the plugin's built ui/ folder
 pnpm capture:settings  # writes packages/website/src/assets/settings-window/*.png
 ```
 
-Run it whenever the window's layout, controls or copy change. A stale screenshot is worse than none: it teaches a reader a UI that no longer exists.
+Run it whenever the window's layout, controls or copy change — including a `changelog.mdx` edit, which the What's New tab now renders directly (#1011). A stale screenshot is worse than none: it teaches a reader a UI that no longer exists.
 
 `--scale=2` captures at HiDPI. The default is `1` (≈490 KB for all nine); 2× roughly quadruples that, which is why it isn't the default.
 
@@ -33,7 +33,7 @@ Three properties a manual screenshot can't give:
 1. **Capture from the Stream Deck plugin build.** The Profiles tab only renders where the `profiles` platform flag is on, so a Mirabox or Ulanzi build is missing a tab. The harness hard-codes the Stream Deck `ui/` path for this reason.
 2. **Never hand-edit the PNGs**, and never crop or annotate them. Change the seed or the page and recapture.
 3. **Add a tab → add it to `SETTINGS_WINDOW_TABS`** in `scripts/lib/settings-window-capture/tabs.mjs`, recapture, and write the matching `###` section on `docs/getting-started/settings.md`. `tabs.test.mjs` fails until the list matches the built page, which is the automated nudge — the images themselves can't be diffed reliably across machines (fonts, GPU), so refreshing them stays a deliberate act.
-4. **Two elements are not byte-reproducible, by design.** The What's New tab embeds a live `iframe` of the published changelog, so that shot carries whatever the site served at capture time; and the window header carries the **plugin version of the build it was captured from** (`v2.5.0-dev.0` in the current set), so it appears in all nine. Expected; don't chase either — but do recapture near a release so the version shown isn't from a stale dev build.
+4. **One element is not byte-reproducible, by design.** The window header carries the **plugin version of the build it was captured from** (`v2.5.0-dev.0` in the current set), so it appears in all nine. Expected; don't chase it — but do recapture near a release so the version shown isn't from a stale dev build. (Before #1011 the What's New tab was a second such element: it embedded a live `iframe` of the published changelog. It now renders the notes the build ships, so that shot is reproducible — and stale whenever `changelog.mdx` changes, which is a reason to recapture, not an exception.)
 5. **Alt text describes the tab**, not the act of screenshotting ("The General tab of the iRaceDeck Settings window", not "Screenshot of settings").
 
 ## Layout

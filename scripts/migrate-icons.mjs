@@ -19,12 +19,6 @@ import path from "node:path";
 const ICONS_DIR = path.resolve("packages/icons");
 const DRY_RUN = process.argv.includes("--dry-run");
 
-// Semantic colors that should never be replaced
-const SEMANTIC_COLORS = new Set([
-  "#2ecc71", "#e74c3c", "#f1c40f", "#f39c12", "#3498db",
-  "#9b59b6", "#c0392b", "#888888", "#2d2510", "#4a3728",
-]);
-
 let totalProcessed = 0;
 let totalModified = 0;
 const manualReview = [];
