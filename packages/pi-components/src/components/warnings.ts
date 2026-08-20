@@ -26,8 +26,6 @@
  */
 import { WARNINGS_SETTING } from "./warnings-constants.js";
 
-export { WARNINGS_SETTING };
-
 let styleInjected = false;
 
 type WarningLevel = "info" | "warning" | "error";
