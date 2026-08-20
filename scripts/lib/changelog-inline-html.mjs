@@ -99,7 +99,10 @@ export function renderInlineMarkdown(text) {
   //    itself hold one (a code span inside a link label). `String.replace` never
   //    rescans what it substitutes, so a single pass would leave that inner
   //    sentinel in the output verbatim.
+  // The sentinel is a control character on purpose: it is the one thing changelog
+  // prose cannot contain, which is what makes it collision-proof.
   const restore = (html) =>
+    // eslint-disable-next-line no-control-regex
     html.replace(/\u0000(\d+)\u0000/g, (_match, index) => restore(placeholders[Number(index)]));
 
   return restore(working);

@@ -238,6 +238,34 @@ _2026-01-01_
       ).toThrow(/has no bullets/);
     });
 
+    it("throws on a release with no categories before the next heading", () => {
+      // A heading and a date and nothing else renders as a card with a version
+      // and a blank body.
+      expect(() =>
+        parseChangelog(`## 2.0.0
+
+_2026-01-02_
+
+## 1.0.0
+
+_2026-01-01_
+
+**Features**
+
+- One.
+`),
+      ).toThrow(/release 2.0.0 has no categories/);
+    });
+
+    it("throws on a release with no categories at the end of the file", () => {
+      expect(() =>
+        parseChangelog(`## 1.0.0
+
+_2026-01-01_
+`),
+      ).toThrow(/has no categories/);
+    });
+
     it("throws on a heading that is not a plain version number", () => {
       expect(() => parseChangelog("## 1.0.0 (beta)\n")).toThrow(/not a version number/);
     });

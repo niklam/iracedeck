@@ -25,7 +25,7 @@
     "restart:stream-deck": "streamdeck restart com.iracedeck.sd.core",
     "dev": "turbo run dev",
     "clean": "turbo run clean",
-    "lint": "eslint \"packages/*/src/**\"",
+    "lint": "eslint \"packages/*/src/**\" \"scripts/**/*.mjs\"",
     "lint:fix": "eslint --fix \"packages/*/src/**\"",
     "format": "prettier --check \"**/*.ts\" \"**/*.json\"",
     "format:fix": "prettier --write \"**/*.ts\" \"**/*.json\"",

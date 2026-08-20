@@ -100,6 +100,16 @@ export function parseChangelog(source) {
     }
   };
 
+  // And a release with no categories at all — a heading and perhaps a date, and
+  // nothing else — renders as a card with a version and a blank body. Same rule
+  // one level up, checked whenever we are about to leave the release.
+  const closeRelease = (lineNumber) => {
+    closeCategory(lineNumber);
+    if (release !== null && release.categories.length === 0) {
+      throw new ChangelogParseError(`release ${release.version} has no categories`, lineNumber);
+    }
+  };
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const lineNumber = i + 1;
@@ -125,7 +135,7 @@ export function parseChangelog(source) {
           lineNumber,
         );
       }
-      closeCategory(lineNumber);
+      closeRelease(lineNumber);
       seenVersions.add(version);
 
       release = { version, date: null, categories: [] };
@@ -192,7 +202,7 @@ export function parseChangelog(source) {
     throw new ChangelogParseError(`Unrecognised line in release ${release.version}: ${JSON.stringify(line)}`, lineNumber);
   }
 
-  closeCategory(lines.length);
+  closeRelease(lines.length);
 
   return { releases };
 }

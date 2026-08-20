@@ -39,6 +39,18 @@ export default [
       ]
     },
   },
+  {
+    // Repo tooling (scripts/, rollup configs, the PI compile plugin) is plain ESM
+    // running under Node. Without this, `eslint.configs.recommended` above applies
+    // no-undef with no globals declared and every `console` / `process` / `URL`
+    // in a .mjs file is an error the moment anyone points ESLint at one.
+    files: ['**/*.mjs'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
+    },
+  },
   prettier,
   {
     ignores: ['**/dist/**', '**/node_modules/**', '**/build/**']

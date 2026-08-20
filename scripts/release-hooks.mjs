@@ -90,12 +90,14 @@ const changelogStamp = existsSync(changelogPath)
 // version the user just installed "Unreleased", and leave the freshness test
 // (`scripts/generate-changelog-data.test.mjs`) red on the release commit.
 // Built here, before the preflight and before any write, so a malformed
-// changelog aborts the release with a clean tree.
+// changelog aborts the release with a clean tree. Deliberately NOT conditional on
+// the artifact already existing: if it has been deleted, recreating it is exactly
+// what the release needs — guarding on existsSync would ship the release without
+// the offline notes it is supposed to carry.
 const changelogDataPath = join(root, CHANGELOG_DATA_PATH);
-const changelogData =
-  changelogStamp.stamped && existsSync(changelogDataPath)
-    ? serializeChangelogData(buildChangelogData(changelogStamp.content))
-    : null;
+const changelogData = changelogStamp.stamped
+  ? serializeChangelogData(buildChangelogData(changelogStamp.content))
+  : null;
 
 // Stage the changelog alongside the version files only when it was actually
 // stamped, so the preflight and the real `git add` both see it.
