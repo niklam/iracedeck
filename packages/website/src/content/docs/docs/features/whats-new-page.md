@@ -24,6 +24,12 @@ Whichever option you pick, the page shows all changes since the last version you
 
 ## Reading the Notes Any Time
 
-You do not have to wait for an update, or be online. The [Settings window](/docs/getting-started/settings/#whats-new)'s **What's New** tab carries the release notes for every version, built into the plugin itself: the version you are running sits at the top marked **Installed**, and nothing on the tab describes a version you do not have.
+You do not have to wait for an update, or be online. The [Settings window](/docs/getting-started/settings/#whats-new)'s **What's New** tab carries the release notes for every version up to the one you are running, built into the plugin itself: your version is marked **Installed**, and the list reads the same with no internet at all.
 
-The [changelog](/changelog/) on this website is still the full archive — including releases newer than the one you have installed — and the **Open the changelog in your browser** link on that tab takes you straight to it.
+## Finding Out You Are Behind
+
+The tab can also tell you a newer version exists. While the Settings window is open, iRaceDeck asks this website — at most once an hour — whether anything newer has been released. If it has, the **What's New** tab gets an **UPDATE** badge, and the newer releases appear above yours marked **Not installed**, with their full release notes and a link to the [downloads page](/downloads/). You get to read what is in an update before deciding to take it.
+
+This is separate from the What's New page above, and the two never say the same thing: that page opens *after* you update, this one tells you *before*. It is also the only thing on the tab that needs the internet — when it cannot reach the site, or finds nothing newer, the tab is exactly the offline list described above.
+
+Turn it off with **Check for new versions** on the same tab. With it off, iRaceDeck never contacts this website on its own, and the [changelog](/changelog/) here is always the full archive.
