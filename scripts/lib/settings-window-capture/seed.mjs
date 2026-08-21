@@ -110,7 +110,9 @@ export function buildSeedUpdateStatus(installedVersion) {
     releases: [
       {
         version: "9.9.0",
-        date: "2026-09-01",
+        // A PAST date, fixed: an update you have not installed is one that already
+        // shipped, and a screenshot must not drift into showing a future release.
+        date: "2026-08-14",
         categories: [
           {
             title: "Features",

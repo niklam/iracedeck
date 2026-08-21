@@ -46,6 +46,18 @@ describe("parsePublishedChangelog", () => {
     expect(parsePublishedChangelog({ ...VALID, somethingNew: 42 })).toHaveLength(2);
   });
 
+  it("does not reject the whole artifact over one unreadable date", () => {
+    // Deliberate: the date is validated where it is USED (selectAvailableUpdates),
+    // so a release we cannot date is skipped on its own rather than taking every
+    // other release's update notice down with it.
+    const releases = parsePublishedChangelog({
+      releases: [{ version: "2.6.0", date: "banana", categories: [] }],
+    });
+
+    expect(releases).toHaveLength(1);
+    expect(releases?.[0].date).toBe("banana");
+  });
+
   it("returns undefined when releases is missing", () => {
     expect(parsePublishedChangelog({ _meta: {} })).toBeUndefined();
   });

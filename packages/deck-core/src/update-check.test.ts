@@ -30,6 +30,31 @@ describe("selectAvailableUpdates", () => {
     expect(found).toEqual([]);
   });
 
+  it.each(["", "not-a-date", "2026-02-30", "2026-13-01", "2026-8-14", "2026-08-14T00:00:00Z"])(
+    "does not treat %s as a publication date",
+    (date) => {
+      // The artifact arrives over the network. A value we cannot read as a date
+      // is no evidence that anything shipped, so it must not be offered.
+      expect(selectAvailableUpdates({ installedVersion: "2.4.0", releases: [release("2.6.0", date)] })).toEqual([]);
+    },
+  );
+
+  it("accepts a real leap day", () => {
+    const found = selectAvailableUpdates({ installedVersion: "2.4.0", releases: [release("2.6.0", "2024-02-29")] });
+
+    expect(found.map((r) => r.version)).toEqual(["2.6.0"]);
+  });
+
+  it("skips only the release it cannot date, not the whole artifact", () => {
+    // One bad date must never cost the user every update notice.
+    const found = selectAvailableUpdates({
+      installedVersion: "2.4.0",
+      releases: [release("2.7.0", "banana"), release("2.6.0")],
+    });
+
+    expect(found.map((r) => r.version)).toEqual(["2.6.0"]);
+  });
+
   it("sorts newest first even when the artifact is not ordered", () => {
     const found = selectAvailableUpdates({
       installedVersion: "2.0.0",
