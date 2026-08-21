@@ -54,3 +54,15 @@ All keyboard shortcuts are [user-configurable](/docs/features/key-bindings/) thr
 - **Vitest** for testing
 - **Astro + Starlight** for the documentation website
 - **[CodeRabbit](https://www.coderabbit.ai/)** for automated PR reviews
+
+### Test configuration
+
+The root `vitest.config.ts` is loaded with Vite's native config loader (`--configLoader native`, set on the `test` and `test:watch` scripts) instead of the default loader, which bundles the config to CommonJS with esbuild first. Vite has announced the native loader as a future default, so iRaceDeck opted in early — on its own schedule rather than on whichever dependency bump would otherwise have flipped it.
+
+Node therefore imports that config directly and strips its types itself, so edits to `vitest.config.ts` have to stay within what Node can load:
+
+- Use `import.meta.dirname` and `import.meta.filename`. The CommonJS `__dirname` and `__filename` globals do not exist here — they only ever resolved because the old loader bundled the config to CommonJS.
+- Mark type-only imports with `type`, as in `import { defineConfig, type Plugin } from "vitest/config"`. Node cannot tell which named imports are types, so an unmarked one becomes a value import of an export that does not exist and the config fails to load.
+- Avoid TypeScript that needs more than type stripping: `enum`, `namespace`, decorators, and constructor parameter properties.
+
+This applies only to the Vite/Vitest config file itself. Test files and package sources are transformed by Vite as usual and are unaffected.

@@ -13,6 +13,18 @@ pnpm test
 pnpm test:watch
 ```
 
+## Root `vitest.config.ts` — native config loader
+
+`pnpm test` / `pnpm test:watch` pass `--configLoader native`, so Node imports the root `vitest.config.ts` directly and strips its types itself, rather than Vite bundling it to CommonJS with esbuild first (issue #1017). Vite has announced that loader as a future default; opting in early means a dependency bump can't flip it for us.
+
+Consequences when editing that file — none of these apply to test files or package sources, only to the config itself:
+
+- Use `import.meta.dirname` / `import.meta.filename`; `__dirname` and `__filename` do not exist.
+- Type-only imports MUST carry the `type` modifier (`import { defineConfig, type Plugin } from "vitest/config"`). Node cannot infer which named imports are types, so an unmarked one becomes a value import of a non-existent export and the config fails to load. Vite's own `configLoader: 'native'` compatibility warning does **not** detect this case — only `__dirname`/`__filename` and import shapes — so the suite failing to start is the only signal.
+- No `enum`, `namespace`, decorators, or constructor parameter properties — Node's type stripping cannot handle them.
+
+Per-package `test` scripts (`packages/*/package.json`) root vitest at the package directory, where there is no config and no matching `include` pattern, so they find no tests. Run the root `pnpm test`, or `pnpm exec vitest run <path>` from the repo root, instead.
+
 ## Testing Stream Deck Actions
 
 Stream Deck actions require mocking `@iracedeck/deck-core`. For testable pure functions (icon generation, constants), export them with `@internal` JSDoc:
