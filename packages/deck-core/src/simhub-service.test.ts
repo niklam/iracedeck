@@ -150,6 +150,7 @@ describe("SimHub Service", () => {
       chatPasteToEnterDelayMs: 200,
       chatEnterToCloseDelayMs: 200,
       changelogNotification: "features",
+      updateCheck: true,
     });
   });
 
@@ -349,6 +350,7 @@ describe("SimHub Service", () => {
         chatPasteToEnterDelayMs: 200,
         chatEnterToCloseDelayMs: 200,
         changelogNotification: "features",
+        updateCheck: true,
       });
 
       initializeSimHub(mockLogger);
