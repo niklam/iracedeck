@@ -30,11 +30,24 @@ function respondWith(body: unknown): void {
   );
 }
 
-async function mount(): Promise<HTMLElement> {
+/**
+ * Build the pane the component decorates. `installedVersion` reproduces the
+ * built-in card's version heading, which the compiled-in list renders with the
+ * running build's pre-release suffix stripped.
+ */
+async function mount(installedVersion?: string): Promise<HTMLElement> {
   const list = document.createElement("div");
   list.id = "sw-changelog";
   const installed = document.createElement("article");
   installed.className = "sw-cl-release installed";
+
+  if (installedVersion !== undefined) {
+    const version = document.createElement("h3");
+    version.className = "sw-cl-version";
+    version.textContent = installedVersion;
+    installed.appendChild(version);
+  }
+
   list.appendChild(installed);
   document.body.appendChild(list);
 
@@ -117,6 +130,28 @@ describe("ird-update-notice", () => {
     expect(seen[0].detail).toEqual({ latestVersion: "2.6.0", count: 2 });
   });
 
+  it("does not render a second card for a version the built-in list already shows", async () => {
+    // A pre-release build: the pane marks its `2.6.0-rc.1` as installed under the
+    // stable number, and the published artifact offers that same 2.6.0 as an
+    // update. One version, one card — the banner still names it.
+    respondWith({ ...OK, installedVersion: "2.6.0-rc.1", releases: [OK.releases[0]] });
+    const el = await mount("2.6.0");
+
+    const versions = Array.from(document.querySelectorAll("#sw-changelog .sw-cl-version")).map((n) => n.textContent);
+
+    expect(versions).toEqual(["2.6.0"]);
+    expect(document.querySelectorAll("#sw-changelog .sw-cl-release.not-installed")).toHaveLength(0);
+    expect(el.querySelector(".sw-cl-banner")?.textContent).toContain("2.6.0-rc.1");
+  });
+
+  it("renders nothing when a release in an ok answer is malformed", async () => {
+    respondWith({ ...OK, releases: [{ version: "2.6.0", date: "2026-08-14" }] });
+    const el = await mount();
+
+    expect(el.textContent).toBe("");
+    expect(document.querySelectorAll("#sw-changelog .sw-cl-release.not-installed")).toHaveLength(0);
+  });
+
   it("renders nothing when the check is unavailable", async () => {
     respondWith({ state: "unavailable", installedVersion: "2.4.0" });
     const el = await mount();
@@ -163,6 +198,19 @@ describe("ird-update-notice", () => {
 
     expect(el.querySelector(".sw-cl-banner")).not.toBeNull();
     expect(document.querySelectorAll("#sw-changelog .sw-cl-release.not-installed")).toHaveLength(2);
+  });
+
+  it("makes no request when it was removed before the document finished parsing", async () => {
+    Object.defineProperty(document, "readyState", { value: "loading", configurable: true });
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const el = await mount();
+    el.remove();
+    document.dispatchEvent(new Event("DOMContentLoaded"));
+    await settle();
+
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("does not fetch at all outside the settings window", async () => {

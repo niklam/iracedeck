@@ -22,10 +22,19 @@
  * <ird-update-notice list="sw-changelog"></ird-update-notice>
  * ```
  */
+import { abortAfter } from "./abort-after.js";
 import { inSettingsWindow } from "./settings-window-context.js";
 
 /** Where the plugin answers the update question. Same-origin, by design. */
 const STATUS_PATH = "/updates/status";
+
+/**
+ * Deadline for that request. Comfortably longer than the plugin's own outbound
+ * timeout, so a slow-but-working check still answers; short enough that a
+ * handler which somehow never ends cannot leave this promise pending for the
+ * lifetime of the window.
+ */
+const STATUS_TIMEOUT_MS = 8000;
 
 /** Where a user goes to get the update. */
 const DOWNLOADS_URL = "https://iracedeck.com/downloads/";
@@ -55,6 +64,31 @@ interface OkStatus {
   releases: PublishedRelease[];
 }
 
+/**
+ * One release, shaped the way `renderRelease` walks it. Checked rather than
+ * assumed: rendering happens outside this component's try/catch, so a payload
+ * that is `ok` but malformed would otherwise throw mid-render and leave a
+ * banner above no cards at all.
+ */
+function isRelease(value: unknown): value is PublishedRelease {
+  const release = value as Partial<PublishedRelease> | null;
+
+  if (!release || typeof release.version !== "string") return false;
+
+  if (release.date !== null && typeof release.date !== "string") return false;
+
+  return (
+    Array.isArray(release.categories) &&
+    release.categories.every((category) => {
+      const c = category as Partial<PublishedCategory> | null;
+
+      return (
+        !!c && typeof c.title === "string" && Array.isArray(c.items) && c.items.every((i) => typeof i === "string")
+      );
+    })
+  );
+}
+
 /** Narrow the response to the one state that renders anything. */
 function asOkStatus(body: unknown): OkStatus | undefined {
   const status = body as Partial<OkStatus> | null;
@@ -64,6 +98,8 @@ function asOkStatus(body: unknown): OkStatus | undefined {
   if (typeof status.latestVersion !== "string" || typeof status.installedVersion !== "string") return undefined;
 
   if (!Array.isArray(status.releases) || status.releases.length === 0) return undefined;
+
+  if (!status.releases.every(isRelease)) return undefined;
 
   return status as OkStatus;
 }
@@ -91,6 +127,10 @@ export class UpdateNotice extends HTMLElement {
   }
 
   private start(): void {
+    // Removed again before the document finished parsing: nothing to decorate,
+    // so make no request either.
+    if (!this.isConnected) return;
+
     // Inert outside the settings window: the endpoint only exists there, and a
     // Property Inspector has no What's New pane to decorate.
     if (!inSettingsWindow()) return;
@@ -102,7 +142,7 @@ export class UpdateNotice extends HTMLElement {
     let status: OkStatus | undefined;
 
     try {
-      const response = await fetch(STATUS_PATH, { cache: "no-store" });
+      const response = await fetch(STATUS_PATH, { signal: abortAfter(STATUS_TIMEOUT_MS), cache: "no-store" });
 
       status = response.ok ? asOkStatus(await response.json()) : undefined;
     } catch {
@@ -147,18 +187,26 @@ export class UpdateNotice extends HTMLElement {
    * Put the newer releases at the TOP of the built-in list, so the pane stays
    * one continuous newest-first timeline rather than two lists.
    *
-   * No de-duplication is needed: the built-in list is generated at build time
-   * and can only hold versions up to this build, while everything here is
-   * strictly newer than it.
+   * A version already on the list is skipped. That is not a theoretical case: on
+   * a PRE-RELEASE build the pane strips the `-rc.1` / `-dev.0` suffix to decide
+   * what is installed, so its card already carries the STABLE number — which the
+   * published artifact then legitimately offers as an update. Without this the
+   * pane would show one version twice, once "Installed" and once "Not
+   * installed". The banner still names it, which is the part that is true.
    */
   private insertReleases(releases: PublishedRelease[]): void {
     const list = document.getElementById(this.getAttribute("list") ?? "");
 
     if (!list) return;
 
+    const present = new Set(
+      Array.from(list.querySelectorAll(".sw-cl-version")).map((node) => node.textContent?.trim() ?? ""),
+    );
     const first = list.firstChild;
 
     for (const release of releases) {
+      if (present.has(release.version)) continue;
+
       list.insertBefore(this.renderRelease(release), first);
     }
   }

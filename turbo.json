@@ -23,6 +23,7 @@
     "@iracedeck/website#build": {
       "dependsOn": ["^build"],
       "env": ["PUBLIC_IRACEDECK_VERSION"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/lib/changelog-*.mjs"],
       "outputs": ["dist/**"]
     },
     "dev": {

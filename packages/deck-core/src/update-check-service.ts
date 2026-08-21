@@ -87,6 +87,9 @@ export function createUpdateCheckService(deps: UpdateCheckServiceDeps): UpdateCh
   // One request at a time: two panes asking at once (or a reopened window
   // racing itself) must not become two outbound requests.
   let inFlight: Promise<PublishedRelease[] | undefined> | undefined;
+  // The version last announced at info level, so a cache hit — a reopened
+  // window, a second pane — does not repeat the same line in the log.
+  let announced: string | undefined;
 
   function isFresh(entry: { releases: PublishedRelease[] | undefined; at: number }): boolean {
     const ttl = entry.releases === undefined ? failureTtlMs : successTtlMs;
@@ -97,18 +100,32 @@ export function createUpdateCheckService(deps: UpdateCheckServiceDeps): UpdateCh
   async function releases(): Promise<PublishedRelease[] | undefined> {
     if (cached !== undefined && isFresh(cached)) return cached.releases;
 
-    inFlight ??= fetchPublishedChangelog({ url, fetchImpl }).then((result) => {
-      cached = { releases: result, at: now() };
-      inFlight = undefined;
+    // The slot is cleared in `finally`, on EVERY outcome. A rejection that left
+    // it set would pin this one promise forever: every later call would re-await
+    // the same failure and nothing short of a plugin restart could clear it.
+    inFlight ??= (async () => {
+      try {
+        const result = await fetchPublishedChangelog({ url, fetchImpl });
 
-      if (result === undefined) {
-        logger.info("Update check could not reach the changelog");
-      } else {
-        logger.debug(`Update check fetched ${result.length} published releases`);
+        cached = { releases: result, at: now() };
+
+        if (result === undefined) {
+          logger.info("Update check could not reach the changelog");
+        } else {
+          logger.debug(`Update check fetched ${result.length} published releases`);
+        }
+
+        return result;
+      } catch {
+        // `fetchPublishedChangelog` is written not to throw; if it ever does,
+        // that is a failed check like any other, cached as one.
+        cached = { releases: undefined, at: now() };
+
+        return undefined;
+      } finally {
+        inFlight = undefined;
       }
-
-      return result;
-    });
+    })();
 
     return inFlight;
   }
@@ -130,7 +147,11 @@ export function createUpdateCheckService(deps: UpdateCheckServiceDeps): UpdateCh
 
         if (available.length === 0) return { state: "unavailable", installedVersion };
 
-        logger.info("Update check found a newer version");
+        if (announced !== available[0].version) {
+          announced = available[0].version;
+          logger.info("Update check found a newer version");
+        }
+
         logger.debug(`Installed ${installedVersion}, latest ${available[0].version}`);
 
         return {
@@ -138,7 +159,10 @@ export function createUpdateCheckService(deps: UpdateCheckServiceDeps): UpdateCh
           installedVersion,
           latestVersion: available[0].version,
           releases: available,
-          checkedAt: now(),
+          // When the answer CAME FROM, not when it was asked for: a status
+          // served from a 59-minute-old cache is 59 minutes old, and this field
+          // exists to say exactly that.
+          checkedAt: cached?.at ?? now(),
         };
       } catch (error: unknown) {
         // A throwing delegate (a settings read, a version lookup) must not

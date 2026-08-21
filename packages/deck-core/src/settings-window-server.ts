@@ -217,6 +217,31 @@ function cookieOf(req: IncomingMessage, cookieName: string): string | undefined 
   return undefined;
 }
 
+/**
+ * Answer one of the plugin-bound JSON endpoints the page cannot reach itself
+ * (`/simhub/roles`, `/updates/status` — both cross-origin from the window, with
+ * no CORS on the other side).
+ *
+ * `produce` runs on the plugin's side of the loopback; `fallback` is the body
+ * sent if it throws, because a throwing delegate must become neither an
+ * unhandled rejection (which would take the plugin process down) nor a request
+ * that never ends (which would hang the pane waiting on it).
+ */
+function answerJson(res: ServerResponse, produce: () => Promise<unknown>, fallback: unknown): void {
+  void (async () => {
+    try {
+      const body = await produce();
+
+      res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+      res.end(JSON.stringify(body));
+    } catch {
+      if (!res.headersSent) res.writeHead(500, { "content-type": "application/json; charset=utf-8" });
+
+      res.end(JSON.stringify(fallback));
+    }
+  })();
+}
+
 export async function startSettingsWindowServer(options: SettingsWindowServerOptions): Promise<SettingsWindowServer> {
   const token = randomBytes(24).toString("hex");
   // Set once the port is known; the guard needs it and requests can't arrive
@@ -261,21 +286,15 @@ export async function startSettingsWindowServer(options: SettingsWindowServerOpt
     if (pathname === "/simhub/roles" && options.simHub) {
       const simHub = options.simHub;
 
-      void (async () => {
-        try {
+      answerJson(
+        res,
+        async () => {
           const reachable = simHub.isReachable();
-          const roles = reachable ? await simHub.getRoles().catch(() => []) : [];
 
-          res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
-          res.end(JSON.stringify({ reachable, roles }));
-        } catch {
-          // A throwing SimHub delegate must not become an unhandled rejection
-          // (which would take the plugin down) nor leave the request hanging.
-          if (!res.headersSent) res.writeHead(500, { "content-type": "application/json; charset=utf-8" });
-
-          res.end(JSON.stringify({ reachable: false, roles: [] }));
-        }
-      })();
+          return { reachable, roles: reachable ? await simHub.getRoles().catch(() => []) : [] };
+        },
+        { reachable: false, roles: [] },
+      );
 
       return;
     }
@@ -283,21 +302,7 @@ export async function startSettingsWindowServer(options: SettingsWindowServerOpt
     if (pathname === "/updates/status" && options.updates) {
       const updates = options.updates;
 
-      void (async () => {
-        try {
-          const status = await updates.get();
-
-          res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
-          res.end(JSON.stringify(status));
-        } catch {
-          // The service is written not to throw; if a future one does, the
-          // request must still end — an unhandled rejection here would take
-          // the plugin process down.
-          if (!res.headersSent) res.writeHead(500, { "content-type": "application/json; charset=utf-8" });
-
-          res.end(JSON.stringify({ state: "unavailable", installedVersion: "" }));
-        }
-      })();
+      answerJson(res, () => updates.get(), { state: "unavailable", installedVersion: "" });
 
       return;
     }

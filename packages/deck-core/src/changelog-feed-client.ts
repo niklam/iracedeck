@@ -31,6 +31,16 @@ function abortAfter(ms: number): AbortSignal | undefined {
     return AbortSignal.timeout(ms);
   }
 
+  // Without this fallback a runtime lacking `AbortSignal.timeout` would run the
+  // request with NO deadline at all — the one thing the timeout above exists to
+  // prevent, and the one that would leave `/updates/status` never answering.
+  if (typeof AbortController !== "undefined") {
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), ms);
+
+    return controller.signal;
+  }
+
   return undefined;
 }
 

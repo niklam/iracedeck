@@ -134,6 +134,43 @@ describe("createUpdateCheckService", () => {
     expect((await svc.get()).state).toBe("unavailable");
   });
 
+  it("is not poisoned when something inside the fetch path throws", async () => {
+    // The single-flight slot must be released on EVERY outcome. Left set by a
+    // throw, it would pin one failed promise there: every later call would
+    // re-await the same failure and only a plugin restart could clear it.
+    let clock = 1_000;
+    let explode = true;
+    const throwingLogger = {
+      trace: vi.fn(),
+      debug: vi.fn(() => {
+        if (!explode) return;
+
+        explode = false;
+        throw new Error("logger exploded");
+      }),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    } as unknown as UpdateCheckServiceDeps["logger"];
+    const svc = service({ fetchImpl: feed([release("2.6.0")]), now: () => clock, logger: throwingLogger });
+
+    expect((await svc.get()).state).toBe("unavailable");
+    clock += UPDATE_CHECK_FAILURE_TTL_MS + 1;
+
+    expect((await svc.get()).state).toBe("ok");
+  });
+
+  it("reports when the answer was fetched, not when it was asked for", async () => {
+    let clock = 1_000;
+    const svc = service({ fetchImpl: feed([release("2.6.0")]), now: () => clock });
+
+    await svc.get();
+    clock += 60_000;
+    const status = await svc.get();
+
+    expect(status.state === "ok" && status.checkedAt).toBe(1_000);
+  });
+
   it("never rejects, even when the enable delegate throws", async () => {
     const svc = service({
       isEnabled: () => {

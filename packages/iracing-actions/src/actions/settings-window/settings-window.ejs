@@ -88,10 +88,13 @@
 				margin-left: auto; background: rgba(255,255,255,.14);
 				border-radius: 9px; padding: 1px 7px; font-size: 7.5pt;
 			}
-			/* An UPDATE badge is a call to action, not a count (#1016). */
+			/* An UPDATE badge is a call to action, not a count (#1016). On the ACTIVE
+			   item it cannot use the accent — that is already the row's background,
+			   so the badge would dissolve into it. */
 			.sw-badge.update {
 				background: var(--sw-accent); color: #fff; text-transform: uppercase; letter-spacing: .4px;
 			}
+			.sw-nav-item.active .sw-badge.update { background: rgba(255,255,255,.25); }
 			.sw-badge:empty { display: none; }
 			.sw-pane { padding: 18px 24px 32px; overflow: auto; min-height: 0; min-width: 0; }
 			.sw-pane[hidden] { display: none; }
@@ -154,9 +157,12 @@
 				background: var(--sw-accent); color: #fff; border-radius: 9px;
 				padding: 1px 8px; font-size: 7.5pt; text-transform: uppercase; letter-spacing: .4px;
 			}
-			/* Fetched releases the user does not have yet (#1016): the same card,
-			   without the accent rail that marks the installed one. */
-			.sw-cl-release.not-installed { border-left-color: transparent; }
+			/* Fetched releases the user does not have yet (#1016) reuse the card as it
+			   stands — the base rule's transparent rail is already what tells them
+			   apart from the installed one — and take a quieter badge. The list is now
+			   emitted even when this build ships no notes, so the check has somewhere
+			   to insert; while it holds nothing it must not draw an empty box. */
+			.sw-changelog:empty { display: none; }
 			.sw-cl-badge-muted { background: transparent; border: 1px solid var(--sw-fg-mute); color: var(--sw-fg-mute); }
 			.sw-cl-banner {
 				display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
@@ -364,7 +370,7 @@
 				<h2>What's New</h2>
 				<p class="sw-sub">Release notes, and when iRaceDeck should show them to you after an update.</p>
 				<div class="sw-grid single">
-					<%- include('accordion', { title: 'After an update', content: include('global-common-updates'), settingsWindow: true }) %>
+					<%- include('accordion', { title: 'Updates', content: include('global-common-updates'), settingsWindow: true }) %>
 				</div>
 				<p class="sw-links">
 					<a href="https://iracedeck.com/changelog/" target="_blank" rel="noopener noreferrer">Open the changelog in your browser</a>

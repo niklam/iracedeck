@@ -8,32 +8,11 @@
  * narrower helpers are projections of it, so no caller ever needs a second
  * round trip to learn what the first response already said.
  */
+import { abortAfter } from "./abort-after.js";
 import { inSettingsWindow, SETTINGS_WINDOW_FLAG } from "./settings-window-context.js";
 
 /** Poll interval (ms) used by consumers that watch reachability over time. */
 export const SIMHUB_POLL_INTERVAL_MS = 3000;
-
-/**
- * An abort signal that fires after `ms`. Prefers `AbortSignal.timeout` (the
- * Stream Deck PI WebView supports it — ird-key-binding already relies on it),
- * with an `AbortController` + `setTimeout` fallback for any older embedded
- * WebView that lacks it. Returns undefined when neither exists (request simply
- * runs without a client-side timeout rather than failing).
- */
-function abortAfter(ms: number): AbortSignal | undefined {
-  if (typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function") {
-    return AbortSignal.timeout(ms);
-  }
-
-  if (typeof AbortController !== "undefined") {
-    const controller = new AbortController();
-    setTimeout(() => controller.abort(), ms);
-
-    return controller.signal;
-  }
-
-  return undefined;
-}
 
 /**
  * Re-exported for callers/tests that reach the flag through this module. Set

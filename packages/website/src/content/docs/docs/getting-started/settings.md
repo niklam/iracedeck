@@ -106,7 +106,7 @@ This only matters if you actually use SimHub roles — a purely keyboard-bound s
 
 ![The What's New tab, showing the update preference and the built-in release notes](../../../../assets/settings-window/whats-new.png)
 
-**After an update** controls when the changelog opens by itself once iRaceDeck has updated:
+The **Updates** card holds two settings, one for each side of an update. **What's New page** controls when the changelog opens by itself once iRaceDeck has updated:
 
 - **Every update** — after any new version.
 - **Only after updates with new features** — the default; small bug-fix releases pass silently.
