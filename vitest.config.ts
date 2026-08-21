@@ -1,6 +1,10 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { defineConfig, Plugin } from "vitest/config";
+// `Plugin` is a type-only export, so the `type` modifier is load-bearing: under
+// `configLoader: 'native'` Node strips the types itself and cannot infer which
+// named imports are types, so a plain `Plugin` becomes a value import of an
+// export that does not exist. Vite's compatibility warning does not cover this.
+import { defineConfig, type Plugin } from "vitest/config";
 
 /**
  * Vitest plugin to load SVG files as raw strings.
@@ -34,24 +38,32 @@ function svgPlugin(): Plugin {
   };
 }
 
+/**
+ * Absolute path to a file inside `packages/`, anchored on this config's own
+ * directory.
+ *
+ * Uses `import.meta.dirname` rather than `__dirname`: this file is ESM, so the
+ * CJS global only resolved because Vite's default config loader bundles the
+ * config to CommonJS first. That loader is being replaced by `configLoader:
+ * 'native'`, under which `__dirname` is simply undefined.
+ */
+const packageSrc = (relativePath: string): string => resolve(import.meta.dirname, "packages", relativePath);
+
 export default defineConfig({
   plugins: [svgPlugin()],
   resolve: {
     alias: {
-      "@iracedeck/audio-native": resolve(__dirname, "packages/audio-native/src/index.ts"),
-      "@iracedeck/audio-scenarios/pit-crew": resolve(
-        __dirname,
-        "packages/audio-scenarios/src/catalog/pit-crew/index.ts",
-      ),
-      "@iracedeck/audio-scenarios": resolve(__dirname, "packages/audio-scenarios/src/index.ts"),
-      "@iracedeck/audio-service": resolve(__dirname, "packages/audio-service/src/index.ts"),
-      "@iracedeck/deck-core": resolve(__dirname, "packages/deck-core/src/index.ts"),
-      "@iracedeck/event-bus": resolve(__dirname, "packages/event-bus/src/index.ts"),
-      "@iracedeck/icon-composer": resolve(__dirname, "packages/icon-composer/src/index.ts"),
-      "@iracedeck/iracing-sdk": resolve(__dirname, "packages/iracing-sdk/src/index.ts"),
-      "@iracedeck/iracing-native": resolve(__dirname, "packages/iracing-native/src/index.ts"),
-      "@iracedeck/logger": resolve(__dirname, "packages/logger/src/index.ts"),
-      "@iracedeck/sim-events-iracing": resolve(__dirname, "packages/sim-events-iracing/src/index.ts"),
+      "@iracedeck/audio-native": packageSrc("audio-native/src/index.ts"),
+      "@iracedeck/audio-scenarios/pit-crew": packageSrc("audio-scenarios/src/catalog/pit-crew/index.ts"),
+      "@iracedeck/audio-scenarios": packageSrc("audio-scenarios/src/index.ts"),
+      "@iracedeck/audio-service": packageSrc("audio-service/src/index.ts"),
+      "@iracedeck/deck-core": packageSrc("deck-core/src/index.ts"),
+      "@iracedeck/event-bus": packageSrc("event-bus/src/index.ts"),
+      "@iracedeck/icon-composer": packageSrc("icon-composer/src/index.ts"),
+      "@iracedeck/iracing-sdk": packageSrc("iracing-sdk/src/index.ts"),
+      "@iracedeck/iracing-native": packageSrc("iracing-native/src/index.ts"),
+      "@iracedeck/logger": packageSrc("logger/src/index.ts"),
+      "@iracedeck/sim-events-iracing": packageSrc("sim-events-iracing/src/index.ts"),
     },
   },
   test: {
