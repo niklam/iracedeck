@@ -13,6 +13,20 @@ pnpm test
 pnpm test:watch
 ```
 
+## Root `vitest.config.ts` — native config loader
+
+`pnpm test` / `pnpm test:watch` pass `--configLoader native`, so Node imports the root `vitest.config.ts` directly and strips its types itself, rather than Vite bundling the config first (Vite 8 bundles it with rolldown, and emits ESM here because the root package is `"type": "module"`) (issue #1017). Vite has announced that loader as a future default; opting in early means a dependency bump can't flip it for us.
+
+Consequences when editing that file — none of these apply to test files or package sources, only to the config itself:
+
+- Use `import.meta.dirname` / `import.meta.filename`. `__dirname` / `__filename` are not declared in an ES module, so reading one throws a `ReferenceError` — they only ever worked because the bundling loader *defines* them, whatever module format it emits.
+- Type-only imports MUST carry the `type` modifier (`import { defineConfig, type Plugin } from "vitest/config"`). Node cannot infer which named imports are types, so an unmarked one becomes a value import of a non-existent export and the config fails to load. Vite's own `configLoader: 'native'` compatibility warning does **not** detect this case — only `__dirname`/`__filename` and import shapes — so the suite failing to start is the only signal.
+- No `enum`, `namespace`, decorators, or constructor parameter properties — Node's type stripping cannot handle them.
+
+`eslint.config.js` enforces the first two mechanically for `vitest.config.ts` (`no-restricted-globals` plus `@typescript-eslint/consistent-type-imports`), and `pnpm lint` covers the file, so a re-break is caught before the suite is ever started.
+
+To run a subset, pass the filter through the root script — `pnpm test <path>` — so it keeps the native loader; `pnpm exec vitest run <path>` silently falls back to the bundling loader. The per-package `test` scripts (`packages/*/package.json`) are dead weight: Vitest does find the root config from a package directory (it searches upward), but `root` stays at the package directory, so the root-relative `include` globs match nothing and the script exits 1.
+
 ## Testing Stream Deck Actions
 
 Stream Deck actions require mocking `@iracedeck/deck-core`. For testable pure functions (icon generation, constants), export them with `@internal` JSDoc:

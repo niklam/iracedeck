@@ -3,6 +3,9 @@
   "version": "3.0.0-dev.0",
   "private": true,
   "packageManager": "pnpm@10.0.0",
+  "engines": {
+    "node": ">=24"
+  },
   "type": "module",
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -25,12 +28,12 @@
     "restart:stream-deck": "streamdeck restart com.iracedeck.sd.core",
     "dev": "turbo run dev",
     "clean": "turbo run clean",
-    "lint": "eslint \"packages/*/src/**\" \"scripts/**/*.mjs\"",
-    "lint:fix": "eslint --fix \"packages/*/src/**\"",
+    "lint": "eslint \"packages/*/src/**\" \"scripts/**/*.mjs\" vitest.config.ts",
+    "lint:fix": "eslint --fix \"packages/*/src/**\" vitest.config.ts",
     "format": "prettier --check \"**/*.ts\" \"**/*.json\"",
     "format:fix": "prettier --write \"**/*.ts\" \"**/*.json\"",
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "test": "vitest run --configLoader native",
+    "test:watch": "vitest --configLoader native",
     "precommit": "pnpm lint:fix && pnpm format:fix && pnpm install && pnpm clean && pnpm build",
     "start:stream-deck": "start /B \"\" \"C:\\Program Files\\Elgato\\StreamDeck\\StreamDeck.exe",
     "stop:stream-deck": "taskkill /IM StreamDeck.exe /F || exit 0",
