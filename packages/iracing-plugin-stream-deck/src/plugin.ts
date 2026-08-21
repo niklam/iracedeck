@@ -71,6 +71,7 @@ import {
   createSettingsWindowCommandHandler,
   createSettingsWindowController,
   createSettingsWindowWarningReporter,
+  createUpdateCheckService,
   deleteGlobalSettings,
   evaluateSetupWarning,
   findChromiumBrowserOnThisMachine,
@@ -868,6 +869,16 @@ const settingsWindowLogger = adapter.createLogger("SettingsWindow");
 // older build left there is removed) — from wherever the server actually
 // started (see the onStarted hook below and the store-ready block).
 const settingsChannel = createSettingsChannelPublisher({ adapter, logger: settingsWindowLogger });
+// Upstream update check (#1016). Asked only by the settings window's What's New
+// tab, cached for an hour, and gated on the `updateCheck` setting read live —
+// so a user who never opens the window, or who switches the setting off, makes
+// no outbound request at all.
+const updateCheck = createUpdateCheckService({
+  isEnabled: () => getGlobalSettings().updateCheck !== false,
+  getInstalledVersion: getPluginVersion,
+  logger: adapter.createLogger("UpdateCheck"),
+});
+
 const settingsWindow = createSettingsWindowController({
   assetsDir: join(__binDir, "..", "ui"),
   pageFile: SETTINGS_WINDOW_HTML,
@@ -897,6 +908,8 @@ const settingsWindow = createSettingsWindowController({
   }),
   // The page can't probe SimHub itself (cross-origin, no CORS) — answer from the plugin's own view.
   simHub: { isReachable: isSimHubReachable, getRoles: () => getSimHub().getRoles() },
+  // The page can't reach iracedeck.com itself (cross-origin, no CORS) — answer from the plugin's own check.
+  updates: updateCheck,
   onStarted: (channel) => settingsChannel.publish(channel),
   // Surface a settings window the user cannot reach as a PI warning banner
   // instead of leaving them with a button that does nothing (#1005). The
