@@ -56,6 +56,7 @@ describe("ird-update-notice", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     (window as unknown as Record<string, unknown>)[SETTINGS_WINDOW_FLAG] = undefined;
+    Object.defineProperty(document, "readyState", { value: "complete", configurable: true });
   });
 
   it("renders a banner naming both versions", async () => {
@@ -141,6 +142,27 @@ describe("ird-update-notice", () => {
     const el = await mount();
 
     expect(el.textContent).toBe("");
+  });
+
+  it("waits for the document before deciding it is in the settings window", async () => {
+    // pi-components.js is a plain <head> script, so this element upgrades while
+    // the page is still parsing — before the settings-window bridge sets its
+    // flag (it installs on DOMContentLoaded) and before the changelog list that
+    // follows it in the body exists (#1016).
+    Object.defineProperty(document, "readyState", { value: "loading", configurable: true });
+    (window as unknown as Record<string, unknown>)[SETTINGS_WINDOW_FLAG] = undefined;
+    respondWith(OK);
+
+    const el = await mount();
+
+    expect(el.textContent).toBe("");
+
+    (window as unknown as Record<string, unknown>)[SETTINGS_WINDOW_FLAG] = true;
+    document.dispatchEvent(new Event("DOMContentLoaded"));
+    await settle();
+
+    expect(el.querySelector(".sw-cl-banner")).not.toBeNull();
+    expect(document.querySelectorAll("#sw-changelog .sw-cl-release.not-installed")).toHaveLength(2);
   });
 
   it("does not fetch at all outside the settings window", async () => {

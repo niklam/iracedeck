@@ -107,6 +107,7 @@ function watchForPageLoad(cdp, sessionId) {
  * @param {string} options.pageFile - Page filename inside `assetsDir`.
  * @param {string} options.outDir - Where the PNGs are written.
  * @param {Record<string, unknown>} options.settings - Seed settings.
+ * @param {Record<string, unknown>} [options.updates] - Update-check answer served at /updates/status.
  * @param {{width: number, height: number}} options.size - Window size to emulate.
  * @param {number} [options.deviceScaleFactor] - 1 for actual size, 2 for HiDPI.
  * @param {readonly import("./tabs.mjs").SettingsWindowTab[]} [options.tabs]
@@ -126,6 +127,7 @@ export async function captureSettingsWindow(options, deps) {
     pageFile,
     outDir,
     settings,
+    updates,
     size,
     deviceScaleFactor = 1,
     tabs = SETTINGS_WINDOW_TABS,
@@ -156,6 +158,9 @@ export async function captureSettingsWindow(options, deps) {
     // fixture rather than probing a SimHub that may or may not be running on
     // whoever's machine is capturing.
     simHub: { isReachable: () => false, getRoles: async () => [] },
+    // The What's New tab asks the plugin whether a newer version exists (#1016).
+    // Answer for the fixture rather than reaching the real website mid-capture.
+    updates: updates ? { get: async () => updates } : undefined,
     // External links and plugin commands are inert in a capture: nothing
     // should open a browser or touch a real deck.
     openUrl: async () => {},

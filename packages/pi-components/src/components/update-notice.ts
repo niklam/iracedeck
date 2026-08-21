@@ -76,6 +76,21 @@ export class UpdateNotice extends HTMLElement {
 
     this.initialized = true;
 
+    // Wait for the document, for two reasons that both bite mid-parse.
+    // `pi-components.js` is a plain <head> script, so this element upgrades
+    // while the page is still being parsed: the settings-window bridge has not
+    // set its flag yet (it installs on DOMContentLoaded), and the changelog
+    // list this decorates comes AFTER us in the body, so it does not exist.
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", () => this.start(), { once: true });
+
+      return;
+    }
+
+    this.start();
+  }
+
+  private start(): void {
     // Inert outside the settings window: the endpoint only exists there, and a
     // Property Inspector has no What's New pane to decorate.
     if (!inSettingsWindow()) return;

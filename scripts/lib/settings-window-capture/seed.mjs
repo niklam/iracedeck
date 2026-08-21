@@ -87,3 +87,40 @@ export function buildSeedSettings() {
     blackBoxCycleNext: JSON.stringify({ type: "simhub", role: "Black Box Next" }),
   };
 }
+
+/**
+ * The update-check answer the capture serves (issue #1016).
+ *
+ * The What's New tab's banner, its UPDATE badge and its "Not installed" cards
+ * only exist when a newer version has been published — so a capture against a
+ * real check would show the feature switched off on the day the newest release
+ * IS the one being captured, which is every release day. A fixture makes the
+ * screenshot show the state worth documenting, and makes it identical on every
+ * machine, which is the whole point of this file.
+ *
+ * @param {string} installedVersion - The version the built page reports.
+ * @returns {Record<string, unknown>} An `ok` UpdateStatus.
+ */
+export function buildSeedUpdateStatus(installedVersion) {
+  return {
+    state: "ok",
+    installedVersion,
+    latestVersion: "9.9.0",
+    checkedAt: 0,
+    releases: [
+      {
+        version: "9.9.0",
+        date: "2026-09-01",
+        categories: [
+          {
+            title: "Features",
+            items: [
+              "An example of a release you have not installed yet — the notes come from the website, so you can read what is in an update before taking it.",
+            ],
+          },
+          { title: "Bug Fixes", items: ["Another entry from that same newer release."] },
+        ],
+      },
+    ],
+  };
+}
