@@ -578,7 +578,7 @@ describe("settings-window static assets", () => {
 // ---------------------------------------------------------------------------
 // Plugin-bound extras the page needs and cannot reach itself.
 // ---------------------------------------------------------------------------
-describe("settings-window sendToPlugin + SimHub proxy", () => {
+describe("settings-window sendToPlugin + plugin-bound proxies", () => {
   it("forwards a sendToPlugin frame's payload to the injected handler", async () => {
     const received: unknown[] = [];
     server = await startSettingsWindowServer({
@@ -653,5 +653,69 @@ describe("settings-window sendToPlugin + SimHub proxy", () => {
     const u = new URL(server.url);
 
     expect((await fetch(`${u.origin}/simhub/roles`)).status).toBe(403);
+  });
+
+  it("answers /updates/status from the plugin's own update service — the page never reaches the website (CORS)", async () => {
+    const status = {
+      state: "ok",
+      installedVersion: "2.4.0",
+      latestVersion: "2.6.0",
+      releases: [{ version: "2.6.0", date: "2026-08-14", categories: [] }],
+      checkedAt: 1,
+    };
+    server = await startSettingsWindowServer({ page: PAGE, updates: { get: async () => status } });
+    const cookie = (await fetch(server.url)).headers.get("set-cookie")?.split(";")[0] ?? "";
+    const u = new URL(server.url);
+
+    const res = await fetch(`${u.origin}/updates/status`, { headers: { cookie } });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(status);
+  });
+
+  it("404s /updates/status when no update service is wired", async () => {
+    // Served from a real assets dir, as in production: an unhandled path is a
+    // 404 there, where the inline-page path would answer every path with the
+    // page itself and hide whether the route exists at all.
+    const dir = mkdtempSync(join(tmpdir(), "ird-sw-updates-"));
+    writeFileSync(join(dir, "settings-window.html"), "<!doctype html><title>real</title>", "utf-8");
+
+    try {
+      server = await startSettingsWindowServer({ assetsDir: dir, pageFile: "settings-window.html" });
+      const cookie = (await fetch(server.url)).headers.get("set-cookie")?.split(";")[0] ?? "";
+      const u = new URL(server.url);
+
+      expect((await fetch(`${u.origin}/updates/status`, { headers: { cookie } })).status).toBe(404);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("answers 500 (and never hangs or throws) when the update service itself throws", async () => {
+    server = await startSettingsWindowServer({
+      page: PAGE,
+      updates: {
+        get: async () => {
+          throw new Error("update service exploded");
+        },
+      },
+    });
+    const cookie = (await fetch(server.url)).headers.get("set-cookie")?.split(";")[0] ?? "";
+    const u = new URL(server.url);
+
+    const res = await fetch(`${u.origin}/updates/status`, { headers: { cookie } });
+
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ state: "unavailable", installedVersion: "" });
+  });
+
+  it("still requires authorization on /updates/status", async () => {
+    server = await startSettingsWindowServer({
+      page: PAGE,
+      updates: { get: async () => ({ state: "disabled", installedVersion: "2.4.0" }) },
+    });
+    const u = new URL(server.url);
+
+    expect((await fetch(`${u.origin}/updates/status`)).status).toBe(403);
   });
 });

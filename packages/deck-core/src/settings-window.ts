@@ -76,6 +76,8 @@ export interface SettingsWindowControllerOptions {
   onSendToPlugin?: (payload: Record<string, unknown>) => void;
   /** The plugin's SimHub view for the page's `/simhub/roles` proxy. */
   simHub?: { isReachable: () => boolean; getRoles: () => Promise<string[]> };
+  /** The plugin's update check for the page's `/updates/status` endpoint (#1016). */
+  updates?: SettingsWindowServerOptions["updates"];
   /**
    * Test seam (#993): overrides the server-start function. Defaults to
    * `startSettingsWindowServer`. Lets tests inject a controllable start
@@ -157,6 +159,7 @@ export function createSettingsWindowController(options: SettingsWindowController
       openUrl: options.openUrl,
       onSendToPlugin: options.onSendToPlugin,
       simHub: options.simHub,
+      updates: options.updates,
       onUpgradeDecision: (d) =>
         options.logger.debug(
           d.allowed
