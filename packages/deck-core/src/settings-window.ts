@@ -173,11 +173,15 @@ export function createSettingsWindowController(options: SettingsWindowController
 
         // BEFORE onStarted, not after (#1005). onStarted is where the plugins
         // publish the once-per-start deck-host mirror, and that mirror is a
-        // snapshot of the settings cache — while this report is what clears a
-        // settings-window banner the PREVIOUS run persisted. Reporting second
-        // would mirror that stale banner to the host and never correct it (the
-        // mirror goes out once), leaving a PI on the host fallback path warning
-        // about a service that is up.
+        // snapshot of the settings cache taken at that instant — so every
+        // settings-window banner must already say what it will say for the run
+        // by the time it goes out. A start that succeeds on the SECOND attempt
+        // (a startup bind failure, then "Open Settings") is the case that
+        // bites: the failed attempt raised both banners, and reporting after
+        // onStarted would mirror them to the host uncorrected, leaving a PI on
+        // the host fallback path warning about a service that is up. Ordering
+        // is what fixes it — the mirror goes out once. (Nothing from an EARLIER
+        // run is ever in that cache: `_warnings` is run-scoped since #1014.)
         report({ stage: "server", ok: true });
 
         // A hook fault must not turn a started server into a rejected start

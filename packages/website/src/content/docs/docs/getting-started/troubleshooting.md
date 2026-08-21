@@ -29,7 +29,7 @@ Windows blocks a non-elevated program from sending input or commands to an eleva
 - Run the **Stream Deck software as Administrator** (right-click → Run as administrator), or
 - Run **iRacing without Administrator**.
 
-Then restart the one you changed. The warning clears automatically once the levels match.
+Then restart the one you changed. The warning clears automatically once the levels match. The check is made fresh each time iRaceDeck connects to iRacing and is never carried over from a previous session, so the banner is always about the run you are in — and it stays away until iRacing is running again, since there is nothing to compare against until then.
 
 ## Keyboard shortcuts not working
 

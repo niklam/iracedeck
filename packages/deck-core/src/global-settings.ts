@@ -29,6 +29,7 @@ import type { ILogger } from "@iracedeck/logger";
 import { z } from "zod";
 
 import { DEFAULT_FEATURE_STARTUP_POLICY, FEATURE_STARTUP_POLICIES } from "./feature-startup-policy.js";
+import { hasOnlyRunScopedKeys, stripRunScopedKeys } from "./run-scoped-settings.js";
 import type { SettingsStore } from "./settings-store.js";
 import {
   DEFAULT_SETUP_WARNING_QUALIFYING_PATTERN,
@@ -1241,6 +1242,18 @@ function pendingMigrationStarts(settings: Record<string, unknown>): number {
   return typeof marker === "number" && Number.isFinite(marker) && marker > 0 ? Math.floor(marker) : 0;
 }
 
+/**
+ * The one place settings reach the disk.
+ *
+ * Every save goes through here so the write boundary is stated once: the LIVE
+ * cache (never a snapshot — a listener may have layered more updates on top,
+ * #441), copied so the cache object itself never escapes into a store, minus
+ * the run-scoped keys that must not be persisted at all (#1014).
+ */
+function persist(store: SettingsStore | null): void {
+  store?.save(stripRunScopedKeys(currentSettings as Record<string, unknown>));
+}
+
 function mergeMigration(host: Record<string, unknown>, base: Record<string, unknown>): Record<string, unknown> {
   const merged = { ...host };
   const defaults = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
@@ -1311,7 +1324,15 @@ export function initGlobalSettings(
   const becomeReady = (raw: Record<string, unknown>, source: "file" | "host" | "fresh"): void => {
     if (storeReady || !isCurrent()) return;
 
-    const merged = { ...raw };
+    // The load boundary for run-scoped keys (#1014): a warning stored by an
+    // earlier run describes that run, not this one, so it never enters the
+    // cache — whichever source filled `raw` (file, host migration, fresh).
+    // Stripping BEFORE the early writes below is what keeps this run's own
+    // banners: a producer that reported while the store was still loading
+    // recorded an early write, and that one is current. (The elevation probe
+    // can — it fires on an SDK connection, which does not wait for the file
+    // read.)
+    const merged = stripRunScopedKeys(raw);
 
     // Early writes/deletes (made before ready) win over the loaded settings —
     // anything written this session is newer than storage.
@@ -1366,7 +1387,7 @@ export function initGlobalSettings(
     // `merged` above is always a fresh object literal — so this is unreachable
     // today. It stops being unreachable the moment the schema grows a
     // root-level refinement.)
-    if (salvage !== null) store.save({ ...currentSettings } as Record<string, unknown>);
+    if (salvage !== null) persist(store);
 
     notifyListeners();
   };
@@ -1646,7 +1667,12 @@ export function updateGlobalSettings(partial: Record<string, unknown>): void {
   // `applyParsedSettings` may itself call `updateGlobalSettings`, layering
   // more partials on top — saving a snapshot would drop those nested updates
   // (#441).
-  if (storeReady) storeRef?.save({ ...currentSettings } as Record<string, unknown>);
+  //
+  // A write touching ONLY run-scoped keys is skipped: the stripped payload is
+  // byte-for-byte what is already on disk, so it can only cost a rewrite and,
+  // on a locked file, a retry schedule (#1014). A layering listener still
+  // issues its own write, and that one persists the live cache.
+  if (storeReady && !hasOnlyRunScopedKeys(Object.keys(partial))) persist(storeRef);
 }
 
 /**
@@ -1691,7 +1717,11 @@ export function deleteGlobalSettings(keys: readonly string[]): void {
 
   applyParsedSettings(salvage.settings);
 
-  if (storeReady) storeRef?.save({ ...currentSettings } as Record<string, unknown>);
+  // Same skip as the update path: a delete that only removes run-scoped keys
+  // leaves the stripped payload byte-identical to the file, so writing it can
+  // only cost a rewrite and, on a locked file, the retry schedule (#1014).
+  // `deleted` — not `keys` — is what actually left the cache.
+  if (storeReady && !hasOnlyRunScopedKeys(deleted)) persist(storeRef);
 }
 
 /**

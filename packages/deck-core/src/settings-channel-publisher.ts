@@ -68,7 +68,8 @@ export interface SettingsChannelPublisher {
    * server means no loopback channel, so every Property Inspector falls back
    * to the deck host's copy, and the host copy is written ONLY from here. The
    * `_warnings` banner explaining why the settings window will not open would
-   * otherwise sit in the plugin's own file, read by nobody. Deduped like
+   * otherwise never leave the plugin's own memory — since #1014 it is not even
+   * in the settings file for someone to find there. Deduped like
    * `publish`, and superseded by the real thing if a later "Open Settings"
    * brings the server up after all — never the other way round: once a real
    * channel has been mirrored this is ignored, since sending it would strip

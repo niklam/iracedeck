@@ -89,10 +89,12 @@ export const SETTINGS_WINDOW_OPEN_BLOCKED_MESSAGE =
  * return within this scope should be cleared.
  *
  * A server-stage report speaks for both: a dead service decides the page-wide
- * error AND the note above the button, and a healthy one retires whatever a
- * previous press (or previous run — `_warnings` is persisted) left behind. An
- * open-stage report speaks only for its own record; it must never clear the
- * error, which stays accurate regardless of what any single press did.
+ * error AND the note above the button, and a healthy one retires whatever an
+ * earlier press this run left behind. (Nothing from an EARLIER run can be left
+ * behind: `_warnings` is run-scoped since #1014, so every start begins with a
+ * clean slate and the first server report is what fills it.) An open-stage
+ * report speaks only for its own record; it must never clear the error, which
+ * stays accurate regardless of what any single press did.
  */
 export function settingsWindowWarningScope(stage: SettingsWindowStatus["stage"]): readonly string[] {
   return stage === "server"
