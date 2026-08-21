@@ -10,22 +10,13 @@ import { defineConfig, type Plugin } from "vitest/config";
  * Vitest plugin to load SVG files as raw strings.
  * Matches the behavior of our Rollup svgPlugin.
  *
- * Uses 'enforce: pre' and 'resolveId' to intercept SVG imports
- * before Vite's default asset handling converts them to URLs.
+ * `enforce: 'pre'` runs the `load` hook ahead of Vite's default asset handling,
+ * which would otherwise turn an SVG import into a URL.
  */
 function svgPlugin(): Plugin {
   return {
     name: "svg-raw",
     enforce: "pre",
-    resolveId(source, importer) {
-      // Only handle .svg imports that are relative imports
-      if (source.endsWith(".svg") && importer) {
-        // Return the source as-is to handle it in load
-        return null;
-      }
-
-      return null;
-    },
     load(id) {
       if (id.endsWith(".svg")) {
         const content = readFileSync(id, "utf-8");
@@ -39,31 +30,33 @@ function svgPlugin(): Plugin {
 }
 
 /**
- * Absolute path to a file inside `packages/`, anchored on this config's own
- * directory.
+ * Absolute path to a file inside a package, anchored on this config's own
+ * directory rather than on the current working directory.
  *
- * Uses `import.meta.dirname` rather than `__dirname`: this file is ESM, so the
- * CJS global only resolved because Vite's default config loader bundles the
- * config to CommonJS first. That loader is being replaced by `configLoader:
- * 'native'`, under which `__dirname` is simply undefined.
+ * Uses `import.meta.dirname` rather than `__dirname`: this file is an ES module,
+ * where `__dirname` is not declared at all, so reading it throws a
+ * `ReferenceError`. It only ever worked because Vite's default config loader
+ * bundles the config and *defines* `__dirname` (and `import.meta.dirname`) as
+ * this directory — regardless of the bundle's module format. Under
+ * `configLoader: 'native'` there is no bundler and no such define.
  */
-const packageSrc = (relativePath: string): string => resolve(import.meta.dirname, "packages", relativePath);
+const packageSrc = (pkg: string, sub = "src/index.ts"): string => resolve(import.meta.dirname, "packages", pkg, sub);
 
 export default defineConfig({
   plugins: [svgPlugin()],
   resolve: {
     alias: {
-      "@iracedeck/audio-native": packageSrc("audio-native/src/index.ts"),
-      "@iracedeck/audio-scenarios/pit-crew": packageSrc("audio-scenarios/src/catalog/pit-crew/index.ts"),
-      "@iracedeck/audio-scenarios": packageSrc("audio-scenarios/src/index.ts"),
-      "@iracedeck/audio-service": packageSrc("audio-service/src/index.ts"),
-      "@iracedeck/deck-core": packageSrc("deck-core/src/index.ts"),
-      "@iracedeck/event-bus": packageSrc("event-bus/src/index.ts"),
-      "@iracedeck/icon-composer": packageSrc("icon-composer/src/index.ts"),
-      "@iracedeck/iracing-sdk": packageSrc("iracing-sdk/src/index.ts"),
-      "@iracedeck/iracing-native": packageSrc("iracing-native/src/index.ts"),
-      "@iracedeck/logger": packageSrc("logger/src/index.ts"),
-      "@iracedeck/sim-events-iracing": packageSrc("sim-events-iracing/src/index.ts"),
+      "@iracedeck/audio-native": packageSrc("audio-native"),
+      "@iracedeck/audio-scenarios/pit-crew": packageSrc("audio-scenarios", "src/catalog/pit-crew/index.ts"),
+      "@iracedeck/audio-scenarios": packageSrc("audio-scenarios"),
+      "@iracedeck/audio-service": packageSrc("audio-service"),
+      "@iracedeck/deck-core": packageSrc("deck-core"),
+      "@iracedeck/event-bus": packageSrc("event-bus"),
+      "@iracedeck/icon-composer": packageSrc("icon-composer"),
+      "@iracedeck/iracing-sdk": packageSrc("iracing-sdk"),
+      "@iracedeck/iracing-native": packageSrc("iracing-native"),
+      "@iracedeck/logger": packageSrc("logger"),
+      "@iracedeck/sim-events-iracing": packageSrc("sim-events-iracing"),
     },
   },
   test: {

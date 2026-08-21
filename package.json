@@ -3,6 +3,9 @@
   "version": "3.0.0-dev.0",
   "private": true,
   "packageManager": "pnpm@10.0.0",
+  "engines": {
+    "node": ">=24"
+  },
   "type": "module",
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -25,8 +28,8 @@
     "restart:stream-deck": "streamdeck restart com.iracedeck.sd.core",
     "dev": "turbo run dev",
     "clean": "turbo run clean",
-    "lint": "eslint \"packages/*/src/**\" \"scripts/**/*.mjs\"",
-    "lint:fix": "eslint --fix \"packages/*/src/**\"",
+    "lint": "eslint \"packages/*/src/**\" \"scripts/**/*.mjs\" vitest.config.ts",
+    "lint:fix": "eslint --fix \"packages/*/src/**\" vitest.config.ts",
     "format": "prettier --check \"**/*.ts\" \"**/*.json\"",
     "format:fix": "prettier --write \"**/*.ts\" \"**/*.json\"",
     "test": "vitest run --configLoader native",

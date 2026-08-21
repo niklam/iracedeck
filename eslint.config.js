@@ -53,6 +53,25 @@ export default [
   },
   prettier,
   {
+    // The root Vitest config is loaded with `configLoader: 'native'` (see
+    // .claude/rules/testing.md), so Node strips its types itself: CommonJS
+    // globals do not exist there, and a type-only import missing the `type`
+    // modifier becomes a value import of an export that does not exist.
+    // Enforce both here so a re-break fails lint instead of the test suite.
+    files: ['vitest.config.ts'],
+    rules: {
+      '@typescript-eslint/consistent-type-imports': [
+        'error',
+        { prefer: 'type-imports', fixStyle: 'inline-type-imports' },
+      ],
+      'no-restricted-globals': [
+        'error',
+        { name: '__dirname', message: 'Use import.meta.dirname — this config is loaded natively as ESM.' },
+        { name: '__filename', message: 'Use import.meta.filename — this config is loaded natively as ESM.' },
+      ],
+    },
+  },
+  {
     ignores: ['**/dist/**', '**/node_modules/**', '**/build/**']
   },
 ];
