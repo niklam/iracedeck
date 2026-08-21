@@ -12,6 +12,7 @@ import { WebSocket } from "ws";
 
 import { type SettingsWindowServer, startSettingsWindowServer } from "./settings-window-server.js";
 import type { SettingsWindowHost } from "./settings-window-server.js";
+import type { UpdateStatus } from "./update-check-service.js";
 
 const PAGE = "<!doctype html><title>t</title><p>settings</p>";
 
@@ -656,7 +657,7 @@ describe("settings-window sendToPlugin + plugin-bound proxies", () => {
   });
 
   it("answers /updates/status from the plugin's own update service — the page never reaches the website (CORS)", async () => {
-    const status = {
+    const status: UpdateStatus = {
       state: "ok",
       installedVersion: "2.4.0",
       latestVersion: "2.6.0",
@@ -712,7 +713,7 @@ describe("settings-window sendToPlugin + plugin-bound proxies", () => {
   it("still requires authorization on /updates/status", async () => {
     server = await startSettingsWindowServer({
       page: PAGE,
-      updates: { get: async () => ({ state: "disabled", installedVersion: "2.4.0" }) },
+      updates: { get: async (): Promise<UpdateStatus> => ({ state: "disabled", installedVersion: "2.4.0" }) },
     });
     const u = new URL(server.url);
 
