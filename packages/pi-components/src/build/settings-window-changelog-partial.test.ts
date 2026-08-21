@@ -52,6 +52,20 @@ describe("settings-window-changelog.ejs", () => {
     expect(html.match(/<article class="sw-cl-release/g)).toHaveLength(2);
   });
 
+  it("mounts the update notice above a list the component can find", () => {
+    const html = render("2.5.0");
+
+    expect(html).toContain('<ird-update-notice list="sw-changelog">');
+    expect(html).toContain('<div class="sw-changelog" id="sw-changelog">');
+    expect(html.indexOf("ird-update-notice")).toBeLessThan(html.indexOf('id="sw-changelog"'));
+  });
+
+  it("mounts the notice even when this build ships no release notes at all", () => {
+    const html = render("2.5.0", { releases: [] });
+
+    expect(html).toContain("<ird-update-notice");
+  });
+
   it("never reaches the website for the notes themselves", () => {
     const html = render("2.5.0");
 

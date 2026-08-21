@@ -19,14 +19,14 @@
  * logic and no I/O of its own.
  */
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { captureSettingsWindow } from "./lib/settings-window-capture/capture.mjs";
-import { buildSeedSettings } from "./lib/settings-window-capture/seed.mjs";
+import { buildSeedSettings, buildSeedUpdateStatus } from "./lib/settings-window-capture/seed.mjs";
 import { connectCdp, waitForDebuggerUrl, waitForDevToolsPort } from "./lib/settings-window-capture/cdp.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -39,6 +39,9 @@ const assetsDir = join(
   "ui",
 );
 const outDir = join(repoRoot, "packages", "website", "src", "assets", "settings-window");
+
+/** The version the built page reports — the fixture's "you're on X". */
+const pluginVersion = JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf-8")).version;
 
 /** Actual size (1) or HiDPI (2). Override with `--scale=2`. */
 const scaleArg = process.argv.find((a) => a.startsWith("--scale="))?.split("=")[1];
@@ -92,6 +95,7 @@ try {
       pageFile: "settings-window.html",
       outDir,
       settings: buildSeedSettings(),
+      updates: buildSeedUpdateStatus(pluginVersion),
       size: SETTINGS_WINDOW_SIZE,
       deviceScaleFactor: scale,
     },

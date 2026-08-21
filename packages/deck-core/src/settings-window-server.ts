@@ -39,6 +39,7 @@ import { type WebSocket, WebSocketServer } from "ws";
 import { sameValue } from "./global-settings.js";
 import { stripRunScopedKeys } from "./run-scoped-settings.js";
 import { authorizeSettingsRequest, type SettingsRequestDenial } from "./settings-window-guard.js";
+import type { UpdateStatus } from "./update-check-service.js";
 
 /** The plugin-side settings surface the fake host is bound to. */
 export interface SettingsWindowHost {
@@ -80,6 +81,15 @@ export interface SettingsWindowServerOptions {
    * the plugin only ever talks to its configured SimHub, so no SSRF surface.
    */
   simHub?: { isReachable: () => boolean; getRoles: () => Promise<string[]> };
+  /**
+   * The plugin's upstream update check (#1016), served at
+   * `GET /updates/status`. Same reason as `simHub` above: the window is a page
+   * on this loopback origin, so fetching iracedeck.com from it is cross-origin
+   * with no CORS. Nothing about the request reaches the outbound call — no
+   * host, no path, no version — so there is no SSRF surface: the page asks for
+   * a verdict, it does not say where to look for one.
+   */
+  updates?: { get(): Promise<UpdateStatus> };
   /**
    * Called for every WebSocket upgrade with the guard's decision and the
    * request's Origin (a PI page shows up as "null" or a host-served origin,
@@ -207,6 +217,31 @@ function cookieOf(req: IncomingMessage, cookieName: string): string | undefined 
   return undefined;
 }
 
+/**
+ * Answer one of the plugin-bound JSON endpoints the page cannot reach itself
+ * (`/simhub/roles`, `/updates/status` — both cross-origin from the window, with
+ * no CORS on the other side).
+ *
+ * `produce` runs on the plugin's side of the loopback; `fallback` is the body
+ * sent if it throws, because a throwing delegate must become neither an
+ * unhandled rejection (which would take the plugin process down) nor a request
+ * that never ends (which would hang the pane waiting on it).
+ */
+function answerJson(res: ServerResponse, produce: () => Promise<unknown>, fallback: unknown): void {
+  void (async () => {
+    try {
+      const body = await produce();
+
+      res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+      res.end(JSON.stringify(body));
+    } catch {
+      if (!res.headersSent) res.writeHead(500, { "content-type": "application/json; charset=utf-8" });
+
+      res.end(JSON.stringify(fallback));
+    }
+  })();
+}
+
 export async function startSettingsWindowServer(options: SettingsWindowServerOptions): Promise<SettingsWindowServer> {
   const token = randomBytes(24).toString("hex");
   // Set once the port is known; the guard needs it and requests can't arrive
@@ -251,21 +286,23 @@ export async function startSettingsWindowServer(options: SettingsWindowServerOpt
     if (pathname === "/simhub/roles" && options.simHub) {
       const simHub = options.simHub;
 
-      void (async () => {
-        try {
+      answerJson(
+        res,
+        async () => {
           const reachable = simHub.isReachable();
-          const roles = reachable ? await simHub.getRoles().catch(() => []) : [];
 
-          res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
-          res.end(JSON.stringify({ reachable, roles }));
-        } catch {
-          // A throwing SimHub delegate must not become an unhandled rejection
-          // (which would take the plugin down) nor leave the request hanging.
-          if (!res.headersSent) res.writeHead(500, { "content-type": "application/json; charset=utf-8" });
+          return { reachable, roles: reachable ? await simHub.getRoles().catch(() => []) : [] };
+        },
+        { reachable: false, roles: [] },
+      );
 
-          res.end(JSON.stringify({ reachable: false, roles: [] }));
-        }
-      })();
+      return;
+    }
+
+    if (pathname === "/updates/status" && options.updates) {
+      const updates = options.updates;
+
+      answerJson(res, () => updates.get(), { state: "unavailable", installedVersion: "" });
 
       return;
     }

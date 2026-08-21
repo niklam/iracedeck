@@ -106,7 +106,7 @@ This only matters if you actually use SimHub roles — a purely keyboard-bound s
 
 ![The What's New tab, showing the update preference and the built-in release notes](../../../../assets/settings-window/whats-new.png)
 
-**After an update** controls when the changelog opens by itself once iRaceDeck has updated:
+The **Updates** card holds two settings, one for each side of an update. **What's New page** controls when the changelog opens by itself once iRaceDeck has updated:
 
 - **Every update** — after any new version.
 - **Only after updates with new features** — the default; small bug-fix releases pass silently.
@@ -115,13 +115,15 @@ This only matters if you actually use SimHub roles — a purely keyboard-bound s
 
 Whichever you pick, the page always lists everything since your last visit, so a quieter setting never means missing anything — see [the What's New page](/docs/features/whats-new-page/).
 
-Below the setting are the **release notes for every version of iRaceDeck**, newest first. These ship inside the plugin rather than being fetched from this website, which means three things:
+**Check for new versions** lets iRaceDeck ask this website, while the Settings window is open, whether a newer version has been released. When it finds one you get an **UPDATE** badge on the tab, a banner naming the new version and a link to the [downloads page](/downloads/), and the newer releases listed above yours marked **Not installed** — so you can read what is in an update before you take it. It asks at most once an hour, only while the window is open, and never at any other time. Turn it off and iRaceDeck never contacts this website on its own; everything below still works exactly as it does now.
 
-- They work **offline**, and behind a firewall.
-- The version you are running is at the top, marked **Installed**, so what you just got is the first thing you read. The window header shows that version too.
-- Nothing here describes a version you do not have. (A test build whose notes are not published yet says so above the list.)
+Below the settings are the **release notes for every version of iRaceDeck**, newest first. The ones up to and including your version ship inside the plugin rather than being fetched, which means three things:
 
-**Open the changelog in your browser** opens the [full changelog](/changelog/) on this website, which is the place to look for versions newer than the one you have installed.
+- They work **offline**, and behind a firewall. If the update check cannot reach the website — no internet, a firewall, or the option switched off — this list is all you see, and nothing about the tab breaks.
+- The version you are running is marked **Installed**, so what you have is unambiguous. The window header shows that version too.
+- Nothing is described as installed that you do not have. (A test build whose notes are not published yet says so above the list.)
+
+**Open the changelog in your browser** opens the [full changelog](/changelog/) on this website.
 
 ### Diagnostics
 

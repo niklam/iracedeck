@@ -19,6 +19,13 @@
   yet (a `-dev` build on the next version) says so, rather than marking nothing
   and leaving the reader to wonder which of these they have.
 
+  Since #1016 the pane also carries ONE runtime: `<ird-update-notice>` asks the
+  plugin whether a newer version has been published and, if so, renders a
+  banner and the newer releases into the list below — above the installed one,
+  badged "Not installed". Everything below stays exactly as it is when that
+  check is off, fails, or finds nothing, which is what keeps the offline
+  property #1011 bought.
+
   Included by settings-window.ejs only; its styling lives with the rest of the
   window's CSS on that page.
 %>
@@ -32,13 +39,18 @@
   var __installed = __version.replace(/[-+].*$/, '');
   var __hasInstalled = __releases.some(function (r) { return r.version === __installed; });
 -%>
+<%# The upstream check (#1016). Mounted unconditionally — even a build with no
+    notes of its own can be behind a published release — and renders nothing
+    unless the plugin reports one. %>
+<ird-update-notice list="sw-changelog"></ird-update-notice>
 <% if (__releases.length === 0) { -%>
 <p class="sw-cl-empty">Release notes are not available in this build.</p>
+<div class="sw-changelog" id="sw-changelog"></div>
 <% } else { -%>
 <% if (!__hasInstalled && __version) { -%>
 <p class="sw-cl-note">No release notes for version <%= __version %> yet — the releases below are the ones already published.</p>
 <% } -%>
-<div class="sw-changelog">
+<div class="sw-changelog" id="sw-changelog">
 <% __releases.forEach(function (release, __index) { -%>
 <% var __isInstalled = release.version === __installed; -%>
 <%

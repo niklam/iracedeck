@@ -66,6 +66,9 @@ export { OpenSettings } from "./open-settings.js";
 // Open Folder - button that asks the plugin to reveal the settings file in Explorer (#993)
 export { OpenFolder } from "./open-folder.js";
 
+// Update Notice - upstream "a newer version exists" banner for the settings window (#1016)
+export { UPDATE_AVAILABLE_EVENT, UpdateNotice } from "./update-notice.js";
+
 // Deck Device Select - settings-window picker for which Stream Deck a profile switch targets (#992)
 export { DeckDeviceSelect } from "./deck-device-select.js";
 

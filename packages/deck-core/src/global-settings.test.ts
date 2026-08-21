@@ -668,6 +668,32 @@ describe("changelogNotification (issue #742)", () => {
   });
 });
 
+describe("updateCheck (issue #1016)", () => {
+  it("defaults to on", () => {
+    const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
+    expect(parsed.updateCheck).toBe(true);
+  });
+
+  it("accepts the string form the Property Inspector saves", () => {
+    expect((GlobalSettingsSchema.parse({ updateCheck: "false" }) as Record<string, unknown>).updateCheck).toBe(false);
+    expect((GlobalSettingsSchema.parse({ updateCheck: "true" }) as Record<string, unknown>).updateCheck).toBe(true);
+  });
+
+  it("accepts a real boolean", () => {
+    expect((GlobalSettingsSchema.parse({ updateCheck: false }) as Record<string, unknown>).updateCheck).toBe(false);
+  });
+
+  it("falls back to the default on a malformed value rather than aborting the parse", () => {
+    const parsed = GlobalSettingsSchema.parse({ updateCheck: { bogus: true }, driverName: "nick" }) as Record<
+      string,
+      unknown
+    >;
+
+    expect(parsed.updateCheck).toBe(true);
+    expect(parsed.driverName).toBe("nick");
+  });
+});
+
 describe("fastestLapSearchDelayMs (issue #577)", () => {
   it("defaults to 400 when not specified", () => {
     const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;

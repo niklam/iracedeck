@@ -1042,6 +1042,19 @@ export const GlobalSettingsSchema = z
       .enum(CHANGELOG_NOTIFICATION_POLICIES)
       .default(DEFAULT_CHANGELOG_NOTIFICATION_POLICY)
       .catch(DEFAULT_CHANGELOG_NOTIFICATION_POLICY),
+    /**
+     * Whether iRaceDeck may ask iracedeck.com whether a newer version exists
+     * (issue #1016). On by default; when off the plugin makes no outbound
+     * request at all and the What's New tab shows only what this build ships.
+     *
+     * `.catch(true)` like every plain-value field here: a malformed persisted
+     * value must fall back to the default rather than abort the whole parse.
+     */
+    updateCheck: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true)
+      .catch(true),
   })
   .passthrough();
 

@@ -415,6 +415,28 @@ export {
   VERSION_CHECK_STARTUP_GRACE_MS,
 } from "./version-check.js";
 
+// Upstream update check for the settings window's What's New tab (issue #1016)
+export { sanitizeChangelogHtml } from "./changelog-html-sanitize.js";
+export {
+  parsePublishedChangelog,
+  type PublishedRelease,
+  type PublishedReleaseCategory,
+} from "./published-changelog.js";
+export {
+  CHANGELOG_FETCH_TIMEOUT_MS,
+  fetchPublishedChangelog,
+  PUBLISHED_CHANGELOG_URL,
+} from "./changelog-feed-client.js";
+export { selectAvailableUpdates } from "./update-check.js";
+export {
+  createUpdateCheckService,
+  UPDATE_CHECK_FAILURE_TTL_MS,
+  UPDATE_CHECK_SUCCESS_TTL_MS,
+  type UpdateCheckService,
+  type UpdateCheckServiceDeps,
+  type UpdateStatus,
+} from "./update-check-service.js";
+
 // Device + profile reference (issues #736, #753, #790)
 export {
   CAR_SELECTOR_PROFILE,

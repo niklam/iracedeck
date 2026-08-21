@@ -11,3 +11,6 @@ node_modules/
 # Generated icon gallery (regenerated on every build — see scripts/generate-icon-gallery.mts)
 public/icon-gallery/
 src/data/icon-gallery.json
+
+# Published changelog artifact for the plugin's update check (#1016) — regenerated on every build
+public/changelog.json
