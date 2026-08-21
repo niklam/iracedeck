@@ -88,6 +88,11 @@
 				margin-left: auto; background: rgba(255,255,255,.14);
 				border-radius: 9px; padding: 1px 7px; font-size: 7.5pt;
 			}
+			/* An UPDATE badge is a call to action, not a count (#1016). */
+			.sw-badge.update {
+				background: var(--sw-accent); color: #fff; text-transform: uppercase; letter-spacing: .4px;
+			}
+			.sw-badge:empty { display: none; }
 			.sw-pane { padding: 18px 24px 32px; overflow: auto; min-height: 0; min-width: 0; }
 			.sw-pane[hidden] { display: none; }
 			.sw-pane h2 {
@@ -149,6 +154,18 @@
 				background: var(--sw-accent); color: #fff; border-radius: 9px;
 				padding: 1px 8px; font-size: 7.5pt; text-transform: uppercase; letter-spacing: .4px;
 			}
+			/* Fetched releases the user does not have yet (#1016): the same card,
+			   without the accent rail that marks the installed one. */
+			.sw-cl-release.not-installed { border-left-color: transparent; }
+			.sw-cl-badge-muted { background: transparent; border: 1px solid var(--sw-fg-mute); color: var(--sw-fg-mute); }
+			.sw-cl-banner {
+				display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+				border: 1px solid var(--sw-accent); border-left-width: 3px; border-radius: 6px;
+				background: var(--sw-bg-alt); padding: 10px 14px; margin: 0 0 12px;
+			}
+			.sw-cl-banner-text { color: var(--sw-fg); }
+			.sw-cl-banner a { color: var(--sw-fg-dim); margin-left: auto; }
+			.sw-cl-banner a:hover { color: var(--sw-fg); }
 			.sw-cl-category {
 				font-size: 8pt; font-weight: 700; text-transform: uppercase; letter-spacing: .4px;
 				color: var(--sw-fg); margin: 14px 0 4px;
@@ -242,7 +259,7 @@
 				<% } %>
 				<button class="sw-nav-item" data-pane="delays" type="button">Delays</button>
 				<button class="sw-nav-item" data-pane="simhub" type="button">SimHub</button>
-				<button class="sw-nav-item" data-pane="updates" type="button">What's New</button>
+				<button class="sw-nav-item" data-pane="updates" type="button" id="sw-nav-updates">What's New<span class="sw-badge"></span></button>
 				<button class="sw-nav-item" data-pane="diagnostics" type="button">Diagnostics</button>
 			</nav>
 
@@ -388,6 +405,13 @@
 						btn.classList.add("active");
 						panes.forEach(function (p) { p.hidden = p.id !== "pane-" + btn.dataset.pane; });
 					});
+				});
+				// The update notice found something newer (#1016) — badge the tab it is on.
+				document.addEventListener("ird-update-available", function () {
+					var badge = document.querySelector("#sw-nav-updates .sw-badge");
+					if (!badge) return;
+					badge.textContent = "UPDATE";
+					badge.classList.add("update");
 				});
 				var q = document.getElementById("sw-q"), cat = document.getElementById("sw-cat");
 				var rows = Array.prototype.slice.call(document.querySelectorAll("#sw-rows tr"));
