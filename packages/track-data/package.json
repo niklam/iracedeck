@@ -1,6 +1,6 @@
 {
   "name": "@iracedeck/track-data",
-  "version": "3.0.0-dev.0",
+  "version": "3.0.0",
   "description": "Bundled track datasets: corner markers from Lovely Sim Racing's lovely-track-data (CC BY-NC-SA 4.0, used with permission).",
   "type": "module",
   "main": "dist/index.js",
