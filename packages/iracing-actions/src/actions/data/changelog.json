@@ -6,6 +6,18 @@
   },
   "releases": [
     {
+      "version": "3.0.1",
+      "date": null,
+      "categories": [
+        {
+          "title": "Maintenance",
+          "items": [
+            "The website now names every Stream Deck device iRaceDeck runs on. Stream Deck Neo, Stream Deck Studio, Stream Deck + XL, Galleon 100 SD, Stream Deck Mobile and the Virtual Stream Deck are all supported, but the download card and the installation guide listed only the original four models — so owners of the others read that their device was not covered."
+          ]
+        }
+      ]
+    },
+    {
       "version": "3.0.0",
       "date": "2026-08-23",
       "categories": [

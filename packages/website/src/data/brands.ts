@@ -62,7 +62,16 @@ export const BRAND_LOGO_EXTENSIONS = [".svg", ".png", ".webp", ".avif"] as const
 export const ECOSYSTEMS: Record<Ecosystem, EcosystemInfo> = {
   elgato: {
     label: "Elgato Stream Deck",
-    devices: "Stream Deck, Stream Deck Mini, Stream Deck XL, and Stream Deck+",
+    /*
+     * Every device `DEVICE_SUPPORT` (deck-core) marks as supported, hardware
+     * first and the two software surfaces last. It omitted Neo, Studio, + XL,
+     * Galleon and the software decks until #983, so their owners read on the
+     * download card and in the installation guide that their device was not
+     * covered. `scripts/website-device-list.test.mjs` now fails if the two
+     * lists drift apart in either direction.
+     */
+    devices:
+      "Stream Deck, Stream Deck Mini, Stream Deck XL, Stream Deck Neo, Stream Deck Studio, Stream Deck +, Stream Deck + XL, Galleon 100 SD, Stream Deck Mobile, and the Virtual Stream Deck",
     listIsComplete: true,
   },
   mirabox: {

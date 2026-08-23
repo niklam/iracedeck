@@ -132,7 +132,7 @@ Domain: **iracedeck.com** (Firebase Hosting with custom domain).
 
 **Update action count on landing page**: Edit the stats row and category cards in `src/content/docs/index.mdx`
 **Add an action page**: Create `.md` in the right category folder, add slug to sidebar in `astro.config.mjs`, update `docs/reference/actions.json`, and update `.claude/skills/iracedeck-actions/SKILL.md`
-**Add a supported hardware brand or device**: Edit `src/data/brands.ts` — one entry propagates to the landing page strip, the download cards, and the installation guide. Optional logo assets go in `src/assets/brands/` (see that folder's `README.md`); a brand without one renders as a wordmark tile.
+**Add a supported hardware brand or device**: Edit `src/data/brands.ts` — one entry propagates to the landing page strip, the download cards, and the installation guide. Optional logo assets go in `src/assets/brands/` (see that folder's `README.md`); a brand without one renders as a wordmark tile. The Elgato `devices` string is pinned to deck-core's `DEVICE_SUPPORT` matrix by `scripts/website-device-list.test.mjs` (#983): every supported device must be named and no unsupported one may be, so a supported device added to that matrix fails the test until this string names it.
 **Change brand color**: Update `--sl-color-accent` in `src/styles/custom.css`
 **Update favicon**: Replace files in `public/`, source from `assets/favicon/`
 **Add sidebar section**: Edit `sidebar` array in `astro.config.mjs`
