@@ -35,7 +35,6 @@ describe("key-bindings-section.ejs", () => {
       expect(html).toContain("Key Bindings");
       expect(html).not.toContain("Global Settings");
     });
-
   });
 
   describe("the settings-window button lives elsewhere now (#1024)", () => {

@@ -29,22 +29,20 @@ import { defineSendToPluginButton } from "./send-to-plugin-button.js";
  * Cog, 12x12, drawn in `currentColor` so it always matches the label beside it.
  * A ring with a hub and eight teeth — plain strokes only, the same hand-authored
  * style as the `ird-key-binding` mode icons.
- *
- * Written without whitespace BETWEEN the tags on purpose: the markup is parsed
- * into the button, and any newline or indentation would survive as text nodes
- * inside it, so the button's text content would no longer be exactly its label.
  */
-const COG_ICON_SVG =
-  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor">' +
-  '<circle cx="8" cy="8" r="4" stroke-width="1.7"/>' +
-  '<circle cx="8" cy="8" r="1.3" stroke-width="1.3"/>' +
-  '<path d="M12.6 8h1.6M3.4 8H1.8M8 3.4V1.8M8 12.6v1.6M11.25 4.75l1.13-1.13M4.75 11.25l-1.13 1.13M11.25 11.25l1.13 1.13M4.75 4.75L3.62 3.62" stroke-width="1.9" stroke-linecap="round"/>' +
-  "</svg>";
+const COG_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor">
+  <circle cx="8" cy="8" r="4" stroke-width="1.7"/>
+  <circle cx="8" cy="8" r="1.3" stroke-width="1.3"/>
+  <path d="M12.6 8h1.6M3.4 8H1.8M8 3.4V1.8M8 12.6v1.6M11.25 4.75l1.13-1.13M4.75 11.25l-1.13 1.13M11.25 11.25l1.13 1.13M4.75 4.75L3.62 3.62" stroke-width="1.9" stroke-linecap="round"/>
+</svg>`;
 
 export const OpenSettings = defineSendToPluginButton({
   tag: "ird-open-settings",
   defaultLabel: "iRaceDeck Settings",
   payload: { event: "openSettings" },
   icon: COG_ICON_SVG,
-  size: "compact",
+  // Quiet by default, because its usual home is among an action's own settings.
+  // `settings.ejs` — the page that is nothing but this button — asks for
+  // `size="standard"` instead.
+  defaultSize: "compact",
 });

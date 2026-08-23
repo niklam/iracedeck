@@ -12,10 +12,11 @@
  * per-template markup is required.
  *
  * Placement filters (#1005). A warning about one specific control belongs
- * beside that control, not only in a strip the user has to scroll back up to
- * find: the settings-window banner explains why *iRaceDeck Settings* did
- * nothing, and that button sits at the BOTTOM of an action's Property
- * Inspector. So an instance can narrow what it shows:
+ * beside that control, not only in the page-top strip: the settings-window
+ * banner explains why *iRaceDeck Settings* did nothing, so it travels with
+ * that button wherever the button renders — #1024 moved it from the BOTTOM of
+ * an action Property Inspector up under the action's own settings, and the
+ * banner moved with it. So an instance can narrow what it shows:
  *
  * - `only="a,b"`   — render just these ids (the instance above the button).
  * - `except="a,b"` — render everything else (the auto-injected top strip).

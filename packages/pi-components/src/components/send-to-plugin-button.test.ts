@@ -104,36 +104,71 @@ describe("defineSendToPluginButton", () => {
       expect(button?.querySelector("[aria-hidden]")).toBeNull();
       expect(button?.textContent).toBe("Plain");
     });
+
+    it("keeps the label the button's only text when the icon is authored across lines", () => {
+      // Every other inline icon in this package is a multi-line literal, so the
+      // factory collapses inter-tag whitespace rather than leaving the next
+      // author to discover that newlines land in the accessible name.
+      defineSendToPluginButton({
+        tag: "ird-test-button-multiline-icon",
+        defaultLabel: "Multi",
+        payload: { event: "m" },
+        icon: `<svg viewBox="0 0 16 16">
+  <circle cx="8" cy="8" r="4"/>
+  <circle cx="8" cy="8" r="1"/>
+</svg>`,
+      });
+
+      const button = mount("ird-test-button-multiline-icon").querySelector("button");
+
+      expect(button?.textContent).toBe("Multi");
+      expect(button?.querySelectorAll("circle")).toHaveLength(2);
+    });
   });
 
   describe("size (#1024)", () => {
-    it("claims the full width by default — a button that closes a card", () => {
-      defineSendToPluginButton({ tag: "ird-test-button-std", defaultLabel: "S", payload: { event: "s" } });
+    /** The style block a tag injects on its first mount. */
+    function styleFor(tag: string): string {
       const before = document.head.querySelectorAll("style").length;
 
-      mount("ird-test-button-std");
+      mount(tag);
 
-      const css = Array.from(document.head.querySelectorAll("style")).slice(before)[0]?.textContent ?? "";
+      return Array.from(document.head.querySelectorAll("style")).slice(before)[0]?.textContent ?? "";
+    }
 
-      expect(css).toContain("width: 100%");
-      expect(css).toContain("min-width: 200px");
+    it("claims the full width by default — a button that closes a card", () => {
+      defineSendToPluginButton({ tag: "ird-test-button-std", defaultLabel: "S", payload: { event: "s" } });
+
+      // The bare tag rule carries the default; ordering matters only against
+      // the attribute rules, which are more specific either way.
+      expect(styleFor("ird-test-button-std")).toContain("ird-test-button-std button {\n          width: 100%;");
     });
 
-    it("shrinks to its content when compact — a button that sits among settings", () => {
+    it("shrinks to its content when the tag defaults to compact", () => {
       defineSendToPluginButton({
         tag: "ird-test-button-compact",
         defaultLabel: "C",
         payload: { event: "c2" },
-        size: "compact",
+        defaultSize: "compact",
       });
-      const before = document.head.querySelectorAll("style").length;
 
-      mount("ird-test-button-compact");
+      expect(styleFor("ird-test-button-compact")).toContain("ird-test-button-compact button {\n          width: auto;");
+    });
 
-      const css = Array.from(document.head.querySelectorAll("style")).slice(before)[0]?.textContent ?? "";
+    it("lets one element override the tag's default with a size attribute", () => {
+      // settings.ejs needs the full-width pill from a tag that is compact
+      // everywhere else, so both sizes ship for every tag.
+      defineSendToPluginButton({
+        tag: "ird-test-button-sized",
+        defaultLabel: "Sized",
+        payload: { event: "s2" },
+        defaultSize: "compact",
+      });
 
-      expect(css).toContain("width: auto");
-      expect(css).not.toContain("min-width");
+      const css = styleFor("ird-test-button-sized");
+
+      expect(css).toContain('ird-test-button-sized[size="standard"] button');
+      expect(css).toContain('ird-test-button-sized[size="compact"] button');
     });
   });
 

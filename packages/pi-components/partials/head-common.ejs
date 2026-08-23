@@ -265,8 +265,8 @@
       // would see that one and skip injecting the top strip entirely (#1005).
       el.setAttribute('data-auto', '');
       // The settings-window OPEN failure has a dedicated home directly above
-      // the Open Settings button (see open-settings.ejs); excluding it here is
-      // what keeps it from rendering twice on the same page. Its sibling, the
+      // the iRaceDeck Settings button (see open-settings.ejs); excluding it
+      // here is what keeps it from rendering twice on one page. Its sibling, the
       // SERVER failure, is page-wide (nothing the PI changes reaches the
       // plugin) and stays in this strip, so it is deliberately not listed.
       el.setAttribute('except', 'settings-window-open');

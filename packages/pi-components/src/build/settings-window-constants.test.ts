@@ -41,7 +41,7 @@ describe("settings-window flag (#992)", () => {
 
 /**
  * The settings-window OPEN-failure banner is placed by two EJS partials:
- * rendered above the Open Settings button (`only`) and withheld from the
+ * rendered above the iRaceDeck Settings button (`only`) and withheld from the
  * page-top strip (`except`). Both name the id as a literal, because these
  * partials are browser markup and cannot import deck-core. If the plugin's id
  * ever changed, the banner would silently render in NEITHER place — the top

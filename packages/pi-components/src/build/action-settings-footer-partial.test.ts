@@ -1,9 +1,10 @@
-import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import url from "node:url";
 
 import ejs from "ejs";
 import { describe, expect, it } from "vitest";
+
+import { actionPropertyInspectors } from "./action-templates.js";
 
 /**
  * `action-settings-footer.ejs` (#1024) — the way through to the iRaceDeck
@@ -20,32 +21,12 @@ import { describe, expect, it } from "vitest";
  *    of the only route to the settings window.
  */
 const partialsDir = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../../partials");
-const actionsDir = path.resolve(partialsDir, "../../iracing-actions/src/actions");
 
 /** Wrappers a Property Inspector shows on one control surface and hides on the other. */
 const SURFACE_WRAPPERS = ["keypad-appearance", "keypad-settings", "dial-settings"];
 
-/**
- * The two `.ejs` files under `actions/` that are not action Property
- * Inspectors: the settings window's own page, and the plugin-level fallback PI
- * whose whole content IS the way through (it renders the button under its
- * heading via `section-header`'s `openSettings` slot).
- */
-const NOT_ACTION_PIS = ["settings-window.ejs", "settings.ejs"];
-
 function render(template: string, data: Record<string, unknown> = {}): string {
   return ejs.render(template, data, { views: [partialsDir], filename: path.join(partialsDir, "_test.ejs") });
-}
-
-/** Every action Property Inspector template, one entry per `.ejs` under `actions/`. */
-function actionTemplates(): Array<{ name: string; source: string }> {
-  return readdirSync(actionsDir, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && entry.name !== "data")
-    .flatMap((dir) =>
-      readdirSync(path.join(actionsDir, dir.name))
-        .filter((file) => file.endsWith(".ejs") && !NOT_ACTION_PIS.includes(file))
-        .map((file) => ({ name: file, source: readFileSync(path.join(actionsDir, dir.name, file), "utf-8") })),
-    );
 }
 
 /**
@@ -73,7 +54,7 @@ function wrapperRange(source: string, id: string): { start: number; end: number 
   throw new Error(`unbalanced <div> tags around #${id}`);
 }
 
-const TEMPLATES = actionTemplates();
+const TEMPLATES = actionPropertyInspectors();
 
 describe("action-settings-footer.ejs (#1024)", () => {
   describe("what it renders", () => {
@@ -91,8 +72,11 @@ describe("action-settings-footer.ejs (#1024)", () => {
   });
 
   describe("every action Property Inspector", () => {
-    it("finds all 35 of them", () => {
-      expect(TEMPLATES).toHaveLength(35);
+    it("finds them — 35 at the time of writing", () => {
+      // A floor, not an equality: the per-template cases below are the real
+      // coverage, and pinning the exact count would fail this framework-package
+      // test every time an action is added to a different package.
+      expect(TEMPLATES.length).toBeGreaterThanOrEqual(35);
     });
 
     it.each(TEMPLATES)("$name includes the footer exactly once", ({ source }) => {

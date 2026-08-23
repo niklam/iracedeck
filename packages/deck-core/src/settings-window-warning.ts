@@ -1,7 +1,7 @@
 /**
  * Maps a settings-window lifecycle outcome to a PI warning record (issue #1005).
  *
- * Both failure paths used to be log-only: the user pressed *Open iRaceDeck
+ * Both failure paths used to be log-only: the user pressed *iRaceDeck
  * Settings* and nothing happened. Since #1003 moved every plugin-global
  * setting into that window, a window that will not open is the difference
  * between "mildly annoying" and "no way to reach your settings", so the
@@ -14,8 +14,8 @@
  *
  * Two ids, because they belong in different parts of a Property Inspector and
  * the placement filters are keyed by id: the page-wide `error` renders in the
- * top strip, the button-scoped `warning` directly above the Open Settings
- * button. They are NOT alternatives — a dead service raises both at once, one
+ * top strip, the button-scoped `warning` directly above the settings button.
+ * They are NOT alternatives — a dead service raises both at once, one
  * explaining the page and one marking the button unusable — so this returns a
  * LIST, and the caller reconciles it against `settingsWindowWarningScope`.
  *

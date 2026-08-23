@@ -8,5 +8,6 @@
     renders it itself so it can close the action's own settings with it rather
     than sit under a heading (#1003, #1024). %>
 <% if (locals.openSettings) { %>
-<%- include('open-settings') %>
+<%# Full-width here: on that page the button is the only thing to press. %>
+<%- include('open-settings', { size: 'standard' }) %>
 <% } %>

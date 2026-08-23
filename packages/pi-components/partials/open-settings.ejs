@@ -37,10 +37,14 @@
 
   Parameters:
     - extraClass (String, optional) — class list for the outer block.
+    - size (String, optional) — "standard" for the full-width pill, on a page
+      where this button is the only thing to press. Omit it among an action's
+      own settings, where the component's own quiet default is what stops it
+      outshouting the settings the panel is about (#1024).
 %>
 <div<% if (locals.extraClass) { %> class="<%= extraClass %>"<% } %>>
   <ird-warnings only="settings-window-open"></ird-warnings>
   <div class="ird-open-settings">
-    <ird-open-settings></ird-open-settings>
+    <ird-open-settings<% if (locals.size) { %> size="<%= size %>"<% } %>></ird-open-settings>
   </div>
 </div>
