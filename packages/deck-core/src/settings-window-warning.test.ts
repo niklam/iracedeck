@@ -20,7 +20,7 @@ function byId(warnings: ReturnType<typeof evaluateSettingsWindowWarnings>, id: s
 describe("evaluateSettingsWindowWarnings", () => {
   it("raises both banners when the settings service fails to start", () => {
     // One condition, two placements: the error explains the whole page, the
-    // warning marks the Open Settings button unusable a full scroll below it.
+    // warning marks the settings button itself unusable.
     const result = evaluateSettingsWindowWarnings(serverFailed, { storePath: STORE_PATH });
 
     expect(result.map((w) => w.id).sort()).toEqual(

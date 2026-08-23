@@ -1,8 +1,10 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import url from "node:url";
 
 import { describe, expect, it } from "vitest";
+
+import { ACTIONS_DIR, actionTemplates } from "./action-templates.js";
 
 /**
  * #1003 split head-common.ejs in two.
@@ -18,24 +20,12 @@ import { describe, expect, it } from "vitest";
  * PIs).
  */
 const partialsDir = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../../partials");
-const actionsDir = path.resolve(partialsDir, "../../iracing-actions/src/actions");
 
 const read = (file: string): string => readFileSync(file, "utf-8");
 
 const headCommon = read(path.join(partialsDir, "head-common.ejs"));
 const windowScripts = read(path.join(partialsDir, "settings-window-scripts.ejs"));
-const settingsWindow = read(path.join(actionsDir, "settings-window/settings-window.ejs"));
-
-/** Every action Property Inspector template, one entry per `.ejs` under `actions/`. */
-function actionTemplates(): Array<{ name: string; file: string }> {
-  return readdirSync(actionsDir, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && entry.name !== "data")
-    .flatMap((dir) =>
-      readdirSync(path.join(actionsDir, dir.name))
-        .filter((file) => file.endsWith(".ejs"))
-        .map((file) => ({ name: file, file: path.join(actionsDir, dir.name, file) })),
-    );
-}
+const settingsWindow = read(path.join(ACTIONS_DIR, "settings-window/settings-window.ejs"));
 
 /** Hooks that only ever exist on the settings window's page. */
 const WINDOW_ONLY_HOOKS = [

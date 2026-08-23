@@ -276,7 +276,7 @@ export class ElgatoPlatformAdapter implements IDeckPlatformAdapter {
   }
 
   /**
-   * Register a listener for the Property Inspector's "Open iRaceDeck Settings"
+   * Register a listener for the Property Inspector's "iRaceDeck Settings"
    * request (issue #992). Like `openUrl`, this is a concrete-adapter method
    * rather than an `IDeckPlatformAdapter` member: the PI→plugin transport
    * differs per host, and keeping it off the interface avoids touching every

@@ -72,6 +72,10 @@ Inside a partial, `locals.foo` reads an optional **include parameter** (`include
       </sdpi-select>
     </sdpi-item>
 
+    <%# Closes the action's own settings with the way through to the settings
+        window. Keep it OUTSIDE any wrapper the PI hides per surface (#1024). %>
+    <%- include('action-settings-footer') %>
+
     <%- include('title-overrides') %>
     <%- include('color-overrides', { slots: [...], defaults: require('./data/icon-defaults.json')['action-name'] }) %>
     <%- include('border-overrides', { defaults: require('./data/icon-defaults.json')['action-name'] }) %>
@@ -99,13 +103,14 @@ Located in `packages/pi-components/partials/`:
 
 - **head-common.ejs** - Required scripts, common styles, and the handlers BOTH surfaces need (per-action colour presets, per-action title position, accordion-state persistence, the warnings banner). Handlers for the plugin-global controls moved to `settings-window-scripts.ejs` in #1003. It emits `sdpi-components.js` / `pi-components.js`; each plugin's build then injects ONE bridge `<script>` immediately before `sdpi-components.js` in every generated action PI — `pi-settings-bridge.js` on Elgato/Mirabox, `ulanzi-pi-bridge.js` on Ulanzi — so global settings route to the plugin's loopback settings server (#993). Don't add a bridge tag to a template; the build owns it and asserts it (see `settings-window.md`).
 - **accordion.ejs** - Collapsible section component. Accepts an optional `accordionId` parameter (defaults to `title`) used as the persistence key in global settings (`_accordionState`). The `accordionId` must be unique per PI page — use it when two accordions share the same display title (e.g., per-action vs global "Common Settings"). State is shared across action types since most actions use the same accordion IDs. When `settingsWindow` is truthy in scope (the settings window passes it at its top-level includes; nested includes inherit it) it renders a flat `.ird-sw-card` instead of a `<details>` — see `settings-window.md`.
-- **section-header.ejs** - Section divider with title label and horizontal rule. Parameters: `title` (string); `openSettings` (boolean, optional) renders the "Open iRaceDeck Settings" button under the header — only `settings.ejs` uses that slot. An action PI gets the button from `key-bindings-section.ejs`, which renders it itself so it can place it *below* the section's content (#1003). Used to separate "Action Settings" from "Key Bindings".
+- **section-header.ejs** - Section divider with title label and horizontal rule. Parameters: `title` (string); `openSettings` (boolean, optional) renders the "iRaceDeck Settings" button under the header — only `settings.ejs` uses that slot, and there the button IS the page. An action PI gets the button from `action-settings-footer.ejs` instead (#1024). Used to separate "Action Settings" from "Key Bindings".
 - **common-settings.ejs** - Common settings shared by all actions (flags overlay), wrapped in accordion
 - **color-overrides.ejs** - Per-action color override controls with Default/White/Black presets
 - **border-overrides.ejs** - Per-action border settings (enable, width, color). Place after color-overrides.
 - **graphic-overrides.ejs** - Per-action graphic scale settings (Inherit/Icon Default/Override). Place after border-overrides, before common-settings.
 - **title-overrides.ejs** - Per-action title override controls (show/hide title and graphics, title text, bold, font size, position)
-- **key-bindings-section.ejs** - The whole bottom section of an action PI (#1003): the "Key Bindings" header with its "Open iRaceDeck Settings" button, and either the `Related Key Bindings` accordion or a line saying the action has none. Takes an optional `keyBindings` array and an optional `hidden` flag (start the bindings wrapper hidden so the PI can reveal it per mode — Fuel Service does). This is the ONLY global surface left in an action PI; everything else lives in the settings window.
+- **action-settings-footer.ejs** - Closes an action PI's OWN settings with the "iRaceDeck Settings" button (#1024). No parameters. **Placement rule:** include it after the action's own settings and before `title-overrides`, OUTSIDE every surface-conditional wrapper — on the 16 dial-capable PIs `title-overrides` sits inside `<div id="keypad-appearance">`, which is hidden on the dial surface, so anchoring the button to it (or rendering it from inside `title-overrides.ejs`) would strip every dial user of the route to the settings window. `action-settings-footer-partial.test.ts` checks the placement in all 35 templates.
+- **key-bindings-section.ejs** - The whole bottom section of an action PI (#1003): the "Key Bindings" header, and either the `Related Key Bindings` accordion or a line saying the action has none. Takes an optional `keyBindings` array and an optional `hidden` flag (start the bindings wrapper hidden so the PI can reveal it per mode — Fuel Service does). This is the ONLY global surface left in an action PI; everything else lives in the settings window. It no longer carries the settings button — #1024 moved that to `action-settings-footer.ejs`.
 - **global-key-bindings.ejs** - The `Related Key Bindings` accordion itself, rendered by `key-bindings-section`. Its title is load-bearing: `binding-status.ts` pins the literal `"Related Key Bindings"` to open and scroll it, and `accordion.ejs` derives `data-accordion-id` from the title.
 - **global-color-defaults.ejs** - Global icon color defaults (presets, color pickers) in accordion. **Settings window only** since #1003.
 - **global-title-defaults.ejs** - Global title defaults (show/hide, bold, font size, position) in accordion. **Settings window only** since #1003.
@@ -117,7 +122,7 @@ Located in `packages/pi-components/partials/`:
 - **race-engineer-settings.ejs / race-engineer-callouts.ejs / setup-warning-patterns.ejs** - The Race Engineer plugin-wide settings (items only). **Settings window only** since #1003, which moved them out of `pit-crew.ejs`; the window renders them as cards. `race-engineer-callouts.ejs` owns the callout-list computation.
 - **settings-window-scripts.ejs** - Behaviour for the plugin-global controls: colour presets, the global title position / font-size gates, the title-defaults and setup-warning Reset buttons, border-defaults visibility. Split out of `head-common.ejs` in #1003 and included by `settings-window.ejs` only — a PI would ship ~200 lines of script whose elements are not on the page. Anything BOTH surfaces need belongs in `head-common.ejs` instead.
 - **settings-window-changelog.ejs** - The What's New tab's built-in release notes (#1011): one card per release, newest first, read from `require('./data/changelog.json')` (generated by `pnpm generate:changelog-data` — see `@.claude/rules/changelog.md`). **Settings window only**; bullet `items` are pre-escaped HTML emitted raw, and its `.sw-cl-*` styling lives with the rest of the window's CSS in `settings-window.ejs`.
-- **open-settings.ejs** - The *Open iRaceDeck Settings* button plus the settings-window warning banner that explains a press that does nothing (#1005). The single definition of that button; included by `key-bindings-section.ejs` and `section-header.ejs`. Optional `extraClass` parameter for the wrapper.
+- **open-settings.ejs** - The *iRaceDeck Settings* button plus the settings-window warning banner that explains a press that does nothing (#1005). The single definition of that button; included by `action-settings-footer.ejs` (action PIs) and `section-header.ejs` (`settings.ejs`). Optional `extraClass` parameter for the wrapper. Don't include it directly from an action template — go through `action-settings-footer.ejs` so the placement rule and its divider stay in one place.
 - **docs-link.ejs** - Documentation link to the action's page on iracedeck.com (conditional, hidden when no URL mapped). Opens in the default browser (see _External Links_ below).
 - **version.ejs** - Version footer with downloads link. Opens in the default browser (see _External Links_ below).
 
@@ -168,7 +173,7 @@ No parameters needed. The partial provides controls for:
 - **Font Size** — gated by "Override font size" checkbox; when enabled, shows range slider (5–100, doubled for SVG)
 - **Position** — select (Inherit / Top / Middle / Bottom / Custom); Custom reveals offset slider (−100 to +100)
 
-Place before `color-overrides`, after action-specific settings.
+Place before `color-overrides`, after `action-settings-footer`.
 
 ## Border Overrides Partial
 

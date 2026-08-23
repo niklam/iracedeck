@@ -251,7 +251,7 @@ export class VSDPlatformAdapter implements IDeckPlatformAdapter {
   }
 
   /**
-   * Register a listener for the Property Inspector's "Open iRaceDeck Settings"
+   * Register a listener for the Property Inspector's "iRaceDeck Settings"
    * request (issue #992). VSD Craft mimics the Elgato PI protocol, so the
    * button's `sendToPlugin { event: "openSettings" }` arrives as a
    * `sendToPlugin` frame that `routeEvent` fans out to global handlers. Like

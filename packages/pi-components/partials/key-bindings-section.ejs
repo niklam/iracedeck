@@ -5,16 +5,17 @@
   plugin-global settings moved to the dedicated settings window (#992, #993),
   all that remains per-action is the action's own key bindings — genuinely
   contextual, because each PI shows only its own category out of the full
-  catalog — plus the link out to everything else.
+  catalog.
 
   Owning the header, the accordion and the empty state in ONE partial keeps the
   25 PIs that have bindings and the 10 that do not consistent by construction,
   instead of by 35 copies of the same markup.
 
-  Order is header → the section's own content → divider → settings button. The
-  button closes the section rather than sitting under its heading, so it reads
-  as a sibling of the docs link that follows it instead of looking like the
-  first thing the Key Bindings section has to offer.
+  This section no longer carries the way out to the settings window. #1003 put
+  the button here, closing the section; #1024 moved it up to
+  `action-settings-footer.ejs`, where it closes the action's OWN settings
+  instead — the panel's most-used control had ended up as the last thing on the
+  page, a scroll past four override accordions away.
 
   Parameters:
     - keyBindings (Array, optional) — rows to render, in the shape
@@ -25,8 +26,8 @@
       it per mode (Fuel Service does this). The HEADING hides with the bindings,
       deliberately: leaving it behind renders a labelled "Key Bindings" section
       with nothing in it, which is the same defect the empty-state line exists
-      to prevent. The settings button sits outside the wrapper, so the way out
-      never disappears.
+      to prevent. Hiding the whole section is safe for the way out to the
+      settings window, which since #1024 renders far above it.
 
   The wrapper's `key-bindings-section` id is defined here and nowhere else —
   PI scripts toggle it by that id.
@@ -46,7 +47,3 @@
 <div class="ird-supporting-text">This action has no key bindings.</div>
 <% } %>
 </div>
-
-<%# The way out to everything else, below this section's own content and under
-    its own divider — the same shape as the docs link that follows it. %>
-<%- include('open-settings', { extraClass: 'ird-section-footer' }) %>

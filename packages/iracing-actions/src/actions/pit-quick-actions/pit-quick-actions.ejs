@@ -17,6 +17,8 @@
 		<% var __comms = require('./data/action-comms.json')['pit-quick-actions']; %>
 		<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
 
+		<%- include('action-settings-footer') %>
+
 		<%- include('title-overrides') %>
 
 		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/icon-defaults.json')['pit-quick-actions'] }) %>

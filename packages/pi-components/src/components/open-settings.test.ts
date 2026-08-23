@@ -37,13 +37,30 @@ describe("ird-open-settings", () => {
     const button = el.querySelector("button");
 
     expect(button).not.toBeNull();
-    expect(button?.textContent).toBe("Open iRaceDeck Settings");
+    expect(button?.textContent).toBe("iRaceDeck Settings");
   });
 
   it("honours a custom label attribute", () => {
     const el = mount({ label: "Settings…" });
 
     expect(el.querySelector("button")?.textContent).toBe("Settings…");
+  });
+
+  it("marks the button with a cog, hidden from assistive tech", () => {
+    // #1024 shrank the button and the label to fit under an action's own
+    // settings; the cog carries the recognition the wording gives up.
+    const el = mount();
+    const glyph = el.querySelector("button > span[aria-hidden='true']");
+
+    expect(glyph?.querySelector("svg")).not.toBeNull();
+    expect(glyph?.textContent).toBe("");
+  });
+
+  it("keeps the cog ahead of the label", () => {
+    const el = mount();
+    const first = el.querySelector("button")?.children.item(0);
+
+    expect(first?.getAttribute("aria-hidden")).toBe("true");
   });
 
   it("sends the openSettings command to the plugin on click", () => {
