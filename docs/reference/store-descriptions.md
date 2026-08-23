@@ -72,7 +72,7 @@ Every plugin-wide setting lives in one full-size window instead of being repeate
 
 **Built for Every Stream Deck**
 
-iRaceDeck supports Stream Deck, Stream Deck Mini, Stream Deck XL, Stream Deck Neo, Stream Deck Studio, Stream Deck +, Stream Deck + XL, Galleon 100 SD, Stream Deck Mobile, and the Virtual Stream Deck — and ships ready-made profiles so you can start from a full layout instead of an empty grid.
+iRaceDeck supports Stream Deck, Stream Deck Mini, Stream Deck XL, Stream Deck Neo, Stream Deck Studio, Stream Deck +, Stream Deck + XL, Galleon 100 SD, Stream Deck Mobile, and the Virtual Stream Deck. Ready-made profiles ship for Stream Deck, Stream Deck XL and Stream Deck + XL, so on those you start from a full layout instead of an empty grid.
 
 **Free & Open Source**
 
