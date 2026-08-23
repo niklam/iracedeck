@@ -59,7 +59,7 @@ The engineer confirms each press with a short line — *"Roger that. Corner call
 
 ## Global Audio Settings (shared across every Pit Crew button)
 
-These apply to every Pit Crew button at once, so they live in the [Settings window](/docs/getting-started/settings/#race-engineer) on the **Race Engineer** tab rather than in one button's Property Inspector. Open it with the **Open iRaceDeck Settings** button at the bottom of any iRaceDeck key's Property Inspector.
+These apply to every Pit Crew button at once, so they live in the [Settings window](/docs/getting-started/settings/#race-engineer) on the **Race Engineer** tab rather than in one button's Property Inspector. Open it with the **iRaceDeck Settings** button directly under any iRaceDeck key's own settings.
 
 - **Race Engineer Voice** — dropdown of voices available under `voice/<voice>/` in `@iracedeck/audio-assets`. Substituted into scenario `base: "voice/{voice}"` at clip-resolution time so a swap takes effect on the next scenario fire. Falls back to the first available voice if the persisted choice is gone.
 - **Your Name** — name the engineer addresses you by; resolves a clip from `voice/<voice>/names/`.

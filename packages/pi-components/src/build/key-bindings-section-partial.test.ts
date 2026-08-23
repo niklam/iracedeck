@@ -9,10 +9,15 @@ import { describe, expect, it } from "vitest";
  *
  * Since #1003 this partial is the ENTIRE bottom section of all 35 action PIs:
  * the plugin-global settings moved to the dedicated settings window (#992,
- * #993), leaving only the action's own key bindings plus the link out. It owns
- * the section header, the bindings accordion, and the empty-state line, so the
- * 25 PIs that have bindings and the 10 that do not stay consistent by
- * construction rather than by 35 copies of the same markup.
+ * #993), leaving only the action's own key bindings. It owns the section
+ * header, the bindings accordion, and the empty-state line, so the 25 PIs that
+ * have bindings and the 10 that do not stay consistent by construction rather
+ * than by 35 copies of the same markup.
+ *
+ * The link out to the settings window is NOT here any more: #1024 moved it to
+ * `action-settings-footer.ejs`, which closes the action's own settings with it
+ * far higher up the page. `action-settings-footer-partial.test.ts` covers it
+ * there; this file only guards that it does not come back.
  */
 const partialsDir = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../../partials");
 
@@ -31,41 +36,25 @@ describe("key-bindings-section.ejs", () => {
       expect(html).not.toContain("Global Settings");
     });
 
-    it("always offers the way out to the settings window", () => {
-      const html = render("<%- include('key-bindings-section', { keyBindings: BINDINGS }) %>", { BINDINGS });
-
-      expect(html).toContain("<ird-open-settings>");
-    });
-
-    it("offers the settings-window link even when the action has no bindings", () => {
-      const html = render("<%- include('key-bindings-section') %>");
-
-      expect(html).toContain("<ird-open-settings>");
-    });
   });
 
-  describe("settings button placement", () => {
-    it("closes the section rather than sitting under the heading", () => {
-      // Header → the section's own content → the button. Under the heading it
-      // read as the first thing Key Bindings had to offer.
-      const html = render("<%- include('key-bindings-section', { keyBindings: BINDINGS }) %>", { BINDINGS });
+  describe("the settings-window button lives elsewhere now (#1024)", () => {
+    it.each([
+      ["with bindings", "<%- include('key-bindings-section', { keyBindings: BINDINGS }) %>"],
+      ["without bindings", "<%- include('key-bindings-section') %>"],
+      ["hidden", "<%- include('key-bindings-section', { keyBindings: BINDINGS, hidden: true }) %>"],
+    ])("renders no button %s — action-settings-footer.ejs owns it", (_case, template) => {
+      // Two buttons to one destination is the duplication #1003 removed at
+      // scale; re-adding one here would put it back a section at a time.
+      const html = render(template, { BINDINGS });
 
-      expect(html.indexOf('id="key-bindings-section"')).toBeLessThan(html.indexOf("<ird-open-settings>"));
+      expect(html).not.toContain("ird-open-settings");
     });
 
-    it("is separated by a divider, like the docs link it sits next to", () => {
+    it("renders no closing divider either — the section ends with its own content", () => {
       const html = render("<%- include('key-bindings-section') %>");
 
-      expect(html).toContain("ird-section-footer");
-    });
-
-    it("stays put when the bindings are hidden — it is outside that wrapper", () => {
-      const html = render("<%- include('key-bindings-section', { keyBindings: BINDINGS, hidden: true }) %>", {
-        BINDINGS,
-      });
-
-      expect(html).toContain("<ird-open-settings>");
-      expect(html.indexOf('class="hidden"')).toBeLessThan(html.indexOf("<ird-open-settings>"));
+      expect(html).not.toContain("ird-section-footer");
     });
   });
 

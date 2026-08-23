@@ -32,7 +32,7 @@ There is nothing to import by hand. The first time you switch to a bundled profi
 
 The [Settings window](/docs/getting-started/settings/#profiles) has a **Profiles** tab, so you can switch profiles without dedicating a key to it:
 
-1. Open the [Settings window](/docs/getting-started/settings/#profiles) — every iRaceDeck key's Property Inspector has an **Open iRaceDeck Settings** button at the bottom.
+1. Open the [Settings window](/docs/getting-started/settings/#profiles) — every iRaceDeck key's Property Inspector has an **iRaceDeck Settings** button directly under the key's own settings.
 2. Go to the **Profiles** tab. With more than one Stream Deck connected, pick which one you want to switch.
 3. The tab lists every bundled profile with a **Switch** button next to it.
 4. Press **Switch** — your Stream Deck changes to that profile immediately. If the profile isn't installed yet, the Stream Deck app asks to install it first.

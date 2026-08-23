@@ -12,6 +12,21 @@
  */
 import { sendToPlugin } from "./sdpi-client.js";
 
+/**
+ * How much room the button claims. Everything else about it — colour, border,
+ * hover, the icon slot — is identical across sizes, so a size is never a second
+ * button design to maintain.
+ *
+ * - `standard` — the full-width pill for a button that CLOSES a card or a page
+ *   and competes with nothing (`ird-open-folder` on the settings window's
+ *   Storage card).
+ * - `compact` — auto width and smaller type, for a button that sits AMONG the
+ *   settings it leads away from. #1024 moved `ird-open-settings` up under each
+ *   action's own settings, where a full-width brand-red pill drowned out the
+ *   settings the panel is actually about.
+ */
+export type SendToPluginButtonSize = "standard" | "compact";
+
 export interface SendToPluginButtonOptions {
   /** Custom element tag name, e.g. `"ird-open-settings"`. Also scopes the injected CSS. */
   tag: string;
@@ -19,7 +34,22 @@ export interface SendToPluginButtonOptions {
   defaultLabel: string;
   /** `sendToPlugin` payload fired on click. */
   payload: Record<string, unknown>;
+  /**
+   * Inline SVG markup rendered before the label and hidden from assistive tech
+   * — the label already says what the button does. A bundle-authored constant
+   * (see `open-settings.ts`), never user input and never a settings value,
+   * which is what makes assigning it as markup safe here.
+   */
+  icon?: string;
+  /** Defaults to `"standard"`. */
+  size?: SendToPluginButtonSize;
 }
+
+/** Width and type scale per size. */
+const SIZE_CSS: Record<SendToPluginButtonSize, string> = {
+  standard: "width: 100%; min-width: 200px; padding: 6px 16px; font-size: 11px;",
+  compact: "width: auto; padding: 4px 12px; font-size: 10px;",
+};
 
 /**
  * Builds and registers a `<tag>` custom element: a single button that fires
@@ -27,7 +57,7 @@ export interface SendToPluginButtonOptions {
  * caller can re-export it (e.g. for `components/index.ts`).
  */
 export function defineSendToPluginButton(options: SendToPluginButtonOptions): CustomElementConstructor {
-  const { tag, defaultLabel, payload } = options;
+  const { tag, defaultLabel, payload, icon, size = "standard" } = options;
   let styleInjected = false;
 
   class SendToPluginButton extends HTMLElement {
@@ -52,13 +82,14 @@ export function defineSendToPluginButton(options: SendToPluginButtonOptions): Cu
       style.textContent = `
         ${tag} { display: block; }
         ${tag} button {
-          width: 100%;
-          min-width: 200px;
-          padding: 6px 16px;
+          ${SIZE_CSS[size]}
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
           border: 1px solid #ce2128; /* iRaceDeck brand red (website --sl-color-accent) */
           border-radius: 4px;
           cursor: pointer;
-          font-size: 11px;
           font-weight: 600;
           background: #ce2128;
           color: #ffffff;
@@ -66,6 +97,11 @@ export function defineSendToPluginButton(options: SendToPluginButtonOptions): Cu
         }
         ${tag} button:hover {
           background: #3a2426;
+        }
+        /* The glyph follows the label's colour and never stretches with the button. */
+        ${tag} button svg {
+          display: block;
+          flex: none;
         }
       `;
       document.head.appendChild(style);
@@ -75,7 +111,20 @@ export function defineSendToPluginButton(options: SendToPluginButtonOptions): Cu
     private buildDOM(): void {
       this.button = document.createElement("button");
       this.button.type = "button";
-      this.button.textContent = this.getAttribute("label") ?? defaultLabel;
+
+      if (icon) {
+        const glyph = document.createElement("span");
+
+        glyph.setAttribute("aria-hidden", "true");
+        glyph.innerHTML = icon;
+        this.button.appendChild(glyph);
+      }
+
+      const label = document.createElement("span");
+
+      label.textContent = this.getAttribute("label") ?? defaultLabel;
+      this.button.appendChild(label);
+
       this.appendChild(this.button);
     }
 

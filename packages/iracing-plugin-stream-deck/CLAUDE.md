@@ -160,6 +160,10 @@ Match the include set of the reference `splits-delta-cycle/splits-delta-cycle.ej
 
     <!-- other action-specific sdpi-items here -->
 
+    <%# The way through to the settings window, closing the action's own
+        settings. Keep it outside any surface-conditional wrapper (#1024). %>
+    <%- include('action-settings-footer') %>
+
     <%- include('title-overrides') %>
     <%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/icon-defaults.json')['{action-name}'] }) %>
     <%- include('border-overrides', { defaults: require('./data/icon-defaults.json')['{action-name}'] }) %>

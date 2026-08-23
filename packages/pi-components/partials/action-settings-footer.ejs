@@ -1,0 +1,32 @@
+<%#
+  Action Settings footer (issue #1024)
+
+  Closes an action Property Inspector's OWN settings with the way through to
+  everything that is not on this page: the iRaceDeck Settings window.
+
+  It sits here, and not at the bottom where #1003 first put it, because since
+  #1003 the window owns every plugin-wide setting — which makes this the
+  most-used control on a Property Inspector, and it had ended up as the last
+  thing on the page, a scroll past four override accordions and the Key
+  Bindings section away. Under the action's own settings is as high as it can
+  go: the panel's first row is the deck software's own Title field, and nothing
+  can render above that.
+
+  It also lands on an honest boundary. Everything BELOW it — title, colour,
+  border and graphic overrides, flags — is this one key's appearance; everything
+  BEHIND it is every key's.
+
+  PLACEMENT RULE, the one thing to get right: include this AFTER the action's
+  own settings and BEFORE the key-icon appearance block, OUTSIDE every
+  surface-conditional wrapper. On the 16 dial-capable PIs the appearance block
+  lives inside `<div id="keypad-appearance">`, which the PI hides on the dial
+  surface (a dial has no key icon) — anchored in there, the button would vanish
+  for every dial user, whose settings-window trip is exactly as long as anyone
+  else's. `action-settings-footer-partial.test.ts` checks the placement in all
+  35 templates so this comment is not the only thing holding it.
+
+  `ird-section-footer` draws the divider above the button, the same rule the
+  docs link uses to close the page. The button itself, its warning banner and
+  the reason they travel together live in `open-settings.ejs`.
+%>
+<%- include('open-settings', { extraClass: 'ird-section-footer' }) %>

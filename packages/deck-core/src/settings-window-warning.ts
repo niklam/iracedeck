@@ -30,7 +30,7 @@ import type { SettingsWindowStatus } from "./settings-window.js";
 /** Page-wide: the service never bound. Rendered in the PI's top strip. */
 export const SETTINGS_WINDOW_SERVER_WARNING_ID = "settings-window-server";
 
-/** Button-scoped: the service is fine, nothing would open the page. Rendered above the Open Settings button. */
+/** Button-scoped: the service is fine, nothing would open the page. Rendered above the settings button. */
 export const SETTINGS_WINDOW_OPEN_WARNING_ID = "settings-window-open";
 
 /**
@@ -117,10 +117,10 @@ export interface SettingsWindowWarningContext {
  * scope the status speaks for. Empty means "clear that scope".
  *
  * A failed server start yields TWO: the page-wide error, and the short note
- * that marks the Open Settings button as unusable. One condition, two
- * placements — the button lives a full scroll from the top strip in an action
- * PI, so a user down there would otherwise press a button that does nothing and
- * see no explanation anywhere near it.
+ * that marks the settings button as unusable. One condition, two placements —
+ * the error speaks for the whole page, the note for one control, so a user
+ * about to press that button learns it will do nothing without having to
+ * connect it to an error elsewhere on the page.
  */
 export function evaluateSettingsWindowWarnings(
   status: SettingsWindowStatus,

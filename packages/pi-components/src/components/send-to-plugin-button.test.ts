@@ -70,10 +70,71 @@ describe("defineSendToPluginButton", () => {
     mount("ird-test-button-d");
     mount("ird-test-button-d");
 
-    const styles = [...document.head.querySelectorAll("style")].slice(before);
+    const styles = Array.from(document.head.querySelectorAll("style")).slice(before);
 
     expect(styles).toHaveLength(1);
     expect(styles[0]?.textContent).toContain("ird-test-button-d button");
+  });
+
+  describe("icon (#1024)", () => {
+    const ICON = '<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="4"/></svg>';
+
+    it("renders the glyph before the label and hides it from assistive tech", () => {
+      defineSendToPluginButton({
+        tag: "ird-test-button-icon",
+        defaultLabel: "With icon",
+        payload: { event: "i" },
+        icon: ICON,
+      });
+
+      const button = mount("ird-test-button-icon").querySelector("button");
+      const glyph = button?.children.item(0);
+
+      expect(glyph?.getAttribute("aria-hidden")).toBe("true");
+      expect(glyph?.querySelector("svg")).not.toBeNull();
+      // The label is still the button's only text, so callers can read it as such.
+      expect(button?.textContent).toBe("With icon");
+    });
+
+    it("renders no glyph element when no icon is given", () => {
+      defineSendToPluginButton({ tag: "ird-test-button-plain", defaultLabel: "Plain", payload: { event: "p" } });
+
+      const button = mount("ird-test-button-plain").querySelector("button");
+
+      expect(button?.querySelector("[aria-hidden]")).toBeNull();
+      expect(button?.textContent).toBe("Plain");
+    });
+  });
+
+  describe("size (#1024)", () => {
+    it("claims the full width by default — a button that closes a card", () => {
+      defineSendToPluginButton({ tag: "ird-test-button-std", defaultLabel: "S", payload: { event: "s" } });
+      const before = document.head.querySelectorAll("style").length;
+
+      mount("ird-test-button-std");
+
+      const css = Array.from(document.head.querySelectorAll("style")).slice(before)[0]?.textContent ?? "";
+
+      expect(css).toContain("width: 100%");
+      expect(css).toContain("min-width: 200px");
+    });
+
+    it("shrinks to its content when compact — a button that sits among settings", () => {
+      defineSendToPluginButton({
+        tag: "ird-test-button-compact",
+        defaultLabel: "C",
+        payload: { event: "c2" },
+        size: "compact",
+      });
+      const before = document.head.querySelectorAll("style").length;
+
+      mount("ird-test-button-compact");
+
+      const css = Array.from(document.head.querySelectorAll("style")).slice(before)[0]?.textContent ?? "";
+
+      expect(css).toContain("width: auto");
+      expect(css).not.toContain("min-width");
+    });
   });
 
   it("re-connecting a mounted element does not build a second button", () => {

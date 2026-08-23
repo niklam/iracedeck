@@ -29,6 +29,8 @@
 			<sdpi-textfield setting="fontSize" default="15" type="number" min="5" max="36"></sdpi-textfield>
 		</sdpi-item>
 
+		<%- include('action-settings-footer') %>
+
 		<%- include('title-overrides') %>
 
 		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor'], defaults: require('./data/icon-defaults.json')['telemetry-display'] }) %>

@@ -65,7 +65,7 @@ All accept 0–2000 ms. The Enter keypress is also held briefly so it registers 
 
 iRaceDeck logs at the **info** level by default, which keeps the log file focused on the events that matter and avoids bloating it with internal detail. When you're troubleshooting a problem — or a maintainer asks for a log — enable verbose debug logging to capture the detail needed to diagnose it:
 
-1. Open the [Settings window](/docs/getting-started/settings/#diagnostics) (**Open iRaceDeck Settings** at the bottom of any action's Property Inspector) and pick the **Diagnostics** tab.
+1. Open the [Settings window](/docs/getting-started/settings/#diagnostics) (**iRaceDeck Settings**, directly under any action's own settings) and pick the **Diagnostics** tab.
 2. Turn on **Enable debug logging**. It takes effect immediately — no restart needed.
 3. Reproduce the issue, then attach the plugin's log file to your report.
 4. Turn the setting back off afterward to keep your logs clean.

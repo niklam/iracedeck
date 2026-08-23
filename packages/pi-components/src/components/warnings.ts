@@ -13,7 +13,7 @@
  *
  * Placement filters (#1005). A warning about one specific control belongs
  * beside that control, not only in a strip the user has to scroll back up to
- * find: the settings-window banner explains why *Open iRaceDeck Settings* did
+ * find: the settings-window banner explains why *iRaceDeck Settings* did
  * nothing, and that button sits at the BOTTOM of an action's Property
  * Inspector. So an instance can narrow what it shows:
  *

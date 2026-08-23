@@ -1,17 +1,20 @@
 <%#
-  Open Settings button + its warning banner (issues #992, #1005)
+  Open Settings button + its warning banner (issues #992, #1005, #1024)
 
   The one definition of the way through to the iRaceDeck Settings window, used
-  by every place that offers it: `key-bindings-section.ejs` (the 35 action PIs,
-  where it closes the bottom section) and `section-header.ejs` (the plugin-level
-  `settings.ejs` page, where it sits under the heading).
+  by every place that offers it: `action-settings-footer.ejs` (the 35 action
+  PIs, where it closes the action's own settings) and `section-header.ejs` (the
+  plugin-level `settings.ejs` page, where it sits under the heading).
 
   The banner above it carries the OPEN failure and only that: the window could
-  not be displayed although the settings service is healthy. It has to be HERE
-  rather than in the page-top strip that `head-common.ejs` injects, because in
-  an action PI that strip is a full scroll away from this button — a user who
-  presses it and gets no window would see no explanation at all, which is the
-  very failure this warning exists to end.
+  not be displayed although the settings service is healthy. It stays HERE
+  rather than in the page-top strip that `head-common.ejs` injects, so that a
+  press that produces no window explains itself next to the button that was
+  pressed. #1005 argued that from distance — the button was then at the very
+  bottom of an action PI, a full scroll from the strip. #1024 moved it up near
+  the top, so the distance argument is spent, but the placement is not: a
+  warning about one control belongs beside that control, which is the general
+  rule the `only`/`except` filters exist to serve.
 
   The SERVER failure deliberately stays in the top strip instead. It is not
   about this button: with no service a PI has no channel to the plugin, so
@@ -25,12 +28,12 @@
 
   Banner and button share ONE outer block, and `extraClass` goes on that block
   rather than on the button's own wrapper. `.ird-section-footer` draws the
-  divider that closes the Key Bindings section with a `border-top`, so putting
-  the banner outside the block would render it ABOVE that rule — reading as
-  the tail of the key-bindings list, with a horizontal line between it and the
-  button it explains. The button wrapper also centres its content, which is
-  right for a button and wrong for a paragraph of warning text, so the banner
-  stays a sibling of that wrapper rather than a child of it.
+  divider that closes a section with a `border-top`, so putting the banner
+  outside the block would render it ABOVE that rule — reading as the tail of
+  the settings above it, with a horizontal line between it and the button it
+  explains. The button wrapper also centres its content, which is right for a
+  button and wrong for a paragraph of warning text, so the banner stays a
+  sibling of that wrapper rather than a child of it.
 
   Parameters:
     - extraClass (String, optional) — class list for the outer block.

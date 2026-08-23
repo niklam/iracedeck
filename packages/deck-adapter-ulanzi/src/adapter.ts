@@ -333,7 +333,7 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
   }
 
   /**
-   * Register a listener for the Property Inspector's "Open iRaceDeck Settings"
+   * Register a listener for the Property Inspector's "iRaceDeck Settings"
    * request (issue #992). The shared button's `sendToPlugin { event:
    * "openSettings" }` reaches the plugin as a `sendToPlugin` frame that the
    * client normalizes to a global `openSettings` event (same path as the

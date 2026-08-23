@@ -101,9 +101,9 @@
     padding-top: 8px;
     border-top: 1px solid #3a3a3a;
   }
-  /* "Open iRaceDeck Settings" under the Key Bindings header (#992, #1003): a
-     centred block like .ird-docs-link, not an sdpi-item (no label column).
-     Reused verbatim as the wrapper for the Storage card's Open Folder
+  /* "iRaceDeck Settings", closing an action's own settings (#992, #1003,
+     #1024): a centred block like .ird-docs-link, not an sdpi-item (no label
+     column). Reused verbatim as the wrapper for the Storage card's Open Folder
      button (#993, ird-open-folder) — narrow both to an inline pill. */
   .ird-open-settings {
     text-align: center;
@@ -115,9 +115,9 @@
     width: auto;
   }
   /* Divider above a block that CLOSES a section — the same rule .ird-docs-link
-     uses, so the settings button and the docs link read as siblings. Compose it
-     with .ird-open-settings (#1003 puts the button below the section's own
-     content). Declared after .ird-open-settings so its margin-top wins. */
+     uses, so the settings button and the docs link read as siblings. It sits on
+     the block WRAPPING .ird-open-settings (see open-settings.ejs), so the two
+     never compete for the same element's margin. */
   .ird-section-footer {
     margin-top: 16px;
     padding-top: 8px;
