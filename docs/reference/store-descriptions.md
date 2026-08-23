@@ -2,7 +2,7 @@
 
 Canonical copies of the iRaceDeck product descriptions published on the **Elgato Marketplace** and **Mirabox Space** store listings. The live texts exist only in the store dashboards — nothing in the repo or CI forces an update when the product changes, so these descriptions rot silently unless checked deliberately (the pre-2026-08 text predated the Race Engineer entirely).
 
-**Last synced: 2026-08-12 (v2.4.0).** Update this file whenever a new text is published, and keep the "Last synced" line current.
+**Last synced: 2026-08-23 (v3.0.0).** Update this file whenever a new text is published, and keep the "Last synced" line current.
 
 ## When to update
 
@@ -13,8 +13,8 @@ Check these descriptions for drift as part of **every release's** release-notes 
 | Action count (Elgato) | 32 | `packages/website/src/content/docs/index.mdx` stats row |
 | Action count (Mirabox) | 31 (no Switch Profile) | Mirabox manifest `Actions` |
 | Dial-capable actions (Elgato only) | 16 | `iracedeck-actions` skill / actions with `encoder: true` |
-| Headline features | Race Engineer, live data on keys, template variables, dials, profiles | changelog / website |
-| Supported Elgato devices | Stream Deck, Mini, XL, + | `packages/website/src/data/brands.ts` (`ECOSYSTEMS.elgato.devices`) |
+| Headline features | Settings window, Race Engineer, live data on keys, template variables, dials, profiles | changelog / website |
+| Supported Elgato devices | every device DEVICE_SUPPORT marks supported (#983) | `packages/website/src/data/brands.ts` (`ECOSYSTEMS.elgato.devices`) |
 | Supported Mirabox brands | Mirabox, Stream Dock, SOOMFON, VAPOURD, KILOGOGRAPH, HALCONTORNO, VSDinside, Nouvolo (list is open-ended) | `packages/website/src/data/brands.ts` (`BRANDS` for the names; `ECOSYSTEMS.mirabox.listIsComplete` for the open-ended marker) |
 | Elgato requirements | Stream Deck software 7.1+, Windows 10+ | Elgato manifest `Software`/`OS` |
 | Mirabox requirements | Stream Dock software 3.10.188+, Windows 10+ | Mirabox manifest `Software`/`OS` |
@@ -62,13 +62,17 @@ Switch cameras, follow different cars, and control replay playback directly from
 
 Send predefined chat messages with a single press — 15 configurable macros with live-data templating — plus reply, whisper, and quick chat toggles. League admins get a full race-control panel: black flags, penalties, wave-arounds, pace laps, session advance, and more.
 
+**Everything in One Settings Window**
+
+Every plugin-wide setting lives in one full-size window instead of being repeated inside every key’s panel: all 236 key bindings in one searchable table, appearance defaults, the Race Engineer, ready-made profiles, SimHub, and diagnostics — opened with the cog button under any key’s own settings. Your settings live in a file iRaceDeck owns, so they survive plugin updates and reinstalls, and each release’s notes ship inside the plugin so you can read what an update changes before taking it.
+
 **Made for Stream Deck +**
 
 16 actions come with full dial support on Stream Deck+: spin a dial for fuel amounts, brake bias and other setup values, audio volumes, camera focus, FFB strength, black boxes, and more — with live readouts on the touch strip.
 
 **Built for Every Stream Deck**
 
-iRaceDeck supports Stream Deck, Stream Deck Mini, Stream Deck XL, and Stream Deck+ — and ships ready-made profiles so you can start from a full layout instead of an empty grid.
+iRaceDeck supports Stream Deck, Stream Deck Mini, Stream Deck XL, Stream Deck Neo, Stream Deck Studio, Stream Deck +, Stream Deck + XL, Galleon 100 SD, Stream Deck Mobile, and the Virtual Stream Deck — and ships ready-made profiles so you can start from a full layout instead of an empty grid.
 
 **Free & Open Source**
 
@@ -115,6 +119,10 @@ Switch cameras, follow different cars, and control replay playback directly from
 Chat & Race Admin
 
 Send predefined chat messages with a single press — 15 configurable macros with live-data templating — plus reply, whisper, and quick chat toggles. League admins get a full race-control panel: black flags, penalties, wave-arounds, pace laps, session advance, and more.
+
+Everything in One Settings Window
+
+Every plugin-wide setting lives in one full-size window instead of being repeated inside every key’s panel: all 236 key bindings in one searchable table, appearance defaults, the Race Engineer, SimHub, and diagnostics — opened with the cog button under any key’s own settings. Your settings live in a file iRaceDeck owns, so they survive plugin updates and reinstalls, and each release’s notes ship inside the plugin so you can read what an update changes before taking it.
 
 Built for the Mirabox Ecosystem
 
