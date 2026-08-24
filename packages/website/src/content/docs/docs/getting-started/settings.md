@@ -31,6 +31,8 @@ Behaviour that affects every key you press.
 
 **Dual-press** governs the setup keys that do one thing on a tap and the opposite on a hold. The **long-press threshold** is how long you must hold before it counts as a hold — shorter feels snappier, longer is more forgiving if you catch keys accidentally. **Directions** picks which way a tap goes; the hold always fires the opposite.
 
+**Mouse to Sim** decides where the [Mouse to Sim](/docs/actions/view-camera/view-adjustment/#mouse-to-sim) key parks your pointer inside the iRacing window. Pick a **Horizontal** and a **Vertical** anchor — a corner, an edge or the centre — then nudge the pointer away from it with the two **offset** sliders, which are percentages of the window (positive moves right and down), so your target holds its place at any resolution. The default, Center with Top plus 12.5%, lands on iRacing's own on-screen UI band, which is where the key has always put the pointer.
+
 ### Key Bindings
 
 ![The Key Bindings tab, showing the searchable table of every binding](../../../../assets/settings-window/key-bindings.png)

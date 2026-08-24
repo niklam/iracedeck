@@ -106,18 +106,43 @@ Adjust the in-sim UI element size.
 
 Bring the mouse pointer back into the iRacing window.
 
-In VR you cannot see the mouse pointer, and on a multi-monitor desktop it can be sitting on any screen. Pressing this key focuses iRacing and moves the pointer to a predictable spot inside the sim window — horizontally centred, about one eighth of the window height down from the top, which is where iRacing's own on-screen UI sits. From there you can find it and click without lifting the headset.
+In VR you cannot see the mouse pointer, and on a multi-monitor desktop it can be sitting on any screen. Pressing this key focuses iRacing and moves the pointer to a predictable spot inside the sim window, so you can find it and click without lifting the headset.
+
+Where that spot is, is yours to choose — see [Settings](#settings) below. Out of the box the pointer arrives horizontally centered, about one eighth of the window height down from the top, which is where iRacing's own on-screen UI sits.
 
 #### Details
 
-- **Method:** Windows window/pointer call (focuses iRacing, moves the cursor) — no iRacing command, so there is nothing to bind and nothing to configure
+- **Method:** Windows window/pointer call (focuses iRacing, moves the cursor) — no iRacing command, so there is nothing to bind
 - **Dial:** Not a rotation setting — it's available as a press or touch gesture; see [On a dial](#on-a-dial)
 - **Default binding:** None needed
 - **Telemetry-aware icon:** No
 
 #### Settings
 
-- No additional settings
+The pointer target is plugin-wide rather than per key: every Mouse to Sim key, and the dial gesture, go to the same spot. Set it under **Mouse to Sim** on the General tab of the [iRaceDeck Settings window](/docs/getting-started/settings/) — this mode has no settings of its own in the Property Inspector.
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| Horizontal | Dropdown | Center | Where across the window the pointer is measured from |
+| Horizontal offset % | Slider | 0 | Shift from that anchor; positive moves right |
+| Vertical | Dropdown | Top | Where down the window the pointer is measured from |
+| Vertical offset % | Slider | 12.5 | Shift from that anchor; positive moves down |
+
+##### Horizontal Options
+
+- **Left** — the left edge of the sim window
+- **Center** (default) — halfway across
+- **Right** — the right edge
+
+##### Vertical Options
+
+- **Top** (default) — the top edge of the sim window
+- **Middle** — halfway down
+- **Bottom** — the bottom edge
+
+Offsets are percentages of the window rather than pixels, so a target keeps its place when you change resolution or move iRacing to another monitor. Each runs from -50% to +50% — exactly the distance between two neighboring anchors, so every point in the window is reachable from the anchor nearest to it. A target pushed past an edge lands on the edge.
+
+To park the pointer in the bottom-right corner, choose **Right** and **Bottom** and leave both offsets at 0. To go back to the original spot, choose **Center** and **Top** with offsets of 0 and 12.5.
 
 #### Notes
 
