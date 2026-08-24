@@ -24,6 +24,11 @@
 
 			<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
 
+			<div id="reset-run-note" class="ird-supporting-text hidden">
+				Hold the key to keep the sim paused at the reset point, and release it when
+				you are ready to drive. A quick press resets and resumes immediately.
+			</div>
+
 			<sdpi-item id="direction-item" label="Direction">
 				<sdpi-select setting="direction" default="next">
 					<option value="next">Next</option>
@@ -128,6 +133,14 @@
 					directionItem?.classList.remove("hidden");
 				} else {
 					directionItem?.classList.add("hidden");
+				}
+
+				// Only Reset to Start Point acts on both key edges (#1028).
+				const resetRunNote = document.getElementById("reset-run-note");
+				if (mode === "active-reset-run") {
+					resetRunNote?.classList.remove("hidden");
+				} else {
+					resetRunNote?.classList.add("hidden");
 				}
 			}
 

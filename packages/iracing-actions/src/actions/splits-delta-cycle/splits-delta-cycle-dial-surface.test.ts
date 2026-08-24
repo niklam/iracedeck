@@ -30,6 +30,8 @@ vi.mock("@iracedeck/deck-core", async () => {
       updateKeyImage = vi.fn().mockResolvedValue(false);
       setActiveBinding = vi.fn();
       tapBinding = mockTapBinding;
+      holdBinding = vi.fn().mockResolvedValue(undefined);
+      releaseBinding = vi.fn().mockResolvedValue(undefined);
       isBindingMissing = mockIsBindingMissing;
       async onWillAppear() {}
       async onDidReceiveSettings() {}

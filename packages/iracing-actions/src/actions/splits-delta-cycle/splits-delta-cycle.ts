@@ -11,6 +11,7 @@ import {
   type IDeckDialUpEvent,
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
+  type IDeckKeyUpEvent,
   type IDeckTouchTapEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
@@ -50,17 +51,34 @@ const MODE_TITLES: Record<string, string> = {
   "active-reset-run": "TO START\nRESET",
 };
 
+/** Every keypad mode, in Property Inspector order. */
+const MODES = [
+  "cycle",
+  "toggle-ref-car",
+  "custom-sector-start",
+  "custom-sector-end",
+  "active-reset-set",
+  "active-reset-run",
+] as const;
+
+type SplitsDeltaCycleMode = (typeof MODES)[number];
+
+/**
+ * Modes that use the hold pattern — the binding is pressed on keyDown and
+ * released on keyUp, instead of being tapped once (the Car Control
+ * `HOLD_CONTROLS` shape).
+ *
+ * `active-reset-run` is one because iRacing's Reset to Start Point acts on both
+ * edges of the control (issue #1028): the press teleports the car back to the
+ * snapshot, and holding the control keeps the sim paused there until release —
+ * which is how a driver gets a moment to prepare instead of being dropped
+ * straight back into a moving car. A short press still behaves exactly like the
+ * previous tap, so nothing regresses for users who only ever tap the key.
+ */
+const HOLD_MODES: ReadonlySet<SplitsDeltaCycleMode> = new Set<SplitsDeltaCycleMode>(["active-reset-run"]);
+
 const SplitsDeltaCycleSettings = CommonSettings.extend({
-  mode: z
-    .enum([
-      "cycle",
-      "toggle-ref-car",
-      "custom-sector-start",
-      "custom-sector-end",
-      "active-reset-set",
-      "active-reset-run",
-    ])
-    .default("cycle"),
+  mode: z.enum(MODES).default("cycle"),
   direction: z.enum(["next", "previous"]).default("next"),
   // Dial-surface settings (#807), under the `dial` root so keypad and dial keys
   // can't collide. catch: dial garbage degrades to dial defaults instead of
@@ -182,7 +200,12 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
   }
 
   override async onWillDisappear(ev: IDeckWillDisappearEvent<SplitsDeltaCycleSettings>): Promise<void> {
+    // Drop the per-context dial state BEFORE awaiting anything, so a rejected
+    // release can't leave the context behind (the Car Control ordering).
     this.dialSurface.willDisappear(ev.action.id);
+    // SAFETY: a hold-mode key torn down mid-press would otherwise leave the
+    // binding held (a stuck key / SimHub role). No-op when nothing is held.
+    await this.releaseBinding(ev.action.id);
     await super.onWillDisappear(ev);
   }
 
@@ -203,7 +226,22 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
   override async onKeyDown(ev: IDeckKeyDownEvent<SplitsDeltaCycleSettings>): Promise<void> {
     this.logger.info("Key down received");
     const settings = this.parseSettings(ev.payload.settings);
-    await this.tapBinding(this.resolveSettingKey(settings));
+    const settingKey = this.resolveSettingKey(settings);
+
+    if (HOLD_MODES.has(settings.mode)) {
+      await this.holdBinding(ev.action.id, settingKey);
+
+      return;
+    }
+
+    await this.tapBinding(settingKey);
+  }
+
+  override async onKeyUp(ev: IDeckKeyUpEvent<SplitsDeltaCycleSettings>): Promise<void> {
+    this.logger.info("Key up received");
+    // Unconditional: release is a no-op for the tap modes, and it still fires
+    // if the mode changed to a tap one while the key was held.
+    await this.releaseBinding(ev.action.id);
   }
 
   override async onDialRotate(ev: IDeckDialRotateEvent<SplitsDeltaCycleSettings>): Promise<void> {

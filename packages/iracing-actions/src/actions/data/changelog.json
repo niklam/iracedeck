@@ -6,9 +6,15 @@
   },
   "releases": [
     {
-      "version": "3.0.1",
+      "version": "3.1.0",
       "date": null,
       "categories": [
+        {
+          "title": "Improvements",
+          "items": [
+            "Splits &amp; Reference's <strong>Reset to Start Point</strong> mode can now be held. iRacing acts on both the press and the release of that control: tap the key and the car is restored and running immediately, as before, but hold it and the sim pauses the moment the car is moved back and resumes only when you let go — so you get a beat to settle your hands and pick your moment instead of being dropped straight back into a car already at speed. Nothing needs configuring; a quick press behaves exactly as it did. On a Stream Deck+ dial the same option stays a momentary tap, because a dial press is only recognised once you release it."
+          ]
+        },
         {
           "title": "Maintenance",
           "items": [
