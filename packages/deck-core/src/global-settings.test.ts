@@ -1428,3 +1428,57 @@ describe("run-scoped keys never reach the settings file (issue #1014)", () => {
     expect(store.saved.at(-1)).not.toHaveProperty(PI_WARNINGS_KEY);
   });
 });
+
+describe("Mouse to Sim pointer target (#1029)", () => {
+  it("defaults to the placement #926 shipped", () => {
+    const parsed = GlobalSettingsSchema.parse({});
+
+    expect(parsed.mouseToSimAnchorX).toBe("center");
+    expect(parsed.mouseToSimAnchorY).toBe("top");
+    expect(parsed.mouseToSimOffsetX).toBe(0);
+    expect(parsed.mouseToSimOffsetY).toBe(12.5);
+  });
+
+  it("keeps a configured target", () => {
+    const parsed = GlobalSettingsSchema.parse({
+      mouseToSimAnchorX: "right",
+      mouseToSimAnchorY: "bottom",
+      mouseToSimOffsetX: -5,
+      mouseToSimOffsetY: -12.5,
+    });
+
+    expect(parsed.mouseToSimAnchorX).toBe("right");
+    expect(parsed.mouseToSimAnchorY).toBe("bottom");
+    expect(parsed.mouseToSimOffsetX).toBe(-5);
+    expect(parsed.mouseToSimOffsetY).toBe(-12.5);
+  });
+
+  it("coerces the numeric strings the range input stores", () => {
+    const parsed = GlobalSettingsSchema.parse({ mouseToSimOffsetX: "-25", mouseToSimOffsetY: "7.5" });
+
+    expect(parsed.mouseToSimOffsetX).toBe(-25);
+    expect(parsed.mouseToSimOffsetY).toBe(7.5);
+  });
+
+  it("treats the empty string an untouched range input stores as absent", () => {
+    const parsed = GlobalSettingsSchema.parse({ mouseToSimOffsetX: "", mouseToSimOffsetY: "" });
+
+    expect(parsed.mouseToSimOffsetX).toBe(0);
+    expect(parsed.mouseToSimOffsetY).toBe(12.5);
+  });
+
+  it.each([
+    ["an unknown anchor", { mouseToSimAnchorX: "sideways", mouseToSimAnchorY: "diagonal" }],
+    ["an out-of-range offset", { mouseToSimOffsetX: 5000, mouseToSimOffsetY: -5000 }],
+    ["a non-numeric offset", { mouseToSimOffsetX: "left-ish", mouseToSimOffsetY: {} }],
+  ])("falls back to the defaults for %s without failing the parse", (_case, patch) => {
+    const parsed = GlobalSettingsSchema.parse({ focusIRacingWindow: false, ...patch });
+
+    expect(parsed.mouseToSimAnchorX).toBe("center");
+    expect(parsed.mouseToSimAnchorY).toBe("top");
+    expect(parsed.mouseToSimOffsetX).toBe(0);
+    expect(parsed.mouseToSimOffsetY).toBe(12.5);
+    // The parse as a whole must survive — one throwing field stalls every setting (#896).
+    expect(parsed.focusIRacingWindow).toBe(false);
+  });
+});
