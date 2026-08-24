@@ -10,6 +10,10 @@
  * unconditionally are FEATURE policy, which is why they live here rather than in
  * deck-core: `window-focus-service` and `mouse-pointer-service` are deliberately
  * independent, and this is the only place that says the two belong together.
+ * Since #1029 the composition has a third step — resolving the user's configured
+ * pointer target — and the same reasoning applies: `sim-pointer-target` owns the
+ * arithmetic and `GlobalSettingsSchema` owns the persistence, while knowing that
+ * this feature is what those two describe stays here.
  * `focusIRacingNow()` rather than `focusIRacingIfEnabled()` because pressing this
  * key is explicit user intent, so it ignores the `focusIRacingWindow` opt-out that
  * gates the implicit before-every-action focus.
@@ -22,7 +26,14 @@
  * `focusIRacingIfEnabled()` already does exactly this before every key press when
  * the global setting is on.
  */
-import { focusIRacingNow, FocusResult, movePointerToSim, PointerMoveResult } from "@iracedeck/deck-core";
+import {
+  focusIRacingNow,
+  FocusResult,
+  getGlobalSettings,
+  movePointerToSim,
+  PointerMoveResult,
+  resolveSimPointerTarget,
+} from "@iracedeck/deck-core";
 import type { ILogger } from "@iracedeck/logger";
 
 /**
@@ -45,7 +56,20 @@ export function bringPointerToSim(logger: ILogger): void {
 
     // A focus timeout is not fatal here either: the window exists, so its client
     // area is still a valid pointer target even if the foreground swap lagged.
-    if (movePointerToSim() === PointerMoveResult.Moved) {
+    // Where the pointer goes is the user's choice (#1029). Read on every press
+    // rather than caching: the settings window can change it between two presses.
+    // No `isSettingsStoreReady()` gate — the schema defaults ARE the pre-#1029
+    // placement, so a press before the store loads lands exactly where it always
+    // did, whereas gating would make it do nothing at all.
+    const settings = getGlobalSettings();
+    const target = resolveSimPointerTarget({
+      anchorX: settings.mouseToSimAnchorX,
+      anchorY: settings.mouseToSimAnchorY,
+      offsetX: settings.mouseToSimOffsetX,
+      offsetY: settings.mouseToSimOffsetY,
+    });
+
+    if (movePointerToSim(target.xFraction, target.yFraction) === PointerMoveResult.Moved) {
       logger.info("Mouse pointer brought to the iRacing window");
     }
   } catch (error) {
