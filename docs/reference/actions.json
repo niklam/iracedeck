@@ -290,6 +290,7 @@
             {
               "value": "active-reset-run",
               "label": "Reset to Start Point",
+              "controlType": "hold",
               "description": "Teleports the car back to the saved active reset snapshot (solo practice only). The ONLY mode that holds its binding (#1028): pressed on keyDown, released on keyUp, so holding the key keeps the sim paused at the reset point. A short press is equivalent to the old tap — the keyUp release is floored at MIN_HOLD_MS (100 ms, the same key-down duration the native tap path guarantees)."
             }
           ]
