@@ -106,6 +106,15 @@
 			</sdpi-item>
 			<ird-binding-status mode-setting="dial.longTouchAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
 
+			<% } %>
+
+			<div id="dial-reset-run-note" class="ird-supporting-text hidden">
+				Gesture actions are momentary. A dial press is only recognised once you
+				release it, so Reset to Start Point cannot keep the sim paused while the
+				dial is held in — put it on a key for that.
+			</div>
+
+			<% if (locals.platform?.features?.dialFeedback !== false) { %>
 			<%- include('dial-appearance') %>
 			<% } %>
 		</div>
@@ -185,6 +194,44 @@
 						if (currentMode && currentMode !== lastMode) {
 							lastMode = currentMode;
 							updateVisibility(currentMode);
+						}
+					});
+				}
+
+				// Only Reset to Start Point differs between the surfaces (#1028): on a
+				// key it is held, here it can only ever be a tap.
+				// Tap Display and Long Touch only exist where the touch strip does,
+				// so a missing one simply drops out of the list.
+				const gestureSelects = Array.from(
+					document.querySelectorAll(
+						'#dial-settings sdpi-select[setting="dial.pressAction"],' +
+							'#dial-settings sdpi-select[setting="dial.longPressAction"],' +
+							'#dial-settings sdpi-select[setting="dial.tapAction"],' +
+							'#dial-settings sdpi-select[setting="dial.longTouchAction"]',
+					),
+				);
+
+				if (gestureSelects.length > 0) {
+					const updateDialNote = () => {
+						const note = document.getElementById("dial-reset-run-note");
+						const anyResetRun = gestureSelects.some(
+							(el) => (el.value || el.getAttribute("default")) === "active-reset-run",
+						);
+						note?.classList.toggle("hidden", !anyResetRun);
+					};
+
+					updateDialNote();
+					for (const el of gestureSelects) {
+						el.addEventListener("change", updateDialNote);
+						el.addEventListener("input", updateDialNote);
+					}
+
+					let lastGestures = gestureSelects.map((el) => el.value).join("|");
+					window.irdPoll(() => {
+						const current = gestureSelects.map((el) => el.value).join("|");
+						if (current !== lastGestures) {
+							lastGestures = current;
+							updateDialNote();
 						}
 					});
 				}

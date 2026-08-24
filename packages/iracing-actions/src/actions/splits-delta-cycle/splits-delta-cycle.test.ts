@@ -307,11 +307,101 @@ describe("SplitsDeltaCycle", () => {
       expect(mockReleaseBinding).toHaveBeenCalledWith("action-1");
     });
 
+    it("should hold the key for at least the tap path's 100 ms before releasing", async () => {
+      vi.useFakeTimers();
+
+      try {
+        await action.onKeyDown(fakeKeyEvent("action-1", { mode: "active-reset-run" }) as never);
+
+        // A Multi Action (or a very fast tap) releases immediately; the release
+        // must still wait out MIN_HOLD_MS so iRacing's input loop samples the key.
+        const keyUp = action.onKeyUp(fakeKeyEvent("action-1", { mode: "active-reset-run" }) as never);
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(mockReleaseBinding).not.toHaveBeenCalled();
+
+        await vi.advanceTimersByTimeAsync(100);
+        await keyUp;
+
+        expect(mockReleaseBinding).toHaveBeenCalledWith("action-1");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("should not release a press that started while the previous release waited out the floor", async () => {
+      vi.useFakeTimers();
+
+      try {
+        await action.onKeyDown(fakeKeyEvent("action-1", { mode: "active-reset-run" }) as never);
+
+        // Released instantly, so the floor makes this keyUp wait ~100 ms...
+        const keyUp = action.onKeyUp(fakeKeyEvent("action-1", { mode: "active-reset-run" }) as never);
+
+        // ...and the user presses again while it is still waiting.
+        await vi.advanceTimersByTimeAsync(20);
+        await action.onKeyDown(fakeKeyEvent("action-1", { mode: "active-reset-run" }) as never);
+
+        await vi.advanceTimersByTimeAsync(100);
+        await keyUp;
+
+        // The second press owns the binding and is still held — the first
+        // keyUp's delayed release must not end it.
+        expect(mockReleaseBinding).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("should not delay the release once the key has been held past the floor", async () => {
+      vi.useFakeTimers();
+
+      try {
+        await action.onKeyDown(fakeKeyEvent("action-1", { mode: "active-reset-run" }) as never);
+        vi.setSystemTime(Date.now() + 500);
+
+        await action.onKeyUp(fakeKeyEvent("action-1", { mode: "active-reset-run" }) as never);
+
+        expect(mockReleaseBinding).toHaveBeenCalledWith("action-1");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("should release immediately on key up in a tap mode", async () => {
+      vi.useFakeTimers();
+
+      try {
+        await action.onKeyDown(fakeKeyEvent("action-1", { mode: "cycle", direction: "next" }) as never);
+        await action.onKeyUp(fakeKeyEvent("action-1", { mode: "cycle", direction: "next" }) as never);
+
+        // No hold-mode press was recorded, so the floor must not apply — the
+        // release is a no-op for tap modes but still has to fire (the mode can
+        // change to a tap one while the key is held).
+        expect(mockReleaseBinding).toHaveBeenCalledWith("action-1");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it("should release the active reset run binding when the key disappears", async () => {
       await action.onKeyDown(fakeKeyEvent("action-1", { mode: "active-reset-run" }) as never);
       await action.onWillDisappear(fakeKeyEvent("action-1", { mode: "active-reset-run" }) as never);
 
       expect(mockReleaseBinding).toHaveBeenCalledWith("action-1");
+    });
+
+    it("should not delay teardown by the hold floor when the key disappears mid-press", async () => {
+      vi.useFakeTimers();
+
+      try {
+        await action.onKeyDown(fakeKeyEvent("action-1", { mode: "active-reset-run" }) as never);
+        await action.onWillDisappear(fakeKeyEvent("action-1", { mode: "active-reset-run" }) as never);
+
+        expect(mockReleaseBinding).toHaveBeenCalledWith("action-1");
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it("should hold independently per action context", async () => {
