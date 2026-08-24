@@ -62,6 +62,15 @@ describe("resolveSimPointerTarget", () => {
     expect(resolveSimPointerTarget(broken)).toEqual({ xFraction: 0.5, yFraction: 0 });
   });
 
+  it("falls back to the default anchor for a key inherited from Object.prototype", () => {
+    // A plain lookup returns `Object.prototype.constructor` here — not `undefined`,
+    // so `??` would never fire, and the sum would go NaN and land the pointer
+    // top-left rather than on the default.
+    const broken = config({ anchorX: "constructor" as never, anchorY: "toString" as never, offsetX: 0, offsetY: 0 });
+
+    expect(resolveSimPointerTarget(broken)).toEqual({ xFraction: 0.5, yFraction: 0 });
+  });
+
   it("treats a non-finite offset as no offset", () => {
     const broken = config({
       anchorX: "center",

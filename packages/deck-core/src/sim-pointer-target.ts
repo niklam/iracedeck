@@ -102,6 +102,20 @@ function resolveAxis(anchorFraction: number, offsetPercent: number): number {
 }
 
 /**
+ * One anchor's fraction, falling back to the default for anything unknown.
+ *
+ * `Object.hasOwn` rather than a plain lookup plus `??`: the anchor crosses a
+ * persistence boundary, so at runtime it can be any string at all — and an
+ * INHERITED key (`"constructor"`, `"toString"`) resolves off `Object.prototype`
+ * to something that is neither `undefined` (so `??` never fires) nor a number
+ * (so the sum becomes NaN and the pointer lands top-left instead of on the
+ * default this module promises).
+ */
+function anchorFraction<A extends string>(fractions: Record<A, number>, anchor: A, fallback: A): number {
+  return Object.hasOwn(fractions, anchor) ? fractions[anchor] : fractions[fallback];
+}
+
+/**
  * Resolve a configured anchor + offset into the client-area fractions the pointer
  * mover takes.
  *
@@ -109,8 +123,8 @@ function resolveAxis(anchorFraction: number, offsetPercent: number): number {
  * @returns the target as fractions of the iRacing window's client area
  */
 export function resolveSimPointerTarget(config: SimPointerTargetConfig): SimPointerTarget {
-  const anchorX = POINTER_ANCHOR_X_FRACTIONS[config.anchorX] ?? POINTER_ANCHOR_X_FRACTIONS[DEFAULT_POINTER_ANCHOR_X];
-  const anchorY = POINTER_ANCHOR_Y_FRACTIONS[config.anchorY] ?? POINTER_ANCHOR_Y_FRACTIONS[DEFAULT_POINTER_ANCHOR_Y];
+  const anchorX = anchorFraction(POINTER_ANCHOR_X_FRACTIONS, config.anchorX, DEFAULT_POINTER_ANCHOR_X);
+  const anchorY = anchorFraction(POINTER_ANCHOR_Y_FRACTIONS, config.anchorY, DEFAULT_POINTER_ANCHOR_Y);
 
   return {
     xFraction: resolveAxis(anchorX, config.offsetX),

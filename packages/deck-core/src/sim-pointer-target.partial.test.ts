@@ -31,8 +31,32 @@ const settingsWindow = readFileSync(
   "utf-8",
 );
 
+/** Every setting the card binds, in the order it lists them. */
+const SETTING_KEYS = ["mouseToSimAnchorX", "mouseToSimOffsetX", "mouseToSimAnchorY", "mouseToSimOffsetY"] as const;
+
+/**
+ * The one opening tag bound to `setting`.
+ *
+ * Attributes are read off THIS tag rather than matched against the whole file:
+ * a bare `toContain('default="0" global')` passes on any control that happens to
+ * carry it, and one that spells out an attribute SEQUENCE fails on a harmless
+ * reformat while proving nothing extra.
+ */
+function control(setting: string): string {
+  const match = partial.match(new RegExp(`<[a-z-]+[^>]*\\bsetting="${setting}"[^>]*>`));
+
+  expect(match, `no control bound to ${setting}`).not.toBeNull();
+
+  return match![0];
+}
+
+/** One attribute of a control tag, or `undefined` when it carries none. */
+function attr(tag: string, name: string): string | undefined {
+  return new RegExp(`\\b${name}="([^"]*)"`).exec(tag)?.[1];
+}
+
 describe("global-common-mouse-pointer.ejs (#1029)", () => {
-  it.each(["mouseToSimAnchorX", "mouseToSimAnchorY", "mouseToSimOffsetX", "mouseToSimOffsetY"])("binds %s", (key) => {
+  it.each(SETTING_KEYS)("binds %s", (key) => {
     expect(partial).toContain(`setting="${key}"`);
   });
 
@@ -41,26 +65,26 @@ describe("global-common-mouse-pointer.ejs (#1029)", () => {
   });
 
   it("defaults both anchor selects to their schema default", () => {
-    expect(partial).toContain(`setting="mouseToSimAnchorX" global default="${DEFAULT_POINTER_ANCHOR_X}"`);
-    expect(partial).toContain(`setting="mouseToSimAnchorY" global default="${DEFAULT_POINTER_ANCHOR_Y}"`);
+    expect(attr(control("mouseToSimAnchorX"), "default")).toBe(DEFAULT_POINTER_ANCHOR_X);
+    expect(attr(control("mouseToSimAnchorY"), "default")).toBe(DEFAULT_POINTER_ANCHOR_Y);
   });
 
   it("defaults both offset sliders to their schema default", () => {
-    expect(partial).toContain(`setting="mouseToSimOffsetX" min="-${POINTER_OFFSET_LIMIT}"`);
-    expect(partial).toContain(`setting="mouseToSimOffsetY" min="-${POINTER_OFFSET_LIMIT}"`);
-    expect(partial).toContain(`default="${DEFAULT_POINTER_OFFSET_X}" global`);
-    expect(partial).toContain(`default="${DEFAULT_POINTER_OFFSET_Y}" global`);
+    expect(attr(control("mouseToSimOffsetX"), "default")).toBe(String(DEFAULT_POINTER_OFFSET_X));
+    expect(attr(control("mouseToSimOffsetY"), "default")).toBe(String(DEFAULT_POINTER_OFFSET_Y));
   });
 
   it("bounds both offset sliders by the offset limit", () => {
-    const bounds = partial.match(/min="-?[\d.]+" max="-?[\d.]+"/g) ?? [];
+    for (const setting of ["mouseToSimOffsetX", "mouseToSimOffsetY"]) {
+      const tag = control(setting);
 
-    expect(bounds).toHaveLength(2);
-    expect(new Set(bounds)).toEqual(new Set([`min="-${POINTER_OFFSET_LIMIT}" max="${POINTER_OFFSET_LIMIT}"`]));
+      expect(attr(tag, "min")).toBe(String(-POINTER_OFFSET_LIMIT));
+      expect(attr(tag, "max")).toBe(String(POINTER_OFFSET_LIMIT));
+    }
   });
 
-  it("saves all four controls globally", () => {
-    expect(partial.match(/ global[ >]/g)).toHaveLength(4);
+  it.each(SETTING_KEYS)("saves %s globally", (key) => {
+    expect(control(key)).toMatch(/\sglobal[\s>]/);
   });
 
   it("uses only sdpi/ird components, never raw form controls", () => {

@@ -4,11 +4,23 @@ const focus = vi.fn();
 const movePointerToSim = vi.fn();
 const getGlobalSettings = vi.fn();
 
+/** deck-core's pure resolver module — imported by PATH, not through the barrel. */
+const SIM_POINTER_TARGET = "../../../deck-core/src/sim-pointer-target.js";
+
 // `resolveSimPointerTarget` is deliberately NOT stubbed: what these tests must
 // prove is that a configured target reaches the pointer mover intact, so the real
 // resolution has to run (a stub would only assert the stub).
+//
+// It is reached by relative path rather than as `@iracedeck/deck-core` because
+// the BARREL drags in `@iracedeck/iracing-sdk` → `@iracedeck/iracing-native`,
+// whose module scope `require()`s the native `.node` addon into this worker.
+// That made `pnpm test` crash a fork worker ("Worker exited unexpectedly") in
+// roughly one run in five — a non-zero exit that silently drops the worker's
+// tests. `sim-pointer-target.ts` itself has zero imports, so importing it
+// directly runs the same real code with none of that graph.
 vi.mock("@iracedeck/deck-core", async () => {
-  const actual = await vi.importActual<typeof import("@iracedeck/deck-core")>("@iracedeck/deck-core");
+  const actual =
+    await vi.importActual<typeof import("../../../deck-core/src/sim-pointer-target.js")>(SIM_POINTER_TARGET);
 
   return {
     focusIRacingNow: focus,
