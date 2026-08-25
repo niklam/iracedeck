@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { poolRef, WEIGHT } from "./dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "./interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "./interpreter.js";
+import { scanRaceEngineerVoices } from "./manifest.js";
 
 // ─── Test utilities ──────────────────────────────────────────────────────────
 
@@ -285,6 +286,83 @@ describe("manifest-derived pools (definePoolFromManifest)", () => {
       sequence: ["pool:flag-blue"],
     });
   }
+
+  describe("setManifest (issue #1034)", () => {
+    const withNina = {
+      ...voicedManifest,
+      clips: [...voicedManifest.clips, "voice/nina/flags/blue-01.mp3", "voice/nina/flags/blue-02.mp3"],
+    };
+
+    it("makes a clip from a newly added voice playable without re-initialising", () => {
+      engine.defineScenario({
+        id: "test.templated",
+        channel: AudioChannel.Voice,
+        bus: AudioBus.Voice,
+        sequence: ["voice/{voice}/flags/blue-01.mp3"],
+      });
+
+      activeVoice = "nina";
+      engine.fire("test.templated");
+
+      expect(voicePaths()).toEqual([]);
+
+      engine.setManifest(withNina);
+      engine.fire("test.templated");
+
+      expect(voicePaths()).toEqual(["voice/nina/flags/blue-01.mp3"]);
+    });
+
+    it("re-derives manifest-backed pools so a new voice's variants are picked up", () => {
+      defineBluePoolScenario();
+      engine.setManifest(withNina);
+      activeVoice = "nina";
+
+      const seen = new Set<string>();
+
+      // Flush between fires: the bus stays busy until the in-flight clip ends,
+      // so without this only the first fire would ever reach the audio layer.
+      for (let i = 0; i < 30; i++) {
+        engine.fire("test.blue");
+        flushVoiceAndSfx(audio);
+      }
+
+      for (const played of voicePaths()) seen.add(played);
+
+      expect([...seen].sort()).toEqual(["voice/nina/flags/blue-01.mp3", "voice/nina/flags/blue-02.mp3"]);
+    });
+
+    it("exposes the new manifest to the voice scanner", () => {
+      engine.setManifest(withNina);
+
+      expect(scanRaceEngineerVoices(engine.currentManifest())).toContain("nina");
+    });
+
+    it("drops a voice that is no longer in the manifest", () => {
+      engine.setManifest({
+        ...voicedManifest,
+        clips: voicedManifest.clips.filter((clip) => !clip.includes("/luca/")),
+      });
+
+      expect(scanRaceEngineerVoices(engine.currentManifest())).not.toContain("luca");
+    });
+
+    it("stops playing a removed voice's clip rather than serving it from a stale pool", () => {
+      defineBluePoolScenario();
+      activeVoice = "luca";
+      engine.fire("test.blue");
+
+      expect(voicePaths().length).toBe(1);
+
+      engine.setManifest({
+        ...voicedManifest,
+        clips: voicedManifest.clips.filter((clip) => !clip.includes("/luca/")),
+      });
+      audio._played.length = 0;
+      engine.fire("test.blue");
+
+      expect(voicePaths()).toEqual([]);
+    });
+  });
 
   function voicePaths(): string[] {
     return audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
