@@ -35,6 +35,15 @@ import {
   DEFAULT_SETUP_WARNING_QUALIFYING_PATTERN,
   DEFAULT_SETUP_WARNING_RACE_PATTERN,
 } from "./setup-warning-constants.js";
+import {
+  DEFAULT_POINTER_ANCHOR_X,
+  DEFAULT_POINTER_ANCHOR_Y,
+  DEFAULT_POINTER_OFFSET_X,
+  DEFAULT_POINTER_OFFSET_Y,
+  POINTER_ANCHORS_X,
+  POINTER_ANCHORS_Y,
+  POINTER_OFFSET_LIMIT,
+} from "./sim-pointer-target.js";
 import type { IDeckPlatformAdapter } from "./types.js";
 import { CHANGELOG_NOTIFICATION_POLICIES, DEFAULT_CHANGELOG_NOTIFICATION_POLICY } from "./version-check.js";
 
@@ -132,6 +141,39 @@ export const GlobalSettingsSchema = z
       .transform((val) => val === true || val === "true")
       .default(true)
       .catch(true),
+    /**
+     * Where the Mouse to Sim key parks the pointer inside the iRacing window
+     * (issue #1029) — an anchor per axis plus an offset in percent of the client
+     * area. The defaults resolve to exactly the 50% / 12.5% #926 shipped, so an
+     * install that never opens the setting keeps its placement; the resolution
+     * itself lives in `sim-pointer-target.ts`.
+     *
+     * `.catch(...)` on all four (issue #896): a hand-edited settings file must
+     * fall back to the default rather than abort the whole parse.
+     */
+    mouseToSimAnchorX: z.enum(POINTER_ANCHORS_X).default(DEFAULT_POINTER_ANCHOR_X).catch(DEFAULT_POINTER_ANCHOR_X),
+    mouseToSimAnchorY: z.enum(POINTER_ANCHORS_Y).default(DEFAULT_POINTER_ANCHOR_Y).catch(DEFAULT_POINTER_ANCHOR_Y),
+    // `preprocess` for the same reason as `simHubPort`: `ird-range-input` stores
+    // "" until the user touches it, and `z.coerce.number()` reads that as 0
+    // rather than "absent" — silently discarding the default.
+    mouseToSimOffsetX: z.preprocess(
+      (val) => (val === "" ? undefined : val),
+      z.coerce
+        .number()
+        .min(-POINTER_OFFSET_LIMIT)
+        .max(POINTER_OFFSET_LIMIT)
+        .default(DEFAULT_POINTER_OFFSET_X)
+        .catch(DEFAULT_POINTER_OFFSET_X),
+    ),
+    mouseToSimOffsetY: z.preprocess(
+      (val) => (val === "" ? undefined : val),
+      z.coerce
+        .number()
+        .min(-POINTER_OFFSET_LIMIT)
+        .max(POINTER_OFFSET_LIMIT)
+        .default(DEFAULT_POINTER_OFFSET_Y)
+        .catch(DEFAULT_POINTER_OFFSET_Y),
+    ),
     /**
      * Hostname or IP address of the SimHub instance for Control Mapper integration.
      * Default: "127.0.0.1"

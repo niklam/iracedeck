@@ -6,9 +6,15 @@
   },
   "releases": [
     {
-      "version": "3.0.1",
+      "version": "3.1.0",
       "date": null,
       "categories": [
+        {
+          "title": "Improvements",
+          "items": [
+            "Mouse to Sim now lets you choose where your pointer lands in the sim window. Pick a horizontal and a vertical anchor — a corner, an edge or the centre — and nudge it from there with an offset, under Mouse to Sim on the Settings window's General tab. Leave it alone and the pointer keeps arriving exactly where it always has."
+          ]
+        },
         {
           "title": "Maintenance",
           "items": [
