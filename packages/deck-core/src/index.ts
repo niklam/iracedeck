@@ -197,6 +197,12 @@ export {
 
 // Downloadable Race Engineer voice packs (issue #1034)
 export { resolveVoicePacksPath, type ResolveVoicePacksPathOptions } from "./voice-packs-path.js";
+export {
+  parseVoicePackManifest,
+  VoicePackManifestSchema,
+  type ParseVoicePackManifestResult,
+  type VoicePackManifest,
+} from "./voice-pack-manifest.js";
 
 // Per-mode sim-communication descriptors (issue #612)
 export {
