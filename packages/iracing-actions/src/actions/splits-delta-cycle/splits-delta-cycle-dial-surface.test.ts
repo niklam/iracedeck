@@ -30,6 +30,8 @@ vi.mock("@iracedeck/deck-core", async () => {
       updateKeyImage = vi.fn().mockResolvedValue(false);
       setActiveBinding = vi.fn();
       tapBinding = mockTapBinding;
+      holdBinding = vi.fn().mockResolvedValue(undefined);
+      releaseBinding = vi.fn().mockResolvedValue(undefined);
       isBindingMissing = mockIsBindingMissing;
       async onWillAppear() {}
       async onDidReceiveSettings() {}
@@ -96,7 +98,7 @@ function lastFeedbackBox(ctx: DialContext): string {
 
 describe("splits-delta-cycle dial-surface pure helpers", () => {
   describe("GESTURE_ACTIONS", () => {
-    it("offers every keypad one-shot mode plus none (#807 follow-up)", () => {
+    it("offers every keypad mode beyond cycle plus none (#807 follow-up)", () => {
       expect(GESTURE_ACTIONS).toEqual([
         "toggle-ref-car",
         "custom-sector-start",
@@ -116,7 +118,7 @@ describe("splits-delta-cycle dial-surface pure helpers", () => {
       expect(desc.push).toBe("Toggle Reference Car");
     });
 
-    it("labels the new one-shot gestures matching the keypad's wording", () => {
+    it("labels the gestures matching the keypad's wording", () => {
       const desc = buildTriggerDescription(
         DialSettings.parse({ pressAction: "custom-sector-start", tapAction: "active-reset-run" }),
       );

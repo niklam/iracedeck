@@ -16,8 +16,8 @@
  * owning action via `refreshAll()` on global-settings changes.
  *
  * Pressing runs a configurable gesture — defaulting to Toggle Reference Car,
- * the natural companion to mode cycling — chosen from every one-shot mode the
- * keypad surface offers beyond cycle itself (Toggle Reference Car, Custom
+ * the natural companion to mode cycling — chosen from every mode the keypad
+ * surface offers beyond cycle itself (Toggle Reference Car, Custom
  * Sector Start/End, Active Reset Set/Run), so nothing the keypad can do in one
  * press is unreachable from the dial (#807 follow-up).
  */
@@ -37,7 +37,7 @@ import { renderDialNameIcon } from "../../shared/dial-name-icon.js";
 
 /**
  * The global-settings binding keys the dial taps — shared verbatim with the
- * keypad surface (the `cycle` mode's Next / Previous and every one-shot mode's
+ * keypad surface (the `cycle` mode's Next / Previous and every other mode's
  * binding key, see `GLOBAL_KEY_NAMES` / `MODE_KEY_MAP` in splits-delta-cycle.ts).
  * No new bindings are introduced.
  */
@@ -65,8 +65,12 @@ const IDENTITY_ABBR = "DELTA";
 const ACCENT_COLOR = "#9b59b6";
 
 /**
- * Gesture slots offered by the press / touch options — every one-shot mode the
- * keypad surface offers beyond `cycle` itself, plus nothing (#807 follow-up).
+ * Gesture slots offered by the press / touch options — every mode the keypad
+ * surface offers beyond `cycle` itself, plus nothing (#807 follow-up).
+ *
+ * Each is dispatched here as a momentary tap, including `active-reset-run`: a
+ * dial press is classified at `dialUp`, so it cannot also HOLD its binding the
+ * way the keypad mode does (#1028) without killing the long-press slot.
  */
 export const GESTURE_ACTIONS = [
   "toggle-ref-car",
@@ -351,7 +355,7 @@ export class SplitsDeltaCycleDialSurface {
   /**
    * The dial's primary function is rotation, which needs BOTH the Next and
    * Previous bindings (#612); the press / touch gesture slots are secondary
-   * and never gate the strip warning, regardless of which one-shot mode is
+   * and never gate the strip warning, regardless of which gesture is
    * configured.
    */
   private computeBindingMissing(): boolean {

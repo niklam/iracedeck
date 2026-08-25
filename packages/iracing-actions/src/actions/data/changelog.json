@@ -12,7 +12,8 @@
         {
           "title": "Improvements",
           "items": [
-            "Mouse to Sim now lets you choose where your pointer lands in the sim window. Pick a horizontal and a vertical anchor — a corner, an edge or the centre — and nudge it from there with an offset, under Mouse to Sim on the Settings window's General tab. Leave it alone and the pointer keeps arriving exactly where it always has."
+            "Mouse to Sim now lets you choose where your pointer lands in the sim window. Pick a horizontal and a vertical anchor — a corner, an edge or the centre — and nudge it from there with an offset, under Mouse to Sim on the Settings window's General tab. Leave it alone and the pointer keeps arriving exactly where it always has.",
+            "Splits &amp; Reference's <strong>Reset to Start Point</strong> mode can now be held. iRacing acts on both the press and the release of that control: tap the key and the car is restored and running immediately, as before, but hold it and the sim pauses the moment the car is moved back and resumes only when you let go — so you get a beat to settle your hands and pick your moment instead of being dropped straight back into a car already at speed. Nothing needs configuring; a quick press behaves exactly as it did. On a Stream Deck+ dial the same option stays a momentary tap, because a dial press is only recognised once you release it."
           ]
         },
         {

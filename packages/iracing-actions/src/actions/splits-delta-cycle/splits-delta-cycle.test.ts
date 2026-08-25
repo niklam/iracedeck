@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { generateSplitsDeltaCycleSvg, GLOBAL_KEY_NAMES } from "./splits-delta-cycle.js";
+import { generateSplitsDeltaCycleSvg, GLOBAL_KEY_NAMES, SplitsDeltaCycle } from "./splits-delta-cycle.js";
+
+const { mockTapBinding, mockHoldBinding, mockReleaseBinding } = vi.hoisted(() => ({
+  mockTapBinding: vi.fn().mockResolvedValue(undefined),
+  mockHoldBinding: vi.fn().mockResolvedValue(undefined),
+  mockReleaseBinding: vi.fn().mockResolvedValue(undefined),
+}));
 
 vi.mock("@iracedeck/icons/splits-delta-cycle/next.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
@@ -45,7 +51,20 @@ vi.mock("@iracedeck/deck-core", () => ({
     setKeyImage = vi.fn();
     setRegenerateCallback = vi.fn();
     isBindingMissing = vi.fn(() => false);
+    setActiveBinding = vi.fn();
+    tapBinding = mockTapBinding;
+    holdBinding = mockHoldBinding;
+    releaseBinding = mockReleaseBinding;
+    async onWillAppear() {}
+    async onDidReceiveSettings() {}
+    async onWillDisappear() {}
   },
+  applyBindingWarning: (content: string) => `${content}<binding-warning/>`,
+  classifyDialRelease: vi.fn(() => "short"),
+  escapeXml: (str: string) => str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"),
+  getDualPressThresholdMs: vi.fn(() => 500),
+  onGlobalSettingsChange: vi.fn(() => vi.fn()),
+  svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
   formatKeyBinding: vi.fn((b: { key: string; modifiers: string[] }) => {
     if (b.modifiers?.length) {
       return `${b.modifiers.join("+")}+${b.key}`;
@@ -99,6 +118,14 @@ vi.mock("@iracedeck/deck-core", () => ({
     },
   ),
 }));
+
+/** Create a minimal fake keypad event with the given action ID and settings. */
+function fakeKeyEvent(actionId: string, settings: Record<string, unknown> = {}) {
+  return {
+    action: { id: actionId, isDial: () => false, isKey: () => true, setTitle: vi.fn(), setImage: vi.fn() },
+    payload: { settings },
+  };
+}
 
 describe("SplitsDeltaCycle", () => {
   beforeEach(() => {
@@ -256,6 +283,152 @@ describe("SplitsDeltaCycle", () => {
       const resetRun = generateSplitsDeltaCycleSvg({ mode: "active-reset-run", direction: "next" });
       const allIcons = [sectorStart, sectorEnd, resetSet, resetRun];
       expect(new Set(allIcons).size).toBe(4);
+    });
+  });
+
+  describe("press/release behavior", () => {
+    let action: SplitsDeltaCycle;
+
+    beforeEach(() => {
+      action = new SplitsDeltaCycle();
+    });
+
+    it("should hold the active reset run binding while the key is pressed", async () => {
+      await action.onKeyDown(fakeKeyEvent("action-1", { mode: "active-reset-run" }) as never);
+
+      expect(mockHoldBinding).toHaveBeenCalledWith("action-1", GLOBAL_KEY_NAMES.ACTIVE_RESET_RUN);
+      expect(mockTapBinding).not.toHaveBeenCalled();
+    });
+
+    it("should release the active reset run binding on key up", async () => {
+      await action.onKeyDown(fakeKeyEvent("action-1", { mode: "active-reset-run" }) as never);
+      await action.onKeyUp(fakeKeyEvent("action-1", { mode: "active-reset-run" }) as never);
+
+      expect(mockReleaseBinding).toHaveBeenCalledWith("action-1");
+    });
+
+    it("should hold the key for at least the tap path's 100 ms before releasing", async () => {
+      vi.useFakeTimers();
+
+      try {
+        await action.onKeyDown(fakeKeyEvent("action-1", { mode: "active-reset-run" }) as never);
+
+        // A Multi Action (or a very fast tap) releases immediately; the release
+        // must still wait out MIN_HOLD_MS so iRacing's input loop samples the key.
+        const keyUp = action.onKeyUp(fakeKeyEvent("action-1", { mode: "active-reset-run" }) as never);
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(mockReleaseBinding).not.toHaveBeenCalled();
+
+        await vi.advanceTimersByTimeAsync(100);
+        await keyUp;
+
+        expect(mockReleaseBinding).toHaveBeenCalledWith("action-1");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("should not release a press that started while the previous release waited out the floor", async () => {
+      vi.useFakeTimers();
+
+      try {
+        await action.onKeyDown(fakeKeyEvent("action-1", { mode: "active-reset-run" }) as never);
+
+        // Released instantly, so the floor makes this keyUp wait ~100 ms...
+        const keyUp = action.onKeyUp(fakeKeyEvent("action-1", { mode: "active-reset-run" }) as never);
+
+        // ...and the user presses again while it is still waiting.
+        await vi.advanceTimersByTimeAsync(20);
+        await action.onKeyDown(fakeKeyEvent("action-1", { mode: "active-reset-run" }) as never);
+
+        await vi.advanceTimersByTimeAsync(100);
+        await keyUp;
+
+        // The second press owns the binding and is still held — the first
+        // keyUp's delayed release must not end it.
+        expect(mockReleaseBinding).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("should not delay the release once the key has been held past the floor", async () => {
+      vi.useFakeTimers();
+
+      try {
+        await action.onKeyDown(fakeKeyEvent("action-1", { mode: "active-reset-run" }) as never);
+        vi.setSystemTime(Date.now() + 500);
+
+        await action.onKeyUp(fakeKeyEvent("action-1", { mode: "active-reset-run" }) as never);
+
+        expect(mockReleaseBinding).toHaveBeenCalledWith("action-1");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("should release immediately on key up in a tap mode", async () => {
+      vi.useFakeTimers();
+
+      try {
+        await action.onKeyDown(fakeKeyEvent("action-1", { mode: "cycle", direction: "next" }) as never);
+        await action.onKeyUp(fakeKeyEvent("action-1", { mode: "cycle", direction: "next" }) as never);
+
+        // No hold-mode press was recorded, so the floor must not apply — the
+        // release is a no-op for tap modes but still has to fire (the mode can
+        // change to a tap one while the key is held).
+        expect(mockReleaseBinding).toHaveBeenCalledWith("action-1");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("should release the active reset run binding when the key disappears", async () => {
+      await action.onKeyDown(fakeKeyEvent("action-1", { mode: "active-reset-run" }) as never);
+      await action.onWillDisappear(fakeKeyEvent("action-1", { mode: "active-reset-run" }) as never);
+
+      expect(mockReleaseBinding).toHaveBeenCalledWith("action-1");
+    });
+
+    it("should not delay teardown by the hold floor when the key disappears mid-press", async () => {
+      vi.useFakeTimers();
+
+      try {
+        await action.onKeyDown(fakeKeyEvent("action-1", { mode: "active-reset-run" }) as never);
+        await action.onWillDisappear(fakeKeyEvent("action-1", { mode: "active-reset-run" }) as never);
+
+        expect(mockReleaseBinding).toHaveBeenCalledWith("action-1");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("should hold independently per action context", async () => {
+      await action.onKeyDown(fakeKeyEvent("action-1", { mode: "active-reset-run" }) as never);
+      await action.onKeyDown(fakeKeyEvent("action-2", { mode: "active-reset-run" }) as never);
+
+      expect(mockHoldBinding).toHaveBeenCalledTimes(2);
+      expect(mockHoldBinding).toHaveBeenCalledWith("action-1", GLOBAL_KEY_NAMES.ACTIVE_RESET_RUN);
+      expect(mockHoldBinding).toHaveBeenCalledWith("action-2", GLOBAL_KEY_NAMES.ACTIVE_RESET_RUN);
+
+      await action.onKeyUp(fakeKeyEvent("action-1", { mode: "active-reset-run" }) as never);
+
+      expect(mockReleaseBinding).toHaveBeenCalledTimes(1);
+      expect(mockReleaseBinding).toHaveBeenCalledWith("action-1");
+    });
+
+    it.each([
+      ["cycle", GLOBAL_KEY_NAMES.NEXT, { mode: "cycle", direction: "next" }],
+      ["toggle-ref-car", GLOBAL_KEY_NAMES.TOGGLE_REF_CAR, { mode: "toggle-ref-car" }],
+      ["custom-sector-start", GLOBAL_KEY_NAMES.CUSTOM_SECTOR_START, { mode: "custom-sector-start" }],
+      ["custom-sector-end", GLOBAL_KEY_NAMES.CUSTOM_SECTOR_END, { mode: "custom-sector-end" }],
+      ["active-reset-set", GLOBAL_KEY_NAMES.ACTIVE_RESET_SET, { mode: "active-reset-set" }],
+    ])("should tap rather than hold in %s mode", async (_mode, settingKey, settings) => {
+      await action.onKeyDown(fakeKeyEvent("action-1", settings as Record<string, unknown>) as never);
+
+      expect(mockTapBinding).toHaveBeenCalledWith(settingKey);
+      expect(mockHoldBinding).not.toHaveBeenCalled();
     });
   });
 });

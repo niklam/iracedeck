@@ -15,12 +15,12 @@ Manages splits delta display cycling, reference car toggling, custom sector mark
 ## Behavior
 
 ### Button Press
-Triggers the action configured in Settings.
+Triggers the action configured in Settings. Every mode taps its binding once, except **Reset to Start Point**, which holds it: the binding is pressed on key down and released on key up (issue #1028), because iRacing's Reset to Start Point acts on both edges of the control — the press teleports the car back to the snapshot, and holding the control keeps the sim paused there until release. A short press behaves exactly like the previous tap: the release is floored at `MIN_HOLD_MS` (100 ms — the same key-down duration the native tap path's `Sleep(100)` guarantees), so a very quick press, or a Multi Action that delivers key down and key up back to back, still holds the key long enough for iRacing's input loop to sample it. The binding is also released on `willDisappear` so a key torn down mid-press can't leave it held (teardown skips the floor).
 
 ### Dial (Stream Deck+)
 Placed on a dial, the action has a single rotation behavior — no dial `Setting` dropdown. Turning cycles iRacing's splits / delta display modes: clockwise taps **Next** (`splitsDeltaNext`), counter-clockwise taps **Previous** (`splitsDeltaPrevious`), scaled by tick magnitude and capped at five taps per event. Both bindings must be set. iRacing exposes no telemetry for the selected splits mode, so the touch strip shows the action identity only (a `DELTA` label) and never a live value.
 
-The press and touchscreen taps each run a configurable gesture chosen from every one-shot mode the keypad surface offers beyond Cycle itself — {Toggle Reference Car, Custom Sector Start, Custom Sector End, Set Active Reset Point, Reset to Start Point, None}. Press, long-press, and push-turn are classified at `dialUp`; the touchscreen's tap vs. long-touch classification comes from the touch event itself. See [Dial settings](#dial-settings) below for the defaults. A push-and-turn (rotating while the dial is held in) cycles modes without firing the press gesture. Mirabox and Ulanzi declare no dial controllers yet (#786), so the dial surface is Elgato Stream Deck+ only.
+The press and touchscreen taps each run a configurable gesture chosen from every mode the keypad surface offers beyond Cycle itself — {Toggle Reference Car, Custom Sector Start, Custom Sector End, Set Active Reset Point, Reset to Start Point, None}. Press, long-press, and push-turn are classified at `dialUp`; the touchscreen's tap vs. long-touch classification comes from the touch event itself. See [Dial settings](#dial-settings) below for the defaults. A push-and-turn (rotating while the dial is held in) cycles modes without firing the press gesture. Mirabox and Ulanzi declare no dial controllers yet (#786), so the dial surface is Elgato Stream Deck+ only.
 
 - **Communication Method (dial):** Key binding — rotation taps the `splitsDeltaNext` / `splitsDeltaPrevious` bindings; the press / touch gestures tap the same binding key as their keypad-mode counterpart (e.g. `toggleUiDisplayRefCar`, `splitsDeltaCustomSectorStart`).
 
@@ -41,7 +41,7 @@ The Property Inspector shows the settings for the surface the instance sits on: 
 - **Custom Sector Start** - Marks the start point for a custom sector
 - **Custom Sector End** - Marks the end point for a custom sector
 - **Set Active Reset Point** - Saves the current car state as a reset snapshot (solo practice only)
-- **Reset to Start Point** - Teleports the car back to the saved active reset snapshot (solo practice only)
+- **Reset to Start Point** - Teleports the car back to the saved active reset snapshot (solo practice only). Held while pressed: the sim stays paused at the reset point until the key is released.
 
 #### Direction Options (Cycle mode)
 - **Next** - Cycle to next display mode
@@ -61,7 +61,7 @@ The Property Inspector shows the settings for the surface the instance sits on: 
 - **Custom Sector Start** - Taps `splitsDeltaCustomSectorStart`
 - **Custom Sector End** - Taps `splitsDeltaCustomSectorEnd`
 - **Set Active Reset Point** - Taps `splitsDeltaActiveResetSet`
-- **Reset to Start Point** - Taps `splitsDeltaActiveResetRun`
+- **Reset to Start Point** - Taps `splitsDeltaActiveResetRun`. Unlike the keypad mode this is a momentary tap — the dial's press gestures are classified at `dialUp` (a hold is the Long Press slot), so holding the dial in cannot also hold the binding.
 - **None** - The gesture does nothing
 
 ## Keyboard Simulation
@@ -93,5 +93,6 @@ The Property Inspector shows the settings for the surface the instance sits on: 
 - Uses default iRacing keybindings (TAB / Shift+TAB for cycle, Ctrl+C for reference car)
 - Cycle mode cycles through: Off, Session Best, Session Optimal, Personal Best, etc.
 - The "Toggle Reference Car" mode was previously available as a separate option in the Toggle UI Elements action
+- Reset to Start Point is the only mode that holds its binding — see [Button Press](#button-press).
 - Active Reset only works in solo practice sessions. The car's full state (position, speed, temperatures) is captured when setting the point.
 - Custom Sector and Active Reset key bindings have no defaults in iRacing — users must assign keys in both iRacing settings and the action's Property Inspector.

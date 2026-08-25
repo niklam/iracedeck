@@ -86,7 +86,7 @@ Mark the end point for a custom sector on the current lap. Together with **Custo
 
 ### Set Active Reset Point
 
-Save the current car state — position, speed, temperatures — as a reset snapshot. Solo practice sessions only.
+Save the current car state — position, speed, temperatures — as a reset snapshot. Solo practice sessions only. Use **Reset to Start Point** to return to it.
 
 #### Details
 
@@ -103,12 +103,19 @@ Save the current car state — position, speed, temperatures — as a reset snap
 
 ### Reset to Start Point
 
-Teleport the car back to the saved active reset snapshot. Solo practice sessions only.
+Teleport the car back to the saved active reset snapshot, and — if you keep the key held — stay paused there until you let go. Solo practice sessions only.
+
+iRacing's Reset to Start Point acts on both edges of the control, so this mode holds the key binding for as long as you hold the button:
+
+- **Tap it** and the car is restored and running immediately, exactly as before.
+- **Hold it** and the sim pauses the moment the car is moved back, giving you time to settle your hands, check the corner ahead, and pick your moment. The sim resumes the instant you release the button.
+
+That makes a held reset much less jarring than being dropped straight back into a car that is already at speed — especially when you are drilling one corner over and over.
 
 #### Details
 
-- **Method:** Key binding
-- **Dial:** No rotation support
+- **Method:** Key binding — held while the button is pressed, released when you let go
+- **Dial:** No rotation support. As a dial press or touch gesture this is a momentary tap only — a dial press is only classified once you release it, so it cannot also hold the binding. Use a key if you want the hold-to-pause behaviour
 - **Default binding:** No default key binding
 - **Telemetry-aware icon:** No
 
@@ -138,10 +145,12 @@ The touch strip shows a color-coded "dash box" with just a `DELTA` label — iRa
 
 #### Press and touch gestures
 
-The dial press and touchscreen taps each run a configurable gesture, chosen from every one-shot mode the keypad surface offers beyond **Cycle Splits Delta** — **Toggle Reference Car**, **Custom Sector Start**, **Custom Sector End**, **Set Active Reset Point**, **Reset to Start Point** — or **None**. Each gesture taps the same key binding as its keypad-mode counterpart (e.g. **Toggle Reference Car** taps `toggleUiDisplayRefCar`, **Custom Sector Start** taps `splitsDeltaCustomSectorStart`), so nothing the keypad can do in one press is unreachable from the dial:
+The dial press and touchscreen taps each run a configurable gesture, chosen from every mode the keypad surface offers beyond **Cycle Splits Delta** — **Toggle Reference Car**, **Custom Sector Start**, **Custom Sector End**, **Set Active Reset Point**, **Reset to Start Point** — or **None**. Each gesture taps the same key binding as its keypad-mode counterpart (e.g. **Toggle Reference Car** taps `toggleUiDisplayRefCar`, **Custom Sector Start** taps `splitsDeltaCustomSectorStart`), so nothing the keypad can do in one press is unreachable from the dial:
 
 - **Press Action** (default *Toggle Reference Car*) — a short press.
 - **Long Press** (default *None*) — a press held past the long-press threshold.
 - **Tap Display** and **Long Touch** (default *None*, Elgato only) — a tap or long touch on the touch strip.
 
 A push-and-turn (rotating while holding the dial in) cycles modes without firing the press gesture.
+
+Every gesture is a momentary tap, including **Reset to Start Point**: a dial press is only classified once you release it, so holding the dial in cannot also hold the binding. Put **Reset to Start Point** on a key if you want the sim to pause while you hold it — see [Reset to Start Point](#reset-to-start-point) above.
