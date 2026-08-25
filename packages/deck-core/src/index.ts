@@ -195,6 +195,9 @@ export {
   type SettingsStore,
 } from "./settings-store.js";
 
+// Downloadable Race Engineer voice packs (issue #1034)
+export { resolveVoicePacksPath, type ResolveVoicePacksPathOptions } from "./voice-packs-path.js";
+
 // Per-mode sim-communication descriptors (issue #612)
 export {
   isConstantBindingKey,
