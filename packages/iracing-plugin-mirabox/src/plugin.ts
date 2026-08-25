@@ -8,7 +8,15 @@
  */
 import audioAssetsManifest from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
 import { AudioNative } from "@iracedeck/audio-native";
-import { initializeAudioScenarios, scanDriverNames, scanRaceEngineerVoices } from "@iracedeck/audio-scenarios";
+import {
+  type AudioAssetsManifest,
+  getScenarioEngine,
+  initializeAudioScenarios,
+  isAudioScenariosInitialized,
+  mergeManifests,
+  scanDriverNames,
+  scanRaceEngineerVoices,
+} from "@iracedeck/audio-scenarios";
 import {
   CORNER_NAME_CALLOUT_SETTING_KEYS,
   type CornerNameCalloutId,
@@ -79,6 +87,8 @@ import {
   createSettingsWindowController,
   createSettingsWindowWarningReporter,
   createUpdateCheckService,
+  createVoicePackFileSystem,
+  createVoicePackService,
   deleteGlobalSettings,
   evaluateSetupWarning,
   findChromiumBrowserOnThisMachine,
@@ -99,6 +109,7 @@ import {
   initMousePointer,
   initPluginConfig,
   initWindowFocus,
+  isGlobalSettingsInitialized,
   isIRacingActive,
   isSettingsStoreReady,
   isSimHubReachable,
@@ -112,6 +123,7 @@ import {
   resolveActiveDriverName,
   resolveActiveRaceEngineerVoice,
   resolveSettingsStorePath,
+  resolveVoicePacksPath,
   runVersionCheck,
   SETTINGS_WINDOW_BOUNDS_KEY,
   SETTINGS_WINDOW_HTML,
@@ -344,7 +356,12 @@ if (__FEATURE_PNG_RASTERIZATION__) {
 // Resolved from __binDir (→ <sdPlugin>/bin/) so lookup is stable
 // regardless of the launching process's cwd.
 const audioNative = new AudioNative();
-initializeAudio(adapter.createLogger("Audio"), audioNative, join(__binDir, "..", "assets", "audio"));
+const audioRootDir = join(__binDir, "..", "assets", "audio");
+
+// The plugin's own assets are always the first, highest-precedence audio root;
+// `voicePacks.refresh()` below extends the list with one root per installed
+// voice pack (issue #1034).
+initializeAudio(adapter.createLogger("Audio"), audioNative, [audioRootDir]);
 getAudio().init();
 
 const featureGateLogger = adapter.createLogger("FeatureGates");
@@ -373,8 +390,44 @@ applyAudioState();
 
 // Derive the available Race Engineer voices and driver-name keys from
 // the manifest. Static for the lifetime of the plugin process.
-const raceEngineerVoices = scanRaceEngineerVoices(audioAssetsManifest);
-const driverNames = scanDriverNames(audioAssetsManifest);
+// Installed voice packs (issue #1034). The compiled-in manifest is the built-in
+// half — sfx plus any bundled voice; each installed pack contributes its own
+// audio root and its own clips on top. Rescanned on demand, so a hand-placed
+// pack needs a button press in Settings rather than a restart.
+let activeManifest: AudioAssetsManifest = audioAssetsManifest;
+let raceEngineerVoices = scanRaceEngineerVoices(activeManifest);
+let driverNames = scanDriverNames(activeManifest);
+
+const voicePacksLogger = adapter.createLogger("VoicePacks");
+const voicePacks = createVoicePackService({
+  root: resolveVoicePacksPath({ env: process.env }),
+  fs: createVoicePackFileSystem(voicePacksLogger),
+  logger: voicePacksLogger,
+  pluginAudioDir: audioRootDir,
+  applyRoots: (roots) => getAudio().setRoots(roots),
+  applyManifest: (fragments) => {
+    activeManifest = mergeManifests(audioAssetsManifest, fragments);
+    raceEngineerVoices = scanRaceEngineerVoices(activeManifest);
+    driverNames = scanDriverNames(activeManifest);
+
+    // Guarded because the first scan runs BEFORE the engine is constructed, so
+    // startup needs no reload — every later refresh does.
+    if (isAudioScenariosInitialized()) getScenarioEngine().setManifest(activeManifest);
+  },
+  onPacksChanged: () => {
+    // The first scan runs long before `initGlobalSettings`, and a write made
+    // then would set the dedupe markers below while reaching nothing — which
+    // would suppress the real push forever. The post-init call sites publish
+    // the startup scan; every later refresh publishes itself.
+    if (!isGlobalSettingsInitialized()) return;
+
+    pushRaceEngineerVoicesIfChanged();
+    pushDriverNamesIfChanged();
+    pushVoicePackListIfChanged();
+  },
+});
+
+voicePacks.refresh();
 
 // Initialize the scenario engine AFTER audio (so it can drive playback) but
 // BEFORE actions register (so actions see a ready engine when they wire PI
@@ -382,7 +435,7 @@ const driverNames = scanDriverNames(audioAssetsManifest);
 //
 // `getActiveVoice` resolves at clip-resolution time so a PI voice change
 // takes effect on the next scenario fire without re-initialising the engine.
-initializeAudioScenarios(eventBus, getAudio(), audioAssetsManifest, adapter.createLogger("AudioScenarios"), () =>
+initializeAudioScenarios(eventBus, getAudio(), activeManifest, adapter.createLogger("AudioScenarios"), () =>
   resolveActiveRaceEngineerVoice(raceEngineerVoices),
 );
 
@@ -718,28 +771,46 @@ function pushAudioDevicesIfChanged(): void {
 }
 
 // Push the Race Engineer voices + names lists to global settings. Both
-// payloads are derived from the bundled manifest and never change at
-// runtime, but we still re-push on every PI appear (cheap; deduped via
-// the caches below) so a PI opened before the first global-settings echo
-// still gets populated.
-const raceEngineerVoiceListJson = JSON.stringify(raceEngineerVoices);
+// payloads are derived from the ACTIVE manifest, which changes whenever voice
+// packs are rescanned (issue #1034), so each list is stringified per call
+// rather than once at module scope. Re-pushed on every PI appear too (cheap;
+// deduped below) so a PI opened before the first global-settings echo still
+// gets populated.
 let lastPushedVoiceListJson = "";
 
 function pushRaceEngineerVoicesIfChanged(): void {
-  if (raceEngineerVoiceListJson === lastPushedVoiceListJson) return;
+  const json = JSON.stringify(raceEngineerVoices);
 
-  lastPushedVoiceListJson = raceEngineerVoiceListJson;
-  updateGlobalSettings({ _raceEngineerVoices: raceEngineerVoiceListJson });
+  if (json === lastPushedVoiceListJson) return;
+
+  lastPushedVoiceListJson = json;
+  updateGlobalSettings({ _raceEngineerVoices: json });
 }
 
-const driverNameListJson = JSON.stringify(driverNames);
 let lastPushedDriverNameListJson = "";
 
 function pushDriverNamesIfChanged(): void {
-  if (driverNameListJson === lastPushedDriverNameListJson) return;
+  const json = JSON.stringify(driverNames);
 
-  lastPushedDriverNameListJson = driverNameListJson;
-  updateGlobalSettings({ _driverNames: driverNameListJson });
+  if (json === lastPushedDriverNameListJson) return;
+
+  lastPushedDriverNameListJson = json;
+  updateGlobalSettings({ _driverNames: json });
+}
+
+let lastPushedVoicePackListJson = "";
+
+function pushVoicePackListIfChanged(): void {
+  const json = JSON.stringify(
+    voicePacks
+      .installed()
+      .map((pack) => ({ id: pack.id, label: pack.label, version: pack.version, voices: pack.voices })),
+  );
+
+  if (json === lastPushedVoicePackListJson) return;
+
+  lastPushedVoicePackListJson = json;
+  updateGlobalSettings({ _voicePacks: json });
 }
 
 const versionCheckLogger = adapter.createLogger("VersionCheck");
@@ -984,6 +1055,7 @@ onGlobalSettingsChange((settings) => {
 
   pushRaceEngineerVoicesIfChanged();
   pushDriverNamesIfChanged();
+  pushVoicePackListIfChanged();
 
   // Apply audio output device (on startup and when changed from PI)
   const saved = s.audioOutputDevice;
@@ -1013,6 +1085,7 @@ adapter.onPropertyInspectorDidAppear(() => {
   pushAudioDevicesIfChanged();
   pushRaceEngineerVoicesIfChanged();
   pushDriverNamesIfChanged();
+  pushVoicePackListIfChanged();
 });
 
 // Initialize window focus service for focusing iRacing before any action
