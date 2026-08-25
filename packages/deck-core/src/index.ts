@@ -211,6 +211,7 @@ export {
   type VoicePackFileSystem,
   type VoicePackProblem,
 } from "./voice-pack-scanner.js";
+export { createVoicePackFileSystem, VOICE_PACK_MAX_DEPTH } from "./voice-pack-fs.js";
 
 // Per-mode sim-communication descriptors (issue #612)
 export {
