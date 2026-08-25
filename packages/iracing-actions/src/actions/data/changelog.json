@@ -10,6 +10,12 @@
       "date": null,
       "categories": [
         {
+          "title": "Features",
+          "items": [
+            "Race Engineer voices can now be installed as voice packs in <code>%LOCALAPPDATA%\\iRaceDeck\\Race Engineer\\Voices</code>, outside the plugin folder — so a voice you install survives every plugin update and reinstall, and the same voices are shared by all three iRaceDeck plugins. Drop a pack folder in, press <strong>Rescan voices</strong> in the Race Engineer section of iRaceDeck Settings, and it appears in the voice dropdown without restarting anything. <strong>Installed Voices</strong> there lists what is loaded. See <a href=\"https://iracedeck.com/docs/features/race-engineer-voices/\" target=\"_blank\" rel=\"noopener noreferrer\">Race Engineer Voices</a>."
+          ]
+        },
+        {
           "title": "Improvements",
           "items": [
             "Mouse to Sim now lets you choose where your pointer lands in the sim window. Pick a horizontal and a vertical anchor — a corner, an edge or the centre — and nudge it from there with an offset, under Mouse to Sim on the Settings window's General tab. Leave it alone and the pointer keeps arriving exactly where it always has.",
