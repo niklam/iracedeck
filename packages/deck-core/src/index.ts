@@ -203,6 +203,14 @@ export {
   type ParseVoicePackManifestResult,
   type VoicePackManifest,
 } from "./voice-pack-manifest.js";
+export {
+  scanVoicePacks,
+  type InstalledVoicePack,
+  type ScanVoicePacksOptions,
+  type ScanVoicePacksResult,
+  type VoicePackFileSystem,
+  type VoicePackProblem,
+} from "./voice-pack-scanner.js";
 
 // Per-mode sim-communication descriptors (issue #612)
 export {
