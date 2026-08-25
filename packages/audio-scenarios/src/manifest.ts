@@ -80,3 +80,30 @@ export function scanDriverNames(manifest: AudioAssetsManifest): string[] {
 
   return Array.from(names).sort();
 }
+
+/**
+ * Union the compiled-in manifest with clip lists contributed by installed voice
+ * packs (issue #1034).
+ *
+ * `ambientLoop` and `ticks` always come from the built-in manifest: those assets
+ * ship with the plugin, and a pack must never be able to redefine the radio
+ * frame every callout is wrapped in.
+ *
+ * The result is de-duplicated and sorted, so an identical set of packs produces
+ * an identical manifest whatever order they were scanned in — which is what
+ * lets a reload be compared against the previous one.
+ */
+export function mergeManifests(
+  builtIn: AudioAssetsManifest,
+  fragments: readonly (readonly string[])[],
+): AudioAssetsManifest {
+  if (fragments.length === 0) return builtIn;
+
+  const clips = new Set(builtIn.clips);
+
+  for (const fragment of fragments) {
+    for (const clip of fragment) clips.add(clip);
+  }
+
+  return { ...builtIn, clips: Array.from(clips).sort() };
+}
