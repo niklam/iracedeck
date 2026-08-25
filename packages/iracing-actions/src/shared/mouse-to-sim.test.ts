@@ -2,13 +2,43 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const focus = vi.fn();
 const movePointerToSim = vi.fn();
+const getGlobalSettings = vi.fn();
 
-vi.mock("@iracedeck/deck-core", () => ({
-  focusIRacingNow: focus,
-  movePointerToSim,
-  FocusResult: { AlreadyFocused: 0, Focused: 1, WindowNotFound: 2, FocusTimedOut: 3 },
-  PointerMoveResult: { Moved: 0, WindowNotFound: 1, Failed: 2 },
-}));
+/** deck-core's pure resolver module — imported by PATH, not through the barrel. */
+const SIM_POINTER_TARGET = "../../../deck-core/src/sim-pointer-target.js";
+
+// `resolveSimPointerTarget` is deliberately NOT stubbed: what these tests must
+// prove is that a configured target reaches the pointer mover intact, so the real
+// resolution has to run (a stub would only assert the stub).
+//
+// It is reached by relative path rather than as `@iracedeck/deck-core` because
+// the BARREL drags in `@iracedeck/iracing-sdk` → `@iracedeck/iracing-native`,
+// whose module scope `require()`s the native `.node` addon into this worker.
+// That made `pnpm test` crash a fork worker ("Worker exited unexpectedly") in
+// roughly one run in five — a non-zero exit that silently drops the worker's
+// tests. `sim-pointer-target.ts` itself has zero imports, so importing it
+// directly runs the same real code with none of that graph.
+vi.mock("@iracedeck/deck-core", async () => {
+  const actual =
+    await vi.importActual<typeof import("../../../deck-core/src/sim-pointer-target.js")>(SIM_POINTER_TARGET);
+
+  return {
+    focusIRacingNow: focus,
+    movePointerToSim,
+    getGlobalSettings,
+    resolveSimPointerTarget: actual.resolveSimPointerTarget,
+    FocusResult: { AlreadyFocused: 0, Focused: 1, WindowNotFound: 2, FocusTimedOut: 3 },
+    PointerMoveResult: { Moved: 0, WindowNotFound: 1, Failed: 2 },
+  };
+});
+
+/** The schema defaults, which resolve to the placement #926 shipped. */
+const defaultTarget = {
+  mouseToSimAnchorX: "center",
+  mouseToSimAnchorY: "top",
+  mouseToSimOffsetX: 0,
+  mouseToSimOffsetY: 12.5,
+};
 
 const { bringPointerToSim } = await import("./mouse-to-sim.js");
 
@@ -27,6 +57,7 @@ describe("bringPointerToSim", () => {
     vi.clearAllMocks();
     focus.mockReturnValue(1); // Focused
     movePointerToSim.mockReturnValue(0); // Moved
+    getGlobalSettings.mockReturnValue(defaultTarget);
   });
 
   it("focuses the window before moving the pointer", () => {
@@ -48,10 +79,45 @@ describe("bringPointerToSim", () => {
     expect(order).toEqual(["focus", "move"]);
   });
 
-  it("moves the pointer using the service's default target", () => {
+  it("moves the pointer to the configured target", () => {
+    getGlobalSettings.mockReturnValue({
+      mouseToSimAnchorX: "right",
+      mouseToSimAnchorY: "bottom",
+      mouseToSimOffsetX: 0,
+      mouseToSimOffsetY: 0,
+    });
+
     bringPointerToSim(logger);
 
-    expect(movePointerToSim).toHaveBeenCalledWith();
+    expect(movePointerToSim).toHaveBeenCalledWith(1, 1);
+  });
+
+  it("keeps the pre-#1029 placement when the target is left at its defaults", () => {
+    bringPointerToSim(logger);
+
+    expect(movePointerToSim).toHaveBeenCalledWith(0.5, 0.125);
+  });
+
+  it("applies an offset measured from the configured anchor", () => {
+    getGlobalSettings.mockReturnValue({
+      mouseToSimAnchorX: "left",
+      mouseToSimAnchorY: "middle",
+      mouseToSimOffsetX: 10,
+      mouseToSimOffsetY: -25,
+    });
+
+    bringPointerToSim(logger);
+
+    expect(movePointerToSim).toHaveBeenCalledWith(0.1, 0.25);
+  });
+
+  it("reads the target on every press, so a settings change takes effect immediately", () => {
+    bringPointerToSim(logger);
+    getGlobalSettings.mockReturnValue({ ...defaultTarget, mouseToSimAnchorY: "bottom", mouseToSimOffsetY: 0 });
+    bringPointerToSim(logger);
+
+    expect(movePointerToSim).toHaveBeenNthCalledWith(1, 0.5, 0.125);
+    expect(movePointerToSim).toHaveBeenNthCalledWith(2, 0.5, 1);
   });
 
   it("logs success at info", () => {

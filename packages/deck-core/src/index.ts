@@ -299,6 +299,24 @@ export {
   type SimPointerMover,
 } from "./mouse-pointer-service.js";
 
+// Mouse to Sim pointer target resolution (issue #1029)
+export {
+  DEFAULT_POINTER_ANCHOR_X,
+  DEFAULT_POINTER_ANCHOR_Y,
+  DEFAULT_POINTER_OFFSET_X,
+  DEFAULT_POINTER_OFFSET_Y,
+  POINTER_ANCHOR_X_FRACTIONS,
+  POINTER_ANCHOR_Y_FRACTIONS,
+  POINTER_ANCHORS_X,
+  POINTER_ANCHORS_Y,
+  POINTER_OFFSET_LIMIT,
+  type PointerAnchorX,
+  type PointerAnchorY,
+  resolveSimPointerTarget,
+  type SimPointerTarget,
+  type SimPointerTargetConfig,
+} from "./sim-pointer-target.js";
+
 // App monitor for iRacing process detection
 export {
   _resetAppMonitor,

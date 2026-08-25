@@ -47,6 +47,13 @@ export function buildSeedSettings() {
     // only the threshold and the direction.
     focusIRacingWindow: true,
     disableWhenDisconnected: true,
+    // The Mouse to Sim pointer target (#1029), seeded at its shipped defaults on
+    // purpose: the shot then shows what a fresh install shows, and it shows it
+    // from the fixture rather than from the controls' own `default=` attributes.
+    mouseToSimAnchorX: "center",
+    mouseToSimOffsetX: 0,
+    mouseToSimAnchorY: "top",
+    mouseToSimOffsetY: 12.5,
     dualPressThresholdMs: 500,
     dualPressDirections: "tap-increases",
 

@@ -1,0 +1,34 @@
+<%#
+  Common settings — the Mouse to Sim pointer target (issue #1029). One group of
+  the settings window's General tab, and a sibling card to Window Focus &
+  Connection rather than part of it: deck-core keeps the focus service and the
+  pointer service independent, and the UI says the same thing. Emits items only —
+  the includer supplies the heading.
+%>
+<sdpi-item label="Horizontal">
+  <sdpi-select setting="mouseToSimAnchorX" global default="center">
+    <option value="left">Left</option>
+    <option value="center">Center</option>
+    <option value="right">Right</option>
+  </sdpi-select>
+</sdpi-item>
+<sdpi-item label="Horizontal offset %">
+  <ird-range-input setting="mouseToSimOffsetX" min="-50" max="50" step="0.5" default="0" global showlabels></ird-range-input>
+</sdpi-item>
+<sdpi-item label="Vertical">
+  <sdpi-select setting="mouseToSimAnchorY" global default="top">
+    <option value="top">Top</option>
+    <option value="middle">Middle</option>
+    <option value="bottom">Bottom</option>
+  </sdpi-select>
+</sdpi-item>
+<sdpi-item label="Vertical offset %">
+  <ird-range-input setting="mouseToSimOffsetY" min="-50" max="50" step="0.5" default="12.5" global showlabels></ird-range-input>
+</sdpi-item>
+<div class="ird-supporting-text">
+  Where the <strong>Mouse to Sim</strong> key parks your pointer inside the iRacing
+  window. Pick a corner, an edge or the center with the two anchors, then nudge it
+  from there with the offsets — a percentage of the window, so it holds at any
+  resolution. Positive moves right and down. The default, Top plus 12.5%, lands on
+  iRacing's own on-screen UI band.
+</div>
