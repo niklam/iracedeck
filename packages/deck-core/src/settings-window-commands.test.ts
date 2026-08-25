@@ -131,4 +131,28 @@ describe("createSettingsWindowCommandHandler", () => {
 
     expect(openFolder).toHaveBeenCalledWith("C:\\s\\global-settings.json");
   });
+
+  it("routes voicePackRefresh to the injected refresher (#1034)", () => {
+    const refreshVoicePacks = vi.fn();
+    const handle = createSettingsWindowCommandHandler({ writeSettings: vi.fn(), refreshVoicePacks });
+
+    handle({ event: "voicePackRefresh" });
+
+    expect(refreshVoicePacks).toHaveBeenCalledTimes(1);
+  });
+
+  it("takes nothing from a voicePackRefresh payload — the page names no directory", () => {
+    const refreshVoicePacks = vi.fn();
+    const handle = createSettingsWindowCommandHandler({ writeSettings: vi.fn(), refreshVoicePacks });
+
+    handle({ event: "voicePackRefresh", root: "anything at all" });
+
+    expect(refreshVoicePacks).toHaveBeenCalledWith();
+  });
+
+  it("ignores voicePackRefresh when no refresher is injected", () => {
+    const handle = createSettingsWindowCommandHandler({ writeSettings: vi.fn() });
+
+    expect(() => handle({ event: "voicePackRefresh" })).not.toThrow();
+  });
 });

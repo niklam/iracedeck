@@ -74,6 +74,13 @@ export interface SettingsWindowCommandDeps {
   openFolder?: (path: string) => void;
   /** The plugin's own settings-file path; the page never supplies one. */
   storePath?: string;
+  /**
+   * Re-scan the installed Race Engineer voice packs (issue #1034) — the
+   * window's "Rescan voices" button. Takes nothing from the page: which
+   * directory is scanned is the plugin's decision, exactly as with
+   * `openSettingsFolder` above.
+   */
+  refreshVoicePacks?: () => void;
 }
 
 /** Build the handler the settings-window server's `onSendToPlugin` is bound to. */
@@ -115,6 +122,11 @@ export function createSettingsWindowCommandHandler(
 
       case "openSettingsFolder":
         if (deps.openFolder && deps.storePath) deps.openFolder(deps.storePath);
+
+        break;
+
+      case "voicePackRefresh":
+        deps.refreshVoicePacks?.();
 
         break;
 

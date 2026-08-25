@@ -53,12 +53,15 @@
  * `_lastChangelogOpenedAt`), and getting that wrong silently loses user state.
  */
 import { PI_WARNINGS_KEY } from "./pi-warnings-constants.js";
+import { VOICE_PACKS_KEY } from "./voice-pack-constants.js";
 
 /**
- * The enrolled keys. One member today; the mechanism is the point — a future
- * observation-of-this-run key joins the list and inherits the whole guarantee.
+ * The enrolled keys. Each is an observation about THIS run rather than a user
+ * choice: the PI warning banners, and the list of voice packs currently on disk
+ * (issue #1034 — persisting it would let a deleted pack reappear after a
+ * restart, with nothing in any UI able to clear it).
  */
-export const RUN_SCOPED_SETTING_KEYS: readonly string[] = [PI_WARNINGS_KEY];
+export const RUN_SCOPED_SETTING_KEYS: readonly string[] = [PI_WARNINGS_KEY, VOICE_PACKS_KEY];
 
 /**
  * A copy of `settings` with every enrolled key removed.

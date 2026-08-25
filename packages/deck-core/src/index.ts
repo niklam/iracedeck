@@ -211,6 +211,7 @@ export {
   type VoicePackFileSystem,
   type VoicePackProblem,
 } from "./voice-pack-scanner.js";
+export { VOICE_PACKS_KEY } from "./voice-pack-constants.js";
 export { createVoicePackFileSystem, VOICE_PACK_MAX_DEPTH } from "./voice-pack-fs.js";
 export { createVoicePackService, type VoicePackService, type VoicePackServiceDeps } from "./voice-pack-service.js";
 

@@ -63,3 +63,19 @@
   	'</div>' +
   '</sdpi-item>'
 ) %>
+<%#
+  Installed voice packs (issue #1034). Settings-window only: the Rescan button
+  is a `sendToPlugin` command handled by the settings-window command handler,
+  and a Property Inspector's `sendToPlugin` goes to its own action instead —
+  the same reason `ird-open-folder` is gated in global-common-diagnostics.ejs.
+%>
+<% if (locals.settingsWindow) { %>
+<sdpi-item label="Installed Voices">
+  <ird-voice-pack-list packs="_voicePacks"></ird-voice-pack-list>
+</sdpi-item>
+<div class="ird-supporting-text">
+  Voice packs live in <code>%LOCALAPPDATA%\iRaceDeck\Race Engineer\Voices</code> and survive plugin updates.
+  Add a pack folder there, then rescan.
+</div>
+<div class="ird-open-settings"><ird-voice-pack-refresh></ird-voice-pack-refresh></div>
+<% } %>

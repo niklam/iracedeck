@@ -328,7 +328,7 @@
 				<h2>Race Engineer</h2>
 				<p class="sw-sub">Voice, radar, per-callout opt-ins and setup warnings — plugin-wide, the same settings the Pit Crew action's inspector shows.</p>
 				<div class="sw-grid">
-					<%- include('accordion', { title: 'Race Engineer & Radar', content: include('race-engineer-settings'), settingsWindow: true }) %>
+					<%- include('accordion', { title: 'Race Engineer & Radar', content: include('race-engineer-settings', { settingsWindow: true }), settingsWindow: true }) %>
 					<%- include('accordion', { title: 'Setup Warning Patterns', content: include('setup-warning-patterns'), settingsWindow: true }) %>
 				</div>
 				<div class="sw-grid single">

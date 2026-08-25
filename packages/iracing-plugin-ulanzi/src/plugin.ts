@@ -134,6 +134,7 @@ import {
   updateGlobalSettings,
   validateSetupWarningPatterns,
   VERSION_CHECK_STARTUP_GRACE_MS,
+  VOICE_PACKS_KEY,
 } from "@iracedeck/deck-core";
 import { initializeEventBus } from "@iracedeck/event-bus";
 import {
@@ -812,7 +813,7 @@ function pushVoicePackListIfChanged(): void {
   if (json === lastPushedVoicePackListJson) return;
 
   lastPushedVoicePackListJson = json;
-  updateGlobalSettings({ _voicePacks: json });
+  updateGlobalSettings({ [VOICE_PACKS_KEY]: json });
 }
 
 const versionCheckLogger = adapter.createLogger("VersionCheck");
@@ -938,6 +939,9 @@ const settingsWindow = createSettingsWindowController({
     // Storage card's Open folder button (#993) — the path is always the plugin's own.
     openFolder: openFolderInExplorer,
     storePath: settingsStore.path,
+    // Race Engineer card's Rescan voices button (#1034). Like Open folder, the
+    // page names no directory — which one is scanned is the plugin's decision.
+    refreshVoicePacks: () => voicePacks.refresh(),
   }),
   // The page can't probe SimHub itself (cross-origin, no CORS) — answer from the plugin's own view.
   simHub: { isReachable: isSimHubReachable, getRoles: () => getSimHub().getRoles() },
