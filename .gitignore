@@ -84,3 +84,8 @@ scripts/radio-effect/output/*
 
 # Superpowers brainstorming artifacts
 .superpowers/
+
+# Superpowers implementation plans - written for every implementation, never committed
+# Policy: docs/superpowers/specs/2026-08-25-issue-621-process-docs-policy.md
+docs/superpowers/plans/*
+!docs/superpowers/plans/.gitkeep
