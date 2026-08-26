@@ -53,11 +53,19 @@ The mode reuses the existing `direction` setting (`next` = ahead, `previous` = b
 
 **This mode must be exempt from #228**, which proposes dropping the Direction setting for the cycle modes in favour of separate modes. A key can only travel one way per press, so for this mode the direction is not a refinement of the mode — it *is* the mode. If #228 lands, `cycle-track-order` either keeps its dropdown or splits into two modes; it cannot simply lose the setting.
 
-### Icons
+### Icons — derived from the Replay Control car family
 
-Two new files in the existing `camera-cycle` family: `track-position-ahead.svg` and `track-position-behind.svg` — filenames kept as the issue named them, since a filename is not user-facing and the issue is the durable reference. Same visual language as the family (thin white line art on the shared `camera-cycle` palette, a green accent on the target). Two car glyphs one behind the other, with the green arrow and the green car marking which one the press lands on — distinct from `car-next` / `car-previous`, which show a single car, satisfying the distinctiveness rule in `icons.md`.
+Two new files, `track-position-ahead.svg` and `track-position-behind.svg`, living in `camera-cycle` beside the other cycle keys but **drawn from the Replay Control car family**, not from `camera-cycle`'s own thin line art.
+
+That family is a system rather than a set of drawings: one detailed side-profile car silhouette, mirrored for the reverse direction, with a symbol **knocked out of the body** in `{{backgroundColor}}`. The silhouette is the constant; the knockout is the only thing that varies — a triangle for Next / Previous Car, `1 2 3` for the by-number pair, a heart for Jump to My Car. Joining a system by copying its constant and supplying a new variable is how a new member is added to it, so the silhouette and `<desc>` palette are copied **verbatim** from `next-car.svg` / `prev-car.svg` and only the knockout and the title change.
+
+The knockout is a **double chevron**, pointing along the car's direction of travel: it reads as "further along the road", and it is the one thing that has to distinguish these keys from Replay Control's plain single triangle, which a user may well have on the same deck. Distinctiveness within Camera Controls comes for free — every other cycle key there is thin line art.
+
+Consequences of joining that family rather than `camera-cycle`: no green accent (the Replay keys carry no semantic colour), and therefore no `locked` array in the `<desc>` — with no hard-coded colour left to protect, a user's global graphic colour should apply, which is exactly what the Replay keys do.
 
 Static per direction. No telemetry-aware icon: the mode has no readback worth showing (the target changes continuously as the field moves, and a key that repainted every tick would be noise), which is the same call Cycle Car made.
+
+**A first attempt drew the pair by hand** — two simplified `camera-cycle`-style cars stacked vertically, the target one green, with a green direction arrow — reasoning that the mode is about a relationship between two cars and so should show two. It was rejected on sight. The lesson is worth keeping: on a deck full of professionally drawn keys, an icon that invents its own drawing reads as foreign no matter how well it encodes the concept. Look for the family the new key belongs to and join it; the concept can be carried by the one element that family leaves free.
 
 ### Live data during a replay
 
@@ -74,6 +82,8 @@ The mode reads live car placement, so scrubbing a replay *inside a live session*
 ## Affected artifacts
 
 Code: `camera-controls.ts` (target value, icon/title maps, `executeCycle` case), `shared/car-cycling.ts` (`trackOrderDirection` moves in), `camera-dial-surface.ts` (imports it), `camera-focus.ejs` (option, `CYCLE_TARGETS`, direction relabel), `comms-catalog.ts` + regenerated `action-comms.json`, two icons + regenerated previews and defaults.
+
+Rules: `race-positions.md`, whose list of `findNearestCarOnTrack` consumers now names both Camera Controls surfaces. The rule itself does not change — physical track order was already carved out from the canonical-order rule; only the consumer list grows.
 
 Docs and data: the website action page (new mode section, Method: iRacing API, the replay caveat), `changelog.mdx` + regenerated `changelog.json`, `docs/reference/actions.json`, and the mode counts in `.claude/skills/iracedeck-actions/SKILL.md`, `docs/actions/overview.md`, and `index.mdx`.
 
