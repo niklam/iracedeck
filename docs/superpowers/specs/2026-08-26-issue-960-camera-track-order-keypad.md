@@ -71,6 +71,14 @@ Static per direction. No telemetry-aware icon: the mode has no readback worth sh
 
 The mode reads live car placement, so scrubbing a replay *inside a live session* follows the live field rather than the replay cursor — the #492 finding, already documented for the dial's track-order mode and for Cycle Car. It gets the same sentence on the keypad mode's website section rather than a code change: the alternative would be a second, replay-cursor-aware ordering, and there is one track-order primitive on purpose.
 
+### The chevron becomes shared vocabulary
+
+Replay Control's **Next Car** / **Previous Car** make the same move — the camera steps to the next car along the road. They get there differently (they tap iRacing's own binding and let the sim pick, rather than computing a target), but what the user sees happen is the same thing. Their single-triangle knockout therefore becomes the double chevron as part of this change, so one meaning carries one glyph across the deck instead of two keys that do the same thing looking unrelated.
+
+That inverts the distinctiveness argument that picked the chevron in the first place, and does so deliberately. `icons.md` asks that icons be *distinguishable*, and what needs distinguishing is behaviour, not artwork: two keys that make the same move should look alike, and the differences that remain — an SDK command with no binding on one side, a key binding on the other — are carried by their titles (`CAR AHEAD` vs `CAR NEXT`) and their Property Inspectors. The `1 2 3` knockout is what separates the by-number pair, and it is untouched.
+
+This is the one part of the change that reaches outside issue #960, since it edits two shipped icons, so it carries its own changelog line.
+
 ## Alternatives rejected
 
 **A focus target rather than a cycle target.** `focus-track-ahead` / `focus-track-behind` as two entries in `FOCUS_TARGET_VALUES` would avoid the Direction relabel entirely. Rejected: it doubles the mode list for one behaviour, it splits what the dial models as one mode with a direction, and it forfeits the exhaustive-`Record` compile checks that `CycleTarget` gives.
@@ -81,7 +89,7 @@ The mode reads live car placement, so scrubbing a replay *inside a live session*
 
 ## Affected artifacts
 
-Code: `camera-controls.ts` (target value, icon/title maps, `executeCycle` case), `shared/car-cycling.ts` (`trackOrderDirection` moves in), `camera-dial-surface.ts` (imports it), `camera-focus.ejs` (option, `CYCLE_TARGETS`, direction relabel), `comms-catalog.ts` + regenerated `action-comms.json`, two icons + regenerated previews and defaults.
+Code: `camera-controls.ts` (target value, icon/title maps, `executeCycle` case), `shared/car-cycling.ts` (`trackOrderDirection` moves in), `camera-dial-surface.ts` (imports it), `camera-focus.ejs` (option, `CYCLE_TARGETS`, direction relabel), `comms-catalog.ts` + regenerated `action-comms.json`, two icons + regenerated previews and defaults, plus the two Replay Control car icons re-marked with the same chevron.
 
 Rules: `race-positions.md`, whose list of `findNearestCarOnTrack` consumers now names both Camera Controls surfaces. The rule itself does not change — physical track order was already carved out from the canonical-order rule; only the consumer list grows.
 
