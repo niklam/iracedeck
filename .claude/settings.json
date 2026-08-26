@@ -11,12 +11,7 @@
   },
   "permissions": {
     "deny": [],
-    "ask": [
-      "Bash(git commit:*)",
-      "Bash(git push:*)",
-      "Bash(gh pr review:*)",
-      "Bash(gh pr merge:*)"
-    ],
+    "ask": [],
     "allow": [
       "Bash(cd:*)",
       "Bash(dir:*)",
