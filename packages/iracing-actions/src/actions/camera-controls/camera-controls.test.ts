@@ -461,6 +461,8 @@ describe("CameraControls", () => {
         { target: "cycle-sub-camera", direction: "previous" },
         { target: "cycle-car", direction: "next" },
         { target: "cycle-car", direction: "previous" },
+        { target: "cycle-track-order", direction: "next" },
+        { target: "cycle-track-order", direction: "previous" },
         { target: "cycle-driving", direction: "next" },
         { target: "cycle-driving", direction: "previous" },
       ] as const;
@@ -473,7 +475,16 @@ describe("CameraControls", () => {
         },
       );
 
-      it("should produce different icons for all 6 non-camera cycle combinations", () => {
+      it("should title the track-order icons by their destination, not by list order (#960)", () => {
+        expect(
+          decodeURIComponent(generateCameraControlsSvg({ target: "cycle-track-order", direction: "next" })),
+        ).toContain("AHEAD");
+        expect(
+          decodeURIComponent(generateCameraControlsSvg({ target: "cycle-track-order", direction: "previous" })),
+        ).toContain("BEHIND");
+      });
+
+      it("should produce different icons for all 8 non-camera cycle combinations", () => {
         const results = CYCLE_COMBINATIONS.map(({ target, direction }) =>
           generateCameraControlsSvg({ target, direction }),
         );
@@ -1550,5 +1561,151 @@ describe("cycle-car focuses the neighbour by car number (pace-car recovery #803)
 
     expect(mockCamera.cycleCar).toHaveBeenCalledWith(3, 1);
     expect(mockCamera.switchNum).not.toHaveBeenCalled();
+  });
+});
+
+// The keypad surface of the dial's track-order mode (issue #960): a press moves
+// the camera to the competitor physically AHEAD of / BEHIND the focused car on
+// the road. It shares the dial's computation (computeTrackOrderTarget over the
+// project's one findNearestCarOnTrack primitive, both REAL here), so these cases
+// pin the behaviour the two surfaces are supposed to agree on: the next→ahead
+// reading, the competitor filter, the world-presence skip, and the no-fallback
+// contract that separates it from Cycle Car.
+describe("cycle-track-order focuses the car ahead / behind on the road (#960)", () => {
+  function sdk(action: CameraControls) {
+    return (
+      action as unknown as {
+        sdkController: {
+          getCurrentTelemetry: ReturnType<typeof vi.fn>;
+          getSessionInfo: ReturnType<typeof vi.fn>;
+        };
+      }
+    ).sdkController;
+  }
+
+  // #7 (carIdx 5) is focused. #12 (carIdx 9) is just up the road, #30 (carIdx 11)
+  // well behind. carIdx 0 is the PACE CAR: physically the nearest thing ahead of
+  // the focused car, and deliberately absent from the competitor list.
+  const CARS = [
+    { carIdx: 5, carNumber: "7", carNumberRaw: 7, userName: "a" },
+    { carIdx: 9, carNumber: "12", carNumberRaw: 12, userName: "b" },
+    { carIdx: 11, carNumber: "30", carNumberRaw: 30, userName: "c" },
+  ];
+
+  /** Telemetry for a 12-slot field; `dists` maps carIdx → lap distance (-1 = absent). */
+  function telemetryWith(dists: Record<number, number>) {
+    const lapDist = Array.from({ length: 12 }, (_, idx) => dists[idx] ?? -1);
+
+    return {
+      CamCarIdx: 5,
+      CamGroupNumber: 9,
+      CamCameraNumber: 2,
+      CarIdxLapDistPct: lapDist,
+      CarIdxTrackSurface: lapDist.map((d) => (d < 0 ? -1 : 3)),
+    };
+  }
+
+  async function press(action: CameraControls, direction: "next" | "previous") {
+    await action.onKeyDown({
+      action: { id: "k1" },
+      payload: { settings: { target: "cycle-track-order", direction } },
+    } as never);
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.mocked(getAllCarNumbers).mockReturnValue([]);
+  });
+
+  it("focuses the car ahead on a next press, keeping the camera group and sub-camera", async () => {
+    const action = new CameraControls();
+    sdk(action).getCurrentTelemetry.mockReturnValue(telemetryWith({ 5: 0.5, 9: 0.6, 11: 0.3 }));
+    sdk(action).getSessionInfo.mockReturnValue({});
+    vi.mocked(getAllCarNumbers).mockReturnValue(CARS);
+
+    await press(action, "next");
+
+    // #12 is 0.10 of a lap up the road; #30 is 0.80 ahead the long way round.
+    expect(mockCamera.switchNum).toHaveBeenCalledWith(12, 9, 2);
+  });
+
+  it("focuses the car behind on a previous press", async () => {
+    const action = new CameraControls();
+    sdk(action).getCurrentTelemetry.mockReturnValue(telemetryWith({ 5: 0.5, 9: 0.6, 11: 0.3 }));
+    sdk(action).getSessionInfo.mockReturnValue({});
+    vi.mocked(getAllCarNumbers).mockReturnValue(CARS);
+
+    await press(action, "previous");
+
+    // #30 is 0.20 back down the road; #12 is 0.90 behind the long way round.
+    expect(mockCamera.switchNum).toHaveBeenCalledWith(30, 9, 2);
+  });
+
+  it("wraps across the start/finish line rather than stopping at it", async () => {
+    const action = new CameraControls();
+    // Focused car has not quite finished the lap; #12 has just started a new one.
+    sdk(action).getCurrentTelemetry.mockReturnValue(telemetryWith({ 5: 0.98, 9: 0.02, 11: 0.9 }));
+    sdk(action).getSessionInfo.mockReturnValue({});
+    vi.mocked(getAllCarNumbers).mockReturnValue(CARS);
+
+    await press(action, "next");
+
+    expect(mockCamera.switchNum).toHaveBeenCalledWith(12, 9, 2);
+  });
+
+  it("never targets the pace car, even when it is the nearest thing ahead", async () => {
+    const action = new CameraControls();
+    // Pace car (carIdx 0) sits 0.05 ahead — nearer than #12's 0.10 — but it is
+    // not a competitor, so the competitor filter must step over it.
+    sdk(action).getCurrentTelemetry.mockReturnValue(telemetryWith({ 0: 0.55, 5: 0.5, 9: 0.6, 11: 0.3 }));
+    sdk(action).getSessionInfo.mockReturnValue({});
+    vi.mocked(getAllCarNumbers).mockReturnValue(CARS);
+
+    await press(action, "next");
+
+    expect(mockCamera.switchNum).toHaveBeenCalledWith(12, 9, 2);
+  });
+
+  it("skips a car that left the world and lands on the next one along (#885)", async () => {
+    const action = new CameraControls();
+    // #12 is the nearest ahead by lap distance but has despawned, so its slot
+    // reports no position and a NotInWorld surface.
+    sdk(action).getCurrentTelemetry.mockReturnValue(telemetryWith({ 5: 0.5, 11: 0.3 }));
+    sdk(action).getSessionInfo.mockReturnValue({});
+    vi.mocked(getAllCarNumbers).mockReturnValue(CARS);
+
+    await press(action, "next");
+
+    expect(mockCamera.switchNum).toHaveBeenCalledWith(30, 9, 2);
+  });
+
+  it("does nothing when the focused car is alone on track — and never falls back to a raw cycle", async () => {
+    const action = new CameraControls();
+    sdk(action).getCurrentTelemetry.mockReturnValue(telemetryWith({ 5: 0.5 }));
+    sdk(action).getSessionInfo.mockReturnValue({});
+    vi.mocked(getAllCarNumbers).mockReturnValue(CARS);
+
+    await press(action, "next");
+
+    // Unlike Cycle Car there is no SDK track-order cycle to fall back to, so a
+    // dead press must stay dead rather than reach for a different ordering.
+    expect(mockCamera.switchNum).not.toHaveBeenCalled();
+    expect(mockCamera.cycleCar).not.toHaveBeenCalled();
+    expect(mockCamera.switchPos).not.toHaveBeenCalled();
+  });
+
+  it("does nothing out of session, when no competitors are listed", async () => {
+    const action = new CameraControls();
+    sdk(action).getCurrentTelemetry.mockReturnValue(telemetryWith({ 5: 0.5, 9: 0.6 }));
+    sdk(action).getSessionInfo.mockReturnValue({});
+    vi.mocked(getAllCarNumbers).mockReturnValue([]);
+
+    await press(action, "next");
+
+    expect(mockCamera.switchNum).not.toHaveBeenCalled();
+    expect(mockCamera.cycleCar).not.toHaveBeenCalled();
   });
 });

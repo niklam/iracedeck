@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 76" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"CAR\nAHEAD"},"border":{"color":"#5a6a7a"}}</desc>
+  
+
+    <path d="M2,22L10,2L58,2L70,22Z" fill="none" stroke="#2ecc71" stroke-width="4" stroke-linejoin="round"/>
+    <circle cx="18" cy="26" r="6" fill="none" stroke="#2ecc71" stroke-width="3"/>
+    <circle cx="54" cy="26" r="6" fill="none" stroke="#2ecc71" stroke-width="3"/>
+
+    <path d="M2,64L10,44L58,44L70,64Z" fill="none" stroke="#ffffff" stroke-width="4" stroke-linejoin="round"/>
+    <circle cx="18" cy="68" r="6" fill="none" stroke="#ffffff" stroke-width="3"/>
+    <circle cx="54" cy="68" r="6" fill="none" stroke="#ffffff" stroke-width="3"/>
+
+    <line x1="90" y1="68" x2="90" y2="10" stroke="#2ecc71" stroke-width="4" stroke-linecap="round"/>
+    <polyline points="82,18 90,8 98,18" fill="none" stroke="#2ecc71" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+
+</svg>

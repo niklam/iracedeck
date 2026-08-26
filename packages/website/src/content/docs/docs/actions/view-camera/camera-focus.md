@@ -3,7 +3,7 @@ title: Camera Controls
 description: Cycle cameras, change camera groups, and focus on specific targets with a single button.
 sidebar:
   badge:
-    text: "13 modes"
+    text: "14 modes"
     variant: tip
 ---
 
@@ -87,7 +87,7 @@ Both keys are preconfigured to iRacing's defaults, so the mode works without set
 
 ### Cycle Car
 
-Switch camera focus to the next / previous car in the field.
+Switch camera focus to the next / previous car in the field, walking the field by car number. To follow the cars around you on the road instead, use [Cycle by Track Order](#cycle-by-track-order).
 
 #### Details
 
@@ -100,6 +100,28 @@ Switch camera focus to the next / previous car in the field.
 
 - **Next** (default) — Pressing the button focuses the next car
 - **Previous** — Pressing the button focuses the previous car
+
+---
+
+### Cycle by Track Order
+
+Switch camera focus to the car physically ahead of or behind the focused car **on the road** — the order you see out of the windscreen, not the running order. Lap count and standings play no part: a lapped car sitting right in front of the leader is the car ahead. That makes it the mode to reach for during an incident, where the timing screen says nothing about who is next to whom.
+
+Only competitors are cycled, so the pace car and spectators are never focused, and cars that have left the sim world — towed, or gone after the finish — are stepped over rather than focused on a car the sim would ignore. The camera group and sub-camera you are on are kept, so a press changes the subject and nothing else.
+
+Neighbours come from live car placement. While you scrub a replay *inside a live session* the mode therefore follows the live field rather than the replay cursor — in a replay you open outside a session, the replay is the live data, so it behaves as you would expect. With no other car on track, a press does nothing.
+
+#### Details
+
+- **Method:** iRacing API — no key binding needed
+- **Dial:** Rotation supported — the dial's own Cycle by Track Order mode does the same thing ([On a dial](#on-a-dial))
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** No
+
+#### Setting: Direction
+
+- **Ahead** (default) — Pressing the button focuses the car ahead on track
+- **Behind** — Pressing the button focuses the car behind on track
 
 ---
 
@@ -280,7 +302,7 @@ Which target the dial cycles. Defaults to **Cycle by Car #** — the marquee fli
 - **Cycle Sub-Camera** — steps through the sub-cameras within the active group, leaving the camera focus untouched. The one binding-driven dial mode (see the [keypad mode](#cycle-sub-camera)); if its bindings are cleared, the touch strip shows the missing-binding warning instead of the camera carousel
 - **Cycle by Car #** (default) — moves camera focus between cars ordered by car number. Clockwise selects the next *lower* number and counter-clockwise the next higher, wrapping around at each end — the same "clockwise counts down" feel as Cycle by Race Position
 - **Cycle by Race Position** — moves camera focus through the live running order (the plugin's canonical race order, with iRacing's official position as a fallback when no order is available). Clockwise selects the car ahead — the position number decreases. It works before the green flag too: on the grid and through the formation and parade laps the field holds its **starting grid order**, so you can set up shots from pole backwards while the pace car is still leading them round. A driver still sitting in the garage keeps their grid number in the standings but is skipped when cycling, because iRacing can't point a camera at a car that isn't in the world yet
-- **Cycle by Track Order** — moves camera focus to the car physically ahead of or behind the focused car *on the road*, regardless of standings or lap count — the order you see in front of you during a race or replay. Clockwise selects the car ahead on track, counter-clockwise the car behind. Handy for jumping between the cars involved in an incident, where the running order says nothing about who is next to whom. Only competitors are cycled — the pace car and cars that have left the world are skipped, the same as the other car modes — and the neighbours come from live car placement, so while you scrub a replay *inside a live session* the mode follows the live field, not the replay cursor (in a replay you open outside a session, the replay is the live data)
+- **Cycle by Track Order** — moves camera focus to the car physically ahead of or behind the focused car *on the road*, regardless of standings or lap count — the order you see in front of you during a race or replay. Clockwise selects the car ahead on track, counter-clockwise the car behind. Handy for jumping between the cars involved in an incident, where the running order says nothing about who is next to whom. Only competitors are cycled — the pace car and cars that have left the world are skipped, the same as the other car modes — and the neighbours come from live car placement, so while you scrub a replay *inside a live session* the mode follows the live field, not the replay cursor (in a replay you open outside a session, the replay is the live data). The same thing on a key is the [Cycle by Track Order](#cycle-by-track-order) keypad mode
 - **Cycle Driving Camera** — steps through the driving-style cameras
 
 The touch strip's small top line always names the current mode (`CAMERA`, `SUB-CAMERA`, `CAR #`, `POSITION`, `TRACK ORDER`, or `DRIVING CAM`). Below it, the main content is whatever that mode acts on:

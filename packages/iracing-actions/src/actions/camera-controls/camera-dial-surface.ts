@@ -110,6 +110,7 @@ import {
   computeCarNumberTarget,
   computeTrackOrderTarget,
   type TrackOrderDirection,
+  trackOrderDirection,
   type TrackOrderTarget,
 } from "../../shared/car-cycling.js";
 import { dialAppearanceFields, type DialBoxColors, resolveDialBoxColors } from "../../shared/dial-box.js";
@@ -150,23 +151,14 @@ function isCycleMode(mode: DialMode): mode is CycleDialMode {
 /**
  * A rotation's dispatch direction in the cycled ordering (camera list, car
  * numbers ascending, race positions ascending, or — track-order — the road,
- * where `next` is the car ahead; see `trackOrderDirection`). Which PHYSICAL
+ * where `next` is the car ahead; see the shared `trackOrderDirection`, which
+ * the keypad's Cycle by Track Order mode reads the same way). Which PHYSICAL
  * turn maps to which direction is decided by `clockwiseDirection` (#884, #973).
  */
 export type Direction = "next" | "previous";
 
 function oppositeDirection(direction: Direction): Direction {
   return direction === "next" ? "previous" : "next";
-}
-
-/**
- * The physical-track reading of a `Direction` for the track-order mode (issue
- * #886): `next` is the car AHEAD on the road (the direction of travel),
- * `previous` the car BEHIND. The one place that mapping lives — the dispatch
- * and the carousel preview both route through it, so preview == execution.
- */
-function trackOrderDirection(direction: Direction): TrackOrderDirection {
-  return direction === "next" ? "ahead" : "behind";
 }
 
 /**
