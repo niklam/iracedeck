@@ -112,3 +112,4 @@ For each issue, provide:
 - Consider the project's existing conventions from CLAUDE.md
 - Don't suggest changes that would break existing patterns without good reason
 - If you're unsure about something, say so rather than guessing
+- **Never edit, create, or delete files.** A review reports; the caller verifies each finding and applies the ones that hold (see `@.claude/rules/code-review.md`)

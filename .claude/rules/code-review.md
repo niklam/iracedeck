@@ -24,27 +24,30 @@ Two tie-breakers: a diff that spans rows takes the **highest** row any changed f
 - **medium** — prose that describes rather than decides: website docs and action pages, `README.md`, package `CLAUDE.md` overviews, changelog bullet text. (Changing the changelog **format** or its parser is xhigh; adding a bullet is medium.)
 - **low** — comment-only edits, formatting, mechanical renames, and regenerated artifacts committed unchanged in shape (icon previews, `icon-defaults.json`, `action-comms.json`).
 
-`ultra` is not on this scale and is not yours to pick: `/code-review ultra` is a user-triggered, billed multi-agent cloud review. Never launch it — suggest it if a change warrants it and let Niklas run it.
+
+## Report only — `--fix` is not part of the command
+
+Never pass `--fix`. A review reports; applying is a separate step taken afterwards, finding by finding, once each one has been checked against the code.
+
+Two reasons it isn't a convenience worth having. Findings are candidates, not verdicts — a review produces confident-sounding findings about behavior that is deliberate, and an auto-applied one rewrites a decision nobody re-litigated. And the edits land in whatever tree the run targeted, so a mis-targeted review doesn't merely report on the wrong branch, it modifies it: one bare invocation put eight files of unrelated edits into the `master` checkout.
+
+So: read the findings, verify each against the code, apply the ones that hold as your own edits, and say which you declined and why. Any review-ish subagent gets the same instruction — read-only, report only.
 
 ## Always target the worktree that holds the work
 
 The session's working directory is the `master` checkout, so a bare invocation reviews `master`'s diff — not the `ir-<issue>` worktree the work lives in. Pass the absolute path plus an explicit scope block:
 
 ```text
-/code-review high --fix C:/Users/Niklas/Projects/iRaceDeck/ir-<issue>
+/code-review high C:/Users/Niklas/Projects/iRaceDeck/ir-<issue>
 
 SCOPE:
 - Worktree to review: C:/Users/Niklas/Projects/iRaceDeck/ir-<issue>
 - Branch / diff: origin/master..HEAD in that worktree
-- cd there first; apply all --fix edits there only
+- Read-only: report findings, edit nothing
 - Do NOT read or modify master or any other ir-* sibling worktree
 ```
 
-Confirm the run echoed the right target before trusting a finding, and cross-check its findings against `git -C ../ir-<issue> diff --stat origin/master...HEAD`. Because `--fix` writes into whatever tree it targeted, verify isolation afterwards with `git status --porcelain` in **every** worktree, not just the target — the agent's own account of what it touched is not evidence.
-
-## Findings are candidates, not verdicts
-
-Verify each finding against the code before applying it; reviews do produce confident-sounding findings about behavior that is deliberate. Any review-ish subagent must be told to be read-only.
+Confirm the run echoed the right target before trusting a finding, and cross-check its findings against `git -C ../ir-<issue> diff --stat origin/master...HEAD` — findings naming files outside that set mean it reviewed the wrong tree. Nothing should have been written anywhere, so verify that afterwards with `git status --porcelain` in **every** worktree, not just the target: a dirty tree means the run edited something it was told not to (recover with `git stash push -m "…"` in that checkout, then inspect or drop it). The agent's own account of what it touched is not evidence.
 
 ## When to run one
 

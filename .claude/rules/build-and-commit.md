@@ -141,7 +141,7 @@ Pull Requests
 - **Before creating a PR, ask the user:**
   > Should we run the code review agent for these changes?
 
-  Name the effort level in the ask and say which row of the table in `@.claude/rules/code-review.md` the change landed in — `xhigh` is not the default. If yes, run it (via the `code-review` skill or `code-reviewer` agent) at that level, pointed at the worktree that holds the work rather than `master`, and address any issues found before opening the PR.
+  Name the effort level in the ask and say which row of the table in `@.claude/rules/code-review.md` the change landed in — `xhigh` is not the default. If yes, run it (via the `code-review` skill or `code-reviewer` agent) at that level, pointed at the worktree that holds the work rather than `master`. The review reports only — never `--fix`; verify each finding and apply the ones that hold as your own edits before opening the PR.
 
 ### PR Labels
 
