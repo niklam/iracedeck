@@ -37,6 +37,18 @@ export type VoicePackProblem = { pack: string; reason: string };
 export interface ScanVoicePacksOptions {
   root: string;
   fs: VoicePackFileSystem;
+  /**
+   * Voice ids the plugin's own bundled audio already provides — the plugin
+   * passes `scanRaceEngineerVoices(<compiled-in manifest>)`.
+   *
+   * This is the "plugin root wins" half of the collision rule, the sibling of
+   * the pack-vs-pack rule below. Plugin-root-first path resolution already wins
+   * for every clip the bundle HAS, so a pack sharing a bundled voice id could
+   * only ever add EXTRA variants into that voice's pools — a half-merged voice
+   * nobody asked for, and one that would change how the bundled engineer sounds
+   * without appearing anywhere as a new voice.
+   */
+  reservedVoices?: readonly string[];
 }
 
 export interface ScanVoicePacksResult {
@@ -57,10 +69,11 @@ const MANIFEST_FILE = "voice-pack.json";
  * Folders are visited in sorted order, which makes the winner of a voice
  * collision deterministic rather than dependent on directory-listing order.
  */
-export function scanVoicePacks({ root, fs }: ScanVoicePacksOptions): ScanVoicePacksResult {
+export function scanVoicePacks({ root, fs, reservedVoices = [] }: ScanVoicePacksOptions): ScanVoicePacksResult {
   const packs: InstalledVoicePack[] = [];
   const problems: VoicePackProblem[] = [];
   const claimedVoices = new Map<string, string>();
+  const bundledVoices = new Set(reservedVoices);
 
   for (const folder of [...fs.listDirectories(root)].sort()) {
     // Dot-folders are the installer's own working space (`.tmp`, `.trash`) and
@@ -92,10 +105,19 @@ export function scanVoicePacks({ root, fs }: ScanVoicePacksOptions): ScanVoicePa
       continue;
     }
 
-    // A voice already provided by an earlier pack is dropped from THIS pack
-    // rather than rejecting the pack wholesale: a pack shipping two voices, one
-    // of which collides, still contributes the other.
-    const voices = manifest.voices.filter((voice) => {
+    // A voice already provided by the bundle or by an earlier pack is dropped
+    // from THIS pack rather than rejecting the pack wholesale: a pack shipping
+    // two voices, one of which collides, still contributes the other.
+    // De-duplicated first — a manifest repeating a voice id would otherwise
+    // claim it twice, duplicate its clips, and list it twice in the settings
+    // window.
+    const declared = [...new Set(manifest.voices)].filter((voice) => {
+      if (bundledVoices.has(voice)) {
+        problems.push({ pack: folder, reason: `voice "${voice}" is provided by the plugin's bundled audio` });
+
+        return false;
+      }
+
       const owner = claimedVoices.get(voice);
 
       if (owner === undefined) return true;
@@ -105,18 +127,33 @@ export function scanVoicePacks({ root, fs }: ScanVoicePacksOptions): ScanVoicePa
       return false;
     });
 
-    if (voices.length === 0) continue;
+    if (declared.length === 0) continue;
 
-    const prefixes = voices.map((voice) => `voice/${voice}/`);
-    const clips = fs.listMp3Files(dir).filter((clip) => prefixes.some((prefix) => clip.startsWith(prefix)));
+    // Clip presence is checked PER VOICE, not per pack. A pack that declares a
+    // voice but ships nothing under it would register an empty pool for every
+    // callout — at runtime indistinguishable from a missing clip — and, worse,
+    // would CLAIM that voice, locking out a later pack that really has it.
+    const found = fs.listMp3Files(dir);
+    const voices: string[] = [];
+    const clips: string[] = [];
+    const empty: string[] = [];
 
-    // A pack that declares a voice but ships nothing under it would register an
-    // empty pool for every callout, which at runtime is indistinguishable from
-    // a missing clip. Refusing it here keeps that ambiguity out of the engine.
-    if (clips.length === 0) {
-      problems.push({ pack: folder, reason: `no clips found under ${prefixes.join(", ")}` });
-      continue;
+    for (const voice of declared) {
+      const prefix = `voice/${voice}/`;
+      const own = found.filter((clip) => clip.startsWith(prefix));
+
+      if (own.length === 0) {
+        empty.push(prefix);
+        continue;
+      }
+
+      voices.push(voice);
+      clips.push(...own);
     }
+
+    if (empty.length > 0) problems.push({ pack: folder, reason: `no clips found under ${empty.join(", ")}` });
+
+    if (voices.length === 0) continue;
 
     for (const voice of voices) claimedVoices.set(voice, folder);
 
@@ -127,7 +164,9 @@ export function scanVoicePacks({ root, fs }: ScanVoicePacksOptions): ScanVoicePa
       ...(manifest.author === undefined ? {} : { author: manifest.author }),
       dir,
       voices,
-      clips,
+      // Sorted so the fragment a pack contributes is independent of the order
+      // its voices happen to be declared in.
+      clips: clips.sort(),
     });
   }
 

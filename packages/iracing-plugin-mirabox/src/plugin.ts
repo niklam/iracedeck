@@ -389,15 +389,19 @@ onGlobalSettingsChange(applyAudioState);
 onGlobalSettingsChange(() => syncFeatureGates(featureGateLogger));
 applyAudioState();
 
-// Derive the available Race Engineer voices and driver-name keys from
-// the manifest. Static for the lifetime of the plugin process.
-// Installed voice packs (issue #1034). The compiled-in manifest is the built-in
-// half — sfx plus any bundled voice; each installed pack contributes its own
-// audio root and its own clips on top. Rescanned on demand, so a hand-placed
-// pack needs a button press in Settings rather than a restart.
+// The available Race Engineer voices and driver-name keys, derived from the
+// ACTIVE manifest. Installed voice packs (issue #1034) make that manifest
+// dynamic: the compiled-in one is the built-in half — sfx plus any bundled
+// voice — and each installed pack contributes its own audio root and its own
+// clips on top. Rescanned on demand, so a hand-placed pack needs a button
+// press in Settings rather than a restart.
 let activeManifest: AudioAssetsManifest = audioAssetsManifest;
 let raceEngineerVoices = scanRaceEngineerVoices(activeManifest);
 let driverNames = scanDriverNames(activeManifest);
+
+// The voices the plugin itself bundles — fixed for the process, since they come
+// from the compiled-in manifest. No pack may claim one of these.
+const bundledVoices = scanRaceEngineerVoices(audioAssetsManifest);
 
 const voicePacksLogger = adapter.createLogger("VoicePacks");
 const voicePacks = createVoicePackService({
@@ -405,6 +409,7 @@ const voicePacks = createVoicePackService({
   fs: createVoicePackFileSystem(voicePacksLogger),
   logger: voicePacksLogger,
   pluginAudioDir: audioRootDir,
+  reservedVoices: bundledVoices,
   applyRoots: (roots) => getAudio().setRoots(roots),
   applyManifest: (fragments) => {
     activeManifest = mergeManifests(audioAssetsManifest, fragments);
@@ -420,6 +425,12 @@ const voicePacks = createVoicePackService({
     // then would set the dedupe markers below while reaching nothing — which
     // would suppress the real push forever. The post-init call sites publish
     // the startup scan; every later refresh publishes itself.
+    //
+    // This guard is also what keeps the startup scan away from the dedupe
+    // markers themselves: they are `let`s declared FURTHER DOWN this module, so
+    // reaching a push function from here before `initGlobalSettings` runs would
+    // be a temporal-dead-zone ReferenceError, not a wasted write. Keep
+    // `initGlobalSettings` after `voicePacks.refresh()`, or hoist the markers.
     if (!isGlobalSettingsInitialized()) return;
 
     pushRaceEngineerVoicesIfChanged();

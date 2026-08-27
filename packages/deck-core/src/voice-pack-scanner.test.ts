@@ -166,6 +166,60 @@ describe("scanVoicePacks", () => {
     expect(result.problems).toEqual([]);
   });
 
+  it("refuses a voice the plugin's own bundled audio provides", () => {
+    const result = scanVoicePacks({
+      root: ROOT,
+      fs: fakeFs({ luca: { manifest: luca, clips: ["voice/luca/a.mp3"] } }),
+      reservedVoices: ["luca"],
+    });
+
+    expect(result.packs).toEqual([]);
+    expect(result.problems[0].reason).toContain("bundled audio");
+  });
+
+  it("keeps a pack's other voice when only one collides with a bundled voice", () => {
+    const result = scanVoicePacks({
+      root: ROOT,
+      fs: fakeFs({
+        duo: {
+          manifest: { ...luca, id: "duo", voices: ["luca", "nina"] },
+          clips: ["voice/luca/a.mp3", "voice/nina/a.mp3"],
+        },
+      }),
+      reservedVoices: ["luca"],
+    });
+
+    expect(result.packs[0].voices).toEqual(["nina"]);
+    expect(result.packs[0].clips).toEqual(["voice/nina/a.mp3"]);
+  });
+
+  it("does not claim a declared voice it ships no clips for", () => {
+    const result = scanVoicePacks({
+      root: ROOT,
+      fs: fakeFs({
+        // `alpha` declares nina but ships only luca; `beta` really has nina and
+        // must not be locked out by alpha's empty declaration.
+        alpha: { manifest: { ...luca, id: "alpha", voices: ["luca", "nina"] }, clips: ["voice/luca/a.mp3"] },
+        beta: { manifest: { ...luca, id: "beta", voices: ["nina"] }, clips: ["voice/nina/a.mp3"] },
+      }),
+    });
+
+    expect(result.packs.map((p) => p.id)).toEqual(["alpha", "beta"]);
+    expect(result.packs[0].voices).toEqual(["luca"]);
+    expect(result.packs[1].voices).toEqual(["nina"]);
+    expect(result.problems).toEqual([{ pack: "alpha", reason: "no clips found under voice/nina/" }]);
+  });
+
+  it("de-duplicates a voice id repeated in one manifest", () => {
+    const result = scanVoicePacks({
+      root: ROOT,
+      fs: fakeFs({ luca: { manifest: { ...luca, voices: ["luca", "luca"] }, clips: ["voice/luca/a.mp3"] } }),
+    });
+
+    expect(result.packs[0].voices).toEqual(["luca"]);
+    expect(result.packs[0].clips).toEqual(["voice/luca/a.mp3"]);
+  });
+
   it("carries the author through when present", () => {
     const result = scanVoicePacks({
       root: ROOT,

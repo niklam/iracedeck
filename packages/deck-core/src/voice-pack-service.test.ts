@@ -111,6 +111,32 @@ describe("createVoicePackService", () => {
     expect(String(logger.warn.mock.calls[0][0])).toContain("luca");
   });
 
+  it("forwards reservedVoices so a pack cannot claim a bundled voice", () => {
+    const { service, applyRoots } = make({ luca: ["voice/luca/a.mp3"] }, { reservedVoices: ["luca"] });
+
+    expect(service.refresh()).toEqual([]);
+    expect(applyRoots).toHaveBeenCalledWith([PLUGIN_AUDIO]);
+  });
+
+  it("survives a throwing apply callback rather than taking the plugin down with it", () => {
+    // `refresh()` runs at module scope and on the settings window's
+    // `sendToPlugin` frame; neither path catches, so a throw here would end the
+    // plugin process.
+    logger.error.mockClear();
+    const { service, onPacksChanged } = make(
+      { luca: ["voice/luca/a.mp3"] },
+      {
+        applyManifest: () => {
+          throw new Error("engine exploded");
+        },
+      },
+    );
+
+    expect(() => service.refresh()).not.toThrow();
+    expect(onPacksChanged).not.toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalledTimes(1);
+  });
+
   it("reports problems alongside the packs that did load", () => {
     const { service, onPacksChanged } = make({ broken: [], luca: ["voice/luca/a.mp3"] });
     service.refresh();

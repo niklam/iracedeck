@@ -35,12 +35,13 @@ The folder name must match the pack's own name — if a pack calls itself `luca`
 
 ## When a Pack Does Not Appear
 
-If you rescan and nothing changes, the pack was rejected. Every rejection is written to the plugin log with the reason, so turn on **Enable debug logging** on the Diagnostics tab and rescan to see it. The usual causes:
+If you rescan and nothing changes, the pack was rejected. Every rejection is written to the plugin log with the reason, at the normal logging level — you do not need to turn anything on to see it. The usual causes:
 
 - **No `voice-pack.json`** — the folder is not a voice pack, or you copied the audio without the file that describes it.
 - **The folder name does not match the pack's name** — rename the folder to match.
 - **No audio in the pack** — the pack declares a voice but ships no clips for it.
 - **Another pack already provides that voice** — two packs cannot both supply the same voice. The one that comes first alphabetically wins and the other is ignored; rename or remove one of them.
+- **iRaceDeck already ships that voice** — a pack cannot take over a voice that comes bundled with the plugin. The bundled one always wins.
 
 ## Third-Party Voice Packs
 
