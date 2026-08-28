@@ -19,9 +19,25 @@ Repo-level Node `.mjs` utilities, mostly backed by root `package.json` scripts. 
 
 The remaining scripts are one-off or occasional icon-SVG tools (`migrate-*`, `flatten-*`, `pad-icon-viewbox`, `refactor-icons-to-snippets`, `check-icon-bounds`, `add-svg-editor-defaults`, `add-title-metadata-to-icons`, `transform-car-svg`). Many are already-applied migrations — read the script's header comment (usage + purpose) before running.
 
-## Dev linking (Mirabox)
+## Dev linking and host control (Mirabox, Ulanzi)
 
-- `link-mirabox.mjs` / `unlink-mirabox.mjs` — `pnpm link:mirabox` / `unlink:mirabox` / `relink:mirabox`: junction-links the built Mirabox plugin into the host's plugins dir (default `%APPDATA%\HotSpot\StreamDock\plugins`; override with `MIRABOX_PLUGINS_DIR` in a gitignored `.env.local`). Elgato linking uses the `streamdeck` CLI instead (see root `package.json`).
+Elgato is absent from all of these on purpose: its linking uses the `streamdeck` CLI and its start/stop scripts hardcode the one install path (see root `package.json`).
+
+- `link-mirabox.mjs` / `unlink-mirabox.mjs` — `pnpm link:mirabox` / `unlink:mirabox` / `relink:mirabox`: junction-links the built Mirabox plugin into the host's plugins dir (default `%APPDATA%\HotSpot\StreamDock\plugins`; override with `MIRABOX_PLUGINS_DIR` in a gitignored `.env.local`).
+- `link-ulanzi.mjs` / `unlink-ulanzi.mjs` — the Ulanzi equivalents (default `%APPDATA%\Ulanzi\UlanziDeck\Plugins`; override with `ULANZI_PLUGINS_DIR`). Added in #1040.
+- `host-app.mjs` — `pnpm start:ulanzi` / `stop:ulanzi` / `start:mirabox` / `stop:mirabox`, dispatched as `node scripts/host-app.mjs <start|stop> <host>`. The executable comes from `ULANZI_APP_PATH` / `MIRABOX_APP_PATH` with a `%ProgramFiles(x86)%` default, because two Mirabox-compatible hosts are commonly installed side by side (StreamDock, VSD Craft). `start` first prints which worktree the link points at — the junction serves exactly ONE checkout, which is the usual cause of "my fix isn't working".
+
+All four link scripts are thin descriptors over `lib/plugin-link.mjs`, and `host-app.mjs` is argv handling over `lib/host-control.mjs`; the behaviour lives in `lib/`, not in the entry files. Every lib function takes injected `env`/`platform`/`log` and **returns an exit code instead of calling `process.exit`**, which is what makes it testable — follow that shape when adding to them. The entry scripts set `process.exitCode` rather than calling `process.exit`, because a Windows TTY's stdout is asynchronous and exiting outright can truncate the line naming which worktree now owns the host.
+
+Three subtleties there are load-bearing and must survive any edit:
+
+- `lstat` rather than `exists` throughout, so a dangling junction whose target is gone is still detected.
+- The unlink branch on entry type. A junction gets `unlinkSync`; a **real** directory is **moved aside** to `<folder>.replaced-<timestamp>`, never deleted. (`rmSync(recursive)` on a Windows junction with a missing target silently no-ops and leaves the junction behind, which is why the branch exists at all; the move-aside is because the folder carries the plugin's own logs and `relink` runs inside `switch-test-env`, where a printed warning scrolls past unread.) The aside suffix must keep breaking the host's `*.sdPlugin` / `*.ulanziPlugin` scan pattern.
+- `taskkill` exit codes: 0 stopped, **128 = not running**, anything else is a genuine failure. Collapsing the last two reports a refused kill as success, and the build then hits the EPERM the stop step exists to prevent.
+
+**A warning printed inside a composite command is not a warning.** `relink` runs inside `switch-test-env`, behind `pnpm install && pnpm build`, so anything these scripts print scrolls past thousands of turbo lines unread and unconfirmed. That is why the real-directory case moves the folder aside instead of deleting it and explaining itself: the explanation cannot be relied on to reach anyone. Any destructive step added here should assume its own output is never read, and be reversible instead.
+
+**The dev loop's order is not arbitrary.** `pnpm stop:<host> && pnpm switch-test-env:<host> && pnpm start:<host>`: the host must stop before the **build**, not before the relink, because a running host locks `iracing_native.node` and the build fails with EPERM. And both hosts read their plugins directory at start only, so a relink without a restart changes nothing.
 
 ## Tests
 
@@ -29,7 +45,7 @@ The remaining scripts are one-off or occasional icon-SVG tools (`migrate-*`, `fl
 
 ## Structure
 
-- `lib/` — shared helpers with colocated `.test.mjs` siblings: `version-discovery.mjs` (package/manifest discovery used by the release bump and the manifest tests), `changelog-stamp.mjs`.
+- `lib/` — shared helpers with colocated `.test.mjs` siblings: `version-discovery.mjs` (package/manifest discovery used by the release bump and the manifest tests), `changelog-stamp.mjs`, `deck-hosts.mjs` (host descriptors + the pure path resolvers), `plugin-link.mjs` (the shared link/unlink core), `host-control.mjs` (start/stop), `env-local.mjs` (`.env.local` loading, shell wins).
 - `data/` — script-owned inputs, e.g. `icon-title-defaults.json` (consumed by `add-title-metadata-to-icons.mjs`).
 - `radio-effect/` — self-contained ffmpeg clip-processing spike with its own README; not wired into any build.
 - `local/` — Personal automation scripts, excluded from version control via `.gitignore`. Each developer can place their own scripts here without affecting the repository.
