@@ -76,14 +76,26 @@ describe("elgatoToUlanzi", () => {
     expect(PI_READ_ACTIONID).not.toBe("");
   });
 
-  it("drops a data-less global-settings ack instead of pushing empty settings (#1039)", () => {
+  it("drops a BARE global-settings ack but keeps an explicit empty reply (#1039)", () => {
     // A write confirmation comes back ack-shaped (`code` set, not a REQUEST)
-    // carrying nothing. Translating it would hand sdpi an EMPTY global payload:
-    // mid-bootstrap the router reads that as "no _settingsChannel" and falls
-    // back for good, and on the fallback path it blanks every global control
-    // already on screen. The plugin socket drops these for the same reason.
+    // with no settings field at all. Translating it would hand sdpi an EMPTY
+    // global payload: mid-bootstrap the router reads that as "no
+    // _settingsChannel" and falls back for good, and on the fallback path it
+    // blanks every global control already on screen.
     expect(ulanziToElgato({ cmd: "didReceiveGlobalSettings", code: 0 }, identity)).toBeNull();
-    expect(ulanziToElgato({ cmd: "didReceiveGlobalSettings", code: 0, settings: {} }, identity)).toBeNull();
+
+    // But an explicit `settings: {}` is a real answer, not an ack — it is what
+    // a read against an empty store returns, and on a first install it is the
+    // only answer there is. Dropping it would leave sdpi's getGlobalSettings()
+    // promise pending forever: the blank PI this change exists to fix.
+    expect(ulanziToElgato({ cmd: "didReceiveGlobalSettings", code: 0, settings: {} }, identity)).toEqual({
+      event: "didReceiveGlobalSettings",
+      payload: { settings: {} },
+    });
+    expect(ulanziToElgato({ cmd: "didReceiveGlobalSettings", code: 0, param: {} }, identity)).toEqual({
+      event: "didReceiveGlobalSettings",
+      payload: { settings: {} },
+    });
 
     // A reply that CARRIES settings is kept even when ack-shaped — that is how
     // this host answers a read — and so is any frame marked as a REQUEST.
@@ -98,8 +110,7 @@ describe("elgatoToUlanzi", () => {
       payload: { settings: {} },
     });
 
-    // An unsolicited reply with no `code` at all still passes through empty —
-    // a genuinely empty store must still resolve sdpi's promise.
+    // An unsolicited reply with no `code` at all still passes through empty.
     expect(ulanziToElgato({ cmd: "didReceiveGlobalSettings" }, identity)).toEqual({
       event: "didReceiveGlobalSettings",
       payload: { settings: {} },

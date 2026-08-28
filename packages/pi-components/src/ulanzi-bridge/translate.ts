@@ -124,19 +124,27 @@ export function ulanziToElgato(
 
   switch (frame.cmd) {
     case "didReceiveGlobalSettings": {
-      const settings = settingsOf(frame);
+      // A BARE ack — `code` set, not a REQUEST, and carrying no settings field
+      // at all — is a write confirmation, not a reply. Passing one on would
+      // hand sdpi an EMPTY global-settings payload: mid-bootstrap the router
+      // reads that as "no `_settingsChannel`" and falls back permanently, and
+      // on the fallback path it blanks every global control the PI is already
+      // showing. The plugin socket drops these too (`handleFrame` in
+      // deck-adapter-ulanzi).
+      //
+      // The test is the PRESENCE of the field, not whether it has any keys —
+      // deliberately narrower than the plugin socket's rule, which drops on an
+      // empty payload. An explicit `settings: {}` is a real answer: it is what
+      // a read against an empty store returns, and on a first install that is
+      // the only answer there is. Dropping it would leave sdpi's
+      // `getGlobalSettings()` promise pending forever and render exactly the
+      // blank PI this whole change exists to fix. So a frame that carries a
+      // settings object is always a reply, empty or not.
+      const carriesSettings = asRecord(frame.settings) !== undefined || asRecord(frame.param) !== undefined;
 
-      // A data-less ack (`code` set, and not a REQUEST) is a write
-      // confirmation, not a reply — the plugin socket drops exactly these, for
-      // exactly this reason (`handleFrame` in deck-adapter-ulanzi). Passing one
-      // on would hand sdpi an EMPTY global-settings payload: mid-bootstrap the
-      // router reads that as "no `_settingsChannel`" and falls back
-      // permanently, and on the fallback path it blanks every global control
-      // the PI is already showing. A reply that carries settings is kept
-      // whether or not it is ack-shaped — that is how this host answers a read.
-      if (frame.code !== undefined && frame.cmdType !== "REQUEST" && Object.keys(settings).length === 0) return null;
+      if (frame.code !== undefined && frame.cmdType !== "REQUEST" && !carriesSettings) return null;
 
-      return { event: "didReceiveGlobalSettings", payload: { settings } };
+      return { event: "didReceiveGlobalSettings", payload: { settings: settingsOf(frame) } };
     }
     case "didReceiveSettings":
     case "paramfromapp":
