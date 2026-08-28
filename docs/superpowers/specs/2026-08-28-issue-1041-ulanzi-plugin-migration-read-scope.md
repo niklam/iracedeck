@@ -125,4 +125,34 @@ Scope note, since the original rejection leaned on it: this does belong to the s
 
 Unit, in `packages/deck-adapter-ulanzi`: the default read carries a non-empty `actionid`, with `uuid` still `PLUGIN_UUID` and `key` still blank, so it differs from the write in exactly one field; the connect-time read on `open` carries that same address; a read requested before the socket is open sends nothing; the context-carrying form and the write are both untouched; and the re-drive's existing guards still hold. The client test that currently pins the blank default read (`requestGlobalSettings without a context uses the plugin scope`) asserts the bug and must be rewritten rather than extended.
 
-Manual, on UlanziStudio, is the only thing that proves the host answers: delete `%LOCALAPPDATA%\iRaceDeck\Settings\Ulanzi\global-settings.json` with pre-3.0 settings present in the host store, start the host **with no Ulanzi deck attached**, and confirm the log says `Settings received from host for migration` rather than `Deck host did not answer the migration read; starting fresh` — and that the file that appears carries the user's real key bindings and no `_migrationPending`. Debug logging on, since the raw host payload and the pre-open read's no-op both log at debug. The no-deck-attached condition is the whole point of the test; with a deck attached the old re-drive would mask the result.
+Also in `packages/deck-core`: the retry ceiling leaves the mirror shut and writes the durable marker, a file already carrying that marker keeps it shut on every later start (the countdown is gone by then, so nothing else would), and a host answer retires it and restores the mirror. The existing ceiling test asserts `mirror allowed` and is asserting the bug — rewrite it rather than extend it.
+
+Manual, on UlanziStudio, is the only thing that proves the host answers. Two questions, one session, each with a stated prediction — test against the prediction rather than reading the log for impressions.
+
+**Test 1 — is the migration read answered with no deck attached?** This is the issue itself. Setup: pre-3.0 settings present in the host store, `%LOCALAPPDATA%\iRaceDeck\Settings\Ulanzi\global-settings.json` deleted, **no Ulanzi deck attached** — that last condition is the whole point, since with a deck attached the old `willAppear` re-drive masks the result. Start UlanziStudio and read the plugin log in order. Predicted, verbatim:
+
+```text
+[Ulanzi:WebSocket] Connected to UlanziStudio
+[GlobalSettings] No settings file yet; requesting the deck host's settings for a one-time migration
+[GlobalSettings] Settings received from host for migration
+[GlobalSettings] Migrated global settings from the deck host
+[SettingsWindow] Mirrored settings + channel to the deck host
+```
+
+A `[GlobalSettings] Global-settings read requested while the host socket was not open` line before those is expected, not a fault — it is the pre-open no-op, and its absence merely means the socket won the race. The failure the fix exists to remove is this line, ~10 s in:
+
+```text
+[GlobalSettings] Deck host did not answer the migration read; starting fresh
+```
+
+Then check the file that appears: the user's real key bindings, and neither `_migrationPending` nor `_migrationAbandoned`.
+
+**Test 2 — does an empty host bucket's reply survive the client's ack filter?** This is the one assumption the mirror gate rests on, so it is no longer optional. The gate is free only because the abandoned marker is set solely when the host answered *nothing* — and a host that answers nothing answers no Property Inspector's bootstrap read either, so the channel the mirror would carry is unreachable anyway. If instead the host answers an empty bucket with a `code`-stamped frame, the `#868` ack filter drops it, every **fresh** install marches through three ten-second starts to the ceiling, and the gate shuts the mirror of an install whose host was talking all along.
+
+Testing an empty bucket directly needs a machine that has never run iRaceDeck on Ulanzi, which is usually impractical. The shape of any reply answers it just as well: with a settings file present and **debug logging on** (Settings window → Diagnostics), restart the plugin and find the client's raw frame log for the connect-time read, which fires on every start whether or not deck-core wants it:
+
+```text
+[Ulanzi:WebSocket] Received frame: {"cmd":"didReceiveGlobalSettings",…}
+```
+
+If that JSON carries a `code` field, an empty bucket's reply carries one too, and the ack filter drops it — the assumption is broken and the ack-filter change must ship with this. If it carries no `code`, an empty reply reaches deck-core as a real answer, the ceiling is unreachable on a talking host, and the gate is free as designed. Note the trap this test works around: `debugLogging` is applied from the schema-default cache, so on a migration start (no file) the wire log is suppressed exactly when it would be most interesting — which is why this is a second, file-present run rather than something to look for during test 1.
