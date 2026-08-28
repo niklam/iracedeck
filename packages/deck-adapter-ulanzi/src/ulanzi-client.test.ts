@@ -5,6 +5,7 @@ import {
   encodeContext,
   normalizeFrame,
   parseConnectionParams,
+  PLUGIN_READ_ACTIONID,
   PLUGIN_UUID,
   UlanziClient,
   type UlanziConnectionParams,
@@ -252,14 +253,18 @@ describe("UlanziClient connection", () => {
     vi.clearAllMocks();
   });
 
-  it("sends the connected handshake and requests global settings on open", async () => {
+  it("sends the connected handshake and an ADDRESSED global-settings read on open (#1041)", async () => {
+    // This is the read that reaches the host in practice: deck-core's one-time
+    // migration read usually fires before the socket is open. It must carry a
+    // non-empty actionid or UlanziStudio never answers it, and the migration
+    // silently falls back to schema defaults.
     const client = new UlanziClient(params, undefined, () => {});
     await client.connect();
     lastSocket.emit("open");
 
     expect(sentMessages()).toEqual([
       { code: 0, cmd: "connected", uuid: PLUGIN_UUID },
-      { cmd: "getGlobalSettings", uuid: PLUGIN_UUID, key: "", actionid: "" },
+      { cmd: "getGlobalSettings", uuid: PLUGIN_UUID, key: "", actionid: PLUGIN_READ_ACTIONID },
     ]);
   });
 
@@ -488,17 +493,40 @@ describe("UlanziClient outbound commands", () => {
     });
   });
 
-  it("requestGlobalSettings without a context uses the plugin scope", async () => {
+  it("requestGlobalSettings without a context is the write's scope plus an address (#1041)", async () => {
     const client = await connected();
     client.requestGlobalSettings();
 
-    expect(sentMessages()).toContainEqual({ cmd: "getGlobalSettings", uuid: PLUGIN_UUID, key: "", actionid: "" });
+    expect(sentMessages()).toContainEqual({
+      cmd: "getGlobalSettings",
+      uuid: PLUGIN_UUID,
+      key: "",
+      actionid: PLUGIN_READ_ACTIONID,
+    });
+  });
+
+  it("the read differs from the write in exactly one field — the address (#1041)", async () => {
+    // The two directions need opposite things and must not be unified: a write
+    // has to land in the plugin bucket (blank context, #868) while a read has
+    // to be routable (non-empty actionid, #1039). Keeping `uuid` and `key`
+    // identical is what makes both still name the same bucket on a host
+    // version that ever resolved one from the full context.
+    const client = await connected();
+    client.requestGlobalSettings();
+    client.setGlobalSettings({ debugLogging: true });
+
+    const read = sentMessages().find((m) => m.cmd === "getGlobalSettings");
+    const write = sentMessages().find((m) => m.cmd === "setGlobalSettings");
+
+    expect(read?.uuid).toBe(write?.uuid);
+    expect(read?.key).toBe(write?.key);
+    expect(read?.actionid).not.toBe(write?.actionid);
+    expect(read?.actionid).toBeTruthy();
   });
 
   it("requestGlobalSettings with a context sends that action scope", async () => {
-    // The Ulanzi SDK documents that a main-service getGlobalSettings must carry
-    // an action context to be answered — the adapter's boot-time bootstrap read
-    // uses the first appearing action's context (#868).
+    // The willAppear re-drive's shape (#868), kept as a fallback for a host
+    // that ever stopped echoing an actionid it has never seen (#1041).
     const client = await connected();
     client.requestGlobalSettings("com.x.action___5___a");
 
@@ -529,7 +557,7 @@ describe("UlanziClient.setGlobalSettings before the socket is open (#993)", () =
 
     expect(sentMessages()).toEqual([
       { code: 0, cmd: "connected", uuid: PLUGIN_UUID },
-      { cmd: "getGlobalSettings", uuid: PLUGIN_UUID, key: "", actionid: "" },
+      { cmd: "getGlobalSettings", uuid: PLUGIN_UUID, key: "", actionid: PLUGIN_READ_ACTIONID },
       { cmd: "setGlobalSettings", uuid: PLUGIN_UUID, key: "", actionid: "", settings: { debugLogging: true } },
     ]);
   });
@@ -587,5 +615,49 @@ describe("UlanziClient.setGlobalSettings before the socket is open (#993)", () =
       actionid: "",
       settings: { debugLogging: true },
     });
+  });
+});
+
+describe("UlanziClient.requestGlobalSettings before the socket is open (#1041)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("sends nothing when no socket exists yet, and does not throw", async () => {
+    // deck-core's one-time migration read fires as soon as the missing
+    // settings file resolves, which is before connect() has opened the socket.
+    const client = new UlanziClient(params, undefined, () => {});
+
+    client.requestGlobalSettings();
+
+    await client.connect();
+    expect(lastSocket.sent).toEqual([]);
+  });
+
+  it("does not stash the read — the connect-time read asks in its place, exactly once", async () => {
+    // A stash like setGlobalSettings' would put a duplicate frame on the wire:
+    // the open handler already issues this same read, and deck-core accepts
+    // the first reply that arrives rather than correlating it to a request.
+    const client = new UlanziClient(params, undefined, () => {});
+
+    client.requestGlobalSettings();
+    client.requestGlobalSettings();
+
+    await client.connect();
+    lastSocket.emit("open");
+
+    expect(sentMessages().filter((m) => m.cmd === "getGlobalSettings")).toEqual([
+      { cmd: "getGlobalSettings", uuid: PLUGIN_UUID, key: "", actionid: PLUGIN_READ_ACTIONID },
+    ]);
+  });
+
+  it("sends nothing while the socket is CONNECTING", async () => {
+    const client = new UlanziClient(params, undefined, () => {});
+    await client.connect();
+    lastSocket.readyState = 0; // CONNECTING
+
+    client.requestGlobalSettings();
+
+    expect(lastSocket.sent).toEqual([]);
   });
 });

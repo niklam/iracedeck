@@ -29,6 +29,32 @@ import { type WebSocket as WSType } from "ws";
 export const PLUGIN_UUID = "com.iracedeck.sd.core";
 
 /**
+ * Stand-in `actionid` for the plugin's own global-settings reads.
+ *
+ * UlanziStudio answers a `getGlobalSettings` only when `actionid` is non-empty
+ * — it routes the reply by that field — while the bucket it hands back is the
+ * plugin-wide one whatever the frame's `uuid` says. So a read needs the
+ * opposite of what a write needs: an address, not a blank scope (#1039). The
+ * host echoes the field rather than resolving it, so a value that has never
+ * existed is routed just as happily — which is the only reason the main
+ * service can address a read at all, having no action context of its own at
+ * connect time.
+ *
+ * Without it the plugin's one-time migration read — its only chance to import
+ * a user's pre-3.0 settings out of the host store — went unanswered, leaving
+ * the `willAppear` re-drive as the sole route to a reply. That never fires
+ * with no deck attached, and three such starts clear `_migrationPending`, let
+ * the once-per-start host mirror run, and overwrite the user's copy with
+ * schema defaults (#1041).
+ *
+ * Deliberately a different value from the PI bridge's `PI_READ_ACTIONID` in
+ * `@iracedeck/pi-components`: two sockets asking for two different reasons,
+ * and a host-side trace should say which one asked. Nothing is shared between
+ * them, so there is nothing to keep in sync.
+ */
+export const PLUGIN_READ_ACTIONID = "iracedeck-plugin-global-read";
+
+/**
  * Normalized, Elgato-style event the adapter consumes. The raw Ulanzi `cmd`
  * frame is translated into this shape by {@link normalizeFrame}.
  */
@@ -311,6 +337,11 @@ export class UlanziClient {
       // Ulanzi handshake — no separate registration payload (the host already
       // parsed manifest.json from disk).
       this.send({ code: 0, cmd: "connected", uuid: PLUGIN_UUID });
+      // In practice this is the read that reaches the host: deck-core's
+      // one-time migration read usually fires before the socket is open and is
+      // covered here (see requestGlobalSettings). It is addressed, so the host
+      // answers it — which is what makes the migration independent of whether
+      // a deck is attached (#1041).
       this.requestGlobalSettings();
 
       if (this.pendingGlobalSettings) {
@@ -457,23 +488,43 @@ export class UlanziClient {
   }
 
   /**
-   * Request global settings. Plugin scope by default; pass an action context
-   * for the adapter's boot-time bootstrap read, or the host will not answer
-   * (#868).
+   * Request global settings. Plugin scope by default; an action context may be
+   * passed for the adapter's `willAppear` re-drive (#868).
    *
-   * The rule was measured in #1039 and is narrower than "an action context":
-   * the host routes a reply by **`actionid`** and answers only when that field
-   * is non-empty — `key` alone does not do it, and `uuid` decides neither
-   * whether it answers nor which bucket comes back. So the default scope here
-   * (blank `key`/`actionid`) is never answered, and this read depends entirely
-   * on the adapter's `willAppear` re-drive to supply a context.
+   * The addressing rule was measured in #1039 and is narrower than "an action
+   * context": the host routes a reply by **`actionid`** and answers only when
+   * that field is non-empty — `key` alone does not do it, and `uuid` decides
+   * neither whether it answers nor which bucket comes back. So the default
+   * scope is the write's scope plus an address: the same {@link PLUGIN_UUID},
+   * the same blank `key`, and only `actionid` differs, standing in as
+   * {@link PLUGIN_READ_ACTIONID} because the main service has no action
+   * context of its own (#1041). `key` stays blank for the same reason `uuid`
+   * is kept — a host version that ever resolved the bucket from the full
+   * `uuid___key___actionid` context would otherwise land on one no write
+   * populates.
    *
    * Writes never take a context: they must always land in the plugin-scope
    * bucket (see {@link setGlobalSettings}), which is why the two directions
    * deliberately disagree.
    */
   requestGlobalSettings(context?: string): void {
-    const scope = context ? decodeContext(context) : { uuid: PLUGIN_UUID, key: "", actionid: "" };
+    if (this.ws?.readyState !== WS_OPEN) {
+      // `send()` discards anything written before the socket is open, and
+      // deck-core issues its one-time migration read as soon as the missing
+      // settings file resolves — usually before `connect()` has opened the
+      // socket. No stash is needed and one would be actively wrong: the `open`
+      // handler issues this same plugin-scoped read unconditionally, so it
+      // asks the question this call could not, and deck-core accepts the first
+      // reply that arrives rather than correlating it with a request. Say so
+      // rather than dropping the frame silently, which is what made #1041 so
+      // hard to see. A context-carrying re-drive can never land here: it
+      // originates in a `willAppear` that arrived over this very socket.
+      this.logger.debug("Global-settings read requested before the socket was open; the connect-time read covers it");
+
+      return;
+    }
+
+    const scope = context ? decodeContext(context) : { uuid: PLUGIN_UUID, key: "", actionid: PLUGIN_READ_ACTIONID };
 
     this.send({ cmd: "getGlobalSettings", ...scope });
   }
