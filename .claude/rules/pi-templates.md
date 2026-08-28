@@ -190,7 +190,7 @@ No parameters needed. The partial provides controls for:
 - **Show Glow** — three-state select (Inherit / Yes / No), hidden when border disabled
 - **Glow Width** — range slider (1–30, step 1, default 18), hidden when border or glow disabled
 
-For toggle actions (DRS, Push-to-Pass, Fuel Toggle, Windshield Tearoff, Fast Repair), the color picker is ignored — border color is driven by on/off/n/a state automatically.
+For toggle actions (DRS, Push-to-Pass, Ignition, Starter, Pit Speed Limiter, Fuel Toggle, Windshield Tearoff, Fast Repair), the color picker is ignored — border color is driven by on/off/n/a state automatically.
 
 Place after `color-overrides` include, before `graphic-overrides`.
 
