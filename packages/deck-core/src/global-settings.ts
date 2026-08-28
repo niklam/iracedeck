@@ -1191,10 +1191,40 @@ export const LOAD_ATTEMPTS = 6;
  * writes and clears the marker — and the host mirror is skipped, so a
  * defaults file can never be mirrored over a host copy the plugin has not yet
  * been able to read. A host that stays silent for that many starts is taken
- * at its word: the file becomes authoritative, the marker clears, and the
- * mirror resumes so Property Inspectors are not left channel-less forever.
+ * at its word: the file becomes authoritative and this marker gives way to
+ * {@link MIGRATION_ABANDONED_KEY}.
  */
 export const MIGRATION_PENDING_KEY = "_migrationPending";
+
+/**
+ * Passthrough marker persisted when the migration was given up on: the host
+ * stayed silent for {@link MIGRATION_RETRY_STARTS} starts and the file was
+ * accepted as-is. It is durable where {@link MIGRATION_PENDING_KEY} is a
+ * countdown, and it does exactly one thing — keep the host mirror shut, for
+ * good, on a store that was never host-derived (#1041).
+ *
+ * Until #1041 the retry ceiling CLEARED the pending marker and let the mirror
+ * resume, on the reasoning that a silent host should not cost a timeout every
+ * launch nor leave Property Inspectors channel-less forever. The first half of
+ * that still holds and is why this marker suppresses the read as well. The
+ * second half was wrong, and expensively so: the mirror is a WHOLE-object
+ * write, so resuming it replaces a host copy the plugin has never once managed
+ * to read — which is precisely how an unanswerable Ulanzi read turned three
+ * ordinary startups into permanent loss of a user's pre-3.0 settings. Gate the
+ * mirror on having positively READ the host, never on a counter having run
+ * out.
+ *
+ * Nor does the channel argument survive contact with the case: this marker is
+ * only ever set when the host answered nothing, and a host that answers
+ * nothing does not answer a Property Inspector's bootstrap read either — both
+ * are the same `getGlobalSettings`. So the channel the mirror would carry is
+ * unreachable by the only party that wants it, and suppressing the write costs
+ * that install nothing it had.
+ *
+ * A successful migration clears it, so a host that starts answering again
+ * restores normal behaviour with no intervention.
+ */
+export const MIGRATION_ABANDONED_KEY = "_migrationAbandoned";
 
 /** How many unanswered starts the pending migration is retried for before the file is accepted as-is. */
 export const MIGRATION_RETRY_STARTS = 3;
@@ -1401,6 +1431,13 @@ export function initGlobalSettings(
     if (source === "fresh") merged[MIGRATION_PENDING_KEY] = pendingMigrationStarts(raw) + 1;
     else delete merged[MIGRATION_PENDING_KEY];
 
+    // A real host answer retires the give-up marker (#1041): whatever went
+    // wrong before, the host is talking now, so the mirror is safe to resume.
+    // Every other source leaves it exactly as `raw` had it — the ceiling
+    // branch sets it, and a later plain "file" load must carry it forward or
+    // the very next start would mirror over the copy it protects.
+    if (source === "host") delete merged[MIGRATION_ABANDONED_KEY];
+
     const salvage = parseWithSalvage(merged);
 
     if (salvage === null) {
@@ -1492,13 +1529,15 @@ export function initGlobalSettings(
       }
 
       if (unanswered >= MIGRATION_RETRY_STARTS) {
-        // The host has now stayed silent for this many starts: stop paying
-        // the timeout on every launch and keeping PIs channel-less; the file
-        // is what we have. `becomeReady(…, "file")` drops the marker.
+        // The host has now stayed silent for this many starts: stop paying the
+        // timeout on every launch; the file is what we have. The countdown
+        // marker gives way to the durable one, which keeps the host mirror
+        // shut for good — this store was never host-derived, and mirroring it
+        // would replace a copy the plugin has never once read (#1041).
         logger?.warn(
           "Deck host never answered the migration read; keeping the settings file as-is and no longer asking",
         );
-        becomeReady(loaded, "file");
+        becomeReady({ ...loaded, [MIGRATION_ABANDONED_KEY]: true }, "file");
 
         return;
       }
@@ -1642,6 +1681,12 @@ export function hostMirrorPayload(channel?: { port: number; token: string }): Re
   // Belt and braces with the "fresh" check above: a cache carrying the
   // pending-migration marker is a defaults file, whatever path filled it.
   if (pendingMigrationStarts(currentSettings as Record<string, unknown>) > 0) return undefined;
+
+  // The migration was given up on, so this store was never host-derived and
+  // the mirror would overwrite a copy the plugin has never read (#1041).
+  // Durable, unlike the countdown above: the ceiling clears that one, and
+  // without this the very next start would mirror.
+  if ((currentSettings as Record<string, unknown>)[MIGRATION_ABANDONED_KEY] === true) return undefined;
 
   const mirror = { ...(currentSettings as Record<string, unknown>) };
 

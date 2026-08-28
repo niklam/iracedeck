@@ -12,6 +12,7 @@ import {
   isSettingsStoreReady,
   LOAD_ATTEMPTS,
   LOAD_RETRY_DELAY_MS,
+  MIGRATION_ABANDONED_KEY,
   MIGRATION_PENDING_KEY,
   MIGRATION_RETRY_STARTS,
   MIGRATION_TIMEOUT_MS,
@@ -1037,7 +1038,11 @@ describe("single-writer store (issue #993)", () => {
     }
   });
 
-  it("after MIGRATION_RETRY_STARTS unanswered starts the file is accepted as-is: no more waiting, marker cleared, mirror allowed", async () => {
+  it("after MIGRATION_RETRY_STARTS unanswered starts the file is accepted as-is: no more waiting, countdown retired, mirror STAYS shut (#1041)", async () => {
+    // The ceiling used to clear the marker and resume the mirror, which is how
+    // an unanswerable read destroyed data: the mirror is a whole-object write,
+    // so resuming it replaces a host copy the plugin has never once read. The
+    // countdown gives way to a durable marker instead.
     const mock = createMockAdapter();
     const store = createMemorySettingsStore({
       ...(GlobalSettingsSchema.parse({}) as Record<string, unknown>),
@@ -1052,8 +1057,51 @@ describe("single-writer store (issue #993)", () => {
     expect(getSettingsStoreSource()).toBe("file");
     expect(mock.getGlobalSettings).not.toHaveBeenCalled();
     expect(store.saved.at(-1)).not.toHaveProperty(MIGRATION_PENDING_KEY);
-    expect(hostMirrorPayload({ port: 1, token: "t" })).toMatchObject({ driverName: "kept" });
+    expect(store.saved.at(-1)).toMatchObject({ [MIGRATION_ABANDONED_KEY]: true });
+    expect(hostMirrorPayload({ port: 1, token: "t" })).toBeUndefined();
     expect(MIGRATION_RETRY_STARTS).toBe(3);
+  });
+
+  it("a file carrying the give-up marker keeps the mirror shut on every later start (#1041)", async () => {
+    // The durable half. The countdown is gone by now, so nothing else would
+    // stop the next start mirroring defaults over the copy this protects.
+    const mock = createMockAdapter();
+    const store = createMemorySettingsStore({
+      ...(GlobalSettingsSchema.parse({}) as Record<string, unknown>),
+      [MIGRATION_ABANDONED_KEY]: true,
+      driverName: "kept",
+    });
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store);
+    await tick();
+
+    expect(getSettingsStoreSource()).toBe("file");
+    expect(mock.getGlobalSettings).not.toHaveBeenCalled();
+    expect(hostMirrorPayload({ port: 1, token: "t" })).toBeUndefined();
+    expect(store.saved.at(-1)).toMatchObject({ [MIGRATION_ABANDONED_KEY]: true, driverName: "kept" });
+  });
+
+  it("a host that answers again retires the give-up marker and restores the mirror (#1041)", async () => {
+    // Giving up must not be a one-way door: a build that fixes an
+    // unanswerable read has to be able to recover the install, and the
+    // countdown is what gets it asked again.
+    const mock = createMockAdapter();
+    const store = createMemorySettingsStore({
+      ...(GlobalSettingsSchema.parse({}) as Record<string, unknown>),
+      [MIGRATION_ABANDONED_KEY]: true,
+      [MIGRATION_PENDING_KEY]: 1,
+    });
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store);
+    await tick();
+    expect(mock.getGlobalSettings).toHaveBeenCalledTimes(1);
+
+    mock.echo?.({ driverName: "from-host" });
+    await store.flush();
+
+    expect(getSettingsStoreSource()).toBe("host");
+    expect(store.saved.at(-1)).not.toHaveProperty(MIGRATION_ABANDONED_KEY);
+    expect(hostMirrorPayload({ port: 1, token: "t" })).toMatchObject({ driverName: "from-host" });
   });
 
   it("MIGRATION_TIMEOUT_MS is ten seconds", () => {
