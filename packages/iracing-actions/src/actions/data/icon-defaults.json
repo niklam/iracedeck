@@ -221,6 +221,12 @@
     "textColor": "#ffffff",
     "graphic1Color": "#ffffff"
   },
+  "car-control-ignition": {
+    "backgroundColor": "#2a3a2a",
+    "textColor": "#ffffff",
+    "graphic1Color": "#ffffff",
+    "borderColor": "#5a6a5a"
+  },
   "car-control-pit-limiter": {
     "backgroundColor": "#2a3a2a",
     "textColor": "#ffffff",
@@ -230,6 +236,12 @@
     "backgroundColor": "#2a3a2a",
     "textColor": "#ffffff",
     "graphic1Color": "#ffffff"
+  },
+  "car-control-starter": {
+    "backgroundColor": "#2a3a2a",
+    "textColor": "#ffffff",
+    "graphic1Color": "#ffffff",
+    "borderColor": "#5a6a5a"
   },
   "pit-crew": {
     "backgroundColor": "#2a3a5a",

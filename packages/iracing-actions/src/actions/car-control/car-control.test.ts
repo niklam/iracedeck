@@ -7,13 +7,17 @@ import {
   getEnterExitTowState,
   getPitSpeedLimit,
   getSessionContext,
+  ignitionToggleState,
   isDrsActive,
+  isEngineRunning,
+  isIgnitionOn,
   isPitLimiterActive,
   isPitLimiterAvailable,
   isPushToPassActive,
   parsePitSpeedLimit,
   pitLimiterSpeedGraphic,
   pitLimiterToggleState,
+  starterToggleState,
 } from "./car-control.js";
 
 const {
@@ -84,7 +88,9 @@ vi.mock("@iracedeck/icons/car-control/second-down-shift.svg", () => ({
 vi.mock("@iracedeck/iracing-sdk", () => ({
   hasFlag: (value: number, flag: number) => (value & flag) !== 0,
   hasPitLimiter: (t: { dcPitSpeedLimiterToggle?: unknown } | null) => t?.dcPitSpeedLimiterToggle !== undefined,
-  EngineWarnings: { PitSpeedLimiter: 0x0010 },
+  isLiveOnTrack: (t: { IsOnTrack?: unknown; IsReplayPlaying?: unknown } | null | undefined) =>
+    t?.IsOnTrack === true && t?.IsReplayPlaying !== true,
+  EngineWarnings: { PitSpeedLimiter: 0x0010, EngineStalled: 0x0008 },
   SessionState: { Invalid: 0, GetInCar: 1, Warmup: 2, ParadeLaps: 3, Racing: 4, Checkered: 5, CoolDown: 6 },
 }));
 
@@ -430,6 +436,123 @@ describe("CarControl", () => {
     it("should return on/off by the active flag when available", () => {
       expect(pitLimiterToggleState(true, true)).toBe("on");
       expect(pitLimiterToggleState(true, false)).toBe("off");
+    });
+  });
+
+  describe("isIgnitionOn (issue #561)", () => {
+    it("should return undefined when telemetry is null", () => {
+      expect(isIgnitionOn(null)).toBeUndefined();
+    });
+
+    it("should return undefined when Voltage is absent, rather than reporting off", () => {
+      expect(isIgnitionOn({} as any)).toBeUndefined();
+    });
+
+    it("should return undefined for a non-finite Voltage", () => {
+      expect(isIgnitionOn({ Voltage: Number.NaN } as any)).toBeUndefined();
+    });
+
+    it("should report off near zero volts and on at a live bus voltage", () => {
+      expect(isIgnitionOn({ Voltage: 0 } as any)).toBe(false);
+      expect(isIgnitionOn({ Voltage: 0.4 } as any)).toBe(false);
+      // 13.4 V is the live-ignition reading the detection rule is built on.
+      expect(isIgnitionOn({ Voltage: 13.4 } as any)).toBe(true);
+      // Every captured snapshot sat in 12-14.8 V; all of them must read "on".
+      expect(isIgnitionOn({ Voltage: 12 } as any)).toBe(true);
+      expect(isIgnitionOn({ Voltage: 14.8 } as any)).toBe(true);
+    });
+  });
+
+  describe("isEngineRunning (issue #561)", () => {
+    it("should return undefined when telemetry is null", () => {
+      expect(isEngineRunning(null)).toBeUndefined();
+    });
+
+    it("should return undefined when neither EngineWarnings nor RPM is available", () => {
+      expect(isEngineRunning({} as any)).toBeUndefined();
+    });
+
+    it("should read the EngineStalled bit when EngineWarnings is present", () => {
+      expect(isEngineRunning({ EngineWarnings: 0x0008 } as any)).toBe(false);
+      expect(isEngineRunning({ EngineWarnings: 0 } as any)).toBe(true);
+    });
+
+    it("should ignore unrelated EngineWarnings bits", () => {
+      // 0x0100 is OptRepNeeded — a damage flag, nothing to do with the engine turning.
+      expect(isEngineRunning({ EngineWarnings: 0x0100 } as any)).toBe(true);
+    });
+
+    it("should let the EngineStalled bit win over RPM when both are present", () => {
+      // The bit is authoritative; a stale or odd RPM must not override it.
+      expect(isEngineRunning({ EngineWarnings: 0x0008, RPM: 6000 } as any)).toBe(false);
+      expect(isEngineRunning({ EngineWarnings: 0, RPM: 0 } as any)).toBe(true);
+    });
+
+    it("should fall back to the RPM floor only when EngineWarnings is absent", () => {
+      // Captured telemetry puts a stopped engine at 300 RPM and idle near 900.
+      expect(isEngineRunning({ RPM: 300 } as any)).toBe(false);
+      expect(isEngineRunning({ RPM: 900 } as any)).toBe(true);
+    });
+  });
+
+  describe("ignitionToggleState / starterToggleState (issue #561)", () => {
+    /** A driver genuinely sitting in their own car on track. */
+    const live = (extra: Record<string, unknown>) => ({ IsOnTrack: true, ...extra }) as any;
+
+    it("should resolve na when there is no telemetry at all, never off", () => {
+      expect(ignitionToggleState(null)).toBe("na");
+      expect(starterToggleState(null)).toBe("na");
+    });
+
+    it("should resolve na when the driver is not live in the car", () => {
+      // Out of the car: the fields may still be present but they describe nothing the
+      // user is sitting in.
+      expect(ignitionToggleState({ IsOnTrack: false, Voltage: 13.4 } as any)).toBe("na");
+      expect(starterToggleState({ IsOnTrack: false, EngineWarnings: 0 } as any)).toBe("na");
+    });
+
+    it("should resolve na during a replay even though the frame looks complete", () => {
+      // Captured replay frames report RPM 300 with the stalled bit CLEAR, which would
+      // otherwise read as a confident "engine running".
+      const replay = { IsOnTrack: true, IsReplayPlaying: true, EngineWarnings: 0, RPM: 300, Voltage: 13.4 };
+
+      expect(starterToggleState(replay as any)).toBe("na");
+      expect(ignitionToggleState(replay as any)).toBe("na");
+    });
+
+    it("should map ignition on and off from the bus voltage", () => {
+      expect(ignitionToggleState(live({ Voltage: 13.4 }))).toBe("on");
+      expect(ignitionToggleState(live({ Voltage: 0 }))).toBe("off");
+    });
+
+    it("should resolve na when live in the car but the field is missing", () => {
+      expect(ignitionToggleState(live({}))).toBe("na");
+      expect(starterToggleState(live({}))).toBe("na");
+    });
+
+    it("should map the starter key to engine-running state", () => {
+      expect(starterToggleState(live({ EngineWarnings: 0 }))).toBe("on");
+      expect(starterToggleState(live({ EngineWarnings: 0x0008 }))).toBe("off");
+    });
+  });
+
+  describe("ignition and starter tri-state icons (issue #561)", () => {
+    it("should render a different icon for each of the three states", () => {
+      for (const control of ["ignition", "starter"] as const) {
+        const key = control === "ignition" ? "ignitionState" : "starterState";
+        const on = generateCarControlSvg({ control } as any, { [key]: "on" } as any);
+        const off = generateCarControlSvg({ control } as any, { [key]: "off" } as any);
+        const na = generateCarControlSvg({ control } as any, { [key]: "na" } as any);
+
+        expect(new Set([on, off, na]).size).toBe(3);
+      }
+    });
+
+    it("should fall back to the na icon when no telemetry state was resolved", () => {
+      const bare = generateCarControlSvg({ control: "ignition" } as any);
+      const na = generateCarControlSvg({ control: "ignition" } as any, { ignitionState: "na" } as any);
+
+      expect(bare).toBe(na);
     });
   });
 

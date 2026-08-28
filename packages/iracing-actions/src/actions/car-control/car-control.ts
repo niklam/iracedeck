@@ -43,13 +43,29 @@ import sessionRaceIcon from "@iracedeck/icons/car-control/session-race.svg";
 import starterIcon from "@iracedeck/icons/car-control/starter.svg";
 import tearOffVisorIcon from "@iracedeck/icons/car-control/tear-off-visor.svg";
 import towIcon from "@iracedeck/icons/car-control/tow.svg";
-import { EngineWarnings, hasFlag, hasPitLimiter, SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
+import {
+  EngineWarnings,
+  hasFlag,
+  hasPitLimiter,
+  isLiveOnTrack,
+  SessionState,
+  type TelemetryData,
+} from "@iracedeck/iracing-sdk";
 import z from "zod";
 
 import drsTemplate from "../../../icons/car-control-drs.svg";
+import ignitionTemplate from "../../../icons/car-control-ignition.svg";
 import pitLimiterTemplate from "../../../icons/car-control-pit-limiter.svg";
 import pushToPassTemplate from "../../../icons/car-control-push-to-pass.svg";
-import { borderColorForState, statusBarNA, statusBarOff, statusBarOn } from "../../icons/status-bar.js";
+import starterTemplate from "../../../icons/car-control-starter.svg";
+import {
+  borderColorForState,
+  generateToggleStateSvg,
+  statusBarNA,
+  statusBarOff,
+  statusBarOn,
+  type ToggleState,
+} from "../../icons/status-bar.js";
 
 const WHITE = "#ffffff";
 const GRAY = "#888888";
@@ -120,6 +136,8 @@ const TELEMETRY_AWARE_CONTROLS = new Set<CarControlType>([
   "push-to-pass",
   "drs",
   "enter-exit-tow",
+  "ignition",
+  "starter",
 ]);
 
 /** Controls that use hold pattern (press on keyDown, release on keyUp) */
@@ -411,6 +429,138 @@ export function pitLimiterToggleState(available: boolean, active: boolean): "on"
 }
 
 /**
+ * Voltage at or above this counts as "the ignition circuit is live".
+ *
+ * iRacing exposes no ignition telemetry of any kind — there is no `Ignition`, no
+ * `dcIgnition`, and nothing among the 429 documented variables describing one — so
+ * engine voltage is the only available proxy: ~0 V with the ignition off, ~13.4 V
+ * with it on. The threshold sits midway between those rather than hugging zero, so
+ * neither sensor noise nor a partially-energised bus can flip it.
+ */
+const IGNITION_VOLTAGE_THRESHOLD_V = 6;
+
+/**
+ * RPM at or above this counts as "engine running" on the FALLBACK path only — when
+ * `EngineWarnings` is absent and the authoritative EngineStalled bit cannot be read.
+ * Captured telemetry puts a stopped engine at exactly 300 RPM and the lowest running
+ * idle near 900, so this sits clear of both. It is deliberately not a per-car tuning
+ * knob; the bit below is what normally decides.
+ */
+const ENGINE_RUNNING_RPM_FLOOR = 500;
+
+/** Maps a known/unknown boolean onto the shared tri-state: unknown is N/A, never "off". */
+function toggleStateFromKnown(value: boolean | undefined): ToggleState {
+  if (value === undefined) return "na";
+
+  return value ? "on" : "off";
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * Whether the ignition circuit is live, from `Voltage` (see
+ * IGNITION_VOLTAGE_THRESHOLD_V for why that is the only available signal).
+ *
+ * Returns undefined — not false — when there is no telemetry or no `Voltage`, so the
+ * caller renders N/A instead of a confident "ignition off" against a disconnected sim.
+ */
+export function isIgnitionOn(telemetry: TelemetryData | null): boolean | undefined {
+  const voltage = telemetry?.Voltage;
+
+  if (typeof voltage !== "number" || !Number.isFinite(voltage)) return undefined;
+
+  return voltage >= IGNITION_VOLTAGE_THRESHOLD_V;
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * Whether the engine is turning over.
+ *
+ * `EngineWarnings.EngineStalled` is authoritative and needs no per-car tuning, so it
+ * decides whenever the bitfield is present; the RPM floor is only a fallback for a
+ * snapshot that lacks it. Returns undefined when neither signal is available.
+ *
+ * Note this deliberately does not try to answer "is the driver in the car" — a replay
+ * reports a stopped engine with the stalled bit clear. That question belongs to the
+ * N/A state, which is resolved from the absence of telemetry rather than from here.
+ */
+export function isEngineRunning(telemetry: TelemetryData | null): boolean | undefined {
+  if (!telemetry) return undefined;
+
+  const warnings = telemetry.EngineWarnings;
+
+  if (typeof warnings === "number" && Number.isFinite(warnings)) {
+    return !hasFlag(warnings, EngineWarnings.EngineStalled);
+  }
+
+  const rpm = telemetry.RPM;
+
+  if (typeof rpm !== "number" || !Number.isFinite(rpm)) return undefined;
+
+  return rpm >= ENGINE_RUNNING_RPM_FLOOR;
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * Tri-state shown on the Ignition key (issue #561). Shared by the icon renderer and
+ * the state key so the dedupe key can never disagree with what was drawn — the same
+ * reason pitLimiterToggleState is shared.
+ *
+ * Anything but a driver live in their own car reads N/A: a replay still publishes a
+ * full telemetry frame, so without this gate a replay would render a confident state
+ * for a car the user is not sitting in.
+ */
+export function ignitionToggleState(telemetry: TelemetryData | null): ToggleState {
+  if (!isLiveOnTrack(telemetry)) return "na";
+
+  return toggleStateFromKnown(isIgnitionOn(telemetry));
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * Tri-state shown on the Starter key (issue #561). It reports whether the ENGINE is
+ * running, not whether the starter motor is momentarily engaged: the latter is true
+ * for well under a second per start, so it would leave the key saying nothing useful
+ * almost all the time. Green here means "the engine is alive, you need not crank".
+ *
+ * Gated on being live in the car for the same reason as the ignition key, and it bites
+ * harder here: captured replay frames report a stopped engine with the stalled bit
+ * CLEAR, which would otherwise read as "running".
+ */
+export function starterToggleState(telemetry: TelemetryData | null): ToggleState {
+  if (!isLiveOnTrack(telemetry)) return "na";
+
+  return toggleStateFromKnown(isEngineRunning(telemetry));
+}
+
+/**
+ * Power-symbol artwork for the Ignition key, drawn above the status bar.
+ *
+ * Lives here rather than baked into the chrome template so generateToggleStateSvg can
+ * dim it along with the bar under the binding-missing warning (the DRS pattern), and
+ * so it resolves the icon's colors at compose time. Deliberately STATE-NEUTRAL: the
+ * status bar and the state-driven border carry on/off/na, so recoloring the artwork
+ * too would say the same thing twice.
+ */
+const IGNITION_ARTWORK = `
+    <path d="M61.1,57.3 A20,20,0,1,0,82.9,57.3" fill="none" stroke="{{graphic1Color}}" stroke-width="7" stroke-linecap="round"/>
+    <line x1="72" y1="48.2" x2="72" y2="70" stroke="{{graphic1Color}}" stroke-width="7" stroke-linecap="round"/>`;
+
+/**
+ * Start-button artwork, drawn between the title and the status bar. State-neutral for
+ * the same reason as IGNITION_ARTWORK — the previous static icon hardcoded a red badge,
+ * which would now contradict a green key. The old icon spelled START inside the ring;
+ * the ring is now bare because the title above it already says ENGINE START, and the
+ * text would not fit legibly in the band the status bar leaves.
+ */
+const STARTER_ARTWORK = `
+    <circle cx="72" cy="70" r="23" fill="none" stroke="{{graphic1Color}}" stroke-width="4"/>
+    <circle cx="72" cy="70" r="14" fill="{{graphic1Color}}"/>`;
+
+/**
  * @internal Exported for testing
  *
  * Check if Push To Pass is active from telemetry.
@@ -447,6 +597,10 @@ export type CarControlTelemetryState = {
   enterExitTowState?: EnterExitTowState;
   /** Session classification for the context-aware enter-car appearance (issue #632). */
   sessionContext?: SessionContext;
+  /** Tri-state ignition indication (issue #561), resolved once so icon and state key agree. */
+  ignitionState?: ToggleState;
+  /** Tri-state engine-running indication shown on the Starter key (issue #561). */
+  starterState?: ToggleState;
 };
 
 const CarControlSettings = CommonSettings.extend({
@@ -624,7 +778,27 @@ export function generateCarControlSvg(
     return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic, bindingMissing });
   }
 
-  // Static modes use standalone SVGs from @iracedeck/icons
+  // Ignition and Starter are tri-state telemetry keys (issue #561). Both go through the
+  // shared toggle renderer rather than repeating the resolve/render pipeline a fourth
+  // time; the artwork stays state-neutral and the status bar plus the state-driven
+  // border carry on/off/na, the same language as the pit limiter and DRS.
+  if (control === "ignition" || control === "starter") {
+    const isIgnition = control === "ignition";
+    const state = (isIgnition ? telemetryState?.ignitionState : telemetryState?.starterState) ?? "na";
+
+    return generateToggleStateSvg({
+      template: isIgnition ? ignitionTemplate : starterTemplate,
+      artwork: isIgnition ? IGNITION_ARTWORK : STARTER_ARTWORK,
+      state,
+      colorOverrides: settings.colorOverrides,
+      titleOverrides: settings.titleOverrides,
+      borderOverrides: settings.borderOverrides,
+      bindingMissing,
+    });
+  }
+
+  // Static modes use standalone SVGs from @iracedeck/icons. Ignition and Starter still
+  // appear in the tables below, but the branch above intercepts them first.
   const iconSvg = STATIC_CAR_CONTROL_ICONS[control] || starterIcon;
   const defaultTitle = CAR_CONTROL_STATIC_TITLES[control] ?? CAR_CONTROL_STATIC_TITLES["starter"]!;
 
@@ -927,6 +1101,10 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
       const sessionInfo = this.sdkController.getSessionInfo();
       state.enterExitTowState = getEnterExitTowState(telemetry, sessionInfo);
       state.sessionContext = getSessionContext(telemetry, sessionInfo);
+    } else if (control === "ignition") {
+      state.ignitionState = ignitionToggleState(telemetry);
+    } else if (control === "starter") {
+      state.starterState = starterToggleState(telemetry);
     }
 
     return state;
@@ -991,6 +1169,14 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
 
     if (settings.control === "enter-exit-tow") {
       return `enter-exit-tow|${telemetryState.enterExitTowState ?? "enter-car"}|${telemetryState.sessionContext ?? "unknown"}|${borderKey}|${warn}`;
+    }
+
+    if (settings.control === "ignition") {
+      return `ignition|${telemetryState.ignitionState ?? "na"}|${borderKey}|${warn}`;
+    }
+
+    if (settings.control === "starter") {
+      return `starter|${telemetryState.starterState ?? "na"}|${borderKey}|${warn}`;
     }
 
     return settings.control;
