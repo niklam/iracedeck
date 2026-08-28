@@ -1,20 +1,18 @@
 import { join } from "node:path";
-import { describe, expect, it, vi } from "vitest";
-import { DECK_HOSTS, pluginSourceDir, resolveAppPath, resolvePluginsDir } from "./deck-hosts.mjs";
-import { linkPlugin, unlinkPlugin } from "./plugin-link.mjs";
+import { describe, expect, it } from "vitest";
+import {
+  DECK_HOSTS,
+  findHost,
+  hostNames,
+  pluginSourceDir,
+  resolveAppPath,
+  resolveAppPathSource,
+  resolvePluginsDir,
+  resolvePluginsDirSource,
+} from "./deck-hosts.mjs";
 
 const WIN = { platform: "win32" };
 const LINUX = { platform: "linux" };
-
-/** Collects console-shaped output so a script's messages can be asserted. */
-function fakeLog() {
-  return { log: vi.fn(), error: vi.fn() };
-}
-
-/** Every line the fake logger received, joined — order-independent matching. */
-function allOutput(log) {
-  return [...log.log.mock.calls, ...log.error.mock.calls].map((args) => args.join(" ")).join("\n");
-}
 
 describe("DECK_HOSTS", () => {
   it("keys match each host's own id", () => {
@@ -31,10 +29,52 @@ describe("DECK_HOSTS", () => {
     }
   });
 
+  it("gives every host both default resolvers", () => {
+    // These used to be id-keyed maps beside the descriptors. A host added or
+    // renamed in one place and not the other resolved to `undefined` and threw
+    // a TypeError — on Windows only, so CI stayed green. Keeping them ON the
+    // descriptor makes that drift impossible; this test pins it.
+    for (const host of Object.values(DECK_HOSTS)) {
+      expect(typeof host.defaultPluginsDir).toBe("function");
+      expect(typeof host.defaultAppPath).toBe("function");
+    }
+  });
+
+  it("describes every field the scripts actually read", () => {
+    for (const host of Object.values(DECK_HOSTS)) {
+      for (const field of ["label", "linkScript", "unlinkScript", "examplePluginsDir", "exampleAppPath"]) {
+        expect(typeof host[field]).toBe("string");
+        expect(host[field]).not.toBe("");
+      }
+    }
+  });
+
+  it("names pnpm scripts that follow the host's own id", () => {
+    // Messages build script names from the descriptor rather than by
+    // concatenation, so these must agree with the root package.json entries.
+    for (const host of Object.values(DECK_HOSTS)) {
+      expect(host.linkScript).toBe(`link:${host.id}`);
+      expect(host.unlinkScript).toBe(`unlink:${host.id}`);
+    }
+  });
+
   it("keeps the Ulanzi plugin folder on the host's *.ulanziPlugin scan suffix", () => {
     // UlanziStudio only scans folders ending in `.ulanziPlugin`; renaming this
     // silently stops the host from ever seeing the plugin.
     expect(DECK_HOSTS.ulanzi.pluginFolder).toMatch(/\.ulanziPlugin$/);
+  });
+});
+
+describe("findHost", () => {
+  it("resolves a known host and returns undefined otherwise", () => {
+    expect(findHost("ulanzi")).toBe(DECK_HOSTS.ulanzi);
+    expect(findHost("nope")).toBeUndefined();
+    expect(findHost(undefined)).toBeUndefined();
+  });
+
+  it("lists the valid names for an error message", () => {
+    expect(hostNames()).toContain("ulanzi");
+    expect(hostNames()).toContain("mirabox");
   });
 });
 
@@ -43,6 +83,7 @@ describe("resolvePluginsDir", () => {
     const env = { MIRABOX_PLUGINS_DIR: "D:\\custom", APPDATA: "C:\\Users\\me\\AppData\\Roaming" };
 
     expect(resolvePluginsDir(DECK_HOSTS.mirabox, { env, ...WIN })).toBe("D:\\custom");
+    expect(resolvePluginsDirSource(DECK_HOSTS.mirabox, { env, ...WIN }).source).toBe("env");
   });
 
   it("derives the Windows default from APPDATA", () => {
@@ -54,11 +95,23 @@ describe("resolvePluginsDir", () => {
     expect(resolvePluginsDir(DECK_HOSTS.ulanzi, { env, ...WIN })).toBe(
       join(env.APPDATA, "Ulanzi", "UlanziDeck", "Plugins"),
     );
+    expect(resolvePluginsDirSource(DECK_HOSTS.ulanzi, { env, ...WIN }).source).toBe("default");
+  });
+
+  it("treats a blank environment variable as unset rather than as a path", () => {
+    // `FOO=` in .env.local previously passed `??` as "", which suppressed the
+    // platform default and then reported "not set and no default derived".
+    const env = { ULANZI_PLUGINS_DIR: "   ", APPDATA: join("C:", "Users", "me", "AppData", "Roaming") };
+
+    expect(resolvePluginsDir(DECK_HOSTS.ulanzi, { env, ...WIN })).toBe(
+      join(env.APPDATA, "Ulanzi", "UlanziDeck", "Plugins"),
+    );
   });
 
   it("derives nothing off Windows, or without APPDATA", () => {
     expect(resolvePluginsDir(DECK_HOSTS.ulanzi, { env: { APPDATA: "C:\\x" }, ...LINUX })).toBeUndefined();
     expect(resolvePluginsDir(DECK_HOSTS.ulanzi, { env: {}, ...WIN })).toBeUndefined();
+    expect(resolvePluginsDirSource(DECK_HOSTS.ulanzi, { env: {}, ...WIN }).source).toBe("none");
   });
 });
 
@@ -82,7 +135,7 @@ describe("resolveAppPath", () => {
 
   it("derives nothing off Windows, or without ProgramFiles(x86)", () => {
     expect(resolveAppPath(DECK_HOSTS.mirabox, { env: { "ProgramFiles(x86)": "C:\\x" }, ...LINUX })).toBeUndefined();
-    expect(resolveAppPath(DECK_HOSTS.mirabox, { env: {}, ...WIN })).toBeUndefined();
+    expect(resolveAppPathSource(DECK_HOSTS.mirabox, { env: {}, ...WIN }).source).toBe("none");
   });
 });
 
@@ -91,42 +144,5 @@ describe("pluginSourceDir", () => {
     expect(pluginSourceDir(DECK_HOSTS.ulanzi, join("C:", "repo"))).toBe(
       join("C:", "repo", "packages", "iracing-plugin-ulanzi", "com.ulanzi.iracedeck.ulanziPlugin"),
     );
-  });
-});
-
-describe("linkPlugin", () => {
-  it("fails naming the env var and an example when nothing resolves", () => {
-    const log = fakeLog();
-
-    expect(linkPlugin(DECK_HOSTS.ulanzi, { root: join("C:", "repo"), env: {}, ...LINUX, log })).toBe(1);
-    expect(allOutput(log)).toContain("ULANZI_PLUGINS_DIR");
-    expect(allOutput(log)).toContain(DECK_HOSTS.ulanzi.examplePluginsDir);
-  });
-
-  it("fails when the plugin has not been built", () => {
-    const log = fakeLog();
-    const env = { ULANZI_PLUGINS_DIR: join("C:", "nope", "plugins") };
-
-    expect(linkPlugin(DECK_HOSTS.ulanzi, { root: join("C:", "no-such-repo"), env, ...WIN, log })).toBe(1);
-    expect(allOutput(log)).toContain("is not built");
-    // Names the missing build output, not merely the folder.
-    expect(allOutput(log)).toContain(join("bin", "plugin.js"));
-  });
-});
-
-describe("unlinkPlugin", () => {
-  it("is a no-op when no destination resolves", () => {
-    const log = fakeLog();
-
-    expect(unlinkPlugin(DECK_HOSTS.mirabox, { root: join("C:", "repo"), env: {}, ...LINUX, log })).toBe(0);
-    expect(allOutput(log)).toContain("nothing to unlink");
-  });
-
-  it("is a no-op when nothing is linked", () => {
-    const log = fakeLog();
-    const env = { ULANZI_PLUGINS_DIR: join("C:", "definitely", "not", "here") };
-
-    expect(unlinkPlugin(DECK_HOSTS.ulanzi, { root: join("C:", "repo"), env, ...WIN, log })).toBe(0);
-    expect(allOutput(log)).toContain("nothing to unlink");
   });
 });

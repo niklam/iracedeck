@@ -6,17 +6,34 @@
  * Windows uses a **junction** rather than a symlink so linking needs neither
  * administrator rights nor developer mode. Verified 2026-08-28: UlanziStudio
  * loads a plugin through a junction, same as the Mirabox host.
+ *
+ * Every function returns a process exit code instead of calling `process.exit`,
+ * so the behaviour is testable and the caller owns termination.
  */
-import { existsSync, lstatSync, readdirSync, rmSync, symlinkSync, unlinkSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, renameSync, symlinkSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
-import { pluginSourceDir, resolvePluginsDir } from "./deck-hosts.mjs";
+import { pluginSourceDir, resolvePluginsDirSource } from "./deck-hosts.mjs";
 import { loadEnvLocal } from "./env-local.mjs";
+
+/** Log files the plugin's FileSink writes: `<YYYY.M.D>.log`, unpadded. */
+const LOG_FILE_PATTERN = /^\d{4}\.\d{1,2}\.\d{1,2}\.log$/;
+
+/**
+ * Explains a filesystem failure in terms of the thing that actually causes it
+ * here. A running host holds `bin/plugin.js` and its own log file open, and the
+ * dev loop tells you to stop it first — so EBUSY/EPERM is the expected error,
+ * not an exotic one, and deserves the fix rather than a stack trace.
+ */
+function describeFsError(error, host, verb) {
+  if (error.code === "EBUSY" || error.code === "EPERM" || error.code === "EACCES") {
+    return `Error: could not ${verb} — the ${host.label} host is probably still running and holding files open.\n  Run \`pnpm stop:${host.id}\` first.\n  (${error.code}: ${error.message})`;
+  }
+
+  return `Error: could not ${verb}.\n  ${error.message}`;
+}
 
 /**
  * Junction-links the built plugin folder into the host's plugins directory.
- *
- * Fails fast, and returns a process exit code rather than calling `process.exit`
- * so the behaviour is testable.
  *
  * @param {import("./deck-hosts.mjs").DeckHost} host
  * @returns {number} 0 on success, 1 on any handled failure.
@@ -24,7 +41,7 @@ import { loadEnvLocal } from "./env-local.mjs";
 export function linkPlugin(host, { root, env = process.env, platform = process.platform, log = console } = {}) {
   loadEnvLocal(root, env);
 
-  const dest = resolvePluginsDir(host, { env, platform });
+  const { path: dest, source } = resolvePluginsDirSource(host, { env, platform });
   if (!dest) {
     log.error(`Error: ${host.pluginsDirEnv} is not set and no default could be derived.`);
     log.error("Set it in your shell or in .env.local at the repo root, e.g.:");
@@ -33,11 +50,11 @@ export function linkPlugin(host, { root, env = process.env, platform = process.p
     return 1;
   }
 
-  const source = pluginSourceDir(host, root);
+  const source_ = pluginSourceDir(host, root);
   // Build output — presence confirms the plugin has actually been built. The
   // plugin folder itself has manifest.json and icons checked in, so the folder
   // existing does not mean a build has run.
-  const builtEntry = join(source, "bin", "plugin.js");
+  const builtEntry = join(source_, "bin", "plugin.js");
   if (!existsSync(builtEntry)) {
     log.error(`Error: ${host.label} plugin is not built. Run \`pnpm build\` first.\n  Missing: ${builtEntry}`);
 
@@ -45,7 +62,14 @@ export function linkPlugin(host, { root, env = process.env, platform = process.p
   }
 
   if (!existsSync(dest)) {
-    log.error(`Error: ${host.pluginsDirEnv} does not exist:\n  ${dest}`);
+    // Naming the env var here would be wrong when the path came from the
+    // platform default — the user never set anything to be at fault for.
+    log.error(`Error: the ${host.label} plugins directory does not exist:\n  ${dest}`);
+    log.error(
+      source === "env"
+        ? `  That path comes from ${host.pluginsDirEnv}. Check it points at your host's plugins folder.`
+        : `  That is the default location. If your host is installed elsewhere, set ${host.pluginsDirEnv} in .env.local.`,
+    );
 
     return 1;
   }
@@ -62,16 +86,22 @@ export function linkPlugin(host, { root, env = process.env, platform = process.p
   }
 
   // Use "junction" on Windows to avoid requiring admin / developer mode.
-  const type = platform === "win32" ? "junction" : "dir";
-  symlinkSync(source, link, type);
-  log.log(`Linked ${source}\n     -> ${link}`);
+  try {
+    symlinkSync(source_, link, platform === "win32" ? "junction" : "dir");
+  } catch (error) {
+    log.error(describeFsError(error, host, `create the link at ${link}`));
+
+    return 1;
+  }
+
+  log.log(`Linked ${source_}\n     -> ${link}`);
 
   return 0;
 }
 
 /**
- * Removes the link created by `linkPlugin`, or a real plugin directory the host
- * installed from a packaged build. Tolerates the not-linked state.
+ * Removes the link created by `linkPlugin`. A real directory (a packaged build
+ * the host installed) is **moved aside, not deleted** — see `moveAside`.
  *
  * @param {import("./deck-hosts.mjs").DeckHost} host
  * @returns {number}
@@ -79,7 +109,7 @@ export function linkPlugin(host, { root, env = process.env, platform = process.p
 export function unlinkPlugin(host, { root, env = process.env, platform = process.platform, log = console } = {}) {
   loadEnvLocal(root, env);
 
-  const dest = resolvePluginsDir(host, { env, platform });
+  const dest = resolvePluginsDirSource(host, { env, platform }).path;
   if (!dest) {
     log.log(`${host.pluginsDirEnv} not set — nothing to unlink.`);
 
@@ -98,41 +128,74 @@ export function unlinkPlugin(host, { root, env = process.env, platform = process
     return 0;
   }
 
-  // Branch on entry type. `rmSync(..., { recursive, force })` on a Windows
-  // junction with a missing target silently no-ops (recurse fails, force
-  // swallows the error, the junction itself is never unlinked). So unlink
-  // symlinks/junctions explicitly; only recursively remove real directories.
+  // Branch on entry type. A symlink/junction is unlinked directly: `rmSync`
+  // with `recursive` on a Windows junction whose target is missing silently
+  // no-ops (recurse fails, force swallows the error, the junction survives).
   if (stat.isSymbolicLink()) {
-    unlinkSync(link);
-  } else {
-    // A real directory: a packaged build the host installed, or a hand-made
-    // copy. This deletes real files, so say so rather than doing it silently.
-    log.log(`${link}\n  is a real directory, not a link — deleting it and everything inside it.`);
-    warnAboutLogs(link, log);
-    rmSync(link, { recursive: true, force: true });
+    try {
+      unlinkSync(link);
+    } catch (error) {
+      log.error(describeFsError(error, host, `remove the link at ${link}`));
+
+      return 1;
+    }
+
+    log.log(`Removed ${link}`);
+
+    return 0;
   }
 
-  log.log(`Removed ${link}`);
+  return moveAside(host, link, log);
+}
+
+/**
+ * Renames a real plugin directory out of the way instead of deleting it.
+ *
+ * The spec originally had this as `rmSync(recursive, force)`, announced in the
+ * output. Two things argued it down: the folder holds the plugin's own `log/`
+ * files, which are routinely the evidence someone is mid-diagnosis on and are
+ * unrecoverable; and `relink` runs inside `switch-test-env`, where a printed
+ * warning scrolls past thousands of build lines unread. A rename costs one
+ * stale folder and removes the irreversible step entirely.
+ *
+ * The suffix deliberately breaks the host's scan pattern (`*.sdPlugin` /
+ * `*.ulanziPlugin`), so the moved-aside copy is never loaded as a second plugin.
+ */
+function moveAside(host, link, log) {
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const aside = `${link}.replaced-${stamp}`;
+
+  try {
+    renameSync(link, aside);
+  } catch (error) {
+    log.error(describeFsError(error, host, `move aside the existing directory at ${link}`));
+
+    return 1;
+  }
+
+  log.log(`${link}\n  was a real directory, not a link — moved aside rather than deleted:\n  -> ${aside}`);
+  reportPreservedLogs(aside, log);
 
   return 0;
 }
 
 /**
- * The plugin writes its per-day logs inside its own folder, so a real-directory
- * removal takes them with it — and those logs are often the evidence someone is
- * mid-diagnosis on. Once linked, logs land in the worktree instead.
+ * Points at the plugin logs carried along by the move, so someone mid-diagnosis
+ * knows where they went. Counts only the `<YYYY.M.D>.log` files the FileSink
+ * actually writes — `readdirSync().length` would count subdirectories too and
+ * report a number that does not mean what it says.
  */
-function warnAboutLogs(link, log) {
-  const logDir = join(link, "log");
+function reportPreservedLogs(aside, log) {
+  const logDir = join(aside, "log");
   if (!existsSync(logDir)) return;
 
-  let count;
+  let count = 0;
   try {
-    count = readdirSync(logDir).length;
+    count = readdirSync(logDir).filter((name) => LOG_FILE_PATTERN.test(name)).length;
   } catch {
     return;
   }
   if (count === 0) return;
 
-  log.log(`  note: ${count} plugin log file(s) in log\\ go with it — copy them out first if you need them.`);
+  log.log(`  ${count} plugin log file(s) preserved in that folder; delete it once you no longer need them.`);
 }

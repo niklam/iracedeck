@@ -15,4 +15,4 @@ import { unlinkPlugin } from "./lib/plugin-link.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-process.exit(unlinkPlugin(DECK_HOSTS.ulanzi, { root }));
+process.exitCode = unlinkPlugin(DECK_HOSTS.ulanzi, { root });

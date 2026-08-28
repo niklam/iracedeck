@@ -17,4 +17,4 @@ import { linkPlugin } from "./lib/plugin-link.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-process.exit(linkPlugin(DECK_HOSTS.ulanzi, { root }));
+process.exitCode = linkPlugin(DECK_HOSTS.ulanzi, { root });

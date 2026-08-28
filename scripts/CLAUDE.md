@@ -27,7 +27,13 @@ Elgato is absent from all of these on purpose: its linking uses the `streamdeck`
 - `link-ulanzi.mjs` / `unlink-ulanzi.mjs` — the Ulanzi equivalents (default `%APPDATA%\Ulanzi\UlanziDeck\Plugins`; override with `ULANZI_PLUGINS_DIR`). Added in #1040.
 - `host-app.mjs` — `pnpm start:ulanzi` / `stop:ulanzi` / `start:mirabox` / `stop:mirabox`, dispatched as `node scripts/host-app.mjs <start|stop> <host>`. The executable comes from `ULANZI_APP_PATH` / `MIRABOX_APP_PATH` with a `%ProgramFiles(x86)%` default, because two Mirabox-compatible hosts are commonly installed side by side (StreamDock, VSD Craft). `start` first prints which worktree the link points at — the junction serves exactly ONE checkout, which is the usual cause of "my fix isn't working".
 
-All four link scripts are thin descriptors over `lib/plugin-link.mjs`; the behaviour lives there, not in the per-host files. Two subtleties in that module are load-bearing and must survive any edit: `lstat` rather than `exists` throughout, so a dangling junction whose target is gone is still detected; and the unlink branch on entry type, because `rmSync(recursive)` on a Windows junction with a missing target silently no-ops and leaves the junction behind.
+All four link scripts are thin descriptors over `lib/plugin-link.mjs`, and `host-app.mjs` is argv handling over `lib/host-control.mjs`; the behaviour lives in `lib/`, not in the entry files. Every lib function takes injected `env`/`platform`/`log` and **returns an exit code instead of calling `process.exit`**, which is what makes it testable — follow that shape when adding to them. The entry scripts set `process.exitCode` rather than calling `process.exit`, because a Windows TTY's stdout is asynchronous and exiting outright can truncate the line naming which worktree now owns the host.
+
+Three subtleties there are load-bearing and must survive any edit:
+
+- `lstat` rather than `exists` throughout, so a dangling junction whose target is gone is still detected.
+- The unlink branch on entry type. A junction gets `unlinkSync`; a **real** directory is **moved aside** to `<folder>.replaced-<timestamp>`, never deleted. (`rmSync(recursive)` on a Windows junction with a missing target silently no-ops and leaves the junction behind, which is why the branch exists at all; the move-aside is because the folder carries the plugin's own logs and `relink` runs inside `switch-test-env`, where a printed warning scrolls past unread.) The aside suffix must keep breaking the host's `*.sdPlugin` / `*.ulanziPlugin` scan pattern.
+- `taskkill` exit codes: 0 stopped, **128 = not running**, anything else is a genuine failure. Collapsing the last two reports a refused kill as success, and the build then hits the EPERM the stop step exists to prevent.
 
 **The dev loop's order is not arbitrary.** `pnpm stop:<host> && pnpm switch-test-env:<host> && pnpm start:<host>`: the host must stop before the **build**, not before the relink, because a running host locks `iracing_native.node` and the build fails with EPERM. And both hosts read their plugins directory at start only, so a relink without a restart changes nothing.
 
@@ -37,7 +43,7 @@ All four link scripts are thin descriptors over `lib/plugin-link.mjs`; the behav
 
 ## Structure
 
-- `lib/` — shared helpers with colocated `.test.mjs` siblings: `version-discovery.mjs` (package/manifest discovery used by the release bump and the manifest tests), `changelog-stamp.mjs`, `deck-hosts.mjs` (host descriptors + the pure path resolvers), `plugin-link.mjs` (the shared link/unlink core), `env-local.mjs` (`.env.local` loading, shell wins).
+- `lib/` — shared helpers with colocated `.test.mjs` siblings: `version-discovery.mjs` (package/manifest discovery used by the release bump and the manifest tests), `changelog-stamp.mjs`, `deck-hosts.mjs` (host descriptors + the pure path resolvers), `plugin-link.mjs` (the shared link/unlink core), `host-control.mjs` (start/stop), `env-local.mjs` (`.env.local` loading, shell wins).
 - `data/` — script-owned inputs, e.g. `icon-title-defaults.json` (consumed by `add-title-metadata-to-icons.mjs`).
 - `radio-effect/` — self-contained ffmpeg clip-processing spike with its own README; not wired into any build.
 - `local/` — Personal automation scripts, excluded from version control via `.gitignore`. Each developer can place their own scripts here without affecting the repository.
