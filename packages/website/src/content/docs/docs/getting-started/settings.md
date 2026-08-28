@@ -148,7 +148,7 @@ A key's Property Inspector is now about that key. It has its own settings at the
 
 Actions that use no key bindings at all say so instead of showing an empty section.
 
-Bindings edited in either place are the same settings: on Stream Deck and Mirabox, change one and the other updates live. On Ulanzi Deck that link is still pending confirmation — see [Where Your Settings Are Stored](#where-your-settings-are-stored) — so set bindings from the Settings window there.
+Bindings edited in either place are the same settings: change one and the other updates live. Both surfaces read and write the same file — see [Where Your Settings Are Stored](#where-your-settings-are-stored).
 
 ## If the Window Doesn't Open
 
@@ -189,7 +189,7 @@ iRaceDeck keeps every setting on this page — and the key bindings shown in eac
 
 The **Diagnostics** tab shows the exact path for your installation and has an **Open folder** button that reveals the file in Explorer.
 
-The first time you start a version that stores settings this way, iRaceDeck copies your existing settings over from the deck software automatically — there is nothing to do. From then on your settings live with you rather than inside the deck software's own storage, so they survive plugin updates and reinstalls. The window and the Property Inspectors share that one file, which is why a binding changed in either shows up in the other straight away on Stream Deck and Mirabox; on Ulanzi Deck the Property Inspector side of that live sync is pending confirmation that UlanziStudio's in-session settings read works, so until then a Property Inspector there falls back to the deck software's own copy — it still displays fine, but a key binding changed in it does not reach the plugin; set bindings from the Settings window on Ulanzi Deck. The deck software keeps a copy too: iRaceDeck refreshes it once every time the plugin starts, so nothing is taken away from it and an older iRaceDeck version installed later still finds your settings where it expects them. The one exception is a start on which the deck software has not yet answered iRaceDeck's first read of your existing settings — that refresh waits until it does, so a copy iRaceDeck has not seen is never overwritten.
+The first time you start a version that stores settings this way, iRaceDeck copies your existing settings over from the deck software automatically — there is nothing to do. From then on your settings live with you rather than inside the deck software's own storage, so they survive plugin updates and reinstalls. The window and the Property Inspectors share that one file, which is why a binding changed in either shows up in the other straight away. The deck software keeps a copy too: iRaceDeck refreshes it once every time the plugin starts, so nothing is taken away from it and an older iRaceDeck version installed later still finds your settings where it expects them. That refresh holds off while iRaceDeck is still waiting for the deck software to answer its first read of your existing settings, so a copy it has not read is left alone in the meantime. If the answer never comes at all, iRaceDeck settles after a few startups for the settings it already has, and the refresh goes ahead from then on.
 
 To back up your configuration, copy that one file somewhere safe; to restore it, put it back and restart the deck software. Each deck ecosystem gets its own folder, so a Stream Deck and an Ulanzi Deck installation on the same PC never share settings.
 
