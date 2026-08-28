@@ -542,8 +542,9 @@ export function starterToggleState(telemetry: TelemetryData | null): ToggleState
 
 /**
  * Power-symbol artwork for the Ignition key, carried over from the static icon and
- * drawn between the single-line title and the status bar (the usable band is roughly
- * y 32..96: the title baseline sits at 26 and the bar starts at 100).
+ * sized to whatever band is left for it: y 32..96 under the one-line title (whose
+ * baseline sits at 26), or y 8..96 when the title is hidden. The status bar always
+ * starts at 100.
  *
  * The glyph takes the STATE colour rather than the icon's `graphic1Color`, so the state
  * is legible from the artwork and not only from the frame around it. That deliberately
@@ -555,12 +556,19 @@ export function starterToggleState(telemetry: TelemetryData | null): ToggleState
  *
  * @internal Exported for testing
  */
-export function ignitionArtwork(state: ToggleState): string {
+export function ignitionArtwork(state: ToggleState, showTitle: boolean): string {
   const color = borderColorForState(state);
+  // Two measured geometries, exactly as the Starter badge has two. The symbol fits the
+  // band under a one-line title when there is one, and grows into the whole area above
+  // the status bar when there is not — otherwise hiding the title leaves the glyph
+  // stranded at its small size under an empty strip.
+  const g = showTitle
+    ? { left: 58.2, right: 85.8, endY: 46.6, r: 25, top: 35, bottom: 62.7, stroke: 9 }
+    : { left: 54, right: 90, endY: 30.2, r: 33, top: 15.2, bottom: 51.2, stroke: 12 };
 
   return `
-    <path d="M58.2,46.6 A25,25,0,1,0,85.8,46.6" fill="none" stroke="${color}" stroke-width="9" stroke-linecap="round"/>
-    <line x1="72" y1="35" x2="72" y2="62.7" stroke="${color}" stroke-width="9" stroke-linecap="round"/>`;
+    <path d="M${g.left},${g.endY} A${g.r},${g.r},0,1,0,${g.right},${g.endY}" fill="none" stroke="${color}" stroke-width="${g.stroke}" stroke-linecap="round"/>
+    <line x1="72" y1="${g.top}" x2="72" y2="${g.bottom}" stroke="${color}" stroke-width="${g.stroke}" stroke-linecap="round"/>`;
 }
 
 /**
@@ -829,7 +837,9 @@ export function generateCarControlSvg(
     // the artwork can still be hidden, and so the Starter badge can size itself around a
     // title the user opted back in to.
     const resolvedTitle = resolveTitleSettings(template, getGlobalTitleSettings(), settings.titleOverrides);
-    const artwork = isIgnition ? ignitionArtwork(state) : starterArtwork(state, resolvedTitle.showTitle);
+    const artwork = isIgnition
+      ? ignitionArtwork(state, resolvedTitle.showTitle)
+      : starterArtwork(state, resolvedTitle.showTitle);
 
     return generateToggleStateSvg({
       template,

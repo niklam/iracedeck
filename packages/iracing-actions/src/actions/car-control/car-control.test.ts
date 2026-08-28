@@ -567,14 +567,27 @@ describe("CarControl", () => {
 
     it("should colour the ignition glyph by state, so the state reads from the artwork", () => {
       for (const [state, color] of Object.entries(STATE_COLORS)) {
-        expect(ignitionArtwork(state as any)).toContain(color);
+        expect(ignitionArtwork(state as any, true)).toContain(color);
       }
     });
 
     it("should give the ignition glyph a different colour in every state", () => {
-      const rendered = (["on", "off", "na"] as const).map((s) => ignitionArtwork(s));
+      const rendered = (["on", "off", "na"] as const).map((s) => ignitionArtwork(s, true));
 
       expect(new Set(rendered).size).toBe(3);
+    });
+
+    it("should grow the ignition glyph into the band a hidden title frees up", () => {
+      // Regression (found on hardware): the glyph had ONE fixed size, so hiding the title
+      // left it small under an empty strip while the Starter badge beside it resized
+      // correctly. Assert the rendered geometry differs, not merely that the argument is
+      // accepted — passing showTitle and ignoring it would satisfy the weaker check.
+      const withTitle = ignitionArtwork("on", true);
+      const without = ignitionArtwork("on", false);
+
+      expect(withTitle).toContain("A25,25,");
+      expect(without).toContain("A33,33,");
+      expect(without).not.toBe(withTitle);
     });
 
     it("should dim the starter badge whenever the engine is not confirmed running", () => {
@@ -601,13 +614,26 @@ describe("CarControl", () => {
       expect(withTitle).not.toBe(without);
     });
 
-    it("should keep both glyphs clear of the status bar", () => {
-      // The bar occupies y >= 100. Nothing in either glyph may reach it.
-      const ys = (svg: string) => [...svg.matchAll(/(?:cy|y1|y2|y)="([\d.]+)"/g)].map((m) => Number(m[1]));
-      const starterBottom = 53 + 39; // cy + r, the untitled badge
+    it("should keep every glyph variant clear of the status bar", () => {
+      // The bar occupies y >= 100 and no variant of either glyph may reach it. The arc's
+      // lowest point is its centre plus the radius plus half the stroke, so it is computed
+      // from the rendered path rather than read off a coordinate.
+      const arcBottom = (svg: string) => {
+        const m = svg.match(/M([\d.]+),([\d.]+) A([\d.]+),[\d.]+,0,1,0,([\d.]+),/)!;
+        const left = Number(m[1]);
+        const endY = Number(m[2]);
+        const r = Number(m[3]);
+        const right = Number(m[4]);
+        const stroke = Number(svg.match(/stroke-width="([\d.]+)"/)![1]);
+        const halfChord = (right - left) / 2;
 
-      expect(Math.max(...ys(ignitionArtwork("on")))).toBeLessThan(100);
-      expect(starterBottom).toBeLessThan(100);
+        return endY + Math.sqrt(r * r - halfChord * halfChord) + r + stroke / 2;
+      };
+
+      expect(arcBottom(ignitionArtwork("on", true))).toBeLessThan(100);
+      expect(arcBottom(ignitionArtwork("on", false))).toBeLessThan(100);
+      expect(53 + 39).toBeLessThan(100); // untitled starter badge, cy + r
+      expect(62 + 32).toBeLessThan(100); // titled starter badge
     });
   });
 
