@@ -33,6 +33,7 @@ High-level guidance
 
 - Follow rule files in `.claude/rules/` for granular conventions.
 - **Working an issue? Start with `.claude/rules/issue-workflow.md`** — it is the ordered pipeline from filing the issue to merging the PR, and it names the steps that are gates rather than suggestions.
+- **Prefer delegating to subagents.** Work that means reading across many files — a search, an audit, a survey of how something is done — belongs in an `Agent` rather than inline: the subagent's tool output stays out of the main context and only its conclusion comes back, so a task that would cost twenty file reads costs a paragraph. The main agent **chooses the model for each subagent** (`opus`, `sonnet`, `haiku`, `fable`) and should match it to the work rather than letting it default. One constraint worth knowing: `model` is ignored for `subagent_type: "fork"`, which always inherits the parent's model — so a deliberate model choice means spawning a fresh agent, not a fork. Multi-agent *workflows* are a separate, much heavier tier and still need an explicit per-use request; "prefer subagents" is not a standing authorisation for them.
 - Keep rules focused: one topic per markdown file.
 - Use `paths` frontmatter in rules when a rule applies only to certain files.
 - **Keep documentation in sync with reality.** When code changes alter conventions, patterns, APIs, or workflows described in any `CLAUDE.md` or `.claude/rules/` file, update those files in the same change. Stale instructions cause repeated mistakes.
