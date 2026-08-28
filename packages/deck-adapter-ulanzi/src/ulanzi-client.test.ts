@@ -533,6 +533,23 @@ describe("UlanziClient outbound commands", () => {
     expect(sentMessages()).toContainEqual({ cmd: "getGlobalSettings", uuid: "com.x.action", key: "5", actionid: "a" });
   });
 
+  it("addresses a context whose own actionid is empty, rather than sending an unanswerable read (#1041)", async () => {
+    // frameContext builds the context from `String(frame.actionid ?? "")`, so an
+    // `add` frame that omitted the field yields a TRUTHY context decoding to an
+    // empty actionid. The adapter spends its one-shot re-drive flag before the
+    // send, so an unaddressed re-drive would burn the last fallback on a frame
+    // the host discards. The PI bridge guards the same way.
+    const client = await connected();
+    client.requestGlobalSettings("com.x.action___5___");
+
+    expect(sentMessages()).toContainEqual({
+      cmd: "getGlobalSettings",
+      uuid: "com.x.action",
+      key: "5",
+      actionid: PLUGIN_READ_ACTIONID,
+    });
+  });
+
   it("openUrl sends an openurl frame", async () => {
     const client = await connected();
     client.openUrl("https://iracedeck.com/");
@@ -623,6 +640,25 @@ describe("UlanziClient.requestGlobalSettings before the socket is open (#1041)",
     vi.clearAllMocks();
   });
 
+  it("reports the skipped read at INFO, so it survives a log from a user without debug logging", () => {
+    // The whole point of the line is that #1041 was diagnosed through a log in
+    // which this drop was invisible. `debugLogging` is applied from the
+    // schema-DEFAULT cache at startup and the persisted value only arrives
+    // after the store is ready — strictly after this read — so a debug line
+    // would be suppressed for exactly the user whose log we would need. This
+    // is the only observable difference between the guard and send()'s own
+    // readyState check, so without this assertion the guard has no coverage.
+    const info = vi.fn();
+    const debug = vi.fn();
+    const logger = { info, warn: vi.fn(), error: vi.fn(), debug, createScope: vi.fn() };
+    const client = new UlanziClient(params, logger as never, () => {});
+
+    client.requestGlobalSettings();
+
+    expect(info).toHaveBeenCalledOnce();
+    expect(debug).not.toHaveBeenCalled();
+  });
+
   it("sends nothing when no socket exists yet, and does not throw", async () => {
     // deck-core's one-time migration read fires as soon as the missing
     // settings file resolves, which is before connect() has opened the socket.
@@ -636,8 +672,10 @@ describe("UlanziClient.requestGlobalSettings before the socket is open (#1041)",
 
   it("does not stash the read — the connect-time read asks in its place, exactly once", async () => {
     // A stash like setGlobalSettings' would put a duplicate frame on the wire:
-    // the open handler already issues this same read, and deck-core accepts
-    // the first reply that arrives rather than correlating it to a request.
+    // the open handler already issues this same read. (deck-core's own read is
+    // a separate frame and deliberately kept — it is what completes the
+    // migration in the ordering where the socket opens first, since deck-core
+    // ignores any reply that arrives before it asked.)
     const client = new UlanziClient(params, undefined, () => {});
 
     client.requestGlobalSettings();
@@ -651,7 +689,7 @@ describe("UlanziClient.requestGlobalSettings before the socket is open (#1041)",
     ]);
   });
 
-  it("sends nothing while the socket is CONNECTING", async () => {
+  it("sends nothing while the socket is CONNECTING, then the addressed read lands once open", async () => {
     const client = new UlanziClient(params, undefined, () => {});
     await client.connect();
     lastSocket.readyState = 0; // CONNECTING
@@ -659,5 +697,12 @@ describe("UlanziClient.requestGlobalSettings before the socket is open (#1041)",
     client.requestGlobalSettings();
 
     expect(lastSocket.sent).toEqual([]);
+
+    lastSocket.readyState = WS_OPEN;
+    lastSocket.emit("open");
+
+    expect(sentMessages().filter((m) => m.cmd === "getGlobalSettings")).toEqual([
+      { cmd: "getGlobalSettings", uuid: PLUGIN_UUID, key: "", actionid: PLUGIN_READ_ACTIONID },
+    ]);
   });
 });
