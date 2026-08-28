@@ -10,8 +10,19 @@
  * the EPERM-on-iracing_native.node failure the stop step exists to prevent.
  */
 import { lstatSync, readlinkSync } from "node:fs";
-import { basename, join } from "node:path";
+import { join, win32 } from "node:path";
 import { resolvePluginsDirSource } from "./deck-hosts.mjs";
+
+/**
+ * Host executable paths are always Windows paths — these scripts bail out on
+ * any other platform — so the filename must be parsed with the Windows rules
+ * regardless of what is running the code. Plain `basename` splits on `/` only
+ * when running on POSIX, which turns `C:\...\UlanziDeck.exe` into the whole
+ * string and would hand `taskkill` a nonsense image name. It also runs on the
+ * Linux CI box, where the tests would otherwise be asserting POSIX behaviour
+ * that production never sees.
+ */
+const exeName = (appPath) => win32.basename(appPath);
 
 /** `taskkill` exit codes: 0 = terminated, 128 = no such process, else = failure. */
 export const TASKKILL_NOT_FOUND = 128;
@@ -38,7 +49,7 @@ export function interpretTaskkill(status) {
  *   running"), 1 when the kill was attempted and refused.
  */
 export function stopHost(host, { appPath, spawnSync, log = console } = {}) {
-  const image = basename(appPath);
+  const image = exeName(appPath);
   const result = spawnSync("taskkill", ["/IM", image, "/F"], { encoding: "utf8", windowsHide: true });
 
   if (result.error) {
@@ -98,7 +109,7 @@ export function startHost(host, { appPath, spawn, env = process.env, platform = 
     });
 
     child.on("spawn", () => {
-      log.log(`Started ${basename(appPath)}.`);
+      log.log(`Started ${exeName(appPath)}.`);
       child.unref();
       resolve(0);
     });
