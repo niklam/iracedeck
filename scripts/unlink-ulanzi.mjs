@@ -4,9 +4,9 @@
  * directory UlanziStudio installed from a packaged build (#1040).
  * Tolerates the not-linked state (exits 0 with an info message).
  *
- * The first run on a machine that has only ever had a packaged install deletes
- * a real directory, including the plugin's own `log/` files — the script says so
- * before doing it.
+ * The first run on a machine that has only ever had a packaged install meets a
+ * real directory rather than a link. It is moved aside to a timestamped
+ * `.replaced-*` path, never deleted, so the plugin's own `log/` files survive.
  */
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";

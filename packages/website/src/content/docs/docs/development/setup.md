@@ -66,7 +66,7 @@ pnpm --filter @iracedeck/iracing-plugin-ulanzi run watch
 
 Stop the host **before** the build, not merely before the relink: a running UlanziStudio locks the native `iracing_native.node` and `pnpm build` fails with EPERM. UlanziStudio also reads its plugins directory only at start, so a relink always needs a restart to take effect.
 
-The junction points at exactly one worktree, so whoever linked last owns the host — `start:ulanzi` prints the current target to save you debugging someone else's build.
+The junction points at exactly one worktree, so the host belongs to whichever worktree ran the last **successful** link or relink — a link that failed because the destination was already occupied leaves the previous junction untouched. `start:ulanzi` prints the current target to save you debugging someone else's build.
 
 ## `.env.local`
 
