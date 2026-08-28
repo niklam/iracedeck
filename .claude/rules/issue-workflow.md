@@ -71,7 +71,7 @@ For a change with nothing runnable to test — a rules or docs change — the ga
 
 CodeRabbit is the reviewer. **Do not wait for a human code review** — the maintainer is the tester and the approver, not a second reviewer.
 
-Poll the PR, fix every finding **that holds — nitpicks included**, and reply to every thread citing the fix commit. Expect a fresh review after every push. Stop polling once the review is done.
+Poll the PR, fix every finding **that holds — nitpicks included**, and answer every thread: cite the fix commit where you applied it, the reasoning where you did not. Expect a fresh review after every push. Stop polling once the review is done.
 
 Nitpicks are in scope precisely because they are the ones it is tempting to wave through; "it's only a nitpick" is not a reason to skip one, and it is not a reason to apply one that is wrong either.
 
