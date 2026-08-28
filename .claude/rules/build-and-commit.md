@@ -40,6 +40,8 @@ Branching & Worktrees
 
 Do not assume. Do not start coding until the user answers.
 
+**Exception — issue work is already settled (#1044).** An issue is solved in a worktree; don't re-ask per issue. The question above governs work that is *not* an issue, and the maintainer can still direct otherwise at any time. See `@.claude/rules/issue-workflow.md` for the full pipeline.
+
 ### Worktree workflow
 
 Worktrees are created as sibling directories of the main working tree (same parent directory), named `ir-<issue>`.
@@ -180,7 +182,7 @@ Merging
 - **Branch-to-branch merges are NOT squashed.** Release-branch back-merges and the periodic `master` ↔ `release/*` syncs use a regular merge (`gh pr merge --merge`, or a local `git merge`) — squashing one would collapse the other branch's whole history into a single commit and re-introduce its entire diff, causing avoidable conflicts on the next sync. See **Back-merging a release branch** below.
 - **PR titles must include the issue number** at the end in parentheses: `<type>(<scope>): <description> (#<issue>)`. Example: `feat(actions): add Camera Focus action (#42)`. Under squash-merge this title is the commit message that lands on the branch, so it must read as a complete commit subject.
 - **PR titles drive release notes.** The conventional commit prefix determines the release notes category via auto-labeling (see **PR Labels** above). Use the correct prefix so the change appears in the right section.
-- Merging is performed manually or by automation — never by a Claude review step.
+- Merging is performed manually or by automation, or by the agent driving the work once CodeRabbit has approved and checks are green (#1044) — but **never by a Claude review step**. Reviewing and merging stay separate hands.
 - **Update the changelog.** Any user-facing change merging to `master` or a `release/*` branch must update the changelog page (`packages/website/src/content/docs/changelog.mdx`) in the same PR, collapsing a feature and its follow-up fixes into a single line. See `@.claude/rules/changelog.md`.
 
 ### Post-merge worktree cleanup
