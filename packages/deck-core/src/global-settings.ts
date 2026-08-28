@@ -1217,12 +1217,19 @@ export const MIGRATION_PENDING_KEY = "_migrationPending";
  * Nor does the channel argument survive contact with the case: this marker is
  * only ever set when the host answered nothing, and a host that answers
  * nothing does not answer a Property Inspector's bootstrap read either — both
- * are the same `getGlobalSettings`. So the channel the mirror would carry is
- * unreachable by the only party that wants it, and suppressing the write costs
- * that install nothing it had.
+ * are the same `getGlobalSettings` with a non-empty `actionid`, and a live
+ * probe confirmed the host routes a fabricated one happily. So the channel the
+ * mirror would carry is unreachable by the only party that wants it, and
+ * suppressing the write costs that install nothing it had.
  *
- * A successful migration clears it, so a host that starts answering again
- * restores normal behaviour with no intervention.
+ * **It is permanent, and nothing here clears it.** Once set, the file carries
+ * no countdown, so every later start takes the `unanswered === 0` fast path
+ * and the host is never asked again — this store PRESERVES the copy it could
+ * not read, it does not restore it. The rescue is deleting the settings file,
+ * which re-runs the migration from scratch. Automatic recovery — re-asking
+ * once when the running plugin version differs from the one that gave up — is
+ * tracked separately; do not add it here by making the mirror gate
+ * conditional, which is how it would silently stop guarding.
  */
 export const MIGRATION_ABANDONED_KEY = "_migrationAbandoned";
 
@@ -1328,6 +1335,31 @@ function pendingMigrationStarts(settings: Record<string, unknown>): number {
 }
 
 /**
+ * Whether a settings object records an abandoned migration.
+ *
+ * **Fails closed, and reads anything that plausibly means "set".** The value is
+ * a passthrough key, so nothing validates or coerces it: a file hand-edited or
+ * hand-copied between ecosystem folders can bring the marker back as the
+ * STRING `"true"` or as `1`, and a strict `=== true` would then read it as
+ * absent and let the mirror overwrite the host copy this guard exists to
+ * protect. A guard whose only job is preventing irreversible loss must not
+ * fail open on a typo — the same reason the unreadable-file path refuses to
+ * save rather than writing defaults. Only an explicit `false` / `0` / absence
+ * counts as not set, which keeps the marker deliberately clearable.
+ */
+function isMigrationAbandoned(settings: Record<string, unknown>): boolean {
+  const marker = settings[MIGRATION_ABANDONED_KEY];
+
+  if (marker === undefined || marker === null) return false;
+
+  if (typeof marker === "string") return marker.trim().toLowerCase() !== "false" && marker.trim() !== "";
+
+  if (typeof marker === "number") return marker !== 0;
+
+  return marker !== false;
+}
+
+/**
  * The one place settings reach the disk.
  *
  * Every save goes through here so the write boundary is stated once: the LIVE
@@ -1406,7 +1438,11 @@ export function initGlobalSettings(
   // that now belongs to a different run.
   const isCurrent = (): boolean => storeRef === store;
 
-  const becomeReady = (raw: Record<string, unknown>, source: "file" | "host" | "fresh"): void => {
+  const becomeReady = (
+    raw: Record<string, unknown>,
+    source: "file" | "host" | "fresh",
+    markAbandoned = false,
+  ): void => {
     if (storeReady || !isCurrent()) return;
 
     // The load boundary for run-scoped keys (#1014): a warning stored by an
@@ -1431,12 +1467,13 @@ export function initGlobalSettings(
     if (source === "fresh") merged[MIGRATION_PENDING_KEY] = pendingMigrationStarts(raw) + 1;
     else delete merged[MIGRATION_PENDING_KEY];
 
-    // A real host answer retires the give-up marker (#1041): whatever went
-    // wrong before, the host is talking now, so the mirror is safe to resume.
-    // Every other source leaves it exactly as `raw` had it — the ceiling
-    // branch sets it, and a later plain "file" load must carry it forward or
-    // the very next start would mirror over the copy it protects.
-    if (source === "host") delete merged[MIGRATION_ABANDONED_KEY];
+    // Set on `merged`, beside the countdown and AFTER the early-write overlay
+    // above, so a startup write naming this key cannot clobber the guard on
+    // the very start that raises it (#1041). Stamping it into `raw` at the
+    // call site would sit before `stripRunScopedKeys` and `earlyWrites` and
+    // lose that race. A file that already carries it keeps it: nothing here
+    // clears it, deliberately — see MIGRATION_ABANDONED_KEY.
+    if (markAbandoned) merged[MIGRATION_ABANDONED_KEY] = true;
 
     const salvage = parseWithSalvage(merged);
 
@@ -1537,7 +1574,7 @@ export function initGlobalSettings(
         logger?.warn(
           "Deck host never answered the migration read; keeping the settings file as-is and no longer asking",
         );
-        becomeReady({ ...loaded, [MIGRATION_ABANDONED_KEY]: true }, "file");
+        becomeReady(loaded, "file", true);
 
         return;
       }
@@ -1686,7 +1723,7 @@ export function hostMirrorPayload(channel?: { port: number; token: string }): Re
   // the mirror would overwrite a copy the plugin has never read (#1041).
   // Durable, unlike the countdown above: the ceiling clears that one, and
   // without this the very next start would mirror.
-  if ((currentSettings as Record<string, unknown>)[MIGRATION_ABANDONED_KEY] === true) return undefined;
+  if (isMigrationAbandoned(currentSettings as Record<string, unknown>)) return undefined;
 
   const mirror = { ...(currentSettings as Record<string, unknown>) };
 

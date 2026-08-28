@@ -44,10 +44,10 @@ export const PLUGIN_UUID = "com.iracedeck.sd.core";
  * a user's pre-3.0 settings out of the host store — went unanswered, leaving
  * the `willAppear` re-drive as the sole route to a reply. That never fires
  * with no deck attached, and three such starts take `_migrationPending` to its
- * ceiling; the start AFTER them clears the marker, which is what lets the
- * once-per-start host mirror overwrite the user's copy with schema defaults
- * (#1041). Mind that boundary: through those three starts the host copy is
- * still intact and still recoverable.
+ * ceiling; the start AFTER them used to let the once-per-start host mirror
+ * overwrite the user's copy with schema defaults (#1041). deck-core now blocks
+ * that write for good via `MIGRATION_ABANDONED_KEY`, so such a store keeps the
+ * copy it never read — preserved, not restored.
  *
  * Deliberately a different value from the PI bridge's `PI_READ_ACTIONID` in
  * `@iracedeck/pi-components`: two sockets asking for two different reasons,

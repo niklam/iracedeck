@@ -1059,6 +1059,9 @@ describe("single-writer store (issue #993)", () => {
     expect(store.saved.at(-1)).not.toHaveProperty(MIGRATION_PENDING_KEY);
     expect(store.saved.at(-1)).toMatchObject({ [MIGRATION_ABANDONED_KEY]: true });
     expect(hostMirrorPayload({ port: 1, token: "t" })).toBeUndefined();
+    // "Accepted as-is" means the user's own file content survives — the check
+    // the mirror assertion used to carry before it started asserting undefined.
+    expect((getGlobalSettings() as unknown as Record<string, unknown>).driverName).toBe("kept");
     expect(MIGRATION_RETRY_STARTS).toBe(3);
   });
 
@@ -1081,27 +1084,70 @@ describe("single-writer store (issue #993)", () => {
     expect(store.saved.at(-1)).toMatchObject({ [MIGRATION_ABANDONED_KEY]: true, driverName: "kept" });
   });
 
-  it("a host that answers again retires the give-up marker and restores the mirror (#1041)", async () => {
-    // Giving up must not be a one-way door: a build that fixes an
-    // unanswerable read has to be able to recover the install, and the
-    // countdown is what gets it asked again.
+  it("the file the ceiling ACTUALLY writes still shuts the mirror on the next start (#1041)", async () => {
+    // Chains one start's persisted output into the next start's input rather
+    // than hand-authoring the second file. Every other marker test authors its
+    // own store and so cannot catch the persisted shape drifting from the
+    // assumed one — which is exactly how an earlier version of this change
+    // shipped a "recovery" path production could never reach: its fixture
+    // carried both markers, a combination the ceiling never writes.
+    const mock = createMockAdapter();
+    const ceilingStore = createMemorySettingsStore({
+      ...(GlobalSettingsSchema.parse({}) as Record<string, unknown>),
+      [MIGRATION_PENDING_KEY]: MIGRATION_RETRY_STARTS,
+      driverName: "kept",
+    });
+
+    initGlobalSettings(mock.adapter, createMockLogger(), ceilingStore);
+    await tick();
+
+    const persisted = { ...(ceilingStore.saved.at(-1) as Record<string, unknown>) };
+
+    // Second start, on the very bytes the first one wrote.
+    _resetGlobalSettings();
+
+    const nextMock = createMockAdapter();
+    const nextStore = createMemorySettingsStore(persisted);
+
+    initGlobalSettings(nextMock.adapter, createMockLogger(), nextStore);
+    await tick();
+
+    expect(nextMock.getGlobalSettings).not.toHaveBeenCalled();
+    expect(hostMirrorPayload({ port: 1, token: "t" })).toBeUndefined();
+    expect((getGlobalSettings() as unknown as Record<string, unknown>).driverName).toBe("kept");
+  });
+
+  it("the give-up marker fails CLOSED on a hand-edited value (#1041)", async () => {
+    // Passthrough keys are never validated or coerced, and settings files do
+    // get hand-edited and hand-copied between ecosystem folders here. A strict
+    // `=== true` would read `"true"` as absent and mirror defaults over the
+    // host copy this guard exists to protect.
     const mock = createMockAdapter();
     const store = createMemorySettingsStore({
       ...(GlobalSettingsSchema.parse({}) as Record<string, unknown>),
-      [MIGRATION_ABANDONED_KEY]: true,
-      [MIGRATION_PENDING_KEY]: 1,
+      [MIGRATION_ABANDONED_KEY]: "true",
     });
 
     initGlobalSettings(mock.adapter, createMockLogger(), store);
     await tick();
-    expect(mock.getGlobalSettings).toHaveBeenCalledTimes(1);
 
-    mock.echo?.({ driverName: "from-host" });
-    await store.flush();
+    expect(hostMirrorPayload({ port: 1, token: "t" })).toBeUndefined();
+  });
 
-    expect(getSettingsStoreSource()).toBe("host");
-    expect(store.saved.at(-1)).not.toHaveProperty(MIGRATION_ABANDONED_KEY);
-    expect(hostMirrorPayload({ port: 1, token: "t" })).toMatchObject({ driverName: "from-host" });
+  it("an explicit false in the give-up marker leaves the mirror allowed (#1041)", async () => {
+    // Failing closed must not make the marker unclearable: an explicit false,
+    // 0, or absence is still "not set".
+    const mock = createMockAdapter();
+    const store = createMemorySettingsStore({
+      ...(GlobalSettingsSchema.parse({}) as Record<string, unknown>),
+      [MIGRATION_ABANDONED_KEY]: false,
+      driverName: "kept",
+    });
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store);
+    await tick();
+
+    expect(hostMirrorPayload({ port: 1, token: "t" })).toMatchObject({ driverName: "kept" });
   });
 
   it("MIGRATION_TIMEOUT_MS is ten seconds", () => {
