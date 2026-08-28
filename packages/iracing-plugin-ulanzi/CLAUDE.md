@@ -36,9 +36,27 @@ No local `pack:plugin` script; CI packages the Ulanzi plugin in `.github/workflo
 
 ## Dev deploy / test
 
-There is no `link:ulanzi` script — the root `package.json` only has `*:stream-deck` and `*:mirabox` link/relink entries. To test a dev build, build the plugin (or run its watcher), then manually copy (or symlink) the built `com.ulanzi.iracedeck.ulanziPlugin` folder into UlanziStudio's plugins directory, `%APPDATA%\Ulanzi\UlanziDeck\Plugins\`, and restart UlanziStudio.
+The whole cycle is three commands (#1040), and **the order is load-bearing** — see the lock gotcha below:
 
-**Native-module lock gotcha:** while UlanziStudio (or Stream Deck) is running, it locks the native `iracing_native.node`, so a full `pnpm build` fails with EPERM. Quit the host app before building, or rebuild only the changed TypeScript packages.
+```bash
+pnpm stop:ulanzi && pnpm switch-test-env:ulanzi && pnpm start:ulanzi
+```
+
+`link:ulanzi` creates a directory **junction** from UlanziStudio's plugins directory to the built `com.ulanzi.iracedeck.ulanziPlugin` folder in this worktree, so a rebuild needs no re-copy. The destination defaults to `%APPDATA%\Ulanzi\UlanziDeck\Plugins` on Windows; override with `ULANZI_PLUGINS_DIR` in a gitignored `.env.local` at the repo root. `ULANZI_APP_PATH` overrides the host executable that `start:ulanzi` / `stop:ulanzi` drive.
+
+| Script | Action |
+|---|---|
+| `pnpm link:ulanzi` | Create the junction (fails fast if anything already exists there). |
+| `pnpm unlink:ulanzi` | Remove it (safe to run when not linked). |
+| `pnpm relink:ulanzi` | Unlink + link. |
+| `pnpm switch-test-env:ulanzi` | `pnpm install && pnpm build && pnpm relink:ulanzi`. |
+| `pnpm start:ulanzi` / `stop:ulanzi` | Start/stop UlanziStudio. `start` prints which worktree the junction points at. |
+
+**The junction points at exactly ONE worktree** — the same trap as the Stream Deck link. Whoever ran `link:ulanzi` last owns the host, so "my fix isn't working" is usually the host serving another checkout; `start:ulanzi` prints the target for exactly this reason.
+
+**First run on a machine with a packaged install:** the installed folder is a real directory, so the first `unlink:ulanzi` deletes it and everything in it, including the plugin's own `log/` files. The script says so before doing it. Once linked, logs land in the worktree instead.
+
+**Native-module lock gotcha:** while UlanziStudio (or Stream Deck) is running, it locks the native `iracing_native.node`, so a full `pnpm build` fails with EPERM. This is why `stop:ulanzi` comes **before** `switch-test-env:ulanzi` and not just before the relink — stopping the host at the relink step is too late, the build has already failed. UlanziStudio also reads its plugins directory at start only, so a relink without a restart changes nothing.
 
 ## Validation status
 

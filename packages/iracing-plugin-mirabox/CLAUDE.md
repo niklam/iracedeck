@@ -51,8 +51,15 @@ Unlike the Elgato plugin (which has a first-party `streamdeck link` CLI), Mirabo
 | `pnpm unlink:mirabox`          | Remove the symlink (safe to run when not linked). |
 | `pnpm relink:mirabox`          | Unlink + link. Useful after recreating the folder. |
 | `pnpm switch-test-env:mirabox` | `pnpm install && pnpm build && pnpm relink:mirabox`. |
+| `pnpm start:mirabox` / `stop:mirabox` | Start/stop the host app. `start` prints which worktree the link points at. |
 
 On Windows, `link:mirabox` creates a directory **junction** (via `fs.symlinkSync(..., "junction")`), which does not require admin/developer mode.
+
+The full cycle is `pnpm stop:mirabox && pnpm switch-test-env:mirabox && pnpm start:mirabox`. Stop the host **before** the build, not just before the relink: a running host locks the native `iracing_native.node` and `pnpm build` then fails with EPERM.
+
+`start:mirabox` / `stop:mirabox` resolve the host executable from `MIRABOX_APP_PATH`, defaulting to `%ProgramFiles(x86)%\StreamDock\StreamDock.exe`. Set it in `.env.local` when you run a different host (VSD Craft installs as `VSD Craft.exe`) — the process that gets stopped is the executable's own filename, so the override covers both directions.
+
+The link/unlink implementation is shared with the Ulanzi scripts (`scripts/lib/plugin-link.mjs`, #1040); this package only supplies a descriptor.
 
 ## Window Focus
 

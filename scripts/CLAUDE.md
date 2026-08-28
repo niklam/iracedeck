@@ -19,9 +19,17 @@ Repo-level Node `.mjs` utilities, mostly backed by root `package.json` scripts. 
 
 The remaining scripts are one-off or occasional icon-SVG tools (`migrate-*`, `flatten-*`, `pad-icon-viewbox`, `refactor-icons-to-snippets`, `check-icon-bounds`, `add-svg-editor-defaults`, `add-title-metadata-to-icons`, `transform-car-svg`). Many are already-applied migrations — read the script's header comment (usage + purpose) before running.
 
-## Dev linking (Mirabox)
+## Dev linking and host control (Mirabox, Ulanzi)
 
-- `link-mirabox.mjs` / `unlink-mirabox.mjs` — `pnpm link:mirabox` / `unlink:mirabox` / `relink:mirabox`: junction-links the built Mirabox plugin into the host's plugins dir (default `%APPDATA%\HotSpot\StreamDock\plugins`; override with `MIRABOX_PLUGINS_DIR` in a gitignored `.env.local`). Elgato linking uses the `streamdeck` CLI instead (see root `package.json`).
+Elgato is absent from all of these on purpose: its linking uses the `streamdeck` CLI and its start/stop scripts hardcode the one install path (see root `package.json`).
+
+- `link-mirabox.mjs` / `unlink-mirabox.mjs` — `pnpm link:mirabox` / `unlink:mirabox` / `relink:mirabox`: junction-links the built Mirabox plugin into the host's plugins dir (default `%APPDATA%\HotSpot\StreamDock\plugins`; override with `MIRABOX_PLUGINS_DIR` in a gitignored `.env.local`).
+- `link-ulanzi.mjs` / `unlink-ulanzi.mjs` — the Ulanzi equivalents (default `%APPDATA%\Ulanzi\UlanziDeck\Plugins`; override with `ULANZI_PLUGINS_DIR`). Added in #1040.
+- `host-app.mjs` — `pnpm start:ulanzi` / `stop:ulanzi` / `start:mirabox` / `stop:mirabox`, dispatched as `node scripts/host-app.mjs <start|stop> <host>`. The executable comes from `ULANZI_APP_PATH` / `MIRABOX_APP_PATH` with a `%ProgramFiles(x86)%` default, because two Mirabox-compatible hosts are commonly installed side by side (StreamDock, VSD Craft). `start` first prints which worktree the link points at — the junction serves exactly ONE checkout, which is the usual cause of "my fix isn't working".
+
+All four link scripts are thin descriptors over `lib/plugin-link.mjs`; the behaviour lives there, not in the per-host files. Two subtleties in that module are load-bearing and must survive any edit: `lstat` rather than `exists` throughout, so a dangling junction whose target is gone is still detected; and the unlink branch on entry type, because `rmSync(recursive)` on a Windows junction with a missing target silently no-ops and leaves the junction behind.
+
+**The dev loop's order is not arbitrary.** `pnpm stop:<host> && pnpm switch-test-env:<host> && pnpm start:<host>`: the host must stop before the **build**, not before the relink, because a running host locks `iracing_native.node` and the build fails with EPERM. And both hosts read their plugins directory at start only, so a relink without a restart changes nothing.
 
 ## Tests
 
@@ -29,7 +37,7 @@ The remaining scripts are one-off or occasional icon-SVG tools (`migrate-*`, `fl
 
 ## Structure
 
-- `lib/` — shared helpers with colocated `.test.mjs` siblings: `version-discovery.mjs` (package/manifest discovery used by the release bump and the manifest tests), `changelog-stamp.mjs`.
+- `lib/` — shared helpers with colocated `.test.mjs` siblings: `version-discovery.mjs` (package/manifest discovery used by the release bump and the manifest tests), `changelog-stamp.mjs`, `deck-hosts.mjs` (host descriptors + the pure path resolvers), `plugin-link.mjs` (the shared link/unlink core), `env-local.mjs` (`.env.local` loading, shell wins).
 - `data/` — script-owned inputs, e.g. `icon-title-defaults.json` (consumed by `add-title-metadata-to-icons.mjs`).
 - `radio-effect/` — self-contained ffmpeg clip-processing spike with its own README; not wired into any build.
 - `local/` — Personal automation scripts, excluded from version control via `.gitignore`. Each developer can place their own scripts here without affecting the repository.
