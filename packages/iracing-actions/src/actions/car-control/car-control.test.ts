@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import ignitionTemplate from "../../../icons/car-control-ignition.svg";
+import starterTemplate from "../../../icons/car-control-starter.svg";
 import {
   CAR_CONTROL_GLOBAL_KEYS,
   CarControl,
@@ -7,6 +9,7 @@ import {
   getEnterExitTowState,
   getPitSpeedLimit,
   getSessionContext,
+  ignitionArtwork,
   ignitionToggleState,
   isDrsActive,
   isEngineRunning,
@@ -17,6 +20,7 @@ import {
   parsePitSpeedLimit,
   pitLimiterSpeedGraphic,
   pitLimiterToggleState,
+  starterArtwork,
   starterToggleState,
 } from "./car-control.js";
 
@@ -325,7 +329,8 @@ describe("CarControl", () => {
     it("should include correct labels for all controls", () => {
       const expectedLabels: Record<string, { line1: string; line2: string }> = {
         starter: { line1: "START", line2: "ENGINE" },
-        ignition: { line1: "IGNITION", line2: "ON/OFF" },
+        // Single line since #561 — the status bar reads ON / OFF, so the label no longer does.
+        ignition: { line1: "IGNITION", line2: "" },
         "pit-speed-limiter": { line1: "PIT", line2: "LIMITER" },
         "enter-exit-tow": { line1: "DRIVE", line2: "" },
         "pause-sim": { line1: "PAUSE", line2: "SIM" },
@@ -553,6 +558,103 @@ describe("CarControl", () => {
       const na = generateCarControlSvg({ control: "ignition" } as any, { ignitionState: "na" } as any);
 
       expect(bare).toBe(na);
+    });
+  });
+
+  describe("ignition and starter artwork (issue #561)", () => {
+    /** The shared status palette: green on, red off, grey N/A. */
+    const STATE_COLORS = { on: "#2ecc71", off: "#e74c3c", na: "#888888" } as const;
+
+    it("should colour the ignition glyph by state, so the state reads from the artwork", () => {
+      for (const [state, color] of Object.entries(STATE_COLORS)) {
+        expect(ignitionArtwork(state as any)).toContain(color);
+      }
+    });
+
+    it("should give the ignition glyph a different colour in every state", () => {
+      const rendered = (["on", "off", "na"] as const).map((s) => ignitionArtwork(s));
+
+      expect(new Set(rendered).size).toBe(3);
+    });
+
+    it("should dim the starter badge whenever the engine is not confirmed running", () => {
+      // N/A dims like off: with no telemetry we cannot claim the engine is running.
+      expect(starterArtwork("off", false)).toContain('opacity="0.45"');
+      expect(starterArtwork("na", false)).toContain('opacity="0.45"');
+      expect(starterArtwork("on", false)).not.toContain("opacity=");
+    });
+
+    it("should keep the starter badge red in every state rather than recolouring it", () => {
+      // The red is the button's identity, carried over from the shipped icon — the bar
+      // and the border carry the state instead.
+      for (const state of ["on", "off", "na"] as const) {
+        expect(starterArtwork(state, false)).toContain("#e74c3c");
+      }
+    });
+
+    it("should shrink the starter badge when a title is opted back in", () => {
+      const withTitle = starterArtwork("on", true);
+      const without = starterArtwork("on", false);
+
+      expect(without).toContain('r="39"');
+      expect(withTitle).toContain('r="32"');
+      expect(withTitle).not.toBe(without);
+    });
+
+    it("should keep both glyphs clear of the status bar", () => {
+      // The bar occupies y >= 100. Nothing in either glyph may reach it.
+      const ys = (svg: string) => [...svg.matchAll(/(?:cy|y1|y2|y)="([\d.]+)"/g)].map((m) => Number(m[1]));
+      const starterBottom = 53 + 39; // cy + r, the untitled badge
+
+      expect(Math.max(...ys(ignitionArtwork("on")))).toBeLessThan(100);
+      expect(starterBottom).toBeLessThan(100);
+    });
+  });
+
+  describe("ignition and starter title contract (issue #561)", () => {
+    const desc = (svg: string) => JSON.parse(svg.match(/<desc>([\s\S]*?)<\/desc>/)![1]!);
+
+    it("should label the ignition key with a single line, not the old ON/OFF pair", () => {
+      // The status bar already reads ON / OFF, so the old two-line label repeated it.
+      expect(desc(ignitionTemplate).title.text).toBe("IGNITION");
+    });
+
+    it("should ship the starter key with no title, since its artwork reads START", () => {
+      expect(desc(starterTemplate).title.showTitle).toBe(false);
+    });
+
+    it("should keep a starter title available for a user who opts one back in", () => {
+      expect(desc(starterTemplate).title.text).toBe("ENGINE\nSTART");
+    });
+
+    it("should lock the title geometry on both templates", () => {
+      // Unlocked, a global Title Default of Position: Bottom or a larger font size drags
+      // the label onto the status bar or the artwork. Every comparable template locks it.
+      for (const template of [ignitionTemplate, starterTemplate]) {
+        expect(desc(template).title.locked).toEqual(
+          expect.arrayContaining(["showTitle", "fontSize", "position", "customPosition"]),
+        );
+      }
+    });
+  });
+
+  describe("Show Graphics on the tri-state keys (issue #561)", () => {
+    it("should drop the artwork but keep the status bar when graphics are hidden", async () => {
+      const { resolveTitleSettings } = await import("@iracedeck/deck-core");
+      vi.mocked(resolveTitleSettings).mockReturnValueOnce({
+        showTitle: false,
+        showGraphics: false,
+        titleText: "",
+        bold: true,
+        fontSize: 9,
+        position: "top",
+        customPosition: 0,
+      } as any);
+
+      const hidden = decodeURIComponent(generateCarControlSvg({ control: "starter" } as any));
+
+      expect(hidden).not.toContain("START</text>");
+      expect(hidden).toContain("N/A");
     });
   });
 

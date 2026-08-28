@@ -439,6 +439,10 @@ export function pitLimiterToggleState(available: boolean, active: boolean): "on"
  */
 const IGNITION_VOLTAGE_THRESHOLD_V = 6;
 
+/** The Starter badge's own reds, carried over from the shipped icon. Not status colours. */
+const STARTER_BADGE_OUTER = "#e74c3c";
+const STARTER_BADGE_INNER = "#c0392b";
+
 /**
  * RPM at or above this counts as "engine running" on the FALLBACK path only — when
  * `EngineWarnings` is absent and the authoritative EngineStalled bit cannot be read.
@@ -537,31 +541,61 @@ export function starterToggleState(telemetry: TelemetryData | null): ToggleState
 }
 
 /**
- * Power-symbol artwork for the Ignition key, drawn above the status bar.
+ * Power-symbol artwork for the Ignition key, carried over from the static icon and
+ * drawn between the single-line title and the status bar (the usable band is roughly
+ * y 32..96: the title baseline sits at 26 and the bar starts at 100).
  *
- * Sized to the band between a two-line top title and the status bar (roughly y 55..96):
- * the title baseline sits at 47.6 with descenders to about 52, and the bar starts at 100.
+ * The glyph takes the STATE colour rather than the icon's `graphic1Color`, so the state
+ * is legible from the artwork and not only from the frame around it. That deliberately
+ * overrides the user's graphic colour for this key, on the same principle as the
+ * state-driven border and the Enter/Exit/Tow state backgrounds.
  *
  * Lives here rather than baked into the chrome template so generateToggleStateSvg can
- * dim it along with the bar under the binding-missing warning (the DRS pattern), and
- * so it resolves the icon's colors at compose time. Deliberately STATE-NEUTRAL: the
- * status bar and the state-driven border carry on/off/na, so recoloring the artwork
- * too would say the same thing twice.
+ * dim it along with the bar under the binding-missing warning (the DRS pattern).
+ *
+ * @internal Exported for testing
  */
-const IGNITION_ARTWORK = `
-    <path d="M62.7,63.8 A17,17,0,1,0,81.3,63.8" fill="none" stroke="{{graphic1Color}}" stroke-width="6" stroke-linecap="round"/>
-    <line x1="72" y1="56.1" x2="72" y2="74.6" stroke="{{graphic1Color}}" stroke-width="6" stroke-linecap="round"/>`;
+export function ignitionArtwork(state: ToggleState): string {
+  const color = borderColorForState(state);
+
+  return `
+    <path d="M58.2,46.6 A25,25,0,1,0,85.8,46.6" fill="none" stroke="${color}" stroke-width="9" stroke-linecap="round"/>
+    <line x1="72" y1="35" x2="72" y2="62.7" stroke="${color}" stroke-width="9" stroke-linecap="round"/>`;
+}
 
 /**
- * Start-button artwork, drawn between the title and the status bar. State-neutral for
- * the same reason as IGNITION_ARTWORK — the previous static icon hardcoded a red badge,
- * which would now contradict a green key. The old icon spelled START inside the ring;
- * the ring is now bare because the title above it already says ENGINE START, and the
- * text would not fit legibly in the band the status bar leaves.
+ * Start-button artwork for the Starter key — the shipped red badge, unchanged, DIMMED
+ * whenever the engine is not confirmed running. Dimming rather than recolouring keeps
+ * the button recognisable as the physical start button it depicts, and leaves the red
+ * of the badge meaning "this is the starter" rather than competing with the red of the
+ * OFF state.
+ *
+ * `na` dims exactly like `off`: with no live telemetry we cannot claim the engine is
+ * running, and the grey bar and border already carry the difference.
+ *
+ * The key shows no title by default — the badge already reads START — so the artwork
+ * fills the whole area above the status bar. If a user opts a title back in through
+ * Title Overrides it shrinks to leave room, which is the pit-limiter pattern.
+ *
+ * @internal Exported for testing
  */
-const STARTER_ARTWORK = `
-    <circle cx="72" cy="75" r="19" fill="none" stroke="{{graphic1Color}}" stroke-width="4"/>
-    <circle cx="72" cy="75" r="11" fill="{{graphic1Color}}"/>`;
+export function starterArtwork(state: ToggleState, showTitle: boolean): string {
+  const dim = state === "on" ? "" : ' opacity="0.45"';
+  const cy = showTitle ? 62 : 53;
+  const r = showTitle ? 32 : 39;
+  const inner = Math.round(r * 0.8);
+  const fontSize = Math.round(r * 0.46);
+  // resvg ignores dominant-baseline, so the baseline is offset explicitly.
+  const baseline = cy + Math.round(fontSize * 0.36);
+
+  return `
+    <g${dim}>
+      <circle cx="72" cy="${cy}" r="${r}" fill="${STARTER_BADGE_OUTER}"/>
+      <circle cx="72" cy="${cy}" r="${inner}" fill="${STARTER_BADGE_INNER}"/>
+      <text x="72" y="${baseline}" text-anchor="middle"
+            fill="${WHITE}" font-family="Arial, sans-serif" font-size="${fontSize}" font-weight="bold">START</text>
+    </g>`;
+}
 
 /**
  * @internal Exported for testing
@@ -787,11 +821,19 @@ export function generateCarControlSvg(
   // border carry on/off/na, the same language as the pit limiter and DRS.
   if (control === "ignition" || control === "starter") {
     const isIgnition = control === "ignition";
+    const template = isIgnition ? ignitionTemplate : starterTemplate;
     const state = (isIgnition ? telemetryState?.ignitionState : telemetryState?.starterState) ?? "na";
 
+    // generateToggleStateSvg always draws the status bar and knows nothing about Show
+    // Graphics, which the static path this replaced did honour. Resolve the title here so
+    // the artwork can still be hidden, and so the Starter badge can size itself around a
+    // title the user opted back in to.
+    const resolvedTitle = resolveTitleSettings(template, getGlobalTitleSettings(), settings.titleOverrides);
+    const artwork = isIgnition ? ignitionArtwork(state) : starterArtwork(state, resolvedTitle.showTitle);
+
     return generateToggleStateSvg({
-      template: isIgnition ? ignitionTemplate : starterTemplate,
-      artwork: isIgnition ? IGNITION_ARTWORK : STARTER_ARTWORK,
+      template,
+      artwork: resolvedTitle.showGraphics ? artwork : undefined,
       state,
       colorOverrides: settings.colorOverrides,
       titleOverrides: settings.titleOverrides,
