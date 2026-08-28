@@ -116,13 +116,13 @@ describe("UlanziBridgeSocket", () => {
       payload: { event: "propertyInspectorDidAppear" },
     });
     // Bootstrap read of the host's global-settings copy — the settings-channel
-    // router decides from here where global settings go (#993 phase 2). Plugin
-    // UUID for the bucket, the PI's own key/actionid so the host can route the
-    // reply back (#1039).
+    // router decides from here where global settings go (#993 phase 2). The
+    // write's plugin scope for the bucket, plus this PI's `actionid` so the
+    // host can route the reply back (#1039).
     expect(JSON.parse(real.sent[2])).toEqual({
       cmd: "getGlobalSettings",
       uuid: "com.iracedeck.sd.core",
-      key: "5",
+      key: "",
       actionid: "abc",
     });
     expect(onopen).toHaveBeenCalledOnce();
@@ -138,13 +138,13 @@ describe("UlanziBridgeSocket", () => {
     real.sent.length = 0;
 
     // A global-settings read carries the plugin UUID for the bucket (#868) and
-    // the PI's own key/actionid so the host answers it (#1039) — never the
+    // this PI's `actionid` so the host answers it at all (#1039) — never the
     // context sdpi put on the frame.
     bridge.send(JSON.stringify({ event: "getGlobalSettings", context: "x" }));
     expect(JSON.parse(real.sent[0])).toEqual({
       cmd: "getGlobalSettings",
       uuid: "com.iracedeck.sd.core",
-      key: "5",
+      key: "",
       actionid: "abc",
     });
 
@@ -236,7 +236,7 @@ describe("UlanziBridgeSocket — settings channel (#993 phase 2)", () => {
     expect(parsed(real.sent).at(-1)).toEqual({
       cmd: "getGlobalSettings",
       uuid: "com.iracedeck.sd.core",
-      key: "5",
+      key: "",
       actionid: "abc",
     });
   });

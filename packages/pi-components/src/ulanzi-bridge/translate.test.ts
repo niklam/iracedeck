@@ -45,16 +45,16 @@ describe("elgatoToUlanzi", () => {
     });
   });
 
-  it("carries the PI's routing identity on a global-settings READ (#1039)", () => {
+  it("addresses a global-settings READ with the PI's actionid and nothing else (#1039)", () => {
     // The host answers a read only when `actionid` is non-empty — it routes the
     // reply by that field — while the bucket it returns is plugin-wide either
-    // way. So the read keeps the plugin UUID but must carry the PI's own
-    // key/actionid, or no reply ever arrives and every `global` control in the
-    // PI stays empty.
+    // way. So the read is the WRITE's scope plus an address: `actionid` differs,
+    // `key` stays blank like the write's, so both directions still name the same
+    // bucket even on a host that resolved one by the full context.
     expect(elgatoToUlanzi({ event: "getGlobalSettings" }, identity)).toEqual({
       cmd: "getGlobalSettings",
       uuid: PLUGIN_UUID,
-      key: "5",
+      key: "",
       actionid: "abc",
     });
   });
@@ -70,10 +70,40 @@ describe("elgatoToUlanzi", () => {
     expect(frame).toEqual({
       cmd: "getGlobalSettings",
       uuid: PLUGIN_UUID,
-      key: "5",
+      key: "",
       actionid: PI_READ_ACTIONID,
     });
     expect(PI_READ_ACTIONID).not.toBe("");
+  });
+
+  it("drops a data-less global-settings ack instead of pushing empty settings (#1039)", () => {
+    // A write confirmation comes back ack-shaped (`code` set, not a REQUEST)
+    // carrying nothing. Translating it would hand sdpi an EMPTY global payload:
+    // mid-bootstrap the router reads that as "no _settingsChannel" and falls
+    // back for good, and on the fallback path it blanks every global control
+    // already on screen. The plugin socket drops these for the same reason.
+    expect(ulanziToElgato({ cmd: "didReceiveGlobalSettings", code: 0 }, identity)).toBeNull();
+    expect(ulanziToElgato({ cmd: "didReceiveGlobalSettings", code: 0, settings: {} }, identity)).toBeNull();
+
+    // A reply that CARRIES settings is kept even when ack-shaped — that is how
+    // this host answers a read — and so is any frame marked as a REQUEST.
+    expect(
+      ulanziToElgato({ cmd: "didReceiveGlobalSettings", code: 0, settings: { debugLogging: true } }, identity),
+    ).toEqual({
+      event: "didReceiveGlobalSettings",
+      payload: { settings: { debugLogging: true } },
+    });
+    expect(ulanziToElgato({ cmd: "didReceiveGlobalSettings", code: 0, cmdType: "REQUEST" }, identity)).toEqual({
+      event: "didReceiveGlobalSettings",
+      payload: { settings: {} },
+    });
+
+    // An unsolicited reply with no `code` at all still passes through empty —
+    // a genuinely empty store must still resolve sdpi's promise.
+    expect(ulanziToElgato({ cmd: "didReceiveGlobalSettings" }, identity)).toEqual({
+      event: "didReceiveGlobalSettings",
+      payload: { settings: {} },
+    });
   });
 
   it("translates per-action settings reads/writes carrying the PI identity", () => {

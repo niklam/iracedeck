@@ -77,13 +77,11 @@ export function elgatoToUlanzi(
   // Global settings are plugin-wide: scope a WRITE to the plugin UUID so it
   // lands in the same UlanziStudio bucket the plugin main service reads (#868).
   const globalScope = { uuid: PLUGIN_UUID, key: "", actionid: "" };
-  // A READ keeps that UUID but must carry the PI's own routing identity, or the
-  // host never replies (#1039) — see PI_READ_ACTIONID.
-  const globalReadScope = {
-    uuid: PLUGIN_UUID,
-    key: identity.key,
-    actionid: identity.actionid || PI_READ_ACTIONID,
-  };
+  // A READ is that same scope plus an address: the host routes the reply by
+  // `actionid` and never answers a blank one (#1039). Nothing else differs —
+  // `key` stays empty like the write's, so both directions still name the same
+  // bucket even on a host version that resolved one by the full context.
+  const globalReadScope = { ...globalScope, actionid: identity.actionid || PI_READ_ACTIONID };
 
   switch (frame.event) {
     case "getGlobalSettings":
@@ -125,8 +123,21 @@ export function ulanziToElgato(
   const context = encodeContext(identity.uuid, identity.key, identity.actionid);
 
   switch (frame.cmd) {
-    case "didReceiveGlobalSettings":
-      return { event: "didReceiveGlobalSettings", payload: { settings: settingsOf(frame) } };
+    case "didReceiveGlobalSettings": {
+      const settings = settingsOf(frame);
+
+      // A data-less ack (`code` set, and not a REQUEST) is a write
+      // confirmation, not a reply — the plugin socket drops exactly these, for
+      // exactly this reason (`handleFrame` in deck-adapter-ulanzi). Passing one
+      // on would hand sdpi an EMPTY global-settings payload: mid-bootstrap the
+      // router reads that as "no `_settingsChannel`" and falls back
+      // permanently, and on the fallback path it blanks every global control
+      // the PI is already showing. A reply that carries settings is kept
+      // whether or not it is ack-shaped — that is how this host answers a read.
+      if (frame.code !== undefined && frame.cmdType !== "REQUEST" && Object.keys(settings).length === 0) return null;
+
+      return { event: "didReceiveGlobalSettings", payload: { settings } };
+    }
     case "didReceiveSettings":
     case "paramfromapp":
     case "paramfromplugin":
