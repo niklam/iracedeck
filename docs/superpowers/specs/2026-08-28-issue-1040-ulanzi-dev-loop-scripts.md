@@ -47,10 +47,16 @@ So: extract `scripts/lib/env-local.mjs` and a parameterised link/unlink core, an
 
 The alternative — copy the pair and accept four files — was rejected. It is cheaper now and wrong later; a fix to the dangling-junction handling would have to be found and applied twice.
 
-## Two first-run hazards, both real deletions
+## The first-run hazard, and why there is now no deletion at all
 
-1. **The installed folder is a plain copied directory today**, so the very first `unlink:ulanzi` performs a genuine recursive delete of a real folder rather than dropping a link. That is the intended outcome — replacing the copy with a junction — but the script must say so plainly in its output rather than silently removing a user's directory.
-2. **That folder contains `log/`**, the plugin's per-day log files, which are real diagnostic evidence (the #1039 diagnosis rested on two of them). The unlinker warns that logs live inside the folder it is about to remove. Once the junction is in place this stops mattering: the logs land in the worktree instead, which is strictly better.
+1. **The installed folder is a plain copied directory today**, so the very first `unlink:ulanzi` meets a real folder rather than a link. Replacing the copy with a junction is the intended outcome; destroying its contents to get there is not.
+2. **That folder contains `log/`**, the plugin's per-day log files, which are real diagnostic evidence (the #1039 diagnosis rested on two of them). Once the junction is in place this stops mattering — the logs land in the worktree instead, which is strictly better — but the transition itself must not eat them.
+
+This spec originally specified `rmSync(recursive, force)` plus a printed warning, on the reasoning that the delete is intended and announcing it is enough. **Review overturned that, and the amended decision is to rename rather than delete:** the folder is moved to `<folder>.replaced-<timestamp>`.
+
+Two arguments carried it. The printed warning is unreliable where it matters most — `relink` runs inside `switch-test-env`, so the one line scrolls past thousands of turbo build lines, unread and unconfirmed. And the loss is genuinely unrecoverable, unlike the rest of the folder, which any build reproduces. A rename costs one stale directory the user can delete at leisure and removes the irreversible step from the tool entirely.
+
+The aside suffix must break the host's scan pattern (`*.sdPlugin` / `*.ulanziPlugin`) so the moved copy is never loaded as a second plugin. This is why the module's mutating filesystem calls are also wrapped: with the host still running, the rename fails EBUSY exactly as the delete would, and that is the *expected* error path given the loop's own instruction to stop the host first — it deserves the fix, not a stack trace.
 
 ## One junction means one worktree owns the host
 
