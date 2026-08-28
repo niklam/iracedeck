@@ -35,6 +35,8 @@ Three subtleties there are load-bearing and must survive any edit:
 - The unlink branch on entry type. A junction gets `unlinkSync`; a **real** directory is **moved aside** to `<folder>.replaced-<timestamp>`, never deleted. (`rmSync(recursive)` on a Windows junction with a missing target silently no-ops and leaves the junction behind, which is why the branch exists at all; the move-aside is because the folder carries the plugin's own logs and `relink` runs inside `switch-test-env`, where a printed warning scrolls past unread.) The aside suffix must keep breaking the host's `*.sdPlugin` / `*.ulanziPlugin` scan pattern.
 - `taskkill` exit codes: 0 stopped, **128 = not running**, anything else is a genuine failure. Collapsing the last two reports a refused kill as success, and the build then hits the EPERM the stop step exists to prevent.
 
+**A warning printed inside a composite command is not a warning.** `relink` runs inside `switch-test-env`, behind `pnpm install && pnpm build`, so anything these scripts print scrolls past thousands of turbo lines unread and unconfirmed. That is why the real-directory case moves the folder aside instead of deleting it and explaining itself: the explanation cannot be relied on to reach anyone. Any destructive step added here should assume its own output is never read, and be reversible instead.
+
 **The dev loop's order is not arbitrary.** `pnpm stop:<host> && pnpm switch-test-env:<host> && pnpm start:<host>`: the host must stop before the **build**, not before the relink, because a running host locks `iracing_native.node` and the build fails with EPERM. And both hosts read their plugins directory at start only, so a relink without a restart changes nothing.
 
 ## Tests
