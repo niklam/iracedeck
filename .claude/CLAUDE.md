@@ -32,6 +32,7 @@ Packages
 High-level guidance
 
 - Follow rule files in `.claude/rules/` for granular conventions.
+- **Working an issue? Start with `.claude/rules/issue-workflow.md`** — it is the ordered pipeline from filing the issue to merging the PR, and it names the steps that are gates rather than suggestions.
 - Keep rules focused: one topic per markdown file.
 - Use `paths` frontmatter in rules when a rule applies only to certain files.
 - **Keep documentation in sync with reality.** When code changes alter conventions, patterns, APIs, or workflows described in any `CLAUDE.md` or `.claude/rules/` file, update those files in the same change. Stale instructions cause repeated mistakes.
@@ -57,6 +58,7 @@ You can import or reference specific rule files from other markdown using `@.cla
 - `encoders-and-touchscreen.md`: How Stream Deck+ dials and the LCD touch strip work, verified Mirabox knob/touch findings, the current manifest state (dial declarations are Elgato-only, #786), and the rules for dial-support actions. Full schema/payload reference in `docs/reference/stream-deck-plus-encoders.md`.
 - `global-settings.md`: Plugin-level global settings architecture: Property Inspector usage, `ird-key-binding` with `global` attribute, Zod schema, settings path conventions, and the single-writer plugin-owned settings store (#993 — the file is truth, the deck host is a one-time migration source).
 - `icons.md`: General icon guidelines: icon types (category, key, template), SVG structure, design specs, color palette, Mustache templates, and distinctiveness rules.
+- `issue-workflow.md`: The order an issue is worked in and which steps are gates — file/assign/milestone, spec to `master`, worktree, hand-run build+lint+test (no watcher), website docs, code review BEFORE manual testing, manual testing BEFORE the PR, babysitting the CodeRabbit review, merging only via an approved PR. Owns the sequence; each step links to the rule that owns its detail. **Read this first when picking up an issue.**
 - `key-icon-types.md`: Standardized key icon type definitions (Default, Black Box, Inverted): canvas layout, two-line label system, Standard vs Inverted label layouts, per-action background colors, and icon content separation patterns. Scoped to icon SVG/TS files.
 - `keyboard-shortcuts.md`: SDK-first principle, key binding architecture, Property Inspector setup for `ird-key-binding`, Zod schemas for key bindings, sending key combinations (tap and long-press/hold), global vs per-action bindings, and cross-package sync rules.
 - `logging.md`: Log levels, info vs debug separation, `createScope()` usage, and dependency-injected logger patterns.
