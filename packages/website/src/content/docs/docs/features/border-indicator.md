@@ -38,7 +38,7 @@ Actions with on/off functionality automatically use state-driven border colors:
 
 Toggle actions that support automatic border colors:
 
-- **DRS** and **Push to Pass** (Car Control)
+- **Pit Speed Limiter**, **Push to Pass**, **DRS**, **Ignition**, and **Starter** (Car Control)
 - **Toggle Fuel Fill** (Fuel Service)
 - **Windshield Tearoff** and **Fast Repair** (Pit Quick Actions)
 
