@@ -458,10 +458,19 @@ export class UlanziClient {
 
   /**
    * Request global settings. Plugin scope by default; pass an action context
-   * for the adapter's boot-time bootstrap read — the Ulanzi SDK documents that
-   * a main-service `getGlobalSettings` must carry an action context to be
-   * answered (#868). Writes never take a context: they must always land in the
-   * plugin-scope bucket (see {@link setGlobalSettings}).
+   * for the adapter's boot-time bootstrap read, or the host will not answer
+   * (#868).
+   *
+   * The rule was measured in #1039 and is narrower than "an action context":
+   * the host routes a reply by **`actionid`** and answers only when that field
+   * is non-empty — `key` alone does not do it, and `uuid` decides neither
+   * whether it answers nor which bucket comes back. So the default scope here
+   * (blank `key`/`actionid`) is never answered, and this read depends entirely
+   * on the adapter's `willAppear` re-drive to supply a context.
+   *
+   * Writes never take a context: they must always land in the plugin-scope
+   * bucket (see {@link setGlobalSettings}), which is why the two directions
+   * deliberately disagree.
    */
   requestGlobalSettings(context?: string): void {
     const scope = context ? decodeContext(context) : { uuid: PLUGIN_UUID, key: "", actionid: "" };

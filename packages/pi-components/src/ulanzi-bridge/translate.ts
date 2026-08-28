@@ -19,13 +19,35 @@ export interface BridgeIdentity {
 /**
  * The iRaceDeck plugin UUID — must match the manifest and the plugin main
  * service's `PLUGIN_UUID` (deck-adapter-ulanzi). UlanziStudio persists global
- * settings bucketed by the frame's `uuid` verbatim, so the PI's global-settings
- * reads/writes must carry this UUID (with empty key/actionid) to hit the same
- * bucket the plugin main service reads at boot. Carrying the PI's per-action
- * identity instead scatters key bindings into per-action buckets the plugin
- * never reads back — they then vanish on restart (#868).
+ * settings bucketed by the frame's `uuid` verbatim, so a global-settings WRITE
+ * must carry this UUID (with an empty key/actionid) to land in the same bucket
+ * the plugin main service reads at boot. Carrying the PI's per-action identity
+ * instead scatters key bindings into per-action buckets the plugin never reads
+ * back — they then vanish on restart (#868).
+ *
+ * A READ is the other way round; see {@link PI_READ_ACTIONID}.
  */
 export const PLUGIN_UUID = "com.iracedeck.sd.core";
+
+/**
+ * Stand-in `actionid` for a global-settings read from a PI whose URL carried
+ * none.
+ *
+ * UlanziStudio answers a `getGlobalSettings` only when `actionid` is non-empty
+ * — it routes the reply by that field — while the bucket it hands back is the
+ * plugin-wide one whatever the frame's `uuid` says. So a read needs the
+ * opposite of what a write needs: an address, not a blank scope. #895 gave both
+ * directions the blank scope to fix the write, which left every read
+ * unanswered; the PI's settle timer then expired, sdpi's `getGlobalSettings()`
+ * promise never resolved, and every `global` control rendered empty (#1039).
+ *
+ * `readIdentity` defaults `actionid` to "" when the query string omits it, which
+ * would walk straight back into that. The host echoes the field rather than
+ * looking it up — a value that has never existed is routed just as happily — so
+ * any non-empty constant restores the reply, and it is strictly no worse than
+ * the empty string it replaces.
+ */
+export const PI_READ_ACTIONID = "iracedeck-pi-global-read";
 
 /** Build the Ulanzi context string: `uuid___key___actionid`. */
 export function encodeContext(uuid: string, key: string, actionid: string): string {
@@ -52,13 +74,18 @@ export function elgatoToUlanzi(
   identity: BridgeIdentity,
 ): Record<string, unknown> | null {
   const base = { uuid: identity.uuid, key: identity.key, actionid: identity.actionid };
-  // Global settings are plugin-wide: scope them to the plugin UUID so PI writes
-  // land in the same UlanziStudio bucket the plugin main service reads (#868).
+  // Global settings are plugin-wide: scope a WRITE to the plugin UUID so it
+  // lands in the same UlanziStudio bucket the plugin main service reads (#868).
   const globalScope = { uuid: PLUGIN_UUID, key: "", actionid: "" };
+  // A READ is that same scope plus an address: the host routes the reply by
+  // `actionid` and never answers a blank one (#1039). Nothing else differs —
+  // `key` stays empty like the write's, so both directions still name the same
+  // bucket even on a host version that resolved one by the full context.
+  const globalReadScope = { ...globalScope, actionid: identity.actionid || PI_READ_ACTIONID };
 
   switch (frame.event) {
     case "getGlobalSettings":
-      return { cmd: "getGlobalSettings", ...globalScope };
+      return { cmd: "getGlobalSettings", ...globalReadScope };
     case "setGlobalSettings":
       return { cmd: "setGlobalSettings", ...globalScope, settings: asRecord(frame.payload) ?? {} };
     case "getSettings":
@@ -96,8 +123,29 @@ export function ulanziToElgato(
   const context = encodeContext(identity.uuid, identity.key, identity.actionid);
 
   switch (frame.cmd) {
-    case "didReceiveGlobalSettings":
+    case "didReceiveGlobalSettings": {
+      // A BARE ack — `code` set, not a REQUEST, and carrying no settings field
+      // at all — is a write confirmation, not a reply. Passing one on would
+      // hand sdpi an EMPTY global-settings payload: mid-bootstrap the router
+      // reads that as "no `_settingsChannel`" and falls back permanently, and
+      // on the fallback path it blanks every global control the PI is already
+      // showing. The plugin socket drops these too (`handleFrame` in
+      // deck-adapter-ulanzi).
+      //
+      // The test is the PRESENCE of the field, not whether it has any keys —
+      // deliberately narrower than the plugin socket's rule, which drops on an
+      // empty payload. An explicit `settings: {}` is a real answer: it is what
+      // a read against an empty store returns, and on a first install that is
+      // the only answer there is. Dropping it would leave sdpi's
+      // `getGlobalSettings()` promise pending forever and render exactly the
+      // blank PI this whole change exists to fix. So a frame that carries a
+      // settings object is always a reply, empty or not.
+      const carriesSettings = asRecord(frame.settings) !== undefined || asRecord(frame.param) !== undefined;
+
+      if (frame.code !== undefined && frame.cmdType !== "REQUEST" && !carriesSettings) return null;
+
       return { event: "didReceiveGlobalSettings", payload: { settings: settingsOf(frame) } };
+    }
     case "didReceiveSettings":
     case "paramfromapp":
     case "paramfromplugin":
