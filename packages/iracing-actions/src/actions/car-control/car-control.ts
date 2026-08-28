@@ -539,6 +539,9 @@ export function starterToggleState(telemetry: TelemetryData | null): ToggleState
 /**
  * Power-symbol artwork for the Ignition key, drawn above the status bar.
  *
+ * Sized to the band between a two-line top title and the status bar (roughly y 55..96):
+ * the title baseline sits at 47.6 with descenders to about 52, and the bar starts at 100.
+ *
  * Lives here rather than baked into the chrome template so generateToggleStateSvg can
  * dim it along with the bar under the binding-missing warning (the DRS pattern), and
  * so it resolves the icon's colors at compose time. Deliberately STATE-NEUTRAL: the
@@ -546,8 +549,8 @@ export function starterToggleState(telemetry: TelemetryData | null): ToggleState
  * too would say the same thing twice.
  */
 const IGNITION_ARTWORK = `
-    <path d="M61.1,57.3 A20,20,0,1,0,82.9,57.3" fill="none" stroke="{{graphic1Color}}" stroke-width="7" stroke-linecap="round"/>
-    <line x1="72" y1="48.2" x2="72" y2="70" stroke="{{graphic1Color}}" stroke-width="7" stroke-linecap="round"/>`;
+    <path d="M62.7,63.8 A17,17,0,1,0,81.3,63.8" fill="none" stroke="{{graphic1Color}}" stroke-width="6" stroke-linecap="round"/>
+    <line x1="72" y1="56.1" x2="72" y2="74.6" stroke="{{graphic1Color}}" stroke-width="6" stroke-linecap="round"/>`;
 
 /**
  * Start-button artwork, drawn between the title and the status bar. State-neutral for
@@ -557,8 +560,8 @@ const IGNITION_ARTWORK = `
  * text would not fit legibly in the band the status bar leaves.
  */
 const STARTER_ARTWORK = `
-    <circle cx="72" cy="70" r="23" fill="none" stroke="{{graphic1Color}}" stroke-width="4"/>
-    <circle cx="72" cy="70" r="14" fill="{{graphic1Color}}"/>`;
+    <circle cx="72" cy="75" r="19" fill="none" stroke="{{graphic1Color}}" stroke-width="4"/>
+    <circle cx="72" cy="75" r="11" fill="{{graphic1Color}}"/>`;
 
 /**
  * @internal Exported for testing
