@@ -18,6 +18,10 @@ _Unreleased_
 - Mouse to Sim now lets you choose where your pointer lands in the sim window. Pick a horizontal and a vertical anchor — a corner, an edge or the centre — and nudge it from there with an offset, under Mouse to Sim on the Settings window's General tab. Leave it alone and the pointer keeps arriving exactly where it always has.
 - Splits & Reference's **Reset to Start Point** mode can now be held. iRacing acts on both the press and the release of that control: tap the key and the car is restored and running immediately, as before, but hold it and the sim pauses the moment the car is moved back and resumes only when you let go — so you get a beat to settle your hands and pick your moment instead of being dropped straight back into a car already at speed. Nothing needs configuring; a quick press behaves exactly as it did. On a Stream Deck+ dial the same option stays a momentary tap, because a dial press is only recognised once you release it.
 
+**Bug Fixes**
+
+- On Ulanzi Deck, a key's settings panel showed every key binding as unset, even ones that were configured and working. The panel had no way to read them back from UlanziStudio, so it looked like nothing had ever been set — while the Settings window and the plugin itself had them all along. Panels now load the real values, stay in sync with the Settings window both ways, and a binding changed in a panel reaches iRaceDeck instead of being quietly discarded.
+
 **Maintenance**
 
 - The website now names every Stream Deck device iRaceDeck runs on. Stream Deck Neo, Stream Deck Studio, Stream Deck + XL, Galleon 100 SD, Stream Deck Mobile and the Virtual Stream Deck are all supported, but the download card and the installation guide listed only the original four models — so owners of the others read that their device was not covered.

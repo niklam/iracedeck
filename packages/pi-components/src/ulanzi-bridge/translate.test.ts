@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { type BridgeIdentity, elgatoToUlanzi, encodeContext, PLUGIN_UUID, ulanziToElgato } from "./translate.js";
+import {
+  type BridgeIdentity,
+  elgatoToUlanzi,
+  encodeContext,
+  PI_READ_ACTIONID,
+  PLUGIN_UUID,
+  ulanziToElgato,
+} from "./translate.js";
 
 const identity: BridgeIdentity = {
   address: "127.0.0.1",
@@ -22,19 +29,12 @@ describe("encodeContext", () => {
 });
 
 describe("elgatoToUlanzi", () => {
-  it("scopes global-settings reads/writes to the plugin UUID, not the PI's action identity", () => {
+  it("scopes a global-settings WRITE to the plugin UUID with a blank context", () => {
     // UlanziStudio persists global settings bucketed by the frame's `uuid`
     // verbatim. The plugin main service reads with the plugin UUID, so a PI
     // write carrying the action UUID lands in a per-action bucket the plugin
     // never reads back at boot — key bindings then vanish on restart (#868).
     expect(PLUGIN_UUID).toBe("com.iracedeck.sd.core");
-
-    expect(elgatoToUlanzi({ event: "getGlobalSettings" }, identity)).toEqual({
-      cmd: "getGlobalSettings",
-      uuid: PLUGIN_UUID,
-      key: "",
-      actionid: "",
-    });
 
     expect(elgatoToUlanzi({ event: "setGlobalSettings", payload: { debugLogging: true } }, identity)).toEqual({
       cmd: "setGlobalSettings",
@@ -43,6 +43,37 @@ describe("elgatoToUlanzi", () => {
       actionid: "",
       settings: { debugLogging: true },
     });
+  });
+
+  it("carries the PI's routing identity on a global-settings READ (#1039)", () => {
+    // The host answers a read only when `actionid` is non-empty — it routes the
+    // reply by that field — while the bucket it returns is plugin-wide either
+    // way. So the read keeps the plugin UUID but must carry the PI's own
+    // key/actionid, or no reply ever arrives and every `global` control in the
+    // PI stays empty.
+    expect(elgatoToUlanzi({ event: "getGlobalSettings" }, identity)).toEqual({
+      cmd: "getGlobalSettings",
+      uuid: PLUGIN_UUID,
+      key: "5",
+      actionid: "abc",
+    });
+  });
+
+  it("substitutes an actionid on a read when the PI URL carried none (#1039)", () => {
+    // `readIdentity` defaults `actionid` to "" when the query string omits it,
+    // and a blank one is exactly what the host will not answer. Any non-empty
+    // value is routed (the host echoes it back rather than looking it up), so
+    // an unaddressed PI still gets its settings.
+    const anonymous: BridgeIdentity = { ...identity, actionid: "" };
+    const frame = elgatoToUlanzi({ event: "getGlobalSettings" }, anonymous);
+
+    expect(frame).toEqual({
+      cmd: "getGlobalSettings",
+      uuid: PLUGIN_UUID,
+      key: "5",
+      actionid: PI_READ_ACTIONID,
+    });
+    expect(PI_READ_ACTIONID).not.toBe("");
   });
 
   it("translates per-action settings reads/writes carrying the PI identity", () => {

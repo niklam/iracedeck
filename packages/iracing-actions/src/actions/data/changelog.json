@@ -17,6 +17,12 @@
           ]
         },
         {
+          "title": "Bug Fixes",
+          "items": [
+            "On Ulanzi Deck, a key's settings panel showed every key binding as unset, even ones that were configured and working. The panel had no way to read them back from UlanziStudio, so it looked like nothing had ever been set — while the Settings window and the plugin itself had them all along. Panels now load the real values, stay in sync with the Settings window both ways, and a binding changed in a panel reaches iRaceDeck instead of being quietly discarded."
+          ]
+        },
+        {
           "title": "Maintenance",
           "items": [
             "The website now names every Stream Deck device iRaceDeck runs on. Stream Deck Neo, Stream Deck Studio, Stream Deck + XL, Galleon 100 SD, Stream Deck Mobile and the Virtual Stream Deck are all supported, but the download card and the installation guide listed only the original four models — so owners of the others read that their device was not covered."
