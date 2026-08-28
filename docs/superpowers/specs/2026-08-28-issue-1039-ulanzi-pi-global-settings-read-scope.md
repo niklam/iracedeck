@@ -66,12 +66,7 @@ Blanking the identity was correct for the **write** — it is what stopped key b
 // (#1039). The uuid selects nothing on a read — the reply is the plugin-wide
 // bucket either way — so keep the plugin UUID and state the intent.
 case "getGlobalSettings":
-  return {
-    cmd: "getGlobalSettings",
-    uuid: PLUGIN_UUID,
-    key: identity.key,
-    actionid: identity.actionid || PI_READ_ACTIONID,
-  };
+  return { cmd: "getGlobalSettings", ...globalScope, actionid: identity.actionid || PI_READ_ACTIONID };
 // Bucket selection: a write MUST stay plugin-scoped with a blank context (#868).
 case "setGlobalSettings":
   return { cmd: "setGlobalSettings", ...globalScope, settings: asRecord(frame.payload) ?? {} };
@@ -81,9 +76,11 @@ Three choices inside that, each with a reason:
 
 **Keep `uuid: PLUGIN_UUID` on the read**, even though the probe shows the field is ignored. It costs nothing observable, it keeps the read and the write agreeing about which bucket they mean, and if a future host version ever does key its lookup by `uuid`, plugin scope is the answer we want. Reverting to the action UUID would re-assert on a global frame exactly the identity #868 blamed, in exchange for nothing.
 
-**Carry `key` as well as `actionid`.** Only `actionid` is required, but `key` is part of the PI's true identity and the host echoes both; sending the real pair keeps the frame honest rather than minimal.
+**The read is the write's scope plus an address — `actionid` is the only field that differs.** An earlier draft of this spec also sent the PI's real `key`, on the grounds that it is part of the PI's true identity and the host echoes it. Review caught that this contradicts the paragraph directly above: the reason for keeping `uuid` is that a future host might resolve the bucket from the frame, and a non-blank `key` breaks that same argument for `key` — a host resolving by the full `uuid___key___actionid` context would land on a bucket no write ever populates, which is the silent-empty-PI failure re-armed. The probe settles it: `{uuid: plugin, key: "", actionid: <any>}` is answered exactly as reliably. So `key` stays blank, and the two directions differ in precisely one field, for precisely one reason.
 
 **Fall back to a synthesized non-empty `actionid`.** `readIdentity` defaults `actionid` to `""` when the URL omits it, and a PI served that way would be right back in the failure. The probe shows the host routes happily by an `actionid` that never existed, so a constant is safe, and it is strictly no worse than the empty string it replaces. This is belt and braces against the one dependency the probe could not verify — the real PI's URL params — where the failure mode is total and silent.
+
+**Drop a data-less global-settings ack rather than translating it.** Added during review. UlanziStudio confirms a write with an ack-shaped `didReceiveGlobalSettings` (`code` set, no settings), and the bridge translated any such frame into an empty payload for sdpi. That is the #1039 symptom by another route: mid-bootstrap the router reads empty settings as "no `_settingsChannel`" and falls back permanently, and on the fallback path it blanks every global control already on screen. The plugin's own socket has dropped exactly these frames since #868 (`handleFrame`), so the bridge now mirrors that rule rather than inventing one — keeping any reply that carries settings, ack-shaped or not, since that is how this host answers a read, and keeping a `code`-less empty reply, since a genuinely empty store must still resolve sdpi's promise. Reachable only now that the read is answered at all, which is why it surfaced with the fix rather than before it.
 
 ## Alternatives rejected
 
@@ -105,10 +102,10 @@ Three choices inside that, each with a reason:
 
 **Fallback-path writes are still ignored by the plugin.** A PI that cannot bootstrap has its edits echoed as saved and dropped. That is the standing design item from #993 and unchanged by this fix — but far less reachable once the bootstrap works.
 
-**The plugin's own connect-time read is still blank-scoped and unanswered.** It is covered by the adapter's `willAppear` re-drive (#868). The gap only opens on a first install where no action has ever been placed, and such an install has no PI to open either, so it closes itself before it can matter.
+**The plugin's own connect-time read is still blank-scoped and unanswered** — now tracked as [#1041](https://github.com/niklam/iracedeck/issues/1041). This section originally dismissed it as self-closing: the gap only opens where no action has ever been placed, and such an install has no PI to open either. Review showed that argument covers a fresh install but not an **upgrade**, where the same read is the one chance to import a user's pre-3.0 settings — and the #1040 session then observed a run with zero `add` frames and zero contexts, i.e. the `willAppear` re-drive not firing at all. With no deck attached at startup it never fires regardless of pages or profiles, so three such starts clear `_migrationPending` and the old settings are gone silently. That is unrecoverable user data rather than a blank panel, and it sits in a different package on the migration path, so it gets its own issue, spec and review level rather than riding along here.
 
 ## Verification
 
-Unit: `translate.test.ts` currently pins the broken read shape and must instead pin that the read carries a non-empty `actionid`, that a blank URL `actionid` still produces one, and that the write is untouched.
+Unit: `translate.test.ts` currently pins the broken read shape and must instead pin that the read carries a non-empty `actionid`, that a blank URL `actionid` still produces one, that `key` stays blank so the read differs from the write in exactly one field, and that the write is untouched. The ack guard needs its own case in both directions: a data-less ack dropped, and a settings-carrying reply kept whether or not it is ack-shaped.
 
 Manual, on UlanziStudio, with debug logging on: open an action's PI and confirm the bindings populate; change one in the PI and confirm the Settings window follows live and the settings file's content changes; confirm the plugin log shows the loopback upgrade being accepted rather than a PI console warning about the bootstrap. The debug log also reports the real PI identity, which is the one thing the probe had to synthesize.
