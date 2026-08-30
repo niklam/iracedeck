@@ -1672,6 +1672,17 @@ export function initGlobalSettings(
   // (i.e. there is no file). Every other payload — a PI's save echo, an
   // unsolicited push racing the file load — is ignored for the cache; the
   // store is truth (#993).
+  //
+  // Be precise about what "when we asked" means, because it is weaker than it
+  // reads (#1053): `migrationRequested` is a boolean, not a correlation. While
+  // it is set, the FIRST payload to arrive is taken as the answer whatever sent
+  // it — nothing pairs a reply with the read, and on both WebSocket hosts the
+  // reply that legitimately migrates answers a read deck-core never sent, since
+  // its own frame is dropped before the socket opens and each client's
+  // connect-time read asks in its place. Accepting on arrival rather than on
+  // provenance is therefore deliberate, not an oversight; the per-host analysis
+  // behind that decision, and what it would cost to correlate, are in
+  // docs/superpowers/specs/2026-08-30-issue-1053-migration-read-payload-correlation.md.
   adapter.onDidReceiveGlobalSettings((settings: unknown) => {
     if (!isCurrent()) return;
 
@@ -1680,6 +1691,10 @@ export function initGlobalSettings(
       // switched to the loopback channel) and, on hosts that echo, the
       // plugin's own mirror write arrive here now, and none of them are
       // ingested.
+      //
+      // "None of them are ingested" is a statement about THIS branch — the
+      // window shut — not about the listener. Inside the window the same
+      // payload is accepted; see the note above the subscription (#1053).
       logger?.debug("Ignoring host settings payload: the settings store is authoritative");
 
       return;

@@ -1288,6 +1288,33 @@ describe("single-writer store (issue #993)", () => {
       expect((getGlobalSettings() as unknown as Record<string, unknown>).blackBoxLapTiming).toBe("only-on-host");
     });
 
+    it("an UNSOLICITED payload on the retry is bounded the same way: it can only ADD keys (#1053)", async () => {
+      // The retry accepts the first payload in its window whatever sent it,
+      // exactly as the fresh migration does — a Property Inspector on an
+      // abandoned store is on the fallback path by construction, since the
+      // suppressed mirror publishes no `_settingsChannel`, so its save echo is
+      // the realistic stray here.
+      //
+      // This merge is what makes that acceptable rather than merely
+      // unavoidable: `{ ...raw, ...migrationBase }` means a stray cannot move
+      // a value the user has, only fill a key the file has never held.
+      //
+      // The sibling above pins the same merge from the migration's own side —
+      // a genuine host answer losing a schema-default tie. Both are kept
+      // because they guard different regressions: that one, swapping the merge
+      // back to mergeMigration; this one, the bound #1053 leans on when it
+      // accepts an uncorrelated read.
+      const start = await startWith(abandoned("3.1.0", { driverName: "mine" }), {
+        pluginVersion: "3.2.0",
+      });
+
+      start.mock.echo?.({ driverName: "from-a-property-inspector", blackBoxFuel: "only-on-host" });
+      await start.store.flush();
+
+      expect(getGlobalSettings().driverName).toBe("mine");
+      expect((getGlobalSettings() as unknown as Record<string, unknown>).blackBoxFuel).toBe("only-on-host");
+    });
+
     it("an EMPTY host answer does not retire the guard", async () => {
       // `raw` coerces null and non-objects to {}, and on a host that cannot
       // tell "no bucket" from "empty bucket" an empty reply is no evidence the
@@ -1540,6 +1567,40 @@ describe("single-writer store (issue #993)", () => {
     expect(getGlobalSettings().driverName).toBe("file-nick");
     expect(store.saved).toHaveLength(1);
     expect(store.saved[0]).toMatchObject({ driverName: "file-nick" });
+  });
+
+  it("inside the migration window the FIRST payload wins whatever sent it; outside it, the same payload loses (#1053)", async () => {
+    // The mirror image of the test above, and the reason it passes: there the
+    // store had a file, so `migrationRequested` was false and the echo was
+    // rejected. Here there is no file, the window is open, and the identical
+    // payload is taken as the migration answer.
+    //
+    // That is deliberate, not an oversight. Nothing pairs a reply with the
+    // read — `migrationRequested` is a boolean — and on both WebSocket hosts
+    // the reply that legitimately migrates answers a read deck-core never
+    // sent, because its own frame is dropped before the socket opens and each
+    // client's connect-time read asks in its place. Correlating would mean
+    // three different per-host mechanisms, one of which does not exist. The
+    // analysis is in
+    // docs/superpowers/specs/2026-08-30-issue-1053-migration-read-payload-correlation.md.
+    const mock = createMockAdapter();
+    const store = createMemorySettingsStore(); // no file, so the window is open
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store);
+    await tick();
+
+    mock.echo?.({ driverName: "first-arrival" });
+    await store.flush();
+
+    expect(getGlobalSettings().driverName).toBe("first-arrival");
+    expect(store.saved.at(-1)).toMatchObject({ driverName: "first-arrival" });
+
+    // The boundary is `migrationDone`, not the sender: the same channel, the
+    // same shape, now ignored.
+    mock.echo?.({ driverName: "second-arrival" });
+    await tick();
+
+    expect(getGlobalSettings().driverName).toBe("first-arrival");
   });
 
   it("migrates from a host that answers getGlobalSettings synchronously, arming no deadline", async () => {
