@@ -38,11 +38,21 @@ The same sweep also settles the hazard's premise on that host. The SDK's own doc
 | --- | --- | --- |
 | Elgato | `id` — present on our reply, absent on a PI-originated push | **Documented** — SDK types and implementation, read directly |
 | Ulanzi | `actionid` — echoed verbatim, unvalidated | **Measured** — [#1039](https://github.com/niklam/iracedeck/issues/1039)'s six-permutation sweep against a live host |
-| Mirabox | **none** | Code-verified: the read is `{ event, context: pluginUuid }` (`vsd-client.ts:229`) and the reply path reads only `payload.settings` (`adapter.ts:208`) |
+| Mirabox | **not known to be any** — see the amendment below | **Untested.** Our read is `{ event, context: pluginUuid }` (`vsd-client.ts:229`) and our reply path narrows to `payload.settings` (`adapter.ts:208`) before deck-core sees anything. That is a fact about our code, not about the wire |
 
 Two things are worth stating precisely rather than collapsing into the table.
 
 **On Ulanzi the correlation would have to fail open.** `actionid` works as a nonce only while the host keeps *echoing* an address it has never seen, and both `deck-adapter-ulanzi/src/adapter.ts:383` and the #1041 spec already name that as the assumption the addressed read rests on — which is why the `willAppear` re-drive was kept as its fallback. A strict filter would drop a good reply on a host version that started resolving the field instead, which is #1041-shaped loss by a new route. A filter that fails open only helps when a correct reply *also* arrives, which is not the failing case.
+
+### Amendment: the Mirabox row overstated its own evidence
+
+That row originally read **`Mirabox | none | Code-verified: the read is { event, context: pluginUuid } … and the reply path reads only payload.settings`**. The xhigh review of the implementation rejected it, and was right.
+
+Every word of the cited evidence is about **our** code. `VSDEvent` (`vsd-client.ts:21-34`) declares a `context?: string` the request already sets, and `VSDPlatformAdapter.onDidReceiveGlobalSettings` narrows the frame to `payload.settings` before deck-core is handed anything — which is structurally the *same* situation as Elgato, where this spec correctly says the discriminator exists on the wire and is discarded above us. No capture of a VSD `didReceiveGlobalSettings` frame exists anywhere in the repo, so "none" was an unmeasured negative dressed as a protocol fact.
+
+It is worth leaving the error visible rather than quietly softening it, because of where it sits: in the same table that labels the Ulanzi row **Measured** and cites a six-permutation live sweep, one line apart. The discipline was being applied to the neighbouring row and not to this one.
+
+The correction does not change the decision, but it does weaken one argument for it. "Three mechanisms, one of which does not exist" should be read as *one of which we have never looked for*. If a capture ever shows Mirabox echoes `context`, the declined option is cheaper than this spec costs it — so that capture is the thing to do before anyone reopens this.
 
 **Whether a PI write reaches the plugin socket at all is unmeasured on Mirabox and Ulanzi.** #993's own spec lists the Ulanzi case as inferred rather than observed. One Mirabox data point, from `com.iracedeck.sd.core.sdPlugin/log/2026.8.30.log`, shows exactly one `didReceiveGlobalSettings` reaching the plugin in a session where both a read and a write went out — consistent with "the host answered the read and did not echo the write", but one session in one ordering proves nothing, and that client logs no raw frames, so it cannot say which frame it was.
 
@@ -56,11 +66,11 @@ So the issue's leading option — *"the adapter tags the read it issued and only
 
 ## Decision
 
-**Accept the uncorrelated read. Document it, and pin it with a test.** No behaviour change.
+**Accept the uncorrelated read, and document it.** No behaviour change. (This originally read "and pin it with a test"; see the amendment under Verification for why the two tests that instruction produced were removed again.)
 
 The case is not that correlation is impossible — on Elgato and Ulanzi it is possible — but that it buys little where it is available and nothing where it is not:
 
-- Three different mechanisms, one per host, with no shared convention to hold them together: a `id`-based read on Elgato, an `actionid` nonce on Ulanzi, and nothing at all on Mirabox, where only a latch is implementable and a latch does not address the in-window race.
+- Three different mechanisms, one per host, with no shared convention to hold them together: an `id`-based read on Elgato, an `actionid` nonce on Ulanzi, and on Mirabox nothing we have ever looked for (see the amendment above) — where, on what is known today, only a latch is implementable, and a latch does not address the in-window race.
 - Two of the three rest on host behaviour this project has already been burned by twice (#1039, #1041), on the code path where being wrong costs settings the user cannot get back.
 - The hazard's premise is documented on one host and unmeasured on the other two, and it cannot be measured without a `setGlobalSettings` against a real host's bucket.
 - The worst case is already bounded. #1047 left three mitigations standing: the window opens once per version rather than three times per install, an empty or `null` payload retires nothing, and on the retry path the file wins outright (`{ ...raw, ...migrationBase }`), so an errant payload can only *add* keys the settings file has never held.
@@ -90,6 +100,10 @@ That is an argument for accepting, **not** a guarantee — a PI whose own bootst
 
 ## Verification
 
-Unit, in `packages/deck-core`. The suite already contains this case's mirror image at `global-settings.test.ts:1530` — *"a host payload racing the file load never overrides the file"* — which passes because the store has a file, so `migrationRequested` is false and the guard rejects the echo. #1053 is the same payload with the guard **open**, and the missing test is exactly that: with no file, a payload arriving inside the window is accepted as the migration answer. Pin it as deliberate, naming this spec, so a future reader finds a decision rather than an oversight. Add the retry-path pair too — the same payload on a give-up retry can only add keys the file never held — since that is the bound the decision leans on.
+Unit, in `packages/deck-core`. The suite already contains this case's mirror image at `global-settings.test.ts:1530` — *"a host payload racing the file load never overrides the file"* — which passes because the store has a file, so `migrationRequested` is false and the guard rejects the echo. #1053 is the same payload with the guard **open**.
+
+**Amendment: this section originally asked for two new tests, and neither should exist.** It said to pin the open-window case as deliberate and to "add the retry-path pair too". Both were written, and the xhigh review showed both were hollow. The retry test could not fail: it set `driverName` to `"mine"` against a schema default of `""`, so `mergeMigration` preserves it exactly as `{ ...raw, ...migrationBase }` does — swap the merge back and the test still passes, while its own comment claimed to guard that swap. The open-window test reproduced two existing tests minus two of their assertions.
+
+**The behaviour was already pinned; what was missing was that the pin looked accidental.** A test that cannot fail when its named behaviour is reverted is worse than none, because it converts an absent guard into an apparent one and invites someone to delete the real guard as redundant. So the tests were removed and the rationale attached to the tests that do discriminate — the no-file migration at `:979`, and the retry bound at `:1280`, which uses a value equal to its schema default and therefore actually fails if the merge changes. Labelling a real guard beats adding a fake one, and "pin it with a test" was the wrong instruction rather than a target to hit.
 
 Manual, and free whenever anyone next has a host in front of them: **with debug logging on, edit a global setting in a fallen-back Property Inspector and look for `Ignoring host settings payload` in the plugin log.** One line, no writes to any bucket that is not already being edited, and it settles the one question this spec had to leave unmeasured — whether a PI's write reaches the plugin socket on Mirabox and Ulanzi at all. A payload appearing is a positive result; not appearing only says it did not appear in that run.
