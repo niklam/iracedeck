@@ -74,6 +74,16 @@ type MemoryStore = ReturnType<typeof createMemorySettingsStore>;
 /** Let the async load/migration inside initGlobalSettings settle. */
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
+/**
+ * `tick`, but safe under fake timers — where a real `setTimeout(0)` never
+ * fires, so awaiting one deadlocks the test. The multi-start tests are exactly
+ * the ones that need both this and a controllable clock.
+ */
+const settle = async (): Promise<void> => {
+  if (vi.isFakeTimers()) await vi.advanceTimersByTimeAsync(0);
+  else await tick();
+};
+
 /** One simulated plugin start: the adapter it ran against and the store it wrote to. */
 interface Start {
   mock: MockAdapter;
@@ -94,7 +104,7 @@ async function startWith(stored?: Record<string, unknown>, opts: InitGlobalSetti
   const store = createMemorySettingsStore(stored === undefined ? undefined : { ...stored });
 
   initGlobalSettings(mock.adapter, createMockLogger(), store, opts);
-  await tick();
+  await settle();
 
   return { mock, store };
 }
@@ -1187,6 +1197,115 @@ describe("single-writer store (issue #993)", () => {
 
   it("MIGRATION_TIMEOUT_MS is ten seconds", () => {
     expect(MIGRATION_TIMEOUT_MS).toBe(10_000);
+  });
+
+  describe("re-asking after a give-up (#1047)", () => {
+    const abandoned = (version: unknown, extra: Record<string, unknown> = {}) => ({
+      ...(GlobalSettingsSchema.parse({}) as Record<string, unknown>),
+      [MIGRATION_ABANDONED_KEY]: version,
+      ...extra,
+    });
+
+    it("stamps the running version when it gives up, so a later build can tell it has not asked", async () => {
+      const ceiling = await startWith(
+        {
+          ...(GlobalSettingsSchema.parse({}) as Record<string, unknown>),
+          [MIGRATION_PENDING_KEY]: MIGRATION_RETRY_STARTS,
+        },
+        { pluginVersion: "3.1.0" },
+      );
+
+      expect(ceiling.store.saved.at(-1)).toMatchObject({ [MIGRATION_ABANDONED_KEY]: "3.1.0" });
+    });
+
+    it("does NOT ask again on the same version", async () => {
+      // The whole point of the ceiling: a silent host must not cost a timeout
+      // every launch. Only a version change buys another attempt.
+      const start = await startWith(abandoned("3.1.0"), { pluginVersion: "3.1.0" });
+
+      expect(start.mock.getGlobalSettings).not.toHaveBeenCalled();
+      expect(hostMirrorPayload({ port: 1, token: "t" })).toBeUndefined();
+    });
+
+    it("asks again on a different version, and a host answer retires the marker and restores the mirror", async () => {
+      const start = await startWith(abandoned("3.1.0", { driverName: "kept" }), { pluginVersion: "3.2.0" });
+
+      expect(start.mock.getGlobalSettings).toHaveBeenCalledTimes(1);
+
+      start.mock.echo?.({ blackBoxLapTiming: "from-host" });
+      await start.store.flush();
+
+      expect(getSettingsStoreSource()).toBe("host");
+      expect(start.store.saved.at(-1)).not.toHaveProperty(MIGRATION_ABANDONED_KEY);
+      expect(hostMirrorPayload({ port: 1, token: "t" })).toMatchObject({ blackBoxLapTiming: "from-host" });
+      // The file's own non-default value still wins over the host's copy.
+      expect((getGlobalSettings() as unknown as Record<string, unknown>).driverName).toBe("kept");
+    });
+
+    it("asks again for a #1041 file whose marker is a bare `true` — the cohort this exists for", async () => {
+      // Those files predate the version stamp, so "unknown version" must read
+      // as different from whatever is running now.
+      const start = await startWith(abandoned(true), { pluginVersion: "3.2.0" });
+
+      expect(start.mock.getGlobalSettings).toHaveBeenCalledTimes(1);
+    });
+
+    it("leaves an abandoned store alone when the running version is unknown", async () => {
+      // Without a version there is no way to tell a new build from the one
+      // that gave up, and asking every start is what the ceiling prevents.
+      const start = await startWith(abandoned("3.1.0"), {});
+
+      expect(start.mock.getGlobalSettings).not.toHaveBeenCalled();
+    });
+
+    it("a silent host on the retry restarts the countdown and keeps the mirror shut", async () => {
+      vi.useFakeTimers();
+
+      try {
+        const start = await startWith(abandoned("3.1.0"), { pluginVersion: "3.2.0", migrationTimeoutMs: 50 });
+
+        expect(start.mock.getGlobalSettings).toHaveBeenCalledTimes(1);
+
+        await vi.advanceTimersByTimeAsync(60);
+
+        expect(getSettingsStoreSource()).toBe("fresh");
+        expect(start.store.saved.at(-1)).toMatchObject({ [MIGRATION_PENDING_KEY]: 1 });
+        expect(start.store.saved.at(-1)).not.toHaveProperty(MIGRATION_ABANDONED_KEY);
+        expect(hostMirrorPayload({ port: 1, token: "t" })).toBeUndefined();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("gives up again under the NEW version after the countdown runs out a second time", async () => {
+      // The full round trip, chained start to start: give up on 3.1.0, upgrade,
+      // re-ask, stay silent for the whole countdown, and go quiet again — this
+      // time stamped 3.2.0, so 3.2.0 never asks and 3.3.0 would.
+      vi.useFakeTimers();
+
+      try {
+        let start = await startWith(abandoned("3.1.0"), { pluginVersion: "3.2.0", migrationTimeoutMs: 50 });
+        await vi.advanceTimersByTimeAsync(60);
+
+        for (let i = 0; i < MIGRATION_RETRY_STARTS - 1; i++) {
+          start = await restartFrom(start, { pluginVersion: "3.2.0", migrationTimeoutMs: 50 });
+          await vi.advanceTimersByTimeAsync(60);
+        }
+
+        // The ceiling start.
+        start = await restartFrom(start, { pluginVersion: "3.2.0", migrationTimeoutMs: 50 });
+
+        expect(start.store.saved.at(-1)).toMatchObject({ [MIGRATION_ABANDONED_KEY]: "3.2.0" });
+        expect(hostMirrorPayload({ port: 1, token: "t" })).toBeUndefined();
+
+        // And now it stays quiet on that version.
+        const quiet = await restartFrom(start, { pluginVersion: "3.2.0", migrationTimeoutMs: 50 });
+
+        expect(quiet.mock.getGlobalSettings).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   it("updateGlobalSettings merges, parses, notifies, and saves the WHOLE cache to the store", async () => {

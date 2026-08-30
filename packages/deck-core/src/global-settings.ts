@@ -1222,14 +1222,25 @@ export const MIGRATION_PENDING_KEY = "_migrationPending";
  * mirror would carry is unreachable by the only party that wants it, and
  * suppressing the write costs that install nothing it had.
  *
- * **It is permanent, and nothing here clears it.** Once set, the file carries
- * no countdown, so every later start takes the `unanswered === 0` fast path
- * and the host is never asked again — this store PRESERVES the copy it could
- * not read, it does not restore it. The rescue is deleting the settings file,
- * which re-runs the migration from scratch. Automatic recovery — re-asking
- * once when the running plugin version differs from the one that gave up — is
- * tracked separately; do not add it here by making the mirror gate
- * conditional, which is how it would silently stop guarding.
+ * **Its VALUE is the plugin version that gave up** (#1047), which is what lets
+ * a later build tell it has never asked under its own version and retry once —
+ * see {@link shouldRetryAbandonedMigration}. #1041 wrote a bare `true`, and
+ * that still means the right thing: an unknown version, which differs from any
+ * running one, so those files are re-asked on their first start with a build
+ * that stamps versions. `true` is also what a build that cannot name its own
+ * version writes.
+ *
+ * The retry goes through the ordinary migration flow — both markers are
+ * stripped and the countdown starts again — so this key never needs to relax
+ * the mirror gate itself. **Do not make that gate conditional**; it is the one
+ * thing standing between an abandoned install and a whole-object write over
+ * settings nobody has read, and a conditional guard is how it would silently
+ * stop guarding. Retrying belongs in the load path, where being wrong costs a
+ * timeout rather than a user's settings.
+ *
+ * Between a give-up and the next version change the store PRESERVES the copy
+ * it could not read rather than restoring it, and deleting the settings file
+ * re-runs the migration from scratch at any point.
  */
 export const MIGRATION_ABANDONED_KEY = "_migrationAbandoned";
 
@@ -1360,6 +1371,44 @@ function isMigrationAbandoned(settings: Record<string, unknown>): boolean {
 }
 
 /**
+ * The plugin version that abandoned the migration, or `undefined` when the
+ * marker records no version.
+ *
+ * #1041 wrote the marker as `true`, carrying no version. Those files read as
+ * "abandoned under an unknown version" here, which differs from any running
+ * version — so they are re-asked on their first start with #1047, which is the
+ * cohort this exists for. That is why the version replaced the boolean rather
+ * than sitting beside it: no migration step, and the old shape means exactly
+ * the right thing.
+ */
+function migrationAbandonedVersion(settings: Record<string, unknown>): string | undefined {
+  const marker = settings[MIGRATION_ABANDONED_KEY];
+
+  return typeof marker === "string" && marker.trim() !== "" && marker.trim().toLowerCase() !== "false"
+    ? marker.trim()
+    : undefined;
+}
+
+/**
+ * Whether an abandoned store should ask the deck host again on this start.
+ *
+ * True only when the store was abandoned under a DIFFERENT plugin version from
+ * the one now running. The event that plausibly changes whether the host
+ * answers is the plugin changing — that is exactly what #1041 was — so
+ * "we have never asked under this build" is the condition worth retrying on,
+ * and it is bounded: once this version gives up too, the store goes quiet
+ * again until the next upgrade.
+ *
+ * False when the running version is unknown, so a caller that cannot say which
+ * build it is leaves the store alone rather than re-asking every start.
+ */
+function shouldRetryAbandonedMigration(settings: Record<string, unknown>, runningVersion: string | undefined): boolean {
+  if (!isMigrationAbandoned(settings) || runningVersion === undefined) return false;
+
+  return migrationAbandonedVersion(settings) !== runningVersion;
+}
+
+/**
  * The one place settings reach the disk.
  *
  * Every save goes through here so the write boundary is stated once: the LIVE
@@ -1391,6 +1440,20 @@ export interface InitGlobalSettingsOptions {
   migrationTimeoutMs?: number;
   /** Test hook; production uses {@link LOAD_RETRY_DELAY_MS}. */
   loadRetryDelayMs?: number;
+  /**
+   * The running plugin version, used to decide whether an abandoned migration
+   * is worth re-asking the host about (#1047; see
+   * {@link MIGRATION_ABANDONED_KEY}).
+   *
+   * Injected rather than read from `getPluginVersion()`, which throws when
+   * `initPluginConfig()` has not run. All three plugins do call it first, but
+   * the scenario harness and this package's tests do not, and a settings store
+   * that throws in either is a trap. Omitted means "unknown version": an
+   * abandoned store is then left alone rather than re-asked, since without a
+   * version there is no way to tell a new build from the one that gave up, and
+   * re-asking on every start is what the retry ceiling exists to prevent.
+   */
+  pluginVersion?: string;
 }
 
 /**
@@ -1428,6 +1491,7 @@ export function initGlobalSettings(
 
   const migrationTimeoutMs = opts.migrationTimeoutMs ?? MIGRATION_TIMEOUT_MS;
   const loadRetryDelayMs = opts.loadRetryDelayMs ?? LOAD_RETRY_DELAY_MS;
+  const pluginVersion = opts.pluginVersion;
   let migrationRequested = false;
   let migrationDone = false;
   /** What the store held when the migration read went out: {} for no file, or a fresh-born file. */
@@ -1471,9 +1535,17 @@ export function initGlobalSettings(
     // above, so a startup write naming this key cannot clobber the guard on
     // the very start that raises it (#1041). Stamping it into `raw` at the
     // call site would sit before `stripRunScopedKeys` and `earlyWrites` and
-    // lose that race. A file that already carries it keeps it: nothing here
-    // clears it, deliberately — see MIGRATION_ABANDONED_KEY.
-    if (markAbandoned) merged[MIGRATION_ABANDONED_KEY] = true;
+    // lose that race.
+    //
+    // The value is the version that gave up (#1047), so a later build can tell
+    // it has never asked under its own version and retry once — `true` when
+    // this build cannot name itself, which reads as "unknown version" and is
+    // retried by anything that can. A real host answer retires the marker: the
+    // host is talking now, so the mirror is safe again. Any other source
+    // leaves whatever the file had, since a plain load must carry the guard
+    // forward or the very next start would mirror over the copy it protects.
+    if (markAbandoned) merged[MIGRATION_ABANDONED_KEY] = pluginVersion ?? true;
+    else if (source === "host") delete merged[MIGRATION_ABANDONED_KEY];
 
     const salvage = parseWithSalvage(merged);
 
@@ -1557,26 +1629,46 @@ export function initGlobalSettings(
     if (!isCurrent()) return;
 
     if (loaded !== undefined) {
-      const unanswered = pendingMigrationStarts(loaded);
+      // A store abandoned under a DIFFERENT plugin version gets one more go
+      // (#1047). Both markers are stripped so the file re-enters the ordinary
+      // migration flow below — same read, same timeout, same countdown — which
+      // makes this a decision rather than a second retry mechanism. If the
+      // host stays silent again, the ceiling stamps THIS version and the store
+      // goes quiet until the next upgrade.
+      //
+      // This is what reaches the installs #1041 could only preserve: their
+      // marker predates the version stamp, so it reads as an unknown version,
+      // which differs from any running one. The countdown goes too, so a
+      // hand-edited file carrying both cannot spend the retry on the ceiling
+      // branch without ever asking.
+      if (shouldRetryAbandonedMigration(loaded, pluginVersion)) {
+        logger?.info("Settings came from a build that gave up on the deck host; asking it once more");
+        delete loaded[MIGRATION_ABANDONED_KEY];
+        delete loaded[MIGRATION_PENDING_KEY];
+      } else {
+        const unanswered = pendingMigrationStarts(loaded);
 
-      if (unanswered === 0) {
-        becomeReady(loaded, "file");
+        if (unanswered === 0) {
+          becomeReady(loaded, "file");
 
-        return;
-      }
+          return;
+        }
 
-      if (unanswered >= MIGRATION_RETRY_STARTS) {
-        // The host has now stayed silent for this many starts: stop paying the
-        // timeout on every launch; the file is what we have. The countdown
-        // marker gives way to the durable one, which keeps the host mirror
-        // shut for good — this store was never host-derived, and mirroring it
-        // would replace a copy the plugin has never once read (#1041).
-        logger?.warn(
-          "Deck host never answered the migration read; keeping the settings file as-is and no longer asking",
-        );
-        becomeReady(loaded, "file", true);
+        if (unanswered >= MIGRATION_RETRY_STARTS) {
+          // The host has now stayed silent for this many starts: stop paying
+          // the timeout on every launch; the file is what we have. The
+          // countdown marker gives way to the durable one, which keeps the
+          // host mirror shut — this store was never host-derived, and
+          // mirroring it would replace a copy the plugin has never once read
+          // (#1041). The durable marker names this version, so the next
+          // upgrade asks again (#1047).
+          logger?.warn(
+            "Deck host never answered the migration read; keeping the settings file as-is and no longer asking",
+          );
+          becomeReady(loaded, "file", true);
 
-        return;
+          return;
+        }
       }
     }
 
