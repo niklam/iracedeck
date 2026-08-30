@@ -9,6 +9,7 @@ import {
   GlobalSettingsSchema,
   hostMirrorPayload,
   initGlobalSettings,
+  type InitGlobalSettingsOptions,
   isSettingsStoreReady,
   LOAD_ATTEMPTS,
   LOAD_RETRY_DELAY_MS,
@@ -72,6 +73,66 @@ type MemoryStore = ReturnType<typeof createMemorySettingsStore>;
 
 /** Let the async load/migration inside initGlobalSettings settle. */
 const tick = () => new Promise((r) => setTimeout(r, 0));
+
+/**
+ * `tick`, but safe under fake timers — where a real `setTimeout(0)` never
+ * fires, so awaiting one deadlocks the test. The multi-start tests are exactly
+ * the ones that need both this and a controllable clock.
+ */
+const settle = async (): Promise<void> => {
+  if (vi.isFakeTimers()) await vi.advanceTimersByTimeAsync(0);
+  else await tick();
+};
+
+/** One simulated plugin start: the adapter it ran against and the store it wrote to. */
+interface Start {
+  mock: MockAdapter;
+  store: MemoryStore;
+}
+
+/**
+ * Simulate a plugin start against a settings file whose contents are `stored`
+ * (omit it for "no file yet"), and wait for the store to settle.
+ *
+ * Pairs with {@link restartFrom}. Use these rather than hand-authoring the file
+ * for a second start — see that function for why it matters.
+ */
+async function startWith(stored?: Record<string, unknown>, opts: InitGlobalSettingsOptions = {}): Promise<Start> {
+  _resetGlobalSettings();
+
+  const mock = createMockAdapter();
+  const store = createMemorySettingsStore(stored === undefined ? undefined : { ...stored });
+
+  initGlobalSettings(mock.adapter, createMockLogger(), store, opts);
+  await settle();
+
+  return { mock, store };
+}
+
+/**
+ * Restart on the bytes a previous start ACTUALLY persisted, rather than on a
+ * hand-written object hoping to match them.
+ *
+ * This is the shape #1041's post-mortem asked for. Every marker test there
+ * authored both files itself, so nothing compared what one start wrote against
+ * what the next start read — and a recovery path that production could never
+ * reach shipped green, because its fixture carried a marker combination the
+ * code never writes. Anything asserting across a restart boundary should chain
+ * through here.
+ *
+ * Throws when the previous start persisted nothing: restarting from `undefined`
+ * is the "no file yet" scenario, which would quietly pass for entirely the
+ * wrong reason.
+ */
+async function restartFrom(previous: Start, opts: InitGlobalSettingsOptions = {}): Promise<Start> {
+  const persisted = previous.store.saved.at(-1);
+
+  if (persisted === undefined) {
+    throw new Error("restartFrom: the previous start persisted nothing, so there is no file to restart from");
+  }
+
+  return startWith(persisted, opts);
+}
 
 /**
  * Initialize against a memory store seeded with `initial` (the "settings file
@@ -1086,33 +1147,17 @@ describe("single-writer store (issue #993)", () => {
 
   it("the file the ceiling ACTUALLY writes still shuts the mirror on the next start (#1041)", async () => {
     // Chains one start's persisted output into the next start's input rather
-    // than hand-authoring the second file. Every other marker test authors its
-    // own store and so cannot catch the persisted shape drifting from the
-    // assumed one — which is exactly how an earlier version of this change
-    // shipped a "recovery" path production could never reach: its fixture
-    // carried both markers, a combination the ceiling never writes.
-    const mock = createMockAdapter();
-    const ceilingStore = createMemorySettingsStore({
+    // than hand-authoring the second file — see restartFrom for why that
+    // distinction is the whole point.
+    const ceiling = await startWith({
       ...(GlobalSettingsSchema.parse({}) as Record<string, unknown>),
       [MIGRATION_PENDING_KEY]: MIGRATION_RETRY_STARTS,
       driverName: "kept",
     });
 
-    initGlobalSettings(mock.adapter, createMockLogger(), ceilingStore);
-    await tick();
+    const next = await restartFrom(ceiling);
 
-    const persisted = { ...(ceilingStore.saved.at(-1) as Record<string, unknown>) };
-
-    // Second start, on the very bytes the first one wrote.
-    _resetGlobalSettings();
-
-    const nextMock = createMockAdapter();
-    const nextStore = createMemorySettingsStore(persisted);
-
-    initGlobalSettings(nextMock.adapter, createMockLogger(), nextStore);
-    await tick();
-
-    expect(nextMock.getGlobalSettings).not.toHaveBeenCalled();
+    expect(next.mock.getGlobalSettings).not.toHaveBeenCalled();
     expect(hostMirrorPayload({ port: 1, token: "t" })).toBeUndefined();
     expect((getGlobalSettings() as unknown as Record<string, unknown>).driverName).toBe("kept");
   });
@@ -1152,6 +1197,224 @@ describe("single-writer store (issue #993)", () => {
 
   it("MIGRATION_TIMEOUT_MS is ten seconds", () => {
     expect(MIGRATION_TIMEOUT_MS).toBe(10_000);
+  });
+
+  describe("re-asking after a give-up (#1047)", () => {
+    /** A file that a build gave up on, in the durable-marker shape. */
+    const abandoned = (version: unknown, extra: Record<string, unknown> = {}) => ({
+      ...(GlobalSettingsSchema.parse({}) as Record<string, unknown>),
+      [MIGRATION_ABANDONED_KEY]: version,
+      ...extra,
+    });
+
+    /**
+     * A file that a build gave up on in the shape every FIELD install actually
+     * has: the countdown at its ceiling and no marker at all, because #1041
+     * ships in the same unreleased version as this change and no released
+     * build has ever written one.
+     */
+    const ceilingReached = (extra: Record<string, unknown> = {}) => ({
+      ...(GlobalSettingsSchema.parse({}) as Record<string, unknown>),
+      [MIGRATION_PENDING_KEY]: MIGRATION_RETRY_STARTS,
+      ...extra,
+    });
+
+    it("asks a countdown-at-ceiling file with NO marker — the cohort that exists in the field", async () => {
+      // The whole point. Keying the retry on the durable marker alone would
+      // have recovered nobody: #1041 is unreleased, so every install that gave
+      // up did so under a build whose ceiling wrote only the countdown.
+      const start = await startWith(ceilingReached(), { pluginVersion: "3.1.0", migrationTimeoutMs: 50 });
+
+      expect(start.mock.getGlobalSettings).toHaveBeenCalledTimes(1);
+    });
+
+    it("does NOT ask again on the same version", async () => {
+      const start = await startWith(abandoned("3.1.0"), { pluginVersion: "3.1.0" });
+
+      expect(start.mock.getGlobalSettings).not.toHaveBeenCalled();
+      expect(hostMirrorPayload({ port: 1, token: "t" })).toBeUndefined();
+    });
+
+    it("does NOT ask on a downgrade, and the pair converges", async () => {
+      // A rollback cannot fix a read an older build already failed at, and a
+      // bare `!==` would have both versions re-asking on every transition.
+      const start = await startWith(abandoned("3.2.0"), { pluginVersion: "3.1.1" });
+
+      expect(start.mock.getGlobalSettings).not.toHaveBeenCalled();
+    });
+
+    it("asks on an upgrade, and a host answer retires the marker and restores the mirror", async () => {
+      const start = await startWith(abandoned("3.1.0", { driverName: "kept" }), { pluginVersion: "3.2.0" });
+
+      expect(start.mock.getGlobalSettings).toHaveBeenCalledTimes(1);
+
+      start.mock.echo?.({ blackBoxLapTiming: "from-host" });
+      await start.store.flush();
+
+      expect(getSettingsStoreSource()).toBe("host");
+      expect(start.store.saved.at(-1)).not.toHaveProperty(MIGRATION_ABANDONED_KEY);
+      expect(hostMirrorPayload({ port: 1, token: "t" })).toMatchObject({ blackBoxLapTiming: "from-host" });
+      expect((getGlobalSettings() as unknown as Record<string, unknown>).driverName).toBe("kept");
+    });
+
+    it("asks for a #1041 file whose marker is a bare `true`", async () => {
+      const start = await startWith(abandoned(true), { pluginVersion: "3.2.0" });
+
+      expect(start.mock.getGlobalSettings).toHaveBeenCalledTimes(1);
+    });
+
+    it("leaves a given-up store alone when the running version is unknown", async () => {
+      const start = await startWith(abandoned("3.1.0"), {});
+
+      expect(start.mock.getGlobalSettings).not.toHaveBeenCalled();
+    });
+
+    it("the file wins outright over the host on the retry, INCLUDING keys at a schema default", async () => {
+      // mergeMigration's "still at its default implies never touched" premise
+      // holds for a defaults-born file a few starts old. The store here has
+      // been authoritative for months, so a deliberate choice that happens to
+      // equal the default must not lose to a copy from before the give-up —
+      // and the merged result is mirrored back, so losing it destroys the
+      // setting in both stores at once.
+      const start = await startWith(abandoned("3.1.0", { focusIRacingWindow: true }), {
+        pluginVersion: "3.2.0",
+      });
+
+      start.mock.echo?.({ focusIRacingWindow: false, blackBoxLapTiming: "only-on-host" });
+      await start.store.flush();
+
+      expect(getGlobalSettings().focusIRacingWindow).toBe(true);
+      // The host still fills a key the file has never held.
+      expect((getGlobalSettings() as unknown as Record<string, unknown>).blackBoxLapTiming).toBe("only-on-host");
+    });
+
+    it("an EMPTY host answer does not retire the guard", async () => {
+      // `raw` coerces null and non-objects to {}, and on a host that cannot
+      // tell "no bucket" from "empty bucket" an empty reply is no evidence the
+      // copy is gone. Retiring on one would re-open a whole-object write over
+      // a copy nothing was read from.
+      const start = await startWith(abandoned("3.1.0"), { pluginVersion: "3.2.0" });
+
+      start.mock.echo?.({});
+      await start.store.flush();
+
+      expect(hostMirrorPayload({ port: 1, token: "t" })).toBeUndefined();
+      expect(start.store.saved.at(-1)).toMatchObject({ [MIGRATION_ABANDONED_KEY]: "3.2.0" });
+    });
+
+    it("a NULL host answer does not retire the guard either", async () => {
+      const start = await startWith(abandoned("3.1.0"), { pluginVersion: "3.2.0" });
+
+      start.mock.echo?.(null);
+      await start.store.flush();
+
+      expect(hostMirrorPayload({ port: 1, token: "t" })).toBeUndefined();
+    });
+
+    it("a silent host records THIS build's give-up and does not restart the countdown", async () => {
+      // One extra attempt per version, not three: restarting the countdown
+      // would cost three degraded startups per release, which is neither what
+      // the ceiling exists to prevent nor what any doc promises.
+      vi.useFakeTimers();
+
+      try {
+        const start = await startWith(abandoned("3.1.0", { driverName: "kept" }), {
+          pluginVersion: "3.2.0",
+          migrationTimeoutMs: 50,
+        });
+
+        expect(start.mock.getGlobalSettings).toHaveBeenCalledTimes(1);
+
+        await vi.advanceTimersByTimeAsync(60);
+
+        expect(start.store.saved.at(-1)).toMatchObject({ [MIGRATION_ABANDONED_KEY]: "3.2.0" });
+        expect(start.store.saved.at(-1)).not.toHaveProperty(MIGRATION_PENDING_KEY);
+        expect(hostMirrorPayload({ port: 1, token: "t" })).toBeUndefined();
+        // The user's file survives the unanswered retry intact.
+        expect((getGlobalSettings() as unknown as Record<string, unknown>).driverName).toBe("kept");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("goes quiet after one unanswered retry, chained start to start", async () => {
+      vi.useFakeTimers();
+
+      try {
+        const first = await startWith(ceilingReached({ driverName: "kept" }), {
+          pluginVersion: "3.2.0",
+          migrationTimeoutMs: 50,
+        });
+
+        await vi.advanceTimersByTimeAsync(60);
+
+        // On the bytes that start actually wrote.
+        const next = await restartFrom(first, { pluginVersion: "3.2.0", migrationTimeoutMs: 50 });
+
+        expect(next.mock.getGlobalSettings).not.toHaveBeenCalled();
+        expect(hostMirrorPayload({ port: 1, token: "t" })).toBeUndefined();
+        expect((getGlobalSettings() as unknown as Record<string, unknown>).driverName).toBe("kept");
+
+        // ...and the NEXT version asks once more.
+        const upgraded = await restartFrom(next, { pluginVersion: "3.3.0", migrationTimeoutMs: 50 });
+
+        expect(upgraded.mock.getGlobalSettings).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("a blank or whitespace running version cannot stamp a marker that reads as unset", async () => {
+      // `?? true` would store "" verbatim, which isMigrationAbandoned reads
+      // back as NOT set — the guard failing open on the start that raises it.
+      vi.useFakeTimers();
+
+      try {
+        const start = await startWith(ceilingReached(), { pluginVersion: "   ", migrationTimeoutMs: 50 });
+
+        await vi.advanceTimersByTimeAsync(60);
+
+        expect(start.store.saved.at(-1)).toMatchObject({ [MIGRATION_ABANDONED_KEY]: true });
+        expect(hostMirrorPayload({ port: 1, token: "t" })).toBeUndefined();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("a blank running version does not retry a marked store, so it cannot loop", async () => {
+      // Blank is unknown, not "differs". Retrying on it would stamp `true` (the
+      // writer discards a blank), which the next start reads back as an unknown
+      // recorded version and retries again — a migration timeout on every
+      // launch, forever, which is what the ceiling exists to prevent.
+      const start = await startWith(abandoned(true), { pluginVersion: "   " });
+
+      expect(start.mock.getGlobalSettings).not.toHaveBeenCalled();
+    });
+
+    it("a whitespace-padded stored version still compares equal to itself", async () => {
+      // The writer trims because the reader does; an untrimmed store would
+      // never match and would re-ask forever.
+      const start = await startWith(abandoned(" 3.1.0 "), { pluginVersion: "3.1.0" });
+
+      expect(start.mock.getGlobalSettings).not.toHaveBeenCalled();
+    });
+
+    it("a hand-copied numeric marker still shuts the mirror and is retried by a named version", async () => {
+      const start = await startWith(abandoned(1), { pluginVersion: "3.2.0" });
+
+      expect(start.mock.getGlobalSettings).toHaveBeenCalledTimes(1);
+    });
+
+    it("a file carrying BOTH markers on the same version does not ask", async () => {
+      // The countdown is mid-flight while the marker says this build already
+      // gave up; the marker wins, so the store stays quiet.
+      const start = await startWith(abandoned("3.1.0", { [MIGRATION_PENDING_KEY]: 1 }), {
+        pluginVersion: "3.1.0",
+      });
+
+      expect(start.mock.getGlobalSettings).not.toHaveBeenCalled();
+      expect(hostMirrorPayload({ port: 1, token: "t" })).toBeUndefined();
+    });
   });
 
   it("updateGlobalSettings merges, parses, notifies, and saves the WHOLE cache to the store", async () => {

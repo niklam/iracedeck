@@ -45,9 +45,10 @@ export const PLUGIN_UUID = "com.iracedeck.sd.core";
  * the `willAppear` re-drive as the sole route to a reply. That never fires
  * with no deck attached, and three such starts take `_migrationPending` to its
  * ceiling; the start AFTER them used to let the once-per-start host mirror
- * overwrite the user's copy with schema defaults (#1041). deck-core now blocks
- * that write for good via `MIGRATION_ABANDONED_KEY`, so such a store keeps the
- * copy it never read — preserved, not restored.
+ * overwrite the user's copy with schema defaults (#1041). deck-core blocks that
+ * write via `MIGRATION_ABANDONED_KEY`, and since #1047 that marker names the
+ * version which gave up, so an upgrade asks the host once more and such a store
+ * is recovered rather than merely preserved.
  *
  * Deliberately a different value from the PI bridge's `PI_READ_ACTIONID` in
  * `@iracedeck/pi-components`: two sockets asking for two different reasons,

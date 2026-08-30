@@ -1076,7 +1076,12 @@ adapter.registerAction(VIEW_ADJUSTMENT_UUID, new ViewAdjustment(adapter.createLo
 
 // Initialize global settings listener BEFORE connect - handlers must be registered first.
 // settingsStore itself is declared earlier, above the settingsWindow controller.
-initGlobalSettings(adapter, adapter.createLogger("GlobalSettings"), settingsStore);
+// The running version lets an abandoned migration be re-asked once after
+// an upgrade (#1047). Injected rather than read inside deck-core, which
+// must not depend on initPluginConfig() having run.
+initGlobalSettings(adapter, adapter.createLogger("GlobalSettings"), settingsStore, {
+  pluginVersion: getPluginVersion(),
+});
 
 // Migrate the pre-#953 spring binding keys (Left/Right -> LR/RR) once real settings arrive
 migrateGlobalSettingsKeys(SETUP_CHASSIS_BINDING_KEY_RENAMES, adapter.createLogger("SettingsMigration"));
