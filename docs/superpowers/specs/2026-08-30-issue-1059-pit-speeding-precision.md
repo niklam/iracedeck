@@ -115,6 +115,16 @@ Note the capture must come from a real sim session — the scenario harness feed
 
 **A prior worth testing rather than assuming.** #912 called the phenomenon "GPS jitter". iRacing's `Speed` is a physics-engine value, not a GPS-derived one, so what oscillates around the limit is genuine speed under throttle or limiter control rather than measurement noise. The capture should therefore be read for how *drivers* behave near the limit, and it may show the excursions are long enough that any acceptable hold cannot bridge them — in which case the honest outcome is a very short hold that damps only single-tick flapping, and the residual is accepted.
 
+### Resolved by listening, on the non-limiter path only
+
+The section above is superseded for the **non-limiter** path. Asked to provoke the truncation case deliberately — modulating throttle across the limit with no limiter engaged — the answer was: *"Case 4: I was doing this. Hard to say if it cut mid-tone, but that doesn't matter. I'm happy with it still."*
+
+**Record that as an acceptance, not as an observation.** It does not claim no truncation occurred; it says truncation may well occur, it is not reliably audible, and it is fine. That is *stronger* than a clean pass would have been, because it does not depend on the listener's ear having been good enough — the bad case is acceptable to the only person who would hear it.
+
+So `PIT_SPEEDING_END_HOLD_MS = 300` is **accepted on the non-limiter path**, and should no longer be described as an unvalidated floor there. The question was always about perception rather than correctness, and acceptance by the person whose perception counts is the strongest evidence available for it. The `telemetry-watch` method above stays recorded for anyone who revisits the number; it is **no longer a prerequisite** for this path.
+
+It clears **nothing** on the limiter path — see the two standards below.
+
 ## Tested against the sim — two further defects, and a premise that failed
 
 Everything above was designed, reviewed and shipped to a test build before anyone drove it. One lap produced two defects and killed a premise that **two** specs had carried. Recording that plainly is the point of this section: #912 and the first draft of this spec both reasoned confidently about how a pit limiter behaves, neither measured it, and one lap settled it.
@@ -172,9 +182,18 @@ The same report also confirms, in the field rather than in tests, that the parts
 
 The report was *"it still blink AT the speed limit"*. Read as a figure of speech that is just "it fires when it shouldn't". Read literally it is more informative: a threshold sitting 0.0005 kph below where a limiter holds, with a speed that micro-oscillates across it, produces repeated start/end cycles — and against the 300 ms end hold that is audibly a **blink rather than a tone**.
 
-If that is what happened, the quantisation defect and the review's case-4 concern (an end→restart inside the 160 ms clip truncating it into a click) are **the same observation**, and it arrived self-reported without anyone running case 4. It would also mean the 300 ms hold has been exercised in the field and did not prevent the flapping — which bears directly on the unvalidated constant above.
+An earlier draft of this section claimed the blink and the review's case-4 concern (an end→restart inside the 160 ms clip truncating it into a click) were **the same observation**. **That was wrong, and the correction matters more than the original point.**
 
-**Under the acceptance criterion this stops being an aside and becomes the thing to disprove.** If an episode can start and end repeatedly around a threshold that is now placed *correctly*, the criterion fails even with both fixes in — and the hold's job then extends from damping jitter to guaranteeing an absolute silence it was never sized for.
+They are the same *symptom* — a short, intermittent artefact around a threshold — with **opposite meanings**:
+
+|  | non-limiter, over the limit | limiter, at or under the limit |
+| --- | --- | --- |
+| what is happening | a warning that **should** be sounding has a ragged tail | a warning sounds when there must be **silence** |
+| standard | cosmetic; **accepted** (case 4 above) | **any** sound is a failure |
+
+So case 4's acceptance must not leak across. A truncated tick on a cue that ought to be sounding is a blemish on correct behaviour; a tick while a limiter car sits at the limit is incorrect behaviour, and the acceptance criterion admits no amount of it. Two standards, both Niklas's, and they are not in tension — they are about different events that happen to sound alike.
+
+**Under the acceptance criterion the blink stops being an aside and becomes the thing to disprove.** If an episode can start and end repeatedly around a threshold that is now placed *correctly*, the criterion fails even with both fixes in — and the hold's job there extends from damping jitter to guaranteeing an absolute silence it was never sized for. That is why the capture below is still worth running **for the limiter case specifically**, even though the constant is settled for the other one: the question there is not "does the tail sound ragged" but "can the episode restart at all when it must not".
 
 **What would demonstrate it**, and it is the same instrument as the hold duration:
 
@@ -219,3 +238,15 @@ Boundary tests must use a **non-round** limit — `72.42 kph`, the converted 45.
 - `hasPitLimiter` true but the limiter **not** engaged → treated as inactive, guarding the conflation of "has one" with "using one".
 
 The manual test is the acceptance criterion, and it is not a single-press check: hold a limiter car at the limit on pit road **sustained**, and confirm silence throughout. A blink or a single tick is a failure.
+
+### Manual-test status
+
+Recorded precisely, because "not mentioned" and "passed" are different things and the difference has already nearly cost us once:
+
+| Case | Status |
+| --- | --- |
+| Exactly at the limit, limiter car | **FAILED** — the report that reopened this. Drives both fixes below. |
+| A hair over → sounds immediately | Not separately reported. |
+| Run-on after lifting from over the limit | **Unreported, but implicitly accepted.** "I'm happy with it still" plausibly covers the general feel of non-limiter behaviour including run-on, but it answered a question about case 4 — so it is not stretched into a second answer. |
+| Deliberate throttle modulation, no limiter, listening for a truncated tick | **ACCEPTED**, explicitly and in the knowledge that truncation may be occurring. See *Resolved by listening* above. |
+| Non-limiter driving generally | **PASSES**, reported unprompted, and predictive evidence for the quantisation hypothesis. |
