@@ -50,6 +50,11 @@ import { getLatestTelemetry } from "@iracedeck/sim-events-iracing";
  *
  * It lives at the `sfx/` root rather than in `sfx/radar/` because it is not a
  * radar sound — the cue only ever borrowed one while it had no tone of its own.
+ *
+ * Generated for this feature rather than sourced, so it carries no third-party
+ * licence obligation and needs no `THIRD-PARTY-LICENSES.md` entry. Noted here
+ * because an unattributed binary in `sfx/` invites exactly that question, and
+ * the file cannot answer it — it has no metadata chunks at all.
  */
 export const PIT_SPEEDING_CLIP = "sfx/IRD-pit-speed-warning.wav";
 
