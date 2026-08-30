@@ -985,13 +985,13 @@ export const GlobalSettingsSchema = z
       .transform((val) => val === true || val === "true")
       .default(true),
     /**
-     * Per-callout opt-ins for the two pit-speed families (issue #1051).
+     * Per-callout opt-ins for the two pit-road speed families (issue #1051).
      *
      * TWO families, split by equipment, because they differ by REMEDY and not
      * merely by wording: a limiter car speeding on pit road is usually speeding
      * because the limiter is off and the fix is the button; a car without one
      * has to lift. `calloutEnabledLimiter*` gate the limiter-framed callouts
-     * (`hasPitLimiter` per #639); `calloutEnabledPitSpeed*` gate their mirror
+     * (`hasPitLimiter` per #639); `calloutEnabledNoLimiter*` gate their mirror
      * for cars that have no limiter, whose lines never mention one.
      *
      * All default true — new Race Engineer functionality ships on — and, like
@@ -1020,12 +1020,12 @@ export const GlobalSettingsSchema = z
       .transform((val) => val === true || val === "true")
       .default(true),
     // over the pit limit, on a car with NO limiter
-    calloutEnabledPitSpeedNoLimiter: z
+    calloutEnabledNoLimiterSpeeding: z
       .union([z.boolean(), z.string()])
       .transform((val) => val === true || val === "true")
       .default(true),
     // pit entry reminder plus the spoken limit, cars with NO limiter
-    calloutEnabledPitSpeedEntry: z
+    calloutEnabledNoLimiterEntry: z
       .union([z.boolean(), z.string()])
       .transform((val) => val === true || val === "true")
       .default(true),

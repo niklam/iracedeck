@@ -1,5 +1,5 @@
 /**
- * Pit-speed (no-limiter) scenario predicates, and the property that matters
+ * No-limiter scenario predicates, and the property that matters
  * most about the two-family split (issue #1051).
  *
  * The families are meant to partition the field: a car either has a pit limiter
@@ -13,8 +13,8 @@ import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { describe, expect, it } from "vitest";
 
 import type { Scenario } from "../../dsl.js";
+import { lacksPitLimiter, NO_LIMITER_ENTRY, NO_LIMITER_SPEEDING } from "./no-limiter.js";
 import { LIMITER_SPEEDING } from "./pit-limiter.js";
-import { lacksPitLimiter, PIT_SPEED_ENTRY, PIT_SPEED_NO_LIMITER } from "./pit-speed.js";
 
 const WITH_LIMITER: Partial<TelemetryData> = { dcPitSpeedLimiterToggle: false };
 const NO_LIMITER: Partial<TelemetryData> = {};
@@ -49,10 +49,10 @@ describe("lacksPitLimiter — the negated gate is not a bare negation", () => {
   });
 });
 
-describe("pit-speed where: predicates", () => {
+describe("no-limiter where: predicates", () => {
   for (const [name, scenario, event] of [
-    ["PIT_SPEED_NO_LIMITER", PIT_SPEED_NO_LIMITER, "limiter.speeding"],
-    ["PIT_SPEED_ENTRY", PIT_SPEED_ENTRY, "pitLane.entered"],
+    ["NO_LIMITER_SPEEDING", NO_LIMITER_SPEEDING, "limiter.speeding"],
+    ["NO_LIMITER_ENTRY", NO_LIMITER_ENTRY, "pitLane.entered"],
   ] as const) {
     describe(name, () => {
       it("fires on a car with no pit limiter", () => {
@@ -73,7 +73,7 @@ describe("pit-speed where: predicates", () => {
 describe("the two families partition the field (issue #1051)", () => {
   const speeding = (telemetry: Partial<TelemetryData> | null): boolean[] => [
     fires(LIMITER_SPEEDING, envelope("limiter.speeding", telemetry)),
-    fires(PIT_SPEED_NO_LIMITER, envelope("limiter.speeding", telemetry)),
+    fires(NO_LIMITER_SPEEDING, envelope("limiter.speeding", telemetry)),
   ];
 
   it("speaks exactly once to a car that has a limiter", () => {

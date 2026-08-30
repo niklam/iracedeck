@@ -370,23 +370,23 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     data: { on: true },
   },
 
-  // ── Pit Speed (issue #1051) — cars with NO limiter ──
+  // ── No Pit Limiter (issue #1051) — cars with NO limiter ──
   // The mirror family. Its gate is `telemetry !== null && !hasPitLimiter(t)`,
   // NOT a bare negation — `hasPitLimiter` folds unknown into false, so a bare
   // negation would fire these on unknown telemetry too. To hear them, first
   // POST {"dcPitSpeedLimiterToggle": null} to /api/telemetry to delete the
   // field; with it present (the default) these are correctly silent.
   {
-    id: "pit-speed-no-limiter",
-    category: "Pit Speed (no limiter)",
+    id: "no-limiter-speeding",
+    category: "No Pit Limiter",
     label: "Speeding (no limiter)",
     description: 'Over the pit limit with no limiter fitted — "Over the limit. Lift." Never mentions a limiter.',
     event: "limiter.speeding",
     data: {},
   },
   {
-    id: "pit-speed-entry",
-    category: "Pit Speed (no limiter)",
+    id: "no-limiter-entry",
+    category: "No Pit Limiter",
     label: "Pit entry reminder",
     description:
       "Pit entry on a car with no limiter, plus the spoken limit when a number clip exists for it. " +

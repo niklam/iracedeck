@@ -51,8 +51,8 @@ export function lacksPitLimiter(telemetry: TelemetryData | null): boolean {
   return telemetry !== null && !hasPitLimiter(telemetry);
 }
 
-export const PIT_SPEED_NO_LIMITER: Scenario = {
-  id: "pit-crew.pit-speed-no-limiter",
+export const NO_LIMITER_SPEEDING: Scenario = {
+  id: "pit-crew.no-limiter-speeding",
   when: {
     event: "limiter.speeding",
     where: (e) => lacksPitLimiter(e.telemetry as TelemetryData | null),
@@ -60,11 +60,11 @@ export const PIT_SPEED_NO_LIMITER: Scenario = {
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
   base: "pit-crew",
-  sequence: ["@pit-crew.radio-open", "pool:pit-speed-no-limiter", "@pit-crew.radio-close"],
+  sequence: ["@pit-crew.radio-open", "pool:no-limiter-speeding", "@pit-crew.radio-close"],
 };
 
-export const PIT_SPEED_ENTRY: Scenario = {
-  id: "pit-crew.pit-speed-entry",
+export const NO_LIMITER_ENTRY: Scenario = {
+  id: "pit-crew.no-limiter-entry",
   when: {
     event: "pitLane.entered",
     where: (e) => lacksPitLimiter(e.telemetry as TelemetryData | null),
@@ -83,7 +83,7 @@ export const PIT_SPEED_ENTRY: Scenario = {
   // minutes ago.
   sequence: [
     "@pit-crew.radio-open",
-    "pool:pit-speed-entry",
+    "pool:no-limiter-entry",
     {
       optional: [
         { var: "pitSpeed.limitIntro" },
@@ -95,35 +95,36 @@ export const PIT_SPEED_ENTRY: Scenario = {
   ],
 };
 
-export const PIT_SPEED_SCENARIOS: readonly Scenario[] = [PIT_SPEED_NO_LIMITER, PIT_SPEED_ENTRY];
+export const NO_LIMITER_SCENARIOS: readonly Scenario[] = [NO_LIMITER_SPEEDING, NO_LIMITER_ENTRY];
 
-export const PIT_SPEED_SCENARIO_IDS: readonly string[] = PIT_SPEED_SCENARIOS.map((s) => s.id);
+export const NO_LIMITER_SCENARIO_IDS: readonly string[] = NO_LIMITER_SCENARIOS.map((s) => s.id);
 
-/** Stable identifier for each user-toggleable pit-speed callout (issue #1051). */
-export type PitSpeedCalloutId = "no-limiter" | "entry";
+/** Stable identifier for each user-toggleable no-limiter callout (issue #1051). */
+export type NoLimiterCalloutId = "speeding" | "entry";
 
 /**
- * Canonical id -> plugin-global setting key. The ids name the AUDIENCE rather
- * than the condition, because "the pit-speed callouts for cars without a
- * limiter" is what a user is choosing.
+ * Canonical id -> plugin-global setting key. The ids name the CONDITION, matching
+ * `PitLimiterCalloutId` next door -- the audience is already named by the family,
+ * so repeating it in the id ("no-limiter": "calloutEnabledNoLimiterSpeeding")
+ * only read as a typo.
  */
-export const PIT_SPEED_CALLOUT_SETTING_KEYS: Record<PitSpeedCalloutId, string> = {
-  "no-limiter": "calloutEnabledPitSpeedNoLimiter",
-  entry: "calloutEnabledPitSpeedEntry",
+export const NO_LIMITER_CALLOUT_SETTING_KEYS: Record<NoLimiterCalloutId, string> = {
+  speeding: "calloutEnabledNoLimiterSpeeding",
+  entry: "calloutEnabledNoLimiterEntry",
 };
 
 /** Scenario id -> callout id, consumed by `wrapCalloutScenario` in `index.ts`. */
-export const SCENARIO_ID_TO_PIT_SPEED_ID: Record<string, PitSpeedCalloutId> = {
-  "pit-crew.pit-speed-no-limiter": "no-limiter",
-  "pit-crew.pit-speed-entry": "entry",
+export const SCENARIO_ID_TO_NO_LIMITER_ID: Record<string, NoLimiterCalloutId> = {
+  "pit-crew.no-limiter-speeding": "speeding",
+  "pit-crew.no-limiter-entry": "entry",
 };
 
 /**
  * Pool names referenced by these scenarios, derived from `pools.ts` so a rename
  * there flows through without a parallel list to keep in sync.
  */
-export const PIT_SPEED_POOL_NAMES: readonly string[] = Object.keys(POOL_REGISTRY).filter((name) =>
-  name.startsWith("pit-speed-"),
+export const NO_LIMITER_POOL_NAMES: readonly string[] = Object.keys(POOL_REGISTRY).filter((name) =>
+  name.startsWith("no-limiter-"),
 );
 
 /**
@@ -144,7 +145,7 @@ export const PIT_SPEED_POOL_NAMES: readonly string[] = Object.keys(POOL_REGISTRY
  * plays as a complete sentence. A dedicated limit resolver would decouple it at
  * the cost of another positional parameter on an already long signature.
  */
-export function registerPitSpeedVars(
+export function registerNoLimiterVars(
   engine: IScenarioEngine,
   getSessionStartSnapshot: () => SessionStartSnapshot | null,
 ): void {

@@ -85,6 +85,12 @@ import {
   SCENARIO_ID_TO_LAP_TIME_ID,
 } from "./lap-time.js";
 import {
+  NO_LIMITER_SCENARIOS,
+  type NoLimiterCalloutId,
+  registerNoLimiterVars,
+  SCENARIO_ID_TO_NO_LIMITER_ID,
+} from "./no-limiter.js";
+import {
   OPPONENT_FLAG_ALERTS,
   OPPONENT_FLAG_OTHERS_SCENARIO_ID,
   type OpponentFlagCalloutId,
@@ -110,12 +116,6 @@ import {
 } from "./overtake.js";
 import { PIT_BOX_ALERTS } from "./pit-box.js";
 import { PIT_LIMITER_SCENARIOS, type PitLimiterCalloutId, SCENARIO_ID_TO_PIT_LIMITER_ID } from "./pit-limiter.js";
-import {
-  PIT_SPEED_SCENARIOS,
-  type PitSpeedCalloutId,
-  registerPitSpeedVars,
-  SCENARIO_ID_TO_PIT_SPEED_ID,
-} from "./pit-speed.js";
 import { registerPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { PIT_STATUS_ALERTS, PIT_STATUS_REPEAT_ALERTS } from "./pit-status.js";
 import { PIT_WINDOW_ALERTS } from "./pit-window.js";
@@ -216,7 +216,7 @@ export {
   type ReadbackSnapshotResolver,
 } from "./readback.js";
 export { PIT_LIMITER_CALLOUT_SETTING_KEYS, type PitLimiterCalloutId, PIT_LIMITER_SCENARIO_IDS } from "./pit-limiter.js";
-export { PIT_SPEED_CALLOUT_SETTING_KEYS, type PitSpeedCalloutId, PIT_SPEED_SCENARIO_IDS } from "./pit-speed.js";
+export { NO_LIMITER_CALLOUT_SETTING_KEYS, type NoLimiterCalloutId, NO_LIMITER_SCENARIO_IDS } from "./no-limiter.js";
 export {
   buildCornerNameScenario,
   CORNER_NAME_CALLOUT_SETTING_KEYS,
@@ -1089,9 +1089,9 @@ export function registerPitCrew(
   // getters of compatible-looking types, so new parameters go immediately
   // before the masters, which stay last.
   getPitLimiterCalloutEnabled: (id: PitLimiterCalloutId) => boolean = () => true,
-  // User opt-ins for the pit-speed callouts (issue #1051) — the mirror family,
+  // User opt-ins for the no-limiter callouts (issue #1051) — the mirror family,
   // for cars with NO limiter, which is why none of its lines mentions one.
-  getPitSpeedCalloutEnabled: (id: PitSpeedCalloutId) => boolean = () => true,
+  getNoLimiterCalloutEnabled: (id: NoLimiterCalloutId) => boolean = () => true,
   // Master gate for the Race Engineer voice subsystem (issue #515).
   // Plugins wire this to `pitCrewRaceEngineerEnabled === true`. Read live
   // on every event arrival and applied as the OUTERMOST wrapper around
@@ -1200,16 +1200,16 @@ export function registerPitCrew(
     );
   }
 
-  // Pit-speed family (issue #1051) — the mirror, for cars with NO limiter.
+  // No-limiter family (issue #1051) — the mirror, for cars with NO limiter.
   // Its vars back the entry callout's optional spoken-limit clause and read the
   // SAME snapshot resolver the session-start brief uses, so the two can never
   // disagree about the number.
-  registerPitSpeedVars(engine, getSessionStartSnapshot);
+  registerNoLimiterVars(engine, getSessionStartSnapshot);
 
-  for (const s of PIT_SPEED_SCENARIOS) {
+  for (const s of NO_LIMITER_SCENARIOS) {
     engine.defineScenario(
       wrapWithMaster(
-        wrapCalloutScenario(s, SCENARIO_ID_TO_PIT_SPEED_ID, getPitSpeedCalloutEnabled, "pit-speed callout", logger),
+        wrapCalloutScenario(s, SCENARIO_ID_TO_NO_LIMITER_ID, getNoLimiterCalloutEnabled, "no-limiter callout", logger),
       ),
     );
   }

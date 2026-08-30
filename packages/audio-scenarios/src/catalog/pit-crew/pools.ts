@@ -252,15 +252,15 @@ export const POOL_REGISTRY: Readonly<Record<string, PoolSource>> = {
   "pit-limiter-dropped": { group: "pit-limiter", base: "dropped" },
   "pit-limiter-speeding": { group: "pit-limiter", base: "speeding" },
 
-  // Pit-speed family pools (issue #1051) — cars that have NO limiter, so no
+  // No-limiter family pools (issue #1051) — cars that have NO limiter, so no
   // line here may mention one. Deliberately REUSES the `pit-limiter` clip
   // group (the #568 clip-group-reuse precedent, as `opponent-flag-car-in`
   // does over `opponent-pit`): the pool name carries the audience, not the
   // directory. Distinct BASES are what let the two families split the two
   // speeding lines — a pool is every clip sharing a base, so one base could
   // not have served both.
-  "pit-speed-no-limiter": { group: "pit-limiter", base: "no-limiter-speeding" },
-  "pit-speed-entry": { group: "pit-limiter", base: "entry" },
+  "no-limiter-speeding": { group: "pit-limiter", base: "no-limiter-speeding" },
+  "no-limiter-entry": { group: "pit-limiter", base: "entry" },
 };
 
 /**

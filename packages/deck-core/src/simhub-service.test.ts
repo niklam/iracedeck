@@ -54,8 +54,8 @@ describe("SimHub Service", () => {
       calloutEnabledLimiterMissing: true,
       calloutEnabledLimiterDropped: true,
       calloutEnabledLimiterSpeeding: true,
-      calloutEnabledPitSpeedNoLimiter: true,
-      calloutEnabledPitSpeedEntry: true,
+      calloutEnabledNoLimiterSpeeding: true,
+      calloutEnabledNoLimiterEntry: true,
 
       calloutEnabledSpotterStillThere: true,
       spotterStillThereSeconds: 3,
@@ -266,8 +266,8 @@ describe("SimHub Service", () => {
         calloutEnabledLimiterMissing: true,
         calloutEnabledLimiterDropped: true,
         calloutEnabledLimiterSpeeding: true,
-        calloutEnabledPitSpeedNoLimiter: true,
-        calloutEnabledPitSpeedEntry: true,
+        calloutEnabledNoLimiterSpeeding: true,
+        calloutEnabledNoLimiterEntry: true,
 
         calloutEnabledSpotterStillThere: true,
         spotterStillThereSeconds: 3,

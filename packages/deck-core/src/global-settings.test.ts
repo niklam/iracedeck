@@ -466,26 +466,26 @@ describe("corner-names toggle ack opt-in default (issue #897)", () => {
   });
 });
 
-describe("pit-speed callout defaults (issue #1051)", () => {
+describe("pit-limiter / no-limiter callout defaults (issue #1051)", () => {
   // Both families in one block deliberately: the pair is the unit worth
   // protecting, and splitting them would make it easy to add a key to one and
   // forget the other.
-  const PIT_SPEED_CALLOUT_KEYS = [
+  const BOTH_FAMILY_CALLOUT_KEYS = [
     "calloutEnabledLimiterOnTrack",
     "calloutEnabledLimiterMissing",
     "calloutEnabledLimiterDropped",
     "calloutEnabledLimiterSpeeding",
-    "calloutEnabledPitSpeedNoLimiter",
-    "calloutEnabledPitSpeedEntry",
+    "calloutEnabledNoLimiterSpeeding",
+    "calloutEnabledNoLimiterEntry",
   ] as const;
 
-  it.each(PIT_SPEED_CALLOUT_KEYS)("%s defaults to true", (key) => {
+  it.each(BOTH_FAMILY_CALLOUT_KEYS)("%s defaults to true", (key) => {
     const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
 
     expect(parsed[key]).toBe(true);
   });
 
-  it.each(PIT_SPEED_CALLOUT_KEYS)('%s coerces the literal string "false" to boolean false', (key) => {
+  it.each(BOTH_FAMILY_CALLOUT_KEYS)('%s coerces the literal string "false" to boolean false', (key) => {
     const parsed = GlobalSettingsSchema.parse({ [key]: "false" }) as Record<string, unknown>;
 
     expect(parsed[key]).toBe(false);
