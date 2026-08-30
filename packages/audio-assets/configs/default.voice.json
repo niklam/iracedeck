@@ -557,12 +557,16 @@
         "text": "You are speeding. <break time=\"0.3s\" /> Slow down."
       },
       {
-        "name": "no-limiter-speeding-01",
-        "text": "Over the limit. <break time=\"0.3s\" /> Lift."
+        "name": "unit-kmh-01",
+        "text": "kilometers per hour."
       },
       {
-        "name": "reminder-01",
-        "text": "The pit lane speed limit is "
+        "name": "unit-mph-01",
+        "text": "miles per hour."
+      },
+      {
+        "name": "no-limiter-speeding-01",
+        "text": "Over the limit. <break time=\"0.3s\" /> Lift."
       },
       {
         "name": "on-track-01",

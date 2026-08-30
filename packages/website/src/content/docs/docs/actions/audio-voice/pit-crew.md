@@ -360,9 +360,9 @@ Speeding is only half of what can go wrong with a pit limiter, and what the engi
 
 Three reminders, one for each state worth flagging:
 
-- **Limiter off on pit road** — you came in without engaging it: *"The pit limiter is off. Please, turn it on."*
+- **Limiter off on pit road** — a couple of seconds into pit road and the limiter still is not on: *"The pit limiter is off. Please, turn it on."* This is deliberately the **second** thing you hear about it. The [pit service recap](#pit-service-readback) already nudges you as you arrive; this follows only if that went unheeded, and engaging the limiter in the meantime keeps it quiet.
 - **Limiter dropped** — it was on and has come off again while you are still between the cones: *"Your limiter dropped. Turn it back on."* This is worded differently from the one above on purpose: "dropped" tells you it *was* engaged, which changes what you go looking for.
-- **Limiter on out on track** — you switch the limiter **on** while away from pit road, where it will quietly cap your speed: *"Your pit limiter is on. Turn it off."* Note what this does and does not catch: it fires on the moment you engage it out on the circuit. A limiter left engaged as you *exit* the pits changes nothing for the sim to report — there is no new event — so that case is currently silent.
+- **Limiter on out on track** — a moment after you rejoin the circuit the limiter is still engaged, quietly capping your speed: *"Limiter's still engaged. Switch it off."* The check happens about a second and a half after you leave pit road, and it re-reads the car at that point rather than at the moment you crossed the line — so switching the limiter off on your way out is silent, as it should be.
 
 These are the lines that would be nonsense on a car with no limiter, which is exactly why they are gated on having one.
 
@@ -534,9 +534,9 @@ Under **Pit Speeding**, one callout is toggleable, enabled by default:
 
 Under **Pit Limiter**, four callouts are toggleable, all enabled by default. They only ever fire on a car that has a pit limiter (see [Pit limiter reminders](#pit-limiter-reminders) above):
 
-- **Limiter off on pit road** — you entered the pits without engaging the limiter.
+- **Limiter off on pit road** — the limiter was still off a couple of seconds after you entered the pits.
 - **Limiter dropped** — the limiter came off again while you are still on pit road.
-- **Limiter on out on track** — you switched the limiter on while away from pit road.
+- **Limiter on out on track** — the limiter was still engaged shortly after you left pit road.
 - **Speeding (limiter car)** — the spoken line that follows the tick when you are over the limit.
 
 Under **No Pit Limiter**, two callouts are toggleable, both enabled by default. These are the mirror group, and only ever fire on a car with no pit limiter:

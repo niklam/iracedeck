@@ -225,14 +225,6 @@
       "generatedAt": "2026-05-14T18:37:06.468Z",
       "requestId": "M5vjoJkyM6HAfrgmz3QU"
     },
-    "voice/default/pit-limiter/reminder-01.mp3": {
-      "hash": "801d60536dd66100",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "The pit lane speed limit is ",
-      "generatedAt": "2026-05-14T18:37:06.636Z",
-      "requestId": "ftCxrvHtzgxsOZZKscgu"
-    },
     "voice/default/pit-actions/fuel-on.mp3": {
       "hash": "44bb294f192b069f",
       "voiceId": "15CVCzDByBinCIoCblXo",
@@ -12480,6 +12472,22 @@
       "textPreview": "The limiter came off. <break time=\"0.3s\" /> Put it back on.",
       "generatedAt": "2026-08-30T08:41:27.868Z",
       "requestId": "Y3r4gHD9GWKYL36EmM7o"
+    },
+    "voice/default/pit-limiter/unit-kmh-01.mp3": {
+      "hash": "3aefb19f39f05d71",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "kilometers per hour.",
+      "generatedAt": "2026-08-30T14:01:29.126Z",
+      "requestId": "ymr8THlUaIJUrAIeIh0y"
+    },
+    "voice/default/pit-limiter/unit-mph-01.mp3": {
+      "hash": "13236293171b58fb",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "miles per hour.",
+      "generatedAt": "2026-08-30T14:01:29.278Z",
+      "requestId": "hORKzGxBKzzsBqREV1Bx"
     }
   }
 }

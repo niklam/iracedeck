@@ -180,6 +180,13 @@ export function registerNoLimiterVars(
   engine.defineVar("pitSpeed.limitUnit", () => {
     const s = getSessionStartSnapshot();
 
-    return s ? poolRef("session-start", `speed-unit-${s.speedUnit}`) : null;
+    // The ONLY step not shared with the session-start brief, and deliberately so
+    // (issue #1051). Its `speed-unit-*` clips end with a COMMA -- correct there,
+    // where the clause is followed by the track temperature, but this callout
+    // ends on the unit, so borrowing them closed the line on a rising,
+    // unfinished inflection that the radio tick then cut off. The intro and the
+    // number stay shared, so the two callouts still cannot disagree about the
+    // limit; only the sentence-final intonation is our own.
+    return s ? poolRef("pit-limiter", `unit-${s.speedUnit}`) : null;
   });
 }

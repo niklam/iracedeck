@@ -359,10 +359,15 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     id: "limiter-missing",
     category: "Pit Limiter",
     label: "Limiter off on pit road",
-    description: 'Entered pit road without the limiter — engineer says "The pit limiter is off."',
+    description:
+      "Entered pit road without the limiter. Plays ~2.5s AFTER the click, as an ESCALATION once the " +
+      'readback\'s earlier "Remember the pit limiter." has gone unheeded — engaging it inside that ' +
+      "window is silence.",
     event: "limiter.missing",
     data: {},
-    telemetryPatch: { dcPitSpeedLimiterToggle: false },
+    // Must satisfy the DELAYED re-check (#1051): still unengaged and still on
+    // pit road at fire time, 2.5s after this event.
+    telemetryPatch: { dcPitSpeedLimiterToggle: false, OnPitRoad: true },
   },
   {
     id: "limiter-dropped",
@@ -386,10 +391,14 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     id: "limiter-on-track",
     category: "Pit Limiter",
     label: "Limiter on out on track",
-    description: "Limiter engaged away from pit road. Suppressed when OnPitRoad is true, which is the expected case.",
-    event: "carControl.limiterToggled",
-    data: { on: true },
-    telemetryPatch: { dcPitSpeedLimiterToggle: false },
+    description:
+      "Left pit road with the limiter still engaged. Plays ~1.5s AFTER the click, not instantly " +
+      "— the scenario waits and then re-reads live telemetry, so disengaging inside that window is silence.",
+    event: "pitLane.exited",
+    data: {},
+    // Must satisfy the DELAYED re-check, not just the trigger (#1051): engaged
+    // and off pit road at fire time, 1.5s after this event.
+    telemetryPatch: { dcPitSpeedLimiterToggle: true, OnPitRoad: false },
   },
 
   // ── No Pit Limiter (issue #1051) — cars with NO limiter ──
