@@ -26,6 +26,7 @@
  * (#992) already writes through the plugin.
  */
 import type { ILogger } from "@iracedeck/logger";
+import { gt, valid } from "semver";
 import { z } from "zod";
 
 import { DEFAULT_FEATURE_STARTUP_POLICY, FEATURE_STARTUP_POLICIES } from "./feature-startup-policy.js";
@@ -1200,8 +1201,12 @@ export const MIGRATION_PENDING_KEY = "_migrationPending";
  * Passthrough marker persisted when the migration was given up on: the host
  * stayed silent for {@link MIGRATION_RETRY_STARTS} starts and the file was
  * accepted as-is. It is durable where {@link MIGRATION_PENDING_KEY} is a
- * countdown, and it does exactly one thing — keep the host mirror shut, for
- * good, on a store that was never host-derived (#1041).
+ * countdown, and it does two things: keep the host mirror shut on a store that
+ * was never host-derived (#1041), and record WHICH plugin version gave up, so
+ * a later one asks the host once more rather than inheriting the give-up
+ * (#1047). Read the whole block before acting on it — an earlier revision said
+ * "for good" here, and #1041's dead-code deletion of the `becomeReady(...,
+ * "host")` clear came from reading the first sentence and stopping.
  *
  * Until #1041 the retry ceiling CLEARED the pending marker and let the mirror
  * resume, on the reasoning that a silent host should not cost a timeout every
@@ -1390,22 +1395,53 @@ function migrationAbandonedVersion(settings: Record<string, unknown>): string | 
 }
 
 /**
- * Whether an abandoned store should ask the deck host again on this start.
+ * Whether a store has been given up on: the durable marker is set, or the
+ * countdown has reached the ceiling and this start would be the one to stamp
+ * it.
  *
- * True only when the store was abandoned under a DIFFERENT plugin version from
- * the one now running. The event that plausibly changes whether the host
- * answers is the plugin changing — that is exactly what #1041 was — so
- * "we have never asked under this build" is the condition worth retrying on,
- * and it is bounded: once this version gives up too, the store goes quiet
- * again until the next upgrade.
+ * Both shapes mean the same thing — the host has not answered and we have
+ * stopped waiting — and they must be treated alike, because at the moment
+ * #1047 ships **no file in the field carries the marker at all**. #1041 is
+ * unreleased, so every install that gave up did so under a build whose ceiling
+ * only wrote the countdown. Keying the retry on the marker alone would have
+ * recovered nobody and stamped that whole cohort without ever issuing the
+ * fixed read.
+ */
+function hasGivenUpOnMigration(settings: Record<string, unknown>): boolean {
+  return isMigrationAbandoned(settings) || pendingMigrationStarts(settings) >= MIGRATION_RETRY_STARTS;
+}
+
+/**
+ * Whether a given-up store should ask the deck host once more on this start.
+ *
+ * True when this build is not the one that gave up. The event that plausibly
+ * changes whether the host answers is the plugin changing — #1041 is exactly
+ * that — so "we have never asked under this build" is the condition worth
+ * retrying on, and it is bounded: this start's own give-up is recorded either
+ * way, so the store goes quiet until the next upgrade.
+ *
+ * Compared with semver where both sides parse, so only an UPGRADE buys another
+ * attempt. A rollback cannot fix a read the older build already failed at, and
+ * a bare `!==` would make a downgrade re-ask on every transition while each
+ * build re-stamped its own version — a pair that never converges.
+ *
+ * A store with no recorded version has never been given up on by a build that
+ * stamps them, so it retries: that is the #1041 cohort, and the `true` marker
+ * from #1041 lands here too.
  *
  * False when the running version is unknown, so a caller that cannot say which
  * build it is leaves the store alone rather than re-asking every start.
  */
 function shouldRetryAbandonedMigration(settings: Record<string, unknown>, runningVersion: string | undefined): boolean {
-  if (!isMigrationAbandoned(settings) || runningVersion === undefined) return false;
+  if (!hasGivenUpOnMigration(settings) || runningVersion === undefined) return false;
 
-  return migrationAbandonedVersion(settings) !== runningVersion;
+  const recorded = migrationAbandonedVersion(settings);
+
+  if (recorded === undefined) return true;
+
+  const running = runningVersion.trim();
+
+  return valid(recorded) && valid(running) ? gt(running, recorded) : recorded !== running;
 }
 
 /**
@@ -1496,6 +1532,14 @@ export function initGlobalSettings(
   let migrationDone = false;
   /** What the store held when the migration read went out: {} for no file, or a fresh-born file. */
   let migrationBase: Record<string, unknown> = {};
+  /**
+   * Whether this start's read is the one extra attempt a give-up buys (#1047).
+   * It changes three things: the file is authoritative rather than defaults-born,
+   * so the host fills gaps instead of winning ties; a silent host records this
+   * build's own give-up rather than restarting the countdown; and the log says
+   * which of the two reads this is.
+   */
+  let retryingAfterGiveUp = false;
 
   // A `_resetGlobalSettings()` (tests) retargets `storeRef`, so an in-flight
   // load or a late host payload from THIS init must not write to module state
@@ -1544,7 +1588,13 @@ export function initGlobalSettings(
     // host is talking now, so the mirror is safe again. Any other source
     // leaves whatever the file had, since a plain load must carry the guard
     // forward or the very next start would mirror over the copy it protects.
-    if (markAbandoned) merged[MIGRATION_ABANDONED_KEY] = pluginVersion ?? true;
+    // `|| true`, not `?? true`: an empty or whitespace version would otherwise
+    // be stored verbatim, and `isMigrationAbandoned` reads those back as NOT
+    // set — the guard failing open on the very start that raises it, which is
+    // exactly what its docstring forbids. Trimmed on the way in because the
+    // reader trims on the way out, and an untrimmed store would never compare
+    // equal to itself.
+    if (markAbandoned) merged[MIGRATION_ABANDONED_KEY] = pluginVersion?.trim() || true;
     else if (source === "host") delete merged[MIGRATION_ABANDONED_KEY];
 
     const salvage = parseWithSalvage(merged);
@@ -1569,10 +1619,16 @@ export function initGlobalSettings(
     earlyDeletes = null;
     logger?.info(
       source === "file"
-        ? "Global settings loaded from the settings file"
+        ? markAbandoned
+          ? "Deck host did not answer; keeping the settings file and not asking again until the next version"
+          : "Global settings loaded from the settings file"
         : source === "host"
           ? "Migrated global settings from the deck host"
-          : "No stored settings found; starting fresh (the deck host will be asked again next start)",
+          : Object.keys(raw).length > 0
+            ? // A give-up retry keeps a full file; "starting fresh" would be a
+              // lie, and #1041 was diagnosed from exactly these lines.
+              "Deck host did not answer; keeping the settings already in the file"
+            : "No stored settings found; starting fresh (the deck host will be asked again next start)",
     );
     logger?.debug(`Settings store: ${store.path} (${Object.keys(raw).length} stored keys)`);
 
@@ -1622,65 +1678,78 @@ export function initGlobalSettings(
 
     const raw = (settings !== null && typeof settings === "object" ? settings : {}) as Record<string, unknown>;
 
+    if (retryingAfterGiveUp) {
+      // The base here is a file that has been the authoritative store for
+      // months, not a defaults-born one a few starts old — so mergeMigration's
+      // premise does not hold: "still at its default" no longer implies "never
+      // touched", and letting the host win those ties would replace deliberate
+      // user choices (focusIRacingWindow, debugLogging, every calloutEnabled*)
+      // with a copy from before the give-up, then mirror the result back over
+      // both stores. The file wins outright; the host only fills keys it has
+      // never held.
+      //
+      // An EMPTY answer retires nothing: `raw` above coerces null and
+      // non-objects to {}, and on a host that cannot distinguish "no bucket"
+      // from "empty bucket" an empty reply is no evidence the copy is gone.
+      // Retiring the guard on one would re-open a whole-object write over a
+      // copy nothing was read from — #1041 by another route.
+      const answered = Object.keys(raw).length > 0;
+
+      becomeReady({ ...raw, ...migrationBase }, answered ? "host" : "file", !answered);
+
+      return;
+    }
+
     becomeReady(mergeMigration(raw, migrationBase), "host");
   });
 
-  const onLoaded = (loaded: Record<string, unknown> | undefined): void => {
+  const onLoaded = (stored: Record<string, unknown> | undefined): void => {
     if (!isCurrent()) return;
 
+    // Never hand a store-owned object onward: `SettingsStore.load()` promises
+    // no copy, and this value is retained as `migrationBase` and merged into
+    // the cache. A store that memoised its parse would otherwise find its own
+    // state edited from under it.
+    const loaded = stored === undefined ? undefined : { ...stored };
+
     if (loaded !== undefined) {
-      // A store abandoned under a DIFFERENT plugin version gets one more go
-      // (#1047). Both markers are stripped so the file re-enters the ordinary
-      // migration flow below — same read, same timeout, same countdown — which
-      // makes this a decision rather than a second retry mechanism. If the
-      // host stays silent again, the ceiling stamps THIS version and the store
-      // goes quiet until the next upgrade.
-      //
-      // This is what reaches the installs #1041 could only preserve: their
-      // marker predates the version stamp, so it reads as an unknown version,
-      // which differs from any running one. The countdown goes too, so a
-      // hand-edited file carrying both cannot spend the retry on the ceiling
-      // branch without ever asking.
+      // A store that was given up on — durable marker, or a countdown already
+      // at the ceiling — asks the host once more when THIS build is not the one
+      // that gave up (#1047). Exactly once: whatever the answer, this start
+      // records its own give-up, so the store is quiet again until the next
+      // upgrade. That single attempt is what every doc promises, and it is what
+      // reaches the #1041 cohort, whose files carry a ceiling countdown and no
+      // marker at all because #1041 has not shipped.
       if (shouldRetryAbandonedMigration(loaded, pluginVersion)) {
         logger?.info("Settings came from a build that gave up on the deck host; asking it once more");
-        delete loaded[MIGRATION_ABANDONED_KEY];
-        delete loaded[MIGRATION_PENDING_KEY];
+        logger?.debug(
+          `Give-up recorded by version ${JSON.stringify(migrationAbandonedVersion(loaded) ?? null)}; running ${JSON.stringify(pluginVersion)}`,
+        );
+        retryingAfterGiveUp = true;
       } else {
         const unanswered = pendingMigrationStarts(loaded);
 
-        if (unanswered === 0) {
-          becomeReady(loaded, "file");
-
-          return;
-        }
-
-        if (unanswered >= MIGRATION_RETRY_STARTS) {
-          // The host has now stayed silent for this many starts: stop paying
-          // the timeout on every launch; the file is what we have. The
-          // countdown marker gives way to the durable one, which keeps the
-          // host mirror shut — this store was never host-derived, and
-          // mirroring it would replace a copy the plugin has never once read
-          // (#1041). The durable marker names this version, so the next
-          // upgrade asks again (#1047).
-          logger?.warn(
-            "Deck host never answered the migration read; keeping the settings file as-is and no longer asking",
-          );
-          becomeReady(loaded, "file", true);
+        if (unanswered === 0 || hasGivenUpOnMigration(loaded)) {
+          // Either an ordinary file, or one this very build already gave up on
+          // — in which case the marker keeps the mirror shut and there is
+          // nothing left to ask.
+          becomeReady(loaded, "file", hasGivenUpOnMigration(loaded));
 
           return;
         }
       }
     }
 
-    // No file yet — or a file born from a fresh start that never saw the
-    // host's settings: migrate once from the host, or start fresh on timeout.
-    // The file's own writes (if any) win over the host's answer; see
-    // mergeMigration.
+    // No file yet — a file born from a fresh start that never saw the host's
+    // settings — or a give-up retry. Migrate once from the host, or keep what
+    // we have on timeout.
     migrationBase = loaded ?? {};
     logger?.info(
       loaded === undefined
         ? "No settings file yet; requesting the deck host's settings for a one-time migration"
-        : "Settings file was written without the deck host's settings; requesting them again for the one-time migration",
+        : retryingAfterGiveUp
+          ? "Requesting the deck host's settings once more for the one-time migration"
+          : "Settings file was written without the deck host's settings; requesting them again for the one-time migration",
     );
     migrationRequested = true;
     adapter.getGlobalSettings();
@@ -1695,6 +1764,19 @@ export function initGlobalSettings(
       if (storeReady || migrationDone || !isCurrent()) return;
 
       migrationDone = true;
+
+      // A give-up retry that goes unanswered records THIS build's give-up and
+      // stops there — it does not restart the countdown, which would cost three
+      // degraded startups per version instead of the one attempt every doc
+      // promises. The file stays authoritative, so the source is "file", and
+      // the marker keeps the mirror shut exactly as before.
+      if (retryingAfterGiveUp) {
+        logger?.warn("Deck host did not answer; keeping the settings file and not asking again until the next version");
+        becomeReady(migrationBase, "file", true);
+
+        return;
+      }
+
       logger?.warn("Deck host did not answer the migration read; starting fresh");
       becomeReady(migrationBase, "fresh");
     }, migrationTimeoutMs);

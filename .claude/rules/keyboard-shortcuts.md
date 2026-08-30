@@ -225,7 +225,10 @@ const settingsStore = createFileSettingsStore({
   logger: adapter.createLogger("SettingsStore"),
 });
 
-initGlobalSettings(adapter, adapter.createLogger("GlobalSettings"), settingsStore);
+initGlobalSettings(adapter, adapter.createLogger("GlobalSettings"), settingsStore, {
+  // Lets a migration a previous version gave up on be re-asked once (#1047).
+  pluginVersion: getPluginVersion(),
+});
 adapter.connect();
 ```
 

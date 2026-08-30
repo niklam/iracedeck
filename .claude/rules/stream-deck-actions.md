@@ -356,7 +356,10 @@ const settingsStore = createFileSettingsStore({
 
 // MUST call BEFORE adapter.connect() - handlers must be registered first
 // MUST pass the adapter (IDeckPlatformAdapter) and the store
-initGlobalSettings(adapter, adapter.createLogger("GlobalSettings"), settingsStore);
+initGlobalSettings(adapter, adapter.createLogger("GlobalSettings"), settingsStore, {
+  // Lets a migration a previous version gave up on be re-asked once (#1047).
+  pluginVersion: getPluginVersion(),
+});
 
 adapter.connect();
 ```
