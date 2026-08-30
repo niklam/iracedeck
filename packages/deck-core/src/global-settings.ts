@@ -1620,7 +1620,9 @@ export function initGlobalSettings(
     logger?.info(
       source === "file"
         ? markAbandoned
-          ? "Deck host did not answer; keeping the settings file and not asking again until the next version"
+          ? // Distinct from the warn that precedes it on the timeout path: that
+            // one reports the event, this one the resulting state.
+            "Global settings loaded from the settings file; the deck host will not be asked again until the next version"
           : "Global settings loaded from the settings file"
         : source === "host"
           ? "Migrated global settings from the deck host"
