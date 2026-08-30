@@ -1,0 +1,161 @@
+{
+  "_meta": {
+    "generatedFrom": "packages/website/src/content/docs/docs/getting-started/first-steps.md",
+    "generatedBy": "pnpm generate:getting-started-data",
+    "note": "Generated file — edit the source above, then regenerate. Prose is pre-escaped HTML."
+  },
+  "sections": [
+    {
+      "title": "Welcome to iRaceDeck",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "html": "iRaceDeck turns your deck into an iRacing control panel: pit service, black boxes, cameras, chat macros, replay controls, and a voice on the radio that keeps you informed while you drive."
+        },
+        {
+          "type": "paragraph",
+          "html": "This is the short version — what to do first. Everything here is also on <a href=\"https://iracedeck.com/\" target=\"_blank\" rel=\"noopener noreferrer\">iracedeck.com</a>, so you can read it away from the sim."
+        }
+      ]
+    },
+    {
+      "title": "Put your first keys on the deck",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "html": "Find <strong>iRaceDeck</strong> in your deck software's action list and drag an action onto a key. That action's own settings appear beside it. Everything plugin-wide — key bindings, audio, appearance — lives behind the <strong>iRaceDeck Settings</strong> button directly under them."
+        },
+        {
+          "type": "paragraph",
+          "html": "Three worth starting with:"
+        },
+        {
+          "type": "list",
+          "items": [
+            "<strong>Black Box Selector</strong> — puts iRacing's black boxes on their own keys instead of cycling through them.",
+            "<strong>Fuel Service</strong> — sets the fuel for your next stop without reaching for the keyboard.",
+            "<strong>Look Direction</strong> — hold to look left or right."
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Start from a ready-made layout",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "html": "Rather than arranging every key yourself, you can switch to a layout iRaceDeck already ships. <strong>iRaceDeck Default</strong> is the everyday one: pit service, chat macros, black box selection, the Race Engineer, and folders leading to the rest. Three more sit alongside it — <strong>Replay</strong> for watching replays and broadcasts, <strong>Car Selector</strong> for picking a car out of a grid, and <strong>Race Admin Per Car</strong> for admin commands aimed at the car you picked."
+        },
+        {
+          "type": "paragraph",
+          "html": "There is nothing to import by hand. The first time you switch to one, the Stream Deck app offers to install it."
+        },
+        {
+          "type": "paragraph",
+          "html": "Ready-made layouts are a <strong>Stream Deck</strong> feature. Mirabox and Ulanzi have no profile system, so there is nothing to install there — everything else on this page applies to all three."
+        },
+        {
+          "type": "action",
+          "id": "open-profiles-tab"
+        }
+      ]
+    },
+    {
+      "title": "Meet your Race Engineer",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "html": "A spoken race engineer in your ear. It calls flags and incidents, counts you into your pit box, reads your pit service back to you, keeps you posted on fuel and gaps, and warns you when a car is alongside."
+        },
+        {
+          "type": "paragraph",
+          "html": "<strong>It is off by default, on purpose.</strong> A voice that starts talking unannounced is a surprise rather than a feature, so nothing is said until you ask for it."
+        },
+        {
+          "type": "action",
+          "id": "enable-race-engineer"
+        },
+        {
+          "type": "paragraph",
+          "html": "The <strong>Race Engineer</strong> tab holds the rest: which voice, the name it calls you by, how loud, and which callouts you want to hear. Radar — proximity ticks when a car pulls alongside — is a separate switch on that same tab, off by default for the same reason."
+        },
+        {
+          "type": "paragraph",
+          "html": "Already using Crew Chief? Both will talk. Turn off individual callouts on the <strong>Race Engineer</strong> tab to keep them out of each other's way."
+        },
+        {
+          "type": "action",
+          "id": "open-race-engineer-tab"
+        }
+      ]
+    },
+    {
+      "title": "Some keys need a key binding",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "html": "Most iRaceDeck actions talk to iRacing directly through its own API and work the moment you press them. A few cannot — iRacing exposes no API for black boxes or cameras — so those send a keystroke instead, and a handful send a chat command."
+        },
+        {
+          "type": "paragraph",
+          "html": "Every action says which of the three it uses, right under its Mode dropdown, and links you to the binding when it needs one. If a key looks like it is doing nothing, that is the first place to check."
+        }
+      ]
+    },
+    {
+      "title": "If something is not working",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "html": "<strong>Run your deck software and iRacing at the same level.</strong> If iRacing runs as administrator and your deck software does not, Windows silently discards every command iRaceDeck sends — no error, no warning, and telemetry keeps arriving, so everything looks healthy while nothing works. Run both as administrator, or neither."
+        },
+        {
+          "type": "action",
+          "id": "suggest-focus-iracing-window"
+        },
+        {
+          "type": "paragraph",
+          "html": "For anything else, <a href=\"https://iracedeck.com/docs/getting-started/troubleshooting/\" target=\"_blank\" rel=\"noopener noreferrer\">Troubleshooting</a> covers the common cases."
+        }
+      ]
+    },
+    {
+      "title": "How often you hear from us",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "html": "When iRaceDeck updates, it can open its release notes for you. <strong>It stays quiet by default, on purpose</strong> — nothing opens itself unless you ask. Either way the notes are always waiting on the <strong>What's New</strong> tab."
+        },
+        {
+          "type": "action",
+          "id": "enable-changelog-updates"
+        },
+        {
+          "type": "paragraph",
+          "html": "You can also pick exactly how often — every update, feature updates only, once a month, or never. That setting sits on the <strong>What's New</strong> tab, and you can change it whenever you like."
+        },
+        {
+          "type": "action",
+          "id": "changelog-frequency"
+        }
+      ]
+    },
+    {
+      "title": "Where to go next",
+      "blocks": [
+        {
+          "type": "list",
+          "items": [
+            "<a href=\"https://iracedeck.com/docs/\" target=\"_blank\" rel=\"noopener noreferrer\">Documentation</a> — every action and every setting, in detail.",
+            "<a href=\"https://iracedeck.com/changelog/\" target=\"_blank\" rel=\"noopener noreferrer\">What's New</a> — what changed in this release.",
+            "<a href=\"https://discord.gg/c6nRYywpah\" target=\"_blank\" rel=\"noopener noreferrer\">Discord</a> — questions, bug reports, and other drivers."
+          ]
+        },
+        {
+          "type": "paragraph",
+          "html": "This page stays on the <strong>Getting Started</strong> tab, so you can come back to it whenever you like."
+        }
+      ]
+    }
+  ]
+}

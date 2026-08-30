@@ -23,6 +23,7 @@
     "generate:action-comms": "tsx scripts/generate-action-comms.mjs",
     "generate:action-profiles": "node scripts/generate-action-profiles.mjs",
     "generate:changelog-data": "node scripts/generate-changelog-data.mjs",
+    "generate:getting-started-data": "node scripts/generate-getting-started-data.mjs",
     "build:with-restart": "node scripts/build-with-restart.mjs",
     "build:stream-deck": "pnpm build:ts && pnpm restart:stream-deck",
     "restart:stream-deck": "streamdeck restart com.iracedeck.sd.core",
