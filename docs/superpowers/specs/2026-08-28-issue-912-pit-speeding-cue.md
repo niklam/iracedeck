@@ -18,7 +18,13 @@ So this is not the instant half of a pair. **It is the only pit-road speeding fe
 
 Waking the dormant limiter family is deliberately **out of scope**. It needs its own opt-in keys, PI rows, clip verification, and a decision about whether "limiter missing" and "limiter dropped" are wanted at all — and `limiter-speeding` carries the #639 `hasPitLimiter` gate, which directly contradicts this issue's decision that the cue is *not* limiter-gated. Registering it here would ship two speeding warnings with different eligibility rules under one spec that covers neither pairing. It gets its own issue.
 
-That scoping is the one call in this document still open at the time of writing. If it is reversed and the limiter family is woken alongside the cue, only this section and the follow-up list change: nothing below depends on the voice line existing, because the cue was designed against a bus with no subscriber on it. What *would* need writing then is the pairing rule the two warnings share — which one speaks first, and whether a car with no limiter hearing only the tick is acceptable — and that belongs in whichever spec covers both.
+**Ruled, after this section was first written: all four limiter scenarios ship.** The scoping above was the one call left open here, and it went the way this section anticipated for the split but not for the outcome — the family is not deleted and not deferred. It is issue **#1051**, owned by another maintainer stream, and `limiter-speeding` ships alongside this cue rather than being dissolved by it.
+
+The reasoning above is left standing rather than rewritten, because it is what produced #1051 and a reader wondering why there are two pit-speeding warnings should be able to see the case that was made for one. Two things it got right survive the ruling: the pairing rule is real design work rather than a problem that went away, and it belongs to whichever spec covers both — which is now #1051's, not this one's. The shape proposed there is escalation: the tick is the reflex signal at any overage on any car, and the voice line is the escalation past `limiter.speeding`'s existing `+1.0 m/s` margin that says what the beep means.
+
+**The cue's design is unchanged by the ruling, which is the property this section was structured to buy.** Not limiter-gated, no margin, direct playback on Radar, instant. Everything below was specified against a bus with no subscriber precisely so that the limiter decision could go either way without reopening it, and it did go the other way.
+
+One question this spec raised and did not settle passes to #1051 with it: `limiter-speeding` carries the #639 `hasPitLimiter` gate while this cue deliberately has none, so a car *with* a limiter now gets a tick and a sentence while a car *without* gets only the tick — and that is the driver with no dashboard cue at all. #639's gate was a family-wide decision that is right for the three limiter-shaped scenarios, whose wording is meaningless without a limiter; it does not carry to "You are speeding. Slow down.", which is correctly worded for every car. Removing the gate from that one member is a **new** decision amending #639's scope rather than a correction of an oversight, and it is #1051's to make.
 
 ## What ships
 
@@ -117,5 +123,5 @@ Because there are no scenarios, there is no `SCENARIO_ID_TO_*` map and no `wrapC
 ## Follow-ups
 
 - A purpose-made warning tone to replace the radar-tick placeholder. One constant; no mechanism change.
-- The dormant limiter voice family (`limiter-on-track`, `limiter-missing`, `limiter-dropped`, `limiter-speeding`) — register, or delete as dead code. Its own issue.
+- The dormant limiter voice family (`limiter-on-track`, `limiter-missing`, `limiter-dropped`, `limiter-speeding`) — **issue #1051, ruled: all four ship.** It also owns the pairing rule between the voice line and this cue, and the `hasPitLimiter` question above.
 - The website has never documented pit-road speeding at all, because the voice line never fired. The docs written for this change cover the cue; if the limiter family is later woken, that section grows rather than being written from scratch.
