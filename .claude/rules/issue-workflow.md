@@ -10,7 +10,7 @@ If you are picking up an issue, read this first.
 
 | #   | Step                                                       | Gate                    | Detail                                                                     |
 | --- | ---------------------------------------------------------- | ----------------------- | -------------------------------------------------------------------------- |
-| 1   | File the issue, assign it, milestone it                    | —                       | `@.claude/rules/build-and-commit.md`                                        |
+| 1   | File the issue                                             | —                       | `@.claude/rules/build-and-commit.md`                                        |
 | 2   | Write the spec, commit to `master`                         | unless exempt           | `@.claude/rules/specs-and-plans.md`                                         |
 | 3   | Create the worktree `../ir-<issue>`                        | —                       | `@.claude/rules/build-and-commit.md`                                        |
 | 4   | Implement, committing as you go                            | —                       | the topic rules for what you touched                                        |
@@ -25,9 +25,13 @@ If you are picking up an issue, read this first.
 
 ## Why these gates exist
 
-### Assign it and milestone it (1)
+### Milestone and assignee wait for implementation (1)
 
-To the maintainer, and to the milestone of **the next unreleased version** — not necessarily the newest-created or nearest-due one, since versions here do not always run in creation order (1.24 was skipped for 2.0). An unassigned, unmilestoned issue is invisible in release planning.
+Filing an issue does not assign it or milestone it. Both are signals that work is *starting*, not that an idea has been captured — so they go on when the issue is picked up, alongside the worktree, not when it is written.
+
+Filing early and often is the point: an issue is a place to put a decision so it stops living in a conversation. Milestoning it at that moment makes a promise about a release nobody has planned yet, and assigning it makes a promise about who is doing it. A backlog of unassigned, unmilestoned issues is the correct shape for work that is understood but not scheduled.
+
+Labels are different — the issue templates apply `bug` / `enhancement` automatically, and those stay. Do not add `type:` labels to issues; those are for PRs, where they drive release notes.
 
 ### The spec is the one thing that does not go through a PR (2)
 
