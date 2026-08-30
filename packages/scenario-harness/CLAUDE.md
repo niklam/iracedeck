@@ -30,7 +30,7 @@ Boot processes the audio-assets clips through the same radio-engineer ffmpeg fil
 
 ## Deleting a telemetry field (capability gates)
 
-`/api/telemetry` merges its body into the current snapshot, so an explicit `null` **deletes** that key rather than setting it (`mutateTelemetry`, issue #1051). JSON has no `undefined`, and without the sentinel a patch could never make a field ABSENT — which is exactly what iRacing's capability fields mean: `hasPitLimiter`, `hasVisor` and `hasWipers` all read whether a `dc*` field EXISTS, not what it holds. No `TelemetryData` field takes null legitimately, so the sentinel is unambiguous.
+`/api/telemetry` merges **`body.patch`** into the current snapshot — `POST {"patch": {"dcPitSpeedLimiterToggle": null}}`, not the bare object, which is rejected with a 400 — and an explicit `null` there **deletes** that key rather than setting it (`mutateTelemetry`, issue #1051). JSON has no `undefined`, and without the sentinel a patch could never make a field ABSENT — which is exactly what iRacing's capability fields mean: `hasPitLimiter`, `hasVisor` and `hasWipers` all read whether a `dc*` field EXISTS, not what it holds. No `TelemetryData` field takes null legitimately, so the sentinel is unambiguous.
 
 So `{"dcPitSpeedLimiterToggle": null}` turns the mock car into one with no pit limiter, which is how the no-limiter pit-speed callouts are auditioned; the field ships present by default because most of the roster has a limiter. Before the sentinel existed, one of the two families was always unfireable and its shortcuts looked broken rather than correctly gated.
 

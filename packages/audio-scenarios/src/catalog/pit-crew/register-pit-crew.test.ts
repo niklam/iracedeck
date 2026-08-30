@@ -35,13 +35,20 @@ import {
   type FlagCalloutId,
   type FuelCalloutId,
   type IncidentCalloutId,
+  NO_LIMITER_SCENARIO_IDS,
+  type NoLimiterCalloutId,
   type OpponentPitCalloutId,
+  PIT_LIMITER_SCENARIO_IDS,
+  type PitLimiterCalloutId,
   type PitStatusCalloutId,
   type PitWindowCalloutId,
   registerPitCrew,
   type RollingStartCalloutId,
 } from "./index.js";
+import { NO_LIMITER_POOL_NAMES } from "./no-limiter.js";
+import { PIT_LIMITER_POOL_NAMES } from "./pit-limiter.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
+import { POOL_REGISTRY } from "./pools.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
 
@@ -382,6 +389,26 @@ const GAP_CLIP_PATHS = [
   `voice/${VOICE}/gap/readout-intro.mp3`,
 ] as const;
 
+// Both limiter families' clips (issue #1051). They share the one `pit-limiter`
+// manifest group — the split is by REMEDY, not by clip location — so family B's
+// two bases sit alongside family A's four. One variant each: the assertions
+// match on the pool's base prefix, so a second variant would only make draws
+// non-deterministic for no gain.
+//
+// The `-01` suffix is load-bearing, not decoration. `buildManifestPool` matches
+// `<base>(?:-\d{2})?\.mp3` — exactly TWO digits — so a clip generated on a
+// three-digit convention lands in NO pool, and an empty pool skips its sequence
+// step SILENTLY. That is the shipped-once bug these fixtures are shaped after;
+// see the pool-resolution test below for what actually guards it.
+const PIT_LIMITER_CLIP_PATHS = [
+  `voice/${VOICE}/pit-limiter/on-track-01.mp3`,
+  `voice/${VOICE}/pit-limiter/missing-01.mp3`,
+  `voice/${VOICE}/pit-limiter/dropped-01.mp3`,
+  `voice/${VOICE}/pit-limiter/speeding-01.mp3`,
+  `voice/${VOICE}/pit-limiter/no-limiter-speeding-01.mp3`,
+  `voice/${VOICE}/pit-limiter/entry-01.mp3`,
+] as const;
+
 const manifest: AudioAssetsManifest = {
   clips: [
     "sfx/IRD-tick-open.mp3",
@@ -400,6 +427,7 @@ const manifest: AudioAssetsManifest = {
     ...OPPONENT_PIT_CLIP_PATHS,
     ...FUEL_LAPS_LEFT_CLIP_PATHS,
     ...GAP_CLIP_PATHS,
+    ...PIT_LIMITER_CLIP_PATHS,
   ],
   ambientLoop: "sfx/IRD-ambient-pit.mp3",
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
@@ -469,6 +497,14 @@ let opponentPitEnabled: Map<OpponentPitCalloutId, boolean>;
 let opponentPitLivePosition: number | null;
 let rollingStartEnabled: Map<RollingStartCalloutId, boolean>;
 let fuelEnabled: Map<FuelCalloutId, boolean>;
+// Issue #1051. Two SEPARATE spies rather than one shared closure: the two
+// getters sit in adjacent positional slots (49 and 50 of 52) and have the same
+// `(id) => boolean` shape, so only "which spy saw which id" can tell a slot
+// swap from correct wiring. See the slot test in the #1051 describe block.
+let pitLimiterEnabled: Map<PitLimiterCalloutId, boolean>;
+let noLimiterEnabled: Map<NoLimiterCalloutId, boolean>;
+let getPitLimiterEnabled: (id: PitLimiterCalloutId) => boolean;
+let getNoLimiterEnabled: (id: NoLimiterCalloutId) => boolean;
 let voiceMasterEnabled: boolean;
 
 beforeEach(() => {
@@ -487,6 +523,10 @@ beforeEach(() => {
   _resetOpponentPitPending();
   rollingStartEnabled = new Map<RollingStartCalloutId, boolean>([["pace-car", true]]);
   fuelEnabled = new Map<FuelCalloutId, boolean>();
+  pitLimiterEnabled = new Map<PitLimiterCalloutId, boolean>();
+  noLimiterEnabled = new Map<NoLimiterCalloutId, boolean>();
+  getPitLimiterEnabled = vi.fn((id: PitLimiterCalloutId) => pitLimiterEnabled.get(id) ?? true);
+  getNoLimiterEnabled = vi.fn((id: NoLimiterCalloutId) => noLimiterEnabled.get(id) ?? true);
   voiceMasterEnabled = true;
   mockSessionType.mockReturnValue("Race");
   bus = createMockBus();
@@ -541,8 +581,8 @@ beforeEach(() => {
     undefined, // getOpponentFlagCalloutEnabled (issue #936)
     undefined, // getOpponentFlagLivePosition (issue #936)
     undefined, // getPitSpeedingCalloutEnabled (issue #912)
-    undefined, // getPitLimiterCalloutEnabled (issue #1051)
-    undefined, // getNoLimiterCalloutEnabled (issue #1051)
+    getPitLimiterEnabled, // getPitLimiterCalloutEnabled (issue #1051)
+    getNoLimiterEnabled, // getNoLimiterCalloutEnabled (issue #1051)
     () => voiceMasterEnabled,
     undefined, // getRadarMasterEnabled
   );
@@ -1606,6 +1646,214 @@ describe("laps-of-fuel-left family registration (issue #838)", () => {
 
     expect(voiceClipsPlayed()).toEqual([]);
   });
+});
+
+// Issue #1051: two mirror families registered by `registerPitCrew`, each wrapped
+// by the master gate + its own per-callout opt-in. They partition the field on
+// equipment — family A speaks to cars that HAVE a pit limiter, family B to cars
+// that have none — and the `where:` predicates that do the partitioning are
+// covered exhaustively in `pit-limiter.test.ts` / `no-limiter.test.ts`. What is
+// only observable HERE is the wiring: that the scenarios reach the engine at
+// all, that the pools they name resolve to clips, and that each family's opt-in
+// arrives in the right positional slot.
+describe("pit-limiter / no-limiter family registration (issue #1051)", () => {
+  // `hasPitLimiter` tests for the PRESENCE of `dcPitSpeedLimiterToggle`, never
+  // its value, so the equipped snapshot carries it as `false` — a disengaged
+  // limiter, which is precisely when family A has something to say. `OnPitRoad`
+  // is pinned false for `limiter-on-track`, the one scenario that reads it.
+  const HAS_LIMITER = { ...IN_CAR, dcPitSpeedLimiterToggle: false, OnPitRoad: false };
+  const LACKS_LIMITER = { ...IN_CAR, OnPitRoad: false };
+
+  type Fire = {
+    id: string;
+    pool: string;
+    event: SimEventName;
+    data: Record<string, unknown>;
+    telemetry: Record<string, unknown>;
+  };
+
+  const LIMITER_FIRES: readonly Fire[] = [
+    {
+      id: "pit-crew.limiter-on-track",
+      pool: "pit-limiter-on-track",
+      event: "carControl.limiterToggled",
+      data: { on: true },
+      telemetry: HAS_LIMITER,
+    },
+    {
+      id: "pit-crew.limiter-missing",
+      pool: "pit-limiter-missing",
+      event: "limiter.missing",
+      data: {},
+      telemetry: HAS_LIMITER,
+    },
+    {
+      id: "pit-crew.limiter-dropped",
+      pool: "pit-limiter-dropped",
+      event: "limiter.dropped",
+      data: {},
+      telemetry: HAS_LIMITER,
+    },
+    {
+      id: "pit-crew.limiter-speeding",
+      pool: "pit-limiter-speeding",
+      event: "limiter.speeding",
+      data: {},
+      telemetry: HAS_LIMITER,
+    },
+  ];
+
+  const NO_LIMITER_FIRES: readonly Fire[] = [
+    {
+      id: "pit-crew.no-limiter-speeding",
+      pool: "no-limiter-speeding",
+      event: "limiter.speeding",
+      data: {},
+      telemetry: LACKS_LIMITER,
+    },
+    {
+      id: "pit-crew.no-limiter-entry",
+      pool: "no-limiter-entry",
+      event: "pitLane.entered",
+      data: {},
+      telemetry: LACKS_LIMITER,
+    },
+  ];
+
+  // Derived from the registry rather than written out, so a `(group, base)`
+  // rename in `pools.ts` moves the expectation with it instead of going stale.
+  function poolClipPrefix(pool: string): string {
+    const source = POOL_REGISTRY[pool];
+
+    if (!source) throw new Error(`POOL_REGISTRY has no entry for pool "${pool}"`);
+
+    return `voice/${VOICE}/${source.group}/${source.base}`;
+  }
+
+  it("the fire table covers exactly the scenario ids each family exports", () => {
+    expect(LIMITER_FIRES.map((f) => f.id).sort()).toEqual([...PIT_LIMITER_SCENARIO_IDS].sort());
+    expect(NO_LIMITER_FIRES.map((f) => f.id).sort()).toEqual([...NO_LIMITER_SCENARIO_IDS].sort());
+  });
+
+  // The pool names are pinned to an explicit list rather than re-derived by
+  // prefix. Both constants are built as `Object.keys(POOL_REGISTRY).filter(
+  // startsWith(...))`, so a registry rename that outruns the filter yields an
+  // EMPTY array — which every `for (const name of ...)` sweep would pass
+  // vacuously. Comparing against a literal is what makes that a failure.
+  it("the exported pool-name constants still name the pools these scenarios draw from", () => {
+    expect([...PIT_LIMITER_POOL_NAMES].sort()).toEqual(LIMITER_FIRES.map((f) => f.pool).sort());
+    expect([...NO_LIMITER_POOL_NAMES].sort()).toEqual(NO_LIMITER_FIRES.map((f) => f.pool).sort());
+  });
+
+  it("every declared pool name has a registry entry in the shared pit-limiter group", () => {
+    for (const name of [...PIT_LIMITER_POOL_NAMES, ...NO_LIMITER_POOL_NAMES]) {
+      expect(POOL_REGISTRY[name], `POOL_REGISTRY has no entry for "${name}"`).toBeDefined();
+      // One group for both families: the split is by remedy, not by location.
+      expect(POOL_REGISTRY[name].group).toBe("pit-limiter");
+      expect(POOL_REGISTRY[name].base.length).toBeGreaterThan(0);
+    }
+  });
+
+  // THE assertion this block exists for. An empty pool does not throw and does
+  // not log — the interpreter skips its sequence step in silence, so a callout
+  // can be registered, enabled, unit-tested and still completely mute. This has
+  // already happened twice on #1051 (clips generated on a three-digit suffix the
+  // `-\d{2}` matcher rejects; a pool-name filter left keyed on a stale prefix
+  // after a rename). Playing a clip whose path carries the pool's own
+  // `(group, base)` is the only proof that the pool resolved to members, and it
+  // goes through the real `buildManifestPool`, not a re-implementation of it.
+  it.each([...LIMITER_FIRES, ...NO_LIMITER_FIRES])(
+    "$id draws a clip from a non-empty $pool pool",
+    ({ event, data, telemetry, pool }) => {
+      bus.publishEvent(event, data as never, telemetry);
+      flush(audio);
+
+      expect(voiceClipsPlayed().some((p) => p.startsWith(poolClipPrefix(pool)))).toBe(true);
+    },
+  );
+
+  // `getPitLimiterCalloutEnabled` and `getNoLimiterCalloutEnabled` are
+  // positional parameters 49 and 50 of 52, adjacent, both `(id) => boolean`, and
+  // both defaulting to `() => true`. A parameter inserted above them shifts both
+  // silently: nothing throws, no type changes, and every "it fires" test still
+  // passes because the shifted-in getter also returns true. Only the id each spy
+  // is handed distinguishes the two — their unions overlap on "speeding" but
+  // family A alone owns "on-track"/"missing"/"dropped" and family B alone owns
+  // "entry", so a swap shows up as the wrong spy seeing an id it has no member
+  // for.
+  it("consults the pit-limiter getter, and only it, for a family A scenario", () => {
+    bus.publishEvent("carControl.limiterToggled", { on: true } as never, HAS_LIMITER);
+    flush(audio);
+
+    expect(getPitLimiterEnabled).toHaveBeenCalledWith("on-track");
+    expect(getNoLimiterEnabled).not.toHaveBeenCalled();
+  });
+
+  it("consults the no-limiter getter, and only it, for a family B scenario", () => {
+    bus.publishEvent("pitLane.entered", {} as never, LACKS_LIMITER);
+    flush(audio);
+
+    expect(getNoLimiterEnabled).toHaveBeenCalledWith("entry");
+    expect(getPitLimiterEnabled).not.toHaveBeenCalled();
+  });
+
+  it.each(LIMITER_FIRES)("$id is suppressed when its own opt-in is off", ({ event, data, telemetry, pool, id }) => {
+    const calloutId = id.replace("pit-crew.limiter-", "") as PitLimiterCalloutId;
+    pitLimiterEnabled.set(calloutId, false);
+
+    bus.publishEvent(event, data as never, telemetry);
+    flush(audio);
+
+    expect(voiceClipsPlayed().some((p) => p.startsWith(poolClipPrefix(pool)))).toBe(false);
+    expect(mockLogger.debug).toHaveBeenCalledWith(`pit-limiter callout suppressed: ${calloutId}`);
+  });
+
+  it.each(NO_LIMITER_FIRES)("$id is suppressed when its own opt-in is off", ({ event, data, telemetry, pool, id }) => {
+    const calloutId = id.replace("pit-crew.no-limiter-", "") as NoLimiterCalloutId;
+    noLimiterEnabled.set(calloutId, false);
+
+    bus.publishEvent(event, data as never, telemetry);
+    flush(audio);
+
+    expect(voiceClipsPlayed().some((p) => p.startsWith(poolClipPrefix(pool)))).toBe(false);
+    expect(mockLogger.debug).toHaveBeenCalledWith(`no-limiter callout suppressed: ${calloutId}`);
+  });
+
+  // The two families' ids collide on "speeding", and `limiter.speeding` is the
+  // one event BOTH subscribe to. If a single opt-in map backed both getters,
+  // silencing one family's speeding line would silence the other's — leaving the
+  // driver who cannot press a button to fix it with nothing at all.
+  it("silencing one family's speeding line leaves the other family's speaking", () => {
+    pitLimiterEnabled.set("speeding", false);
+
+    bus.publishEvent("limiter.speeding", {} as never, HAS_LIMITER);
+    flush(audio);
+    expect(voiceClipsPlayed()).toEqual([]);
+
+    bus.publishEvent("limiter.speeding", {} as never, LACKS_LIMITER);
+    flush(audio);
+    expect(voiceClipsPlayed().some((p) => p.startsWith(poolClipPrefix("no-limiter-speeding")))).toBe(true);
+  });
+
+  it("a disabled callout in one family does not gate its sibling in the same family", () => {
+    pitLimiterEnabled.set("missing", false);
+
+    bus.publishEvent("limiter.dropped", {} as never, HAS_LIMITER);
+    flush(audio);
+
+    expect(voiceClipsPlayed().some((p) => p.startsWith(poolClipPrefix("pit-limiter-dropped")))).toBe(true);
+  });
+
+  it.each([...LIMITER_FIRES, ...NO_LIMITER_FIRES])(
+    "$id is suppressed when the master gate is off",
+    ({ event, data, telemetry }) => {
+      voiceMasterEnabled = false;
+      bus.publishEvent(event, data as never, telemetry);
+      flush(audio);
+
+      expect(voiceClipsPlayed()).toEqual([]);
+    },
+  );
 });
 
 // Issue #515: the Race Engineer master gate ANDs the user's

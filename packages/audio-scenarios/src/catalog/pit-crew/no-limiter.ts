@@ -43,12 +43,19 @@ import { POOL_REGISTRY } from "./pools.js";
  * not the mirror image of its predicate whenever that predicate folds unknown
  * into false, which is most safe-by-default predicates in this codebase.
  *
+ * The `!= null` is LOOSE on purpose: it catches `undefined` as well as `null`.
+ * `SimEvent`'s telemetry field is an unconstrained generic and every call site
+ * reaches it through a cast, so the type is a claim rather than a guarantee.
+ * Under a strict `!== null` an `undefined` snapshot would make this return TRUE
+ * and fire family B on unknown data — the exact fail-loud behaviour the
+ * paragraph above says it prevents, and on a car that may well have a limiter.
+ *
  * Residual, accepted: telemetry present but `dc*` fields not yet populated
  * during early connection reads as "no limiter". Both triggers only fire on pit
  * road, by which point the snapshot is fully populated.
  */
 export function lacksPitLimiter(telemetry: TelemetryData | null): boolean {
-  return telemetry !== null && !hasPitLimiter(telemetry);
+  return telemetry != null && !hasPitLimiter(telemetry);
 }
 
 export const NO_LIMITER_SPEEDING: Scenario = {
@@ -60,6 +67,7 @@ export const NO_LIMITER_SPEEDING: Scenario = {
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
   base: "pit-crew",
+  family: "limiter",
   sequence: ["@pit-crew.radio-open", "pool:no-limiter-speeding", "@pit-crew.radio-close"],
 };
 
@@ -81,6 +89,7 @@ export const NO_LIMITER_ENTRY: Scenario = {
   // Saying it again here rather than only in the session brief is the point: at
   // pit entry the number is about to matter, where the brief may have been forty
   // minutes ago.
+  family: "limiter",
   sequence: [
     "@pit-crew.radio-open",
     "pool:no-limiter-entry",
@@ -140,8 +149,10 @@ export const NO_LIMITER_POOL_NAMES: readonly string[] = Object.keys(POOL_REGISTR
  * never play — and the `optional` wrapper drops the clause as a unit.
  *
  * Known coupling, accepted rather than worked around: the shared resolver
- * returns null when `TrackWetness` is out of range, which is unrelated to the
- * speed limit. The clause then skips and "Pit entry. Mind the limit." still
+ * returns null for several reasons unrelated to the speed limit — `TrackWetness`
+ * out of range, no session info yet, and (in the plugins, which compose it with a
+ * driver name) an active voice with no driver-name clips. Do not read this list as
+ * exhaustive when debugging a missing clause; read the resolver. The clause then skips and "Pit entry. Mind the limit." still
  * plays as a complete sentence. A dedicated limit resolver would decouple it at
  * the cost of another positional parameter on an already long signature.
  */

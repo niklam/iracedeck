@@ -362,7 +362,7 @@ Three reminders, one for each state worth flagging:
 
 - **Limiter off on pit road** — you came in without engaging it: *"The pit limiter is off. Please, turn it on."*
 - **Limiter dropped** — it was on and has come off again while you are still between the cones: *"Your limiter dropped. Turn it back on."* This is worded differently from the one above on purpose: "dropped" tells you it *was* engaged, which changes what you go looking for.
-- **Limiter on out on track** — you have left the pits with it still engaged, quietly capping your speed: *"Your pit limiter is on. Turn it off."*
+- **Limiter on out on track** — you switch the limiter **on** while away from pit road, where it will quietly cap your speed: *"Your pit limiter is on. Turn it off."* Note what this does and does not catch: it fires on the moment you engage it out on the circuit. A limiter left engaged as you *exit* the pits changes nothing for the sim to report — there is no new event — so that case is currently silent.
 
 These are the lines that would be nonsense on a car with no limiter, which is exactly why they are gated on having one.
 
@@ -536,7 +536,7 @@ Under **Pit Limiter**, four callouts are toggleable, all enabled by default. The
 
 - **Limiter off on pit road** — you entered the pits without engaging the limiter.
 - **Limiter dropped** — the limiter came off again while you are still on pit road.
-- **Limiter on out on track** — you left the pits with the limiter still engaged.
+- **Limiter on out on track** — you switched the limiter on while away from pit road.
 - **Speeding (limiter car)** — the spoken line that follows the tick when you are over the limit.
 
 Under **No Pit Limiter**, two callouts are toggleable, both enabled by default. These are the mirror group, and only ever fire on a car with no pit limiter:

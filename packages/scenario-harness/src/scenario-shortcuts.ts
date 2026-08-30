@@ -45,6 +45,23 @@ export type ScenarioShortcut = {
    * event payload. Lets QA exercise each position clause deterministically.
    */
   raceStartSnapshot?: RaceStartSnapshot;
+  /**
+   * Optional telemetry patch applied BEFORE publishing `event` (issue #1051),
+   * same push-before-fire ordering as the two snapshots above: the UI POSTs
+   * `/api/telemetry` with `{ patch }` and awaits it.
+   *
+   * Exists because the two pit-limiter families are gated on whether
+   * `dcPitSpeedLimiterToggle` EXISTS, and both families subscribe to the same
+   * events. Without the patch, clicking a "no limiter" shortcut on default
+   * telemetry plays the LIMITER family's line instead — audible, plausible,
+   * and the wrong family, so a tester would score it a pass. Each shortcut
+   * therefore sets up its own equipment rather than relying on harness state.
+   *
+   * Values are wire-level, not `TelemetryData`: `null` DELETES a key (the
+   * sentinel `mutateTelemetry` reads), which is the only way to make a field
+   * absent over JSON.
+   */
+  telemetryPatch?: Record<string, unknown>;
 };
 
 const ALL_FOUR_TIRES = ["LF", "RF", "LR", "RR"] as const;
@@ -333,10 +350,11 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
 
   // ── Pit Limiter (issue #1051) — cars that HAVE a limiter ──
   // All four gate on `hasPitLimiter`, which reads whether
-  // `dcPitSpeedLimiterToggle` EXISTS. The harness ships it present, so these
-  // fire out of the box; send `{"dcPitSpeedLimiterToggle": null}` to
-  // /api/telemetry to delete it and they go silent (which is the correct
-  // behaviour, and how you switch to the no-limiter family below).
+  // `dcPitSpeedLimiterToggle` EXISTS. Each carries a `telemetryPatch` that
+  // makes it present, so a click is self-contained whatever the previous
+  // shortcut left behind. To delete the field by hand the body shape is
+  // `{"patch": {"dcPitSpeedLimiterToggle": null}}` — /api/telemetry reads
+  // `body.patch` and 400s on a bare object.
   {
     id: "limiter-missing",
     category: "Pit Limiter",
@@ -344,6 +362,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     description: 'Entered pit road without the limiter — engineer says "The pit limiter is off."',
     event: "limiter.missing",
     data: {},
+    telemetryPatch: { dcPitSpeedLimiterToggle: false },
   },
   {
     id: "limiter-dropped",
@@ -352,6 +371,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     description: "The limiter came off while still between the cones.",
     event: "limiter.dropped",
     data: {},
+    telemetryPatch: { dcPitSpeedLimiterToggle: false },
   },
   {
     id: "limiter-speeding",
@@ -360,6 +380,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     description: "Over the pit limit on a car that has a limiter. Pairs with the always-on tick from #912.",
     event: "limiter.speeding",
     data: {},
+    telemetryPatch: { dcPitSpeedLimiterToggle: false },
   },
   {
     id: "limiter-on-track",
@@ -368,14 +389,18 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     description: "Limiter engaged away from pit road. Suppressed when OnPitRoad is true, which is the expected case.",
     event: "carControl.limiterToggled",
     data: { on: true },
+    telemetryPatch: { dcPitSpeedLimiterToggle: false },
   },
 
   // ── No Pit Limiter (issue #1051) — cars with NO limiter ──
-  // The mirror family. Its gate is `telemetry !== null && !hasPitLimiter(t)`,
+  // The mirror family. Its gate is `telemetry != null && !hasPitLimiter(t)`,
   // NOT a bare negation — `hasPitLimiter` folds unknown into false, so a bare
-  // negation would fire these on unknown telemetry too. To hear them, first
-  // POST {"dcPitSpeedLimiterToggle": null} to /api/telemetry to delete the
-  // field; with it present (the default) these are correctly silent.
+  // negation would fire these on unknown telemetry too.
+  //
+  // Each carries a `telemetryPatch` DELETING `dcPitSpeedLimiterToggle`, which
+  // is what makes the button honest: these publish the same events the limiter
+  // family subscribes to, so on default telemetry they are not silent — they
+  // play the LIMITER wording, which a tester would hear and score as a pass.
   {
     id: "no-limiter-speeding",
     category: "No Pit Limiter",
@@ -383,6 +408,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     description: 'Over the pit limit with no limiter fitted — "Over the limit. Lift." Never mentions a limiter.',
     event: "limiter.speeding",
     data: {},
+    telemetryPatch: { dcPitSpeedLimiterToggle: null },
   },
   {
     id: "no-limiter-entry",
@@ -393,6 +419,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
       "The limit clause skips whole if it does not, leaving a complete sentence.",
     event: "pitLane.entered",
     data: {},
+    telemetryPatch: { dcPitSpeedLimiterToggle: null },
   },
   { id: "stall-entered", category: "Pit Lane", label: "Entered Stall", event: "pitStall.entered", data: {} },
   { id: "stall-departed", category: "Pit Lane", label: "Departed Stall", event: "pitStall.departed", data: {} },

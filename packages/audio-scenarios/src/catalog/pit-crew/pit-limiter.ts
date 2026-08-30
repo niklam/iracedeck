@@ -41,6 +41,7 @@ export const LIMITER_ON_TRACK: Scenario = {
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
   base: "pit-crew",
+  family: "limiter",
   sequence: ["@pit-crew.radio-open", "pool:pit-limiter-on-track", "@pit-crew.radio-close"],
 };
 
@@ -54,6 +55,7 @@ export const LIMITER_MISSING: Scenario = {
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
   base: "pit-crew",
+  family: "limiter",
   sequence: ["@pit-crew.radio-open", "pool:pit-limiter-missing", "@pit-crew.radio-close"],
 };
 
@@ -67,6 +69,7 @@ export const LIMITER_DROPPED: Scenario = {
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
   base: "pit-crew",
+  family: "limiter",
   sequence: ["@pit-crew.radio-open", "pool:pit-limiter-dropped", "@pit-crew.radio-close"],
 };
 
@@ -80,6 +83,7 @@ export const LIMITER_SPEEDING: Scenario = {
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
   base: "pit-crew",
+  family: "limiter",
   sequence: ["@pit-crew.radio-open", "pool:pit-limiter-speeding", "@pit-crew.radio-close"],
 };
 
