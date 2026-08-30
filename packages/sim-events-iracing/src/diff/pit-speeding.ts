@@ -38,13 +38,27 @@ import type { TranslatorState } from "../state.js";
 import type { EmitFn } from "./types.js";
 
 /**
- * Dead band below the limit that the speed must fall through before the
- * episode ends (m/s, ≈0.7 km/h). Applied to the END edge only: the start is
- * strictly above the limit, so a speed hovering exactly on it cannot flutter
- * start/end at tick rate. The other exit conditions need no hysteresis —
- * there is nothing noisy about leaving pit road.
+ * How long the speed must stay at or under the limit before an in-flight
+ * episode ends (ms). Applied to the SPEED exit only — the other exits end the
+ * episode immediately, because there is nothing noisy about leaving pit road
+ * and #912's must-always-end guarantee depends on those staying instant.
+ *
+ * This replaced a 0.2 m/s dead band BELOW the limit (issue #1059). Damping a
+ * threshold in the dimension it measures necessarily makes some genuine
+ * values silent, and that band sat exactly where a compliant driver holds:
+ * once over, backing off to just under the limit could not stop the cue.
+ * Damping in time costs no speed precision — jitter dies because it is brief,
+ * not because a range of real speeds was declared silent.
+ *
+ * PROVISIONAL VALUE: one cue-loop interval (`PIT_SPEEDING_TICK_INTERVAL_MS`),
+ * so at most one extra beep can sound past the moment of compliance — the
+ * smallest increment a listener can actually perceive. The spec
+ * (`docs/superpowers/specs/2026-08-30-issue-1059-pit-speeding-precision.md`)
+ * records that the right value is a measurement rather than a taste, and
+ * names the `telemetry-watch` capture that would settle it. Lower it if that
+ * capture shows a shorter hold already damps the flapping.
  */
-export const PIT_SPEEDING_HYSTERESIS_MPS = 0.2;
+export const PIT_SPEEDING_END_HOLD_MS = 300;
 
 /**
  * End an in-flight episode, if there is one.
@@ -60,6 +74,7 @@ function endPitSpeedingIfActive(state: TranslatorState, emit: EmitFn): void {
   if (!state.pitSpeedingActive) return;
 
   state.pitSpeedingActive = false;
+  state.pitSpeedingUnderLimitSince = 0;
   emit({ event: "pitSpeeding.ended", data: {} });
 }
 
@@ -68,6 +83,7 @@ export function diffPitSpeeding(
   telemetry: TelemetryData,
   pitSpeedLimitMps: number,
   replayOnlySession: boolean,
+  now: number,
   emit: EmitFn,
 ): void {
   const isOnTrack = telemetry.IsOnTrack ?? false;
@@ -100,8 +116,22 @@ export function diffPitSpeeding(
   }
 
   if (state.pitSpeedingActive) {
-    if (speed <= pitSpeedLimitMps - PIT_SPEEDING_HYSTERESIS_MPS) {
-      endPitSpeedingIfActive(state, emit);
+    // The speed exit is held: the episode ends only once the car has been at
+    // or under the limit continuously for PIT_SPEEDING_END_HOLD_MS. A single
+    // tick back over the limit restarts the hold, so a speed oscillating
+    // across the limit yields one continuous tone rather than a stutter of
+    // restarted clips — the flapping this damps is the END edge, which is why
+    // there is no matching hold on the start.
+    if (speed <= pitSpeedLimitMps) {
+      // 0 is the not-tracking sentinel, matching `speedingWarnedAt` and
+      // `pitStatusRestSince` in this state object.
+      if (state.pitSpeedingUnderLimitSince === 0) state.pitSpeedingUnderLimitSince = now;
+
+      if (now - state.pitSpeedingUnderLimitSince >= PIT_SPEEDING_END_HOLD_MS) {
+        endPitSpeedingIfActive(state, emit);
+      }
+    } else {
+      state.pitSpeedingUnderLimitSince = 0;
     }
 
     return;

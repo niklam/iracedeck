@@ -1196,6 +1196,7 @@ function publishActiveStateTeardown(self: TranslatorInstance, telemetry: Telemet
   // #912). A missed edge here leaves audio looping over a live race.
   if (self.state.pitSpeedingActive) {
     self.state.pitSpeedingActive = false;
+    self.state.pitSpeedingUnderLimitSince = 0;
     publish(self, { event: "pitSpeeding.ended", data: {} }, telemetry, now);
   }
 }
@@ -1942,7 +1943,7 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // cue is worse than to `diffPitsOpen` or `diffFuelLaps`: parking a replay on
   // a frame where the car is over the pit limit would beep over the replay UI
   // until it was scrubbed away.
-  diffPitSpeeding(self.state, telemetry, pitSpeedLimitMps, replayOnlySession, emit);
+  diffPitSpeeding(self.state, telemetry, pitSpeedLimitMps, replayOnlySession, now, emit);
   diffTrackWetness(self.state, telemetry, emit);
 
   for (const p of pending) {
