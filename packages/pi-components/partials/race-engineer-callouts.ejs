@@ -323,6 +323,16 @@ var pitBoxCheckboxes = pitBoxCallouts.map(function (c) {
 	return '<sdpi-checkbox setting="' + c.setting + '" label="' + c.label + '" global default="true"></sdpi-checkbox>';
 }).join('');
 
+// Pit-road speeding cue (issue #912). Single subject — a repeating tick
+// while the car is over the pit-lane speed limit, not a spoken line.
+var pitSpeedingCallouts = [
+	{ setting: "calloutEnabledPitSpeedingCue", label: "Pit road speeding" },
+];
+var pitSpeedingRowCount = Math.ceil(pitSpeedingCallouts.length / 2);
+var pitSpeedingCheckboxes = pitSpeedingCallouts.map(function (c) {
+	return '<sdpi-checkbox setting="' + c.setting + '" label="' + c.label + '" global default="true"></sdpi-checkbox>';
+}).join('');
+
 // Laps-of-fuel-left callouts (issue #838). One checkbox per spoken
 // count 10 → 1 plus the count-0 "Box this lap" call. Defaults are NOT
 // uniform (5, 3, 2, 1 and Box ship ON, the rest OFF — the Discord-
@@ -488,6 +498,11 @@ var setupWarningCheckboxes = setupWarningCallouts.map(function (c) {
   '<sdpi-item label="Pit Box">' +
   	'<div style="display:grid;grid-template-rows:repeat(' + pitBoxRowCount + ',auto);grid-auto-flow:column;gap:4px 12px;width:100%;">' +
   		pitBoxCheckboxes +
+  	'</div>' +
+  '</sdpi-item>' +
+  '<sdpi-item label="Pit Speeding">' +
+  	'<div style="display:grid;grid-template-rows:repeat(' + pitSpeedingRowCount + ',auto);grid-auto-flow:column;gap:4px 12px;width:100%;">' +
+  		pitSpeedingCheckboxes +
   	'</div>' +
   '</sdpi-item>' +
   '<sdpi-item label="Fuel">' +

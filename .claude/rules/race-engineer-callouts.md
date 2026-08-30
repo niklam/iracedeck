@@ -55,7 +55,7 @@ voice scenario as the outermost short-circuit.
 | **Audio scenarios** | `packages/audio-scenarios/src/catalog/pit-crew/<family>.ts` |
 | **Family wiring (id type, key map, scenario id map, registerPitCrew param)** | `packages/audio-scenarios/src/catalog/pit-crew/index.ts` |
 | **Per-callout opt-in (Zod field)** | `packages/deck-core/src/global-settings.ts` |
-| **PI checkbox row** | `packages/iracing-actions/src/actions/pit-crew/pit-crew.ejs` |
+| **Callout checkbox row** | `packages/pi-components/partials/race-engineer-callouts.ejs` (settings window only since #1003 — `pit-crew.ejs` carries no callout rows) |
 | **Plugin closure (live-read)** | `packages/iracing-plugin-stream-deck/src/plugin.ts`, `packages/iracing-plugin-mirabox/src/plugin.ts`, AND `packages/iracing-plugin-ulanzi/src/plugin.ts` (byte-identical in code — mirror each other) |
 | **Scenario-harness button** | `packages/scenario-harness/src/scenario-shortcuts.ts` |
 | **Scenario-harness event template** | `packages/scenario-harness/src/event-names.ts` (compile-time completeness check enforces this) |
@@ -71,6 +71,8 @@ voice scenario as the outermost short-circuit.
 ## Adding a new callout — checklist
 
 When adding to an existing family (e.g. another flag colour) you skip steps 1–2 and the bus-side wiring; when introducing a brand-new family you do all of it.
+
+**An SFX cue is not a scenario: it skips steps 3 and 4 entirely, and the scenario half of step 5** (issue #912, the first one). A cue that must react instantly plays direct from an imperative engine — `getAudio().playOnChannel(...)`, the `radar-engine.ts` model — instead of firing through the interpreter, so it has no voice lines, no pool, no scenario, no `SCENARIO_ID_TO_*` map and no `wrapCalloutScenario` loop. Step 5 therefore splits: its **wiring** half is still required — the `<Family>CalloutId` type, the `<FAMILY>_CALLOUT_SETTING_KEYS` map and the `registerPitCrew` parameter — while its scenario-registration half does not apply. It still needs everything else too: the bus event (1), the diff and state (2), the Zod field (6), the checkbox row (7), all three plugin closures (8), the fixtures (9) and the harness entries (10). The opt-in is read live inside the engine's own tick rather than by a scenario wrapper. Note what direct playback costs and buys: no weight, family or focus contest — so nothing to tune against other callouts, but equally no interpreter to keep it from overlapping one.
 
 ### 1. Define the bus event
 
@@ -137,10 +139,10 @@ In `packages/audio-scenarios/src/catalog/pit-crew/index.ts`:
 In `packages/deck-core/src/global-settings.ts`:
 - Add a Zod field for each subject using the canonical pattern: `z.union([z.boolean(), z.string()]).transform((val) => val === true || val === "true").default(true)`. Default `true` for callouts (the family's natural baseline); see `.claude/rules/global-settings.md` for the polarity rationale.
 
-### 7. Property Inspector row
+### 7. Callout checkbox row
 
-In `packages/iracing-actions/src/actions/pit-crew/pit-crew.ejs`:
-- Inside the Race Engineer Callouts accordion, add (or extend) an `sdpi-item` for the family.
+In `packages/pi-components/partials/race-engineer-callouts.ejs` — **not** `pit-crew.ejs`, which has carried no callout rows since #1003 moved every plugin-global setting into the settings window:
+- Add (or extend) an `sdpi-item` for the family. The partial is items-only; the settings window wraps them in its "Callouts" card.
 - Use the auto-balancing 2-column grid pattern already in the file: build the array of `{ setting, label }` once, then map to `<sdpi-checkbox>` rows. The grid template comes from `Math.ceil(items.length / 2)` so it scales without per-row maintenance.
 
 ### 8. Plugin closure (ALL THREE plugins)

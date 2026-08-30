@@ -20,10 +20,20 @@
  *   - Laps-of-fuel-left scenarios (counts 10 → 1 plus the box-this-lap call,
  *     via `fuel.lapsLeft.crossed` — issue #838)
  *
- * Other voice scenarios (welcome, pit-approach, incident alerts, limiter
- * callouts, tips, drs/p2p toggles) are not currently registered; they'll be
- * added one at a time as their `voice/{voice}/…` content is generated and
- * the corresponding pools and scenarios are reintroduced.
+ * Still-dormant voice scenarios: welcome, pit-approach, tips, drs/p2p
+ * toggles, and the limiter family. They are registered one at a time as
+ * their `voice/{voice}/…` content is generated and the corresponding pools
+ * and scenarios are reintroduced.
+ *
+ * The limiter family (`limiter-on-track` / `limiter-missing` /
+ * `limiter-dropped` / `limiter-speeding`) is tracked separately in issue
+ * #1051, which decides per scenario whether to register or delete it —
+ * `limiter-speeding` in particular now overlaps the #912 speeding cue.
+ *
+ * This list previously named incident alerts as dormant too; they have been
+ * registered since (see the `INCIDENT_ALERTS` loop below). Treat prose in
+ * this file as a summary that can lag the code, never as evidence that
+ * something is unwired — count the references instead.
  *
  * `bus` is the event bus instance returned by `initializeEventBus(...)`;
  * passed through to `registerRadarEngine` so the radar engine and the
@@ -103,6 +113,7 @@ import {
   SCENARIO_ID_TO_OVERTAKE_ID,
 } from "./overtake.js";
 import { PIT_BOX_ALERTS } from "./pit-box.js";
+import { registerPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { PIT_STATUS_ALERTS, PIT_STATUS_REPEAT_ALERTS } from "./pit-status.js";
 import { PIT_WINDOW_ALERTS } from "./pit-window.js";
 import { registerPools } from "./pools.js";
@@ -659,6 +670,26 @@ const SCENARIO_ID_TO_PIT_BOX_ID: Record<string, PitBoxCalloutId> = {
 };
 
 /**
+ * Stable identifier for the pit-road speeding cue (issue #912). Single
+ * subject — one toggle covers the whole repeating tick.
+ */
+export type PitSpeedingCalloutId = "cue";
+
+/**
+ * Canonical mapping from `PitSpeedingCalloutId` to its plugin-global setting
+ * key in `GlobalSettingsSchema`. Plugin entry points use this to read the live
+ * opt-in without duplicating the key string.
+ */
+export const PIT_SPEEDING_CALLOUT_SETTING_KEYS: Record<PitSpeedingCalloutId, string> = {
+  cue: "calloutEnabledPitSpeedingCue",
+};
+
+// No `SCENARIO_ID_TO_PIT_SPEEDING_ID` and no `wrapCalloutScenario` loop: the
+// cue is an imperative engine playing direct, not a scenario, so there is no
+// `where:` predicate to wrap. Its opt-in is read inside the engine's tick
+// instead — the same shape the spotter's two opt-ins use.
+
+/**
  * Stable identifier for each user-toggleable laps-of-fuel-left callout
  * (issue #838). One id per spoken count — the trailing segment of the
  * scenario id minus the `pit-crew.fuel-` prefix. `laps-left-box` is the
@@ -1041,6 +1072,10 @@ export function registerPitCrew(
   // Default `() => null` falls back to the emit-time payload position — a
   // safe stub for tests and the harness.
   getOpponentFlagLivePosition: OpponentFlagLivePositionResolver = () => null,
+  // Pit-road speeding cue opt-in (issue #912). Live-read, single subject.
+  // Consumed inside the imperative engine rather than by a scenario wrapper —
+  // the cue plays direct, so there is no `where:` to gate.
+  getPitSpeedingCalloutEnabled: (id: PitSpeedingCalloutId) => boolean = () => true,
   // Master gate for the Race Engineer voice subsystem (issue #515).
   // Plugins wire this to `pitCrewRaceEngineerEnabled === true`. Read live
   // on every event arrival and applied as the OUTERMOST wrapper around
@@ -1059,6 +1094,12 @@ export function registerPitCrew(
   getRadarMasterEnabled: () => boolean = () => true,
 ): void {
   registerRadarEngine(bus, getRadarMasterEnabled);
+
+  registerPitSpeedingEngine(bus, {
+    getMasterEnabled: getRaceEngineerMasterEnabled,
+    getCueEnabled: () => getPitSpeedingCalloutEnabled("cue"),
+    logger,
+  });
 
   registerSpotterEngine(bus, {
     getMasterEnabled: getRaceEngineerMasterEnabled,

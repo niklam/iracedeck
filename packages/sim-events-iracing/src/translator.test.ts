@@ -1418,6 +1418,104 @@ describe("sim-events-iracing translator", () => {
     });
   });
 
+  describe("pit speeding (issue #912)", () => {
+    const PIT_LIMIT_SESSION = {
+      SessionInfo: { Sessions: [{ SessionType: "Race" }] },
+      WeekendInfo: { TrackID: 42, TrackPitSpeedLimit: "80.00 kph" },
+    };
+    /** 80 kph is 22.2 m/s; comfortably over it. */
+    const SPEEDING = 30;
+
+    function speedingController(): MockController {
+      const controller = createMockController();
+      controller.__setSessionInfo(PIT_LIMIT_SESSION);
+
+      return controller;
+    }
+
+    it("starts the cue on the very first tick observed while already speeding", () => {
+      const controller = speedingController();
+      const bus = getEventBus();
+      const started = vi.fn();
+      bus.subscribe("pitSpeeding.started", started);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      // No seeding tick. Unlike the limiter diff above, this one is
+      // level-driven: a driver already over the limit when the plugin starts
+      // or the SDK reconnects must hear the cue, not be seeded past it.
+      controller.__tick(telemetry({ OnPitRoad: true, Speed: SPEEDING }));
+
+      expect(started).toHaveBeenCalledTimes(1);
+    });
+
+    it("publishes pitSpeeding.ended on disconnect so the tick loop cannot outlive the session", () => {
+      const controller = speedingController();
+      const bus = getEventBus();
+      const ended = vi.fn();
+      bus.subscribe("pitSpeeding.ended", ended);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      controller.__tick(telemetry({ OnPitRoad: true, Speed: SPEEDING }));
+      expect(ended).not.toHaveBeenCalled();
+
+      controller.__tick(null, false);
+
+      expect(ended).toHaveBeenCalledTimes(1);
+    });
+
+    it("publishes pitSpeeding.ended when entering replay", () => {
+      const controller = speedingController();
+      const bus = getEventBus();
+      const ended = vi.fn();
+      bus.subscribe("pitSpeeding.ended", ended);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      controller.__tick(telemetry({ OnPitRoad: true, Speed: SPEEDING }));
+      // The replay guard returns before the diffs run, so without the teardown
+      // the state would be wiped with the closing edge never emitted.
+      controller.__tick(telemetry({ OnPitRoad: true, Speed: SPEEDING, IsReplayPlaying: true }));
+
+      expect(ended).toHaveBeenCalledTimes(1);
+    });
+
+    it("publishes pitSpeeding.ended on a session change, then restarts if still speeding", () => {
+      const controller = speedingController();
+      const bus = getEventBus();
+      const started = vi.fn();
+      const ended = vi.fn();
+      bus.subscribe("pitSpeeding.started", started);
+      bus.subscribe("pitSpeeding.ended", ended);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      controller.__tick(telemetry({ SessionNum: 0, OnPitRoad: true, Speed: SPEEDING }));
+      expect(started).toHaveBeenCalledTimes(1);
+
+      controller.__tick(telemetry({ SessionNum: 1, OnPitRoad: true, Speed: SPEEDING }));
+
+      // The wipe closes the episode, and the same tick's diff reopens it
+      // because the condition still holds — a momentary gap in the tick, not
+      // a silent loop and not a permanently lost warning.
+      expect(ended).toHaveBeenCalledTimes(1);
+      expect(started).toHaveBeenCalledTimes(2);
+    });
+
+    it("stays silent when the track's pit speed limit cannot be parsed", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo({
+        SessionInfo: { Sessions: [{ SessionType: "Race" }] },
+        WeekendInfo: { TrackID: 42 },
+      });
+      const bus = getEventBus();
+      const started = vi.fn();
+      bus.subscribe("pitSpeeding.started", started);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      controller.__tick(telemetry({ OnPitRoad: true, Speed: 200 }));
+
+      expect(started).not.toHaveBeenCalled();
+    });
+  });
+
   describe("flags — cleared", () => {
     it("emits flag.yellow.cleared only when yellow was previously active", () => {
       const controller = createMockController();

@@ -374,6 +374,23 @@ export type TranslatorState = {
   lastLimiterOnPitRoad: boolean;
   speedingWarnedAt: number;
 
+  /**
+   * True between `pitSpeeding.started` and `pitSpeeding.ended` (issue #912).
+   *
+   * Deliberately the ONLY field this diff owns, and deliberately WITHOUT a
+   * `pitSpeedingInitialized` seed flag. The cue is a repeating callout, so it
+   * must be driven by current state rather than by an edge (the #951 rule):
+   * `false` is the correct baseline on a fresh state, which makes the first
+   * tick observing the condition a real start edge. Connecting, reconnecting
+   * or restarting the plugin mid-offence therefore starts the cue instead of
+   * silently seeding past it.
+   *
+   * Adding a seed flag here would reintroduce #951's bug — every re-seed path
+   * (deck-host auto-update restart, SDK reconnect, a one-tick `IsOnTrack:
+   * false` blip, the replay flip) is reachable while a car is on pit road.
+   */
+  pitSpeedingActive: boolean;
+
   // ── Incidents / off-track ───────────────────────────────────────────────
   lastIncidentCount: number; // -1 = not seeded
   offTrackStartedAt: number; // 0 = on track
@@ -949,6 +966,7 @@ export function createInitialState(): TranslatorState {
     lastOnPitRoadForLimiter: false,
     lastLimiterOnPitRoad: false,
     speedingWarnedAt: 0,
+    pitSpeedingActive: false,
 
     lastIncidentCount: -1,
     offTrackStartedAt: 0,

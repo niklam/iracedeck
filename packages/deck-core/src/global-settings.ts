@@ -934,6 +934,18 @@ export const GlobalSettingsSchema = z
       .transform((val) => val === true || val === "true")
       .default(true),
     /**
+     * Opt-in for the repeating pit-road speeding cue (issue #912). One
+     * boolean for the family — a repeating tick sounds while the car is over
+     * the pit-lane speed limit, rather than a spoken line. Defaults `true`
+     * because new Race Engineer functionality ships enabled. Canonical id↔key
+     * mapping in `PIT_SPEEDING_CALLOUT_SETTING_KEYS` (in
+     * `@iracedeck/audio-scenarios`).
+     */
+    calloutEnabledPitSpeedingCue: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    /**
      * Safety margin in laps subtracted from the raw laps-of-fuel-left
      * estimate before the Race Engineer derives the spoken count (issue
      * #838). The spoken number is deliberately conservative relative to

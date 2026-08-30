@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AudioAssetsManifest } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
 import { _resetPositionReadoutCooldown, registerPitCrew } from "./index.js";
+import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { raceStatusCadenceHits } from "./race-status.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
@@ -218,6 +219,7 @@ afterEach(() => {
   _resetAudioScenarios();
   _resetRadarEngine();
   _resetSpotterEngine();
+  _resetPitSpeedingEngine();
   _resetPositionReadoutCooldown();
   vi.clearAllMocks();
 });

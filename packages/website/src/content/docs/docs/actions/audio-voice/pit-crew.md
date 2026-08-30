@@ -319,6 +319,22 @@ The box location comes straight from iRacing (`DriverInfo.DriverPitTrkPct`), so 
 
 The count-in fires whenever you're on pit road approaching your box, so it isn't tied to having requested pit service — a drive-through will count down too.
 
+## Pit road speeding
+
+Go over the pit lane speed limit and a short tick starts repeating, about three times a second, for as long as you're over it — a beeper, like a road car's over-speed chime. It stops once you're a fraction under the limit again, with the beep already sounding allowed to finish; the small dead band is deliberate, so a speed hovering exactly on the limit can't stutter the tick on and off. Unlike everything else the engineer says this isn't a spoken line and it doesn't wait its turn on the radio: it plays straight away, because a warning that arrives after the penalty is no warning at all.
+
+It starts **the moment you exceed the posted limit**, with no grace margin. That sounds strict, but the pit limiter holds your car slightly *below* the limit, so riding the limiter never triggers it — if you're hearing the tick you are genuinely over.
+
+The cue fires on **every car**, whether or not yours has a pit limiter. Pit-road speeding penalties apply to everyone, and a car with no limiter is the one whose driver has no dashboard cue to fall back on.
+
+It also starts if you're **already speeding when the engineer starts listening** — reconnecting to iRacing, or the plugin restarting mid-session after a deck software update. The tick describes what your car is doing right now rather than announcing a moment that has passed, so there's no sense in which it can be "too late to mention".
+
+Two things are worth knowing about how it's mixed. The tick plays on the same channel as the [Radar](#radar) proximity ticks, so it follows your **Radar volume** — turning radar volume to zero silences this too. And it doesn't duck under spotter calls: if a car pulls alongside while you're speeding on pit road you'll hear both, which is deliberate, since both are telling you something you need at that moment.
+
+One opt-in lives under **Race Engineer Callouts → Pit Speeding** in the Settings window, on by default:
+
+- **Pit road speeding** — the repeating tick. Turning it off silences the cue entirely; turning the Race Engineer master off silences it too.
+
 ## Laps of fuel left
 
 In race sessions the Race Engineer estimates how many full laps of fuel you have left and calls the count out once per lap, around the middle of the lap: *"We're estimating that we have about 3 laps of fuel left after completing this lap."* The count means full laps **after** you finish the current one, so when the tank won't cover another full lap the engineer switches to the dedicated *"Box this lap for fuel."* call.
@@ -470,6 +486,10 @@ Under **Gaps**, two callouts are toggleable, both enabled by default (see [Gap c
 Under **Pit Box**, one callout is toggleable, enabled by default:
 
 - **Count-in to pit box** — the *"five… four… three… two… one… pit now"* distance countdown to your pit box as you drive down pit road. Disabling this silences the whole count-in.
+
+Under **Pit Speeding**, one callout is toggleable, enabled by default:
+
+- **Pit road speeding** — the repeating tick that sounds while you're over the pit lane speed limit (see [Pit road speeding](#pit-road-speeding) above). It plays at your Radar volume.
 
 Under **Fuel**, each laps-of-fuel-left count has its own checkbox (see [Laps of fuel left](#laps-of-fuel-left) above for the full behavior). **5, 3, 2, 1, Box this lap, and Enough fuel to finish are enabled by default**; 10–6 and 4 ship off so a fresh install hears a short, escalating sequence rather than a count every lap:
 

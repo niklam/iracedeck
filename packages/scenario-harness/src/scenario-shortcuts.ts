@@ -334,6 +334,28 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   { id: "stall-departed", category: "Pit Lane", label: "Departed Stall", event: "pitStall.departed", data: {} },
   { id: "pit-exited", category: "Pit Lane", label: "Exited Pit Lane", event: "pitLane.exited", data: {} },
 
+  // ── Pit-road speeding (issue #912) ──
+  // Episode edges for the repeating over-the-limit cue. `started` opens the
+  // tick loop, `ended` closes it. The loop is bounded by a live telemetry
+  // re-check, which is why the start button needs the caveat below.
+  {
+    id: "pit-speeding-started",
+    category: "Pit Lane",
+    label: "Speeding — start",
+    description:
+      "Over the posted pit lane speed limit — starts the repeating cue. NOT A BUG if you hear one beep and silence: the engine re-reads OnPitRoad on every tick and stops on a positive false, and the harness default is OnPitRoad: false, so the cue self-stops within about a second. Set OnPitRoad to true in the telemetry panel first to hear it repeat.",
+    event: "pitSpeeding.started",
+    data: {},
+  },
+  {
+    id: "pit-speeding-ended",
+    category: "Pit Lane",
+    label: "Speeding — stop",
+    description: "No longer speeding on pit road — stops the repeating cue",
+    event: "pitSpeeding.ended",
+    data: {},
+  },
+
   // ── Flags ──
   flag("Yellow (local)", "flag.yellow.raised", { scope: "local" }),
   flag("Yellow (full)", "flag.yellow.raised", { scope: "full" }),

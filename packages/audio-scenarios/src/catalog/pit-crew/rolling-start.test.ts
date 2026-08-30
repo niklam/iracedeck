@@ -19,6 +19,7 @@ import { WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
 import { registerPitCrew, type RollingStartCalloutId } from "./index.js";
+import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { POOL_REGISTRY } from "./pools.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import { RADIO_CLOSE, RADIO_OPEN } from "./radio-frame.js";
@@ -336,6 +337,7 @@ describe("ROLLING_START_ALERTS opt-in gating (issue #660)", () => {
       undefined, // getLiveGaps (issue #933)
       undefined, // getOpponentFlagCalloutEnabled (issue #936)
       undefined, // getOpponentFlagLivePosition (issue #936)
+      undefined, // getPitSpeedingCalloutEnabled (issue #912)
       undefined, // getRaceEngineerMasterEnabled
       undefined, // getRadarMasterEnabled
     );
@@ -344,6 +346,7 @@ describe("ROLLING_START_ALERTS opt-in gating (issue #660)", () => {
   afterEach(() => {
     _resetRadarEngine();
     _resetSpotterEngine();
+    _resetPitSpeedingEngine();
   });
 
   it("fires the pace-car line when the opt-in is on", () => {
