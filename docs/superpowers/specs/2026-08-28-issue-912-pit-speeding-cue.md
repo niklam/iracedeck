@@ -24,7 +24,17 @@ The reasoning above is left standing rather than rewritten, because it is what p
 
 **The cue's design is unchanged by the ruling, which is the property this section was structured to buy.** Not limiter-gated, no margin, direct playback on Radar, instant. Everything below was specified against a bus with no subscriber precisely so that the limiter decision could go either way without reopening it, and it did go the other way.
 
-One question this spec raised and did not settle passes to #1051 with it: `limiter-speeding` carries the #639 `hasPitLimiter` gate while this cue deliberately has none, so a car *with* a limiter now gets a tick and a sentence while a car *without* gets only the tick — and that is the driver with no dashboard cue at all. #639's gate was a family-wide decision that is right for the three limiter-shaped scenarios, whose wording is meaningless without a limiter; it does not carry to "You are speeding. Slow down.", which is correctly worded for every car. Removing the gate from that one member is a **new** decision amending #639's scope rather than a correction of an oversight, and it is #1051's to make.
+One question this spec raised and did not settle has since been answered, and the answer took neither option that was on the table. The problem: `limiter-speeding` carries the #639 `hasPitLimiter` gate while this cue deliberately has none, so a car *with* a limiter gets a tick and a sentence while a car *without* gets only the tick — and that is the driver with no dashboard cue at all. The two options put up were to keep the gate (leaving that driver with only the beep) or to drop it from that one scenario (making a #639-shaped wording decision for a line whose wording does not actually depend on a limiter).
+
+**Niklas ruled for a third: two callout families, one for cars with a limiter and one for cars without, each worded for its own audience.** Family A is the existing limiter family with its gate untouched — #639 needs no amendment at all. Family B is new, gated on the negation, speeding-only (the other three scenarios are impossible or meaningless without a limiter), and never mentions a limiter. #1051 owns the design.
+
+**The argument was accepted and the fix was rejected, and the distinction is the part worth keeping.** The diagnosis was right: #639's gate is about wording. The proposed remedy then sent limiter-framed content *across* that gate to cars with no limiter — the same wording problem pointed the other way. Ungating removed the asymmetry's symptom while keeping its cause. Two families keep the insight and drop the mistake.
+
+What makes them worth their cost rather than duplication is that the families differ by **remedy**, not merely by phrasing. A limiter car that is speeding is usually speeding because the limiter is off, and the fix is a button; a limiter-less car has to lift. No single sentence carries both instructions honestly.
+
+The shape that results is symmetric, and it is the one this spec should be read against: **the tick is the layer common to every car, and each family adds the spoken half worded for its own equipment.** Nobody hears a warning aimed at hardware they do not have, and nobody is left with only a beep.
+
+Recorded because it generalises past this issue: when a capability gate produces an asymmetry, "gate or no gate" is a false pair. Removing a gate moves content to an audience it was not written for; the real question is whether the *condition* is universal while only the *sentence* is not — and if so, the answer is a second sentence, not a wider gate.
 
 ## What ships
 
