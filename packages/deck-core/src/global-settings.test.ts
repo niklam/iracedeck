@@ -9,6 +9,7 @@ import {
   GlobalSettingsSchema,
   hostMirrorPayload,
   initGlobalSettings,
+  type InitGlobalSettingsOptions,
   isSettingsStoreReady,
   LOAD_ATTEMPTS,
   LOAD_RETRY_DELAY_MS,
@@ -72,6 +73,56 @@ type MemoryStore = ReturnType<typeof createMemorySettingsStore>;
 
 /** Let the async load/migration inside initGlobalSettings settle. */
 const tick = () => new Promise((r) => setTimeout(r, 0));
+
+/** One simulated plugin start: the adapter it ran against and the store it wrote to. */
+interface Start {
+  mock: MockAdapter;
+  store: MemoryStore;
+}
+
+/**
+ * Simulate a plugin start against a settings file whose contents are `stored`
+ * (omit it for "no file yet"), and wait for the store to settle.
+ *
+ * Pairs with {@link restartFrom}. Use these rather than hand-authoring the file
+ * for a second start — see that function for why it matters.
+ */
+async function startWith(stored?: Record<string, unknown>, opts: InitGlobalSettingsOptions = {}): Promise<Start> {
+  _resetGlobalSettings();
+
+  const mock = createMockAdapter();
+  const store = createMemorySettingsStore(stored === undefined ? undefined : { ...stored });
+
+  initGlobalSettings(mock.adapter, createMockLogger(), store, opts);
+  await tick();
+
+  return { mock, store };
+}
+
+/**
+ * Restart on the bytes a previous start ACTUALLY persisted, rather than on a
+ * hand-written object hoping to match them.
+ *
+ * This is the shape #1041's post-mortem asked for. Every marker test there
+ * authored both files itself, so nothing compared what one start wrote against
+ * what the next start read — and a recovery path that production could never
+ * reach shipped green, because its fixture carried a marker combination the
+ * code never writes. Anything asserting across a restart boundary should chain
+ * through here.
+ *
+ * Throws when the previous start persisted nothing: restarting from `undefined`
+ * is the "no file yet" scenario, which would quietly pass for entirely the
+ * wrong reason.
+ */
+async function restartFrom(previous: Start, opts: InitGlobalSettingsOptions = {}): Promise<Start> {
+  const persisted = previous.store.saved.at(-1);
+
+  if (persisted === undefined) {
+    throw new Error("restartFrom: the previous start persisted nothing, so there is no file to restart from");
+  }
+
+  return startWith(persisted, opts);
+}
 
 /**
  * Initialize against a memory store seeded with `initial` (the "settings file
@@ -1086,33 +1137,17 @@ describe("single-writer store (issue #993)", () => {
 
   it("the file the ceiling ACTUALLY writes still shuts the mirror on the next start (#1041)", async () => {
     // Chains one start's persisted output into the next start's input rather
-    // than hand-authoring the second file. Every other marker test authors its
-    // own store and so cannot catch the persisted shape drifting from the
-    // assumed one — which is exactly how an earlier version of this change
-    // shipped a "recovery" path production could never reach: its fixture
-    // carried both markers, a combination the ceiling never writes.
-    const mock = createMockAdapter();
-    const ceilingStore = createMemorySettingsStore({
+    // than hand-authoring the second file — see restartFrom for why that
+    // distinction is the whole point.
+    const ceiling = await startWith({
       ...(GlobalSettingsSchema.parse({}) as Record<string, unknown>),
       [MIGRATION_PENDING_KEY]: MIGRATION_RETRY_STARTS,
       driverName: "kept",
     });
 
-    initGlobalSettings(mock.adapter, createMockLogger(), ceilingStore);
-    await tick();
+    const next = await restartFrom(ceiling);
 
-    const persisted = { ...(ceilingStore.saved.at(-1) as Record<string, unknown>) };
-
-    // Second start, on the very bytes the first one wrote.
-    _resetGlobalSettings();
-
-    const nextMock = createMockAdapter();
-    const nextStore = createMemorySettingsStore(persisted);
-
-    initGlobalSettings(nextMock.adapter, createMockLogger(), nextStore);
-    await tick();
-
-    expect(nextMock.getGlobalSettings).not.toHaveBeenCalled();
+    expect(next.mock.getGlobalSettings).not.toHaveBeenCalled();
     expect(hostMirrorPayload({ port: 1, token: "t" })).toBeUndefined();
     expect((getGlobalSettings() as unknown as Record<string, unknown>).driverName).toBe("kept");
   });
