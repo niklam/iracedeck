@@ -391,6 +391,23 @@ export type TranslatorState = {
    */
   pitSpeedingActive: boolean;
 
+  /**
+   * When the speed first fell to or under the pit limit during the in-flight
+   * episode, or `0` when not tracking (issue #1059). Drives the held speed
+   * exit in `diffPitSpeeding`: the episode ends only once the car has been at
+   * or under the limit for `PIT_SPEEDING_END_HOLD_MS`, and a tick back over
+   * the limit resets this to `0` so the hold restarts.
+   *
+   * Meaningless while `pitSpeedingActive` is false, and cleared alongside it in
+   * both places that end an episode. Only the diff's own clear is load-bearing:
+   * `publishActiveStateTeardown`'s is belt-and-braces, since all three of its
+   * callers rebuild the state through `createInitialState()` immediately after.
+   * It is kept so the pairing lives at every site that ends an episode — a
+   * future teardown that does NOT rebuild the state would otherwise leave a
+   * stale value here and silently shorten the next episode's hold.
+   */
+  pitSpeedingUnderLimitSince: number;
+
   // ── Incidents / off-track ───────────────────────────────────────────────
   lastIncidentCount: number; // -1 = not seeded
   offTrackStartedAt: number; // 0 = on track
@@ -967,6 +984,7 @@ export function createInitialState(): TranslatorState {
     lastLimiterOnPitRoad: false,
     speedingWarnedAt: 0,
     pitSpeedingActive: false,
+    pitSpeedingUnderLimitSince: 0,
 
     lastIncidentCount: -1,
     offTrackStartedAt: 0,

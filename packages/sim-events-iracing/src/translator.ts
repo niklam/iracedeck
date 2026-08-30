@@ -1196,6 +1196,7 @@ function publishActiveStateTeardown(self: TranslatorInstance, telemetry: Telemet
   // #912). A missed edge here leaves audio looping over a live race.
   if (self.state.pitSpeedingActive) {
     self.state.pitSpeedingActive = false;
+    self.state.pitSpeedingUnderLimitSince = 0;
     publish(self, { event: "pitSpeeding.ended", data: {} }, telemetry, now);
   }
 }
@@ -1942,7 +1943,7 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // cue is worse than to `diffPitsOpen` or `diffFuelLaps`: parking a replay on
   // a frame where the car is over the pit limit would beep over the replay UI
   // until it was scrubbed away.
-  diffPitSpeeding(self.state, telemetry, pitSpeedLimitMps, replayOnlySession, emit);
+  diffPitSpeeding(self.state, telemetry, pitSpeedLimitMps, replayOnlySession, now, emit);
   diffTrackWetness(self.state, telemetry, emit);
 
   for (const p of pending) {
@@ -2267,9 +2268,47 @@ function resolvePitSpeedLimit(
     const match = /([\d.]+)\s*(kph|mph|kmh|km\/h)/i.exec(raw);
 
     if (match) {
-      const value = parseFloat(match[1]!);
+      const digits = match[1]!;
+      const value = parseFloat(digits);
       const unit = match[2]!.toLowerCase();
-      self.pitSpeedLimitMps = unit === "mph" ? value * 0.44704 : value / 3.6;
+      const toMps = unit === "mph" ? 0.44704 : 1 / 3.6;
+
+      // Recover the value iRacing rounded away (issue #1059). This is NOT a
+      // tolerance and must not be removed as one — two specs argue against
+      // grace margins, so it is at real risk of being read as a reintroduced
+      // margin. `TrackPitSpeedLimit` is published as a fixed-decimal string,
+      // and at an imperial-native track that string is a CONVERTED value:
+      // 45.00 mph is 72.420480 kph, published "72.42 kph", which parses back
+      // to a threshold 0.00048 kph BELOW the true limit. A car held exactly
+      // at the posted limit then satisfies `speed > limit` and the cue fires
+      // — which is precisely what a pit limiter does, indefinitely.
+      //
+      // So the parsed number is not the limit; it is the limit ±half a unit
+      // in the last published decimal place. Taking the TOP of that window is
+      // the only choice that satisfies the acceptance criterion ("can't
+      // happen while driver is within speed limit"): wherever the truth lies
+      // in the window, a compliant car is at or under our threshold. The cost
+      // is tolerating under half a unit of genuine overspeed — 0.005 kph on
+      // the two-decimal strings iRacing actually publishes.
+      // Correct ONLY when the publisher actually used decimals. With none, we
+      // cannot tell "60" meaning exactly 60 from "60" meaning 59.5–60.4, and
+      // half a unit there is 0.5 km/h — 1.67x the deliberate limiter buffer,
+      // granted unconditionally to every car, which is the blanket grace
+      // margin this change exists to refuse. A rounded conversion also gives
+      // itself away by being un-round (72.42), whereas a bare integer is far
+      // more likely to be exact. So no decimals means no correction, which is
+      // simply the behaviour that shipped before this fix.
+      //
+      // This threshold feeds `diffLimiter` as well as `diffPitSpeeding`, so an
+      // over-wide window here would silently widen `limiter.speeding` too.
+      const decimals = (digits.split(".")[1] ?? "").length;
+      const halfUnit = decimals >= 1 ? 0.5 * Math.pow(10, -decimals) : 0;
+
+      // A published zero must stay indistinguishable from an unparsed one:
+      // `pitSpeedLimitMps > 0` is the "limit unknown, stay disarmed" sentinel
+      // in BOTH consumers, and adding halfUnit to a 0 would arm them against a
+      // ~0 threshold — a cue firing at walking pace and never ending.
+      if (value > 0) self.pitSpeedLimitMps = (value + halfUnit) * toMps;
     }
   }
 
