@@ -10,6 +10,12 @@
       "date": null,
       "categories": [
         {
+          "title": "Features",
+          "items": [
+            "The Race Engineer now warns you the moment you go over the pit lane speed limit. A short tick repeats for as long as you are over it and stops the instant you drop back under, reaching you in time to lift before the penalty lands. It sounds on every car, whether or not yours has a pit limiter, and riding the limiter stays silent because the limiter holds you just under the limit. Turn it off under <strong>Race Engineer Callouts → Pit Speeding</strong> in the Settings window; it plays at your <strong>Radar</strong> volume."
+          ]
+        },
+        {
           "title": "Improvements",
           "items": [
             "Mouse to Sim now lets you choose where your pointer lands in the sim window. Pick a horizontal and a vertical anchor — a corner, an edge or the centre — and nudge it from there with an offset, under Mouse to Sim on the Settings window's General tab. Leave it alone and the pointer keeps arriving exactly where it always has.",
