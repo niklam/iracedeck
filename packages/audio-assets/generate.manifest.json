@@ -12448,6 +12448,38 @@
       "textPreview": "Get it straight.",
       "generatedAt": "2026-08-15T16:22:34.652Z",
       "requestId": "LbS2yG7XW0Kfr2Vw6wTE"
+    },
+    "voice/default/pit-limiter/on-track-01.mp3": {
+      "hash": "2a7f17afdd54c856",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Your pit limiter is on. <break time=\"0.3s\" /> Turn it off.",
+      "generatedAt": "2026-08-30T08:41:27.159Z",
+      "requestId": "Suk2nuRcwjAsoo6iU9vt"
+    },
+    "voice/default/pit-limiter/on-track-02.mp3": {
+      "hash": "8d9b4467962628aa",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Limiter's still engaged. <break time=\"0.3s\" /> Switch it off.",
+      "generatedAt": "2026-08-30T08:41:27.405Z",
+      "requestId": "QVvfXRUnjCaOadaPmMsW"
+    },
+    "voice/default/pit-limiter/dropped-01.mp3": {
+      "hash": "e2045f87c3010bd8",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Your limiter dropped. <break time=\"0.3s\" /> Turn it back on.",
+      "generatedAt": "2026-08-30T08:41:27.641Z",
+      "requestId": "dy2ZCjj6O4SniNiGoe0S"
+    },
+    "voice/default/pit-limiter/dropped-02.mp3": {
+      "hash": "50e41ca2f1d272a5",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "The limiter came off. <break time=\"0.3s\" /> Put it back on.",
+      "generatedAt": "2026-08-30T08:41:27.868Z",
+      "requestId": "Y3r4gHD9GWKYL36EmM7o"
     }
   }
 }

@@ -563,6 +563,22 @@
       {
         "name": "reminder-01",
         "text": "The pit lane speed limit is "
+      },
+      {
+        "name": "on-track-01",
+        "text": "Your pit limiter is on. <break time=\"0.3s\" /> Turn it off."
+      },
+      {
+        "name": "on-track-02",
+        "text": "Limiter's still engaged. <break time=\"0.3s\" /> Switch it off."
+      },
+      {
+        "name": "dropped-01",
+        "text": "Your limiter dropped. <break time=\"0.3s\" /> Turn it back on."
+      },
+      {
+        "name": "dropped-02",
+        "text": "The limiter came off. <break time=\"0.3s\" /> Put it back on."
       }
     ],
     "pit-actions": [
