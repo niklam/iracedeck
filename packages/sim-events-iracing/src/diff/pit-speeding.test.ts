@@ -263,6 +263,30 @@ describe("diffPitSpeeding", () => {
       expect(state.pitSpeedingActive).toBe(false);
     });
 
+    it("ends the episode on a NaN speed rather than sustaining it forever", () => {
+      const state = createInitialState();
+      const { events, emit } = collect();
+
+      diffPitSpeeding(state, tick({ Speed: LIMIT + 5 }), LIMIT, false, T0, emit);
+      // NaN is not null, so a null check would pass it through as "known" —
+      // and then NaN satisfies neither comparison, so the active branch would
+      // reset the hold every tick and the episode could never end by speed.
+      diffPitSpeeding(state, tick({ Speed: Number.NaN }), LIMIT, false, T0, emit);
+
+      expect(names(events)).toEqual(["pitSpeeding.started", "pitSpeeding.ended"]);
+      expect(state.pitSpeedingActive).toBe(false);
+    });
+
+    it("never starts a cue on a NaN speed", () => {
+      const state = createInitialState();
+      const { events, emit } = collect();
+
+      diffPitSpeeding(state, tick({ Speed: Number.NaN }), LIMIT, false, T0, emit);
+
+      expect(events).toEqual([]);
+      expect(state.pitSpeedingActive).toBe(false);
+    });
+
     it("never starts a cue on unknown telemetry", () => {
       const state = createInitialState();
       const { events, emit } = collect();

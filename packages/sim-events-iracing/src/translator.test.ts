@@ -1557,11 +1557,46 @@ describe("sim-events-iracing translator", () => {
       bus.subscribe("pitSpeeding.started", started);
       initializeSimEventsIracing(bus, controller, createMockLogger());
 
-      // A tenth of a km/h over the top of the window — well beyond the
-      // 0.005 km/h the rounding can hide.
-      controller.__tick(telemetry({ OnPitRoad: true, Speed: (72.52 + 0.1) / 3.6, EngineWarnings: 0 }));
+      // Just OUTSIDE the top of the window: 72.42 + 0.005 is the corrected
+      // threshold, so 0.01 km/h beyond it must still fire. Pinning the near
+      // boundary rather than a comfortably-over speed is the point — the
+      // window is only 0.005 km/h wide, so a loose value proves little.
+      controller.__tick(telemetry({ OnPitRoad: true, Speed: (72.42 + 0.005 + 0.01) / 3.6, EngineWarnings: 0 }));
 
       expect(started).toHaveBeenCalledTimes(1);
+    });
+
+    it("leaves an integer-valued limit uncorrected — no blanket margin", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(sessionWithLimit("60 kph"));
+      const bus = getEventBus();
+      const started = vi.fn();
+      bus.subscribe("pitSpeeding.started", started);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      // With no published decimals we cannot tell an exact 60 from a rounded
+      // one, and half a unit would be 0.5 km/h — a blanket grace margin on
+      // every car, which is what this whole change refuses. So: no correction,
+      // and a hair over the bare value still fires.
+      controller.__tick(telemetry({ OnPitRoad: true, Speed: (60 + 0.05) / 3.6, EngineWarnings: 0 }));
+
+      expect(started).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps a published zero indistinguishable from an unparsed limit", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(sessionWithLimit("0.00 kph"));
+      const bus = getEventBus();
+      const started = vi.fn();
+      bus.subscribe("pitSpeeding.started", started);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      // `pitSpeedLimitMps > 0` is the "limit unknown, stay disarmed" sentinel.
+      // Adding the rounding window to a 0 would arm the cue against a ~0
+      // threshold and it would fire at walking pace, permanently.
+      controller.__tick(telemetry({ OnPitRoad: true, Speed: 20, EngineWarnings: 0 }));
+
+      expect(started).not.toHaveBeenCalled();
     });
 
     it("leaves a metric-native limit behaving as before — the control case", () => {

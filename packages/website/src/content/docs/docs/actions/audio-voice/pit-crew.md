@@ -321,9 +321,11 @@ The count-in fires whenever you're on pit road approaching your box, so it isn't
 
 ## Pit road speeding
 
-Go over the pit lane speed limit and a short tick starts repeating, about three times a second, for as long as you're over it — a beeper, like a road car's over-speed chime. It stops as soon as you're back at or under the limit, with the beep already sounding allowed to finish; a brief hold keeps a momentary dip across the limit from chopping the tone into pieces. The limit itself is exact in both directions — sitting right on it is silent, and you never have to drive under it to earn quiet. Unlike everything else the engineer says this isn't a spoken line and it doesn't wait its turn on the radio: it plays straight away, because a warning that arrives after the penalty is no warning at all.
+Go over the pit lane speed limit and a short tick starts repeating, about three times a second, for as long as you're over it — a beeper, like a road car's over-speed chime. It stops as soon as you're back at or under the limit, with the beep already sounding allowed to finish; a brief hold keeps a momentary dip across the limit from chopping the tone into pieces. Sitting right on the limit is silent, and you never have to drive under it to earn quiet. Unlike everything else the engineer says this isn't a spoken line and it doesn't wait its turn on the radio: it plays straight away, because a warning that arrives after the penalty is no warning at all.
 
-It starts **the moment you exceed the posted limit**, with no grace margin. That sounds strict, but the pit limiter holds your car slightly *below* the limit, so riding the limiter never triggers it — if you're hearing the tick you are genuinely over.
+**Driving without the pit limiter, it starts the moment you exceed the posted limit, with no grace margin.** That is deliberate: you are the one holding the speed, so the tick has to tell you the instant you drift over — if you're hearing it you are genuinely over.
+
+**With the pit limiter engaged, it allows about 0.3 km/h before it speaks.** The limiter parks your car right on the limit rather than under it, and while it's holding you there you have nothing left to do about it — you can't lift, the car is already doing the only thing available. A tick in that situation would be nagging about something you've already handled. It still sounds if a limiter car is genuinely speeding, so a limiter that isn't holding is not silently ignored.
 
 The cue fires on **every car**, whether or not yours has a pit limiter. Pit-road speeding penalties apply to everyone, and a car with no limiter is the one whose driver has no dashboard cue to fall back on.
 

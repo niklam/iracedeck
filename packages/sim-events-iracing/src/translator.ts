@@ -2290,10 +2290,25 @@ function resolvePitSpeedLimit(
       // in the window, a compliant car is at or under our threshold. The cost
       // is tolerating under half a unit of genuine overspeed — 0.005 kph on
       // the two-decimal strings iRacing actually publishes.
+      // Correct ONLY when the publisher actually used decimals. With none, we
+      // cannot tell "60" meaning exactly 60 from "60" meaning 59.5–60.4, and
+      // half a unit there is 0.5 km/h — 1.67x the deliberate limiter buffer,
+      // granted unconditionally to every car, which is the blanket grace
+      // margin this change exists to refuse. A rounded conversion also gives
+      // itself away by being un-round (72.42), whereas a bare integer is far
+      // more likely to be exact. So no decimals means no correction, which is
+      // simply the behaviour that shipped before this fix.
+      //
+      // This threshold feeds `diffLimiter` as well as `diffPitSpeeding`, so an
+      // over-wide window here would silently widen `limiter.speeding` too.
       const decimals = (digits.split(".")[1] ?? "").length;
-      const halfUnit = 0.5 * Math.pow(10, -decimals);
+      const halfUnit = decimals >= 1 ? 0.5 * Math.pow(10, -decimals) : 0;
 
-      self.pitSpeedLimitMps = (value + halfUnit) * toMps;
+      // A published zero must stay indistinguishable from an unparsed one:
+      // `pitSpeedLimitMps > 0` is the "limit unknown, stay disarmed" sentinel
+      // in BOTH consumers, and adding halfUnit to a 0 would arm them against a
+      // ~0 threshold — a cue firing at walking pace and never ending.
+      if (value > 0) self.pitSpeedLimitMps = (value + halfUnit) * toMps;
     }
   }
 

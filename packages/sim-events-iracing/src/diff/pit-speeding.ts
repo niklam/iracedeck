@@ -98,10 +98,19 @@ export const PIT_SPEEDING_LIMITER_BUFFER_MPS = 0.3 / 3.6;
  * restart landing inside it replaces that clip mid-tone and the driver hears
  * a click rather than a beep. The quantity that would settle the floor is how
  * long a driver's sub-limit excursions last while riding the limit, which is
- * unrelated to the cue cadence. The spec
- * (`docs/superpowers/specs/2026-08-30-issue-1059-pit-speeding-precision.md`)
- * names the `telemetry-watch` capture that measures it. Until that lands this
- * is an unvalidated floor, not a justified one.
+ * unrelated to the cue cadence.
+ *
+ * **Accepted on the non-limiter path**, by listening rather than by
+ * measurement: asked to provoke the truncation deliberately, the answer was
+ * that it may well be happening, it is not reliably audible, and it is fine.
+ * That is stronger than a clean pass, since it does not depend on the
+ * listener's ear having been good enough. It is settled there, and the
+ * `telemetry-watch` capture the spec names is no longer a prerequisite.
+ *
+ * It is NOT settled on the limiter path, where the criterion is absolute
+ * silence at or under the limit — a question about correctness rather than
+ * about perception, which no amount of "sounds fine" can answer. See the spec
+ * (`docs/superpowers/specs/2026-08-30-issue-1059-pit-speeding-precision.md`).
  */
 export const PIT_SPEEDING_END_HOLD_MS = 300;
 
@@ -143,8 +152,15 @@ export function diffPitSpeeding(
   // the usual "unknown telemetry keeps the callout alive" rule is inverted on
   // purpose: the claim being made is that the driver IS speeding, and that
   // cannot be asserted without a speed. Failing to silence.
-  const speedKnown = telemetry.Speed != null;
-  const speed = telemetry.Speed ?? 0;
+  //
+  // `Number.isFinite` rather than a null check, and the difference is not
+  // cosmetic: `NaN != null` is true, so a NaN speed would pass as "known" and
+  // then satisfy NEITHER `speed <= threshold` NOR `speed > threshold`. An
+  // in-flight episode would take the else-branch every tick, reset the hold,
+  // and never end by the speed path at all — the one failure this module's
+  // header says it must not have.
+  const speedKnown = Number.isFinite(telemetry.Speed);
+  const speed = speedKnown ? (telemetry.Speed as number) : 0;
 
   // `pitSpeedLimitMps` is 0 when `WeekendInfo.TrackPitSpeedLimit` is missing
   // or unparsed, and is reset to 0 on a track/session change before being
