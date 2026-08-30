@@ -173,6 +173,11 @@ async function main(): Promise<void> {
     // ones — wiring them here is what lets the spoken "gap is N seconds"
     // readout clause be auditioned at all (issue #933).
     () => getLiveGaps(),
+    undefined, // getOpponentFlagCalloutEnabled (issue #936)
+    undefined, // getOpponentFlagLivePosition (issue #936)
+    // Left at its `() => true` default like every other callout opt-in above —
+    // the harness seeds no `calloutEnabled*` settings, so the cue is always on.
+    undefined, // getPitSpeedingCalloutEnabled (issue #912)
   );
 
   // ── deck-core global-settings pipeline ──────────────────────────────────

@@ -38,10 +38,12 @@ import {
   type OvertakeGate,
   PIT_BOX_CALLOUT_SETTING_KEYS,
   PIT_READBACK_CALLOUT_SETTING_KEYS,
+  PIT_SPEEDING_CALLOUT_SETTING_KEYS,
   PIT_STATUS_CALLOUT_SETTING_KEYS,
   PIT_WINDOW_CALLOUT_SETTING_KEYS,
   type PitBoxCalloutId,
   type PitReadbackCalloutId,
+  type PitSpeedingCalloutId,
   type PitStatusCalloutId,
   type PitWindowCalloutId,
   POSITION_CALLOUT_SETTING_KEYS,
@@ -690,6 +692,9 @@ registerPitCrew(
     (getGlobalSettings() as Record<string, unknown>)[OPPONENT_FLAG_CALLOUT_SETTING_KEYS[id]] !== false,
   // Opponent-flag live position resolver (issue #936) — the shared resolver.
   resolvePendingCarLivePosition,
+  // Pit-road speeding cue opt-in (issue #912). Live-read, single subject.
+  (id: PitSpeedingCalloutId) =>
+    (getGlobalSettings() as Record<string, unknown>)[PIT_SPEEDING_CALLOUT_SETTING_KEYS[id]] !== false,
   // Race Engineer master gate (issue #515).
   () => (getGlobalSettings() as Record<string, unknown>).pitCrewRaceEngineerEnabled === true,
   // Radar master gate (issue #515).

@@ -140,6 +140,16 @@ export const EVENT_TEMPLATES = [
   { name: "limiter.dropped", description: "Limiter dropped while still in pit lane", data: {} },
   { name: "limiter.missing", description: "Pit lane entered without limiter on", data: {} },
   { name: "limiter.speeding", description: "Speeding in pit lane", data: {} },
+  {
+    name: "pitSpeeding.started",
+    description: "Went over the pit lane speed limit on pit road (issue #912) — starts the repeating cue",
+    data: {},
+  },
+  {
+    name: "pitSpeeding.ended",
+    description: "No longer speeding on pit road — stops the cue",
+    data: {},
+  },
 
   // ── Damage ──
   {
