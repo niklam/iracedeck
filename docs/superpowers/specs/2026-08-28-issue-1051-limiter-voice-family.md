@@ -2,7 +2,7 @@
 >
 > Point-in-time design record. The code and `.claude/rules/` are the truth; this is not documentation.
 
-# Race Engineer: two pit-speed callout families, split by limiter equipment
+# Race Engineer: two callout families, split by limiter equipment
 
 ## The decision in one sentence
 
@@ -39,7 +39,7 @@ Filenames are post-rename; the group shipped them three-digit, which no pool cou
 
 ## Family B — cars without a limiter
 
-Two scenarios, in a new module `catalog/pit-crew/pit-speed.ts`. It is deliberately **not** in `pit-limiter.ts`: putting a limiter-free scenario inside the limiter module would erase the distinction on first contact, and the next person adding a scenario would have no signal about which side of the gate they are on.
+Two scenarios, in a new module `catalog/pit-crew/no-limiter.ts`. It is deliberately **not** in `pit-limiter.ts`: putting a limiter-free scenario inside the limiter module would erase the distinction on first contact, and the next person adding a scenario would have no signal about which side of the gate they are on.
 
 **B speeding**, on `limiter.speeding`. Reuses the clip that shipped as `pit-limiter-warn-002` — "Over the limit. `<break time="0.3s" />` Lift." — which is the non-limiter remedy and has been sitting in the limiter family since it was recorded. The move fixes that rather than duplicating it.
 
@@ -51,7 +51,7 @@ iRaceDeck **already speaks the pit speed limit**. `session-start.ts` ships a reg
 
 What justifies saying it again at all is *when*: at pit entry, when the number is about to matter, rather than at session start, which may be forty minutes earlier. Folding it into the existing callout keeps that value, removes the collision, and needs no new clip.
 
-**`pit-limiter-reminder-001` stays unused — and the reason matters.** It reads "The pit lane speed limit is ", one word from the shipping `pit-speed-intro`. It is set aside because *what it says is already said by a wired-up clip*, not because it is an orphan. Recording the reason is the point: "we left it because nothing used it" invites someone to wire it up later.
+**`pit-limiter/reminder-01` stays unused — and the reason matters.** It reads "The pit lane speed limit is ", one word from the shipping `pit-speed-intro`. It is set aside because *what it says is already said by a wired-up clip*, not because it is an orphan. Recording the reason is the point: "we left it because nothing used it" invites someone to wire it up later.
 
 ### The optional-clause shape, and the sparse number set
 
@@ -128,11 +128,11 @@ it would make the generator treat each clip as ungenerated and re-bill it.
 One opt-in per scenario, following `callout<Polarity><Family><Subject>`:
 
 - Family A: `calloutEnabledLimiterOnTrack`, `calloutEnabledLimiterMissing`, `calloutEnabledLimiterDropped`, `calloutEnabledLimiterSpeeding`
-- Family B: `calloutEnabledPitSpeedNoLimiter`, `calloutEnabledPitSpeedEntry`
+- Family B: `calloutEnabledNoLimiterSpeeding`, `calloutEnabledNoLimiterEntry`
 
-B's keys name the audience rather than the condition, because that is what a user is choosing — "the pit-speed callouts for cars without a limiter".
+B's ids name the CONDITION, matching A's next door — `speeding` and `entry` beside `on-track` / `missing` / `dropped` / `speeding`. The family name already carries the audience, so repeating it in the id read as a typo. See the amendment at the end: this originally said the opposite.
 
-Six settings keys, but **two** `registerPitCrew` parameters — `getPitLimiterCalloutEnabled(id)` and `getPitSpeedCalloutEnabled(id)` — matching the eight existing `(id) => boolean` families rather than adding six flat getters. Six subjects and two getters are the same design; six parameters would have been the only family in that signature doing it differently, and each one is another position an insertion can silently misalign. Both are appended immediately before the two master gates, which stay last: that is the one placement that cannot shift an existing argument, since anything inserted at or below an existing argument's position moves every later one silently and compilably. Adding them shifted three test call sites that pass 49 positional arguments — one failed 42 tests loudly, two stayed green on trailing `undefined`, which is the failure mode the placement rule exists to prevent.
+Six settings keys, but **two** `registerPitCrew` parameters — `getPitLimiterCalloutEnabled(id)` and `getNoLimiterCalloutEnabled(id)` — matching the eight existing `(id) => boolean` families rather than adding six flat getters. Six subjects and two getters are the same design; six parameters would have been the only family in that signature doing it differently, and each one is another position an insertion can silently misalign. Both are appended immediately before the two master gates, which stay last: that is the one placement that cannot shift an existing argument, since anything inserted at or below an existing argument's position moves every later one silently and compilably. Adding them shifted three test call sites that pass 49 positional arguments — one failed 42 tests loudly, two stayed green on trailing `undefined`, which is the failure mode the placement rule exists to prevent.
 
 Each uses the union-plus-transform chain and `.default(true)` — new Race Engineer functionality ships on — and, like all 73 existing `calloutEnabled*` fields, carries **no `.catch`**. That chain has no throw path, which is the exemption `global-settings.md` names; the `.catch` requirement still binds any plain-value field and this change adds none. Both families are additionally gated by the existing `pitCrewRaceEngineerEnabled` master, with no family master of their own, per the #651 precedent that a callout family is not a mode.
 
@@ -162,7 +162,7 @@ null legitimately so the sentinel is unambiguous. Recorded in the harness
 
 ## Testing
 
-Unit tests extend `pit-limiter.test.ts` and add `pit-speed.test.ts`. The assertion that matters most: **A and B are mutually exclusive and jointly exhaustive over known telemetry, and both silent on unknown.** That last case is the negated-gate trap and deserves its own test — null telemetry must produce neither callout.
+Unit tests extend `pit-limiter.test.ts` and add `no-limiter.test.ts`. The assertion that matters most: **A and B are mutually exclusive and jointly exhaustive over known telemetry, and both silent on unknown.** That last case is the negated-gate trap and deserves its own test — null telemetry must produce neither callout.
 
 Also covered: the limit clause skipping cleanly for a limit with no number clip, leaving a complete pit-entry sentence.
 
@@ -204,3 +204,17 @@ specially. Not a blocker here; worth knowing before a second voice is added.
 Agreed directly between the two workers: **#912's PR merges first and this branch rebases onto it.** #912 already touches `event-catalog.ts`, `state.ts` and `translator.ts`, all adjacent to this work. If #1051 becomes ready first the order is renegotiated before either pushes, rather than discovered in a conflict.
 
 Two documentation consequences follow. The changelog entry **edits #912's existing Features bullet** rather than adding a second — one capability arriving in one release is one line per `changelog.md`, and separate bullets would invite the question of why there are several warnings. The website section extends the **Pit road speeding** section #912 adds to `pit-crew.md` rather than starting a sibling, and is the natural place to make both the `+1.0 m/s` threshold and the two-family split legible: a driver should be able to find out why their car says one thing and their team-mate's says another.
+
+## Amended: named for the equipment, not the symptom
+
+This spec originally named family B for the symptom — `pit-speed.ts`, `PitSpeedCalloutId`, `calloutEnabledPitSpeed*`. Implementation showed that to be wrong twice over, and the names above are corrected in place. The reasoning is the durable half.
+
+**The symptom is shared; the equipment is not.** Speeding on pit road is what BOTH families are about, so "pit speed" cannot tell them apart — it names the thing they have in common. What separates them is whether the car has a limiter at all, which is also why they are two families rather than one: the remedy differs, a limiter car presses the button and a limiter-less one lifts. `PitLimiter*` / `NoLimiter*` names that split, so the pair reads as a pair.
+
+**It also collided by prefix with #912.** `calloutEnabledPitSpeed` is a strict prefix of #912's `calloutEnabledPitSpeedingCue` — three letters apart, structurally identical types, and semantically adjacent, since both are about speeding on pit road. `global-settings.md` leans on `grep calloutEnabled` finding every callout toggle in one shot; the collision meant a grep for either family returned the other's rows, so a documented property was lost rather than merely readability.
+
+The sharpest evidence arrived by accident: **the collision corrupted the migration check meant to rule it out.** A scan of the real settings stores for the old keys matched `calloutEnabledPitSpeeding**Cue**` and reported a hit that was not there. A name confusable enough to break its own safety check is not a matter of taste.
+
+**No migration was needed, and that was established by looking rather than reasoning.** The two keys appear in none of the four real settings stores under `%LOCALAPPDATA%\iRaceDeck\Settings` (Mirabox, Stream Deck, Ulanzi, and a hand-copied spare), no release tag carries them, and the only occurrence on master was this document. The probe carried a positive control — the same Stream Deck store *does* hold #912's key, and shows 83 `calloutEnabled*` keys against 82 in the others — so it demonstrably detects a persisted callout key, which is what makes the absence meaningful. That also closes the case pure reasoning could not: a deck host briefly linked to the feature worktree during development would have persisted them, and did not.
+
+**The user-facing label changed too**, "Pit Speed (no limiter)" becoming **No Pit Limiter**. It sat directly beside #912's "Pit Speeding" in the settings window, and that was the worse half of the collision: a user cannot read the source to tell two rows apart. Checked against shipped prose first, which uses "pit limiter" nine times to four for the Car Control mode's own name.
