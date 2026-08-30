@@ -93,7 +93,9 @@ On a rejected open the flag is deliberately **not** persisted, diverging from `r
 
 `DEFAULT_CHANGELOG_NOTIFICATION_POLICY` changes from `features` to `never`, and the page carries a one-click *"I want to read about new features"* opt-in that sets `always`, alongside the full four-value picker.
 
-**This reverses a default that was set deliberately, so the reversal needs its argument on the record.** #901 changed it to `features` on Ulanzi's RCA recommendation, in a world where the default was the *only* lever: nobody was ever asked, so the question was purely "which setting annoys the fewest people who never chose". #901 answered "not `always`" and picked `features` as the least intrusive workable guess. (Note the RCA's own heading said `features` while its code said `monthly` — the recommendation was directional, not precise.)
+**This reverses a default that was set deliberately, so the reversal needs its argument on the record.** #901 changed it to `features` on Ulanzi's RCA recommendation, in a world where the default was the *only* lever: nobody was ever asked, so the question was purely "which setting annoys the fewest people who never chose".
+
+**What #901 actually inherited was a direction, not a value.** The RCA's heading said `features` while the code beneath it said `monthly`. The recommendation was therefore "not `always`" — directional — and `features` was already a judgement call made on top of it rather than a value anybody derived or measured. That matters for how much weight the reversal carries: this is not overturning a measured recommendation, it is re-making a judgement whose premise has changed. Anyone reading "reversed #901" without this will assume more was discarded than actually was.
 
 **The Getting Started page changes that calculus.** Once there is an explicit ask at first run, with one-click opt-in, the default's job stops being "guess what most people want" and becomes "do nothing surprising until asked" — the same principle that keeps the Race Engineer off by default (#378). A quiet default now costs discovery nothing, because discovery has its own surface.
 
@@ -102,6 +104,10 @@ Three properties make `never` safe rather than merely quiet, and they are why th
 - **It is not lossy.** `never` still persists `_lastSeenVersion` via `track-silently`, so a user who later picks any other policy does not get an old release replayed at them.
 - **It hides nothing.** The release notes are compiled into the build and always present on the What's New tab; `never` removes the *interruption*, not the content. The #1016 update banner is gated on the separate `updateCheck` setting, so a newer published release is still surfaced inside the window.
 - **It cannot bite on the start that matters.** The first-run open already suppresses the changelog and persists `_lastSeenVersion` silently, so the earliest moment the policy has any effect is the user's first *upgrade* — by which time they have seen the page and either chosen or declined.
+
+**The opt-in button sets `features`, not `always`.** Its label is *"I want to read about new features"*, and `features` is the value that makes that label true — `always` opens for patch releases as well, so the button would promise less than it delivers. Recorded as a decision rather than left to look like a slip, because the instruction that produced it named "all".
+
+There is a symmetry worth noticing rather than mistaking for a coincidence: `features` is exactly what #901 chose. The two are answering different questions — #901 asked what to do for people who were never consulted, this asks what to do for someone who just said yes — and they land on the same value. The page changes the *default*; the button lands where #901 did.
 
 **It reaches new installs only, and that is intended.** Every write persists the whole parsed cache and one always happens at startup, so each schema default is written into the file on first use and is thereafter indistinguishable from a deliberate choice. Existing users keep `features`. No migration: there is no way to tell a persisted default from a chosen value, which is precisely the rule `global-settings.md` states — reaching existing users would need a one-shot marker-guarded migration, and overriding a preference someone may actually hold is not worth that.
 
