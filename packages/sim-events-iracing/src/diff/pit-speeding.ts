@@ -15,16 +15,22 @@
  *
  * Three deliberate differences from `limiter.speeding`, which this does NOT
  * replace:
- *   - No speed margin. `limiter.speeding` allows +1 m/s; this fires strictly
- *     above the posted limit, because the pit limiter holds cars slightly
- *     UNDER it — so riding the limiter stays silent and anything above the
- *     limit is a real offence.
+ *   - No blanket speed margin. `limiter.speeding` allows +1 m/s unconditionally;
+ *     here the comparison is exact for a car whose limiter is not engaged,
+ *     because that driver must lift and precision is the whole point. A car
+ *     under an ENGAGED limiter gets `PIT_SPEEDING_LIMITER_BUFFER_MPS` instead,
+ *     for the reason on that constant: its driver has no remedy left to apply.
+ *     (#912 asserted a limiter holds cars UNDER the limit and so needed no
+ *     margin at all. The manual test disproved it — a limiter car sits AT the
+ *     limit; issue #1059.)
  *   - No creep guard. A car creeping is under the limit anyway; the speed
  *     comparison already covers it.
  *   - No `hasPitLimiter` gate. Pit-road penalties apply to every car, and a
  *     car with no limiter is the one that most needs telling (#639 gated the
  *     voice line because its limiter WORDING is meaningless there — that
- *     reasoning does not carry to a tick).
+ *     reasoning does not carry to a tick). Note the buffer above keys on the
+ *     limiter being ENGAGED (`EngineWarnings`), never on `hasPitLimiter`,
+ *     which only says the car HAS the system — a different question.
  *
  * The `ended` edge is the one that matters: a consumer holds a looping tick
  * for the length of the episode, so a missed `ended` leaves audio running
@@ -32,10 +38,38 @@
  * from a tick; the translator's disconnect / session-change / replay
  * teardowns cover the exits that stop ticks reaching us at all.
  */
-import type { TelemetryData } from "@iracedeck/iracing-sdk";
+import { EngineWarnings, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 import type { TranslatorState } from "../state.js";
 import type { EmitFn } from "./types.js";
+
+/**
+ * Buffer added to the start threshold while the pit limiter is ENGAGED
+ * (0.3 km/h in m/s, issue #1059).
+ *
+ * #912 rejected a start-edge margin on the grounds that "the pit limiter
+ * holds cars below the limit, so a margin only delays telling a driver who is
+ * already committing an offence". The manual test killed both halves: a
+ * limiter car sits AT the limit, and — the part the premise assumed away —
+ * its driver has no remedy left. They cannot lift; the car is already doing
+ * the only thing available. So the cue there is not a warning, it is noise
+ * about a condition already handled. The rejected margin was about not
+ * DELAYING a warning to someone who could act; this is about not warning
+ * someone who cannot.
+ *
+ * Deliberately conditional on equipment, mirroring #1051's split for the same
+ * reason: the remedy differs by equipment. A car with no limiter keeps the
+ * exact comparison, because there the driver must lift and "VERY precise" is
+ * the whole requirement.
+ *
+ * Chosen over gating the cue entirely on the limiter, because a limiter is
+ * engaged BEFORE the car has slowed — through the pit-entry deceleration the
+ * limiter is on and the car is substantially over, which is the moment the
+ * warning is worth most. A gate would silence exactly that stretch. The
+ * deciding rule, though, is that the buffer is correct under BOTH readings of
+ * that (unmeasured) claim, while the gate needs it settled first.
+ */
+export const PIT_SPEEDING_LIMITER_BUFFER_MPS = 0.3 / 3.6;
 
 /**
  * How long the speed must stay at or under the limit before an in-flight
@@ -131,6 +165,20 @@ export function diffPitSpeeding(
     return;
   }
 
+  // The limiter buffer SHIFTS the threshold; it does not open a band around
+  // it. Applying it to the start edge alone would put an unreachable gap
+  // between `limit` and `limit + buffer` — an episode could start above the
+  // buffer and never end until the car fell all the way to the bare limit,
+  // which is this issue's original defect exactly, relocated upwards. Both
+  // edges therefore compare against the same value, and it stays an exact
+  // comparison either side of it.
+  //
+  // Read live rather than latched: if the limiter disengages mid-episode the
+  // threshold drops to the bare limit on the next tick, which is right — the
+  // driver has a remedy again, so exactness applies again.
+  const limiterActive = ((telemetry.EngineWarnings ?? 0) & EngineWarnings.PitSpeedLimiter) !== 0;
+  const threshold = limiterActive ? pitSpeedLimitMps + PIT_SPEEDING_LIMITER_BUFFER_MPS : pitSpeedLimitMps;
+
   if (state.pitSpeedingActive) {
     // The speed exit is held: the episode ends only once the car has been at
     // or under the limit continuously for PIT_SPEEDING_END_HOLD_MS. A single
@@ -138,7 +186,7 @@ export function diffPitSpeeding(
     // across the limit yields one continuous tone rather than a stutter of
     // restarted clips — the flapping this damps is the END edge, which is why
     // there is no matching hold on the start.
-    if (speed <= pitSpeedLimitMps) {
+    if (speed <= threshold) {
       // 0 is the not-tracking sentinel, matching `speedingWarnedAt` and
       // `pitStatusRestSince` in this state object.
       if (state.pitSpeedingUnderLimitSince === 0) state.pitSpeedingUnderLimitSince = now;
@@ -159,7 +207,7 @@ export function diffPitSpeeding(
   // starts the cue instead of silently seeding past it. A repeating callout
   // must be driven by current state; only a one-shot may be edge-driven
   // (the #951 rule). See the field's JSDoc in `state.ts`.
-  if (speed > pitSpeedLimitMps) {
+  if (speed > threshold) {
     state.pitSpeedingActive = true;
     emit({ event: "pitSpeeding.started", data: {} });
   }

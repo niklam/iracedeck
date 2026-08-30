@@ -26,7 +26,7 @@ import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { describe, expect, it } from "vitest";
 
 import { createInitialState } from "../state.js";
-import { diffPitSpeeding, PIT_SPEEDING_END_HOLD_MS } from "./pit-speeding.js";
+import { diffPitSpeeding, PIT_SPEEDING_END_HOLD_MS, PIT_SPEEDING_LIMITER_BUFFER_MPS } from "./pit-speeding.js";
 import type { PendingEvent } from "./types.js";
 
 /** 72.42 kph — the shape `resolvePitSpeedLimit` produces from session YAML. */
@@ -271,6 +271,111 @@ describe("diffPitSpeeding", () => {
 
       expect(events).toEqual([]);
       expect(state.pitSpeedingActive).toBe(false);
+    });
+  });
+
+  describe("pit limiter engaged — the equipment-conditional buffer (#1059)", () => {
+    const LIMITER_ON = { EngineWarnings: 0x0010 } as Partial<TelemetryData>;
+    const REV_LIMITER_ONLY = { EngineWarnings: 0x0020 } as Partial<TelemetryData>;
+
+    it("stays silent AT the limit with the limiter engaged — the acceptance criterion", () => {
+      const state = createInitialState();
+      const { events, emit } = collect();
+
+      for (let i = 0; i < 20; i++) {
+        diffPitSpeeding(state, tick({ Speed: LIMIT, ...LIMITER_ON }), LIMIT, false, T0 + i * 16, emit);
+      }
+
+      // "The blimping can't happen while driver is within speed limit with a
+      // limiter car." Sustained, because a blink or a single tick is a failure.
+      expect(events).toEqual([]);
+      expect(state.pitSpeedingActive).toBe(false);
+    });
+
+    it("stays silent inside the buffer with the limiter engaged", () => {
+      const state = createInitialState();
+      const { events, emit } = collect();
+
+      const inBuffer = LIMIT + PIT_SPEEDING_LIMITER_BUFFER_MPS / 2;
+
+      for (let i = 0; i < 20; i++) {
+        diffPitSpeeding(state, tick({ Speed: inBuffer, ...LIMITER_ON }), LIMIT, false, T0 + i * 16, emit);
+      }
+
+      expect(events).toEqual([]);
+    });
+
+    it("still sounds when a limiter car is genuinely past the buffer", () => {
+      const state = createInitialState();
+      const { events, emit } = collect();
+
+      // The reason this is a buffer and not a gate: a limiter that is engaged
+      // but not holding must still be reported.
+      diffPitSpeeding(state, tick({ Speed: LIMIT + 5, ...LIMITER_ON }), LIMIT, false, T0, emit);
+
+      expect(names(events)).toEqual(["pitSpeeding.started"]);
+    });
+
+    it("applies the buffer to BOTH edges, so no dead band opens above the limit", () => {
+      const state = createInitialState();
+      const { events, emit } = collect();
+
+      // Start well over, then settle just INSIDE the buffer. If the buffer
+      // applied only to the start edge, this episode could never end until the
+      // car fell to the bare limit — this issue's original defect, relocated.
+      diffPitSpeeding(state, tick({ Speed: LIMIT + 5, ...LIMITER_ON }), LIMIT, false, T0, emit);
+      const inBuffer = LIMIT + PIT_SPEEDING_LIMITER_BUFFER_MPS / 2;
+      diffPitSpeeding(state, tick({ Speed: inBuffer, ...LIMITER_ON }), LIMIT, false, T0, emit);
+      diffPitSpeeding(
+        state,
+        tick({ Speed: inBuffer, ...LIMITER_ON }),
+        LIMIT,
+        false,
+        T0 + PIT_SPEEDING_END_HOLD_MS,
+        emit,
+      );
+
+      expect(names(events)).toEqual(["pitSpeeding.started", "pitSpeeding.ended"]);
+      expect(state.pitSpeedingActive).toBe(false);
+    });
+
+    it("keeps the exact comparison when the limiter is NOT engaged", () => {
+      const state = createInitialState();
+      const { events, emit } = collect();
+
+      // The same speed that is silent under a limiter must sound without one.
+      const inBuffer = LIMIT + PIT_SPEEDING_LIMITER_BUFFER_MPS / 2;
+      diffPitSpeeding(state, tick({ Speed: inBuffer }), LIMIT, false, T0, emit);
+
+      expect(names(events)).toEqual(["pitSpeeding.started"]);
+    });
+
+    it("does not treat another EngineWarnings bit as the pit limiter", () => {
+      const state = createInitialState();
+      const { events, emit } = collect();
+
+      // `hasPitLimiter` (the car HAS one) is a different question from the
+      // limiter being engaged, and so is any neighbouring warning bit.
+      const inBuffer = LIMIT + PIT_SPEEDING_LIMITER_BUFFER_MPS / 2;
+      diffPitSpeeding(state, tick({ Speed: inBuffer, ...REV_LIMITER_ONLY }), LIMIT, false, T0, emit);
+
+      expect(names(events)).toEqual(["pitSpeeding.started"]);
+    });
+
+    it("drops back to the exact threshold when the limiter disengages mid-episode", () => {
+      const state = createInitialState();
+      const { events, emit } = collect();
+
+      const inBuffer = LIMIT + PIT_SPEEDING_LIMITER_BUFFER_MPS / 2;
+
+      // Silent under the limiter at this speed...
+      diffPitSpeeding(state, tick({ Speed: inBuffer, ...LIMITER_ON }), LIMIT, false, T0, emit);
+      expect(events).toEqual([]);
+
+      // ...and the moment the limiter drops, the driver has a remedy again.
+      diffPitSpeeding(state, tick({ Speed: inBuffer }), LIMIT, false, T0 + 16, emit);
+
+      expect(names(events)).toEqual(["pitSpeeding.started"]);
     });
   });
 

@@ -2268,9 +2268,32 @@ function resolvePitSpeedLimit(
     const match = /([\d.]+)\s*(kph|mph|kmh|km\/h)/i.exec(raw);
 
     if (match) {
-      const value = parseFloat(match[1]!);
+      const digits = match[1]!;
+      const value = parseFloat(digits);
       const unit = match[2]!.toLowerCase();
-      self.pitSpeedLimitMps = unit === "mph" ? value * 0.44704 : value / 3.6;
+      const toMps = unit === "mph" ? 0.44704 : 1 / 3.6;
+
+      // Recover the value iRacing rounded away (issue #1059). This is NOT a
+      // tolerance and must not be removed as one — two specs argue against
+      // grace margins, so it is at real risk of being read as a reintroduced
+      // margin. `TrackPitSpeedLimit` is published as a fixed-decimal string,
+      // and at an imperial-native track that string is a CONVERTED value:
+      // 45.00 mph is 72.420480 kph, published "72.42 kph", which parses back
+      // to a threshold 0.00048 kph BELOW the true limit. A car held exactly
+      // at the posted limit then satisfies `speed > limit` and the cue fires
+      // — which is precisely what a pit limiter does, indefinitely.
+      //
+      // So the parsed number is not the limit; it is the limit ±half a unit
+      // in the last published decimal place. Taking the TOP of that window is
+      // the only choice that satisfies the acceptance criterion ("can't
+      // happen while driver is within speed limit"): wherever the truth lies
+      // in the window, a compliant car is at or under our threshold. The cost
+      // is tolerating under half a unit of genuine overspeed — 0.005 kph on
+      // the two-decimal strings iRacing actually publishes.
+      const decimals = (digits.split(".")[1] ?? "").length;
+      const halfUnit = 0.5 * Math.pow(10, -decimals);
+
+      self.pitSpeedLimitMps = (value + halfUnit) * toMps;
     }
   }
 

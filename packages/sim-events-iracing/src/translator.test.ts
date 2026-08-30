@@ -1516,6 +1516,83 @@ describe("sim-events-iracing translator", () => {
     });
   });
 
+  describe("pit speed limit is a rounded string (issue #1059)", () => {
+    /**
+     * `WeekendInfo.TrackPitSpeedLimit` is published to two decimals, and at an
+     * imperial-native track that string is a CONVERTED value — so parsing it
+     * back lands fractionally BELOW the true limit and a car held exactly at
+     * the posted limit fires. Recovering the rounding window is not a
+     * tolerance; it is reading the number the publisher rounded.
+     */
+    function sessionWithLimit(limit: string) {
+      return {
+        SessionInfo: { Sessions: [{ SessionType: "Race" }] },
+        WeekendInfo: { TrackID: 42, TrackPitSpeedLimit: limit },
+      };
+    }
+
+    /** Charlotte publishes 45.00 mph as "72.42 kph"; the true value is 20.1168 m/s. */
+    const MPH_45_EXACT_MPS = 45 * 0.44704;
+
+    it("stays silent at the TRUE limit when the published value was rounded down", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(sessionWithLimit("72.42 kph"));
+      const bus = getEventBus();
+      const started = vi.fn();
+      bus.subscribe("pitSpeeding.started", started);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      // 20.1168 m/s is exactly 45.00 mph. Parsing "72.42" gives 20.116667,
+      // so before the fix this speed was "over the limit" and fired.
+      controller.__tick(telemetry({ OnPitRoad: true, Speed: MPH_45_EXACT_MPS, EngineWarnings: 0 }));
+
+      expect(started).not.toHaveBeenCalled();
+    });
+
+    it("still fires for a car genuinely past the rounding window", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(sessionWithLimit("72.42 kph"));
+      const bus = getEventBus();
+      const started = vi.fn();
+      bus.subscribe("pitSpeeding.started", started);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      // A tenth of a km/h over the top of the window — well beyond the
+      // 0.005 km/h the rounding can hide.
+      controller.__tick(telemetry({ OnPitRoad: true, Speed: (72.52 + 0.1) / 3.6, EngineWarnings: 0 }));
+
+      expect(started).toHaveBeenCalledTimes(1);
+    });
+
+    it("leaves a metric-native limit behaving as before — the control case", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(sessionWithLimit("60.00 kph"));
+      const bus = getEventBus();
+      const started = vi.fn();
+      bus.subscribe("pitSpeeding.started", started);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      // A round metric value has no conversion loss, so the correction must
+      // not turn into a blanket margin: comfortably over still fires.
+      controller.__tick(telemetry({ OnPitRoad: true, Speed: 61 / 3.6, EngineWarnings: 0 }));
+
+      expect(started).toHaveBeenCalledTimes(1);
+    });
+
+    it("stays silent exactly at a metric-native limit", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(sessionWithLimit("60.00 kph"));
+      const bus = getEventBus();
+      const started = vi.fn();
+      bus.subscribe("pitSpeeding.started", started);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      controller.__tick(telemetry({ OnPitRoad: true, Speed: 60 / 3.6, EngineWarnings: 0 }));
+
+      expect(started).not.toHaveBeenCalled();
+    });
+  });
+
   describe("flags — cleared", () => {
     it("emits flag.yellow.cleared only when yellow was previously active", () => {
       const controller = createMockController();
