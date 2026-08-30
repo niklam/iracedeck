@@ -1343,16 +1343,6 @@ function parseWithSalvage(raw: Record<string, unknown>): { settings: GlobalSetti
   return null;
 }
 
-/**
- * Merge the deck host's migration answer under a settings file that was born
- * WITHOUT it (a fresh start, see MIGRATION_PENDING_KEY): the host supplies
- * every key, and the file wins only where it deviates from the schema default —
- * a value still at its default in a defaults-born file was almost certainly
- * never touched, so the host's (the user's real, pre-#993) value is the one to
- * keep; anything the user changed in the meantime survives. Passthrough keys
- * the file added (device lists, `_lastSeenVersion`, …) have no default and so
- * always win. With no file at all (`base` = {}) this is the plain host copy.
- */
 /** How many unanswered starts a stored (or in-memory) settings object records; 0 without the marker. */
 function pendingMigrationStarts(settings: Record<string, unknown>): number {
   const marker = settings[MIGRATION_PENDING_KEY];
@@ -1473,6 +1463,21 @@ function persist(store: SettingsStore | null): void {
   store?.save(stripRunScopedKeys(currentSettings as Record<string, unknown>));
 }
 
+/**
+ * Merge the deck host's migration answer under a settings file that was born
+ * WITHOUT it (a fresh start, see MIGRATION_PENDING_KEY): the host supplies
+ * every key, and the file wins only where it deviates from the schema default —
+ * a value still at its default in a defaults-born file was almost certainly
+ * never touched, so the host's (the user's real, pre-#993) value is the one to
+ * keep; anything the user changed in the meantime survives. Passthrough keys
+ * the file added (device lists, `_lastSeenVersion`, …) have no default and so
+ * always win. With no file at all (`base` = {}) this is the plain host copy.
+ *
+ * So this merge does NOT bound what an accepted payload can do (#1053): a key
+ * the file left at its schema default loses to the payload, and with no file
+ * the payload becomes the whole cache. The bound belongs to the give-up retry,
+ * which uses `{ ...raw, ...migrationBase }` instead — see the call sites.
+ */
 function mergeMigration(host: Record<string, unknown>, base: Record<string, unknown>): Record<string, unknown> {
   const merged = { ...host };
   const defaults = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
@@ -1668,10 +1673,24 @@ export function initGlobalSettings(
     notifyListeners();
   };
 
-  // The host is consulted ONLY as a migration source, and only when we asked
-  // (i.e. there is no file). Every other payload — a PI's save echo, an
-  // unsolicited push racing the file load — is ignored for the cache; the
-  // store is truth (#993).
+  // The host is consulted ONLY as a migration source, and only while a
+  // migration read is outstanding. That is not the same as "there is no file",
+  // which this said until #1053: a defaults-born file still carrying the
+  // pending-migration countdown asks again, and so does the once-per-version
+  // retry for a store that was given up on. OUTSIDE that window — before it
+  // opens, and once it has closed — every payload is ignored for the cache,
+  // whether it is a PI's save echo or an unsolicited push racing the file
+  // load; the store is truth (#993).
+  //
+  // "When we asked" is weaker than it reads, and that is accepted rather than
+  // overlooked (#1053): `migrationRequested` is a boolean, not a correlation,
+  // so while it is set the FIRST payload to arrive is taken as the answer
+  // whatever sent it. Why correlating is not worth it — and what each host
+  // does and does not offer to correlate ON — is in
+  // docs/superpowers/specs/2026-08-30-issue-1053-migration-read-payload-correlation.md
+  // and summarised in .claude/rules/global-settings.md. Kept as a pointer
+  // rather than a summary on purpose: the same argument restated in three
+  // files drifts apart, which it already had by the time this was written.
   adapter.onDidReceiveGlobalSettings((settings: unknown) => {
     if (!isCurrent()) return;
 
@@ -1680,6 +1699,14 @@ export function initGlobalSettings(
       // switched to the loopback channel) and, on hosts that echo, the
       // plugin's own mirror write arrive here now, and none of them are
       // ingested.
+      //
+      // "None of them are ingested" describes THIS branch, not the listener:
+      // the migration window is shut, or — on an ordinary start with a settings
+      // file, which is the common case — was never opened, since `onLoaded`
+      // returns before `migrationRequested` is ever set. A fallback-path PI
+      // save arriving while the window IS open is accepted (#1053); the
+      // plugin's own mirror write never can be, because it is published only
+      // after the store is ready.
       logger?.debug("Ignoring host settings payload: the settings store is authoritative");
 
       return;

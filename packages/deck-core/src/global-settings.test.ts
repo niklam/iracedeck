@@ -977,6 +977,14 @@ describe("single-writer store (issue #993)", () => {
   });
 
   it("with no file, migrates ONCE from the host: asks, writes the host payload to the store, then is ready", async () => {
+    // This also pins the #1053 decision, and is the reason no separate test
+    // for it exists: acceptance is by ARRIVAL, not by provenance. `echo` here
+    // stands for the first payload to reach the listener while the window is
+    // open — a genuine reply, or a fallback-path PI's save echo, which deck-core
+    // cannot tell apart. Nothing bounds what it does on this path: `base` is
+    // {}, so the payload becomes the whole cache and is persisted as the whole
+    // file. Accepted deliberately; see
+    // docs/superpowers/specs/2026-08-30-issue-1053-migration-read-payload-correlation.md.
     const mock = createMockAdapter();
     const store = createMemorySettingsStore(); // no file
     const binding = JSON.stringify({ type: "keyboard", key: "f1", modifiers: [] });
@@ -1276,6 +1284,13 @@ describe("single-writer store (issue #993)", () => {
       // equal the default must not lose to a copy from before the give-up —
       // and the merged result is mirrored back, so losing it destroys the
       // setting in both stores at once.
+      //
+      // This is also the ONLY bound on an accepted payload anywhere in the
+      // migration, which is what #1053 leans on when it accepts an
+      // uncorrelated read: on this path `{ ...raw, ...migrationBase }` means a
+      // stray can add a key the file never held but cannot move one the user
+      // has. No such bound exists on the fresh or `_migrationPending` paths,
+      // which go through mergeMigration — do not generalise it to them.
       const start = await startWith(abandoned("3.1.0", { focusIRacingWindow: true }), {
         pluginVersion: "3.2.0",
       });
