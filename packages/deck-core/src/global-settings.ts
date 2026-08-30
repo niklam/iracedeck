@@ -1673,10 +1673,14 @@ export function initGlobalSettings(
     notifyListeners();
   };
 
-  // The host is consulted ONLY as a migration source, and only when we asked
-  // (i.e. there is no file). Every other payload — a PI's save echo, an
-  // unsolicited push racing the file load — is ignored for the cache; the
-  // store is truth (#993).
+  // The host is consulted ONLY as a migration source, and only while a
+  // migration read is outstanding. That is not the same as "there is no file",
+  // which this said until #1053: a defaults-born file still carrying the
+  // pending-migration countdown asks again, and so does the once-per-version
+  // retry for a store that was given up on. OUTSIDE that window — before it
+  // opens, and once it has closed — every payload is ignored for the cache,
+  // whether it is a PI's save echo or an unsolicited push racing the file
+  // load; the store is truth (#993).
   //
   // "When we asked" is weaker than it reads, and that is accepted rather than
   // overlooked (#1053): `migrationRequested` is a boolean, not a correlation,
