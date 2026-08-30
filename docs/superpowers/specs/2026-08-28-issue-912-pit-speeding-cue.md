@@ -38,7 +38,7 @@ Recorded because it generalises past this issue: when a capability gate produces
 
 ## What ships
 
-While the player is over the posted pit-lane speed limit on pit road, a short tick repeats at a fixed interval until the speed drops back under. It is gated by the Race Engineer master and one new per-callout opt-in, default on. The clip is the existing radar tick as a placeholder; replacing it with a purpose-made tone is a follow-up that touches one constant.
+While the player is over the posted pit-lane speed limit on pit road, a short tick repeats at a fixed interval until the speed drops back under. It is gated by the Race Engineer master and one new per-callout opt-in, default on. It ships with a purpose-made tone at a 300 ms cadence — see the amendment below; the radar tick this was specified against was only ever a stand-in.
 
 ## Decisions
 
@@ -48,7 +48,7 @@ While the player is over the posted pit-lane speed limit on pit road, a short ti
 
 This choice answers the issue's second open question — *should the tick duck under a `PROXIMITY` spotter call?* — structurally rather than by policy. **No.** With no interpreter fire there is no weight, no family and no focus contest to arbitrate; the tick and a "Car left." call are on different buses and simply coexist. There is no knob here to get wrong later, which is the point.
 
-The trade being accepted: a tick every second will overlap the words of a spotter call. That is judged correct — both are proximity-class safety signals with independent volume controls, and a driver at speed on pit road wants both — but it is the kind of thing that can only really be judged by ear, so it is explicitly on the manual-test list.
+The trade being accepted: a tick three times a second will overlap the words of a spotter call. That is judged correct — both are proximity-class safety signals with independent volume controls, and a driver at speed on pit road wants both — but it is the kind of thing that can only really be judged by ear, so it is explicitly on the manual-test list.
 
 ### 2. Channel: `AudioChannel.Radar`
 
@@ -102,11 +102,29 @@ This is the failure that matters. Everything else about this feature degrades in
 
 Layer 3's cost is stated plainly: in the harness, firing the `started` shortcut against a mock snapshot that positively reports `OnPitRoad: false` will stop the cue after one tick. QA sets `OnPitRoad` on the telemetry panel first; the shortcut's description says so.
 
+## Amended after hardware testing: a purpose-made tone at 300 ms
+
+Two things this spec specified provisionally were settled by ear on hardware, and both landed inside the issue rather than after it.
+
+**The tone.** The spec called the radar tick a placeholder and listed a purpose-made tone as a follow-up. Niklas auditioned six candidates against 250 ms and 500 ms loop previews and picked one, so the follow-up is retired and `sfx/IRD-pit-speed-warning.wav` ships instead — mono, 48 kHz, 160 ms. **It was not replaced because the placeholder failed**; it was replaced because a purpose-made tone became available while the issue was still open, which is a better outcome than the follow-up it displaced.
+
+The clip was **generated for this feature**, not sourced from anywhere, so it carries no third-party licence obligation and needs no `THIRD-PARTY-LICENSES.md` entry. Recorded because an unattributed binary appearing in `sfx/` invites exactly that question, and the answer is otherwise unrecoverable from the file — it has no metadata chunks at all.
+
+**Level: the shipped asset is that generated source at −6 dB**, which was the last tuning item and the only one after the tone and cadence were settled. Two decisions inside that are worth keeping. The gain is **baked into the asset** rather than applied at playback, because `playOnChannel` takes no per-play volume — it uses the channel's — so the alternatives were widening a shared API or bracketing each play with `setChannelVolume(Radar, …)`, which would fight both the radar engine and the user's own Radar slider. And the figure is **absolute against the source**, not a delta against the committed file: a further adjustment re-renders from the source with a new absolute number, because re-attenuating the shipped file works once and then compounds, each pass drifting further from anything reproducible. A consequence to know rather than to "fix": the repo asset is deliberately **no longer byte-identical** to the generated source, and the verification that replaces that is the three plugins carrying the same post-gain file as the repo.
+
+It is kept as `.wav` where its `sfx/` neighbours are `.mp3`. At 15 KB the size argument does not arise, and an mp3 decoder's priming delay is a real cost on a 160 ms clip fired three times a second where the attack *is* the signal. The build copies everything outside `voice/` verbatim and miniaudio decodes wav natively, so nothing else in the pipeline cares. It sits at the `sfx/` root rather than in `sfx/radar/`, because it is not a radar sound — the cue only borrowed one while it had no tone of its own.
+
+**The cadence: 300 ms**, not the ~1 s this spec was written against. 1 s read as "lazy" for a warning you are meant to react to immediately; 500 ms was the first correction and 300 ms the one that stuck. At a 160 ms tone that still leaves ~140 ms of silence between ticks, so the cue cannot overlap itself and reads as a beeper rather than a buzz.
+
+**A fixture lesson the cadence changes paid for twice.** The engine tests advance a mock `SessionTick` to stand for a live sim, and the amount was originally hardcoded — 60 per read, encoding "60 Hz sim, 1 Hz cue". When the cadence became 500 ms that same 60 silently began describing a sim running at twice real speed, and **every assertion still passed**, because they are written against the symbolic interval and scale with it correctly. A test that scales around a fixture whose premise has stopped being true is the same failure in a new costume, and nothing fails to announce it. The fixture is now DERIVED from the cadence (`SIM_TICKS_PER_CUE_TICK = round(IRACING_TICK_HZ × interval)`), which retired the problem rather than documenting it: the 500 → 300 change needed no edit there at all. Generalising: when a test constant encodes a *ratio* between two things the code knows, derive it — a stated one is correct only until either side moves, and its being wrong is invisible.
+
+Two consequences worth having written down rather than rediscovered. The interval doubles as the **worst-case latency of every live check in the loop** — a gate switched off, a driver leaving pit road, a frozen sim — so shortening it sharpened all three; that is why the constant is not purely a matter of taste, and why a later request to make the beeping less frequent is a safety change rather than a comfort one. And the coexistence decision in §1 was judged at the original cadence: at three times the rate there is three times the overlap with a spoken call, so that judgement is re-taken rather than assumed to carry.
+
 ### 6. Gate latency is one tick interval, and that is the precedent
 
-The master gate and the opt-in are re-read live inside every scheduled tick, not captured at registration. Toggling either off mid-episode therefore silences the cue within at most one interval (~1 s), which is what the issue means by "the spotter-engine force-clear shape" — the spotter is likewise not instantaneous, since nothing calls into it on a settings change.
+The master gate and the opt-in are re-read live inside every scheduled tick, not captured at registration. Toggling either off mid-episode therefore silences the cue within at most one interval (300 ms), which is what the issue means by "the spotter-engine force-clear shape" — the spotter is likewise not instantaneous, since nothing calls into it on a settings change.
 
-No push path (radar's `setRadarEnabled` shape, driven from `feature-gates.ts`) is added. Radar needs one because its tick interval is 180–250 ms and its state machine is driven by an event that may not arrive for minutes; here the loop is already re-evaluating everything once a second, so a push would buy under a second of latency in exchange for another cross-package coupling and another way for the two paths to disagree.
+No push path (radar's `setRadarEnabled` shape, driven from `feature-gates.ts`) is added. Radar needs one because its tick interval is 180–250 ms and its state machine is driven by an event that may not arrive for minutes; here the loop is already re-evaluating everything three times a second, so a push would buy under a second of latency in exchange for another cross-package coupling and another way for the two paths to disagree.
 
 The in-flight clip is not cut on a gate-off — the loop simply stops scheduling. This matches radar's documented choice to let a clip finish naturally, and at ~100 ms per tick there is nothing to gain by cutting it.
 
@@ -132,6 +150,5 @@ Because there are no scenarios, there is no `SCENARIO_ID_TO_*` map and no `wrapC
 
 ## Follow-ups
 
-- A purpose-made warning tone to replace the radar-tick placeholder. One constant; no mechanism change.
 - The dormant limiter voice family (`limiter-on-track`, `limiter-missing`, `limiter-dropped`, `limiter-speeding`) — **issue #1051, ruled: all four ship.** It also owns the pairing rule between the voice line and this cue, and the `hasPitLimiter` question above.
 - The website has never documented pit-road speeding at all, because the voice line never fired. The docs written for this change cover the cue; if the limiter family is later woken, that section grows rather than being written from scratch.
