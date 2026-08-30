@@ -14,11 +14,23 @@ What it does not do is ever look again. The ceiling branch in `onLoaded` returns
 
 That is worst for the exact population #1041 was filed for. A Ulanzi user who ran the broken 3.0 build three times has a ceiling-value countdown and an untouched host copy. Their first start on the 3.1.0 build — whose read is now addressed and answerable — takes the ceiling branch, never asks, and leaves them on defaults permanently. The release that fixed their bug is the release that gives up on them.
 
+## Amendment: the first draft was correct against a world that does not exist
+
+Everything below was written on the assumption that #1041 had shipped, so that installs in the field would carry `_migrationAbandoned`. **They do not.** #1041 ships in this same unreleased 3.1.0 — root version `3.1.0-dev.0`, newest tag `v3.0.0`, and the `## 3.1.0 / _Unreleased_` section carries both bullets. The ceiling #1041 replaced wrote only the countdown, so **no file anywhere carries the marker in any form.**
+
+Keying the retry on that marker therefore recovered nobody. The real cohort — a Ulanzi user who ran the broken 3.0 build three times — sits at `_migrationPending: 3` with an intact host copy, and on their first 3.1.0 start `unanswered >= MIGRATION_RETRY_STARTS` fires and stamps them, returning *before* the read. Their first encounter with the fixed read would have been the release that gave up on them.
+
+**That is this spec's own Problem statement, reproduced one layer up by its own fix.** Worth recording as more than a diff: the design was sound about the mechanism and wrong about the world, and it survived the spec, the implementation and the tests because all three inherited the same premise — the tests most damningly, since their fixtures hand-authored a marker shape no build has ever written, which is the identical fault the harness commit was created to prevent one issue earlier. A premise shared by the thing being checked and the check is invisible to any amount of care in either.
+
+**The correction:** a store counts as given-up-on when it carries the marker **or** its countdown has already reached the ceiling. Both mean the same thing — the host did not answer and we stopped waiting — and treating them alike is what reaches the installs that actually exist. The rest of the decision stands, with one change forced by it, described under the countdown heading below.
+
 ## Decision
 
-**Record which plugin version gave up, and re-enter the ordinary retry flow once when the running version differs.**
+**Record which plugin version gave up, and ask the host exactly once more when a newer version runs.**
 
-The event that plausibly changes whether the host answers is the plugin changing. That is exactly what happened here — the read was unanswerable on Ulanzi until #1041 addressed it, and no amount of retrying under the old build would ever have helped. "We have never asked under this build" is precisely the abandoned cohort's state, and it is cheap to detect.
+The event that plausibly changes whether the host answers is the plugin changing. That is exactly what happened here — the read was unanswerable on Ulanzi until #1041 addressed it, and no amount of retrying under the old build would ever have helped. "We have never asked under this build" is precisely the given-up cohort's state, and it is cheap to detect.
+
+Version comparison is semver `gt` where both sides parse, not string inequality: a rollback cannot fix a read the older build already failed at, and `!==` would leave a downgraded pair re-asking on every transition with each build re-stamping its own version, never converging.
 
 ### The marker carries a version instead of a boolean
 
@@ -26,13 +38,23 @@ The event that plausibly changes whether the host answers is the plugin changing
 
 This is backwards compatible by construction, which is the reason for choosing a version string over a second key. `isMigrationAbandoned` already reads any non-`false`, non-empty value as set, so a file written by 3.1.0 carrying `true` still suppresses the mirror under this change with no migration step. And `true` means "abandoned under an unknown version", which necessarily differs from the running one — so the 3.1.0 cohort is re-asked on their first start with this build, which is the outcome the issue exists for. Nothing has to know that `true` was ever the shape.
 
-### The re-ask reuses the countdown rather than inventing a second timeout
+### ~~The re-ask reuses the countdown~~ — one attempt, and the review is why
 
-On load, a file whose recorded abandoned-version differs from the running version has the marker **stripped** and falls through to the normal migration path — the same `adapter.getGlobalSettings()` and the same `MIGRATION_TIMEOUT_MS` every other unmigrated store uses.
+The original text argued for restarting the countdown, on the grounds that a single attempt "would make a transient failure on upgrade day cost the user until their next upgrade, and it would need new 'asked once under this version' bookkeeping". Both halves were wrong in a way worth keeping visible.
 
-From there the existing machinery does all of it. A host answer migrates and clears; silence writes the countdown at 1 and the mirror stays skipped; three more silent starts reach the ceiling again and stamp `_migrationAbandoned` with the **current** version, so the install goes quiet until the next upgrade.
+The bookkeeping already exists — it is the marker being written on the timeout rather than only at the ceiling, which is one branch, not a new mechanism. And the cost was the wrong way round: restarting the countdown means **three** ten-second startups per version, during which `isSettingsStoreReady()` is false, so every key binding reads as unconfigured, keys render the missing-binding glyph and do nothing, and the settings window's server is not yet started. At this project's release cadence a structurally mute host pays that roughly weekly, forever.
 
-Resetting the countdown rather than allowing a single attempt is the deliberate choice. One attempt would make a transient failure on upgrade day cost the user until their next upgrade, and it would need new "asked once under this version" bookkeeping. Reusing the countdown adds no new state and no new timeout semantics; the only new behaviour is the decision to re-enter the flow. The cost is bounded and self-limiting: up to three ten-second waits, spread over three starts, once per version, and only for installs that had already given up.
+It also contradicted every document describing it. The rules file says "re-asks once per plugin version" in the same paragraph that justifies the ceiling as "so a host that genuinely never answers doesn't cost 10 s per launch"; `deck-core/CLAUDE.md` says "once"; the changelog and the Settings page say "once more". **When code and prose disagree, the fix is whichever one is right — and here the prose was.**
+
+So: a given-up store issues **one** read. A host answer migrates. Silence records this build's own give-up and stops, keeping the file authoritative rather than restarting anything. Either way the store is quiet until the next upgrade.
+
+### The retry's merge is not `mergeMigration`
+
+`mergeMigration` encodes "a value still at its default was almost certainly never touched", and its own docstring scopes that to a **defaults-born file a few starts old**. A given-up store has been the authoritative settings for months, so the premise is simply false there: `focusIRacingWindow` deliberately re-enabled to `true`, `debugLogging` turned back off, any `calloutEnabled*` left on — all equal their schema default and would have lost to a pre-give-up host copy, which the mirror then writes back over both stores at once.
+
+On the retry the file wins outright and the host fills only keys the file has never held. This is a different merge for a different precondition, not an inconsistency.
+
+An **empty** answer retires nothing, either. The payload path coerces `null` and non-objects to `{}`, and on a host that cannot distinguish "no bucket" from "empty bucket" an empty reply is no evidence the copy is gone — retiring the guard on one would re-open a whole-object write over a copy nothing was read from, which is #1041 by another route.
 
 ### `becomeReady(..., "host")` clears the marker
 
@@ -60,9 +82,11 @@ Resetting the countdown rather than allowing a single attempt is the deliberate 
 
 ## Verification
 
-Unit, in `packages/deck-core`: a file whose marker records the running version takes the fast path and does not ask; one recording a different version asks, and one carrying the legacy `true` asks too (the 3.1.0 cohort's case); a host answer clears the marker and restores the mirror; silence after a re-ask writes the countdown at 1 with the mirror still skipped, and reaching the ceiling again stamps the **current** version; and the fail-closed reader still treats a hand-edited `"true"` as set.
+Unit, in `packages/deck-core`. **The case that matters most is a file with a countdown at the ceiling and no marker at all** — the only shape that exists in the field, and the one the first draft's fixtures never built. Then: a marker recording the running version takes the fast path; a newer running version asks exactly once; a downgrade does not ask; a legacy `true`, a numeric marker and no record at all all ask; a host answer clears the marker and restores the mirror, while an empty or `null` answer clears nothing; the retry's merge keeps a file value that equals its schema default; silence records this build's give-up without restarting the countdown; a blank or whitespace running version cannot stamp a marker that reads back as unset; and a padded stored version still compares equal to itself.
 
 **Build the chained start→start harness properly, and use it throughout.** #1041's post-mortem was that no test took one start's persisted output as the next start's input — every marker test hand-authored its store, so the persisted shape and the assumed shape drifted, and a recovery path that production could never reach shipped green. This change is the same class of bug waiting to happen: it turns entirely on what one start writes and the next start reads. A helper that resets the module and re-inits on `store.saved.at(-1)` should be the default way these tests are written, not a one-off for the case that already bit.
+
+**The harness was built first and it was not enough**, which is the sharper lesson. It catches a *persisted shape* drifting from an *assumed* one, and it did — but the first draft's fixtures were wrong about which files exist at all, and no amount of faithful chaining detects a fixture that chains a state nothing ever reaches. Ask what the field actually contains before asking whether the test reproduces it faithfully.
 
 The version reaches `global-settings.ts` through `InitGlobalSettingsOptions` rather than a direct `getPluginVersion()` call, so tests set it explicitly and nothing depends on `initPluginConfig` having run — it does run first in all three plugins, but the scenario harness and the test suite do not call it, and a module that throws when it has not is a trap for both.
 
