@@ -1607,11 +1607,30 @@ describe("sim-events-iracing translator", () => {
       bus.subscribe("pitSpeeding.started", started);
       initializeSimEventsIracing(bus, controller, createMockLogger());
 
-      // A round metric value has no conversion loss, so the correction must
-      // not turn into a blanket margin: comfortably over still fires.
-      controller.__tick(telemetry({ OnPitRoad: true, Speed: 61 / 3.6, EngineWarnings: 0 }));
+      // Pinned at the boundary rather than comfortably over: 1 kph above the
+      // limit would pass even if the window were far wider than intended.
+      // "60.00" carries two decimals, so the window IS applied here — the
+      // control this test provides is that it stays 0.005 kph wide and does
+      // not grow into a blanket margin.
+      controller.__tick(telemetry({ OnPitRoad: true, Speed: (60 + 0.006) / 3.6, EngineWarnings: 0 }));
 
       expect(started).toHaveBeenCalledTimes(1);
+    });
+
+    it("stays silent just INSIDE the window of a two-decimal limit", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(sessionWithLimit("60.00 kph"));
+      const bus = getEventBus();
+      const started = vi.fn();
+      bus.subscribe("pitSpeeding.started", started);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      // The other side of the same boundary. Together the pair pins the window
+      // to its intended 0.005 kph in both directions — neither wider nor
+      // absent — which one-sided tests cannot do.
+      controller.__tick(telemetry({ OnPitRoad: true, Speed: (60 + 0.004) / 3.6, EngineWarnings: 0 }));
+
+      expect(started).not.toHaveBeenCalled();
     });
 
     it("stays silent exactly at a metric-native limit", () => {

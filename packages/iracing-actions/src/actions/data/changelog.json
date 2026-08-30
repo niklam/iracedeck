@@ -12,7 +12,7 @@
         {
           "title": "Features",
           "items": [
-            "The Race Engineer now warns you the moment you go over the pit lane speed limit. A short tick repeats for as long as you are over it and stops as soon as you are back at or under it, reaching you in time to lift before the penalty lands. It sounds on every car, whether or not yours has a pit limiter. Without a limiter it is exact, because you are the one holding the speed; with the limiter engaged it allows about 0.3 km/h first, since the limiter parks you on the limit and there is nothing left for you to do about it — though a limiter car that is genuinely speeding still gets told. Turn it off under <strong>Race Engineer Callouts → Pit Speeding</strong> in the Settings window; it plays at your <strong>Radar</strong> volume."
+            "The Race Engineer now warns you the moment you go over the pit lane speed limit. A short tick repeats for as long as you are over it and stops once you are back at or under it, reaching you in time to lift before the penalty lands. It sounds on every car, whether or not yours has a pit limiter. Without a limiter it is exact, because you are the one holding the speed; with the limiter engaged it allows about 0.3 km/h first, since the limiter parks you on the limit and there is nothing left for you to do about it — though a limiter car that is genuinely speeding still gets told. Turn it off under <strong>Race Engineer Callouts → Pit Speeding</strong> in the Settings window; it plays at your <strong>Radar</strong> volume."
           ]
         },
         {
