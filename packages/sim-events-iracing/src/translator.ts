@@ -74,6 +74,7 @@ import { diffPaceLaps, resolvePaceCarIdx } from "./diff/pace-laps.js";
 import { diffPitBoxCountdown } from "./diff/pit-box-countdown.js";
 import { diffPitLane } from "./diff/pit-lane.js";
 import { buildSnapshot as buildReadbackSnapshot, diffPitReadback } from "./diff/pit-readback.js";
+import { diffPitSpeeding } from "./diff/pit-speeding.js";
 import { diffPitStatus } from "./diff/pit-status.js";
 import { diffPitsOpen } from "./diff/pits-open.js";
 import { updatePositionTracking } from "./diff/race-finish.js";
@@ -1167,20 +1168,41 @@ export function _resetSimEventsIracing(): void {
 
 // ── Internals ──────────────────────────────────────────────────────────────
 
+/**
+ * Publish teardown edges for every active-state subsystem, releasing any
+ * consumer that holds a loop or a latched mode until it sees a closing edge.
+ *
+ * Called from all three state-wiping paths — disconnect, session change, and
+ * entering replay. It is one function rather than three copies because the
+ * failure it prevents is silent: a subsystem wired into two of the three
+ * sites leaves its loop running on the third, and nothing type-checks the
+ * omission. **Add a new teardown here, once.**
+ *
+ * Must run BEFORE the wipe. Afterwards the state already reads inactive, the
+ * edge is gone, and the emit is skipped.
+ *
+ * Published via the live envelope shape so consumers need no separate
+ * disconnect code path.
+ */
+function publishActiveStateTeardown(self: TranslatorInstance, telemetry: TelemetryData): void {
+  const now = Date.now();
+
+  // Radar's tick loop runs until it sees a `radar.changed → clear`.
+  if (self.state.radarState !== "clear") {
+    publish(self, { event: "radar.changed", data: { from: self.state.radarState, to: "clear" } }, telemetry, now);
+  }
+
+  // The pit-road speeding cue's tick loop runs until it sees `ended` (issue
+  // #912). A missed edge here leaves audio looping over a live race.
+  if (self.state.pitSpeedingActive) {
+    self.state.pitSpeedingActive = false;
+    publish(self, { event: "pitSpeeding.ended", data: {} }, telemetry, now);
+  }
+}
+
 function handleDisconnect(self: TranslatorInstance): void {
-  // Publish a teardown signal for any active state that would otherwise
-  // leave downstream consumers stuck in an active mode. Today that's just
-  // radar (its tick loop keeps running until it sees a `radar.changed → clear`
-  // transition); other active-state subsystems should plug in here the
-  // same way. We publish via the live envelope shape so consumers don't
-  // need a separate disconnect code path.
-  if (self.state.radarState !== "clear" && self.latestTelemetry !== null) {
-    publish(
-      self,
-      { event: "radar.changed", data: { from: self.state.radarState, to: "clear" } },
-      self.latestTelemetry,
-      Date.now(),
-    );
+  if (self.latestTelemetry !== null) {
+    publishActiveStateTeardown(self, self.latestTelemetry);
   }
 
   // Fresh state so reconnect seeds cleanly.
@@ -1330,14 +1352,7 @@ function wipeStateForReplay(self: TranslatorInstance): void {
 }
 
 function resetPerSessionState(self: TranslatorInstance, telemetry: TelemetryData): void {
-  if (self.state.radarState !== "clear") {
-    publish(
-      self,
-      { event: "radar.changed", data: { from: self.state.radarState, to: "clear" } },
-      telemetry,
-      Date.now(),
-    );
-  }
+  publishActiveStateTeardown(self, telemetry);
 
   const preservedLifecycle = {
     lifecycleInitialized: self.state.lifecycleInitialized,
@@ -1593,18 +1608,10 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // modules' first-tick / off-track seed branches reseed cleanly.
   if (telemetry.IsReplayPlaying === true) {
     if (!self.lastTickInReplay) {
-      // Publish the radar teardown signal before resetting state so the
-      // radar engine receives a clear edge — otherwise it stays latched
-      // through replay (the tick loop runs until it sees a `clear`).
-      // Mirrors `handleDisconnect()`.
-      if (self.state.radarState !== "clear") {
-        publish(
-          self,
-          { event: "radar.changed", data: { from: self.state.radarState, to: "clear" } },
-          telemetry,
-          Date.now(),
-        );
-      }
+      // Release every active-state subsystem before resetting state, so a
+      // latched mode or a running tick loop gets its closing edge instead of
+      // staying live through the replay. Mirrors `handleDisconnect()`.
+      publishActiveStateTeardown(self, telemetry);
 
       wipeStateForReplay(self);
       self.lastTickInReplay = true;
@@ -1671,6 +1678,11 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     emit,
   );
   diffLimiter(self.state, telemetry, pitSpeedLimitMps, now, emit);
+  // Independent of `diffLimiter` despite the shared subject — it reads
+  // `PlayerCarInPitStall` from telemetry rather than `state.lastInPitStall`,
+  // so it carries none of the before-`diffPitLane` ordering constraint above
+  // and sits here only for readability (issue #912).
+  diffPitSpeeding(self.state, telemetry, pitSpeedLimitMps, emit);
   diffPitLane(self.state, telemetry, trackType, now, emit);
   // Checkered deferral (issue #771): the leader guard on the winner grace
   // consumes the canonical live order (`.claude/rules/race-positions.md`),

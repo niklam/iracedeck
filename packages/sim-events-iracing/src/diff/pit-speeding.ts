@@ -47,12 +47,16 @@ import type { EmitFn } from "./types.js";
 export const PIT_SPEEDING_HYSTERESIS_MPS = 0.2;
 
 /**
- * End an in-flight episode, if there is one. Exported for the translator's
- * teardown paths (disconnect, session change, replay), which must emit the
- * closing edge BEFORE wiping the state that carries it — post-wipe the state
- * already reads inactive and the edge is silently lost.
+ * End an in-flight episode, if there is one.
+ *
+ * Module-local on purpose: the translator's teardown paths (disconnect,
+ * session change, replay) close the same episode, but they run outside a tick
+ * and publish directly rather than through an `EmitFn`, so they cannot share
+ * this. Their copy lives in `publishActiveStateTeardown` — the two are the
+ * only places that clear `pitSpeedingActive`, and both must emit the closing
+ * edge BEFORE the state carrying it is wiped.
  */
-export function endPitSpeedingIfActive(state: TranslatorState, emit: EmitFn): void {
+function endPitSpeedingIfActive(state: TranslatorState, emit: EmitFn): void {
   if (!state.pitSpeedingActive) return;
 
   state.pitSpeedingActive = false;
@@ -89,8 +93,7 @@ export function diffPitSpeeding(
 
   if (state.pitSpeedingActive) {
     if (speed <= pitSpeedLimitMps - PIT_SPEEDING_HYSTERESIS_MPS) {
-      state.pitSpeedingActive = false;
-      emit({ event: "pitSpeeding.ended", data: {} });
+      endPitSpeedingIfActive(state, emit);
     }
 
     return;
