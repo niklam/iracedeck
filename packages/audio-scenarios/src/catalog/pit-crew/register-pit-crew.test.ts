@@ -41,6 +41,7 @@ import {
   registerPitCrew,
   type RollingStartCalloutId,
 } from "./index.js";
+import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
 
@@ -539,6 +540,7 @@ beforeEach(() => {
     undefined, // getLiveGaps (issue #933)
     undefined, // getOpponentFlagCalloutEnabled (issue #936)
     undefined, // getOpponentFlagLivePosition (issue #936)
+    undefined, // getPitSpeedingCalloutEnabled (issue #912)
     () => voiceMasterEnabled,
     undefined, // getRadarMasterEnabled
   );
@@ -548,6 +550,7 @@ afterEach(() => {
   _resetAudioScenarios();
   _resetRadarEngine();
   _resetSpotterEngine();
+  _resetPitSpeedingEngine();
   _setFurledRaisedSpoken(false);
   _resetLastIncidentPoints();
   vi.clearAllMocks();
