@@ -202,6 +202,10 @@
 			.sw-gs-p { margin: 0 0 10px; line-height: 1.55; }
 			.sw-gs-list { margin: 0 0 10px; padding-left: 20px; line-height: 1.55; }
 			.sw-gs-list li { margin: 0 0 4px; }
+			/* Prose links, same treatment as the changelog's: dim white rather than
+			   the brand red, which is unreadable on this background. */
+			.sw-gs-p a, .sw-gs-list a { color: var(--sw-fg-dim); }
+			.sw-gs-p a:hover, .sw-gs-list a:hover { color: var(--sw-fg); }
 			.sw-gs-control { margin: 0 0 12px; }
 			.sw-gs-picker { max-width: 100%; }
 			.sw-gs-jump {
@@ -209,6 +213,16 @@
 				padding: 7px 13px; font: inherit; cursor: pointer;
 			}
 			.sw-gs-jump:hover { filter: brightness(1.1); }
+			/* `ird-enable-feature` renders only here, so its styling lives with the
+			   rest of the window's CSS — the `.sw-cl-*` precedent. The component
+			   keeps `ird-` names because it is a shared web component and has no
+			   business knowing about this page's `sw-` prefix. */
+			.ird-enable-feature-button {
+				background: var(--sw-accent); color: #fff; border: 0; border-radius: 4px;
+				padding: 7px 13px; font: inherit; cursor: pointer;
+			}
+			.ird-enable-feature-button:hover { filter: brightness(1.1); }
+			.ird-enable-feature-done { color: var(--sw-fg-mute); margin: 0; }
 		</style>
 	</head>
 	<body>

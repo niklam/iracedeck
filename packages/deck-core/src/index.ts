@@ -518,6 +518,7 @@ export {
 } from "./settings-window-launcher.js";
 export {
   createSettingsWindowCommandHandler,
+  enableFeatureWrites,
   parseSettingsWindowBounds,
   SETTINGS_WINDOW_BOUNDS_KEY,
   type SettingsWindowCommandDeps,
