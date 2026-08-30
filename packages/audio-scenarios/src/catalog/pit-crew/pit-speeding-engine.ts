@@ -42,6 +42,30 @@ import { getLatestTelemetry } from "@iracedeck/sim-events-iracing";
  * testing. Mono, 48 kHz, 160 ms — short enough that at the cadence below it
  * cannot overlap or truncate itself, leaving ~140 ms of silence between ticks.
  *
+ * **The shipped asset is the generated source at −6 dB**, rendered as:
+ *
+ * ```text
+ * ffmpeg -i <source> -af volume=-6dB -c:a pcm_s16le -ar 48000 -ac 1  *        -map_metadata -1 -fflags +bitexact -flags +bitexact <asset>
+ * ```
+ *
+ * The gain is stated as an ABSOLUTE figure against that source, not as a
+ * delta against whatever is currently in the repo: a further adjustment
+ * re-renders from the source with a new absolute number. Attenuating the
+ * committed file again would work once and then compound, each pass drifting
+ * further from anything reproducible.
+ *
+ * The bitexact flags are not decoration. Without them ffmpeg writes a
+ * `LIST/INFO/ISFT` chunk naming its own version, which bakes the toolchain
+ * into the asset — a re-render from a different ffmpeg would then differ from
+ * this file even at an identical gain, turning a no-op into a binary diff. As
+ * rendered the file carries only `fmt ` and `data`.
+ *
+ * It is baked into the asset rather than applied at playback because
+ * `playOnChannel` takes no per-play gain — it uses the channel volume — so the
+ * alternatives were widening a shared API or moving `setChannelVolume(Radar,
+ * …)` around each play, which would fight both the radar engine and the user's
+ * own Radar slider.
+ *
  * Kept as `.wav` rather than converted to `.mp3` like its `sfx/` neighbours.
  * It is 15 KB, so the size argument for mp3 does not arise, and an mp3
  * decoder's priming delay is a real cost on a 160 ms tick fired three times a
@@ -54,7 +78,7 @@ import { getLatestTelemetry } from "@iracedeck/sim-events-iracing";
  * Generated for this feature rather than sourced, so it carries no third-party
  * licence obligation and needs no `THIRD-PARTY-LICENSES.md` entry. Noted here
  * because an unattributed binary in `sfx/` invites exactly that question, and
- * the file cannot answer it — it has no metadata chunks at all.
+ * the file cannot answer it — by construction it carries no metadata.
  */
 export const PIT_SPEEDING_CLIP = "sfx/IRD-pit-speed-warning.wav";
 
