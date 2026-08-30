@@ -86,10 +86,10 @@ beforeEach(() => {
   hoisted.busHandlers.clear();
   hoisted.getLatestTelemetry.mockReset();
   // On pit road with a LIVE sim: iRacing advances SessionTick at ~60 Hz, so a
-  // 1 Hz cue tick sees it jump by roughly 60 each time. Tests that need a
+  // 2 Hz cue tick sees it jump by roughly 30 each time. Tests that need a
   // frozen sim override this with a constant.
   let sessionTick = 0;
-  hoisted.getLatestTelemetry.mockImplementation(() => ({ OnPitRoad: true, SessionTick: (sessionTick += 60) }));
+  hoisted.getLatestTelemetry.mockImplementation(() => ({ OnPitRoad: true, SessionTick: (sessionTick += 30) }));
 });
 
 afterEach(() => {
@@ -241,7 +241,7 @@ describe("pit-speeding cue engine", () => {
       const whileFrozen = hoisted.playOnChannel.mock.calls.length;
 
       let tick = 4242;
-      hoisted.getLatestTelemetry.mockImplementation(() => ({ OnPitRoad: true, SessionTick: (tick += 60) }));
+      hoisted.getLatestTelemetry.mockImplementation(() => ({ OnPitRoad: true, SessionTick: (tick += 30) }));
       vi.advanceTimersByTime(PIT_SPEEDING_TICK_INTERVAL_MS * 2);
 
       // Going silent rather than stopping is what makes this possible: the

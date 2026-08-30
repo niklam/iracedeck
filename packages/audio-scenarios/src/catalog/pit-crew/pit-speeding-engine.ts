@@ -44,8 +44,19 @@ import { getLatestTelemetry } from "@iracedeck/sim-events-iracing";
  */
 export const PIT_SPEEDING_CLIP = "sfx/radar/IRD-radar-both.mp3";
 
-/** Repeat cadence while the condition holds. */
-export const PIT_SPEEDING_TICK_INTERVAL_MS = 1000;
+/**
+ * Repeat cadence while the condition holds.
+ *
+ * 500 ms rather than the 1000 ms this shipped for review: on hardware a
+ * one-second gap "feels lazy" for a warning you are meant to react to
+ * immediately, and twice a second is roughly what a road car's over-speed
+ * chime does — which is the reference the issue itself reaches for.
+ *
+ * It is also the floor worth having. The interval doubles as the worst-case
+ * latency of every live check in the loop below: a gate switched off, a
+ * driver leaving pit road, a frozen sim. Halving the cadence halves all three.
+ */
+export const PIT_SPEEDING_TICK_INTERVAL_MS = 500;
 
 export type PitSpeedingDeps = {
   /** `pitCrewRaceEngineerEnabled` — read live, see the file header. */
@@ -103,7 +114,7 @@ function leftPitRoad(snapshot: Snapshot): boolean {
  * stop path depends on something advancing, so a frozen sim defeats all of
  * them at once and the tick would beep over a paused game forever.
  *
- * iRacing advances `SessionTick` at ~60 Hz while this loop runs at 1 Hz, so a
+ * iRacing advances `SessionTick` at ~60 Hz while this loop runs at 2 Hz, so a
  * single unchanged reading between two cue ticks is already conclusive.
  *
  * The response is to fall SILENT rather than to stop: unpausing must resume
