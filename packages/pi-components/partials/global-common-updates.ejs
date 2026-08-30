@@ -1,14 +1,7 @@
 <%#
   Common settings — Updates / What's New page (issue #992 split). Emits items only.
 %>
-<sdpi-item label="What's New page">
-  <sdpi-select setting="changelogNotification" default="features" global>
-    <option value="always">Open after every update</option>
-    <option value="features">Only after updates with new features</option>
-    <option value="monthly">Open at most once a month</option>
-    <option value="never">Never open</option>
-  </sdpi-select>
-</sdpi-item>
+<%- include('global-common-changelog-frequency') %>
 <div class="ird-supporting-text">
   After iRaceDeck updates, the What's New page (changelog) can open once in your browser
   to show what changed. "Only after updates with new features" skips small bug-fix

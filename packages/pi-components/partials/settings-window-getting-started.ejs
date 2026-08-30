@@ -1,0 +1,92 @@
+<%#
+  The Settings window's Getting Started page (issue #1061).
+
+  Renders `getting-started.json`, generated from the website's own page
+  (packages/website/src/content/docs/docs/getting-started/first-steps.md) by
+  `pnpm generate:getting-started-data`. Same shape as the What's New pane
+  (#1011): one authored source, a committed artifact, and no network — a page
+  read by somebody who has just installed iRaceDeck must not depend on their
+  being online.
+
+  Prose is HTML the generator already escaped (scripts/lib/changelog-inline-html.mjs),
+  which is why it is emitted raw here rather than re-escaped.
+
+  ACTION BLOCKS are the one thing this pane has that the website does not. The
+  artifact carries only an id; what it renders is decided here, because only
+  this surface has controls at all. Two consequences worth keeping in mind when
+  editing the source page:
+
+    - An id with no entry in ACTIONS below is a BUILD failure, not a silent
+      omission. A control that quietly failed to render would be invisible on
+      both surfaces and nobody would ever learn it was missing.
+    - No sentence in the source may depend on a control, because the website
+      renders none of them. `getting-started-parse.test.mjs` pins that against
+      the real page.
+
+  Included by settings-window.ejs only; its styling lives with the rest of the
+  window's CSS on that page.
+%>
+<%
+  var __gs = require('./data/getting-started.json');
+  var __sections = __gs.sections || [];
+  var __profiles = locals.platform?.features?.profiles !== false;
+
+  // id -> markup. A jump moves to another tab in this window; the three
+  // `ird-enable-feature` controls are one-press opt-ins that write settings and
+  // then say so, rather than buttons that look the same before and after.
+  var ACTIONS = {
+    // Elgato-only: the Profiles tab does not exist on Mirabox or Ulanzi, so a
+    // button pointing at it would go nowhere. The PROSE about profiles still
+    // renders everywhere — it says "Stream Deck" in its own words.
+    'open-profiles-tab': __profiles
+      ? '<button class="sw-gs-jump" type="button" data-jump="profiles">Open the Profiles tab</button>'
+      : '',
+    'open-race-engineer-tab':
+      '<button class="sw-gs-jump" type="button" data-jump="engineer">Open the Race Engineer tab</button>',
+    'enable-race-engineer': '<ird-enable-feature feature="race-engineer"></ird-enable-feature>',
+    'enable-changelog-updates': '<ird-enable-feature feature="changelog-updates"></ird-enable-feature>',
+    // Rendered only when the setting is actually off. It is `.default(true)`
+    // since #930, so on a genuinely fresh install this shows nothing at all —
+    // the people it is for are long-standing users who reach this page by
+    // opening the tab deliberately. Known and accepted; see the spec.
+    'suggest-focus-iracing-window': '<ird-enable-feature feature="focus-iracing-window"></ird-enable-feature>',
+  };
+-%>
+<div class="sw-gs">
+<% __sections.forEach(function (section) { -%>
+	<section class="sw-gs-section">
+		<h3 class="sw-gs-title"><%= section.title %></h3>
+<% section.blocks.forEach(function (block) { -%>
+<% if (block.type === 'paragraph') { -%>
+		<p class="sw-gs-p"><%- block.html %></p>
+<% } else if (block.type === 'list') { -%>
+		<ul class="sw-gs-list">
+<% block.items.forEach(function (item) { -%>
+			<li><%- item %></li>
+<% }); -%>
+		</ul>
+<% } else if (block.type === 'action') { -%>
+<%
+  if (block.id === 'changelog-frequency') {
+    // Shared with the What's New tab rather than copied, so the option list and
+    // the default cannot drift apart.
+  } else if (!(block.id in ACTIONS)) {
+    throw new Error(
+      'getting-started.json has an unknown action id "' + block.id + '". ' +
+      'Add it to ACTIONS in settings-window-getting-started.ejs, or remove the ' +
+      'marker from first-steps.md and regenerate.'
+    );
+  }
+-%>
+<% if (block.id === 'changelog-frequency') { -%>
+		<div class="sw-gs-control sw-gs-picker">
+			<%- include('global-common-changelog-frequency') %>
+		</div>
+<% } else if (ACTIONS[block.id]) { -%>
+		<div class="sw-gs-control"><%- ACTIONS[block.id] %></div>
+<% } -%>
+<% } -%>
+<% }); -%>
+	</section>
+<% }); -%>
+</div>
