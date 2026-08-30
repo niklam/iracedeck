@@ -48,7 +48,7 @@ const hoisted = vi.hoisted(() => {
     for (const h of Array.from(set)) h({ event: name, data: {} });
   };
 
-  const getLatestTelemetry = vi.fn<() => { OnPitRoad?: boolean } | null>();
+  const getLatestTelemetry = vi.fn<() => { OnPitRoad?: boolean; SessionTick?: number } | null>();
 
   return { audio, playOnChannel, stopChannel, getAudio, busHandlers, subscribe, bus, emit, getLatestTelemetry };
 });
@@ -80,12 +80,16 @@ beforeEach(() => {
   cueEnabled = true;
   hoisted.playOnChannel.mockClear();
   hoisted.playOnChannel.mockReturnValue(true);
+  hoisted.playOnChannel.mockImplementation(() => true);
   hoisted.stopChannel.mockClear();
   hoisted.subscribe.mockClear();
   hoisted.busHandlers.clear();
   hoisted.getLatestTelemetry.mockReset();
-  // On pit road — the condition the cue exists for.
-  hoisted.getLatestTelemetry.mockReturnValue({ OnPitRoad: true });
+  // On pit road with a LIVE sim: iRacing advances SessionTick at ~60 Hz, so a
+  // 1 Hz cue tick sees it jump by roughly 60 each time. Tests that need a
+  // frozen sim override this with a constant.
+  let sessionTick = 0;
+  hoisted.getLatestTelemetry.mockImplementation(() => ({ OnPitRoad: true, SessionTick: (sessionTick += 60) }));
 });
 
 afterEach(() => {
@@ -167,7 +171,7 @@ describe("pit-speeding cue engine", () => {
     it.each([
       ["master", () => (masterEnabled = false)],
       ["cue opt-in", () => (cueEnabled = false)],
-    ])("stops within one interval when the %s is switched off mid-episode", (_label, disable) => {
+    ])("goes silent within one interval when the %s is switched off mid-episode", (_label, disable) => {
       register();
       hoisted.emit("pitSpeeding.started");
       expect(hoisted.playOnChannel).toHaveBeenCalledTimes(1);
@@ -177,6 +181,85 @@ describe("pit-speeding cue engine", () => {
 
       // The gates are read live inside the tick, so no push path is needed.
       expect(hoisted.playOnChannel).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+      ["master", () => (masterEnabled = false), () => (masterEnabled = true)],
+      ["cue opt-in", () => (cueEnabled = false), () => (cueEnabled = true)],
+    ])("resumes mid-episode when the %s is switched back on", (_label, disable, enable) => {
+      register();
+      hoisted.emit("pitSpeeding.started");
+      disable();
+      vi.advanceTimersByTime(PIT_SPEEDING_TICK_INTERVAL_MS * 3);
+      expect(hoisted.playOnChannel).toHaveBeenCalledTimes(1);
+
+      // The loop is kept alive while gated rather than stopped, so a driver who
+      // re-enables the engineer part-way through an episode is warned for the
+      // rest of it. Stopping would leave them silently unwarned, since the
+      // translator holds the episode and will not re-emit `started`.
+      enable();
+      vi.advanceTimersByTime(PIT_SPEEDING_TICK_INTERVAL_MS * 2);
+
+      expect(hoisted.playOnChannel).toHaveBeenCalledTimes(3);
+    });
+
+    it("starts the loop even when gated, so a mid-episode enable is heard", () => {
+      masterEnabled = false;
+      register();
+      hoisted.emit("pitSpeeding.started");
+      expect(hoisted.playOnChannel).not.toHaveBeenCalled();
+
+      masterEnabled = true;
+      vi.advanceTimersByTime(PIT_SPEEDING_TICK_INTERVAL_MS);
+
+      expect(hoisted.playOnChannel).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("frozen sim (the hole a positive OnPitRoad false cannot close)", () => {
+    it("falls silent when SessionTick stops advancing", () => {
+      register();
+      hoisted.emit("pitSpeeding.started");
+      expect(hoisted.playOnChannel).toHaveBeenCalledTimes(1);
+
+      // A paused or hung sim notifies no subscribers, so the diff can never
+      // publish `ended`, no disconnect fires, and the frozen snapshot still
+      // says the driver is speeding on pit road. Without this guard the cue
+      // beeps over a paused game forever.
+      hoisted.getLatestTelemetry.mockReturnValue({ OnPitRoad: true, SessionTick: 4242 });
+      vi.advanceTimersByTime(PIT_SPEEDING_TICK_INTERVAL_MS * 5);
+
+      // One more tick lands before the repeat is recognised as frozen.
+      expect(hoisted.playOnChannel).toHaveBeenCalledTimes(2);
+    });
+
+    it("resumes when the sim unpauses, because the driver is still speeding", () => {
+      register();
+      hoisted.emit("pitSpeeding.started");
+      hoisted.getLatestTelemetry.mockReturnValue({ OnPitRoad: true, SessionTick: 4242 });
+      vi.advanceTimersByTime(PIT_SPEEDING_TICK_INTERVAL_MS * 3);
+      const whileFrozen = hoisted.playOnChannel.mock.calls.length;
+
+      let tick = 4242;
+      hoisted.getLatestTelemetry.mockImplementation(() => ({ OnPitRoad: true, SessionTick: (tick += 60) }));
+      vi.advanceTimersByTime(PIT_SPEEDING_TICK_INTERVAL_MS * 2);
+
+      // Going silent rather than stopping is what makes this possible: the
+      // episode is still live and the loop is still scheduled.
+      expect(hoisted.playOnChannel.mock.calls.length).toBeGreaterThan(whileFrozen);
+    });
+
+    it("does not engage on a build whose telemetry has no SessionTick", () => {
+      // `SDKController` only dedupes when the field is defined, so without it
+      // every poll is delivered and the diff keeps running normally — the
+      // guard would be suppressing a cue that has a working stop path.
+      hoisted.getLatestTelemetry.mockReturnValue({ OnPitRoad: true });
+      register();
+      hoisted.emit("pitSpeeding.started");
+
+      vi.advanceTimersByTime(PIT_SPEEDING_TICK_INTERVAL_MS * 3);
+
+      expect(hoisted.playOnChannel).toHaveBeenCalledTimes(4);
     });
   });
 
@@ -223,6 +306,28 @@ describe("pit-speeding cue engine", () => {
       vi.advanceTimersByTime(PIT_SPEEDING_TICK_INTERVAL_MS);
 
       expect(hoisted.playOnChannel).toHaveBeenCalledTimes(4);
+    });
+
+    it("survives a throw from the audio layer instead of killing the plugin", () => {
+      // Every tick after the leading edge runs from a bare setTimeout, outside
+      // the event bus's handler try/catch. An unhandled throw there is an
+      // uncaught exception in a Node timer, which ends the plugin process —
+      // `getAudio()` throws when the audio service is not initialised, and the
+      // on-demand playback device (#849) can be torn down mid-episode.
+      register();
+      hoisted.emit("pitSpeeding.started");
+
+      hoisted.playOnChannel.mockImplementation(() => {
+        throw new Error("audio device went away");
+      });
+
+      expect(() => vi.advanceTimersByTime(PIT_SPEEDING_TICK_INTERVAL_MS * 2)).not.toThrow();
+
+      hoisted.playOnChannel.mockImplementation(() => true);
+      vi.advanceTimersByTime(PIT_SPEEDING_TICK_INTERVAL_MS);
+
+      // And the loop is still alive, so the warning resumes.
+      expect(hoisted.playOnChannel.mock.calls.length).toBeGreaterThan(3);
     });
   });
 

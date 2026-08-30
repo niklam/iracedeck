@@ -67,6 +67,7 @@ export function diffPitSpeeding(
   state: TranslatorState,
   telemetry: TelemetryData,
   pitSpeedLimitMps: number,
+  replayOnlySession: boolean,
   emit: EmitFn,
 ): void {
   const isOnTrack = telemetry.IsOnTrack ?? false;
@@ -83,7 +84,14 @@ export function diffPitSpeeding(
   // or unparsed, and is reset to 0 on a track/session change before being
   // re-parsed — so this term is load-bearing, not defensive. Without it a
   // track whose YAML we cannot read would beep continuously.
-  const eligible = isOnTrack && onPitRoad && !inPitStall && pitSpeedLimitMps > 0;
+  // `replayOnlySession` is a term of eligibility rather than an early return,
+  // so a session that turns out to be replay-only ENDS an episode already in
+  // flight instead of stranding it (the diff would otherwise stop running with
+  // `pitSpeedingActive` still true). A paused or frame-scrubbed replay reads
+  // `IsReplayPlaying === false` while `SimMode === "replay"`, so those ticks
+  // reach this diff past the translator's main replay guard — the
+  // `diffPitsOpen` / `diffFuelLaps` precedent (#604, #655).
+  const eligible = !replayOnlySession && isOnTrack && onPitRoad && !inPitStall && pitSpeedLimitMps > 0;
 
   if (!eligible) {
     endPitSpeedingIfActive(state, emit);

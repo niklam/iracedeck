@@ -1229,38 +1229,6 @@ function handleDisconnect(self: TranslatorInstance): void {
 }
 
 /**
- * Wipe per-session state on a `SessionNum` change (issue #564). The Race
- * Engineer's "everything is in session context" model: practice, qualifying,
- * and race each get a fresh slate for callouts that should fire once per
- * session (session-start, fuel thresholds, incident counters, …).
- *
- * Publishes a `radar.changed → clear` teardown before wiping state — mirrors
- * `handleDisconnect`. Without it, a downstream radar audio engine latched on
- * the prior session's "left" / "right" beep would stay latched: the post-
- * wipe `state.radarState` is already `"clear"`, so the replay guard's
- * teardown check would see no edge and skip the emit, leaving the engine
- * mid-loop indefinitely. Any future active-state subsystem with a similar
- * latch contract plugs in here the same way.
- *
- * The lifecycle diff's baselines (`lifecycleInitialized`, `lastSessionNum`,
- * `lastEngineRunning`, `lastLap`) are preserved across the wipe. Without
- * that, the reset would put `lifecycleInitialized = false`, the next
- * `diffLifecycle` call this same tick would silently re-seed
- * `lastEngineRunning` against the still-running engine and synthesize a
- * spurious `engine.startup`. `session.changed` is published directly from
- * `handleTick` (it can't rely on `state` surviving the replay-mode wipe), but
- * we still preserve `lastSessionNum` here so handleTick can use it as a
- * dedup signal on non-replay session-change ticks.
- *
- * `firstOnTrackSeeded` stays `true`; only `firstOnTrackFired` clears. Re-
- * seeding would silently mark fired = true if the driver is already on track
- * at the transition and swallow the very fire we want.
- *
- * Track-level instance fields (`pitSpeedLimitMps` / `pitSpeedLimitKey`) self-
- * invalidate via `resolvePitSpeedLimit`'s `${TrackID}|${SessionNum}` cache key
- * and need no reset here.
- */
-/**
  * Wipe `TranslatorState` for a replay-mode transition (both edges — entering
  * and leaving replay), preserving the checkered-deferral cluster (issue
  * #771) and the standing-start countdown cluster (issue #829): a checkered
@@ -1351,6 +1319,36 @@ function wipeStateForReplay(self: TranslatorInstance): void {
   Object.assign(self.state, preservedAcrossReplay);
 }
 
+/**
+ * Wipe per-session state on a `SessionNum` change (issue #564). The Race
+ * Engineer's "everything is in session context" model: practice, qualifying,
+ * and race each get a fresh slate for callouts that should fire once per
+ * session (session-start, fuel thresholds, incident counters, …).
+ *
+ * Calls `publishActiveStateTeardown` before wiping state, so every latched
+ * subsystem gets its closing edge — without it the post-wipe state already
+ * reads inactive, the edge is gone and the emit is skipped, leaving a
+ * downstream engine mid-loop indefinitely. **A new teardown is added in that
+ * helper, once — not here**, which is the whole reason it exists.
+ *
+ * The lifecycle diff's baselines (`lifecycleInitialized`, `lastSessionNum`,
+ * `lastEngineRunning`, `lastLap`) are preserved across the wipe. Without
+ * that, the reset would put `lifecycleInitialized = false`, the next
+ * `diffLifecycle` call this same tick would silently re-seed
+ * `lastEngineRunning` against the still-running engine and synthesize a
+ * spurious `engine.startup`. `session.changed` is published directly from
+ * `handleTick` (it can't rely on `state` surviving the replay-mode wipe), but
+ * we still preserve `lastSessionNum` here so handleTick can use it as a
+ * dedup signal on non-replay session-change ticks.
+ *
+ * `firstOnTrackSeeded` stays `true`; only `firstOnTrackFired` clears. Re-
+ * seeding would silently mark fired = true if the driver is already on track
+ * at the transition and swallow the very fire we want.
+ *
+ * Track-level instance fields (`pitSpeedLimitMps` / `pitSpeedLimitKey`) self-
+ * invalidate via `resolvePitSpeedLimit`'s `${TrackID}|${SessionNum}` cache key
+ * and need no reset here.
+ */
 function resetPerSessionState(self: TranslatorInstance, telemetry: TelemetryData): void {
   publishActiveStateTeardown(self, telemetry);
 
@@ -1678,11 +1676,6 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     emit,
   );
   diffLimiter(self.state, telemetry, pitSpeedLimitMps, now, emit);
-  // Independent of `diffLimiter` despite the shared subject — it reads
-  // `PlayerCarInPitStall` from telemetry rather than `state.lastInPitStall`,
-  // so it carries none of the before-`diffPitLane` ordering constraint above
-  // and sits here only for readability (issue #912).
-  diffPitSpeeding(self.state, telemetry, pitSpeedLimitMps, emit);
   diffPitLane(self.state, telemetry, trackType, now, emit);
   // Checkered deferral (issue #771): the leader guard on the winner grace
   // consumes the canonical live order (`.claude/rules/race-positions.md`),
@@ -1935,6 +1928,21 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   }
 
   diffRadar(self.state, telemetry, emit);
+  // Sequenced deliberately AFTER `diffRadar` (issue #912). Both publish onto
+  // `AudioChannel.Radar`, and the pending array is flushed in push order, so
+  // pushing first would publish `pitSpeeding.started` before radar's
+  // `changed → clear` — the radar engine's `forceClear()` calls
+  // `stopChannel(AudioChannel.Radar)`, which would then cut this cue's opening
+  // tick. Entering pit road alongside another car is the ordinary case, not a
+  // corner one, and the opening tick is the whole point of the feature.
+  //
+  // `replayOnlySession` is passed in rather than guarding the call, so a
+  // replay-only session ends an episode in flight rather than stranding it —
+  // see the diff's own note. Feeding replay-timeline telemetry to a REPEATING
+  // cue is worse than to `diffPitsOpen` or `diffFuelLaps`: parking a replay on
+  // a frame where the car is over the pit limit would beep over the replay UI
+  // until it was scrubbed away.
+  diffPitSpeeding(self.state, telemetry, pitSpeedLimitMps, replayOnlySession, emit);
   diffTrackWetness(self.state, telemetry, emit);
 
   for (const p of pending) {

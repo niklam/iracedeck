@@ -14,9 +14,18 @@
  * walkie-talkie ticks framing every radio callout and `Ambient` carries the
  * pit bed — both are busiest during a pit stop, and `playOnChannel` replaces
  * whatever is playing, so either would have this cue and the engineer's own
- * framing cutting each other every second. `AudioChannel.Radar` is the only
- * channel whose sole other producer (the radar engine) force-clears itself on
- * pit road, i.e. is guaranteed silent exactly where this cue lives.
+ * framing cutting each other every second. `AudioChannel.Radar` is the one
+ * channel whose other producer suppresses ITSELF on pit road.
+ *
+ * That is not the same as the channel being free, and the difference matters:
+ * radar's `forceClear()` does not merely fall silent, it calls
+ * `stopChannel(AudioChannel.Radar)`. Entering pit road with a car alongside is
+ * the ordinary case, so the radar teardown lands on the same tick this cue
+ * starts — which is why `diffPitSpeeding` is sequenced AFTER `diffRadar` in
+ * the translator, so the clear is published first and this cue's opening tick
+ * is not cut. A `setRadarEnabled(false)` arriving mid-episode can still
+ * truncate one tick; the loop reschedules, so the cost is bounded at one
+ * shortened beep.
  *
  * Because `applyRaceEngineerAudio()` deliberately leaves the Alerts bus
  * unmuted when the Race Engineer master is off, the master check below is
@@ -46,6 +55,8 @@ export type PitSpeedingDeps = {
   logger?: ILogger;
 };
 
+type Snapshot = { OnPitRoad?: boolean; SessionTick?: number } | null;
+
 const DEFAULT_DEPS: PitSpeedingDeps = {
   getMasterEnabled: () => true,
   getCueEnabled: () => true,
@@ -54,62 +65,111 @@ const DEFAULT_DEPS: PitSpeedingDeps = {
 let deps: PitSpeedingDeps = DEFAULT_DEPS;
 let tickTimer: ReturnType<typeof setTimeout> | null = null;
 let registeredBus: IEventBus | null = null;
+/** True between `pitSpeeding.started` and `pitSpeeding.ended`, gates aside. */
+let episodeActive = false;
+/** Last `SessionTick` this loop observed — see `simFrozen`. */
+let lastSessionTick: number | null = null;
 
 function stopTickLoop(): void {
   if (tickTimer !== null) {
     clearTimeout(tickTimer);
     tickTimer = null;
   }
+
+  lastSessionTick = null;
 }
 
 /**
- * Third and last layer of the always-ends invariant.
+ * Second stop condition, and the reason this engine reads telemetry at all:
+ * the diff ends the episode on every exit it can observe, and the translator's
+ * teardowns cover the exits that stop ticks reaching the diff — but both of
+ * those need the translator to still be running.
  *
- * The diff ends the episode on every exit it can observe, and the translator's
- * disconnect / session-change / replay teardowns cover the exits that stop
- * ticks reaching the diff at all. This is the backstop for both failing: a
- * loop with no `ended` coming dies within one interval.
- *
- * Checked as a POSITIVE `false`, not as "not true". Missing or unknown
+ * Checked as a POSITIVE `false`, never as "not true". Missing or unknown
  * telemetry keeps playing, following the precedent that unknown data must not
  * silence a warning — and it is also what keeps the cue auditionable from the
  * scenario harness, where no real telemetry sits behind the shortcut buttons.
  */
-function leftPitRoad(): boolean {
-  const telemetry = getLatestTelemetry() as { OnPitRoad?: boolean } | null;
+function leftPitRoad(snapshot: Snapshot): boolean {
+  return snapshot?.OnPitRoad === false;
+}
 
-  return telemetry?.OnPitRoad === false;
+/**
+ * The hole that a positive `OnPitRoad === false` cannot close (found in the
+ * #912 review). `SDKController` dedupes on `SessionTick`, so a paused or hung
+ * sim notifies no subscribers: the diff stops running and can never publish
+ * `ended`, no disconnect fires, and `getLatestTelemetry()` keeps returning the
+ * frozen snapshot — which still says the driver is speeding on pit road. Every
+ * stop path depends on something advancing, so a frozen sim defeats all of
+ * them at once and the tick would beep over a paused game forever.
+ *
+ * iRacing advances `SessionTick` at ~60 Hz while this loop runs at 1 Hz, so a
+ * single unchanged reading between two cue ticks is already conclusive.
+ *
+ * The response is to fall SILENT rather than to stop: unpausing must resume
+ * the warning, and the episode is still live — the driver is still speeding.
+ * Stopping outright would leave the rest of the episode unwarned, because the
+ * diff holds `pitSpeedingActive` and will not re-emit `started`.
+ *
+ * When the field is absent the guard disables itself, which is correct rather
+ * than merely safe: `SDKController` only dedupes when `SessionTick` is
+ * defined, so a build without it delivers every poll and the diff keeps
+ * running normally.
+ */
+function simFrozen(snapshot: Snapshot): boolean {
+  const tick = snapshot?.SessionTick;
+
+  if (typeof tick !== "number") {
+    lastSessionTick = null;
+
+    return false;
+  }
+
+  if (tick === lastSessionTick) return true;
+
+  lastSessionTick = tick;
+
+  return false;
 }
 
 function startTickLoop(): void {
   stopTickLoop();
 
   const fire = (): void => {
-    // Gates are re-read on every tick rather than captured at registration,
-    // so toggling either off mid-episode silences the cue within one interval
-    // without any push path from the settings listener. That is the same
-    // latency the spotter's reminder loop has, and buying it down would mean
-    // another cross-package coupling that can disagree with this check.
-    if (!deps.getMasterEnabled() || !deps.getCueEnabled()) {
+    const snapshot = getLatestTelemetry() as Snapshot;
+
+    if (leftPitRoad(snapshot)) {
+      deps.logger?.info("Pit-speeding cue stopped");
+      deps.logger?.debug("Pit-speeding cue stopped: telemetry reports the car is no longer on pit road");
       stopTickLoop();
 
       return;
     }
 
-    if (leftPitRoad()) {
-      deps.logger?.debug("Pit-speeding cue stopped: no longer on pit road");
-      stopTickLoop();
+    // Gates are re-read on every tick rather than captured at registration, so
+    // a mid-episode toggle takes effect within one interval with no push path
+    // from the settings listener. The loop is KEPT ALIVE while gated rather
+    // than stopped — the spotter's reminder-loop shape — so re-enabling the
+    // engineer part-way through an episode resumes the warning instead of
+    // leaving the rest of it silent.
+    const gated = !deps.getMasterEnabled() || !deps.getCueEnabled();
 
-      return;
+    if (!gated && !simFrozen(snapshot)) {
+      // A throw here would be an unhandled exception in a bare timer callback,
+      // which ends the plugin process — `getAudio()` throws when the audio
+      // service is not initialised, and the on-demand playback device (#849)
+      // can be torn down mid-episode. Losing a tick is acceptable; losing the
+      // plugin is not. The return value is deliberately ignored: unlike radar,
+      // which is re-driven by the next `radar.changed` within seconds, this
+      // cue has no retry path other than the `ended` that closes the episode,
+      // so dropping the timer on a transient failure would lose the whole
+      // warning.
+      try {
+        getAudio().playOnChannel(AudioChannel.Radar, PIT_SPEEDING_CLIP);
+      } catch (err) {
+        deps.logger?.debug(`Pit-speeding cue playback failed: ${String(err)}`);
+      }
     }
-
-    // Unlike radar, keep the loop alive when playback fails. Radar can afford
-    // to drop the timer because the next `radar.changed` re-drives it within
-    // seconds; this cue has no such retry — its only other input is the
-    // `ended` that closes the episode — so dropping the timer here would lose
-    // the whole warning if the audio device happened to be starting up.
-    // Bounded by `ended`, so the worst case is a 1 Hz no-op for one episode.
-    getAudio().playOnChannel(AudioChannel.Radar, PIT_SPEEDING_CLIP);
 
     tickTimer = setTimeout(fire, PIT_SPEEDING_TICK_INTERVAL_MS);
   };
@@ -120,8 +180,8 @@ function startTickLoop(): void {
 }
 
 function handleStarted(): void {
-  if (!deps.getMasterEnabled() || !deps.getCueEnabled()) return;
-
+  episodeActive = true;
+  deps.logger?.info("Pit-speeding cue started");
   startTickLoop();
 }
 
@@ -132,6 +192,9 @@ function handleStarted(): void {
  * engine shares.
  */
 function handleEnded(): void {
+  if (episodeActive) deps.logger?.info("Pit-speeding cue stopped");
+
+  episodeActive = false;
   stopTickLoop();
 }
 
@@ -159,4 +222,5 @@ export function _resetPitSpeedingEngine(): void {
   stopTickLoop();
   deps = DEFAULT_DEPS;
   registeredBus = null;
+  episodeActive = false;
 }

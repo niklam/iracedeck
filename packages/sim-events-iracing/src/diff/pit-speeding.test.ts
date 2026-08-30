@@ -49,7 +49,7 @@ describe("diffPitSpeeding", () => {
       const state = createInitialState();
       const { events, emit } = collect();
 
-      diffPitSpeeding(state, tick({ Speed: LIMIT + 5 }), LIMIT, emit);
+      diffPitSpeeding(state, tick({ Speed: LIMIT + 5 }), LIMIT, false, emit);
 
       expect(names(events)).toEqual(["pitSpeeding.started"]);
       expect(state.pitSpeedingActive).toBe(true);
@@ -59,7 +59,7 @@ describe("diffPitSpeeding", () => {
       const state = createInitialState();
       const { events, emit } = collect();
 
-      diffPitSpeeding(state, tick({ Speed: LIMIT - 5 }), LIMIT, emit);
+      diffPitSpeeding(state, tick({ Speed: LIMIT - 5 }), LIMIT, false, emit);
 
       expect(events).toEqual([]);
       expect(state.pitSpeedingActive).toBe(false);
@@ -69,7 +69,7 @@ describe("diffPitSpeeding", () => {
       const state = createInitialState();
       const { events, emit } = collect();
 
-      diffPitSpeeding(state, tick({ Speed: LIMIT }), LIMIT, emit);
+      diffPitSpeeding(state, tick({ Speed: LIMIT }), LIMIT, false, emit);
 
       expect(events).toEqual([]);
     });
@@ -79,7 +79,7 @@ describe("diffPitSpeeding", () => {
       const { events, emit } = collect();
 
       for (let i = 0; i < 5; i++) {
-        diffPitSpeeding(state, tick({ Speed: LIMIT + 5 }), LIMIT, emit);
+        diffPitSpeeding(state, tick({ Speed: LIMIT + 5 }), LIMIT, false, emit);
       }
 
       expect(names(events)).toEqual(["pitSpeeding.started"]);
@@ -91,8 +91,8 @@ describe("diffPitSpeeding", () => {
       const state = createInitialState();
       const { events, emit } = collect();
 
-      diffPitSpeeding(state, tick({ Speed: LIMIT + 5 }), LIMIT, emit);
-      diffPitSpeeding(state, tick({ Speed: LIMIT - PIT_SPEEDING_HYSTERESIS_MPS }), LIMIT, emit);
+      diffPitSpeeding(state, tick({ Speed: LIMIT + 5 }), LIMIT, false, emit);
+      diffPitSpeeding(state, tick({ Speed: LIMIT - PIT_SPEEDING_HYSTERESIS_MPS }), LIMIT, false, emit);
 
       expect(names(events)).toEqual(["pitSpeeding.started", "pitSpeeding.ended"]);
       expect(state.pitSpeedingActive).toBe(false);
@@ -102,10 +102,10 @@ describe("diffPitSpeeding", () => {
       const state = createInitialState();
       const { events, emit } = collect();
 
-      diffPitSpeeding(state, tick({ Speed: LIMIT + 5 }), LIMIT, emit);
+      diffPitSpeeding(state, tick({ Speed: LIMIT + 5 }), LIMIT, false, emit);
       // Exactly on the limit, then just inside the band — neither ends it.
-      diffPitSpeeding(state, tick({ Speed: LIMIT }), LIMIT, emit);
-      diffPitSpeeding(state, tick({ Speed: LIMIT - PIT_SPEEDING_HYSTERESIS_MPS / 2 }), LIMIT, emit);
+      diffPitSpeeding(state, tick({ Speed: LIMIT }), LIMIT, false, emit);
+      diffPitSpeeding(state, tick({ Speed: LIMIT - PIT_SPEEDING_HYSTERESIS_MPS / 2 }), LIMIT, false, emit);
 
       expect(names(events)).toEqual(["pitSpeeding.started"]);
       expect(state.pitSpeedingActive).toBe(true);
@@ -115,9 +115,9 @@ describe("diffPitSpeeding", () => {
       const state = createInitialState();
       const { events, emit } = collect();
 
-      diffPitSpeeding(state, tick({ Speed: LIMIT + 5 }), LIMIT, emit);
-      diffPitSpeeding(state, tick({ Speed: 0 }), LIMIT, emit);
-      diffPitSpeeding(state, tick({ Speed: LIMIT + 5 }), LIMIT, emit);
+      diffPitSpeeding(state, tick({ Speed: LIMIT + 5 }), LIMIT, false, emit);
+      diffPitSpeeding(state, tick({ Speed: 0 }), LIMIT, false, emit);
+      diffPitSpeeding(state, tick({ Speed: LIMIT + 5 }), LIMIT, false, emit);
 
       expect(names(events)).toEqual(["pitSpeeding.started", "pitSpeeding.ended", "pitSpeeding.started"]);
     });
@@ -132,9 +132,9 @@ describe("diffPitSpeeding", () => {
       const state = createInitialState();
       const { events, emit } = collect();
 
-      diffPitSpeeding(state, tick({ Speed: LIMIT + 5 }), LIMIT, emit);
+      diffPitSpeeding(state, tick({ Speed: LIMIT + 5 }), LIMIT, false, emit);
       // Still over the limit — only the other condition changed.
-      diffPitSpeeding(state, tick({ Speed: LIMIT + 5, ...exit }), LIMIT, emit);
+      diffPitSpeeding(state, tick({ Speed: LIMIT + 5, ...exit }), LIMIT, false, emit);
 
       expect(names(events)).toEqual(["pitSpeeding.started", "pitSpeeding.ended"]);
       expect(state.pitSpeedingActive).toBe(false);
@@ -144,10 +144,10 @@ describe("diffPitSpeeding", () => {
       const state = createInitialState();
       const { events, emit } = collect();
 
-      diffPitSpeeding(state, tick({ Speed: LIMIT + 5 }), LIMIT, emit);
+      diffPitSpeeding(state, tick({ Speed: LIMIT + 5 }), LIMIT, false, emit);
       // `resolvePitSpeedLimit` returns 0 on a track/session change before it
       // re-parses the new YAML.
-      diffPitSpeeding(state, tick({ Speed: LIMIT + 5 }), 0, emit);
+      diffPitSpeeding(state, tick({ Speed: LIMIT + 5 }), 0, false, emit);
 
       expect(names(events)).toEqual(["pitSpeeding.started", "pitSpeeding.ended"]);
     });
@@ -156,8 +156,8 @@ describe("diffPitSpeeding", () => {
       const state = createInitialState();
       const { events, emit } = collect();
 
-      diffPitSpeeding(state, tick({ Speed: LIMIT + 5 }), LIMIT, emit);
-      diffPitSpeeding(state, tick({ Speed: undefined }), LIMIT, emit);
+      diffPitSpeeding(state, tick({ Speed: LIMIT + 5 }), LIMIT, false, emit);
+      diffPitSpeeding(state, tick({ Speed: undefined }), LIMIT, false, emit);
 
       // Deliberately inverts the usual "unknown telemetry keeps the callout
       // alive" rule: the claim is that the driver IS speeding, and that cannot
@@ -169,9 +169,9 @@ describe("diffPitSpeeding", () => {
       const state = createInitialState();
       const { events, emit } = collect();
 
-      diffPitSpeeding(state, tick({ Speed: LIMIT + 5 }), LIMIT, emit);
-      diffPitSpeeding(state, tick({ Speed: 0, OnPitRoad: false, IsOnTrack: false }), LIMIT, emit);
-      diffPitSpeeding(state, tick({ Speed: 0, OnPitRoad: false, IsOnTrack: false }), LIMIT, emit);
+      diffPitSpeeding(state, tick({ Speed: LIMIT + 5 }), LIMIT, false, emit);
+      diffPitSpeeding(state, tick({ Speed: 0, OnPitRoad: false, IsOnTrack: false }), LIMIT, false, emit);
+      diffPitSpeeding(state, tick({ Speed: 0, OnPitRoad: false, IsOnTrack: false }), LIMIT, false, emit);
 
       expect(names(events)).toEqual(["pitSpeeding.started", "pitSpeeding.ended"]);
     });
@@ -180,10 +180,40 @@ describe("diffPitSpeeding", () => {
       const state = createInitialState();
       const { events, emit } = collect();
 
-      diffPitSpeeding(state, tick({ OnPitRoad: false, Speed: 60 }), LIMIT, emit);
-      diffPitSpeeding(state, tick({ IsOnTrack: false }), LIMIT, emit);
+      diffPitSpeeding(state, tick({ OnPitRoad: false, Speed: 60 }), LIMIT, false, emit);
+      diffPitSpeeding(state, tick({ IsOnTrack: false }), LIMIT, false, emit);
 
       expect(events).toEqual([]);
+    });
+  });
+
+  describe("replay-only sessions", () => {
+    it("never starts a cue while watching a standalone replay", () => {
+      const state = createInitialState();
+      const { events, emit } = collect();
+
+      // A paused or frame-scrubbed replay reads `IsReplayPlaying === false`
+      // while `SimMode === "replay"`, so these ticks reach the diff past the
+      // translator's main replay guard. Parking on a frame where the car is
+      // over the limit must not beep over the replay UI.
+      diffPitSpeeding(state, tick({ Speed: LIMIT + 5 }), LIMIT, true, emit);
+
+      expect(events).toEqual([]);
+      expect(state.pitSpeedingActive).toBe(false);
+    });
+
+    it("ends an episode in flight rather than stranding it when the session turns out replay-only", () => {
+      const state = createInitialState();
+      const { events, emit } = collect();
+
+      diffPitSpeeding(state, tick({ Speed: LIMIT + 5 }), LIMIT, false, emit);
+      diffPitSpeeding(state, tick({ Speed: LIMIT + 5 }), LIMIT, true, emit);
+
+      // The gate is a term of eligibility, not an early return, precisely so
+      // the closing edge still fires — skipping the call would leave
+      // `pitSpeedingActive` true with nothing left to clear it.
+      expect(names(events)).toEqual(["pitSpeeding.started", "pitSpeeding.ended"]);
+      expect(state.pitSpeedingActive).toBe(false);
     });
   });
 
@@ -194,7 +224,7 @@ describe("diffPitSpeeding", () => {
 
       // A track whose `WeekendInfo.TrackPitSpeedLimit` we cannot read would
       // otherwise beep continuously, since any speed exceeds 0.
-      diffPitSpeeding(state, tick({ Speed: 200 }), 0, emit);
+      diffPitSpeeding(state, tick({ Speed: 200 }), 0, false, emit);
 
       expect(events).toEqual([]);
       expect(state.pitSpeedingActive).toBe(false);
