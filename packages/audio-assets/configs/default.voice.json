@@ -550,7 +550,8 @@
     "pit-limiter": [
       {
         "name": "entry-01",
-        "text": "Pit entry. <break time=\"0.3s\" /> Mind the limit."
+        "text": "Pit entry. <break time=\"0.3s\" /> Mind the limit.",
+        "seed": 3
       },
       {
         "name": "entry-02",
@@ -563,7 +564,8 @@
       },
       {
         "name": "missing-01",
-        "text": "The pit limiter is off. <break time=\"0.3s\" /> Please, turn it on."
+        "text": "The pit limiter is off. <break time=\"0.3s\" /> Please, turn it on.",
+        "seed": 4
       },
       {
         "name": "missing-02",
@@ -581,7 +583,7 @@
       {
         "name": "speeding-02",
         "text": "Too fast. <break time=\"0.3s\" /> Slow it down.",
-        "seed": 1
+        "seed": 5
       },
       {
         "name": "speeding-03",
@@ -602,7 +604,7 @@
       },
       {
         "name": "no-limiter-speeding-02",
-        "text": "Over the pit limit. <break time=\"0.3s\" /> Lift off.",
+        "text": "Over the pit limit. <break time=\"0.3s\" /> Lift now.",
         "seed": 1
       },
       {
@@ -616,7 +618,8 @@
       },
       {
         "name": "on-track-02",
-        "text": "Limiter's still engaged. <break time=\"0.3s\" /> Switch it off."
+        "text": "Limiter's still engaged. <break time=\"0.3s\" /> Switch it off.",
+        "seed": 2
       },
       {
         "name": "on-track-03",
@@ -634,7 +637,7 @@
       {
         "name": "dropped-03",
         "text": "Limiter's dropped out. <break time=\"0.3s\" /> Get it back on.",
-        "seed": 1
+        "seed": 3
       }
     ],
     "pit-actions": [
