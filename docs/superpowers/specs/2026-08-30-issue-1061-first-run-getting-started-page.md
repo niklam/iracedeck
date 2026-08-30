@@ -89,6 +89,22 @@ Two things this introduces that did not exist:
 
 On a rejected open the flag is deliberately **not** persisted, diverging from `runVersionCheck`'s persist-first rule. The two flags mean different things: the changelog persists first so a flaky open never re-interrupts someone, whereas this flag means "the user was shown this", and a rejected open means they were not. Nothing loops — the retry is one attempt per start and produces no window by definition. The launcher's standing caveat is unchanged and accepted: `openUrl` resolving means *sent*, not *displayed*, so a machine with no usable browser looks like a success and never shows the page.
 
+## The What's New default becomes `never`, reversing #901
+
+`DEFAULT_CHANGELOG_NOTIFICATION_POLICY` changes from `features` to `never`, and the page carries a one-click *"I want to read about new features"* opt-in that sets `always`, alongside the full four-value picker.
+
+**This reverses a default that was set deliberately, so the reversal needs its argument on the record.** #901 changed it to `features` on Ulanzi's RCA recommendation, in a world where the default was the *only* lever: nobody was ever asked, so the question was purely "which setting annoys the fewest people who never chose". #901 answered "not `always`" and picked `features` as the least intrusive workable guess. (Note the RCA's own heading said `features` while its code said `monthly` — the recommendation was directional, not precise.)
+
+**The Getting Started page changes that calculus.** Once there is an explicit ask at first run, with one-click opt-in, the default's job stops being "guess what most people want" and becomes "do nothing surprising until asked" — the same principle that keeps the Race Engineer off by default (#378). A quiet default now costs discovery nothing, because discovery has its own surface.
+
+Three properties make `never` safe rather than merely quiet, and they are why this is not just a smaller number on the same axis:
+
+- **It is not lossy.** `never` still persists `_lastSeenVersion` via `track-silently`, so a user who later picks any other policy does not get an old release replayed at them.
+- **It hides nothing.** The release notes are compiled into the build and always present on the What's New tab; `never` removes the *interruption*, not the content. The #1016 update banner is gated on the separate `updateCheck` setting, so a newer published release is still surfaced inside the window.
+- **It cannot bite on the start that matters.** The first-run open already suppresses the changelog and persists `_lastSeenVersion` silently, so the earliest moment the policy has any effect is the user's first *upgrade* — by which time they have seen the page and either chosen or declined.
+
+**It reaches new installs only, and that is intended.** Every write persists the whole parsed cache and one always happens at startup, so each schema default is written into the file on first use and is thereafter indistinguishable from a deliberate choice. Existing users keep `features`. No migration: there is no way to tell a persisted default from a chosen value, which is precisely the rule `global-settings.md` states — reaching existing users would need a one-shot marker-guarded migration, and overriding a preference someone may actually hold is not worth that.
+
 ## Unestablished
 
 These are open and stay open; a spec that quietly firms them up is worse than one that names them.
