@@ -14,7 +14,7 @@
  * walkie-talkie ticks framing every radio callout and `Ambient` carries the
  * pit bed — both are busiest during a pit stop, and `playOnChannel` replaces
  * whatever is playing, so either would have this cue and the engineer's own
- * framing cutting each other every second. `AudioChannel.Radar` is the one
+ * framing cutting each other several times a second. `AudioChannel.Radar` is the one
  * channel whose other producer suppresses ITSELF on pit road.
  *
  * That is not the same as the channel being free, and the difference matters:
@@ -38,29 +38,39 @@ import type { ILogger } from "@iracedeck/logger";
 import { getLatestTelemetry } from "@iracedeck/sim-events-iracing";
 
 /**
- * Placeholder clip — the non-directional radar tick. A purpose-made warning
- * tone replaces this constant without touching the mechanism (issue #912
- * follow-up).
+ * The warning tone, chosen by ear from six candidates during #912's hardware
+ * testing. Mono, 48 kHz, 160 ms — short enough that at the cadence below it
+ * cannot overlap or truncate itself, leaving ~140 ms of silence between ticks.
+ *
+ * Kept as `.wav` rather than converted to `.mp3` like its `sfx/` neighbours.
+ * It is 15 KB, so the size argument for mp3 does not arise, and an mp3
+ * decoder's priming delay is a real cost on a 160 ms tick fired three times a
+ * second where the attack IS the signal. The build copies everything outside
+ * `voice/` verbatim and miniaudio decodes wav natively, so nothing else cares.
+ *
+ * It lives at the `sfx/` root rather than in `sfx/radar/` because it is not a
+ * radar sound — the cue only ever borrowed one while it had no tone of its own.
  */
-export const PIT_SPEEDING_CLIP = "sfx/radar/IRD-radar-both.mp3";
+export const PIT_SPEEDING_CLIP = "sfx/IRD-pit-speed-warning.wav";
 
 /**
  * Repeat cadence while the condition holds.
  *
- * 500 ms rather than the 1000 ms this shipped for review: on hardware a
- * one-second gap "feels lazy" for a warning you are meant to react to
- * immediately, and twice a second is roughly what a road car's over-speed
- * chime does — which is the reference the issue itself reaches for.
+ * 300 ms, settled by ear on hardware alongside the tone above. It shipped for
+ * review at 1000 ms, which "feels lazy" for a warning you are meant to react
+ * to immediately; 500 ms was the first correction and 300 ms the one that
+ * stuck. The tone is 160 ms, so this still leaves ~140 ms of silence between
+ * ticks and the cue reads as a beeper rather than a buzz.
  *
  * **Before treating this as a matter of taste, know what else it sets.** The
  * interval doubles as the worst-case latency of every live check in the loop
  * below: a gate switched off, a driver leaving pit road, a frozen sim.
- * Halving the cadence halved all three, and raising it would slow all three by
+ * Cutting the cadence sharpened all three, and raising it would slow all three by
  * the same factor — so a request to make the beeping less frequent is a safety
  * change, not a comfort one, and wants the checks decoupled from the cadence
  * rather than a bigger number here.
  */
-export const PIT_SPEEDING_TICK_INTERVAL_MS = 500;
+export const PIT_SPEEDING_TICK_INTERVAL_MS = 300;
 
 export type PitSpeedingDeps = {
   /** `pitCrewRaceEngineerEnabled` — read live, see the file header. */
@@ -118,8 +128,8 @@ function leftPitRoad(snapshot: Snapshot): boolean {
  * stop path depends on something advancing, so a frozen sim defeats all of
  * them at once and the tick would beep over a paused game forever.
  *
- * iRacing advances `SessionTick` at ~60 Hz while this loop runs at 2 Hz, so a
- * single unchanged reading between two cue ticks is already conclusive.
+ * iRacing advances `SessionTick` at ~60 Hz while this loop runs at ~3 Hz, so
+ * a single unchanged reading between two cue ticks is already conclusive.
  *
  * The response is to fall SILENT rather than to stop: unpausing must resume
  * the warning, and the episode is still live — the driver is still speeding.
