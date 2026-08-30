@@ -30,16 +30,18 @@ The four existing scenarios, keeping their `hasPitLimiter` gate exactly as #639 
 
 | Scenario | Trigger | Clips |
 |---|---|---|
-| `limiter-on-track` | `carControl.limiterToggled` | 2 to generate |
-| `limiter-missing` | `limiter.missing` | `pit-limiter-001` / `-002` |
-| `limiter-dropped` | `limiter.dropped` | 2 to generate |
-| `limiter-speeding` | `limiter.speeding` | `pit-limiter-warn-001` only — see the move below |
+| `limiter-on-track` | `carControl.limiterToggled` | `on-track-01` / `-02` — to generate |
+| `limiter-missing` | `limiter.missing` | `missing-01` / `-02` |
+| `limiter-dropped` | `limiter.dropped` | `dropped-01` / `-02` — to generate |
+| `limiter-speeding` | `limiter.speeding` | `speeding-01` only — see the rename below |
+
+Filenames are post-rename; the group shipped them three-digit, which no pool could match. See *The clips had to be renamed* below.
 
 ## Family B — cars without a limiter
 
 Two scenarios, in a new module `catalog/pit-crew/pit-speed.ts`. It is deliberately **not** in `pit-limiter.ts`: putting a limiter-free scenario inside the limiter module would erase the distinction on first contact, and the next person adding a scenario would have no signal about which side of the gate they are on.
 
-**B speeding**, on `limiter.speeding`. Reuses `pit-limiter-warn-002` — "Over the limit. `<break time="0.3s" />` Lift." — which is the non-limiter remedy and has been sitting in the limiter family since it was recorded. The move fixes that rather than duplicating it.
+**B speeding**, on `limiter.speeding`. Reuses the clip that shipped as `pit-limiter-warn-002` — "Over the limit. `<break time="0.3s" />` Lift." — which is the non-limiter remedy and has been sitting in the limiter family since it was recorded. The move fixes that rather than duplicating it.
 
 **B pit entry**, on pit-road entry, reusing `pit-entry-001` / `-002` and folding the speed limit into the same callout: *"Pit entry. Mind the limit. The pit speed limit is 60 kilometres per hour."*
 
@@ -79,6 +81,36 @@ The generalisation, which is the reusable part: **a negation is not the mirror i
 
 The residual it does not cover: telemetry present but `dc*` fields not yet populated during early connection would read as "no limiter". Accepted — B's triggers only fire on pit road, by which point the snapshot is fully populated.
 
+### The clips had to be renamed before any pool could find them
+
+Discovered while implementing, and it would not have been found by any test. The
+pool matcher is `^voice/<voice>/<group>/<base>(?:-\d{2})?\.mp3$` — **exactly two
+digits**. Across the 1,532 voice clips, 662 use that convention and 859 carry no
+numeric suffix; the seven `pit-limiter` clips were the only ones in the whole
+repository using three (`pit-limiter-001`). So every family-A pool built EMPTY,
+and since an empty pool skips its step at fire time, the callouts would have
+fired and played the radio-open and radio-close ticks with silence between them:
+registered, enabled, unit-tested and mute.
+
+It is worth recording HOW it would have surfaced, because the answer is badly.
+Unit tests build pools against a mocked manifest and pass. Nothing errors. It
+reaches the maintainer as "the limiter callouts do nothing", and the first three
+suspects are the gate, the registration and the opt-in — not a two-versus-three
+digit filename. The rule to keep is the regex, not the convention: a future
+reader seeing `-001` in git history may "restore" it.
+
+The rename also settles what "moving `pit-limiter-warn-002` to family B" means
+mechanically. A pool is every clip sharing a base, so two scenarios cannot split
+one base — B taking that clip is a rename onto its own base, not a variant
+reassignment. **Family B's speeding clip is therefore a renamed family-A clip,
+not a new one**, which is why the new-clip count is four rather than six.
+
+Both families keep the `pit-limiter` clip GROUP: the pool name carries the
+audience, the directory does not, following the clip-group reuse
+`opponent-flag-car-in` already does over `opponent-pit`. `generate.manifest.json`
+is keyed by clip path with a content hash, so it is renamed alongside — skipping
+it would make the generator treat each clip as ungenerated and re-bill it.
+
 ## The pairing with #912
 
 #912's tick is the layer common to every car: instant, direct playback on `AudioChannel.Radar` outside the interpreter, no margin, not limiter-gated. Each family adds the spoken half for its own audience, so the arrangement is symmetric — which is the point of the split.
@@ -100,6 +132,8 @@ One opt-in per scenario, following `callout<Polarity><Family><Subject>`:
 
 B's keys name the audience rather than the condition, because that is what a user is choosing — "the pit-speed callouts for cars without a limiter".
 
+Six settings keys, but **two** `registerPitCrew` parameters — `getPitLimiterCalloutEnabled(id)` and `getPitSpeedCalloutEnabled(id)` — matching the eight existing `(id) => boolean` families rather than adding six flat getters. Six subjects and two getters are the same design; six parameters would have been the only family in that signature doing it differently, and each one is another position an insertion can silently misalign. Both are appended immediately before the two master gates, which stay last: that is the one placement that cannot shift an existing argument, since anything inserted at or below an existing argument's position moves every later one silently and compilably. Adding them shifted three test call sites that pass 49 positional arguments — one failed 42 tests loudly, two stayed green on trailing `undefined`, which is the failure mode the placement rule exists to prevent.
+
 Each uses the union-plus-transform chain and `.default(true)` — new Race Engineer functionality ships on — and, like all 73 existing `calloutEnabled*` fields, carries **no `.catch`**. That chain has no throw path, which is the exemption `global-settings.md` names; the `.catch` requirement still binds any plain-value field and this change adds none. Both families are additionally gated by the existing `pitCrewRaceEngineerEnabled` master, with no family master of their own, per the #651 precedent that a callout family is not a mode.
 
 ## Clips
@@ -109,6 +143,22 @@ Each uses the union-plus-transform chain and `.default(true)` — new Race Engin
 **Family B needs no new clips.** `pit-limiter-warn-002` moves to it, and the pit-entry clips and the limit-number clips already exist.
 
 Generation follows the audio-assets workflow: `.env.local` copied from the master checkout, a scoped dry-run showing the proposed wordings, approval, then clips and both manifests committed together. This is the only step in this issue that costs real money.
+
+## The harness could not express "this car has no limiter"
+
+`hasPitLimiter` reads whether `dcPitSpeedLimiterToggle` EXISTS, and the mock
+telemetry omitted it entirely — so in the harness family A could never fire and
+family B always would. The shortcuts required by this issue would have been
+actively misleading rather than merely limited.
+
+The deeper half is that it was not fixable by setting a value: `/api/telemetry`
+spread-merges its body and JSON has no `undefined`, so no request could make a
+field ABSENT. Fixed generally rather than for this issue — the field ships
+present (most of the roster has a limiter) and an explicit `null` in a patch now
+DELETES a key. That makes every presence-based capability auditionable, since
+`hasVisor` and `hasWipers` read the same way, and no `TelemetryData` field takes
+null legitimately so the sentinel is unambiguous. Recorded in the harness
+`CLAUDE.md`, or the next author finds it by accident.
 
 ## Testing
 
@@ -141,6 +191,13 @@ Manual testing is where the pairing is actually judged, because an escalation is
 **Family A's speeding pool drops to one clip.** Moving `pit-limiter-warn-002` to family B leaves A's speeding line with only `pit-limiter-warn-001` — "You are speeding. Slow down." — so the engineer says exactly the same sentence every time it fires. Correct for the split and worth one or two limiter-framed replacements later ("Limiter's off, you're speeding") if the repetition grates. Not in this batch; flagged so the reduction is a known consequence rather than a discovery.
 
 The muddled-wording flag raised earlier — A's clips carrying the non-limiter remedy — is **resolved** by the move, not deferred.
+
+**A second voice would ship these families silent.** There is exactly one voice
+today (`configs/default.voice.json`), but the package is built for several, and
+pools resolve per voice — a voice without these clips gets an empty pool and the
+callout skips. So any new voice must backfill the `pit-limiter` group, and that
+is true of every callout family shipped before it rather than of this one
+specially. Not a blocker here; worth knowing before a second voice is added.
 
 ## Sequencing with #912
 
