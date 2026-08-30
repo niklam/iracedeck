@@ -1,10 +1,11 @@
 /**
  * Pit-limiter scenario `where:` predicates (issue #639).
  *
- * These four scenarios are not yet registered in `registerPitCrew`, so the
- * predicates are unit-tested directly here. The key behaviour: on a car with
- * no pit limiter (`dcPitSpeedLimiterToggle` absent ⇒ `hasPitLimiter` false),
- * none of them fire.
+ * The key behaviour: on a car with no pit limiter (`dcPitSpeedLimiterToggle`
+ * absent ⇒ `hasPitLimiter` false), none of them fire. Since #1051 that is not
+ * merely suppression — the no-limiter car gets its own family instead, so the
+ * complementary half of this contract lives in `pit-speed.test.ts`, which
+ * asserts the two partition the field rather than leaving a gap.
  */
 import type { SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
