@@ -330,6 +330,70 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   // ── Pit Lane ──
   { id: "pit-approaching", category: "Pit Lane", label: "Approaching", event: "pitLane.approaching", data: {} },
   { id: "pit-entered", category: "Pit Lane", label: "Entered Pit Lane", event: "pitLane.entered", data: {} },
+
+  // ── Pit Limiter (issue #1051) — cars that HAVE a limiter ──
+  // All four gate on `hasPitLimiter`, which reads whether
+  // `dcPitSpeedLimiterToggle` EXISTS. The harness ships it present, so these
+  // fire out of the box; send `{"dcPitSpeedLimiterToggle": null}` to
+  // /api/telemetry to delete it and they go silent (which is the correct
+  // behaviour, and how you switch to the no-limiter family below).
+  {
+    id: "limiter-missing",
+    category: "Pit Limiter",
+    label: "Limiter off on pit road",
+    description: 'Entered pit road without the limiter — engineer says "The pit limiter is off."',
+    event: "limiter.missing",
+    data: {},
+  },
+  {
+    id: "limiter-dropped",
+    category: "Pit Limiter",
+    label: "Limiter dropped",
+    description: "The limiter came off while still between the cones.",
+    event: "limiter.dropped",
+    data: {},
+  },
+  {
+    id: "limiter-speeding",
+    category: "Pit Limiter",
+    label: "Speeding (limiter car)",
+    description: "Over the pit limit on a car that has a limiter. Pairs with the always-on tick from #912.",
+    event: "limiter.speeding",
+    data: {},
+  },
+  {
+    id: "limiter-on-track",
+    category: "Pit Limiter",
+    label: "Limiter on out on track",
+    description: "Limiter engaged away from pit road. Suppressed when OnPitRoad is true, which is the expected case.",
+    event: "carControl.limiterToggled",
+    data: { on: true },
+  },
+
+  // ── Pit Speed (issue #1051) — cars with NO limiter ──
+  // The mirror family. Its gate is `telemetry !== null && !hasPitLimiter(t)`,
+  // NOT a bare negation — `hasPitLimiter` folds unknown into false, so a bare
+  // negation would fire these on unknown telemetry too. To hear them, first
+  // POST {"dcPitSpeedLimiterToggle": null} to /api/telemetry to delete the
+  // field; with it present (the default) these are correctly silent.
+  {
+    id: "pit-speed-no-limiter",
+    category: "Pit Speed (no limiter)",
+    label: "Speeding (no limiter)",
+    description: 'Over the pit limit with no limiter fitted — "Over the limit. Lift." Never mentions a limiter.',
+    event: "limiter.speeding",
+    data: {},
+  },
+  {
+    id: "pit-speed-entry",
+    category: "Pit Speed (no limiter)",
+    label: "Pit entry reminder",
+    description:
+      "Pit entry on a car with no limiter, plus the spoken limit when a number clip exists for it. " +
+      "The limit clause skips whole if it does not, leaving a complete sentence.",
+    event: "pitLane.entered",
+    data: {},
+  },
   { id: "stall-entered", category: "Pit Lane", label: "Entered Stall", event: "pitStall.entered", data: {} },
   { id: "stall-departed", category: "Pit Lane", label: "Departed Stall", event: "pitStall.departed", data: {} },
   { id: "pit-exited", category: "Pit Lane", label: "Exited Pit Lane", event: "pitLane.exited", data: {} },

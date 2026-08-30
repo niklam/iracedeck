@@ -52,6 +52,11 @@ function defaultTelemetry(): TelemetryData {
   return {
     OnPitRoad: false,
     PlayerCarInPitStall: false,
+    // Capability field: iRacing only exposes it on cars that HAVE a limiter,
+    // so its PRESENCE is what `hasPitLimiter` reads, not its value. Present
+    // by default because most of the roster has one; delete it (send null,
+    // see `mutateTelemetry`) to audition the no-limiter callouts.
+    dcPitSpeedLimiterToggle: false,
     IsOnTrack: false,
     PlayerTrackSurface: 0,
     PlayerTrackSurfaceMaterial: 0,
@@ -130,9 +135,24 @@ export class MockSDKController {
     this.broadcastState();
   }
 
-  /** Patch a partial telemetry snapshot into the current one. */
+  /**
+   * Patch a partial telemetry snapshot into the current one.
+   *
+   * An explicit `null` DELETES the key rather than setting it. JSON has no
+   * `undefined`, so without this a patch could never make a field absent — and
+   * absence is exactly what iRacing's capability fields mean: `hasPitLimiter`,
+   * `hasVisor` and `hasWipers` all read whether a `dc*` field EXISTS, not what
+   * it holds. No `TelemetryData` field takes null as a legitimate value, so the
+   * sentinel is unambiguous.
+   */
   mutateTelemetry(patch: Partial<TelemetryData>): void {
-    this.telemetry = { ...this.telemetry, ...patch } as TelemetryData;
+    const next = { ...this.telemetry, ...patch } as Record<string, unknown>;
+
+    for (const [key, value] of Object.entries(patch)) {
+      if (value === null) delete next[key];
+    }
+
+    this.telemetry = next as TelemetryData;
     this.broadcastState();
   }
 

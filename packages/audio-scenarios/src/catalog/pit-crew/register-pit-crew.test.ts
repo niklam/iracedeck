@@ -541,6 +541,8 @@ beforeEach(() => {
     undefined, // getOpponentFlagCalloutEnabled (issue #936)
     undefined, // getOpponentFlagLivePosition (issue #936)
     undefined, // getPitSpeedingCalloutEnabled (issue #912)
+    undefined, // getPitLimiterCalloutEnabled (issue #1051)
+    undefined, // getPitSpeedCalloutEnabled (issue #1051)
     () => voiceMasterEnabled,
     undefined, // getRadarMasterEnabled
   );

@@ -17,6 +17,7 @@ import type { SimEventOf } from "@iracedeck/event-bus";
 import { hasPitLimiter, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 import type { Scenario } from "../../dsl.js";
+import { POOL_REGISTRY } from "./pools.js";
 
 export const LIMITER_ON_TRACK: Scenario = {
   id: "pit-crew.limiter-on-track",
@@ -53,7 +54,7 @@ export const LIMITER_MISSING: Scenario = {
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
   base: "pit-crew",
-  sequence: ["@pit-crew.radio-open", "pool:pit-no-limiter", "@pit-crew.radio-close"],
+  sequence: ["@pit-crew.radio-open", "pool:pit-limiter-missing", "@pit-crew.radio-close"],
 };
 
 export const LIMITER_DROPPED: Scenario = {
@@ -79,7 +80,7 @@ export const LIMITER_SPEEDING: Scenario = {
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
   base: "pit-crew",
-  sequence: ["@pit-crew.radio-open", "pool:pit-speeding", "@pit-crew.radio-close"],
+  sequence: ["@pit-crew.radio-open", "pool:pit-limiter-speeding", "@pit-crew.radio-close"],
 };
 
 export const PIT_LIMITER_SCENARIOS: readonly Scenario[] = [
@@ -90,3 +91,33 @@ export const PIT_LIMITER_SCENARIOS: readonly Scenario[] = [
 ];
 
 export const PIT_LIMITER_SCENARIO_IDS: readonly string[] = PIT_LIMITER_SCENARIOS.map((s) => s.id);
+
+/** Stable identifier for each user-toggleable pit-limiter callout (issue #1051). */
+export type PitLimiterCalloutId = "on-track" | "missing" | "dropped" | "speeding";
+
+/**
+ * Canonical id -> plugin-global setting key. Plugins read the live opt-in
+ * through this rather than duplicating the key strings.
+ */
+export const PIT_LIMITER_CALLOUT_SETTING_KEYS: Record<PitLimiterCalloutId, string> = {
+  "on-track": "calloutEnabledLimiterOnTrack",
+  missing: "calloutEnabledLimiterMissing",
+  dropped: "calloutEnabledLimiterDropped",
+  speeding: "calloutEnabledLimiterSpeeding",
+};
+
+/** Scenario id -> callout id, consumed by `wrapCalloutScenario` in `index.ts`. */
+export const SCENARIO_ID_TO_PIT_LIMITER_ID: Record<string, PitLimiterCalloutId> = {
+  "pit-crew.limiter-on-track": "on-track",
+  "pit-crew.limiter-missing": "missing",
+  "pit-crew.limiter-dropped": "dropped",
+  "pit-crew.limiter-speeding": "speeding",
+};
+
+/**
+ * Pool names referenced by these scenarios, derived from the single source of
+ * truth in `pools.ts` so a rename there flows through without a parallel list.
+ */
+export const PIT_LIMITER_POOL_NAMES: readonly string[] = Object.keys(POOL_REGISTRY).filter((name) =>
+  name.startsWith("pit-limiter-"),
+);
