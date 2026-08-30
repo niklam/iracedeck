@@ -398,8 +398,13 @@ export type TranslatorState = {
    * or under the limit for `PIT_SPEEDING_END_HOLD_MS`, and a tick back over
    * the limit resets this to `0` so the hold restarts.
    *
-   * Meaningless while `pitSpeedingActive` is false, and cleared alongside it —
-   * a stale value here would shorten the next episode's hold.
+   * Meaningless while `pitSpeedingActive` is false, and cleared alongside it in
+   * both places that end an episode. Only the diff's own clear is load-bearing:
+   * `publishActiveStateTeardown`'s is belt-and-braces, since all three of its
+   * callers rebuild the state through `createInitialState()` immediately after.
+   * It is kept so the pairing lives at every site that ends an episode — a
+   * future teardown that does NOT rebuild the state would otherwise leave a
+   * stale value here and silently shorten the next episode's hold.
    */
   pitSpeedingUnderLimitSince: number;
 

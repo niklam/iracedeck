@@ -321,7 +321,7 @@ The count-in fires whenever you're on pit road approaching your box, so it isn't
 
 ## Pit road speeding
 
-Go over the pit lane speed limit and a short tick starts repeating, about three times a second, for as long as you're over it — a beeper, like a road car's over-speed chime. It stops once you're a fraction under the limit again, with the beep already sounding allowed to finish; the small dead band is deliberate, so a speed hovering exactly on the limit can't stutter the tick on and off. Unlike everything else the engineer says this isn't a spoken line and it doesn't wait its turn on the radio: it plays straight away, because a warning that arrives after the penalty is no warning at all.
+Go over the pit lane speed limit and a short tick starts repeating, about three times a second, for as long as you're over it — a beeper, like a road car's over-speed chime. It stops as soon as you're back at or under the limit, with the beep already sounding allowed to finish; a brief hold keeps a momentary dip across the limit from chopping the tone into pieces. The limit itself is exact in both directions — sitting right on it is silent, and you never have to drive under it to earn quiet. Unlike everything else the engineer says this isn't a spoken line and it doesn't wait its turn on the radio: it plays straight away, because a warning that arrives after the penalty is no warning at all.
 
 It starts **the moment you exceed the posted limit**, with no grace margin. That sounds strict, but the pit limiter holds your car slightly *below* the limit, so riding the limiter never triggers it — if you're hearing the tick you are genuinely over.
 

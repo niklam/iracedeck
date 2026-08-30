@@ -50,13 +50,24 @@ import type { EmitFn } from "./types.js";
  * Damping in time costs no speed precision — jitter dies because it is brief,
  * not because a range of real speeds was declared silent.
  *
- * PROVISIONAL VALUE: one cue-loop interval (`PIT_SPEEDING_TICK_INTERVAL_MS`),
- * so at most one extra beep can sound past the moment of compliance — the
- * smallest increment a listener can actually perceive. The spec
+ * PROVISIONAL VALUE, and provisional in the direction that matters. 300 ms
+ * equals the cue cadence *as it stands* — `PIT_SPEEDING_TICK_INTERVAL_MS` in
+ * `@iracedeck/audio-scenarios`, hand-copied rather than imported because that
+ * package depends on this one. Treat it as an independent choice that happens
+ * to match, not a derived one: if the cadence is ever retuned, nothing here
+ * breaks and nothing tells you.
+ *
+ * That equality bounds only the cost of ending LATE — at most one extra beep
+ * past compliance. It says nothing about the cost of ending too EARLY, which
+ * is the flutter the old band existed to prevent, and the two costs are not
+ * symmetric: `handleEnded` leaves the in-flight 160 ms clip playing, so a
+ * restart landing inside it replaces that clip mid-tone and the driver hears
+ * a click rather than a beep. The quantity that would settle the floor is how
+ * long a driver's sub-limit excursions last while riding the limit, which is
+ * unrelated to the cue cadence. The spec
  * (`docs/superpowers/specs/2026-08-30-issue-1059-pit-speeding-precision.md`)
- * records that the right value is a measurement rather than a taste, and
- * names the `telemetry-watch` capture that would settle it. Lower it if that
- * capture shows a shorter hold already damps the flapping.
+ * names the `telemetry-watch` capture that measures it. Until that lands this
+ * is an unvalidated floor, not a justified one.
  */
 export const PIT_SPEEDING_END_HOLD_MS = 300;
 
@@ -90,10 +101,15 @@ export function diffPitSpeeding(
   const onPitRoad = telemetry.OnPitRoad ?? false;
   const inPitStall = telemetry.PlayerCarInPitStall ?? false;
 
-  // A missing Speed read ends an episode rather than sustaining it. This is
-  // the one place the usual "unknown telemetry keeps the callout alive" rule
-  // is inverted on purpose: the claim being made is that the driver IS
-  // speeding, and that cannot be asserted without a speed. Failing to silence.
+  // A missing Speed read ends an episode rather than sustaining it, and does
+  // so IMMEDIATELY: it is a term of `eligible` below rather than a 0 fed
+  // through the held speed exit, so the hold can never buy 300 ms of
+  // asserting an offence on evidence we do not have (#1059 — before this the
+  // unknown-speed exit silently inherited the hold). This is the one place
+  // the usual "unknown telemetry keeps the callout alive" rule is inverted on
+  // purpose: the claim being made is that the driver IS speeding, and that
+  // cannot be asserted without a speed. Failing to silence.
+  const speedKnown = telemetry.Speed != null;
   const speed = telemetry.Speed ?? 0;
 
   // `pitSpeedLimitMps` is 0 when `WeekendInfo.TrackPitSpeedLimit` is missing
@@ -107,7 +123,7 @@ export function diffPitSpeeding(
   // `IsReplayPlaying === false` while `SimMode === "replay"`, so those ticks
   // reach this diff past the translator's main replay guard — the
   // `diffPitsOpen` / `diffFuelLaps` precedent (#604, #655).
-  const eligible = !replayOnlySession && isOnTrack && onPitRoad && !inPitStall && pitSpeedLimitMps > 0;
+  const eligible = !replayOnlySession && isOnTrack && onPitRoad && !inPitStall && pitSpeedLimitMps > 0 && speedKnown;
 
   if (!eligible) {
     endPitSpeedingIfActive(state, emit);

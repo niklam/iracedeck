@@ -249,19 +249,27 @@ describe("diffPitSpeeding", () => {
   });
 
   describe("missing Speed", () => {
-    it("ends the episode rather than sustaining it on unknown telemetry", () => {
+    it("ends the episode IMMEDIATELY on unknown telemetry, without waiting out the hold", () => {
       const state = createInitialState();
       const { events, emit } = collect();
 
       diffPitSpeeding(state, tick({ Speed: LIMIT + 5 }), LIMIT, false, T0, emit);
+      // Same `now`, so no time can have passed. An unknown speed is a term of
+      // eligibility, not a 0 fed through the held exit — otherwise the hold
+      // would buy 300 ms of asserting an offence on evidence we do not have.
       diffPitSpeeding(state, tick({ Speed: undefined }), LIMIT, false, T0, emit);
-      diffPitSpeeding(state, tick({ Speed: undefined }), LIMIT, false, T0 + PIT_SPEEDING_END_HOLD_MS, emit);
 
-      // A missing Speed reads as 0, so this exit goes through the held speed
-      // path rather than the eligibility gate. Deliberately inverts the usual
-      // "unknown telemetry keeps the callout alive" rule: the claim is that
-      // the driver IS speeding, and that cannot be asserted without a speed.
       expect(names(events)).toEqual(["pitSpeeding.started", "pitSpeeding.ended"]);
+      expect(state.pitSpeedingActive).toBe(false);
+    });
+
+    it("never starts a cue on unknown telemetry", () => {
+      const state = createInitialState();
+      const { events, emit } = collect();
+
+      diffPitSpeeding(state, tick({ Speed: undefined }), LIMIT, false, T0, emit);
+
+      expect(events).toEqual([]);
       expect(state.pitSpeedingActive).toBe(false);
     });
   });
