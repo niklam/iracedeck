@@ -177,7 +177,7 @@
       "generatedAt": "2026-05-14T18:37:01.484Z",
       "requestId": "JH99nk0EkqrZB29b1xjM"
     },
-    "voice/default/pit-limiter/pit-entry-001.mp3": {
+    "voice/default/pit-limiter/entry-01.mp3": {
       "hash": "d0724ea6533bcbc5",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
@@ -185,7 +185,7 @@
       "generatedAt": "2026-05-14T18:37:05.357Z",
       "requestId": "t3ayqcBma2idvTAzPr6J"
     },
-    "voice/default/pit-limiter/pit-entry-002.mp3": {
+    "voice/default/pit-limiter/entry-02.mp3": {
       "hash": "429ba86be5607391",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
@@ -193,7 +193,7 @@
       "generatedAt": "2026-05-14T18:37:05.604Z",
       "requestId": "Yqj6lGMeMzNbUkL6Eu3Y"
     },
-    "voice/default/pit-limiter/pit-limiter-001.mp3": {
+    "voice/default/pit-limiter/missing-01.mp3": {
       "hash": "844200137c0bb676",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
@@ -201,7 +201,7 @@
       "generatedAt": "2026-05-14T18:37:05.874Z",
       "requestId": "mzPZWrheAQoQxpb6x3Il"
     },
-    "voice/default/pit-limiter/pit-limiter-002.mp3": {
+    "voice/default/pit-limiter/missing-02.mp3": {
       "hash": "ac0850f7d2bad4ae",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
@@ -209,7 +209,7 @@
       "generatedAt": "2026-05-14T18:37:06.120Z",
       "requestId": "GHH8E3OmC14BxD5OzIVq"
     },
-    "voice/default/pit-limiter/pit-limiter-warn-001.mp3": {
+    "voice/default/pit-limiter/speeding-01.mp3": {
       "hash": "03b6b7b3f62a7673",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
@@ -217,7 +217,7 @@
       "generatedAt": "2026-05-14T18:37:06.294Z",
       "requestId": "8vlcxXqCxK2YiCeALryK"
     },
-    "voice/default/pit-limiter/pit-limiter-warn-002.mp3": {
+    "voice/default/pit-limiter/no-limiter-speeding-01.mp3": {
       "hash": "11d6b6f65f0c7436",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
@@ -225,7 +225,7 @@
       "generatedAt": "2026-05-14T18:37:06.468Z",
       "requestId": "M5vjoJkyM6HAfrgmz3QU"
     },
-    "voice/default/pit-limiter/pit-limiter-reminder-001.mp3": {
+    "voice/default/pit-limiter/reminder-01.mp3": {
       "hash": "801d60536dd66100",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",

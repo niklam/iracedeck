@@ -537,31 +537,31 @@
     ],
     "pit-limiter": [
       {
-        "name": "pit-entry-001",
+        "name": "entry-01",
         "text": "Pit entry. <break time=\"0.3s\" /> Mind the limit."
       },
       {
-        "name": "pit-entry-002",
+        "name": "entry-02",
         "text": "Entering the pitlane. <break time=\"0.3s\" /> Mind the speed."
       },
       {
-        "name": "pit-limiter-001",
+        "name": "missing-01",
         "text": "The pit limiter is off. <break time=\"0.3s\" /> Please, turn it on."
       },
       {
-        "name": "pit-limiter-002",
+        "name": "missing-02",
         "text": "Before you go, turn on the pit limiter."
       },
       {
-        "name": "pit-limiter-warn-001",
+        "name": "speeding-01",
         "text": "You are speeding. <break time=\"0.3s\" /> Slow down."
       },
       {
-        "name": "pit-limiter-warn-002",
+        "name": "no-limiter-speeding-01",
         "text": "Over the limit. <break time=\"0.3s\" /> Lift."
       },
       {
-        "name": "pit-limiter-reminder-001",
+        "name": "reminder-01",
         "text": "The pit lane speed limit is "
       }
     ],
