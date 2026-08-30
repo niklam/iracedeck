@@ -78,6 +78,15 @@ function defaultTelemetry(): TelemetryData {
   } as unknown as TelemetryData;
 }
 
+/**
+ * A telemetry patch, where `null` DELETES the key rather than setting it
+ * (issue #1051). `Partial<TelemetryData>` cannot express that — its values are
+ * `T | undefined` — so the sentinel could not be written without a cast, and
+ * every call site already casts, which is exactly what hid the mismatch: the
+ * type disagreed with the method body and nothing failed to compile.
+ */
+export type TelemetryPatch = { [K in keyof TelemetryData]?: TelemetryData[K] | null };
+
 export class MockSDKController {
   private telemetry: TelemetryData;
   private sessionInfo: SessionInfo | null = null;
@@ -145,7 +154,7 @@ export class MockSDKController {
    * it holds. No `TelemetryData` field takes null as a legitimate value, so the
    * sentinel is unambiguous.
    */
-  mutateTelemetry(patch: Partial<TelemetryData>): void {
+  mutateTelemetry(patch: TelemetryPatch): void {
     const next = { ...this.telemetry, ...patch } as Record<string, unknown>;
 
     for (const [key, value] of Object.entries(patch)) {
