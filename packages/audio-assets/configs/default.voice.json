@@ -296,24 +296,32 @@
       {
         "name": "furled-ahead-tail-01",
         "text": "has a furled black flag. They're gonna have to give that time back.",
-        "previous_request_ids": ["position-number/4"]
+        "previous_request_ids": [
+          "position-number/4"
+        ]
       },
       {
         "name": "black-ahead-tail-01",
         "text": "has a black flag. <break time=\"0.3s\" /> They'll be serving a penalty.",
-        "previous_request_ids": ["position-number/4"],
+        "previous_request_ids": [
+          "position-number/4"
+        ],
         "seed": 2
       },
       {
         "name": "meatball-ahead-tail-01",
         "text": "has the meatball flag. Expect them to be slow.",
-        "previous_request_ids": ["position-number/4"],
+        "previous_request_ids": [
+          "position-number/4"
+        ],
         "seed": 2
       },
       {
         "name": "disqualify-ahead-tail-01",
         "text": "has been disqualified. They're out of the fight.",
-        "previous_request_ids": ["position-number/4"]
+        "previous_request_ids": [
+          "position-number/4"
+        ]
       },
       {
         "name": "furled-behind-01",
@@ -516,13 +524,17 @@
         "name": "car-in-01",
         "text": "The car in",
         "seed": 3,
-        "next_request_ids": ["position-number/4"]
+        "next_request_ids": [
+          "position-number/4"
+        ]
       },
       {
         "name": "is-pitting-01",
         "text": "is pitting.",
         "seed": 1,
-        "previous_request_ids": ["position-number/4"]
+        "previous_request_ids": [
+          "position-number/4"
+        ]
       },
       {
         "name": "others-01",
@@ -545,6 +557,11 @@
         "text": "Entering the pitlane. <break time=\"0.3s\" /> Mind the speed."
       },
       {
+        "name": "entry-03",
+        "text": "Coming into the pits. <break time=\"0.3s\" /> Watch your speed.",
+        "seed": 1
+      },
+      {
         "name": "missing-01",
         "text": "The pit limiter is off. <break time=\"0.3s\" /> Please, turn it on."
       },
@@ -553,8 +570,23 @@
         "text": "Before you go, turn on the pit limiter."
       },
       {
+        "name": "missing-03",
+        "text": "Pit limiter's still off. <break time=\"0.3s\" /> Switch it on.",
+        "seed": 1
+      },
+      {
         "name": "speeding-01",
         "text": "You are speeding. <break time=\"0.3s\" /> Slow down."
+      },
+      {
+        "name": "speeding-02",
+        "text": "Too fast. <break time=\"0.3s\" /> Slow it down.",
+        "seed": 1
+      },
+      {
+        "name": "speeding-03",
+        "text": "You're speeding on pit road. <break time=\"0.3s\" /> Ease off.",
+        "seed": 1
       },
       {
         "name": "unit-kmh-01",
@@ -569,6 +601,16 @@
         "text": "Over the limit. <break time=\"0.3s\" /> Lift."
       },
       {
+        "name": "no-limiter-speeding-02",
+        "text": "Over the pit limit. <break time=\"0.3s\" /> Lift off.",
+        "seed": 1
+      },
+      {
+        "name": "no-limiter-speeding-03",
+        "text": "You're too quick. <break time=\"0.3s\" /> Lift.",
+        "seed": 1
+      },
+      {
         "name": "on-track-01",
         "text": "Your pit limiter is on. <break time=\"0.3s\" /> Turn it off."
       },
@@ -577,12 +619,22 @@
         "text": "Limiter's still engaged. <break time=\"0.3s\" /> Switch it off."
       },
       {
+        "name": "on-track-03",
+        "text": "You've still got the pit limiter on. <break time=\"0.3s\" /> Turn it off.",
+        "seed": 1
+      },
+      {
         "name": "dropped-01",
         "text": "Your limiter dropped. <break time=\"0.3s\" /> Turn it back on."
       },
       {
         "name": "dropped-02",
         "text": "The limiter came off. <break time=\"0.3s\" /> Put it back on."
+      },
+      {
+        "name": "dropped-03",
+        "text": "Limiter's dropped out. <break time=\"0.3s\" /> Get it back on.",
+        "seed": 1
       }
     ],
     "pit-actions": [
@@ -1268,7 +1320,9 @@
       {
         "name": "readout-intro",
         "text": "Gap is",
-        "next_request_ids": ["lap-time-second/1"]
+        "next_request_ids": [
+          "lap-time-second/1"
+        ]
       }
     ],
     "incidents": [
