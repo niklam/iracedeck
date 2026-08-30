@@ -1381,6 +1381,16 @@ describe("single-writer store (issue #993)", () => {
       }
     });
 
+    it("a blank running version does not retry a marked store, so it cannot loop", async () => {
+      // Blank is unknown, not "differs". Retrying on it would stamp `true` (the
+      // writer discards a blank), which the next start reads back as an unknown
+      // recorded version and retries again — a migration timeout on every
+      // launch, forever, which is what the ceiling exists to prevent.
+      const start = await startWith(abandoned(true), { pluginVersion: "   " });
+
+      expect(start.mock.getGlobalSettings).not.toHaveBeenCalled();
+    });
+
     it("a whitespace-padded stored version still compares equal to itself", async () => {
       // The writer trims because the reader does; an untrimmed store would
       // never match and would re-ask forever.

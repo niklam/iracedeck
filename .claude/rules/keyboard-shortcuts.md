@@ -216,6 +216,7 @@ When key bindings should be shared across all instances of an action type (e.g.,
 import {
   createFileSettingsStore,
   getPluginPlatform,
+  getPluginVersion,
   initGlobalSettings,
   resolveSettingsStorePath,
 } from "@iracedeck/deck-core";

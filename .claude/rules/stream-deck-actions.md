@@ -344,6 +344,7 @@ import { ElgatoPlatformAdapter } from "@iracedeck/deck-adapter-elgato";
 import {
   createFileSettingsStore,
   getPluginPlatform,
+  getPluginVersion,
   initGlobalSettings,
   resolveSettingsStorePath,
 } from "@iracedeck/deck-core";

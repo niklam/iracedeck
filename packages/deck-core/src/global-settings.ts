@@ -1433,13 +1433,18 @@ function hasGivenUpOnMigration(settings: Record<string, unknown>): boolean {
  * build it is leaves the store alone rather than re-asking every start.
  */
 function shouldRetryAbandonedMigration(settings: Record<string, unknown>, runningVersion: string | undefined): boolean {
-  if (!hasGivenUpOnMigration(settings) || runningVersion === undefined) return false;
+  // Blank counts as unknown, not just `undefined`. A whitespace-only version
+  // would otherwise pass this guard, retry, and then stamp `true` (the writer
+  // discards a blank), so the NEXT start would read an unknown recorded
+  // version, retry again, and pay a migration timeout on every launch forever
+  // — precisely what the retry ceiling exists to prevent.
+  const running = runningVersion?.trim();
+
+  if (!running || !hasGivenUpOnMigration(settings)) return false;
 
   const recorded = migrationAbandonedVersion(settings);
 
   if (recorded === undefined) return true;
-
-  const running = runningVersion.trim();
 
   return valid(recorded) && valid(running) ? gt(running, recorded) : recorded !== running;
 }

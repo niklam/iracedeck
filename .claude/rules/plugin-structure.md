@@ -175,6 +175,7 @@ import {
   focusIRacingIfEnabled,
   getController,
   getPluginPlatform,
+  getPluginVersion,
   initAppMonitor,
   initGlobalSettings,
   initializeBindingDispatcher,
@@ -185,8 +186,8 @@ import {
   initMousePointer,
   initPluginConfig,
   initWindowFocus,
-  type PluginConfig,
   resolveSettingsStorePath,
+  type PluginConfig,
 } from "@iracedeck/deck-core";
 import { initializeEventBus } from "@iracedeck/event-bus";
 import { IRacingNative } from "@iracedeck/iracing-native";
