@@ -1,4 +1,4 @@
-> **Issue:** [#912](https://github.com/niklam/iracedeck/issues/912) · **Supersedes:** _none_ · **Superseded by:** _none_
+> **Issue:** [#912](https://github.com/niklam/iracedeck/issues/912) · **Supersedes:** _none_ · **Superseded by:** [2026-08-30-issue-1059-pit-speeding-precision.md](2026-08-30-issue-1059-pit-speeding-precision.md) (in part — the end-edge hysteresis and the start-margin rejection)
 >
 > Point-in-time design record. The code and `.claude/rules/` are the truth; this is not documentation.
 
