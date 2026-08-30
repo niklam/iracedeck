@@ -64,6 +64,22 @@ vi.mock("@iracedeck/sim-events-iracing", () => ({
 
 const RADAR_CHANNEL = 3;
 
+/** iRacing's telemetry write rate, which is what `SessionTick` counts. */
+const IRACING_TICK_HZ = 60;
+
+/**
+ * How far `SessionTick` advances between two cue ticks on a live sim.
+ *
+ * DERIVED rather than written down: it encodes the ratio between iRacing's
+ * rate and the cue's, so a hardcoded number silently stops meaning that the
+ * moment the cadence changes — and every assertion here would keep passing,
+ * because they are all written against the symbolic interval and scale with
+ * it. That is exactly what happened when the cadence went from 1 s to 500 ms
+ * and this was still 60: the fixture had quietly begun describing a sim
+ * running at twice real speed.
+ */
+const SIM_TICKS_PER_CUE_TICK = Math.round(IRACING_TICK_HZ * (PIT_SPEEDING_TICK_INTERVAL_MS / 1000));
+
 let masterEnabled = true;
 let cueEnabled = true;
 
@@ -85,11 +101,13 @@ beforeEach(() => {
   hoisted.subscribe.mockClear();
   hoisted.busHandlers.clear();
   hoisted.getLatestTelemetry.mockReset();
-  // On pit road with a LIVE sim: iRacing advances SessionTick at ~60 Hz, so a
-  // 2 Hz cue tick sees it jump by roughly 30 each time. Tests that need a
-  // frozen sim override this with a constant.
+  // On pit road with a LIVE sim. Tests that need a frozen sim override this
+  // with a constant.
   let sessionTick = 0;
-  hoisted.getLatestTelemetry.mockImplementation(() => ({ OnPitRoad: true, SessionTick: (sessionTick += 30) }));
+  hoisted.getLatestTelemetry.mockImplementation(() => ({
+    OnPitRoad: true,
+    SessionTick: (sessionTick += SIM_TICKS_PER_CUE_TICK),
+  }));
 });
 
 afterEach(() => {
@@ -241,7 +259,10 @@ describe("pit-speeding cue engine", () => {
       const whileFrozen = hoisted.playOnChannel.mock.calls.length;
 
       let tick = 4242;
-      hoisted.getLatestTelemetry.mockImplementation(() => ({ OnPitRoad: true, SessionTick: (tick += 30) }));
+      hoisted.getLatestTelemetry.mockImplementation(() => ({
+        OnPitRoad: true,
+        SessionTick: (tick += SIM_TICKS_PER_CUE_TICK),
+      }));
       vi.advanceTimersByTime(PIT_SPEEDING_TICK_INTERVAL_MS * 2);
 
       // Going silent rather than stopping is what makes this possible: the

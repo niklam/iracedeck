@@ -52,9 +52,13 @@ export const PIT_SPEEDING_CLIP = "sfx/radar/IRD-radar-both.mp3";
  * immediately, and twice a second is roughly what a road car's over-speed
  * chime does — which is the reference the issue itself reaches for.
  *
- * It is also the floor worth having. The interval doubles as the worst-case
- * latency of every live check in the loop below: a gate switched off, a
- * driver leaving pit road, a frozen sim. Halving the cadence halves all three.
+ * **Before treating this as a matter of taste, know what else it sets.** The
+ * interval doubles as the worst-case latency of every live check in the loop
+ * below: a gate switched off, a driver leaving pit road, a frozen sim.
+ * Halving the cadence halved all three, and raising it would slow all three by
+ * the same factor — so a request to make the beeping less frequent is a safety
+ * change, not a comfort one, and wants the checks decoupled from the cadence
+ * rather than a bigger number here.
  */
 export const PIT_SPEEDING_TICK_INTERVAL_MS = 500;
 
