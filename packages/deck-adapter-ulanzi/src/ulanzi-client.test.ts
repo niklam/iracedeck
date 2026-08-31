@@ -657,6 +657,12 @@ describe("UlanziClient.requestGlobalSettings before the socket is open (#1041)",
 
     expect(info).toHaveBeenCalledOnce();
     expect(debug).not.toHaveBeenCalled();
+    // The whole message, not just that something was logged: the line has to
+    // tell a support reader the dropped read was COVERED, or it reports a
+    // problem where there is none (#1046 review).
+    expect(info).toHaveBeenCalledWith(
+      "Global-settings read requested while the host socket was not open; the connect-time read will ask in its place",
+    );
   });
 
   it("sends nothing when no socket exists yet, and does not throw", async () => {
