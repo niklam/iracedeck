@@ -211,6 +211,13 @@ export class VSDPlatformAdapter implements IDeckPlatformAdapter {
     });
   }
 
+  /**
+   * Read the deck host's global settings. deck-core calls this once per start,
+   * for the one-time migration, as soon as it finds no settings file — usually
+   * before the host socket is open, in which case the client's connect-time
+   * read asks in its place and the skipped read is logged rather than dropped
+   * silently (#1046); see `VSDClient.requestGlobalSettings`.
+   */
   getGlobalSettings(): void {
     this.client.requestGlobalSettings();
   }
