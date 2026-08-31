@@ -199,6 +199,7 @@ describe("runVersionCheck", () => {
     await runVersionCheck({
       currentVersion: "1.22.0",
       lastSeenVersion: "1.21.0",
+      policy: "always",
       ecosystem: "stream-deck",
       deviceType: 7,
       persist,
@@ -219,6 +220,7 @@ describe("runVersionCheck", () => {
       runVersionCheck({
         currentVersion: "1.22.0",
         lastSeenVersion: "1.21.0",
+        policy: "always",
         ecosystem: "stream-deck",
         persist,
         openUrl,
@@ -360,7 +362,11 @@ describe("runVersionCheck", () => {
       expect(persistOpenedAt).toHaveBeenCalledWith(now);
     });
 
-    it("defaults to features and stamps the timestamp when the delegate is provided", async () => {
+    it("defaults to never: records the version and opens nothing (issue #1061)", async () => {
+      // The default moved from `features` to `never` because the Getting
+      // Started page now ASKS, so the default no longer has to guess. Silent,
+      // but not lossy — the version is still recorded, so a later switch to
+      // another policy cannot replay an old release.
       await runVersionCheck({
         currentVersion: "1.24.0",
         lastSeenVersion: "1.23.0",
@@ -372,14 +378,16 @@ describe("runVersionCheck", () => {
         now,
       });
 
-      expect(openUrl).toHaveBeenCalledTimes(1);
-      expect(persistOpenedAt).toHaveBeenCalledWith(now);
+      expect(persist).toHaveBeenCalledWith("1.24.0");
+      expect(openUrl).not.toHaveBeenCalled();
+      expect(persistOpenedAt).not.toHaveBeenCalled();
     });
 
-    it("tracks a patch-only bump silently under the default policy (issue #901)", async () => {
+    it("tracks a patch-only bump silently under the features policy (issue #901)", async () => {
       await runVersionCheck({
         currentVersion: "1.24.1",
         lastSeenVersion: "1.24.0",
+        policy: "features",
         ecosystem: "stream-deck",
         persist,
         persistOpenedAt,
@@ -422,6 +430,7 @@ describe("runVersionCheck", () => {
       await runVersionCheck({
         currentVersion: "1.24.0",
         lastSeenVersion: "1.23.0",
+        policy: "always",
         ecosystem: "stream-deck",
         isSimRunning: () => true,
         persist,
@@ -460,6 +469,7 @@ describe("runVersionCheck", () => {
       await runVersionCheck({
         currentVersion: "1.24.0",
         lastSeenVersion: "1.23.0",
+        policy: "always",
         ecosystem: "stream-deck",
         isSimRunning: () => false,
         persist,

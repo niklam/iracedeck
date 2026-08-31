@@ -194,6 +194,35 @@
 			.sw-links { display: flex; gap: 14px; margin: 0 0 12px; }
 			.sw-links a { color: var(--sw-fg-dim); text-decoration: none; }
 			.sw-links a:hover { text-decoration: underline; }
+
+			/* Getting Started (#1061) — prose, not a settings grid. */
+			.sw-gs { max-width: 70ch; }
+			.sw-gs-section + .sw-gs-section { margin-top: 22px; }
+			.sw-gs-title { font-size: 15px; margin: 0 0 8px; }
+			.sw-gs-p { margin: 0 0 10px; line-height: 1.55; }
+			.sw-gs-list { margin: 0 0 10px; padding-left: 20px; line-height: 1.55; }
+			.sw-gs-list li { margin: 0 0 4px; }
+			/* Prose links, same treatment as the changelog's: dim white rather than
+			   the brand red, which is unreadable on this background. */
+			.sw-gs-p a, .sw-gs-list a { color: var(--sw-fg-dim); }
+			.sw-gs-p a:hover, .sw-gs-list a:hover { color: var(--sw-fg); }
+			.sw-gs-control { margin: 0 0 12px; }
+			.sw-gs-picker { max-width: 100%; }
+			.sw-gs-jump {
+				background: var(--sw-accent); color: #fff; border: 0; border-radius: 4px;
+				padding: 7px 13px; font: inherit; cursor: pointer;
+			}
+			.sw-gs-jump:hover { filter: brightness(1.1); }
+			/* `ird-enable-feature` renders only here, so its styling lives with the
+			   rest of the window's CSS — the `.sw-cl-*` precedent. The component
+			   keeps `ird-` names because it is a shared web component and has no
+			   business knowing about this page's `sw-` prefix. */
+			.ird-enable-feature-button {
+				background: var(--sw-accent); color: #fff; border: 0; border-radius: 4px;
+				padding: 7px 13px; font: inherit; cursor: pointer;
+			}
+			.ird-enable-feature-button:hover { filter: brightness(1.1); }
+			.ird-enable-feature-done { color: var(--sw-fg-mute); margin: 0; }
 		</style>
 	</head>
 	<body>
@@ -256,6 +285,7 @@
 			  var __sw = { settingsWindow: true };
 			%>
 			<nav class="sw-nav" aria-label="Settings sections">
+				<button class="sw-nav-item" data-pane="getting-started" type="button">Getting Started</button>
 				<button class="sw-nav-item active" data-pane="general" type="button">General</button>
 				<button class="sw-nav-item" data-pane="bindings" type="button">Key Bindings<span class="sw-badge"><%= __total %></span></button>
 				<button class="sw-nav-item" data-pane="appearance" type="button">Appearance</button>
@@ -268,6 +298,13 @@
 				<button class="sw-nav-item" data-pane="updates" type="button" id="sw-nav-updates">What's New<span class="sw-badge"></span></button>
 				<button class="sw-nav-item" data-pane="diagnostics" type="button">Diagnostics</button>
 			</nav>
+
+			<%# ---- Getting Started: the same page the website carries (#1061) ---- %>
+			<section class="sw-pane" id="pane-getting-started" hidden>
+				<h2>Getting Started</h2>
+				<p class="sw-sub">What to do first. The same page iracedeck.com carries, built in so it works offline.</p>
+				<%- include('settings-window-getting-started') %>
+			</section>
 
 			<%# ---- General ---- %>
 			<section class="sw-pane" id="pane-general">
@@ -406,13 +443,23 @@
 			(function () {
 				var panes = Array.prototype.slice.call(document.querySelectorAll(".sw-pane"));
 				var items = Array.prototype.slice.call(document.querySelectorAll(".sw-nav-item"));
+				function activate(pane) {
+					items.forEach(function (b) { b.classList.toggle("active", b.dataset.pane === pane); });
+					panes.forEach(function (p) { p.hidden = p.id !== "pane-" + pane; });
+				}
 				items.forEach(function (btn) {
-					btn.addEventListener("click", function () {
-						items.forEach(function (b) { b.classList.remove("active"); });
-						btn.classList.add("active");
-						panes.forEach(function (p) { p.hidden = p.id !== "pane-" + btn.dataset.pane; });
-					});
+					btn.addEventListener("click", function () { activate(btn.dataset.pane); });
 				});
+				// In-page jumps from Getting Started to the tab it is talking about (#1061).
+				document.addEventListener("click", function (ev) {
+					var jump = ev.target && ev.target.closest ? ev.target.closest("[data-jump]") : null;
+					if (jump) activate(jump.dataset.jump);
+				});
+				// Opened on a specific tab (#1061). The launcher appends `#<pane>`; a
+				// fragment is never sent to the server, so the token/Origin model is
+				// untouched. getElementById, not querySelector — this is not a selector.
+				var wanted = (location.hash || "").replace(/^#/, "");
+				if (wanted && document.getElementById("pane-" + wanted)) activate(wanted);
 				// The update notice found something newer (#1016) — badge the tab it is on.
 				document.addEventListener("ird-update-available", function () {
 					var badge = document.querySelector("#sw-nav-updates .sw-badge");

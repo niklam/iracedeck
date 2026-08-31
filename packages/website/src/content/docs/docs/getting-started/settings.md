@@ -19,6 +19,18 @@ It is a real window — its own entry in the taskbar, resizable, and it remember
 
 The sidebar has one tab per area. Everything here applies to the **whole plugin**; the appearance defaults are the only ones an individual key can override in its own Property Inspector.
 
+### Getting Started
+
+![The Getting Started tab of the iRaceDeck Settings window](../../../../assets/settings-window/getting-started.png)
+
+The [First Steps](/docs/getting-started/first-steps/) page, built into the plugin so it works without an internet connection — what to do first, which layout to start from, and what the Race Engineer is.
+
+It opens by itself once, the first time you run iRaceDeck, and then never again. Upgrading from an earlier version does not count as a first run: the page is for people who have not used iRaceDeck before, and an installation that has started up even once before is left alone. It also never opens while iRacing is running, so it cannot appear over a live session.
+
+The tab stays here afterwards, so you can come back to it whenever you like.
+
+Three of its steps do something rather than only explain it: one press turns on the **Race Engineer** (and plays a line so you know your audio works), one opts you in to seeing what changed after an update, and one turns on **Focus iRacing window** if you happen to have it off. The first two show what they will do while the setting is off and confirm it once it is on; the Focus iRacing window suggestion appears only if that setting is off, so on a fresh installation — where it is already on — you will not see it at all.
+
 ### General
 
 ![The General tab of the iRaceDeck Settings window](../../../../assets/settings-window/general.png)

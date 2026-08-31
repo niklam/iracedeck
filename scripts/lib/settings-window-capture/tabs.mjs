@@ -24,6 +24,7 @@
 
 /** @type {readonly SettingsWindowTab[]} */
 export const SETTINGS_WINDOW_TABS = [
+  { pane: "getting-started", label: "Getting Started", file: "getting-started.png", elgatoOnly: false },
   { pane: "general", label: "General", file: "general.png", elgatoOnly: false },
   { pane: "bindings", label: "Key Bindings", file: "key-bindings.png", elgatoOnly: false },
   { pane: "appearance", label: "Appearance", file: "appearance.png", elgatoOnly: false },
