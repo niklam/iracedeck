@@ -338,6 +338,8 @@ describe("ROLLING_START_ALERTS opt-in gating (issue #660)", () => {
       undefined, // getOpponentFlagCalloutEnabled (issue #936)
       undefined, // getOpponentFlagLivePosition (issue #936)
       undefined, // getPitSpeedingCalloutEnabled (issue #912)
+      undefined, // getPitLimiterCalloutEnabled (issue #1051)
+      undefined, // getNoLimiterCalloutEnabled (issue #1051)
       undefined, // getRaceEngineerMasterEnabled
       undefined, // getRadarMasterEnabled
     );

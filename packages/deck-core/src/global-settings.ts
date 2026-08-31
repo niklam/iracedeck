@@ -985,6 +985,51 @@ export const GlobalSettingsSchema = z
       .transform((val) => val === true || val === "true")
       .default(true),
     /**
+     * Per-callout opt-ins for the two pit-road speed families (issue #1051).
+     *
+     * TWO families, split by equipment, because they differ by REMEDY and not
+     * merely by wording: a limiter car speeding on pit road is usually speeding
+     * because the limiter is off and the fix is the button; a car without one
+     * has to lift. `calloutEnabledLimiter*` gate the limiter-framed callouts
+     * (`hasPitLimiter` per #639); `calloutEnabledNoLimiter*` gate their mirror
+     * for cars that have no limiter, whose lines never mention one.
+     *
+     * All default true — new Race Engineer functionality ships on — and, like
+     * every other `calloutEnabled*` field, carry no `.catch`: the
+     * union-plus-transform chain has no throw path, which is the exemption
+     * `global-settings.md` names.
+     */
+    // the limiter was engaged while out on track
+    calloutEnabledLimiterOnTrack: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    // pit road entered with the limiter off
+    calloutEnabledLimiterMissing: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    // the limiter came off while still between the cones
+    calloutEnabledLimiterDropped: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    // over the pit limit, on a car that HAS a limiter
+    calloutEnabledLimiterSpeeding: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    // over the pit limit, on a car with NO limiter
+    calloutEnabledNoLimiterSpeeding: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    // pit entry reminder plus the spoken limit, cars with NO limiter
+    calloutEnabledNoLimiterEntry: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    /**
      * Case-insensitive regex applied during **qualifying** sessions to flag a
      * race-looking setup name (issue #625). Empty (or any non-string, e.g. a
      * corrupted `null`) falls back to the default rather than throwing, so a bad

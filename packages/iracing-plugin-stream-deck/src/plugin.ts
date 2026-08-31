@@ -19,6 +19,8 @@ import {
   LAP_TIME_CALLOUT_SETTING_KEYS,
   type LapCompletedSnapshot,
   type LapTimeCalloutId,
+  NO_LIMITER_CALLOUT_SETTING_KEYS,
+  type NoLimiterCalloutId,
   OPPONENT_FLAG_CALLOUT_SETTING_KEYS,
   OPPONENT_PENALTY_FLAG_TO_CALLOUT_ID,
   OPPONENT_PIT_CALLOUT_SETTING_KEYS,
@@ -28,11 +30,13 @@ import {
   type OvertakeCalloutId,
   type OvertakeGate,
   PIT_BOX_CALLOUT_SETTING_KEYS,
+  PIT_LIMITER_CALLOUT_SETTING_KEYS,
   PIT_READBACK_CALLOUT_SETTING_KEYS,
   PIT_SPEEDING_CALLOUT_SETTING_KEYS,
   PIT_STATUS_CALLOUT_SETTING_KEYS,
   PIT_WINDOW_CALLOUT_SETTING_KEYS,
   type PitBoxCalloutId,
+  type PitLimiterCalloutId,
   type PitReadbackCalloutId,
   type PitSpeedingCalloutId,
   type PitStatusCalloutId,
@@ -713,6 +717,16 @@ registerPitCrew(
   // Pit-road speeding cue opt-in (issue #912). Live-read, single subject.
   (id: PitSpeedingCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[PIT_SPEEDING_CALLOUT_SETTING_KEYS[id]] !== false,
+  // Pit-limiter callout opt-ins (issue #1051) — cars that HAVE a limiter.
+  // Live-read, four subjects, same gate-at-event-arrival shape as the other
+  // callout families.
+  (id: PitLimiterCalloutId) =>
+    (getGlobalSettings() as Record<string, unknown>)[PIT_LIMITER_CALLOUT_SETTING_KEYS[id]] !== false,
+  // No-limiter callout opt-ins (issue #1051) — the mirror family, for cars with
+  // NO limiter. Separate opt-ins because the two families say different things
+  // for different reasons, so a user silencing one should not lose the other.
+  (id: NoLimiterCalloutId) =>
+    (getGlobalSettings() as Record<string, unknown>)[NO_LIMITER_CALLOUT_SETTING_KEYS[id]] !== false,
   // Race Engineer master gate (issue #515). Read live so a fresh install
   // (or a deck with no Pit Crew button mounted) suppresses every voice
   // scenario at dispatch time, independent of audio bus volumes.

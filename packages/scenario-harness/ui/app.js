@@ -338,6 +338,14 @@ function renderShortcuts() {
           if (s.raceStartSnapshot) {
             await post("/api/race-start/snapshot", s.raceStartSnapshot);
           }
+          // Issue #1051 — the two pit-limiter families are gated on whether
+          // `dcPitSpeedLimiterToggle` EXISTS and both subscribe to the same
+          // events, so a shortcut sets up its own equipment first. Without
+          // this a "no limiter" button plays the LIMITER family's line: audible,
+          // plausible, and the wrong family. `null` deletes the key.
+          if (s.telemetryPatch) {
+            await post("/api/telemetry", { patch: s.telemetryPatch });
+          }
           await post("/api/bus/publish", { event: s.event, data: s.data });
         } catch (e) {
           alert(`Shortcut "${s.label}" failed: ${e.message}`);

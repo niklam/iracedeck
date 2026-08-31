@@ -242,6 +242,25 @@ export const POOL_REGISTRY: Readonly<Record<string, PoolSource>> = {
   "pit-box-two": { group: "pit-box", base: "two" },
   "pit-box-one": { group: "pit-box", base: "one" },
   "pit-box-pit-now": { group: "pit-box", base: "pit-now" },
+
+  // Pit-limiter family pools (issue #1051) — cars that HAVE a limiter. Every
+  // base is two-digit-suffixed per the manifest matcher
+  // (`<base>(?:-\d{2})?.mp3`); the three-digit names these clips shipped with
+  // matched nothing and built empty pools.
+  "pit-limiter-on-track": { group: "pit-limiter", base: "on-track" },
+  "pit-limiter-missing": { group: "pit-limiter", base: "missing" },
+  "pit-limiter-dropped": { group: "pit-limiter", base: "dropped" },
+  "pit-limiter-speeding": { group: "pit-limiter", base: "speeding" },
+
+  // No-limiter family pools (issue #1051) — cars that have NO limiter, so no
+  // line here may mention one. Deliberately REUSES the `pit-limiter` clip
+  // group (the #568 clip-group-reuse precedent, as `opponent-flag-car-in`
+  // does over `opponent-pit`): the pool name carries the audience, not the
+  // directory. Distinct BASES are what let the two families split the two
+  // speeding lines — a pool is every clip sharing a base, so one base could
+  // not have served both.
+  "no-limiter-speeding": { group: "pit-limiter", base: "no-limiter-speeding" },
+  "no-limiter-entry": { group: "pit-limiter", base: "entry" },
 };
 
 /**

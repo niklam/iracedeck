@@ -35,22 +35,34 @@ import {
   type FlagCalloutId,
   type FuelCalloutId,
   type IncidentCalloutId,
+  NO_LIMITER_SCENARIO_IDS,
+  type NoLimiterCalloutId,
   type OpponentPitCalloutId,
+  PIT_LIMITER_SCENARIO_IDS,
+  type PitLimiterCalloutId,
   type PitStatusCalloutId,
   type PitWindowCalloutId,
   registerPitCrew,
   type RollingStartCalloutId,
 } from "./index.js";
+import { NO_LIMITER_POOL_NAMES } from "./no-limiter.js";
+import { LIMITER_MISSING_DELAY_MS, LIMITER_ON_TRACK_DELAY_MS, PIT_LIMITER_POOL_NAMES } from "./pit-limiter.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
+import { POOL_REGISTRY } from "./pools.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
 
 const mockSessionType = vi.fn(() => "Race");
+// Live-telemetry feed. Most of this file leaves it at `null` — the pre-#1051
+// default — but the two DELAYED pit-limiter scenarios re-read it at fire time
+// instead of the event envelope, so their tests drive it. Reset per test in the
+// top-level `beforeEach` (`vi.clearAllMocks()` clears calls, not implementations).
+const mockLatestTelemetry = vi.fn((): unknown => null);
 
 vi.mock("@iracedeck/sim-events-iracing", () => ({
   getSessionType: () => mockSessionType(),
   getStandingStart: () => false,
-  getLatestTelemetry: () => null,
+  getLatestTelemetry: () => mockLatestTelemetry(),
   TrackDirection: { Neutral: "neutral", Left: "left", Right: "right" },
 }));
 
@@ -382,6 +394,26 @@ const GAP_CLIP_PATHS = [
   `voice/${VOICE}/gap/readout-intro.mp3`,
 ] as const;
 
+// Both limiter families' clips (issue #1051). They share the one `pit-limiter`
+// manifest group — the split is by REMEDY, not by clip location — so family B's
+// two bases sit alongside family A's four. One variant each: the assertions
+// match on the pool's base prefix, so a second variant would only make draws
+// non-deterministic for no gain.
+//
+// The `-01` suffix is load-bearing, not decoration. `buildManifestPool` matches
+// `<base>(?:-\d{2})?\.mp3` — exactly TWO digits — so a clip generated on a
+// three-digit convention lands in NO pool, and an empty pool skips its sequence
+// step SILENTLY. That is the shipped-once bug these fixtures are shaped after;
+// see the pool-resolution test below for what actually guards it.
+const PIT_LIMITER_CLIP_PATHS = [
+  `voice/${VOICE}/pit-limiter/on-track-01.mp3`,
+  `voice/${VOICE}/pit-limiter/missing-01.mp3`,
+  `voice/${VOICE}/pit-limiter/dropped-01.mp3`,
+  `voice/${VOICE}/pit-limiter/speeding-01.mp3`,
+  `voice/${VOICE}/pit-limiter/no-limiter-speeding-01.mp3`,
+  `voice/${VOICE}/pit-limiter/entry-01.mp3`,
+] as const;
+
 const manifest: AudioAssetsManifest = {
   clips: [
     "sfx/IRD-tick-open.mp3",
@@ -400,6 +432,7 @@ const manifest: AudioAssetsManifest = {
     ...OPPONENT_PIT_CLIP_PATHS,
     ...FUEL_LAPS_LEFT_CLIP_PATHS,
     ...GAP_CLIP_PATHS,
+    ...PIT_LIMITER_CLIP_PATHS,
   ],
   ambientLoop: "sfx/IRD-ambient-pit.mp3",
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
@@ -469,6 +502,14 @@ let opponentPitEnabled: Map<OpponentPitCalloutId, boolean>;
 let opponentPitLivePosition: number | null;
 let rollingStartEnabled: Map<RollingStartCalloutId, boolean>;
 let fuelEnabled: Map<FuelCalloutId, boolean>;
+// Issue #1051. Two SEPARATE spies rather than one shared closure: the two
+// getters sit in adjacent positional slots (49 and 50 of 52) and have the same
+// `(id) => boolean` shape, so only "which spy saw which id" can tell a slot
+// swap from correct wiring. See the slot test in the #1051 describe block.
+let pitLimiterEnabled: Map<PitLimiterCalloutId, boolean>;
+let noLimiterEnabled: Map<NoLimiterCalloutId, boolean>;
+let getPitLimiterEnabled: (id: PitLimiterCalloutId) => boolean;
+let getNoLimiterEnabled: (id: NoLimiterCalloutId) => boolean;
 let voiceMasterEnabled: boolean;
 
 beforeEach(() => {
@@ -487,8 +528,13 @@ beforeEach(() => {
   _resetOpponentPitPending();
   rollingStartEnabled = new Map<RollingStartCalloutId, boolean>([["pace-car", true]]);
   fuelEnabled = new Map<FuelCalloutId, boolean>();
+  pitLimiterEnabled = new Map<PitLimiterCalloutId, boolean>();
+  noLimiterEnabled = new Map<NoLimiterCalloutId, boolean>();
+  getPitLimiterEnabled = vi.fn((id: PitLimiterCalloutId) => pitLimiterEnabled.get(id) ?? true);
+  getNoLimiterEnabled = vi.fn((id: NoLimiterCalloutId) => noLimiterEnabled.get(id) ?? true);
   voiceMasterEnabled = true;
   mockSessionType.mockReturnValue("Race");
+  mockLatestTelemetry.mockReturnValue(null);
   bus = createMockBus();
   audio = createFakeAudio();
   initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
@@ -541,6 +587,8 @@ beforeEach(() => {
     undefined, // getOpponentFlagCalloutEnabled (issue #936)
     undefined, // getOpponentFlagLivePosition (issue #936)
     undefined, // getPitSpeedingCalloutEnabled (issue #912)
+    getPitLimiterEnabled, // getPitLimiterCalloutEnabled (issue #1051)
+    getNoLimiterEnabled, // getNoLimiterCalloutEnabled (issue #1051)
     () => voiceMasterEnabled,
     undefined, // getRadarMasterEnabled
   );
@@ -1603,6 +1651,461 @@ describe("laps-of-fuel-left family registration (issue #838)", () => {
     flush(audio);
 
     expect(voiceClipsPlayed()).toEqual([]);
+  });
+});
+
+// Issue #1051: two mirror families registered by `registerPitCrew`, each wrapped
+// by the master gate + its own per-callout opt-in. They partition the field on
+// equipment — family A speaks to cars that HAVE a pit limiter, family B to cars
+// that have none — and the `where:` predicates that do the partitioning are
+// covered exhaustively in `pit-limiter.test.ts` / `no-limiter.test.ts`. What is
+// only observable HERE is the wiring: that the scenarios reach the engine at
+// all, that the pools they name resolve to clips, and that each family's opt-in
+// arrives in the right positional slot.
+describe("pit-limiter / no-limiter family registration (issue #1051)", () => {
+  // Two of family A's scenarios carry a `triggerDelay`, so every fire in this
+  // block is walked through the clock by `fire()` below.
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  // `hasPitLimiter` tests for the PRESENCE of `dcPitSpeedLimiterToggle`, never
+  // its value, so the equipped snapshot carries it as `false` — a disengaged
+  // limiter, which is precisely when family A has something to say. `OnPitRoad`
+  // is pinned false for the scenarios that read it.
+  const HAS_LIMITER = { ...IN_CAR, dcPitSpeedLimiterToggle: false, OnPitRoad: false };
+  const LACKS_LIMITER = { ...IN_CAR, OnPitRoad: false };
+
+  // The live snapshots the two DELAYED scenarios re-read when their window
+  // closes: each one is the state that scenario has something to say about.
+  const STILL_ENGAGED_ON_TRACK = { ...IN_CAR, dcPitSpeedLimiterToggle: true, OnPitRoad: false };
+  const STILL_MISSING_ON_PIT_ROAD = { ...IN_CAR, dcPitSpeedLimiterToggle: false, OnPitRoad: true };
+
+  // ...and the two states a driver can reach by fixing the problem. The first is
+  // one snapshot with two stories: for the on-track window it is the driver
+  // reaching the button, for the missing window it is the car reaching the end
+  // of pit road. Both are "equipped, limiter off, not on pit road".
+  const LIMITER_OFF_ON_TRACK = { ...IN_CAR, dcPitSpeedLimiterToggle: false, OnPitRoad: false };
+  const LIMITER_ENGAGED_ON_PIT_ROAD = { ...IN_CAR, dcPitSpeedLimiterToggle: true, OnPitRoad: true };
+
+  type Fire = {
+    id: string;
+    pool: string;
+    event: SimEventName;
+    data: Record<string, unknown>;
+    telemetry: Record<string, unknown>;
+    /**
+     * The snapshot `getLatestTelemetry()` serves. Present only on the two
+     * delayed scenarios, which re-read live telemetry at fire time rather than
+     * the envelope's; for the other six it is the same thing as `telemetry`.
+     */
+    live?: Record<string, unknown>;
+    /** The scenario's `triggerDelay`, or absent for the immediate ones. */
+    delayMs?: number;
+  };
+
+  const LIMITER_FIRES: readonly Fire[] = [
+    {
+      id: "pit-crew.limiter-on-track",
+      pool: "pit-limiter-on-track",
+      event: "pitLane.exited",
+      data: {},
+      telemetry: HAS_LIMITER,
+      live: STILL_ENGAGED_ON_TRACK,
+      delayMs: LIMITER_ON_TRACK_DELAY_MS,
+    },
+    {
+      id: "pit-crew.limiter-missing",
+      pool: "pit-limiter-missing",
+      event: "limiter.missing",
+      data: {},
+      telemetry: HAS_LIMITER,
+      live: STILL_MISSING_ON_PIT_ROAD,
+      delayMs: LIMITER_MISSING_DELAY_MS,
+    },
+    {
+      id: "pit-crew.limiter-dropped",
+      pool: "pit-limiter-dropped",
+      event: "limiter.dropped",
+      data: {},
+      telemetry: HAS_LIMITER,
+    },
+    {
+      id: "pit-crew.limiter-speeding",
+      pool: "pit-limiter-speeding",
+      event: "limiter.speeding",
+      data: {},
+      telemetry: HAS_LIMITER,
+    },
+  ];
+
+  const NO_LIMITER_FIRES: readonly Fire[] = [
+    {
+      id: "pit-crew.no-limiter-speeding",
+      pool: "no-limiter-speeding",
+      event: "limiter.speeding",
+      data: {},
+      telemetry: LACKS_LIMITER,
+    },
+    {
+      id: "pit-crew.no-limiter-entry",
+      pool: "no-limiter-entry",
+      event: "pitLane.entered",
+      data: {},
+      telemetry: LACKS_LIMITER,
+    },
+  ];
+
+  // Derived from the registry rather than written out, so a `(group, base)`
+  // rename in `pools.ts` moves the expectation with it instead of going stale.
+  function poolClipPrefix(pool: string): string {
+    const source = POOL_REGISTRY[pool];
+
+    if (!source) throw new Error(`POOL_REGISTRY has no entry for pool "${pool}"`);
+
+    return `voice/${VOICE}/${source.group}/${source.base}`;
+  }
+
+  /** Whether any clip from `pool` reached the Voice channel. */
+  function played(pool: string): boolean {
+    return voiceClipsPlayed().some((p) => p.startsWith(poolClipPrefix(pool)));
+  }
+
+  function fireFor(id: string): Fire {
+    const row = [...LIMITER_FIRES, ...NO_LIMITER_FIRES].find((f) => f.id === id);
+
+    if (!row) throw new Error(`no fire row for scenario "${id}"`);
+
+    return row;
+  }
+
+  // Publish, then walk the clock past the row's `triggerDelay` — nothing to
+  // walk for the six immediate rows. The leading flush drains whatever fired on
+  // the same event WITHOUT a delay (`pitLane.exited` also triggers the
+  // higher-weight PIT_EXIT), so a delayed fire meets an idle bus instead of
+  // losing a weight contest to a callout that is only still playing because the
+  // test never let it finish.
+  function fire({ event, data, telemetry, live, delayMs = 0 }: Fire): void {
+    mockLatestTelemetry.mockReturnValue(live ?? telemetry);
+    bus.publishEvent(event, data as never, telemetry);
+    flush(audio);
+
+    if (delayMs === 0) return;
+
+    vi.advanceTimersByTime(delayMs);
+    flush(audio);
+  }
+
+  it("the fire table covers exactly the scenario ids each family exports", () => {
+    expect(LIMITER_FIRES.map((f) => f.id).sort()).toEqual([...PIT_LIMITER_SCENARIO_IDS].sort());
+    expect(NO_LIMITER_FIRES.map((f) => f.id).sort()).toEqual([...NO_LIMITER_SCENARIO_IDS].sort());
+  });
+
+  // The pool names are pinned to an explicit list rather than re-derived by
+  // prefix. Both constants are built as `Object.keys(POOL_REGISTRY).filter(
+  // startsWith(...))`, so a registry rename that outruns the filter yields an
+  // EMPTY array — which every `for (const name of ...)` sweep would pass
+  // vacuously. Comparing against a literal is what makes that a failure.
+  it("the exported pool-name constants still name the pools these scenarios draw from", () => {
+    expect([...PIT_LIMITER_POOL_NAMES].sort()).toEqual(LIMITER_FIRES.map((f) => f.pool).sort());
+    expect([...NO_LIMITER_POOL_NAMES].sort()).toEqual(NO_LIMITER_FIRES.map((f) => f.pool).sort());
+  });
+
+  it("every declared pool name has a registry entry in the shared pit-limiter group", () => {
+    for (const name of [...PIT_LIMITER_POOL_NAMES, ...NO_LIMITER_POOL_NAMES]) {
+      expect(POOL_REGISTRY[name], `POOL_REGISTRY has no entry for "${name}"`).toBeDefined();
+      // One group for both families: the split is by remedy, not by location.
+      expect(POOL_REGISTRY[name].group).toBe("pit-limiter");
+      expect(POOL_REGISTRY[name].base.length).toBeGreaterThan(0);
+    }
+  });
+
+  // THE assertion this block exists for. An empty pool does not throw and does
+  // not log — the interpreter skips its sequence step in silence, so a callout
+  // can be registered, enabled, unit-tested and still completely mute. This has
+  // already happened twice on #1051 (clips generated on a three-digit suffix the
+  // `-\d{2}` matcher rejects; a pool-name filter left keyed on a stale prefix
+  // after a rename). Playing a clip whose path carries the pool's own
+  // `(group, base)` is the only proof that the pool resolved to members, and it
+  // goes through the real `buildManifestPool`, not a re-implementation of it.
+  it.each([...LIMITER_FIRES, ...NO_LIMITER_FIRES])("$id draws a clip from a non-empty $pool pool", (row) => {
+    fire(row);
+
+    expect(played(row.pool)).toBe(true);
+  });
+
+  // `getPitLimiterCalloutEnabled` and `getNoLimiterCalloutEnabled` are
+  // positional parameters 49 and 50 of 52, adjacent, both `(id) => boolean`, and
+  // both defaulting to `() => true`. A parameter inserted above them shifts both
+  // silently: nothing throws, no type changes, and every "it fires" test still
+  // passes because the shifted-in getter also returns true. Only the id each spy
+  // is handed distinguishes the two — their unions overlap on "speeding" but
+  // family A alone owns "on-track"/"missing"/"dropped" and family B alone owns
+  // "entry", so a swap shows up as the wrong spy seeing an id it has no member
+  // for.
+  it("consults the pit-limiter getter, and only it, for a family A scenario", () => {
+    fire(fireFor("pit-crew.limiter-on-track"));
+
+    expect(getPitLimiterEnabled).toHaveBeenCalledWith("on-track");
+    expect(getNoLimiterEnabled).not.toHaveBeenCalled();
+  });
+
+  it("consults the no-limiter getter, and only it, for a family B scenario", () => {
+    fire(fireFor("pit-crew.no-limiter-entry"));
+
+    expect(getNoLimiterEnabled).toHaveBeenCalledWith("entry");
+    expect(getPitLimiterEnabled).not.toHaveBeenCalled();
+  });
+
+  it.each(LIMITER_FIRES)("$id is suppressed when its own opt-in is off", (row) => {
+    const calloutId = row.id.replace("pit-crew.limiter-", "") as PitLimiterCalloutId;
+    pitLimiterEnabled.set(calloutId, false);
+
+    fire(row);
+
+    expect(played(row.pool)).toBe(false);
+    expect(mockLogger.debug).toHaveBeenCalledWith(`pit-limiter callout suppressed: ${calloutId}`);
+  });
+
+  it.each(NO_LIMITER_FIRES)("$id is suppressed when its own opt-in is off", (row) => {
+    const calloutId = row.id.replace("pit-crew.no-limiter-", "") as NoLimiterCalloutId;
+    noLimiterEnabled.set(calloutId, false);
+
+    fire(row);
+
+    expect(played(row.pool)).toBe(false);
+    expect(mockLogger.debug).toHaveBeenCalledWith(`no-limiter callout suppressed: ${calloutId}`);
+  });
+
+  // The two families' ids collide on "speeding", and `limiter.speeding` is the
+  // one event BOTH subscribe to. If a single opt-in map backed both getters,
+  // silencing one family's speeding line would silence the other's — leaving the
+  // driver who cannot press a button to fix it with nothing at all.
+  it("silencing one family's speeding line leaves the other family's speaking", () => {
+    pitLimiterEnabled.set("speeding", false);
+
+    bus.publishEvent("limiter.speeding", {} as never, HAS_LIMITER);
+    flush(audio);
+    expect(voiceClipsPlayed()).toEqual([]);
+
+    bus.publishEvent("limiter.speeding", {} as never, LACKS_LIMITER);
+    flush(audio);
+    expect(voiceClipsPlayed().some((p) => p.startsWith(poolClipPrefix("no-limiter-speeding")))).toBe(true);
+  });
+
+  it("a disabled callout in one family does not gate its sibling in the same family", () => {
+    pitLimiterEnabled.set("missing", false);
+
+    bus.publishEvent("limiter.dropped", {} as never, HAS_LIMITER);
+    flush(audio);
+
+    expect(voiceClipsPlayed().some((p) => p.startsWith(poolClipPrefix("pit-limiter-dropped")))).toBe(true);
+  });
+
+  it.each([...LIMITER_FIRES, ...NO_LIMITER_FIRES])("$id is suppressed when the master gate is off", (row) => {
+    voiceMasterEnabled = false;
+    fire(row);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+  });
+
+  // The two DELAYED scenarios, and the only place their delay is observable at
+  // all. `triggerDelay` re-runs `where:` when the window closes but hands it the
+  // ORIGINAL event envelope, whose telemetry was captured at publish time — so
+  // both predicates read `getLatestTelemetry()` instead.
+  //
+  // DO NOT DELETE THE SILENCE TESTS AS REDUNDANT. They are the only tests in the
+  // suite that can catch the realistic regression: a later "simplification" of
+  // either predicate back to `e.telemetry`. Under that change the delay still
+  // elapses and the callout still plays, so every test that merely asserts a
+  // fire — including the positive cases these sit beside — stays green. Only a
+  // test that MUTATES the live snapshot inside the window and then expects
+  // nothing goes red. The positives are here for the opposite reason: so the
+  // silence cannot be produced trivially by the scenario being broken outright.
+  describe("the delayed re-check reads live telemetry, not the event's", () => {
+    function publishThenSettle(
+      event: SimEventName,
+      atPublish: Record<string, unknown>,
+      atFireTime: Record<string, unknown>,
+      delayMs: number,
+    ): void {
+      mockLatestTelemetry.mockReturnValue(atPublish);
+      bus.publishEvent(event, {} as never, atPublish);
+      flush(audio);
+
+      // Whatever the driver does, they do it INSIDE the window — before the
+      // trigger timer expires and the predicate is re-run.
+      mockLatestTelemetry.mockReturnValue(atFireTime);
+      vi.advanceTimersByTime(delayMs);
+      flush(audio);
+    }
+
+    it("limiter-on-track speaks when the limiter is still engaged as the window closes", () => {
+      publishThenSettle("pitLane.exited", STILL_ENGAGED_ON_TRACK, STILL_ENGAGED_ON_TRACK, LIMITER_ON_TRACK_DELAY_MS);
+
+      expect(played("pit-limiter-on-track")).toBe(true);
+    });
+
+    it("limiter-on-track stays silent when the driver switches the limiter off inside the window", () => {
+      publishThenSettle("pitLane.exited", STILL_ENGAGED_ON_TRACK, LIMITER_OFF_ON_TRACK, LIMITER_ON_TRACK_DELAY_MS);
+
+      expect(played("pit-limiter-on-track")).toBe(false);
+    });
+
+    it("limiter-missing speaks when the limiter is still not engaged as the window closes", () => {
+      publishThenSettle(
+        "limiter.missing",
+        STILL_MISSING_ON_PIT_ROAD,
+        STILL_MISSING_ON_PIT_ROAD,
+        LIMITER_MISSING_DELAY_MS,
+      );
+
+      expect(played("pit-limiter-missing")).toBe(true);
+    });
+
+    it("limiter-missing stays silent when the driver engages the limiter inside the window", () => {
+      publishThenSettle(
+        "limiter.missing",
+        STILL_MISSING_ON_PIT_ROAD,
+        LIMITER_ENGAGED_ON_PIT_ROAD,
+        LIMITER_MISSING_DELAY_MS,
+      );
+
+      expect(played("pit-limiter-missing")).toBe(false);
+    });
+
+    // The episode ended before the window did. A fire landing here would scold a
+    // driver about pit road they are no longer on.
+    it("limiter-missing stays silent when the car has left pit road inside the window", () => {
+      publishThenSettle("limiter.missing", STILL_MISSING_ON_PIT_ROAD, LIMITER_OFF_ON_TRACK, LIMITER_MISSING_DELAY_MS);
+
+      expect(played("pit-limiter-missing")).toBe(false);
+    });
+  });
+
+  // The speak-time `if:` gate — the third distinct silence case in this feature
+  // and the least obvious, because reaching it needs a busy bus AND a change
+  // while the fire waits, so nothing arrives here by accident.
+  //
+  // `PIT_EXIT` fires on every `pitLane.exited` at the higher WEIGHT.SAFETY and
+  // ungated, so when the limiter's window closes the bus is usually still busy
+  // with a spoken line. `queueable: true` is what stops the callout being
+  // dropped there — but queueing puts back the staleness the delay existed to
+  // remove: the fire decision is taken when the timer elapses, the line can then
+  // sit behind a longer call, and by the time it speaks the driver may have
+  // fixed the limiter. The `if:` gate wrapping the WHOLE framed sequence is what
+  // makes that expand to silence rather than a radio click with nothing after it.
+  //
+  // DO NOT DELETE THE SILENCE TESTS HERE. Remove the `if:` gate and `where:`,
+  // `triggerDelay` and `queueable` all still work — the callout fires, queues and
+  // plays, so every other test in this file stays green, including the two
+  // silence tests above (they never let the bus get busy, so nothing queues).
+  // Only a test that holds the bus, flips the live snapshot while the fire
+  // waits, and then expects silence goes red. The positive counterparts are here
+  // so the silence cannot instead be queueing broken outright.
+  describe("the speak-time gate re-checks again when a queued fire drains", () => {
+    // Stands in for PIT_EXIT: above the limiter callouts' NORMAL, with no
+    // `interrupt`, so a limiter fire arriving mid-line takes the queue-or-drop
+    // path rather than winning the bus — the same path real driving takes.
+    // `offTrack.started` has no subscriber in the catalog, so this occupies the
+    // Voice bus and does nothing else.
+    const OCCUPIER_CLIP = `voice/${VOICE}/incidents/off-track-01.mp3`;
+
+    function occupyVoiceBus(): void {
+      getScenarioEngine().defineScenario({
+        id: "test.bus-occupier",
+        channel: AudioChannel.Voice,
+        bus: AudioBus.Voice,
+        weight: WEIGHT.SAFETY,
+        sequence: [OCCUPIER_CLIP],
+        when: { event: "offTrack.started" },
+      });
+      bus.publishEvent("offTrack.started", {} as never);
+    }
+
+    /**
+     * Publish the trigger with the bus already busy, close the delay window so
+     * the fire is QUEUED rather than played, then change the live snapshot
+     * before letting the bus idle. By that point `where:` has already said yes,
+     * so the only thing left that can stop the callout is the `if:` gate
+     * re-running as the queued fire expands.
+     */
+    function queueThenDrain(
+      event: SimEventName,
+      atPublish: Record<string, unknown>,
+      atDrain: Record<string, unknown>,
+      delayMs: number,
+    ): void {
+      occupyVoiceBus();
+
+      mockLatestTelemetry.mockReturnValue(atPublish);
+      bus.publishEvent(event, {} as never, atPublish);
+
+      // The window closes while the occupier still holds the bus: `where:`
+      // passes and the fire lands in the pending slot instead of playing.
+      vi.advanceTimersByTime(delayMs);
+
+      // The driver fixes it while the line waits its turn.
+      mockLatestTelemetry.mockReturnValue(atDrain);
+
+      // Occupier finishes → the pending fire drains and expands NOW.
+      flush(audio);
+    }
+
+    /**
+     * Proof the fire actually took the QUEUE rather than the play-immediately
+     * path, which is what puts the `if:` gate on the critical path at all.
+     * Without this the block could quietly degrade into the previous block's
+     * scenario — an idle bus, the gate evaluated at fire time — and still pass,
+     * since the silence would then come from `where:` instead.
+     */
+    function expectQueuedThenDrained(id: string): void {
+      expect(mockLogger.debug).toHaveBeenCalledWith(`Scenario "${id}" pending — deferred (bus busy)`);
+      expect(mockLogger.debug).toHaveBeenCalledWith(`Replaying pending scenario "${id}"`);
+    }
+
+    it("limiter-on-track speaks, late, when the limiter is still engaged at the drain", () => {
+      queueThenDrain("pitLane.exited", STILL_ENGAGED_ON_TRACK, STILL_ENGAGED_ON_TRACK, LIMITER_ON_TRACK_DELAY_MS);
+
+      expectQueuedThenDrained("pit-crew.limiter-on-track");
+      expect(voiceClipsPlayed()).toContain(OCCUPIER_CLIP);
+      expect(played("pit-limiter-on-track")).toBe(true);
+    });
+
+    it("limiter-on-track stays silent when the driver switches the limiter off while it is queued", () => {
+      queueThenDrain("pitLane.exited", STILL_ENGAGED_ON_TRACK, LIMITER_OFF_ON_TRACK, LIMITER_ON_TRACK_DELAY_MS);
+
+      // The line that held the bus is unaffected — only the stale callout is
+      // dropped, and it leaves no radio click behind either.
+      expectQueuedThenDrained("pit-crew.limiter-on-track");
+      expect(voiceClipsPlayed()).toContain(OCCUPIER_CLIP);
+      expect(played("pit-limiter-on-track")).toBe(false);
+    });
+
+    it("limiter-missing speaks, late, when the limiter is still not engaged at the drain", () => {
+      queueThenDrain("limiter.missing", STILL_MISSING_ON_PIT_ROAD, STILL_MISSING_ON_PIT_ROAD, LIMITER_MISSING_DELAY_MS);
+
+      expectQueuedThenDrained("pit-crew.limiter-missing");
+      expect(voiceClipsPlayed()).toContain(OCCUPIER_CLIP);
+      expect(played("pit-limiter-missing")).toBe(true);
+    });
+
+    it("limiter-missing stays silent when the driver engages the limiter while it is queued", () => {
+      queueThenDrain(
+        "limiter.missing",
+        STILL_MISSING_ON_PIT_ROAD,
+        LIMITER_ENGAGED_ON_PIT_ROAD,
+        LIMITER_MISSING_DELAY_MS,
+      );
+
+      expectQueuedThenDrained("pit-crew.limiter-missing");
+      expect(voiceClipsPlayed()).toContain(OCCUPIER_CLIP);
+      expect(played("pit-limiter-missing")).toBe(false);
+    });
   });
 });
 

@@ -82,6 +82,32 @@ var pitWindowCheckboxes = pitWindowCallouts.map(function (c) {
 	return '<sdpi-checkbox setting="' + c.setting + '" label="' + c.label + '" global default="true"></sdpi-checkbox>';
 }).join('');
 
+// Pit-limiter callouts (issue #1051) — cars that HAVE a pit limiter. Gated on
+// `hasPitLimiter` per #639, so every line here may name the limiter.
+var pitLimiterCallouts = [
+	{ setting: "calloutEnabledLimiterMissing",  label: "Limiter off on pit road" },
+	{ setting: "calloutEnabledLimiterDropped",  label: "Limiter dropped" },
+	{ setting: "calloutEnabledLimiterSpeeding", label: "Speeding (limiter car)" },
+	{ setting: "calloutEnabledLimiterOnTrack",  label: "Limiter still on after pit exit" },
+];
+var pitLimiterRowCount = Math.ceil(pitLimiterCallouts.length / 2);
+var pitLimiterCheckboxes = pitLimiterCallouts.map(function (c) {
+	return '<sdpi-checkbox setting="' + c.setting + '" label="' + c.label + '" global default="true"></sdpi-checkbox>';
+}).join('');
+
+// No-limiter callouts (issue #1051) — the mirror family, for cars with NO
+// limiter, so none of its lines mentions one. Separate from the family above
+// because the two differ by remedy: a limiter car presses the button, a car
+// without one has to lift.
+var noLimiterCallouts = [
+	{ setting: "calloutEnabledNoLimiterSpeeding", label: "Speeding (no limiter)" },
+	{ setting: "calloutEnabledNoLimiterEntry",    label: "Pit entry speed reminder" },
+];
+var noLimiterRowCount = Math.ceil(noLimiterCallouts.length / 2);
+var noLimiterCheckboxes = noLimiterCallouts.map(function (c) {
+	return '<sdpi-checkbox setting="' + c.setting + '" label="' + c.label + '" global default="true"></sdpi-checkbox>';
+}).join('');
+
 // Opponent-pit callouts (issue #622). Two subjects — the leader
 // entering the pits, and nearby (±2 positions, same lap) competitors
 // incl. the aggregate "other cars pitting" tail. Same 2-column
@@ -392,6 +418,16 @@ var setupWarningCheckboxes = setupWarningCallouts.map(function (c) {
   '<sdpi-item label="Pit Window">' +
   	'<div style="display:grid;grid-template-rows:repeat(' + pitWindowRowCount + ',auto);grid-auto-flow:column;gap:4px 12px;width:100%;">' +
   		pitWindowCheckboxes +
+  	'</div>' +
+  '</sdpi-item>' +
+  '<sdpi-item label="Pit Limiter">' +
+  	'<div style="display:grid;grid-template-rows:repeat(' + pitLimiterRowCount + ',auto);grid-auto-flow:column;gap:4px 12px;width:100%;">' +
+  		pitLimiterCheckboxes +
+  	'</div>' +
+  '</sdpi-item>' +
+  '<sdpi-item label="No Pit Limiter">' +
+  	'<div style="display:grid;grid-template-rows:repeat(' + noLimiterRowCount + ',auto);grid-auto-flow:column;gap:4px 12px;width:100%;">' +
+  		noLimiterCheckboxes +
   	'</div>' +
   '</sdpi-item>' +
   '<sdpi-item label="Opponent Pits">' +

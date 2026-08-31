@@ -28,6 +28,12 @@ Boot processes the audio-assets clips through the same radio-engineer ffmpeg fil
 
 `presets/telemetry/*.json` and `presets/session/*.json`; the filename (minus `.json`) is the preset name. Applied via `/api/telemetry/preset` and `/api/session/preset`. Malformed preset files are silently skipped at load (`src/server.ts`).
 
+## Deleting a telemetry field (capability gates)
+
+`/api/telemetry` merges **`body.patch`** into the current snapshot — `POST {"patch": {"dcPitSpeedLimiterToggle": null}}`, not the bare object, which is rejected with a 400 — and an explicit `null` there **deletes** that key rather than setting it (`mutateTelemetry`, issue #1051). JSON has no `undefined`, and without the sentinel a patch could never make a field ABSENT — which is exactly what iRacing's capability fields mean: `hasPitLimiter`, `hasVisor` and `hasWipers` all read whether a `dc*` field EXISTS, not what it holds. No `TelemetryData` field takes null legitimately, so the sentinel is unambiguous.
+
+So `{"dcPitSpeedLimiterToggle": null}` turns the mock car into one with no pit limiter, which is how the no-limiter pit-speed callouts are auditioned; the field ships present by default because most of the roster has a limiter. Before the sentinel existed, one of the two families was always unfireable and its shortcuts looked broken rather than correctly gated.
+
 ## Snapshot endpoints vs telemetry patch
 
 Scenarios whose resolvers are harness-held (session-start, qualifying-invalidation, race-start) have dedicated `/api/<name>/snapshot` endpoints; shortcuts in `src/scenario-shortcuts.ts` may carry a snapshot inline, which the UI POSTs BEFORE publishing the trigger event so the resolver returns the intended snapshot at fire time. `/api/readback/snapshot` is different: production readback scenarios re-read live telemetry at fire time (issue #481), so it converts the composer snapshot into a telemetry PATCH via `snapshotToTelemetryPatch` (`src/pit-readback-telemetry.ts`), which mirrors the translator's `buildSnapshot()` field-for-field, then ticks once synchronously. Known limitation: `windshield.available` has no telemetry source (`buildSnapshot()` hardcodes it `true`), so the patch drops it.
