@@ -226,7 +226,53 @@ export class VSDClient {
     });
   }
 
+  /**
+   * Read the deck host's global settings.
+   *
+   * deck-core issues this once per start for the one-time settings migration,
+   * as soon as it finds no settings file. `initGlobalSettings` runs before
+   * `adapter.connect()` and the read fires when the store's file load resolves
+   * — an `ENOENT` a tick or two later — so it usually arrives here before the
+   * socket is open, and `send()` discards anything written while it is not.
+   *
+   * Nothing misbehaves: the `open` handler in {@link connect} reissues this
+   * same read. What was missing is any trace that a read had been attempted at
+   * all — no frame, no line — which on the migration path is an hour of a
+   * support thread before anyone thinks to check (#1046). Unlike Ulanzi there
+   * is no addressing hazard alongside it: the VSD protocol's
+   * `getGlobalSettings` carries only `context`, so there is no scope to get
+   * wrong (#1041 was Ulanzi-only).
+   */
   requestGlobalSettings(): void {
+    if (this.ws?.readyState !== WS_OPEN) {
+      // Say so rather than dropping the frame silently, which is what left a
+      // Mirabox support log with no evidence either way — and at INFO, not
+      // debug. `debugLogging` is applied from the schema-DEFAULT
+      // cache at startup and the persisted value only arrives once the store
+      // is ready — strictly after this read — so a debug line would be
+      // suppressed for exactly the user whose log we would need. That is the
+      // only observable difference between this guard and the readyState check
+      // inside `send()`, and it is the whole point of the change.
+      //
+      // No stash, unlike `setGlobalSettings` below: the `open` handler issues
+      // this same read unconditionally, so it asks the question this call could
+      // not, and stashing would only put a duplicate frame on the wire. Note
+      // the OTHER ordering — deck-core ignores any payload arriving before it
+      // asked (`!migrationRequested`), so when the socket opens first the
+      // connect-time reply is discarded and the migration completes on
+      // deck-core's own read, sent moments later with the socket already open.
+      // Both reads are load-bearing, one per ordering; do not de-duplicate
+      // them.
+      //
+      // This explanation is only true while the `open` handler is what covers
+      // the dropped read. A change to who issues the migration read, or to when
+      // it is issued, must revisit this comment rather than leave a confident
+      // wrong one behind.
+      this.logger.info("Global-settings read requested while the host socket was not open");
+
+      return;
+    }
+
     this.send({
       event: "getGlobalSettings",
       context: this.params.pluginUuid,
