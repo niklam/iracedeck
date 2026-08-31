@@ -84,6 +84,7 @@
 				<option value="cycle-camera">Cycle Camera</option>
 				<option value="cycle-sub-camera">Cycle Sub-Camera</option>
 				<option value="cycle-car">Cycle Car</option>
+				<option value="cycle-track-order">Cycle by Track Order</option>
 				<option value="cycle-driving">Cycle Driving Camera</option>
 				<option value="focus-your-car">Focus Your Car</option>
 				<option value="focus-on-leader">Focus on Leader</option>
@@ -100,10 +101,13 @@
 
 		<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
 
+		<%# The two option LABELS are swapped per mode by updateVisibility (the
+		    force-feedback.ejs pattern); the stored values stay next/previous, so
+		    Cycle by Track Order reads Ahead / Behind without a second setting. %>
 		<sdpi-item label="Direction" id="direction-item" class="hidden">
 			<sdpi-select setting="direction" default="next">
-				<option value="next">Next</option>
-				<option value="previous">Previous</option>
+				<option id="direction-next-label" value="next">Next</option>
+				<option id="direction-previous-label" value="previous">Previous</option>
 			</sdpi-select>
 		</sdpi-item>
 
@@ -312,7 +316,16 @@
 				};
 				var DEFAULT_ENABLED = ["Nose", "Cockpit", "Chase", "TV1", "TV2", "TV3"];
 				var SETTING_KEY = "cameraGroupSubset";
-				var CYCLE_TARGETS = ["cycle-camera", "cycle-sub-camera", "cycle-car", "cycle-driving"];
+				var CYCLE_TARGETS = ["cycle-camera", "cycle-sub-camera", "cycle-car", "cycle-track-order", "cycle-driving"];
+
+				// Per-mode wording for the shared Direction dropdown. Cycle by Track
+				// Order (#960) walks the ROAD, not a list, so "next"/"previous" would
+				// be the wrong words for it — the values are unchanged, only the
+				// labels. Modes absent here use the defaults below.
+				var DIRECTION_LABELS = {
+					"cycle-track-order": { next: "Ahead", previous: "Behind" }
+				};
+				var DEFAULT_DIRECTION_LABELS = { next: "Next", previous: "Previous" };
 
 				var GROUP_SECTIONS = [
 					{ heading: "Car", start: 0, end: 9 },
@@ -432,6 +445,13 @@
 					if (directionItem) {
 						directionItem.classList.toggle("hidden", !isCycle);
 					}
+
+					var labels = DIRECTION_LABELS[target] || DEFAULT_DIRECTION_LABELS;
+					var nextOption = document.getElementById("direction-next-label");
+					var previousOption = document.getElementById("direction-previous-label");
+					if (nextOption) nextOption.textContent = labels.next;
+					if (previousOption) previousOption.textContent = labels.previous;
+
 					if (cameraGroupsSection) {
 						cameraGroupsSection.classList.toggle("hidden", target !== "cycle-camera");
 					}

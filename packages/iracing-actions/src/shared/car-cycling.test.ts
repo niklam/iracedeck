@@ -1,7 +1,7 @@
 import { carInWorld, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
 import { describe, expect, it } from "vitest";
 
-import { computeCarNumberTarget, computeTrackOrderTarget } from "./car-cycling.js";
+import { computeCarNumberTarget, computeTrackOrderTarget, trackOrderDirection } from "./car-cycling.js";
 
 /**
  * A field of competitors by carIdx → lap distance (0..1). The physical track
@@ -28,6 +28,17 @@ function telemetryWith(lapDistPct: Record<number, number>, trackSurface: Record<
 
   return { CarIdxLapDistPct: dp, CarIdxTrackSurface: ts } as unknown as TelemetryData;
 }
+
+describe("trackOrderDirection", () => {
+  // The one definition of what `next` means on the road — the Camera Controls
+  // dial's rotation dispatch, its carousel preview, and the keypad's Cycle by
+  // Track Order press all read it here (#886, #960), so the surfaces cannot
+  // drift into opposite readings of the same word.
+  it("reads next as the car ahead and previous as the car behind", () => {
+    expect(trackOrderDirection("next")).toBe("ahead");
+    expect(trackOrderDirection("previous")).toBe("behind");
+  });
+});
 
 describe("computeTrackOrderTarget", () => {
   // Track order (ascending lap distance): #12 (0.10) → #42 (0.30) → #3 (0.55) → #99 (0.80) → wraps to #12.

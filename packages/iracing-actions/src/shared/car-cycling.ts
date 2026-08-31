@@ -1,6 +1,6 @@
 /**
  * Shared car-cycling helpers for every feature that steps the camera through
- * the field (issue #885, #886):
+ * the field (issue #885, #886, #960):
  *
  *   - by ascending CAR NUMBER — the Camera Controls dial's car-number mode, the
  *     keypad Cycle Car mode, and Replay Control's next/previous-car-by-number
@@ -9,8 +9,11 @@
  *     judged by the shared `carInWorld` predicate — see #968 for why lap count
  *     is not part of that test);
  *   - by PHYSICAL TRACK ORDER — the Camera Controls dial's track-order mode
- *     (#886) steps to the competitor physically ahead of / behind the focused
- *     car on the road, via the SAME `findNearestCarOnTrack` primitive behind
+ *     (#886) and its keypad Cycle by Track Order mode (#960) step to the
+ *     competitor physically ahead of / behind the focused car on the road (the
+ *     two surfaces share both the target computation and the `next`-means-ahead
+ *     reading below, so they cannot disagree), via the SAME
+ *     `findNearestCarOnTrack` primitive behind
  *     the SDK's `track_ahead` / `track_behind` template variables
  *     (`findNearestDriverOnTrack`) and Replay Control's dial handler (never a
  *     second track-order computation).
@@ -64,6 +67,18 @@ export function computeCarNumberTarget(
 
 /** A dispatch direction along the physical track: towards the car ahead or the one behind. */
 export type TrackOrderDirection = "ahead" | "behind";
+
+/**
+ * The physical-track reading of a cycle direction (issues #886, #960): `next`
+ * is the car AHEAD on the road (the direction of travel), `previous` the car
+ * BEHIND. The one place that mapping lives — every surface that steps along
+ * the road routes through it (the dial's rotation dispatch AND its carousel
+ * preview, so preview == execution; the keypad's Cycle by Track Order press),
+ * so the two surfaces cannot drift into opposite readings of the same word.
+ */
+export function trackOrderDirection(direction: CarCycleDirection): TrackOrderDirection {
+  return direction === "next" ? "ahead" : "behind";
+}
 
 /** The competitor a track-order step lands on: its identity for dispatch (`carNumberRaw`) and display (`carNumber`). */
 export interface TrackOrderTarget {

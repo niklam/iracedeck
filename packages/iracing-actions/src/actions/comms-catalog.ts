@@ -342,6 +342,7 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
       previous: SUB_CAMERA_BINDING_KEYS.previous,
     }),
     "cycle-car": api,
+    "cycle-track-order": api,
     "cycle-driving": api,
     "focus-your-car": api,
     "focus-on-leader": api,

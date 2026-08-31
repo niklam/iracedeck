@@ -195,3 +195,11 @@ Current dynamic templates: `car-control-pit-limiter.svg`, `session-info.svg`, `t
 - Icons must be visually distinguishable from similar icons used by other actions.
 - Use labels/badges (e.g., "BB" for black box actions) to differentiate action categories.
 - When an icon concept is shared across actions (e.g., fuel), vary the icon style or add a category label.
+
+### Shared markers: the deliberate exception (#960)
+
+The rules above exist so a user can tell two **different** operations apart. They do not require the **same** operation to look different in two places, and where two actions do the same thing, deliberately identical artwork is the clearer choice — a shared visual vocabulary, not a collision.
+
+The one case today is the **double chevron**, which marks a key that steps the camera from one car to another. Camera Controls' *Cycle by Track Order* keys and Replay Control's *Next Car* / *Previous Car* keys all carry it in place of the single triangle: `packages/icons/camera-cycle/track-position-{ahead,behind}.svg` and `packages/icons/replay-control/{next,prev}-car.svg` are byte-identical apart from their `<desc>` metadata. That is intended.
+
+**Do not "fix" it** by varying one side's style or adding a category badge — that would destroy the vocabulary the marker exists to establish. When adding a key to either action, reuse the double chevron if it steps the camera between cars, and pick different artwork if it does not. What separates the four keys for the user is their title text, which each action's own `*_TITLES` map sets at runtime and which overrides the `<desc>` title (see **Text and Variants** above) — so the icons are free to be identical.
