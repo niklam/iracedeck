@@ -20,6 +20,7 @@ vi.mock("./vsd-client.js", () => ({
     onGlobalEvent = vi.fn();
     connect = vi.fn();
     requestGlobalSettings = vi.fn();
+    onHostReady = vi.fn();
     setGlobalSettings = vi.fn();
     openUrl = vi.fn();
     setImage = vi.fn();
@@ -53,6 +54,16 @@ describe("VSDPlatformAdapter", () => {
     it("should delegate to VSDClient.requestGlobalSettings", () => {
       adapter.getGlobalSettings();
       expect(client.requestGlobalSettings).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe("onHostReady (#1056)", () => {
+    it("delegates to the client, so deck-core can restart the migration deadline from the connect", () => {
+      const callback = vi.fn();
+
+      adapter.onHostReady(callback);
+
+      expect(client.onHostReady).toHaveBeenCalledWith(callback);
     });
   });
 

@@ -90,6 +90,14 @@ export class VSDClient {
    */
   private pendingGlobalSettings: Record<string, unknown> | null = null;
 
+  /**
+   * Subscribers waiting for the host socket to be usable (#1056). deck-core
+   * uses this to restart the settings-migration deadline from the point its
+   * read can actually be answered, rather than from the point it was issued
+   * into a socket that was still closed.
+   */
+  private readonly hostReadyCallbacks: Array<() => void> = [];
+
   constructor(
     params: VSDConnectionParams,
     logger: ILogger = silentLogger,
@@ -134,16 +142,26 @@ export class VSDClient {
     this.ws = new WebSocket(`ws://127.0.0.1:${this.params.port}`);
 
     this.ws.on("open", () => {
-      this.logger.info("Connected to VSD Craft");
-      this.send({ uuid: this.params.pluginUuid, event: this.params.registerEvent });
-      this.requestGlobalSettings();
+      try {
+        this.logger.info("Connected to VSD Craft");
+        this.send({ uuid: this.params.pluginUuid, event: this.params.registerEvent });
+        this.requestGlobalSettings();
 
-      if (this.pendingGlobalSettings) {
-        const settings = this.pendingGlobalSettings;
+        if (this.pendingGlobalSettings) {
+          const settings = this.pendingGlobalSettings;
 
-        this.pendingGlobalSettings = null;
-        this.setGlobalSettings(settings);
-        this.logger.debug("Flushed the deferred setGlobalSettings");
+          this.pendingGlobalSettings = null;
+          this.setGlobalSettings(settings);
+          this.logger.debug("Flushed the deferred setGlobalSettings");
+        }
+      } finally {
+        // Last, so a subscriber hears "the host is reachable" only once the
+        // connect-time read above is actually on the wire (#1056) — but in a
+        // `finally`, because a throw anywhere above (a `JSON.stringify` on the
+        // mirror payload, a failing log sink) would otherwise skip the notify
+        // and silently reinstate the very bug #1056 fixes: deck-core would keep
+        // the deadline it measured from the closed-socket read.
+        this.notifyHostReady();
       }
     });
 
@@ -196,6 +214,51 @@ export class VSDClient {
           this.logger.error(`Error dispatching global ${event}: ${error}`);
         }
       }
+    }
+  }
+
+  /**
+   * Subscribe to the host socket becoming usable (#1056) — fired from the
+   * `open` handler, or immediately when the socket is already open.
+   *
+   * Fires a given subscriber exactly ONCE, which is the contract
+   * `IDeckPlatformAdapter.onHostReady` publishes: the list is cleared as it is
+   * fired, so a second `open` (a reconnect, or a second `connect()` in a test
+   * or the harness, where `onClose` does not end the process) cannot re-notify
+   * a subscriber that already ran. deck-core guards its own re-arm as well, but
+   * a consumer should not have to read this file to learn that it must.
+   *
+   * KEEP IN SYNC with `UlanziClient.onHostReady` / `notifyHostReady`, which are
+   * deliberate near-duplicates of these — like the two `FileSink`s.
+   */
+  onHostReady(callback: () => void): void {
+    if (this.ws?.readyState === WS_OPEN) {
+      // Same isolation as the `open` path: a throw here would otherwise escape
+      // into deck-core's settings load and be misreported as a settings-file
+      // failure.
+      this.fireHostReady(callback);
+
+      return;
+    }
+
+    this.hostReadyCallbacks.push(callback);
+  }
+
+  /** Fire the host-ready subscribers exactly once each, isolating a throwing one. */
+  private notifyHostReady(): void {
+    // Splice rather than iterate-then-clear: a subscriber that re-subscribes
+    // while running must land in the NEXT batch, not this one.
+    const callbacks = this.hostReadyCallbacks.splice(0, this.hostReadyCallbacks.length);
+
+    for (const callback of callbacks) this.fireHostReady(callback);
+  }
+
+  /** Run one host-ready subscriber, keeping its failure to itself. */
+  private fireHostReady(callback: () => void): void {
+    try {
+      callback();
+    } catch (error) {
+      this.logger.error(`Host-ready subscriber failed: ${error}`);
     }
   }
 

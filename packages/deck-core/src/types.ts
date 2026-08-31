@@ -139,6 +139,27 @@ export interface IDeckPlatformAdapter {
   getGlobalSettings(): void;
   /** Write/update global settings */
   setGlobalSettings(settings: Record<string, unknown>): void;
+  /**
+   * Subscribe to the host connection becoming usable — the point from which a
+   * {@link getGlobalSettings} read can actually be answered (#1056). A given
+   * subscriber is called at most ONCE — immediately if the host is already
+   * reachable when you subscribe, otherwise when it becomes so; a later
+   * reconnect does not call it again.
+   *
+   * **Optional on purpose, and absence is a statement rather than a gap.** Only
+   * the two WebSocket adapters have anything to report: they drop a frame
+   * written before their socket opens, so the one-time migration read is issued
+   * into a closed socket and covered by the connect-time reissue. An adapter
+   * whose transport queues the read until it can be sent — Elgato, whose SDK
+   * awaits the connection inside its own `send` — declares nothing here, and
+   * deck-core then keeps the deadline it already armed.
+   *
+   * Do NOT make this required. A stub that never calls back would satisfy the
+   * type while breaking the contract; it happens to be harmless for today's
+   * single consumer (never firing means never re-arming, which is right for
+   * Elgato) and would silently do the wrong thing for the next one.
+   */
+  onHostReady?(callback: () => void): void;
   /** Subscribe to application launch events */
   onApplicationDidLaunch(callback: (application: string) => void): void;
   /** Subscribe to application termination events */

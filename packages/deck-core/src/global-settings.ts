@@ -1607,6 +1607,22 @@ export function initGlobalSettings(
    * which of the two reads this is.
    */
   let retryingAfterGiveUp = false;
+  /**
+   * Whether this start's ONE migration-deadline extension has been spent
+   * (#1056). Granted by whichever comes first — the host becoming reachable, or
+   * the budget expiring while a subscribed `onHostReady` still hasn't fired —
+   * so the two paths can never compound and the worst case stays at twice the
+   * budget. Per start, not per subscription: a host that flaps must not be able
+   * to extend the window on every reconnect.
+   */
+  let extensionSpent = false;
+  /**
+   * Whether the adapter reports host readiness at all. Only a transport that
+   * does gets the expiry-side grace: Elgato queues the read until it can be
+   * sent, so its budget was never spent waiting for a connection and it should
+   * give up on the original schedule.
+   */
+  let hostReadySubscribed = false;
 
   // A `_resetGlobalSettings()` (tests) retargets `storeRef`, so an in-flight
   // load or a late host payload from THIS init must not write to module state
@@ -1849,10 +1865,30 @@ export function initGlobalSettings(
     // already migrated us — there is no deadline left to arm.
     if (migrationDone) return;
 
-    migrationTimer = setTimeout(() => {
+    const onMigrationTimeout = (): void => {
       migrationTimer = undefined;
 
       if (storeReady || migrationDone || !isCurrent()) return;
+
+      // The budget expired and the host never became reachable. On a transport
+      // that reports readiness that is not evidence of a dead host: the socket
+      // may still be mid-handshake, and a handshake slower than the budget is
+      // exactly the case the connect re-arm below cannot help with, since by
+      // the time it fires there is no deadline left to move. Spend the one
+      // extension here instead of giving up.
+      //
+      // Measured, not assumed: at this moment a host mid-handshake and one that
+      // accepts TCP and never upgrades both read `CONNECTING` on both clients,
+      // so there is no signal that would let this be granted only to the first.
+      // A host that is genuinely absent never reaches here at all — the socket
+      // is refused, and both clients end the process on close.
+      if (!extensionSpent && hostReadySubscribed) {
+        extensionSpent = true;
+        migrationTimer = setTimeout(onMigrationTimeout, migrationTimeoutMs);
+        logger?.info("Deck host not reachable yet; extending the migration deadline once");
+
+        return;
+      }
 
       migrationDone = true;
 
@@ -1870,7 +1906,45 @@ export function initGlobalSettings(
 
       logger?.warn("Deck host did not answer the migration read; starting fresh");
       becomeReady(migrationBase, "fresh");
-    }, migrationTimeoutMs);
+    };
+
+    migrationTimer = setTimeout(onMigrationTimeout, migrationTimeoutMs);
+
+    // The deadline is armed above, at the moment the read is ISSUED — but on
+    // both WebSocket hosts it cannot be ANSWERED until their socket opens, and
+    // the connect latency came straight out of the budget (#1056). So re-arm it
+    // once when the host first becomes reachable, giving the migration a full
+    // budget measured from the point the question can actually be asked.
+    //
+    // Re-armed, never relocated. Arming it only on connect would mean a host
+    // that never connects never arms, never times out and never gives up — no
+    // `_migrationPending` countdown, no ceiling, no `_migrationAbandoned` — which
+    // trades this bug for a worse #1041. The timer above is what makes the
+    // never-connects path identical to before; this only extends a window that
+    // was already running.
+    //
+    // ONE extension per start, whichever path grants it — this one, or the
+    // expiry-side grace in `onMigrationTimeout` above. A reconnecting or
+    // flapping host must not be able to extend the window without bound, and
+    // the two paths must not compound: worst case is twice the budget, never
+    // more. Adapters whose transport queues the read until it can be sent
+    // (Elgato) declare no `onHostReady` at all, get neither path, and give up
+    // on the original schedule.
+    hostReadySubscribed = adapter.onHostReady !== undefined;
+
+    adapter.onHostReady?.(() => {
+      if (extensionSpent) return;
+
+      extensionSpent = true;
+
+      // Nothing to extend: already answered, already timed out, already ready,
+      // or a newer init has taken over.
+      if (migrationTimer === undefined || storeReady || migrationDone || !isCurrent()) return;
+
+      clearTimeout(migrationTimer);
+      migrationTimer = setTimeout(onMigrationTimeout, migrationTimeoutMs);
+      logger?.info("Deck host reachable; restarting the migration deadline from here");
+    });
   };
 
   const onLoadFailed = (attempt: number, error: unknown): void => {

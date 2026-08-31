@@ -1880,3 +1880,230 @@ describe("Mouse to Sim pointer target (#1029)", () => {
     expect(parsed.focusIRacingWindow).toBe(false);
   });
 });
+
+describe("migration deadline vs. host connect (#1056)", () => {
+  beforeEach(() => _resetGlobalSettings());
+  afterEach(() => vi.useRealTimers());
+
+  interface ConnectingMock {
+    adapter: IDeckPlatformAdapter;
+    echo: EchoCallback | null;
+    getGlobalSettings: ReturnType<typeof vi.fn<() => void>>;
+    /** Fire the host-ready subscribers, the way a client does from its `open` handler. */
+    connect: () => void;
+    /** How many times deck-core subscribed — 0 proves it never entered the migration path. */
+    hostReadySubscribers: number;
+  }
+
+  /**
+   * A mock adapter that models a connection lifecycle, which the suite's own
+   * `createMockAdapter` deliberately does not: the read is issued into a host
+   * that cannot answer until `connect()` is called.
+   */
+  function createConnectingMockAdapter(): ConnectingMock {
+    const echoHolder: { echo: EchoCallback | null } = { echo: null };
+    const readyCallbacks: Array<() => void> = [];
+    const getGlobalSettings = vi.fn<() => void>();
+
+    const adapter = {
+      onDidReceiveGlobalSettings: (cb: EchoCallback) => {
+        echoHolder.echo = cb;
+      },
+      setGlobalSettings: vi.fn<(settings: Record<string, unknown>) => void>(),
+      getGlobalSettings,
+      onHostReady: (cb: () => void) => {
+        readyCallbacks.push(cb);
+      },
+    } as unknown as IDeckPlatformAdapter;
+
+    return {
+      adapter,
+      get echo() {
+        return echoHolder.echo;
+      },
+      getGlobalSettings,
+      connect: () => {
+        for (const cb of [...readyCallbacks]) cb();
+      },
+      get hostReadySubscribers() {
+        return readyCallbacks.length;
+      },
+    };
+  }
+
+  it("extends the window when the host connects while the deadline is still running", async () => {
+    // The bug: the deadline was armed when the read was ISSUED, but on a
+    // WebSocket host it cannot be ANSWERED until the socket opens, so connect
+    // latency came out of the migration's budget.
+    //
+    // Note what this does NOT pin, because the first name given to it claimed
+    // otherwise: the connect here lands at 40 ms of a 50 ms budget, i.e. INSIDE
+    // it. A connect that lands after the deadline has already fired has nothing
+    // left to extend — the migration has given up by then — so this covers a
+    // slow connect, not one slower than the budget itself.
+    vi.useFakeTimers();
+
+    const mock = createConnectingMockAdapter();
+    const store = createMemorySettingsStore();
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store, { migrationTimeoutMs: 50 });
+    await vi.advanceTimersByTimeAsync(40);
+    expect(isSettingsStoreReady()).toBe(false);
+
+    mock.connect();
+
+    // Past the ORIGINAL deadline: without the re-arm this would already have
+    // given up and written a defaults file carrying the pending marker.
+    await vi.advanceTimersByTimeAsync(20);
+    expect(isSettingsStoreReady()).toBe(false);
+    expect(store.saved).toEqual([]);
+
+    mock.echo?.({ driverName: "late-host" });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(isSettingsStoreReady()).toBe(true);
+    expect(getSettingsStoreSource()).toBe("host");
+    expect(getGlobalSettings().driverName).toBe("late-host");
+  });
+
+  it("still reaches the give-up countdown on schedule when a host offers the hook but never connects", async () => {
+    // R1, the invariant the whole design protects: arming the deadline ONLY on
+    // connect would mean a host that never connects never arms, never times
+    // out and never gives up — no countdown, no ceiling, no abandoned marker.
+    vi.useFakeTimers();
+
+    const mock = createConnectingMockAdapter();
+    const store = createMemorySettingsStore();
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store, { migrationTimeoutMs: 50 });
+
+    // Past the first budget: the expiry-side grace has been spent, so the
+    // give-up is deferred rather than taken. This assertion is what makes the
+    // test discriminating — without the grace the store would be ready here.
+    await vi.advanceTimersByTimeAsync(60);
+    expect(isSettingsStoreReady()).toBe(false);
+
+    // Past the second: one extension only, so the countdown and the ceiling
+    // still arrive — at twice the budget, never more.
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect(isSettingsStoreReady()).toBe(true);
+    expect(getSettingsStoreSource()).toBe("fresh");
+    expect(store.saved.at(-1)).toMatchObject({ [MIGRATION_PENDING_KEY]: 1 });
+  });
+
+  it("migrates a host whose handshake is slower than the budget itself, on the one grace", async () => {
+    // The case the bounded grace exists for, and the one the fake-host harness
+    // caught the first implementation failing: the socket is still mid-handshake
+    // when the budget expires, so the connect re-arm cannot help — by the time
+    // it fires there is no deadline left to move.
+    vi.useFakeTimers();
+
+    const mock = createConnectingMockAdapter();
+    const store = createMemorySettingsStore();
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store, { migrationTimeoutMs: 50 });
+    await vi.advanceTimersByTimeAsync(60); // past the original budget, grace spent
+    expect(isSettingsStoreReady()).toBe(false);
+
+    mock.connect(); // the handshake finally completes, later than the whole budget
+    mock.echo?.({ driverName: "slower-than-the-budget" });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(isSettingsStoreReady()).toBe(true);
+    expect(getSettingsStoreSource()).toBe("host");
+    expect(getGlobalSettings().driverName).toBe("slower-than-the-budget");
+  });
+
+  it("spends the re-arm once, so a flapping host cannot extend the window forever", async () => {
+    // R2. Without the one-shot, every reconnect would push the deadline out
+    // and a host that never answers would never give up.
+    vi.useFakeTimers();
+
+    const mock = createConnectingMockAdapter();
+    const store = createMemorySettingsStore();
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store, { migrationTimeoutMs: 50 });
+    await vi.advanceTimersByTimeAsync(10);
+
+    mock.connect(); // deadline now runs to t=60
+    await vi.advanceTimersByTimeAsync(40); // t=50: the original deadline has passed
+    expect(isSettingsStoreReady()).toBe(false);
+
+    mock.connect(); // a second open must NOT buy another 50 ms
+    await vi.advanceTimersByTimeAsync(15); // t=65, past the single re-armed deadline
+
+    expect(isSettingsStoreReady()).toBe(true);
+    expect(getSettingsStoreSource()).toBe("fresh");
+    expect(store.saved.at(-1)).toMatchObject({ [MIGRATION_PENDING_KEY]: 1 });
+  });
+
+  it("arms nothing when the host connects after the deadline has already given up", async () => {
+    // The ordering a genuinely slow host produces, and the one the manual test
+    // against a fake host actually hit: the budget expires while the socket is
+    // still mid-handshake, so the migration has ALREADY given up by the time
+    // the connect lands. The re-arm must then find no timer and do nothing —
+    // this is the only case that exercises the `migrationTimer === undefined`
+    // guard, without which it would clearTimeout(undefined) and schedule a
+    // second timeout against an already-ready store.
+    vi.useFakeTimers();
+
+    const mock = createConnectingMockAdapter();
+    const store = createMemorySettingsStore();
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store, { migrationTimeoutMs: 50 });
+    await vi.advanceTimersByTimeAsync(110); // both budgets: the grace, then the give-up
+
+    expect(isSettingsStoreReady()).toBe(true);
+    expect(getSettingsStoreSource()).toBe("fresh");
+
+    mock.connect(); // the host finally arrives, too late
+
+    expect(vi.getTimerCount()).toBe(0);
+    expect(getSettingsStoreSource()).toBe("fresh");
+    expect(store.saved.at(-1)).toMatchObject({ [MIGRATION_PENDING_KEY]: 1 });
+
+    // A host answer that arrives after the give-up is ignored, as it is on any
+    // other post-migration path — the store is authoritative from here.
+    mock.echo?.({ driverName: "too-late" });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(getGlobalSettings().driverName).toBe("");
+  });
+
+  it("arms nothing when the host connects after the migration already completed", async () => {
+    // R3: the re-arm must not resurrect a deadline for a finished migration.
+    vi.useFakeTimers();
+
+    const mock = createConnectingMockAdapter();
+    const store = createMemorySettingsStore();
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store, { migrationTimeoutMs: 50 });
+    await vi.advanceTimersByTimeAsync(0);
+
+    mock.echo?.({ driverName: "prompt-host" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(isSettingsStoreReady()).toBe(true);
+
+    mock.connect();
+
+    expect(vi.getTimerCount()).toBe(0); // no migration deadline resurrected
+    expect(getGlobalSettings().driverName).toBe("prompt-host");
+  });
+
+  it("never subscribes on an ordinary start, because no migration read is issued", async () => {
+    // The hook is subscribed only where the read goes out, so a start with a
+    // settings file leaves the adapter untouched.
+    const mock = createConnectingMockAdapter();
+    // The memory store answers `load` from what it was CONSTRUCTED with —
+    // `save()` only records — so an existing file is seeded here, not written.
+    const store = createMemorySettingsStore({ driverName: "stored" });
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store, { migrationTimeoutMs: 50 });
+    await tick();
+
+    expect(isSettingsStoreReady()).toBe(true);
+    expect(mock.getGlobalSettings).not.toHaveBeenCalled();
+    expect(mock.hostReadySubscribers).toBe(0);
+  });
+});

@@ -712,3 +712,86 @@ describe("UlanziClient.requestGlobalSettings before the socket is open (#1041)",
     ]);
   });
 });
+
+describe("UlanziClient.onHostReady (#1056)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("fires when the socket opens, after the connect-time read is on the wire", async () => {
+    // deck-core restarts the migration deadline from here, so a subscriber must
+    // not be told the host is reachable before the read has actually gone out.
+    const client = new UlanziClient(params, undefined, () => {});
+    await client.connect();
+    lastSocket.readyState = 0; // CONNECTING — nothing can be sent yet
+
+    const seen: Array<Array<Record<string, unknown>>> = [];
+
+    client.onHostReady(() => seen.push(sentMessages()));
+
+    expect(seen).toEqual([]);
+
+    lastSocket.readyState = WS_OPEN;
+    lastSocket.emit("open");
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0].filter((m) => m.cmd === "getGlobalSettings")).toHaveLength(1);
+  });
+
+  it("fires immediately when the socket is already open", async () => {
+    // The migration read can be issued after the socket opened (a slow settings
+    // file read), and a subscriber that only ever fired from `open` would then
+    // wait forever.
+    const client = new UlanziClient(params, undefined, () => {});
+    await client.connect();
+    lastSocket.emit("open");
+
+    const callback = vi.fn();
+
+    client.onHostReady(callback);
+
+    expect(callback).toHaveBeenCalledOnce();
+  });
+
+  it("does not fire a subscriber again on a second open", async () => {
+    // The contract `IDeckPlatformAdapter.onHostReady` publishes is "at most
+    // once per subscriber". In production `onClose` ends the process so a
+    // second open cannot happen — but the scenario harness and these tests
+    // construct clients with a no-op `onClose`, and a consumer reading the
+    // interface should not have to know which is which.
+    const client = new UlanziClient(params, undefined, () => {});
+    await client.connect();
+    lastSocket.readyState = 0;
+
+    const callback = vi.fn();
+
+    client.onHostReady(callback);
+
+    lastSocket.readyState = WS_OPEN;
+    lastSocket.emit("open");
+    lastSocket.emit("open");
+
+    expect(callback).toHaveBeenCalledOnce();
+  });
+
+  it("isolates a throwing subscriber so the others still run", async () => {
+    const error = vi.fn();
+    const logger = { info: vi.fn(), warn: vi.fn(), error, debug: vi.fn(), createScope: vi.fn() };
+    const client = new UlanziClient(params, logger as never, () => {});
+    await client.connect();
+    lastSocket.readyState = 0;
+
+    const second = vi.fn();
+
+    client.onHostReady(() => {
+      throw new Error("subscriber blew up");
+    });
+    client.onHostReady(second);
+
+    lastSocket.readyState = WS_OPEN;
+    lastSocket.emit("open");
+
+    expect(second).toHaveBeenCalledOnce();
+    expect(error).toHaveBeenCalledOnce();
+  });
+});
