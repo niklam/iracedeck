@@ -141,8 +141,10 @@ export interface IDeckPlatformAdapter {
   setGlobalSettings(settings: Record<string, unknown>): void;
   /**
    * Subscribe to the host connection becoming usable — the point from which a
-   * {@link getGlobalSettings} read can actually be answered (#1056). Fires once,
-   * or immediately if the host is already reachable when you subscribe.
+   * {@link getGlobalSettings} read can actually be answered (#1056). A given
+   * subscriber is called at most ONCE — immediately if the host is already
+   * reachable when you subscribe, otherwise when it becomes so; a later
+   * reconnect does not call it again.
    *
    * **Optional on purpose, and absence is a statement rather than a gap.** Only
    * the two WebSocket adapters have anything to report: they drop a frame

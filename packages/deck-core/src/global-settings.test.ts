@@ -1931,10 +1931,16 @@ describe("migration deadline vs. host connect (#1056)", () => {
     };
   }
 
-  it("extends the window on a late connect, so a host slower than the budget still migrates", async () => {
+  it("extends the window when the host connects while the deadline is still running", async () => {
     // The bug: the deadline was armed when the read was ISSUED, but on a
     // WebSocket host it cannot be ANSWERED until the socket opens, so connect
     // latency came out of the migration's budget.
+    //
+    // Note what this does NOT pin, because the first name given to it claimed
+    // otherwise: the connect here lands at 40 ms of a 50 ms budget, i.e. INSIDE
+    // it. A connect that lands after the deadline has already fired has nothing
+    // left to extend — the migration has given up by then — so this covers a
+    // slow connect, not one slower than the budget itself.
     vi.useFakeTimers();
 
     const mock = createConnectingMockAdapter();
@@ -1998,6 +2004,39 @@ describe("migration deadline vs. host connect (#1056)", () => {
     expect(isSettingsStoreReady()).toBe(true);
     expect(getSettingsStoreSource()).toBe("fresh");
     expect(store.saved.at(-1)).toMatchObject({ [MIGRATION_PENDING_KEY]: 1 });
+  });
+
+  it("arms nothing when the host connects after the deadline has already given up", async () => {
+    // The ordering a genuinely slow host produces, and the one the manual test
+    // against a fake host actually hit: the budget expires while the socket is
+    // still mid-handshake, so the migration has ALREADY given up by the time
+    // the connect lands. The re-arm must then find no timer and do nothing —
+    // this is the only case that exercises the `migrationTimer === undefined`
+    // guard, without which it would clearTimeout(undefined) and schedule a
+    // second timeout against an already-ready store.
+    vi.useFakeTimers();
+
+    const mock = createConnectingMockAdapter();
+    const store = createMemorySettingsStore();
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store, { migrationTimeoutMs: 50 });
+    await vi.advanceTimersByTimeAsync(60); // the deadline fires first
+
+    expect(isSettingsStoreReady()).toBe(true);
+    expect(getSettingsStoreSource()).toBe("fresh");
+
+    mock.connect(); // the host finally arrives, too late
+
+    expect(vi.getTimerCount()).toBe(0);
+    expect(getSettingsStoreSource()).toBe("fresh");
+    expect(store.saved.at(-1)).toMatchObject({ [MIGRATION_PENDING_KEY]: 1 });
+
+    // A host answer that arrives after the give-up is ignored, as it is on any
+    // other post-migration path — the store is authoritative from here.
+    mock.echo?.({ driverName: "too-late" });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(getGlobalSettings().driverName).toBe("");
   });
 
   it("arms nothing when the host connects after the migration already completed", async () => {

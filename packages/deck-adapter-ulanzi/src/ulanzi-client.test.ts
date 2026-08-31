@@ -753,6 +753,27 @@ describe("UlanziClient.onHostReady (#1056)", () => {
     expect(callback).toHaveBeenCalledOnce();
   });
 
+  it("does not fire a subscriber again on a second open", async () => {
+    // The contract `IDeckPlatformAdapter.onHostReady` publishes is "at most
+    // once per subscriber". In production `onClose` ends the process so a
+    // second open cannot happen — but the scenario harness and these tests
+    // construct clients with a no-op `onClose`, and a consumer reading the
+    // interface should not have to know which is which.
+    const client = new UlanziClient(params, undefined, () => {});
+    await client.connect();
+    lastSocket.readyState = 0;
+
+    const callback = vi.fn();
+
+    client.onHostReady(callback);
+
+    lastSocket.readyState = WS_OPEN;
+    lastSocket.emit("open");
+    lastSocket.emit("open");
+
+    expect(callback).toHaveBeenCalledOnce();
+  });
+
   it("isolates a throwing subscriber so the others still run", async () => {
     const error = vi.fn();
     const logger = { info: vi.fn(), warn: vi.fn(), error, debug: vi.fn(), createScope: vi.fn() };
