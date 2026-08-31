@@ -222,36 +222,14 @@ beforeEach(() => {
   bus = createMockBus();
   audio = createFakeAudio();
   initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
-  registerPitCrew(
-    bus,
-    undefined, // getFlagCalloutEnabled
-    mockLogger as never,
-    undefined, // getPitReadbackEnabled
-    undefined, // getPitActionsAllowed
-    undefined, // getPitServiceRequestsEnabled
-    undefined, // getReadbackSnapshot
-    undefined, // getDamageCalloutEnabled
-    undefined, // getPitStatusCalloutEnabled
-    undefined, // getTrackConditionsCalloutEnabled
-    undefined, // getIncidentCalloutEnabled
-    undefined, // getSessionStartCalloutEnabled
-    undefined, // getSessionStartSnapshot
-    undefined, // getLapTimeCalloutEnabled
-    undefined, // getLapCompletedSnapshot
-    undefined, // getPositionCalloutEnabled
-    undefined, // getQualifyingInvalidationCalloutEnabled
-    undefined, // getQualifyingInvalidationSnapshot
-    undefined, // getRaceStatusCalloutEnabled
-    () => raceFinished, // getRaceFinishedFired
-    undefined, // getRaceEndCalloutEnabled
-    undefined, // getRaceFinishedSnapshot
-    undefined, // getRaceStartCalloutEnabled
-    undefined, // getRaceStartSnapshot
-    (id) => overtakeEnabled[id], // getOvertakeCalloutEnabled
-    () => currentDriverName, // getOvertakeDriverName
-    () => currentLive, // getLivePosition
-    () => currentGate, // getOvertakeGate
-  );
+  registerPitCrew(bus, {
+    logger: mockLogger as never,
+    getRaceFinishedFired: () => raceFinished,
+    getOvertakeCalloutEnabled: (id) => overtakeEnabled[id],
+    getOvertakeDriverName: () => currentDriverName,
+    getLivePosition: () => currentLive,
+    getOvertakeGate: () => currentGate,
+  });
 });
 
 afterEach(() => {

@@ -538,60 +538,27 @@ beforeEach(() => {
   bus = createMockBus();
   audio = createFakeAudio();
   initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
-  registerPitCrew(
-    bus,
-    (id) => enabled.get(id) ?? true,
-    mockLogger as never,
-    () => true,
-    () => true,
-    () => pitServiceRequestsEnabled,
-    () => null,
-    (id) => damageEnabled.get(id) ?? true,
-    (id) => pitStatusEnabled.get(id) ?? true, // getPitStatusCalloutEnabled (issue #479 / #951)
-    undefined,
-    (id) => incidentEnabled.get(id) ?? true,
-    undefined, // getSessionStartCalloutEnabled
-    undefined, // getSessionStartSnapshot
-    undefined, // getLapTimeCalloutEnabled
-    undefined, // getLapCompletedSnapshot
-    undefined, // getPositionCalloutEnabled (issue #566)
-    undefined, // getQualifyingInvalidationCalloutEnabled (issue #567)
-    undefined, // getQualifyingInvalidationSnapshot (issue #567)
-    undefined, // getRaceStatusCalloutEnabled (issue #569)
-    undefined, // getRaceFinishedFired (issue #569)
-    undefined, // getRaceEndCalloutEnabled (issue #569)
-    undefined, // getRaceFinishedSnapshot (issue #569)
-    undefined, // getRaceStartCalloutEnabled (issue #568)
-    undefined, // getRaceStartSnapshot (issue #568)
-    undefined, // getOvertakeCalloutEnabled (issue #574)
-    undefined, // getOvertakeDriverName (issue #574)
-    undefined, // getLivePosition (issue #574)
-    undefined, // getOvertakeGate (issue #574)
-    () => pitBoxEnabled, // getPitBoxCalloutEnabled (issue #600)
-    undefined, // getSetupWarningMismatch (issue #625)
-    undefined, // getSpotterCalloutEnabled (issue #651)
-    undefined, // getSpotterTrackDirection (issue #651)
-    undefined, // getSpotterStillThereIntervalMs (issue #651)
-    undefined, // getSpotterNearestCarGapMeters (issue #651)
-    (id) => pitWindowEnabled.get(id) ?? true, // getPitWindowCalloutEnabled (issue #655)
-    (id) => rollingStartEnabled.get(id) ?? true, // getRollingStartCalloutEnabled (issue #660)
-    () => true, // getStartLightCalloutEnabled (issue #480)
-    (id) => fuelEnabled.get(id) ?? true, // getFuelCalloutEnabled (issue #838)
-    undefined, // getCornerNameCalloutEnabled (issue #888)
-    undefined, // getCornerNameSnapshot (issue #888)
-    (id) => opponentPitEnabled.get(id) ?? true, // getOpponentPitCalloutEnabled (issue #622)
-    () => opponentPitLivePosition, // getOpponentPitLivePosition (issue #622)
-    undefined, // getGapCalloutEnabled (issue #933)
-    undefined, // getGapCooldownMs (issue #933)
-    undefined, // getLiveGaps (issue #933)
-    undefined, // getOpponentFlagCalloutEnabled (issue #936)
-    undefined, // getOpponentFlagLivePosition (issue #936)
-    undefined, // getPitSpeedingCalloutEnabled (issue #912)
-    getPitLimiterEnabled, // getPitLimiterCalloutEnabled (issue #1051)
-    getNoLimiterEnabled, // getNoLimiterCalloutEnabled (issue #1051)
-    () => voiceMasterEnabled,
-    undefined, // getRadarMasterEnabled
-  );
+  registerPitCrew(bus, {
+    getFlagCalloutEnabled: (id) => enabled.get(id) ?? true,
+    logger: mockLogger as never,
+    getPitReadbackEnabled: () => true,
+    getPitActionsAllowed: () => true,
+    getPitServiceRequestsEnabled: () => pitServiceRequestsEnabled,
+    getReadbackSnapshot: () => null,
+    getDamageCalloutEnabled: (id) => damageEnabled.get(id) ?? true,
+    getPitStatusCalloutEnabled: (id) => pitStatusEnabled.get(id) ?? true,
+    getIncidentCalloutEnabled: (id) => incidentEnabled.get(id) ?? true,
+    getPitBoxCalloutEnabled: () => pitBoxEnabled,
+    getPitWindowCalloutEnabled: (id) => pitWindowEnabled.get(id) ?? true,
+    getRollingStartCalloutEnabled: (id) => rollingStartEnabled.get(id) ?? true,
+    getStartLightCalloutEnabled: () => true,
+    getFuelCalloutEnabled: (id) => fuelEnabled.get(id) ?? true,
+    getOpponentPitCalloutEnabled: (id) => opponentPitEnabled.get(id) ?? true,
+    getOpponentPitLivePosition: () => opponentPitLivePosition,
+    getPitLimiterCalloutEnabled: getPitLimiterEnabled,
+    getNoLimiterCalloutEnabled: getNoLimiterEnabled,
+    getRaceEngineerMasterEnabled: () => voiceMasterEnabled,
+  });
 });
 
 afterEach(() => {

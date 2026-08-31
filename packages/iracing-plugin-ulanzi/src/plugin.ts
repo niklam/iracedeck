@@ -494,52 +494,27 @@ const resolvePendingCarLivePosition = (pending: {
 // at event-arrival time inside the scenario engine, before fire/expand,
 // so toggling a flag off does NOT cut a callout that is already
 // playing — only future events of that color are suppressed.
-registerPitCrew(
-  eventBus,
-  (id: FlagCalloutId) => (getGlobalSettings() as Record<string, unknown>)[FLAG_CALLOUT_SETTING_KEYS[id]] !== false,
-  adapter.createLogger("PitCrewScenarios"),
-  // Pit-service readback opt-in (issue #476) — same live-read pattern as
-  // flag callouts: gate at event arrival so disabling mid-readback only
-  // suppresses future fires.
-  (id: PitReadbackCalloutId) =>
+registerPitCrew(eventBus, {
+  getFlagCalloutEnabled: (id: FlagCalloutId) =>
+    (getGlobalSettings() as Record<string, unknown>)[FLAG_CALLOUT_SETTING_KEYS[id]] !== false,
+  logger: adapter.createLogger("PitCrewScenarios"),
+  getPitReadbackEnabled: (id: PitReadbackCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[PIT_READBACK_CALLOUT_SETTING_KEYS[id]] !== false,
-  // Pit-action confirmation cooldown (issue #476). Suppresses per-toggle
-  // callouts during the 4500 ms post-pit-exit window and the 5000 ms
-  // pre-start grid window so phantom flag-cascade events don't surface.
-  () => isPitActionsAllowed(),
-  // User opt-in for the per-toggle pit-service request confirmations
-  // (issue #468). Live read so the toggle takes effect mid-session.
-  () => (getGlobalSettings() as Record<string, unknown>).calloutEnabledPitServiceRequests !== false,
-  // Pit-readback queued-services snapshot (issue #481). Read fresh on
-  // every readback fire so deferred replays speak the current queue,
-  // not a snapshot frozen into the original event.
-  () => getReadbackSnapshot(),
-  // Damage callout opt-in (issue #489) — same live-read pattern as the
-  // flag callouts: gate at event arrival so disabling mid-callout only
-  // suppresses future fires.
-  (id: DamageCalloutId) => (getGlobalSettings() as Record<string, unknown>)[DAMAGE_CALLOUT_SETTING_KEYS[id]] !== false,
-  // Pit-service status callout opt-ins (issue #479) — one boolean per
-  // non-`None` PlayerCarPitSvStatus. Same live-read pattern as the
-  // other callout families.
-  (id: PitStatusCalloutId) =>
+  getPitActionsAllowed: () => isPitActionsAllowed(),
+  getPitServiceRequestsEnabled: () =>
+    (getGlobalSettings() as Record<string, unknown>).calloutEnabledPitServiceRequests !== false,
+  getReadbackSnapshot: () => getReadbackSnapshot(),
+  getDamageCalloutEnabled: (id: DamageCalloutId) =>
+    (getGlobalSettings() as Record<string, unknown>)[DAMAGE_CALLOUT_SETTING_KEYS[id]] !== false,
+  getPitStatusCalloutEnabled: (id: PitStatusCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[PIT_STATUS_CALLOUT_SETTING_KEYS[id]] !== false,
-  // Track-conditions callout opt-in (issue #526). Single subject today
-  // (`wetness`); same live-read pattern as the other callout families.
-  (id: TrackConditionsCalloutId) =>
+  getTrackConditionsCalloutEnabled: (id: TrackConditionsCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[TRACK_CONDITIONS_CALLOUT_SETTING_KEYS[id]] !== false,
-  // Per-incident-type callout opt-ins (issue #530). One boolean per
-  // IncidentType subject. Same live-read pattern as the other callout
-  // families.
-  (id: IncidentCalloutId) =>
+  getIncidentCalloutEnabled: (id: IncidentCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[INCIDENT_CALLOUT_SETTING_KEYS[id]] !== false,
-  // Session-start callout opt-in (issues #542, #668). Single subject; same
-  // live-read pattern as the other callout families.
-  (id: SessionStartCalloutId) =>
+  getSessionStartCalloutEnabled: (id: SessionStartCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[SESSION_START_CALLOUT_SETTING_KEYS[id]] !== false,
-  // Session-start conditions snapshot (issue #542). Composes the
-  // telemetry-derived conditions with the PI-picked driver name; null when
-  // conditions aren't available or no driver-name clips exist.
-  () => {
+  getSessionStartSnapshot: () => {
     const conditions = getSessionStartConditions();
 
     if (!conditions) return null;
@@ -548,62 +523,29 @@ registerPitCrew(
 
     return driverName ? { ...conditions, driverName } : null;
   },
-  // Lap-time best-lap callout opt-in (issue #555). Single subject; same
-  // live-read pattern as the other callout families.
-  (id: LapTimeCalloutId) =>
+  getLapTimeCalloutEnabled: (id: LapTimeCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[LAP_TIME_CALLOUT_SETTING_KEYS[id]] !== false,
-  // Lap-time snapshot resolver (issue #555). Returns the cached
-  // `lap.completed` payload populated by the subscription above. The var
-  // resolvers read it at sequence-expansion time. Shared with the
-  // position-change callout below.
-  () => lastLapCompleted,
-  // Position-change callout opt-in (issue #566). Single subject; same
-  // live-read pattern as the other callout families.
-  (id: PositionCalloutId) =>
+  getLapCompletedSnapshot: () => lastLapCompleted,
+  getPositionCalloutEnabled: (id: PositionCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[POSITION_CALLOUT_SETTING_KEYS[id]] !== false,
-  // Qualifying lap-invalidation callout opt-in (issue #567). Single subject;
-  // same live-read pattern as the other callout families.
-  (id: QualifyingInvalidationCalloutId) =>
+  getQualifyingInvalidationCalloutEnabled: (id: QualifyingInvalidationCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[QUALIFYING_INVALIDATION_CALLOUT_SETTING_KEYS[id]] !== false,
-  // Qualifying lap-invalidation snapshot resolver (issue #567). Built by
-  // sim-events-iracing from the latest telemetry tick — same shape as
-  // `getReadbackSnapshot` / `getSessionStartConditions`. The translator
-  // owns the `lapStartedFromPits` flag and applies the `SessionLapsRemainEx
-  // - 1` adjustment so the scenario reads a clean, semantic snapshot.
-  () => getQualifyingInvalidationSnapshot(),
-  // Race-status callout opt-in (issue #569). Single subject; same live-read
-  // pattern as the other callout families.
-  (id: RaceStatusCalloutId) =>
+  getQualifyingInvalidationSnapshot: () => getQualifyingInvalidationSnapshot(),
+  getRaceStatusCalloutEnabled: (id: RaceStatusCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[RACE_STATUS_CALLOUT_SETTING_KEYS[id]] !== false,
-  // Race-finished latch resolver (issue #569). Reads the translator's
-  // `state.raceFinishedFired` so race-status's `where:` suppresses the
-  // periodic status callout on the final lap (race-end fires on the same
-  // `lap.completed` tick — race.finished is emitted first into the pending
-  // queue, latch flips synchronously before lap.completed publishes).
-  () => isRaceFinished(),
-  // Race-end callout opt-in (issue #569). Single subject.
-  (id: RaceEndCalloutId) =>
+  getRaceFinishedFired: () => isRaceFinished(),
+  getRaceEndCalloutEnabled: (id: RaceEndCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[RACE_END_CALLOUT_SETTING_KEYS[id]] !== false,
-  // Race-end snapshot resolver (issue #569). Composes the cached
-  // `race.finished` payload with the PI-picked driver name; null when the
-  // cache is empty or no driver-name clips exist.
-  (): RaceFinishedSnapshot | null => {
+  getRaceFinishedSnapshot: (): RaceFinishedSnapshot | null => {
     if (!lastRaceFinished) return null;
 
     const driverName = resolveActiveDriverName(driverNames, "driver");
 
     return driverName ? { ...lastRaceFinished, driverName } : null;
   },
-  // Race-start callout opt-in (issue #568). Single subject; same live-read
-  // pattern as the other callout families.
-  (id: RaceStartCalloutId) =>
+  getRaceStartCalloutEnabled: (id: RaceStartCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[RACE_START_CALLOUT_SETTING_KEYS[id]] !== false,
-  // Race-start conditions snapshot (issue #568). Composes the telemetry-derived
-  // conditions (track temp / air temp / wetness / grid position) from
-  // sim-events-iracing with the PI-picked driver name. Returns null (scenario
-  // skipped) when conditions aren't yet available or no driver-name clips
-  // exist.
-  () => {
+  getRaceStartSnapshot: () => {
     const conditions = getRaceStartConditions();
 
     if (!conditions) return null;
@@ -612,108 +554,53 @@ registerPitCrew(
 
     return driverName ? { ...conditions, driverName } : null;
   },
-  // Overtake gain/loss callout opt-ins (issue #574). Per-direction live-read
-  // — same gate-at-event-arrival pattern as the other callout families.
-  (id: OvertakeCalloutId) =>
+  getOvertakeCalloutEnabled: (id: OvertakeCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[OVERTAKE_CALLOUT_SETTING_KEYS[id]] !== false,
-  // Driver-name resolver for the loss-line "Come on, <name>" composition
-  // (issue #574). Reuses the same `resolveActiveDriverName` path as session-
-  // start and race-end.
-  () => resolveActiveDriverName(driverNames, "driver"),
-  // Live position resolver (issue #574 follow-up). Powers the "We're currently
-  // P[n]" readouts (overtake, race position-change, race-status) — read at
-  // speak-time so the spoken position is accurate to the moment it's said.
-  () => getLivePosition(),
-  // Overtake gate (issue #574 follow-up). Suppresses the whole overtake callout
-  // when the swap wasn't a clean racing moment (cars alongside / off-track /
-  // crawling / pit road / recent incident).
-  getOvertakeGate,
-  // Pit-box count-in opt-in (issue #600). Single subject (`count-in`) gating
-  // all six distance-mark scenarios; live-read like the other callout families.
-  (id: PitBoxCalloutId) => (getGlobalSettings() as Record<string, unknown>)[PIT_BOX_CALLOUT_SETTING_KEYS[id]] !== false,
-  // Setup-mismatch warning resolver (issue #625). Live-read at fire time: the
-  // opt-in plus the session-kind regex pattern from global settings, tested
-  // against the loaded setup name. Consumed by the session-start / race-start
-  // intros' `if` clauses.
-  (kind) => evaluateSetupWarning(kind, getGlobalSettings() as Record<string, unknown>, getDriverSetupName()),
-  // Spotter per-callout opt-ins (issue #651). The spotter is a Race Engineer
-  // callout family — no standalone master; it rides pitCrewRaceEngineerEnabled.
-  // Placed before the master gates so the masters stay the last args.
-  (id: SpotterCalloutId) =>
+  getOvertakeDriverName: () => resolveActiveDriverName(driverNames, "driver"),
+  getLivePosition: () => getLivePosition(),
+  getOvertakeGate: getOvertakeGate,
+  getPitBoxCalloutEnabled: (id: PitBoxCalloutId) =>
+    (getGlobalSettings() as Record<string, unknown>)[PIT_BOX_CALLOUT_SETTING_KEYS[id]] !== false,
+  getSetupWarningMismatch: (kind) =>
+    evaluateSetupWarning(kind, getGlobalSettings() as Record<string, unknown>, getDriverSetupName()),
+  getSpotterCalloutEnabled: (id: SpotterCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[SPOTTER_CALLOUT_SETTING_KEYS[id]] !== false,
-  // Spotter road/oval terminology (issue #651)
-  () => getTrackDirection(),
-  // Spotter "still there" reminder cadence (issue #651) — 1–10 s, default 3.
-  () => resolveStillThereIntervalMs((getGlobalSettings() as Record<string, unknown>)[SPOTTER_STILL_THERE_SECONDS_KEY]),
-  // Spotter nearest-car gap for the → clear confirmation buffer (issue #651).
-  () => getNearestCarGapMeters(),
-  // Pit-window open/closed callout opt-in (issue #655). Single subject covering
-  // both directions. Live-read like the other callout families so toggling off
-  // mid-session takes effect on the next event. Placed before the rolling-start
-  // opt-in so the masters stay last.
-  (id: PitWindowCalloutId) =>
+  getSpotterTrackDirection: () => getTrackDirection(),
+  getSpotterStillThereIntervalMs: () =>
+    resolveStillThereIntervalMs((getGlobalSettings() as Record<string, unknown>)[SPOTTER_STILL_THERE_SECONDS_KEY]),
+  getSpotterNearestCarGapMeters: () => getNearestCarGapMeters(),
+  getPitWindowCalloutEnabled: (id: PitWindowCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[PIT_WINDOW_CALLOUT_SETTING_KEYS[id]] !== false,
-  // Rolling-start pace-car callout opt-in (issue #660). Live-read like the
-  // other callout families so toggling off mid-session takes effect on the
-  // next event. Placed before the start-light opt-in so the masters stay last.
-  (id: RollingStartCalloutId) =>
+  getRollingStartCalloutEnabled: (id: RollingStartCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[ROLLING_START_CALLOUT_SETTING_KEYS[id]] !== false,
-  // Start-light callout opt-ins (issue #480). Two grouped subjects —
-  // `lights` (the three gantry lines) and `countdown` (the five numeric
-  // marks). Same live-read pattern as the other callout families so toggling
-  // off mid-session takes effect on the next event. Placed before the master
-  // gates so the masters stay the last args.
-  (id: StartLightCalloutId) =>
+  getStartLightCalloutEnabled: (id: StartLightCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[START_LIGHT_CALLOUT_SETTING_KEYS[id]] !== false,
-  // Laps-of-fuel-left callout opt-ins (issue #838). One boolean per spoken
-  // count (10 → 1 plus the box call) with non-uniform schema defaults —
-  // `!== false` reads the parsed cache, so the OFF-by-default counts resolve
-  // through the schema default rather than this fallback. Same live-read
-  // pattern as the other callout families. Placed before the master gates so
-  // the masters stay the last args.
-  (id: FuelCalloutId) => (getGlobalSettings() as Record<string, unknown>)[FUEL_CALLOUT_SETTING_KEYS[id]] !== false,
-  // Corner-name callout opt-in (issue #888). Live-read, single subject.
-  (id: CornerNameCalloutId) =>
+  getFuelCalloutEnabled: (id: FuelCalloutId) =>
+    (getGlobalSettings() as Record<string, unknown>)[FUEL_CALLOUT_SETTING_KEYS[id]] !== false,
+  getCornerNameCalloutEnabled: (id: CornerNameCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[CORNER_NAME_CALLOUT_SETTING_KEYS[id]] !== false,
-  // Corner-name snapshot resolver (issue #888) — the cache populated above.
-  () => lastCornerName,
-  // Opponent-pit callout opt-ins (issue #622). Live-read, two subjects.
-  (id: OpponentPitCalloutId) =>
+  getCornerNameSnapshot: () => lastCornerName,
+  getOpponentPitCalloutEnabled: (id: OpponentPitCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[OPPONENT_PIT_CALLOUT_SETTING_KEYS[id]] !== false,
-  // Opponent-pit live position resolver (issue #622) — shared with the
-  // opponent-flag family below (#936 review).
-  resolvePendingCarLivePosition,
-  // Gap callout opt-ins (issue #933). Per-type live-read — same gate-at-
-  // event-arrival pattern as the other callout families.
-  (id: GapCalloutId) => (getGlobalSettings() as Record<string, unknown>)[GAP_CALLOUT_SETTING_KEYS[id]] !== false,
-  // Shared gap-callout cooldown (issue #933) — 1–360 s, default 30 s.
-  () => resolveGapCooldownMs((getGlobalSettings() as Record<string, unknown>).gapCalloutCooldownSeconds),
-  // Live gaps resolver (issue #933) — the spoken gap number reads the live
-  // crossing-time gap at speak time, not the event-time snapshot.
-  () => getLiveGaps(),
-  // Opponent-flag callout opt-ins (issue #936). Live-read, four subjects.
-  (id: OpponentFlagCalloutId) =>
+  getOpponentPitLivePosition: resolvePendingCarLivePosition,
+  getGapCalloutEnabled: (id: GapCalloutId) =>
+    (getGlobalSettings() as Record<string, unknown>)[GAP_CALLOUT_SETTING_KEYS[id]] !== false,
+  getGapCooldownMs: () =>
+    resolveGapCooldownMs((getGlobalSettings() as Record<string, unknown>).gapCalloutCooldownSeconds),
+  getLiveGaps: () => getLiveGaps(),
+  getOpponentFlagCalloutEnabled: (id: OpponentFlagCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[OPPONENT_FLAG_CALLOUT_SETTING_KEYS[id]] !== false,
-  // Opponent-flag live position resolver (issue #936) — the shared resolver.
-  resolvePendingCarLivePosition,
-  // Pit-road speeding cue opt-in (issue #912). Live-read, single subject.
-  (id: PitSpeedingCalloutId) =>
+  getOpponentFlagLivePosition: resolvePendingCarLivePosition,
+  getPitSpeedingCalloutEnabled: (id: PitSpeedingCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[PIT_SPEEDING_CALLOUT_SETTING_KEYS[id]] !== false,
-  // Pit-limiter callout opt-ins (issue #1051) — cars that HAVE a limiter.
-  // Live-read, four subjects, same gate-at-event-arrival shape as the other
-  // callout families.
-  (id: PitLimiterCalloutId) =>
+  getPitLimiterCalloutEnabled: (id: PitLimiterCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[PIT_LIMITER_CALLOUT_SETTING_KEYS[id]] !== false,
-  // No-limiter callout opt-ins (issue #1051) — the mirror family, for cars with
-  // NO limiter. Separate opt-ins because the two families say different things
-  // for different reasons, so a user silencing one should not lose the other.
-  (id: NoLimiterCalloutId) =>
+  getNoLimiterCalloutEnabled: (id: NoLimiterCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[NO_LIMITER_CALLOUT_SETTING_KEYS[id]] !== false,
-  // Race Engineer master gate (issue #515).
-  () => (getGlobalSettings() as Record<string, unknown>).pitCrewRaceEngineerEnabled === true,
-  // Radar master gate (issue #515).
-  () => (getGlobalSettings() as Record<string, unknown>).pitCrewRadarEnabled === true,
-);
+  getRaceEngineerMasterEnabled: () =>
+    (getGlobalSettings() as Record<string, unknown>).pitCrewRaceEngineerEnabled === true,
+  getRadarMasterEnabled: () => (getGlobalSettings() as Record<string, unknown>).pitCrewRadarEnabled === true,
+});
 
 // Publish audio device list and apply saved device selection.
 // See `iracing-plugin-stream-deck/src/plugin.ts` for the persistence

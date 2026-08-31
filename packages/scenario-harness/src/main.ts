@@ -124,61 +124,16 @@ async function main(): Promise<void> {
   // the brief (issue #542), and the lap-time snapshot resolver so the
   // best-lap composer can fire (issue #555). Other closures keep their
   // defaults.
-  registerPitCrew(
-    eventBus,
-    undefined,
-    undefined,
-    undefined,
-    () => isPitActionsAllowed(),
-    undefined,
-    () => getReadbackSnapshot(),
-    undefined, // getDamageCalloutEnabled
-    undefined, // getPitStatusCalloutEnabled
-    undefined, // getTrackConditionsCalloutEnabled
-    undefined, // getIncidentCalloutEnabled
-    undefined, // getSessionStartCalloutEnabled
-    () => getHarnessSessionStartSnapshot(),
-    undefined, // getLapTimeCalloutEnabled
-    () => lastLapCompleted,
-    undefined, // getPositionCalloutEnabled
-    undefined, // getQualifyingInvalidationCalloutEnabled
-    () => getHarnessQualifyingInvalidationSnapshot(),
-    undefined, // getRaceStatusCalloutEnabled
-    undefined, // getRaceFinishedFired
-    undefined, // getRaceEndCalloutEnabled
-    undefined, // getRaceFinishedSnapshot
-    undefined, // getRaceStartCalloutEnabled
-    () => getHarnessRaceStartSnapshot(),
-    undefined, // getOvertakeCalloutEnabled
-    undefined, // getOvertakeDriverName
-    undefined, // getLivePosition
-    undefined, // getOvertakeGate
-    undefined, // getPitBoxCalloutEnabled
-    undefined, // getSetupWarningMismatch
-    undefined, // getSpotterCalloutEnabled
-    undefined, // getSpotterTrackDirection
-    undefined, // getSpotterStillThereIntervalMs
-    undefined, // getSpotterNearestCarGapMeters
-    undefined, // getPitWindowCalloutEnabled
-    undefined, // getRollingStartCalloutEnabled
-    undefined, // getStartLightCalloutEnabled
-    undefined, // getFuelCalloutEnabled
-    undefined, // getCornerNameCalloutEnabled (issue #888)
-    () => lastCornerName, // getCornerNameSnapshot (issue #888)
-    undefined, // getOpponentPitCalloutEnabled (issue #622)
-    undefined, // getOpponentPitLivePosition (issue #622) — payload position via the pending stash
-    undefined, // getGapCalloutEnabled (issue #933)
-    undefined, // getGapCooldownMs (issue #933)
-    // The harness boots the REAL translator, so its live gaps are the real
-    // ones — wiring them here is what lets the spoken "gap is N seconds"
-    // readout clause be auditioned at all (issue #933).
-    () => getLiveGaps(),
-    undefined, // getOpponentFlagCalloutEnabled (issue #936)
-    undefined, // getOpponentFlagLivePosition (issue #936)
-    // Left at its `() => true` default like every other callout opt-in above —
-    // the harness seeds no `calloutEnabled*` settings, so the cue is always on.
-    undefined, // getPitSpeedingCalloutEnabled (issue #912)
-  );
+  registerPitCrew(eventBus, {
+    getPitActionsAllowed: () => isPitActionsAllowed(),
+    getReadbackSnapshot: () => getReadbackSnapshot(),
+    getSessionStartSnapshot: () => getHarnessSessionStartSnapshot(),
+    getLapCompletedSnapshot: () => lastLapCompleted,
+    getQualifyingInvalidationSnapshot: () => getHarnessQualifyingInvalidationSnapshot(),
+    getRaceStartSnapshot: () => getHarnessRaceStartSnapshot(),
+    getCornerNameSnapshot: () => lastCornerName,
+    getLiveGaps: () => getLiveGaps(),
+  });
 
   // ── deck-core global-settings pipeline ──────────────────────────────────
   // Done AFTER seeding so the listener delivers the seeded values to the
