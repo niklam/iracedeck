@@ -21,10 +21,10 @@ pnpm relink:stream-deck     # Unlink + link (useful when switching worktrees)
 
 ### Build verification
 
-**Always review the full build output.** The build may succeed (exit code 0) while still emitting TypeScript warnings from `@rollup/plugin-typescript`. These warnings indicate real type errors that must be fixed before committing.
+**Always review the full build output.** Since #987 all four rollup configs set `noEmitOnError`, so a TypeScript diagnostic in a rollup-built package is a hard build failure rather than a warning on a green build — that is what the flag is for. Reading the output still matters, because a build can fail or misbehave for reasons that are not type errors.
 
 - Run the build and capture all output (do not just check the exit code or tail the last few lines).
-- Search the output for `TS[0-9]+:` patterns (e.g., `TS2345`, `TS2322`) — these are TypeScript diagnostics that need fixing.
+- Search the output for `TS[0-9]+:` patterns (e.g., `TS2345`, `TS2322`). Before #987 these could appear as *warnings* on a build that exited 0 and shipped broken output; they are now fatal, so finding one means the build failed.
 - Ignore `Circular dependency` warnings from `zod` internals and `npm warn Unknown env config` — these are known and harmless.
 - Common cause: `vi.fn(() => null)` in test files infers return type as `null`, making `mockReturnValue({...})` a type error. Fix by widening the return type: `vi.fn((): Record<string, unknown> | null => null)`.
 
@@ -114,7 +114,7 @@ Before every commit, the following must succeed:
 
 Do not commit if any step fails. Fix the issue first.
 
-**Why typecheck is separate from build.** Until #987 a green `pnpm build` said nothing about the type correctness of the rollup-built packages: `@rollup/plugin-typescript` reports type errors as rollup *warnings* and emits anyway unless `noEmitOnError` is set, so a build could report success while shipping a bundle that throws at startup. The three plugin configs now set `noEmitOnError`, which closes that at authoring time — but `pnpm typecheck` remains the gate that covers every package uniformly and is what a red CI run reproduces.
+**Why typecheck is separate from build.** Until #987 a green `pnpm build` said nothing about the type correctness of the rollup-built packages: `@rollup/plugin-typescript` reports type errors as rollup *warnings* and emits anyway unless `noEmitOnError` is set, so a build could report success while shipping a bundle that throws at startup. All four rollup configs — the three plugins and `pi-components` — now set `noEmitOnError`, which closes that at authoring time. `pnpm typecheck` is the explicit gate and is what a red CI run reproduces; see `@.claude/rules/testing.md` for what it does and does not cover.
 
 ### Logical Commits
 

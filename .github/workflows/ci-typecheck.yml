@@ -7,10 +7,13 @@ name: Typecheck
 # what two PRs merging in quick succession produce, so a gate that never sees
 # the merged result would miss its highest-value case. Adding the trigger here
 # does not create a convention for who fixes a red master; that belongs to #1070.
+# `release/*` is included for the same reason: release branches take feature PRs
+# of their own and reach master through a back-merge, so a post-merge gap there
+# is the same gap one branch removed.
 on:
   pull_request:
   push:
-    branches: [master]
+    branches: [master, 'release/*']
 
 jobs:
   typecheck:

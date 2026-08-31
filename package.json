@@ -36,7 +36,7 @@
     "typecheck": "turbo run typecheck",
     "test": "vitest run --configLoader native",
     "test:watch": "vitest --configLoader native",
-    "precommit": "pnpm lint:fix && pnpm format:fix && pnpm install && pnpm clean && pnpm build",
+    "precommit": "pnpm lint:fix && pnpm format:fix && pnpm install && pnpm clean && pnpm build && pnpm typecheck",
     "start:stream-deck": "start /B \"\" \"C:\\Program Files\\Elgato\\StreamDeck\\StreamDeck.exe",
     "stop:stream-deck": "taskkill /IM StreamDeck.exe /F || exit 0",
     "link:stream-deck": "streamdeck link .\\packages\\iracing-plugin-stream-deck\\com.iracedeck.sd.core.sdPlugin",
