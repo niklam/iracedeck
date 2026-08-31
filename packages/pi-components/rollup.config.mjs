@@ -2,6 +2,17 @@ import terser from "@rollup/plugin-terser";
 import typescript from "@rollup/plugin-typescript";
 
 /**
+ * Every browser bundle compiles through this rather than calling `typescript()`
+ * directly. Without `noEmitOnError`, @rollup/plugin-typescript reports type
+ * errors as rollup WARNINGS and emits anyway (see its `emitDiagnostic`), so a
+ * build reports success while shipping broken output — that is how an undefined
+ * identifier once reached a released plugin bundle (#987). These four bundles
+ * are the PI framework every plugin loads, so the same failure here breaks a
+ * Property Inspector with nothing pointing at the cause.
+ */
+const tsBundle = (tsconfig) => typescript({ tsconfig, noEmitOnError: true });
+
+/**
  * Rollup config for building the PI browser bundles into browser/ so consumer
  * plugins can copy them alongside the vendored sdpi-components.js into their own
  * ui/ folder:
@@ -35,7 +46,7 @@ export default [
       name: "IRaceDeckPI",
       sourcemap: false,
     },
-    plugins: [typescript({ tsconfig: "./tsconfig.pi.json" }), terserPlugin],
+    plugins: [tsBundle("./tsconfig.pi.json"), terserPlugin],
   },
   {
     input: "src/ulanzi-bridge/index.ts",
@@ -45,7 +56,7 @@ export default [
       name: "IRaceDeckUlanziBridge",
       sourcemap: false,
     },
-    plugins: [typescript({ tsconfig: "./tsconfig.ulanzi.json" }), terserPlugin],
+    plugins: [tsBundle("./tsconfig.ulanzi.json"), terserPlugin],
   },
   {
     input: "src/settings-window-bridge/index.ts",
@@ -55,7 +66,7 @@ export default [
       name: "IRaceDeckSettingsWindowBridge",
       sourcemap: false,
     },
-    plugins: [typescript({ tsconfig: "./tsconfig.settings-window.json" }), terserPlugin],
+    plugins: [tsBundle("./tsconfig.settings-window.json"), terserPlugin],
   },
   {
     input: "src/pi-settings-bridge/index.ts",
@@ -65,6 +76,6 @@ export default [
       name: "IRaceDeckPiSettingsBridge",
       sourcemap: false,
     },
-    plugins: [typescript({ tsconfig: "./tsconfig.pi-settings-bridge.json" }), terserPlugin],
+    plugins: [tsBundle("./tsconfig.pi-settings-bridge.json"), terserPlugin],
   },
 ];

@@ -1,0 +1,49 @@
+name: Typecheck
+
+# Unlike the other three workflows, this one also runs on pushes to master.
+# A green PR check only proves something about the branch merged against the
+# master that existed when it ran, never about the master that results (#1070).
+# The defect this job exists to catch — cross-package type errors — is exactly
+# what two PRs merging in quick succession produce, so a gate that never sees
+# the merged result would miss its highest-value case. Adding the trigger here
+# does not create a convention for who fixes a red master; that belongs to #1070.
+# `release/*` is included for the same reason: release branches take feature PRs
+# of their own and reach master through a back-merge, so a post-merge gap there
+# is the same gap one branch removed.
+on:
+  pull_request:
+  push:
+    branches: [master, 'release/*']
+
+# The job only reads the repository and runs a compiler, so it is given the
+# minimum token scope and the checkout credential is not left in .git/config for
+# later steps to reach. The three sibling CI workflows predate this and do not
+# set either; matching them would mean copying a weaker default forward.
+permissions:
+  contents: read
+
+jobs:
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.0.0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'pnpm'
+
+      - run: pnpm install
+
+      # No explicit build step: the `typecheck` turbo task declares
+      # `dependsOn: ["^build"]`, because packages resolve each other's types
+      # through emitted `dist/`. So this is the same one command a developer
+      # runs locally, and a red run here reproduces with `pnpm typecheck`.
+      - run: pnpm typecheck

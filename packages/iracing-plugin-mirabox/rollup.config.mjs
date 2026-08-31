@@ -346,6 +346,12 @@ const config = {
       mapRoot: isWatching ? "./" : undefined,
       // Include both the plugin source and the raw-TypeScript actions package
       include: ["src/**/*.ts", "../iracing-actions/src/**/*.ts"],
+      // Without this, @rollup/plugin-typescript reports every type error as a
+      // rollup WARNING and emits anyway (see its `emitDiagnostic`), so the build
+      // succeeds while shipping broken output — an undefined identifier reached
+      // a released bundle that way (#987). Fail at authoring time instead of
+      // relying on CI to notice afterwards.
+      noEmitOnError: true,
     }),
     nodeResolve({
       browser: false,

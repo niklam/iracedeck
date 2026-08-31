@@ -9,11 +9,13 @@
   },
   "scripts": {
     "build": "rollup -c",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "clean": "rimraf browser/pi-components.js browser/ulanzi-pi-bridge.js browser/settings-window-bridge.js browser/pi-settings-bridge.js",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "devDependencies": {
+    "@iracedeck/deck-core": "workspace:*",
     "@rollup/plugin-terser": "1.0.0",
     "@rollup/plugin-typescript": "12.3.0",
     "@tsconfig/node22": "22.0.6",

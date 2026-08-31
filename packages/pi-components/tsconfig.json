@@ -2,6 +2,7 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "lib": ["ES2022", "DOM"],
+    "allowJs": true,
     "noEmit": true
   },
   "include": ["src/**/*.ts"]

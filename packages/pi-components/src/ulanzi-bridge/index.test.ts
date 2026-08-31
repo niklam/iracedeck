@@ -186,7 +186,11 @@ describe("installUlanziBridge", () => {
         search: "?address=127.0.0.1&port=49200&uuid=com.x.action&key=5&actionid=abc&device=D200X&language=en",
       },
       WebSocket: FakeNativeWebSocket,
-      connectElgatoStreamDeckSocket: vi.fn(() => {
+      // Typed with sdpi's real connect signature so `mock.calls` is a tuple
+      // rather than `[]` — otherwise reading the arguments needs a cast.
+      connectElgatoStreamDeckSocket: vi.fn<
+        (port: string, context: string, registerEvent: string, info: string, actionInfo: string) => void
+      >(() => {
         // The monkeypatch must be active while sdpi opens its socket.
         bridgeDuringConnect = new (fakeWin.WebSocket as unknown as typeof WebSocket)("ws://localhost:49200");
       }),
@@ -195,13 +199,7 @@ describe("installUlanziBridge", () => {
     installUlanziBridge(fakeWin as unknown as Window & typeof globalThis);
 
     expect(fakeWin.connectElgatoStreamDeckSocket).toHaveBeenCalledOnce();
-    const [port, context, registerEvent, info, actionInfo] = fakeWin.connectElgatoStreamDeckSocket.mock.calls[0] as [
-      string,
-      string,
-      string,
-      string,
-      string,
-    ];
+    const [port, context, registerEvent, info, actionInfo] = fakeWin.connectElgatoStreamDeckSocket.mock.calls[0];
 
     expect(port).toBe("49200");
     expect(context).toBe("com.x.action___5___abc");

@@ -6,6 +6,7 @@
   "packageManager": "pnpm@10.0.0",
   "scripts": {
     "build": "rollup -c && npm run postbuild",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "postbuild": "cd com.ulanzi.iracedeck.ulanziPlugin/bin && npm install",
     "watch": "rollup -c -w",
     "clean": "rimraf com.ulanzi.iracedeck.ulanziPlugin/bin/plugin.js com.ulanzi.iracedeck.ulanziPlugin/bin/plugin.js.map",

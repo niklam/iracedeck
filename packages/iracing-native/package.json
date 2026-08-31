@@ -8,6 +8,7 @@
   "scripts": {
     "install": "echo Run build manually in iracing-native to avoid extra builds",
     "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "clean": "node scripts/clean.mjs",
     "test": "vitest run",
     "test:watch": "vitest"

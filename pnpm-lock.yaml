@@ -739,6 +739,9 @@ importers:
 
   packages/pi-components:
     devDependencies:
+      '@iracedeck/deck-core':
+        specifier: workspace:*
+        version: link:../deck-core
       '@rollup/plugin-terser':
         specifier: 1.0.0
         version: 1.0.0(rollup@4.63.0)

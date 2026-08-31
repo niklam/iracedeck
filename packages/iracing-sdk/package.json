@@ -8,6 +8,7 @@
   "packageManager": "pnpm@10.0.0",
   "scripts": {
     "build": "tsc",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "clean": "rimraf dist",
     "test": "vitest run",
     "test:watch": "vitest",

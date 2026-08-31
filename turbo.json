@@ -16,6 +16,9 @@
         "com.ulanzi.*.ulanziPlugin/**"
       ]
     },
+    "typecheck": {
+      "dependsOn": ["^build"]
+    },
     "@iracedeck/audio-assets#build": {
       "inputs": ["voice/**", "src/build/**", "src/presets.mjs"],
       "outputs": [".cache/**"]

@@ -14,7 +14,7 @@ If you are picking up an issue, read this first.
 | 2   | Write the spec, commit to `master`                         | unless exempt           | `@.claude/rules/specs-and-plans.md`                                         |
 | 3   | Create the worktree `../ir-<issue>`                        | —                       | `@.claude/rules/build-and-commit.md`                                        |
 | 4   | Implement, committing as you go                            | —                       | the topic rules for what you touched                                        |
-| 5   | `install` → `build` → `format` → `lint` → `test`, by hand  | all green               | `@.claude/rules/testing.md`, `@.claude/rules/code-style.md`                  |
+| 5   | `install` → `build` → `typecheck` → `format` → `lint` → `test`, by hand | all green    | `@.claude/rules/testing.md`, `@.claude/rules/code-style.md`                  |
 | 6   | Document it on the website                                 | required if user-facing | `@.claude/rules/website-action-docs.md`, `@.claude/rules/changelog.md`       |
 | 7   | **Ask** to run the code review, then run it                | the ask                 | `@.claude/rules/code-review.md`                                             |
 | 8   | Manual testing                                             | **blocks the PR**       | below                                                                       |
@@ -45,7 +45,7 @@ Settled by the maintainer: an issue is solved in a sibling worktree, never insid
 
 **Assume nothing is watching, confirm, then run everything yourself.** The repo does ship watchers and one may be running against a linked worktree, so check before firing a full build into a tree something else is writing.
 
-The green set is the CI set plus the pre-commit checks: `install`, `build`, `format`, `lint`, `test`. CI runs format, lint and test as **separate** jobs, so a clean `lint` proves nothing about `format`. Read the build output rather than its exit code — `@.claude/rules/build-and-commit.md` explains why that distinction bites here.
+The green set is the CI set plus the pre-commit checks: `install`, `build`, `typecheck`, `format`, `lint`, `test`. CI runs format, lint and test as **separate** jobs, so a clean `lint` proves nothing about `format`. Read the build output rather than its exit code — `@.claude/rules/build-and-commit.md` explains why that distinction bites here.
 
 ### If a user can see it, the website describes it (6)
 
