@@ -88,12 +88,14 @@ import {
   deleteGlobalSettings,
   evaluateSetupWarning,
   findChromiumBrowserOnThisMachine,
+  FIRST_RUN_VERSION_KEY,
   focusIRacingIfEnabled,
   getController,
   getGlobalSettings,
   getPluginPlatform,
   getPluginVersion,
   getSimHub,
+  GETTING_STARTED_PANE,
   initAppMonitor,
   initGlobalSettings,
   initializeBindingDispatcher,
@@ -110,6 +112,7 @@ import {
   isSimHubReachable,
   migrateGlobalSettingsKeys,
   migrateStartupPolicies,
+  MIGRATION_PENDING_KEY,
   onGlobalSettingsChange,
   onIRacingTerminated,
   openFolderInExplorer,
@@ -118,6 +121,7 @@ import {
   resolveActiveDriverName,
   resolveActiveRaceEngineerVoice,
   resolveSettingsStorePath,
+  runFirstRunCheck,
   runVersionCheck,
   SETTINGS_WINDOW_BOUNDS_KEY,
   SETTINGS_WINDOW_HTML,
@@ -771,7 +775,7 @@ const versionCheckLogger = adapter.createLogger("VersionCheck");
 // defers (nothing persisted) and stays pending until the sim is gone.
 // `runVersionCheck` is naturally idempotent across these calls: once a
 // version is persisted, later calls decide `skip`.
-function runChangelogVersionCheck(): void {
+async function runStartupNotices(): Promise<void> {
   // Nothing meaningful to compare before the first settings arrival.
   if (!startupDefaultsApplied) return;
 
@@ -786,7 +790,29 @@ function runChangelogVersionCheck(): void {
   // (issue #742) decides whether a due changelog opens, is recorded
   // silently, or stays pending (monthly window, anchored on the passthrough
   // `_lastChangelogOpenedAt` key).
-  void runVersionCheck({
+  // The first-run check runs FIRST and may consume the start (#1061). That
+  // ordering is load-bearing rather than tidy: its evidence for "some build has
+  // already started against this store" is the absence of `_lastSeenVersion`,
+  // and the changelog check below is precisely what writes that key. It also
+  // consumes the start while the settings migration is still pending, so the
+  // key stays pristine until the store has settled.
+  if (
+    await runFirstRunCheck({
+      currentVersion: getPluginVersion(),
+      firstRunVersion: s[FIRST_RUN_VERSION_KEY],
+      lastSeenVersion: s._lastSeenVersion,
+      migrationPending: s[MIGRATION_PENDING_KEY],
+      isSimRunning: isIRacingActive,
+      persistFirstRun: (version) => updateGlobalSettings({ [FIRST_RUN_VERSION_KEY]: version }),
+      persistLastSeen: (version) => updateGlobalSettings({ _lastSeenVersion: version }),
+      openGettingStarted: () => settingsWindow.open({ pane: GETTING_STARTED_PANE }),
+      logger: versionCheckLogger,
+    })
+  ) {
+    return;
+  }
+
+  await runVersionCheck({
     currentVersion: getPluginVersion(),
     lastSeenVersion: typeof s._lastSeenVersion === "string" ? s._lastSeenVersion : undefined,
     policy: settings.changelogNotification,
@@ -812,9 +838,18 @@ onIRacingTerminated(() => {
   const s = getGlobalSettings() as Record<string, unknown>;
   const lastSeen = typeof s._lastSeenVersion === "string" ? s._lastSeenVersion : undefined;
 
+  // Also re-run while the Getting Started page is still unresolved (#1061):
+  // on a pre-release build `shouldOpenChangelog` is always false, so without
+  // this a first-run open deferred by the sim gate would never be retried.
+  if (!s[FIRST_RUN_VERSION_KEY]) {
+    void runStartupNotices();
+
+    return;
+  }
+
   if (!shouldOpenChangelog(getPluginVersion(), lastSeen)) return;
 
-  runChangelogVersionCheck();
+  void runStartupNotices();
 });
 
 // Plugin-owned global-settings store (issue #993). Declared here — above the
@@ -969,7 +1004,7 @@ onGlobalSettingsChange((settings) => {
     // delayed by the #870 startup grace so a mid-session plugin restart (the
     // deck-host auto-update case) can't run the check before the sim-running
     // signals are up and open the page over a live session.
-    setTimeout(runChangelogVersionCheck, VERSION_CHECK_STARTUP_GRACE_MS);
+    setTimeout(() => void runStartupNotices(), VERSION_CHECK_STARTUP_GRACE_MS);
 
     // #993: the Diagnostics "Storage" card's path is known synchronously (no
     // I/O at construction) — publish it unconditionally here, NOT inside the

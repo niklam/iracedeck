@@ -517,6 +517,13 @@ export {
   type SettingsWindowLaunchInput,
 } from "./settings-window-launcher.js";
 export {
+  FIRST_RUN_VERSION_KEY,
+  type FirstRunDecision,
+  GETTING_STARTED_PANE,
+  resolveFirstRunDecision,
+  runFirstRunCheck,
+} from "./first-run.js";
+export {
   createSettingsWindowCommandHandler,
   enableFeatureWrites,
   parseSettingsWindowBounds,
@@ -533,6 +540,7 @@ export {
   createSettingsWindowController,
   SETTINGS_WINDOW_HTML,
   type SettingsWindowController,
+  type SettingsWindowOpenOptions,
   type SettingsWindowControllerOptions,
   type SettingsWindowStatus,
 } from "./settings-window.js";

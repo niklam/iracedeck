@@ -740,9 +740,9 @@ describe("dualPressDirections (issue #540)", () => {
 });
 
 describe("changelogNotification (issue #742)", () => {
-  it("defaults to features when not specified (issue #901)", () => {
+  it("defaults to never when not specified (issue #1061, reversing #901)", () => {
     const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
-    expect(parsed.changelogNotification).toBe("features");
+    expect(parsed.changelogNotification).toBe("never");
   });
 
   it.each(CHANGELOG_NOTIFICATION_POLICIES)("accepts %s", (value) => {
@@ -750,9 +750,9 @@ describe("changelogNotification (issue #742)", () => {
     expect(parsed.changelogNotification).toBe(value);
   });
 
-  it("falls back to features on a malformed persisted value", () => {
+  it("falls back to the default on a malformed persisted value", () => {
     const parsed = GlobalSettingsSchema.parse({ changelogNotification: "sometimes" }) as Record<string, unknown>;
-    expect(parsed.changelogNotification).toBe("features");
+    expect(parsed.changelogNotification).toBe("never");
   });
 });
 
@@ -1552,7 +1552,7 @@ describe("single-writer store (issue #993)", () => {
     await tick();
 
     expect(getGlobalSettings().driverName).toBe("nick");
-    expect(getGlobalSettings().changelogNotification).toBe("features");
+    expect(getGlobalSettings().changelogNotification).toBe("never");
   });
 
   it("a second initGlobalSettings is a no-op — the first store stays authoritative", async () => {
