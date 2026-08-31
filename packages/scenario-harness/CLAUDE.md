@@ -24,6 +24,12 @@ Boot processes the audio-assets clips through the same radio-engineer ffmpeg fil
 
 `src/bootstrap-settings.ts` seeds the adapter's global-settings store from the audio-assets manifest: `_raceEngineerVoices` / `_driverNames` (plus the first entry of each as the picked voice / driver name), Race Engineer and Radar enabled at volume 100. So scenarios fire on a fresh boot with zero UI interaction. `initGlobalSettings` is called AFTER seeding so the listener delivers the seeded values on the first tick (`src/main.ts`).
 
+**The harness cannot test any callout gate, and the seeded settings make it look like it can.** It passes `registerPitCrew` only the eight resolvers it needs — `getPitActionsAllowed` plus the snapshot/gap resolvers (see the `DEFAULT_DEPS` comment above that call in `src/main.ts`) — and **no master gates and no `calloutEnabled*` getters at all**, so every one of those runs on its `() => true` default here. That is deliberate: the harness seeds no `calloutEnabled*` settings and wants everything audible.
+
+The trap is that `pitCrewRaceEngineerEnabled` and `pitCrewRadarEnabled` *are* seeded, so toggling them appears to exercise the master gates. It doesn't. `pitCrewRadarEnabled` reaches the radar through the harness's own `applyAudioSettings` → `setRadarEnabled` path (`src/main.ts`), never through the `getRadarMasterEnabled` dep, and `pitCrewRaceEngineerEnabled` reaches nothing at all — the voice master gate is the hardcoded default. So the radar responding to a toggle here says nothing about whether the master keys are wired correctly.
+
+Anything gated by a master or a per-callout opt-in — including which getter a family is wired to — has to be tested in a real plugin against real global settings. Use the harness for what it does cover: that scenarios register and fire, and that the eight resolvers above deliver the right *content* (a corner-name call that names no corner is a resolver reaching the wrong key, even though audio played).
+
 ## Presets
 
 `presets/telemetry/*.json` and `presets/session/*.json`; the filename (minus `.json`) is the preset name. Applied via `/api/telemetry/preset` and `/api/session/preset`. Malformed preset files are silently skipped at load (`src/server.ts`).
