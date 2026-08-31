@@ -496,11 +496,11 @@ const resolvePendingCarLivePosition = (pending: {
   return n > 0 ? n : null;
 };
 
-// Pass a live-reading closure so per-flag opt-ins (issue #467) take
-// effect mid-session without re-registering scenarios. The gate runs
-// at event-arrival time inside the scenario engine, before fire/expand,
-// so toggling a flag off does NOT cut a callout that is already
-// playing — only future events of that color are suppressed.
+// Every opt-in below is a live-reading closure: the gate runs at
+// event-arrival time inside the scenario engine, before fire/expand, so a
+// mid-session toggle takes effect on the next event without re-registering
+// scenarios and without cutting a callout already playing. Per-key rationale
+// lives on `PitCrewDeps` in @iracedeck/audio-scenarios.
 registerPitCrew(eventBus, {
   getFlagCalloutEnabled: (id: FlagCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[FLAG_CALLOUT_SETTING_KEYS[id]] !== false,

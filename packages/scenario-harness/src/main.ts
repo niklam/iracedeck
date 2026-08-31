@@ -117,13 +117,18 @@ async function main(): Promise<void> {
     lastCornerName = ev.data;
   });
 
-  // Wire the pit-action cooldown so the harness sees the same suppression
-  // window the production plugins do, the readback-snapshot resolver so
-  // deferred replays speak the current queue (issue #481), the
-  // session-start snapshot resolver so the session-start composer can fire
-  // the brief (issue #542), and the lap-time snapshot resolver so the
-  // best-lap composer can fire (issue #555). Other closures keep their
-  // defaults.
+  // Wire the resolvers the harness needs to audition callouts against a real
+  // translator: the pit-action cooldown, so it sees the same suppression
+  // window the production plugins do; and the snapshot resolvers each composer
+  // reads at fire time — readback so deferred replays speak the current queue
+  // (issue #481), session-start (issue #542), lap-time for the best-lap call
+  // (issue #555), qualifying-invalidation, race-start, and corner-name
+  // (issue #888).
+  //
+  // Every other dep keeps its `DEFAULT_DEPS` entry. That includes both master
+  // gates: the harness seeds no `calloutEnabled*` settings and wants
+  // everything audible, so their `() => true` defaults are the point rather
+  // than an omission.
   registerPitCrew(eventBus, {
     getPitActionsAllowed: () => isPitActionsAllowed(),
     getReadbackSnapshot: () => getReadbackSnapshot(),
@@ -132,6 +137,9 @@ async function main(): Promise<void> {
     getQualifyingInvalidationSnapshot: () => getHarnessQualifyingInvalidationSnapshot(),
     getRaceStartSnapshot: () => getHarnessRaceStartSnapshot(),
     getCornerNameSnapshot: () => lastCornerName,
+    // The harness boots the REAL translator, so its live gaps are the real
+    // ones — wiring them here is what lets the spoken "gap is N seconds"
+    // readout clause be auditioned at all (issue #933).
     getLiveGaps: () => getLiveGaps(),
   });
 

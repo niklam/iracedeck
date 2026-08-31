@@ -53,7 +53,7 @@ voice scenario as the outermost short-circuit.
 | **Translator state** | `packages/sim-events-iracing/src/state.ts` (TranslatorState type AND createInitialState — keep them in sync) |
 | **Audio pools** | `packages/audio-scenarios/src/catalog/pit-crew/pools.ts` — `POOL_REGISTRY` maps pool name → manifest `(group, base)`; members (`<base>-NN.mp3`) derive per-voice from the manifest at fire time (issue #664) |
 | **Audio scenarios** | `packages/audio-scenarios/src/catalog/pit-crew/<family>.ts` |
-| **Family wiring (id type, key map, scenario id map, registerPitCrew param)** | `packages/audio-scenarios/src/catalog/pit-crew/index.ts` |
+| **Family wiring (id type, key map, scenario id map, `PitCrewDeps` key)** | `packages/audio-scenarios/src/catalog/pit-crew/index.ts` |
 | **Per-callout opt-in (Zod field)** | `packages/deck-core/src/global-settings.ts` |
 | **Callout checkbox row** | `packages/pi-components/partials/race-engineer-callouts.ejs` (settings window only since #1003 — `pit-crew.ejs` carries no callout rows) |
 | **Plugin closure (live-read)** | `packages/iracing-plugin-stream-deck/src/plugin.ts`, `packages/iracing-plugin-mirabox/src/plugin.ts`, AND `packages/iracing-plugin-ulanzi/src/plugin.ts` (byte-identical in code — mirror each other) |
@@ -131,7 +131,7 @@ In `packages/audio-scenarios/src/catalog/pit-crew/index.ts`:
 - Add a `<Family>CalloutId` type union of subject ids.
 - Add a `<FAMILY>_CALLOUT_SETTING_KEYS: Record<<Family>CalloutId, string>` map — the canonical id↔key map plugins read from.
 - Add a `SCENARIO_ID_TO_<FAMILY>_ID` map covering every scenario id in the family.
-- Add a `get<Family>CalloutEnabled?: (id: <Family>CalloutId) => boolean` key to `PitCrewDeps`, and its `() => true` default to `DEFAULT_DEPS` (issue #1052). **Placement is irrelevant** — the deps are keyed, so position carries no meaning. There is no "masters last" rule to observe any more; putting the key next to its family's neighbours is a readability choice and nothing else.
+- Add a `get<Family>CalloutEnabled?: (id: <Family>CalloutId) => boolean` key to `PitCrewDeps`, its `() => true` default to `DEFAULT_DEPS`, and the matching line to the destructure at the top of `registerPitCrew` (issue #1052). All three: the `satisfies` clause catches a key with no default, but nothing checks the destructure — a missing one surfaces as "cannot find name" wherever you use the closure. **Placement is irrelevant** — the deps are keyed, so position carries no meaning. There is no "masters last" rule to observe any more; putting the key next to its family's neighbours is a readability choice and nothing else.
 - Wrap the family's scenarios with `wrapWithMaster(wrapCalloutScenario(s, …))` in the registration loop.
 
 ### 6. Per-callout opt-in (Zod schema)
@@ -149,11 +149,14 @@ In `packages/pi-components/partials/race-engineer-callouts.ejs` — **not** `pit
 
 In **all three** plugin entry points — `packages/iracing-plugin-stream-deck/src/plugin.ts`, `packages/iracing-plugin-mirabox/src/plugin.ts`, AND `packages/iracing-plugin-ulanzi/src/plugin.ts` (byte-identical in code — mirror each other):
 - Import the `<FAMILY>_CALLOUT_SETTING_KEYS` map and `<Family>CalloutId` type.
-- Pass a closure to `registerPitCrew` that reads the setting **live on every event arrival**:
+- Add an entry to the `PitCrewDeps` object passed to `registerPitCrew`, keyed by the name you gave the dep, reading the setting **live on every event arrival**:
 
 ```ts
-(id: <Family>CalloutId) =>
-  (getGlobalSettings() as Record<string, unknown>)[<FAMILY>_CALLOUT_SETTING_KEYS[id]] !== false,
+registerPitCrew(eventBus, {
+  // …existing keys, in no particular order…
+  get<Family>CalloutEnabled: (id: <Family>CalloutId) =>
+    (getGlobalSettings() as Record<string, unknown>)[<FAMILY>_CALLOUT_SETTING_KEYS[id]] !== false,
+});
 ```
 
 Live-read (don't capture the value) — a mid-session toggle takes effect on the next event without re-registering scenarios.

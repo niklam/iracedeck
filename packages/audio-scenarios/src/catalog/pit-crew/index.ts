@@ -786,8 +786,17 @@ export type SetupWarningResolver = (kind: "qualifying" | "race") => boolean;
  * reintroduce a placement convention here.
  */
 export type PitCrewDeps = {
+  // Per-flag opt-ins (issue #467). Read live, so toggling a flag off
+  // mid-session takes effect on the very next event of that color. The gate
+  // runs at event-arrival time inside the scenario engine, before fire and
+  // expand, so toggling a flag off does NOT cut a callout already playing —
+  // only future events of that color are suppressed. Default `() => true`
+  // preserves legacy behavior for callers that don't pass a closure.
   getFlagCalloutEnabled?: (id: FlagCalloutId) => boolean;
   logger?: ILogger;
+  // Pit-service readback opt-in (issue #476) — same live-read pattern as the
+  // flag callouts: gate at event arrival, so disabling mid-readback only
+  // suppresses future fires.
   getPitReadbackEnabled?: (id: PitReadbackCalloutId) => boolean;
   // Allow / suppress per-toggle pit-action confirmations (issue #476).
   // Plugins wire this to `isPitActionsAllowed()` from
@@ -951,28 +960,23 @@ export type PitCrewDeps = {
   // wire it (tests) still fire; the real plugin gate returns `null` only when
   // telemetry is unavailable, which suppresses.
   getOvertakeGate?: OvertakeGateResolver;
-  // User opt-in for the pit-box count-in (issue #600). Single subject
-  // (`count-in`) gating all six distance-mark scenarios. Same gate-at-event-
-  // arrival shape as the other callout families — toggling off mid-session
-  // takes effect on the next mark without cutting an in-flight clip. Placed
-  // before the master gate so the master stays the last per-callout opt-in.
-  // Default `() => true` preserves legacy behavior for tests that don't supply
-  // a closure.
+  // User opt-in for the pit-box count-in (issue #600). Single subject (`count-in`)
+  // gating all six distance-mark scenarios. Same gate-at-event- arrival shape as
+  // the other callout families — toggling off mid-session takes effect on the next
+  // mark without cutting an in-flight clip. Default `() => true` preserves legacy
+  // behavior for tests that don't supply a closure.
   getPitBoxCalloutEnabled?: (id: PitBoxCalloutId) => boolean;
-  // Setup-mismatch warning resolver (issue #625). Plugins wire this to read
-  // the live opt-in + the session-kind regex pattern from global settings and
-  // test it against the live setup name. Consumed inside the session-start and
-  // race-start scenarios' `if` clauses (not via `wrapCalloutScenario`, since the
-  // warning is a clause inside those intros, not its own scenario). Placed
-  // before the master gate so the master stays the last per-callout opt-in.
-  // Default `() => false` — tests that don't supply a closure never append the
-  // warning clause.
+  // Setup-mismatch warning resolver (issue #625). Plugins wire this to read the
+  // live opt-in + the session-kind regex pattern from global settings and test it
+  // against the live setup name. Consumed inside the session-start and race-start
+  // scenarios' `if` clauses (not via `wrapCalloutScenario`, since the warning is a
+  // clause inside those intros, not its own scenario). Default `() => false` —
+  // tests that don't supply a closure never append the warning clause.
   getSetupWarningMismatch?: SetupWarningResolver;
   // Spotter per-callout opt-ins (issue #651). The spotter is a Race Engineer
-  // callout family (no standalone master) — it rides `getRaceEngineerMasterEnabled`
-  // below. "cars" gates every transition call; "still-there" gates the repeating
-  // reminder. Read live. Default `() => true`. Placed before the master gates so
-  // the masters stay the last params (the registerPitCrew convention).
+  // callout family (no standalone master) — it rides
+  // `getRaceEngineerMasterEnabled` below. "cars" gates every transition call;
+  // "still-there" gates the repeating reminder. Read live. Default `() => true`.
   getSpotterCalloutEnabled?: (id: SpotterCalloutId) => boolean;
   // Spotter road/oval terminology (issue #651). Plugins wire this to
   // `getTrackDirection()` from `@iracedeck/sim-events-iracing`. Default Neutral (road).
@@ -989,40 +993,33 @@ export type PitCrewDeps = {
   // subject (`pit-open-closed`) gating both directional scenarios. Same
   // gate-at-event-arrival shape as the other callout families: read live so a
   // toggle off mid-session takes effect on the next event without cutting an
-  // in-flight clip. Placed before the master gate so the master stays the last
-  // per-callout opt-in. Default `() => true` preserves legacy behavior for tests
-  // that don't supply a closure.
+  // in-flight clip. Default `() => true` preserves legacy behavior for tests that
+  // don't supply a closure.
   getPitWindowCalloutEnabled?: (id: PitWindowCalloutId) => boolean;
   // User opt-in for the rolling-start callout (issue #660). Single subject
-  // (`pace-car`) gating the "pace car is moving" line. Same gate-at-event-
-  // arrival shape as the other callout families: read live so a toggle off
-  // mid-session takes effect on the next event without cutting an in-flight
-  // clip. Placed before the master gate so the master stays the last
-  // per-callout opt-in. Default `() => true` preserves legacy behavior for
-  // tests that don't supply a closure.
+  // (`pace-car`) gating the "pace car is moving" line. Same gate-at-event- arrival
+  // shape as the other callout families: read live so a toggle off mid-session
+  // takes effect on the next event without cutting an in-flight clip. Default `()
+  // => true` preserves legacy behavior for tests that don't supply a closure.
   getRollingStartCalloutEnabled?: (id: RollingStartCalloutId) => boolean;
-  // User opt-in for the start-light callouts (issue #480). Two grouped
-  // subjects — `lights` (the three gantry lines) and `countdown` (the five
-  // numeric marks) — mirroring the pit-box "many scenarios → one subject"
-  // shape. Same gate-at-event-arrival shape as the other callout families:
-  // read live so a toggle off mid-session takes effect on the next event
-  // without cutting an in-flight clip. Placed before the master gate so the
-  // master stays the last per-callout opt-in. Default `() => true` preserves
-  // legacy behavior for tests that don't supply a closure.
+  // User opt-in for the start-light callouts (issue #480). Two grouped subjects —
+  // `lights` (the three gantry lines) and `countdown` (the five numeric marks) —
+  // mirroring the pit-box "many scenarios → one subject" shape. Same
+  // gate-at-event-arrival shape as the other callout families: read live so a
+  // toggle off mid-session takes effect on the next event without cutting an
+  // in-flight clip. Default `() => true` preserves legacy behavior for tests that
+  // don't supply a closure.
   getStartLightCalloutEnabled?: (id: StartLightCalloutId) => boolean;
-  // User opt-in for the laps-of-fuel-left callouts (issue #838). One boolean
-  // per spoken count (10 → 1 plus the count-0 box call). Same gate-at-event-
-  // arrival shape as the other callout families: read live so a toggle off
-  // mid-session takes effect on the next crossing without cutting an
-  // in-flight clip. Placed before the master gate so the master stays the
-  // last per-callout opt-in. Default `() => true` preserves legacy behavior
-  // for tests that don't supply a closure.
+  // User opt-in for the laps-of-fuel-left callouts (issue #838). One boolean per
+  // spoken count (10 → 1 plus the count-0 box call). Same gate-at-event- arrival
+  // shape as the other callout families: read live so a toggle off mid-session
+  // takes effect on the next crossing without cutting an in-flight clip. Default
+  // `() => true` preserves legacy behavior for tests that don't supply a closure.
   getFuelCalloutEnabled?: (id: FuelCalloutId) => boolean;
-  // User opt-in for the corner-name callouts (issue #888). Single subject
-  // gating the practice/test corner announcements. Same gate-at-event-arrival
-  // shape as the other callout families. Placed before the master gate so the
-  // master stays the last per-callout opt-in. Default `() => true` preserves
-  // legacy behavior for tests that don't supply a closure.
+  // User opt-in for the corner-name callouts (issue #888). Single subject gating
+  // the practice/test corner announcements. Same gate-at-event-arrival shape as
+  // the other callout families. Default `() => true` preserves legacy behavior for
+  // tests that don't supply a closure.
   getCornerNameCalloutEnabled?: (id: CornerNameCalloutId) => boolean;
   // Corner-name snapshot (issue #888). Plugins cache the latest
   // `cornerName.approaching` payload (the lap-time subscription pattern) and
@@ -1031,12 +1028,10 @@ export type PitCrewDeps = {
   // for tests.
   getCornerNameSnapshot?: CornerNameSnapshotResolver;
   // User opt-ins for the opponent-pit callouts (issue #622). Two subjects —
-  // `leader` (the race/class leader entering the pits) and `nearby` (same-lap
-  // cars within ±2 effective positions, incl. the aggregate tail). Same
-  // gate-at-event-arrival shape as the other callout families. Placed before
-  // the master gate so the master stays the last per-callout opt-in. Default
-  // `() => true` preserves legacy behavior for tests that don't supply a
-  // closure.
+  // `leader` (the race/class leader entering the pits) and `nearby` (same-lap cars
+  // within ±2 effective positions, incl. the aggregate tail). Same
+  // gate-at-event-arrival shape as the other callout families. Default `() =>
+  // true` preserves legacy behavior for tests that don't supply a closure.
   getOpponentPitCalloutEnabled?: (id: OpponentPitCalloutId) => boolean;
   // Opponent-pit live position resolver (issue #622). Plugins wire
   // `getLiveCarPosition` so the nearby line's number is fresh at speak time,
@@ -1047,13 +1042,11 @@ export type PitCrewDeps = {
   // Default `() => null` falls back to the emit-time payload position — a
   // safe stub for tests and the harness.
   getOpponentPitLivePosition?: OpponentPitLivePositionResolver;
-  // Gap callout opt-ins (issue #933). One boolean per callout type (trend
-  // flip / threshold crossing); same gate-at-event-arrival shape as the
-  // other callout families — read live so a toggle off mid-session takes
-  // effect on the next event without cutting an in-flight clip. Placed
-  // before the master gates so the masters stay the last args. Default
-  // `() => true` preserves legacy behavior for tests that don't supply a
-  // closure.
+  // Gap callout opt-ins (issue #933). One boolean per callout type (trend flip /
+  // threshold crossing); same gate-at-event-arrival shape as the other callout
+  // families — read live so a toggle off mid-session takes effect on the next
+  // event without cutting an in-flight clip. Default `() => true` preserves legacy
+  // behavior for tests that don't supply a closure.
   getGapCalloutEnabled?: (id: GapCalloutId) => boolean;
   // Shared gap-callout cooldown in ms (issue #933). Plugins wire this to
   // `resolveGapCooldownMs(gapCalloutCooldownSeconds)`; read live at event
@@ -1064,13 +1057,11 @@ export type PitCrewDeps = {
   // live-at-speak-time pattern). Default `() => null` skips the readout
   // clause — a safe stub for tests.
   getLiveGaps?: LiveGapsResolver;
-  // User opt-ins for the opponent-flag callouts (issue #936). Four
-  // subjects — `furled`, `black`, `meatball`, `disqualify` — each gating its
-  // own three relation scenarios (ahead/behind/track-ahead) plus (for
-  // `black`) the aggregate tail. Same gate-at-event-arrival shape as the
-  // other callout families. Placed before the master gate so the master
-  // stays the last per-callout opt-in. Default `() => true` preserves
-  // legacy behavior for tests that don't supply a closure.
+  // User opt-ins for the opponent-flag callouts (issue #936). Four subjects —
+  // `furled`, `black`, `meatball`, `disqualify` — each gating its own three
+  // relation scenarios (ahead/behind/track-ahead) plus (for `black`) the aggregate
+  // tail. Same gate-at-event-arrival shape as the other callout families. Default
+  // `() => true` preserves legacy behavior for tests that don't supply a closure.
   getOpponentFlagCalloutEnabled?: (id: OpponentFlagCalloutId) => boolean;
   // Opponent-flag live position resolver (issue #936). Plugins wire
   // `getLiveCarPosition` so the ahead line's number is fresh at speak time,
@@ -1086,13 +1077,9 @@ export type PitCrewDeps = {
   // Consumed inside the imperative engine rather than by a scenario wrapper —
   // the cue plays direct, so there is no `where:` to gate.
   getPitSpeedingCalloutEnabled?: (id: PitSpeedingCalloutId) => boolean;
-  // User opt-ins for the pit-limiter callouts (issue #1051) — cars that HAVE
-  // a limiter. Four subjects, all `hasPitLimiter`-gated per #639. Same
-  // gate-at-event-arrival shape as the other callout families. Appended here
-  // rather than inserted: every parameter below an existing argument's
-  // position would shift that argument silently, since they are all optional
-  // getters of compatible-looking types, so new parameters go immediately
-  // before the masters, which stay last.
+  // User opt-ins for the pit-limiter callouts (issue #1051) — cars that HAVE a
+  // limiter. Four subjects, all `hasPitLimiter`-gated per #639. Same
+  // gate-at-event-arrival shape as the other callout families.
   getPitLimiterCalloutEnabled?: (id: PitLimiterCalloutId) => boolean;
   // User opt-ins for the no-limiter callouts (issue #1051) — the mirror family,
   // for cars with NO limiter, which is why none of its lines mentions one.
