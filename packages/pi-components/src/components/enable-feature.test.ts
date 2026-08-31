@@ -8,16 +8,22 @@ type Handler = (ev: { payload: { settings: Record<string, unknown> } }) => void;
 let settings: Record<string, unknown> = {};
 let handlers: Handler[] = [];
 let send: ReturnType<typeof vi.fn>;
+let reads = 0;
 
 beforeEach(() => {
   settings = {};
   handlers = [];
+  reads = 0;
   send = vi.fn().mockResolvedValue(undefined);
 
   (window as unknown as { SDPIComponents: unknown }).SDPIComponents = {
     streamDeckClient: {
       send,
-      getGlobalSettings: () => Promise.resolve(settings),
+      getGlobalSettings: () => {
+        reads += 1;
+
+        return Promise.resolve(settings);
+      },
       didReceiveGlobalSettings: {
         subscribe: (fn: Handler) => handlers.push(fn),
         unsubscribe: (fn: Handler) => (handlers = handlers.filter((h) => h !== fn)),
@@ -159,21 +165,24 @@ describe("ird-enable-feature", () => {
     expect((await mount("not-a-feature")).textContent).toBe("");
   });
 
-  it("re-reads when a sibling control on the page changes the same setting", async () => {
-    // The settings window's fake host does not echo a write back to the socket
-    // that sent it, so ticking Enabled on the Race Engineer tab produces no
-    // push here. Without the DOM listener this button would go on offering to
-    // turn on something already on.
-    const el = await mount("race-engineer");
+  it("issues NO read in response to a DOM event anywhere on the page", async () => {
+    // A regression pin, not a preference. A document-scoped `change` listener
+    // that called getGlobalSettings() shipped briefly and broke every control
+    // on the settings window: in sdpi a read is not addressed to the requester
+    // — the reply replaces the shared snapshot and every `global` control
+    // re-renders from it — and writes are debounced 250 ms, so the read landed
+    // inside the window before the write was even sent and repainted the page
+    // from a snapshot without the user's change.
+    await mount("race-engineer");
 
-    expect(button(el)).not.toBeNull();
+    const before = reads;
 
-    settings = { pitCrewRaceEngineerEnabled: true };
     document.dispatchEvent(new Event("change", { bubbles: true }));
+    document.dispatchEvent(new Event("input", { bubbles: true }));
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(button(el)).toBeNull();
+    expect(reads).toBe(before);
   });
 
   it("leaves no stale duplicate behind when re-attached", async () => {

@@ -8,6 +8,24 @@
  * rather than a button implying otherwise. Same discipline as `ird-warnings`:
  * the control describes a state, it does not latch.
  *
+ * It reads settings exactly TWICE: once on connect, and again whenever the
+ * plugin pushes `didReceiveGlobalSettings`. It must NEVER re-read in response
+ * to a DOM event, however tempting — a document-scoped `change` listener that
+ * called `getGlobalSettings()` shipped briefly and broke every control on the
+ * page. In sdpi a read is not addressed to the requester: the reply replaces
+ * the shared settings snapshot wholesale and every `global` control re-renders
+ * from it, while writes are debounced 250 ms — so a read fired on `change`
+ * lands inside the window before the write is even sent, and repaints the page
+ * from a snapshot that does not contain the user's change.
+ *
+ * The cost of that restriction is known and accepted: the fake host does not
+ * echo a write back to the socket that sent it (#992), so a sibling control on
+ * another tab flipping the same key leaves this one showing a stale offer until
+ * the next push. Pressing it then is idempotent. Reading the sibling's DOM
+ * value instead is the shape `ird-binding-status` uses, but it needs that
+ * component's polling and empty-`.value` handling to be correct — more than a
+ * one-line change, and it fails silently when wrong.
+ *
  * It never writes settings itself. The press sends one `sendToPlugin` frame and
  * the plugin decides what that means — which matters for the Race Engineer,
  * whose opt-in has to write its gate AND its startup policy together or it
@@ -92,20 +110,6 @@ export class EnableFeature extends HTMLElement {
     this.render();
   };
 
-  /**
-   * Re-read after any control on the page changes.
-   *
-   * The settings window's fake host deliberately does NOT echo a
-   * `setGlobalSettings` back to the socket that sent it (#992), so a sibling
-   * control changing the same setting — the Race Engineer tab's Enabled
-   * checkbox, say — produces no `didReceiveGlobalSettings` here. Without this
-   * the button would keep offering to turn on something already on. Same
-   * approach `ird-black-box-caveat` uses, and for the same reason.
-   */
-  private readonly onDomChange = (): void => {
-    void this.refresh();
-  };
-
   connectedCallback(): void {
     if (this.connected) return;
 
@@ -121,9 +125,6 @@ export class EnableFeature extends HTMLElement {
       client.didReceiveGlobalSettings.subscribe(this.onGlobalSettings);
     }
 
-    document.addEventListener("change", this.onDomChange);
-    document.addEventListener("input", this.onDomChange);
-
     this.render();
   }
 
@@ -133,8 +134,6 @@ export class EnableFeature extends HTMLElement {
     const client = streamDeckClient();
 
     client?.didReceiveGlobalSettings.unsubscribe?.(this.onGlobalSettings);
-    document.removeEventListener("change", this.onDomChange);
-    document.removeEventListener("input", this.onDomChange);
 
     // Drop the container too. Without this a re-attach appends a SECOND one
     // beside the first, which is frozen at whatever it last rendered — two
