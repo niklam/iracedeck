@@ -1,4 +1,4 @@
-# Re-arm the migration deadline when the host connects, behind an optional seam member
+# Extend the migration deadline once, from the connect or from the deadline itself, behind an optional seam member
 
 > **Issue:** [#1056](https://github.com/niklam/iracedeck/issues/1056) · **Supersedes:** _none_ · **Superseded by:** _none_
 >
@@ -20,7 +20,11 @@ Three changes, and deliberately no fourth:
 
 1. **Leave the current arming exactly where it is.** The timer is still armed at `global-settings.ts:1852`, immediately after the read goes out.
 2. **Add an optional member to the seam** — `onHostReady?(cb: () => void): void` on `IDeckPlatformAdapter`, optional in the same mould as `supportsApplicationMonitoring?` (`types.ts:155`).
-3. **On its first fire, re-arm once.** If the migration is still pending, clear the deadline and re-arm it for the full budget from that moment. At most once per start, so a flapping socket cannot extend the window indefinitely.
+3. **Extend the deadline exactly once**, granted by whichever comes first: the member firing (the host became reachable — clear the deadline and re-arm it for a full budget from that moment), or the deadline expiring while a subscribed member still hasn't fired. One flag for both, so they cannot compound and the worst case stays at twice the budget.
+
+So the budget is either measured from a point where the question could actually be asked, or bounded at twice it.
+
+The expiry-side half was added after the first implementation shipped only the connect-side re-arm and a fake-host harness showed it did not cover the case the issue is about: a handshake slower than the budget expires the deadline before the connect fires, leaving nothing to re-arm. Both halves are needed, and one flag keeps them bounded together.
 
 Mirabox and Ulanzi implement the member from the same `open` handler that already flushes the deferred `setGlobalSettings` (`vsd-client.ts:136-148`, `ulanzi-client.ts:338-357`). **Elgato does not implement it**, and neither does the scenario harness's `MockPlatformAdapter`. Absence is the statement: nothing to wait for, so the initial arming stands.
 
@@ -30,10 +34,11 @@ Excluding Elgato is verified rather than assumed. Its SDK queues the read until 
 
 These are requirements rather than tests, because a test can be deleted around a refactor and a requirement cannot be satisfied by accident.
 
-- **R1 — A host that never connects must still reach the ceiling on schedule.** The hook never fires, the original deadline fires at the budget, `becomeReady(migrationBase, "fresh")` increments `_migrationPending`, and three such starts stamp `_migrationAbandoned` exactly as today. **This is why the deadline is re-armed rather than relocated.** "Arm it when the read can be answered", taken literally, silently disables the ceiling: a host that never connects would never arm, never time out, and never give up — trading #1056 for a worse #1041.
-- **R2 — The re-arm happens at most once per start.** Otherwise a reconnecting or flapping host extends the window without bound.
+- **R1 — A host that never connects must still reach the ceiling.** At twice the budget rather than once, but it must still get there: the grace is spent, the deadline fires again, `becomeReady(migrationBase, "fresh")` increments `_migrationPending`, and three such starts stamp `_migrationAbandoned`. Prove it, don't assume it — it is the requirement the whole design exists to protect. **This is why the deadline is re-armed rather than relocated.** "Arm it when the read can be answered", taken literally, silently disables the ceiling: a host that never connects would never arm, never time out, and never give up — trading #1056 for a worse #1041.
+- **R2 — One extension per start, whichever path grants it.** Otherwise a reconnecting host, or a slow one that also connects, extends the window without bound.
 - **R3 — A synchronous answer still arms nothing.** `global-settings.ts:1850`'s `if (migrationDone) return;` stays, and the hook must not resurrect a deadline for a migration that already completed.
 - **R4 — `MIGRATION_TIMEOUT_MS` does not change.** Both #1041 and #1047 rejected a larger value by name: it does not help a read that cannot be answered, and it taxes every healthy install. After this change the constant is honest for the first time — it measures a window in which the question can actually be asked.
+- **R5 — Only an adapter that declares the member gets either path.** Elgato's SDK queues the read until it can be sent, so its budget was never spent waiting for a connection; it gives up on the original schedule.
 
 ## Why an optional member, on SOLID grounds
 
@@ -58,11 +63,23 @@ It was passed over because TypeScript's structural typing makes `adapter.onHostR
 - **Solved entirely inside each client.** Not a solution. `deck-core` owns the timer, so only `deck-core` can move it; a client's only lever is *when the frame goes out*, and delaying it does not stop the clock. Stashing the read is also the thing #1046 deliberately did not do — the `open` handler already reissues it, so a stash would only duplicate the frame.
 - **A required seam member.** Rejected on Liskov and ISP above.
 - **`getGlobalSettings()` returning a promise that resolves when the frame reaches the wire.** It changes a required member's contract for all four implementers; a host that never connects leaves it unresolved, so R1 would need a fallback timer anyway and the promise buys nothing over the re-arm; and on Ulanzi "sent" is not "answerable", since an unaddressed read is discarded (#1039).
+- **Granting the grace only when a connect is genuinely in progress.** The attractive refinement: extend for a host that is mid-handshake, but not for one that is never coming, so a dead host keeps costing one budget instead of two. **Rejected on measurement, not on argument** — the two are indistinguishable at the only moment that matters. Probing the real built clients against a fake host, sampling `ws.readyState` at the 10 s mark:
+
+  | condition | Mirabox | Ulanzi |
+  | --- | --- | --- |
+  | slow host, still mid-handshake | `CONNECTING` | `CONNECTING` |
+  | host accepts TCP and never upgrades | `CONNECTING` | `CONNECTING` |
+  | nothing listening at all | socket `CLOSED`, `onClose` fired at +1 s | same |
+
+  Only the third is distinguishable, and it never reaches the deadline: the connection is refused, and both clients end the process on close. A gate on "a connect is in progress" would therefore be granted to exactly the hosts it was meant to exclude. Do not re-derive this.
+
+  The same measurement makes the accepted cost smaller than it first appears. A genuinely absent host cannot reach the deadline at all; only a host that accepted TCP can, and of those, the connect-completes-then-silent case was **already** paying two budgets through the connect-side re-arm. The grace adds exactly one reachable case — accepts TCP, never upgrades — rather than doubling the cost of every dead host.
+
 - **A larger `MIGRATION_TIMEOUT_MS`.** See R4.
 
 ## Costs accepted
 
-A host connecting at 7.18 s yields roughly 17 s worst case before the store is ready, and throughout that window `isSettingsStoreReady()` is false, so key bindings read as unset.
+Worst case is twice the budget — roughly 20 s — before the store is ready, reached either by a slow connect or by the expiry-side grace. Throughout that window everything gated on `isSettingsStoreReady()` is degraded: key bindings read as unset, `focusIRacingIfEnabled()` skips the focus, and the plugin's store-ready block has not run, so a Property Inspector opened in that window bootstraps with no `_settingsChannel` and falls back to the deck host's copy, showing edits as saved that never reach the file. Weigh that whole list, not just the bindings, before anyone widens the window further.
 
 That is a real regression in the slow case, and it is accepted deliberately: today's behaviour there is not a fast answer but a *wrong* one — a bogus give-up that can reach the durable marker and leave a user's settings preserved-but-unread until a newer version spends its one retry. Slow and correct over fast and wrong.
 
@@ -70,7 +87,9 @@ That is a real regression in the slow case, and it is accepted deliberately: tod
 
 **The 7.18 s is one observation in one ordering, and must not harden into a distribution.** It came from a Mirabox log on a session that had a settings file and therefore armed no deadline at all; what it measures is connect latency on the code path a migration start would share. Nothing says it is typical, a floor, or a ceiling.
 
-To get a real figure someone would have to log the interval between `initGlobalSettings` and socket open across many starts, on both WebSocket hosts, cold and warm. **This design deliberately does not need that number** — it re-arms from the event rather than choosing a constant large enough to cover it, which is exactly what keeps it out of R4's trap.
+To get a real figure someone would have to log the interval between `initGlobalSettings` and socket open across many starts, on both WebSocket hosts, cold and warm. **No number is needed for the fix**, and that is the point: extending from the event — or, failing that, once from the deadline — is what keeps this out of "just raise `MIGRATION_TIMEOUT_MS`", which R4 forbids.
+
+What *was* measured, as opposed to reasoned: the `readyState` table above; that Elgato's SDK awaits its connection (`dist/plugin/connection.js:71-72`); and that the first implementation left the beyond-budget case unfixed, observed by driving the real built plugin against a fake host holding the upgrade for 15 s. That last one is why the expiry-side grace exists — every unit test connected inside the budget, so every measurement that existed was consistent with the fix being complete.
 
 ## Affected artifacts
 
