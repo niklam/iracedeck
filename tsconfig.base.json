@@ -4,7 +4,7 @@
     "customConditions": [
       "node"
     ],
-    "module": "ES2022",
+    "module": "esnext",
     "moduleResolution": "Bundler",
     "noImplicitOverride": true,
     "declaration": true,
