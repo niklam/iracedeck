@@ -131,7 +131,7 @@ In `packages/audio-scenarios/src/catalog/pit-crew/index.ts`:
 - Add a `<Family>CalloutId` type union of subject ids.
 - Add a `<FAMILY>_CALLOUT_SETTING_KEYS: Record<<Family>CalloutId, string>` map — the canonical id↔key map plugins read from.
 - Add a `SCENARIO_ID_TO_<FAMILY>_ID` map covering every scenario id in the family.
-- Add a `get<Family>CalloutEnabled` parameter to `registerPitCrew` (default `() => true` for tests). Add it **before** the master-gate parameter so the master stays last among the per-callout opt-ins.
+- Add a `get<Family>CalloutEnabled?: (id: <Family>CalloutId) => boolean` key to `PitCrewDeps`, and its `() => true` default to `DEFAULT_DEPS` (issue #1052). **Placement is irrelevant** — the deps are keyed, so position carries no meaning. There is no "masters last" rule to observe any more; putting the key next to its family's neighbours is a readability choice and nothing else.
 - Wrap the family's scenarios with `wrapWithMaster(wrapCalloutScenario(s, …))` in the registration loop.
 
 ### 6. Per-callout opt-in (Zod schema)
@@ -161,7 +161,9 @@ Live-read (don't capture the value) — a mid-session toggle takes effect on the
 ### 9. Update test fixtures
 
 - `packages/deck-core/src/simhub-service.test.ts` constructs an exhaustive `getGlobalSettings()` mock for every callout key — in **two** object literals (the main settings mock AND a second `.passthrough()`/round-trip literal further down). Add the new key to **both** or the type-check fails at build (`grep` the existing nearest key to find every literal).
-- **Every** `*.test.ts` that calls `registerPitCrew(...)` positionally shifts when you insert a new closure parameter — not just `register-pit-crew.test.ts`. At minimum `register-pit-crew.test.ts`, `rolling-start.test.ts`, and `start-lights.test.ts` pass the rolling-start / start-light / master tail positionally; `grep -rl "registerPitCrew(" packages/audio-scenarios/src` and add `undefined` (or a stub) at the new position in each so the masters stay in the right slot. (Tests that stop before your new param — e.g. `scenario-harness/src/main.ts` ends at the race-start arg — are unaffected.)
+- **Call sites of `registerPitCrew(...)` need no edit when you add a key** (issue #1052). Every one names what it passes, so a new `PitCrewDeps` key is simply absent from the ones that don't want it and takes its `DEFAULT_DEPS` entry. Adding a key cannot disturb an existing call site.
+
+  This used to be the most dangerous step on the page, and it is worth knowing why so nobody reinstates it. The parameters were positional and nearly all shared a shape, so inserting one shifted every later argument at every call site — and the result still type-checked, because a value landing in the wrong slot was usually assignable to it. It went wrong twice on 2026-08-28: once loudly, once silently and green. If you find surviving advice anywhere about adding `undefined` "at the new position" or keeping the masters last, it predates #1052 and is now wrong.
 
 ### 10. Scenario-harness shortcut
 

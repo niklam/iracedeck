@@ -151,7 +151,7 @@ This is the consumer-side checklist; see the rule
    - Add `<Family>CalloutId` (type union of subject ids).
    - Add `<FAMILY>_CALLOUT_SETTING_KEYS: Record<<Family>CalloutId, string>` — exported so plugins can read it.
    - Add `SCENARIO_ID_TO_<FAMILY>_ID: Record<string, <Family>CalloutId>` — covers every scenario id in the family.
-   - Add `get<Family>CalloutEnabled` parameter to `registerPitCrew` (default `() => true`) — placed **before** the master-gate parameter so the master stays last among per-callout opt-ins. Inserting between existing parameters shifts master-gate's index, so test fixtures that call `registerPitCrew` positionally need `undefined` inserted at the new slot (`register-pit-crew.test.ts`).
+   - Add a `get<Family>CalloutEnabled` key to `PitCrewDeps` and its `() => true` default to `DEFAULT_DEPS`. **Placement is irrelevant and no call site needs editing** — `registerPitCrew` takes one keyed options object since #1052, so a new key is simply absent from the call sites that don't want it. (Until #1052 these were positional parameters and a new one had to go before the master gates, or every later argument at every call site shifted — silently, since the shifted value was usually still assignable. That constraint is gone; don't reinstate it.)
    - Wrap the family's scenarios with `wrapWithMaster(wrapCalloutScenario(...))` in the registration loop.
 
 ## Conventions
