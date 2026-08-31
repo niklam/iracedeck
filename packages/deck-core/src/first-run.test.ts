@@ -11,25 +11,22 @@ const logger = {
   error: vi.fn(),
 } as unknown as ILogger;
 
-type Persist = (version: string) => void;
+type Persist = (settings: Record<string, unknown>) => void;
 type Open = () => void | Promise<unknown>;
 
-let persistFirstRun: ReturnType<typeof vi.fn<Persist>>;
-let persistLastSeen: ReturnType<typeof vi.fn<Persist>>;
+let persist: ReturnType<typeof vi.fn<Persist>>;
 let openGettingStarted: ReturnType<typeof vi.fn<Open>>;
 
 beforeEach(() => {
   vi.clearAllMocks();
-  persistFirstRun = vi.fn<Persist>();
-  persistLastSeen = vi.fn<Persist>();
+  persist = vi.fn<Persist>();
   openGettingStarted = vi.fn<Open>().mockResolvedValue(undefined);
 });
 
 const run = (extra: Record<string, unknown> = {}) =>
   runFirstRunCheck({
     currentVersion: "3.1.0",
-    persistFirstRun,
-    persistLastSeen,
+    persist,
     openGettingStarted,
     logger,
     ...extra,
@@ -90,10 +87,10 @@ describe("runFirstRunCheck", () => {
     expect(await run()).toBe(true);
 
     expect(openGettingStarted).toHaveBeenCalledTimes(1);
-    expect(persistFirstRun).toHaveBeenCalledWith("3.1.0");
-    // The changelog is suppressed on this start, so the version must be marked
-    // seen or the next start opens it as a pending release.
-    expect(persistLastSeen).toHaveBeenCalledWith("3.1.0");
+    // ONE write, both keys — they cannot half-land, and a crash between two
+    // writes cannot leave the page consumed with the changelog still pending.
+    expect(persist).toHaveBeenCalledTimes(1);
+    expect(persist).toHaveBeenCalledWith({ _firstRunVersion: "3.1.0", _lastSeenVersion: "3.1.0" });
   });
 
   it("records the version rather than a bare true, so a later build can revisit it", () => {
@@ -109,7 +106,7 @@ describe("runFirstRunCheck", () => {
 
       return Promise.resolve();
     });
-    persistFirstRun.mockImplementation(() => order.push("persist"));
+    persist.mockImplementation(() => order.push("persist"));
 
     await run();
 
@@ -123,8 +120,7 @@ describe("runFirstRunCheck", () => {
       openGettingStarted.mockRejectedValue(new Error("no server"));
 
       expect(await run()).toBe(true);
-      expect(persistFirstRun).not.toHaveBeenCalled();
-      expect(persistLastSeen).not.toHaveBeenCalled();
+      expect(persist).not.toHaveBeenCalled();
     });
 
     it("does not throw out of the startup path", async () => {
@@ -140,8 +136,7 @@ describe("runFirstRunCheck", () => {
       expect(await run({ isSimRunning: () => true })).toBe(true);
 
       expect(openGettingStarted).not.toHaveBeenCalled();
-      expect(persistFirstRun).not.toHaveBeenCalled();
-      expect(persistLastSeen).not.toHaveBeenCalled();
+      expect(persist).not.toHaveBeenCalled();
     });
 
     it("opens when the sim is not running", async () => {
@@ -161,21 +156,21 @@ describe("runFirstRunCheck", () => {
       // what would write that key, and writing it would destroy the only
       // evidence distinguishing a new user from an upgrade.
       expect(await run({ migrationPending: 1 })).toBe(true);
-      expect(persistLastSeen).not.toHaveBeenCalled();
+      expect(persist).not.toHaveBeenCalled();
     });
 
     it("releases it for an existing install, which still wants its changelog", async () => {
       expect(await run({ lastSeenVersion: "3.0.0" })).toBe(false);
 
       expect(openGettingStarted).not.toHaveBeenCalled();
-      expect(persistFirstRun).toHaveBeenCalledWith("3.1.0");
-      expect(persistLastSeen).not.toHaveBeenCalled();
+      // Only the decision key: an existing install still wants its changelog.
+      expect(persist).toHaveBeenCalledWith({ _firstRunVersion: "3.1.0" });
     });
 
     it("releases it once already resolved, writing nothing at all", async () => {
       expect(await run({ firstRunVersion: "3.0.0" })).toBe(false);
 
-      expect(persistFirstRun).not.toHaveBeenCalled();
+      expect(persist).not.toHaveBeenCalled();
       expect(openGettingStarted).not.toHaveBeenCalled();
     });
   });

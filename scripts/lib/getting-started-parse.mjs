@@ -37,7 +37,10 @@ const FRONTMATTER_FENCE = /^---[ \t]*$/;
 const SECTION_HEADING = /^##[ \t]+(.*\S)[ \t]*$/;
 const BULLET_LINE = /^-[ \t]+(.*\S)[ \t]*$/;
 const ACTION_MARKER = /^<!--[ \t]*ird:action[ \t]+([a-z][a-z0-9-]*)[ \t]*-->[ \t]*$/;
-const ANY_COMMENT = /^<!--/;
+/** A marker ANYWHERE in a line, so one that is not alone on its line is caught rather than escaped into view. */
+const ACTION_ANYWHERE = /<!--[ \t]*ird:action\b/;
+/** Anything tag-shaped. Markdown renders it; this pane escapes it into visible text. */
+const LOOKS_LIKE_HTML = /<[!/a-zA-Z]/;
 
 /**
  * Constructs the pane cannot render, matched so the failure names the construct
@@ -54,6 +57,9 @@ const UNSUPPORTED = Object.freeze([
   { pattern: /^(?:```|~~~)/, what: "a code fence" },
   { pattern: /^\d+\.[ \t]/, what: "a numbered list — use `-` bullets" },
   { pattern: /^!\[/, what: "an image — the pane serves no assets" },
+  { pattern: /^[*+][ \t]/, what: "a `*` or `+` bullet — use `-`" },
+  { pattern: /^(?:-{3,}|\*{3,}|_{3,})[ \t]*$/, what: "a thematic break" },
+  { pattern: /^(?:={2,}|-{2,})[ \t]*$/, what: "a setext heading underline — headings are `##`" },
 ]);
 
 /**
@@ -126,6 +132,18 @@ export function parseGettingStarted(source) {
       continue;
     }
 
+    // Indentation is where the two surfaces quietly disagree: a nested bullet is
+    // a nested list on the website and would flatten into one flat list here; a
+    // wrapped continuation folds into the bullet above it there and would split
+    // into its own paragraph here; four spaces is a code block there and prose
+    // here. None can be rendered faithfully, so none is accepted.
+    if (/^[ \t]/.test(raw)) {
+      throw new GettingStartedParseError(
+        "an indented line — nested lists, wrapped continuations and indented code all render differently on the website",
+        lineNo,
+      );
+    }
+
     const heading = SECTION_HEADING.exec(text);
 
     if (heading) {
@@ -159,11 +177,19 @@ export function parseGettingStarted(source) {
       continue;
     }
 
-    if (ANY_COMMENT.test(text)) {
-      // A typo'd marker is invisible on the website AND absent from the pane,
-      // so it would never be noticed. Anything comment-shaped must be a marker.
+    // A marker that is not ALONE on its line: invisible on the website (it is a
+    // comment) and escaped into visible text here, so the control never renders
+    // and nobody finds out. Caught wherever it appears, not only at column 0.
+    if (ACTION_ANYWHERE.test(text)) {
+      throw new GettingStartedParseError("an `<!-- ird:action <id> -->` marker that is not alone on its line", lineNo);
+    }
+
+    if (LOOKS_LIKE_HTML.test(text)) {
+      // Covers any other HTML comment too. Markdown renders raw HTML; this pane
+      // escapes it, so one source would read as markup on one surface and as
+      // literal angle brackets on the other.
       throw new GettingStartedParseError(
-        "an HTML comment that is not an `<!-- ird:action <id> -->` marker on a line of its own",
+        "raw HTML — the pane escapes it into visible text; wrap a literal in backticks",
         lineNo,
       );
     }

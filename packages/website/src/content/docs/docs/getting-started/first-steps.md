@@ -7,7 +7,7 @@ description: What to do first with iRaceDeck — put keys on your deck, start fr
 
 iRaceDeck turns your deck into an iRacing control panel: pit service, black boxes, cameras, chat macros, replay controls, and a voice on the radio that keeps you informed while you drive.
 
-This is the short version — what to do first. Everything here is also on [iracedeck.com](https://iracedeck.com/), so you can read it away from the sim.
+This is the short version — what to do first. Everything else is in the [documentation](/docs/).
 
 ## Put your first keys on the deck
 
@@ -65,7 +65,7 @@ When iRaceDeck updates, it can open its release notes for you. **It stays quiet 
 
 You can also pick exactly how often — every update, feature updates only, once a month, or never. That setting sits on the **What's New** tab, and you can change it whenever you like.
 
-<!-- ird:action changelog-frequency -->
+<!-- ird:action open-updates-tab -->
 
 ## Where to go next
 
@@ -73,4 +73,4 @@ You can also pick exactly how often — every update, feature updates only, once
 - [What's New](/changelog/) — what changed in this release.
 - [Discord](https://discord.gg/c6nRYywpah) — questions, bug reports, and other drivers.
 
-This page stays on the **Getting Started** tab, so you can come back to it whenever you like.
+iRaceDeck keeps this page on its **Getting Started** tab, so you can come back to it whenever you like.

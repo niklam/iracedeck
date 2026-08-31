@@ -33,7 +33,7 @@ const FIXTURE = {
       blocks: [
         { type: "list", items: ["<strong>Fuel Service</strong> — sets the fuel"] },
         { type: "action", id: "enable-race-engineer" },
-        { type: "action", id: "changelog-frequency" },
+        { type: "action", id: "open-updates-tab" },
       ],
     },
   ],
@@ -101,15 +101,15 @@ describe("settings-window-getting-started.ejs", () => {
     expect(render()).toContain('<ird-enable-feature feature="race-engineer">');
   });
 
-  it("shares the frequency picker with the What's New tab rather than copying it", () => {
+  it("sends the reader to the What's New tab rather than binding the setting twice", () => {
+    // Two sdpi controls bound to one key on one page go stale against each
+    // other: the fake host deliberately skips the echo to whichever socket
+    // wrote (#992), so the untouched one keeps showing the old value and writes
+    // it straight back when touched. A jump says the same thing with one binding.
     const html = render();
 
-    // A second copy of the option list is a copy that drifts the next time
-    // DEFAULT_CHANGELOG_NOTIFICATION_POLICY moves — which #1061 moves.
-    expect(html).toContain('setting="changelogNotification"');
-    expect(readFileSync(path.join(partialsDir, "settings-window-getting-started.ejs"), "utf-8")).toContain(
-      "include('global-common-changelog-frequency')",
-    );
+    expect(html).toContain('data-jump="updates"');
+    expect(html).not.toContain('setting="changelogNotification"');
   });
 
   it("fails the build on an action id nothing renders", () => {

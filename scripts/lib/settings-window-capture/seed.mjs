@@ -74,7 +74,7 @@ export function buildSeedSettings() {
     simHubPort: 8888,
 
     // ── Updates / diagnostics ──
-    changelogNotification: "features",
+    changelogNotification: "never",
     debugLogging: false,
 
     // ── A representative handful of key bindings ──

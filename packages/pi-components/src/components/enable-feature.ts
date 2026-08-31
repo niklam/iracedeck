@@ -92,6 +92,20 @@ export class EnableFeature extends HTMLElement {
     this.render();
   };
 
+  /**
+   * Re-read after any control on the page changes.
+   *
+   * The settings window's fake host deliberately does NOT echo a
+   * `setGlobalSettings` back to the socket that sent it (#992), so a sibling
+   * control changing the same setting — the Race Engineer tab's Enabled
+   * checkbox, say — produces no `didReceiveGlobalSettings` here. Without this
+   * the button would keep offering to turn on something already on. Same
+   * approach `ird-black-box-caveat` uses, and for the same reason.
+   */
+  private readonly onDomChange = (): void => {
+    void this.refresh();
+  };
+
   connectedCallback(): void {
     if (this.connected) return;
 
@@ -103,17 +117,12 @@ export class EnableFeature extends HTMLElement {
     const client = streamDeckClient();
 
     if (client) {
-      void client.getGlobalSettings().then((settings) => {
-        // A late resolve after disconnect must not resurrect a detached element.
-        if (!this.connected) return;
-
-        this.settings = settings ?? {};
-        this.settingsLoaded = true;
-        this.render();
-      });
-
+      void this.refresh();
       client.didReceiveGlobalSettings.subscribe(this.onGlobalSettings);
     }
+
+    document.addEventListener("change", this.onDomChange);
+    document.addEventListener("input", this.onDomChange);
 
     this.render();
   }
@@ -124,6 +133,26 @@ export class EnableFeature extends HTMLElement {
     const client = streamDeckClient();
 
     client?.didReceiveGlobalSettings.unsubscribe?.(this.onGlobalSettings);
+    document.removeEventListener("change", this.onDomChange);
+    document.removeEventListener("input", this.onDomChange);
+
+    // Drop the container too. Without this a re-attach appends a SECOND one
+    // beside the first, which is frozen at whatever it last rendered — two
+    // buttons, or a button beside a stale confirmation.
+    this.container?.remove();
+    this.container = null;
+  }
+
+  /** Pull the current settings and re-render; ignored once detached. */
+  private async refresh(): Promise<void> {
+    const settings = await streamDeckClient()?.getGlobalSettings();
+
+    // A late resolve after disconnect must not resurrect a detached element.
+    if (!this.connected) return;
+
+    this.settings = settings ?? {};
+    this.settingsLoaded = true;
+    this.render();
   }
 
   attributeChangedCallback(): void {

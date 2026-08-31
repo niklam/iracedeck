@@ -227,6 +227,12 @@ Persistence is by stable device id, not by enumeration index, so unplugging or r
 
 **`ird-open-settings`** - The "iRaceDeck Settings" button (#992) — a cog plus its label, in the factory's `compact` size (#1024). Sends `sendToPlugin {event:"openSettings"}`, routed per host by `onOpenSettingsRequest` on each concrete adapter. In an action PI it is rendered by `action-settings-footer.ejs`, which closes the action's OWN settings with it (`.ird-open-settings` inside an `.ird-section-footer` block, #1024 — it closed the Key Bindings section at the bottom of the page between #1003 and #1024); `settings.ejs` renders it under its header via `section-header.ejs`'s `openSettings: true` slot. Either way a centred block, never inside an `sdpi-item`.
 
+**`ird-enable-feature`** - One-press opt-in on the Getting Started page (#1061), `feature="race-engineer" | "changelog-updates" | "focus-iracing-window"`. **State-driven, never fire-and-forget:** it reads the setting it would change and renders either the offer or the current truth, so pressing twice is not a case that exists and somebody who enabled the feature elsewhere is told so. It writes nothing itself — the press sends `sendToPlugin { event: "enableFeature", feature }` and the plugin decides, which is what lets the Race Engineer opt-in write its gate and its startup policy together. It also re-reads on any `change`/`input` on the page, because the settings window's fake host does not echo a write back to the socket that sent it, so a sibling control changing the same key produces no push. Settings window only.
+
+```html
+<ird-enable-feature feature="race-engineer"></ird-enable-feature>
+```
+
 **`ird-open-folder`** - "Open folder" button for the settings window's Diagnostics card (#993). Sends `sendToPlugin` with `{ event: "openSettingsFolder" }`; the plugin's settings-window command handler reveals its OWN settings-file path in Explorer (`openFolderInExplorer`, `storePath` dep) — the page never supplies a path. Built on the shared `defineSendToPluginButton` factory together with `ird-open-settings`; rendered only under `locals.settingsWindow` in `global-common-diagnostics.ejs`.
 
 ```html

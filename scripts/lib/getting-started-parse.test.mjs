@@ -114,6 +114,10 @@ More prose.
       ["a code fence", "```js"],
       ["a numbered list", "1. first"],
       ["an image", "![alt](/x.png)"],
+      ["a * bullet", "* one"],
+      ["a + bullet", "+ one"],
+      ["a thematic break", "---"],
+      ["a setext underline", "====="],
     ];
 
     it.each(cases)("%s", (_what, line) => {
@@ -127,8 +131,60 @@ More prose.
 
   it("rejects a comment that is not an action marker", () => {
     // A typo'd marker is invisible on the website AND absent from the pane, so
-    // it would never be noticed. That is the whole reason this throws.
-    expect(() => parseGettingStarted("## S\n\n<!-- ird:actoin oops -->\n")).toThrow(/not an .*ird:action.* marker/);
+    // it would never be noticed. It is caught by the raw-HTML guard, which
+    // covers every comment that is not a well-formed marker.
+    expect(() => parseGettingStarted(`## S
+
+<!-- ird:actoin oops -->
+`)).toThrow(/raw HTML/);
+  });
+
+  it("rejects a marker that is not alone on its line", () => {
+    // Invisible on the website (it is a comment) and escaped into visible text
+    // in the pane, so the control never renders and nobody finds out.
+    expect(() =>
+      parseGettingStarted(`## S
+
+text <!-- ird:action foo --> more
+`),
+    ).toThrow(/not alone on its line/);
+  });
+
+  it("rejects raw HTML, which markdown renders and the pane escapes", () => {
+    expect(() => parseGettingStarted(`## S
+
+<div>hi</div>
+`)).toThrow(/raw HTML/);
+    expect(() => parseGettingStarted(`## S
+
+some <b>bold</b> text
+`)).toThrow(/raw HTML/);
+  });
+
+  describe("indented lines", () => {
+    // Each of these renders one way on the website and another here, silently.
+    it("rejects a nested bullet, which would flatten into one flat list", () => {
+      expect(() => parseGettingStarted(`## S
+
+- outer
+  - nested
+`)).toThrow(/indented line/);
+    });
+
+    it("rejects a wrapped continuation, which folds into the bullet on the website", () => {
+      expect(() => parseGettingStarted(`## S
+
+- item one
+  wrapped part
+`)).toThrow(/indented line/);
+    });
+
+    it("rejects indented code, which is a code block on the website", () => {
+      expect(() => parseGettingStarted(`## S
+
+    const x = 1;
+`)).toThrow(/indented line/);
+    });
   });
 
   it("rejects an action id that is not a plain slug", () => {

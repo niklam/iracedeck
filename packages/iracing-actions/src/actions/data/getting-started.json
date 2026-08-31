@@ -14,7 +14,7 @@
         },
         {
           "type": "paragraph",
-          "html": "This is the short version — what to do first. Everything here is also on <a href=\"https://iracedeck.com/\" target=\"_blank\" rel=\"noopener noreferrer\">iracedeck.com</a>, so you can read it away from the sim."
+          "html": "This is the short version — what to do first. Everything else is in the <a href=\"https://iracedeck.com/docs/\" target=\"_blank\" rel=\"noopener noreferrer\">documentation</a>."
         }
       ]
     },
@@ -136,7 +136,7 @@
         },
         {
           "type": "action",
-          "id": "changelog-frequency"
+          "id": "open-updates-tab"
         }
       ]
     },
@@ -153,7 +153,7 @@
         },
         {
           "type": "paragraph",
-          "html": "This page stays on the <strong>Getting Started</strong> tab, so you can come back to it whenever you like."
+          "html": "iRaceDeck keeps this page on its <strong>Getting Started</strong> tab, so you can come back to it whenever you like."
         }
       ]
     }

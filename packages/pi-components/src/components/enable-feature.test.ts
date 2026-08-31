@@ -159,6 +159,34 @@ describe("ird-enable-feature", () => {
     expect((await mount("not-a-feature")).textContent).toBe("");
   });
 
+  it("re-reads when a sibling control on the page changes the same setting", async () => {
+    // The settings window's fake host does not echo a write back to the socket
+    // that sent it, so ticking Enabled on the Race Engineer tab produces no
+    // push here. Without the DOM listener this button would go on offering to
+    // turn on something already on.
+    const el = await mount("race-engineer");
+
+    expect(button(el)).not.toBeNull();
+
+    settings = { pitCrewRaceEngineerEnabled: true };
+    document.dispatchEvent(new Event("change", { bubbles: true }));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(button(el)).toBeNull();
+  });
+
+  it("leaves no stale duplicate behind when re-attached", async () => {
+    const el = await mount("race-engineer");
+
+    el.remove();
+    document.body.appendChild(el);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(el.querySelectorAll("button")).toHaveLength(1);
+  });
+
   it("stops listening once detached", async () => {
     const el = await mount("race-engineer");
 

@@ -106,10 +106,16 @@ export async function runFirstRunCheck(opts: {
   migrationPending?: unknown;
   /** #870: never open over a live race. Same delegate `runVersionCheck` takes. */
   isSimRunning?: () => boolean;
-  /** Records that the first-run decision was made, as the version that made it. */
-  persistFirstRun: (version: string) => void;
-  /** Marks the running version seen, so the suppressed changelog is not replayed. */
-  persistLastSeen: (version: string) => void;
+  /**
+   * Writes the decision's keys — ONE call, so they cannot half-land.
+   *
+   * An open records both `_firstRunVersion` and `_lastSeenVersion`; splitting
+   * that across two `updateGlobalSettings` calls would be two merges, two Zod
+   * re-parses and two listener fan-outs for one decision, and a crash between
+   * them would leave the page consumed with the changelog still pending. Same
+   * reasoning as `reconcileWarnings`.
+   */
+  persist: (settings: Record<string, unknown>) => void;
   /** Opens the settings window on the Getting Started pane. */
   openGettingStarted: () => void | Promise<unknown>;
   logger: ILogger;
@@ -131,7 +137,7 @@ export async function runFirstRunCheck(opts: {
 
   if (decision === "record-silently") {
     logger.debug("Existing installation; Getting Started not shown");
-    opts.persistFirstRun(opts.currentVersion);
+    opts.persist({ [FIRST_RUN_VERSION_KEY]: opts.currentVersion });
 
     return false;
   }
@@ -157,13 +163,13 @@ export async function runFirstRunCheck(opts: {
   }
 
   logger.info("Getting Started opened for a new installation");
-  opts.persistFirstRun(opts.currentVersion);
-  // The changelog is suppressed on this start rather than opened alongside, so
-  // mark the version seen or the next start would open it as a pending release.
-  // `_lastChangelogOpenedAt` is deliberately NOT stamped: nothing opened, and
-  // leaving that anchor unset is what makes a later switch to `monthly` open at
-  // the next upgrade rather than waiting 30 days from a page nobody saw.
-  opts.persistLastSeen(opts.currentVersion);
+  // Both keys in ONE write. The changelog is suppressed on this start rather
+  // than opened alongside, so the version must be marked seen or the next start
+  // would open it as a pending release. `_lastChangelogOpenedAt` is deliberately
+  // NOT stamped: nothing opened, and leaving that anchor unset is what makes a
+  // later switch to `monthly` open at the next upgrade rather than waiting 30
+  // days from a page nobody saw.
+  opts.persist({ [FIRST_RUN_VERSION_KEY]: opts.currentVersion, _lastSeenVersion: opts.currentVersion });
 
   return true;
 }

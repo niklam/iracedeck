@@ -775,7 +775,23 @@ const versionCheckLogger = adapter.createLogger("VersionCheck");
 // defers (nothing persisted) and stays pending until the sim is gone.
 // `runVersionCheck` is naturally idempotent across these calls: once a
 // version is persisted, later calls decide `skip`.
-async function runStartupNotices(): Promise<void> {
+let startupNoticesInFlight: Promise<void> | undefined;
+
+/**
+ * Serialises the two entry points below. `runFirstRunCheck` persists only once
+ * the window has opened, so its own "already resolved" guard is blind for the
+ * whole browser-spawn duration — long enough for the startup-grace timer and an
+ * iRacing exit to both decide "open" and spawn two windows.
+ */
+function runStartupNotices(): Promise<void> {
+  startupNoticesInFlight ??= startupNotices().finally(() => {
+    startupNoticesInFlight = undefined;
+  });
+
+  return startupNoticesInFlight;
+}
+
+async function startupNotices(): Promise<void> {
   // Nothing meaningful to compare before the first settings arrival.
   if (!startupDefaultsApplied) return;
 
@@ -803,8 +819,7 @@ async function runStartupNotices(): Promise<void> {
       lastSeenVersion: s._lastSeenVersion,
       migrationPending: s[MIGRATION_PENDING_KEY],
       isSimRunning: isIRacingActive,
-      persistFirstRun: (version) => updateGlobalSettings({ [FIRST_RUN_VERSION_KEY]: version }),
-      persistLastSeen: (version) => updateGlobalSettings({ _lastSeenVersion: version }),
+      persist: (partial) => updateGlobalSettings(partial),
       openGettingStarted: () => settingsWindow.open({ pane: GETTING_STARTED_PANE }),
       logger: versionCheckLogger,
     })

@@ -29,7 +29,7 @@ It opens by itself once, the first time you run iRaceDeck, and then never again.
 
 The tab stays here afterwards, so you can come back to it whenever you like.
 
-Three of its steps do something rather than only explain it: one press turns on the **Race Engineer** (and plays a line so you know your audio works), one opts you in to seeing what changed after an update, and one turns on **Focus iRacing window** if you happen to have it off. Each shows what it will do while the setting is off, and says so plainly once it is on.
+Three of its steps do something rather than only explain it: one press turns on the **Race Engineer** (and plays a line so you know your audio works), one opts you in to seeing what changed after an update, and one turns on **Focus iRacing window** if you happen to have it off. The first two show what they will do while the setting is off and confirm it once it is on; the Focus iRacing window suggestion appears only if that setting is off, so on a fresh installation — where it is already on — you will not see it at all.
 
 ### General
 
