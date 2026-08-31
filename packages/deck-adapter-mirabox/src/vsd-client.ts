@@ -268,7 +268,9 @@ export class VSDClient {
       // the dropped read. A change to who issues the migration read, or to when
       // it is issued, must revisit this comment rather than leave a confident
       // wrong one behind.
-      this.logger.info("Global-settings read requested while the host socket was not open");
+      this.logger.info(
+        "Global-settings read requested while the host socket was not open; the connect-time read will ask in its place",
+      );
 
       return;
     }

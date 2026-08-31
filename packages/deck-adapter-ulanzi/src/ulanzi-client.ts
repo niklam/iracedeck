@@ -536,7 +536,9 @@ export class UlanziClient {
       // connect-time reply is discarded and migration completes on deck-core's
       // own read, sent moments later with the socket already open. Both reads
       // are load-bearing, one per ordering; do not de-duplicate them.
-      this.logger.info("Global-settings read requested while the host socket was not open");
+      this.logger.info(
+        "Global-settings read requested while the host socket was not open; the connect-time read will ask in its place",
+      );
 
       return;
     }
