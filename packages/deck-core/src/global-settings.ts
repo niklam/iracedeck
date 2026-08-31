@@ -1607,6 +1607,12 @@ export function initGlobalSettings(
    * which of the two reads this is.
    */
   let retryingAfterGiveUp = false;
+  /**
+   * Whether the one-shot {@link IDeckPlatformAdapter.onHostReady} re-arm has
+   * been spent (#1056). Per start, not per subscription: a host that flaps must
+   * not be able to extend the migration window on every reconnect.
+   */
+  let hostReadyHandled = false;
 
   // A `_resetGlobalSettings()` (tests) retargets `storeRef`, so an in-flight
   // load or a late host payload from THIS init must not write to module state
@@ -1849,7 +1855,7 @@ export function initGlobalSettings(
     // already migrated us — there is no deadline left to arm.
     if (migrationDone) return;
 
-    migrationTimer = setTimeout(() => {
+    const onMigrationTimeout = (): void => {
       migrationTimer = undefined;
 
       if (storeReady || migrationDone || !isCurrent()) return;
@@ -1870,7 +1876,40 @@ export function initGlobalSettings(
 
       logger?.warn("Deck host did not answer the migration read; starting fresh");
       becomeReady(migrationBase, "fresh");
-    }, migrationTimeoutMs);
+    };
+
+    migrationTimer = setTimeout(onMigrationTimeout, migrationTimeoutMs);
+
+    // The deadline is armed above, at the moment the read is ISSUED — but on
+    // both WebSocket hosts it cannot be ANSWERED until their socket opens, and
+    // the connect latency came straight out of the budget (#1056). So re-arm it
+    // once when the host first becomes reachable, giving the migration a full
+    // budget measured from the point the question can actually be asked.
+    //
+    // Re-armed, never relocated. Arming it only on connect would mean a host
+    // that never connects never arms, never times out and never gives up — no
+    // `_migrationPending` countdown, no ceiling, no `_migrationAbandoned` — which
+    // trades this bug for a worse #1041. The timer above is what makes the
+    // never-connects path identical to before; this only extends a window that
+    // was already running.
+    //
+    // At most once per start: a reconnecting or flapping host must not be able
+    // to extend the window without bound. Adapters whose transport queues the
+    // read until it can be sent (Elgato) declare no `onHostReady` at all, and
+    // the deadline above stands unchanged.
+    adapter.onHostReady?.(() => {
+      if (hostReadyHandled) return;
+
+      hostReadyHandled = true;
+
+      // Nothing to extend: already answered, already timed out, already ready,
+      // or a newer init has taken over.
+      if (migrationTimer === undefined || storeReady || migrationDone || !isCurrent()) return;
+
+      clearTimeout(migrationTimer);
+      migrationTimer = setTimeout(onMigrationTimeout, migrationTimeoutMs);
+      logger?.info("Deck host reachable; restarting the migration deadline from here");
+    });
   };
 
   const onLoadFailed = (attempt: number, error: unknown): void => {

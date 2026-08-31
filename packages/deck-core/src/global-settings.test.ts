@@ -1880,3 +1880,159 @@ describe("Mouse to Sim pointer target (#1029)", () => {
     expect(parsed.focusIRacingWindow).toBe(false);
   });
 });
+
+describe("migration deadline vs. host connect (#1056)", () => {
+  beforeEach(() => _resetGlobalSettings());
+  afterEach(() => vi.useRealTimers());
+
+  interface ConnectingMock {
+    adapter: IDeckPlatformAdapter;
+    echo: EchoCallback | null;
+    getGlobalSettings: ReturnType<typeof vi.fn<() => void>>;
+    /** Fire the host-ready subscribers, the way a client does from its `open` handler. */
+    connect: () => void;
+    /** How many times deck-core subscribed — 0 proves it never entered the migration path. */
+    hostReadySubscribers: number;
+  }
+
+  /**
+   * A mock adapter that models a connection lifecycle, which the suite's own
+   * `createMockAdapter` deliberately does not: the read is issued into a host
+   * that cannot answer until `connect()` is called.
+   */
+  function createConnectingMockAdapter(): ConnectingMock {
+    const echoHolder: { echo: EchoCallback | null } = { echo: null };
+    const readyCallbacks: Array<() => void> = [];
+    const getGlobalSettings = vi.fn<() => void>();
+
+    const adapter = {
+      onDidReceiveGlobalSettings: (cb: EchoCallback) => {
+        echoHolder.echo = cb;
+      },
+      setGlobalSettings: vi.fn<(settings: Record<string, unknown>) => void>(),
+      getGlobalSettings,
+      onHostReady: (cb: () => void) => {
+        readyCallbacks.push(cb);
+      },
+    } as unknown as IDeckPlatformAdapter;
+
+    return {
+      adapter,
+      get echo() {
+        return echoHolder.echo;
+      },
+      getGlobalSettings,
+      connect: () => {
+        for (const cb of [...readyCallbacks]) cb();
+      },
+      get hostReadySubscribers() {
+        return readyCallbacks.length;
+      },
+    };
+  }
+
+  it("extends the window on a late connect, so a host slower than the budget still migrates", async () => {
+    // The bug: the deadline was armed when the read was ISSUED, but on a
+    // WebSocket host it cannot be ANSWERED until the socket opens, so connect
+    // latency came out of the migration's budget.
+    vi.useFakeTimers();
+
+    const mock = createConnectingMockAdapter();
+    const store = createMemorySettingsStore();
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store, { migrationTimeoutMs: 50 });
+    await vi.advanceTimersByTimeAsync(40);
+    expect(isSettingsStoreReady()).toBe(false);
+
+    mock.connect();
+
+    // Past the ORIGINAL deadline: without the re-arm this would already have
+    // given up and written a defaults file carrying the pending marker.
+    await vi.advanceTimersByTimeAsync(20);
+    expect(isSettingsStoreReady()).toBe(false);
+    expect(store.saved).toEqual([]);
+
+    mock.echo?.({ driverName: "late-host" });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(isSettingsStoreReady()).toBe(true);
+    expect(getSettingsStoreSource()).toBe("host");
+    expect(getGlobalSettings().driverName).toBe("late-host");
+  });
+
+  it("still reaches the give-up countdown on schedule when a host offers the hook but never connects", async () => {
+    // R1, the invariant the whole design protects: arming the deadline ONLY on
+    // connect would mean a host that never connects never arms, never times
+    // out and never gives up — no countdown, no ceiling, no abandoned marker.
+    vi.useFakeTimers();
+
+    const mock = createConnectingMockAdapter();
+    const store = createMemorySettingsStore();
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store, { migrationTimeoutMs: 50 });
+    await vi.advanceTimersByTimeAsync(60); // never connected
+
+    expect(isSettingsStoreReady()).toBe(true);
+    expect(getSettingsStoreSource()).toBe("fresh");
+    expect(store.saved.at(-1)).toMatchObject({ [MIGRATION_PENDING_KEY]: 1 });
+  });
+
+  it("spends the re-arm once, so a flapping host cannot extend the window forever", async () => {
+    // R2. Without the one-shot, every reconnect would push the deadline out
+    // and a host that never answers would never give up.
+    vi.useFakeTimers();
+
+    const mock = createConnectingMockAdapter();
+    const store = createMemorySettingsStore();
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store, { migrationTimeoutMs: 50 });
+    await vi.advanceTimersByTimeAsync(10);
+
+    mock.connect(); // deadline now runs to t=60
+    await vi.advanceTimersByTimeAsync(40); // t=50: the original deadline has passed
+    expect(isSettingsStoreReady()).toBe(false);
+
+    mock.connect(); // a second open must NOT buy another 50 ms
+    await vi.advanceTimersByTimeAsync(15); // t=65, past the single re-armed deadline
+
+    expect(isSettingsStoreReady()).toBe(true);
+    expect(getSettingsStoreSource()).toBe("fresh");
+    expect(store.saved.at(-1)).toMatchObject({ [MIGRATION_PENDING_KEY]: 1 });
+  });
+
+  it("arms nothing when the host connects after the migration already completed", async () => {
+    // R3: the re-arm must not resurrect a deadline for a finished migration.
+    vi.useFakeTimers();
+
+    const mock = createConnectingMockAdapter();
+    const store = createMemorySettingsStore();
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store, { migrationTimeoutMs: 50 });
+    await vi.advanceTimersByTimeAsync(0);
+
+    mock.echo?.({ driverName: "prompt-host" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(isSettingsStoreReady()).toBe(true);
+
+    mock.connect();
+
+    expect(vi.getTimerCount()).toBe(0); // no migration deadline resurrected
+    expect(getGlobalSettings().driverName).toBe("prompt-host");
+  });
+
+  it("never subscribes on an ordinary start, because no migration read is issued", async () => {
+    // The hook is subscribed only where the read goes out, so a start with a
+    // settings file leaves the adapter untouched.
+    const mock = createConnectingMockAdapter();
+    // The memory store answers `load` from what it was CONSTRUCTED with —
+    // `save()` only records — so an existing file is seeded here, not written.
+    const store = createMemorySettingsStore({ driverName: "stored" });
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store, { migrationTimeoutMs: 50 });
+    await tick();
+
+    expect(isSettingsStoreReady()).toBe(true);
+    expect(mock.getGlobalSettings).not.toHaveBeenCalled();
+    expect(mock.hostReadySubscribers).toBe(0);
+  });
+});

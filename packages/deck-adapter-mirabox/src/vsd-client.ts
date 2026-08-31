@@ -90,6 +90,14 @@ export class VSDClient {
    */
   private pendingGlobalSettings: Record<string, unknown> | null = null;
 
+  /**
+   * Subscribers waiting for the host socket to be usable (#1056). deck-core
+   * uses this to restart the settings-migration deadline from the point its
+   * read can actually be answered, rather than from the point it was issued
+   * into a socket that was still closed.
+   */
+  private readonly hostReadyCallbacks: Array<() => void> = [];
+
   constructor(
     params: VSDConnectionParams,
     logger: ILogger = silentLogger,
@@ -145,6 +153,10 @@ export class VSDClient {
         this.setGlobalSettings(settings);
         this.logger.debug("Flushed the deferred setGlobalSettings");
       }
+
+      // Last, so a subscriber hears "the host is reachable" only once the
+      // connect-time read above is actually on the wire (#1056).
+      this.notifyHostReady();
     });
 
     this.ws.on("message", (raw: Buffer | string) => {
@@ -195,6 +207,36 @@ export class VSDClient {
         } catch (error) {
           this.logger.error(`Error dispatching global ${event}: ${error}`);
         }
+      }
+    }
+  }
+
+  /**
+   * Subscribe to the host socket becoming usable (#1056) — fired from the
+   * `open` handler, or immediately when the socket is already open.
+   *
+   * Subscribers are never removed and the list is not cleared: `onClose` ends
+   * the process, so `open` happens once per run in practice. A caller that must
+   * act only once says so itself — deck-core's migration re-arm is a documented
+   * one-shot, precisely so a flapping socket could not extend its window.
+   */
+  onHostReady(callback: () => void): void {
+    if (this.ws?.readyState === WS_OPEN) {
+      callback();
+
+      return;
+    }
+
+    this.hostReadyCallbacks.push(callback);
+  }
+
+  /** Fire the host-ready subscribers, isolating a throwing one. */
+  private notifyHostReady(): void {
+    for (const callback of this.hostReadyCallbacks) {
+      try {
+        callback();
+      } catch (error) {
+        this.logger.error(`Host-ready subscriber failed: ${error}`);
       }
     }
   }
