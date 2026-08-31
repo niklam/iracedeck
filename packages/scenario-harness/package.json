@@ -8,6 +8,7 @@
   "types": "dist/main.d.ts",
   "scripts": {
     "build": "tsc",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "clean": "rimraf dist",
     "dev": "tsx watch src/main.ts",
     "start": "node dist/main.js",

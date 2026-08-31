@@ -33,6 +33,7 @@
     "lint:fix": "eslint --fix \"packages/*/src/**\" vitest.config.ts",
     "format": "prettier --check \"**/*.ts\" \"**/*.json\"",
     "format:fix": "prettier --write \"**/*.ts\" \"**/*.json\"",
+    "typecheck": "turbo run typecheck",
     "test": "vitest run --configLoader native",
     "test:watch": "vitest --configLoader native",
     "precommit": "pnpm lint:fix && pnpm format:fix && pnpm install && pnpm clean && pnpm build",

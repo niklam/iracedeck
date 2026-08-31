@@ -110,8 +110,11 @@ Before every commit, the following must succeed:
 
 1. **Install**: `pnpm install` — ensures dependencies are up to date.
 2. **Build**: `pnpm build` — must complete without TypeScript errors (see **Build verification** above).
+3. **Typecheck**: `pnpm typecheck` — the explicit type gate, and the same command CI runs.
 
-Do not commit if either step fails. Fix the issue first.
+Do not commit if any step fails. Fix the issue first.
+
+**Why typecheck is separate from build.** Until #987 a green `pnpm build` said nothing about the type correctness of the rollup-built packages: `@rollup/plugin-typescript` reports type errors as rollup *warnings* and emits anyway unless `noEmitOnError` is set, so a build could report success while shipping a bundle that throws at startup. The three plugin configs now set `noEmitOnError`, which closes that at authoring time — but `pnpm typecheck` remains the gate that covers every package uniformly and is what a red CI run reproduces.
 
 ### Logical Commits
 

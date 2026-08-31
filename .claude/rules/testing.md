@@ -11,7 +11,10 @@ Common commands
 ```bash
 pnpm test
 pnpm test:watch
+pnpm typecheck              # tsc --noEmit across every package (#987)
 ```
+
+`pnpm test` does not typecheck: Vitest transforms through esbuild, which strips types without checking them. Neither did `pnpm build`, for the rollup-built packages — that gap is what #987 closed. `pnpm typecheck` is the explicit gate; its turbo task declares `dependsOn: ["^build"]` because packages resolve each other's types through emitted `dist/`, so it builds what it needs and needs no separate build step first.
 
 ## Root `vitest.config.ts` — native config loader
 
