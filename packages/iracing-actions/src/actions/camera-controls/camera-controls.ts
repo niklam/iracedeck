@@ -964,7 +964,14 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
           this.logger.info("Car switched by track order");
           this.logger.debug(`Result: ${success}, direction: ${direction}, carNumberRaw: ${targetCar.carNumberRaw}`);
         } else {
-          this.logger.warn("No neighbouring car on track — nothing sent");
+          // Having no neighbour is ROUTINE, not a fault: a solo practice, a
+          // hotlap or a test drive has no other car to move to, so every press
+          // lands here. `logging.md` reserves warn for "unexpected but
+          // recoverable", hence info + the detail at debug — the same shape
+          // replay-control.ts uses for its own routine absence (no best lap
+          // recorded yet), rather than the warn it uses when a target that
+          // should exist is missing. #960 originally specified warn.
+          this.logger.info("No neighbouring car on track — nothing sent");
           this.logger.debug(`direction: ${direction}, camCarIdx: ${carIdx}, competitors: ${cars.length}`);
         }
 
