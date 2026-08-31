@@ -778,26 +778,40 @@ export const SPOTTER_STILL_THERE_SECONDS_KEY = "spotterStillThereSeconds";
  * `@iracedeck/deck-core`), not via `wrapCalloutScenario`.
  */
 export type SetupWarningResolver = (kind: "qualifying" | "race") => boolean;
-
-export function registerPitCrew(
-  bus: IEventBus,
-  getFlagCalloutEnabled: (id: FlagCalloutId) => boolean = () => true,
-  logger?: ILogger,
-  getPitReadbackEnabled: (id: PitReadbackCalloutId) => boolean = () => true,
+/**
+ * Everything `registerPitCrew` needs beyond the bus. Every key is optional;
+ * an omitted or `undefined` key takes its entry from {@link DEFAULT_DEPS}.
+ *
+ * Keys are unordered by construction — that is the point of #1052. Do not
+ * reintroduce a placement convention here.
+ */
+export type PitCrewDeps = {
+  // Per-flag opt-ins (issue #467). Read live, so toggling a flag off
+  // mid-session takes effect on the very next event of that color. The gate
+  // runs at event-arrival time inside the scenario engine, before fire and
+  // expand, so toggling a flag off does NOT cut a callout already playing —
+  // only future events of that color are suppressed. Default `() => true`
+  // preserves legacy behavior for callers that don't pass a closure.
+  getFlagCalloutEnabled?: (id: FlagCalloutId) => boolean;
+  logger?: ILogger;
+  // Pit-service readback opt-in (issue #476) — same live-read pattern as the
+  // flag callouts: gate at event arrival, so disabling mid-readback only
+  // suppresses future fires.
+  getPitReadbackEnabled?: (id: PitReadbackCalloutId) => boolean;
   // Allow / suppress per-toggle pit-action confirmations (issue #476).
   // Plugins wire this to `isPitActionsAllowed()` from
   // `@iracedeck/sim-events-iracing` so the cooldowns set by `pitLane.exited`
   // and pre-start grid entry silence the toggle callouts during those
   // windows. Default `() => true` preserves legacy behavior for tests
   // that don't supply a closure.
-  getPitActionsAllowed: () => boolean = () => true,
+  getPitActionsAllowed?: () => boolean;
   // User opt-in for the per-toggle pit-service request confirmations
   // (issue #468). Plugins wire this to the `calloutEnabledPitServiceRequests`
   // global setting — read live so a toggle off mid-session takes effect on
   // the next event arrival without cutting an in-flight clip. Distinct
   // from `getPitActionsAllowed` (engine-internal cooldown vs persistent
   // user preference) so they can move independently.
-  getPitServiceRequestsEnabled: () => boolean = () => true,
+  getPitServiceRequestsEnabled?: () => boolean;
   // Pit-readback queued-services snapshot (issue #481). Plugins wire this
   // to `getReadbackSnapshot()` from `@iracedeck/sim-events-iracing`, which
   // builds a snapshot from the latest telemetry tick. Read at fire time
@@ -806,30 +820,30 @@ export function registerPitCrew(
   // event. Default `() => null` collapses every readback to the
   // empty-fallback clip — a safe stub for tests that don't supply a
   // resolver.
-  getReadbackSnapshot: () => PitReadbackSnapshot | null = () => null,
+  getReadbackSnapshot?: () => PitReadbackSnapshot | null;
   // User opt-in for the damage-alert callout (issue #489). Same
   // gate-at-event-arrival shape as the flag and pit-readback callouts —
   // toggling off mid-session takes effect on the next event without
   // cutting an in-flight clip. Default `() => true` preserves legacy
   // behavior for tests that don't supply a closure.
-  getDamageCalloutEnabled: (id: DamageCalloutId) => boolean = () => true,
+  getDamageCalloutEnabled?: (id: DamageCalloutId) => boolean;
   // User opt-in for the per-status pit-service callouts (issue #479).
   // Same gate-at-event-arrival shape as the other callout families.
   // Default `() => true` preserves legacy behavior for tests that don't
   // supply a closure.
-  getPitStatusCalloutEnabled: (id: PitStatusCalloutId) => boolean = () => true,
+  getPitStatusCalloutEnabled?: (id: PitStatusCalloutId) => boolean;
   // User opt-in for the track-conditions callouts (issue #526).
   // Single subject (`wetness`) today; same gate-at-event-arrival shape as
   // the other callout families. Default `() => true` preserves legacy
   // behavior for tests that don't supply a closure.
-  getTrackConditionsCalloutEnabled: (id: TrackConditionsCalloutId) => boolean = () => true,
+  getTrackConditionsCalloutEnabled?: (id: TrackConditionsCalloutId) => boolean;
   // User opt-in for the per-incident-type callouts (issue #530). Plugins
   // wire this to each `calloutEnabledIncident*` global setting via
   // `INCIDENT_CALLOUT_SETTING_KEYS` — read live so a toggle off
   // mid-session takes effect on the next event without cutting an
   // in-flight clip. Default `() => true` preserves legacy behavior for
   // tests that don't supply a closure.
-  getIncidentCalloutEnabled: (id: IncidentCalloutId) => boolean = () => true,
+  getIncidentCalloutEnabled?: (id: IncidentCalloutId) => boolean;
   // User opt-in for the session-start readout (issues #542, #668). Fired when
   // a practice or qualifying session starts (on session.changed, ~3 s in),
   // whether or not the driver leaves the garage. Plugins wire this to the
@@ -837,7 +851,7 @@ export function registerPitCrew(
   // `SESSION_START_CALLOUT_SETTING_KEYS` — read live, same gate-at-event-
   // arrival shape as the other callout families. Default `() => true`
   // preserves legacy behavior for tests that don't supply a closure.
-  getSessionStartCalloutEnabled: (id: SessionStartCalloutId) => boolean = () => true,
+  getSessionStartCalloutEnabled?: (id: SessionStartCalloutId) => boolean;
   // Session-start conditions snapshot (issue #542). Plugins wire this to a
   // closure that composes `getSessionStartConditions()` from
   // `@iracedeck/sim-events-iracing` with the Property Inspector driver-name
@@ -845,12 +859,12 @@ export function registerPitCrew(
   // per-clip `var` resolvers. Default `() => null` makes the scenario's
   // `where:` short-circuit — a safe stub for tests that don't supply a
   // resolver.
-  getSessionStartSnapshot: () => SessionStartSnapshot | null = () => null,
+  getSessionStartSnapshot?: () => SessionStartSnapshot | null;
   // User opt-in for the lap-time best-lap callout (issue #555). Same
   // gate-at-event-arrival shape as the other callout families. Default
   // `() => true` preserves legacy behavior for tests that don't supply a
   // closure.
-  getLapTimeCalloutEnabled: (id: LapTimeCalloutId) => boolean = () => true,
+  getLapTimeCalloutEnabled?: (id: LapTimeCalloutId) => boolean;
   // Last `lap.completed` event payload (issue #555). Plugins wire this to a
   // closure backed by an event-bus subscription that captures the most
   // recent payload. Read at fire time inside the scenario's per-clip `var`
@@ -859,17 +873,17 @@ export function registerPitCrew(
   // null — a safe stub for tests that don't supply a resolver. Reused by the
   // position-change callout (issue #566) — both scenarios subscribe to the
   // same `lap.completed` event and share the snapshot cache.
-  getLapCompletedSnapshot: LapCompletedSnapshotResolver = () => null,
+  getLapCompletedSnapshot?: LapCompletedSnapshotResolver;
   // User opt-in for the position-change callout (issue #566). Single subject;
   // same gate-at-event-arrival shape as the other callout families. Default
   // `() => true` preserves legacy behavior for tests that don't supply a
   // closure.
-  getPositionCalloutEnabled: (id: PositionCalloutId) => boolean = () => true,
+  getPositionCalloutEnabled?: (id: PositionCalloutId) => boolean;
   // User opt-in for the qualifying lap-invalidation callout (issue #567).
   // Single subject; same gate-at-event-arrival shape as the other callout
   // families. Default `() => true` preserves legacy behavior for tests that
   // don't supply a closure.
-  getQualifyingInvalidationCalloutEnabled: (id: QualifyingInvalidationCalloutId) => boolean = () => true,
+  getQualifyingInvalidationCalloutEnabled?: (id: QualifyingInvalidationCalloutId) => boolean;
   // Snapshot resolver for the qualifying lap-invalidation callout (issue
   // #567). Plugins wire this to a closure that builds the snapshot from the
   // latest telemetry tick + session info. Read at fire time inside the
@@ -877,12 +891,12 @@ export function registerPitCrew(
   // inside the tail's conditional branches and the lap-count `var` resolver.
   // Default `() => null` makes the scenario's `where:` short-circuit — a safe
   // stub for tests that don't supply a resolver.
-  getQualifyingInvalidationSnapshot: QualifyingInvalidationSnapshotResolver = () => null,
+  getQualifyingInvalidationSnapshot?: QualifyingInvalidationSnapshotResolver;
   // User opt-in for the race-status periodic position update (issue #569).
   // Single subject; same gate-at-event-arrival shape as the other callout
   // families. Default `() => true` preserves legacy behavior for tests that
   // don't supply a closure.
-  getRaceStatusCalloutEnabled: (id: RaceStatusCalloutId) => boolean = () => true,
+  getRaceStatusCalloutEnabled?: (id: RaceStatusCalloutId) => boolean;
   // Race-end latch (issue #569). Plugins wire this to a getter exposed by
   // `@iracedeck/sim-events-iracing` that reads the translator's
   // `state.raceFinishedFired`. Race-status `where:` reads it live so the
@@ -891,24 +905,24 @@ export function registerPitCrew(
   // first into the pending queue, latch flips synchronously before
   // `lap.completed` publishes). Default `() => false` (race never ends) keeps
   // legacy behavior for tests that don't supply a closure.
-  getRaceFinishedFired: () => boolean = () => false,
+  getRaceFinishedFired?: () => boolean;
   // User opt-in for the race-end final-result callout (issue #569). Single
   // subject; same gate-at-event-arrival shape as the other callout families.
   // Default `() => true` preserves legacy behavior for tests that don't
   // supply a closure.
-  getRaceEndCalloutEnabled: (id: RaceEndCalloutId) => boolean = () => true,
+  getRaceEndCalloutEnabled?: (id: RaceEndCalloutId) => boolean;
   // Race-end snapshot resolver (issue #569). Plugins compose this from the
   // cached `race.finished` event payload plus the Property Inspector
   // driver-name pick. Read at fire time inside the scenario's `where:`
   // predicate and per-clip `var` resolvers — same deferred-snapshot pattern
   // as session-start. Default `() => null` makes the scenario's `where:`
   // short-circuit — a safe stub for tests that don't supply a resolver.
-  getRaceFinishedSnapshot: RaceFinishedSnapshotResolver = () => null,
+  getRaceFinishedSnapshot?: RaceFinishedSnapshotResolver;
   // User opt-in for the race-start greeting + qualifying-position readout
   // (issue #568). Single subject; same gate-at-event-arrival shape as the
   // other callout families. Default `() => true` preserves legacy behavior
   // for tests that don't supply a closure.
-  getRaceStartCalloutEnabled: (id: RaceStartCalloutId) => boolean = () => true,
+  getRaceStartCalloutEnabled?: (id: RaceStartCalloutId) => boolean;
   // Race-start conditions snapshot (issue #568). Plugins wire this to a
   // closure that composes `getRaceStartConditions()` from
   // `@iracedeck/sim-events-iracing` with the Property Inspector driver-name
@@ -916,19 +930,19 @@ export function registerPitCrew(
   // per-clip `var` resolvers. Default `() => null` makes the scenario's
   // `where:` short-circuit — a safe stub for tests that don't supply a
   // resolver.
-  getRaceStartSnapshot: RaceStartSnapshotResolver = () => null,
+  getRaceStartSnapshot?: RaceStartSnapshotResolver;
   // User opt-in for the overtake callouts (issue #574). Two subjects —
   // `gained` and `lost` — independently toggleable. Same gate-at-event-
   // arrival shape as the other callout families. Default `() => true`
   // preserves legacy behavior for tests that don't supply a closure.
-  getOvertakeCalloutEnabled: (id: OvertakeCalloutId) => boolean = () => true,
+  getOvertakeCalloutEnabled?: (id: OvertakeCalloutId) => boolean;
   // Driver-name resolver for the loss-line "Come on, <name>" composition
   // (issue #574). Plugins wire this to `resolveActiveDriverName(driverNames,
   // "driver")` so the resolver returns the user-picked name when valid and
   // falls back to the pre-recorded `"driver"` clip otherwise — the loss
   // line stays a complete sentence even when the user's name isn't in the
   // greeting pool. Default `() => null` skips the name step (rare; tests).
-  getOvertakeDriverName: OvertakeDriverNameResolver = () => null,
+  getOvertakeDriverName?: OvertakeDriverNameResolver;
   // Live position resolver (issue #574 follow-up). Plugins wire this to
   // `getLivePosition()` from `@iracedeck/sim-events-iracing`. Read at
   // speak-time inside the "We're currently P[n]" var resolvers (overtake
@@ -936,7 +950,7 @@ export function registerPitCrew(
   // accurate to the moment it's said, not frozen at the triggering event.
   // Default `() => null` makes those readouts stay silent — a safe stub for
   // tests that don't supply a resolver.
-  getLivePosition: LivePositionResolver = () => null,
+  getLivePosition?: LivePositionResolver;
   // Overtake gate (issue #574 follow-up). Plugins compose this from
   // `getOvertakeTelemetryGate()` (`@iracedeck/sim-events-iracing`) plus a
   // tracked `incident.occurred` timestamp. Read at event time to suppress the
@@ -945,94 +959,80 @@ export function registerPitCrew(
   // pit road, or a recent incident. Default permissive so callers that don't
   // wire it (tests) still fire; the real plugin gate returns `null` only when
   // telemetry is unavailable, which suppresses.
-  getOvertakeGate: OvertakeGateResolver = () => PERMISSIVE_OVERTAKE_GATE,
-  // User opt-in for the pit-box count-in (issue #600). Single subject
-  // (`count-in`) gating all six distance-mark scenarios. Same gate-at-event-
-  // arrival shape as the other callout families — toggling off mid-session
-  // takes effect on the next mark without cutting an in-flight clip. Placed
-  // before the master gate so the master stays the last per-callout opt-in.
-  // Default `() => true` preserves legacy behavior for tests that don't supply
-  // a closure.
-  getPitBoxCalloutEnabled: (id: PitBoxCalloutId) => boolean = () => true,
-  // Setup-mismatch warning resolver (issue #625). Plugins wire this to read
-  // the live opt-in + the session-kind regex pattern from global settings and
-  // test it against the live setup name. Consumed inside the session-start and
-  // race-start scenarios' `if` clauses (not via `wrapCalloutScenario`, since the
-  // warning is a clause inside those intros, not its own scenario). Placed
-  // before the master gate so the master stays the last per-callout opt-in.
-  // Default `() => false` — tests that don't supply a closure never append the
-  // warning clause.
-  getSetupWarningMismatch: SetupWarningResolver = () => false,
+  getOvertakeGate?: OvertakeGateResolver;
+  // User opt-in for the pit-box count-in (issue #600). Single subject (`count-in`)
+  // gating all six distance-mark scenarios. Same gate-at-event- arrival shape as
+  // the other callout families — toggling off mid-session takes effect on the next
+  // mark without cutting an in-flight clip. Default `() => true` preserves legacy
+  // behavior for tests that don't supply a closure.
+  getPitBoxCalloutEnabled?: (id: PitBoxCalloutId) => boolean;
+  // Setup-mismatch warning resolver (issue #625). Plugins wire this to read the
+  // live opt-in + the session-kind regex pattern from global settings and test it
+  // against the live setup name. Consumed inside the session-start and race-start
+  // scenarios' `if` clauses (not via `wrapCalloutScenario`, since the warning is a
+  // clause inside those intros, not its own scenario). Default `() => false` —
+  // tests that don't supply a closure never append the warning clause.
+  getSetupWarningMismatch?: SetupWarningResolver;
   // Spotter per-callout opt-ins (issue #651). The spotter is a Race Engineer
-  // callout family (no standalone master) — it rides `getRaceEngineerMasterEnabled`
-  // below. "cars" gates every transition call; "still-there" gates the repeating
-  // reminder. Read live. Default `() => true`. Placed before the master gates so
-  // the masters stay the last params (the registerPitCrew convention).
-  getSpotterCalloutEnabled: (id: SpotterCalloutId) => boolean = () => true,
+  // callout family (no standalone master) — it rides
+  // `getRaceEngineerMasterEnabled` below. "cars" gates every transition call;
+  // "still-there" gates the repeating reminder. Read live. Default `() => true`.
+  getSpotterCalloutEnabled?: (id: SpotterCalloutId) => boolean;
   // Spotter road/oval terminology (issue #651). Plugins wire this to
   // `getTrackDirection()` from `@iracedeck/sim-events-iracing`. Default Neutral (road).
-  getSpotterTrackDirection: () => TrackDirection = () => TrackDirection.Neutral,
+  getSpotterTrackDirection?: () => TrackDirection;
   // Spotter "still there" reminder cadence in ms (issue #651). Plugins wire this
   // to `resolveStillThereIntervalMs(spotterStillThereSeconds)`; read live each
   // tick so a slider change takes effect on the next reminder. Default 3 s.
-  getSpotterStillThereIntervalMs: () => number = () => SPOTTER_STILL_THERE_DEFAULT_MS,
+  getSpotterStillThereIntervalMs?: () => number;
   // Spotter nearest-car gap in meters (issue #651) for the → clear confirmation
   // buffer. Plugins wire this to `getNearestCarGapMeters()` from
   // `@iracedeck/sim-events-iracing`. Default `() => null` disables the buffer.
-  getSpotterNearestCarGapMeters: () => number | null = () => null,
+  getSpotterNearestCarGapMeters?: () => number | null;
   // User opt-in for the pit-window open/closed callout (issue #655). Single
   // subject (`pit-open-closed`) gating both directional scenarios. Same
   // gate-at-event-arrival shape as the other callout families: read live so a
   // toggle off mid-session takes effect on the next event without cutting an
-  // in-flight clip. Placed before the master gate so the master stays the last
-  // per-callout opt-in. Default `() => true` preserves legacy behavior for tests
-  // that don't supply a closure.
-  getPitWindowCalloutEnabled: (id: PitWindowCalloutId) => boolean = () => true,
+  // in-flight clip. Default `() => true` preserves legacy behavior for tests that
+  // don't supply a closure.
+  getPitWindowCalloutEnabled?: (id: PitWindowCalloutId) => boolean;
   // User opt-in for the rolling-start callout (issue #660). Single subject
-  // (`pace-car`) gating the "pace car is moving" line. Same gate-at-event-
-  // arrival shape as the other callout families: read live so a toggle off
-  // mid-session takes effect on the next event without cutting an in-flight
-  // clip. Placed before the master gate so the master stays the last
-  // per-callout opt-in. Default `() => true` preserves legacy behavior for
+  // (`pace-car`) gating the "pace car is moving" line. Same gate-at-event- arrival
+  // shape as the other callout families: read live so a toggle off mid-session
+  // takes effect on the next event without cutting an in-flight clip. Default `()
+  // => true` preserves legacy behavior for tests that don't supply a closure.
+  getRollingStartCalloutEnabled?: (id: RollingStartCalloutId) => boolean;
+  // User opt-in for the start-light callouts (issue #480). Two grouped subjects —
+  // `lights` (the three gantry lines) and `countdown` (the five numeric marks) —
+  // mirroring the pit-box "many scenarios → one subject" shape. Same
+  // gate-at-event-arrival shape as the other callout families: read live so a
+  // toggle off mid-session takes effect on the next event without cutting an
+  // in-flight clip. Default `() => true` preserves legacy behavior for tests that
+  // don't supply a closure.
+  getStartLightCalloutEnabled?: (id: StartLightCalloutId) => boolean;
+  // User opt-in for the laps-of-fuel-left callouts (issue #838). One boolean per
+  // spoken count (10 → 1 plus the count-0 box call). Same gate-at-event- arrival
+  // shape as the other callout families: read live so a toggle off mid-session
+  // takes effect on the next crossing without cutting an in-flight clip. Default
+  // `() => true` preserves legacy behavior for tests that don't supply a closure.
+  getFuelCalloutEnabled?: (id: FuelCalloutId) => boolean;
+  // User opt-in for the corner-name callouts (issue #888). Single subject gating
+  // the practice/test corner announcements. Same gate-at-event-arrival shape as
+  // the other callout families. Default `() => true` preserves legacy behavior for
   // tests that don't supply a closure.
-  getRollingStartCalloutEnabled: (id: RollingStartCalloutId) => boolean = () => true,
-  // User opt-in for the start-light callouts (issue #480). Two grouped
-  // subjects — `lights` (the three gantry lines) and `countdown` (the five
-  // numeric marks) — mirroring the pit-box "many scenarios → one subject"
-  // shape. Same gate-at-event-arrival shape as the other callout families:
-  // read live so a toggle off mid-session takes effect on the next event
-  // without cutting an in-flight clip. Placed before the master gate so the
-  // master stays the last per-callout opt-in. Default `() => true` preserves
-  // legacy behavior for tests that don't supply a closure.
-  getStartLightCalloutEnabled: (id: StartLightCalloutId) => boolean = () => true,
-  // User opt-in for the laps-of-fuel-left callouts (issue #838). One boolean
-  // per spoken count (10 → 1 plus the count-0 box call). Same gate-at-event-
-  // arrival shape as the other callout families: read live so a toggle off
-  // mid-session takes effect on the next crossing without cutting an
-  // in-flight clip. Placed before the master gate so the master stays the
-  // last per-callout opt-in. Default `() => true` preserves legacy behavior
-  // for tests that don't supply a closure.
-  getFuelCalloutEnabled: (id: FuelCalloutId) => boolean = () => true,
-  // User opt-in for the corner-name callouts (issue #888). Single subject
-  // gating the practice/test corner announcements. Same gate-at-event-arrival
-  // shape as the other callout families. Placed before the master gate so the
-  // master stays the last per-callout opt-in. Default `() => true` preserves
-  // legacy behavior for tests that don't supply a closure.
-  getCornerNameCalloutEnabled: (id: CornerNameCalloutId) => boolean = () => true,
+  getCornerNameCalloutEnabled?: (id: CornerNameCalloutId) => boolean;
   // Corner-name snapshot (issue #888). Plugins cache the latest
   // `cornerName.approaching` payload (the lap-time subscription pattern) and
   // pass the getter; the clip resolver reads it at expansion time. Default
   // `() => null` makes the scenario's `where:` short-circuit — a safe stub
   // for tests.
-  getCornerNameSnapshot: CornerNameSnapshotResolver = () => null,
+  getCornerNameSnapshot?: CornerNameSnapshotResolver;
   // User opt-ins for the opponent-pit callouts (issue #622). Two subjects —
-  // `leader` (the race/class leader entering the pits) and `nearby` (same-lap
-  // cars within ±2 effective positions, incl. the aggregate tail). Same
-  // gate-at-event-arrival shape as the other callout families. Placed before
-  // the master gate so the master stays the last per-callout opt-in. Default
-  // `() => true` preserves legacy behavior for tests that don't supply a
-  // closure.
-  getOpponentPitCalloutEnabled: (id: OpponentPitCalloutId) => boolean = () => true,
+  // `leader` (the race/class leader entering the pits) and `nearby` (same-lap cars
+  // within ±2 effective positions, incl. the aggregate tail). Same
+  // gate-at-event-arrival shape as the other callout families. Default `() =>
+  // true` preserves legacy behavior for tests that don't supply a closure.
+  getOpponentPitCalloutEnabled?: (id: OpponentPitCalloutId) => boolean;
   // Opponent-pit live position resolver (issue #622). Plugins wire
   // `getLiveCarPosition` so the nearby line's number is fresh at speak time,
   // read in the projection the event was classified in (the pending stash's
@@ -1041,32 +1041,28 @@ export function registerPitCrew(
   // later event of a different relation can never repoint a deferred line.
   // Default `() => null` falls back to the emit-time payload position — a
   // safe stub for tests and the harness.
-  getOpponentPitLivePosition: OpponentPitLivePositionResolver = () => null,
-  // Gap callout opt-ins (issue #933). One boolean per callout type (trend
-  // flip / threshold crossing); same gate-at-event-arrival shape as the
-  // other callout families — read live so a toggle off mid-session takes
-  // effect on the next event without cutting an in-flight clip. Placed
-  // before the master gates so the masters stay the last args. Default
-  // `() => true` preserves legacy behavior for tests that don't supply a
-  // closure.
-  getGapCalloutEnabled: (id: GapCalloutId) => boolean = () => true,
+  getOpponentPitLivePosition?: OpponentPitLivePositionResolver;
+  // Gap callout opt-ins (issue #933). One boolean per callout type (trend flip /
+  // threshold crossing); same gate-at-event-arrival shape as the other callout
+  // families — read live so a toggle off mid-session takes effect on the next
+  // event without cutting an in-flight clip. Default `() => true` preserves legacy
+  // behavior for tests that don't supply a closure.
+  getGapCalloutEnabled?: (id: GapCalloutId) => boolean;
   // Shared gap-callout cooldown in ms (issue #933). Plugins wire this to
   // `resolveGapCooldownMs(gapCalloutCooldownSeconds)`; read live at event
   // arrival so a slider change applies to the next callout. Default 30 s.
-  getGapCooldownMs: () => number = () => GAP_CALLOUT_DEFAULT_COOLDOWN_MS,
+  getGapCooldownMs?: () => number;
   // Live gaps resolver (issue #933). Plugins wire `getLiveGaps()` from the
   // translator; the spoken gap number reads it at speak time (the #574
   // live-at-speak-time pattern). Default `() => null` skips the readout
   // clause — a safe stub for tests.
-  getLiveGaps: LiveGapsResolver = () => null,
-  // User opt-ins for the opponent-flag callouts (issue #936). Four
-  // subjects — `furled`, `black`, `meatball`, `disqualify` — each gating its
-  // own three relation scenarios (ahead/behind/track-ahead) plus (for
-  // `black`) the aggregate tail. Same gate-at-event-arrival shape as the
-  // other callout families. Placed before the master gate so the master
-  // stays the last per-callout opt-in. Default `() => true` preserves
-  // legacy behavior for tests that don't supply a closure.
-  getOpponentFlagCalloutEnabled: (id: OpponentFlagCalloutId) => boolean = () => true,
+  getLiveGaps?: LiveGapsResolver;
+  // User opt-ins for the opponent-flag callouts (issue #936). Four subjects —
+  // `furled`, `black`, `meatball`, `disqualify` — each gating its own three
+  // relation scenarios (ahead/behind/track-ahead) plus (for `black`) the aggregate
+  // tail. Same gate-at-event-arrival shape as the other callout families. Default
+  // `() => true` preserves legacy behavior for tests that don't supply a closure.
+  getOpponentFlagCalloutEnabled?: (id: OpponentFlagCalloutId) => boolean;
   // Opponent-flag live position resolver (issue #936). Plugins wire
   // `getLiveCarPosition` so the ahead line's number is fresh at speak time,
   // read in the projection the event was classified in (the pending
@@ -1076,22 +1072,18 @@ export function registerPitCrew(
   // fails its own scenario's gates can never repoint a deferred line.
   // Default `() => null` falls back to the emit-time payload position — a
   // safe stub for tests and the harness.
-  getOpponentFlagLivePosition: OpponentFlagLivePositionResolver = () => null,
+  getOpponentFlagLivePosition?: OpponentFlagLivePositionResolver;
   // Pit-road speeding cue opt-in (issue #912). Live-read, single subject.
   // Consumed inside the imperative engine rather than by a scenario wrapper —
   // the cue plays direct, so there is no `where:` to gate.
-  getPitSpeedingCalloutEnabled: (id: PitSpeedingCalloutId) => boolean = () => true,
-  // User opt-ins for the pit-limiter callouts (issue #1051) — cars that HAVE
-  // a limiter. Four subjects, all `hasPitLimiter`-gated per #639. Same
-  // gate-at-event-arrival shape as the other callout families. Appended here
-  // rather than inserted: every parameter below an existing argument's
-  // position would shift that argument silently, since they are all optional
-  // getters of compatible-looking types, so new parameters go immediately
-  // before the masters, which stay last.
-  getPitLimiterCalloutEnabled: (id: PitLimiterCalloutId) => boolean = () => true,
+  getPitSpeedingCalloutEnabled?: (id: PitSpeedingCalloutId) => boolean;
+  // User opt-ins for the pit-limiter callouts (issue #1051) — cars that HAVE a
+  // limiter. Four subjects, all `hasPitLimiter`-gated per #639. Same
+  // gate-at-event-arrival shape as the other callout families.
+  getPitLimiterCalloutEnabled?: (id: PitLimiterCalloutId) => boolean;
   // User opt-ins for the no-limiter callouts (issue #1051) — the mirror family,
   // for cars with NO limiter, which is why none of its lines mentions one.
-  getNoLimiterCalloutEnabled: (id: NoLimiterCalloutId) => boolean = () => true,
+  getNoLimiterCalloutEnabled?: (id: NoLimiterCalloutId) => boolean;
   // Master gate for the Race Engineer voice subsystem (issue #515).
   // Plugins wire this to `pitCrewRaceEngineerEnabled === true`. Read live
   // on every event arrival and applied as the OUTERMOST wrapper around
@@ -1100,15 +1092,128 @@ export function registerPitCrew(
   // volumes, per-callout opt-ins, or pit-action cooldowns. Default
   // `() => true` preserves legacy behavior for tests that don't supply a
   // closure.
-  getRaceEngineerMasterEnabled: () => boolean = () => true,
+  getRaceEngineerMasterEnabled?: () => boolean;
   // Master gate for the directional radar (issue #515). Plumbed into
   // `registerRadarEngine` and consulted on every `radar.changed` arrival
   // and on every scheduled tick — same defense-in-depth shape as the
   // voice master gate, but inside the imperative engine since radar
   // isn't expressed as a scenario. Default `() => true` preserves legacy
   // behavior for tests that don't supply a closure.
-  getRadarMasterEnabled: () => boolean = () => true,
-): void {
+  getRadarMasterEnabled?: () => boolean;
+};
+
+/**
+ * The single home for every default. Referenced by name from the
+ * destructure below, so a default is stated once and is greppable.
+ */
+const DEFAULT_DEPS = {
+  getFlagCalloutEnabled: () => true,
+  getPitReadbackEnabled: () => true,
+  getPitActionsAllowed: () => true,
+  getPitServiceRequestsEnabled: () => true,
+  getReadbackSnapshot: () => null,
+  getDamageCalloutEnabled: () => true,
+  getPitStatusCalloutEnabled: () => true,
+  getTrackConditionsCalloutEnabled: () => true,
+  getIncidentCalloutEnabled: () => true,
+  getSessionStartCalloutEnabled: () => true,
+  getSessionStartSnapshot: () => null,
+  getLapTimeCalloutEnabled: () => true,
+  getLapCompletedSnapshot: () => null,
+  getPositionCalloutEnabled: () => true,
+  getQualifyingInvalidationCalloutEnabled: () => true,
+  getQualifyingInvalidationSnapshot: () => null,
+  getRaceStatusCalloutEnabled: () => true,
+  getRaceFinishedFired: () => false,
+  getRaceEndCalloutEnabled: () => true,
+  getRaceFinishedSnapshot: () => null,
+  getRaceStartCalloutEnabled: () => true,
+  getRaceStartSnapshot: () => null,
+  getOvertakeCalloutEnabled: () => true,
+  getOvertakeDriverName: () => null,
+  getLivePosition: () => null,
+  getOvertakeGate: () => PERMISSIVE_OVERTAKE_GATE,
+  getPitBoxCalloutEnabled: () => true,
+  getSetupWarningMismatch: () => false,
+  getSpotterCalloutEnabled: () => true,
+  getSpotterTrackDirection: () => TrackDirection.Neutral,
+  getSpotterStillThereIntervalMs: () => SPOTTER_STILL_THERE_DEFAULT_MS,
+  getSpotterNearestCarGapMeters: () => null,
+  getPitWindowCalloutEnabled: () => true,
+  getRollingStartCalloutEnabled: () => true,
+  getStartLightCalloutEnabled: () => true,
+  getFuelCalloutEnabled: () => true,
+  getCornerNameCalloutEnabled: () => true,
+  getCornerNameSnapshot: () => null,
+  getOpponentPitCalloutEnabled: () => true,
+  getOpponentPitLivePosition: () => null,
+  getGapCalloutEnabled: () => true,
+  getGapCooldownMs: () => GAP_CALLOUT_DEFAULT_COOLDOWN_MS,
+  getLiveGaps: () => null,
+  getOpponentFlagCalloutEnabled: () => true,
+  getOpponentFlagLivePosition: () => null,
+  getPitSpeedingCalloutEnabled: () => true,
+  getPitLimiterCalloutEnabled: () => true,
+  getNoLimiterCalloutEnabled: () => true,
+  getRaceEngineerMasterEnabled: () => true,
+  getRadarMasterEnabled: () => true,
+} satisfies Omit<Required<PitCrewDeps>, "logger">;
+
+export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
+  const {
+    getFlagCalloutEnabled = DEFAULT_DEPS.getFlagCalloutEnabled,
+    logger,
+    getPitReadbackEnabled = DEFAULT_DEPS.getPitReadbackEnabled,
+    getPitActionsAllowed = DEFAULT_DEPS.getPitActionsAllowed,
+    getPitServiceRequestsEnabled = DEFAULT_DEPS.getPitServiceRequestsEnabled,
+    getReadbackSnapshot = DEFAULT_DEPS.getReadbackSnapshot,
+    getDamageCalloutEnabled = DEFAULT_DEPS.getDamageCalloutEnabled,
+    getPitStatusCalloutEnabled = DEFAULT_DEPS.getPitStatusCalloutEnabled,
+    getTrackConditionsCalloutEnabled = DEFAULT_DEPS.getTrackConditionsCalloutEnabled,
+    getIncidentCalloutEnabled = DEFAULT_DEPS.getIncidentCalloutEnabled,
+    getSessionStartCalloutEnabled = DEFAULT_DEPS.getSessionStartCalloutEnabled,
+    getSessionStartSnapshot = DEFAULT_DEPS.getSessionStartSnapshot,
+    getLapTimeCalloutEnabled = DEFAULT_DEPS.getLapTimeCalloutEnabled,
+    getLapCompletedSnapshot = DEFAULT_DEPS.getLapCompletedSnapshot,
+    getPositionCalloutEnabled = DEFAULT_DEPS.getPositionCalloutEnabled,
+    getQualifyingInvalidationCalloutEnabled = DEFAULT_DEPS.getQualifyingInvalidationCalloutEnabled,
+    getQualifyingInvalidationSnapshot = DEFAULT_DEPS.getQualifyingInvalidationSnapshot,
+    getRaceStatusCalloutEnabled = DEFAULT_DEPS.getRaceStatusCalloutEnabled,
+    getRaceFinishedFired = DEFAULT_DEPS.getRaceFinishedFired,
+    getRaceEndCalloutEnabled = DEFAULT_DEPS.getRaceEndCalloutEnabled,
+    getRaceFinishedSnapshot = DEFAULT_DEPS.getRaceFinishedSnapshot,
+    getRaceStartCalloutEnabled = DEFAULT_DEPS.getRaceStartCalloutEnabled,
+    getRaceStartSnapshot = DEFAULT_DEPS.getRaceStartSnapshot,
+    getOvertakeCalloutEnabled = DEFAULT_DEPS.getOvertakeCalloutEnabled,
+    getOvertakeDriverName = DEFAULT_DEPS.getOvertakeDriverName,
+    getLivePosition = DEFAULT_DEPS.getLivePosition,
+    getOvertakeGate = DEFAULT_DEPS.getOvertakeGate,
+    getPitBoxCalloutEnabled = DEFAULT_DEPS.getPitBoxCalloutEnabled,
+    getSetupWarningMismatch = DEFAULT_DEPS.getSetupWarningMismatch,
+    getSpotterCalloutEnabled = DEFAULT_DEPS.getSpotterCalloutEnabled,
+    getSpotterTrackDirection = DEFAULT_DEPS.getSpotterTrackDirection,
+    getSpotterStillThereIntervalMs = DEFAULT_DEPS.getSpotterStillThereIntervalMs,
+    getSpotterNearestCarGapMeters = DEFAULT_DEPS.getSpotterNearestCarGapMeters,
+    getPitWindowCalloutEnabled = DEFAULT_DEPS.getPitWindowCalloutEnabled,
+    getRollingStartCalloutEnabled = DEFAULT_DEPS.getRollingStartCalloutEnabled,
+    getStartLightCalloutEnabled = DEFAULT_DEPS.getStartLightCalloutEnabled,
+    getFuelCalloutEnabled = DEFAULT_DEPS.getFuelCalloutEnabled,
+    getCornerNameCalloutEnabled = DEFAULT_DEPS.getCornerNameCalloutEnabled,
+    getCornerNameSnapshot = DEFAULT_DEPS.getCornerNameSnapshot,
+    getOpponentPitCalloutEnabled = DEFAULT_DEPS.getOpponentPitCalloutEnabled,
+    getOpponentPitLivePosition = DEFAULT_DEPS.getOpponentPitLivePosition,
+    getGapCalloutEnabled = DEFAULT_DEPS.getGapCalloutEnabled,
+    getGapCooldownMs = DEFAULT_DEPS.getGapCooldownMs,
+    getLiveGaps = DEFAULT_DEPS.getLiveGaps,
+    getOpponentFlagCalloutEnabled = DEFAULT_DEPS.getOpponentFlagCalloutEnabled,
+    getOpponentFlagLivePosition = DEFAULT_DEPS.getOpponentFlagLivePosition,
+    getPitSpeedingCalloutEnabled = DEFAULT_DEPS.getPitSpeedingCalloutEnabled,
+    getPitLimiterCalloutEnabled = DEFAULT_DEPS.getPitLimiterCalloutEnabled,
+    getNoLimiterCalloutEnabled = DEFAULT_DEPS.getNoLimiterCalloutEnabled,
+    getRaceEngineerMasterEnabled = DEFAULT_DEPS.getRaceEngineerMasterEnabled,
+    getRadarMasterEnabled = DEFAULT_DEPS.getRadarMasterEnabled,
+  } = deps;
+
   registerRadarEngine(bus, getRadarMasterEnabled);
 
   registerPitSpeedingEngine(bus, {

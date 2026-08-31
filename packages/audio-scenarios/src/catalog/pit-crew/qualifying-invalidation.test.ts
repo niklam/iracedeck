@@ -192,26 +192,11 @@ beforeEach(() => {
   bus = createMockBus();
   audio = createFakeAudio();
   initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
-  registerPitCrew(
-    bus,
-    undefined, // getFlagCalloutEnabled
-    mockLogger as never,
-    undefined, // getPitReadbackEnabled
-    undefined, // getPitActionsAllowed
-    undefined, // getPitServiceRequestsEnabled
-    undefined, // getReadbackSnapshot
-    undefined, // getDamageCalloutEnabled
-    undefined, // getPitStatusCalloutEnabled
-    undefined, // getTrackConditionsCalloutEnabled
-    undefined, // getIncidentCalloutEnabled — defaults to true so incident.occurred reaches our scenario
-    undefined, // getSessionStartCalloutEnabled
-    undefined, // getSessionStartSnapshot
-    undefined, // getLapTimeCalloutEnabled
-    undefined, // getLapCompletedSnapshot
-    undefined, // getPositionCalloutEnabled
-    () => qualifyingEnabled,
-    () => lastSnapshot,
-  );
+  registerPitCrew(bus, {
+    logger: mockLogger as never,
+    getQualifyingInvalidationCalloutEnabled: () => qualifyingEnabled,
+    getQualifyingInvalidationSnapshot: () => lastSnapshot,
+  });
 });
 
 afterEach(() => {

@@ -191,28 +191,12 @@ beforeEach(() => {
   bus = createMockBus();
   audio = createFakeAudio();
   initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
-  registerPitCrew(
-    bus,
-    undefined, // getFlagCalloutEnabled
-    mockLogger as never,
-    undefined, // getPitReadbackEnabled
-    undefined, // getPitActionsAllowed
-    undefined, // getPitServiceRequestsEnabled
-    undefined, // getReadbackSnapshot
-    undefined, // getDamageCalloutEnabled
-    undefined, // getPitStatusCalloutEnabled
-    undefined, // getTrackConditionsCalloutEnabled
-    undefined, // getIncidentCalloutEnabled
-    undefined, // getSessionStartCalloutEnabled
-    undefined, // getSessionStartSnapshot
-    () => lapTimeEnabled,
-    () => lastSnapshot,
-    undefined, // getPositionCalloutEnabled
-    undefined, // getQualifyingInvalidationCalloutEnabled (issue #567)
-    undefined, // getQualifyingInvalidationSnapshot (issue #567)
-    undefined, // getRaceStatusCalloutEnabled (issue #569)
-    () => raceFinished,
-  );
+  registerPitCrew(bus, {
+    logger: mockLogger as never,
+    getLapTimeCalloutEnabled: () => lapTimeEnabled,
+    getLapCompletedSnapshot: () => lastSnapshot,
+    getRaceFinishedFired: () => raceFinished,
+  });
 });
 
 afterEach(() => {

@@ -151,7 +151,7 @@ This is the consumer-side checklist; see the rule
    - Add `<Family>CalloutId` (type union of subject ids).
    - Add `<FAMILY>_CALLOUT_SETTING_KEYS: Record<<Family>CalloutId, string>` — exported so plugins can read it.
    - Add `SCENARIO_ID_TO_<FAMILY>_ID: Record<string, <Family>CalloutId>` — covers every scenario id in the family.
-   - Add `get<Family>CalloutEnabled` parameter to `registerPitCrew` (default `() => true`) — placed **before** the master-gate parameter so the master stays last among per-callout opt-ins. Inserting between existing parameters shifts master-gate's index, so test fixtures that call `registerPitCrew` positionally need `undefined` inserted at the new slot (`register-pit-crew.test.ts`).
+   - Add a `get<Family>CalloutEnabled` key to `PitCrewDeps`, its `() => true` default to `DEFAULT_DEPS`, and the matching line to the destructure at the top of `registerPitCrew` (all three — `satisfies` catches a missing default, but a missing destructure surfaces only as "cannot find name" where you use it). **Placement is irrelevant and no call site needs editing** — `registerPitCrew` takes one keyed options object since #1052, so a new key is simply absent from the call sites that don't want it. (Until #1052 these were positional parameters and a new one had to go before the master gates, or every later argument at every call site shifted — silently, since the shifted value was usually still assignable. That constraint is gone; don't reinstate it.)
    - Wrap the family's scenarios with `wrapWithMaster(wrapCalloutScenario(...))` in the registration loop.
 
 ## Conventions
@@ -165,5 +165,6 @@ This is the consumer-side checklist; see the rule
 Many (not all) family files have a sibling `<family>.test.ts`. The cross-cutting
 wiring test is `register-pit-crew.test.ts` — it stands up the engine with a real
 bus and asserts that every gate (master, per-callout, engine-internal) actually
-suppresses dispatch. When you add a closure parameter to `registerPitCrew`,
-update the positional call there or every existing test fails.
+suppresses dispatch. Adding a `PitCrewDeps` key needs no edit there: it passes a
+keyed object, so a key it doesn't set takes its `DEFAULT_DEPS` entry. Add a case
+that exercises the new gate — that is what this file is for.

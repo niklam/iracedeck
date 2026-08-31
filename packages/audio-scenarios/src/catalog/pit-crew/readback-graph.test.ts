@@ -252,7 +252,10 @@ beforeEach(() => {
   audio = createFakeAudio();
   currentSnapshot = null;
   initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
-  registerPitCrew(bus, undefined, mockLogger as never, undefined, undefined, undefined, () => currentSnapshot);
+  registerPitCrew(bus, {
+    logger: mockLogger as never,
+    getReadbackSnapshot: () => currentSnapshot,
+  });
 });
 
 afterEach(() => {

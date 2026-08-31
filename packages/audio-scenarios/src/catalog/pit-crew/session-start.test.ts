@@ -245,38 +245,12 @@ beforeEach(() => {
   bus = createMockBus();
   audio = createFakeAudio();
   initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => activeVoice);
-  registerPitCrew(
-    bus,
-    undefined,
-    mockLogger as never,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    () => sessionStartEnabled,
-    () => currentSnapshot,
-    undefined, // getLapTimeCalloutEnabled
-    undefined, // getLapCompletedSnapshot
-    undefined, // getPositionCalloutEnabled
-    undefined, // getQualifyingInvalidationCalloutEnabled
-    undefined, // getQualifyingInvalidationSnapshot
-    undefined, // getRaceStatusCalloutEnabled
-    undefined, // getRaceFinishedFired
-    undefined, // getRaceEndCalloutEnabled
-    undefined, // getRaceFinishedSnapshot
-    undefined, // getRaceStartCalloutEnabled
-    undefined, // getRaceStartSnapshot
-    undefined, // getOvertakeCalloutEnabled
-    undefined, // getOvertakeDriverName
-    undefined, // getLivePosition
-    undefined, // getOvertakeGate
-    undefined, // getPitBoxCalloutEnabled
-    (kind) => setupWarningMismatch(kind), // getSetupWarningMismatch (issue #625)
-  );
+  registerPitCrew(bus, {
+    logger: mockLogger as never,
+    getSessionStartCalloutEnabled: () => sessionStartEnabled,
+    getSessionStartSnapshot: () => currentSnapshot,
+    getSetupWarningMismatch: (kind) => setupWarningMismatch(kind),
+  });
 });
 
 afterEach(() => {

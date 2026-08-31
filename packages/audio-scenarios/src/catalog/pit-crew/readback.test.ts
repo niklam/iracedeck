@@ -313,15 +313,12 @@ beforeEach(() => {
   bus = createMockBus();
   audio = createFakeAudio();
   initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
-  registerPitCrew(
-    bus,
-    (id) => flagsEnabled.get(id) ?? true,
-    mockLogger as never,
-    (id) => readbackEnabled.get(id) ?? true,
-    undefined,
-    undefined,
-    () => currentSnapshot,
-  );
+  registerPitCrew(bus, {
+    getFlagCalloutEnabled: (id) => flagsEnabled.get(id) ?? true,
+    logger: mockLogger as never,
+    getPitReadbackEnabled: (id) => readbackEnabled.get(id) ?? true,
+    getReadbackSnapshot: () => currentSnapshot,
+  });
 });
 
 afterEach(() => {
