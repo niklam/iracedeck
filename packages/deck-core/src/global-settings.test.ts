@@ -1976,11 +1976,43 @@ describe("migration deadline vs. host connect (#1056)", () => {
     const store = createMemorySettingsStore();
 
     initGlobalSettings(mock.adapter, createMockLogger(), store, { migrationTimeoutMs: 50 });
-    await vi.advanceTimersByTimeAsync(60); // never connected
+
+    // Past the first budget: the expiry-side grace has been spent, so the
+    // give-up is deferred rather than taken. This assertion is what makes the
+    // test discriminating — without the grace the store would be ready here.
+    await vi.advanceTimersByTimeAsync(60);
+    expect(isSettingsStoreReady()).toBe(false);
+
+    // Past the second: one extension only, so the countdown and the ceiling
+    // still arrive — at twice the budget, never more.
+    await vi.advanceTimersByTimeAsync(50);
 
     expect(isSettingsStoreReady()).toBe(true);
     expect(getSettingsStoreSource()).toBe("fresh");
     expect(store.saved.at(-1)).toMatchObject({ [MIGRATION_PENDING_KEY]: 1 });
+  });
+
+  it("migrates a host whose handshake is slower than the budget itself, on the one grace", async () => {
+    // The case the bounded grace exists for, and the one the fake-host harness
+    // caught the first implementation failing: the socket is still mid-handshake
+    // when the budget expires, so the connect re-arm cannot help — by the time
+    // it fires there is no deadline left to move.
+    vi.useFakeTimers();
+
+    const mock = createConnectingMockAdapter();
+    const store = createMemorySettingsStore();
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store, { migrationTimeoutMs: 50 });
+    await vi.advanceTimersByTimeAsync(60); // past the original budget, grace spent
+    expect(isSettingsStoreReady()).toBe(false);
+
+    mock.connect(); // the handshake finally completes, later than the whole budget
+    mock.echo?.({ driverName: "slower-than-the-budget" });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(isSettingsStoreReady()).toBe(true);
+    expect(getSettingsStoreSource()).toBe("host");
+    expect(getGlobalSettings().driverName).toBe("slower-than-the-budget");
   });
 
   it("spends the re-arm once, so a flapping host cannot extend the window forever", async () => {
@@ -2020,7 +2052,7 @@ describe("migration deadline vs. host connect (#1056)", () => {
     const store = createMemorySettingsStore();
 
     initGlobalSettings(mock.adapter, createMockLogger(), store, { migrationTimeoutMs: 50 });
-    await vi.advanceTimersByTimeAsync(60); // the deadline fires first
+    await vi.advanceTimersByTimeAsync(110); // both budgets: the grace, then the give-up
 
     expect(isSettingsStoreReady()).toBe(true);
     expect(getSettingsStoreSource()).toBe("fresh");
