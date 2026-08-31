@@ -54,18 +54,39 @@ const TYPECHECK_EXCLUDES_TESTS = new Map([
 // Resolve a tsconfig the way tsc does, rather than pattern-matching its `exclude`
 // array: `parseJsonConfigFileContent` applies the same include/exclude/files
 // semantics the compiler will, so this reports what is genuinely in the program.
+// A config this cannot resolve must THROW, never degrade to a default. An empty
+// config object makes `parseJsonConfigFileContent` fall back to "every .ts under
+// basePath", which would report every test file as covered — so a broken tsconfig
+// would turn this check green precisely when something is wrong. Measured: a
+// tsconfig with a bad `extends` gave 47 passed before this guard was added.
 function filesInProgram(packageName) {
-  const dir = join(repoRoot, "packages", packageName);
-  const configPath = join(dir, "tsconfig.json");
-  const { config } = ts.parseConfigFileTextToJson(configPath, readFileSync(configPath, "utf-8"));
-  return new Set(ts.parseJsonConfigFileContent(config ?? {}, ts.sys, dir).fileNames.map(toPosix));
+  const dir = toPosix(join(repoRoot, "packages", packageName));
+  const configPath = `${dir}/tsconfig.json`;
+  const { config, error } = ts.parseConfigFileTextToJson(configPath, readFileSync(configPath, "utf-8"));
+  if (error || !config) {
+    const detail = error ? ts.flattenDiagnosticMessageText(error.messageText, " ") : "no config object";
+    throw new Error(`${configPath} could not be parsed: ${detail}`);
+  }
+  const parsed = ts.parseJsonConfigFileContent(config, ts.sys, dir);
+  if (parsed.errors.length > 0) {
+    const detail = parsed.errors.map((d) => ts.flattenDiagnosticMessageText(d.messageText, " ")).join("; ");
+    throw new Error(`${configPath} did not resolve cleanly: ${detail}`);
+  }
+  return new Set(parsed.fileNames.map(toPosix));
 }
+
+// `.tsx` is matched too. Nothing in the repo uses it today, but a package whose
+// only sources were `.tsx` would otherwise be invisible to the guard — the same
+// silent escape this whole file exists to prevent, one file extension along.
+const isTypeScriptSource = (name) =>
+  (name.endsWith(".ts") && !name.endsWith(".d.ts")) || (name.endsWith(".tsx") && !name.endsWith(".d.tsx"));
+const isTestFile = (name) => name.endsWith(".test.ts") || name.endsWith(".test.tsx");
 
 function testFilesOnDisk(absDir, found = []) {
   for (const entry of readdirSync(absDir, { withFileTypes: true })) {
     if (entry.name === "node_modules" || entry.name === "dist" || entry.name === "build") continue;
     if (entry.isDirectory()) testFilesOnDisk(join(absDir, entry.name), found);
-    else if (entry.name.endsWith(".test.ts")) found.push(toPosix(join(absDir, entry.name)));
+    else if (isTestFile(entry.name)) found.push(toPosix(join(absDir, entry.name)));
   }
   return found;
 }
@@ -84,7 +105,7 @@ function hasTypeScriptSources(absDir) {
     if (entry.name === "node_modules" || entry.name === "dist" || entry.name === "build") continue;
     if (entry.isDirectory()) {
       if (hasTypeScriptSources(join(absDir, entry.name))) return true;
-    } else if (entry.name.endsWith(".ts") && !entry.name.endsWith(".d.ts")) {
+    } else if (isTypeScriptSource(entry.name)) {
       return true;
     }
   }

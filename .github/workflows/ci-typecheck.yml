@@ -15,12 +15,21 @@ on:
   push:
     branches: [master, 'release/*']
 
+# The job only reads the repository and runs a compiler, so it is given the
+# minimum token scope and the checkout credential is not left in .git/config for
+# later steps to reach. The three sibling CI workflows predate this and do not
+# set either; matching them would mean copying a weaker default forward.
+permissions:
+  contents: read
+
 jobs:
   typecheck:
     name: Typecheck
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - uses: pnpm/action-setup@v6
         with:
