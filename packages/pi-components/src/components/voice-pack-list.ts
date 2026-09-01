@@ -26,7 +26,9 @@ let styleInjected = false;
 
 const DEFAULT_PACKS_SETTING = "_voicePacks";
 
-type VoicePackEntry = { id: string; label: string; version: string; voices: string[] };
+/** Matches `InstalledVoice` in deck-core: a voice is an id AND a name (#1034). */
+type VoicePackVoice = { id: string; label: string };
+type VoicePackEntry = { id: string; label: string; version: string; voices: VoicePackVoice[] };
 type VoicePackProblemEntry = { pack: string; reason: string };
 type VoicePackScan = { packs: VoicePackEntry[]; problems: VoicePackProblemEntry[] };
 
@@ -57,7 +59,11 @@ function parseScan(raw: string): VoicePackScan {
           typeof entry.id === "string" &&
           typeof entry.label === "string" &&
           typeof entry.version === "string" &&
-          Array.isArray(entry.voices)
+          Array.isArray(entry.voices) &&
+          // Checked rather than trusted: the payload is the plugin's, but the
+          // LABELS inside it come from a third party's manifest, and this array
+          // is what a multi-voice pack row will render from.
+          entry.voices.every((v) => isRecord(v) && typeof v.id === "string" && typeof v.label === "string")
         );
       }),
       problems: problems.filter((entry): entry is VoicePackProblemEntry => {

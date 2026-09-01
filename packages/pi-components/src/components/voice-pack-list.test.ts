@@ -29,8 +29,8 @@ function scan(packs: unknown[], problems: unknown[] = []): string {
 }
 
 const PACKS = scan([
-  { id: "luca", label: "Luca", version: "1.2.0", voices: ["luca"] },
-  { id: "nina", label: "Nina", version: "2.0.1", voices: ["nina"] },
+  { id: "luca", label: "Luca", version: "1.2.0", voices: [{ id: "luca", label: "Luca" }] },
+  { id: "nina", label: "Nina", version: "2.0.1", voices: [{ id: "nina", label: "Nina" }] },
 ]);
 
 const EMPTY = scan([], []);
@@ -87,7 +87,7 @@ describe("ird-voice-pack-list", () => {
   });
 
   it("drops entries missing the fields it renders instead of showing undefined", () => {
-    publish(scan([{ id: "broken" }, { id: "ok", label: "OK", version: "1.0.0", voices: ["ok"] }]));
+    publish(scan([{ id: "broken" }, { id: "ok", label: "OK", version: "1.0.0", voices: [{ id: "ok", label: "Ok" }] }]));
 
     const rows = el.querySelectorAll(".ird-vp-row");
 
@@ -97,7 +97,9 @@ describe("ird-voice-pack-list", () => {
   });
 
   it("renders a pack label as text, never as markup — a sideloaded pack authors it", () => {
-    publish(scan([{ id: "x", label: "<img src=x onerror=alert(1)>", version: "1.0.0", voices: ["x"] }]));
+    publish(
+      scan([{ id: "x", label: "<img src=x onerror=alert(1)>", version: "1.0.0", voices: [{ id: "x", label: "X" }] }]),
+    );
 
     expect(el.querySelector("img")).toBeNull();
     expect(el.textContent).toContain("<img src=x onerror=alert(1)>");
@@ -138,7 +140,7 @@ describe("ird-voice-pack-list", () => {
     it("shows a pack that loaded and a problem it still reports, together", () => {
       publish(
         scan(
-          [{ id: "luca", label: "Luca", version: "1.2.0", voices: ["luca"] }],
+          [{ id: "luca", label: "Luca", version: "1.2.0", voices: [{ id: "luca", label: "Luca" }] }],
           [{ pack: "luca", reason: "no clips found under voice/luca-shouting" }],
         ),
       );

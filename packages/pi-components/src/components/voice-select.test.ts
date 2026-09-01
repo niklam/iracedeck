@@ -174,6 +174,17 @@ describe("ird-voice-select", () => {
       expect(options()).toEqual([{ value: "aaa-test", text: "AAA Test Voice" }]);
     });
 
+    it("applies labels that arrived BEFORE any voice list", () => {
+      // sdpi delivers per key, so this order is reachable — and it is the one
+      // the labels callback's `voicesLoaded` guard exists for. Every other test
+      // here publishes the list first, which only ever exercises the guard in
+      // the true direction.
+      publishLabels({ "aaa-test": "AAA Test Voice" });
+      publishVoices(["aaa-test"]);
+
+      expect(options()).toEqual([{ value: "aaa-test", text: "AAA Test Voice" }]);
+    });
+
     it("cannot invent a voice — a label with no matching id adds no option", () => {
       publishVoices(["default"]);
       publishLabels({ ghost: "Ghost", default: "Default" });

@@ -355,6 +355,33 @@ describe("scanVoicePacks", () => {
     });
   });
 
+  it("reports a repeated voice id rather than silently keeping the first", () => {
+    // The only malformation that used to produce no diagnostic anywhere. More
+    // likely now that a voice carries a label, since two entries differing only
+    // by label look like two distinct things to whoever wrote them.
+    const result = scanVoicePacks({
+      root: ROOT,
+      reservedVoices: [],
+      fs: fakeFs({
+        luca: {
+          manifest: {
+            ...luca,
+            voices: [
+              { id: "luca", label: "Luca" },
+              { id: "luca", label: "Luca (short)" },
+            ],
+          },
+          clips: ["voice/luca/flags/a.mp3"],
+        },
+      }),
+    });
+
+    expect(result.packs[0].voices).toEqual([{ id: "luca", label: "Luca" }]);
+    expect(result.problems).toEqual([
+      { pack: "luca", reason: 'voice "luca" is declared more than once; the first wins' },
+    ]);
+  });
+
   it("de-duplicates a voice id repeated in one manifest", () => {
     const result = scanVoicePacks({
       root: ROOT,

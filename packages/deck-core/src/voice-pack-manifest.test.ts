@@ -35,9 +35,10 @@ describe("parseVoicePackManifest", () => {
   });
 
   it("keeps a voice's label as written, including spaces and capitals", () => {
-    // The label is presentation: it is not an id and no rule constrains it
-    // beyond being non-empty. Naming a voice `AAA Test Voice` is the point of
-    // the field (#1034) — the dropdown showed `titleCase(id)` before it existed.
+    // The label is presentation, not an id: spaces and capitals are the point
+    // of the field (#1034), since the dropdown showed `titleCase(id)` before it
+    // existed. It is bounded — length and control characters, below — but
+    // nothing about its CONTENT is constrained the way an id's is.
     const voices = [{ id: "aaa-test", label: "AAA Test Voice" }];
     const raw = JSON.stringify({ schema: 1, id: "aaa-test", label: "Pack", version: "1.0.0", voices });
     const result = parseVoicePackManifest(raw);
@@ -111,6 +112,23 @@ describe("parseVoicePackManifest", () => {
       "a voice with an empty label",
       JSON.stringify({ schema: 1, id: "a", label: "A", version: "1.0.0", voices: [{ id: "a", label: "" }] }),
     ],
+    // Bounds set at the freeze: a label is a third party's string rendered
+    // straight into a dropdown option and a settings row. Tightening after
+    // packs ship would reject packs that already install.
+    [
+      "a label longer than 60 characters",
+      JSON.stringify({
+        schema: 1,
+        id: "a",
+        label: "x".repeat(61),
+        version: "1.0.0",
+        voices: [{ id: "a", label: "A" }],
+      }),
+    ],
+    [
+      "a voice label containing a newline",
+      JSON.stringify({ schema: 1, id: "a", label: "A", version: "1.0.0", voices: [{ id: "a", label: "two\nlines" }] }),
+    ],
   ])("rejects %s", (_label, raw) => {
     const result = parseVoicePackManifest(raw);
 
@@ -123,6 +141,30 @@ describe("parseVoicePackManifest", () => {
     const result = parseVoicePackManifest(raw);
 
     expect(result.ok === false && result.reason).toContain("version");
+  });
+
+  it("tells a user to update the plugin when a pack is built for a newer schema", () => {
+    // The whole payoff of `z.literal(1)`: refusing a newer pack LEGIBLY. Zod's
+    // own text — "schema: Invalid literal value, expected 1" — says nothing
+    // about needing a newer iRaceDeck to somebody holding a perfectly good pack.
+    const raw = JSON.stringify({ schema: 2, id: "a", label: "A", version: "1.0.0", voices: [{ id: "a", label: "A" }] });
+    const result = parseVoicePackManifest(raw);
+
+    expect(result.ok).toBe(false);
+    expect(result.ok === false && result.reason).toContain("newer version of iRaceDeck");
+    expect(result.ok === false && result.reason).not.toContain("Invalid literal");
+  });
+
+  it("accepts a label at exactly the 60-character bound", () => {
+    const raw = JSON.stringify({
+      schema: 1,
+      id: "a",
+      label: "A",
+      version: "1.0.0",
+      voices: [{ id: "a", label: "x".repeat(60) }],
+    });
+
+    expect(parseVoicePackManifest(raw).ok).toBe(true);
   });
 
   it("points at the voice entry when a pack uses the earlier string shape", () => {

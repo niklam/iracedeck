@@ -173,7 +173,17 @@ export function scanVoicePacks({ root, fs, reservedVoices }: ScanVoicePacksOptio
     // under different labels are still one voice, and the first wins.
     const seen = new Set<string>();
     const declared = manifest.voices.filter((voice) => {
-      if (seen.has(voice.id)) return false;
+      if (seen.has(voice.id)) {
+        // Reported, not silently swallowed. Every other malformation in this
+        // scan says something; a repeat would otherwise be the one that does
+        // not — the author sees their pack install, sees ONE of the two names
+        // they wrote, and has nothing anywhere telling them the other was
+        // dropped. More likely now that a voice carries a label, since two
+        // entries differing only by label look like two things.
+        problems.push({ pack: folder, reason: `voice "${voice.id}" is declared more than once; the first wins` });
+
+        return false;
+      }
 
       seen.add(voice.id);
 
