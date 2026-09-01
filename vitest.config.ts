@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 // `configLoader: 'native'` Node strips the types itself and cannot infer which
 // named imports are types, so a plain `Plugin` becomes a value import of an
 // export that does not exist. Vite's compatibility warning does not cover this.
-import { defineConfig, type Plugin } from "vitest/config";
+import { defaultExclude, defineConfig, type Plugin } from "vitest/config";
 
 /**
  * Vitest plugin to load SVG files as raw strings.
@@ -63,5 +63,18 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./test-setup.ts"],
     include: ["packages/*/src/**/*.test.ts", "scripts/**/*.test.mjs"],
+    // `scripts/typecheck-script-coverage.test.mjs` proves a package's typecheck
+    // really checks its tests by writing a file that cannot compile beside them,
+    // running the package's own script, and deleting it again (#1086). The probe
+    // has to be named `*.test.ts` to be included exactly the way a real test file
+    // is — a probe the compiler picks up differently would prove a weaker claim
+    // than the guard makes — which puts it squarely inside `include` above.
+    //
+    // The exact basename is excluded, never a pattern: a broad exclude that
+    // quietly swallowed a genuine test file would be a worse version of the bug
+    // being fixed. `defaultExclude` is spread rather than replaced, because
+    // assigning `exclude` overrides vitest's defaults (node_modules, dist, …)
+    // instead of adding to them.
+    exclude: [...defaultExclude, "**/__typecheck_coverage_probe__.test.ts"],
   },
 });
