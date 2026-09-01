@@ -180,14 +180,28 @@ export class VoiceSelect extends HTMLElement {
       return;
     }
 
-    // Saved value isn't in the list (cold start with no preference, or a
-    // voice was removed). Fall back to the first available voice.
+    // Saved value isn't in the list (cold start with no preference, or a voice
+    // was removed). Show the first available voice either way.
     const fallback = this.select.options[0].value;
     this.select.value = fallback;
 
     if (!this.voicesLoaded) return;
 
-    if (this.savedValue !== fallback) {
+    // But only PERSIST it when there was no choice to lose. Since #1034 this
+    // list is a function of what is on disk at scan time, so a saved voice can
+    // leave it for reasons the user neither intended nor caused: a pack folder
+    // momentarily locked by a sync client or AV scanner is reported as a problem
+    // while the scan itself SUCCEEDS, which shrinks the list. Writing the
+    // fallback then overwrites their choice permanently — one press of Rescan,
+    // and putting the pack back does not bring it back.
+    //
+    // The plugin already resolves this the read-only way:
+    // `resolveActiveRaceEngineerVoice` falls back to the first available voice
+    // and never writes, so what plays is right regardless. Leaving the setting
+    // alone keeps the two in agreement and restores the user's voice for free
+    // when the pack returns — and `plugin.ts` states this same policy in as many
+    // words for a stale audio device: "We do NOT rewrite the persisted setting".
+    if (this.savedValue === "") {
       this.savedValue = fallback;
       this.saveToStreamDeck?.(fallback);
     }
