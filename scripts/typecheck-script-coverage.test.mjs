@@ -120,6 +120,33 @@ const TSC_VALUE_FLAGS = new Set([
   "--plugins",
 ]);
 
+// Flags that make `tsc` report success WITHOUT type-checking, or that change the
+// invocation into something other than a check. Deriving a config for one of
+// these would report a package covered on the strength of a run that checks
+// nothing — the defect this whole file is about, wearing a compiler flag.
+//
+// Measured on 5.9.3 with a real type error present in the program:
+//   tsc --noEmit -p tsconfig.json                 -> exit 2, 1 error
+//   tsc --noEmit --noCheck -p tsconfig.json       -> exit 0, 0 errors
+//   tsc --noEmit --listFilesOnly -p tsconfig.json -> exit 0, 0 errors
+//
+// These refuse to derive rather than throwing, so they fall to tier 2 and get
+// MEASURED — where the probe correctly fails to be caught and the guard reports
+// the coverage as genuinely absent. Refusing here diagnoses itself; a hard error
+// would only say the parser was unhappy.
+const TSC_SUPPRESSING_FLAGS = new Set([
+  "--noCheck",
+  "--listFilesOnly",
+  "--showConfig",
+  "--init",
+  "--help",
+  "-h",
+  "--version",
+  "-v",
+  "--build",
+  "-b",
+]);
+
 export function deriveTypecheckConfig(script) {
   const segments = script
     .split("&&")
@@ -145,6 +172,13 @@ export function deriveTypecheckConfig(script) {
       if (!value) return { derivable: false, reason: "`--project=` carries no config path" };
       configPath = value;
       continue;
+    }
+
+    if (TSC_SUPPRESSING_FLAGS.has(token)) {
+      return {
+        derivable: false,
+        reason: `it passes \`${token}\`, so the run does not type-check what the config contains`,
+      };
     }
 
     if (token.startsWith("-")) {
@@ -620,6 +654,19 @@ describe("deriveTypecheckConfig", () => {
   // compiles that file alone and leaves `src/index.test.ts` out of the program,
   // while `-p tsconfig.json` includes it. So defaulting to `tsconfig.json` for a
   // script with positional inputs would verify a config the script never loads.
+  // Measured on 5.9.3 with a real type error in the program: `-p tsconfig.json`
+  // exits 2 with 1 error, while `--noCheck` and `--listFilesOnly` both exit 0
+  // with 0 errors. Deriving a config for either would report a package covered
+  // on the strength of a run that checks nothing.
+  it.each(["--noCheck", "--listFilesOnly", "--showConfig", "--build"])(
+    "refuses %s, which makes tsc report success without type-checking",
+    (flag) => {
+      const result = deriveTypecheckConfig(`tsc --noEmit ${flag} -p tsconfig.json`);
+      expect(result.derivable).toBe(false);
+      expect(result.reason).toContain(flag);
+    },
+  );
+
   it("refuses positional file arguments, which make tsc ignore tsconfig.json", () => {
     const result = deriveTypecheckConfig("tsc --noEmit src/index.ts");
     expect(result.derivable).toBe(false);
