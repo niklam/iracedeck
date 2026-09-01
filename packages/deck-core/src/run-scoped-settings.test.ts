@@ -62,7 +62,8 @@ describe("voice packs are run-scoped (issue #1034)", () => {
   });
 
   it("never writes the voice-pack list to the settings file", () => {
-    const stripped = stripRunScopedKeys({ [VOICE_PACKS_KEY]: '[{"id":"luca"}]', raceEngineerVoice: "luca" });
+    const scan = '{"packs":[{"id":"luca","label":"Luca","version":"1.0.0","voices":["luca"]}],"problems":[]}';
+    const stripped = stripRunScopedKeys({ [VOICE_PACKS_KEY]: scan, raceEngineerVoice: "luca" });
 
     expect(stripped).toEqual({ raceEngineerVoice: "luca" });
   });
