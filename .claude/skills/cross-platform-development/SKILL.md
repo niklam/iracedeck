@@ -37,7 +37,7 @@ For development/testing without iRacing running, mock mode can be forced on Wind
 
 1. **File-based** (recommended for Stream Deck): Create an empty `.mock` file in the sdPlugin folder (e.g., `com.iracedeck.sd.core.sdPlugin/.mock`). Delete it to return to native mode.
 2. **Environment variable**: Set `IRACEDECK_MOCK=1` before launching (useful for CLI/terminal testing).
-   - Note: `pnpm test` sets this for you (#1084) — the suite always runs against the mocks, on every platform. `IRACEDECK_REAL_NATIVE=1` opts back in.
+   - Note: `pnpm test` sets this for you (#1084) — test workers and the child processes they spawn always run against the mocks, on every platform. The main Vitest process is not covered. `IRACEDECK_REAL_NATIVE=1` opts back in.
 
 The `.mock` file is gitignored. The mock rotates through telemetry snapshots (including flag states) every 5 seconds.
 
