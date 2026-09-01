@@ -193,9 +193,31 @@ describe("createFileSettingsStore", () => {
     // The second write, chained behind it, runs after the directory is gone
     // and succeeds; the first must not be re-queued behind it.
     mkdirSync(store.path, { recursive: true });
+
+    // The lock is cleared in RESPONSE to the first write reporting failure, not
+    // after a timeout that assumes it has (issue #1088). The store logs exactly
+    // one `Settings save failed` per failed write, which makes that line both
+    // the signal to clear the lock and — counted below — the proof of which
+    // writes met it.
+    //
+    // The previous `setTimeout(resolve, 0)` here was the whole defect: it
+    // assumed one macrotask tick separated the two queued writes. Under load
+    // both reached the rename while the path was still a directory, both
+    // failed, nothing was written, and the read below threw ENOENT. Observed on
+    // PR #1087 — Tests failed at `a6fbbf51` and a re-run of the identical sha
+    // passed, with no change to the tree.
+    const failures: string[] = [];
+    let reportFailure!: () => void;
+    const failed = new Promise<void>((resolve) => (reportFailure = resolve));
     const racing = createFileSettingsStore({
       path: store.path,
-      logger: silentLogger,
+      logger: {
+        ...silentLogger,
+        error: (message: string) => {
+          failures.push(message);
+          reportFailure();
+        },
+      },
       debounceMs: 10,
       writeRetryDelaysMs: [20],
     });
@@ -204,10 +226,20 @@ describe("createFileSettingsStore", () => {
     const first = racing.flush(); // enqueued; rename will fail (destination is a directory)
     racing.save({ v: "newer" });
     const second = racing.flush(); // enqueued behind the first
-    // Clear the "lock" while both are queued so only the first write hits it.
-    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // Resolved from inside the failing write's rejection handler, so this
+    // continuation is queued BEFORE the chained newer write is — the lock is
+    // gone before that write starts, by microtask ordering rather than by clock.
+    await failed;
     rmSync(store.path, { recursive: true, force: true });
     await Promise.all([first, second]);
+
+    // Exactly one, and that is the sequencing assertion: the older write met the
+    // lock and the newer one did not. Zero would mean the lock never bit, so
+    // nothing below says anything about supersession; two is the old flake,
+    // where both writes raced the timeout and neither reached disk.
+    expect(failures).toHaveLength(1);
+    expect(failures[0]).toContain("Settings save failed");
 
     expect(JSON.parse(readFileSync(store.path, "utf-8"))).toEqual({ v: "newer" });
     await new Promise((resolve) => setTimeout(resolve, 60)); // past any retry of the older payload
