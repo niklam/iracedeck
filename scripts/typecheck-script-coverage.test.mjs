@@ -106,16 +106,23 @@ function hasTypeScriptSources(absDir) {
 const typeScriptPackages = readdirSync(join(repoRoot, "packages"), { withFileTypes: true })
   .filter((entry) => entry.isDirectory())
   .map((entry) => entry.name)
-  .filter(
-    (name) =>
-      // Order matters: `hasTypeScriptSources` is the operand the comment above
-      // calls the key, so it must be the one that always runs. With `existsSync`
-      // first it short-circuited for every package the moment they all had a
-      // tsconfig (#1078), leaving the function that actually catches an
-      // unconfigured package unexecuted by its own suite.
-      hasTypeScriptSources(join(repoRoot, "packages", name)) ||
-      existsSync(join(repoRoot, "packages", name, "tsconfig.json")),
-  )
+  .filter((name) => {
+    // Evaluate BOTH operands, then combine — never write this as `a || b`.
+    // Short-circuiting here has produced this file's own bug twice. With
+    // `existsSync` first, `hasTypeScriptSources` never ran once every package
+    // had a tsconfig, so the function this guard calls "the key" was dead.
+    // Swapping the operands only MOVED the dead one, because today every
+    // package also has TypeScript sources — measured, zero packages lack them.
+    // Eager evaluation makes operand-deadness impossible by construction
+    // instead of resting on an ordering a later edit could innocently reverse.
+    const hasSources = hasTypeScriptSources(join(repoRoot, "packages", name));
+    const hasConfig = existsSync(join(repoRoot, "packages", name, "tsconfig.json"));
+    // `hasConfig` decides nothing today, and is kept deliberately: it is what
+    // would find a package carrying a tsconfig and no `.ts` at all — an
+    // all-`.astro` package, or one shipping only `.d.ts`. A real future shape,
+    // not dead weight.
+    return hasSources || hasConfig;
+  })
   .sort();
 
 // First invariant (#987): every package that has TypeScript at all is in the gate —
@@ -145,6 +152,11 @@ describe("every package with TypeScript is covered by pnpm typecheck", () => {
   // directory that has none.
   it("discovers TypeScript by looking for it, not by trusting a tsconfig", () => {
     expect(hasTypeScriptSources(join(repoRoot, "packages", "logger"))).toBe(true);
+    // The negative case is drawn from OUTSIDE `packages/`, which is honest but
+    // worth stating: no package qualifies any more, so there is no in-domain
+    // example to use, and this exercises the code path rather than the domain.
+    // It would also go false the day anyone adds a `.ts` under `.github` — if
+    // that happens, move it to a fixture rather than deleting the assertion.
     expect(hasTypeScriptSources(join(repoRoot, ".github"))).toBe(false);
   });
 
