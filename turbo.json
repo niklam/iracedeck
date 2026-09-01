@@ -29,7 +29,8 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/packages/icons/**",
         "$TURBO_ROOT$/packages/iracing-actions/icons/**",
-        "$TURBO_ROOT$/packages/iracing-actions/src/**"
+        "$TURBO_ROOT$/packages/iracing-actions/src/**",
+        "$TURBO_ROOT$/packages/iracing-plugin-stream-deck/com.iracedeck.sd.core.sdPlugin/manifest.json"
       ]
     },
     "@iracedeck/website#build": {
@@ -40,7 +41,8 @@
         "$TURBO_ROOT$/scripts/lib/changelog-*.mjs",
         "$TURBO_ROOT$/packages/icons/**",
         "$TURBO_ROOT$/packages/iracing-actions/icons/**",
-        "$TURBO_ROOT$/packages/iracing-actions/src/**"
+        "$TURBO_ROOT$/packages/iracing-actions/src/**",
+        "$TURBO_ROOT$/packages/iracing-plugin-stream-deck/com.iracedeck.sd.core.sdPlugin/manifest.json"
       ],
       "outputs": ["dist/**"]
     },
