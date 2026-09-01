@@ -86,11 +86,17 @@ function readJson(relPath) {
   return JSON.parse(readFileSync(join(repoRoot, relPath), "utf-8"));
 }
 
-// Discovery is keyed on "has TypeScript at all", NOT on "has a tsconfig.json".
-// Keying it on the tsconfig was the obvious shortcut and it let three packages
-// escape the guard entirely rather than appear as exclusions — `iracing-actions`
-// most importantly, whose 76 test files nothing checks. A package with no config
-// is exactly the one at risk, so it must show up here and be answered for.
+// Discovery takes a package that has TypeScript sources OR a `tsconfig.json` —
+// a union, so neither alone is required. Precision matters here because the
+// earlier wording ("keyed on has-TypeScript-at-all, NOT on has-a-tsconfig")
+// described an exclusion the code never implemented. What is true is the point
+// it was reaching for: lacking a tsconfig is not an escape route. Keying
+// discovery on the config ALONE was the obvious shortcut and it let three
+// packages escape entirely rather than appear as exclusions — `iracing-actions`
+// most importantly, whose 76 test files nothing checked. A package with no
+// config is exactly the one at risk, so it must show up here and be answered
+// for; the config arm then catches the opposite shape, a package configured but
+// carrying no `.ts` of its own.
 function hasTypeScriptSources(absDir) {
   for (const entry of readdirSync(absDir, { withFileTypes: true })) {
     if (entry.name === "node_modules" || entry.name === "dist" || entry.name === "build") continue;
