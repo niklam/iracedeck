@@ -23,6 +23,15 @@
       "inputs": ["voice/**", "src/build/**", "src/presets.mjs"],
       "outputs": [".cache/**"]
     },
+    "@iracedeck/website#typecheck": {
+      "dependsOn": ["^build"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/icons/**",
+        "$TURBO_ROOT$/packages/iracing-actions/icons/**",
+        "$TURBO_ROOT$/packages/iracing-actions/src/**"
+      ]
+    },
     "@iracedeck/website#build": {
       "dependsOn": ["^build"],
       "env": ["PUBLIC_IRACEDECK_VERSION"],

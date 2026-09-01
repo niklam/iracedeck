@@ -16,23 +16,14 @@ const toPosix = (p) => p.split(sep).join("/");
 // is a decision on the record; an absence from the list is a failure. That is the
 // difference between an exclusion and a hole — a new package cannot join this
 // list by being forgotten.
-const NO_TYPECHECK_SCRIPT = new Map([
-  [
-    "website",
-    "Astro project: plain `tsc` cannot check it (23 errors, all inside node_modules — " +
-      "Starlight sources, `?raw` vite imports, two colliding copies of satteri). " +
-      "It needs `astro check` via @astrojs/check, which is not installed. Tracked in #1077.",
-  ],
-  [
-    "iracing-actions",
-    "No tsconfig of its own: its sources are compiled inside each plugin's program. " +
-      "Giving it one is real work rather than an oversight — a naive probe config " +
-      "reports ~991 errors, dominated by unresolved module and asset imports. Its 76 " +
-      "test files are therefore checked by nothing. Predates #987; tracked in #1078.",
-  ],
-  ["audio-assets", "No tsconfig: 10 `.ts` files under src/generate/ run through tsx. Predates #987; tracked in #1078."],
-  ["icons", "No tsconfig: SVG library with a single freshness test. Predates #987; tracked in #1078."],
-]);
+//
+// It is EMPTY, and the machinery stays anyway. #1078 closed the last four
+// entries: `website` now runs `astro check` (#1077), and `iracing-actions`,
+// `audio-assets` and `icons` all gained a tsconfig. Emptiness is a current fact
+// about this repo, not a reason to delete the list — the assertion below is what
+// makes the next package that tries to skip the gate say so out loud instead of
+// being skipped in silence by `turbo run typecheck`.
+const NO_TYPECHECK_SCRIPT = new Map([]);
 
 // Packages whose `typecheck` runs but does NOT cover their own test files, with
 // the size of what each is hiding. An exception that states its own magnitude and
@@ -40,14 +31,14 @@ const NO_TYPECHECK_SCRIPT = new Map([
 // see docs" is where things go to be forgotten.
 const TYPECHECK_EXCLUDES_TESTS = new Map([
   [
-    "deck-adapter-mirabox",
-    'tsconfig sets "exclude": ["src/**/*.test.ts"]. Removing it surfaces 34 pre-existing ' +
-      "errors in its 4 test files. Predates #987; tracked in #1078.",
-  ],
-  [
-    "deck-adapter-ulanzi",
-    'tsconfig sets "exclude": ["src/**/*.test.ts"]. Removing it surfaces 29 pre-existing ' +
-      "errors in its 4 test files. Predates #987; tracked in #1078.",
+    "iracing-actions",
+    'tsconfig sets "exclude": ["src/**/*.test.ts"]. Its 84 sources ARE checked (#1078); its 76 ' +
+      "test files are not. Removing the exclusion surfaced 541 errors when measured on 2026-09-01 — " +
+      "386 TS2345 (partial settings literals passed where the full parsed settings type is required) " +
+      "and 70 TS2445 (tests reaching protected members) dominate, across 34 files. Tracked in #1078. " +
+      "NOTE: that count is a dated measurement, not an invariant — the assertion below only checks " +
+      "that SOME test file is still excluded, so nothing here re-verifies the number. It is recorded " +
+      "to size the remaining work, and it is dated so it cannot quietly become false.",
   ],
 ]);
 
@@ -95,11 +86,17 @@ function readJson(relPath) {
   return JSON.parse(readFileSync(join(repoRoot, relPath), "utf-8"));
 }
 
-// Discovery is keyed on "has TypeScript at all", NOT on "has a tsconfig.json".
-// Keying it on the tsconfig was the obvious shortcut and it let three packages
-// escape the guard entirely rather than appear as exclusions — `iracing-actions`
-// most importantly, whose 76 test files nothing checks. A package with no config
-// is exactly the one at risk, so it must show up here and be answered for.
+// Discovery takes a package that has TypeScript sources OR a `tsconfig.json` —
+// a union, so neither alone is required. Precision matters here because the
+// earlier wording ("keyed on has-TypeScript-at-all, NOT on has-a-tsconfig")
+// described an exclusion the code never implemented. What is true is the point
+// it was reaching for: lacking a tsconfig is not an escape route. Keying
+// discovery on the config ALONE was the obvious shortcut and it let three
+// packages escape entirely rather than appear as exclusions — `iracing-actions`
+// most importantly, whose 76 test files nothing checked. A package with no
+// config is exactly the one at risk, so it must show up here and be answered
+// for; the config arm then catches the opposite shape, a package configured but
+// carrying no `.ts` of its own.
 function hasTypeScriptSources(absDir) {
   for (const entry of readdirSync(absDir, { withFileTypes: true })) {
     if (entry.name === "node_modules" || entry.name === "dist" || entry.name === "build") continue;
@@ -115,11 +112,23 @@ function hasTypeScriptSources(absDir) {
 const typeScriptPackages = readdirSync(join(repoRoot, "packages"), { withFileTypes: true })
   .filter((entry) => entry.isDirectory())
   .map((entry) => entry.name)
-  .filter(
-    (name) =>
-      existsSync(join(repoRoot, "packages", name, "tsconfig.json")) ||
-      hasTypeScriptSources(join(repoRoot, "packages", name)),
-  )
+  .filter((name) => {
+    // Evaluate BOTH operands, then combine — never write this as `a || b`.
+    // Short-circuiting here has produced this file's own bug twice. With
+    // `existsSync` first, `hasTypeScriptSources` never ran once every package
+    // had a tsconfig, so the function this guard calls "the key" was dead.
+    // Swapping the operands only MOVED the dead one, because today every
+    // package also has TypeScript sources — measured, zero packages lack them.
+    // Eager evaluation makes operand-deadness impossible by construction
+    // instead of resting on an ordering a later edit could innocently reverse.
+    const hasSources = hasTypeScriptSources(join(repoRoot, "packages", name));
+    const hasConfig = existsSync(join(repoRoot, "packages", name, "tsconfig.json"));
+    // `hasConfig` decides nothing today, and is kept deliberately: it is what
+    // would find a package carrying a tsconfig and no `.ts` at all — an
+    // all-`.astro` package, or one shipping only `.d.ts`. A real future shape,
+    // not dead weight.
+    return hasSources || hasConfig;
+  })
   .sort();
 
 // First invariant (#987): every package that has TypeScript at all is in the gate —
@@ -139,6 +148,22 @@ const typeScriptPackages = readdirSync(join(repoRoot, "packages"), { withFileTyp
 describe("every package with TypeScript is covered by pnpm typecheck", () => {
   it("finds the packages to check", () => {
     expect(typeScriptPackages.length).toBeGreaterThan(0);
+  });
+
+  // Discovery's own smoke test. Every package currently has a tsconfig, so the
+  // `||` above can no longer reach a package that `hasTypeScriptSources` alone
+  // would have to find — which means a regression in it (an extra prune, an
+  // inverted return) would shrink coverage back with every test still green.
+  // Pin both directions against a package that has TypeScript and a tracked
+  // directory that has none.
+  it("discovers TypeScript by looking for it, not by trusting a tsconfig", () => {
+    expect(hasTypeScriptSources(join(repoRoot, "packages", "logger"))).toBe(true);
+    // The negative case is drawn from OUTSIDE `packages/`, which is honest but
+    // worth stating: no package qualifies any more, so there is no in-domain
+    // example to use, and this exercises the code path rather than the domain.
+    // It would also go false the day anyone adds a `.ts` under `.github` — if
+    // that happens, move it to a fixture rather than deleting the assertion.
+    expect(hasTypeScriptSources(join(repoRoot, ".github"))).toBe(false);
   });
 
   it("has no stale allow-list entries", () => {

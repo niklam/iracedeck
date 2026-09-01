@@ -58,8 +58,22 @@ export interface ActionCommMeta {
   modeSetting: string;
 }
 
-/** An action's mode map plus its `_meta`. The PI reads both from the JSON. */
-export type ActionCommEntry = ActionCommMap & { _meta: ActionCommMeta };
+/**
+ * An action's mode map plus its `_meta`. The PI reads both from the JSON.
+ *
+ * The index signature has to admit `ActionCommMeta`, because `_meta` is a real
+ * key of this object rather than a sibling of it — that shape is fixed by the
+ * generated `data/action-comms.json`, which the PI reads as
+ * `__comms._meta.modeSetting` alongside the mode keys. Writing this as
+ * `ActionCommMap & { _meta: ActionCommMeta }` looked tidier but was
+ * uninhabitable: the intersection required `_meta` to satisfy the
+ * `CommDescriptor` index signature too, so no value could ever produce one.
+ * Nothing caught it because this package had no `tsconfig.json` (#1078).
+ */
+export type ActionCommEntry = {
+  [mode: string]: CommDescriptor | ActionCommMeta;
+  _meta: ActionCommMeta;
+};
 
 function entry(modeSetting: string, modes: ActionCommMap): ActionCommEntry {
   return { _meta: { modeSetting }, ...modes };
