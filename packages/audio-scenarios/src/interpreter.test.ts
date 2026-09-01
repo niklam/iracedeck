@@ -353,6 +353,20 @@ describe("manifest-derived pools (definePoolFromManifest)", () => {
 
       expect(voicePaths().length).toBe(1);
 
+      // Flush, for the reason the sibling above states: the bus stays busy until
+      // the in-flight clip ends, so without it the second fire is routed to
+      // queueOrDrop before the pool is ever consulted and the assertion below
+      // holds for a reason that has nothing to do with the manifest.
+      //
+      // What it then guards, established by mutation rather than assumed:
+      // `setManifest` rebuilds `clipSet` AND re-derives the manifest pools, and
+      // for a removed voice EITHER ONE ALONE is enough to stop the clip. Delete
+      // just one and this stays green (the sibling above is the single-mechanism
+      // guard for the pool half); delete both and it goes red. So this is the
+      // end-to-end property — a removed voice goes quiet — rather than a test of
+      // one mechanism, and it is worth keeping as exactly that.
+      flushVoiceAndSfx(audio);
+
       engine.setManifest({
         ...voicedManifest,
         clips: voicedManifest.clips.filter((clip) => !clip.includes("/luca/")),
