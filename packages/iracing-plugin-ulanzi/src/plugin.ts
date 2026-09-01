@@ -724,12 +724,19 @@ function pushDriverNamesIfChanged(): void {
 
 let lastPushedVoicePackListJson = "";
 
+// One payload for the whole scan result, installed packs AND the reasons the
+// rest were ignored (#1034). A hand-placed pack that silently does nothing is
+// this feature's most likely support question, and the reason is the answer —
+// so it belongs beside the list rather than only in the plugin log. Both halves
+// travel in one key so they can never be published out of step, and a scan
+// stays one global-settings write.
 function pushVoicePackListIfChanged(): void {
-  const json = JSON.stringify(
-    voicePacks
+  const json = JSON.stringify({
+    packs: voicePacks
       .installed()
       .map((pack) => ({ id: pack.id, label: pack.label, version: pack.version, voices: pack.voices })),
-  );
+    problems: voicePacks.problems().map((problem) => ({ pack: problem.pack, reason: problem.reason })),
+  });
 
   if (json === lastPushedVoicePackListJson) return;
 

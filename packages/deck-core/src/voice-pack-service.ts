@@ -23,8 +23,14 @@ export interface VoicePackServiceDeps {
   applyRoots(roots: readonly string[]): void;
   /** Hand each pack's clip list to the scenario engine, as manifest fragments. */
   applyManifest(fragments: readonly (readonly string[])[]): void;
-  /** Report the scan so the plugin can publish it to Property Inspectors. */
-  onPacksChanged(packs: readonly InstalledVoicePack[], problems: readonly VoicePackProblem[]): void;
+  /**
+   * The scan finished and this service's read model changed. Carries nothing on
+   * purpose: the plugin also republishes on Property Inspector appearance, when
+   * there is no event to hand it, so both paths read {@link
+   * VoicePackService.installed} and {@link VoicePackService.problems} and there
+   * is only one way to build the payload.
+   */
+  onPacksChanged(): void;
 }
 
 export interface VoicePackService {
@@ -32,6 +38,18 @@ export interface VoicePackService {
   refresh(): readonly InstalledVoicePack[];
   /** The most recent scan result. */
   installed(): readonly InstalledVoicePack[];
+  /**
+   * Why the most recent scan ignored what it ignored — a pack with no manifest,
+   * an id that disagrees with its folder, a voice another pack or the bundle
+   * already provides, or a declared voice with no clips under it.
+   *
+   * Surfaced beside the installed list rather than left in the log (#1034): a
+   * hand-placed pack that does nothing, with no visible reason, is the single
+   * most likely support question this feature has. Note that a pack can appear
+   * in BOTH lists — an otherwise-loadable pack that declares one empty voice is
+   * installed and reports a problem.
+   */
+  problems(): readonly VoicePackProblem[];
 }
 
 /**
@@ -44,6 +62,7 @@ export interface VoicePackService {
  */
 export function createVoicePackService(deps: VoicePackServiceDeps): VoicePackService {
   let packs: readonly InstalledVoicePack[] = [];
+  let problems: readonly VoicePackProblem[] = [];
 
   return {
     // Never throws. This runs on two paths that both END THE PLUGIN PROCESS if
@@ -54,12 +73,13 @@ export function createVoicePackService(deps: VoicePackServiceDeps): VoicePackSer
     // synchronously to every `onGlobalSettingsChange` subscriber in the plugin.
     refresh() {
       try {
-        const { packs: scanned, problems } = scanVoicePacks({
+        const { packs: scanned, problems: found } = scanVoicePacks({
           root: deps.root,
           fs: deps.fs,
           reservedVoices: deps.reservedVoices,
         });
         packs = scanned;
+        problems = found;
 
         // Roots BEFORE the manifest. The manifest is what tells the engine a clip
         // exists; a clip must never be advertised before there is a root that can
@@ -67,7 +87,7 @@ export function createVoicePackService(deps: VoicePackServiceDeps): VoicePackSer
         // fallback root and fail to play.
         deps.applyRoots([deps.pluginAudioDir, ...scanned.map((pack) => pack.dir)]);
         deps.applyManifest(scanned.map((pack) => pack.clips));
-        deps.onPacksChanged(scanned, problems);
+        deps.onPacksChanged();
 
         deps.logger.info("Voice packs scanned");
         deps.logger.debug(
@@ -92,6 +112,10 @@ export function createVoicePackService(deps: VoicePackServiceDeps): VoicePackSer
 
     installed() {
       return packs;
+    },
+
+    problems() {
+      return problems;
     },
   };
 }

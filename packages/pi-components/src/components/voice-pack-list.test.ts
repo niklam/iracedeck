@@ -24,10 +24,16 @@ function installMockSDPI(): MockSDPIState {
   return state;
 }
 
-const PACKS = JSON.stringify([
+function scan(packs: unknown[], problems: unknown[] = []): string {
+  return JSON.stringify({ packs, problems });
+}
+
+const PACKS = scan([
   { id: "luca", label: "Luca", version: "1.2.0", voices: ["luca"] },
   { id: "nina", label: "Nina", version: "2.0.1", voices: ["nina"] },
 ]);
+
+const EMPTY = scan([], []);
 
 describe("ird-voice-pack-list", () => {
   let el: HTMLElement;
@@ -62,7 +68,7 @@ describe("ird-voice-pack-list", () => {
 
   it("goes back to the empty state when the last pack is removed", () => {
     publish(PACKS);
-    publish("[]");
+    publish(EMPTY);
 
     expect(el.querySelectorAll(".ird-vp-row")).toHaveLength(0);
     expect(el.textContent).toContain("No voice packs installed");
@@ -81,7 +87,7 @@ describe("ird-voice-pack-list", () => {
   });
 
   it("drops entries missing the fields it renders instead of showing undefined", () => {
-    publish(JSON.stringify([{ id: "broken" }, { id: "ok", label: "OK", version: "1.0.0", voices: ["ok"] }]));
+    publish(scan([{ id: "broken" }, { id: "ok", label: "OK", version: "1.0.0", voices: ["ok"] }]));
 
     const rows = el.querySelectorAll(".ird-vp-row");
 
@@ -91,7 +97,7 @@ describe("ird-voice-pack-list", () => {
   });
 
   it("renders a pack label as text, never as markup — a sideloaded pack authors it", () => {
-    publish(JSON.stringify([{ id: "x", label: "<img src=x onerror=alert(1)>", version: "1.0.0", voices: ["x"] }]));
+    publish(scan([{ id: "x", label: "<img src=x onerror=alert(1)>", version: "1.0.0", voices: ["x"] }]));
 
     expect(el.querySelector("img")).toBeNull();
     expect(el.textContent).toContain("<img src=x onerror=alert(1)>");
@@ -108,5 +114,63 @@ describe("ird-voice-pack-list", () => {
     mock.callbacks.get("_customKey")?.(PACKS);
 
     expect(custom.querySelectorAll(".ird-vp-row")).toHaveLength(2);
+  });
+
+  describe("ignored packs (#1034)", () => {
+    it("names the pack and the reason it was ignored", () => {
+      publish(scan([], [{ pack: "luca", reason: "no voice-pack.json" }]));
+
+      const problems = el.querySelectorAll(".ird-vp-problem");
+
+      expect(problems).toHaveLength(1);
+      expect(problems[0].textContent).toContain("luca");
+      expect(problems[0].textContent).toContain("no voice-pack.json");
+    });
+
+    it("does not claim the directory is empty when a pack was found but ignored", () => {
+      // The whole point: the reason must be visible. Saying "none installed"
+      // over the top of it would hide the row that explains the silence.
+      publish(scan([], [{ pack: "luca", reason: "no voice-pack.json" }]));
+
+      expect(el.textContent).not.toContain("No voice packs installed");
+    });
+
+    it("shows a pack that loaded and a problem it still reports, together", () => {
+      publish(
+        scan(
+          [{ id: "luca", label: "Luca", version: "1.2.0", voices: ["luca"] }],
+          [{ pack: "luca", reason: "no clips found under voice/luca-shouting" }],
+        ),
+      );
+
+      expect(el.querySelectorAll(".ird-vp-row")).toHaveLength(1);
+      expect(el.querySelectorAll(".ird-vp-problem")).toHaveLength(1);
+    });
+
+    it("clears problems on a rescan that fixed them", () => {
+      publish(scan([], [{ pack: "luca", reason: "no voice-pack.json" }]));
+      publish(EMPTY);
+
+      expect(el.querySelectorAll(".ird-vp-problem")).toHaveLength(0);
+      expect(el.textContent).toContain("No voice packs installed");
+    });
+
+    it("drops a malformed problem entry rather than rendering undefined", () => {
+      publish(scan([], [{ pack: "luca" }, { pack: "nina", reason: "declared id does not match its folder name" }]));
+
+      const problems = el.querySelectorAll(".ird-vp-problem");
+
+      expect(problems).toHaveLength(1);
+      expect(problems[0].textContent).toContain("nina");
+      expect(el.textContent).not.toContain("undefined");
+    });
+
+    it("renders a reason as text, never as markup — a sideloaded manifest authors it", () => {
+      publish(scan([], [{ pack: "<b>x</b>", reason: "<img src=x onerror=alert(1)>" }]));
+
+      expect(el.querySelector("img")).toBeNull();
+      expect(el.querySelector("b")).toBeNull();
+      expect(el.textContent).toContain("<img src=x onerror=alert(1)>");
+    });
   });
 });

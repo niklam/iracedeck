@@ -81,7 +81,7 @@ describe("createVoicePackService", () => {
     expect(service.refresh()).toEqual([]);
     expect(applyRoots).toHaveBeenCalledWith([PLUGIN_AUDIO]);
     expect(applyManifest).toHaveBeenCalledWith([]);
-    expect(onPacksChanged).toHaveBeenCalledWith([], []);
+    expect(onPacksChanged).toHaveBeenCalledWith();
   });
 
   it("keeps the last scan available via installed()", () => {
@@ -138,12 +138,33 @@ describe("createVoicePackService", () => {
   });
 
   it("reports problems alongside the packs that did load", () => {
-    const { service, onPacksChanged } = make({ broken: [], luca: ["voice/luca/a.mp3"] });
+    const { service } = make({ broken: [], luca: ["voice/luca/a.mp3"] });
     service.refresh();
 
-    const [packs, problems] = onPacksChanged.mock.calls[0] as [{ id: string }[], { pack: string }[]];
+    expect(service.installed().map((pack) => pack.id)).toEqual(["luca"]);
+    expect(service.problems().map((problem) => problem.pack)).toEqual(["broken"]);
+  });
 
-    expect(packs.map((pack) => pack.id)).toEqual(["luca"]);
-    expect(problems.map((problem) => problem.pack)).toEqual(["broken"]);
+  it("has no problems to report before the first scan", () => {
+    const { service } = make({ broken: [] });
+
+    expect(service.problems()).toEqual([]);
+  });
+
+  it("replaces the previous scan's problems rather than accumulating them", () => {
+    // The read model describes the CURRENT state of the directory, so a problem
+    // the user has since fixed must disappear from the settings list on rescan
+    // — the same reason the key it feeds is run-scoped.
+    const dirs: Record<string, string[]> = { broken: [], luca: ["voice/luca/a.mp3"] };
+    const { service } = make(dirs);
+
+    service.refresh();
+
+    expect(service.problems().map((problem) => problem.pack)).toEqual(["broken"]);
+
+    delete dirs.broken;
+    service.refresh();
+
+    expect(service.problems()).toEqual([]);
   });
 });
