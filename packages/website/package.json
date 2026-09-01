@@ -10,6 +10,7 @@
     "generate:gallery": "tsx scripts/generate-icon-gallery.mts",
     "generate:changelog-json": "node scripts/generate-changelog-json.mjs",
     "preview": "astro preview",
+    "typecheck": "pnpm generate:gallery && pnpm generate:changelog-json && astro check",
     "deploy": "pnpm build && firebase deploy --only hosting"
   },
   "dependencies": {
@@ -20,6 +21,7 @@
     "sharp": "0.35.4"
   },
   "devDependencies": {
+    "@astrojs/check": "0.9.10",
     "@iracedeck/audio-scenarios": "workspace:*",
     "@iracedeck/audio-service": "workspace:*",
     "@iracedeck/deck-core": "workspace:*",

@@ -8,6 +8,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { UlanziPlatformAdapter } from "./adapter.js";
+import type { UlanziEventHandler } from "./ulanzi-client.js";
 
 // Store mock instances so tests can inspect them
 const mockInstances: Array<Record<string, ReturnType<typeof vi.fn>>> = [];
@@ -43,6 +44,24 @@ describe("UlanziPlatformAdapter", () => {
     adapter = new UlanziPlatformAdapter();
     client = mockInstances[0];
   });
+
+  // The mocked client is stored as `Record<string, Mock>`, so `mock.calls` is
+  // `any[][]`. Every call site used to re-annotate the tuple inline, which the
+  // compiler rejected the moment these tests entered the typecheck program
+  // (#1078). The tuple shape and the "was it actually registered?" check now
+  // live here once, and a missing registration fails with a real message
+  // instead of a `cannot read property of undefined`.
+  type ActionEventCall = [uuid: string, event: string, handler: UlanziEventHandler];
+
+  const actionEventCalls = (): ActionEventCall[] => client.onActionEvent.mock.calls as ActionEventCall[];
+
+  const actionEventHandler = (event: string): UlanziEventHandler => {
+    const call = actionEventCalls().find((c) => c[1] === event);
+
+    if (!call) throw new Error(`no "${event}" handler was registered on the mocked UlanziClient`);
+
+    return call[2];
+  };
 
   describe("connect", () => {
     it("should delegate to UlanziClient.connect", () => {
@@ -176,10 +195,7 @@ describe("UlanziPlatformAdapter", () => {
   });
 
   describe("global-settings willAppear re-drive — a fallback since #1041 (#868)", () => {
-    const willAppear = () =>
-      client.onActionEvent.mock.calls.find((call: [string, string, unknown]) => call[1] === "willAppear")?.[2] as (
-        data: unknown,
-      ) => Promise<void>;
+    const willAppear = () => actionEventHandler("willAppear");
 
     const globalSettingsHandler = () =>
       client.onGlobalEvent.mock.calls.find((call) => call[0] === "didReceiveGlobalSettings")?.[1];
@@ -303,7 +319,7 @@ describe("UlanziPlatformAdapter", () => {
 
       expect(client.onActionEvent).toHaveBeenCalledTimes(8);
 
-      const registeredEvents = client.onActionEvent.mock.calls.map((call: [string, string, unknown]) => call[1]);
+      const registeredEvents = actionEventCalls().map((call) => call[1]);
       expect(registeredEvents).toContain("willAppear");
       expect(registeredEvents).toContain("willDisappear");
       expect(registeredEvents).toContain("didReceiveSettings");
@@ -327,11 +343,9 @@ describe("UlanziPlatformAdapter", () => {
       const handler: IDeckActionHandler = { onWillAppear: vi.fn() };
       adapter.registerAction("com.test.action", handler);
 
-      const willAppearCall = client.onActionEvent.mock.calls.find(
-        (call: [string, string, unknown]) => call[1] === "willAppear",
-      );
+      const willAppearCall = actionEventHandler("willAppear");
 
-      await willAppearCall[2]({
+      await willAppearCall({
         event: "willAppear",
         action: "com.test.action",
         context: "com.test.action___5___abc",
@@ -348,11 +362,9 @@ describe("UlanziPlatformAdapter", () => {
       const handler: IDeckActionHandler = { onKeyDown: vi.fn() };
       adapter.registerAction("com.test.action", handler);
 
-      const keyDownCall = client.onActionEvent.mock.calls.find(
-        (call: [string, string, unknown]) => call[1] === "keyDown",
-      );
+      const keyDownCall = actionEventHandler("keyDown");
 
-      await keyDownCall[2]({
+      await keyDownCall({
         event: "keyDown",
         action: "com.test.action",
         context: "ctx-456",
@@ -368,11 +380,9 @@ describe("UlanziPlatformAdapter", () => {
       const handler: IDeckActionHandler = { onDialRotate: vi.fn() };
       adapter.registerAction("com.test.action", handler);
 
-      const dialRotateCall = client.onActionEvent.mock.calls.find(
-        (call: [string, string, unknown]) => call[1] === "dialRotate",
-      );
+      const dialRotateCall = actionEventHandler("dialRotate");
 
-      await dialRotateCall[2]({
+      await dialRotateCall({
         event: "dialRotate",
         action: "com.test.action",
         context: "ctx-789",
@@ -389,11 +399,9 @@ describe("UlanziPlatformAdapter", () => {
       const handler: IDeckActionHandler = { onDialRotate: vi.fn() };
       adapter.registerAction("com.test.action", handler);
 
-      const dialRotateCall = client.onActionEvent.mock.calls.find(
-        (call: [string, string, unknown]) => call[1] === "dialRotate",
-      );
+      const dialRotateCall = actionEventHandler("dialRotate");
 
-      await dialRotateCall[2]({
+      await dialRotateCall({
         event: "dialRotate",
         action: "com.test.action",
         context: "ctx-789",
@@ -408,11 +416,9 @@ describe("UlanziPlatformAdapter", () => {
       const handler: IDeckActionHandler = { onWillDisappear: vi.fn() };
       adapter.registerAction("com.test.action", handler);
 
-      const disappearCall = client.onActionEvent.mock.calls.find(
-        (call: [string, string, unknown]) => call[1] === "willDisappear",
-      );
+      const disappearCall = actionEventHandler("willDisappear");
 
-      await disappearCall[2]({
+      await disappearCall({
         event: "willDisappear",
         action: "com.test.action",
         context: "ctx-gone",
@@ -432,8 +438,7 @@ describe("UlanziPlatformAdapter", () => {
     it("reflects the tracked controller type in willDisappear isKey()", async () => {
       const handler: IDeckActionHandler = { onWillAppear: vi.fn(), onWillDisappear: vi.fn() };
       adapter.registerAction("com.test.action", handler);
-      const find = (event: string) =>
-        client.onActionEvent.mock.calls.find((call: [string, string, unknown]) => call[1] === event)[2];
+      const find = (event: string) => actionEventHandler(event);
 
       // willAppear tracks the Encoder controller for this context...
       await find("willAppear")({
@@ -461,8 +466,7 @@ describe("UlanziPlatformAdapter", () => {
         onKeyDown: vi.fn(),
       };
       adapter.registerAction("com.test.action", handler);
-      const find = (event: string) =>
-        client.onActionEvent.mock.calls.find((call: [string, string, unknown]) => call[1] === event)[2];
+      const find = (event: string) => actionEventHandler(event);
 
       await find("willAppear")({
         event: "willAppear",
@@ -497,16 +501,16 @@ describe("UlanziPlatformAdapter", () => {
       const callOrder: string[] = [];
       const broadcastCb = vi.fn(() => callOrder.push("broadcast"));
       const handler: IDeckActionHandler = {
-        onKeyDown: vi.fn(async () => callOrder.push("handler")),
+        onKeyDown: vi.fn(async () => {
+          callOrder.push("handler");
+        }),
       };
 
       adapter.onKeyDown(broadcastCb);
       adapter.registerAction("com.test.action", handler);
 
-      const keyDownCall = client.onActionEvent.mock.calls.find(
-        (call: [string, string, unknown]) => call[1] === "keyDown",
-      );
-      await keyDownCall[2]({ event: "keyDown", action: "com.test.action", context: "ctx", payload: { settings: {} } });
+      const keyDownCall = actionEventHandler("keyDown");
+      await keyDownCall({ event: "keyDown", action: "com.test.action", context: "ctx", payload: { settings: {} } });
 
       expect(callOrder).toEqual(["broadcast", "handler"]);
     });
@@ -515,16 +519,16 @@ describe("UlanziPlatformAdapter", () => {
       const callOrder: string[] = [];
       const broadcastCb = vi.fn(() => callOrder.push("broadcast"));
       const handler: IDeckActionHandler = {
-        onDialRotate: vi.fn(async () => callOrder.push("handler")),
+        onDialRotate: vi.fn(async () => {
+          callOrder.push("handler");
+        }),
       };
 
       adapter.onDialRotate(broadcastCb);
       adapter.registerAction("com.test.action", handler);
 
-      const dialRotateCall = client.onActionEvent.mock.calls.find(
-        (call: [string, string, unknown]) => call[1] === "dialRotate",
-      );
-      await dialRotateCall[2]({
+      const dialRotateCall = actionEventHandler("dialRotate");
+      await dialRotateCall({
         event: "dialRotate",
         action: "com.test.action",
         context: "ctx",
@@ -538,16 +542,16 @@ describe("UlanziPlatformAdapter", () => {
       const callOrder: string[] = [];
       const broadcastCb = vi.fn(() => callOrder.push("broadcast"));
       const handler: IDeckActionHandler = {
-        onDialDown: vi.fn(async () => callOrder.push("handler")),
+        onDialDown: vi.fn(async () => {
+          callOrder.push("handler");
+        }),
       };
 
       adapter.onDialDown(broadcastCb);
       adapter.registerAction("com.test.action", handler);
 
-      const dialDownCall = client.onActionEvent.mock.calls.find(
-        (call: [string, string, unknown]) => call[1] === "dialDown",
-      );
-      await dialDownCall[2]({
+      const dialDownCall = actionEventHandler("dialDown");
+      await dialDownCall({
         event: "dialDown",
         action: "com.test.action",
         context: "ctx",
@@ -563,10 +567,8 @@ describe("UlanziPlatformAdapter", () => {
       const handler: IDeckActionHandler = { onWillAppear: vi.fn() };
       adapter.registerAction("com.test.action", handler);
 
-      const willAppearCall = client.onActionEvent.mock.calls.find(
-        (call: [string, string, unknown]) => call[1] === "willAppear",
-      );
-      await willAppearCall[2]({
+      const willAppearCall = actionEventHandler("willAppear");
+      await willAppearCall({
         event: "willAppear",
         action: "com.test.action",
         context,
@@ -622,10 +624,8 @@ describe("UlanziPlatformAdapter", () => {
       const handler: IDeckActionHandler = { onWillAppear: vi.fn() };
       adapter.registerAction("com.test.action", handler);
 
-      const willAppearCall = client.onActionEvent.mock.calls.find(
-        (call: [string, string, unknown]) => call[1] === "willAppear",
-      );
-      await willAppearCall[2]({
+      const willAppearCall = actionEventHandler("willAppear");
+      await willAppearCall({
         event: "willAppear",
         action: "com.test.action",
         context,

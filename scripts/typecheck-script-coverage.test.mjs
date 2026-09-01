@@ -16,23 +16,14 @@ const toPosix = (p) => p.split(sep).join("/");
 // is a decision on the record; an absence from the list is a failure. That is the
 // difference between an exclusion and a hole — a new package cannot join this
 // list by being forgotten.
-const NO_TYPECHECK_SCRIPT = new Map([
-  [
-    "website",
-    "Astro project: plain `tsc` cannot check it (23 errors, all inside node_modules — " +
-      "Starlight sources, `?raw` vite imports, two colliding copies of satteri). " +
-      "It needs `astro check` via @astrojs/check, which is not installed. Tracked in #1077.",
-  ],
-  [
-    "iracing-actions",
-    "No tsconfig of its own: its sources are compiled inside each plugin's program. " +
-      "Giving it one is real work rather than an oversight — a naive probe config " +
-      "reports ~991 errors, dominated by unresolved module and asset imports. Its 76 " +
-      "test files are therefore checked by nothing. Predates #987; tracked in #1078.",
-  ],
-  ["audio-assets", "No tsconfig: 10 `.ts` files under src/generate/ run through tsx. Predates #987; tracked in #1078."],
-  ["icons", "No tsconfig: SVG library with a single freshness test. Predates #987; tracked in #1078."],
-]);
+//
+// It is EMPTY, and the machinery stays anyway. #1078 closed the last four
+// entries: `website` now runs `astro check` (#1077), and `iracing-actions`,
+// `audio-assets` and `icons` all gained a tsconfig. Emptiness is a current fact
+// about this repo, not a reason to delete the list — the assertion below is what
+// makes the next package that tries to skip the gate say so out loud instead of
+// being skipped in silence by `turbo run typecheck`.
+const NO_TYPECHECK_SCRIPT = new Map([]);
 
 // Packages whose `typecheck` runs but does NOT cover their own test files, with
 // the size of what each is hiding. An exception that states its own magnitude and
@@ -40,14 +31,14 @@ const NO_TYPECHECK_SCRIPT = new Map([
 // see docs" is where things go to be forgotten.
 const TYPECHECK_EXCLUDES_TESTS = new Map([
   [
-    "deck-adapter-mirabox",
-    'tsconfig sets "exclude": ["src/**/*.test.ts"]. Removing it surfaces 34 pre-existing ' +
-      "errors in its 4 test files. Predates #987; tracked in #1078.",
-  ],
-  [
-    "deck-adapter-ulanzi",
-    'tsconfig sets "exclude": ["src/**/*.test.ts"]. Removing it surfaces 29 pre-existing ' +
-      "errors in its 4 test files. Predates #987; tracked in #1078.",
+    "iracing-actions",
+    'tsconfig sets "exclude": ["src/**/*.test.ts"]. Its 160 sources ARE checked (#1078); its 76 ' +
+      "test files are not. Removing the exclusion surfaced 541 errors when measured on 2026-09-01 — " +
+      "386 TS2345 (partial settings literals passed where the full parsed settings type is required) " +
+      "and 70 TS2445 (tests reaching protected members) dominate, across 34 files. Tracked in #1078. " +
+      "NOTE: that count is a dated measurement, not an invariant — the assertion below only checks " +
+      "that SOME test file is still excluded, so nothing here re-verifies the number. It is recorded " +
+      "to size the remaining work, and it is dated so it cannot quietly become false.",
   ],
 ]);
 

@@ -8,6 +8,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { VSDPlatformAdapter } from "./adapter.js";
+import type { VSDEventHandler } from "./vsd-client.js";
 
 // Store mock instances so tests can inspect them
 const mockInstances: Array<Record<string, ReturnType<typeof vi.fn>>> = [];
@@ -42,6 +43,24 @@ describe("VSDPlatformAdapter", () => {
     adapter = new VSDPlatformAdapter();
     client = mockInstances[0];
   });
+
+  // The mocked client is stored as `Record<string, Mock>`, so `mock.calls` is
+  // `any[][]`. Every call site used to re-annotate the tuple inline, which the
+  // compiler rejected the moment these tests entered the typecheck program
+  // (#1078). The tuple shape and the "was it actually registered?" check now
+  // live here once, and a missing registration fails with a real message
+  // instead of a `cannot read property of undefined`.
+  type ActionEventCall = [uuid: string, event: string, handler: VSDEventHandler];
+
+  const actionEventCalls = (): ActionEventCall[] => client.onActionEvent.mock.calls as ActionEventCall[];
+
+  const actionEventHandler = (event: string): VSDEventHandler => {
+    const call = actionEventCalls().find((c) => c[1] === event);
+
+    if (!call) throw new Error(`no "${event}" handler was registered on the mocked VSDClient`);
+
+    return call[2];
+  };
 
   describe("connect", () => {
     it("should delegate to VSDClient.connect", () => {
@@ -200,7 +219,7 @@ describe("VSDPlatformAdapter", () => {
 
       expect(client.onActionEvent).toHaveBeenCalledTimes(8);
 
-      const registeredEvents = client.onActionEvent.mock.calls.map((call: [string, string, unknown]) => call[1]);
+      const registeredEvents = actionEventCalls().map((call) => call[1]);
       expect(registeredEvents).toContain("willAppear");
       expect(registeredEvents).toContain("willDisappear");
       expect(registeredEvents).toContain("didReceiveSettings");
@@ -226,11 +245,9 @@ describe("VSDPlatformAdapter", () => {
       };
       adapter.registerAction("com.test.action", handler);
 
-      const willAppearCall = client.onActionEvent.mock.calls.find(
-        (call: [string, string, unknown]) => call[1] === "willAppear",
-      );
+      const willAppearCall = actionEventHandler("willAppear");
 
-      await willAppearCall[2]({
+      await willAppearCall({
         event: "willAppear",
         action: "com.test.action",
         context: "ctx-123",
@@ -249,11 +266,9 @@ describe("VSDPlatformAdapter", () => {
       };
       adapter.registerAction("com.test.action", handler);
 
-      const keyDownCall = client.onActionEvent.mock.calls.find(
-        (call: [string, string, unknown]) => call[1] === "keyDown",
-      );
+      const keyDownCall = actionEventHandler("keyDown");
 
-      await keyDownCall[2]({
+      await keyDownCall({
         event: "keyDown",
         action: "com.test.action",
         context: "ctx-456",
@@ -271,11 +286,9 @@ describe("VSDPlatformAdapter", () => {
       };
       adapter.registerAction("com.test.action", handler);
 
-      const dialRotateCall = client.onActionEvent.mock.calls.find(
-        (call: [string, string, unknown]) => call[1] === "dialRotate",
-      );
+      const dialRotateCall = actionEventHandler("dialRotate");
 
-      await dialRotateCall[2]({
+      await dialRotateCall({
         event: "dialRotate",
         action: "com.test.action",
         context: "ctx-789",
@@ -295,11 +308,9 @@ describe("VSDPlatformAdapter", () => {
       };
       adapter.registerAction("com.test.action", handler);
 
-      const dialRotateCall = client.onActionEvent.mock.calls.find(
-        (call: [string, string, unknown]) => call[1] === "dialRotate",
-      );
+      const dialRotateCall = actionEventHandler("dialRotate");
 
-      await dialRotateCall[2]({
+      await dialRotateCall({
         event: "dialRotate",
         action: "com.test.action",
         context: "ctx-789",
@@ -316,11 +327,9 @@ describe("VSDPlatformAdapter", () => {
       };
       adapter.registerAction("com.test.action", handler);
 
-      const disappearCall = client.onActionEvent.mock.calls.find(
-        (call: [string, string, unknown]) => call[1] === "willDisappear",
-      );
+      const disappearCall = actionEventHandler("willDisappear");
 
-      await disappearCall[2]({
+      await disappearCall({
         event: "willDisappear",
         action: "com.test.action",
         context: "ctx-gone",
@@ -345,16 +354,16 @@ describe("VSDPlatformAdapter", () => {
       const callOrder: string[] = [];
       const broadcastCb = vi.fn(() => callOrder.push("broadcast"));
       const handler: IDeckActionHandler = {
-        onKeyDown: vi.fn(async () => callOrder.push("handler")),
+        onKeyDown: vi.fn(async () => {
+          callOrder.push("handler");
+        }),
       };
 
       adapter.onKeyDown(broadcastCb);
       adapter.registerAction("com.test.action", handler);
 
-      const keyDownCall = client.onActionEvent.mock.calls.find(
-        (call: [string, string, unknown]) => call[1] === "keyDown",
-      );
-      await keyDownCall[2]({
+      const keyDownCall = actionEventHandler("keyDown");
+      await keyDownCall({
         event: "keyDown",
         action: "com.test.action",
         context: "ctx",
@@ -368,16 +377,16 @@ describe("VSDPlatformAdapter", () => {
       const callOrder: string[] = [];
       const broadcastCb = vi.fn(() => callOrder.push("broadcast"));
       const handler: IDeckActionHandler = {
-        onDialRotate: vi.fn(async () => callOrder.push("handler")),
+        onDialRotate: vi.fn(async () => {
+          callOrder.push("handler");
+        }),
       };
 
       adapter.onDialRotate(broadcastCb);
       adapter.registerAction("com.test.action", handler);
 
-      const dialRotateCall = client.onActionEvent.mock.calls.find(
-        (call: [string, string, unknown]) => call[1] === "dialRotate",
-      );
-      await dialRotateCall[2]({
+      const dialRotateCall = actionEventHandler("dialRotate");
+      await dialRotateCall({
         event: "dialRotate",
         action: "com.test.action",
         context: "ctx",
@@ -391,16 +400,16 @@ describe("VSDPlatformAdapter", () => {
       const callOrder: string[] = [];
       const broadcastCb = vi.fn(() => callOrder.push("broadcast"));
       const handler: IDeckActionHandler = {
-        onDialDown: vi.fn(async () => callOrder.push("handler")),
+        onDialDown: vi.fn(async () => {
+          callOrder.push("handler");
+        }),
       };
 
       adapter.onDialDown(broadcastCb);
       adapter.registerAction("com.test.action", handler);
 
-      const dialDownCall = client.onActionEvent.mock.calls.find(
-        (call: [string, string, unknown]) => call[1] === "dialDown",
-      );
-      await dialDownCall[2]({
+      const dialDownCall = actionEventHandler("dialDown");
+      await dialDownCall({
         event: "dialDown",
         action: "com.test.action",
         context: "ctx",
@@ -418,10 +427,8 @@ describe("VSDPlatformAdapter", () => {
       };
       adapter.registerAction("com.test.action", handler);
 
-      const willAppearCall = client.onActionEvent.mock.calls.find(
-        (call: [string, string, unknown]) => call[1] === "willAppear",
-      );
-      await willAppearCall[2]({
+      const willAppearCall = actionEventHandler("willAppear");
+      await willAppearCall({
         event: "willAppear",
         action: "com.test.action",
         context: "ctx-img",
@@ -440,10 +447,8 @@ describe("VSDPlatformAdapter", () => {
       };
       adapter.registerAction("com.test.action", handler);
 
-      const willAppearCall = client.onActionEvent.mock.calls.find(
-        (call: [string, string, unknown]) => call[1] === "willAppear",
-      );
-      await willAppearCall[2]({
+      const willAppearCall = actionEventHandler("willAppear");
+      await willAppearCall({
         event: "willAppear",
         action: "com.test.action",
         context: "ctx-title",
@@ -462,10 +467,8 @@ describe("VSDPlatformAdapter", () => {
       };
       adapter.registerAction("com.test.action", handler);
 
-      const willAppearCall = client.onActionEvent.mock.calls.find(
-        (call: [string, string, unknown]) => call[1] === "willAppear",
-      );
-      await willAppearCall[2]({
+      const willAppearCall = actionEventHandler("willAppear");
+      await willAppearCall({
         event: "willAppear",
         action: "com.test.action",
         context: "ctx-key",
@@ -482,10 +485,8 @@ describe("VSDPlatformAdapter", () => {
       };
       adapter.registerAction("com.test.action", handler);
 
-      const willAppearCall = client.onActionEvent.mock.calls.find(
-        (call: [string, string, unknown]) => call[1] === "willAppear",
-      );
-      await willAppearCall[2]({
+      const willAppearCall = actionEventHandler("willAppear");
+      await willAppearCall({
         event: "willAppear",
         action: "com.test.action",
         context: "ctx-knob",
@@ -502,10 +503,8 @@ describe("VSDPlatformAdapter", () => {
       };
       adapter.registerAction("com.test.action", handler);
 
-      const willAppearCall = client.onActionEvent.mock.calls.find(
-        (call: [string, string, unknown]) => call[1] === "willAppear",
-      );
-      await willAppearCall[2]({
+      const willAppearCall = actionEventHandler("willAppear");
+      await willAppearCall({
         event: "willAppear",
         action: "com.test.action",
         context: "ctx-info",
@@ -522,10 +521,8 @@ describe("VSDPlatformAdapter", () => {
       };
       adapter.registerAction("com.test.action", handler);
 
-      const willAppearCall = client.onActionEvent.mock.calls.find(
-        (call: [string, string, unknown]) => call[1] === "willAppear",
-      );
-      await willAppearCall[2]({
+      const willAppearCall = actionEventHandler("willAppear");
+      await willAppearCall({
         event: "willAppear",
         action: "com.test.action",
         context: "ctx",
@@ -578,10 +575,8 @@ describe("VSDPlatformAdapter", () => {
       const handler: IDeckActionHandler = { onWillAppear: vi.fn() };
       adapter.registerAction("com.test.action", handler);
 
-      const willAppearCall = client.onActionEvent.mock.calls.find(
-        (call: [string, string, unknown]) => call[1] === "willAppear",
-      );
-      await willAppearCall[2]({
+      const willAppearCall = actionEventHandler("willAppear");
+      await willAppearCall({
         event: "willAppear",
         action: "com.test.action",
         context,
