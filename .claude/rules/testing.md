@@ -16,12 +16,16 @@ pnpm typecheck              # the type gate: tsc --noEmit per package (#987)
 
 `pnpm test` does not typecheck: Vitest transforms through esbuild, which strips types without checking them. Neither did `pnpm build`, for the rollup-built packages — that gap is what #987 closed. `pnpm typecheck` is the explicit gate; its turbo task declares `dependsOn: ["^build"]` because packages resolve each other's types through emitted `dist/`, so it builds what it needs and needs no separate build step first.
 
-**What it does not reach**, so nobody mistakes a green run for full coverage. `scripts/typecheck-script-coverage.test.mjs` guarantees every package with a `tsconfig.json` is in the gate; it cannot speak for the rest:
+**What it does not reach**, so nobody mistakes a green run for full coverage. `scripts/typecheck-script-coverage.test.mjs` discovers packages by "has TypeScript at all", **not** by having a `tsconfig.json` — keying it on the config was the shortcut that let three packages escape as absences rather than as exclusions. Every package is now in the gate, and one documented gap remains:
 
-- **Packages with no `tsconfig.json`** — `iracing-actions`, `audio-assets`, `icons`. `iracing-actions` is the significant one: its sources are checked only incidentally, by being pulled into the three plugin programs, and its test files are checked by nothing. Tracked in #1078.
-- **Tests excluded by a package's own config** — `deck-adapter-mirabox` and `deck-adapter-ulanzi` both set `"exclude": ["src/**/*.test.ts"]`, so their typecheck covers no test file. `deck-adapter-elgato` has no such exclude, so the three siblings are not consistent. Tracked in #1078.
+- **`iracing-actions` test files.** Its 160 sources are checked (#1078 gave the package a `tsconfig.json`, plus the `svg.d.ts` / `platform-features.d.ts` ambient declarations its program needs), but its tsconfig still sets `"exclude": ["src/**/*.test.ts"]`. Removing that exclusion surfaced **541 errors across 34 test files** when measured on 2026-09-01 — dominated by partial settings literals passed where the full parsed settings type is required (386 `TS2345`) and tests reaching `protected` members (70 `TS2445`). Tracked in #1078; the size is recorded in `TYPECHECK_EXCLUDES_TESTS` as a dated measurement, which nothing re-verifies.
 
-Both gaps predate #987 and it does not widen them; they are recorded here because a gate is only useful if its edges are known.
+Two things worth knowing about the gate's shape rather than its edges:
+
+- **The website is checked by `astro check`, not `tsc`** (#1077). Plain `tsc` cannot check an Astro project. Its `typecheck` script therefore runs the same two generators its `build` does before checking, because `src/data/icon-gallery.json` is gitignored and is imported by `routeData.ts` and `IconGallery.astro` — without them the script passes locally and fails on every fresh clone.
+- **For `deck-adapter-mirabox` and `deck-adapter-ulanzi`, `build` and `typecheck` share one config.** Both build with bare `tsc`, so the test exclusion #1078 removed had been keeping test files out of `dist/` as well as out of the gate; their `dist/` now contains compiled tests, matching the 13 other packages that already did.
+
+These gaps predate #987 and it did not widen them; they are recorded here because a gate is only useful if its edges are known.
 
 ## Root `vitest.config.ts` — native config loader
 
