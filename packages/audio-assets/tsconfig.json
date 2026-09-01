@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    // These sources are executed by `tsx`, never compiled, so they import each
+    // other with explicit `.ts` extensions. Permitted here because `noEmit` is
+    // on — nothing rewrites these specifiers, so they must stay as written.
+    "allowImportingTsExtensions": true,
+    // `manifest.test.ts` imports the untyped `scripts/generate-audio-manifest.mjs`.
+    // `checkJs` stays off (the base does not enable it), so this gives inference
+    // from the JavaScript without type-checking its contents.
+    "allowJs": true
+  },
+  "include": ["src/**/*"]
+}
