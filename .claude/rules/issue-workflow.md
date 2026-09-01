@@ -20,8 +20,9 @@ If you are picking up an issue, read this first.
 | 8   | Manual testing                                             | **blocks the PR**       | below                                                                       |
 | 9   | Push, open the PR                                          | —                       | `@.claude/rules/build-and-commit.md`                                        |
 | 10  | Babysit the review                                         | every thread answered   | below                                                                       |
-| 11  | Merge                                                      | approved + checks green | `@.claude/rules/build-and-commit.md`                                        |
-| 12  | Remove the worktree                                        | —                       | `@.claude/rules/build-and-commit.md`                                        |
+| 11  | Merge                                                      | approved + checks green **at the current head** | `@.claude/rules/build-and-commit.md`                    |
+| 12  | Watch **all four** post-merge runs to completion           | a red result goes to the coordinator            | below                                                   |
+| 13  | Remove the worktree                                        | —                                               | `@.claude/rules/build-and-commit.md`                    |
 
 ## Why these gates exist
 
@@ -46,6 +47,8 @@ Settled by the maintainer: an issue is solved in a sibling worktree, never insid
 **Assume nothing is watching, confirm, then run everything yourself.** The repo does ship watchers and one may be running against a linked worktree, so check before firing a full build into a tree something else is writing.
 
 The green set is the CI set plus the pre-commit checks: `install`, `build`, `typecheck`, `format`, `lint`, `test`. CI runs format, lint and test as **separate** jobs, so a clean `lint` proves nothing about `format`. Read the build output rather than its exit code — `@.claude/rules/build-and-commit.md` explains why that distinction bites here.
+
+**A green PR check is not a statement about the merged result.** It proves something about your branch merged against the master that existed when the check ran. Under squash-merge the commit that lands is a tree nothing has ever built or tested, and when two PRs are in flight the gap opens silently — both green, the merge textually clean, and nothing red anywhere to notice. Since #1070 all four CI workflows also run on pushes to `master` and `release/*`, so the merged result is checked too — but *after* the merge, not before it. That is what step 12 is for.
 
 ### If a user can see it, the website describes it (6)
 
@@ -87,6 +90,20 @@ One trap with no other home: `gh pr checks` exits non-zero (8) while any check i
 
 Once CodeRabbit has approved and the checks are green, **the agent driving the work merges** — the maintainer is not a second reviewer to wait for. A *review* step never merges; that separation is what `@.claude/rules/build-and-commit.md` protects, and it owns the merge mechanics.
 
+**An approval and a green check are both head-specific, and both are re-verified at the moment of merging.** Neither travels with the branch — a push invalidates both, while the PR still displays the old approval beside the new head. Compare the approving review's `commit_id` against the PR's `headRefOid`, and read the check states for that same sha. What a stale read looks like is not an obvious error: it is a *real* approval and a *real* all-green that belong to the previous head. The PR's own `mergeStateStatus` is a cheap cross-check — `BLOCKED` while you believe everything is green means you are reading the wrong head. And `gh pr checks` exits non-zero (8) while anything is still pending, so treat that exit as "not finished", never as "failed".
+
 Issue work reaches a target branch only through an approved PR. Two documented paths do not: a maintainer-directed **Master** work mode, and a release **back-merge**. Neither is an excuse to skip the PR on issue work.
+
+### The merge is not finished until the post-merge run is (12)
+
+Since #1070 every CI workflow also runs on pushes to `master` and `release/*` — the only thing that ever checks the tree a squash-merge actually produces. That signal is worth nothing if nobody is looking at it, which is how a new check gets added and quietly ignored.
+
+**Niklas owns a red master.** The agent that merged is the instrument that watches and reports; it does not own the outcome and does not decide what to do about one.
+
+- **Whoever merges watches all four runs to completion.** `ci-format`, `ci-lint`, `ci-test` and `ci-typecheck` are four separate workflows on the same push, so one green run answers for one of them and nothing else — and the first thing to check is that all four appeared at all. Pressing the merge button does not end the step.
+- **A red result goes to the coordinator immediately, and the coordinator takes it to Niklas.** No agent decides on its own to fix it, revert it, or let it stand.
+- **If the merging session ends before the run finishes, the watch passes to the coordinator** — the one party that outlives a worker session.
+
+There is deliberately no flake caveat here. Measured on 2026-09-01, the last 60 `ci-test` runs were 58 successes, one `action_required`, and one genuine test failure on a development branch — first attempt, fixed by later commits rather than by a re-run. On that evidence a red run means something, so treat one as real until shown otherwise, not the other way round.
 
 Then remove the worktree — and if a deck host is linked to it, relink to `master` first, or you will silently break the maintainer's installed plugin.
