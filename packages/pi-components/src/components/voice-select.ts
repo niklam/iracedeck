@@ -181,8 +181,8 @@ export class VoiceSelect extends HTMLElement {
     }
 
     // Saved value isn't in the list (cold start with no preference, or a voice
-    // was removed). Show the first available voice either way.
-    const fallback = this.select.options[0].value;
+    // was removed). Show the fallback either way.
+    const fallback = this.resolveFallback();
     this.select.value = fallback;
 
     if (!this.voicesLoaded) return;
@@ -195,9 +195,9 @@ export class VoiceSelect extends HTMLElement {
     // fallback then overwrites their choice permanently — one press of Rescan,
     // and putting the pack back does not bring it back.
     //
-    // The plugin already resolves this the read-only way:
-    // `resolveActiveRaceEngineerVoice` falls back to the first available voice
-    // and never writes, so what plays is right regardless. Leaving the setting
+    // The plugin already resolves this the read-only way — its
+    // `resolveActiveRaceEngineerVoice` applies the same preference order and
+    // never writes — so what plays is right regardless. Leaving the setting
     // alone keeps the two in agreement and restores the user's voice for free
     // when the pack returns — and `plugin.ts` states this same policy in as many
     // words for a stale audio device: "We do NOT rewrite the persisted setting".
@@ -205,6 +205,29 @@ export class VoiceSelect extends HTMLElement {
       this.savedValue = fallback;
       this.saveToStreamDeck?.(fallback);
     }
+  }
+
+  /**
+   * The `default` attribute's voice when the list has it, otherwise the first
+   * entry — the same order `resolveActiveRaceEngineerVoice` applies in the
+   * plugin, so the dropdown and what actually plays never disagree.
+   *
+   * The anchor is why an installed pack cannot become somebody's engineer just
+   * by sorting first (issue #1034); without it, both halves fell to
+   * `options[0]`, which a pack named `aria` wins.
+   */
+  private resolveFallback(): string {
+    if (!this.select) return "";
+
+    const preferred = this.getAttribute("default") ?? "";
+
+    if (preferred.length > 0) {
+      const match = Array.from(this.select.options).find((opt) => opt.value === preferred);
+
+      if (match) return match.value;
+    }
+
+    return this.select.options[0].value;
   }
 }
 

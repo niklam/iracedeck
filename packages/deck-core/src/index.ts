@@ -164,6 +164,7 @@ export {
   getSettingsStoreSource,
   type SettingsStoreSource,
   hostMirrorPayload,
+  DEFAULT_RACE_ENGINEER_VOICE,
   resolveActiveDriverName,
   resolveActiveRaceEngineerVoice,
   sameValue,

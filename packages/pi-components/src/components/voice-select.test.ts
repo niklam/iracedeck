@@ -62,6 +62,39 @@ describe("ird-voice-select", () => {
     expect(save()).toHaveBeenCalledWith("default");
   });
 
+  describe("the default anchor (#1034)", () => {
+    // The dropdown's half of `resolveActiveRaceEngineerVoice`'s anchor. Without
+    // it both fell to the first option, which a pack named `aria` wins — and the
+    // dropdown would then disagree with what the plugin actually plays.
+
+    beforeEach(() => {
+      el.setAttribute("default", "default");
+    });
+
+    it("shows the default voice rather than an alphabetically earlier pack", () => {
+      publishChoice("");
+      publishVoices(["aria", "default"]);
+
+      expect(selected()).toBe("default");
+      expect(save()).toHaveBeenCalledWith("default");
+    });
+
+    it("falls through to the first entry when the anchor is not installed", () => {
+      publishChoice("");
+      publishVoices(["aria", "zeta"]);
+
+      expect(selected()).toBe("aria");
+    });
+
+    it("never overrides a voice the user actually chose", () => {
+      publishChoice("aria");
+      publishVoices(["aria", "default"]);
+
+      expect(selected()).toBe("aria");
+      expect(save()).not.toHaveBeenCalled();
+    });
+  });
+
   describe("a voice that leaves the list (#1034)", () => {
     // The list became a function of what is on disk. A pack folder locked by a
     // sync client or an AV scanner is reported as a problem while the scan

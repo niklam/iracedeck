@@ -64,6 +64,15 @@ describe("race-engineer-settings voice packs (issue #1034)", () => {
     }
   });
 
+  it("anchors the voice dropdown to `default`, so an installed pack cannot win by sorting first", () => {
+    // The counterpart of `resolveActiveRaceEngineerVoice`'s anchor: without this
+    // attribute the dropdown falls to the first option and disagrees with what
+    // the plugin actually plays (issue #1034).
+    for (const locals of [{}, { settingsWindow: true }]) {
+      expect(render(locals)).toContain('voices="_raceEngineerVoices" default="default"');
+    }
+  });
+
   it("the settings window passes settingsWindow into THIS include, not just into the accordion", () => {
     // The nested-include scope trap: `content: include('x')` inside another
     // include's object literal is evaluated in the page's scope and inherits

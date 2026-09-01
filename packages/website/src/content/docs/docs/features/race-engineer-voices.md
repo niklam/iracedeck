@@ -3,7 +3,7 @@ title: Race Engineer Voices
 description: How Race Engineer voice packs work, where they are stored, how to install one by hand, and why they survive plugin updates.
 ---
 
-The Race Engineer speaks with a **voice pack** — a folder of recorded lines that iRaceDeck plays during a session. iRaceDeck ships with one, and you can install more.
+The Race Engineer speaks with a **voice pack** — a folder of recorded lines that iRaceDeck plays during a session. iRaceDeck comes with its own, and you can install more.
 
 Voice packs live **outside the plugin folder**, in your own AppData directory:
 
@@ -43,7 +43,7 @@ If you rescan and the voice does not appear, iRaceDeck ignored the pack — and 
 - **No audio in the pack** — the pack declares a voice but ships no clips for it.
 - **Clips iRaceDeck cannot play** — the pack has audio under the voice, but not where iRaceDeck looks for it. Clips must sit at `voice/<voice>/<group>/<name>.mp3` — one folder per group inside the voice folder — and the extension must be lowercase `.mp3`. A pack whose files are one level too shallow, or exported as `.MP3`, is refused with this reason rather than installing and then saying nothing.
 - **Another pack already provides that voice** — two packs cannot both supply the same voice. The one that comes first alphabetically wins and the other is ignored; rename or remove one of them.
-- **iRaceDeck already ships that voice** — a pack cannot take over a voice that comes bundled with the plugin. The bundled one always wins.
+- **iRaceDeck already includes that voice** — a pack cannot take over a voice that comes with the plugin. The included one always wins.
 
 ## Third-Party Voice Packs
 

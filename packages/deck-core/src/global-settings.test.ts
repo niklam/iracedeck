@@ -558,6 +558,44 @@ describe("resolveActiveRaceEngineerVoice", () => {
 
     expect(resolveActiveRaceEngineerVoice(["default"])).toBe("default");
   });
+
+  describe("an installed pack cannot become the engineer by sorting first (#1034)", () => {
+    it("prefers the default voice over an alphabetically earlier pack", () => {
+      // Nothing persisted: the user has never opened the dropdown, so their
+      // engineer is the default one and a pack is not entitled to displace it.
+      expect(resolveActiveRaceEngineerVoice(["aria", "default"])).toBe("default");
+    });
+
+    it("prefers it over a pack whose id sorts earlier than the persisted value's replacement", async () => {
+      await initWithStore({ raceEngineerVoice: "removed-voice" });
+
+      expect(resolveActiveRaceEngineerVoice(["aria", "default", "zeta"])).toBe("default");
+    });
+
+    it("still returns a pack the user actually chose", async () => {
+      await initWithStore({ raceEngineerVoice: "aria" });
+
+      expect(resolveActiveRaceEngineerVoice(["aria", "default"])).toBe("aria");
+    });
+
+    it("falls through to the first entry when the anchor itself is not installed", () => {
+      // A build or install whose manifest has no `default` voice — the release
+      // that stops bundling audio, or a packs-only install. Picking something
+      // the user can change beats going silent.
+      expect(resolveActiveRaceEngineerVoice(["aria", "zeta"])).toBe("aria");
+    });
+
+    it("honours an explicit anchor over the built-in one", () => {
+      expect(resolveActiveRaceEngineerVoice(["aria", "default", "zeta"], "zeta")).toBe("zeta");
+    });
+
+    it("is anchored by NAME, not by position — a second bundled voice does not move it (#999)", () => {
+      // `short-calls` arrives bundled alongside `default`. A rule phrased as
+      // "the first bundled voice" would have flipped the answer here.
+      expect(resolveActiveRaceEngineerVoice(["default", "short-calls"])).toBe("default");
+      expect(resolveActiveRaceEngineerVoice(["aria", "default", "short-calls"])).toBe("default");
+    });
+  });
 });
 
 describe("resolveActiveDriverName", () => {
