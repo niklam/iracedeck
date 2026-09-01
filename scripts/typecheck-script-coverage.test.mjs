@@ -469,9 +469,16 @@ describe("a package's typecheck covers its own test files", () => {
   // rather than a no-op. On a repo where every script is a plain `tsc -p`, this
   // block correctly disappears.
   if (measured.length > 0) {
-    it.each(measured)(
-      "proves by running its own typecheck that it checks its test files: %s",
-      (name) => {
+    // The case list carries the refusal reason so the test's own NAME says why
+    // this package took the expensive path. `TSC_VALUE_FLAGS` is deliberately
+    // incomplete (see above), so a package can move from derived to measured by
+    // someone adding a flag it does not list — and the only other symptom would
+    // be `pnpm test` getting ~8.5s slower with nothing saying why. Naming the
+    // reason cannot rot the way a pinned list of expected-measured packages
+    // would when a second legitimately non-`tsc` package arrives.
+    it.each(measured.map((name) => ({ name, why: deriveTypecheckConfig(typecheckScriptOf(name)).reason })))(
+      "proves coverage by running its own typecheck: $name (not statically derivable: $why)",
+      ({ name }) => {
         const pkgDir = join(repoRoot, "packages", name);
         const onDisk = testFilesOnDisk(pkgDir);
         if (onDisk.length === 0) return;
