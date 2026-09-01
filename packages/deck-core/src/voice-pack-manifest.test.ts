@@ -46,6 +46,20 @@ describe("parseVoicePackManifest", () => {
     expect(result.ok && result.manifest.voices[0].label).toBe("AAA Test Voice");
   });
 
+  it("accepts a manifest saved with a UTF-8 BOM", () => {
+    // Hand-editing this file on Windows is the advertised install path, and
+    // several Windows editors write a BOM. `JSON.parse` throws on one, so
+    // without this a pack correct in every visible way is refused with "not
+    // valid JSON" as the only clue. `settings-store.ts` strips one for exactly
+    // the same reason.
+    // Written as an escape, not a literal BOM: a literal one is invisible in a
+    // diff and an editor could silently strip the very thing under test.
+    const result = parseVoicePackManifest("\ufeff" + valid);
+
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.manifest.id).toBe("luca");
+  });
+
   it("ignores an unknown field rather than refusing the pack", () => {
     // `skipped` used to be reserved here for #1033. #1064's design moved
     // skipping into each voice's own script file, so the pack-level field was
