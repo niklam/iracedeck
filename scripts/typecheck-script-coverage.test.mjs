@@ -145,10 +145,28 @@ function runTypecheck(cwd) {
 // `vitest.config.ts` excludes this exact filename so an orphan is never collected.
 const PROBE_BASENAME = "__typecheck_coverage_probe__.test.ts";
 
+// The probe's types are string literals carrying distinctive markers, so a
+// checker that rejects it must quote them in its own diagnostic:
+//
+//   error ts(2322): Type '"__ird_probe_actual__"' is not assignable to
+//                   type '"__ird_probe_expected__"'.
+//
+// That is what lets the assertion below require evidence the checker PARSED AND
+// UNDERSTOOD the file rather than merely listed its path — a tool echoing its
+// input file list produces the filename and cannot produce the markers.
+//
+// It binds to no tool's output format: not error codes, not `line:col`, not a
+// file count. It relies only on a checker having to DESCRIBE a mismatch to be
+// useful, and with literal types the literal values ARE the types. A checker
+// that reported errors without naming types would turn this red rather than
+// green, which is the direction a wrong assumption here has to fail in.
+const PROBE_EXPECTED_MARKER = "__ird_probe_expected__";
+const PROBE_ACTUAL_MARKER = "__ird_probe_actual__";
+
 const PROBE_SOURCE = `// TEMPORARY file written by scripts/typecheck-script-coverage.test.mjs.
 // It is deleted in a \`finally\`. If you are reading this in your working tree,
 // that run crashed — delete it. It is untracked and means nothing on its own.
-const probe: number = "deliberately not a number";
+const probe: "${PROBE_EXPECTED_MARKER}" = "${PROBE_ACTUAL_MARKER}";
 export default probe;
 `;
 
@@ -427,6 +445,21 @@ describe("a package's typecheck covers its own test files", () => {
               `${PROBE_BASENAME} — so the failure cannot be attributed to the probe and proves ` +
               `nothing about coverage. Output:\n${probed.output}`,
           ).toContain(PROBE_BASENAME);
+
+          // Naming the file is not enough on its own: a tool that echoed its
+          // input file list would satisfy it while having checked nothing. The
+          // markers only appear if the checker read the probe's types and
+          // described the mismatch, so requiring them is the difference between
+          // "the probe was listed" and "the probe was understood".
+          for (const marker of [PROBE_EXPECTED_MARKER, PROBE_ACTUAL_MARKER]) {
+            expect(
+              probed.output,
+              `packages/${name}'s typecheck named ${PROBE_BASENAME} but its output never quotes ` +
+                `${marker}, which a checker rejecting the probe's type mismatch would have to. ` +
+                `So the run saw the file without demonstrably checking it — that is not proof of ` +
+                `coverage. Output:\n${probed.output}`,
+            ).toContain(marker);
+          }
         } finally {
           rmSync(probePath, { force: true });
         }
