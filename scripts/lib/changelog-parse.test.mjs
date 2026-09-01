@@ -343,12 +343,28 @@ Some trailing prose.
       }
     });
 
-    it("dates every released version, leaving only the in-development one undated", () => {
+    it("dates every released version, leaving only the unshipped ones undated", () => {
       const { releases } = parseChangelog(source);
-      const undated = releases.filter((r) => r.date === null).map((r) => r.version);
 
-      // The in-development section plus `0.13.0`, which predates the convention.
-      expect(undated.length).toBeLessThanOrEqual(2);
+      // `0.13.0` predates the convention and is undated for good; carve it out
+      // rather than weakening the rule for everything above it.
+      const versioned = releases.filter((r) => r.version !== "0.13.0");
+      const undated = versioned.filter((r) => r.date === null).map((r) => r.version);
+
+      // Normally one: the in-development section. Two while a release branch is
+      // cut and not yet released — master is bumped to the next dev version the
+      // moment the branch is made, so the branched version keeps its
+      // `_Unreleased_` line here until its own release stamps it and back-merges
+      // the date. Anything beyond that is a section nobody dated.
+      expect(undated.length, `undated: ${undated.join(", ")}`).toBeLessThanOrEqual(2);
+
+      // The real guard, and the half that catches a forgotten date: undated
+      // sections are the NEWEST ones. A dated release above an undated one means
+      // an older section lost its date, which no release-in-flight can explain.
+      const firstDated = versioned.findIndex((r) => r.date !== null);
+      const strays = versioned.slice(firstDated + 1).filter((r) => r.date === null);
+
+      expect(strays.map((r) => r.version)).toEqual([]);
     });
   });
 });
