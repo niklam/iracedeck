@@ -18,6 +18,13 @@ const SIM_POINTER_TARGET = "../../../deck-core/src/sim-pointer-target.js";
 // roughly one run in five — a non-zero exit that silently drops the worker's
 // tests. `sim-pointer-target.ts` itself has zero imports, so importing it
 // directly runs the same real code with none of that graph.
+//
+// Since #1084 the suite sets `IRACEDECK_MOCK=1`, so no worker loads the addon
+// and that crash path is not reachable from a test any more. This workaround is
+// therefore belt-and-braces rather than load-bearing HERE — it is kept because
+// the hazard it describes is still real for non-test consumers, which is the
+// same reason `deck-core` declares its own `FocusResult`/`PointerMoveResult`
+// constants instead of importing them.
 vi.mock("@iracedeck/deck-core", async () => {
   const actual =
     await vi.importActual<typeof import("../../../deck-core/src/sim-pointer-target.js")>(SIM_POINTER_TARGET);

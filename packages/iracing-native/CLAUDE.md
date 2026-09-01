@@ -11,6 +11,7 @@ The package detects the platform at module load time and behaves accordingly:
 - **Windows (`win32`)**: Loads the native `.node` addon via `createRequire()`. If the addon is missing (e.g., fresh clone without `node-gyp rebuild`), falls back to the mock.
 - **Other platforms**: Skips native addon loading entirely and uses `IRacingNativeMock`.
 - **Force mock**: setting `IRACEDECK_MOCK=1` in the environment or creating a `.mock` file in the process cwd (the sdPlugin folder) forces the mock even on Windows — the same lever as `audio-native`.
+- **The test suite already sets it (#1084).** `vitest.config.ts` sets `test.env.IRACEDECK_MOCK`, so test **workers** — and any child process they spawn — never load this package's `.node`. The main Vitest process is NOT covered: `config.env` does not reach it, so a `globalSetup` or a Vite plugin importing a barrel would still load the addon — the addon is `require()`d in module scope, so importing even a plain enum such as `Flags` used to map the binary into a test worker. To exercise the real addon under test, set `IRACEDECK_REAL_NATIVE=1`; an external `IRACEDECK_MOCK=0` does not work, because the check is `!!process.env.IRACEDECK_MOCK`.
 
 The `IRacingNative` class delegates every method call to either `addon` (native) or `IRacingNativeMock`. Consumers never need to know which is active.
 

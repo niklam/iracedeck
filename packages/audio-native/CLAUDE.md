@@ -9,6 +9,7 @@ The package detects the platform at module load and behaves accordingly:
 - **Windows (`win32`)**: loads the native `.node` addon via `createRequire()`. If the addon is missing (e.g. fresh clone without `node-gyp rebuild`), falls back to the mock.
 - **Other platforms**: skips native addon loading entirely and uses `AudioNativeMock`.
 - **Force mock**: setting `IRACEDECK_MOCK=1` in the environment or creating a `.mock` file in the process cwd (the sdPlugin folder) forces the mock even on Windows.
+- **The test suite already sets it (#1084).** `vitest.config.ts` sets `test.env.IRACEDECK_MOCK`, so test **workers** — and any child process they spawn — never load this package's `.node`. The main Vitest process is not covered; see `iracing-native/CLAUDE.md` for why that matters. No test reaches this package today — every test import of it is type-only — but the lever covers both native packages. Use `IRACEDECK_REAL_NATIVE=1` to opt back in.
 
 The `AudioNative` class delegates every method call to either `addon` (native) or `AudioNativeMock`. Consumers never need to know which is active.
 
