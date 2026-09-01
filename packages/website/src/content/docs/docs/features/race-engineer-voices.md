@@ -38,8 +38,10 @@ The folder name must match the pack's own name — if a pack calls itself `luca`
 If you rescan and the voice does not appear, iRaceDeck ignored the pack — and it says so: the pack is listed under **Installed Voices** with the reason beside it. The same reason is written to the plugin log, at the normal logging level, so you do not need to turn anything on to find it there either. The usual causes:
 
 - **No `voice-pack.json`** — the folder is not a voice pack, or you copied the audio without the file that describes it.
+- **`voice-pack.json` could not be read** — the file is there, but something is holding it open or blocking access: a cloud-sync client still uploading it, an antivirus scanner, or a folder your account cannot read. The error code is shown with the message. Wait for the sync to finish, or check the folder's permissions, then rescan.
 - **The folder name does not match the pack's name** — rename the folder to match.
 - **No audio in the pack** — the pack declares a voice but ships no clips for it.
+- **Clips iRaceDeck cannot play** — the pack has audio under the voice, but not where iRaceDeck looks for it. Clips must sit at `voice/<voice>/<group>/<name>.mp3` — one folder per group inside the voice folder — and the extension must be lowercase `.mp3`. A pack whose files are one level too shallow, or exported as `.MP3`, is refused with this reason rather than installing and then saying nothing.
 - **Another pack already provides that voice** — two packs cannot both supply the same voice. The one that comes first alphabetically wins and the other is ignored; rename or remove one of them.
 - **iRaceDeck already ships that voice** — a pack cannot take over a voice that comes bundled with the plugin. The bundled one always wins.
 

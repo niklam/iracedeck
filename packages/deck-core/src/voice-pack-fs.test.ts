@@ -34,11 +34,26 @@ describe("createVoicePackFileSystem", () => {
     expect(fs().listDirectories(join(root, "nope"))).toEqual([]);
   });
 
-  it("reads a file and returns undefined for a missing one", () => {
+  it("reads a file, and reports a missing one as missing", () => {
     writeFileSync(join(root, "a.json"), "{}");
 
-    expect(fs().readTextFile(join(root, "a.json"))).toBe("{}");
-    expect(fs().readTextFile(join(root, "missing.json"))).toBeUndefined();
+    expect(fs().readTextFile(join(root, "a.json"))).toEqual({ ok: true, text: "{}" });
+    expect(fs().readTextFile(join(root, "missing.json"))).toEqual({ ok: false, missing: true, reason: "ENOENT" });
+  });
+
+  it("reports a manifest it cannot open as unreadable rather than missing", () => {
+    // A DIRECTORY named `voice-pack.json` is the reproducible case; a locked or
+    // permission-denied file takes the same path. The scanner turns `missing`
+    // into two different sentences, so getting this wrong tells a user their
+    // file is absent while they are looking at it.
+    mkdirSync(join(root, "voice-pack.json"));
+
+    const read = fs().readTextFile(join(root, "voice-pack.json"));
+
+    expect(read).toMatchObject({ ok: false, missing: false });
+    // Path-free: the reason is shown in the settings window and rides the deck
+    // host's settings copy, so only the errno travels.
+    expect((read as { reason: string }).reason).not.toContain(root);
   });
 
   it("walks mp3 files recursively as POSIX paths relative to the pack dir", () => {

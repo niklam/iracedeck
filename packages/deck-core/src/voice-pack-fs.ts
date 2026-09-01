@@ -40,17 +40,24 @@ export function createVoicePackFileSystem(logger: ILogger): VoicePackFileSystem 
 
     readTextFile(file) {
       try {
-        return readFileSync(file, "utf-8");
+        return { ok: true, text: readFileSync(file, "utf-8") };
       } catch (err) {
-        // The scanner turns `undefined` into "no voice-pack.json", which is the
-        // truth for ENOENT and a lie for anything else — a permission error, a
-        // directory of that name, a file another process holds. Log the real
-        // reason so a pack that is present but unreadable is diagnosable.
-        if ((err as NodeJS.ErrnoException | undefined)?.code !== "ENOENT") {
+        // "Missing" and "unreadable" are reported separately, because they need
+        // different words in front of a user: a permission error, a directory of
+        // that name, or a file another process holds is a pack iRaceDeck could
+        // not OPEN — not a folder that is no pack at all. Collapsing them told
+        // the user "no voice-pack.json" about a file sitting in front of them.
+        const code = (err as NodeJS.ErrnoException | undefined)?.code;
+        const missing = code === "ENOENT";
+
+        // The full message carries the absolute path, so it stays in the log. The
+        // reason handed back is the errno alone: it is shown in the settings
+        // window and rides the deck host's settings copy.
+        if (!missing) {
           logger.debug(`Voice packs: cannot read "${file}": ${err instanceof Error ? err.message : String(err)}`);
         }
 
-        return undefined;
+        return { ok: false, missing, reason: code ?? "unknown error" };
       }
     },
 

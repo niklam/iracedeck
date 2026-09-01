@@ -3,6 +3,21 @@ import { join } from "node:path";
 import { parseVoicePackManifest } from "./voice-pack-manifest.js";
 
 /**
+ * The outcome of reading a pack's manifest.
+ *
+ * `missing` is a separate fact from `ok`, because the two failures need
+ * different words in front of a user: a folder with no `voice-pack.json` is not
+ * a voice pack, while one whose manifest is locked, permission-denied, or is
+ * itself a directory IS a pack that iRaceDeck could not open. Collapsing both
+ * into `undefined` produced "no voice-pack.json" for a file the user can see
+ * sitting there, and sent them to the one paragraph of the docs that cannot
+ * help them.
+ */
+export type VoicePackFileRead =
+  | { ok: true; text: string }
+  | { ok: false; missing: boolean; /** Short, path-free: an errno code where there is one. */ reason: string };
+
+/**
  * The disk operations the scanner needs, and nothing more.
  *
  * Narrow on purpose: the scan logic is then a pure function of this port, so its
@@ -13,8 +28,8 @@ import { parseVoicePackManifest } from "./voice-pack-manifest.js";
 export interface VoicePackFileSystem {
   /** Immediate subdirectory names of `dir`; empty when `dir` does not exist. */
   listDirectories(dir: string): readonly string[];
-  /** File contents, or `undefined` when missing or unreadable. */
-  readTextFile(file: string): string | undefined;
+  /** File contents, or why they could not be read. */
+  readTextFile(file: string): VoicePackFileRead;
   /** Every `.mp3` under `packDir`, recursive, as POSIX paths relative to `packDir`. */
   listMp3Files(packDir: string): readonly string[];
 }
@@ -47,8 +62,13 @@ export interface ScanVoicePacksOptions {
    * only ever add EXTRA variants into that voice's pools — a half-merged voice
    * nobody asked for, and one that would change how the bundled engineer sounds
    * without appearing anywhere as a new voice.
+   *
+   * REQUIRED, not optional with an empty default. Its failure mode is accepting
+   * rather than refusing: a caller that simply omitted it would type-check, log
+   * nothing, and let a pack claim `default`. Pass `[]` deliberately when there is
+   * genuinely no bundled audio to protect.
    */
-  reservedVoices?: readonly string[];
+  reservedVoices: readonly string[];
 }
 
 export interface ScanVoicePacksResult {
@@ -57,6 +77,28 @@ export interface ScanVoicePacksResult {
 }
 
 const MANIFEST_FILE = "voice-pack.json";
+
+/**
+ * A clip the scenario engine can actually reach.
+ *
+ * Deliberately the SAME grammar `buildManifestPool` compiles —
+ * `^voice/<id>/<group>/<base>(-NN)?\.mp3$` — minus the per-pool group and base,
+ * because this is where the two are kept in agreement. Two ways a file under the
+ * right prefix is nonetheless unreachable, both of which a pack hits by accident:
+ *
+ * - **A missing `<group>` segment.** `voice/luca/sample.mp3` is one level short
+ *   of anything a pool can match, and no scenario references a clip that shape.
+ * - **A non-lowercase extension.** `listMp3Files` matches `.mp3` case-INSENSITIVELY
+ *   and records the name verbatim, which is right for finding files; the pool
+ *   regex and the `clipSet` lookup are both case-SENSITIVE. `blue-01.MP3` — what
+ *   plenty of Windows tools emit — would otherwise install, claim its voice and
+ *   play nothing.
+ *
+ * `VOICE_PACK_MAX_DEPTH` already reasons from this grammar for the depth CEILING.
+ * This is the same reasoning applied to the floor and to the extension, so a pack
+ * that cannot work is refused with a reason instead of being silently mute.
+ */
+const USABLE_CLIP = /^voice\/[^/]+\/[^/]+\/[^/]+\.mp3$/;
 
 /**
  * Read every pack under `root` (issue #1034).
@@ -69,7 +111,7 @@ const MANIFEST_FILE = "voice-pack.json";
  * Folders are visited in sorted order, which makes the winner of a voice
  * collision deterministic rather than dependent on directory-listing order.
  */
-export function scanVoicePacks({ root, fs, reservedVoices = [] }: ScanVoicePacksOptions): ScanVoicePacksResult {
+export function scanVoicePacks({ root, fs, reservedVoices }: ScanVoicePacksOptions): ScanVoicePacksResult {
   const packs: InstalledVoicePack[] = [];
   const problems: VoicePackProblem[] = [];
   const claimedVoices = new Map<string, string>();
@@ -81,14 +123,17 @@ export function scanVoicePacks({ root, fs, reservedVoices = [] }: ScanVoicePacks
     if (folder.startsWith(".")) continue;
 
     const dir = join(root, folder);
-    const raw = fs.readTextFile(join(dir, MANIFEST_FILE));
+    const read = fs.readTextFile(join(dir, MANIFEST_FILE));
 
-    if (raw === undefined) {
-      problems.push({ pack: folder, reason: `no ${MANIFEST_FILE}` });
+    if (!read.ok) {
+      problems.push({
+        pack: folder,
+        reason: read.missing ? `no ${MANIFEST_FILE}` : `${MANIFEST_FILE} could not be read (${read.reason})`,
+      });
       continue;
     }
 
-    const parsed = parseVoicePackManifest(raw);
+    const parsed = parseVoicePackManifest(read.text);
 
     if (!parsed.ok) {
       problems.push({ pack: folder, reason: parsed.reason });
@@ -100,7 +145,15 @@ export function scanVoicePacks({ root, fs, reservedVoices = [] }: ScanVoicePacks
     // The folder name is how a pack is addressed on disk, so a mismatch would
     // make "the pack called luca" and "the folder called luca" two different
     // things — an ambiguity the installer would later have to guess about.
-    if (manifest.id !== folder) {
+    //
+    // Compared case-INSENSITIVELY, because the filesystem underneath is. The id
+    // regex forces lowercase but a folder name never goes through it, so `Luca/`
+    // holding `"id": "luca"` would otherwise be refused — on Windows, the only
+    // platform the manifests declare (#994), those ARE one directory: the user
+    // cannot create both, and the manifest was just read through the capitalised
+    // path. Refusing it would reject a working pack over a distinction the OS
+    // does not make, with a message that reads as satisfied.
+    if (manifest.id !== folder.toLowerCase()) {
       problems.push({ pack: folder, reason: `declared id "${manifest.id}" does not match its folder name` });
       continue;
     }
@@ -133,25 +186,42 @@ export function scanVoicePacks({ root, fs, reservedVoices = [] }: ScanVoicePacks
     // voice but ships nothing under it would register an empty pool for every
     // callout — at runtime indistinguishable from a missing clip — and, worse,
     // would CLAIM that voice, locking out a later pack that really has it.
+    //
+    // "Ships something" means something the ENGINE CAN REACH, not merely a file
+    // under the right prefix — see USABLE_CLIP. A gate looser than what the pool
+    // builder consumes lets a pack install cleanly, claim its voice, enter the
+    // dropdown and then be completely silent, with the only trace at debug level.
     const found = fs.listMp3Files(dir);
     const voices: string[] = [];
     const clips: string[] = [];
-    const empty: string[] = [];
+    const unusable: string[] = [];
 
     for (const voice of declared) {
       const prefix = `voice/${voice}/`;
       const own = found.filter((clip) => clip.startsWith(prefix));
+      const usable = own.filter((clip) => USABLE_CLIP.test(clip));
 
-      if (own.length === 0) {
-        empty.push(prefix);
+      if (usable.length === 0) {
+        unusable.push(
+          own.length === 0
+            ? `no clips found under ${prefix}`
+            : `${prefix} has ${own.length === 1 ? "a file" : "files"} the engine cannot play — clips must be ` +
+                `${prefix}<group>/<name>.mp3, with a lowercase .mp3 extension`,
+        );
         continue;
       }
 
       voices.push(voice);
-      clips.push(...own);
+
+      // Appended one at a time rather than spread: `usable` is derived from a
+      // directory walk that caps DEPTH but not breadth, and a spread past V8's
+      // argument limit throws a RangeError that this function does not catch —
+      // costing every pack, which is exactly what the contract above promises
+      // cannot happen for one bad folder.
+      for (const clip of usable) clips.push(clip);
     }
 
-    if (empty.length > 0) problems.push({ pack: folder, reason: `no clips found under ${empty.join(", ")}` });
+    if (unusable.length > 0) problems.push({ pack: folder, reason: unusable.join("; ") });
 
     if (voices.length === 0) continue;
 
