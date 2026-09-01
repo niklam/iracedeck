@@ -51,6 +51,13 @@ describe("UlanziPlatformAdapter", () => {
   // (#1078). The tuple shape and the "was it actually registered?" check now
   // live here once, and a missing registration fails with a real message
   // instead of a `cannot read property of undefined`.
+  //
+  // Scope: `onActionEvent` only. The `onGlobalEvent` lookups further down still
+  // index their result directly, so they keep that failure mode. They are left
+  // alone deliberately rather than overlooked — they type-check as they are, and
+  // converting them is not mechanical: the mirabox ones select by POSITION
+  // (`mock.calls[0][1]`), so each would need its intended event named, which is a
+  // change to what the test asserts rather than to how it reads it.
   type ActionEventCall = [uuid: string, event: string, handler: UlanziEventHandler];
 
   const actionEventCalls = (): ActionEventCall[] => client.onActionEvent.mock.calls as ActionEventCall[];
@@ -334,7 +341,7 @@ describe("UlanziPlatformAdapter", () => {
       const handler: IDeckActionHandler = {};
       adapter.registerAction("com.test.my-action", handler);
 
-      for (const call of client.onActionEvent.mock.calls) {
+      for (const call of actionEventCalls()) {
         expect(call[0]).toBe("com.test.my-action");
       }
     });
@@ -438,17 +445,16 @@ describe("UlanziPlatformAdapter", () => {
     it("reflects the tracked controller type in willDisappear isKey()", async () => {
       const handler: IDeckActionHandler = { onWillAppear: vi.fn(), onWillDisappear: vi.fn() };
       adapter.registerAction("com.test.action", handler);
-      const find = (event: string) => actionEventHandler(event);
 
       // willAppear tracks the Encoder controller for this context...
-      await find("willAppear")({
+      await actionEventHandler("willAppear")({
         event: "willAppear",
         action: "com.test.action",
         context: "ctx",
         payload: { settings: {}, controller: "Encoder" },
       });
       // ...so willDisappear's isKey() reflects it (Encoder → not a key).
-      await find("willDisappear")({
+      await actionEventHandler("willDisappear")({
         event: "willDisappear",
         action: "com.test.action",
         context: "ctx",
@@ -466,16 +472,15 @@ describe("UlanziPlatformAdapter", () => {
         onKeyDown: vi.fn(),
       };
       adapter.registerAction("com.test.action", handler);
-      const find = (event: string) => actionEventHandler(event);
 
-      await find("willAppear")({
+      await actionEventHandler("willAppear")({
         event: "willAppear",
         action: "com.test.action",
         context: "ctx",
         payload: { settings: {}, controller: "Encoder" },
       });
       await expect(
-        find("willDisappear")({
+        actionEventHandler("willDisappear")({
           event: "willDisappear",
           action: "com.test.action",
           context: "ctx",
@@ -485,7 +490,7 @@ describe("UlanziPlatformAdapter", () => {
 
       // The finally cleared the cache → a later event for the same context defaults to
       // Keypad (it would still report Encoder if cleanup were skipped on throw).
-      await find("keyDown")({
+      await actionEventHandler("keyDown")({
         event: "keyDown",
         action: "com.test.action",
         context: "ctx",

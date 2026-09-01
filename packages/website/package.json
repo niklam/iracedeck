@@ -10,7 +10,7 @@
     "generate:gallery": "tsx scripts/generate-icon-gallery.mts",
     "generate:changelog-json": "node scripts/generate-changelog-json.mjs",
     "preview": "astro preview",
-    "typecheck": "pnpm generate:gallery && pnpm generate:changelog-json && astro check",
+    "typecheck": "pnpm generate:gallery && astro check",
     "deploy": "pnpm build && firebase deploy --only hosting"
   },
   "dependencies": {

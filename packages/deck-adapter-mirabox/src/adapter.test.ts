@@ -50,6 +50,13 @@ describe("VSDPlatformAdapter", () => {
   // (#1078). The tuple shape and the "was it actually registered?" check now
   // live here once, and a missing registration fails with a real message
   // instead of a `cannot read property of undefined`.
+  //
+  // Scope: `onActionEvent` only. The `onGlobalEvent` lookups further down still
+  // index their result directly, so they keep that failure mode. They are left
+  // alone deliberately rather than overlooked — they type-check as they are, and
+  // converting them is not mechanical: the mirabox ones select by POSITION
+  // (`mock.calls[0][1]`), so each would need its intended event named, which is a
+  // change to what the test asserts rather than to how it reads it.
   type ActionEventCall = [uuid: string, event: string, handler: VSDEventHandler];
 
   const actionEventCalls = (): ActionEventCall[] => client.onActionEvent.mock.calls as ActionEventCall[];
@@ -234,7 +241,7 @@ describe("VSDPlatformAdapter", () => {
       const handler: IDeckActionHandler = {};
       adapter.registerAction("com.test.my-action", handler);
 
-      for (const call of client.onActionEvent.mock.calls) {
+      for (const call of actionEventCalls()) {
         expect(call[0]).toBe("com.test.my-action");
       }
     });

@@ -32,7 +32,7 @@ const NO_TYPECHECK_SCRIPT = new Map([]);
 const TYPECHECK_EXCLUDES_TESTS = new Map([
   [
     "iracing-actions",
-    'tsconfig sets "exclude": ["src/**/*.test.ts"]. Its 160 sources ARE checked (#1078); its 76 ' +
+    'tsconfig sets "exclude": ["src/**/*.test.ts"]. Its 84 sources ARE checked (#1078); its 76 ' +
       "test files are not. Removing the exclusion surfaced 541 errors when measured on 2026-09-01 — " +
       "386 TS2345 (partial settings literals passed where the full parsed settings type is required) " +
       "and 70 TS2445 (tests reaching protected members) dominate, across 34 files. Tracked in #1078. " +
@@ -108,8 +108,13 @@ const typeScriptPackages = readdirSync(join(repoRoot, "packages"), { withFileTyp
   .map((entry) => entry.name)
   .filter(
     (name) =>
-      existsSync(join(repoRoot, "packages", name, "tsconfig.json")) ||
-      hasTypeScriptSources(join(repoRoot, "packages", name)),
+      // Order matters: `hasTypeScriptSources` is the operand the comment above
+      // calls the key, so it must be the one that always runs. With `existsSync`
+      // first it short-circuited for every package the moment they all had a
+      // tsconfig (#1078), leaving the function that actually catches an
+      // unconfigured package unexecuted by its own suite.
+      hasTypeScriptSources(join(repoRoot, "packages", name)) ||
+      existsSync(join(repoRoot, "packages", name, "tsconfig.json")),
   )
   .sort();
 
@@ -130,6 +135,17 @@ const typeScriptPackages = readdirSync(join(repoRoot, "packages"), { withFileTyp
 describe("every package with TypeScript is covered by pnpm typecheck", () => {
   it("finds the packages to check", () => {
     expect(typeScriptPackages.length).toBeGreaterThan(0);
+  });
+
+  // Discovery's own smoke test. Every package currently has a tsconfig, so the
+  // `||` above can no longer reach a package that `hasTypeScriptSources` alone
+  // would have to find — which means a regression in it (an extra prune, an
+  // inverted return) would shrink coverage back with every test still green.
+  // Pin both directions against a package that has TypeScript and a tracked
+  // directory that has none.
+  it("discovers TypeScript by looking for it, not by trusting a tsconfig", () => {
+    expect(hasTypeScriptSources(join(repoRoot, "packages", "logger"))).toBe(true);
+    expect(hasTypeScriptSources(join(repoRoot, ".github"))).toBe(false);
   });
 
   it("has no stale allow-list entries", () => {
