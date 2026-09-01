@@ -45,7 +45,8 @@ voice scenario as the outermost short-circuit.
 | **Voice lines (source of truth)** | `packages/audio-assets/configs/<voice-id>.voice.json` — canonical: `default.voice.json`; voices may differ in variant counts and omit callouts (issue #664), `voice-parity.test.ts` only guards against `<group>/<base>` keys unknown to default |
 | **Generated clips** | `packages/audio-assets/voice/<voice>/<group>/<name>.mp3` (gitignored locally; committed once stable) |
 | **Generator cache** | `packages/audio-assets/generate.manifest.json` |
-| **Runtime manifest** | `packages/audio-assets/manifest.json` (rebuilt by `generate:manifest`) |
+| **Runtime manifest** | `packages/audio-assets/manifest.json` (rebuilt by `generate:manifest`) — the BUILT-IN half only since #1034; installed voice packs add clips at runtime via `mergeManifests` + `IScenarioEngine.setManifest` |
+| **Installed voice packs** | `%LOCALAPPDATA%\iRaceDeck\Race Engineer\Voices\<pack>\` — scanned by `deck-core`'s `createVoicePackService`; each pack is its own audio root, so its clips keep the same `voice/<id>/…` shape and every pool/validation path is unchanged (#1034) |
 | **Bus event catalog** | `packages/event-bus/src/event-catalog.ts` |
 | **Bus public exports** | `packages/event-bus/src/index.ts` (export new enums as values, not just types) |
 | **iRacing translator** | `packages/sim-events-iracing/src/diff/<name>.ts` + wired into `translator.ts` |

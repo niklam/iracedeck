@@ -2268,21 +2268,56 @@ export function getGlobalColors(): {
 }
 
 /**
- * Resolve the active Race Engineer voice key, falling back to the first
- * entry in `availableVoices` if the persisted value is empty or missing
- * from the available list (e.g. user picked "titan" earlier, the package
- * was rebuilt without that voice).
+ * The voice a user who has never opened the dropdown is entitled to treat as
+ * chosen (issue #1034).
+ *
+ * A named id, deliberately, rather than "the first bundled voice" or "the only
+ * bundled voice": a second bundled voice is on its way (#999), so any rule
+ * phrased by position or by count is already on a timer. This one survives it.
+ */
+export const DEFAULT_RACE_ENGINEER_VOICE = "default";
+
+/**
+ * Resolve the active Race Engineer voice key: the persisted value while it is
+ * still available, otherwise `defaultVoice` when the list has it, otherwise the
+ * first entry.
+ *
+ * The anchor is what stops an installed voice pack quietly becoming somebody's
+ * engineer (issue #1034). Before packs, the list was a compile-time constant, so
+ * "the first entry" and "the default voice" were the same thing; now a pack whose
+ * id sorts earlier — `aria`, `bruno` — takes over for every user who never opened
+ * the dropdown, because the persisted value is `""` until they do. The effective
+ * voice IS the default one, and a pack is not entitled to displace a value the
+ * user may reasonably treat as chosen.
+ *
+ * It defaults to {@link DEFAULT_RACE_ENGINEER_VOICE} rather than to `undefined`,
+ * which is the one place this differs from {@link resolveActiveDriverName}'s
+ * optional anchor. Every omission here would reintroduce precisely the defect the
+ * parameter exists to prevent, so an omission has to land on the right answer
+ * rather than the old one.
+ *
+ * Falls through to `availableVoices[0]` when the anchor itself is absent — a
+ * build or install whose manifest carries no `default` voice, which is a real
+ * state (the release that drops the bundle; a packs-only install). Picking
+ * something the user can then change beats going silent.
  *
  * Returns `null` only if no voices are available at all — callers should
  * suppress voice scenarios in that case.
  */
-export function resolveActiveRaceEngineerVoice(availableVoices: readonly string[]): string | null {
+export function resolveActiveRaceEngineerVoice(
+  availableVoices: readonly string[],
+  defaultVoice: string = DEFAULT_RACE_ENGINEER_VOICE,
+): string | null {
   if (availableVoices.length === 0) return null;
 
   const chosen = currentSettings.raceEngineerVoice ?? "";
 
   if (chosen.length > 0 && availableVoices.includes(chosen)) {
     return chosen;
+  }
+
+  if (defaultVoice.length > 0 && availableVoices.includes(defaultVoice)) {
+    return defaultVoice;
   }
 
   return availableVoices[0];

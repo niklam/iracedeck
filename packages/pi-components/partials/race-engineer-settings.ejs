@@ -36,7 +36,7 @@
   	'</sdpi-select>' +
   '</sdpi-item>' +
   '<sdpi-item label="Race Engineer Voice">' +
-  	'<ird-voice-select setting="raceEngineerVoice" voices="_raceEngineerVoices"></ird-voice-select>' +
+  	'<ird-voice-select setting="raceEngineerVoice" voices="_raceEngineerVoices" labels="_voiceLabels" default="default"></ird-voice-select>' +
   '</sdpi-item>' +
   '<sdpi-item label="Your Name">' +
   	'<ird-name-select setting="driverName" names="_driverNames" default="driver"></ird-name-select>' +
@@ -63,3 +63,19 @@
   	'</div>' +
   '</sdpi-item>'
 ) %>
+<%#
+  Installed voice packs (issue #1034). Settings-window only: the Rescan button
+  is a `sendToPlugin` command handled by the settings-window command handler,
+  and a Property Inspector's `sendToPlugin` goes to its own action instead —
+  the same reason `ird-open-folder` is gated in global-common-diagnostics.ejs.
+%>
+<% if (locals.settingsWindow) { %>
+<sdpi-item label="Installed Voices">
+  <ird-voice-pack-list packs="_voicePacks"></ird-voice-pack-list>
+</sdpi-item>
+<div class="ird-supporting-text">
+  Voice packs live in <code>%LOCALAPPDATA%\iRaceDeck\Race Engineer\Voices</code> and survive plugin updates.
+  Add a pack folder there, then rescan. A pack that cannot be loaded is listed with the reason.
+</div>
+<div class="ird-open-settings"><ird-voice-pack-refresh></ird-voice-pack-refresh></div>
+<% } %>

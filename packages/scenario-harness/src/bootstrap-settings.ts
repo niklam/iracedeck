@@ -54,6 +54,11 @@ export function seedGlobalSettings(adapter: MockPlatformAdapter): BootstrapDefau
 
   adapter.setGlobalSettings({
     _raceEngineerVoices: JSON.stringify(raceEngineerVoices),
+    // Written alongside the list, always — the pair shares a lifetime and the
+    // plugin never publishes one without the other (#1034). Empty here because
+    // the harness loads no voice packs, so every voice falls back to its
+    // capitalised id, which is what it showed before labels existed.
+    _voiceLabels: JSON.stringify({}),
     _driverNames: JSON.stringify(driverNames),
     pitCrewRaceEngineerEnabled: true,
     raceEngineerVolume: 100,

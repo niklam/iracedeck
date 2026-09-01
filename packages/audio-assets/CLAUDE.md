@@ -39,7 +39,7 @@ Pools are derived per-voice from the clips that actually exist (see the `@iraced
 
 `generate.manifest.json` is the **generator's hash cache** — per-entry hash + ElevenLabs request id, used to skip unchanged entries. Don't hand-edit; let the generator manage it. Keys are `voice/<voice-id>/<group>/<name>.mp3`, so per-voice cache isolation is automatic — changing one voice's settings invalidates only that voice's entries.
 
-`manifest.json` is the **runtime manifest** the plugins read at startup. Rebuild after adding/removing clips with:
+`manifest.json` is the **runtime manifest** the plugins read at startup. Since #1034 it is only the **built-in half** of what the plugin plays: installed voice packs under `%LOCALAPPDATA%\iRaceDeck\Race Engineer\Voices` contribute their own clips at runtime, each pack acting as its own audio root, and the scenario engine consumes the union (`mergeManifests` in `@iracedeck/audio-scenarios`). So a voice missing from this file is not necessarily missing at runtime. Rebuild after adding/removing clips with:
 
 ```bash
 pnpm --filter @iracedeck/audio-assets generate:manifest

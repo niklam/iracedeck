@@ -69,6 +69,10 @@ export { OpenSettings } from "./open-settings.js";
 // Open Folder - button that asks the plugin to reveal the settings file in Explorer (#993)
 export { OpenFolder } from "./open-folder.js";
 
+// Race Engineer voice packs (issue #1034)
+export { VoicePackList } from "./voice-pack-list.js";
+export { VoicePackRefresh } from "./voice-pack-refresh.js";
+
 // Update Notice - upstream "a newer version exists" banner for the settings window (#1016)
 export { UPDATE_AVAILABLE_EVENT, UpdateNotice } from "./update-notice.js";
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { PI_WARNINGS_KEY } from "./pi-warnings-constants.js";
 import { hasOnlyRunScopedKeys, RUN_SCOPED_SETTING_KEYS, stripRunScopedKeys } from "./run-scoped-settings.js";
+import { VOICE_PACKS_KEY } from "./voice-pack-constants.js";
 
 describe("run-scoped settings keys (issue #1014)", () => {
   it("enrols the PI warnings key", () => {
@@ -52,5 +53,23 @@ describe("run-scoped settings keys (issue #1014)", () => {
     it("is false for an empty write — nothing to write is not a run-scoped write", () => {
       expect(hasOnlyRunScopedKeys([])).toBe(false);
     });
+  });
+});
+
+describe("voice packs are run-scoped (issue #1034)", () => {
+  it("enrols the voice-pack list", () => {
+    expect(RUN_SCOPED_SETTING_KEYS).toContain(VOICE_PACKS_KEY);
+  });
+
+  it("never writes the voice-pack list to the settings file", () => {
+    const scan =
+      '{"packs":[{"id":"luca","label":"Luca","version":"1.0.0","voices":[{"id":"luca","label":"Luca"}]}],"problems":[]}';
+    const stripped = stripRunScopedKeys({ [VOICE_PACKS_KEY]: scan, raceEngineerVoice: "luca" });
+
+    expect(stripped).toEqual({ raceEngineerVoice: "luca" });
+  });
+
+  it("treats a voice-pack-only write as touching nothing on disk", () => {
+    expect(hasOnlyRunScopedKeys([VOICE_PACKS_KEY])).toBe(true);
   });
 });

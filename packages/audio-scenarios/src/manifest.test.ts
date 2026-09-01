@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   type AudioAssetsManifest,
   manifestVoices,
+  mergeManifests,
   referenceVoice,
   scanDriverNames,
   scanRaceEngineerVoices,
@@ -80,5 +81,55 @@ describe("scanDriverNames", () => {
       clips: ["voice/luca/names/sub/nested.mp3", "voice/luca/welcome.mp3"],
     };
     expect(scanDriverNames(m)).toEqual([]);
+  });
+});
+
+describe("mergeManifests", () => {
+  const builtIn: AudioAssetsManifest = {
+    clips: ["sfx/IRD-tick-open.mp3", "voice/default/flags/blue-01.mp3"],
+    ambientLoop: "sfx/IRD-ambient-pit.mp3",
+    ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
+  };
+
+  it("returns the built-in manifest unchanged when there are no fragments", () => {
+    expect(mergeManifests(builtIn, [])).toEqual(builtIn);
+  });
+
+  it("adds fragment clips and keeps the built-in special paths", () => {
+    const merged = mergeManifests(builtIn, [["voice/luca/flags/blue-01.mp3"]]);
+
+    expect(merged.clips).toContain("voice/luca/flags/blue-01.mp3");
+    expect(merged.clips).toContain("voice/default/flags/blue-01.mp3");
+    expect(merged.ambientLoop).toBe(builtIn.ambientLoop);
+    expect(merged.ticks).toEqual(builtIn.ticks);
+  });
+
+  it("a pack cannot redefine the radio frame", () => {
+    const merged = mergeManifests(builtIn, [["sfx/IRD-tick-open.mp3"]]);
+
+    expect(merged.ticks.open).toBe("sfx/IRD-tick-open.mp3");
+    expect(merged.ambientLoop).toBe("sfx/IRD-ambient-pit.mp3");
+  });
+
+  it("de-duplicates and sorts so the result is stable regardless of fragment order", () => {
+    const a = mergeManifests(builtIn, [["voice/b/x.mp3"], ["voice/a/x.mp3", "voice/b/x.mp3"]]);
+    const b = mergeManifests(builtIn, [["voice/a/x.mp3", "voice/b/x.mp3"], ["voice/b/x.mp3"]]);
+
+    expect(a.clips).toEqual(b.clips);
+    expect(a.clips.filter((c) => c === "voice/b/x.mp3")).toHaveLength(1);
+    expect([...a.clips]).toEqual([...a.clips].sort());
+  });
+
+  it("does not mutate the built-in manifest", () => {
+    const clips = [...builtIn.clips];
+    mergeManifests(builtIn, [["voice/luca/flags/blue-01.mp3"]]);
+
+    expect(builtIn.clips).toEqual(clips);
+  });
+
+  it("makes a pack's voice visible to the voice scanner", () => {
+    const merged = mergeManifests(builtIn, [["voice/luca/flags/blue-01.mp3"]]);
+
+    expect(scanRaceEngineerVoices(merged)).toEqual(["default", "luca"]);
   });
 });

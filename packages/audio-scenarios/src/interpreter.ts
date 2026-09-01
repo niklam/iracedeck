@@ -69,6 +69,15 @@ export interface IScenarioEngine {
    * manifests).
    */
   definePoolFromManifest(name: string, group: string, base: string): void;
+
+  /**
+   * Replace the manifest — after a voice-pack scan (issue #1034). The engine
+   * stays a once-only singleton; only its view of the available clips changes.
+   */
+  setManifest(manifest: AudioAssetsManifest): void;
+
+  /** @internal Exported for testing — the manifest currently in force. */
+  currentManifest(): AudioAssetsManifest;
   defineVar(name: string, resolver: () => string | null): void;
   setEnabled(scenarioId: string, enabled: boolean): void;
   fire(scenarioId: string): void;
@@ -227,7 +236,7 @@ class ExpansionAbort {
 class ScenarioEngine implements IScenarioEngine {
   private readonly eventBus: IEventBus;
   private readonly audio: IAudioService;
-  private readonly manifest: AudioAssetsManifest;
+  private manifest: AudioAssetsManifest;
   private readonly logger: ILogger;
   /**
    * Resolves the active Race Engineer voice key (e.g. `"luca"`) at clip-
@@ -241,7 +250,13 @@ class ScenarioEngine implements IScenarioEngine {
   private readonly vars = new Map<string, () => string | null>();
   private readonly busState = new Map<AudioBus, BusState>();
   /** Set view of `manifest.clips` for O(1) availability checks at expansion time. */
-  private readonly clipSet: Set<string>;
+  private clipSet: Set<string>;
+  /**
+   * `(group, base)` source of every manifest-backed pool, so a manifest reload
+   * can re-derive them without the catalog having to re-register anything
+   * (issue #1034).
+   */
+  private readonly manifestPoolSources = new Map<string, { group: string; base: string }>();
 
   constructor(
     eventBus: IEventBus,
@@ -381,6 +396,8 @@ class ScenarioEngine implements IScenarioEngine {
       this.logger.warn(`Pool "${name}" redefined`);
     }
 
+    this.manifestPoolSources.set(name, { group, base });
+
     const pool = this.buildManifestPool(group, base);
 
     // Typo guard: only the reference voice is checked — other voices may
@@ -395,6 +412,38 @@ class ScenarioEngine implements IScenarioEngine {
     }
 
     this.pools.set(name, pool);
+  }
+
+  setManifest(manifest: AudioAssetsManifest): void {
+    this.manifest = manifest;
+    this.clipSet = new Set(manifest.clips);
+
+    // Re-derive every manifest-backed pool from its recorded `(group, base)`.
+    // Members are per-voice, so a pack arriving or leaving changes what a pool
+    // holds for the voices it touches and nothing else.
+    for (const [name, source] of this.manifestPoolSources) {
+      this.pools.set(name, this.buildManifestPool(source.group, source.base));
+    }
+
+    // Dynamic `pool:<group>/<base>` refs (issue #836) are built lazily on first
+    // use and cached under the ref string. Drop them so they rebuild against the
+    // new manifest instead of serving a stale member list.
+    for (const key of [...this.pools.keys()]) {
+      if (key.startsWith("pool:")) this.pools.delete(key);
+    }
+
+    // Static pools keep their clips (they were registered explicitly, not
+    // derived), but every pool's no-repeat tracker is reset: variant counts
+    // differ per voice, so a retained index can point past the end of the new
+    // member list — the same reason an active-voice change resets them.
+    for (const pool of this.pools.values()) pool.lastIndex = -1;
+
+    this.logger.info("Audio manifest reloaded");
+    this.logger.debug(`Clips: ${manifest.clips.length}`);
+  }
+
+  currentManifest(): AudioAssetsManifest {
+    return this.manifest;
   }
 
   /**

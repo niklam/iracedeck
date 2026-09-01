@@ -29,6 +29,7 @@
 import type { AudioNative } from "@iracedeck/audio-native";
 import type { ILogger } from "@iracedeck/logger";
 import { silentLogger } from "@iracedeck/logger";
+import { existsSync } from "node:fs";
 import path from "node:path";
 
 // ─── Channel enum ────────────────────────────────────────────────────────────
@@ -161,6 +162,32 @@ export interface PlaybackObserver {
   onComplete?(channel: AudioChannel): void;
 }
 
+/**
+ * One directory a manifest-relative clip path may resolve against (issue #1034).
+ *
+ * `clips` is what makes a root's contribution AUTHORISED rather than merely
+ * present. A voice pack is a folder somebody else assembled, and the scanner
+ * already decides which of its files it is willing to serve — everything under
+ * a voice the pack actually owns, and nothing else. Without that list here, the
+ * resolver would fall back to "first root that HAS the file", and a pack could
+ * serve a clip belonging to another pack, or a bundled clip the plugin happens
+ * not to ship, simply by placing a file at the right relative path. It would
+ * never appear in the settings list or the collision problems, because the
+ * scanner drops those files rather than reporting them.
+ *
+ * Omit `clips` for an UNRESTRICTED root: only the plugin's own `assets/audio`,
+ * whose contents are the bundle itself and are not third-party.
+ */
+export type AudioRoot = {
+  /** Absolute directory. */
+  dir: string;
+  /** POSIX paths relative to {@link dir}; omit to allow anything inside it. */
+  clips?: readonly string[];
+};
+
+/** A bare string is an unrestricted root — shorthand for `{ dir }`. */
+export type AudioRootInput = string | AudioRoot;
+
 // ─── Public interface ────────────────────────────────────────────────────────
 
 export interface IAudioService {
@@ -175,6 +202,17 @@ export interface IAudioService {
 
   /** Play an audio file on a specific channel. Returns true on success. */
   playOnChannel(channel: AudioChannel, filePath: string, loop?: boolean): boolean;
+
+  /**
+   * Replace the ordered list of audio roots. Called after a voice-pack scan:
+   * each installed pack is its own root (issue #1034), so the list grows and
+   * shrinks as packs are installed and removed. A pack root carries the clip
+   * list the scanner admitted from it — see {@link AudioRoot}.
+   */
+  setRoots(roots: readonly AudioRootInput[]): void;
+
+  /** @internal Test seam for the file-existence probe; production uses `existsSync`. */
+  setFileProbe(probe: (absolutePath: string) => boolean): void;
 
   /** Stop playback on a specific channel. */
   stopChannel(channel: AudioChannel): void;
@@ -251,10 +289,37 @@ export interface IAudioService {
 
 // ─── Implementation ──────────────────────────────────────────────────────────
 
+/** A root with its clip allow-list resolved once, at `setRoots` time. */
+type NormalizedRoot = {
+  dir: string;
+  /** `null` means unrestricted — the plugin's own bundled assets. */
+  clips: ReadonlySet<string> | null;
+};
+
+/**
+ * Clip paths are POSIX in the manifest and in a pack's scanned list, but a
+ * caller could hand us a Windows-separated one. Compare on one spelling so an
+ * allow-list lookup can never miss for a separator.
+ */
+function toPosix(value: string): string {
+  return value.replace(/\\/g, "/");
+}
+
+function normalizeRoots(roots: readonly AudioRootInput[]): NormalizedRoot[] {
+  return roots.map((root) =>
+    typeof root === "string"
+      ? { dir: root, clips: null }
+      : { dir: root.dir, clips: root.clips === undefined ? null : new Set(root.clips.map(toPosix)) },
+  );
+}
+
 class AudioService implements IAudioService {
   private logger: ILogger;
   private native: AudioNative;
-  private readonly basePath: string | null;
+  private roots: readonly NormalizedRoot[];
+  /** Memo of logical path -> resolved absolute path. Successful probes only. */
+  private readonly resolvedCache = new Map<string, string>();
+  private fileProbe: (absolutePath: string) => boolean = (absolutePath) => existsSync(absolutePath);
   private engineReady = false;
 
   // Voice sequence state
@@ -291,10 +356,10 @@ class AudioService implements IAudioService {
   private deviceRunning = false;
   private idleStopTimer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(logger: ILogger, native: AudioNative, basePath: string | null) {
+  constructor(logger: ILogger, native: AudioNative, roots: readonly AudioRootInput[]) {
     this.logger = logger;
     this.native = native;
-    this.basePath = basePath;
+    this.roots = normalizeRoots(roots);
 
     // Register persistent native end callbacks for all channels.
     // These dispatch to the JS-level one-shot callbacks.
@@ -363,28 +428,88 @@ class AudioService implements IAudioService {
    * paths pass through unchanged, so callers that build their own absolute
    * paths (e.g. the radar engine) still work. Callers passing manifest-
    * relative paths (e.g. the scenario interpreter emitting
-   * `sfx/IRD-tick-open.mp3`) get prefixed with the base so the native layer
-   * receives a filesystem path it can actually open.
+   * `sfx/IRD-tick-open.mp3`) are resolved against the ordered root list so the
+   * native layer receives a filesystem path it can actually open.
    *
-   * Rejects paths that escape the base via `..` segments. The scenario DSL
-   * only emits manifest slugs (no traversal), so a rejection here means a
-   * scenario author or a malformed manifest tried to reach outside the
-   * audio-assets directory — almost certainly a bug worth failing loud on.
+   * With more than one root (issue #1034 — each installed voice pack is its own
+   * root) containment alone cannot choose between them, because a relative path
+   * is "inside" every root. A root is therefore consulted only for the clips it
+   * is AUTHORISED to serve: a pack root carries the list the scanner admitted
+   * from it, and only the plugin's own assets directory is unrestricted.
+   *
+   * File presence alone would not do, and that is the whole point of the
+   * allow-list. The scanner already refuses a pack's claim on a voice another
+   * pack or the bundle owns — but it enforces that by dropping those files from
+   * the pack's clip list, not by removing them from disk. A pack that simply
+   * PLACES a file at `voice/<someone-else>/…` would otherwise win resolution
+   * whenever it sorted earlier, silently substituting another pack's audio, or a
+   * bundled clip the plugin happens not to ship — and it would appear in no
+   * settings row and no collision problem, because the scanner dropped it.
+   *
+   * When no root is both authorised and holds the file, we return the first
+   * authorised root's resolution rather than throwing: the native layer then
+   * fails to open it exactly as it did before packs existed, so a missing clip
+   * stays one behaviour rather than two.
+   *
+   * Only successful probes are memoised, so a clip that appears later — a pack
+   * installed mid-session — is found on its next play with no invalidation.
+   *
+   * Rejects paths that escape every root via `..` segments. Because pack roots
+   * are siblings under one parent, containment alone would let `../<other>/…`
+   * pop out of one pack and back into another; the allow-list is what actually
+   * refuses that, since no such path is in any pack's scanned clip list. The
+   * scenario DSL only emits manifest slugs, so a rejection means a scenario
+   * author or a malformed manifest tried to reach outside the audio directories
+   * entirely — a bug worth failing loud on.
    */
   private resolvePath(filePath: string): string {
     if (path.isAbsolute(filePath)) return filePath;
 
-    if (!this.basePath) return filePath;
+    if (this.roots.length === 0) return filePath;
 
-    const base = path.resolve(this.basePath);
-    const resolved = path.resolve(base, filePath);
-    const rel = path.relative(base, resolved);
+    const cached = this.resolvedCache.get(filePath);
 
-    if (rel.startsWith("..") || path.isAbsolute(rel)) {
-      throw new Error(`Audio clip path escapes basePath: ${filePath}`);
+    if (cached !== undefined) return cached;
+
+    const logical = toPosix(filePath);
+    let firstResolved: string | null = null;
+
+    for (const root of this.roots) {
+      if (root.clips !== null && !root.clips.has(logical)) continue;
+
+      const base = path.resolve(root.dir);
+      const resolved = path.resolve(base, filePath);
+      const rel = path.relative(base, resolved);
+
+      if (rel.startsWith("..") || path.isAbsolute(rel)) continue;
+
+      if (firstResolved === null) firstResolved = resolved;
+
+      if (this.fileProbe(resolved)) {
+        this.resolvedCache.set(filePath, resolved);
+
+        return resolved;
+      }
     }
 
-    return resolved;
+    if (firstResolved === null) {
+      throw new Error(`Audio clip path escapes every audio root: ${filePath}`);
+    }
+
+    return firstResolved;
+  }
+
+  setRoots(roots: readonly AudioRootInput[]): void {
+    this.roots = normalizeRoots(roots);
+    // A path that resolved to the fallback before a pack arrived must be
+    // re-probed, so the memo cannot survive a root change.
+    this.resolvedCache.clear();
+    this.logger.debug(`Audio roots: ${this.roots.map((root) => root.dir).join(", ") || "(none)"}`);
+  }
+
+  setFileProbe(probe: (absolutePath: string) => boolean): void {
+    this.fileProbe = probe;
+    this.resolvedCache.clear();
   }
 
   stopChannel(channel: AudioChannel): void {
@@ -812,24 +937,25 @@ let audioService: AudioService | null = null;
  * Initialize the audio service singleton with an AudioNative instance.
  * Call once at plugin startup, then call getAudio().init() to start the engine.
  *
- * `basePath` is prepended to every manifest-relative clip path passed to
- * `playOnChannel` / `playVoiceSequence` (absolute paths pass through
- * unchanged). Typically the plugin passes `path.join(process.cwd(),
- * "assets", "audio")` so scenarios can emit short namespace-relative paths
- * like `sfx/IRD-tick-open.mp3` and the native layer still gets a real
- * filesystem path. Pass `null` to disable resolution (useful in tests that
- * inject a fake AudioNative and don't care where the path points).
+ * `roots` is the ordered list of directories a manifest-relative clip path is
+ * resolved against (absolute paths pass through unchanged). The plugin passes
+ * its own `assets/audio` — a bare string, so unrestricted — and `setRoots` later
+ * appends one {@link AudioRoot} per installed voice pack, each carrying the clip
+ * list the scanner admitted from it (issue #1034). The first root that is both
+ * authorised for the clip and has the file wins. Pass an empty list to disable
+ * resolution entirely (useful in tests that inject a fake AudioNative and don't
+ * care where the path points).
  */
 export function initializeAudio(
   logger: ILogger = silentLogger,
   native: AudioNative,
-  basePath: string | null = null,
+  roots: readonly AudioRootInput[] = [],
 ): IAudioService {
   if (audioService) {
     throw new Error("Audio service already initialized. initializeAudio() should only be called once.");
   }
 
-  audioService = new AudioService(logger, native, basePath);
+  audioService = new AudioService(logger, native, roots);
   logger.info("Audio service initialized");
 
   return audioService;

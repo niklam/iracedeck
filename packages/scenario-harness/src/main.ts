@@ -87,7 +87,7 @@ async function main(): Promise<void> {
   await processAndCopyAudioAssets({ destRoot: audioBasePath, logger: (m) => audioLog.info(m) });
   audioLog.debug(`Audio base path: ${audioBasePath}`);
   const audioNative = new AudioNative();
-  const audio = initializeAudio(audioLog, audioNative, audioBasePath);
+  const audio = initializeAudio(audioLog, audioNative, [audioBasePath]);
   audio.init();
 
   // ── Audio scenarios ──────────────────────────────────────────────────────

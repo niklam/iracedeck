@@ -190,18 +190,24 @@ Property Inspectors reach the same server through a bridge script the build inje
 
 The Race Engineer is a self-contained subsystem hanging off SEAM 1. It subscribes to the same bus, but instead of drawing icons it picks voice lines and plays them through a native mixer.
 
+Its clips come from two places (#1034). The compiled-in manifest is the **built-in** half — the walkie-talkie sfx plus whatever voice the plugin bundles. **Installed voice packs** under `%LOCALAPPDATA%\iRaceDeck\Race Engineer\Voices` supply the rest: `deck-core` scans that directory, `audio-service` resolves a clip against an ordered list of roots (the plugin's own assets first, then one root per pack), and the scenario engine consumes the union of their manifests. Because each pack contributes paths in the same `voice/<id>/…` shape, nothing downstream — pool derivation, `{voice}` substitution, validation — knows a second root exists.
+
 ```mermaid
 flowchart TB
   bus(["event-bus<br/>SEAM 1"]):::seam
   scen["audio-scenarios<br/>scenario engine"]:::audio
-  assets["audio-assets<br/>(voice clips)"]:::audio
-  svc["audio-service<br/>(bus routing, volumes)"]:::audio
+  assets["audio-assets<br/>(bundled clips)"]:::audio
+  packs["installed voice packs<br/>(%LOCALAPPDATA%)"]:::ext
+  svc["audio-service<br/>(ordered audio roots)"]:::audio
   nat["audio-native<br/>(miniaudio mixer)"]:::audio
   spk["speakers"]:::ext
 
   bus -->|"subscribe (when: event)"| scen
-  assets -->|"clips"| scen
+  assets -->|"built-in manifest"| scen
+  packs -->|"scanned clips (setManifest)"| scen
   scen -->|"play voice sequence"| svc
+  assets -.->|"root 1"| svc
+  packs -.->|"root 2..n"| svc
   svc --> nat
   nat --> spk
 

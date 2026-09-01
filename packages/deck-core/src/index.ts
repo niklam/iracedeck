@@ -164,6 +164,7 @@ export {
   getSettingsStoreSource,
   type SettingsStoreSource,
   hostMirrorPayload,
+  DEFAULT_RACE_ENGINEER_VOICE,
   resolveActiveDriverName,
   resolveActiveRaceEngineerVoice,
   sameValue,
@@ -195,6 +196,28 @@ export {
   type ResolveSettingsStorePathOptions,
   type SettingsStore,
 } from "./settings-store.js";
+
+// Downloadable Race Engineer voice packs (issue #1034)
+export { resolveVoicePacksPath, type ResolveVoicePacksPathOptions } from "./voice-packs-path.js";
+export {
+  parseVoicePackManifest,
+  VoicePackManifestSchema,
+  type ParseVoicePackManifestResult,
+  type VoicePackManifest,
+} from "./voice-pack-manifest.js";
+export {
+  scanVoicePacks,
+  type InstalledVoice,
+  type InstalledVoicePack,
+  type ScanVoicePacksOptions,
+  type ScanVoicePacksResult,
+  type VoicePackFileSystem,
+  type VoicePackProblem,
+} from "./voice-pack-scanner.js";
+export { VOICE_LABELS_KEY, VOICE_PACKS_KEY } from "./voice-pack-constants.js";
+export { voiceDisplayLabels } from "./voice-labels.js";
+export { createVoicePackFileSystem, VOICE_PACK_MAX_DEPTH } from "./voice-pack-fs.js";
+export { createVoicePackService, type VoicePackService, type VoicePackServiceDeps } from "./voice-pack-service.js";
 
 // Per-mode sim-communication descriptors (issue #612)
 export {

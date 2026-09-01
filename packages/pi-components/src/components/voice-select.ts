@@ -27,17 +27,47 @@
  *   (default: `raceEngineerVoice`).
  * - voices: Plugin-global setting key holding the JSON array of available
  *   voice keys (default: `_raceEngineerVoices`).
+ * - labels: Plugin-global setting key holding a JSON `{ id: label }` map of the
+ *   names packs gave their voices (default: `_voiceLabels`, issue #1034). A
+ *   voice with no entry falls back to its capitalised id.
  *
- * The plugin populates `voices` via `updateGlobalSettings({ [voicesKey]: JSON.stringify(list) })`.
+ * The plugin populates both in ONE write, so the dropdown can never pair one
+ * scan's voices with another scan's names.
  */
 
 let styleInjected = false;
 
 const DEFAULT_SETTING = "raceEngineerVoice";
 const DEFAULT_VOICES_SETTING = "_raceEngineerVoices";
+const DEFAULT_LABELS_SETTING = "_voiceLabels";
 
 function titleCase(s: string): string {
   return s.length === 0 ? s : s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/**
+ * `{ id: label }`, dropping anything that is not a pair of non-empty strings.
+ * A pack's manifest is a third party's file, so a malformed entry costs that
+ * entry its label — which degrades to the capitalised id — and nothing else.
+ */
+function parseLabels(raw: string): Record<string, string> {
+  if (!raw) return {};
+
+  try {
+    const parsed: unknown = JSON.parse(raw);
+
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return {};
+
+    const labels: Record<string, string> = {};
+
+    for (const [id, label] of Object.entries(parsed)) {
+      if (typeof label === "string" && label.length > 0) labels[id] = label;
+    }
+
+    return labels;
+  } catch {
+    return {};
+  }
 }
 
 export class VoiceSelect extends HTMLElement {
@@ -50,6 +80,10 @@ export class VoiceSelect extends HTMLElement {
   // overwriting the saved key on that first apply would throw away the
   // user's real selection.
   private voicesLoaded = false;
+  /** The voice ids that exist — the option VALUES, and the only source of them. */
+  private voices: string[] = [];
+  /** Voice id -> a pack's chosen name for it. Presentation only; may be empty. */
+  private labels: Record<string, string> = {};
 
   connectedCallback(): void {
     if (this._initialized) return;
@@ -106,7 +140,7 @@ export class VoiceSelect extends HTMLElement {
 
   private buildDOM(): void {
     this.select = document.createElement("select");
-    this.renderOptions([]);
+    this.renderOptions();
     this.appendChild(this.select);
   }
 
@@ -129,6 +163,7 @@ export class VoiceSelect extends HTMLElement {
 
     const settingKey = this.getAttribute("setting") ?? DEFAULT_SETTING;
     const voicesKey = this.getAttribute("voices") ?? DEFAULT_VOICES_SETTING;
+    const labelsKey = this.getAttribute("labels") ?? DEFAULT_LABELS_SETTING;
 
     const [, save] = window.SDPIComponents.useGlobalSettings(settingKey, (value: string) => {
       const v: unknown = value;
@@ -145,26 +180,42 @@ export class VoiceSelect extends HTMLElement {
 
         if (!Array.isArray(list)) return;
 
-        const voices = list.filter((v): v is string => typeof v === "string" && v.length > 0);
+        this.voices = list.filter((v): v is string => typeof v === "string" && v.length > 0);
 
-        this.renderOptions(voices);
+        this.renderOptions();
         this.voicesLoaded = true;
         this.applySavedValue();
       } catch {
         // ignore parse errors; dropdown keeps prior options
       }
     });
+
+    // Labels arrive on their own key and may arrive in either order relative to
+    // the list — the plugin writes both in one call, but sdpi delivers per key.
+    // Re-rendering on each is enough: the option VALUES come from the list, so a
+    // label update only retitles what is already there and cannot invent a voice.
+    window.SDPIComponents.useGlobalSettings(labelsKey, (value: string) => {
+      this.labels = parseLabels(value);
+
+      if (this.voicesLoaded) {
+        this.renderOptions();
+        this.applySavedValue();
+      }
+    });
   }
 
-  private renderOptions(voices: string[]): void {
+  private renderOptions(): void {
     if (!this.select) return;
 
     this.select.replaceChildren();
 
-    for (const voice of voices) {
+    for (const voice of this.voices) {
       const opt = document.createElement("option");
       opt.value = voice;
-      opt.textContent = titleCase(voice);
+      // The pack's own name for this voice when it declared one, otherwise the
+      // id capitalised — which is what every voice showed before packs could
+      // name theirs, and is why the bundled voice needs no entry.
+      opt.textContent = this.labels[voice] ?? titleCase(voice);
       this.select.appendChild(opt);
     }
   }
@@ -180,17 +231,54 @@ export class VoiceSelect extends HTMLElement {
       return;
     }
 
-    // Saved value isn't in the list (cold start with no preference, or a
-    // voice was removed). Fall back to the first available voice.
-    const fallback = this.select.options[0].value;
+    // Saved value isn't in the list (cold start with no preference, or a voice
+    // was removed). Show the fallback either way.
+    const fallback = this.resolveFallback();
     this.select.value = fallback;
 
     if (!this.voicesLoaded) return;
 
-    if (this.savedValue !== fallback) {
+    // But only PERSIST it when there was no choice to lose. Since #1034 this
+    // list is a function of what is on disk at scan time, so a saved voice can
+    // leave it for reasons the user neither intended nor caused: a pack folder
+    // momentarily locked by a sync client or AV scanner is reported as a problem
+    // while the scan itself SUCCEEDS, which shrinks the list. Writing the
+    // fallback then overwrites their choice permanently — one press of Rescan,
+    // and putting the pack back does not bring it back.
+    //
+    // The plugin already resolves this the read-only way — its
+    // `resolveActiveRaceEngineerVoice` applies the same preference order and
+    // never writes — so what plays is right regardless. Leaving the setting
+    // alone keeps the two in agreement and restores the user's voice for free
+    // when the pack returns — and `plugin.ts` states this same policy in as many
+    // words for a stale audio device: "We do NOT rewrite the persisted setting".
+    if (this.savedValue === "") {
       this.savedValue = fallback;
       this.saveToStreamDeck?.(fallback);
     }
+  }
+
+  /**
+   * The `default` attribute's voice when the list has it, otherwise the first
+   * entry — the same order `resolveActiveRaceEngineerVoice` applies in the
+   * plugin, so the dropdown and what actually plays never disagree.
+   *
+   * The anchor is why an installed pack cannot become somebody's engineer just
+   * by sorting first (issue #1034); without it, both halves fell to
+   * `options[0]`, which a pack named `aria` wins.
+   */
+  private resolveFallback(): string {
+    if (!this.select) return "";
+
+    const preferred = this.getAttribute("default") ?? "";
+
+    if (preferred.length > 0) {
+      const match = Array.from(this.select.options).find((opt) => opt.value === preferred);
+
+      if (match) return match.value;
+    }
+
+    return this.select.options[0].value;
   }
 }
 

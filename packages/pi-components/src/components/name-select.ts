@@ -177,7 +177,12 @@ export class NameSelect extends HTMLElement {
 
     if (!this.namesLoaded) return;
 
-    if (this.savedValue !== fallback) {
+    // Persist the fallback only when there was no choice to lose — see the same
+    // rule, and the reasoning behind it, in `voice-select.ts`. Since #1034 this
+    // list is derived from the installed voice packs too, so a name can leave it
+    // because a pack folder was briefly unreadable, and writing over the user's
+    // choice at that moment would be permanent.
+    if (this.savedValue === "") {
       this.savedValue = fallback;
       this.saveToStreamDeck?.(fallback);
     }
