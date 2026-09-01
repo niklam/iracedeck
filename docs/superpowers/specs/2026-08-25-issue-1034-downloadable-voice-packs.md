@@ -261,5 +261,5 @@ A sideloaded pack is unsigned and unverified. The UI says where a pack came from
 ## Open questions
 
 1. **Is `default` also published to the catalog?** It must be, for new installs after release N+1. Confirm it is listed rather than special-cased.
-2. **Licensing policy for third-party packs.** A pack is somebody's voice. The catalog implies consent and curation; a sideloaded pack is the user's own business. This needs a published position, not code.
+2. **Licensing policy for third-party packs — settled 2026-09-01.** A third-party pack belongs to its author. It is distributed separately, by them, on their terms, and iRaceDeck has nothing to do with it beyond being able to play it — no hosting, no endorsement, no verification, no support obligation. Published where a user meets the question rather than only here: the *Third-Party Voice Packs* section of `docs/features/race-engineer-voices.md`. This settles the **sideload** half only, which is the half that ships in stage 1; the catalog is a different relationship, since listing a pack is an act of selection and implies consent from its author, and that position is still to be written when the catalog lands.
 3. **Does removing a pack need a confirmation?** Everything else in the settings window applies immediately, but this one deletes 12.5 MB that has to be re-downloaded.
