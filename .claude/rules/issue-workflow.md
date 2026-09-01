@@ -21,7 +21,7 @@ If you are picking up an issue, read this first.
 | 9   | Push, open the PR                                          | —                       | `@.claude/rules/build-and-commit.md`                                        |
 | 10  | Babysit the review                                         | every thread answered   | below                                                                       |
 | 11  | Merge                                                      | approved + checks green **at the current head** | `@.claude/rules/build-and-commit.md`                    |
-| 12  | Watch the post-merge run to completion                     | a red result goes to the coordinator            | below                                                   |
+| 12  | Watch **all four** post-merge runs to completion           | a red result goes to the coordinator            | below                                                   |
 | 13  | Remove the worktree                                        | —                                               | `@.claude/rules/build-and-commit.md`                    |
 
 ## Why these gates exist
@@ -100,7 +100,7 @@ Since #1070 every CI workflow also runs on pushes to `master` and `release/*` �
 
 **Niklas owns a red master.** The agent that merged is the instrument that watches and reports; it does not own the outcome and does not decide what to do about one.
 
-- **Whoever merges watches that run to completion.** Pressing the merge button does not end the step.
+- **Whoever merges watches all four runs to completion.** `ci-format`, `ci-lint`, `ci-test` and `ci-typecheck` are four separate workflows on the same push, so one green run answers for one of them and nothing else — and the first thing to check is that all four appeared at all. Pressing the merge button does not end the step.
 - **A red result goes to the coordinator immediately, and the coordinator takes it to Niklas.** No agent decides on its own to fix it, revert it, or let it stand.
 - **If the merging session ends before the run finishes, the watch passes to the coordinator** — the one party that outlives a worker session.
 
