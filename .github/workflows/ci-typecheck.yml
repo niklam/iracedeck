@@ -1,15 +1,15 @@
 name: Typecheck
 
-# Unlike the other three workflows, this one also runs on pushes to master.
 # A green PR check only proves something about the branch merged against the
 # master that existed when it ran, never about the master that results (#1070).
 # The defect this job exists to catch — cross-package type errors — is exactly
 # what two PRs merging in quick succession produce, so a gate that never sees
-# the merged result would miss its highest-value case. Adding the trigger here
-# does not create a convention for who fixes a red master; that belongs to #1070.
-# `release/*` is included for the same reason: release branches take feature PRs
-# of their own and reach master through a back-merge, so a post-merge gap there
-# is the same gap one branch removed.
+# the merged result would miss its highest-value case. `release/*` is included
+# for the same reason: release branches take feature PRs of their own and reach
+# master through a back-merge, so a post-merge gap there is the same gap one
+# branch removed. This job carried the push trigger alone until #1070 gave the
+# other three the same one; who answers for a red master is a convention now
+# stated in `.claude/rules/issue-workflow.md`, not a property of this file.
 on:
   pull_request:
   push:
@@ -17,8 +17,8 @@ on:
 
 # The job only reads the repository and runs a compiler, so it is given the
 # minimum token scope and the checkout credential is not left in .git/config for
-# later steps to reach. The three sibling CI workflows predate this and do not
-# set either; matching them would mean copying a weaker default forward.
+# later steps to reach. All four CI workflows now do this; the other three
+# adopted it in #1070 rather than carrying a weaker default forward.
 permissions:
   contents: read
 

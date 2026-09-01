@@ -23,10 +23,27 @@
       "inputs": ["voice/**", "src/build/**", "src/presets.mjs"],
       "outputs": [".cache/**"]
     },
+    "@iracedeck/website#typecheck": {
+      "dependsOn": ["^build"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/icons/**",
+        "$TURBO_ROOT$/packages/iracing-actions/icons/**",
+        "$TURBO_ROOT$/packages/iracing-actions/src/**",
+        "$TURBO_ROOT$/packages/iracing-plugin-stream-deck/com.iracedeck.sd.core.sdPlugin/manifest.json"
+      ]
+    },
     "@iracedeck/website#build": {
       "dependsOn": ["^build"],
       "env": ["PUBLIC_IRACEDECK_VERSION"],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/lib/changelog-*.mjs"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/lib/changelog-*.mjs",
+        "$TURBO_ROOT$/packages/icons/**",
+        "$TURBO_ROOT$/packages/iracing-actions/icons/**",
+        "$TURBO_ROOT$/packages/iracing-actions/src/**",
+        "$TURBO_ROOT$/packages/iracing-plugin-stream-deck/com.iracedeck.sd.core.sdPlugin/manifest.json"
+      ],
       "outputs": ["dist/**"]
     },
     "dev": {

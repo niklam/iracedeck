@@ -12,6 +12,28 @@ import {
   settingsStoreFolderName,
 } from "./settings-store.js";
 
+/**
+ * Poll until `condition` holds, failing at `timeoutMs` rather than passing time
+ * back to the caller regardless.
+ *
+ * For the one thing in this file with no observable signal to await: a write
+ * landed by the store's own RETRY TIMER. A fixed sleep sized to "the timer plus
+ * a bit" is the shape that made this file non-deterministic (issue #1088) — it
+ * assumes a budget the machine may not honour, and fails as an ENOENT three
+ * lines later rather than as a timeout that says what it was waiting for. A
+ * deadline waits only as long as it must, and the generous default means a
+ * failure here is a real one rather than a loaded runner.
+ */
+async function waitUntil(condition: () => boolean, timeoutMs = 5_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+
+  while (!condition()) {
+    if (Date.now() > deadline) throw new Error(`Timed out after ${timeoutMs} ms waiting for the condition`);
+
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
+
 describe("settingsStoreFolderName", () => {
   it("maps the plugin platform id to a human-readable per-ecosystem folder", () => {
     expect(settingsStoreFolderName("stream-deck")).toBe("Stream Deck");
@@ -182,7 +204,18 @@ describe("createFileSettingsStore", () => {
     expect(readdirSync(join(dir, "sub")).filter((f) => f.endsWith(".tmp"))).toEqual([]);
 
     rmSync(store.path, { recursive: true, force: true }); // the "lock" clears
-    await new Promise((resolve) => setTimeout(resolve, 60)); // past the 20 ms retry
+
+    // Wait for the retry to LAND, not for a fixed budget to elapse. This is a
+    // POSITIVE assertion behind the wait — the 20 ms timer has to fire and then
+    // mkdir + writeFile + rename all have to finish — so a stalled runner turns
+    // a fixed sleep into the ENOENT of issue #1088, in this same file. Polling
+    // to a generous deadline waits only as long as it must and fails loudly if
+    // the retry never comes.
+    //
+    // `flush()` is not the signal here, unlike the test below: it would take
+    // `pending` and enqueue immediately, so the retry TIMER — the thing under
+    // test — would never be what lands the write.
+    await waitUntil(() => existsSync(store.path));
 
     expect(JSON.parse(readFileSync(store.path, "utf-8"))).toEqual({ survives: "the lock" });
     await retrying.flush();
@@ -193,9 +226,24 @@ describe("createFileSettingsStore", () => {
     // The second write, chained behind it, runs after the directory is gone
     // and succeeds; the first must not be re-queued behind it.
     mkdirSync(store.path, { recursive: true });
+
+    // The lock is cleared in RESPONSE to the first write having settled, not
+    // after a timeout that assumes it has (issue #1088). The `flush()` promise
+    // is that signal: it resolves once the write it enqueued has run, whether it
+    // succeeded or failed — the same public contract the retry test above
+    // already relies on. Nothing here synchronises on a log message; the logger
+    // below only COUNTS failures, for the assertion.
+    //
+    // The previous `setTimeout(resolve, 0)` was the whole defect: it assumed one
+    // macrotask tick separated two writes chained on the same promise. Under
+    // load both reached the rename while the path was still a directory, both
+    // failed, nothing was written, and the read below threw ENOENT. Observed on
+    // PR #1087 — Tests failed at `a6fbbf51` and a re-run of the identical sha
+    // passed, with no change to the tree.
+    const failures: string[] = [];
     const racing = createFileSettingsStore({
       path: store.path,
-      logger: silentLogger,
+      logger: { ...silentLogger, error: (message: string) => void failures.push(message) },
       debounceMs: 10,
       writeRetryDelaysMs: [20],
     });
@@ -204,10 +252,27 @@ describe("createFileSettingsStore", () => {
     const first = racing.flush(); // enqueued; rename will fail (destination is a directory)
     racing.save({ v: "newer" });
     const second = racing.flush(); // enqueued behind the first
-    // Clear the "lock" while both are queued so only the first write hits it.
-    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // `first` covers the older write's chain only, so this resumes with that
+    // write settled. The newer one is chained on the same promise and does start
+    // first, but `writeNow` awaits `mkdir` before it touches the path — an I/O
+    // completion, which cannot preempt a queued microtask. So the `rmSync` below
+    // lands before the newer write's rename either way: ordering, not timing.
+    await first;
     rmSync(store.path, { recursive: true, force: true });
     await Promise.all([first, second]);
+
+    // Exactly one, and that is the sequencing assertion: the older write met the
+    // lock and the newer one did not. Zero would mean the lock never bit, so
+    // nothing below says anything about supersession; two is the old flake,
+    // where both writes raced the timeout and neither reached disk. Counted from
+    // every `error` call rather than from matching text, so the count survives a
+    // reworded message.
+    expect(failures).toHaveLength(1);
+    // Pinned deliberately: this is the one line that ties the count to the write
+    // path rather than to some other error. A reword should fail HERE, visibly,
+    // rather than quietly weakening the assertion above.
+    expect(failures[0]).toContain("Settings save failed");
 
     expect(JSON.parse(readFileSync(store.path, "utf-8"))).toEqual({ v: "newer" });
     await new Promise((resolve) => setTimeout(resolve, 60)); // past any retry of the older payload

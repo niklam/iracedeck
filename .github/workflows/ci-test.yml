@@ -1,7 +1,21 @@
 name: Tests
 
+# Also runs on pushes to master and release branches. A pull_request check only
+# proves something about the branch merged against the master that existed when
+# it ran, never about the master that results — and under squash-merge that
+# result is a tree nothing has ever built or tested (#1070). Matches the
+# branch list ci-typecheck.yml already uses, for the reason stated there:
+# release branches take feature PRs of their own and reach master through a
+# back-merge, so a post-merge gap there is the same gap one branch removed.
 on:
   pull_request:
+  push:
+    branches: [master, 'release/*']
+
+# This job only reads the repository, so it gets the minimum token scope and the
+# checkout credential is not left in .git/config for later steps to reach.
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -9,6 +23,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - uses: pnpm/action-setup@v6
         with:

@@ -61,12 +61,25 @@ The `voice/<id>/…` repetition inside a pack is deliberate and load-bearing —
   "label": "Luca",
   "version": "1.2.0",
   "author": "iRaceDeck",
-  "voices": ["luca"],
-  "skipped": ["voice/luca/openers/hi.mp3"]
+  "voices": [{ "id": "luca", "label": "Luca" }]
 }
 ```
 
-`voices` lets one pack carry more than one voice id. That costs nothing now and leaves room for a pack shipping two engineers. `skipped` is the [#1033](https://github.com/niklam/iRaceDeck/issues/1033) list, so a condensed third-party voice needs no extra machinery.
+`voices` lets one pack carry more than one voice. That costs nothing now and leaves room for a pack shipping two engineers.
+
+**`skipped` was removed before it shipped, decided 2026-09-01.** It was reserved here for [#1033](https://github.com/niklam/iRaceDeck/issues/1033)'s per-entry skip when a pack meant one voice. [#1064](https://github.com/niklam/iRaceDeck/issues/1064)'s design has since moved skipping to a `"skip": true` inside each voice's own script file, so a pack-level flat list reserves a slot a newer design already fills — in a format where per-voice data no longer belongs at pack level at all.
+
+Removing it was free and stays reversible: nothing ever read it (the scanner never put it on `InstalledVoicePack`), and adding a field back to an unshipped format is the same free edit as taking one out. The asymmetry runs one way — keeping it would have meant carrying it forever. A manifest that still carries the key loads normally; unknown fields are ignored rather than refused, so no hand-made pack breaks over it.
+
+**A voice carries an `id` and a `label`, decided 2026-09-01.** The pack already had that pair; the voices inside it did not, and the inconsistency was visible in the UI — the Installed Voices row showed a pack's chosen `label` while the dropdown beside it showed `titleCase(<voice id>)`, a mechanical transform of an identifier. A hyphenated id rendered as `Aaa-testvoice`. A pack author could name their pack and not their voices.
+
+`id` still matches the clip-path segment, `voice/<id>/…`, and the scanner still filters a pack's clips by that prefix — so **a declared `id` with no matching directory keeps failing as "no clips found under `voice/<id>/`"**. That cross-check is not replaced by the declaration; it is what validates it.
+
+**The label is presentation, never identity.** Nothing resolves, compares, or persists a label: `raceEngineerVoice` stores an id, `resolveActiveRaceEngineerVoice` anchors on an id, collisions are decided on ids. The label reaches the dropdown through a separate `_voiceLabels` map published beside the existing `_raceEngineerVoices` in the same `updateGlobalSettings` call, so the two cannot drift and the four `resolveActiveRaceEngineerVoice` call sites are untouched. A voice with no declared label — the bundled one, which has no manifest — falls back to `titleCase(id)`, which is exactly what every voice renders as today. That is why the bundle needs no special case.
+
+**`schema` stays `1`.** A version distinguishes formats that coexist in the wild, and there is no version 1 in the wild: no released plugin reads `voice-pack.json` at all, so nothing can have been authored against the old shape. Publishing the first format as `2` would permanently imply a version 1 nobody can find. Keeping `1` also gives the better error for the only packs that do exist — hand-made test packs on a maintainer's machine — since Zod then fails on `voices.0` and names the field that changed, where a bumped literal would only say "expected 2".
+
+Rejected: accepting both shapes for a window (`z.union([packId, { id, label }])`, treating a bare string as `{ id, label: titleCase(id) }`). That is the honest migration when packs exist in the wild. None do, so it would buy a permanently ambiguous published format to protect a handful of local test packs that can be hand-edited in a minute.
 
 ### `.install.json` — provenance, written by the installer
 
@@ -96,7 +109,7 @@ Because a pack contributes `voice/<id>/…` under its own root, **clip paths kee
 - `buildManifestPool`'s `^voice/([^/]+)/<group>/<base>(?:-\d{2})?\.mp3$` — unchanged
 - `substituteVoice` / `{voice}` templating — unchanged
 - `validation.ts`, `referenceVoice`, `scanRaceEngineerVoices`, `scanDriverNames` — unchanged
-- the `skipped` list from #1033 — composes with no special case
+- per-callout skipping — composes with no special case, and since 2026-09-01 it is #1064's per-voice `"skip": true` rather than a pack-level list here
 
 Two alternatives were rejected. **Absolute paths in the manifest** would make the escape guard meaningless and leak machine paths into a structure that is compared and serialized. **Copying the bundled default into AppData purely for uniformity** would cost a 13 MB copy per ecosystem on every plugin update and make the one voice that must always exist user-deletable.
 
@@ -111,7 +124,7 @@ The loser is reported in the Settings voices list, so a user who sideloaded a co
 
 ## Manifest composition and engine reload
 
-The compiled-in manifest (`import audioAssetsManifest from "@iracedeck/audio-assets/manifest.json"`) becomes the **built-in half**: sfx, plus whatever voice is bundled in that release. A scanner walks the packs root and produces the same `AudioAssetsManifest` shape per pack; the engine consumes the union of `clips` and of `skipped`.
+The compiled-in manifest (`import audioAssetsManifest from "@iracedeck/audio-assets/manifest.json"`) becomes the **built-in half**: sfx, plus whatever voice is bundled in that release. A scanner walks the packs root and produces the same `AudioAssetsManifest` shape per pack; the engine consumes the union of their `clips`. (`AudioAssetsManifest` has no `skipped` field, so the union was never implementable as written — and with `skipped` removed from the pack format above there is nothing to union.)
 
 `initializeAudioScenarios` stays once-only. The engine gains `setManifest(manifest)`:
 
@@ -138,7 +151,7 @@ After every refresh the plugin republishes `_raceEngineerVoices` and `_driverNam
       "label": "Luca",
       "version": "1.2.0",
       "description": "Calm, understated. Fewer words.",
-      "voices": ["luca"],
+      "voices": [{ "id": "luca", "label": "Luca" }],
       "bytes": 13107200,
       "sha256": "…",
       "url": "https://github.com/niklam/iRaceDeck/releases/download/voices-luca-1.2.0/luca-1.2.0.zip",
