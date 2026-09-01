@@ -88,6 +88,38 @@ function filesInProgram(packageName, configRelPath) {
 // A chained script is not, even when one segment is `tsc`, because an earlier
 // segment can generate source files that the compiler includes at runtime and a
 // static parse of the config cannot see.
+// `tsc` flags that consume the NEXT token as their value. Anything absent from
+// this set is treated as boolean, so its value would look like a positional file
+// and force a refusal — an unrecognised shape falls to tier 2 and gets MEASURED
+// rather than guessed at. Omissions here therefore cost a slow check, never a
+// wrong claim, which is the direction this list has to be wrong in.
+const TSC_VALUE_FLAGS = new Set([
+  "-p",
+  "--project",
+  "-o",
+  "--outFile",
+  "--outDir",
+  "--rootDir",
+  "--rootDirs",
+  "--declarationDir",
+  "--tsBuildInfoFile",
+  "-t",
+  "--target",
+  "-m",
+  "--module",
+  "--moduleResolution",
+  "--lib",
+  "--types",
+  "--typeRoots",
+  "--baseUrl",
+  "--jsxFactory",
+  "--jsxFragmentFactory",
+  "--jsxImportSource",
+  "--newLine",
+  "--locale",
+  "--plugins",
+]);
+
 export function deriveTypecheckConfig(script) {
   const segments = script
     .split("&&")
@@ -103,39 +135,86 @@ export function deriveTypecheckConfig(script) {
     return { derivable: false, reason: `it runs \`${tokens[0]}\`, whose file set is not this config's to state` };
   }
 
-  const inline = tokens.find((t) => t.startsWith("--project="));
-  if (inline) {
-    const value = inline.slice("--project=".length);
-    return value
-      ? { derivable: true, configPath: value }
-      : { derivable: false, reason: "`--project=` carries no config path" };
-  }
+  let configPath = null;
 
-  const flag = tokens.findIndex((t) => t === "-p" || t === "--project");
-  if (flag !== -1) {
-    const value = tokens[flag + 1];
-    if (!value || value.startsWith("-")) {
-      return { derivable: false, reason: `\`${tokens[flag]}\` is not followed by a config path` };
+  for (let i = 1; i < tokens.length; i++) {
+    const token = tokens[i];
+
+    if (token.startsWith("--project=")) {
+      const value = token.slice("--project=".length);
+      if (!value) return { derivable: false, reason: "`--project=` carries no config path" };
+      configPath = value;
+      continue;
     }
-    return { derivable: true, configPath: value };
+
+    if (token.startsWith("-")) {
+      if (TSC_VALUE_FLAGS.has(token)) {
+        const value = tokens[i + 1];
+        if (value === undefined || value.startsWith("-")) {
+          return { derivable: false, reason: `\`${token}\` is not followed by a value` };
+        }
+        if (token === "-p" || token === "--project") configPath = value;
+        i++; // the value belongs to this flag, not to the file list
+      }
+      continue;
+    }
+
+    // A positional argument, and it is disqualifying: when input files are given
+    // on the command line, tsc IGNORES tsconfig.json entirely. Measured on 5.9.3
+    // — `tsc --noEmit src/index.ts --listFiles` compiles `src/index.ts` alone and
+    // leaves `src/index.test.ts` out of the program, while `-p tsconfig.json`
+    // includes it. Returning `tsconfig.json` here would verify a config the
+    // script never loads, which is this file's own defect committed by its fix.
+    return {
+      derivable: false,
+      reason: `it passes \`${token}\` positionally, and tsc ignores tsconfig.json when given input files`,
+    };
   }
 
   // `tsc` with no project flag resolves `tsconfig.json` from the working
   // directory. That is documented, stable compiler behaviour, so naming it here
   // is a derivation rather than the assumption this change exists to remove.
-  return { derivable: true, configPath: "tsconfig.json" };
+  return { derivable: true, configPath: configPath ?? "tsconfig.json" };
 }
 
 function typecheckScriptOf(name) {
   return readJson(`packages/${name}/package.json`).scripts?.typecheck;
 }
 
-// Run a package's REAL typecheck script. `shell: true` because pnpm is a `.cmd`
-// shim on Windows; the arguments are fixed literals, so nothing user-supplied
-// reaches the shell.
+// How long a single real typecheck script may take. This is enforced by
+// `spawnSync`, NOT by the Vitest test timeout below: Vitest cannot interrupt a
+// synchronous `spawnSync`, so a hung script would block the worker until the CI
+// job limit and the test-level timeout would be decorative. Generous against the
+// ~8.5s a real `astro check` run takes.
+const SCRIPT_TIMEOUT_MS = 120_000;
+
+// Run a package's REAL typecheck script — directly through pnpm, deliberately
+// NOT through turbo. `turbo run typecheck --filter=…` is cached: measured, a
+// second invocation returns exit 0 in 599ms with `cache hit, replaying logs`
+// without running `astro check` at all. The clean run is the exposure, since
+// nothing about it is novel, and a replayed exit 0 is not evidence that the
+// script passes. A cached green would be this guard's own failure mode arriving
+// through the back door, so the invocation must stay direct.
+//
+// `shell: true` because pnpm is a `.cmd` shim on Windows; the arguments are
+// fixed literals, so nothing user-supplied reaches the shell.
 function runTypecheck(cwd) {
-  const result = spawnSync("pnpm", ["run", "typecheck"], { cwd, encoding: "utf-8", shell: true });
-  return { status: result.status, output: `${result.stdout ?? ""}${result.stderr ?? ""}` };
+  const result = spawnSync("pnpm", ["run", "typecheck"], {
+    cwd,
+    encoding: "utf-8",
+    shell: true,
+    timeout: SCRIPT_TIMEOUT_MS,
+    // Default is 1 MiB. A truncated capture would fail the marker assertions for
+    // a reason other than the one they report — the exact confusion this file is
+    // about, one layer down.
+    maxBuffer: 32 * 1024 * 1024,
+  });
+
+  // A spawn failure (or a timeout kill) leaves `status` null and both streams
+  // empty, which would otherwise be reported as "the workspace is not built".
+  // Surface the cause so the message names what actually happened.
+  const failure = result.error ? `\n[spawn failed] ${result.error.message}` : "";
+  return { status: result.status, output: `${result.stdout ?? ""}${result.stderr ?? ""}${failure}` };
 }
 
 // Named so its purpose is unmistakable in a `git status` listing: an orphaned
@@ -170,9 +249,11 @@ const probe: "${PROBE_EXPECTED_MARKER}" = "${PROBE_ACTUAL_MARKER}";
 export default probe;
 `;
 
-// Two runs of a real typecheck, so the timeout has to clear both plus pnpm's own
-// start-up. Measured 2026-09-01: ~7.5s per `astro check` run on a built tree.
-const PROBE_TIMEOUT_MS = 180_000;
+// Two runs of a real typecheck, so this has to clear BOTH `SCRIPT_TIMEOUT_MS`
+// budgets plus pnpm's start-up, or the outer timeout could fire while an inner
+// one was still doing its job and report the wrong failure. Measured
+// 2026-09-01: ~8.5s per `astro check` run on a built tree.
+const PROBE_TIMEOUT_MS = 2 * SCRIPT_TIMEOUT_MS + 60_000;
 
 // `.tsx` is matched too. Nothing in the repo uses it today, but a package whose
 // only sources were `.tsx` would otherwise be invisible to the guard — the same
@@ -426,6 +507,19 @@ describe("a package's typecheck covers its own test files", () => {
         // file the way the derivable branch does, so a config excluding
         // individual tests by name could still pass here.
         const probePath = onDisk[0].replace(/\/[^/]+$/, `/${PROBE_BASENAME}`);
+
+        // This test writes a file into the repository and deletes it again, so
+        // prove the target is inside the package BEFORE either happens. Today
+        // `testFilesOnDisk` only ever returns paths under `pkgDir`, so this
+        // cannot fire — which is the point: if that stops being true, the failure
+        // should be a loud assertion rather than a write, and a delete, somewhere
+        // else in the tree.
+        const pkgPrefix = `${toPosix(pkgDir)}/`;
+        expect(
+          probePath.startsWith(pkgPrefix),
+          `refusing to write the probe: ${probePath} is not inside ${pkgPrefix}`,
+        ).toBe(true);
+
         try {
           writeFileSync(probePath, PROBE_SOURCE);
           const probed = runTypecheck(pkgDir);
@@ -513,5 +607,29 @@ describe("deriveTypecheckConfig", () => {
   it("refuses a project flag with no path rather than guessing one", () => {
     expect(deriveTypecheckConfig("tsc --noEmit -p").derivable).toBe(false);
     expect(deriveTypecheckConfig("tsc --noEmit -p --pretty").derivable).toBe(false);
+  });
+
+  // Measured on TypeScript 5.9.3: `tsc --noEmit src/index.ts --listFiles`
+  // compiles that file alone and leaves `src/index.test.ts` out of the program,
+  // while `-p tsconfig.json` includes it. So defaulting to `tsconfig.json` for a
+  // script with positional inputs would verify a config the script never loads.
+  it("refuses positional file arguments, which make tsc ignore tsconfig.json", () => {
+    const result = deriveTypecheckConfig("tsc --noEmit src/index.ts");
+    expect(result.derivable).toBe(false);
+    expect(result.reason).toContain("positionally");
+  });
+
+  it("does not mistake a value-taking flag's value for a positional file", () => {
+    expect(deriveTypecheckConfig("tsc --noEmit --outDir dist -p tsconfig.json")).toEqual({
+      derivable: true,
+      configPath: "tsconfig.json",
+    });
+  });
+
+  // An unrecognised flag is treated as boolean, so its value reads as positional
+  // and the script is refused. That is the safe direction: an omission from
+  // TSC_VALUE_FLAGS costs a slow tier-2 measurement, never a wrong claim.
+  it("refuses rather than guesses when a flag it does not know takes a value", () => {
+    expect(deriveTypecheckConfig("tsc --noEmit --someFutureFlag value -p tsconfig.json").derivable).toBe(false);
   });
 });
