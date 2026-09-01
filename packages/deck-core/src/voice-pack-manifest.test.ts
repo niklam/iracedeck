@@ -46,7 +46,11 @@ describe("parseVoicePackManifest", () => {
     expect(result.ok && result.manifest.voices[0].label).toBe("AAA Test Voice");
   });
 
-  it("keeps a skipped list without interpreting it", () => {
+  it("ignores an unknown field rather than refusing the pack", () => {
+    // `skipped` used to be reserved here for #1033. #1064's design moved
+    // skipping into each voice's own script file, so the pack-level field was
+    // removed before it shipped — and a pack that still carries one must load,
+    // not be rejected over a field nothing reads.
     const raw = JSON.stringify({
       schema: 1,
       id: "luca",
@@ -57,7 +61,8 @@ describe("parseVoicePackManifest", () => {
     });
     const result = parseVoicePackManifest(raw);
 
-    expect(result.ok && result.manifest.skipped).toEqual(["voice/luca/openers/hi.mp3"]);
+    expect(result.ok).toBe(true);
+    expect(result.ok && "skipped" in result.manifest).toBe(false);
   });
 
   it("accepts a prerelease version", () => {

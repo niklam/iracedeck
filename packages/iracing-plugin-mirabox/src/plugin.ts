@@ -144,6 +144,7 @@ import {
   VERSION_CHECK_STARTUP_GRACE_MS,
   VOICE_LABELS_KEY,
   VOICE_PACKS_KEY,
+  voiceDisplayLabels,
 } from "@iracedeck/deck-core";
 import { initializeEventBus } from "@iracedeck/event-bus";
 import {
@@ -720,19 +721,14 @@ function pushRaceEngineerVoicesIfChanged(): void {
 }
 
 /**
- * Voice id -> the label its pack declared. Only voices a pack names appear; the
- * bundled voice has no manifest and needs no entry, because the dropdown falls
- * back to `titleCase(id)` — which is what it showed for every voice before packs
- * could name theirs.
+ * Voice id -> what the dropdown should call it. The rule lives in deck-core
+ * (`voiceDisplayLabels`) so all three plugins share one implementation and it is
+ * tested once. Only voices a pack provides appear; the bundled voice has no
+ * manifest and needs no entry, because the dropdown falls back to
+ * `titleCase(id)`.
  */
 function voiceLabels(): Record<string, string> {
-  const labels: Record<string, string> = {};
-
-  for (const pack of voicePacks.installed()) {
-    for (const voice of pack.voices) labels[voice.id] = voice.label;
-  }
-
-  return labels;
+  return voiceDisplayLabels(voicePacks.installed());
 }
 
 let lastPushedDriverNameListJson = "";
