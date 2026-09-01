@@ -1,4 +1,5 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -50,9 +51,9 @@ const TYPECHECK_EXCLUDES_TESTS = new Map([
 // basePath", which would report every test file as covered — so a broken tsconfig
 // would turn this check green precisely when something is wrong. Measured: a
 // tsconfig with a bad `extends` gave 47 passed before this guard was added.
-function filesInProgram(packageName) {
+function filesInProgram(packageName, configRelPath) {
   const dir = toPosix(join(repoRoot, "packages", packageName));
-  const configPath = `${dir}/tsconfig.json`;
+  const configPath = `${dir}/${configRelPath}`;
   const { config, error } = ts.parseConfigFileTextToJson(configPath, readFileSync(configPath, "utf-8"));
   if (error || !config) {
     const detail = error ? ts.flattenDiagnosticMessageText(error.messageText, " ") : "no config object";
@@ -65,6 +66,95 @@ function filesInProgram(packageName) {
   }
   return new Set(parsed.fileNames.map(toPosix));
 }
+
+// The script this guard vouches for, PARSED rather than assumed (#1086).
+//
+// The guard's claim is about `pnpm typecheck`; what it could previously verify
+// was a `tsconfig.json` it picked by hardcoded filename. Those are different
+// claims and nothing connected them: a package adopting `tsconfig.typecheck.json`
+// would be reported fully covered while its script checked a different file set,
+// and a script running a tool that is not `tsc` at all would be reported covered
+// on the strength of a config it never names.
+//
+// Worth recording what was true when this was written, because it explains why
+// the defect was invisible: every `typecheck` script in the repo was byte-identical
+// `tsc --noEmit -p tsconfig.json`, so the old inference could not be wrong
+// anywhere. The premise was unfalsifiable rather than verified, and #1077 created
+// the first counter-example by giving the website `pnpm generate:gallery && astro check`.
+//
+// Returns the config to verify against, or the reason it cannot be derived — in
+// which case the caller must MEASURE rather than infer (see the probe below).
+// Deliberately conservative: only a single-command `tsc` invocation is derivable.
+// A chained script is not, even when one segment is `tsc`, because an earlier
+// segment can generate source files that the compiler includes at runtime and a
+// static parse of the config cannot see.
+export function deriveTypecheckConfig(script) {
+  const segments = script
+    .split("&&")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (segments.length !== 1) {
+    return { derivable: false, reason: `it chains ${segments.length} commands, so a static parse cannot stand in` };
+  }
+
+  const tokens = segments[0].split(/\s+/).filter(Boolean);
+  if (tokens[0] !== "tsc") {
+    return { derivable: false, reason: `it runs \`${tokens[0]}\`, whose file set is not this config's to state` };
+  }
+
+  const inline = tokens.find((t) => t.startsWith("--project="));
+  if (inline) {
+    const value = inline.slice("--project=".length);
+    return value
+      ? { derivable: true, configPath: value }
+      : { derivable: false, reason: "`--project=` carries no config path" };
+  }
+
+  const flag = tokens.findIndex((t) => t === "-p" || t === "--project");
+  if (flag !== -1) {
+    const value = tokens[flag + 1];
+    if (!value || value.startsWith("-")) {
+      return { derivable: false, reason: `\`${tokens[flag]}\` is not followed by a config path` };
+    }
+    return { derivable: true, configPath: value };
+  }
+
+  // `tsc` with no project flag resolves `tsconfig.json` from the working
+  // directory. That is documented, stable compiler behaviour, so naming it here
+  // is a derivation rather than the assumption this change exists to remove.
+  return { derivable: true, configPath: "tsconfig.json" };
+}
+
+function typecheckScriptOf(name) {
+  return readJson(`packages/${name}/package.json`).scripts?.typecheck;
+}
+
+// Run a package's REAL typecheck script. `shell: true` because pnpm is a `.cmd`
+// shim on Windows; the arguments are fixed literals, so nothing user-supplied
+// reaches the shell.
+function runTypecheck(cwd) {
+  const result = spawnSync("pnpm", ["run", "typecheck"], { cwd, encoding: "utf-8", shell: true });
+  return { status: result.status, output: `${result.stdout ?? ""}${result.stderr ?? ""}` };
+}
+
+// Named so its purpose is unmistakable in a `git status` listing: an orphaned
+// probe means a run crashed between writing and deleting it. It is untracked, so
+// it can never modify existing content — `git status --porcelain` stays a
+// trustworthy contamination signal, which is what it is used for around here.
+// `vitest.config.ts` excludes this exact filename so an orphan is never collected.
+const PROBE_BASENAME = "__typecheck_coverage_probe__.test.ts";
+
+const PROBE_SOURCE = `// TEMPORARY file written by scripts/typecheck-script-coverage.test.mjs.
+// It is deleted in a \`finally\`. If you are reading this in your working tree,
+// that run crashed — delete it. It is untracked and means nothing on its own.
+const probe: number = "deliberately not a number";
+export default probe;
+`;
+
+// Two runs of a real typecheck, so the timeout has to clear both plus pnpm's own
+// start-up. Measured 2026-09-01: ~7.5s per `astro check` run on a built tree.
+const PROBE_TIMEOUT_MS = 180_000;
 
 // `.tsx` is matched too. Nothing in the repo uses it today, but a package whose
 // only sources were `.tsx` would otherwise be invisible to the guard — the same
@@ -208,21 +298,49 @@ describe("every package with TypeScript is covered by pnpm typecheck", () => {
 // complete and is not. The first catches a package the gate never runs on; this
 // catches one the gate runs on while checking none of its tests — `typecheck`
 // present, reported covered, and the test files not in the program at all.
+// Since #1086 the claim is bound to the SCRIPT rather than to a hardcoded
+// filename, and it is established one of exactly two ways.
+//
+// Where the script is a plain `tsc -p <config>`, that config is parsed. Cheap,
+// and faithful: measured against `tsc --listFiles` on 2026-09-01,
+// `parseJsonConfigFileContent` reports exactly the in-package file set the
+// compiler really loads, so running the compiler here would buy no fidelity.
+//
+// Where the script is anything else, nothing about its file set can be inferred
+// from a config it never names — so the guard MEASURES, by running the real
+// script and proving by effect that a test-shaped file is checked.
+//
+// There is deliberately no third way. A "checked by something else" allow-list
+// was considered and rejected: it would have asserted that `astro check` covers
+// the website's test files on nobody's authority, which is verification-shaped
+// while still inferring — the exact defect this file exists to remove.
 describe("a package's typecheck covers its own test files", () => {
   const checkable = typeScriptPackages.filter(
-    (name) => !NO_TYPECHECK_SCRIPT.has(name) && existsSync(join(repoRoot, "packages", name, "tsconfig.json")),
+    (name) => !NO_TYPECHECK_SCRIPT.has(name) && typecheckScriptOf(name) !== undefined,
   );
+
+  const derivable = checkable.filter((name) => deriveTypecheckConfig(typecheckScriptOf(name)).derivable);
+  const measured = checkable.filter((name) => !deriveTypecheckConfig(typecheckScriptOf(name)).derivable);
 
   it("has no stale test-exclusion entries", () => {
     const stale = [...TYPECHECK_EXCLUDES_TESTS.keys()].filter((name) => !checkable.includes(name));
     expect(stale, `TYPECHECK_EXCLUDES_TESTS names ${stale.join(", ")}, which is no longer checkable.`).toEqual([]);
   });
 
-  it.each(checkable)("checks every test file it ships: %s", (name) => {
+  it("splits every checkable package into exactly one of the two ways", () => {
+    expect(
+      [...derivable, ...measured].sort(),
+      "a package must be either statically derivable or measured — neither silently dropped nor counted twice",
+    ).toEqual([...checkable].sort());
+  });
+
+  it.each(derivable)("checks every test file it ships: %s", (name) => {
     const onDisk = testFilesOnDisk(join(repoRoot, "packages", name));
     if (onDisk.length === 0) return;
 
-    const inProgram = filesInProgram(name);
+    const script = typecheckScriptOf(name);
+    const { configPath } = deriveTypecheckConfig(script);
+    const inProgram = filesInProgram(name, configPath);
     const missing = onDisk.filter((f) => !inProgram.has(f)).map((f) => f.slice(repoRoot.length + 1));
     const excused = TYPECHECK_EXCLUDES_TESTS.get(name);
 
@@ -240,10 +358,127 @@ describe("a package's typecheck covers its own test files", () => {
     expect(
       missing,
       `packages/${name} has a typecheck script, so the coverage guard above reports it covered — ` +
-        `but its tsconfig leaves ${missing.length} of its own test files out of the program, so ` +
-        `\`pnpm typecheck\` checks none of them: ${missing.join(", ")}. Presence of a script is not ` +
-        `coverage. Remove the exclusion, or add the package to TYPECHECK_EXCLUDES_TESTS with the ` +
-        `number of errors the exclusion is hiding.`,
+        `but the config that script actually names (${configPath}, from \`${script}\`) leaves ` +
+        `${missing.length} of its own test files out of the program, so \`pnpm typecheck\` checks ` +
+        `none of them: ${missing.join(", ")}. Presence of a script is not coverage. Remove the ` +
+        `exclusion, or add the package to TYPECHECK_EXCLUDES_TESTS with the number of errors the ` +
+        `exclusion is hiding.`,
     ).toEqual([]);
+  });
+
+  // Registered only when something needs it, because `it.each([])` is an error
+  // rather than a no-op. On a repo where every script is a plain `tsc -p`, this
+  // block correctly disappears.
+  if (measured.length > 0) {
+    it.each(measured)(
+      "proves by running its own typecheck that it checks its test files: %s",
+      (name) => {
+        const pkgDir = join(repoRoot, "packages", name);
+        const onDisk = testFilesOnDisk(pkgDir);
+        if (onDisk.length === 0) return;
+
+        const script = typecheckScriptOf(name);
+        const { reason } = deriveTypecheckConfig(script);
+
+        // Side one. The script must pass on an unmodified tree. Without this,
+        // "the tool ignores test files" and "the workspace is not built" are the
+        // same non-zero exit, and the guard would confidently report the wrong
+        // one — this issue's own defect reappearing inside its fix.
+        const clean = runTypecheck(pkgDir);
+        expect(
+          clean.status,
+          `packages/${name}'s typecheck (\`${script}\`) does not pass on an unmodified tree, so its ` +
+            `coverage is UNPROVEN rather than absent — this is not a coverage failure. The usual ` +
+            `cause is an unbuilt workspace: run \`pnpm build\`, then \`pnpm test\` again. Output:\n` +
+            clean.output,
+        ).toBe(0);
+
+        // Side two. With a test-shaped file that cannot possibly typecheck, it
+        // must fail — AND the output must name the probe. An exit code alone
+        // cannot tell "the probe was checked and failed" from "something else
+        // failed", and a guard that cannot tell those apart is the thing being
+        // fixed here rather than the fix.
+        //
+        // The probe goes beside a real test file so it is picked up exactly the
+        // way a test file is. Placed anywhere else it would prove a weaker claim
+        // than the one this block makes.
+        //
+        // Known limit, stated rather than papered over: this proves a test-shaped
+        // file in that directory is checked. It does not enumerate every test
+        // file the way the derivable branch does, so a config excluding
+        // individual tests by name could still pass here.
+        const probePath = onDisk[0].replace(/\/[^/]+$/, `/${PROBE_BASENAME}`);
+        try {
+          writeFileSync(probePath, PROBE_SOURCE);
+          const probed = runTypecheck(pkgDir);
+
+          expect(
+            probed.status,
+            `packages/${name} runs \`${script}\`, which cannot be statically derived (${reason}), so ` +
+              `coverage has to be proven by effect. A file that cannot typecheck was placed beside ` +
+              `its own tests at ${probePath.slice(repoRoot.length + 1)} and the script still passed — ` +
+              `so whatever it runs is NOT checking files shaped like this package's tests, and a ` +
+              `green \`pnpm typecheck\` says nothing about them.`,
+          ).not.toBe(0);
+
+          expect(
+            probed.output,
+            `packages/${name}'s typecheck failed with the probe in place, but its output never names ` +
+              `${PROBE_BASENAME} — so the failure cannot be attributed to the probe and proves ` +
+              `nothing about coverage. Output:\n${probed.output}`,
+          ).toContain(PROBE_BASENAME);
+        } finally {
+          rmSync(probePath, { force: true });
+        }
+      },
+      PROBE_TIMEOUT_MS,
+    );
+  }
+});
+
+// The derivation is the load-bearing half of #1086 and it runs against real
+// scripts only for the shapes this repo happens to use today — every one of them
+// a plain `tsc -p`. These pin the shapes it must keep getting right, including
+// the two that must FAIL to derive, since a derivation that never refuses would
+// silently return to inferring.
+describe("deriveTypecheckConfig", () => {
+  it("derives the config a plain tsc invocation names", () => {
+    expect(deriveTypecheckConfig("tsc --noEmit -p tsconfig.json")).toEqual({
+      derivable: true,
+      configPath: "tsconfig.json",
+    });
+  });
+
+  it("derives a non-default config filename", () => {
+    expect(deriveTypecheckConfig("tsc --noEmit -p tsconfig.typecheck.json")).toEqual({
+      derivable: true,
+      configPath: "tsconfig.typecheck.json",
+    });
+  });
+
+  it("accepts both spellings of the project flag", () => {
+    expect(deriveTypecheckConfig("tsc --project build.json").configPath).toBe("build.json");
+    expect(deriveTypecheckConfig("tsc --project=build.json").configPath).toBe("build.json");
+  });
+
+  it("resolves bare tsc to the config the compiler itself would load", () => {
+    expect(deriveTypecheckConfig("tsc --noEmit")).toEqual({ derivable: true, configPath: "tsconfig.json" });
+  });
+
+  it("refuses a tool it cannot reason about", () => {
+    const result = deriveTypecheckConfig("astro check");
+    expect(result.derivable).toBe(false);
+    expect(result.reason).toContain("astro");
+  });
+
+  it("refuses a chained script even when one segment is tsc", () => {
+    // An earlier segment can generate sources the compiler will include at
+    // runtime, which a static parse of the config cannot see.
+    expect(deriveTypecheckConfig("pnpm generate:gallery && tsc -p tsconfig.json").derivable).toBe(false);
+  });
+
+  it("refuses a project flag with no path rather than guessing one", () => {
+    expect(deriveTypecheckConfig("tsc --noEmit -p").derivable).toBe(false);
+    expect(deriveTypecheckConfig("tsc --noEmit -p --pretty").derivable).toBe(false);
   });
 });
