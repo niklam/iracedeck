@@ -147,6 +147,30 @@ const TSC_SUPPRESSING_FLAGS = new Set([
   "-b",
 ]);
 
+// Boolean `tsc` flags this parser will vouch for: each one leaves type-checking
+// of the program intact, so a config parsed alongside it still describes what
+// the run checks. Kept deliberately short. An unlisted flag is REFUSED, not
+// assumed harmless — see the allow-list reasoning at the refusal below.
+const TSC_SAFE_BOOLEAN_FLAGS = new Set([
+  "--noEmit",
+  "--noEmitOnError",
+  "--pretty",
+  "--noErrorTruncation",
+  "--skipLibCheck",
+  "--strict",
+  "--incremental",
+  "--composite",
+  "--declaration",
+  "--emitDeclarationOnly",
+  "--sourceMap",
+  "--declarationMap",
+  "--listEmittedFiles",
+  "--explainFiles",
+  "--diagnostics",
+  "--extendedDiagnostics",
+  "--traceResolution",
+]);
+
 export function deriveTypecheckConfig(script) {
   const segments = script
     .split("&&")
@@ -189,8 +213,29 @@ export function deriveTypecheckConfig(script) {
         }
         if (token === "-p" || token === "--project") configPath = value;
         i++; // the value belongs to this flag, not to the file list
+        continue;
       }
-      continue;
+
+      if (TSC_SAFE_BOOLEAN_FLAGS.has(token)) continue;
+
+      // Everything else is refused, and this being an ALLOW-list is the point.
+      // The previous version accepted any unrecognised `-flag` as a harmless
+      // boolean, which is why `--noCheck` was caught only because somebody named
+      // it — a suppressing flag nobody has thought of yet would have passed the
+      // same way. The parser was blocklist-shaped in exactly the half where
+      // nothing downstream trips: an unknown VALUE flag was already refused, but
+      // only by accident, because its value then read as a positional file. A
+      // boolean has no value to trip that, so it has to be refused deliberately.
+      //
+      // An unlisted flag now costs a tier-2 measurement, never a wrong claim.
+      // Adding one to TSC_SAFE_BOOLEAN_FLAGS is a claim that it does not
+      // suppress checking — establish that the way the suppressing ones were
+      // established, by injecting a type error and confirming the run still
+      // fails, rather than from the flag's name.
+      return {
+        derivable: false,
+        reason: `it passes \`${token}\`, which this parser cannot vouch for as leaving type-checking intact`,
+      };
     }
 
     // A positional argument, and it is disqualifying: when input files are given
@@ -685,5 +730,23 @@ describe("deriveTypecheckConfig", () => {
   // TSC_VALUE_FLAGS costs a slow tier-2 measurement, never a wrong claim.
   it("refuses rather than guesses when a flag it does not know takes a value", () => {
     expect(deriveTypecheckConfig("tsc --noEmit --someFutureFlag value -p tsconfig.json").derivable).toBe(false);
+  });
+
+  // The parser is allow-list shaped for BOOLEANS too, which is the structural
+  // half. An unknown value-flag was already refused, but only incidentally —
+  // its value read as a positional file. A boolean has no value to trip that, so
+  // an unrecognised one used to pass silently, which is why `--noCheck` was
+  // caught only because a reviewer named it rather than by the design.
+  it("refuses an unknown boolean flag rather than assuming it is harmless", () => {
+    const result = deriveTypecheckConfig("tsc --noEmit --someFutureBooleanFlag -p tsconfig.json");
+    expect(result.derivable).toBe(false);
+    expect(result.reason).toContain("--someFutureBooleanFlag");
+  });
+
+  it("still derives the shape every package in this repo actually uses", () => {
+    expect(deriveTypecheckConfig("tsc --noEmit -p tsconfig.json")).toEqual({
+      derivable: true,
+      configPath: "tsconfig.json",
+    });
   });
 });
