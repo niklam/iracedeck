@@ -19,7 +19,7 @@ The folder is shared by all three iRaceDeck plugins. If you use a Stream Deck an
 
 Open **iRaceDeck Settings** from any action's Property Inspector, go to the **Race Engineer** section, and pick from the **Race Engineer Voice** dropdown. Every installed voice appears there. The change takes effect on the next callout — there is no need to restart anything.
 
-**Installed Voices** just below the dropdown lists every pack iRaceDeck has loaded, with its version.
+**Installed Voices** just below the dropdown lists every pack iRaceDeck has loaded, with its version. Anything in the folder that iRaceDeck could not load is listed underneath, with the reason — so a pack that is present but silent tells you why without you going looking for it.
 
 ## Installing a Voice Pack by Hand
 
@@ -35,7 +35,7 @@ The folder name must match the pack's own name — if a pack calls itself `luca`
 
 ## When a Pack Does Not Appear
 
-If you rescan and nothing changes, the pack was rejected. Every rejection is written to the plugin log with the reason, at the normal logging level — you do not need to turn anything on to see it. The usual causes:
+If you rescan and the voice does not appear, iRaceDeck ignored the pack — and it says so: the pack is listed under **Installed Voices** with the reason beside it. The same reason is written to the plugin log, at the normal logging level, so you do not need to turn anything on to find it there either. The usual causes:
 
 - **No `voice-pack.json`** — the folder is not a voice pack, or you copied the audio without the file that describes it.
 - **The folder name does not match the pack's name** — rename the folder to match.
@@ -45,10 +45,9 @@ If you rescan and nothing changes, the pack was rejected. Every rejection is wri
 
 ## Third-Party Voice Packs
 
-Anyone can build a voice pack, and iRaceDeck will load one you install by hand. Two things are worth knowing:
+Anyone can build a voice pack, and iRaceDeck will load one you install by hand.
 
-- A hand-installed pack is **not verified by iRaceDeck**. It is audio from whoever made it, and you are trusting that person the same way you would trust any other file you download.
-- A voice belongs to whoever recorded it. If you publish a pack, make sure you have the right to distribute the voice in it.
+**A third-party pack is its author's, not ours.** It is distributed by whoever made it, on their terms; iRaceDeck has nothing to do with it beyond being able to play it. We do not host it, endorse it, verify it, or support it, and installing one is between you and its author — trust it the way you would trust any other file you choose to download. If you make a pack, it stays yours, and it is on you to have the right to distribute the voice in it.
 
 ## What Is Coming
 

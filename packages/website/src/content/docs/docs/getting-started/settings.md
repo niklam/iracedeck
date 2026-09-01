@@ -74,6 +74,8 @@ Everything about the Race Engineer and the radar: the live on/off toggles and th
 
 **Race Engineer Voice** and **Your Name** choose who talks to you and what they call you. **Output Device** sends the engineer to a specific device — useful if you want him in your headset while the sim runs on speakers. The three volumes are independent: **Race Engineer** is the voice, **Background** the pit ambience behind it, **Radar** the proximity ticks.
 
+**Installed Voices** lists the voice packs iRaceDeck has loaded, with anything it could not load underneath and the reason why — so a pack you dropped into the folder that is not showing up in the dropdown tells you what is wrong with it. **Rescan voices** below it picks up a pack you have just added, without restarting anything. See [Race Engineer Voices](/docs/features/race-engineer-voices/) for where packs live and how to install one.
+
 **Callouts** is the long list at the bottom: one checkbox per thing the engineer can tell you, grouped by family — flags, incidents, fuel, spotter and the rest. Turning one off silences that call without touching any other, and takes effect immediately; it never cuts off a callout already playing.
 
 #### Race Engineer and Radar: Now Versus On Startup
