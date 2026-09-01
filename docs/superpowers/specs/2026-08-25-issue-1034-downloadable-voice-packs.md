@@ -61,12 +61,22 @@ The `voice/<id>/…` repetition inside a pack is deliberate and load-bearing —
   "label": "Luca",
   "version": "1.2.0",
   "author": "iRaceDeck",
-  "voices": ["luca"],
+  "voices": [{ "id": "luca", "label": "Luca" }],
   "skipped": ["voice/luca/openers/hi.mp3"]
 }
 ```
 
-`voices` lets one pack carry more than one voice id. That costs nothing now and leaves room for a pack shipping two engineers. `skipped` is the [#1033](https://github.com/niklam/iRaceDeck/issues/1033) list, so a condensed third-party voice needs no extra machinery.
+`voices` lets one pack carry more than one voice. That costs nothing now and leaves room for a pack shipping two engineers. `skipped` is the [#1033](https://github.com/niklam/iRaceDeck/issues/1033) list, so a condensed third-party voice needs no extra machinery.
+
+**A voice carries an `id` and a `label`, decided 2026-09-01.** The pack already had that pair; the voices inside it did not, and the inconsistency was visible in the UI — the Installed Voices row showed a pack's chosen `label` while the dropdown beside it showed `titleCase(<voice id>)`, a mechanical transform of an identifier. A hyphenated id rendered as `Aaa-testvoice`. A pack author could name their pack and not their voices.
+
+`id` still matches the clip-path segment, `voice/<id>/…`, and the scanner still filters a pack's clips by that prefix — so **a declared `id` with no matching directory keeps failing as "no clips found under `voice/<id>/`"**. That cross-check is not replaced by the declaration; it is what validates it.
+
+**The label is presentation, never identity.** Nothing resolves, compares, or persists a label: `raceEngineerVoice` stores an id, `resolveActiveRaceEngineerVoice` anchors on an id, collisions are decided on ids. The label reaches the dropdown through a separate `_voiceLabels` map published beside the existing `_raceEngineerVoices` in the same `updateGlobalSettings` call, so the two cannot drift and the four `resolveActiveRaceEngineerVoice` call sites are untouched. A voice with no declared label — the bundled one, which has no manifest — falls back to `titleCase(id)`, which is exactly what every voice renders as today. That is why the bundle needs no special case.
+
+**`schema` stays `1`.** A version distinguishes formats that coexist in the wild, and there is no version 1 in the wild: no released plugin reads `voice-pack.json` at all, so nothing can have been authored against the old shape. Publishing the first format as `2` would permanently imply a version 1 nobody can find. Keeping `1` also gives the better error for the only packs that do exist — hand-made test packs on a maintainer's machine — since Zod then fails on `voices.0` and names the field that changed, where a bumped literal would only say "expected 2".
+
+Rejected: accepting both shapes for a window (`z.union([packId, { id, label }])`, treating a bare string as `{ id, label: titleCase(id) }`). That is the honest migration when packs exist in the wild. None do, so it would buy a permanently ambiguous published format to protect a handful of local test packs that can be hand-edited in a minute.
 
 ### `.install.json` — provenance, written by the installer
 
@@ -138,7 +148,7 @@ After every refresh the plugin republishes `_raceEngineerVoices` and `_driverNam
       "label": "Luca",
       "version": "1.2.0",
       "description": "Calm, understated. Fewer words.",
-      "voices": ["luca"],
+      "voices": [{ "id": "luca", "label": "Luca" }],
       "bytes": 13107200,
       "sha256": "…",
       "url": "https://github.com/niklam/iRaceDeck/releases/download/voices-luca-1.2.0/luca-1.2.0.zip",
