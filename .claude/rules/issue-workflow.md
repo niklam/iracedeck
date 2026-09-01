@@ -104,6 +104,6 @@ Since #1070 every CI workflow also runs on pushes to `master` and `release/*` �
 - **A red result goes to the coordinator immediately, and the coordinator takes it to Niklas.** No agent decides on its own to fix it, revert it, or let it stand.
 - **If the merging session ends before the run finishes, the watch passes to the coordinator** — the one party that outlives a worker session.
 
-There is deliberately no flake caveat here. Measured on 2026-09-01, the last 60 `ci-test` runs were 58 successes, one `action_required`, and one genuine test failure on a development branch — first attempt, fixed by later commits rather than by a re-run. On that evidence a red run means something, so treat one as real until shown otherwise, not the other way round.
+There is deliberately no flake caveat here. Measured on 2026-09-01, the last 60 `ci-test` runs were 58 successes, one `action_required`, and one genuine test failure on a development branch — first attempt, fixed by later commits rather than by a re-run. On that evidence a red run means something, so treat one as real until shown otherwise, not the other way round. One flake has since been observed, on 2026-09-01, in `settings-store.test.ts` — the instruction is unchanged, because treating that red as real is what identified it.
 
 Then remove the worktree — and if a deck host is linked to it, relink to `master` first, or you will silently break the maintainer's installed plugin.
