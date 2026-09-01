@@ -12,6 +12,28 @@ import {
   settingsStoreFolderName,
 } from "./settings-store.js";
 
+/**
+ * Poll until `condition` holds, failing at `timeoutMs` rather than passing time
+ * back to the caller regardless.
+ *
+ * For the one thing in this file with no observable signal to await: a write
+ * landed by the store's own RETRY TIMER. A fixed sleep sized to "the timer plus
+ * a bit" is the shape that made this file non-deterministic (issue #1088) — it
+ * assumes a budget the machine may not honour, and fails as an ENOENT three
+ * lines later rather than as a timeout that says what it was waiting for. A
+ * deadline waits only as long as it must, and the generous default means a
+ * failure here is a real one rather than a loaded runner.
+ */
+async function waitUntil(condition: () => boolean, timeoutMs = 5_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+
+  while (!condition()) {
+    if (Date.now() > deadline) throw new Error(`Timed out after ${timeoutMs} ms waiting for the condition`);
+
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
+
 describe("settingsStoreFolderName", () => {
   it("maps the plugin platform id to a human-readable per-ecosystem folder", () => {
     expect(settingsStoreFolderName("stream-deck")).toBe("Stream Deck");
@@ -182,7 +204,18 @@ describe("createFileSettingsStore", () => {
     expect(readdirSync(join(dir, "sub")).filter((f) => f.endsWith(".tmp"))).toEqual([]);
 
     rmSync(store.path, { recursive: true, force: true }); // the "lock" clears
-    await new Promise((resolve) => setTimeout(resolve, 60)); // past the 20 ms retry
+
+    // Wait for the retry to LAND, not for a fixed budget to elapse. This is a
+    // POSITIVE assertion behind the wait — the 20 ms timer has to fire and then
+    // mkdir + writeFile + rename all have to finish — so a stalled runner turns
+    // a fixed sleep into the ENOENT of issue #1088, in this same file. Polling
+    // to a generous deadline waits only as long as it must and fails loudly if
+    // the retry never comes.
+    //
+    // `flush()` is not the signal here, unlike the test below: it would take
+    // `pending` and enqueue immediately, so the retry TIMER — the thing under
+    // test — would never be what lands the write.
+    await waitUntil(() => existsSync(store.path));
 
     expect(JSON.parse(readFileSync(store.path, "utf-8"))).toEqual({ survives: "the lock" });
     await retrying.flush();
