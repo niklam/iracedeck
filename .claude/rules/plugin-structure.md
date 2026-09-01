@@ -239,9 +239,12 @@ if (__FEATURE_PNG_RASTERIZATION__) {
 }
 
 // 8. Initialize audio engine for pit engineer voice playback.
-//    Third arg = base path of the bundled audio assets (the plugin's assets/audio dir).
+//    Third arg = the ORDERED audio roots (#1034). A bare string is an
+//    unrestricted root, which is what the plugin's own assets/audio is; the
+//    voice-pack service appends one { dir, clips } root per installed pack later
+//    via setRoots, each limited to the clips its scan admitted.
 const audioNative = new AudioNative();
-initializeAudio(adapter.createLogger("Audio"), audioNative, join(__binDir, "..", "assets", "audio"));
+initializeAudio(adapter.createLogger("Audio"), audioNative, [join(__binDir, "..", "assets", "audio")]);
 getAudio().init();
 
 // 9. Initialize the window service: focus + mouse-pointer placement (#926)
@@ -306,7 +309,7 @@ adapter.connect();
 - All init calls must be BEFORE `adapter.connect()` (handlers must register first)
 - `initializeEventBus()` must come before any publisher (e.g. `initializeSimEventsIracing`) or subscriber (actions via `getEventBus().subscribe(...)`)
 - `initializeSimEventsIracing()` must come after `initializeSDK()` (requires `getController()`) and after `initializeEventBus()`; it's the only package that reads `sdkController` ticks on behalf of action consumers
-- `initializeAudio()` creates the audio service singleton (third argument = audio-assets base path); `getAudio().init()` starts the miniaudio engine. Both must be called before actions that use audio (e.g., Pit Engineer)
+- `initializeAudio()` creates the audio service singleton (third argument = the ordered audio roots, an ARRAY since #1034 — a bare string entry is an unrestricted root, and installed voice packs are appended later as `{ dir, clips }` roots limited to the clips the scan admitted); `getAudio().init()` starts the miniaudio engine. Both must be called before actions that use audio (e.g., Pit Engineer)
 - `initWindowFocus` / `focusIRacingIfEnabled` / `focusIRacingNow` come from `@iracedeck/deck-core` (moved there in #930; the unconditional variant added in #926). The focuser is injected, exactly like `initializeKeyboard`'s callbacks, so deck-core stays free of a native import; deck-core mirrors the native `FocusResult` codes and `focus-result.test.ts` in the Stream Deck plugin guards that mirror
 - `initMousePointer` / `movePointerToSim` (#926) are the sibling pointer service, injected the same way and mirrored the same way (`pointer-move-result.test.ts`). Kept separate from the focus service: one owns the foreground, the other owns where the pointer goes
 - `initializeRasterizer()` is gated by `__FEATURE_PNG_RASTERIZATION__` and must come before any code that renders a device image (it can run anywhere before `adapter.connect()`, since `toDeviceImage()` passes images through unchanged until it's called); see `@.claude/rules/platform-feature-flags.md`

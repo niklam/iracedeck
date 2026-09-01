@@ -1061,6 +1061,75 @@ describe("audio root resolution (issue #1034)", () => {
     expect(playedPath(native)).toBe(posix(path.join(PACK, "voice/luca/a.mp3")));
   });
 
+  describe("a pack root serves only the clips the scan admitted from it", () => {
+    const EVIL = path.resolve("/packs/aaa-evil");
+
+    it("does not let an earlier pack serve a clip belonging to a later one", () => {
+      // `aaa-evil` has the file ON DISK — the scanner drops a foreign-voice file
+      // from a pack's clip list rather than deleting it — and sorts first, so
+      // file presence alone would hand every luca callout aaa-evil's audio, with
+      // nothing said in the settings list or the collision problems.
+      const native = createMockNative();
+      initializeAudio(mockLogger as never, native, [{ dir: PLUGIN }]);
+      getAudio().init();
+      getAudio().setFileProbe((candidate) => candidate.startsWith(EVIL) || candidate.startsWith(PACK));
+
+      getAudio().setRoots([
+        { dir: PLUGIN },
+        { dir: EVIL, clips: ["voice/aaa-evil/a.mp3"] },
+        { dir: PACK, clips: ["voice/luca/a.mp3"] },
+      ]);
+      getAudio().playOnChannel(AudioChannel.Voice, "voice/luca/a.mp3");
+
+      expect(playedPath(native)).toBe(posix(path.join(PACK, "voice/luca/a.mp3")));
+    });
+
+    it("does not let a pack supply a bundled clip the plugin does not ship", () => {
+      // `reservedVoices` stops a pack DECLARING a bundled voice; it cannot stop
+      // one shipping `voice/default/…` files. Voices legitimately differ in which
+      // callouts they carry, so the bundle not having a given path is ordinary.
+      const native = createMockNative();
+      initializeAudio(mockLogger as never, native, [{ dir: PLUGIN }]);
+      getAudio().init();
+      getAudio().setFileProbe((candidate) => candidate.startsWith(EVIL));
+
+      getAudio().setRoots([{ dir: PLUGIN }, { dir: EVIL, clips: ["voice/aaa-evil/a.mp3"] }]);
+      getAudio().playOnChannel(AudioChannel.Voice, "voice/default/rare-01.mp3");
+
+      expect(playedPath(native)).toBe(posix(path.join(PLUGIN, "voice/default/rare-01.mp3")));
+    });
+
+    it("refuses a `..` path that escapes one root and lands inside a sibling pack root", () => {
+      // Pack roots are siblings under one parent, so containment alone cannot
+      // refuse this: the path pops out of the plugin root and back into the pack,
+      // where `path.relative` reports no `..` at all. The allow-list is what
+      // refuses it — no scan ever produces a clip path spelled this way.
+      const native = createMockNative();
+      const sibling = path.resolve("/plugin/assets/audio/../../packs/luca/voice/luca/a.mp3");
+      initializeAudio(mockLogger as never, native, [{ dir: PLUGIN }]);
+      getAudio().init();
+      getAudio().setFileProbe((candidate) => candidate === sibling);
+
+      getAudio().setRoots([{ dir: PLUGIN }, { dir: PACK, clips: ["voice/luca/a.mp3"] }]);
+
+      expect(() => getAudio().playOnChannel(AudioChannel.Voice, "../../packs/luca/voice/luca/a.mp3")).toThrow(
+        "escapes",
+      );
+    });
+
+    it("still serves the clips a pack WAS admitted for", () => {
+      const native = createMockNative();
+      initializeAudio(mockLogger as never, native, [{ dir: PLUGIN }]);
+      getAudio().init();
+      getAudio().setFileProbe((candidate) => candidate.startsWith(PACK));
+
+      getAudio().setRoots([{ dir: PLUGIN }, { dir: PACK, clips: ["voice/luca/a.mp3"] }]);
+      getAudio().playOnChannel(AudioChannel.Voice, "voice/luca/a.mp3");
+
+      expect(playedPath(native)).toBe(posix(path.join(PACK, "voice/luca/a.mp3")));
+    });
+  });
+
   it("does not resolve at all when there are no roots", () => {
     const native = createMockNative();
     initializeAudio(mockLogger as never, native);

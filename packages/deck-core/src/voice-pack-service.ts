@@ -18,9 +18,20 @@ export interface VoicePackServiceDeps {
    * Voice ids the plugin's own bundled audio provides; a pack may not claim
    * one. See `reservedVoices` on `ScanVoicePacksOptions` for why.
    */
-  reservedVoices?: readonly string[];
-  /** Hand the ordered audio roots to the audio service. */
-  applyRoots(roots: readonly string[]): void;
+  reservedVoices: readonly string[];
+  /**
+   * Hand the ordered audio roots to the audio service.
+   *
+   * The plugin's own directory comes first and carries no `clips`, which means
+   * unrestricted. Every pack root carries the clip list the scan admitted from
+   * it, so a pack can only serve the files it was allowed to contribute — the
+   * scanner enforces its collision rules by DROPPING files, not by removing
+   * them from disk, so a resolver going on file presence alone would let a pack
+   * serve another pack's voice, or a bundled clip the plugin does not ship,
+   * simply by placing a file at the right relative path. Structurally typed
+   * rather than imported: `deck-core` must not depend on `audio-service`.
+   */
+  applyRoots(roots: readonly { dir: string; clips?: readonly string[] }[]): void;
   /** Hand each pack's clip list to the scenario engine, as manifest fragments. */
   applyManifest(fragments: readonly (readonly string[])[]): void;
   /**
@@ -85,7 +96,10 @@ export function createVoicePackService(deps: VoicePackServiceDeps): VoicePackSer
         // exists; a clip must never be advertised before there is a root that can
         // resolve it, or a callout firing in that window would resolve to the
         // fallback root and fail to play.
-        deps.applyRoots([deps.pluginAudioDir, ...scanned.map((pack) => pack.dir)]);
+        deps.applyRoots([
+          { dir: deps.pluginAudioDir },
+          ...scanned.map((pack) => ({ dir: pack.dir, clips: pack.clips })),
+        ]);
         deps.applyManifest(scanned.map((pack) => pack.clips));
         deps.onPacksChanged();
 
