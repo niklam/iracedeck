@@ -12,8 +12,8 @@
  * Values are chosen to look like a plausibly configured install — enough
  * bindings that the Key Bindings table shows real chords rather than a column
  * of "Not set", and the runtime-pushed lists (`_raceEngineerVoices`,
- * `_driverNames`, `_audioDeviceList`, `_deckDevices`) populated so their
- * dropdowns render with options instead of empty.
+ * `_driverNames`, `_audioDeviceList`, `_deckDevices`, `_voicePacks`) populated
+ * so their dropdowns and lists render with content instead of empty.
  */
 
 /** Where the Diagnostics tab says settings are stored. A stable fake path. */
@@ -31,7 +31,7 @@ export const SEED_STORE_PATH = "C:\\Users\\Driver\\AppData\\Local\\iRaceDeck\\Se
 export function buildSeedSettings() {
   return {
     // ── Runtime-pushed lists (the plugin publishes these; no schema field) ──
-    _raceEngineerVoices: JSON.stringify(["default", "luca", "martin", "schumi"]),
+    _raceEngineerVoices: JSON.stringify(["default", "luca"]),
     _driverNames: JSON.stringify(["driver", "carl", "craig", "holger", "lex"]),
     _audioDeviceList: JSON.stringify([
       { id: "", name: "System Default", isDefault: true },
@@ -39,6 +39,17 @@ export function buildSeedSettings() {
       { id: "737065616b657273", name: "Speakers (Realtek High Definition Audio)" },
     ]),
     _deckDevices: JSON.stringify([{ id: "DEVICE-1", name: "Stream Deck +", type: 7 }]),
+    // The one non-bundled voice above, as the pack that provides it, plus one
+    // pack that was ignored — the Installed Voices list shows both halves of a
+    // scan (#1034), and a shot of the empty state would document neither. Kept
+    // to two rows deliberately: the capture is the real window at its default
+    // size, so a longer list pushes the Rescan button below the fold.
+    _voicePacks: JSON.stringify({
+      packs: [
+        { id: "luca", label: "Luca", version: "1.2.0", voices: ["luca"] },
+      ],
+      problems: [{ pack: "nina", reason: "no voice-pack.json" }],
+    }),
     _settingsStorePath: SEED_STORE_PATH,
 
     // ── General ──
