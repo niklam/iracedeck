@@ -194,30 +194,23 @@ describe("createFileSettingsStore", () => {
     // and succeeds; the first must not be re-queued behind it.
     mkdirSync(store.path, { recursive: true });
 
-    // The lock is cleared in RESPONSE to the first write reporting failure, not
-    // after a timeout that assumes it has (issue #1088). The store logs exactly
-    // one `Settings save failed` per failed write, which makes that line both
-    // the signal to clear the lock and — counted below — the proof of which
-    // writes met it.
+    // The lock is cleared in RESPONSE to the first write having settled, not
+    // after a timeout that assumes it has (issue #1088). The `flush()` promise
+    // is that signal: it resolves once the write it enqueued has run, whether it
+    // succeeded or failed — the same public contract the retry test above
+    // already relies on. Nothing here synchronises on a log message; the logger
+    // below only COUNTS failures, for the assertion.
     //
-    // The previous `setTimeout(resolve, 0)` here was the whole defect: it
-    // assumed one macrotask tick separated the two queued writes. Under load
-    // both reached the rename while the path was still a directory, both
+    // The previous `setTimeout(resolve, 0)` was the whole defect: it assumed one
+    // macrotask tick separated two writes chained on the same promise. Under
+    // load both reached the rename while the path was still a directory, both
     // failed, nothing was written, and the read below threw ENOENT. Observed on
     // PR #1087 — Tests failed at `a6fbbf51` and a re-run of the identical sha
     // passed, with no change to the tree.
     const failures: string[] = [];
-    let reportFailure!: () => void;
-    const failed = new Promise<void>((resolve) => (reportFailure = resolve));
     const racing = createFileSettingsStore({
       path: store.path,
-      logger: {
-        ...silentLogger,
-        error: (message: string) => {
-          failures.push(message);
-          reportFailure();
-        },
-      },
+      logger: { ...silentLogger, error: (message: string) => void failures.push(message) },
       debounceMs: 10,
       writeRetryDelaysMs: [20],
     });
@@ -227,18 +220,25 @@ describe("createFileSettingsStore", () => {
     racing.save({ v: "newer" });
     const second = racing.flush(); // enqueued behind the first
 
-    // Resolved from inside the failing write's rejection handler, so this
-    // continuation is queued BEFORE the chained newer write is — the lock is
-    // gone before that write starts, by microtask ordering rather than by clock.
-    await failed;
+    // `first` covers the older write's chain only, so this resumes with that
+    // write settled. The newer one is chained on the same promise and does start
+    // first, but `writeNow` awaits `mkdir` before it touches the path — an I/O
+    // completion, which cannot preempt a queued microtask. So the `rmSync` below
+    // lands before the newer write's rename either way: ordering, not timing.
+    await first;
     rmSync(store.path, { recursive: true, force: true });
     await Promise.all([first, second]);
 
     // Exactly one, and that is the sequencing assertion: the older write met the
     // lock and the newer one did not. Zero would mean the lock never bit, so
     // nothing below says anything about supersession; two is the old flake,
-    // where both writes raced the timeout and neither reached disk.
+    // where both writes raced the timeout and neither reached disk. Counted from
+    // every `error` call rather than from matching text, so the count survives a
+    // reworded message.
     expect(failures).toHaveLength(1);
+    // Pinned deliberately: this is the one line that ties the count to the write
+    // path rather than to some other error. A reword should fail HERE, visibly,
+    // rather than quietly weakening the assertion above.
     expect(failures[0]).toContain("Settings save failed");
 
     expect(JSON.parse(readFileSync(store.path, "utf-8"))).toEqual({ v: "newer" });
