@@ -1,0 +1,161 @@
+{
+  "id": "r7hMHVrbkmST9fNQwTO6",
+  "label": "Vixen",
+  "model_id": "eleven_flash_v2_5",
+  "voice_settings": {
+    "stability": 0.75,
+    "similarity_boost": 0.85,
+    "style": 0,
+    "speed": 0.97,
+    "use_speaker_boost": true
+  },
+  "groups": {
+    "session-start": [
+      {
+        "name": "session-practice",
+        "text": "it's time to put in some practice laps."
+      },
+      {
+        "name": "session-qualifying",
+        "text": "qualifying time. Let's do our best."
+      },
+      {
+        "name": "session-race",
+        "text": "it's time to race."
+      },
+      {
+        "name": "speed-unit-kmh",
+        "text": "kilometers per hour,"
+      },
+      {
+        "name": "speed-unit-mph",
+        "text": "miles per hour,"
+      },
+      {
+        "name": "degrees-celsius",
+        "text": "degrees Celsius,"
+      },
+      {
+        "name": "degrees-fahrenheit",
+        "text": "degrees Fahrenheit,"
+      },
+      {
+        "name": "pit-speed-intro",
+        "text": "The pit speed limit is"
+      },
+      {
+        "name": "track-temp-intro",
+        "text": "Track temperature is"
+      },
+      {
+        "name": "air-temp-intro",
+        "text": "air temperature is"
+      },
+      {
+        "name": "wetness-intro",
+        "text": "and the track is",
+        "previous_request_ids": [
+          "session-start/degrees-celsius",
+          "session-start/degrees-fahrenheit"
+        ]
+      },
+      {
+        "name": "wetness-dry",
+        "text": "completely dry.",
+        "previous_request_ids": [
+          "session-start/wetness-intro"
+        ]
+      },
+      {
+        "name": "wetness-mostly-dry",
+        "text": "mostly dry.",
+        "previous_request_ids": [
+          "session-start/wetness-intro"
+        ]
+      },
+      {
+        "name": "wetness-very-lightly-wet",
+        "text": "very lightly wet.",
+        "previous_request_ids": [
+          "session-start/wetness-intro"
+        ]
+      },
+      {
+        "name": "wetness-lightly-wet",
+        "text": "lightly wet.",
+        "previous_request_ids": [
+          "session-start/wetness-intro"
+        ]
+      },
+      {
+        "name": "wetness-moderately-wet",
+        "text": "wet.",
+        "previous_request_ids": [
+          "session-start/wetness-intro"
+        ]
+      },
+      {
+        "name": "wetness-very-wet",
+        "text": "very wet.",
+        "previous_request_ids": [
+          "session-start/wetness-intro"
+        ]
+      },
+      {
+        "name": "wetness-extremely-wet",
+        "text": "extremely wet.",
+        "previous_request_ids": [
+          "session-start/wetness-intro"
+        ]
+      }
+    ],
+    "session-start-greeting": [
+      {
+        "name": "ant",
+        "text": "Ok, Ant,"
+      },
+      {
+        "name": "lorenzo",
+        "text": "Ok, Lorenzo,"
+      },
+      {
+        "name": "niklas",
+        "text": "Ok, Niklas,"
+      }
+    ],
+    "toggle": [
+      {
+        "name": "radio-check-01",
+        "text": "Radio check, radio check. <break time=\"0.2s\"/> Standing by."
+      }
+    ],
+    "welcome": [
+      {
+        "name": "hello",
+        "text": "Hello"
+      },
+      {
+        "name": "greeting-01",
+        "text": "Nice to meet you. I'm your Race Engineer. Are you ready to race? Let's win some races together."
+      }
+    ],
+    "openers": [
+      {
+        "name": "alright",
+        "text": "Alright"
+      },
+      {
+        "name": "hi",
+        "text": "Hi"
+      },
+      {
+        "name": "right",
+        "text": "Right"
+      },
+      {
+        "name": "so",
+        "text": "So"
+      }
+    ]
+  }
+}
