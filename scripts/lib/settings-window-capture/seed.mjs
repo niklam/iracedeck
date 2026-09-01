@@ -12,8 +12,9 @@
  * Values are chosen to look like a plausibly configured install — enough
  * bindings that the Key Bindings table shows real chords rather than a column
  * of "Not set", and the runtime-pushed lists (`_raceEngineerVoices`,
- * `_driverNames`, `_audioDeviceList`, `_deckDevices`, `_voicePacks`) populated
- * so their dropdowns and lists render with content instead of empty.
+ * `_driverNames`, `_audioDeviceList`, `_deckDevices`, `_voicePacks`,
+ * `_voiceLabels`) populated so their dropdowns and lists render with content
+ * instead of empty.
  */
 
 /** Where the Diagnostics tab says settings are stored. A stable fake path. */
@@ -39,6 +40,10 @@ export function buildSeedSettings() {
       { id: "737065616b657273", name: "Speakers (Realtek High Definition Audio)" },
     ]),
     _deckDevices: JSON.stringify([{ id: "DEVICE-1", name: "Stream Deck +", type: 7 }]),
+    // The name the pack gave its voice (#1034) — what the dropdown shows in
+    // place of the capitalised id. Seeded because a real install always has it:
+    // the plugin writes it in the same call as the list above.
+    _voiceLabels: JSON.stringify({ luca: "Luca" }),
     // The one non-bundled voice above, as the pack that provides it, plus one
     // pack that was ignored — the Installed Voices list shows both halves of a
     // scan (#1034), and a shot of the empty state would document neither. Kept
@@ -46,7 +51,7 @@ export function buildSeedSettings() {
     // size, so a longer list pushes the Rescan button below the fold.
     _voicePacks: JSON.stringify({
       packs: [
-        { id: "luca", label: "Luca", version: "1.2.0", voices: ["luca"] },
+        { id: "luca", label: "Luca", version: "1.2.0", voices: [{ id: "luca", label: "Luca" }] },
       ],
       problems: [{ pack: "nina", reason: "no voice-pack.json" }],
     }),

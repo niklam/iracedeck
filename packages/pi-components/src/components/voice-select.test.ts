@@ -43,8 +43,15 @@ describe("ird-voice-select", () => {
   const publishVoices = (voices: string[]): void =>
     void mock.callbacks.get("_raceEngineerVoices")?.(JSON.stringify(voices));
   const publishChoice = (value: string): void => void mock.callbacks.get("raceEngineerVoice")?.(value);
+  const publishLabels = (labels: unknown): void =>
+    void mock.callbacks.get("_voiceLabels")?.(typeof labels === "string" ? labels : JSON.stringify(labels));
   const save = (): ReturnType<typeof vi.fn> => mock.saves.get("raceEngineerVoice")!;
   const selected = (): string => (el.querySelector("select") as HTMLSelectElement).value;
+  const options = (): { value: string; text: string }[] =>
+    Array.from((el.querySelector("select") as HTMLSelectElement).options).map((o) => ({
+      value: o.value,
+      text: o.textContent ?? "",
+    }));
 
   it("selects the saved voice when it is in the list", () => {
     publishChoice("nina");
@@ -118,6 +125,73 @@ describe("ird-voice-select", () => {
 
       expect(selected()).toBe("nina");
       expect(save()).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("voice labels (#1034)", () => {
+    // A pack names its voices; the dropdown showed `titleCase(id)` before it
+    // could, which rendered a hyphenated id as `Aaa-testvoice`.
+
+    it("shows a pack's declared name instead of the capitalised id", () => {
+      publishVoices(["aaa-test", "default"]);
+      publishLabels({ "aaa-test": "AAA Test Voice" });
+
+      expect(options()).toEqual([
+        { value: "aaa-test", text: "AAA Test Voice" },
+        { value: "default", text: "Default" },
+      ]);
+    });
+
+    it("keeps the id as the option VALUE, so what is stored is unaffected", () => {
+      // The label is presentation. `raceEngineerVoice` stores an id, the anchor
+      // compares an id, and a renamed label must not look like a changed voice.
+      publishChoice("aaa-test");
+      publishVoices(["aaa-test"]);
+      publishLabels({ "aaa-test": "AAA Test Voice" });
+
+      expect(selected()).toBe("aaa-test");
+      expect(save()).not.toHaveBeenCalled();
+    });
+
+    it("falls back to the capitalised id for a voice no pack named", () => {
+      // The bundled voice has no manifest and so no entry — which is why it
+      // needs no special case anywhere.
+      publishVoices(["default"]);
+      publishLabels({});
+
+      expect(options()).toEqual([{ value: "default", text: "Default" }]);
+    });
+
+    it("retitles the existing options when labels arrive after the list", () => {
+      // Both are written in one call, but sdpi delivers per key and the order is
+      // not ours to choose.
+      publishVoices(["aaa-test"]);
+
+      expect(options()).toEqual([{ value: "aaa-test", text: "Aaa-test" }]);
+
+      publishLabels({ "aaa-test": "AAA Test Voice" });
+
+      expect(options()).toEqual([{ value: "aaa-test", text: "AAA Test Voice" }]);
+    });
+
+    it("cannot invent a voice — a label with no matching id adds no option", () => {
+      publishVoices(["default"]);
+      publishLabels({ ghost: "Ghost", default: "Default" });
+
+      expect(options().map((o) => o.value)).toEqual(["default"]);
+    });
+
+    it.each([
+      ["malformed JSON", "{not json"],
+      ["an array", ["nope"]],
+      ["a non-string label", { "aaa-test": 42 }],
+    ])("ignores %s and still renders the voices", (_case, payload) => {
+      // A pack manifest is a third party's file: a bad entry costs that entry
+      // its label and nothing else.
+      publishVoices(["aaa-test"]);
+      publishLabels(payload);
+
+      expect(options()).toEqual([{ value: "aaa-test", text: "Aaa-test" }]);
     });
   });
 });

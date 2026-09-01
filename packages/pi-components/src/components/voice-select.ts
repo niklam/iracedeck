@@ -27,17 +27,47 @@
  *   (default: `raceEngineerVoice`).
  * - voices: Plugin-global setting key holding the JSON array of available
  *   voice keys (default: `_raceEngineerVoices`).
+ * - labels: Plugin-global setting key holding a JSON `{ id: label }` map of the
+ *   names packs gave their voices (default: `_voiceLabels`, issue #1034). A
+ *   voice with no entry falls back to its capitalised id.
  *
- * The plugin populates `voices` via `updateGlobalSettings({ [voicesKey]: JSON.stringify(list) })`.
+ * The plugin populates both in ONE write, so the dropdown can never pair one
+ * scan's voices with another scan's names.
  */
 
 let styleInjected = false;
 
 const DEFAULT_SETTING = "raceEngineerVoice";
 const DEFAULT_VOICES_SETTING = "_raceEngineerVoices";
+const DEFAULT_LABELS_SETTING = "_voiceLabels";
 
 function titleCase(s: string): string {
   return s.length === 0 ? s : s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/**
+ * `{ id: label }`, dropping anything that is not a pair of non-empty strings.
+ * A pack's manifest is a third party's file, so a malformed entry costs that
+ * entry its label — which degrades to the capitalised id — and nothing else.
+ */
+function parseLabels(raw: string): Record<string, string> {
+  if (!raw) return {};
+
+  try {
+    const parsed: unknown = JSON.parse(raw);
+
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return {};
+
+    const labels: Record<string, string> = {};
+
+    for (const [id, label] of Object.entries(parsed)) {
+      if (typeof label === "string" && label.length > 0) labels[id] = label;
+    }
+
+    return labels;
+  } catch {
+    return {};
+  }
 }
 
 export class VoiceSelect extends HTMLElement {
@@ -50,6 +80,10 @@ export class VoiceSelect extends HTMLElement {
   // overwriting the saved key on that first apply would throw away the
   // user's real selection.
   private voicesLoaded = false;
+  /** The voice ids that exist — the option VALUES, and the only source of them. */
+  private voices: string[] = [];
+  /** Voice id -> a pack's chosen name for it. Presentation only; may be empty. */
+  private labels: Record<string, string> = {};
 
   connectedCallback(): void {
     if (this._initialized) return;
@@ -106,7 +140,7 @@ export class VoiceSelect extends HTMLElement {
 
   private buildDOM(): void {
     this.select = document.createElement("select");
-    this.renderOptions([]);
+    this.renderOptions();
     this.appendChild(this.select);
   }
 
@@ -129,6 +163,7 @@ export class VoiceSelect extends HTMLElement {
 
     const settingKey = this.getAttribute("setting") ?? DEFAULT_SETTING;
     const voicesKey = this.getAttribute("voices") ?? DEFAULT_VOICES_SETTING;
+    const labelsKey = this.getAttribute("labels") ?? DEFAULT_LABELS_SETTING;
 
     const [, save] = window.SDPIComponents.useGlobalSettings(settingKey, (value: string) => {
       const v: unknown = value;
@@ -145,26 +180,42 @@ export class VoiceSelect extends HTMLElement {
 
         if (!Array.isArray(list)) return;
 
-        const voices = list.filter((v): v is string => typeof v === "string" && v.length > 0);
+        this.voices = list.filter((v): v is string => typeof v === "string" && v.length > 0);
 
-        this.renderOptions(voices);
+        this.renderOptions();
         this.voicesLoaded = true;
         this.applySavedValue();
       } catch {
         // ignore parse errors; dropdown keeps prior options
       }
     });
+
+    // Labels arrive on their own key and may arrive in either order relative to
+    // the list — the plugin writes both in one call, but sdpi delivers per key.
+    // Re-rendering on each is enough: the option VALUES come from the list, so a
+    // label update only retitles what is already there and cannot invent a voice.
+    window.SDPIComponents.useGlobalSettings(labelsKey, (value: string) => {
+      this.labels = parseLabels(value);
+
+      if (this.voicesLoaded) {
+        this.renderOptions();
+        this.applySavedValue();
+      }
+    });
   }
 
-  private renderOptions(voices: string[]): void {
+  private renderOptions(): void {
     if (!this.select) return;
 
     this.select.replaceChildren();
 
-    for (const voice of voices) {
+    for (const voice of this.voices) {
       const opt = document.createElement("option");
       opt.value = voice;
-      opt.textContent = titleCase(voice);
+      // The pack's own name for this voice when it declared one, otherwise the
+      // id capitalised — which is what every voice showed before packs could
+      // name theirs, and is why the bundled voice needs no entry.
+      opt.textContent = this.labels[voice] ?? titleCase(voice);
       this.select.appendChild(opt);
     }
   }

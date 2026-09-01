@@ -69,7 +69,7 @@ describe("race-engineer-settings voice packs (issue #1034)", () => {
     // attribute the dropdown falls to the first option and disagrees with what
     // the plugin actually plays (issue #1034).
     for (const locals of [{}, { settingsWindow: true }]) {
-      expect(render(locals)).toContain('voices="_raceEngineerVoices" default="default"');
+      expect(render(locals)).toContain('voices="_raceEngineerVoices" labels="_voiceLabels" default="default"');
     }
   });
 

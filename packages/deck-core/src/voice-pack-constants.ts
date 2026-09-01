@@ -23,3 +23,26 @@
  * which is the contract an enrolled key owes.
  */
 export const VOICE_PACKS_KEY = "_voicePacks";
+
+/**
+ * Passthrough global mapping a voice id to the label its pack declared, as JSON:
+ * `{ "<voice-id>": "<label>", … }`.
+ *
+ * A separate key from `_raceEngineerVoices` on purpose. That list is the set of
+ * voices that EXIST, derived from the merged manifest's clip paths, and it is
+ * what `resolveActiveRaceEngineerVoice` and its four call sites consume. Labels
+ * are presentation laid over it, so folding them in would have changed the shape
+ * of a published global and dragged those call sites along for a cosmetic
+ * change. The id is identity; the label is decoration.
+ *
+ * The two are written in ONE `updateGlobalSettings` call and share a lifetime —
+ * deliberately NOT run-scoped, matching `_raceEngineerVoices`. A pair that is
+ * published together and read together must expire together; giving the map a
+ * shorter life than the list is exactly the drift keeping them in one write
+ * exists to prevent.
+ *
+ * Absence is normal, not an error. A voice with no entry — the bundled one,
+ * which has no manifest to declare a label in — renders as `titleCase(id)`,
+ * which is what every voice rendered as before this key existed.
+ */
+export const VOICE_LABELS_KEY = "_voiceLabels";

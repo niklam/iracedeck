@@ -31,7 +31,7 @@ function fakeFs(tree: Record<string, FakePack>): VoicePackFileSystem {
   };
 }
 
-const luca = { schema: 1, id: "luca", label: "Luca", version: "1.2.0", voices: ["luca"] };
+const luca = { schema: 1, id: "luca", label: "Luca", version: "1.2.0", voices: [{ id: "luca", label: "Luca" }] };
 
 describe("scanVoicePacks", () => {
   it("returns nothing for a missing or empty root", () => {
@@ -53,7 +53,7 @@ describe("scanVoicePacks", () => {
       id: "luca",
       label: "Luca",
       version: "1.2.0",
-      voices: ["luca"],
+      voices: [{ id: "luca", label: "Luca" }],
       clips: ["voice/luca/flags/blue-01.mp3"],
     });
     expect(result.packs[0].dir.replace(/\\/g, "/")).toBe("/packs/luca");
@@ -188,16 +188,26 @@ describe("scanVoicePacks", () => {
       root: ROOT,
       reservedVoices: [],
       fs: fakeFs({
-        alpha: { manifest: { ...luca, id: "alpha", voices: ["luca"] }, clips: ["voice/luca/flags/a.mp3"] },
+        alpha: {
+          manifest: { ...luca, id: "alpha", voices: [{ id: "luca", label: "Luca" }] },
+          clips: ["voice/luca/flags/a.mp3"],
+        },
         beta: {
-          manifest: { ...luca, id: "beta", voices: ["luca", "nina"] },
+          manifest: {
+            ...luca,
+            id: "beta",
+            voices: [
+              { id: "luca", label: "Luca" },
+              { id: "nina", label: "Nina" },
+            ],
+          },
           clips: ["voice/luca/flags/a.mp3", "voice/nina/flags/a.mp3"],
         },
       }),
     });
 
     expect(result.packs.map((p) => p.id)).toEqual(["alpha", "beta"]);
-    expect(result.packs[1].voices).toEqual(["nina"]);
+    expect(result.packs[1].voices.map((v) => v.id)).toEqual(["nina"]);
     expect(result.packs[1].clips).toEqual(["voice/nina/flags/a.mp3"]);
   });
 
@@ -228,14 +238,21 @@ describe("scanVoicePacks", () => {
       root: ROOT,
       fs: fakeFs({
         duo: {
-          manifest: { ...luca, id: "duo", voices: ["luca", "nina"] },
+          manifest: {
+            ...luca,
+            id: "duo",
+            voices: [
+              { id: "luca", label: "Luca" },
+              { id: "nina", label: "Nina" },
+            ],
+          },
           clips: ["voice/luca/flags/a.mp3", "voice/nina/flags/a.mp3"],
         },
       }),
       reservedVoices: ["luca"],
     });
 
-    expect(result.packs[0].voices).toEqual(["nina"]);
+    expect(result.packs[0].voices.map((v) => v.id)).toEqual(["nina"]);
     expect(result.packs[0].clips).toEqual(["voice/nina/flags/a.mp3"]);
   });
 
@@ -246,14 +263,27 @@ describe("scanVoicePacks", () => {
       fs: fakeFs({
         // `alpha` declares nina but ships only luca; `beta` really has nina and
         // must not be locked out by alpha's empty declaration.
-        alpha: { manifest: { ...luca, id: "alpha", voices: ["luca", "nina"] }, clips: ["voice/luca/flags/a.mp3"] },
-        beta: { manifest: { ...luca, id: "beta", voices: ["nina"] }, clips: ["voice/nina/flags/a.mp3"] },
+        alpha: {
+          manifest: {
+            ...luca,
+            id: "alpha",
+            voices: [
+              { id: "luca", label: "Luca" },
+              { id: "nina", label: "Nina" },
+            ],
+          },
+          clips: ["voice/luca/flags/a.mp3"],
+        },
+        beta: {
+          manifest: { ...luca, id: "beta", voices: [{ id: "nina", label: "Nina" }] },
+          clips: ["voice/nina/flags/a.mp3"],
+        },
       }),
     });
 
     expect(result.packs.map((p) => p.id)).toEqual(["alpha", "beta"]);
-    expect(result.packs[0].voices).toEqual(["luca"]);
-    expect(result.packs[1].voices).toEqual(["nina"]);
+    expect(result.packs[0].voices.map((v) => v.id)).toEqual(["luca"]);
+    expect(result.packs[1].voices.map((v) => v.id)).toEqual(["nina"]);
     expect(result.problems).toEqual([{ pack: "alpha", reason: "no clips found under voice/nina/" }]);
   });
 
@@ -296,13 +326,19 @@ describe("scanVoicePacks", () => {
         root: ROOT,
         reservedVoices: [],
         fs: fakeFs({
-          alpha: { manifest: { ...luca, id: "alpha", voices: ["luca"] }, clips: ["voice/luca/blue.MP3"] },
-          beta: { manifest: { ...luca, id: "beta", voices: ["luca"] }, clips: ["voice/luca/flags/blue-01.mp3"] },
+          alpha: {
+            manifest: { ...luca, id: "alpha", voices: [{ id: "luca", label: "Luca" }] },
+            clips: ["voice/luca/blue.MP3"],
+          },
+          beta: {
+            manifest: { ...luca, id: "beta", voices: [{ id: "luca", label: "Luca" }] },
+            clips: ["voice/luca/flags/blue-01.mp3"],
+          },
         }),
       });
 
       expect(result.packs.map((p) => p.id)).toEqual(["beta"]);
-      expect(result.packs[0].voices).toEqual(["luca"]);
+      expect(result.packs[0].voices.map((v) => v.id)).toEqual(["luca"]);
     });
 
     it("keeps the reachable clips and drops only the unreachable ones", () => {
@@ -323,10 +359,21 @@ describe("scanVoicePacks", () => {
     const result = scanVoicePacks({
       root: ROOT,
       reservedVoices: [],
-      fs: fakeFs({ luca: { manifest: { ...luca, voices: ["luca", "luca"] }, clips: ["voice/luca/flags/a.mp3"] } }),
+      fs: fakeFs({
+        luca: {
+          manifest: {
+            ...luca,
+            voices: [
+              { id: "luca", label: "Luca" },
+              { id: "luca", label: "Luca" },
+            ],
+          },
+          clips: ["voice/luca/flags/a.mp3"],
+        },
+      }),
     });
 
-    expect(result.packs[0].voices).toEqual(["luca"]);
+    expect(result.packs[0].voices.map((v) => v.id)).toEqual(["luca"]);
     expect(result.packs[0].clips).toEqual(["voice/luca/flags/a.mp3"]);
   });
 

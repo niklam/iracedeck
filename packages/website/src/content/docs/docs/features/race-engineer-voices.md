@@ -17,7 +17,7 @@ The folder is shared by all three iRaceDeck plugins. If you use a Stream Deck an
 
 ## Choosing a Voice
 
-Open **iRaceDeck Settings** from any action's Property Inspector, go to the **Race Engineer** section, and pick from the **Race Engineer Voice** dropdown. Every installed voice appears there. The change takes effect on the next callout — there is no need to restart anything.
+Open **iRaceDeck Settings** from any action's Property Inspector, go to the **Race Engineer** section, and pick from the **Race Engineer Voice** dropdown. Every installed voice appears there, under the name its pack gave it. The change takes effect on the next callout — there is no need to restart anything.
 
 **Installed Voices** just below the dropdown lists every pack iRaceDeck has loaded, with its version. Anything in the folder that iRaceDeck could not load is listed underneath, with the reason — so a pack that is present but silent tells you why without you going looking for it.
 

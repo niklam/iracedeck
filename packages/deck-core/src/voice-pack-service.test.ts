@@ -17,7 +17,10 @@ function fakeFs(packs: Record<string, string[]>): VoicePackFileSystem {
     readTextFile: (file) => {
       const id = file.replace(/\\/g, "/").split("/").at(-2) ?? "";
 
-      return { ok: true as const, text: JSON.stringify({ schema: 1, id, label: id, version: "1.0.0", voices: [id] }) };
+      return {
+        ok: true as const,
+        text: JSON.stringify({ schema: 1, id, label: id, version: "1.0.0", voices: [{ id, label: id }] }),
+      };
     },
     listMp3Files: (packDir) => packs[folderOf(packDir)] ?? [],
   };

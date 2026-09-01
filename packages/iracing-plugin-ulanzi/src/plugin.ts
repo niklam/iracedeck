@@ -144,6 +144,7 @@ import {
   updateGlobalSettings,
   validateSetupWarningPatterns,
   VERSION_CHECK_STARTUP_GRACE_MS,
+  VOICE_LABELS_KEY,
   VOICE_PACKS_KEY,
 } from "@iracedeck/deck-core";
 import { initializeEventBus } from "@iracedeck/event-bus";
@@ -701,14 +702,39 @@ function pushAudioDevicesIfChanged(): void {
 // deduped below) so a PI opened before the first global-settings echo still
 // gets populated.
 let lastPushedVoiceListJson = "";
+let lastPushedVoiceLabelsJson = "";
 
+// The voice LIST and the voice LABELS go out in one write, always. The list is
+// what exists — derived from the merged manifest's clip paths, and what
+// `resolveActiveRaceEngineerVoice` consumes; the labels are what a pack chose to
+// call those voices, and nothing resolves or persists them. Publishing them
+// together is what stops a dropdown ever pairing one scan's voices with another
+// scan's names.
 function pushRaceEngineerVoicesIfChanged(): void {
   const json = JSON.stringify(raceEngineerVoices);
+  const labelsJson = JSON.stringify(voiceLabels());
 
-  if (json === lastPushedVoiceListJson) return;
+  if (json === lastPushedVoiceListJson && labelsJson === lastPushedVoiceLabelsJson) return;
 
   lastPushedVoiceListJson = json;
-  updateGlobalSettings({ _raceEngineerVoices: json });
+  lastPushedVoiceLabelsJson = labelsJson;
+  updateGlobalSettings({ _raceEngineerVoices: json, [VOICE_LABELS_KEY]: labelsJson });
+}
+
+/**
+ * Voice id -> the label its pack declared. Only voices a pack names appear; the
+ * bundled voice has no manifest and needs no entry, because the dropdown falls
+ * back to `titleCase(id)` — which is what it showed for every voice before packs
+ * could name theirs.
+ */
+function voiceLabels(): Record<string, string> {
+  const labels: Record<string, string> = {};
+
+  for (const pack of voicePacks.installed()) {
+    for (const voice of pack.voices) labels[voice.id] = voice.label;
+  }
+
+  return labels;
 }
 
 let lastPushedDriverNameListJson = "";

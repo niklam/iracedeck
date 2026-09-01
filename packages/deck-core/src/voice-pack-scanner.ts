@@ -34,6 +34,12 @@ export interface VoicePackFileSystem {
   listMp3Files(packDir: string): readonly string[];
 }
 
+/**
+ * A voice a pack provides. `id` is identity and matches the `voice/<id>/…` clip
+ * path; `label` is what a user reads and nothing more.
+ */
+export type InstalledVoice = { id: string; label: string };
+
 export type InstalledVoicePack = {
   id: string;
   label: string;
@@ -42,7 +48,7 @@ export type InstalledVoicePack = {
   /** Absolute path to the pack folder — this is the pack's own audio root. */
   dir: string;
   /** The voices this pack actually provides, after collisions are resolved. */
-  voices: readonly string[];
+  voices: readonly InstalledVoice[];
   /** POSIX paths relative to {@link dir}, always `voice/<voice-id>/…`. */
   clips: readonly string[];
 };
@@ -163,19 +169,25 @@ export function scanVoicePacks({ root, fs, reservedVoices }: ScanVoicePacksOptio
     // two voices, one of which collides, still contributes the other.
     // De-duplicated first — a manifest repeating a voice id would otherwise
     // claim it twice, duplicate its clips, and list it twice in the settings
-    // window.
-    const declared = [...new Set(manifest.voices)].filter((voice) => {
-      if (bundledVoices.has(voice)) {
-        problems.push({ pack: folder, reason: `voice "${voice}" is provided by the plugin's bundled audio` });
+    // window. Keyed on `id`, never the label: two entries naming the same voice
+    // under different labels are still one voice, and the first wins.
+    const seen = new Set<string>();
+    const declared = manifest.voices.filter((voice) => {
+      if (seen.has(voice.id)) return false;
+
+      seen.add(voice.id);
+
+      if (bundledVoices.has(voice.id)) {
+        problems.push({ pack: folder, reason: `voice "${voice.id}" is provided by the plugin's bundled audio` });
 
         return false;
       }
 
-      const owner = claimedVoices.get(voice);
+      const owner = claimedVoices.get(voice.id);
 
       if (owner === undefined) return true;
 
-      problems.push({ pack: folder, reason: `voice "${voice}" is already provided by pack "${owner}"` });
+      problems.push({ pack: folder, reason: `voice "${voice.id}" is already provided by pack "${owner}"` });
 
       return false;
     });
@@ -192,12 +204,15 @@ export function scanVoicePacks({ root, fs, reservedVoices }: ScanVoicePacksOptio
     // builder consumes lets a pack install cleanly, claim its voice, enter the
     // dropdown and then be completely silent, with the only trace at debug level.
     const found = fs.listMp3Files(dir);
-    const voices: string[] = [];
+    const voices: InstalledVoice[] = [];
     const clips: string[] = [];
     const unusable: string[] = [];
 
     for (const voice of declared) {
-      const prefix = `voice/${voice}/`;
+      // The declared `id` drives the prefix, so a declared voice with no
+      // matching directory still fails as "no clips found under voice/<id>/".
+      // That check is not replaced by the declaration — it is what validates it.
+      const prefix = `voice/${voice.id}/`;
       const own = found.filter((clip) => clip.startsWith(prefix));
       const usable = own.filter((clip) => USABLE_CLIP.test(clip));
 
@@ -225,7 +240,7 @@ export function scanVoicePacks({ root, fs, reservedVoices }: ScanVoicePacksOptio
 
     if (voices.length === 0) continue;
 
-    for (const voice of voices) claimedVoices.set(voice, folder);
+    for (const voice of voices) claimedVoices.set(voice.id, folder);
 
     packs.push({
       id: manifest.id,
