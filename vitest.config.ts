@@ -76,5 +76,44 @@ export default defineConfig({
     // assigning `exclude` overrides vitest's defaults (node_modules, dist, …)
     // instead of adding to them.
     exclude: [...defaultExclude, "**/__typecheck_coverage_probe__.test.ts"],
+    // Run the suite's WORKERS against the native mocks, never a compiled addon.
+    //
+    // `@iracedeck/iracing-native` `require()`s its `.node` in MODULE SCOPE, and
+    // the same module re-exports `defines.ts` — so importing a plain TypeScript
+    // enum such as `Flags` maps a native binary into the worker. Measured
+    // 2026-09-01: 68 of the 301 `.test.ts` files reach that package through an
+    // unmocked, non-type-only import, overwhelmingly via `@iracedeck/iracing-sdk`
+    // -> `penalty-flag-utils.ts`. Nothing re-derives that number; it is dated
+    // because it is a measurement rather than an invariant.
+    //
+    // `@iracedeck/audio-native` has the same module-scope load but is reached by
+    // ZERO test files today — every test import of it is type-only, and
+    // `audio-service` declares its own `AudioChannel`. The variable covers both
+    // packages because it is one lever; only iracing-native is loaded in practice.
+    //
+    // Nothing in the suite wants either: no test constructs `IRacingNative` or
+    // `AudioNative`, and the enums are identical under the mock. Loading a native
+    // binary into test workers is wrong on its own terms, independent of any
+    // failure it may or may not cause. It does NOT claim to fix #1084.
+    //
+    // Scope, three limits worth knowing:
+    //   * WORKERS only. `config.env` never reaches the main Vitest process, so a
+    //     future `globalSetup` or Vite plugin importing a barrel would still load
+    //     the addon, outside everything this comment asserts.
+    //   * It PROPAGATES to child processes. The `scripts/**/*.test.mjs` files in
+    //     the include glob above shell out — `typecheck-script-coverage.test.mjs`
+    //     runs a package's real typecheck script (#1086) — and those children
+    //     inherit it. Inert today: none of them loads a native addon. A child
+    //     that constructed a native class would silently run mocked.
+    //   * The addon-loading branch in both packages now runs in no automated
+    //     check at all — it was already skipped on Linux CI, and is now skipped
+    //     locally too. Combined with the bare `catch {}` there, a broken path or
+    //     an ABI-incompatible `.node` produces no signal from any test.
+    //
+    // Escape hatch: set `IRACEDECK_REAL_NATIVE=1` to load the real addon — needed
+    // to reproduce #1084, or to check a freshly built `.node` loads at all. An
+    // external `IRACEDECK_MOCK=0` does NOT work: both consumers test
+    // `!!process.env.IRACEDECK_MOCK`, so any non-empty string forces the mock.
+    env: { IRACEDECK_MOCK: process.env.IRACEDECK_REAL_NATIVE ? "" : "1" },
   },
 });
