@@ -74,6 +74,7 @@ import { diffPaceLaps, resolvePaceCarIdx } from "./diff/pace-laps.js";
 import { diffPitBoxCountdown } from "./diff/pit-box-countdown.js";
 import { diffPitLane } from "./diff/pit-lane.js";
 import { buildSnapshot as buildReadbackSnapshot, diffPitReadback } from "./diff/pit-readback.js";
+import { diffPitSpeeding } from "./diff/pit-speeding.js";
 import { diffPitStatus } from "./diff/pit-status.js";
 import { diffPitsOpen } from "./diff/pits-open.js";
 import { updatePositionTracking } from "./diff/race-finish.js";
@@ -1167,20 +1168,42 @@ export function _resetSimEventsIracing(): void {
 
 // ── Internals ──────────────────────────────────────────────────────────────
 
+/**
+ * Publish teardown edges for every active-state subsystem, releasing any
+ * consumer that holds a loop or a latched mode until it sees a closing edge.
+ *
+ * Called from all three state-wiping paths — disconnect, session change, and
+ * entering replay. It is one function rather than three copies because the
+ * failure it prevents is silent: a subsystem wired into two of the three
+ * sites leaves its loop running on the third, and nothing type-checks the
+ * omission. **Add a new teardown here, once.**
+ *
+ * Must run BEFORE the wipe. Afterwards the state already reads inactive, the
+ * edge is gone, and the emit is skipped.
+ *
+ * Published via the live envelope shape so consumers need no separate
+ * disconnect code path.
+ */
+function publishActiveStateTeardown(self: TranslatorInstance, telemetry: TelemetryData): void {
+  const now = Date.now();
+
+  // Radar's tick loop runs until it sees a `radar.changed → clear`.
+  if (self.state.radarState !== "clear") {
+    publish(self, { event: "radar.changed", data: { from: self.state.radarState, to: "clear" } }, telemetry, now);
+  }
+
+  // The pit-road speeding cue's tick loop runs until it sees `ended` (issue
+  // #912). A missed edge here leaves audio looping over a live race.
+  if (self.state.pitSpeedingActive) {
+    self.state.pitSpeedingActive = false;
+    self.state.pitSpeedingUnderLimitSince = 0;
+    publish(self, { event: "pitSpeeding.ended", data: {} }, telemetry, now);
+  }
+}
+
 function handleDisconnect(self: TranslatorInstance): void {
-  // Publish a teardown signal for any active state that would otherwise
-  // leave downstream consumers stuck in an active mode. Today that's just
-  // radar (its tick loop keeps running until it sees a `radar.changed → clear`
-  // transition); other active-state subsystems should plug in here the
-  // same way. We publish via the live envelope shape so consumers don't
-  // need a separate disconnect code path.
-  if (self.state.radarState !== "clear" && self.latestTelemetry !== null) {
-    publish(
-      self,
-      { event: "radar.changed", data: { from: self.state.radarState, to: "clear" } },
-      self.latestTelemetry,
-      Date.now(),
-    );
+  if (self.latestTelemetry !== null) {
+    publishActiveStateTeardown(self, self.latestTelemetry);
   }
 
   // Fresh state so reconnect seeds cleanly.
@@ -1206,38 +1229,6 @@ function handleDisconnect(self: TranslatorInstance): void {
   self.fuelLaps = createFuelLapTracker();
 }
 
-/**
- * Wipe per-session state on a `SessionNum` change (issue #564). The Race
- * Engineer's "everything is in session context" model: practice, qualifying,
- * and race each get a fresh slate for callouts that should fire once per
- * session (session-start, fuel thresholds, incident counters, …).
- *
- * Publishes a `radar.changed → clear` teardown before wiping state — mirrors
- * `handleDisconnect`. Without it, a downstream radar audio engine latched on
- * the prior session's "left" / "right" beep would stay latched: the post-
- * wipe `state.radarState` is already `"clear"`, so the replay guard's
- * teardown check would see no edge and skip the emit, leaving the engine
- * mid-loop indefinitely. Any future active-state subsystem with a similar
- * latch contract plugs in here the same way.
- *
- * The lifecycle diff's baselines (`lifecycleInitialized`, `lastSessionNum`,
- * `lastEngineRunning`, `lastLap`) are preserved across the wipe. Without
- * that, the reset would put `lifecycleInitialized = false`, the next
- * `diffLifecycle` call this same tick would silently re-seed
- * `lastEngineRunning` against the still-running engine and synthesize a
- * spurious `engine.startup`. `session.changed` is published directly from
- * `handleTick` (it can't rely on `state` surviving the replay-mode wipe), but
- * we still preserve `lastSessionNum` here so handleTick can use it as a
- * dedup signal on non-replay session-change ticks.
- *
- * `firstOnTrackSeeded` stays `true`; only `firstOnTrackFired` clears. Re-
- * seeding would silently mark fired = true if the driver is already on track
- * at the transition and swallow the very fire we want.
- *
- * Track-level instance fields (`pitSpeedLimitMps` / `pitSpeedLimitKey`) self-
- * invalidate via `resolvePitSpeedLimit`'s `${TrackID}|${SessionNum}` cache key
- * and need no reset here.
- */
 /**
  * Wipe `TranslatorState` for a replay-mode transition (both edges — entering
  * and leaving replay), preserving the checkered-deferral cluster (issue
@@ -1329,15 +1320,38 @@ function wipeStateForReplay(self: TranslatorInstance): void {
   Object.assign(self.state, preservedAcrossReplay);
 }
 
+/**
+ * Wipe per-session state on a `SessionNum` change (issue #564). The Race
+ * Engineer's "everything is in session context" model: practice, qualifying,
+ * and race each get a fresh slate for callouts that should fire once per
+ * session (session-start, fuel thresholds, incident counters, …).
+ *
+ * Calls `publishActiveStateTeardown` before wiping state, so every latched
+ * subsystem gets its closing edge — without it the post-wipe state already
+ * reads inactive, the edge is gone and the emit is skipped, leaving a
+ * downstream engine mid-loop indefinitely. **A new teardown is added in that
+ * helper, once — not here**, which is the whole reason it exists.
+ *
+ * The lifecycle diff's baselines (`lifecycleInitialized`, `lastSessionNum`,
+ * `lastEngineRunning`, `lastLap`) are preserved across the wipe. Without
+ * that, the reset would put `lifecycleInitialized = false`, the next
+ * `diffLifecycle` call this same tick would silently re-seed
+ * `lastEngineRunning` against the still-running engine and synthesize a
+ * spurious `engine.startup`. `session.changed` is published directly from
+ * `handleTick` (it can't rely on `state` surviving the replay-mode wipe), but
+ * we still preserve `lastSessionNum` here so handleTick can use it as a
+ * dedup signal on non-replay session-change ticks.
+ *
+ * `firstOnTrackSeeded` stays `true`; only `firstOnTrackFired` clears. Re-
+ * seeding would silently mark fired = true if the driver is already on track
+ * at the transition and swallow the very fire we want.
+ *
+ * Track-level instance fields (`pitSpeedLimitMps` / `pitSpeedLimitKey`) self-
+ * invalidate via `resolvePitSpeedLimit`'s `${TrackID}|${SessionNum}` cache key
+ * and need no reset here.
+ */
 function resetPerSessionState(self: TranslatorInstance, telemetry: TelemetryData): void {
-  if (self.state.radarState !== "clear") {
-    publish(
-      self,
-      { event: "radar.changed", data: { from: self.state.radarState, to: "clear" } },
-      telemetry,
-      Date.now(),
-    );
-  }
+  publishActiveStateTeardown(self, telemetry);
 
   const preservedLifecycle = {
     lifecycleInitialized: self.state.lifecycleInitialized,
@@ -1593,18 +1607,10 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // modules' first-tick / off-track seed branches reseed cleanly.
   if (telemetry.IsReplayPlaying === true) {
     if (!self.lastTickInReplay) {
-      // Publish the radar teardown signal before resetting state so the
-      // radar engine receives a clear edge — otherwise it stays latched
-      // through replay (the tick loop runs until it sees a `clear`).
-      // Mirrors `handleDisconnect()`.
-      if (self.state.radarState !== "clear") {
-        publish(
-          self,
-          { event: "radar.changed", data: { from: self.state.radarState, to: "clear" } },
-          telemetry,
-          Date.now(),
-        );
-      }
+      // Release every active-state subsystem before resetting state, so a
+      // latched mode or a running tick loop gets its closing edge instead of
+      // staying live through the replay. Mirrors `handleDisconnect()`.
+      publishActiveStateTeardown(self, telemetry);
 
       wipeStateForReplay(self);
       self.lastTickInReplay = true;
@@ -1923,6 +1929,21 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   }
 
   diffRadar(self.state, telemetry, emit);
+  // Sequenced deliberately AFTER `diffRadar` (issue #912). Both publish onto
+  // `AudioChannel.Radar`, and the pending array is flushed in push order, so
+  // pushing first would publish `pitSpeeding.started` before radar's
+  // `changed → clear` — the radar engine's `forceClear()` calls
+  // `stopChannel(AudioChannel.Radar)`, which would then cut this cue's opening
+  // tick. Entering pit road alongside another car is the ordinary case, not a
+  // corner one, and the opening tick is the whole point of the feature.
+  //
+  // `replayOnlySession` is passed in rather than guarding the call, so a
+  // replay-only session ends an episode in flight rather than stranding it —
+  // see the diff's own note. Feeding replay-timeline telemetry to a REPEATING
+  // cue is worse than to `diffPitsOpen` or `diffFuelLaps`: parking a replay on
+  // a frame where the car is over the pit limit would beep over the replay UI
+  // until it was scrubbed away.
+  diffPitSpeeding(self.state, telemetry, pitSpeedLimitMps, replayOnlySession, now, emit);
   diffTrackWetness(self.state, telemetry, emit);
 
   for (const p of pending) {
@@ -2247,9 +2268,47 @@ function resolvePitSpeedLimit(
     const match = /([\d.]+)\s*(kph|mph|kmh|km\/h)/i.exec(raw);
 
     if (match) {
-      const value = parseFloat(match[1]!);
+      const digits = match[1]!;
+      const value = parseFloat(digits);
       const unit = match[2]!.toLowerCase();
-      self.pitSpeedLimitMps = unit === "mph" ? value * 0.44704 : value / 3.6;
+      const toMps = unit === "mph" ? 0.44704 : 1 / 3.6;
+
+      // Recover the value iRacing rounded away (issue #1059). This is NOT a
+      // tolerance and must not be removed as one — two specs argue against
+      // grace margins, so it is at real risk of being read as a reintroduced
+      // margin. `TrackPitSpeedLimit` is published as a fixed-decimal string,
+      // and at an imperial-native track that string is a CONVERTED value:
+      // 45.00 mph is 72.420480 kph, published "72.42 kph", which parses back
+      // to a threshold 0.00048 kph BELOW the true limit. A car held exactly
+      // at the posted limit then satisfies `speed > limit` and the cue fires
+      // — which is precisely what a pit limiter does, indefinitely.
+      //
+      // So the parsed number is not the limit; it is the limit ±half a unit
+      // in the last published decimal place. Taking the TOP of that window is
+      // the only choice that satisfies the acceptance criterion ("can't
+      // happen while driver is within speed limit"): wherever the truth lies
+      // in the window, a compliant car is at or under our threshold. The cost
+      // is tolerating under half a unit of genuine overspeed — 0.005 kph on
+      // the two-decimal strings iRacing actually publishes.
+      // Correct ONLY when the publisher actually used decimals. With none, we
+      // cannot tell "60" meaning exactly 60 from "60" meaning 59.5–60.4, and
+      // half a unit there is 0.5 km/h — 1.67x the deliberate limiter buffer,
+      // granted unconditionally to every car, which is the blanket grace
+      // margin this change exists to refuse. A rounded conversion also gives
+      // itself away by being un-round (72.42), whereas a bare integer is far
+      // more likely to be exact. So no decimals means no correction, which is
+      // simply the behaviour that shipped before this fix.
+      //
+      // This threshold feeds `diffLimiter` as well as `diffPitSpeeding`, so an
+      // over-wide window here would silently widen `limiter.speeding` too.
+      const decimals = (digits.split(".")[1] ?? "").length;
+      const halfUnit = decimals >= 1 ? 0.5 * Math.pow(10, -decimals) : 0;
+
+      // A published zero must stay indistinguishable from an unparsed one:
+      // `pitSpeedLimitMps > 0` is the "limit unknown, stay disarmed" sentinel
+      // in BOTH consumers, and adding halfUnit to a 0 would arm them against a
+      // ~0 threshold — a cue firing at walking pace and never ending.
+      if (value > 0) self.pitSpeedLimitMps = (value + halfUnit) * toMps;
     }
   }
 

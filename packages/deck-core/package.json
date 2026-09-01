@@ -1,6 +1,6 @@
 {
   "name": "@iracedeck/deck-core",
-  "version": "3.1.0-dev.0",
+  "version": "3.2.0-dev.0",
   "description": "Platform-agnostic core interfaces and base classes for deck device plugins",
   "type": "module",
   "main": "dist/index.js",
@@ -13,6 +13,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "clean": "rimraf dist"
   },
   "dependencies": {
@@ -25,7 +26,7 @@
   },
   "devDependencies": {
     "@tsconfig/node22": "22.0.6",
-    "@types/node": "26.2.0",
+    "@types/node": "26.4.0",
     "@types/semver": "7.8.0",
     "@types/ws": "8.18.1",
     "rimraf": "6.1.3",

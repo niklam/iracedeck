@@ -39,6 +39,8 @@ import drivingNextSvg from "@iracedeck/icons/camera-cycle/driving-next.svg";
 import drivingPreviousSvg from "@iracedeck/icons/camera-cycle/driving-previous.svg";
 import subCameraNextSvg from "@iracedeck/icons/camera-cycle/sub-camera-next.svg";
 import subCameraPreviousSvg from "@iracedeck/icons/camera-cycle/sub-camera-previous.svg";
+import trackPositionAheadSvg from "@iracedeck/icons/camera-cycle/track-position-ahead.svg";
+import trackPositionBehindSvg from "@iracedeck/icons/camera-cycle/track-position-behind.svg";
 // Focus icons
 import focusOnIncidentSvg from "@iracedeck/icons/camera-focus/focus-on-incident.svg";
 import focusOnLeaderSvg from "@iracedeck/icons/camera-focus/focus-on-leader.svg";
@@ -78,7 +80,7 @@ import {
 import { getLiveRacePositions } from "@iracedeck/sim-events-iracing";
 import z from "zod";
 
-import { computeCarNumberTarget } from "../../shared/car-cycling.js";
+import { computeCarNumberTarget, computeTrackOrderTarget, trackOrderDirection } from "../../shared/car-cycling.js";
 import { setSelectIntent } from "../../shared/car-select-intent.js";
 import { profileEntriesEqual } from "../../shared/profile-entries.js";
 import { availableProfilesForDevice, deviceProfileEntries } from "../race-admin/race-admin-selector.js";
@@ -108,7 +110,13 @@ export { SUB_CAMERA_BINDING_KEYS } from "./sub-camera-bindings.js";
 
 // --- Target types ---
 
-const CYCLE_TARGET_VALUES = ["cycle-camera", "cycle-sub-camera", "cycle-car", "cycle-driving"] as const;
+const CYCLE_TARGET_VALUES = [
+  "cycle-camera",
+  "cycle-sub-camera",
+  "cycle-car",
+  "cycle-track-order",
+  "cycle-driving",
+] as const;
 
 const FOCUS_TARGET_VALUES = [
   "focus-your-car",
@@ -188,6 +196,7 @@ export const CYCLE_ICONS: Record<CycleTarget, Record<Direction, string>> = {
   "cycle-camera": { next: cameraNextSvg, previous: cameraPreviousSvg },
   "cycle-sub-camera": { next: subCameraNextSvg, previous: subCameraPreviousSvg },
   "cycle-car": { next: carNextSvg, previous: carPreviousSvg },
+  "cycle-track-order": { next: trackPositionAheadSvg, previous: trackPositionBehindSvg },
   "cycle-driving": { next: drivingNextSvg, previous: drivingPreviousSvg },
 };
 
@@ -208,6 +217,14 @@ export const CYCLE_TITLES: Record<CycleTarget, Record<Direction, string>> = {
   "cycle-car": {
     next: "CAR\nNEXT",
     previous: "CAR\nPREV",
+  },
+  // Track order (#960) titles the DESTINATION rather than the direction of
+  // travel through a list: on a key the whole idea is which car you land on,
+  // and "AHEAD" / "BEHIND" also reads distinctly against Cycle Car's
+  // NEXT / PREV right beside it.
+  "cycle-track-order": {
+    next: "CAR\nAHEAD",
+    previous: "CAR\nBEHIND",
   },
   "cycle-driving": {
     next: "DRIVING\nNEXT",
@@ -919,6 +936,43 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
           const success = camera.cycleCar(carIdx, dir);
           this.logger.info("Car cycled (fallback)");
           this.logger.debug(`Result: ${success}, direction: ${direction}`);
+        }
+
+        break;
+      }
+      case "cycle-track-order": {
+        // Move the camera to the competitor physically AHEAD of / BEHIND the
+        // focused car on the road (issue #960) — the keypad surface of the
+        // dial's track-order mode (#886), sharing its computation rather than
+        // repeating it: `computeTrackOrderTarget` wraps the project's one
+        // track-order primitive (`findNearestCarOnTrack`) and filters to the
+        // same competitor list Cycle Car walks, so the pace car and spectators
+        // are never targeted and cars that left the world are skipped. `next`
+        // is read as "ahead" by the shared `trackOrderDirection`, the single
+        // definition both surfaces use.
+        //
+        // Focus BY NUMBER with the live group and sub-camera, exactly like
+        // Cycle Car, so only the subject changes and the shot is preserved.
+        // Unlike Cycle Car there is NO fallback: iRacing has no track-order
+        // cycle command to fall back to, and inventing one here would be a
+        // second ordering. No neighbour → nothing sent (the #885 contract).
+        const cars = getAllCarNumbers(this.sdkController.getSessionInfo(), true, true);
+        const targetCar = computeTrackOrderTarget(telemetry, carIdx, cars, trackOrderDirection(direction));
+
+        if (targetCar) {
+          const success = camera.switchNum(targetCar.carNumberRaw, groupNum, cameraNum);
+          this.logger.info("Car switched by track order");
+          this.logger.debug(`Result: ${success}, direction: ${direction}, carNumberRaw: ${targetCar.carNumberRaw}`);
+        } else {
+          // Having no neighbour is ROUTINE, not a fault: a solo practice, a
+          // hotlap or a test drive has no other car to move to, so every press
+          // lands here. `logging.md` reserves warn for "unexpected but
+          // recoverable", hence info + the detail at debug — the same shape
+          // replay-control.ts uses for its own routine absence (no best lap
+          // recorded yet), rather than the warn it uses when a target that
+          // should exist is missing. #960 originally specified warn.
+          this.logger.info("No neighbouring car on track — nothing sent");
+          this.logger.debug(`direction: ${direction}, camCarIdx: ${carIdx}, competitors: ${cars.length}`);
         }
 
         break;

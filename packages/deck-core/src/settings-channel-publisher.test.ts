@@ -6,6 +6,7 @@ import {
   getGlobalSettings,
   initGlobalSettings,
   isSettingsStoreReady,
+  MIGRATION_ABANDONED_KEY,
   MIGRATION_PENDING_KEY,
   onGlobalSettingsChange,
   SETTINGS_CHANNEL_KEY,
@@ -237,6 +238,30 @@ describe("createSettingsChannelPublisher.publishUnavailable (#1005)", () => {
     await tick();
     const publisher = createSettingsChannelPublisher({ adapter, logger: silentLogger });
 
+    publisher.publishUnavailable();
+
+    expect(setGlobalSettings).not.toHaveBeenCalled();
+  });
+
+  it("never mirrors an abandoned store, on either publish path (#1041)", async () => {
+    // The durable sibling of the case above, and the consequential one: while
+    // the gate holds it also suppresses the channel-less mirror that is
+    // otherwise the only route a `_warnings` banner has to a fallen-back
+    // Property Inspector. Pin both directions — turning the mirror back on
+    // reintroduces #1041's data loss, leaving it off keeps that route closed,
+    // and without this the suite passes either way.
+    //
+    // The gate is no longer permanent (#1047), and this fixture holds only
+    // because no `pluginVersion` is passed — the "unknown running version"
+    // path, where a given-up store is left alone. A build that names its
+    // version retries this very file instead; see the #1047 block in
+    // global-settings.test.ts.
+    const { adapter, setGlobalSettings } = mockAdapter();
+    initGlobalSettings(adapter, silentLogger, createMemorySettingsStore({ [MIGRATION_ABANDONED_KEY]: true }));
+    await tick();
+    const publisher = createSettingsChannelPublisher({ adapter, logger: silentLogger });
+
+    publisher.publish(CHANNEL);
     publisher.publishUnavailable();
 
     expect(setGlobalSettings).not.toHaveBeenCalled();

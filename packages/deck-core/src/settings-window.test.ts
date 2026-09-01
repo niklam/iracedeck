@@ -452,3 +452,71 @@ describe("createSettingsWindowController.onStatus (#1005)", () => {
     await expect(controller.open()).resolves.toBe("app-window");
   });
 });
+
+describe("open({ pane }) — the first-run deep link (#1061)", () => {
+  it("lands the window on a pane, as a fragment", async () => {
+    const { controller, spawnApp } = setup();
+    teardown = () => controller.close();
+
+    await controller.open({ pane: "getting-started" });
+
+    const url = String(spawnApp.mock.calls[0]?.[1]);
+
+    expect(url).toMatch(/#getting-started$/);
+  });
+
+  it("keeps the fragment AFTER the token query, so the token still reaches the server", async () => {
+    // A fragment is never sent to the server, so this must not disturb the
+    // token/Origin/cookie model — the query has to survive intact.
+    const { controller, spawnApp } = setup();
+    teardown = () => controller.close();
+
+    await controller.open({ pane: "getting-started" });
+
+    const url = new URL(String(spawnApp.mock.calls[0]?.[1]));
+
+    expect(url.searchParams.get("t")).toBeTruthy();
+    expect(url.hash).toBe("#getting-started");
+  });
+
+  it("opens the default page when no pane is asked for", async () => {
+    const { controller, spawnApp } = setup();
+    teardown = () => controller.close();
+
+    await controller.open();
+
+    expect(String(spawnApp.mock.calls[0]?.[1])).not.toContain("#");
+  });
+
+  it("drops anything that is not a pane id rather than interpolating it", async () => {
+    // The value ends up on a browser command line, so it is not somewhere to
+    // pass an unvalidated string through.
+    const { controller, spawnApp } = setup();
+    teardown = () => controller.close();
+
+    for (const pane of ["../etc", "Getting_Started", "a b", "", "x#y"]) {
+      await controller.open({ pane });
+    }
+
+    for (const call of spawnApp.mock.calls) {
+      expect(String(call[1])).not.toContain("#");
+    }
+  });
+
+  it("carries the fragment through the browser-tab fallback too", async () => {
+    const openUrl = vi.fn(async (_url: string) => {});
+    const controller = createSettingsWindowController({
+      renderPage: () => PAGE,
+      findBrowser: () => undefined,
+      spawnApp: vi.fn(),
+      openUrl,
+      logger: silentLogger,
+    });
+
+    teardown = () => controller.close();
+
+    await controller.open({ pane: "getting-started" });
+
+    expect(String(openUrl.mock.calls[0]?.[0])).toMatch(/#getting-started$/);
+  });
+});

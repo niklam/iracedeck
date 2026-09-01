@@ -9,6 +9,7 @@
  */
 import { z } from "zod";
 
+import { FEATURE_STARTUP_GATES } from "./feature-startup-policy.js";
 import type { SettingsWindowBounds } from "./settings-window-launcher.js";
 
 /** Passthrough global-settings key holding the last window bounds. */
@@ -83,6 +84,52 @@ export interface SettingsWindowCommandDeps {
   refreshVoicePacks?: () => void;
 }
 
+/** The gate whose two keys the Race Engineer opt-in has to move together (#1061). */
+const RACE_ENGINEER_GATE_KEY = "pitCrewRaceEngineerEnabled";
+
+/**
+ * The settings one press of a Getting Started opt-in writes, or `undefined` for
+ * a feature nothing here knows about.
+ *
+ * The Race Engineer case writes TWO keys, and the second is not belt-and-braces.
+ * `migrateStartupPolicies` maps the retired `…EnabledOnStartup` boolean onto a
+ * startup policy, and that retired field was itself schema-backed with a `false`
+ * default — so every install that performed a write before #1007 carries an
+ * explicit `always-off`. Writing the gate alone would turn the engineer on for
+ * this session and `applyStartupFeatureGates` would turn it straight back off on
+ * the next start, which on a permanent tab is the worst possible outcome: a
+ * button that appears to work and silently reverts. The pair is derived from
+ * FEATURE_STARTUP_GATES rather than restated, so renaming either key cannot
+ * leave this behind.
+ *
+ * `remember-last`, never `always-on`: forcing the gate at every start would
+ * override a later deliberate silence from the Pit Crew toggle key, which is the
+ * defect #1007 exists to remove. It is a literal rather than
+ * DEFAULT_FEATURE_STARTUP_POLICY because the value is chosen for that meaning,
+ * not for being the default — the two merely coincide today.
+ */
+export function enableFeatureWrites(feature: unknown): Record<string, unknown> | undefined {
+  switch (feature) {
+    case "race-engineer": {
+      const gate = FEATURE_STARTUP_GATES.find((candidate) => candidate.gateKey === RACE_ENGINEER_GATE_KEY);
+
+      return gate ? { [gate.gateKey]: true, [gate.policyKey]: "remember-last" } : undefined;
+    }
+
+    // The button reads "I want to read about new features", and `features` is
+    // the value that makes that label true — `always` opens for patch releases
+    // too, so the button would promise less than it delivers (#1061).
+    case "changelog-updates":
+      return { changelogNotification: "features" };
+
+    case "focus-iracing-window":
+      return { focusIRacingWindow: true };
+
+    default:
+      return undefined;
+  }
+}
+
 /** Build the handler the settings-window server's `onSendToPlugin` is bound to. */
 export function createSettingsWindowCommandHandler(
   deps: SettingsWindowCommandDeps,
@@ -124,6 +171,22 @@ export function createSettingsWindowCommandHandler(
         if (deps.openFolder && deps.storePath) deps.openFolder(deps.storePath);
 
         break;
+
+      case "enableFeature": {
+        const writes = enableFeatureWrites(payload.feature);
+
+        if (!writes) break;
+
+        deps.writeSettings(writes);
+
+        // Turning the engineer on has NO observable consequence on a fresh
+        // install: there is no session, so nothing would be said for possibly
+        // days. One preview is the only immediate evidence that audio works at
+        // all, on the right device, at an audible volume.
+        if (payload.feature === "race-engineer") deps.previewAudio?.("voice");
+
+        break;
+      }
 
       case "voicePackRefresh":
         deps.refreshVoicePacks?.();

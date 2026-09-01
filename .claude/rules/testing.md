@@ -11,7 +11,17 @@ Common commands
 ```bash
 pnpm test
 pnpm test:watch
+pnpm typecheck              # the type gate: tsc --noEmit per package (#987)
 ```
+
+`pnpm test` does not typecheck: Vitest transforms through esbuild, which strips types without checking them. Neither did `pnpm build`, for the rollup-built packages — that gap is what #987 closed. `pnpm typecheck` is the explicit gate; its turbo task declares `dependsOn: ["^build"]` because packages resolve each other's types through emitted `dist/`, so it builds what it needs and needs no separate build step first.
+
+**What it does not reach**, so nobody mistakes a green run for full coverage. `scripts/typecheck-script-coverage.test.mjs` guarantees every package with a `tsconfig.json` is in the gate; it cannot speak for the rest:
+
+- **Packages with no `tsconfig.json`** — `iracing-actions`, `audio-assets`, `icons`. `iracing-actions` is the significant one: its sources are checked only incidentally, by being pulled into the three plugin programs, and its test files are checked by nothing. Tracked in #1078.
+- **Tests excluded by a package's own config** — `deck-adapter-mirabox` and `deck-adapter-ulanzi` both set `"exclude": ["src/**/*.test.ts"]`, so their typecheck covers no test file. `deck-adapter-elgato` has no such exclude, so the three siblings are not consistent. Tracked in #1078.
+
+Both gaps predate #987 and it does not widen them; they are recorded here because a gate is only useful if its edges are known.
 
 ## Root `vitest.config.ts` — native config loader
 

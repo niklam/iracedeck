@@ -1418,6 +1418,235 @@ describe("sim-events-iracing translator", () => {
     });
   });
 
+  describe("pit speeding (issue #912)", () => {
+    const PIT_LIMIT_SESSION = {
+      SessionInfo: { Sessions: [{ SessionType: "Race" }] },
+      WeekendInfo: { TrackID: 42, TrackPitSpeedLimit: "80.00 kph" },
+    };
+    /** 80 kph is 22.2 m/s; comfortably over it. */
+    const SPEEDING = 30;
+
+    function speedingController(): MockController {
+      const controller = createMockController();
+      controller.__setSessionInfo(PIT_LIMIT_SESSION);
+
+      return controller;
+    }
+
+    it("starts the cue on the very first tick observed while already speeding", () => {
+      const controller = speedingController();
+      const bus = getEventBus();
+      const started = vi.fn();
+      bus.subscribe("pitSpeeding.started", started);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      // No seeding tick. Unlike the limiter diff above, this one is
+      // level-driven: a driver already over the limit when the plugin starts
+      // or the SDK reconnects must hear the cue, not be seeded past it.
+      controller.__tick(telemetry({ OnPitRoad: true, Speed: SPEEDING }));
+
+      expect(started).toHaveBeenCalledTimes(1);
+    });
+
+    it("publishes pitSpeeding.ended on disconnect so the tick loop cannot outlive the session", () => {
+      const controller = speedingController();
+      const bus = getEventBus();
+      const ended = vi.fn();
+      bus.subscribe("pitSpeeding.ended", ended);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      controller.__tick(telemetry({ OnPitRoad: true, Speed: SPEEDING }));
+      expect(ended).not.toHaveBeenCalled();
+
+      controller.__tick(null, false);
+
+      expect(ended).toHaveBeenCalledTimes(1);
+    });
+
+    it("publishes pitSpeeding.ended when entering replay", () => {
+      const controller = speedingController();
+      const bus = getEventBus();
+      const ended = vi.fn();
+      bus.subscribe("pitSpeeding.ended", ended);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      controller.__tick(telemetry({ OnPitRoad: true, Speed: SPEEDING }));
+      // The replay guard returns before the diffs run, so without the teardown
+      // the state would be wiped with the closing edge never emitted.
+      controller.__tick(telemetry({ OnPitRoad: true, Speed: SPEEDING, IsReplayPlaying: true }));
+
+      expect(ended).toHaveBeenCalledTimes(1);
+    });
+
+    it("publishes pitSpeeding.ended on a session change, then restarts if still speeding", () => {
+      const controller = speedingController();
+      const bus = getEventBus();
+      const started = vi.fn();
+      const ended = vi.fn();
+      bus.subscribe("pitSpeeding.started", started);
+      bus.subscribe("pitSpeeding.ended", ended);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      controller.__tick(telemetry({ SessionNum: 0, OnPitRoad: true, Speed: SPEEDING }));
+      expect(started).toHaveBeenCalledTimes(1);
+
+      controller.__tick(telemetry({ SessionNum: 1, OnPitRoad: true, Speed: SPEEDING }));
+
+      // The wipe closes the episode, and the same tick's diff reopens it
+      // because the condition still holds — a momentary gap in the tick, not
+      // a silent loop and not a permanently lost warning.
+      expect(ended).toHaveBeenCalledTimes(1);
+      expect(started).toHaveBeenCalledTimes(2);
+    });
+
+    it("stays silent when the track's pit speed limit cannot be parsed", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo({
+        SessionInfo: { Sessions: [{ SessionType: "Race" }] },
+        WeekendInfo: { TrackID: 42 },
+      });
+      const bus = getEventBus();
+      const started = vi.fn();
+      bus.subscribe("pitSpeeding.started", started);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      controller.__tick(telemetry({ OnPitRoad: true, Speed: 200 }));
+
+      expect(started).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("pit speed limit is a rounded string (issue #1059)", () => {
+    /**
+     * `WeekendInfo.TrackPitSpeedLimit` is published to two decimals, and at an
+     * imperial-native track that string is a CONVERTED value — so parsing it
+     * back lands fractionally BELOW the true limit and a car held exactly at
+     * the posted limit fires. Recovering the rounding window is not a
+     * tolerance; it is reading the number the publisher rounded.
+     */
+    function sessionWithLimit(limit: string) {
+      return {
+        SessionInfo: { Sessions: [{ SessionType: "Race" }] },
+        WeekendInfo: { TrackID: 42, TrackPitSpeedLimit: limit },
+      };
+    }
+
+    /** Charlotte publishes 45.00 mph as "72.42 kph"; the true value is 20.1168 m/s. */
+    const MPH_45_EXACT_MPS = 45 * 0.44704;
+
+    it("stays silent at the TRUE limit when the published value was rounded down", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(sessionWithLimit("72.42 kph"));
+      const bus = getEventBus();
+      const started = vi.fn();
+      bus.subscribe("pitSpeeding.started", started);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      // 20.1168 m/s is exactly 45.00 mph. Parsing "72.42" gives 20.116667,
+      // so before the fix this speed was "over the limit" and fired.
+      controller.__tick(telemetry({ OnPitRoad: true, Speed: MPH_45_EXACT_MPS, EngineWarnings: 0 }));
+
+      expect(started).not.toHaveBeenCalled();
+    });
+
+    it("still fires for a car genuinely past the rounding window", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(sessionWithLimit("72.42 kph"));
+      const bus = getEventBus();
+      const started = vi.fn();
+      bus.subscribe("pitSpeeding.started", started);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      // Just OUTSIDE the top of the window: 72.42 + 0.005 is the corrected
+      // threshold, so 0.01 km/h beyond it must still fire. Pinning the near
+      // boundary rather than a comfortably-over speed is the point — the
+      // window is only 0.005 km/h wide, so a loose value proves little.
+      controller.__tick(telemetry({ OnPitRoad: true, Speed: (72.42 + 0.005 + 0.01) / 3.6, EngineWarnings: 0 }));
+
+      expect(started).toHaveBeenCalledTimes(1);
+    });
+
+    it("leaves an integer-valued limit uncorrected — no blanket margin", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(sessionWithLimit("60 kph"));
+      const bus = getEventBus();
+      const started = vi.fn();
+      bus.subscribe("pitSpeeding.started", started);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      // With no published decimals we cannot tell an exact 60 from a rounded
+      // one, and half a unit would be 0.5 km/h — a blanket grace margin on
+      // every car, which is what this whole change refuses. So: no correction,
+      // and a hair over the bare value still fires.
+      controller.__tick(telemetry({ OnPitRoad: true, Speed: (60 + 0.05) / 3.6, EngineWarnings: 0 }));
+
+      expect(started).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps a published zero indistinguishable from an unparsed limit", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(sessionWithLimit("0.00 kph"));
+      const bus = getEventBus();
+      const started = vi.fn();
+      bus.subscribe("pitSpeeding.started", started);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      // `pitSpeedLimitMps > 0` is the "limit unknown, stay disarmed" sentinel.
+      // Adding the rounding window to a 0 would arm the cue against a ~0
+      // threshold and it would fire at walking pace, permanently.
+      controller.__tick(telemetry({ OnPitRoad: true, Speed: 20, EngineWarnings: 0 }));
+
+      expect(started).not.toHaveBeenCalled();
+    });
+
+    it("leaves a metric-native limit behaving as before — the control case", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(sessionWithLimit("60.00 kph"));
+      const bus = getEventBus();
+      const started = vi.fn();
+      bus.subscribe("pitSpeeding.started", started);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      // Pinned at the boundary rather than comfortably over: 1 kph above the
+      // limit would pass even if the window were far wider than intended.
+      // "60.00" carries two decimals, so the window IS applied here — the
+      // control this test provides is that it stays 0.005 kph wide and does
+      // not grow into a blanket margin.
+      controller.__tick(telemetry({ OnPitRoad: true, Speed: (60 + 0.006) / 3.6, EngineWarnings: 0 }));
+
+      expect(started).toHaveBeenCalledTimes(1);
+    });
+
+    it("stays silent just INSIDE the window of a two-decimal limit", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(sessionWithLimit("60.00 kph"));
+      const bus = getEventBus();
+      const started = vi.fn();
+      bus.subscribe("pitSpeeding.started", started);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      // The other side of the same boundary. Together the pair pins the window
+      // to its intended 0.005 kph in both directions — neither wider nor
+      // absent — which one-sided tests cannot do.
+      controller.__tick(telemetry({ OnPitRoad: true, Speed: (60 + 0.004) / 3.6, EngineWarnings: 0 }));
+
+      expect(started).not.toHaveBeenCalled();
+    });
+
+    it("stays silent exactly at a metric-native limit", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(sessionWithLimit("60.00 kph"));
+      const bus = getEventBus();
+      const started = vi.fn();
+      bus.subscribe("pitSpeeding.started", started);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      controller.__tick(telemetry({ OnPitRoad: true, Speed: 60 / 3.6, EngineWarnings: 0 }));
+
+      expect(started).not.toHaveBeenCalled();
+    });
+  });
+
   describe("flags — cleared", () => {
     it("emits flag.yellow.cleared only when yellow was previously active", () => {
       const controller = createMockController();

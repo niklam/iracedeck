@@ -161,10 +161,10 @@ describe("ird-warnings — placement filters (#1005)", () => {
 
     emit(BOTH);
 
-    expect([...strip.querySelectorAll(".ird-warning")].map((r) => r.textContent)).toEqual([
+    expect(Array.from(strip.querySelectorAll(".ird-warning")).map((r) => r.textContent)).toEqual([
       expect.stringContaining("Run as admin"),
     ]);
-    expect([...button.querySelectorAll(".ird-warning")].map((r) => r.textContent)).toEqual([
+    expect(Array.from(button.querySelectorAll(".ird-warning")).map((r) => r.textContent)).toEqual([
       expect.stringContaining("No browser would open the page"),
     ]);
   });

@@ -21,10 +21,10 @@ pnpm relink:stream-deck     # Unlink + link (useful when switching worktrees)
 
 ### Build verification
 
-**Always review the full build output.** The build may succeed (exit code 0) while still emitting TypeScript warnings from `@rollup/plugin-typescript`. These warnings indicate real type errors that must be fixed before committing.
+**Always review the full build output.** Since #987 all four rollup configs set `noEmitOnError`, so a TypeScript diagnostic in a rollup-built package is a hard build failure rather than a warning on a green build — that is what the flag is for. Reading the output still matters, because a build can fail or misbehave for reasons that are not type errors.
 
 - Run the build and capture all output (do not just check the exit code or tail the last few lines).
-- Search the output for `TS[0-9]+:` patterns (e.g., `TS2345`, `TS2322`) — these are TypeScript diagnostics that need fixing.
+- Search the output for `TS[0-9]+:` patterns (e.g., `TS2345`, `TS2322`). Before #987 these could appear as *warnings* on a build that exited 0 and shipped broken output; they are now fatal, so finding one means the build failed.
 - Ignore `Circular dependency` warnings from `zod` internals and `npm warn Unknown env config` — these are known and harmless.
 - Common cause: `vi.fn(() => null)` in test files infers return type as `null`, making `mockReturnValue({...})` a type error. Fix by widening the return type: `vi.fn((): Record<string, unknown> | null => null)`.
 
@@ -39,6 +39,8 @@ Branching & Worktrees
 - **Master** — direct work on master, pushed without a PR.
 
 Do not assume. Do not start coding until the user answers.
+
+**Exception — issue work is already settled (#1044).** An issue is solved in a worktree; don't re-ask per issue. The question above governs work that is *not* an issue, and the maintainer can still direct otherwise at any time. See `@.claude/rules/issue-workflow.md` for the full pipeline.
 
 ### Worktree workflow
 
@@ -108,8 +110,11 @@ Before every commit, the following must succeed:
 
 1. **Install**: `pnpm install` — ensures dependencies are up to date.
 2. **Build**: `pnpm build` — must complete without TypeScript errors (see **Build verification** above).
+3. **Typecheck**: `pnpm typecheck` — the explicit type gate, and the same command CI runs.
 
-Do not commit if either step fails. Fix the issue first.
+Do not commit if any step fails. Fix the issue first.
+
+**Why typecheck is separate from build.** Until #987 a green `pnpm build` said nothing about the type correctness of the rollup-built packages: `@rollup/plugin-typescript` reports type errors as rollup *warnings* and emits anyway unless `noEmitOnError` is set, so a build could report success while shipping a bundle that throws at startup. All four rollup configs — the three plugins and `pi-components` — now set `noEmitOnError`, which closes that at authoring time. `pnpm typecheck` is the explicit gate and is what a red CI run reproduces; see `@.claude/rules/testing.md` for what it does and does not cover.
 
 ### Logical Commits
 
@@ -141,7 +146,7 @@ Pull Requests
 - **Before creating a PR, ask the user:**
   > Should we run the code review agent for these changes?
 
-  If yes, run it (via the `code-review` skill or `code-reviewer` agent) and address any issues found before opening the PR.
+  Name the effort level in the ask and say which row of the table in `@.claude/rules/code-review.md` the change landed in — `xhigh` is not the default. If yes, run it (via the `code-review` skill or `code-reviewer` agent) at that level, pointed at the worktree that holds the work rather than `master`. The review reports only — never `--fix`; verify each finding and apply the ones that hold as your own edits before opening the PR.
 
 ### PR Labels
 
@@ -180,7 +185,7 @@ Merging
 - **Branch-to-branch merges are NOT squashed.** Release-branch back-merges and the periodic `master` ↔ `release/*` syncs use a regular merge (`gh pr merge --merge`, or a local `git merge`) — squashing one would collapse the other branch's whole history into a single commit and re-introduce its entire diff, causing avoidable conflicts on the next sync. See **Back-merging a release branch** below.
 - **PR titles must include the issue number** at the end in parentheses: `<type>(<scope>): <description> (#<issue>)`. Example: `feat(actions): add Camera Focus action (#42)`. Under squash-merge this title is the commit message that lands on the branch, so it must read as a complete commit subject.
 - **PR titles drive release notes.** The conventional commit prefix determines the release notes category via auto-labeling (see **PR Labels** above). Use the correct prefix so the change appears in the right section.
-- Merging is performed manually or by automation — never by a Claude review step.
+- Merging is performed manually or by automation, or by the agent driving the work once CodeRabbit has approved and checks are green (#1044) — but **never by a Claude review step**. Reviewing and merging stay separate hands.
 - **Update the changelog.** Any user-facing change merging to `master` or a `release/*` branch must update the changelog page (`packages/website/src/content/docs/changelog.mdx`) in the same PR, collapsing a feature and its follow-up fixes into a single line. See `@.claude/rules/changelog.md`.
 
 ### Post-merge worktree cleanup

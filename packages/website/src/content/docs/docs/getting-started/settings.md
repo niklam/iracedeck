@@ -19,6 +19,18 @@ It is a real window — its own entry in the taskbar, resizable, and it remember
 
 The sidebar has one tab per area. Everything here applies to the **whole plugin**; the appearance defaults are the only ones an individual key can override in its own Property Inspector.
 
+### Getting Started
+
+![The Getting Started tab of the iRaceDeck Settings window](../../../../assets/settings-window/getting-started.png)
+
+The [First Steps](/docs/getting-started/first-steps/) page, built into the plugin so it works without an internet connection — what to do first, which layout to start from, and what the Race Engineer is.
+
+It opens by itself once, the first time you run iRaceDeck, and then never again. Upgrading from an earlier version does not count as a first run: the page is for people who have not used iRaceDeck before, and an installation that has started up even once before is left alone. It also never opens while iRacing is running, so it cannot appear over a live session.
+
+The tab stays here afterwards, so you can come back to it whenever you like.
+
+Three of its steps do something rather than only explain it: one press turns on the **Race Engineer** (and plays a line so you know your audio works), one opts you in to seeing what changed after an update, and one turns on **Focus iRacing window** if you happen to have it off. The first two show what they will do while the setting is off and confirm it once it is on; the Focus iRacing window suggestion appears only if that setting is off, so on a fresh installation — where it is already on — you will not see it at all.
+
 ### General
 
 ![The General tab of the iRaceDeck Settings window](../../../../assets/settings-window/general.png)
@@ -148,7 +160,7 @@ A key's Property Inspector is now about that key. It has its own settings at the
 
 Actions that use no key bindings at all say so instead of showing an empty section.
 
-Bindings edited in either place are the same settings: on Stream Deck and Mirabox, change one and the other updates live. On Ulanzi Deck that link is still pending confirmation — see [Where Your Settings Are Stored](#where-your-settings-are-stored) — so set bindings from the Settings window there.
+Bindings edited in either place are the same settings: change one and the other updates live. Both surfaces read and write the same file — see [Where Your Settings Are Stored](#where-your-settings-are-stored).
 
 ## If the Window Doesn't Open
 
@@ -189,7 +201,7 @@ iRaceDeck keeps every setting on this page — and the key bindings shown in eac
 
 The **Diagnostics** tab shows the exact path for your installation and has an **Open folder** button that reveals the file in Explorer.
 
-The first time you start a version that stores settings this way, iRaceDeck copies your existing settings over from the deck software automatically — there is nothing to do. From then on your settings live with you rather than inside the deck software's own storage, so they survive plugin updates and reinstalls. The window and the Property Inspectors share that one file, which is why a binding changed in either shows up in the other straight away on Stream Deck and Mirabox; on Ulanzi Deck the Property Inspector side of that live sync is pending confirmation that UlanziStudio's in-session settings read works, so until then a Property Inspector there falls back to the deck software's own copy — it still displays fine, but a key binding changed in it does not reach the plugin; set bindings from the Settings window on Ulanzi Deck. The deck software keeps a copy too: iRaceDeck refreshes it once every time the plugin starts, so nothing is taken away from it and an older iRaceDeck version installed later still finds your settings where it expects them. The one exception is a start on which the deck software has not yet answered iRaceDeck's first read of your existing settings — that refresh waits until it does, so a copy iRaceDeck has not seen is never overwritten.
+The first time you start a version that stores settings this way, iRaceDeck copies your existing settings over from the deck software automatically — there is nothing to do. From then on your settings live with you rather than inside the deck software's own storage, so they survive plugin updates and reinstalls. The window and the Property Inspectors share that one file, which is why a binding changed in either shows up in the other straight away. The deck software keeps a copy too: iRaceDeck refreshes it once every time the plugin starts, so nothing is taken away from it and an older iRaceDeck version installed later still finds your settings where it expects them. That refresh holds off while iRaceDeck is still waiting for the deck software to answer its first read of your existing settings, so a copy it has not read is left alone — and while it is waiting, a key's settings panel falls back to the deck software's copy, so set plugin-wide settings from the Settings window until the wait is over. If the answer never comes at all, iRaceDeck settles after a few startups for the settings it has and stops asking, and from then on it leaves the deck software's copy untouched rather than overwriting something it was never able to read. That means the two are no longer kept in step on such a machine: your settings live in the file above, the deck software's copy stays as it was, and an older iRaceDeck installed later would find that older copy rather than your current settings. **Updating iRaceDeck makes it try once more** — each newer version asks the deck software again, once, so a copy it could not read before is picked up if the answer arrives this time. If the deck software still does not answer, iRaceDeck keeps the settings you have and waits for the next newer version rather than asking on every startup. Reinstalling the same version, or going back to an older one, does not trigger another attempt. Deleting the file above also forces a fresh copy, but on a machine that has been running this way it is the worse option: your settings file is the current one and the deck software's copy is older, so deleting yours replaces what you have now with what you had then.
 
 To back up your configuration, copy that one file somewhere safe; to restore it, put it back and restart the deck software. Each deck ecosystem gets its own folder, so a Stream Deck and an Ulanzi Deck installation on the same PC never share settings.
 

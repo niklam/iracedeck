@@ -20,6 +20,7 @@ import { WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
 import { registerPitCrew, type StartLightCalloutId } from "./index.js";
+import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { POOL_REGISTRY } from "./pools.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import { RADIO_CLOSE, RADIO_OPEN } from "./radio-frame.js";
@@ -397,62 +398,16 @@ describe("START_LIGHT_ALERTS opt-in gating (issue #480)", () => {
       ["countdown", true],
     ]);
 
-    registerPitCrew(
-      bus,
-      undefined, // getFlagCalloutEnabled
-      mockLogger as never,
-      undefined, // getPitReadbackEnabled
-      undefined, // getPitActionsAllowed
-      undefined, // getPitServiceRequestsEnabled
-      undefined, // getReadbackSnapshot
-      undefined, // getDamageCalloutEnabled
-      undefined, // getPitStatusCalloutEnabled
-      undefined, // getTrackConditionsCalloutEnabled
-      undefined, // getIncidentCalloutEnabled
-      undefined, // getSessionStartCalloutEnabled
-      undefined, // getSessionStartSnapshot
-      undefined, // getLapTimeCalloutEnabled
-      undefined, // getLapCompletedSnapshot
-      undefined, // getPositionCalloutEnabled
-      undefined, // getQualifyingInvalidationCalloutEnabled
-      undefined, // getQualifyingInvalidationSnapshot
-      undefined, // getRaceStatusCalloutEnabled
-      undefined, // getRaceFinishedFired
-      undefined, // getRaceEndCalloutEnabled
-      undefined, // getRaceFinishedSnapshot
-      undefined, // getRaceStartCalloutEnabled
-      undefined, // getRaceStartSnapshot
-      undefined, // getOvertakeCalloutEnabled
-      undefined, // getOvertakeDriverName
-      undefined, // getLivePosition
-      undefined, // getOvertakeGate
-      undefined, // getPitBoxCalloutEnabled
-      undefined, // getSetupWarningMismatch
-      undefined, // getSpotterCalloutEnabled
-      undefined, // getSpotterTrackDirection
-      undefined, // getSpotterStillThereIntervalMs
-      undefined, // getSpotterNearestCarGapMeters
-      undefined, // getPitWindowCalloutEnabled (issue #655)
-      undefined, // getRollingStartCalloutEnabled
-      (id) => startLightEnabled.get(id) ?? true, // getStartLightCalloutEnabled
-      undefined, // getFuelCalloutEnabled (issue #838)
-      undefined, // getCornerNameCalloutEnabled (issue #888)
-      undefined, // getCornerNameSnapshot (issue #888)
-      undefined, // getOpponentPitCalloutEnabled (issue #622)
-      undefined, // getOpponentPitLivePosition (issue #622)
-      undefined, // getGapCalloutEnabled (issue #933)
-      undefined, // getGapCooldownMs (issue #933)
-      undefined, // getLiveGaps (issue #933)
-      undefined, // getOpponentFlagCalloutEnabled (issue #936)
-      undefined, // getOpponentFlagLivePosition (issue #936)
-      undefined, // getRaceEngineerMasterEnabled
-      undefined, // getRadarMasterEnabled
-    );
+    registerPitCrew(bus, {
+      logger: mockLogger as never,
+      getStartLightCalloutEnabled: (id) => startLightEnabled.get(id) ?? true,
+    });
   });
 
   afterEach(() => {
     _resetRadarEngine();
     _resetSpotterEngine();
+    _resetPitSpeedingEngine();
   });
 
   it("fires gantry lines and countdown numbers when both opt-ins are on", () => {

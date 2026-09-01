@@ -90,6 +90,14 @@ export class VSDClient {
    */
   private pendingGlobalSettings: Record<string, unknown> | null = null;
 
+  /**
+   * Subscribers waiting for the host socket to be usable (#1056). deck-core
+   * uses this to restart the settings-migration deadline from the point its
+   * read can actually be answered, rather than from the point it was issued
+   * into a socket that was still closed.
+   */
+  private readonly hostReadyCallbacks: Array<() => void> = [];
+
   constructor(
     params: VSDConnectionParams,
     logger: ILogger = silentLogger,
@@ -134,16 +142,26 @@ export class VSDClient {
     this.ws = new WebSocket(`ws://127.0.0.1:${this.params.port}`);
 
     this.ws.on("open", () => {
-      this.logger.info("Connected to VSD Craft");
-      this.send({ uuid: this.params.pluginUuid, event: this.params.registerEvent });
-      this.requestGlobalSettings();
+      try {
+        this.logger.info("Connected to VSD Craft");
+        this.send({ uuid: this.params.pluginUuid, event: this.params.registerEvent });
+        this.requestGlobalSettings();
 
-      if (this.pendingGlobalSettings) {
-        const settings = this.pendingGlobalSettings;
+        if (this.pendingGlobalSettings) {
+          const settings = this.pendingGlobalSettings;
 
-        this.pendingGlobalSettings = null;
-        this.setGlobalSettings(settings);
-        this.logger.debug("Flushed the deferred setGlobalSettings");
+          this.pendingGlobalSettings = null;
+          this.setGlobalSettings(settings);
+          this.logger.debug("Flushed the deferred setGlobalSettings");
+        }
+      } finally {
+        // Last, so a subscriber hears "the host is reachable" only once the
+        // connect-time read above is actually on the wire (#1056) — but in a
+        // `finally`, because a throw anywhere above (a `JSON.stringify` on the
+        // mirror payload, a failing log sink) would otherwise skip the notify
+        // and silently reinstate the very bug #1056 fixes: deck-core would keep
+        // the deadline it measured from the closed-socket read.
+        this.notifyHostReady();
       }
     });
 
@@ -200,6 +218,51 @@ export class VSDClient {
   }
 
   /**
+   * Subscribe to the host socket becoming usable (#1056) — fired from the
+   * `open` handler, or immediately when the socket is already open.
+   *
+   * Fires a given subscriber exactly ONCE, which is the contract
+   * `IDeckPlatformAdapter.onHostReady` publishes: the list is cleared as it is
+   * fired, so a second `open` (a reconnect, or a second `connect()` in a test
+   * or the harness, where `onClose` does not end the process) cannot re-notify
+   * a subscriber that already ran. deck-core guards its own re-arm as well, but
+   * a consumer should not have to read this file to learn that it must.
+   *
+   * KEEP IN SYNC with `UlanziClient.onHostReady` / `notifyHostReady`, which are
+   * deliberate near-duplicates of these — like the two `FileSink`s.
+   */
+  onHostReady(callback: () => void): void {
+    if (this.ws?.readyState === WS_OPEN) {
+      // Same isolation as the `open` path: a throw here would otherwise escape
+      // into deck-core's settings load and be misreported as a settings-file
+      // failure.
+      this.fireHostReady(callback);
+
+      return;
+    }
+
+    this.hostReadyCallbacks.push(callback);
+  }
+
+  /** Fire the host-ready subscribers exactly once each, isolating a throwing one. */
+  private notifyHostReady(): void {
+    // Splice rather than iterate-then-clear: a subscriber that re-subscribes
+    // while running must land in the NEXT batch, not this one.
+    const callbacks = this.hostReadyCallbacks.splice(0, this.hostReadyCallbacks.length);
+
+    for (const callback of callbacks) this.fireHostReady(callback);
+  }
+
+  /** Run one host-ready subscriber, keeping its failure to itself. */
+  private fireHostReady(callback: () => void): void {
+    try {
+      callback();
+    } catch (error) {
+      this.logger.error(`Host-ready subscriber failed: ${error}`);
+    }
+  }
+
+  /**
    * Send a JSON message to VSD Craft.
    */
   private send(message: Record<string, unknown>): void {
@@ -226,7 +289,55 @@ export class VSDClient {
     });
   }
 
+  /**
+   * Read the deck host's global settings.
+   *
+   * deck-core issues this once per start for the one-time settings migration,
+   * as soon as it finds no settings file. `initGlobalSettings` runs before
+   * `adapter.connect()` and the read fires when the store's file load resolves
+   * — an `ENOENT` a tick or two later — so it usually arrives here before the
+   * socket is open, and `send()` discards anything written while it is not.
+   *
+   * Nothing misbehaves: the `open` handler in {@link connect} reissues this
+   * same read. What was missing is any trace that a read had been attempted at
+   * all — no frame, no line — which on the migration path is an hour of a
+   * support thread before anyone thinks to check (#1046). Unlike Ulanzi there
+   * is no addressing hazard alongside it: the VSD protocol's
+   * `getGlobalSettings` carries only `context`, so there is no scope to get
+   * wrong (#1041 was Ulanzi-only).
+   */
   requestGlobalSettings(): void {
+    if (this.ws?.readyState !== WS_OPEN) {
+      // Say so rather than dropping the frame silently, which is what left a
+      // Mirabox support log with no evidence either way — and at INFO, not
+      // debug. `debugLogging` is applied from the schema-DEFAULT
+      // cache at startup and the persisted value only arrives once the store
+      // is ready — strictly after this read — so a debug line would be
+      // suppressed for exactly the user whose log we would need. That is the
+      // only observable difference between this guard and the readyState check
+      // inside `send()`, and it is the whole point of the change.
+      //
+      // No stash, unlike `setGlobalSettings` below: the `open` handler issues
+      // this same read unconditionally, so it asks the question this call could
+      // not, and stashing would only put a duplicate frame on the wire. Note
+      // the OTHER ordering — deck-core ignores any payload arriving before it
+      // asked (`!migrationRequested`), so when the socket opens first the
+      // connect-time reply is discarded and the migration completes on
+      // deck-core's own read, sent moments later with the socket already open.
+      // Both reads are load-bearing, one per ordering; do not de-duplicate
+      // them.
+      //
+      // This explanation is only true while the `open` handler is what covers
+      // the dropped read. A change to who issues the migration read, or to when
+      // it is issued, must revisit this comment rather than leave a confident
+      // wrong one behind.
+      this.logger.info(
+        "Global-settings read requested while the host socket was not open; the connect-time read will ask in its place",
+      );
+
+      return;
+    }
+
     this.send({
       event: "getGlobalSettings",
       context: this.params.pluginUuid,

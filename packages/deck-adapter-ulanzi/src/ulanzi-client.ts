@@ -29,6 +29,35 @@ import { type WebSocket as WSType } from "ws";
 export const PLUGIN_UUID = "com.iracedeck.sd.core";
 
 /**
+ * Stand-in `actionid` for the plugin's own global-settings reads.
+ *
+ * UlanziStudio answers a `getGlobalSettings` only when `actionid` is non-empty
+ * — it routes the reply by that field — while the bucket it hands back is the
+ * plugin-wide one whatever the frame's `uuid` says. So a read needs the
+ * opposite of what a write needs: an address, not a blank scope (#1039). The
+ * host echoes the field rather than resolving it, so a value that has never
+ * existed is routed just as happily — which is the only reason the main
+ * service can address a read at all, having no action context of its own at
+ * connect time.
+ *
+ * Without it the plugin's one-time migration read — its only chance to import
+ * a user's pre-3.0 settings out of the host store — went unanswered, leaving
+ * the `willAppear` re-drive as the sole route to a reply. That never fires
+ * with no deck attached, and three such starts take `_migrationPending` to its
+ * ceiling; the start AFTER them used to let the once-per-start host mirror
+ * overwrite the user's copy with schema defaults (#1041). deck-core blocks that
+ * write via `MIGRATION_ABANDONED_KEY`, and since #1047 that marker names the
+ * version which gave up, so an upgrade asks the host once more and such a store
+ * is recovered rather than merely preserved.
+ *
+ * Deliberately a different value from the PI bridge's `PI_READ_ACTIONID` in
+ * `@iracedeck/pi-components`: two sockets asking for two different reasons,
+ * and a host-side trace should say which one asked. Nothing is shared between
+ * them, so there is nothing to keep in sync.
+ */
+export const PLUGIN_READ_ACTIONID = "iracedeck-plugin-global-read";
+
+/**
  * Normalized, Elgato-style event the adapter consumes. The raw Ulanzi `cmd`
  * frame is translated into this shape by {@link normalizeFrame}.
  */
@@ -269,6 +298,14 @@ export class UlanziClient {
    */
   private pendingGlobalSettings: Record<string, unknown> | null = null;
 
+  /**
+   * Subscribers waiting for the host socket to be usable (#1056). deck-core
+   * uses this to restart the settings-migration deadline from the point its
+   * read can actually be answered, rather than from the point it was issued
+   * into a socket that was still closed.
+   */
+  private readonly hostReadyCallbacks: Array<() => void> = [];
+
   constructor(
     params: UlanziConnectionParams,
     logger: ILogger = silentLogger,
@@ -307,18 +344,33 @@ export class UlanziClient {
     this.ws = new WebSocket(`ws://${this.params.address}:${this.params.port}`);
 
     this.ws.on("open", () => {
-      this.logger.info("Connected to UlanziStudio");
-      // Ulanzi handshake — no separate registration payload (the host already
-      // parsed manifest.json from disk).
-      this.send({ code: 0, cmd: "connected", uuid: PLUGIN_UUID });
-      this.requestGlobalSettings();
+      try {
+        this.logger.info("Connected to UlanziStudio");
+        // Ulanzi handshake — no separate registration payload (the host already
+        // parsed manifest.json from disk).
+        this.send({ code: 0, cmd: "connected", uuid: PLUGIN_UUID });
+        // In practice this is the read that reaches the host: deck-core's
+        // one-time migration read usually fires before the socket is open and is
+        // covered here (see requestGlobalSettings). It is addressed, so the host
+        // answers it — which is what makes the migration independent of whether
+        // a deck is attached (#1041).
+        this.requestGlobalSettings();
 
-      if (this.pendingGlobalSettings) {
-        const settings = this.pendingGlobalSettings;
+        if (this.pendingGlobalSettings) {
+          const settings = this.pendingGlobalSettings;
 
-        this.pendingGlobalSettings = null;
-        this.setGlobalSettings(settings);
-        this.logger.debug("Flushed the deferred setGlobalSettings");
+          this.pendingGlobalSettings = null;
+          this.setGlobalSettings(settings);
+          this.logger.debug("Flushed the deferred setGlobalSettings");
+        }
+      } finally {
+        // Last, so a subscriber hears "the host is reachable" only once the
+        // connect-time read above is actually on the wire (#1056) — but in a
+        // `finally`, because a throw anywhere above (a `JSON.stringify` on the
+        // mirror payload, a failing log sink) would otherwise skip the notify
+        // and silently reinstate the very bug #1056 fixes: deck-core would keep
+        // the deadline it measured from the closed-socket read.
+        this.notifyHostReady();
       }
     });
 
@@ -421,6 +473,51 @@ export class UlanziClient {
     }
   }
 
+  /**
+   * Subscribe to the host socket becoming usable (#1056) — fired from the
+   * `open` handler, or immediately when the socket is already open.
+   *
+   * Fires a given subscriber exactly ONCE, which is the contract
+   * `IDeckPlatformAdapter.onHostReady` publishes: the list is cleared as it is
+   * fired, so a second `open` (a reconnect, or a second `connect()` in a test
+   * or the harness, where `onClose` does not end the process) cannot re-notify
+   * a subscriber that already ran. deck-core guards its own re-arm as well, but
+   * a consumer should not have to read this file to learn that it must.
+   *
+   * KEEP IN SYNC with `VSDClient.onHostReady` / `notifyHostReady`, which are
+   * deliberate near-duplicates of these — like the two `FileSink`s.
+   */
+  onHostReady(callback: () => void): void {
+    if (this.ws?.readyState === WS_OPEN) {
+      // Same isolation as the `open` path: a throw here would otherwise escape
+      // into deck-core's settings load and be misreported as a settings-file
+      // failure.
+      this.fireHostReady(callback);
+
+      return;
+    }
+
+    this.hostReadyCallbacks.push(callback);
+  }
+
+  /** Fire the host-ready subscribers exactly once each, isolating a throwing one. */
+  private notifyHostReady(): void {
+    // Splice rather than iterate-then-clear: a subscriber that re-subscribes
+    // while running must land in the NEXT batch, not this one.
+    const callbacks = this.hostReadyCallbacks.splice(0, this.hostReadyCallbacks.length);
+
+    for (const callback of callbacks) this.fireHostReady(callback);
+  }
+
+  /** Run one host-ready subscriber, keeping its failure to itself. */
+  private fireHostReady(callback: () => void): void {
+    try {
+      callback();
+    } catch (error) {
+      this.logger.error(`Host-ready subscriber failed: ${error}`);
+    }
+  }
+
   /** Send a JSON message to UlanziStudio. */
   private send(message: Record<string, unknown>): void {
     if (this.ws?.readyState === WS_OPEN) {
@@ -457,16 +554,61 @@ export class UlanziClient {
   }
 
   /**
-   * Request global settings. Plugin scope by default; pass an action context
-   * for the adapter's boot-time bootstrap read — the Ulanzi SDK documents that
-   * a main-service `getGlobalSettings` must carry an action context to be
-   * answered (#868). Writes never take a context: they must always land in the
-   * plugin-scope bucket (see {@link setGlobalSettings}).
+   * Request global settings. Plugin scope by default; an action context may be
+   * passed for the adapter's `willAppear` re-drive (#868).
+   *
+   * The addressing rule was measured in #1039 and is narrower than "an action
+   * context": the host routes a reply by **`actionid`** and answers only when
+   * that field is non-empty — `key` alone does not do it, and `uuid` decides
+   * neither whether it answers nor which bucket comes back. So the default
+   * scope is the write's scope plus an address: the same {@link PLUGIN_UUID},
+   * the same blank `key`, and only `actionid` differs, standing in as
+   * {@link PLUGIN_READ_ACTIONID} because the main service has no action
+   * context of its own (#1041). `key` stays blank for the same reason `uuid`
+   * is kept — a host version that ever resolved the BUCKET from `uuid` and
+   * `key` would otherwise land on one no write populates. (Only those two: a
+   * host resolving the bucket from the full `uuid___key___actionid` context
+   * could not be satisfied by any addressed read, since the address is
+   * fabricated by construction. Matching two of three fields buys what it can,
+   * not everything.)
+   *
+   * **Every** read is addressed, including a re-drive whose context turned out
+   * to carry no `actionid` — `decodeContext` yields `""` for an `add` frame
+   * that omitted the field, and the adapter spends its one-shot before the
+   * send, so an unaddressed re-drive would burn the last fallback on a frame
+   * the host discards. The PI bridge guards the same way (#1039).
+   *
+   * Writes never take a context: they must always land in the plugin-scope
+   * bucket (see {@link setGlobalSettings}), which is why the two directions
+   * deliberately disagree.
    */
   requestGlobalSettings(context?: string): void {
-    const scope = context ? decodeContext(context) : { uuid: PLUGIN_UUID, key: "", actionid: "" };
+    if (this.ws?.readyState !== WS_OPEN) {
+      // `send()` discards anything written while the socket isn't open, and
+      // deck-core issues its one-time migration read as soon as the missing
+      // settings file resolves — usually before `connect()` has opened the
+      // socket. Say so rather than dropping the frame silently, which is what
+      // made #1041 so hard to see, and at info: the persisted `debugLogging`
+      // has not been applied yet at this point in startup, so a debug line
+      // would be suppressed for exactly the user whose log we would need.
+      //
+      // No stash: the `open` handler issues this same plugin-scoped read
+      // unconditionally, so it asks the question this call could not. Note the
+      // OTHER ordering — deck-core ignores any reply arriving before it asked
+      // (`!migrationRequested`), so when the socket opens first, the
+      // connect-time reply is discarded and migration completes on deck-core's
+      // own read, sent moments later with the socket already open. Both reads
+      // are load-bearing, one per ordering; do not de-duplicate them.
+      this.logger.info(
+        "Global-settings read requested while the host socket was not open; the connect-time read will ask in its place",
+      );
 
-    this.send({ cmd: "getGlobalSettings", ...scope });
+      return;
+    }
+
+    const scope = context ? decodeContext(context) : { uuid: PLUGIN_UUID, key: "", actionid: PLUGIN_READ_ACTIONID };
+
+    this.send({ cmd: "getGlobalSettings", ...scope, actionid: scope.actionid || PLUGIN_READ_ACTIONID });
   }
 
   /**

@@ -54,12 +54,19 @@ On Windows, `link:mirabox` defaults to the standard HotSpot StreamDock install p
 
 ### Ulanzi Deck
 
-There's no root-level link shortcut for Ulanzi yet. Build the plugin (or run its watcher), then make the built `packages/iracing-plugin-ulanzi/com.ulanzi.iracedeck.ulanziPlugin` folder available to UlanziStudio by copying or symlinking it into `%APPDATA%\Ulanzi\UlanziDeck\Plugins\`, and restart UlanziStudio.
+`link:ulanzi` junction-links the built `packages/iracing-plugin-ulanzi/com.ulanzi.iracedeck.ulanziPlugin` folder into UlanziStudio's plugins directory, defaulting on Windows to `%APPDATA%\Ulanzi\UlanziDeck\Plugins`. Override with `ULANZI_PLUGINS_DIR` in `.env.local` (see below).
 
 ```bash
+# The whole test cycle — the order matters, see below
+pnpm stop:ulanzi && pnpm switch-test-env:ulanzi && pnpm start:ulanzi
+
 # Watch mode for the Ulanzi plugin (no root-level shortcut yet)
 pnpm --filter @iracedeck/iracing-plugin-ulanzi run watch
 ```
+
+Stop the host **before** the build, not merely before the relink: a running UlanziStudio locks the native `iracing_native.node` and `pnpm build` fails with EPERM. UlanziStudio also reads its plugins directory only at start, so a relink always needs a restart to take effect.
+
+The junction points at exactly one worktree, so the host belongs to whichever worktree ran the last **successful** link or relink — a link that failed because the destination was already occupied leaves the previous junction untouched. `start:ulanzi` prints the current target to save you debugging someone else's build.
 
 ## `.env.local`
 
@@ -74,6 +81,9 @@ Keys currently supported:
 | Key | Used by | Purpose |
 |-----|---------|---------|
 | `MIRABOX_PLUGINS_DIR` | `pnpm link:mirabox` / `unlink:mirabox` / `relink:mirabox` | Path to your Mirabox host's plugins directory. Optional on Windows when using HotSpot StreamDock — the scripts default to `%APPDATA%\HotSpot\StreamDock\plugins`. Set this only to override (e.g. `C:\Users\you\AppData\Roaming\VSD Craft\Plugins`). |
+| `ULANZI_PLUGINS_DIR` | `pnpm link:ulanzi` / `unlink:ulanzi` / `relink:ulanzi` | Path to UlanziStudio's plugins directory. Optional on Windows — the scripts default to `%APPDATA%\Ulanzi\UlanziDeck\Plugins`. |
+| `MIRABOX_APP_PATH` | `pnpm start:mirabox` / `stop:mirabox` | Path to your Mirabox host executable. Optional on Windows — defaults to `%ProgramFiles(x86)%\StreamDock\StreamDock.exe`. Set it if you run VSD Craft instead (`C:\Program Files (x86)\VSD Craft\VSD Craft.exe`). |
+| `ULANZI_APP_PATH` | `pnpm start:ulanzi` / `stop:ulanzi` | Path to the UlanziStudio executable. Optional on Windows — defaults to `%ProgramFiles(x86)%\Ulanzi Studio\UlanziDeck.exe`. |
 
 ## Picking up changes after a rebuild
 
@@ -100,7 +110,13 @@ For pure action-code edits, the watch process plus the host's built-in refresh u
 | `pnpm link:mirabox` | Register the plugin with the Mirabox host (uses `MIRABOX_PLUGINS_DIR` if set, otherwise the Windows HotSpot StreamDock default) |
 | `pnpm unlink:mirabox` | Unregister the Mirabox plugin |
 | `pnpm relink:mirabox` | Unlink + link Mirabox (useful when switching branches) |
-| `pnpm switch-test-env` | Install + build + relink for both platforms |
+| `pnpm start:mirabox` / `pnpm stop:mirabox` | Start/stop the Mirabox host app (`start` prints the linked worktree) |
+| `pnpm link:ulanzi` | Register the plugin with UlanziStudio (uses `ULANZI_PLUGINS_DIR` if set, otherwise the Windows default) |
+| `pnpm unlink:ulanzi` | Unregister the Ulanzi plugin |
+| `pnpm relink:ulanzi` | Unlink + link Ulanzi (useful when switching branches) |
+| `pnpm start:ulanzi` / `pnpm stop:ulanzi` | Start/stop UlanziStudio (`start` prints the linked worktree) |
+| `pnpm switch-test-env` | Install + build + relink for all three platforms |
 | `pnpm switch-test-env:stream-deck` | Install + build + relink only Stream Deck |
 | `pnpm switch-test-env:mirabox` | Install + build + relink only Mirabox |
+| `pnpm switch-test-env:ulanzi` | Install + build + relink only Ulanzi |
 | `pnpm test` | Run all tests |

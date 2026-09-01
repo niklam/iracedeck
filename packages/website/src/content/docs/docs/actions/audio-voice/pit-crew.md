@@ -319,6 +319,63 @@ The box location comes straight from iRacing (`DriverInfo.DriverPitTrkPct`), so 
 
 The count-in fires whenever you're on pit road approaching your box, so it isn't tied to having requested pit service — a drive-through will count down too.
 
+## Pit road speeding
+
+Go over the pit lane speed limit and a short tick starts repeating, about three times a second, for as long as you're over it — a beeper, like a road car's over-speed chime. It stops as soon as you're back at or under the limit, with the beep already sounding allowed to finish; a brief hold keeps a momentary dip across the limit from chopping the tone into pieces. Sitting right on the limit is silent, and you never have to drive under it to earn quiet. Unlike everything else the engineer says this isn't a spoken line and it doesn't wait its turn on the radio: it plays straight away, because a warning that arrives after the penalty is no warning at all.
+
+**Driving without the pit limiter, it starts the moment you exceed the posted limit, with no grace margin.** That is deliberate: you are the one holding the speed, so the tick has to tell you the instant you drift over — if you're hearing it you are genuinely over.
+
+**With the pit limiter engaged, it allows about 0.3 km/h before it speaks.** The limiter parks your car right on the limit rather than under it, and while it's holding you there you have nothing left to do about it — you can't lift, the car is already doing the only thing available. A tick in that situation would be nagging about something you've already handled. It still sounds if a limiter car is genuinely speeding, so a limiter that isn't holding is not silently ignored.
+
+The cue fires on **every car**, whether or not yours has a pit limiter. Pit-road speeding penalties apply to everyone, and a car with no limiter is the one whose driver has no dashboard cue to fall back on.
+
+It also starts if you're **already speeding when the engineer starts listening** — reconnecting to iRacing, or the plugin restarting mid-session after a deck software update. The tick describes what your car is doing right now rather than announcing a moment that has passed, so there's no sense in which it can be "too late to mention".
+
+Two things are worth knowing about how it's mixed. The tick plays on the same channel as the [Radar](#radar) proximity ticks, so it follows your **Radar volume** — turning radar volume to zero silences this too. And it doesn't duck under spotter calls: if a car pulls alongside while you're speeding on pit road you'll hear both, which is deliberate, since both are telling you something you need at that moment.
+
+### The spoken warning
+
+Stay over the limit and the tick is joined by a spoken line. The tick is the reflex signal — it tells you *that* you are over — and the line is the escalation that tells you what to do about it. What it says depends on the car, because the remedy does:
+
+- **A car with a pit limiter** hears *"You are speeding. Slow down."*
+- **A car without one** hears *"Over the limit. Lift."*
+
+A limiter car is almost always speeding because the limiter is off, so the useful instruction is to reach for the button. A car with no limiter has no button to reach for and has to lift instead. The line is chosen from whether your car **has** a limiter at all, not from how it is behaving, so neither one reaches the car it was not written for.
+
+The tick itself is unchanged and still sounds on every car — the spoken line rides on top of it rather than replacing it.
+
+Three opt-ins in the Settings window cover pit-road speeding, all on by default:
+
+- **Race Engineer Callouts → Pit Speeding → Pit road speeding** — the repeating tick. Turning it off silences the cue entirely.
+- **Race Engineer Callouts → Pit Limiter → Speeding (limiter car)** — the spoken line on cars that have a limiter.
+- **Race Engineer Callouts → No Pit Limiter → Speeding (no limiter)** — the spoken line on cars that do not.
+
+Turning the Race Engineer master off silences all three.
+
+## Pit limiter reminders
+
+Speeding is only half of what can go wrong with a pit limiter, and what the engineer can usefully say about it depends on whether your car has one at all. So these callouts come in two groups that never both apply — the plugin checks for the limiter control itself rather than inferring it from how the car is behaving, and stays quiet when it cannot tell.
+
+### Cars with a pit limiter
+
+Three reminders, one for each state worth flagging:
+
+- **Limiter off on pit road** — a couple of seconds into pit road and the limiter still is not on: *"The pit limiter is off. Please, turn it on."* This is deliberately the **second** thing you hear about it. The [pit service recap](#pit-service-readback) already nudges you as you arrive; this follows only if that went unheeded, and engaging the limiter in the meantime keeps it quiet. Like the reminder above it waits for the radio to clear if something else is playing, and re-checks when it speaks.
+- **Limiter dropped** — it was on and has come off again while you are still between the cones: *"Your limiter dropped. Turn it back on."* This is worded differently from the one above on purpose: "dropped" tells you it *was* engaged, which changes what you go looking for.
+- **Limiter still on after pit exit** — a moment after you rejoin the circuit the limiter is still engaged, quietly capping your speed: *"Limiter's still engaged. Switch it off."* The check happens about a second and a half after you leave pit road, and it re-reads the car at that point rather than at the moment you crossed the line — so switching the limiter off on your way out is silent, as it should be. If the engineer is mid-sentence when it comes due — and leaving the pits usually means he is, since he calls you out of the pit lane — the reminder waits its turn and follows, rather than being lost. It re-checks once more when it actually speaks, so a limiter switched off while it waited stays silent too.
+
+These are the lines that would be nonsense on a car with no limiter, which is exactly why they are gated on having one.
+
+### Cars without a pit limiter
+
+A car with no limiter has nothing holding it under the limit and no dashboard cue to glance at, so instead of limiter reminders it gets the number itself on the way in:
+
+*"Pit entry. Mind the limit. The pit speed limit is sixty kilometers per hour."*
+
+The second half of that line is literally the [session-start briefing](#session-start) clip — the same recording of the limit, in the same units, rather than a second wording of the same fact. At a track whose limit has no recorded number the callout plays its opening line and stops there rather than reaching for a nearby one, so you may hear only *"Pit entry. Mind the limit."*
+
+Every callout in both groups is individually switchable under **Race Engineer Callouts → Pit Limiter** and **→ No Pit Limiter**, all on by default.
+
 ## Laps of fuel left
 
 In race sessions the Race Engineer estimates how many full laps of fuel you have left and calls the count out once per lap, around the middle of the lap: *"We're estimating that we have about 3 laps of fuel left after completing this lap."* The count means full laps **after** you finish the current one, so when the tank won't cover another full lap the engineer switches to the dedicated *"Box this lap for fuel."* call.
@@ -470,6 +527,22 @@ Under **Gaps**, two callouts are toggleable, both enabled by default (see [Gap c
 Under **Pit Box**, one callout is toggleable, enabled by default:
 
 - **Count-in to pit box** — the *"five… four… three… two… one… pit now"* distance countdown to your pit box as you drive down pit road. Disabling this silences the whole count-in.
+
+Under **Pit Speeding**, one callout is toggleable, enabled by default:
+
+- **Pit road speeding** — the repeating tick that sounds while you're over the pit lane speed limit (see [Pit road speeding](#pit-road-speeding) above). It plays at your Radar volume.
+
+Under **Pit Limiter**, four callouts are toggleable, all enabled by default. They only ever fire on a car that has a pit limiter (see [Pit limiter reminders](#pit-limiter-reminders) above):
+
+- **Limiter off on pit road** — the limiter was still off a couple of seconds after you entered the pits.
+- **Limiter dropped** — the limiter came off again while you are still on pit road.
+- **Limiter still on after pit exit** — the limiter was still engaged shortly after you left pit road.
+- **Speeding (limiter car)** — the spoken line that follows the tick when you are over the limit.
+
+Under **No Pit Limiter**, two callouts are toggleable, both enabled by default. These are the mirror group, and only ever fire on a car with no pit limiter:
+
+- **Speeding (no limiter)** — the spoken line that follows the tick, worded for a car that has to lift rather than press a button.
+- **Pit entry speed reminder** — the pit lane speed limit, spoken as you enter.
 
 Under **Fuel**, each laps-of-fuel-left count has its own checkbox (see [Laps of fuel left](#laps-of-fuel-left) above for the full behavior). **5, 3, 2, 1, Box this lap, and Enough fuel to finish are enabled by default**; 10–6 and 4 ship off so a fresh install hears a short, escalating sequence rather than a count every lap:
 

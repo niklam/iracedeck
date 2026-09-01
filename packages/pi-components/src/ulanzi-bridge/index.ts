@@ -99,9 +99,11 @@ export class UlanziBridgeSocket {
         JSON.stringify({ cmd: "sendToPlugin", ...base, payload: { event: "propertyInspectorDidAppear" } }),
       );
       this.onopen?.(ev);
-      // Bootstrap read of the host's global-settings copy (plugin scope) — the
-      // router decides from here whether global settings stay on the host path
-      // or switch to the plugin's loopback server.
+      // Bootstrap read of the host's global-settings copy — plugin-scoped for
+      // the bucket, but carrying this PI's `actionid` so the host will answer
+      // at all (#1039; see elgatoToUlanzi). The router decides from here
+      // whether global settings stay on the host path or switch to the
+      // plugin's loopback server.
       this.router.onHostOpen();
     };
 

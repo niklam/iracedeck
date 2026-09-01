@@ -24,6 +24,9 @@ export { AudioDeviceSelect } from "./audio-device-select.js";
 // Audio Test - button that bumps a hidden per-action timestamp to trigger preview playback
 export { AudioTest } from "./audio-test.js";
 
+// Enable Feature - one-press, state-driven opt-in on the Getting Started page (#1061)
+export { EnableFeature } from "./enable-feature.js";
+
 // Voice Select - global Race Engineer voice dropdown populated from a voices-list global
 export { VoiceSelect } from "./voice-select.js";
 

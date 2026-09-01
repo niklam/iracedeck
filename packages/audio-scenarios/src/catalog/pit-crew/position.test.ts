@@ -23,6 +23,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AudioAssetsManifest } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
 import { _resetPositionReadoutCooldown, registerPitCrew } from "./index.js";
+import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { positionChangeIsAnnounceable, selectEffectivePosition } from "./position.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
@@ -214,41 +215,21 @@ beforeEach(() => {
   bus = createMockBus();
   audio = createFakeAudio();
   initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
-  registerPitCrew(
-    bus,
-    undefined, // getFlagCalloutEnabled
-    mockLogger as never,
-    undefined, // getPitReadbackEnabled
-    undefined, // getPitActionsAllowed
-    undefined, // getPitServiceRequestsEnabled
-    undefined, // getReadbackSnapshot
-    undefined, // getDamageCalloutEnabled
-    undefined, // getPitStatusCalloutEnabled
-    undefined, // getTrackConditionsCalloutEnabled
-    undefined, // getIncidentCalloutEnabled
-    undefined, // getSessionStartCalloutEnabled
-    undefined, // getSessionStartSnapshot
-    () => false, // disable lap-time so it doesn't compete on the same event
-    () => lastSnapshot,
-    () => positionEnabled,
-    undefined, // getQualifyingInvalidationCalloutEnabled (issue #567)
-    undefined, // getQualifyingInvalidationSnapshot (issue #567)
-    undefined, // getRaceStatusCalloutEnabled (issue #569)
-    () => raceFinished, // getRaceFinishedFired (issue #569)
-    undefined, // getRaceEndCalloutEnabled (issue #569)
-    undefined, // getRaceFinishedSnapshot (issue #569)
-    undefined, // getRaceStartCalloutEnabled (issue #568)
-    undefined, // getRaceStartSnapshot (issue #568)
-    undefined, // getOvertakeCalloutEnabled (issue #574)
-    undefined, // getOvertakeDriverName (issue #574)
-    liveFromSnapshot, // getLivePosition (issue #574)
-  );
+  registerPitCrew(bus, {
+    logger: mockLogger as never,
+    getLapTimeCalloutEnabled: () => false,
+    getLapCompletedSnapshot: () => lastSnapshot,
+    getPositionCalloutEnabled: () => positionEnabled,
+    getRaceFinishedFired: () => raceFinished,
+    getLivePosition: liveFromSnapshot,
+  });
 });
 
 afterEach(() => {
   _resetAudioScenarios();
   _resetRadarEngine();
   _resetSpotterEngine();
+  _resetPitSpeedingEngine();
   vi.clearAllMocks();
   vi.useRealTimers();
 });

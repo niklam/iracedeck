@@ -107,14 +107,40 @@ export interface SettingsWindowControllerOptions {
   logger: ILogger;
 }
 
+/** Options for {@link SettingsWindowController.open}. */
+export interface SettingsWindowOpenOptions {
+  /** Settings-window pane id to land on, e.g. `getting-started`. */
+  pane?: string;
+}
+
+/**
+ * Pane ids are lowercase slugs. Anything else is dropped rather than
+ * interpolated: the value ends up in a URL handed to a browser command line,
+ * so it is not somewhere to pass an unvalidated string through.
+ */
+const PANE_ID = /^[a-z][a-z-]*$/;
+
+/** Append a pane fragment to the window URL, when one was asked for and is sane. */
+function withPane(url: string, pane: string | undefined): string {
+  return pane && PANE_ID.test(pane) ? `${url}#${pane}` : url;
+}
+
 export interface SettingsWindowController {
   /**
    * Start the server (idempotent) without opening a window; the PI bridge
    * needs the channel (#993).
    */
   ensureStarted(): Promise<{ port: number; token: string }>;
-  /** Start the server if needed and open (or re-open) the window. */
-  open(): Promise<SettingsWindowLaunch>;
+  /**
+   * Start the server if needed and open (or re-open) the window.
+   *
+   * `pane` lands the window on a specific tab (#1061) — the first-run Getting
+   * Started open is the only caller today. It travels as a URL FRAGMENT, which
+   * a browser never sends to the server, so the token/`Origin`/cookie model is
+   * untouched by it; the page reads `location.hash` and falls back to its
+   * default tab for anything it does not recognise.
+   */
+  open(options?: SettingsWindowOpenOptions): Promise<SettingsWindowLaunch>;
   /** Stop the server and release the port. Idempotent. */
   close(): Promise<void>;
 }
@@ -224,7 +250,7 @@ export function createSettingsWindowController(options: SettingsWindowController
       return channelOf(await ensureServer());
     },
 
-    async open() {
+    async open(openOptions?: SettingsWindowOpenOptions) {
       // Outside the try below on purpose: a rejection here is a SERVER failure,
       // already logged and reported as such by ensureServer() — which is what
       // raises BOTH the page-wide error and the note above the button, since a
@@ -237,7 +263,7 @@ export function createSettingsWindowController(options: SettingsWindowController
 
       try {
         launch = await launchSettingsWindow({
-          url: started.url,
+          url: withPane(started.url, openOptions?.pane),
           findBrowser: options.findBrowser,
           spawnApp: options.spawnApp,
           openUrl: options.openUrl,

@@ -55,6 +55,18 @@ describe("parseNavPanes", () => {
 // machines, so what CI can enforce is that the documented tab list still
 // matches the page. Add or rename a tab and this fails, which is the prompt to
 // recapture and write the new section.
+
+describe("the first-run deep link's target", () => {
+  it("still exists in the tab list", () => {
+    // deck-core's GETTING_STARTED_PANE is this literal, and the page's own
+    // handler is a fail-soft (`if (document.getElementById("pane-" + wanted))`),
+    // so a rename would silently land the first-run window on General instead.
+    // This list is already pinned against the built page, so failing here or
+    // there catches a rename wherever it is made.
+    expect(SETTINGS_WINDOW_TABS.map((tab) => tab.pane)).toContain("getting-started");
+  });
+});
+
 describe("the built Settings window page", () => {
   it("has exactly the tabs the docs document, in the same order", () => {
     if (!existsSync(builtPage)) {

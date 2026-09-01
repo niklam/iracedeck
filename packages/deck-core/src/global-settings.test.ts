@@ -9,9 +9,11 @@ import {
   GlobalSettingsSchema,
   hostMirrorPayload,
   initGlobalSettings,
+  type InitGlobalSettingsOptions,
   isSettingsStoreReady,
   LOAD_ATTEMPTS,
   LOAD_RETRY_DELAY_MS,
+  MIGRATION_ABANDONED_KEY,
   MIGRATION_PENDING_KEY,
   MIGRATION_RETRY_STARTS,
   MIGRATION_TIMEOUT_MS,
@@ -71,6 +73,66 @@ type MemoryStore = ReturnType<typeof createMemorySettingsStore>;
 
 /** Let the async load/migration inside initGlobalSettings settle. */
 const tick = () => new Promise((r) => setTimeout(r, 0));
+
+/**
+ * `tick`, but safe under fake timers — where a real `setTimeout(0)` never
+ * fires, so awaiting one deadlocks the test. The multi-start tests are exactly
+ * the ones that need both this and a controllable clock.
+ */
+const settle = async (): Promise<void> => {
+  if (vi.isFakeTimers()) await vi.advanceTimersByTimeAsync(0);
+  else await tick();
+};
+
+/** One simulated plugin start: the adapter it ran against and the store it wrote to. */
+interface Start {
+  mock: MockAdapter;
+  store: MemoryStore;
+}
+
+/**
+ * Simulate a plugin start against a settings file whose contents are `stored`
+ * (omit it for "no file yet"), and wait for the store to settle.
+ *
+ * Pairs with {@link restartFrom}. Use these rather than hand-authoring the file
+ * for a second start — see that function for why it matters.
+ */
+async function startWith(stored?: Record<string, unknown>, opts: InitGlobalSettingsOptions = {}): Promise<Start> {
+  _resetGlobalSettings();
+
+  const mock = createMockAdapter();
+  const store = createMemorySettingsStore(stored === undefined ? undefined : { ...stored });
+
+  initGlobalSettings(mock.adapter, createMockLogger(), store, opts);
+  await settle();
+
+  return { mock, store };
+}
+
+/**
+ * Restart on the bytes a previous start ACTUALLY persisted, rather than on a
+ * hand-written object hoping to match them.
+ *
+ * This is the shape #1041's post-mortem asked for. Every marker test there
+ * authored both files itself, so nothing compared what one start wrote against
+ * what the next start read — and a recovery path that production could never
+ * reach shipped green, because its fixture carried a marker combination the
+ * code never writes. Anything asserting across a restart boundary should chain
+ * through here.
+ *
+ * Throws when the previous start persisted nothing: restarting from `undefined`
+ * is the "no file yet" scenario, which would quietly pass for entirely the
+ * wrong reason.
+ */
+async function restartFrom(previous: Start, opts: InitGlobalSettingsOptions = {}): Promise<Start> {
+  const persisted = previous.store.saved.at(-1);
+
+  if (persisted === undefined) {
+    throw new Error("restartFrom: the previous start persisted nothing, so there is no file to restart from");
+  }
+
+  return startWith(persisted, opts);
+}
 
 /**
  * Initialize against a memory store seeded with `initial` (the "settings file
@@ -404,6 +466,32 @@ describe("corner-names toggle ack opt-in default (issue #897)", () => {
   });
 });
 
+describe("pit-limiter / no-limiter callout defaults (issue #1051)", () => {
+  // Both families in one block deliberately: the pair is the unit worth
+  // protecting, and splitting them would make it easy to add a key to one and
+  // forget the other.
+  const BOTH_FAMILY_CALLOUT_KEYS = [
+    "calloutEnabledLimiterOnTrack",
+    "calloutEnabledLimiterMissing",
+    "calloutEnabledLimiterDropped",
+    "calloutEnabledLimiterSpeeding",
+    "calloutEnabledNoLimiterSpeeding",
+    "calloutEnabledNoLimiterEntry",
+  ] as const;
+
+  it.each(BOTH_FAMILY_CALLOUT_KEYS)("%s defaults to true", (key) => {
+    const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
+
+    expect(parsed[key]).toBe(true);
+  });
+
+  it.each(BOTH_FAMILY_CALLOUT_KEYS)('%s coerces the literal string "false" to boolean false', (key) => {
+    const parsed = GlobalSettingsSchema.parse({ [key]: "false" }) as Record<string, unknown>;
+
+    expect(parsed[key]).toBe(false);
+  });
+});
+
 describe("gap callout settings (issue #933)", () => {
   it("defaults the toggles on with threshold 1.0 and cooldown 30", () => {
     const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
@@ -652,9 +740,9 @@ describe("dualPressDirections (issue #540)", () => {
 });
 
 describe("changelogNotification (issue #742)", () => {
-  it("defaults to features when not specified (issue #901)", () => {
+  it("defaults to never when not specified (issue #1061, reversing #901)", () => {
     const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
-    expect(parsed.changelogNotification).toBe("features");
+    expect(parsed.changelogNotification).toBe("never");
   });
 
   it.each(CHANGELOG_NOTIFICATION_POLICIES)("accepts %s", (value) => {
@@ -662,9 +750,9 @@ describe("changelogNotification (issue #742)", () => {
     expect(parsed.changelogNotification).toBe(value);
   });
 
-  it("falls back to features on a malformed persisted value", () => {
+  it("falls back to the default on a malformed persisted value", () => {
     const parsed = GlobalSettingsSchema.parse({ changelogNotification: "sometimes" }) as Record<string, unknown>;
-    expect(parsed.changelogNotification).toBe("features");
+    expect(parsed.changelogNotification).toBe("never");
   });
 });
 
@@ -915,6 +1003,14 @@ describe("single-writer store (issue #993)", () => {
   });
 
   it("with no file, migrates ONCE from the host: asks, writes the host payload to the store, then is ready", async () => {
+    // This also pins the #1053 decision, and is the reason no separate test
+    // for it exists: acceptance is by ARRIVAL, not by provenance. `echo` here
+    // stands for the first payload to reach the listener while the window is
+    // open — a genuine reply, or a fallback-path PI's save echo, which deck-core
+    // cannot tell apart. Nothing bounds what it does on this path: `base` is
+    // {}, so the payload becomes the whole cache and is persisted as the whole
+    // file. Accepted deliberately; see
+    // docs/superpowers/specs/2026-08-30-issue-1053-migration-read-payload-correlation.md.
     const mock = createMockAdapter();
     const store = createMemorySettingsStore(); // no file
     const binding = JSON.stringify({ type: "keyboard", key: "f1", modifiers: [] });
@@ -1037,7 +1133,11 @@ describe("single-writer store (issue #993)", () => {
     }
   });
 
-  it("after MIGRATION_RETRY_STARTS unanswered starts the file is accepted as-is: no more waiting, marker cleared, mirror allowed", async () => {
+  it("after MIGRATION_RETRY_STARTS unanswered starts the file is accepted as-is: no more waiting, countdown retired, mirror STAYS shut (#1041)", async () => {
+    // The ceiling used to clear the marker and resume the mirror, which is how
+    // an unanswerable read destroyed data: the mirror is a whole-object write,
+    // so resuming it replaces a host copy the plugin has never once read. The
+    // countdown gives way to a durable marker instead.
     const mock = createMockAdapter();
     const store = createMemorySettingsStore({
       ...(GlobalSettingsSchema.parse({}) as Record<string, unknown>),
@@ -1052,12 +1152,310 @@ describe("single-writer store (issue #993)", () => {
     expect(getSettingsStoreSource()).toBe("file");
     expect(mock.getGlobalSettings).not.toHaveBeenCalled();
     expect(store.saved.at(-1)).not.toHaveProperty(MIGRATION_PENDING_KEY);
-    expect(hostMirrorPayload({ port: 1, token: "t" })).toMatchObject({ driverName: "kept" });
+    expect(store.saved.at(-1)).toMatchObject({ [MIGRATION_ABANDONED_KEY]: true });
+    expect(hostMirrorPayload({ port: 1, token: "t" })).toBeUndefined();
+    // "Accepted as-is" means the user's own file content survives — the check
+    // the mirror assertion used to carry before it started asserting undefined.
+    expect((getGlobalSettings() as unknown as Record<string, unknown>).driverName).toBe("kept");
     expect(MIGRATION_RETRY_STARTS).toBe(3);
+  });
+
+  it("a file carrying the give-up marker keeps the mirror shut on every later start (#1041)", async () => {
+    // The durable half. The countdown is gone by now, so nothing else would
+    // stop the next start mirroring defaults over the copy this protects.
+    const mock = createMockAdapter();
+    const store = createMemorySettingsStore({
+      ...(GlobalSettingsSchema.parse({}) as Record<string, unknown>),
+      [MIGRATION_ABANDONED_KEY]: true,
+      driverName: "kept",
+    });
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store);
+    await tick();
+
+    expect(getSettingsStoreSource()).toBe("file");
+    expect(mock.getGlobalSettings).not.toHaveBeenCalled();
+    expect(hostMirrorPayload({ port: 1, token: "t" })).toBeUndefined();
+    expect(store.saved.at(-1)).toMatchObject({ [MIGRATION_ABANDONED_KEY]: true, driverName: "kept" });
+  });
+
+  it("the file the ceiling ACTUALLY writes still shuts the mirror on the next start (#1041)", async () => {
+    // Chains one start's persisted output into the next start's input rather
+    // than hand-authoring the second file — see restartFrom for why that
+    // distinction is the whole point.
+    const ceiling = await startWith({
+      ...(GlobalSettingsSchema.parse({}) as Record<string, unknown>),
+      [MIGRATION_PENDING_KEY]: MIGRATION_RETRY_STARTS,
+      driverName: "kept",
+    });
+
+    const next = await restartFrom(ceiling);
+
+    expect(next.mock.getGlobalSettings).not.toHaveBeenCalled();
+    expect(hostMirrorPayload({ port: 1, token: "t" })).toBeUndefined();
+    expect((getGlobalSettings() as unknown as Record<string, unknown>).driverName).toBe("kept");
+  });
+
+  it("the give-up marker fails CLOSED on a hand-edited value (#1041)", async () => {
+    // Passthrough keys are never validated or coerced, and settings files do
+    // get hand-edited and hand-copied between ecosystem folders here. A strict
+    // `=== true` would read `"true"` as absent and mirror defaults over the
+    // host copy this guard exists to protect.
+    const mock = createMockAdapter();
+    const store = createMemorySettingsStore({
+      ...(GlobalSettingsSchema.parse({}) as Record<string, unknown>),
+      [MIGRATION_ABANDONED_KEY]: "true",
+    });
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store);
+    await tick();
+
+    expect(hostMirrorPayload({ port: 1, token: "t" })).toBeUndefined();
+  });
+
+  it("an explicit false in the give-up marker leaves the mirror allowed (#1041)", async () => {
+    // Failing closed must not make the marker unclearable: an explicit false,
+    // 0, or absence is still "not set".
+    const mock = createMockAdapter();
+    const store = createMemorySettingsStore({
+      ...(GlobalSettingsSchema.parse({}) as Record<string, unknown>),
+      [MIGRATION_ABANDONED_KEY]: false,
+      driverName: "kept",
+    });
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store);
+    await tick();
+
+    expect(hostMirrorPayload({ port: 1, token: "t" })).toMatchObject({ driverName: "kept" });
   });
 
   it("MIGRATION_TIMEOUT_MS is ten seconds", () => {
     expect(MIGRATION_TIMEOUT_MS).toBe(10_000);
+  });
+
+  describe("re-asking after a give-up (#1047)", () => {
+    /** A file that a build gave up on, in the durable-marker shape. */
+    const abandoned = (version: unknown, extra: Record<string, unknown> = {}) => ({
+      ...(GlobalSettingsSchema.parse({}) as Record<string, unknown>),
+      [MIGRATION_ABANDONED_KEY]: version,
+      ...extra,
+    });
+
+    /**
+     * A file that a build gave up on in the shape every FIELD install actually
+     * has: the countdown at its ceiling and no marker at all, because #1041
+     * ships in the same unreleased version as this change and no released
+     * build has ever written one.
+     */
+    const ceilingReached = (extra: Record<string, unknown> = {}) => ({
+      ...(GlobalSettingsSchema.parse({}) as Record<string, unknown>),
+      [MIGRATION_PENDING_KEY]: MIGRATION_RETRY_STARTS,
+      ...extra,
+    });
+
+    it("asks a countdown-at-ceiling file with NO marker — the cohort that exists in the field", async () => {
+      // The whole point. Keying the retry on the durable marker alone would
+      // have recovered nobody: #1041 is unreleased, so every install that gave
+      // up did so under a build whose ceiling wrote only the countdown.
+      const start = await startWith(ceilingReached(), { pluginVersion: "3.1.0", migrationTimeoutMs: 50 });
+
+      expect(start.mock.getGlobalSettings).toHaveBeenCalledTimes(1);
+    });
+
+    it("does NOT ask again on the same version", async () => {
+      const start = await startWith(abandoned("3.1.0"), { pluginVersion: "3.1.0" });
+
+      expect(start.mock.getGlobalSettings).not.toHaveBeenCalled();
+      expect(hostMirrorPayload({ port: 1, token: "t" })).toBeUndefined();
+    });
+
+    it("does NOT ask on a downgrade, and the pair converges", async () => {
+      // A rollback cannot fix a read an older build already failed at, and a
+      // bare `!==` would have both versions re-asking on every transition.
+      const start = await startWith(abandoned("3.2.0"), { pluginVersion: "3.1.1" });
+
+      expect(start.mock.getGlobalSettings).not.toHaveBeenCalled();
+    });
+
+    it("asks on an upgrade, and a host answer retires the marker and restores the mirror", async () => {
+      const start = await startWith(abandoned("3.1.0", { driverName: "kept" }), { pluginVersion: "3.2.0" });
+
+      expect(start.mock.getGlobalSettings).toHaveBeenCalledTimes(1);
+
+      start.mock.echo?.({ blackBoxLapTiming: "from-host" });
+      await start.store.flush();
+
+      expect(getSettingsStoreSource()).toBe("host");
+      expect(start.store.saved.at(-1)).not.toHaveProperty(MIGRATION_ABANDONED_KEY);
+      expect(hostMirrorPayload({ port: 1, token: "t" })).toMatchObject({ blackBoxLapTiming: "from-host" });
+      expect((getGlobalSettings() as unknown as Record<string, unknown>).driverName).toBe("kept");
+    });
+
+    it("asks for a #1041 file whose marker is a bare `true`", async () => {
+      const start = await startWith(abandoned(true), { pluginVersion: "3.2.0" });
+
+      expect(start.mock.getGlobalSettings).toHaveBeenCalledTimes(1);
+    });
+
+    it("leaves a given-up store alone when the running version is unknown", async () => {
+      const start = await startWith(abandoned("3.1.0"), {});
+
+      expect(start.mock.getGlobalSettings).not.toHaveBeenCalled();
+    });
+
+    it("the file wins outright over the host on the retry, INCLUDING keys at a schema default", async () => {
+      // mergeMigration's "still at its default implies never touched" premise
+      // holds for a defaults-born file a few starts old. The store here has
+      // been authoritative for months, so a deliberate choice that happens to
+      // equal the default must not lose to a copy from before the give-up —
+      // and the merged result is mirrored back, so losing it destroys the
+      // setting in both stores at once.
+      //
+      // This is also the ONLY bound on an accepted payload anywhere in the
+      // migration, which is what #1053 leans on when it accepts an
+      // uncorrelated read: on this path `{ ...raw, ...migrationBase }` means a
+      // stray can add a key the file never held but cannot move one the user
+      // has. No such bound exists on the fresh or `_migrationPending` paths,
+      // which go through mergeMigration — do not generalise it to them.
+      const start = await startWith(abandoned("3.1.0", { focusIRacingWindow: true }), {
+        pluginVersion: "3.2.0",
+      });
+
+      start.mock.echo?.({ focusIRacingWindow: false, blackBoxLapTiming: "only-on-host" });
+      await start.store.flush();
+
+      expect(getGlobalSettings().focusIRacingWindow).toBe(true);
+      // The host still fills a key the file has never held.
+      expect((getGlobalSettings() as unknown as Record<string, unknown>).blackBoxLapTiming).toBe("only-on-host");
+    });
+
+    it("an EMPTY host answer does not retire the guard", async () => {
+      // `raw` coerces null and non-objects to {}, and on a host that cannot
+      // tell "no bucket" from "empty bucket" an empty reply is no evidence the
+      // copy is gone. Retiring on one would re-open a whole-object write over
+      // a copy nothing was read from.
+      const start = await startWith(abandoned("3.1.0"), { pluginVersion: "3.2.0" });
+
+      start.mock.echo?.({});
+      await start.store.flush();
+
+      expect(hostMirrorPayload({ port: 1, token: "t" })).toBeUndefined();
+      expect(start.store.saved.at(-1)).toMatchObject({ [MIGRATION_ABANDONED_KEY]: "3.2.0" });
+    });
+
+    it("a NULL host answer does not retire the guard either", async () => {
+      const start = await startWith(abandoned("3.1.0"), { pluginVersion: "3.2.0" });
+
+      start.mock.echo?.(null);
+      await start.store.flush();
+
+      expect(hostMirrorPayload({ port: 1, token: "t" })).toBeUndefined();
+    });
+
+    it("a silent host records THIS build's give-up and does not restart the countdown", async () => {
+      // One extra attempt per version, not three: restarting the countdown
+      // would cost three degraded startups per release, which is neither what
+      // the ceiling exists to prevent nor what any doc promises.
+      vi.useFakeTimers();
+
+      try {
+        const start = await startWith(abandoned("3.1.0", { driverName: "kept" }), {
+          pluginVersion: "3.2.0",
+          migrationTimeoutMs: 50,
+        });
+
+        expect(start.mock.getGlobalSettings).toHaveBeenCalledTimes(1);
+
+        await vi.advanceTimersByTimeAsync(60);
+
+        expect(start.store.saved.at(-1)).toMatchObject({ [MIGRATION_ABANDONED_KEY]: "3.2.0" });
+        expect(start.store.saved.at(-1)).not.toHaveProperty(MIGRATION_PENDING_KEY);
+        expect(hostMirrorPayload({ port: 1, token: "t" })).toBeUndefined();
+        // The user's file survives the unanswered retry intact.
+        expect((getGlobalSettings() as unknown as Record<string, unknown>).driverName).toBe("kept");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("goes quiet after one unanswered retry, chained start to start", async () => {
+      vi.useFakeTimers();
+
+      try {
+        const first = await startWith(ceilingReached({ driverName: "kept" }), {
+          pluginVersion: "3.2.0",
+          migrationTimeoutMs: 50,
+        });
+
+        await vi.advanceTimersByTimeAsync(60);
+
+        // On the bytes that start actually wrote.
+        const next = await restartFrom(first, { pluginVersion: "3.2.0", migrationTimeoutMs: 50 });
+
+        expect(next.mock.getGlobalSettings).not.toHaveBeenCalled();
+        expect(hostMirrorPayload({ port: 1, token: "t" })).toBeUndefined();
+        expect((getGlobalSettings() as unknown as Record<string, unknown>).driverName).toBe("kept");
+
+        // ...and the NEXT version asks once more.
+        const upgraded = await restartFrom(next, { pluginVersion: "3.3.0", migrationTimeoutMs: 50 });
+
+        expect(upgraded.mock.getGlobalSettings).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("a blank or whitespace running version cannot stamp a marker that reads as unset", async () => {
+      // `?? true` would store "" verbatim, which isMigrationAbandoned reads
+      // back as NOT set — the guard failing open on the start that raises it.
+      vi.useFakeTimers();
+
+      try {
+        const start = await startWith(ceilingReached(), { pluginVersion: "   ", migrationTimeoutMs: 50 });
+
+        await vi.advanceTimersByTimeAsync(60);
+
+        expect(start.store.saved.at(-1)).toMatchObject({ [MIGRATION_ABANDONED_KEY]: true });
+        expect(hostMirrorPayload({ port: 1, token: "t" })).toBeUndefined();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("a blank running version does not retry a marked store, so it cannot loop", async () => {
+      // Blank is unknown, not "differs". Retrying on it would stamp `true` (the
+      // writer discards a blank), which the next start reads back as an unknown
+      // recorded version and retries again — a migration timeout on every
+      // launch, forever, which is what the ceiling exists to prevent.
+      const start = await startWith(abandoned(true), { pluginVersion: "   " });
+
+      expect(start.mock.getGlobalSettings).not.toHaveBeenCalled();
+    });
+
+    it("a whitespace-padded stored version still compares equal to itself", async () => {
+      // The writer trims because the reader does; an untrimmed store would
+      // never match and would re-ask forever.
+      const start = await startWith(abandoned(" 3.1.0 "), { pluginVersion: "3.1.0" });
+
+      expect(start.mock.getGlobalSettings).not.toHaveBeenCalled();
+    });
+
+    it("a hand-copied numeric marker still shuts the mirror and is retried by a named version", async () => {
+      const start = await startWith(abandoned(1), { pluginVersion: "3.2.0" });
+
+      expect(start.mock.getGlobalSettings).toHaveBeenCalledTimes(1);
+    });
+
+    it("a file carrying BOTH markers on the same version does not ask", async () => {
+      // The countdown is mid-flight while the marker says this build already
+      // gave up; the marker wins, so the store stays quiet.
+      const start = await startWith(abandoned("3.1.0", { [MIGRATION_PENDING_KEY]: 1 }), {
+        pluginVersion: "3.1.0",
+      });
+
+      expect(start.mock.getGlobalSettings).not.toHaveBeenCalled();
+      expect(hostMirrorPayload({ port: 1, token: "t" })).toBeUndefined();
+    });
   });
 
   it("updateGlobalSettings merges, parses, notifies, and saves the WHOLE cache to the store", async () => {
@@ -1154,7 +1552,7 @@ describe("single-writer store (issue #993)", () => {
     await tick();
 
     expect(getGlobalSettings().driverName).toBe("nick");
-    expect(getGlobalSettings().changelogNotification).toBe("features");
+    expect(getGlobalSettings().changelogNotification).toBe("never");
   });
 
   it("a second initGlobalSettings is a no-op — the first store stays authoritative", async () => {
@@ -1480,5 +1878,232 @@ describe("Mouse to Sim pointer target (#1029)", () => {
     expect(parsed.mouseToSimOffsetY).toBe(12.5);
     // The parse as a whole must survive — one throwing field stalls every setting (#896).
     expect(parsed.focusIRacingWindow).toBe(false);
+  });
+});
+
+describe("migration deadline vs. host connect (#1056)", () => {
+  beforeEach(() => _resetGlobalSettings());
+  afterEach(() => vi.useRealTimers());
+
+  interface ConnectingMock {
+    adapter: IDeckPlatformAdapter;
+    echo: EchoCallback | null;
+    getGlobalSettings: ReturnType<typeof vi.fn<() => void>>;
+    /** Fire the host-ready subscribers, the way a client does from its `open` handler. */
+    connect: () => void;
+    /** How many times deck-core subscribed — 0 proves it never entered the migration path. */
+    hostReadySubscribers: number;
+  }
+
+  /**
+   * A mock adapter that models a connection lifecycle, which the suite's own
+   * `createMockAdapter` deliberately does not: the read is issued into a host
+   * that cannot answer until `connect()` is called.
+   */
+  function createConnectingMockAdapter(): ConnectingMock {
+    const echoHolder: { echo: EchoCallback | null } = { echo: null };
+    const readyCallbacks: Array<() => void> = [];
+    const getGlobalSettings = vi.fn<() => void>();
+
+    const adapter = {
+      onDidReceiveGlobalSettings: (cb: EchoCallback) => {
+        echoHolder.echo = cb;
+      },
+      setGlobalSettings: vi.fn<(settings: Record<string, unknown>) => void>(),
+      getGlobalSettings,
+      onHostReady: (cb: () => void) => {
+        readyCallbacks.push(cb);
+      },
+    } as unknown as IDeckPlatformAdapter;
+
+    return {
+      adapter,
+      get echo() {
+        return echoHolder.echo;
+      },
+      getGlobalSettings,
+      connect: () => {
+        for (const cb of [...readyCallbacks]) cb();
+      },
+      get hostReadySubscribers() {
+        return readyCallbacks.length;
+      },
+    };
+  }
+
+  it("extends the window when the host connects while the deadline is still running", async () => {
+    // The bug: the deadline was armed when the read was ISSUED, but on a
+    // WebSocket host it cannot be ANSWERED until the socket opens, so connect
+    // latency came out of the migration's budget.
+    //
+    // Note what this does NOT pin, because the first name given to it claimed
+    // otherwise: the connect here lands at 40 ms of a 50 ms budget, i.e. INSIDE
+    // it. A connect that lands after the deadline has already fired has nothing
+    // left to extend — the migration has given up by then — so this covers a
+    // slow connect, not one slower than the budget itself.
+    vi.useFakeTimers();
+
+    const mock = createConnectingMockAdapter();
+    const store = createMemorySettingsStore();
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store, { migrationTimeoutMs: 50 });
+    await vi.advanceTimersByTimeAsync(40);
+    expect(isSettingsStoreReady()).toBe(false);
+
+    mock.connect();
+
+    // Past the ORIGINAL deadline: without the re-arm this would already have
+    // given up and written a defaults file carrying the pending marker.
+    await vi.advanceTimersByTimeAsync(20);
+    expect(isSettingsStoreReady()).toBe(false);
+    expect(store.saved).toEqual([]);
+
+    mock.echo?.({ driverName: "late-host" });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(isSettingsStoreReady()).toBe(true);
+    expect(getSettingsStoreSource()).toBe("host");
+    expect(getGlobalSettings().driverName).toBe("late-host");
+  });
+
+  it("still reaches the give-up countdown on schedule when a host offers the hook but never connects", async () => {
+    // R1, the invariant the whole design protects: arming the deadline ONLY on
+    // connect would mean a host that never connects never arms, never times
+    // out and never gives up — no countdown, no ceiling, no abandoned marker.
+    vi.useFakeTimers();
+
+    const mock = createConnectingMockAdapter();
+    const store = createMemorySettingsStore();
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store, { migrationTimeoutMs: 50 });
+
+    // Past the first budget: the expiry-side grace has been spent, so the
+    // give-up is deferred rather than taken. This assertion is what makes the
+    // test discriminating — without the grace the store would be ready here.
+    await vi.advanceTimersByTimeAsync(60);
+    expect(isSettingsStoreReady()).toBe(false);
+
+    // Past the second: one extension only, so the countdown and the ceiling
+    // still arrive — at twice the budget, never more.
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect(isSettingsStoreReady()).toBe(true);
+    expect(getSettingsStoreSource()).toBe("fresh");
+    expect(store.saved.at(-1)).toMatchObject({ [MIGRATION_PENDING_KEY]: 1 });
+  });
+
+  it("migrates a host whose handshake is slower than the budget itself, on the one grace", async () => {
+    // The case the bounded grace exists for, and the one the fake-host harness
+    // caught the first implementation failing: the socket is still mid-handshake
+    // when the budget expires, so the connect re-arm cannot help — by the time
+    // it fires there is no deadline left to move.
+    vi.useFakeTimers();
+
+    const mock = createConnectingMockAdapter();
+    const store = createMemorySettingsStore();
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store, { migrationTimeoutMs: 50 });
+    await vi.advanceTimersByTimeAsync(60); // past the original budget, grace spent
+    expect(isSettingsStoreReady()).toBe(false);
+
+    mock.connect(); // the handshake finally completes, later than the whole budget
+    mock.echo?.({ driverName: "slower-than-the-budget" });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(isSettingsStoreReady()).toBe(true);
+    expect(getSettingsStoreSource()).toBe("host");
+    expect(getGlobalSettings().driverName).toBe("slower-than-the-budget");
+  });
+
+  it("spends the re-arm once, so a flapping host cannot extend the window forever", async () => {
+    // R2. Without the one-shot, every reconnect would push the deadline out
+    // and a host that never answers would never give up.
+    vi.useFakeTimers();
+
+    const mock = createConnectingMockAdapter();
+    const store = createMemorySettingsStore();
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store, { migrationTimeoutMs: 50 });
+    await vi.advanceTimersByTimeAsync(10);
+
+    mock.connect(); // deadline now runs to t=60
+    await vi.advanceTimersByTimeAsync(40); // t=50: the original deadline has passed
+    expect(isSettingsStoreReady()).toBe(false);
+
+    mock.connect(); // a second open must NOT buy another 50 ms
+    await vi.advanceTimersByTimeAsync(15); // t=65, past the single re-armed deadline
+
+    expect(isSettingsStoreReady()).toBe(true);
+    expect(getSettingsStoreSource()).toBe("fresh");
+    expect(store.saved.at(-1)).toMatchObject({ [MIGRATION_PENDING_KEY]: 1 });
+  });
+
+  it("arms nothing when the host connects after the deadline has already given up", async () => {
+    // The ordering a genuinely slow host produces, and the one the manual test
+    // against a fake host actually hit: the budget expires while the socket is
+    // still mid-handshake, so the migration has ALREADY given up by the time
+    // the connect lands. The re-arm must then find no timer and do nothing —
+    // this is the only case that exercises the `migrationTimer === undefined`
+    // guard, without which it would clearTimeout(undefined) and schedule a
+    // second timeout against an already-ready store.
+    vi.useFakeTimers();
+
+    const mock = createConnectingMockAdapter();
+    const store = createMemorySettingsStore();
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store, { migrationTimeoutMs: 50 });
+    await vi.advanceTimersByTimeAsync(110); // both budgets: the grace, then the give-up
+
+    expect(isSettingsStoreReady()).toBe(true);
+    expect(getSettingsStoreSource()).toBe("fresh");
+
+    mock.connect(); // the host finally arrives, too late
+
+    expect(vi.getTimerCount()).toBe(0);
+    expect(getSettingsStoreSource()).toBe("fresh");
+    expect(store.saved.at(-1)).toMatchObject({ [MIGRATION_PENDING_KEY]: 1 });
+
+    // A host answer that arrives after the give-up is ignored, as it is on any
+    // other post-migration path — the store is authoritative from here.
+    mock.echo?.({ driverName: "too-late" });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(getGlobalSettings().driverName).toBe("");
+  });
+
+  it("arms nothing when the host connects after the migration already completed", async () => {
+    // R3: the re-arm must not resurrect a deadline for a finished migration.
+    vi.useFakeTimers();
+
+    const mock = createConnectingMockAdapter();
+    const store = createMemorySettingsStore();
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store, { migrationTimeoutMs: 50 });
+    await vi.advanceTimersByTimeAsync(0);
+
+    mock.echo?.({ driverName: "prompt-host" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(isSettingsStoreReady()).toBe(true);
+
+    mock.connect();
+
+    expect(vi.getTimerCount()).toBe(0); // no migration deadline resurrected
+    expect(getGlobalSettings().driverName).toBe("prompt-host");
+  });
+
+  it("never subscribes on an ordinary start, because no migration read is issued", async () => {
+    // The hook is subscribed only where the read goes out, so a start with a
+    // settings file leaves the adapter untouched.
+    const mock = createConnectingMockAdapter();
+    // The memory store answers `load` from what it was CONSTRUCTED with —
+    // `save()` only records — so an existing file is seeded here, not written.
+    const store = createMemorySettingsStore({ driverName: "stored" });
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store, { migrationTimeoutMs: 50 });
+    await tick();
+
+    expect(isSettingsStoreReady()).toBe(true);
+    expect(mock.getGlobalSettings).not.toHaveBeenCalled();
+    expect(mock.hostReadySubscribers).toBe(0);
   });
 });

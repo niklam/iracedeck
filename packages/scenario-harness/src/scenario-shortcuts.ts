@@ -45,6 +45,23 @@ export type ScenarioShortcut = {
    * event payload. Lets QA exercise each position clause deterministically.
    */
   raceStartSnapshot?: RaceStartSnapshot;
+  /**
+   * Optional telemetry patch applied BEFORE publishing `event` (issue #1051),
+   * same push-before-fire ordering as the two snapshots above: the UI POSTs
+   * `/api/telemetry` with `{ patch }` and awaits it.
+   *
+   * Exists because the two pit-limiter families are gated on whether
+   * `dcPitSpeedLimiterToggle` EXISTS, and both families subscribe to the same
+   * events. Without the patch, clicking a "no limiter" shortcut on default
+   * telemetry plays the LIMITER family's line instead — audible, plausible,
+   * and the wrong family, so a tester would score it a pass. Each shortcut
+   * therefore sets up its own equipment rather than relying on harness state.
+   *
+   * Values are wire-level, not `TelemetryData`: `null` DELETES a key (the
+   * sentinel `mutateTelemetry` reads), which is the only way to make a field
+   * absent over JSON.
+   */
+  telemetryPatch?: Record<string, unknown>;
 };
 
 const ALL_FOUR_TIRES = ["LF", "RF", "LR", "RR"] as const;
@@ -330,9 +347,114 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   // ── Pit Lane ──
   { id: "pit-approaching", category: "Pit Lane", label: "Approaching", event: "pitLane.approaching", data: {} },
   { id: "pit-entered", category: "Pit Lane", label: "Entered Pit Lane", event: "pitLane.entered", data: {} },
+
+  // ── Pit Limiter (issue #1051) — cars that HAVE a limiter ──
+  // All four gate on `hasPitLimiter`, which reads whether
+  // `dcPitSpeedLimiterToggle` EXISTS. Each carries a `telemetryPatch` that
+  // makes it present, so a click is self-contained whatever the previous
+  // shortcut left behind. To delete the field by hand the body shape is
+  // `{"patch": {"dcPitSpeedLimiterToggle": null}}` — /api/telemetry reads
+  // `body.patch` and 400s on a bare object.
+  {
+    id: "limiter-missing",
+    category: "Pit Limiter",
+    label: "Limiter off on pit road",
+    description:
+      "Entered pit road without the limiter. Plays ~2.5s AFTER the click, as an ESCALATION once the " +
+      'readback\'s earlier "Remember the pit limiter." has gone unheeded — engaging it inside that ' +
+      "window is silence.",
+    event: "limiter.missing",
+    data: {},
+    // Must satisfy the DELAYED re-check (#1051): still unengaged and still on
+    // pit road at fire time, 2.5s after this event.
+    telemetryPatch: { dcPitSpeedLimiterToggle: false, OnPitRoad: true },
+  },
+  {
+    id: "limiter-dropped",
+    category: "Pit Limiter",
+    label: "Limiter dropped",
+    description: "The limiter came off while still between the cones.",
+    event: "limiter.dropped",
+    data: {},
+    telemetryPatch: { dcPitSpeedLimiterToggle: false },
+  },
+  {
+    id: "limiter-speeding",
+    category: "Pit Limiter",
+    label: "Speeding (limiter car)",
+    description: "Over the pit limit on a car that has a limiter. Pairs with the always-on tick from #912.",
+    event: "limiter.speeding",
+    data: {},
+    telemetryPatch: { dcPitSpeedLimiterToggle: false },
+  },
+  {
+    id: "limiter-on-track",
+    category: "Pit Limiter",
+    label: "Limiter on out on track",
+    description:
+      "Left pit road with the limiter still engaged. Plays ~1.5s AFTER the click, not instantly " +
+      "— the scenario waits and then re-reads live telemetry, so disengaging inside that window is silence.",
+    event: "pitLane.exited",
+    data: {},
+    // Must satisfy the DELAYED re-check, not just the trigger (#1051): engaged
+    // and off pit road at fire time, 1.5s after this event.
+    telemetryPatch: { dcPitSpeedLimiterToggle: true, OnPitRoad: false },
+  },
+
+  // ── No Pit Limiter (issue #1051) — cars with NO limiter ──
+  // The mirror family. Its gate is `telemetry != null && !hasPitLimiter(t)`,
+  // NOT a bare negation — `hasPitLimiter` folds unknown into false, so a bare
+  // negation would fire these on unknown telemetry too.
+  //
+  // Each carries a `telemetryPatch` DELETING `dcPitSpeedLimiterToggle`, which
+  // is what makes the button honest: these publish the same events the limiter
+  // family subscribes to, so on default telemetry they are not silent — they
+  // play the LIMITER wording, which a tester would hear and score as a pass.
+  {
+    id: "no-limiter-speeding",
+    category: "No Pit Limiter",
+    label: "Speeding (no limiter)",
+    description: 'Over the pit limit with no limiter fitted — "Over the limit. Lift." Never mentions a limiter.',
+    event: "limiter.speeding",
+    data: {},
+    telemetryPatch: { dcPitSpeedLimiterToggle: null },
+  },
+  {
+    id: "no-limiter-entry",
+    category: "No Pit Limiter",
+    label: "Pit entry reminder",
+    description:
+      "Pit entry on a car with no limiter, plus the spoken limit when a number clip exists for it. " +
+      "The limit clause skips whole if it does not, leaving a complete sentence.",
+    event: "pitLane.entered",
+    data: {},
+    telemetryPatch: { dcPitSpeedLimiterToggle: null },
+  },
   { id: "stall-entered", category: "Pit Lane", label: "Entered Stall", event: "pitStall.entered", data: {} },
   { id: "stall-departed", category: "Pit Lane", label: "Departed Stall", event: "pitStall.departed", data: {} },
   { id: "pit-exited", category: "Pit Lane", label: "Exited Pit Lane", event: "pitLane.exited", data: {} },
+
+  // ── Pit-road speeding (issue #912) ──
+  // Episode edges for the repeating over-the-limit cue. `started` opens the
+  // tick loop, `ended` closes it. The loop is bounded by a live telemetry
+  // re-check, which is why the start button needs the caveat below.
+  {
+    id: "pit-speeding-started",
+    category: "Pit Lane",
+    label: "Speeding — start",
+    description:
+      "Over the posted pit lane speed limit — starts the repeating cue. NOT A BUG if you hear one beep and silence: the engine re-reads OnPitRoad on every tick and stops on a positive false, and the harness default is OnPitRoad: false, so the cue self-stops within about a second. Set OnPitRoad to true in the telemetry panel first to hear it repeat.",
+    event: "pitSpeeding.started",
+    data: {},
+  },
+  {
+    id: "pit-speeding-ended",
+    category: "Pit Lane",
+    label: "Speeding — stop",
+    description: "No longer speeding on pit road — stops the repeating cue",
+    event: "pitSpeeding.ended",
+    data: {},
+  },
 
   // ── Flags ──
   flag("Yellow (local)", "flag.yellow.raised", { scope: "local" }),

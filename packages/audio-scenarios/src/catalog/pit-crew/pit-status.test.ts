@@ -30,6 +30,7 @@ import { WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
 import { type PitStatusCalloutId, registerPitCrew } from "./index.js";
+import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import {
   PIT_STATUS_ALERTS,
   PIT_STATUS_POOL_NAMES,
@@ -558,23 +559,23 @@ describe("PIT_STATUS_ALERTS per-callout opt-out (via registerPitCrew)", () => {
     bus = createMockBus();
     audio = createFakeAudio();
     initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
-    registerPitCrew(
-      bus,
-      () => true, // flag callouts not exercised here
-      mockLogger as never,
-      () => true, // pit-readback
-      () => true, // pit-actions cooldown
-      () => true, // pit-service requests
-      () => null, // readback snapshot resolver
-      () => true, // damage callouts
-      (id) => enabled.get(id) ?? true,
-    );
+    registerPitCrew(bus, {
+      getFlagCalloutEnabled: () => true,
+      logger: mockLogger as never,
+      getPitReadbackEnabled: () => true,
+      getPitActionsAllowed: () => true,
+      getPitServiceRequestsEnabled: () => true,
+      getReadbackSnapshot: () => null,
+      getDamageCalloutEnabled: () => true,
+      getPitStatusCalloutEnabled: (id) => enabled.get(id) ?? true,
+    });
   });
 
   afterEach(() => {
     _resetAudioScenarios();
     _resetRadarEngine();
     _resetSpotterEngine();
+    _resetPitSpeedingEngine();
     vi.clearAllMocks();
   });
 

@@ -54,9 +54,9 @@ voice scenario as the outermost short-circuit.
 | **Translator state** | `packages/sim-events-iracing/src/state.ts` (TranslatorState type AND createInitialState — keep them in sync) |
 | **Audio pools** | `packages/audio-scenarios/src/catalog/pit-crew/pools.ts` — `POOL_REGISTRY` maps pool name → manifest `(group, base)`; members (`<base>-NN.mp3`) derive per-voice from the manifest at fire time (issue #664) |
 | **Audio scenarios** | `packages/audio-scenarios/src/catalog/pit-crew/<family>.ts` |
-| **Family wiring (id type, key map, scenario id map, registerPitCrew param)** | `packages/audio-scenarios/src/catalog/pit-crew/index.ts` |
+| **Family wiring (id type, key map, scenario id map, `PitCrewDeps` key)** | `packages/audio-scenarios/src/catalog/pit-crew/index.ts` |
 | **Per-callout opt-in (Zod field)** | `packages/deck-core/src/global-settings.ts` |
-| **PI checkbox row** | `packages/iracing-actions/src/actions/pit-crew/pit-crew.ejs` |
+| **Callout checkbox row** | `packages/pi-components/partials/race-engineer-callouts.ejs` (settings window only since #1003 — `pit-crew.ejs` carries no callout rows) |
 | **Plugin closure (live-read)** | `packages/iracing-plugin-stream-deck/src/plugin.ts`, `packages/iracing-plugin-mirabox/src/plugin.ts`, AND `packages/iracing-plugin-ulanzi/src/plugin.ts` (byte-identical in code — mirror each other) |
 | **Scenario-harness button** | `packages/scenario-harness/src/scenario-shortcuts.ts` |
 | **Scenario-harness event template** | `packages/scenario-harness/src/event-names.ts` (compile-time completeness check enforces this) |
@@ -72,6 +72,8 @@ voice scenario as the outermost short-circuit.
 ## Adding a new callout — checklist
 
 When adding to an existing family (e.g. another flag colour) you skip steps 1–2 and the bus-side wiring; when introducing a brand-new family you do all of it.
+
+**An SFX cue is not a scenario: it skips steps 3 and 4 entirely, and the scenario half of step 5** (issue #912, the first one). A cue that must react instantly plays direct from an imperative engine — `getAudio().playOnChannel(...)`, the `radar-engine.ts` model — instead of firing through the interpreter, so it has no voice lines, no pool, no scenario, no `SCENARIO_ID_TO_*` map and no `wrapCalloutScenario` loop. Step 5 therefore splits: its **wiring** half is still required — the `<Family>CalloutId` type, the `<FAMILY>_CALLOUT_SETTING_KEYS` map and the `registerPitCrew` parameter — while its scenario-registration half does not apply. It still needs everything else too: the bus event (1), the diff and state (2), the Zod field (6), the checkbox row (7), all three plugin closures (8), the fixtures (9) and the harness entries (10). The opt-in is read live inside the engine's own tick rather than by a scenario wrapper. Note what direct playback costs and buys: no weight, family or focus contest — so nothing to tune against other callouts, but equally no interpreter to keep it from overlapping one.
 
 ### 1. Define the bus event
 
@@ -130,7 +132,7 @@ In `packages/audio-scenarios/src/catalog/pit-crew/index.ts`:
 - Add a `<Family>CalloutId` type union of subject ids.
 - Add a `<FAMILY>_CALLOUT_SETTING_KEYS: Record<<Family>CalloutId, string>` map — the canonical id↔key map plugins read from.
 - Add a `SCENARIO_ID_TO_<FAMILY>_ID` map covering every scenario id in the family.
-- Add a `get<Family>CalloutEnabled` parameter to `registerPitCrew` (default `() => true` for tests). Add it **before** the master-gate parameter so the master stays last among the per-callout opt-ins.
+- Add a `get<Family>CalloutEnabled?: (id: <Family>CalloutId) => boolean` key to `PitCrewDeps`, its `() => true` default to `DEFAULT_DEPS`, and the matching line to the destructure at the top of `registerPitCrew` (issue #1052). All three: the `satisfies` clause catches a key with no default, but nothing checks the destructure — a missing one surfaces as "cannot find name" wherever you use the closure. **Placement is irrelevant** — the deps are keyed, so position carries no meaning. There is no "masters last" rule to observe any more; putting the key next to its family's neighbours is a readability choice and nothing else.
 - Wrap the family's scenarios with `wrapWithMaster(wrapCalloutScenario(s, …))` in the registration loop.
 
 ### 6. Per-callout opt-in (Zod schema)
@@ -138,21 +140,24 @@ In `packages/audio-scenarios/src/catalog/pit-crew/index.ts`:
 In `packages/deck-core/src/global-settings.ts`:
 - Add a Zod field for each subject using the canonical pattern: `z.union([z.boolean(), z.string()]).transform((val) => val === true || val === "true").default(true)`. Default `true` for callouts (the family's natural baseline); see `.claude/rules/global-settings.md` for the polarity rationale.
 
-### 7. Property Inspector row
+### 7. Callout checkbox row
 
-In `packages/iracing-actions/src/actions/pit-crew/pit-crew.ejs`:
-- Inside the Race Engineer Callouts accordion, add (or extend) an `sdpi-item` for the family.
+In `packages/pi-components/partials/race-engineer-callouts.ejs` — **not** `pit-crew.ejs`, which has carried no callout rows since #1003 moved every plugin-global setting into the settings window:
+- Add (or extend) an `sdpi-item` for the family. The partial is items-only; the settings window wraps them in its "Callouts" card.
 - Use the auto-balancing 2-column grid pattern already in the file: build the array of `{ setting, label }` once, then map to `<sdpi-checkbox>` rows. The grid template comes from `Math.ceil(items.length / 2)` so it scales without per-row maintenance.
 
 ### 8. Plugin closure (ALL THREE plugins)
 
 In **all three** plugin entry points — `packages/iracing-plugin-stream-deck/src/plugin.ts`, `packages/iracing-plugin-mirabox/src/plugin.ts`, AND `packages/iracing-plugin-ulanzi/src/plugin.ts` (byte-identical in code — mirror each other):
 - Import the `<FAMILY>_CALLOUT_SETTING_KEYS` map and `<Family>CalloutId` type.
-- Pass a closure to `registerPitCrew` that reads the setting **live on every event arrival**:
+- Add an entry to the `PitCrewDeps` object passed to `registerPitCrew`, keyed by the name you gave the dep, reading the setting **live on every event arrival**:
 
 ```ts
-(id: <Family>CalloutId) =>
-  (getGlobalSettings() as Record<string, unknown>)[<FAMILY>_CALLOUT_SETTING_KEYS[id]] !== false,
+registerPitCrew(eventBus, {
+  // …existing keys, in no particular order…
+  get<Family>CalloutEnabled: (id: <Family>CalloutId) =>
+    (getGlobalSettings() as Record<string, unknown>)[<FAMILY>_CALLOUT_SETTING_KEYS[id]] !== false,
+});
 ```
 
 Live-read (don't capture the value) — a mid-session toggle takes effect on the next event without re-registering scenarios.
@@ -160,7 +165,9 @@ Live-read (don't capture the value) — a mid-session toggle takes effect on the
 ### 9. Update test fixtures
 
 - `packages/deck-core/src/simhub-service.test.ts` constructs an exhaustive `getGlobalSettings()` mock for every callout key — in **two** object literals (the main settings mock AND a second `.passthrough()`/round-trip literal further down). Add the new key to **both** or the type-check fails at build (`grep` the existing nearest key to find every literal).
-- **Every** `*.test.ts` that calls `registerPitCrew(...)` positionally shifts when you insert a new closure parameter — not just `register-pit-crew.test.ts`. At minimum `register-pit-crew.test.ts`, `rolling-start.test.ts`, and `start-lights.test.ts` pass the rolling-start / start-light / master tail positionally; `grep -rl "registerPitCrew(" packages/audio-scenarios/src` and add `undefined` (or a stub) at the new position in each so the masters stay in the right slot. (Tests that stop before your new param — e.g. `scenario-harness/src/main.ts` ends at the race-start arg — are unaffected.)
+- **Call sites of `registerPitCrew(...)` need no edit when you add a key** (issue #1052). Every one names what it passes, so a new `PitCrewDeps` key is simply absent from the ones that don't want it and takes its `DEFAULT_DEPS` entry. Adding a key cannot disturb an existing call site.
+
+  This used to be the most dangerous step on the page, and it is worth knowing why so nobody reinstates it. The parameters were positional and nearly all shared a shape, so inserting one shifted every later argument at every call site — and the result still type-checked, because a value landing in the wrong slot was usually assignable to it. It went wrong twice on 2026-08-28: once loudly, once silently and green. If you find surviving advice anywhere about adding `undefined` "at the new position" or keeping the masters last, it predates #1052 and is now wrong.
 
 ### 10. Scenario-harness shortcut
 

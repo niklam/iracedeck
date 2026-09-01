@@ -529,6 +529,26 @@ export type SimEventMap = {
   "limiter.speeding": SimEvent<"limiter.speeding", EmptySimEventPayload>;
 
   /**
+   * Episode edges for "the player is over the pit-lane speed limit on pit
+   * road" (issue #912) — the Race Engineer's repeating speeding cue holds a
+   * tick loop for exactly as long as the condition is true.
+   *
+   * Distinct from the one-shot `limiter.speeding` above, which is a cooldowned
+   * notification carrying a +1 m/s margin. This pair brackets the condition
+   * instead, and fires strictly over the posted limit: the pit limiter holds
+   * cars slightly under it, so riding the limiter stays silent.
+   *
+   * `ended` is emitted on EVERY exit — slowed down, left pit road, entered the
+   * stall, left the car, pit speed limit became unknown — and additionally by
+   * the translator's disconnect / session-change / replay teardowns, which
+   * would otherwise wipe the state that carries the edge. A consumer holding a
+   * timer must be able to rely on `ended` arriving: a missed one leaves audio
+   * looping with no way to stop it.
+   */
+  "pitSpeeding.started": SimEvent<"pitSpeeding.started", EmptySimEventPayload>;
+  "pitSpeeding.ended": SimEvent<"pitSpeeding.ended", EmptySimEventPayload>;
+
+  /**
    * Damage requiring repair was just observed on the player's car after the
    * debounce window settled (issue #489). Triggered on the rising edge of
    * `EngineWarnings & (MandRepNeeded | OptRepNeeded)`; clear → damage

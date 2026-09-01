@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AudioAssetsManifest } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
 import { registerPitCrew } from "./index.js";
+import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { isRaceSession, RACE_START_DELAY_MS } from "./race-start.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
@@ -237,44 +238,19 @@ beforeEach(() => {
   bus = createMockBus();
   audio = createFakeAudio();
   initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => activeVoice);
-  registerPitCrew(
-    bus,
-    undefined,
-    mockLogger as never,
-    undefined, // getPitReadbackEnabled
-    undefined, // getPitActionsAllowed
-    undefined, // getPitServiceRequestsEnabled
-    undefined, // getReadbackSnapshot
-    undefined, // getDamageCalloutEnabled
-    undefined, // getPitStatusCalloutEnabled
-    undefined, // getTrackConditionsCalloutEnabled
-    undefined, // getIncidentCalloutEnabled
-    undefined, // getSessionStartCalloutEnabled
-    undefined, // getSessionStartSnapshot
-    undefined, // getLapTimeCalloutEnabled
-    undefined, // getLapCompletedSnapshot
-    undefined, // getPositionCalloutEnabled
-    undefined, // getQualifyingInvalidationCalloutEnabled
-    undefined, // getQualifyingInvalidationSnapshot
-    undefined, // getRaceStatusCalloutEnabled
-    undefined, // getRaceFinishedFired
-    undefined, // getRaceEndCalloutEnabled
-    undefined, // getRaceFinishedSnapshot
-    () => raceStartEnabled,
-    () => currentSnapshot,
-    undefined, // getOvertakeCalloutEnabled
-    undefined, // getOvertakeDriverName
-    undefined, // getLivePosition
-    undefined, // getOvertakeGate
-    undefined, // getPitBoxCalloutEnabled
-    (kind) => setupWarningMismatch(kind), // getSetupWarningMismatch (issue #625)
-  );
+  registerPitCrew(bus, {
+    logger: mockLogger as never,
+    getRaceStartCalloutEnabled: () => raceStartEnabled,
+    getRaceStartSnapshot: () => currentSnapshot,
+    getSetupWarningMismatch: (kind) => setupWarningMismatch(kind),
+  });
 });
 
 afterEach(() => {
   _resetAudioScenarios();
   _resetRadarEngine();
   _resetSpotterEngine();
+  _resetPitSpeedingEngine();
   vi.clearAllMocks();
   vi.useRealTimers();
 });

@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import ignitionTemplate from "../../../icons/car-control-ignition.svg";
+import starterTemplate from "../../../icons/car-control-starter.svg";
 import {
   CAR_CONTROL_GLOBAL_KEYS,
   CarControl,
@@ -7,13 +9,19 @@ import {
   getEnterExitTowState,
   getPitSpeedLimit,
   getSessionContext,
+  ignitionArtwork,
+  ignitionToggleState,
   isDrsActive,
+  isEngineRunning,
+  isIgnitionOn,
   isPitLimiterActive,
   isPitLimiterAvailable,
   isPushToPassActive,
   parsePitSpeedLimit,
   pitLimiterSpeedGraphic,
   pitLimiterToggleState,
+  starterArtwork,
+  starterToggleState,
 } from "./car-control.js";
 
 const {
@@ -84,7 +92,9 @@ vi.mock("@iracedeck/icons/car-control/second-down-shift.svg", () => ({
 vi.mock("@iracedeck/iracing-sdk", () => ({
   hasFlag: (value: number, flag: number) => (value & flag) !== 0,
   hasPitLimiter: (t: { dcPitSpeedLimiterToggle?: unknown } | null) => t?.dcPitSpeedLimiterToggle !== undefined,
-  EngineWarnings: { PitSpeedLimiter: 0x0010 },
+  isLiveOnTrack: (t: { IsOnTrack?: unknown; IsReplayPlaying?: unknown } | null | undefined) =>
+    t?.IsOnTrack === true && t?.IsReplayPlaying !== true,
+  EngineWarnings: { PitSpeedLimiter: 0x0010, EngineStalled: 0x0008 },
   SessionState: { Invalid: 0, GetInCar: 1, Warmup: 2, ParadeLaps: 3, Racing: 4, Checkered: 5, CoolDown: 6 },
 }));
 
@@ -319,7 +329,8 @@ describe("CarControl", () => {
     it("should include correct labels for all controls", () => {
       const expectedLabels: Record<string, { line1: string; line2: string }> = {
         starter: { line1: "START", line2: "ENGINE" },
-        ignition: { line1: "IGNITION", line2: "ON/OFF" },
+        // Single line since #561 — the status bar reads ON / OFF, so the label no longer does.
+        ignition: { line1: "IGNITION", line2: "" },
         "pit-speed-limiter": { line1: "PIT", line2: "LIMITER" },
         "enter-exit-tow": { line1: "DRIVE", line2: "" },
         "pause-sim": { line1: "PAUSE", line2: "SIM" },
@@ -430,6 +441,246 @@ describe("CarControl", () => {
     it("should return on/off by the active flag when available", () => {
       expect(pitLimiterToggleState(true, true)).toBe("on");
       expect(pitLimiterToggleState(true, false)).toBe("off");
+    });
+  });
+
+  describe("isIgnitionOn (issue #561)", () => {
+    it("should return undefined when telemetry is null", () => {
+      expect(isIgnitionOn(null)).toBeUndefined();
+    });
+
+    it("should return undefined when Voltage is absent, rather than reporting off", () => {
+      expect(isIgnitionOn({} as any)).toBeUndefined();
+    });
+
+    it("should return undefined for a non-finite Voltage", () => {
+      expect(isIgnitionOn({ Voltage: Number.NaN } as any)).toBeUndefined();
+    });
+
+    it("should report off near zero volts and on at a live bus voltage", () => {
+      expect(isIgnitionOn({ Voltage: 0 } as any)).toBe(false);
+      expect(isIgnitionOn({ Voltage: 0.4 } as any)).toBe(false);
+      // 13.4 V is the live-ignition reading the detection rule is built on.
+      expect(isIgnitionOn({ Voltage: 13.4 } as any)).toBe(true);
+      // Every captured snapshot sat in 12-14.8 V; all of them must read "on".
+      expect(isIgnitionOn({ Voltage: 12 } as any)).toBe(true);
+      expect(isIgnitionOn({ Voltage: 14.8 } as any)).toBe(true);
+    });
+  });
+
+  describe("isEngineRunning (issue #561)", () => {
+    it("should return undefined when telemetry is null", () => {
+      expect(isEngineRunning(null)).toBeUndefined();
+    });
+
+    it("should return undefined when neither EngineWarnings nor RPM is available", () => {
+      expect(isEngineRunning({} as any)).toBeUndefined();
+    });
+
+    it("should read the EngineStalled bit when EngineWarnings is present", () => {
+      expect(isEngineRunning({ EngineWarnings: 0x0008 } as any)).toBe(false);
+      expect(isEngineRunning({ EngineWarnings: 0 } as any)).toBe(true);
+    });
+
+    it("should ignore unrelated EngineWarnings bits", () => {
+      // 0x0100 is OptRepNeeded — a damage flag, nothing to do with the engine turning.
+      expect(isEngineRunning({ EngineWarnings: 0x0100 } as any)).toBe(true);
+    });
+
+    it("should let the EngineStalled bit win over RPM when both are present", () => {
+      // The bit is authoritative; a stale or odd RPM must not override it.
+      expect(isEngineRunning({ EngineWarnings: 0x0008, RPM: 6000 } as any)).toBe(false);
+      expect(isEngineRunning({ EngineWarnings: 0, RPM: 0 } as any)).toBe(true);
+    });
+
+    it("should fall back to the RPM floor only when EngineWarnings is absent", () => {
+      // Captured telemetry puts a stopped engine at 300 RPM and idle near 900.
+      expect(isEngineRunning({ RPM: 300 } as any)).toBe(false);
+      expect(isEngineRunning({ RPM: 900 } as any)).toBe(true);
+    });
+  });
+
+  describe("ignitionToggleState / starterToggleState (issue #561)", () => {
+    /** A driver genuinely sitting in their own car on track. */
+    const live = (extra: Record<string, unknown>) => ({ IsOnTrack: true, ...extra }) as any;
+
+    it("should resolve na when there is no telemetry at all, never off", () => {
+      expect(ignitionToggleState(null)).toBe("na");
+      expect(starterToggleState(null)).toBe("na");
+    });
+
+    it("should resolve na when the driver is not live in the car", () => {
+      // Out of the car: the fields may still be present but they describe nothing the
+      // user is sitting in.
+      expect(ignitionToggleState({ IsOnTrack: false, Voltage: 13.4 } as any)).toBe("na");
+      expect(starterToggleState({ IsOnTrack: false, EngineWarnings: 0 } as any)).toBe("na");
+    });
+
+    it("should resolve na during a replay even though the frame looks complete", () => {
+      // Captured replay frames report RPM 300 with the stalled bit CLEAR, which would
+      // otherwise read as a confident "engine running".
+      const replay = { IsOnTrack: true, IsReplayPlaying: true, EngineWarnings: 0, RPM: 300, Voltage: 13.4 };
+
+      expect(starterToggleState(replay as any)).toBe("na");
+      expect(ignitionToggleState(replay as any)).toBe("na");
+    });
+
+    it("should map ignition on and off from the bus voltage", () => {
+      expect(ignitionToggleState(live({ Voltage: 13.4 }))).toBe("on");
+      expect(ignitionToggleState(live({ Voltage: 0 }))).toBe("off");
+    });
+
+    it("should resolve na when live in the car but the field is missing", () => {
+      expect(ignitionToggleState(live({}))).toBe("na");
+      expect(starterToggleState(live({}))).toBe("na");
+    });
+
+    it("should map the starter key to engine-running state", () => {
+      expect(starterToggleState(live({ EngineWarnings: 0 }))).toBe("on");
+      expect(starterToggleState(live({ EngineWarnings: 0x0008 }))).toBe("off");
+    });
+  });
+
+  describe("ignition and starter tri-state icons (issue #561)", () => {
+    it("should render a different icon for each of the three states", () => {
+      for (const control of ["ignition", "starter"] as const) {
+        const key = control === "ignition" ? "ignitionState" : "starterState";
+        const on = generateCarControlSvg({ control } as any, { [key]: "on" } as any);
+        const off = generateCarControlSvg({ control } as any, { [key]: "off" } as any);
+        const na = generateCarControlSvg({ control } as any, { [key]: "na" } as any);
+
+        expect(new Set([on, off, na]).size).toBe(3);
+      }
+    });
+
+    it("should fall back to the na icon when no telemetry state was resolved", () => {
+      const bare = generateCarControlSvg({ control: "ignition" } as any);
+      const na = generateCarControlSvg({ control: "ignition" } as any, { ignitionState: "na" } as any);
+
+      expect(bare).toBe(na);
+    });
+  });
+
+  describe("ignition and starter artwork (issue #561)", () => {
+    /** The shared status palette: green on, red off, grey N/A. */
+    const STATE_COLORS = { on: "#2ecc71", off: "#e74c3c", na: "#888888" } as const;
+
+    it("should colour the ignition glyph by state, so the state reads from the artwork", () => {
+      for (const [state, color] of Object.entries(STATE_COLORS)) {
+        expect(ignitionArtwork(state as any, true)).toContain(color);
+      }
+    });
+
+    it("should give the ignition glyph a different colour in every state", () => {
+      const rendered = (["on", "off", "na"] as const).map((s) => ignitionArtwork(s, true));
+
+      expect(new Set(rendered).size).toBe(3);
+    });
+
+    it("should grow the ignition glyph into the band a hidden title frees up", () => {
+      // Regression (found on hardware): the glyph had ONE fixed size, so hiding the title
+      // left it small under an empty strip while the Starter badge beside it resized
+      // correctly. Assert the rendered geometry differs, not merely that the argument is
+      // accepted — passing showTitle and ignoring it would satisfy the weaker check.
+      const withTitle = ignitionArtwork("on", true);
+      const without = ignitionArtwork("on", false);
+
+      expect(withTitle).toContain("A25,25,");
+      expect(without).toContain("A33,33,");
+      expect(without).not.toBe(withTitle);
+    });
+
+    it("should dim the starter badge whenever the engine is not confirmed running", () => {
+      // N/A dims like off: with no telemetry we cannot claim the engine is running.
+      expect(starterArtwork("off", false)).toContain('opacity="0.45"');
+      expect(starterArtwork("na", false)).toContain('opacity="0.45"');
+      expect(starterArtwork("on", false)).not.toContain("opacity=");
+    });
+
+    it("should keep the starter badge red in every state rather than recolouring it", () => {
+      // The red is the button's identity, carried over from the shipped icon — the bar
+      // and the border carry the state instead.
+      for (const state of ["on", "off", "na"] as const) {
+        expect(starterArtwork(state, false)).toContain("#e74c3c");
+      }
+    });
+
+    it("should shrink the starter badge when a title is opted back in", () => {
+      const withTitle = starterArtwork("on", true);
+      const without = starterArtwork("on", false);
+
+      expect(without).toContain('r="39"');
+      expect(withTitle).toContain('r="32"');
+      expect(withTitle).not.toBe(without);
+    });
+
+    it("should keep every glyph variant clear of the status bar", () => {
+      // The bar occupies y >= 100 and no variant of either glyph may reach it. The arc's
+      // lowest point is its centre plus the radius plus half the stroke, so it is computed
+      // from the rendered path rather than read off a coordinate.
+      const arcBottom = (svg: string) => {
+        const m = svg.match(/M([\d.]+),([\d.]+) A([\d.]+),[\d.]+,0,1,0,([\d.]+),/)!;
+        const left = Number(m[1]);
+        const endY = Number(m[2]);
+        const r = Number(m[3]);
+        const right = Number(m[4]);
+        const stroke = Number(svg.match(/stroke-width="([\d.]+)"/)![1]);
+        const halfChord = (right - left) / 2;
+
+        return endY + Math.sqrt(r * r - halfChord * halfChord) + r + stroke / 2;
+      };
+
+      expect(arcBottom(ignitionArtwork("on", true))).toBeLessThan(100);
+      expect(arcBottom(ignitionArtwork("on", false))).toBeLessThan(100);
+      expect(53 + 39).toBeLessThan(100); // untitled starter badge, cy + r
+      expect(62 + 32).toBeLessThan(100); // titled starter badge
+    });
+  });
+
+  describe("ignition and starter title contract (issue #561)", () => {
+    const desc = (svg: string) => JSON.parse(svg.match(/<desc>([\s\S]*?)<\/desc>/)![1]!);
+
+    it("should label the ignition key with a single line, not the old ON/OFF pair", () => {
+      // The status bar already reads ON / OFF, so the old two-line label repeated it.
+      expect(desc(ignitionTemplate).title.text).toBe("IGNITION");
+    });
+
+    it("should ship the starter key with no title, since its artwork reads START", () => {
+      expect(desc(starterTemplate).title.showTitle).toBe(false);
+    });
+
+    it("should keep a starter title available for a user who opts one back in", () => {
+      expect(desc(starterTemplate).title.text).toBe("ENGINE\nSTART");
+    });
+
+    it("should lock the title geometry on both templates", () => {
+      // Unlocked, a global Title Default of Position: Bottom or a larger font size drags
+      // the label onto the status bar or the artwork. Every comparable template locks it.
+      for (const template of [ignitionTemplate, starterTemplate]) {
+        expect(desc(template).title.locked).toEqual(
+          expect.arrayContaining(["showTitle", "fontSize", "position", "customPosition"]),
+        );
+      }
+    });
+  });
+
+  describe("Show Graphics on the tri-state keys (issue #561)", () => {
+    it("should drop the artwork but keep the status bar when graphics are hidden", async () => {
+      const { resolveTitleSettings } = await import("@iracedeck/deck-core");
+      vi.mocked(resolveTitleSettings).mockReturnValueOnce({
+        showTitle: false,
+        showGraphics: false,
+        titleText: "",
+        bold: true,
+        fontSize: 9,
+        position: "top",
+        customPosition: 0,
+      } as any);
+
+      const hidden = decodeURIComponent(generateCarControlSvg({ control: "starter" } as any));
+
+      expect(hidden).not.toContain("START</text>");
+      expect(hidden).toContain("N/A");
     });
   });
 

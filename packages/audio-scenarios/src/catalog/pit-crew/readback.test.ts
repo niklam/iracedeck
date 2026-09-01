@@ -22,6 +22,7 @@ import type { AudioAssetsManifest } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
 import { type FlagCalloutId, type PitReadbackCalloutId, registerPitCrew } from "./index.js";
 import { PIT_BOX_PENDING_HOLD_MS } from "./pit-box.js";
+import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import { buildPitReadbackScenarios } from "./readback.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
@@ -312,21 +313,19 @@ beforeEach(() => {
   bus = createMockBus();
   audio = createFakeAudio();
   initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
-  registerPitCrew(
-    bus,
-    (id) => flagsEnabled.get(id) ?? true,
-    mockLogger as never,
-    (id) => readbackEnabled.get(id) ?? true,
-    undefined,
-    undefined,
-    () => currentSnapshot,
-  );
+  registerPitCrew(bus, {
+    getFlagCalloutEnabled: (id) => flagsEnabled.get(id) ?? true,
+    logger: mockLogger as never,
+    getPitReadbackEnabled: (id) => readbackEnabled.get(id) ?? true,
+    getReadbackSnapshot: () => currentSnapshot,
+  });
 });
 
 afterEach(() => {
   _resetAudioScenarios();
   _resetRadarEngine();
   _resetSpotterEngine();
+  _resetPitSpeedingEngine();
   vi.clearAllMocks();
   vi.useRealTimers();
 });

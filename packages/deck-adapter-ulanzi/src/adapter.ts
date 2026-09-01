@@ -186,7 +186,12 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
    */
   private globalSettingsSettled = false;
 
-  /** Whether the one-shot boot-time global-settings bootstrap read was sent. */
+  /**
+   * Whether the one-shot `willAppear` global-settings re-drive was sent. Since
+   * #1041 this is a fallback that should never fire — the connect-time read is
+   * addressed and answered milliseconds after the socket opens, long before
+   * any key can appear.
+   */
   private globalSettingsBootstrapSent = false;
 
   /**
@@ -295,8 +300,27 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
     this.globalSettingsCallbacks.push(callback);
   }
 
+  /**
+   * Read the deck host's global settings. deck-core calls this once per start,
+   * for the one-time migration, as soon as it finds no settings file — usually
+   * before the host socket is open, in which case the client's connect-time
+   * read asks in its place. Either way the frame is addressed, so the host
+   * answers it (#1041); see `UlanziClient.requestGlobalSettings`.
+   */
   getGlobalSettings(): void {
     this.client.requestGlobalSettings();
+  }
+
+  /**
+   * Report the host socket becoming usable, so deck-core can restart the
+   * settings-migration deadline from the point its read can actually be
+   * answered (#1056). Implemented here because this host drops a frame written
+   * before its socket opens; Elgato's SDK awaits the connection inside its own
+   * `send`, so that adapter declares no `onHostReady` at all and deck-core
+   * keeps the deadline it armed when the read went out.
+   */
+  onHostReady(callback: () => void): void {
+    this.client.onHostReady(callback);
   }
 
   setGlobalSettings(settings: Record<string, unknown>): void {
@@ -363,10 +387,14 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
       const controller = ((data.payload?.controller as string) ?? "Keypad") as ControllerType;
       this.contextControllers.set(data.context, controller);
 
-      // Boot-time global-settings bootstrap (#868): the host does not answer
-      // the connect-time plugin-scope read — the Ulanzi SDK requires an action
-      // context on main-service reads — so re-drive the read once with the
-      // first appearing action's context, the earliest context the plugin has.
+      // Global-settings re-drive (#868), now a FALLBACK rather than the
+      // mechanism (#1041): the connect-time read carries an address of its own
+      // and is answered, so by the time any key appears a reply has long since
+      // arrived and this is skipped. It stays for the one assumption the
+      // addressed read rests on — that the host keeps echoing an `actionid` it
+      // has never seen rather than resolving it. A real action context is a
+      // different shape that #1039 measured as answered, so if a host version
+      // ever stopped echoing, this is the only route left to a reply.
       if (!this.globalSettingsReplyReceived && !this.globalSettingsBootstrapSent) {
         this.globalSettingsBootstrapSent = true;
         this.client.requestGlobalSettings(data.context);

@@ -1,6 +1,6 @@
 {
   "name": "@iracedeck/track-data",
-  "version": "3.1.0-dev.0",
+  "version": "3.2.0-dev.0",
   "description": "Bundled track datasets: corner markers from Lovely Sim Racing's lovely-track-data (CC BY-NC-SA 4.0, used with permission).",
   "type": "module",
   "main": "dist/index.js",
@@ -13,13 +13,14 @@
   },
   "scripts": {
     "build": "tsc",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "clean": "rimraf dist",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "devDependencies": {
     "@tsconfig/node22": "22.0.6",
-    "@types/node": "26.2.0",
+    "@types/node": "26.4.0",
     "rimraf": "6.1.3",
     "typescript": "5.9.3",
     "vitest": "4.1.11"

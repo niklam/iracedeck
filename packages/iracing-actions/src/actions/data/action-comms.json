@@ -1296,6 +1296,9 @@
     "cycle-car": {
       "method": "api"
     },
+    "cycle-track-order": {
+      "method": "api"
+    },
     "cycle-driving": {
       "method": "api"
     },

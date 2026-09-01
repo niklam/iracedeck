@@ -27,6 +27,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AudioAssetsManifest } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
 import { registerPitCrew } from "./index.js";
+import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
 
@@ -251,13 +252,17 @@ beforeEach(() => {
   audio = createFakeAudio();
   currentSnapshot = null;
   initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
-  registerPitCrew(bus, undefined, mockLogger as never, undefined, undefined, undefined, () => currentSnapshot);
+  registerPitCrew(bus, {
+    logger: mockLogger as never,
+    getReadbackSnapshot: () => currentSnapshot,
+  });
 });
 
 afterEach(() => {
   _resetAudioScenarios();
   _resetRadarEngine();
   _resetSpotterEngine();
+  _resetPitSpeedingEngine();
   vi.clearAllMocks();
   vi.useRealTimers();
 });

@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { FEATURE_STARTUP_GATES } from "./feature-startup-policy.js";
 import {
   createSettingsWindowCommandHandler,
+  enableFeatureWrites,
   parseSettingsWindowBounds,
   SETTINGS_WINDOW_BOUNDS_KEY,
 } from "./settings-window-commands.js";
@@ -154,5 +156,104 @@ describe("createSettingsWindowCommandHandler", () => {
     const handle = createSettingsWindowCommandHandler({ writeSettings: vi.fn() });
 
     expect(() => handle({ event: "voicePackRefresh" })).not.toThrow();
+  });
+});
+
+describe("enableFeatureWrites", () => {
+  it("moves the Race Engineer gate and its startup policy together", () => {
+    // The load-bearing test of #1061's opt-in. Writing the gate alone turns the
+    // engineer on for this session, and `applyStartupFeatureGates` turns it
+    // straight back off on the next start for every install carrying the
+    // `always-off` that `migrateStartupPolicies` derived from the retired
+    // pre-#1007 boolean — i.e. essentially every upgraded install. The failure
+    // is invisible until the NEXT start, which is why it is pinned rather than
+    // trusted.
+    expect(enableFeatureWrites("race-engineer")).toEqual({
+      pitCrewRaceEngineerEnabled: true,
+      pitCrewRaceEngineerStartupPolicy: "remember-last",
+    });
+  });
+
+  it("writes the policy the Pit Crew toggle can still override, never always-on", () => {
+    // `always-on` would force the gate at every start and override a later
+    // deliberate silence from the deck key — the defect #1007 removed.
+    expect(enableFeatureWrites("race-engineer")).not.toMatchObject({
+      pitCrewRaceEngineerStartupPolicy: "always-on",
+    });
+  });
+
+  it("derives both keys from the gate table, so a rename cannot leave it behind", () => {
+    const gate = FEATURE_STARTUP_GATES.find((candidate) => candidate.gateKey === "pitCrewRaceEngineerEnabled");
+
+    expect(gate, "the Race Engineer gate is gone from FEATURE_STARTUP_GATES").toBeDefined();
+    expect(Object.keys(enableFeatureWrites("race-engineer") ?? {})).toEqual([gate?.gateKey, gate?.policyKey]);
+  });
+
+  it("opts the changelog in at `features`, matching the button's own words", () => {
+    // The button reads "I want to read about new features"; `always` would also
+    // open for patch releases, so it would promise less than it delivers.
+    expect(enableFeatureWrites("changelog-updates")).toEqual({ changelogNotification: "features" });
+  });
+
+  it("turns on window focus with the single key it needs", () => {
+    expect(enableFeatureWrites("focus-iracing-window")).toEqual({ focusIRacingWindow: true });
+  });
+
+  it("knows nothing about a feature it was not taught", () => {
+    expect(enableFeatureWrites("anything-else")).toBeUndefined();
+    expect(enableFeatureWrites(undefined)).toBeUndefined();
+    expect(enableFeatureWrites({ toString: () => "race-engineer" })).toBeUndefined();
+  });
+});
+
+describe("the enableFeature command", () => {
+  it("writes both Race Engineer keys in ONE call, so they cannot half-land", () => {
+    const writeSettings = vi.fn();
+
+    createSettingsWindowCommandHandler({ writeSettings })({ event: "enableFeature", feature: "race-engineer" });
+
+    expect(writeSettings).toHaveBeenCalledTimes(1);
+    expect(writeSettings).toHaveBeenCalledWith({
+      pitCrewRaceEngineerEnabled: true,
+      pitCrewRaceEngineerStartupPolicy: "remember-last",
+    });
+  });
+
+  it("plays one voice preview for the Race Engineer, which has no other audible confirmation", () => {
+    const previewAudio = vi.fn();
+
+    createSettingsWindowCommandHandler({ writeSettings: vi.fn(), previewAudio })({
+      event: "enableFeature",
+      feature: "race-engineer",
+    });
+
+    expect(previewAudio).toHaveBeenCalledWith("voice");
+  });
+
+  it("plays nothing for the other two, which change something the user can see", () => {
+    const previewAudio = vi.fn();
+    const handle = createSettingsWindowCommandHandler({ writeSettings: vi.fn(), previewAudio });
+
+    handle({ event: "enableFeature", feature: "changelog-updates" });
+    handle({ event: "enableFeature", feature: "focus-iracing-window" });
+
+    expect(previewAudio).not.toHaveBeenCalled();
+  });
+
+  it("still writes when no preview runner is wired at all", () => {
+    const writeSettings = vi.fn();
+
+    expect(() =>
+      createSettingsWindowCommandHandler({ writeSettings })({ event: "enableFeature", feature: "race-engineer" }),
+    ).not.toThrow();
+    expect(writeSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it("writes nothing for a feature it does not know", () => {
+    const writeSettings = vi.fn();
+
+    createSettingsWindowCommandHandler({ writeSettings })({ event: "enableFeature", feature: "delete-everything" });
+
+    expect(writeSettings).not.toHaveBeenCalled();
   });
 });

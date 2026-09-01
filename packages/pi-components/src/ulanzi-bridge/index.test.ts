@@ -115,13 +115,15 @@ describe("UlanziBridgeSocket", () => {
       actionid: "abc",
       payload: { event: "propertyInspectorDidAppear" },
     });
-    // Bootstrap read of the host's global-settings copy (plugin scope) — the
-    // settings-channel router decides from here where global settings go (#993 phase 2).
+    // Bootstrap read of the host's global-settings copy — the settings-channel
+    // router decides from here where global settings go (#993 phase 2). The
+    // write's plugin scope for the bucket, plus this PI's `actionid` so the
+    // host can route the reply back (#1039).
     expect(JSON.parse(real.sent[2])).toEqual({
       cmd: "getGlobalSettings",
       uuid: "com.iracedeck.sd.core",
       key: "",
-      actionid: "",
+      actionid: "abc",
     });
     expect(onopen).toHaveBeenCalledOnce();
     expect(bridge.readyState).toBe(1);
@@ -135,13 +137,15 @@ describe("UlanziBridgeSocket", () => {
     real.triggerMessage(JSON.stringify({ cmd: "didReceiveGlobalSettings", settings: {} }));
     real.sent.length = 0;
 
-    // Global-settings frames are plugin-scoped, not PI-identity-scoped (#868).
+    // A global-settings read carries the plugin UUID for the bucket (#868) and
+    // this PI's `actionid` so the host answers it at all (#1039) — never the
+    // context sdpi put on the frame.
     bridge.send(JSON.stringify({ event: "getGlobalSettings", context: "x" }));
     expect(JSON.parse(real.sent[0])).toEqual({
       cmd: "getGlobalSettings",
       uuid: "com.iracedeck.sd.core",
       key: "",
-      actionid: "",
+      actionid: "abc",
     });
 
     bridge.send(JSON.stringify({ event: "registerPropertyInspector", uuid: "x" }));
@@ -182,7 +186,11 @@ describe("installUlanziBridge", () => {
         search: "?address=127.0.0.1&port=49200&uuid=com.x.action&key=5&actionid=abc&device=D200X&language=en",
       },
       WebSocket: FakeNativeWebSocket,
-      connectElgatoStreamDeckSocket: vi.fn(() => {
+      // Typed with sdpi's real connect signature so `mock.calls` is a tuple
+      // rather than `[]` — otherwise reading the arguments needs a cast.
+      connectElgatoStreamDeckSocket: vi.fn<
+        (port: string, context: string, registerEvent: string, info: string, actionInfo: string) => void
+      >(() => {
         // The monkeypatch must be active while sdpi opens its socket.
         bridgeDuringConnect = new (fakeWin.WebSocket as unknown as typeof WebSocket)("ws://localhost:49200");
       }),
@@ -191,13 +199,7 @@ describe("installUlanziBridge", () => {
     installUlanziBridge(fakeWin as unknown as Window & typeof globalThis);
 
     expect(fakeWin.connectElgatoStreamDeckSocket).toHaveBeenCalledOnce();
-    const [port, context, registerEvent, info, actionInfo] = fakeWin.connectElgatoStreamDeckSocket.mock.calls[0] as [
-      string,
-      string,
-      string,
-      string,
-      string,
-    ];
+    const [port, context, registerEvent, info, actionInfo] = fakeWin.connectElgatoStreamDeckSocket.mock.calls[0];
 
     expect(port).toBe("49200");
     expect(context).toBe("com.x.action___5___abc");
@@ -220,7 +222,11 @@ describe("UlanziBridgeSocket — settings channel (#993 phase 2)", () => {
   const CHANNEL = { port: 55762, token: "cc29ab52f34a2a927663a0832b86a807b4cc329ebe68a98d" };
   const parsed = (s: string[]) => s.map((x) => JSON.parse(x) as Record<string, unknown>);
 
-  it("bootstraps with a plugin-scoped Ulanzi getGlobalSettings right after the handshake", () => {
+  it("bootstraps with an addressable plugin-scoped Ulanzi getGlobalSettings right after the handshake", () => {
+    // The whole channel switch hangs off this one frame being ANSWERED: the
+    // host replies only to a read carrying a non-empty actionid, so a blank one
+    // leaves the router to time out into a fallback that cannot read either
+    // (#1039).
     const { bridge, real } = makeBridge();
     bridge.onopen = () => {};
     real.triggerOpen();
@@ -229,7 +235,7 @@ describe("UlanziBridgeSocket — settings channel (#993 phase 2)", () => {
       cmd: "getGlobalSettings",
       uuid: "com.iracedeck.sd.core",
       key: "",
-      actionid: "",
+      actionid: "abc",
     });
   });
 

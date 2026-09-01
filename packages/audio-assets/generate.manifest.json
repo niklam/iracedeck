@@ -177,15 +177,15 @@
       "generatedAt": "2026-05-14T18:37:01.484Z",
       "requestId": "JH99nk0EkqrZB29b1xjM"
     },
-    "voice/default/pit-limiter/pit-entry-001.mp3": {
-      "hash": "d0724ea6533bcbc5",
+    "voice/default/pit-limiter/entry-01.mp3": {
+      "hash": "733773497261c457",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "Pit entry. <break time=\"0.3s\" /> Mind the limit.",
-      "generatedAt": "2026-05-14T18:37:05.357Z",
-      "requestId": "t3ayqcBma2idvTAzPr6J"
+      "generatedAt": "2026-08-30T15:21:40.996Z",
+      "requestId": "DU9k0tnOwhaWBuKchQ1z"
     },
-    "voice/default/pit-limiter/pit-entry-002.mp3": {
+    "voice/default/pit-limiter/entry-02.mp3": {
       "hash": "429ba86be5607391",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
@@ -193,15 +193,15 @@
       "generatedAt": "2026-05-14T18:37:05.604Z",
       "requestId": "Yqj6lGMeMzNbUkL6Eu3Y"
     },
-    "voice/default/pit-limiter/pit-limiter-001.mp3": {
-      "hash": "844200137c0bb676",
+    "voice/default/pit-limiter/missing-01.mp3": {
+      "hash": "01e960c85218e4f8",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "The pit limiter is off. <break time=\"0.3s\" /> Please, turn it on.",
-      "generatedAt": "2026-05-14T18:37:05.874Z",
-      "requestId": "mzPZWrheAQoQxpb6x3Il"
+      "generatedAt": "2026-08-30T15:22:40.831Z",
+      "requestId": "AUviKhNWcgUEIKtgSQDY"
     },
-    "voice/default/pit-limiter/pit-limiter-002.mp3": {
+    "voice/default/pit-limiter/missing-02.mp3": {
       "hash": "ac0850f7d2bad4ae",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
@@ -209,7 +209,7 @@
       "generatedAt": "2026-05-14T18:37:06.120Z",
       "requestId": "GHH8E3OmC14BxD5OzIVq"
     },
-    "voice/default/pit-limiter/pit-limiter-warn-001.mp3": {
+    "voice/default/pit-limiter/speeding-01.mp3": {
       "hash": "03b6b7b3f62a7673",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
@@ -217,21 +217,13 @@
       "generatedAt": "2026-05-14T18:37:06.294Z",
       "requestId": "8vlcxXqCxK2YiCeALryK"
     },
-    "voice/default/pit-limiter/pit-limiter-warn-002.mp3": {
+    "voice/default/pit-limiter/no-limiter-speeding-01.mp3": {
       "hash": "11d6b6f65f0c7436",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "Over the limit. <break time=\"0.3s\" /> Lift.",
       "generatedAt": "2026-05-14T18:37:06.468Z",
       "requestId": "M5vjoJkyM6HAfrgmz3QU"
-    },
-    "voice/default/pit-limiter/pit-limiter-reminder-001.mp3": {
-      "hash": "801d60536dd66100",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "The pit lane speed limit is ",
-      "generatedAt": "2026-05-14T18:37:06.636Z",
-      "requestId": "ftCxrvHtzgxsOZZKscgu"
     },
     "voice/default/pit-actions/fuel-on.mp3": {
       "hash": "44bb294f192b069f",
@@ -12448,6 +12440,118 @@
       "textPreview": "Get it straight.",
       "generatedAt": "2026-08-15T16:22:34.652Z",
       "requestId": "LbS2yG7XW0Kfr2Vw6wTE"
+    },
+    "voice/default/pit-limiter/on-track-01.mp3": {
+      "hash": "2a7f17afdd54c856",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Your pit limiter is on. <break time=\"0.3s\" /> Turn it off.",
+      "generatedAt": "2026-08-30T08:41:27.159Z",
+      "requestId": "Suk2nuRcwjAsoo6iU9vt"
+    },
+    "voice/default/pit-limiter/on-track-02.mp3": {
+      "hash": "eeb68017e6332d33",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Limiter's still engaged. <break time=\"0.3s\" /> Switch it off.",
+      "generatedAt": "2026-08-30T15:24:29.400Z",
+      "requestId": "17PtVNQHpqSQxbmmEd5g"
+    },
+    "voice/default/pit-limiter/dropped-01.mp3": {
+      "hash": "e2045f87c3010bd8",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Your limiter dropped. <break time=\"0.3s\" /> Turn it back on.",
+      "generatedAt": "2026-08-30T08:41:27.641Z",
+      "requestId": "dy2ZCjj6O4SniNiGoe0S"
+    },
+    "voice/default/pit-limiter/dropped-02.mp3": {
+      "hash": "50e41ca2f1d272a5",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "The limiter came off. <break time=\"0.3s\" /> Put it back on.",
+      "generatedAt": "2026-08-30T08:41:27.868Z",
+      "requestId": "Y3r4gHD9GWKYL36EmM7o"
+    },
+    "voice/default/pit-limiter/unit-kmh-01.mp3": {
+      "hash": "3aefb19f39f05d71",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "kilometers per hour.",
+      "generatedAt": "2026-08-30T14:01:29.126Z",
+      "requestId": "ymr8THlUaIJUrAIeIh0y"
+    },
+    "voice/default/pit-limiter/unit-mph-01.mp3": {
+      "hash": "13236293171b58fb",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "miles per hour.",
+      "generatedAt": "2026-08-30T14:01:29.278Z",
+      "requestId": "hORKzGxBKzzsBqREV1Bx"
+    },
+    "voice/default/pit-limiter/entry-03.mp3": {
+      "hash": "8be323a020e87a66",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Coming into the pits. <break time=\"0.3s\" /> Watch your speed.",
+      "generatedAt": "2026-08-30T15:17:09.804Z",
+      "requestId": "QvSIyzUsS2qIkh5CXic7"
+    },
+    "voice/default/pit-limiter/missing-03.mp3": {
+      "hash": "ce74f04f4e4a9b14",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Pit limiter's still off. <break time=\"0.3s\" /> Switch it on.",
+      "generatedAt": "2026-08-30T15:17:10.053Z",
+      "requestId": "QZ2tIp8XQFL4R6m5Svrk"
+    },
+    "voice/default/pit-limiter/speeding-02.mp3": {
+      "hash": "9c1121d7dde727c3",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Too fast. <break time=\"0.3s\" /> Slow it down.",
+      "generatedAt": "2026-08-30T15:25:38.754Z",
+      "requestId": "gL86ppiQ7jpsZe54RDaM"
+    },
+    "voice/default/pit-limiter/speeding-03.mp3": {
+      "hash": "297ac8b6ec1778e8",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "You're speeding on pit road. <break time=\"0.3s\" /> Ease off.",
+      "generatedAt": "2026-08-30T15:17:10.457Z",
+      "requestId": "pFHO188gaf54CeNXLKTF"
+    },
+    "voice/default/pit-limiter/no-limiter-speeding-02.mp3": {
+      "hash": "d943fea9471fd531",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Over the pit limit. <break time=\"0.3s\" /> Lift now.",
+      "generatedAt": "2026-08-30T15:23:42.622Z",
+      "requestId": "NG19hICLUeIQMLDVQ9is"
+    },
+    "voice/default/pit-limiter/no-limiter-speeding-03.mp3": {
+      "hash": "4cdf764968f58872",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "You're too quick. <break time=\"0.3s\" /> Lift.",
+      "generatedAt": "2026-08-30T15:17:10.844Z",
+      "requestId": "2E3mXEx6brA5gGuA1E3M"
+    },
+    "voice/default/pit-limiter/on-track-03.mp3": {
+      "hash": "a81e579c66070f97",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "You've still got the pit limiter on. <break time=\"0.3s\" /> Turn it off.",
+      "generatedAt": "2026-08-30T15:17:11.092Z",
+      "requestId": "UPpqEk9y7kpsHIeUbrkY"
+    },
+    "voice/default/pit-limiter/dropped-03.mp3": {
+      "hash": "1d0c11924a7322d7",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Limiter's dropped out. <break time=\"0.3s\" /> Get it back on.",
+      "generatedAt": "2026-08-30T15:20:40.763Z",
+      "requestId": "wHtAiJFbCMKQJuS5grFt"
     }
   }
 }

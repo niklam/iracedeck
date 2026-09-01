@@ -2,9 +2,7 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "lib": ["ES2022", "DOM"],
-    "module": "ES2022",
-    "moduleResolution": "Bundler",
-    "noImplicitOverride": true,
+    "allowJs": true,
     "noEmit": true
   },
   "include": ["src/**/*.ts"]

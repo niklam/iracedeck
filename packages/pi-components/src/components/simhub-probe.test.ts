@@ -10,7 +10,7 @@ afterEach(() => {
 
 describe("SimHub probe", () => {
   it("probes SimHub directly at host:port from a Property Inspector", async () => {
-    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ["A"] }));
+    const fetchMock = vi.fn(async (..._args: unknown[]) => ({ ok: true, json: async () => ["A"] }));
     vi.stubGlobal("fetch", fetchMock);
 
     expect(await fetchSimHubReachable("127.0.0.1", 8888)).toBe(true);
@@ -21,7 +21,7 @@ describe("SimHub probe", () => {
     // From the window's origin a direct fetch is cross-origin and SimHub sends
     // no CORS headers, so it always looks unreachable. The bridge sets this flag.
     (window as unknown as Record<string, unknown>)[SETTINGS_WINDOW_FLAG] = true;
-    const fetchMock = vi.fn(async () => ({
+    const fetchMock = vi.fn(async (..._args: unknown[]) => ({
       ok: true,
       json: async () => ({ reachable: true, roles: ["Pit", "Wipers"] }),
     }));

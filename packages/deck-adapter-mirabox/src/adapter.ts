@@ -211,8 +211,27 @@ export class VSDPlatformAdapter implements IDeckPlatformAdapter {
     });
   }
 
+  /**
+   * Read the deck host's global settings. deck-core calls this once per start,
+   * for the one-time migration, as soon as it finds no settings file — usually
+   * before the host socket is open, in which case the client's connect-time
+   * read asks in its place and the skipped read is logged rather than dropped
+   * silently (#1046); see `VSDClient.requestGlobalSettings`.
+   */
   getGlobalSettings(): void {
     this.client.requestGlobalSettings();
+  }
+
+  /**
+   * Report the host socket becoming usable, so deck-core can restart the
+   * settings-migration deadline from the point its read can actually be
+   * answered (#1056). Implemented here because this host drops a frame written
+   * before its socket opens; Elgato's SDK awaits the connection inside its own
+   * `send`, so that adapter declares no `onHostReady` at all and deck-core
+   * keeps the deadline it armed when the read went out.
+   */
+  onHostReady(callback: () => void): void {
+    this.client.onHostReady(callback);
   }
 
   setGlobalSettings(settings: Record<string, unknown>): void {

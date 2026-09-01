@@ -112,7 +112,10 @@ Toggle the ignition on or off.
 - **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `I`
-- **Telemetry-aware icon:** No
+- **Telemetry-aware icon:** Yes — the icon is tri-state and reflects the current ignition state from iRacing telemetry in real time:
+  - **On** — green `ON` bar and green border — the ignition circuit is live
+  - **Off** — red `OFF` bar and red border — the ignition is off
+  - **Not available** — grey `N/A` bar and grey border when there's no live telemetry (disconnected, in a replay, or not in the car) — it does not mean the car has no ignition. The button stays usable — pressing it still sends the configured binding.
 
 #### Settings
 
@@ -129,7 +132,10 @@ Engage the car starter. Hold the button to crank.
 - **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `S`
-- **Telemetry-aware icon:** No
+- **Telemetry-aware icon:** Yes — the icon is tri-state and reflects whether the engine is running, not whether the starter motor is currently turning:
+  - **On** — green `ON` bar and green border — the engine is running
+  - **Off** — red `OFF` bar and red border — the engine is not running; press to crank
+  - **Not available** — grey `N/A` bar and grey border when there's no live telemetry (disconnected, in a replay, or not in the car) — it does not mean the car has no starter. The button stays usable — pressing it still sends the configured binding.
 
 #### Settings
 

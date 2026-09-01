@@ -103,6 +103,7 @@ export default defineConfig({
           label: "Getting Started",
           items: [
             { slug: "docs/getting-started/installation" },
+            { slug: "docs/getting-started/first-steps" },
             { slug: "docs/getting-started/settings" },
             { slug: "docs/getting-started/troubleshooting" },
           ],

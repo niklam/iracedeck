@@ -21,6 +21,7 @@ vi.mock("./ulanzi-client.js", () => ({
     onGlobalEvent = vi.fn();
     connect = vi.fn();
     requestGlobalSettings = vi.fn();
+    onHostReady = vi.fn();
     setGlobalSettings = vi.fn();
     openUrl = vi.fn();
     setImage = vi.fn();
@@ -54,6 +55,16 @@ describe("UlanziPlatformAdapter", () => {
     it("should delegate to UlanziClient.requestGlobalSettings", () => {
       adapter.getGlobalSettings();
       expect(client.requestGlobalSettings).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe("onHostReady (#1056)", () => {
+    it("delegates to the client, so deck-core can restart the migration deadline from the connect", () => {
+      const callback = vi.fn();
+
+      adapter.onHostReady(callback);
+
+      expect(client.onHostReady).toHaveBeenCalledWith(callback);
     });
   });
 
@@ -164,7 +175,7 @@ describe("UlanziPlatformAdapter", () => {
     });
   });
 
-  describe("global-settings boot bootstrap (#868)", () => {
+  describe("global-settings willAppear re-drive — a fallback since #1041 (#868)", () => {
     const willAppear = () =>
       client.onActionEvent.mock.calls.find((call: [string, string, unknown]) => call[1] === "willAppear")?.[2] as (
         data: unknown,
@@ -174,9 +185,10 @@ describe("UlanziPlatformAdapter", () => {
       client.onGlobalEvent.mock.calls.find((call) => call[0] === "didReceiveGlobalSettings")?.[1];
 
     it("re-requests global settings with the first appearing action's context when no reply has arrived", async () => {
-      // The host does not answer the connect-time plugin-scope read (the SDK
-      // requires an action context on main-service reads), so the earliest
-      // appearing context re-drives the read (#868).
+      // The connect-time read is addressed and answered since #1041, so in the
+      // field a reply has always arrived before any key appears and this is
+      // skipped. It stays for a host that ever stopped echoing an actionid it
+      // has never seen, where a real action context is the one shape left.
       adapter.registerAction("com.test.action", {});
 
       await willAppear()({
