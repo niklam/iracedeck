@@ -1,0 +1,6 @@
+# Voice-pack build output (#1034): the staged pack trees and the archives that
+# become GitHub release assets, written by scripts/pack-voice.mjs. Only the
+# catalog/<id>.json entries are committed. The root .gitignore covers
+# /packages/*/dist/ too; this keeps the reason next to the package that relies
+# on it.
+/dist/

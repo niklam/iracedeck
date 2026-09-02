@@ -21,7 +21,7 @@
  * verifies, extracts and is then rejected by the scanner, which is the most
  * expensive place to discover a spelling disagreement.
  */
-import { gt, valid as semverValid } from "semver";
+import { coerce, gt, valid as semverValid } from "semver";
 import { z } from "zod";
 
 import { displayLabel, packId, voiceEntry } from "./voice-pack-manifest.js";
@@ -141,5 +141,25 @@ export function isVoicePackOfferable(entry: VoicePackCatalogEntry, pluginVersion
 
   if (semverValid(pluginVersion) === null) return false;
 
-  return !gt(entry.minPluginVersion, pluginVersion);
+  // The running version is compared with any pre-release suffix STRIPPED, which
+  // is deliberately more permissive than semver's own ordering.
+  //
+  // Semver puts `3.2.0-dev.0` before `3.2.0`, so a pack requiring `3.2.0` would
+  // be listed-and-not-offered on every pre-release build of the very release
+  // that introduced the requirement — every maintainer build, and every RC a
+  // tester runs. That is precisely backwards: those builds are cut FROM that
+  // line and carry its capabilities, and they are the ones most likely to be
+  // exercising the pack. It is not hypothetical either — the version in this
+  // repo today is `3.2.0-dev.0`.
+  //
+  // The cost of being wrong this way is bounded. `minPluginVersion` gates a
+  // runtime CAPABILITY, not the integrity of anything: a build that genuinely
+  // lacks what a pack needs fails at validation, having already verified the
+  // archive's hash, and leaves the installed pack untouched like any other
+  // failed install. Being wrong the other way is silent and unbounded — a pack
+  // that never becomes available, with the UI correctly explaining that the
+  // plugin is too old.
+  const effective = coerce(pluginVersion)?.version ?? pluginVersion;
+
+  return !gt(entry.minPluginVersion, effective);
 }

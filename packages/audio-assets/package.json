@@ -16,6 +16,7 @@
     "generate": "tsx src/generate/generate.ts",
     "generate:dry-run": "tsx src/generate/generate.ts --dry-run",
     "generate:manifest": "node scripts/generate-audio-manifest.mjs",
+    "pack:voice": "node scripts/pack-voice.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {

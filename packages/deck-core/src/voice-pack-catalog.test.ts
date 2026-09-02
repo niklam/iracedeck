@@ -117,4 +117,22 @@ describe("isVoicePackOfferable", () => {
   it("still offers an unconditional pack when the running version cannot be read", () => {
     expect(isVoicePackOfferable(offer(), "not-a-version")).toBe(true);
   });
+
+  // A pre-release build is cut FROM the line it names and carries that line's
+  // capabilities, so it is treated as having reached it. Strict semver ordering
+  // says otherwise, which would make a pack requiring 3.2.0 unavailable on
+  // every dev and RC build of 3.2.0 — including the version this repo is on.
+  it.each([
+    ["a dev build of the required version", "3.2.0-dev.0"],
+    ["an rc build of the required version", "3.2.0-rc.1"],
+    ["a dev build of a later version", "3.3.0-dev.2"],
+  ])("offers a pack requiring 3.2.0 to %s", (_label, running) => {
+    expect(isVoicePackOfferable(offer("3.2.0"), running)).toBe(true);
+  });
+
+  // The permissiveness stops at the version boundary: a pre-release of an
+  // EARLIER line has not reached the requirement and is still refused.
+  it("does not offer a pack requiring 3.2.0 to a dev build of 3.1.0", () => {
+    expect(isVoicePackOfferable(offer("3.2.0"), "3.1.0-dev.4")).toBe(false);
+  });
 });

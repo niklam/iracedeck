@@ -25,7 +25,20 @@ The committed `voice/**/*.mp3` files are the **dry TTS source clips**, not what 
 
 Processed outputs are cached under `.cache/<pipeline-hash>/`, where the hash embeds the filter chain + encode args — editing the preset (or the encode args) automatically invalidates every processed clip; per-file invalidation is mtime-based. This package's own `pnpm build` (`src/build/prebuild.mjs`) exists solely to warm that cache before the parallel plugin builds run, so each plugin's Rollup copy step (`processAndCopyAudioAssets`) only ever reads cache files instead of racing over the same ffmpeg writes (contention rationale documented in `src/build/index.mjs`).
 
-Consumer surface (`package.json` exports): `./build` (`processAndCopyAudioAssets` / `processAndCopyAudioAssetsPlugin` / `prebuildAudioAssetCache` / `wipeProcessedCache`, used by the plugin Rollup configs and the scenario harness), `./presets` (`RADIO_ENGINEER_FILTER`), and `./manifest.json` (the runtime manifest).
+Consumer surface (`package.json` exports): `./build` (`processAndCopyAudioAssets` / `processAndCopyAudioAssetsPlugin` / `prebuildAudioAssetCache` / `wipeProcessedCache`, used by the plugin Rollup configs and the scenario harness; `processVoiceTree`, the same pipeline for one subtree, used by the voice-pack packer; and the `VOICE_PACKS` / `BUNDLED_VOICE_IDS` registry below), `./presets` (`RADIO_ENGINEER_FILTER`), and `./manifest.json` (the runtime manifest).
+
+## Voice packs — packing a voice for the catalog (#1034, stage 2)
+
+`src/build/voice-packs.mjs` is the **one list** separating what ships inside the plugin from what is downloadable: every entry is published to the catalog, and `bundled: true` additionally keeps the voice's clips in the plugin distributable (the plugin build's audio copy step filters `voice/` to `BUNDLED_VOICE_IDS`). Stage 3 of the rollout is flipping `default` to `bundled: false` — nothing else changes. A pack's `version` is its own, independent of the plugin's; bump it whenever the clips change. `voices` lists voice ids only — each voice's label comes from its `configs/<id>.voice.json`.
+
+```bash
+pnpm --filter @iracedeck/audio-assets pack:voice            # every pack in VOICE_PACKS
+pnpm --filter @iracedeck/audio-assets pack:voice default    # one pack
+```
+
+`scripts/pack-voice.mjs` runs the pack's voices through the **same** radio-filter + encode pipeline as the plugin build (`processVoiceTree`, sharing `.cache/<pipeline-hash>/`, so a packed clip is byte-identical to a shipped one), stages `voice-pack.json` + `voice/<voice-id>/<group>/<name>.mp3` under `dist/voice-packs/<id>/` (gitignored — the shape deck-core's scanner accepts, and a maintainer can sideload it as-is), zips it to `dist/voice-packs/<id>-<version>.zip`, and writes the **committed** catalog entry `catalog/<id>.json` (bytes, sha-256, release URL). The archive is uploaded by hand to the GitHub release the entry's `url` names (`voices-<id>-<version>`); the website assembles the entries into `voice-catalog.json`.
+
+**The packer is byte-deterministic, and that is the contract**: the catalog's `sha256` is what decides whether a user downloads, so a packer that produced new bytes from unchanged clips would make every user re-download 12.5 MB per build. Entry order is sorted, every entry's timestamp is the DOS epoch (built from *local* date fields, because fflate converts through local-time getters), compression level, origin OS and attributes are pinned, no extra fields or comments are written, and `voice-pack.json` is serialized with sorted keys and LF endings. `src/pack-voice.test.ts` packs twice through the whole pipeline — separate caches, so ffmpeg runs both times — and compares hashes, and runs the real deck-core schemas and scanner over the output. It does **not** re-derive the committed entries' `bytes`/`sha256` (that needs the full voice); re-run `pack:voice` after any clip change and commit the updated `catalog/<id>.json`.
 
 ## Sound effects (`sfx/`)
 
