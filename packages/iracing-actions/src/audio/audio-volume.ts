@@ -1,5 +1,5 @@
-import { isBackgroundTestInFlight } from "@iracedeck/audio-scenarios/pit-crew";
-import { AudioBus, getAudio } from "@iracedeck/audio-service";
+import { isBackgroundTestInFlight, stopRaceEngineerScenarios } from "@iracedeck/audio-scenarios/pit-crew";
+import { AudioBus, AudioChannel, getAudio } from "@iracedeck/audio-service";
 import { getGlobalSettings, updateGlobalSettings } from "@iracedeck/deck-core";
 
 /**
@@ -190,4 +190,30 @@ export function stepRaceEngineerVolumeBy(steps: number): number {
 /** Single-step convenience over {@link stepRaceEngineerVolumeBy}. */
 export function stepRaceEngineerVolume(direction: "up" | "down"): number {
   return stepRaceEngineerVolumeBy(direction === "up" ? 1 : -1);
+}
+
+/**
+ * Silence the Race Engineer completely and leave the audio state consistent
+ * (issue #1100).
+ *
+ * The voice-pack installer calls this before a swap or a removal, because a
+ * callout holding one of the pack's clips open makes the directory rename fail
+ * on Windows. It lives here rather than in the three plugins because stopping
+ * playback is three coupled facts about audio state, and a plugin repeating
+ * them is three chances to learn only two.
+ *
+ * The third is the one that is easy to miss. `stopChannel` drops the one-shot
+ * completion callback a voice Test installs, so a preview interrupted here
+ * would never run its own cleanup and `raceEngineerTestInFlight` would stay
+ * true — a stuck bypass holding {@link AudioBus.Voice} unmuted while the master
+ * gate says off. Nothing is audible in that state today, since callouts are
+ * gated before they reach the bus; it is a trap waiting for the first Voice
+ * path that is not. Clearing the flag and re-applying puts the bus back where
+ * the gate says it belongs.
+ */
+export function stopRaceEngineerPlayback(): void {
+  stopRaceEngineerScenarios();
+  getAudio().stopChannel(AudioChannel.Voice);
+  setRaceEngineerTestInFlight(false);
+  applyRaceEngineerAudio();
 }
