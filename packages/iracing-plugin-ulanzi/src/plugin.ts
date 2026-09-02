@@ -418,8 +418,12 @@ let driverNames = scanDriverNames(activeManifest);
 const bundledVoices = scanRaceEngineerVoices(audioAssetsManifest);
 
 const voicePacksLogger = adapter.createLogger("VoicePacks");
+// Named once: the scanner reads this directory and the settings window's
+// "Open folder" button reveals it, and those must be the same place. The page
+// supplies no path for either (#1100).
+const voicePacksRoot = resolveVoicePacksPath({ env: process.env });
 const voicePacks = createVoicePackService({
-  root: resolveVoicePacksPath({ env: process.env }),
+  root: voicePacksRoot,
   fs: createVoicePackFileSystem(voicePacksLogger),
   logger: voicePacksLogger,
   pluginAudioDir: audioRootDir,
@@ -944,6 +948,8 @@ const settingsWindow = createSettingsWindowController({
     // Race Engineer card's Rescan voices button (#1034). Like Open folder, the
     // page names no directory — which one is scanned is the plugin's decision.
     refreshVoicePacks: () => voicePacks.refresh(),
+    // Same rule again for the Voices card's Open folder button (#1100).
+    voicePacksPath: voicePacksRoot,
   }),
   // The page can't probe SimHub itself (cross-origin, no CORS) — answer from the plugin's own view.
   simHub: { isReachable: isSimHubReachable, getRoles: () => getSimHub().getRoles() },
