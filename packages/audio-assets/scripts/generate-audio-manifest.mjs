@@ -21,7 +21,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import url from "node:url";
-import { SHIPPED_FOLDERS } from "../src/build/index.mjs";
+import { BUNDLED_VOICE_IDS, SHIPPED_FOLDERS } from "../src/build/index.mjs";
+
+/** The folder whose contents are filtered to the bundled voices. */
+const VOICE_ROOT = "voice";
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = path.resolve(__dirname, "..");
@@ -70,7 +73,27 @@ export function buildManifest() {
   // to nothing, and the two drifting apart is exactly how that happens.
   const clips = [...SHIPPED_FOLDERS]
     .sort()
-    .flatMap((folder) => collectClips(path.join(PACKAGE_ROOT, folder)));
+    .flatMap((folder) =>
+      // `voice/` is filtered to the BUNDLED set, the way the copy step is. The
+      // manifest describes what the plugin ITSELF provides, so listing a voice
+      // the build no longer ships would be a claim about clips that are not
+      // there.
+      //
+      // A no-op today, and a landmine without it. `bundledVoices` — the ids the
+      // scanner reserves so no pack may claim one — is derived from this
+      // manifest. At stage 3, when the bundle is dropped, an unfiltered
+      // manifest would still name `default`, so the DOWNLOADED `default` pack
+      // would be refused as "provided by the plugin's bundled audio" and the
+      // engineer would go silent, on the release whose whole job is to make
+      // that swap invisible.
+      folder === VOICE_ROOT
+        ? BUNDLED_VOICE_IDS.flatMap((voiceId) => {
+            const dir = path.join(PACKAGE_ROOT, folder, voiceId);
+
+            return fs.existsSync(dir) ? collectClips(dir) : [];
+          })
+        : collectClips(path.join(PACKAGE_ROOT, folder)),
+    );
 
   clips.sort();
 
