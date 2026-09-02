@@ -11,6 +11,7 @@ import { z } from "zod";
 
 import { FEATURE_STARTUP_GATES } from "./feature-startup-policy.js";
 import type { SettingsWindowBounds } from "./settings-window-launcher.js";
+import { packId } from "./voice-pack-manifest.js";
 
 /** Passthrough global-settings key holding the last window bounds. */
 export const SETTINGS_WINDOW_BOUNDS_KEY = "_settingsWindowBounds";
@@ -82,6 +83,19 @@ export interface SettingsWindowCommandDeps {
    * `openSettingsFolder` above.
    */
   refreshVoicePacks?: () => void;
+  /**
+   * Download and install the catalog pack `id` (issue #1100).
+   *
+   * The page names WHICH pack, and that is all it gets to say. Everything else
+   * — the catalog the id is looked up in, the URL, the destination directory —
+   * is the plugin's, so a page cannot point an install at somewhere of its own
+   * choosing. Compare `openSettingsFolder`, which takes nothing at all.
+   */
+  installVoicePack?: (id: string) => void;
+  /** Delete the installed pack `id` (issue #1100). Same rule: an id, never a path. */
+  removeVoicePack?: (id: string) => void;
+  /** The voice-packs directory; the page never supplies one (issue #1100). */
+  voicePacksPath?: string;
 }
 
 /** The gate whose two keys the Race Engineer opt-in has to move together (#1061). */
@@ -190,6 +204,31 @@ export function createSettingsWindowCommandHandler(
 
       case "voicePackRefresh":
         deps.refreshVoicePacks?.();
+
+        break;
+
+      // A pack id reaches the filesystem as a DIRECTORY NAME, so it is
+      // validated against the same kebab-case rule the manifest and the catalog
+      // enforce rather than trusted because it came from our own page. That is
+      // the difference between the page choosing a pack and the page choosing a
+      // path: `..` and a drive letter both fail this parse, and the id the
+      // installer receives is one it could equally have read from a manifest.
+      case "voicePackInstall":
+        if (deps.installVoicePack && packId.safeParse(payload.id).success) {
+          deps.installVoicePack(payload.id as string);
+        }
+
+        break;
+
+      case "voicePackRemove":
+        if (deps.removeVoicePack && packId.safeParse(payload.id).success) {
+          deps.removeVoicePack(payload.id as string);
+        }
+
+        break;
+
+      case "openVoicePacksFolder":
+        if (deps.openFolder && deps.voicePacksPath) deps.openFolder(deps.voicePacksPath);
 
         break;
 

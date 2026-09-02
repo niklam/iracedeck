@@ -157,6 +157,73 @@ describe("createSettingsWindowCommandHandler", () => {
 
     expect(() => handle({ event: "voicePackRefresh" })).not.toThrow();
   });
+
+  it("routes voicePackInstall and voicePackRemove with the named pack (#1100)", () => {
+    const installVoicePack = vi.fn();
+    const removeVoicePack = vi.fn();
+    const handle = createSettingsWindowCommandHandler({ writeSettings: vi.fn(), installVoicePack, removeVoicePack });
+
+    handle({ event: "voicePackInstall", id: "luca" });
+    handle({ event: "voicePackRemove", id: "luca" });
+
+    expect(installVoicePack).toHaveBeenCalledWith("luca");
+    expect(removeVoicePack).toHaveBeenCalledWith("luca");
+  });
+
+  // A pack id becomes a DIRECTORY NAME under the packs root, so an id the page
+  // supplies is a path component in disguise. These are the spellings that stop
+  // being an id and start being a path.
+  it.each([
+    ["a parent traversal", "../evil"],
+    ["a nested traversal", "luca/../../evil"],
+    ["an absolute path", "/etc/passwd"],
+    ["a drive letter", "C:/Windows"],
+    ["a UNC prefix", "//server/share"],
+    ["a backslash", `luca${String.fromCharCode(92)}evil`],
+    ["an uppercase id", "Luca"],
+    ["a leading dash", "-luca"],
+    ["an empty string", ""],
+    ["a non-string", 42],
+  ])("refuses a voicePackInstall id that is %s", (_label, id) => {
+    const installVoicePack = vi.fn();
+    const handle = createSettingsWindowCommandHandler({ writeSettings: vi.fn(), installVoicePack });
+
+    handle({ event: "voicePackInstall", id });
+
+    expect(installVoicePack).not.toHaveBeenCalled();
+  });
+
+  it("refuses a voicePackRemove id that is not an id, so a page cannot delete a directory of its choosing", () => {
+    const removeVoicePack = vi.fn();
+    const handle = createSettingsWindowCommandHandler({ writeSettings: vi.fn(), removeVoicePack });
+
+    handle({ event: "voicePackRemove", id: "../../Race Engineer" });
+
+    expect(removeVoicePack).not.toHaveBeenCalled();
+  });
+
+  it("opens the injected packs directory and ignores a path the page offers (#1100)", () => {
+    const openFolder = vi.fn();
+    const handle = createSettingsWindowCommandHandler({
+      writeSettings: vi.fn(),
+      openFolder,
+      voicePacksPath: "C:/packs",
+      storePath: "C:/s/global-settings.json",
+    });
+
+    handle({ event: "openVoicePacksFolder", path: "C:/Windows/evil" });
+
+    expect(openFolder).toHaveBeenCalledWith("C:/packs");
+  });
+
+  it("ignores openVoicePacksFolder when no packs directory is injected", () => {
+    const openFolder = vi.fn();
+    const handle = createSettingsWindowCommandHandler({ writeSettings: vi.fn(), openFolder });
+
+    handle({ event: "openVoicePacksFolder" });
+
+    expect(openFolder).not.toHaveBeenCalled();
+  });
 });
 
 describe("enableFeatureWrites", () => {
