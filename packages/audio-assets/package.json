@@ -9,6 +9,7 @@
       "default": "./src/build/index.mjs"
     },
     "./manifest.json": "./manifest.json",
+    "./catalog/*.json": "./catalog/*.json",
     "./presets": "./src/presets.mjs"
   },
   "scripts": {
