@@ -167,6 +167,13 @@ The name is deliberately **not** `voice-packs.json`: that differs from the per-p
 
 The client mirrors `changelog-feed-client.ts`: URL as a module constant, request timeout, never throws, and every failure mode — refused, timed out, HTTP error, not JSON, wrong shape — collapses to the same answer, "we do not know". Cached in memory with an ETag; the routine "anything new?" check is a 304 and a few hundred bytes.
 
+**No setting gates the catalog fetch in stage 2 — settled 2026-09-02, and stage 3 must revisit it.** The service keeps an injected `isEnabled` predicate, mirroring `update-check-service.ts`, but stage 2 wires it to a constant true. The reason is that in Release N *every* catalog fetch is user-initiated: opening the settings window, pressing Refresh, pressing Install. The one path that is not user-initiated — the first-run install — **downloads nothing in this release**, because an empty voices folder plus a bundled pack seeds by copy. So there is no launch-time network call to opt out of, and adding a switch would be a second privacy toggle for one domain that does nothing a user can observe.
+
+Two things follow, and the second is a trap:
+
+- **Do not reuse `updateCheck`.** It is presented on the What's New tab (`global-common-updates.ejs`) as a release-notes control. Silently widening it so that declining update notifications also removes the ability to install a voice is precisely the kind of surprise that produces support threads about a feature the user never connected to the switch they flipped.
+- **Stage 3 changes the answer.** Once the bundle is dropped, a fresh install has an empty voices folder and *no* bundled pack, so first-run must download — at launch, unprompted. At that point "no setting" becomes "phones home on every launch with no way to stop it", and stage 3 must either add the setting or make that first fetch something the user acts on. Decide it there; do not let it arrive by default.
+
 `minPluginVersion` is compared with `semver`, already a `deck-core` dependency, so a pack needing a newer runtime is listed but not offered.
 
 **Archive hosting is GitHub Releases**, not `packages/website/public/`. A 12.5 MB zip per pack version in the website repo would bloat every Firebase deploy and the git history. The catalog itself stays on iracedeck.com, so the fixed-URL rule still holds: one constant URL the plugin trusts, pointing at release assets.
