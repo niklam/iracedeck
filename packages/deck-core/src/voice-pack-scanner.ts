@@ -1,7 +1,7 @@
 import { join } from "node:path";
 
 import { parseVoicePackManifest } from "./voice-pack-manifest.js";
-import { parseVoicePackProvenance } from "./voice-pack-provenance.js";
+import { parseVoicePackProvenance, type VoicePackSource } from "./voice-pack-provenance.js";
 
 /**
  * The outcome of reading a pack's manifest.
@@ -52,7 +52,24 @@ export type InstalledVoicePack = {
   voices: readonly InstalledVoice[];
   /** POSIX paths relative to {@link dir}, always `voice/<voice-id>/…`. */
   clips: readonly string[];
+  /**
+   * Where this pack came from, for the settings window's provenance badge.
+   *
+   * `sideload` is the ABSENCE of a usable installer record, not a claim any
+   * pack makes about itself — see `voice-pack-provenance.ts` for why the source
+   * enum deliberately has no such value to write. So a pack that forges a
+   * record still cannot describe itself as sideloaded, and one that ships a
+   * malformed record reads as sideloaded, which is the truthful answer: nothing
+   * we wrote says otherwise.
+   *
+   * Displayed, never enforced. The badge tells a user that a pack came from
+   * someone other than us; it is not a trust decision the plugin acts on.
+   */
+  provenance: VoicePackProvenanceKind;
 };
+
+/** {@link InstalledVoicePack.provenance}. */
+export type VoicePackProvenanceKind = VoicePackSource | "sideload";
 
 export type VoicePackProblem = { pack: string; reason: string };
 
@@ -301,6 +318,7 @@ export function scanVoicePacks({ root, fs, reservedVoices }: ScanVoicePacksOptio
       // Sorted so the fragment a pack contributes is independent of the order
       // its voices happen to be declared in.
       clips: clips.sort(),
+      provenance: provenance?.source ?? "sideload",
     });
   }
 

@@ -474,3 +474,42 @@ describe("scanVoicePacks and the bundled seed (#1100)", () => {
     ]);
   });
 });
+
+describe("scanVoicePacks reports where a pack came from (#1100)", () => {
+  const record = (source: string) => ({
+    schema: 1,
+    source,
+    id: "luca",
+    version: "1.2.0",
+    sha256: "e".repeat(64),
+    installedAt: "2026-09-02T00:00:00.000Z",
+    ...(source === "catalog" ? { url: "https://example.com/luca-1.2.0.zip" } : {}),
+  });
+
+  const scan = (install?: unknown) =>
+    scanVoicePacks({
+      root: ROOT,
+      reservedVoices: [],
+      fs: fakeFs({ luca: { manifest: luca, install, clips: ["voice/luca/flags/blue-01.mp3"] } }),
+    });
+
+  it.each([
+    ["catalog", "catalog"],
+    ["bundled-seed", "bundled-seed"],
+  ])("reports a %s install from the record we wrote", (source, expected) => {
+    expect(scan(record(source)).packs[0].provenance).toBe(expected);
+  });
+
+  // "sideload" is the ABSENCE of a usable record, never a claim a pack makes —
+  // which is why the source enum has no such value for anyone to write. A pack
+  // that forges a record cannot describe itself as sideloaded, and one whose
+  // record is unusable reads as sideloaded, which is the truthful answer.
+  it.each([
+    ["no record at all", undefined],
+    ["a record that does not parse", "{ not json"],
+    ["a record that cannot be read", UNREADABLE],
+    ["a record naming an unknown source", JSON.stringify({ ...record("catalog"), source: "sideload" })],
+  ])("reports sideload for %s", (_label, install) => {
+    expect(scan(install).packs[0].provenance).toBe("sideload");
+  });
+});

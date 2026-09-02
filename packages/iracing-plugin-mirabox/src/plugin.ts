@@ -752,9 +752,15 @@ let lastPushedVoicePackListJson = "";
 // stays one global-settings write.
 function pushVoicePackListIfChanged(): void {
   const json = JSON.stringify({
-    packs: voicePacks
-      .installed()
-      .map((pack) => ({ id: pack.id, label: pack.label, version: pack.version, voices: pack.voices })),
+    packs: voicePacks.installed().map((pack) => ({
+      id: pack.id,
+      label: pack.label,
+      version: pack.version,
+      voices: pack.voices,
+      // Where it came from, for the settings window's provenance badge
+      // (#1100). Displayed, never enforced.
+      provenance: pack.provenance,
+    })),
     problems: voicePacks.problems().map((problem) => ({ pack: problem.pack, reason: problem.reason })),
   });
 
