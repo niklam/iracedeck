@@ -21,6 +21,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import url from "node:url";
+import { SHIPPED_FOLDERS } from "../src/build/index.mjs";
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = path.resolve(__dirname, "..");
@@ -58,7 +59,20 @@ function collectClips(dir) {
 }
 
 export function buildManifest() {
-  const clips = collectClips(PACKAGE_ROOT);
+  // Only the folders the plugin actually ships. The walk used to start at the
+  // package root with a skip-list, which meant any new top-level folder joined
+  // the manifest by default — and #1100 added `dist/`, the staged voice pack,
+  // whose 1545 copies would have doubled the manifest and pointed the engine at
+  // clips no plugin contains.
+  //
+  // Same allow-list the copy step uses, imported rather than restated: a
+  // manifest listing a clip the build does not ship is a callout that resolves
+  // to nothing, and the two drifting apart is exactly how that happens.
+  const clips = [...SHIPPED_FOLDERS]
+    .sort()
+    .flatMap((folder) => collectClips(path.join(PACKAGE_ROOT, folder)));
+
+  clips.sort();
 
   return {
     clips,

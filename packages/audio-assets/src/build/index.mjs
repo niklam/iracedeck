@@ -12,6 +12,7 @@ import { RADIO_ENGINEER_FILTER } from "../presets.mjs";
 // plugin Rollup configs already consume, so the audio copy step can filter to
 // BUNDLED_VOICE_IDS without a second package entry point (#1034).
 export { BUNDLED_VOICE_IDS, VOICE_PACKS } from "./voice-packs.mjs";
+import { BUNDLED_VOICE_IDS } from "./voice-packs.mjs";
 
 const require = createRequire(import.meta.url);
 
@@ -21,10 +22,22 @@ export const audioAssetsPath = packageRoot;
 
 const CACHE_ROOT = path.join(packageRoot, ".cache");
 
-// Top-level entries under packages/audio-assets/ that must never be copied
-// into the plugin's assets/audio/ output (tooling, package plumbing, our own
-// cache).
-const SKIP_FOLDERS = new Set([".cache", "node_modules", "scripts", "src"]);
+// Top-level entries under packages/audio-assets/ that ARE copied into the
+// plugin's assets/audio/ output. An allow-list, not a skip-list (#1100).
+//
+// It was a skip-list, and a skip-list leaks by default: anything added to this
+// package later ships to users unless someone remembers to exclude it. That is
+// not hypothetical — it had already leaked `configs/` (196 KB of ElevenLabs
+// authoring data, of no use to a user) and `.turbo/` into every released
+// plugin, and this issue was about to add `dist/`, the staged voice pack and
+// its archive, which is 16 MB and would have DOUBLED the audio payload of the
+// feature whose entire purpose is reducing it.
+//
+// These two are exactly what the runtime resolves: every path in manifest.json
+// — `clips`, `ambientLoop` and both `ticks` — begins with `voice/` or `sfx/`.
+// Adding a third entry here means the manifest gained a new root, which is the
+// only reason to touch this.
+export const SHIPPED_FOLDERS = new Set(["voice", "sfx"]);
 
 // Serializes operations that mutate the shared `.cache/` tree
 // (`processAndCopyAudioAssets`, `prebuildAudioAssetCache`, `wipeProcessedCache`).
@@ -377,25 +390,51 @@ async function runProcessAndCopy({ destRoot, logger, wipe }) {
   };
 
   for (const entry of readdirSync(audioAssetsPath, { withFileTypes: true })) {
-    if (!entry.isDirectory() || SKIP_FOLDERS.has(entry.name)) continue;
+    if (!entry.isDirectory() || !SHIPPED_FOLDERS.has(entry.name)) continue;
 
     const srcDir = path.join(audioAssetsPath, entry.name);
     const destDir = path.join(destRoot, entry.name);
 
     if (entry.name === VOICE_ROOT) {
-      tasks.push(
-        ...buildVoiceTreeTasks(srcDir, path.join(cacheRoot, VOICE_ROOT), destDir, {
-          onFresh: async (cachedPath, currentDest, fileName) => {
-            copyFileSync(cachedPath, path.join(currentDest, fileName));
-            cached++;
-          },
-          onMiss: async (srcPath, cachedPath, currentDest, fileName) => {
-            await runFfmpeg(ffmpegPath, srcPath, cachedPath, RADIO_ENGINEER_FILTER);
-            copyFileSync(cachedPath, path.join(currentDest, fileName));
-            processed++;
-          },
-        }),
-      );
+      // Per voice rather than over the whole tree, so the distributable carries
+      // only the BUNDLED set (#1100). Everything else is published to the
+      // catalog and installed at runtime instead.
+      //
+      // A no-op today — `default` is the only authored voice and it is bundled
+      // — and that is the point: the release that stops shipping audio becomes
+      // one edit to `voice-packs.mjs` rather than a change to the build.
+      //
+      // The cache path keeps its `<cacheRoot>/voice/<id>/…` shape, which the
+      // packer's `processVoiceTree` resolves to as well. Diverging here would
+      // silently re-encode every clip into a second cache and, worse, break the
+      // guarantee that a packaged clip is byte-identical to the shipped one.
+      for (const voice of readdirSync(srcDir, { withFileTypes: true })) {
+        if (!voice.isDirectory()) continue;
+
+        if (!BUNDLED_VOICE_IDS.includes(voice.name)) {
+          logger?.(`Audio assets: voice "${voice.name}" is published, not bundled — skipping`);
+          continue;
+        }
+
+        tasks.push(
+          ...buildVoiceTreeTasks(
+            path.join(srcDir, voice.name),
+            path.join(cacheRoot, VOICE_ROOT, voice.name),
+            path.join(destDir, voice.name),
+            {
+              onFresh: async (cachedPath, currentDest, fileName) => {
+                copyFileSync(cachedPath, path.join(currentDest, fileName));
+                cached++;
+              },
+              onMiss: async (srcPath, cachedPath, currentDest, fileName) => {
+                await runFfmpeg(ffmpegPath, srcPath, cachedPath, RADIO_ENGINEER_FILTER);
+                copyFileSync(cachedPath, path.join(currentDest, fileName));
+                processed++;
+              },
+            },
+          ),
+        );
+      }
     } else {
       mkdirSync(destDir, { recursive: true });
       copyTreeAsIs(srcDir, destDir);
