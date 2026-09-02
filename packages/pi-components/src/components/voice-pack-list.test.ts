@@ -8,18 +8,25 @@ type SettingsCallback = (value: string) => void;
 
 interface MockSDPIState {
   callbacks: Map<string, SettingsCallback>;
+  send: ReturnType<typeof vi.fn>;
+  useGlobalSettingsCalls: number;
 }
 
 function installMockSDPI(): MockSDPIState {
-  const state: MockSDPIState = { callbacks: new Map() };
+  const send = vi.fn();
+  const state: MockSDPIState = { callbacks: new Map(), send, useGlobalSettingsCalls: 0 };
 
   const useGlobalSettings = (key: string, callback: SettingsCallback): [() => Promise<string>, () => void] => {
     state.callbacks.set(key, callback);
+    state.useGlobalSettingsCalls += 1;
 
     return [async () => "", vi.fn()];
   };
 
-  (window as unknown as Record<string, unknown>).SDPIComponents = { useGlobalSettings };
+  (window as unknown as Record<string, unknown>).SDPIComponents = {
+    useGlobalSettings,
+    streamDeckClient: { send },
+  };
 
   return state;
 }
@@ -29,8 +36,8 @@ function scan(packs: unknown[], problems: unknown[] = []): string {
 }
 
 const PACKS = scan([
-  { id: "luca", label: "Luca", version: "1.2.0", voices: [{ id: "luca", label: "Luca" }] },
-  { id: "nina", label: "Nina", version: "2.0.1", voices: [{ id: "nina", label: "Nina" }] },
+  { id: "luca", label: "Luca", version: "1.2.0", voices: [{ id: "luca", label: "Luca" }], provenance: "catalog" },
+  { id: "nina", label: "Nina", version: "2.0.1", voices: [{ id: "nina", label: "Nina" }], provenance: "sideload" },
 ]);
 
 const EMPTY = scan([], []);
@@ -174,5 +181,130 @@ describe("ird-voice-pack-list", () => {
       expect(el.querySelector("b")).toBeNull();
       expect(el.textContent).toContain("<img src=x onerror=alert(1)>");
     });
+  });
+
+  describe("provenance badge (#1100)", () => {
+    it("says a catalog pack was downloaded", () => {
+      publish(
+        scan([
+          {
+            id: "luca",
+            label: "Luca",
+            version: "1.2.0",
+            voices: [{ id: "luca", label: "Luca" }],
+            provenance: "catalog",
+          },
+        ]),
+      );
+
+      const badge = el.querySelector(".ird-vp-badge");
+
+      expect(badge?.textContent).toBe("Downloaded");
+      expect(badge?.className).toContain("ird-vp-badge-catalog");
+    });
+
+    it("says a bundled-seed pack is built in", () => {
+      publish(
+        scan([
+          {
+            id: "default",
+            label: "Default",
+            version: "1.0.0",
+            voices: [{ id: "default", label: "Default" }],
+            provenance: "bundled-seed",
+          },
+        ]),
+      );
+
+      const badge = el.querySelector(".ird-vp-badge");
+
+      expect(badge?.textContent).toBe("Built-in");
+      expect(badge?.className).toContain("ird-vp-badge-bundled-seed");
+    });
+
+    it("says a sideloaded pack was installed by hand — informational wording, not an accusation", () => {
+      publish(
+        scan([
+          {
+            id: "nina",
+            label: "Nina",
+            version: "2.0.1",
+            voices: [{ id: "nina", label: "Nina" }],
+            provenance: "sideload",
+          },
+        ]),
+      );
+
+      const badge = el.querySelector(".ird-vp-badge");
+
+      expect(badge?.textContent).toBe("Installed by hand");
+      expect(badge?.className).toContain("ird-vp-badge-sideload");
+      expect(el.textContent).not.toMatch(/unsigned|unverified|untrusted|warning/i);
+    });
+
+    it("falls back to the least-trusting label rather than dropping the row when provenance is missing", () => {
+      publish(scan([{ id: "old", label: "Old Shape", version: "1.0.0", voices: [{ id: "old", label: "Old" }] }]));
+
+      expect(el.querySelectorAll(".ird-vp-row")).toHaveLength(1);
+
+      const badge = el.querySelector(".ird-vp-badge");
+
+      expect(badge?.textContent).toBe("Installed by hand");
+      expect(badge?.className).toContain("ird-vp-badge-sideload");
+    });
+
+    it("falls back the same way for an unrecognised provenance value", () => {
+      publish(
+        scan([
+          { id: "x", label: "X", version: "1.0.0", voices: [{ id: "x", label: "X" }], provenance: "not-a-real-kind" },
+        ]),
+      );
+
+      expect(el.querySelector(".ird-vp-badge")?.textContent).toBe("Installed by hand");
+    });
+  });
+
+  describe("remove (#1100)", () => {
+    it("renders one Remove button per installed pack", () => {
+      publish(PACKS);
+
+      expect(el.querySelectorAll(".ird-vp-remove-button")).toHaveLength(2);
+    });
+
+    it("sends voicePackRemove with the pack's id, immediately, on click — no confirmation step", () => {
+      publish(PACKS);
+
+      const buttons = el.querySelectorAll<HTMLButtonElement>(".ird-vp-remove-button");
+
+      buttons[0]?.click();
+
+      expect(mock.send).toHaveBeenCalledWith("sendToPlugin", { event: "voicePackRemove", id: "luca" });
+      expect(mock.send).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not write settings itself — the row disappears only on the next _voicePacks push", () => {
+      publish(PACKS);
+      el.querySelectorAll<HTMLButtonElement>(".ird-vp-remove-button")[0]?.click();
+
+      // Removal is a command, not a local mutation: the row is still here
+      // until the plugin republishes _voicePacks after actually removing it.
+      expect(el.querySelectorAll(".ird-vp-row")).toHaveLength(2);
+    });
+  });
+
+  it("issues no extra settings read in response to a DOM event", () => {
+    // A regression pin mirroring ird-enable-feature's: this component only
+    // ever learns about settings through the useGlobalSettings push
+    // subscription set up once at connect, and clicking Remove must never
+    // trigger a second subscription/read — it only sends a command.
+    publish(PACKS);
+
+    const before = mock.useGlobalSettingsCalls;
+
+    el.querySelectorAll<HTMLButtonElement>(".ird-vp-remove-button")[0]?.click();
+    document.dispatchEvent(new Event("change", { bubbles: true }));
+    document.dispatchEvent(new Event("input", { bubbles: true }));
+
+    expect(mock.useGlobalSettingsCalls).toBe(before);
   });
 });

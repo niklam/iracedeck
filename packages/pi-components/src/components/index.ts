@@ -73,6 +73,11 @@ export { OpenFolder } from "./open-folder.js";
 export { VoicePackList } from "./voice-pack-list.js";
 export { VoicePackRefresh } from "./voice-pack-refresh.js";
 
+// Downloadable Race Engineer voice packs — catalog, install progress, and the
+// packs-folder shortcut (issue #1100)
+export { VoicePackCatalog } from "./voice-pack-catalog.js";
+export { OpenVoicePacksFolder } from "./open-voice-packs-folder.js";
+
 // Update Notice - upstream "a newer version exists" banner for the settings window (#1016)
 export { UPDATE_AVAILABLE_EVENT, UpdateNotice } from "./update-notice.js";
 
