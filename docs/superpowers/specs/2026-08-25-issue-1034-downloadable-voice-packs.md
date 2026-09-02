@@ -8,6 +8,10 @@
 
 Every Race Engineer voice ships inside every plugin. The built Stream Deck plugin is 78 MB, of which **8.1 MB is voice audio for the single `default` voice** (30 MB of source clips, reduced by the build-time radio filter and the 16 kHz mono 32 kbps re-encode). Each additional voice adds roughly another 8 MB to all three plugin downloads, on all three marketplaces, for every user — including the users who will never switch voices.
 
+**These figures are measured, not estimated — 2026-09-02.** The built voice tree is 8,112,969 bytes across 1545 clips, and the packed archive is 7,879,224 bytes; the pack was verified against the shipped plugin per file by sha-256, not by comparing totals. They were wrong until then, by roughly a third: the original 13 MB / 33 MB pre-dated `3c15f571` (11025 Hz / 24 kbps) and `18bece04` (16 kHz / 32 kbps), and the prose beside them was updated to name the new encode while the numbers were never re-measured — which is how a parenthetical came to describe today's settings next to yesterday's output. The saving is smaller than first claimed and the argument is untouched: 8 MB per voice, for every user, on three marketplaces, still gets worse with every voice added.
+
+Two things not to "correct" later. The archive (7.9 MB) and the on-disk audio (8.1 MB) are **nearly equal on purpose** — these clips are already MP3, so zipping buys 6%, not the wide margin the original figures implied; the two being close is a measurement, not a typo. And the 78 MB plugin total above has **not** been re-measured, so treat it as the one figure here still carrying its original estimate.
+
 That makes shipping a second voice a bad trade today, and a third one worse. It also means a voice can only be updated by shipping a whole plugin release, and a third party cannot publish a voice at all.
 
 ## Goals
@@ -111,7 +115,7 @@ Because a pack contributes `voice/<id>/…` under its own root, **clip paths kee
 - `validation.ts`, `referenceVoice`, `scanRaceEngineerVoices`, `scanDriverNames` — unchanged
 - per-callout skipping — composes with no special case, and since 2026-09-01 it is #1064's per-voice `"skip": true` rather than a pack-level list here
 
-Two alternatives were rejected. **Absolute paths in the manifest** would make the escape guard meaningless and leak machine paths into a structure that is compared and serialized. **Copying the bundled default into AppData purely for uniformity** would cost a 13 MB copy per ecosystem on every plugin update and make the one voice that must always exist user-deletable.
+Two alternatives were rejected. **Absolute paths in the manifest** would make the escape guard meaningless and leak machine paths into a structure that is compared and serialized. **Copying the bundled default into AppData purely for uniformity** would cost an 8.1 MB copy per ecosystem on every plugin update and make the one voice that must always exist user-deletable.
 
 ### Voice id collisions
 
