@@ -27,6 +27,7 @@ import {
   archiveUrl,
   buildVoicePackManifest,
   CATALOG_DIR,
+  countSourceClips,
   createArchive,
   MANIFEST_FILE,
   packVoice,
@@ -416,6 +417,43 @@ describe("committed catalog entries", () => {
 
     for (const file of readdirSync(CATALOG_DIR)) {
       expect(known.has(file), `${file} has no VOICE_PACKS entry`).toBe(true);
+    }
+  });
+});
+
+describe("countSourceClips", () => {
+  // The counter the completeness assertion trusts. It is deliberately a SECOND,
+  // independent walk of the source rather than a number the pipeline reports
+  // about itself — a count derived from the thing being checked would agree
+  // with it by construction and prove nothing.
+  it("counts clips recursively and ignores everything that is not an mp3", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "ird-count-"));
+
+    try {
+      mkdirSync(path.join(root, "flags"), { recursive: true });
+      mkdirSync(path.join(root, "units", "nested"), { recursive: true });
+      writeFileSync(path.join(root, "flags", "blue-01.mp3"), "a");
+      writeFileSync(path.join(root, "flags", "blue-02.MP3"), "b");
+      writeFileSync(path.join(root, "flags", "notes.txt"), "c");
+      writeFileSync(path.join(root, "units", "litres.mp3"), "d");
+      writeFileSync(path.join(root, "units", "nested", "deep.mp3"), "e");
+
+      // Three lowercase, one uppercase — the pipeline matches the extension
+      // case-insensitively too, so the two walks must agree on that or the
+      // assertion would fire on a pack that is actually complete.
+      expect(countSourceClips(root)).toBe(4);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("counts an empty tree as zero rather than throwing", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "ird-count-empty-"));
+
+    try {
+      expect(countSourceClips(root)).toBe(0);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
     }
   });
 });

@@ -34,7 +34,7 @@
  */
 import { zipSync } from "fflate";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import url from "node:url";
 
@@ -291,6 +291,27 @@ export function buildCatalogEntry(pack, voices, { bytes, sha256 }) {
 }
 
 /**
+ * Every `.mp3` under `dir`, recursively.
+ *
+ * Deliberately a second, independent walk rather than a number the pipeline
+ * reports about itself: it exists to check that pipeline, and a count derived
+ * from the thing being checked would agree with it by construction.
+ *
+ * @param {string} dir
+ * @returns {number}
+ */
+export function countSourceClips(dir) {
+  let count = 0;
+
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.isDirectory()) count += countSourceClips(path.join(dir, entry.name));
+    else if (entry.isFile() && entry.name.toLowerCase().endsWith(".mp3")) count += 1;
+  }
+
+  return count;
+}
+
+/**
  * Pack one voice pack. Every location is injectable so the tests can run the
  * whole thing — pipeline included — against a temporary tree, a temporary
  * cache and a temporary output, without touching the repository's own.
@@ -355,6 +376,26 @@ export async function packVoice({
     // refuses to BUILD one. The same check per clip, below, is what turns a clip
     // the scanner would skip into a failure at the only point it is cheap.
     if (files.length === 0) throw new Error(`pack "${pack.id}": voice "${voiceId}" has no .mp3 clips under ${srcDir}`);
+
+    // And refuses to build a SHORT one. Emptiness is the easy failure; the
+    // dangerous one is a pack that is merely incomplete, because every check
+    // downstream passes it: the archive hashes fine, `voice-pack.json` parses,
+    // a `voice/<id>/` directory exists, and the scanner loads it and reports no
+    // problem. The engineer would simply be silent for whatever was missing,
+    // which is indistinguishable from a callout nobody wrote.
+    //
+    // Nothing else in the pipeline can notice, so it is asserted here: the
+    // number of clips staged must equal the number the source holds. Found the
+    // hard way — a reviewer questioned the archive's size and the only way to
+    // answer was to count both trees by hand.
+    const sourceClips = countSourceClips(srcDir);
+
+    if (files.length !== sourceClips) {
+      throw new Error(
+        `pack "${pack.id}": voice "${voiceId}" staged ${files.length} of ${sourceClips} source clips — ` +
+          `the pipeline dropped ${sourceClips - files.length}`,
+      );
+    }
 
     for (const file of files) {
       const entryPath = `${VOICE_ROOT}/${voiceId}/${file}`;
