@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, normalize, sep } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { VOICE_PACK_PROVENANCE_FILE } from "./voice-pack-constants.js";
 import { downloadVoicePack } from "./voice-pack-download.js";
 import {
   createVoicePackStorage,
@@ -12,7 +13,6 @@ import {
   VOICE_PACK_LOCK_MAX_WAIT_MS,
   VOICE_PACK_LOCK_POLL_MS,
   VOICE_PACK_LOCK_STALE_MS,
-  VOICE_PACK_PROVENANCE_FILE,
   VOICE_PACK_TMP_DIR,
   VOICE_PACK_TRASH_DIR,
   type VoicePackLock,
