@@ -1,6 +1,7 @@
 import { join } from "node:path";
 
 import { parseVoicePackManifest } from "./voice-pack-manifest.js";
+import { parseVoicePackProvenance } from "./voice-pack-provenance.js";
 
 /**
  * The outcome of reading a pack's manifest.
@@ -83,6 +84,12 @@ export interface ScanVoicePacksResult {
 }
 
 const MANIFEST_FILE = "voice-pack.json";
+
+/**
+ * The installer's provenance record. Read here for exactly one purpose — see
+ * `isBundledSeed` below — and never written by this module.
+ */
+const INSTALL_FILE = ".install.json";
 
 /**
  * A clip the scenario engine can actually reach.
@@ -171,6 +178,34 @@ export function scanVoicePacks({ root, fs, reservedVoices }: ScanVoicePacksOptio
     // claim it twice, duplicate its clips, and list it twice in the settings
     // window. Keyed on `id`, never the label: two entries naming the same voice
     // under different labels are still one voice, and the first wins.
+    // Why the scanner reads the installer's record at all, having managed
+    // without it through stage 1.
+    //
+    // The release that first publishes packs still BUNDLES `default` and also
+    // seeds a copy of it into this directory, so that the next release — the one
+    // that stops bundling audio — needs no network for the entire install base.
+    // For that one release the seeded copy is inert: plugin-root-first
+    // resolution means the bundle still provides every clip, so nothing the
+    // driver hears changes. What DOES change without this branch is that every
+    // start reports the seed as a broken pack, telling the user something is
+    // wrong when nothing is.
+    //
+    // Be precise about what this marker is worth. It is NOT a security
+    // boundary: a sideloaded pack can write the same file, and packs are
+    // deliberately unsigned (a provenance record is displayed, never enforced).
+    // What it gates is a diagnostic MESSAGE, not a capability — a forged marker
+    // buys an attacker the suppression of a line about a pack that still cannot
+    // shadow a single bundled clip. That is the whole exposure, and it is why a
+    // forgeable file is an acceptable instrument for this job and would not be
+    // for any other.
+    //
+    // Keep the exemption exactly this narrow. It requires OUR source value and
+    // a record that names this same pack, so it cannot be widened by accident
+    // into "any pack with an .install.json may claim a bundled voice".
+    const provenanceRead = fs.readTextFile(join(dir, INSTALL_FILE));
+    const provenance = provenanceRead.ok ? parseVoicePackProvenance(provenanceRead.text) : undefined;
+    const isBundledSeed = provenance?.source === "bundled-seed" && provenance.id === manifest.id;
+
     const seen = new Set<string>();
     const declared = manifest.voices.filter((voice) => {
       if (seen.has(voice.id)) {
@@ -188,7 +223,11 @@ export function scanVoicePacks({ root, fs, reservedVoices }: ScanVoicePacksOptio
       seen.add(voice.id);
 
       if (bundledVoices.has(voice.id)) {
-        problems.push({ pack: folder, reason: `voice "${voice.id}" is provided by the plugin's bundled audio` });
+        // Dropped either way — the bundle wins the id, and that is not in
+        // question here. Only whether the user is told something broke.
+        if (!isBundledSeed) {
+          problems.push({ pack: folder, reason: `voice "${voice.id}" is provided by the plugin's bundled audio` });
+        }
 
         return false;
       }

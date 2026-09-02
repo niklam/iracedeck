@@ -7,7 +7,7 @@ const ROOT = "/packs";
 /** A manifest that exists but cannot be opened — locked, EISDIR, permission denied. */
 const UNREADABLE = Symbol("unreadable");
 
-type FakePack = { manifest?: unknown; clips?: string[] };
+type FakePack = { manifest?: unknown; clips?: string[]; install?: unknown };
 
 /** Last path segment, normalised across separators. */
 function folderOf(dir: string): string {
@@ -20,12 +20,17 @@ function fakeFs(tree: Record<string, FakePack>): VoicePackFileSystem {
     readTextFile: (file) => {
       const parts = file.replace(/\\/g, "/").split("/");
       const entry = tree[parts.at(-2) ?? ""];
+      // The scanner reads two files per pack now, so the fake has to tell them
+      // apart. Keying on the folder alone would answer every read with the
+      // manifest, and an `.install.json` test would then assert against the
+      // wrong document while appearing to pass.
+      const wanted = parts.at(-1) === ".install.json" ? entry?.install : entry?.manifest;
 
-      if (!entry || entry.manifest === undefined) return { ok: false, missing: true, reason: "ENOENT" };
+      if (!entry || wanted === undefined) return { ok: false, missing: true, reason: "ENOENT" };
 
-      if (entry.manifest === UNREADABLE) return { ok: false, missing: false, reason: "EBUSY" };
+      if (wanted === UNREADABLE) return { ok: false, missing: false, reason: "EBUSY" };
 
-      return { ok: true, text: typeof entry.manifest === "string" ? entry.manifest : JSON.stringify(entry.manifest) };
+      return { ok: true, text: typeof wanted === "string" ? wanted : JSON.stringify(wanted) };
     },
     listMp3Files: (packDir) => tree[folderOf(packDir)]?.clips ?? [],
   };
@@ -412,5 +417,60 @@ describe("scanVoicePacks", () => {
     });
 
     expect(result.packs[0].author).toBe("Someone");
+  });
+});
+
+describe("scanVoicePacks and the bundled seed (#1100)", () => {
+  const seedRecord = {
+    schema: 1,
+    source: "bundled-seed",
+    id: "default",
+    version: "3.2.0",
+    sha256: "d".repeat(64),
+    installedAt: "2026-09-02T00:00:00.000Z",
+  };
+
+  const bundled = {
+    schema: 1,
+    id: "default",
+    label: "Default",
+    version: "3.2.0",
+    voices: [{ id: "default", label: "Default" }],
+  };
+
+  const scan = (install?: unknown) =>
+    scanVoicePacks({
+      root: ROOT,
+      reservedVoices: ["default"],
+      fs: fakeFs({ default: { manifest: bundled, install, clips: ["voice/default/flags/blue-01.mp3"] } }),
+    });
+
+  it("says nothing about a pack we seeded from the plugin's own bundle", () => {
+    const result = scan(seedRecord);
+
+    // Still dropped — the bundle owns the id, and that was never in question.
+    expect(result.packs).toEqual([]);
+    // The point of the exemption: no report, because nothing is wrong.
+    expect(result.problems).toEqual([]);
+  });
+
+  // The hostile cases, and the reason the exemption is written as narrowly as
+  // it is. Each must keep reporting; if a later change widens the branch into
+  // "any pack with an .install.json may claim a bundled voice", one of these
+  // fails rather than the behaviour quietly going missing.
+  it.each([
+    ["no provenance at all — an ordinary sideloaded pack", undefined],
+    ["a catalog install rather than a seed", { ...seedRecord, source: "catalog", url: "https://example.com/x.zip" }],
+    ["a seed record naming a different pack", { ...seedRecord, id: "luca" }],
+    ["a provenance file that does not parse", "{ not json"],
+    ["a provenance file that cannot be read", UNREADABLE],
+    ["a record with no source at all", { ...seedRecord, source: undefined }],
+  ])("still reports a pack claiming a bundled voice with %s", (_label, install) => {
+    const result = scan(install);
+
+    expect(result.packs).toEqual([]);
+    expect(result.problems).toEqual([
+      { pack: "default", reason: `voice "default" is provided by the plugin's bundled audio` },
+    ]);
   });
 });
