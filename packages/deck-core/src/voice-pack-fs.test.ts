@@ -1,9 +1,9 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createVoicePackFileSystem, VOICE_PACK_MAX_DEPTH } from "./voice-pack-fs.js";
+import { createVoicePackArchiveFileSystem, createVoicePackFileSystem, VOICE_PACK_MAX_DEPTH } from "./voice-pack-fs.js";
 
 const logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 
@@ -90,5 +90,55 @@ describe("createVoicePackFileSystem", () => {
 
   it("returns an empty list for a missing pack directory", () => {
     expect(fs().listMp3Files(join(root, "nope"))).toEqual([]);
+  });
+});
+
+describe("createVoicePackArchiveFileSystem", () => {
+  function archiveFs() {
+    return createVoicePackArchiveFileSystem(logger as never);
+  }
+
+  it("creates a directory and every missing parent, and treats an existing one as success", () => {
+    const dir = join(root, "luca", "voice", "luca", "flags");
+
+    expect(archiveFs().ensureDirectory(dir)).toEqual({ ok: true });
+    expect(archiveFs().ensureDirectory(dir)).toEqual({ ok: true });
+    expect(existsSync(dir)).toBe(true);
+  });
+
+  it("reports a file standing where a directory is needed, by errno only", () => {
+    writeFileSync(join(root, "voice"), "");
+
+    const made = archiveFs().ensureDirectory(join(root, "voice", "luca"));
+
+    expect(made.ok).toBe(false);
+    expect((made as { reason: string }).reason).not.toContain(root);
+    expect(logger.debug).toHaveBeenCalledTimes(1);
+  });
+
+  it("writes a new file's bytes", () => {
+    const file = join(root, "blue-01.mp3");
+
+    expect(archiveFs().writeFile(file, new Uint8Array([1, 2, 3]))).toEqual({ ok: true });
+    expect([...readFileSync(file)]).toEqual([1, 2, 3]);
+  });
+
+  it("refuses to write over anything already at the destination, leaving it as it was", () => {
+    // The `wx` guarantee: a file — or a symlink — planted at the path before
+    // the extractor got there is not followed and not overwritten. A plain
+    // file is the reproducible stand-in for a symlink, which needs a privilege
+    // to create on Windows; `O_EXCL` refuses both the same way.
+    const file = join(root, "planted.json");
+    writeFileSync(file, "planted");
+
+    expect(archiveFs().writeFile(file, new Uint8Array([1]))).toEqual({ ok: false, reason: "EEXIST" });
+    expect(readFileSync(file, "utf-8")).toBe("planted");
+  });
+
+  it("reports a missing parent rather than creating one", () => {
+    expect(archiveFs().writeFile(join(root, "nope", "x.mp3"), new Uint8Array([1]))).toEqual({
+      ok: false,
+      reason: "ENOENT",
+    });
   });
 });

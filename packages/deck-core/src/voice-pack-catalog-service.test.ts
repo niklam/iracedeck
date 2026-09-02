@@ -377,3 +377,46 @@ describe("createVoicePackCatalogService", () => {
     });
   });
 });
+
+describe("createVoicePackCatalogService.entry", () => {
+  it("hands back the full entry, including what an offer withholds", async () => {
+    const svc = service({ fetchImpl: catalogResponse([pack("luca")]) });
+    const entry = await svc.entry("luca");
+
+    // The two fields a page never sees and an install cannot proceed without.
+    expect(entry?.url).toBeDefined();
+    expect(entry?.sha256).toBeDefined();
+  });
+
+  it("answers undefined for a pack the catalog does not list", async () => {
+    const svc = service({ fetchImpl: catalogResponse([pack("luca")]) });
+
+    expect(await svc.entry("vixen")).toBeUndefined();
+  });
+
+  // One cache, so the entry a user pressed Install on and the entry that is
+  // fetched are the same document rather than two reads that could differ.
+  it("shares the cache with get() rather than issuing its own request", async () => {
+    const fetchImpl = catalogResponse([pack("luca")]);
+    const svc = service({ fetchImpl });
+
+    await svc.get();
+    await svc.entry("luca");
+
+    expect(vi.mocked(fetchImpl)).toHaveBeenCalledTimes(1);
+  });
+
+  it("stays silent when the gate is off, so an install cannot become the one path that still fetches", async () => {
+    const fetchImpl = catalogResponse([pack("luca")]);
+    const svc = service({ fetchImpl, isEnabled: () => false });
+
+    expect(await svc.entry("luca")).toBeUndefined();
+    expect(vi.mocked(fetchImpl)).not.toHaveBeenCalled();
+  });
+
+  it("never rejects when the catalog cannot be read", async () => {
+    const svc = service({ fetchImpl: (() => Promise.reject(new Error("offline"))) as unknown as typeof fetch });
+
+    await expect(svc.entry("luca")).resolves.toBeUndefined();
+  });
+});

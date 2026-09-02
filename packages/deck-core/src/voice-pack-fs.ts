@@ -1,7 +1,8 @@
 import type { ILogger } from "@iracedeck/logger";
-import { type Dirent, readdirSync, readFileSync } from "node:fs";
+import { type Dirent, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
+import type { VoicePackArchiveFileSystem } from "./voice-pack-archive.js";
 import type { VoicePackFileSystem } from "./voice-pack-scanner.js";
 
 /**
@@ -96,6 +97,60 @@ export function createVoicePackFileSystem(logger: ILogger): VoicePackFileSystem 
       found.sort();
 
       return found;
+    },
+  };
+}
+
+/**
+ * `node:fs` implementation of the extractor's port (issue #1034, stage 2) —
+ * how every file of a staged pack reaches the disk, whether unpacked from a
+ * downloaded archive or copied from the plugin's own bundle.
+ *
+ * Same contract as the scanner's adapter above: every error is swallowed into
+ * a result, the full message with its path goes to the log at debug, and the
+ * `reason` handed back is the errno alone, because the extractor puts it in a
+ * sentence that is shown in the settings window and rides the deck host's
+ * settings copy.
+ *
+ * `writeFile` opens with `wx` — create, exclusively — rather than `w`. The
+ * extractor writes into a staging directory it was given empty, so any file
+ * already at a destination is something that arrived by another route between
+ * the directory being emptied and this write: a leftover, or a planted
+ * symlink. With `w`, a symlink there would be FOLLOWED and its target
+ * overwritten with archive bytes, which turns an archive-name check that
+ * passed into a write somewhere the name never pointed. `O_EXCL` fails on an
+ * existing path without resolving it (`CREATE_NEW` on Windows, the same
+ * refusal), so the planted link costs the install and nothing else — and
+ * the extractor refuses the whole archive on the first such failure, which is
+ * the right outcome for a staging directory that is not in the state it was
+ * handed over in.
+ */
+export function createVoicePackArchiveFileSystem(logger: ILogger): VoicePackArchiveFileSystem {
+  const failed = (op: string, path: string, err: unknown): { ok: false; reason: string } => {
+    logger.debug(`Voice packs: ${op} "${path}" failed: ${err instanceof Error ? err.message : String(err)}`);
+
+    return { ok: false, reason: (err as NodeJS.ErrnoException | undefined)?.code ?? "unknown error" };
+  };
+
+  return {
+    ensureDirectory(dir) {
+      try {
+        mkdirSync(dir, { recursive: true });
+
+        return { ok: true };
+      } catch (err) {
+        return failed("mkdir", dir, err);
+      }
+    },
+
+    writeFile(file, bytes) {
+      try {
+        writeFileSync(file, bytes, { flag: "wx" });
+
+        return { ok: true };
+      } catch (err) {
+        return failed("write", file, err);
+      }
     },
   };
 }

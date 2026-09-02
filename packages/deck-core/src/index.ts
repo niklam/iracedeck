@@ -247,7 +247,25 @@ export {
   type VoicePackStatus,
 } from "./voice-pack-status.js";
 export { voiceDisplayLabels } from "./voice-labels.js";
-export { createVoicePackFileSystem, VOICE_PACK_MAX_DEPTH } from "./voice-pack-fs.js";
+export { createVoicePackArchiveFileSystem, createVoicePackFileSystem, VOICE_PACK_MAX_DEPTH } from "./voice-pack-fs.js";
+export {
+  type BundledVoicePack,
+  createVoicePackInstaller,
+  createVoicePackInstallerFileSystem,
+  readInstalledVoicePackSha,
+  VOICE_PACK_INSTALL_FAILURE_CODES,
+  VOICE_PACK_MANIFEST_FILE,
+  VOICE_PACK_PROGRESS_INTERVAL_MS,
+  type VoicePackInstallFailureCode,
+  type VoicePackInstaller,
+  type VoicePackInstallerCatalog,
+  type VoicePackInstallerDeps,
+  type VoicePackInstallerFileSystem,
+  type VoicePackInstallOutcome,
+  type VoicePackInstallResult,
+  type VoicePackRemoveResult,
+  type VoicePackSeedResult,
+} from "./voice-pack-installer.js";
 export { createVoicePackService, type VoicePackService, type VoicePackServiceDeps } from "./voice-pack-service.js";
 export {
   type ExtractVoicePackArchiveOptions,

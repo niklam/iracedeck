@@ -74,6 +74,19 @@ export interface VoicePackCatalogServiceDeps {
 export interface VoicePackCatalogService {
   /** The current catalog state. Never rejects. */
   get(): Promise<VoicePackCatalogState>;
+  /**
+   * The full catalog entry for `packId` — including the `url` and `sha256` an
+   * install needs — or `undefined` when the catalog does not list it or could
+   * not be read. Never rejects.
+   *
+   * Separate from `get()` because an offer deliberately carries neither: a
+   * `VoicePackOffer` is what a page renders, and a page has no business holding
+   * a download URL. The installer asks here instead, and asks the SAME cache
+   * `get()` answered from, so the entry a user pressed Install on and the entry
+   * that is fetched are one document. An installer keeping its own copy could
+   * download a version the button never offered.
+   */
+  entry(packId: string): Promise<VoicePackCatalogEntry | undefined>;
 }
 
 export function createVoicePackCatalogService(deps: VoicePackCatalogServiceDeps): VoicePackCatalogService {
@@ -196,6 +209,22 @@ export function createVoicePackCatalogService(deps: VoicePackCatalogServiceDeps)
         logger.debug(String(error));
 
         return { state: "unknown" };
+      }
+    },
+
+    async entry(packId: string): Promise<VoicePackCatalogEntry | undefined> {
+      try {
+        // Gated like `get()`. If the user has turned this feature's network
+        // access off, an install must not become the one path that still talks
+        // to the site.
+        if (!isEnabled()) return undefined;
+
+        return (await fetchEntries())?.find((candidate) => candidate.id === packId);
+      } catch (error: unknown) {
+        logger.warn("Voice pack catalog lookup failed");
+        logger.debug(String(error));
+
+        return undefined;
       }
     },
   };
