@@ -140,7 +140,11 @@ After every refresh the plugin republishes `_raceEngineerVoices` and `_driverNam
 
 ## Catalog
 
-`https://iracedeck.com/voice-packs.json`, generated into `packages/website/public/` by a build script, exactly as `changelog.json` is today.
+`https://iracedeck.com/voice-catalog.json`, generated into `packages/website/public/` by a build script, exactly as `changelog.json` is today.
+
+**The catalog lists iRaceDeck's own packs and nothing else — settled 2026-09-02.** It is not a directory of what exists in the world. There is therefore no submission route, no curation policy, no verification tier and no support obligation to design, and the work that would have gone into those is simply not in scope. A third-party pack reaches a user by **sideload only**: they obtain it from its author, drop it in the packs folder, and the settings UI shows it with a provenance badge saying where it came from. We host nothing on anyone's behalf and endorse nothing.
+
+The name is deliberately **not** `voice-packs.json`: that differs from the per-pack `voice-pack.json` manifest by one character, and the two would be confused in code, in documentation and in support threads, where a reader has to notice a plural to know which file is meant. `voice-catalog.json` cannot be mistaken for the file inside a pack.
 
 ```json
 {
@@ -204,6 +208,14 @@ Staged over two releases:
 - **Release N** still bundles `default` and seeds it by copy. Nobody's engineer disappears, online or offline. The download path ships and is exercised by every additional voice.
 - **Release N+1** drops the bundle. Every upgrading user already has `default` in AppData, so there is nothing to fetch; new installs take the download path, which by then has a proven retry story.
 
+**Where this stands, 2026-09-02.** Implementation is staged separately from the release rollout above, and the two must not be run together in the reader's head — the stage numbers below are ours, the release letters are the user-visible rollout:
+
+- **Stage 1 — shipped**, in the 3.2.0 development line (#1097). The sideload half: packs live outside the plugin folder, are scanned and validated, and appear in the settings window with a Rescan button. No catalog, no download, no install pipeline. The no-window structural guard shipped here too, deliberately early — it is cheap to build alongside the first module that could violate it and expensive to retrofit once several can.
+- **Stage 2 — the work this amendment authorises.** The catalog, the fetch client, the install pipeline, the deterministic build-time packer, and the Install / Update / Remove UI. This **is Release N**: `default` is published to the catalog *and* stays bundled in the distributable, so a user who updates while offline keeps their engineer.
+- **Stage 3 — a later release.** Drop `default` from the distributable. This is Release N+1, and because `default` is a catalog entry like any other rather than a special case, the only thing that changes is the bundled list.
+
+**Vixen is not published in stage 2 — settled 2026-09-02.** It exists as a generated test voice on the `vixen` branch, has not had the radio-filter pass, and publishing it is a separate decision about what iRaceDeck distributes rather than a consequence of the catalog existing. It is not a catalog entry, not a bundled pack, and not a stage-2 deliverable.
+
 The size win lands one release later. What it buys is a migration with no network dependency at the moment the entire install base is exposed to it. Without it, the release that stops bundling audio silently breaks the Race Engineer for every user who happens to be offline when they update.
 
 ## Download while iRacing is running — and the no-window rule
@@ -266,13 +278,13 @@ A sideloaded pack is unsigned and unverified. The UI says where a pack came from
 - **`@iracedeck/audio-assets`** — the deterministic packaging script and the bundled-vs-published list.
 - **`@iracedeck/pi-components`** — the Voices section in `race-engineer-settings.ejs`, plus the components it needs.
 - **All three plugins** — packs root wired into `initializeAudio`; scan, seed, first-run install and refresh in the startup sequence; audio copy step filtered to the bundled set.
-- **`@iracedeck/website`** — `voice-packs.json` generation, a voices page, and a published policy for third-party packs.
+- **`@iracedeck/website`** — `voice-catalog.json` generation and a voices page. The third-party policy is **already published** in the *Third-Party Voice Packs* section of `docs/features/race-engineer-voices.md` and needs nothing further, since the catalog lists only our own packs.
 - **Release process** — a packaging and publishing step, and the two-release rollout above.
 - **Docs and rules** — `audio-assets/CLAUDE.md`, `.claude/rules/race-engineer-callouts.md`, `.claude/rules/settings-window.md` (new commands), `THIRD-PARTY-LICENSES.md` (`fflate`), and the plugin rollup `external` entry.
 - **Changelog** — user-facing in both releases: the voices feature in N, the size reduction in N+1.
 
 ## Open questions
 
-1. **Is `default` also published to the catalog?** It must be, for new installs after release N+1. Confirm it is listed rather than special-cased.
-2. **Licensing policy for third-party packs — settled 2026-09-01.** A third-party pack belongs to its author. It is distributed separately, by them, on their terms, and iRaceDeck has nothing to do with it beyond being able to play it — no hosting, no endorsement, no verification, no support obligation. Published where a user meets the question rather than only here: the *Third-Party Voice Packs* section of `docs/features/race-engineer-voices.md`. This settles the **sideload** half only, which is the half that ships in stage 1; the catalog is a different relationship, since listing a pack is an act of selection and implies consent from its author, and that position is still to be written when the catalog lands.
-3. **Does removing a pack need a confirmation?** Everything else in the settings window applies immediately, but this one deletes 12.5 MB that has to be re-downloaded.
+1. **Is `default` also published to the catalog? — settled 2026-09-02: yes.** It is listed like any other pack rather than special-cased. That is what makes stage 3 a one-line change to the bundled list instead of a new code path, and it is why a new install after the bundle is dropped has something to fetch at all.
+2. **Licensing policy for third-party packs — settled 2026-09-01.** A third-party pack belongs to its author. It is distributed separately, by them, on their terms, and iRaceDeck has nothing to do with it beyond being able to play it — no hosting, no endorsement, no verification, no support obligation. Published where a user meets the question rather than only here: the *Third-Party Voice Packs* section of `docs/features/race-engineer-voices.md`. This settles the **sideload** half, which is the half that shipped in stage 1. The catalog half needed a position of its own because listing a pack is an act of selection that implies its author's consent — and as of 2026-09-02 that question is **moot rather than answered**: the catalog lists only our own packs, so the situation never arises and there is nothing further to write. Note which way round that is. It is not that we decided third-party listings are acceptable under some policy; it is that we decided not to list them, which is why no policy is needed. Reintroducing third-party catalog entries later would reopen this in full.
+3. **Does removing a pack need a confirmation? — still open, and now due.** Everything else in the settings window applies immediately, but this one deletes 12.5 MB that has to be re-downloaded. Stage 2 ships the Remove command, so this wants deciding before that UI is final rather than after.
