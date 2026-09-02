@@ -214,7 +214,33 @@ export {
   type VoicePackFileSystem,
   type VoicePackProblem,
 } from "./voice-pack-scanner.js";
-export { VOICE_LABELS_KEY, VOICE_PACKS_KEY } from "./voice-pack-constants.js";
+export { VOICE_LABELS_KEY, VOICE_PACK_STATUS_KEY, VOICE_PACKS_KEY } from "./voice-pack-constants.js";
+export {
+  isVoicePackOfferable,
+  parseVoicePackCatalog,
+  type VoicePackCatalogEntry,
+  VoicePackCatalogEntrySchema,
+  VoicePackCatalogSchema,
+} from "./voice-pack-catalog.js";
+export {
+  parseVoicePackProvenance,
+  serializeVoicePackProvenance,
+  VOICE_PACK_SOURCES,
+  type VoicePackProvenance,
+  VoicePackProvenanceSchema,
+  type VoicePackSource,
+} from "./voice-pack-provenance.js";
+export {
+  emptyVoicePackStatus,
+  VOICE_PACK_INSTALL_PHASES,
+  VOICE_PACK_OFFER_VERDICTS,
+  type VoicePackCatalogState,
+  type VoicePackInstallPhase,
+  type VoicePackInstallState,
+  type VoicePackOffer,
+  type VoicePackOfferVerdict,
+  type VoicePackStatus,
+} from "./voice-pack-status.js";
 export { voiceDisplayLabels } from "./voice-labels.js";
 export { createVoicePackFileSystem, VOICE_PACK_MAX_DEPTH } from "./voice-pack-fs.js";
 export { createVoicePackService, type VoicePackService, type VoicePackServiceDeps } from "./voice-pack-service.js";

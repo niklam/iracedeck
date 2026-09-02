@@ -46,3 +46,28 @@ export const VOICE_PACKS_KEY = "_voicePacks";
  * which is what every voice rendered as before this key existed.
  */
 export const VOICE_LABELS_KEY = "_voiceLabels";
+
+/**
+ * Passthrough global holding what this run knows about downloadable packs, as
+ * JSON: `{ catalog: …, installs: { "<pack-id>": { phase, … }, … } }`
+ * (issue #1034, stage 2). See `voice-pack-status.ts` for the payload.
+ *
+ * Both halves in one key, for the reason `_voicePacks` above carries its two:
+ * a UI must never be able to render a fresh catalog beside a stale set of
+ * install states, or an install reported against a pack the catalog no longer
+ * lists. They are one observation and they expire together.
+ *
+ * The catalog rides this key rather than an authorized HTTP route of its own —
+ * the shape `/updates/status` uses for the changelog feed — because a Property
+ * Inspector can read a global and cannot reach that route. The changelog pane
+ * exists only in the settings window, so a route cost it nothing; the voice
+ * state has to reach the Race Engineer card AND the warning banner any PI
+ * shows, and a global reaches both with no second auth surface.
+ *
+ * Run-scoped (see `RUN_SCOPED_SETTING_KEYS`). A download that was in flight
+ * when the plugin stopped is not in flight any more, and a failure the user
+ * never saw is not a fact about their installation — persisting either would
+ * put a frozen progress bar or a dead error in front of them on a run where
+ * neither is true.
+ */
+export const VOICE_PACK_STATUS_KEY = "_voicePackStatus";

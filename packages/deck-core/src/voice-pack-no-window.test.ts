@@ -36,15 +36,29 @@ const SRC_DIR = join(process.cwd(), "packages/deck-core/src");
 /** Names that put something on the user's screen, and the module each lives in. */
 const FORBIDDEN: readonly { pattern: RegExp; what: string }[] = [
   { pattern: /\bopenUrl\b/, what: "the deck host's openUrl (opens a browser tab)" },
-  { pattern: /settings-window-launcher/, what: "the settings-window launcher" },
+  { pattern: /settings-window/, what: "the settings window (its controller and launcher both open one)" },
   { pattern: /chromium-browser/, what: "the Chromium app-window launcher" },
   { pattern: /openFolderInExplorer|open-folder/, what: "openFolderInExplorer (opens an Explorer window)" },
   { pattern: /node:child_process|\bspawn\s*\(/, what: "a spawned child process" },
 ];
 
+/**
+ * Every module of this feature, found by name.
+ *
+ * Widened from `voice-pack*` to `voice*` in stage 2. The narrower prefix was a
+ * hole rather than a smaller net: a catalog client named `voice-catalog-client.ts`
+ * — which is what the spec calls that document, so it is the obvious name to
+ * reach for — would have sat outside the glob and been checked by nothing,
+ * while every assertion here went on passing. The guard would have reported
+ * success about a file it had never read.
+ *
+ * The rule the widening buys, and the one a new module owes: **a module of this
+ * feature must be named `voice-*`.** That is the whole enrolment mechanism. A
+ * file named outside it is invisible here, and no assertion below can notice.
+ */
 function voicePackModules(): string[] {
   return readdirSync(SRC_DIR)
-    .filter((name) => name.startsWith("voice-pack") || name.startsWith("voice-packs"))
+    .filter((name) => name.startsWith("voice"))
     .filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts"));
 }
 
@@ -58,6 +72,13 @@ describe("voice-pack modules open no window (#1034)", () => {
     expect(modules).toContain("voice-pack-service.ts");
     expect(modules).toContain("voice-pack-scanner.ts");
     expect(modules).toContain("voice-packs-path.ts");
+    // Named because they are the stage-2 modules that can FAIL — the ones with
+    // a remote server, a disk full, and a hostile archive on the other side,
+    // and therefore the ones a failure branch would most plausibly want to put
+    // a window on. If a rename drops one out of the glob, this says so.
+    expect(modules).toContain("voice-pack-catalog.ts");
+    expect(modules).toContain("voice-pack-provenance.ts");
+    expect(modules).toContain("voice-pack-status.ts");
   });
 
   it.each(voicePackModules())("%s reaches nothing that opens a window", (name) => {
