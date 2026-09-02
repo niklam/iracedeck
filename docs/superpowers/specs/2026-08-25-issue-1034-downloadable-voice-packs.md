@@ -6,7 +6,7 @@
 
 ## Problem
 
-Every Race Engineer voice ships inside every plugin. The built Stream Deck plugin is 78 MB, of which **13 MB is voice audio for the single `default` voice** (33 MB of source clips, reduced by the build-time radio filter and the 16 kHz mono 32 kbps re-encode). Each additional voice adds roughly another 12.5 MB to all three plugin downloads, on all three marketplaces, for every user — including the users who will never switch voices.
+Every Race Engineer voice ships inside every plugin. The built Stream Deck plugin is 78 MB, of which **8.1 MB is voice audio for the single `default` voice** (30 MB of source clips, reduced by the build-time radio filter and the 16 kHz mono 32 kbps re-encode). Each additional voice adds roughly another 8 MB to all three plugin downloads, on all three marketplaces, for every user — including the users who will never switch voices.
 
 That makes shipping a second voice a bad trade today, and a third one worse. It also means a voice can only be updated by shipping a whole plugin release, and a third party cannot publish a voice at all.
 
@@ -14,7 +14,7 @@ That makes shipping a second voice a bad trade today, and a third one worse. It 
 
 - Voices are distributed as **downloadable packs** installed outside the plugin folder, so they survive plugin updates and reinstalls.
 - **Third parties can publish voices** without going through a plugin release.
-- Plugin download size drops by ~12.5 MB, and stays flat as voices are added.
+- Plugin download size drops by ~8 MB, and stays flat as voices are added.
 - A voice pack is **not re-downloaded when its content has not changed**, across any number of plugin releases.
 - Nothing this feature does can ever put a window in front of a live iRacing session.
 
@@ -176,7 +176,7 @@ Two things follow, and the second is a trap:
 
 `minPluginVersion` is compared with `semver`, already a `deck-core` dependency, so a pack needing a newer runtime is listed but not offered.
 
-**Archive hosting is GitHub Releases**, not `packages/website/public/`. A 12.5 MB zip per pack version in the website repo would bloat every Firebase deploy and the git history. The catalog itself stays on iracedeck.com, so the fixed-URL rule still holds: one constant URL the plugin trusts, pointing at release assets.
+**Archive hosting is GitHub Releases**, not `packages/website/public/`. A ~7.9 MB zip per pack version in the website repo would bloat every Firebase deploy and the git history. The catalog itself stays on iracedeck.com, so the fixed-URL rule still holds: one constant URL the plugin trusts, pointing at release assets.
 
 ## Install pipeline
 
@@ -194,7 +194,7 @@ A failure at any step leaves the previously installed pack untouched: nothing is
 
 ### Concurrent installs
 
-Because the packs folder is shared across ecosystems, a user running two plugins can have both attempt the first-run install at once. The atomic swap already makes this safe — both write identical, hash-verified content — but two simultaneous 12.5 MB downloads are waste. A best-effort lock file in `.tmp` (create-exclusive, with a stale timeout) makes the second process wait and then find the work already done. If the lock is unavailable the install proceeds anyway; correctness never depends on it.
+Because the packs folder is shared across ecosystems, a user running two plugins can have both attempt the first-run install at once. The atomic swap already makes this safe — both write identical, hash-verified content — but two simultaneous 7.9 MB downloads are waste. A best-effort lock file in `.tmp` (create-exclusive, with a stale timeout) makes the second process wait and then find the work already done. If the lock is unavailable the install proceeds anyway; correctness never depends on it.
 
 ## Build-time packaging
 
@@ -202,7 +202,7 @@ A new script in `@iracedeck/audio-assets` runs each voice through the **existing
 
 **Packaging must be byte-deterministic** — the same clips in must produce the same archive bytes out. Zip records modification times and entry order, so the packer pins entry order (sorted), normalizes every timestamp to a constant, fixes the compression level, emits no extra fields or platform attributes, and serializes `voice-pack.json` with sorted keys and LF endings.
 
-This is not a nicety: a non-deterministic packer republishes a new hash on every build, and every user re-downloads 12.5 MB for nothing — precisely the problem this design exists to avoid. It gets a test: package twice, compare hashes.
+This is not a nicety: a non-deterministic packer republishes a new hash on every build, and every user re-downloads 7.9 MB for nothing — precisely the problem this design exists to avoid. It gets a test: package twice, compare hashes.
 
 Which voices are bundled versus published is **one list in one place**, and the plugin build's audio copy step filters to the bundled set. That list is the only thing separating "ships with the plugin" from "downloadable".
 
@@ -235,7 +235,7 @@ Progress is therefore **passive only**, in surfaces the user has already chosen 
 
 | Surface | Visible when | Content |
 |---|---|---|
-| `_warnings` banner | a Property Inspector is open | `info`: *"Downloading the Race Engineer voice… 4.2 / 12.5 MB"*; `error` with a retry hint on failure |
+| `_warnings` banner | a Property Inspector is open | `info`: *"Downloading the Race Engineer voice… 4.2 / 7.9 MB"*; `error` with a retry hint on failure |
 | Settings window, Race Engineer card | the user opened it | Full state, per-pack, with Install / Update / Retry |
 | Pit Crew key | always, including mid-race | A "downloading" / "no voice installed" state in the status bar `generatePitCrewSvg` already renders from global state |
 
@@ -294,4 +294,4 @@ A sideloaded pack is unsigned and unverified. The UI says where a pack came from
 
 1. **Is `default` also published to the catalog? — settled 2026-09-02: yes.** It is listed like any other pack rather than special-cased. That is what makes stage 3 a one-line change to the bundled list instead of a new code path, and it is why a new install after the bundle is dropped has something to fetch at all.
 2. **Licensing policy for third-party packs — settled 2026-09-01.** A third-party pack belongs to its author. It is distributed separately, by them, on their terms, and iRaceDeck has nothing to do with it beyond being able to play it — no hosting, no endorsement, no verification, no support obligation. Published where a user meets the question rather than only here: the *Third-Party Voice Packs* section of `docs/features/race-engineer-voices.md`. This settles the **sideload** half, which is the half that shipped in stage 1. The catalog half needed a position of its own because listing a pack is an act of selection that implies its author's consent — and as of 2026-09-02 that question is **moot rather than answered**: the catalog lists only our own packs, so the situation never arises and there is nothing further to write. Note which way round that is. It is not that we decided third-party listings are acceptable under some policy; it is that we decided not to list them, which is why no policy is needed. Reintroducing third-party catalog entries later would reopen this in full.
-3. **Does removing a pack need a confirmation? — still open, and now due.** Everything else in the settings window applies immediately, but this one deletes 12.5 MB that has to be re-downloaded. Stage 2 ships the Remove command, so this wants deciding before that UI is final rather than after.
+3. **Does removing a pack need a confirmation? — still open, and now due.** Everything else in the settings window applies immediately, but this one deletes 7.9 MB that has to be re-downloaded. Stage 2 ships the Remove command, so this wants deciding before that UI is final rather than after.
