@@ -26,6 +26,7 @@ import type { ILogger } from "@iracedeck/logger";
 import { type FileHandle, mkdir, open, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { VOICE_PACK_PROVENANCE_FILE as PROVENANCE_FILE, SHA256_HEX_PATTERN } from "./voice-pack-constants.js";
 import type { VoicePackDownloadSink } from "./voice-pack-download.js";
 import { packId } from "./voice-pack-manifest.js";
 import { serializeVoicePackProvenance, type VoicePackProvenance } from "./voice-pack-provenance.js";
@@ -41,7 +42,7 @@ export const VOICE_PACK_TRASH_DIR = ".trash";
  * inside the directory the moment it appears, so a crash between the two steps
  * cannot leave a verified pack that the next start mistakes for a sideload.
  */
-export const VOICE_PACK_PROVENANCE_FILE = ".install.json";
+export const VOICE_PACK_PROVENANCE_FILE = PROVENANCE_FILE;
 
 /**
  * Lock liveness, in three numbers.
@@ -186,7 +187,7 @@ export interface VoicePackStorage {
  * becomes part of a FILE NAME: a `sha256` argument with a separator in it would
  * otherwise turn `.tmp/<id>.<sha256>.zip` into a path somewhere else.
  */
-const SHA256_HEX = /^[0-9a-f]{64}$/;
+const SHA256_HEX = SHA256_HEX_PATTERN;
 
 /**
  * A `.trash` entry: `<id>.<stamp>`, plus `.removed` when the user asked for it.

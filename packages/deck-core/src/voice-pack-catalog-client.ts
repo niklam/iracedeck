@@ -20,6 +20,7 @@
  * of them identically: the Installed Voices card renders exactly the packs it
  * already knew about, same as if this feature did not exist.
  */
+import { abortAfter } from "./abort-after.js";
 import { parseVoicePackCatalog, type VoicePackCatalogEntry } from "./voice-pack-catalog.js";
 
 /** The artifact the website build publishes (see packages/website/scripts). */
@@ -32,25 +33,6 @@ export const VOICE_PACK_CATALOG_URL = "https://iracedeck.com/voice-catalog.json"
  * Engineer card, which has installed packs to show with or without an answer.
  */
 export const VOICE_PACK_CATALOG_FETCH_TIMEOUT_MS = 5000;
-
-/** An abort signal that fires after `ms`, or undefined where unsupported. */
-function abortAfter(ms: number): AbortSignal | undefined {
-  if (typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function") {
-    return AbortSignal.timeout(ms);
-  }
-
-  // Without this fallback a runtime lacking `AbortSignal.timeout` would run the
-  // request with NO deadline at all — the one thing the timeout above exists to
-  // prevent.
-  if (typeof AbortController !== "undefined") {
-    const controller = new AbortController();
-    setTimeout(() => controller.abort(), ms);
-
-    return controller.signal;
-  }
-
-  return undefined;
-}
 
 /**
  * What one fetch answered.

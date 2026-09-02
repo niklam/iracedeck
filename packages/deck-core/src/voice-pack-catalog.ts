@@ -24,6 +24,7 @@
 import { coerce, gt, valid as semverValid } from "semver";
 import { z } from "zod";
 
+import { SHA256_HEX_MESSAGE, SHA256_HEX_PATTERN } from "./voice-pack-constants.js";
 import { displayLabel, packId, voiceEntry } from "./voice-pack-manifest.js";
 
 const semverString = z.string().refine((value) => semverValid(value) !== null, "must be a valid semver version");
@@ -35,7 +36,7 @@ const semverString = z.string().refine((value) => semverValid(value) !== null, "
  * a digest the installer computes itself, and a comparison between two spellings
  * of the same hash is a bug that only shows up as a spurious re-download.
  */
-const sha256Hex = z.string().regex(/^[0-9a-f]{64}$/, "must be a lowercase hex sha-256 digest");
+const sha256Hex = z.string().regex(SHA256_HEX_PATTERN, SHA256_HEX_MESSAGE);
 
 /**
  * Where the archive lives.

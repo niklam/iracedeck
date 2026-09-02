@@ -1,5 +1,6 @@
 import { join } from "node:path";
 
+import { VOICE_PACK_PROVENANCE_FILE } from "./voice-pack-constants.js";
 import { parseVoicePackManifest } from "./voice-pack-manifest.js";
 import { parseVoicePackProvenance, type VoicePackSource } from "./voice-pack-provenance.js";
 
@@ -101,12 +102,6 @@ export interface ScanVoicePacksResult {
 }
 
 const MANIFEST_FILE = "voice-pack.json";
-
-/**
- * The installer's provenance record. Read here for exactly one purpose — see
- * `isBundledSeed` below — and never written by this module.
- */
-const INSTALL_FILE = ".install.json";
 
 /**
  * A clip the scenario engine can actually reach.
@@ -219,7 +214,7 @@ export function scanVoicePacks({ root, fs, reservedVoices }: ScanVoicePacksOptio
     // Keep the exemption exactly this narrow. It requires OUR source value and
     // a record that names this same pack, so it cannot be widened by accident
     // into "any pack with an .install.json may claim a bundled voice".
-    const provenanceRead = fs.readTextFile(join(dir, INSTALL_FILE));
+    const provenanceRead = fs.readTextFile(join(dir, VOICE_PACK_PROVENANCE_FILE));
     const provenance = provenanceRead.ok ? parseVoicePackProvenance(provenanceRead.text) : undefined;
     const isBundledSeed = provenance?.source === "bundled-seed" && provenance.id === manifest.id;
 

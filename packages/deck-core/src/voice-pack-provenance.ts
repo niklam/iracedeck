@@ -18,6 +18,7 @@
  */
 import { z } from "zod";
 
+import { SHA256_HEX_MESSAGE, SHA256_HEX_PATTERN } from "./voice-pack-constants.js";
 import { packId } from "./voice-pack-manifest.js";
 
 /**
@@ -41,7 +42,7 @@ export const VoicePackProvenanceSchema = z.object({
   source: z.enum(VOICE_PACK_SOURCES),
   id: packId,
   version: z.string().min(1),
-  sha256: z.string().regex(/^[0-9a-f]{64}$/, "must be a lowercase hex sha-256 digest"),
+  sha256: z.string().regex(SHA256_HEX_PATTERN, SHA256_HEX_MESSAGE),
   /** Absent for a bundled seed, which was copied rather than fetched. */
   url: z.string().optional(),
   installedAt: z.string().min(1),

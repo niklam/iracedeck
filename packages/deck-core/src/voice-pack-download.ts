@@ -36,6 +36,8 @@
  */
 import { createHash } from "node:crypto";
 
+import { SHA256_HEX_PATTERN } from "./voice-pack-constants.js";
+
 /**
  * How long this function will wait on the NETWORK for the next byte before
  * giving up — the request itself, then each read of the body.
@@ -178,7 +180,7 @@ export interface DownloadVoicePackOptions {
  * guard is for the caller that bypasses the schema, and it refuses BEFORE the
  * download rather than reporting a spurious mismatch after 12.5 MB.
  */
-const SHA256_HEX = /^[0-9a-f]{64}$/;
+const SHA256_HEX = SHA256_HEX_PATTERN;
 
 /**
  * The cap actually enforced: the caller's, held under the ceiling.
