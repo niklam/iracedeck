@@ -1,9 +1,9 @@
 ---
 title: Race Engineer Voices
-description: How Race Engineer voice packs work, where they are stored, how to install one by hand, and why they survive plugin updates.
+description: How Race Engineer voice packs work, where they are stored, how to download or install one, and why they survive plugin updates.
 ---
 
-The Race Engineer speaks with a **voice pack** — a folder of recorded lines that iRaceDeck plays during a session. iRaceDeck comes with its own, and you can install more.
+The Race Engineer speaks with a **voice pack** — a folder of recorded lines that iRaceDeck plays during a session. iRaceDeck comes with its own, and you can add more — downloaded from iRaceDeck itself, or installed by hand.
 
 Voice packs live **outside the plugin folder**, in your own AppData directory:
 
@@ -21,11 +21,23 @@ Open **iRaceDeck Settings** from any action's Property Inspector, go to the **Ra
 
 Some voices are listed with their pack's name in front, as **Pack: Voice**. That happens when the voice's name alone could be ambiguous — a pack providing more than one voice, or a pack whose own name differs from its voice's. A pack that provides a single voice with a matching name is listed by that name alone. The rule depends only on the pack itself, so installing another pack never renames a voice you have already chosen.
 
-**Installed Voices** just below the dropdown lists every pack iRaceDeck has loaded, with its version. Anything in the folder that iRaceDeck could not load is listed underneath, with the reason — so a pack that is present but silent tells you why without you going looking for it.
+**Installed Voices** just below the dropdown lists every pack iRaceDeck has loaded, with its version and where it came from — downloaded from iRaceDeck's own catalog, or installed by hand. Anything in the folder that iRaceDeck could not load is listed underneath, with the reason — so a pack that is present but silent tells you why without you going looking for it.
+
+## Downloading a Voice Pack
+
+iRaceDeck publishes its own voice packs and can download and install one for you — no folder to find, no archive to extract.
+
+Open **iRaceDeck Settings**, go to the **Race Engineer** section, and look under **Voices**. Alongside the packs you already have, iRaceDeck lists any pack from its own catalog that you don't, each with an **Install** button — or **Update**, once a newer version of a pack you already have has been published. Press it, and iRaceDeck downloads, verifies, and installs the pack for you.
+
+The download can happen **while iRacing is running**, including mid-race — iRaceDeck never opens a window to ask about it or report on it. Progress shows up wherever you're already looking instead: the warning banner on an open action's Property Inspector, the Voices section if Settings happens to be open, and the Pit Crew key, which shows a "downloading" status in place of its usual one. If you're not looking anywhere, the pack is simply there next time you check — the Race Engineer keeps using whatever voice you already had until the new one is ready.
+
+If iRaceDeck can't reach the catalog — no connection, or a bad one — nothing already installed is affected. Every voice you have keeps working exactly as before; iRaceDeck just has nothing new to offer until it can check again.
+
+A downloaded pack is verified against a checksum before it replaces anything, so a corrupted or incomplete download is discarded rather than installed. A pack you no longer want can be removed from the same Voices section.
 
 ## Installing a Voice Pack by Hand
 
-Voice packs are ordinary folders, so you can install one yourself:
+Not every voice pack comes from iRaceDeck's catalog — a pack someone shared with you directly, or one you built yourself, still installs the way voice packs always could. Voice packs are ordinary folders, so you can install one yourself:
 
 1. Open `%LOCALAPPDATA%\iRaceDeck\Race Engineer\Voices\` — paste that path into the File Explorer address bar. Create the folders if they do not exist yet.
 2. Put the pack's folder inside it. The folder must contain a `voice-pack.json` file and the pack's audio.
@@ -53,6 +65,4 @@ Anyone can build a voice pack, and iRaceDeck will load one you install by hand.
 
 **A third-party pack is its author's, not ours.** It is distributed by whoever made it, on their terms; iRaceDeck has nothing to do with it beyond being able to play it. We do not host it, endorse it, verify it, or support it, and installing one is between you and its author — trust it the way you would trust any other file you choose to download. If you make a pack, it stays yours, and it is on you to have the right to distribute the voice in it.
 
-## What Is Coming
-
-Downloading voice packs from inside iRaceDeck — browsing available voices and installing them with one click — is being built and will arrive in a later release. Until then, installing by hand is the way to add a voice.
+There is no submission process for iRaceDeck's own catalog — it lists only the packs we publish ourselves, and a third-party pack reaches you by sideload, never by appearing there.

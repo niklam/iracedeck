@@ -14,3 +14,6 @@ src/data/icon-gallery.json
 
 # Published changelog artifact for the plugin's update check (#1016) — regenerated on every build
 public/changelog.json
+
+# Published voice-pack catalog for the plugin's install flow (#1100) — regenerated on every build
+public/voice-catalog.json

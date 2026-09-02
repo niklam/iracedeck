@@ -5,10 +5,11 @@
   "description": "Documentation website for iRaceDeck Stream Deck plugins",
   "type": "module",
   "scripts": {
-    "dev": "pnpm generate:gallery && pnpm generate:changelog-json && astro dev",
-    "build": "pnpm generate:gallery && pnpm generate:changelog-json && astro build",
+    "dev": "pnpm generate:gallery && pnpm generate:changelog-json && pnpm generate:voice-catalog-json && astro dev",
+    "build": "pnpm generate:gallery && pnpm generate:changelog-json && pnpm generate:voice-catalog-json && astro build",
     "generate:gallery": "tsx scripts/generate-icon-gallery.mts",
     "generate:changelog-json": "node scripts/generate-changelog-json.mjs",
+    "generate:voice-catalog-json": "tsx scripts/generate-voice-catalog-json.mjs",
     "preview": "astro preview",
     "typecheck": "pnpm generate:gallery && astro check",
     "deploy": "pnpm build && firebase deploy --only hosting"
