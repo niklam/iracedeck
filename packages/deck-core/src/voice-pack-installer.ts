@@ -679,6 +679,21 @@ export function createVoicePackInstaller(deps: VoicePackInstallerDeps): VoicePac
     // "cleaning" it, another plugin's overlapping download of the same name.
     // Hashing the read-back is the cheap way to know, and it is what makes the
     // verifying phase a verification.
+    //
+    // BUT NOTE WHAT THIS COSTS, because the module one layer down promises the
+    // opposite. `voice-pack-download.ts` hashes as the stream flows and says so
+    // in its own comment: buffering the whole archive to hash it afterwards
+    // would hold it in memory inside a process that is also rendering keys and
+    // playing audio during a race. This line then reads the entire file into
+    // one buffer and hands that buffer to the extractor, so peak memory during
+    // an install IS the whole archive plus the extractor's per-entry buffers —
+    // bounded by `VOICE_PACK_DOWNLOAD_CEILING_BYTES` (128 MB), not by streaming.
+    //
+    // Harmless at today's ~8 MB pack, which is exactly why it needs writing
+    // down rather than leaving for a reader to infer from the layer below: a
+    // multi-voice pack approaches that ceiling with no code change and no new
+    // review. The fix — hash incrementally over a read stream and give the
+    // extractor a streaming source — is issue #1102.
     setPhase(id, { phase: "verifying", totalBytes: entry.bytes });
     const archive = await fs.readFile(opened.path);
 
