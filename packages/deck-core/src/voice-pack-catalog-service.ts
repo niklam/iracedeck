@@ -37,6 +37,7 @@
  */
 import type { ILogger } from "@iracedeck/logger";
 
+import { resolveVoicePackCatalogUrl } from "./voice-pack-catalog-base.js";
 import { fetchVoicePackCatalog } from "./voice-pack-catalog-client.js";
 import { isVoicePackOfferable, type VoicePackCatalogEntry } from "./voice-pack-catalog.js";
 import type { VoicePackCatalogState, VoicePackOffer, VoicePackOfferVerdict } from "./voice-pack-status.js";
@@ -86,6 +87,16 @@ export interface VoicePackCatalogServiceDeps {
   bundledVoices: readonly string[];
   /** Override the artifact URL. Tests only; never taken from a request. */
   url?: string;
+  /**
+   * The raw `_devBaseUrl` value from the plugin's settings file, if any (#1100).
+   *
+   * Read fresh on every fetch rather than captured once, and INJECTED rather
+   * than read from the settings singleton here — which keeps this module
+   * testable with no settings machinery and agnostic about where the value
+   * lives. Validated by `resolveVoicePackCatalogUrl`; an unusable value falls
+   * back to the published URL with a warning rather than failing the fetch.
+   */
+  getDevBaseUrl?: () => string | undefined;
   /** Injected `fetch`, so tests never touch the network. */
   fetchImpl?: typeof fetch;
   now?: () => number;
@@ -142,6 +153,7 @@ export function createVoicePackCatalogService(deps: VoicePackCatalogServiceDeps)
     getInstalledSha,
     bundledVoices,
     url,
+    getDevBaseUrl,
     fetchImpl,
     now = () => Date.now(),
     successTtlMs = VOICE_PACK_CATALOG_SUCCESS_TTL_MS,
@@ -183,7 +195,10 @@ export function createVoicePackCatalogService(deps: VoicePackCatalogServiceDeps)
         // not touched — so it is offered whenever there is a good catalog
         // behind it, and only then. With nothing cached there is no document
         // for the server to confirm.
-        const result = await fetchVoicePackCatalog({ url, fetchImpl, etag: good?.etag });
+        // A test-supplied `url` still wins; otherwise the override is consulted,
+        // and with nothing set it resolves to the published URL unchanged.
+        const effectiveUrl = url ?? resolveVoicePackCatalogUrl({ base: getDevBaseUrl?.(), logger });
+        const result = await fetchVoicePackCatalog({ url: effectiveUrl, fetchImpl, etag: good?.etag });
 
         if (result.status === "ok") {
           good = { entries: result.entries, etag: result.etag, at: now() };

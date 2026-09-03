@@ -638,3 +638,56 @@ describe("createVoicePackCatalogService.entry", () => {
     await expect(svc.entry("luca")).resolves.toBeUndefined();
   });
 });
+
+describe("createVoicePackCatalogService and the dev base override (#1100)", () => {
+  it("fetches the published URL when no override is set", async () => {
+    const fetchImpl = catalogResponse([pack("luca")]);
+
+    await service({ fetchImpl }).get();
+
+    expect(vi.mocked(fetchImpl).mock.calls[0][0]).toBe("https://iracedeck.com/voice-catalog.json");
+  });
+
+  it("fetches from the override when one is set", async () => {
+    const fetchImpl = catalogResponse([pack("luca")]);
+
+    await service({ fetchImpl, getDevBaseUrl: () => "http://127.0.0.1:8080" }).get();
+
+    expect(vi.mocked(fetchImpl).mock.calls[0][0]).toBe("http://127.0.0.1:8080/voice-catalog.json");
+  });
+
+  it("falls back to the published URL when the override is unusable", async () => {
+    const fetchImpl = catalogResponse([pack("luca")]);
+
+    await service({ fetchImpl, getDevBaseUrl: () => "http://example.com" }).get();
+
+    expect(vi.mocked(fetchImpl).mock.calls[0][0]).toBe("https://iracedeck.com/voice-catalog.json");
+  });
+
+  // Read per fetch, not captured at construction, so editing the settings file
+  // takes effect on the next refresh rather than needing a restart.
+  it("re-reads the override on every fetch", async () => {
+    let base: string | undefined;
+    const fetchImpl = catalogResponse([pack("luca")]);
+    const svc = service({ fetchImpl, getDevBaseUrl: () => base, successTtlMs: 0 });
+
+    await svc.get();
+    base = "http://127.0.0.1:9999";
+    await svc.get();
+
+    expect(vi.mocked(fetchImpl).mock.calls[0][0]).toBe("https://iracedeck.com/voice-catalog.json");
+    expect(vi.mocked(fetchImpl).mock.calls[1][0]).toBe("http://127.0.0.1:9999/voice-catalog.json");
+  });
+
+  // A throwing getter must not take the catalog down with it.
+  it("survives a getter that throws", async () => {
+    const svc = service({
+      fetchImpl: catalogResponse([pack("luca")]),
+      getDevBaseUrl: () => {
+        throw new Error("settings unavailable");
+      },
+    });
+
+    await expect(svc.get()).resolves.toMatchObject({ state: "unknown" });
+  });
+});

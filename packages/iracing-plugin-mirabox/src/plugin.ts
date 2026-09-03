@@ -143,6 +143,7 @@ import {
   resolveActiveDriverName,
   resolveActiveRaceEngineerVoice,
   resolveSettingsStorePath,
+  resolveVoicePackCatalogUrl,
   resolveVoicePacksPath,
   runFirstRunCheck,
   runVersionCheck,
@@ -156,6 +157,7 @@ import {
   validateSetupWarningPatterns,
   VERSION_CHECK_STARTUP_GRACE_MS,
   VOICE_LABELS_KEY,
+  VOICE_PACK_DEV_BASE_URL_KEY,
   VOICE_PACK_STATUS_KEY,
   VOICE_PACKS_KEY,
   voiceDisplayLabels,
@@ -515,6 +517,17 @@ const voicePackCatalog = createVoicePackCatalogService({
   // whether pressing it downloads anything; two implementations would
   // eventually disagree silently.
   getInstalledSha: (id) => readInstalledVoicePackSha(voicePackFs, voicePackStorage.packDir(id), id),
+  // The development override (#1100), read fresh on every fetch so editing the
+  // settings file takes effect on the next refresh rather than needing a
+  // restart. Absent on every ordinary installation, and when absent the URL is
+  // byte-identical to the published constant. The value is validated where it
+  // is used, never in the schema — a malformed one must cost this feature
+  // alone rather than stalling the whole settings parse.
+  getDevBaseUrl: () => {
+    const raw = (getGlobalSettings() as Record<string, unknown>)[VOICE_PACK_DEV_BASE_URL_KEY];
+
+    return typeof raw === "string" ? raw : undefined;
+  },
   // The voices this build ships — the same list the scanner reserves. A
   // catalog entry whose voices are all in it is reported installed, never
   // offered: the bundle provides every one of its clips whatever is in the
@@ -1269,6 +1282,22 @@ onGlobalSettingsChange((settings) => {
     // Every step is written never to reject; the catch is the last line of
     // that promise, and logs rather than lets Node see an unobserved
     // rejection on the startup path.
+    // An override must never be silently active (#1100). WARN rather than info,
+    // and on every start rather than only when it changes, because the person
+    // who needs this line is future-me reading a support log and wondering why
+    // the catalog is not what the site serves. Naming the EFFECTIVE base — the
+    // resolved one, not the raw setting — so a value that was rejected reads as
+    // the published URL here rather than as whatever was typed.
+    {
+      const rawDevBase = (getGlobalSettings() as Record<string, unknown>)[VOICE_PACK_DEV_BASE_URL_KEY];
+
+      if (typeof rawDevBase === "string" && rawDevBase.trim() !== "") {
+        voicePacksLogger.warn(
+          `Voice pack catalog override active: ${resolveVoicePackCatalogUrl({ base: rawDevBase, logger: voicePacksLogger })}`,
+        );
+      }
+    }
+
     void voicePackInstaller
       .sweep()
       .then(() => voicePackInstaller.seed())

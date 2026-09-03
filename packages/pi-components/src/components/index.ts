@@ -83,6 +83,7 @@ export { UPDATE_AVAILABLE_EVENT, UpdateNotice } from "./update-notice.js";
 
 // Deck Device Select - settings-window picker for which Stream Deck a profile switch targets (#992)
 export { DeckDeviceSelect } from "./deck-device-select.js";
+export { DevBaseUrl } from "./dev-base-url.js";
 
 // Shared Poller - one per-page polling interval with page-lifecycle cleanup
 export { createSharedPoller, installSharedPoller, POLL_INTERVAL_MS } from "./poller.js";

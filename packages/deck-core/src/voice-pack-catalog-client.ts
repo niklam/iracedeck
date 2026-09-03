@@ -8,11 +8,18 @@
  * TTLs and turning entries into verdicts. `voice-pack-catalog.ts` owns the
  * document's shape and is imported rather than re-validated here.
  *
- * The URL is a module constant for the reason its sibling's is: the settings
- * window asks the plugin "what packs are available?", it never gets to say
- * where the plugin looks for the answer. Letting a request steer this URL
+ * The URL defaults to a module constant, and a REQUEST can never move it: the
+ * settings window asks the plugin "what packs are available?", it never gets to
+ * say where the plugin looks for the answer. Letting a request steer this URL
  * would turn a read-only status feed into a way to make the plugin's Node
  * process fetch an attacker-chosen address.
+ *
+ * Since #1100 the plugin's own settings FILE can move it, through the
+ * `_devBaseUrl` development override — which is a different thing and crosses
+ * no boundary, because anyone able to write that file can already write the
+ * JavaScript beside it. The rule being protected is about the UI, not the
+ * filesystem, and it is unchanged: no page has a control that reaches this.
+ * `voice-pack-catalog-base.ts` owns the validation and the reasoning.
  *
  * Never throws. A refused connection, a timeout, an HTTP error, a body that is
  * not JSON, and a body of the wrong shape are all the same answer —

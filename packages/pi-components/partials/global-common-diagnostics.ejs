@@ -17,6 +17,8 @@
   <sdpi-textfield setting="_settingsStorePath" global disabled></sdpi-textfield>
 </sdpi-item>
 <div class="ird-supporting-text">Where iRaceDeck stores every setting on this page. Back this file up to keep your configuration.</div>
+<%# Renders nothing unless the catalog override is set (#1100). %>
+<ird-dev-base-url></ird-dev-base-url>
 <% if (locals.settingsWindow) { %>
 <div class="ird-open-settings"><ird-open-folder></ird-open-folder></div>
 <% } %>

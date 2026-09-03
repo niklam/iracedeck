@@ -221,6 +221,12 @@ export {
   VOICE_PACKS_KEY,
 } from "./voice-pack-constants.js";
 export {
+  resolveVoicePackCatalogUrl,
+  VOICE_PACK_CATALOG_DEFAULT_BASE,
+  VOICE_PACK_CATALOG_FILENAME,
+  VOICE_PACK_DEV_BASE_URL_KEY,
+} from "./voice-pack-catalog-base.js";
+export {
   isVoicePackOfferable,
   parseVoicePackCatalog,
   type VoicePackCatalogEntry,
