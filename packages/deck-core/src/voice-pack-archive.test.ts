@@ -862,3 +862,69 @@ describe("createCountingDecoder", () => {
     expect(Counting.compression).toBe(8);
   });
 });
+
+describe("the compression-ratio cap at its own boundaries (#1100)", () => {
+  // Every other ratio test overrides `ratioGraceBytes` to something small, so
+  // none of them exercised the SHIPPED grace. These use the real defaults,
+  // which is where the hole was.
+  const GRACE = VOICE_PACK_ARCHIVE_LIMITS.ratioGraceBytes;
+
+  function zeros(bytes: number): Uint8Array {
+    return new Uint8Array(bytes);
+  }
+
+  function manyEntries(count: number, each: number): Uint8Array {
+    const files: Record<string, Uint8Array> = {};
+
+    for (let i = 0; i < count; i += 1) files[`voice/luca/flags/c${i}.mp3`] = zeros(each);
+
+    return archiveOf(files);
+  }
+
+  // The boundary itself. `produced > grace` left an entry sitting EXACTLY on it
+  // unjudged — and the grace is a round power of two, which is the size an
+  // attacker picks rather than one they stumble onto.
+  it("refuses an entry that produces exactly the grace", async () => {
+    const memory = memoryFs();
+    const result = failure(await extract(manyEntries(1, GRACE), memory));
+
+    expect(result.code).toBe("compression-ratio");
+    expect(memory.files.size).toBe(0);
+  });
+
+  // The per-entry test cannot see an attack spread thinly: entries just under
+  // the grace are each individually unjudged, however many there are. Before
+  // the aggregate cap this archive was ACCEPTED and wrote 24 MiB from 27 KB.
+  it("refuses an archive whose entries each sit just under the grace", async () => {
+    const memory = memoryFs();
+    const archive = manyEntries(24, GRACE);
+    const result = failure(await extract(archive, memory));
+
+    expect(result.code).toBe("compression-ratio");
+    // Bounded by the archive's own size rather than by the flat total cap:
+    // whatever reached the staging directory is a small multiple of what was
+    // downloaded, not half a gigabyte.
+    expect(archive.length * VOICE_PACK_ARCHIVE_LIMITS.maxCompressionRatio).toBeLessThan(
+      VOICE_PACK_ARCHIVE_LIMITS.maxTotalBytes,
+    );
+  });
+
+  // The negative control, and the one that matters most: a cap that refuses
+  // real packs is not a cap, it is an outage. MP3 is already compressed, so a
+  // genuine pack runs at about 1:1 and must be nowhere near this.
+  it("still accepts an archive of incompressible clips", async () => {
+    const files: Record<string, Uint8Array> = { "voice-pack.json": new TextEncoder().encode('{"schema":1}') };
+
+    for (let i = 0; i < 40; i += 1) {
+      const clip = new Uint8Array(60_000);
+
+      for (let j = 0; j < clip.length; j += 1) clip[j] = (Math.imul(j + i, 2_654_435_761) >>> 24) & 0xff;
+
+      files[`voice/luca/flags/c${i}.mp3`] = clip;
+    }
+
+    const result = await extract(archiveOf(files), memoryFs());
+
+    expect(result.ok).toBe(true);
+  });
+});

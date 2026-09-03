@@ -588,11 +588,39 @@ export async function extractVoicePackArchive(
       // and the message that names the attack is the useful one. All three
       // are judged on what came OUT, against what went IN — never on a size
       // a header declared.
-      if (entry.produced > limits.ratioGraceBytes && entry.produced > limits.maxCompressionRatio * entry.compressed) {
+      // `>=`, not `>`. An entry producing EXACTLY the grace was previously never
+      // judged at all — the first arm was false, so the ratio arm never ran —
+      // and the grace is a round power of two, which is precisely the size an
+      // attacker picks.
+      if (entry.produced >= limits.ratioGraceBytes && entry.produced > limits.maxCompressionRatio * entry.compressed) {
         abandon(file, entry);
         fail(
           "compression-ratio",
           `entry ${describeEntry(entry.name)} expands more than ${limits.maxCompressionRatio}:1, which is the signature of a zip bomb`,
+        );
+
+        return;
+      }
+
+      // And the same ratio across the WHOLE archive, because the per-entry test
+      // above cannot see an attack spread thinly. Entries sitting just under the
+      // grace are each individually unjudged however many there are, so the
+      // per-entry cap alone bounds one entry and nothing about the total: a
+      // 27 KB archive of 24 such entries wrote 24 MiB and was ACCEPTED.
+      //
+      // Measured against the archive's own length rather than a sum of
+      // compressed sizes. It is the one number in this whole operation that
+      // cannot be misdeclared — it is the buffer we were handed — and it is
+      // also the honest statement of the attack: how much disk this many bytes
+      // can make us write. A real pack runs about 1:1, MP3 being incompressible.
+      if (
+        state.totalBytes >= limits.ratioGraceBytes &&
+        state.totalBytes > limits.maxCompressionRatio * archive.length
+      ) {
+        abandon(file, entry);
+        fail(
+          "compression-ratio",
+          `the archive expands more than ${limits.maxCompressionRatio}:1 in total, which is the signature of a zip bomb`,
         );
 
         return;
