@@ -151,10 +151,10 @@ export interface VoicePackArchiveLimits {
  */
 export const VOICE_PACK_ARCHIVE_LIMITS: Readonly<VoicePackArchiveLimits> = {
   maxEntries: 20_000,
-  maxTotalBytes: 512 * 1024 * 1024,
-  maxEntryBytes: 16 * 1024 * 1024,
+  maxTotalBytes: 512_000_000,
+  maxEntryBytes: 16_000_000,
   maxCompressionRatio: 100,
-  ratioGraceBytes: 1024 * 1024,
+  ratioGraceBytes: 1_000_000,
 };
 
 /**
@@ -462,12 +462,21 @@ function describeEntry(name: string): string {
   return `"${clipped}"`;
 }
 
+/**
+ * DECIMAL megabytes, matching the browser-side formatter that renders an
+ * offer's size (#1100). These reasons surface on the same settings card as
+ * that number, so a cap reported in mebibytes beside a download size in
+ * megabytes would be two different units under one label in one place.
+ *
+ * The caps above are round decimal values for the same reason: the constant,
+ * the comment describing it, and the string a user reads now all say 16 MB.
+ */
 function formatBytes(bytes: number): string {
   const unit = (value: number, suffix: string) => `${Number(value.toFixed(1))} ${suffix}`;
 
-  if (bytes >= 1024 * 1024) return unit(bytes / (1024 * 1024), "MB");
+  if (bytes >= 1_000_000) return unit(bytes / 1_000_000, "MB");
 
-  if (bytes >= 1024) return unit(bytes / 1024, "KB");
+  if (bytes >= 1000) return unit(bytes / 1000, "KB");
 
   return `${bytes} bytes`;
 }

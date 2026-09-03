@@ -509,8 +509,8 @@ describe("extractVoicePackArchive", () => {
       const memory = memoryFs();
 
       const result = failure(
-        await extract(archiveOf({ "voice/luca/flags/a.mp3": noise(600 * 1024) }), memory, {
-          maxEntryBytes: 512 * 1024,
+        await extract(archiveOf({ "voice/luca/flags/a.mp3": noise(600_000) }), memory, {
+          maxEntryBytes: 512_000,
         }),
       );
 
