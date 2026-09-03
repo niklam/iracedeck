@@ -40,7 +40,7 @@ function offer(overrides: Record<string, unknown> = {}): Record<string, unknown>
     id: "luca",
     label: "Luca",
     version: "1.3.0",
-    bytes: 12_582_912, // 12.0 MB, exactly — avoids float-rounding ambiguity in assertions
+    bytes: 12_000_000, // 12.0 MB exactly (decimal, as the UI formats) — no rounding ambiguity
     verdict: "install",
     ...overrides,
   };
@@ -116,7 +116,7 @@ describe("ird-voice-pack-catalog", () => {
     it("shows the download size next to Install", () => {
       const { el, mock } = mount();
 
-      publish(mock, status({ state: "ok", packs: [offer({ verdict: "install", bytes: 12_582_912 })] }));
+      publish(mock, status({ state: "ok", packs: [offer({ verdict: "install", bytes: 12_000_000 })] }));
 
       expect(el.querySelector(".ird-vpc-size")?.textContent).toBe("12.0 MB");
     });
@@ -176,7 +176,7 @@ describe("ird-voice-pack-catalog", () => {
       );
 
       expect(el.querySelector(".ird-vpc-phase")?.textContent).toContain("Downloading");
-      expect(el.querySelector(".ird-vpc-progress")?.textContent).toBe("4.2 / 12.5 MB");
+      expect(el.querySelector(".ird-vpc-progress")?.textContent).toBe("4.4 / 13.1 MB");
       // No Install button while a download for this pack is already running.
       expect(el.querySelector(".ird-vpc-button")).toBeNull();
     });
@@ -192,7 +192,7 @@ describe("ird-voice-pack-catalog", () => {
         ),
       );
 
-      expect(el.querySelector(".ird-vpc-progress")?.textContent).toBe("195 / 488 KB");
+      expect(el.querySelector(".ird-vpc-progress")?.textContent).toBe("200 / 500 KB");
     });
 
     it.each([

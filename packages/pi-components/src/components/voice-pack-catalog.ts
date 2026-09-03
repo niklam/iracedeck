@@ -191,13 +191,24 @@ function parseStatus(raw: string): VoicePackStatus {
   }
 }
 
-/** A single value, e.g. "12.5 MB" — used for an offer's size before install starts. */
+/**
+ * A single value, e.g. "12.5 MB" — used for an offer's size before install
+ * starts.
+ *
+ * DECIMAL megabytes, not mebibytes. Dividing by 1024 and writing "MB" is the
+ * commoner habit, but this number is a download size, and every other place a
+ * user meets it — the browser that would fetch it, the release page hosting it,
+ * and iRaceDeck's own release notes — quotes downloads in decimal. Being
+ * internally consistent matters more here than matching the habit: the same
+ * archive reading "7.5 MB" here and "about 8 MB" in the changelog is a
+ * discrepancy a reader has no way to resolve.
+ */
 function formatBytes(bytes: number): string {
-  const mb = bytes / (1024 * 1024);
+  const mb = bytes / 1_000_000;
 
   if (mb >= 1) return `${mb.toFixed(1)} MB`;
 
-  const kb = Math.max(1, Math.round(bytes / 1024));
+  const kb = Math.max(1, Math.round(bytes / 1000));
 
   return `${kb} KB`;
 }
@@ -208,8 +219,8 @@ function formatBytes(bytes: number): string {
  * "4200 KB / 12.5 MB" pairing would be technically correct and unreadable).
  */
 function formatProgress(receivedBytes: number, totalBytes: number): string {
-  const useMb = totalBytes >= 1024 * 1024;
-  const divisor = useMb ? 1024 * 1024 : 1024;
+  const useMb = totalBytes >= 1_000_000;
+  const divisor = useMb ? 1_000_000 : 1000;
   const format = (n: number) => (useMb ? (n / divisor).toFixed(1) : String(Math.round(n / divisor)));
 
   return `${format(receivedBytes)} / ${format(totalBytes)} ${useMb ? "MB" : "KB"}`;
