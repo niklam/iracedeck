@@ -327,11 +327,38 @@ describe("ird-voice-pack-list", () => {
 
     // A rescan landing mid-confirmation must not silently disarm: the armed id
     // lives on the element, not in the DOM the render replaces.
-    it("survives a re-render of the same packs", () => {
+    //
+    // The push has to CHANGE the value, or the no-rebuild guard short-circuits
+    // it and this passes without a render ever happening — which is what it did
+    // when it published the identical string twice. So the same packs arrive
+    // alongside a new problem row: a real rebuild, the same pack identity.
+    it("survives a re-render that keeps the armed pack", () => {
       publish(PACKS);
       removeButtons()[0]?.click();
-      publish(PACKS);
+      publish(
+        scan(
+          [
+            {
+              id: "luca",
+              label: "Luca",
+              version: "1.2.0",
+              voices: [{ id: "luca", label: "Luca" }],
+              provenance: "catalog",
+            },
+            {
+              id: "nina",
+              label: "Nina",
+              version: "2.0.1",
+              voices: [{ id: "nina", label: "Nina" }],
+              provenance: "sideload",
+            },
+          ],
+          [{ pack: "vera", reason: "no voice-pack.json" }],
+        ),
+      );
 
+      // The rebuild really happened: the problem row is new DOM.
+      expect(el.querySelectorAll(".ird-vp-problem")).toHaveLength(1);
       expect(removeButtons()[0]?.textContent).toBe("Remove — are you sure?");
     });
 
@@ -344,6 +371,37 @@ describe("ird-voice-pack-list", () => {
       publish(PACKS);
 
       expect(removeButtons()[0]?.textContent).toBe("Remove");
+    });
+
+    // Presence of the id is not identity. A pack folder's manifest can be
+    // edited in place — same id, new version and label — and the row the user
+    // then reads as a different pack must not inherit an arm they gave to what
+    // was there before, or their next press removes it as a "first" press.
+    it("disarms when the same id comes back as a different pack", () => {
+      publish(PACKS);
+      removeButtons()[0]?.click();
+      publish(
+        scan([
+          { id: "luca", label: "Luca Reworked", version: "2.0.0", voices: [{ id: "luca", label: "Luca" }] },
+          { id: "vixen", label: "Vixen", version: "1.0.0", voices: [{ id: "vixen", label: "Vixen" }] },
+        ]),
+      );
+
+      expect(removeButtons()[0]?.textContent).toBe("Remove");
+    });
+
+    // sdpi's useGlobalSettings is not keyed — it re-invokes every callback on
+    // every push — so an unrelated key updating once a second during a download
+    // would otherwise rebuild these rows continuously. Asserted on node
+    // IDENTITY, because "it still says Remove" would pass either way.
+    it("does not rebuild the rows for a push that did not change this key", () => {
+      publish(PACKS);
+
+      const before = removeButtons()[0];
+
+      publish(PACKS);
+
+      expect(removeButtons()[0]).toBe(before);
     });
 
     it("does not write settings itself — the row disappears only on the next _voicePacks push", () => {

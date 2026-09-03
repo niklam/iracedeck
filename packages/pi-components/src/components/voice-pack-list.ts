@@ -187,6 +187,22 @@ export class VoicePackList extends HTMLElement {
   private armedTimer: number | null = null;
   /** The last scan rendered, so a disarm can redraw without waiting for a push. */
   private lastScan: VoicePackScan = EMPTY_SCAN;
+  /** The raw setting string last rendered, to ignore a push that did not change it. */
+  private lastValue: string | null = null;
+  /**
+   * The armed pack's identity when it was armed — id, version and label.
+   *
+   * Presence of the id alone is not enough. The pack at a given id is the
+   * FOLDER at that name, and its manifest can be edited in place: same id, new
+   * version, new label. The armed state would then carry over onto a row the
+   * user is reading as a different pack, and their next press — which they
+   * would take for a first press — removes it.
+   *
+   * The 8-second clock already makes that very hard to reach, since changing a
+   * manifest means leaving the window for Explorer. This is defence in depth
+   * behind it, and it makes the guard actually do what its comment claims.
+   */
+  private armedIdentity: string | null = null;
 
   disconnectedCallback(): void {
     this.clearArmedState();
@@ -289,8 +305,10 @@ export class VoicePackList extends HTMLElement {
    *   when the user is not there.
    * - **Arming another pack's Remove**, which follows from `armed` being a
    *   single id rather than a flag per row.
-   * - **A successful removal**, since `render` drops an armed id the scan no
-   *   longer lists.
+   * - **A successful removal**, since `render` drops an armed pack the scan no
+   *   longer lists — or one whose id is still there under a different version
+   *   or label, which is a folder edited in place rather than the pack the arm
+   *   was given to.
    *
    * What deliberately does NOT cancel: blur, and a click elsewhere on the page.
    * The settings window is one long scrolling page a user clicks around in —
@@ -299,9 +317,10 @@ export class VoicePackList extends HTMLElement {
    * lost the press rather than protected it. The clock covers the case an
    * outside-click handler is really reaching for.
    */
-  private armRemove(id: string): void {
+  private armRemove(pack: VoicePackEntry): void {
     this.clearArmedTimer();
-    this.armed = id;
+    this.armed = pack.id;
+    this.armedIdentity = VoicePackList.identityOf(pack);
     this.armedTimer = window.setTimeout(() => {
       this.armedTimer = null;
       this.disarm();
@@ -309,10 +328,22 @@ export class VoicePackList extends HTMLElement {
     this.render(this.lastScan);
   }
 
+  /**
+   * What makes an armed pack the SAME pack on a later scan.
+   *
+   * Id plus the two fields a row displays. A manifest edited in place keeps the
+   * id and changes these, and a row the user reads as different must not
+   * inherit an arm they gave to what was there before.
+   */
+  private static identityOf(pack: VoicePackEntry): string {
+    return JSON.stringify([pack.id, pack.version, pack.label]);
+  }
+
   /** Forget the armed pack and stop its clock. Draws nothing. */
   private clearArmedState(): void {
     this.clearArmedTimer();
     this.armed = null;
+    this.armedIdentity = null;
   }
 
   /**
@@ -347,6 +378,20 @@ export class VoicePackList extends HTMLElement {
     const packsKey = this.getAttribute("packs") ?? DEFAULT_PACKS_SETTING;
 
     window.SDPIComponents.useGlobalSettings(packsKey, (value: string) => {
+      // sdpi's `useGlobalSettings` is NOT keyed: its `use()` subscribes to the
+      // raw `didReceiveGlobalSettings` event and re-invokes every registered
+      // callback with its key's current value on EVERY push, with no diff.
+      // Verified in the vendored bundle rather than assumed — an earlier
+      // comment of mine claimed the opposite.
+      //
+      // So a `_voicePackStatus` push, which lands about once a second for the
+      // whole of a download, would otherwise tear down and rebuild every row
+      // here — including an armed Remove button, whose element identity a
+      // keyboard user's focus depends on, and a click landing across the
+      // rebuild would be swallowed. Nothing about this list changed.
+      if (value === this.lastValue) return;
+
+      this.lastValue = value;
       this.render(value ? parseScan(value) : EMPTY_SCAN);
     });
   }
@@ -368,7 +413,12 @@ export class VoicePackList extends HTMLElement {
     // A pack that is gone cannot be armed. Without this, a removal that
     // succeeded elsewhere — or a pack deleted by hand — would leave the id
     // armed, and the next pack to take that id would render pre-confirmed.
-    if (this.armed !== null && !scan.packs.some((pack) => pack.id === this.armed)) this.clearArmedState();
+    if (
+      this.armed !== null &&
+      !scan.packs.some((pack) => pack.id === this.armed && VoicePackList.identityOf(pack) === this.armedIdentity)
+    ) {
+      this.clearArmedState();
+    }
 
     this.list.textContent = "";
 
@@ -419,7 +469,7 @@ export class VoicePackList extends HTMLElement {
           return;
         }
 
-        this.armRemove(entry.id);
+        this.armRemove(entry);
       });
 
       row.appendChild(label);
