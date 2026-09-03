@@ -189,67 +189,86 @@ export function createVoicePackCatalogService(deps: VoicePackCatalogServiceDeps)
   async function fetchCatalog(bypassTtl: boolean): Promise<CachedCatalog | undefined> {
     if (!bypassTtl && lastAttempt !== undefined && isFresh(lastAttempt)) return good;
 
-    inFlight ??= (async () => {
-      try {
-        // The ETag vouches for `good.entries`, which a failure since then has
-        // not touched — so it is offered whenever there is a good catalog
-        // behind it, and only then. With nothing cached there is no document
-        // for the server to confirm.
-        // A test-supplied `url` still wins; otherwise the override is consulted,
-        // and with nothing set it resolves to the published URL unchanged.
-        const effectiveUrl = url ?? resolveVoicePackCatalogUrl({ base: getDevBaseUrl?.(), logger });
-        const result = await fetchVoicePackCatalog({ url: effectiveUrl, fetchImpl, etag: good?.etag });
+    if (inFlight === undefined) {
+      const attempt = (async () => {
+        try {
+          // The ETag vouches for `good.entries`, which a failure since then has
+          // not touched — so it is offered whenever there is a good catalog
+          // behind it, and only then. With nothing cached there is no document
+          // for the server to confirm.
+          // A test-supplied `url` still wins; otherwise the override is consulted,
+          // and with nothing set it resolves to the published URL unchanged.
+          const effectiveUrl = url ?? resolveVoicePackCatalogUrl({ base: getDevBaseUrl?.(), logger });
+          const result = await fetchVoicePackCatalog({ url: effectiveUrl, fetchImpl, etag: good?.etag });
 
-        if (result.status === "ok") {
-          good = { entries: result.entries, etag: result.etag, at: now() };
-          lastAttempt = { at: good.at, ok: true };
-          logger.debug(`Voice pack catalog fetched ${result.entries.length} packs`);
+          if (result.status === "ok") {
+            good = { entries: result.entries, etag: result.etag, at: now() };
+            lastAttempt = { at: good.at, ok: true };
+            logger.debug(`Voice pack catalog fetched ${result.entries.length} packs`);
 
-          return good;
-        }
-
-        if (result.status === "not-modified") {
-          // A 304 answers "the document behind the ETag you sent is
-          // unchanged" — but this branch only runs when THIS process sent one
-          // (see the guard above), and that only happens with a good catalog
-          // cached. If `good` is somehow still undefined here, the 304 is
-          // validating an ETag this run never actually offered — a stale
-          // value surviving past a cache eviction, a caching proxy guessing,
-          // or a bug — and there is no document behind it this call can
-          // serve. Reporting `state: "ok"` in that situation would be
-          // presenting entries this call never received, so it is treated as
-          // a failure instead: honest, and self-correcting on the next
-          // unconditional fetch a plain failure schedules.
-          if (good === undefined) {
-            logger.warn("Voice pack catalog: server answered 304 with nothing cached to reuse");
-
-            return failed();
+            return good;
           }
 
-          // The whole point of the ETag round trip: keep the entries exactly
-          // as they were and only refresh the timestamp, with no re-parse and
-          // no second validation of a body that was never sent.
-          good = { entries: good.entries, etag: good.etag, at: now() };
-          lastAttempt = { at: good.at, ok: true };
+          if (result.status === "not-modified") {
+            // A 304 answers "the document behind the ETag you sent is
+            // unchanged" — but this branch only runs when THIS process sent one
+            // (see the guard above), and that only happens with a good catalog
+            // cached. If `good` is somehow still undefined here, the 304 is
+            // validating an ETag this run never actually offered — a stale
+            // value surviving past a cache eviction, a caching proxy guessing,
+            // or a bug — and there is no document behind it this call can
+            // serve. Reporting `state: "ok"` in that situation would be
+            // presenting entries this call never received, so it is treated as
+            // a failure instead: honest, and self-correcting on the next
+            // unconditional fetch a plain failure schedules.
+            if (good === undefined) {
+              logger.warn("Voice pack catalog: server answered 304 with nothing cached to reuse");
 
-          return good;
+              return failed();
+            }
+
+            // The whole point of the ETag round trip: keep the entries exactly
+            // as they were and only refresh the timestamp, with no re-parse and
+            // no second validation of a body that was never sent.
+            good = { entries: good.entries, etag: good.etag, at: now() };
+            lastAttempt = { at: good.at, ok: true };
+
+            return good;
+          }
+
+          logger.info(
+            good === undefined
+              ? "Voice pack catalog could not be reached"
+              : "Voice pack catalog could not be reached; keeping the last one fetched",
+          );
+
+          return failed();
+        } catch {
+          // fetchVoicePackCatalog is written not to throw; if it ever does,
+          // that is a failed check like any other, cached as one.
+          return failed();
         }
+      })();
 
-        logger.info(
-          good === undefined
-            ? "Voice pack catalog could not be reached"
-            : "Voice pack catalog could not be reached; keeping the last one fetched",
-        );
+      // Cleared through `.finally` on the ASSIGNED promise, never in a
+      // `finally` inside the async function itself. An async IIFE runs
+      // synchronously up to its first `await`, so a delegate that throws
+      // synchronously — `getDevBaseUrl` reading a settings singleton, say —
+      // reaches the inner `catch` and its `finally` BEFORE `inFlight` has been
+      // assigned at all. The clear then ran against the old value and the
+      // assignment immediately put the settled promise back, stranding it for
+      // the life of the process: exactly the failure the clear exists to
+      // prevent, reintroduced by evaluation order. A `.finally` callback is
+      // always a microtask, so it cannot run before the assignment below.
+      //
+      // The identity check keeps a slow attempt from clearing a newer one that
+      // replaced it.
+      const tracked: Promise<CachedCatalog | undefined> = attempt.finally(() => {
+        if (inFlight === tracked) inFlight = undefined;
+      });
 
-        return failed();
-      } catch {
-        // fetchVoicePackCatalog is written not to throw; if it ever does, that
-        // is a failed check like any other, cached as one.
-        return failed();
-      } finally {
-        inFlight = undefined;
-      }
-    })();
+      inFlight = tracked;
+    }
 
     return inFlight;
   }

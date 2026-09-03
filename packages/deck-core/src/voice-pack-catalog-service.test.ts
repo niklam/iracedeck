@@ -664,8 +664,10 @@ describe("createVoicePackCatalogService and the dev base override (#1100)", () =
     expect(vi.mocked(fetchImpl).mock.calls[0][0]).toBe("https://iracedeck.com/voice-catalog.json");
   });
 
-  // Read per fetch, not captured at construction, so editing the settings file
-  // takes effect on the next refresh rather than needing a restart.
+  // Read per fetch, not captured at construction, so there is no second copy
+  // of the value to go stale. That is a shape rather than a live reload: the
+  // settings file is read once at startup and no page writes this key, so a
+  // hand edit needs a plugin restart before anything sees it.
   it("re-reads the override on every fetch", async () => {
     let base: string | undefined;
     const fetchImpl = catalogResponse([pack("luca")]);
@@ -679,15 +681,35 @@ describe("createVoicePackCatalogService and the dev base override (#1100)", () =
     expect(vi.mocked(fetchImpl).mock.calls[1][0]).toBe("http://127.0.0.1:9999/voice-catalog.json");
   });
 
-  // A throwing getter must not take the catalog down with it.
-  it("survives a getter that throws", async () => {
+  // A throwing getter must not take the catalog down with it, and must not
+  // strand `inFlight` — which one call cannot show. Delete the `finally` that
+  // clears it and the SECOND get() below awaits a promise that already
+  // rejected, so that call is what makes the first assertion worth anything.
+  //
+  // `failureTtlMs: 0` is load-bearing, and documents a real behaviour: a
+  // throwing getter routes through the same `failed()` path a network fault
+  // does, so at the production TTL the second call would be suppressed for
+  // five minutes and prove nothing about `inFlight`. Worth knowing that a
+  // purely LOCAL fault costs a remote back-off.
+  it("survives a getter that throws, and still fetches once it recovers", async () => {
+    let broken = true;
+    const fetchImpl = catalogResponse([pack("luca")]);
     const svc = service({
-      fetchImpl: catalogResponse([pack("luca")]),
+      fetchImpl,
+      failureTtlMs: 0,
       getDevBaseUrl: () => {
-        throw new Error("settings unavailable");
+        if (broken) throw new Error("settings unavailable");
+
+        return undefined;
       },
     });
 
     await expect(svc.get()).resolves.toMatchObject({ state: "unknown" });
+    expect(fetchImpl).not.toHaveBeenCalled();
+
+    broken = false;
+
+    await expect(svc.get()).resolves.toMatchObject({ state: "ok" });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 });
