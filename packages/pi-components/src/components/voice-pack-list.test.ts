@@ -2,7 +2,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Import the module to trigger custom element registration
-import "./voice-pack-list.js";
+import { VOICE_PACK_REMOVE_ARM_MS } from "./voice-pack-list.js";
 
 type SettingsCallback = (value: string) => void;
 
@@ -271,20 +271,85 @@ describe("ird-voice-pack-list", () => {
       expect(el.querySelectorAll(".ird-vp-remove-button")).toHaveLength(2);
     });
 
-    it("sends voicePackRemove with the pack's id, immediately, on click — no confirmation step", () => {
+    const removeButtons = () => el.querySelectorAll<HTMLButtonElement>(".ird-vp-remove-button");
+
+    it("arms on the first press and sends nothing", () => {
       publish(PACKS);
+      removeButtons()[0]?.click();
 
-      const buttons = el.querySelectorAll<HTMLButtonElement>(".ird-vp-remove-button");
+      expect(mock.send).not.toHaveBeenCalled();
+      expect(removeButtons()[0]?.textContent).toBe("Remove — are you sure?");
+      // Only the pressed row arms; its neighbour is untouched.
+      expect(removeButtons()[1]?.textContent).toBe("Remove");
+    });
 
-      buttons[0]?.click();
+    it("sends voicePackRemove on the second press", () => {
+      publish(PACKS);
+      removeButtons()[0]?.click();
+      removeButtons()[0]?.click();
 
       expect(mock.send).toHaveBeenCalledWith("sendToPlugin", { event: "voicePackRemove", id: "luca" });
       expect(mock.send).toHaveBeenCalledTimes(1);
     });
 
+    // The cancel that fires when the user is not there, which is the only one
+    // that addresses the hazard a confirmation exists for: a button left armed
+    // is one somebody comes back to and presses without reading.
+    it("disarms itself after the arming window", () => {
+      vi.useFakeTimers();
+
+      try {
+        publish(PACKS);
+        removeButtons()[0]?.click();
+        vi.advanceTimersByTime(VOICE_PACK_REMOVE_ARM_MS);
+
+        expect(removeButtons()[0]?.textContent).toBe("Remove");
+
+        // And the press that follows re-arms rather than removing.
+        removeButtons()[0]?.click();
+
+        expect(mock.send).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    // Falls out of `armed` being a single id rather than a flag per row.
+    it("arming another pack disarms the first", () => {
+      publish(PACKS);
+      removeButtons()[0]?.click();
+      removeButtons()[1]?.click();
+
+      expect(removeButtons()[0]?.textContent).toBe("Remove");
+      expect(removeButtons()[1]?.textContent).toBe("Remove — are you sure?");
+      expect(mock.send).not.toHaveBeenCalled();
+    });
+
+    // A rescan landing mid-confirmation must not silently disarm: the armed id
+    // lives on the element, not in the DOM the render replaces.
+    it("survives a re-render of the same packs", () => {
+      publish(PACKS);
+      removeButtons()[0]?.click();
+      publish(PACKS);
+
+      expect(removeButtons()[0]?.textContent).toBe("Remove — are you sure?");
+    });
+
+    // But a pack that has gone cannot stay armed, or the next pack to take that
+    // id would render pre-confirmed.
+    it("drops the armed state when the pack leaves the scan", () => {
+      publish(PACKS);
+      removeButtons()[0]?.click();
+      publish(scan([{ id: "vixen", label: "Vixen", version: "2.0.0", voices: [{ id: "vixen", label: "Vixen" }] }]));
+      publish(PACKS);
+
+      expect(removeButtons()[0]?.textContent).toBe("Remove");
+    });
+
     it("does not write settings itself — the row disappears only on the next _voicePacks push", () => {
       publish(PACKS);
-      el.querySelectorAll<HTMLButtonElement>(".ird-vp-remove-button")[0]?.click();
+      removeButtons()[0]?.click();
+      removeButtons()[0]?.click();
 
       // Removal is a command, not a local mutation: the row is still here
       // until the plugin republishes _voicePacks after actually removing it.

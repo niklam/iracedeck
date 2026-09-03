@@ -38,11 +38,19 @@
  * otherwise-valid pack, and a scanner hiccup on that one field must not hide a
  * voice the user can actually play.
  *
- * REMOVE. Fires `voicePackRemove` immediately on click, with NO confirmation
- * step. That is a deliberate omission here, not an oversight: whether removal
- * needs a confirmation is an open product decision for whoever specs it, not
- * something this component should invent on its own. If one is wanted later
- * it is layered on top of this click handler.
+ * REMOVE is a two-step: the first press arms the button, which relabels itself
+ * "Remove — are you sure?", and a second press sends `voicePackRemove`.
+ *
+ * A speed bump rather than a ceremony, because the asymmetry is real but
+ * modest: removing costs a re-download of a pack that is reproducible from the
+ * catalog, not user data that cannot be recovered. It is inline rather than a
+ * modal for two reasons — a modal here means `window.confirm`, and this feature
+ * deliberately owns no dialog-shaped code at all; and an inline two-step is a
+ * state-driven button, which is the shape `ird-enable-feature` already
+ * establishes and which the rules require these buttons to follow.
+ *
+ * What cancels an armed Remove is spelled out at {@link armRemove}, including
+ * what deliberately does not.
  *
  * Usage:
  * ```html
@@ -152,9 +160,37 @@ function parseScan(raw: string): VoicePackScan {
   }
 }
 
+/**
+ * How long a Remove stays armed before it disarms itself.
+ *
+ * The hazard a confirmation is meant to remove is an accidental press; a
+ * confirmation that stays armed forever reintroduces it in a worse form,
+ * because the second press is the destructive one and a user who walked away
+ * comes back to a button whose label they no longer read. Eight seconds is long
+ * enough to read four words and move a mouse without hurrying, and too short to
+ * survive a phone call.
+ */
+export const VOICE_PACK_REMOVE_ARM_MS = 8000;
+
 export class VoicePackList extends HTMLElement {
   private list: HTMLDivElement | null = null;
   private _initialized = false;
+  /**
+   * The pack id whose Remove is armed, or null.
+   *
+   * ONE id rather than a flag per row, which is what makes "arming another
+   * pack's Remove cancels the first" fall out of the state shape instead of
+   * needing its own handler. Held on the element rather than in the DOM so a
+   * re-render — a rescan landing mid-confirmation — does not silently disarm.
+   */
+  private armed: string | null = null;
+  private armedTimer: number | null = null;
+  /** The last scan rendered, so a disarm can redraw without waiting for a push. */
+  private lastScan: VoicePackScan = EMPTY_SCAN;
+
+  disconnectedCallback(): void {
+    this.clearArmedState();
+  }
 
   connectedCallback(): void {
     if (this._initialized) return;
@@ -215,6 +251,12 @@ export class VoicePackList extends HTMLElement {
         border-color: #e05a5a;
         background: #3a2426;
       }
+      ird-voice-pack-list .ird-vp-remove-button-armed,
+      ird-voice-pack-list .ird-vp-remove-button-armed:hover {
+        color: #ffffff;
+        border-color: #e05a5a;
+        background: #6d2a2e;
+      }
       ird-voice-pack-list .ird-vp-problem {
         display: block;
         padding: 3px 0;
@@ -234,6 +276,69 @@ export class VoicePackList extends HTMLElement {
     this.list = document.createElement("div");
     this.appendChild(this.list);
     this.render(EMPTY_SCAN);
+  }
+
+  /**
+   * Arm `id`, replacing whatever was armed before, and start the disarm clock.
+   *
+   * What cancels, decided explicitly rather than left to whatever the DOM
+   * happens to do:
+   *
+   * - **The clock.** {@link VOICE_PACK_REMOVE_ARM_MS} later it disarms itself.
+   *   This is the one that matters, because it is the only cancel that fires
+   *   when the user is not there.
+   * - **Arming another pack's Remove**, which follows from `armed` being a
+   *   single id rather than a flag per row.
+   * - **A successful removal**, since `render` drops an armed id the scan no
+   *   longer lists.
+   *
+   * What deliberately does NOT cancel: blur, and a click elsewhere on the page.
+   * The settings window is one long scrolling page a user clicks around in —
+   * scrolling the card, checking a callout, moving to another tab and back —
+   * and cancelling on any of that would make the confirmation feel like it had
+   * lost the press rather than protected it. The clock covers the case an
+   * outside-click handler is really reaching for.
+   */
+  private armRemove(id: string): void {
+    this.clearArmedTimer();
+    this.armed = id;
+    this.armedTimer = window.setTimeout(() => {
+      this.armedTimer = null;
+      this.disarm();
+    }, VOICE_PACK_REMOVE_ARM_MS);
+    this.render(this.lastScan);
+  }
+
+  /** Forget the armed pack and stop its clock. Draws nothing. */
+  private clearArmedState(): void {
+    this.clearArmedTimer();
+    this.armed = null;
+  }
+
+  /**
+   * Disarm AND redraw — for the clock and the confirming press, which both
+   * happen outside a render.
+   *
+   * `render` deliberately calls {@link clearArmedState} instead. Calling this
+   * from inside a render would re-enter it: harmless, since the second pass
+   * clears the list first, but two full rebuilds for one push and a code path
+   * whose depth depends on its own data.
+   */
+  private disarm(): void {
+    if (this.armed === null) {
+      this.clearArmedTimer();
+
+      return;
+    }
+
+    this.clearArmedState();
+    this.render(this.lastScan);
+  }
+
+  private clearArmedTimer(): void {
+    if (this.armedTimer !== null) window.clearTimeout(this.armedTimer);
+
+    this.armedTimer = null;
   }
 
   private hookSettings(): void {
@@ -257,6 +362,13 @@ export class VoicePackList extends HTMLElement {
    */
   private render(scan: VoicePackScan): void {
     if (!this.list) return;
+
+    this.lastScan = scan;
+
+    // A pack that is gone cannot be armed. Without this, a removal that
+    // succeeded elsewhere — or a pack deleted by hand — would leave the id
+    // armed, and the next pack to take that id would render pre-confirmed.
+    if (this.armed !== null && !scan.packs.some((pack) => pack.id === this.armed)) this.clearArmedState();
 
     this.list.textContent = "";
 
@@ -288,12 +400,27 @@ export class VoicePackList extends HTMLElement {
       version.className = "ird-vp-version";
       version.textContent = entry.version;
 
+      // Two-step, in the state-driven shape `ird-enable-feature` establishes:
+      // the button renders the CURRENT state rather than firing and hoping. A
+      // first press arms it, a second removes. See `armRemove` for what cancels.
+      const armed = this.armed === entry.id;
       const remove = document.createElement("button");
       remove.type = "button";
-      remove.className = "ird-vp-remove-button";
-      remove.textContent = "Remove";
-      // No confirmation — see the module comment for why that is deliberate.
-      remove.addEventListener("click", () => sendToPlugin({ event: "voicePackRemove", id: entry.id }));
+      remove.className = armed ? "ird-vp-remove-button ird-vp-remove-button-armed" : "ird-vp-remove-button";
+      remove.textContent = armed ? "Remove — are you sure?" : "Remove";
+      remove.addEventListener("click", () => {
+        if (this.armed === entry.id) {
+          // State cleared without a redraw: the removal will land a new scan,
+          // and repainting a row that is about to disappear only makes the
+          // button flicker back to "Remove" first.
+          this.clearArmedState();
+          sendToPlugin({ event: "voicePackRemove", id: entry.id });
+
+          return;
+        }
+
+        this.armRemove(entry.id);
+      });
 
       row.appendChild(label);
       row.appendChild(badge);
