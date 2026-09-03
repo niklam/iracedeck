@@ -34,6 +34,7 @@
  * The plugin populates both in ONE write, so the dropdown can never pair one
  * scan's voices with another scan's names.
  */
+import { skipUnchanged } from "./settings-change-filter.js";
 
 let styleInjected = false;
 
@@ -165,43 +166,52 @@ export class VoiceSelect extends HTMLElement {
     const voicesKey = this.getAttribute("voices") ?? DEFAULT_VOICES_SETTING;
     const labelsKey = this.getAttribute("labels") ?? DEFAULT_LABELS_SETTING;
 
-    const [, save] = window.SDPIComponents.useGlobalSettings(settingKey, (value: string) => {
-      const v: unknown = value;
-      this.savedValue = v == null ? "" : String(v);
-      this.applySavedValue();
-    });
+    const [, save] = window.SDPIComponents.useGlobalSettings(
+      settingKey,
+      skipUnchanged((value: string) => {
+        const v: unknown = value;
+        this.savedValue = v == null ? "" : String(v);
+        this.applySavedValue();
+      }),
+    );
     this.saveToStreamDeck = save;
 
-    window.SDPIComponents.useGlobalSettings(voicesKey, (value: string) => {
-      if (!value) return;
+    window.SDPIComponents.useGlobalSettings(
+      voicesKey,
+      skipUnchanged((value: string) => {
+        if (!value) return;
 
-      try {
-        const list: unknown = JSON.parse(value);
+        try {
+          const list: unknown = JSON.parse(value);
 
-        if (!Array.isArray(list)) return;
+          if (!Array.isArray(list)) return;
 
-        this.voices = list.filter((v): v is string => typeof v === "string" && v.length > 0);
+          this.voices = list.filter((v): v is string => typeof v === "string" && v.length > 0);
 
-        this.renderOptions();
-        this.voicesLoaded = true;
-        this.applySavedValue();
-      } catch {
-        // ignore parse errors; dropdown keeps prior options
-      }
-    });
+          this.renderOptions();
+          this.voicesLoaded = true;
+          this.applySavedValue();
+        } catch {
+          // ignore parse errors; dropdown keeps prior options
+        }
+      }),
+    );
 
     // Labels arrive on their own key and may arrive in either order relative to
     // the list — the plugin writes both in one call, but sdpi delivers per key.
     // Re-rendering on each is enough: the option VALUES come from the list, so a
     // label update only retitles what is already there and cannot invent a voice.
-    window.SDPIComponents.useGlobalSettings(labelsKey, (value: string) => {
-      this.labels = parseLabels(value);
+    window.SDPIComponents.useGlobalSettings(
+      labelsKey,
+      skipUnchanged((value: string) => {
+        this.labels = parseLabels(value);
 
-      if (this.voicesLoaded) {
-        this.renderOptions();
-        this.applySavedValue();
-      }
-    });
+        if (this.voicesLoaded) {
+          this.renderOptions();
+          this.applySavedValue();
+        }
+      }),
+    );
   }
 
   private renderOptions(): void {

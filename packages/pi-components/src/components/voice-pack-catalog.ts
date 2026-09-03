@@ -59,6 +59,7 @@
  * ```
  */
 import { sendToPlugin } from "./sdpi-client.js";
+import { skipUnchanged } from "./settings-change-filter.js";
 
 let styleInjected = false;
 
@@ -334,9 +335,12 @@ export class VoicePackCatalog extends HTMLElement {
 
     const statusKey = this.getAttribute("status") ?? DEFAULT_STATUS_SETTING;
 
-    window.SDPIComponents.useGlobalSettings(statusKey, (value: string) => {
-      this.render(value ? parseStatus(value) : EMPTY_STATUS);
-    });
+    window.SDPIComponents.useGlobalSettings(
+      statusKey,
+      skipUnchanged((value: string) => {
+        this.render(value ? parseStatus(value) : EMPTY_STATUS);
+      }),
+    );
   }
 
   private render(status: VoicePackStatus): void {

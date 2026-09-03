@@ -40,6 +40,7 @@
  * option without being re-persisted; the action's press-time resolution keeps
  * the behavior in sync (#753).
  */
+import { skipUnchanged } from "./settings-change-filter.js";
 
 let styleInjected = false;
 
@@ -164,17 +165,23 @@ export class ProfileSelect extends HTMLElement {
     const settingKey = this.getAttribute("setting") ?? DEFAULT_SETTING;
     const profilesKey = this.getAttribute("profiles") ?? DEFAULT_PROFILES_SETTING;
 
-    const [, save] = window.SDPIComponents.useSettings(settingKey, (value: string) => {
-      const v: unknown = value;
-      this.savedValue = v == null ? EMPTY_VALUE : String(v);
-      this.applySavedValue();
-    });
+    const [, save] = window.SDPIComponents.useSettings(
+      settingKey,
+      skipUnchanged((value: string) => {
+        const v: unknown = value;
+        this.savedValue = v == null ? EMPTY_VALUE : String(v);
+        this.applySavedValue();
+      }),
+    );
     this.saveToStreamDeck = save;
 
-    window.SDPIComponents.useSettings(profilesKey, (value: string) => {
-      this.renderOptions(parseProfileEntries(value));
-      this.applySavedValue();
-    });
+    window.SDPIComponents.useSettings(
+      profilesKey,
+      skipUnchanged((value: string) => {
+        this.renderOptions(parseProfileEntries(value));
+        this.applySavedValue();
+      }),
+    );
   }
 
   private renderOptions(entries: ProfileEntry[]): void {

@@ -32,6 +32,7 @@
  *
  * The plugin populates `devices` via `updateGlobalSettings({ [devicesKey]: JSON.stringify(list) })`.
  */
+import { skipUnchanged } from "./settings-change-filter.js";
 
 let styleInjected = false;
 
@@ -127,31 +128,37 @@ export class AudioDeviceSelect extends HTMLElement {
     const settingKey = this.getAttribute("setting") ?? DEFAULT_SETTING;
     const devicesKey = this.getAttribute("devices") ?? DEFAULT_DEVICE_LIST_SETTING;
 
-    const [, save] = window.SDPIComponents.useGlobalSettings(settingKey, (value: string) => {
-      // Runtime may deliver non-string types; normalize to string so the
-      // option-value comparison in applySavedValue is type-safe. Empty
-      // string is the System Default sentinel, not a "missing" marker.
-      const v: unknown = value;
-      this.savedValue = v == null ? SYSTEM_DEFAULT_VALUE : String(v);
-      this.applySavedValue();
-    });
+    const [, save] = window.SDPIComponents.useGlobalSettings(
+      settingKey,
+      skipUnchanged((value: string) => {
+        // Runtime may deliver non-string types; normalize to string so the
+        // option-value comparison in applySavedValue is type-safe. Empty
+        // string is the System Default sentinel, not a "missing" marker.
+        const v: unknown = value;
+        this.savedValue = v == null ? SYSTEM_DEFAULT_VALUE : String(v);
+        this.applySavedValue();
+      }),
+    );
     this.saveToStreamDeck = save;
 
-    window.SDPIComponents.useGlobalSettings(devicesKey, (value: string) => {
-      if (!value) return;
+    window.SDPIComponents.useGlobalSettings(
+      devicesKey,
+      skipUnchanged((value: string) => {
+        if (!value) return;
 
-      try {
-        const devices = JSON.parse(value) as DeviceRecord[];
+        try {
+          const devices = JSON.parse(value) as DeviceRecord[];
 
-        if (!Array.isArray(devices)) return;
+          if (!Array.isArray(devices)) return;
 
-        this.renderOptions(devices);
-        this.devicesLoaded = true;
-        this.applySavedValue();
-      } catch {
-        // ignore parse errors; dropdown keeps its prior options
-      }
-    });
+          this.renderOptions(devices);
+          this.devicesLoaded = true;
+          this.applySavedValue();
+        } catch {
+          // ignore parse errors; dropdown keeps its prior options
+        }
+      }),
+    );
   }
 
   private renderOptions(devices: DeviceRecord[]): void {

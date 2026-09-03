@@ -10,17 +10,29 @@ interface MockSDPIState {
   callbacks: Map<string, SettingsCallback>;
   send: ReturnType<typeof vi.fn>;
   useGlobalSettingsCalls: number;
+  readerCalls: number;
 }
 
 function installMockSDPI(): MockSDPIState {
   const send = vi.fn();
-  const state: MockSDPIState = { callbacks: new Map(), send, useGlobalSettingsCalls: 0 };
+  const state: MockSDPIState = { callbacks: new Map(), send, useGlobalSettingsCalls: 0, readerCalls: 0 };
 
   const useGlobalSettings = (key: string, callback: SettingsCallback): [() => Promise<string>, () => void] => {
     state.callbacks.set(key, callback);
     state.useGlobalSettingsCalls += 1;
 
-    return [async () => "", vi.fn()];
+    // Counted, because subscription count alone would miss the failure this
+    // pins: a component that captures the reader once and calls it from a DOM
+    // handler. That is precisely what broke the settings window for
+    // ird-enable-feature, and it adds no subscription.
+    return [
+      async () => {
+        state.readerCalls += 1;
+
+        return "";
+      },
+      vi.fn(),
+    ];
   };
 
   (window as unknown as Record<string, unknown>).SDPIComponents = {
@@ -81,11 +93,27 @@ describe("ird-voice-pack-list", () => {
     expect(el.textContent).toContain("No voice packs installed");
   });
 
+  // The republish has to CHANGE the value or the shared push filter drops it,
+  // and then one render produces two rows whether or not the list is cleared
+  // first — which is how this test used to pass without testing anything.
   it("replaces rows rather than appending on every republish", () => {
     publish(PACKS);
-    publish(PACKS);
+    publish(
+      scan([
+        { id: "luca", label: "Luca", version: "1.2.0", voices: [{ id: "luca", label: "Luca" }], provenance: "catalog" },
+        {
+          id: "vera",
+          label: "Vera",
+          version: "3.0.0",
+          voices: [{ id: "vera", label: "Vera" }],
+          provenance: "sideload",
+        },
+      ]),
+    );
 
     expect(el.querySelectorAll(".ird-vp-row")).toHaveLength(2);
+    expect(el.textContent).toContain("Vera");
+    expect(el.textContent).not.toContain("Nina");
   });
 
   it("survives malformed JSON without throwing or rendering junk", () => {
@@ -314,6 +342,66 @@ describe("ird-voice-pack-list", () => {
       }
     });
 
+    // Arming used to re-render, which destroyed the button that took the press
+    // and dropped focus to the body — leaving the destructive action with no
+    // keyboard route: Enter armed a button the user was no longer on.
+    it("keeps focus on the button it armed", () => {
+      publish(PACKS);
+
+      const button = removeButtons()[0];
+
+      button?.focus();
+      button?.click();
+
+      expect(document.activeElement).toBe(button);
+      // The very same element, mutated rather than replaced.
+      expect(removeButtons()[0]).toBe(button);
+      expect(button?.getAttribute("aria-pressed")).toBe("true");
+    });
+
+    // A removal that FAILS republishes nothing — the installer writes a warning
+    // banner and the plugin dedupes the pack list at source — so nothing would
+    // ever have corrected the label if the confirming press did not.
+    it("returns the button to rest on the confirming press", () => {
+      publish(PACKS);
+
+      const button = removeButtons()[0];
+
+      button?.click();
+      button?.click();
+
+      expect(button?.textContent).toBe("Remove");
+      expect(button?.getAttribute("aria-pressed")).toBe("false");
+    });
+
+    // Provenance is a cell the row displays, so a folder swapped from a catalog
+    // copy to a hand-placed one at the same id, version and label is a
+    // different pack to the person reading it.
+    it("disarms when only the provenance badge changes", () => {
+      publish(PACKS);
+      removeButtons()[0]?.click();
+      publish(
+        scan([
+          {
+            id: "luca",
+            label: "Luca",
+            version: "1.2.0",
+            voices: [{ id: "luca", label: "Luca" }],
+            provenance: "sideload",
+          },
+          {
+            id: "nina",
+            label: "Nina",
+            version: "2.0.1",
+            voices: [{ id: "nina", label: "Nina" }],
+            provenance: "sideload",
+          },
+        ]),
+      );
+
+      expect(removeButtons()[0]?.textContent).toBe("Remove");
+    });
+
     // Falls out of `armed` being a single id rather than a flag per row.
     it("arming another pack disarms the first", () => {
       publish(PACKS);
@@ -422,12 +510,14 @@ describe("ird-voice-pack-list", () => {
     // trigger a second subscription/read — it only sends a command.
     publish(PACKS);
 
-    const before = mock.useGlobalSettingsCalls;
+    const subscriptionsBefore = mock.useGlobalSettingsCalls;
+    const readsBefore = mock.readerCalls;
 
     el.querySelectorAll<HTMLButtonElement>(".ird-vp-remove-button")[0]?.click();
     document.dispatchEvent(new Event("change", { bubbles: true }));
     document.dispatchEvent(new Event("input", { bubbles: true }));
 
-    expect(mock.useGlobalSettingsCalls).toBe(before);
+    expect(mock.useGlobalSettingsCalls).toBe(subscriptionsBefore);
+    expect(mock.readerCalls).toBe(readsBefore);
   });
 });

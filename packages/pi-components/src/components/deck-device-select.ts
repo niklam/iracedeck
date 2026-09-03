@@ -25,6 +25,7 @@
  * - `devices`: global setting key holding the list (default `_deckDevices`).
  * - `placeholder`: text of the empty option (default `Choose a Stream Deck…`).
  */
+import { skipUnchanged } from "./settings-change-filter.js";
 
 type DeckDevice = { id: string; name: string; type?: number };
 
@@ -80,24 +81,27 @@ export class DeckDeviceSelect extends HTMLElement {
 
     const devicesKey = this.getAttribute("devices") ?? DEFAULT_DEVICES_SETTING;
 
-    window.SDPIComponents.useGlobalSettings(devicesKey, (value: string) => {
-      if (!value) return;
+    window.SDPIComponents.useGlobalSettings(
+      devicesKey,
+      skipUnchanged((value: string) => {
+        if (!value) return;
 
-      try {
-        const parsed: unknown = JSON.parse(value);
+        try {
+          const parsed: unknown = JSON.parse(value);
 
-        if (!Array.isArray(parsed)) return;
+          if (!Array.isArray(parsed)) return;
 
-        this.renderOptions(
-          parsed.filter(
-            (d): d is DeckDevice =>
-              d !== null && typeof d === "object" && typeof d.id === "string" && typeof d.name === "string",
-          ),
-        );
-      } catch {
-        // Malformed list: keep whatever is rendered; the picker just stays empty.
-      }
-    });
+          this.renderOptions(
+            parsed.filter(
+              (d): d is DeckDevice =>
+                d !== null && typeof d === "object" && typeof d.id === "string" && typeof d.name === "string",
+            ),
+          );
+        } catch {
+          // Malformed list: keep whatever is rendered; the picker just stays empty.
+        }
+      }),
+    );
   }
 
   private renderOptions(devices: DeckDevice[]): void {

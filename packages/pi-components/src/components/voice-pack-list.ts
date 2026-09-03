@@ -59,6 +59,7 @@
  * ```
  */
 import { sendToPlugin } from "./sdpi-client.js";
+import { skipUnchanged } from "./settings-change-filter.js";
 
 let styleInjected = false;
 
@@ -172,6 +173,10 @@ function parseScan(raw: string): VoicePackScan {
  */
 export const VOICE_PACK_REMOVE_ARM_MS = 8000;
 
+/** The Remove button's two labels. */
+const RESTING_REMOVE_LABEL = "Remove";
+const ARMED_REMOVE_LABEL = "Remove — are you sure?";
+
 export class VoicePackList extends HTMLElement {
   private list: HTMLDivElement | null = null;
   private _initialized = false;
@@ -187,8 +192,6 @@ export class VoicePackList extends HTMLElement {
   private armedTimer: number | null = null;
   /** The last scan rendered, so a disarm can redraw without waiting for a push. */
   private lastScan: VoicePackScan = EMPTY_SCAN;
-  /** The raw setting string last rendered, to ignore a push that did not change it. */
-  private lastValue: string | null = null;
   /**
    * The armed pack's identity when it was armed — id, version and label.
    *
@@ -203,6 +206,18 @@ export class VoicePackList extends HTMLElement {
    * behind it, and it makes the guard actually do what its comment claims.
    */
   private armedIdentity: string | null = null;
+  /**
+   * The armed button element, so arming and disarming MUTATE it rather than
+   * re-rendering the list.
+   *
+   * Re-rendering to show an armed state destroyed the very button that took the
+   * press, dropping focus to the body — which left the two-step with no
+   * keyboard route at all: Enter armed a button the user was no longer on, and
+   * the clock disarmed it before they could tab back. That is the same
+   * focus-loss this component's push filter was added to prevent, in the one
+   * rebuild the filter cannot cover because it is deliberate.
+   */
+  private armedButton: HTMLButtonElement | null = null;
 
   disconnectedCallback(): void {
     this.clearArmedState();
@@ -317,53 +332,71 @@ export class VoicePackList extends HTMLElement {
    * lost the press rather than protected it. The clock covers the case an
    * outside-click handler is really reaching for.
    */
-  private armRemove(pack: VoicePackEntry): void {
-    this.clearArmedTimer();
+  private armRemove(pack: VoicePackEntry, button: HTMLButtonElement): void {
+    this.clearArmedState();
     this.armed = pack.id;
     this.armedIdentity = VoicePackList.identityOf(pack);
+    this.armedButton = button;
+    VoicePackList.dressButton(button, true);
     this.armedTimer = window.setTimeout(() => {
       this.armedTimer = null;
-      this.disarm();
+      this.clearArmedState();
     }, VOICE_PACK_REMOVE_ARM_MS);
-    this.render(this.lastScan);
+  }
+
+  /**
+   * Put a Remove button into its armed or resting appearance.
+   *
+   * `aria-pressed` because the label change is the only signal a sighted user
+   * gets, and without it the state change is announced to nothing.
+   */
+  private static dressButton(button: HTMLButtonElement, armed: boolean): void {
+    button.textContent = armed ? ARMED_REMOVE_LABEL : RESTING_REMOVE_LABEL;
+    button.classList.toggle("ird-vp-remove-button-armed", armed);
+    button.setAttribute("aria-pressed", armed ? "true" : "false");
   }
 
   /**
    * What makes an armed pack the SAME pack on a later scan.
    *
-   * Id plus the two fields a row displays. A manifest edited in place keeps the
-   * id and changes these, and a row the user reads as different must not
-   * inherit an arm they gave to what was there before.
+   * Id plus every pack-derived cell a row displays: label, version and the
+   * provenance badge. A folder replaced at the same id keeps the id and changes
+   * some of these, and a row the user reads as different must not inherit an
+   * arm they gave to what was there before — including the case where only the
+   * badge flips, a catalog copy swapped for a hand-placed one.
+   *
+   * `voices` is excluded because no row renders it; the rule is what the user
+   * can SEE change.
    */
   private static identityOf(pack: VoicePackEntry): string {
-    return JSON.stringify([pack.id, pack.version, pack.label]);
+    return JSON.stringify([pack.id, pack.version, pack.label, pack.provenance]);
   }
 
-  /** Forget the armed pack and stop its clock. Draws nothing. */
+  /**
+   * Forget the armed pack, stop its clock, and put its button back to rest.
+   *
+   * Restores the button IN PLACE rather than re-rendering, which is what lets
+   * every disarm path share one implementation — the clock, the confirming
+   * press, a scan that dropped the pack, and disconnection.
+   *
+   * The confirming press matters most here. It used to clear the state and
+   * deliberately skip a redraw, reasoning that the removal would land a new
+   * scan — which it does not when the removal FAILS: the installer writes a
+   * warning banner and republishes nothing, and the plugin dedupes the pack
+   * list at source, so no push ever corrected the label. The button sat red and
+   * reading "are you sure?" indefinitely with no armed state behind it, and the
+   * next press silently spent the confirmation it appeared to be offering.
+   */
   private clearArmedState(): void {
     this.clearArmedTimer();
     this.armed = null;
     this.armedIdentity = null;
-  }
 
-  /**
-   * Disarm AND redraw — for the clock and the confirming press, which both
-   * happen outside a render.
-   *
-   * `render` deliberately calls {@link clearArmedState} instead. Calling this
-   * from inside a render would re-enter it: harmless, since the second pass
-   * clears the list first, but two full rebuilds for one push and a code path
-   * whose depth depends on its own data.
-   */
-  private disarm(): void {
-    if (this.armed === null) {
-      this.clearArmedTimer();
+    const button = this.armedButton;
 
-      return;
-    }
+    this.armedButton = null;
 
-    this.clearArmedState();
-    this.render(this.lastScan);
+    if (button !== null) VoicePackList.dressButton(button, false);
   }
 
   private clearArmedTimer(): void {
@@ -377,23 +410,18 @@ export class VoicePackList extends HTMLElement {
 
     const packsKey = this.getAttribute("packs") ?? DEFAULT_PACKS_SETTING;
 
-    window.SDPIComponents.useGlobalSettings(packsKey, (value: string) => {
-      // sdpi's `useGlobalSettings` is NOT keyed: its `use()` subscribes to the
-      // raw `didReceiveGlobalSettings` event and re-invokes every registered
-      // callback with its key's current value on EVERY push, with no diff.
-      // Verified in the vendored bundle rather than assumed — an earlier
-      // comment of mine claimed the opposite.
-      //
-      // So a `_voicePackStatus` push, which lands about once a second for the
-      // whole of a download, would otherwise tear down and rebuild every row
-      // here — including an armed Remove button, whose element identity a
-      // keyboard user's focus depends on, and a click landing across the
-      // rebuild would be swallowed. Nothing about this list changed.
-      if (value === this.lastValue) return;
-
-      this.lastValue = value;
-      this.render(value ? parseScan(value) : EMPTY_SCAN);
-    });
+    window.SDPIComponents.useGlobalSettings(
+      packsKey,
+      skipUnchanged((value: string) => {
+        // Repeat pushes are filtered by `skipUnchanged`, not here. This
+        // component had its own guard first, being where the unkeyed
+        // subscription was noticed; it now shares the one every settings-bound
+        // component uses, so there is a single answer rather than a special
+        // case. It matters here because a rebuild replaces the armed button,
+        // and a click landing across one is swallowed.
+        this.render(value ? parseScan(value) : EMPTY_SCAN);
+      }),
+    );
   }
 
   /**
@@ -453,23 +481,31 @@ export class VoicePackList extends HTMLElement {
       // Two-step, in the state-driven shape `ird-enable-feature` establishes:
       // the button renders the CURRENT state rather than firing and hoping. A
       // first press arms it, a second removes. See `armRemove` for what cancels.
-      const armed = this.armed === entry.id;
       const remove = document.createElement("button");
       remove.type = "button";
-      remove.className = armed ? "ird-vp-remove-button ird-vp-remove-button-armed" : "ird-vp-remove-button";
-      remove.textContent = armed ? "Remove — are you sure?" : "Remove";
+      remove.className = "ird-vp-remove-button";
+      VoicePackList.dressButton(remove, false);
+
+      // A genuine scan change can rebuild the list while a confirmation is
+      // open, so the armed pack's NEW button has to be dressed and adopted —
+      // the old element is gone and clearing state through it would be a no-op.
+      if (this.armed === entry.id) {
+        this.armedButton = remove;
+        VoicePackList.dressButton(remove, true);
+      }
+
       remove.addEventListener("click", () => {
         if (this.armed === entry.id) {
-          // State cleared without a redraw: the removal will land a new scan,
-          // and repainting a row that is about to disappear only makes the
-          // button flicker back to "Remove" first.
+          // Resets the button in place on the way out, so a removal that FAILS
+          // leaves it reading "Remove" rather than a red button with no armed
+          // state behind it.
           this.clearArmedState();
           sendToPlugin({ event: "voicePackRemove", id: entry.id });
 
           return;
         }
 
-        this.armRemove(entry);
+        this.armRemove(entry, remove);
       });
 
       row.appendChild(label);
