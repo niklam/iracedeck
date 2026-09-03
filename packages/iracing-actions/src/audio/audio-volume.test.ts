@@ -14,12 +14,15 @@ import {
   stepRaceEngineerVolumeBy,
   stepRadarVolume,
   stepRadarVolumeBy,
+  stopRaceEngineerPlayback,
   VOLUME_MAX,
 } from "./audio-volume.js";
 
 const hoisted = vi.hoisted(() => {
   const setBusVolume = vi.fn();
-  const getAudio = vi.fn(() => ({ setBusVolume }));
+  const stopChannel = vi.fn();
+  const getAudio = vi.fn(() => ({ setBusVolume, stopChannel }));
+  const stopRaceEngineerScenarios = vi.fn();
   const isBackgroundTestInFlight = vi.fn(() => false);
 
   let globalSettings: Record<string, unknown> = {};
@@ -30,6 +33,8 @@ const hoisted = vi.hoisted(() => {
 
   return {
     setBusVolume,
+    stopChannel,
+    stopRaceEngineerScenarios,
     getAudio,
     isBackgroundTestInFlight,
     updateGlobalSettings,
@@ -42,10 +47,12 @@ const hoisted = vi.hoisted(() => {
 
 vi.mock("@iracedeck/audio-scenarios/pit-crew", () => ({
   isBackgroundTestInFlight: hoisted.isBackgroundTestInFlight,
+  stopRaceEngineerScenarios: hoisted.stopRaceEngineerScenarios,
 }));
 
 vi.mock("@iracedeck/audio-service", () => ({
   AudioBus: { Voice: 0, Background: 1, Alerts: 2 },
+  AudioChannel: { Voice: 0 },
   getAudio: hoisted.getAudio,
 }));
 
@@ -287,5 +294,63 @@ describe("audio-volume", () => {
       expect(hoisted.updateGlobalSettings).not.toHaveBeenCalled();
       expect(hoisted.setBusVolume).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("stopRaceEngineerPlayback (#1100)", () => {
+  // Its own reset: this block sits outside the `audio-volume` describe whose
+  // beforeEach clears the mocks, so without this the call counts accumulate
+  // across cases and a "called once" assertion reads whatever ran before it.
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setRaceEngineerTestInFlight(false);
+    setRaceEngineerToggleInFlight(false);
+  });
+
+  // Both bypass flags are released by the same mechanism `stopChannel` severs —
+  // the voice-sequence completion chain — and the scenario engine owns neither,
+  // so stopping playback has to clear both itself. Missing one leaves it true
+  // for the process lifetime, holding the Voice bus open while the master gate
+  // says off. The first version of this function cleared the Test flag and
+  // missed the toggle flag, which is why the test drives both.
+  it.each([
+    ["the Test bypass", () => setRaceEngineerTestInFlight(true)],
+    ["the toggle bypass", () => setRaceEngineerToggleInFlight(true)],
+    [
+      "both at once",
+      () => {
+        setRaceEngineerTestInFlight(true);
+        setRaceEngineerToggleInFlight(true);
+      },
+    ],
+  ])("silences the Voice bus after interrupting %s", (_label, raise) => {
+    hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: false, raceEngineerVolume: 60 });
+    raise();
+
+    stopRaceEngineerPlayback();
+
+    // Asserted on the effect the flags exist to produce: with the engineer off,
+    // a stranded bypass IS a non-zero Voice bus.
+    expect(hoisted.setBusVolume).toHaveBeenCalledWith(0, 0);
+  });
+
+  it("stops the engine and the channel", () => {
+    stopRaceEngineerPlayback();
+
+    expect(hoisted.stopRaceEngineerScenarios).toHaveBeenCalledTimes(1);
+    expect(hoisted.stopChannel).toHaveBeenCalledTimes(1);
+  });
+
+  // The installer wraps this call and swallows a throw, so an exception here
+  // would silently leave the bypass raised and the bus open.
+  it("still clears the bypass when stopping the engine throws", () => {
+    hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: false, raceEngineerVolume: 60 });
+    setRaceEngineerTestInFlight(true);
+    hoisted.stopRaceEngineerScenarios.mockImplementationOnce(() => {
+      throw new Error("engine is wedged");
+    });
+
+    expect(() => stopRaceEngineerPlayback()).toThrow("engine is wedged");
+    expect(hoisted.setBusVolume).toHaveBeenCalledWith(0, 0);
   });
 });

@@ -212,8 +212,23 @@ export function stepRaceEngineerVolume(direction: "up" | "down"): number {
  * the gate says it belongs.
  */
 export function stopRaceEngineerPlayback(): void {
-  stopRaceEngineerScenarios();
-  getAudio().stopChannel(AudioChannel.Voice);
-  setRaceEngineerTestInFlight(false);
-  applyRaceEngineerAudio();
+  try {
+    stopRaceEngineerScenarios();
+    getAudio().stopChannel(AudioChannel.Voice);
+  } finally {
+    // In a `finally` because the clearing is what makes the stop SAFE, and a
+    // throw above would otherwise leave a bypass flag stuck true forever while
+    // the caller's own error handling swallowed the exception.
+    //
+    // BOTH flags, not just the Test one. `playToggleAck` sets
+    // `raceEngineerToggleInFlight` and relies on the same voice-sequence
+    // completion chain that `stopChannel` severs — the scenario engine never
+    // touches it — so interrupting a master-toggle acknowledgement strands it
+    // by the identical mechanism the comment above describes for its twin. The
+    // first version of this function cleared one and missed the other, which is
+    // the whole reason a single function exists instead of three call sites.
+    setRaceEngineerTestInFlight(false);
+    setRaceEngineerToggleInFlight(false);
+    applyRaceEngineerAudio();
+  }
 }
