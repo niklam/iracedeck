@@ -51,9 +51,44 @@ export function buildSeedSettings() {
     // size, so a longer list pushes the Rescan button below the fold.
     _voicePacks: JSON.stringify({
       packs: [
-        { id: "luca", label: "Luca", version: "1.2.0", voices: [{ id: "luca", label: "Luca" }] },
+        {
+          id: "luca",
+          label: "Luca",
+          version: "1.2.0",
+          voices: [{ id: "luca", label: "Luca" }],
+          // Downloaded rather than hand-installed, so the badge documents the
+          // provenance it exists to show and agrees with the catalog below,
+          // where the same pack reads as already installed. An omitted value
+          // would fall back to sideloaded and quietly tell a different story.
+          provenance: "catalog",
+        },
       ],
       problems: [{ pack: "nina", reason: "no voice-pack.json" }],
+    }),
+    // What this run knows about downloadable packs (#1100). Seeded because the
+    // alternative is not an empty section but an honest "we could not check"
+    // message — a shot of THAT would document the failure path as if it were
+    // the feature. One installed row and one offered row is the smallest pair
+    // that shows both verdicts; the note above about the fold applies here too.
+    _voicePackStatus: JSON.stringify({
+      // Fixed, never `Date.now()`: a capture has to be reproducible, and a
+      // timestamp that moves would make every rerun a diff.
+      catalog: {
+        state: "ok",
+        checkedAt: 0,
+        packs: [
+          { id: "luca", label: "Luca", version: "1.2.0", bytes: 7_879_224, verdict: "installed" },
+          {
+            id: "vera",
+            label: "Vera",
+            version: "1.0.0",
+            description: "Calm, understated. Fewer words.",
+            bytes: 8_120_000,
+            verdict: "install",
+          },
+        ],
+      },
+      installs: {},
     }),
     _settingsStorePath: SEED_STORE_PATH,
 
