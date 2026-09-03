@@ -203,9 +203,11 @@ describe("createSettingsWindowCommandHandler", () => {
   });
 
   it("opens the injected packs directory and ignores a path the page offers (#1100)", () => {
+    const openDirectory = vi.fn();
     const openFolder = vi.fn();
     const handle = createSettingsWindowCommandHandler({
       writeSettings: vi.fn(),
+      openDirectory,
       openFolder,
       voicePacksPath: "C:/packs",
       storePath: "C:/s/global-settings.json",
@@ -213,16 +215,20 @@ describe("createSettingsWindowCommandHandler", () => {
 
     handle({ event: "openVoicePacksFolder", path: "C:/Windows/evil" });
 
-    expect(openFolder).toHaveBeenCalledWith("C:/packs");
+    expect(openDirectory).toHaveBeenCalledWith("C:/packs");
+    // NOT the file-revealing delegate. That one runs `/select`, which shows a
+    // path's PARENT with the path highlighted — right for the settings file,
+    // and one level above the folder the user is being told to drop a pack in.
+    expect(openFolder).not.toHaveBeenCalled();
   });
 
   it("ignores openVoicePacksFolder when no packs directory is injected", () => {
-    const openFolder = vi.fn();
-    const handle = createSettingsWindowCommandHandler({ writeSettings: vi.fn(), openFolder });
+    const openDirectory = vi.fn();
+    const handle = createSettingsWindowCommandHandler({ writeSettings: vi.fn(), openDirectory });
 
     handle({ event: "openVoicePacksFolder" });
 
-    expect(openFolder).not.toHaveBeenCalled();
+    expect(openDirectory).not.toHaveBeenCalled();
   });
 });
 

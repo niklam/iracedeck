@@ -94,6 +94,12 @@ export interface SettingsWindowCommandDeps {
   installVoicePack?: (id: string) => void;
   /** Delete the installed pack `id` (issue #1100). Same rule: an id, never a path. */
   removeVoicePack?: (id: string) => void;
+  /**
+   * Open a DIRECTORY, as distinct from {@link SettingsWindowCommandDeps.openFolder}
+   * which reveals a file by selecting it inside its parent (issue #1100).
+   * Sharing one delegate put the user one level above the voice-packs folder.
+   */
+  openDirectory?: (path: string) => void;
   /** The voice-packs directory; the page never supplies one (issue #1100). */
   voicePacksPath?: string;
 }
@@ -228,7 +234,7 @@ export function createSettingsWindowCommandHandler(
         break;
 
       case "openVoicePacksFolder":
-        if (deps.openFolder && deps.voicePacksPath) deps.openFolder(deps.voicePacksPath);
+        if (deps.openDirectory && deps.voicePacksPath) deps.openDirectory(deps.voicePacksPath);
 
         break;
 

@@ -136,6 +136,7 @@ import {
   MIGRATION_PENDING_KEY,
   onGlobalSettingsChange,
   onIRacingTerminated,
+  openDirectoryInExplorer,
   openFolderInExplorer,
   parseSettingsWindowBounds,
   type PluginConfig,
@@ -1103,7 +1104,11 @@ const settingsWindow = createSettingsWindowController({
         if (!result.ok) voicePacksLogger.warn(`Voice pack "${id}" was not removed: ${result.reason}`);
       });
     },
-    // Same rule again for the Voices card's Open folder button (#1100).
+    // Same rule again for the Voices card's Open folder button (#1100). A
+    // DIRECTORY opener, not the file-revealing one above: `/select` would show
+    // the packs folder's parent with `Voices` merely highlighted, one level
+    // above where the text beside the button says to drop a pack.
+    openDirectory: openDirectoryInExplorer,
     voicePacksPath: voicePacksRoot,
   }),
   // The page can't probe SimHub itself (cross-origin, no CORS) — answer from the plugin's own view.

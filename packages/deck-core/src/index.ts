@@ -686,7 +686,7 @@ export {
   type SettingsWindowWarningReporterOptions,
 } from "./settings-window-warning-reporter.js";
 // Reveal the settings file in Explorer (issue #993)
-export { explorerSelectArgs, openFolderInExplorer } from "./open-folder.js";
+export { explorerSelectArgs, openDirectoryInExplorer, openFolderInExplorer } from "./open-folder.js";
 // Settings-channel publisher: store write + the one host mirror per start (issue #993 phase 2)
 export {
   createSettingsChannelPublisher,
