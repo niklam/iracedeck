@@ -24,6 +24,8 @@ import { scanVoicePacks, type VoicePackFileSystem } from "./voice-pack-scanner.j
 import type { VoicePackCatalogState, VoicePackStatus } from "./voice-pack-status.js";
 import {
   createVoicePackStorage,
+  type SweepVoicePacksResult,
+  VOICE_PACK_LOCK_POLL_MS,
   VOICE_PACK_TMP_DIR,
   VOICE_PACK_TRASH_DIR,
   type VoicePackStorageFileSystem,
@@ -426,6 +428,7 @@ function harness(opts: HarnessOptions = {}) {
   const storage = createVoicePackStorage({ root: ROOT, fs: disk.storageFs, logger: logger as never });
   const calls: string[] = [];
   const published: VoicePackStatus[] = [];
+  const banners = new Map<string, { level: string; message: string }>();
   const entries = opts.entries ?? [];
   const now = opts.now ?? (() => 1_700_000_000_000);
   const fetchImpl = opts.fetchImpl ?? fetchReturning(NEW_ARCHIVE);
@@ -472,6 +475,15 @@ function harness(opts: HarnessOptions = {}) {
     publishStatus: vi.fn((status: VoicePackStatus) => {
       published.push(status);
     }),
+    // The `_warnings` store, as the plugin binds it: keyed by id, latest wins.
+    warnings: {
+      set: vi.fn((id: string, level: string, message: string) => {
+        banners.set(id, { level, message });
+      }),
+      clear: vi.fn((id: string) => {
+        banners.delete(id);
+      }),
+    },
     refreshPacks: vi.fn(() => {
       calls.push("refreshPacks");
     }),
@@ -481,7 +493,17 @@ function harness(opts: HarnessOptions = {}) {
   };
   Object.assign(deps, opts.deps ?? {});
 
-  return { disk, storage, installer: createVoicePackInstaller(deps), deps, catalog, fetchImpl, calls, published };
+  return {
+    disk,
+    storage,
+    installer: createVoicePackInstaller(deps),
+    deps,
+    catalog,
+    fetchImpl,
+    calls,
+    published,
+    banners,
+  };
 }
 
 function scanned(disk: FakeDisk, reservedVoices: readonly string[] = []) {
@@ -532,13 +554,18 @@ describe("createVoicePackInstaller — deciding", () => {
     expect(published.at(-1)?.installs).toEqual({});
   });
 
-  it("refuses something that is not a pack id before looking anything up", async () => {
-    const { installer, catalog, fetchImpl } = harness();
+  it("refuses something that is not a pack id before looking anything up, and says so in the log", async () => {
+    const { installer, catalog, fetchImpl, published } = harness();
 
     await expect(installer.install("../luca")).resolves.toMatchObject({ ok: false, code: "invalid-id" });
 
     expect(catalog.entry).not.toHaveBeenCalled();
     expect(fetchImpl).not.toHaveBeenCalled();
+    // Unreachable from the page, so a programming error: logged, and NOT
+    // published — a record keyed by a non-id would render on no row and be
+    // cleared by nothing.
+    expect(logger.warn).toHaveBeenCalledWith("Voice pack install refused: not a pack id");
+    expect(published).toEqual([]);
   });
 
   it("refuses a pack the catalog does not list, and records the failure", async () => {
@@ -587,7 +614,22 @@ describe("createVoicePackInstaller — deciding", () => {
       return inner(file, lockText);
     };
 
-    await expect(installer.install(ID)).resolves.toEqual({ ok: true, outcome: "unchanged" });
+    // A takeover falls through to the lock's poll sleep like any other retry
+    // (the storage module says why); skip the two real seconds it would cost.
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+
+    try {
+      const pending = installer.install(ID);
+
+      // Let the install reach the sleep — every step before it resolves
+      // within the microtask queue — then run the sleep out.
+      await new Promise((resolveTurn) => setImmediate(resolveTurn));
+      await vi.advanceTimersByTimeAsync(VOICE_PACK_LOCK_POLL_MS);
+
+      await expect(pending).resolves.toEqual({ ok: true, outcome: "unchanged" });
+    } finally {
+      vi.useRealTimers();
+    }
 
     expect(attempts).toBe(2);
     expect(fetchImpl).not.toHaveBeenCalled();
@@ -940,15 +982,103 @@ describe("createVoicePackInstaller — one operation per pack at a time", () => 
 
       return new Response(NEW_ARCHIVE);
     });
-    const { installer, disk } = harness({ entries: [entryFor(NEW_ARCHIVE)], fetchImpl });
+    const { installer, disk, banners } = harness({ entries: [entryFor(NEW_ARCHIVE)], fetchImpl });
 
     const install = installer.install(ID);
 
     await expect(installer.remove(ID)).resolves.toMatchObject({ ok: false, code: "busy" });
+    // Said where the user is looking, and as information rather than a fault.
+    expect(banners.get(`voice-pack-remove:${ID}`)).toEqual({
+      level: "info",
+      message: `Voice pack "${ID}" was not removed. This pack is being installed. Wait for it to finish and try again.`,
+    });
 
     release();
     await expect(install).resolves.toEqual({ ok: true, outcome: "installed" });
     expect(disk.has(PACK_DIR)).toBe(true);
+    // The install settled, so the banner has nothing left to describe.
+    expect(banners.has(`voice-pack-remove:${ID}`)).toBe(false);
+  });
+
+  it("retires the 'being installed' banner when that install fails, too", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolveGate) => {
+      release = resolveGate;
+    });
+    const fetchImpl = vi.fn(async (): Promise<Response> => {
+      await gate;
+
+      throw new TypeError("fetch failed");
+    });
+    const { installer, banners } = harness({ entries: [entryFor(NEW_ARCHIVE)], fetchImpl });
+
+    const install = installer.install(ID);
+    await installer.remove(ID);
+    expect(banners.has(`voice-pack-remove:${ID}`)).toBe(true);
+
+    release();
+    await expect(install).resolves.toMatchObject({ ok: false, code: "download" });
+    expect(banners.has(`voice-pack-remove:${ID}`)).toBe(false);
+  });
+
+  it("a second removal of the same pack joins the one in flight rather than calling it an install", async () => {
+    const disk = new FakeDisk();
+    installOldPack(disk);
+    let release!: () => void;
+    const gate = new Promise<void>((resolveGate) => {
+      release = resolveGate;
+    });
+    const { installer, banners } = harness({
+      disk,
+      deps: {
+        stopPlayback: vi.fn(async () => {
+          await gate;
+        }),
+      },
+    });
+
+    const first = installer.remove(ID);
+    const second = installer.remove(ID);
+    release();
+
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      { ok: true, removed: true },
+      { ok: true, removed: true },
+    ]);
+    expect(disk.children(TRASH)).toHaveLength(1);
+    expect(banners.size).toBe(0);
+  });
+
+  it("an install refused because a removal is in flight says so on the row, until the removal completes", async () => {
+    const disk = new FakeDisk();
+    installOldPack(disk);
+    let release!: () => void;
+    const gate = new Promise<void>((resolveGate) => {
+      release = resolveGate;
+    });
+    const { installer, published } = harness({
+      disk,
+      entries: [entryFor(NEW_ARCHIVE)],
+      deps: {
+        stopPlayback: vi.fn(async () => {
+          await gate;
+        }),
+      },
+    });
+
+    const removal = installer.remove(ID);
+
+    await expect(installer.install(ID)).resolves.toMatchObject({ ok: false, code: "busy" });
+    expect(published.at(-1)?.installs[ID]).toEqual({
+      phase: "failed",
+      error: "This pack is being removed. Wait a moment and try again.",
+    });
+    expect(logger.warn).toHaveBeenCalledWith("Voice pack install failed");
+
+    release();
+    await expect(removal).resolves.toEqual({ ok: true, removed: true });
+    // The removal's own success clears it; Retry after that installs.
+    expect(published.at(-1)?.installs).toEqual({});
   });
 
   it("releases the pack once the install has settled, whichever way", async () => {
@@ -1139,16 +1269,84 @@ describe("createVoicePackInstaller — remove", () => {
     const disk = new FakeDisk();
     installOldPack(disk);
     disk.faults.rename = (from) => (from === disk.key(PACK_DIR) ? "EBUSY" : undefined);
-    const { installer } = harness({ disk });
+    const { installer, banners } = harness({ disk });
 
     await expect(installer.remove(ID)).resolves.toMatchObject({ ok: false, code: "storage" });
     expectOldPackUntouched(disk);
+    // Said where the user is looking — the Installed Voices list has no row
+    // state to carry a failure, so it is the page's banner, naming the pack
+    // and what to do.
+    expect(banners.get(`voice-pack-remove:${ID}`)).toEqual({
+      level: "warning",
+      message:
+        `Voice pack "${ID}" was not removed. ` +
+        "The pack could not be moved to the trash. Close anything that may be using its files and try again.",
+    });
+    expect(logger.warn).toHaveBeenCalledWith("Voice pack removal failed");
   });
 
-  it("refuses something that is not a pack id", async () => {
-    const { installer } = harness();
+  it("retires the removal banner once a later removal of the pack succeeds", async () => {
+    const disk = new FakeDisk();
+    installOldPack(disk);
+    let held = true;
+    disk.faults.rename = (from) => (held && from === disk.key(PACK_DIR) ? "EBUSY" : undefined);
+    const { installer, banners } = harness({ disk });
+
+    await installer.remove(ID);
+    expect(banners.has(`voice-pack-remove:${ID}`)).toBe(true);
+
+    held = false;
+    await expect(installer.remove(ID)).resolves.toEqual({ ok: true, removed: true });
+    expect(banners.has(`voice-pack-remove:${ID}`)).toBe(false);
+  });
+
+  it("retires the removal banner once an install replaces the pack instead", async () => {
+    const disk = new FakeDisk();
+    installOldPack(disk);
+    let held = true;
+    disk.faults.rename = (from) => (held && from === disk.key(PACK_DIR) ? "EBUSY" : undefined);
+    const { installer, banners } = harness({ disk, entries: [entryFor(NEW_ARCHIVE)] });
+
+    await installer.remove(ID);
+    expect(banners.has(`voice-pack-remove:${ID}`)).toBe(true);
+
+    held = false;
+    await expect(installer.install(ID)).resolves.toEqual({ ok: true, outcome: "updated" });
+    expect(banners.has(`voice-pack-remove:${ID}`)).toBe(false);
+  });
+
+  it("keeps one banner per pack, so two failures do not overwrite each other", async () => {
+    const disk = new FakeDisk();
+    installOldPack(disk);
+    disk.dir(join(ROOT, "vixen"));
+    disk.faults.rename = () => "EBUSY";
+    const { installer, banners } = harness({ disk });
+
+    await installer.remove(ID);
+    await installer.remove("vixen");
+
+    expect([...banners.keys()].sort()).toEqual([`voice-pack-remove:${ID}`, "voice-pack-remove:vixen"]);
+  });
+
+  it("survives a throwing banner store, and still reports the failure", async () => {
+    const disk = new FakeDisk();
+    installOldPack(disk);
+    disk.faults.rename = (from) => (from === disk.key(PACK_DIR) ? "EBUSY" : undefined);
+    const explode = () => {
+      throw new Error("settings exploded");
+    };
+    const { installer } = harness({ disk, deps: { warnings: { set: explode, clear: explode } } });
+
+    await expect(installer.remove(ID)).resolves.toMatchObject({ ok: false, code: "storage" });
+    expect(logger.warn).toHaveBeenCalledWith("Voice packs: posting the removal banner threw; continuing");
+  });
+
+  it("refuses something that is not a pack id, and says so in the log", async () => {
+    const { installer, banners } = harness();
 
     await expect(installer.remove("..")).resolves.toMatchObject({ ok: false, code: "invalid-id" });
+    expect(logger.warn).toHaveBeenCalledWith("Voice pack removal refused: not a pack id");
+    expect(banners.size).toBe(0);
   });
 });
 
@@ -1315,6 +1513,83 @@ describe("createVoicePackInstaller — seed by copy", () => {
     });
     expect(disk.has(join(ROOT, "default"))).toBe(false);
     expectNoDebris(disk);
+  });
+
+  it("holds the install lock while copying, so another plugin's startup sweep spares the half-copied tree", async () => {
+    const disk = new FakeDisk();
+    withBundle(disk);
+    // The other ecosystem's plugin, started at the same login: its sweep runs
+    // over the SHARED .tmp while this seed is between two clips. Unlocked,
+    // that sweep deletes the staging tree — manifest and first clip — and the
+    // copy carries on regardless, since every later write recreates its own
+    // parents; the seed then fails on the missing manifest, and in the
+    // orderings where the manifest survives it promotes a short pack.
+    const otherPlugin = createVoicePackStorage({ root: ROOT, fs: disk.storageFs, logger: logger as never });
+    let sweptDuringCopy: SweepVoicePacksResult | undefined;
+    const { installer } = harness({
+      disk,
+      bundled: [bundledDefault()],
+      deps: {
+        fs: {
+          readFile: async (file) => {
+            if (sweptDuringCopy === undefined && file.endsWith("4.mp3")) sweptDuringCopy = await otherPlugin.sweep();
+
+            return disk.readerFs.readFile(file);
+          },
+        },
+      },
+    });
+
+    const result = await installer.seed();
+
+    // The sweep saw a live lock and kept both the lock and the staging tree.
+    expect(sweptDuringCopy).toEqual({ removed: 0, failed: 0, kept: 2 });
+    expect(result).toEqual({
+      outcome: "attempted",
+      results: [{ id: "default", result: { ok: true, outcome: "installed" } }],
+    });
+    const live = disk.files(join(ROOT, "default"));
+    delete live[VOICE_PACK_PROVENANCE_FILE];
+    delete live[VOICE_PACK_MANIFEST_FILE];
+    expect(live).toEqual(BUNDLED_CLIPS);
+    // Released once the copy is promoted; nothing left in .tmp.
+    expect(disk.has(join(TMP, "default.lock"))).toBe(false);
+    expectNoDebris(disk);
+  });
+
+  it("copies nothing when the other plugin seeded the pack while this one waited for the lock", async () => {
+    const disk = new FakeDisk();
+    withBundle(disk);
+    const { installer } = harness({ disk, bundled: [bundledDefault()] });
+    // The other plugin finishes between this one's "is the folder empty?"
+    // check and its lock: by the time the lock is ours, the pack is in place
+    // with the catalog's digest recorded — the same re-check the install
+    // path makes after ITS lock.
+    const inner = disk.storageFs.createExclusive;
+    disk.storageFs.createExclusive = async (file, lockText) => {
+      disk.file(
+        join(ROOT, "default", VOICE_PACK_PROVENANCE_FILE),
+        JSON.stringify({
+          schema: 1,
+          source: "bundled-seed",
+          id: "default",
+          version: "1.0.0",
+          sha256: BUNDLED_SHA,
+          installedAt: "2026-01-01T00:00:00.000Z",
+        }),
+      );
+      disk.file(join(ROOT, "default", "voice", "default", "flags", "blue-01.mp3"), "THEIRS");
+
+      return inner(file, lockText);
+    };
+
+    await expect(installer.seed()).resolves.toEqual({
+      outcome: "attempted",
+      results: [{ id: "default", result: { ok: true, outcome: "unchanged" } }],
+    });
+    expect(disk.writes).toEqual([]);
+    expect(disk.files(join(ROOT, "default"))["voice/default/flags/blue-01.mp3"]).toBe("THEIRS");
+    expect(disk.has(join(TMP, "default.lock"))).toBe(false);
   });
 });
 

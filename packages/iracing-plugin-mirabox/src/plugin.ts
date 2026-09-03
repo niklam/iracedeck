@@ -88,6 +88,7 @@ import { VSDPlatformAdapter } from "@iracedeck/deck-adapter-mirabox";
 import {
   applyStartupFeatureGates,
   type BundledVoicePack,
+  clearWarning,
   createElevationCheckSubscriber,
   createFileSettingsStore,
   createSettingsChannelPublisher,
@@ -148,6 +149,7 @@ import {
   SETTINGS_WINDOW_BOUNDS_KEY,
   SETTINGS_WINDOW_HTML,
   type SettingsWindowOpenOptions,
+  setWarning,
   shouldOpenChangelog,
   spawnAppWindow,
   updateGlobalSettings,
@@ -513,6 +515,14 @@ const voicePackCatalog = createVoicePackCatalogService({
   // whether pressing it downloads anything; two implementations would
   // eventually disagree silently.
   getInstalledSha: (id) => readInstalledVoicePackSha(voicePackFs, voicePackStorage.packDir(id), id),
+  // The voices this build ships — the same list the scanner reserves. A
+  // catalog entry whose voices are all in it is reported installed, never
+  // offered: the bundle provides every one of its clips whatever is in the
+  // packs folder, so the download would only buy the scanner's "provided by
+  // the plugin's bundled audio" error row. Passing the computed list rather
+  // than an id is what lets stage 3 need no edit here — nothing bundled,
+  // empty list, rule inert.
+  bundledVoices,
   logger: adapter.createLogger("VoicePackCatalog"),
 });
 
@@ -588,6 +598,11 @@ const voicePackInstaller = createVoicePackInstaller({
     lastPublishedVoicePackStatusJson = json;
     updateGlobalSettings({ [VOICE_PACK_STATUS_KEY]: json });
   },
+  // Where a Remove's outcome goes: the `_warnings` banner, keyed per pack.
+  // The Installed Voices list renders `_voicePacks` and nothing else, so a
+  // removal that fails has no row to report on — the banner is the surface
+  // the same page already renders, and needs no new key.
+  warnings: { set: setWarning, clear: clearWarning },
   refreshPacks: () => voicePacks.refresh(),
   logger: voicePacksLogger,
 });
@@ -1081,25 +1096,29 @@ const settingsWindow = createSettingsWindowController({
     // page names no directory — which one is scanned is the plugin's decision.
     // Since #1100 a rescan re-asks the catalog too, so the card's Install /
     // Update / Installed verdicts follow a pack the user added or deleted by
-    // hand: the service recomputes them on every call, and the fetch behind
-    // them is cached, so this is rarely a second request.
+    // hand. This is the ONE call that bypasses the catalog's TTLs: a person
+    // pressing Rescan after fixing their connection is asking for a request,
+    // and the failure TTL would otherwise refuse them for five minutes. It
+    // is still conditional on the cached ETag, so an unchanged catalog costs
+    // a 304 and no body.
     refreshVoicePacks: () => {
       voicePacks.refresh();
-      void voicePackInstaller.refreshCatalog();
+      void voicePackInstaller.refreshCatalog({ bypassTtl: true });
     },
     // Install / Remove by pack id (#1100). The handler has validated the id
     // against the manifest's kebab-case rule before it gets here; everything
     // else — the catalog it is looked up in, the URL, the destination — is the
     // plugin's. Neither ever rejects. An install's outcome reaches the card as
-    // `_voicePackStatus`; a removal has no status of its own, so its reason is
-    // kept in the log.
+    // `_voicePackStatus` — every refusal included, so a press that does
+    // nothing is explained on the row it was pressed on; a removal's reaches
+    // it as a `_warnings` banner (see `warnings` on the installer above). The
+    // results are therefore not read here: the installer has already put
+    // each one where the user can see it and logged it.
     installVoicePack: (id) => {
       void voicePackInstaller.install(id);
     },
     removeVoicePack: (id) => {
-      void voicePackInstaller.remove(id).then((result) => {
-        if (!result.ok) voicePacksLogger.warn(`Voice pack "${id}" was not removed: ${result.reason}`);
-      });
+      void voicePackInstaller.remove(id);
     },
     // Same rule again for the Voices card's Open folder button (#1100). A
     // DIRECTORY opener, not the file-revealing one above: `/select` would show

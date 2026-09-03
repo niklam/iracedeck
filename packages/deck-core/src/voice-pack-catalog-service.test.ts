@@ -60,11 +60,31 @@ function service(overrides: Partial<VoicePackCatalogServiceDeps> = {}) {
     isEnabled: () => true,
     getPluginVersion: () => "3.2.0",
     getInstalledSha: () => undefined,
+    bundledVoices: [],
     fetchImpl: catalogResponse([pack("luca")]),
     now: () => 1_000,
     logger,
     ...overrides,
   });
+}
+
+/** A fetch double that fails at the transport, like a dropped connection. */
+function offlineResponse(): typeof fetch {
+  return vi.fn(async () => {
+    throw new TypeError("fetch failed");
+  }) as unknown as typeof fetch;
+}
+
+/** A fetch double answering each call from the next entry of `responses`, in order. */
+function sequence(responses: readonly (typeof fetch)[]): typeof fetch {
+  let call = 0;
+
+  return vi.fn((...args: Parameters<typeof fetch>) => {
+    const next = responses[Math.min(call, responses.length - 1)] as typeof fetch;
+    call += 1;
+
+    return next(...args);
+  }) as unknown as typeof fetch;
 }
 
 describe("createVoicePackCatalogService", () => {
@@ -135,6 +155,74 @@ describe("createVoicePackCatalogService", () => {
       installedSha = SHA_A;
       const after = await svc.get();
       expect(after).toMatchObject({ packs: [{ verdict: "installed" }] });
+    });
+
+    describe("a pack the plugin itself bundles", () => {
+      // The release that publishes `default` to the catalog still ships it
+      // inside the plugin. Nothing in the packs folder can add to a voice the
+      // bundle already provides, and a downloaded copy is reported by the
+      // scanner as a broken pack — so it must never be offered.
+      it("is reported installed, not offered, when nothing is in the packs folder", async () => {
+        const status = await service({
+          fetchImpl: catalogResponse([pack("default")]),
+          getInstalledSha: () => undefined,
+          bundledVoices: ["default"],
+        }).get();
+
+        expect(status).toMatchObject({ state: "ok", packs: [{ id: "default", verdict: "installed" }] });
+      });
+
+      it("is reported installed even when the catalog's archive differs from the seeded copy", async () => {
+        // A newer catalog archive of a bundled voice changes nothing the user
+        // can hear — the bundle wins every clip — so "update" would download
+        // for no effect.
+        const status = await service({
+          fetchImpl: catalogResponse([pack("default", { sha256: SHA_A })]),
+          getInstalledSha: () => SHA_B,
+          bundledVoices: ["default"],
+        }).get();
+
+        expect(status).toMatchObject({ packs: [{ id: "default", verdict: "installed" }] });
+      });
+
+      it("is reported installed ahead of a version floor this plugin does not meet", async () => {
+        // The voice plays on this plugin today; a floor on the ARCHIVE cannot
+        // make that false, and "needs a newer iRaceDeck" would.
+        const status = await service({
+          fetchImpl: catalogResponse([pack("default", { minPluginVersion: "9.9.9" })]),
+          getPluginVersion: () => "3.2.0",
+          bundledVoices: ["default"],
+        }).get();
+
+        expect(status).toMatchObject({ packs: [{ id: "default", verdict: "installed" }] });
+      });
+
+      it("is still offered when only SOME of its voices are bundled", async () => {
+        // The scanner drops the colliding voice and keeps the rest, so the
+        // pack contributes something and the install is worth its download.
+        const status = await service({
+          fetchImpl: catalogResponse([
+            pack("duo", {
+              voices: [
+                { id: "default", label: "Default" },
+                { id: "luca", label: "Luca" },
+              ],
+            }),
+          ]),
+          bundledVoices: ["default"],
+        }).get();
+
+        expect(status).toMatchObject({ packs: [{ id: "duo", verdict: "install" }] });
+      });
+
+      it("goes inert when nothing is bundled — the stage-3 release needs no edit here", async () => {
+        const status = await service({
+          fetchImpl: catalogResponse([pack("default")]),
+          bundledVoices: [],
+        }).get();
+
+        expect(status).toMatchObject({ packs: [{ id: "default", verdict: "install" }] });
+      });
     });
   });
 
@@ -242,6 +330,131 @@ describe("createVoicePackCatalogService", () => {
     expect(VOICE_PACK_CATALOG_FAILURE_TTL_MS).toBeLessThan(VOICE_PACK_CATALOG_SUCCESS_TTL_MS);
   });
 
+  describe("a failed re-check", () => {
+    // One dropped packet while the window is open must not replace a good
+    // list with "could not check" — least of all right after an install,
+    // which ends in exactly such a re-check.
+    it("keeps the entries the last successful fetch delivered", async () => {
+      let clock = 1_000;
+      const fetchImpl = sequence([catalogResponse([pack("luca")]), offlineResponse()]);
+      const svc = service({ fetchImpl, now: () => clock });
+
+      expect(await svc.get()).toMatchObject({ state: "ok", packs: [{ id: "luca" }] });
+
+      clock += VOICE_PACK_CATALOG_SUCCESS_TTL_MS + 1;
+      const afterFailure = await svc.get();
+
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+      expect(afterFailure).toMatchObject({ state: "ok", packs: [{ id: "luca" }] });
+    });
+
+    it("does not pass the kept entries off as fresh: checkedAt stays at the last success", async () => {
+      let clock = 1_000;
+      const fetchImpl = sequence([catalogResponse([pack("luca")]), offlineResponse()]);
+      const svc = service({ fetchImpl, now: () => clock });
+
+      await svc.get();
+      clock += VOICE_PACK_CATALOG_SUCCESS_TTL_MS + 1;
+      const afterFailure = await svc.get();
+
+      expect(afterFailure.state === "ok" && afterFailure.checkedAt).toBe(1_000);
+    });
+
+    it("keeps the ETag too, so the retry after it is still conditional", async () => {
+      let clock = 1_000;
+      const first = catalogResponse([pack("luca")], { etag: '"v1"' });
+      const retry = notModifiedResponse();
+      const fetchImpl = sequence([first, offlineResponse(), retry]);
+      const svc = service({ fetchImpl, now: () => clock });
+
+      await svc.get();
+      clock += VOICE_PACK_CATALOG_SUCCESS_TTL_MS + 1;
+      await svc.get();
+      clock += VOICE_PACK_CATALOG_FAILURE_TTL_MS + 1;
+      const confirmed = await svc.get();
+
+      const retryOptions = vi.mocked(retry).mock.calls[0]?.[1] as RequestInit;
+      expect(retryOptions.headers).toEqual({ "If-None-Match": '"v1"' });
+      // And the 304 confirms the kept entries: served again, now freshly dated.
+      expect(confirmed).toMatchObject({ state: "ok", checkedAt: clock, packs: [{ id: "luca" }] });
+    });
+
+    it("still keeps the good entries through the failure TTL rather than re-asking every call", async () => {
+      let clock = 1_000;
+      const fetchImpl = sequence([catalogResponse([pack("luca")]), offlineResponse()]);
+      const svc = service({ fetchImpl, now: () => clock });
+
+      await svc.get();
+      clock += VOICE_PACK_CATALOG_SUCCESS_TTL_MS + 1;
+      await svc.get();
+      clock += 1_000;
+      expect(await svc.get()).toMatchObject({ state: "ok" });
+
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+    });
+
+    it("hands the installer the kept entry as well", async () => {
+      let clock = 1_000;
+      const fetchImpl = sequence([catalogResponse([pack("luca")]), offlineResponse()]);
+      const svc = service({ fetchImpl, now: () => clock });
+
+      await svc.get();
+      clock += VOICE_PACK_CATALOG_SUCCESS_TTL_MS + 1;
+      await svc.get();
+
+      expect((await svc.entry("luca"))?.id).toBe("luca");
+    });
+  });
+
+  describe("a user-initiated refresh", () => {
+    it("asks again inside the failure TTL when told to bypass it", async () => {
+      // Rescan is the button a user reaches for after fixing their
+      // connection; refusing it for five minutes made it do nothing.
+      let clock = 1_000;
+      const fetchImpl = sequence([offlineResponse(), catalogResponse([pack("luca")])]);
+      const svc = service({ fetchImpl, now: () => clock });
+
+      expect(await svc.get()).toEqual({ state: "unknown" });
+      clock += 1_000;
+
+      expect(await svc.get({ bypassTtl: true })).toMatchObject({ state: "ok", packs: [{ id: "luca" }] });
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+    });
+
+    it("asks again inside the success TTL too, conditionally", async () => {
+      let clock = 1_000;
+      const first = catalogResponse([pack("luca")], { etag: '"v1"' });
+      const again = notModifiedResponse();
+      const fetchImpl = sequence([first, again]);
+      const svc = service({ fetchImpl, now: () => clock });
+
+      await svc.get();
+      clock += 1_000;
+      const refreshed = await svc.get({ bypassTtl: true });
+
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+      expect((vi.mocked(again).mock.calls[0]?.[1] as RequestInit).headers).toEqual({ "If-None-Match": '"v1"' });
+      expect(refreshed).toMatchObject({ state: "ok", checkedAt: clock });
+    });
+
+    it("cannot force a request past the gate", async () => {
+      const fetchImpl = catalogResponse([pack("luca")]);
+      const status = await service({ isEnabled: () => false, fetchImpl }).get({ bypassTtl: true });
+
+      expect(status).toEqual({ state: "unknown" });
+      expect(fetchImpl).not.toHaveBeenCalled();
+    });
+
+    it("joins a request already in flight rather than starting a second one", async () => {
+      const fetchImpl = catalogResponse([pack("luca")]);
+      const svc = service({ fetchImpl });
+
+      await Promise.all([svc.get(), svc.get({ bypassTtl: true })]);
+
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it("shares one request between concurrent callers", async () => {
     const fetchImpl = catalogResponse([pack("luca")]);
     const svc = service({ fetchImpl });
@@ -269,12 +482,17 @@ describe("createVoicePackCatalogService", () => {
       warn: vi.fn(),
       error: vi.fn(),
     } as unknown as VoicePackCatalogServiceDeps["logger"];
-    const svc = service({ fetchImpl: catalogResponse([pack("luca")]), now: () => clock, logger: throwingLogger });
+    const fetchImpl = catalogResponse([pack("luca")]);
+    const svc = service({ fetchImpl, now: () => clock, logger: throwingLogger });
 
-    expect((await svc.get()).state).toBe("unknown");
+    // The logger blew up AFTER the entries were cached, so they are served —
+    // and the attempt still counts as failed, so the retry clock is the short
+    // one. What matters here: the second call gets to make a second request.
+    expect((await svc.get()).state).toBe("ok");
     clock += VOICE_PACK_CATALOG_FAILURE_TTL_MS + 1;
 
     expect((await svc.get()).state).toBe("ok");
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
   it("never rejects, even when the enable delegate throws", async () => {

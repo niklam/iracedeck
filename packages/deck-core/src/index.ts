@@ -316,6 +316,7 @@ export {
   createVoicePackCatalogService,
   VOICE_PACK_CATALOG_FAILURE_TTL_MS,
   VOICE_PACK_CATALOG_SUCCESS_TTL_MS,
+  type VoicePackCatalogGetOptions,
   type VoicePackCatalogService,
   type VoicePackCatalogServiceDeps,
 } from "./voice-pack-catalog-service.js";

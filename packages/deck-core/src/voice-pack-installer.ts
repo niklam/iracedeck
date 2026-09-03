@@ -52,7 +52,9 @@ import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { setImmediate as nextTurn } from "node:timers/promises";
 
+import type { PiWarningLevel } from "./pi-warnings.js";
 import { extractVoicePackArchive, type VoicePackArchiveFileSystem } from "./voice-pack-archive.js";
+import type { VoicePackCatalogGetOptions } from "./voice-pack-catalog-service.js";
 import { isVoicePackOfferable, type VoicePackCatalogEntry } from "./voice-pack-catalog.js";
 import { VOICE_PACK_PROVENANCE_FILE } from "./voice-pack-constants.js";
 import { downloadVoicePack, type VoicePackDownloadFailure } from "./voice-pack-download.js";
@@ -222,8 +224,29 @@ export interface VoicePackInstallerFileSystem {
  * than what happens to exist.
  */
 export interface VoicePackInstallerCatalog {
-  get(): Promise<VoicePackCatalogState>;
+  get(options?: VoicePackCatalogGetOptions): Promise<VoicePackCatalogState>;
   entry(id: string): Promise<VoicePackCatalogEntry | undefined>;
+}
+
+/**
+ * The `_warnings` banner, as this module needs it: post a record under an id,
+ * retire it by that id. The plugin binds `setWarning` / `clearWarning`; the
+ * shape is named here rather than imported for the reason every other port
+ * is — this module must not reach the settings singleton those two live on.
+ *
+ * What it carries, and why it is a banner and not an `installs` record: the
+ * outcome of a REMOVE. The Installed Voices list, where Remove lives, renders
+ * `_voicePacks` and nothing else, and the catalog card renders an `installs`
+ * record only on a row the catalog has — which, in the release that publishes
+ * one pack and bundles it, is never a pack the user can press Remove on. A
+ * removal failure recorded there would render nowhere. The banner is on the
+ * same page, is the shape every surface already renders, and needs no new
+ * key. One record per pack, so two packs failing to remove are two banners
+ * that clear independently.
+ */
+export interface VoicePackInstallerWarnings {
+  set(id: string, level: PiWarningLevel, message: string): void;
+  clear(id: string): void;
 }
 
 export interface VoicePackInstallerDeps {
@@ -247,6 +270,8 @@ export interface VoicePackInstallerDeps {
   stopPlayback: () => void | Promise<void>;
   /** Publish the `_voicePackStatus` payload — the plugin writes it as a run-scoped global. */
   publishStatus: (status: VoicePackStatus) => void;
+  /** Where a Remove's outcome is shown — see {@link VoicePackInstallerWarnings}. */
+  warnings: VoicePackInstallerWarnings;
   /** Re-scan the packs directory and reload the engine — `VoicePackService.refresh`. */
   refreshPacks: () => void;
   now?: () => number;
@@ -267,7 +292,17 @@ export interface VoicePackInstaller {
    * about the very install it started.
    */
   install(id: string): Promise<VoicePackInstallResult>;
-  /** The Remove command: retire `<root>/<id>` to the trash and refresh. */
+  /**
+   * The Remove command: retire `<root>/<id>` to the trash and refresh.
+   *
+   * A second call for the same id while a removal is in flight JOINS it, for
+   * the reason a second install joins an install. Its outcome reaches the
+   * user through the `_warnings` banner (see {@link VoicePackInstallerWarnings}):
+   * a failure is posted under the pack's id, and is retired by the next
+   * operation on that pack that succeeds — a removal or an install — or, for
+   * a removal refused because an install was in flight, the moment that
+   * install settles either way, since its statement is then no longer true.
+   */
   remove(id: string): Promise<VoicePackRemoveResult>;
   /**
    * Plugin start: an empty packs directory plus a bundled pack means install
@@ -276,8 +311,12 @@ export interface VoicePackInstaller {
   seed(): Promise<VoicePackSeedResult>;
   /** Plugin start: empty `.tmp` and `.trash` of everything safe to delete. */
   sweep(): Promise<SweepVoicePacksResult>;
-  /** Re-ask the catalog and republish. Startup (once the settings store is ready) and the Refresh button. */
-  refreshCatalog(): Promise<VoicePackCatalogState>;
+  /**
+   * Re-ask the catalog and republish. Opening the window, and the Rescan
+   * button — which passes `bypassTtl` so a press after a fixed connection is
+   * a request, not a five-minute wait on the failure TTL.
+   */
+  refreshCatalog(options?: VoicePackCatalogGetOptions): Promise<VoicePackCatalogState>;
   /** The current payload. */
   status(): VoicePackStatus;
   /**
@@ -412,6 +451,8 @@ function describeDownloadFailure(failure: VoicePackDownloadFailure): string {
       return "The download was cancelled.";
     case "invalid-request":
       return "The catalog entry for this pack is invalid.";
+    case "insecure-redirect":
+      return "The download server redirected to an insecure address, so the download was refused. Try again later.";
   }
 }
 
@@ -450,6 +491,36 @@ export function createVoicePackInstaller(deps: VoicePackInstallerDeps): VoicePac
   let catalogState: VoicePackCatalogState = { state: "unknown" };
   const progressPublishedAt = new Map<string, number>();
   const busy = new Map<string, Busy>();
+  /**
+   * Packs whose removal banner says "being installed". That is a statement
+   * about an install in flight, so it is retired the moment that install
+   * settles — whichever way — rather than waiting for a success that a failed
+   * install would never deliver.
+   */
+  const removalRefusedForInstall = new Set<string>();
+
+  const removalWarningId = (id: string): string => `voice-pack-remove:${id}`;
+
+  /** Post a Remove's failure where the user can see it. Wrapped like every other injected callback. */
+  function reportRemovalFailure(id: string, level: PiWarningLevel, reason: string): void {
+    try {
+      deps.warnings.set(removalWarningId(id), level, `Voice pack "${id}" was not removed. ${reason}`);
+    } catch (err) {
+      logger.warn("Voice packs: posting the removal banner threw; continuing");
+      logger.debug(errorText(err));
+    }
+  }
+
+  function clearRemovalFailure(id: string): void {
+    removalRefusedForInstall.delete(id);
+
+    try {
+      deps.warnings.clear(removalWarningId(id));
+    } catch (err) {
+      logger.warn("Voice packs: clearing the removal banner threw; continuing");
+      logger.debug(errorText(err));
+    }
+  }
 
   /**
    * Run an injected callback, and report rather than propagate whatever it
@@ -522,8 +593,8 @@ export function createVoicePackInstaller(deps: VoicePackInstallerDeps): VoicePac
     return { ok: false, code, reason, ...(detail === undefined ? {} : { detail }) };
   }
 
-  async function refreshCatalogState(): Promise<VoicePackCatalogState> {
-    catalogState = (await guarded("the catalog check", () => catalog.get())) ?? { state: "unknown" };
+  async function refreshCatalogState(options?: VoicePackCatalogGetOptions): Promise<VoicePackCatalogState> {
+    catalogState = (await guarded("the catalog check", () => catalog.get(options))) ?? { state: "unknown" };
 
     return catalogState;
   }
@@ -537,6 +608,11 @@ export function createVoicePackInstaller(deps: VoicePackInstallerDeps): VoicePac
   function occupy<T>(id: string, kind: Busy["kind"], run: () => Promise<T>): Promise<T> {
     const promise = run().finally(() => {
       if (busy.get(id)?.promise === promise) busy.delete(id);
+
+      // A Remove refused while THIS install was in flight said so in a
+      // banner; the install has now settled, so the banner has nothing left
+      // to describe.
+      if (kind !== "remove" && removalRefusedForInstall.has(id)) clearRemovalFailure(id);
     });
     busy.set(id, { kind, promise });
 
@@ -839,6 +915,9 @@ export function createVoicePackInstaller(deps: VoicePackInstallerDeps): VoicePac
 
     await guarded("the pack refresh", deps.refreshPacks);
     clearInstall(id);
+    // A removal that failed on the previous copy is moot: that copy is in the
+    // trash now, moved by the very rename the removal could not make.
+    clearRemovalFailure(id);
     // The verdicts changed — this pack's offer is now `installed` — and the
     // card must not go on showing an Install button for a pack that is.
     await refreshCatalogState();
@@ -914,11 +993,46 @@ export function createVoicePackInstaller(deps: VoicePackInstallerDeps): VoicePac
     logger.info("Seeding a bundled voice pack");
     logger.debug(`Voice pack "${id}" ${pack.entry.version}: copying from ${pack.audioDir}`);
 
-    const staged = await stageFromBundle(pack);
+    // The same lock the install path holds, over the same id — and the seed
+    // needs it MORE. The packs root is shared by all three ecosystems and the
+    // staging path is a function of (id, sha256), so two plugins seeding the
+    // same bundled pack — both started at login, both finding the folder
+    // empty — copy into ONE directory. Each one's `createStagingDir` empties
+    // it, and each one's startup sweep deletes it, because the sweep spares a
+    // `.tmp` entry only under a live lock. None of that errors: the copy
+    // recreates its parents and carries on, and the validation that follows
+    // checks the list of files THIS process wrote, not the disk — so the loser
+    // promotes a pack silently short of every clip the winner deleted. Held,
+    // the lock makes the other plugin's sweep keep the tree and its seed wait,
+    // and the re-check below then finds the pack in place.
+    //
+    // Correctness still does not depend on the lock being granted — the
+    // storage module says why, and its promise there is narrower than it
+    // reads: it covers the SWAP, where the second arrival finds identical
+    // content, and says nothing about two processes sharing a staging
+    // directory, which is exactly the gap this lock closes in the common
+    // case. `acquired: false` is proceeded past, as everywhere.
+    const lock = await storage.acquireLock(id);
 
-    if (!staged.ok) return staged;
+    try {
+      // The lock may have been held by the other plugin's seed of exactly
+      // this pack, in which case the work is done and the digest now matches.
+      if (installedSha(id) === pack.entry.sha256) {
+        clearInstall(id);
+        publish();
+        logger.info("Voice pack was seeded by another plugin");
 
-    return promoteStaged(id, staged, false);
+        return { ok: true, outcome: "unchanged" };
+      }
+
+      const staged = await stageFromBundle(pack);
+
+      if (!staged.ok) return staged;
+
+      return await promoteStaged(id, staged, false);
+    } finally {
+      await lock.release();
+    }
   }
 
   /** The promise the signature makes, kept at the one place a throw could escape. */
@@ -932,8 +1046,16 @@ export function createVoicePackInstaller(deps: VoicePackInstallerDeps): VoicePac
 
   return {
     async install(id) {
-      if (!packId.safeParse(id).success)
+      if (!packId.safeParse(id).success) {
+        // Unreachable from the page — the command handler validates ids
+        // before routing — so this is a programming error, and it is logged
+        // as one rather than published: a record keyed by something that is
+        // not an id would render on no row and be cleared by nothing.
+        logger.warn("Voice pack install refused: not a pack id");
+        logger.debug(`Voice pack install refused for ${JSON.stringify(id)}`);
+
         return { ok: false, code: "invalid-id", reason: "That is not a voice pack id." };
+      }
 
       const current = busy.get(id);
 
@@ -942,22 +1064,45 @@ export function createVoicePackInstaller(deps: VoicePackInstallerDeps): VoicePac
       if (current !== undefined && current.kind !== "remove") return current.promise as Promise<VoicePackInstallResult>;
 
       if (current !== undefined) {
-        return { ok: false, code: "busy", reason: "This pack is being removed. Wait a moment and try again." };
+        // Published on the row the button was pressed on, as the failed
+        // install it is, so a press that does nothing is not a mystery. The
+        // removal's own success clears it, and Retry after that is exactly
+        // the install that was wanted.
+        return failed(id, "busy", "This pack is being removed. Wait a moment and try again.");
       }
 
       return occupy(id, "install", () => neverThrows(id, () => runInstall(id)));
     },
 
     async remove(id) {
-      if (!packId.safeParse(id).success)
-        return { ok: false, code: "invalid-id", reason: "That is not a voice pack id." };
+      if (!packId.safeParse(id).success) {
+        // Same as the install path: unreachable from the page, logged as the
+        // programming error it is, and put in front of no user — an id that
+        // is not one cannot be named in a banner either.
+        logger.warn("Voice pack removal refused: not a pack id");
+        logger.debug(`Voice pack removal refused for ${JSON.stringify(id)}`);
 
-      if (busy.has(id)) {
-        return {
-          ok: false,
-          code: "busy",
-          reason: "This pack is being installed. Wait for it to finish and try again.",
-        };
+        return { ok: false, code: "invalid-id", reason: "That is not a voice pack id." };
+      }
+
+      const current = busy.get(id);
+
+      // A second Remove of the same pack joins the one in flight, for the
+      // reason a second Install joins an install: a double-click must not
+      // report an error about the very removal it started — and it must not
+      // report it as an INSTALL, which is what a plain "busy" check did.
+      if (current?.kind === "remove") return current.promise as Promise<VoicePackRemoveResult>;
+
+      if (current !== undefined) {
+        const reason = "This pack is being installed. Wait for it to finish and try again.";
+
+        // `info`, not `warning`: nothing is wrong, and the banner retires
+        // itself when that install settles (see `occupy`).
+        removalRefusedForInstall.add(id);
+        reportRemovalFailure(id, "info", reason);
+        logger.warn("Voice pack removal refused: an install of the same pack is in flight");
+
+        return { ok: false, code: "busy", reason };
       }
 
       return occupy(id, "remove", async (): Promise<VoicePackRemoveResult> => {
@@ -969,28 +1114,33 @@ export function createVoicePackInstaller(deps: VoicePackInstallerDeps): VoicePac
           const retired = await storage.retire(id);
 
           if (!retired.ok) {
-            logger.warn("Voice pack removal failed");
+            const reason =
+              "The pack could not be moved to the trash. Close anything that may be using its files and try again.";
 
-            return {
-              ok: false,
-              code: "storage",
-              reason:
-                "The pack could not be moved to the trash. Close anything that may be using its files and try again.",
-            };
+            logger.warn("Voice pack removal failed");
+            logger.debug(`Voice pack "${id}": retire: ${retired.code}`);
+            reportRemovalFailure(id, "warning", reason);
+
+            return { ok: false, code: "storage", reason };
           }
 
           await guarded("the pack refresh", deps.refreshPacks);
           // A failure recorded for this pack is about a pack that no longer
-          // exists; and the verdict flips back to `install`.
+          // exists; and the verdict flips back to `install`. The same goes
+          // for a banner about an earlier removal of it.
           clearInstall(id);
+          clearRemovalFailure(id);
           await refreshCatalogState();
           publish();
 
           return { ok: true, removed: retired.trashedAt !== undefined };
         } catch (err) {
-          logger.error(`Voice pack "${id}" removal failed unexpectedly: ${errorText(err)}`);
+          const reason = "Something went wrong inside iRaceDeck. Nothing was removed.";
 
-          return { ok: false, code: "storage", reason: "Something went wrong inside iRaceDeck. Nothing was removed." };
+          logger.error(`Voice pack "${id}" removal failed unexpectedly: ${errorText(err)}`);
+          reportRemovalFailure(id, "warning", reason);
+
+          return { ok: false, code: "storage", reason };
         }
       });
     },
@@ -1041,8 +1191,8 @@ export function createVoicePackInstaller(deps: VoicePackInstallerDeps): VoicePac
       }
     },
 
-    async refreshCatalog() {
-      const state = await refreshCatalogState();
+    async refreshCatalog(options) {
+      const state = await refreshCatalogState(options);
       publish();
 
       return state;
