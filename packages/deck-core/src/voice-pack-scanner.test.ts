@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { voiceDisplayLabels } from "./voice-labels.js";
 import { scanVoicePacks, type VoicePackFileSystem } from "./voice-pack-scanner.js";
 
 const ROOT = "/packs";
@@ -445,13 +446,51 @@ describe("scanVoicePacks and the bundled seed (#1100)", () => {
       fs: fakeFs({ default: { manifest: bundled, install, clips: ["voice/default/flags/blue-01.mp3"] } }),
     });
 
-  it("says nothing about a pack we seeded from the plugin's own bundle", () => {
+  it("lists the pack we seeded from the plugin's own bundle, providing nothing", () => {
     const result = scan(seedRecord);
 
-    // Still dropped — the bundle owns the id, and that was never in question.
-    expect(result.packs).toEqual([]);
+    // LISTED since #1100. It is on disk, and a card reading "No voice packs
+    // installed" beside a button that opens a folder containing exactly this
+    // pack was a contradiction the user met on their first screen. Its voice is
+    // still dropped — the bundle owns that id, and that was never in question —
+    // so it is listed as providing nothing, which is what `voices` means.
+    expect(result.packs).toHaveLength(1);
+    expect(result.packs[0]).toMatchObject({
+      id: "default",
+      label: "Default",
+      version: "3.2.0",
+      voices: [],
+      clips: [],
+      provenance: "bundled-seed",
+    });
     // The point of the exemption: no report, because nothing is wrong.
     expect(result.problems).toEqual([]);
+  });
+
+  // THE TRAP, pinned rather than left to be noticed later (#1100).
+  //
+  // `default` is ALREADY in the voice dropdown, provided by the plugin's own
+  // audio. Listing the seeded pack must not also register its voice, or the
+  // dropdown gains a SECOND "Default": two rows, one voice, and nothing for the
+  // user to tell them apart. Listing a pack and contributing a voice are two
+  // different jobs and this pack must only do the first.
+  //
+  // Asserted against BOTH publishers' actual inputs rather than against the
+  // scanner's output shape alone, because they derive differently and a change
+  // could break one without the other: `_voiceLabels` is built by
+  // `voiceDisplayLabels` from the installed packs — which now include this one,
+  // where they did not before — and `_raceEngineerVoices` is built from the
+  // clip paths packs contribute to the merged manifest.
+  it("contributes nothing to either published voice list", () => {
+    const result = scan(seedRecord);
+
+    // `_voiceLabels`: the seed is in this input now and must add no entry. A
+    // `default` key here would rename the bundled voice in the dropdown.
+    expect(voiceDisplayLabels(result.packs)).toEqual({});
+
+    // `_raceEngineerVoices`: derived from the clips packs contribute. One clip
+    // under `voice/default/` would put a second `default` in the list.
+    expect(result.packs.flatMap((pack) => pack.clips)).toEqual([]);
   });
 
   // The hostile cases, and the reason the exemption is written as narrowly as

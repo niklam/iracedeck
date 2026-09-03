@@ -107,6 +107,39 @@ type VoicePackStatus = {
 
 const EMPTY_STATUS: VoicePackStatus = { catalog: { state: "unknown" }, installs: {} };
 
+/**
+ * What "Available to Download" lists: what the user can ACT on (#1100).
+ *
+ * `install`, `update` and `unsupported` stay; `installed` does not. The section
+ * used to list the whole catalog with a status attached, which is a different
+ * thing from what its name promises — and with the seeded `default` now listed
+ * under Installed Voices, an installed pack appeared in both places at once.
+ * One pack, one row, in the section that describes it.
+ *
+ * Deliberately a RENDER-layer rule, not a verdict change. The reasoning above
+ * `isProvidedByBundle` in deck-core — that a bundle-provided pack reads as
+ * `installed` rather than taking a verdict of its own, because a renderer that
+ * does not know a verdict drops the row — is about the verdict vocabulary and
+ * still holds. This filters what one surface shows; it does not touch what the
+ * plugin decided.
+ *
+ * `update` deliberately survives: a newer version genuinely is something to
+ * download, so the one case where an installed pack must stay visible is
+ * preserved by the rule itself rather than by an exception to it.
+ *
+ * An in-flight or failed install keeps its row whatever the verdict says. The
+ * catalog is re-read after every install, so a pack whose verdict flips to
+ * `installed` mid-swap would otherwise vanish and take its progress — or its
+ * error and Retry button — off the screen with it.
+ *
+ * Nothing here is special-cased to `default`, so stage 3 needs no edit: once
+ * nothing is bundled, that pack is either not installed (and appears as
+ * `install`) or installed (and appears under Installed Voices like any other).
+ */
+function isDownloadable(offer: VoicePackOffer, install: VoicePackInstallState | undefined): boolean {
+  return offer.verdict !== "installed" || install !== undefined;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -360,17 +393,28 @@ export class VoicePackCatalog extends HTMLElement {
       return;
     }
 
-    if (status.catalog.packs.length === 0) {
+    const offers = status.catalog.packs.filter((offer) => isDownloadable(offer, status.installs[offer.id]));
+
+    if (offers.length === 0) {
       const message = document.createElement("div");
 
       message.className = "ird-vpc-message";
-      message.textContent = "No downloadable voice packs right now.";
+      // THREE different empty states, deliberately worded apart, because the
+      // user can reach all three and they mean entirely different things. The
+      // "unknown" branch above says we could not check. These two say we did:
+      // either we publish nothing at all, or you already have all of it. Saying
+      // "nothing right now" to somebody who simply owns everything would read
+      // as a fault, which is the message directly above this one.
+      message.textContent =
+        status.catalog.packs.length === 0
+          ? "No downloadable voice packs right now."
+          : "You have every voice we publish.";
       this.list.appendChild(message);
 
       return;
     }
 
-    for (const offer of status.catalog.packs) {
+    for (const offer of offers) {
       this.list.appendChild(this.renderRow(offer, status.installs[offer.id]));
     }
   }

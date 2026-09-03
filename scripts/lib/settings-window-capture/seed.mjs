@@ -51,6 +51,21 @@ export function buildSeedSettings() {
     // size, so a longer list pushes the Rescan button below the fold.
     _voicePacks: JSON.stringify({
       packs: [
+        // The bundled voice, seeded into the packs folder on every install
+        // (#1100). Present on EVERY real installation, so a fixture without it
+        // documented a state no user is in — and it is the row that shows the
+        // "Built-in" badge and the absence of a Remove button, which is the
+        // whole point of listing it.
+        {
+          id: "default",
+          label: "Default",
+          version: "1.0.0",
+          // Empty on purpose: the plugin's own audio provides this voice, so
+          // the pack contributes none. This is what keeps a second "Default"
+          // out of the voice dropdown.
+          voices: [],
+          provenance: "bundled-seed",
+        },
         {
           id: "luca",
           label: "Luca",

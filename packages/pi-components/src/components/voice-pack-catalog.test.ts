@@ -83,18 +83,27 @@ describe("ird-voice-pack-catalog", () => {
       expect(el.querySelectorAll(".ird-vpc-row")).toHaveLength(0);
     });
 
-    it("renders one row per catalog entry", () => {
+    it("renders one row per catalog entry the user can act on", () => {
       const { el, mock } = mount();
 
       publish(
         mock,
         status({
           state: "ok",
-          packs: [offer({ id: "luca", label: "Luca" }), offer({ id: "nina", label: "Nina", verdict: "installed" })],
+          packs: [
+            offer({ id: "luca", label: "Luca" }),
+            offer({ id: "nina", label: "Nina", verdict: "update" }),
+            // Installed, and therefore listed under Installed Voices instead
+            // of here — one pack, one row (#1100).
+            offer({ id: "otto", label: "Otto", verdict: "installed" }),
+          ],
         }),
       );
 
       expect(el.querySelectorAll(".ird-vpc-row")).toHaveLength(2);
+      expect(el.textContent).toContain("Luca");
+      expect(el.textContent).toContain("Nina");
+      expect(el.textContent).not.toContain("Otto");
     });
   });
 
@@ -135,13 +144,59 @@ describe("ird-voice-pack-catalog", () => {
       expect(mock.send).toHaveBeenCalledWith("sendToPlugin", { event: "voicePackInstall", id: "luca" });
     });
 
-    it("shows no action for a pack that is already installed at this hash", () => {
+    // "Available to Download" lists what you can act on (#1100). An installed
+    // pack is represented under Installed Voices — with its provenance — so
+    // listing it here as well was the same pack twice on one card.
+    it("does not list a pack that is already installed at this hash", () => {
       const { el, mock } = mount();
 
       publish(mock, status({ state: "ok", packs: [offer({ verdict: "installed" })] }));
 
+      expect(el.querySelectorAll(".ird-vpc-row")).toHaveLength(0);
       expect(el.querySelector(".ird-vpc-button")).toBeNull();
-      expect(el.querySelector(".ird-vpc-installed")?.textContent).toBe("Installed");
+    });
+
+    // The whole catalog installed is the NORMAL state on a stage-2 install,
+    // where `default` is the only published pack — so it must not read as a
+    // fault. Distinct from both "we publish nothing" and the unreachable
+    // message, which are different conditions the user can also reach.
+    it("says the user has everything, rather than sounding like a failure, when every pack is installed", () => {
+      const { el, mock } = mount();
+
+      publish(mock, status({ state: "ok", packs: [offer({ verdict: "installed" })] }));
+
+      expect(el.textContent).toContain("You have every voice we publish");
+      expect(el.textContent).not.toContain("No downloadable voice packs");
+      expect(el.textContent).not.toContain("Couldn't check");
+    });
+
+    // The carve-out: the catalog is re-read after every install, so a verdict
+    // that flips to `installed` while the swap is still running must not take
+    // the row — and its progress, or its error and Retry — off the screen.
+    it("keeps an installed pack listed while its install is still in flight", () => {
+      const { el, mock } = mount();
+
+      publish(
+        mock,
+        status({ state: "ok", packs: [offer({ id: "luca", verdict: "installed" })] }, { luca: { phase: "swapping" } }),
+      );
+
+      expect(el.querySelectorAll(".ird-vpc-row")).toHaveLength(1);
+    });
+
+    it("keeps an installed pack listed when its install failed, so Retry survives", () => {
+      const { el, mock } = mount();
+
+      publish(
+        mock,
+        status(
+          { state: "ok", packs: [offer({ id: "luca", verdict: "installed" })] },
+          { luca: { phase: "failed", error: "boom" } },
+        ),
+      );
+
+      expect(el.querySelectorAll(".ird-vpc-row")).toHaveLength(1);
+      expect(el.textContent).toContain("Retry");
     });
 
     it("lists an unsupported pack with an explanation naming the version needed, rather than hiding it", () => {

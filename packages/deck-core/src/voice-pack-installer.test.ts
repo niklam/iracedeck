@@ -1429,11 +1429,16 @@ describe("createVoicePackInstaller — seed by copy", () => {
     await installer.seed();
 
     // With `default` bundled, the seeded copy loses the voice to the bundle —
-    // expected — and is reported as NOTHING, because its record says it is our
-    // own seed. A sideload claiming the same id would be reported.
+    // expected — and is reported as NO PROBLEM, because its record says it is
+    // our own seed. A sideload claiming the same id would be reported.
+    //
+    // It is still LISTED though (#1100), providing nothing: `voices` and
+    // `clips` both empty, so it appears on the Installed Voices card without
+    // putting a second `default` in the voice dropdown.
     const quiet = scanned(disk, ["default"]);
     expect(quiet.problems).toEqual([]);
-    expect(quiet.packs).toEqual([]);
+    expect(quiet.packs).toHaveLength(1);
+    expect(quiet.packs[0]).toMatchObject({ id: "default", voices: [], clips: [], provenance: "bundled-seed" });
 
     // Once the bundle is gone (the next release), the same copy is live.
     const live = scanned(disk, []);

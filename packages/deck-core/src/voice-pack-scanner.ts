@@ -253,6 +253,48 @@ export function scanVoicePacks({ root, fs, reservedVoices }: ScanVoicePacksOptio
       return false;
     });
 
+    // A bundled seed provides nothing and is still LISTED (#1100).
+    //
+    // Every voice it declares belongs to the plugin's own audio, so `declared`
+    // is empty and the pack used to be skipped here — invisible, and reported
+    // as neither installed nor a problem. That produced a contradiction on the
+    // first screen a user sees: the card said "No voice packs installed" while
+    // the button beside it opened a folder containing exactly this pack. The
+    // pack is on disk; the card should say so.
+    //
+    // Listed with NO voices and NO clips, which is not a special case but the
+    // plain reading of the field: `voices` is what a pack ACTUALLY provides
+    // after collisions are resolved, and for this pack the honest answer is
+    // nothing. An empty `clips` list is inert downstream rather than merely
+    // harmless — `normalizeRoots` turns it into an empty allow-list, so the
+    // root can resolve nothing, where an ABSENT list would have meant
+    // unrestricted.
+    //
+    // LISTING A PACK AND CONTRIBUTING A VOICE ARE TWO DIFFERENT JOBS, and this
+    // pack does the first and must never do the second. `default` is already in
+    // the voice dropdown, provided by the bundle; registering it again here
+    // would put two identically named rows in front of the user with nothing to
+    // tell them apart. That is why the voices are dropped BEFORE this point and
+    // why nothing below re-adds them — and it is pinned by a test rather than
+    // left to be noticed.
+    //
+    // It claims no voice id either, so a later pack that genuinely provides one
+    // of these ids is not locked out by the seed's presence.
+    if (isBundledSeed && declared.length === 0) {
+      packs.push({
+        id: manifest.id,
+        label: manifest.label,
+        version: manifest.version,
+        ...(manifest.author === undefined ? {} : { author: manifest.author }),
+        dir,
+        voices: [],
+        clips: [],
+        provenance: "bundled-seed",
+      });
+
+      continue;
+    }
+
     if (declared.length === 0) continue;
 
     // Clip presence is checked PER VOICE, not per pack. A pack that declares a

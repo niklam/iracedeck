@@ -503,6 +503,50 @@ describe("ird-voice-pack-list", () => {
     });
   });
 
+  // #1100. The seeded pack is LISTED so the card cannot read "No voice packs
+  // installed" while the button beside it opens a folder plainly containing it
+  // — but it is not a pack the user can remove.
+  describe("a bundled seed is listed and offers no Remove (#1100)", () => {
+    // No voices: the plugin's own audio provides `default`, so the pack
+    // contributes nothing. This is the shape the scanner now emits.
+    const seed = { id: "default", label: "Default", version: "1.0.0", voices: [], provenance: "bundled-seed" };
+
+    it("renders a row even though the pack provides no voices", () => {
+      publish(scan([seed]));
+
+      expect(el.querySelectorAll(".ird-vp-row")).toHaveLength(1);
+      expect(el.textContent).toContain("Default");
+      expect(el.textContent).not.toContain("No voice packs installed");
+    });
+
+    it("offers no Remove button on that row", () => {
+      publish(scan([seed]));
+
+      expect(el.querySelector(".ird-vp-remove-button")).toBeNull();
+    });
+
+    // A STATEMENT, not a disabled control. The plugin re-seeds this pack on the
+    // next start, so a Remove would delete the folder and then appear not to
+    // have worked — worse than no button. A disabled one would be worse again:
+    // it still invites the click and still has to explain itself.
+    it("says where the voice came from in place of the button", () => {
+      publish(scan([seed]));
+
+      expect(el.querySelector(".ird-vp-note")?.textContent).toBe("Included with the plugin");
+      expect(el.querySelector("button[disabled]")).toBeNull();
+    });
+
+    // The exemption must not reach a pack the user genuinely can remove.
+    it.each([["catalog"], ["sideload"]])("still offers Remove on a %s pack", (provenance) => {
+      publish(
+        scan([{ id: "luca", label: "Luca", version: "1.2.0", voices: [{ id: "luca", label: "Luca" }], provenance }]),
+      );
+
+      expect(el.querySelector(".ird-vp-remove-button")).not.toBeNull();
+      expect(el.querySelector(".ird-vp-note")).toBeNull();
+    });
+  });
+
   it("issues no extra settings read in response to a DOM event", () => {
     // A regression pin mirroring ird-enable-feature's: this component only
     // ever learns about settings through the useGlobalSettings push

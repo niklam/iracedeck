@@ -252,6 +252,9 @@ export class VoicePackList extends HTMLElement {
       ird-voice-pack-list .ird-vp-label { flex: 1; }
       ird-voice-pack-list .ird-vp-version { color: #969696; font-size: 8pt; }
       ird-voice-pack-list .ird-vp-empty { color: #969696; font-size: 9pt; padding: 3px 0; }
+      /* Stands where a Remove button would be on a bundled seed (#1100). Muted
+         and unclickable-looking on purpose: it is a statement, not a control. */
+      ird-voice-pack-list .ird-vp-note { flex: none; color: #969696; font-size: 8pt; }
       /* Provenance badge (#1100) — informational, not a warning: colours stay
          calm and distinct rather than using red/amber alarm colours anywhere. */
       ird-voice-pack-list .ird-vp-badge {
@@ -453,6 +456,13 @@ export class VoicePackList extends HTMLElement {
     // Only when the scan found nothing at all. A directory holding one
     // unloadable pack is not empty, and calling it empty would hide the very
     // row that explains the silence.
+    //
+    // Rarer since #1100 listed the bundled seed, but NOT dead, and the wording
+    // is still true wherever it shows. It is reached when the seed is genuinely
+    // absent: seeding failed (an unwritable folder), the user emptied the
+    // folder while the plugin was running, or — the case this is really waiting
+    // for — the release that stops bundling audio, after which a user who has
+    // downloaded nothing has an empty folder and should be told exactly that.
     if (scan.packs.length === 0 && scan.problems.length === 0) {
       const empty = document.createElement("div");
       empty.className = "ird-vp-empty";
@@ -477,6 +487,28 @@ export class VoicePackList extends HTMLElement {
       const version = document.createElement("span");
       version.className = "ird-vp-version";
       version.textContent = entry.version;
+
+      // A bundled seed gets no Remove, and what stands in its place is a
+      // STATEMENT rather than a disabled button (#1100). The plugin re-seeds
+      // this pack on the next start, so a Remove would delete the folder and
+      // then appear not to have worked — worse than no button at all. A
+      // DISABLED button would be worse again: it still invites the click and
+      // still has to explain itself, where a line of text simply answers the
+      // question a missing button raises.
+      if (entry.provenance === "bundled-seed") {
+        const note = document.createElement("span");
+
+        note.className = "ird-vp-note";
+        note.textContent = "Included with the plugin";
+
+        row.appendChild(label);
+        row.appendChild(badge);
+        row.appendChild(version);
+        row.appendChild(note);
+        this.list.appendChild(row);
+
+        continue;
+      }
 
       // Two-step, in the state-driven shape `ird-enable-feature` establishes:
       // the button renders the CURRENT state rather than firing and hoping. A
