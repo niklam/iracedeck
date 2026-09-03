@@ -33,7 +33,20 @@ That makes shipping a second voice a bad trade today, and a third one worse. It 
 
 | Decision | Choice | Rationale |
 |---|---|---|
-| Distribution | Curated catalog on iracedeck.com **+ hand sideload** | The plugin never takes a URL from a config or the UI, preserving the rule already stated in `changelog-feed-client.ts`. Third-party support comes from the folder being a real extension point, not from a downloader. |
+| Distribution | Curated catalog on iracedeck.com **+ hand sideload** | The **page** never gets to say where the plugin looks — the rule already stated in `changelog-feed-client.ts`. Third-party support comes from the folder being a real extension point, not from a downloader. A file-based dev override is permitted; see below. |
+
+**`_devBaseUrl` — a file-based override of the catalog host, added 2026-09-03.** A passthrough key in the plugin's own settings file, defaulting to `https://iracedeck.com`, so with it unset the fetched URL is byte-identical to the constant. It exists because a catalog could otherwise only be tested by publishing it first, which is the wrong order for a file that tells the plugin what to trust.
+
+**The rule this corrects, and why the original was wrong.** This table previously said the plugin "never takes a URL from a config or the UI". The security reasoning offered for it — that whoever sets the URL controls both the bytes and the `sha256` they are checked against — is true and does not matter: **anyone who can write that settings file can already write the plugin's own JavaScript**, so no privilege boundary is crossed, and the archive validator caps any payload at `.mp3` and `.json`, which hand-sideloading already permits by design. What `changelog-feed-client.ts` actually protects is narrower and still holds: *"the page asks the plugin for a verdict, it does not get to say where the plugin looks."* That is a boundary between untrusted UI and the plugin, not between a user and their own filesystem.
+
+So the line stays where it is: **no URL field in the settings window, ever.** A key a user edits in a file is a different thing from a control the UI invites them to paste into.
+
+Constraints, all enforced at the point of use rather than in `GlobalSettingsSchema`, so a malformed value cannot stall the settings parse and make every binding read as unset:
+
+- `https://` any host; `http://` **only** for `localhost` / `127.0.0.1`, so a local test server works while plaintext to a real host does not.
+- Anything else is ignored, the constant is used, and a warning is logged. It never throws.
+- Only the known filename is joined onto the base — the override chooses the host, never the resource.
+- **It can never be silently active:** a warn-level line every start when set, and a Diagnostics row rendered *only* when set, so an ordinary user's window never grows a field inviting a pasted URL.
 | Discovery | Startup scan **+ explicit refresh** | The download button refreshes itself, so a pack appears immediately; a sideloaded folder needs one button press. No filesystem watcher. |
 | Transport | `.zip`, extracted with a zero-dependency pure-JS library (`fflate`) | The manifests declare Windows 10 minimum (#994), and Win10 Explorer double-clicks a zip but cannot open a `.tar.gz`. Sideloading is a first-class path, so the archive must be openable by hand. |
 | Identity | `version` (semver) for humans, `sha256` for the update test | A content hash cannot be forgotten the way a version bump can. |
