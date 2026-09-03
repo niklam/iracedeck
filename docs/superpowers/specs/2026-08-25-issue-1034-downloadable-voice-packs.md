@@ -225,6 +225,11 @@ Staged over two releases:
 - **Stage 2 — the work this amendment authorises.** The catalog, the fetch client, the install pipeline, the deterministic build-time packer, and the Install / Update / Remove UI. This **is Release N**: `default` is published to the catalog *and* stays bundled in the distributable, so a user who updates while offline keeps their engineer.
 - **Stage 3 — a later release.** Drop `default` from the distributable. This is Release N+1, and because `default` is a catalog entry like any other rather than a special case, the only thing that changes is the bundled list.
 
+**Stage 3 inherits two obligations that are inert until it lands, and both fail silently if forgotten.** Neither is a defect in stage 2; each is a consequence of removing the bundle, which is why they are recorded here rather than fixed early.
+
+1. **The catalog fetch gains a launch-time, unprompted path** and therefore needs either a setting or a user-initiated first fetch. Reasoning in the *Catalog* section above.
+2. **The startup sweep and the seed run inside the plugin's settings-store-ready block**, so on the fail-closed unreadable-settings path neither executes. Today that is harmless — `default` is bundled and plays from root 1 whatever happens in AppData. Once the bundle is gone, the same path leaves a user with **no voice at all**, and the settings failure that caused it says nothing about audio, so the symptom and the cause look unrelated. Stage 3 must either move the seed out of that gate or make the failure explicit.
+
 **Vixen is not published in stage 2 — settled 2026-09-02.** It exists as a generated test voice on the `vixen` branch, has not had the radio-filter pass, and publishing it is a separate decision about what iRaceDeck distributes rather than a consequence of the catalog existing. It is not a catalog entry, not a bundled pack, and not a stage-2 deliverable.
 
 The size win lands one release later. What it buys is a migration with no network dependency at the moment the entire install base is exposed to it. Without it, the release that stops bundling audio silently breaks the Race Engineer for every user who happens to be offline when they update.
