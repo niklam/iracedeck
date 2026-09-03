@@ -6,6 +6,7 @@ import {
   resolveByteCap,
   VOICE_PACK_DOWNLOAD_CEILING_BYTES,
   VOICE_PACK_DOWNLOAD_STALL_TIMEOUT_MS,
+  VOICE_PACK_DOWNLOAD_TOTAL_TIMEOUT_MS,
   type VoicePackDownloadProgress,
   type VoicePackDownloadSink,
 } from "./voice-pack-download.js";
@@ -89,17 +90,28 @@ function chunkedBody(chunks: readonly Uint8Array[], opts: { hang?: boolean; fail
 
 function respondWith(
   stream: ReadableStream<Uint8Array> | null,
-  init: { status?: number; contentLength?: string } = {},
+  init: {
+    status?: number;
+    contentLength?: string;
+    /** The final URL, as if a redirect had been followed. */ url?: string;
+  } = {},
 ): typeof fetch {
   return vi.fn(async (_url: unknown, requestInit?: RequestInit) => {
     const signal = requestInit?.signal;
 
     if (signal?.aborted) throw new DOMException("aborted", "AbortError");
 
-    return new Response(stream, {
+    const response = new Response(stream, {
       status: init.status ?? 200,
       headers: init.contentLength === undefined ? {} : { "content-length": init.contentLength },
     });
+
+    // `Response.url` is read-only and "" on a hand-built one; stamping it on
+    // as an own property is the shape undici hands back after following a
+    // redirect, without a server to follow it from.
+    if (init.url !== undefined) Object.defineProperty(response, "url", { value: init.url });
+
+    return response;
   }) as unknown as typeof fetch;
 }
 
@@ -451,6 +463,62 @@ describe("downloadVoicePack", () => {
     });
   });
 
+  describe("https only", () => {
+    it("refuses a url that is not https before making a request", async () => {
+      for (const url of [
+        "http://github.example/releases/luca-1.0.0.zip",
+        "ftp://github.example/luca.zip",
+        "not a url",
+      ]) {
+        const fetchImpl = respondWith(chunkedBody(THREE).stream);
+
+        const result = await downloadVoicePack({
+          url,
+          expectedSha256: THREE_DIGEST,
+          maxBytes: 10,
+          sink: memorySink(),
+          fetchImpl,
+        });
+
+        expect(result).toMatchObject({ ok: false, failure: "invalid-request", bytes: 0 });
+        expect(fetchImpl).not.toHaveBeenCalled();
+      }
+    });
+
+    it("refuses an archive whose final hop, after redirects, is not https — and reads none of it", async () => {
+      const sink = memorySink();
+      const { stream, state } = chunkedBody(THREE);
+
+      const result = await downloadVoicePack({
+        url: URL_,
+        expectedSha256: THREE_DIGEST,
+        maxBytes: 10,
+        sink,
+        fetchImpl: respondWith(stream, { url: "http://cdn.example/luca-1.0.0.zip" }),
+      });
+
+      expect(result).toMatchObject({ ok: false, failure: "insecure-redirect", bytes: 0 });
+      expect((result as { reason: string }).reason).toContain("http://cdn.example");
+      // Not a byte was read or written, and the connection was released
+      // rather than left open on an archive we refuse to take.
+      expect(sink.received()).toBe(0);
+      expect(state.pulls).toBe(0);
+      expect(state.cancelled).toBe(true);
+    });
+
+    it("accepts a redirect that stays on https — the release host always sends one", async () => {
+      const result = await downloadVoicePack({
+        url: URL_,
+        expectedSha256: THREE_DIGEST,
+        maxBytes: 10,
+        sink: memorySink(),
+        fetchImpl: respondWith(chunkedBody(THREE).stream, { url: "https://release-assets.example/luca-1.0.0.zip" }),
+      });
+
+      expect(result).toEqual({ ok: true, sha256: THREE_DIGEST, bytes: 10 });
+    });
+  });
+
   describe("stall timeout", () => {
     it("cuts a body that goes silent, after the bytes that did arrive", async () => {
       vi.useFakeTimers();
@@ -564,6 +632,121 @@ describe("downloadVoicePack", () => {
       await vi.advanceTimersByTimeAsync(1_001);
 
       expect(await pending).toMatchObject({ ok: false, failure: "timeout" });
+    });
+  });
+
+  describe("total ceiling", () => {
+    /**
+     * A body that delivers one byte every `gap` ms, `count` times, then closes.
+     * With `gap` under the idle deadline it is never silent long enough to
+     * stall — which is exactly the download the ceiling exists for.
+     */
+    function drip(count: number, gap: number) {
+      const chunks = Array.from({ length: count }, (_, i) => bytes(String(i % 10)));
+      const state = { cancelled: false };
+      let index = 0;
+      const stream = new ReadableStream<Uint8Array>(
+        {
+          pull(controller) {
+            return new Promise<void>((resolve) => {
+              setTimeout(() => {
+                // A cut mid-pull leaves this timer to fire on a cancelled
+                // stream, where enqueue/close would throw.
+                if (!state.cancelled) {
+                  if (index < chunks.length) controller.enqueue(chunks[index++]);
+                  else controller.close();
+                }
+
+                resolve();
+              }, gap);
+            });
+          },
+          cancel() {
+            state.cancelled = true;
+          },
+        },
+        { highWaterMark: 0 },
+      );
+
+      return { stream, state, digest: sha256(chunks) };
+    }
+
+    it("cuts a download that stays under the idle deadline but never gets anywhere", async () => {
+      vi.useFakeTimers();
+      const gap = VOICE_PACK_DOWNLOAD_STALL_TIMEOUT_MS - 1_000;
+      // Enough bytes, one per gap, to outlast the ceiling by a few chunks —
+      // without the ceiling this download COMPLETES and verifies.
+      const count = Math.ceil(VOICE_PACK_DOWNLOAD_TOTAL_TIMEOUT_MS / gap) + 5;
+      const sink = memorySink();
+      const { stream, state, digest } = drip(count, gap);
+
+      const pending = downloadVoicePack({
+        url: URL_,
+        expectedSha256: digest,
+        maxBytes: count,
+        sink,
+        fetchImpl: respondWith(stream),
+      });
+      await vi.advanceTimersByTimeAsync(count * gap + VOICE_PACK_DOWNLOAD_STALL_TIMEOUT_MS);
+
+      const result = await pending;
+
+      expect(result).toMatchObject({ ok: false, failure: "timeout" });
+      expect((result as { reason: string }).reason).toContain("30 min");
+      // Cut at the ceiling with the bytes that had arrived by then — not
+      // reported at the end as a stall it never was.
+      expect(result.bytes).toBeGreaterThan(0);
+      expect(result.bytes).toBeLessThan(count);
+      expect(sink.received()).toBe(result.bytes);
+      expect(state.cancelled).toBe(true);
+    });
+
+    it("counts network time only — a sink slower than the whole ceiling, per write, does not trip it", async () => {
+      vi.useFakeTimers();
+      // Reads that take real (fake) time, so a ceiling measured on the wall
+      // clock would find one pending to cut; the sink then eats a whole
+      // ceiling per write, and the network never sees more than seconds.
+      const { stream, digest } = drip(3, 1_000);
+      const sink: VoicePackDownloadSink = {
+        write: () =>
+          new Promise<void>((resolve) => {
+            setTimeout(resolve, VOICE_PACK_DOWNLOAD_TOTAL_TIMEOUT_MS);
+          }),
+      };
+
+      const pending = downloadVoicePack({
+        url: URL_,
+        expectedSha256: digest,
+        maxBytes: 3,
+        sink,
+        fetchImpl: respondWith(stream),
+      });
+      await vi.advanceTimersByTimeAsync(VOICE_PACK_DOWNLOAD_TOTAL_TIMEOUT_MS * 4);
+
+      expect(await pending).toEqual({ ok: true, sha256: digest, bytes: 3 });
+    });
+
+    it("honours a caller-supplied ceiling, and its reason names the ceiling rather than a stall", async () => {
+      vi.useFakeTimers();
+      const { stream, digest } = drip(20, 1_100);
+
+      const pending = downloadVoicePack({
+        url: URL_,
+        expectedSha256: digest,
+        maxBytes: 20,
+        sink: memorySink(),
+        totalTimeoutMs: 5_000,
+        fetchImpl: respondWith(stream),
+      });
+      await vi.advanceTimersByTimeAsync(30_000);
+
+      const result = await pending;
+
+      expect(result).toMatchObject({ ok: false, failure: "timeout" });
+      expect(result.bytes).toBeGreaterThan(0);
+      expect(result.bytes).toBeLessThan(20);
+      expect((result as { reason: string }).reason).toContain("5 s");
+      expect((result as { reason: string }).reason).not.toContain("no data");
     });
   });
 });

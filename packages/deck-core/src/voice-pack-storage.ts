@@ -569,7 +569,10 @@ export function createVoicePackStorage({ root, fs, logger }: VoicePackStorageDep
      * between the holder's open and its first write sees an empty file, calls
      * it stale, and takes it over — two holders, and the swap absorbs it. That
      * window is microseconds wide and closing it would cost a second file; not
-     * worth it for a lock that is allowed to fail.
+     * worth it for a lock that is allowed to fail. When it is two WAITERS doing
+     * that to each other — each reading the other's fresh lock as empty and
+     * removing it — the poll between retries is what breaks the tie, and the
+     * deadline is what ends it if nothing does; see the takeover branch below.
      */
     async acquireLock(id) {
       const unlocked: VoicePackLock = { acquired: false, release: async () => undefined };
@@ -641,7 +644,17 @@ export function createVoicePackStorage({ root, fs, logger }: VoicePackStorageDep
           }
 
           logger.debug(`Voice packs: took over a stale install lock for "${id}"`);
-          continue;
+          // Deliberately NO `continue` here: a takeover falls through to the
+          // deadline check and the poll sleep like every other retry. Two
+          // plugins racing a freshly-truncated lock can each read the other's
+          // as empty, remove it, and land back here — a retry that skipped the
+          // sleep would spin with no delay, and one that skipped the deadline
+          // would spin for as long as both processes lived, with the documented
+          // "polls every VOICE_PACK_LOCK_POLL_MS, gives up after
+          // VOICE_PACK_LOCK_MAX_WAIT_MS" true of every path but this one. The
+          // sleep is what lets one of them win the create; the deadline is what
+          // ends it if neither does. One poll's delay on an honest takeover is
+          // nothing against the stale window it just waited out.
         }
 
         if (Date.now() >= deadline) {

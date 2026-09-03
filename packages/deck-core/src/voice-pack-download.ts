@@ -22,7 +22,16 @@
  *   for nothing else. See {@link downloadVoicePack} for why it is not even used
  *   to refuse early.
  * - The deadline is an IDLE one, re-armed by every chunk, not a total. See the
- *   comment on {@link VOICE_PACK_DOWNLOAD_STALL_TIMEOUT_MS}.
+ *   comment on {@link VOICE_PACK_DOWNLOAD_STALL_TIMEOUT_MS}. It has a ceiling
+ *   beside it, on the network time of the whole download, sized so that it can
+ *   never be the thing that cuts an honest one — see {@link
+ *   VOICE_PACK_DOWNLOAD_TOTAL_TIMEOUT_MS} for what it is for instead.
+ * - The archive is fetched over https, and that is checked where the bytes
+ *   come FROM rather than where the URL was written: the catalog schema pins
+ *   the scheme, but `fetch` follows redirects, and the release host always
+ *   redirects an archive URL to its CDN. The response's own final URL is what
+ *   is checked, before a byte of the body is read. See {@link downloadVoicePack}
+ *   for what that does and does not cover.
  *
  * Never throws. Every way a download can go wrong is a `failure` kind on the
  * result, because the caller acts differently on them: a hash mismatch is
@@ -64,6 +73,36 @@ import { SHA256_HEX_PATTERN } from "./voice-pack-constants.js";
  * release CDN can honestly take a few seconds on a poor link.
  */
 export const VOICE_PACK_DOWNLOAD_STALL_TIMEOUT_MS = 30_000;
+
+/**
+ * How long this function will wait on the network IN TOTAL, across every
+ * chunk, before giving up on a download that is still delivering.
+ *
+ * The idle deadline above cannot be the only bound. It is re-armed by every
+ * chunk, so a server that sends one byte every 29 seconds is never cut by it —
+ * and the install reading from it holds the pack's lock, its busy slot and the
+ * Remove command for as long as it runs, which without this ceiling is as long
+ * as the plugin process lives. The lock's heartbeat keeps refreshing the whole
+ * time, so the other ecosystems' plugins wait on it too, until their own wait
+ * runs out. Slow-but-alive is what the idle deadline is careful not to kill;
+ * too-slow-to-ever-finish is what this one kills.
+ *
+ * Counted the way the idle deadline counts — while waiting on the network, not
+ * while the sink is being written — for the reason given there: a slow disk is
+ * not a dripping server. One timer serves both bounds; each arm sets it to
+ * whichever is nearer, the idle deadline or what is left of this one.
+ *
+ * 30 min. The honest worst case is a several-voice pack on a throttled link:
+ * 12.5 MB at 20 kB/s — a mobile plan past its data cap — is about ten minutes,
+ * and three voices' worth is about thirty. A single-voice pack gets through on
+ * anything faster than 7 kB/s (12.5 MB / 1800 s). Slower than that is not a
+ * slow link, it is one nobody sits and waits on, and the retry at the next
+ * start costs nothing. On the other side of the number, a dripping server now
+ * holds the install for half an hour rather than indefinitely — and the other
+ * plugins stop waiting on the lock after `VOICE_PACK_LOCK_MAX_WAIT_MS` (ten
+ * minutes) in any case.
+ */
+export const VOICE_PACK_DOWNLOAD_TOTAL_TIMEOUT_MS = 30 * 60_000;
 
 /**
  * The most this function will ever accept, whatever the caller asks for.
@@ -112,9 +151,15 @@ export interface VoicePackDownloadProgress {
  *   digest that is not lowercase hex, or a cap that is not a positive integer.
  *   Refused BEFORE any request is made.
  * - `http` — the server answered, and the answer was not a success status.
+ * - `insecure-redirect` — the request went out over https and the answer came
+ *   from somewhere that is not. Refused after the redirect was followed and
+ *   before a byte of the body was read: the archive is never taken in the clear.
  * - `transport` — the request could not be made, or the connection dropped
  *   partway through the body.
- * - `timeout` — no bytes arrived for {@link DownloadVoicePackOptions.stallTimeoutMs}.
+ * - `timeout` — no bytes arrived for {@link DownloadVoicePackOptions.stallTimeoutMs},
+ *   or the whole download ran past {@link DownloadVoicePackOptions.totalTimeoutMs}.
+ *   One kind for both, because the caller does the same with each — retries at
+ *   the next start — and the `reason` says which clock ran out.
  * - `too-large` — the body exceeded the cap. Points at the catalog or the
  *   server, never at the network.
  * - `sink` — the destination refused a write. A disk full or a locked file,
@@ -127,6 +172,7 @@ export interface VoicePackDownloadProgress {
 export const VOICE_PACK_DOWNLOAD_FAILURES = [
   "invalid-request",
   "http",
+  "insecure-redirect",
   "transport",
   "timeout",
   "too-large",
@@ -169,6 +215,8 @@ export interface DownloadVoicePackOptions {
   /** The caller's own cancellation — the plugin stopping, say. */
   signal?: AbortSignal;
   stallTimeoutMs?: number;
+  /** The ceiling on network time across the whole download — see {@link VOICE_PACK_DOWNLOAD_TOTAL_TIMEOUT_MS}. */
+  totalTimeoutMs?: number;
   fetchImpl?: typeof fetch;
 }
 
@@ -210,6 +258,7 @@ export async function downloadVoicePack(options: DownloadVoicePackOptions): Prom
     onProgress,
     signal,
     stallTimeoutMs = VOICE_PACK_DOWNLOAD_STALL_TIMEOUT_MS,
+    totalTimeoutMs = VOICE_PACK_DOWNLOAD_TOTAL_TIMEOUT_MS,
     fetchImpl = fetch,
   } = options;
 
@@ -220,6 +269,10 @@ export async function downloadVoicePack(options: DownloadVoicePackOptions): Prom
   if (!Number.isInteger(maxBytes) || maxBytes <= 0) {
     return fail("invalid-request", `byte cap ${String(maxBytes)} is not a positive integer`, 0);
   }
+
+  // The schema's rule, restated for the caller that bypasses the schema — as
+  // with the digest above. The final hop is checked separately, below.
+  if (!isHttps(url)) return fail("invalid-request", `"${url}" is not an https URL`, 0);
 
   if (signal?.aborted) return fail("aborted", "cancelled before the request was made", 0);
 
@@ -241,23 +294,49 @@ export async function downloadVoicePack(options: DownloadVoicePackOptions): Prom
   // must never run with no deadline at all.
   const controller = new AbortController();
   let stalled = false;
+  let exceeded = false;
   let cancelled = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+
+  // Network time so far, summed over every armed interval. The total ceiling
+  // is measured against this rather than the wall clock so that, like the idle
+  // deadline, it never counts time spent in the sink.
+  let networkMs = 0;
+  let armedAt: number | undefined;
 
   const disarm = (): void => {
     if (timer !== undefined) clearTimeout(timer);
 
     timer = undefined;
+
+    if (armedAt !== undefined) {
+      networkMs += Date.now() - armedAt;
+      armedAt = undefined;
+    }
   };
 
+  // One timer, two bounds: set to whichever is nearer. Which bound a firing
+  // means is decided here, when the timer is set — nothing read back after
+  // the abort would say, for the same reason the flags exist at all.
   const arm = (): void => {
     disarm();
-    timer = setTimeout(() => {
-      stalled = true;
-      controller.abort();
-    }, stallTimeoutMs);
+    armedAt = Date.now();
+    const remaining = totalTimeoutMs - networkMs;
+    const totalIsNearer = remaining <= stallTimeoutMs;
+    timer = setTimeout(
+      () => {
+        if (totalIsNearer) exceeded = true;
+        else stalled = true;
+
+        controller.abort();
+      },
+      Math.max(0, totalIsNearer ? remaining : stallTimeoutMs),
+    );
   };
+
+  /** Whether any of our own reasons to abort has fired. */
+  const fired = (): boolean => cancelled || stalled || exceeded;
 
   const onCallerAbort = (): void => {
     cancelled = true;
@@ -275,6 +354,10 @@ export async function downloadVoicePack(options: DownloadVoicePackOptions): Prom
 
   const interrupted = (err?: unknown): VoicePackDownloadResult => {
     if (cancelled) return fail("aborted", "cancelled by the caller", received);
+
+    if (exceeded) {
+      return fail("timeout", `did not finish inside ${describeDuration(totalTimeoutMs)} of network time`, received);
+    }
 
     if (stalled) return fail("timeout", `no data for ${Math.round(stallTimeoutMs / 1000)} s`, received);
 
@@ -295,7 +378,34 @@ export async function downloadVoicePack(options: DownloadVoicePackOptions): Prom
 
     // A caller abort that lands between the response resolving and the flag
     // being read is still an abort, not an HTTP verdict.
-    if (cancelled || stalled) return interrupted();
+    if (fired()) return interrupted();
+
+    // `response.url` is where the body is coming FROM — the last hop, after
+    // every redirect `fetch` followed — and it is the only view of the redirect
+    // chain the Fetch API offers. Checked here, before the body is touched, so
+    // the schema's https rule holds for the bytes and not just for the catalog.
+    //
+    // What this cannot see is an INTERMEDIATE plaintext hop (https -> http ->
+    // https): `fetch` follows those silently, and inspecting each hop would
+    // mean `redirect: "manual"` and a hand-rolled redirect loop. Not done, on
+    // purpose. An attacker on such a hop can send the request anywhere, and
+    // everywhere it can be sent is already refused — a plaintext final host
+    // here, a different archive by the digest, a huge one by the byte cap.
+    // What that leaves them is knowing this machine fetched a public archive,
+    // which is not worth a second redirect implementation. Not airtight, and
+    // not claimed to be.
+    //
+    // A `Response` built by hand reports no url at all. undici never produces
+    // one — that is a test double — and it is read as "no redirect happened".
+    const finalUrl = response.url || url;
+
+    if (!isHttps(finalUrl)) {
+      // Cancelled rather than left for the collector: an unread body keeps
+      // its connection open, and this one is the whole archive.
+      await response.body?.cancel().catch(() => undefined);
+
+      return fail("insecure-redirect", `redirected to ${describeOrigin(finalUrl)}, which is not https`, 0);
+    }
 
     if (!response.ok) return fail("http", `the server answered HTTP ${response.status}`, 0);
 
@@ -320,7 +430,7 @@ export async function downloadVoicePack(options: DownloadVoicePackOptions): Prom
       // Checked BEFORE `done`: a cancelled reader reports `done`, and taking
       // that as the end of the body would hash a truncated archive and report
       // it as a mismatch rather than the timeout it was.
-      if (cancelled || stalled) return interrupted();
+      if (fired()) return interrupted();
 
       if (step.done) break;
 
@@ -383,6 +493,28 @@ export async function downloadVoicePack(options: DownloadVoicePackOptions): Prom
 
 function fail(failure: VoicePackDownloadFailure, reason: string, bytes: number): VoicePackDownloadResult {
   return { ok: false, failure, reason, bytes };
+}
+
+/** The catalog schema's own test, restated for a URL that arrived rather than one that was written. */
+function isHttps(value: string): boolean {
+  try {
+    return new URL(value).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+/** `scheme://host[:port]` for the log — the host is what a reader needs — or the raw value when it is no URL at all. */
+function describeOrigin(value: string): string {
+  try {
+    return new URL(value).origin;
+  } catch {
+    return value;
+  }
+}
+
+function describeDuration(ms: number): string {
+  return ms >= 60_000 ? `${Math.round(ms / 60_000)} min` : `${Math.round(ms / 1000)} s`;
 }
 
 /**

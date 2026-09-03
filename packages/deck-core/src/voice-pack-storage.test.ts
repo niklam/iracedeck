@@ -701,7 +701,11 @@ describe("acquireLock", () => {
     const dead = Date.now() - VOICE_PACK_LOCK_STALE_MS - 1;
     fs.file(lockPath, JSON.stringify({ pid: 1, acquiredAt: dead, heartbeatAt: dead }));
 
-    const lock = await storage.acquireLock("luca");
+    // A takeover falls through to the poll like any other retry (the racing
+    // test below is why), so the clock has to move one poll for it to return.
+    const waiting = storage.acquireLock("luca");
+    await vi.advanceTimersByTimeAsync(VOICE_PACK_LOCK_POLL_MS);
+    const lock = await waiting;
 
     expect(lock.acquired).toBe(true);
     expect(JSON.parse(fs.read(lockPath) as string).acquiredAt).toBe(Date.now());
@@ -709,8 +713,10 @@ describe("acquireLock", () => {
 
   it("treats an unreadable lock as stale", async () => {
     fs.file(lockPath, "not json");
+    const waiting = storage.acquireLock("luca");
+    await vi.advanceTimersByTimeAsync(VOICE_PACK_LOCK_POLL_MS);
 
-    expect((await storage.acquireLock("luca")).acquired).toBe(true);
+    expect((await waiting).acquired).toBe(true);
   });
 
   it("proceeds without the lock when the wait runs out on a holder that stays alive", async () => {
@@ -762,6 +768,57 @@ describe("acquireLock", () => {
     fs.faults.remove = () => "EBUSY";
 
     expect((await storage.acquireLock("luca")).acquired).toBe(false);
+  });
+
+  it("polls between takeovers and gives up on the deadline when a stale lock reappears every time (two plugins racing a truncated lock)", async () => {
+    // The other plugin re-creates its lock the instant ours removes it, and we
+    // read it as empty every time — the shape two waiters make of each other
+    // when both land on a freshly-truncated file. Bounded, so that a takeover
+    // path retrying without the poll fails this test rather than hanging it:
+    // past the limit the re-creation stops and the removal reports failure,
+    // which ends the loop by a different exit than the one asserted below.
+    const polls = VOICE_PACK_LOCK_MAX_WAIT_MS / VOICE_PACK_LOCK_POLL_MS;
+    const limit = polls + 50;
+
+    class RacingFs extends FakeFs {
+      recreations = 0;
+
+      override async remove(path: string) {
+        const removed = await super.remove(path);
+
+        if (!removed.ok || normalize(path) !== normalize(lockPath)) return removed;
+
+        this.recreations += 1;
+
+        if (this.recreations > limit) return { ok: false as const, code: "ELOOP" };
+
+        this.file(path, "");
+
+        return removed;
+      }
+    }
+
+    const racing = new RacingFs();
+    racing.dir(ROOT);
+    // The other plugin's lock is already there, freshly truncated, when we arrive.
+    racing.file(lockPath, "");
+    const contested = createVoicePackStorage({ root: ROOT, fs: racing, logger: logger as never });
+    const settled: { lock?: VoicePackLock } = {};
+    const waiting = contested.acquireLock("luca").then((lock) => (settled.lock = lock));
+
+    await vi.advanceTimersByTimeAsync(VOICE_PACK_LOCK_MAX_WAIT_MS - VOICE_PACK_LOCK_POLL_MS);
+
+    expect(settled.lock).toBeUndefined();
+
+    await vi.advanceTimersByTimeAsync(VOICE_PACK_LOCK_POLL_MS * 2);
+    await waiting;
+
+    expect(settled.lock?.acquired).toBe(false);
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("proceeding without"));
+    // One takeover per poll and never a spin: as many as the deadline allows
+    // polls, plus the attempt that finds the deadline passed.
+    expect(racing.recreations).toBeGreaterThan(1);
+    expect(racing.recreations).toBeLessThanOrEqual(polls + 1);
   });
 });
 
