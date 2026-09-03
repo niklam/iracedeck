@@ -170,6 +170,28 @@ describe("ird-voice-pack-catalog", () => {
       expect(el.textContent).not.toContain("Couldn't check");
     });
 
+    // "You have everything" is a claim about what we publish, so it must not be
+    // made when an entry was published and we simply failed to read it.
+    // `parseOffer` drops a malformed entry silently, so the count is the only
+    // evidence anything was lost.
+    it("does not claim the user has everything when a catalog entry could not be read", () => {
+      const { el, mock } = mount();
+
+      publish(
+        mock,
+        status({
+          state: "ok",
+          packs: [
+            offer({ verdict: "installed" }),
+            { id: "vera", label: "Vera", version: "1.0.0", bytes: "not a number" },
+          ],
+        }),
+      );
+
+      expect(el.textContent).not.toContain("You have every voice we publish");
+      expect(el.textContent).toContain("No downloadable voice packs");
+    });
+
     // The carve-out: the catalog is re-read after every install, so a verdict
     // that flips to `installed` while the swap is still running must not take
     // the row — and its progress, or its error and Retry — off the screen.
@@ -276,7 +298,7 @@ describe("ird-voice-pack-catalog", () => {
         ),
       );
 
-      expect(el.querySelector(".ird-vpc-installed")).toBeNull();
+      expect(el.querySelector(".ird-vpc-button")).toBeNull();
       expect(el.querySelector(".ird-vpc-phase")?.textContent).toContain("Downloading");
     });
 

@@ -83,8 +83,15 @@ export function buildSeedSettings() {
     // What this run knows about downloadable packs (#1100). Seeded because the
     // alternative is not an empty section but an honest "we could not check"
     // message — a shot of THAT would document the failure path as if it were
-    // the feature. One installed row and one offered row is the smallest pair
-    // that shows both verdicts; the note above about the fold applies here too.
+    // the feature.
+    //
+    // `luca` is installed and therefore renders NOTHING here: "Available to
+    // Download" lists only what the user can act on, and an installed pack is
+    // represented under Installed Voices instead. It is kept in the fixture on
+    // purpose, as the entry proving that filter rather than as a row — the
+    // capture would look the same with it removed, and would then stop
+    // documenting the rule. `vera` is the one offered row. The note above about
+    // the fold applies here too.
     _voicePackStatus: JSON.stringify({
       // Fixed, never `Date.now()`: a capture has to be reproducible, and a
       // timestamp that moves would make every rerun a diff.

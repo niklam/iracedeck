@@ -488,14 +488,31 @@ export class VoicePackList extends HTMLElement {
       version.className = "ird-vp-version";
       version.textContent = entry.version;
 
-      // A bundled seed gets no Remove, and what stands in its place is a
-      // STATEMENT rather than a disabled button (#1100). The plugin re-seeds
-      // this pack on the next start, so a Remove would delete the folder and
-      // then appear not to have worked — worse than no button at all. A
-      // DISABLED button would be worse again: it still invites the click and
-      // still has to explain itself, where a line of text simply answers the
-      // question a missing button raises.
-      if (entry.provenance === "bundled-seed") {
+      // A pack the PLUGIN provides gets no Remove, and what stands in its
+      // place is a STATEMENT rather than a disabled button (#1100).
+      //
+      // The condition is deliberately "bundled seed AND provides nothing", not
+      // provenance alone. `voices` is empty exactly while the plugin's own
+      // audio owns every voice this pack declares — so the row is describing
+      // something the user cannot meaningfully delete: removing the folder
+      // changes nothing they can hear, because the bundle keeps playing the
+      // voice. Once the plugin stops bundling audio, the same folder scans with
+      // real voices and this branch stops firing on its own, which is what
+      // keeps a working, user-owned pack from becoming permanently unremovable
+      // and mislabelled.
+      //
+      // NOT because it would be undone on the next start — that reason is
+      // false often enough to be worth naming. `VoicePackInstaller.seed()`
+      // skips with `packs-present` whenever any pack directory exists, and its
+      // own comment calls removing the seeded copy a choice the plugin must not
+      // argue with. So with a second pack installed a removal WOULD stick. The
+      // button is withheld because its effect would be invisible, not because
+      // it would be reverted.
+      //
+      // A DISABLED button would be worse than none: it still invites the click
+      // and still has to explain itself, where a line of text simply answers
+      // the question a missing button raises.
+      if (entry.provenance === "bundled-seed" && entry.voices.length === 0) {
         const note = document.createElement("span");
 
         note.className = "ird-vp-note";

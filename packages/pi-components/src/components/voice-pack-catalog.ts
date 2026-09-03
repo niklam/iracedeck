@@ -7,13 +7,15 @@
  * them locally rather than importing, the same call `voice-pack-list.ts` makes
  * for the same reason — see its module comment).
  *
- * ONE ROW PER CATALOG ENTRY, ALWAYS. `catalog.packs` already carries every
+ * ONE ROW PER PACK THE USER CAN ACT ON (#1100). `catalog.packs` carries every
  * published pack with a verdict computed by the plugin (`install` / `update` /
- * `installed` / `unsupported`) — this component never filters that array. An
- * `unsupported` pack in particular MUST stay visible with an explanation
- * rather than disappear, so a user on an older build learns their pack exists
- * and why they cannot have it yet, instead of the catalog looking like it
- * forgot about it.
+ * `installed` / `unsupported`); this component renders the first three and
+ * withholds `installed`, which is represented under Installed Voices instead —
+ * see {@link isDownloadable} for the rule and why it is a render-layer decision
+ * rather than a verdict change. An `unsupported` pack in particular MUST stay
+ * visible with an explanation rather than disappear, so a user on an older
+ * build learns their pack exists and why they cannot have it yet, instead of
+ * the catalog looking like it forgot about it.
  *
  * UNKNOWN CATALOG STATE IS RENDERED, NOT SILENT. This is a deliberate
  * departure from `ird-update-notice`, the closest sibling component in this
@@ -98,7 +100,11 @@ type VoicePackInstallState = {
   error?: string;
 };
 
-type VoicePackCatalogState = { state: "unknown" } | { state: "ok"; packs: VoicePackOffer[] };
+type VoicePackCatalogState =
+  | { state: "unknown" }
+  // `dropped` records that at least one published entry could not be parsed, so
+  // the "you have everything" message can stand down to a claim we can support.
+  | { state: "ok"; packs: VoicePackOffer[]; dropped: boolean };
 
 type VoicePackStatus = {
   catalog: VoicePackCatalogState;
@@ -205,7 +211,12 @@ function parseStatus(raw: string): VoicePackStatus {
     if (isRecord(catalogRaw) && catalogRaw.state === "ok" && Array.isArray(catalogRaw.packs)) {
       const packs = catalogRaw.packs.map(parseOffer).filter((offer): offer is VoicePackOffer => offer !== undefined);
 
-      catalog = { state: "ok", packs };
+      // Whether anything was DISCARDED on the way in, not just what survived.
+      // `parseOffer` drops a malformed entry silently — a renamed field, a
+      // non-numeric `bytes` — and without this a catalog of one installed pack
+      // plus one unreadable one would tell the user they have every voice we
+      // publish, which is a positive claim about a pack we failed to read.
+      catalog = { state: "ok", packs, dropped: packs.length !== catalogRaw.packs.length };
     }
 
     const installs: Record<string, VoicePackInstallState> = {};
@@ -322,7 +333,6 @@ export class VoicePackCatalog extends HTMLElement {
         margin-left: auto;
       }
       ird-voice-pack-catalog .ird-vpc-size { color: #969696; font-size: 8pt; white-space: nowrap; }
-      ird-voice-pack-catalog .ird-vpc-installed { color: #7cc47f; font-size: 8pt; white-space: nowrap; }
       ird-voice-pack-catalog .ird-vpc-unsupported {
         color: #e0c07a;
         font-size: 8pt;
@@ -406,9 +416,9 @@ export class VoicePackCatalog extends HTMLElement {
       // "nothing right now" to somebody who simply owns everything would read
       // as a fault, which is the message directly above this one.
       message.textContent =
-        status.catalog.packs.length === 0
-          ? "No downloadable voice packs right now."
-          : "You have every voice we publish.";
+        status.catalog.packs.length > 0 && !status.catalog.dropped
+          ? "You have every voice we publish."
+          : "No downloadable voice packs right now.";
       this.list.appendChild(message);
 
       return;
@@ -503,16 +513,6 @@ export class VoicePackCatalog extends HTMLElement {
         return action;
       }
 
-      case "installed": {
-        const installed = document.createElement("span");
-
-        installed.className = "ird-vpc-installed";
-        installed.textContent = "Installed";
-        action.appendChild(installed);
-
-        return action;
-      }
-
       case "unsupported": {
         const unsupported = document.createElement("span");
 
@@ -525,6 +525,13 @@ export class VoicePackCatalog extends HTMLElement {
         return action;
       }
     }
+
+    // `installed` is the remaining verdict and cannot arrive here: it is
+    // withheld by `isDownloadable` unless an install is in flight, and that
+    // case returned above. Kept as a neutral empty action rather than a
+    // rendered "Installed" label, so that if the filter is ever relaxed the row
+    // is merely actionless instead of duplicating what Installed Voices says.
+    return action;
   }
 
   /** Install / Update / Retry all fire the same command — see `voice-pack-catalog-service.ts`: an update is just an install onto a pack that is already there. */

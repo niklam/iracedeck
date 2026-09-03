@@ -21,7 +21,9 @@ Open **iRaceDeck Settings** from any action's Property Inspector, go to the **Ra
 
 Some voices are listed with their pack's name in front, as **Pack: Voice**. That happens when the voice's name alone could be ambiguous — a pack providing more than one voice, or a pack whose own name differs from its voice's. A pack that provides a single voice with a matching name is listed by that name alone. The rule depends only on the pack itself, so installing another pack never renames a voice you have already chosen.
 
-**Installed Voices** just below the dropdown lists every pack iRaceDeck has loaded, with its version and where it came from — downloaded from iRaceDeck's own catalog, or installed by hand. Anything in the folder that iRaceDeck could not load is listed underneath, with the reason — so a pack that is present but silent tells you why without you going looking for it.
+**Installed Voices** just below the dropdown lists every pack iRaceDeck has loaded, with its version and where it came from — **Built-in** for the voice that ships with iRaceDeck itself, **Downloaded** for one from iRaceDeck's own catalog, and **Installed by hand** for one you placed in the folder yourself. Anything in the folder that iRaceDeck could not load is listed underneath, with the reason — so a pack that is present but silent tells you why without you going looking for it.
+
+The built-in voice is listed like any other pack, but has no **Remove** button: it comes with iRaceDeck and stays available whatever is in the folder, so there is nothing to remove. The row reads *Included with the plugin* in place of the button.
 
 ## Downloading a Voice Pack
 
@@ -33,7 +35,9 @@ The download can happen **while iRacing is running**, including mid-race — iRa
 
 If iRaceDeck can't reach the catalog — no connection, or a bad one — nothing already installed is affected. Every voice you have keeps working exactly as before; iRaceDeck just has nothing new to offer until it can check again.
 
-A downloaded pack is verified against a checksum before it replaces anything, so a corrupted or incomplete download is discarded rather than installed. A pack you no longer want can be removed from the same Voices section.
+A downloaded pack is verified against a checksum before it replaces anything, so a corrupted or incomplete download is discarded rather than installed. A pack you no longer want can be removed from the same Voices section — every pack except the built-in voice, which has no Remove button.
+
+The list of packs available to download shows only what you do not already have. Once a pack is installed it moves to **Installed Voices** and leaves that list, so a pack never appears twice. When you have every voice iRaceDeck publishes, the section says so rather than sitting empty.
 
 ## Installing a Voice Pack by Hand
 

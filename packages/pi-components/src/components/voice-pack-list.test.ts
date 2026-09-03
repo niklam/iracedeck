@@ -536,6 +536,18 @@ describe("ird-voice-pack-list", () => {
       expect(el.querySelector("button[disabled]")).toBeNull();
     });
 
+    // Stage 3, when the plugin stops bundling audio: the same folder scans with
+    // real voices, and it is then an ordinary pack the user owns. The exemption
+    // keys on "provides nothing", not on the provenance alone, so it stops
+    // firing here by itself rather than leaving a working pack permanently
+    // unremovable and mislabelled as included with the plugin.
+    it("offers Remove on a seeded pack that does provide a voice", () => {
+      publish(scan([{ ...seed, voices: [{ id: "default", label: "Default" }] }]));
+
+      expect(el.querySelector(".ird-vp-remove-button")).not.toBeNull();
+      expect(el.querySelector(".ird-vp-note")).toBeNull();
+    });
+
     // The exemption must not reach a pack the user genuinely can remove.
     it.each([["catalog"], ["sideload"]])("still offers Remove on a %s pack", (provenance) => {
       publish(

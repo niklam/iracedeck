@@ -205,11 +205,28 @@ export function scanVoicePacks({ root, fs, reservedVoices }: ScanVoicePacksOptio
     // Be precise about what this marker is worth. It is NOT a security
     // boundary: a sideloaded pack can write the same file, and packs are
     // deliberately unsigned (a provenance record is displayed, never enforced).
-    // What it gates is a diagnostic MESSAGE, not a capability — a forged marker
-    // buys an attacker the suppression of a line about a pack that still cannot
-    // shadow a single bundled clip. That is the whole exposure, and it is why a
-    // forgeable file is an acceptable instrument for this job and would not be
-    // for any other.
+    //
+    // What it gates GREW in #1100 and the honest statement grew with it. It was
+    // only a diagnostic message: a forged marker bought the suppression of a
+    // log line about a pack that still could not shadow a single bundled clip.
+    // Now it also buys a DISPLAY TREATMENT — the row is listed with a
+    // "Built-in" badge, reads "Included with the plugin", and offers no Remove.
+    // So a sideloaded pack that forges the record and declares nothing but
+    // bundled voice ids can present itself as shipped by iRaceDeck, and the one
+    // UI route to deleting it is withheld.
+    //
+    // Still accepted, for reasons that survive the change but should be
+    // re-argued rather than assumed. To forge it a pack must declare ONLY
+    // voices the bundle already provides, so it provides nothing and cannot
+    // shadow a clip: the exposure is a misleading label on an inert folder that
+    // the user placed there by hand, on a machine where they can already write
+    // the plugin's own JavaScript. Nothing here is a capability the forger did
+    // not already have.
+    //
+    // What would change that verdict is a Remove button becoming the only way
+    // to delete a pack, or the badge ever being read as a trust decision by
+    // code rather than by a person. Neither is true today; if either becomes
+    // true, this marker stops being an acceptable instrument.
     //
     // Keep the exemption exactly this narrow. It requires OUR source value and
     // a record that names this same pack, so it cannot be widened by accident
@@ -219,6 +236,13 @@ export function scanVoicePacks({ root, fs, reservedVoices }: ScanVoicePacksOptio
     const isBundledSeed = provenance?.source === "bundled-seed" && provenance.id === manifest.id;
 
     const seen = new Set<string>();
+    // Why the drops happened, not just how many. The bundled-seed branch below
+    // must fire only when the BUNDLE took every voice: a seed whose voice was
+    // claimed by another pack, or declared twice, is a pack with a real problem
+    // and would otherwise render as a healthy "Built-in" row with a problem
+    // line underneath it — shown as fine and broken at once.
+    let droppedToBundle = 0;
+    let droppedOtherwise = 0;
     const declared = manifest.voices.filter((voice) => {
       if (seen.has(voice.id)) {
         // Reported, not silently swallowed. Every other malformation in this
@@ -228,6 +252,7 @@ export function scanVoicePacks({ root, fs, reservedVoices }: ScanVoicePacksOptio
         // dropped. More likely now that a voice carries a label, since two
         // entries differing only by label look like two things.
         problems.push({ pack: folder, reason: `voice "${voice.id}" is declared more than once; the first wins` });
+        droppedOtherwise += 1;
 
         return false;
       }
@@ -241,6 +266,8 @@ export function scanVoicePacks({ root, fs, reservedVoices }: ScanVoicePacksOptio
           problems.push({ pack: folder, reason: `voice "${voice.id}" is provided by the plugin's bundled audio` });
         }
 
+        droppedToBundle += 1;
+
         return false;
       }
 
@@ -249,6 +276,7 @@ export function scanVoicePacks({ root, fs, reservedVoices }: ScanVoicePacksOptio
       if (owner === undefined) return true;
 
       problems.push({ pack: folder, reason: `voice "${voice.id}" is already provided by pack "${owner}"` });
+      droppedOtherwise += 1;
 
       return false;
     });
@@ -280,7 +308,7 @@ export function scanVoicePacks({ root, fs, reservedVoices }: ScanVoicePacksOptio
     //
     // It claims no voice id either, so a later pack that genuinely provides one
     // of these ids is not locked out by the seed's presence.
-    if (isBundledSeed && declared.length === 0) {
+    if (isBundledSeed && declared.length === 0 && droppedToBundle > 0 && droppedOtherwise === 0) {
       packs.push({
         id: manifest.id,
         label: manifest.label,

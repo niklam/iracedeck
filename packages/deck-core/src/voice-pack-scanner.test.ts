@@ -493,6 +493,41 @@ describe("scanVoicePacks and the bundled seed (#1100)", () => {
     expect(result.packs.flatMap((pack) => pack.clips)).toEqual([]);
   });
 
+  // The branch fires only when the BUNDLE took every voice (#1100). A seed
+  // whose voice another pack already claimed has a real problem, and must not
+  // render as a healthy "Built-in" row with its own problem line underneath —
+  // shown as fine and broken at once. Not reachable for `default` while it is
+  // reserved, but it is exactly the state the branch is carried into once the
+  // plugin stops bundling audio.
+  it("does not list a seed as built-in when another pack took its voice", () => {
+    const result = scanVoicePacks({
+      root: ROOT,
+      reservedVoices: [],
+      fs: fakeFs({
+        alpha: {
+          manifest: {
+            schema: 1,
+            id: "alpha",
+            label: "Alpha",
+            version: "1.0.0",
+            voices: [{ id: "shared", label: "Shared" }],
+          },
+          clips: ["voice/shared/flags/a.mp3"],
+        },
+        default: {
+          manifest: { ...bundled, voices: [{ id: "shared", label: "Shared" }] },
+          install: seedRecord,
+          clips: ["voice/shared/flags/a.mp3"],
+        },
+      }),
+    });
+
+    expect(result.packs.map((pack) => pack.id)).toEqual(["alpha"]);
+    expect(result.problems).toEqual([
+      { pack: "default", reason: `voice "shared" is already provided by pack "alpha"` },
+    ]);
+  });
+
   // The hostile cases, and the reason the exemption is written as narrowly as
   // it is. Each must keep reporting; if a later change widens the branch into
   // "any pack with an .install.json may claim a bundled voice", one of these
