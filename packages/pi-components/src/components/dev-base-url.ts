@@ -24,6 +24,33 @@ const DEV_BASE_SETTING = "_devBaseUrl";
 const CATALOG_FILENAME = "voice-catalog.json";
 const DEFAULT_BASE = "https://iracedeck.com";
 
+/** How long a rejected value is shown before it is elided; a hand-edited file can hold anything. */
+const MAX_SHOWN_VALUE = 120;
+
+/**
+ * What the row says: where the plugin will ACTUALLY fetch, and whether the
+ * override got its way.
+ *
+ * The two travel together on purpose. Showing the resolved URL alone was not
+ * enough: a rejected override resolves to the published URL, so prose that
+ * unconditionally announced an override contradicted the URL printed directly
+ * above it, on the one screen someone checks to find out whether the override
+ * is live. The URL was honest and the sentence was not.
+ */
+interface DisplayState {
+  /** True only when the override was accepted and is steering the catalog. */
+  readonly accepted: boolean;
+  /** The URL the plugin will fetch — resolved, never the raw value. */
+  readonly url: string;
+}
+
+/** Elide an over-long hand-edited value so one paste cannot blow out the row. */
+function truncateValue(value: string): string {
+  const trimmed = value.trim();
+
+  return trimmed.length > MAX_SHOWN_VALUE ? `${trimmed.slice(0, MAX_SHOWN_VALUE)}…` : trimmed;
+}
+
 /**
  * The browser's copy of deck-core's `resolveVoicePackCatalogUrl`.
  *
@@ -33,8 +60,8 @@ const DEFAULT_BASE = "https://iracedeck.com";
  * http only to loopback, no query or fragment, and only our own filename joined
  * on — so the row cannot claim an override the plugin would refuse.
  */
-function resolveDisplayUrl(base: string): string {
-  const fallback = `${DEFAULT_BASE}/${CATALOG_FILENAME}`;
+function resolveDisplayUrl(base: string): DisplayState {
+  const fallback: DisplayState = { accepted: false, url: `${DEFAULT_BASE}/${CATALOG_FILENAME}` };
 
   let url: URL;
 
@@ -50,7 +77,7 @@ function resolveDisplayUrl(base: string): string {
 
   if (url.search !== "" || url.hash !== "") return fallback;
 
-  return `${url.origin}${url.pathname.replace(/\/+$/, "")}/${CATALOG_FILENAME}`;
+  return { accepted: true, url: `${url.origin}${url.pathname.replace(/\/+$/, "")}/${CATALOG_FILENAME}` };
 }
 
 export class DevBaseUrl extends HTMLElement {
@@ -85,24 +112,30 @@ export class DevBaseUrl extends HTMLElement {
 
     this.hidden = false;
 
+    const state = resolveDisplayUrl(value);
     const item = document.createElement("sdpi-item");
 
-    item.setAttribute("label", "Catalog override");
+    // The label carries the verdict too, because it is the part that gets
+    // scanned rather than read.
+    item.setAttribute("label", state.accepted ? "Catalog override" : "Catalog override (ignored)");
 
     const text = document.createElement("div");
 
-    text.className = "ird-dev-base-url";
     // textContent: the value is a string somebody hand-edited into a file.
-    text.textContent = resolveDisplayUrl(value);
+    // Always the RESOLVED url, so a rejected override never reads as active.
+    text.textContent = state.url;
     item.appendChild(text);
     this.appendChild(item);
 
     const note = document.createElement("div");
 
     note.className = "ird-supporting-text";
-    note.textContent =
-      "A development override is set, so voice packs are listed from here instead of iracedeck.com. " +
-      "Remove _devBaseUrl from the settings file to go back to the published catalog.";
+    note.textContent = state.accepted
+      ? "A development override is set, so voice packs are listed from here instead of iracedeck.com. " +
+        "Remove _devBaseUrl from the settings file to go back to the published catalog."
+      : `The _devBaseUrl override was rejected, so voice packs are listed from the published catalog above. ` +
+        `It must be https, or http to localhost or 127.0.0.1, and carry no query or fragment. ` +
+        `Rejected value: ${truncateValue(value)}`;
     this.appendChild(note);
   }
 }
