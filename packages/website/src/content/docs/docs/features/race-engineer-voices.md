@@ -29,7 +29,7 @@ iRaceDeck publishes its own voice packs and can download and install one for you
 
 Open **iRaceDeck Settings**, go to the **Race Engineer** section, and look under **Voices**. Alongside the packs you already have, iRaceDeck lists any pack from its own catalog that you don't, each with an **Install** button — or **Update**, once a newer version of a pack you already have has been published. Press it, and iRaceDeck downloads, verifies, and installs the pack for you.
 
-The download can happen **while iRacing is running**, including mid-race — iRaceDeck never opens a window to ask about it or report on it. Progress shows up wherever you're already looking instead: the warning banner on an open action's Property Inspector, the Voices section if Settings happens to be open, and the Pit Crew key, which shows a "downloading" status in place of its usual one. If you're not looking anywhere, the pack is simply there next time you check — the Race Engineer keeps using whatever voice you already had until the new one is ready.
+The download can happen **while iRacing is running**, including mid-race — iRaceDeck never opens a window to ask about it or report on it. Progress appears in the Voices section of the Settings window, if you happen to have it open. If you do not, the download is silent by design: the pack is simply there next time you look, and the Race Engineer keeps using whatever voice you already had until the new one is ready. Nothing interrupts a session to tell you about it.
 
 If iRaceDeck can't reach the catalog — no connection, or a bad one — nothing already installed is affected. Every voice you have keeps working exactly as before; iRaceDeck just has nothing new to offer until it can check again.
 

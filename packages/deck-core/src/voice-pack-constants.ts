@@ -61,8 +61,14 @@ export const VOICE_LABELS_KEY = "_voiceLabels";
  * the shape `/updates/status` uses for the changelog feed — because a Property
  * Inspector can read a global and cannot reach that route. The changelog pane
  * exists only in the settings window, so a route cost it nothing; the voice
- * state has to reach the Race Engineer card AND the warning banner any PI
- * shows, and a global reaches both with no second auth surface.
+ * state reaches the settings window through the same publish path
+ * `_voicePacks` already uses, and adding an authorized route would be a second
+ * auth surface for one card.
+ *
+ * NOTE what does NOT consume it, since an earlier draft of this comment claimed
+ * otherwise: no Property Inspector warning banner and no key icon reads this in
+ * this release. The settings window is the only consumer. Both were designed
+ * and neither was built, so do not cite them as the reason for this shape.
  *
  * Run-scoped (see `RUN_SCOPED_SETTING_KEYS`). A download that was in flight
  * when the plugin stopped is not in flight any more, and a failure the user

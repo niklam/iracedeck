@@ -63,7 +63,10 @@ export type VoicePackCatalogState =
  * The verdict is computed once, by the plugin, rather than by each surface that
  * renders it. Two surfaces deriving "is this an update or a fresh install?"
  * from a hash comparison of their own is two chances to disagree, and the
- * settings window and the warning banner would disagree silently.
+ * two surfaces would disagree silently. Today there is only one — the
+ * settings window; the warning banner the spec describes is not built — so
+ * this is about keeping a future second surface honest rather than a
+ * disagreement anyone can observe now.
  */
 export type VoicePackOffer = {
   id: string;
