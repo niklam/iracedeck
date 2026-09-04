@@ -33,7 +33,7 @@ A pack references the vocabulary by name and can never define one. It cannot cha
 
 ## The grammar
 
-The `Step` union is already ~90% serializable. `"pool:x"`, `{clip}`, `{pool, noRepeat}`, `{var}`, `{pause}`, `{include}`, `{optional}` and `{connector}` are JSON as they stand, and `"{{name}}"` is already the string shorthand for a var (`dsl.ts:255`). Only the closures change.
+The `Step` union is already ~90% serializable. `"pool:x"`, `{clip}`, `{pool, noRepeat}`, `{var}`, `{pause}`, `{include}`, `{optional}`, `{connector}` and `{ambient}` are JSON as they stand, and `"{{name}}"` is already the string shorthand for a var (`parseStepShorthand` in `dsl.ts`). Only the closures change. (`{ambient}` was missing from the first draft of this list; a pack-defined frame is the one place a script needs it — see *Frames*.)
 
 - **`{ "if": "<cond>", "then": [...], "else": [...] }`** — the predicate becomes a registered name. A `!` prefix negates.
 - **`{ "case": "<caseVar>", "of": { "<key>": [...], "default": [...] } }`** — new. The resolver returns a key; the script maps keys to steps.
@@ -55,9 +55,11 @@ against the nested `if`/`else` it replaces. Use `if` for binary choices and `cas
 
 Three registries, all code-owned, all referenced by name:
 
-- `defineVar(name, () => string | null)` — resolves to a clip path or a pool reference. Exists today.
-- `defineCond(name, () => boolean)` — new, mirrors `defineVar`.
-- `defineCase(name, () => string | null, keys)` — new. **The key set is declared**, not inferred.
+- `defineVar(name, () => string | null, description?)` — resolves to a clip path or a pool reference. Exists today; gains an optional description.
+- `defineCond(name, () => boolean, description)` — new, mirrors `defineVar`.
+- `defineCase(name, () => string | null, keys)` — new. **The key set is declared**, not inferred: `keys` maps each key to a one-line description of what it means.
+
+**Every registration carries prose, because the registries are the source of the generated reference** ([#1066](https://github.com/niklam/iracedeck/issues/1066)). The engine exposes what it holds — every var, condition and case with its description and key set — so the reference generator and `lint:pack` read the vocabulary from the same place the interpreter does, rather than from a hand-maintained list beside it.
 
 **Declaring the key set is what makes `case` usable by anyone who has not read the resolver.** It is the source of the generated reference's branch list, it lets `lint:pack` flag a typo'd key, and it is what tells a pack author that `readback.tirePattern` has sixteen branches and what each one means. A `case` var without a published key set is a step nobody outside this repo can write.
 
@@ -125,27 +127,33 @@ So the minute is not governed by the rule above; it is a phrasing decision with 
 
 **It is not universal today and the wrapper must preserve that.** Pit-box count-in (`pit-box.ts:8`), pit-status repeat nags (`pit-status.ts:41`), corner names (`corner-name.ts:5`) and spotter calls (`spotter-engine.ts:114`) all opt out, each with an inline reason amounting to *"at that cadence the beeps would drown the words"*. The contract carries `frame: "none"` for those, where those rationale comments already live.
 
-**Two new settings**, because `backgroundVolume` currently governs the beeps and the ambience together and that coupling is the real complaint underneath "it should at least be behind an option": **Radio beeps** on/off and **Pit ambience** on/off, both read live at frame expansion, with `backgroundVolume` remaining the level control. The engine drops tick steps or ambient steps from the frame accordingly.
+**Two new settings**, because `backgroundVolume` currently governs the beeps and the ambience together and that coupling is the real complaint underneath "it should at least be behind an option": **Radio beeps** on/off (`raceEngineerRadioBeeps`) and **Pit ambience** on/off (`raceEngineerPitAmbience`), both default on, both read live at frame expansion through a closure injected into the engine, with `backgroundVolume` remaining the level control. The definition is by position in the frame, not by clip path: with beeps off the engine drops every non-ambient step of the frame, with ambience off it drops every `ambient` step. A frame that uses its own beep clip instead of the built-in ticks is therefore governed by the setting too.
+
+**The wrapper lands for every family in this issue, not just the migrated one.** The two include strings come out of all 35 sequences, `radio-frame.ts` is deleted, and an un-migrated `Scenario` gets the same `frame` field as a contract (defaulting to `radio`, `none` on the four opt-outs). Keeping the includes alive beside the wrapper until [#1065](https://github.com/niklam/iracedeck/issues/1065) would have meant two frame mechanisms honouring the two settings two different ways for one release; one mechanism exercised by everything from day one is the cheaper thing to be right about.
+
+**A frame wraps speech, so an empty body gets no frame.** The frame is applied only when the body expanded to at least one play op. This is what preserves the furled pair, whose speak-time predicate sits *inside* the frame today precisely so a stale fire produces no beeps, and it means no callout can ever play bare ticks around nothing.
 
 Whether to retire the beeps entirely is explicitly **not** decided here. It is a product change of a different kind and deserves its own issue.
 
 ## Pools
 
-`POOL_REGISTRY` (`pools.ts`, 259 lines) moves into the pack config. It is already pure data — `Readonly<Record<string, {group, base}>>` — and the prose it carries wants to be a `comment` field. The note explaining why `pit-action-acknowledgment` is a separate pool from `acknowledgment`, so their no-repeat trackers stay independent, is real knowledge currently reachable only by opening a TypeScript file.
+`POOL_REGISTRY` (`pools.ts`, ~280 lines) moves into the pack config, one family at a time as each migrates — a pool named by the active voice's pack is looked up before the code registry, so the two coexist until [#1065](https://github.com/niklam/iracedeck/issues/1065) empties the latter. It is already pure data — `Readonly<Record<string, {group, base}>>` — and the prose it carries wants to be a `comment` field. The note explaining why `pit-action-acknowledgment` is a separate pool from `acknowledgment`, so their no-repeat trackers stay independent, is real knowledge currently reachable only by opening a TypeScript file.
 
 Moving it also makes the alias layer pack-overridable, which is what lets a pack re-point `flag-blue` at its own group without rewriting every script that uses it.
 
-**A pack may also address its own clip groups directly.** Today a `{ pool }` step resolves only through the registry, while `pool:<group>/<base>` works only when returned from a var resolver (`interpreter.ts:1044`). Routing a slashed name in a pool step to the same `pickFromPoolRef` is a one-line change; registered names never contain a slash, so the namespaces cannot collide, as `interpreter.ts:1178` already notes.
+**A pack may also address its own clip groups directly.** Today a `{ pool }` step resolves only through the registry, while `pool:<group>/<base>` works only when returned from a var resolver (the `var` case of `expandSequence` in `interpreter.ts`). Routing a slashed name in a pool step to the same `pickFromPoolRef` is a one-line change; registered names never contain a slash, so the namespaces cannot collide, as the doc comment on `pickFromPoolRef` already notes.
 
 **Named pools stay the recommended form anyway**, because the name is the indirection that protects packs from our file layout. Reorganise `flags/` and every pack hardcoding `flags/blue` breaks, while every pack using `flag-blue` does not.
 
 ## Where it lives, and how it ships
 
-Authored under new `scenarios`, `frames` and `pools` keys in `configs/<id>.voice.json` — **one authored file per pack**, chosen over a sibling `<id>.scenarios.json` despite the two halves having genuinely different lifecycles. One file is what a pack author wants to be handed.
+Authored under new `scenarios`, `frames` and `pools` keys in `configs/<voice-id>.voice.json` — **one authored file per voice**, chosen over a sibling `<id>.scenarios.json` despite the two halves having genuinely different lifecycles. One file is what a pack author wants to be handed. (The first draft said "per pack"; the authored file has always been per *voice*, and a pack may carry several, so the script is per voice throughout.)
 
-That file is generator-only today and never reaches the plugin, so `pnpm generate:scenario-data` extracts just the runtime keys into a committed artifact the three plugin builds compile in, guarded by a freshness test naming the command — the same pattern as `changelog.mdx → changelog.json` and `action-comms.json`. The 8,300-line `groups` block, the ElevenLabs voice id and the TTS settings never ship.
+That file is generator-only today and never reaches the plugin, so `pnpm generate:callout-scripts` extracts just the runtime keys — `scenarios`, `frames`, `pools`, under a `schema: 1` header — into a committed artifact, `voice/<voice-id>/callouts.json`, guarded by a freshness test naming the command — the same pattern as `changelog.mdx → changelog.json` and `action-comms.json`. The 8,300-line `groups` block, the ElevenLabs voice id and the TTS settings never ship. The artifact lives *inside the voice tree* so that it rides every path a voice already travels with no extra wiring: the plugin build copies it into `assets/audio`, the packer stages it into the archive beside the clips, the installer's seed copies it into the packs folder, and the scanner reads it beside the clips it admits.
 
-The loader takes an **injected list of packs**. Plugins pass the bundled artifact today; #1034 later adds disk-scanned packs reading the same keys from a full `voice.json`, with no engine change.
+**Where the schema lives.** The grammar is a published contract with three consumers — the engine compiles against it, the scanner validates with it, the generator and packer validate with it — and no existing package can reach all three (`deck-core` does not depend on `audio-scenarios`, and must not grow a dependency on the Race Engineer to validate a file). So the types, the Zod schema and `parseCalloutScript` live in a new leaf package, `@iracedeck/callout-script`, whose only dependency is `zod`. `voice-pack.json`'s own schema stays in `deck-core` for now; moving it beside the script schema is a reasonable follow-up, not part of this issue.
+
+**How it reaches the engine.** #1034 stage 2 shipped before this issue, so disk-scanned packs already exist and carry only clips. The scanner therefore reads `voice/<voice-id>/callouts.json` for every voice it admits, and the voice-pack service reads the same file for each bundled voice under the plugin's own audio root through the same file-system port — **one reader for both**, so that when #1034 stage 3 drops the bundle only the roots list changes. The service hands the engine a map of voice id → parsed script (`setScripts`); the engine compiles every voice's scripts against the contracts and vocabulary registered in code, and at fire time looks up the active voice's compiled script for the contract. `setScripts` runs on every rescan, exactly as `setManifest` does today.
 
 ## Skip semantics
 
@@ -155,8 +163,9 @@ The guarantee: **a pack is never punished for what it does not say.**
 - **`"skip": true` → identical behaviour**, but self-documenting in the file and surviving the bundled-pack completeness check as a deliberate declaration rather than an oversight.
 - **Unknown pool, var, condition, case key, include or frame → warn once, that scenario skipped.** Never an exception, never a half-played callout.
 - **Missing clip at fire time → unchanged.** The #835 rule already does the right thing: a required step aborts the callout, an `{optional}` clause is skipped.
-- **Malformed pack JSON → reject the whole pack**, warn, fall back to the next voice. No half-loaded pack.
-- **A `setWarning` banner** when the *active* pack fails to load; that mechanism exists and is run-scoped.
+- **Malformed script JSON → that voice is dropped from its pack**, with a problem line in Installed Voices naming the file and the reason, exactly as a voice with no usable clips is dropped today. The unit is the voice rather than the whole pack because the script is per voice; a pack's other voices stay loadable, and the active voice falls back through `resolveActiveRaceEngineerVoice` as if the pack had never claimed it. No half-loaded voice.
+- **No script file at all → a clips-only voice**, valid, whose callouts are all skipped. This is what a pack built for the #1034 stage-2 format is after this issue, and it is deliberate: the plugin still bundles `default` when this ships, so the only pack anyone can hold today is the one that gains its script here.
+- **A `setWarning` banner** when the *active* voice has no loadable script; that mechanism exists and is run-scoped.
 
 **Two audiences, one rule.** Silence is correct for a third-party pack and wrong for ours, so the bundled pack gets a build-time completeness test: every code-declared id has a script, no script names an id the code does not declare, and every entry carries `comment` and `test`. That test is the safety net JSON otherwise costs us — deleting a TypeScript array entry breaks a test today, and deleting a JSON key would not.
 
@@ -181,4 +190,8 @@ Worth recording that the case which motivated keeping them turned out not to nee
 
 ## Scope
 
-This issue delivers the seam plus the **flags family migrated as proof** — 24 scenarios exercising a `where`, nested branching and session-type dependence. [#1065](https://github.com/niklam/iracedeck/issues/1065) migrates the rest and replaces `voice-parity.test.ts`; [#1066](https://github.com/niklam/iracedeck/issues/1066) documents the format; [#1034](https://github.com/niklam/iracedeck/issues/1034) distributes packs.
+This issue delivers the seam plus the **flags family migrated as proof** — 24 scenarios exercising a `where`, nested branching and session-type dependence — and the frame wrapper for every family (see *Frames*). [#1065](https://github.com/niklam/iracedeck/issues/1065) migrates the rest and replaces `voice-parity.test.ts`; [#1066](https://github.com/niklam/iracedeck/issues/1066) documents the format and is the home of the per-callout Play button and `lint:pack` (decided 2026-09-04: the button's list is only complete after #1065, and the linter shares its introspection with the reference generator); [#1034](https://github.com/niklam/iracedeck/issues/1034) distributes packs.
+
+**The archive changes, the version does not.** Adding `callouts.json` to the `default` archive changes its bytes, and the packer's rule is that a *published* version's bytes never change. `default` 1.0.0 is not published — the 3.2.0 tag run creates it — so the version stays 1.0.0 and `catalog/default.json` is regenerated (decided 2026-09-04). Had 1.0.0 been out, this would have been a bump.
+
+**Ordering.** Decided 2026-09-04: this issue, then #1065, then #1066, all before #1034 stage 3 drops the bundle. While `default` is still bundled, the plugin root wins path resolution and voice-id collisions, so this format change ships inside the plugin binary and a stale seeded copy in AppData is inert. Dropped first, the same change would have become a mandatory network fetch at plugin-update time — and under "absent means skipped", an offline user would have updated into a silent engineer.
