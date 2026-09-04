@@ -59,12 +59,13 @@ Commands, each with `--json` for the skill and a human-readable default:
 
 | Command | Does | Discord calls |
 | --- | --- | --- |
-| `list [--untagged]` | Every post in the channel: id, title, author handle, created, archived flag, reply count, applied tag names, post link. `--untagged` keeps only posts with no status tag. | `GET /guilds/{guild}/threads/active` filtered on `parent_id`; `GET /channels/{channel}/threads/archived/public` paged on `before` = last `archive_timestamp` while `has_more`; `GET /channels/{channel}` once for `available_tags` |
+| `list [--untagged]` | Every post in the channel: id, title, created, archived flag, reply count, applied tag names, post link. `--untagged` keeps only posts with no status tag. (No author handle here: the thread listing carries only an owner id, and resolving it would cost a request per post; `show` has the handle from the starter message for free.) | `GET /guilds/{guild}/threads/active` filtered on `parent_id`; `GET /channels/{channel}/threads/archived/public` paged on `before` = last `archive_timestamp` while `has_more`; `GET /channels/{channel}` once for `available_tags` |
 | `show <post-id>` | The starter message and every reply with author and timestamp, the reaction breakdown and total, applied tags, post link. | `GET /channels/{post}/messages?limit=100`, paged on `after` if a post exceeds 100 |
 | `reply <post-id> (--text … \| --file …)` | Posts a message into the post's thread and prints the message link. | `POST /channels/{post}/messages` — Discord unarchives an archived thread on send |
-| `tag <post-id> <status-tag>` | Replaces whichever status tag the post carries with the named one and keeps every category tag. Unknown names are an error listing the valid five. | `PATCH /channels/{post}` with `applied_tags` |
+| `tag <post-id> <status-tag>` | Replaces whichever status tag the post carries with the named one and keeps every category tag. Unknown names are an error listing the valid five. An archived post is un-archived in the same request, since Discord refuses edits to an archived thread. | `PATCH /channels/{post}` with `applied_tags` |
+| `follow-up` | The reconciliation computation of the follow-up run: every `discord`-labelled issue, its post, the post's current status tag, the expected tag from GitHub state, and whether a change is proposed. Reads GitHub through `gh` and git, Discord through `list`'s calls. Proposes nothing on its own; the skill turns its rows into replies and tags. | `list`'s calls |
 
-`reply` and `tag` accept `--dry-run`, which prints the exact request body and sends nothing. Tag IDs are resolved by name at run time from `available_tags`, so nothing is hardcoded and a renamed tag fails loudly rather than silently. A `429` is retried once after `retry_after`; anything else non-2xx exits non-zero with Discord's `code` and `message`, which are specific enough to act on (`50001` Missing Access, `10004` Unknown Guild).
+`reply` and `tag` accept `--dry-run`, which prints the exact request body and sends nothing. `reply` sends with `allowed_mentions` empty, so nothing the maintainer approves can ping a role or everyone by accident. Tag IDs are resolved by name at run time from `available_tags`, so nothing is hardcoded and a renamed tag fails loudly rather than silently. A `429` is retried once after `retry_after`; anything else non-2xx exits non-zero with Discord's `code` and `message`, which are specific enough to act on (`50001` Missing Access, `10004` Unknown Guild).
 
 The post link is `https://discord.com/channels/<guild>/<post-id>`; a forum post's thread id equals its starter message id, so that link opens the post itself. The parser accepts a trailing `/<message-id>` and ignores it.
 
@@ -99,7 +100,7 @@ The procedure the session follows. It has two entry points and the tables below 
 
 ## Follow-up
 
-1. `gh issue list --label discord --state all --json number,title,state,stateReason,assignees,milestone,body`. Parse the post link from each body; an issue without one is reported and skipped.
+1. `follow-up --json` does steps 1 to 3 in one go and prints the rows; the procedure they implement is spelled out here so the skill can check them. It lists `gh issue list --label discord --state all --json number,title,state,stateReason,assignees,milestone,body`, parses the post link from each body, and reports and skips an issue without one.
 2. For each issue derive the expected tag:
 
    | GitHub state | Expected tag |
