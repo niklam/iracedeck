@@ -122,3 +122,7 @@ The v1.21.0 Discord post is the canonical style reference. Match its tone (conci
 - Don't paste Discord `:shortcode:` emoji into the Reddit version.
 - Don't exceed 1500 characters on Marketplace.
 - Don't put any markdown (`*`, `**`, `` ` ``, `#`, links) or emoji in the Mirabox Space version — plain text only.
+
+## After posting
+
+Run the `discord-feature-requests` skill's **follow-up** (`pnpm discord:feature-requests follow-up`). A release moves every Discord-sourced issue it closed from `Completed` to `Released`, and the requesters are told in their own threads with the version and where to find the feature.
