@@ -25,6 +25,12 @@ on:
         required: false
         type: string
 
+# The deploy needs the checkout and the Firebase service account; nothing here
+# writes to GitHub. A caller (release.yml, publish-voice-packs.yml) may hold
+# more, but a called workflow can only lower the cap, never raise it.
+permissions:
+  contents: read
+
 jobs:
   build_and_deploy:
     runs-on: ubuntu-latest
@@ -73,7 +79,10 @@ jobs:
           shopt -s nullglob
           for entry in packages/audio-assets/catalog/*.json; do
             url="$(node -p 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).url' "$entry")"
-            code="$(curl -sSIL -o /dev/null -w '%{http_code}' "$url")"
+            if ! code="$(curl -sSIL --connect-timeout 15 --max-time 60 -o /dev/null -w '%{http_code}' "$url")"; then
+              echo "::error file=$entry::The request for $url failed or timed out."
+              exit 1
+            fi
             if [ "$code" != "200" ]; then
               echo "::error file=$entry::$entry names $url, which answers HTTP $code. Publish the archive first (the release workflow, or 'Publish voice packs' with publish on), or restore the entry."
               exit 1

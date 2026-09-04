@@ -27,12 +27,16 @@ on:
         type: boolean
         default: false
 
+# Only the job that creates a GitHub release needs to write; the default for
+# everything else in this workflow is read.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   pack:
     runs-on: windows-latest
+    permissions:
+      contents: write
     outputs:
       stable_tag: ${{ steps.stable.outputs.tag }}
     steps:
