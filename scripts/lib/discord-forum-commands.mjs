@@ -274,8 +274,17 @@ export async function runTag({ postId, tagName, dryRun = false }, { config, clie
 }
 
 const ISSUE_FIELDS = "number,title,url,state,stateReason,assignees,milestone,body,closedByPullRequestsReferences";
-/** The commits named by an issue's timeline `closed` events (null when a PR, not a commit, closed it). */
-const CLOSING_COMMITS_JQ = '[.[] | select(.event == "closed") | .commit_id] | map(select(. != null))';
+/**
+ * The commits named by an issue's timeline `closed` events (null when a PR,
+ * not a commit, closed it), emitted one raw sha per line. `gh api --paginate
+ * --jq` runs the filter once PER PAGE and concatenates the outputs, so a
+ * filter that built an array would yield one array per page and break a
+ * single `JSON.parse` on a timeline longer than 100 events; lines survive
+ * any page boundary.
+ */
+const CLOSING_COMMITS_JQ = '.[] | select(.event == "closed") | .commit_id | select(. != null)';
+/** `gh issue list` needs an explicit cap; hitting it means the listing is incomplete. */
+const ISSUE_LIMIT = 500;
 const NO_CLOSING_COMMIT_NOTE = "closed without a linked PR or closing commit; Released must be set by hand";
 
 function gh(exec, args) {
@@ -305,7 +314,7 @@ function shippingCommitsOf(exec, issue) {
     if (sha) shas.add(sha);
   }
 
-  for (const sha of gh(exec, ["api", `repos/{owner}/{repo}/issues/${issue.number}/timeline`, "--paginate", "--jq", CLOSING_COMMITS_JQ])) shas.add(sha);
+  for (const sha of lines(exec("gh", ["api", `repos/{owner}/{repo}/issues/${issue.number}/timeline`, "--paginate", "--jq", CLOSING_COMMITS_JQ]))) shas.add(sha);
 
   const marker = `(#${issue.number})`;
 
@@ -379,7 +388,12 @@ function formatFollowUpRow(row) {
  * sends. `exec(file, args)` returns stdout, so the GitHub side is fakeable.
  */
 export async function runFollowUp({ json = false }, { config, client, log = console, exec }) {
-  const issues = gh(exec, ["issue", "list", "--label", "discord", "--state", "all", "--limit", "500", "--json", ISSUE_FIELDS]);
+  const issues = gh(exec, ["issue", "list", "--label", "discord", "--state", "all", "--limit", String(ISSUE_LIMIT), "--json", ISSUE_FIELDS]);
+
+  if (issues.length >= ISSUE_LIMIT) {
+    throw new Error(`discord-labelled issue listing truncated at ${ISSUE_LIMIT}; raise ISSUE_LIMIT or report this`);
+  }
+
   exec("git", ["fetch", "--tags", "--quiet"]);
 
   const tags = await fetchTags(client, config.channelId);

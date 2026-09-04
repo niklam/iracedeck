@@ -445,7 +445,7 @@ describe("runFollowUp", () => {
 
   // The exact commands the release lookup runs, as `exec` sees them joined.
   const prView = (pr) => `gh pr view ${pr} --json mergeCommit`;
-  const timeline = (n) => `gh api repos/{owner}/{repo}/issues/${n}/timeline --paginate --jq [.[] | select(.event == "closed") | .commit_id] | map(select(. != null))`;
+  const timeline = (n) => `gh api repos/{owner}/{repo}/issues/${n}/timeline --paginate --jq .[] | select(.event == "closed") | .commit_id | select(. != null)`;
   const gitLog = (n) => `git log --all --fixed-strings --grep=(#${n}) --format=%H%x09%s`;
   const gitTag = (sha) => `git tag --contains ${sha}`;
   const LIST = "gh issue list --label discord --state all --limit 500 --json number,title,url,state,stateReason,assignees,milestone,body,closedByPullRequestsReferences";
@@ -471,7 +471,7 @@ describe("runFollowUp", () => {
 
   const shippedLookups = {
     [prView(33)]: JSON.stringify({ mergeCommit: { oid: "abc123" } }),
-    [timeline(3)]: "[]",
+    [timeline(3)]: "",
     [gitLog(3)]: "",
     [gitTag("abc123")]: "v3.2.0\nv3.2.0-rc.1\nv3.3.0\n",
   };
@@ -531,17 +531,31 @@ describe("runFollowUp", () => {
     expect(exec.mock.calls[0]).toEqual(["gh", ["issue", "list", "--label", "discord", "--state", "all", "--limit", "500", "--json", "number,title,url,state,stateReason,assignees,milestone,body,closedByPullRequestsReferences"]]);
   });
 
+  it("fails loud when the issue listing hits its cap, like the two Discord listings", async () => {
+    const capped = Array.from({ length: 500 }, (_, i) => ({ number: i + 1, title: `Issue ${i + 1}`, url: `u/${i + 1}`, state: "OPEN", stateReason: null, assignees: [], milestone: null, body: "nothing", closedByPullRequestsReferences: [] }));
+    const exec = fakeExec(capped, {});
+
+    await expect(runFollowUp({ json: true }, { config: CONFIG, client: fakeClient(routes), log: fakeLog(), exec })).rejects.toThrow("discord-labelled issue listing truncated at 500; raise ISSUE_LIMIT or report this");
+  });
+
   describe("release detection", () => {
     const one = (overrides, lookups) => rowsFor([shipped(8, "Closed", { body: sourced("30"), ...overrides })], lookups).then(({ rows }) => rows[0]);
 
     it("finds the shipping commit through the timeline's closed event when no PR is linked", async () => {
-      const row = await one({}, { [timeline(8)]: JSON.stringify(["def456"]), [gitLog(8)]: "", [gitTag("def456")]: "v3.1.0\n" });
+      const row = await one({}, { [timeline(8)]: "def456\n", [gitLog(8)]: "", [gitTag("def456")]: "v3.1.0\n" });
 
       expect(row).toMatchObject({ expected: "Released", version: "v3.1.0", propose: true, note: null });
     });
 
+    it("reads every timeline page: gh emits one result per page, so each line is a sha", async () => {
+      // Two closing commits on two pages arrive as two lines, not one array; both must be looked up and the lowest version wins.
+      const row = await one({}, { [timeline(8)]: "p1sha\np2sha\n", [gitLog(8)]: "", [gitTag("p1sha")]: "v3.3.0\n", [gitTag("p2sha")]: "v3.2.0\nv3.3.0\n" });
+
+      expect(row).toMatchObject({ expected: "Released", version: "v3.2.0", propose: true, note: null });
+    });
+
     it("finds the shipping commit through its squash-merge subject when nothing else links it", async () => {
-      const row = await one({}, { [timeline(8)]: "[]", [gitLog(8)]: "fed789\tfeat(actions): the thing (#8) (#9)\n", [gitTag("fed789")]: "v3.1.0\n" });
+      const row = await one({}, { [timeline(8)]: "", [gitLog(8)]: "fed789\tfeat(actions): the thing (#8) (#9)\n", [gitTag("fed789")]: "v3.1.0\n" });
 
       expect(row).toMatchObject({ expected: "Released", version: "v3.1.0", propose: true, note: null });
     });
@@ -551,14 +565,14 @@ describe("runFollowUp", () => {
       // even be asked about (no `git tag` entry exists for them, so a lookup
       // would throw and surface as a failed-lookup note).
       const log = ["aaa111\tdocs(specs): design the thing (#8)", "bbb222\tfix(other): unrelated, cites #8 in its body", "ccc333\tfeat(actions): the thing (#8) (#9)"].join("\n");
-      const tagged = { [timeline(8)]: "[]", [gitLog(8)]: `${log}\n` };
+      const tagged = { [timeline(8)]: "", [gitLog(8)]: `${log}\n` };
 
       expect(await one({}, { ...tagged, [gitTag("ccc333")]: "" })).toMatchObject({ expected: "Completed", version: null, note: null });
       expect(await one({}, { ...tagged, [gitTag("ccc333")]: "v3.1.0\n" })).toMatchObject({ expected: "Released", version: "v3.1.0", note: null });
     });
 
     it("reports an issue with no linked PR and no closing commit, and still proposes Completed", async () => {
-      const row = await one({}, { [timeline(8)]: "[]", [gitLog(8)]: "" });
+      const row = await one({}, { [timeline(8)]: "", [gitLog(8)]: "" });
 
       expect(row).toMatchObject({ expected: "Completed", version: null, propose: true, note: "closed without a linked PR or closing commit; Released must be set by hand" });
     });
@@ -569,7 +583,7 @@ describe("runFollowUp", () => {
         {
           [prView(91)]: JSON.stringify({ mergeCommit: { oid: "s91" } }),
           [prView(92)]: JSON.stringify({ mergeCommit: { oid: "s92" } }),
-          [timeline(8)]: "[]",
+          [timeline(8)]: "",
           [gitLog(8)]: "",
           [gitTag("s91")]: "v3.3.0\n",
           [gitTag("s92")]: "v3.2.0\nv3.3.0\n",
