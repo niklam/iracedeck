@@ -41,7 +41,9 @@ The maintainer's working environment is a Claude Code session in this repo, with
 
 7. **Votes are the reaction count on the starter message.** The channel's ❤️ is a custom emoji (`iRaceDeckHeart`), and members occasionally use other emoji. `show` prints the breakdown; the source line and the issue comment carry the total, labelled ❤️ as the channel's guidelines call it.
 
-8. **The requester is named by handle.** The server is public and the guidelines ask requesters to write publicly; the handle is the Discord username, which is unique and stable, not the display name. Settled with the maintainer.
+8. **Standing posts are exempt from both runs.** "[Race Engineer] Add your name" (post `1516472792260808724`) is not a request that will ever be done: it is the standing thread where people comment to get their name added to the Race Engineer, and it stays tagged `Will Add` for as long as the channel exists. The skill carries an explicit list of such post ids, and neither triage nor follow-up replies to, re-tags, or proposes anything for a post on it — even if an issue ever links to it. Names arriving in its comments are handled by the voice-name workflow, not by this tool. Settled with the maintainer on 2026-09-04.
+
+9. **The requester is named by handle.** The server is public and the guidelines ask requesters to write publicly; the handle is the Discord username, which is unique and stable, not the display name. Settled with the maintainer.
 
 ## Components
 
@@ -95,7 +97,7 @@ The procedure the session follows. It has two entry points and the tables below 
    - **Already tracked** — `gh issue list --state all --search "<title words>"` plus a read of the likely matches. Reply with the issue link; adopt the issue (add the `discord` label, append the source line to the body, add a one-line comment with the post link so the change shows in the timeline); tag to match the issue's state using the follow-up table.
    - **Duplicate of an older post** — compared against `list --json` titles and, where close, the older post's starter. Reply pointing at the older post and asking for the ❤️ there; no tag.
    - **New** — draft the issue with the source line in *Additional context*, then the spec, exactly as `.claude/rules/specs-and-plans.md` and `build-and-commit.md` require, both shown in full. On approval: file, commit the spec to `master`, add the permalink to the issue, reply with the issue link, tag `Will Add`.
-3. Every reply and tag is shown as the exact text and the exact tag before the command runs. One post at a time; a run can stop after any post.
+3. Every reply and tag is shown as the exact text and the exact tag before the command runs. One post at a time; a run can stop after any post. A post on the standing list (decision 8) is never in the run.
 4. Finish with a summary: posts handled per outcome, posts skipped and why, issues filed and adopted.
 
 ## Follow-up
@@ -112,7 +114,7 @@ The procedure the session follows. It has two entry points and the tables below 
    | Closed as not planned | `Won't do` |
 
    Released needs `git fetch --tags` first, then the closing PR's merge commit (`gh pr view <n> --json mergeCommit`) and `git tag --contains <sha>` filtered to stable tags.
-3. `list --json` for the current tags. Propose a change only where `shouldPropose(current, expected)` holds. Present the whole batch — post, current tag, expected tag, reply text — for approval, then run `reply` and `tag` per post.
+3. `list --json` for the current tags. Propose a change only where `shouldPropose(current, expected)` holds, and never for a post on the standing list (decision 8). Present the whole batch — post, current tag, expected tag, reply text — for approval, then run `reply` and `tag` per post.
 4. Run it after a merge that closes a Discord-sourced issue and after every release; the release-notes skill ends with a reminder.
 
 ## Reply templates
