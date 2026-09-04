@@ -93,7 +93,12 @@ function normalizeProvenance(value: unknown): VoicePackProvenance {
     : "sideload";
 }
 
-/** Matches `InstalledVoice` in deck-core: a voice is an id AND a name (#1034). */
+/**
+ * The plugin's view of deck-core's `InstalledVoice`: a voice is an id AND a
+ * name (#1034). The parsed callout script the full type also carries is the
+ * engine's input, never published on `_voicePacks` (#1064) — so this row
+ * type is deliberately the two fields the list renders and nothing more.
+ */
 type VoicePackVoice = { id: string; label: string };
 type VoicePackEntry = {
   id: string;

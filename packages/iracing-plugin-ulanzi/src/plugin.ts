@@ -13,6 +13,7 @@ import audioAssetsManifest from "@iracedeck/audio-assets/manifest.json" with { t
 import { AudioNative } from "@iracedeck/audio-native";
 import {
   type AudioAssetsManifest,
+  type FrameOptions,
   getScenarioEngine,
   initializeAudioScenarios,
   isAudioScenariosInitialized,
@@ -90,6 +91,7 @@ import { UlanziPlatformAdapter } from "@iracedeck/deck-adapter-ulanzi";
 import {
   applyStartupFeatureGates,
   type BundledVoicePack,
+  type CalloutScript,
   clearWarning,
   createElevationCheckSubscriber,
   createFileSettingsStore,
@@ -106,6 +108,7 @@ import {
   createVoicePackService,
   createVoicePackStorage,
   createVoicePackStorageFileSystem,
+  createVoiceScriptWarningReporter,
   deleteGlobalSettings,
   evaluateSetupWarning,
   findChromiumBrowserOnThisMachine,
@@ -436,6 +439,20 @@ let driverNames = scanDriverNames(activeManifest);
 // from the compiled-in manifest. No pack may claim one of these.
 const bundledVoices = scanRaceEngineerVoices(audioAssetsManifest);
 
+// Every voice's callout script, voice id → parsed script (#1064): what the
+// voice-pack service hands over on each scan, held here for the same reason
+// `activeManifest` is a `let` above — the startup scan runs BEFORE the scenario
+// engine exists. The engine takes this map right after `registerPitCrew` below;
+// every later rescan hands its map to the engine directly from `applyScripts`.
+let activeScripts: ReadonlyMap<string, CalloutScript> = new Map();
+
+// The missing-callout-script banner (#1064). State-driven, so it is re-asserted
+// wherever either input can change: after every voice-pack scan
+// (`onPacksChanged` below) and on every settings arrival, since the active
+// voice is a setting (`reassertVoiceScriptWarning`, further down). `_warnings`
+// is run-scoped (#1014) and asks exactly that of every producer.
+const reportVoiceScriptWarning = createVoiceScriptWarningReporter({ set: setWarning, clear: clearWarning });
+
 const voicePacksLogger = adapter.createLogger("VoicePacks");
 // Named once: the scanner reads this directory and the settings window's
 // "Open folder" button reveals it, and those must be the same place. The page
@@ -460,6 +477,13 @@ const voicePacks = createVoicePackService({
     // startup needs no reload — every later refresh does.
     if (isAudioScenariosInitialized()) getScenarioEngine().setManifest(activeManifest);
   },
+  applyScripts: (scripts) => {
+    activeScripts = scripts;
+
+    // Guarded like `applyManifest`: the startup scan precedes the engine, which
+    // takes `activeScripts` after `registerPitCrew`; every rescan reloads here.
+    if (isAudioScenariosInitialized()) getScenarioEngine().setScripts(scripts);
+  },
   onPacksChanged: () => {
     // The first scan runs long before `initGlobalSettings`, and a write made
     // then would set the dedupe markers below while reaching nothing — which
@@ -476,6 +500,7 @@ const voicePacks = createVoicePackService({
     pushRaceEngineerVoicesIfChanged();
     pushDriverNamesIfChanged();
     pushVoicePackListIfChanged();
+    reassertVoiceScriptWarning();
   },
 });
 
@@ -627,14 +652,31 @@ const voicePackInstaller = createVoicePackInstaller({
   logger: voicePacksLogger,
 });
 
+// The radio frame's two opt-outs (#1064), read live at frame expansion so the
+// Radio beeps / Pit ambience checkboxes take effect on the next callout rather
+// than the next restart. `!== false`, as the update-check service reads
+// `updateCheck`: before the store has loaded the cache holds the schema
+// default, which is on.
+const getFrameOptions = (): FrameOptions => {
+  const settings = getGlobalSettings();
+
+  return { beeps: settings.raceEngineerRadioBeeps !== false, ambience: settings.raceEngineerPitAmbience !== false };
+};
+
 // Initialize the scenario engine AFTER audio (so it can drive playback) but
 // BEFORE actions register (so actions see a ready engine when they wire PI
 // toggles and Test buttons to setEnabled / fire).
 //
-// `getActiveVoice` resolves at clip-resolution time so a PI voice change
-// takes effect on the next scenario fire without re-initialising the engine.
-initializeAudioScenarios(eventBus, getAudio(), activeManifest, adapter.createLogger("AudioScenarios"), () =>
-  resolveActiveRaceEngineerVoice(raceEngineerVoices),
+// `getActiveVoice` resolves at clip-resolution time, so a PI voice change
+// takes effect on the next scenario fire without re-initialising the engine;
+// `getFrameOptions` is read the same way, at frame expansion.
+initializeAudioScenarios(
+  eventBus,
+  getAudio(),
+  activeManifest,
+  adapter.createLogger("AudioScenarios"),
+  () => resolveActiveRaceEngineerVoice(raceEngineerVoices),
+  getFrameOptions,
 );
 
 // Cache the most recent `lap.completed` payload so the lap-time scenario's
@@ -845,6 +887,15 @@ registerPitCrew(eventBus, {
   getRadarMasterEnabled: () => (getGlobalSettings() as Record<string, unknown>).pitCrewRadarEnabled === true,
 });
 
+// Hand the engine every voice's callout script (#1064) — AFTER `registerPitCrew`,
+// never before: `setScripts` compiles eagerly against the contracts registered
+// above, so an earlier call would compile every entry to "no contract" and warn
+// once per (voice, scenario) about a state the first fire would silently fix.
+// The startup scan stored this map before the engine existed (see
+// `applyScripts` on the voice-pack service); every later rescan hands its own
+// map over directly.
+getScenarioEngine().setScripts(activeScripts);
+
 // Publish audio device list and apply saved device selection.
 // See `iracing-plugin-stream-deck/src/plugin.ts` for the persistence
 // contract (id-based; empty string = System Default; legacy values fall
@@ -930,7 +981,11 @@ function pushVoicePackListIfChanged(): void {
       id: pack.id,
       label: pack.label,
       version: pack.version,
-      voices: pack.voices,
+      // Id and label only (#1064): a voice also carries its parsed callout
+      // script, which is the engine's input rather than anything a list row
+      // renders — and it would ride this run-scoped key into every Property
+      // Inspector on every push.
+      voices: pack.voices.map(({ id, label }) => ({ id, label })),
       // Where it came from, for the settings window's provenance badge
       // (#1100). Displayed, never enforced.
       provenance: pack.provenance,
@@ -942,6 +997,20 @@ function pushVoicePackListIfChanged(): void {
 
   lastPushedVoicePackListJson = json;
   updateGlobalSettings({ [VOICE_PACKS_KEY]: json });
+}
+
+/**
+ * Re-evaluate the missing-callout-script banner (#1064) against the voice the
+ * engineer would speak with right now and the voices the last scan found a
+ * script for. Cheap and idempotent — `setWarning` / `clearWarning` skip the
+ * write when nothing changed — so it runs on every settings arrival and every
+ * scan rather than trying to detect a change of either input.
+ */
+function reassertVoiceScriptWarning(): void {
+  reportVoiceScriptWarning({
+    activeVoice: resolveActiveRaceEngineerVoice(raceEngineerVoices),
+    scriptedVoices: new Set(voicePacks.scripts().keys()),
+  });
 }
 
 const versionCheckLogger = adapter.createLogger("VersionCheck");
@@ -1322,6 +1391,8 @@ onGlobalSettingsChange((settings) => {
   pushRaceEngineerVoicesIfChanged();
   pushDriverNamesIfChanged();
   pushVoicePackListIfChanged();
+  // The active voice is a setting, so its banner is re-evaluated here (#1064).
+  reassertVoiceScriptWarning();
 
   // Apply audio output device (on startup and when changed from PI)
   const saved = s.audioOutputDevice;

@@ -44,8 +44,9 @@ export type BootstrapDefaults = {
  * Push initial values into the adapter's global-settings store: the
  * push-only "lists" the plugin maintains as private settings keys
  * (`_raceEngineerVoices`, `_driverNames`), plus the user-facing defaults
- * for the Race Engineer toggle/volume, Radar toggle/volume, and the
- * picked voice / driver name (first entry from each list).
+ * for the Race Engineer toggle/volume, Radar toggle/volume, the radio
+ * frame's beeps/ambience opt-outs, and the picked voice / driver name (first
+ * entry from each list).
  */
 export function seedGlobalSettings(adapter: MockPlatformAdapter): BootstrapDefaults {
   const manifest = getAudioAssetsManifest();
@@ -67,6 +68,11 @@ export function seedGlobalSettings(adapter: MockPlatformAdapter): BootstrapDefau
     pitCrewRadarEnabled: true,
     radarVolume: 100,
     audioOutputDevice: "",
+    // The radio frame's two opt-outs (#1064), on — their schema default, said
+    // explicitly so the seeded snapshot the UI renders carries them, and so
+    // `getFrameOptions` in `main.ts` reads a value that was deliberately set.
+    raceEngineerRadioBeeps: true,
+    raceEngineerPitAmbience: true,
   });
 
   return { raceEngineerVoices, driverNames };

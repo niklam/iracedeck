@@ -27,6 +27,8 @@ describe("seedGlobalSettings", () => {
     expect(settings.raceEngineerVolume).toBe(100);
     expect(settings.radarVolume).toBe(100);
     expect(settings.audioOutputDevice).toBe("");
+    expect(settings.raceEngineerRadioBeeps).toBe(true);
+    expect(settings.raceEngineerPitAmbience).toBe(true);
   });
 
   it("picks the first available voice when voices exist", () => {
