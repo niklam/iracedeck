@@ -611,11 +611,21 @@ export function createVoicePackStorage({ root, fs, logger }: VoicePackStorageDep
 
           // `unref` so a heartbeat can never be the thing keeping the process
           // alive: if the plugin is otherwise done, the lock goes stale instead.
+          let released = false;
+          // The write in flight, not just the timer. `clearInterval` stops the
+          // NEXT beat; it does nothing about one already writing, and that one
+          // can land after `remove` and recreate the lock with a fresh
+          // `heartbeatAt` and no holder — which another plugin then reads as
+          // live and waits VOICE_PACK_LOCK_STALE_MS for a process that has
+          // already finished. An install beats every 15 s and runs for
+          // minutes, so the overlap is reachable on a slow disk.
+          let beating: Promise<unknown> = Promise.resolve();
           const heartbeat = setInterval(() => {
-            void fs.writeTextFile(file, lockText(acquiredAt));
+            if (released) return;
+
+            beating = fs.writeTextFile(file, lockText(acquiredAt));
           }, VOICE_PACK_LOCK_HEARTBEAT_MS);
           heartbeat.unref?.();
-          let released = false;
 
           return {
             acquired: true,
@@ -624,6 +634,11 @@ export function createVoicePackStorage({ root, fs, logger }: VoicePackStorageDep
 
               released = true;
               clearInterval(heartbeat);
+              // Ordering is the whole point: the flag stops a future beat, and
+              // this awaits the one that may already be writing, so `remove`
+              // is the last write to touch the file.
+              await beating.catch(() => undefined);
+
               const removed = await fs.remove(file);
 
               if (!removed.ok)

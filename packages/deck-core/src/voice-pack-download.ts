@@ -407,7 +407,14 @@ export async function downloadVoicePack(options: DownloadVoicePackOptions): Prom
       return fail("insecure-redirect", `redirected to ${describeOrigin(finalUrl)}, which is not https`, 0);
     }
 
-    if (!response.ok) return fail("http", `the server answered HTTP ${response.status}`, 0);
+    if (!response.ok) {
+      // Cancelled for the same reason the redirect branch above cancels: an
+      // unread body holds its connection open, and a failing install is
+      // exactly the case a user retries, so the leak would accumulate.
+      await response.body?.cancel().catch(() => undefined);
+
+      return fail("http", `the server answered HTTP ${response.status}`, 0);
+    }
 
     if (response.body === null) return fail("transport", "the server sent no body", 0);
 

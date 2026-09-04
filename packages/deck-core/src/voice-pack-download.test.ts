@@ -341,16 +341,22 @@ describe("downloadVoicePack", () => {
   });
 
   describe("failures", () => {
-    it("reports a non-success status as http", async () => {
+    it("reports a non-success status as http, and cancels the unread body", async () => {
+      // The cancel matters as much as the verdict. An unread body holds its
+      // connection open, and a failed install is precisely what a user retries,
+      // so the leak accumulates across attempts. The redirect branch beside
+      // this one already cancelled for that reason; this one did not.
+      const source = chunkedBody([]);
       const result = await downloadVoicePack({
         url: URL_,
         expectedSha256: THREE_DIGEST,
         maxBytes: 10,
         sink: memorySink(),
-        fetchImpl: respondWith(chunkedBody([]).stream, { status: 404 }),
+        fetchImpl: respondWith(source.stream, { status: 404 }),
       });
 
       expect(result).toMatchObject({ ok: false, failure: "http", reason: expect.stringContaining("404"), bytes: 0 });
+      expect(source.state.cancelled).toBe(true);
     });
 
     it("reports a request that throws as transport, naming undici's cause", async () => {

@@ -493,6 +493,15 @@ describe("scanVoicePacks and the bundled seed (#1100)", () => {
     expect(result.packs.flatMap((pack) => pack.clips)).toEqual([]);
   });
 
+  // The id-match rule added for the provenance badge must not reach this row.
+  // It does not even apply: the seeded branch hardcodes `bundled-seed` after
+  // `isBundledSeed` has already required the record to name this pack. Pinned
+  // because a regression here turns "Built-in" into "Installed by hand" on
+  // every machine, which is the badge lying in the opposite direction.
+  it("still reports the seed as bundled-seed, not sideload", () => {
+    expect(scan(seedRecord).packs[0].provenance).toBe("bundled-seed");
+  });
+
   // The branch fires only when the BUNDLE took every voice (#1100). A seed
   // whose voice another pack already claimed has a real problem, and must not
   // render as a healthy "Built-in" row with its own problem line underneath —
@@ -572,6 +581,27 @@ describe("scanVoicePacks reports where a pack came from (#1100)", () => {
     ["bundled-seed", "bundled-seed"],
   ])("reports a %s install from the record we wrote", (source, expected) => {
     expect(scan(record(source)).packs[0].provenance).toBe(expected);
+  });
+
+  // A record has to name THIS pack. `isBundledSeed` and the installer's hash
+  // read both already require it; this path did not, so a folder copied or
+  // renamed by hand kept its old `.install.json` and rendered as "Downloaded"
+  // for a pack never downloaded under that id — the provenance badge lying in
+  // the one place it exists to tell the truth.
+  it("reports sideload when the record names a different pack", () => {
+    const result = scanVoicePacks({
+      root: ROOT,
+      reservedVoices: [],
+      fs: fakeFs({
+        luca: {
+          manifest: luca,
+          install: { ...record("catalog"), id: "someone-else" },
+          clips: ["voice/luca/flags/a.mp3"],
+        },
+      }),
+    });
+
+    expect(result.packs[0].provenance).toBe("sideload");
   });
 
   // "sideload" is the ABSENCE of a usable record, never a claim a pack makes —

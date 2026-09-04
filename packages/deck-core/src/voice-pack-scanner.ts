@@ -383,7 +383,13 @@ export function scanVoicePacks({ root, fs, reservedVoices }: ScanVoicePacksOptio
       // Sorted so the fragment a pack contributes is independent of the order
       // its voices happen to be declared in.
       clips: clips.sort(),
-      provenance: provenance?.source ?? "sideload",
+      // The record must name THIS pack, the same condition `isBundledSeed`
+      // above and the installer's own hash read already apply. A folder copied
+      // or renamed by hand keeps the previous `.install.json`, and without this
+      // the row would read "Downloaded" for a pack that was never downloaded
+      // under that id — which contradicts the field's own definition of
+      // `sideload` as the absence of a USABLE record.
+      provenance: provenance?.id === manifest.id ? provenance.source : "sideload",
     });
   }
 

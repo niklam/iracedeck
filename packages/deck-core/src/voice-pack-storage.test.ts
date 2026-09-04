@@ -659,6 +659,49 @@ describe("acquireLock", () => {
     vi.setSystemTime(5_000_000);
   });
 
+  // `clearInterval` stops the NEXT beat and does nothing about one already
+  // writing. If that write lands after `remove`, the lock file exists again
+  // with a fresh `heartbeatAt` and no holder — and another plugin reads it as
+  // live and waits VOICE_PACK_LOCK_STALE_MS for a process that has finished.
+  // An install beats every 15 s and runs for minutes, so the overlap is
+  // reachable on a slow disk.
+  it("does not let a heartbeat write in flight resurrect the lock after release", async () => {
+    let unblock: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      unblock = resolve;
+    });
+    let gated = false;
+
+    // Delegates to the real fake disk, but holds the FIRST heartbeat write
+    // open so a release can be made to overlap it deliberately.
+    const slow = Object.create(fs) as FakeFs;
+
+    slow.writeTextFile = async (file: string, text: string) => {
+      if (!gated) {
+        gated = true;
+        await gate;
+      }
+
+      return fs.writeTextFile(file, text);
+    };
+
+    const gatedStorage = createVoicePackStorage({ root: ROOT, fs: slow, logger: logger as never });
+    const lock = await gatedStorage.acquireLock("luca");
+
+    expect(lock.acquired).toBe(true);
+
+    // Fire a heartbeat and leave its write in flight.
+    await vi.advanceTimersByTimeAsync(VOICE_PACK_LOCK_HEARTBEAT_MS + 1);
+    expect(gated).toBe(true);
+
+    const releasing = lock.release();
+
+    unblock();
+    await releasing;
+
+    expect(fs.has(lockPath)).toBe(false);
+  });
+
   it("creates the lock, heartbeats it, and removes it on release", async () => {
     const lock = await storage.acquireLock("luca");
 
