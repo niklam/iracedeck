@@ -13,6 +13,15 @@
  * `engine.definePoolFromManifest(name, group, base)`; scenarios reference
  * pools as `"pool:<name>"` and `{ pool: "<name>" }` exactly as before.
  *
+ * This registry is emptying one family at a time (issue #1064): a family
+ * migrated to pack-owned scripts declares its pools in each voice's
+ * `callouts.json` instead (`pools` — the same `(group, base)` shape plus a
+ * `comment`), authored in `configs/<voice-id>.voice.json`. The engine looks a
+ * pool name up in the active voice's script first and here second, so the
+ * two coexist until #1065 moves the rest. The flag family's thirty `flag-*`
+ * pools were the first to go; `FLAG_POOL_NAMES` in `flag-alerts.ts` pins
+ * their names.
+ *
  * Selection is RANDOM — every pick is a uniform-random clip from the active
  * voice's members (`Math.random`), never a fixed order. The only constraint
  * is no immediate repeat: the same clip is never played twice in a row.
@@ -44,46 +53,6 @@ export const POOL_REGISTRY: Readonly<Record<string, PoolSource>> = {
   "pit-action-fuel-on": { group: "pit-actions", base: "fuel-on" },
   "pit-action-fuel-off": { group: "pit-actions", base: "fuel-off" },
   "pit-action-tires-off": { group: "pit-actions", base: "tires-off" },
-
-  // Flag callout pools. Every flag scenario draws from a pool — even the
-  // single-clip flags. Green, white and checkered branch on getSessionType()
-  // at fire time so each session type gets its own pool. Auto-picked by
-  // `FLAG_POOL_NAMES` (the `flag-` prefix).
-  "flag-yellow-local": { group: "flags", base: "yellow-local" },
-  "flag-yellow-full": { group: "flags", base: "yellow-full" },
-  "flag-yellow-cleared": { group: "flags", base: "yellow-cleared" },
-  "flag-blue": { group: "flags", base: "blue" },
-  "flag-red": { group: "flags", base: "red" },
-  "flag-black": { group: "flags", base: "black" },
-  "flag-debris": { group: "flags", base: "debris" },
-  "flag-meatball": { group: "flags", base: "meatball" },
-  "flag-green-practice": { group: "flags", base: "green-practice" },
-  "flag-green-qualifying": { group: "flags", base: "green-qualifying" },
-  "flag-green-race": { group: "flags", base: "green-race" },
-  "flag-white-practice": { group: "flags", base: "white-practice" },
-  "flag-white-qualifying": { group: "flags", base: "white-qualifying" },
-  "flag-white-race": { group: "flags", base: "white-race" },
-  // Stage 2 of the two-stage white (issue #772) — the player crosses S/F
-  // under the white flag and starts THEIR last lap.
-  "flag-white-last-lap": { group: "flags", base: "white-last-lap" },
-  // Stage 3 — the leader's final lap (issue #936), same subject/opt-in.
-  "flag-white-leader": { group: "flags", base: "white-leader" },
-  "flag-checkered-practice": { group: "flags", base: "checkered-practice" },
-  "flag-checkered-qualifying": { group: "flags", base: "checkered-qualifying" },
-  "flag-checkered-race": { group: "flags", base: "checkered-race" },
-  // Missing-session-flag callouts (issue #480): driver-black splits,
-  // race-progression flags, and the caution-waving variants (#657).
-  "flag-disqualify": { group: "flags", base: "disqualify" },
-  "flag-furled": { group: "flags", base: "furled" },
-  "flag-furled-cleared": { group: "flags", base: "furled-cleared" },
-  "flag-dq-scoring-invalid": { group: "flags", base: "dq-scoring-invalid" },
-  "flag-crossed": { group: "flags", base: "crossed" },
-  "flag-one-pace-lap-to-go": { group: "flags", base: "one-pace-lap-to-go" },
-  "flag-green-held": { group: "flags", base: "green-held" },
-  "flag-ten-to-go": { group: "flags", base: "ten-to-go" },
-  "flag-five-to-go": { group: "flags", base: "five-to-go" },
-  "flag-yellow-waving": { group: "flags", base: "yellow-waving" },
-  "flag-caution-waving": { group: "flags", base: "caution-waving" },
 
   // Start-light family pools (issues #480 / #673): two gantry lines plus
   // the four numeric countdown marks. Auto-picked by the `start-light-`
@@ -267,7 +236,8 @@ export const POOL_REGISTRY: Readonly<Record<string, PoolSource>> = {
  * Register every catalog pool with the engine — all pools derive their
  * members from the manifest per voice (the last enumerated remainder, the
  * two acknowledgment pools, moved into the registry with the #837 rename
- * migration).
+ * migration). Pools a migrated family's scripts define are NOT here — the
+ * engine takes those from the active voice's compiled script.
  */
 export function registerPools(engine: {
   definePoolFromManifest(name: string, group: string, base: string): void;

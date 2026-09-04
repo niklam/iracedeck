@@ -12,6 +12,7 @@
  * (`currentSnapshot`) before publishing the event so each fire sees the
  * intended state.
  */
+import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioChannel } from "@iracedeck/audio-service";
 import type { CalloutScript } from "@iracedeck/callout-script";
@@ -264,21 +265,13 @@ const manifest: AudioAssetsManifest = {
 };
 
 /**
- * The voice's callout script — only its `radio` frame matters here. Since
- * issue #1064 the ticks come from the engine wrapping every callout in the
- * frame the active voice's script defines, never from the sequences.
+ * The voice's callout script: the bundled voice's `callouts.json`, verbatim.
+ * It supplies the `radio` frame the engine wraps every callout in (issue
+ * #1064) AND the flag family's scripts — flags are contracts now, so a fire
+ * of one plays nothing unless the active voice's script says what to say.
+ * The JSON import types `schema` as `number`, hence the cast.
  */
-const RADIO_SCRIPT: CalloutScript = {
-  schema: 1,
-  scenarios: {},
-  frames: {
-    radio: {
-      open: ["sfx/IRD-tick-open.mp3", { ambient: "start" }, { ambient: "seek" }],
-      close: [{ ambient: "stop" }, "sfx/IRD-tick-close.mp3"],
-    },
-  },
-  pools: {},
-};
+const SCRIPT = defaultScript as CalloutScript;
 
 let bus: ReturnType<typeof createMockBus>;
 let audio: FakeAudio;
@@ -340,7 +333,7 @@ beforeEach(() => {
   // After the registration, as the plugins do: the frame is looked up in the
   // active voice's script at fire time, and the step-by-step tests below
   // drive the open tick the engine now puts in front of every readback.
-  engine.setScripts(new Map([[VOICE, RADIO_SCRIPT]]));
+  engine.setScripts(new Map([[VOICE, SCRIPT]]));
 });
 
 afterEach(() => {

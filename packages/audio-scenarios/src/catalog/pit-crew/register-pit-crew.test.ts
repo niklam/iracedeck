@@ -17,6 +17,7 @@
  *   - logger.debug is called on each suppressed event (debuggable
  *     "engineer didn't say green!" reports)
  */
+import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { CalloutScript } from "@iracedeck/callout-script";
@@ -441,21 +442,13 @@ const manifest: AudioAssetsManifest = {
 };
 
 /**
- * The voice's callout script — only its `radio` frame matters here. Since
- * issue #1064 the ticks come from the engine wrapping every callout in the
- * frame the active voice's script defines, never from the sequences.
+ * The voice's callout script: the bundled voice's `callouts.json`, verbatim.
+ * It supplies the `radio` frame the engine wraps every callout in (issue
+ * #1064) AND the flag family's scripts — flags are contracts now, so a fire
+ * of one plays nothing unless the active voice's script says what to say.
+ * The JSON import types `schema` as `number`, hence the cast.
  */
-const RADIO_SCRIPT: CalloutScript = {
-  schema: 1,
-  scenarios: {},
-  frames: {
-    radio: {
-      open: ["sfx/IRD-tick-open.mp3", { ambient: "start" }, { ambient: "seek" }],
-      close: [{ ambient: "stop" }, "sfx/IRD-tick-close.mp3"],
-    },
-  },
-  pools: {},
-};
+const SCRIPT = defaultScript as CalloutScript;
 
 function flush(audio: FakeAudio, iterations = 30): void {
   for (let i = 0; i < iterations; i++) {
@@ -587,7 +580,7 @@ beforeEach(() => {
   });
   // After the registration, as the plugins do (issue #1064): the engine
   // wraps every framed callout in the voice's `radio` frame at fire time.
-  engine.setScripts(new Map([[VOICE, RADIO_SCRIPT]]));
+  engine.setScripts(new Map([[VOICE, SCRIPT]]));
 });
 
 afterEach(() => {

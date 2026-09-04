@@ -13,9 +13,12 @@
  *   - Tire compound scenarios (dry/wet via `tireService.compoundChanged`)
  *   - Windshield-tearoff toggle scenarios (on/off via `pitService.toggled`)
  *   - Fast-repair toggle scenarios (on/off via `pitService.toggled`)
- *   - Flag alert scenarios (every transition the translator publishes:
+ *   - Flag alert contracts (every transition the translator publishes:
  *     yellow scope-aware, yellow.cleared, green, blue, white, red, black,
- *     checkered with session-type branch, debris, meatball)
+ *     checkered, debris, meatball, …) — the first family whose wording lives
+ *     in the voice's script rather than here (issue #1064): the code
+ *     registers the contract and the `session.*` / `flag.*` vocabulary, the
+ *     active voice's `callouts.json` supplies what is said
  *   - Laps-of-fuel-left scenarios (counts 10 → 1 plus the box-this-lap call,
  *     via `fuel.lapsLeft.crossed` — issue #838)
  *
@@ -54,7 +57,7 @@ import type { IEventBus, PitReadbackSnapshot, SessionStartSnapshot } from "@irac
 import type { ILogger } from "@iracedeck/logger";
 import { TrackDirection } from "@iracedeck/sim-events-iracing";
 
-import type { Scenario } from "../../dsl.js";
+import type { ScenarioContract } from "../../dsl.js";
 import { getScenarioEngine, isAudioScenariosInitialized } from "../../interpreter.js";
 import {
   buildCornerNameScenario,
@@ -64,7 +67,7 @@ import {
   SCENARIO_ID_TO_CORNER_NAME_ID,
 } from "./corner-name.js";
 import { DAMAGE_ALERTS } from "./damage-alerts.js";
-import { FLAG_ALERTS } from "./flag-alerts.js";
+import { FLAG_CONTRACTS, registerFlagVocabulary } from "./flag-alerts.js";
 import { FUEL_LAPS_LEFT_ALERTS } from "./fuel-laps-left.js";
 import {
   buildGapThresholdScenario,
@@ -344,7 +347,7 @@ export {
 
 /**
  * Stable identifier for each user-toggleable flag callout (issue #467).
- * One id per scenario in `FLAG_ALERTS`; the trailing segment of the
+ * One id per contract in `FLAG_CONTRACTS`; the trailing segment of the
  * scenario id minus the `pit-crew.flag-` prefix.
  */
 export type FlagCalloutId =
@@ -1234,6 +1237,12 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
 
   registerPools(engine);
 
+  // The vocabulary the flag scripts name (issue #1064) — the `session.type`
+  // case var, the furled speak-time gates and the `session.is*` conditions.
+  // Registered before any contract so the first `setScripts` compile sees it;
+  // a later registration would only mark the compiled scripts dirty.
+  registerFlagVocabulary(engine);
+
   // No radio-frame fragments are registered here any more (issue #1064): the
   // engine wraps every scenario in the frame its `frame` field names — the
   // active voice's `radio` frame unless the scenario opts out with
@@ -1243,7 +1252,8 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   // pit-action cooldowns, and readback predicates only run when the
   // engineer is on at all. Cheap short-circuit on the master saves every
   // inner wrapper from running on every event arrival.
-  const wrapWithMaster = (s: Scenario): Scenario => wrapRaceEngineerMasterGate(s, getRaceEngineerMasterEnabled, logger);
+  const wrapWithMaster = <T extends Gated>(s: T): T =>
+    wrapRaceEngineerMasterGate(s, getRaceEngineerMasterEnabled, logger);
 
   // Each pit-service toggle scenario is wrapped three times. Outermost
   // wrapper applies the master gate (`pitCrewRaceEngineerEnabled`); next
@@ -1251,7 +1261,7 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   // innermost applies the engine-internal cooldown
   // (`isPitActionsAllowed`). Outer-first because the master gate is the
   // cheapest, most-persistent check.
-  const wrapToggle = (s: Scenario): Scenario =>
+  const wrapToggle = <T extends Gated>(s: T): T =>
     wrapWithMaster(
       wrapPitServiceRequestsScenario(
         wrapPitActionScenario(s, getPitActionsAllowed, logger),
@@ -1280,9 +1290,13 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
     engine.defineScenario(wrapToggle(s));
   }
 
-  for (const s of FLAG_ALERTS) {
-    engine.defineScenario(
-      wrapWithMaster(wrapCalloutScenario(s, SCENARIO_ID_TO_FLAG_ID, getFlagCalloutEnabled, "flag callout", logger)),
+  // Contracts, not scenarios (issue #1064): the flag family's wording is the
+  // active voice's business (`scenarios["pit-crew.flag-*"]` in its
+  // `callouts.json`, compiled by `setScripts`); the gates wrap the contract's
+  // `where:` exactly as they wrap a legacy scenario's.
+  for (const c of FLAG_CONTRACTS) {
+    engine.defineContract(
+      wrapWithMaster(wrapCalloutScenario(c, SCENARIO_ID_TO_FLAG_ID, getFlagCalloutEnabled, "flag callout", logger)),
     );
   }
 
@@ -1731,6 +1745,15 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
  * silently leak the unmapped scenario past the toggle.
  */
 /**
+ * What the gate wrappers below need of their input: an id (for the log line)
+ * and an optional trigger whose `where:` they narrow. Both a legacy
+ * `Scenario` and a `ScenarioContract` (issue #1064) satisfy it, and each
+ * wrapper is generic over it so what goes in comes out with the same type —
+ * a contract never grows a sequence by being gated.
+ */
+type Gated = { id: string; when?: ScenarioContract["when"] };
+
+/**
  * Wrap a Race Engineer voice scenario with the plugin-wide master gate
  * (issue #515). Plugins compose the closure from
  * `pitCrewRaceEngineerEnabled === true`. Read live on every event
@@ -1745,7 +1768,7 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
  * issue #1064 moved it into the engine) runs inside a parent scenario whose
  * master-gate check has already passed.
  */
-function wrapRaceEngineerMasterGate(s: Scenario, getEnabled: () => boolean, logger: ILogger | undefined): Scenario {
+function wrapRaceEngineerMasterGate<T extends Gated>(s: T, getEnabled: () => boolean, logger: ILogger | undefined): T {
   if (!s.when) return s;
 
   const baseWhere = s.when.where;
@@ -1773,7 +1796,7 @@ function wrapRaceEngineerMasterGate(s: Scenario, getEnabled: () => boolean, logg
  * cooldown window. Same gate-at-event-arrival shape as
  * `wrapCalloutScenario`, but global rather than per-id.
  */
-function wrapPitActionScenario(s: Scenario, getAllowed: () => boolean, logger: ILogger | undefined): Scenario {
+function wrapPitActionScenario<T extends Gated>(s: T, getAllowed: () => boolean, logger: ILogger | undefined): T {
   if (!s.when) return s;
 
   const baseWhere = s.when.where;
@@ -1802,7 +1825,11 @@ function wrapPitActionScenario(s: Scenario, getAllowed: () => boolean, logger: I
  * cutting an in-flight clip — same gate-at-event-arrival shape as the
  * other wrappers.
  */
-function wrapPitServiceRequestsScenario(s: Scenario, getEnabled: () => boolean, logger: ILogger | undefined): Scenario {
+function wrapPitServiceRequestsScenario<T extends Gated>(
+  s: T,
+  getEnabled: () => boolean,
+  logger: ILogger | undefined,
+): T {
   if (!s.when) return s;
 
   const baseWhere = s.when.where;
@@ -1824,13 +1851,13 @@ function wrapPitServiceRequestsScenario(s: Scenario, getEnabled: () => boolean, 
   };
 }
 
-function wrapCalloutScenario<TId extends string>(
-  s: Scenario,
+function wrapCalloutScenario<T extends Gated, TId extends string>(
+  s: T,
   scenarioIdToCalloutId: Record<string, TId>,
   getCalloutEnabled: (id: TId) => boolean,
   description: string,
   logger: ILogger | undefined,
-): Scenario {
+): T {
   const calloutId = scenarioIdToCalloutId[s.id];
 
   if (!calloutId) {

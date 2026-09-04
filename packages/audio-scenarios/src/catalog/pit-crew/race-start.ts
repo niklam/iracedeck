@@ -113,18 +113,45 @@ function clipPath(filename: string): string {
   return `${RACE_START_BASE}/${filename}`;
 }
 
+/** The three buckets a session type collapses into — the keys of the `session.type` vocabulary (issue #1064). */
+export type SessionKind = "practice" | "qualifying" | "race";
+
 /**
- * Whether `classifySessionType(getSessionType())` is `"race"`. Public so the
- * `where:` predicate can be unit-tested without mocking the entire scenario
- * harness. Matches the translator's `classifySessionType` mapping — anything
- * that isn't practice / testing / qualifying reads as race.
+ * The catalog's ONE rule for reading iRacing's raw `SessionType` string
+ * ("Practice", "Lone Practice", "Offline Testing", "Open Qualify",
+ * "Lone Qualify", "Race", "Warmup", …): practice or testing → `"practice"`
+ * (a test session is practice-like), qualifying → `"qualifying"`, anything
+ * else (race, warmup, heat) → `"race"`, and `""` — the translator's "no
+ * session type known" answer — → `null`. It mirrors the translator's own
+ * `classifySessionType` (sim-events-iracing `translator.ts`), which must
+ * stay in agreement; every session gate in this package and the
+ * `session.*` vocabulary a voice script names read through it, so a pack
+ * can never see a session called a race that a `where:` here calls
+ * something else.
+ */
+export function classifySessionType(sessionType: string): SessionKind | null {
+  if (sessionType === "") return null;
+
+  if (sessionType.includes("Practice") || sessionType.includes("Testing")) return "practice";
+
+  if (sessionType.includes("Qualify")) return "qualifying";
+
+  return "race";
+}
+
+/**
+ * Whether the session is a race for the catalog's `where:` gates — the
+ * shared rule above, read permissively: an UNKNOWN session type (`""`) also
+ * passes, because a gate must never suppress on missing data (the #574
+ * precedent). The `session.type` vocabulary reads the same rule honestly
+ * (`null`) and leaves the unknown case to the pack's `default` branch —
+ * that asymmetry is deliberate, not two rules. Public so the predicates can
+ * be unit-tested without mocking the entire scenario harness.
  */
 export function isRaceSession(sessionType: string): boolean {
-  if (sessionType.includes("Practice") || sessionType.includes("Testing")) return false;
+  const kind = classifySessionType(sessionType);
 
-  if (sessionType.includes("Qualify")) return false;
-
-  return true;
+  return kind !== "practice" && kind !== "qualifying";
 }
 
 /**

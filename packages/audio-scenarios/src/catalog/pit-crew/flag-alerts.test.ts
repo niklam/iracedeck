@@ -1,21 +1,32 @@
+/**
+ * The flag family after issue #1064: the code registers CONTRACTS (trigger,
+ * scheduling, the `session.*` / `flag.*` vocabulary) and the bundled voice's
+ * `callouts.json` supplies what is said. Every fire here goes through the real
+ * artifact (`@iracedeck/audio-assets/voice/default/callouts.json`, fed to
+ * `setScripts` for the test voices), so the behavioural assertions prove the
+ * script AND the contracts together — the way the plugin runs them.
+ */
+import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
-import type { CalloutScript } from "@iracedeck/callout-script";
+import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { Flags } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { ScenarioContract } from "../../dsl.js";
 import { WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
 import {
   _setFurledRaisedSpoken,
-  FLAG_ALERTS,
+  FLAG_CONTRACTS,
   FLAG_POOL_NAMES,
   FLAG_SCENARIO_IDS,
+  registerFlagVocabulary,
   WAVING_FLAG_COOLDOWN_MS,
 } from "./flag-alerts.js";
-import { POOL_REGISTRY } from "./pools.js";
+import { classifySessionType, isRaceSession } from "./race-start.js";
 
 const mockSessionType = vi.fn(() => "Race");
 const mockStandingStart = vi.fn(() => false);
@@ -195,20 +206,17 @@ const manifest: AudioAssetsManifest = {
 };
 
 /**
- * Each voice's callout script — only its `radio` frame matters here. Since
- * issue #1064 the ticks come from the engine wrapping every callout in the
- * frame the active voice's script defines, never from the sequences.
+ * The bundled voice's script, verbatim — the 24 flag entries, the `radio`
+ * frame and the `flag-*` pools — handed to BOTH test voices. The JSON import
+ * types `schema` as `number`, hence the cast; the freshness test in
+ * `@iracedeck/audio-assets` guarantees the file matches its config.
  */
-const RADIO_SCRIPT: CalloutScript = {
-  schema: 1,
-  scenarios: {},
-  frames: {
-    radio: {
-      open: ["sfx/IRD-tick-open.mp3", { ambient: "start" }, { ambient: "seek" }],
-      close: [{ ambient: "stop" }, "sfx/IRD-tick-close.mp3"],
-    },
-  },
-  pools: {},
+const SCRIPT = defaultScript as CalloutScript;
+
+/** The bundled script narrowed to the flag family's own entries. */
+const FLAG_SCRIPT: CalloutScript = {
+  ...SCRIPT,
+  scenarios: Object.fromEntries(FLAG_SCENARIO_IDS.map((id) => [id, SCRIPT.scenarios[id]])),
 };
 
 function flush(audio: FakeAudio, iterations = 30): void {
@@ -233,14 +241,14 @@ beforeEach(() => {
   audio = createFakeAudio();
   engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => activeVoice);
 
-  for (const name of FLAG_POOL_NAMES) {
-    const { group, base } = POOL_REGISTRY[name];
-    engine.definePoolFromManifest(name, group, base);
-  }
+  // The production order (`registerPitCrew`): vocabulary, contracts, then the
+  // scripts — no pools are registered in code for this family any more; the
+  // script's `pools` are what the `pool:flag-*` steps resolve through.
+  registerFlagVocabulary(engine);
 
-  for (const s of FLAG_ALERTS) engine.defineScenario(s);
+  for (const c of FLAG_CONTRACTS) engine.defineContract(c);
 
-  engine.setScripts(new Map(VOICE_KEYS.map((v) => [v, RADIO_SCRIPT])));
+  engine.setScripts(new Map(VOICE_KEYS.map((v) => [v, SCRIPT])));
 });
 
 afterEach(() => {
@@ -257,17 +265,29 @@ function sfxClipsPlayed(): string[] {
   return audio._played.filter((p) => p.channel === AudioChannel.SFX).map((p) => p.path);
 }
 
-function findScenario(id: string): (typeof FLAG_ALERTS)[number] {
-  const s = FLAG_ALERTS.find((x) => x.id === id);
+function findContract(id: string): ScenarioContract {
+  const c = FLAG_CONTRACTS.find((x) => x.id === id);
 
-  if (!s) throw new Error(`No flag scenario with id "${id}"`);
+  if (!c) throw new Error(`No flag contract with id "${id}"`);
 
-  return s;
+  return c;
 }
 
-describe("FLAG_ALERTS structure", () => {
-  it("defines 24 scenarios", () => {
-    expect(FLAG_ALERTS).toHaveLength(24);
+describe("FLAG_CONTRACTS structure", () => {
+  it("defines 24 contracts", () => {
+    expect(FLAG_CONTRACTS).toHaveLength(24);
+  });
+
+  it("carries no sequence — what a flag says is the voice script's, never the code's (issue #1064)", () => {
+    for (const c of FLAG_CONTRACTS) {
+      expect("sequence" in c, `${c.id} smuggles a sequence`).toBe(false);
+    }
+  });
+
+  it("names no frame — every flag takes the engine default (the voice's `radio`)", () => {
+    for (const c of FLAG_CONTRACTS) {
+      expect(c.frame, `${c.id} names a frame`).toBeUndefined();
+    }
   });
 
   it("exposes a stable list of ids", () => {
@@ -303,8 +323,8 @@ describe("FLAG_ALERTS structure", () => {
     expect(new Set(FLAG_SCENARIO_IDS).size).toBe(FLAG_SCENARIO_IDS.length);
   });
 
-  it("non-meatball scenarios share family 'flag' and sit in the SAFETY weight band", () => {
-    for (const s of FLAG_ALERTS) {
+  it("non-meatball contracts share family 'flag' and sit in the SAFETY weight band", () => {
+    for (const s of FLAG_CONTRACTS) {
       if (s.id === "pit-crew.flag-meatball") continue;
 
       expect(s.family).toBe("flag");
@@ -314,7 +334,7 @@ describe("FLAG_ALERTS structure", () => {
   });
 
   it("meatball is CRITICAL weight + interrupt + queueable + outside the flag family", () => {
-    const meatball = findScenario("pit-crew.flag-meatball");
+    const meatball = findContract("pit-crew.flag-meatball");
 
     expect(meatball.weight).toBe(WEIGHT.CRITICAL);
     expect(meatball.interrupt).toBe(true);
@@ -350,10 +370,10 @@ describe("FLAG_ALERTS structure", () => {
     ];
 
     for (const id of queueableIds) {
-      expect(findScenario(id).queueable).toBe(true);
+      expect(findContract(id).queueable).toBe(true);
     }
 
-    for (const s of FLAG_ALERTS) {
+    for (const s of FLAG_CONTRACTS) {
       if (queueableIds.includes(s.id)) continue;
 
       expect(s.queueable).not.toBe(true);
@@ -362,28 +382,28 @@ describe("FLAG_ALERTS structure", () => {
 
   // Issue #671 — iRacing re-raises the waving bits on every zone re-approach
   // while an incident persists; the 30 s cooldown collapses the repeats.
-  it("the waving scenarios carry the 30 s cooldown — and they're the only flags that do", () => {
+  it("the waving contracts carry the 30 s cooldown — and they're the only flags that do", () => {
     const cooldownIds = ["pit-crew.flag-yellow-waving", "pit-crew.flag-caution-waving"];
 
     for (const id of cooldownIds) {
-      expect(findScenario(id).cooldown).toBe(WAVING_FLAG_COOLDOWN_MS);
+      expect(findContract(id).cooldown).toBe(WAVING_FLAG_COOLDOWN_MS);
     }
 
-    for (const s of FLAG_ALERTS) {
+    for (const s of FLAG_CONTRACTS) {
       if (cooldownIds.includes(s.id)) continue;
 
       expect(s.cooldown).toBeUndefined();
     }
   });
 
-  it("every scenario uses the per-voice base path", () => {
-    for (const s of FLAG_ALERTS) {
+  it("every contract uses the per-voice base path", () => {
+    for (const s of FLAG_CONTRACTS) {
       expect(s.base).toBe("voice/{voice}");
     }
   });
 });
 
-describe("FLAG_ALERTS triggers", () => {
+describe("FLAG_CONTRACTS triggers", () => {
   it.each([
     {
       label: "yellow local",
@@ -581,19 +601,40 @@ describe("FLAG_ALERTS triggers", () => {
     expect(voiceClipsPlayed()).toEqual(["voice/luca/flags/red-01.mp3"]);
   });
 
-  it("plays the body alone when the active voice has no script to take the frame from (issue #1064)", () => {
-    engine.setScripts(new Map());
+  it("a voice with no script plays no flag callout at all — no line, no frame (issue #1064)", () => {
+    // Only titan is scripted; the active voice (luca) is a clips-only voice.
+    engine.setScripts(new Map([["titan", SCRIPT]]));
     bus.publishEvent("flag.red.raised", {});
     flush(audio);
 
-    expect(voiceClipsPlayed()).toEqual(["voice/luca/flags/red-01.mp3"]);
-    expect(sfxClipsPlayed()).toEqual([]);
+    expect(audio._played).toEqual([]);
+    expect(mockLogger.debug).toHaveBeenCalledWith('Scenario "pit-crew.flag-red" skipped — no script for voice "luca"');
+    // Absent means skipped, never an error: a clips-only voice is valid.
+    expect(mockLogger.warn).not.toHaveBeenCalled();
+    expect(mockLogger.error).not.toHaveBeenCalled();
+  });
+
+  it("a script entry that skips the flag deliberately is silent too, and warns about nothing", () => {
+    const skipping: CalloutScript = {
+      ...SCRIPT,
+      scenarios: { ...SCRIPT.scenarios, "pit-crew.flag-red": { skip: true } },
+    };
+    engine.setScripts(new Map([["luca", skipping]]));
+    bus.publishEvent("flag.red.raised", {});
+    flush(audio);
+
+    expect(audio._played).toEqual([]);
+    expect(mockLogger.warn).not.toHaveBeenCalled();
   });
 });
 
-describe("FLAG_ALERTS green session-type branch", () => {
+describe("FLAG_CONTRACTS green session-type branch", () => {
   it.each([
     { sessionType: "Practice", expected: "voice/luca/flags/green-practice-01.mp3" },
+    // The shared session rule: any practice-like type reads as practice, as
+    // the `where:` gates beside it already read them (issue #1064).
+    { sessionType: "Lone Practice", expected: "voice/luca/flags/green-practice-01.mp3" },
+    { sessionType: "Offline Testing", expected: "voice/luca/flags/green-practice-01.mp3" },
     { sessionType: "Open Qualify", expected: "voice/luca/flags/green-qualifying-01.mp3" },
     { sessionType: "Lone Qualify", expected: "voice/luca/flags/green-qualifying-01.mp3" },
   ])("$sessionType session → $expected", ({ sessionType, expected }) => {
@@ -606,6 +647,7 @@ describe("FLAG_ALERTS green session-type branch", () => {
 
   it.each([
     { sessionType: "Race" },
+    { sessionType: "Warmup" },
     { sessionType: "" },
     { sessionType: "Some Unknown" },
   ])("$sessionType session falls through to flag-green-race", ({ sessionType }) => {
@@ -620,9 +662,11 @@ describe("FLAG_ALERTS green session-type branch", () => {
   });
 });
 
-describe("FLAG_ALERTS white session-type branch", () => {
+describe("FLAG_CONTRACTS white session-type branch", () => {
   it.each([
     { sessionType: "Practice", expected: "voice/luca/flags/white-practice-01.mp3" },
+    { sessionType: "Lone Practice", expected: "voice/luca/flags/white-practice-01.mp3" },
+    { sessionType: "Offline Testing", expected: "voice/luca/flags/white-practice-01.mp3" },
     { sessionType: "Open Qualify", expected: "voice/luca/flags/white-qualifying-01.mp3" },
     { sessionType: "Lone Qualify", expected: "voice/luca/flags/white-qualifying-01.mp3" },
   ])("$sessionType session → $expected", ({ sessionType, expected }) => {
@@ -649,7 +693,7 @@ describe("FLAG_ALERTS white session-type branch", () => {
   });
 });
 
-describe("FLAG_ALERTS white last-lap (issue #772)", () => {
+describe("FLAG_CONTRACTS white last-lap (issue #772)", () => {
   it("plays a last-lap clip when the player crosses S/F under the white flag in a race", () => {
     bus.publishEvent("flag.white-last-lap.raised", {});
     flush(audio);
@@ -673,7 +717,7 @@ describe("FLAG_ALERTS white last-lap (issue #772)", () => {
   );
 });
 
-describe("FLAG_ALERTS white leader (issue #936)", () => {
+describe("FLAG_CONTRACTS white leader (issue #936)", () => {
   it("plays a leader clip when the leader crosses S/F under the white flag in a race", () => {
     bus.publishEvent("flag.white-leader.raised", {});
     flush(audio);
@@ -697,10 +741,13 @@ describe("FLAG_ALERTS white leader (issue #936)", () => {
   );
 });
 
-describe("FLAG_ALERTS checkered session-type branch", () => {
+describe("FLAG_CONTRACTS checkered session-type branch", () => {
   it.each([
     { sessionType: "Race", expected: "voice/luca/flags/checkered-race-01.mp3" },
+    { sessionType: "Warmup", expected: "voice/luca/flags/checkered-race-01.mp3" },
     { sessionType: "Practice", expected: "voice/luca/flags/checkered-practice-01.mp3" },
+    { sessionType: "Lone Practice", expected: "voice/luca/flags/checkered-practice-01.mp3" },
+    { sessionType: "Offline Testing", expected: "voice/luca/flags/checkered-practice-01.mp3" },
     { sessionType: "Open Qualify", expected: "voice/luca/flags/checkered-qualifying-01.mp3" },
     { sessionType: "Lone Qualify", expected: "voice/luca/flags/checkered-qualifying-01.mp3" },
     { sessionType: "", expected: "voice/luca/flags/checkered-race-01.mp3" },
@@ -714,7 +761,7 @@ describe("FLAG_ALERTS checkered session-type branch", () => {
   });
 });
 
-describe("FLAG_ALERTS preemption", () => {
+describe("FLAG_CONTRACTS preemption", () => {
   // The Voice channel only sees flag voice clips in these tests (the
   // radio frame uses SFX + Ambient channels). So `voiceClipsPlayed()`
   // is the chronological list of flag callouts; asserting on the last
@@ -751,7 +798,7 @@ describe("FLAG_ALERTS preemption", () => {
 // the waving bits on every re-approach of a persistent incident zone, replaying
 // the waving callout each pass — debounced with a 30 s cooldown (CrewChief's
 // `timeBetweenYellowFlagMessages`).
-describe("FLAG_ALERTS yellow-cleared delivery + waving debounce (issue #671)", () => {
+describe("FLAG_CONTRACTS yellow-cleared delivery + waving debounce (issue #671)", () => {
   it("plays yellow-cleared after a completed yellow-waving callout (the #671 regression sequence)", () => {
     bus.publishEvent("flag.yellow-waving.raised", {});
     flush(audio);
@@ -837,7 +884,7 @@ describe("FLAG_ALERTS yellow-cleared delivery + waving debounce (issue #671)", (
 // replays when the bus idles; a black→DQ escalation while queued resolves
 // structurally (the queueable DQ fire replaces the pending black — equal
 // weight, ties → newest in the single pending slot).
-describe("FLAG_ALERTS penalty-flag delivery (issue #923)", () => {
+describe("FLAG_CONTRACTS penalty-flag delivery (issue #923)", () => {
   // A stand-in for a spotter call / pit chatter: same Voice bus, NOT in the
   // flag family — so a penalty fire can't take the bus and can't
   // family-preempt. Equal weight (SAFETY) by default; pass CRITICAL to model
@@ -923,7 +970,7 @@ describe("FLAG_ALERTS penalty-flag delivery (issue #923)", () => {
 });
 
 describe("FLAG_POOL_NAMES", () => {
-  it("lists every flag pool that pools.ts defines for flag scenarios", () => {
+  it("lists every flag pool the bundled script defines for the flag scripts", () => {
     expect(FLAG_POOL_NAMES).toEqual([
       "flag-yellow-local",
       "flag-yellow-full",
@@ -958,12 +1005,231 @@ describe("FLAG_POOL_NAMES", () => {
     ]);
   });
 
-  it("every name has a POOL_REGISTRY entry sourced from the flags group", () => {
+  it("every name is defined by the bundled voice's script, sourced from the flags clip group", () => {
     for (const name of FLAG_POOL_NAMES) {
-      expect(POOL_REGISTRY[name]).toBeDefined();
-      expect(POOL_REGISTRY[name].group).toBe("flags");
-      expect(POOL_REGISTRY[name].base.length).toBeGreaterThan(0);
+      const pool = SCRIPT.pools[name];
+
+      expect(pool, `bundled script defines no pool "${name}"`).toBeDefined();
+      expect(pool.group).toBe("flags");
+      expect(pool.base.length).toBeGreaterThan(0);
+      expect(pool.comment?.length ?? 0).toBeGreaterThan(0);
     }
+  });
+
+  it("is exactly the set of pools the bundled flag scripts draw from — no stray name either way", () => {
+    // Narrowed to the family's own entries so another family's migration
+    // (#1065) cannot widen the reference set under this assertion.
+    const referenced = collectScriptReferences(FLAG_SCRIPT).pools;
+
+    expect([...referenced].sort()).toEqual([...FLAG_POOL_NAMES].sort());
+  });
+});
+
+describe("the bundled script's flag entries (issue #1064)", () => {
+  it("scripts every flag contract, and nothing that is not a flag contract", () => {
+    expect(Object.keys(FLAG_SCRIPT.scenarios).sort()).toEqual([...FLAG_SCENARIO_IDS].sort());
+
+    for (const id of FLAG_SCENARIO_IDS) {
+      expect(SCRIPT.scenarios[id], `no script entry for ${id}`).toBeDefined();
+    }
+  });
+
+  it("every entry carries a comment, a harness route and a sequence — the reference's source text", () => {
+    for (const id of FLAG_SCENARIO_IDS) {
+      const entry = SCRIPT.scenarios[id];
+
+      expect(entry.comment?.length ?? 0, `${id}: comment`).toBeGreaterThan(0);
+      expect(entry.test, `${id}: test`).toMatch(/^Harness → Flags → /);
+      expect(entry.skip).toBeUndefined();
+      expect(entry.sequence?.length ?? 0, `${id}: sequence`).toBeGreaterThan(0);
+    }
+  });
+
+  it("references only vocabulary the flag family registers, with the declared case keys", () => {
+    const refs = collectScriptReferences(FLAG_SCRIPT);
+    const vocabulary = engine.vocabulary();
+
+    expect(refs.vars).toEqual([]);
+    expect(refs.includes).toEqual([]);
+    expect(refs.frames).toEqual([]);
+    expect(refs.conds).toEqual(["flag.furledStillShown", "flag.furledWithdrawn"]);
+    expect(refs.cases).toEqual([{ name: "session.type", keys: ["practice", "qualifying", "race"] }]);
+
+    for (const cond of refs.conds) {
+      expect(vocabulary.conds.map((c) => c.name)).toContain(cond);
+    }
+
+    for (const c of refs.cases) {
+      const declared = vocabulary.cases.find((v) => v.name === c.name);
+
+      expect(declared).toBeDefined();
+      expect(Object.keys(declared?.keys ?? {}).sort()).toEqual([...c.keys].sort());
+    }
+  });
+
+  it("compiles for every voice with nothing skipped — no unknown pool, condition or case key", () => {
+    // A compile problem is ONE warn per (voice, scenario); the fixture's
+    // manifest covers both voices, so a clean compile means every reference
+    // resolved. Deliberate skips would be silent, and there are none.
+    expect(mockLogger.warn).not.toHaveBeenCalled();
+    expect(mockLogger.error).not.toHaveBeenCalled();
+  });
+});
+
+// The session rule the vocabulary reads is the package's shared one
+// (`classifySessionType`, race-start.ts) — the same rule the `where:` gates
+// read through `isRaceSession` — so a pack can never see `session.type` call
+// a session a race that a gate beside it calls practice.
+describe("the shared session rule (issue #1064)", () => {
+  it.each([
+    { raw: "Practice", kind: "practice" },
+    { raw: "Lone Practice", kind: "practice" },
+    { raw: "Offline Testing", kind: "practice" },
+    { raw: "Open Qualify", kind: "qualifying" },
+    { raw: "Lone Qualify", kind: "qualifying" },
+    { raw: "Race", kind: "race" },
+    { raw: "Warmup", kind: "race" },
+    { raw: "Some Unknown", kind: "race" },
+    { raw: "", kind: null },
+  ])("classifySessionType($raw) → $kind", ({ raw, kind }) => {
+    expect(classifySessionType(raw)).toBe(kind);
+  });
+
+  it("isRaceSession is the same rule for every known type, and permissive only on the unknown one", () => {
+    for (const raw of ["Practice", "Lone Practice", "Offline Testing", "Open Qualify", "Lone Qualify"]) {
+      expect(isRaceSession(raw), raw).toBe(false);
+      expect(classifySessionType(raw)).not.toBe("race");
+    }
+
+    for (const raw of ["Race", "Warmup", "Some Unknown"]) {
+      expect(isRaceSession(raw), raw).toBe(true);
+      expect(classifySessionType(raw)).toBe("race");
+    }
+
+    // A gate never suppresses on missing data (the #574 precedent); the
+    // vocabulary reports the same case as `null` and lets the pack decide.
+    expect(isRaceSession("")).toBe(true);
+    expect(classifySessionType("")).toBeNull();
+  });
+});
+
+describe("registerFlagVocabulary (issue #1064)", () => {
+  it("publishes the session case and the furled gates with their descriptions, verbatim", () => {
+    const { conds, cases } = engine.vocabulary();
+
+    expect(cases).toEqual([
+      {
+        name: "session.type",
+        description: "The type of the current session.",
+        keys: {
+          practice: "A practice session.",
+          qualifying: "Any qualifying session (open or lone).",
+          race: "A race session.",
+        },
+      },
+    ]);
+    expect(conds).toEqual([
+      {
+        name: "flag.furledStillShown",
+        description:
+          "The furled black flag is still being shown at speak time; speaking it marks the raise as announced.",
+      },
+      {
+        name: "flag.furledWithdrawn",
+        description: "An announced furled flag has been withdrawn; speaking it consumes the announcement.",
+      },
+      { name: "session.isPractice", description: "The current session is a practice session." },
+      {
+        name: "session.isQualifying",
+        description: "The current session is a qualifying session (open or lone).",
+      },
+      {
+        name: "session.isRace",
+        description: "The current session is a race session (anything that is not practice or qualifying).",
+      },
+    ]);
+  });
+
+  // The three binary conditions are published for packs, not used by ours —
+  // so prove them through a probe script the way a pack would write one.
+  function probe(cond: string): CalloutScript {
+    return {
+      ...SCRIPT,
+      scenarios: {
+        ...SCRIPT.scenarios,
+        "pit-crew.flag-red": { sequence: [{ if: cond, then: ["flags/red-01.mp3"] }] },
+      },
+    };
+  }
+
+  function redPlays(cond: string, sessionType: string): boolean {
+    // Counted from a mark, so two probes in one test read only their own fire.
+    const before = voiceClipsPlayed().length;
+    engine.setScripts(new Map([["luca", probe(cond)]]));
+    mockSessionType.mockReturnValue(sessionType);
+    bus.publishEvent("flag.red.raised", {});
+    flush(audio);
+
+    return voiceClipsPlayed().slice(before).includes("voice/luca/flags/red-01.mp3");
+  }
+
+  it.each([
+    { cond: "session.isPractice", sessionType: "Practice", expected: true },
+    { cond: "session.isPractice", sessionType: "Lone Practice", expected: true },
+    { cond: "session.isPractice", sessionType: "Offline Testing", expected: true },
+    { cond: "session.isPractice", sessionType: "Open Qualify", expected: false },
+    { cond: "session.isPractice", sessionType: "Race", expected: false },
+    { cond: "session.isQualifying", sessionType: "Open Qualify", expected: true },
+    { cond: "session.isQualifying", sessionType: "Lone Qualify", expected: true },
+    { cond: "session.isQualifying", sessionType: "Race", expected: false },
+    { cond: "session.isRace", sessionType: "Race", expected: true },
+    { cond: "session.isRace", sessionType: "Warmup", expected: true },
+    { cond: "session.isRace", sessionType: "Practice", expected: false },
+    { cond: "session.isRace", sessionType: "Lone Practice", expected: false },
+    { cond: "session.isRace", sessionType: "Offline Testing", expected: false },
+    { cond: "session.isRace", sessionType: "Lone Qualify", expected: false },
+    // No session type known: none of the three holds (the case var reads null).
+    { cond: "session.isPractice", sessionType: "", expected: false },
+    { cond: "session.isQualifying", sessionType: "", expected: false },
+    { cond: "session.isRace", sessionType: "", expected: false },
+  ])("$cond is $expected in a '$sessionType' session", ({ cond, sessionType, expected }) => {
+    expect(redPlays(cond, sessionType)).toBe(expected);
+  });
+
+  it("a negated condition flips the branch (`!session.isRace`)", () => {
+    expect(redPlays("!session.isRace", "Practice")).toBe(true);
+    expect(redPlays("!session.isRace", "Race")).toBe(false);
+  });
+
+  it("session.type resolves to null when no session type is known — the script's `default` branch answers", () => {
+    // The bundled green script maps `default` to the race line, which is why
+    // the '' case in the session-type describe above still plays it. A script
+    // WITHOUT a default is silent there, never wrong.
+    const withoutDefault: CalloutScript = {
+      ...SCRIPT,
+      scenarios: {
+        ...SCRIPT.scenarios,
+        "pit-crew.flag-green": {
+          sequence: [{ case: "session.type", of: { race: ["pool:flag-green-race"] } }],
+        },
+      },
+    };
+    engine.setScripts(new Map([["luca", withoutDefault]]));
+    mockSessionType.mockReturnValue("");
+    bus.publishEvent("flag.green.raised", {});
+    flush(audio);
+
+    expect(audio._played).toEqual([]);
+    expect(mockLogger.warn).not.toHaveBeenCalled();
+
+    // …and the same script speaks in a race, so the silence above is the
+    // missing default, not a broken probe.
+    mockSessionType.mockReturnValue("Race");
+    bus.publishEvent("flag.green.raised", {});
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toHaveLength(1);
+    expect(voiceClipsPlayed()[0]).toMatch(/voice\/luca\/flags\/green-race-0[12]\.mp3$/);
   });
 });
 
@@ -971,7 +1237,7 @@ describe("FLAG_POOL_NAMES", () => {
 // while forming the race grid at the END of a qualifying session, so the
 // race-formation / progression callouts fired "One pace lap to go" at the
 // qualifying checkered. They must gate on the race session.
-describe("FLAG_ALERTS race-only gating", () => {
+describe("FLAG_CONTRACTS race-only gating", () => {
   // Clip identity per event is asserted elsewhere (the deterministic `expected`
   // table for the single-clip flags; the membership tests for the random
   // one-pace-lap-to-go / green-held pools). Here we only care that the event
@@ -1146,7 +1412,10 @@ describe("furled speak-time validity + cleared pairing (issue #669)", () => {
       bus: AudioBus.Voice,
       base: "voice/{voice}",
       weight: WEIGHT.SAFETY,
-      sequence: ["pool:flag-yellow-cleared"],
+      // A clip path, not `pool:flag-yellow-cleared`: the flag pools live in
+      // the voice's script now, and a legacy scenario is validated against
+      // the code registry only.
+      sequence: ["flags/yellow-cleared-01.mp3"],
     });
     mockLatestTelemetry.mockReturnValue(FURLED_UP);
 
@@ -1166,7 +1435,7 @@ describe("furled speak-time validity + cleared pairing (issue #669)", () => {
       bus: AudioBus.Voice,
       base: "voice/{voice}",
       weight: WEIGHT.SAFETY,
-      sequence: ["pool:flag-yellow-cleared"],
+      sequence: ["flags/yellow-cleared-01.mp3"],
     });
     mockLatestTelemetry.mockReturnValue(FURLED_UP);
     bus.publishEvent("flag.furled.raised", {});
@@ -1227,7 +1496,7 @@ describe("furled → black escalation speak-time gate (issue #846)", () => {
       bus: AudioBus.Voice,
       base: "voice/{voice}",
       weight: WEIGHT.SAFETY,
-      sequence: ["pool:flag-yellow-cleared"],
+      sequence: ["flags/yellow-cleared-01.mp3"],
     });
     mockLatestTelemetry.mockReturnValue({ SessionFlags: Flags.Furled });
     bus.publishEvent("flag.furled.raised", {});
