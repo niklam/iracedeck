@@ -2,7 +2,11 @@ name: Release
 
 on:
   push:
-    tags: ["v*"]
+    # A digit after the v: voice-pack releases are tagged voices-<id>-<version>
+    # (#1116), which a bare v* would also match. Tags the workflow itself
+    # creates with GITHUB_TOKEN never trigger runs, but one pushed by hand
+    # with a personal token would, and it must not package the plugins.
+    tags: ["v[0-9]*"]
 
 permissions:
   checks: write

@@ -62,15 +62,22 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/publish-voice-packs.mjs ${{ inputs.publish && '--publish' || '' }}
 
+      # `always()`: the run whose archive is worth inspecting is the one where
+      # the runner did NOT reproduce the committed bytes, and that run fails.
       - name: Upload voice-pack artifact
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: voice-packs
           path: packed/voice-packs/*.zip
+          if-no-files-found: ignore
 
       # `gh release view` with no tag answers with the repository's latest
-      # release. Voice-pack releases are created with --latest=false, so this
-      # is always the plugin release the website should be built from.
+      # release. Voice-pack releases are created with --latest=false, so that
+      # should always be the plugin release the website is built from — but
+      # "latest" is recomputed by GitHub whenever releases are deleted or
+      # edited, so the answer is checked, not trusted: it must be a stable
+      # plugin tag, exactly vX.Y.Z. (`voices-…` also starts with a v.)
       - name: Resolve the latest stable plugin release
         id: stable
         if: inputs.publish
@@ -79,11 +86,11 @@ jobs:
         shell: pwsh
         run: |
           $tag = gh release view --json tagName --jq .tagName
-          if ($LASTEXITCODE -ne 0 -or -not $tag -or -not $tag.StartsWith("v")) {
-            throw "The latest release is not a plugin release (got '$tag'); refusing to deploy the website."
+          if ($LASTEXITCODE -ne 0 -or -not $tag -or $tag -notmatch '^v\d+\.\d+\.\d+$') {
+            throw "The latest GitHub release is '$tag', not a stable plugin release (vX.Y.Z); refusing to deploy the website from it."
           }
           "tag=$tag" | Out-File -Append -FilePath $env:GITHUB_OUTPUT
-          Write-Host "Website will be built from $tag with the catalog from ${{ github.ref }}"
+          Write-Host "Website will be built from $tag with the catalog from $env:GITHUB_REF"
 
   deploy-website:
     needs: [pack]

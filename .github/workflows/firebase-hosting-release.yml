@@ -33,11 +33,22 @@ jobs:
         with:
           ref: ${{ inputs.ref || github.ref }}
 
+      # `--no-overlay` so a pack withdrawn on master (its entry deleted) is
+      # removed here too; the default overlay mode only adds and overwrites.
+      # The checkout must also be able to BUILD a catalog: a tag older than
+      # the catalog generator would deploy green with no catalog at all.
       - name: Overlay the voice-pack catalog from another ref
         if: inputs.catalog_ref
+        env:
+          CATALOG_REF: ${{ inputs.catalog_ref }}
         run: |
-          git fetch --no-tags --depth=1 origin "${{ inputs.catalog_ref }}"
-          git checkout FETCH_HEAD -- packages/audio-assets/catalog
+          set -euo pipefail
+          test -f scripts/lib/voice-catalog-data.mjs || {
+            echo "::error::$(git describe --tags --always) has no voice-catalog generator; a catalog overlay cannot be built from it."
+            exit 1
+          }
+          git fetch --no-tags --depth=1 origin "$CATALOG_REF"
+          git checkout --no-overlay FETCH_HEAD -- packages/audio-assets/catalog
           git status --short packages/audio-assets/catalog
 
       - uses: pnpm/action-setup@v6
@@ -50,6 +61,25 @@ jobs:
           cache: 'pnpm'
 
       - run: pnpm install
+
+      # The site must never go live naming a voice-pack archive that does not
+      # exist (#1116). On the release path the archive was attached by the
+      # build job this deploy waits for; on a manual dispatch nothing
+      # guarantees it, so every entry's url is asked before the build. A
+      # tag from before the catalog existed has no entries and passes.
+      - name: Verify every voice-pack archive the catalog names is published
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for entry in packages/audio-assets/catalog/*.json; do
+            url="$(node -p 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).url' "$entry")"
+            code="$(curl -sSIL -o /dev/null -w '%{http_code}' "$url")"
+            if [ "$code" != "200" ]; then
+              echo "::error file=$entry::$entry names $url, which answers HTTP $code. Publish the archive first (the release workflow, or 'Publish voice packs' with publish on), or restore the entry."
+              exit 1
+            fi
+            echo "ok  $entry -> $url"
+          done
 
       - name: Build website
         run: pnpm exec turbo run build --filter=@iracedeck/website

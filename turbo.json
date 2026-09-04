@@ -39,6 +39,8 @@
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/lib/changelog-*.mjs",
+        "$TURBO_ROOT$/scripts/lib/voice-catalog-data.mjs",
+        "$TURBO_ROOT$/packages/audio-assets/catalog/**",
         "$TURBO_ROOT$/packages/icons/**",
         "$TURBO_ROOT$/packages/iracing-actions/icons/**",
         "$TURBO_ROOT$/packages/iracing-actions/src/**",
