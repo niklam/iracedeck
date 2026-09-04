@@ -66,7 +66,7 @@ Translator tests for the payload (rating rounding, licence parsing incl. Rookie/
 - Website: the Race Engineer page gains a section; changelog entry.
 - Rules: `race-engineer-callout-examples.md` gains the entry.
 
-## Open questions
+## Settled with the maintainer (2026-09-04)
 
-- Whether the cadence should count laps or minutes; laps chosen because pit windows and stints are counted in laps here, but an oval driver may prefer time.
-- Whether to speak the briefing during a caution. Proposed no: the neighbours under yellow are not the ones you race on the restart.
+- The cadence counts **laps**, not minutes: pit windows and stints are counted in laps here, and one unit keeps the setting simple.
+- The briefing **stays quiet under caution**: the neighbours under yellow are not the ones you race on the restart, and the restart itself has its own callouts. The next cadence tick after the green speaks as normal.
