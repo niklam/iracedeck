@@ -1,3 +1,9 @@
+import {
+  CALLOUT_SCRIPT_FILE,
+  type CalloutScript,
+  calloutScriptPath,
+  parseCalloutScript,
+} from "@iracedeck/callout-script";
 import { join } from "node:path";
 
 import { VOICE_PACK_PROVENANCE_FILE } from "./voice-pack-constants.js";
@@ -39,8 +45,17 @@ export interface VoicePackFileSystem {
 /**
  * A voice a pack provides. `id` is identity and matches the `voice/<id>/…` clip
  * path; `label` is what a user reads and nothing more.
+ *
+ * `script` is the voice's parsed `voice/<id>/callouts.json` (#1064), or `null`
+ * for a clips-only voice — one with no script file at all, which is valid and
+ * whose callouts are simply all skipped. It is never the raw text: a voice
+ * whose file exists but does not parse is not listed at all (see
+ * {@link scanVoicePacks}), so a listed voice's script is always usable or
+ * absent, never broken. Plain data, like the rest of the pack: the settings
+ * window's `_voicePacks` payload must map this OUT rather than publish it — a
+ * script is the engine's input, not something a list row renders.
  */
-export type InstalledVoice = { id: string; label: string };
+export type InstalledVoice = { id: string; label: string; script: CalloutScript | null };
 
 export type InstalledVoicePack = {
   id: string;
@@ -124,6 +139,57 @@ const MANIFEST_FILE = "voice-pack.json";
  * that cannot work is refused with a reason instead of being silently mute.
  */
 const USABLE_CLIP = /^voice\/[^/]+\/[^/]+\/[^/]+\.mp3$/;
+
+type VoiceScriptRead = { ok: true; script: CalloutScript | null } | { ok: false; reason: string };
+
+/**
+ * Read one voice's `voice/<id>/callouts.json` (#1064).
+ *
+ * Three outcomes, and the middle one is the point. No file is a CLIPS-ONLY
+ * voice — `script: null`, no problem — because a pack built before scripts
+ * existed is exactly that shape and is still a valid pack. A file that exists
+ * but cannot be opened, is not JSON, or fails the grammar is a problem with
+ * THIS VOICE: the caller drops it, exactly as it drops a voice with no usable
+ * clips. The alternative — listing the voice with `script: null` — would mute
+ * every callout the author wrote and show nothing anywhere saying why.
+ *
+ * The `reason` is a fragment that follows the file name, so the three read
+ * `callouts.json could not be read (EBUSY)`, `callouts.json is not valid JSON:
+ * …` and `callouts.json scenarios.flag-green.sequence[1]: …` — the parser's
+ * problems are already path-prefixed, so the file name is all that is added.
+ * Only the FIRST grammar problem is reported: one line per dropped voice in
+ * the Installed Voices list, as the manifest reader does for a pack.
+ */
+function readVoiceScript(fs: VoicePackFileSystem, dir: string, voiceId: string): VoiceScriptRead {
+  const read = fs.readTextFile(join(dir, calloutScriptPath(voiceId)));
+
+  if (!read.ok) {
+    return read.missing
+      ? { ok: true, script: null }
+      : { ok: false, reason: `${CALLOUT_SCRIPT_FILE} could not be read (${read.reason})` };
+  }
+
+  let json: unknown;
+
+  try {
+    // A leading UTF-8 BOM is stripped before parsing, for the reason the
+    // manifest reader gives: `JSON.parse` throws on one, several Windows
+    // editors write one, and the script must not be stricter than the
+    // manifest about the same accident.
+    json = JSON.parse(read.text.charCodeAt(0) === 0xfeff ? read.text.slice(1) : read.text);
+  } catch (err) {
+    return {
+      ok: false,
+      reason: `${CALLOUT_SCRIPT_FILE} is not valid JSON: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+
+  const parsed = parseCalloutScript(json);
+
+  if (!parsed.ok) return { ok: false, reason: `${CALLOUT_SCRIPT_FILE} ${parsed.problems[0] ?? "invalid shape"}` };
+
+  return { ok: true, script: parsed.script };
+}
 
 /**
  * Read every pack under `root` (issue #1034).
@@ -338,6 +404,7 @@ export function scanVoicePacks({ root, fs, reservedVoices }: ScanVoicePacksOptio
     const voices: InstalledVoice[] = [];
     const clips: string[] = [];
     const unusable: string[] = [];
+    const badScripts: string[] = [];
 
     for (const voice of declared) {
       // The declared `id` drives the prefix, so a declared voice with no
@@ -357,7 +424,20 @@ export function scanVoicePacks({ root, fs, reservedVoices }: ScanVoicePacksOptio
         continue;
       }
 
-      voices.push(voice);
+      // The script is read AFTER the clip gate, so a voice with nothing to play
+      // reports that and nothing else — a second line telling the author to fix
+      // a script for a voice that cannot make a sound would send them to the
+      // wrong file first. A malformed script drops the voice on the same terms
+      // as no usable clips (#1064): it is not listed, contributes no clips, and
+      // claims no id, so a later pack that ships the voice properly still can.
+      const scriptRead = readVoiceScript(fs, dir, voice.id);
+
+      if (!scriptRead.ok) {
+        badScripts.push(`voice "${voice.id}": ${scriptRead.reason}`);
+        continue;
+      }
+
+      voices.push({ id: voice.id, label: voice.label, script: scriptRead.script });
 
       // Appended one at a time rather than spread: `usable` is derived from a
       // directory walk that caps DEPTH but not breadth, and a spread past V8's
@@ -368,6 +448,11 @@ export function scanVoicePacks({ root, fs, reservedVoices }: ScanVoicePacksOptio
     }
 
     if (unusable.length > 0) problems.push({ pack: folder, reason: unusable.join("; ") });
+
+    // One problem PER dropped voice, not one joined line as for the clips: each
+    // reason already names its voice and its file, and a script problem is a
+    // sentence about one document an author will open, not a list of paths.
+    for (const reason of badScripts) problems.push({ pack: folder, reason });
 
     if (voices.length === 0) continue;
 

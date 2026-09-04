@@ -214,6 +214,11 @@ export {
   type VoicePackFileSystem,
   type VoicePackProblem,
 } from "./voice-pack-scanner.js";
+// The type behind `InstalledVoice.script` (#1064), re-exported so a consumer
+// that names it — a plugin mapping the `_voicePacks` view model, or handing
+// the service's scripts to the engine — needs no dependency edge on the
+// grammar package for one type. `LogLevel` above is the precedent.
+export type { CalloutScript } from "@iracedeck/callout-script";
 export {
   VOICE_LABELS_KEY,
   VOICE_PACK_PROVENANCE_FILE,

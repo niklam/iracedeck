@@ -15,7 +15,14 @@ function fakeFs(packs: Record<string, string[]>): VoicePackFileSystem {
   return {
     listDirectories: () => Object.keys(packs),
     readTextFile: (file) => {
-      const id = file.replace(/\\/g, "/").split("/").at(-2) ?? "";
+      const parts = file.replace(/\\/g, "/").split("/");
+
+      // Only the manifest exists. The scanner also reads `.install.json` and,
+      // since #1064, each voice's `voice/<id>/callouts.json`; answering THOSE
+      // with a manifest would fail the script grammar and drop every voice.
+      if (parts.at(-1) !== "voice-pack.json") return { ok: false as const, missing: true, reason: "ENOENT" };
+
+      const id = parts.at(-2) ?? "";
 
       return {
         ok: true as const,
