@@ -22,7 +22,7 @@ Two runs: **triage** (untagged posts → an outcome each) and **follow-up** (pos
 | Command | Use |
 | --- | --- |
 | `list [--untagged] [--json]` | Every post, newest first. `--untagged`: no status tag yet — the triage queue. |
-| `show <post-id> [--json]` | Title, author handle, votes, starter text, every reply. |
+| `show <post-id> [--json]` | Title, author handle, votes, starter text, every reply, and the source line (`sourceLine` in `--json`). |
 | `reply <post-id> --text "…"` or `--file <path>` | Post into the thread. `--dry-run` prints the request only. Prefer `--file` for multi-paragraph text. |
 | `tag <post-id> "<status tag>"` | One of `Will Add`, `In progress`, `Completed`, `Released`, `Won't do`. Keeps category tags. `--dry-run` available. |
 | `follow-up [--json]` | Every `discord`-labelled issue, its post, current vs expected tag, and whether a change is proposed. |
@@ -40,14 +40,14 @@ Two runs: **triage** (untagged posts → an outcome each) and **follow-up** (pos
    | Duplicate of an older post | `list --json` titles; read the older post if close | link to the older post, ask for the ❤️ there | none | none |
    | New | none of the above | issue link + **plan paragraph** | `Will Add` | file issue + spec via the normal pipeline |
 
-3. **New request:** draft the issue from `.github/ISSUE_TEMPLATE/feature_request.yml`'s sections with the source line as the last line of *Additional context*, show it, file it with `--label enhancement --label discord`, then the spec per `.claude/rules/specs-and-plans.md` (committed to `master`, permalink added to the issue). Only then reply and tag.
-4. **Adopt an existing issue:** append the source line to its body and add the label, then a one-line comment so it shows in the timeline:
+3. **New request:** draft the issue from `.github/ISSUE_TEMPLATE/feature_request.yml`'s sections with the source line — the `sourceLine` value from `show <id> --json`, copied verbatim, never retyped — as the last line of *Additional context*, show it, file it with `--label enhancement --label discord`, then the spec per `.claude/rules/specs-and-plans.md` (committed to `master`, permalink added to the issue). Only then reply and tag.
+4. **Adopt an existing issue:** append the source line to its body and add the label, then a one-line comment so it shows in the timeline. `<source line>` is the `sourceLine` value from `show <id> --json`, copied verbatim in both places:
 
    ```bash
    gh issue view <n> --json body --jq .body > "$TMP/body.md"
-   printf '\n\nRequested on Discord: <post link> by <handle> (<votes> ❤️)\n' >> "$TMP/body.md"
+   printf '\n\n%s\n' '<source line>' >> "$TMP/body.md"
    gh issue edit <n> --add-label discord --body-file "$TMP/body.md"
-   gh issue comment <n> --body "Requested on Discord: <post link> (<votes> ❤️)"
+   gh issue comment <n> --body '<source line>'
    ```
 
    Use `$TMP` = the session scratchpad. Re-read the body afterwards; `gh --body` does not read stdin.
@@ -56,17 +56,18 @@ Two runs: **triage** (untagged posts → an outcome each) and **follow-up** (pos
 
 ## Follow-up
 
-1. `follow-up` (or `--json`). It lists `discord`-labelled issues, parses each post link, derives the expected tag, and marks rows `PROPOSE` only for forward moves:
+1. `follow-up` (or `--json`). It lists `discord`-labelled issues, parses each source line, derives the expected tag, and marks rows `PROPOSE` only for forward moves:
 
    | GitHub state | Expected tag |
    | --- | --- |
    | Open, no assignee, no milestone | `Will Add` |
    | Open with an assignee or a milestone | `In progress` |
-   | Closed as completed, not yet in a stable tag | `Completed` |
-   | Closed as completed, merge commit in a stable `vX.Y.Z` tag | `Released` (lowest such version) |
+   | Closed as completed, no shipping commit in a stable tag yet | `Completed` |
+   | Closed as completed, a shipping commit in a stable `vX.Y.Z` tag | `Released` (lowest such version) |
    | Closed as not planned | `Won't do` |
+   | Closed as duplicate | none — point the post at the canonical issue by hand |
 
-   Rank: `none < Will Add < In progress < Completed < Released`; `Won't do` from anywhere, and terminal. A row with a note (no link, post not found, standing) is reported, never proposed — a "no link" row is an issue to adopt by hand.
+   A shipping commit is the merge commit of a PR GitHub links as closing the issue, the commit a timeline `closed` event names, or a squash-merge whose subject carries `(#n)` (spec commits excluded). Rank: `none < Will Add < In progress < Completed < Released`; `Won't do` from anywhere, and terminal. Every row prints its verdict (`PROPOSE`, `up to date`, `no change`) and, when there is one, a note. A row with no source line, a source line for another server, a post not found, a standing post, or a duplicate is never proposed — a "no source line" row is an issue to adopt by hand. A note that the release lookup failed, or that the issue closed without a linked PR or closing commit, sits on an otherwise normal row: `Completed` is still proposed, and `Released` is set by hand once the version is known.
 2. For each `PROPOSE` row draft the reply from the templates, show the batch (post, current → expected, reply text), and on approval run `reply` then `tag` per post.
 3. Run it after a merge that closes a Discord-sourced issue and after every release.
 
@@ -88,4 +89,4 @@ A reply that opens or moves a request says **what we intend to build**, in two t
 
 ## Source line
 
-Exactly `Requested on Discord: <post link> by <handle> (<votes> ❤️)`, where the post link is `https://discord.com/channels/<guild>/<post-id>`, the handle is the Discord username from `show`, and votes is `votes.total` from `show`. Follow-up parses this line; a different shape is invisible to it.
+Exactly `Requested on Discord: <post link> by <handle> (<votes> ❤️)`, where the post link is `https://discord.com/channels/<guild>/<post-id>`, the handle is the Discord username from `show` (`unknown` when the starter message was deleted), and votes is `votes.total` from `show`. `show <id> --json` emits it ready-made as `sourceLine`, and `show <id>` prints it as its last line — copy it, never retype it. Follow-up parses this line at the start of its own line in the issue body; a different shape, or a Discord link anywhere else in the body, is invisible to it.
