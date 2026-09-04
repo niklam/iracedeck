@@ -6,6 +6,7 @@
  *
  * Design record: docs/superpowers/specs/2026-09-04-issue-1114-discord-feature-requests-tracker.md
  */
+import { compare, prerelease, valid } from "semver";
 
 /** The channel's lifecycle tags, in lifecycle order. Names are exact. */
 export const STATUS_TAGS = Object.freeze(["Will Add", "In progress", "Completed", "Released", "Won't do"]);
@@ -22,8 +23,12 @@ export const DISCORD_MESSAGE_LIMIT = 2000;
 export const DISCORD_EPOCH_MS = 1420070400000;
 
 const STATUS_RANK = { "Will Add": 1, "In progress": 2, Completed: 3, Released: 4 };
-const STABLE_TAG = /^v(\d+)\.(\d+)\.(\d+)$/;
-const POST_LINK = /https:\/\/discord\.com\/channels\/(\d+)\/(\d+)/;
+/**
+ * The line an issue body carries back to its post (see `sourceLine`). Anchored
+ * to the start of its own line: an issue body can cite other Discord URLs, and
+ * the first one found is not the post the issue came from.
+ */
+const SOURCE_LINE = /^Requested on Discord: https:\/\/discord\.com\/channels\/(\d+)\/(\d+)/m;
 const MAX_TAGS_PER_POST = 5;
 
 /** @param {string} id */
@@ -99,8 +104,9 @@ export function postLink(guildId, postId) {
   return `https://discord.com/channels/${guildId}/${postId}`;
 }
 
-export function parsePostLink(text) {
-  const match = POST_LINK.exec(text ?? "");
+/** @returns {{ guildId: string, postId: string } | null} the source line's post, if the body has one */
+export function parseSourceLine(text) {
+  const match = SOURCE_LINE.exec(text ?? "");
 
   return match ? { guildId: match[1], postId: match[2] } : null;
 }
@@ -134,11 +140,14 @@ export function summarizeReactions(message) {
 
 /**
  * The follow-up table from the spec. `issue` is the `gh issue list --json`
- * shape: state, stateReason, assignees, milestone.
+ * shape: state, stateReason, assignees, milestone. Returns `null` when no
+ * status tag fits — an issue closed as a duplicate is not done, so its post
+ * must be pointed at the canonical issue by hand rather than tagged.
  */
 export function expectedTag(issue, releasedVersion = null) {
   if (issue.state === "CLOSED") {
     if (issue.stateReason === "NOT_PLANNED") return WONT_DO;
+    if (issue.stateReason === "DUPLICATE") return null;
 
     return releasedVersion ? "Released" : "Completed";
   }
@@ -154,20 +163,24 @@ export function rank(tag) {
 
 /** Forward moves only; Won't do is reachable from anywhere and terminal. */
 export function shouldPropose(current, expected) {
-  if (current === expected) return false;
+  if (expected === null || current === expected) return false;
   if (expected === WONT_DO) return true;
   if (current === WONT_DO) return false;
 
   return rank(expected) > rank(current);
 }
 
-/** Lowest `vX.Y.Z` among tag names; pre-releases never count as shipped. */
+/**
+ * Lowest stable `v<semver>` among tag names; pre-releases never count as
+ * shipped. Stability is semver's rule, so `v3.2.0+build` is stable and
+ * `v3.2.0-rc.1` is not.
+ */
 export function lowestStableVersion(tagNames) {
   const stable = tagNames
-    .map((name) => STABLE_TAG.exec(name))
-    .filter(Boolean)
-    .map((m) => ({ name: m[0], parts: m.slice(1).map(Number) }))
-    .sort((a, b) => a.parts[0] - b.parts[0] || a.parts[1] - b.parts[1] || a.parts[2] - b.parts[2]);
+    .filter((name) => name.startsWith("v"))
+    .map((name) => ({ name, version: name.slice(1) }))
+    .filter(({ version }) => valid(version) && prerelease(version) === null)
+    .sort((a, b) => compare(a.version, b.version));
 
   return stable[0]?.name ?? null;
 }

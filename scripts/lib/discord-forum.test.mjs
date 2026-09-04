@@ -11,7 +11,7 @@ import {
   expectedTag,
   lowestStableVersion,
   mergePosts,
-  parsePostLink,
+  parseSourceLine,
   postLink,
   rank,
   replaceStatusTag,
@@ -137,12 +137,23 @@ describe("describePost", () => {
 });
 
 describe("links and the source line", () => {
-  it("builds and parses post links, tolerating a trailing message id", () => {
-    const link = postLink(GUILD, "123");
+  it("builds a post link", () => {
+    expect(postLink(GUILD, "123")).toBe(`https://discord.com/channels/${GUILD}/123`);
+  });
 
-    expect(link).toBe(`https://discord.com/channels/${GUILD}/123`);
-    expect(parsePostLink(`see ${link}/456 please`)).toEqual({ guildId: GUILD, postId: "123" });
-    expect(parsePostLink("nothing here")).toBeNull();
+  it("parses the source line, not the first Discord URL in the body", () => {
+    const link = postLink(GUILD, "123");
+    const body = `See https://discord.com/channels/${GUILD}/999/1000 for context.\n\nRequested on Discord: ${link} by owwidius (3 ❤️)`;
+
+    expect(parseSourceLine(body)).toEqual({ guildId: GUILD, postId: "123" });
+    expect(parseSourceLine(`Related: https://discord.com/channels/${GUILD}/999`)).toBeNull();
+    expect(parseSourceLine("nothing here")).toBeNull();
+    expect(parseSourceLine(undefined)).toBeNull();
+  });
+
+  it("only matches a source line at the start of its own line", () => {
+    expect(parseSourceLine(`> Requested on Discord: ${postLink(GUILD, "123")} by x (0 ❤️)`)).toBeNull();
+    expect(parseSourceLine(`x\r\nRequested on Discord: ${postLink(GUILD, "123")} by x (0 ❤️)\r\n`)).toEqual({ guildId: GUILD, postId: "123" });
   });
 
   it("formats the source line exactly as the spec states it", () => {
@@ -173,6 +184,13 @@ describe("expectedTag", () => {
     expect(expectedTag({ ...open, state: "CLOSED", stateReason: "COMPLETED" }, "v3.2.0")).toBe("Released");
     expect(expectedTag({ ...open, state: "CLOSED", stateReason: "NOT_PLANNED" })).toBe(WONT_DO);
   });
+
+  it("has no tag for an issue closed as a duplicate", () => {
+    // None of the five fits a duplicate: the post should point at the
+    // canonical issue by hand, not be marked Completed because it is closed.
+    expect(expectedTag({ ...open, state: "CLOSED", stateReason: "DUPLICATE" })).toBeNull();
+    expect(expectedTag({ ...open, state: "CLOSED", stateReason: "DUPLICATE" }, "v3.2.0")).toBeNull();
+  });
 });
 
 describe("rank and shouldPropose", () => {
@@ -189,6 +207,12 @@ describe("rank and shouldPropose", () => {
     expect(shouldPropose(WONT_DO, "Completed")).toBe(false);
     expect(shouldPropose(WONT_DO, WONT_DO)).toBe(false);
   });
+
+  it("never proposes a move to no tag", () => {
+    expect(shouldPropose("Will Add", null)).toBe(false);
+    expect(shouldPropose(null, null)).toBe(false);
+    expect(rank(null)).toBe(0);
+  });
 });
 
 describe("lowestStableVersion", () => {
@@ -197,5 +221,10 @@ describe("lowestStableVersion", () => {
     expect(lowestStableVersion(["v3.10.0", "v3.9.0"])).toBe("v3.9.0");
     expect(lowestStableVersion(["v3.2.0-dev.0"])).toBeNull();
     expect(lowestStableVersion([])).toBeNull();
+  });
+
+  it("follows semver: build metadata is stable, a bare number or a missing v is not a release tag", () => {
+    expect(lowestStableVersion(["v3.3.0", "v3.2.0+build"])).toBe("v3.2.0+build");
+    expect(lowestStableVersion(["3.2.0", "v3.2", "latest"])).toBeNull();
   });
 });
