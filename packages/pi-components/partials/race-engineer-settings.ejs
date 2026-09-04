@@ -64,8 +64,10 @@
   '</sdpi-item>'
 ) %>
 <%#
-  Installed voice packs (issue #1034). Settings-window only: the Rescan button
-  is a `sendToPlugin` command handled by the settings-window command handler,
+  Installed voice packs (issue #1034), and downloadable ones from iRaceDeck's
+  own catalog (issue #1100). Settings-window only: every command below
+  (voicePackRefresh / voicePackInstall / voicePackRemove /
+  openVoicePacksFolder) is handled by the settings-window command handler,
   and a Property Inspector's `sendToPlugin` goes to its own action instead —
   the same reason `ird-open-folder` is gated in global-common-diagnostics.ejs.
 %>
@@ -75,7 +77,18 @@
 </sdpi-item>
 <div class="ird-supporting-text">
   Voice packs live in <code>%LOCALAPPDATA%\iRaceDeck\Race Engineer\Voices</code> and survive plugin updates.
-  Add a pack folder there, then rescan. A pack that cannot be loaded is listed with the reason.
+  Add a pack folder there, then rescan. A pack that cannot be loaded is listed with the reason. A pack you no
+  longer want can be removed here too.
 </div>
-<div class="ird-open-settings"><ird-voice-pack-refresh></ird-voice-pack-refresh></div>
+<div class="ird-open-settings">
+  <ird-voice-pack-refresh></ird-voice-pack-refresh>
+  <ird-open-voice-packs-folder></ird-open-voice-packs-folder>
+</div>
+<sdpi-item label="Available to Download">
+  <ird-voice-pack-catalog status="_voicePackStatus"></ird-voice-pack-catalog>
+</sdpi-item>
+<div class="ird-supporting-text">
+  Packs iRaceDeck publishes itself. Press Install (or Update, once a newer version is out) and iRaceDeck
+  downloads, verifies and installs it for you — this can happen while iRacing is running.
+</div>
 <% } %>

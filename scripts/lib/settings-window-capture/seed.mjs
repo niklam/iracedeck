@@ -51,9 +51,66 @@ export function buildSeedSettings() {
     // size, so a longer list pushes the Rescan button below the fold.
     _voicePacks: JSON.stringify({
       packs: [
-        { id: "luca", label: "Luca", version: "1.2.0", voices: [{ id: "luca", label: "Luca" }] },
+        // The bundled voice, seeded into the packs folder on every install
+        // (#1100). Present on EVERY real installation, so a fixture without it
+        // documented a state no user is in — and it is the row that shows the
+        // "Built-in" badge and the absence of a Remove button, which is the
+        // whole point of listing it.
+        {
+          id: "default",
+          label: "Default",
+          version: "1.0.0",
+          // Empty on purpose: the plugin's own audio provides this voice, so
+          // the pack contributes none. This is what keeps a second "Default"
+          // out of the voice dropdown.
+          voices: [],
+          provenance: "bundled-seed",
+        },
+        {
+          id: "luca",
+          label: "Luca",
+          version: "1.2.0",
+          voices: [{ id: "luca", label: "Luca" }],
+          // Downloaded rather than hand-installed, so the badge documents the
+          // provenance it exists to show and agrees with the catalog below,
+          // where the same pack reads as already installed. An omitted value
+          // would fall back to sideloaded and quietly tell a different story.
+          provenance: "catalog",
+        },
       ],
       problems: [{ pack: "nina", reason: "no voice-pack.json" }],
+    }),
+    // What this run knows about downloadable packs (#1100). Seeded because the
+    // alternative is not an empty section but an honest "we could not check"
+    // message — a shot of THAT would document the failure path as if it were
+    // the feature.
+    //
+    // `luca` is installed and therefore renders NOTHING here: "Available to
+    // Download" lists only what the user can act on, and an installed pack is
+    // represented under Installed Voices instead. It is kept in the fixture on
+    // purpose, as the entry proving that filter rather than as a row — the
+    // capture would look the same with it removed, and would then stop
+    // documenting the rule. `vera` is the one offered row. The note above about
+    // the fold applies here too.
+    _voicePackStatus: JSON.stringify({
+      // Fixed, never `Date.now()`: a capture has to be reproducible, and a
+      // timestamp that moves would make every rerun a diff.
+      catalog: {
+        state: "ok",
+        checkedAt: 0,
+        packs: [
+          { id: "luca", label: "Luca", version: "1.2.0", bytes: 7_879_224, verdict: "installed" },
+          {
+            id: "vera",
+            label: "Vera",
+            version: "1.0.0",
+            description: "Calm, understated. Fewer words.",
+            bytes: 8_120_000,
+            verdict: "install",
+          },
+        ],
+      },
+      installs: {},
     }),
     _settingsStorePath: SEED_STORE_PATH,
 

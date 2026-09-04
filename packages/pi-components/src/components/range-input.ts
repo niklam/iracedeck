@@ -33,6 +33,7 @@
  * - Not set: empty string ""
  */
 import { SDPI_THEME } from "./key-binding-utils.js";
+import { skipUnchanged } from "./settings-change-filter.js";
 
 /** Whether the shared range-input style has been injected into the document */
 let styleInjected = false;
@@ -246,7 +247,7 @@ export class RangeInput extends HTMLElement {
 
       const [, save] = useSettingsHook(
         settingName,
-        (value: string) => {
+        skipUnchanged((value: string) => {
           // Runtime may deliver number/null/undefined despite the string type
           // annotation. Treat only null/undefined/empty-string as cleared so
           // the numeric value 0 (e.g., radarVolume) doesn't fall through to
@@ -254,7 +255,7 @@ export class RangeInput extends HTMLElement {
           const v: unknown = value;
           this.currentValue = v == null || v === "" ? "" : String(v);
           this.updateDisplay();
-        },
+        }),
         null,
       );
 

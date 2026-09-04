@@ -29,6 +29,7 @@
  * - Not set: empty string ""
  */
 import { SDPI_THEME } from "./key-binding-utils.js";
+import { skipUnchanged } from "./settings-change-filter.js";
 
 /** Inline SVG data URI for the "not set" indicator: white with red diagonal line */
 const NOT_SET_BACKGROUND = `url("data:image/svg+xml,${encodeURIComponent(
@@ -448,7 +449,7 @@ export class ColorPicker extends HTMLElement {
 
       const [, save] = useSettingsHook(
         settingName,
-        (value: string) => {
+        skipUnchanged((value: string) => {
           // Normalize legacy #000001 sentinel to empty string on load
           if (isLegacySentinel(value)) value = "";
 
@@ -463,7 +464,7 @@ export class ColorPicker extends HTMLElement {
 
           this.currentValue = value || "";
           this.updateDisplay();
-        },
+        }),
         null,
       );
 
@@ -475,13 +476,13 @@ export class ColorPicker extends HTMLElement {
 
       const [, saveHist] = window.SDPIComponents.useGlobalSettings(
         historyKey,
-        (value: string) => {
+        skipUnchanged((value: string) => {
           const incoming = typeof value === "string" ? value : "";
 
           this.recentColors = parseColorHistory(incoming);
           this.lastSavedHistoryJson = incoming;
           this.updateSwatchDisplay();
-        },
+        }),
         null,
       );
 

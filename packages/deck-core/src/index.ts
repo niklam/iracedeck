@@ -214,10 +214,118 @@ export {
   type VoicePackFileSystem,
   type VoicePackProblem,
 } from "./voice-pack-scanner.js";
-export { VOICE_LABELS_KEY, VOICE_PACKS_KEY } from "./voice-pack-constants.js";
+export {
+  VOICE_LABELS_KEY,
+  VOICE_PACK_PROVENANCE_FILE,
+  VOICE_PACK_STATUS_KEY,
+  VOICE_PACKS_KEY,
+} from "./voice-pack-constants.js";
+export {
+  resolveVoicePackCatalogUrl,
+  VOICE_PACK_CATALOG_DEFAULT_BASE,
+  VOICE_PACK_CATALOG_FILENAME,
+  VOICE_PACK_DEV_BASE_URL_KEY,
+} from "./voice-pack-catalog-base.js";
+export {
+  isVoicePackOfferable,
+  parseVoicePackCatalog,
+  type VoicePackCatalogEntry,
+  VoicePackCatalogEntrySchema,
+  VoicePackCatalogSchema,
+} from "./voice-pack-catalog.js";
+export {
+  parseVoicePackProvenance,
+  serializeVoicePackProvenance,
+  VOICE_PACK_SOURCES,
+  type VoicePackProvenance,
+  VoicePackProvenanceSchema,
+  type VoicePackSource,
+} from "./voice-pack-provenance.js";
+export {
+  emptyVoicePackStatus,
+  VOICE_PACK_INSTALL_PHASES,
+  VOICE_PACK_OFFER_VERDICTS,
+  type VoicePackCatalogState,
+  type VoicePackInstallPhase,
+  type VoicePackInstallState,
+  type VoicePackOffer,
+  type VoicePackOfferVerdict,
+  type VoicePackStatus,
+} from "./voice-pack-status.js";
 export { voiceDisplayLabels } from "./voice-labels.js";
-export { createVoicePackFileSystem, VOICE_PACK_MAX_DEPTH } from "./voice-pack-fs.js";
+export { createVoicePackArchiveFileSystem, createVoicePackFileSystem, VOICE_PACK_MAX_DEPTH } from "./voice-pack-fs.js";
+export {
+  type BundledVoicePack,
+  createVoicePackInstaller,
+  createVoicePackInstallerFileSystem,
+  readInstalledVoicePackSha,
+  VOICE_PACK_INSTALL_FAILURE_CODES,
+  VOICE_PACK_MANIFEST_FILE,
+  VOICE_PACK_PROGRESS_INTERVAL_MS,
+  type VoicePackInstallFailureCode,
+  type VoicePackInstaller,
+  type VoicePackInstallerCatalog,
+  type VoicePackInstallerDeps,
+  type VoicePackInstallerFileSystem,
+  type VoicePackInstallOutcome,
+  type VoicePackInstallResult,
+  type VoicePackRemoveResult,
+  type VoicePackSeedResult,
+} from "./voice-pack-installer.js";
 export { createVoicePackService, type VoicePackService, type VoicePackServiceDeps } from "./voice-pack-service.js";
+export {
+  type ExtractVoicePackArchiveOptions,
+  type ExtractVoicePackArchiveResult,
+  extractVoicePackArchive,
+  VOICE_PACK_ARCHIVE_FAILURE_CODES,
+  VOICE_PACK_ARCHIVE_LIMITS,
+  type VoicePackArchiveFailureCode,
+  type VoicePackArchiveFileSystem,
+  type VoicePackArchiveLimits,
+  type VoicePackArchiveWrite,
+} from "./voice-pack-archive.js";
+export {
+  type DownloadVoicePackOptions,
+  downloadVoicePack,
+  VOICE_PACK_DOWNLOAD_CEILING_BYTES,
+  VOICE_PACK_DOWNLOAD_FAILURES,
+  VOICE_PACK_DOWNLOAD_STALL_TIMEOUT_MS,
+  type VoicePackDownloadFailure,
+  type VoicePackDownloadProgress,
+  type VoicePackDownloadResult,
+  type VoicePackDownloadSink,
+} from "./voice-pack-download.js";
+export {
+  type CreateVoicePackStagingResult,
+  createVoicePackStorage,
+  createVoicePackStorageFileSystem,
+  type OpenVoicePackDownloadResult,
+  type PromoteVoicePackResult,
+  type RetireVoicePackResult,
+  type SweepVoicePacksResult,
+  VOICE_PACK_TMP_DIR,
+  VOICE_PACK_TRASH_DIR,
+  type VoicePackFsResult,
+  type VoicePackLock,
+  type VoicePackStorage,
+  type VoicePackStorageDeps,
+  type VoicePackStorageFileSystem,
+  type VoicePackWriteHandle,
+} from "./voice-pack-storage.js";
+export {
+  fetchVoicePackCatalog,
+  VOICE_PACK_CATALOG_FETCH_TIMEOUT_MS,
+  VOICE_PACK_CATALOG_URL,
+  type VoicePackCatalogFetchResult,
+} from "./voice-pack-catalog-client.js";
+export {
+  createVoicePackCatalogService,
+  VOICE_PACK_CATALOG_FAILURE_TTL_MS,
+  VOICE_PACK_CATALOG_SUCCESS_TTL_MS,
+  type VoicePackCatalogGetOptions,
+  type VoicePackCatalogService,
+  type VoicePackCatalogServiceDeps,
+} from "./voice-pack-catalog-service.js";
 
 // Per-mode sim-communication descriptors (issue #612)
 export {
@@ -585,7 +693,7 @@ export {
   type SettingsWindowWarningReporterOptions,
 } from "./settings-window-warning-reporter.js";
 // Reveal the settings file in Explorer (issue #993)
-export { explorerSelectArgs, openFolderInExplorer } from "./open-folder.js";
+export { explorerSelectArgs, openDirectoryInExplorer, openFolderInExplorer } from "./open-folder.js";
 // Settings-channel publisher: store write + the one host mirror per start (issue #993 phase 2)
 export {
   createSettingsChannelPublisher,

@@ -43,6 +43,19 @@ describe("race-engineer-settings voice packs (issue #1034)", () => {
     expect(render({ settingsWindow: true })).toContain('packs="_voicePacks"');
   });
 
+  it("renders the downloadable-packs catalog and the packs-folder shortcut, settings-window only (#1100)", () => {
+    const html = render({ settingsWindow: true });
+
+    expect(html).toContain("<ird-voice-pack-catalog");
+    expect(html).toContain('status="_voicePackStatus"');
+    expect(html).toContain("<ird-open-voice-packs-folder");
+
+    const bare = render({});
+
+    expect(bare).not.toContain("ird-voice-pack-catalog");
+    expect(bare).not.toContain("ird-open-voice-packs-folder");
+  });
+
   it("tells the user where packs live, so a sideload needs no documentation lookup", () => {
     const html = render({ settingsWindow: true });
 

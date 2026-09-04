@@ -46,3 +46,67 @@ export const VOICE_PACKS_KEY = "_voicePacks";
  * which is what every voice rendered as before this key existed.
  */
 export const VOICE_LABELS_KEY = "_voiceLabels";
+
+/**
+ * Passthrough global holding what this run knows about downloadable packs, as
+ * JSON: `{ catalog: …, installs: { "<pack-id>": { phase, … }, … } }`
+ * (issue #1034, stage 2). See `voice-pack-status.ts` for the payload.
+ *
+ * Both halves in one key, for the reason `_voicePacks` above carries its two:
+ * a UI must never be able to render a fresh catalog beside a stale set of
+ * install states, or an install reported against a pack the catalog no longer
+ * lists. They are one observation and they expire together.
+ *
+ * The catalog rides this key rather than an authorized HTTP route of its own —
+ * the shape `/updates/status` uses for the changelog feed — because a Property
+ * Inspector can read a global and cannot reach that route. The changelog pane
+ * exists only in the settings window, so a route cost it nothing; the voice
+ * state reaches the settings window through the same publish path
+ * `_voicePacks` already uses, and adding an authorized route would be a second
+ * auth surface for one card.
+ *
+ * NOTE what does NOT consume it, since an earlier draft of this comment claimed
+ * otherwise: no Property Inspector warning banner and no key icon reads this in
+ * this release. The settings window is the only consumer. Both were designed
+ * and neither was built, so do not cite them as the reason for this shape.
+ *
+ * Run-scoped (see `RUN_SCOPED_SETTING_KEYS`). A download that was in flight
+ * when the plugin stopped is not in flight any more, and a failure the user
+ * never saw is not a fact about their installation — persisting either would
+ * put a frozen progress bar or a dead error in front of them on a run where
+ * neither is true.
+ */
+export const VOICE_PACK_STATUS_KEY = "_voicePackStatus";
+
+/**
+ * A lowercase hex sha-256 digest — the archive hash the catalog publishes, the
+ * installer computes, and `.install.json` records.
+ *
+ * One pattern rather than four copies, because those four are the same value
+ * being handed between modules: the catalog states it, the downloader compares
+ * what it computed against it, the storage layer names a staging directory
+ * after it, and the provenance record keeps it for the next update check. A
+ * copy that drifted would not fail loudly — it would make one module refuse a
+ * digest another had just accepted, which reads as a corrupt download.
+ *
+ * Case is pinned rather than normalised on purpose: two spellings of one digest
+ * compare unequal, and the bug that produces is a silent re-download of a pack
+ * that was already installed.
+ *
+ * A plain RegExp, not a Zod schema, so this module keeps its no-imports
+ * property — `run-scoped-settings.ts` depends on it and must not acquire a
+ * validation-library edge to name a settings key.
+ */
+export const SHA256_HEX_PATTERN = /^[0-9a-f]{64}$/;
+
+/** The message every schema built on {@link SHA256_HEX_PATTERN} reports. */
+export const SHA256_HEX_MESSAGE = "must be a lowercase hex sha-256 digest";
+
+/**
+ * The installer's provenance record, written into a pack directory.
+ *
+ * Named here rather than in `voice-pack-provenance.ts` so the scanner and the
+ * storage layer can agree on the filename without either depending on the
+ * other, and without the leaf that names it pulling in a parser.
+ */
+export const VOICE_PACK_PROVENANCE_FILE = ".install.json";

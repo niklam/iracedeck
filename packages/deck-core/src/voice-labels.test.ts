@@ -4,7 +4,17 @@ import { voiceDisplayLabels } from "./voice-labels.js";
 import type { InstalledVoicePack } from "./voice-pack-scanner.js";
 
 function pack(label: string, voices: { id: string; label: string }[]): InstalledVoicePack {
-  return { id: label.toLowerCase(), label, version: "1.0.0", dir: `/packs/${label}`, voices, clips: [] };
+  // `provenance` is irrelevant to labelling — a pack is named the same way
+  // whoever installed it — but the type requires it, so a sideload stands in.
+  return {
+    id: label.toLowerCase(),
+    label,
+    version: "1.0.0",
+    dir: `/packs/${label}`,
+    voices,
+    clips: [],
+    provenance: "sideload",
+  };
 }
 
 describe("voiceDisplayLabels", () => {

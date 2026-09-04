@@ -9,6 +9,7 @@
       "default": "./src/build/index.mjs"
     },
     "./manifest.json": "./manifest.json",
+    "./catalog/*.json": "./catalog/*.json",
     "./presets": "./src/presets.mjs"
   },
   "scripts": {
@@ -16,10 +17,13 @@
     "generate": "tsx src/generate/generate.ts",
     "generate:dry-run": "tsx src/generate/generate.ts --dry-run",
     "generate:manifest": "node scripts/generate-audio-manifest.mjs",
+    "pack:voice": "node scripts/pack-voice.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {
+    "@iracedeck/deck-core": "workspace:*",
     "@types/node": "26.4.0",
+    "fflate": "0.8.3",
     "ffmpeg-static": "5.3.0",
     "tsx": "4.23.12",
     "typescript": "5.9.3",

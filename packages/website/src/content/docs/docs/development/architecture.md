@@ -157,7 +157,7 @@ flowchart LR
   store["SettingsStore<br/>global-settings.json<br/>(per ecosystem, under LOCALAPPDATA)"]:::core
   core(["IDeckPlatformAdapter — SEAM 2"]):::seam
   host["deck host store"]:::ext
-  site["iracedeck.com<br/>changelog.json"]:::ext
+  site["iracedeck.com<br/>changelog.json · voice-catalog.json"]:::ext
 
   win -->|"PI protocol over ws://127.0.0.1"| srv
   pi -->|"global settings over ws://127.0.0.1, token on the upgrade"| srv
@@ -190,7 +190,7 @@ Property Inspectors reach the same server through a bridge script the build inje
 
 The Race Engineer is a self-contained subsystem hanging off SEAM 1. It subscribes to the same bus, but instead of drawing icons it picks voice lines and plays them through a native mixer.
 
-Its clips come from two places (#1034). The compiled-in manifest is the **built-in** half — the walkie-talkie sfx plus whatever voice the plugin bundles. **Installed voice packs** under `%LOCALAPPDATA%\iRaceDeck\Race Engineer\Voices` supply the rest: `deck-core` scans that directory, `audio-service` resolves a clip against an ordered list of roots (the plugin's own assets first, then one root per pack), and the scenario engine consumes the union of their manifests. Because each pack contributes paths in the same `voice/<id>/…` shape, nothing downstream — pool derivation, `{voice}` substitution, validation — knows a second root exists.
+Its clips come from two places (#1034). The compiled-in manifest is the **built-in** half — the walkie-talkie sfx plus whatever voice the plugin bundles. **Installed voice packs** under `%LOCALAPPDATA%\iRaceDeck\Race Engineer\Voices` supply the rest — dropped in by hand, or downloaded from the published catalog by `deck-core`'s installer (#1100), which verifies the archive against the hash the catalog states, extracts it under its own entry validation, and swaps it into place so a failure at any step leaves the pack already installed untouched. Either way `deck-core` scans that directory, `audio-service` resolves a clip against an ordered list of roots (the plugin's own assets first, then one root per pack), and the scenario engine consumes the union of their manifests. Because each pack contributes paths in the same `voice/<id>/…` shape, nothing downstream — pool derivation, `{voice}` substitution, validation — knows a second root exists.
 
 ```mermaid
 flowchart TB
@@ -205,12 +205,17 @@ flowchart TB
   bus -->|"subscribe (when: event)"| scen
   assets -->|"built-in manifest"| scen
   packs -->|"scanned clips (setManifest)"| scen
+  cat["iracedeck.com<br/>voice-catalog.json"]:::ext
+  inst["deck-core<br/>voice-pack installer<br/>verify · validate · atomic swap"]:::core
+  cat -->|"catalog (user-initiated)"| inst
+  inst -->|"install / update / remove"| packs
   scen -->|"play voice sequence"| svc
   assets -.->|"root 1"| svc
   packs -.->|"root 2..n"| svc
   svc --> nat
   nat --> spk
 
+  classDef core fill:#2c3e50,color:#fff,stroke:#1a252f;
   classDef ext fill:#33404d,color:#fff,stroke:#1d262e;
   classDef seam fill:#8e44ad,color:#fff,stroke:#5e2d73,stroke-width:3px;
   classDef audio fill:#2e9e5b,color:#fff,stroke:#1f6e40;

@@ -34,6 +34,7 @@
  * The plugin populates `names` via
  * `updateGlobalSettings({ [namesKey]: JSON.stringify(list) })`.
  */
+import { skipUnchanged } from "./settings-change-filter.js";
 
 let styleInjected = false;
 
@@ -122,30 +123,36 @@ export class NameSelect extends HTMLElement {
     const settingKey = this.getAttribute("setting") ?? DEFAULT_SETTING;
     const namesKey = this.getAttribute("names") ?? DEFAULT_NAMES_SETTING;
 
-    const [, save] = window.SDPIComponents.useGlobalSettings(settingKey, (value: string) => {
-      const v: unknown = value;
-      this.savedValue = v == null ? "" : String(v);
-      this.applySavedValue();
-    });
+    const [, save] = window.SDPIComponents.useGlobalSettings(
+      settingKey,
+      skipUnchanged((value: string) => {
+        const v: unknown = value;
+        this.savedValue = v == null ? "" : String(v);
+        this.applySavedValue();
+      }),
+    );
     this.saveToStreamDeck = save;
 
-    window.SDPIComponents.useGlobalSettings(namesKey, (value: string) => {
-      if (!value) return;
+    window.SDPIComponents.useGlobalSettings(
+      namesKey,
+      skipUnchanged((value: string) => {
+        if (!value) return;
 
-      try {
-        const list: unknown = JSON.parse(value);
+        try {
+          const list: unknown = JSON.parse(value);
 
-        if (!Array.isArray(list)) return;
+          if (!Array.isArray(list)) return;
 
-        const names = list.filter((v): v is string => typeof v === "string" && v.length > 0);
+          const names = list.filter((v): v is string => typeof v === "string" && v.length > 0);
 
-        this.renderOptions(names);
-        this.namesLoaded = true;
-        this.applySavedValue();
-      } catch {
-        // ignore parse errors; dropdown keeps prior options
-      }
-    });
+          this.renderOptions(names);
+          this.namesLoaded = true;
+          this.applySavedValue();
+        } catch {
+          // ignore parse errors; dropdown keeps prior options
+        }
+      }),
+    );
   }
 
   private renderOptions(names: string[]): void {

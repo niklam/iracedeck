@@ -38,6 +38,7 @@ import {
   UI_TEXT,
 } from "./key-binding-utils.js";
 import { KEY_CODE_MAP, type Modifier, resolveEventCode } from "./key-maps.js";
+import { skipUnchanged } from "./settings-change-filter.js";
 import { probeSimHub } from "./simhub-probe.js";
 
 /**
@@ -149,21 +150,21 @@ function subscribeToSimHubSettings(): void {
 
   window.SDPIComponents.useGlobalSettings(
     "simHubHost",
-    (v: string) => {
+    skipUnchanged((v: string) => {
       simHubHost = v || "127.0.0.1";
       simHubFetchDone = false;
       simHubReachable = false;
-    },
+    }),
     null,
   );
 
   window.SDPIComponents.useGlobalSettings(
     "simHubPort",
-    (v: string) => {
+    skipUnchanged((v: string) => {
       simHubPort = parseInt(v, 10) || 8888;
       simHubFetchDone = false;
       simHubReachable = false;
-    },
+    }),
     null,
   );
 }
@@ -400,7 +401,7 @@ class KeyBindingInput extends HTMLElement {
 
       const [, save] = useSettingsHook(
         settingName,
-        (value: string) => {
+        skipUnchanged((value: string) => {
           if (value) {
             this.value = value;
           } else if (defaultValue) {
@@ -409,7 +410,7 @@ class KeyBindingInput extends HTMLElement {
             this.updateDisplay();
             save(this.value);
           }
-        },
+        }),
         null,
       );
       this.saveToStreamDeck = save;

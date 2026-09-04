@@ -9,11 +9,14 @@ generator that produces them.
 packages/audio-assets/
 ├── ambient/                 # Looping ambient audio
 ├── voice/                   # Generated TTS clips, keyed by <voice>/<group>/<name>.mp3
+├── catalog/                 # One committed <pack-id>.json per published voice pack
+├── dist/voice-packs/        # Staged packs + archives from pack:voice (gitignored)
 ├── generate.config.json     # TTS source: voices, groups, entries, voice settings
 ├── generate.manifest.json   # TTS cache: per-entry hash + ElevenLabs request id
 ├── manifest.json            # Deployment manifest consumed by audio-service at runtime
+├── scripts/                 # generate-audio-manifest.mjs, pack-voice.mjs, …
 └── src/
-    ├── build/               # Build helpers used during plugin packaging
+    ├── build/               # Build helpers used during plugin packaging; voice-packs.mjs registry
     ├── generate/            # TTS generator (this README documents the CLI)
     └── presets.mjs
 ```
@@ -47,6 +50,11 @@ pnpm --filter @iracedeck/audio-assets generate:dry-run
 
 # Rebuild the runtime manifest.json from the file tree
 pnpm --filter @iracedeck/audio-assets generate:manifest
+
+# Pack a voice for the download catalog (all packs when no id is given):
+# radio-filters the clips, zips them deterministically into dist/voice-packs/,
+# and writes catalog/<id>.json. See CLAUDE.md "Voice packs".
+pnpm --filter @iracedeck/audio-assets pack:voice default
 ```
 
 ### Flags

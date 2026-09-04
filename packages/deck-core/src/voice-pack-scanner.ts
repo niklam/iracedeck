@@ -1,6 +1,8 @@
 import { join } from "node:path";
 
+import { VOICE_PACK_PROVENANCE_FILE } from "./voice-pack-constants.js";
 import { parseVoicePackManifest } from "./voice-pack-manifest.js";
+import { parseVoicePackProvenance, type VoicePackSource } from "./voice-pack-provenance.js";
 
 /**
  * The outcome of reading a pack's manifest.
@@ -51,7 +53,24 @@ export type InstalledVoicePack = {
   voices: readonly InstalledVoice[];
   /** POSIX paths relative to {@link dir}, always `voice/<voice-id>/…`. */
   clips: readonly string[];
+  /**
+   * Where this pack came from, for the settings window's provenance badge.
+   *
+   * `sideload` is the ABSENCE of a usable installer record, not a claim any
+   * pack makes about itself — see `voice-pack-provenance.ts` for why the source
+   * enum deliberately has no such value to write. So a pack that forges a
+   * record still cannot describe itself as sideloaded, and one that ships a
+   * malformed record reads as sideloaded, which is the truthful answer: nothing
+   * we wrote says otherwise.
+   *
+   * Displayed, never enforced. The badge tells a user that a pack came from
+   * someone other than us; it is not a trust decision the plugin acts on.
+   */
+  provenance: VoicePackProvenanceKind;
 };
+
+/** {@link InstalledVoicePack.provenance}. */
+export type VoicePackProvenanceKind = VoicePackSource | "sideload";
 
 export type VoicePackProblem = { pack: string; reason: string };
 
@@ -171,7 +190,59 @@ export function scanVoicePacks({ root, fs, reservedVoices }: ScanVoicePacksOptio
     // claim it twice, duplicate its clips, and list it twice in the settings
     // window. Keyed on `id`, never the label: two entries naming the same voice
     // under different labels are still one voice, and the first wins.
+    // Why the scanner reads the installer's record at all, having managed
+    // without it through stage 1.
+    //
+    // The release that first publishes packs still BUNDLES `default` and also
+    // seeds a copy of it into this directory, so that the next release — the one
+    // that stops bundling audio — needs no network for the entire install base.
+    // For that one release the seeded copy is inert: plugin-root-first
+    // resolution means the bundle still provides every clip, so nothing the
+    // driver hears changes. What DOES change without this branch is that every
+    // start reports the seed as a broken pack, telling the user something is
+    // wrong when nothing is.
+    //
+    // Be precise about what this marker is worth. It is NOT a security
+    // boundary: a sideloaded pack can write the same file, and packs are
+    // deliberately unsigned (a provenance record is displayed, never enforced).
+    //
+    // What it gates GREW in #1100 and the honest statement grew with it. It was
+    // only a diagnostic message: a forged marker bought the suppression of a
+    // log line about a pack that still could not shadow a single bundled clip.
+    // Now it also buys a DISPLAY TREATMENT — the row is listed with a
+    // "Built-in" badge, reads "Included with the plugin", and offers no Remove.
+    // So a sideloaded pack that forges the record and declares nothing but
+    // bundled voice ids can present itself as shipped by iRaceDeck, and the one
+    // UI route to deleting it is withheld.
+    //
+    // Still accepted, for reasons that survive the change but should be
+    // re-argued rather than assumed. To forge it a pack must declare ONLY
+    // voices the bundle already provides, so it provides nothing and cannot
+    // shadow a clip: the exposure is a misleading label on an inert folder that
+    // the user placed there by hand, on a machine where they can already write
+    // the plugin's own JavaScript. Nothing here is a capability the forger did
+    // not already have.
+    //
+    // What would change that verdict is a Remove button becoming the only way
+    // to delete a pack, or the badge ever being read as a trust decision by
+    // code rather than by a person. Neither is true today; if either becomes
+    // true, this marker stops being an acceptable instrument.
+    //
+    // Keep the exemption exactly this narrow. It requires OUR source value and
+    // a record that names this same pack, so it cannot be widened by accident
+    // into "any pack with an .install.json may claim a bundled voice".
+    const provenanceRead = fs.readTextFile(join(dir, VOICE_PACK_PROVENANCE_FILE));
+    const provenance = provenanceRead.ok ? parseVoicePackProvenance(provenanceRead.text) : undefined;
+    const isBundledSeed = provenance?.source === "bundled-seed" && provenance.id === manifest.id;
+
     const seen = new Set<string>();
+    // Why the drops happened, not just how many. The bundled-seed branch below
+    // must fire only when the BUNDLE took every voice: a seed whose voice was
+    // claimed by another pack, or declared twice, is a pack with a real problem
+    // and would otherwise render as a healthy "Built-in" row with a problem
+    // line underneath it — shown as fine and broken at once.
+    let droppedToBundle = 0;
+    let droppedOtherwise = 0;
     const declared = manifest.voices.filter((voice) => {
       if (seen.has(voice.id)) {
         // Reported, not silently swallowed. Every other malformation in this
@@ -181,6 +252,7 @@ export function scanVoicePacks({ root, fs, reservedVoices }: ScanVoicePacksOptio
         // dropped. More likely now that a voice carries a label, since two
         // entries differing only by label look like two things.
         problems.push({ pack: folder, reason: `voice "${voice.id}" is declared more than once; the first wins` });
+        droppedOtherwise += 1;
 
         return false;
       }
@@ -188,7 +260,13 @@ export function scanVoicePacks({ root, fs, reservedVoices }: ScanVoicePacksOptio
       seen.add(voice.id);
 
       if (bundledVoices.has(voice.id)) {
-        problems.push({ pack: folder, reason: `voice "${voice.id}" is provided by the plugin's bundled audio` });
+        // Dropped either way — the bundle wins the id, and that is not in
+        // question here. Only whether the user is told something broke.
+        if (!isBundledSeed) {
+          problems.push({ pack: folder, reason: `voice "${voice.id}" is provided by the plugin's bundled audio` });
+        }
+
+        droppedToBundle += 1;
 
         return false;
       }
@@ -198,9 +276,52 @@ export function scanVoicePacks({ root, fs, reservedVoices }: ScanVoicePacksOptio
       if (owner === undefined) return true;
 
       problems.push({ pack: folder, reason: `voice "${voice.id}" is already provided by pack "${owner}"` });
+      droppedOtherwise += 1;
 
       return false;
     });
+
+    // A bundled seed provides nothing and is still LISTED (#1100).
+    //
+    // Every voice it declares belongs to the plugin's own audio, so `declared`
+    // is empty and the pack used to be skipped here — invisible, and reported
+    // as neither installed nor a problem. That produced a contradiction on the
+    // first screen a user sees: the card said "No voice packs installed" while
+    // the button beside it opened a folder containing exactly this pack. The
+    // pack is on disk; the card should say so.
+    //
+    // Listed with NO voices and NO clips, which is not a special case but the
+    // plain reading of the field: `voices` is what a pack ACTUALLY provides
+    // after collisions are resolved, and for this pack the honest answer is
+    // nothing. An empty `clips` list is inert downstream rather than merely
+    // harmless — `normalizeRoots` turns it into an empty allow-list, so the
+    // root can resolve nothing, where an ABSENT list would have meant
+    // unrestricted.
+    //
+    // LISTING A PACK AND CONTRIBUTING A VOICE ARE TWO DIFFERENT JOBS, and this
+    // pack does the first and must never do the second. `default` is already in
+    // the voice dropdown, provided by the bundle; registering it again here
+    // would put two identically named rows in front of the user with nothing to
+    // tell them apart. That is why the voices are dropped BEFORE this point and
+    // why nothing below re-adds them — and it is pinned by a test rather than
+    // left to be noticed.
+    //
+    // It claims no voice id either, so a later pack that genuinely provides one
+    // of these ids is not locked out by the seed's presence.
+    if (isBundledSeed && declared.length === 0 && droppedToBundle > 0 && droppedOtherwise === 0) {
+      packs.push({
+        id: manifest.id,
+        label: manifest.label,
+        version: manifest.version,
+        ...(manifest.author === undefined ? {} : { author: manifest.author }),
+        dir,
+        voices: [],
+        clips: [],
+        provenance: "bundled-seed",
+      });
+
+      continue;
+    }
 
     if (declared.length === 0) continue;
 
@@ -262,6 +383,13 @@ export function scanVoicePacks({ root, fs, reservedVoices }: ScanVoicePacksOptio
       // Sorted so the fragment a pack contributes is independent of the order
       // its voices happen to be declared in.
       clips: clips.sort(),
+      // The record must name THIS pack, the same condition `isBundledSeed`
+      // above and the installer's own hash read already apply. A folder copied
+      // or renamed by hand keeps the previous `.install.json`, and without this
+      // the row would read "Downloaded" for a pack that was never downloaded
+      // under that id — which contradicts the field's own definition of
+      // `sideload` as the absence of a USABLE record.
+      provenance: provenance?.id === manifest.id ? provenance.source : "sideload",
     });
   }
 

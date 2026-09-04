@@ -13,6 +13,7 @@
  * "we do not know" — because the caller treats every one of them identically:
  * the tab is exactly what it is offline.
  */
+import { abortAfter } from "./abort-after.js";
 import { parsePublishedChangelog, type PublishedRelease } from "./published-changelog.js";
 
 /** The artifact the website build publishes (see packages/website/scripts). */
@@ -24,25 +25,6 @@ export const PUBLISHED_CHANGELOG_URL = "https://iracedeck.com/changelog.json";
  * the page renders its built-in notes immediately either way.
  */
 export const CHANGELOG_FETCH_TIMEOUT_MS = 5000;
-
-/** An abort signal that fires after `ms`, or undefined where unsupported. */
-function abortAfter(ms: number): AbortSignal | undefined {
-  if (typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function") {
-    return AbortSignal.timeout(ms);
-  }
-
-  // Without this fallback a runtime lacking `AbortSignal.timeout` would run the
-  // request with NO deadline at all — the one thing the timeout above exists to
-  // prevent, and the one that would leave `/updates/status` never answering.
-  if (typeof AbortController !== "undefined") {
-    const controller = new AbortController();
-    setTimeout(() => controller.abort(), ms);
-
-    return controller.signal;
-  }
-
-  return undefined;
-}
 
 /**
  * Fetch and parse the published changelog. Returns the releases, or

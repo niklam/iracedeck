@@ -25,6 +25,7 @@
  * on one page. A warning with no dedicated home is named in neither list and
  * still shows in the top strip, unchanged.
  */
+import { skipUnchanged } from "./settings-change-filter.js";
 import { WARNINGS_SETTING } from "./warnings-constants.js";
 
 let styleInjected = false;
@@ -86,9 +87,12 @@ export class WarningsBanner extends HTMLElement {
   private hookSettings(): void {
     if (!window.SDPIComponents) return;
 
-    window.SDPIComponents.useGlobalSettings(WARNINGS_SETTING, (value: string) => {
-      this.render(this.parse(value));
-    });
+    window.SDPIComponents.useGlobalSettings(
+      WARNINGS_SETTING,
+      skipUnchanged((value: string) => {
+        this.render(this.parse(value));
+      }),
+    );
   }
 
   private parse(value: unknown): WarningRecord[] {

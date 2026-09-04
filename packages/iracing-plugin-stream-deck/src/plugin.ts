@@ -1,4 +1,5 @@
 import streamDeck from "@elgato/streamdeck";
+import defaultVoicePackCatalogEntry from "@iracedeck/audio-assets/catalog/default.json" with { type: "json" };
 import audioAssetsManifest from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
 import { AudioNative } from "@iracedeck/audio-native";
 import {
@@ -79,6 +80,8 @@ import { getAudio, initializeAudio } from "@iracedeck/audio-service";
 import { ElgatoPlatformAdapter } from "@iracedeck/deck-adapter-elgato";
 import {
   applyStartupFeatureGates,
+  type BundledVoicePack,
+  clearWarning,
   createElevationCheckSubscriber,
   createFileSettingsStore,
   createSettingsChannelPublisher,
@@ -86,8 +89,14 @@ import {
   createSettingsWindowController,
   createSettingsWindowWarningReporter,
   createUpdateCheckService,
+  createVoicePackArchiveFileSystem,
+  createVoicePackCatalogService,
   createVoicePackFileSystem,
+  createVoicePackInstaller,
+  createVoicePackInstallerFileSystem,
   createVoicePackService,
+  createVoicePackStorage,
+  createVoicePackStorageFileSystem,
   deleteGlobalSettings,
   evaluateSetupWarning,
   findChromiumBrowserOnThisMachine,
@@ -120,25 +129,34 @@ import {
   MIGRATION_PENDING_KEY,
   onGlobalSettingsChange,
   onIRacingTerminated,
+  openDirectoryInExplorer,
   openFolderInExplorer,
   parseSettingsWindowBounds,
   type PluginConfig,
+  readInstalledVoicePackSha,
   resolveActiveDriverName,
   resolveActiveRaceEngineerVoice,
   resolveSettingsStorePath,
+  resolveVoicePackCatalogUrl,
   resolveVoicePacksPath,
   runFirstRunCheck,
   runVersionCheck,
   SETTINGS_WINDOW_BOUNDS_KEY,
   SETTINGS_WINDOW_HTML,
+  type SettingsWindowOpenOptions,
+  setWarning,
   shouldOpenChangelog,
   spawnAppWindow,
   updateGlobalSettings,
   validateSetupWarningPatterns,
   VERSION_CHECK_STARTUP_GRACE_MS,
   VOICE_LABELS_KEY,
+  VOICE_PACK_CATALOG_URL,
+  VOICE_PACK_DEV_BASE_URL_KEY,
+  VOICE_PACK_STATUS_KEY,
   VOICE_PACKS_KEY,
   voiceDisplayLabels,
+  VoicePackCatalogEntrySchema,
 } from "@iracedeck/deck-core";
 import { initializeEventBus } from "@iracedeck/event-bus";
 import {
@@ -208,6 +226,7 @@ import {
   SetupTraction,
   SPLITS_DELTA_CYCLE_UUID,
   SplitsDeltaCycle,
+  stopRaceEngineerPlayback,
   SWITCH_PROFILE_UUID,
   SwitchProfile,
   syncFeatureGates,
@@ -418,9 +437,16 @@ let driverNames = scanDriverNames(activeManifest);
 const bundledVoices = scanRaceEngineerVoices(audioAssetsManifest);
 
 const voicePacksLogger = adapter.createLogger("VoicePacks");
+// Named once: the scanner reads this directory and the settings window's
+// "Open folder" button reveals it, and those must be the same place. The page
+// supplies no path for either (#1100).
+const voicePacksRoot = resolveVoicePacksPath({ env: process.env });
+// One scanner port for the scan AND the installer (#1100): the installer reads
+// `.install.json`, a staged manifest and the bundled clip tree through it.
+const voicePackFs = createVoicePackFileSystem(voicePacksLogger);
 const voicePacks = createVoicePackService({
-  root: resolveVoicePacksPath({ env: process.env }),
-  fs: createVoicePackFileSystem(voicePacksLogger),
+  root: voicePacksRoot,
+  fs: voicePackFs,
   logger: voicePacksLogger,
   pluginAudioDir: audioRootDir,
   reservedVoices: bundledVoices,
@@ -454,6 +480,152 @@ const voicePacks = createVoicePackService({
 });
 
 voicePacks.refresh();
+
+// Downloadable voice packs (#1100). The pipeline itself — decide, lock,
+// download while hashing, verify, extract, validate, stop playback, swap,
+// refresh — lives in deck-core (`createVoicePackInstaller`); this is its
+// composition root, and everything platform-shaped is injected here in the
+// shape `voicePacks` above established. Every disk port is rooted at the SAME
+// `voicePacksRoot` the scanner reads and the settings window reveals.
+const voicePackStorage = createVoicePackStorage({
+  root: voicePacksRoot,
+  fs: createVoicePackStorageFileSystem(voicePacksLogger),
+  logger: voicePacksLogger,
+});
+
+const voicePackCatalog = createVoicePackCatalogService({
+  // Constant TRUE — settled for this release: there is no setting gating the
+  // catalog, and none is added here. Every catalog fetch this build makes is
+  // user-initiated — the settings window being put on screen (`openSettingsWindow`
+  // below), the Rescan button, and Install, which looks the pressed entry up in
+  // the same cache — so there is nothing to opt out of. Nothing asks
+  // iracedeck.com at launch, with one bounded exception: the installer re-asks
+  // the catalog after every promote so the card's verdicts follow, and the seed
+  // of the bundled pack is a promote — once per installation, on the one start
+  // that finds an empty packs folder, never per launch.
+  //
+  // Stage 3 of #1034 changes that, and this is the obligation whoever does it
+  // inherits: once the bundled voice is dropped from the distributable, first
+  // run must fetch the catalog at launch, unprompted — a fresh install has no
+  // engineer until it does — and at that point "no setting" becomes "phones
+  // home every launch". Give this gate a real setting THEN, read live the way
+  // `updateCheck` gates the changelog feed (the service reads the predicate on
+  // every call precisely so that switching it off stops outbound requests
+  // without a restart), rather than leaving it at `true` by omission.
+  isEnabled: () => true,
+  getPluginVersion,
+  // ONE implementation of "which digest is installed?", shared with the
+  // installer's own decision. This verdict is what puts Install / Update /
+  // Installed on the card, and the installer's copy of the same read decides
+  // whether pressing it downloads anything; two implementations would
+  // eventually disagree silently.
+  getInstalledSha: (id) => readInstalledVoicePackSha(voicePackFs, voicePackStorage.packDir(id), id),
+  // The development override (#1100), read fresh on every fetch rather than
+  // captured at construction, so there is no second copy of the value to go
+  // stale. That is a SHAPE, not a live reload: the settings file is read once
+  // at startup (`store.load()`, one call, no watcher) and no page writes this
+  // key, so a hand edit needs a plugin restart before anything sees it. Which
+  // is also precisely what lets the once-per-start warning below be trusted
+  // for the whole run. Absent on every ordinary installation, and when absent
+  // the URL is byte-identical to the published constant. The value is validated where it
+  // is used, never in the schema — a malformed one must cost this feature
+  // alone rather than stalling the whole settings parse.
+  getDevBaseUrl: () => {
+    const raw = (getGlobalSettings() as Record<string, unknown>)[VOICE_PACK_DEV_BASE_URL_KEY];
+
+    return typeof raw === "string" ? raw : undefined;
+  },
+  // The voices this build ships — the same list the scanner reserves. A
+  // catalog entry whose voices are all in it is reported installed, never
+  // offered: the bundle provides every one of its clips whatever is in the
+  // packs folder, so the download would only buy the scanner's "provided by
+  // the plugin's bundled audio" error row. Passing the computed list rather
+  // than an id is what lets stage 3 need no edit here — nothing bundled,
+  // empty list, rule inert.
+  bundledVoices,
+  logger: adapter.createLogger("VoicePackCatalog"),
+});
+
+// The catalog entries compiled into this build, so a pack the plugin still
+// ships can be SEEDED — copied into an empty packs folder with the catalog's
+// own `sha256` as its provenance, which is what makes the first catalog check
+// after a seed answer "installed" rather than re-download what was just
+// copied. The seed is inert for this release (plugin-root-first resolution
+// means the bundle still provides every clip); its purpose is that the NEXT
+// release, which stops shipping audio, needs no network for anyone.
+//
+// Importing an entry does NOT decide that its pack is bundled. That is decided
+// once, in `@iracedeck/audio-assets`'s `voice-packs.mjs`, and reaches this
+// process as the clips the build copied into `assets/audio` and the manifest
+// it compiled in — `bundledVoices` above, the same set the scanner reserves.
+// An entry whose voices that set does not cover is a published pack this
+// build does not carry, and is simply not seeded. So stage 3's one-word flip
+// needs no edit here: the import goes stale and inert, nothing more.
+const compiledInVoicePackEntries: readonly unknown[] = [defaultVoicePackCatalogEntry];
+const bundledVoicePacks: BundledVoicePack[] = [];
+
+for (const candidate of compiledInVoicePackEntries) {
+  // safeParse, never parse: this runs at module scope, and a malformed
+  // committed entry must cost the seed, not the plugin process.
+  const parsed = VoicePackCatalogEntrySchema.safeParse(candidate);
+
+  if (!parsed.success) {
+    voicePacksLogger.warn("A compiled-in voice pack catalog entry is invalid; that pack will not be seeded");
+    voicePacksLogger.debug(parsed.error.message);
+    continue;
+  }
+
+  if (!parsed.data.voices.every((voice) => bundledVoices.includes(voice.id))) {
+    voicePacksLogger.debug(`Voice pack "${parsed.data.id}" is published, not bundled; not seeded`);
+    continue;
+  }
+
+  bundledVoicePacks.push({ entry: parsed.data, audioDir: audioRootDir });
+}
+
+// `_voicePackStatus` is run-scoped (#1014). Deduped by content like the
+// sibling pushes above, so the re-assertion on every Property Inspector
+// appearance costs a write only when the payload actually moved — the cache
+// holds the last published value for the whole run either way.
+let lastPublishedVoicePackStatusJson = "";
+
+const voicePackInstaller = createVoicePackInstaller({
+  storage: voicePackStorage,
+  packFs: voicePackFs,
+  archiveFs: createVoicePackArchiveFileSystem(voicePacksLogger),
+  fs: createVoicePackInstallerFileSystem(voicePacksLogger),
+  catalog: voicePackCatalog,
+  bundled: bundledVoicePacks,
+  getPluginVersion,
+  // Called immediately before a swap or a removal, and only then: on Windows a
+  // directory with an open file inside cannot be renamed, and a callout may be
+  // holding one of the pack's clips open. Two layers, because a voice reaches
+  // the Voice channel by two routes. The scenario engine — a callout
+  // mid-sequence, whose pause timer would otherwise play its NEXT clip straight
+  // into the swap, plus its looping ambient bed — is stopped through the same
+  // call the Race Engineer master gate uses. The audio service's own channel
+  // stop then covers anything on the Voice channel that never went through the
+  // engine: the settings window's voice Test plays clip by clip via
+  // `playOnChannel`, and `stopChannel` also cancels a native voice sequence.
+  // One call: stopping the engineer is three coupled facts about audio state,
+  // and it lives with that state rather than being restated in three plugins.
+  stopPlayback: stopRaceEngineerPlayback,
+  publishStatus: (status) => {
+    const json = JSON.stringify(status);
+
+    if (json === lastPublishedVoicePackStatusJson) return;
+
+    lastPublishedVoicePackStatusJson = json;
+    updateGlobalSettings({ [VOICE_PACK_STATUS_KEY]: json });
+  },
+  // Where a Remove's outcome goes: the `_warnings` banner, keyed per pack.
+  // The Installed Voices list renders `_voicePacks` and nothing else, so a
+  // removal that fails has no row to report on — the banner is the surface
+  // the same page already renders, and needs no new key.
+  warnings: { set: setWarning, clear: clearWarning },
+  refreshPacks: () => voicePacks.refresh(),
+  logger: voicePacksLogger,
+});
 
 // Initialize the scenario engine AFTER audio (so it can drive playback) but
 // BEFORE actions register (so actions see a ready engine when they wire PI
@@ -772,9 +944,15 @@ let lastPushedVoicePackListJson = "";
 // stays one global-settings write.
 function pushVoicePackListIfChanged(): void {
   const json = JSON.stringify({
-    packs: voicePacks
-      .installed()
-      .map((pack) => ({ id: pack.id, label: pack.label, version: pack.version, voices: pack.voices })),
+    packs: voicePacks.installed().map((pack) => ({
+      id: pack.id,
+      label: pack.label,
+      version: pack.version,
+      voices: pack.voices,
+      // Where it came from, for the settings window's provenance badge
+      // (#1100). Displayed, never enforced.
+      provenance: pack.provenance,
+    })),
     problems: voicePacks.problems().map((problem) => ({ pack: problem.pack, reason: problem.reason })),
   });
 
@@ -839,7 +1017,7 @@ async function startupNotices(): Promise<void> {
       migrationPending: s[MIGRATION_PENDING_KEY],
       isSimRunning: isIRacingActive,
       persist: (partial) => updateGlobalSettings(partial),
-      openGettingStarted: () => settingsWindow.open({ pane: GETTING_STARTED_PANE }),
+      openGettingStarted: () => openSettingsWindow({ pane: GETTING_STARTED_PANE }),
       logger: versionCheckLogger,
     })
   ) {
@@ -958,7 +1136,38 @@ const settingsWindow = createSettingsWindowController({
     storePath: settingsStore.path,
     // Race Engineer card's Rescan voices button (#1034). Like Open folder, the
     // page names no directory — which one is scanned is the plugin's decision.
-    refreshVoicePacks: () => voicePacks.refresh(),
+    // Since #1100 a rescan re-asks the catalog too, so the card's Install /
+    // Update / Installed verdicts follow a pack the user added or deleted by
+    // hand. This is the ONE call that bypasses the catalog's TTLs: a person
+    // pressing Rescan after fixing their connection is asking for a request,
+    // and the failure TTL would otherwise refuse them for five minutes. It
+    // is still conditional on the cached ETag, so an unchanged catalog costs
+    // a 304 and no body.
+    refreshVoicePacks: () => {
+      voicePacks.refresh();
+      void voicePackInstaller.refreshCatalog({ bypassTtl: true });
+    },
+    // Install / Remove by pack id (#1100). The handler has validated the id
+    // against the manifest's kebab-case rule before it gets here; everything
+    // else — the catalog it is looked up in, the URL, the destination — is the
+    // plugin's. Neither ever rejects. An install's outcome reaches the card as
+    // `_voicePackStatus` — every refusal included, so a press that does
+    // nothing is explained on the row it was pressed on; a removal's reaches
+    // it as a `_warnings` banner (see `warnings` on the installer above). The
+    // results are therefore not read here: the installer has already put
+    // each one where the user can see it and logged it.
+    installVoicePack: (id) => {
+      void voicePackInstaller.install(id);
+    },
+    removeVoicePack: (id) => {
+      void voicePackInstaller.remove(id);
+    },
+    // Same rule again for the Voices card's Open folder button (#1100). A
+    // DIRECTORY opener, not the file-revealing one above: `/select` would show
+    // the packs folder's parent with `Voices` merely highlighted, one level
+    // above where the text beside the button says to drop a pack.
+    openDirectory: openDirectoryInExplorer,
+    voicePacksPath: voicePacksRoot,
   }),
   // The page can't probe SimHub itself (cross-origin, no CORS) — answer from the plugin's own view.
   simHub: { isReachable: isSimHubReachable, getRoles: () => getSimHub().getRoles() },
@@ -973,6 +1182,21 @@ const settingsWindow = createSettingsWindowController({
   onStatus: createSettingsWindowWarningReporter({ getStorePath: () => settingsStore.path }),
   logger: settingsWindowLogger,
 });
+
+// Every route that puts the settings window on screen goes through here and
+// asks the voice catalog on the way (#1100). The Race Engineer card answers
+// "what could I download?" from `_voicePackStatus`, and this is the moment
+// that answer is wanted — a user-initiated fetch, which is what lets the
+// catalog gate stay a constant (see `voicePackCatalog`). The service caches
+// the fetch for an hour, so reopening the window is not a second request;
+// the verdicts are recomputed either way. Fire-and-forget on purpose:
+// `refreshCatalog` never rejects, and the window must not wait on the network
+// to open.
+function openSettingsWindow(options?: SettingsWindowOpenOptions): ReturnType<typeof settingsWindow.open> {
+  void voicePackInstaller.refreshCatalog();
+
+  return settingsWindow.open(options);
+}
 
 onGlobalSettingsChange((settings) => {
   const s = settings as Record<string, unknown>;
@@ -1075,6 +1299,45 @@ onGlobalSettingsChange((settings) => {
       // just raised would never leave the plugin's own settings file.
       () => settingsChannel.publishUnavailable(),
     );
+
+    // An override must never be silently active (#1100). WARN rather than
+    // info, and on every start rather than only when it changes, because the
+    // person who needs this line is future-me reading a support log and
+    // wondering why the catalog is not what the site serves. It names the
+    // EFFECTIVE url, never the raw setting, and it claims the override is
+    // ACTIVE only when that url actually differs from the published one: a
+    // rejected value resolves back to the published catalog, and calling that
+    // "active" would contradict the url printed in the same sentence.
+    {
+      const rawDevBase = (getGlobalSettings() as Record<string, unknown>)[VOICE_PACK_DEV_BASE_URL_KEY];
+
+      if (typeof rawDevBase === "string" && rawDevBase.trim() !== "") {
+        const effective = resolveVoicePackCatalogUrl({ base: rawDevBase, logger: voicePacksLogger });
+
+        voicePacksLogger.warn(
+          effective === VOICE_PACK_CATALOG_URL
+            ? "Voice pack catalog override is set but has no effect; using the published catalog"
+            : `Voice pack catalog override active: ${effective}`,
+        );
+      }
+    }
+
+    // Voice packs (#1100), in this order: empty the installer's working
+    // directories of whatever an interrupted run left behind, then seed the
+    // bundled pack into an empty packs folder, then assert what this run
+    // knows about downloadable packs — nothing asked yet, nothing in flight,
+    // or the seed's own outcome — so `_voicePackStatus` exists in the cache
+    // from the start rather than the moment something first happens. The
+    // catalog is deliberately not fetched here; see `isEnabled` on
+    // `voicePackCatalog` for why, and `openSettingsWindow` for where it is.
+    // Every step is written never to reject; the catch is the last line of
+    // that promise, and logs rather than lets Node see an unobserved
+    // rejection on the startup path.
+    void voicePackInstaller
+      .sweep()
+      .then(() => voicePackInstaller.seed())
+      .then(() => voicePackInstaller.republishStatus())
+      .catch((err: unknown) => voicePacksLogger.error(`Voice pack startup failed: ${String(err)}`));
   }
 
   pushRaceEngineerVoicesIfChanged();
@@ -1114,6 +1377,9 @@ adapter.onPropertyInspectorDidAppear(() => {
   pushRaceEngineerVoicesIfChanged();
   pushDriverNamesIfChanged();
   pushVoicePackListIfChanged();
+  // `_voicePackStatus` is run-scoped too, and owes the same re-assertion
+  // (#1100). Deduped in publishStatus, so this is free when nothing moved.
+  voicePackInstaller.republishStatus();
 });
 
 // Initialize window focus service for focusing iRacing before any action
@@ -1220,7 +1486,7 @@ adapter.onOpenSettingsRequest(() => {
   pushDeckDevicesIfChanged();
   // Logged and surfaced as a PI warning banner by the controller itself
   // (#1005); observed here only so Node never sees an unobserved rejection.
-  void settingsWindow.open().catch(() => undefined);
+  void openSettingsWindow().catch(() => undefined);
 });
 
 // Initialize SimHub AFTER global settings so health check uses configured host/port

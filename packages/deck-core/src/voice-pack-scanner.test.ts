@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { voiceDisplayLabels } from "./voice-labels.js";
 import { scanVoicePacks, type VoicePackFileSystem } from "./voice-pack-scanner.js";
 
 const ROOT = "/packs";
@@ -7,7 +8,7 @@ const ROOT = "/packs";
 /** A manifest that exists but cannot be opened — locked, EISDIR, permission denied. */
 const UNREADABLE = Symbol("unreadable");
 
-type FakePack = { manifest?: unknown; clips?: string[] };
+type FakePack = { manifest?: unknown; clips?: string[]; install?: unknown };
 
 /** Last path segment, normalised across separators. */
 function folderOf(dir: string): string {
@@ -20,12 +21,17 @@ function fakeFs(tree: Record<string, FakePack>): VoicePackFileSystem {
     readTextFile: (file) => {
       const parts = file.replace(/\\/g, "/").split("/");
       const entry = tree[parts.at(-2) ?? ""];
+      // The scanner reads two files per pack now, so the fake has to tell them
+      // apart. Keying on the folder alone would answer every read with the
+      // manifest, and an `.install.json` test would then assert against the
+      // wrong document while appearing to pass.
+      const wanted = parts.at(-1) === ".install.json" ? entry?.install : entry?.manifest;
 
-      if (!entry || entry.manifest === undefined) return { ok: false, missing: true, reason: "ENOENT" };
+      if (!entry || wanted === undefined) return { ok: false, missing: true, reason: "ENOENT" };
 
-      if (entry.manifest === UNREADABLE) return { ok: false, missing: false, reason: "EBUSY" };
+      if (wanted === UNREADABLE) return { ok: false, missing: false, reason: "EBUSY" };
 
-      return { ok: true, text: typeof entry.manifest === "string" ? entry.manifest : JSON.stringify(entry.manifest) };
+      return { ok: true, text: typeof wanted === "string" ? wanted : JSON.stringify(wanted) };
     },
     listMp3Files: (packDir) => tree[folderOf(packDir)]?.clips ?? [],
   };
@@ -412,5 +418,202 @@ describe("scanVoicePacks", () => {
     });
 
     expect(result.packs[0].author).toBe("Someone");
+  });
+});
+
+describe("scanVoicePacks and the bundled seed (#1100)", () => {
+  const seedRecord = {
+    schema: 1,
+    source: "bundled-seed",
+    id: "default",
+    version: "3.2.0",
+    sha256: "d".repeat(64),
+    installedAt: "2026-09-02T00:00:00.000Z",
+  };
+
+  const bundled = {
+    schema: 1,
+    id: "default",
+    label: "Default",
+    version: "3.2.0",
+    voices: [{ id: "default", label: "Default" }],
+  };
+
+  const scan = (install?: unknown) =>
+    scanVoicePacks({
+      root: ROOT,
+      reservedVoices: ["default"],
+      fs: fakeFs({ default: { manifest: bundled, install, clips: ["voice/default/flags/blue-01.mp3"] } }),
+    });
+
+  it("lists the pack we seeded from the plugin's own bundle, providing nothing", () => {
+    const result = scan(seedRecord);
+
+    // LISTED since #1100. It is on disk, and a card reading "No voice packs
+    // installed" beside a button that opens a folder containing exactly this
+    // pack was a contradiction the user met on their first screen. Its voice is
+    // still dropped — the bundle owns that id, and that was never in question —
+    // so it is listed as providing nothing, which is what `voices` means.
+    expect(result.packs).toHaveLength(1);
+    expect(result.packs[0]).toMatchObject({
+      id: "default",
+      label: "Default",
+      version: "3.2.0",
+      voices: [],
+      clips: [],
+      provenance: "bundled-seed",
+    });
+    // The point of the exemption: no report, because nothing is wrong.
+    expect(result.problems).toEqual([]);
+  });
+
+  // THE TRAP, pinned rather than left to be noticed later (#1100).
+  //
+  // `default` is ALREADY in the voice dropdown, provided by the plugin's own
+  // audio. Listing the seeded pack must not also register its voice, or the
+  // dropdown gains a SECOND "Default": two rows, one voice, and nothing for the
+  // user to tell them apart. Listing a pack and contributing a voice are two
+  // different jobs and this pack must only do the first.
+  //
+  // Asserted against BOTH publishers' actual inputs rather than against the
+  // scanner's output shape alone, because they derive differently and a change
+  // could break one without the other: `_voiceLabels` is built by
+  // `voiceDisplayLabels` from the installed packs — which now include this one,
+  // where they did not before — and `_raceEngineerVoices` is built from the
+  // clip paths packs contribute to the merged manifest.
+  it("contributes nothing to either published voice list", () => {
+    const result = scan(seedRecord);
+
+    // `_voiceLabels`: the seed is in this input now and must add no entry. A
+    // `default` key here would rename the bundled voice in the dropdown.
+    expect(voiceDisplayLabels(result.packs)).toEqual({});
+
+    // `_raceEngineerVoices`: derived from the clips packs contribute. One clip
+    // under `voice/default/` would put a second `default` in the list.
+    expect(result.packs.flatMap((pack) => pack.clips)).toEqual([]);
+  });
+
+  // The id-match rule added for the provenance badge must not reach this row.
+  // It does not even apply: the seeded branch hardcodes `bundled-seed` after
+  // `isBundledSeed` has already required the record to name this pack. Pinned
+  // because a regression here turns "Built-in" into "Installed by hand" on
+  // every machine, which is the badge lying in the opposite direction.
+  it("still reports the seed as bundled-seed, not sideload", () => {
+    expect(scan(seedRecord).packs[0].provenance).toBe("bundled-seed");
+  });
+
+  // The branch fires only when the BUNDLE took every voice (#1100). A seed
+  // whose voice another pack already claimed has a real problem, and must not
+  // render as a healthy "Built-in" row with its own problem line underneath —
+  // shown as fine and broken at once. Not reachable for `default` while it is
+  // reserved, but it is exactly the state the branch is carried into once the
+  // plugin stops bundling audio.
+  it("does not list a seed as built-in when another pack took its voice", () => {
+    const result = scanVoicePacks({
+      root: ROOT,
+      reservedVoices: [],
+      fs: fakeFs({
+        alpha: {
+          manifest: {
+            schema: 1,
+            id: "alpha",
+            label: "Alpha",
+            version: "1.0.0",
+            voices: [{ id: "shared", label: "Shared" }],
+          },
+          clips: ["voice/shared/flags/a.mp3"],
+        },
+        default: {
+          manifest: { ...bundled, voices: [{ id: "shared", label: "Shared" }] },
+          install: seedRecord,
+          clips: ["voice/shared/flags/a.mp3"],
+        },
+      }),
+    });
+
+    expect(result.packs.map((pack) => pack.id)).toEqual(["alpha"]);
+    expect(result.problems).toEqual([
+      { pack: "default", reason: `voice "shared" is already provided by pack "alpha"` },
+    ]);
+  });
+
+  // The hostile cases, and the reason the exemption is written as narrowly as
+  // it is. Each must keep reporting; if a later change widens the branch into
+  // "any pack with an .install.json may claim a bundled voice", one of these
+  // fails rather than the behaviour quietly going missing.
+  it.each([
+    ["no provenance at all — an ordinary sideloaded pack", undefined],
+    ["a catalog install rather than a seed", { ...seedRecord, source: "catalog", url: "https://example.com/x.zip" }],
+    ["a seed record naming a different pack", { ...seedRecord, id: "luca" }],
+    ["a provenance file that does not parse", "{ not json"],
+    ["a provenance file that cannot be read", UNREADABLE],
+    ["a record with no source at all", { ...seedRecord, source: undefined }],
+  ])("still reports a pack claiming a bundled voice with %s", (_label, install) => {
+    const result = scan(install);
+
+    expect(result.packs).toEqual([]);
+    expect(result.problems).toEqual([
+      { pack: "default", reason: `voice "default" is provided by the plugin's bundled audio` },
+    ]);
+  });
+});
+
+describe("scanVoicePacks reports where a pack came from (#1100)", () => {
+  const record = (source: string) => ({
+    schema: 1,
+    source,
+    id: "luca",
+    version: "1.2.0",
+    sha256: "e".repeat(64),
+    installedAt: "2026-09-02T00:00:00.000Z",
+    ...(source === "catalog" ? { url: "https://example.com/luca-1.2.0.zip" } : {}),
+  });
+
+  const scan = (install?: unknown) =>
+    scanVoicePacks({
+      root: ROOT,
+      reservedVoices: [],
+      fs: fakeFs({ luca: { manifest: luca, install, clips: ["voice/luca/flags/blue-01.mp3"] } }),
+    });
+
+  it.each([
+    ["catalog", "catalog"],
+    ["bundled-seed", "bundled-seed"],
+  ])("reports a %s install from the record we wrote", (source, expected) => {
+    expect(scan(record(source)).packs[0].provenance).toBe(expected);
+  });
+
+  // A record has to name THIS pack. `isBundledSeed` and the installer's hash
+  // read both already require it; this path did not, so a folder copied or
+  // renamed by hand kept its old `.install.json` and rendered as "Downloaded"
+  // for a pack never downloaded under that id — the provenance badge lying in
+  // the one place it exists to tell the truth.
+  it("reports sideload when the record names a different pack", () => {
+    const result = scanVoicePacks({
+      root: ROOT,
+      reservedVoices: [],
+      fs: fakeFs({
+        luca: {
+          manifest: luca,
+          install: { ...record("catalog"), id: "someone-else" },
+          clips: ["voice/luca/flags/a.mp3"],
+        },
+      }),
+    });
+
+    expect(result.packs[0].provenance).toBe("sideload");
+  });
+
+  // "sideload" is the ABSENCE of a usable record, never a claim a pack makes —
+  // which is why the source enum has no such value for anyone to write. A pack
+  // that forges a record cannot describe itself as sideloaded, and one whose
+  // record is unusable reads as sideloaded, which is the truthful answer.
+  it.each([
+    ["no record at all", undefined],
+    ["a record that does not parse", "{ not json"],
+    ["a record that cannot be read", UNREADABLE],
+    ["a record naming an unknown source", JSON.stringify({ ...record("catalog"), source: "sideload" })],
+  ])("reports sideload for %s", (_label, install) => {
+    expect(scan(install).packs[0].provenance).toBe("sideload");
   });
 });

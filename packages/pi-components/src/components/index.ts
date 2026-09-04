@@ -73,11 +73,17 @@ export { OpenFolder } from "./open-folder.js";
 export { VoicePackList } from "./voice-pack-list.js";
 export { VoicePackRefresh } from "./voice-pack-refresh.js";
 
+// Downloadable Race Engineer voice packs — catalog, install progress, and the
+// packs-folder shortcut (issue #1100)
+export { VoicePackCatalog } from "./voice-pack-catalog.js";
+export { OpenVoicePacksFolder } from "./open-voice-packs-folder.js";
+
 // Update Notice - upstream "a newer version exists" banner for the settings window (#1016)
 export { UPDATE_AVAILABLE_EVENT, UpdateNotice } from "./update-notice.js";
 
 // Deck Device Select - settings-window picker for which Stream Deck a profile switch targets (#992)
 export { DeckDeviceSelect } from "./deck-device-select.js";
+export { DevBaseUrl } from "./dev-base-url.js";
 
 // Shared Poller - one per-page polling interval with page-lifecycle cleanup
 export { createSharedPoller, installSharedPoller, POLL_INTERVAL_MS } from "./poller.js";

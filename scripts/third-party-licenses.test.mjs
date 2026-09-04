@@ -42,6 +42,7 @@ const COMPONENT_LICENSE_MARKERS = {
   "node-addon-api": "The MIT License (MIT)",
   zod: "MIT License",
   semver: "The ISC License",
+  fflate: "MIT License",
   "@elgato/streamdeck": "MIT License",
   "sdpi-components": "MIT License",
   Lit: "BSD 3-Clause License",
