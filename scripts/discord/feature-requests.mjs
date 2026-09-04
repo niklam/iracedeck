@@ -37,7 +37,15 @@ const POST_ID = /^\d{17,20}$/;
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 function exec(file, args) {
-  return execFileSync(file, args, { encoding: "utf8", cwd: root, stdio: ["ignore", "pipe", "inherit"] });
+  // gh and git never need the bot token, which readConfig loaded into
+  // process.env from .env.local; an undefined value drops the key from the
+  // child's environment rather than passing it on empty.
+  return execFileSync(file, args, {
+    encoding: "utf8",
+    cwd: root,
+    stdio: ["ignore", "pipe", "inherit"],
+    env: { ...process.env, DISCORD_BOT_TOKEN: undefined },
+  });
 }
 
 function requirePostId(id) {
@@ -91,22 +99,35 @@ async function main(command, positionals, values) {
   }
 }
 
-const { values, positionals } = parseArgs({
-  allowPositionals: true,
-  options: {
-    untagged: { type: "boolean", default: false },
-    json: { type: "boolean", default: false },
-    "dry-run": { type: "boolean", default: false },
-    text: { type: "string" },
-    file: { type: "string" },
-    help: { type: "boolean", short: "h", default: false },
-  },
-});
-const [command, ...args] = positionals;
+let cli = null;
 
-if (values.help || !command) {
-  console.log(USAGE);
-  process.exitCode = values.help ? 0 : 1;
-} else {
-  process.exitCode = await main(command, args, values);
+try {
+  cli = parseArgs({
+    allowPositionals: true,
+    options: {
+      untagged: { type: "boolean", default: false },
+      json: { type: "boolean", default: false },
+      "dry-run": { type: "boolean", default: false },
+      text: { type: "string" },
+      file: { type: "string" },
+      help: { type: "boolean", short: "h", default: false },
+    },
+  });
+} catch (error) {
+  // Strict parsing: an unknown option or a value-less --text is a usage
+  // error, not a stack trace.
+  console.error(`Error: ${error.message}\n\n${USAGE}`);
+  process.exitCode = 1;
+}
+
+if (cli) {
+  const { values, positionals } = cli;
+  const [command, ...args] = positionals;
+
+  if (values.help || !command) {
+    console.log(USAGE);
+    process.exitCode = values.help ? 0 : 1;
+  } else {
+    process.exitCode = await main(command, args, values);
+  }
 }
