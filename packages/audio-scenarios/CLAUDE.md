@@ -20,8 +20,8 @@ below cover the audio-scenarios-only mechanics.
 
 `src/catalog/pit-crew/` — one file per scenario family, plus wiring, shared helpers, two imperative engines, and three non-family singles (tests, where present, are sibling `*.test.ts` files — not every family has one).
 
-- **Wiring & shared:** `index.ts` (id types, setting-key maps, scenario-id maps, `registerPitCrew()`), `pools.ts` (`POOL_REGISTRY`: pool name → manifest `(group, base)` source, plus `registerPools()`). There is no `radio-frame.ts` any more: the `@pit-crew.radio-open` / `@pit-crew.radio-close` include scenarios were deleted in #1064, because the walkie-talkie frame is applied by the engine from the active voice's script (see **Frames** in `interpreter.ts` above and the `frame:` field below).
-- **Flags & race flow:** `flag-alerts.ts`, `start-lights.ts`, `rolling-start.ts`, `session-start.ts`, `race-start.ts`, `race-status.ts`, `race-end.ts`, `qualifying-invalidation.ts`.
+- **Wiring & shared:** `index.ts` (id types, setting-key maps, scenario-id maps, `registerPitCrew()` — which also calls each scripted family's `register<Family>Vocabulary(engine)` beside `registerPools(engine)`, before the registration loops), `pools.ts` (`POOL_REGISTRY`: pool name → manifest `(group, base)` source for the families still defined in code, plus `registerPools()`; a migrated family's pools live in each voice's script instead — the `flag-*` entries left the registry in #1064 — and the engine looks a pool up in the active voice's script first). There is no `radio-frame.ts` any more: the `@pit-crew.radio-open` / `@pit-crew.radio-close` include scenarios were deleted in #1064, because the walkie-talkie frame is applied by the engine from the active voice's script (see **Frames** in `interpreter.ts` above and the `frame:` field below).
+- **Flags & race flow:** `flag-alerts.ts` (contracts + vocabulary since #1064 — the one migrated family; see below), `start-lights.ts`, `rolling-start.ts`, `session-start.ts`, `race-start.ts`, `race-status.ts`, `race-end.ts`, `qualifying-invalidation.ts`.
 - **Pit:** `pit-approach.ts`, `pit-box.ts`, `pit-exit.ts`, `pit-limiter.ts` + `no-limiter.ts` (issue #1051: ONE pair, split by equipment — `pit-limiter.ts` holds the four callouts for cars that HAVE a limiter, all gated on `hasPitLimiter`; `no-limiter.ts` is the mirror for cars without one, gated on `lacksPitLimiter`, which is deliberately NOT a bare negation. Both share `family: "limiter"`. If you are adding a pit-road callout, the equipment split already exists — do not re-derive it, and do not widen one family's gate to cover the other audience, which is what #639 was about), `pit-status.ts` (issue #951: also exports `PIT_STATUS_REPEAT_ALERTS` — five terse "you're STILL parked wrong" nags off `pitService.positioningRepeat`, in their own `pit-status-repeat` family at an explicit `PIT_STATUS_REPEAT_WEIGHT` of 40 so a nag can never same-family-preempt the full transition call, riding the SAME per-status opt-ins), `pit-window.ts`, `opponent-pit.ts` (issue #622: other drivers entering the pits — five relation-branched scenarios, deliberately family-less so a pit train queues instead of truncating in-flight lines; the nearby "P{n}" resolves from a where:-written pending stash, live-read-preferred), `readback.ts`, `service-reminder.ts`, `stall-departure.ts`, `toggle-confirmations.ts`.
 - **Position & pace:** `position.ts`, `overtake.ts`, `lap-time.ts` — plus the shared helpers `position-readout.ts` (the cross-trigger "We're currently P[n]" readout + cooldown), `position-range.ts`, and `overtake-gate.ts` (leaf modules, not families).
 - **Track knowledge:** `corner-name.ts` — practice/test corner-name announcements (issue #888): snapshot-driven builder (`buildCornerNameScenario` + `registerCornerNameVars`), clip resolved as `poolRef("corner-names", slug)` from the event payload's slug, `frame: NO_FRAME` (no radio frame), `queueable: false`, `family: "corner-name"`.
@@ -31,17 +31,19 @@ below cover the audio-scenarios-only mechanics.
 - `tips.ts` — per-lap racing tips in race sessions (25% chance per `lap.started`), start-window (lap ≤ 1) vs mid-race pools; its header notes the behavior drift from the legacy pit-engineer's polling trigger.
 - `background-test.ts` — the PI Background-volume Test-button preview (tick-open + ambient loop + tick-close on the Background bus).
 
-One file per family. Each family file:
-- Exports `<FAMILY>_ALERTS: readonly Scenario[]`.
-- Exports `<FAMILY>_SCENARIO_IDS: readonly string[]` and `<FAMILY>_POOL_NAMES: readonly string[]` for tests.
-- Uses a small constructor function (e.g. `flagScenario(id, body)`) to build scenarios with consistent `family:` / `weight:` / `bus:` defaults.
+One file per family. A family file comes in one of two shapes, and which one is a matter of migration state (issue #1064), not of taste:
+
+- **Scripted family** (the flags today; every family once #1065 is done; a brand-new family from the start): exports `<FAMILY>_CONTRACTS: readonly ScenarioContract[]` — contracts carry no `sequence`; what is said lives in the active voice's `callouts.json` under the same ids — and a `register<Family>Vocabulary(engine)` that registers every var / condition / case its scripts may name, with a one-sentence description each (`registerFlagVocabulary`: the `session.type` case with its declared keys, the `flag.furledStillShown` / `flag.furledWithdrawn` speak-time gates, and the three `session.is*` conditions published generously so a pack can write a binary `if` instead of a three-way `case`). Its `<FAMILY>_POOL_NAMES` is a **literal** list, since the pools live in the script and nothing derives it — and it is published the moment a script uses it. The constructor helper builds a contract (`flagContract(id)`).
+- **Un-migrated family** (everything else until #1065): exports `<FAMILY>_ALERTS: readonly Scenario[]` — a contract plus an inline `sequence` — and keeps its pools in `POOL_REGISTRY`. A new callout in such a family is written in this shape for now; the migration happens per family, each conditional step on its own terms, never by codemod.
+- Both export `<FAMILY>_SCENARIO_IDS: readonly string[]` and `<FAMILY>_POOL_NAMES: readonly string[]` for tests, and both use a small constructor function for the shared `family:` / `weight:` / `bus:` defaults.
 
 Per-family issue history lives in `.claude/rules/race-engineer-callout-examples.md` — pointers for the families previously documented at length here:
 
 - **`start-light`** (`start-lights.ts`) — exports `START_LIGHT_ALERTS` (6 scenarios: 2 gantry lines + 4 countdown marks off the single `startLight.countdown.raised { seconds }` event) plus the ids/pools lists; two grouped opt-ins (`calloutEnabledStartLights` / `calloutEnabledStartCountdown`). The gantry lines gate on `isLiveOnTrack` (in-car only); the countdown marks deliberately don't — they're the "get in the car" reminder and play from the garage / session screen / replay view too (#829, saved replays suppressed translator-side). See the #480 / #666 / #673 / #829 entries in the examples rule.
 - **`rolling-start`** (`rolling-start.ts`) — exports `ROLLING_START_ALERTS` (1 scenario, subject `pace-car`) plus the ids/pools lists; one opt-in (`calloutEnabledRollingStartPaceCar`). See the #660 entry.
-- **Expanded `flag` family** (`flag-alerts.ts`) — the #467 colour flags plus driver-black, race-progression, and caution-waving scenarios, one per-subject `calloutEnabledFlag*` opt-in each. See the #480 / #657 entries.
-- **Yellow-cleared delivery + waving debounce** — `YELLOW_CLEARED` is `queueable: true` (one-shot event, replays at idle instead of dropping); the waving scenarios carry `cooldown: WAVING_FLAG_COOLDOWN_MS` (30 s, exported from `flag-alerts.ts`). See the #671 entry.
+- **Expanded `flag` family** (`flag-alerts.ts`) — the #467 colour flags plus driver-black, race-progression, and caution-waving callouts, one per-subject `calloutEnabledFlag*` opt-in each; 24 contracts in `FLAG_CONTRACTS`. See the #480 / #657 entries.
+- **Flags as the first scripted family (#1064)** — every `when` / `where` and scheduling knob is byte-for-byte what it was; only the wording moved. The 24 script entries, the 30 `flag-*` pools (`{ group: "flags", base, comment }`) and the `radio` frame are authored in `packages/audio-assets/configs/default.voice.json` and extracted to `voice/default/callouts.json`. Green / white / checkered are `{ "case": "session.type", "of": { practice, qualifying, race, default } }` — `default` maps an unknown session (`classifySession()` → `null`, the translator's `""`) to the race line, which is what the old `else` did, made an explicit pack choice; the furled pair keeps its speak-time gate as `{ "if": "flag.furledStillShown", … }` / `{ "if": "flag.furledWithdrawn", … }`, and the engine's empty-body rule is what keeps a stale fire from producing bare ticks. The session rule behind `session.type` and the `session.is*` conditions is the package's shared `classifySessionType` (`race-start.ts`), the same one every `where:` gate reads through `isRaceSession` — so a pack can never see the vocabulary call a session a race that a gate beside it calls practice. A voice whose script lacks a flag entry is silent for that flag; `bundled-scripts.test.ts` holds the bundled voice to completeness. See the #1064 entry in the examples rule.
+- **Yellow-cleared delivery + waving debounce** — `YELLOW_CLEARED` is `queueable: true` (one-shot event, replays at idle instead of dropping); the waving contracts carry `cooldown: WAVING_FLAG_COOLDOWN_MS` (30 s, exported from `flag-alerts.ts`). See the #671 entry.
 - **Penalty-flag delivery** — `BLACK`, `DISQUALIFY`, and `DQ_SCORING_INVALID` are `queueable: true` (#923): the penalty raises are one-shot edges that never re-fire, so a fire that can't take the bus (equal/higher-weight line in flight) defers and replays at idle instead of leaving the driver untold. No speak-time gate — the penalty is sustained on the seconds timescale a queued fire waits (the #867 meatball reasoning), and a black→DQ escalation while queued resolves via the pending-slot tie replacement. See the #923 entry in the examples rule.
 
 > **Snapshot-driven variation (issue #558).** A family whose lone scenario reads a runtime resolver in its `where:` predicate or conditional `if` steps cannot build that scenario at module-load time. Such a family exports a `buildXxxScenario(getSnapshot)` builder (plus a `registerXxxVars(engine, getSnapshot)` that registers its `engine.defineVar` clip resolvers) **instead of** a static `<FAMILY>_ALERTS` array — the lone scenario is materialized at wiring time inside `registerPitCrew()`. It still exports `<FAMILY>_SCENARIO_IDS: readonly string[]` and `<FAMILY>_POOL_NAMES: readonly string[]` (the latter `[]` when the readout is composed from `engine.defineVar` resolvers / static `clipPath` steps rather than pools), and still uses the small constructor helper for the shared `family:` / `weight:` / `bus:` defaults. Reference files: `session-start.ts` and `lap-time.ts`.
@@ -50,12 +52,20 @@ Per-family issue history lives in `.claude/rules/race-engineer-callout-examples.
 
 Pools are **config-driven** (issue #664): a pool is *all clips sharing a base
 name* — `voice/<voice>/<group>/<base>-NN.mp3` — derived per-voice from the
-runtime audio-asset manifest. `POOL_REGISTRY` in `pools.ts` maps each logical
-pool name to its `(group, base)` source and carries **no clip lists and no
-counts**; adding or removing a variant (or bringing up a partial voice) is a
-clip-file change in `@iracedeck/audio-assets` with no code edit. Scenarios
-reference pools by name — `"pool:<name>"` in a sequence step, or
-`{ pool: "<name>" }` in a step object — exactly as before.
+runtime audio-asset manifest. A pool's definition maps a logical pool name to
+its `(group, base)` source and carries **no clip lists and no counts**; adding
+or removing a variant (or bringing up a partial voice) is a clip-file change
+in `@iracedeck/audio-assets` with no code edit. Since #1064 a definition has
+two possible homes: the active voice's script (`pools` in `callouts.json` —
+where a migrated family's pools live, the `flag-*` entries today) is consulted
+first, and `POOL_REGISTRY` in `pools.ts` (the families still defined in code)
+second; the two coexist until #1065 empties the registry. Sequences and
+scripts reference pools by name — `"pool:<name>"` in a sequence step, or
+`{ pool: "<name>" }` in a step object — and a script may also address a clip
+group directly as `"pool:<group>/<base>"` (routed to `pickFromPoolRef`, so the
+namespaces cannot collide: a defined pool name never carries a slash). Named
+pools stay the recommended form: the name is the indirection that protects a
+pack from our file layout.
 
 - Members resolve **at fire time for the active voice**. Voices may carry
   different variant counts or omit a pool entirely — a required pool that is
@@ -70,14 +80,19 @@ reference pools by name — `"pool:<name>"` in a sequence step, or
   differ across voices.
 - Typo guard: a registry entry whose `(group, base)` matches no clip for the
   **reference voice** (`default`) warns at registration without disabling
-  anything.
-- Every pool is registry-derived — the last enumerated remainder (the two
+  anything. A script-defined pool has no registration-time guard (a pack may
+  legitimately name clips it does not ship); for the bundled voice,
+  `bundled-scripts.test.ts` checks every script pool against the real
+  `manifest.json` instead.
+- Every pool is definition-derived — the last enumerated remainder (the two
   acknowledgment pools) moved into the registry with the #837 rename
   migration (`acknowledgment/acknowledgment-NN`, `pit-actions/acknowledgment-NN`).
+  Per-voice pool state (the no-repeat index) is cached per `(voice, name)`
+  and cleared by `setManifest` and by every script compile.
 
 ## Scenarios
 
-A `Scenario` (see `src/dsl.ts`) binds:
+A `ScenarioContract` (see `src/dsl.ts`) is the code-owned half of a callout — everything that decides whether, when and how it plays; a `Scenario` is a contract plus an inline `sequence`, the shape every un-migrated family still uses (issue #1064). Both bind:
 - `id` — `pit-crew.<family>-<subject>`.
 - `when: { event, where? }` — bus event filter. The `where:` predicate runs at event arrival; return `false` to skip.
 - `family:` — shared identifier for same-family preemption. A newer same-family fire replaces the in-flight family-mate wholesale, **regardless of weight** (it is NOT stashed for replay).
@@ -90,7 +105,16 @@ A `Scenario` (see `src/dsl.ts`) binds:
 - `frame?:` — the name of the frame the engine wraps a non-empty body in (issue #1064): `"radio"` (`DEFAULT_FRAME`) when omitted, `"none"` (`NO_FRAME`) where the cadence would have the beeps drown the words. What the name means is the active voice's script's business (its `frames` block); a script entry may override it per scenario. The user's Radio beeps / Pit ambience switches are applied by position inside the frame. **A sequence never spells the frame** — the two `@pit-crew.radio-open` / `-close` includes came out of every sequence and the fragment file was deleted in #1064, because a sequence that still carried them would be framed twice the moment the active voice has a script. Exactly four families opt out, and each says so with `frame: NO_FRAME` beside the rationale comment it always had: the pit-box count-in (`pit-box.ts`), the pit-status repeat nags (`pit-status.ts`), corner names (`corner-name.ts`) and both spotter scenarios (`spotter-engine.ts`). `register-pit-crew.test.ts` pins that list — a new terse family joins it there — and proves the ticks first/last through the real registration.
 - `sequence:` — ordered steps (a legacy `Scenario` only; a `ScenarioContract` has none and is scripted per voice). It is the **body** only — what the engineer says — and the engine wraps it in the frame above at fire time. A speak-time validity gate (`{ if: …, then: [body] }`, the furled pair's shape) therefore leaves no bare ticks behind when it expands to nothing: the frame wraps only a body with at least one clip.
 
-Field-by-field guidance on when to reach for each scheduling knob is in `.claude/rules/race-engineer-callouts.md` (step 4).
+Field-by-field guidance on when to reach for each scheduling knob is in `.claude/rules/race-engineer-callouts.md` (step 4a).
+
+## Scripts — what a contract says (issue #1064)
+
+A contract's body is the active voice's `callouts.json` entry under the same id (`scenarios["pit-crew.flag-red"]`): `{ comment, test, sequence }`, or `{ comment, test, skip: true }`, optionally with a `frame` override. The grammar (`@iracedeck/callout-script`) is the closure DSL serialised — `"pool:<name>"`, `"{{var}}"`, `{ clip }`, `{ pause }`, `{ include }`, `{ optional }`, `{ connector }`, `{ ambient }` — plus two branching forms whose predicates are **names, never closures**: `{ "if": "<cond>", "then": […], "else": […] }` (a `!` prefix negates) and `{ "case": "<case>", "of": { "<key>": […], "default": […] } }`. **The only operator is `!`** — a script needing `a && b` gets a named condition registered for it; this is a rule, not a preference, and every addition to the grammar has to argue against it. A pack references the vocabulary by name and can never define one, change when a callout fires, or change what it may interrupt.
+
+- **Vocabulary** is code-owned and prose-carrying: `defineVar(name, resolver, description)`, `defineCond(name, predicate, description)`, `defineCase(name, resolver, keys, description)` — the case's key set is DECLARED, with a description per key, which is what lets a pack author write a branch without reading the resolver and lets the compiler refuse a typo'd key. A resolver returning an undeclared key warns once (a code bug) and takes `default`; `null` takes `default` too, and no `default` means the case says nothing. `vocabulary()` reports it all for the generated reference and the pack linter (#1066). Publish generously: the vocabulary bounds what a pack can express, and a resolver costs nothing at runtime.
+- **Two rules for writing a script**, both from writing the two hardest callouts out in full: *a lookup is a var; a condition is a choice* (a table over a closed set — tire patterns, session type — is a `case` with declared keys or a var, never a ladder of `if`s; `case` rather than a var returning the clip because the mapping is the pack's business), and *a fragment may not be optional; a clause may* (`{ optional }` and a `"default": []` branch belong to a whole clause that leaves a true sentence behind, never to a step mid-sentence). Neither can be applied by a codemod, which is why #1065 migrates each family on its own terms.
+- **Skip semantics — a pack is never punished for what it does not say.** No entry, or `skip: true`, is a silent skip at debug; an unknown pool / var / condition / case key / include / frame is ONE warn per (voice, scenario) and that callout skipped for that voice; a malformed file drops that voice from its pack, never the whole pack; a voice with no script file is a valid clips-only voice. A missing clip at fire time is the unchanged #835 rule. The bundled voice is the exception and is held to completeness by `bundled-scripts.test.ts`.
+- **Where it is authored**: `packages/audio-assets/configs/<voice-id>.voice.json` (`scenarios` / `frames` / `pools` beside `groups`), extracted by `pnpm generate:callout-scripts` into `voice/<voice-id>/callouts.json` and handed to the engine as voice id → parsed script through `setScripts` on every voice-pack scan. The how-to, including the `comment` / `test` requirements, is step 4b of `.claude/rules/race-engineer-callouts.md`.
 
 ## Required-step abort + `{ optional: [...] }` (issue #835)
 
@@ -136,30 +160,34 @@ Both engines reuse the existing `radar.changed` bus event (no new event, no tran
 
 Adding one more callout to a family that already exists (e.g. another flag colour, or a paired `*-cleared`) needs **no `registerPitCrew` signature change and no plugin change** — the per-family `get<Family>CalloutEnabled` closure is generic over the family's id type, so a new union member routes through it automatically:
 
-1. Add the scenario to the family file and append it to the `<FAMILY>_ALERTS` array.
-2. Add its pool to `POOL_REGISTRY` in `pools.ts` — one line mapping the pool name to its `(group, base)`; the clips themselves (`voice/<voice>/<group>/<base>-NN.mp3`) are authored/generated in `@iracedeck/audio-assets`. Adding a *variant* of an existing callout needs no `pools.ts` change at all.
-3. In `index.ts`, extend three places: the `<Family>CalloutId` union, `<FAMILY>_CALLOUT_SETTING_KEYS` (key: `callout<Polarity><Family><Subject>`), and `SCENARIO_ID_TO_<FAMILY>_ID`.
-4. Cross-package companions: the Zod field in `deck-core/src/global-settings.ts` (default `true`), the PI checkbox row in `pit-crew.ejs`, BOTH exhaustive literals in `deck-core/src/simhub-service.test.ts`, and this package's test fixtures (`<family>.test.ts` + `register-pit-crew.test.ts` — clip-name lists, id lists, fire matrices).
-5. If the triggering bus event is new, also add the `scenario-harness` event template (`event-names.ts`, enforced by a compile-time completeness check) and a shortcut button (`scenario-shortcuts.ts`).
+1. Add the contract to the family file and append it to `<FAMILY>_CONTRACTS` (scripted family) — or, in an un-migrated family, add the scenario with its inline `sequence` to `<FAMILY>_ALERTS` (the shape it keeps until #1065). Register any new var / condition / case it needs in the family's `register<Family>Vocabulary(engine)`, with a description.
+2. Define its pool where the family's pools live: a scripted family's in the voice script's `pools` (`configs/default.voice.json`, then `pnpm generate:callout-scripts`) plus the name in the family's literal `<FAMILY>_POOL_NAMES`; an un-migrated family's in `POOL_REGISTRY` in `pools.ts` — one line mapping the pool name to its `(group, base)`. The clips themselves (`voice/<voice>/<group>/<base>-NN.mp3`) are authored/generated in `@iracedeck/audio-assets`. Adding a *variant* of an existing callout needs no pool change at all.
+3. For a scripted family, add the script entry under `scenarios` in `configs/default.voice.json` — `comment`, `test` (the harness route) and `sequence` — and regenerate; `bundled-scripts.test.ts` fails on a contract with no entry.
+4. In `index.ts`, extend three places: the `<Family>CalloutId` union, `<FAMILY>_CALLOUT_SETTING_KEYS` (key: `callout<Polarity><Family><Subject>`), and `SCENARIO_ID_TO_<FAMILY>_ID`.
+5. Cross-package companions: the Zod field in `deck-core/src/global-settings.ts` (default `true`), the checkbox row in `pi-components/partials/race-engineer-callouts.ejs` (settings window only since #1003), BOTH exhaustive literals in `deck-core/src/simhub-service.test.ts`, and this package's test fixtures (`<family>.test.ts` + `register-pit-crew.test.ts` — clip-name lists, id lists, fire matrices; a test that fires a scripted contract loads the real `voice/default/callouts.json` and calls `setScripts` after `registerPitCrew`).
+6. If the triggering bus event is new, also add the `scenario-harness` event template (`event-names.ts`, enforced by a compile-time completeness check) and a shortcut button (`scenario-shortcuts.ts`) — the script entry's `test` line names that button.
 
 ## Adding a new family
 
 This is the consumer-side checklist; see the rule
-(`.claude/rules/race-engineer-callouts.md`) for the full cross-package flow.
+(`.claude/rules/race-engineer-callouts.md`) for the full cross-package flow. A
+brand-new family is written in the contract/script shape from the start — the
+un-migrated `Scenario` shape exists only for families #1065 has not reached yet.
 
-1. New file under `src/catalog/pit-crew/<family>.ts` — scenarios, pool names, scenario-id list.
-2. Add the family's `POOL_REGISTRY` entries to `pools.ts` (pool name → `(group, base)`).
+1. New file under `src/catalog/pit-crew/<family>.ts` — `<FAMILY>_CONTRACTS`, `register<Family>Vocabulary(engine)`, the literal pool-name list, the scenario-id list.
+2. Author the family's script in `packages/audio-assets/configs/default.voice.json`: its `pools` entries (pool name → `{ group, base, comment }`) and one `scenarios` entry per contract (`comment`, `test`, `sequence`); then `pnpm generate:callout-scripts`.
 3. In `index.ts`:
    - Add `<Family>CalloutId` (type union of subject ids).
    - Add `<FAMILY>_CALLOUT_SETTING_KEYS: Record<<Family>CalloutId, string>` — exported so plugins can read it.
    - Add `SCENARIO_ID_TO_<FAMILY>_ID: Record<string, <Family>CalloutId>` — covers every scenario id in the family.
    - Add a `get<Family>CalloutEnabled` key to `PitCrewDeps`, its `() => true` default to `DEFAULT_DEPS`, and the matching line to the destructure at the top of `registerPitCrew` (all three — `satisfies` catches a missing default, but a missing destructure surfaces only as "cannot find name" where you use it). **Placement is irrelevant and no call site needs editing** — `registerPitCrew` takes one keyed options object since #1052, so a new key is simply absent from the call sites that don't want it. (Until #1052 these were positional parameters and a new one had to go before the master gates, or every later argument at every call site shifted — silently, since the shifted value was usually still assignable. That constraint is gone; don't reinstate it.)
-   - Wrap the family's scenarios with `wrapWithMaster(wrapCalloutScenario(...))` in the registration loop.
+   - Call the family's `register<Family>Vocabulary(engine)` beside `registerPools(engine)`, before the loops, and wrap the family's contracts with `wrapWithMaster(wrapCalloutScenario(...))` in an `engine.defineContract(...)` registration loop (the wrappers are generic over contracts and scenarios).
 
 ## Conventions
 
-- **Scenario id:** `pit-crew.<family>-<subject>`. The translator does NOT see this id; it's the audio-side convention. The compile-time completeness check in `<FAMILY>_SCENARIO_IDS` catches typos.
-- **Pool name:** `<family>-<subject>`. Mirrors the scenario naming so a grep on the family prefix finds both halves. The name does **not** have to equal the manifest `<group>/<base>` (`flag-blue` → `flags`/`blue`; `start-light-ready` → `start-lights`/`start-ready`) — `POOL_REGISTRY` carries the mapping.
+- **Scenario id:** `pit-crew.<family>-<subject>`. The translator does NOT see this id; it's the audio-side convention. The compile-time completeness check in `<FAMILY>_SCENARIO_IDS` catches typos; for a scripted family `bundled-scripts.test.ts` also catches an id the bundled script does not carry, and a script id the code does not declare.
+- **Pool name:** `<family>-<subject>`. Mirrors the scenario naming so a grep on the family prefix finds both halves. The name does **not** have to equal the manifest `<group>/<base>` (`flag-blue` → `flags`/`blue`; `start-light-ready` → `start-lights`/`start-ready`) — the voice script's `pools` (scripted family) or `POOL_REGISTRY` (un-migrated) carries the mapping. A pool name a script uses is published: renaming it is a rename in every pack.
+- **Vocabulary name (var / condition / case):** `<family>.<camelCaseName>` — `session.type`, `flag.furledStillShown`. Names and their descriptions are the public API of the script format; a `case`'s key set is declared with it.
 - **Family identifier (`family:` field):** matches the file/scenario prefix without the `pit-crew.` namespace. So `flag-yellow-local` has `family: "flag"`, `track-conditions-worsening-mostly-dry` has `family: "track-conditions"`.
 
 ## Testing
@@ -170,3 +198,18 @@ bus and asserts that every gate (master, per-callout, engine-internal) actually
 suppresses dispatch. Adding a `PitCrewDeps` key needs no edit there: it passes a
 keyed object, so a key it doesn't set takes its `DEFAULT_DEPS` entry. Add a case
 that exercises the new gate — that is what this file is for.
+
+`bundled-scripts.test.ts` is the completeness test for the bundled voice's
+script (issue #1064): it runs the real `registerPitCrew` against a real engine
+with a pass-through spy on `defineContract` / `defineScenario`, loads the real
+`voice/default/callouts.json` and `manifest.json`, and asserts that every
+contract has an entry (`skip: true` counts), no entry names an undeclared id,
+every entry has `comment` + `test`, every referenced pool / frame / var /
+condition / case key / include is defined, every script pool has a clip for the
+bundled voice, the whole catalog registers against the real manifest with no
+warning and no error (the family tests use hand-built manifests, which is how
+a family once shipped mute — the #1051 lesson), and `setScripts` compiles
+with nothing skipped and nothing warned. It widens on its own as #1065 migrates families — the flags family is
+only its vacuity floor. Tests that fire a scripted contract load the same
+artifact (`import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" }`)
+and call `engine.setScripts(...)` AFTER `registerPitCrew`, as the plugins do.
