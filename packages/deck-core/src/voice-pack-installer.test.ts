@@ -1562,6 +1562,138 @@ describe("createVoicePackInstaller — seed by copy", () => {
     expectNoDebris(disk);
   });
 
+  describe("copies each bundled voice's callouts.json beside its clips (#1064)", () => {
+    // Deliberately NOT what `JSON.stringify` would emit — key order, indent,
+    // a trailing newline and a non-ASCII character in a comment — so a copy
+    // that had been re-serialised on the way would read differently.
+    const SCRIPT_TEXT = [
+      "{",
+      '  "schema": 1,',
+      '  "pools": {},',
+      '  "frames": {},',
+      '  "scenarios": {',
+      '    "flag-green": {',
+      '      "comment": "Green — go racing",',
+      '      "sequence": ["pool:flag-green"]',
+      "    }",
+      "  }",
+      "}",
+      "",
+    ].join("\n");
+    const SCRIPT_PATH = "voice/default/callouts.json";
+
+    function withBundledScript(disk: FakeDisk, text = SCRIPT_TEXT): void {
+      disk.file(join(AUDIO_DIR, ...SCRIPT_PATH.split("/")), text);
+    }
+
+    it("lands the file byte for byte where the scanner reads it", async () => {
+      const disk = new FakeDisk();
+      withBundle(disk);
+      withBundledScript(disk);
+      const { installer } = harness({ disk, bundled: [bundledDefault()] });
+
+      await expect(installer.seed()).resolves.toEqual({
+        outcome: "attempted",
+        results: [{ id: "default", result: { ok: true, outcome: "installed" } }],
+      });
+
+      const live = disk.files(join(ROOT, "default"));
+      expect(live[SCRIPT_PATH]).toBe(SCRIPT_TEXT);
+      delete live[VOICE_PACK_PROVENANCE_FILE];
+      delete live[VOICE_PACK_MANIFEST_FILE];
+      delete live[SCRIPT_PATH];
+      expect(live).toEqual(BUNDLED_CLIPS);
+      // Through the extractor's write port, like every other staged file.
+      expect(disk.writes.some((path) => path.endsWith(join("voice", "default", "callouts.json")))).toBe(true);
+
+      // The real scanner, once the bundle is gone, finds a scripted voice.
+      const { packs, problems } = scanned(disk, []);
+      expect(problems).toEqual([]);
+      expect(packs[0]?.voices[0]?.script).toMatchObject({ schema: 1, scenarios: { "flag-green": {} } });
+      expectNoDebris(disk);
+    });
+
+    it("seeds clips only for a bundled voice that has no script, which the scanner lists as clips-only", async () => {
+      const disk = new FakeDisk();
+      withBundle(disk);
+      const { installer } = harness({ disk, bundled: [bundledDefault()] });
+
+      await expect(installer.seed()).resolves.toMatchObject({
+        results: [{ id: "default", result: { ok: true, outcome: "installed" } }],
+      });
+
+      expect(disk.has(join(ROOT, "default", "voice", "default", "callouts.json"))).toBe(false);
+
+      const { packs, problems } = scanned(disk, []);
+      expect(problems).toEqual([]);
+      expect(packs[0]?.voices).toEqual([{ id: "default", label: "Default", script: null }]);
+    });
+
+    it("decides per voice: a two-voice bundle where only one has a script", async () => {
+      const disk = new FakeDisk();
+      withBundle(disk);
+      withBundledScript(disk);
+      disk.file(join(AUDIO_DIR, "voice", "second", "flags", "blue-01.mp3"), "SECOND-1");
+      const bundled = bundledDefault();
+      bundled.entry.voices = [
+        { id: "default", label: "Default" },
+        { id: "second", label: "Second" },
+      ];
+      const { installer } = harness({ disk, bundled: [bundled] });
+
+      await expect(installer.seed()).resolves.toMatchObject({
+        results: [{ id: "default", result: { ok: true, outcome: "installed" } }],
+      });
+
+      const live = disk.files(join(ROOT, "default"));
+      expect(live[SCRIPT_PATH]).toBe(SCRIPT_TEXT);
+      expect(live["voice/second/callouts.json"]).toBeUndefined();
+      expect(live["voice/second/flags/blue-01.mp3"]).toBe("SECOND-1");
+    });
+
+    it("discards the staged copy when a bundled script exists but cannot be read, rather than seeding a mute pack", async () => {
+      // A script that is there but unopenable is not "no script": seeding the
+      // clips alone would leave a copy that, once the bundle is dropped, is a
+      // voice with every callout skipped and nothing saying why — and the
+      // seed never runs again into a folder that holds a pack. Failing keeps
+      // the folder empty, so the next start tries again.
+      const disk = new FakeDisk();
+      withBundle(disk);
+      // A directory at the file's path: the scanner's port answers EISDIR,
+      // which is a read failure that is not `missing`.
+      disk.dir(join(AUDIO_DIR, ...SCRIPT_PATH.split("/")));
+      const { installer } = harness({ disk, bundled: [bundledDefault()] });
+
+      const result = await installer.seed();
+
+      expect(result).toMatchObject({
+        outcome: "attempted",
+        results: [{ id: "default", result: { ok: false, code: "storage" } }],
+      });
+      expect(disk.has(join(ROOT, "default"))).toBe(false);
+      expectNoDebris(disk);
+    });
+
+    it("copies the script without validating it — the scanner is the judge, on the next scan", async () => {
+      // The seed's job is a faithful copy of what the build shipped. Whether
+      // that is a valid script is the scanner's call, and a malformed one is
+      // reported there as a problem on the voice — which is exactly the
+      // signal the packaging bug should produce.
+      const disk = new FakeDisk();
+      withBundle(disk);
+      withBundledScript(disk, "{not json");
+      const { installer } = harness({ disk, bundled: [bundledDefault()] });
+
+      await expect(installer.seed()).resolves.toMatchObject({
+        results: [{ id: "default", result: { ok: true, outcome: "installed" } }],
+      });
+      expect(disk.files(join(ROOT, "default"))[SCRIPT_PATH]).toBe("{not json");
+      expect(scanned(disk, []).problems.map((problem) => problem.reason)).toEqual([
+        expect.stringContaining("callouts.json is not valid JSON"),
+      ]);
+    });
+  });
+
   it("copies nothing when the other plugin seeded the pack while this one waited for the lock", async () => {
     const disk = new FakeDisk();
     withBundle(disk);

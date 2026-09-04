@@ -1,7 +1,9 @@
+import { CALLOUT_SCRIPT_FILE, type CalloutScript } from "@iracedeck/callout-script";
 import type { ILogger } from "@iracedeck/logger";
 
 import {
   type InstalledVoicePack,
+  readVoiceScript,
   scanVoicePacks,
   type VoicePackFileSystem,
   type VoicePackProblem,
@@ -35,6 +37,17 @@ export interface VoicePackServiceDeps {
   /** Hand each pack's clip list to the scenario engine, as manifest fragments. */
   applyManifest(fragments: readonly (readonly string[])[]): void;
   /**
+   * Hand every voice's callout script to the scenario engine (#1064), voice id
+   * → parsed script, replacing whatever it held. The bundled voices first, read
+   * from `pluginAudioDir`, then each installed voice that has one; a
+   * clips-only voice is simply absent. Called AFTER `applyManifest` — a script
+   * draws its pool clips from what the manifest advertises, so a script must
+   * never be live before its clips are, or a callout firing in that window
+   * would find empty pools — and BEFORE `onPacksChanged`, so the read model
+   * never describes scripts the engine has not been handed.
+   */
+  applyScripts(scripts: ReadonlyMap<string, CalloutScript>): void;
+  /**
    * The scan finished and this service's read model changed. Carries nothing on
    * purpose: the plugin also republishes on Property Inspector appearance, when
    * there is no event to hand it, so both paths read {@link
@@ -61,6 +74,15 @@ export interface VoicePackService {
    * installed and reports a problem.
    */
   problems(): readonly VoicePackProblem[];
+  /**
+   * Voice id → parsed script for the most recent scan — bundled voices first,
+   * then installed voices with one — and the very object `applyScripts` was
+   * handed. Empty before the first refresh. Assigned together with
+   * `installed()` and `problems()`, so a consumer deciding whether the active
+   * voice has a script (the #1064 banner) can never pair a pack list from this
+   * scan with a script map from the last.
+   */
+  scripts(): ReadonlyMap<string, CalloutScript>;
 }
 
 /**
@@ -74,6 +96,39 @@ export interface VoicePackService {
 export function createVoicePackService(deps: VoicePackServiceDeps): VoicePackService {
   let packs: readonly InstalledVoicePack[] = [];
   let problems: readonly VoicePackProblem[] = [];
+  let scripts: ReadonlyMap<string, CalloutScript> = new Map();
+
+  /**
+   * Every bundled voice's script, read from the plugin's own audio root through
+   * the SAME reader the scanner runs over a pack (#1064) — so that when #1034
+   * stage 3 drops the bundle, only the roots list changes.
+   *
+   * A bundled voice is the one case where "no script" is not a clips-only
+   * voice but a bug: the build copies the artifact beside the clips, and a
+   * missing or malformed one means the plugin shipped wrong, not that a pack
+   * author chose silence. It is said at `warn`, once per voice per refresh,
+   * naming the voice and the reason — and the voice is simply absent from the
+   * map, which the engine treats as every callout skipped. Never a throw: the
+   * refresh runs where a throw ends the process.
+   */
+  function readBundledScripts(): Map<string, CalloutScript> {
+    const bundled = new Map<string, CalloutScript>();
+
+    for (const id of deps.reservedVoices) {
+      const read = readVoiceScript(deps.fs, deps.pluginAudioDir, id);
+
+      if (read.ok && read.script !== null) {
+        bundled.set(id, read.script);
+        continue;
+      }
+
+      const reason = read.ok ? `it has no ${CALLOUT_SCRIPT_FILE} — every callout is skipped` : read.reason;
+
+      deps.logger.warn(`Bundled voice "${id}" has no usable script: ${reason}`);
+    }
+
+    return bundled;
+  }
 
   return {
     // Never throws. This runs on two paths that both END THE PLUGIN PROCESS if
@@ -89,8 +144,22 @@ export function createVoicePackService(deps: VoicePackServiceDeps): VoicePackSer
           fs: deps.fs,
           reservedVoices: deps.reservedVoices,
         });
+        // Bundled first, then installed. The two sets cannot overlap — the
+        // scanner refuses a pack's claim on a reserved id — so the order is a
+        // reading order rather than a precedence rule.
+        const next = readBundledScripts();
+
+        for (const pack of scanned) {
+          for (const voice of pack.voices) if (voice.script !== null) next.set(voice.id, voice.script);
+        }
+
+        // One snapshot: the three read-model views describe the SAME scan, so
+        // a consumer reading the active voice off `installed()` and its script
+        // off `scripts()` can never see one from this scan and the other from
+        // the last. A scan that throws above keeps all three.
         packs = scanned;
         problems = found;
+        scripts = next;
 
         // Roots BEFORE the manifest. The manifest is what tells the engine a clip
         // exists; a clip must never be advertised before there is a root that can
@@ -101,12 +170,17 @@ export function createVoicePackService(deps: VoicePackServiceDeps): VoicePackSer
           ...scanned.map((pack) => ({ dir: pack.dir, clips: pack.clips })),
         ]);
         deps.applyManifest(scanned.map((pack) => pack.clips));
+        // Scripts AFTER the manifest, for the reason roots come before it: a
+        // script draws its pool clips from the manifest, so it must not be live
+        // before the clips it names are advertised.
+        deps.applyScripts(next);
         deps.onPacksChanged();
 
         deps.logger.info("Voice packs scanned");
         deps.logger.debug(
           `Installed: ${scanned.map((pack) => `${pack.id}@${pack.version}`).join(", ") || "(none)"}; ` +
-            `problems: ${problems.map((problem) => `${problem.pack} (${problem.reason})`).join(", ") || "(none)"}`,
+            `problems: ${problems.map((problem) => `${problem.pack} (${problem.reason})`).join(", ") || "(none)"}; ` +
+            `scripts: ${[...next.keys()].join(", ") || "(none)"}`,
         );
 
         // Warn per problem, not just in the debug summary: a sideloaded pack that
@@ -130,6 +204,10 @@ export function createVoicePackService(deps: VoicePackServiceDeps): VoicePackSer
 
     problems() {
       return problems;
+    },
+
+    scripts() {
+      return scripts;
     },
   };
 }

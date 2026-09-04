@@ -140,7 +140,7 @@ const MANIFEST_FILE = "voice-pack.json";
  */
 const USABLE_CLIP = /^voice\/[^/]+\/[^/]+\/[^/]+\.mp3$/;
 
-type VoiceScriptRead = { ok: true; script: CalloutScript | null } | { ok: false; reason: string };
+export type VoiceScriptRead = { ok: true; script: CalloutScript | null } | { ok: false; reason: string };
 
 /**
  * Read one voice's `voice/<id>/callouts.json` (#1064).
@@ -159,8 +159,13 @@ type VoiceScriptRead = { ok: true; script: CalloutScript | null } | { ok: false;
  * problems are already path-prefixed, so the file name is all that is added.
  * Only the FIRST grammar problem is reported: one line per dropped voice in
  * the Installed Voices list, as the manifest reader does for a pack.
+ *
+ * Exported for the voice-pack service, which reads each BUNDLED voice's script
+ * under the plugin's own audio root through this same function (#1064): one
+ * reader for both roots, so that when the bundle is dropped only the roots
+ * list changes.
  */
-function readVoiceScript(fs: VoicePackFileSystem, dir: string, voiceId: string): VoiceScriptRead {
+export function readVoiceScript(fs: VoicePackFileSystem, dir: string, voiceId: string): VoiceScriptRead {
   const read = fs.readTextFile(join(dir, calloutScriptPath(voiceId)));
 
   if (!read.ok) {
