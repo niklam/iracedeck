@@ -9,6 +9,7 @@
  * See `docs/plans/2026-04-19-audio-architecture-design.md` §7 for rationale.
  */
 import type { AudioBus, AudioChannel } from "@iracedeck/audio-service";
+import { NO_FRAME } from "@iracedeck/callout-script";
 import type { SimEventName, SimEventOf } from "@iracedeck/event-bus";
 
 /**
@@ -55,6 +56,23 @@ export const WEIGHT = {
 export const DEFAULT_WEIGHT: number = WEIGHT.NORMAL;
 
 /**
+ * The frame a contract or legacy scenario is wrapped in when it names none
+ * (issue #1064): the walkie-talkie radio frame the active voice's script
+ * defines under that name. The engine applies it around a body that expanded
+ * to at least one clip; a body that says nothing gets no beeps.
+ */
+export const DEFAULT_FRAME = "radio";
+
+/**
+ * The reserved frame name that means "unframed". Re-exported from the grammar
+ * package so the engine, the scanner and the generator agree on the one
+ * spelling — a script may override a contract's frame with it, and a contract
+ * carries it where the beeps would drown the words (count-ins, nags, corner
+ * names, spotter calls).
+ */
+export { NO_FRAME };
+
+/**
  * Runtime context passed to conditional `if` steps and `where` predicates.
  *
  * `telemetry` is the snapshot carried by the event envelope (may be undefined
@@ -97,12 +115,19 @@ export type Step =
   | { ambient: "start" | "stop" | "seek" };
 
 /**
- * A scenario — the core unit of the audio catalog.
+ * The code-owned half of a scenario (issue #1064): WHETHER and WHEN the
+ * engineer speaks, and how the fire is scheduled. What he says — the
+ * `sequence` — is the voice pack's half, paired to the contract by `id` in
+ * the voice's `callouts.json` and compiled by `setScripts`. A pack can
+ * reference the vocabulary a contract's family registers (`defineVar` /
+ * `defineCond` / `defineCase`) but never change any field here: scheduling,
+ * pacing and triggers are withheld deliberately, because a pack that demotes
+ * a safety flag or zeroes a cooldown produces what reads as a plugin bug.
  *
- * Scenarios without `when` never auto-fire; consumers trigger them via
+ * Contracts without `when` never auto-fire; consumers trigger them via
  * `engine.fire(id)` (used for PI "Test" buttons).
  */
-export type Scenario = {
+export type ScenarioContract = {
   id: string;
   when?: {
     event: SimEventName;
@@ -206,8 +231,24 @@ export type Scenario = {
   triggerDelay?: number;
   /** Optional path prefix applied to clip/pool members; leading `/` on a path escapes it. */
   base?: string;
-  sequence: Step[];
+  /**
+   * The frame the engine wraps a non-empty body in (issue #1064), by name:
+   * `DEFAULT_FRAME` (`"radio"`) when omitted, `NO_FRAME` (`"none"`) for a
+   * callout whose cadence would have the beeps drown the words. What a frame
+   * name MEANS is the active voice's business — its script defines the
+   * `open` / `close` steps — and a script entry may override this default
+   * per scenario.
+   */
+  frame?: string;
 };
+
+/**
+ * A scenario — a contract welded to its sequence in code. The catalog's
+ * un-migrated families still define these (`defineScenario`); the migrated
+ * ones register a `ScenarioContract` and leave the sequence to the pack
+ * (#1065 finishes the move).
+ */
+export type Scenario = ScenarioContract & { sequence: Step[] };
 
 /** Resolved step after shorthand parsing — what the interpreter actually walks. */
 export type ResolvedStep =
@@ -219,7 +260,15 @@ export type ResolvedStep =
   | { kind: "include"; id: string }
   | { kind: "if"; predicate: (ctx: ScenarioContext) => boolean; then: ResolvedStep[]; else?: ResolvedStep[] }
   | { kind: "optional"; steps: ResolvedStep[] }
-  | { kind: "ambient"; action: "start" | "stop" | "seek" };
+  | { kind: "ambient"; action: "start" | "stop" | "seek" }
+  /**
+   * A multi-way branch keyed by a registered case var (issue #1064). Only a
+   * compiled script produces this kind — the closure DSL has no `case` form,
+   * because the key set is code's to declare (`defineCase`) and the mapping
+   * is the pack's to write. `of` holds the declared keys the script mapped;
+   * `fallback` is its `default` branch (`[]` when it wrote none).
+   */
+  | { kind: "case"; name: string; of: ReadonlyMap<string, ResolvedStep[]>; fallback: ResolvedStep[] };
 
 /**
  * Parse a shorthand string into a resolved step.

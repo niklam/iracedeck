@@ -33,25 +33,77 @@
  *   - Paths matching the manifest's walkie-talkie ticks go on the SFX channel.
  *   - Everything else goes on the scenario's declared `channel` (typically Voice).
  *   - The Ambient channel is driven exclusively by `{ ambient: "start|stop|seek" }`.
+ *
+ * Pack-owned scripts (issue #1064):
+ *   - A `ScenarioContract` (`defineContract`) subscribes exactly like a
+ *     `Scenario` but holds no sequence. What it says comes from the active
+ *     voice's `callouts.json`, handed in as a map by `setScripts` and compiled
+ *     eagerly (`script-compiler.ts`) against the contracts, vars, conditions,
+ *     cases and pools registered in code. A voice with no compiled entry for a
+ *     contract is silent for it — no cooldown, no bus take — never a half-line.
+ *   - `defineCond` / `defineCase` are the script-facing registries beside
+ *     `defineVar`; `vocabulary()` reports all three for the generated reference
+ *     (#1066). Registering anything after `setScripts` marks the compiled map
+ *     dirty and the next `prepareOps` recompiles before use.
+ *   - Frames: a body that expanded to at least one clip is wrapped in the
+ *     frame its script entry (else its contract, else `DEFAULT_FRAME`) names,
+ *     as the active voice's script defines it. The user's Radio beeps /
+ *     Pit ambience settings arrive through `getFrameOptions` and drop the
+ *     frame's non-ambient / ambient ops respectively. A legacy `Scenario` is
+ *     framed the same way when its voice has a script, and plays unframed
+ *     when it does not (transitional; #1065 removes legacy scenarios).
+ *   - A pool named by the active voice's script shadows a code-registered
+ *     pool of the same name, for that voice only; a slashed pool step
+ *     (`group/base`) addresses the voice's clip groups directly.
  */
 import type { AudioBus, IAudioService } from "@iracedeck/audio-service";
 import { AudioChannel } from "@iracedeck/audio-service";
+import type { CalloutScript } from "@iracedeck/callout-script";
 import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import type { ILogger } from "@iracedeck/logger";
 import { silentLogger } from "@iracedeck/logger";
 
-import type { ResolvedStep, Scenario, ScenarioContext } from "./dsl.js";
-import { applyBase, DEFAULT_WEIGHT, resolveStep } from "./dsl.js";
+import type { ResolvedStep, Scenario, ScenarioContext, ScenarioContract } from "./dsl.js";
+import { applyBase, DEFAULT_FRAME, DEFAULT_WEIGHT, NO_FRAME, resolveStep } from "./dsl.js";
 // Manifest types + helpers live in `./manifest.js` to break a circular
 // import with `./validation.js`, which also needs `referenceVoice`.
 import { type AudioAssetsManifest, referenceVoice } from "./manifest.js";
+import { type CompiledVoiceScript, compileVoiceScript } from "./script-compiler.js";
 import { validateScenario } from "./validation.js";
 
 // Re-export so existing consumers of `interpreter.js` keep their import paths.
 export { type AudioAssetsManifest, manifestVoices } from "./manifest.js";
 
+/**
+ * The user's two frame switches (issue #1064), read live at every frame
+ * expansion: `beeps` keeps the frame's non-ambient steps (the walkie-talkie
+ * ticks, or whatever a pack put there), `ambience` keeps its `ambient` steps.
+ * The definition is by position in the frame, not by clip path, so a pack's
+ * own beep clip is governed by the setting too.
+ */
+export type FrameOptions = { beeps: boolean; ambience: boolean };
+
+/**
+ * What the engine's vocabulary registries hold, for the generated pack-author
+ * reference and `lint:pack` (#1066): every var, condition and case with its
+ * description, and each case's declared key set with what each key means.
+ * Sorted by name, so two engines registering the same catalog report equal.
+ */
+export type VocabularyReport = {
+  vars: readonly { name: string; description: string }[];
+  conds: readonly { name: string; description: string }[];
+  cases: readonly { name: string; description: string; keys: Readonly<Record<string, string>> }[];
+};
+
 export interface IScenarioEngine {
   defineScenario(s: Scenario): void;
+  /**
+   * Register the code-owned half of a scripted scenario (issue #1064): the
+   * trigger, the scheduling and the default frame, with no sequence. What it
+   * says comes from the active voice's script (`setScripts`); a voice whose
+   * script has no compiled entry for the id is silent for it.
+   */
+  defineContract(c: ScenarioContract): void;
   definePool(name: string, clips: string[]): void;
   /**
    * Register a pool whose members are derived from the audio-asset manifest
@@ -78,7 +130,40 @@ export interface IScenarioEngine {
 
   /** @internal Exported for testing — the manifest currently in force. */
   currentManifest(): AudioAssetsManifest;
-  defineVar(name: string, resolver: () => string | null): void;
+  /**
+   * Register a variable a sequence reads with `{{name}}`: a clip path or a
+   * `pool:<group>/<base>` reference, or `null` for "nothing to say". The
+   * description feeds the generated reference (#1066).
+   */
+  defineVar(name: string, resolver: () => string | null, description?: string): void;
+  /**
+   * Register a condition a script's `if` names (issue #1064). Scripts can
+   * only reference conditions, never compose them — a script needing
+   * `a && b` gets a named condition registered here.
+   */
+  defineCond(name: string, predicate: () => boolean, description: string): void;
+  /**
+   * Register a case var a script's `case` branches on (issue #1064). The key
+   * set is DECLARED, not inferred: `keys` maps each key the resolver can
+   * return to what it means, which is what lets a pack author write the
+   * branch without reading the resolver, and lets the compiler refuse a
+   * typo'd key. A resolver returning an undeclared key is a code bug (warned
+   * once) and takes the script's `default` branch.
+   */
+  defineCase(
+    name: string,
+    resolver: () => string | null,
+    keys: Readonly<Record<string, string>>,
+    description: string,
+  ): void;
+  /**
+   * Replace the voice scripts wholesale — voice id → parsed `callouts.json`
+   * — and compile every one eagerly against the registries (issue #1064).
+   * Runs on every voice-pack rescan, exactly as `setManifest` does.
+   */
+  setScripts(scripts: ReadonlyMap<string, CalloutScript>): void;
+  /** Everything the vocabulary registries hold, for the reference generator and the pack linter (#1066). */
+  vocabulary(): VocabularyReport;
   setEnabled(scenarioId: string, enabled: boolean): void;
   fire(scenarioId: string): void;
   stopAll(): void;
@@ -113,8 +198,15 @@ type PoolState =
     };
 
 type CompiledScenario = {
-  raw: Scenario;
-  resolvedSequence: ResolvedStep[];
+  raw: ScenarioContract;
+  /**
+   * The sequence a legacy `Scenario` welded on, resolved once at definition;
+   * `null` for a contract, whose body is looked up in the active voice's
+   * compiled script at fire time (issue #1064).
+   */
+  resolvedSequence: ResolvedStep[] | null;
+  /** The default frame name (`s.frame ?? DEFAULT_FRAME`); a script entry may override it. */
+  frame: string;
   enabled: boolean;
   unsubscribe: (() => void) | null;
   lastFireAt: number;
@@ -245,9 +337,22 @@ class ScenarioEngine implements IScenarioEngine {
    */
   private readonly getActiveVoice: () => string | null;
 
+  /**
+   * The user's Radio beeps / Pit ambience switches (issue #1064), read at
+   * every frame expansion so a toggle takes effect on the next callout.
+   */
+  private readonly getFrameOptions: () => FrameOptions;
+
   private readonly scenarios = new Map<string, CompiledScenario>();
   private readonly pools = new Map<string, PoolState>();
   private readonly vars = new Map<string, () => string | null>();
+  /** Parallel to `vars`: the description each var was registered with (`""` when none). */
+  private readonly varDescriptions = new Map<string, string>();
+  private readonly conds = new Map<string, { predicate: () => boolean; description: string }>();
+  private readonly cases = new Map<
+    string,
+    { resolve: () => string | null; keys: Readonly<Record<string, string>>; description: string }
+  >();
   private readonly busState = new Map<AudioBus, BusState>();
   /** Set view of `manifest.clips` for O(1) availability checks at expansion time. */
   private clipSet: Set<string>;
@@ -258,18 +363,47 @@ class ScenarioEngine implements IScenarioEngine {
    */
   private readonly manifestPoolSources = new Map<string, { group: string; base: string }>();
 
+  /** Voice id → parsed script, as last handed in by `setScripts` (issue #1064). */
+  private scripts: ReadonlyMap<string, CalloutScript> = new Map();
+  /** Voice id → the script compiled against the registries as they stood at the last compile. */
+  private compiled: ReadonlyMap<string, CompiledVoiceScript> = new Map();
+  /**
+   * Set by every registration that feeds the compile (contracts, vars,
+   * conditions, cases, pools, legacy fragments); the next `prepareOps`
+   * recompiles before it looks anything up.
+   */
+  private scriptsDirty = false;
+  /**
+   * Per-voice state of the pools a script defines — the no-repeat tracker
+   * and the manifest-derived members — keyed `(voice, pool name)`. Built
+   * lazily on first pick; cleared by `setManifest` and by every compile.
+   */
+  private readonly scriptPoolState = new Map<string, Map<string, PoolState>>();
+  /**
+   * Non-deliberate skips already warned about since the last `setScripts`,
+   * keyed `voice|id|reason`, so a dirty recompile only warns about what is
+   * new rather than repeating the load's diagnostics on the first fire.
+   */
+  private readonly warnedSkips = new Set<string>();
+  /** `(case, key)` pairs a resolver returned without declaring — a code bug, warned once each. */
+  private readonly warnedCaseKeys = new Set<string>();
+  /** `(voice, frame)` pairs a legacy scenario asked for that the voice's script does not define — warned once each. */
+  private readonly warnedLegacyFrames = new Set<string>();
+
   constructor(
     eventBus: IEventBus,
     audio: IAudioService,
     manifest: AudioAssetsManifest,
     logger: ILogger,
     getActiveVoice: () => string | null = () => null,
+    getFrameOptions: () => FrameOptions = () => ({ beeps: true, ambience: true }),
   ) {
     this.eventBus = eventBus;
     this.audio = audio;
     this.manifest = manifest;
     this.logger = logger;
     this.getActiveVoice = getActiveVoice;
+    this.getFrameOptions = getFrameOptions;
     this.clipSet = new Set(manifest.clips);
   }
 
@@ -292,6 +426,31 @@ class ScenarioEngine implements IScenarioEngine {
   // ── Definition API ──
 
   defineScenario(s: Scenario): void {
+    let resolvedSequence: ResolvedStep[];
+
+    try {
+      resolvedSequence = s.sequence.map(resolveStep);
+    } catch (err) {
+      this.logger.error(`Scenario "${s.id}" rejected: ${err instanceof Error ? err.message : String(err)}`);
+
+      return;
+    }
+
+    this.registerEntry(s, resolvedSequence);
+  }
+
+  defineContract(c: ScenarioContract): void {
+    this.registerEntry(c, null);
+  }
+
+  /**
+   * The shared registration path: a legacy scenario brings its resolved
+   * sequence, a contract brings `null` and is scripted per voice at fire
+   * time. Either way the id is subscribed, validated and — since a new id
+   * or fragment changes what the scripts compile against — marks the
+   * compiled scripts dirty.
+   */
+  private registerEntry(s: ScenarioContract, resolvedSequence: ResolvedStep[] | null): void {
     const existing = this.scenarios.get(s.id);
 
     if (existing) {
@@ -304,19 +463,10 @@ class ScenarioEngine implements IScenarioEngine {
       }
     }
 
-    let resolvedSequence: ResolvedStep[];
-
-    try {
-      resolvedSequence = s.sequence.map(resolveStep);
-    } catch (err) {
-      this.logger.error(`Scenario "${s.id}" rejected: ${err instanceof Error ? err.message : String(err)}`);
-
-      return;
-    }
-
     const entry: CompiledScenario = {
       raw: s,
       resolvedSequence,
+      frame: s.frame ?? DEFAULT_FRAME,
       enabled: true,
       unsubscribe: null,
       lastFireAt: 0,
@@ -324,6 +474,7 @@ class ScenarioEngine implements IScenarioEngine {
     };
 
     this.scenarios.set(s.id, entry);
+    this.scriptsDirty = true;
 
     const { errors, warnings } = validateScenario(
       s,
@@ -389,6 +540,7 @@ class ScenarioEngine implements IScenarioEngine {
     }
 
     this.pools.set(name, { kind: "static", clips: [...clips], lastIndex: -1 });
+    this.scriptsDirty = true;
   }
 
   definePoolFromManifest(name: string, group: string, base: string): void {
@@ -412,11 +564,16 @@ class ScenarioEngine implements IScenarioEngine {
     }
 
     this.pools.set(name, pool);
+    this.scriptsDirty = true;
   }
 
   setManifest(manifest: AudioAssetsManifest): void {
     this.manifest = manifest;
     this.clipSet = new Set(manifest.clips);
+
+    // Script-defined pools are derived per voice from the manifest too (issue
+    // #1064); drop every cached member list so the next pick rebuilds it.
+    this.scriptPoolState.clear();
 
     // Re-derive every manifest-backed pool from its recorded `(group, base)`.
     // Members are per-voice, so a pack arriving or leaving changes what a pool
@@ -476,8 +633,125 @@ class ScenarioEngine implements IScenarioEngine {
     return { kind: "manifest", group, base, byVoice, lastIndex: -1, lastVoice: null };
   }
 
-  defineVar(name: string, resolver: () => string | null): void {
+  defineVar(name: string, resolver: () => string | null, description = ""): void {
     this.vars.set(name, resolver);
+    this.varDescriptions.set(name, description);
+    this.scriptsDirty = true;
+  }
+
+  defineCond(name: string, predicate: () => boolean, description: string): void {
+    this.conds.set(name, { predicate, description });
+    this.scriptsDirty = true;
+  }
+
+  defineCase(
+    name: string,
+    resolver: () => string | null,
+    keys: Readonly<Record<string, string>>,
+    description: string,
+  ): void {
+    this.cases.set(name, { resolve: resolver, keys: { ...keys }, description });
+    this.scriptsDirty = true;
+  }
+
+  vocabulary(): VocabularyReport {
+    const byName = <T extends { name: string }>(items: T[]): T[] => items.sort((a, b) => a.name.localeCompare(b.name));
+
+    return {
+      vars: byName([...this.vars.keys()].map((name) => ({ name, description: this.varDescriptions.get(name) ?? "" }))),
+      conds: byName([...this.conds].map(([name, { description }]) => ({ name, description }))),
+      cases: byName([...this.cases].map(([name, { description, keys }]) => ({ name, description, keys: { ...keys } }))),
+    };
+  }
+
+  setScripts(scripts: ReadonlyMap<string, CalloutScript>): void {
+    this.scripts = new Map(scripts);
+    this.warnedSkips.clear();
+    this.compileScripts();
+    this.logger.info("Voice scripts loaded");
+  }
+
+  /**
+   * Recompile when a registration landed after the last compile. Called at
+   * the top of `prepareOps`, so a contract defined after `setScripts` (or a
+   * script loaded before the catalog registered) is compiled before its
+   * first fire ever looks it up.
+   */
+  private ensureCompiled(): void {
+    if (!this.scriptsDirty) return;
+
+    if (this.scripts.size === 0) {
+      this.scriptsDirty = false;
+
+      return;
+    }
+
+    this.compileScripts();
+    this.logger.debug("Voice scripts recompiled");
+  }
+
+  /**
+   * Compile every voice's script against the registries as they stand now.
+   * Per voice: one debug line with the scripted count, the deliberate skips
+   * at debug, and ONE warn per (voice, scenario) for a skip the pack did not
+   * mean — deduped across recompiles, so a dirty recompile only reports what
+   * changed. The compiler never throws; neither does this.
+   */
+  private compileScripts(): void {
+    this.scriptsDirty = false;
+    this.scriptPoolState.clear();
+
+    const contracts = new Map<string, { frame: string }>();
+    const fragments = new Set<string>();
+
+    for (const [id, entry] of this.scenarios) {
+      if (entry.resolvedSequence === null) contracts.set(id, { frame: entry.frame });
+      else fragments.add(id);
+    }
+
+    const conds = new Map<string, () => boolean>();
+
+    for (const [name, { predicate }] of this.conds) conds.set(name, predicate);
+
+    const cases = new Map<string, { resolve: () => string | null; keys: ReadonlySet<string> }>();
+
+    for (const [name, { resolve, keys }] of this.cases) cases.set(name, { resolve, keys: new Set(Object.keys(keys)) });
+
+    const deps = {
+      contracts,
+      vars: new Set(this.vars.keys()),
+      conds,
+      cases,
+      // Registered names only: the `pool:` keys are cached dynamic refs, not pools a script may name.
+      legacyPools: new Set([...this.pools.keys()].filter((name) => !name.startsWith("pool:"))),
+      fragments,
+    };
+
+    const compiled = new Map<string, CompiledVoiceScript>();
+
+    for (const [voice, script] of this.scripts) {
+      const result = compileVoiceScript(script, deps);
+      compiled.set(voice, result);
+
+      this.logger.debug(`Voice "${voice}": ${result.scenarios.size} of ${contracts.size} callouts scripted`);
+
+      const deliberate = result.skipped.filter((skip) => skip.deliberate).map((skip) => skip.id);
+
+      if (deliberate.length > 0) this.logger.debug(`Voice "${voice}": not scripted — ${deliberate.join(", ")}`);
+
+      for (const skip of result.skipped) {
+        if (skip.deliberate) continue;
+
+        const key = `${voice}|${skip.id}|${skip.reason}`;
+
+        if (this.warnedSkips.has(key)) continue;
+
+        this.warnedSkips.add(key);
+        this.logger.warn(`Voice "${voice}": scenario "${skip.id}" skipped — ${skip.reason}`);
+      }
+    }
+
+    this.compiled = compiled;
   }
 
   setEnabled(scenarioId: string, enabled: boolean): void {
@@ -786,11 +1060,22 @@ class ScenarioEngine implements IScenarioEngine {
    * (issue #835). Returns `null` when the fire must not play: a REQUIRED
    * clip-producing step resolved to nothing (missing clip / null var / empty
    * pool for the active voice — never a half-sentence), the expansion threw,
-   * or it produced no ops. `attemptFire` calls this BEFORE any bus
-   * cancellation, so an aborting fire can't silence an in-flight one, and an
-   * aborted fire stamps no cooldown.
+   * it produced no ops, or — for a contract — the active voice's script has
+   * no compiled entry for it (issue #1064). `attemptFire` calls this BEFORE
+   * any bus cancellation, so an aborting fire can't silence an in-flight
+   * one, and an aborted fire stamps no cooldown.
+   *
+   * Frame application (issue #1064): a body that expanded to at least one
+   * clip is wrapped in its frame — the script entry's, else the contract's,
+   * else `DEFAULT_FRAME` — as the active voice's script defines it, with the
+   * user's beeps / ambience switches applied by position. An empty body, or
+   * one with no clip at all, gets no frame: no callout ever plays bare ticks
+   * around nothing. The frame is part of the callout, so a frame step that
+   * resolves to nothing aborts the fire like any other required step.
    */
   private prepareOps(entry: CompiledScenario, event: SimEventOf<SimEventName> | null): ExecOp[] | null {
+    this.ensureCompiled();
+
     const ctx: ScenarioContext = {
       event,
       telemetry: event?.telemetry ?? null,
@@ -799,16 +1084,58 @@ class ScenarioEngine implements IScenarioEngine {
       vars: {},
     };
 
+    const voice = this.getActiveVoice();
+    const script = voice === null ? undefined : this.compiled.get(voice);
+    let body: ResolvedStep[];
+    let frameName: string;
+
+    if (entry.resolvedSequence === null) {
+      const scripted = script?.scenarios.get(entry.raw.id);
+
+      if (!scripted) {
+        this.logger.debug(`Scenario "${entry.raw.id}" skipped — no script for voice "${voice ?? "(none)"}"`);
+
+        return null;
+      }
+
+      body = scripted.resolved;
+      frameName = scripted.frame;
+    } else {
+      body = entry.resolvedSequence;
+      frameName = entry.frame;
+    }
+
     let expanded: ExecOp[];
 
     try {
-      expanded = this.expandSequence(
-        entry.resolvedSequence,
-        entry.raw.base,
-        entry.raw.channel,
-        ctx,
-        new Set([entry.raw.id]),
-      );
+      expanded = this.expandSequence(body, entry.raw.base, entry.raw.channel, ctx, new Set([entry.raw.id]));
+
+      if (frameName !== NO_FRAME && expanded.some((op) => op.kind === "play")) {
+        const frame = script?.frames.get(frameName);
+
+        if (frame) {
+          const options = this.frameOptions();
+          const expandFrame = (steps: ResolvedStep[]) =>
+            this.expandSequence(steps, undefined, entry.raw.channel, ctx, new Set([entry.raw.id])).filter((op) =>
+              op.kind === "ambient" ? options.ambience : options.beeps,
+            );
+
+          expanded = [...expandFrame(frame.open), ...expanded, ...expandFrame(frame.close)];
+        } else if (script && voice !== null) {
+          // A contract's frame was checked at compile time, so only a legacy
+          // scenario can get here: the voice has a script, but not this frame.
+          const key = `${voice}|${frameName}`;
+
+          if (!this.warnedLegacyFrames.has(key)) {
+            this.warnedLegacyFrames.add(key);
+            this.logger.warn(
+              `Voice "${voice}" defines no frame "${frameName}" — legacy scenarios using it play unframed`,
+            );
+          }
+        } else {
+          this.logger.debug(`Scenario "${entry.raw.id}" plays unframed — no script for voice "${voice ?? "(none)"}"`);
+        }
+      }
     } catch (err) {
       if (err instanceof ExpansionAbort) {
         this.logger.debug(`Scenario "${entry.raw.id}" skipped — ${err.reason}`);
@@ -830,6 +1157,17 @@ class ScenarioEngine implements IScenarioEngine {
     }
 
     return expanded;
+  }
+
+  /** The user's frame switches, read live; a throwing accessor keeps the frame whole. */
+  private frameOptions(): FrameOptions {
+    try {
+      return this.getFrameOptions();
+    } catch (err) {
+      this.logger.error(`getFrameOptions threw: ${err instanceof Error ? err.message : String(err)}`);
+
+      return { beeps: true, ambience: true };
+    }
   }
 
   private executeFire(
@@ -1110,7 +1448,12 @@ class ScenarioEngine implements IScenarioEngine {
         }
 
         case "pool": {
-          const pick = this.pickFromPool(step.name, step.noRepeat);
+          // A slashed name addresses the voice's own clip groups directly
+          // (`group/base`, issue #1064) — the same reference form a var
+          // resolver returns. Registered names never carry a slash.
+          const pick = step.name.includes("/")
+            ? this.pickFromPoolRef(`pool:${step.name}`)
+            : this.pickFromPool(step.name, step.noRepeat);
 
           if (!pick) throw new ExpansionAbort(`pool "${step.name}" resolved to nothing for the active voice`);
 
@@ -1142,6 +1485,10 @@ class ScenarioEngine implements IScenarioEngine {
 
           if (!target) throw new Error(`include target not found: ${step.id}`);
 
+          // A contract has no sequence of its own to splice in: includes
+          // target legacy fragments only (the compiler enforces the same).
+          if (target.resolvedSequence === null) throw new Error(`include target has no sequence: ${step.id}`);
+
           const nested = this.expandSequence(
             target.resolvedSequence,
             target.raw.base,
@@ -1164,6 +1511,16 @@ class ScenarioEngine implements IScenarioEngine {
 
           const branch = predicateResult ? step.then : (step.else ?? []);
           out.push(...this.expandSequence(branch, base, defaultChannel, ctx, visitedIncludes));
+          break;
+        }
+
+        case "case": {
+          // The resolver returns a key; the script maps keys to steps (issue
+          // #1064). An unmapped key takes the script's `default` branch, or
+          // nothing — the completeness of the mapping is the pack's business.
+          // A key the resolver never DECLARED is a code bug: warned once, then
+          // treated as unmapped.
+          out.push(...this.expandSequence(this.pickCaseBranch(step), base, defaultChannel, ctx, visitedIncludes));
           break;
         }
 
@@ -1246,8 +1603,74 @@ class ScenarioEngine implements IScenarioEngine {
     return this.pickFromPool(ref, true);
   }
 
+  private pickCaseBranch(step: Extract<ResolvedStep, { kind: "case" }>): ResolvedStep[] {
+    const declared = this.cases.get(step.name);
+
+    if (!declared) {
+      // The compiler refuses a script naming an unregistered case, so this is
+      // reachable only if the case was registered and later replaced.
+      this.logger.error(`case "${step.name}" is not registered — taking the default branch`);
+
+      return step.fallback;
+    }
+
+    let key: string | null = null;
+
+    try {
+      key = declared.resolve();
+    } catch (err) {
+      this.logger.error(`case "${step.name}" resolver threw: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
+    if (key === null) return step.fallback;
+
+    if (!Object.hasOwn(declared.keys, key)) {
+      const warnKey = `${step.name}|${key}`;
+
+      if (!this.warnedCaseKeys.has(warnKey)) {
+        this.warnedCaseKeys.add(warnKey);
+        this.logger.warn(`case "${step.name}" resolved to undeclared key "${key}" — taking the default branch`);
+      }
+
+      return step.fallback;
+    }
+
+    return step.of.get(key) ?? step.fallback;
+  }
+
+  /**
+   * A pool the active voice's script defines shadows a code-registered pool
+   * of the same name, for that voice only (issue #1064): its state lives in
+   * the per-voice cache, built from the manifest on first pick.
+   */
+  private scriptPool(name: string): PoolState | null {
+    const voice = this.getActiveVoice();
+
+    if (voice === null) return null;
+
+    const source = this.compiled.get(voice)?.pools.get(name);
+
+    if (!source) return null;
+
+    let perVoice = this.scriptPoolState.get(voice);
+
+    if (!perVoice) {
+      perVoice = new Map();
+      this.scriptPoolState.set(voice, perVoice);
+    }
+
+    let pool = perVoice.get(name);
+
+    if (!pool) {
+      pool = this.buildManifestPool(source.group, source.base);
+      perVoice.set(name, pool);
+    }
+
+    return pool;
+  }
+
   private pickFromPool(name: string, noRepeat: boolean): string | null {
-    const pool = this.pools.get(name);
+    const pool = this.scriptPool(name) ?? this.pools.get(name);
 
     if (!pool) {
       // Surfaces a class of bug that's otherwise silent: a scenario references
@@ -1379,12 +1802,13 @@ export function initializeAudioScenarios(
   manifest: AudioAssetsManifest,
   logger: ILogger = silentLogger,
   getActiveVoice: () => string | null = () => null,
+  getFrameOptions: () => FrameOptions = () => ({ beeps: true, ambience: true }),
 ): IScenarioEngine {
   if (engine) {
     throw new Error("Audio scenarios already initialized. initializeAudioScenarios() should only be called once.");
   }
 
-  const built = new ScenarioEngine(eventBus, audio, manifest, logger, getActiveVoice);
+  const built = new ScenarioEngine(eventBus, audio, manifest, logger, getActiveVoice, getFrameOptions);
   logger.info("Audio scenarios initialized");
   engine = built;
 

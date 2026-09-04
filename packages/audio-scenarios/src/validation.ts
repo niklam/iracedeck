@@ -1,26 +1,32 @@
 /**
- * Load-time validation for scenarios.
+ * Load-time validation for scenarios and contracts.
  *
- * Runs on `defineScenario` against the already-loaded scenarios, pools,
- * variables, and audio-asset manifest. Returns human-readable `errors`
- * (non-empty disables the scenario) and `warnings` (logged, scenario stays
- * enabled — e.g. a probable typo in a `{voice}`-templated path).
+ * Runs on `defineScenario` / `defineContract` against the already-loaded
+ * scenarios, pools, variables, and audio-asset manifest. Returns
+ * human-readable `errors` (non-empty disables the scenario) and `warnings`
+ * (logged, scenario stays enabled — e.g. a probable typo in a
+ * `{voice}`-templated path).
+ *
+ * The scheduling-metadata checks apply to every registration. The sequence
+ * checks run only when a resolved sequence is present — a contract (issue
+ * #1064) has nothing sequence-shaped to validate here; its scripted bodies
+ * are checked per voice by `script-compiler.ts`.
  *
  * Include-cycle detection is performed here (at load time) *in addition* to
  * the runtime guard in the interpreter's expansion code, so broken graphs
  * surface as soon as they're registered rather than only when fired.
  */
-import type { ResolvedStep, Scenario } from "./dsl.js";
+import type { ResolvedStep, ScenarioContract } from "./dsl.js";
 import { applyBase } from "./dsl.js";
 import { type AudioAssetsManifest, referenceVoice } from "./manifest.js";
 
-type CompiledEntry = { raw: Scenario; resolvedSequence: ResolvedStep[] };
+type CompiledEntry = { raw: ScenarioContract; resolvedSequence: ResolvedStep[] | null };
 
 export type ScenarioValidationResult = { errors: string[]; warnings: string[] };
 
 export function validateScenario(
-  s: Scenario,
-  resolved: ResolvedStep[],
+  s: ScenarioContract,
+  resolved: ResolvedStep[] | null,
   scenarios: Map<string, CompiledEntry>,
   pools: Map<string, unknown>,
   vars: Map<string, () => string | null>,
@@ -49,7 +55,7 @@ export function validateScenario(
     errors.push(`pendingHoldMs must be a non-negative number (got ${String(s.pendingHoldMs)})`);
   }
 
-  walk(resolved, s.base, new Set([s.id]));
+  if (resolved !== null) walk(resolved, s.base, new Set([s.id]));
 
   return { errors, warnings };
 
@@ -113,6 +119,13 @@ export function validateScenario(
             break;
           }
 
+          // A contract has no sequence to splice in — includes target legacy
+          // fragments only (issue #1064; the script compiler enforces the same).
+          if (target.resolvedSequence === null) {
+            errors.push(`include target has no sequence (a contract): ${step.id}`);
+            break;
+          }
+
           walk(target.resolvedSequence, target.raw.base, new Set([...visited, step.id]));
           break;
         }
@@ -126,6 +139,16 @@ export function validateScenario(
 
         case "optional":
           walk(step.steps, base, visited);
+
+          break;
+
+        case "case":
+          // Only a compiled script produces this kind, and the compiler has
+          // already checked its references; walked for the clip/include
+          // checks all the same, so a hand-built tree is not exempt.
+          for (const branch of step.of.values()) walk(branch, base, visited);
+
+          walk(step.fallback, base, visited);
 
           break;
 
