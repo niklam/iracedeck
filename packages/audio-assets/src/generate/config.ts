@@ -1,3 +1,11 @@
+import {
+  CalloutScriptEntrySchema,
+  FrameDefinitionSchema,
+  NO_FRAME,
+  POOL_DEFINITION_NAME_PATTERN,
+  PoolDefinitionSchema,
+  SCENARIO_ID_PATTERN,
+} from "@iracedeck/callout-script";
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -9,6 +17,29 @@ import type { Manifest } from "./manifest.ts";
 // Voice and group keys must start with a letter — they're category labels and
 // never purely numeric in practice.
 const kebab = z.string().regex(/^[a-z][a-z0-9-]*$/, "must be lowercase kebab-case (a-z, 0-9, dashes)");
+
+// The keys of the three callout-script maps (#1064). Each is the rule
+// `CalloutScriptSchema` applies to the same map in the extracted
+// `voice/<voice-id>/callouts.json` — or a stricter one — so a config that
+// parses here always yields an artifact `parseCalloutScript` accepts, and an
+// author's mistake is reported against the file they edited rather than
+// against a generated one.
+const scenarioId = z.string().regex(SCENARIO_ID_PATTERN, "must be a scenario id: non-empty, no whitespace");
+
+// Stricter than the artifact's rule (any non-whitespace name): a frame is a
+// category label like a group, so it takes the same kebab-case shape. `none` is
+// the reserved "unframed" marker and can never be defined.
+const frameName = kebab.refine(
+  (name) => name !== NO_FRAME,
+  `"${NO_FRAME}" is reserved — it means unframed and can never be defined`,
+);
+
+// A DEFINED pool never carries a slash: a slashed reference always means a
+// direct `group/base` of the voice's own clips, which is what keeps the two
+// namespaces from colliding.
+const poolDefinitionName = z
+  .string()
+  .regex(POOL_DEFINITION_NAME_PATTERN, "must be a pool name: lowercase letters, digits and dashes, no slash");
 
 // Entry file names may start with a digit (e.g. "0", "42-laps-to-go"). Also
 // accepts a JSON number and coerces it to its String() form so `"name": 0`
@@ -116,6 +147,18 @@ export const VoiceConfigSchema = z.object({
   pronunciation_dictionary_locators: z.array(PronunciationDictionaryLocatorSchema).max(3).optional(),
   // The actual content.
   groups: z.record(kebab, z.array(EntrySchema)),
+  // The voice's callout script (#1064): what the Race Engineer says for each
+  // scenario the code declares, the frames wrapped around a callout, and the
+  // named pools a sequence draws from. Authored here — one file per voice —
+  // and extracted verbatim by `pnpm generate:callout-scripts` into the
+  // committed `voice/<voice-id>/callouts.json` the plugin and the voice packs
+  // ship; the `groups` above never leave this package. All three are optional
+  // so a clips-only voice stays a valid config: an absent map is an empty map
+  // in the artifact, and a scenario with no entry is a callout that voice
+  // never makes.
+  scenarios: z.record(scenarioId, CalloutScriptEntrySchema).optional(),
+  frames: z.record(frameName, FrameDefinitionSchema).optional(),
+  pools: z.record(poolDefinitionName, PoolDefinitionSchema).optional(),
 });
 
 export type VoiceConfig = z.infer<typeof VoiceConfigSchema>;
@@ -159,13 +202,41 @@ export function loadVoiceConfigs(configsDir: string): Map<string, VoiceConfig> {
       throw new Error(`Failed to parse ${fileName}: ${err instanceof Error ? err.message : String(err)}`);
     }
 
-    const voiceConfig = VoiceConfigSchema.parse(json);
+    const parsed = VoiceConfigSchema.safeParse(json);
+
+    if (!parsed.success) {
+      // Same reason as the JSON.parse guard above: a bare ZodError names the
+      // path of the problem but not the file, and since #1064 the callout
+      // script is authored in this file too, by a pack author who may never
+      // have seen the generator.
+      throw new Error(`Invalid ${fileName}:\n${describeIssues(parsed.error)}`);
+    }
+
+    const voiceConfig = parsed.data;
 
     validateReferences(voiceId, voiceConfig);
     map.set(voiceId, voiceConfig);
   }
 
   return map;
+}
+
+/**
+ * One line per issue, `<path>: <message>`. Hand-rolled rather than
+ * `z.prettifyError` for one reason: a record key that fails its rule (a frame
+ * named `none`, a pool name with a slash) is reported by zod as a generic
+ * "Invalid key in record" with the rule's own message nested underneath, and
+ * the nested message is the one that says what to fix.
+ */
+function describeIssues(error: z.ZodError): string {
+  return error.issues
+    .map((issue) => {
+      const detail =
+        issue.code === "invalid_key" ? issue.issues.map((nested) => nested.message).join("; ") : issue.message;
+
+      return `  ${z.core.toDotPath(issue.path)}: ${detail}`;
+    })
+    .join("\n");
 }
 
 /**

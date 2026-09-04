@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   buildEntryLookup,
@@ -7,6 +10,7 @@ import {
   entryHash,
   EntrySchema,
   isReference,
+  loadVoiceConfigs,
   resolveRequestIds,
   resolveVoiceSettings,
   validateReferences,
@@ -79,6 +83,146 @@ describe("VoiceConfigSchema", () => {
 
   it("rejects unknown apply_text_normalization values", () => {
     expect(() => buildVoiceConfig({}, { apply_text_normalization: "sometimes" })).toThrow();
+  });
+});
+
+describe("VoiceConfigSchema callout script keys (#1064)", () => {
+  const scripted = {
+    scenarios: {
+      "pit-crew.flag-green": {
+        comment: "Green flag — the race is on.",
+        test: "Start a race session and take the green.",
+        sequence: ["pool:flag-green", { if: "!race", then: [{ pause: 200 }, "pool:go-go-go"] }],
+      },
+      "pit-crew.flag-checkered": { skip: true },
+    },
+    frames: {
+      radio: { open: ["sfx/IRD-tick-open.mp3", { ambient: "start" }], close: [{ ambient: "stop" }] },
+    },
+    pools: {
+      "flag-green": { group: "flags", base: "green", comment: "the green-flag takes" },
+    },
+  };
+
+  it("accepts a config that authors none of them — the keys are absent from the parse", () => {
+    const v = buildVoiceConfig({});
+
+    expect("scenarios" in v).toBe(false);
+    expect("frames" in v).toBe(false);
+    expect("pools" in v).toBe(false);
+  });
+
+  it("accepts scenarios, frames and pools authored beside the groups", () => {
+    const v = buildVoiceConfig({}, scripted);
+
+    expect(v.scenarios).toEqual(scripted.scenarios);
+    expect(v.frames).toEqual(scripted.frames);
+    expect(v.pools).toEqual(scripted.pools);
+  });
+
+  it("keeps the author's scenario order — it is the reading order of the published reference", () => {
+    const v = buildVoiceConfig({}, scripted);
+
+    expect(Object.keys(v.scenarios ?? {})).toEqual(["pit-crew.flag-green", "pit-crew.flag-checkered"]);
+  });
+
+  it("rejects an unknown key inside a scenario entry, naming its path", () => {
+    const result = VoiceConfigSchema.safeParse({
+      id: "voice-id",
+      label: "Test",
+      model_id: "m",
+      voice_settings: { stability: 1, similarity_boost: 1 },
+      groups: {},
+      scenarios: { "pit-crew.flag-green": { sequnce: ["pool:flag-green"] } },
+    });
+
+    expect(result.success).toBe(false);
+
+    const issues = result.success ? [] : result.error.issues;
+
+    expect(issues).toContainEqual(
+      expect.objectContaining({
+        code: "unrecognized_keys",
+        keys: ["sequnce"],
+        path: ["scenarios", "pit-crew.flag-green"],
+      }),
+    );
+  });
+
+  it("rejects a scenario entry with no sequence unless it is skipped", () => {
+    expect(() => buildVoiceConfig({}, { scenarios: { "pit-crew.flag-green": { comment: "no body" } } })).toThrow();
+    expect(() => buildVoiceConfig({}, { scenarios: { "pit-crew.flag-green": { skip: true } } })).not.toThrow();
+  });
+
+  it("rejects a scenario id with whitespace", () => {
+    expect(() => buildVoiceConfig({}, { scenarios: { "flag green": { sequence: [] } } })).toThrow();
+  });
+
+  it("rejects a defined pool whose name carries a slash — a slash always means group/base", () => {
+    expect(() => buildVoiceConfig({}, { pools: { "flags/green": { group: "flags", base: "green" } } })).toThrow();
+  });
+
+  it('rejects a frame named "none" — the reserved unframed marker', () => {
+    expect(() => buildVoiceConfig({}, { frames: { none: { open: [], close: [] } } })).toThrow();
+  });
+
+  it("rejects a frame name that is not kebab-case", () => {
+    expect(() => buildVoiceConfig({}, { frames: { Radio: { open: [], close: [] } } })).toThrow();
+  });
+});
+
+describe("loadVoiceConfigs", () => {
+  const tempDirs: string[] = [];
+
+  function configsDir(files: Record<string, unknown>): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ird-voice-configs-"));
+    tempDirs.push(dir);
+
+    for (const [name, content] of Object.entries(files)) {
+      fs.writeFileSync(path.join(dir, name), typeof content === "string" ? content : JSON.stringify(content), "utf-8");
+    }
+
+    return dir;
+  }
+
+  afterEach(() => {
+    for (const dir of tempDirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  const valid = {
+    id: "eleven-voice-id",
+    label: "Test",
+    model_id: "m",
+    voice_settings: { stability: 1, similarity_boost: 1 },
+    groups: {},
+  };
+
+  it("loads every <voice-id>.voice.json, keyed by the filename stem, in id order", () => {
+    const dir = configsDir({ "zeta.voice.json": valid, "alpha.voice.json": valid, "notes.json": "{}" });
+
+    expect([...loadVoiceConfigs(dir).keys()]).toEqual(["alpha", "zeta"]);
+  });
+
+  it("names the file when a config fails the schema, with the path of the problem", () => {
+    const dir = configsDir({
+      "alpha.voice.json": { ...valid, scenarios: { "pit-crew.flag-green": { sequnce: ["pool:flag-green"] } } },
+    });
+
+    expect(() => loadVoiceConfigs(dir)).toThrow(/alpha\.voice\.json[\s\S]*sequnce/);
+  });
+
+  it("says why a map key was refused, not only where", () => {
+    const dir = configsDir({
+      "alpha.voice.json": { ...valid, frames: { none: { open: [], close: [] } } },
+    });
+
+    expect(() => loadVoiceConfigs(dir)).toThrow(/frames\.none: "none" is reserved/);
+  });
+
+  it("names the file when a config is not JSON", () => {
+    const dir = configsDir({ "alpha.voice.json": "{ not json" });
+
+    expect(() => loadVoiceConfigs(dir)).toThrow(/Failed to parse alpha\.voice\.json/);
   });
 });
 
