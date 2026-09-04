@@ -326,6 +326,29 @@ export const GlobalSettingsSchema = z
      */
     backgroundVolume: z.coerce.number().min(0).max(100).default(25).catch(25),
     /**
+     * The two halves of the radio frame the engine wraps around a callout
+     * (issue #1064): the walkie-talkie beeps, and the pit-lane ambience bed
+     * the frame starts and stops around the words. `backgroundVolume` used
+     * to govern both together, and that coupling was the real complaint
+     * underneath "the beeps should be optional" — so each half gets its own
+     * switch while the slider stays the level control for both. Read live at
+     * frame expansion through the `getFrameOptions` closure the plugins hand
+     * the scenario engine; with beeps off the engine drops every non-ambient
+     * step of the frame, with ambience off every `ambient` step, so a pack
+     * that frames with its own beep clip is governed by the setting too.
+     * Both default ON, as new Race Engineer functionality always does.
+     */
+    raceEngineerRadioBeeps: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true)
+      .catch(true),
+    raceEngineerPitAmbience: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true)
+      .catch(true),
+    /**
      * Driver name the Race Engineer addresses the user as — the key
      * under `voice/<voice>/names/` (e.g., `"niklas"`, `"oivindl"`).
      * Substituted into welcome / pit-callout flows by referencing

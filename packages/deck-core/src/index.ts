@@ -530,6 +530,17 @@ export {
 } from "./setup-warning.js";
 export { evaluateElevationWarning, ELEVATION_WARNING_ID, ELEVATION_WARNING_MESSAGE } from "./elevation-warning.js";
 export { createElevationCheckSubscriber, type ElevationCheckOptions } from "./elevation-check.js";
+// Missing-callout-script banner: the active Race Engineer voice has no script,
+// so it will stay silent — surfaced in the PI rather than only in the log (issue #1064)
+export {
+  evaluateVoiceScriptWarning,
+  VOICE_SCRIPT_WARNING_ID,
+  type VoiceScriptWarningInput,
+} from "./voice-script-warning.js";
+export {
+  createVoiceScriptWarningReporter,
+  type VoiceScriptWarningReporterDeps,
+} from "./voice-script-warning-reporter.js";
 
 // Dual-press tracker (issue #540)
 export {

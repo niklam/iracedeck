@@ -1012,6 +1012,47 @@ describe("debugLogging hardening (issue #896 convention)", () => {
   });
 });
 
+// The two halves of the radio frame the engine wraps around a callout (issue
+// #1064): the beeps and the pit-lane ambience bed. Both default ON — new Race
+// Engineer functionality always does — and both follow the string/boolean
+// coercion every PI-written boolean uses, ending in `.catch(true)` per #896 so
+// a bad value can never stall the whole settings parse.
+describe("radio frame settings (issue #1064)", () => {
+  const keys = ["raceEngineerRadioBeeps", "raceEngineerPitAmbience"] as const;
+
+  it("defaults both to true", () => {
+    const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
+
+    for (const key of keys) {
+      expect(parsed[key], key).toBe(true);
+    }
+  });
+
+  it("coerces the PI's string values like the other booleans", () => {
+    for (const key of keys) {
+      const parsedFalse = GlobalSettingsSchema.parse({ [key]: "false" }) as Record<string, unknown>;
+      expect(parsedFalse[key], key).toBe(false);
+      const parsedTrue = GlobalSettingsSchema.parse({ [key]: "true" }) as Record<string, unknown>;
+      expect(parsedTrue[key], key).toBe(true);
+    }
+  });
+
+  it("keeps an explicitly persisted false", () => {
+    for (const key of keys) {
+      const parsed = GlobalSettingsSchema.parse({ [key]: false }) as Record<string, unknown>;
+      expect(parsed[key], key).toBe(false);
+    }
+  });
+
+  it("falls back to true on an unparseable value rather than aborting the parse", () => {
+    for (const key of keys) {
+      const parsed = GlobalSettingsSchema.parse({ [key]: 42, driverName: "kept" }) as Record<string, unknown>;
+      expect(parsed[key], key).toBe(true);
+      expect(parsed.driverName).toBe("kept");
+    }
+  });
+});
+
 describe("single-writer store (issue #993)", () => {
   beforeEach(() => _resetGlobalSettings());
 
