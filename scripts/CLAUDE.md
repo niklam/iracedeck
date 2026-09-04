@@ -19,6 +19,10 @@ Repo-level Node `.mjs` utilities, mostly backed by root `package.json` scripts. 
 
 The remaining scripts are one-off or occasional icon-SVG tools (`migrate-*`, `flatten-*`, `pad-icon-viewbox`, `refactor-icons-to-snippets`, `check-icon-bounds`, `add-svg-editor-defaults`, `add-title-metadata-to-icons`, `transform-car-svg`). Many are already-applied migrations — read the script's header comment (usage + purpose) before running.
 
+## Community (Discord)
+
+- `discord/feature-requests.mjs` — `pnpm discord:feature-requests <list|show|reply|tag|follow-up>`: the maintainer CLI for the Discord feature-requests forum (#1114), driven by the `discord-feature-requests` skill. Reads `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID` and `DISCORD_FEATURE_REQUESTS_CHANNEL_ID` from `.env.local`. The entry file is argv; `lib/discord-api.mjs` is the REST client (auth header, one 429 retry), `lib/discord-forum.mjs` the pure post/tag/issue-state logic, and `lib/discord-forum-commands.mjs` the commands, each returning an exit code with `client` / `exec` / `log` injected. `reply` and `tag` take `--dry-run`, `reply` sends with mentions disabled, and both refuse the standing name-collection post. The forum's five moderated status tags are the only state the tool keeps; there is no cursor file — see the spec for why.
+
 ## Dev linking and host control (Mirabox, Ulanzi)
 
 Elgato is absent from all of these on purpose: its linking uses the `streamdeck` CLI and its start/stop scripts hardcode the one install path (see root `package.json`).
