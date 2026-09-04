@@ -1,3 +1,10 @@
+// The script file's name comes from the grammar that owns it. This module is
+// loaded by the very first build task (`prebuild.mjs`, via
+// `@iracedeck/audio-assets#build`) and by the packer the manual publish
+// workflow runs after building ONLY this package — so that task's turbo.json
+// entry declares `@iracedeck/callout-script#build` as a dependency, or the
+// import below finds no `dist/` to resolve.
+import { CALLOUT_SCRIPT_FILE } from "@iracedeck/callout-script";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
@@ -65,7 +72,9 @@ function withCacheLock(operation) {
 // The voice/ tree holds all radio-engineer voice clips, organised as
 // voice/<voice>/<category>/*.mp3. Every .mp3 under it (at any depth) gets
 // the radio filter; anything outside voice/ (currently sfx/) is copied
-// unchanged so SFX tones, ticks and squelch beeps stay clean.
+// unchanged so SFX tones, ticks and squelch beeps stay clean. The one
+// non-clip that ships from inside voice/ is each voice's `callouts.json`
+// (#1064), which the walk copies as-is — see `buildVoiceTreeTasks`.
 const VOICE_ROOT = "voice";
 
 // Final encode parameters for the processed voice MP3s. The radio filter
@@ -146,19 +155,28 @@ export function wipeProcessedCache() {
 
 // Recursively walk a voice subtree, queuing every .mp3 for radio-filter
 // processing or cache-hit copying. The caller picks behaviour via callbacks
-// so the same walk drives both the prebuild cache-warm pass (which only
-// writes to `cacheDir`) and the per-plugin copy pass (which also writes
-// to `destDir`).
+// so the same walk drives the prebuild cache-warm pass (which only writes
+// to `cacheDir`), the per-plugin copy pass and the voice-pack packer (which
+// also write to `destDir`).
 //
 // `onFresh(cachedPath, destDir, fileName)` is invoked when the cache file
 // is newer than the source. `onMiss(srcPath, cachedPath, destDir, fileName)`
 // is invoked when the cache is stale or missing — the ffmpeg call has not
 // been made yet, the callback decides whether to run it and whether to
 // follow it with a copy.
-function buildVoiceTreeTasks(srcDir, cacheDir, destDir, { onFresh, onMiss }) {
+//
+// `onScript(srcPath, destDir, fileName)`, when given, is invoked for the
+// voice's `callouts.json` (#1064) — the script sitting DIRECTLY under
+// `srcDir`, which for every caller that copies is `voice/<voice-id>/`. It is
+// the one file that ships from inside the voice tree without being a clip:
+// the callback copies it as-is, and the walk never routes it through ffmpeg
+// or into the radio cache, which hold clips only. A file of that name deeper
+// in the tree is what it always was, a non-mp3 the walk ignores. Without
+// `onScript` (the cache-warm pass) the script is ignored at every depth.
+function buildVoiceTreeTasks(srcDir, cacheDir, destDir, { onFresh, onMiss, onScript }) {
   const tasks = [];
 
-  const walk = (currentSrc, currentCache, currentDest) => {
+  const walk = (currentSrc, currentCache, currentDest, isVoiceRoot) => {
     mkdirSync(currentCache, { recursive: true });
     if (currentDest) mkdirSync(currentDest, { recursive: true });
 
@@ -166,11 +184,23 @@ function buildVoiceTreeTasks(srcDir, cacheDir, destDir, { onFresh, onMiss }) {
       const srcPath = path.join(currentSrc, entry.name);
 
       if (entry.isDirectory()) {
-        walk(srcPath, path.join(currentCache, entry.name), currentDest ? path.join(currentDest, entry.name) : null);
+        walk(
+          srcPath,
+          path.join(currentCache, entry.name),
+          currentDest ? path.join(currentDest, entry.name) : null,
+          false,
+        );
         continue;
       }
 
-      if (!entry.isFile() || !entry.name.toLowerCase().endsWith(".mp3")) continue;
+      if (!entry.isFile()) continue;
+
+      if (isVoiceRoot && onScript && entry.name === CALLOUT_SCRIPT_FILE) {
+        tasks.push(() => onScript(srcPath, currentDest, entry.name));
+        continue;
+      }
+
+      if (!entry.name.toLowerCase().endsWith(".mp3")) continue;
 
       const cachedPath = path.join(currentCache, entry.name);
 
@@ -182,7 +212,7 @@ function buildVoiceTreeTasks(srcDir, cacheDir, destDir, { onFresh, onMiss }) {
     }
   };
 
-  walk(srcDir, cacheDir, destDir);
+  walk(srcDir, cacheDir, destDir, true);
   return tasks;
 }
 
@@ -211,10 +241,22 @@ function buildVoiceTreeTasks(srcDir, cacheDir, destDir, { onFresh, onMiss }) {
  * in place. A caller that needs a clean tree clears it first — the packer
  * does, so a clip removed from the source cannot linger in a staged pack.
  *
- * Resolves to `{ files, processed, cached, pipelineHash }`, where `files` is
- * every clip written as a sorted list of POSIX paths relative to `destDir` —
- * the order a packer wants, and the list it should build its archive from
- * rather than re-walking the directory.
+ * `srcDir` is a VOICE's tree (`voice/<voice-id>/`): a `callouts.json` directly
+ * under it — the voice's callout script (#1064) — is copied to `destDir`
+ * unchanged, never through ffmpeg and never into the cache. Deeper down, a
+ * file of that name is ignored like any other non-mp3.
+ *
+ * Resolves to `{ files, script, processed, cached, pipelineHash }`, where
+ * `files` is every clip written as a sorted list of POSIX paths relative to
+ * `destDir` — the order a packer wants, and the list it should build its
+ * archive from rather than re-walking the directory — and `script` is the
+ * copied script's path relative to `destDir` (`callouts.json`), or `null`
+ * for a clips-only voice. The script is kept OUT of `files` on purpose: the
+ * packer counts that list against the source's mp3s and checks each entry
+ * against the clip grammar, and a json in it would fail both.
+ *
+ * @param {import("./index.d.ts").ProcessVoiceTreeOptions} options
+ * @returns {Promise<import("./index.d.ts").ProcessVoiceTreeResult>}
  */
 export async function processVoiceTree({ srcDir, destDir, cacheDir, logger } = {}) {
   if (!srcDir) throw new Error("processVoiceTree: srcDir is required");
@@ -244,24 +286,28 @@ async function runProcessVoiceTree({ srcDir, destDir, cacheDir, hash, logger }) 
   const concurrency = Math.min(4, Math.max(1, os.availableParallelism?.() ?? os.cpus().length));
 
   const files = [];
+  let script = null;
   let processed = 0;
   let cached = 0;
 
-  const record = (currentDest, fileName) => {
-    files.push(path.relative(destDir, path.join(currentDest, fileName)).split(path.sep).join("/"));
-  };
+  const relativeTo = (currentDest, fileName) =>
+    path.relative(destDir, path.join(currentDest, fileName)).split(path.sep).join("/");
 
   const tasks = buildVoiceTreeTasks(srcDir, cacheDir, destDir, {
     onFresh: async (cachedPath, currentDest, fileName) => {
       copyFileSync(cachedPath, path.join(currentDest, fileName));
-      record(currentDest, fileName);
+      files.push(relativeTo(currentDest, fileName));
       cached++;
     },
     onMiss: async (srcPath, cachedPath, currentDest, fileName) => {
       await runFfmpeg(ffmpegPath, srcPath, cachedPath, RADIO_ENGINEER_FILTER);
       copyFileSync(cachedPath, path.join(currentDest, fileName));
-      record(currentDest, fileName);
+      files.push(relativeTo(currentDest, fileName));
       processed++;
+    },
+    onScript: async (srcPath, currentDest, fileName) => {
+      copyFileSync(srcPath, path.join(currentDest, fileName));
+      script = relativeTo(currentDest, fileName);
     },
   });
 
@@ -272,9 +318,12 @@ async function runProcessVoiceTree({ srcDir, destDir, cacheDir, hash, logger }) 
   // gave it, and the caller is building something whose bytes depend on order.
   files.sort();
 
-  logger?.(`Voice tree ${srcDir}: ${processed} processed, ${cached} cache-hit (pipeline hash ${hash})`);
+  logger?.(
+    `Voice tree ${srcDir}: ${processed} processed, ${cached} cache-hit, ` +
+      `${script === null ? "no" : "1"} callout script (pipeline hash ${hash})`,
+  );
 
-  return { files, processed, cached, pipelineHash: hash };
+  return { files, script, processed, cached, pipelineHash: hash };
 }
 
 /**
@@ -328,7 +377,8 @@ async function runPrebuildCache({ logger }) {
 /**
  * Copies `packages/audio-assets/` into `destRoot`. Every .mp3 under voice/
  * (at any depth) passes through ffmpeg with RADIO_ENGINEER_FILTER applied;
- * everything outside voice/ (currently sfx/, ambient/) is copied unchanged.
+ * everything outside voice/ (currently sfx/, ambient/) is copied unchanged,
+ * as is each bundled voice's `voice/<voice-id>/callouts.json` (#1064).
  *
  * Processed outputs are cached at `packages/audio-assets/.cache/<pipeline-hash>/`
  * keyed on the filter chain + ffmpeg encode args, so changing either
@@ -344,18 +394,47 @@ async function runPrebuildCache({ logger }) {
  * folders don't leak into the output. The harness's live-refresh path
  * passes `false` so it can update files in place without fighting Windows
  * file locks held by the audio engine on currently-loaded clips.
+ *
+ * `srcRoot` (default: this package) and `cacheDir` exist so the test can run
+ * the whole copy — allow-list, bundled-voice filter, the per-voice walk —
+ * against a temporary tree of two clips instead of the 1500 real ones. The
+ * rule is `processVoiceTree`'s: `cacheDir` is REQUIRED for a source root that
+ * is not this package, because a foreign tree's clips must never land in the
+ * plugin's own cache under a `voice/…` key the plugin build would then copy.
+ *
+ * @param {import("./index.d.ts").ProcessAndCopyAudioAssetsOptions} options
+ * @returns {Promise<void>}
  */
-export async function processAndCopyAudioAssets({ destRoot, logger, wipe = true } = {}) {
+export async function processAndCopyAudioAssets({
+  destRoot,
+  logger,
+  wipe = true,
+  srcRoot = audioAssetsPath,
+  cacheDir,
+} = {}) {
   if (!destRoot) throw new Error("processAndCopyAudioAssets: destRoot is required");
-  if (!existsSync(audioAssetsPath)) return;
+  if (!existsSync(srcRoot)) return;
 
-  return withCacheLock(() => runProcessAndCopy({ destRoot, logger, wipe }));
+  const hash = pipelineHash(RADIO_ENGINEER_FILTER, ENCODE_ARGS);
+  const cacheRoot = cacheDir ?? sharedCacheRoot(srcRoot, hash);
+
+  return withCacheLock(() => runProcessAndCopy({ srcRoot, destRoot, cacheRoot, hash, logger, wipe }));
 }
 
-async function runProcessAndCopy({ destRoot, logger, wipe }) {
+// The `.cache/<hash>/` root the build shares with the packer — for this
+// package's own tree and nothing else.
+function sharedCacheRoot(srcRoot, hash) {
+  if (path.resolve(srcRoot) !== audioAssetsPath) {
+    throw new Error(
+      `processAndCopyAudioAssets: cacheDir is required for a source root other than ${audioAssetsPath} (got ${srcRoot})`,
+    );
+  }
+
+  return path.join(CACHE_ROOT, hash);
+}
+
+async function runProcessAndCopy({ srcRoot, destRoot, cacheRoot, hash, logger, wipe }) {
   const ffmpegPath = require("ffmpeg-static");
-  const hash = pipelineHash(RADIO_ENGINEER_FILTER, ENCODE_ARGS);
-  const cacheRoot = path.join(CACHE_ROOT, hash);
   const concurrency = Math.min(4, Math.max(1, os.availableParallelism?.() ?? os.cpus().length));
 
   if (wipe) {
@@ -389,10 +468,10 @@ async function runProcessAndCopy({ destRoot, logger, wipe }) {
     countFiles(srcDir);
   };
 
-  for (const entry of readdirSync(audioAssetsPath, { withFileTypes: true })) {
+  for (const entry of readdirSync(srcRoot, { withFileTypes: true })) {
     if (!entry.isDirectory() || !SHIPPED_FOLDERS.has(entry.name)) continue;
 
-    const srcDir = path.join(audioAssetsPath, entry.name);
+    const srcDir = path.join(srcRoot, entry.name);
     const destDir = path.join(destRoot, entry.name);
 
     if (entry.name === VOICE_ROOT) {
@@ -430,6 +509,13 @@ async function runProcessAndCopy({ destRoot, logger, wipe }) {
                 await runFfmpeg(ffmpegPath, srcPath, cachedPath, RADIO_ENGINEER_FILTER);
                 copyFileSync(cachedPath, path.join(currentDest, fileName));
                 processed++;
+              },
+              // The voice's callout script (#1064): what the voice-pack service
+              // reads for a bundled voice, so it ships where the scanner expects
+              // it — `assets/audio/voice/<id>/callouts.json` — bytes unchanged.
+              onScript: async (srcPath, currentDest, fileName) => {
+                copyFileSync(srcPath, path.join(currentDest, fileName));
+                copiedAsIs++;
               },
             },
           ),

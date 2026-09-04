@@ -1,3 +1,4 @@
+import { CALLOUT_SCRIPT_FILE, type CalloutScript, calloutScriptPath } from "@iracedeck/callout-script";
 import { unzipSync } from "fflate";
 import { createHash } from "node:crypto";
 import {
@@ -184,6 +185,27 @@ describe("createArchive", () => {
   });
 });
 
+/** A script with one real scenario, so the scanner's parse has something to accept. */
+const SCRIPT: CalloutScript = {
+  schema: 1,
+  scenarios: {
+    "pit-crew.flag-green": {
+      comment: "Green flag.",
+      test: "Take the green.",
+      sequence: ["pool:flag-green", { if: "!race", then: [{ pause: 200 }] }],
+    },
+  },
+  frames: { radio: { open: ["sfx/IRD-tick-open.mp3"], close: ["sfx/IRD-tick-close.mp3"] } },
+  pools: { "flag-green": { group: "flags", base: "green" } },
+};
+
+/** Serialized the way the generator does NOT — sorted keys, no trailing newline — so a re-serialized copy would show. */
+const SCRIPT_TEXT = JSON.stringify(
+  { pools: SCRIPT.pools, frames: SCRIPT.frames, scenarios: SCRIPT.scenarios, schema: SCRIPT.schema },
+  null,
+  4,
+);
+
 /**
  * The end-to-end tests run the REAL pipeline (ffmpeg via ffmpeg-static) on a
  * two-clip synthetic voice rather than on the 12.5 MB bundled one: the pipeline
@@ -222,6 +244,12 @@ describe("packVoice", () => {
       mkdirSync(path.dirname(path.join(srcRoot, to)), { recursive: true });
       copyFileSync(path.join(PACKAGE_ROOT, from), path.join(srcRoot, to));
     }
+
+    // The voice's script, directly under voice/<id>/ where the scanner reads
+    // it (#1064) — and a same-named decoy one level down, which is where the
+    // walk must treat it as just another non-mp3 file.
+    writeFileSync(path.join(srcRoot, "testvoice", CALLOUT_SCRIPT_FILE), SCRIPT_TEXT);
+    writeFileSync(path.join(srcRoot, "testvoice", "numbers", CALLOUT_SCRIPT_FILE), SCRIPT_TEXT);
 
     mkdirSync(configsDir, { recursive: true });
     writeFileSync(path.join(configsDir, "testvoice.voice.json"), JSON.stringify({ label: "Test Voice", groups: {} }));
@@ -293,9 +321,25 @@ describe("packVoice", () => {
       version: "1.2.3",
       author: "iRaceDeck",
       dir: first.stageDir,
-      voices: [{ id: "testvoice", label: "Test Voice" }],
+      voices: [{ id: "testvoice", label: "Test Voice", script: SCRIPT }],
       clips: ["voice/testvoice/numbers/1.mp3", "voice/testvoice/seconds/1.mp3"],
     });
+  });
+
+  it("ships the voice's callouts.json as-is, in the archive and the stage, never in the cache", () => {
+    const entryPath = calloutScriptPath("testvoice");
+    const unpacked = unzipSync(readFileSync(first.archivePath));
+    const source = readFileSync(path.join(srcRoot, "testvoice", CALLOUT_SCRIPT_FILE));
+
+    expect(Object.keys(unpacked)).toContain(entryPath);
+    expect(Buffer.from(unpacked[entryPath]!).equals(source)).toBe(true);
+    expect(readFileSync(path.join(first.stageDir, entryPath)).equals(source)).toBe(true);
+    expect(listFiles(path.join(root, "cache-1")).some((file) => file.endsWith(CALLOUT_SCRIPT_FILE))).toBe(false);
+  });
+
+  it("counts clips, not the script", () => {
+    expect(first.clips).toBe(2);
+    expect(first.scripts).toBe(1);
   });
 
   it("archives exactly the staged tree", () => {
@@ -303,7 +347,14 @@ describe("packVoice", () => {
     const staged = listFiles(first.stageDir);
 
     expect(Object.keys(unpacked).sort()).toEqual(staged);
-    expect(staged).toEqual([MANIFEST_FILE, "voice/testvoice/numbers/1.mp3", "voice/testvoice/seconds/1.mp3"]);
+    // The decoy under numbers/ is not here: only the script directly under
+    // the voice is the voice's script.
+    expect(staged).toEqual([
+      MANIFEST_FILE,
+      calloutScriptPath("testvoice"),
+      "voice/testvoice/numbers/1.mp3",
+      "voice/testvoice/seconds/1.mp3",
+    ]);
 
     for (const file of staged) {
       expect(Buffer.from(unpacked[file]!).equals(readFileSync(path.join(first.stageDir, file)))).toBe(true);
@@ -361,6 +412,56 @@ describe("packVoice", () => {
 
     expect(existsSync(path.join(root, "catalog-3", "testvoice.json"))).toBe(false);
   }, 30_000);
+
+  // A pack must never ship a script the scanner will reject: the scanner
+  // drops such a voice, so the pack would install, claim nothing, and be
+  // silent — with the only trace a line in Installed Voices on the user's
+  // machine. Refused here, naming the file and the first problem, before a
+  // single clip is staged.
+  describe("refuses a malformed callouts.json rather than packing a voice the scanner will drop", () => {
+    function packWithScript(name: string, text: string) {
+      const badRoot = path.join(root, name);
+      const badSrc = path.join(badRoot, "voice", "testvoice");
+
+      mkdirSync(path.join(badSrc, "numbers"), { recursive: true });
+      copyFileSync(path.join(srcRoot, "testvoice", "numbers", "1.mp3"), path.join(badSrc, "numbers", "1.mp3"));
+      writeFileSync(path.join(badSrc, CALLOUT_SCRIPT_FILE), text);
+
+      const attempt = () =>
+        packVoice({
+          pack,
+          srcRoot: path.join(badRoot, "voice"),
+          configsDir,
+          outDir: path.join(badRoot, "out"),
+          catalogDir: path.join(badRoot, "catalog"),
+          cacheDir: path.join(badRoot, "cache"),
+        });
+
+      return { attempt, badRoot };
+    }
+
+    it("one that fails the grammar", async () => {
+      const { attempt, badRoot } = packWithScript(
+        "bad-grammar",
+        JSON.stringify({ schema: 1, scenarios: { "pit-crew.flag-green": { sequnce: [] } }, frames: {}, pools: {} }),
+      );
+
+      await expect(attempt()).rejects.toThrow(
+        /voice\/testvoice\/callouts\.json[\s\S]*scenarios\.pit-crew\.flag-green\.sequnce/,
+      );
+      expect(existsSync(path.join(badRoot, "catalog"))).toBe(false);
+      expect(existsSync(path.join(badRoot, "out", "testvoice-1.2.3.zip"))).toBe(false);
+      // Nothing was staged: the script is checked before the pipeline runs.
+      expect(existsSync(path.join(badRoot, "out", "testvoice", "voice"))).toBe(false);
+    });
+
+    it("one that is not JSON", async () => {
+      const { attempt, badRoot } = packWithScript("bad-json", "{ not json");
+
+      await expect(attempt()).rejects.toThrow(/voice\/testvoice\/callouts\.json is not valid JSON/);
+      expect(existsSync(path.join(badRoot, "catalog"))).toBe(false);
+    });
+  });
 
   it("refuses a pack whose definition the schemas would refuse", async () => {
     const attempt = (overrides: Record<string, unknown>) =>

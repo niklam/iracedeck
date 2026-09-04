@@ -7,7 +7,9 @@
  *   1. runs each of the pack's voices through the SAME radio-filter + encode
  *      pipeline the plugin build uses (`processVoiceTree`), so a packaged clip
  *      is byte-identical to what the plugin would otherwise have shipped;
- *   2. stages `voice-pack.json` + `voice/<voice-id>/<group>/<name>.mp3` under
+ *   2. stages `voice-pack.json` + `voice/<voice-id>/<group>/<name>.mp3` — and
+ *      each voice's `voice/<voice-id>/callouts.json` (#1064), copied as-is once
+ *      it has passed the grammar the scanner will apply — under
  *      `dist/voice-packs/<id>/` — the exact shape deck-core's scanner accepts,
  *      kept there so a maintainer can inspect it or sideload it by hand;
  *   3. zips that stage, deterministically, to `dist/voice-packs/<id>-<version>.zip`;
@@ -35,6 +37,7 @@
  * proves it by packing twice and comparing hashes rather than by trusting the
  * reasoning here.
  */
+import { CALLOUT_SCRIPT_FILE, calloutScriptPath, parseCalloutScript } from "@iracedeck/callout-script";
 import { zipSync } from "fflate";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -166,6 +169,46 @@ function assertPackDefinition(pack) {
     throw new Error(`${where}: voices must name at least one voice`);
   for (const voice of pack.voices) {
     if (!PACK_ID.test(voice)) throw new Error(`${where}: voice id "${voice}" must be lowercase kebab-case`);
+  }
+}
+
+/**
+ * Refuse to pack a callout script the scanner would refuse (#1064).
+ *
+ * The scanner drops a voice whose `callouts.json` fails to read, to parse or
+ * to validate — so a pack carrying one would install cleanly, claim nothing,
+ * and be silent, with the only trace a line in Installed Voices on the user's
+ * machine. Checked HERE, before a single clip of the voice is staged, with the
+ * grammar's own parser: the very function the scanner runs, so the two cannot
+ * disagree about what is acceptable. A voice with no script at all is a
+ * clips-only voice, which is valid.
+ *
+ * A leading BOM is stripped first, as the scanner strips it: the packer must
+ * not be stricter than the reader about a file an editor wrote.
+ *
+ * @param {VoicePackDefinition} pack
+ * @param {string} voiceId
+ * @param {string} srcDir — the voice's source tree, `<srcRoot>/<voice-id>`
+ */
+function assertCalloutScript(pack, voiceId, srcDir) {
+  const file = path.join(srcDir, CALLOUT_SCRIPT_FILE);
+
+  if (!existsSync(file)) return;
+
+  const where = `pack "${pack.id}": ${calloutScriptPath(voiceId)}`;
+  let json;
+
+  try {
+    const text = readFileSync(file, "utf-8");
+    json = JSON.parse(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text);
+  } catch (err) {
+    throw new Error(`${where} is not valid JSON: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  const parsed = parseCalloutScript(json);
+
+  if (!parsed.ok) {
+    throw new Error(`${where} is not a script the plugin accepts:\n  ${parsed.problems.join("\n  ")}`);
   }
 }
 
@@ -326,9 +369,14 @@ export function countSourceClips(dir) {
  * packed clip identical to a shipped one by construction.
  *
  * The stage directory is wiped first. The archive is built from the list of
- * clips the pipeline just wrote, never from a directory walk, so a stale file
- * could not reach the archive anyway — but the on-disk stage should be the
- * pack and nothing else, since it is what a maintainer inspects or sideloads.
+ * files the pipeline just wrote — the clips, and the voice's `callouts.json`
+ * when it has one — never from a directory walk, so a stale file could not
+ * reach the archive anyway — but the on-disk stage should be the pack and
+ * nothing else, since it is what a maintainer inspects or sideloads.
+ *
+ * Resolves to the archive, stage and catalog paths, the catalog entry, and two
+ * counts: `clips` (mp3s, across every voice) and `scripts` (voices that ship a
+ * callout script). The script is never counted as a clip.
  *
  * @param {object} options
  * @param {VoicePackDefinition} options.pack
@@ -359,6 +407,8 @@ export async function packVoice({
   const entries = [];
   /** @type {VoiceEntry[]} */
   const voices = [];
+  let clips = 0;
+  let scripts = 0;
 
   for (const voiceId of pack.voices) {
     voices.push({ id: voiceId, label: readVoiceLabel(configsDir, voiceId) });
@@ -367,8 +417,10 @@ export async function packVoice({
 
     if (!existsSync(srcDir)) throw new Error(`pack "${pack.id}": voice "${voiceId}" has no clips at ${srcDir}`);
 
+    assertCalloutScript(pack, voiceId, srcDir);
+
     const destDir = path.join(stageDir, VOICE_ROOT, voiceId);
-    const { files } = await processVoiceTree({
+    const { files, script } = await processVoiceTree({
       srcDir,
       destDir,
       cacheDir: cacheDir === undefined ? undefined : path.join(cacheDir, voiceId),
@@ -415,6 +467,20 @@ export async function packVoice({
       // archive should not be built on that being true of every code path.
       entries.push({ path: entryPath, data: new Uint8Array(readFileSync(path.join(destDir, file))) });
     }
+
+    clips += files.length;
+
+    // The script rides beside the clips, at the path the scanner opens. Read
+    // back from the stage like the clips are, so the archive holds exactly
+    // what a maintainer would sideload — `processVoiceTree` copied it byte
+    // for byte, and the test proves that against the source.
+    if (script !== null) {
+      entries.push({
+        path: `${VOICE_ROOT}/${voiceId}/${script}`,
+        data: new Uint8Array(readFileSync(path.join(destDir, script))),
+      });
+      scripts++;
+    }
   }
 
   const manifestBytes = new TextEncoder().encode(serializeSortedJson(buildVoicePackManifest(pack, voices)));
@@ -433,7 +499,7 @@ export async function packVoice({
   mkdirSync(catalogDir, { recursive: true });
   writeFileSync(catalogPath, `${JSON.stringify(entry, null, 2)}\n`);
 
-  return { archivePath, stageDir, catalogPath, entry, clips: entries.length - 1 };
+  return { archivePath, stageDir, catalogPath, entry, clips, scripts };
 }
 
 function selectPacks(requestedIds) {
@@ -452,7 +518,10 @@ async function main() {
   for (const pack of selectPacks(process.argv.slice(2))) {
     const result = await packVoice({ pack, logger: (message) => console.log(message) });
 
-    console.log(`Packed ${pack.id}@${pack.version}: ${result.clips} clips, ${result.entry.bytes} bytes`);
+    console.log(
+      `Packed ${pack.id}@${pack.version}: ${result.clips} clips, ${result.scripts} callout ` +
+        `${result.scripts === 1 ? "script" : "scripts"}, ${result.entry.bytes} bytes`,
+    );
     console.log(`  sha256   ${result.entry.sha256}`);
     console.log(`  archive  ${result.archivePath}`);
     console.log(`  catalog  ${result.catalogPath}`);

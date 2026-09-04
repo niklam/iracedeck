@@ -5,6 +5,14 @@ export type ProcessAndCopyAudioAssetsOptions = {
   logger?: (message: string) => void;
   /** Empty `destRoot` before copying. Default: true (Rollup plugin behavior). Pass false for live in-place refresh. */
   wipe?: boolean;
+  /**
+   * The package tree to copy from. Default: this package. A test seam — with
+   * any other root, `cacheDir` is required, so a foreign tree's clips never
+   * land in the plugin's own cache.
+   */
+  srcRoot?: string;
+  /** Processed-clip cache root. Default: the build's shared `.cache/<pipeline-hash>/`; required with a foreign `srcRoot`. */
+  cacheDir?: string;
 };
 
 export function processAndCopyAudioAssets(options: ProcessAndCopyAudioAssetsOptions): Promise<void>;
@@ -23,7 +31,10 @@ export function prebuildAudioAssetCache(options?: PrebuildAudioAssetCacheOptions
 export function wipeProcessedCache(): Promise<void>;
 
 export type ProcessVoiceTreeOptions = {
-  /** Directory of source clips; every `.mp3` under it, at any depth, is processed. */
+  /**
+   * A voice's source tree (`voice/<voice-id>/`); every `.mp3` under it, at any
+   * depth, is processed, and a `callouts.json` directly under it is copied as-is.
+   */
   srcDir: string;
   /** Where processed clips are written, mirroring `srcDir`. Created if missing, never wiped. */
   destDir: string;
@@ -38,8 +49,10 @@ export type ProcessVoiceTreeOptions = {
 };
 
 export type ProcessVoiceTreeResult = {
-  /** Every clip written, as POSIX paths relative to `destDir`, sorted. */
+  /** Every clip written, as POSIX paths relative to `destDir`, sorted. Never the script. */
   files: string[];
+  /** The voice's callout script as copied (`callouts.json`, relative to `destDir`), or `null` for a clips-only voice. */
+  script: string | null;
   processed: number;
   cached: number;
   pipelineHash: string;

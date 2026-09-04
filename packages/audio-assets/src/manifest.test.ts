@@ -1,13 +1,15 @@
+import { CALLOUT_SCRIPT_FILE, calloutScriptPath } from "@iracedeck/callout-script";
 import fs from "node:fs";
 import path from "node:path";
 import url from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { buildManifest } from "../scripts/generate-audio-manifest.mjs";
-import { SHIPPED_FOLDERS } from "./build/index.mjs";
+import { BUNDLED_VOICE_IDS, SHIPPED_FOLDERS } from "./build/index.mjs";
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
-const MANIFEST_PATH = path.resolve(__dirname, "../manifest.json");
+const PACKAGE_ROOT = path.resolve(__dirname, "..");
+const MANIFEST_PATH = path.join(PACKAGE_ROOT, "manifest.json");
 
 describe("audio-assets manifest", () => {
   it("is up to date with the file tree", () => {
@@ -15,6 +17,24 @@ describe("audio-assets manifest", () => {
     const regenerated = buildManifest();
 
     expect(regenerated).toEqual(committed);
+  });
+
+  // The manifest is the list of CLIPS the engine resolves against. The
+  // voice's `callouts.json` (#1064) sits inside the same `voice/<id>/` tree
+  // and ships beside the clips, but it is read by the voice-pack service,
+  // never played — listed here it would be a callout that resolves to
+  // nothing. The bundled voice's file must EXIST for this to prove anything.
+  it("lists no callouts.json, though every bundled voice ships one beside its clips", () => {
+    const committed = JSON.parse(fs.readFileSync(MANIFEST_PATH, "utf-8"));
+
+    expect(BUNDLED_VOICE_IDS.length).toBeGreaterThan(0);
+
+    for (const voiceId of BUNDLED_VOICE_IDS) {
+      expect(fs.existsSync(path.join(PACKAGE_ROOT, calloutScriptPath(voiceId)))).toBe(true);
+    }
+
+    expect(committed.clips.filter((clip: string) => clip.endsWith(`/${CALLOUT_SCRIPT_FILE}`))).toEqual([]);
+    expect(committed.clips.every((clip: string) => clip.endsWith(".mp3"))).toBe(true);
   });
 
   it("every advertised special path exists in clips", () => {
