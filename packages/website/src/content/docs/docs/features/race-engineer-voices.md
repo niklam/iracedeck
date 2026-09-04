@@ -3,7 +3,7 @@ title: Race Engineer Voices
 description: How Race Engineer voice packs work, where they are stored, how to download or install one, and why they survive plugin updates.
 ---
 
-The Race Engineer speaks with a **voice pack** — a folder of recorded lines that iRaceDeck plays during a session. iRaceDeck comes with its own, and you can add more — downloaded from iRaceDeck itself, or installed by hand.
+The Race Engineer speaks with a **voice pack** — a folder of recorded lines that iRaceDeck plays during a session, plus a **callout script** for each voice that says how those lines are put together. iRaceDeck comes with its own, and you can add more — downloaded from iRaceDeck itself, or installed by hand.
 
 Voice packs live **outside the plugin folder**, in your own AppData directory:
 
@@ -25,6 +25,18 @@ Some voices are listed with their pack's name in front, as **Pack: Voice**. That
 
 The built-in voice is listed like any other pack, but has no **Remove** button: it comes with iRaceDeck and stays available whatever is in the folder, so there is nothing to remove. The row reads *Included with the plugin* in place of the button.
 
+## What a Voice Pack Decides
+
+A voice is more than its recordings. Beside the clips, each voice in a pack carries a **callout script** — the file `voice/<voice>/callouts.json` inside the pack — and that script is what turns the recordings into callouts. It decides the **wording** of every line, the **order** its pieces are spoken in, and **which callouts the voice makes at all**. A pack can phrase a call its own way, reorder the pieces of a lap time or drop its lead-in, or leave a callout out altogether — and one it leaves out simply stays quiet in that voice, without affecting any other callout or any other voice.
+
+What a pack can never change is **when** a callout fires and **what it may interrupt**. The moment the engineer speaks up, how often he is allowed to repeat himself, and which calls take priority over which stay with iRaceDeck, the same for every voice — so a pack can never have the engineer talk over a flag, or nag you more often than he should. The script only says what he says, never whether.
+
+In this release the **flag callouts** are the first to come from the script. The remaining callouts still use the wording that ships with iRaceDeck — spoken in whichever voice you pick — and move into the script in a later release, at which point a pack decides all of them.
+
+A pack that ships a voice **without** a script — one built before scripts existed, or one whose script file went missing — still loads. The voice is listed under **Installed Voices** and you can select it, but every callout that comes from the script is skipped, so the engineer goes quiet on them. While a scriptless voice is the one selected, a banner at the top of the Settings window and of every key's Property Inspector names it and says what to do: reinstall the pack, or pick another voice. The banner clears by itself as soon as the selected voice has a script.
+
+If you build packs, the script is an ordinary JSON file that references iRaceDeck's own vocabulary of callouts, conditions and spoken values by name. The format, and the full list of what a script can reference, will be documented for pack authors separately; the pack that ships with iRaceDeck is the worked example in the meantime.
+
 ## Downloading a Voice Pack
 
 iRaceDeck publishes its own voice packs and can download and install one for you — no folder to find, no archive to extract.
@@ -44,7 +56,7 @@ The list of packs available to download shows only what you do not already have.
 Not every voice pack comes from iRaceDeck's catalog — a pack someone shared with you directly, or one you built yourself, still installs the way voice packs always could. Voice packs are ordinary folders, so you can install one yourself:
 
 1. Open `%LOCALAPPDATA%\iRaceDeck\Race Engineer\Voices\` — paste that path into the File Explorer address bar. Create the folders if they do not exist yet.
-2. Put the pack's folder inside it. The folder must contain a `voice-pack.json` file and the pack's audio.
+2. Put the pack's folder inside it. The folder must contain a `voice-pack.json` file and the pack's audio — and, for each voice, its callout script at `voice/<voice>/callouts.json`, or that voice loads without one (see [What a Voice Pack Decides](#what-a-voice-pack-decides)).
 3. In iRaceDeck Settings, press **Rescan voices**.
 
 The new voice appears in the dropdown immediately. You do not need to restart the deck software.
@@ -60,6 +72,7 @@ If you rescan and the voice does not appear, iRaceDeck ignored the pack — and 
 - **The folder name does not match the pack's name** — rename the folder to match.
 - **No audio in the pack** — the pack declares a voice but ships no clips for it.
 - **Clips iRaceDeck cannot play** — the pack has audio under the voice, but not where iRaceDeck looks for it. Clips must sit at `voice/<voice>/<group>/<name>.mp3` — one folder per group inside the voice folder — and the extension must be lowercase `.mp3`. A pack whose files are one level too shallow, or exported as `.MP3`, is refused with this reason rather than installing and then saying nothing.
+- **A voice's callout script is broken** — `voice/<voice>/callouts.json` is there but is not valid JSON, is not a script iRaceDeck can read, or could not be opened. That one voice is left out and the reason names the file and the place in it that failed; the pack's other voices still load. A voice with *no* script file at all is not an error — it loads, and simply skips the callouts its script would have given it, as described under [What a Voice Pack Decides](#what-a-voice-pack-decides).
 - **Another pack already provides that voice** — two packs cannot both supply the same voice. The one that comes first alphabetically wins and the other is ignored; rename or remove one of them.
 - **iRaceDeck already includes that voice** — a pack cannot take over a voice that comes with the plugin. The included one always wins.
 

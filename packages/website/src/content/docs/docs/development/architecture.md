@@ -192,24 +192,32 @@ The Race Engineer is a self-contained subsystem hanging off SEAM 1. It subscribe
 
 Its clips come from two places (#1034). The compiled-in manifest is the **built-in** half — the walkie-talkie sfx plus whatever voice the plugin bundles. **Installed voice packs** under `%LOCALAPPDATA%\iRaceDeck\Race Engineer\Voices` supply the rest — dropped in by hand, or downloaded from the published catalog by `deck-core`'s installer (#1100), which verifies the archive against the hash the catalog states, extracts it under its own entry validation, and swaps it into place so a failure at any step leaves the pack already installed untouched. Either way `deck-core` scans that directory, `audio-service` resolves a clip against an ordered list of roots (the plugin's own assets first, then one root per pack), and the scenario engine consumes the union of their manifests. Because each pack contributes paths in the same `voice/<id>/…` shape, nothing downstream — pool derivation, `{voice}` substitution, validation — knows a second root exists.
 
+Since #1064 the **words** are the pack's too, not only the recordings. A scenario is split into two artifacts that pair by id. The code keeps the **contract** — the trigger (`when` / `where`), the scheduling knobs (weight, family, interrupt, cooldown, …), the channel, and the default radio frame — and registers the **vocabulary** a script may name: every spoken value (`defineVar`), yes/no condition (`defineCond`) and multi-way `case` (`defineCase`, with its key set declared) is a resolver in code, each with a description the future reference is generated from. The pack owns the **script**: `voice/<id>/callouts.json`, one per voice, a JSON document in the `@iracedeck/callout-script` grammar that says which clips, pools and vocabulary to assemble for each contract, in what order, and which callouts to skip. The grammar's only operator is `!`; a pack can reference the vocabulary but never define any of it, so it cannot change when a callout fires or what it may interrupt. The same scanner in `deck-core` that admits a pack's clips reads its script beside them — and the same reader serves the plugin's bundled voice — and the voice-pack service hands the engine one map of voice id → parsed script (`setScripts`) after every scan, straight after the merged manifest, so a script is never live before its clips are. The engine compiles every voice's script eagerly against the contracts and vocabulary it holds: an entry naming something unknown is skipped with one warning, a callout the script leaves out is skipped silently, and a voice with no script is a valid clips-only voice whose scripted callouts all skip (the plugins raise the `voice-script-missing` banner when that voice is the active one). At fire time a contract looks up the active voice's compiled sequence and wraps it in the **frame** the pack defines — the radio beeps and the ambience bed, once inline in 35 sequences as `@pit-crew.radio-open` / `-close` — dropping the beep steps or the ambient steps according to the **Radio beeps** / **Pit ambience** settings, read live, and only when there is speech to wrap. The grammar is its own leaf package (`zod` its only dependency) because three consumers that must not depend on each other validate the same contract: the engine (compile), the scanner (admit), and the asset generator that extracts the committed artifact from `configs/<id>.voice.json` (`pnpm generate:callout-scripts`), which the plugin build copies into `assets/audio` and the packer stages into every archive. In 3.2.0 the flags family is the migrated one; the other families are still `Scenario`s with inline sequences until #1065 and take only the frame wrapper.
+
 ```mermaid
 flowchart TB
   bus(["event-bus<br/>SEAM 1"]):::seam
-  scen["audio-scenarios<br/>scenario engine"]:::audio
-  assets["audio-assets<br/>(bundled clips)"]:::audio
-  packs["installed voice packs<br/>(%LOCALAPPDATA%)"]:::ext
+  scen["audio-scenarios<br/>scenario engine<br/>(contracts + vocabulary in code)"]:::audio
+  assets["audio-assets<br/>(bundled clips + callouts.json)"]:::audio
+  packs["installed voice packs<br/>(%LOCALAPPDATA%)<br/>clips + callouts.json per voice"]:::ext
+  scan["deck-core<br/>voice-pack scanner + service"]:::core
+  gs["deck-core<br/>global settings<br/>Radio beeps · Pit ambience"]:::core
   svc["audio-service<br/>(ordered audio roots)"]:::audio
   nat["audio-native<br/>(miniaudio mixer)"]:::audio
   spk["speakers"]:::ext
 
   bus -->|"subscribe (when: event)"| scen
   assets -->|"built-in manifest"| scen
-  packs -->|"scanned clips (setManifest)"| scen
+  assets -->|"bundled voice's script"| scan
+  packs -->|"scan: clips + scripts"| scan
+  scan -->|"merged manifest (setManifest)"| scen
+  scan -->|"voice id → script (setScripts)"| scen
+  gs -.->|"frame options, read at fire time"| scen
   cat["iracedeck.com<br/>voice-catalog.json"]:::ext
   inst["deck-core<br/>voice-pack installer<br/>verify · validate · atomic swap"]:::core
   cat -->|"catalog (user-initiated)"| inst
   inst -->|"install / update / remove"| packs
-  scen -->|"play voice sequence"| svc
+  scen -->|"play voice sequence<br/>(frame + script, compiled per voice)"| svc
   assets -.->|"root 1"| svc
   packs -.->|"root 2..n"| svc
   svc --> nat
@@ -259,6 +267,7 @@ flowchart TB
     anat["audio-native"]:::audio
     aasset["audio-assets"]:::audio
     tdata["track-data"]:::sim
+    cscript["callout-script"]:::audio
   end
 
   psd --> aelg
@@ -293,6 +302,9 @@ flowchart TB
   asc --> aasset
   asc --> eb
   asc --> sei
+  asc --> cscript
+  dc --> cscript
+  aasset -.-> cscript
 
   sdk --> pinat
   asv --> anat
@@ -305,7 +317,7 @@ flowchart TB
   classDef plugin fill:#596775,color:#fff,stroke:#3c4651;
 ```
 
-To keep this readable, `@iracedeck/logger` (imported by nearly every package) and a few cross-cutting edges are omitted — the three plugins also pull in the audio stack, `event-bus`, and `sim-events-iracing` directly. The shape that matters: `deck-core` is the hub the device adapters share, and the foundation packages at the bottom depend on nothing internal. `rasterizer` is a foundation package too (it wraps `@resvg/resvg-js` and has no internal iRaceDeck dependencies), but note the arrow direction: each **plugin** imports it and injects a render function into `deck-core`'s rasterizer service at startup (`initializeRasterizer(...)`, gated by the `pngRasterization` feature flag) — `deck-core` itself never imports `rasterizer`, so there's deliberately no `deck-core → rasterizer` edge here.
+To keep this readable, `@iracedeck/logger` (imported by nearly every package) and a few cross-cutting edges are omitted — the three plugins also pull in the audio stack, `event-bus`, and `sim-events-iracing` directly. The shape that matters: `deck-core` is the hub the device adapters share, and the foundation packages at the bottom depend on nothing internal. `rasterizer` is a foundation package too (it wraps `@resvg/resvg-js` and has no internal iRaceDeck dependencies), but note the arrow direction: each **plugin** imports it and injects a render function into `deck-core`'s rasterizer service at startup (`initializeRasterizer(...)`, gated by the `pngRasterization` feature flag) — `deck-core` itself never imports `rasterizer`, so there's deliberately no `deck-core → rasterizer` edge here. `callout-script` (#1064) is the other foundation package with more than one importer above it: the voice-pack script grammar and its parser, with `zod` as its only dependency, imported by `audio-scenarios` (to compile a script against the contracts), by `deck-core` (to admit one while scanning a pack), and — the dashed edge, a devDependency — by `audio-assets`, whose generator extracts the committed `voice/<id>/callouts.json` from the authored voice config and validates it with the same parser. It is a separate package precisely so those three never have to import each other: `deck-core` must not depend on the Race Engineer to validate a file.
 
 ## Seams & where the abstraction leaks
 
