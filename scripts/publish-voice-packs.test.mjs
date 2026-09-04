@@ -318,7 +318,7 @@ describe("publishVoicePacks — --publish", () => {
     ];
 
     // The whole sequence, in order: look, create, then re-assert and verify
-    // "latest" (see the test below for why those two follow every publish).
+    // "latest" (see the test below for why those two end every path).
     expect(ghArgv(deps)).toEqual([VIEW_OURS, create, EDIT_NOT_LATEST, VIEW_LATEST]);
     expect(deps.copyArchive).toHaveBeenCalledWith(ARCHIVE_PATH, path.join(OUT_DIR, ASSET));
     expect(results[0].outcome).toBe("published");
@@ -328,9 +328,10 @@ describe("publishVoicePacks — --publish", () => {
   // assets ride along on the same command — gh creates a draft, uploads, then
   // publishes, and that last step did not always persist make_latest (cli/cli
   // #8201, #10695, #13828). So the flag on create is not relied on: after
-  // EVERY publish the script re-asserts it with `gh release edit` and then
-  // reads back which release the repository calls latest.
-  it("re-asserts --latest=false with gh release edit and verifies the latest release is not ours, after create and after upload", async () => {
+  // EVERY pack on EVERY publish run the script re-asserts it with `gh release
+  // edit` and then reads back which release the repository calls latest — on
+  // the skip path too, see that test.
+  it("re-asserts --latest=false with gh release edit and verifies the latest release is not ours, after create and after upload alike", async () => {
     const created = fakeDeps({ gh: RELEASE_MISSING });
     const uploaded = fakeDeps({ gh: releaseWith([{ name: "something-else.zip" }]) });
 
@@ -432,7 +433,11 @@ describe("publishVoicePacks — --publish", () => {
     expect(results[0].outcome).toBe("published");
   });
 
-  it("downloads a present asset, and skips when its bytes match — touching neither the release nor 'latest'", async () => {
+  // The skip path re-asserts and re-checks "latest" too. Nothing was uploaded,
+  // but a voice-pack release wrongly marked latest by an EARLIER run — an edit
+  // that failed, or somebody flipping "Set as latest" on GitHub — would
+  // otherwise stay latest, undetected, across every later plugin release.
+  it("downloads a present asset, skips when its bytes match, and still re-asserts and re-checks 'latest'", async () => {
     const deps = fakeDeps({ gh: releaseWith([{ name: ASSET }]), downloadedSha: SHA });
 
     const results = await run(deps, { publish: true });
@@ -446,10 +451,23 @@ describe("publishVoicePacks — --publish", () => {
     expect(download).toContain("--clobber");
     expect(downloaded.startsWith(SCRATCH_DIR)).toBe(true);
     expect(deps.sha256File).toHaveBeenCalledWith(downloaded);
-    // Nothing was published, so there is nothing to re-assert or verify.
-    expect(ghArgv(deps)).toEqual([VIEW_OURS, download]);
+    expect(ghArgv(deps)).toEqual([VIEW_OURS, download, EDIT_NOT_LATEST, VIEW_LATEST]);
     expect(results[0].outcome).toBe("already-published");
     expect(deps.log.mock.calls.flat().join("\n")).toMatch(/already published/);
+  });
+
+  it("fails on the skip path too when the repository's latest release turns out to be the voice pack", async () => {
+    const deps = fakeDeps({
+      gh: { ...releaseWith([{ name: ASSET }]), latest: { ok: true, stdout: JSON.stringify({ tagName: TAG }) } },
+      downloadedSha: SHA,
+    });
+
+    const message = await failure(run(deps, { publish: true }));
+
+    expect(message).toContain(`${TAG} became the repository's latest release`);
+    expect(ghCalls(deps, "create")).toEqual([]);
+    expect(ghCalls(deps, "upload")).toEqual([]);
+    expect(ghArgv(deps).slice(-2)).toEqual([EDIT_NOT_LATEST, VIEW_LATEST]);
   });
 
   it("fails with the bytes-never-change message when the published asset differs", async () => {

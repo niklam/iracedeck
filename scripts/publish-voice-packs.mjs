@@ -42,10 +42,11 @@
  *      bump, fail. A published version's bytes never change. A DRAFT release is
  *      refused outright: it is what an interrupted create leaves behind, an
  *      upload into it would report "published" while every download 404s.
- *   5. After either publish: `gh release edit --latest=false` on the tag, then
- *      read back which release the repository calls latest and fail loudly if
- *      it is ours (`assertNotLatest`, which explains why the create flag is not
- *      trusted on its own). The skip path publishes nothing and needs neither.
+ *   5. On all three paths — created, uploaded, and already published alike:
+ *      `gh release edit --latest=false` on the tag, then read back which
+ *      release the repository calls latest and fail loudly if it is ours
+ *      (`assertNotLatest`, which explains why the create flag is not trusted
+ *      on its own, and why the skip path is not exempt).
  *
  * `--latest=false` is load-bearing, not a nicety. The website's plugin
  * download links resolve through `/releases/latest/download/`, and GitHub hands
@@ -283,8 +284,9 @@ function publishedAssetNames(deps, pack, tag) {
 }
 
 /**
- * After every publish: re-assert that the voice-pack release is not the
- * repository's latest, then read back which release is.
+ * At the end of every path through `publishArchive`: re-assert that the
+ * voice-pack release is not the repository's latest, then read back which
+ * release is.
  *
  * `gh release create --latest=false` has a history of being ignored when
  * assets ride along on the same command — gh creates a draft, uploads, then
@@ -296,6 +298,12 @@ function publishedAssetNames(deps, pack, tag) {
  * `gh release view` answers with whatever the repository calls latest. This is
  * a check, so a failure to check is a failure: an unanswered or unreadable view
  * throws rather than reading as "not ours".
+ *
+ * The already-published path runs it too, though it uploaded nothing: a
+ * release wrongly marked latest by an EARLIER run — an edit that failed, or
+ * somebody flipping "Set as latest" on GitHub — would otherwise stay latest,
+ * undetected, across every later plugin release. Every publish run therefore
+ * re-asserts and re-checks the slot for every pack.
  *
  * @param {PublishDeps} deps
  * @param {VoicePackDefinition} pack
@@ -382,6 +390,8 @@ function publishArchive(deps, pack, archivePath, fresh, { scratchDir, targetSha 
         "bump the pack version in voice-packs.mjs, re-run pack:voice, and commit.",
     );
   }
+
+  assertNotLatest(deps, pack, tag);
 
   return "already-published";
 }
