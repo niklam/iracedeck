@@ -11,12 +11,51 @@ on:
         description: "Release version tag (e.g., v1.7.0)"
         required: true
         type: string
+      # Both optional, used only by publish-voice-packs.yml (#1116): build the
+      # site from `ref` (the latest stable plugin tag) rather than the calling
+      # ref, then overlay packages/audio-assets/catalog/ from `catalog_ref`
+      # (master). A voice pack published between releases must move the
+      # catalog without deploying master's documentation for unreleased work.
+      ref:
+        description: "Git ref to build the site from (default: the calling ref)"
+        required: false
+        type: string
+      catalog_ref:
+        description: "Git ref whose packages/audio-assets/catalog/ overlays the checkout"
+        required: false
+        type: string
+
+# The deploy needs the checkout and the Firebase service account; nothing here
+# writes to GitHub. A caller (release.yml, publish-voice-packs.yml) may hold
+# more, but a called workflow can only lower the cap, never raise it.
+permissions:
+  contents: read
 
 jobs:
   build_and_deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      # `--no-overlay` so a pack withdrawn on master (its entry deleted) is
+      # removed here too; the default overlay mode only adds and overwrites.
+      # The checkout must also be able to BUILD a catalog: a tag older than
+      # the catalog generator would deploy green with no catalog at all.
+      - name: Overlay the voice-pack catalog from another ref
+        if: inputs.catalog_ref
+        env:
+          CATALOG_REF: ${{ inputs.catalog_ref }}
+        run: |
+          set -euo pipefail
+          test -f scripts/lib/voice-catalog-data.mjs || {
+            echo "::error::$(git describe --tags --always) has no voice-catalog generator; a catalog overlay cannot be built from it."
+            exit 1
+          }
+          git fetch --no-tags --depth=1 origin "$CATALOG_REF"
+          git checkout --no-overlay FETCH_HEAD -- packages/audio-assets/catalog
+          git status --short packages/audio-assets/catalog
 
       - uses: pnpm/action-setup@v6
         with:
@@ -28,6 +67,28 @@ jobs:
           cache: 'pnpm'
 
       - run: pnpm install
+
+      # The site must never go live naming a voice-pack archive that does not
+      # exist (#1116). On the release path the archive was attached by the
+      # build job this deploy waits for; on a manual dispatch nothing
+      # guarantees it, so every entry's url is asked before the build. A
+      # tag from before the catalog existed has no entries and passes.
+      - name: Verify every voice-pack archive the catalog names is published
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for entry in packages/audio-assets/catalog/*.json; do
+            url="$(node -p 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).url' "$entry")"
+            if ! code="$(curl -sSIL --connect-timeout 15 --max-time 60 -o /dev/null -w '%{http_code}' "$url")"; then
+              echo "::error file=$entry::The request for $url failed or timed out."
+              exit 1
+            fi
+            if [ "$code" != "200" ]; then
+              echo "::error file=$entry::$entry names $url, which answers HTTP $code. Publish the archive first (the release workflow, or 'Publish voice packs' with publish on), or restore the entry."
+              exit 1
+            fi
+            echo "ok  $entry -> $url"
+          done
 
       - name: Build website
         run: pnpm exec turbo run build --filter=@iracedeck/website

@@ -89,3 +89,6 @@ scripts/radio-effect/output/*
 # Policy: docs/superpowers/specs/2026-08-25-issue-621-process-docs-policy.md
 docs/superpowers/plans/*
 !docs/superpowers/plans/.gitkeep
+
+# Release packaging output (plugins and voice-pack archives); CI-only, but a local dry run of scripts/publish-voice-packs.mjs writes here too
+packed/

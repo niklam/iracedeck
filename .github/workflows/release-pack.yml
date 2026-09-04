@@ -38,6 +38,27 @@ jobs:
       - name: Build
         run: pnpm build
 
+      # Every published voice is packed and checked against its committed
+      # catalog entry on every run; the archive is attached to its
+      # voices-<id>-<version> release only on a version tag (#1116). This
+      # must sit between Build and the prune below: the packer's fflate and
+      # ffmpeg-static are devDependencies, and Build has just warmed the
+      # encode cache, so packing costs seconds rather than a re-encode.
+      - name: Publish voice packs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/publish-voice-packs.mjs ${{ startsWith(github.ref, 'refs/tags/v') && !startsWith(github.ref, 'refs/tags/voices-') && '--publish' || '' }}
+
+      # `always()`: the run whose archive is worth inspecting is the one where
+      # the runner did NOT reproduce the committed bytes, and that run fails.
+      - name: Upload voice-pack artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: voice-packs
+          path: packed/voice-packs/*.zip
+          if-no-files-found: ignore
+
       - name: Remove dev dependencies
         run: pnpm install --prod --no-frozen-lockfile
 
@@ -93,7 +114,7 @@ jobs:
           path: packed/com.ulanzi.iracedeck.ulanziPlugin.zip
 
       - name: Attach plugins to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') && !startsWith(github.ref, 'refs/tags/voices-')
         uses: softprops/action-gh-release@v3
         with:
           files: |
