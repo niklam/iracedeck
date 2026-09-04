@@ -1,0 +1,31 @@
+{
+  "name": "@iracedeck/callout-script",
+  "version": "3.2.0-dev.0",
+  "description": "The JSON grammar for Race Engineer voice-pack callout scripts: types, Zod schema, parser and reference collector.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "clean": "rimraf dist",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@tsconfig/node22": "22.0.6",
+    "@types/node": "26.4.0",
+    "rimraf": "6.1.3",
+    "typescript": "5.9.3",
+    "vitest": "4.1.11"
+  }
+}

@@ -25,6 +25,7 @@
   "dependencies": {
     "@iracedeck/audio-assets": "workspace:*",
     "@iracedeck/audio-service": "workspace:*",
+    "@iracedeck/callout-script": "workspace:*",
     "@iracedeck/event-bus": "workspace:*",
     "@iracedeck/iracing-sdk": "workspace:*",
     "@iracedeck/logger": "workspace:*",

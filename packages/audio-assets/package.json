@@ -21,6 +21,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {
+    "@iracedeck/callout-script": "workspace:*",
     "@iracedeck/deck-core": "workspace:*",
     "@types/node": "26.4.0",
     "fflate": "0.8.3",

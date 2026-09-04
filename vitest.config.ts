@@ -50,6 +50,7 @@ export default defineConfig({
       "@iracedeck/audio-scenarios/pit-crew": packageSrc("audio-scenarios", "src/catalog/pit-crew/index.ts"),
       "@iracedeck/audio-scenarios": packageSrc("audio-scenarios"),
       "@iracedeck/audio-service": packageSrc("audio-service"),
+      "@iracedeck/callout-script": packageSrc("callout-script"),
       "@iracedeck/deck-core": packageSrc("deck-core"),
       "@iracedeck/event-bus": packageSrc("event-bus"),
       "@iracedeck/icon-composer": packageSrc("icon-composer"),

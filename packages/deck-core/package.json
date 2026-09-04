@@ -17,6 +17,7 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
+    "@iracedeck/callout-script": "workspace:*",
     "@iracedeck/icon-composer": "workspace:*",
     "@iracedeck/iracing-sdk": "workspace:*",
     "@iracedeck/logger": "workspace:*",
