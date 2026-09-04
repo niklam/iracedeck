@@ -37,9 +37,10 @@ const POST_ID = /^\d{17,20}$/;
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 function exec(file, args) {
-  // gh and git never need the bot token, which readConfig loaded into
-  // process.env from .env.local; an undefined value drops the key from the
-  // child's environment rather than passing it on empty.
+  // gh and git never need the bot token. readConfig reads .env.local into a
+  // COPY of the environment, so the only way it can be here is a shell
+  // export — scrubbed all the same; an undefined value drops the key from
+  // the child's environment rather than passing it on empty.
   return execFileSync(file, args, {
     encoding: "utf8",
     cwd: root,

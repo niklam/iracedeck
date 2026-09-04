@@ -13,11 +13,12 @@ import {
   expectedTag,
   lowestStableVersion,
   mergePosts,
-  parsePostLink,
+  parseSourceLine,
   postLink,
   replaceStatusTag,
   resolveStatusTag,
   shouldPropose,
+  sourceLine,
   STANDING_POST_IDS,
   summarizeReactions,
   tagNamesOf,
@@ -29,8 +30,15 @@ const PAGE = 100;
 const MAX_ARCHIVED_PAGES = 20;
 const MAX_MESSAGE_PAGES = 10;
 
-/** @returns {{ token: string, guildId: string, channelId: string } | { error: string }} */
-export function readConfig(root, env = process.env) {
+/**
+ * Reads the three variables from `env`, filling gaps from `.env.local`.
+ * `env` defaults to a COPY of the process environment: the token read from
+ * the file must never land in `process.env`, where every child process (gh,
+ * git) would inherit it. A shell-exported value still wins over the file.
+ *
+ * @returns {{ token: string, guildId: string, channelId: string } | { error: string }}
+ */
+export function readConfig(root, env = { ...process.env }) {
   loadEnvLocal(root, env);
   const missing = REQUIRED_ENV.filter((name) => !env[name]);
 
@@ -47,7 +55,11 @@ export async function fetchTags(client, channelId) {
   return channel.available_tags ?? [];
 }
 
-/** Active threads (guild-wide, filtered) plus every archived page of the channel. */
+/**
+ * Active threads (guild-wide, filtered) plus every archived page of the
+ * channel. The page caps fail loud: a silently truncated listing would make
+ * `follow-up` report old posts as missing and `list` hide them.
+ */
 export async function fetchAllPosts(client, { guildId, channelId }) {
   const active = (await client.get(`/guilds/${guildId}/threads/active`)).threads ?? [];
   const archivedPages = [];
@@ -58,14 +70,14 @@ export async function fetchAllPosts(client, { guildId, channelId }) {
     const result = await client.get(`/channels/${channelId}/threads/archived/public${query}`);
     archivedPages.push(result);
 
-    if (!result.has_more || !result.threads?.length) break;
+    if (!result.has_more) return mergePosts({ active, archivedPages, channelId });
 
-    before = result.threads.at(-1).thread_metadata?.archive_timestamp;
+    before = result.threads?.at(-1)?.thread_metadata?.archive_timestamp;
 
-    if (!before) break;
+    if (!before) throw new Error("archived-thread listing cannot page further: last thread has no archive_timestamp");
   }
 
-  return mergePosts({ active, archivedPages, channelId });
+  throw new Error(`archived-thread listing truncated after ${MAX_ARCHIVED_PAGES} pages; raise MAX_ARCHIVED_PAGES or report this`);
 }
 
 /** Every message in a post, oldest first. Discord pages newest-first on `before`. */
@@ -78,12 +90,12 @@ export async function fetchPostMessages(client, postId) {
     const batch = await client.get(`/channels/${postId}/messages${query}`);
     all.push(...batch);
 
-    if (batch.length < PAGE) break;
+    if (batch.length < PAGE) return all.sort((a, b) => (BigInt(a.id) < BigInt(b.id) ? -1 : 1));
 
     before = batch.at(-1).id;
   }
 
-  return all.sort((a, b) => (BigInt(a.id) < BigInt(b.id) ? -1 : 1));
+  throw new Error(`post has more than ${MAX_MESSAGE_PAGES * PAGE} messages; raise MAX_MESSAGE_PAGES`);
 }
 
 async function fetchPostThread(client, config, postId, log, { forWrite = false } = {}) {
@@ -138,14 +150,20 @@ export async function runShow({ postId, json = false }, { config, client, log = 
   // its author is not the requester, and its reactions are not votes — and
   // `show --json` is what the issue's "Requested on Discord … by" line credits.
   const starter = messages.find((m) => m.id === postId) ?? null;
+  const described = describePost(thread, tags, config.guildId);
+  const author = starter ? { id: starter.author.id, handle: starter.author.username } : { id: thread.owner_id, handle: null };
+  const votes = starter ? summarizeReactions(starter) : { total: 0, breakdown: [] };
   const post = {
-    ...describePost(thread, tags, config.guildId),
-    author: starter ? { id: starter.author.id, handle: starter.author.username } : { id: thread.owner_id, handle: null },
-    votes: starter ? summarizeReactions(starter) : { total: 0, breakdown: [] },
+    ...described,
+    author,
+    votes,
     starter: starter ? { id: starter.id, createdAt: starter.timestamp, content: starter.content } : null,
     replies: messages
       .filter((m) => m.id !== postId)
       .map((m) => ({ id: m.id, author: m.author.username, createdAt: m.timestamp, content: m.content })),
+    // The line the issue carries back to this post, ready to paste verbatim;
+    // `follow-up` parses exactly this shape.
+    sourceLine: sourceLine({ link: described.link, handle: author.handle ?? "unknown", votes: votes.total }),
   };
 
   if (json) {
@@ -166,6 +184,9 @@ export async function runShow({ postId, json = false }, { config, client, log = 
     log.log(`--- ${reply.author}, ${reply.createdAt.slice(0, 16).replace("T", " ")} ---`);
     log.log(reply.content);
   }
+
+  log.log("");
+  log.log(`source line: ${post.sourceLine}`);
 
   return 0;
 }
@@ -252,55 +273,104 @@ export async function runTag({ postId, tagName, dryRun = false }, { config, clie
   return 0;
 }
 
-const ISSUE_FIELDS = "number,title,url,state,stateReason,assignees,milestone,body";
+const ISSUE_FIELDS = "number,title,url,state,stateReason,assignees,milestone,body,closedByPullRequestsReferences";
+/** The commits named by an issue's timeline `closed` events (null when a PR, not a commit, closed it). */
+const CLOSING_COMMITS_JQ = '[.[] | select(.event == "closed") | .commit_id] | map(select(. != null))';
+const NO_CLOSING_COMMIT_NOTE = "closed without a linked PR or closing commit; Released must be set by hand";
 
 function gh(exec, args) {
   return JSON.parse(exec("gh", args));
 }
 
-/** The lowest stable tag containing the merge commit of the issue's closing PR, or null. */
-function releasedVersionOf(exec, issue) {
-  if (issue.state !== "CLOSED" || issue.stateReason === "NOT_PLANNED") return null;
-
-  const refs = gh(exec, ["issue", "view", String(issue.number), "--json", "closedByPullRequestsReferences"]).closedByPullRequestsReferences ?? [];
-
-  for (const ref of refs) {
-    const sha = gh(exec, ["pr", "view", String(ref.number), "--json", "mergeCommit"]).mergeCommit?.oid;
-
-    if (!sha) continue;
-
-    const tags = exec("git", ["tag", "--contains", sha]).split(/\r?\n/).filter(Boolean);
-    const version = lowestStableVersion(tags);
-
-    if (version) return version;
-  }
-
-  return null;
+function lines(output) {
+  return output.split(/\r?\n/).filter(Boolean);
 }
 
-function followUpRow(issue, postsById, exec) {
-  const parsed = parsePostLink(issue.body);
-  const post = parsed ? postsById.get(parsed.postId) : null;
-  const version = releasedVersionOf(exec, issue);
-  const expected = expectedTag(issue, version);
-  const base = { issue: issue.number, title: issue.title, url: issue.url, state: issue.state, post: null, current: null, expected, version, propose: false, note: null };
+/**
+ * Every commit that shipped the issue, from three sources in union: the
+ * merge commits of the PRs GitHub links as closing it, the commit a timeline
+ * `closed` event names, and squash-merge subjects carrying `(#n)`. The last
+ * is filtered to the SUBJECT — `git log --grep` matches the whole message, so
+ * a commit whose body cites the issue would otherwise count — and excludes
+ * `docs(specs)` commits, whose subjects carry the issue number by convention
+ * while shipping nothing (they land on master long before the feature, often
+ * in an earlier release).
+ */
+function shippingCommitsOf(exec, issue) {
+  const shas = new Set();
 
-  if (!parsed) return { ...base, note: "no Discord post link in the issue body" };
-  if (!post) return { ...base, note: `post ${parsed.postId} not found in the channel` };
+  for (const ref of issue.closedByPullRequestsReferences ?? []) {
+    const sha = gh(exec, ["pr", "view", String(ref.number), "--json", "mergeCommit"]).mergeCommit?.oid;
+
+    if (sha) shas.add(sha);
+  }
+
+  for (const sha of gh(exec, ["api", `repos/{owner}/{repo}/issues/${issue.number}/timeline`, "--paginate", "--jq", CLOSING_COMMITS_JQ])) shas.add(sha);
+
+  const marker = `(#${issue.number})`;
+
+  for (const line of lines(exec("git", ["log", "--all", "--fixed-strings", `--grep=${marker}`, "--format=%H%x09%s"]))) {
+    const [sha, subject = ""] = line.split("\t");
+
+    if (subject.includes(marker) && !subject.startsWith("docs(specs)")) shas.add(sha);
+  }
+
+  return [...shas];
+}
+
+/**
+ * The lowest stable tag containing any of the issue's shipping commits. A
+ * lookup that finds no commit, or fails, yields no version and a note; the
+ * caller still derives the row from the issue's state, so one broken `gh`
+ * call never hides the whole follow-up.
+ *
+ * @returns {{ version: string | null, note: string | null }}
+ */
+function releasedVersionOf(exec, issue) {
+  try {
+    const shas = shippingCommitsOf(exec, issue);
+
+    if (shas.length === 0) return { version: null, note: NO_CLOSING_COMMIT_NOTE };
+
+    const tags = shas.flatMap((sha) => lines(exec("git", ["tag", "--contains", sha])));
+
+    return { version: lowestStableVersion(tags), note: null };
+  } catch (error) {
+    return { version: null, note: `release lookup failed: ${lines(String(error.message))[0] ?? "unknown error"}` };
+  }
+}
+
+function followUpRow(issue, { config, postsById, exec }) {
+  const base = { issue: issue.number, title: issue.title, url: issue.url, state: issue.state, post: null, current: null, expected: expectedTag(issue), version: null, propose: false, note: null };
+  const source = parseSourceLine(issue.body);
+
+  if (!source) return { ...base, note: "no source line in the issue body" };
+  if (source.guildId !== config.guildId) return { ...base, note: "source line points at another server" };
+
+  const post = postsById.get(source.postId);
+
+  if (!post) return { ...base, note: `post ${source.postId} not found in the channel` };
 
   const row = { ...base, post: { id: post.id, title: post.title, link: post.link }, current: post.statusTag };
 
   if (post.standing) return { ...row, note: "standing post; never changed by this tool" };
+  if (row.expected === null) return { ...row, note: "closed as duplicate; point the post at the canonical issue by hand" };
 
-  return { ...row, propose: shouldPropose(post.statusTag, expected) };
+  // Only a completed issue can have shipped, and only a row that may still
+  // change is worth the gh/git round trips.
+  const release = issue.state === "CLOSED" && issue.stateReason === "COMPLETED" ? releasedVersionOf(exec, issue) : { version: null, note: null };
+  const expected = expectedTag(issue, release.version);
+
+  return { ...row, expected, version: release.version, propose: shouldPropose(post.statusTag, expected), note: release.note };
 }
 
 function formatFollowUpRow(row) {
-  const move = `${row.current ?? "none"} -> ${row.expected}${row.version ? ` (${row.version})` : ""}`;
-  const verdict = row.note ?? (row.propose ? "PROPOSE" : "up to date");
+  const move = `${row.current ?? "none"} -> ${row.expected ?? "none"}${row.version ? ` (${row.version})` : ""}`;
+  const verdict = row.propose ? "PROPOSE" : row.current === row.expected ? "up to date" : "no change";
+  const note = row.note ? `  (note: ${row.note})` : "";
   const post = row.post ? row.post.title : "(no post)";
 
-  return `#${row.issue} ${row.title}\n    ${post}\n    ${move}  ${verdict}`;
+  return `#${row.issue} ${row.title}\n    ${post}\n    ${move}  ${verdict}${note}`;
 }
 
 /**
@@ -315,7 +385,7 @@ export async function runFollowUp({ json = false }, { config, client, log = cons
   const tags = await fetchTags(client, config.channelId);
   const posts = (await fetchAllPosts(client, config)).map((thread) => describePost(thread, tags, config.guildId));
   const postsById = new Map(posts.map((post) => [post.id, post]));
-  const rows = issues.map((issue) => followUpRow(issue, postsById, exec));
+  const rows = issues.map((issue) => followUpRow(issue, { config, postsById, exec }));
 
   if (json) {
     log.log(JSON.stringify(rows, null, 2));
