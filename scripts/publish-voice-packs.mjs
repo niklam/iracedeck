@@ -42,6 +42,10 @@
  *      bump, fail. A published version's bytes never change. A DRAFT release is
  *      refused outright: it is what an interrupted create leaves behind, an
  *      upload into it would report "published" while every download 404s.
+ *   5. After either publish: `gh release edit --latest=false` on the tag, then
+ *      read back which release the repository calls latest and fail loudly if
+ *      it is ours (`assertNotLatest`, which explains why the create flag is not
+ *      trusted on its own). The skip path publishes nothing and needs neither.
  *
  * `--latest=false` is load-bearing, not a nicety. The website's plugin
  * download links resolve through `/releases/latest/download/`, and GitHub hands
@@ -279,6 +283,49 @@ function publishedAssetNames(deps, pack, tag) {
 }
 
 /**
+ * After every publish: re-assert that the voice-pack release is not the
+ * repository's latest, then read back which release is.
+ *
+ * `gh release create --latest=false` has a history of being ignored when
+ * assets ride along on the same command — gh creates a draft, uploads, then
+ * publishes, and that last step did not always persist `make_latest` (cli/cli
+ * #8201, with #10695 and #13828 reporting it still bites). Were that to happen
+ * here, every plugin download on the website would 404 — the exact failure the
+ * flag exists to prevent — so the flag is belt, and this is braces:
+ * `gh release edit --latest=false` is idempotent and cheap, and the tag-less
+ * `gh release view` answers with whatever the repository calls latest. This is
+ * a check, so a failure to check is a failure: an unanswered or unreadable view
+ * throws rather than reading as "not ours".
+ *
+ * @param {PublishDeps} deps
+ * @param {VoicePackDefinition} pack
+ * @param {string} tag
+ */
+function assertNotLatest(deps, pack, tag) {
+  ghOrThrow(deps, pack, ["release", "edit", tag, "--latest=false"]);
+
+  const viewLatest = ["release", "view", "--json", "tagName"];
+  const result = ghOrThrow(deps, pack, viewLatest);
+  let latest;
+
+  try {
+    latest = JSON.parse(result.stdout).tagName;
+  } catch (error) {
+    throw new Error(
+      `${pack.id}: could not read the repository's latest release from gh release view — ${error instanceof Error ? error.message : error}`,
+    );
+  }
+
+  if (latest === tag) {
+    throw new Error(
+      `${pack.id}: ${tag} became the repository's latest release. Every plugin download via ` +
+        '/releases/latest/download/ is broken until "latest" is moved back to the newest vX.Y.Z release on GitHub — ' +
+        "do that immediately.",
+    );
+  }
+}
+
+/**
  * Pass 2, per pack: put the verified archive on the pack's release, or confirm
  * it is already there byte for byte. The archive is handed to gh by path
  * alone — its basename is the asset name (`assertArchiveName` in pass 1).
@@ -296,8 +343,9 @@ function publishArchive(deps, pack, archivePath, fresh, { scratchDir, targetSha 
   const assets = publishedAssetNames(deps, pack, tag);
 
   if (assets === null) {
-    // `--latest=false` is mandatory — see the header. `--target` pins the tag to
-    // the commit being released; without it gh tags the default branch's HEAD.
+    // `--latest=false` is mandatory — see the header — but not relied on: see
+    // `assertNotLatest`. `--target` pins the tag to the commit being released;
+    // without it gh tags the default branch's HEAD.
     ghOrThrow(deps, pack, [
       "release",
       "create",
@@ -310,12 +358,14 @@ function publishArchive(deps, pack, archivePath, fresh, { scratchDir, targetSha 
       ...(targetSha === undefined ? [] : ["--target", targetSha]),
       archivePath,
     ]);
+    assertNotLatest(deps, pack, tag);
 
     return "published";
   }
 
   if (!assets.includes(assetName)) {
     ghOrThrow(deps, pack, ["release", "upload", tag, archivePath]);
+    assertNotLatest(deps, pack, tag);
 
     return "published";
   }

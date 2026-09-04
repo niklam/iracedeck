@@ -63,11 +63,15 @@ function committedEntry(overrides = {}) {
   };
 }
 
+/** What the repository's latest release normally is: a plugin release, never a voice pack. */
+const LATEST_IS_PLUGIN = { ok: true, stdout: JSON.stringify({ tagName: "v3.1.0" }) };
+
 /**
  * Injected deps with every side effect faked. `gh` answers from a script keyed
- * by the subcommand (`view` / `create` / `upload` / `download`) so a test can
- * describe the release's state in one object and then assert on the exact
- * argv each call received.
+ * by the subcommand (`view` / `create` / `upload` / `download` / `edit`), plus
+ * `latest` for the tag-less `gh release view --json tagName` that reports the
+ * repository's latest release — so a test can describe the release's state in
+ * one object and then assert on the exact argv each call received.
  *
  * @param {object} [options]
  * @param {Record<string, { ok: boolean; stdout?: string; stderr?: string }>} [options.gh]
@@ -82,22 +86,36 @@ function fakeDeps({
   archivePathFor = (pack) => path.join(SCRATCH_DIR, "pack", `${pack.id}-${pack.version}.zip`),
 } = {}) {
   const committed = typeof entry === "function" ? entry : () => entry;
+  const script = { latest: LATEST_IS_PLUGIN, ...gh };
   const deps = {
     pack: vi.fn(async (pack) => ({ entry: freshEntry(pack), archivePath: archivePathFor(pack) })),
     readCommittedEntry: vi.fn(committed),
     ensureDir: vi.fn(),
     copyArchive: vi.fn(),
     sha256File: vi.fn(() => downloadedSha),
-    gh: vi.fn((args) => gh[args[1]] ?? { ok: true, stdout: "" }),
+    gh: vi.fn((args) => {
+      const key = args[1] === "view" && args[2] === "--json" ? "latest" : args[1];
+
+      return script[key] ?? { ok: true, stdout: "" };
+    }),
     log: vi.fn(),
   };
 
   return deps;
 }
 
-function ghCalls(deps, subcommand) {
-  return deps.gh.mock.calls.map(([args]) => args).filter((args) => args[0] === "release" && args[1] === subcommand);
+/** Every gh argv, in call order. */
+function ghArgv(deps) {
+  return deps.gh.mock.calls.map(([args]) => args);
 }
+
+function ghCalls(deps, subcommand) {
+  return ghArgv(deps).filter((args) => args[0] === "release" && args[1] === subcommand);
+}
+
+const VIEW_OURS = ["release", "view", TAG, "--json", "assets,isDraft"];
+const EDIT_NOT_LATEST = ["release", "edit", TAG, "--latest=false"];
+const VIEW_LATEST = ["release", "view", "--json", "tagName"];
 
 function run(deps, { publish = false, targetSha, packs = [PACK] } = {}) {
   return publishVoicePacks({ packs, publish, outDir: OUT_DIR, scratchDir: SCRATCH_DIR, targetSha, deps });
@@ -285,26 +303,71 @@ describe("publishVoicePacks — --publish", () => {
 
     const results = await run(deps, { publish: true, targetSha: "abc123" });
 
-    expect(ghCalls(deps, "view")).toEqual([["release", "view", TAG, "--json", "assets,isDraft"]]);
-    expect(ghCalls(deps, "create")).toEqual([
-      [
-        "release",
-        "create",
-        TAG,
-        "--title",
-        "Voice pack: Default 1.0.0",
-        "--notes",
-        releaseNotes(PACK),
-        "--latest=false",
-        "--target",
-        "abc123",
-        ARCHIVE_PATH,
-      ],
-    ]);
-    expect(ghCalls(deps, "upload")).toEqual([]);
-    expect(ghCalls(deps, "download")).toEqual([]);
+    const create = [
+      "release",
+      "create",
+      TAG,
+      "--title",
+      "Voice pack: Default 1.0.0",
+      "--notes",
+      releaseNotes(PACK),
+      "--latest=false",
+      "--target",
+      "abc123",
+      ARCHIVE_PATH,
+    ];
+
+    // The whole sequence, in order: look, create, then re-assert and verify
+    // "latest" (see the test below for why those two follow every publish).
+    expect(ghArgv(deps)).toEqual([VIEW_OURS, create, EDIT_NOT_LATEST, VIEW_LATEST]);
     expect(deps.copyArchive).toHaveBeenCalledWith(ARCHIVE_PATH, path.join(OUT_DIR, ASSET));
     expect(results[0].outcome).toBe("published");
+  });
+
+  // `gh release create --latest=false` has a history of being ignored when
+  // assets ride along on the same command — gh creates a draft, uploads, then
+  // publishes, and that last step did not always persist make_latest (cli/cli
+  // #8201, #10695, #13828). So the flag on create is not relied on: after
+  // EVERY publish the script re-asserts it with `gh release edit` and then
+  // reads back which release the repository calls latest.
+  it("re-asserts --latest=false with gh release edit and verifies the latest release is not ours, after create and after upload", async () => {
+    const created = fakeDeps({ gh: RELEASE_MISSING });
+    const uploaded = fakeDeps({ gh: releaseWith([{ name: "something-else.zip" }]) });
+
+    await run(created, { publish: true });
+    await run(uploaded, { publish: true });
+
+    expect(ghArgv(created).slice(-2)).toEqual([EDIT_NOT_LATEST, VIEW_LATEST]);
+    expect(ghArgv(uploaded).slice(-2)).toEqual([EDIT_NOT_LATEST, VIEW_LATEST]);
+  });
+
+  it("fails loudly when the repository's latest release turns out to be the voice pack", async () => {
+    const deps = fakeDeps({
+      gh: { ...RELEASE_MISSING, latest: { ok: true, stdout: JSON.stringify({ tagName: TAG }) } },
+    });
+
+    const message = await failure(run(deps, { publish: true }));
+
+    expect(message).toMatch(/^default: /);
+    expect(message).toContain(`${TAG} became the repository's latest release`);
+    expect(message).toContain("/releases/latest/download/");
+    expect(message).toMatch(/moved back to the newest vX\.Y\.Z release on GitHub/);
+    expect(message).toMatch(/immediately/);
+    expect(ghArgv(deps).at(-1)).toEqual(VIEW_LATEST);
+  });
+
+  // This is a check, so a failure to check is a failure: an unanswered or
+  // unreadable "which release is latest" must not read as "not ours".
+  it("fails when the latest-release check cannot be made or cannot be read", async () => {
+    const unanswered = fakeDeps({ gh: { ...RELEASE_MISSING, latest: { ok: false, stdout: "", stderr: "HTTP 502" } } });
+    const unreadable = fakeDeps({ gh: { ...RELEASE_MISSING, latest: { ok: true, stdout: "not json" } } });
+    const editRefused = fakeDeps({
+      gh: { ...RELEASE_MISSING, edit: { ok: false, stdout: "", stderr: "HTTP 403: Forbidden" } },
+    });
+
+    await expect(run(unanswered, { publish: true })).rejects.toThrow(/default: gh release view .*HTTP 502/);
+    await expect(run(unreadable, { publish: true })).rejects.toThrow(/default: .*latest release/);
+    await expect(run(editRefused, { publish: true })).rejects.toThrow(/default: gh release edit .*HTTP 403/);
   });
 
   it("omits --target when there is no GITHUB_SHA", async () => {
@@ -365,13 +428,11 @@ describe("publishVoicePacks — --publish", () => {
 
     const results = await run(deps, { publish: true });
 
-    expect(ghCalls(deps, "create")).toEqual([]);
-    expect(ghCalls(deps, "upload")).toEqual([["release", "upload", TAG, ARCHIVE_PATH]]);
-    expect(ghCalls(deps, "download")).toEqual([]);
+    expect(ghArgv(deps)).toEqual([VIEW_OURS, ["release", "upload", TAG, ARCHIVE_PATH], EDIT_NOT_LATEST, VIEW_LATEST]);
     expect(results[0].outcome).toBe("published");
   });
 
-  it("downloads a present asset, and skips when its bytes match", async () => {
+  it("downloads a present asset, and skips when its bytes match — touching neither the release nor 'latest'", async () => {
     const deps = fakeDeps({ gh: releaseWith([{ name: ASSET }]), downloadedSha: SHA });
 
     const results = await run(deps, { publish: true });
@@ -385,8 +446,8 @@ describe("publishVoicePacks — --publish", () => {
     expect(download).toContain("--clobber");
     expect(downloaded.startsWith(SCRATCH_DIR)).toBe(true);
     expect(deps.sha256File).toHaveBeenCalledWith(downloaded);
-    expect(ghCalls(deps, "create")).toEqual([]);
-    expect(ghCalls(deps, "upload")).toEqual([]);
+    // Nothing was published, so there is nothing to re-assert or verify.
+    expect(ghArgv(deps)).toEqual([VIEW_OURS, download]);
     expect(results[0].outcome).toBe("already-published");
     expect(deps.log.mock.calls.flat().join("\n")).toMatch(/already published/);
   });
