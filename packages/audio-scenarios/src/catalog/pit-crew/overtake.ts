@@ -127,7 +127,6 @@ export function buildOvertakeGainedScenario(
   // class") variant. The `if` predicates read the live event payload (ctx.data)
   // — the reaction fires immediately, so the payload is current.
   const sequence: Step[] = [
-    "@pit-crew.radio-open",
     {
       if: (ctx) => effectiveOf(ctx.data) === 1,
       then: [
@@ -163,7 +162,6 @@ export function buildOvertakeGainedScenario(
         },
       ],
     },
-    "@pit-crew.radio-close",
   ];
 
   return {
@@ -210,13 +208,11 @@ export function buildOvertakeLostScenario(
   getGate: OvertakeGateResolver = () => null,
 ): Scenario {
   const sequence: Step[] = [
-    "@pit-crew.radio-open",
     // Optional (issue #835): the "Come on, <name>." opener is a complete
     // sentence on its own — a voice lacking the name clip (or an unwired
     // resolver) skips it and the loss line still plays.
     { optional: [{ var: "overtake.lost.comeOn" }] },
     clipPath("dont-give-up-positions-01.mp3"),
-    "@pit-crew.radio-close",
   ];
 
   return {

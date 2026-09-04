@@ -4,7 +4,9 @@
  *
  * Terse delivery: a single clip, NO radio open/close frame (the pit-box
  * count-in precedent) — at a 1 s default lead a beep frame would eat the
- * whole margin. `family: "corner-name"` so back-to-back corners preempt the
+ * whole margin. Since issue #1064 the engine applies the frame itself, so it
+ * is the scenario's `frame: NO_FRAME` (`"none"`) that enforces this now.
+ * `family: "corner-name"` so back-to-back corners preempt the
  * in-flight name; `queueable: false` because a name that missed its moment
  * must drop, never replay late. Weight stays at the default `WEIGHT.NORMAL`.
  *
@@ -21,7 +23,7 @@ import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventOf } from "@iracedeck/event-bus";
 
 import type { Scenario } from "../../dsl.js";
-import { poolRef } from "../../dsl.js";
+import { NO_FRAME, poolRef } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 
 /** Snapshot the clip resolver reads — exactly the event payload. */
@@ -55,6 +57,7 @@ export function buildCornerNameScenario(getSnapshot: CornerNameSnapshotResolver)
     base: "voice/{voice}",
     family: "corner-name",
     queueable: false,
+    frame: NO_FRAME,
     sequence: [{ var: "cornerName.clip" }],
     when: {
       event: "cornerName.approaching",

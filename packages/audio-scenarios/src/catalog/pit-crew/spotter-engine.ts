@@ -39,7 +39,7 @@ import type { ILogger } from "@iracedeck/logger";
 import { getLatestTelemetry, getSessionType, TrackDirection } from "@iracedeck/sim-events-iracing";
 
 import type { Scenario } from "../../dsl.js";
-import { WEIGHT } from "../../dsl.js";
+import { NO_FRAME, WEIGHT } from "../../dsl.js";
 import { getScenarioEngine } from "../../interpreter.js";
 
 export const SPOTTER_FOCUS_OWNER = "spotter";
@@ -111,7 +111,10 @@ export type SpotterDeps = {
  * it. `sequence: [{ var: "spotterClip" }]` plays whatever path the engine
  * stashed in `pendingSpotterClip` for this transition; `focusOwner: "spotter"`
  * lets the engine's own fires bypass the SAFETY floor it holds while a car is
- * alongside. Unframed (decision D1): no `@pit-crew.radio-open`/`-close`.
+ * alongside. Unframed (decision D1): no radio open/close ticks. Since issue
+ * #1064 the engine applies the frame itself, so it is the scenario's
+ * `frame: NO_FRAME` (`"none"`) that enforces this now — on the informational
+ * sibling below too.
  *
  * `WEIGHT.PROXIMITY` + `interrupt: true` (issue #867): a proximity transition
  * must always be heard immediately, cutting even an in-flight CRITICAL line.
@@ -127,6 +130,7 @@ const SPOTTER_CALL_SCENARIO: Scenario = {
   queueable: false,
   family: "spotter",
   focusOwner: SPOTTER_FOCUS_OWNER,
+  frame: NO_FRAME,
   sequence: [{ var: "spotterClip" }],
 };
 
@@ -153,6 +157,7 @@ const SPOTTER_INFO_SCENARIO: Scenario = {
   queueable: false,
   family: "spotter-info",
   focusOwner: SPOTTER_FOCUS_OWNER,
+  frame: NO_FRAME,
   sequence: [{ var: "spotterClip" }],
 };
 

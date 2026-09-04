@@ -101,7 +101,7 @@ export const LIMITER_ON_TRACK: Scenario = {
   sequence: [
     {
       if: limiterStillEngagedOffPitRoad,
-      then: ["@pit-crew.radio-open", "pool:pit-limiter-on-track", "@pit-crew.radio-close"],
+      then: ["pool:pit-limiter-on-track"],
     },
   ],
 };
@@ -129,7 +129,7 @@ export const LIMITER_MISSING: Scenario = {
   sequence: [
     {
       if: limiterStillMissingOnPitRoad,
-      then: ["@pit-crew.radio-open", "pool:pit-limiter-missing", "@pit-crew.radio-close"],
+      then: ["pool:pit-limiter-missing"],
     },
   ],
 };
@@ -145,7 +145,7 @@ export const LIMITER_DROPPED: Scenario = {
   bus: AudioBus.Voice,
   base: "pit-crew",
   family: "limiter",
-  sequence: ["@pit-crew.radio-open", "pool:pit-limiter-dropped", "@pit-crew.radio-close"],
+  sequence: ["pool:pit-limiter-dropped"],
 };
 
 export const LIMITER_SPEEDING: Scenario = {
@@ -159,7 +159,7 @@ export const LIMITER_SPEEDING: Scenario = {
   bus: AudioBus.Voice,
   base: "pit-crew",
   family: "limiter",
-  sequence: ["@pit-crew.radio-open", "pool:pit-limiter-speeding", "@pit-crew.radio-close"],
+  sequence: ["pool:pit-limiter-speeding"],
 };
 
 export const PIT_LIMITER_SCENARIOS: readonly Scenario[] = [

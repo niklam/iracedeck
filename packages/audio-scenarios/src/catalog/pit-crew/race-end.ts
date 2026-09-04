@@ -140,7 +140,6 @@ export function buildRaceEndScenario(getSnapshot: RaceFinishedSnapshotResolver):
   };
 
   const sequence: Step[] = [
-    "@pit-crew.radio-open",
     // Optional (issue #835): driver names are a union across voices, so a
     // voice lacking the picked name clip skips the greeting — a complete
     // sentence either way — instead of aborting the result callout.
@@ -171,7 +170,6 @@ export function buildRaceEndScenario(getSnapshot: RaceFinishedSnapshotResolver):
         },
       ],
     },
-    "@pit-crew.radio-close",
   ];
 
   return {

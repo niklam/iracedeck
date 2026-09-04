@@ -1,8 +1,9 @@
 /**
  * Flag alert scenarios — one scenario per flag transition the translator
- * publishes. Each callout wraps a short clip in the shared radio frame
- * (`@pit-crew.radio-open` / `@pit-crew.radio-close`) so the engineer voice
- * sounds like every other Pit Crew message.
+ * publishes. Each callout is a short clip; the engine wraps it in the
+ * active voice's `radio` frame (issue #1064 — sequences no longer spell the
+ * open/close ticks themselves) so the engineer voice sounds like every
+ * other Pit Crew message.
  *
  * **Pool-driven clips.** Every flag scenario draws from a pool defined in
  * `pools.ts` (e.g. `pool:flag-yellow-local`, `pool:flag-blue`) — even the
@@ -98,10 +99,6 @@ const liveRaceCar = (e: SimEventOf<SimEventName>): boolean =>
 const rollingFormationOnly = (e: SimEventOf<SimEventName>): boolean =>
   liveRaceCar(e) && !(getStandingStart() && isPreGreen(e.telemetry as TelemetryData | null));
 
-function flagSequence(steps: Step[]): Step[] {
-  return ["@pit-crew.radio-open", ...steps, "@pit-crew.radio-close"];
-}
-
 function flagScenario(id: string, body: Step[]): Scenario {
   return {
     id: `pit-crew.flag-${id}`,
@@ -110,7 +107,7 @@ function flagScenario(id: string, body: Step[]): Scenario {
     base: "voice/{voice}",
     weight: WEIGHT.SAFETY,
     family: "flag",
-    sequence: flagSequence(body),
+    sequence: body,
   };
 }
 
@@ -281,7 +278,7 @@ const MEATBALL: Scenario = {
   weight: WEIGHT.CRITICAL,
   interrupt: true,
   queueable: true,
-  sequence: flagSequence(["pool:flag-meatball"]),
+  sequence: ["pool:flag-meatball"],
 };
 
 // Driver-black splits (issue #480). `Disqualify` is split out of the generic
@@ -375,7 +372,7 @@ const FURLED: Scenario = {
 
         return true;
       },
-      then: flagSequence(["pool:flag-furled"]),
+      then: ["pool:flag-furled"],
     },
   ],
 };
@@ -415,7 +412,7 @@ const FURLED_CLEARED: Scenario = {
 
         return !penaltyBitUp();
       },
-      then: flagSequence(["pool:flag-furled-cleared"]),
+      then: ["pool:flag-furled-cleared"],
     },
   ],
 };

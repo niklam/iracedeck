@@ -39,7 +39,7 @@ function fuelScenario(subject: string, weight: number, when: Scenario["when"], i
     interrupt,
     queueable: true,
     family: "fuel",
-    sequence: ["@pit-crew.radio-open", `pool:fuel-laps-left-${subject}`, "@pit-crew.radio-close"],
+    sequence: [`pool:fuel-laps-left-${subject}`],
     when,
   };
 }

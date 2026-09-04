@@ -2,8 +2,8 @@
  * Start-light scenario catalog tests (issues #480 / #673).
  *
  * Mirrors `flag-alerts.test.ts`: a fake bus + fake audio service, the
- * start-light pools registered from `pools.ts`, and the radio-frame include
- * scenarios. Covers:
+ * start-light pools registered from `pools.ts`, and a voice script whose
+ * `radio` frame the engine wraps each callout in (issue #1064). Covers:
  *   - each gantry line + countdown number fires its clip
  *   - start-ready / start-go are CRITICAL + interrupt
  *   - family preemption (start-ready → start-go: last clip is go)
@@ -13,6 +13,7 @@
  */
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
+import type { CalloutScript } from "@iracedeck/callout-script";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -23,7 +24,6 @@ import { registerPitCrew, type StartLightCalloutId } from "./index.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { POOL_REGISTRY } from "./pools.js";
 import { _resetRadarEngine } from "./radar-engine.js";
-import { RADIO_CLOSE, RADIO_OPEN } from "./radio-frame.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
 import { START_LIGHT_ALERTS, START_LIGHT_POOL_NAMES, START_LIGHT_SCENARIO_IDS } from "./start-lights.js";
 
@@ -163,6 +163,23 @@ const manifest: AudioAssetsManifest = {
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
 };
 
+/**
+ * Each voice's callout script — only its `radio` frame matters here. Since
+ * issue #1064 the ticks come from the engine wrapping every callout in the
+ * frame the active voice's script defines, never from the sequences.
+ */
+const RADIO_SCRIPT: CalloutScript = {
+  schema: 1,
+  scenarios: {},
+  frames: {
+    radio: {
+      open: ["sfx/IRD-tick-open.mp3", { ambient: "start" }, { ambient: "seek" }],
+      close: [{ ambient: "stop" }, "sfx/IRD-tick-close.mp3"],
+    },
+  },
+  pools: {},
+};
+
 function flush(audio: FakeAudio, iterations = 30): void {
   for (let i = 0; i < iterations; i++) {
     audio._triggerChannelEnd(AudioChannel.Voice);
@@ -187,10 +204,9 @@ beforeEach(() => {
     engine.definePoolFromManifest(name, group, base);
   }
 
-  engine.defineScenario(RADIO_OPEN);
-  engine.defineScenario(RADIO_CLOSE);
-
   for (const s of START_LIGHT_ALERTS) engine.defineScenario(s);
+
+  engine.setScripts(new Map(VOICE_KEYS.map((v) => [v, RADIO_SCRIPT])));
 });
 
 afterEach(() => {
@@ -317,10 +333,14 @@ describe("START_LIGHT_ALERTS triggers", () => {
     expect(voiceClipsPlayed()).toEqual(["voice/titan/start-lights/start-go-01.mp3"]);
   });
 
-  it("wraps the callout in the radio frame (open + close ticks on the SFX channel)", () => {
+  it("is wrapped in the active voice's radio frame by the engine — open tick first, close tick last (issue #1064)", () => {
     bus.publishEvent("startLight.start-ready.raised", {});
     flush(audio);
 
+    const played = audio._played.map((p) => p.path);
+
+    expect(played[0]).toBe("sfx/IRD-tick-open.mp3");
+    expect(played.at(-1)).toBe("sfx/IRD-tick-close.mp3");
     expect(sfxClipsPlayed()).toEqual(["sfx/IRD-tick-open.mp3", "sfx/IRD-tick-close.mp3"]);
   });
 });

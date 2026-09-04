@@ -22,11 +22,12 @@
  */
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioChannel } from "@iracedeck/audio-service";
+import type { CalloutScript } from "@iracedeck/callout-script";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { PitSvStatus } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { WEIGHT } from "../../dsl.js";
+import { NO_FRAME, WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
 import { type PitStatusCalloutId, registerPitCrew } from "./index.js";
@@ -42,7 +43,6 @@ import {
 } from "./pit-status.js";
 import { POOL_REGISTRY } from "./pools.js";
 import { _resetRadarEngine } from "./radar-engine.js";
-import { RADIO_CLOSE, RADIO_OPEN } from "./radio-frame.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
 
 // `latestTelemetry` backs the repeat nags' speak-time gate. `null` (the
@@ -185,6 +185,24 @@ const manifest: AudioAssetsManifest = {
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
 };
 
+/**
+ * The voice's callout script — only its `radio` frame matters here. Since
+ * issue #1064 the ticks come from the engine wrapping every callout in the
+ * frame the active voice's script defines; the transition calls take it by
+ * default and the repeat nags opt out with `frame: NO_FRAME`.
+ */
+const RADIO_SCRIPT: CalloutScript = {
+  schema: 1,
+  scenarios: {},
+  frames: {
+    radio: {
+      open: ["sfx/IRD-tick-open.mp3", { ambient: "start" }, { ambient: "seek" }],
+      close: [{ ambient: "stop" }, "sfx/IRD-tick-close.mp3"],
+    },
+  },
+  pools: {},
+};
+
 function flush(audio: FakeAudio, iterations = 30): void {
   for (let i = 0; i < iterations; i++) {
     audio._triggerChannelEnd(AudioChannel.Voice);
@@ -194,6 +212,10 @@ function flush(audio: FakeAudio, iterations = 30): void {
 
 function voiceClipsPlayed(audio: FakeAudio): string[] {
   return audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
+}
+
+function sfxClipsPlayed(audio: FakeAudio): string[] {
+  return audio._played.filter((p) => p.channel === AudioChannel.SFX).map((p) => p.path);
 }
 
 let bus: ReturnType<typeof createMockBus>;
@@ -254,10 +276,9 @@ describe("PIT_STATUS_ALERTS triggers (engine-level, no opt-out gating)", () => {
       engine.definePoolFromManifest(name, group, base);
     }
 
-    engine.defineScenario(RADIO_OPEN);
-    engine.defineScenario(RADIO_CLOSE);
-
     for (const s of [...PIT_STATUS_ALERTS, ...PIT_STATUS_REPEAT_ALERTS]) engine.defineScenario(s);
+
+    engine.setScripts(new Map([[VOICE, RADIO_SCRIPT]]));
   });
 
   afterEach(() => {
@@ -279,6 +300,17 @@ describe("PIT_STATUS_ALERTS triggers (engine-level, no opt-out gating)", () => {
     flush(audio);
 
     expect(voiceClipsPlayed(audio)).toEqual([expected]);
+  });
+
+  it("a transition call is wrapped in the voice's radio frame by the engine — open tick first, close tick last (issue #1064)", () => {
+    bus.publishEvent("pitService.statusChanged", { from: PitSvStatus.None, to: PitSvStatus.TooFarLeft });
+    flush(audio);
+
+    const played = audio._played.map((p) => p.path);
+
+    expect(played[0]).toBe("sfx/IRD-tick-open.mp3");
+    expect(played.at(-1)).toBe("sfx/IRD-tick-close.mp3");
+    expect(sfxClipsPlayed(audio)).toEqual(["sfx/IRD-tick-open.mp3", "sfx/IRD-tick-close.mp3"]);
   });
 
   it("a non-matching `to` value does not fire the InProgress scenario", () => {
@@ -358,14 +390,11 @@ describe("PIT_STATUS_REPEAT_ALERTS structure (#951)", () => {
 
       expect(typeof step.if).toBe("function");
       expect(step.then).toHaveLength(1);
-
-      // `@`-prefixed include form — comparing against the bare scenario id
-      // would pass even for a sequence that DID open the radio frame.
-      const everyStep = JSON.stringify([...s.sequence, ...(step.then ?? [])]);
-
-      expect(everyStep).not.toContain(`@${RADIO_OPEN.id}`);
-      expect(everyStep).not.toContain(`@${RADIO_CLOSE.id}`);
       expect(String(step.then?.[0]).startsWith("pool:")).toBe(true);
+
+      // The frame is the engine's since issue #1064, so the opt-out is the
+      // contract field, not the absence of an include in the sequence.
+      expect(s.frame).toBe(NO_FRAME);
     }
   });
 
@@ -389,10 +418,9 @@ describe("PIT_STATUS_REPEAT_ALERTS triggers (engine-level, no opt-out gating)", 
       engine.definePoolFromManifest(name, group, base);
     }
 
-    engine.defineScenario(RADIO_OPEN);
-    engine.defineScenario(RADIO_CLOSE);
-
     for (const s of [...PIT_STATUS_ALERTS, ...PIT_STATUS_REPEAT_ALERTS]) engine.defineScenario(s);
+
+    engine.setScripts(new Map([[VOICE, RADIO_SCRIPT]]));
   });
 
   afterEach(() => {
@@ -410,8 +438,12 @@ describe("PIT_STATUS_REPEAT_ALERTS triggers (engine-level, no opt-out gating)", 
     bus.publishEvent("pitService.positioningRepeat", { status });
     flush(audio);
 
-    // Terse delivery: the nag clip only, no radio frame around it.
+    // Terse delivery: the nag clip only. The voice's script DOES define the
+    // radio frame (the transition calls above get it), so an empty SFX list
+    // is `frame: NO_FRAME` doing its job through the engine (issue #1064).
     expect(voiceClipsPlayed(audio)).toEqual([expected]);
+    expect(sfxClipsPlayed(audio)).toEqual([]);
+    expect(audio._played.map((p) => p.path)).toEqual([expected]);
   });
 
   it("a non-matching status does not fire another error's nag", () => {

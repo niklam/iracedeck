@@ -262,7 +262,6 @@ function readbackScenario(reason: "entry" | "exit", getSnap: ReadbackSnapshotRes
     resumable: true,
     family: "pit-readback",
     sequence: [
-      "@pit-crew.radio-open",
       ...(isEntry
         ? // Entry: limiter pre-opener fires when the car HAS a limiter and it
           // isn't engaged on the initial entry — the warning is meaningless on
@@ -321,7 +320,6 @@ function readbackScenario(reason: "entry" | "exit", getSnap: ReadbackSnapshotRes
               ],
             },
           ] as Step[])),
-      "@pit-crew.radio-close",
     ],
   };
 }

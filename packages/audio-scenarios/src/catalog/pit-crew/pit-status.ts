@@ -40,9 +40,10 @@
  *   arrives while any `WEIGHT.NORMAL`-or-above line is playing is dropped and
  *   simply retries on the next cadence tick, while a FRESH positioning error
  *   outranks a playing nag and speaks in full the moment it finishes.
- * - **Terse delivery.** No `@pit-crew.radio-open` / `…close` frame — the
- *   pit-box count-in precedent: at a 2 s cadence the beeps would drown the
- *   words.
+ * - **Terse delivery.** No radio beep frame — the pit-box count-in
+ *   precedent: at a 2 s cadence the beeps would drown the words. Since issue
+ *   #1064 the engine applies the frame itself, so it is the nag's
+ *   `frame: NO_FRAME` (`"none"`) that enforces this now.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventOf } from "@iracedeck/event-bus";
@@ -50,6 +51,7 @@ import { PitSvStatus, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { getLatestTelemetry } from "@iracedeck/sim-events-iracing";
 
 import type { Scenario, Step } from "../../dsl.js";
+import { NO_FRAME } from "../../dsl.js";
 
 /**
  * Explicit integer between `WEIGHT.CHATTER` (10) and `WEIGHT.NORMAL` (50) —
@@ -82,7 +84,7 @@ function pitStatusScenario(id: string, target: PitSvStatus, body: Step[]): Scena
     bus: AudioBus.Voice,
     base: "voice/{voice}",
     family: "pit-status",
-    sequence: ["@pit-crew.radio-open", ...body, "@pit-crew.radio-close"],
+    sequence: body,
     when: {
       event: "pitService.statusChanged",
       where: (e) => (e as SimEventOf<"pitService.statusChanged">).data.to === target,
@@ -125,6 +127,7 @@ function pitStatusRepeatScenario(id: string, target: PitSvStatus): Scenario {
     base: "voice/{voice}",
     weight: PIT_STATUS_REPEAT_WEIGHT,
     family: "pit-status-repeat",
+    frame: NO_FRAME,
     sequence: [{ if: () => stillMisalignedAs(target), then: [`pool:pit-status-${id}-repeat`] }],
     when: {
       event: "pitService.positioningRepeat",

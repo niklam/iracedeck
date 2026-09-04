@@ -18,5 +18,5 @@ export const PIT_APPROACH: Scenario = {
   bus: AudioBus.Voice,
   base: "pit-crew",
   weight: WEIGHT.SAFETY,
-  sequence: ["@pit-crew.radio-open", "pool:pit-approach", "@pit-crew.radio-close"],
+  sequence: ["pool:pit-approach"],
 };

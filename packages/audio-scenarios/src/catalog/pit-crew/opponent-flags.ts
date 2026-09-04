@@ -132,7 +132,7 @@ function opponentFlagScenario(
     weight,
     interrupt: false,
     queueable: true,
-    sequence: ["@pit-crew.radio-open", ...body, "@pit-crew.radio-close"],
+    sequence: body,
     when: {
       event: "opponentFlag.flagged",
       where: (e) => where(e as SimEventOf<"opponentFlag.flagged">),

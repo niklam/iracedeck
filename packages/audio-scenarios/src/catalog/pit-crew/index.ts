@@ -7,7 +7,6 @@
  *   - All pools defined in `pools.ts`, registered en masse via
  *     `registerPools(engine)` — manifest-derived registry pools plus the
  *     enumerated acknowledgment pools (issue #664)
- *   - The radio-frame include scenarios (`@pit-crew.radio-open` / `…close`)
  *   - Fuel toggle scenarios (on/off via `pitService.toggled`)
  *   - Tire toggle scenarios (every meaningful tire-set selection, including
  *     singles, diagonals, and three-corner combos, via `tireService.changed`)
@@ -159,7 +158,6 @@ import {
   SCENARIO_ID_TO_RACE_STATUS_ID,
 } from "./race-status.js";
 import { registerRadarEngine } from "./radar-engine.js";
-import { RADIO_CLOSE, RADIO_OPEN } from "./radio-frame.js";
 import { buildPitReadbackScenarios, type PitReadbackCalloutId, SCENARIO_ID_TO_PIT_READBACK_ID } from "./readback.js";
 import { ROLLING_START_ALERTS } from "./rolling-start.js";
 import {
@@ -1236,8 +1234,10 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
 
   registerPools(engine);
 
-  engine.defineScenario(RADIO_OPEN);
-  engine.defineScenario(RADIO_CLOSE);
+  // No radio-frame fragments are registered here any more (issue #1064): the
+  // engine wraps every scenario in the frame its `frame` field names — the
+  // active voice's `radio` frame unless the scenario opts out with
+  // `frame: NO_FRAME` — so no sequence in this catalog spells the ticks.
 
   // Master gate is applied as the outermost wrapper so per-callout opt-ins,
   // pit-action cooldowns, and readback predicates only run when the
@@ -1740,10 +1740,10 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
  * cheapest possible early-out, ahead of per-callout opt-ins and
  * pit-action cooldowns.
  *
- * Returns the scenario unchanged when it has no `when:` block (e.g. the
- * `@pit-crew.radio-open` / `…close` include scenarios), since includes
- * only run when triggered by a parent scenario whose master-gate check
- * has already passed.
+ * Returns the scenario unchanged when it has no `when:` block — a fragment
+ * only ever reached through an `@` include (the radio frame was one until
+ * issue #1064 moved it into the engine) runs inside a parent scenario whose
+ * master-gate check has already passed.
  */
 function wrapRaceEngineerMasterGate(s: Scenario, getEnabled: () => boolean, logger: ILogger | undefined): Scenario {
   if (!s.when) return s;

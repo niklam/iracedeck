@@ -2,7 +2,8 @@
  * Toggle-confirmation scenarios — short engineer voice lines played when the
  * driver toggles a pit-service option or an on-board driver-aid (DRS / P2P).
  *
- * Flow: `@radio-open → pool:pit-action-acknowledgment → <toggle clip(s)> → @radio-close`.
+ * Flow: `pool:pit-action-acknowledgment → <toggle clip(s)>`, wrapped in the
+ * active voice's `radio` frame by the engine (issue #1064).
  * The pit-action ack pool (got it / roger that / copy that) preserves the
  * walkie-talkie feel where the engineer confirms the request before echoing
  * the state change. It's a separate pool from the generic `acknowledgment`
@@ -33,7 +34,7 @@ import type { Scenario } from "../../dsl.js";
 // ── Shared sequence wrapper ─────────────────────────────────────────────
 
 function toggleSequence(steps: Scenario["sequence"]): Scenario["sequence"] {
-  return ["@pit-crew.radio-open", "pool:pit-action-acknowledgment", ...steps, "@pit-crew.radio-close"];
+  return ["pool:pit-action-acknowledgment", ...steps];
 }
 
 // ── Fuel toggle (registered) ────────────────────────────────────────────

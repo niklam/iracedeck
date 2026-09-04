@@ -54,7 +54,6 @@ export const SERVICE_REMINDER: Scenario = {
   weight: WEIGHT.CHATTER,
   queueable: true,
   sequence: [
-    "@pit-crew.radio-open",
     {
       if: (ctx) => (pitSvFlags(ctx) & PitSvFlags.FastRepair) !== 0,
       then: ["reminder/IRD-pit-reminder-fast-repair.mp3"],
@@ -83,6 +82,5 @@ export const SERVICE_REMINDER: Scenario = {
         },
       ],
     },
-    "@pit-crew.radio-close",
   ],
 };

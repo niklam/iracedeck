@@ -215,7 +215,7 @@ export function buildGapTrendScenario(
     weight: WEIGHT.CHATTER,
     queueable: true,
     family: "gap",
-    sequence: ["@pit-crew.radio-open", { var: "gap.line" }, gapReadoutClause(), "@pit-crew.radio-close"],
+    sequence: [{ var: "gap.line" }, gapReadoutClause()],
   };
 }
 
@@ -248,7 +248,7 @@ export function buildGapThresholdScenario(
     weight: WEIGHT.NORMAL,
     queueable: true,
     family: "gap",
-    sequence: ["@pit-crew.radio-open", { var: "gap.thresholdLine" }, gapReadoutClause(), "@pit-crew.radio-close"],
+    sequence: [{ var: "gap.thresholdLine" }, gapReadoutClause()],
   };
 }
 

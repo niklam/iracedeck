@@ -178,7 +178,6 @@ export function buildQualifyingInvalidationScenario(getSnapshot: QualifyingInval
   }
 
   const sequence: Step[] = [
-    "@pit-crew.radio-open",
     "pool:qualifying-invalidated",
     {
       if: () => tailIsSpeakable(getSnapshot()),
@@ -196,7 +195,6 @@ export function buildQualifyingInvalidationScenario(getSnapshot: QualifyingInval
         },
       ],
     },
-    "@pit-crew.radio-close",
   ];
 
   return {

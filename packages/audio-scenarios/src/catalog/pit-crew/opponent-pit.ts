@@ -100,7 +100,7 @@ function opponentPitScenario(
     weight: OPPONENT_PIT_WEIGHT,
     interrupt: false,
     queueable: true,
-    sequence: ["@pit-crew.radio-open", ...body, "@pit-crew.radio-close"],
+    sequence: body,
     when: {
       event: "opponentPit.entered",
       where: (e) => {

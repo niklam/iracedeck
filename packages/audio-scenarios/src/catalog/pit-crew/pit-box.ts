@@ -7,9 +7,10 @@
  * scenarios just map mark → clip.
  *
  * **Terse delivery.** Unlike the conversational callouts, the count-in has NO
- * `@pit-crew.radio-open` / `…close` beep frame — the marks fire ~a second apart
- * and a beep around each number would be noise. Each scenario plays a single
- * clip from its pool.
+ * radio beep frame — the marks fire ~a second apart and a beep around each
+ * number would be noise. Each scenario plays a single clip from its pool.
+ * Since issue #1064 the engine applies the frame itself, so it is the
+ * scenario's `frame: NO_FRAME` (`"none"`) that enforces this now.
  *
  * **Countdown wins the CHATTER band (issue #758, reverses #646).** The
  * count-in carries an explicit weight between `CHATTER` (10) and `NORMAL`
@@ -34,6 +35,7 @@ import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { PitBoxMark, SimEventOf } from "@iracedeck/event-bus";
 
 import type { Scenario } from "../../dsl.js";
+import { NO_FRAME } from "../../dsl.js";
 
 /**
  * Explicit integer between `WEIGHT.CHATTER` (10) and `WEIGHT.NORMAL` (50) —
@@ -63,6 +65,7 @@ function pitBoxScenario(mark: PitBoxMark): Scenario {
     queueable: false,
     pendingHoldMs: PIT_BOX_PENDING_HOLD_MS,
     family: "pit-box",
+    frame: NO_FRAME,
     sequence: [`pool:pit-box-${mark}`],
     when: {
       event: "pitBox.countdown",

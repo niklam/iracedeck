@@ -183,31 +183,25 @@ describe("opponent-flag scenarios", () => {
     }
   });
 
-  it("wraps single-pool lines in the shared radio frame", () => {
-    expect(scenario("pit-crew.opponent-flag-black-behind").sequence).toEqual([
-      "@pit-crew.radio-open",
-      "pool:opponent-flag-black-behind",
-      "@pit-crew.radio-close",
-    ]);
-    expect(scenario("pit-crew.opponent-flag-black-track-ahead").sequence).toEqual([
-      "@pit-crew.radio-open",
-      "pool:opponent-flag-black-track",
-      "@pit-crew.radio-close",
-    ]);
-    expect(scenario("pit-crew.opponent-flag-others").sequence).toEqual([
-      "@pit-crew.radio-open",
-      "pool:opponent-flag-others",
-      "@pit-crew.radio-close",
-    ]);
+  it("plays single-pool lines as their whole body, leaving the radio frame to the engine (issue #1064)", () => {
+    for (const [id, pool] of [
+      ["pit-crew.opponent-flag-black-behind", "pool:opponent-flag-black-behind"],
+      ["pit-crew.opponent-flag-black-track-ahead", "pool:opponent-flag-black-track"],
+      ["pit-crew.opponent-flag-others", "pool:opponent-flag-others"],
+    ] as const) {
+      const s = scenario(id);
+
+      expect(s.sequence).toEqual([pool]);
+      // No `frame` → the engine's default (`radio`); the sequence never spells the ticks.
+      expect(s.frame).toBeUndefined();
+    }
   });
 
   it("composes the ahead line as car-in + number var + subject tail", () => {
     expect(scenario("pit-crew.opponent-flag-black-ahead").sequence).toEqual([
-      "@pit-crew.radio-open",
       "pool:opponent-flag-car-in",
       { var: "opponentFlag.number" },
       "pool:opponent-flag-black-ahead-tail",
-      "@pit-crew.radio-close",
     ]);
   });
 

@@ -4,9 +4,9 @@
  * Plays a representative `AudioBus.Background` preview so the user can
  * audition their slider value: walkie-talkie tick-open on `AudioChannel.SFX`,
  * pit ambient loop on `AudioChannel.Ambient`, then tick-close after a short
- * window. Mirrors the radio-frame open/close pair that wraps every real
- * pit-crew voice scenario, so the user hears exactly what the bus carries
- * during normal operation (sans voice).
+ * window. Mirrors the `radio` frame the engine wraps every real pit-crew
+ * voice scenario in (issue #1064), so the user hears exactly what the bus
+ * carries during normal operation (sans voice).
  *
  * Idempotent against double-press — a second call while a sequence is in
  * flight is a no-op. The optional `onComplete` callback fires after the

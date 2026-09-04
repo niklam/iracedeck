@@ -2,16 +2,17 @@
  * Rolling-start scenario catalog tests (issue #660).
  *
  * Mirrors `start-lights.test.ts`: a fake bus + fake audio service, the
- * rolling-start pool registered from `pools.ts`, and the radio-frame include
- * scenarios. Covers:
+ * rolling-start pool registered from `pools.ts`, and a voice script whose
+ * `radio` frame the engine wraps the callout in (issue #1064). Covers:
  *   - scenario structure (id, family `rolling-start`, weight SAFETY, base)
- *   - the trigger fires one clip from the pool through the radio frame
+ *   - the trigger fires one clip from the pool inside the engine's radio frame
  *   - opt-in gating via the `registerPitCrew` closure: `pace-car` off
  *     suppresses the callout
  *   - race-only gating: a non-race session suppresses the callout
  */
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioChannel } from "@iracedeck/audio-service";
+import type { CalloutScript } from "@iracedeck/callout-script";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -22,7 +23,6 @@ import { registerPitCrew, type RollingStartCalloutId } from "./index.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { POOL_REGISTRY } from "./pools.js";
 import { _resetRadarEngine } from "./radar-engine.js";
-import { RADIO_CLOSE, RADIO_OPEN } from "./radio-frame.js";
 import { ROLLING_START_ALERTS, ROLLING_START_POOL_NAMES, ROLLING_START_SCENARIO_IDS } from "./rolling-start.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
 
@@ -159,6 +159,23 @@ const manifest: AudioAssetsManifest = {
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
 };
 
+/**
+ * Each voice's callout script — only its `radio` frame matters here. Since
+ * issue #1064 the ticks come from the engine wrapping every callout in the
+ * frame the active voice's script defines, never from the sequences.
+ */
+const RADIO_SCRIPT: CalloutScript = {
+  schema: 1,
+  scenarios: {},
+  frames: {
+    radio: {
+      open: ["sfx/IRD-tick-open.mp3", { ambient: "start" }, { ambient: "seek" }],
+      close: [{ ambient: "stop" }, "sfx/IRD-tick-close.mp3"],
+    },
+  },
+  pools: {},
+};
+
 function flush(audio: FakeAudio, iterations = 30): void {
   for (let i = 0; i < iterations; i++) {
     audio._triggerChannelEnd(AudioChannel.Voice);
@@ -183,10 +200,9 @@ beforeEach(() => {
     engine.definePoolFromManifest(name, group, base);
   }
 
-  engine.defineScenario(RADIO_OPEN);
-  engine.defineScenario(RADIO_CLOSE);
-
   for (const s of ROLLING_START_ALERTS) engine.defineScenario(s);
+
+  engine.setScripts(new Map(VOICE_KEYS.map((v) => [v, RADIO_SCRIPT])));
 });
 
 afterEach(() => {
@@ -263,10 +279,14 @@ describe("ROLLING_START_ALERTS triggers", () => {
     expect(played[0]).toMatch(/^voice\/titan\/rolling-start\/pace-car-moving-0[12345]\.mp3$/);
   });
 
-  it("wraps the callout in the radio frame (open + close ticks on the SFX channel)", () => {
+  it("is wrapped in the active voice's radio frame by the engine — open tick first, close tick last (issue #1064)", () => {
     bus.publishEvent("rollingStart.pace-car-moving.raised", {} as never);
     flush(audio);
 
+    const played = audio._played.map((p) => p.path);
+
+    expect(played[0]).toBe("sfx/IRD-tick-open.mp3");
+    expect(played.at(-1)).toBe("sfx/IRD-tick-close.mp3");
     expect(sfxClipsPlayed()).toEqual(["sfx/IRD-tick-open.mp3", "sfx/IRD-tick-close.mp3"]);
   });
 });

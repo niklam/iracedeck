@@ -1,5 +1,6 @@
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
+import type { CalloutScript } from "@iracedeck/callout-script";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { Flags } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -15,7 +16,6 @@ import {
   WAVING_FLAG_COOLDOWN_MS,
 } from "./flag-alerts.js";
 import { POOL_REGISTRY } from "./pools.js";
-import { RADIO_CLOSE, RADIO_OPEN } from "./radio-frame.js";
 
 const mockSessionType = vi.fn(() => "Race");
 const mockStandingStart = vi.fn(() => false);
@@ -194,6 +194,23 @@ const manifest: AudioAssetsManifest = {
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
 };
 
+/**
+ * Each voice's callout script — only its `radio` frame matters here. Since
+ * issue #1064 the ticks come from the engine wrapping every callout in the
+ * frame the active voice's script defines, never from the sequences.
+ */
+const RADIO_SCRIPT: CalloutScript = {
+  schema: 1,
+  scenarios: {},
+  frames: {
+    radio: {
+      open: ["sfx/IRD-tick-open.mp3", { ambient: "start" }, { ambient: "seek" }],
+      close: [{ ambient: "stop" }, "sfx/IRD-tick-close.mp3"],
+    },
+  },
+  pools: {},
+};
+
 function flush(audio: FakeAudio, iterations = 30): void {
   for (let i = 0; i < iterations; i++) {
     audio._triggerChannelEnd(AudioChannel.Voice);
@@ -221,10 +238,9 @@ beforeEach(() => {
     engine.definePoolFromManifest(name, group, base);
   }
 
-  engine.defineScenario(RADIO_OPEN);
-  engine.defineScenario(RADIO_CLOSE);
-
   for (const s of FLAG_ALERTS) engine.defineScenario(s);
+
+  engine.setScripts(new Map(VOICE_KEYS.map((v) => [v, RADIO_SCRIPT])));
 });
 
 afterEach(() => {
@@ -553,11 +569,25 @@ describe("FLAG_ALERTS triggers", () => {
     expect(voiceClipsPlayed()).toEqual(["voice/titan/flags/red-01.mp3"]);
   });
 
-  it("wraps the callout in the radio frame (open + close ticks on the SFX channel)", () => {
+  it("is wrapped in the active voice's radio frame by the engine — open tick first, close tick last (issue #1064)", () => {
     bus.publishEvent("flag.red.raised", {});
     flush(audio);
 
+    const played = audio._played.map((p) => p.path);
+
+    expect(played[0]).toBe("sfx/IRD-tick-open.mp3");
+    expect(played.at(-1)).toBe("sfx/IRD-tick-close.mp3");
     expect(sfxClipsPlayed()).toEqual(["sfx/IRD-tick-open.mp3", "sfx/IRD-tick-close.mp3"]);
+    expect(voiceClipsPlayed()).toEqual(["voice/luca/flags/red-01.mp3"]);
+  });
+
+  it("plays the body alone when the active voice has no script to take the frame from (issue #1064)", () => {
+    engine.setScripts(new Map());
+    bus.publishEvent("flag.red.raised", {});
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual(["voice/luca/flags/red-01.mp3"]);
+    expect(sfxClipsPlayed()).toEqual([]);
   });
 });
 
@@ -879,7 +909,7 @@ describe("FLAG_ALERTS penalty-flag delivery (issue #923)", () => {
   // black scenario queueable must not change that.
   it("a black line cut mid-playback by disqualify is not stashed — no replay at idle (escalation)", () => {
     bus.publishEvent("flag.black.raised", {});
-    // Complete the radio-open tick (SFX) so the black VOICE clip is genuinely
+    // Complete the frame's open tick (SFX) so the black VOICE clip is genuinely
     // in flight when the escalation lands.
     audio._triggerChannelEnd(AudioChannel.SFX);
     // Mid-playback (no flush): the DQ supersedes via the shared flag family.
@@ -1048,6 +1078,8 @@ describe("furled speak-time validity + cleared pairing (issue #669)", () => {
   });
 
   it("raised expands to silence — no line, no radio frame — when the warning is already withdrawn at speak time", () => {
+    // The frame is the engine's now (issue #1064) and it wraps only a body that
+    // said something, so a gate that expands to nothing leaves no bare ticks.
     mockLatestTelemetry.mockReturnValue(FURLED_DOWN);
     bus.publishEvent("flag.furled.raised", {});
     flush(audio);

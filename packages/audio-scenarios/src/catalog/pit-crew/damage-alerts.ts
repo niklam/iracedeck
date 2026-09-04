@@ -23,7 +23,7 @@ const DAMAGE_REPAIR_NEEDED: Scenario = {
   bus: AudioBus.Voice,
   base: "voice/{voice}",
   family: "damage",
-  sequence: ["@pit-crew.radio-open", "pool:damage-repair-needed", "@pit-crew.radio-close"],
+  sequence: ["pool:damage-repair-needed"],
 };
 
 export const DAMAGE_ALERTS: readonly Scenario[] = [DAMAGE_REPAIR_NEEDED];

@@ -14,5 +14,5 @@ export const STALL_DEPARTURE: Scenario = {
   bus: AudioBus.Voice,
   base: "pit-crew",
   weight: WEIGHT.SAFETY,
-  sequence: ["@pit-crew.radio-open", "pool:stall-departure", "@pit-crew.radio-close"],
+  sequence: ["pool:stall-departure"],
 };

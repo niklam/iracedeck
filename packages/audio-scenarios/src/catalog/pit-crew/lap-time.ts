@@ -188,7 +188,6 @@ export function buildLapTimeScenario(
   getRaceFinishedFired: () => boolean = () => false,
 ): Scenario {
   const sequence: Step[] = [
-    "@pit-crew.radio-open",
     { var: "lapTime.intro" },
     {
       if: () => hasMinuteComponent(getSnapshot()),
@@ -196,7 +195,6 @@ export function buildLapTimeScenario(
     },
     { var: "lapTime.second" },
     { var: "lapTime.decimal" },
-    "@pit-crew.radio-close",
   ];
 
   return lapTimeScenario(getRaceFinishedFired, sequence);
