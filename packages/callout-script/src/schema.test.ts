@@ -57,12 +57,14 @@ describe("parseCalloutScript", () => {
     expect(problemsOf(withoutSchema)).toEqual(["schema: must be 1"]);
   });
 
-  it("rejects a document that is not an object, with a non-empty prefix", () => {
-    expect(problemsOf(null)).toEqual(["schema: the script must be a JSON object, not null"]);
-    expect(problemsOf([])).toEqual(["schema: the script must be a JSON object, not an array"]);
-    expect(problemsOf("x")).toEqual(["schema: the script must be a JSON object, not a string"]);
-    expect(problemsOf(1)).toEqual(["schema: the script must be a JSON object, not a number"]);
-    expect(problemsOf(undefined)).toEqual(["schema: the script must be a JSON object, not undefined"]);
+  it("rejects a document that is not an object under a prefix that is not a key name", () => {
+    // `(document)` rather than `schema`: a real key name would point the author
+    // at a key that may be perfectly fine.
+    expect(problemsOf(null)).toEqual(["(document): the script must be a JSON object, not null"]);
+    expect(problemsOf([])).toEqual(["(document): the script must be a JSON object, not an array"]);
+    expect(problemsOf("x")).toEqual(["(document): the script must be a JSON object, not a string"]);
+    expect(problemsOf(1)).toEqual(["(document): the script must be a JSON object, not a number"]);
+    expect(problemsOf(undefined)).toEqual(["(document): the script must be a JSON object, not undefined"]);
   });
 
   it("rejects a missing top-level key as required, naming it", () => {
@@ -275,12 +277,25 @@ describe("parseCalloutScript", () => {
   });
 
   describe("include", () => {
+    const twoSpellings =
+      /an include is spelled "@<scenario-id>" \(string form\) or \{ "include": "<scenario-id>" \} \(object form\)/;
+
     it("rejects the object form spelled with the string form's @", () => {
       const problems = problemsOf(withSequence([{ include: "@pit-crew.radio-open" }]));
 
       expect(problems).toHaveLength(1);
       expect(problems[0]).toMatch(/^scenarios\.pit-crew\.flag-blue\.sequence\[0\]\.include: /);
-      expect(problems[0]).toMatch(/@/);
+      expect(problems[0]).toMatch(twoSpellings);
+    });
+
+    it("rejects a string include whose id starts with a second @, with the same message", () => {
+      // "@@x" would otherwise parse to an include of "@x" — the mirror image of
+      // `{ include: "@x" }`, and the same mistake.
+      const problems = problemsOf(withSequence(["@@pit-crew.radio-open"]));
+
+      expect(problems).toHaveLength(1);
+      expect(problems[0]).toMatch(/^scenarios\.pit-crew\.flag-blue\.sequence\[0\]: /);
+      expect(problems[0]).toMatch(twoSpellings);
     });
 
     it("rejects an empty include in either form", () => {

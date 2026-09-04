@@ -52,13 +52,17 @@ const frameDefinitionName = frameName.refine(
 
 const clipPath = z.string().min(1, "must be a clip path");
 
+/**
+ * The one rule about `@`, stated once for both spellings: the string form
+ * carries it, the object form does not, and the id itself never starts with
+ * one — so `{ "include": "@x" }` and `"@@x"` are the same mistake.
+ */
+const INCLUDE_SPELLING_MESSAGE = `an include is spelled "${INCLUDE_STEP_PREFIX}<scenario-id>" (string form) or { "include": "<scenario-id>" } (object form) — the id itself never starts with "${INCLUDE_STEP_PREFIX}"`;
+
 const includeId = z
   .string()
   .regex(SCENARIO_ID_PATTERN, "must be a scenario id: non-empty, no whitespace")
-  .refine(
-    (id) => !id.startsWith(INCLUDE_STEP_PREFIX),
-    `write the id without the leading "${INCLUDE_STEP_PREFIX}" — the "${INCLUDE_STEP_PREFIX}" belongs to the string form ("${INCLUDE_STEP_PREFIX}<scenario-id>")`,
-  );
+  .refine((id) => !id.startsWith(INCLUDE_STEP_PREFIX), INCLUDE_SPELLING_MESSAGE);
 
 const condReference = z
   .string()
@@ -118,9 +122,9 @@ function stringStepProblem(step: string): string | null {
         ? null
         : '"pause:" must be followed by a non-negative number of milliseconds';
     case "include":
-      return SCENARIO_ID_PATTERN.test(form.id)
-        ? null
-        : '"@" must be followed by a scenario id: non-empty, no whitespace';
+      if (!SCENARIO_ID_PATTERN.test(form.id)) return '"@" must be followed by a scenario id: non-empty, no whitespace';
+
+      return form.id.startsWith(INCLUDE_STEP_PREFIX) ? INCLUDE_SPELLING_MESSAGE : null;
     case "var":
       return NAME_PATTERN.test(form.name) ? null : "{{…}} must wrap a var name: non-empty, no whitespace";
     case "clip":
@@ -267,8 +271,12 @@ function withArticle(noun: string): string {
 /** How every default zod type message begins; a message without it is one of ours and is kept verbatim. */
 const ZOD_DEFAULT_TYPE_MESSAGE = "Invalid input: ";
 
-/** The prefix for an issue at the document root, where there is no path to name. */
-const ROOT_PREFIX = "schema";
+/**
+ * The prefix for an issue at the document root, where there is no path to
+ * name. Deliberately not a real key: `schema:` would point an author at a key
+ * that may be perfectly fine.
+ */
+const ROOT_PREFIX = "(document)";
 
 function problemsFor(json: unknown, issues: readonly z.core.$ZodIssue[]): string[] {
   const problems: string[] = [];
@@ -290,7 +298,7 @@ function problemsFor(json: unknown, issues: readonly z.core.$ZodIssue[]): string
     } else if (issue.path.length === 1 && issue.path[0] === "schema" && isNewerSchema(json)) {
       // The version literal earns its keep here: a higher number means a newer
       // toolchain wrote the file, and "must be 1" tells that author nothing.
-      problems.push(`${ROOT_PREFIX}: written for a newer version of iRaceDeck — update the plugin to use this voice`);
+      problems.push(`${path}: written for a newer version of iRaceDeck — update the plugin to use this voice`);
     } else if (issue.code === "invalid_type" && issue.message.startsWith(ZOD_DEFAULT_TYPE_MESSAGE)) {
       // zod's "expected array, received undefined" is a missing key to an
       // author; say so. Reading the value off the document rather than off the
