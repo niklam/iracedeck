@@ -92,6 +92,9 @@ importers:
 
   packages/audio-assets:
     devDependencies:
+      '@iracedeck/deck-core':
+        specifier: workspace:*
+        version: link:../deck-core
       '@types/node':
         specifier: 26.4.0
         version: 26.4.0
