@@ -5,7 +5,7 @@
  * a wrong body here is a wrong public post.
  */
 import { describe, expect, it, vi } from "vitest";
-import { fetchAllPosts, readConfig, runList, runShow } from "./discord-forum-commands.mjs";
+import { fetchAllPosts, readConfig, runList, runReply, runShow, runTag } from "./discord-forum-commands.mjs";
 
 const GUILD = "1477659500851888219";
 const CHANNEL = "1481298096632889366";
@@ -169,5 +169,106 @@ describe("runShow", () => {
     expect(code).toBe(1);
     expect(log.errors()).toBe("Error: 77 is not a post in the feature-requests channel.");
     expect(client.get).not.toHaveBeenCalledWith("/channels/77/messages?limit=100");
+  });
+});
+
+describe("runReply", () => {
+  const routes = { "/channels/30": thread("30") };
+
+  it("posts the text with mentions disabled and prints the message link", async () => {
+    const client = fakeClient(routes);
+    const log = fakeLog();
+
+    const code = await runReply({ postId: "30", text: "Thanks — tracked as #1", dryRun: false }, { config: CONFIG, client, log });
+
+    expect(code).toBe(0);
+    expect(client.writes).toEqual([{ method: "POST", path: "/channels/30/messages", body: { content: "Thanks — tracked as #1", allowed_mentions: { parse: [] } } }]);
+    expect(log.text()).toBe(`Posted: https://discord.com/channels/${GUILD}/30/m-new`);
+  });
+
+  it("--dry-run prints the request and sends nothing", async () => {
+    const client = fakeClient(routes);
+    const log = fakeLog();
+
+    const code = await runReply({ postId: "30", text: "hello", dryRun: true }, { config: CONFIG, client, log });
+
+    expect(code).toBe(0);
+    expect(client.writes).toEqual([]);
+    expect(log.text()).toContain("DRY RUN");
+    expect(log.text()).toContain('"content": "hello"');
+  });
+
+  it("refuses empty text and text over the Discord limit", async () => {
+    const client = fakeClient(routes);
+    const log = fakeLog();
+
+    expect(await runReply({ postId: "30", text: "   ", dryRun: false }, { config: CONFIG, client, log })).toBe(1);
+    expect(await runReply({ postId: "30", text: "x".repeat(2001), dryRun: false }, { config: CONFIG, client, log })).toBe(1);
+    expect(client.writes).toEqual([]);
+    expect(log.errors()).toContain("Error: reply text is empty.");
+    expect(log.errors()).toContain("Error: reply is 2001 characters; Discord's limit is 2000. Shorten it.");
+  });
+
+  it("refuses a standing post and a thread outside the channel", async () => {
+    const client = fakeClient({ "/channels/1516472792260808724": thread("1516472792260808724"), "/channels/77": thread("77", { parent_id: "elsewhere" }) });
+    const log = fakeLog();
+
+    expect(await runReply({ postId: "1516472792260808724", text: "hi", dryRun: false }, { config: CONFIG, client, log })).toBe(1);
+    expect(await runReply({ postId: "77", text: "hi", dryRun: false }, { config: CONFIG, client, log })).toBe(1);
+    expect(client.writes).toEqual([]);
+    expect(log.errors()).toContain("Error: 1516472792260808724 is a standing post; this tool never writes to it.");
+  });
+});
+
+describe("runTag", () => {
+  const routes = {
+    [CHANNEL_ROUTE]: { id: CHANNEL, available_tags: TAGS },
+    "/channels/30": thread("30", { applied_tags: ["t-data", "t-will"] }),
+    "/channels/20": thread("20", { applied_tags: ["t-data"], thread_metadata: { archived: true } }),
+  };
+
+  it("replaces the status tag, keeps category tags, and reports the result", async () => {
+    const client = fakeClient(routes);
+    const log = fakeLog();
+
+    const code = await runTag({ postId: "30", tagName: "Released", dryRun: false }, { config: CONFIG, client, log });
+
+    expect(code).toBe(0);
+    expect(client.writes).toEqual([{ method: "PATCH", path: "/channels/30", body: { applied_tags: ["t-data", "t-rel"] } }]);
+    expect(log.text()).toBe('Tagged "Post 30": [Data, Released]');
+  });
+
+  it("un-archives an archived post in the same request", async () => {
+    const client = fakeClient(routes);
+
+    await runTag({ postId: "20", tagName: "Will Add", dryRun: false }, { config: CONFIG, client, log: fakeLog() });
+
+    expect(client.writes[0].body).toEqual({ applied_tags: ["t-data", "t-will"], archived: false });
+  });
+
+  it("--dry-run patches nothing", async () => {
+    const client = fakeClient(routes);
+    const log = fakeLog();
+
+    expect(await runTag({ postId: "30", tagName: "Released", dryRun: true }, { config: CONFIG, client, log })).toBe(0);
+    expect(client.writes).toEqual([]);
+    expect(log.text()).toContain("DRY RUN");
+  });
+
+  it("rejects an unknown tag before touching the post", async () => {
+    const client = fakeClient(routes);
+    const log = fakeLog();
+
+    expect(await runTag({ postId: "30", tagName: "Done", dryRun: false }, { config: CONFIG, client, log })).toBe(1);
+    expect(log.errors()).toBe("Error: Unknown status tag \"Done\". Valid: Will Add, In progress, Completed, Released, Won't do");
+    expect(client.get).not.toHaveBeenCalledWith("/channels/30");
+  });
+
+  it("refuses a standing post", async () => {
+    const client = fakeClient({ ...routes, "/channels/1516472792260808724": thread("1516472792260808724", { applied_tags: ["t-will"] }) });
+    const log = fakeLog();
+
+    expect(await runTag({ postId: "1516472792260808724", tagName: "Completed", dryRun: false }, { config: CONFIG, client, log })).toBe(1);
+    expect(client.writes).toEqual([]);
   });
 });

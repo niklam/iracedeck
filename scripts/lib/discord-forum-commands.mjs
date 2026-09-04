@@ -7,7 +7,17 @@
  * Design record: docs/superpowers/specs/2026-09-04-issue-1114-discord-feature-requests-tracker.md
  */
 import { loadEnvLocal } from "./env-local.mjs";
-import { describePost, mergePosts, summarizeReactions } from "./discord-forum.mjs";
+import {
+  describePost,
+  DISCORD_MESSAGE_LIMIT,
+  mergePosts,
+  postLink,
+  replaceStatusTag,
+  resolveStatusTag,
+  STANDING_POST_IDS,
+  summarizeReactions,
+  tagNamesOf,
+} from "./discord-forum.mjs";
 
 export const REQUIRED_ENV = ["DISCORD_BOT_TOKEN", "DISCORD_GUILD_ID", "DISCORD_FEATURE_REQUESTS_CHANNEL_ID"];
 
@@ -72,7 +82,13 @@ export async function fetchPostMessages(client, postId) {
   return all.sort((a, b) => (BigInt(a.id) < BigInt(b.id) ? -1 : 1));
 }
 
-async function fetchPostThread(client, config, postId, log) {
+async function fetchPostThread(client, config, postId, log, { forWrite = false } = {}) {
+  if (forWrite && STANDING_POST_IDS.includes(postId)) {
+    log.error(`Error: ${postId} is a standing post; this tool never writes to it.`);
+
+    return null;
+  }
+
   const thread = await client.get(`/channels/${postId}`);
 
   if (thread.parent_id !== config.channelId) {
@@ -142,6 +158,88 @@ export async function runShow({ postId, json = false }, { config, client, log = 
     log.log(`--- ${reply.author}, ${reply.createdAt.slice(0, 16).replace("T", " ")} ---`);
     log.log(reply.content);
   }
+
+  return 0;
+}
+
+function printDryRun(log, method, path, body) {
+  log.log(`DRY RUN — would ${method} ${path} with:`);
+  log.log(JSON.stringify(body, null, 2));
+}
+
+export async function runReply({ postId, text, dryRun = false }, { config, client, log = console }) {
+  if (!text || !text.trim()) {
+    log.error("Error: reply text is empty.");
+
+    return 1;
+  }
+
+  if (text.length > DISCORD_MESSAGE_LIMIT) {
+    log.error(`Error: reply is ${text.length} characters; Discord's limit is ${DISCORD_MESSAGE_LIMIT}. Shorten it.`);
+
+    return 1;
+  }
+
+  const thread = await fetchPostThread(client, config, postId, log, { forWrite: true });
+
+  if (!thread) return 1;
+
+  // No pings, ever: nothing the maintainer approves can @mention a role or
+  // everyone by accident. The post's followers are notified by Discord anyway.
+  const body = { content: text, allowed_mentions: { parse: [] } };
+  const path = `/channels/${postId}/messages`;
+
+  if (dryRun) {
+    printDryRun(log, "POST", path, body);
+
+    return 0;
+  }
+
+  const message = await client.post(path, body);
+  log.log(`Posted: ${postLink(config.guildId, postId)}/${message.id}`);
+
+  return 0;
+}
+
+export async function runTag({ postId, tagName, dryRun = false }, { config, client, log = console }) {
+  const tags = await fetchTags(client, config.channelId);
+  let tag;
+
+  try {
+    tag = resolveStatusTag(tagName, tags);
+  } catch (error) {
+    log.error(`Error: ${error.message}`);
+
+    return 1;
+  }
+
+  const thread = await fetchPostThread(client, config, postId, log, { forWrite: true });
+
+  if (!thread) return 1;
+
+  let applied;
+
+  try {
+    applied = replaceStatusTag(thread.applied_tags ?? [], tag, tags);
+  } catch (error) {
+    log.error(`Error: ${error.message}`);
+
+    return 1;
+  }
+
+  // Discord refuses edits to an archived thread; a status change is activity,
+  // so un-archiving in the same request is the honest thing to do.
+  const body = thread.thread_metadata?.archived ? { applied_tags: applied, archived: false } : { applied_tags: applied };
+  const path = `/channels/${postId}`;
+
+  if (dryRun) {
+    printDryRun(log, "PATCH", path, body);
+
+    return 0;
+  }
+
+  const updated = await client.patch(path, body);
+  log.log(`Tagged "${thread.name}": [${tagNamesOf(updated.applied_tags ?? applied, tags).join(", ")}]`);
 
   return 0;
 }
