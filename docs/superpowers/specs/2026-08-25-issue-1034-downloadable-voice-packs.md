@@ -1,6 +1,6 @@
 # Downloadable Race Engineer Voice Packs
 
-> **Issue:** [#1034](https://github.com/niklam/iracedeck/issues/1034) · **Supersedes:** _none_ · **Superseded by:** _none_
+> **Issue:** [#1034](https://github.com/niklam/iracedeck/issues/1034), [#1116](https://github.com/niklam/iracedeck/issues/1116) (publishing) · **Supersedes:** _none_ · **Superseded by:** _none_
 >
 > Point-in-time design record. The code and `.claude/rules/` are the truth; this is not documentation.
 
@@ -223,6 +223,26 @@ This is not a nicety: a non-deterministic packer republishes a new hash on every
 
 Which voices are bundled versus published is **one list in one place**, and the plugin build's audio copy step filters to the bundled set. That list is the only thing separating "ships with the plugin" from "downloadable".
 
+## Publishing archives — from the release workflow, never by hand (added 2026-09-04, [#1116](https://github.com/niklam/iracedeck/issues/1116))
+
+The packaging section above ends with an archive on disk and a committed catalog entry naming a release that does not exist until someone creates it. Stage 2 shipped that as a by-hand upload, and the 3.2.0 catalog was committed pointing at `voices-default-1.0.0` before any such release existed. Publication is now part of the plugin release, with an escape hatch for a pack that has to ship between releases.
+
+**One release object per pack version, created only from inside a release run.** The archive keeps the `voices-<id>-<version>` release and the immutable URL the packer already writes; what changes is who creates it. A step in the plugin build job, after `Build` and before the dev-dependency prune (the packer's `fflate` and `ffmpeg-static` are devDependencies, and the build has just warmed the encode cache), runs `scripts/publish-voice-packs.mjs` over every entry in `VOICE_PACKS`. The website deploy job already waits for that job, so the catalog cannot go live naming an archive that was not attached. The pack's cadence is therefore the plugin's by construction: nothing is published until iRaceDeck is released.
+
+Rejected: attaching the archive to the plugin release itself (`v3.2.0/default-1.0.0.zip`). It reads as the more literal "tied to the release", but a pack updated between releases then has nothing to hang from, so the design grows a second tag flavour and two URL-resolution rules, one for "ships with the plugin" and one for "published on its own", and every plugin release carries a duplicate copy of every pack. The tie this design wants is in the process, not in the release object.
+
+**The script decides per pack and stops at the first outcome.**
+
+1. Pack through `packVoice` into a scratch directory, catalog entry to scratch too. CI never rewrites the committed entry.
+2. The fresh sha256 and byte count must equal the committed `catalog/<id>.json`. A mismatch fails the job before anything is published and names the fix: `pack:voice`, bump `version` if the clips changed, commit. It is a repo-state error that needs a commit anyway, and failing before the plugins attach keeps the tag clean.
+3. Not publishing this run: attach the archives as a workflow artifact and upload nothing. This is the dry run.
+4. The release `voices-<id>-<version>` lacks the asset: create it with `--latest=false` and upload. The flag is load-bearing. The website's three plugin download links resolve through `/releases/latest/download/`, and GitHub hands a new release the latest slot by default, so a voice-pack release created the ordinary way would 404 every plugin download. A test pins the flag.
+5. The asset is present: download and hash it. Same bytes: skip, which covers a re-run and every later plugin release with no pack change. Different bytes: fail. A published version's bytes never change, which is `voice-packs.mjs`'s own rule, and this is where a forgotten version bump is caught.
+
+"Publishing this run" is true on a `v*` tag, release candidates included, matching the plugin attach step rather than the stable-only site deploy, so a candidate gets the reproducibility check and the stable tag finds the archive already there. It is also true on a manual run whose `publish` input is on. The script never infers it.
+
+**Between releases: a manual workflow, and it must not deploy master.** `publish-voice-packs.yml` is dispatch-only with one `publish` input, off by default. Off, it is the dry run, to be run once before the 3.2.0 tag: the whole design rests on the runner reproducing the maintainer's bytes (the committed entry pins `6087bed0…f535`, 7,879,224 bytes), and a red result is a finding to bring back rather than something the step papers over. On, it builds, runs the same script, and then deploys the website so the catalog offers the new pack. That deploy would be the first thing ever to build the site from master, and master carries documentation for unreleased features, so the workflow builds the site from the **latest stable plugin tag** with only `packages/audio-assets/catalog/` taken from master. What goes live is the site exactly as released plus the catalog as it is now.
+
 ## Rollout — bundled packs seed, catalog packs download
 
 The rule is permanent: **an empty `Voices\` plus a bundled pack means install it by copying, not downloading.** In a release that bundles nothing it is a no-op, and it means a voice can be bundled again at any time — an offline installer variant, say — with no code change.
@@ -308,7 +328,7 @@ A sideloaded pack is unsigned and unverified. The UI says where a pack came from
 - **`@iracedeck/pi-components`** — the Voices section in `race-engineer-settings.ejs`, plus the components it needs.
 - **All three plugins** — packs root wired into `initializeAudio`; scan, seed, first-run install and refresh in the startup sequence; audio copy step filtered to the bundled set.
 - **`@iracedeck/website`** — `voice-catalog.json` generation and a voices page. The third-party policy is **already published** in the *Third-Party Voice Packs* section of `docs/features/race-engineer-voices.md` and needs nothing further, since the catalog lists only our own packs.
-- **Release process** — a packaging and publishing step, and the two-release rollout above.
+- **Release process** — the packaging step, the publishing step the release workflow now performs (see *Publishing archives*, #1116), and the two-release rollout above.
 - **Docs and rules** — `audio-assets/CLAUDE.md`, `.claude/rules/race-engineer-callouts.md`, `.claude/rules/settings-window.md` (new commands), `THIRD-PARTY-LICENSES.md` (`fflate`), and the plugin rollup `external` entry.
 - **Changelog** — user-facing in both releases: the voices feature in N, the size reduction in N+1.
 
