@@ -18,7 +18,10 @@
  *        node packages/audio-assets/scripts/pack-voice.mjs [<pack-id> ...]
  *
  * Only the catalog entry is committed. The archive is a GitHub release asset,
- * uploaded to the release the entry's `url` names — the script prints both.
+ * attached to the release the entry's `url` names by
+ * `scripts/publish-voice-packs.mjs` — from the plugin's tag workflow on every
+ * release, or from the manual "Publish voice packs" workflow between releases
+ * (#1116). It is never uploaded by hand; this script prints where it will go.
  *
  * BYTE-DETERMINISM IS THE CONTRACT, not a nicety. The catalog's `sha256` is
  * what the installer compares against an installed pack to decide whether a
@@ -453,7 +456,7 @@ async function main() {
     console.log(`  sha256   ${result.entry.sha256}`);
     console.log(`  archive  ${result.archivePath}`);
     console.log(`  catalog  ${result.catalogPath}`);
-    console.log(`  upload the archive as ${archiveFileName(pack)} to release ${releaseTag(pack)}`);
+    console.log(`  release  ${releaseTag(pack)} (asset ${archiveFileName(pack)}, published by scripts/publish-voice-packs.mjs)`);
   }
 }
 

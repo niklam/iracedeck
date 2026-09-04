@@ -11,12 +11,34 @@ on:
         description: "Release version tag (e.g., v1.7.0)"
         required: true
         type: string
+      # Both optional, used only by publish-voice-packs.yml (#1116): build the
+      # site from `ref` (the latest stable plugin tag) rather than the calling
+      # ref, then overlay packages/audio-assets/catalog/ from `catalog_ref`
+      # (master). A voice pack published between releases must move the
+      # catalog without deploying master's documentation for unreleased work.
+      ref:
+        description: "Git ref to build the site from (default: the calling ref)"
+        required: false
+        type: string
+      catalog_ref:
+        description: "Git ref whose packages/audio-assets/catalog/ overlays the checkout"
+        required: false
+        type: string
 
 jobs:
   build_and_deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Overlay the voice-pack catalog from another ref
+        if: inputs.catalog_ref
+        run: |
+          git fetch --no-tags --depth=1 origin "${{ inputs.catalog_ref }}"
+          git checkout FETCH_HEAD -- packages/audio-assets/catalog
+          git status --short packages/audio-assets/catalog
 
       - uses: pnpm/action-setup@v6
         with:

@@ -38,6 +38,23 @@ jobs:
       - name: Build
         run: pnpm build
 
+      # Every published voice is packed and checked against its committed
+      # catalog entry on every run; the archive is attached to its
+      # voices-<id>-<version> release only on a version tag (#1116). This
+      # must sit between Build and the prune below: the packer's fflate and
+      # ffmpeg-static are devDependencies, and Build has just warmed the
+      # encode cache, so packing costs seconds rather than a re-encode.
+      - name: Publish voice packs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/publish-voice-packs.mjs ${{ startsWith(github.ref, 'refs/tags/v') && '--publish' || '' }}
+
+      - name: Upload voice-pack artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: voice-packs
+          path: packed/voice-packs/*.zip
+
       - name: Remove dev dependencies
         run: pnpm install --prod --no-frozen-lockfile
 

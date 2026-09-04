@@ -1,0 +1,96 @@
+name: Publish voice packs
+
+# The between-releases path for Race Engineer voice packs (#1116), and the
+# dry run to take before a release tag.
+#
+# Normally a voice pack is published by release-pack.yml as part of the
+# plugin's own tag run, so nothing here is needed for an ordinary release.
+# This workflow exists for a pack whose clips change between plugin releases:
+# with `publish` on it packs, verifies, attaches the archive to its
+# voices-<id>-<version> release, and then deploys the website so the catalog
+# offers the new version. With `publish` off (the default) it is a dry run —
+# pack and verify against the committed catalog entry, upload nothing — which
+# is how to confirm the runner reproduces a maintainer's bytes before tagging.
+#
+# The website deploy below is deliberately NOT a deploy of master. The site
+# only ever ships from a release tag, which is what keeps documentation for
+# unreleased features off iracedeck.com; so it is built from the latest stable
+# plugin release with only packages/audio-assets/catalog/ taken from the ref
+# this run was dispatched on. What goes live is the site exactly as released
+# plus the catalog as it is now.
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish: attach archives to their GitHub releases and deploy the website catalog. Off = dry run (pack and verify only)."
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  pack:
+    runs-on: windows-latest
+    outputs:
+      stable_tag: ${{ steps.stable.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.0.0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Only the audio pipeline (and what it depends on) is needed to pack a
+      # voice — not the plugins or the native addons. The build populates the
+      # radio-filter/encode cache the packer reads, so a packed clip is
+      # byte-identical to a shipped one.
+      - name: Build audio assets
+        run: pnpm exec turbo run build --filter=@iracedeck/audio-assets
+
+      - name: Pack, verify, and publish when asked
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/publish-voice-packs.mjs ${{ inputs.publish && '--publish' || '' }}
+
+      - name: Upload voice-pack artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: voice-packs
+          path: packed/voice-packs/*.zip
+
+      # `gh release view` with no tag answers with the repository's latest
+      # release. Voice-pack releases are created with --latest=false, so this
+      # is always the plugin release the website should be built from.
+      - name: Resolve the latest stable plugin release
+        id: stable
+        if: inputs.publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $tag = gh release view --json tagName --jq .tagName
+          if ($LASTEXITCODE -ne 0 -or -not $tag -or -not $tag.StartsWith("v")) {
+            throw "The latest release is not a plugin release (got '$tag'); refusing to deploy the website."
+          }
+          "tag=$tag" | Out-File -Append -FilePath $env:GITHUB_OUTPUT
+          Write-Host "Website will be built from $tag with the catalog from ${{ github.ref }}"
+
+  deploy-website:
+    needs: [pack]
+    if: inputs.publish
+    uses: ./.github/workflows/firebase-hosting-release.yml
+    secrets: inherit
+    with:
+      version: ${{ needs.pack.outputs.stable_tag }}
+      ref: ${{ needs.pack.outputs.stable_tag }}
+      catalog_ref: ${{ github.ref }}
