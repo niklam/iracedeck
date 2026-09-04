@@ -133,14 +133,18 @@ export async function runShow({ postId, json = false }, { config, client, log = 
   if (!thread) return 1;
 
   const messages = await fetchPostMessages(client, postId);
-  const starter = messages.find((m) => m.id === postId) ?? messages[0];
+  // A forum post's starter message shares the thread's id. When it has been
+  // deleted nothing may stand in for it: the oldest reply is not the request,
+  // its author is not the requester, and its reactions are not votes — and
+  // `show --json` is what the issue's "Requested on Discord … by" line credits.
+  const starter = messages.find((m) => m.id === postId) ?? null;
   const post = {
     ...describePost(thread, tags, config.guildId),
-    author: { id: starter.author.id, handle: starter.author.username },
-    votes: summarizeReactions(starter),
-    starter: { id: starter.id, createdAt: starter.timestamp, content: starter.content },
+    author: starter ? { id: starter.author.id, handle: starter.author.username } : { id: thread.owner_id, handle: null },
+    votes: starter ? summarizeReactions(starter) : { total: 0, breakdown: [] },
+    starter: starter ? { id: starter.id, createdAt: starter.timestamp, content: starter.content } : null,
     replies: messages
-      .filter((m) => m.id !== starter.id)
+      .filter((m) => m.id !== postId)
       .map((m) => ({ id: m.id, author: m.author.username, createdAt: m.timestamp, content: m.content })),
   };
 
@@ -152,10 +156,10 @@ export async function runShow({ postId, json = false }, { config, client, log = 
 
   log.log(`${post.title}`);
   log.log(`${post.link}`);
-  log.log(`by ${post.author.handle} on ${post.created.slice(0, 10)}  tags=[${post.tags.join(", ")}]  ${post.archived ? "archived" : "active"}`);
+  log.log(`by ${post.author.handle ?? "(unknown)"} on ${post.created.slice(0, 10)}  tags=[${post.tags.join(", ")}]  ${post.archived ? "archived" : "active"}`);
   log.log(`votes: ${post.votes.total}${post.votes.breakdown.length ? ` (${post.votes.breakdown.map((r) => `${r.name} ${r.count}`).join(", ")})` : ""}`);
   log.log("");
-  log.log(post.starter.content);
+  log.log(post.starter ? post.starter.content : "(The original message was deleted; its author and votes are unknown.)");
 
   for (const reply of post.replies) {
     log.log("");

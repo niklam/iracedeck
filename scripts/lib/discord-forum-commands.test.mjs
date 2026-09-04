@@ -157,6 +157,47 @@ describe("runShow", () => {
     });
   });
 
+  it("never promotes a reply to starter when the original message was deleted", async () => {
+    // The starter shares the post's id. With it gone, the oldest reply is not
+    // the request, its author is not the requester, and its reactions are not
+    // votes — and `show --json` is what credits the issue's source line.
+    const client = fakeClient({
+      [CHANNEL_ROUTE]: { id: CHANNEL, available_tags: TAGS },
+      "/channels/30": thread("30", { owner_id: "u1" }),
+      "/channels/30/messages?limit=100": [
+        message("32", { author: { id: "u2", username: "peter" }, content: "I like this", reactions: [{ emoji: { name: "iRaceDeckHeart" }, count: 5 }] }),
+      ],
+    });
+    const log = fakeLog();
+
+    const code = await runShow({ postId: "30", json: true }, { config: CONFIG, client, log });
+
+    expect(code).toBe(0);
+    const post = JSON.parse(log.text());
+    expect(post).toMatchObject({
+      author: { id: "u1", handle: null },
+      votes: { total: 0, breakdown: [] },
+      starter: null,
+      replies: [{ id: "32", author: "peter", content: "I like this" }],
+    });
+  });
+
+  it("survives a post with no messages at all and says the original was deleted", async () => {
+    const client = fakeClient({
+      [CHANNEL_ROUTE]: { id: CHANNEL, available_tags: TAGS },
+      "/channels/30": thread("30"),
+      "/channels/30/messages?limit=100": [],
+    });
+    const log = fakeLog();
+
+    const code = await runShow({ postId: "30", json: false }, { config: CONFIG, client, log });
+
+    expect(code).toBe(0);
+    expect(log.errors()).toBe("");
+    expect(log.text()).toContain("by (unknown)");
+    expect(log.text()).toContain("original message was deleted");
+  });
+
   it("refuses a thread that is not a post in the channel", async () => {
     const client = fakeClient({
       [CHANNEL_ROUTE]: { id: CHANNEL, available_tags: TAGS },
@@ -268,8 +309,13 @@ describe("runTag", () => {
     const client = fakeClient({ ...routes, "/channels/1516472792260808724": thread("1516472792260808724", { applied_tags: ["t-will"] }) });
     const log = fakeLog();
 
-    expect(await runTag({ postId: "1516472792260808724", tagName: "Completed", dryRun: false }, { config: CONFIG, client, log })).toBe(1);
+    // "Released" exists on the fake channel, so the only thing that can stop
+    // this write is the standing-post check itself — not a tag lookup failing
+    // first (which is what a tag absent from TAGS used to exercise instead).
+    expect(await runTag({ postId: "1516472792260808724", tagName: "Released", dryRun: false }, { config: CONFIG, client, log })).toBe(1);
     expect(client.writes).toEqual([]);
+    expect(log.errors()).toContain("is a standing post");
+    expect(client.get).not.toHaveBeenCalledWith("/channels/1516472792260808724");
   });
 });
 
