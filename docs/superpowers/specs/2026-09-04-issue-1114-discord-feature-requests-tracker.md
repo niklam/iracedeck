@@ -116,16 +116,20 @@ The procedure the session follows. It has two entry points and the tables below 
 
 ## Reply templates
 
-Short, plain, one link, no emoji, signed by nothing — the bot user is the signature. The maintainer edits at approval time.
+Plain, one link, no emoji, signed by nothing — the bot user is the signature. The maintainer edits at approval time.
 
-- **New:** `Thanks — this is now tracked as <issue link>. Updates will be posted here as it moves.`
-- **Already tracked:** `This is already tracked as <issue link>. Updates will be posted here as it moves.`
+**A reply that opens or moves a request says what we intend to build.** A bare issue link tells the requester nothing they can react to; the useful part is the plan. So the New, Already tracked, In progress, Completed, Released, and Won't do replies each carry a short paragraph, two to four sentences, written for a driver rather than a contributor: what the feature will do, how it will behave, and for a Race Engineer request which callouts are planned, roughly when they fire, and whether they are on by default. The paragraph is drawn from the spec (or the issue, for an adopted issue with no spec yet), never invented, and it names things the way the settings window and the website do, not by package or setting key. Where the spec left an open question the requester could answer — a wording, a threshold, a preference — the reply asks it; the thread is also where we ask.
+
+- **New:** `Thanks — this is now tracked as <issue link>.` ¶ `What we're planning: <plan paragraph>` ¶ `Updates will be posted here as it moves.`
+- **Already tracked:** `This is already tracked as <issue link>.` ¶ `What we're planning: <plan paragraph>` ¶ `Updates will be posted here as it moves.`
 - **Already implemented:** `This already exists: <docs link>. <one line on where to find it>`
 - **Duplicate:** `This looks like the same request as <post link>. Please add your ❤️ and any extra context there so the votes stay in one place.`
-- **In progress:** `Work on this has started: <issue link>.`
-- **Completed:** `This is done and merged (<issue link>). It ships in the next release.`
-- **Released:** `Shipped in iRaceDeck <version>: https://iracedeck.com/downloads/`
-- **Won't do:** `This won't be implemented — the reasoning is in <issue link>.`
+- **In progress:** `Work on this has started: <issue link>.` ¶ `<what is being built, and anything that changed since the last reply>`
+- **Completed:** `This is done and merged (<issue link>): <what shipped, in one or two sentences>. It ships in the next release.`
+- **Released:** `Shipped in iRaceDeck <version>: <where to find it and how to turn it on, one or two sentences>. https://iracedeck.com/downloads/`
+- **Won't do:** `This won't be implemented: <the reason in one sentence>. More in <issue link>.`
+
+`¶` marks a blank line between paragraphs. Discord rejects messages over 2000 characters; `reply` refuses rather than truncates, so a long plan paragraph is shortened by hand.
 
 ## Discord facts the design rests on
 
