@@ -12,22 +12,36 @@
  * nothing. Publishing is decided by the flag alone — never inferred from the
  * environment — so a local run can never reach GitHub by accident.
  *
- * Per pack it stops at the first outcome:
+ * Two passes, and the first must finish for every pack before the second
+ * starts for any: with two packs, a repo-state error in the second must not
+ * leave the first's release created and the run red. Each pass stops at its
+ * first failure.
+ *
+ * Pass 1, per pack — pack, copy, verify:
  *
  *   1. Pack with `packVoice` into a SCRATCH directory, catalog entry to scratch
  *      too. The committed `packages/audio-assets/catalog/<id>.json` is never
  *      rewritten here — CI has no business committing.
- *   2. The fresh sha256 and byte count must equal the committed entry. Anything
- *      else is a repo-state error that needs a commit anyway (`pack:voice`, a
- *      version bump if the clips changed), so it fails before anything is
- *      published — and before the plugin attach step, which keeps the tag clean.
- *   3. Copy the archive to `--out`. A dry run ends here.
- *   4. With `--publish`: no `voices-<id>-<version>` release yet → create it,
- *      with `--latest=false`, and attach the archive. Release without the asset
- *      → upload. Asset present → download and hash it: the same bytes is a
- *      re-run or a later plugin release with no pack change, skip; different
- *      bytes is a forgotten version bump, fail. A published version's bytes
- *      never change.
+ *   2. Copy the archive to `--out` — BEFORE checking it. The one run whose
+ *      archive the maintainer needs to inspect is the red one, where the runner
+ *      did not reproduce the committed bytes, and the scratch copy is gone by
+ *      the time the process exits.
+ *   3. The fresh sha256, byte count and url must equal the committed entry.
+ *      Anything else is a repo-state error that needs a commit anyway
+ *      (`pack:voice`, a version bump if the clips changed), so it fails before
+ *      anything is published — and before the plugin attach step, which keeps
+ *      the tag clean. The url is checked because the hash does not cover it: a
+ *      committed url that drifted would go live pointing where nothing uploads.
+ *
+ * A dry run ends there. Pass 2, per pack, with `--publish` only:
+ *
+ *   4. No `voices-<id>-<version>` release yet → create it, with `--latest=false`,
+ *      and attach the archive. Release without the asset → upload. Asset present
+ *      → download and hash it: the same bytes is a re-run or a later plugin
+ *      release with no pack change, skip; different bytes is a forgotten version
+ *      bump, fail. A published version's bytes never change. A DRAFT release is
+ *      refused outright: it is what an interrupted create leaves behind, an
+ *      upload into it would report "published" while every download 404s.
  *
  * `--latest=false` is load-bearing, not a nicety. The website's plugin
  * download links resolve through `/releases/latest/download/`, and GitHub hands
@@ -59,9 +73,10 @@ const USAGE = "usage: node scripts/publish-voice-packs.mjs [--publish] [--out <d
 
 /**
  * @typedef {import("../packages/audio-assets/src/build/voice-packs.mjs").VoicePackDefinition} VoicePackDefinition
- * @typedef {{ bytes: number; sha256: string }} ArchiveIdentity
+ * @typedef {{ bytes: number; sha256: string; url: string }} ArchiveIdentity
  * @typedef {"dry-run" | "published" | "already-published"} Outcome
  * @typedef {{ id: string; version: string; outcome: Outcome; archive: string }} PackResult
+ * @typedef {{ pack: VoicePackDefinition; entry: ArchiveIdentity; archivePath: string; archive: string }} VerifiedPack
  *
  * Everything with a side effect, injected so the orchestrator can be driven
  * end to end without a packer, a filesystem or a network on the other side.
@@ -131,6 +146,32 @@ export function releaseNotes(pack) {
 }
 
 /**
+ * gh names an asset after the file it uploads — a `#suffix` on the argument
+ * sets only a DISPLAY LABEL — so the archive's basename is the asset name the
+ * catalog's url points at. `packVoice` writes it under `archiveFileName(pack)`
+ * today; this is what turns that ceasing to be true into a failure here rather
+ * than an asset with the wrong name on a release for good.
+ *
+ * @param {VoicePackDefinition} pack
+ * @param {string} archivePath
+ */
+function assertArchiveName(pack, archivePath) {
+  const expected = archiveFileName(pack);
+  const actual = path.basename(archivePath);
+
+  if (actual !== expected) {
+    throw new Error(
+      `${pack.id}: the packer wrote ${actual} but the release asset must be named ${expected} — ` +
+        "gh names an asset after the file it uploads, so the archive must already carry that name",
+    );
+  }
+}
+
+/**
+ * The fresh entry rides along on every verification failure: on the red dry
+ * run it is the only record of what the runner actually built, and the diff
+ * against the committed file is what the maintainer needs next.
+ *
  * @param {VoicePackDefinition} pack
  * @param {ArchiveIdentity} fresh
  * @param {ArchiveIdentity | null} committed
@@ -139,7 +180,7 @@ function verifyAgainstCommitted(pack, fresh, committed) {
   const committedFile = `${COMMITTED_ENTRY_DIR}/${pack.id}.json`;
   const fix =
     'Run "pnpm --filter @iracedeck/audio-assets pack:voice", bump the pack version in voice-packs.mjs ' +
-    "if its clips changed, and commit the regenerated entry.";
+    `if its clips changed, and commit the regenerated entry. The entry built here: ${JSON.stringify(fresh)}`;
 
   if (committed === null) {
     throw new Error(`${pack.id}: no committed catalog entry at ${committedFile}. ${fix}`);
@@ -149,6 +190,13 @@ function verifyAgainstCommitted(pack, fresh, committed) {
     throw new Error(
       `${pack.id}: the archive built here (sha256 ${fresh.sha256}, ${fresh.bytes} bytes) does not match ` +
         `${committedFile} (sha256 ${committed.sha256}, ${committed.bytes} bytes). ${fix}`,
+    );
+  }
+
+  if (committed.url !== fresh.url) {
+    throw new Error(
+      `${pack.id}: ${committedFile} points at ${committed.url}, but the archive built here would be published ` +
+        `at ${fresh.url}. ${fix}`,
     );
   }
 }
@@ -164,20 +212,36 @@ function verifyAgainstCommitted(pack, fresh, committed) {
 function ghOrThrow(deps, pack, args) {
   const result = deps.gh(args);
 
-  if (!result.ok) {
-    const detail = (result.stderr ?? "").trim() || (result.stdout ?? "").trim() || "no output";
-
-    throw new Error(`${pack.id}: gh ${args.slice(0, 2).join(" ")} failed — ${detail}`);
-  }
+  if (!result.ok) throw ghFailure(pack, args, result);
 
   return result;
 }
 
 /**
+ * @param {VoicePackDefinition} pack
+ * @param {string[]} args
+ * @param {{ stdout?: string; stderr?: string }} result
+ */
+function ghFailure(pack, args, result) {
+  const detail = (result.stderr ?? "").trim() || (result.stdout ?? "").trim() || "no output";
+
+  return new Error(`${pack.id}: gh ${args.slice(0, 2).join(" ")} failed — ${detail}`);
+}
+
+/**
+ * gh's exact wording for a tag with no release (gh 2.92). It is the ONLY
+ * non-zero exit read as "no release": an auth failure, a rate limit or a 5xx
+ * read that way would be misdiagnosed, and the `gh release create` that
+ * followed would then fail for a reason the log never named.
+ */
+const RELEASE_NOT_FOUND = "release not found";
+
+/**
  * The names of the assets on the pack's release, or `null` when there is no
- * release. A non-zero `gh release view` is read as "no release": if that ever
- * hides a transient failure, the `gh release create` that follows refuses an
- * existing tag loudly, so nothing is published over the top of anything.
+ * release. Throws for any other failure, and for a DRAFT: a draft is what a
+ * `gh release create` interrupted mid-upload leaves behind, `gh release upload`
+ * would add the asset to it without complaint, and the public download URL
+ * would 404 for every user while this script reported "published".
  *
  * @param {PublishDeps} deps
  * @param {VoicePackDefinition} pack
@@ -185,26 +249,39 @@ function ghOrThrow(deps, pack, args) {
  * @returns {string[] | null}
  */
 function publishedAssetNames(deps, pack, tag) {
-  const result = deps.gh(["release", "view", tag, "--json", "assets"]);
+  const args = ["release", "view", tag, "--json", "assets,isDraft"];
+  const result = deps.gh(args);
 
-  if (!result.ok) return null;
+  if (!result.ok) {
+    if ((result.stderr ?? "").includes(RELEASE_NOT_FOUND)) return null;
 
-  let assets;
+    throw ghFailure(pack, args, result);
+  }
+
+  let release;
 
   try {
-    assets = JSON.parse(result.stdout).assets;
+    release = JSON.parse(result.stdout);
   } catch (error) {
     throw new Error(
       `${pack.id}: could not read the assets on ${tag} from gh release view — ${error instanceof Error ? error.message : error}`,
     );
   }
 
-  return Array.isArray(assets) ? assets.map((asset) => asset.name) : [];
+  if (release.isDraft === true) {
+    throw new Error(
+      `${pack.id}: ${tag} is a draft release — a previous publish was interrupted before it finished. ` +
+        "Publish or delete the draft on GitHub, then re-run.",
+    );
+  }
+
+  return Array.isArray(release.assets) ? release.assets.map((asset) => asset.name) : [];
 }
 
 /**
- * Step 4: put the verified archive on the pack's release, or confirm it is
- * already there byte for byte.
+ * Pass 2, per pack: put the verified archive on the pack's release, or confirm
+ * it is already there byte for byte. The archive is handed to gh by path
+ * alone — its basename is the asset name (`assertArchiveName` in pass 1).
  *
  * @param {PublishDeps} deps
  * @param {VoicePackDefinition} pack
@@ -216,7 +293,6 @@ function publishedAssetNames(deps, pack, tag) {
 function publishArchive(deps, pack, archivePath, fresh, { scratchDir, targetSha }) {
   const tag = releaseTag(pack);
   const assetName = archiveFileName(pack);
-  const attachment = `${archivePath}#${assetName}`;
   const assets = publishedAssetNames(deps, pack, tag);
 
   if (assets === null) {
@@ -232,14 +308,14 @@ function publishArchive(deps, pack, archivePath, fresh, { scratchDir, targetSha 
       releaseNotes(pack),
       "--latest=false",
       ...(targetSha === undefined ? [] : ["--target", targetSha]),
-      attachment,
+      archivePath,
     ]);
 
     return "published";
   }
 
   if (!assets.includes(assetName)) {
-    ghOrThrow(deps, pack, ["release", "upload", tag, attachment]);
+    ghOrThrow(deps, pack, ["release", "upload", tag, archivePath]);
 
     return "published";
   }
@@ -261,9 +337,11 @@ function publishArchive(deps, pack, archivePath, fresh, { scratchDir, targetSha 
 }
 
 /**
- * The orchestrator: every pack in order, stopping at the first failure. Pure
- * apart from what `deps` does; rejects with a message naming the pack and the
- * fix, which `main` turns into exit code 1.
+ * The orchestrator: two passes, each over every pack in order and each
+ * stopping at its first failure — see the header for why the first must
+ * finish for every pack before the second touches any release. Pure apart from
+ * what `deps` does; rejects with a message naming the pack and the fix, which
+ * `main` turns into exit code 1.
  *
  * @param {object} options
  * @param {readonly VoicePackDefinition[]} options.packs
@@ -275,20 +353,28 @@ function publishArchive(deps, pack, archivePath, fresh, { scratchDir, targetSha 
  * @returns {Promise<PackResult[]>}
  */
 export async function publishVoicePacks({ packs, publish, outDir, scratchDir, targetSha, deps }) {
-  /** @type {PackResult[]} */
-  const results = [];
-
   deps.ensureDir(outDir);
+
+  /** @type {VerifiedPack[]} */
+  const verified = [];
 
   for (const pack of packs) {
     const { entry, archivePath } = await deps.pack(pack);
 
-    verifyAgainstCommitted(pack, entry, deps.readCommittedEntry(pack.id));
+    assertArchiveName(pack, archivePath);
 
     const archive = path.join(outDir, archiveFileName(pack));
 
     deps.copyArchive(archivePath, archive);
+    verifyAgainstCommitted(pack, entry, deps.readCommittedEntry(pack.id));
+    deps.log(`${pack.id}@${pack.version}: packed, matches the committed entry (${archive})`);
+    verified.push({ pack, entry, archivePath, archive });
+  }
 
+  /** @type {PackResult[]} */
+  const results = [];
+
+  for (const { pack, entry, archivePath, archive } of verified) {
     const outcome = publish ? publishArchive(deps, pack, archivePath, entry, { scratchDir, targetSha }) : "dry-run";
 
     results.push({ id: pack.id, version: pack.version, outcome, archive });
