@@ -5,7 +5,7 @@
  * a wrong body here is a wrong public post.
  */
 import { describe, expect, it, vi } from "vitest";
-import { fetchAllPosts, readConfig, runList, runReply, runShow, runTag } from "./discord-forum-commands.mjs";
+import { fetchAllPosts, readConfig, runFollowUp, runList, runReply, runShow, runTag } from "./discord-forum-commands.mjs";
 
 const GUILD = "1477659500851888219";
 const CHANNEL = "1481298096632889366";
@@ -270,5 +270,79 @@ describe("runTag", () => {
 
     expect(await runTag({ postId: "1516472792260808724", tagName: "Completed", dryRun: false }, { config: CONFIG, client, log })).toBe(1);
     expect(client.writes).toEqual([]);
+  });
+});
+
+describe("runFollowUp", () => {
+  const link = (id) => `https://discord.com/channels/${GUILD}/${id}`;
+  const issues = [
+    { number: 1, title: "Open, untouched", url: "u/1", state: "OPEN", stateReason: null, assignees: [], milestone: null, body: `x\n\nRequested on Discord: ${link("30")} by a (1 ❤️)` },
+    { number: 2, title: "In progress", url: "u/2", state: "OPEN", stateReason: null, assignees: [{ login: "niklam" }], milestone: null, body: `Requested on Discord: ${link("20")} by b (0 ❤️)` },
+    { number: 3, title: "Shipped", url: "u/3", state: "CLOSED", stateReason: "COMPLETED", assignees: [], milestone: null, body: `Requested on Discord: ${link("10")} by c (2 ❤️)` },
+    { number: 4, title: "No link", url: "u/4", state: "OPEN", stateReason: null, assignees: [], milestone: null, body: "nothing" },
+    { number: 5, title: "Standing", url: "u/5", state: "CLOSED", stateReason: "COMPLETED", assignees: [], milestone: null, body: `Requested on Discord: ${link("1516472792260808724")} by d (0 ❤️)` },
+  ];
+  const posts = [
+    thread("30", { applied_tags: [] }),
+    thread("20", { applied_tags: ["t-will"] }),
+    thread("10", { applied_tags: ["t-rel"], thread_metadata: { archived: true } }),
+    thread("1516472792260808724", { applied_tags: ["t-will"] }),
+  ];
+  const routes = {
+    [CHANNEL_ROUTE]: { id: CHANNEL, available_tags: TAGS },
+    [ACTIVE_ROUTE]: { threads: posts },
+    [ARCHIVED_ROUTE]: { threads: [], has_more: false },
+  };
+
+  function fakeExec() {
+    return vi.fn((file, args) => {
+      const cmd = [file, ...args].join(" ");
+
+      if (cmd.startsWith("gh issue list")) return JSON.stringify(issues);
+      if (cmd === "git fetch --tags --quiet") return "";
+      if (cmd.startsWith("gh issue view 3")) return JSON.stringify({ closedByPullRequestsReferences: [{ number: 33 }] });
+      if (cmd.startsWith("gh issue view 5")) return JSON.stringify({ closedByPullRequestsReferences: [] });
+      if (cmd.startsWith("gh pr view 33")) return JSON.stringify({ mergeCommit: { oid: "abc123" } });
+      if (cmd === "git tag --contains abc123") return "v3.2.0\nv3.2.0-rc.1\nv3.3.0\n";
+
+      throw new Error(`unexpected exec: ${cmd}`);
+    });
+  }
+
+  it("computes one row per issue and proposes only forward moves", async () => {
+    const log = fakeLog();
+    const exec = fakeExec();
+
+    const code = await runFollowUp({ json: true }, { config: CONFIG, client: fakeClient(routes), log, exec });
+
+    expect(code).toBe(0);
+    const rows = JSON.parse(log.text());
+    expect(rows).toEqual([
+      { issue: 1, title: "Open, untouched", url: "u/1", state: "OPEN", post: { id: "30", title: "Post 30", link: link("30") }, current: null, expected: "Will Add", version: null, propose: true, note: null },
+      { issue: 2, title: "In progress", url: "u/2", state: "OPEN", post: { id: "20", title: "Post 20", link: link("20") }, current: "Will Add", expected: "In progress", version: null, propose: true, note: null },
+      { issue: 3, title: "Shipped", url: "u/3", state: "CLOSED", post: { id: "10", title: "Post 10", link: link("10") }, current: "Released", expected: "Released", version: "v3.2.0", propose: false, note: null },
+      { issue: 4, title: "No link", url: "u/4", state: "OPEN", post: null, current: null, expected: "Will Add", version: null, propose: false, note: "no Discord post link in the issue body" },
+      { issue: 5, title: "Standing", url: "u/5", state: "CLOSED", post: { id: "1516472792260808724", title: "Post 1516472792260808724", link: link("1516472792260808724") }, current: "Will Add", expected: "Completed", version: null, propose: false, note: "standing post; never changed by this tool" },
+    ]);
+    expect(exec).toHaveBeenCalledWith("git", ["fetch", "--tags", "--quiet"]);
+  });
+
+  it("prints a readable table by default", async () => {
+    const log = fakeLog();
+
+    await runFollowUp({ json: false }, { config: CONFIG, client: fakeClient(routes), log, exec: fakeExec() });
+
+    expect(log.text()).toContain("#1");
+    expect(log.text()).toMatch(/#1 .*none -> Will Add.*PROPOSE/s);
+    expect(log.text()).toMatch(/#3 .*Released -> Released.*v3\.2\.0/s);
+    expect(log.text()).toMatch(/#4 .*no Discord post link/s);
+  });
+
+  it("uses gh with the label filter and json fields the spec names", async () => {
+    const exec = fakeExec();
+
+    await runFollowUp({ json: true }, { config: CONFIG, client: fakeClient(routes), log: fakeLog(), exec });
+
+    expect(exec.mock.calls[0]).toEqual(["gh", ["issue", "list", "--label", "discord", "--state", "all", "--limit", "500", "--json", "number,title,url,state,stateReason,assignees,milestone,body"]]);
   });
 });

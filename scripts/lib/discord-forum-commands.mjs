@@ -10,10 +10,14 @@ import { loadEnvLocal } from "./env-local.mjs";
 import {
   describePost,
   DISCORD_MESSAGE_LIMIT,
+  expectedTag,
+  lowestStableVersion,
   mergePosts,
+  parsePostLink,
   postLink,
   replaceStatusTag,
   resolveStatusTag,
+  shouldPropose,
   STANDING_POST_IDS,
   summarizeReactions,
   tagNamesOf,
@@ -240,6 +244,86 @@ export async function runTag({ postId, tagName, dryRun = false }, { config, clie
 
   const updated = await client.patch(path, body);
   log.log(`Tagged "${thread.name}": [${tagNamesOf(updated.applied_tags ?? applied, tags).join(", ")}]`);
+
+  return 0;
+}
+
+const ISSUE_FIELDS = "number,title,url,state,stateReason,assignees,milestone,body";
+
+function gh(exec, args) {
+  return JSON.parse(exec("gh", args));
+}
+
+/** The lowest stable tag containing the merge commit of the issue's closing PR, or null. */
+function releasedVersionOf(exec, issue) {
+  if (issue.state !== "CLOSED" || issue.stateReason === "NOT_PLANNED") return null;
+
+  const refs = gh(exec, ["issue", "view", String(issue.number), "--json", "closedByPullRequestsReferences"]).closedByPullRequestsReferences ?? [];
+
+  for (const ref of refs) {
+    const sha = gh(exec, ["pr", "view", String(ref.number), "--json", "mergeCommit"]).mergeCommit?.oid;
+
+    if (!sha) continue;
+
+    const tags = exec("git", ["tag", "--contains", sha]).split(/\r?\n/).filter(Boolean);
+    const version = lowestStableVersion(tags);
+
+    if (version) return version;
+  }
+
+  return null;
+}
+
+function followUpRow(issue, postsById, exec) {
+  const parsed = parsePostLink(issue.body);
+  const post = parsed ? postsById.get(parsed.postId) : null;
+  const version = releasedVersionOf(exec, issue);
+  const expected = expectedTag(issue, version);
+  const base = { issue: issue.number, title: issue.title, url: issue.url, state: issue.state, post: null, current: null, expected, version, propose: false, note: null };
+
+  if (!parsed) return { ...base, note: "no Discord post link in the issue body" };
+  if (!post) return { ...base, note: `post ${parsed.postId} not found in the channel` };
+
+  const row = { ...base, post: { id: post.id, title: post.title, link: post.link }, current: post.statusTag };
+
+  if (post.standing) return { ...row, note: "standing post; never changed by this tool" };
+
+  return { ...row, propose: shouldPropose(post.statusTag, expected) };
+}
+
+function formatFollowUpRow(row) {
+  const move = `${row.current ?? "none"} -> ${row.expected}${row.version ? ` (${row.version})` : ""}`;
+  const verdict = row.note ?? (row.propose ? "PROPOSE" : "up to date");
+  const post = row.post ? row.post.title : "(no post)";
+
+  return `#${row.issue} ${row.title}\n    ${post}\n    ${move}  ${verdict}`;
+}
+
+/**
+ * The reconciliation half of the follow-up run: what each Discord-sourced
+ * issue's post carries versus what its GitHub state calls for. Proposes; never
+ * sends. `exec(file, args)` returns stdout, so the GitHub side is fakeable.
+ */
+export async function runFollowUp({ json = false }, { config, client, log = console, exec }) {
+  const issues = gh(exec, ["issue", "list", "--label", "discord", "--state", "all", "--limit", "500", "--json", ISSUE_FIELDS]);
+  exec("git", ["fetch", "--tags", "--quiet"]);
+
+  const tags = await fetchTags(client, config.channelId);
+  const posts = (await fetchAllPosts(client, config)).map((thread) => describePost(thread, tags, config.guildId));
+  const postsById = new Map(posts.map((post) => [post.id, post]));
+  const rows = issues.map((issue) => followUpRow(issue, postsById, exec));
+
+  if (json) {
+    log.log(JSON.stringify(rows, null, 2));
+
+    return 0;
+  }
+
+  for (const row of rows) log.log(formatFollowUpRow(row));
+
+  const proposed = rows.filter((row) => row.propose).length;
+  log.log("");
+  log.log(`${rows.length} Discord-sourced issues, ${proposed} proposed change${proposed === 1 ? "" : "s"}.`);
 
   return 0;
 }
