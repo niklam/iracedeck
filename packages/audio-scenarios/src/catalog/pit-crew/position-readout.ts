@@ -293,7 +293,7 @@ export function buildOvertakeGainedPositionContract(
   return {
     id: "pit-crew.overtake-gained-position",
     description:
-      "You gain a place in a race that is still running and the new position has held for a few seconds, with no car alongside, not on pit road and no incident in the last ten seconds.",
+      "You gain a place below the podium (a podium gain has its own reaction line) in a running race and hold it a few seconds in a clean moment, with no other position readout in the last twenty seconds.",
     when: {
       event: "overtake.completed",
       where: (ev) => {
@@ -344,7 +344,7 @@ export function buildOvertakeLostPositionContract(
   return {
     id: "pit-crew.overtake-lost-position",
     description:
-      "You lose a place in a race that is still running and the new position has held for a few seconds, with no car alongside, not on pit road and no incident in the last ten seconds.",
+      "You lose a place in a running race and the drop holds a few seconds, with no car alongside, not on pit road, no incident in the last ten seconds and no other position readout in the last twenty.",
     when: {
       event: "overtake.lost",
       where: (ev) => {

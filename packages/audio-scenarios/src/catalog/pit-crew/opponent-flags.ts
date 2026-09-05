@@ -172,7 +172,7 @@ function opponentFlagContract(
 const RELATION_CAR: Record<OpponentFlagFullRelation, string> = {
   ahead: "A car in your class up to three places ahead of you on the same lap",
   behind: "The car in your class one place behind you on the same lap",
-  "track-ahead": "A car less than about ten seconds ahead of you on the road, of any class or lap,",
+  "track-ahead": "A car less than about ten seconds ahead of you on the road, of any class or lap and not in the pits,",
 };
 
 const SUBJECT_MOMENT: Record<OpponentFlagCalloutId, string> = {

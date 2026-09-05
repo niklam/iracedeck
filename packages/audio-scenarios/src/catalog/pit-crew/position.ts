@@ -390,7 +390,7 @@ export function buildPositionContract(
   return {
     id: "pit-crew.position-change",
     description:
-      "You complete a lap in qualifying or a race in a different position from the lap before, or your first timed lap of the session; a held place counts only on a qualifying lap that is not your best.",
+      "You finish a qualifying or race lap in a new position, or your first timed lap; a held place counts only on a non-best qualifying lap; in a race, no position readout in the past twenty seconds.",
     when: {
       event: "lap.completed",
       where: (ev) => {

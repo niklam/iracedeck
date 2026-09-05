@@ -172,7 +172,7 @@ const SPOTTER_INFO_CONTRACT: ScenarioContract = {
   focusOwner: SPOTTER_FOCUS_OWNER,
   frame: NO_FRAME,
   description:
-    "The last car alongside has genuinely separated after the radar reads clear, or a car is still alongside when the reminder interval (three seconds by default) comes round again.",
+    "The last car alongside has truly separated after the radar reads clear, or a car is still alongside when the reminder interval (default three seconds) is due; never in Lone Qualify or on pit road.",
 };
 
 /**

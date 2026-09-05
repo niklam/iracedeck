@@ -63,12 +63,12 @@ const PIT_BOX_MARKS: readonly PitBoxMark[] = ["five", "four", "three", "two", "o
  * per mark, since the distance is the only thing that tells them apart.
  */
 const PIT_BOX_DESCRIPTIONS: Record<PitBoxMark, string> = {
-  five: "On pit road heading for your own box, you close to 120 metres from it.",
-  four: "On pit road heading for your own box, you close to 100 metres from it.",
-  three: "On pit road heading for your own box, you close to 80 metres from it.",
-  two: "On pit road heading for your own box, you close to 60 metres from it.",
-  one: "On pit road heading for your own box, you close to 40 metres from it.",
-  "pit-now": "On pit road heading for your own box, you close to 20 metres from it.",
+  five: "On pit road heading for your own box, you close to 120 meters from it.",
+  four: "On pit road heading for your own box, you close to 100 meters from it.",
+  three: "On pit road heading for your own box, you close to 80 meters from it.",
+  two: "On pit road heading for your own box, you close to 60 meters from it.",
+  one: "On pit road heading for your own box, you close to 40 meters from it.",
+  "pit-now": "On pit road heading for your own box, you close to 20 meters from it.",
 };
 
 function pitBoxContract(mark: PitBoxMark): ScenarioContract {
