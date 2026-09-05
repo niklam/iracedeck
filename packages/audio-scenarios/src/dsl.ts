@@ -256,10 +256,12 @@ export type ScenarioContract = {
 };
 
 /**
- * A scenario — a contract welded to its sequence in code. The catalog's
- * un-migrated families still define these (`defineScenario`); the migrated
- * ones register a `ScenarioContract` and leave the sequence to the pack
- * (#1065 finishes the move).
+ * A scenario — a contract welded to its sequence in code. An engine
+ * primitive, not a catalog shape: since #1065 every catalog family registers
+ * a `ScenarioContract` and leaves the sequence to the active voice's script,
+ * and a `Scenario` is built only by the interpreter and validation tests
+ * (and by a family test that needs a known body to probe a gate).
+ * `defineScenario` and `defineContract` share one registration path.
  */
 export type Scenario = ScenarioContract & { sequence: Step[] };
 

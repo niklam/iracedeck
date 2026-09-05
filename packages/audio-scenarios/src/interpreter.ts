@@ -56,7 +56,8 @@
  *     through `getFrameOptions` and drop the frame's non-ambient / ambient
  *     STEPS before they expand. A legacy `Scenario` is framed the same way
  *     when its voice has a script, and plays unframed when it does not
- *     (transitional; #1065 removes legacy scenarios).
+ *     (an engine path the catalog no longer exercises since #1065, kept for
+ *     `defineScenario`'s remaining callers — the interpreter's own tests).
  *   - A pool named by the active voice's script shadows a code-registered
  *     pool of the same name, for that voice only; a slashed pool step
  *     (`group/base`) addresses the voice's clip groups directly.

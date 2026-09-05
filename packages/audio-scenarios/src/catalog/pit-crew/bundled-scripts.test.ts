@@ -17,11 +17,15 @@
  *
  * The contract set is read off a pass-through spy on `engine.defineContract`
  * installed before the real registration runs (the `register-pit-crew.test.ts`
- * shape), so it widens on its own as #1065 migrates the remaining families —
- * the engine exposes no contract enumeration, and this test adds none. The
- * flags family is the floor: a spy installed late would see nothing and let
- * every "for each contract" assertion pass vacuously, so the set must contain
- * at least `FLAG_SCENARIO_IDS`.
+ * shape) — the engine exposes no contract enumeration, and this test adds
+ * none. Since #1065 the set is the WHOLE catalog: every family is a contract
+ * plus a script entry, and a sibling spy on `engine.defineScenario` proves the
+ * catalog makes no legacy `Scenario` (a contract with an inline sequence) at
+ * all. The vacuity floor is therefore two-sided — at least `CATALOG_FLOOR`
+ * contracts, and exactly zero legacy scenarios — because a spy installed late
+ * would see nothing and let every "for each contract" assertion pass for
+ * nothing, and a family re-added in the legacy shape would slip past every
+ * script check while still speaking from code.
  */
 import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
@@ -49,7 +53,6 @@ import {
 import { FLAG_CLIP_SOURCES, FLAG_SCENARIO_IDS } from "./flag-alerts.js";
 import { registerPitCrew } from "./index.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
-import { POOL_REGISTRY } from "./pools.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
 
@@ -65,6 +68,21 @@ vi.mock("@iracedeck/sim-events-iracing", () => ({
 
 /** The bundled voice — the one whose script this test holds to the completeness bar. */
 const VOICE = "default";
+
+/**
+ * How many contracts the catalog registered when #1065 closed it: 24 flags
+ * (#1064) plus the 125 callouts migrated in #1065. Bump the literal when a
+ * callout is added — it is only the vacuity floor for the spy; the
+ * completeness checks below are what actually guard the catalog.
+ */
+const CATALOG_FLOOR = 149;
+
+/**
+ * How many distinct clip sources the bundled script addresses — `pool:<group>/<base>`
+ * references plus named `pools` — with the same job as `CATALOG_FLOOR`: a walk
+ * that resolved fewer went blind rather than finding the script clean.
+ */
+const CLIP_SOURCE_FLOOR = 150;
 
 /** The JSON import types `schema` as `number`, hence the cast; the freshness test in audio-assets proves it parses. */
 const SCRIPT = defaultScript as CalloutScript;
@@ -201,18 +219,20 @@ afterEach(() => {
 });
 
 describe("the bundled script is complete for every contract the catalog registers (issue #1064)", () => {
-  it("sees the registration: at least the flags family arrives as contracts", () => {
-    // The vacuity floor. Widen the expectation as #1065 migrates families —
-    // the spy already collects them; this only proves it was installed in time.
-    expect(contracts.size).toBeGreaterThanOrEqual(FLAG_SCENARIO_IDS.length);
+  it("sees the registration: the whole catalog arrives as contracts, and nothing arrives as a legacy scenario", () => {
+    // The vacuity floor, two-sided. The spy already collects every contract;
+    // the count only proves it was installed in time — and that no family
+    // silently dropped out of `registerPitCrew`.
+    expect(contracts.size).toBeGreaterThanOrEqual(CATALOG_FLOOR);
 
     for (const id of FLAG_SCENARIO_IDS) {
       expect(contracts.has(id), `${id} is not registered as a contract`).toBe(true);
     }
 
-    // And the legacy half is still there: the frame check below iterates it,
-    // and an empty map would pass it for nothing.
-    expect(legacyScenarios.size).toBeGreaterThan(50);
+    // The catalog is whole (#1065): no `defineScenario` left. A family written
+    // back in the legacy shape would speak from code and bypass every check in
+    // this file, so the legacy spy must have seen nothing at all.
+    expect([...legacyScenarios.keys()], "legacy scenarios registered by the catalog").toEqual([]);
   });
 
   it("registers the whole catalog clean against the bundled manifest — no empty code pool, no disabled scenario", () => {
@@ -255,8 +275,9 @@ describe("the bundled script is complete for every contract the catalog register
 /**
  * Where a pool reference's clips live. A slashed name IS its source
  * (`group/base`, addressed directly — the normal spelling); a plain name is an
- * alias the script defines under `pools`, or a code pool in `POOL_REGISTRY`,
- * and `null` when it is neither — which the definedness test below names.
+ * alias the script defines under `pools` — the only place a name can be
+ * defined since #1065 deleted the code registry — and `null` when it is not,
+ * which the definedness test below names.
  */
 function poolSource(name: string): { group: string; base: string } | null {
   const slash = name.indexOf("/");
@@ -267,18 +288,17 @@ function poolSource(name: string): { group: string; base: string } | null {
   // not resolve to `Object.prototype.constructor` (the compiler refuses it too).
   if (Object.hasOwn(SCRIPT.pools, name)) return SCRIPT.pools[name];
 
-  if (Object.hasOwn(POOL_REGISTRY, name)) return POOL_REGISTRY[name];
-
   return null;
 }
 
 describe("everything the bundled script references by name is defined (issue #1064)", () => {
-  it("every named pool a sequence draws from is defined by the script or by POOL_REGISTRY — a slashed name needs neither", () => {
+  it("every named pool a sequence draws from is defined by the script under `pools` — a slashed name needs no definition", () => {
     // The named form is the alias path: a name earns its place only where it
     // decides something the path does not (an alias onto another group, or a
     // second line that must not share a no-repeat tracker with the first),
-    // and then it has to be defined somewhere. The slashed form addresses a
-    // clip group directly and is checked against the manifest below instead.
+    // and then the script has to define it — there is no code registry to
+    // fall back on since #1065. The slashed form addresses a clip group
+    // directly and is checked against the manifest below instead.
     const refs = collectScriptReferences(SCRIPT);
     const unknown = refs.pools.filter((name) => poolSource(name) === null);
 
@@ -290,8 +310,7 @@ describe("everything the bundled script references by name is defined (issue #10
     // and the compiler never looks at the manifest: a typo'd `pool:flags/redd`
     // compiles clean and ships a registered, scripted, mute flag. Membership is
     // the interpreter's own rule (`poolMemberPattern`), so this test can never
-    // accept a clip the engine would not pick. A named pool resolved through
-    // `POOL_REGISTRY` is covered by the registration-time typo guard above.
+    // accept a clip the engine would not pick.
     const refs = collectScriptReferences(SCRIPT);
     const sources = new Map<string, { group: string; base: string }>();
 
@@ -311,8 +330,10 @@ describe("everything the bundled script references by name is defined (issue #10
       })
       .map(([name, { group, base }]) => `${name} → ${group}/${base}`);
 
-    // The vacuity floor: the flags alone address this many clip groups, so a
-    // walk that resolved fewer went blind rather than finding the script clean.
+    // The vacuity floor: the whole catalog addresses at least this many clip
+    // sources (and the flags alone at least theirs), so a walk that resolved
+    // fewer went blind rather than finding the script clean.
+    expect(sources.size).toBeGreaterThanOrEqual(CLIP_SOURCE_FLOOR);
     expect(sources.size).toBeGreaterThanOrEqual(FLAG_CLIP_SOURCES.length);
     expect(empty, `pools with no voice/${VOICE}/<group>/<base>(-NN).mp3 in manifest.json`).toEqual([]);
   });
@@ -356,21 +377,15 @@ describe("everything the bundled script references by name is defined (issue #10
     expect(missing, "literal clip steps naming no clip in manifest.json").toEqual([]);
   });
 
-  it("every frame an entry, a contract or a legacy scenario names is defined by the script", () => {
+  it("every frame an entry or a contract names is defined by the script", () => {
     const defined = new Set(Object.keys(SCRIPT.frames));
     const problems: string[] = [];
 
     // Effective frame per contract: entry override → contract default → DEFAULT_FRAME.
+    // A frame the script lacks compiles as `unknown frame` and skips the
+    // callout for the voice, which the bundle must never do.
     for (const [id, contract] of contracts) {
       const frame = SCRIPT.scenarios[id]?.frame ?? contract.frame ?? DEFAULT_FRAME;
-
-      if (frame !== NO_FRAME && !defined.has(frame)) problems.push(`${id} → frame "${frame}"`);
-    }
-
-    // A legacy scenario is framed from the same script; a frame it names that
-    // the script lacks plays unframed with a warn, which the bundle must not do.
-    for (const [id, scenario] of legacyScenarios) {
-      const frame = scenario.frame ?? DEFAULT_FRAME;
 
       if (frame !== NO_FRAME && !defined.has(frame)) problems.push(`${id} → frame "${frame}"`);
     }

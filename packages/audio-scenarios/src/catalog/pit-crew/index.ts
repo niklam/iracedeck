@@ -4,9 +4,14 @@
  * The engine wires:
  *   - The directional radar (state-driven tick loop, not expressible in the
  *     scenario DSL)
- *   - All pools defined in `pools.ts`, registered en masse via
- *     `registerPools(engine)` — manifest-derived registry pools plus the
- *     enumerated acknowledgment pools (issue #664)
+ *   - Every family's vocabulary — the vars, conditions and cases its
+ *     scripts may name — through its `register<Family>Vocabulary(engine)`,
+ *     before any contract is registered. No pool is registered here any
+ *     more: `POOL_REGISTRY` emptied family by family through #1064/#1065
+ *     and was deleted with the last one, because a script addresses its
+ *     clips directly as `pool:<group>/<base>` (members derived per voice
+ *     from the manifest at fire time, issue #664) and names a pool under
+ *     its own `pools` only where the name carries a decision
  *   - The twenty-four toggle-confirmation contracts (fuel on/off, windshield
  *     and fast-repair on/off via `pitService.toggled`; every meaningful
  *     tire-set selection — singles, diagonals, three-corner combos, the full
@@ -140,7 +145,6 @@ import {
 import { registerPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { PIT_STATUS_CONTRACTS, PIT_STATUS_REPEAT_CONTRACTS, registerPitStatusVocabulary } from "./pit-status.js";
 import { PIT_WINDOW_CONTRACTS } from "./pit-window.js";
-import { registerPools } from "./pools.js";
 import {
   buildOvertakeGainedPositionContract,
   buildOvertakeLostPositionContract,
@@ -1272,8 +1276,6 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   });
 
   const engine = getScenarioEngine();
-
-  registerPools(engine);
 
   // The vocabulary the flag scripts name (issue #1064) — the `session.type`
   // case var, the furled speak-time gates and the `session.is*` conditions.
