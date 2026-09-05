@@ -5,7 +5,7 @@ import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedec
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ScenarioContract } from "./dsl.js";
-import { NO_FRAME, poolRef, WEIGHT } from "./dsl.js";
+import { DEFAULT_FRAME, DEFAULT_WEIGHT, NO_FRAME, poolRef, WEIGHT } from "./dsl.js";
 import type { AudioAssetsManifest, FrameOptions, IScenarioEngine } from "./interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "./interpreter.js";
 import { scanRaceEngineerVoices } from "./manifest.js";
@@ -3087,6 +3087,82 @@ describe("pack-owned scripts (issue #1064)", () => {
 
     expect(engine.vocabulary().vars.map((v) => v.name)).toEqual(["Zulu", "alpha"]);
     expect(engine.vocabulary().conds.map((c) => c.name)).toEqual(["flag.furled", "flag_furled"]);
+  });
+
+  it("(m) contracts() reports every contract with its effective frame and weight — defaults filled in, event null for a fire()-only one", () => {
+    // The reference generator (#1066) publishes what it is handed, so the
+    // report carries the value the scheduler would use, never `undefined`:
+    // a contract that names no frame or weight reports DEFAULT_FRAME and
+    // DEFAULT_WEIGHT, and one with no `when` reports `event: null`.
+    engine.defineContract(contract({ id: "test.bare" }));
+    engine.defineContract(
+      contract({
+        id: "test.full",
+        when: { event: "flag.green.raised" },
+        description: "The green flag flies.",
+        frame: NO_FRAME,
+        family: "flag",
+        weight: WEIGHT.SAFETY,
+        queueable: true,
+        interrupt: true,
+      }),
+    );
+
+    expect(engine.contracts()).toEqual([
+      {
+        id: "test.bare",
+        event: null,
+        description: "",
+        frame: DEFAULT_FRAME,
+        family: null,
+        weight: DEFAULT_WEIGHT,
+        queueable: false,
+        interrupt: false,
+      },
+      {
+        id: "test.full",
+        event: "flag.green.raised",
+        description: "The green flag flies.",
+        frame: NO_FRAME,
+        family: "flag",
+        weight: WEIGHT.SAFETY,
+        queueable: true,
+        interrupt: true,
+      },
+    ]);
+  });
+
+  it("(m) contracts() enumerates a legacy scenario too, with the same fields", () => {
+    // The generator refuses a legacy scenario (the catalog is contracts-only
+    // since #1065), so the enumeration must show one rather than hide it.
+    engine.defineScenario({
+      ...contract({ id: "test.legacy", when: { event: "flag.blue.raised" }, description: "A legacy line." }),
+      sequence: ["voice/{voice}/flags/blue-01.mp3"],
+    });
+
+    expect(engine.contracts()).toEqual([
+      {
+        id: "test.legacy",
+        event: "flag.blue.raised",
+        description: "A legacy line.",
+        frame: DEFAULT_FRAME,
+        family: null,
+        weight: DEFAULT_WEIGHT,
+        queueable: false,
+        interrupt: false,
+      },
+    ]);
+  });
+
+  it("(m) contracts() sorts by id in code-point order, whatever the registration order", () => {
+    // The same rule as vocabulary(): a generated reference must not depend
+    // on the ICU of whichever machine ran the generator.
+    engine.defineContract(contract({ id: "test.zulu" }));
+    engine.defineContract(contract({ id: "test.Alpha" }));
+    engine.defineContract(contract({ id: "test_alpha" }));
+    engine.defineContract(contract({ id: "test.alpha" }));
+
+    expect(engine.contracts().map((c) => c.id)).toEqual(["test.Alpha", "test.alpha", "test.zulu", "test_alpha"]);
   });
 
   it("(k) setScripts logs `Voice scripts loaded` at info once per call, the per-voice count at debug", () => {

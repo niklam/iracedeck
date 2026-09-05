@@ -12,7 +12,13 @@ export type { CalloutScript } from "@iracedeck/callout-script";
 
 export type { ResolvedStep, Scenario, ScenarioContext, ScenarioContract, Step } from "./dsl.js";
 export { applyBase, DEFAULT_FRAME, DEFAULT_WEIGHT, NO_FRAME, parseStepShorthand, resolveStep, WEIGHT } from "./dsl.js";
-export type { AudioAssetsManifest, FrameOptions, IScenarioEngine, VocabularyReport } from "./interpreter.js";
+export type {
+  AudioAssetsManifest,
+  ContractReport,
+  FrameOptions,
+  IScenarioEngine,
+  VocabularyReport,
+} from "./interpreter.js";
 export {
   _resetAudioScenarios,
   getScenarioEngine,

@@ -45,8 +45,11 @@
  *     contract is silent for it — no cooldown, no bus take — never a half-line.
  *   - `defineCond` / `defineCase` are the script-facing registries beside
  *     `defineVar`; `vocabulary()` reports all three for the generated reference
- *     (#1066). Registering anything after `setScripts` marks the compiled map
- *     dirty and the next `prepareOps` recompiles before use.
+ *     (#1066), and `contracts()` reports every registered contract beside it —
+ *     effective frame and weight, the trigger event, and the contract's
+ *     `description` of when it fires. Registering anything after `setScripts`
+ *     marks the compiled map dirty and the next `prepareOps` recompiles
+ *     before use.
  *   - Frames: a body that expanded to at least one clip is wrapped in the
  *     frame its script entry (else its contract, else `DEFAULT_FRAME`) names,
  *     as the active voice's script defines it. The frame's ops are tagged
@@ -100,6 +103,38 @@ export type VocabularyReport = {
   conds: readonly { name: string; description: string }[];
   cases: readonly { name: string; description: string; keys: Readonly<Record<string, string>> }[];
 };
+
+/**
+ * One registered contract as the generated pack-author reference and
+ * `lint:pack` see it (#1066): the id a script entry pairs with, what triggers
+ * it, the prose on when it fires, and the scheduling a pack cannot change but
+ * an author should know about. Every field is EFFECTIVE — `frame` and `weight`
+ * carry the default a contract left unset (`DEFAULT_FRAME`, `DEFAULT_WEIGHT`),
+ * `event` is `null` for a contract only `fire()` triggers, `family` is `null`
+ * when it has none — so a consumer never re-derives a default the scheduler
+ * already applies. A legacy `Scenario` is reported through the same shape;
+ * the reference generator refuses one, and the enumeration is what lets it.
+ */
+export type ContractReport = {
+  id: string;
+  event: SimEventName | null;
+  /** `""` when the contract carries none — the bundled catalog is held to a sentence by `bundled-scripts.test.ts`. */
+  description: string;
+  frame: string;
+  family: string | null;
+  weight: number;
+  queueable: boolean;
+  interrupt: boolean;
+};
+
+/**
+ * Code-point order, not `localeCompare`: both reports feed a generated
+ * reference (#1066) and a completeness test, and a locale-aware sort would
+ * order the same names differently from one machine's ICU to another's.
+ */
+function codePointOrder(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
 
 export interface IScenarioEngine {
   defineScenario(s: Scenario): void;
@@ -185,6 +220,12 @@ export interface IScenarioEngine {
   isScripted(scenarioId: string): boolean;
   /** Everything the vocabulary registries hold, for the reference generator and the pack linter (#1066). */
   vocabulary(): VocabularyReport;
+  /**
+   * Every registered contract — and any legacy scenario — as the reference
+   * generator and the pack linter see it (#1066), sorted by id in code-point
+   * order like `vocabulary()`. Effective values throughout: see `ContractReport`.
+   */
+  contracts(): readonly ContractReport[];
   setEnabled(scenarioId: string, enabled: boolean): void;
   fire(scenarioId: string): void;
   stopAll(): void;
@@ -709,17 +750,34 @@ class ScenarioEngine implements IScenarioEngine {
   }
 
   vocabulary(): VocabularyReport {
-    // Code-point order, not `localeCompare`: the report feeds a generated
-    // reference (#1066) and a completeness test, and a locale-aware sort would
-    // order the same names differently from one machine's ICU to another's.
     const byName = <T extends { name: string }>(items: T[]): T[] =>
-      items.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+      items.sort((a, b) => codePointOrder(a.name, b.name));
 
     return {
       vars: byName([...this.vars.keys()].map((name) => ({ name, description: this.varDescriptions.get(name) ?? "" }))),
       conds: byName([...this.conds].map(([name, { description }]) => ({ name, description }))),
       cases: byName([...this.cases].map(([name, { description, keys }]) => ({ name, description, keys: { ...keys } }))),
     };
+  }
+
+  contracts(): readonly ContractReport[] {
+    // Read off the same map the scheduler fires from, defaults filled in the
+    // way `attemptFire` fills them, so the report can never disagree with the
+    // engine about a contract's frame or weight. A disabled entry (a
+    // validation error, or `setEnabled(false)`) is still a registered
+    // contract and is listed: enablement is runtime state, not catalog shape.
+    return [...this.scenarios.values()]
+      .map(({ raw, frame }) => ({
+        id: raw.id,
+        event: raw.when?.event ?? null,
+        description: raw.description ?? "",
+        frame,
+        family: raw.family ?? null,
+        weight: raw.weight ?? DEFAULT_WEIGHT,
+        queueable: raw.queueable ?? false,
+        interrupt: raw.interrupt ?? false,
+      }))
+      .sort((a, b) => codePointOrder(a.id, b.id));
   }
 
   isScripted(scenarioId: string): boolean {

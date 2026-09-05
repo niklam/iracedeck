@@ -146,6 +146,17 @@ export type ScenarioContract = {
     event: SimEventName;
     where?: (e: SimEventOf<SimEventName>) => boolean;
   };
+  /**
+   * One sentence for a pack author on WHEN the callout fires, in the sim's
+   * terms rather than the code's — "The pace car pulls away on a rolling-start
+   * formation lap.", not the event name and the gate. The generated reference
+   * (#1066) publishes it beside the bundled entry's `comment` (what is said)
+   * and `test` (how to hear it), so it should not repeat either. Required for
+   * every catalog contract — `bundled-scripts.test.ts` enforces it — and
+   * optional on the type only because the engine primitives its own tests
+   * register need none.
+   */
+  description?: string;
   channel: AudioChannel;
   bus: AudioBus;
   /**
