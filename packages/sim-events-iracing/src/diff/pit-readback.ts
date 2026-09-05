@@ -16,7 +16,7 @@
  *                      `"pit-readback"`) is preempted and replaced.
  *   - "exit"         — `OnPitRoad` on→off, plus `PIT_READBACK_EXIT_DELAY_MS`
  *                      settle delay so the "to confirm" beat doesn't
- *                      collide with the limiter / pit-exit chatter.
+ *                      collide with the limiter callout that follows pit exit.
  *
  * Issue #481: the queued-services snapshot is NOT carried on the event
  * payload anymore — only the trigger `reason` is. Audio scenarios pull a
@@ -48,7 +48,7 @@ import type { EmitFn, PendingEvent } from "./types.js";
 /**
  * Settle delay between `pitLane.exited` and the "to confirm" readback fire.
  * Mid-range of the user's 3-6 s window; long enough to not collide with the
- * limiter / pit-exit voice chatter, short enough to feel like a coherent
+ * limiter callout that follows pit exit, short enough to feel like a coherent
  * follow-up to the pit stop. The pit-action confirmation cooldown after
  * pit-lane exit shares this window so per-toggle confirmations don't blurt
  * over the pending readback.
@@ -113,9 +113,8 @@ export function buildSnapshot(telemetry: TelemetryData): PitReadbackSnapshot {
   const limiter = (engineWarnings & EngineWarnings.PitSpeedLimiter) !== 0;
   const hasDamage = (engineWarnings & DAMAGE_MASK) !== 0;
   const hasAnyTireBit = (flags & TIRE_FLAGS_MASK) !== 0;
-  // Mirror `service-reminder.ts` `isCompoundChange`: only count compound as
-  // "changing" when tires are queued AND the queued compound differs from
-  // what's on the car. iRacing exposes 0=dry, 1=wet.
+  // Only count compound as "changing" when tires are queued AND the queued
+  // compound differs from what's on the car. iRacing exposes 0=dry, 1=wet.
   const isCompoundChange = hasAnyTireBit && compound !== playerCompound;
 
   return {

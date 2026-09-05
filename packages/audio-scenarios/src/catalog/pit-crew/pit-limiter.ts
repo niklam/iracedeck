@@ -89,10 +89,11 @@ export const LIMITER_ON_TRACK: Scenario = {
   base: "pit-crew",
   family: "limiter",
   triggerDelay: LIMITER_ON_TRACK_DELAY_MS,
-  // `queueable` because `pitLane.exited` ALSO fires PIT_EXIT, at the higher
-  // WEIGHT.SAFETY and ungated, so at 1.5s the bus is usually still busy with a
-  // spoken line. Without this the callout would be dropped nearly every time in
-  // real driving while passing every test that lets the bus idle first.
+  // `queueable` because at 1.5s after leaving pit road the Voice bus is often
+  // still busy with an equal-or-higher-weight line (a flag call, a toggle
+  // confirmation, the spotter), and a non-queueable fire arriving then is dropped.
+  // Without this the callout would be dropped nearly every time in real
+  // driving while passing every test that lets the bus idle first.
   queueable: true,
   // ...and a speak-time gate, because queueing reintroduces staleness: the
   // whole framed sequence sits inside `then`, so a driver who switched the

@@ -27,7 +27,7 @@ export const WEIGHT = {
   TRANSIENT: 5,
   /**
    * Background commentary that yields to anything more important (position
-   * readouts, race-status, pit readback, service-reminder). Pair with
+   * readouts, race-status, pit readback). Pair with
    * `queueable: true` to keep the defer-and-replay behaviour.
    */
   CHATTER: 10,

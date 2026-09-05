@@ -209,7 +209,7 @@ const RED: ScenarioContract = {
 // speeding, a race-admin `!black`, escalation after an ignored meatball —
 // arrives with no furled warning phase, and the raise is a one-shot edge that
 // never re-fires. Without queueable, a raise landing while an equal-weight
-// line (another flag, pit-approach, the spotter info line) or a higher-weight
+// line (another flag, the spotter info line) or a higher-weight
 // line (meatball, a proximity call) held the Voice bus was dropped and the
 // driver never told about the penalty. Serving takes a pit visit (≥ 30 s),
 // far beyond the seconds a queued fire waits, so a replay at idle is always

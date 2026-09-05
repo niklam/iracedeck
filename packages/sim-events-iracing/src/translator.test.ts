@@ -2791,7 +2791,7 @@ describe("sim-events-iracing translator", () => {
       initializeSimEventsIracing(bus, controller, createMockLogger());
 
       // Reconnect mid-session with the driver already on track — the
-      // welcome scenario must not re-trigger.
+      // once-per-session event must not re-fire.
       controller.__tick(telemetry({ IsOnTrack: true }));
       controller.__tick(telemetry({ IsOnTrack: true }));
 

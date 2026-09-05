@@ -235,8 +235,8 @@ type CompiledScenario = {
  * lower/equal-weight `queueable` fire deferred behind what's playing. The
  * highest-weight pending fire wins the single slot; ties go to the newest.
  * Retains the triggering event so the replay resolves vars against the same
- * payload the original fire would have used — critical for scenarios like
- * service-reminder that decode pit-flags from the event's telemetry snapshot.
+ * payload the original fire would have used — critical for scenarios whose
+ * vars or conditions read the event's payload or telemetry snapshot.
  */
 type PendingFire = {
   id: string;
