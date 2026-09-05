@@ -1,14 +1,24 @@
 /**
- * Corner-name callout (issue #888) — the engineer speaks the upcoming
- * corner's bare name ("Eau Rouge", "Turn five") in practice/test sessions.
+ * Corner-name callout (issue #888; scripted since #1065) — the engineer
+ * speaks the upcoming corner's bare name ("Eau Rouge", "Turn five") in
+ * practice/test sessions.
+ *
+ * The code below decides WHETHER and WHEN the name fires and how it is
+ * scheduled; WHAT is said lives in the active voice's `callouts.json` under
+ * the same id (`scenarios["pit-crew.corner-name-approaching"]`), paired at
+ * `setScripts` time. The bundled script is the one step `{{cornerName.clip}}`
+ * — the var registered by {@link registerCornerNameVocabulary}, which turns
+ * the event's slug into `pool:corner-names/<slug>` — so the name IS the
+ * callout, and a pack rephrases around it (a lead-in, a beat) rather than
+ * re-recording four hundred corners.
  *
  * Terse delivery: a single clip, NO radio open/close frame (the pit-box
  * count-in precedent) — at a 1 s default lead a beep frame would eat the
  * whole margin. Since issue #1064 the engine applies the frame itself, so it
- * is the scenario's `frame: NO_FRAME` (`"none"`) that enforces this now.
- * `family: "corner-name"` so back-to-back corners preempt the
- * in-flight name; `queueable: false` because a name that missed its moment
- * must drop, never replay late. Weight stays at the default `WEIGHT.NORMAL`.
+ * is the contract's `frame: NO_FRAME` (`"none"`) that enforces this now.
+ * `family: "corner-name"` so back-to-back corners preempt the in-flight
+ * name; `queueable: false` because a name that missed its moment must drop,
+ * never replay late. Weight stays at the default `WEIGHT.NORMAL`.
  *
  * Snapshot-driven builder shape (issue #558, the lap-time precedent): the
  * clip resolver reads a plugin-owned cache of the latest event payload at
@@ -16,13 +26,13 @@
  * a name with no clip for the active voice aborts the whole callout at
  * expansion (issue #835), which is exactly the graceful degradation we want
  * when the dataset grows between releases. Session gating (practice-only)
- * lives in the translator diff, NOT here, so the scenario stays firable from
+ * lives in the translator diff, NOT here, so the contract stays firable from
  * the scenario harness.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventOf } from "@iracedeck/event-bus";
 
-import type { Scenario } from "../../dsl.js";
+import type { ScenarioContract } from "../../dsl.js";
 import { NO_FRAME, poolRef } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 
@@ -35,21 +45,34 @@ export type CornerNameSnapshotResolver = () => CornerNameSnapshot | null;
 const CORNER_NAME_GROUP = "corner-names";
 
 /**
- * Register the corner-name clip resolver. Must run before the scenario is
- * defined — load-time validation rejects an unregistered `{ var }` name.
+ * Register the vocabulary the corner-name script references (issue #1065):
+ * the one var that carries the corner's name clip. Must run before the
+ * contract is defined so the first `setScripts` compile sees it; a later
+ * registration would only mark the compiled scripts dirty.
  */
-export function registerCornerNameVars(engine: IScenarioEngine, getSnapshot: CornerNameSnapshotResolver): void {
-  engine.defineVar("cornerName.clip", () => {
-    const s = getSnapshot();
+export function registerCornerNameVocabulary(
+  engine: Pick<IScenarioEngine, "defineVar">,
+  getSnapshot: CornerNameSnapshotResolver,
+): void {
+  engine.defineVar(
+    "cornerName.clip",
+    () => {
+      const s = getSnapshot();
 
-    if (!s || typeof s.slug !== "string" || s.slug === "") return null;
+      if (!s || typeof s.slug !== "string" || s.slug === "") return null;
 
-    return poolRef(CORNER_NAME_GROUP, s.slug);
-  });
+      return poolRef(CORNER_NAME_GROUP, s.slug);
+    },
+    "The name of the corner the driver is approaching, drawn from the corner-names group (one clip per corner, named by its slug — corner-names/eau-rouge, corner-names/turn-5). Nothing when the voice has no clip for that corner, which skips the callout rather than half-saying it.",
+  );
 }
 
-/** Build the corner-name scenario bound to a snapshot resolver. */
-export function buildCornerNameScenario(getSnapshot: CornerNameSnapshotResolver): Scenario {
+/**
+ * Build the corner-name contract bound to a snapshot resolver. Still a
+ * builder rather than a constant: the `where:` reads the resolver to refuse a
+ * fire before the plugin's cache holds the payload the var will speak from.
+ */
+export function buildCornerNameContract(getSnapshot: CornerNameSnapshotResolver): ScenarioContract {
   return {
     id: "pit-crew.corner-name-approaching",
     channel: AudioChannel.Voice,
@@ -58,7 +81,6 @@ export function buildCornerNameScenario(getSnapshot: CornerNameSnapshotResolver)
     family: "corner-name",
     queueable: false,
     frame: NO_FRAME,
-    sequence: [{ var: "cornerName.clip" }],
     when: {
       event: "cornerName.approaching",
       where: (e) => {
@@ -86,6 +108,3 @@ export const SCENARIO_ID_TO_CORNER_NAME_ID: Record<string, CornerNameCalloutId> 
 };
 
 export const CORNER_NAME_SCENARIO_IDS: readonly string[] = ["pit-crew.corner-name-approaching"];
-
-/** Empty — the clip is var-resolved (#836), no POOL_REGISTRY entry. */
-export const CORNER_NAME_POOL_NAMES: readonly string[] = [];

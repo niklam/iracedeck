@@ -1,19 +1,30 @@
 /**
- * Lap-time best-lap callout tests (issue #555).
+ * Lap-time best-lap contract tests (issue #555; scripted since #1065).
  *
- * Drives the scenario through the real scenario engine — same harness shape as
- * `session-start.test.ts` — so load-time validation, var resolution, and the
- * conditional minute clause all run the production path.
+ * Drives the contract through the real scenario engine — same harness shape
+ * as `session-start.test.ts` — with the bundled voice's REAL `callouts.json`
+ * narrowed to this family's entry, so var resolution and the conditional
+ * minute clause all run the production compile + expansion path; what the
+ * engineer says is the script's.
  */
+import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
+import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import type { IAudioService } from "@iracedeck/audio-service";
-import { AudioChannel } from "@iracedeck/audio-service";
+import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
+import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
 import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AudioAssetsManifest } from "../../interpreter.js";
-import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
+import { _resetAudioScenarios, getScenarioEngine, initializeAudioScenarios } from "../../interpreter.js";
 import { registerPitCrew } from "./index.js";
-import { type LapCompletedSnapshot, splitLapTime } from "./lap-time.js";
+import {
+  buildLapTimeContract,
+  LAP_TIME_CLIP_SOURCES,
+  LAP_TIME_SCENARIO_IDS,
+  type LapCompletedSnapshot,
+  splitLapTime,
+} from "./lap-time.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
@@ -147,6 +158,24 @@ const manifest: AudioAssetsManifest = {
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
 };
 
+/** The bundled manifest, for the clip-existence half of the sources check. */
+const MANIFEST = manifestJson as AudioAssetsManifest;
+
+/** The JSON import types `schema` as `number`, hence the cast. */
+const SCRIPT = defaultScript as CalloutScript;
+
+/**
+ * The bundled script narrowed to this family's own entry (and to no
+ * fragments — it includes none): an entry for a contract this engine does
+ * not hold is a `no contract` warn, and a foreign fragment would widen
+ * `collectScriptReferences` under the assertions below.
+ */
+const LAP_TIME_SCRIPT: CalloutScript = {
+  ...SCRIPT,
+  scenarios: Object.fromEntries(LAP_TIME_SCENARIO_IDS.map((id) => [id, SCRIPT.scenarios[id]])),
+  fragments: {},
+};
+
 function snap(overrides: Partial<LapCompletedSnapshot> = {}): LapCompletedSnapshot {
   return {
     lap: 5,
@@ -197,6 +226,9 @@ beforeEach(() => {
     getLapCompletedSnapshot: () => lastSnapshot,
     getRaceFinishedFired: () => raceFinished,
   });
+  // After the registration, as the plugins do: the readout's body is looked
+  // up in the active voice's compiled script at fire time (issue #1065).
+  getScenarioEngine().setScripts(new Map([[VOICE, LAP_TIME_SCRIPT]]));
 });
 
 afterEach(() => {
@@ -350,5 +382,141 @@ describe("lap-time scenario", () => {
     bus.publishEvent("lap.completed", lastSnapshot as unknown as Record<string, unknown>);
     flush(audio);
     expect(hasClip("/lap-time-intro/best-lap-yet.mp3")).toBe(true);
+  });
+
+  it("reads the components in the script's order: intro, minute, seconds, tenths", () => {
+    fire(snap({ lapTime: 63.4 }));
+
+    expect(voicePaths().map((p) => p.split(`voice/${VOICE}/`)[1])).toEqual([
+      "lap-time-intro/best-lap-yet.mp3",
+      "lap-time-minute/1.mp3",
+      "lap-time-second/3.mp3",
+      "lap-time-decimal/4.mp3",
+    ]);
+  });
+
+  it("a voice with no script plays no readout at all — no line, no frame (issue #1065)", () => {
+    getScenarioEngine().setScripts(new Map([["titan", LAP_TIME_SCRIPT]]));
+
+    fire(snap({ lapTime: 63.4 }));
+
+    expect(audio._played).toEqual([]);
+  });
+});
+
+describe("buildLapTimeContract (issue #1065)", () => {
+  it("carries no sequence and keeps every scheduling field verbatim, taking the engine's default frame", () => {
+    const c = buildLapTimeContract();
+
+    expect("sequence" in c).toBe(false);
+    expect(c.id).toBe("pit-crew.lap-time-best");
+    expect(LAP_TIME_SCENARIO_IDS).toEqual([c.id]);
+    expect(c.when?.event).toBe("lap.completed");
+    expect(c.channel).toBe(AudioChannel.Voice);
+    expect(c.bus).toBe(AudioBus.Voice);
+    expect(c.base).toBe("voice/{voice}");
+    expect(c.family).toBe("lap-time");
+    expect(c.weight).toBeUndefined();
+    expect(c.interrupt).toBeUndefined();
+    expect(c.queueable).toBeUndefined();
+    expect(c.cooldown).toBeUndefined();
+    expect(c.triggerDelay).toBeUndefined();
+    expect(c.frame).toBeUndefined();
+  });
+});
+
+describe("registerLapTimeVocabulary (issue #1065)", () => {
+  it("publishes the four component vars and the minute gate, each with a description for a pack author", () => {
+    const { vars, conds } = getScenarioEngine().vocabulary();
+    const ours = (name: string) => name.startsWith("lapTime.");
+
+    expect(vars.filter((v) => ours(v.name)).map((v) => v.name)).toEqual([
+      "lapTime.decimal",
+      "lapTime.intro",
+      "lapTime.minute",
+      "lapTime.second",
+    ]);
+    expect(conds.filter((c) => ours(c.name)).map((c) => c.name)).toEqual(["lapTime.hasMinuteComponent"]);
+
+    for (const entry of [...vars, ...conds].filter((e) => ours(e.name))) {
+      expect(entry.description.length, entry.name).toBeGreaterThan(0);
+    }
+  });
+
+  it("lapTime.hasMinuteComponent is true from one minute up and false below it, or with no lap yet", () => {
+    const cond = (lapTime: number | null) => {
+      lastSnapshot = lapTime === null ? null : snap({ lapTime });
+
+      // The registered predicate is what the script's `if` runs; reach it
+      // through a fire rather than the registry so the test proves the wiring.
+      audio._played.length = 0;
+
+      if (lapTime !== null) fire(lastSnapshot);
+
+      return voicePaths().some((p) => p.includes("/lap-time-minute/"));
+    };
+
+    expect(cond(59.9)).toBe(false);
+    expect(cond(60.0)).toBe(true);
+    expect(cond(94.8)).toBe(true);
+  });
+});
+
+describe("the bundled script's lap-time entry (issue #1065)", () => {
+  it("scripts the contract with a comment, a Lap Time harness route and a sequence", () => {
+    for (const id of LAP_TIME_SCENARIO_IDS) {
+      const entry = SCRIPT.scenarios[id];
+
+      expect(entry, `no script entry for ${id}`).toBeDefined();
+      expect(entry.comment?.length ?? 0, `${id}: comment`).toBeGreaterThan(0);
+      expect(entry.test, `${id}: test`).toMatch(/^Harness → Scenario Shortcuts → Lap Time → Best Lap 1:03\.4/);
+      expect(entry.skip).toBeUndefined();
+      expect(entry.sequence?.length ?? 0, `${id}: sequence`).toBeGreaterThan(0);
+    }
+  });
+
+  it("keeps the minute as a hard if — the spec's boundary case — and the other three components required", () => {
+    expect(SCRIPT.scenarios["pit-crew.lap-time-best"].sequence).toEqual([
+      "{{lapTime.intro}}",
+      { if: "lapTime.hasMinuteComponent", then: ["{{lapTime.minute}}"] },
+      "{{lapTime.second}}",
+      "{{lapTime.decimal}}",
+    ]);
+  });
+
+  it("references only vocabulary the lap-time family registers, and no pool, frame, fragment or alias", () => {
+    const refs = collectScriptReferences(LAP_TIME_SCRIPT);
+    const vocabulary = getScenarioEngine().vocabulary();
+
+    expect(refs.vars).toEqual(["lapTime.decimal", "lapTime.intro", "lapTime.minute", "lapTime.second"]);
+    expect(refs.conds).toEqual(["lapTime.hasMinuteComponent"]);
+    expect(refs.cases).toEqual([]);
+    expect(refs.pools).toEqual([]);
+    expect(refs.frames).toEqual([]);
+    expect(refs.includes).toEqual([]);
+    expect(Object.keys(LAP_TIME_SCRIPT.pools ?? {})).toEqual([]);
+
+    for (const v of refs.vars) expect(vocabulary.vars.map((x) => x.name)).toContain(v);
+
+    for (const c of refs.conds) expect(vocabulary.conds.map((x) => x.name)).toContain(c);
+  });
+
+  it("publishes no direct clip source — every clip is a var's, and the bundled voice ships the four groups the vars draw from", () => {
+    expect(LAP_TIME_CLIP_SOURCES).toEqual([]);
+
+    for (const group of ["lap-time-intro", "lap-time-minute", "lap-time-second", "lap-time-decimal"]) {
+      expect(
+        MANIFEST.clips.some((clip) => clip.startsWith(`voice/${VOICE}/${group}/`)),
+        `no voice/${VOICE}/${group}/ clip in manifest.json`,
+      ).toBe(true);
+    }
+  });
+
+  it("compiles for the test voice with nothing skipped — no unknown var, condition or fragment", () => {
+    const lapTimeWarnings = mockLogger.warn.mock.calls
+      .map(([message]) => String(message))
+      .filter((message) => message.includes("lap-time"));
+
+    expect(lapTimeWarnings).toEqual([]);
   });
 });

@@ -1,5 +1,6 @@
 /**
- * Shared "current position" readout — issue #574 follow-up.
+ * Shared "current position" readout — issue #574 follow-up; scripted since
+ * #1065.
  *
  * The Race Engineer's "We're currently P[n]" line is spoken by several
  * triggers: an overtake gain, an overtake loss, a race lap-completion
@@ -19,22 +20,41 @@
  *      trigger), {@link POSITION_READOUT_COOLDOWN_MS} suppresses the next
  *      position announcement from a DIFFERENT trigger — so an overtake readout
  *      immediately followed by a lap-completion readout doesn't double up. The
- *      cooldown is claimed atomically in the scenario's `where:` via
+ *      cooldown is claimed atomically in the contract's `where:` via
  *      {@link tryClaimPositionAnnouncement} as the LAST gate (after every other
  *      condition passes). All position readouts are `weight: WEIGHT.CHATTER` +
  *      `queueable: true`, which the engine defers-and-replays rather than drops,
  *      so a claim at decision time always results in an actual announcement — no
  *      phantom cooldowns.
  *
- * The two overtake readout scenarios live here (the reaction lines stay in
- * overtake.ts); the race position-change and race-status scenarios import the
+ * The two overtake readout contracts live here (the reaction lines stay in
+ * overtake.ts); the race position-change and race-status contracts import the
  * cooldown + live helpers and use them in their race branch.
+ *
+ * The code decides WHETHER and WHEN a readout fires; WHAT it says is the
+ * active voice's `callouts.json` under the same ids
+ * (`scenarios["pit-crew.overtake-gained-position"]`, `…-lost-position`),
+ * paired at `setScripts` time. The bundled script is
+ * `[{ optional: ["{{positionReadout.intro}}"] }, "{{positionReadout.number}}"]`
+ * — the vars registered by {@link registerPositionReadoutVocabulary}.
+ *
+ * **Why the intro is an optional clause (the #603 / #835 boundary).** #603
+ * designed `positionReadout.intro` to resolve to NOTHING inside the 30 s
+ * intro window for a ≤1-position move, leaving the bare "P[n]" — under the
+ * engine of that day a null var was a no-op step. #835 later made a null
+ * REQUIRED var abort the whole callout, and did not touch this file, so
+ * from that release on the bare-number path produced silence instead: the
+ * readout claimed the shared cooldown in `where:` and then played nothing.
+ * The script restores what #603 documented — "We're currently" is a lead-in
+ * to a number that is a true, complete statement without it ("P four" is
+ * the designed terse form), so it may be optional under the #1064 rule —
+ * and a pack that wants the intro every time simply drops the `optional`.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventOf } from "@iracedeck/event-bus";
 
 import { poolRef, WEIGHT } from "../../dsl.js";
-import type { Scenario, Step } from "../../dsl.js";
+import type { ScenarioContract } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 import { overtakeContextAllows, type OvertakeGateResolver } from "./overtake-gate.js";
 
@@ -80,9 +100,6 @@ export const INTRO_COOLDOWN_MS = 30_000;
 const POSITION_GROUP_INTRO_WORSE = "position-intro-worse";
 const POSITION_GROUP_NUMBER = "position-number";
 
-/** Static "We're currently" intro clip path, relative to the `voice/{voice}` base. */
-export const POSITION_CURRENTLY_CLIP = `${POSITION_GROUP_INTRO_WORSE}/currently-01.mp3`;
-
 let lastPositionAnnouncedAt = 0;
 /** Last time the "We're currently" intro was spoken (issue #603 bare/full logic). */
 let lastIntroAt = 0;
@@ -120,7 +137,7 @@ export function tryClaimPositionAnnouncement(now: number = Date.now()): boolean 
  * #603). Podium positions (P1/P2/P3, by EFFECTIVE position) always react —
  * gaining or defending a podium spot is always worth a word. Every other
  * position rolls {@link REACTION_CHANCE} (~1 in 3); when it loses, only the
- * position readout fires. The position readout itself is a separate scenario
+ * position readout fires. The position readout itself is a separate contract
  * and is unaffected by this gate.
  */
 export function shouldReactToOvertake(effectivePosition: number): boolean {
@@ -211,43 +228,44 @@ export function isOvertakeEffectiveLeader(data: {
 }
 
 /**
- * Register the shared live-position number var. Reads the live resolver at
- * expansion time and returns the `position-number/<N>` clip; returns `null` (a
- * no-op step) when the live position is unavailable or out of range — the
- * scenario's `where:` already gates this, the null is a defensive guard. The
- * cooldown is NOT marked here — it's claimed in `where:` via
- * {@link tryClaimPositionAnnouncement}.
+ * Register the vocabulary the position-readout scripts reference (issue
+ * #1065): the intro and the live-position number. Both read the live resolver
+ * at expansion time; a `null` number is a defensive guard — the contract's
+ * `where:` already gates on the live position being readable. The cooldown
+ * is NOT marked here — it's claimed in `where:` via
+ * {@link tryClaimPositionAnnouncement}. Must run before the contracts are
+ * defined so the first `setScripts` compile sees the vars.
  */
-export function registerPositionReadoutVars(engine: IScenarioEngine, getLivePosition: LivePositionResolver): void {
-  // "We're currently" intro — resolves to the intro clip when due, or `null` (a
-  // no-op step, leaving a bare "P[n]") inside the 30 s window for a ≤1-position
-  // move (issue #603). Runs before the number var in the sequence so it reads
-  // the previous spoken position for the delta and records this one.
-  engine.defineVar("positionReadout.intro", () => {
-    const n = selectLivePosition(getLivePosition());
+export function registerPositionReadoutVocabulary(
+  engine: Pick<IScenarioEngine, "defineVar">,
+  getLivePosition: LivePositionResolver,
+): void {
+  // "We're currently" intro — resolves to the intro clip when due, or to
+  // nothing (leaving a bare "P[n]" under the script's optional clause) inside
+  // the 30 s window for a ≤1-position move (issue #603). Runs before the
+  // number var in the sequence so it reads the previous spoken position for
+  // the delta and records this one.
+  engine.defineVar(
+    "positionReadout.intro",
+    () => {
+      const n = selectLivePosition(getLivePosition());
 
-    if (n === null) return null;
+      if (n === null) return null;
 
-    return shouldSpeakIntro(n) ? poolRef(POSITION_GROUP_INTRO_WORSE, "currently") : null;
-  });
+      return shouldSpeakIntro(n) ? poolRef(POSITION_GROUP_INTRO_WORSE, "currently") : null;
+    },
+    "The \"We're currently\" lead-in of a position readout, from position-intro-worse/currently. Resolves to nothing for a second readout within 30 seconds of the last one that moved at most one place — the number is then spoken bare — so the bundled script wraps it in an optional clause; a script that wants the lead-in every time drops the optional. Resolving it also records this readout for the next one's decision, so name it at most once per entry.",
+  );
 
-  engine.defineVar("positionReadout.number", () => {
-    const n = selectLivePosition(getLivePosition());
+  engine.defineVar(
+    "positionReadout.number",
+    () => {
+      const n = selectLivePosition(getLivePosition());
 
-    return n !== null ? poolRef(POSITION_GROUP_NUMBER, String(n)) : null;
-  });
-}
-
-/**
- * Shared readout sequence: radio frame + (conditional) "We're currently" intro
- * + live number. The intro var drops to a bare "P[n]" inside the 30 s intro
- * window (issue #603).
- */
-function readoutSequence(): Step[] {
-  return [
-    { var: "positionReadout.intro" },
-    { var: "positionReadout.number" },
-  ];
+      return n !== null ? poolRef(POSITION_GROUP_NUMBER, String(n)) : null;
+    },
+    'The driver\'s current race position as a spoken number, drawn from the position-number group (position-number/4 is "P4"), read live at the moment it is spoken — class position in a multi-class race. The whole point of the readout, so a script keeps it required.',
+  );
 }
 
 /**
@@ -263,15 +281,15 @@ function readoutSequence(): Step[] {
  * as the last gate, so a position already announced by any trigger (another
  * overtake, a lap-completed, or a race-status readout — possibly delayed by the
  * spotter focus floor) suppresses this readout instead of doubling it up (issue
- * #651). The reaction catchphrase is a separate scenario and still plays.
+ * #651). The reaction catchphrase is a separate contract and still plays.
  * Suppressed after the race ends and whenever {@link overtakeContextAllows}
  * fails (cars alongside, off-track, crawling, pit road, recent incident).
  */
-export function buildOvertakeGainedPositionScenario(
+export function buildOvertakeGainedPositionContract(
   getLivePosition: LivePositionResolver,
   getRaceFinishedFired: () => boolean = () => false,
   getGate: OvertakeGateResolver = () => null,
-): Scenario {
+): ScenarioContract {
   return {
     id: "pit-crew.overtake-gained-position",
     when: {
@@ -302,7 +320,7 @@ export function buildOvertakeGainedPositionScenario(
         // announced (another overtake, a lap-completed, or a race-status readout,
         // possibly deferred by the spotter focus floor), defer to it so the
         // position is never spoken twice (issue #651). The reaction catchphrase
-        // is a separate scenario and still plays.
+        // is a separate contract and still plays.
         return tryClaimPositionAnnouncement();
       },
     },
@@ -312,16 +330,15 @@ export function buildOvertakeGainedPositionScenario(
     weight: WEIGHT.CHATTER,
     queueable: true,
     family: "position-readout",
-    sequence: readoutSequence(),
   };
 }
 
 /** Build the position readout that follows a LOST-overtake reaction (issue #574). */
-export function buildOvertakeLostPositionScenario(
+export function buildOvertakeLostPositionContract(
   getLivePosition: LivePositionResolver,
   getRaceFinishedFired: () => boolean = () => false,
   getGate: OvertakeGateResolver = () => null,
-): Scenario {
+): ScenarioContract {
   return {
     id: "pit-crew.overtake-lost-position",
     when: {
@@ -346,7 +363,6 @@ export function buildOvertakeLostPositionScenario(
     weight: WEIGHT.CHATTER,
     queueable: true,
     family: "position-readout",
-    sequence: readoutSequence(),
   };
 }
 

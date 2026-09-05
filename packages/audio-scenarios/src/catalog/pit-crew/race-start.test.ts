@@ -1,23 +1,42 @@
 /**
- * Race-start greeting + qualifying-position readout tests (issue #568).
+ * Race-start greeting + qualifying-position readout tests (issue #568;
+ * scripted since #1065).
  *
- * Drives the scenario through the real scenario engine — same harness shape
- * as `session-start.test.ts` — so load-time validation, var resolution, and
- * the conditional position clause all run the production path. The snapshot
- * is read from a resolver closure (`currentSnapshot`) at fire time.
+ * Drives the contract through the real scenario engine — same harness shape
+ * as `session-start.test.ts` — with the bundled voice's REAL `callouts.json`
+ * narrowed to this family's entry, so var resolution, the optional clauses
+ * and the grid-position case all run the production compile + expansion
+ * path. The snapshot is read from a resolver closure (`currentSnapshot`) at
+ * fire time.
  */
+import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
+import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import type { IAudioService } from "@iracedeck/audio-service";
-import { AudioChannel } from "@iracedeck/audio-service";
+import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
+import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
 import type { IEventBus, RaceStartSnapshot, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { TrackWetness } from "@iracedeck/event-bus";
 import { SessionState } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AudioAssetsManifest } from "../../interpreter.js";
-import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
+import {
+  _resetAudioScenarios,
+  getScenarioEngine,
+  initializeAudioScenarios,
+  poolMemberPattern,
+} from "../../interpreter.js";
 import { registerPitCrew } from "./index.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
-import { isRaceSession, RACE_START_DELAY_MS } from "./race-start.js";
+import {
+  buildRaceStartContract,
+  isRaceSession,
+  RACE_START_CLIP_SOURCES,
+  RACE_START_DELAY_MS,
+  RACE_START_GRID_POSITION_KEYS,
+  RACE_START_SCENARIO_IDS,
+  resolveRaceStartGridPosition,
+} from "./race-start.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
 
@@ -189,6 +208,27 @@ const manifest: AudioAssetsManifest = {
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
 };
 
+/** The bundled manifest, for the clip-existence half of the sources check. */
+const MANIFEST = manifestJson as AudioAssetsManifest;
+const BUNDLED_VOICE = "default";
+
+/** The JSON import types `schema` as `number`, hence the cast. */
+const SCRIPT = defaultScript as CalloutScript;
+
+/**
+ * The bundled script narrowed to this family's own entry — handed to both
+ * test voices, so the per-voice clip availability tests below read the same
+ * body against two clip sets. `fragments` is narrowed too (to none): the
+ * entry includes none, and `collectScriptReferences` walks every fragment it
+ * is given, so another family's fragment would otherwise widen the
+ * reference set under the assertions below.
+ */
+const RACE_START_SCRIPT: CalloutScript = {
+  ...SCRIPT,
+  scenarios: Object.fromEntries(RACE_START_SCENARIO_IDS.map((id) => [id, SCRIPT.scenarios[id]])),
+  fragments: {},
+};
+
 const BASE_SNAPSHOT: RaceStartSnapshot = {
   driverName: "niklas",
   trackTemp: 28,
@@ -244,6 +284,9 @@ beforeEach(() => {
     getRaceStartSnapshot: () => currentSnapshot,
     getSetupWarningMismatch: (kind) => setupWarningMismatch(kind),
   });
+  // After the registration, as the plugins do: the brief's body is looked up
+  // in the active voice's compiled script at fire time (issue #1065).
+  getScenarioEngine().setScripts(new Map([VOICE, BARE_VOICE].map((v) => [v, RACE_START_SCRIPT])));
 });
 
 afterEach(() => {
@@ -523,5 +566,216 @@ describe("race-start scenario", () => {
 
       expect(hasClip("/race-start-greeting/niklas.mp3")).toBe(true);
     });
+  });
+
+  describe("scripted delivery (issue #1065)", () => {
+    it("reads the clauses in the script's order, inside the engine's radio frame", () => {
+      setupWarningMismatch = (kind) => kind === "race";
+      fire(snap({ playerCarPosition: 7 }));
+
+      expect(voicePaths().map((p) => p.split(`voice/${VOICE}/`)[1])).toEqual([
+        "race-start-greeting/niklas.mp3",
+        "race-start/qualifying-put-us-to-01.mp3",
+        "position-number/7.mp3",
+        "session-start/track-temp-intro.mp3",
+        "session-start-temp-numbers/28.mp3",
+        "session-start/degrees-celsius.mp3",
+        "session-start/air-temp-intro.mp3",
+        "session-start-temp-numbers/20.mp3",
+        "session-start/degrees-celsius.mp3",
+        "session-start/wetness-intro.mp3",
+        "session-start/wetness-mostly-dry.mp3",
+        "setup-warning/race-01.mp3",
+      ]);
+      expect(audio._played[0]?.path).toBe("sfx/IRD-tick-open.mp3");
+      expect(audio._played.at(-1)?.path).toBe("sfx/IRD-tick-close.mp3");
+    });
+
+    it("a voice with no script plays no brief at all — no line, no frame", () => {
+      getScenarioEngine().setScripts(new Map([["titan", RACE_START_SCRIPT]]));
+      fire(snap());
+
+      expect(audio._played).toEqual([]);
+    });
+  });
+});
+
+describe("buildRaceStartContract (issue #1065)", () => {
+  it("carries no sequence and keeps every scheduling field verbatim — the 3 s trigger delay included — taking the engine's default frame", () => {
+    const c = buildRaceStartContract(() => null);
+
+    expect("sequence" in c).toBe(false);
+    expect(c.id).toBe("pit-crew.race-start");
+    expect([...RACE_START_SCENARIO_IDS]).toEqual([c.id]);
+    expect(c.when?.event).toBe("session.changed");
+    expect(c.channel).toBe(AudioChannel.Voice);
+    expect(c.bus).toBe(AudioBus.Voice);
+    expect(c.base).toBe("voice/{voice}");
+    expect(c.family).toBe("race-start");
+    expect(c.triggerDelay).toBe(RACE_START_DELAY_MS);
+    expect(c.weight).toBeUndefined();
+    expect(c.interrupt).toBeUndefined();
+    expect(c.queueable).toBeUndefined();
+    expect(c.cooldown).toBeUndefined();
+    expect(c.frame).toBeUndefined();
+  });
+});
+
+describe("registerRaceStartVocabulary (issue #1065)", () => {
+  it("publishes the six vars, the grid-position case and the setup-warning condition, each with a description for a pack author", () => {
+    const { vars, conds, cases } = getScenarioEngine().vocabulary();
+    const ours = (name: string) => name.startsWith("raceStart.");
+
+    expect(vars.filter((v) => ours(v.name)).map((v) => v.name)).toEqual([
+      "raceStart.airTempNumber",
+      "raceStart.degreesUnit",
+      "raceStart.greeting",
+      "raceStart.position",
+      "raceStart.trackTempNumber",
+      "raceStart.wetness",
+    ]);
+    expect(cases.filter((c) => ours(c.name)).map((c) => c.name)).toEqual(["raceStart.gridPosition"]);
+    expect(conds.map((c) => c.name)).toContain("setupWarning.raceMismatch");
+
+    const entries = [
+      ...vars.filter((v) => ours(v.name)),
+      ...cases.filter((c) => ours(c.name)),
+      ...conds.filter((c) => c.name === "setupWarning.raceMismatch"),
+    ];
+
+    for (const entry of entries) expect(entry.description.length, entry.name).toBeGreaterThan(0);
+
+    for (const [key, description] of Object.entries(
+      cases.find((c) => c.name === "raceStart.gridPosition")?.keys ?? {},
+    )) {
+      expect(description.length, `raceStart.gridPosition key ${key}`).toBeGreaterThan(0);
+    }
+  });
+
+  it("declares exactly the keys the grid-position resolver can return — enumerated over every position and the missing one", () => {
+    const declared =
+      getScenarioEngine()
+        .vocabulary()
+        .cases.find((c) => c.name === "raceStart.gridPosition")?.keys ?? {};
+    const reachable = new Set<string>();
+
+    for (const playerCarPosition of [undefined, 0, -1, ...Array.from({ length: 70 }, (_, i) => i + 1)]) {
+      reachable.add(resolveRaceStartGridPosition(snap({ playerCarPosition })));
+    }
+
+    reachable.add(resolveRaceStartGridPosition(null));
+
+    expect([...reachable].sort()).toEqual(Object.keys(declared).sort());
+    expect(Object.keys(declared).sort()).toEqual(Object.keys(RACE_START_GRID_POSITION_KEYS).sort());
+    expect(resolveRaceStartGridPosition(snap({ playerCarPosition: 1 }))).toBe("pole");
+    expect(resolveRaceStartGridPosition(snap({ playerCarPosition: 2 }))).toBe("composed");
+    expect(resolveRaceStartGridPosition(snap({ playerCarPosition: undefined }))).toBe("none");
+    expect(resolveRaceStartGridPosition(null)).toBe("none");
+  });
+});
+
+describe("the bundled script's race-start entry (issue #1065)", () => {
+  it("scripts the contract with a comment, a Race Start harness route and a sequence", () => {
+    for (const id of RACE_START_SCENARIO_IDS) {
+      const entry = SCRIPT.scenarios[id];
+
+      expect(entry, `no script entry for ${id}`).toBeDefined();
+      expect(entry.comment?.length ?? 0, `${id}: comment`).toBeGreaterThan(0);
+      expect(entry.test, `${id}: test`).toMatch(/^Harness → Scenario Shortcuts → Race Start → Race start — P5/);
+      expect(entry.skip).toBeUndefined();
+      expect(entry.sequence?.length ?? 0, `${id}: sequence`).toBeGreaterThan(0);
+    }
+  });
+
+  it("keeps the five optional clauses whole, the grid position a case inside its clause, and the wetness required", () => {
+    expect(SCRIPT.scenarios["pit-crew.race-start"].sequence).toEqual([
+      { optional: ["{{raceStart.greeting}}"] },
+      {
+        optional: [
+          {
+            case: "raceStart.gridPosition",
+            of: {
+              pole: ["pool:race-start/starting-from-pole"],
+              composed: ["pool:race-start/qualifying-put-us-to", "{{raceStart.position}}"],
+              none: [],
+            },
+          },
+        ],
+      },
+      {
+        optional: ["pool:session-start/track-temp-intro", "{{raceStart.trackTempNumber}}", "{{raceStart.degreesUnit}}"],
+      },
+      { optional: ["pool:session-start/air-temp-intro", "{{raceStart.airTempNumber}}", "{{raceStart.degreesUnit}}"] },
+      "pool:session-start/wetness-intro",
+      "{{raceStart.wetness}}",
+      { if: "setupWarning.raceMismatch", then: [{ optional: ["pool:setup-warning/race"] }] },
+    ]);
+  });
+
+  it("references only vocabulary the race-start family registers, with the declared case keys, and no frame, fragment or alias", () => {
+    const refs = collectScriptReferences(RACE_START_SCRIPT);
+    const vocabulary = getScenarioEngine().vocabulary();
+
+    expect(refs.vars).toEqual([
+      "raceStart.airTempNumber",
+      "raceStart.degreesUnit",
+      "raceStart.greeting",
+      "raceStart.position",
+      "raceStart.trackTempNumber",
+      "raceStart.wetness",
+    ]);
+    expect(refs.conds).toEqual(["setupWarning.raceMismatch"]);
+    expect(refs.cases).toEqual([
+      { name: "raceStart.gridPosition", keys: Object.keys(RACE_START_GRID_POSITION_KEYS).sort() },
+    ]);
+    expect(refs.frames).toEqual([]);
+    expect(refs.includes).toEqual([]);
+    expect(Object.keys(RACE_START_SCRIPT.pools ?? {})).toEqual([]);
+
+    for (const v of refs.vars) expect(vocabulary.vars.map((x) => x.name)).toContain(v);
+
+    for (const c of refs.conds) expect(vocabulary.conds.map((x) => x.name)).toContain(c);
+
+    for (const c of refs.cases) {
+      const declared = vocabulary.cases.find((v) => v.name === c.name);
+
+      expect(declared).toBeDefined();
+      expect(Object.keys(declared?.keys ?? {}).sort()).toEqual([...c.keys].sort());
+    }
+  });
+
+  it("addresses exactly the published clip sources — the slashed form throughout — and every one has a clip in the bundled voice", () => {
+    const sources = [
+      "race-start/qualifying-put-us-to",
+      "race-start/starting-from-pole",
+      "session-start/air-temp-intro",
+      "session-start/track-temp-intro",
+      "session-start/wetness-intro",
+      "setup-warning/race",
+    ];
+
+    expect([...collectScriptReferences(RACE_START_SCRIPT).pools].sort()).toEqual(sources);
+    expect(RACE_START_CLIP_SOURCES.map(({ group, base }) => `${group}/${base}`).sort()).toEqual(sources);
+
+    for (const { group, base } of RACE_START_CLIP_SOURCES) {
+      const pattern = poolMemberPattern(group, base);
+
+      expect(
+        MANIFEST.clips.some((clip) => pattern.exec(clip)?.[1] === BUNDLED_VOICE),
+        `no voice/${BUNDLED_VOICE}/${group}/${base}(-NN).mp3 in manifest.json`,
+      ).toBe(true);
+      expect(
+        manifest.clips.some((clip) => pattern.exec(clip)?.[1] === VOICE),
+        `fixture: ${group}/${base}`,
+      ).toBe(true);
+    }
+  });
+
+  it("compiles for both test voices with nothing skipped — no unknown pool, var, condition, case key or fragment", () => {
+    const raceStartWarnings = mockLogger.warn.mock.calls
+      .map(([message]) => String(message))
+      .filter((message) => message.includes("race-start"));
+
+    expect(raceStartWarnings).toEqual([]);
   });
 });

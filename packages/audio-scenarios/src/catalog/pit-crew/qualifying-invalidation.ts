@@ -1,15 +1,26 @@
 /**
- * Qualifying lap-invalidation callout — issue #567.
+ * Qualifying lap-invalidation callout — issue #567; scripted since #1065.
  *
  * Fires on `incident.occurred` when the active session is qualifying and the
- * driver hasn't already heard the callout for the current lap. The core line
- * ("This lap will be invalidated.") always plays; the tail is one of five
- * per-N pre-recorded clips, or the out-of-laps / plenty / silent fallbacks:
+ * driver hasn't already heard the callout for the current lap. In the bundled
+ * script the core line ("This lap will be invalidated.") always plays; the
+ * tail is one of five per-N pre-recorded clips, or the out-of-laps / plenty /
+ * silent fallbacks, chosen through the `qualifying.lapsLeft` case:
  *
  *   lapsRemaining === 0     → "We're out of qualifying laps…"
  *   lapsRemaining ∈ [1, 5]  → "N lap(s) left. <unique motivational line>"
  *   lapsRemaining >= 6      → "We still have plenty of laps left…"
- *   !lapLimited (time-qual) → core line only (no tail)
+ *   !lapLimited (time-qual) → core line only (no tail: `qualifying.tailIsSpeakable` is false)
+ *
+ * The code below decides WHETHER an incident is worth the line (the
+ * qualifying gate and the per-lap latch) and registers the two vocabulary
+ * entries the tail hangs on; WHAT is said lives in the active voice's
+ * `callouts.json` under the same id
+ * (`scenarios["pit-crew.qualifying-invalidation-lap-invalidated"]`), paired at
+ * `setScripts` time. The tail is a whole clause (an `if` with no else is
+ * right for it), and inside it the branch is a lookup over a closed set — the
+ * seven keys of the case — so a pack can collapse the five counts onto one
+ * line, or stay silent about a branch, without cutting recordings.
  *
  * The whole callout is suppressed — no core line, no tail — on laps that
  * aren't timed attempts: pit-exit laps (`lapStartedFromPits`) and laps beyond
@@ -18,18 +29,19 @@
  * nothing is invalidated by an incident).
  *
  * Each per-N clip carries its own full sentence with a unique tail line, so
- * the scenario is just a pool lookup keyed on `lapsRemaining` — no var
- * resolver, no singular/plural switch, no composed prosody chain. The trade-off
- * is more recorded clips (one per N) for cleaner audio and simpler runtime.
+ * the branch is just a pool lookup keyed on `lapsRemaining` — no composed
+ * prosody chain. The trade-off is more recorded clips (one per N) for cleaner
+ * audio and simpler runtime.
  *
  * Snapshot-at-fire-time (lap-time / session-start pattern): the plugin caches
  * a snapshot of `{ sessionType, sessionNum, lapsRemaining, lapLimited,
  * lapCompleted, lapStartedFromPits, lapCounted }` from the most recent
- * telemetry tick. The `where:` predicate
- * reads the snapshot to gate on qualifying + per-lap latch; the per-clip `if`
- * branches read it again at sequence-expansion time. A deferred replay
- * therefore speaks the live snapshot when it actually fires — not whatever was
- * current when the event was emitted.
+ * telemetry tick. The `where:` predicate reads the snapshot to gate on
+ * qualifying + per-lap latch; the vocabulary reads it again at
+ * sequence-expansion time. A deferred replay therefore speaks the live
+ * snapshot when it actually fires — not whatever was current when the event
+ * was emitted. That is why both the contract builder and the vocabulary take
+ * the resolver.
  *
  * **Per-lap latch.** Multiple incidents on the same flying lap (a wall
  * brush followed by an off-track in the same corner) collapse to one
@@ -41,20 +53,26 @@
  * carried anyway so a future second qualifying-related callout shares
  * preemption with this one.
  *
- * **Bus-race with incident scenarios.** Both this scenario and the existing
- * `pit-crew.incident-*` scenarios subscribe to `incident.occurred` on the
- * Voice bus at the default weight (`WEIGHT.NORMAL`). The engine drops whichever loses the
- * bus-grab race. Two defenses are in place: (1) the incident scenarios
- * suppress themselves via a `getSessionType().includes("Qualify")` gate (the
- * correct production semantic — the lap-status news supersedes generic
- * coaching), and (2) this scenario is registered BEFORE the incident
- * scenarios in `index.ts`, so subscription order keeps the qualifying
- * callout in front when both gates would pass.
+ * **Bus-race with incident contracts.** Both this contract and the
+ * `pit-crew.incident-*` contracts subscribe to `incident.occurred` on the
+ * Voice bus at the default weight (`WEIGHT.NORMAL`). The engine drops
+ * whichever loses the bus-grab race. Two defenses are in place: (1) the
+ * incident contracts suppress themselves via a
+ * `getSessionType().includes("Qualify")` gate (the correct production
+ * semantic — the lap-status news supersedes generic coaching), and (2) this
+ * contract is registered BEFORE the incident contracts in `index.ts`, so
+ * subscription order keeps the qualifying callout in front when both gates
+ * would pass.
+ *
+ * **The contract names no `base`** — it never did, and the migration keeps
+ * the literal verbatim: the script's `pool:qualifying-invalidation/…` steps
+ * resolve through the manifest regardless of a base, so nothing is missing.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { QualifyingInvalidationSnapshot } from "@iracedeck/event-bus";
 
-import type { Scenario, Step } from "../../dsl.js";
+import type { ScenarioContract } from "../../dsl.js";
+import type { IScenarioEngine } from "../../interpreter.js";
 
 export type { QualifyingInvalidationSnapshot };
 
@@ -145,58 +163,90 @@ function tailIsSpeakable(snapshot: QualifyingInvalidationSnapshot | null): boole
   return typeof snapshot.lapsRemaining === "number" && snapshot.lapsRemaining >= 0;
 }
 
-function lapsRemainingEquals(snapshot: QualifyingInvalidationSnapshot | null, n: number): boolean {
-  return snapshot !== null && snapshot.lapsRemaining === n;
+/** The keys of the `qualifying.lapsLeft` case — the closed set the tail is a lookup over. */
+export type QualifyingLapsLeftKey = "out-of-laps" | "plenty" | "1" | "2" | "3" | "4" | "5";
+
+/**
+ * The declared key set of `qualifying.lapsLeft`, each with the description
+ * the generated reference (#1066) shows a pack author.
+ *
+ * @internal Exported for testing — the test enumerates the reachable
+ * snapshots and checks the resolver returns nothing outside this set.
+ */
+export const QUALIFYING_LAPS_LEFT_KEYS: Readonly<Record<QualifyingLapsLeftKey, string>> = {
+  "out-of-laps": "No qualifying laps left — the invalidated lap was the last counted attempt.",
+  plenty:
+    "Six or more laps left — more than the counted clips name, so the bundled script reassures rather than counts.",
+  "1": "One lap left.",
+  "2": "Two laps left.",
+  "3": "Three laps left.",
+  "4": "Four laps left.",
+  "5": "Five laps left.",
+};
+
+/**
+ * The tail's key for a snapshot, mirroring the closures' precedence: nothing
+ * when the tail is not speakable (time-limited qualifying, or no telemetry),
+ * `out-of-laps` at zero, `plenty` above the counted range, the count itself
+ * inside it — and `null` for anything else (a fractional count), which takes
+ * the script's `default` branch: with none, the tail says nothing, exactly
+ * the silence the closures produced for it.
+ *
+ * @internal Exported for testing.
+ */
+export function resolveQualifyingLapsLeft(
+  snapshot: QualifyingInvalidationSnapshot | null,
+): QualifyingLapsLeftKey | null {
+  if (!tailIsSpeakable(snapshot) || snapshot === null) return null;
+
+  const laps = snapshot.lapsRemaining;
+
+  if (laps === 0) return "out-of-laps";
+
+  if (typeof laps !== "number") return null;
+
+  if (laps > QUALIFYING_LAP_COUNT_MAX) return "plenty";
+
+  if (Number.isInteger(laps) && laps >= QUALIFYING_LAP_COUNT_MIN) return String(laps) as QualifyingLapsLeftKey;
+
+  return null;
 }
 
-function isPlentyOfLaps(snapshot: QualifyingInvalidationSnapshot | null): boolean {
-  return (
-    snapshot !== null &&
-    snapshot.lapLimited &&
-    typeof snapshot.lapsRemaining === "number" &&
-    snapshot.lapsRemaining > QUALIFYING_LAP_COUNT_MAX
+/**
+ * Register the vocabulary the qualifying-invalidation script references
+ * (issue #1065): the tail gate as a condition and the laps-left lookup as a
+ * case. Both read the snapshot through `getSnapshot` at expansion time, so a
+ * deferred replay speaks the live count. Names and descriptions are the
+ * public API of the format; the descriptions feed the generated reference
+ * (#1066).
+ */
+export function registerQualifyingInvalidationVocabulary(
+  engine: Pick<IScenarioEngine, "defineCond" | "defineCase">,
+  getSnapshot: QualifyingInvalidationSnapshotResolver,
+): void {
+  engine.defineCond(
+    "qualifying.tailIsSpeakable",
+    () => tailIsSpeakable(getSnapshot()),
+    "The qualifying session is lap-limited and the laps-left count is known, so a laps-left tail can follow the invalidated line. False in time-limited qualifying, where a lap count means nothing.",
+  );
+
+  engine.defineCase(
+    "qualifying.lapsLeft",
+    () => resolveQualifyingLapsLeft(getSnapshot()),
+    QUALIFYING_LAPS_LEFT_KEYS,
+    "How many counted qualifying laps remain after the invalidated one: none, one to five by count, or plenty above that. Only meaningful when qualifying.tailIsSpeakable holds.",
   );
 }
 
 /**
- * Build the scenario bound to a snapshot resolver. The resolver is read in the
- * `where:` predicate (qualifying gate + latch) and again in every tail branch
- * predicate (each per-N branch reads `lapsRemaining` to pick its pool).
+ * Build the contract bound to a snapshot resolver. Stays a builder because
+ * the `where:` reads the resolver (qualifying gate + latch); the tail is the
+ * vocabulary's ({@link registerQualifyingInvalidationVocabulary}). The
+ * literal names no `base` — see the header.
  */
-export function buildQualifyingInvalidationScenario(getSnapshot: QualifyingInvalidationSnapshotResolver): Scenario {
-  // Flat-list of (predicate → pool) per N keeps the sequence readable and
-  // makes adding a counted-clip (or removing one) a one-line change.
-  const perCountBranches: Step[] = [];
-
-  for (let n = QUALIFYING_LAP_COUNT_MIN; n <= QUALIFYING_LAP_COUNT_MAX; n++) {
-    const poolName = n === 1 ? "qualifying-1-lap-left" : `qualifying-${n}-laps-left`;
-
-    perCountBranches.push({
-      if: () => lapsRemainingEquals(getSnapshot(), n),
-      then: [`pool:${poolName}`],
-    });
-  }
-
-  const sequence: Step[] = [
-    "pool:qualifying-invalidated",
-    {
-      if: () => tailIsSpeakable(getSnapshot()),
-      then: [
-        {
-          if: () => lapsRemainingEquals(getSnapshot(), 0),
-          then: ["pool:qualifying-out-of-laps"],
-          else: [
-            {
-              if: () => isPlentyOfLaps(getSnapshot()),
-              then: ["pool:qualifying-plenty-of-laps"],
-              else: perCountBranches,
-            },
-          ],
-        },
-      ],
-    },
-  ];
-
+export function buildQualifyingInvalidationContract(
+  getSnapshot: QualifyingInvalidationSnapshotResolver,
+): ScenarioContract {
   return {
     id: "pit-crew.qualifying-invalidation-lap-invalidated",
     when: {
@@ -212,7 +262,6 @@ export function buildQualifyingInvalidationScenario(getSnapshot: QualifyingInval
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     family: "qualifying-invalidation",
-    sequence,
   };
 }
 
@@ -248,17 +297,21 @@ export const SCENARIO_ID_TO_QUALIFYING_INVALIDATION_ID: Record<
 };
 
 /**
- * Pool names this catalog draws from — kept here so tests can assert the
- * registration set and so the cross-cutting `register-pit-crew.test.ts`
- * gets a single import surface.
+ * The clip sources the qualifying-invalidation script draws from — every
+ * `pool:qualifying-invalidation/<base>` the bundled script may write, as a
+ * literal list, since nothing derives it. The completeness tests read it:
+ * the bundled voice must ship at least one clip for each, and the bundled
+ * script must reference exactly this set. A `(group, base)` a script
+ * addresses is published — renaming a base is a rename in every pack's
+ * script and every pack's clip folder.
  */
-export const QUALIFYING_INVALIDATION_POOL_NAMES: readonly string[] = [
-  "qualifying-invalidated",
-  "qualifying-out-of-laps",
-  "qualifying-plenty-of-laps",
-  "qualifying-1-lap-left",
-  "qualifying-2-laps-left",
-  "qualifying-3-laps-left",
-  "qualifying-4-laps-left",
-  "qualifying-5-laps-left",
+export const QUALIFYING_INVALIDATION_CLIP_SOURCES: readonly { group: "qualifying-invalidation"; base: string }[] = [
+  { group: "qualifying-invalidation", base: "invalidated" },
+  { group: "qualifying-invalidation", base: "out-of-laps" },
+  { group: "qualifying-invalidation", base: "plenty-of-laps" },
+  { group: "qualifying-invalidation", base: "1-lap-left" },
+  { group: "qualifying-invalidation", base: "2-laps-left" },
+  { group: "qualifying-invalidation", base: "3-laps-left" },
+  { group: "qualifying-invalidation", base: "4-laps-left" },
+  { group: "qualifying-invalidation", base: "5-laps-left" },
 ];

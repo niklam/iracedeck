@@ -1,25 +1,40 @@
 /**
- * Qualifying lap-invalidation callout tests (issue #567).
+ * Qualifying lap-invalidation callout tests (issue #567; scripted since
+ * #1065).
  *
- * Drives the scenario through the real scenario engine so load-time validation
- * of every pool reference, the nested conditional branches, and the per-lap
- * latch all run the production path.
+ * Drives the contract through the real scenario engine with the bundled
+ * voice's REAL `callouts.json` narrowed to this family's entry, so the tail
+ * gate, the laps-left case and the per-lap latch all run the production
+ * compile + expansion path; what the engineer says is the script's.
  */
+import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
+import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import type { IAudioService } from "@iracedeck/audio-service";
-import { AudioChannel } from "@iracedeck/audio-service";
+import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
+import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
 import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AudioAssetsManifest } from "../../interpreter.js";
-import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
+import {
+  _resetAudioScenarios,
+  getScenarioEngine,
+  initializeAudioScenarios,
+  poolMemberPattern,
+} from "../../interpreter.js";
 import { registerPitCrew } from "./index.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import {
+  buildQualifyingInvalidationContract,
   checkAndUpdateQualifyingLatch,
+  QUALIFYING_INVALIDATION_CLIP_SOURCES,
+  QUALIFYING_INVALIDATION_SCENARIO_IDS,
   QUALIFYING_LAP_COUNT_MAX,
   QUALIFYING_LAP_COUNT_MIN,
+  QUALIFYING_LAPS_LEFT_KEYS,
   type QualifyingInvalidationSnapshot,
   resetQualifyingInvalidationLatch,
+  resolveQualifyingLapsLeft,
 } from "./qualifying-invalidation.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
@@ -149,6 +164,24 @@ const manifest: AudioAssetsManifest = {
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
 };
 
+/** The bundled manifest, for the clip-existence half of the sources check. */
+const MANIFEST = manifestJson as AudioAssetsManifest;
+
+/** The JSON import types `schema` as `number`, hence the cast. */
+const SCRIPT = defaultScript as CalloutScript;
+
+/**
+ * The bundled script narrowed to this family's own entry (and to no
+ * fragments — it includes none): an entry for a contract this engine does
+ * not hold is a `no contract` warn, and a foreign fragment would widen
+ * `collectScriptReferences` under the assertions below.
+ */
+const QUALIFYING_SCRIPT: CalloutScript = {
+  ...SCRIPT,
+  scenarios: Object.fromEntries(QUALIFYING_INVALIDATION_SCENARIO_IDS.map((id) => [id, SCRIPT.scenarios[id]])),
+  fragments: {},
+};
+
 function snap(overrides: Partial<QualifyingInvalidationSnapshot> = {}): QualifyingInvalidationSnapshot {
   return {
     sessionType: "qualifying",
@@ -197,6 +230,9 @@ beforeEach(() => {
     getQualifyingInvalidationCalloutEnabled: () => qualifyingEnabled,
     getQualifyingInvalidationSnapshot: () => lastSnapshot,
   });
+  // After the registration, as the plugins do: the callout's body is looked
+  // up in the active voice's compiled script at fire time (issue #1065).
+  getScenarioEngine().setScripts(new Map([[VOICE, QUALIFYING_SCRIPT]]));
 });
 
 afterEach(() => {
@@ -423,5 +459,197 @@ describe("constants", () => {
   it("exposes the counted-clip range as 1..5", () => {
     expect(QUALIFYING_LAP_COUNT_MIN).toBe(1);
     expect(QUALIFYING_LAP_COUNT_MAX).toBe(5);
+  });
+});
+
+describe("qualifying-invalidation scripted delivery (issue #1065)", () => {
+  it("reads the core line then the tail, in the script's order, inside the engine's radio frame", () => {
+    fire(snap({ lapsRemaining: 2 }));
+
+    expect(voicePaths()).toEqual([
+      `voice/${VOICE}/qualifying-invalidation/invalidated-01.mp3`,
+      `voice/${VOICE}/qualifying-invalidation/2-laps-left-01.mp3`,
+    ]);
+    expect(audio._played[0]?.path).toBe("sfx/IRD-tick-open.mp3");
+    expect(audio._played.at(-1)?.path).toBe("sfx/IRD-tick-close.mp3");
+  });
+
+  it("a fractional count the case has no key for keeps the core line and drops the tail (the default branch)", () => {
+    fire(snap({ lapsRemaining: 2.5 }));
+
+    expect(voicePaths()).toEqual([`voice/${VOICE}/qualifying-invalidation/invalidated-01.mp3`]);
+  });
+
+  it("a voice with no script plays nothing at all — no line, no frame", () => {
+    getScenarioEngine().setScripts(new Map([["titan", QUALIFYING_SCRIPT]]));
+    fire(snap({ lapsRemaining: 3 }));
+
+    expect(audio._played).toEqual([]);
+  });
+});
+
+describe("buildQualifyingInvalidationContract (issue #1065)", () => {
+  it("carries no sequence and keeps the former literal verbatim — Voice bus, family, no base, default weight and frame", () => {
+    const c = buildQualifyingInvalidationContract(() => null);
+
+    expect("sequence" in c).toBe(false);
+    expect(c.id).toBe("pit-crew.qualifying-invalidation-lap-invalidated");
+    expect([...QUALIFYING_INVALIDATION_SCENARIO_IDS]).toEqual([c.id]);
+    expect(c.when?.event).toBe("incident.occurred");
+    expect(c.channel).toBe(AudioChannel.Voice);
+    expect(c.bus).toBe(AudioBus.Voice);
+    expect(c.family).toBe("qualifying-invalidation");
+    // The literal never named a base: the script's slashed pool steps resolve
+    // through the manifest without one, so nothing is missing.
+    expect(c.base).toBeUndefined();
+    expect(c.weight).toBeUndefined();
+    expect(c.interrupt).toBeUndefined();
+    expect(c.queueable).toBeUndefined();
+    expect(c.cooldown).toBeUndefined();
+    expect(c.triggerDelay).toBeUndefined();
+    expect(c.frame).toBeUndefined();
+  });
+});
+
+describe("registerQualifyingInvalidationVocabulary (issue #1065)", () => {
+  it("publishes the tail gate and the laps-left case, each with a description for a pack author", () => {
+    const { conds, cases } = getScenarioEngine().vocabulary();
+    const ours = (name: string) => name.startsWith("qualifying.");
+
+    expect(conds.filter((c) => ours(c.name)).map((c) => c.name)).toEqual(["qualifying.tailIsSpeakable"]);
+    expect(cases.filter((c) => ours(c.name)).map((c) => c.name)).toEqual(["qualifying.lapsLeft"]);
+
+    for (const entry of [...conds, ...cases].filter((e) => ours(e.name))) {
+      expect(entry.description.length, entry.name).toBeGreaterThan(0);
+    }
+
+    for (const [key, description] of Object.entries(cases.find((c) => c.name === "qualifying.lapsLeft")?.keys ?? {})) {
+      expect(description.length, `qualifying.lapsLeft key ${key}`).toBeGreaterThan(0);
+    }
+  });
+
+  it("declares exactly the keys the laps-left resolver can return — enumerated over every whole count", () => {
+    const declared =
+      getScenarioEngine()
+        .vocabulary()
+        .cases.find((c) => c.name === "qualifying.lapsLeft")?.keys ?? {};
+    const reachable = new Set<string>();
+
+    for (let lapsRemaining = 0; lapsRemaining <= 30; lapsRemaining++) {
+      const key = resolveQualifyingLapsLeft(snap({ lapsRemaining }));
+
+      expect(key, `lapsRemaining=${lapsRemaining}`).not.toBeNull();
+      reachable.add(key ?? "");
+    }
+
+    expect([...reachable].sort()).toEqual(Object.keys(declared).sort());
+    expect(Object.keys(declared).sort()).toEqual(Object.keys(QUALIFYING_LAPS_LEFT_KEYS).sort());
+    expect(resolveQualifyingLapsLeft(snap({ lapsRemaining: 0 }))).toBe("out-of-laps");
+    expect(resolveQualifyingLapsLeft(snap({ lapsRemaining: 5 }))).toBe("5");
+    expect(resolveQualifyingLapsLeft(snap({ lapsRemaining: 6 }))).toBe("plenty");
+  });
+
+  it("resolves to no key when the tail is not speakable, or the count is not a whole number", () => {
+    expect(resolveQualifyingLapsLeft(null)).toBeNull();
+    expect(resolveQualifyingLapsLeft(snap({ lapLimited: false }))).toBeNull();
+    expect(resolveQualifyingLapsLeft(snap({ lapsRemaining: undefined }))).toBeNull();
+    expect(resolveQualifyingLapsLeft(snap({ lapsRemaining: 2.5 }))).toBeNull();
+  });
+});
+
+describe("the bundled script's qualifying-invalidation entry (issue #1065)", () => {
+  it("scripts the contract with a comment, a Qualifying Invalidation harness route and a sequence", () => {
+    for (const id of QUALIFYING_INVALIDATION_SCENARIO_IDS) {
+      const entry = SCRIPT.scenarios[id];
+
+      expect(entry, `no script entry for ${id}`).toBeDefined();
+      expect(entry.comment?.length ?? 0, `${id}: comment`).toBeGreaterThan(0);
+      expect(entry.test, `${id}: test`).toMatch(/^Harness → Scenario Shortcuts → Qualifying Invalidation → /);
+      expect(entry.skip).toBeUndefined();
+      expect(entry.sequence?.length ?? 0, `${id}: sequence`).toBeGreaterThan(0);
+    }
+  });
+
+  it("keeps the core line required and the tail a whole clause: an if with no else, over the declared case keys", () => {
+    const sequence = SCRIPT.scenarios["pit-crew.qualifying-invalidation-lap-invalidated"].sequence ?? [];
+
+    expect(sequence[0]).toBe("pool:qualifying-invalidation/invalidated");
+    expect(sequence[1]).toEqual({
+      if: "qualifying.tailIsSpeakable",
+      then: [
+        {
+          case: "qualifying.lapsLeft",
+          of: {
+            "out-of-laps": ["pool:qualifying-invalidation/out-of-laps"],
+            plenty: ["pool:qualifying-invalidation/plenty-of-laps"],
+            "1": ["pool:qualifying-invalidation/1-lap-left"],
+            "2": ["pool:qualifying-invalidation/2-laps-left"],
+            "3": ["pool:qualifying-invalidation/3-laps-left"],
+            "4": ["pool:qualifying-invalidation/4-laps-left"],
+            "5": ["pool:qualifying-invalidation/5-laps-left"],
+            default: [],
+          },
+        },
+      ],
+    });
+    expect(sequence).toHaveLength(2);
+  });
+
+  it("references only vocabulary the family registers, with the declared case keys, and no var, frame, fragment or alias", () => {
+    const refs = collectScriptReferences(QUALIFYING_SCRIPT);
+    const vocabulary = getScenarioEngine().vocabulary();
+
+    expect(refs.vars).toEqual([]);
+    expect(refs.conds).toEqual(["qualifying.tailIsSpeakable"]);
+    expect(refs.cases).toEqual([{ name: "qualifying.lapsLeft", keys: Object.keys(QUALIFYING_LAPS_LEFT_KEYS).sort() }]);
+    expect(refs.frames).toEqual([]);
+    expect(refs.includes).toEqual([]);
+    expect(Object.keys(QUALIFYING_SCRIPT.pools ?? {})).toEqual([]);
+
+    for (const c of refs.conds) expect(vocabulary.conds.map((x) => x.name)).toContain(c);
+
+    for (const c of refs.cases) {
+      const declared = vocabulary.cases.find((v) => v.name === c.name);
+
+      expect(declared).toBeDefined();
+      expect(Object.keys(declared?.keys ?? {}).sort()).toEqual([...c.keys].sort());
+    }
+  });
+
+  it("addresses exactly the published clip sources — the slashed form throughout — and every one has a clip in the bundled voice", () => {
+    const sources = [
+      "qualifying-invalidation/1-lap-left",
+      "qualifying-invalidation/2-laps-left",
+      "qualifying-invalidation/3-laps-left",
+      "qualifying-invalidation/4-laps-left",
+      "qualifying-invalidation/5-laps-left",
+      "qualifying-invalidation/invalidated",
+      "qualifying-invalidation/out-of-laps",
+      "qualifying-invalidation/plenty-of-laps",
+    ];
+
+    expect([...collectScriptReferences(QUALIFYING_SCRIPT).pools].sort()).toEqual(sources);
+    expect(QUALIFYING_INVALIDATION_CLIP_SOURCES.map(({ group, base }) => `${group}/${base}`).sort()).toEqual(sources);
+
+    for (const { group, base } of QUALIFYING_INVALIDATION_CLIP_SOURCES) {
+      const pattern = poolMemberPattern(group, base);
+
+      expect(
+        MANIFEST.clips.some((clip) => pattern.exec(clip)?.[1] === VOICE),
+        `no voice/${VOICE}/${group}/${base}(-NN).mp3 in manifest.json`,
+      ).toBe(true);
+      expect(
+        manifest.clips.some((clip) => pattern.exec(clip)?.[1] === VOICE),
+        `fixture: ${group}/${base}`,
+      ).toBe(true);
+    }
+  });
+
+  it("compiles for the test voice with nothing skipped — no unknown pool, condition, case key or fragment", () => {
+    const qualifyingWarnings = mockLogger.warn.mock.calls
+      .map(([message]) => String(message))
+      .filter((message) => message.includes("qualifying-invalidation"));
+
+    expect(qualifyingWarnings).toEqual([]);
   });
 });

@@ -285,10 +285,16 @@ const manifest: AudioAssetsManifest = {
  */
 const SCRIPT = defaultScript as CalloutScript;
 
-/** The bundled script narrowed to the readback family's own entries. */
+/**
+ * The bundled script narrowed to the readback family's own entries AND its
+ * own fragment: `collectScriptReferences` walks every fragment a script
+ * defines, so carrying another family's fragment along (the gap readout, say)
+ * would make that family's vars show up as readback's.
+ */
 const READBACK_SCRIPT: CalloutScript = {
   ...SCRIPT,
   scenarios: Object.fromEntries(PIT_READBACK_SCENARIO_IDS.map((id) => [id, SCRIPT.scenarios[id]])),
+  fragments: Object.fromEntries(Object.entries(SCRIPT.fragments ?? {}).filter(([name]) => name === "readback-body")),
 };
 
 /** The bundled manifest, for the clip-existence half of the sources check. */

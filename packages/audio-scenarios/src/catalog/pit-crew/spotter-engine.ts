@@ -1,16 +1,24 @@
 /**
  * Imperative spotter engine — the Race Engineer's spoken side-awareness
- * family (issue #651). Like the radar engine it owns a state machine over
- * `RadarState` driven off the existing `radar.changed` event, but unlike
- * radar (which plays directly on `AudioChannel.Radar`) it schedules every
- * callout through the #652 interpreter via `engine.fire(...)`.
+ * family (issue #651; scripted since #1065). Like the radar engine it owns a
+ * state machine over `RadarState` driven off the existing `radar.changed`
+ * event, but unlike radar (which plays directly on `AudioChannel.Radar`) it
+ * schedules every callout through the #652 interpreter via `engine.fire(...)`.
  *
- * Each fired scenario plays a `{ var: "spotterClip" }` step whose value this
- * engine computes per transition, so clip selection is entirely var-driven —
- * no interpreter pools, no dependency on the audio manifest at load time
- * (the engine builds and tests green before any spotter clip exists).
+ * The two contracts it fires carry no `when` — nothing on the bus triggers
+ * them, this engine does, imperatively — and no sequence: what a fire says is
+ * the active voice's `callouts.json` under the same ids
+ * (`scenarios["pit-crew.spotter-call"]`, `…-info`), paired at `setScripts`
+ * time, and the bundled script is the one step `{{spotterClip}}`. The var's
+ * value is a path this engine computes per transition from the `spotter/`
+ * clip group, so clip selection stays entirely engine-driven — no interpreter
+ * pools, no dependency on the audio manifest at load time — and a pack
+ * rephrases around the call (a lead-in, a beat) rather than re-recording the
+ * twenty-four terms. `engine.fire(id)` resolves a contract through the same
+ * registration path as a bus-triggered one: a voice whose script has no
+ * entry is silent for it, a scripted one plays.
  *
- * Scheduling splits into two scenarios (issue #867): every car-presence
+ * Scheduling splits into two contracts (issue #867): every car-presence
  * transition call ("Car left", "Two cars right", "Three wide", the combined
  * swaps, the 2→1 de-escalation) fires through `pit-crew.spotter-call` at
  * `WEIGHT.PROXIMITY` — strictly above CRITICAL, so it cuts ANY in-flight
@@ -38,7 +46,7 @@ import type { IEventBus, RadarState, SimEventOf } from "@iracedeck/event-bus";
 import type { ILogger } from "@iracedeck/logger";
 import { getLatestTelemetry, getSessionType, TrackDirection } from "@iracedeck/sim-events-iracing";
 
-import type { Scenario } from "../../dsl.js";
+import type { ScenarioContract } from "../../dsl.js";
 import { NO_FRAME, WEIGHT } from "../../dsl.js";
 import { getScenarioEngine } from "../../interpreter.js";
 
@@ -107,21 +115,22 @@ export type SpotterDeps = {
 };
 
 /**
- * The transition-call scenario — every car-presence transition fires through
- * it. `sequence: [{ var: "spotterClip" }]` plays whatever path the engine
- * stashed in `pendingSpotterClip` for this transition; `focusOwner: "spotter"`
- * lets the engine's own fires bypass the SAFETY floor it holds while a car is
- * alongside. Unframed (decision D1): no radio open/close ticks. Since issue
- * #1064 the engine applies the frame itself, so it is the scenario's
- * `frame: NO_FRAME` (`"none"`) that enforces this now — on the informational
- * sibling below too.
+ * The transition-call contract — every car-presence transition fires through
+ * it. The voice script's `{{spotterClip}}` step plays whatever path the
+ * engine stashed in `pendingSpotterClip` for this transition;
+ * `focusOwner: "spotter"` lets the engine's own fires bypass the SAFETY floor
+ * it holds while a car is alongside. Unframed (decision D1): no radio
+ * open/close ticks. Since issue #1064 the engine applies the frame itself,
+ * so it is the contract's `frame: NO_FRAME` (`"none"`) that enforces this
+ * now — on the informational sibling below too. No `when`: only this
+ * engine's `fire()` ever triggers it.
  *
  * `WEIGHT.PROXIMITY` + `interrupt: true` (issue #867): a proximity transition
  * must always be heard immediately, cutting even an in-flight CRITICAL line.
  * `queueable: false` stays — a stale proximity call must never replay late;
  * the guarantee comes from winning the bus now.
  */
-const SPOTTER_CALL_SCENARIO: Scenario = {
+const SPOTTER_CALL_CONTRACT: ScenarioContract = {
   id: SPOTTER_CALL_SCENARIO_ID,
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
@@ -131,7 +140,6 @@ const SPOTTER_CALL_SCENARIO: Scenario = {
   family: "spotter",
   focusOwner: SPOTTER_FOCUS_OWNER,
   frame: NO_FRAME,
-  sequence: [{ var: "spotterClip" }],
 };
 
 /**
@@ -148,7 +156,7 @@ const SPOTTER_CALL_SCENARIO: Scenario = {
  * replace each other ("Clear." over a playing reminder), and an info fire
  * arriving during a call clip drops harmlessly (the loop retries next tick).
  */
-const SPOTTER_INFO_SCENARIO: Scenario = {
+const SPOTTER_INFO_CONTRACT: ScenarioContract = {
   id: SPOTTER_INFO_SCENARIO_ID,
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
@@ -158,8 +166,17 @@ const SPOTTER_INFO_SCENARIO: Scenario = {
   family: "spotter-info",
   focusOwner: SPOTTER_FOCUS_OWNER,
   frame: NO_FRAME,
-  sequence: [{ var: "spotterClip" }],
 };
+
+/**
+ * Both spotter contracts, in registration order — the transition call and
+ * the informational sibling. Exported so the catalog's completeness tests
+ * can pair them with the bundled script; the engine registers them itself
+ * in {@link registerSpotterEngine}.
+ */
+export const SPOTTER_CONTRACTS: readonly ScenarioContract[] = [SPOTTER_CALL_CONTRACT, SPOTTER_INFO_CONTRACT];
+
+export const SPOTTER_SCENARIO_IDS: readonly string[] = SPOTTER_CONTRACTS.map((c) => c.id);
 
 // ─── Clip catalog (paths carry `{voice}`; the interpreter substitutes it) ────
 
@@ -558,9 +575,16 @@ export function registerSpotterEngine(bus: IEventBus, nextDeps: SpotterDeps): vo
 
   deps = nextDeps;
   const engine = getScenarioEngine();
-  engine.defineVar("spotterClip", () => pendingSpotterClip);
-  engine.defineScenario(SPOTTER_CALL_SCENARIO);
-  engine.defineScenario(SPOTTER_INFO_SCENARIO);
+  // The vocabulary before the contracts, so the first `setScripts` compile
+  // sees it (issue #1065). The engine stashes the clip for the transition it
+  // is about to fire; the var hands it to whichever contract fires.
+  engine.defineVar(
+    "spotterClip",
+    () => pendingSpotterClip,
+    'The spotter call for the car-presence change that just happened, drawn from the spotter group: "Car left", "Two cars right", "Three wide", the combined swaps ("Clear right, car left"), the 2-to-1 de-escalation, "Clear", and the still-there reminders — inside/outside terms on an oval. Chosen by the spotter engine per transition and read when it fires, so it is the whole call.',
+  );
+
+  for (const contract of SPOTTER_CONTRACTS) engine.defineContract(contract);
 
   registeredBus = bus;
   bus.subscribe("radar.changed", handleRadarChanged);

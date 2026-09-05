@@ -1,29 +1,40 @@
 /**
- * Rolling-start scenario catalog tests (issue #660).
+ * Rolling-start contract tests (issue #660; scripted since #1065).
  *
  * Mirrors `start-lights.test.ts`: a fake bus + fake audio service, the
- * rolling-start pool registered from `pools.ts`, and a voice script whose
- * `radio` frame the engine wraps the callout in (issue #1064). Covers:
- *   - scenario structure (id, family `rolling-start`, weight SAFETY, base)
+ * contract registered on a fresh engine, and the bundled voice's REAL
+ * `callouts.json` narrowed to this family's entry — so every fire here runs
+ * the same compile + expansion path production does, and what the engineer
+ * says is the script's. Covers:
+ *   - contract structure (id, family `rolling-start`, weight SAFETY, base,
+ *     no sequence, the engine's default frame)
  *   - the trigger fires one clip from the pool inside the engine's radio frame
  *   - opt-in gating via the `registerPitCrew` closure: `pace-car` off
  *     suppresses the callout
  *   - race-only gating: a non-race session suppresses the callout
+ *   - the bundled script's entry: described, pinned to the published clip
+ *     source, and compiling clean for the test voices
  */
+import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
+import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import type { IAudioService } from "@iracedeck/audio-service";
-import { AudioChannel } from "@iracedeck/audio-service";
-import type { CalloutScript } from "@iracedeck/callout-script";
+import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
+import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
-import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
+import {
+  _resetAudioScenarios,
+  getScenarioEngine,
+  initializeAudioScenarios,
+  poolMemberPattern,
+} from "../../interpreter.js";
 import { registerPitCrew, type RollingStartCalloutId } from "./index.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
-import { POOL_REGISTRY } from "./pools.js";
 import { _resetRadarEngine } from "./radar-engine.js";
-import { ROLLING_START_ALERTS, ROLLING_START_POOL_NAMES, ROLLING_START_SCENARIO_IDS } from "./rolling-start.js";
+import { ROLLING_START_CLIP_SOURCES, ROLLING_START_CONTRACTS, ROLLING_START_SCENARIO_IDS } from "./rolling-start.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
 
 const mockSessionType = vi.fn(() => "Race");
@@ -159,21 +170,25 @@ const manifest: AudioAssetsManifest = {
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
 };
 
+/** The bundled manifest, for the clip-existence half of the sources check. */
+const MANIFEST = manifestJson as AudioAssetsManifest;
+const BUNDLED_VOICE = "default";
+
+/** The JSON import types `schema` as `number`, hence the cast. */
+const SCRIPT = defaultScript as CalloutScript;
+
 /**
- * Each voice's callout script — only its `radio` frame matters here. Since
- * issue #1064 the ticks come from the engine wrapping every callout in the
- * frame the active voice's script defines, never from the sequences.
+ * The bundled script narrowed to this family's own entry — handed to BOTH
+ * test voices. It supplies the `radio` frame the engine wraps the callout in
+ * (issue #1064) and the pace-car line itself (#1065). `fragments` is narrowed
+ * too (to none): the entry includes none, and `collectScriptReferences`
+ * walks every fragment it is given, so another family's fragment would
+ * otherwise widen the reference set under the assertions below.
  */
-const RADIO_SCRIPT: CalloutScript = {
-  schema: 1,
-  scenarios: {},
-  frames: {
-    radio: {
-      open: ["sfx/IRD-tick-open.mp3", { ambient: "start" }, { ambient: "seek" }],
-      close: [{ ambient: "stop" }, "sfx/IRD-tick-close.mp3"],
-    },
-  },
-  pools: {},
+const ROLLING_START_SCRIPT: CalloutScript = {
+  ...SCRIPT,
+  scenarios: Object.fromEntries(ROLLING_START_SCENARIO_IDS.map((id) => [id, SCRIPT.scenarios[id]])),
+  fragments: {},
 };
 
 function flush(audio: FakeAudio, iterations = 30): void {
@@ -195,14 +210,14 @@ beforeEach(() => {
   audio = createFakeAudio();
   engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => activeVoice);
 
-  for (const name of ROLLING_START_POOL_NAMES) {
-    const { group, base } = POOL_REGISTRY[name];
-    engine.definePoolFromManifest(name, group, base);
-  }
+  // The production order (`registerPitCrew`): the contract, then the scripts.
+  // No pool is registered in code for this family any more, and the script
+  // names none either: its `pool:rolling-start/pace-car-moving` step
+  // addresses the clip group directly, resolved against the manifest at fire
+  // time.
+  for (const c of ROLLING_START_CONTRACTS) engine.defineContract(c);
 
-  for (const s of ROLLING_START_ALERTS) engine.defineScenario(s);
-
-  engine.setScripts(new Map(VOICE_KEYS.map((v) => [v, RADIO_SCRIPT])));
+  engine.setScripts(new Map(VOICE_KEYS.map((v) => [v, ROLLING_START_SCRIPT])));
 });
 
 afterEach(() => {
@@ -219,17 +234,17 @@ function sfxClipsPlayed(): string[] {
   return audio._played.filter((p) => p.channel === AudioChannel.SFX).map((p) => p.path);
 }
 
-function findScenario(id: string): (typeof ROLLING_START_ALERTS)[number] {
-  const s = ROLLING_START_ALERTS.find((x) => x.id === id);
+function findContract(id: string): (typeof ROLLING_START_CONTRACTS)[number] {
+  const c = ROLLING_START_CONTRACTS.find((x) => x.id === id);
 
-  if (!s) throw new Error(`No rolling-start scenario with id "${id}"`);
+  if (!c) throw new Error(`No rolling-start contract with id "${id}"`);
 
-  return s;
+  return c;
 }
 
-describe("ROLLING_START_ALERTS structure", () => {
-  it("defines 1 scenario", () => {
-    expect(ROLLING_START_ALERTS).toHaveLength(1);
+describe("ROLLING_START_CONTRACTS structure", () => {
+  it("defines 1 contract", () => {
+    expect(ROLLING_START_CONTRACTS).toHaveLength(1);
   });
 
   it("exposes a stable list of ids", () => {
@@ -240,26 +255,37 @@ describe("ROLLING_START_ALERTS structure", () => {
     expect(new Set(ROLLING_START_SCENARIO_IDS).size).toBe(ROLLING_START_SCENARIO_IDS.length);
   });
 
-  it("all scenarios share family 'rolling-start'", () => {
-    for (const s of ROLLING_START_ALERTS) {
-      expect(s.family).toBe("rolling-start");
+  it("carries no sequence — what the line says is the voice script's, never the code's (issue #1065)", () => {
+    for (const c of ROLLING_START_CONTRACTS) expect("sequence" in c).toBe(false);
+  });
+
+  it("all contracts share family 'rolling-start'", () => {
+    for (const c of ROLLING_START_CONTRACTS) {
+      expect(c.family).toBe("rolling-start");
     }
   });
 
-  it("pace-car is SAFETY weight, not interrupt", () => {
-    const s = findScenario("pit-crew.rolling-start-pace-car");
-    expect(s.weight).toBe(WEIGHT.SAFETY);
-    expect(s.interrupt).not.toBe(true);
+  it("pace-car is SAFETY weight, not interrupt, not queueable, and takes the engine's default frame", () => {
+    const c = findContract("pit-crew.rolling-start-pace-car");
+    expect(c.when?.event).toBe("rollingStart.pace-car-moving.raised");
+    expect(c.channel).toBe(AudioChannel.Voice);
+    expect(c.bus).toBe(AudioBus.Voice);
+    expect(c.weight).toBe(WEIGHT.SAFETY);
+    expect(c.interrupt).not.toBe(true);
+    expect(c.queueable).toBeUndefined();
+    expect(c.cooldown).toBeUndefined();
+    expect(c.triggerDelay).toBeUndefined();
+    expect(c.frame).toBeUndefined();
   });
 
-  it("every scenario uses the per-voice base path", () => {
-    for (const s of ROLLING_START_ALERTS) {
-      expect(s.base).toBe("voice/{voice}");
+  it("every contract uses the per-voice base path", () => {
+    for (const c of ROLLING_START_CONTRACTS) {
+      expect(c.base).toBe("voice/{voice}");
     }
   });
 });
 
-describe("ROLLING_START_ALERTS triggers", () => {
+describe("ROLLING_START_CONTRACTS triggers", () => {
   it("fires a clip from the pool", () => {
     bus.publishEvent("rollingStart.pace-car-moving.raised", {} as never);
     flush(audio);
@@ -289,6 +315,15 @@ describe("ROLLING_START_ALERTS triggers", () => {
     expect(played.at(-1)).toBe("sfx/IRD-tick-close.mp3");
     expect(sfxClipsPlayed()).toEqual(["sfx/IRD-tick-open.mp3", "sfx/IRD-tick-close.mp3"]);
   });
+
+  it("a voice with no script plays no rolling-start line at all — no line, no frame (issue #1065)", () => {
+    engine.setScripts(new Map([["titan", ROLLING_START_SCRIPT]]));
+
+    bus.publishEvent("rollingStart.pace-car-moving.raised", {} as never);
+    flush(audio);
+
+    expect(audio._played).toEqual([]);
+  });
 });
 
 // Opt-in gating wired through `registerPitCrew`'s `getRollingStartCalloutEnabled`
@@ -296,7 +331,7 @@ describe("ROLLING_START_ALERTS triggers", () => {
 // carries the rolling-start clips, so unrelated families register with disabled
 // scenarios (pool-validation errors are logged but harmless) — the rolling-start
 // event under test still fires normally.
-describe("ROLLING_START_ALERTS opt-in gating (issue #660)", () => {
+describe("ROLLING_START_CONTRACTS opt-in gating (issue #660)", () => {
   let rollingStartEnabled: Map<RollingStartCalloutId, boolean>;
 
   beforeEach(() => {
@@ -313,6 +348,9 @@ describe("ROLLING_START_ALERTS opt-in gating (issue #660)", () => {
       logger: mockLogger as never,
       getRollingStartCalloutEnabled: (id) => rollingStartEnabled.get(id) ?? true,
     });
+    // A contract is silent without a script (issue #1065): the gate is what is
+    // under test here, so the line must be there to be gated.
+    getScenarioEngine().setScripts(new Map([["luca", ROLLING_START_SCRIPT]]));
   });
 
   afterEach(() => {
@@ -348,7 +386,7 @@ describe("ROLLING_START_ALERTS opt-in gating (issue #660)", () => {
 // Issue #660: rolling-start is race-only. iRacing can raise pace-car movement
 // bits while forming the race grid at the END of a qualifying session, so the
 // scenario gates on the race session (mirrors the start-light family).
-describe("ROLLING_START_ALERTS race-only gating", () => {
+describe("ROLLING_START_CONTRACTS race-only gating", () => {
   it("suppresses the rolling-start callout in qualifying", () => {
     mockSessionType.mockReturnValue("Qualify");
 
@@ -375,5 +413,64 @@ describe("ROLLING_START_ALERTS race-only gating", () => {
     flush(audio);
 
     expect(voiceClipsPlayed()).toEqual([]);
+  });
+});
+
+describe("the bundled script's rolling-start entry (issue #1065)", () => {
+  it("scripts the contract with a comment, a Rolling Start harness route and a sequence", () => {
+    for (const id of ROLLING_START_SCENARIO_IDS) {
+      const entry = SCRIPT.scenarios[id];
+
+      expect(entry, `no script entry for ${id}`).toBeDefined();
+      expect(entry.comment?.length ?? 0, `${id}: comment`).toBeGreaterThan(0);
+      expect(entry.test, `${id}: test`).toMatch(/^Harness → Scenario Shortcuts → Rolling Start → Pace car moving/);
+      expect(entry.skip).toBeUndefined();
+      expect(entry.sequence).toEqual(["pool:rolling-start/pace-car-moving"]);
+    }
+  });
+
+  it("names no vocabulary, no frame, no fragment and no pool alias — the line is one direct pool step", () => {
+    const refs = collectScriptReferences(ROLLING_START_SCRIPT);
+
+    expect(refs.vars).toEqual([]);
+    expect(refs.conds).toEqual([]);
+    expect(refs.cases).toEqual([]);
+    expect(refs.frames).toEqual([]);
+    expect(refs.includes).toEqual([]);
+    expect(Object.keys(ROLLING_START_SCRIPT.pools ?? {})).toEqual([]);
+  });
+
+  it("addresses exactly the published clip source — the slashed form — and it has clips in the bundled voice", () => {
+    const sources = ["rolling-start/pace-car-moving"];
+
+    expect([...collectScriptReferences(ROLLING_START_SCRIPT).pools].sort()).toEqual(sources);
+    expect(ROLLING_START_CLIP_SOURCES.map(({ group, base }) => `${group}/${base}`).sort()).toEqual(sources);
+
+    for (const { group, base } of ROLLING_START_CLIP_SOURCES) {
+      const pattern = poolMemberPattern(group, base);
+
+      expect(
+        MANIFEST.clips.some((clip) => pattern.exec(clip)?.[1] === BUNDLED_VOICE),
+        `no voice/${BUNDLED_VOICE}/${group}/${base}(-NN).mp3 in manifest.json`,
+      ).toBe(true);
+    }
+  });
+
+  it("the fixture manifest carries the source for both test voices — the fires above are not vacuous", () => {
+    for (const voice of VOICE_KEYS) {
+      for (const { group, base } of ROLLING_START_CLIP_SOURCES) {
+        const pattern = poolMemberPattern(group, base);
+
+        expect(
+          manifest.clips.some((clip) => pattern.exec(clip)?.[1] === voice),
+          `${voice}: ${group}/${base}`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  it("compiles for both test voices with nothing skipped — no unknown pool, condition, case key or fragment", () => {
+    expect(mockLogger.warn).not.toHaveBeenCalled();
+    expect(mockLogger.error).not.toHaveBeenCalled();
   });
 });

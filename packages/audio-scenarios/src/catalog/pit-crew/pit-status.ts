@@ -1,11 +1,19 @@
 /**
- * Pit-service status callouts (issue #479) and their positioning-error
- * repeat nags (issue #951).
+ * Pit-service status contracts (issue #479) and their positioning-error
+ * repeat nags (issue #951); scripted since #1065.
  *
- * Eight scenarios — one per non-`None` `PlayerCarPitSvStatus` target —
+ * Eight contracts — one per non-`None` `PlayerCarPitSvStatus` target —
  * fire on `pitService.statusChanged` filtered by `data.to`. The translator
  * already suppresses `* → None` so the silent idle state never reaches
  * the bus.
+ *
+ * The code below decides WHEN a status line fires and how it is scheduled;
+ * WHAT is said lives in the active voice's `callouts.json` under the same ids
+ * (`scenarios["pit-crew.pit-status-in-progress"]`, …), where the bundled
+ * script addresses each line directly as `pool:pit-status/<id>`. The only
+ * vocabulary this family registers is the five `pitStatus.still*` conditions
+ * the repeat nags hang on ({@link registerPitStatusVocabulary}); the eight
+ * transition lines branch on nothing.
  *
  * **Family preemption.** All eight share `family: "pit-status"` so a rapid
  * positioning correction (`TooFarLeft → TooFarRight`) supersedes the
@@ -15,18 +23,14 @@
  * flag (`WEIGHT.CRITICAL`) still wins the bus over these, and a positioning
  * callout cleanly outweighs an in-flight lower-weight pit-readback (#476).
  *
- * Pool-driven clips (mirrors `flag-alerts.ts` / `damage-alerts.ts`) so a
- * future variant pack (#470) is a one-line append in `pools.ts` instead
- * of a scenario rewrite.
- *
  * ## Repeat nags (issue #951)
  *
  * iRacing reports a positioning error once and then leaves the status
  * latched, so a driver who overshoots, backs up, and stops still short of the
  * box would otherwise sit unserved in silence. The translator therefore
  * re-emits `pitService.positioningRepeat { status }` every ~2 s while the
- * error persists and the car is at rest, and the five scenarios below turn
- * each one into a terse correction line.
+ * error persists and the car is at rest, and the five repeat contracts below
+ * turn each one into a terse correction line.
  *
  * Three deliberate differences from the transition calls:
  *
@@ -44,14 +48,21 @@
  *   precedent: at a 2 s cadence the beeps would drown the words. Since issue
  *   #1064 the engine applies the frame itself, so it is the nag's
  *   `frame: NO_FRAME` (`"none"`) that enforces this now.
+ *
+ * The bundled script wraps each nag's whole body in its `pitStatus.still*`
+ * condition (`{ "if": "pitStatus.stillTooFarLeft", "then": [...] }`): the
+ * body IS the whole callout, so an expansion to nothing is the intended
+ * silence — the frame is not played around an empty body, and a pack keeps
+ * that speak-time gate by keeping the `if`.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventOf } from "@iracedeck/event-bus";
 import { PitSvStatus, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { getLatestTelemetry } from "@iracedeck/sim-events-iracing";
 
-import type { Scenario, Step } from "../../dsl.js";
+import type { ScenarioContract } from "../../dsl.js";
 import { NO_FRAME } from "../../dsl.js";
+import type { IScenarioEngine } from "../../interpreter.js";
 
 /**
  * Explicit integer between `WEIGHT.CHATTER` (10) and `WEIGHT.NORMAL` (50) —
@@ -66,25 +77,38 @@ export const PIT_STATUS_REPEAT_WEIGHT = 40;
 
 /**
  * The statuses that describe an uncorrected parking error — the ones the
- * translator repeats. Single-sourced here so the transition scenarios and
- * their repeat siblings can never disagree about which subjects those are.
+ * translator repeats. Single-sourced here so the transition contracts, their
+ * repeat siblings and the `pitStatus.still*` conditions can never disagree
+ * about which subjects those are. `cond` is the condition name the repeat
+ * script wraps its body in; `still` is the phrase its description uses.
+ *
+ * @internal Exported for testing — the test enumerates the conditions from it.
  */
-const POSITIONING_SUBJECTS: readonly { readonly id: string; readonly target: PitSvStatus }[] = [
-  { id: "too-far-left", target: PitSvStatus.TooFarLeft },
-  { id: "too-far-right", target: PitSvStatus.TooFarRight },
-  { id: "too-far-forward", target: PitSvStatus.TooFarForward },
-  { id: "too-far-back", target: PitSvStatus.TooFarBack },
-  { id: "bad-angle", target: PitSvStatus.BadAngle },
+export const POSITIONING_SUBJECTS: readonly {
+  readonly id: string;
+  readonly target: PitSvStatus;
+  readonly cond: string;
+  readonly still: string;
+}[] = [
+  { id: "too-far-left", target: PitSvStatus.TooFarLeft, cond: "pitStatus.stillTooFarLeft", still: "too far left" },
+  { id: "too-far-right", target: PitSvStatus.TooFarRight, cond: "pitStatus.stillTooFarRight", still: "too far right" },
+  {
+    id: "too-far-forward",
+    target: PitSvStatus.TooFarForward,
+    cond: "pitStatus.stillTooFarForward",
+    still: "too far forward",
+  },
+  { id: "too-far-back", target: PitSvStatus.TooFarBack, cond: "pitStatus.stillTooFarBack", still: "too far back" },
+  { id: "bad-angle", target: PitSvStatus.BadAngle, cond: "pitStatus.stillBadAngle", still: "at a bad angle" },
 ];
 
-function pitStatusScenario(id: string, target: PitSvStatus, body: Step[]): Scenario {
+function pitStatusContract(id: string, target: PitSvStatus): ScenarioContract {
   return {
     id: `pit-crew.pit-status-${id}`,
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",
     family: "pit-status",
-    sequence: body,
     when: {
       event: "pitService.statusChanged",
       where: (e) => (e as SimEventOf<"pitService.statusChanged">).data.to === target,
@@ -103,7 +127,7 @@ function pitStatusScenario(id: string, target: PitSvStatus, body: Step[]): Scena
  * could therefore speak seconds later, after the driver had already corrected
  * — telling them to back up when they are sitting perfectly in the box.
  *
- * `if:` predicates expand at speak time, deferred replays included, so
+ * Script `if` conditions expand at speak time, deferred replays included, so
  * wrapping the whole sequence in one re-checks the LIVE status just before the
  * clip plays. Unknown telemetry means play: a callout is never suppressed by
  * absent data (#574), which also keeps the scenario harness able to audition
@@ -119,7 +143,7 @@ function stillMisalignedAs(target: PitSvStatus): boolean {
   return status === undefined || status === target;
 }
 
-function pitStatusRepeatScenario(id: string, target: PitSvStatus): Scenario {
+function pitStatusRepeatContract(id: string, target: PitSvStatus): ScenarioContract {
   return {
     id: `pit-crew.pit-status-${id}-repeat`,
     channel: AudioChannel.Voice,
@@ -128,7 +152,6 @@ function pitStatusRepeatScenario(id: string, target: PitSvStatus): Scenario {
     weight: PIT_STATUS_REPEAT_WEIGHT,
     family: "pit-status-repeat",
     frame: NO_FRAME,
-    sequence: [{ if: () => stillMisalignedAs(target), then: [`pool:pit-status-${id}-repeat`] }],
     when: {
       event: "pitService.positioningRepeat",
       where: (e) => (e as SimEventOf<"pitService.positioningRepeat">).data.status === target,
@@ -136,34 +159,54 @@ function pitStatusRepeatScenario(id: string, target: PitSvStatus): Scenario {
   };
 }
 
-export const PIT_STATUS_ALERTS: readonly Scenario[] = [
-  pitStatusScenario("in-progress", PitSvStatus.InProgress, ["pool:pit-status-in-progress"]),
-  pitStatusScenario("complete", PitSvStatus.Complete, ["pool:pit-status-complete"]),
-  ...POSITIONING_SUBJECTS.map(({ id, target }) => pitStatusScenario(id, target, [`pool:pit-status-${id}`])),
-  pitStatusScenario("cant-fix-that", PitSvStatus.CantFixThat, ["pool:pit-status-cant-fix-that"]),
+/**
+ * Register the vocabulary the pit-status scripts reference (issue #1065):
+ * one `pitStatus.still<Error>` condition per positioning error, each the
+ * speak-time gate its repeat nag wraps its whole body in. Five conditions
+ * rather than one case, because each nag asks a different question — "is the
+ * car still in MY error" — and a pack keeps or drops each gate on its own.
+ * Descriptions feed the generated reference (#1066).
+ */
+export function registerPitStatusVocabulary(engine: Pick<IScenarioEngine, "defineCond">): void {
+  for (const { target, cond, still } of POSITIONING_SUBJECTS) {
+    engine.defineCond(
+      cond,
+      () => stillMisalignedAs(target),
+      `The car is still ${still} in the pit box according to live telemetry, or telemetry is unavailable. Wrap a repeat nag's whole body in it so a nag that waited behind a longer line stays silent once the driver has corrected; unknown telemetry counts as still wrong, never as fixed.`,
+    );
+  }
+}
+
+export const PIT_STATUS_CONTRACTS: readonly ScenarioContract[] = [
+  pitStatusContract("in-progress", PitSvStatus.InProgress),
+  pitStatusContract("complete", PitSvStatus.Complete),
+  ...POSITIONING_SUBJECTS.map(({ id, target }) => pitStatusContract(id, target)),
+  pitStatusContract("cant-fix-that", PitSvStatus.CantFixThat),
 ];
 
 /** The terse "still uncorrected" nags (issue #951) — one per positioning error. */
-export const PIT_STATUS_REPEAT_ALERTS: readonly Scenario[] = POSITIONING_SUBJECTS.map(({ id, target }) =>
-  pitStatusRepeatScenario(id, target),
+export const PIT_STATUS_REPEAT_CONTRACTS: readonly ScenarioContract[] = POSITIONING_SUBJECTS.map(({ id, target }) =>
+  pitStatusRepeatContract(id, target),
 );
 
-/** Scenario ids exported for tests so a typo here surfaces as a test failure. */
-export const PIT_STATUS_SCENARIO_IDS: readonly string[] = PIT_STATUS_ALERTS.map((s) => s.id);
+/** Contract ids exported for tests so a typo here surfaces as a test failure. */
+export const PIT_STATUS_SCENARIO_IDS: readonly string[] = PIT_STATUS_CONTRACTS.map((c) => c.id);
 
-/** Repeat-scenario ids, same purpose as {@link PIT_STATUS_SCENARIO_IDS}. */
-export const PIT_STATUS_REPEAT_SCENARIO_IDS: readonly string[] = PIT_STATUS_REPEAT_ALERTS.map((s) => s.id);
+/** Repeat-contract ids, same purpose as {@link PIT_STATUS_SCENARIO_IDS}. */
+export const PIT_STATUS_REPEAT_SCENARIO_IDS: readonly string[] = PIT_STATUS_REPEAT_CONTRACTS.map((c) => c.id);
 
-/** Pool names this catalog draws from — kept here so tests can register them
- *  on the scenario engine without duplicating the list. */
-export const PIT_STATUS_POOL_NAMES: readonly string[] = [
-  "pit-status-in-progress",
-  "pit-status-complete",
-  ...POSITIONING_SUBJECTS.map(({ id }) => `pit-status-${id}`),
-  "pit-status-cant-fix-that",
+/**
+ * The clip sources the pit-status scripts draw from — one
+ * `pool:pit-status/<id>` per transition line and one `pool:pit-status/<id>-repeat`
+ * per nag. The completeness tests read it: the bundled voice must ship at
+ * least one clip for each, and the bundled script must reference exactly
+ * this set. A `(group, base)` a script addresses is published — renaming a
+ * base is a rename in every pack's script and every pack's clip folder.
+ */
+export const PIT_STATUS_CLIP_SOURCES: readonly { group: "pit-status"; base: string }[] = [
+  ...PIT_STATUS_CONTRACTS.map((c) => ({
+    group: "pit-status" as const,
+    base: c.id.replace("pit-crew.pit-status-", ""),
+  })),
+  ...POSITIONING_SUBJECTS.map(({ id }) => ({ group: "pit-status" as const, base: `${id}-repeat` })),
 ];
-
-/** Repeat-nag pool names, same purpose as {@link PIT_STATUS_POOL_NAMES}. */
-export const PIT_STATUS_REPEAT_POOL_NAMES: readonly string[] = POSITIONING_SUBJECTS.map(
-  ({ id }) => `pit-status-${id}-repeat`,
-);

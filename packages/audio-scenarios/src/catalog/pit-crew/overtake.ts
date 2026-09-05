@@ -1,5 +1,6 @@
 /**
- * Race Engineer overtake callouts — issue #574 (split design, #574 follow-up).
+ * Race Engineer overtake callouts — issue #574 (split design, #574
+ * follow-up); scripted since #1065.
  *
  * Each overtake produces TWO announcements, deliberately separated so the
  * position is spoken from LIVE telemetry at the moment it's said:
@@ -17,19 +18,31 @@
  *        `position-overtake-come-on` group; #591)
  *
  *   2. **Position readout** (position-readout.ts) — a separate `WEIGHT.CHATTER`
- *      + `queueable: true` scenario that defers behind the reaction and then says
+ *      + `queueable: true` contract that defers behind the reaction and then says
  *      "We're currently P[n]" reading the position from live telemetry at
  *      speak-time. Shares a cooldown with every other position readout so we
  *      don't double-announce.
  *
- * Both reaction scenarios share `family: "overtake"` (a fresh swap preempts an
+ * The code decides WHETHER and WHEN a reaction fires; WHAT it says is the
+ * active voice's `callouts.json` under the same ids
+ * (`scenarios["pit-crew.overtake-gained"]`, `…-lost`), paired at `setScripts`
+ * time. The gained reaction is ONE `case` on `overtake.gainedReaction`: the
+ * six nested closure `if`s it replaces were a lookup over a closed set —
+ * which podium place, in class or overall — and a case with a declared key
+ * set is what lets a pack phrase each independently or collapse the class
+ * variants onto the overall lines. The lost reaction is the optional
+ * `overtake.lost.comeOn` clause (a complete sentence on its own) followed by
+ * `pool:position-overtake/dont-give-up-positions`. The vocabulary is
+ * registered by {@link registerOvertakeVocabulary}.
+ *
+ * Both reaction contracts share `family: "overtake"` (a fresh swap preempts an
  * in-flight family-mate) and are suppressed once the race is over
  * (`getRaceFinishedFired`) — no overtake commentary after the checkered.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventOf } from "@iracedeck/event-bus";
 
-import type { Scenario, Step } from "../../dsl.js";
+import type { ScenarioContext, ScenarioContract } from "../../dsl.js";
 import { poolRef } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 import { overtakeContextAllows, type OvertakeGateResolver } from "./overtake-gate.js";
@@ -43,28 +56,7 @@ import { shouldReactToOvertake } from "./position-readout.js";
  */
 export type OvertakeDriverNameResolver = () => string | null;
 
-const OVERTAKE_BASE = "position-overtake";
 const COME_ON_GROUP = "position-overtake-come-on";
-
-/** Build a `clip` step path relative to the scenario's `voice/{voice}` base. */
-function clipPath(filename: string): string {
-  return `${OVERTAKE_BASE}/${filename}`;
-}
-
-/**
- * Effective overtake position (class in multi-class, overall otherwise) from a
- * step's `ctx.data`, or `null` for a null/absent payload (#603 podium lines).
- */
-function effectiveOf(data: unknown): number | null {
-  const d = data as SimEventOf<"overtake.completed">["data"] | null;
-
-  return d != null ? selectEffectiveOvertakePosition(d) : null;
-}
-
-/** Whether a step's `ctx.data` is a multi-class overtake payload. */
-function isMultiClassData(data: unknown): boolean {
-  return Boolean((data as SimEventOf<"overtake.completed">["data"] | null)?.isMultiClass);
-}
 
 /**
  * Pick the effective overall vs class position from an overtake payload.
@@ -99,71 +91,92 @@ export function overtakeLossIsAnnounceable(data: SimEventOf<"overtake.lost">["da
 }
 
 /**
- * Register the overtake reaction vars. Only the loss line needs a var: the
- * full "Come on, <name>." clip resolved per active driver name. The gain
- * reaction is static clips and reads `isLeader` straight off the event payload
- * in its `if` step.
+ * The keys of the `overtake.gainedReaction` case — the closed set of
+ * reactions a gained overtake takes. Published with the case, so the type is
+ * the declared key set and nothing else.
  */
-export function registerOvertakeVars(engine: IScenarioEngine, getDriverName: OvertakeDriverNameResolver): void {
-  engine.defineVar("overtake.lost.comeOn", () => {
-    const name = getDriverName();
+export type OvertakeGainedReaction = "leader" | "leader-class" | "p2" | "p2-class" | "p3" | "p3-class" | "other";
 
-    return name ? poolRef(COME_ON_GROUP, name) : null;
-  });
+/**
+ * The declared key set of `overtake.gainedReaction`, each with the
+ * description the generated reference (#1066) shows a pack author.
+ *
+ * @internal Exported for testing — the test enumerates the reachable
+ * payloads and checks the resolver returns nothing outside this set.
+ */
+export const OVERTAKE_GAINED_REACTION_KEYS: Readonly<Record<OvertakeGainedReaction, string>> = {
+  leader: "The pass took the overall lead of a single-class race.",
+  "leader-class": "The pass took the class lead in a multi-class race.",
+  p2: "The pass put the driver second overall in a single-class race.",
+  "p2-class": "The pass put the driver second in class in a multi-class race.",
+  p3: "The pass put the driver third overall in a single-class race — onto the podium.",
+  "p3-class": "The pass put the driver third in class in a multi-class race.",
+  other: "Any other position — the plain nice-pass line; the position itself follows in the separate readout.",
+};
+
+/**
+ * The reaction key for a gained overtake, read from the fire's event payload
+ * (the reaction fires immediately, so the payload is current): the effective
+ * position — class P1/2/3 in multi-class, overall otherwise (#588/#599) —
+ * picks the podium line, and `isMultiClass` picks the "…in class" variant.
+ * `null` for an imperative fire with no payload, which takes the script's
+ * `default` branch.
+ *
+ * @internal Exported for testing.
+ */
+export function resolveOvertakeGainedReaction(ctx: ScenarioContext): OvertakeGainedReaction | null {
+  const data = ctx.data as SimEventOf<"overtake.completed">["data"] | null | undefined;
+
+  if (data == null) return null;
+
+  const effective = selectEffectiveOvertakePosition(data);
+  const inClass = data.isMultiClass === true;
+
+  if (effective === 1) return inClass ? "leader-class" : "leader";
+
+  if (effective === 2) return inClass ? "p2-class" : "p2";
+
+  if (effective === 3) return inClass ? "p3-class" : "p3";
+
+  return "other";
 }
 
 /**
- * Build the gained-overtake REACTION scenario. The position follow-up is a
- * separate scenario (see {@link buildOvertakeGainedPositionScenario} in
+ * Register the vocabulary the overtake scripts reference (issue #1065): the
+ * gained-reaction case and the loss line's per-name opener. Must run before
+ * the contracts are defined so the first `setScripts` compile sees them.
+ */
+export function registerOvertakeVocabulary(
+  engine: Pick<IScenarioEngine, "defineVar" | "defineCase">,
+  getDriverName: OvertakeDriverNameResolver,
+): void {
+  engine.defineCase(
+    "overtake.gainedReaction",
+    resolveOvertakeGainedReaction,
+    OVERTAKE_GAINED_REACTION_KEYS,
+    "Which reaction a gained overtake earns: a podium place (first, second or third) taken overall or in class, or any other position. Exactly one key applies per pass.",
+  );
+
+  engine.defineVar(
+    "overtake.lost.comeOn",
+    () => {
+      const name = getDriverName();
+
+      return name ? poolRef(COME_ON_GROUP, name) : null;
+    },
+    'The "Come on, <name>." opener of the lost-position line, a full clip per driver name from the position-overtake-come-on group (position-overtake-come-on/driver is the generic fallback). A complete sentence on its own, so the bundled script makes it optional: a voice without the chosen name\'s clip skips it and the line still plays.',
+  );
+}
+
+/**
+ * Build the gained-overtake REACTION contract. The position follow-up is a
+ * separate contract (see {@link buildOvertakeGainedPositionContract} in
  * position-readout.ts). Suppressed after the race ends.
  */
-export function buildOvertakeGainedScenario(
+export function buildOvertakeGainedContract(
   getRaceFinishedFired: () => boolean = () => false,
   getGate: OvertakeGateResolver = () => null,
-): Scenario {
-  // Podium positions (P1/P2/P3, by EFFECTIVE position) each get a dedicated line
-  // that states the position (issue #603); every other gain says the generic
-  // "Nice pass". Each podium line has a single-class and a multi-class ("…in
-  // class") variant. The `if` predicates read the live event payload (ctx.data)
-  // — the reaction fires immediately, so the payload is current.
-  const sequence: Step[] = [
-    {
-      if: (ctx) => effectiveOf(ctx.data) === 1,
-      then: [
-        {
-          if: (ctx) => isMultiClassData(ctx.data),
-          then: [clipPath("nice-pass-leader-class-01.mp3")],
-          else: [clipPath("nice-pass-leader-01.mp3")],
-        },
-      ],
-      else: [
-        {
-          if: (ctx) => effectiveOf(ctx.data) === 2,
-          then: [
-            {
-              if: (ctx) => isMultiClassData(ctx.data),
-              then: [clipPath("nice-pass-p2-class-01.mp3")],
-              else: [clipPath("nice-pass-p2-01.mp3")],
-            },
-          ],
-          else: [
-            {
-              if: (ctx) => effectiveOf(ctx.data) === 3,
-              then: [
-                {
-                  if: (ctx) => isMultiClassData(ctx.data),
-                  then: [clipPath("nice-pass-p3-class-01.mp3")],
-                  else: [clipPath("nice-pass-p3-01.mp3")],
-                },
-              ],
-              else: [clipPath("nice-pass-01.mp3")],
-            },
-          ],
-        },
-      ],
-    },
-  ];
-
+): ScenarioContract {
   return {
     id: "pit-crew.overtake-gained",
     when: {
@@ -198,23 +211,14 @@ export function buildOvertakeGainedScenario(
     bus: AudioBus.Voice,
     base: "voice/{voice}",
     family: "overtake",
-    sequence,
   };
 }
 
-/** Build the lost-position REACTION scenario. Self-contained — position follow-up is separate. */
-export function buildOvertakeLostScenario(
+/** Build the lost-position REACTION contract. Self-contained — position follow-up is separate. */
+export function buildOvertakeLostContract(
   getRaceFinishedFired: () => boolean = () => false,
   getGate: OvertakeGateResolver = () => null,
-): Scenario {
-  const sequence: Step[] = [
-    // Optional (issue #835): the "Come on, <name>." opener is a complete
-    // sentence on its own — a voice lacking the name clip (or an unwired
-    // resolver) skips it and the loss line still plays.
-    { optional: [{ var: "overtake.lost.comeOn" }] },
-    clipPath("dont-give-up-positions-01.mp3"),
-  ];
-
+): ScenarioContract {
   return {
     id: "pit-crew.overtake-lost",
     when: {
@@ -241,7 +245,6 @@ export function buildOvertakeLostScenario(
     bus: AudioBus.Voice,
     base: "voice/{voice}",
     family: "overtake",
-    sequence,
   };
 }
 
@@ -261,7 +264,7 @@ export const OVERTAKE_CALLOUT_SETTING_KEYS: Record<OvertakeCalloutId, string> = 
   lost: "calloutEnabledOvertakeLost",
 };
 
-// Both the reaction AND the position-readout scenario id for each direction map
+// Both the reaction AND the position-readout contract id for each direction map
 // to the same opt-in, so one toggle silences both. `as const` powers the
 // compile-time completeness check on `SCENARIO_ID_TO_OVERTAKE_ID`.
 export const OVERTAKE_SCENARIO_IDS = [
@@ -277,3 +280,23 @@ export const SCENARIO_ID_TO_OVERTAKE_ID: Record<(typeof OVERTAKE_SCENARIO_IDS)[n
   "pit-crew.overtake-gained-position": "gained",
   "pit-crew.overtake-lost-position": "lost",
 };
+
+/**
+ * The clip sources the overtake reaction scripts draw from — every
+ * `pool:position-overtake/<base>` the bundled script may write, as a literal
+ * list. The completeness tests read it: the bundled voice must ship at least
+ * one clip for each, and the bundled script must reference exactly this set.
+ * The per-name "Come on" opener is not a source: it is the
+ * `overtake.lost.comeOn` var, drawn from `position-overtake-come-on` by the
+ * chosen driver name.
+ */
+export const OVERTAKE_CLIP_SOURCES: readonly { group: "position-overtake"; base: string }[] = [
+  { group: "position-overtake", base: "nice-pass" },
+  { group: "position-overtake", base: "nice-pass-leader" },
+  { group: "position-overtake", base: "nice-pass-leader-class" },
+  { group: "position-overtake", base: "nice-pass-p2" },
+  { group: "position-overtake", base: "nice-pass-p2-class" },
+  { group: "position-overtake", base: "nice-pass-p3" },
+  { group: "position-overtake", base: "nice-pass-p3-class" },
+  { group: "position-overtake", base: "dont-give-up-positions" },
+];

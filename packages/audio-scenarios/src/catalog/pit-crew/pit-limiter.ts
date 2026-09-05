@@ -1,13 +1,22 @@
 /**
- * Pit limiter warnings — four scenarios covering the different limiter
- * anomaly states emitted by `@iracedeck/sim-events-iracing`:
+ * Pit limiter warnings — four contracts covering the different limiter
+ * anomaly states emitted by `@iracedeck/sim-events-iracing` (issue #1051;
+ * scripted since #1065):
  *
- *   - `carControl.limiterToggled`: limiter was engaged while the driver is
- *     on the track (not in pit lane). Suppressed when on pit road because
- *     that's the expected behavior.
- *   - `limiter.missing`: entered pit road without the limiter on.
+ *   - `pitLane.exited` (delayed): limiter still engaged a beat after leaving
+ *     pit road. Suppressed while on pit road because that's the expected
+ *     behavior.
+ *   - `limiter.missing` (delayed): entered pit road without the limiter on.
  *   - `limiter.dropped`: limiter disengaged while still between pit cones.
  *   - `limiter.speeding`: above the pit speed limit.
+ *
+ * The code below decides WHETHER and WHEN each warning fires and how it is
+ * scheduled; WHAT is said lives in the active voice's `callouts.json` under
+ * the same ids (`scenarios["pit-crew.limiter-on-track"]`, …), where the
+ * bundled script addresses each line as `pool:pit-limiter/<base>`. The two
+ * DELAYED warnings additionally register their speak-time re-check as a
+ * condition ({@link registerPitLimiterVocabulary}) that the script wraps
+ * its whole body in — see the note on the two delayed conditions below.
  *
  * All four use the default weight (`WEIGHT.NORMAL`) — informational callouts
  * that yield to higher-weight in-flight pit-lane messages.
@@ -16,8 +25,8 @@ import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { hasPitLimiter, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { getLatestTelemetry } from "@iracedeck/sim-events-iracing";
 
-import type { Scenario } from "../../dsl.js";
-import { POOL_REGISTRY } from "./pools.js";
+import type { ScenarioContract } from "../../dsl.js";
+import type { IScenarioEngine } from "../../interpreter.js";
 
 /**
  * Delay before re-checking that the limiter is STILL engaged after leaving pit
@@ -30,7 +39,7 @@ export const LIMITER_ON_TRACK_DELAY_MS = 1500;
 export const LIMITER_MISSING_DELAY_MS = 2500;
 
 /**
- * Live telemetry for the two DELAYED scenarios below.
+ * Live telemetry for the two DELAYED contracts below.
  *
  * Read live, NOT from `e.telemetry`, and that distinction is the whole point of
  * the delay. `triggerDelay` re-runs `where:` after N ms, but the interpreter
@@ -49,10 +58,11 @@ function liveTelemetry(): TelemetryData | null {
 
 /**
  * The two delayed conditions, each written ONCE and used twice — as the
- * `where:` fire decision and again as the speak-time `if:` gate. Sharing the
- * definition is deliberate: the flag-alerts precedent (#846) notes that two
- * layers with their own copy of "is this still true" can drift apart, and here
- * a drift would mean announcing a limiter state the driver already fixed.
+ * `where:` fire decision and again, through the vocabulary, as the script's
+ * speak-time gate. Sharing the definition is deliberate: the flag-alerts
+ * precedent (#846) notes that two layers with their own copy of "is this
+ * still true" can drift apart, and here a drift would mean announcing a
+ * limiter state the driver already fixed.
  */
 function limiterStillEngagedOffPitRoad(): boolean {
   const telemetry = liveTelemetry();
@@ -72,7 +82,29 @@ function limiterStillMissingOnPitRoad(): boolean {
   return telemetry?.dcPitSpeedLimiterToggle !== true && telemetry?.OnPitRoad === true;
 }
 
-export const LIMITER_ON_TRACK: Scenario = {
+/**
+ * Register the vocabulary the pit-limiter scripts reference (issue #1065):
+ * the two delayed warnings' speak-time re-checks, as conditions. Queueing
+ * (below) reintroduces staleness — a fire that waited behind a busier line
+ * can speak after the driver fixed the problem — so the bundled script wraps
+ * each warning's whole body in its condition: the expansion is then SILENCE
+ * rather than a radio click with nothing after it (the FURLED shape, #669).
+ * Descriptions feed the generated reference (#1066).
+ */
+export function registerPitLimiterVocabulary(engine: Pick<IScenarioEngine, "defineCond">): void {
+  engine.defineCond(
+    "limiter.stillEngagedOffPitRoad",
+    limiterStillEngagedOffPitRoad,
+    "The car has a pit limiter and it is still engaged out on the track, according to live telemetry when the line comes to speak — about a second and a half after leaving pit road. Wrap the on-track warning's whole body in it so a driver who has already switched the limiter off hears nothing. False on a car without a limiter or when telemetry is unavailable.",
+  );
+  engine.defineCond(
+    "limiter.stillMissingOnPitRoad",
+    limiterStillMissingOnPitRoad,
+    "The car has a pit limiter and it is still NOT engaged on pit road, according to live telemetry when the line comes to speak — a couple of seconds after the pit-entry reminder. Wrap the missing-limiter warning's whole body in it so a driver who engaged the limiter in the meantime hears nothing. False on a car without a limiter or when telemetry is unavailable.",
+  );
+}
+
+export const LIMITER_ON_TRACK: ScenarioContract = {
   id: "pit-crew.limiter-on-track",
   when: {
     // Fires a beat AFTER leaving pit road, not on the limiter toggle (#1051).
@@ -95,19 +127,13 @@ export const LIMITER_ON_TRACK: Scenario = {
   // Without this the callout would be dropped nearly every time in real
   // driving while passing every test that lets the bus idle first.
   queueable: true,
-  // ...and a speak-time gate, because queueing reintroduces staleness: the
-  // whole framed sequence sits inside `then`, so a driver who switched the
-  // limiter off while this waited expands to SILENCE rather than a radio click
-  // with nothing after it. Same shape as FURLED (#669).
-  sequence: [
-    {
-      if: limiterStillEngagedOffPitRoad,
-      then: ["pool:pit-limiter-on-track"],
-    },
-  ],
+  // ...and the script's speak-time gate (`limiter.stillEngagedOffPitRoad`),
+  // because queueing reintroduces staleness: the whole body sits inside the
+  // condition, so a driver who switched the limiter off while this waited
+  // expands to SILENCE rather than a radio click with nothing after it.
 };
 
-export const LIMITER_MISSING: Scenario = {
+export const LIMITER_MISSING: ScenarioContract = {
   id: "pit-crew.limiter-missing",
   when: {
     event: "limiter.missing",
@@ -124,18 +150,13 @@ export const LIMITER_MISSING: Scenario = {
   family: "limiter",
   triggerDelay: LIMITER_MISSING_DELAY_MS,
   // Same pair as LIMITER_ON_TRACK: queue rather than be dropped behind the
-  // pit-entry traffic this deliberately follows, and re-check at speak time so
-  // a driver who engaged the limiter while this waited hears nothing.
+  // pit-entry traffic this deliberately follows, and re-check at speak time
+  // (`limiter.stillMissingOnPitRoad` in the script) so a driver who engaged
+  // the limiter while this waited hears nothing.
   queueable: true,
-  sequence: [
-    {
-      if: limiterStillMissingOnPitRoad,
-      then: ["pool:pit-limiter-missing"],
-    },
-  ],
 };
 
-export const LIMITER_DROPPED: Scenario = {
+export const LIMITER_DROPPED: ScenarioContract = {
   id: "pit-crew.limiter-dropped",
   when: {
     event: "limiter.dropped",
@@ -146,10 +167,9 @@ export const LIMITER_DROPPED: Scenario = {
   bus: AudioBus.Voice,
   base: "pit-crew",
   family: "limiter",
-  sequence: ["pool:pit-limiter-dropped"],
 };
 
-export const LIMITER_SPEEDING: Scenario = {
+export const LIMITER_SPEEDING: ScenarioContract = {
   id: "pit-crew.limiter-speeding",
   when: {
     event: "limiter.speeding",
@@ -160,17 +180,16 @@ export const LIMITER_SPEEDING: Scenario = {
   bus: AudioBus.Voice,
   base: "pit-crew",
   family: "limiter",
-  sequence: ["pool:pit-limiter-speeding"],
 };
 
-export const PIT_LIMITER_SCENARIOS: readonly Scenario[] = [
+export const PIT_LIMITER_CONTRACTS: readonly ScenarioContract[] = [
   LIMITER_ON_TRACK,
   LIMITER_MISSING,
   LIMITER_DROPPED,
   LIMITER_SPEEDING,
 ];
 
-export const PIT_LIMITER_SCENARIO_IDS: readonly string[] = PIT_LIMITER_SCENARIOS.map((s) => s.id);
+export const PIT_LIMITER_SCENARIO_IDS: readonly string[] = PIT_LIMITER_CONTRACTS.map((c) => c.id);
 
 /** Stable identifier for each user-toggleable pit-limiter callout (issue #1051). */
 export type PitLimiterCalloutId = "on-track" | "missing" | "dropped" | "speeding";
@@ -195,9 +214,20 @@ export const SCENARIO_ID_TO_PIT_LIMITER_ID: Record<string, PitLimiterCalloutId> 
 };
 
 /**
- * Pool names referenced by these scenarios, derived from the single source of
- * truth in `pools.ts` so a rename there flows through without a parallel list.
+ * The clip sources the pit-limiter scripts draw from — every
+ * `pool:pit-limiter/<base>` the bundled script may write. The clip group is
+ * shared with the no-limiter family (the split between the two is by remedy,
+ * not by clip location), so this list names only THIS family's bases. The
+ * completeness tests read it: the bundled voice must ship at least one clip
+ * for each, and the bundled script must reference exactly this set. A
+ * `(group, base)` a script addresses is published — renaming a base is a
+ * rename in every pack's script and every pack's clip folder. Every base is
+ * two-digit-suffixed on disk per the manifest matcher (`<base>(?:-\d{2})?.mp3`);
+ * the three-digit names these clips first shipped with matched nothing.
  */
-export const PIT_LIMITER_POOL_NAMES: readonly string[] = Object.keys(POOL_REGISTRY).filter((name) =>
-  name.startsWith("pit-limiter-"),
-);
+export const PIT_LIMITER_CLIP_SOURCES: readonly { group: "pit-limiter"; base: string }[] = [
+  { group: "pit-limiter", base: "on-track" },
+  { group: "pit-limiter", base: "missing" },
+  { group: "pit-limiter", base: "dropped" },
+  { group: "pit-limiter", base: "speeding" },
+];

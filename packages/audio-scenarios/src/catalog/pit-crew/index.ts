@@ -7,12 +7,18 @@
  *   - All pools defined in `pools.ts`, registered en masse via
  *     `registerPools(engine)` — manifest-derived registry pools plus the
  *     enumerated acknowledgment pools (issue #664)
- *   - Fuel toggle scenarios (on/off via `pitService.toggled`)
- *   - Tire toggle scenarios (every meaningful tire-set selection, including
- *     singles, diagonals, and three-corner combos, via `tireService.changed`)
- *   - Tire compound scenarios (dry/wet via `tireService.compoundChanged`)
- *   - Windshield-tearoff toggle scenarios (on/off via `pitService.toggled`)
- *   - Fast-repair toggle scenarios (on/off via `pitService.toggled`)
+ *   - The twenty-four toggle-confirmation contracts (fuel on/off, windshield
+ *     and fast-repair on/off via `pitService.toggled`; every meaningful
+ *     tire-set selection — singles, diagonals, three-corner combos, the full
+ *     clear — via `tireService.changed`; dry/wet via
+ *     `tireService.compoundChanged`) — scripted since #1065, each an
+ *     `acknowledgment → line` pair in the voice's `callouts.json`
+ *   - Pit-window, pit-box count-in, damage, pit-status (transitions and the
+ *     #951 repeat nags), pit-limiter and no-limiter contracts — all scripted
+ *     since #1065; the repeat nags and the two delayed limiter warnings hang
+ *     their bodies on the `pitStatus.still*` / `limiter.still*` conditions
+ *     registered here, and the no-limiter entry line reads its spoken limit
+ *     through the `pitSpeed.*` vars
  *   - Flag alert contracts (every transition the translator publishes:
  *     yellow scope-aware, yellow.cleared, green, blue, white, red, black,
  *     checkered, debris, meatball, …) — the first family whose wording lives
@@ -23,8 +29,8 @@
  *     `pitService.readbackRequested`) — scripted the same way since #1065,
  *     with the `readback.*` vocabulary reading the queued-services snapshot
  *     at fire time
- *   - Laps-of-fuel-left scenarios (counts 10 → 1 plus the box-this-lap call,
- *     via `fuel.lapsLeft.crossed` — issue #838)
+ *   - Laps-of-fuel-left contracts (counts 10 → 1 plus the box-this-lap call,
+ *     via `fuel.lapsLeft.crossed` — issue #838; scripted since #1065)
  *
  * Nothing in this directory is dormant. The six never-registered files that
  * used to be parked here (welcome, racing tips, pit-approach, pit-exit,
@@ -34,8 +40,8 @@
  * `callouts.json`, never staged as an unregistered file waiting for content.
  *
  * This list named incident alerts and the limiter family as dormant until
- * #1051; both are registered now (see the `INCIDENT_ALERTS` loop and the two
- * limiter families below). Treat prose in this file as a summary that can lag
+ * #1051; both are registered now (see the `INCIDENT_CONTRACTS` loop and the
+ * two limiter families below). Treat prose in this file as a summary that can lag
  * the code, never as evidence that something is unwired — count the
  * references instead.
  *
@@ -68,104 +74,111 @@ import { TrackDirection } from "@iracedeck/sim-events-iracing";
 import type { ScenarioContract } from "../../dsl.js";
 import { getScenarioEngine, isAudioScenariosInitialized } from "../../interpreter.js";
 import {
-  buildCornerNameScenario,
+  buildCornerNameContract,
   type CornerNameCalloutId,
   type CornerNameSnapshotResolver,
-  registerCornerNameVars,
+  registerCornerNameVocabulary,
   SCENARIO_ID_TO_CORNER_NAME_ID,
 } from "./corner-name.js";
-import { DAMAGE_ALERTS } from "./damage-alerts.js";
+import { DAMAGE_CONTRACTS } from "./damage-alerts.js";
 import { FLAG_CONTRACTS, registerFlagVocabulary } from "./flag-alerts.js";
-import { FUEL_LAPS_LEFT_ALERTS } from "./fuel-laps-left.js";
+import { FUEL_LAPS_LEFT_CONTRACTS } from "./fuel-laps-left.js";
 import {
-  buildGapThresholdScenario,
-  buildGapTrendScenario,
+  buildGapThresholdContract,
+  buildGapTrendContract,
   GAP_CALLOUT_DEFAULT_COOLDOWN_MS,
   type GapCalloutId,
   type LiveGapsResolver,
-  registerGapVars,
+  registerGapVocabulary,
   SCENARIO_ID_TO_GAP_ID,
 } from "./gaps.js";
-import { INCIDENT_ALERTS, registerIncidentVars } from "./incidents.js";
+import { INCIDENT_CONTRACTS, registerIncidentVocabulary } from "./incidents.js";
 import {
-  buildLapTimeScenario,
+  buildLapTimeContract,
   type LapCompletedSnapshotResolver,
   type LapTimeCalloutId,
-  registerLapTimeVars,
+  registerLapTimeVocabulary,
   SCENARIO_ID_TO_LAP_TIME_ID,
 } from "./lap-time.js";
 import {
-  NO_LIMITER_SCENARIOS,
+  NO_LIMITER_CONTRACTS,
   type NoLimiterCalloutId,
-  registerNoLimiterVars,
+  registerNoLimiterVocabulary,
   SCENARIO_ID_TO_NO_LIMITER_ID,
 } from "./no-limiter.js";
 import {
-  OPPONENT_FLAG_ALERTS,
+  OPPONENT_FLAG_CONTRACTS,
   OPPONENT_FLAG_OTHERS_SCENARIO_ID,
   type OpponentFlagCalloutId,
   type OpponentFlagLivePositionResolver,
-  registerOpponentFlagVars,
+  registerOpponentFlagVocabulary,
   SCENARIO_ID_TO_OPPONENT_FLAG_ID,
 } from "./opponent-flags.js";
 import {
-  OPPONENT_PIT_ALERTS,
+  OPPONENT_PIT_CONTRACTS,
   type OpponentPitCalloutId,
   type OpponentPitLivePositionResolver,
-  registerOpponentPitVars,
+  registerOpponentPitVocabulary,
   SCENARIO_ID_TO_OPPONENT_PIT_ID,
 } from "./opponent-pit.js";
 import { type OvertakeGateResolver, PERMISSIVE_OVERTAKE_GATE } from "./overtake-gate.js";
 import {
-  buildOvertakeGainedScenario,
-  buildOvertakeLostScenario,
+  buildOvertakeGainedContract,
+  buildOvertakeLostContract,
   type OvertakeCalloutId,
   type OvertakeDriverNameResolver,
-  registerOvertakeVars,
+  registerOvertakeVocabulary,
   SCENARIO_ID_TO_OVERTAKE_ID,
 } from "./overtake.js";
-import { PIT_BOX_ALERTS } from "./pit-box.js";
-import { PIT_LIMITER_SCENARIOS, type PitLimiterCalloutId, SCENARIO_ID_TO_PIT_LIMITER_ID } from "./pit-limiter.js";
+import { PIT_BOX_CONTRACTS } from "./pit-box.js";
+import {
+  PIT_LIMITER_CONTRACTS,
+  type PitLimiterCalloutId,
+  registerPitLimiterVocabulary,
+  SCENARIO_ID_TO_PIT_LIMITER_ID,
+} from "./pit-limiter.js";
 import { registerPitSpeedingEngine } from "./pit-speeding-engine.js";
-import { PIT_STATUS_ALERTS, PIT_STATUS_REPEAT_ALERTS } from "./pit-status.js";
-import { PIT_WINDOW_ALERTS } from "./pit-window.js";
+import { PIT_STATUS_CONTRACTS, PIT_STATUS_REPEAT_CONTRACTS, registerPitStatusVocabulary } from "./pit-status.js";
+import { PIT_WINDOW_CONTRACTS } from "./pit-window.js";
 import { registerPools } from "./pools.js";
 import {
-  buildOvertakeGainedPositionScenario,
-  buildOvertakeLostPositionScenario,
+  buildOvertakeGainedPositionContract,
+  buildOvertakeLostPositionContract,
   type LivePositionResolver,
-  registerPositionReadoutVars,
+  registerPositionReadoutVocabulary,
 } from "./position-readout.js";
 import {
-  buildPositionScenario,
+  buildPositionContract,
   type PositionCalloutId,
-  registerPositionVars,
+  registerPositionVocabulary,
   SCENARIO_ID_TO_POSITION_ID,
 } from "./position.js";
 import {
-  buildQualifyingInvalidationScenario,
+  buildQualifyingInvalidationContract,
   type QualifyingInvalidationCalloutId,
   type QualifyingInvalidationSnapshotResolver,
+  registerQualifyingInvalidationVocabulary,
   SCENARIO_ID_TO_QUALIFYING_INVALIDATION_ID,
 } from "./qualifying-invalidation.js";
 import {
-  buildRaceEndScenario,
+  buildRaceEndContract,
   type RaceEndCalloutId,
   type RaceFinishedSnapshotResolver,
-  registerRaceEndVars,
+  registerRaceEndVocabulary,
   SCENARIO_ID_TO_RACE_END_ID,
 } from "./race-end.js";
 import {
-  buildRaceStartScenario,
+  buildRaceStartContract,
   type RaceStartCalloutId,
   type RaceStartSnapshotResolver,
-  registerRaceStartVars,
+  registerRaceStartVocabulary,
   SCENARIO_ID_TO_RACE_START_ID,
+  type SetupWarningResolver,
 } from "./race-start.js";
 import {
-  buildRaceStatusScenario,
+  buildRaceStatusContract,
   type RaceStatusCalloutId,
-  registerRaceStatusVars,
+  registerRaceStatusVocabulary,
   SCENARIO_ID_TO_RACE_STATUS_ID,
 } from "./race-status.js";
 import { registerRadarEngine } from "./radar-engine.js";
@@ -175,23 +188,17 @@ import {
   registerReadbackVocabulary,
   SCENARIO_ID_TO_PIT_READBACK_ID,
 } from "./readback.js";
-import { ROLLING_START_ALERTS } from "./rolling-start.js";
+import { ROLLING_START_CONTRACTS } from "./rolling-start.js";
 import {
-  buildSessionStartScenario,
-  registerSessionStartVars,
+  buildSessionStartContract,
+  registerSessionStartVocabulary,
   SCENARIO_ID_TO_SESSION_START_ID,
   type SessionStartCalloutId,
 } from "./session-start.js";
 import { registerSpotterEngine, SPOTTER_STILL_THERE_DEFAULT_MS } from "./spotter-engine.js";
-import { START_LIGHT_ALERTS } from "./start-lights.js";
-import {
-  FAST_REPAIR_TOGGLE_SCENARIOS,
-  FUEL_TOGGLE_SCENARIOS,
-  TIRE_COMPOUND_SCENARIOS,
-  TIRE_TOGGLE_SCENARIOS,
-  WINDSHIELD_TOGGLE_SCENARIOS,
-} from "./toggle-confirmations.js";
-import { TRACK_CONDITIONS_ALERTS } from "./track-conditions.js";
+import { START_LIGHT_CONTRACTS } from "./start-lights.js";
+import { TOGGLE_CONFIRMATION_CONTRACTS } from "./toggle-confirmations.js";
+import { TRACK_CONDITIONS_CONTRACTS } from "./track-conditions.js";
 
 /**
  * Stop any in-flight Race Engineer callout (and its looping ambient bed) and
@@ -233,7 +240,7 @@ export {
 export { PIT_LIMITER_CALLOUT_SETTING_KEYS, type PitLimiterCalloutId, PIT_LIMITER_SCENARIO_IDS } from "./pit-limiter.js";
 export { NO_LIMITER_CALLOUT_SETTING_KEYS, type NoLimiterCalloutId, NO_LIMITER_SCENARIO_IDS } from "./no-limiter.js";
 export {
-  buildCornerNameScenario,
+  buildCornerNameContract,
   CORNER_NAME_CALLOUT_SETTING_KEYS,
   type CornerNameCalloutId,
   type CornerNameSnapshot,
@@ -241,95 +248,110 @@ export {
 } from "./corner-name.js";
 export {
   _resetOpponentFlagPending,
-  OPPONENT_FLAG_ALERTS,
   OPPONENT_FLAG_CALLOUT_SETTING_KEYS,
-  OPPONENT_FLAG_POOL_NAMES,
+  OPPONENT_FLAG_CLIP_SOURCES,
+  OPPONENT_FLAG_CONTRACTS,
   OPPONENT_FLAG_SCENARIO_IDS,
   OPPONENT_PENALTY_FLAG_TO_CALLOUT_ID,
   type OpponentFlagCalloutId,
   type OpponentFlagLivePositionResolver,
   type OpponentFlagPending,
-  registerOpponentFlagVars,
+  registerOpponentFlagVocabulary,
 } from "./opponent-flags.js";
 export {
   _resetOpponentPitPending,
-  OPPONENT_PIT_ALERTS,
   OPPONENT_PIT_CALLOUT_SETTING_KEYS,
-  OPPONENT_PIT_POOL_NAMES,
+  OPPONENT_PIT_CLIP_SOURCES,
+  OPPONENT_PIT_CONTRACTS,
   OPPONENT_PIT_SCENARIO_IDS,
   type OpponentPitCalloutId,
   type OpponentPitLivePositionResolver,
   type OpponentPitPending,
-  registerOpponentPitVars,
+  registerOpponentPitVocabulary,
 } from "./opponent-pit.js";
 export {
-  buildLapTimeScenario,
+  buildLapTimeContract,
   LAP_TIME_CALLOUT_SETTING_KEYS,
+  LAP_TIME_SCENARIO_IDS,
   type LapCompletedSnapshot,
   type LapCompletedSnapshotResolver,
   type LapTimeCalloutId,
+  registerLapTimeVocabulary,
   splitLapTime,
 } from "./lap-time.js";
 export {
-  buildPositionScenario,
+  buildPositionContract,
   POSITION_CALLOUT_SETTING_KEYS,
+  POSITION_CLIP_SOURCES,
   type PositionCalloutId,
   positionChangeIsAnnounceable,
   selectEffectivePosition,
 } from "./position.js";
 export {
-  buildQualifyingInvalidationScenario,
+  buildQualifyingInvalidationContract,
   QUALIFYING_INVALIDATION_CALLOUT_SETTING_KEYS,
+  QUALIFYING_INVALIDATION_SCENARIO_IDS,
   type QualifyingInvalidationCalloutId,
   type QualifyingInvalidationSnapshot,
   type QualifyingInvalidationSnapshotResolver,
+  registerQualifyingInvalidationVocabulary,
   resetQualifyingInvalidationLatch,
 } from "./qualifying-invalidation.js";
 export {
-  buildRaceEndScenario,
+  buildRaceEndContract,
   RACE_END_CALLOUT_SETTING_KEYS,
+  RACE_END_SCENARIO_IDS,
   type RaceEndCalloutId,
   type RaceFinishedSnapshot,
   type RaceFinishedSnapshotResolver,
+  registerRaceEndVocabulary,
   selectEffectiveFinalPosition,
 } from "./race-end.js";
 export {
-  buildRaceStartScenario,
+  buildRaceStartContract,
   isRaceSession,
   RACE_START_CALLOUT_SETTING_KEYS,
   RACE_START_DELAY_MS,
+  RACE_START_SCENARIO_IDS,
   type RaceStartCalloutId,
   type RaceStartSnapshotResolver,
+  registerRaceStartVocabulary,
 } from "./race-start.js";
 export {
-  buildRaceStatusScenario,
+  buildRaceStatusContract,
   RACE_STATUS_CALLOUT_SETTING_KEYS,
   RACE_STATUS_LAP_INTERVAL,
+  RACE_STATUS_SCENARIO_IDS,
   type RaceStatusCalloutId,
   raceStatusCadenceHits,
+  registerRaceStatusVocabulary,
 } from "./race-status.js";
 export {
   _resetGapCalloutCooldown,
   _setLastGapEvent,
-  buildGapThresholdScenario,
-  buildGapTrendScenario,
+  buildGapThresholdContract,
+  buildGapTrendContract,
   GAP_CALLOUT_DEFAULT_COOLDOWN_MS,
   GAP_CALLOUT_SETTING_KEYS,
+  GAP_CLIP_SOURCES,
   type GapCalloutId,
   type LiveGapsResolver,
   resolveGapCooldownMs,
   tryClaimGapCallout,
 } from "./gaps.js";
 export {
-  buildSessionStartScenario,
+  buildSessionStartContract,
+  registerSessionStartVocabulary,
   SESSION_START_CALLOUT_SETTING_KEYS,
+  SESSION_START_SCENARIO_IDS,
   type SessionStartCalloutId,
   type SessionStartSnapshotResolver,
 } from "./session-start.js";
 export {
-  buildOvertakeGainedScenario,
-  buildOvertakeLostScenario,
+  buildOvertakeGainedContract,
+  buildOvertakeLostContract,
   OVERTAKE_CALLOUT_SETTING_KEYS,
+  OVERTAKE_CLIP_SOURCES,
   type OvertakeCalloutId,
   type OvertakeDriverNameResolver,
   overtakeGainIsAnnounceable,
@@ -338,8 +360,8 @@ export {
 export {
   _resetPositionReadoutCooldown,
   _setReactionRandom,
-  buildOvertakeGainedPositionScenario,
-  buildOvertakeLostPositionScenario,
+  buildOvertakeGainedPositionContract,
+  buildOvertakeLostPositionContract,
   canAnnouncePosition,
   INTRO_COOLDOWN_MS,
   type LivePosition,
@@ -783,16 +805,18 @@ export const SPOTTER_STILL_THERE_SECONDS_KEY = "spotterStillThereSeconds";
  * Resolver the plugins pass to {@link registerPitCrew}: given the current
  * session kind, returns whether the loaded setup name looks wrong for it (opt-in
  * on AND the session-kind pattern matches). Read live at fire time inside the
- * session-start / race-start `if` clauses (issue #625).
+ * `setupWarning.qualifyingMismatch` / `setupWarning.raceMismatch` conditions
+ * the session-start / race-start scripts branch on (issue #625; scripted
+ * since #1065). Defined beside the race-start vocabulary and re-exported here.
  *
  * Unlike the other callout families, the setup warning is a conditional clause
  * appended to the existing session-start / race-start intros — not its own
- * scenario — so it has no `SCENARIO_ID_TO_*` map and no `*_CALLOUT_SETTING_KEYS`
+ * contract — so it has no `SCENARIO_ID_TO_*` map and no `*_CALLOUT_SETTING_KEYS`
  * map here: the opt-in is read inside this resolver (the plugins compose it from
  * `evaluateSetupWarning`, whose canonical key is `SETUP_WARNING_ENABLED_KEY` in
  * `@iracedeck/deck-core`), not via `wrapCalloutScenario`.
  */
-export type SetupWarningResolver = (kind: "qualifying" | "race") => boolean;
+export type { SetupWarningResolver } from "./race-start.js";
 /**
  * Everything `registerPitCrew` needs beyond the bus. Every key is optional;
  * an omitted or `undefined` key takes its entry from {@link DEFAULT_DEPS}.
@@ -1264,6 +1288,11 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   // rather than to the contracts.
   registerReadbackVocabulary(engine, getReadbackSnapshot);
 
+  // The vocabulary the pit-status repeat nags name (issue #1065) — the five
+  // `pitStatus.still*` speak-time gates, each re-reading live telemetry when
+  // its nag comes to speak.
+  registerPitStatusVocabulary(engine);
+
   // No radio-frame fragments are registered here any more (issue #1064): the
   // engine wraps every scenario in the frame its `frame` field names — the
   // active voice's `radio` frame unless the scenario opts out with
@@ -1276,7 +1305,7 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   const wrapWithMaster = <T extends Gated>(s: T): T =>
     wrapRaceEngineerMasterGate(s, getRaceEngineerMasterEnabled, logger);
 
-  // Each pit-service toggle scenario is wrapped three times. Outermost
+  // Each pit-service toggle contract is wrapped three times. Outermost
   // wrapper applies the master gate (`pitCrewRaceEngineerEnabled`); next
   // applies the user opt-in (`calloutEnabledPitServiceRequests`);
   // innermost applies the engine-internal cooldown
@@ -1291,24 +1320,12 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
       ),
     );
 
-  for (const s of FUEL_TOGGLE_SCENARIOS) {
-    engine.defineScenario(wrapToggle(s));
-  }
-
-  for (const s of TIRE_TOGGLE_SCENARIOS) {
-    engine.defineScenario(wrapToggle(s));
-  }
-
-  for (const s of TIRE_COMPOUND_SCENARIOS) {
-    engine.defineScenario(wrapToggle(s));
-  }
-
-  for (const s of WINDSHIELD_TOGGLE_SCENARIOS) {
-    engine.defineScenario(wrapToggle(s));
-  }
-
-  for (const s of FAST_REPAIR_TOGGLE_SCENARIOS) {
-    engine.defineScenario(wrapToggle(s));
+  // The twenty-four toggle confirmations — contracts since #1065, in their
+  // five groups (fuel, tire set, compound, windshield, fast repair): each is
+  // the active voice's `acknowledgment → line` pair in its `callouts.json`,
+  // addressing `pool:pit-actions/<base>`.
+  for (const c of TOGGLE_CONFIRMATION_CONTRACTS) {
+    engine.defineContract(wrapToggle(c));
   }
 
   // Contracts, not scenarios (issue #1064): the flag family's wording is the
@@ -1321,16 +1338,21 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
     );
   }
 
-  // Pit-limiter family (issue #1051) — cars WITH a limiter. Dormant since it
-  // was written: nothing imported this module, so the translator published
-  // `limiter.missing` / `.dropped` / `.speeding` and `carControl.limiterToggled`
-  // into a bus with no subscriber. Its `pit-limiter-*` pools are registered en
-  // masse by `registerPools(engine)` above.
-  for (const s of PIT_LIMITER_SCENARIOS) {
-    engine.defineScenario(
+  // Pit-limiter family (issue #1051) — cars WITH a limiter. Dormant from the
+  // day it was written until #1051: nothing imported this module, so the
+  // translator published `limiter.missing` / `.dropped` / `.speeding` and
+  // `carControl.limiterToggled` into a bus with no subscriber. Contracts since
+  // #1065: each line is the active voice's (`scenarios["pit-crew.limiter-*"]`,
+  // addressing `pool:pit-limiter/<base>`), and the two delayed warnings'
+  // scripts wrap their body in the `limiter.still*` gates registered here —
+  // before the contracts, as every vocabulary is.
+  registerPitLimiterVocabulary(engine);
+
+  for (const c of PIT_LIMITER_CONTRACTS) {
+    engine.defineContract(
       wrapWithMaster(
         wrapCalloutScenario(
-          s,
+          c,
           SCENARIO_ID_TO_PIT_LIMITER_ID,
           getPitLimiterCalloutEnabled,
           "pit-limiter callout",
@@ -1340,31 +1362,31 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
     );
   }
 
-  // No-limiter family (issue #1051) — the mirror, for cars with NO limiter.
-  // Its vars back the entry callout's optional spoken-limit clause and read the
-  // SAME snapshot resolver the session-start brief uses, so the two can never
-  // disagree about the number.
-  registerNoLimiterVars(engine, getSessionStartSnapshot);
+  // No-limiter family (issue #1051) — the mirror, for cars with NO limiter;
+  // contracts since #1065 (`scenarios["pit-crew.no-limiter-*"]` in the voice's
+  // `callouts.json`). Its `pitSpeed.*` vars back the entry script's optional
+  // spoken-limit clause and read the SAME snapshot resolver the session-start
+  // brief uses, so the two can never disagree about the number.
+  registerNoLimiterVocabulary(engine, getSessionStartSnapshot);
 
-  for (const s of NO_LIMITER_SCENARIOS) {
-    engine.defineScenario(
+  for (const c of NO_LIMITER_CONTRACTS) {
+    engine.defineContract(
       wrapWithMaster(
-        wrapCalloutScenario(s, SCENARIO_ID_TO_NO_LIMITER_ID, getNoLimiterCalloutEnabled, "no-limiter callout", logger),
+        wrapCalloutScenario(c, SCENARIO_ID_TO_NO_LIMITER_ID, getNoLimiterCalloutEnabled, "no-limiter callout", logger),
       ),
     );
   }
 
-  // Start-light family (issue #480). The `start-light-*` pools are already
-  // registered en masse above via `registerPools(engine)` (as the flag pools
-  // were until #1064), so no explicit pool loop is needed here — `START_LIGHT_POOL_NAMES`
-  // exists for the catalog tests to register pools in isolation. Two grouped
-  // opt-ins (`lights`, `countdown`) gate the five scenarios via
-  // `SCENARIO_ID_TO_START_LIGHT_ID`.
-  for (const s of START_LIGHT_ALERTS) {
-    engine.defineScenario(
+  // Start-light contracts (issue #480; scripted since #1065): the two gantry
+  // lines and the four countdown marks are the active voice's business
+  // (`scenarios["pit-crew.start-light-*"]`, addressed as
+  // `pool:start-lights/<base>`). Two grouped opt-ins (`lights`, `countdown`)
+  // gate the six contracts via `SCENARIO_ID_TO_START_LIGHT_ID`.
+  for (const c of START_LIGHT_CONTRACTS) {
+    engine.defineContract(
       wrapWithMaster(
         wrapCalloutScenario(
-          s,
+          c,
           SCENARIO_ID_TO_START_LIGHT_ID,
           getStartLightCalloutEnabled,
           "start-light callout",
@@ -1374,32 +1396,33 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
     );
   }
 
-  // Pit-window family (issue #655). The `pit-window-*` pools are already
-  // registered en masse above via `registerPools(engine)`, so no explicit pool
-  // loop is needed here — `PIT_WINDOW_POOL_NAMES` exists for the catalog tests
-  // to register pools in isolation. Single subject (`pit-open-closed`) gates
-  // both directional scenarios via `SCENARIO_ID_TO_PIT_WINDOW_ID`.
-  for (const s of PIT_WINDOW_ALERTS) {
-    engine.defineScenario(
+  // Pit-window family (issue #655) — contracts since #1065: the two lines are
+  // the active voice's business (`scenarios["pit-crew.pit-window-*"]` in its
+  // `callouts.json`, addressing `pool:pit-window/<base>` directly). Single
+  // subject (`pit-open-closed`) gates both directional contracts via
+  // `SCENARIO_ID_TO_PIT_WINDOW_ID`.
+  for (const c of PIT_WINDOW_CONTRACTS) {
+    engine.defineContract(
       wrapWithMaster(
-        wrapCalloutScenario(s, SCENARIO_ID_TO_PIT_WINDOW_ID, getPitWindowCalloutEnabled, "pit-window callout", logger),
+        wrapCalloutScenario(c, SCENARIO_ID_TO_PIT_WINDOW_ID, getPitWindowCalloutEnabled, "pit-window callout", logger),
       ),
     );
   }
 
-  // Opponent-pit family (issue #622). The `opponent-pit-*` pools are already
-  // registered en masse above via `registerPools(engine)`;
-  // `OPPONENT_PIT_POOL_NAMES` exists for the catalog tests. Two subjects gate
-  // the five scenarios via `SCENARIO_ID_TO_OPPONENT_PIT_ID`; the scenarios
-  // deliberately carry NO `family` so a pit train queues politely instead of
-  // truncating in-flight lines about different cars (see the module header).
-  registerOpponentPitVars(engine, getOpponentPitLivePosition);
+  // Opponent-pit family (issue #622; scripted since #1065). The vocabulary
+  // (the speak-time `opponentPit.number` var) registers before the contracts;
+  // the lines themselves are the voice script's `pool:opponent-pit/<base>`
+  // steps. Two subjects gate the five contracts via
+  // `SCENARIO_ID_TO_OPPONENT_PIT_ID`; the contracts deliberately carry NO
+  // `family` so a pit train queues politely instead of truncating in-flight
+  // lines about different cars (see the module header).
+  registerOpponentPitVocabulary(engine, getOpponentPitLivePosition);
 
-  for (const s of OPPONENT_PIT_ALERTS) {
-    engine.defineScenario(
+  for (const c of OPPONENT_PIT_CONTRACTS) {
+    engine.defineContract(
       wrapWithMaster(
         wrapCalloutScenario(
-          s,
+          c,
           SCENARIO_ID_TO_OPPONENT_PIT_ID,
           getOpponentPitCalloutEnabled,
           "opponent-pit callout",
@@ -1409,25 +1432,27 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
     );
   }
 
-  // Opponent-flag family (issue #936). One scenario per flag × relation so
-  // every line is individually harness-firable and the safety-relevant
-  // track-ahead lines carry SAFETY weight; both diff triggers ride the same
-  // scenarios. Family-less + queueable for the same reason as opponent-pit:
-  // the lines describe DIFFERENT cars — queue, never chop. The aggregate
-  // (`opponent-flag-others`) registers master-gated but NOT per-flag-gated:
-  // the translator diff enforces the per-flag opt-ins before anything feeds
-  // the aggregation, so the aggregate by construction only describes enabled
-  // flags — gating it on one subject's toggle would let a disabled subject
-  // silence it (#936 review).
-  registerOpponentFlagVars(engine, getOpponentFlagLivePosition);
+  // Opponent-flag family (issue #936; scripted since #1065). One contract per
+  // flag × relation so every line is individually harness-firable and the
+  // safety-relevant track-ahead lines carry SAFETY weight; both diff triggers
+  // ride the same contracts, and the lines themselves are the voice script's
+  // `pool:opponent-flags/<base>` steps (the numbered ahead lines splice the
+  // `opponentFlag.number` var, registered first). Family-less + queueable for
+  // the same reason as opponent-pit: the lines describe DIFFERENT cars —
+  // queue, never chop. The aggregate (`opponent-flag-others`) registers
+  // master-gated but NOT per-flag-gated: the translator diff enforces the
+  // per-flag opt-ins before anything feeds the aggregation, so the aggregate
+  // by construction only describes enabled flags — gating it on one subject's
+  // toggle would let a disabled subject silence it (#936 review).
+  registerOpponentFlagVocabulary(engine, getOpponentFlagLivePosition);
 
-  for (const s of OPPONENT_FLAG_ALERTS) {
-    engine.defineScenario(
-      s.id === OPPONENT_FLAG_OTHERS_SCENARIO_ID
-        ? wrapWithMaster(s)
+  for (const c of OPPONENT_FLAG_CONTRACTS) {
+    engine.defineContract(
+      c.id === OPPONENT_FLAG_OTHERS_SCENARIO_ID
+        ? wrapWithMaster(c)
         : wrapWithMaster(
             wrapCalloutScenario(
-              s,
+              c,
               SCENARIO_ID_TO_OPPONENT_FLAG_ID,
               getOpponentFlagCalloutEnabled,
               "opponent-flag callout",
@@ -1437,16 +1462,16 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
     );
   }
 
-  // Rolling-start family (issue #660). The `rolling-start-*` pool is already
-  // registered en masse above via `registerPools(engine)`, so no explicit pool
-  // loop is needed here — `ROLLING_START_POOL_NAMES` exists for the catalog
-  // tests to register pools in isolation. Single subject (`pace-car`) gates the
-  // scenario via `SCENARIO_ID_TO_ROLLING_START_ID`.
-  for (const s of ROLLING_START_ALERTS) {
-    engine.defineScenario(
+  // Rolling-start contract (issue #660; scripted since #1065): the pace-car
+  // line is the active voice's business
+  // (`scenarios["pit-crew.rolling-start-pace-car"]`, addressed as
+  // `pool:rolling-start/pace-car-moving`). Single subject (`pace-car`) gates
+  // the contract via `SCENARIO_ID_TO_ROLLING_START_ID`.
+  for (const c of ROLLING_START_CONTRACTS) {
+    engine.defineContract(
       wrapWithMaster(
         wrapCalloutScenario(
-          s,
+          c,
           SCENARIO_ID_TO_ROLLING_START_ID,
           getRollingStartCalloutEnabled,
           "rolling-start callout",
@@ -1468,31 +1493,43 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
     );
   }
 
-  for (const s of DAMAGE_ALERTS) {
-    engine.defineScenario(
+  // Damage heads-up (issue #489) — a contract since #1065: the line is the
+  // active voice's (`scenarios["pit-crew.damage-repair-needed"]`, addressing
+  // `pool:damage/repair-needed`).
+  for (const c of DAMAGE_CONTRACTS) {
+    engine.defineContract(
       wrapWithMaster(
-        wrapCalloutScenario(s, SCENARIO_ID_TO_DAMAGE_ID, getDamageCalloutEnabled, "damage callout", logger),
+        wrapCalloutScenario(c, SCENARIO_ID_TO_DAMAGE_ID, getDamageCalloutEnabled, "damage callout", logger),
       ),
     );
   }
 
-  // The repeat nags (issue #951) ride the SAME per-status opt-ins as their
-  // transition siblings — they're a modifier of one callout, not a new
-  // subject (the #572 precedent), so `SCENARIO_ID_TO_PIT_STATUS_ID` maps both
-  // spellings of each id onto the same `PitStatusCalloutId`.
-  for (const s of [...PIT_STATUS_ALERTS, ...PIT_STATUS_REPEAT_ALERTS]) {
-    engine.defineScenario(
+  // Pit-status contracts (issue #479; scripted since #1065): each line is the
+  // active voice's (`scenarios["pit-crew.pit-status-*"]`, addressing
+  // `pool:pit-status/<id>`), and each repeat nag's script wraps its body in
+  // the `pitStatus.still*` gate registered above. The repeat nags (issue
+  // #951) ride the SAME per-status opt-ins as their transition siblings —
+  // they're a modifier of one callout, not a new subject (the #572
+  // precedent), so `SCENARIO_ID_TO_PIT_STATUS_ID` maps both spellings of each
+  // id onto the same `PitStatusCalloutId`.
+  for (const c of [...PIT_STATUS_CONTRACTS, ...PIT_STATUS_REPEAT_CONTRACTS]) {
+    engine.defineContract(
       wrapWithMaster(
-        wrapCalloutScenario(s, SCENARIO_ID_TO_PIT_STATUS_ID, getPitStatusCalloutEnabled, "pit-status callout", logger),
+        wrapCalloutScenario(c, SCENARIO_ID_TO_PIT_STATUS_ID, getPitStatusCalloutEnabled, "pit-status callout", logger),
       ),
     );
   }
 
-  for (const s of TRACK_CONDITIONS_ALERTS) {
-    engine.defineScenario(
+  // Track-conditions contracts (issue #526; scripted since #1065): each
+  // direction × target line is the active voice's business
+  // (`scenarios["pit-crew.track-conditions-*"]`), addressed as
+  // `pool:track-conditions/<direction>-<slug>`; the contract keeps the
+  // direction / target filter and the family preemption.
+  for (const c of TRACK_CONDITIONS_CONTRACTS) {
+    engine.defineContract(
       wrapWithMaster(
         wrapCalloutScenario(
-          s,
+          c,
           SCENARIO_ID_TO_TRACK_CONDITIONS_ID,
           getTrackConditionsCalloutEnabled,
           "track-conditions callout",
@@ -1502,59 +1539,65 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
     );
   }
 
-  // Pit-box count-in (issue #600). Six per-mark scenarios all gated by the one
-  // `count-in` opt-in via `SCENARIO_ID_TO_PIT_BOX_ID`. No registration-order
-  // concern — `pitBox.countdown` has no other subscribers.
-  for (const s of PIT_BOX_ALERTS) {
-    engine.defineScenario(
+  // Pit-box count-in (issue #600) — contracts since #1065: each mark's clip is
+  // the active voice's business (`scenarios["pit-crew.pit-box-*"]`, addressing
+  // `pool:pit-box/<mark>`); the terse no-frame delivery stays on the contract.
+  // Six per-mark contracts all gated by the one `count-in` opt-in via
+  // `SCENARIO_ID_TO_PIT_BOX_ID`. No registration-order concern —
+  // `pitBox.countdown` has no other subscribers.
+  for (const c of PIT_BOX_CONTRACTS) {
+    engine.defineContract(
       wrapWithMaster(
-        wrapCalloutScenario(s, SCENARIO_ID_TO_PIT_BOX_ID, getPitBoxCalloutEnabled, "pit-box callout", logger),
+        wrapCalloutScenario(c, SCENARIO_ID_TO_PIT_BOX_ID, getPitBoxCalloutEnabled, "pit-box callout", logger),
       ),
     );
   }
 
-  // Laps-of-fuel-left callouts (issue #838). Eleven per-count scenarios plus
-  // the enough-fuel confirmation (issue #880), one opt-in each via
-  // `SCENARIO_ID_TO_FUEL_ID` — the fuel-laps-left pools are already
-  // registered en masse above via `registerPools(engine)`;
-  // `FUEL_LAPS_LEFT_POOL_NAMES` exists for the catalog tests. No
-  // registration-order concern — `fuel.lapsLeft.crossed` and
-  // `fuel.lapsLeft.raceCovered` have no other subscribers.
-  for (const s of FUEL_LAPS_LEFT_ALERTS) {
-    engine.defineScenario(
-      wrapWithMaster(wrapCalloutScenario(s, SCENARIO_ID_TO_FUEL_ID, getFuelCalloutEnabled, "fuel callout", logger)),
+  // Laps-of-fuel-left contracts (issue #838; scripted since #1065). Eleven
+  // per-count contracts plus the enough-fuel confirmation (issue #880), one
+  // opt-in each via `SCENARIO_ID_TO_FUEL_ID`; each line is the active voice's
+  // business (`scenarios["pit-crew.fuel-laps-left-*"]`, addressed as
+  // `pool:fuel/<base>`). No registration-order concern —
+  // `fuel.lapsLeft.crossed` and `fuel.lapsLeft.raceCovered` have no other
+  // subscribers.
+  for (const c of FUEL_LAPS_LEFT_CONTRACTS) {
+    engine.defineContract(
+      wrapWithMaster(wrapCalloutScenario(c, SCENARIO_ID_TO_FUEL_ID, getFuelCalloutEnabled, "fuel callout", logger)),
     );
   }
 
-  // Qualifying lap-invalidation callout (issue #567). MUST be registered
-  // BEFORE the incident scenarios below — both gate on `incident.occurred`,
-  // share the Voice bus, and run at the default `WEIGHT.NORMAL` band in
-  // different families. The scenario engine dispatches subscribers in
-  // registration order, and a second equal-weight scenario hitting a busy bus
-  // is silently dropped (see `attemptFire` in interpreter.ts). The shape we want:
+  // Qualifying lap-invalidation contract (issue #567; scripted since #1065).
+  // MUST be registered BEFORE the incident contracts below — both gate on
+  // `incident.occurred`, share the Voice bus, and run at the default
+  // `WEIGHT.NORMAL` band in different families. The scenario engine
+  // dispatches subscribers in registration order, and a second equal-weight
+  // fire hitting a busy bus is silently dropped (see `attemptFire` in
+  // interpreter.ts). The shape we want:
   //
-  //   Qualifying + valid flying lap → qualifying scenario grabs the bus,
-  //                                     incident scenario drops (no double-up).
-  //   Qualifying + out-lap / post-pit lap → qualifying scenario's `where:`
+  //   Qualifying + valid flying lap → qualifying contract grabs the bus,
+  //                                     incident contract drops (no double-up).
+  //   Qualifying + out-lap / post-pit lap → qualifying contract's `where:`
   //                                     returns false (no fire, no bus grab),
-  //                                     incident scenario fires with generic
+  //                                     incident contract fires with generic
   //                                     "mind the kerbs" coaching.
-  //   Race / practice / unknown        → qualifying scenario's `where:`
+  //   Race / practice / unknown        → qualifying contract's `where:`
   //                                     returns false (sessionType mismatch),
-  //                                     incident scenario fires normally.
+  //                                     incident contract fires normally.
   //
-  // Registration order is the SOLE mechanism here — incident.ts deliberately
+  // Registration order is the SOLE mechanism here — incidents.ts deliberately
   // does NOT gate on session type, because doing so would silence incidents
-  // on out-laps too (where the qualifying scenario also stays silent).
+  // on out-laps too (where the qualifying contract also stays silent).
   //
   // The per-lap latch is module-scope inside qualifying-invalidation.ts and
-  // rolls over naturally as `(sessionNum, lapCompleted)` advances. No
-  // `defineVar` call — every tail branch is a direct pool lookup keyed on
-  // `lapsRemaining`.
-  engine.defineScenario(
+  // rolls over naturally as `(sessionNum, lapCompleted)` advances. The tail
+  // is the `qualifying.*` vocabulary: the speakable gate as a condition and
+  // the laps-left lookup as a case, both reading the snapshot at expansion
+  // time.
+  registerQualifyingInvalidationVocabulary(engine, getQualifyingInvalidationSnapshot);
+  engine.defineContract(
     wrapWithMaster(
       wrapCalloutScenario(
-        buildQualifyingInvalidationScenario(getQualifyingInvalidationSnapshot),
+        buildQualifyingInvalidationContract(getQualifyingInvalidationSnapshot),
         SCENARIO_ID_TO_QUALIFYING_INVALIDATION_ID,
         getQualifyingInvalidationCalloutEnabled,
         "qualifying lap-invalidation callout",
@@ -1563,26 +1606,32 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
     ),
   );
 
-  // Incident scenarios read the `incident.points` count-clause var (issue
-  // #922) — register-vars-before-scenario ordering, same as session-start.
-  registerIncidentVars(engine);
+  // Incident contracts (scripted since #1065): the script's count clause
+  // reads the `incident.points` var (issue #922) — vocabulary-before-contract
+  // ordering, same as session-start. This loop stays AFTER the qualifying
+  // invalidation registration above: both subscribe to `incident.occurred`,
+  // and the order is what lets the qualifying line win the bus (see the
+  // comment block above).
+  registerIncidentVocabulary(engine);
 
-  for (const s of INCIDENT_ALERTS) {
-    engine.defineScenario(
+  for (const c of INCIDENT_CONTRACTS) {
+    engine.defineContract(
       wrapWithMaster(
-        wrapCalloutScenario(s, SCENARIO_ID_TO_INCIDENT_ID, getIncidentCalloutEnabled, "incident callout", logger),
+        wrapCalloutScenario(c, SCENARIO_ID_TO_INCIDENT_ID, getIncidentCalloutEnabled, "incident callout", logger),
       ),
     );
   }
 
-  // Session-start readout (issue #542). The scenario's `var` steps must be
-  // registered before `defineScenario` runs — load-time validation rejects a
-  // `{ var }` step whose name isn't registered yet.
-  registerSessionStartVars(engine, getSessionStartSnapshot);
-  engine.defineScenario(
+  // Session-start readout (issue #542; scripted since #1065). The
+  // `sessionStart.*` vars and the `setupWarning.qualifyingMismatch` condition
+  // read their resolvers at expansion time; the contract's `where:` reads the
+  // snapshot to refuse a fire before telemetry has settled and to leave race
+  // sessions to race-start.
+  registerSessionStartVocabulary(engine, getSessionStartSnapshot, getSetupWarningMismatch);
+  engine.defineContract(
     wrapWithMaster(
       wrapCalloutScenario(
-        buildSessionStartScenario(getSessionStartSnapshot, getSetupWarningMismatch),
+        buildSessionStartContract(getSessionStartSnapshot),
         SCENARIO_ID_TO_SESSION_START_ID,
         getSessionStartCalloutEnabled,
         "session-start callout",
@@ -1591,16 +1640,18 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
     ),
   );
 
-  // Lap-time best-lap callout (issue #555). Same register-vars-before-scenario
-  // ordering as session-start.
-  registerLapTimeVars(engine, getLapCompletedSnapshot);
-  engine.defineScenario(
+  // Lap-time best-lap contract (issue #555; scripted since #1065). The
+  // readout's four components and the minute gate are the `lapTime.*`
+  // vocabulary, reading the snapshot at expansion time; the contract keeps
+  // only the race-finished gate its `where:` reads.
+  registerLapTimeVocabulary(engine, getLapCompletedSnapshot);
+  engine.defineContract(
     wrapWithMaster(
       wrapCalloutScenario(
         // Pass the race-finished resolver so the best-lap callout is
         // suppressed on the final lap of a race (issue #569) — race-end
         // takes the floor.
-        buildLapTimeScenario(getLapCompletedSnapshot, getRaceFinishedFired),
+        buildLapTimeContract(getRaceFinishedFired),
         SCENARIO_ID_TO_LAP_TIME_ID,
         getLapTimeCalloutEnabled,
         "lap-time callout",
@@ -1609,13 +1660,14 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
     ),
   );
 
-  // Corner-name callout (issue #888). Register-vars-before-scenario ordering,
-  // same as session-start / lap-time.
-  registerCornerNameVars(engine, getCornerNameSnapshot);
-  engine.defineScenario(
+  // Corner-name callout (issue #888; scripted since #1065). The vocabulary
+  // (the `cornerName.clip` var) registers before the contract, same as
+  // session-start / lap-time; the name itself is the voice script's one step.
+  registerCornerNameVocabulary(engine, getCornerNameSnapshot);
+  engine.defineContract(
     wrapWithMaster(
       wrapCalloutScenario(
-        buildCornerNameScenario(getCornerNameSnapshot),
+        buildCornerNameContract(getCornerNameSnapshot),
         SCENARIO_ID_TO_CORNER_NAME_ID,
         getCornerNameCalloutEnabled,
         "corner-name callout",
@@ -1624,25 +1676,27 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
     ),
   );
 
-  // Position-change callout (issue #566). Ordering with the lap-time scenario
-  // above is enforced by the position scenario's `weight: WEIGHT.CHATTER` +
-  // `queueable: true`, NOT by registration order — the engine drops (not queues)
-  // cross-family equal-weight (`WEIGHT.NORMAL`) scenarios when the bus is busy,
-  // but defers and replays the lower-weight queueable position fire once the bus
-  // goes idle (see `position.ts` header).
+  // Position-change callout (issue #566; scripted since #1065). Ordering with
+  // the lap-time scenario above is enforced by the position contract's
+  // `weight: WEIGHT.CHATTER` + `queueable: true`, NOT by registration order —
+  // the engine drops (not queues) cross-family equal-weight (`WEIGHT.NORMAL`)
+  // fires when the bus is busy, but defers and replays the lower-weight
+  // queueable position fire once the bus goes idle (see `position.ts` header).
   // The change-DETECTION (improved/worsened/first-fix) reads the frozen
-  // `lap.completed` snapshot; in race the spoken NUMBER reads LIVE telemetry
-  // at speak-time via `getLivePosition` (issue #574) and shares the position
-  // cooldown so an overtake readout + a lap readout seconds apart don't double.
-  registerPositionVars(engine, getLapCompletedSnapshot, getLivePosition);
-  engine.defineScenario(
+  // `lap.completed` snapshot in `where:`; the readout's SHAPE and intro read
+  // the same snapshot through the `position.*` vocabulary, and in race the
+  // spoken NUMBER reads LIVE telemetry at speak-time via `getLivePosition`
+  // (issue #574) and shares the position cooldown so an overtake readout + a
+  // lap readout seconds apart don't double.
+  registerPositionVocabulary(engine, getLapCompletedSnapshot, getLivePosition);
+  engine.defineContract(
     wrapWithMaster(
       wrapCalloutScenario(
         // Pass the race-finished resolver so position-change is suppressed on
         // the final lap of a race (issue #569) — race-end takes the floor, and
         // without the gate position-change would queue "We're currently P[n]"
         // behind race-end and play it after the result speech.
-        buildPositionScenario(getLapCompletedSnapshot, getRaceFinishedFired, getLivePosition),
+        buildPositionContract(getRaceFinishedFired, getLivePosition),
         SCENARIO_ID_TO_POSITION_ID,
         getPositionCalloutEnabled,
         "position callout",
@@ -1651,15 +1705,16 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
     ),
   );
 
-  // Race-status periodic position update (issue #569). The cadence DECISION
-  // reads the frozen `lap.completed` snapshot; in race the spoken number +
-  // leader detection read LIVE telemetry at speak-time (issue #574) and share
-  // the position cooldown.
-  registerRaceStatusVars(engine, getLivePosition);
-  engine.defineScenario(
+  // Race-status periodic position update (issue #569; scripted since #1065).
+  // The cadence DECISION reads the frozen `lap.completed` snapshot in the
+  // contract's `where:`; the spoken number and the leader condition are the
+  // `raceStatus.*` vocabulary, reading LIVE telemetry at speak-time (issue
+  // #574) and sharing the position cooldown.
+  registerRaceStatusVocabulary(engine, getLivePosition);
+  engine.defineContract(
     wrapWithMaster(
       wrapCalloutScenario(
-        buildRaceStatusScenario(getLapCompletedSnapshot, getRaceFinishedFired, getLivePosition),
+        buildRaceStatusContract(getRaceFinishedFired, getLivePosition),
         SCENARIO_ID_TO_RACE_STATUS_ID,
         getRaceStatusCalloutEnabled,
         "race-status callout",
@@ -1668,29 +1723,33 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
     ),
   );
 
-  // Gap callouts (issue #933): sustained trend flips + threshold crossings
-  // against the class-standings neighbors. The decision reads the event
-  // payload; the spoken gap number reads LIVE gaps at speak time. Both
-  // scenarios share one cooldown, claimed as the last where: gate.
-  registerGapVars(engine, getLiveGaps);
+  // Gap callouts (issue #933; scripted since #1065): sustained trend flips +
+  // threshold crossings against the class-standings neighbors. The decision
+  // reads the event payload; the spoken line and the live gap number are the
+  // voice script's `gap.*` vars, read LIVE at speak time. Both contracts
+  // share one cooldown, claimed as the last where: gate.
+  registerGapVocabulary(engine, getLiveGaps);
 
-  for (const s of [
-    buildGapTrendScenario(getRaceFinishedFired, getOvertakeGate, getGapCooldownMs),
-    buildGapThresholdScenario(getRaceFinishedFired, getOvertakeGate, getGapCooldownMs),
+  for (const c of [
+    buildGapTrendContract(getRaceFinishedFired, getOvertakeGate, getGapCooldownMs),
+    buildGapThresholdContract(getRaceFinishedFired, getOvertakeGate, getGapCooldownMs),
   ]) {
-    engine.defineScenario(
-      wrapWithMaster(wrapCalloutScenario(s, SCENARIO_ID_TO_GAP_ID, getGapCalloutEnabled, "gap callout", logger)),
+    engine.defineContract(
+      wrapWithMaster(wrapCalloutScenario(c, SCENARIO_ID_TO_GAP_ID, getGapCalloutEnabled, "gap callout", logger)),
     );
   }
 
-  // Race-end final-result callout (issue #569). Snapshot resolver is owned by
-  // the plugin (caches `race.finished` payload via event-bus subscription,
-  // composes with the Property Inspector driver-name pick).
-  registerRaceEndVars(engine, getRaceFinishedSnapshot);
-  engine.defineScenario(
+  // Race-end final-result contract (issue #569; scripted since #1065). The
+  // snapshot resolver is owned by the plugin (caches `race.finished` payload
+  // via event-bus subscription, composes with the Property Inspector
+  // driver-name pick); the `raceEnd.*` vars and the `raceEnd.result` case
+  // read it at expansion time, the contract's `where:` reads it to refuse a
+  // fire with no speakable position.
+  registerRaceEndVocabulary(engine, getRaceFinishedSnapshot);
+  engine.defineContract(
     wrapWithMaster(
       wrapCalloutScenario(
-        buildRaceEndScenario(getRaceFinishedSnapshot),
+        buildRaceEndContract(getRaceFinishedSnapshot),
         SCENARIO_ID_TO_RACE_END_ID,
         getRaceEndCalloutEnabled,
         "race-end callout",
@@ -1699,17 +1758,20 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
     ),
   );
 
-  // Race-start greeting + qualifying-position readout (issue #568). Fires on
-  // `session.changed` in race sessions only; the session-start scenario's
-  // `where:` already skips race sessions so the two never double-greet.
-  // Snapshot resolver is owned by the plugin (composes
+  // Race-start greeting + qualifying-position readout (issue #568; scripted
+  // since #1065). Fires on `session.changed` in race sessions only; the
+  // session-start contract's `where:` already skips race sessions so the two
+  // never double-greet. Snapshot resolver is owned by the plugin (composes
   // `getRaceStartConditions()` from `@iracedeck/sim-events-iracing` with the
-  // Property Inspector driver-name pick).
-  registerRaceStartVars(engine, getRaceStartSnapshot);
-  engine.defineScenario(
+  // Property Inspector driver-name pick); the `raceStart.*` vars, the
+  // grid-position case and the `setupWarning.raceMismatch` condition read
+  // their resolvers at expansion time, the contract's `where:` reads the
+  // snapshot to refuse a fire before telemetry has settled.
+  registerRaceStartVocabulary(engine, getRaceStartSnapshot, getSetupWarningMismatch);
+  engine.defineContract(
     wrapWithMaster(
       wrapCalloutScenario(
-        buildRaceStartScenario(getRaceStartSnapshot, logger, getSetupWarningMismatch),
+        buildRaceStartContract(getRaceStartSnapshot, logger),
         SCENARIO_ID_TO_RACE_START_ID,
         getRaceStartCalloutEnabled,
         "race-start callout",
@@ -1718,36 +1780,40 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
     ),
   );
 
-  // Overtake callouts (issue #574). Each direction is TWO scenarios: a
-  // reaction (immediate, `family: "overtake"`) and a position readout
-  // (`weight: WEIGHT.CHATTER` + `queueable: true`, `family: "position-readout"`)
-  // that defers behind the reaction and speaks "We're currently P[n]" from LIVE telemetry at
-  // speak-time. Both share the same per-direction opt-in via
-  // `SCENARIO_ID_TO_OVERTAKE_ID`, and all are suppressed once the race is over
-  // (`getRaceFinishedFired`). The driver-name resolver (loss reaction) is
-  // composed in the plugin from `resolveActiveDriverName(driverNames, "driver")`.
-  registerOvertakeVars(engine, getOvertakeDriverName);
-  registerPositionReadoutVars(engine, getLivePosition);
+  // Overtake callouts (issue #574; scripted since #1065). Each direction is
+  // TWO contracts: a reaction (immediate, `family: "overtake"`) and a position
+  // readout (`weight: WEIGHT.CHATTER` + `queueable: true`,
+  // `family: "position-readout"`) that defers behind the reaction and speaks
+  // "We're currently P[n]" from LIVE telemetry at speak-time. Both share the
+  // same per-direction opt-in via `SCENARIO_ID_TO_OVERTAKE_ID`, and all are
+  // suppressed once the race is over (`getRaceFinishedFired`). The lines are
+  // the voice script's: the gained reaction branches on the
+  // `overtake.gainedReaction` case, the lost reaction opens with the
+  // `overtake.lost.comeOn` var (the driver-name resolver is composed in the
+  // plugin from `resolveActiveDriverName(driverNames, "driver")`), and the
+  // readouts speak the `positionReadout.*` vars.
+  registerOvertakeVocabulary(engine, getOvertakeDriverName);
+  registerPositionReadoutVocabulary(engine, getLivePosition);
 
-  for (const s of [
-    buildOvertakeGainedScenario(getRaceFinishedFired, getOvertakeGate),
-    buildOvertakeLostScenario(getRaceFinishedFired, getOvertakeGate),
+  for (const c of [
+    buildOvertakeGainedContract(getRaceFinishedFired, getOvertakeGate),
+    buildOvertakeLostContract(getRaceFinishedFired, getOvertakeGate),
   ]) {
-    engine.defineScenario(
+    engine.defineContract(
       wrapWithMaster(
-        wrapCalloutScenario(s, SCENARIO_ID_TO_OVERTAKE_ID, getOvertakeCalloutEnabled, "overtake callout", logger),
+        wrapCalloutScenario(c, SCENARIO_ID_TO_OVERTAKE_ID, getOvertakeCalloutEnabled, "overtake callout", logger),
       ),
     );
   }
 
-  for (const s of [
-    buildOvertakeGainedPositionScenario(getLivePosition, getRaceFinishedFired, getOvertakeGate),
-    buildOvertakeLostPositionScenario(getLivePosition, getRaceFinishedFired, getOvertakeGate),
+  for (const c of [
+    buildOvertakeGainedPositionContract(getLivePosition, getRaceFinishedFired, getOvertakeGate),
+    buildOvertakeLostPositionContract(getLivePosition, getRaceFinishedFired, getOvertakeGate),
   ]) {
-    engine.defineScenario(
+    engine.defineContract(
       wrapWithMaster(
         wrapCalloutScenario(
-          s,
+          c,
           SCENARIO_ID_TO_OVERTAKE_ID,
           getOvertakeCalloutEnabled,
           "overtake position readout",

@@ -8646,6 +8646,841 @@
           "else": ["@readback-body"]
         }
       ]
+    },
+    "pit-crew.pit-window-opened": {
+      "comment": "Pit road has opened for the driver — one line, above ordinary chatter but below a flag, replayed after a busier line finishes rather than dropped because the window matters to strategy.",
+      "test": "Harness → Pit Window → Pits opened. In-sim: the pits open in a race — after the field takes the green, or when a caution's pit window opens.",
+      "sequence": ["pool:pit-window/opened"]
+    },
+    "pit-crew.pit-window-closed": {
+      "comment": "Pit road has closed for the driver — the counterpart line. A rapid open/closed flurry replaces the stale in-flight line rather than stacking both.",
+      "test": "Harness → Pit Window → Pits closed. In-sim: the pits close in a race — when the caution comes out on an oval, or in the final laps.",
+      "sequence": ["pool:pit-window/closed"]
+    },
+    "pit-crew.track-conditions-worsening-mostly-dry": {
+      "comment": "The track has gone from dry to mostly dry — the first hint of moisture, worth a heads-up before grip goes. Only the worsening direction takes this line; a rapid further step replaces it mid-sentence.",
+      "test": "Harness → Scenario Shortcuts → Track Conditions — Worsening → Mostly Dry. In-sim: rain starts falling on a dry track in a dynamic-weather session.",
+      "sequence": ["pool:track-conditions/worsening-mostly-dry"]
+    },
+    "pit-crew.track-conditions-worsening-very-lightly-wet": {
+      "comment": "The track is now very lightly wet and getting wetter — a damp surface with real grip still available.",
+      "test": "Harness → Scenario Shortcuts → Track Conditions — Worsening → Very Lightly Wet. In-sim: light rain keeps falling on a mostly dry track.",
+      "sequence": ["pool:track-conditions/worsening-very-lightly-wet"]
+    },
+    "pit-crew.track-conditions-worsening-lightly-wet": {
+      "comment": "The track is now lightly wet and getting wetter — the point where wet tyres start to be a question.",
+      "test": "Harness → Scenario Shortcuts → Track Conditions — Worsening → Lightly Wet. In-sim: steady rain on a very lightly wet track.",
+      "sequence": ["pool:track-conditions/worsening-lightly-wet"]
+    },
+    "pit-crew.track-conditions-worsening-moderately-wet": {
+      "comment": "The track is now moderately wet and getting wetter — standing water is forming and the racing line is losing its grip.",
+      "test": "Harness → Scenario Shortcuts → Track Conditions — Worsening → Moderately Wet. In-sim: heavier rain on a lightly wet track.",
+      "sequence": ["pool:track-conditions/worsening-moderately-wet"]
+    },
+    "pit-crew.track-conditions-worsening-very-wet": {
+      "comment": "The track is now very wet and getting wetter — aquaplaning territory, a warning to back off.",
+      "test": "Harness → Scenario Shortcuts → Track Conditions — Worsening → Very Wet. In-sim: heavy rain on a moderately wet track.",
+      "sequence": ["pool:track-conditions/worsening-very-wet"]
+    },
+    "pit-crew.track-conditions-worsening-extremely-wet": {
+      "comment": "The track is now extremely wet — the wettest state the sim reports, and the most urgent of the worsening lines.",
+      "test": "Harness → Scenario Shortcuts → Track Conditions — Worsening → Extremely Wet. In-sim: a downpour on a very wet track.",
+      "sequence": ["pool:track-conditions/worsening-extremely-wet"]
+    },
+    "pit-crew.track-conditions-drying-dry": {
+      "comment": "The track is fully dry again — the end of a drying trend, and the driest state the sim reports. Only the drying direction takes this line.",
+      "test": "Harness → Scenario Shortcuts → Track Conditions — Drying → Dry. In-sim: a mostly dry track finishes drying.",
+      "sequence": ["pool:track-conditions/drying-dry"]
+    },
+    "pit-crew.track-conditions-drying-mostly-dry": {
+      "comment": "The track has dried back to mostly dry — damp patches off the line, dry grip on it.",
+      "test": "Harness → Scenario Shortcuts → Track Conditions — Drying → Mostly Dry. In-sim: a very lightly wet track keeps drying.",
+      "sequence": ["pool:track-conditions/drying-mostly-dry"]
+    },
+    "pit-crew.track-conditions-drying-very-lightly-wet": {
+      "comment": "The track has dried back to very lightly wet — nearly there, a dry line is forming.",
+      "test": "Harness → Scenario Shortcuts → Track Conditions — Drying → Very Lightly Wet. In-sim: a lightly wet track keeps drying.",
+      "sequence": ["pool:track-conditions/drying-very-lightly-wet"]
+    },
+    "pit-crew.track-conditions-drying-lightly-wet": {
+      "comment": "The track has dried back to lightly wet — the crossover window where slicks come back into the conversation.",
+      "test": "Harness → Scenario Shortcuts → Track Conditions — Drying → Lightly Wet. In-sim: a moderately wet track keeps drying.",
+      "sequence": ["pool:track-conditions/drying-lightly-wet"]
+    },
+    "pit-crew.track-conditions-drying-moderately-wet": {
+      "comment": "The track has dried back to moderately wet — standing water is draining and a line is starting to appear.",
+      "test": "Harness → Scenario Shortcuts → Track Conditions — Drying → Moderately Wet. In-sim: a very wet track drying after the rain stops.",
+      "sequence": ["pool:track-conditions/drying-moderately-wet"]
+    },
+    "pit-crew.track-conditions-drying-very-wet": {
+      "comment": "The track has dried back to very wet from extremely wet — the first step of a drying trend.",
+      "test": "Harness → Scenario Shortcuts → Track Conditions — Drying → Very Wet. In-sim: the rain eases on an extremely wet track.",
+      "sequence": ["pool:track-conditions/drying-very-wet"]
+    },
+    "pit-crew.pit-box-five": {
+      "comment": "The pit-box count-in, 120 m out — the first of six marks spoken about a second apart on the approach to the driver's own box. Terse by design: the engine puts no radio frame around any mark, and a mark that cannot take the bus is dropped rather than replayed late.",
+      "test": "Harness → Pit Box → Five (120 m). In-sim: drive down pit road toward your own stall; the marks fire at 120, 100, 80, 60, 40 and 20 m.",
+      "sequence": ["pool:pit-box/five"]
+    },
+    "pit-crew.pit-box-four": {
+      "comment": "The count-in's second mark, 100 m out.",
+      "test": "Harness → Pit Box → Four (100 m). In-sim: as for the five mark, 100 m from the stall.",
+      "sequence": ["pool:pit-box/four"]
+    },
+    "pit-crew.pit-box-three": {
+      "comment": "The count-in's third mark, 80 m out.",
+      "test": "Harness → Pit Box → Three (80 m). In-sim: as for the five mark, 80 m from the stall.",
+      "sequence": ["pool:pit-box/three"]
+    },
+    "pit-crew.pit-box-two": {
+      "comment": "The count-in's fourth mark, 60 m out.",
+      "test": "Harness → Pit Box → Two (60 m). In-sim: as for the five mark, 60 m from the stall.",
+      "sequence": ["pool:pit-box/two"]
+    },
+    "pit-crew.pit-box-one": {
+      "comment": "The count-in's fifth mark, 40 m out.",
+      "test": "Harness → Pit Box → One (40 m). In-sim: as for the five mark, 40 m from the stall.",
+      "sequence": ["pool:pit-box/one"]
+    },
+    "pit-crew.pit-box-pit-now": {
+      "comment": "The last mark, 20 m out — the cue to stop in the box.",
+      "test": "Harness → Pit Box → Pit now (20 m). In-sim: as for the five mark, 20 m from the stall.",
+      "sequence": ["pool:pit-box/pit-now"]
+    },
+    "pit-crew.corner-name-approaching": {
+      "comment": "The upcoming corner's bare name, spoken about a second before it in practice and test sessions — one clip, no radio frame, because at that lead the beeps would eat the whole margin. The name is the whole callout: a corner the voice has no clip for is skipped rather than half-said, and a pack that wants a lead-in puts it before the name here.",
+      "test": "Harness → Corner Names → Eau Rouge (or Turn 5). In-sim: a practice session on a track with corner data, Corner names enabled; the name plays on the approach to each corner.",
+      "sequence": ["{{cornerName.clip}}"]
+    },
+    "pit-crew.damage-repair-needed": {
+      "comment": "The car has picked up damage the crew can repair — spoken once when iRacing first flags a mandatory or optional repair. A meatball flag carries the same news with more authority and outranks this line.",
+      "test": "Harness → Damage → Damage Detected. In-sim: hit a wall or another car hard enough for the repair indicator to light in the black box.",
+      "sequence": ["pool:damage/repair-needed"]
+    },
+    "pit-crew.opponent-pit-leader": {
+      "comment": "The race leader has entered the pits — strategic news, spoken as one line. Every opponent-pit line queues behind a busier one rather than cutting it, because each describes a different car.",
+      "test": "Harness → Opponent Pit → Leader pitting. In-sim: a race where the leader pits while you are on track.",
+      "sequence": ["pool:opponent-pit/leader"]
+    },
+    "pit-crew.opponent-pit-ahead": {
+      "comment": "The car directly ahead in the standings has entered the pits.",
+      "test": "Harness → Opponent Pit → Car ahead pitting. In-sim: the car one place ahead of you pits during a race.",
+      "sequence": ["pool:opponent-pit/ahead"]
+    },
+    "pit-crew.opponent-pit-behind": {
+      "comment": "The car directly behind in the standings has entered the pits.",
+      "test": "Harness → Opponent Pit → Car behind pitting. In-sim: the car one place behind you pits during a race.",
+      "sequence": ["pool:opponent-pit/behind"]
+    },
+    "pit-crew.opponent-pit-nearby": {
+      "comment": "A car within two places of the driver has entered the pits, named by its position: the car-in lead-in, the number, the is-pitting tail. The number is read live at speak time and is part of the sentence — a position the voice cannot say skips the whole line, never the middle of it.",
+      "test": "Harness → Opponent Pit → P7 pitting (±2). In-sim: a car two places ahead or behind you pits during a race.",
+      "sequence": ["pool:opponent-pit/car-in", "{{opponentPit.number}}", "pool:opponent-pit/is-pitting"]
+    },
+    "pit-crew.opponent-pit-others": {
+      "comment": "Several cars pitted in the same burst — the aggregate tail after the individual lines, so a pit train is not narrated car by car.",
+      "test": "Harness → Opponent Pit → Several cars pitting. In-sim: a pit window opens and a group of cars dives in together.",
+      "sequence": ["pool:opponent-pit/others"]
+    },
+    "pit-crew.fuel-laps-left-10": {
+      "comment": "The tank is estimated to cover ten more laps — ordinary commentary, spoken once when the estimate first drops through ten. A fresher count replaces a stale one still playing.",
+      "test": "Harness → Scenario Shortcuts → Fuel → 10 laps of fuel left. In-sim: run a stint until the laps-of-fuel estimate falls through ten.",
+      "sequence": ["pool:fuel/laps-left-10"]
+    },
+    "pit-crew.fuel-laps-left-9": {
+      "comment": "Nine laps of fuel left — ordinary commentary at the lap cadence.",
+      "test": "Harness → Scenario Shortcuts → Fuel → 9 laps of fuel left. In-sim: the estimate falls through nine.",
+      "sequence": ["pool:fuel/laps-left-9"]
+    },
+    "pit-crew.fuel-laps-left-8": {
+      "comment": "Eight laps of fuel left — ordinary commentary at the lap cadence.",
+      "test": "Harness → Scenario Shortcuts → Fuel → 8 laps of fuel left. In-sim: the estimate falls through eight.",
+      "sequence": ["pool:fuel/laps-left-8"]
+    },
+    "pit-crew.fuel-laps-left-7": {
+      "comment": "Seven laps of fuel left — ordinary commentary at the lap cadence.",
+      "test": "Harness → Scenario Shortcuts → Fuel → 7 laps of fuel left. In-sim: the estimate falls through seven.",
+      "sequence": ["pool:fuel/laps-left-7"]
+    },
+    "pit-crew.fuel-laps-left-6": {
+      "comment": "Six laps of fuel left — ordinary commentary at the lap cadence.",
+      "test": "Harness → Scenario Shortcuts → Fuel → 6 laps of fuel left. In-sim: the estimate falls through six.",
+      "sequence": ["pool:fuel/laps-left-6"]
+    },
+    "pit-crew.fuel-laps-left-5": {
+      "comment": "Five laps of fuel left — ordinary commentary at the lap cadence.",
+      "test": "Harness → Scenario Shortcuts → Fuel → 5 laps of fuel left. In-sim: the estimate falls through five.",
+      "sequence": ["pool:fuel/laps-left-5"]
+    },
+    "pit-crew.fuel-laps-left-4": {
+      "comment": "Four laps of fuel left — the last of the ordinary-commentary counts before the warnings start.",
+      "test": "Harness → Scenario Shortcuts → Fuel → 4 laps of fuel left. In-sim: the estimate falls through four.",
+      "sequence": ["pool:fuel/laps-left-4"]
+    },
+    "pit-crew.fuel-laps-left-3": {
+      "comment": "Three laps of fuel left — a warning at the flags' weight, so it takes the bus from ordinary chatter and is replayed rather than dropped behind a flag.",
+      "test": "Harness → Scenario Shortcuts → Fuel → 3 laps of fuel left. In-sim: the estimate falls through three.",
+      "sequence": ["pool:fuel/laps-left-3"]
+    },
+    "pit-crew.fuel-laps-left-2": {
+      "comment": "Two laps of fuel left — the second warning, same weight as the flags.",
+      "test": "Harness → Scenario Shortcuts → Fuel → 2 laps of fuel left. In-sim: the estimate falls through two.",
+      "sequence": ["pool:fuel/laps-left-2"]
+    },
+    "pit-crew.fuel-laps-left-1": {
+      "comment": "One lap of fuel left — critical: it cuts whatever is playing, because the next crossing is the box call.",
+      "test": "Harness → Scenario Shortcuts → Fuel → 1 lap of fuel left. In-sim: the estimate falls through one.",
+      "sequence": ["pool:fuel/laps-left-1"]
+    },
+    "pit-crew.fuel-laps-left-box": {
+      "comment": "The tank will not cover another full lap — box this lap for fuel. Critical and interrupting: nothing in flight is worth more than this instruction.",
+      "test": "Harness → Scenario Shortcuts → Fuel → Box this lap. In-sim: keep running until the estimate falls below one lap.",
+      "sequence": ["pool:fuel/laps-left-box"]
+    },
+    "pit-crew.fuel-laps-left-race-covered": {
+      "comment": "Good news inside the last ten laps: the tank covers the rest of the race with a lap in hand. Spoken once per stint, at ordinary weight — good news never needs to cut anything.",
+      "test": "Harness → Scenario Shortcuts → Fuel → Enough fuel to finish. In-sim: with ten or fewer laps to go in a race, carry more fuel than the remaining distance needs.",
+      "sequence": ["pool:fuel/race-covered"]
+    },
+    "pit-crew.pit-status-in-progress": {
+      "comment": "The crew has started working on the car. One of eight pit-status lines, each spoken once when iRacing's pit-service status changes to it; a newer status replaces the one still playing.",
+      "test": "Harness → Pit Status → In Progress. In-sim: stop in the box with a service queued; the line plays as the crew starts.",
+      "sequence": ["pool:pit-status/in-progress"]
+    },
+    "pit-crew.pit-status-complete": {
+      "comment": "The service is finished and the car is ready to leave the box.",
+      "test": "Harness → Pit Status → Complete. In-sim: wait out the queued service in the box; the line plays as the crew finishes.",
+      "sequence": ["pool:pit-status/complete"]
+    },
+    "pit-crew.pit-status-too-far-left": {
+      "comment": "The car stopped too far left of the box for the crew to work — the first, full correction; the terse repeat nag takes over while the error persists.",
+      "test": "Harness → Pit Status → Too Far Left. In-sim: stop in the pit lane left of your box marks.",
+      "sequence": ["pool:pit-status/too-far-left"]
+    },
+    "pit-crew.pit-status-too-far-right": {
+      "comment": "The car stopped too far right of the box — the first, full correction.",
+      "test": "Harness → Pit Status → Too Far Right. In-sim: stop in the pit lane right of your box marks.",
+      "sequence": ["pool:pit-status/too-far-right"]
+    },
+    "pit-crew.pit-status-too-far-forward": {
+      "comment": "The car overshot the box — the first, full correction.",
+      "test": "Harness → Pit Status → Too Far Forward. In-sim: stop past your box marks.",
+      "sequence": ["pool:pit-status/too-far-forward"]
+    },
+    "pit-crew.pit-status-too-far-back": {
+      "comment": "The car stopped short of the box — the first, full correction.",
+      "test": "Harness → Pit Status → Too Far Back. In-sim: stop before your box marks.",
+      "sequence": ["pool:pit-status/too-far-back"]
+    },
+    "pit-crew.pit-status-bad-angle": {
+      "comment": "The car is parked at an angle the crew cannot work at — the first, full correction.",
+      "test": "Harness → Pit Status → Bad Angle. In-sim: stop in the box with the car turned across it.",
+      "sequence": ["pool:pit-status/bad-angle"]
+    },
+    "pit-crew.pit-status-cant-fix-that": {
+      "comment": "The crew cannot repair the damage this stop — the car is done.",
+      "test": "Harness → Pit Status → Can't Fix That. In-sim: pit with damage beyond what a pit stop can repair.",
+      "sequence": ["pool:pit-status/cant-fix-that"]
+    },
+    "pit-crew.pit-status-too-far-left-repeat": {
+      "comment": "The terse nag that repeats every couple of seconds while the car sits too far left after the full correction. The whole body is behind pitStatus.stillTooFarLeft: a nag that waited behind a longer line re-checks the live status when it comes to speak and says nothing once the driver has corrected — and nothing means no radio frame either, which is the intended silence rather than a bare beep.",
+      "test": "Harness → Pit Status → Still Too Far Left, after Too Far Left. In-sim: stop left of the box and stay put; the nag repeats about every two seconds.",
+      "sequence": [
+        {
+          "if": "pitStatus.stillTooFarLeft",
+          "then": ["pool:pit-status/too-far-left-repeat"]
+        }
+      ]
+    },
+    "pit-crew.pit-status-too-far-right-repeat": {
+      "comment": "The repeat nag for too far right — the whole body behind its live re-check, as for too far left.",
+      "test": "Harness → Pit Status → Still Too Far Right, after Too Far Right. In-sim: stop right of the box and stay put.",
+      "sequence": [
+        {
+          "if": "pitStatus.stillTooFarRight",
+          "then": ["pool:pit-status/too-far-right-repeat"]
+        }
+      ]
+    },
+    "pit-crew.pit-status-too-far-forward-repeat": {
+      "comment": "The repeat nag for too far forward — the whole body behind its live re-check, as for too far left.",
+      "test": "Harness → Pit Status → Still Too Far Forward, after Too Far Forward. In-sim: overshoot the box and stay put.",
+      "sequence": [
+        {
+          "if": "pitStatus.stillTooFarForward",
+          "then": ["pool:pit-status/too-far-forward-repeat"]
+        }
+      ]
+    },
+    "pit-crew.pit-status-too-far-back-repeat": {
+      "comment": "The repeat nag for too far back — the whole body behind its live re-check, as for too far left.",
+      "test": "Harness → Pit Status → Still Too Far Back, after Too Far Back. In-sim: stop short of the box and stay put.",
+      "sequence": [
+        {
+          "if": "pitStatus.stillTooFarBack",
+          "then": ["pool:pit-status/too-far-back-repeat"]
+        }
+      ]
+    },
+    "pit-crew.pit-status-bad-angle-repeat": {
+      "comment": "The repeat nag for a bad angle — the whole body behind its live re-check, as for too far left.",
+      "test": "Harness → Pit Status → Still Bad Angle, after Bad Angle. In-sim: park across the box and stay put.",
+      "sequence": [
+        {
+          "if": "pitStatus.stillBadAngle",
+          "then": ["pool:pit-status/bad-angle-repeat"]
+        }
+      ]
+    },
+    "pit-crew.rolling-start-pace-car": {
+      "comment": "The pace car has started moving the field onto the formation lap of a rolling start — get up to pace and close the gap. Race-only and live in the car; one of five takes.",
+      "test": "Harness → Scenario Shortcuts → Rolling Start → Pace car moving, with the race session preset and the on-grid telemetry preset (live in the car). In-sim: sit on the grid of a rolling-start race and wait for the pace car to pull away.",
+      "sequence": ["pool:rolling-start/pace-car-moving"]
+    },
+    "pit-crew.opponent-flag-furled-ahead": {
+      "comment": "The car directly ahead in the standings has been shown a furled black flag, named by its position: the car-in lead-in (the opponent-pit family's clip, reused because the words are the same), the number, then the furled tail. The number is part of the sentence — a position the voice cannot say skips the whole line. Every opponent-flag line queues behind a busier one rather than cutting it, because each describes a different car.",
+      "test": "Harness → Opponent Flags → P5 ahead: furled. In-sim: the car one place ahead of you picks up a furled black flag during a race.",
+      "sequence": ["pool:opponent-pit/car-in", "{{opponentFlag.number}}", "pool:opponent-flags/furled-ahead-tail"]
+    },
+    "pit-crew.opponent-flag-furled-behind": {
+      "comment": "The car directly behind in the standings has been shown a furled black flag.",
+      "test": "Harness → Opponent Flags → Behind: furled. In-sim: the car one place behind you picks up a furled black flag during a race.",
+      "sequence": ["pool:opponent-flags/furled-behind"]
+    },
+    "pit-crew.opponent-flag-furled-track-ahead": {
+      "comment": "A car the driver is closing on along the track carries a furled black flag — a safety-weighted heads-up, since a penalised car may be slow.",
+      "test": "Harness → Opponent Flags → Track ahead: furled. In-sim: close in on a car ahead on the road that has a furled black flag.",
+      "sequence": ["pool:opponent-flags/furled-track"]
+    },
+    "pit-crew.opponent-flag-black-ahead": {
+      "comment": "The car directly ahead in the standings has been black-flagged, named by its position — car-in, the number, the black tail. The number is part of the sentence.",
+      "test": "Harness → Opponent Flags → P5 ahead: black flag. In-sim: the car one place ahead of you is black-flagged during a race.",
+      "sequence": ["pool:opponent-pit/car-in", "{{opponentFlag.number}}", "pool:opponent-flags/black-ahead-tail"]
+    },
+    "pit-crew.opponent-flag-black-behind": {
+      "comment": "The car directly behind in the standings has been black-flagged — the pressure from behind should ease.",
+      "test": "Harness → Opponent Flags → Behind: black flag. In-sim: the car one place behind you is black-flagged during a race.",
+      "sequence": ["pool:opponent-flags/black-behind"]
+    },
+    "pit-crew.opponent-flag-black-track-ahead": {
+      "comment": "A car the driver is closing on along the track has been black-flagged — a safety-weighted heads-up.",
+      "test": "Harness → Opponent Flags → Track ahead: black flag. In-sim: close in on a black-flagged car ahead on the road.",
+      "sequence": ["pool:opponent-flags/black-track"]
+    },
+    "pit-crew.opponent-flag-meatball-ahead": {
+      "comment": "The car directly ahead in the standings has the meatball (repair) flag, named by its position — car-in, the number, the meatball tail. The number is part of the sentence.",
+      "test": "Harness → Opponent Flags → P5 ahead: meatball. In-sim: the car one place ahead of you is shown the meatball flag during a race.",
+      "sequence": ["pool:opponent-pit/car-in", "{{opponentFlag.number}}", "pool:opponent-flags/meatball-ahead-tail"]
+    },
+    "pit-crew.opponent-flag-meatball-behind": {
+      "comment": "The car directly behind in the standings has the meatball flag and will be coming in for repairs.",
+      "test": "Harness → Opponent Flags → Behind: meatball. In-sim: the car one place behind you is shown the meatball flag during a race.",
+      "sequence": ["pool:opponent-flags/meatball-behind"]
+    },
+    "pit-crew.opponent-flag-meatball-track-ahead": {
+      "comment": "A car the driver is closing on along the track has the meatball flag — a damaged car that could be slow, so a safety-weighted warning.",
+      "test": "Harness → Opponent Flags → Track ahead: meatball. In-sim: close in on a car ahead on the road that is showing the meatball flag.",
+      "sequence": ["pool:opponent-flags/meatball-track"]
+    },
+    "pit-crew.opponent-flag-disqualify-ahead": {
+      "comment": "The car directly ahead in the standings has been disqualified, named by its position — car-in, the number, the disqualified tail. The number is part of the sentence.",
+      "test": "Harness → Opponent Flags → P5 ahead: DQ. In-sim: the car one place ahead of you is disqualified during a race.",
+      "sequence": ["pool:opponent-pit/car-in", "{{opponentFlag.number}}", "pool:opponent-flags/disqualify-ahead-tail"]
+    },
+    "pit-crew.opponent-flag-disqualify-behind": {
+      "comment": "The car directly behind in the standings has been disqualified.",
+      "test": "Harness → Opponent Flags → Behind: DQ. In-sim: the car one place behind you is disqualified during a race.",
+      "sequence": ["pool:opponent-flags/disqualify-behind"]
+    },
+    "pit-crew.opponent-flag-disqualify-track-ahead": {
+      "comment": "A car the driver is closing on along the track has been disqualified and may pull off — a safety-weighted heads-up.",
+      "test": "Harness → Opponent Flags → Track ahead: DQ. In-sim: close in on a disqualified car ahead on the road.",
+      "sequence": ["pool:opponent-flags/disqualify-track"]
+    },
+    "pit-crew.opponent-flag-others": {
+      "comment": "Several cars around the driver picked up penalty flags in the same burst — the aggregate tail after the individual lines. It only ever describes flags the user opted into, because the per-flag opt-ins are applied before anything reaches the aggregate.",
+      "test": "Harness → Opponent Flags → Several cars flagged. In-sim: a multi-car incident that hands penalties to several cars near you at once.",
+      "sequence": ["pool:opponent-flags/others"]
+    },
+    "pit-crew.limiter-on-track": {
+      "comment": "The pit limiter is still on about a second and a half after the car left pit road — the driver forgot to switch it off. The whole body is behind limiter.stillEngagedOffPitRoad: the line waits behind busier traffic rather than being dropped, so it re-checks live telemetry when it comes to speak and says nothing (no radio frame either) once the limiter is off.",
+      "test": "Harness → Pit Limiter → Limiter on out on track (fires about 1.5 s later). In-sim: on a car with a pit limiter, leave pit road with the limiter still engaged.",
+      "sequence": [
+        {
+          "if": "limiter.stillEngagedOffPitRoad",
+          "then": ["pool:pit-limiter/on-track"]
+        }
+      ]
+    },
+    "pit-crew.limiter-missing": {
+      "comment": "The car is on pit road without its limiter engaged, a couple of seconds after the pit-entry reminder went unheeded — an escalation, not a duplicate. The whole body is behind limiter.stillMissingOnPitRoad, so a driver who engaged the limiter in the meantime hears nothing.",
+      "test": "Harness → Pit Limiter → Limiter off on pit road (fires about 2.5 s later). In-sim: on a car with a pit limiter, enter pit road without engaging it and keep it off.",
+      "sequence": [
+        {
+          "if": "limiter.stillMissingOnPitRoad",
+          "then": ["pool:pit-limiter/missing"]
+        }
+      ]
+    },
+    "pit-crew.limiter-dropped": {
+      "comment": "The limiter was switched off while the car is still between the pit cones — turn it back on.",
+      "test": "Harness → Pit Limiter → Limiter dropped. In-sim: on a car with a pit limiter, disengage it while still on pit road.",
+      "sequence": ["pool:pit-limiter/dropped"]
+    },
+    "pit-crew.limiter-speeding": {
+      "comment": "The car is over the pit speed limit on a car that has a limiter — the fix is to press the button, which is why this line is separate from the no-limiter one.",
+      "test": "Harness → Pit Limiter → Speeding (limiter car). In-sim: on a car with a pit limiter, exceed the pit speed limit on pit road.",
+      "sequence": ["pool:pit-limiter/speeding"]
+    },
+    "pit-crew.start-light-ready": {
+      "comment": "The start gantry has lit — lights are up, the standing start is seconds away. Critical and interrupting, and replayed rather than lost if a spotter call holds the bus; a later go line replaces it if it never got out.",
+      "test": "Harness → Scenario Shortcuts → Start → Ready, with the race session preset and the on-grid telemetry preset (live in the car). In-sim: the red lights come on for a standing start.",
+      "sequence": ["pool:start-lights/start-ready"]
+    },
+    "pit-crew.start-light-go": {
+      "comment": "Lights out — go, go, go. Critical and interrupting: it cuts anything in flight, including a ready line still playing.",
+      "test": "Harness → Scenario Shortcuts → Start → Go, with the race session preset and the on-grid telemetry preset (live in the car). In-sim: the lights go out at a standing start.",
+      "sequence": ["pool:start-lights/start-go"]
+    },
+    "pit-crew.start-light-countdown-90": {
+      "comment": "Ninety seconds to the start — the first get-in-the-car reminder, spoken from the garage or session screen too. Ordinary weight, and dropped rather than replayed stale if the bus is busy.",
+      "test": "Harness → Scenario Shortcuts → Start → Countdown 90, with the race session preset. In-sim: sit in the garage as a standing-start race counts down.",
+      "sequence": ["pool:start-lights/countdown-90"]
+    },
+    "pit-crew.start-light-countdown-60": {
+      "comment": "Sixty seconds to the start — the same reminder, one mark closer.",
+      "test": "Harness → Scenario Shortcuts → Start → Countdown 60, with the race session preset. In-sim: the pre-start countdown passes sixty seconds.",
+      "sequence": ["pool:start-lights/countdown-60"]
+    },
+    "pit-crew.start-light-countdown-30": {
+      "comment": "Thirty seconds to the start.",
+      "test": "Harness → Scenario Shortcuts → Start → Countdown 30, with the race session preset. In-sim: the pre-start countdown passes thirty seconds.",
+      "sequence": ["pool:start-lights/countdown-30"]
+    },
+    "pit-crew.start-light-countdown-10": {
+      "comment": "Ten seconds to the start — the last mark before the gantry lights.",
+      "test": "Harness → Scenario Shortcuts → Start → Countdown 10, with the race session preset. In-sim: the pre-start countdown passes ten seconds.",
+      "sequence": ["pool:start-lights/countdown-10"]
+    },
+    "pit-crew.incident-off-track": {
+      "comment": "The driver ran off track — a short coaching line about track limits, with no point count (the type has none worth stating). A faster, worse incident in the same crash replaces this line mid-sentence.",
+      "test": "Harness → Incidents → Off Track (1x). In-sim: put four wheels off in any session.",
+      "sequence": ["pool:incidents/off-track"]
+    },
+    "pit-crew.incident-out-of-control": {
+      "comment": "The driver lost control of the car (a spin) — a calm-down line, no point count.",
+      "test": "Harness → Incidents → Out of Control (2x). In-sim: spin the car.",
+      "sequence": ["pool:incidents/out-of-control"]
+    },
+    "pit-crew.incident-contact-world": {
+      "comment": "Light contact with the wall or scenery: the type line, then the points it cost as a separate clause. The count is optional because it is a whole sentence of its own — a light touch worth no points, or a count the voice has no clip for, leaves the type line standing on its own.",
+      "test": "Harness → Incidents → Contact — Wall (0x) (the type line alone) or Collision — Wall (2x) for a count. In-sim: brush a wall lightly.",
+      "sequence": [
+        "pool:incidents/contact-world",
+        {
+          "optional": ["{{incident.points}}"]
+        }
+      ]
+    },
+    "pit-crew.incident-collision-world": {
+      "comment": "A hard hit on the wall or scenery: the type line, then the points it cost as an optional whole clause.",
+      "test": "Harness → Incidents → Collision — Wall (2x). In-sim: hit a wall hard.",
+      "sequence": [
+        "pool:incidents/collision-world",
+        {
+          "optional": ["{{incident.points}}"]
+        }
+      ]
+    },
+    "pit-crew.incident-contact-car": {
+      "comment": "Light contact with another car: the type line, then the points it cost as an optional whole clause — nothing when the rub cost none.",
+      "test": "Harness → Incidents → Contact — Car (0x). In-sim: rub doors with another car.",
+      "sequence": [
+        "pool:incidents/contact-car",
+        {
+          "optional": ["{{incident.points}}"]
+        }
+      ]
+    },
+    "pit-crew.incident-collision-car": {
+      "comment": "A heavy collision with another car: the type line, then the points it cost as an optional whole clause — four on pavement, two on dirt, whatever the sim scored, and nothing for a count the voice cannot say.",
+      "test": "Harness → Incidents → Collision — Car (4x), Collision — Car (2x, dirt) or Collision — Car (escalated). In-sim: a hard collision with another car.",
+      "sequence": [
+        "pool:incidents/collision-car",
+        {
+          "optional": ["{{incident.points}}"]
+        }
+      ]
+    },
+    "pit-crew.no-limiter-speeding": {
+      "comment": "Over the pit speed limit on a car that has NO pit limiter — the fix is to lift, so this line must never mention a limiter. The mirror of limiter-speeding; exactly one of the two speaks to any car.",
+      "test": "Harness → No Pit Limiter → Speeding (no limiter). In-sim: on a car without a pit limiter, exceed the pit speed limit on pit road.",
+      "sequence": ["pool:pit-limiter/no-limiter-speeding"]
+    },
+    "pit-crew.no-limiter-entry": {
+      "comment": "Pit entry on a car with no limiter: a reminder to mind the limit, then the limit itself — intro, number, unit — as one optional clause. The number is the whole point of the clause and a fragment of its sentence, so a limit the voice has no clip for drops the clause entirely rather than speaking the intro into silence; the reminder still stands alone as a complete sentence.",
+      "test": "Harness → No Pit Limiter → Pit entry reminder, after Harness → Session Start → Fire Session Start with the Pit speed limit set (the limit clause reads that snapshot; without one only the reminder plays). In-sim: on a car without a pit limiter, enter pit road.",
+      "sequence": [
+        "pool:pit-limiter/entry",
+        {
+          "optional": ["{{pitSpeed.limitIntro}}", "{{pitSpeed.limitNumber}}", "{{pitSpeed.limitUnit}}"]
+        }
+      ]
+    },
+    "pit-crew.lap-time-best": {
+      "comment": "A new session-best lap, or the driver's first valid lap: the intro (best-lap-yet or first-good-lap), then the time as minute, seconds and tenths. The minute is a hard if here — a terse pack may write it as optional, since the assumed minute is understood, but only where that minute is 1; every other component is required, because a time missing its seconds is not a time.",
+      "test": "Harness → Scenario Shortcuts → Lap Time → Best Lap 1:03.4 (Best Lap 0:34.8 for a lap without the minute, First Valid Lap 2:07.0 for the other intro). In-sim: set a personal best in any session, or complete the first clean lap of a session.",
+      "sequence": [
+        "{{lapTime.intro}}",
+        {
+          "if": "lapTime.hasMinuteComponent",
+          "then": ["{{lapTime.minute}}"]
+        },
+        "{{lapTime.second}}",
+        "{{lapTime.decimal}}"
+      ]
+    },
+    "pit-crew.gap-trend": {
+      "comment": "The gap to a standings neighbour has turned: we are gaining on the car ahead, it is pulling away, the car behind is gaining, or we are dropping it. The line is chosen by side and direction; the live gap readout follows through the gap-readout fragment. Both gap lines share one cooldown (30 s by default), so a second one inside it stays silent.",
+      "test": "Harness → Gaps → Trend: closing on car ahead, Trend: car ahead pulling away, Trend: car behind gaining or Trend: dropping the car behind — the seconds clause needs a live gap, so drive the harness session with cars around you. In-sim: race with a car a few seconds ahead and close on it lap after lap.",
+      "sequence": ["{{gap.line}}", "@gap-readout"]
+    },
+    "pit-crew.gap-threshold": {
+      "comment": "The gap to a standings neighbour first dropped under the driver's alert threshold — we have caught the car ahead, or the car behind is right with us — then the live gap through the same gap-readout fragment. Shares the trend line's cooldown.",
+      "test": "Harness → Gaps → Caught the car ahead (threshold) or Car behind within threshold, with a live gap for the seconds clause. In-sim: close to within the configured gap threshold of the car ahead.",
+      "sequence": ["{{gap.thresholdLine}}", "@gap-readout"]
+    },
+    "pit-crew.race-status": {
+      "comment": "The every-three-laps status update while the driver holds position in a race: the leader hears the whole still-leading line (still leading our class in a multi-class race), everyone else hears \"we're currently\" and the live position. Both branches are read at speak time, so a deferred update is never stale. The number is part of the sentence and stays required.",
+      "test": "Harness → Scenario Shortcuts → Race → Status update (P5 on lap 7) or Leader status (P1 on lap 6) — both are MUTE in the harness, which has no live position for the readout to speak, so only the fire attempt shows in the log. In-sim: hold the same race position for three consecutive laps after the green; the update comes as you cross the line on the third.",
+      "sequence": [
+        {
+          "if": "raceStatus.isLeading",
+          "then": ["{{raceStatus.stillLeading}}"],
+          "else": ["{{raceStatus.intro}}", "{{raceStatus.number}}"]
+        }
+      ]
+    },
+    "pit-crew.toggle-fuel-on": {
+      "comment": "The driver queued fuel for the next stop — a short acknowledgment (got it / roger that / copy that) then the confirmation, the shape every toggle confirmation in this family shares. The acknowledgment is pit-actions/acknowledgment, a different pool from the generic acknowledgment/acknowledgment: a smaller set tuned for this register, with its own no-repeat tracker by virtue of being a different group and base, so no named pool is needed for the two to stay independent. Silent for a few seconds after leaving the pit lane, when the sim resets the queue on its own.",
+      "test": "Harness → Pit Service → Fuel ON, not within about 4.5 s of Exited Pit Lane (the pit-action cooldown). In-sim: press the fuel toggle in the pit black box, or on a Fuel Service key.",
+      "sequence": ["pool:pit-actions/acknowledgment", "pool:pit-actions/fuel-on"]
+    },
+    "pit-crew.toggle-fuel-off": {
+      "comment": "The driver removed fuel from the next stop — acknowledgment, then the confirmation.",
+      "test": "Harness → Pit Service → Fuel OFF, outside the pit-action cooldown. In-sim: clear the fuel toggle in the pit black box.",
+      "sequence": ["pool:pit-actions/acknowledgment", "pool:pit-actions/fuel-off"]
+    },
+    "pit-crew.tire-set-on-all": {
+      "comment": "All four tires queued — acknowledgment, then the confirmation. Each tire line answers the RESULTING set, whichever buttons got the driver there.",
+      "test": "Harness → Tire Service → All, outside the pit-action cooldown. In-sim: select all four tires in the pit black box.",
+      "sequence": ["pool:pit-actions/acknowledgment", "pool:pit-actions/tires-on-all"]
+    },
+    "pit-crew.tire-set-on-fronts": {
+      "comment": "Both fronts queued.",
+      "test": "Harness → Tire Service → Fronts, outside the pit-action cooldown. In-sim: select the front tires only.",
+      "sequence": ["pool:pit-actions/acknowledgment", "pool:pit-actions/tires-on-fronts"]
+    },
+    "pit-crew.tire-set-on-rears": {
+      "comment": "Both rears queued.",
+      "test": "Harness → Tire Service → Rears, outside the pit-action cooldown. In-sim: select the rear tires only.",
+      "sequence": ["pool:pit-actions/acknowledgment", "pool:pit-actions/tires-on-rears"]
+    },
+    "pit-crew.tire-set-on-lefts": {
+      "comment": "Both left-side tires queued.",
+      "test": "Harness → Tire Service → Lefts, outside the pit-action cooldown. In-sim: select the left-side tires only.",
+      "sequence": ["pool:pit-actions/acknowledgment", "pool:pit-actions/tires-on-lefts"]
+    },
+    "pit-crew.tire-set-on-rights": {
+      "comment": "Both right-side tires queued.",
+      "test": "Harness → Tire Service → Rights, outside the pit-action cooldown. In-sim: select the right-side tires only.",
+      "sequence": ["pool:pit-actions/acknowledgment", "pool:pit-actions/tires-on-rights"]
+    },
+    "pit-crew.tire-set-on-lf": {
+      "comment": "The left-front only — a puncture-style single change.",
+      "test": "Harness → Tire Service → LF only, outside the pit-action cooldown. In-sim: select only the left-front tire.",
+      "sequence": ["pool:pit-actions/acknowledgment", "pool:pit-actions/tires-on-lf"]
+    },
+    "pit-crew.tire-set-on-rf": {
+      "comment": "The right-front only.",
+      "test": "Harness → Tire Service → RF only, outside the pit-action cooldown. In-sim: select only the right-front tire.",
+      "sequence": ["pool:pit-actions/acknowledgment", "pool:pit-actions/tires-on-rf"]
+    },
+    "pit-crew.tire-set-on-lr": {
+      "comment": "The left-rear only.",
+      "test": "Harness → Tire Service → LR only, outside the pit-action cooldown. In-sim: select only the left-rear tire.",
+      "sequence": ["pool:pit-actions/acknowledgment", "pool:pit-actions/tires-on-lr"]
+    },
+    "pit-crew.tire-set-on-rr": {
+      "comment": "The right-rear only.",
+      "test": "Harness → Tire Service → RR only, outside the pit-action cooldown. In-sim: select only the right-rear tire.",
+      "sequence": ["pool:pit-actions/acknowledgment", "pool:pit-actions/tires-on-rr"]
+    },
+    "pit-crew.tire-set-on-lf-rr": {
+      "comment": "The left-front and right-rear diagonal.",
+      "test": "Harness → Tire Service → LF + RR, outside the pit-action cooldown. In-sim: select the left-front and right-rear tires.",
+      "sequence": ["pool:pit-actions/acknowledgment", "pool:pit-actions/tires-on-lf-rr"]
+    },
+    "pit-crew.tire-set-on-rf-lr": {
+      "comment": "The right-front and left-rear diagonal.",
+      "test": "Harness → Tire Service → RF + LR, outside the pit-action cooldown. In-sim: select the right-front and left-rear tires.",
+      "sequence": ["pool:pit-actions/acknowledgment", "pool:pit-actions/tires-on-rf-lr"]
+    },
+    "pit-crew.tire-set-on-skip-rr": {
+      "comment": "Three corners — everything but the right-rear.",
+      "test": "Harness → Tire Service → All except RR, outside the pit-action cooldown. In-sim: select all tires but the right-rear.",
+      "sequence": ["pool:pit-actions/acknowledgment", "pool:pit-actions/tires-on-skip-rr"]
+    },
+    "pit-crew.tire-set-on-skip-lr": {
+      "comment": "Three corners — everything but the left-rear.",
+      "test": "Harness → Tire Service → All except LR, outside the pit-action cooldown. In-sim: select all tires but the left-rear.",
+      "sequence": ["pool:pit-actions/acknowledgment", "pool:pit-actions/tires-on-skip-lr"]
+    },
+    "pit-crew.tire-set-on-skip-rf": {
+      "comment": "Three corners — everything but the right-front.",
+      "test": "Harness → Tire Service → All except RF, outside the pit-action cooldown. In-sim: select all tires but the right-front.",
+      "sequence": ["pool:pit-actions/acknowledgment", "pool:pit-actions/tires-on-skip-rf"]
+    },
+    "pit-crew.tire-set-on-skip-lf": {
+      "comment": "Three corners — everything but the left-front.",
+      "test": "Harness → Tire Service → All except LF, outside the pit-action cooldown. In-sim: select all tires but the left-front.",
+      "sequence": ["pool:pit-actions/acknowledgment", "pool:pit-actions/tires-on-skip-lf"]
+    },
+    "pit-crew.tire-set-off": {
+      "comment": "Every tire cleared from the next stop — spoken only when the resulting set is empty, never on a side-switch that merely removes some tires.",
+      "test": "Harness → Tire Service → Skip, outside the pit-action cooldown. In-sim: clear every tire in the pit black box.",
+      "sequence": ["pool:pit-actions/acknowledgment", "pool:pit-actions/tires-off"]
+    },
+    "pit-crew.tire-compound-dry": {
+      "comment": "The compound for the next stop switched to dry. The one confirmation for the switch — the all-four-tires event iRacing raises alongside it is suppressed before it reaches the engineer.",
+      "test": "Harness → Tire Service → Compound → DRY, outside the pit-action cooldown. In-sim: switch the pit-service compound to dry.",
+      "sequence": ["pool:pit-actions/acknowledgment", "pool:pit-actions/tires-compound-dry"]
+    },
+    "pit-crew.tire-compound-wet": {
+      "comment": "The compound for the next stop switched to wet.",
+      "test": "Harness → Tire Service → Compound → WET, outside the pit-action cooldown. In-sim: switch the pit-service compound to wet.",
+      "sequence": ["pool:pit-actions/acknowledgment", "pool:pit-actions/tires-compound-wet"]
+    },
+    "pit-crew.toggle-windshield-on": {
+      "comment": "A windshield clean queued for the next stop.",
+      "test": "Harness → Pit Service → Windshield ON, outside the pit-action cooldown. In-sim: press the windshield toggle in the pit black box.",
+      "sequence": ["pool:pit-actions/acknowledgment", "pool:pit-actions/windshield-on"]
+    },
+    "pit-crew.toggle-windshield-off": {
+      "comment": "The windshield clean removed from the next stop.",
+      "test": "Harness → Pit Service → Windshield OFF, outside the pit-action cooldown. In-sim: clear the windshield toggle in the pit black box.",
+      "sequence": ["pool:pit-actions/acknowledgment", "pool:pit-actions/windshield-off"]
+    },
+    "pit-crew.toggle-fast-repair-on": {
+      "comment": "A fast repair queued for the next stop.",
+      "test": "Harness → Pit Service → Fast Repair ON, outside the pit-action cooldown. In-sim: press the fast-repair toggle in the pit black box.",
+      "sequence": ["pool:pit-actions/acknowledgment", "pool:pit-actions/fast-repair-on"]
+    },
+    "pit-crew.toggle-fast-repair-off": {
+      "comment": "The fast repair removed from the next stop.",
+      "test": "Harness → Pit Service → Fast Repair OFF, outside the pit-action cooldown. In-sim: clear the fast-repair toggle in the pit black box.",
+      "sequence": ["pool:pit-actions/acknowledgment", "pool:pit-actions/fast-repair-off"]
+    },
+    "pit-crew.overtake-gained-position": {
+      "comment": "The position readout after a gained overtake — \"We're currently\", then the live position — played once the reaction line has finished. It is skipped for a podium gain, whose reaction line already states the place, and never doubles a position announced by another line in the last 20 seconds. The lead-in is an optional clause: a second readout within 30 seconds that moved at most one place says the bare number (\"P four\"), which is a complete, true statement on its own; a script that always wants the lead-in drops the optional.",
+      "test": "Harness: mute — the Overtakes buttons fire the reaction but the harness has no live position, so this readout has nothing to say there. In-sim: pass a car in a race outside the top three; the reaction (when it rolls) is followed by the current position, and a second pass within half a minute reads the bare number.",
+      "sequence": [
+        {
+          "optional": ["{{positionReadout.intro}}"]
+        },
+        "{{positionReadout.number}}"
+      ]
+    },
+    "pit-crew.overtake-lost-position": {
+      "comment": "The position readout after a lost place — the same lead-in and live number as the gained readout, under the same 20-second no-double rule and the same optional lead-in.",
+      "test": "Harness: mute — the Overtakes → Lost — now P5 button fires the reaction but the harness has no live position for this readout. In-sim: get passed in a race; the come-on line (when it rolls) is followed by the current position.",
+      "sequence": [
+        {
+          "optional": ["{{positionReadout.intro}}"]
+        },
+        "{{positionReadout.number}}"
+      ]
+    },
+    "pit-crew.race-end": {
+      "comment": "The final result as the driver crosses the line after the checkered: the driver's name, then one line per result — we won, second place, the podium in third, or the race-is-over line with the position number for fourth or worse. The greeting is optional because names are a union across voices and the result reads whole without it; the position number is part of the last line and stays required. Deferred behind a same-lap best-lap readout rather than cutting it — the race is over either way.",
+      "test": "Harness → Scenario Shortcuts → Race → Race over — P1 (we won!), or Race over — P2 (second place), Race over — P3 (podium) and Race over — P9 (mid-pack) for the other branches, Race over — multi-class P15 / class P1 for a class win. In-sim: take the checkered flag in a race and cross the line.",
+      "sequence": [
+        {
+          "optional": ["{{raceEnd.greeting}}"]
+        },
+        {
+          "case": "raceEnd.result",
+          "of": {
+            "won": ["{{raceEnd.weWon}}"],
+            "second": ["{{raceEnd.secondPlace}}"],
+            "third": ["{{raceEnd.podiumThird}}"],
+            "other": ["{{raceEnd.raceOverResultIs}}", "{{raceEnd.position}}"]
+          }
+        }
+      ]
+    },
+    "pit-crew.position-change": {
+      "comment": "The driver's position after a completed lap, in one of three shapes: an invalidated qualifying lap says \"That lap didn't count\", then \"We're currently\" and the position; a lap that put the driver on pole says the pole line alone; every other lap says the intro (\"That puts us to\" for a gain in qualifying, \"We're currently\" otherwise, and always in a race) and the position, read live in a race. Practice stays silent, and a race hold is left to the race-status update.",
+      "test": "Harness → Position → Improved 5 → 3, Worsened 3 → 5, First Valid Lap P1, Qualifying P1 (pole), Holding P1 (qualifying, slow lap), Unchanged P5 (non-PB lap) or the Invalid lap, … buttons (all qualifying). The race branch is mute in the harness (no live position) — In-sim: complete a race lap having gained or lost a place.",
+      "sequence": [
+        {
+          "case": "position.readoutShape",
+          "of": {
+            "invalid-lap": [
+              "pool:position-invalid-lap/that-lap-didnt-count",
+              "pool:position-intro-worse/currently",
+              "{{position.number}}"
+            ],
+            "pole": ["{{position.pole}}"],
+            "standard": ["{{position.intro}}", "{{position.number}}"]
+          }
+        }
+      ]
+    },
+    "pit-crew.overtake-gained": {
+      "comment": "The reaction to a gained overtake, one line chosen by what the pass earned: the lead (overall, or in class in a multi-class race), second or third place — each of those states the position itself, so no readout follows — or the plain \"Nice pass\" for anything else, which the separate position readout then completes. A podium pass always reacts; any other pass reacts about one time in three, and a place gained because a car ahead retired never does.",
+      "test": "Harness → Overtakes → Gained — now P5 (nice pass), Gained the lead (P2 → P1), Gained — multi-class (class P3 → P2), Gained — P3 → P2 (podium line), Gained — P4 → P3 (podium line); Gained — retirement (readout only) stays silent here. In-sim: pass a car cleanly in a race.",
+      "sequence": [
+        {
+          "case": "overtake.gainedReaction",
+          "of": {
+            "leader": ["pool:position-overtake/nice-pass-leader"],
+            "leader-class": ["pool:position-overtake/nice-pass-leader-class"],
+            "p2": ["pool:position-overtake/nice-pass-p2"],
+            "p2-class": ["pool:position-overtake/nice-pass-p2-class"],
+            "p3": ["pool:position-overtake/nice-pass-p3"],
+            "p3-class": ["pool:position-overtake/nice-pass-p3-class"],
+            "other": ["pool:position-overtake/nice-pass"]
+          }
+        }
+      ]
+    },
+    "pit-crew.overtake-lost": {
+      "comment": "The reaction to a lost place: \"Come on, <name>.\" in the driver's chosen name, then \"Don't give up positions like that.\" The opener is a complete sentence of its own and is optional — a voice without a clip for the chosen name skips it and the line still plays. A lost podium place always reacts; any other loss about one time in three.",
+      "test": "Harness → Overtakes → Lost — now P5. In-sim: get passed in a race.",
+      "sequence": [
+        {
+          "optional": ["{{overtake.lost.comeOn}}"]
+        },
+        "pool:position-overtake/dont-give-up-positions"
+      ]
+    },
+    "pit-crew.qualifying-invalidation-lap-invalidated": {
+      "comment": "An incident on a counted qualifying lap: the invalidated line always, then — only in lap-limited qualifying, where a count means something — a tail for how many counted laps remain: out of laps, one to five by count (each a whole sentence with its own encouragement), or plenty above five. The tail is a whole clause, so an if with no else is right for it; a count the case has no key for says nothing. One callout per lap however many incidents; silent on out-laps and beyond the counted attempts.",
+      "test": "Harness → Scenario Shortcuts → Qualifying Invalidation → Off-Track — 3 laps left (Contact-Car — 1 lap left, Off-Track — out of laps, Off-Track — plenty of laps, Off-Track — time-limited for the other tails; the four (silent) buttons and Same Lap Again (latch) for the suppressions). In-sim: go off track on a flying lap of a lap-limited qualifying session.",
+      "sequence": [
+        "pool:qualifying-invalidation/invalidated",
+        {
+          "if": "qualifying.tailIsSpeakable",
+          "then": [
+            {
+              "case": "qualifying.lapsLeft",
+              "of": {
+                "out-of-laps": ["pool:qualifying-invalidation/out-of-laps"],
+                "plenty": ["pool:qualifying-invalidation/plenty-of-laps"],
+                "1": ["pool:qualifying-invalidation/1-lap-left"],
+                "2": ["pool:qualifying-invalidation/2-laps-left"],
+                "3": ["pool:qualifying-invalidation/3-laps-left"],
+                "4": ["pool:qualifying-invalidation/4-laps-left"],
+                "5": ["pool:qualifying-invalidation/5-laps-left"],
+                "default": []
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "pit-crew.race-start": {
+      "comment": "The grid brief a few seconds into a race session: the driver's name, the starting position (from pole, or qualifying put us to P N), the track and air temperatures, the track wetness, and a setup nudge when the loaded setup looks like a qualifying one. Every clause but the wetness is optional because each is a whole clause the brief reads true without — a name, a position number or a temperature the voice cannot say drops its own clause and nothing else; the position branch is a case inside its clause so a pack can rephrase pole and composed apart. The wetness intro and state are required: the brief always ends on the track.",
+      "test": "Harness → Scenario Shortcuts → Race Start → Race start — P5, with the race session preset (Race start — P1 (pole), Race start — P65 (out of range) and Race start — no position for the other position branches; the setup nudge has no harness route — In-sim: load a setup whose name matches the qualifying pattern under Setup Warning Patterns). In-sim: sit through the transition into a race session; the brief comes about three seconds in.",
+      "sequence": [
+        {
+          "optional": ["{{raceStart.greeting}}"]
+        },
+        {
+          "optional": [
+            {
+              "case": "raceStart.gridPosition",
+              "of": {
+                "pole": ["pool:race-start/starting-from-pole"],
+                "composed": ["pool:race-start/qualifying-put-us-to", "{{raceStart.position}}"],
+                "none": []
+              }
+            }
+          ]
+        },
+        {
+          "optional": [
+            "pool:session-start/track-temp-intro",
+            "{{raceStart.trackTempNumber}}",
+            "{{raceStart.degreesUnit}}"
+          ]
+        },
+        {
+          "optional": ["pool:session-start/air-temp-intro", "{{raceStart.airTempNumber}}", "{{raceStart.degreesUnit}}"]
+        },
+        "pool:session-start/wetness-intro",
+        "{{raceStart.wetness}}",
+        {
+          "if": "setupWarning.raceMismatch",
+          "then": [
+            {
+              "optional": ["pool:setup-warning/race"]
+            }
+          ]
+        }
+      ]
+    },
+    "pit-crew.session-start": {
+      "comment": "The brief a few seconds into a practice or qualifying session (a race takes the race-start brief instead): the driver's name, which session it is, the pit speed limit with its unit, the track and air temperatures, the track wetness, and — in qualifying only — a setup nudge when the loaded setup looks like a race one. The greeting, the pit-speed limit, both temperatures and the nudge are optional because each is a whole clause the brief reads true without: a name, a limit or a temperature the voice cannot say drops its own clause and nothing else. The session line and the wetness are required — a brief that names no session, or stops at \"and the track is\", is not a brief.",
+      "test": "Harness → Session Start → Fire Session Start, with Session type set to practice or qualifying (race is silent here — it is the race-start callout's); Fire as Fresh Connect covers the mid-session connect. The setup nudge has no harness route — In-sim: in qualifying, load a setup whose name matches the race pattern under Setup Warning Patterns. In-sim: join a practice or qualifying session; the brief comes about three seconds after the session begins, in the garage or on track.",
+      "sequence": [
+        {
+          "optional": ["{{sessionStart.greeting}}"]
+        },
+        "{{sessionStart.sessionLine}}",
+        {
+          "optional": [
+            "pool:session-start/pit-speed-intro",
+            "{{sessionStart.speedNumber}}",
+            "{{sessionStart.speedUnit}}"
+          ]
+        },
+        {
+          "optional": [
+            "pool:session-start/track-temp-intro",
+            "{{sessionStart.trackTempNumber}}",
+            "{{sessionStart.degreesUnit}}"
+          ]
+        },
+        {
+          "optional": [
+            "pool:session-start/air-temp-intro",
+            "{{sessionStart.airTempNumber}}",
+            "{{sessionStart.degreesUnit}}"
+          ]
+        },
+        "pool:session-start/wetness-intro",
+        "{{sessionStart.wetness}}",
+        {
+          "if": "setupWarning.qualifyingMismatch",
+          "then": [
+            {
+              "optional": ["pool:setup-warning/qualifying"]
+            }
+          ]
+        }
+      ]
+    },
+    "pit-crew.spotter-call": {
+      "comment": "A spotter transition call — a car has appeared alongside, a second one joined it, one of two has gone, or the sides swapped: \"Car left\", \"Two cars right\", \"Three wide\", \"Clear right, car left\", with inside/outside terms on an oval. The spotter engine picks the clip for the exact transition and hands it over as the spotterClip var, so the call is that one step; it cuts anything in flight and is never replayed late. No radio frame: the beeps would drown a call that has to land at once.",
+      "test": "Harness → Radar → Left, Right, Both Sides, Two Left, Two Right (each from the state the button names). In-sim: let a car pull alongside in any session with the spotter enabled.",
+      "sequence": ["{{spotterClip}}"]
+    },
+    "pit-crew.spotter-info": {
+      "comment": "The spotter's informational lines — \"Clear\" once the car alongside has genuinely separated, and the still-there reminder (\"Still there\", \"Hold your line\") on its cadence while a car stays alongside. The same engine-picked spotterClip step as the call, at a lower weight so a reminder can never chop a critical line. No radio frame.",
+      "test": "Harness → Radar → Clear (after Left or Right); the still-there reminder repeats on its own while a side stays occupied. In-sim: hold a car alongside for a few seconds, then let it go.",
+      "sequence": ["{{spotterClip}}"]
     }
   },
   "frames": {
@@ -8699,6 +9534,14 @@
         {
           "if": "readback.windshieldQueued",
           "then": ["pool:pit-readback/windshield-on"]
+        }
+      ]
+    },
+    "gap-readout": {
+      "comment": "The live gap readout both gap lines share: \"Gap is\", the whole seconds, the tenths. One optional clause, not three optional steps — the three vars resolve on a single check (the gap is readable, under a minute, and still to the car the line named), so the readout is spoken whole or left out whole, and the line before it is a complete sentence either way.",
+      "sequence": [
+        {
+          "optional": ["{{gap.readoutIntro}}", "{{gap.second}}", "{{gap.decimal}}"]
         }
       ]
     }

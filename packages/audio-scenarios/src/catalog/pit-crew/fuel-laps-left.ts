@@ -1,10 +1,20 @@
 /**
- * Estimated "laps of fuel left" callouts (issue #838) — fire on
- * `fuel.lapsLeft.crossed` events the translator emits once per lap at the
- * mid-lap sample, on descending crossings only. Eleven scenarios: one per
- * count 10 → 1 plus the dedicated count-0 **"Box this lap for fuel."** call.
- * The dedup / margin / refuel re-arm logic all lives in the translator diff
- * (`diff/fuel-laps-left.ts`) — each scenario here just filters its count.
+ * Estimated "laps of fuel left" contracts (issue #838; scripted since #1065)
+ * — fire on `fuel.lapsLeft.crossed` events the translator emits once per lap
+ * at the mid-lap sample, on descending crossings only. Eleven contracts: one
+ * per count 10 → 1 plus the dedicated count-0 **"Box this lap for fuel."**
+ * call, and the enough-fuel confirmation (issue #880). The dedup / margin /
+ * refuel re-arm logic all lives in the translator diff
+ * (`diff/fuel-laps-left.ts`) — each contract here just filters its count.
+ *
+ * The code below decides WHICH count is worth a line and how it is
+ * scheduled; WHAT is said lives in the active voice's `callouts.json` under
+ * the same ids (`scenarios["pit-crew.fuel-laps-left-3"]`, …), paired at
+ * `setScripts` time. Each line is a single pool the script addresses
+ * directly as `pool:fuel/<base>`; no vocabulary is needed, since the count is
+ * decided by the contract's `where:` before the script is ever read — a
+ * count is a contract, not a variable, so a pack can phrase the three-lap
+ * warning differently from the ten-lap one.
  *
  * **Scheduling.** `family: "fuel"` so a fresher count supersedes an in-flight
  * one (a rapid estimate drop never plays two stale counts back-to-back).
@@ -16,20 +26,22 @@
  * is still accurate when it replays (the YELLOW_CLEARED precedent), and a
  * dropped fire would otherwise never re-announce because the diff has already
  * marked the count spoken.
- *
- * Pool-driven clips (mirrors `flag-alerts.ts` / `pit-box.ts`) so future
- * variants are clip-file appends with no code change.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventOf } from "@iracedeck/event-bus";
 
-import type { Scenario } from "../../dsl.js";
+import type { ScenarioContract } from "../../dsl.js";
 import { WEIGHT } from "../../dsl.js";
 
 /** Single source for the fuel family's shared defaults (channel, bus, weight
- *  band handling, queueable, family, radio-framed sequence) — every fuel
- *  scenario must construct through this so the defaults can't diverge. */
-function fuelScenario(subject: string, weight: number, when: Scenario["when"], interrupt?: boolean): Scenario {
+ *  band handling, queueable, family) — every fuel contract must construct
+ *  through this so the defaults can't diverge. */
+function fuelContract(
+  subject: string,
+  weight: number,
+  when: ScenarioContract["when"],
+  interrupt?: boolean,
+): ScenarioContract {
   return {
     id: `pit-crew.fuel-laps-left-${subject}`,
     channel: AudioChannel.Voice,
@@ -39,13 +51,12 @@ function fuelScenario(subject: string, weight: number, when: Scenario["when"], i
     interrupt,
     queueable: true,
     family: "fuel",
-    sequence: [`pool:fuel-laps-left-${subject}`],
     when,
   };
 }
 
-function fuelLapsLeftScenario(subject: string, count: number, weight: number, interrupt?: boolean): Scenario {
-  return fuelScenario(
+function fuelLapsLeftContract(subject: string, count: number, weight: number, interrupt?: boolean): ScenarioContract {
+  return fuelContract(
     subject,
     weight,
     {
@@ -65,41 +76,47 @@ function fuelLapsLeftScenario(subject: string, count: number, weight: number, in
  * anything), `queueable` for the same reason as the warnings: the diff
  * latches on EMIT, so a dropped fire would never replay.
  */
-const FUEL_RACE_COVERED_ALERT: Scenario = fuelScenario("race-covered", WEIGHT.NORMAL, {
+const FUEL_RACE_COVERED: ScenarioContract = fuelContract("race-covered", WEIGHT.NORMAL, {
   event: "fuel.lapsLeft.raceCovered",
 });
 
-export const FUEL_LAPS_LEFT_ALERTS: readonly Scenario[] = [
-  fuelLapsLeftScenario("10", 10, WEIGHT.NORMAL),
-  fuelLapsLeftScenario("9", 9, WEIGHT.NORMAL),
-  fuelLapsLeftScenario("8", 8, WEIGHT.NORMAL),
-  fuelLapsLeftScenario("7", 7, WEIGHT.NORMAL),
-  fuelLapsLeftScenario("6", 6, WEIGHT.NORMAL),
-  fuelLapsLeftScenario("5", 5, WEIGHT.NORMAL),
-  fuelLapsLeftScenario("4", 4, WEIGHT.NORMAL),
-  fuelLapsLeftScenario("3", 3, WEIGHT.SAFETY),
-  fuelLapsLeftScenario("2", 2, WEIGHT.SAFETY),
-  fuelLapsLeftScenario("1", 1, WEIGHT.CRITICAL, true),
-  fuelLapsLeftScenario("box", 0, WEIGHT.CRITICAL, true),
-  FUEL_RACE_COVERED_ALERT,
+export const FUEL_LAPS_LEFT_CONTRACTS: readonly ScenarioContract[] = [
+  fuelLapsLeftContract("10", 10, WEIGHT.NORMAL),
+  fuelLapsLeftContract("9", 9, WEIGHT.NORMAL),
+  fuelLapsLeftContract("8", 8, WEIGHT.NORMAL),
+  fuelLapsLeftContract("7", 7, WEIGHT.NORMAL),
+  fuelLapsLeftContract("6", 6, WEIGHT.NORMAL),
+  fuelLapsLeftContract("5", 5, WEIGHT.NORMAL),
+  fuelLapsLeftContract("4", 4, WEIGHT.NORMAL),
+  fuelLapsLeftContract("3", 3, WEIGHT.SAFETY),
+  fuelLapsLeftContract("2", 2, WEIGHT.SAFETY),
+  fuelLapsLeftContract("1", 1, WEIGHT.CRITICAL, true),
+  fuelLapsLeftContract("box", 0, WEIGHT.CRITICAL, true),
+  FUEL_RACE_COVERED,
 ];
 
-/** Scenario ids exported for tests so a typo here surfaces as a test failure. */
-export const FUEL_LAPS_LEFT_SCENARIO_IDS: readonly string[] = FUEL_LAPS_LEFT_ALERTS.map((s) => s.id);
+/** Contract ids exported for tests so a typo here surfaces as a test failure. */
+export const FUEL_LAPS_LEFT_SCENARIO_IDS: readonly string[] = FUEL_LAPS_LEFT_CONTRACTS.map((c) => c.id);
 
-/** Pool names this catalog draws from — kept here so tests can register them
- *  on the scenario engine without duplicating the list. */
-export const FUEL_LAPS_LEFT_POOL_NAMES: readonly string[] = [
-  "fuel-laps-left-race-covered",
-  "fuel-laps-left-10",
-  "fuel-laps-left-9",
-  "fuel-laps-left-8",
-  "fuel-laps-left-7",
-  "fuel-laps-left-6",
-  "fuel-laps-left-5",
-  "fuel-laps-left-4",
-  "fuel-laps-left-3",
-  "fuel-laps-left-2",
-  "fuel-laps-left-1",
-  "fuel-laps-left-box",
+/**
+ * The clip sources the fuel scripts draw from — every `pool:fuel/<base>` the
+ * bundled script may write, as a literal list, since nothing derives it. The
+ * completeness tests read it: the bundled voice must ship at least one clip
+ * for each, and the bundled script must reference exactly this set. A
+ * `(group, base)` a script addresses is published — renaming a base is a
+ * rename in every pack's script and every pack's clip folder.
+ */
+export const FUEL_LAPS_LEFT_CLIP_SOURCES: readonly { group: "fuel"; base: string }[] = [
+  { group: "fuel", base: "laps-left-10" },
+  { group: "fuel", base: "laps-left-9" },
+  { group: "fuel", base: "laps-left-8" },
+  { group: "fuel", base: "laps-left-7" },
+  { group: "fuel", base: "laps-left-6" },
+  { group: "fuel", base: "laps-left-5" },
+  { group: "fuel", base: "laps-left-4" },
+  { group: "fuel", base: "laps-left-3" },
+  { group: "fuel", base: "laps-left-2" },
+  { group: "fuel", base: "laps-left-1" },
+  { group: "fuel", base: "laps-left-box" },
+  { group: "fuel", base: "race-covered" },
 ];

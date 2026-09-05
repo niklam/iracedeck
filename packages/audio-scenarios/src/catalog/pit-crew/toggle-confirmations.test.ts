@@ -1,18 +1,30 @@
+/**
+ * Toggle-confirmation tests (issues #464, #468; scripted since #1065).
+ *
+ * Every contract fires through the bundled voice's real `callouts.json` for
+ * two test voices, so what plays is the script's `acknowledgment → line` pair
+ * resolved against each voice's own clips — the way the plugin runs them.
+ */
+import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
+import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import type { IAudioService } from "@iracedeck/audio-service";
-import { AudioChannel } from "@iracedeck/audio-service";
-import type { CalloutScript } from "@iracedeck/callout-script";
+import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
+import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
-import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
-import { POOL_REGISTRY } from "./pools.js";
+import { _resetAudioScenarios, initializeAudioScenarios, poolMemberPattern } from "../../interpreter.js";
 import {
-  FAST_REPAIR_TOGGLE_SCENARIOS,
-  FUEL_TOGGLE_SCENARIOS,
-  TIRE_COMPOUND_SCENARIOS,
-  TIRE_TOGGLE_SCENARIOS,
-  WINDSHIELD_TOGGLE_SCENARIOS,
+  FAST_REPAIR_TOGGLE_CONTRACTS,
+  FUEL_TOGGLE_CONTRACTS,
+  TIRE_COMPOUND_CONTRACTS,
+  TIRE_SET_NAMES,
+  TIRE_TOGGLE_CONTRACTS,
+  TOGGLE_CONFIRMATION_CLIP_SOURCES,
+  TOGGLE_CONFIRMATION_CONTRACTS,
+  TOGGLE_CONFIRMATION_SCENARIO_IDS,
+  WINDSHIELD_TOGGLE_CONTRACTS,
 } from "./toggle-confirmations.js";
 
 const mockLogger = {
@@ -59,7 +71,7 @@ function createMockBus(): IEventBus & {
       this.publish({
         event: name,
         timestamp: Date.now(),
-        telemetry: null as unknown,
+        telemetry: null,
         data: data as never,
       } as SimEventOf<SimEventName>);
     },
@@ -116,38 +128,25 @@ function createFakeAudio(): FakeAudio {
 
 const VOICE_KEYS = ["luca", "titan"] as const;
 
+/**
+ * The fixture manifest mirrors the bundled voice's clip naming for the
+ * pit-actions group: the acknowledgment and the fuel / tires-off lines are
+ * `-NN` variants, every other line a single bare clip — the pool matcher
+ * admits both, and the shape is what `poolMemberPattern` is pinned on.
+ */
 const manifest: AudioAssetsManifest = {
   clips: [
     "sfx/IRD-tick-open.mp3",
     "sfx/IRD-tick-close.mp3",
     "sfx/IRD-ambient-pit.mp3",
     ...VOICE_KEYS.flatMap((v) => [
-      `voice/${v}/acknowledgment/acknowledgment-01.mp3`,
-      `voice/${v}/acknowledgment/acknowledgment-02.mp3`,
-      `voice/${v}/acknowledgment/acknowledgment-03.mp3`,
-      `voice/${v}/acknowledgment/acknowledgment-04.mp3`,
-      `voice/${v}/acknowledgment/acknowledgment-05.mp3`,
       `voice/${v}/pit-actions/acknowledgment-01.mp3`,
       `voice/${v}/pit-actions/acknowledgment-02.mp3`,
       `voice/${v}/pit-actions/acknowledgment-03.mp3`,
       `voice/${v}/pit-actions/fuel-on-01.mp3`,
       `voice/${v}/pit-actions/fuel-off-01.mp3`,
       `voice/${v}/pit-actions/tires-off-01.mp3`,
-      `voice/${v}/pit-actions/tires-on-all.mp3`,
-      `voice/${v}/pit-actions/tires-on-fronts.mp3`,
-      `voice/${v}/pit-actions/tires-on-rears.mp3`,
-      `voice/${v}/pit-actions/tires-on-lefts.mp3`,
-      `voice/${v}/pit-actions/tires-on-rights.mp3`,
-      `voice/${v}/pit-actions/tires-on-lf.mp3`,
-      `voice/${v}/pit-actions/tires-on-rf.mp3`,
-      `voice/${v}/pit-actions/tires-on-lr.mp3`,
-      `voice/${v}/pit-actions/tires-on-rr.mp3`,
-      `voice/${v}/pit-actions/tires-on-lf-rr.mp3`,
-      `voice/${v}/pit-actions/tires-on-rf-lr.mp3`,
-      `voice/${v}/pit-actions/tires-on-skip-lf.mp3`,
-      `voice/${v}/pit-actions/tires-on-skip-rf.mp3`,
-      `voice/${v}/pit-actions/tires-on-skip-lr.mp3`,
-      `voice/${v}/pit-actions/tires-on-skip-rr.mp3`,
+      ...TIRE_SET_NAMES.map((name) => `voice/${v}/pit-actions/tires-on-${name}.mp3`),
       `voice/${v}/pit-actions/tires-compound-dry.mp3`,
       `voice/${v}/pit-actions/tires-compound-wet.mp3`,
       `voice/${v}/pit-actions/windshield-on.mp3`,
@@ -160,22 +159,24 @@ const manifest: AudioAssetsManifest = {
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
 };
 
+/** The bundled voice's script, verbatim. The JSON import types `schema` as `number`, hence the cast. */
+const SCRIPT = defaultScript as CalloutScript;
+
 /**
- * Each voice's callout script — only its `radio` frame matters here. Since
- * issue #1064 the ticks come from the engine wrapping every callout in the
- * frame the active voice's script defines, never from the sequences.
+ * The bundled script narrowed to the family's twenty-four entries (and to no
+ * fragments — none of them includes one), handed to BOTH test voices. The
+ * engine here registers the toggle family ALONE, and an entry for a contract
+ * it does not hold would be a `no contract` warn.
  */
-const RADIO_SCRIPT: CalloutScript = {
-  schema: 1,
-  scenarios: {},
-  frames: {
-    radio: {
-      open: ["sfx/IRD-tick-open.mp3", { ambient: "start" }, { ambient: "seek" }],
-      close: [{ ambient: "stop" }, "sfx/IRD-tick-close.mp3"],
-    },
-  },
-  pools: {},
+const TOGGLE_SCRIPT: CalloutScript = {
+  ...SCRIPT,
+  scenarios: Object.fromEntries(TOGGLE_CONFIRMATION_SCENARIO_IDS.map((id) => [id, SCRIPT.scenarios[id]])),
+  fragments: {},
 };
+
+/** The bundled manifest, for the clip-existence half of the sources check. */
+const MANIFEST = manifestJson as AudioAssetsManifest;
+const BUNDLED_VOICE = "default";
 
 function flush(audio: FakeAudio, iterations = 30): void {
   for (let i = 0; i < iterations; i++) {
@@ -195,27 +196,12 @@ beforeEach(() => {
   audio = createFakeAudio();
   engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => activeVoice);
 
-  for (const name of [
-    "pit-action-acknowledgment",
-    "pit-action-fuel-on",
-    "pit-action-fuel-off",
-    "pit-action-tires-off",
-  ]) {
-    const { group, base } = POOL_REGISTRY[name];
-    engine.definePoolFromManifest(name, group, base);
-  }
+  // The production order (`registerPitCrew`): contracts, then the scripts —
+  // the family registers no vocabulary and no pools; every step addresses
+  // its clip group directly, resolved against the manifest at fire time.
+  for (const c of TOGGLE_CONFIRMATION_CONTRACTS) engine.defineContract(c);
 
-  for (const s of FUEL_TOGGLE_SCENARIOS) engine.defineScenario(s);
-
-  for (const s of TIRE_TOGGLE_SCENARIOS) engine.defineScenario(s);
-
-  for (const s of TIRE_COMPOUND_SCENARIOS) engine.defineScenario(s);
-
-  for (const s of WINDSHIELD_TOGGLE_SCENARIOS) engine.defineScenario(s);
-
-  for (const s of FAST_REPAIR_TOGGLE_SCENARIOS) engine.defineScenario(s);
-
-  engine.setScripts(new Map(VOICE_KEYS.map((v) => [v, RADIO_SCRIPT])));
+  engine.setScripts(new Map(VOICE_KEYS.map((v) => [v, TOGGLE_SCRIPT])));
 });
 
 afterEach(() => {
@@ -228,7 +214,45 @@ function voiceClipsPlayed(): string[] {
   return audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
 }
 
-describe("FUEL_TOGGLE_SCENARIOS", () => {
+describe("TOGGLE_CONFIRMATION_CONTRACTS structure (issue #1065)", () => {
+  it("is the five groups in registration order, twenty-four contracts with unique ids", () => {
+    expect(TOGGLE_CONFIRMATION_CONTRACTS).toEqual([
+      ...FUEL_TOGGLE_CONTRACTS,
+      ...TIRE_TOGGLE_CONTRACTS,
+      ...TIRE_COMPOUND_CONTRACTS,
+      ...WINDSHIELD_TOGGLE_CONTRACTS,
+      ...FAST_REPAIR_TOGGLE_CONTRACTS,
+    ]);
+    expect(TOGGLE_CONFIRMATION_CONTRACTS).toHaveLength(24);
+    expect(new Set(TOGGLE_CONFIRMATION_SCENARIO_IDS).size).toBe(24);
+    expect(TIRE_TOGGLE_CONTRACTS).toHaveLength(16);
+  });
+
+  it("keeps the voice channel, bus and base, the default weight and frame, and carries no sequence", () => {
+    for (const c of TOGGLE_CONFIRMATION_CONTRACTS) {
+      expect(c.channel).toBe(AudioChannel.Voice);
+      expect(c.bus).toBe(AudioBus.Voice);
+      expect(c.base).toBe("voice/{voice}");
+      expect(c.weight).toBeUndefined();
+      expect(c.interrupt).toBeUndefined();
+      expect(c.queueable).toBeUndefined();
+      expect(c.frame).toBeUndefined();
+      expect("sequence" in c).toBe(false);
+    }
+  });
+
+  it("keeps the four family names — fuel, tire-service (sets and compounds together), windshield, fast repair", () => {
+    for (const c of FUEL_TOGGLE_CONTRACTS) expect(c.family).toBe("pit-service.fuel");
+
+    for (const c of [...TIRE_TOGGLE_CONTRACTS, ...TIRE_COMPOUND_CONTRACTS]) expect(c.family).toBe("tire-service");
+
+    for (const c of WINDSHIELD_TOGGLE_CONTRACTS) expect(c.family).toBe("pit-service.windshield");
+
+    for (const c of FAST_REPAIR_TOGGLE_CONTRACTS) expect(c.family).toBe("pit-service.fast-repair");
+  });
+});
+
+describe("FUEL_TOGGLE_CONTRACTS", () => {
   it("fires fuel-on when pitService.toggled { fuel, on: true } and resolves voice/{voice}", () => {
     bus.publishEvent("pitService.toggled", { service: "fuel", on: true });
     flush(audio);
@@ -259,11 +283,11 @@ describe("FUEL_TOGGLE_SCENARIOS", () => {
     expect(voiceClipsPlayed()).toContain("voice/luca/pit-actions/fuel-off-01.mp3");
   });
 
-  it("does not fire any fuel scenario for a non-fuel service (windshield)", () => {
+  it("does not fire any fuel contract for a non-fuel service (windshield)", () => {
     bus.publishEvent("pitService.toggled", { service: "windshield", on: true });
     flush(audio);
 
-    // The fuel scenarios filter on `data.service === "fuel"` and must not match.
+    // The fuel contracts filter on `data.service === "fuel"` and must not match.
     expect(voiceClipsPlayed()).not.toContain("voice/luca/pit-actions/fuel-on-01.mp3");
     expect(voiceClipsPlayed()).not.toContain("voice/luca/pit-actions/fuel-off-01.mp3");
   });
@@ -275,11 +299,20 @@ describe("FUEL_TOGGLE_SCENARIOS", () => {
 
     expect(voiceClipsPlayed()).toContain("voice/titan/pit-actions/fuel-on-01.mp3");
   });
+
+  it("a voice with no script is silent — the contract alone says nothing", () => {
+    engine.setScripts(new Map());
+
+    bus.publishEvent("pitService.toggled", { service: "fuel", on: true });
+    flush(audio);
+
+    expect(audio._played).toEqual([]);
+  });
 });
 
-describe("TIRE_TOGGLE_SCENARIOS", () => {
+describe("TIRE_TOGGLE_CONTRACTS", () => {
   // Coverage is exhaustive across the 15 non-empty 4-corner combinations.
-  // The empty-set case is exercised separately below via TIRE_OFF_SCENARIO.
+  // The empty-set case is exercised separately below via the tire-set-off contract.
   it.each([
     // Standard 5
     { name: "all", current: ["LF", "RF", "LR", "RR"] },
@@ -330,6 +363,7 @@ describe("TIRE_TOGGLE_SCENARIOS", () => {
     flush(audio);
 
     const played = voiceClipsPlayed();
+
     expect(played).not.toContain("voice/luca/pit-actions/tires-off-01.mp3");
     expect(played).toContain("voice/luca/pit-actions/tires-on-rears.mp3");
   });
@@ -346,7 +380,7 @@ describe("TIRE_TOGGLE_SCENARIOS", () => {
   });
 });
 
-describe("TIRE_COMPOUND_SCENARIOS", () => {
+describe("TIRE_COMPOUND_CONTRACTS", () => {
   it("fires the dry-compound callout when to=0", () => {
     bus.publishEvent("tireService.compoundChanged", { from: 1, to: 0 });
     flush(audio);
@@ -370,7 +404,7 @@ describe("TIRE_COMPOUND_SCENARIOS", () => {
   });
 });
 
-describe("WINDSHIELD_TOGGLE_SCENARIOS", () => {
+describe("WINDSHIELD_TOGGLE_CONTRACTS", () => {
   it("fires windshield-on when pitService.toggled { windshield, on: true }", () => {
     bus.publishEvent("pitService.toggled", { service: "windshield", on: true });
     flush(audio);
@@ -390,6 +424,7 @@ describe("WINDSHIELD_TOGGLE_SCENARIOS", () => {
     flush(audio);
 
     const played = voiceClipsPlayed();
+
     expect(played).not.toContain("voice/luca/pit-actions/windshield-on.mp3");
     expect(played).not.toContain("voice/luca/pit-actions/windshield-off.mp3");
   });
@@ -403,7 +438,7 @@ describe("WINDSHIELD_TOGGLE_SCENARIOS", () => {
   });
 });
 
-describe("FAST_REPAIR_TOGGLE_SCENARIOS", () => {
+describe("FAST_REPAIR_TOGGLE_CONTRACTS", () => {
   it("fires fast-repair-on when pitService.toggled { fastRepair, on: true }", () => {
     bus.publishEvent("pitService.toggled", { service: "fastRepair", on: true });
     flush(audio);
@@ -423,6 +458,7 @@ describe("FAST_REPAIR_TOGGLE_SCENARIOS", () => {
     flush(audio);
 
     const played = voiceClipsPlayed();
+
     expect(played).not.toContain("voice/luca/pit-actions/fast-repair-on.mp3");
     expect(played).not.toContain("voice/luca/pit-actions/fast-repair-off.mp3");
   });
@@ -433,5 +469,114 @@ describe("FAST_REPAIR_TOGGLE_SCENARIOS", () => {
     flush(audio);
 
     expect(voiceClipsPlayed()).toContain("voice/titan/pit-actions/fast-repair-on.mp3");
+  });
+});
+
+describe("the bundled script's toggle-confirmation entries (issue #1065)", () => {
+  /** Contract id → the base of the line that follows the acknowledgment. */
+  const LINE_BASES: Record<string, string> = {
+    "pit-crew.toggle-fuel-on": "fuel-on",
+    "pit-crew.toggle-fuel-off": "fuel-off",
+    ...Object.fromEntries(TIRE_SET_NAMES.map((name) => [`pit-crew.tire-set-on-${name}`, `tires-on-${name}`])),
+    "pit-crew.tire-set-off": "tires-off",
+    "pit-crew.tire-compound-dry": "tires-compound-dry",
+    "pit-crew.tire-compound-wet": "tires-compound-wet",
+    "pit-crew.toggle-windshield-on": "windshield-on",
+    "pit-crew.toggle-windshield-off": "windshield-off",
+    "pit-crew.toggle-fast-repair-on": "fast-repair-on",
+    "pit-crew.toggle-fast-repair-off": "fast-repair-off",
+  };
+
+  it("scripts every contract as the acknowledgment then its own line, with a comment and a Pit Service / Tire Service harness route", () => {
+    expect(Object.keys(LINE_BASES).sort()).toEqual([...TOGGLE_CONFIRMATION_SCENARIO_IDS].sort());
+
+    for (const [id, base] of Object.entries(LINE_BASES)) {
+      const entry = SCRIPT.scenarios[id];
+
+      expect(entry, `no script entry for ${id}`).toBeDefined();
+      expect(entry.comment?.length ?? 0, `${id}: comment`).toBeGreaterThan(0);
+      expect(entry.test, `${id}: test`).toMatch(/^Harness → (Pit Service|Tire Service) → /);
+      expect(entry.skip).toBeUndefined();
+      expect(entry.frame).toBeUndefined();
+      expect(entry.sequence, id).toEqual(["pool:pit-actions/acknowledgment", `pool:pit-actions/${base}`]);
+    }
+  });
+
+  it("references no vocabulary, no fragment and no frame — and the family registers none", () => {
+    const refs = collectScriptReferences(TOGGLE_SCRIPT);
+    const vocabulary = engine.vocabulary();
+
+    expect(refs.vars).toEqual([]);
+    expect(refs.conds).toEqual([]);
+    expect(refs.cases).toEqual([]);
+    expect(refs.includes).toEqual([]);
+    expect(refs.frames).toEqual([]);
+    expect(vocabulary.vars).toEqual([]);
+    expect(vocabulary.conds).toEqual([]);
+    expect(vocabulary.cases).toEqual([]);
+  });
+
+  it("addresses exactly the published clip sources — the slashed form throughout, no named pool for the acknowledgment — and every one has a clip in the bundled voice", () => {
+    // `pit-actions/acknowledgment` is a different `(group, base)` from the
+    // generic `acknowledgment/acknowledgment`, so its no-repeat tracker is its
+    // own by construction: the alias the old registry named for that purpose
+    // has no decision left to carry, and the script's `pools` stays empty.
+    const sources = [
+      "pit-actions/acknowledgment",
+      "pit-actions/fast-repair-off",
+      "pit-actions/fast-repair-on",
+      "pit-actions/fuel-off",
+      "pit-actions/fuel-on",
+      "pit-actions/tires-compound-dry",
+      "pit-actions/tires-compound-wet",
+      "pit-actions/tires-off",
+      "pit-actions/tires-on-all",
+      "pit-actions/tires-on-fronts",
+      "pit-actions/tires-on-lefts",
+      "pit-actions/tires-on-lf",
+      "pit-actions/tires-on-lf-rr",
+      "pit-actions/tires-on-lr",
+      "pit-actions/tires-on-rears",
+      "pit-actions/tires-on-rf",
+      "pit-actions/tires-on-rf-lr",
+      "pit-actions/tires-on-rights",
+      "pit-actions/tires-on-rr",
+      "pit-actions/tires-on-skip-lf",
+      "pit-actions/tires-on-skip-lr",
+      "pit-actions/tires-on-skip-rf",
+      "pit-actions/tires-on-skip-rr",
+      "pit-actions/windshield-off",
+      "pit-actions/windshield-on",
+    ];
+
+    expect([...collectScriptReferences(TOGGLE_SCRIPT).pools].sort()).toEqual(sources);
+    expect(TOGGLE_CONFIRMATION_CLIP_SOURCES.map(({ group, base }) => `${group}/${base}`).sort()).toEqual(sources);
+    expect(Object.keys(SCRIPT.pools ?? {})).toEqual([]);
+
+    for (const { group, base } of TOGGLE_CONFIRMATION_CLIP_SOURCES) {
+      const pattern = poolMemberPattern(group, base);
+
+      expect(
+        MANIFEST.clips.some((clip) => pattern.exec(clip)?.[1] === BUNDLED_VOICE),
+        `no voice/${BUNDLED_VOICE}/${group}/${base}(-NN).mp3 in manifest.json`,
+      ).toBe(true);
+
+      const voices = new Set(manifest.clips.map((clip) => pattern.exec(clip)?.[1]).filter((v) => v !== undefined));
+
+      expect([...voices].sort(), `${group}/${base}`).toEqual([...VOICE_KEYS].sort());
+    }
+  });
+
+  it("a single-corner base never matches a diagonal's clip — the pool rule admits `-NN` only, so `tires-on-lf` excludes `tires-on-lf-rr`", () => {
+    const lf = poolMemberPattern("pit-actions", "tires-on-lf");
+
+    expect(lf.test(`voice/luca/pit-actions/tires-on-lf.mp3`)).toBe(true);
+    expect(lf.test(`voice/luca/pit-actions/tires-on-lf-rr.mp3`)).toBe(false);
+    expect(lf.test(`voice/luca/pit-actions/tires-on-lf-01.mp3`)).toBe(true);
+  });
+
+  it("compiles for both voices with nothing skipped — no unknown pool, condition, case key or fragment", () => {
+    expect(mockLogger.warn).not.toHaveBeenCalled();
+    expect(mockLogger.error).not.toHaveBeenCalled();
   });
 });

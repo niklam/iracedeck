@@ -1,12 +1,10 @@
 /**
- * Pit-window family tests (issue #655; scripted since #1065).
+ * Damage-alert tests (issue #489; scripted since #1065).
  *
- * Both contracts fire off the single `pitsOpen.changed` event and branch on
- * `to`: `to === true` → opened, `to === false` → closed. They share the
- * `pit-window` family (so a rapid flurry preempts cleanly) and the same weight /
- * scheduling flags (above normal, below flags; never cut, but queueable). What
- * each line SAYS is the bundled voice's `callouts.json`, so the fire-through
- * cases below hand the real artifact to the engine and read what played.
+ * The one contract fires on `damage.repairNeeded.raised` with no `where:` of
+ * its own — the rising-edge debounce is the translator's. What it SAYS is the
+ * bundled voice's `callouts.json`, so the fire-through case hands the real
+ * artifact to the engine and reads what played.
  */
 import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
@@ -16,10 +14,9 @@ import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { ScenarioContract } from "../../dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios, poolMemberPattern } from "../../interpreter.js";
-import { PIT_WINDOW_CLIP_SOURCES, PIT_WINDOW_CONTRACTS, PIT_WINDOW_SCENARIO_IDS } from "./pit-window.js";
+import { DAMAGE_CLIP_SOURCES, DAMAGE_CONTRACTS, DAMAGE_SCENARIO_IDS } from "./damage-alerts.js";
 
 const mockLogger = {
   trace: vi.fn(),
@@ -135,7 +132,7 @@ const manifest: AudioAssetsManifest = {
     "sfx/IRD-tick-open.mp3",
     "sfx/IRD-tick-close.mp3",
     "sfx/IRD-ambient-pit.mp3",
-    ...PIT_WINDOW_CLIP_SOURCES.map(({ group, base }) => `voice/${VOICE}/${group}/${base}-01.mp3`),
+    ...DAMAGE_CLIP_SOURCES.map(({ group, base }) => `voice/${VOICE}/${group}/${base}-01.mp3`),
   ],
   ambientLoop: "sfx/IRD-ambient-pit.mp3",
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
@@ -145,14 +142,14 @@ const manifest: AudioAssetsManifest = {
 const SCRIPT = defaultScript as CalloutScript;
 
 /**
- * The bundled script narrowed to the family's own entries (and to no
- * fragments — none of these entries includes one). The engine here registers
- * the pit-window family ALONE, and an entry for a contract it does not hold
- * would be a `no contract` warn.
+ * The bundled script narrowed to the family's own entry (and to no
+ * fragments — it includes none). The engine here registers the damage family
+ * ALONE, and an entry for a contract it does not hold would be a `no contract`
+ * warn.
  */
-const PIT_WINDOW_SCRIPT: CalloutScript = {
+const DAMAGE_SCRIPT: CalloutScript = {
   ...SCRIPT,
-  scenarios: Object.fromEntries(PIT_WINDOW_SCENARIO_IDS.map((id) => [id, SCRIPT.scenarios[id]])),
+  scenarios: Object.fromEntries(DAMAGE_SCENARIO_IDS.map((id) => [id, SCRIPT.scenarios[id]])),
   fragments: {},
 };
 
@@ -169,9 +166,9 @@ beforeEach(() => {
   audio = createFakeAudio();
   engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
 
-  for (const c of PIT_WINDOW_CONTRACTS) engine.defineContract(c);
+  for (const c of DAMAGE_CONTRACTS) engine.defineContract(c);
 
-  engine.setScripts(new Map([[VOICE, PIT_WINDOW_SCRIPT]]));
+  engine.setScripts(new Map([[VOICE, DAMAGE_SCRIPT]]));
 });
 
 afterEach(() => {
@@ -179,116 +176,69 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-function contract(id: string): ScenarioContract {
-  const c = PIT_WINDOW_CONTRACTS.find((x) => x.id === id);
+describe("DAMAGE_CONTRACTS structure", () => {
+  it("defines the one repair-needed contract on the damage.repairNeeded.raised edge, with no where: of its own", () => {
+    expect(DAMAGE_SCENARIO_IDS).toEqual(["pit-crew.damage-repair-needed"]);
 
-  if (!c) throw new Error(`contract not found: ${id}`);
-
-  return c;
-}
-
-function changed(to: boolean): SimEventOf<"pitsOpen.changed"> {
-  return { event: "pitsOpen.changed", timestamp: 0, telemetry: null, data: { from: !to, to } };
-}
-
-function voiceClipsPlayed(): string[] {
-  return audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
-}
-
-describe("PIT_WINDOW_CONTRACTS structure", () => {
-  it("exports both contract ids", () => {
-    expect(PIT_WINDOW_SCENARIO_IDS).toEqual(["pit-crew.pit-window-opened", "pit-crew.pit-window-closed"]);
-    expect(PIT_WINDOW_CONTRACTS.map((c) => c.id)).toEqual(PIT_WINDOW_SCENARIO_IDS);
-  });
-
-  it("shares the pit-window family across both directions (preemption)", () => {
-    expect(PIT_WINDOW_CONTRACTS.every((c) => c.family === "pit-window")).toBe(true);
-  });
-
-  it("never interrupts but stays queueable, weighted between normal and flags", () => {
-    for (const c of PIT_WINDOW_CONTRACTS) {
-      expect(c.interrupt).toBe(false);
-      expect(c.queueable).toBe(true);
-      expect(c.weight).toBe(65);
-    }
-  });
-
-  it("keeps the voice channel, bus and base, and carries no sequence and no frame — the line is the voice script's (issue #1065)", () => {
-    for (const c of PIT_WINDOW_CONTRACTS) {
-      expect(c.when?.event).toBe("pitsOpen.changed");
+    for (const c of DAMAGE_CONTRACTS) {
+      expect(c.when?.event).toBe("damage.repairNeeded.raised");
+      expect(c.when?.where).toBeUndefined();
       expect(c.channel).toBe(AudioChannel.Voice);
       expect(c.bus).toBe(AudioBus.Voice);
       expect(c.base).toBe("voice/{voice}");
-      expect("sequence" in c).toBe(false);
-      // No `frame` → the engine's default (`radio`); the script never spells the ticks.
-      expect(c.frame).toBeUndefined();
+      expect(c.family).toBe("damage");
+      // Default weight: a meatball (CRITICAL) still wins the bus over the heads-up.
+      expect(c.weight).toBeUndefined();
+      expect(c.interrupt).toBeUndefined();
+      expect(c.queueable).toBeUndefined();
     }
   });
 
-  it("opened fires only on to === true", () => {
-    const where = contract("pit-crew.pit-window-opened").when?.where;
-
-    expect(where?.(changed(true))).toBe(true);
-    expect(where?.(changed(false))).toBe(false);
-  });
-
-  it("closed fires only on to === false", () => {
-    const where = contract("pit-crew.pit-window-closed").when?.where;
-
-    expect(where?.(changed(false))).toBe(true);
-    expect(where?.(changed(true))).toBe(false);
+  it("carries no sequence and no frame — the line is the voice script's, framed by the engine (issue #1065)", () => {
+    for (const c of DAMAGE_CONTRACTS) {
+      expect("sequence" in c).toBe(false);
+      expect(c.frame).toBeUndefined();
+    }
   });
 });
 
-describe("pit-window fires through the bundled script (issue #1065)", () => {
-  it("pits opened plays the opened line inside the radio frame", () => {
-    bus.publishEvent("pitsOpen.changed", { from: false, to: true });
+describe("damage fires through the bundled script (issue #1065)", () => {
+  it("plays the repair-needed line inside the radio frame", () => {
+    bus.publishEvent("damage.repairNeeded.raised", {} as never);
     flush(audio);
 
-    expect(voiceClipsPlayed()).toEqual([`voice/${VOICE}/pit-window/opened-01.mp3`]);
-
+    const voice = audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
     const all = audio._played.map((p) => p.path);
 
+    expect(voice).toEqual([`voice/${VOICE}/damage/repair-needed-01.mp3`]);
     expect(all[0]).toBe("sfx/IRD-tick-open.mp3");
     expect(all.at(-1)).toBe("sfx/IRD-tick-close.mp3");
-  });
-
-  it("pits closed plays the closed line, and nothing of the opened one", () => {
-    bus.publishEvent("pitsOpen.changed", { from: true, to: false });
-    flush(audio);
-
-    expect(voiceClipsPlayed()).toEqual([`voice/${VOICE}/pit-window/closed-01.mp3`]);
   });
 
   it("a voice with no script is silent — the contract alone says nothing", () => {
     engine.setScripts(new Map());
 
-    bus.publishEvent("pitsOpen.changed", { from: false, to: true });
+    bus.publishEvent("damage.repairNeeded.raised", {} as never);
     flush(audio);
 
     expect(audio._played).toEqual([]);
   });
 });
 
-describe("the bundled script's pit-window entries (issue #1065)", () => {
-  it("scripts both contracts, each with a comment, a Pit Window harness route and a single pool step", () => {
-    for (const [id, base] of [
-      ["pit-crew.pit-window-opened", "opened"],
-      ["pit-crew.pit-window-closed", "closed"],
-    ] as const) {
-      const entry = SCRIPT.scenarios[id];
+describe("the bundled script's damage entry (issue #1065)", () => {
+  it("scripts the contract with a comment, a Damage harness route and a single pool step", () => {
+    const entry = SCRIPT.scenarios["pit-crew.damage-repair-needed"];
 
-      expect(entry, `no script entry for ${id}`).toBeDefined();
-      expect(entry.comment?.length ?? 0, `${id}: comment`).toBeGreaterThan(0);
-      expect(entry.test, `${id}: test`).toMatch(/^Harness → Pit Window → /);
-      expect(entry.skip).toBeUndefined();
-      expect(entry.frame).toBeUndefined();
-      expect(entry.sequence).toEqual([`pool:pit-window/${base}`]);
-    }
+    expect(entry).toBeDefined();
+    expect(entry.comment?.length ?? 0).toBeGreaterThan(0);
+    expect(entry.test).toMatch(/^Harness → Damage → /);
+    expect(entry.skip).toBeUndefined();
+    expect(entry.frame).toBeUndefined();
+    expect(entry.sequence).toEqual(["pool:damage/repair-needed"]);
   });
 
   it("references no vocabulary, no fragment and no frame — and the family registers none", () => {
-    const refs = collectScriptReferences(PIT_WINDOW_SCRIPT);
+    const refs = collectScriptReferences(DAMAGE_SCRIPT);
     const vocabulary = engine.vocabulary();
 
     expect(refs.vars).toEqual([]);
@@ -301,14 +251,14 @@ describe("the bundled script's pit-window entries (issue #1065)", () => {
     expect(vocabulary.cases).toEqual([]);
   });
 
-  it("addresses exactly the published clip sources — the slashed form, no named pool — and every one has a clip in the bundled voice", () => {
-    const sources = ["pit-window/closed", "pit-window/opened"];
+  it("addresses exactly the published clip source — the slashed form, no named pool — and it has a clip in the bundled voice", () => {
+    const sources = ["damage/repair-needed"];
 
-    expect([...collectScriptReferences(PIT_WINDOW_SCRIPT).pools].sort()).toEqual(sources);
-    expect(PIT_WINDOW_CLIP_SOURCES.map(({ group, base }) => `${group}/${base}`).sort()).toEqual(sources);
+    expect([...collectScriptReferences(DAMAGE_SCRIPT).pools].sort()).toEqual(sources);
+    expect(DAMAGE_CLIP_SOURCES.map(({ group, base }) => `${group}/${base}`).sort()).toEqual(sources);
     expect(Object.keys(SCRIPT.pools ?? {})).toEqual([]);
 
-    for (const { group, base } of PIT_WINDOW_CLIP_SOURCES) {
+    for (const { group, base } of DAMAGE_CLIP_SOURCES) {
       const pattern = poolMemberPattern(group, base);
 
       expect(

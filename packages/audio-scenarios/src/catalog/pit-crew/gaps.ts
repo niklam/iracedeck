@@ -1,8 +1,8 @@
 /**
- * Gap callouts (issue #933): the Race Engineer's read on the time gaps to
- * the class-standings neighbors.
+ * Gap callouts (issue #933; scripted since #1065): the Race Engineer's read
+ * on the time gaps to the class-standings neighbors.
  *
- * Two scenarios, both `family: "gap"`:
+ * Two contracts, both `family: "gap"`:
  *   - `pit-crew.gap-trend` — fires on `gap.trendChanged` (the translator's
  *     relevance model: a neighbor's closing projection entering the
  *     time-to-contact horizon, or a breakaway opening up):
@@ -11,13 +11,23 @@
  *     gap first dropped under the user's alert threshold): "We've caught the
  *     car ahead."
  *
+ * The code below decides WHETHER and WHEN each line fires and how it is
+ * scheduled; WHAT is said lives in the active voice's `callouts.json` under
+ * the same ids, paired at `setScripts` time. The bundled script speaks the
+ * line through a var (`gap.line` / `gap.thresholdLine`, selected by the
+ * stashed event's side and direction) and follows it with the `gap-readout`
+ * fragment both entries share: an `optional` clause of `gap.readoutIntro`,
+ * `gap.second`, `gap.decimal`. The readout is a WHOLE clause ("Gap is one
+ * point five seconds.") after a line that is complete on its own, which is
+ * why it may be optional — and why all three vars resolve from ONE
+ * speakable-gap check, so the clause plays whole or not at all.
+ *
  * Numbers are read LIVE at speak time (the #574 pattern) via the injected
  * live-gaps resolver, reusing the `lap-time-second` / `lap-time-decimal`
  * clip groups — a gap ≥ 60 s (or unavailable) skips the whole readout
- * clause, never half of it: all three readout vars resolve from the same
- * snapshot check.
+ * clause, never half of it.
  *
- * A single SHARED cooldown gates both scenarios (configurable 1–360 s,
+ * A single SHARED cooldown gates both contracts (configurable 1–360 s,
  * default 30 s), claimed atomically in `where:` as the LAST gate — the
  * `tryClaimPositionAnnouncement` pattern, safe with `queueable` deferred
  * replays (which never re-run `where:`). Player-side clean-moment
@@ -30,10 +40,9 @@ import type { GapSide, SimEventOf } from "@iracedeck/event-bus";
 import type { LiveGaps } from "@iracedeck/sim-events-iracing";
 
 import { poolRef, WEIGHT } from "../../dsl.js";
-import type { Scenario, Step } from "../../dsl.js";
+import type { ScenarioContract } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 import { overtakeContextAllows, type OvertakeGateResolver } from "./overtake-gate.js";
-import { POOL_REGISTRY } from "./pools.js";
 
 const GAP_GROUP = "gap";
 const LAP_TIME_GROUP_SECOND = "lap-time-second";
@@ -63,7 +72,7 @@ export function resolveGapCooldownMs(rawSeconds: unknown): number {
   return Math.min(360, Math.max(1, raw)) * 1000;
 }
 
-/** Shared-cooldown state across BOTH gap scenarios. */
+/** Shared-cooldown state across BOTH gap contracts. */
 let lastGapCalloutAt: number | null = null;
 
 /**
@@ -125,50 +134,65 @@ function resolveSpeakableGap(getLiveGaps: LiveGapsResolver): { seconds: number; 
 }
 
 /**
- * Register the gap scenarios' variables. Must run before the scenarios are
- * defined — load-time validation rejects `{ var }` steps whose names aren't
- * registered.
+ * Register the vocabulary the gap scripts reference (issue #1065): the two
+ * line vars and the three readout vars. Must run before the contracts are
+ * defined so the first `setScripts` compile sees them.
  */
-export function registerGapVars(engine: IScenarioEngine, getLiveGaps: LiveGapsResolver): void {
+export function registerGapVocabulary(engine: Pick<IScenarioEngine, "defineVar">, getLiveGaps: LiveGapsResolver): void {
   // Trend-flip line, selected by the stashed event's side + direction.
-  engine.defineVar("gap.line", () => {
-    if (!lastGapEvent) return null;
+  engine.defineVar(
+    "gap.line",
+    () => {
+      if (!lastGapEvent) return null;
 
-    return poolRef(GAP_GROUP, `${lastGapEvent.side}-${lastGapEvent.direction}`);
-  });
+      return poolRef(GAP_GROUP, `${lastGapEvent.side}-${lastGapEvent.direction}`);
+    },
+    "The trend line for the gap that just changed, drawn from the gap group by side and direction: gap/ahead-closing, gap/ahead-opening, gap/behind-closing, gap/behind-opening. A complete sentence on its own.",
+  );
 
   // Threshold line, selected by the stashed event's side.
-  engine.defineVar("gap.thresholdLine", () => {
-    if (!lastGapEvent) return null;
+  engine.defineVar(
+    "gap.thresholdLine",
+    () => {
+      if (!lastGapEvent) return null;
 
-    return poolRef(GAP_GROUP, `threshold-${lastGapEvent.side}`);
-  });
+      return poolRef(GAP_GROUP, `threshold-${lastGapEvent.side}`);
+    },
+    "The line for a gap that just dropped under the driver's alert threshold, drawn from the gap group by side: gap/threshold-ahead (we have caught the car ahead) or gap/threshold-behind (the car behind is right with us). A complete sentence on its own.",
+  );
 
   // "Gap is" + number + "point N seconds." — all three gate on the same
   // speakable-gap check so a partial readout can never play.
-  engine.defineVar("gap.readoutIntro", () => {
-    return resolveSpeakableGap(getLiveGaps) === null ? null : poolRef(GAP_GROUP, "readout-intro");
-  });
+  engine.defineVar(
+    "gap.readoutIntro",
+    () => {
+      return resolveSpeakableGap(getLiveGaps) === null ? null : poolRef(GAP_GROUP, "readout-intro");
+    },
+    'The lead-in of the live gap readout ("Gap is"), from gap/readout-intro. Resolves only when the gap can be read at speak time — under a minute, on the same lap, and still to the car the line named — and gap.second and gap.decimal resolve on exactly the same test, so the three are spoken together or not at all.',
+  );
 
-  engine.defineVar("gap.second", () => {
-    const gap = resolveSpeakableGap(getLiveGaps);
+  engine.defineVar(
+    "gap.second",
+    () => {
+      const gap = resolveSpeakableGap(getLiveGaps);
 
-    return gap === null ? null : poolRef(LAP_TIME_GROUP_SECOND, String(gap.seconds));
-  });
+      return gap === null ? null : poolRef(LAP_TIME_GROUP_SECOND, String(gap.seconds));
+    },
+    'The whole seconds of the live gap, 0–59, drawn from the lap-time-second group (lap-time-second/1 is "one"). Read live at speak time; nothing when gap.readoutIntro has nothing.',
+  );
 
-  engine.defineVar("gap.decimal", () => {
-    const gap = resolveSpeakableGap(getLiveGaps);
+  engine.defineVar(
+    "gap.decimal",
+    () => {
+      const gap = resolveSpeakableGap(getLiveGaps);
 
-    return gap === null ? null : poolRef(LAP_TIME_GROUP_DECIMAL, String(gap.tenths));
-  });
+      return gap === null ? null : poolRef(LAP_TIME_GROUP_DECIMAL, String(gap.tenths));
+    },
+    'The tenths of the live gap, 0–9, drawn from the lap-time-decimal group (lap-time-decimal/6 is "point six seconds"). Read live at speak time; nothing when gap.readoutIntro has nothing.',
+  );
 }
 
-/** The shared sequence tail: optional live-gap readout after the line. */
-function gapReadoutClause(): Step {
-  return { optional: [{ var: "gap.readoutIntro" }, { var: "gap.second" }, { var: "gap.decimal" }] };
-}
-
-/** Shared `where:` gating for both gap scenarios (minus the event narrowing). */
+/** Shared `where:` gating for both gap contracts (minus the event narrowing). */
 function gapWhereGates(
   getRaceFinishedFired: () => boolean,
   getGate: OvertakeGateResolver,
@@ -182,12 +206,12 @@ function gapWhereGates(
   return tryClaimGapCallout(Date.now(), getGapCooldownMs());
 }
 
-/** Build the trend-flip scenario ("we're gaining / they're pulling away"). */
-export function buildGapTrendScenario(
+/** Build the trend-flip contract ("we're gaining / they're pulling away"). */
+export function buildGapTrendContract(
   getRaceFinishedFired: () => boolean = () => false,
   getGate: OvertakeGateResolver = () => null,
   getGapCooldownMs: () => number = () => GAP_CALLOUT_DEFAULT_COOLDOWN_MS,
-): Scenario {
+): ScenarioContract {
   return {
     id: "pit-crew.gap-trend",
     when: {
@@ -200,7 +224,7 @@ export function buildGapTrendScenario(
         if (!gapWhereGates(getRaceFinishedFired, getGate, getGapCooldownMs)) return false;
 
         // Stash AFTER every gate (the #922 convention, see `incidents.ts`):
-        // both gap scenarios are `queueable`, and a deferred fire re-resolves
+        // both gap contracts are `queueable`, and a deferred fire re-resolves
         // its vars at drain time WITHOUT re-running `where:`. A suppressed
         // event writing the stash would make that queued fire speak the wrong
         // side / direction / car.
@@ -215,16 +239,15 @@ export function buildGapTrendScenario(
     weight: WEIGHT.CHATTER,
     queueable: true,
     family: "gap",
-    sequence: [{ var: "gap.line" }, gapReadoutClause()],
   };
 }
 
-/** Build the threshold-crossing scenario ("we've caught the car ahead"). */
-export function buildGapThresholdScenario(
+/** Build the threshold-crossing contract ("we've caught the car ahead"). */
+export function buildGapThresholdContract(
   getRaceFinishedFired: () => boolean = () => false,
   getGate: OvertakeGateResolver = () => null,
   getGapCooldownMs: () => number = () => GAP_CALLOUT_DEFAULT_COOLDOWN_MS,
-): Scenario {
+): ScenarioContract {
   return {
     id: "pit-crew.gap-threshold",
     when: {
@@ -236,7 +259,7 @@ export function buildGapThresholdScenario(
 
         if (!gapWhereGates(getRaceFinishedFired, getGate, getGapCooldownMs)) return false;
 
-        // Stash AFTER every gate — see the trend scenario above.
+        // Stash AFTER every gate — see the trend contract above.
         lastGapEvent = { side: data.side, direction: "closing", carIdx: data.carIdx };
 
         return true;
@@ -248,7 +271,6 @@ export function buildGapThresholdScenario(
     weight: WEIGHT.NORMAL,
     queueable: true,
     family: "gap",
-    sequence: [{ var: "gap.thresholdLine" }, gapReadoutClause()],
   };
 }
 
@@ -276,12 +298,21 @@ export const SCENARIO_ID_TO_GAP_ID: Record<(typeof GAP_SCENARIO_IDS)[number], Ga
 };
 
 /**
- * Pool names this family draws from — the builder-family convention every
- * other catalog here follows, so the catalog tests can register them without
- * a hand-maintained list. Derived from `POOL_REGISTRY` by the `gap-` prefix
- * (the `START_LIGHT_POOL_NAMES` shape — the flags have no pool names at all
- * since #1064, their script addressing the clips as `pool:flags/<base>`, and
- * `FLAG_CLIP_SOURCES` is a literal list of those), so adding or renaming a
- * gap pool there flows through automatically.
+ * The clip sources the gap vars draw from within the `gap` group — every
+ * `(group, base)` `gap.line`, `gap.thresholdLine` and `gap.readoutIntro` can
+ * resolve to, as a literal list. The bundled script addresses no `gap/…`
+ * pool directly (every clip reaches it through a var), so the completeness
+ * test pins this list against the bundled voice's manifest rather than
+ * against the script's pool references. The seconds and tenths are not
+ * sources: `gap.second` / `gap.decimal` draw from the lap-time value groups
+ * at speak time.
  */
-export const GAP_POOL_NAMES: readonly string[] = Object.keys(POOL_REGISTRY).filter((name) => name.startsWith("gap-"));
+export const GAP_CLIP_SOURCES: readonly { group: "gap"; base: string }[] = [
+  { group: "gap", base: "ahead-closing" },
+  { group: "gap", base: "ahead-opening" },
+  { group: "gap", base: "behind-closing" },
+  { group: "gap", base: "behind-opening" },
+  { group: "gap", base: "threshold-ahead" },
+  { group: "gap", base: "threshold-behind" },
+  { group: "gap", base: "readout-intro" },
+];

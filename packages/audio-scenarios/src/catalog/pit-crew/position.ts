@@ -1,5 +1,5 @@
 /**
- * Position-change callout — issue #566.
+ * Position-change callout — issue #566; scripted since #1065.
  *
  * Fires on `lap.completed` when the driver's position changed compared to
  * the previous completed lap. Plays AFTER the lap-time best-lap callout
@@ -7,50 +7,54 @@
  * mechanism — NOT via registration order.
  *
  * Why `weight: WEIGHT.CHATTER` + `queueable: true`: when two cross-family
- * default-weight scenarios fire on the same event, the scenario engine
+ * default-weight contracts fire on the same event, the scenario engine
  * (`interpreter.ts` `attemptFire`) starts the first one and **silently drops**
- * the second (`bus busy`, no preemption rule matches). A `queueable` scenario
+ * the second (`bus busy`, no preemption rule matches). A `queueable` contract
  * is *deferred* and replayed once the bus goes idle (see `finishFire` →
  * `drainPending`). Lap-time stays default `WEIGHT.NORMAL`; position is
  * `WEIGHT.CHATTER` + `queueable: true` so it queues behind. The deferred replay
  * carries the original event payload, so the snapshot resolver still reads the
  * correct lap's position.
  *
- * Both scenarios share the `lap.completed` trigger but sit on different
+ * Both contracts share the `lap.completed` trigger but sit on different
  * families (`lap-time` vs `position`), so neither preempts the other.
  *
- * Script:
- *   [radio open]
- *   (if qualifying lap was invalidated by iRacing — issue #572)
- *     <didn't count>              "That lap didn't count."  (static clip)
- *     <currently>                 "We're currently"  (static clip; invalid laps
- *                                  never get the "better" framing or pole)
- *     <number>                    pee one / pee two / … / pee sixty four
- *   (else if qualifying-pole condition)
- *     <pole>                      "That puts us on pole."  (self-contained)
- *   (else)
- *     <intro>                     that-puts-us-to  OR  currently
- *     <number>                    pee one / pee two / … / pee sixty four
- *   [radio close]
+ * The code decides WHETHER and WHEN the callout fires; WHAT it says is the
+ * active voice's `callouts.json` under the same id
+ * (`scenarios["pit-crew.position-change"]`), paired at `setScripts` time.
+ * The bundled script is one `case` on `position.readoutShape` — the three
+ * mutually exclusive shapes the closures used to pick with nested `if`s:
  *
- * The intro is data-driven via `engine.defineVar`:
+ *   invalid-lap  <didn't count>  "That lap didn't count."  (pool:position-invalid-lap/that-lap-didnt-count)
+ *                <currently>     "We're currently"        (pool:position-intro-worse/currently; invalid laps
+ *                                                          never get the "better" framing or pole)
+ *                <number>        pee one / pee two / … / pee sixty four  ({{position.number}})
+ *   pole         <pole>          "That puts us on pole."  ({{position.pole}}, self-contained)
+ *   standard     <intro>         that-puts-us-to  OR  currently  ({{position.intro}})
+ *                <number>        pee one / … / pee sixty four   ({{position.number}})
+ *
+ * The engine wraps the body in the voice's radio frame. The shape is a case
+ * rather than two conditions because exactly one applies per lap and a pack
+ * may phrase each independently; the vocabulary is registered by
+ * {@link registerPositionVocabulary}:
  *   - **Qualifying**: driver gained positions OR `previousPosition` is unset
  *     (first valid lap — `isFirstValid: true` aligns with #555) →
  *     "That puts us to <break /> pee N." ("better" intro). Driver lost
  *     positions OR position unchanged on a non-PB lap → "We're currently
  *     <break /> pee N." ("worse" intro). Position unchanged on a PB lap →
- *     `where:` short-circuits, scenario silent (lap-time-best already
+ *     `where:` short-circuits, contract silent (lap-time-best already
  *     narrates the lap). Improvement to effective P1 in qualifying →
- *     "That puts us on pole." (one clip, no number — pole branch).
+ *     "That puts us on pole." (one clip, no number — the pole shape).
  *     Invalidated qualifying lap (`lapIsValid === false`, issue #572) →
  *     "That lap didn't count. We're currently <break /> pee N." — the
- *     invalid-lap branch beats the pole / "better" branches unconditionally.
+ *     invalid-lap shape beats the pole / "better" shapes unconditionally.
  *   - **Race** (issue #569): every direction uses the "currently" intro —
  *     race standings don't follow from lap times, so "That puts us to P3"
  *     reads wrong; "We're currently P3" works whether you gained or lost
- *     the place. Pole branch is skipped (qualifying-only). Hold-position
- *     status is owned by the every-3-laps race-status callout; the
- *     position-change callout in race fires only on real changes.
+ *     the place. The pole shape is never taken (qualifying-only).
+ *     Hold-position status is owned by the every-3-laps race-status
+ *     callout; the position-change callout in race fires only on real
+ *     changes.
  *
  * The "effective" position picks between class and overall based on the
  * payload's `isMultiClass` flag (translator-resolved from session info):
@@ -58,9 +62,9 @@
  *     about their class standing, not the overall mixed-field order).
  *   - Single-class → `position` (overall).
  *
- * Snapshot-at-fire-time (session-start / lap-time pattern): the var
+ * Snapshot-at-fire-time (session-start / lap-time pattern): the var and case
  * resolvers read the most recent `lap.completed` payload via a closure,
- * shared with the lap-time scenario in each plugin. A deferred replay
+ * shared with the lap-time contract in each plugin. A deferred replay
  * speaks the frozen lap's position rather than whatever position the
  * driver holds when the engineer finally gets bus time.
  *
@@ -78,27 +82,26 @@
  *     non-PB lap (the status-update path; see `positionChangeIsAnnounceable`).
  *
  * Sentinel: when neither overall nor class position is populated (e.g.
- * `PlayerCarPosition === 0` on a session reset), the scenario does NOT
+ * `PlayerCarPosition === 0` on a session reset), the contract does NOT
  * fire; the var resolver returning `null` is a defense-in-depth guard.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventOf } from "@iracedeck/event-bus";
 
 import { poolRef, WEIGHT } from "../../dsl.js";
-import type { Scenario, Step } from "../../dsl.js";
+import type { ScenarioContract } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 import {
   liveCurrentlyAnnounceable,
   type LivePositionResolver,
-  POSITION_CURRENTLY_CLIP,
   selectLivePosition,
   tryClaimPositionAnnouncement,
 } from "./position-readout.js";
 
 /**
  * Resolver for the most recent `lap.completed` payload — shared with the
- * lap-time scenario (same data, same cache, different consumers). The
- * plugin owns the cache; the scenarios just read.
+ * lap-time contract (same data, same cache, different consumers). The
+ * plugin owns the cache; the contracts just read.
  */
 export type LapCompletedSnapshotResolver = () => SimEventOf<"lap.completed">["data"] | null;
 
@@ -108,17 +111,9 @@ const POSITION_GROUP_INTRO_POLE = "position-intro-pole";
 const POSITION_GROUP_NUMBER = "position-number";
 
 /**
- * Static "That lap didn't count." clip path, relative to the `voice/{voice}`
- * base (issue #572). Mirrors {@link POSITION_CURRENTLY_CLIP} — a bare clip
- * step rather than a `{ var }`, because the prefix is the same line every
- * time (no live data). Used only in the qualifying invalid-lap branch.
- */
-const POSITION_DIDNT_COUNT_CLIP = "position-invalid-lap/that-lap-didnt-count-01.mp3";
-
-/**
  * Pick the position pair the engineer should announce. Multi-class series
  * read class-position; single-class (or unknown) read overall. Returns
- * `null` when neither side is available — the scenario stays silent.
+ * `null` when neither side is available — the contract stays silent.
  */
 export function selectEffectivePosition(
   snapshot: SimEventOf<"lap.completed">["data"],
@@ -196,7 +191,7 @@ function isBetterChange(snapshot: SimEventOf<"lap.completed">["data"]): boolean 
  * "That puts us to P1.".
  *
  * Conditions:
- *   - Session type is qualifying (the only session the scenario fires in
+ *   - Session type is qualifying (the only session the contract fires in
  *     at all; this check is technically redundant after
  *     `isAnnounceableSessionType` but kept as a self-documenting guard).
  *   - Effective current position is 1.
@@ -232,125 +227,152 @@ function isAnnounceableSessionType(snapshot: SimEventOf<"lap.completed">["data"]
 }
 
 /**
- * Register the position scenario's variables on the scenario engine. Must run
- * before {@link buildPositionScenario} is registered — load-time validation
- * rejects `{ var }` steps whose names aren't registered.
+ * The keys of the `position.readoutShape` case — the closed set of shapes a
+ * position readout takes. Published with the case, so the type is the
+ * declared key set and nothing else.
  */
-export function registerPositionVars(
-  engine: IScenarioEngine,
-  getSnapshot: LapCompletedSnapshotResolver,
-  getLivePosition: LivePositionResolver = () => null,
-): void {
-  engine.defineVar("position.intro", () => {
-    const s = getSnapshot();
+export type PositionReadoutShape = "invalid-lap" | "pole" | "standard";
 
-    if (!s) return null;
+/**
+ * The declared key set of `position.readoutShape`, each with the description
+ * the generated reference (#1066) shows a pack author.
+ *
+ * @internal Exported for testing — the test enumerates the reachable
+ * snapshots and checks the resolver returns nothing outside this set.
+ */
+export const POSITION_READOUT_SHAPE_KEYS: Readonly<Record<PositionReadoutShape, string>> = {
+  "invalid-lap":
+    "A qualifying lap iRacing did not count (track limits, a pit-lane violation) — the didn't-count line, then the current position with the plain intro; never the pole line or the better framing.",
+  pole: "An improvement to first place in qualifying — the lap put the driver on pole, said as one self-contained line with no number.",
+  standard:
+    "Any other readout — the intro (that-puts-us-to for a gain in qualifying, we're-currently otherwise) and the position number.",
+};
 
-    // In race, force the "currently" intro for every direction (issue #569).
-    // "That puts us to P3" implies lap-times-drive-standings — true in
-    // qualifying, semantically wrong in race where position changes from
-    // overtakes and pit stops rather than from the lap just completed.
-    // "We're currently P3" reads correctly as a standings status regardless
-    // of whether you gained or lost the place.
-    if (s.sessionType === "race") {
-      return poolRef(POSITION_GROUP_INTRO_WORSE, "currently");
-    }
+/**
+ * The readout shape for a snapshot, in the closures' precedence: the
+ * invalid-lap shape beats everything (issue #572 — an invalid lap can't earn
+ * a "better" framing even if standings shifted from others' laps), then the
+ * qualifying pole shape, then the standard intro + number. `null` with no
+ * snapshot — the case then takes the script's `default` branch, which the
+ * bundled script leaves absent, so nothing plays: the same silence the
+ * closures produced when their var resolvers found no snapshot.
+ *
+ * @internal Exported for testing.
+ */
+export function resolvePositionReadoutShape(
+  snapshot: SimEventOf<"lap.completed">["data"] | null,
+): PositionReadoutShape | null {
+  if (!snapshot) return null;
 
-    return isBetterChange(s)
-      ? poolRef(POSITION_GROUP_INTRO_BETTER, "that-puts-us-to")
-      : poolRef(POSITION_GROUP_INTRO_WORSE, "currently");
-  });
+  if (snapshot.sessionType === "qualifying" && snapshot.lapIsValid === false) return "invalid-lap";
 
-  engine.defineVar("position.number", () => {
-    const s = getSnapshot();
+  if (isPoleAchievement(snapshot)) return "pole";
 
-    if (!s) return null;
-
-    // Race: read the position LIVE at speak-time (issue #574) so a deferred
-    // readout reflects the position NOW, not the value frozen at S/F. The
-    // change-detection in `where:` still uses the snapshot — live drives only
-    // the spoken number.
-    if (s.sessionType === "race") {
-      const n = selectLivePosition(getLivePosition());
-
-      return n !== null ? poolRef(POSITION_GROUP_NUMBER, String(n)) : null;
-    }
-
-    // Qualifying: the "that puts us to / on pole" flow needs the before/after
-    // comparison, so it stays on the frozen lap snapshot.
-    const effective = selectEffectivePosition(s);
-
-    return effective ? poolRef(POSITION_GROUP_NUMBER, String(effective.current)) : null;
-  });
-
-  // Self-contained "That puts us on pole." clip — replaces both the intro
-  // and the number when the qualifying-pole condition fires. See
-  // `isPoleAchievement` for the trigger conditions.
-  engine.defineVar("position.pole", () => {
-    const s = getSnapshot();
-
-    if (!s) return null;
-
-    return poolRef(POSITION_GROUP_INTRO_POLE, "that-puts-us-on-pole");
-  });
+  return "standard";
 }
 
 /**
- * Build the position-change scenario. Takes a snapshot resolver to power the
- * qualifying-pole branch's `if:` predicate at expansion time (the per-clip
- * `var` resolvers receive their own resolver reference via {@link
- * registerPositionVars}), plus an optional `getRaceFinishedFired` so the
- * `where:` short-circuits on the final lap of a race (issue #569). Without
- * the race-finished gate, a position change on the final lap would queue
- * "We're currently P[n]" behind race-end and play after the result speech
- * — same `weight: WEIGHT.CHATTER` + `queueable: true` as race-end with no
- * shared family, so the engine defers but does not drop it. Default
- * `() => false` (race never ends)
- * preserves legacy behavior for tests / qualifying.
+ * Register the vocabulary the position-change script references (issue
+ * #1065): the readout-shape case and the three vars. Must run before
+ * {@link buildPositionContract} is registered so the first `setScripts`
+ * compile sees them. Every resolver reads the snapshot resolver at expansion
+ * time; the race number reads the live position (issue #574).
  */
-export function buildPositionScenario(
+export function registerPositionVocabulary(
+  engine: Pick<IScenarioEngine, "defineVar" | "defineCase">,
   getSnapshot: LapCompletedSnapshotResolver,
+  getLivePosition: LivePositionResolver = () => null,
+): void {
+  engine.defineCase(
+    "position.readoutShape",
+    () => resolvePositionReadoutShape(getSnapshot()),
+    POSITION_READOUT_SHAPE_KEYS,
+    "Which shape the position readout takes for the lap just completed: an invalidated qualifying lap, a lap that put the driver on pole, or the standard intro and number. Exactly one applies per lap; the invalid-lap shape takes precedence.",
+  );
+
+  engine.defineVar(
+    "position.intro",
+    () => {
+      const s = getSnapshot();
+
+      if (!s) return null;
+
+      // In race, force the "currently" intro for every direction (issue #569).
+      // "That puts us to P3" implies lap-times-drive-standings — true in
+      // qualifying, semantically wrong in race where position changes from
+      // overtakes and pit stops rather than from the lap just completed.
+      // "We're currently P3" reads correctly as a standings status regardless
+      // of whether you gained or lost the place.
+      if (s.sessionType === "race") {
+        return poolRef(POSITION_GROUP_INTRO_WORSE, "currently");
+      }
+
+      return isBetterChange(s)
+        ? poolRef(POSITION_GROUP_INTRO_BETTER, "that-puts-us-to")
+        : poolRef(POSITION_GROUP_INTRO_WORSE, "currently");
+    },
+    "The lead-in of a position readout, chosen by what the lap did: position-intro-better/that-puts-us-to for a gain (or a first fix) in qualifying, position-intro-worse/currently for a loss, a held place, or any lap in a race, where standings do not follow from lap times. A fragment of the sentence — keep it required before position.number.",
+  );
+
+  engine.defineVar(
+    "position.number",
+    () => {
+      const s = getSnapshot();
+
+      if (!s) return null;
+
+      // Race: read the position LIVE at speak-time (issue #574) so a deferred
+      // readout reflects the position NOW, not the value frozen at S/F. The
+      // change-detection in `where:` still uses the snapshot — live drives only
+      // the spoken number.
+      if (s.sessionType === "race") {
+        const n = selectLivePosition(getLivePosition());
+
+        return n !== null ? poolRef(POSITION_GROUP_NUMBER, String(n)) : null;
+      }
+
+      // Qualifying: the "that puts us to / on pole" flow needs the before/after
+      // comparison, so it stays on the frozen lap snapshot.
+      const effective = selectEffectivePosition(s);
+
+      return effective ? poolRef(POSITION_GROUP_NUMBER, String(effective.current)) : null;
+    },
+    'The driver\'s position as a spoken number, drawn from the position-number group (position-number/4 is "P4"): the position the lap just completed left the driver in during qualifying, and the live position at the moment it is spoken during a race — class position in a multi-class session either way. The point of the readout, so a script keeps it required.',
+  );
+
+  // Self-contained "That puts us on pole." clip — replaces both the intro
+  // and the number when the qualifying-pole shape applies. See
+  // `isPoleAchievement` for the trigger conditions.
+  engine.defineVar(
+    "position.pole",
+    () => {
+      const s = getSnapshot();
+
+      if (!s) return null;
+
+      return poolRef(POSITION_GROUP_INTRO_POLE, "that-puts-us-on-pole");
+    },
+    'The self-contained pole line, position-intro-pole/that-puts-us-on-pole ("That puts us on pole.") — a complete sentence that replaces the intro and the number when the lap put the driver on pole in qualifying.',
+  );
+}
+
+/**
+ * Build the position-change contract. Takes an optional `getRaceFinishedFired`
+ * so the `where:` short-circuits on the final lap of a race (issue #569) and
+ * the live-position resolver the race path gates on (issue #574). Without the
+ * race-finished gate, a position change on the final lap would queue "We're
+ * currently P[n]" behind race-end and play after the result speech — same
+ * `weight: WEIGHT.CHATTER` + `queueable: true` as race-end with no shared
+ * family, so the engine defers but does not drop it. Default `() => false`
+ * (race never ends) preserves legacy behavior for tests / qualifying. The
+ * snapshot resolver is NOT a contract dep any more: the `where:` decides from
+ * the event payload, and every shape decision the closures made from the
+ * snapshot is the vocabulary's ({@link registerPositionVocabulary}).
+ */
+export function buildPositionContract(
   getRaceFinishedFired: () => boolean = () => false,
   getLivePosition: LivePositionResolver = () => null,
-): Scenario {
-  const sequence: Step[] = [
-    {
-      // Invalid-lap branch (issue #572) — QUALIFYING ONLY. iRacing flagged the
-      // just-completed qualifying lap as invalid (track-limits cut, pit-lane
-      // violation, etc.). Prefix the readout with "That lap didn't count." and
-      // always speak the worse-framing "currently" intro: an invalid lap can't
-      // earn a "better" framing (no pole, no "That puts us to P[n]") even if
-      // standings shifted from others' laps. Gated to qualifying so the race
-      // path (which reads the spoken number LIVE at speak-time and shares the
-      // position cooldown, issue #574) is untouched — "that lap didn't count"
-      // has no meaning in a race where every lap counts. `lapIsValid` of `true`
-      // or `undefined` (no signal from telemetry) falls through to the existing
-      // path — don't suppress callouts on a missing signal. The frozen-snapshot
-      // `position.number` resolver returns the qualifying number here.
-      if: () => {
-        const s = getSnapshot();
-
-        return s !== null && s.sessionType === "qualifying" && s.lapIsValid === false;
-      },
-      then: [POSITION_DIDNT_COUNT_CLIP, POSITION_CURRENTLY_CLIP, { var: "position.number" }],
-      else: [
-        {
-          // Qualifying pole branch — single self-contained "on pole" clip
-          // replaces the intro + number for an improvement to P1 in qualifying.
-          // Holding P1 on a slow lap falls through to the else branch (standard
-          // "We're currently P1" status line), so the pole call doesn't repeat.
-          if: () => {
-            const s = getSnapshot();
-
-            return s !== null && isPoleAchievement(s);
-          },
-          then: [{ var: "position.pole" }],
-          else: [{ var: "position.intro" }, { var: "position.number" }],
-        },
-      ],
-    },
-  ];
-
+): ScenarioContract {
   return {
     id: "pit-crew.position-change",
     when: {
@@ -387,23 +409,22 @@ export function buildPositionScenario(
     bus: AudioBus.Voice,
     base: "voice/{voice}",
     // `weight: WEIGHT.CHATTER` + `queueable: true` so the engine *defers* this
-    // scenario when the bus is busy (typically because the lap-time-best callout
+    // contract when the bus is busy (typically because the lap-time-best callout
     // fires on the same `lap.completed` event and grabs the Voice bus first).
-    // Without `queueable`, a default-weight scenario would hit the
+    // Without `queueable`, a default-weight contract would hit the
     // dropped-on-busy-bus path in `interpreter.ts` `attemptFire` and the user
     // would never hear the position update on a PB lap. See the file header for
     // the full rationale.
     weight: WEIGHT.CHATTER,
     queueable: true,
     family: "position",
-    sequence,
   };
 }
 
 /**
  * Stable identifier for the position-change callout (issue #566). Single
  * subject — `change` covers improvement, worsening, and first-fix
- * (intro selection happens inside the scenario).
+ * (intro selection happens inside the script's case).
  */
 export type PositionCalloutId = "change";
 
@@ -417,7 +438,7 @@ export const POSITION_CALLOUT_SETTING_KEYS: Record<PositionCalloutId, string> = 
 };
 
 // `as const` so the element type is a literal union the `SCENARIO_ID_TO_POSITION_ID`
-// map below can be typed against — TS errors out at build time if a scenario id
+// map below can be typed against — TS errors out at build time if a contract id
 // is renamed, missing, or extra. Cheaper than a runtime completeness assertion.
 export const POSITION_SCENARIO_IDS = ["pit-crew.position-change"] as const;
 
@@ -426,10 +447,18 @@ export const SCENARIO_ID_TO_POSITION_ID: Record<(typeof POSITION_SCENARIO_IDS)[n
 };
 
 /**
- * Empty — the position readout is composed entirely from `engine.defineVar`
- * resolvers, not pools. Exported for parity with the family-completeness
- * check used by the other pit-crew catalog files. The broader convention
- * alignment (static `POSITION_ALERTS` + constructor helper) is tracked in
- * issue #558.
+ * The clip sources the bundled position script addresses DIRECTLY — the two
+ * fixed lines of the invalid-lap shape, which never vary with the lap
+ * (issue #572). Everything else the readout says reaches the script through
+ * the `position.*` vars, which draw from `position-intro-better`,
+ * `position-intro-worse`, `position-intro-pole` and `position-number` at
+ * speak time. The completeness tests pin the script's pool references to
+ * exactly this list and each entry to a clip in the bundled voice.
  */
-export const POSITION_POOL_NAMES: readonly string[] = [];
+export const POSITION_CLIP_SOURCES: readonly {
+  group: "position-invalid-lap" | "position-intro-worse";
+  base: string;
+}[] = [
+  { group: "position-invalid-lap", base: "that-lap-didnt-count" },
+  { group: "position-intro-worse", base: "currently" },
+];

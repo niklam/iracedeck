@@ -1,19 +1,36 @@
 /**
  * Race Engineer overtake callouts — scenario-engine integration tests (issue
- * #574, split design). Each overtake produces a reaction (immediate) plus a
- * separate `WEIGHT.CHATTER` + `queueable: true` position readout that defers
- * behind the reaction and speaks "We're currently P[n]" from LIVE telemetry,
- * gated by a shared cooldown and suppressed after the race ends.
+ * #574, split design; scripted since #1065). Each overtake produces a
+ * reaction (immediate) plus a separate `WEIGHT.CHATTER` + `queueable: true`
+ * position readout that defers behind the reaction and speaks "We're
+ * currently P[n]" from LIVE telemetry, gated by a shared cooldown and
+ * suppressed after the race ends. The whole catalog is registered through
+ * `registerPitCrew` and handed the bundled voice's real `callouts.json`, so
+ * the reaction ↔ readout ordering and the shared cooldown run the production
+ * path — what each line says is the script's.
  */
+import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
+import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import type { IAudioService } from "@iracedeck/audio-service";
-import { AudioChannel } from "@iracedeck/audio-service";
+import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
+import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { AudioAssetsManifest } from "../../interpreter.js";
-import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
+import type { ScenarioContext } from "../../dsl.js";
+import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
+import { _resetAudioScenarios, initializeAudioScenarios, poolMemberPattern } from "../../interpreter.js";
 import { _resetPositionReadoutCooldown, registerPitCrew } from "./index.js";
-import { overtakeGainIsAnnounceable, overtakeLossIsAnnounceable } from "./overtake.js";
+import {
+  buildOvertakeGainedContract,
+  buildOvertakeLostContract,
+  OVERTAKE_CLIP_SOURCES,
+  OVERTAKE_GAINED_REACTION_KEYS,
+  OVERTAKE_SCENARIO_IDS,
+  overtakeGainIsAnnounceable,
+  overtakeLossIsAnnounceable,
+  resolveOvertakeGainedReaction,
+} from "./overtake.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import {
   _setReactionRandom,
@@ -26,6 +43,9 @@ import { _resetSpotterEngine } from "./spotter-engine.js";
 
 vi.mock("@iracedeck/sim-events-iracing", () => ({
   getSessionType: () => "Race",
+  getStandingStart: () => false,
+  getLatestTelemetry: () => null,
+  TrackDirection: { Neutral: "neutral", Left: "left", Right: "right" },
 }));
 
 const mockLogger = {
@@ -153,6 +173,26 @@ const manifest: AudioAssetsManifest = {
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
 };
 
+/**
+ * The bundled voice's script, verbatim — handed whole to the engine because
+ * this file registers the whole catalog (`registerPitCrew`), as the plugins
+ * do. The JSON import types `schema` as `number`, hence the cast.
+ */
+const SCRIPT = defaultScript as CalloutScript;
+
+/** The two reaction ids this file owns the script checks for; the readouts are `position-readout.test.ts`'s. */
+const REACTION_IDS = ["pit-crew.overtake-gained", "pit-crew.overtake-lost"] as const;
+
+/** The bundled script narrowed to the two reaction entries (F7-trap i). */
+const REACTION_SCRIPT: CalloutScript = {
+  ...SCRIPT,
+  scenarios: Object.fromEntries(REACTION_IDS.map((id) => [id, SCRIPT.scenarios[id]])),
+  fragments: {},
+};
+
+const MANIFEST = manifestJson as AudioAssetsManifest;
+const BUNDLED_VOICE = "default";
+
 type GainedSnap = SimEventOf<"overtake.completed">["data"];
 type LostSnap = SimEventOf<"overtake.lost">["data"];
 type Live = { position: number; classPosition: number; isMultiClass: boolean };
@@ -175,6 +215,7 @@ const CLEAR_GATE: Gate = {
 
 let bus: ReturnType<typeof createMockBus>;
 let audio: FakeAudio;
+let engine: IScenarioEngine;
 let currentDriverName: string | null;
 let currentLive: Live | null;
 let currentGate: Gate | null;
@@ -221,7 +262,7 @@ beforeEach(() => {
   _setReactionRandom(() => 0);
   bus = createMockBus();
   audio = createFakeAudio();
-  initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
+  engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
   registerPitCrew(bus, {
     logger: mockLogger as never,
     getRaceFinishedFired: () => raceFinished,
@@ -230,6 +271,9 @@ beforeEach(() => {
     getLivePosition: () => currentLive,
     getOvertakeGate: () => currentGate,
   });
+  // After the registration, as the plugins do: every line below is looked up
+  // in the active voice's compiled script at fire time (issue #1064/#1065).
+  engine.setScripts(new Map([[VOICE, SCRIPT]]));
 });
 
 afterEach(() => {
@@ -622,5 +666,194 @@ describe("overtake context gate (suppresses the whole callout, both directions)"
     currentGate = { ...CLEAR_GATE, msSinceIncident: 20_000 };
     fireGained({});
     expect(voicePaths()).toContain(REACTION);
+  });
+});
+
+// The migration (issue #1065): the two reactions are contracts — the code
+// decides WHEN a reaction fires, the voice's script says WHAT it is — and the
+// six nested closure `if`s of the gained reaction became one case with a
+// declared key set.
+describe("the overtake reaction contracts (issue #1065)", () => {
+  it("carry no sequence and keep every scheduling field verbatim — one family, default weight, the engine's default frame", () => {
+    const gained = buildOvertakeGainedContract();
+    const lost = buildOvertakeLostContract();
+
+    expect(gained.id).toBe("pit-crew.overtake-gained");
+    expect(gained.when?.event).toBe("overtake.completed");
+    expect(lost.id).toBe("pit-crew.overtake-lost");
+    expect(lost.when?.event).toBe("overtake.lost");
+
+    for (const c of [gained, lost]) {
+      expect("sequence" in c).toBe(false);
+      expect(c.channel).toBe(AudioChannel.Voice);
+      expect(c.bus).toBe(AudioBus.Voice);
+      expect(c.base).toBe("voice/{voice}");
+      expect(c.family).toBe("overtake");
+      expect(c.weight).toBeUndefined();
+      expect(c.queueable).toBeUndefined();
+      expect(c.interrupt).toBeUndefined();
+      expect(c.frame).toBeUndefined();
+    }
+  });
+});
+
+describe("registerOvertakeVocabulary (issue #1065)", () => {
+  function ctxWith(data: Partial<GainedSnap> | null): ScenarioContext {
+    return { event: null, telemetry: null, data, now: 0, vars: {} };
+  }
+
+  it("publishes the gained-reaction case and the come-on var, each with a description for a pack author", () => {
+    const { vars, conds, cases } = engine.vocabulary();
+    const comeOn = vars.find((v) => v.name === "overtake.lost.comeOn");
+    const reaction = cases.find((c) => c.name === "overtake.gainedReaction");
+
+    expect(comeOn?.description).toContain("position-overtake-come-on");
+    expect(reaction).toBeDefined();
+    expect(reaction?.description.length ?? 0).toBeGreaterThan(0);
+    expect(reaction?.keys).toEqual(OVERTAKE_GAINED_REACTION_KEYS);
+    expect(conds.filter((c) => c.name.startsWith("overtake."))).toEqual([]);
+
+    for (const [key, description] of Object.entries(OVERTAKE_GAINED_REACTION_KEYS)) {
+      expect(description.length, `overtake.gainedReaction key ${key}`).toBeGreaterThan(0);
+    }
+  });
+
+  it("declares exactly the keys the reaction resolver can return — enumerated over positions 1–5, single- and multi-class", () => {
+    const reachable = new Set<string>();
+
+    for (const effective of [1, 2, 3, 4, 5]) {
+      // Single-class: the overall position is the effective one. Multi-class:
+      // the class position is, with the overall deliberately mid-pack so a
+      // resolver reading the wrong field would land on "other".
+      const single = ctxWith({ position: effective, previousPosition: effective + 1 });
+      const multi = ctxWith({
+        position: effective + 10,
+        classPosition: effective,
+        isMultiClass: true,
+        previousPosition: effective + 11,
+      });
+
+      for (const ctx of [single, multi]) {
+        const key = resolveOvertakeGainedReaction(ctx);
+
+        expect(key).not.toBeNull();
+        reachable.add(key ?? "");
+      }
+    }
+
+    expect([...reachable].sort()).toEqual(Object.keys(OVERTAKE_GAINED_REACTION_KEYS).sort());
+    expect(Object.keys(OVERTAKE_GAINED_REACTION_KEYS)).toHaveLength(7);
+  });
+
+  it("keys the podium lines on the EFFECTIVE position — class in multi-class, overall otherwise (#588/#599)", () => {
+    expect(resolveOvertakeGainedReaction(ctxWith({ position: 1, previousPosition: 2 }))).toBe("leader");
+    expect(
+      resolveOvertakeGainedReaction(
+        ctxWith({ position: 8, classPosition: 1, isMultiClass: true, previousPosition: 9 }),
+      ),
+    ).toBe("leader-class");
+    expect(resolveOvertakeGainedReaction(ctxWith({ position: 2, previousPosition: 3 }))).toBe("p2");
+    expect(
+      resolveOvertakeGainedReaction(
+        ctxWith({ position: 12, classPosition: 3, isMultiClass: true, previousPosition: 13 }),
+      ),
+    ).toBe("p3-class");
+    expect(resolveOvertakeGainedReaction(ctxWith({ position: 14, previousPosition: 15 }))).toBe("other");
+  });
+
+  it("resolves no key for an imperative fire with no payload — the case takes the script's default", () => {
+    expect(resolveOvertakeGainedReaction(ctxWith(null))).toBeNull();
+  });
+});
+
+describe("the bundled script's overtake reaction entries (issue #1065)", () => {
+  it("scripts both reactions with a comment, an Overtakes harness route and a sequence", () => {
+    for (const id of REACTION_IDS) {
+      const entry = SCRIPT.scenarios[id];
+
+      expect(entry, `no script entry for ${id}`).toBeDefined();
+      expect(entry.comment?.length ?? 0, `${id}: comment`).toBeGreaterThan(0);
+      expect(entry.test, `${id}: test`).toMatch(/^Harness → Overtakes → /);
+      expect(entry.skip).toBeUndefined();
+      expect(entry.sequence?.length ?? 0, `${id}: sequence`).toBeGreaterThan(0);
+    }
+
+    // The four ids the opt-in map covers are all scripted — the readouts by
+    // position-readout's entries.
+    for (const id of OVERTAKE_SCENARIO_IDS) expect(SCRIPT.scenarios[id], id).toBeDefined();
+  });
+
+  it("the gained reaction is one case over the seven declared keys; the lost reaction opens with the OPTIONAL come-on clause", () => {
+    expect(SCRIPT.scenarios["pit-crew.overtake-gained"].sequence).toEqual([
+      {
+        case: "overtake.gainedReaction",
+        of: {
+          leader: ["pool:position-overtake/nice-pass-leader"],
+          "leader-class": ["pool:position-overtake/nice-pass-leader-class"],
+          p2: ["pool:position-overtake/nice-pass-p2"],
+          "p2-class": ["pool:position-overtake/nice-pass-p2-class"],
+          p3: ["pool:position-overtake/nice-pass-p3"],
+          "p3-class": ["pool:position-overtake/nice-pass-p3-class"],
+          other: ["pool:position-overtake/nice-pass"],
+        },
+      },
+    ]);
+    expect(SCRIPT.scenarios["pit-crew.overtake-lost"].sequence).toEqual([
+      { optional: ["{{overtake.lost.comeOn}}"] },
+      "pool:position-overtake/dont-give-up-positions",
+    ]);
+  });
+
+  it("references only vocabulary this family registers, with the declared case keys", () => {
+    const refs = collectScriptReferences(REACTION_SCRIPT);
+    const vocabulary = engine.vocabulary();
+
+    expect(refs.vars).toEqual(["overtake.lost.comeOn"]);
+    expect(refs.conds).toEqual([]);
+    expect(refs.includes).toEqual([]);
+    expect(refs.frames).toEqual([]);
+    expect(refs.cases).toEqual([
+      { name: "overtake.gainedReaction", keys: Object.keys(OVERTAKE_GAINED_REACTION_KEYS).sort() },
+    ]);
+
+    const declared = vocabulary.cases.find((v) => v.name === "overtake.gainedReaction");
+
+    expect(Object.keys(declared?.keys ?? {}).sort()).toEqual(Object.keys(OVERTAKE_GAINED_REACTION_KEYS).sort());
+  });
+
+  it("addresses exactly the published clip sources — the slashed form throughout — and every one has a clip in the bundled voice", () => {
+    const sources = [
+      "position-overtake/dont-give-up-positions",
+      "position-overtake/nice-pass",
+      "position-overtake/nice-pass-leader",
+      "position-overtake/nice-pass-leader-class",
+      "position-overtake/nice-pass-p2",
+      "position-overtake/nice-pass-p2-class",
+      "position-overtake/nice-pass-p3",
+      "position-overtake/nice-pass-p3-class",
+    ];
+
+    expect([...collectScriptReferences(REACTION_SCRIPT).pools].sort()).toEqual(sources);
+    expect(OVERTAKE_CLIP_SOURCES.map(({ group, base }) => `${group}/${base}`).sort()).toEqual(sources);
+
+    for (const { group, base } of OVERTAKE_CLIP_SOURCES) {
+      const pattern = poolMemberPattern(group, base);
+
+      expect(
+        MANIFEST.clips.some((clip) => pattern.exec(clip)?.[1] === BUNDLED_VOICE),
+        `no voice/${BUNDLED_VOICE}/${group}/${base}(-NN).mp3 in manifest.json`,
+      ).toBe(true);
+    }
+  });
+
+  it("compiles the overtake entries for the test voice with nothing skipped", () => {
+    // A compile problem is ONE warn per (voice, scenario) naming the id. The
+    // whole catalog compiles here, so only this family's diagnostics count.
+    const overtakeWarnings = mockLogger.warn.mock.calls
+      .map(([message]) => String(message))
+      .filter((message) => message.includes("pit-crew.overtake-"));
+
+    expect(overtakeWarnings).toEqual([]);
+    expect(mockLogger.error).not.toHaveBeenCalled();
   });
 });
