@@ -6579,12 +6579,6 @@
         "seed": 1
       },
       {
-        "name": "come-on-01",
-        "text": "Come on,",
-        "seed": 1,
-        "next_text": " Andre. Don't give up positions like that."
-      },
-      {
         "name": "dont-give-up-positions-01",
         "text": ". Don't give up positions like that.",
         "seed": 1

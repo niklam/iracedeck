@@ -403,8 +403,11 @@ describe("overtake reaction (immediate)", () => {
     const played = voicePaths();
     expect(played).toContain(`voice/${VOICE}/position-overtake-come-on/niklas.mp3`);
     expect(played).toContain(`voice/${VOICE}/position-overtake/dont-give-up-positions-01.mp3`);
-    // The old generic "Come on," clip is no longer part of the line (#591).
-    expect(played).not.toContain(`voice/${VOICE}/position-overtake/come-on-01.mp3`);
+    // The generic "Come on," take #591 dropped from the line is gone from the
+    // voice too (#1065), so only the per-name clip can open it.
+    expect(played.filter((path) => path.includes("come-on"))).toEqual([
+      `voice/${VOICE}/position-overtake-come-on/niklas.mp3`,
+    ]);
   });
 
   it("lost falls back to the 'driver' come-on clip", () => {
