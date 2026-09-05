@@ -58,7 +58,7 @@
  */
 import type { AudioBus, IAudioService } from "@iracedeck/audio-service";
 import { AudioChannel } from "@iracedeck/audio-service";
-import type { CalloutScript } from "@iracedeck/callout-script";
+import { type CalloutScript, CONNECTOR_POOL } from "@iracedeck/callout-script";
 import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import type { ILogger } from "@iracedeck/logger";
 import { silentLogger } from "@iracedeck/logger";
@@ -389,6 +389,14 @@ class ScenarioEngine implements IScenarioEngine {
   private readonly warnedCaseKeys = new Set<string>();
   /** `(voice, frame)` pairs a legacy scenario asked for that the voice's script does not define — warned once each. */
   private readonly warnedLegacyFrames = new Set<string>();
+  /**
+   * `(voice, frame)` pairs whose frame aborted a callout (a step resolving to
+   * nothing, #835) — warned once each, and cleared by `setScripts` so a
+   * reinstalled pack that is still broken says so again. Per-fire detail
+   * stays at debug: a broken frame takes EVERY framed callout of its voice
+   * down, and a warn per fire would be a warn per flag.
+   */
+  private readonly warnedFrameAborts = new Set<string>();
 
   constructor(
     eventBus: IEventBus,
@@ -610,7 +618,7 @@ class ScenarioEngine implements IScenarioEngine {
    * size-1 pool, so numbers/names/temps need no rename migration).
    */
   private buildManifestPool(group: string, base: string): Extract<PoolState, { kind: "manifest" }> {
-    const pattern = new RegExp(`^voice/([^/]+)/${escapeRegExp(group)}/${escapeRegExp(base)}(?:-\\d{2})?\\.mp3$`);
+    const pattern = poolMemberPattern(group, base);
     const byVoice = new Map<string, string[]>();
 
     for (const clip of this.manifest.clips) {
@@ -655,7 +663,11 @@ class ScenarioEngine implements IScenarioEngine {
   }
 
   vocabulary(): VocabularyReport {
-    const byName = <T extends { name: string }>(items: T[]): T[] => items.sort((a, b) => a.name.localeCompare(b.name));
+    // Code-point order, not `localeCompare`: the report feeds a generated
+    // reference (#1066) and a completeness test, and a locale-aware sort would
+    // order the same names differently from one machine's ICU to another's.
+    const byName = <T extends { name: string }>(items: T[]): T[] =>
+      items.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 
     return {
       vars: byName([...this.vars.keys()].map((name) => ({ name, description: this.varDescriptions.get(name) ?? "" }))),
@@ -667,6 +679,7 @@ class ScenarioEngine implements IScenarioEngine {
   setScripts(scripts: ReadonlyMap<string, CalloutScript>): void {
     this.scripts = new Map(scripts);
     this.warnedSkips.clear();
+    this.warnedFrameAborts.clear();
     this.compileScripts();
     this.logger.info("Voice scripts loaded");
   }
@@ -1109,33 +1122,7 @@ class ScenarioEngine implements IScenarioEngine {
 
     try {
       expanded = this.expandSequence(body, entry.raw.base, entry.raw.channel, ctx, new Set([entry.raw.id]));
-
-      if (frameName !== NO_FRAME && expanded.some((op) => op.kind === "play")) {
-        const frame = script?.frames.get(frameName);
-
-        if (frame) {
-          const options = this.frameOptions();
-          const expandFrame = (steps: ResolvedStep[]) =>
-            this.expandSequence(steps, undefined, entry.raw.channel, ctx, new Set([entry.raw.id])).filter((op) =>
-              op.kind === "ambient" ? options.ambience : options.beeps,
-            );
-
-          expanded = [...expandFrame(frame.open), ...expanded, ...expandFrame(frame.close)];
-        } else if (script && voice !== null) {
-          // A contract's frame was checked at compile time, so only a legacy
-          // scenario can get here: the voice has a script, but not this frame.
-          const key = `${voice}|${frameName}`;
-
-          if (!this.warnedLegacyFrames.has(key)) {
-            this.warnedLegacyFrames.add(key);
-            this.logger.warn(
-              `Voice "${voice}" defines no frame "${frameName}" — legacy scenarios using it play unframed`,
-            );
-          }
-        } else {
-          this.logger.debug(`Scenario "${entry.raw.id}" plays unframed — no script for voice "${voice ?? "(none)"}"`);
-        }
-      }
+      expanded = this.applyFrame(expanded, frameName, voice, script, entry, ctx);
     } catch (err) {
       if (err instanceof ExpansionAbort) {
         this.logger.debug(`Scenario "${entry.raw.id}" skipped — ${err.reason}`);
@@ -1157,6 +1144,70 @@ class ScenarioEngine implements IScenarioEngine {
     }
 
     return expanded;
+  }
+
+  /**
+   * Wrap an expanded body in its frame, as the active voice's script defines
+   * it (see `prepareOps`). Returns the body untouched when it wants no frame
+   * (`NO_FRAME`), holds no clip, or the voice has no script or no such frame.
+   * A frame step that resolves to nothing throws `ExpansionAbort` like any
+   * other required step, after one warn per `(voice, frame)` — the body's own
+   * abort stays at debug, but a frame failure is a broken pack, not a
+   * per-callout omission, and it silences every callout the frame wraps.
+   */
+  private applyFrame(
+    expanded: ExecOp[],
+    frameName: string,
+    voice: string | null,
+    script: CompiledVoiceScript | undefined,
+    entry: CompiledScenario,
+    ctx: ScenarioContext,
+  ): ExecOp[] {
+    if (frameName === NO_FRAME || !expanded.some((op) => op.kind === "play")) return expanded;
+
+    if (voice === null || !script) {
+      this.logger.debug(`Scenario "${entry.raw.id}" plays unframed — no script for voice "${voice ?? "(none)"}"`);
+
+      return expanded;
+    }
+
+    const frame = script.frames.get(frameName);
+
+    if (!frame) {
+      // A contract's frame was checked at compile time, so only a legacy
+      // scenario can get here: the voice has a script, but not this frame.
+      const key = `${voice}|${frameName}`;
+
+      if (!this.warnedLegacyFrames.has(key)) {
+        this.warnedLegacyFrames.add(key);
+        this.logger.warn(`Voice "${voice}" defines no frame "${frameName}" — legacy scenarios using it play unframed`);
+      }
+
+      return expanded;
+    }
+
+    const options = this.frameOptions();
+    const expandFrame = (steps: ResolvedStep[]) =>
+      this.expandSequence(steps, undefined, entry.raw.channel, ctx, new Set([entry.raw.id])).filter((op) =>
+        op.kind === "ambient" ? options.ambience : options.beeps,
+      );
+
+    try {
+      return [...expandFrame(frame.open), ...expanded, ...expandFrame(frame.close)];
+    } catch (err) {
+      if (err instanceof ExpansionAbort) {
+        const key = `${voice}|${frameName}`;
+
+        if (!this.warnedFrameAborts.has(key)) {
+          this.warnedFrameAborts.add(key);
+          this.logger.warn(
+            `Voice "${voice}" frame "${frameName}" cannot play — ${err.reason}; every callout it frames is skipped`,
+          );
+        }
+      }
+
+      throw err;
+    }
   }
 
   /** The user's frame switches, read live; a throwing accessor keeps the frame whole. */
@@ -1465,7 +1516,7 @@ class ScenarioEngine implements IScenarioEngine {
         }
 
         case "connector": {
-          const pick = this.pickFromPool("connector", true);
+          const pick = this.pickFromPool(CONNECTOR_POOL, true);
 
           if (!pick) throw new ExpansionAbort(`connector pool resolved to nothing`);
 
@@ -1746,6 +1797,19 @@ function buildResumeState(active: ActiveFire): ResumeState | undefined {
 /** Escape a literal string for embedding in a RegExp source. */
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * @internal Exported for testing — the pool-membership rule `buildManifestPool`
+ * applies to the manifest: a clip belongs to the `(group, base)` pool of the
+ * voice it names when its path is `voice/<voice>/<group>/<base>-NN.mp3` with
+ * exactly two digits, or the bare `voice/<voice>/<group>/<base>.mp3` (issue
+ * #836). The first capture group is the voice. The digit count is pinned on
+ * purpose: the #1051 entry in the callout-examples rule records what a
+ * three-digit suffix did to a whole family.
+ */
+export function poolMemberPattern(group: string, base: string): RegExp {
+  return new RegExp(`^voice/([^/]+)/${escapeRegExp(group)}/${escapeRegExp(base)}(?:-\\d{2})?\\.mp3$`);
 }
 
 /** Element-wise equality of two expanded op lists (plain data, no functions). */

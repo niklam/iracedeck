@@ -26,14 +26,25 @@ import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "j
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioChannel } from "@iracedeck/audio-service";
-import { type CalloutScript, collectScriptReferences, NO_FRAME } from "@iracedeck/callout-script";
+import {
+  type CalloutScript,
+  collectScriptReferences,
+  NO_FRAME,
+  parseStringStep,
+  type ScriptStep,
+} from "@iracedeck/callout-script";
 import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from "vitest";
 
 import type { Scenario, ScenarioContract } from "../../dsl.js";
 import { DEFAULT_FRAME } from "../../dsl.js";
 import type { AudioAssetsManifest } from "../../interpreter.js";
-import { _resetAudioScenarios, initializeAudioScenarios, type IScenarioEngine } from "../../interpreter.js";
+import {
+  _resetAudioScenarios,
+  initializeAudioScenarios,
+  type IScenarioEngine,
+  poolMemberPattern,
+} from "../../interpreter.js";
 import { FLAG_SCENARIO_IDS } from "./flag-alerts.js";
 import { registerPitCrew } from "./index.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
@@ -119,18 +130,35 @@ function createFakeAudio(): IAudioService {
 }
 
 /**
- * The interpreter's own pool-membership rule (`buildManifestPool`): every
- * `voice/<voice>/<group>/<base>-NN.mp3` — exactly two digits — plus the bare
- * `<base>.mp3` (issue #836). Restated here rather than imported because the
- * method is private; the #1051 entry in the callout-examples rule records
- * what a three-digit suffix did to a whole family, which is why the digit
- * count is pinned and not loosened.
+ * Every literal clip a step list plays — a bare path string or a `{ clip }`
+ * object — through every `optional` / `then` / `else` / `of` branch.
+ * `collectScriptReferences` deliberately leaves clips out (they are not
+ * references by NAME), so the walk lives here; a new step form that carries
+ * steps needs an arm, which the grammar's own checklist already asks for.
  */
-function hasClipForVoice(voice: string, group: string, base: string): boolean {
-  const escape = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const pattern = new RegExp(`^voice/${escape(voice)}/${escape(group)}/${escape(base)}(?:-\\d{2})?\\.mp3$`);
+function literalClips(steps: readonly ScriptStep[]): string[] {
+  const out: string[] = [];
 
-  return MANIFEST.clips.some((clip) => pattern.test(clip));
+  const visit = (step: ScriptStep): void => {
+    if (typeof step === "string") {
+      const form = parseStringStep(step);
+
+      if (form.kind === "clip") out.push(form.path);
+
+      return;
+    }
+
+    if ("clip" in step) out.push(step.clip);
+    else if ("optional" in step) step.optional.forEach(visit);
+    else if ("if" in step) {
+      step.then.forEach(visit);
+      step.else?.forEach(visit);
+    } else if ("case" in step) Object.values(step.of).forEach((branch) => branch.forEach(visit));
+  };
+
+  steps.forEach(visit);
+
+  return out;
 }
 
 let engine: IScenarioEngine;
@@ -235,11 +263,51 @@ describe("everything the bundled script references by name is defined (issue #10
   it("every script-defined pool resolves to at least one clip of the bundled voice", () => {
     // An empty pool aborts its callout at fire time, silently (issue #835);
     // a typo'd base in `pools` would ship a registered, scripted, mute flag.
+    // Membership is the interpreter's own rule (`poolMemberPattern`), so this
+    // test can never accept a clip the engine would not pick.
     const empty = Object.entries(SCRIPT.pools)
-      .filter(([, { group, base }]) => !hasClipForVoice(VOICE, group, base))
+      .filter(([, { group, base }]) => {
+        const pattern = poolMemberPattern(group, base);
+
+        return !MANIFEST.clips.some((clip) => pattern.exec(clip)?.[1] === VOICE);
+      })
       .map(([name, { group, base }]) => `${name} → ${group}/${base}`);
 
     expect(empty, `pools with no voice/${VOICE}/<group>/<base>(-NN).mp3 in manifest.json`).toEqual([]);
+  });
+
+  it("every literal clip a frame or a sequence plays is in the bundled manifest", () => {
+    // A frame's ticks are literal `sfx/…` paths, not pools: a typo there is
+    // not caught by the pool checks, and at fire time it aborts EVERY framed
+    // callout of the voice (the frame is part of the callout, #835). `sfx/`
+    // paths are voice-independent; a `{voice}` placeholder is resolved to the
+    // bundled voice the way `substituteVoice` would.
+    const sources: [where: string, steps: readonly ScriptStep[]][] = [
+      ...Object.entries(SCRIPT.frames).flatMap(([name, frame]): [string, readonly ScriptStep[]][] => [
+        [`frame "${name}" open`, frame.open],
+        [`frame "${name}" close`, frame.close],
+      ]),
+      ...Object.entries(SCRIPT.scenarios).flatMap(([id, entry]): [string, readonly ScriptStep[]][] =>
+        entry.sequence ? [[id, entry.sequence]] : [],
+      ),
+    ];
+    const clips = new Set(MANIFEST.clips);
+    const seen: string[] = [];
+    const missing: string[] = [];
+
+    for (const [where, steps] of sources) {
+      for (const path of literalClips(steps)) {
+        const resolved = path.replaceAll("{voice}", VOICE);
+        seen.push(resolved);
+
+        if (!clips.has(resolved)) missing.push(`${where} → ${resolved}`);
+      }
+    }
+
+    // The vacuity floor: the radio frame's two ticks are literal clips, so an
+    // empty walk means the walker went blind, not that the script is clean.
+    expect(seen.length).toBeGreaterThanOrEqual(2);
+    expect(missing, "literal clip steps naming no clip in manifest.json").toEqual([]);
   });
 
   it("every frame an entry, a contract or a legacy scenario names is defined by the script", () => {

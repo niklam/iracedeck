@@ -56,10 +56,15 @@ export function evaluateVoiceScriptWarning(input: VoiceScriptWarningInput): PiWa
  * update); switching voices is the immediate way to get the engineer talking
  * again. "Race Engineer Voice" is the label of the dropdown in the settings
  * window, so the sentence names the control rather than describing it.
+ *
+ * The consequence is stated as "every callout that comes from the script",
+ * not "it will stay silent": in 3.2.0 only the flags family is scripted and
+ * the rest still speak from code, so a blanket silence claim would be false
+ * today — and the phrasing stays true once #1065 scripts the rest.
  */
 function voiceScriptMissingMessage(voice: string): string {
   return (
-    `The Race Engineer voice "${voice}" has no callout script, so it will stay silent. ` +
-    "Reinstall the voice pack, or pick another voice under Race Engineer Voice."
+    `The Race Engineer voice "${voice}" has no callout script, so every callout that comes from the script ` +
+    "is skipped in it. Reinstall the voice pack, or pick another voice under Race Engineer Voice."
   );
 }

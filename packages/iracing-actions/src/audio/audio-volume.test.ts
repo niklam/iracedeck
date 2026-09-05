@@ -6,6 +6,7 @@ import {
   isRaceEngineerEnabled,
   isRadarEnabled,
   readBackgroundVolume,
+  readFrameOptions,
   readRaceEngineerVolume,
   readRadarVolume,
   setRaceEngineerTestInFlight,
@@ -125,6 +126,33 @@ describe("audio-volume", () => {
 
       hoisted.setGlobalSettings({ pitCrewRadarEnabled: true });
       expect(isRadarEnabled()).toBe(true);
+    });
+  });
+
+  describe("readFrameOptions (issue #1064)", () => {
+    it("reads both switches as on when the keys are missing — the schema default", () => {
+      hoisted.setGlobalSettings({});
+
+      expect(readFrameOptions()).toEqual({ beeps: true, ambience: true });
+    });
+
+    it("turns a switch off only for an explicit false", () => {
+      hoisted.setGlobalSettings({ raceEngineerRadioBeeps: false, raceEngineerPitAmbience: true });
+      expect(readFrameOptions()).toEqual({ beeps: false, ambience: true });
+
+      hoisted.setGlobalSettings({ raceEngineerRadioBeeps: true, raceEngineerPitAmbience: false });
+      expect(readFrameOptions()).toEqual({ beeps: true, ambience: false });
+
+      hoisted.setGlobalSettings({ raceEngineerRadioBeeps: false, raceEngineerPitAmbience: false });
+      expect(readFrameOptions()).toEqual({ beeps: false, ambience: false });
+    });
+
+    it("reads live — a later change is seen on the next call", () => {
+      hoisted.setGlobalSettings({ raceEngineerRadioBeeps: true });
+      expect(readFrameOptions().beeps).toBe(true);
+
+      hoisted.setGlobalSettings({ raceEngineerRadioBeeps: false });
+      expect(readFrameOptions().beeps).toBe(false);
     });
   });
 

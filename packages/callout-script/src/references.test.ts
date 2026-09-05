@@ -40,7 +40,7 @@ describe("collectScriptReferences", () => {
 
     expect(collectScriptReferences(script)).toEqual({
       scenarioIds: ["pit-crew.flag-blue", "pit-crew.flag-green", "pit-crew.flag-red"],
-      pools: ["a", "b", "flags/blue", "tick", "z"],
+      pools: ["a", "b", "connector", "flags/blue", "tick", "z"],
       vars: ["sign-off", "u", "v", "w"],
       conds: ["c"],
       cases: [{ name: "k", keys: ["x"] }],
@@ -93,6 +93,35 @@ describe("collectScriptReferences", () => {
     };
 
     expect(collectScriptReferences(script).cases).toEqual([{ name: "k", keys: ["a", "b"] }]);
+  });
+
+  // A connector step names no pool in the file, but it draws from one — the
+  // `connector` pool — so a consumer checking pools against what it holds has
+  // to see it, or a voice without a connector clip passes the check and then
+  // aborts every callout that uses one.
+  it("reports the connector pool for a { connector: true } step, once, wherever it appears", () => {
+    const script: CalloutScript = {
+      schema: 1,
+      scenarios: {
+        s: { sequence: [{ connector: true }, { optional: [{ connector: true }] }] },
+        t: { sequence: [{ if: "c", then: [{ connector: true }] }] },
+      },
+      frames: { f: { open: [], close: [{ connector: true }] } },
+      pools: {},
+    };
+
+    expect(collectScriptReferences(script).pools).toEqual(["connector"]);
+  });
+
+  it("reports the connector pool by the same name a script would define it under", () => {
+    const script: CalloutScript = {
+      schema: 1,
+      scenarios: { s: { sequence: [{ connector: true }, "pool:connector"] } },
+      frames: {},
+      pools: { connector: { group: "connectors", base: "and" } },
+    };
+
+    expect(collectScriptReferences(script).pools).toEqual(["connector"]);
   });
 
   it('does not report the reserved frame name "none" as a frame reference', () => {

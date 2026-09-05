@@ -1,4 +1,12 @@
-import { type CalloutScript, NO_FRAME, parseCondReference, parseStringStep, type ScriptStep } from "./grammar.js";
+import {
+  type CalloutScript,
+  CASE_DEFAULT_BRANCH,
+  CONNECTOR_POOL,
+  NO_FRAME,
+  parseCondReference,
+  parseStringStep,
+  type ScriptStep,
+} from "./grammar.js";
 
 /**
  * Everything a script refers to by name. A consumer checks each list against
@@ -11,7 +19,11 @@ import { type CalloutScript, NO_FRAME, parseCondReference, parseStringStep, type
 export type ScriptReferences = {
   /** Keys of `scenarios`, `skip: true` entries included. */
   scenarioIds: readonly string[];
-  /** Every pool name any sequence references, string and object forms alike; a `group/base` name is included as written. */
+  /**
+   * Every pool name any sequence references, string and object forms alike; a
+   * `group/base` name is included as written. A `{ connector: true }` step draws
+   * from the `connector` pool, so it is reported here under that name.
+   */
   pools: readonly string[];
   vars: readonly string[];
   /** Condition names without their `!`. */
@@ -23,9 +35,6 @@ export type ScriptReferences = {
   /** Every `frame` override an entry names. `"none"` is the reserved word for unframed, not a reference, so it is left out; defaults are the engine's. */
   frames: readonly string[];
 };
-
-/** The branch key a `case` falls back to; it maps to no declared key. */
-const DEFAULT_BRANCH = "default";
 
 class Collector {
   readonly pools = new Set<string>();
@@ -46,6 +55,7 @@ class Collector {
     }
 
     if ("pool" in step) this.pools.add(step.pool);
+    else if ("connector" in step) this.pools.add(CONNECTOR_POOL);
     else if ("var" in step) this.vars.add(step.var);
     else if ("include" in step) this.includes.add(step.include);
     else if ("optional" in step) this.walk(step.optional);
@@ -59,12 +69,12 @@ class Collector {
       this.cases.set(step.case, keys);
 
       for (const [key, branch] of Object.entries(step.of)) {
-        if (key !== DEFAULT_BRANCH) keys.add(key);
+        if (key !== CASE_DEFAULT_BRANCH) keys.add(key);
 
         this.walk(branch);
       }
     }
-    // clip, connector, pause, ambient: nothing to reference.
+    // clip, pause, ambient: nothing to reference.
   }
 
   private visitString(step: string): void {

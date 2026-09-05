@@ -102,6 +102,30 @@ export function generateCalloutScripts({
   return artifacts.map(({ file }) => file);
 }
 
+/**
+ * The CLI entry. A failure — a malformed config, an empty `configs/` — is one
+ * line on stderr and a non-zero exit code, as `pack-voice.mjs` reports its
+ * own: the author who typed the mistake reads the message, not an uncaught
+ * exception's stack trace with the message buried in it.
+ *
+ * @internal Exported for testing.
+ * @param {object} [deps]
+ * @param {() => unknown} [deps.generate]
+ * @param {(line: string) => void} [deps.error]
+ * @returns {number} the process exit code
+ */
+export function main({ generate = generateCalloutScripts, error = console.error } = {}) {
+  try {
+    generate();
+
+    return 0;
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
+
+    return 1;
+  }
+}
+
 // Direct-exec guard: only run when this file was executed as the entry script.
 // Tolerate a missing argv[1] (a test runner importing this module) so importing
 // `generateCalloutScripts` never runs it at module-eval time.
@@ -111,5 +135,5 @@ if (
   invokedPath &&
   (import.meta.url === url.pathToFileURL(invokedPath).href || invokedPath === url.fileURLToPath(import.meta.url))
 ) {
-  generateCalloutScripts();
+  process.exitCode = main();
 }

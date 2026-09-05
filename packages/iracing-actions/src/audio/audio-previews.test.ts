@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   setRaceEngineerTestInFlight: vi.fn(),
   readRaceEngineerVolume: vi.fn(() => 80),
   readBackgroundVolume: vi.fn(() => 40),
+  readFrameOptions: vi.fn(() => ({ beeps: true, ambience: true })),
 }));
 
 vi.mock("@iracedeck/audio-scenarios/pit-crew", () => ({
@@ -27,6 +28,7 @@ vi.mock("./audio-volume.js", () => ({
   setRaceEngineerTestInFlight: mocks.setRaceEngineerTestInFlight,
   readRaceEngineerVolume: mocks.readRaceEngineerVolume,
   readBackgroundVolume: mocks.readBackgroundVolume,
+  readFrameOptions: mocks.readFrameOptions,
 }));
 vi.mock("./voice-test.js", () => ({
   playRaceEngineerVoiceTest: mocks.playRaceEngineerVoiceTest,
@@ -77,7 +79,17 @@ describe("runAudioPreview", () => {
     runAudioPreview("background", logger);
 
     expect(mocks.setBusVolume).toHaveBeenCalledWith("background", 0.4);
-    expect(mocks.playBackgroundTest).toHaveBeenCalledWith(expect.any(Function));
+    expect(mocks.playBackgroundTest).toHaveBeenCalledWith(expect.any(Function), { beeps: true, ambience: true });
+  });
+
+  it("background: hands the preview the frame switches as they stand at the press (issue #1064)", () => {
+    mocks.readFrameOptions.mockReturnValueOnce({ beeps: false, ambience: true });
+    runAudioPreview("background", logger);
+    expect(mocks.playBackgroundTest).toHaveBeenLastCalledWith(expect.any(Function), { beeps: false, ambience: true });
+
+    mocks.readFrameOptions.mockReturnValueOnce({ beeps: false, ambience: false });
+    runAudioPreview("background", logger);
+    expect(mocks.playBackgroundTest).toHaveBeenLastCalledWith(expect.any(Function), { beeps: false, ambience: false });
   });
 
   it("exposes the kinds and a type guard so a page-supplied string can be validated", () => {

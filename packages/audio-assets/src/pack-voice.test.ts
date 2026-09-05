@@ -418,28 +418,52 @@ describe("packVoice", () => {
   // silent — with the only trace a line in Installed Voices on the user's
   // machine. Refused here, naming the file and the first problem, before a
   // single clip is staged.
+  /**
+   * A one-clip voice under its own root with a script placed by `place`
+   * (default: the text at `voice/testvoice/callouts.json`), and a `packVoice`
+   * call against it. Shared by the refusal cases and the BOM case.
+   */
+  function packWithScript(name: string, text: string, place?: (voiceDir: string) => void) {
+    const caseRoot = path.join(root, name);
+    const voiceDir = path.join(caseRoot, "voice", "testvoice");
+
+    mkdirSync(path.join(voiceDir, "numbers"), { recursive: true });
+    copyFileSync(path.join(srcRoot, "testvoice", "numbers", "1.mp3"), path.join(voiceDir, "numbers", "1.mp3"));
+
+    if (place) place(voiceDir);
+    else writeFileSync(path.join(voiceDir, CALLOUT_SCRIPT_FILE), text);
+
+    const attempt = () =>
+      packVoice({
+        pack,
+        srcRoot: path.join(caseRoot, "voice"),
+        configsDir,
+        outDir: path.join(caseRoot, "out"),
+        catalogDir: path.join(caseRoot, "catalog"),
+        cacheDir: path.join(caseRoot, "cache"),
+      });
+
+    return { attempt, badRoot: caseRoot, voiceDir };
+  }
+
+  it("ships a script with a UTF-8 BOM byte for byte — the packer is no stricter than the scanner about one", async () => {
+    // Windows editors write one; the scanner strips it before parsing, so the
+    // packer validates past it too and ships the file AS-IS, BOM included —
+    // a re-encoded script would be a second copy of the author's file.
+    const bomText = "\ufeff" + SCRIPT_TEXT;
+    const { attempt, voiceDir } = packWithScript("bom", bomText);
+    const result = await attempt();
+    const entryPath = calloutScriptPath("testvoice");
+    const unpacked = unzipSync(readFileSync(result.archivePath));
+    const source = readFileSync(path.join(voiceDir, CALLOUT_SCRIPT_FILE));
+
+    expect(result.scripts).toBe(1);
+    expect(source.subarray(0, 3)).toEqual(Buffer.from([0xef, 0xbb, 0xbf]));
+    expect(Buffer.from(unpacked[entryPath]!).equals(source)).toBe(true);
+    expect(readFileSync(path.join(result.stageDir, entryPath)).equals(source)).toBe(true);
+  }, 60_000);
+
   describe("refuses a malformed callouts.json rather than packing a voice the scanner will drop", () => {
-    function packWithScript(name: string, text: string) {
-      const badRoot = path.join(root, name);
-      const badSrc = path.join(badRoot, "voice", "testvoice");
-
-      mkdirSync(path.join(badSrc, "numbers"), { recursive: true });
-      copyFileSync(path.join(srcRoot, "testvoice", "numbers", "1.mp3"), path.join(badSrc, "numbers", "1.mp3"));
-      writeFileSync(path.join(badSrc, CALLOUT_SCRIPT_FILE), text);
-
-      const attempt = () =>
-        packVoice({
-          pack,
-          srcRoot: path.join(badRoot, "voice"),
-          configsDir,
-          outDir: path.join(badRoot, "out"),
-          catalogDir: path.join(badRoot, "catalog"),
-          cacheDir: path.join(badRoot, "cache"),
-        });
-
-      return { attempt, badRoot };
-    }
-
     it("one that fails the grammar", async () => {
       const { attempt, badRoot } = packWithScript(
         "bad-grammar",
@@ -460,6 +484,34 @@ describe("packVoice", () => {
 
       await expect(attempt()).rejects.toThrow(/voice\/testvoice\/callouts\.json is not valid JSON/);
       expect(existsSync(path.join(badRoot, "catalog"))).toBe(false);
+    });
+
+    it("one that cannot be read — reported as a read failure, not as invalid JSON", async () => {
+      // A directory of the script's name: the listing has the exact name, the
+      // read fails with EISDIR, and the message must say so — an author sent
+      // to look for a JSON syntax error in a folder would find none.
+      const { attempt, badRoot } = packWithScript("unreadable", "", (voiceDir) => {
+        mkdirSync(path.join(voiceDir, CALLOUT_SCRIPT_FILE));
+      });
+
+      await expect(attempt()).rejects.toThrow(/voice\/testvoice\/callouts\.json could not be read: .*EISDIR/);
+      await expect(attempt()).rejects.not.toThrow(/is not valid JSON/);
+      expect(existsSync(path.join(badRoot, "catalog"))).toBe(false);
+    });
+
+    it("one whose name is not exactly lowercase — the walk would not stage it and the pack would ship silent", async () => {
+      // On a case-insensitive file system `existsSync("callouts.json")` finds
+      // `Callouts.json`, so the old check validated a file the walk then
+      // skipped. The listing carries the on-disk casing on every platform, so
+      // this is refused everywhere — and the assertion is the message, which
+      // holds whether or not the file system tells the two names apart.
+      const { attempt, badRoot } = packWithScript("wrong-case", "", (voiceDir) => {
+        writeFileSync(path.join(voiceDir, "Callouts.json"), SCRIPT_TEXT);
+      });
+
+      await expect(attempt()).rejects.toThrow(/found "Callouts\.json".*must be named exactly "callouts\.json"/);
+      expect(existsSync(path.join(badRoot, "catalog"))).toBe(false);
+      expect(existsSync(path.join(badRoot, "out", "testvoice", "voice"))).toBe(false);
     });
   });
 

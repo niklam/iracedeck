@@ -68,7 +68,7 @@ The look every key inherits. Anything set here is a **default**: a key that has 
 
 ### Race Engineer
 
-![The Race Engineer tab, showing the live toggles, startup policies, voice and callout opt-ins](../../../../assets/settings-window/race-engineer.png)
+![The Race Engineer tab, showing the live toggles, startup policies, voice, the Radio Frame beeps and ambience switches, and callout opt-ins](../../../../assets/settings-window/race-engineer.png)
 
 Everything about the Race Engineer and the radar: the live on/off toggles and their startup policies, the voice, your name, the output device and the three volumes with **Test** buttons beside them, the two halves of the radio frame, the setup-warning patterns, and the per-callout opt-ins.
 

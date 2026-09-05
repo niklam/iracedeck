@@ -2256,6 +2256,61 @@ describe("pack-owned scripts (issue #1064)", () => {
     expect(audio._played).toEqual([]);
   });
 
+  it("(c) warns once per (voice, frame) when a frame step aborts — naming the voice, the frame and the reason", () => {
+    // A broken frame silences every callout it wraps, so it is a broken pack
+    // and gets a warn; but one per fire would be one per flag, so the second
+    // fire (and a second contract wearing the same frame) adds nothing.
+    engine.defineContract(contract({ id: "test.green" }));
+    engine.defineContract(contract({ id: "test.blue" }));
+    const brokenScript = script({
+      scenarios: { "test.green": { sequence: ["pool:flag-green"] }, "test.blue": { sequence: ["pool:flag-green"] } },
+      frames: { radio: { open: ["sfx/missing-beep.mp3"], close: [] } },
+    });
+    engine.setScripts(new Map([["default", brokenScript]]));
+
+    engine.fire("test.green");
+    engine.fire("test.green");
+    engine.fire("test.blue");
+    flushVoiceAndSfx(audio);
+
+    expect(audio._played).toEqual([]);
+
+    const frameWarns = mockLogger.warn.mock.calls
+      .map(([msg]) => String(msg))
+      .filter((msg) => msg.includes("cannot play"));
+    expect(frameWarns).toHaveLength(1);
+    expect(frameWarns[0]).toContain('Voice "default"');
+    expect(frameWarns[0]).toContain('frame "radio"');
+    expect(frameWarns[0]).toContain("sfx/missing-beep.mp3");
+
+    // The per-fire detail keeps its #835 debug line — the abort itself is unchanged.
+    expect(mockLogger.debug).toHaveBeenCalledWith(
+      expect.stringMatching(/"test\.green" skipped — .*sfx\/missing-beep\.mp3/),
+    );
+
+    // A new script set is a new state of affairs: still broken, so it says so again.
+    engine.setScripts(new Map([["default", brokenScript]]));
+    engine.fire("test.green");
+    flushVoiceAndSfx(audio);
+
+    expect(mockLogger.warn.mock.calls.filter(([msg]) => String(msg).includes("cannot play"))).toHaveLength(2);
+  });
+
+  it("(c) a body step that aborts stays at debug — only a FRAME abort earns the warn", () => {
+    engine.defineContract(contract());
+    engine.setScripts(
+      new Map([
+        ["default", script({ scenarios: { "test.green": { sequence: ["voice/default/flags/missing.mp3"] } } })],
+      ]),
+    );
+
+    engine.fire("test.green");
+    flushVoiceAndSfx(audio);
+
+    expect(audio._played).toEqual([]);
+    expect(mockLogger.warn).not.toHaveBeenCalled();
+  });
+
   it("(d) beeps off drops the frame's non-ambient steps and keeps its ambient ones", () => {
     engine.defineContract(contract());
     engine.setScripts(new Map([["default", GREEN_SCRIPT]]));
@@ -2589,6 +2644,19 @@ describe("pack-owned scripts (issue #1064)", () => {
         { name: "session.type", description: "the session type", keys: { race: "a race", practice: "a practice" } },
       ],
     });
+  });
+
+  it("(j) vocabulary() sorts by code point, not by locale — the same names order the same on every machine", () => {
+    // `localeCompare` puts "alpha" before "Zulu" and an underscore before a dot;
+    // a generated reference must not depend on the ICU of whichever machine
+    // ran the generator.
+    engine.defineVar("alpha", () => null);
+    engine.defineVar("Zulu", () => null);
+    engine.defineCond("flag_furled", () => true, "");
+    engine.defineCond("flag.furled", () => true, "");
+
+    expect(engine.vocabulary().vars.map((v) => v.name)).toEqual(["Zulu", "alpha"]);
+    expect(engine.vocabulary().conds.map((c) => c.name)).toEqual(["flag.furled", "flag_furled"]);
   });
 
   it("(k) setScripts logs `Voice scripts loaded` at info once per call, the per-voice count at debug", () => {

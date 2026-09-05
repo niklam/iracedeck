@@ -1,4 +1,7 @@
 import { silentLogger } from "@iracedeck/logger";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { getAudioAssetsManifest, seedGlobalSettings } from "./bootstrap-settings.js";
@@ -29,6 +32,26 @@ describe("seedGlobalSettings", () => {
     expect(settings.audioOutputDevice).toBe("");
     expect(settings.raceEngineerRadioBeeps).toBe(true);
     expect(settings.raceEngineerPitAmbience).toBe(true);
+  });
+
+  it("offers every user-facing key it seeds on the UI's settings grid", () => {
+    // The seeded snapshot is what the UI renders, so a seeded key with no
+    // control is a setting nobody can flip from the page — which is how the
+    // radio frame's two switches (#1064) reached the endpoint but not the
+    // grid. `ui/app.js` has no build and no DOM here; its grid is a literal
+    // list of `key: "…"` lines, read as text.
+    const adapter = new MockPlatformAdapter(silentLogger);
+    seedGlobalSettings(adapter);
+    const seeded = Object.keys(adapter.readSettings()).filter((key) => !key.startsWith("_"));
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const appJs = readFileSync(path.join(here, "..", "ui", "app.js"), "utf-8");
+    const offered = new Set([...appJs.matchAll(/^\s*key: "([A-Za-z]+)",$/gm)].map((match) => match[1]));
+
+    expect(seeded).toContain("raceEngineerRadioBeeps");
+    expect(
+      seeded.filter((key) => !offered.has(key)),
+      "seeded keys with no control on the settings grid",
+    ).toEqual([]);
   });
 
   it("picks the first available voice when voices exist", () => {

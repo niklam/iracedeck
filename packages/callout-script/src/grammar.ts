@@ -23,6 +23,28 @@ export const CALLOUT_SCRIPT_SCHEMA_VERSION = 1 as const;
  */
 export const NO_FRAME = "none";
 
+/**
+ * The message the schema reports when a script tries to define a frame named
+ * `NO_FRAME`. Exported so the generator, which validates the authored config
+ * with a stricter frame-name rule of its own, refuses the same mistake in the
+ * same words.
+ */
+export const RESERVED_FRAME_NAME_MESSAGE = `"${NO_FRAME}" is reserved — it means unframed and can never be defined`;
+
+/**
+ * The branch key a `case` falls back to when the resolver returns a key the
+ * `of` map does not carry (or nothing at all). It maps to no declared key, so
+ * `collectScriptReferences` never reports it as one.
+ */
+export const CASE_DEFAULT_BRANCH = "default";
+
+/**
+ * The pool an unqualified `{ connector: true }` step draws from — a filler
+ * word between two phrases. A script may define it like any other pool, and
+ * the engine falls back to its code-registered pool of that name otherwise.
+ */
+export const CONNECTOR_POOL = "connector";
+
 /** The three things a frame may do to the pit-lane ambience bed. */
 export const AMBIENT_ACTIONS = ["start", "stop", "seek"] as const;
 

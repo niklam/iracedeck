@@ -1734,17 +1734,6 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
 }
 
 /**
- * Wrap a scenario's `where:` predicate so the user's plugin-global opt-in
- * is consulted on every event arrival. The wrapper short-circuits BEFORE
- * `attemptFire`, so disabling a callout while its scenario is already
- * playing does NOT cut playback — only future events are suppressed.
- *
- * Generic over the callout id type so flags (issue #467) and pit-readback
- * callouts (issue #476) share one wrapper. Throws if the scenario id is
- * missing from the id mapping — better to fail loudly at startup than
- * silently leak the unmapped scenario past the toggle.
- */
-/**
  * What the gate wrappers below need of their input: an id (for the log line)
  * and an optional trigger whose `where:` they narrow. Both a legacy
  * `Scenario` and a `ScenarioContract` (issue #1064) satisfy it, and each
@@ -1851,6 +1840,17 @@ function wrapPitServiceRequestsScenario<T extends Gated>(
   };
 }
 
+/**
+ * Wrap a scenario's `where:` predicate so the user's plugin-global opt-in
+ * is consulted on every event arrival. The wrapper short-circuits BEFORE
+ * `attemptFire`, so disabling a callout while its scenario is already
+ * playing does NOT cut playback — only future events are suppressed.
+ *
+ * Generic over the callout id type so flags (issue #467) and pit-readback
+ * callouts (issue #476) share one wrapper. Throws if the scenario id is
+ * missing from the id mapping — better to fail loudly at startup than
+ * silently leak the unmapped scenario past the toggle.
+ */
 function wrapCalloutScenario<T extends Gated, TId extends string>(
   s: T,
   scenarioIdToCalloutId: Record<string, TId>,

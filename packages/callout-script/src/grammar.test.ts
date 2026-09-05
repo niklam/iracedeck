@@ -2,11 +2,14 @@ import { describe, expect, it } from "vitest";
 
 import {
   CALLOUT_SCRIPT_SCHEMA_VERSION,
+  CASE_DEFAULT_BRANCH,
+  CONNECTOR_POOL,
   NO_FRAME,
   parseCondReference,
   parseStringStep,
   POOL_DEFINITION_NAME_PATTERN,
   POOL_NAME_PATTERN,
+  RESERVED_FRAME_NAME_MESSAGE,
   SCENARIO_ID_PATTERN,
 } from "./grammar.js";
 
@@ -14,6 +17,19 @@ describe("constants", () => {
   it("pins the schema version and the reserved frame name", () => {
     expect(CALLOUT_SCRIPT_SCHEMA_VERSION).toBe(1);
     expect(NO_FRAME).toBe("none");
+  });
+
+  // Both are words a script AUTHOR writes (`"of": { "default": [] }`,
+  // `{ "connector": true }` drawing from a pool called "connector"), so a change
+  // is a format change, not a refactor.
+  it("pins the case fallback branch and the connector pool name", () => {
+    expect(CASE_DEFAULT_BRANCH).toBe("default");
+    expect(CONNECTOR_POOL).toBe("connector");
+  });
+
+  it("names the reserved frame in the reserved-frame message", () => {
+    expect(RESERVED_FRAME_NAME_MESSAGE).toContain(`"${NO_FRAME}"`);
+    expect(RESERVED_FRAME_NAME_MESSAGE).toContain("reserved");
   });
 });
 

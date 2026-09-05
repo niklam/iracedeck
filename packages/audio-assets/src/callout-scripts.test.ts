@@ -7,10 +7,10 @@ import {
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { buildManifest } from "../scripts/generate-audio-manifest.mjs";
-import { generateCalloutScripts } from "../scripts/generate-callout-scripts.mjs";
+import { generateCalloutScripts, main as generateCalloutScriptsMain } from "../scripts/generate-callout-scripts.mjs";
 import {
   buildCalloutScript,
   CALLOUT_SCRIPTS_GENERATE_COMMAND,
@@ -96,6 +96,20 @@ describe(`voice/<voice-id>/${CALLOUT_SCRIPT_FILE}`, () => {
     const listed = buildManifest().clips.filter((clip: string) => clip.endsWith(`/${CALLOUT_SCRIPT_FILE}`));
 
     expect(listed).toEqual([]);
+  });
+
+  // The other direction: the loop above walks configs, so an artifact whose
+  // config was deleted or renamed is never visited — it would sit in the voice
+  // tree, ship with the plugin, and keep speaking a script nobody can edit.
+  it("has a config for every committed artifact — an orphaned script would ship unmaintained", () => {
+    const voiceRoot = path.join(audioAssetsPath, "voice");
+    const orphans = fs
+      .readdirSync(voiceRoot, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && fs.existsSync(calloutScriptArtifactPath(entry.name)))
+      .map((entry) => entry.name)
+      .filter((voiceId) => !configs.has(voiceId));
+
+    expect(orphans, `voice/<id>/${CALLOUT_SCRIPT_FILE} with no configs/<id>.voice.json`).toEqual([]);
   });
 });
 
@@ -234,5 +248,42 @@ describe("generateCalloutScripts", () => {
     const outputRoot = tempDir();
 
     expect(() => generateCalloutScripts({ configsDir, outputRoot, log: () => {} })).toThrow(/No voice configs/);
+  });
+});
+
+describe("the CLI entry", () => {
+  it("turns a failure into the message on stderr and exit code 1, never a stack trace", () => {
+    const stderr: string[] = [];
+    const code = generateCalloutScriptsMain({
+      generate: () => {
+        throw new Error("configs/alpha.voice.json: the extracted callout script is not one the plugin accepts");
+      },
+      error: (line: string) => stderr.push(line),
+    });
+
+    expect(code).toBe(1);
+    expect(stderr).toEqual(["configs/alpha.voice.json: the extracted callout script is not one the plugin accepts"]);
+  });
+
+  it("reports a non-Error throw as its string form", () => {
+    const stderr: string[] = [];
+    const code = generateCalloutScriptsMain({
+      generate: () => {
+        throw "plain string";
+      },
+      error: (line: string) => stderr.push(line),
+    });
+
+    expect(code).toBe(1);
+    expect(stderr).toEqual(["plain string"]);
+  });
+
+  it("exits 0 and writes nothing to stderr when the generator succeeds", () => {
+    const stderr: string[] = [];
+    const generate = vi.fn();
+
+    expect(generateCalloutScriptsMain({ generate, error: (line: string) => stderr.push(line) })).toBe(0);
+    expect(generate).toHaveBeenCalledTimes(1);
+    expect(stderr).toEqual([]);
   });
 });

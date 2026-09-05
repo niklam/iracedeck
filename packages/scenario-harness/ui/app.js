@@ -157,6 +157,20 @@ function renderSettings() {
       type: "select",
       options: parseJsonList(state.settings._driverNames),
     },
+    // The radio frame's two opt-outs (#1064), read live by the engine at
+    // frame expansion — flip one and the next callout plays without its
+    // ticks / its ambience bed. Seeded on by bootstrap-settings.ts, so the
+    // plain "checked when true" rule below reads them right.
+    {
+      key: "raceEngineerRadioBeeps",
+      label: "Radio Beeps",
+      type: "checkbox",
+    },
+    {
+      key: "raceEngineerPitAmbience",
+      label: "Pit Ambience",
+      type: "checkbox",
+    },
     {
       key: "pitCrewRadarEnabled",
       label: "Radar Enabled",

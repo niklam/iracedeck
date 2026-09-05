@@ -9,10 +9,14 @@ describe("evaluateVoiceScriptWarning", () => {
     expect(result).not.toBeNull();
     expect(result?.id).toBe(VOICE_SCRIPT_WARNING_ID);
     expect(result?.level).toBe("warning");
+    // Every callout "that comes from the script", not "stays silent": in
+    // 3.2.0 the unscripted families still speak, and the wording must hold
+    // after #1065 scripts them too.
     expect(result?.message).toBe(
-      'The Race Engineer voice "laconic" has no callout script, so it will stay silent. ' +
-        "Reinstall the voice pack, or pick another voice under Race Engineer Voice.",
+      'The Race Engineer voice "laconic" has no callout script, so every callout that comes from the script ' +
+        "is skipped in it. Reinstall the voice pack, or pick another voice under Race Engineer Voice.",
     );
+    expect(result?.message).not.toMatch(/silent/);
   });
 
   it("returns null when the active voice has a script", () => {

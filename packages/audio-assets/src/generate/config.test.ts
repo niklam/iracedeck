@@ -1,3 +1,4 @@
+import { RESERVED_FRAME_NAME_MESSAGE } from "@iracedeck/callout-script";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -211,12 +212,15 @@ describe("loadVoiceConfigs", () => {
     expect(() => loadVoiceConfigs(dir)).toThrow(/alpha\.voice\.json[\s\S]*sequnce/);
   });
 
-  it("says why a map key was refused, not only where", () => {
+  it("says why a map key was refused, not only where — in the grammar's own words", () => {
     const dir = configsDir({
       "alpha.voice.json": { ...valid, frames: { none: { open: [], close: [] } } },
     });
 
-    expect(() => loadVoiceConfigs(dir)).toThrow(/frames\.none: "none" is reserved/);
+    // The message is the grammar package's, verbatim: the config and the
+    // artifact refuse the same mistake the same way.
+    expect(() => loadVoiceConfigs(dir)).toThrow(`frames.none: ${RESERVED_FRAME_NAME_MESSAGE}`);
+    expect(RESERVED_FRAME_NAME_MESSAGE).toMatch(/^"none" is reserved/);
   });
 
   it("names the file when a config is not JSON", () => {

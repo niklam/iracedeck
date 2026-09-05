@@ -6,7 +6,7 @@ The JSON grammar for Race Engineer voice-pack callout scripts (issue #1064): the
 
 ## Modules (`src/`)
 
-- `grammar.ts` — types and constants only, no zod. `ScriptStep`, `CalloutScriptEntry`, `FrameDefinition`, `PoolDefinition`, `CalloutScript`, `CalloutScriptParseResult`; `CALLOUT_SCRIPT_SCHEMA_VERSION` (`1`), `NO_FRAME` (`"none"`), `AMBIENT_ACTIONS`, `STEP_OBJECT_KEYS`; the patterns (`POOL_NAME_PATTERN`, `POOL_DEFINITION_NAME_PATTERN`, `SCENARIO_ID_PATTERN`, `NAME_PATTERN`, `COND_REFERENCE_PATTERN`) and the string-step prefixes; and two pure parsers every consumer shares rather than re-deriving: `parseStringStep` (the DSL's shorthand rules, non-throwing) and `parseCondReference` (`"!name"` → `{ name, negated: true }`).
+- `grammar.ts` — types and constants only, no zod. `ScriptStep`, `CalloutScriptEntry`, `FrameDefinition`, `PoolDefinition`, `CalloutScript`, `CalloutScriptParseResult`; `CALLOUT_SCRIPT_SCHEMA_VERSION` (`1`), `NO_FRAME` (`"none"`) with `RESERVED_FRAME_NAME_MESSAGE` (the problem the schema reports when a script defines it — the generator's stricter frame-name rule reuses the same words), `CASE_DEFAULT_BRANCH` (`"default"`), `CONNECTOR_POOL` (`"connector"`), `AMBIENT_ACTIONS`, `STEP_OBJECT_KEYS`; the patterns (`POOL_NAME_PATTERN`, `POOL_DEFINITION_NAME_PATTERN`, `SCENARIO_ID_PATTERN`, `NAME_PATTERN`, `COND_REFERENCE_PATTERN`) and the string-step prefixes; and two pure parsers every consumer shares rather than re-deriving: `parseStringStep` (the DSL's shorthand rules, non-throwing) and `parseCondReference` (`"!name"` → `{ name, negated: true }`).
 - `schema.ts` — `ScriptStepSchema`, `CalloutScriptEntrySchema`, `FrameDefinitionSchema`, `PoolDefinitionSchema`, `CalloutScriptSchema`, and `parseCalloutScript(json)`. The sub-schemas are exported so the generator can validate the authored `configs/<voice-id>.voice.json`'s `scenarios` / `frames` / `pools` keys one at a time.
 - `paths.ts` — `CALLOUT_SCRIPT_FILE` and `calloutScriptPath(voiceId)` → `voice/<id>/callouts.json` (POSIX, relative to any audio root).
 - `references.ts` — `collectScriptReferences(script)` → `ScriptReferences`: `scenarioIds`, `pools`, `vars`, `conds`, `cases` (with the keys each maps), `includes`, `frames`. Every list deduped and sorted; walks `then` / `else` / `optional` / every `of` branch and the frames' own `open` / `close`.
@@ -61,7 +61,7 @@ Problems are strings, one per thing to fix, in the form `<path>: <message>` with
 
 ## What `collectScriptReferences` does NOT include
 
-`frames` lists only the `frame` overrides entries name, minus `"none"` — a contract's default frame is the engine's business, and the reserved word is not a reference. `cases[].keys` excludes `"default"`. `pools` includes slashed `group/base` names as written; a consumer checking pools against a registry has to route those to the manifest instead (the engine's `pickFromPoolRef`).
+`frames` lists only the `frame` overrides entries name, minus `"none"` — a contract's default frame is the engine's business, and the reserved word is not a reference. `cases[].keys` excludes `"default"` (`CASE_DEFAULT_BRANCH`). `pools` includes slashed `group/base` names as written; a consumer checking pools against a registry has to route those to the manifest instead (the engine's `pickFromPoolRef`). It DOES include `"connector"` (`CONNECTOR_POOL`) whenever a `{ "connector": true }` step appears: the step names no pool in the file, but it draws from that one, and a consumer that never saw it would pass a voice with no connector clip.
 
 ## Conventions
 

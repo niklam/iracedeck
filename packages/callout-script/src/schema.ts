@@ -15,6 +15,7 @@ import {
   POOL_DEFINITION_NAME_PATTERN,
   POOL_NAME_PATTERN,
   type PoolDefinition,
+  RESERVED_FRAME_NAME_MESSAGE,
   SCENARIO_ID_PATTERN,
   type ScriptStep,
   STEP_OBJECT_KEYS,
@@ -45,10 +46,7 @@ const vocabularyName = (what: string) =>
 
 const frameName = z.string().regex(NAME_PATTERN, "must be a frame name: non-empty, no whitespace");
 
-const frameDefinitionName = frameName.refine(
-  (name) => name !== NO_FRAME,
-  `"${NO_FRAME}" is reserved — it means unframed and can never be defined`,
-);
+const frameDefinitionName = frameName.refine((name) => name !== NO_FRAME, RESERVED_FRAME_NAME_MESSAGE);
 
 const clipPath = z.string().min(1, "must be a clip path");
 

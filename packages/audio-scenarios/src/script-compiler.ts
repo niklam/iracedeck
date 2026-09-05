@@ -20,6 +20,8 @@
 import {
   type CalloutScript,
   type CalloutScriptEntry,
+  CASE_DEFAULT_BRANCH,
+  CONNECTOR_POOL,
   type FrameDefinition,
   NO_FRAME,
   parseCondReference,
@@ -52,12 +54,6 @@ export type CompileDeps = {
   /** Legacy `defineScenario` ids an include may target. */
   fragments: ReadonlySet<string>;
 };
-
-/** The branch key a `case` falls back to; it maps to no declared key. */
-const DEFAULT_BRANCH = "default";
-
-/** The pool an unqualified `{ connector: true }` step draws from. */
-const CONNECTOR_POOL = "connector";
 
 /**
  * Internal control flow: a step referenced something the engine does not
@@ -268,7 +264,7 @@ class StepConverter {
     let fallback: ResolvedStep[] = [];
 
     for (const [key, steps] of Object.entries(of)) {
-      if (key === DEFAULT_BRANCH) {
+      if (key === CASE_DEFAULT_BRANCH) {
         fallback = this.convertAll(steps);
         continue;
       }

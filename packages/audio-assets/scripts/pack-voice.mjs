@@ -186,20 +186,46 @@ function assertPackDefinition(pack) {
  * A leading BOM is stripped first, as the scanner strips it: the packer must
  * not be stricter than the reader about a file an editor wrote.
  *
+ * The file is found by its EXACT name in a directory listing, the way the
+ * walk (`buildVoiceTreeTasks`) decides what to stage — not with `existsSync`,
+ * which is case-insensitive on Windows. A `Callouts.json` would otherwise
+ * validate here, be skipped by the walk, and ship a pack that is silent for
+ * no reason anyone can see; so a wrong-cased name is refused outright, naming
+ * the one the walk and the scanner look for.
+ *
  * @param {VoicePackDefinition} pack
  * @param {string} voiceId
  * @param {string} srcDir — the voice's source tree, `<srcRoot>/<voice-id>`
  */
 function assertCalloutScript(pack, voiceId, srcDir) {
-  const file = path.join(srcDir, CALLOUT_SCRIPT_FILE);
-
-  if (!existsSync(file)) return;
-
   const where = `pack "${pack.id}": ${calloutScriptPath(voiceId)}`;
+  const names = readdirSync(srcDir);
+  const wrongCase = names.find((name) => name !== CALLOUT_SCRIPT_FILE && name.toLowerCase() === CALLOUT_SCRIPT_FILE);
+
+  if (wrongCase !== undefined) {
+    throw new Error(
+      `${where}: found "${wrongCase}" — a callout script must be named exactly "${CALLOUT_SCRIPT_FILE}" ` +
+        `(lowercase); the packer stages, and the plugin reads, only that name`,
+    );
+  }
+
+  if (!names.includes(CALLOUT_SCRIPT_FILE)) return;
+
+  const file = path.join(srcDir, CALLOUT_SCRIPT_FILE);
+  let text;
+
+  // Read and parse are reported apart, as the scanner reports them: an
+  // EACCES or an EISDIR is not "invalid JSON", and the author fixing it
+  // should not be sent to look for a syntax error.
+  try {
+    text = readFileSync(file, "utf-8");
+  } catch (err) {
+    throw new Error(`${where} could not be read: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
   let json;
 
   try {
-    const text = readFileSync(file, "utf-8");
     json = JSON.parse(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text);
   } catch (err) {
     throw new Error(`${where} is not valid JSON: ${err instanceof Error ? err.message : String(err)}`);

@@ -4,6 +4,7 @@ import {
   NO_FRAME,
   POOL_DEFINITION_NAME_PATTERN,
   PoolDefinitionSchema,
+  RESERVED_FRAME_NAME_MESSAGE,
   SCENARIO_ID_PATTERN,
 } from "@iracedeck/callout-script";
 import { createHash } from "node:crypto";
@@ -28,11 +29,10 @@ const scenarioId = z.string().regex(SCENARIO_ID_PATTERN, "must be a scenario id:
 
 // Stricter than the artifact's rule (any non-whitespace name): a frame is a
 // category label like a group, so it takes the same kebab-case shape. `none` is
-// the reserved "unframed" marker and can never be defined.
-const frameName = kebab.refine(
-  (name) => name !== NO_FRAME,
-  `"${NO_FRAME}" is reserved — it means unframed and can never be defined`,
-);
+// the reserved "unframed" marker and can never be defined — refused in the
+// grammar's own words, so the config and the artifact report the same mistake
+// the same way.
+const frameName = kebab.refine((name) => name !== NO_FRAME, RESERVED_FRAME_NAME_MESSAGE);
 
 // A DEFINED pool never carries a slash: a slashed reference always means a
 // direct `group/base` of the voice's own clips, which is what keeps the two
