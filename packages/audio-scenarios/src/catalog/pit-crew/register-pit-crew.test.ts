@@ -1862,10 +1862,10 @@ describe("pit-limiter / no-limiter family registration (issue #1051)", () => {
 
   // Publish, then walk the clock past the row's `triggerDelay` — nothing to
   // walk for the six immediate rows. The leading flush drains whatever fired on
-  // the same event WITHOUT a delay (`pitLane.exited` also triggers the
-  // higher-weight PIT_EXIT), so a delayed fire meets an idle bus instead of
-  // losing a weight contest to a callout that is only still playing because the
-  // test never let it finish.
+  // the same event WITHOUT a delay (an equal-or-higher-weight line — a flag
+  // call, a toggle confirmation, the spotter), so a delayed fire meets an idle
+  // bus instead of losing a weight contest to a callout that is only still
+  // playing because the test never let it finish.
   function fire({ event, data, telemetry, live, delayMs = 0 }: Fire): void {
     mockLatestTelemetry.mockReturnValue(live ?? telemetry);
     bus.publishEvent(event, data as never, telemetry);
@@ -2068,10 +2068,10 @@ describe("pit-limiter / no-limiter family registration (issue #1051)", () => {
   // and the least obvious, because reaching it needs a busy bus AND a change
   // while the fire waits, so nothing arrives here by accident.
   //
-  // `PIT_EXIT` fires on every `pitLane.exited` at the higher WEIGHT.SAFETY and
-  // ungated, so when the limiter's window closes the bus is usually still busy
-  // with a spoken line. `queueable: true` is what stops the callout being
-  // dropped there — but queueing puts back the staleness the delay existed to
+  // An equal-or-higher-weight line (a flag call, a toggle confirmation, the
+  // spotter) is often in flight when the limiter's window closes, so the bus is
+  // usually still busy with a spoken line. `queueable: true` is what stops the
+  // callout being dropped there — but queueing puts back the staleness the delay existed to
   // remove: the fire decision is taken when the timer elapses, the line can then
   // sit behind a longer call, and by the time it speaks the driver may have
   // fixed the limiter. The `if:` gate wrapping the WHOLE framed sequence is what
@@ -2085,7 +2085,8 @@ describe("pit-limiter / no-limiter family registration (issue #1051)", () => {
   // waits, and then expects silence goes red. The positive counterparts are here
   // so the silence cannot instead be queueing broken outright.
   describe("the speak-time gate re-checks again when a queued fire drains", () => {
-    // Stands in for PIT_EXIT: above the limiter callouts' NORMAL, with no
+    // Stands in for an equal-or-higher-weight line (a flag call, a toggle
+    // confirmation, the spotter): above the limiter callouts' NORMAL, with no
     // `interrupt`, so a limiter fire arriving mid-line takes the queue-or-drop
     // path rather than winning the bus — the same path real driving takes.
     // `offTrack.started` has no subscriber in the catalog, so this occupies the
