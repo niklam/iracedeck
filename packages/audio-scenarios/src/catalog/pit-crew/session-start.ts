@@ -276,6 +276,8 @@ export function buildSessionStartContract(getSnapshot: SessionStartSnapshotResol
     // read TrackWetness / TrackTempCrew / AirTemp. See
     // `SESSION_START_DELAY_MS` for the rationale.
     triggerDelay: SESSION_START_DELAY_MS,
+    description:
+      "A practice or qualifying session begins and three seconds pass, whether you are in the garage or on track — but not when iRaceDeck connects while you are already out lapping.",
   };
 }
 

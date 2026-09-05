@@ -213,6 +213,8 @@ export function buildLapTimeContract(getRaceFinishedFired: () => boolean = () =>
     bus: AudioBus.Voice,
     base: "voice/{voice}",
     family: "lap-time",
+    description:
+      "You cross the line with a new session-best lap, or your first valid lap of the session, in any session — except on the final lap of a race, where the result speaks instead.",
   };
 }
 

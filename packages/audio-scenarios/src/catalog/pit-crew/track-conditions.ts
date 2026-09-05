@@ -33,7 +33,12 @@ import type { ScenarioContract } from "../../dsl.js";
 
 type Direction = "worsening" | "drying";
 
-function trackConditionsContract(direction: Direction, target: TrackWetness, slug: string): ScenarioContract {
+function trackConditionsContract(
+  direction: Direction,
+  target: TrackWetness,
+  slug: string,
+  description: string,
+): ScenarioContract {
   return {
     id: `pit-crew.track-conditions-${direction}-${slug}`,
     channel: AudioChannel.Voice,
@@ -50,25 +55,86 @@ function trackConditionsContract(direction: Direction, target: TrackWetness, slu
         return direction === "worsening" ? data.to > data.from : data.to < data.from;
       },
     },
+    description,
   };
 }
 
 export const TRACK_CONDITIONS_CONTRACTS: readonly ScenarioContract[] = [
   // Worsening — Dry isn't a worsening target.
-  trackConditionsContract("worsening", TrackWetness.MostlyDry, "mostly-dry"),
-  trackConditionsContract("worsening", TrackWetness.VeryLightlyWet, "very-lightly-wet"),
-  trackConditionsContract("worsening", TrackWetness.LightlyWet, "lightly-wet"),
-  trackConditionsContract("worsening", TrackWetness.ModeratelyWet, "moderately-wet"),
-  trackConditionsContract("worsening", TrackWetness.VeryWet, "very-wet"),
-  trackConditionsContract("worsening", TrackWetness.ExtremelyWet, "extremely-wet"),
+  trackConditionsContract(
+    "worsening",
+    TrackWetness.MostlyDry,
+    "mostly-dry",
+    "The track gets wetter and its wetness state reaches mostly dry from dry, in any session and in or out of the car.",
+  ),
+  trackConditionsContract(
+    "worsening",
+    TrackWetness.VeryLightlyWet,
+    "very-lightly-wet",
+    "The track gets wetter and its wetness state reaches very lightly wet from any drier state, in any session and in or out of the car.",
+  ),
+  trackConditionsContract(
+    "worsening",
+    TrackWetness.LightlyWet,
+    "lightly-wet",
+    "The track gets wetter and its wetness state reaches lightly wet from any drier state, in any session and in or out of the car.",
+  ),
+  trackConditionsContract(
+    "worsening",
+    TrackWetness.ModeratelyWet,
+    "moderately-wet",
+    "The track gets wetter and its wetness state reaches moderately wet from any drier state, in any session and in or out of the car.",
+  ),
+  trackConditionsContract(
+    "worsening",
+    TrackWetness.VeryWet,
+    "very-wet",
+    "The track gets wetter and its wetness state reaches very wet from any drier state, in any session and in or out of the car.",
+  ),
+  trackConditionsContract(
+    "worsening",
+    TrackWetness.ExtremelyWet,
+    "extremely-wet",
+    "The track gets wetter and its wetness state reaches extremely wet from any drier state, in any session and in or out of the car.",
+  ),
 
   // Drying — ExtremelyWet isn't a drying target.
-  trackConditionsContract("drying", TrackWetness.Dry, "dry"),
-  trackConditionsContract("drying", TrackWetness.MostlyDry, "mostly-dry"),
-  trackConditionsContract("drying", TrackWetness.VeryLightlyWet, "very-lightly-wet"),
-  trackConditionsContract("drying", TrackWetness.LightlyWet, "lightly-wet"),
-  trackConditionsContract("drying", TrackWetness.ModeratelyWet, "moderately-wet"),
-  trackConditionsContract("drying", TrackWetness.VeryWet, "very-wet"),
+  trackConditionsContract(
+    "drying",
+    TrackWetness.Dry,
+    "dry",
+    "The track dries and its wetness state reaches dry from any wetter state, in any session and in or out of the car.",
+  ),
+  trackConditionsContract(
+    "drying",
+    TrackWetness.MostlyDry,
+    "mostly-dry",
+    "The track dries and its wetness state reaches mostly dry from any wetter state, in any session and in or out of the car.",
+  ),
+  trackConditionsContract(
+    "drying",
+    TrackWetness.VeryLightlyWet,
+    "very-lightly-wet",
+    "The track dries and its wetness state reaches very lightly wet from any wetter state, in any session and in or out of the car.",
+  ),
+  trackConditionsContract(
+    "drying",
+    TrackWetness.LightlyWet,
+    "lightly-wet",
+    "The track dries and its wetness state reaches lightly wet from any wetter state, in any session and in or out of the car.",
+  ),
+  trackConditionsContract(
+    "drying",
+    TrackWetness.ModeratelyWet,
+    "moderately-wet",
+    "The track dries and its wetness state reaches moderately wet from any wetter state, in any session and in or out of the car.",
+  ),
+  trackConditionsContract(
+    "drying",
+    TrackWetness.VeryWet,
+    "very-wet",
+    "The track dries and its wetness state reaches very wet from extremely wet, in any session and in or out of the car.",
+  ),
 ];
 
 /** Contract ids exported for tests so a typo here surfaces as a test failure. */
