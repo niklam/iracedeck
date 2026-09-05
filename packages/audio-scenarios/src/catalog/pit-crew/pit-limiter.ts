@@ -116,6 +116,8 @@ export const LIMITER_ON_TRACK: ScenarioContract = {
     event: "pitLane.exited",
     where: limiterStillEngagedOffPitRoad,
   },
+  description:
+    "About a second and a half after you leave pit road, the pit limiter is still switched on, in a car that has one.",
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
   base: "pit-crew",
@@ -144,6 +146,8 @@ export const LIMITER_MISSING: ScenarioContract = {
     // silence rather than a scolding.
     where: limiterStillMissingOnPitRoad,
   },
+  description:
+    "You drive onto pit road, or pull away from your stall, with the pit limiter off, and it is still off two and a half seconds later, in a car that has one.",
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
   base: "pit-crew",
@@ -163,6 +167,8 @@ export const LIMITER_DROPPED: ScenarioContract = {
     // Cars without a pit limiter can't drop one (issue #639).
     where: (e) => hasPitLimiter(e.telemetry as TelemetryData | null),
   },
+  description:
+    "You switch the pit limiter off while still between the pit cones and moving at more than a crawl, in a car that has one.",
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
   base: "pit-crew",
@@ -176,6 +182,8 @@ export const LIMITER_SPEEDING: ScenarioContract = {
     // A pit-limiter speeding warning is meaningless without a limiter (issue #639).
     where: (e) => hasPitLimiter(e.telemetry as TelemetryData | null),
   },
+  description:
+    "You go over the pit speed limit on pit road in a car that has a pit limiter, no more than once every five seconds.",
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
   base: "pit-crew",

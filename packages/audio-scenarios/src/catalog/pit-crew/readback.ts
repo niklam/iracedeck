@@ -349,6 +349,9 @@ function readbackContract(reason: "entry" | "exit"): ScenarioContract {
         return isEntry ? r === "entry" || r === "entry-refire" : r === "exit";
       },
     },
+    description: isEntry
+      ? "You reach the pit-lane approach zone under your own power, change the queued service while still on pit road, or have been in the pre-start formation for about five seconds."
+      : "You leave pit road and stay out for about four and a half seconds without turning back in.",
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",

@@ -80,7 +80,9 @@ export const PIT_STATUS_REPEAT_WEIGHT = 40;
  * translator repeats. Single-sourced here so the transition contracts, their
  * repeat siblings and the `pitStatus.still*` conditions can never disagree
  * about which subjects those are. `cond` is the condition name the repeat
- * script wraps its body in; `still` is the phrase its description uses.
+ * script wraps its body in; `still` is the phrase its description uses;
+ * `description` and `repeatDescription` are the reference's (#1066) one
+ * sentence on when the transition line and its nag fire.
  *
  * @internal Exported for testing — the test enumerates the conditions from it.
  */
@@ -89,22 +91,60 @@ export const POSITIONING_SUBJECTS: readonly {
   readonly target: PitSvStatus;
   readonly cond: string;
   readonly still: string;
+  readonly description: string;
+  readonly repeatDescription: string;
 }[] = [
-  { id: "too-far-left", target: PitSvStatus.TooFarLeft, cond: "pitStatus.stillTooFarLeft", still: "too far left" },
-  { id: "too-far-right", target: PitSvStatus.TooFarRight, cond: "pitStatus.stillTooFarRight", still: "too far right" },
+  {
+    id: "too-far-left",
+    target: PitSvStatus.TooFarLeft,
+    cond: "pitStatus.stillTooFarLeft",
+    still: "too far left",
+    description: "You stop in the pit lane too far left of your box for the crew to work on the car.",
+    repeatDescription:
+      "You stay parked too far left of your box after the first correction, about every two seconds while the car is at rest.",
+  },
+  {
+    id: "too-far-right",
+    target: PitSvStatus.TooFarRight,
+    cond: "pitStatus.stillTooFarRight",
+    still: "too far right",
+    description: "You stop in the pit lane too far right of your box for the crew to work on the car.",
+    repeatDescription:
+      "You stay parked too far right of your box after the first correction, about every two seconds while the car is at rest.",
+  },
   {
     id: "too-far-forward",
     target: PitSvStatus.TooFarForward,
     cond: "pitStatus.stillTooFarForward",
     still: "too far forward",
+    description: "You overshoot your box marks and stop too far forward for the crew to work on the car.",
+    repeatDescription:
+      "You stay parked past your box marks after the first correction, about every two seconds while the car is at rest.",
   },
-  { id: "too-far-back", target: PitSvStatus.TooFarBack, cond: "pitStatus.stillTooFarBack", still: "too far back" },
-  { id: "bad-angle", target: PitSvStatus.BadAngle, cond: "pitStatus.stillBadAngle", still: "at a bad angle" },
+  {
+    id: "too-far-back",
+    target: PitSvStatus.TooFarBack,
+    cond: "pitStatus.stillTooFarBack",
+    still: "too far back",
+    description: "You stop short of your box marks, too far back for the crew to work on the car.",
+    repeatDescription:
+      "You stay parked short of your box marks after the first correction, about every two seconds while the car is at rest.",
+  },
+  {
+    id: "bad-angle",
+    target: PitSvStatus.BadAngle,
+    cond: "pitStatus.stillBadAngle",
+    still: "at a bad angle",
+    description: "You stop across your box at an angle the crew cannot work at.",
+    repeatDescription:
+      "You stay parked across your box at a bad angle after the first correction, about every two seconds while the car is at rest.",
+  },
 ];
 
-function pitStatusContract(id: string, target: PitSvStatus): ScenarioContract {
+function pitStatusContract(id: string, target: PitSvStatus, description: string): ScenarioContract {
   return {
     id: `pit-crew.pit-status-${id}`,
+    description,
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",
@@ -143,9 +183,10 @@ function stillMisalignedAs(target: PitSvStatus): boolean {
   return status === undefined || status === target;
 }
 
-function pitStatusRepeatContract(id: string, target: PitSvStatus): ScenarioContract {
+function pitStatusRepeatContract(id: string, target: PitSvStatus, description: string): ScenarioContract {
   return {
     id: `pit-crew.pit-status-${id}-repeat`,
+    description,
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",
@@ -178,15 +219,27 @@ export function registerPitStatusVocabulary(engine: Pick<IScenarioEngine, "defin
 }
 
 export const PIT_STATUS_CONTRACTS: readonly ScenarioContract[] = [
-  pitStatusContract("in-progress", PitSvStatus.InProgress),
-  pitStatusContract("complete", PitSvStatus.Complete),
-  ...POSITIONING_SUBJECTS.map(({ id, target }) => pitStatusContract(id, target)),
-  pitStatusContract("cant-fix-that", PitSvStatus.CantFixThat),
+  pitStatusContract(
+    "in-progress",
+    PitSvStatus.InProgress,
+    "You are stopped in your pit box and the crew begins working on the car.",
+  ),
+  pitStatusContract(
+    "complete",
+    PitSvStatus.Complete,
+    "The crew completes every queued service on your car in the pit box.",
+  ),
+  ...POSITIONING_SUBJECTS.map(({ id, target, description }) => pitStatusContract(id, target, description)),
+  pitStatusContract(
+    "cant-fix-that",
+    PitSvStatus.CantFixThat,
+    "You stop in your pit box with damage the crew cannot repair.",
+  ),
 ];
 
 /** The terse "still uncorrected" nags (issue #951) — one per positioning error. */
-export const PIT_STATUS_REPEAT_CONTRACTS: readonly ScenarioContract[] = POSITIONING_SUBJECTS.map(({ id, target }) =>
-  pitStatusRepeatContract(id, target),
+export const PIT_STATUS_REPEAT_CONTRACTS: readonly ScenarioContract[] = POSITIONING_SUBJECTS.map(
+  ({ id, target, repeatDescription }) => pitStatusRepeatContract(id, target, repeatDescription),
 );
 
 /** Contract ids exported for tests so a typo here surfaces as a test failure. */

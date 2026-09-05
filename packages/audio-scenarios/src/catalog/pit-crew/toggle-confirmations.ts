@@ -54,6 +54,9 @@ function fuelContract(on: boolean): ScenarioContract {
         return data.service === "fuel" && data.on === on;
       },
     },
+    description: on
+      ? "You add fuel to the service for your next pit stop."
+      : "You take fuel off the service for your next pit stop.",
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",
@@ -135,6 +138,30 @@ const TIRE_SET_PATTERNS: ReadonlyArray<TireSet> = [
 /** The fifteen non-empty set names, in registration order. */
 export const TIRE_SET_NAMES: readonly TireSetName[] = TIRE_SET_PATTERNS.map((p) => p.name);
 
+/**
+ * When each tire-set confirmation fires, for the generated reference (#1066)
+ * — one sentence per resulting set, since a builder that serves fifteen ids
+ * still owes each its own. "Settles on" is deliberate: the line answers the
+ * set the selection ends up in, not the button that got it there.
+ */
+const TIRE_SET_DESCRIPTIONS: Record<TireSetName, string> = {
+  all: "Your tire selection for the next pit stop settles on all four tires.",
+  fronts: "Your tire selection for the next pit stop settles on the two front tires only.",
+  rears: "Your tire selection for the next pit stop settles on the two rear tires only.",
+  lefts: "Your tire selection for the next pit stop settles on the two left-side tires only.",
+  rights: "Your tire selection for the next pit stop settles on the two right-side tires only.",
+  lf: "Your tire selection for the next pit stop settles on the left-front tire alone.",
+  rf: "Your tire selection for the next pit stop settles on the right-front tire alone.",
+  lr: "Your tire selection for the next pit stop settles on the left-rear tire alone.",
+  rr: "Your tire selection for the next pit stop settles on the right-rear tire alone.",
+  "lf-rr": "Your tire selection for the next pit stop settles on the left-front and right-rear diagonal.",
+  "rf-lr": "Your tire selection for the next pit stop settles on the right-front and left-rear diagonal.",
+  "skip-rr": "Your tire selection for the next pit stop settles on every tire but the right-rear.",
+  "skip-lr": "Your tire selection for the next pit stop settles on every tire but the left-rear.",
+  "skip-rf": "Your tire selection for the next pit stop settles on every tire but the right-front.",
+  "skip-lf": "Your tire selection for the next pit stop settles on every tire but the left-front.",
+};
+
 function setMatches(actual: ReadonlyArray<string>, expected: ReadonlyArray<string>): boolean {
   if (actual.length !== expected.length) return false;
 
@@ -154,6 +181,7 @@ function tireSetOnContract(set: TireSet): ScenarioContract {
         return setMatches(current, set.tires);
       },
     },
+    description: TIRE_SET_DESCRIPTIONS[set.name],
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",
@@ -167,6 +195,7 @@ const TIRE_OFF_CONTRACT: ScenarioContract = {
     event: "tireService.changed",
     where: (e) => (e as SimEventOf<"tireService.changed">).data.current.length === 0,
   },
+  description: "Your tire selection for the next pit stop settles on no tires at all.",
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
   base: "voice/{voice}",
@@ -204,6 +233,7 @@ function compoundContract(to: 0 | 1): ScenarioContract {
       event: "tireService.compoundChanged",
       where: (e) => (e as SimEventOf<"tireService.compoundChanged">).data.to === to,
     },
+    description: `You switch the tires for your next pit stop to the ${name} compound.`,
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",
@@ -226,6 +256,9 @@ function windshieldContract(on: boolean): ScenarioContract {
         return data.service === "windshield" && data.on === on;
       },
     },
+    description: on
+      ? "You add a windshield clean to your next pit stop."
+      : "You take the windshield clean off your next pit stop.",
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",
@@ -251,6 +284,9 @@ function fastRepairContract(on: boolean): ScenarioContract {
         return data.service === "fastRepair" && data.on === on;
       },
     },
+    description: on
+      ? "You add a fast repair to your next pit stop."
+      : "You take the fast repair off your next pit stop.",
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",
