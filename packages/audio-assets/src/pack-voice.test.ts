@@ -17,7 +17,7 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import url from "node:url";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 // The REAL contracts, from deck-core's source rather than a copy: the packer's
 // output must satisfy the schemas the plugin parses with and lay clips out where
@@ -37,6 +37,34 @@ import {
   serializeSortedJson,
 } from "../scripts/pack-voice.mjs";
 import { VOICE_PACKS } from "./build/voice-packs.mjs";
+
+/**
+ * One deliberate hole in the real file system: a path whose `lstat` reports
+ * ENOENT although the directory listing just named it — the race between
+ * `readdirSync` and the stat that the packer must report in its own words.
+ * Nothing else is mocked; `null` is the file system as it is.
+ */
+const fsHook = vi.hoisted(() => ({ vanishOnStat: null as string | null }));
+
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  // `lstatSync` is a stack of overloads; the wrapper takes the widest shape
+  // and is handed back under the original type, since it forwards verbatim.
+  type Widest = (file: import("node:fs").PathLike, options?: import("node:fs").StatOptions) => unknown;
+  const forward = actual.lstatSync as Widest;
+  const lstatSync = ((file, options) => {
+    if (fsHook.vanishOnStat !== null && String(file) === fsHook.vanishOnStat) {
+      const err = new Error(`ENOENT: no such file or directory, lstat '${String(file)}'`) as NodeJS.ErrnoException;
+      err.code = "ENOENT";
+
+      throw err;
+    }
+
+    return forward(file, options);
+  }) as Widest as typeof actual.lstatSync;
+
+  return { ...actual, lstatSync };
+});
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = path.resolve(__dirname, "..");
@@ -530,6 +558,20 @@ describe("packVoice", () => {
       await expect(attempt()).rejects.toThrow(/voice\/testvoice\/callouts\.json must be a regular file/);
       expect(existsSync(path.join(badRoot, "catalog"))).toBe(false);
       expect(existsSync(path.join(badRoot, "out", "testvoice", "voice"))).toBe(false);
+    });
+
+    it("one that vanishes between the listing and the stat — the packer's own words, not a raw Node error", async () => {
+      const { attempt, badRoot, voiceDir } = packWithScript("vanishing", SCRIPT_TEXT);
+      fsHook.vanishOnStat = path.join(voiceDir, CALLOUT_SCRIPT_FILE);
+
+      try {
+        await expect(attempt()).rejects.toThrow(
+          /^pack "testvoice": voice\/testvoice\/callouts\.json could not be read: .*ENOENT/,
+        );
+        expect(existsSync(path.join(badRoot, "catalog"))).toBe(false);
+      } finally {
+        fsHook.vanishOnStat = null;
+      }
     });
 
     it("one that cannot be read — reported as a read failure, not as invalid JSON", async (ctx) => {

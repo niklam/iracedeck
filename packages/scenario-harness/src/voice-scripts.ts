@@ -22,11 +22,12 @@
  *   exactly as they do in a plugin — the service applies roots, then the
  *   manifest, then the scripts, in the order the plugins rely on.
  *
- * And one re-loader, {@link reloadVoiceScripts}, for the UI's Reload button:
- * the audio processor copies a regenerated `callouts.json` beside the clips,
- * but the engine keeps the map it compiled at boot until it is handed the new
- * one — which is what makes "regenerate, press Reload, audition" work
- * without a restart.
+ * And one re-loader, {@link reloadVoiceScripts}, for the UI's Reload and Wipe
+ * cache buttons: the audio processor copies a regenerated `callouts.json`
+ * beside the clips, but the engine keeps the map it compiled at boot until it
+ * is handed the new one — which is what makes "regenerate, press Reload,
+ * audition" work without a restart. Which of the two loaders it re-runs, and
+ * therefore how a broken script surfaces, is the reloader's own note.
  */
 import { audioAssetsPath, BUNDLED_VOICE_IDS } from "@iracedeck/audio-assets/build";
 import { type AudioAssetsManifest, mergeManifests } from "@iracedeck/audio-scenarios";
@@ -171,10 +172,17 @@ export type ReloadVoiceScriptsDeps = {
 
 /**
  * Re-read the callout scripts and hand them to the engine again — the script
- * half of the UI's Reload (#1064). Throws as {@link loadBundledVoiceScripts}
- * throws, naming the file: a Reload that finds a broken bundled script fails
- * the request loudly rather than leaving the engine on the old map in
- * silence.
+ * half of the UI's Reload (#1064).
+ *
+ * How a broken regenerated script surfaces depends on the path. Without a
+ * packs directory the bundled loader THROWS, naming the file, and the Reload
+ * request fails loudly rather than leaving the engine on the old map in
+ * silence. With one, the reload is the plugins' own pack service, which never
+ * throws over a script: it WARNS per bundled voice with no usable script
+ * (`Bundled voice "<id>" has no usable script: …`) and hands the engine a map
+ * with that voice left out — the request succeeds and the engineer goes quiet
+ * on every scripted callout of that voice, exactly as the plugin would. Read
+ * the harness log after a Reload on that path.
  */
 export function reloadVoiceScripts(deps: ReloadVoiceScriptsDeps): void {
   if (deps.voicePacks !== null) {

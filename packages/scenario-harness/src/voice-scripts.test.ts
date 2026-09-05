@@ -2,9 +2,10 @@ import { BUNDLED_VOICE_IDS } from "@iracedeck/audio-assets/build";
 import type { AudioAssetsManifest } from "@iracedeck/audio-scenarios";
 import { type CalloutScript, calloutScriptPath, parseCalloutScript } from "@iracedeck/callout-script";
 import { silentLogger } from "@iracedeck/logger";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { loadBundledVoiceScripts, loadInstalledVoiceScripts, reloadVoiceScripts } from "./voice-scripts.js";
@@ -271,5 +272,29 @@ describe("reloadVoiceScripts — the script half of the UI's Reload (#1064)", ()
       reloadVoiceScripts({ voicePacks: null, applyScripts, bundled: { root: tmp, voiceIds: ["luca"] } }),
     ).toThrow(/Bundled voice "luca"/);
     expect(applyScripts).not.toHaveBeenCalled();
+  });
+
+  it("is what BOTH of main.ts's audio handlers end in — Reload and Wipe cache alike re-copy the assets", () => {
+    // `main.ts` is the boot entry and cannot be imported here; the wiring is
+    // pinned structurally, as `bootstrap-settings.test.ts` pins the UI grid.
+    // A wipe re-copies the processed root exactly as a refresh does, so a
+    // handler that stopped at the copy would leave the engine on the map it
+    // compiled at boot — the gap the reloader exists to close.
+    const here = dirname(fileURLToPath(import.meta.url));
+    const mainTs = readFileSync(join(here, "main.ts"), "utf-8");
+    const handlerBody = (name: string): string => {
+      const start = mainTs.indexOf(`${name}: async () => {`);
+
+      expect(start, `${name} handler`).toBeGreaterThan(-1);
+
+      return mainTs.slice(start, mainTs.indexOf("\n      },", start));
+    };
+
+    for (const name of ["refreshAudioAssets", "wipeAudioCache"]) {
+      const body = handlerBody(name);
+
+      expect(body, name).toContain("processAndCopyAudioAssets(");
+      expect(body.indexOf("reloadVoiceScripts("), name).toBeGreaterThan(body.indexOf("processAndCopyAudioAssets("));
+    }
   });
 });

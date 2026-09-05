@@ -1110,10 +1110,13 @@ class ScenarioEngine implements IScenarioEngine {
    * one with no clip at all, gets no frame: no callout ever plays bare ticks
    * around nothing. The frame is part of the callout, so a frame step that
    * resolves to nothing aborts the fire like any other required step — and
-   * the frame is expanded BEFORE the body for that reason: a body condition
-   * may commit a side effect as it is evaluated (the furled-flag gate marks
-   * the flag spoken), and a frame that then aborted would have let it commit
-   * for a fire that never plays.
+   * for a body that could hold a clip the frame is expanded BEFORE the body,
+   * because a body condition may commit a side effect as it is evaluated
+   * (the furled-flag gate marks the flag spoken), and a frame that then
+   * aborted would have let it commit for a fire that never plays. A body
+   * that can never hold a clip (`canProducePlay`) has no frame expanded at
+   * all — nothing can be due for it, so nothing can abort it or warn about
+   * it. The rule and its one accepted cost are stated on `applyFrame`.
    */
   private prepareOps(entry: CompiledScenario, event: SimEventOf<SimEventName> | null): ExecOp[] | null {
     this.ensureCompiled();
@@ -1150,7 +1153,7 @@ class ScenarioEngine implements IScenarioEngine {
     let expanded: ExecOp[];
 
     try {
-      const frame = this.expandFrame(frameName, voice, script, entry, ctx);
+      const frame = canProducePlay(body) ? this.expandFrame(frameName, voice, script, entry, ctx) : null;
       const bodyOps = this.expandSequence(body, entry.raw.base, entry.raw.channel, ctx, new Set([entry.raw.id]));
       expanded = applyFrame(bodyOps, frame);
     } catch (err) {
@@ -1179,11 +1182,13 @@ class ScenarioEngine implements IScenarioEngine {
   /**
    * Expand the frame a fire will be wrapped in, as the active voice's script
    * defines it (see `prepareOps`) — before the body, so a frame that aborts
-   * never lets a body side effect commit. Returns `null` when no frame
-   * applies: the scenario wants none (`NO_FRAME`), the voice has no script,
-   * or its script does not provide the frame (a legacy scenario's, since a
-   * contract's was checked at compile time — warned once per `(voice,
-   * frame)`, saying whether the frame is undefined or failed to compile).
+   * never lets a body side effect commit, and only for a body that could
+   * hold a clip, so its warns and aborts concern a callout the frame is
+   * actually due for. Returns `null` when no frame applies: the scenario
+   * wants none (`NO_FRAME`), the voice has no script, or its script does not
+   * provide the frame (a legacy scenario's, since a contract's was checked
+   * at compile time — warned once per `(voice, frame)`, saying whether the
+   * frame is undefined or failed to compile).
    *
    * Two things are decided here and nowhere else (issue #1064):
    *
@@ -1894,6 +1899,19 @@ export function poolMemberPattern(group: string, base: string): RegExp {
  * the body holds no clip: no callout ever plays bare ticks around nothing,
  * so a body of ambience or pauses alone, or an empty one, stays as it is and
  * the frame is discarded.
+ *
+ * The ORDER the two were expanded in is decided in `prepareOps` from the
+ * body's steps, before either runs (`canProducePlay`): a body that can never
+ * hold a clip — ambience or pauses alone, at every nesting — never has its
+ * frame expanded at all, so a broken frame cannot kill it and earns no warn
+ * for it; a body that can hold one has its frame expanded FIRST, so a frame
+ * that aborts commits none of the body's side effects. Between the two sits
+ * the one accepted cost: a body that could speak but expands to nothing this
+ * time (a gate that said no) is dropped by a broken frame rather than
+ * played bare — it would have played nothing anyway — and the frame's warn
+ * fires, because the frame is due for that callout whenever its gate says
+ * yes. Knowing the dynamic answer before the body runs would mean running
+ * it, and running it is what commits the side effect the order protects.
  */
 function applyFrame(body: ExecOp[], frame: ExpandedFrame | null): ExecOp[] {
   if (frame === null || !body.some((op) => op.kind === "play")) return body;
@@ -1902,15 +1920,43 @@ function applyFrame(body: ExecOp[], frame: ExpandedFrame | null): ExecOp[] {
 }
 
 /**
+ * Whether a body's steps could expand to a `play` op at all — read off the
+ * steps, without expanding them, so it commits nothing. `clip`, `var`,
+ * `pool`, `connector` and `include` can (an include's fragment is not
+ * inspected: the conservative answer is what keeps `prepareOps`'s order
+ * right); `ambient` and `pause` never can; the branching forms can iff a
+ * branch can.
+ */
+function canProducePlay(steps: readonly ResolvedStep[]): boolean {
+  return steps.some((step) => {
+    switch (step.kind) {
+      case "optional":
+        return canProducePlay(step.steps);
+      case "if":
+        return canProducePlay(step.then) || (step.else !== undefined && canProducePlay(step.else));
+      case "case":
+        return canProducePlay(step.fallback) || [...step.of.values()].some(canProducePlay);
+      case "ambient":
+      case "pause":
+        return false;
+      default:
+        return true;
+    }
+  });
+}
+
+/**
  * The user's two frame switches, applied to a frame's steps BEFORE any of
  * them expands (issue #1064): `ambient` steps stay iff `ambience`, every
- * other leaf iff `beeps` — by kind, which is by position in the frame, so a
- * pack's own beep clip is governed exactly like the built-in tick. A step
- * the user switched off is never expanded, so a missing clip behind it can
- * never abort the callout. The branching forms (`optional`, `if`, `case`)
- * are structure rather than sound and are kept with their contents filtered
- * — an `if` around the ambience bed still keeps the bed when only beeps are
- * off.
+ * other sound leaf iff `beeps` — by kind, which is by position in the frame,
+ * so a pack's own beep clip is governed exactly like the built-in tick. A
+ * step the user switched off is never expanded, so a missing clip behind it
+ * can never abort the callout. The branching forms (`optional`, `if`,
+ * `case`) and `include` are structure rather than sound and are kept — the
+ * branches with their contents filtered, an include as it is, since its
+ * fragment is only known once expanded and the post-expansion op filter in
+ * `expandFrame` is what sorts its ops — so an `if` around the ambience bed,
+ * or a fragment carrying it, still keeps the bed when only beeps are off.
  */
 function filterFrameSteps(steps: readonly ResolvedStep[], options: FrameOptions): ResolvedStep[] {
   const out: ResolvedStep[] = [];
@@ -1933,6 +1979,9 @@ function filterFrameSteps(steps: readonly ResolvedStep[], options: FrameOptions)
           of: new Map([...step.of].map(([key, branch]) => [key, filterFrameSteps(branch, options)])),
           fallback: filterFrameSteps(step.fallback, options),
         });
+        break;
+      case "include":
+        out.push(step);
         break;
       case "ambient":
         if (options.ambience) out.push(step);

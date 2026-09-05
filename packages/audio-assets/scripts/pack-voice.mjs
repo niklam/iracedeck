@@ -216,20 +216,29 @@ function assertCalloutScript(pack, voiceId, srcDir) {
   if (!names.includes(CALLOUT_SCRIPT_FILE)) return;
 
   const file = path.join(srcDir, CALLOUT_SCRIPT_FILE);
+  // The stat and the read are reported apart from the grammar's verdict, as
+  // the scanner reports them: an EACCES — or a file that vanished between the
+  // listing and here — is not "invalid JSON", and the author fixing it should
+  // not be sent to look for a syntax error, nor be handed a raw Node error.
+  const unreadable = (err) =>
+    new Error(`${where} could not be read: ${err instanceof Error ? err.message : String(err)}`);
+  let stat;
+  let text;
 
-  if (!lstatSync(file).isFile()) {
+  try {
+    stat = lstatSync(file);
+  } catch (err) {
+    throw unreadable(err);
+  }
+
+  if (!stat.isFile()) {
     throw new Error(`${where} must be a regular file — a symlink, junction or directory of that name is not staged`);
   }
 
-  let text;
-
-  // The read is reported apart from the grammar's verdict, as the scanner
-  // reports it: an EACCES is not "invalid JSON", and the author fixing it
-  // should not be sent to look for a syntax error.
   try {
     text = readFileSync(file, "utf-8");
   } catch (err) {
-    throw new Error(`${where} could not be read: ${err instanceof Error ? err.message : String(err)}`);
+    throw unreadable(err);
   }
 
   // One text stage, the scanner's: a JSON failure is the grammar's first

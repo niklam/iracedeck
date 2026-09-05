@@ -2457,6 +2457,99 @@ describe("pack-owned scripts (issue #1064)", () => {
     expect(audio.stopChannel).not.toHaveBeenCalledWith(AudioChannel.Ambient);
   });
 
+  it("(d) an include inside a frame is structure — its fragment's ops are sorted by the switches, not dropped whole", () => {
+    // `@frag` is a legacy fragment carrying the tick AND the ambience bed.
+    // Beeps off must keep the bed and drop the tick; treating the include as
+    // a beep would have dropped both.
+    engine.defineScenario({
+      id: "test.frag",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      frame: NO_FRAME,
+      sequence: ["sfx/IRD-tick-open.mp3", { ambient: "start" }],
+    });
+    engine.defineContract(contract());
+    engine.setScripts(
+      new Map([
+        [
+          "default",
+          script({
+            scenarios: { "test.green": { sequence: ["pool:flag-green"] } },
+            frames: { radio: { open: ["@test.frag"], close: [] } },
+          }),
+        ],
+      ]),
+    );
+
+    frameOptions = { beeps: false, ambience: true };
+    engine.fire("test.green");
+    flushVoiceAndSfx(audio);
+
+    expect(audio._played).toEqual([
+      { channel: AudioChannel.Ambient, path: "sfx/IRD-ambient-pit.mp3", loop: true },
+      { channel: AudioChannel.Voice, path: "voice/default/flags/green-01.mp3", loop: false },
+    ]);
+
+    audio._played.length = 0;
+    frameOptions = { beeps: true, ambience: false };
+    engine.fire("test.green");
+    flushVoiceAndSfx(audio);
+
+    expect(audio._played).toEqual([
+      { channel: AudioChannel.SFX, path: "sfx/IRD-tick-open.mp3", loop: false },
+      { channel: AudioChannel.Voice, path: "voice/default/flags/green-01.mp3", loop: false },
+    ]);
+  });
+
+  it("(c) a body that can never hold a clip has no frame expanded — a broken frame neither kills it nor warns", () => {
+    engine.defineContract(contract());
+    engine.setScripts(
+      new Map([
+        [
+          "default",
+          script({
+            scenarios: { "test.green": { sequence: [{ ambient: "start" }, { pause: 0 }] } },
+            frames: { radio: { open: ["sfx/missing-beep.mp3"], close: [] } },
+          }),
+        ],
+      ]),
+    );
+
+    engine.fire("test.green");
+    flushVoiceAndSfx(audio);
+
+    expect(audio._played).toEqual([{ channel: AudioChannel.Ambient, path: "sfx/IRD-ambient-pit.mp3", loop: true }]);
+    expect(mockLogger.warn).not.toHaveBeenCalled();
+  });
+
+  it("(c) a body that could speak but says nothing this time is still dropped by a broken frame, which warns", () => {
+    // The accepted cost of expanding the frame first (see `applyFrame`): the
+    // gate said no, so the body would have played nothing anyway, and the
+    // warn is about a frame that IS due for this callout whenever it does
+    // speak. Deciding otherwise would mean running the body — and its side
+    // effects — before knowing whether the frame aborts.
+    engine.defineCond("never", () => false, "never true");
+    engine.defineContract(contract());
+    engine.setScripts(
+      new Map([
+        [
+          "default",
+          script({
+            scenarios: { "test.green": { sequence: [{ if: "never", then: ["pool:flag-green"] }] } },
+            frames: { radio: { open: ["sfx/missing-beep.mp3"], close: [] } },
+          }),
+        ],
+      ]),
+    );
+
+    engine.fire("test.green");
+    flushVoiceAndSfx(audio);
+
+    expect(audio._played).toEqual([]);
+    expect(mockLogger.warn).toHaveBeenCalledTimes(1);
+    expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining('frame "radio" cannot play'));
+  });
+
   it("(c) every clip a pack's frame plays rides the SFX channel, whatever the clip", () => {
     // A pack that frames with its own recording — here a voice clip standing
     // in for a beep — gets the built-in tick's treatment: the Background bus,

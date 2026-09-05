@@ -289,7 +289,8 @@ async function main(): Promise<void> {
       // Then the scripts again (#1064): the copy refreshes the processed
       // root's `callouts.json`, but the engine keeps the map it compiled at
       // boot until it is handed the new one — and a regenerated script is
-      // exactly what Reload is pressed to audition.
+      // exactly what Reload is pressed to audition. Both handlers end in the
+      // same reload: a wipe re-copies the assets too.
       refreshAudioAssets: async () => {
         await processAndCopyAudioAssets({ destRoot: audioBasePath, logger: (m) => audioLog.info(m), wipe: false });
         reloadVoiceScripts({ voicePacks, applyScripts: (scripts) => engine.setScripts(scripts) });
@@ -298,6 +299,7 @@ async function main(): Promise<void> {
         await wipeProcessedCache();
         audioLog.info("Wiped ffmpeg cache; full reprocess on next refresh/restart");
         await processAndCopyAudioAssets({ destRoot: audioBasePath, logger: (m) => audioLog.info(m), wipe: false });
+        reloadVoiceScripts({ voicePacks, applyScripts: (scripts) => engine.setScripts(scripts) });
       },
     },
     { host: DEFAULT_HOST, port: DEFAULT_PORT },
