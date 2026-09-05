@@ -36,7 +36,7 @@ A three-callout pack is a valid pack that plays three callouts. So "your first v
 
 The scenario harness is a monorepo dev tool. A pack author who has not cloned the repo — the entire audience — has no way to hear their own script.
 
-`engine.fire(id)` already exists and is already used for Property Inspector test buttons, so a per-callout Play button in the settings window is mostly wiring. **It belongs to [#1034](https://github.com/niklam/iracedeck/issues/1034)** — it is part of installing and living with a pack, not part of documenting one — and this issue should therefore be written after it.
+`engine.fire(id)` already exists and is already used for Property Inspector test buttons, so a per-callout Play button in the settings window is mostly wiring. **It belongs here** (decided 2026-09-04, replacing the first draft's placement in [#1034](https://github.com/niklam/iracedeck/issues/1034)): the button's list is only complete once every callout is a contract, which [#1065](https://github.com/niklam/iracedeck/issues/1065) delivered, and the tutorial cannot end with the reader hearing anything without it. The list it renders and the linter's introspection come from the same generated reference, which is the other reason the three land together.
 
 **Document its limit honestly rather than hiding it.** Firing a snapshot-driven callout outside a session does nothing: `lap-time-best` with no completed lap resolves its snapshot to `null`, the variable resolves to nothing, and expansion aborts. That is exactly what the per-callout `test` field is for, and the tutorial should teach reading that field as the first move when a callout stays silent.
 
@@ -48,10 +48,10 @@ The single most confusing experience available to a pack author is a script that
 
 With skip-by-default, quiet failure is the design — so a lint pass is the only place an author is ever told anything loudly. It reports unknown pools, variables, conditions, case keys, includes and frames; bases the pack ships that no script references; scripts naming callout ids that do not exist; and a coverage summary.
 
-It may land here or in #1034; it is listed in both because the placement follows whichever ships first, and it must not fall between them.
+It lands here (decided 2026-09-04): it shares its introspection — the contract enumeration, the vocabulary report, the coverage rules — with the reference generator, and a linter that could not name the same things the reference publishes would be a second source of truth. A pack author outside the repo cannot run it; the loud channel for that author — the compile diagnostics shown per voice in the settings window — is a follow-up, not part of this issue.
 
 ## Scope
 
-In: the generator and its freshness test, the generated reference pages, the concept page, and the tutorial.
+In: the generator and its freshness test, the generated reference pages, the concept page, the tutorial, the per-callout Play button, and `lint:pack`. The reference needs prose no contract carries today — when a callout fires — so `ScenarioContract` gains a `description` and the engine gains a contract enumeration beside `vocabulary()`; the spec's pool section becomes a recording script (every clip group and base of the bundled voice with its line text), since named pools are an alias facility and the bundled script names none (#1064, amended 2026-09-05).
 
-Not in: the per-callout Play button (#1034), and any change to the format itself (#1064).
+Not in: any change to the script grammar itself (#1064), compile diagnostics surfaced in the settings window, and per-var scoping of the vocabulary to the callouts that may name it — both follow-ups the #1065 review argued for.
