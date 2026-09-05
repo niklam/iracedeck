@@ -1,11 +1,15 @@
+import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
+import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
+import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
 import type { IEventBus, RadarState, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 // Re-import the (mocked) enum so the test uses identical values.
 import { TrackDirection } from "@iracedeck/sim-events-iracing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { WEIGHT } from "../../dsl.js";
+import { NO_FRAME, WEIGHT } from "../../dsl.js";
+import type { AudioAssetsManifest } from "../../interpreter.js";
 import { _resetAudioScenarios, getScenarioEngine, initializeAudioScenarios } from "../../interpreter.js";
 import {
   _resetSpotterEngine,
@@ -14,8 +18,10 @@ import {
   SPOTTER_CLEAR_BUFFER_METERS,
   SPOTTER_CLEAR_FALLBACK_MS,
   SPOTTER_CLEAR_POLL_MS,
+  SPOTTER_CONTRACTS,
   SPOTTER_FOCUS_OWNER,
   SPOTTER_INFO_SCENARIO_ID,
+  SPOTTER_SCENARIO_IDS,
   SPOTTER_STILL_THERE_DEFAULT_MS,
   type SpotterDeps,
 } from "./spotter-engine.js";
@@ -132,6 +138,23 @@ const manifest = {
   ticks: { open: "", close: "" },
 } as never;
 
+/**
+ * The bundled voice's script narrowed to the two spotter entries (F7-trap i),
+ * handed to BOTH test voices: since #1065 a spotter fire plays nothing unless
+ * the active voice's script says what to say, and what it says is the one
+ * `{{spotterClip}}` step. The JSON import types `schema` as `number`, hence
+ * the cast.
+ */
+const SCRIPT = defaultScript as CalloutScript;
+const SPOTTER_SCRIPT: CalloutScript = {
+  ...SCRIPT,
+  scenarios: Object.fromEntries(SPOTTER_SCENARIO_IDS.map((id) => [id, SCRIPT.scenarios[id]])),
+  fragments: {},
+};
+const SCRIPT_VOICES = ["luca", "elena"] as const;
+
+const MANIFEST = manifestJson as AudioAssetsManifest;
+
 // ─── Fake event bus ─────────────────────────────────────────────────────────
 
 function createMockBus(): IEventBus & { publishRadar: (to: RadarState, from?: RadarState) => void } {
@@ -210,16 +233,26 @@ function lastVoicePath(): string | undefined {
   return voicePaths().at(-1);
 }
 
+/**
+ * Real engine + fake audio so the var → resolved-clip path is asserted
+ * end-to-end. `getActiveVoice` returns "luca" so `{voice}` substitution is
+ * exercised on the played path. The scripts go in BEFORE the per-test
+ * `registerSpotterEngine` (which registers the contracts): a contract
+ * registered after `setScripts` marks the compiled scripts dirty and is
+ * compiled before its first fire, exactly as a plugin's startup order does.
+ */
+function initEngine(): void {
+  initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => "luca");
+  getScenarioEngine().setScripts(new Map(SCRIPT_VOICES.map((v) => [v, SPOTTER_SCRIPT])));
+}
+
 beforeEach(() => {
   vi.useFakeTimers();
   bus = createMockBus();
   audio = createFakeAudio();
   trackDirection = TrackDirection.Neutral;
   nearestGap = null;
-  // Real engine + fake audio so the var → resolved-clip path is asserted
-  // end-to-end. `getActiveVoice` returns "luca" so `{voice}` substitution is
-  // exercised on the played path.
-  initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => "luca");
+  initEngine();
   deps = makeDeps();
   sim.getLatestTelemetry.mockReset();
   sim.getLatestTelemetry.mockReturnValue({ OnPitRoad: false });
@@ -542,7 +575,7 @@ describe("sustained still-there loop", () => {
     deps = makeDeps({ getMasterEnabled: () => master });
     _resetSpotterEngine();
     _resetAudioScenarios();
-    initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => "luca");
+    initEngine();
     registerSpotterEngine(bus, deps);
     bus.publishRadar("left");
     const afterArrival = voicePaths().length;
@@ -577,7 +610,7 @@ describe("sustained still-there loop", () => {
     deps = makeDeps({ getStillThereIntervalMs: () => intervalMs });
     _resetSpotterEngine();
     _resetAudioScenarios();
-    initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => "luca");
+    initEngine();
     registerSpotterEngine(bus, deps);
 
     bus.publishRadar("left");
@@ -721,9 +754,10 @@ describe("scenario identity", () => {
     expect(lastVoicePath()).toBe(`${BASE}two-cars-left.mp3`);
   });
 
-  it("registers the transition-call scenario at PROXIMITY and the info scenario at SAFETY (#867)", () => {
-    // Spy before the first registration so the initial defineScenario is captured.
-    const spy = vi.spyOn(getScenarioEngine(), "defineScenario");
+  it("registers the transition-call contract at PROXIMITY and the info contract at SAFETY (#867), as contracts (#1065)", () => {
+    // Spy before the first registration so the initial defineContract is captured.
+    const spy = vi.spyOn(getScenarioEngine(), "defineContract");
+    const legacy = vi.spyOn(getScenarioEngine(), "defineScenario");
     registerSpotterEngine(bus, deps);
 
     expect(spy).toHaveBeenCalledWith(
@@ -736,6 +770,7 @@ describe("scenario identity", () => {
         family: "spotter",
         interrupt: true,
         queueable: false,
+        frame: NO_FRAME,
       }),
     );
     expect(spy).toHaveBeenCalledWith(
@@ -745,14 +780,106 @@ describe("scenario identity", () => {
         bus: AudioBus.Voice,
         weight: WEIGHT.SAFETY,
         focusOwner: SPOTTER_FOCUS_OWNER,
-        // Deliberately NOT the call scenario's family: same-family preemption
+        // Deliberately NOT the call contract's family: same-family preemption
         // ignores weight, so a shared family would let a reminder tick chop a
         // still-playing transition call.
         family: "spotter-info",
         interrupt: true,
         queueable: false,
+        frame: NO_FRAME,
       }),
     );
+    expect(legacy).not.toHaveBeenCalled();
+  });
+
+  it("the contracts carry no `when` and no sequence — this engine fires them, the voice script says what they say", () => {
+    expect(SPOTTER_SCENARIO_IDS).toEqual([SPOTTER_CALL_SCENARIO_ID, SPOTTER_INFO_SCENARIO_ID]);
+
+    for (const c of SPOTTER_CONTRACTS) {
+      expect(c.when).toBeUndefined();
+      expect("sequence" in c).toBe(false);
+      expect(c.base).toBeUndefined();
+    }
+  });
+});
+
+// ─── Scripted fires (issue #1065) ────────────────────────────────────────────
+//
+// `engine.fire(id)` resolves a contract through the same registration path a
+// bus-triggered one takes: the body is the active voice's compiled script
+// entry, so a voice without one is silent and a voice with one plays.
+
+describe("scripted fires (issue #1065)", () => {
+  it("a fire on a voice whose script has no spotter entry is a silent no-op — no clip, no error", () => {
+    getScenarioEngine().setScripts(new Map(SCRIPT_VOICES.map((v) => [v, { ...SPOTTER_SCRIPT, scenarios: {} }])));
+    registerSpotterEngine(bus, deps);
+
+    bus.publishRadar("left");
+
+    expect(voicePaths()).toEqual([]);
+    expect(mockLogger.error).not.toHaveBeenCalled();
+  });
+
+  it("a fire on a voice with no script at all is a silent no-op too", () => {
+    getScenarioEngine().setScripts(new Map());
+    registerSpotterEngine(bus, deps);
+
+    bus.publishRadar("left");
+
+    expect(voicePaths()).toEqual([]);
+  });
+
+  it("a scripted voice plays the engine-chosen clip, unframed, for the call and the info contract alike", () => {
+    nearestGap = null;
+    registerSpotterEngine(bus, deps);
+
+    bus.publishRadar("left");
+    expect(audio._played.map((p) => p.path)).toEqual([`${BASE}car-left.mp3`]);
+
+    audio._triggerChannelEnd(VOICE);
+    bus.publishRadar("clear", "left");
+    expect(lastVoicePath()).toBe(`${BASE}clear.mp3`);
+    // No tick before or after either line: both contracts are `frame: NO_FRAME`.
+    expect(audio._played.every((p) => p.path.startsWith("voice/"))).toBe(true);
+  });
+
+  it("publishes the spotterClip var with a description naming the spotter group", () => {
+    registerSpotterEngine(bus, deps);
+
+    const { vars } = getScenarioEngine().vocabulary();
+    const clip = vars.find((v) => v.name === "spotterClip");
+
+    expect(clip).toBeDefined();
+    expect(clip?.description).toContain("spotter");
+  });
+
+  it("scripts both contracts with a comment, a Radar harness route and the one var step", () => {
+    for (const id of SPOTTER_SCENARIO_IDS) {
+      const entry = SCRIPT.scenarios[id];
+
+      expect(entry, `no script entry for ${id}`).toBeDefined();
+      expect(entry.comment?.length ?? 0, `${id}: comment`).toBeGreaterThan(0);
+      expect(entry.test, `${id}: test`).toMatch(/^Harness → Radar → /);
+      expect(entry.skip).toBeUndefined();
+      expect(entry.sequence).toEqual(["{{spotterClip}}"]);
+    }
+  });
+
+  it("references only the spotterClip var and no pool — every clip reaches the script through the engine's choice", () => {
+    const refs = collectScriptReferences(SPOTTER_SCRIPT);
+
+    expect(refs.vars).toEqual(["spotterClip"]);
+    expect(refs.pools).toEqual([]);
+    expect(refs.conds).toEqual([]);
+    expect(refs.cases).toEqual([]);
+    expect(refs.includes).toEqual([]);
+    expect(refs.frames).toEqual([]);
+  });
+
+  it("the bundled voice ships every clip the engine can choose", () => {
+    for (const name of SPOTTER_CLIP_NAMES) {
+      expect(MANIFEST.clips, name).toContain(`voice/default/spotter/${name}.mp3`);
+    }
   });
 });
 
@@ -766,13 +893,20 @@ describe("scenario identity", () => {
 describe("proximity scheduling (#867)", () => {
   const BLOCKER_CLIP = "test/blocker.mp3";
 
-  /** Define + fire a blocker line at the given weight; it stays in flight. */
+  /**
+   * Define + fire a blocker line at the given weight; it stays in flight.
+   * Unframed: the fixture manifest carries no tick clips, and with a script
+   * loaded (#1065) the engine would otherwise try to wrap this legacy line
+   * in the voice's `radio` frame and abort it — the blocker exists only to
+   * hold the bus at a weight, never to test framing.
+   */
   function startBlocker(weight: number, opts: { queueable?: boolean; interrupt?: boolean } = {}): void {
     getScenarioEngine().defineScenario({
       id: "test.blocker",
       channel: AudioChannel.Voice,
       bus: AudioBus.Voice,
       weight,
+      frame: NO_FRAME,
       ...opts,
       sequence: [BLOCKER_CLIP],
     });
@@ -882,6 +1016,72 @@ describe("proximity scheduling (#867)", () => {
   });
 });
 
+// ─── Focus without a script (issue #1065) ────────────────────────────────────
+//
+// The spotter lines are contracts, so a pack whose script omits them is
+// silent for them — and that silence must be the whole cost. The focus floor
+// exists to keep chatter from talking over a call the engineer is about to
+// make; with no call to make it would only mute every lower-weight callout
+// for as long as a car is alongside.
+
+describe("focus without a script (issue #1065)", () => {
+  const CHATTER_CLIP = "test/blocker.mp3";
+
+  /** A routine NORMAL-weight line — what a SAFETY floor would hold back. */
+  function fireNormalChatter(): void {
+    getScenarioEngine().defineScenario({
+      id: "test.chatter",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: WEIGHT.NORMAL,
+      frame: NO_FRAME,
+      sequence: [CHATTER_CLIP],
+    });
+    getScenarioEngine().fire("test.chatter");
+  }
+
+  it("a car alongside acquires no focus floor when the active voice does not script the spotter, so NORMAL chatter still plays", () => {
+    getScenarioEngine().setScripts(new Map(SCRIPT_VOICES.map((v) => [v, { ...SPOTTER_SCRIPT, scenarios: {} }])));
+    const acquireSpy = vi.spyOn(getScenarioEngine(), "acquireFocus");
+    registerSpotterEngine(bus, deps);
+
+    bus.publishRadar("left");
+    expect(acquireSpy).not.toHaveBeenCalled();
+    expect(voicePaths()).toEqual([]);
+
+    fireNormalChatter();
+    expect(voicePaths()).toEqual([CHATTER_CLIP]);
+  });
+
+  it("with the bundled script the floor is raised as before, and the same NORMAL chatter is held back", () => {
+    const acquireSpy = vi.spyOn(getScenarioEngine(), "acquireFocus");
+    registerSpotterEngine(bus, deps);
+
+    bus.publishRadar("left");
+    expect(acquireSpy).toHaveBeenCalledWith(AudioBus.Voice, SPOTTER_FOCUS_OWNER, WEIGHT.SAFETY);
+    audio._triggerChannelEnd(VOICE);
+
+    fireNormalChatter();
+    expect(voicePaths()).toEqual([`${BASE}car-left.mp3`]);
+  });
+
+  it("releases a floor it holds when the voice stops scripting the spotter mid-episode", () => {
+    registerSpotterEngine(bus, deps);
+    bus.publishRadar("left");
+    audio._triggerChannelEnd(VOICE);
+
+    // A rescan handed the engine a script map without the spotter entries
+    // while the car is still alongside; the next transition lets go.
+    getScenarioEngine().setScripts(new Map(SCRIPT_VOICES.map((v) => [v, { ...SPOTTER_SCRIPT, scenarios: {} }])));
+    const releaseSpy = vi.spyOn(getScenarioEngine(), "releaseFocus");
+    bus.publishRadar("two-left", "left");
+
+    expect(releaseSpy).toHaveBeenCalledWith(AudioBus.Voice, SPOTTER_FOCUS_OWNER);
+    fireNormalChatter();
+    expect(voicePaths()).toEqual([`${BASE}car-left.mp3`, CHATTER_CLIP]);
+  });
+});
+
 // ─── Voice substitution ──────────────────────────────────────────────────────
 
 describe("voice substitution", () => {
@@ -891,6 +1091,7 @@ describe("voice substitution", () => {
     const freshBus = createMockBus();
     const freshAudio = createFakeAudio();
     initializeAudioScenarios(freshBus, freshAudio, manifest, mockLogger as never, () => "elena");
+    getScenarioEngine().setScripts(new Map(SCRIPT_VOICES.map((v) => [v, SPOTTER_SCRIPT])));
     registerSpotterEngine(freshBus, deps);
 
     freshBus.publishRadar("left");
@@ -965,7 +1166,7 @@ describe("clear confirmation buffer", () => {
     deps = makeDeps({ getStillThereIntervalMs: () => 400 });
     _resetSpotterEngine();
     _resetAudioScenarios();
-    initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => "luca");
+    initEngine();
     registerSpotterEngine(bus, deps);
 
     bus.publishRadar("left");

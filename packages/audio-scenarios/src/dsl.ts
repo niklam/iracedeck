@@ -27,7 +27,7 @@ export const WEIGHT = {
   TRANSIENT: 5,
   /**
    * Background commentary that yields to anything more important (position
-   * readouts, race-status, pit readback, service-reminder). Pair with
+   * readouts, race-status, pit readback). Pair with
    * `queueable: true` to keep the defer-and-replay behaviour.
    */
   CHATTER: 10,
@@ -73,7 +73,8 @@ export const DEFAULT_FRAME = "radio";
 export { NO_FRAME };
 
 /**
- * Runtime context passed to conditional `if` steps and `where` predicates.
+ * Runtime context passed to conditional `if` steps, `where` predicates and
+ * the vocabulary resolvers (`VocabularyResolver`).
  *
  * `telemetry` is the snapshot carried by the event envelope (may be undefined
  * for fires triggered imperatively via `engine.fire(id)`).
@@ -90,6 +91,18 @@ export type ScenarioContext = {
   /** Resolved variable values at fire time (populated during sequence expansion). */
   vars: Record<string, string | null>;
 };
+
+/**
+ * What a vocabulary registration resolves with (issue #1065): a var, a
+ * condition or a case reads the context of the fire that is expanding — the
+ * event's payload above all, since a family may phrase a callout by WHY it
+ * fired (pit readback's opener differs between a first entry and a re-fire,
+ * and only the event knows which). `event` is `null` for an imperative
+ * `fire(id)`, so a resolver that reads it must tolerate that. A resolver
+ * that needs nothing from the fire is written as a zero-parameter function,
+ * which is assignable here unchanged.
+ */
+export type VocabularyResolver<T> = (ctx: ScenarioContext) => T;
 
 /**
  * A single step in a scenario sequence.
@@ -243,10 +256,12 @@ export type ScenarioContract = {
 };
 
 /**
- * A scenario — a contract welded to its sequence in code. The catalog's
- * un-migrated families still define these (`defineScenario`); the migrated
- * ones register a `ScenarioContract` and leave the sequence to the pack
- * (#1065 finishes the move).
+ * A scenario — a contract welded to its sequence in code. An engine
+ * primitive, not a catalog shape: since #1065 every catalog family registers
+ * a `ScenarioContract` and leaves the sequence to the active voice's script,
+ * and a `Scenario` is built only by the interpreter and validation tests
+ * (and by a family test that needs a known body to probe a gate).
+ * `defineScenario` and `defineContract` share one registration path.
  */
 export type Scenario = ScenarioContract & { sequence: Step[] };
 

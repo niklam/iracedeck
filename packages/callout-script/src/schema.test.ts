@@ -4,6 +4,7 @@ import { CALLOUT_SCRIPT_MAX_DEPTH, type CalloutScript, type ScriptStep } from ".
 import {
   CalloutScriptEntrySchema,
   CalloutScriptSchema,
+  FragmentDefinitionSchema,
   FrameDefinitionSchema,
   parseCalloutScript,
   parseCalloutScriptText,
@@ -304,7 +305,7 @@ describe("parseCalloutScript", () => {
 
   describe("include", () => {
     const twoSpellings =
-      /an include is spelled "@<scenario-id>" \(string form\) or \{ "include": "<scenario-id>" \} \(object form\)/;
+      /an include is spelled "@<fragment-name>" \(string form\) or \{ "include": "<fragment-name>" \} \(object form\)/;
 
     it("rejects the object form spelled with the string form's @", () => {
       const problems = problemsOf(withSequence([{ include: "@pit-crew.radio-open" }]));
@@ -424,6 +425,45 @@ describe("parseCalloutScript", () => {
 
       expect(problems).toHaveLength(1);
       expect(problems[0]).toMatch(/^pools\.flag-blue\.group: /);
+    });
+  });
+
+  // Pack-defined fragments (issue #1065): a script may define a sub-sequence
+  // once and include it from several entries. The key is optional — absent
+  // means none — so no existing script has to change.
+  describe("fragments", () => {
+    it("accepts a fragment with a comment and a scenario that includes it, in both spellings", () => {
+      const script = {
+        ...minimal(),
+        scenarios: {
+          "pit-crew.readback-entry": { sequence: ["@readback-body"] },
+          "pit-crew.readback-exit": { sequence: [{ include: "readback-body" }] },
+        },
+        fragments: { "readback-body": { comment: "The shared body.", sequence: ["pool:readback/fuel-on"] } },
+      };
+
+      expect(parseCalloutScript(script)).toEqual({ ok: true, script });
+    });
+
+    it("refuses an empty fragment sequence — a fragment nobody can hear is a mistake", () => {
+      const problems = problemsOf({ ...minimal(), fragments: { shared: { sequence: [] } } });
+
+      expect(problems).toHaveLength(1);
+      expect(problems[0]).toMatch(/^fragments\.shared\.sequence: /);
+    });
+
+    it("names an unknown key inside a fragment at its full path", () => {
+      const problems = problemsOf({ ...minimal(), fragments: { shared: { sequence: ["a.mp3"], open: [] } } });
+
+      expect(problems).toEqual(["fragments.shared.open: unrecognized key"]);
+    });
+
+    it('refuses a fragment name that starts with "@" — the include spelling, not the name', () => {
+      const problems = problemsOf({ ...minimal(), fragments: { "@shared": { sequence: ["a.mp3"] } } });
+
+      expect(problems).toHaveLength(1);
+      expect(problems[0]).toMatch(/^fragments\.@shared: /);
+      expect(problems[0]).toMatch(/an include is spelled "@<fragment-name>" \(string form\)/);
     });
   });
 
@@ -553,6 +593,8 @@ describe("the exported sub-schemas", () => {
     expect(FrameDefinitionSchema.safeParse({ open: [] }).success).toBe(false);
     expect(PoolDefinitionSchema.safeParse({ group: "flags", base: "blue" }).success).toBe(true);
     expect(PoolDefinitionSchema.safeParse({ group: "flags" }).success).toBe(false);
+    expect(FragmentDefinitionSchema.safeParse({ sequence: ["a.mp3"] }).success).toBe(true);
+    expect(FragmentDefinitionSchema.safeParse({ sequence: [] }).success).toBe(false);
   });
 
   it("expose the whole-script schema for callers that want zod's own result", () => {

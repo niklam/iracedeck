@@ -1,11 +1,11 @@
 /**
- * Session-start readout scenario — issues #542, #668.
+ * Session-start readout contract — issues #542, #668; scripted since #1065.
  *
  * Fires when a practice or qualifying session starts — on `session.changed`,
  * approximately {@link SESSION_START_DELAY_MS} after the session begins — whether
  * or not the driver leaves the garage. Race sessions are covered exclusively by
- * the race-start scenario (issue #568), which fires on the same event; the
- * `where:` predicate rejects `sessionType === "race"` here so the two scenarios
+ * the race-start contract (issue #568), which fires on the same event; the
+ * `where:` predicate rejects `sessionType === "race"` here so the two contracts
  * never double-greet.
  *
  * Riding `session.changed` also inherits:
@@ -21,32 +21,46 @@
  * The delay is implemented as `triggerDelay` after {@link SESSION_START_DELAY_MS}
  * (see its doc for why this is a `triggerDelay`, not a leading pause).
  *
- * Script (fires ~{@link SESSION_START_DELAY_MS} ms after `session.changed`):
+ * The code below decides WHETHER the brief is due and how it is scheduled;
+ * WHAT is said lives in the active voice's `callouts.json` under the same id
+ * (`scenarios["pit-crew.session-start"]`), paired at `setScripts` time. The
+ * bundled script's shape (fires ~{@link SESSION_START_DELAY_MS} ms after
+ * `session.changed`):
  *   [radio open]
- *   "Ok, <Name>,"                                  greeting (per-name clip)
- *   <session line>                                 practice / qualifying
- *   "The pit speed limit is" <N> <speed-unit>      CONDITIONAL — see below
- *   "Track temperature is" <N> "degrees" <unit>
- *   "air temperature is" <N> "degrees" <unit>
- *   "and the track is" <wetness-state>
+ *   "Ok, <Name>,"                                  {{sessionStart.greeting}} — optional
+ *   <session line>                                 {{sessionStart.sessionLine}} — required
+ *   "The pit speed limit is" <N> <speed-unit>      optional clause — see below
+ *   "Track temperature is" <N> "degrees" <unit>    optional clause
+ *   "air temperature is"   <N> "degrees" <unit>    optional clause
+ *   "and the track is" {{sessionStart.wetness}}    required
+ *   (if setupWarning.qualifyingMismatch) the nudge optional clause
  *   [radio close]
  *
+ * Every optional clause is a whole clause (the #1064 spec's second rule): the
+ * brief without the greeting, without the pit-speed limit, or without a
+ * temperature reading is shorter and still true, so a voice lacking a name
+ * clip, a speed-number clip or a temperature clip skips that clause and
+ * speaks the rest. The session line and the wetness are required: a brief
+ * that names no session, or ends on "and the track is", is not a brief.
+ *
  * Snapshot-at-fire-time (readback.ts pattern, issue #481): every dynamic clip
- * is a `{ var }` step backed by a resolver that reads the snapshot closure at
+ * is a `{{var}}` backed by a resolver that reads the snapshot closure at
  * fire time, so a deferred replay speaks current conditions. Units, rounding,
  * and the session-type bucket are resolved upstream in
  * `getSessionStartConditions()` — this file only maps the snapshot fields onto
- * clip paths.
+ * clip paths. That is why the vocabulary takes the resolver (and the
+ * setup-warning resolver); the contract builder keeps the snapshot resolver
+ * for its `where:`.
  *
- * The pit-speed clause is conditional: iRacing pit limits are a small known
- * set, so the `session-start-speed-numbers` group only covers observed values
- * (plus ±1 for telemetry drift). The clause is skipped entirely for any value
- * outside {@link SESSION_START_SPEED_VALUES} — a guessed or rounded number
- * could imply a false pit-speed-penalty risk.
+ * The pit-speed clause is optional: iRacing pit limits are a small known set,
+ * so the `session-start-speed-numbers` group only covers observed values (plus
+ * ±1 for telemetry drift). The clause is skipped entirely for any value
+ * without a clip — a guessed or rounded number could imply a false
+ * pit-speed-penalty risk.
  *
  * `where:` is `getSnapshot() !== null && sessionType !== "race"`, plus the
  * #871 fresh-connect arm (reject `from === -1` when the car is on track) — so
- * the scenario doesn't fire at all when conditions are unavailable (no
+ * the contract doesn't fire at all when conditions are unavailable (no
  * telemetry / session info, or wetness still `Unknown`), never fires in race
  * sessions, and never replays the brief to a driver already mid-session.
  */
@@ -54,13 +68,14 @@ import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type SessionStartSnapshot, TrackWetness } from "@iracedeck/event-bus";
 import { type TelemetryData } from "@iracedeck/iracing-sdk";
 
-import type { Scenario, Step } from "../../dsl.js";
+import type { ScenarioContract } from "../../dsl.js";
 import { poolRef } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
+import type { SetupWarningResolver } from "./race-start.js";
 
 /**
  * Resolver for the session-start snapshot, invoked at fire time. Returns
- * `null` when conditions aren't available — the scenario then skips the
+ * `null` when conditions aren't available — the contract then skips the
  * callout entirely (its `where:` predicate short-circuits).
  */
 export type SessionStartSnapshotResolver = () => SessionStartSnapshot | null;
@@ -68,7 +83,7 @@ export type SessionStartSnapshotResolver = () => SessionStartSnapshot | null;
 /**
  * Delay before the where: predicate and sequence-expansion run, once
  * `session.changed` fires for a practice or qualifying session. Implemented as
- * the scenario's `triggerDelay` (NOT a leading `{ pause }` step) so iRacing's
+ * the contract's `triggerDelay` (NOT a leading `{ pause }` step) so iRacing's
  * telemetry has a chance to settle before we read it.
  *
  * iRacing publishes `SessionNum`-changed ticks immediately on session
@@ -93,87 +108,123 @@ const WETNESS_CLIP_SUFFIX: Readonly<Partial<Record<TrackWetness, string>>> = {
   [TrackWetness.ExtremelyWet]: "extremely-wet",
 };
 
-const SESSION_START_BASE = "session-start";
+/**
+ * Register the vocabulary the session-start script references (issue #1065):
+ * the eight vars the brief is built from and the setup-warning condition. The
+ * vars read the snapshot through `getSnapshot` at expansion time and return
+ * `null` (nothing to say) when it is unavailable — every one is a dynamic pool
+ * reference (issue #836): the clips that exist for the active voice define
+ * what values are speakable, so there are no hardcoded speed/temperature
+ * ranges — a value with no clip skips its optional clause, or aborts the
+ * callout for required content (#835). The condition reads
+ * `getSetupWarningMismatch` live, so a mid-session opt-in toggle or pattern
+ * edit takes effect immediately, and only in a qualifying session — practice
+ * never warns (only qualifying and, via race-start, race do). Names and
+ * descriptions are the public API of the format; the descriptions feed the
+ * generated reference (#1066).
+ */
+export function registerSessionStartVocabulary(
+  engine: Pick<IScenarioEngine, "defineVar" | "defineCond">,
+  getSnapshot: SessionStartSnapshotResolver,
+  getSetupWarningMismatch: SetupWarningResolver = () => false,
+): void {
+  engine.defineVar(
+    "sessionStart.greeting",
+    () => {
+      const s = getSnapshot();
 
-/** Group holding the setup-mismatch warning clips (issue #625). */
-const SETUP_WARNING_GROUP = "setup-warning";
+      return s ? poolRef("session-start-greeting", s.driverName) : null;
+    },
+    'The session-start greeting with the driver\'s name — "ok, <name>" as one clip per name the voice recorded. Draws from the session-start-greeting clip group; a name the voice lacks resolves to nothing, so keep it optional.',
+  );
 
-/** Build a `clip` step path relative to the scenario's `voice/{voice}` base. */
-function clipPath(filename: string): string {
-  return `${SESSION_START_BASE}/${filename}`;
+  engine.defineVar(
+    "sessionStart.sessionLine",
+    () => {
+      const s = getSnapshot();
+
+      return s ? poolRef("session-start", `session-${s.sessionType}`) : null;
+    },
+    "The line naming the session that just started — practice or qualifying (race is the race-start callout's). Draws the session-practice and session-qualifying lines from the session-start clip group.",
+  );
+
+  engine.defineVar(
+    "sessionStart.speedNumber",
+    () => {
+      const s = getSnapshot();
+
+      return s ? poolRef("session-start-speed-numbers", String(s.pitSpeedLimit)) : null;
+    },
+    "The pit speed limit as a whole number in the driver's speed unit. Draws from the session-start-speed-numbers clip group, which covers the limits iRacing uses; a limit with no clip resolves to nothing and aborts the clause it sits in.",
+  );
+
+  engine.defineVar(
+    "sessionStart.speedUnit",
+    () => {
+      const s = getSnapshot();
+
+      return s ? poolRef("session-start", `speed-unit-${s.speedUnit}`) : null;
+    },
+    "The speed unit word after the pit speed limit — kilometres per hour or miles per hour, per the driver's display setting. Draws the speed-unit-kmh and speed-unit-mph lines from the session-start clip group.",
+  );
+
+  engine.defineVar(
+    "sessionStart.trackTempNumber",
+    () => {
+      const s = getSnapshot();
+
+      return s ? poolRef("session-start-temp-numbers", String(s.trackTemp)) : null;
+    },
+    "The track temperature as a whole number in the driver's display unit. Draws from the session-start-temp-numbers clip group; a reading outside the recorded range aborts the clause it sits in.",
+  );
+
+  engine.defineVar(
+    "sessionStart.airTempNumber",
+    () => {
+      const s = getSnapshot();
+
+      return s ? poolRef("session-start-temp-numbers", String(s.airTemp)) : null;
+    },
+    "The air temperature as a whole number in the driver's display unit. Draws from the session-start-temp-numbers clip group; a reading outside the recorded range aborts the clause it sits in.",
+  );
+
+  engine.defineVar(
+    "sessionStart.degreesUnit",
+    () => {
+      const s = getSnapshot();
+
+      return s ? poolRef("session-start", `degrees-${s.tempUnit}`) : null;
+    },
+    "The temperature unit word — degrees celsius or degrees fahrenheit, per the driver's display setting. Draws the degrees-celsius and degrees-fahrenheit lines from the session-start clip group.",
+  );
+
+  engine.defineVar(
+    "sessionStart.wetness",
+    () => {
+      const s = getSnapshot();
+      const suffix = s ? WETNESS_CLIP_SUFFIX[s.wetness] : undefined;
+
+      return suffix ? poolRef("session-start", `wetness-${suffix}`) : null;
+    },
+    "The track wetness state as a word — dry, mostly dry, very lightly wet, lightly wet, moderately wet, very wet or extremely wet. Draws the wetness-<state> lines from the session-start clip group.",
+  );
+
+  engine.defineCond(
+    "setupWarning.qualifyingMismatch",
+    () => getSnapshot()?.sessionType === "qualifying" && getSetupWarningMismatch("qualifying"),
+    "The session is qualifying and the loaded setup's name looks like a race setup, per the driver's setup-name patterns — worth a double-check-your-setup nudge. Never true in practice, and false when the warning is switched off or no pattern matches.",
+  );
 }
 
 /**
- * Register the session-start scenario's variables on the scenario engine.
- * Must run before the scenario is defined — load-time validation rejects a
- * `{ var }` step whose name isn't registered. The resolvers close over the
- * snapshot closure and return `null` (a no-op step) whenever conditions
- * aren't available.
- *
- * Every resolver returns a dynamic pool reference (issue #836): the clips
- * that exist for the active voice define what values are speakable, so there
- * are no hardcoded speed/temperature ranges — a value with no clip skips its
- * `optional` clause (or aborts the callout for required content, per #835).
+ * Build the session-start contract bound to a snapshot resolver. Stays a
+ * builder because the `where:` reads the resolver (to gate firing); the
+ * brief itself is the vocabulary's ({@link registerSessionStartVocabulary}).
+ * Holds the fixed id, the snapshot-gated `when` block, and the shared
+ * channel / bus / base / family defaults (weight is omitted, so it defaults
+ * to `WEIGHT.NORMAL`).
  */
-export function registerSessionStartVars(engine: IScenarioEngine, getSnapshot: SessionStartSnapshotResolver): void {
-  engine.defineVar("sessionStart.greeting", () => {
-    const s = getSnapshot();
-
-    return s ? poolRef("session-start-greeting", s.driverName) : null;
-  });
-
-  engine.defineVar("sessionStart.sessionLine", () => {
-    const s = getSnapshot();
-
-    return s ? poolRef("session-start", `session-${s.sessionType}`) : null;
-  });
-
-  engine.defineVar("sessionStart.speedNumber", () => {
-    const s = getSnapshot();
-
-    return s ? poolRef("session-start-speed-numbers", String(s.pitSpeedLimit)) : null;
-  });
-
-  engine.defineVar("sessionStart.speedUnit", () => {
-    const s = getSnapshot();
-
-    return s ? poolRef("session-start", `speed-unit-${s.speedUnit}`) : null;
-  });
-
-  engine.defineVar("sessionStart.trackTempNumber", () => {
-    const s = getSnapshot();
-
-    return s ? poolRef("session-start-temp-numbers", String(s.trackTemp)) : null;
-  });
-
-  engine.defineVar("sessionStart.airTempNumber", () => {
-    const s = getSnapshot();
-
-    return s ? poolRef("session-start-temp-numbers", String(s.airTemp)) : null;
-  });
-
-  engine.defineVar("sessionStart.degreesUnit", () => {
-    const s = getSnapshot();
-
-    return s ? poolRef("session-start", `degrees-${s.tempUnit}`) : null;
-  });
-
-  engine.defineVar("sessionStart.wetness", () => {
-    const s = getSnapshot();
-    const suffix = s ? WETNESS_CLIP_SUFFIX[s.wetness] : undefined;
-
-    return suffix ? poolRef("session-start", `wetness-${suffix}`) : null;
-  });
-}
-
-/**
- * Construct the session-start scenario from a prepared sequence, injecting the
- * shared scenario shape (mirrors the `<family>Scenario(...)` helpers in the
- * sibling pit-crew catalog files): the fixed id, the snapshot-gated `when`
- * block, and the shared channel / bus / base / family defaults (weight is
- * omitted, so it defaults to `WEIGHT.NORMAL`).
- */
-function sessionStartScenario(getSnapshot: SessionStartSnapshotResolver, sequence: Step[]): Scenario {
+export function buildSessionStartContract(getSnapshot: SessionStartSnapshotResolver): ScenarioContract {
   return {
     id: "pit-crew.session-start",
     when: {
@@ -183,10 +234,10 @@ function sessionStartScenario(getSnapshot: SessionStartSnapshotResolver, sequenc
 
         if (snapshot === null) return false;
 
-        // Race sessions are spoken exclusively by the race-start scenario
+        // Race sessions are spoken exclusively by the race-start contract
         // (issue #568), whose `where:` requires `isRaceSession(getSessionType())`.
         // Rejecting `sessionType === "race"` here prevents a double-greeting
-        // when both scenarios ride the same `session.changed` event.
+        // when both contracts ride the same `session.changed` event.
         //
         // We read `snapshot.sessionType` (not `isRaceSession(getSessionType())`)
         // because the snapshot is the injected seam: the var resolvers and the
@@ -225,72 +276,7 @@ function sessionStartScenario(getSnapshot: SessionStartSnapshotResolver, sequenc
     // read TrackWetness / TrackTempCrew / AirTemp. See
     // `SESSION_START_DELAY_MS` for the rationale.
     triggerDelay: SESSION_START_DELAY_MS,
-    sequence,
   };
-}
-
-/**
- * Build the session-start scenario bound to a snapshot resolver. The resolver
- * is read in the `where:` predicate (to gate firing) and inside the
- * pit-speed `if` step (to gate the conditional clause); the per-clip `var`
- * resolvers registered by {@link registerSessionStartVars} read it again at
- * sequence-expansion time.
- *
- * `getSetupWarningMismatch` (issue #625) appends a "double-check your setup"
- * nudge before the radio close when, in a **qualifying** session, the loaded
- * setup name looks like a race setup. It is read live at fire time so a
- * mid-session opt-in toggle or pattern edit takes effect immediately. Practice
- * sessions never warn (only qualifying and — via race-start — race do).
- */
-export function buildSessionStartScenario(
-  getSnapshot: SessionStartSnapshotResolver,
-  getSetupWarningMismatch: (kind: "qualifying" | "race") => boolean = () => false,
-): Scenario {
-  const sequence: Step[] = [
-    // Optional (issue #835): driver names are a union across voices, so a
-    // voice lacking the picked name clip skips the greeting — a complete
-    // sentence either way — instead of aborting the whole brief.
-    { optional: [{ var: "sessionStart.greeting" }] },
-    { var: "sessionStart.sessionLine" },
-    // Optional clause (issues #835/#836): whether a pit-speed value is
-    // speakable derives from the clips that exist — a limit (or a voice)
-    // without the number clip skips the WHOLE clause (never "The pit speed
-    // limit is…" with no number) while the rest of the brief still plays.
-    {
-      optional: [
-        clipPath("pit-speed-intro.mp3"),
-        { var: "sessionStart.speedNumber" },
-        { var: "sessionStart.speedUnit" },
-      ],
-    },
-    // Optional clauses (issue #836): the temp clip range is defined by the
-    // generated clips (no clamping) — a reading outside it skips its clause
-    // rather than speaking a wrong clamped number or killing the brief.
-    {
-      optional: [
-        clipPath("track-temp-intro.mp3"),
-        { var: "sessionStart.trackTempNumber" },
-        { var: "sessionStart.degreesUnit" },
-      ],
-    },
-    {
-      optional: [
-        clipPath("air-temp-intro.mp3"),
-        { var: "sessionStart.airTempNumber" },
-        { var: "sessionStart.degreesUnit" },
-      ],
-    },
-    clipPath("wetness-intro.mp3"),
-    { var: "sessionStart.wetness" },
-    {
-      if: () => getSnapshot()?.sessionType === "qualifying" && getSetupWarningMismatch("qualifying"),
-      // Optional clause (issue #835): the nudge is a self-contained add-on —
-      // a voice without the clip skips it, not the brief.
-      then: [{ optional: [`${SETUP_WARNING_GROUP}/qualifying-01.mp3`] }],
-    },
-  ];
-
-  return sessionStartScenario(getSnapshot, sequence);
 }
 
 /**
@@ -315,9 +301,21 @@ export const SCENARIO_ID_TO_SESSION_START_ID: Record<string, SessionStartCallout
 export const SESSION_START_SCENARIO_IDS: readonly string[] = ["pit-crew.session-start"];
 
 /**
- * Empty — the session-start brief is composed from static `clipPath(...)` steps
- * and `engine.defineVar` resolvers (see {@link registerSessionStartVars}), not
- * pools. Exported anyway for parity with the family-completeness check used by
- * the other pit-crew catalog files.
+ * The clip sources the session-start script draws from directly — the pools
+ * it addresses as `pool:<group>/<base>` rather than through a var: the four
+ * clause intros under `session-start` and the setup nudge under
+ * `setup-warning`. The value-driven clips (the greeting, the session line,
+ * the numbers, the units, the wetness) are the vars', whose descriptions
+ * name their groups. The completeness tests read this list: the bundled
+ * voice must ship at least one clip for each, and the bundled script must
+ * reference exactly this set. A `(group, base)` a script addresses is
+ * published — renaming a base is a rename in every pack's script and every
+ * pack's clip folder.
  */
-export const SESSION_START_POOL_NAMES: readonly string[] = [];
+export const SESSION_START_CLIP_SOURCES: readonly { group: string; base: string }[] = [
+  { group: "session-start", base: "pit-speed-intro" },
+  { group: "session-start", base: "track-temp-intro" },
+  { group: "session-start", base: "air-temp-intro" },
+  { group: "session-start", base: "wetness-intro" },
+  { group: "setup-warning", base: "qualifying" },
+];

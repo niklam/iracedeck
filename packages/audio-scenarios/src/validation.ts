@@ -18,7 +18,7 @@
  */
 import { CONNECTOR_POOL } from "@iracedeck/callout-script";
 
-import type { ResolvedStep, ScenarioContract } from "./dsl.js";
+import type { ResolvedStep, ScenarioContract, VocabularyResolver } from "./dsl.js";
 import { applyBase } from "./dsl.js";
 import { type AudioAssetsManifest, referenceVoice } from "./manifest.js";
 
@@ -31,7 +31,7 @@ export function validateScenario(
   resolved: ResolvedStep[] | null,
   scenarios: Map<string, CompiledEntry>,
   pools: Map<string, unknown>,
-  vars: Map<string, () => string | null>,
+  vars: ReadonlyMap<string, VocabularyResolver<string | null>>,
   manifest: AudioAssetsManifest,
 ): ScenarioValidationResult {
   const errors: string[] = [];
@@ -121,8 +121,10 @@ export function validateScenario(
             break;
           }
 
-          // A contract has no sequence to splice in — includes target legacy
-          // fragments only (issue #1064; the script compiler enforces the same).
+          // A contract has no sequence to splice in — a legacy include targets
+          // a legacy fragment only (issue #1064). A script's includes never
+          // reach here: they target the script's own fragments and the
+          // compiler inlines them (issue #1065).
           if (target.resolvedSequence === null) {
             errors.push(`include target has no sequence (a contract): ${step.id}`);
             break;

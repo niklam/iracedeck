@@ -1,15 +1,23 @@
 /**
- * Race-end final-result callout — issue #569.
+ * Race-end final-result callout — issue #569; scripted since #1065.
  *
  * Fires once per race session on the `race.finished` event published by the
  * iRacing translator when the driver crosses S/F after the checkered flag
- * has raised. The script greets the driver by name, then branches per final
- * effective position:
+ * has raised. The bundled script greets the driver by name, then branches per
+ * final effective position through the `raceEnd.result` case:
  *
- *   P1 — "<Name>, we won! We won! Well done. Amazing job. You deserved this win."
- *   P2 — "<Name>, that's second place. Very well done."
- *   P3 — "<Name>, we made it to the podium. We're third. Well done."
- *   P4+ — "<Name>, the race is over. The final result for us is pee N."
+ *   won    — "<Name>, we won! We won! Well done. Amazing job. You deserved this win."
+ *   second — "<Name>, that's second place. Very well done."
+ *   third  — "<Name>, we made it to the podium. We're third. Well done."
+ *   other  — "<Name>, the race is over. The final result for us is pee N."
+ *
+ * The code below decides WHETHER the result is speakable and how it is
+ * scheduled; WHAT is said lives in the active voice's `callouts.json` under
+ * the same id (`scenarios["pit-crew.race-end"]`), paired at `setScripts`
+ * time. The result branch is a `case` rather than three nested `if`s: it is a
+ * lookup over a closed set (the #1064 spec's first rule), and a declared key
+ * set is what lets a pack collapse the two podium keys onto one line, or add
+ * a fourth for a class win, without touching code.
  *
  * Effective position picks class vs overall per the snapshot's `isMultiClass`
  * flag, same rule as the position-change callout (#566) — multi-class drivers
@@ -19,13 +27,16 @@
  * the cache. It subscribes to `race.finished` and composes a snapshot from
  * the event payload + the Property Inspector driver-name pick, then exposes
  * the resolver passed in here. Reading at fire time keeps deferred replays
- * coherent — the race-end scenario sits at `weight: WEIGHT.CHATTER` +
+ * coherent — the race-end contract sits at `weight: WEIGHT.CHATTER` +
  * `queueable: true` so the bus may be busy with a same-tick lap-time-best
  * callout, and the engine defers the race-end fire until the bus is idle.
+ * That is why the vocabulary takes the resolver; the contract builder keeps
+ * it too, for the `where:` below.
  *
- * `where:` is `getSnapshot() !== null` — when the snapshot resolver can't
- * compose a valid payload (e.g. driver name unresolvable, position missing),
- * the scenario stays silent rather than producing a partial readout.
+ * `where:` requires a speakable effective position — when the snapshot
+ * resolver can't compose a valid payload (e.g. driver name unresolvable,
+ * position missing), the contract stays silent rather than producing a
+ * partial readout.
  *
  * Family `race-end` so a future per-class or per-result extension can preempt
  * within the family. `weight: WEIGHT.CHATTER` + `queueable: true` rather than a
@@ -37,11 +48,11 @@ import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventOf } from "@iracedeck/event-bus";
 
 import { poolRef, WEIGHT } from "../../dsl.js";
-import type { Scenario, Step } from "../../dsl.js";
+import type { ScenarioContract } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 
 /**
- * Plugin-composed snapshot the scenario reads at fire time. Combines the
+ * Plugin-composed snapshot the vocabulary reads at fire time. Combines the
  * `race.finished` event payload (cached by the plugin on event arrival) with
  * the Property Inspector driver-name pick (resolved per-instance from the
  * Pit Crew action's settings). Driver-name lives outside the bus event because
@@ -62,7 +73,7 @@ const POSITION_GROUP_NUMBER = "position-number";
 /**
  * Pick the position the result clip should speak. Multi-class series read
  * class-position; single-class (or unknown) read overall. Returns `null` when
- * neither side is populated — the scenario then skips the readout.
+ * neither side is populated — the contract then skips the readout.
  *
  * Mirrors `selectEffectivePosition` from position.ts but returns just the
  * current value (race-end has no notion of a "previous"). Kept local so the
@@ -78,100 +89,125 @@ export function selectEffectiveFinalPosition(snapshot: RaceFinishedSnapshot): nu
   return current;
 }
 
+/** The keys of the `raceEnd.result` case — the closed set the result branch is a lookup over. */
+export type RaceEndResultKey = "won" | "second" | "third" | "other";
+
 /**
- * Register the race-end scenario's variables on the scenario engine. Must run
- * before {@link buildRaceEndScenario} is registered — load-time validation
- * rejects `{ var }` steps whose names aren't registered.
+ * The declared key set of `raceEnd.result`, each with the description the
+ * generated reference (#1066) shows a pack author.
+ *
+ * @internal Exported for testing — the test enumerates the positions and
+ * checks the resolver returns nothing outside this set.
  */
-export function registerRaceEndVars(engine: IScenarioEngine, getSnapshot: RaceFinishedSnapshotResolver): void {
-  engine.defineVar("raceEnd.greeting", () => {
-    const s = getSnapshot();
+export const RACE_END_RESULT_KEYS: Readonly<Record<RaceEndResultKey, string>> = {
+  won: "Finished first — or first in class in a multi-class race.",
+  second: "Finished second (in class, in a multi-class race).",
+  third: "Finished third (in class, in a multi-class race) — the last podium step.",
+  other: "Finished fourth or worse — the bundled script reads the result-is line and the position number.",
+};
 
-    if (!s) return null;
+/**
+ * The result key for a snapshot: the effective final position bucketed into
+ * the four keys, or `null` when no position is known — the case then takes
+ * its `default` branch, and with none the result says nothing. The `where:`
+ * already refuses a fire without a position, so `null` is only ever reached
+ * by an imperative fire.
+ *
+ * @internal Exported for testing.
+ */
+export function resolveRaceEndResult(snapshot: RaceFinishedSnapshot | null): RaceEndResultKey | null {
+  if (!snapshot) return null;
 
-    // Fallback to `driver` if the PI pick is empty / unknown — matches the
-    // session-start scenario's behavior.
-    const name = s.driverName && s.driverName.length > 0 ? s.driverName : "driver";
+  const position = selectEffectiveFinalPosition(snapshot);
 
-    return poolRef(RACE_END_GREETING_GROUP, name);
-  });
+  if (position === null) return null;
 
-  engine.defineVar("raceEnd.weWon", () => poolRef(RACE_END_GROUP, "we-won"));
-  engine.defineVar("raceEnd.secondPlace", () => poolRef(RACE_END_GROUP, "second-place"));
-  engine.defineVar("raceEnd.podiumThird", () => poolRef(RACE_END_GROUP, "podium-third"));
-  engine.defineVar("raceEnd.raceOverResultIs", () => poolRef(RACE_END_GROUP, "race-over-result-is"));
+  if (position === 1) return "won";
 
-  engine.defineVar("raceEnd.position", () => {
-    const s = getSnapshot();
+  if (position === 2) return "second";
 
-    if (!s) return null;
+  if (position === 3) return "third";
 
-    const position = selectEffectiveFinalPosition(s);
-
-    return position !== null ? poolRef(POSITION_GROUP_NUMBER, String(position)) : null;
-  });
+  return "other";
 }
 
 /**
- * Build the race-end scenario bound to a snapshot resolver. Conditional
- * branches pick the result clip at expansion time based on the snapshot's
- * effective position; the resolver also gates `where:` so a missing snapshot
- * (driver-name unresolvable, position missing) skips the scenario entirely.
+ * Register the vocabulary the race-end script references (issue #1065): the
+ * six vars the lines are built from and the `raceEnd.result` case the script
+ * branches on. Every resolver reads the race-finished snapshot through
+ * `getSnapshot` at expansion time. Names and descriptions are the public API
+ * of the format; the descriptions feed the generated reference (#1066).
  */
-export function buildRaceEndScenario(getSnapshot: RaceFinishedSnapshotResolver): Scenario {
-  const isPosition =
-    (target: number): (() => boolean) =>
+export function registerRaceEndVocabulary(
+  engine: Pick<IScenarioEngine, "defineVar" | "defineCase">,
+  getSnapshot: RaceFinishedSnapshotResolver,
+): void {
+  engine.defineVar(
+    "raceEnd.greeting",
     () => {
       const s = getSnapshot();
 
-      if (!s) return false;
+      if (!s) return null;
 
-      return selectEffectiveFinalPosition(s) === target;
-    };
+      // Fallback to `driver` if the PI pick is empty / unknown — matches the
+      // session-start scenario's behavior.
+      const name = s.driverName && s.driverName.length > 0 ? s.driverName : "driver";
 
-  const isFourthOrWorse = (): boolean => {
-    const s = getSnapshot();
-
-    if (!s) return false;
-
-    const position = selectEffectiveFinalPosition(s);
-
-    return position !== null && position >= 4;
-  };
-
-  const sequence: Step[] = [
-    // Optional (issue #835): driver names are a union across voices, so a
-    // voice lacking the picked name clip skips the greeting — a complete
-    // sentence either way — instead of aborting the result callout.
-    { optional: [{ var: "raceEnd.greeting" }] },
-    {
-      if: isPosition(1),
-      then: [{ var: "raceEnd.weWon" }],
-      else: [
-        {
-          if: isPosition(2),
-          then: [{ var: "raceEnd.secondPlace" }],
-          else: [
-            {
-              if: isPosition(3),
-              then: [{ var: "raceEnd.podiumThird" }],
-              else: [
-                {
-                  // P4 or worse — composed readout. The `if:` guards against
-                  // an unknown / out-of-range position producing a partial
-                  // "the race is over, the final result for us is …" with no
-                  // number after it.
-                  if: isFourthOrWorse,
-                  then: [{ var: "raceEnd.raceOverResultIs" }, { var: "raceEnd.position" }],
-                },
-              ],
-            },
-          ],
-        },
-      ],
+      return poolRef(RACE_END_GREETING_GROUP, name);
     },
-  ];
+    "The driver's name as a race-end greeting, one clip per name the voice recorded (the generic driver clip when no name is picked). Draws from the race-end-greeting clip group — a name the voice lacks resolves to nothing, so keep it optional.",
+  );
 
+  engine.defineVar(
+    "raceEnd.weWon",
+    () => poolRef(RACE_END_GROUP, "we-won"),
+    "The whole winning line — we won, well done. Draws the we-won line from the race-end clip group.",
+  );
+  engine.defineVar(
+    "raceEnd.secondPlace",
+    () => poolRef(RACE_END_GROUP, "second-place"),
+    "The whole second-place line. Draws the second-place line from the race-end clip group.",
+  );
+  engine.defineVar(
+    "raceEnd.podiumThird",
+    () => poolRef(RACE_END_GROUP, "podium-third"),
+    "The whole third-place line — we made the podium. Draws the podium-third line from the race-end clip group.",
+  );
+  engine.defineVar(
+    "raceEnd.raceOverResultIs",
+    () => poolRef(RACE_END_GROUP, "race-over-result-is"),
+    "The lead-in of the fourth-or-worse readout — the race is over, the final result for us is. A fragment of a sentence: the position number must follow it. Draws the race-over-result-is line from the race-end clip group.",
+  );
+
+  engine.defineVar(
+    "raceEnd.position",
+    () => {
+      const s = getSnapshot();
+
+      if (!s) return null;
+
+      const position = selectEffectiveFinalPosition(s);
+
+      return position !== null ? poolRef(POSITION_GROUP_NUMBER, String(position)) : null;
+    },
+    "The final position as a spoken number — the class position in a multi-class race, the overall position otherwise. Draws from the position-number clip group; a position the voice has no clip for aborts the readout.",
+  );
+
+  engine.defineCase(
+    "raceEnd.result",
+    () => resolveRaceEndResult(getSnapshot()),
+    RACE_END_RESULT_KEYS,
+    "How the race ended for the driver — won, second, third, or fourth or worse — judged on the class position in a multi-class race and the overall position otherwise. Exactly one key applies per finish.",
+  );
+}
+
+/**
+ * Build the race-end contract bound to a snapshot resolver. Stays a builder
+ * because the `where:` reads the resolver: a missing snapshot (driver-name
+ * unresolvable, position missing) skips the contract entirely. The result
+ * branch is the vocabulary's ({@link registerRaceEndVocabulary}).
+ */
+export function buildRaceEndContract(getSnapshot: RaceFinishedSnapshotResolver): ScenarioContract {
   return {
     id: "pit-crew.race-end",
     when: {
@@ -198,7 +234,6 @@ export function buildRaceEndScenario(getSnapshot: RaceFinishedSnapshotResolver):
     weight: WEIGHT.CHATTER,
     queueable: true,
     family: "race-end",
-    sequence,
   };
 }
 
@@ -225,9 +260,11 @@ export const SCENARIO_ID_TO_RACE_END_ID: Record<(typeof RACE_END_SCENARIO_IDS)[n
 };
 
 /**
- * Empty — the race-end readout is composed entirely from `engine.defineVar`
- * resolvers, not pools. Exported for parity with the family-completeness check
- * used by the other pit-crew catalog files. The broader convention alignment
- * (static `RACE_END_ALERTS` + constructor helper) is tracked in issue #558.
+ * The readout is composed entirely from the `raceEnd.*` vars, which draw
+ * from the `race-end-greeting`, `race-end` and `position-number` clip groups
+ * by value — so there is no fixed `(group, base)` list to publish: the
+ * bundled script addresses no pool directly. Exported empty for parity with
+ * the family-completeness checks the other pit-crew catalog files feed; the
+ * var descriptions name the groups.
  */
-export const RACE_END_POOL_NAMES: readonly string[] = [];
+export const RACE_END_CLIP_SOURCES: readonly { group: string; base: string }[] = [];

@@ -1,9 +1,11 @@
 /**
- * Position-change callout tests (issue #566).
+ * Position-change callout tests (issue #566; scripted since #1065).
  *
- * Drives the scenario through the real scenario engine — same harness shape
- * as `lap-time.test.ts` — so load-time validation, var resolution, and the
- * `where:` predicate all run the production path.
+ * Drives the contract through the real scenario engine with the bundled
+ * voice's real `callouts.json` narrowed to this family, so var resolution,
+ * the `position.readoutShape` case and the `where:` predicate all run the
+ * production path. The one case that needs the catalog's opt-in wrapper
+ * registers the whole catalog through `registerPitCrew`, as the plugins do.
  *
  * Coverage:
  *   - Position improved → "better" intro + correct number clip
@@ -14,22 +16,39 @@
  *   - Multi-class session uses classPosition; single-class uses overall position
  *   - Session-type gating: qualifying only fires; race / practice / test stay silent
  *   - Per-callout opt-in suppresses fires when off
+ *   - The three readout shapes (invalid lap / pole / standard) and their precedence
  */
+import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
+import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import type { IAudioService } from "@iracedeck/audio-service";
-import { AudioChannel } from "@iracedeck/audio-service";
+import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
+import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
 import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { AudioAssetsManifest } from "../../interpreter.js";
-import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
+import { WEIGHT } from "../../dsl.js";
+import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
+import { _resetAudioScenarios, initializeAudioScenarios, poolMemberPattern } from "../../interpreter.js";
 import { _resetPositionReadoutCooldown, registerPitCrew } from "./index.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
-import { positionChangeIsAnnounceable, selectEffectivePosition } from "./position.js";
+import {
+  buildPositionContract,
+  POSITION_CLIP_SOURCES,
+  POSITION_READOUT_SHAPE_KEYS,
+  POSITION_SCENARIO_IDS,
+  positionChangeIsAnnounceable,
+  registerPositionVocabulary,
+  resolvePositionReadoutShape,
+  selectEffectivePosition,
+} from "./position.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
 
 vi.mock("@iracedeck/sim-events-iracing", () => ({
   getSessionType: () => "Race",
+  getStandingStart: () => false,
+  getLatestTelemetry: () => null,
+  TrackDirection: { Neutral: "neutral", Left: "left", Right: "right" },
 }));
 
 const mockLogger = {
@@ -42,7 +61,9 @@ const mockLogger = {
   withLevel: vi.fn(),
 };
 
-function createMockBus(): IEventBus & { publishEvent: (name: SimEventName, data: Record<string, unknown>) => void } {
+function createMockBus(): IEventBus & {
+  publishEvent: (name: SimEventName, data: Record<string, unknown>) => void;
+} {
   const handlers = new Map<SimEventName, Set<(e: SimEventOf<SimEventName>) => void>>();
 
   return {
@@ -70,7 +91,7 @@ function createMockBus(): IEventBus & { publishEvent: (name: SimEventName, data:
       this.publish({
         event: name,
         timestamp: Date.now(),
-        telemetry: null as unknown,
+        telemetry: null,
         data: data as never,
       } as SimEventOf<SimEventName>);
     },
@@ -125,11 +146,10 @@ function createFakeAudio(): FakeAudio {
   } as unknown as FakeAudio;
 }
 
-function flush(audio: FakeAudio, iterations = 60): void {
+function flush(audio: FakeAudio, iterations = 20): void {
   for (let i = 0; i < iterations; i++) {
     audio._triggerChannelEnd(AudioChannel.Voice);
     audio._triggerChannelEnd(AudioChannel.SFX);
-    vi.advanceTimersByTime(1000);
   }
 }
 
@@ -152,6 +172,17 @@ const manifest: AudioAssetsManifest = {
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
 };
 
+const SCRIPT = defaultScript as CalloutScript;
+
+/** The bundled script narrowed to this family's entry (F7-trap i). */
+const POSITION_SCRIPT: CalloutScript = {
+  ...SCRIPT,
+  scenarios: Object.fromEntries(POSITION_SCENARIO_IDS.map((id) => [id, SCRIPT.scenarios[id]])),
+  fragments: {},
+};
+
+const MANIFEST = manifestJson as AudioAssetsManifest;
+
 type LapPayload = SimEventOf<"lap.completed">["data"];
 
 function snap(overrides: Partial<LapPayload> = {}): LapPayload {
@@ -169,8 +200,8 @@ function snap(overrides: Partial<LapPayload> = {}): LapPayload {
 
 let bus: ReturnType<typeof createMockBus>;
 let audio: FakeAudio;
+let engine: IScenarioEngine;
 let lastSnapshot: LapPayload | null;
-let positionEnabled: boolean;
 let raceFinished: boolean;
 
 function fire(data: LapPayload | null): void {
@@ -207,31 +238,23 @@ function liveFromSnapshot(): { position: number; classPosition: number; isMultiC
 }
 
 beforeEach(() => {
-  vi.useFakeTimers();
   lastSnapshot = null;
-  positionEnabled = true;
   raceFinished = false;
   _resetPositionReadoutCooldown();
   bus = createMockBus();
   audio = createFakeAudio();
-  initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
-  registerPitCrew(bus, {
-    logger: mockLogger as never,
-    getLapTimeCalloutEnabled: () => false,
-    getLapCompletedSnapshot: () => lastSnapshot,
-    getPositionCalloutEnabled: () => positionEnabled,
-    getRaceFinishedFired: () => raceFinished,
-    getLivePosition: liveFromSnapshot,
-  });
+  engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
+  // The production order (`registerPitCrew`): vocabulary, the contract, the
+  // script. The family is registered ALONE, so only its own compile
+  // diagnostics can appear.
+  registerPositionVocabulary(engine, () => lastSnapshot, liveFromSnapshot);
+  engine.defineContract(buildPositionContract(() => raceFinished, liveFromSnapshot));
+  engine.setScripts(new Map([[VOICE, POSITION_SCRIPT]]));
 });
 
 afterEach(() => {
   _resetAudioScenarios();
-  _resetRadarEngine();
-  _resetSpotterEngine();
-  _resetPitSpeedingEngine();
   vi.clearAllMocks();
-  vi.useRealTimers();
 });
 
 describe("selectEffectivePosition", () => {
@@ -292,12 +315,12 @@ describe("positionChangeIsAnnounceable", () => {
   });
 
   it("returns true for an invalid lap with unchanged position (issue #572 — invalid branch still fires)", () => {
-    // The invalid-lap branch (issue #572) prefixes the readout with "That lap
+    // The invalid-lap shape (issue #572) prefixes the readout with "That lap
     // didn't count." and forces the worse-framing intro. It rides on the
     // existing announceable path — an invalid lap is `isBest: false`, so the
     // unchanged-non-PB status case in `positionChangeIsAnnounceable` already
     // covers it. This test pins the contract so future predicate changes
-    // don't accidentally silence the invalid-lap branch.
+    // don't accidentally silence the invalid-lap shape.
     expect(
       positionChangeIsAnnounceable(
         snap({
@@ -312,7 +335,7 @@ describe("positionChangeIsAnnounceable", () => {
   });
 });
 
-describe("position-change scenario", () => {
+describe("position-change contract", () => {
   it("plays the better intro and number for an improvement", () => {
     fire(snap({ position: 3, previousPosition: 5 }));
 
@@ -330,7 +353,7 @@ describe("position-change scenario", () => {
   });
 
   it("uses the better intro for a first-fix (no previousPosition)", () => {
-    // Position 4 chosen so we don't trigger the qualifying pole branch (P1).
+    // Position 4 chosen so we don't trigger the qualifying pole shape (P1).
     fire(snap({ position: 4, isFirstValid: true }));
 
     expect(hasClip("/position-intro-better/that-puts-us-to-01.mp3")).toBe(true);
@@ -427,6 +450,94 @@ describe("position-change scenario", () => {
     expect(hasClip("/position-intro-better/that-puts-us-to-01.mp3")).toBe(true);
   });
 
+  it("plays inside the radio frame, intro before number", () => {
+    fire(snap({ position: 3, previousPosition: 5 }));
+
+    const all = audio._played.map((p) => p.path);
+
+    expect(all[0]).toBe("sfx/IRD-tick-open.mp3");
+    expect(all.at(-1)).toBe("sfx/IRD-tick-close.mp3");
+    expect(voicePaths()).toEqual([
+      `voice/${VOICE}/position-intro-better/that-puts-us-to-01.mp3`,
+      `voice/${VOICE}/position-number/3.mp3`,
+    ]);
+  });
+
+  // The shape and the qualifying number are read off the FIRE'S OWN payload,
+  // not the plugin's latest snapshot: a deferred replay carries its event, so
+  // the lap it speaks about is the lap that fired it whatever completed since.
+  it("speaks the lap that fired it, not the latest snapshot the plugin holds", () => {
+    lastSnapshot = snap({ position: 9, previousPosition: 10 });
+    bus.publishEvent("lap.completed", snap({ position: 3, previousPosition: 5 }) as unknown as Record<string, unknown>);
+    flush(audio);
+
+    expect(voicePaths()).toEqual([
+      `voice/${VOICE}/position-intro-better/that-puts-us-to-01.mp3`,
+      `voice/${VOICE}/position-number/3.mp3`,
+    ]);
+  });
+
+  it("falls back to the plugin's snapshot for a fire with no lap.completed behind it", () => {
+    lastSnapshot = snap({ position: 3, previousPosition: 5 });
+    engine.fire("pit-crew.position-change");
+    flush(audio);
+
+    expect(voicePaths()).toEqual([
+      `voice/${VOICE}/position-intro-better/that-puts-us-to-01.mp3`,
+      `voice/${VOICE}/position-number/3.mp3`,
+    ]);
+  });
+
+  it("keeps every scheduling field verbatim and carries no sequence — what is said is the voice script's", () => {
+    const c = buildPositionContract();
+
+    expect(c.id).toBe("pit-crew.position-change");
+    expect(c.when?.event).toBe("lap.completed");
+    expect(c.channel).toBe(AudioChannel.Voice);
+    expect(c.bus).toBe(AudioBus.Voice);
+    expect(c.base).toBe("voice/{voice}");
+    expect(c.weight).toBe(WEIGHT.CHATTER);
+    expect(c.queueable).toBe(true);
+    expect(c.family).toBe("position");
+    expect(c.frame).toBeUndefined();
+    expect("sequence" in c).toBe(false);
+  });
+});
+
+// The catalog's per-callout opt-in wrapper is `registerPitCrew`'s, not the
+// family's — so this one case registers the whole catalog, as the plugins do.
+describe("position-change contract — the catalog's opt-in wrapper", () => {
+  let positionEnabled: boolean;
+
+  beforeEach(() => {
+    _resetAudioScenarios();
+    positionEnabled = true;
+    bus = createMockBus();
+    audio = createFakeAudio();
+    engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
+    registerPitCrew(bus, {
+      logger: mockLogger as never,
+      getLapTimeCalloutEnabled: () => false,
+      getLapCompletedSnapshot: () => lastSnapshot,
+      getPositionCalloutEnabled: () => positionEnabled,
+      getRaceFinishedFired: () => raceFinished,
+      getLivePosition: liveFromSnapshot,
+    });
+    engine.setScripts(new Map([[VOICE, SCRIPT]]));
+  });
+
+  afterEach(() => {
+    _resetRadarEngine();
+    _resetSpotterEngine();
+    _resetPitSpeedingEngine();
+  });
+
+  it("fires through the real registration when the opt-in is on", () => {
+    fire(snap({ position: 3, previousPosition: 5 }));
+
+    expect(hasClip("/position-number/3.mp3")).toBe(true);
+  });
+
   it("is suppressed when the per-callout opt-in is off", () => {
     positionEnabled = false;
     fire(snap({ position: 3, previousPosition: 5 }));
@@ -435,7 +546,7 @@ describe("position-change scenario", () => {
   });
 });
 
-describe("position-change scenario — qualifying pole", () => {
+describe("position-change contract — qualifying pole", () => {
   it("plays the pole clip (no number) when improving to P1 in qualifying", () => {
     fire(snap({ position: 1, previousPosition: 3, sessionType: "qualifying" }));
 
@@ -461,7 +572,7 @@ describe("position-change scenario — qualifying pole", () => {
   });
 
   it("plays the 'currently' intro (never pole or 'puts us to') for P1 improvements in race", () => {
-    // Pole branch is qualifying-only — "on pole" doesn't apply to race
+    // The pole shape is qualifying-only — "on pole" doesn't apply to race
     // leadership. The "that puts us to" intro is also qualifying-only — race
     // standings don't follow from lap times. So a P1 improvement in race
     // speaks the standard "We're currently P1" status (issue #569 fix).
@@ -491,7 +602,7 @@ describe("position-change scenario — qualifying pole", () => {
   });
 });
 
-describe("position-change scenario — invalid lap (issue #572)", () => {
+describe("position-change contract — invalid lap (issue #572)", () => {
   it("prefixes with 'that lap didn't count' and uses worse intro when lap is invalid + unchanged", () => {
     fire(
       snap({
@@ -528,7 +639,7 @@ describe("position-change scenario — invalid lap (issue #572)", () => {
     expect(hasClip("/position-number/3.mp3")).toBe(true);
   });
 
-  it("suppresses pole branch for an invalid lap landing at P1", () => {
+  it("suppresses the pole shape for an invalid lap landing at P1", () => {
     fire(
       snap({
         position: 1,
@@ -563,5 +674,137 @@ describe("position-change scenario — invalid lap (issue #572)", () => {
     );
 
     expect(hasClip("/position-invalid-lap/that-lap-didnt-count-01.mp3")).toBe(false);
+    expect(hasClip("/position-intro-worse/currently-01.mp3")).toBe(true);
+  });
+
+  it("speaks the three fixed pieces in order: didn't count, currently, the number", () => {
+    fire(snap({ position: 5, previousPosition: 5, isBest: false, sessionType: "qualifying", lapIsValid: false }));
+
+    expect(voicePaths()).toEqual([
+      `voice/${VOICE}/position-invalid-lap/that-lap-didnt-count-01.mp3`,
+      `voice/${VOICE}/position-intro-worse/currently-01.mp3`,
+      `voice/${VOICE}/position-number/5.mp3`,
+    ]);
+  });
+});
+
+describe("registerPositionVocabulary (issue #1065)", () => {
+  it("publishes the readout-shape case and the three vars, each with a description for a pack author", () => {
+    const { vars, conds, cases } = engine.vocabulary();
+    const positionVars = vars.filter((v) => v.name.startsWith("position."));
+
+    expect(positionVars.map((v) => v.name)).toEqual(["position.intro", "position.number", "position.pole"]);
+
+    for (const v of positionVars) expect(v.description.length, v.name).toBeGreaterThan(0);
+
+    expect(positionVars.find((v) => v.name === "position.number")?.description).toContain("position-number");
+    expect(cases.filter((c) => c.name.startsWith("position."))).toEqual([
+      {
+        name: "position.readoutShape",
+        description: expect.stringContaining("shape"),
+        keys: POSITION_READOUT_SHAPE_KEYS,
+      },
+    ]);
+    expect(conds.filter((c) => c.name.startsWith("position."))).toEqual([]);
+
+    for (const [key, description] of Object.entries(POSITION_READOUT_SHAPE_KEYS)) {
+      expect(description.length, `position.readoutShape key ${key}`).toBeGreaterThan(0);
+    }
+  });
+
+  it("declares exactly the keys the shape resolver can return — enumerated over the reachable snapshots", () => {
+    const reachable = new Set<string>();
+
+    for (const sessionType of ["qualifying", "race"] as const) {
+      for (const lapIsValid of [undefined, true, false]) {
+        for (const [position, previousPosition] of [
+          [1, undefined],
+          [1, 3],
+          [1, 1],
+          [3, 5],
+          [5, 3],
+          [5, 5],
+        ] as const) {
+          const key = resolvePositionReadoutShape(snap({ sessionType, lapIsValid, position, previousPosition }));
+
+          expect(key).not.toBeNull();
+          reachable.add(key ?? "");
+        }
+      }
+    }
+
+    expect([...reachable].sort()).toEqual(Object.keys(POSITION_READOUT_SHAPE_KEYS).sort());
+    expect(Object.keys(POSITION_READOUT_SHAPE_KEYS)).toHaveLength(3);
+  });
+
+  it("resolves no shape without a snapshot — the case then takes the absent default and nothing plays", () => {
+    expect(resolvePositionReadoutShape(null)).toBeNull();
+  });
+});
+
+describe("the bundled script's position entry (issue #1065)", () => {
+  it("scripts the contract with a comment, a Position harness route and a sequence", () => {
+    for (const id of POSITION_SCENARIO_IDS) {
+      const entry = SCRIPT.scenarios[id];
+
+      expect(entry, `no script entry for ${id}`).toBeDefined();
+      expect(entry.comment?.length ?? 0, `${id}: comment`).toBeGreaterThan(0);
+      expect(entry.test, `${id}: test`).toMatch(/^Harness → Position → /);
+      expect(entry.skip).toBeUndefined();
+      expect(entry.sequence?.length ?? 0, `${id}: sequence`).toBeGreaterThan(0);
+    }
+  });
+
+  it("is one case over the three declared shapes, with the vars required (never optional) in every branch", () => {
+    expect(SCRIPT.scenarios["pit-crew.position-change"].sequence).toEqual([
+      {
+        case: "position.readoutShape",
+        of: {
+          "invalid-lap": [
+            "pool:position-invalid-lap/that-lap-didnt-count",
+            "pool:position-intro-worse/currently",
+            "{{position.number}}",
+          ],
+          pole: ["{{position.pole}}"],
+          standard: ["{{position.intro}}", "{{position.number}}"],
+        },
+      },
+    ]);
+  });
+
+  it("references only vocabulary this family registers, with the declared case keys", () => {
+    const refs = collectScriptReferences(POSITION_SCRIPT);
+    const vocabulary = engine.vocabulary();
+
+    expect(refs.vars).toEqual(["position.intro", "position.number", "position.pole"]);
+    expect(refs.conds).toEqual([]);
+    expect(refs.includes).toEqual([]);
+    expect(refs.frames).toEqual([]);
+    expect(refs.cases).toEqual([{ name: "position.readoutShape", keys: ["invalid-lap", "pole", "standard"] }]);
+
+    const declared = vocabulary.cases.find((v) => v.name === "position.readoutShape");
+
+    expect(Object.keys(declared?.keys ?? {}).sort()).toEqual(["invalid-lap", "pole", "standard"]);
+  });
+
+  it("addresses exactly the two fixed lines as pools — the slashed form — and every one has a clip in the bundled voice", () => {
+    const sources = ["position-intro-worse/currently", "position-invalid-lap/that-lap-didnt-count"];
+
+    expect([...collectScriptReferences(POSITION_SCRIPT).pools].sort()).toEqual(sources);
+    expect(POSITION_CLIP_SOURCES.map(({ group, base }) => `${group}/${base}`).sort()).toEqual(sources);
+
+    for (const { group, base } of POSITION_CLIP_SOURCES) {
+      const pattern = poolMemberPattern(group, base);
+
+      expect(
+        MANIFEST.clips.some((clip) => pattern.exec(clip)?.[1] === VOICE),
+        `no voice/${VOICE}/${group}/${base}(-NN).mp3 in manifest.json`,
+      ).toBe(true);
+    }
+  });
+
+  it("compiles for the test voice with nothing skipped", () => {
+    expect(mockLogger.warn).not.toHaveBeenCalled();
+    expect(mockLogger.error).not.toHaveBeenCalled();
   });
 });

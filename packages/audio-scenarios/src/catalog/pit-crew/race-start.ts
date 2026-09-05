@@ -1,31 +1,45 @@
 /**
- * Race-start greeting + qualifying-position readout — issue #568.
+ * Race-start greeting + qualifying-position readout — issue #568; scripted
+ * since #1065.
  *
  * Fires once per race session on `session.changed` after a short delay
- * ({@link RACE_START_DELAY_MS}). Greets the driver by name, reports the
- * qualifying-finish (grid) position, and reads the same track + air
- * temperature + wetness brief as the session-start callout — minus the pit
- * speed limit, which the driver heard during practice / qualifying and which
- * isn't useful at the green flag. Race start is the only moment the driver
- * wants the position context.
+ * ({@link RACE_START_DELAY_MS}). The bundled script greets the driver by
+ * name, reports the qualifying-finish (grid) position, and reads the same
+ * track + air temperature + wetness brief as the session-start callout —
+ * minus the pit speed limit, which the driver heard during practice /
+ * qualifying and which isn't useful at the green flag. Race start is the only
+ * moment the driver wants the position context.
  *
- * Coexistence with session-start (issue #542): the session-start scenario's
- * `where:` returns false in race sessions, so race entries are spoken
- * exclusively by this scenario. Practice and qualifying are unchanged.
- *
- * Script (fires {@link RACE_START_DELAY_MS} after `session.changed`):
+ * The code below decides WHETHER the brief is due and how it is scheduled;
+ * WHAT is said lives in the active voice's `callouts.json` under the same id
+ * (`scenarios["pit-crew.race-start"]`), paired at `setScripts` time. The
+ * bundled script's shape (fires {@link RACE_START_DELAY_MS} after
+ * `session.changed`):
  *   [radio open]
- *   "Time to race, <Name>."                        race-start-greeting/<driver>.mp3
- *   ── conditional position clause ───────────────
- *     P1                   "Starting from pole. Well done."
- *     P2…P{@link POSITION_MAX}
- *                          "Qualifying put us to," + "P N."  (position-number group)
- *     missing / P > MAX    (clause skipped entirely)
+ *   "Time to race, <Name>."                        {{raceStart.greeting}} — optional
+ *   ── position clause, optional, `raceStart.gridPosition` case ──
+ *     pole                 "Starting from pole. Well done."
+ *     composed             "Qualifying put us to," + {{raceStart.position}}
+ *     none                 (clause skipped entirely)
  *   ──
- *   "Track temperature is" <N> "degrees" <unit>    (session-start clips)
- *   "air temperature is"   <N> "degrees" <unit>    (session-start clips)
- *   "and the track is" <wetness-state>             (session-start clips)
+ *   "Track temperature is" <N> "degrees" <unit>    optional clause (session-start clips)
+ *   "air temperature is"   <N> "degrees" <unit>    optional clause (session-start clips)
+ *   "and the track is" {{raceStart.wetness}}        required
+ *   (if setupWarning.raceMismatch) the setup nudge  optional clause
  *   [radio close]
+ *
+ * Every optional clause is a whole clause (the #1064 spec's second rule): the
+ * brief without the greeting, without the grid position, or without a
+ * temperature reading is shorter and still true, so a voice lacking a name
+ * clip, a position clip or a temperature clip skips that clause and speaks the
+ * rest. The grid position is a `case` inside the optional clause rather than
+ * two nested `if`s: it is a lookup over a closed set (pole / composed / none),
+ * and a pack can phrase the composed branch differently — or drop the pole
+ * compliment — without touching code.
+ *
+ * Coexistence with session-start (issue #542): the session-start contract's
+ * `where:` returns false in race sessions, so race entries are spoken
+ * exclusively by this contract. Practice and qualifying are unchanged.
  *
  * The greeting is a single per-name clip ("Time to race, Niklas.") rather than
  * a composed "Time to race," + bare-name pair. Composition produced awkward
@@ -34,10 +48,13 @@
  * naturally at the cost of one clip per supported name.
  *
  * Snapshot-at-fire-time (session-start pattern, issue #542): every dynamic clip
- * is a `{ var }` step backed by a resolver that reads the snapshot closure at
- * fire time. The clip ranges (temp 0-150 in display units, position 1-64) are
- * the same as the families they borrow from — both come from the same voice-
- * group source of truth and don't need to be tracked separately here.
+ * is a `{{var}}` backed by a resolver that reads the snapshot closure at fire
+ * time; the grid-position case and the setup-warning condition read it (or
+ * the setup-warning resolver) the same way. The clip ranges (temp 0-150 in
+ * display units, position 1-64) are the same as the families they borrow
+ * from — both come from the same voice-group source of truth and don't need
+ * to be tracked separately here. That is why the vocabulary takes both
+ * resolvers; the contract builder keeps the snapshot resolver for its `where:`.
  *
  * Family `race-start`: reserves the namespace for future race-start scenarios
  * (wet-race opener, formation-lap brief, weather forecast). Distinct from
@@ -49,10 +66,10 @@
  * getSnapshot() !== null`, plus the issue #871 fresh-connect gate: a synthetic
  * `session.changed { from: -1 }` (plugin connect mid-session) is rejected when
  * the race is already underway (`SessionState === Racing` or post-race) — a
- * pre-green grid restart still briefs. The first arm gates the scenario open
+ * pre-green grid restart still briefs. The first arm gates the contract open
  * only for race transitions (practice/qualifying are owned by session-start);
  * the snapshot arm short-circuits when telemetry / wetness aren't yet
- * available so the scenario skips entirely rather than speaking a partial
+ * available so the contract skips entirely rather than speaking a partial
  * readout.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
@@ -61,20 +78,26 @@ import { isPostRace, SessionState, type TelemetryData } from "@iracedeck/iracing
 import type { ILogger } from "@iracedeck/logger";
 import { getSessionType } from "@iracedeck/sim-events-iracing";
 
-import type { Scenario, Step } from "../../dsl.js";
+import type { ScenarioContract } from "../../dsl.js";
 import { poolRef } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 
 /**
  * Resolver for the race-start snapshot, invoked at fire time. Returns `null`
- * when conditions aren't available — the scenario then skips the callout
+ * when conditions aren't available — the contract then skips the callout
  * entirely (its `where:` predicate short-circuits).
  */
 export type RaceStartSnapshotResolver = () => RaceStartSnapshot | null;
 
 /**
+ * Resolver for the setup-name mismatch nudge (issue #625): whether the loaded
+ * setup's name looks wrong for the session kind. Read live at fire time.
+ */
+export type SetupWarningResolver = (kind: "qualifying" | "race") => boolean;
+
+/**
  * Delay before the where: predicate and sequence-expansion run, once
- * `session.changed` lands in a race session. Implemented as the scenario's
+ * `session.changed` lands in a race session. Implemented as the contract's
  * `triggerDelay` (NOT a leading `{ pause }` step) so iRacing's telemetry has
  * a chance to settle before we read it.
  *
@@ -100,18 +123,10 @@ const WETNESS_CLIP_SUFFIX: Readonly<Partial<Record<TrackWetness, string>>> = {
   [TrackWetness.ExtremelyWet]: "extremely-wet",
 };
 
-const RACE_START_BASE = "race-start";
 const RACE_START_GREETING_GROUP = "race-start-greeting";
 const SESSION_START_GROUP = "session-start";
 const SESSION_START_TEMP_NUMBERS_GROUP = "session-start-temp-numbers";
 const POSITION_NUMBER_GROUP = "position-number";
-/** Group holding the setup-mismatch warning clips (issue #625). */
-const SETUP_WARNING_GROUP = "setup-warning";
-
-/** Build a `clip` step path relative to the scenario's `voice/{voice}` base. */
-function clipPath(filename: string): string {
-  return `${RACE_START_BASE}/${filename}`;
-}
 
 /** The three buckets a session type collapses into — the keys of the `session.type` vocabulary (issue #1064). */
 export type SessionKind = "practice" | "qualifying" | "race";
@@ -154,147 +169,158 @@ export function isRaceSession(sessionType: string): boolean {
   return kind !== "practice" && kind !== "qualifying";
 }
 
+/** The keys of the `raceStart.gridPosition` case — the closed set the position clause is a lookup over. */
+export type RaceStartGridPositionKey = "pole" | "composed" | "none";
+
 /**
- * Register the race-start scenario's variables on the scenario engine. Must
- * run before the scenario is defined — load-time validation rejects a
- * `{ var }` step whose name isn't registered. Resolvers close over the
- * snapshot closure and return `null` (a no-op step) whenever conditions
- * aren't available.
+ * The declared key set of `raceStart.gridPosition`, each with the description
+ * the generated reference (#1066) shows a pack author.
+ *
+ * @internal Exported for testing — the test enumerates the positions and
+ * checks the resolver returns nothing outside this set.
  */
-export function registerRaceStartVars(engine: IScenarioEngine, getSnapshot: RaceStartSnapshotResolver): void {
+export const RACE_START_GRID_POSITION_KEYS: Readonly<Record<RaceStartGridPositionKey, string>> = {
+  pole: "Starting from pole — the driver qualified first.",
+  composed:
+    "A known grid position of second or worse, to read out with raceStart.position — a position the voice has no number clip for aborts the clause.",
+  none: "No usable grid position — say nothing about the grid.",
+};
+
+/**
+ * The grid-position key for a snapshot, mirroring the closures' precedence:
+ * `pole` at P1, `composed` from P2 up (whether the voice can speak the number
+ * is the var's business — a missing clip aborts the optional clause), and
+ * `none` when the position is missing or not a positive number.
+ *
+ * @internal Exported for testing.
+ */
+export function resolveRaceStartGridPosition(snapshot: RaceStartSnapshot | null): RaceStartGridPositionKey {
+  const position = snapshot?.playerCarPosition;
+
+  if (typeof position !== "number") return "none";
+
+  if (position === 1) return "pole";
+
+  if (position >= 2) return "composed";
+
+  return "none";
+}
+
+/**
+ * Register the vocabulary the race-start script references (issue #1065):
+ * the six vars the brief is built from, the grid-position case and the
+ * setup-warning condition. The vars and the case read the snapshot through
+ * `getSnapshot` at expansion time and return `null` (nothing to say) when it
+ * is unavailable; the condition reads `getSetupWarningMismatch` live, so a
+ * mid-session opt-in toggle or pattern edit takes effect immediately —
+ * race-start only ever fires in a race session, so no session-type re-check
+ * is needed. Names and descriptions are the public API of the format; the
+ * descriptions feed the generated reference (#1066).
+ */
+export function registerRaceStartVocabulary(
+  engine: Pick<IScenarioEngine, "defineVar" | "defineCond" | "defineCase">,
+  getSnapshot: RaceStartSnapshotResolver,
+  getSetupWarningMismatch: SetupWarningResolver = () => false,
+): void {
   // Single per-name greeting clip — "Time to race, <Name>." recorded as one
   // sentence rather than composed from a "Time to race," prefix + a bare name
   // clip. Composition produced awkward prosody (sentence terminator + opening
   // intonation on the bare name); per-name clips speak naturally.
-  engine.defineVar("raceStart.greeting", () => {
-    const s = getSnapshot();
+  engine.defineVar(
+    "raceStart.greeting",
+    () => {
+      const s = getSnapshot();
 
-    if (!s) return null;
+      if (!s) return null;
 
-    const name = s.driverName && s.driverName.length > 0 ? s.driverName : "driver";
+      const name = s.driverName && s.driverName.length > 0 ? s.driverName : "driver";
 
-    return poolRef(RACE_START_GREETING_GROUP, name);
-  });
+      return poolRef(RACE_START_GREETING_GROUP, name);
+    },
+    'The race-start greeting with the driver\'s name — "time to race, <name>" as one clip per name the voice recorded (the generic driver clip when no name is picked). Draws from the race-start-greeting clip group; a name the voice lacks resolves to nothing, so keep it optional.',
+  );
 
-  engine.defineVar("raceStart.position", () => {
-    const s = getSnapshot();
+  engine.defineVar(
+    "raceStart.position",
+    () => {
+      const s = getSnapshot();
 
-    if (!s || typeof s.playerCarPosition !== "number" || s.playerCarPosition < 1) return null;
+      if (!s || typeof s.playerCarPosition !== "number" || s.playerCarPosition < 1) return null;
 
-    return poolRef(POSITION_NUMBER_GROUP, String(s.playerCarPosition));
-  });
+      return poolRef(POSITION_NUMBER_GROUP, String(s.playerCarPosition));
+    },
+    "The grid position as a spoken number. Draws from the position-number clip group; a position the voice has no clip for resolves to nothing and aborts the clause it sits in.",
+  );
 
-  engine.defineVar("raceStart.trackTempNumber", () => {
-    const s = getSnapshot();
+  engine.defineVar(
+    "raceStart.trackTempNumber",
+    () => {
+      const s = getSnapshot();
 
-    if (!s) return null;
+      if (!s) return null;
 
-    return poolRef(SESSION_START_TEMP_NUMBERS_GROUP, String(s.trackTemp));
-  });
+      return poolRef(SESSION_START_TEMP_NUMBERS_GROUP, String(s.trackTemp));
+    },
+    "The track temperature as a whole number in the driver's display unit. Draws from the session-start-temp-numbers clip group; a reading outside the recorded range aborts the clause it sits in.",
+  );
 
-  engine.defineVar("raceStart.airTempNumber", () => {
-    const s = getSnapshot();
+  engine.defineVar(
+    "raceStart.airTempNumber",
+    () => {
+      const s = getSnapshot();
 
-    if (!s) return null;
+      if (!s) return null;
 
-    return poolRef(SESSION_START_TEMP_NUMBERS_GROUP, String(s.airTemp));
-  });
+      return poolRef(SESSION_START_TEMP_NUMBERS_GROUP, String(s.airTemp));
+    },
+    "The air temperature as a whole number in the driver's display unit. Draws from the session-start-temp-numbers clip group; a reading outside the recorded range aborts the clause it sits in.",
+  );
 
-  engine.defineVar("raceStart.degreesUnit", () => {
-    const s = getSnapshot();
+  engine.defineVar(
+    "raceStart.degreesUnit",
+    () => {
+      const s = getSnapshot();
 
-    if (!s) return null;
+      if (!s) return null;
 
-    return poolRef(SESSION_START_GROUP, `degrees-${s.tempUnit}`);
-  });
+      return poolRef(SESSION_START_GROUP, `degrees-${s.tempUnit}`);
+    },
+    "The temperature unit word — degrees celsius or degrees fahrenheit, per the driver's display setting. Draws the degrees-celsius and degrees-fahrenheit lines from the session-start clip group.",
+  );
 
-  engine.defineVar("raceStart.wetness", () => {
-    const s = getSnapshot();
-    const suffix = s ? WETNESS_CLIP_SUFFIX[s.wetness] : undefined;
+  engine.defineVar(
+    "raceStart.wetness",
+    () => {
+      const s = getSnapshot();
+      const suffix = s ? WETNESS_CLIP_SUFFIX[s.wetness] : undefined;
 
-    return suffix ? poolRef(SESSION_START_GROUP, `wetness-${suffix}`) : null;
-  });
+      return suffix ? poolRef(SESSION_START_GROUP, `wetness-${suffix}`) : null;
+    },
+    "The track wetness state as a word — dry, mostly dry, very lightly wet, lightly wet, moderately wet, very wet or extremely wet. Draws the wetness-<state> lines from the session-start clip group.",
+  );
+
+  engine.defineCase(
+    "raceStart.gridPosition",
+    () => resolveRaceStartGridPosition(getSnapshot()),
+    RACE_START_GRID_POSITION_KEYS,
+    "Where the driver starts the race: from pole, from a known position to read out, or unknown. Exactly one key applies per start.",
+  );
+
+  // Issue #625: the setup-name nudge. Read live at fire time; race-start
+  // only ever fires in a race session, so no session-type re-check is needed.
+  engine.defineCond(
+    "setupWarning.raceMismatch",
+    () => getSetupWarningMismatch("race"),
+    "The loaded setup's name looks like a qualifying setup at the start of a race, per the driver's setup-name patterns — worth a double-check-your-setup nudge. False when the warning is switched off or no pattern matches.",
+  );
 }
 
 /**
- * Build the race-start scenario bound to a snapshot resolver. The resolver
- * is read in the `where:` predicate (to gate firing) and inside the position
- * clause's conditional `if` step (to pick pole vs composed); the per-clip
- * `var` resolvers registered by {@link registerRaceStartVars} read it again
- * at sequence-expansion time.
- *
- * `getSetupWarningMismatch` (issue #625) appends a "double-check your setup"
- * nudge before the radio close when the loaded setup name looks like a
- * qualifying setup. Read live at fire time; race-start only ever fires in a
- * race session, so no session-type re-check is needed here.
+ * Build the race-start contract bound to a snapshot resolver. Stays a builder
+ * because the `where:` reads the resolver (to gate firing) and the logger;
+ * the brief itself is the vocabulary's ({@link registerRaceStartVocabulary}).
  */
-export function buildRaceStartScenario(
-  getSnapshot: RaceStartSnapshotResolver,
-  logger?: ILogger,
-  getSetupWarningMismatch: (kind: "qualifying" | "race") => boolean = () => false,
-): Scenario {
-  const isPole = (): boolean => getSnapshot()?.playerCarPosition === 1;
-  const isComposedPosition = (): boolean => {
-    const s = getSnapshot();
-
-    if (!s) return false;
-
-    const position = s.playerCarPosition;
-
-    return typeof position === "number" && position >= 2;
-  };
-
-  const sequence: Step[] = [
-    // Optional (issue #835): driver names are a union across voices, so a
-    // voice lacking the picked name clip skips the greeting — a complete
-    // sentence either way — instead of aborting the whole brief.
-    { optional: [{ var: "raceStart.greeting" }] },
-    // Optional clause (issue #836): whether a grid position is speakable
-    // derives from the clips that exist (no hardcoded bound) — a position (or
-    // a voice) without the number clip skips the clause entirely and the
-    // readout continues with the conditions brief.
-    {
-      optional: [
-        {
-          if: isPole,
-          then: [clipPath("starting-from-pole-01.mp3")],
-          else: [
-            {
-              if: isComposedPosition,
-              then: [clipPath("qualifying-put-us-to-01.mp3"), { var: "raceStart.position" }],
-              // No `else` — a missing position skips the clause entirely.
-            },
-          ],
-        },
-      ],
-    },
-    // Optional clauses (issue #836): the temp clip range is defined by the
-    // generated clips (no clamping) — a reading outside it skips its clause
-    // rather than speaking a wrong clamped number or killing the brief.
-    {
-      optional: [
-        `${SESSION_START_GROUP}/track-temp-intro.mp3`,
-        { var: "raceStart.trackTempNumber" },
-        { var: "raceStart.degreesUnit" },
-      ],
-    },
-    {
-      optional: [
-        `${SESSION_START_GROUP}/air-temp-intro.mp3`,
-        { var: "raceStart.airTempNumber" },
-        { var: "raceStart.degreesUnit" },
-      ],
-    },
-    `${SESSION_START_GROUP}/wetness-intro.mp3`,
-    { var: "raceStart.wetness" },
-    {
-      if: () => getSetupWarningMismatch("race"),
-      // Optional clause (issue #835): the nudge is a self-contained add-on —
-      // a voice without the clip skips it, not the brief.
-      then: [{ optional: [`${SETUP_WARNING_GROUP}/race-01.mp3`] }],
-    },
-  ];
-
+export function buildRaceStartContract(getSnapshot: RaceStartSnapshotResolver, logger?: ILogger): ScenarioContract {
   return {
     id: "pit-crew.race-start",
     when: {
@@ -324,7 +350,7 @@ export function buildRaceStartScenario(
         // positive state set (the #647 house style), so a missing/Invalid
         // SessionState briefs rather than suppresses. Defense-in-depth: the
         // translator already latches silently on race + Racing, but the
-        // scenario owns its firing conditions for harness-fired events.
+        // contract owns its firing conditions for harness-fired events.
         const from = (e.data as { from?: number }).from;
         const telemetry = e.telemetry as TelemetryData | null;
 
@@ -350,7 +376,6 @@ export function buildRaceStartScenario(
     // read TrackWetness / TrackTempCrew / AirTemp / PlayerCarPosition. See
     // `RACE_START_DELAY_MS` for the rationale.
     triggerDelay: RACE_START_DELAY_MS,
-    sequence,
   };
 }
 
@@ -380,8 +405,23 @@ export const SCENARIO_ID_TO_RACE_START_ID: Record<(typeof RACE_START_SCENARIO_ID
 };
 
 /**
- * Empty — the race-start readout is composed entirely from `engine.defineVar`
- * resolvers, not pools. Exported for parity with the family-completeness check
- * used by the other pit-crew catalog files.
+ * The clip sources the race-start script draws from directly — the pools it
+ * addresses as `pool:<group>/<base>` rather than through a var: the two
+ * position-clause lines under `race-start`, the three conditions intros it
+ * borrows from `session-start` (issue #568 reuses the session-start clips),
+ * and the setup nudge under `setup-warning`. The value-driven clips (the
+ * greeting, the numbers, the unit, the wetness) are the vars', whose
+ * descriptions name their groups. The completeness tests read this list:
+ * the bundled voice must ship at least one clip for each, and the bundled
+ * script must reference exactly this set. A `(group, base)` a script
+ * addresses is published — renaming a base is a rename in every pack's
+ * script and every pack's clip folder.
  */
-export const RACE_START_POOL_NAMES: readonly string[] = [];
+export const RACE_START_CLIP_SOURCES: readonly { group: string; base: string }[] = [
+  { group: "race-start", base: "starting-from-pole" },
+  { group: "race-start", base: "qualifying-put-us-to" },
+  { group: "session-start", base: "track-temp-intro" },
+  { group: "session-start", base: "air-temp-intro" },
+  { group: "session-start", base: "wetness-intro" },
+  { group: "setup-warning", base: "race" },
+];

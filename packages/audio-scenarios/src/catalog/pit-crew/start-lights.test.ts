@@ -1,31 +1,41 @@
 /**
- * Start-light scenario catalog tests (issues #480 / #673).
+ * Start-light contract tests (issues #480 / #673; scripted since #1065).
  *
- * Mirrors `flag-alerts.test.ts`: a fake bus + fake audio service, the
- * start-light pools registered from `pools.ts`, and a voice script whose
- * `radio` frame the engine wraps each callout in (issue #1064). Covers:
+ * Mirrors `flag-alerts.test.ts`: a fake bus + fake audio service, the six
+ * contracts registered on a fresh engine, and the bundled voice's REAL
+ * `callouts.json` narrowed to this family's entries — so every fire here
+ * runs the same compile + expansion path production does, and what the
+ * engineer says is the script's. Covers:
  *   - each gantry line + countdown number fires its clip
  *   - start-ready / start-go are CRITICAL + interrupt
  *   - family preemption (start-ready → start-go: last clip is go)
  *   - the countdown event filters by `seconds` (30 fires only the 30 clip)
  *   - opt-in gating via the `registerPitCrew` closure: `countdown` off
  *     suppresses all four numbers; `lights` off suppresses ready/go.
+ *   - the bundled script's entries: complete, described, pinned to the
+ *     published clip sources, and compiling clean for the test voices
  */
+import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
+import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
-import type { CalloutScript } from "@iracedeck/callout-script";
+import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
-import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
+import {
+  _resetAudioScenarios,
+  getScenarioEngine,
+  initializeAudioScenarios,
+  poolMemberPattern,
+} from "../../interpreter.js";
 import { registerPitCrew, type StartLightCalloutId } from "./index.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
-import { POOL_REGISTRY } from "./pools.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
-import { START_LIGHT_ALERTS, START_LIGHT_POOL_NAMES, START_LIGHT_SCENARIO_IDS } from "./start-lights.js";
+import { START_LIGHT_CLIP_SOURCES, START_LIGHT_CONTRACTS, START_LIGHT_SCENARIO_IDS } from "./start-lights.js";
 
 const mockSessionType = vi.fn(() => "Race");
 
@@ -163,21 +173,26 @@ const manifest: AudioAssetsManifest = {
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
 };
 
+/** The bundled manifest, for the clip-existence half of the sources check. */
+const MANIFEST = manifestJson as AudioAssetsManifest;
+const BUNDLED_VOICE = "default";
+
+/** The JSON import types `schema` as `number`, hence the cast. */
+const SCRIPT = defaultScript as CalloutScript;
+
 /**
- * Each voice's callout script — only its `radio` frame matters here. Since
- * issue #1064 the ticks come from the engine wrapping every callout in the
- * frame the active voice's script defines, never from the sequences.
+ * The bundled script narrowed to this family's own entries — handed to BOTH
+ * test voices. It supplies the `radio` frame the engine wraps each callout
+ * in (issue #1064) and the six lines themselves (#1065). `fragments` is
+ * narrowed too (to none): no start-light entry includes one, and
+ * `collectScriptReferences` walks every fragment it is given, so another
+ * family's fragment would otherwise widen the reference set under the
+ * assertions below.
  */
-const RADIO_SCRIPT: CalloutScript = {
-  schema: 1,
-  scenarios: {},
-  frames: {
-    radio: {
-      open: ["sfx/IRD-tick-open.mp3", { ambient: "start" }, { ambient: "seek" }],
-      close: [{ ambient: "stop" }, "sfx/IRD-tick-close.mp3"],
-    },
-  },
-  pools: {},
+const START_LIGHT_SCRIPT: CalloutScript = {
+  ...SCRIPT,
+  scenarios: Object.fromEntries(START_LIGHT_SCENARIO_IDS.map((id) => [id, SCRIPT.scenarios[id]])),
+  fragments: {},
 };
 
 function flush(audio: FakeAudio, iterations = 30): void {
@@ -199,14 +214,13 @@ beforeEach(() => {
   audio = createFakeAudio();
   engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => activeVoice);
 
-  for (const name of START_LIGHT_POOL_NAMES) {
-    const { group, base } = POOL_REGISTRY[name];
-    engine.definePoolFromManifest(name, group, base);
-  }
+  // The production order (`registerPitCrew`): contracts, then the scripts.
+  // No pools are registered in code for this family any more, and the script
+  // names none either: its `pool:start-lights/<base>` steps address the clip
+  // group directly, resolved against the manifest at fire time.
+  for (const c of START_LIGHT_CONTRACTS) engine.defineContract(c);
 
-  for (const s of START_LIGHT_ALERTS) engine.defineScenario(s);
-
-  engine.setScripts(new Map(VOICE_KEYS.map((v) => [v, RADIO_SCRIPT])));
+  engine.setScripts(new Map(VOICE_KEYS.map((v) => [v, START_LIGHT_SCRIPT])));
 });
 
 afterEach(() => {
@@ -223,17 +237,25 @@ function sfxClipsPlayed(): string[] {
   return audio._played.filter((p) => p.channel === AudioChannel.SFX).map((p) => p.path);
 }
 
-function findScenario(id: string): (typeof START_LIGHT_ALERTS)[number] {
-  const s = START_LIGHT_ALERTS.find((x) => x.id === id);
+function findContract(id: string): (typeof START_LIGHT_CONTRACTS)[number] {
+  const c = START_LIGHT_CONTRACTS.find((x) => x.id === id);
 
-  if (!s) throw new Error(`No start-light scenario with id "${id}"`);
+  if (!c) throw new Error(`No start-light contract with id "${id}"`);
 
-  return s;
+  return c;
 }
 
-describe("START_LIGHT_ALERTS structure", () => {
-  it("defines 6 scenarios", () => {
-    expect(START_LIGHT_ALERTS).toHaveLength(6);
+describe("START_LIGHT_CONTRACTS structure", () => {
+  it("defines 6 contracts", () => {
+    expect(START_LIGHT_CONTRACTS).toHaveLength(6);
+  });
+
+  it("carries no sequence — what a line says is the voice script's, never the code's (issue #1065)", () => {
+    for (const c of START_LIGHT_CONTRACTS) expect("sequence" in c).toBe(false);
+  });
+
+  it("names no frame — every line takes the engine default (the voice's `radio`)", () => {
+    for (const c of START_LIGHT_CONTRACTS) expect(c.frame).toBeUndefined();
   });
 
   it("exposes a stable list of ids", () => {
@@ -251,40 +273,45 @@ describe("START_LIGHT_ALERTS structure", () => {
     expect(new Set(START_LIGHT_SCENARIO_IDS).size).toBe(START_LIGHT_SCENARIO_IDS.length);
   });
 
-  it("all scenarios share family 'start-light'", () => {
-    for (const s of START_LIGHT_ALERTS) {
-      expect(s.family).toBe("start-light");
+  it("all contracts share family 'start-light' on the Voice bus", () => {
+    for (const c of START_LIGHT_CONTRACTS) {
+      expect(c.family).toBe("start-light");
+      expect(c.channel).toBe(AudioChannel.Voice);
+      expect(c.bus).toBe(AudioBus.Voice);
+      expect(c.cooldown).toBeUndefined();
+      expect(c.triggerDelay).toBeUndefined();
     }
   });
 
   it("start-ready and start-go are CRITICAL + interrupt + queueable", () => {
     for (const id of ["pit-crew.start-light-ready", "pit-crew.start-light-go"]) {
-      const s = findScenario(id);
-      expect(s.weight).toBe(WEIGHT.CRITICAL);
-      expect(s.interrupt).toBe(true);
+      const c = findContract(id);
+      expect(c.weight).toBe(WEIGHT.CRITICAL);
+      expect(c.interrupt).toBe(true);
       // Issue #867: a spotter proximity call (PROXIMITY > CRITICAL) outranks
       // the gantry lines exactly when cars are side by side at a start;
       // queueable defers them for replay instead of losing the one-shot call.
-      expect(s.queueable).toBe(true);
+      expect(c.queueable).toBe(true);
     }
   });
 
-  it("countdown scenarios are NORMAL weight + queueable:false", () => {
+  it("countdown contracts are NORMAL weight + queueable:false", () => {
     for (const seconds of [90, 60, 30, 10]) {
-      const s = findScenario(`pit-crew.start-light-countdown-${seconds}`);
-      expect(s.weight).toBe(WEIGHT.NORMAL);
-      expect(s.queueable).toBe(false);
+      const c = findContract(`pit-crew.start-light-countdown-${seconds}`);
+      expect(c.weight).toBe(WEIGHT.NORMAL);
+      expect(c.queueable).toBe(false);
+      expect(c.interrupt).toBeUndefined();
     }
   });
 
-  it("every scenario uses the per-voice base path", () => {
-    for (const s of START_LIGHT_ALERTS) {
-      expect(s.base).toBe("voice/{voice}");
+  it("every contract uses the per-voice base path", () => {
+    for (const c of START_LIGHT_CONTRACTS) {
+      expect(c.base).toBe("voice/{voice}");
     }
   });
 });
 
-describe("START_LIGHT_ALERTS triggers", () => {
+describe("START_LIGHT_CONTRACTS triggers", () => {
   it.each([
     {
       label: "start-ready",
@@ -343,9 +370,19 @@ describe("START_LIGHT_ALERTS triggers", () => {
     expect(played.at(-1)).toBe("sfx/IRD-tick-close.mp3");
     expect(sfxClipsPlayed()).toEqual(["sfx/IRD-tick-open.mp3", "sfx/IRD-tick-close.mp3"]);
   });
+
+  it("a voice with no script plays no start-light line at all — no line, no frame (issue #1065)", () => {
+    engine.setScripts(new Map([["titan", START_LIGHT_SCRIPT]]));
+
+    bus.publishEvent("startLight.start-go.raised", {});
+    bus.publishEvent("startLight.countdown.raised", { seconds: 30 });
+    flush(audio);
+
+    expect(audio._played).toEqual([]);
+  });
 });
 
-describe("START_LIGHT_ALERTS preemption", () => {
+describe("START_LIGHT_CONTRACTS preemption", () => {
   function lastVoiceClip(): string | undefined {
     return voiceClipsPlayed().at(-1);
   }
@@ -402,7 +439,7 @@ describe("START_LIGHT_ALERTS preemption", () => {
 // start-light clips, so unrelated families register with disabled scenarios
 // (pool-validation errors are logged but harmless) — the start-light events
 // under test still fire normally.
-describe("START_LIGHT_ALERTS opt-in gating (issue #480)", () => {
+describe("START_LIGHT_CONTRACTS opt-in gating (issue #480)", () => {
   let startLightEnabled: Map<StartLightCalloutId, boolean>;
 
   beforeEach(() => {
@@ -422,6 +459,9 @@ describe("START_LIGHT_ALERTS opt-in gating (issue #480)", () => {
       logger: mockLogger as never,
       getStartLightCalloutEnabled: (id) => startLightEnabled.get(id) ?? true,
     });
+    // A contract is silent without a script (issue #1065): the gates are what
+    // is under test here, so the lines must be there to be gated.
+    getScenarioEngine().setScripts(new Map([["luca", START_LIGHT_SCRIPT]]));
   });
 
   afterEach(() => {
@@ -472,7 +512,7 @@ describe("START_LIGHT_ALERTS opt-in gating (issue #480)", () => {
 // Issue #480 follow-up: start lights are race-only. iRacing can raise the grid
 // bits while forming the race grid at the END of a qualifying session, so the
 // scenarios gate on the race session (mirrors the race-progression flags).
-describe("START_LIGHT_ALERTS race-only gating", () => {
+describe("START_LIGHT_CONTRACTS race-only gating", () => {
   it("suppresses every start-light callout in qualifying", () => {
     mockSessionType.mockReturnValue("Qualify");
 
@@ -528,5 +568,80 @@ describe("START_LIGHT_ALERTS race-only gating", () => {
     flush(audio);
 
     expect(voiceClipsPlayed().some((p) => p.includes("/start-lights/countdown-10-"))).toBe(true);
+  });
+});
+
+describe("the bundled script's start-light entries (issue #1065)", () => {
+  it("scripts every contract, each with a comment, a Start harness route and a sequence", () => {
+    for (const id of START_LIGHT_SCENARIO_IDS) {
+      const entry = SCRIPT.scenarios[id];
+
+      expect(entry, `no script entry for ${id}`).toBeDefined();
+      expect(entry.comment?.length ?? 0, `${id}: comment`).toBeGreaterThan(0);
+      expect(entry.test, `${id}: test`).toMatch(/^Harness → Scenario Shortcuts → Start → /);
+      expect(entry.skip).toBeUndefined();
+      expect(entry.sequence?.length ?? 0, `${id}: sequence`).toBeGreaterThan(0);
+    }
+  });
+
+  it("names no vocabulary, no frame, no fragment and no pool alias — every line is one direct pool step", () => {
+    const refs = collectScriptReferences(START_LIGHT_SCRIPT);
+
+    expect(refs.vars).toEqual([]);
+    expect(refs.conds).toEqual([]);
+    expect(refs.cases).toEqual([]);
+    expect(refs.frames).toEqual([]);
+    expect(refs.includes).toEqual([]);
+    expect(Object.keys(START_LIGHT_SCRIPT.pools ?? {})).toEqual([]);
+
+    expect(SCRIPT.scenarios["pit-crew.start-light-ready"].sequence).toEqual(["pool:start-lights/start-ready"]);
+    expect(SCRIPT.scenarios["pit-crew.start-light-go"].sequence).toEqual(["pool:start-lights/start-go"]);
+
+    for (const seconds of [90, 60, 30, 10]) {
+      expect(SCRIPT.scenarios[`pit-crew.start-light-countdown-${seconds}`].sequence).toEqual([
+        `pool:start-lights/countdown-${seconds}`,
+      ]);
+    }
+  });
+
+  it("addresses exactly the published clip sources — the slashed form throughout — and every one has a clip in the bundled voice", () => {
+    const sources = [
+      "start-lights/countdown-10",
+      "start-lights/countdown-30",
+      "start-lights/countdown-60",
+      "start-lights/countdown-90",
+      "start-lights/start-go",
+      "start-lights/start-ready",
+    ];
+
+    expect([...collectScriptReferences(START_LIGHT_SCRIPT).pools].sort()).toEqual(sources);
+    expect(START_LIGHT_CLIP_SOURCES.map(({ group, base }) => `${group}/${base}`).sort()).toEqual(sources);
+
+    for (const { group, base } of START_LIGHT_CLIP_SOURCES) {
+      const pattern = poolMemberPattern(group, base);
+
+      expect(
+        MANIFEST.clips.some((clip) => pattern.exec(clip)?.[1] === BUNDLED_VOICE),
+        `no voice/${BUNDLED_VOICE}/${group}/${base}(-NN).mp3 in manifest.json`,
+      ).toBe(true);
+    }
+  });
+
+  it("the fixture manifest carries every source for both test voices — the fires above are not vacuous", () => {
+    for (const voice of VOICE_KEYS) {
+      for (const { group, base } of START_LIGHT_CLIP_SOURCES) {
+        const pattern = poolMemberPattern(group, base);
+
+        expect(
+          manifest.clips.some((clip) => pattern.exec(clip)?.[1] === voice),
+          `${voice}: ${group}/${base}`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  it("compiles for both test voices with nothing skipped — no unknown pool, condition, case key or fragment", () => {
+    expect(mockLogger.warn).not.toHaveBeenCalled();
+    expect(mockLogger.error).not.toHaveBeenCalled();
   });
 });

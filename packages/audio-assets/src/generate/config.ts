@@ -1,5 +1,6 @@
 import {
   CalloutScriptEntrySchema,
+  FragmentDefinitionSchema,
   FrameDefinitionSchema,
   NO_FRAME,
   POOL_DEFINITION_NAME_PATTERN,
@@ -19,7 +20,7 @@ import type { Manifest } from "./manifest.ts";
 // never purely numeric in practice.
 const kebab = z.string().regex(/^[a-z][a-z0-9-]*$/, "must be lowercase kebab-case (a-z, 0-9, dashes)");
 
-// The keys of the three callout-script maps (#1064). Each is the rule
+// The keys of the four callout-script maps (#1064, #1065). Each is the rule
 // `CalloutScriptSchema` applies to the same map in the extracted
 // `voice/<voice-id>/callouts.json` — or a stricter one — so a config that
 // parses here always yields an artifact `parseCalloutScript` accepts, and an
@@ -33,6 +34,11 @@ const scenarioId = z.string().regex(SCENARIO_ID_PATTERN, "must be a scenario id:
 // grammar's own words, so the config and the artifact report the same mistake
 // the same way.
 const frameName = kebab.refine((name) => name !== NO_FRAME, RESERVED_FRAME_NAME_MESSAGE);
+
+// A fragment name (#1065) is a label like a frame's, so it takes the same
+// kebab-case shape — stricter than the artifact's rule, and it cannot start
+// with the include prefix `@`, which the artifact's rule refuses separately.
+const fragmentName = kebab;
 
 // A DEFINED pool never carries a slash: a slashed reference always means a
 // direct `group/base` of the voice's own clips, which is what keeps the two
@@ -54,7 +60,7 @@ const entryName = z
 // valid TTS input ("zero"). Refuses booleans, null, arrays, objects.
 const textual = z.union([z.string(), z.number()]).transform((v) => String(v));
 
-export const VoiceSettingsSchema = z.object({
+export const VoiceSettingsSchema = z.strictObject({
   stability: z.number().min(0).max(1),
   similarity_boost: z.number().min(0).max(1),
   style: z.number().min(0).max(1).default(0),
@@ -75,7 +81,7 @@ export const VoiceSettingsSchema = z.object({
 // the shallow merge). Here every field is plain `.optional()` with no default,
 // so a parsed override contains exactly the keys the user wrote — preserving
 // the voice's base values for everything else.
-export const VoiceSettingsOverrideSchema = z.object({
+export const VoiceSettingsOverrideSchema = z.strictObject({
   stability: z.number().min(0).max(1).optional(),
   similarity_boost: z.number().min(0).max(1).optional(),
   style: z.number().min(0).max(1).optional(),
@@ -84,14 +90,14 @@ export const VoiceSettingsOverrideSchema = z.object({
   language_code: z.string().optional(),
 });
 
-export const PronunciationDictionaryLocatorSchema = z.object({
+export const PronunciationDictionaryLocatorSchema = z.strictObject({
   pronunciation_dictionary_id: z.string().min(1),
   version_id: z.string().min(1),
 });
 
 export const ApplyTextNormalizationSchema = z.enum(["auto", "on", "off"]);
 
-export const EntrySchema = z.object({
+export const EntrySchema = z.strictObject({
   name: entryName,
   text: textual.pipe(z.string().min(1)),
   // Deterministic seed for the ElevenLabs request. Same seed + same voice +
@@ -125,7 +131,11 @@ export const EntrySchema = z.object({
   use_pvc_as_ivc: z.boolean().optional(),
 });
 
-export const VoiceConfigSchema = z.object({
+// Strict, like every object in the artifact's grammar: a misspelled top-level
+// map (`fragements`) is refused here, naming the key, rather than stripped and
+// extracted as `{}` — which would leave the author's every fragment out of the
+// artifact and surface only as `unknown fragment` skips in the plugin log.
+export const VoiceConfigSchema = z.strictObject({
   // Voice metadata — required.
   id: z.string().min(1),
   label: z.string().min(1),
@@ -148,17 +158,19 @@ export const VoiceConfigSchema = z.object({
   // The actual content.
   groups: z.record(kebab, z.array(EntrySchema)),
   // The voice's callout script (#1064): what the Race Engineer says for each
-  // scenario the code declares, the frames wrapped around a callout, and the
-  // named pools a sequence draws from. Authored here — one file per voice —
-  // and extracted verbatim by `pnpm generate:callout-scripts` into the
-  // committed `voice/<voice-id>/callouts.json` the plugin and the voice packs
-  // ship; the `groups` above never leave this package. All three are optional
-  // so a clips-only voice stays a valid config: an absent map is an empty map
-  // in the artifact, and a scenario with no entry is a callout that voice
-  // never makes.
+  // scenario the code declares, the frames wrapped around a callout, the
+  // named pools a sequence draws from, and the fragments (#1065) a sequence
+  // may include from within the same script. Authored here — one file per
+  // voice — and extracted verbatim by `pnpm generate:callout-scripts` into
+  // the committed `voice/<voice-id>/callouts.json` the plugin and the voice
+  // packs ship; the `groups` above never leave this package. All four are
+  // optional so a clips-only voice stays a valid config: an absent map is an
+  // empty map in the artifact, and a scenario with no entry is a callout
+  // that voice never makes.
   scenarios: z.record(scenarioId, CalloutScriptEntrySchema).optional(),
   frames: z.record(frameName, FrameDefinitionSchema).optional(),
   pools: z.record(poolDefinitionName, PoolDefinitionSchema).optional(),
+  fragments: z.record(fragmentName, FragmentDefinitionSchema).optional(),
 });
 
 export type VoiceConfig = z.infer<typeof VoiceConfigSchema>;

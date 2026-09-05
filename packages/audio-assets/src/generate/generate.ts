@@ -22,10 +22,13 @@
  *   value when omitted, so e.g. one entry can pin a different `model_id`
  *   or `language_code` without rewriting the rest.
  *
- *   Key parity across voices is enforced by `voice-parity.test.ts` —
- *   every voice must define the same `<group>/<entry-name>` set as
- *   `default.voice.json`. Different text per voice is fine; missing or
- *   extra clip keys fail the test.
+ *   Key parity across voices is deliberately NOT enforced (#1065 retired
+ *   `voice-parity.test.ts`): a voice speaks from its own script, so a base
+ *   only it has is referenced only by it, and a base only default has is
+ *   a line that voice does not say. What `script-coverage.test.ts` holds
+ *   each voice to instead is itself — every clip it authors in a group its
+ *   script addresses is referenced, and everything it references is
+ *   authored. Different text per voice is fine; so is a different clip set.
  *
  * Request-id chains
  *   `previous_request_ids` and `next_request_ids` array elements may be

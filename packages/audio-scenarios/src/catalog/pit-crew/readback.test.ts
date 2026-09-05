@@ -1,32 +1,40 @@
 /**
- * Pit-service readback scenario tests (issue #476, #481).
+ * Pit-service readback tests (issue #476, #481; scripted since #1065).
  *
  * Pins the slot-resolution behavior, family preemption on refire, and
- * per-callout opt-out gating. Drives the scenarios through the real
- * scenario engine so we exercise validation and the same expansion path
- * production uses.
+ * per-callout opt-out gating. Drives the contracts through the real
+ * scenario engine with the bundled voice's real `callouts.json`, so every
+ * fire exercises the same compile + expansion path production uses — what
+ * the readback says is the script's, and the tests read the script.
  *
  * Issue #481 changed the data flow: the queued-services snapshot is no
- * longer carried on the event payload; the audio scenarios read it from
- * a resolver closure at fire time. These tests set the closure's source
- * (`currentSnapshot`) before publishing the event so each fire sees the
- * intended state.
+ * longer carried on the event payload; the readback vocabulary reads it
+ * from a resolver closure at fire time. These tests set the closure's
+ * source (`currentSnapshot`) before publishing the event so each fire sees
+ * the intended state.
  */
+import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import type { IAudioService } from "@iracedeck/audio-service";
-import { AudioChannel } from "@iracedeck/audio-service";
-import type { CalloutScript } from "@iracedeck/callout-script";
+import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
+import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
 import type { IEventBus, PitReadbackSnapshot, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { WEIGHT } from "../../dsl.js";
-import type { AudioAssetsManifest } from "../../interpreter.js";
-import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
+import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
+import { _resetAudioScenarios, initializeAudioScenarios, poolMemberPattern } from "../../interpreter.js";
 import { type FlagCalloutId, type PitReadbackCalloutId, registerPitCrew } from "./index.js";
 import { PIT_BOX_PENDING_HOLD_MS } from "./pit-box.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { _resetRadarEngine } from "./radar-engine.js";
-import { buildPitReadbackScenarios } from "./readback.js";
+import {
+  PIT_READBACK_CLIP_SOURCES,
+  PIT_READBACK_CONTRACTS,
+  PIT_READBACK_SCENARIO_IDS,
+  resolveTirePattern,
+  TIRE_PATTERN_KEYS,
+} from "./readback.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
 
 const mockSessionType = vi.fn(() => "Race");
@@ -267,14 +275,35 @@ const manifest: AudioAssetsManifest = {
 /**
  * The voice's callout script: the bundled voice's `callouts.json`, verbatim.
  * It supplies the `radio` frame the engine wraps every callout in (issue
- * #1064) AND the flag family's scripts — flags are contracts now, so a fire
- * of one plays nothing unless the active voice's script says what to say.
- * The JSON import types `schema` as `number`, hence the cast.
+ * #1064) AND the readback's own two entries plus the `readback-body`
+ * fragment they share (#1065) — the readback is a pair of contracts now, so
+ * a fire plays nothing unless the active voice's script says what to say.
+ * Handed to the test voice as-is: the script addresses its clips as
+ * `pool:pit-readback/<base>`, resolved against the fixture manifest for
+ * whichever voice is active. The JSON import types `schema` as `number`,
+ * hence the cast.
  */
 const SCRIPT = defaultScript as CalloutScript;
 
+/**
+ * The bundled script narrowed to the readback family's own entries AND its
+ * own fragment: `collectScriptReferences` walks every fragment a script
+ * defines, so carrying another family's fragment along (the gap readout, say)
+ * would make that family's vars show up as readback's.
+ */
+const READBACK_SCRIPT: CalloutScript = {
+  ...SCRIPT,
+  scenarios: Object.fromEntries(PIT_READBACK_SCENARIO_IDS.map((id) => [id, SCRIPT.scenarios[id]])),
+  fragments: Object.fromEntries(Object.entries(SCRIPT.fragments ?? {}).filter(([name]) => name === "readback-body")),
+};
+
+/** The bundled manifest, for the clip-existence half of the sources check. */
+const MANIFEST = manifestJson as AudioAssetsManifest;
+const BUNDLED_VOICE = "default";
+
 let bus: ReturnType<typeof createMockBus>;
 let audio: FakeAudio;
+let engine: IScenarioEngine;
 let flagsEnabled: Map<FlagCalloutId, boolean>;
 let readbackEnabled: Map<PitReadbackCalloutId, boolean>;
 let currentSnapshot: PitReadbackSnapshot | null;
@@ -323,16 +352,21 @@ beforeEach(() => {
   mockSessionType.mockReturnValue("Race");
   bus = createMockBus();
   audio = createFakeAudio();
-  const engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
+  engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
+  // The production wiring (`registerPitCrew`): the readback vocabulary and
+  // contracts register beside the rest of the catalog, so the cross-family
+  // cases below (the count-in cutting a readback, a meatball stashing one)
+  // run against the real scheduling neighbours.
   registerPitCrew(bus, {
     getFlagCalloutEnabled: (id) => flagsEnabled.get(id) ?? true,
     logger: mockLogger as never,
     getPitReadbackEnabled: (id) => readbackEnabled.get(id) ?? true,
     getReadbackSnapshot: () => currentSnapshot,
   });
-  // After the registration, as the plugins do: the frame is looked up in the
-  // active voice's script at fire time, and the step-by-step tests below
-  // drive the open tick the engine now puts in front of every readback.
+  // After the registration, as the plugins do: the readback's body and its
+  // frame are both looked up in the active voice's compiled script at fire
+  // time, and the step-by-step tests below drive the open tick the engine
+  // puts in front of every readback.
   engine.setScripts(new Map([[VOICE, SCRIPT]]));
 });
 
@@ -832,11 +866,11 @@ describe("pit readback scenarios", () => {
 // done (after the marks' pending-hold window), not from the top.
 describe("count-in priority over the readback (issue #758)", () => {
   it("declares the readback queueable + resumable and never interrupting", () => {
-    for (const s of buildPitReadbackScenarios(() => null)) {
-      expect(s.weight).toBe(WEIGHT.CHATTER);
-      expect(s.queueable).toBe(true);
-      expect(s.resumable).toBe(true);
-      expect(s.interrupt).not.toBe(true);
+    for (const c of PIT_READBACK_CONTRACTS) {
+      expect(c.weight).toBe(WEIGHT.CHATTER);
+      expect(c.queueable).toBe(true);
+      expect(c.resumable).toBe(true);
+      expect(c.interrupt).not.toBe(true);
     }
   });
 
@@ -902,5 +936,274 @@ describe("count-in priority over the readback (issue #758)", () => {
       `voice/${VOICE}/pit-readback/fuel-on.mp3`,
       `voice/${VOICE}/pit-readback/tires-all.mp3`,
     ]);
+  });
+});
+
+// The migration (issue #1065): the two readbacks are contracts — the code
+// decides WHEN a readback fires and how it is scheduled, the voice's script
+// says WHAT it reads back — and the closure predicates became named
+// vocabulary the script branches on.
+describe("PIT_READBACK_CONTRACTS structure (issue #1065)", () => {
+  function readbackEvent(reason: Reason): SimEventOf<SimEventName> {
+    return { event: "pitService.readbackRequested", timestamp: 0, telemetry: null, data: { reason } } as never;
+  }
+
+  it("defines the entry contract and the exit contract, in that order", () => {
+    expect(PIT_READBACK_CONTRACTS.map((c) => c.id)).toEqual([
+      "pit-crew.pit-readback-entry",
+      "pit-crew.pit-readback-exit",
+    ]);
+    expect(PIT_READBACK_SCENARIO_IDS).toEqual(PIT_READBACK_CONTRACTS.map((c) => c.id));
+  });
+
+  it("carries no sequence — what the readback says is the voice script's, never the code's", () => {
+    for (const c of PIT_READBACK_CONTRACTS) expect("sequence" in c).toBe(false);
+  });
+
+  it("keeps every scheduling field of the former scenarios verbatim, and takes the engine's default frame", () => {
+    for (const c of PIT_READBACK_CONTRACTS) {
+      expect(c.when?.event).toBe("pitService.readbackRequested");
+      expect(c.channel).toBe(AudioChannel.Voice);
+      expect(c.bus).toBe(AudioBus.Voice);
+      expect(c.base).toBe("voice/{voice}");
+      expect(c.weight).toBe(WEIGHT.CHATTER);
+      expect(c.family).toBe("pit-readback");
+      expect(c.queueable).toBe(true);
+      expect(c.resumable).toBe(true);
+      expect(c.interrupt).toBeUndefined();
+      expect(c.cooldown).toBeUndefined();
+      expect(c.triggerDelay).toBeUndefined();
+      expect(c.frame).toBeUndefined();
+    }
+  });
+
+  it("the entry contract answers `entry` and `entry-refire`, the exit contract `exit` only — the reason is the only thing `where:` reads", () => {
+    const answers = (id: string, reason: Reason): boolean | undefined => {
+      const contract = PIT_READBACK_CONTRACTS.find((c) => c.id === id);
+
+      return contract?.when?.where?.(readbackEvent(reason));
+    };
+
+    expect(answers("pit-crew.pit-readback-entry", "entry")).toBe(true);
+    expect(answers("pit-crew.pit-readback-entry", "entry-refire")).toBe(true);
+    expect(answers("pit-crew.pit-readback-entry", "exit")).toBe(false);
+
+    expect(answers("pit-crew.pit-readback-exit", "exit")).toBe(true);
+    expect(answers("pit-crew.pit-readback-exit", "entry")).toBe(false);
+    expect(answers("pit-crew.pit-readback-exit", "entry-refire")).toBe(false);
+  });
+});
+
+describe("registerReadbackVocabulary (issue #1065)", () => {
+  /** The readback family's slice of what the whole catalog registered. */
+  function readbackVocabulary(): {
+    conds: { name: string; description: string }[];
+    cases: { name: string; description: string; keys: Readonly<Record<string, string>> }[];
+  } {
+    const { conds, cases } = engine.vocabulary();
+
+    return {
+      conds: conds.filter((c) => c.name.startsWith("readback.")),
+      cases: cases.filter((c) => c.name.startsWith("readback.")),
+    };
+  }
+
+  it("publishes the seven conditions and the tire-pattern case, each with a description for a pack author", () => {
+    const { conds, cases } = readbackVocabulary();
+
+    expect(conds.map((c) => c.name)).toEqual([
+      "readback.fastRepairQueued",
+      "readback.fastRepairSkipped",
+      "readback.fuelQueued",
+      "readback.hasAnyService",
+      "readback.isFirstEntry",
+      "readback.limiterReminderDue",
+      "readback.windshieldQueued",
+    ]);
+    expect(cases.map((c) => c.name)).toEqual(["readback.tirePattern"]);
+
+    for (const entry of [...conds, ...cases]) {
+      expect(entry.description.length, entry.name).toBeGreaterThan(0);
+    }
+
+    for (const [key, description] of Object.entries(cases[0]?.keys ?? {})) {
+      expect(description.length, `readback.tirePattern key ${key}`).toBeGreaterThan(0);
+    }
+  });
+
+  it("declares exactly the keys the tire-pattern resolver can return — enumerated over every reachable snapshot", () => {
+    const declared = readbackVocabulary().cases[0]?.keys ?? {};
+    const reachable = new Set<string>();
+
+    // Every combination of the four tire bits, with no compound change and
+    // with each compound the sim can queue.
+    for (let bits = 0; bits < 16; bits++) {
+      const tires = { lf: !!(bits & 1), rf: !!(bits & 2), lr: !!(bits & 4), rr: !!(bits & 8) };
+
+      for (const compoundChange of [null, { from: 1, to: 0 }, { from: 0, to: 1 }]) {
+        const key = resolveTirePattern(snap({ tires, compoundChange }));
+
+        expect(key).not.toBeNull();
+        reachable.add(key ?? "");
+      }
+    }
+
+    expect([...reachable].sort()).toEqual(Object.keys(declared).sort());
+    expect(Object.keys(declared).sort()).toEqual(Object.keys(TIRE_PATTERN_KEYS).sort());
+    expect(Object.keys(declared)).toHaveLength(18);
+  });
+
+  it("a compound the catalog has no word for resolves to no key — the slot says nothing, as the closure did", () => {
+    expect(resolveTirePattern(snap({ compoundChange: { from: 0, to: 7 } }))).toBeNull();
+  });
+});
+
+describe("the bundled script's readback entries (issue #1065)", () => {
+  it("scripts both contracts, each with a comment, a Pit Service Readback harness route and a sequence", () => {
+    for (const id of PIT_READBACK_SCENARIO_IDS) {
+      const entry = SCRIPT.scenarios[id];
+
+      expect(entry, `no script entry for ${id}`).toBeDefined();
+      expect(entry.comment?.length ?? 0, `${id}: comment`).toBeGreaterThan(0);
+      expect(entry.test, `${id}: test`).toMatch(/^Harness → Pit Service Readback → /);
+      expect(entry.skip).toBeUndefined();
+      expect(entry.sequence?.length ?? 0, `${id}: sequence`).toBeGreaterThan(0);
+    }
+  });
+
+  it("both entries include the readback-body fragment, defined once under `fragments` with a comment", () => {
+    const fragment = SCRIPT.fragments?.["readback-body"];
+
+    expect(fragment).toBeDefined();
+    expect(fragment?.comment?.length ?? 0).toBeGreaterThan(0);
+    expect(fragment?.sequence.length ?? 0).toBeGreaterThan(0);
+
+    for (const id of PIT_READBACK_SCENARIO_IDS) {
+      expect(JSON.stringify(SCRIPT.scenarios[id].sequence), id).toContain('"@readback-body"');
+    }
+  });
+
+  it("references only vocabulary the readback family registers, with the declared case keys", () => {
+    const refs = collectScriptReferences(READBACK_SCRIPT);
+    const vocabulary = engine.vocabulary();
+
+    expect(refs.vars).toEqual([]);
+    expect(refs.frames).toEqual([]);
+    expect(refs.includes).toEqual(["readback-body"]);
+    expect(refs.conds).toEqual([
+      "readback.fastRepairQueued",
+      "readback.fastRepairSkipped",
+      "readback.fuelQueued",
+      "readback.hasAnyService",
+      "readback.isFirstEntry",
+      "readback.limiterReminderDue",
+      "readback.windshieldQueued",
+    ]);
+    expect(refs.cases).toEqual([{ name: "readback.tirePattern", keys: Object.keys(TIRE_PATTERN_KEYS).sort() }]);
+
+    for (const cond of refs.conds) {
+      expect(vocabulary.conds.map((c) => c.name)).toContain(cond);
+    }
+
+    for (const c of refs.cases) {
+      const declared = vocabulary.cases.find((v) => v.name === c.name);
+
+      expect(declared).toBeDefined();
+      expect(Object.keys(declared?.keys ?? {}).sort()).toEqual([...c.keys].sort());
+    }
+  });
+
+  it("addresses exactly the published clip sources — the slashed form throughout — and every one has a clip in the bundled voice", () => {
+    // The literal is the published surface: a `(group, base)` a script
+    // addresses is a rename in every pack's script and clip folder. Note
+    // `windshield-off` is deliberately absent — the negative is never spoken
+    // (open-wheel cars have no windshield and telemetry cannot tell).
+    const sources = [
+      "pit-readback/compound-dry",
+      "pit-readback/compound-wet",
+      "pit-readback/empty-fallback",
+      "pit-readback/fast-repair-off",
+      "pit-readback/fast-repair-on",
+      "pit-readback/fuel-off",
+      "pit-readback/fuel-on",
+      "pit-readback/opener-entry",
+      "pit-readback/opener-entry-limiter",
+      "pit-readback/opener-exit",
+      "pit-readback/tires-all",
+      "pit-readback/tires-fronts",
+      "pit-readback/tires-lefts",
+      "pit-readback/tires-lf",
+      "pit-readback/tires-lf-rr",
+      "pit-readback/tires-lr",
+      "pit-readback/tires-off",
+      "pit-readback/tires-rears",
+      "pit-readback/tires-rf",
+      "pit-readback/tires-rf-lr",
+      "pit-readback/tires-rights",
+      "pit-readback/tires-rr",
+      "pit-readback/tires-skip-lf",
+      "pit-readback/tires-skip-lr",
+      "pit-readback/tires-skip-rf",
+      "pit-readback/tires-skip-rr",
+      "pit-readback/windshield-on",
+    ];
+
+    expect([...collectScriptReferences(READBACK_SCRIPT).pools].sort()).toEqual(sources);
+    expect(PIT_READBACK_CLIP_SOURCES.map(({ group, base }) => `${group}/${base}`).sort()).toEqual(sources);
+
+    for (const { group, base } of PIT_READBACK_CLIP_SOURCES) {
+      const pattern = poolMemberPattern(group, base);
+
+      expect(
+        MANIFEST.clips.some((clip) => pattern.exec(clip)?.[1] === BUNDLED_VOICE),
+        `no voice/${BUNDLED_VOICE}/${group}/${base}(-NN).mp3 in manifest.json`,
+      ).toBe(true);
+    }
+  });
+
+  it("the fixture manifest carries every source for the test voice — the fires above are not vacuous", () => {
+    for (const { group, base } of PIT_READBACK_CLIP_SOURCES) {
+      const pattern = poolMemberPattern(group, base);
+
+      expect(
+        manifest.clips.some((clip) => pattern.exec(clip)?.[1] === VOICE),
+        `${group}/${base}`,
+      ).toBe(true);
+    }
+  });
+
+  it("compiles for the test voice with nothing skipped — no unknown pool, condition, case key or fragment", () => {
+    // A compile problem is ONE warn per (voice, scenario) naming the id.
+    // Other families still validate their closure sequences against this
+    // hand-built manifest, so only the readback's own diagnostics count.
+    const readbackWarnings = mockLogger.warn.mock.calls
+      .map(([message]) => String(message))
+      .filter((message) => message.includes("pit-readback"));
+
+    expect(readbackWarnings).toEqual([]);
+    expect(mockLogger.error).not.toHaveBeenCalled();
+  });
+
+  it("the fragment is inlined: entry and exit read the same body for the same snapshot, after their own openers", () => {
+    const snapshot = snap({
+      fuel: { queued: true },
+      tires: { lf: true, rf: false, lr: true, rr: true },
+      hasDamage: true,
+      fastRepair: { queued: false, available: true },
+      windshield: { queued: true, available: true },
+      limiterEngaged: true,
+    });
+
+    fireReadback("entry", snapshot);
+    const entryPaths = voicePaths().map((p) => p.split("/pit-readback/")[1]);
+
+    audio._played.length = 0;
+    fireReadback("exit", snapshot);
+    const exitPaths = voicePaths().map((p) => p.split("/pit-readback/")[1]);
+
+    const body = ["fuel-on.mp3", "tires-skip-rf.mp3", "fast-repair-off.mp3", "windshield-on.mp3"];
+
+    expect(entryPaths).toEqual(["opener-entry.mp3", ...body]);
+    expect(exitPaths).toEqual(["opener-exit.mp3", ...body]);
   });
 });

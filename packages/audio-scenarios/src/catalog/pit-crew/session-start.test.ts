@@ -1,23 +1,38 @@
 /**
- * Session-start readout scenario tests (issues #542, #668).
+ * Session-start readout contract tests (issues #542, #668; scripted since
+ * #1065).
  *
- * Drives the scenario through the real scenario engine — same harness shape
- * as `race-start.test.ts` — so load-time validation, var resolution, and the
- * conditional pit-speed clause all run the production path. The snapshot is
+ * Drives the contract through the real scenario engine — same harness shape
+ * as `race-start.test.ts` — with the bundled voice's REAL `callouts.json`
+ * narrowed to this family's entry, so var resolution and the optional
+ * clauses all run the production compile + expansion path. The snapshot is
  * read from a resolver closure (`currentSnapshot`) at fire time.
  */
+import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
+import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import type { IAudioService } from "@iracedeck/audio-service";
-import { AudioChannel } from "@iracedeck/audio-service";
+import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
+import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
 import type { IEventBus, SessionStartSnapshot, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { TrackWetness } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AudioAssetsManifest } from "../../interpreter.js";
-import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
+import {
+  _resetAudioScenarios,
+  getScenarioEngine,
+  initializeAudioScenarios,
+  poolMemberPattern,
+} from "../../interpreter.js";
 import { registerPitCrew } from "./index.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { _resetRadarEngine } from "./radar-engine.js";
-import { SESSION_START_DELAY_MS } from "./session-start.js";
+import {
+  buildSessionStartContract,
+  SESSION_START_CLIP_SOURCES,
+  SESSION_START_DELAY_MS,
+  SESSION_START_SCENARIO_IDS,
+} from "./session-start.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
 
 vi.mock("@iracedeck/sim-events-iracing", () => ({
@@ -192,8 +207,29 @@ const manifest: AudioAssetsManifest = {
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
 };
 
+/** The bundled manifest, for the clip-existence half of the sources check. */
+const MANIFEST = manifestJson as AudioAssetsManifest;
+const BUNDLED_VOICE = "default";
+
+/** The JSON import types `schema` as `number`, hence the cast. */
+const SCRIPT = defaultScript as CalloutScript;
+
+/**
+ * The bundled script narrowed to this family's own entry — handed to every
+ * test voice, so the per-voice clip availability tests below read the same
+ * body against three clip sets. `fragments` is narrowed too (to none): the
+ * entry includes none, and `collectScriptReferences` walks every fragment it
+ * is given, so another family's fragment would otherwise widen the
+ * reference set under the assertions below.
+ */
+const SESSION_START_SCRIPT: CalloutScript = {
+  ...SCRIPT,
+  scenarios: Object.fromEntries(SESSION_START_SCENARIO_IDS.map((id) => [id, SCRIPT.scenarios[id]])),
+  fragments: {},
+};
+
 // Default to a qualifying snapshot — race sessions are spoken exclusively by
-// the race-start scenario, so session-start's `where:` skips
+// the race-start contract, so session-start's `where:` skips
 // `sessionType === "race"` and a race-typed default snapshot would never fire.
 const BASE_SNAPSHOT: SessionStartSnapshot = {
   driverName: "niklas",
@@ -251,6 +287,9 @@ beforeEach(() => {
     getSessionStartSnapshot: () => currentSnapshot,
     getSetupWarningMismatch: (kind) => setupWarningMismatch(kind),
   });
+  // After the registration, as the plugins do: the brief's body is looked up
+  // in the active voice's compiled script at fire time (issue #1065).
+  getScenarioEngine().setScripts(new Map([VOICE, BARE_VOICE, PARTIAL_VOICE].map((v) => [v, SESSION_START_SCRIPT])));
 });
 
 afterEach(() => {
@@ -526,5 +565,185 @@ describe("session-start scenario", () => {
 
       expect(hasClip("/session-start/session-qualifying.mp3")).toBe(true);
     });
+  });
+
+  describe("scripted delivery (issue #1065)", () => {
+    it("reads the clauses in the script's order, inside the engine's radio frame", () => {
+      setupWarningMismatch = (kind) => kind === "qualifying";
+      fire(snap());
+
+      expect(voicePaths().map((p) => p.split(`voice/${VOICE}/`)[1])).toEqual([
+        "session-start-greeting/niklas.mp3",
+        "session-start/session-qualifying.mp3",
+        "session-start/pit-speed-intro.mp3",
+        "session-start-speed-numbers/80.mp3",
+        "session-start/speed-unit-kmh.mp3",
+        "session-start/track-temp-intro.mp3",
+        "session-start-temp-numbers/28.mp3",
+        "session-start/degrees-celsius.mp3",
+        "session-start/air-temp-intro.mp3",
+        "session-start-temp-numbers/20.mp3",
+        "session-start/degrees-celsius.mp3",
+        "session-start/wetness-intro.mp3",
+        "session-start/wetness-mostly-dry.mp3",
+        "setup-warning/qualifying-01.mp3",
+      ]);
+      expect(audio._played[0]?.path).toBe("sfx/IRD-tick-open.mp3");
+      expect(audio._played.at(-1)?.path).toBe("sfx/IRD-tick-close.mp3");
+    });
+
+    it("a voice with no script plays no brief at all — no line, no frame", () => {
+      getScenarioEngine().setScripts(new Map([["titan", SESSION_START_SCRIPT]]));
+      fire(snap());
+
+      expect(audio._played).toEqual([]);
+    });
+  });
+});
+
+describe("buildSessionStartContract (issue #1065)", () => {
+  it("carries no sequence and keeps every scheduling field verbatim — the 3 s trigger delay included — taking the engine's default frame", () => {
+    const c = buildSessionStartContract(() => null);
+
+    expect("sequence" in c).toBe(false);
+    expect(c.id).toBe("pit-crew.session-start");
+    expect(SESSION_START_SCENARIO_IDS).toEqual([c.id]);
+    expect(c.when?.event).toBe("session.changed");
+    expect(c.channel).toBe(AudioChannel.Voice);
+    expect(c.bus).toBe(AudioBus.Voice);
+    expect(c.base).toBe("voice/{voice}");
+    expect(c.family).toBe("session-start");
+    expect(c.triggerDelay).toBe(SESSION_START_DELAY_MS);
+    expect(c.weight).toBeUndefined();
+    expect(c.interrupt).toBeUndefined();
+    expect(c.queueable).toBeUndefined();
+    expect(c.cooldown).toBeUndefined();
+    expect(c.frame).toBeUndefined();
+  });
+});
+
+describe("registerSessionStartVocabulary (issue #1065)", () => {
+  it("publishes the eight vars and the setup-warning condition, each with a description for a pack author", () => {
+    const { vars, conds } = getScenarioEngine().vocabulary();
+    const ours = (name: string) => name.startsWith("sessionStart.");
+
+    expect(vars.filter((v) => ours(v.name)).map((v) => v.name)).toEqual([
+      "sessionStart.airTempNumber",
+      "sessionStart.degreesUnit",
+      "sessionStart.greeting",
+      "sessionStart.sessionLine",
+      "sessionStart.speedNumber",
+      "sessionStart.speedUnit",
+      "sessionStart.trackTempNumber",
+      "sessionStart.wetness",
+    ]);
+    expect(conds.map((c) => c.name)).toContain("setupWarning.qualifyingMismatch");
+
+    const entries = [
+      ...vars.filter((v) => ours(v.name)),
+      ...conds.filter((c) => c.name === "setupWarning.qualifyingMismatch"),
+    ];
+
+    for (const entry of entries) expect(entry.description.length, entry.name).toBeGreaterThan(0);
+  });
+});
+
+describe("the bundled script's session-start entry (issue #1065)", () => {
+  it("scripts the contract with a comment, a Session Start harness route and a sequence", () => {
+    for (const id of SESSION_START_SCENARIO_IDS) {
+      const entry = SCRIPT.scenarios[id];
+
+      expect(entry, `no script entry for ${id}`).toBeDefined();
+      expect(entry.comment?.length ?? 0, `${id}: comment`).toBeGreaterThan(0);
+      expect(entry.test, `${id}: test`).toMatch(/^Harness → Session Start → Fire Session Start/);
+      expect(entry.skip).toBeUndefined();
+      expect(entry.sequence?.length ?? 0, `${id}: sequence`).toBeGreaterThan(0);
+    }
+  });
+
+  it("keeps the five optional clauses whole and the session line and wetness required", () => {
+    expect(SCRIPT.scenarios["pit-crew.session-start"].sequence).toEqual([
+      { optional: ["{{sessionStart.greeting}}"] },
+      "{{sessionStart.sessionLine}}",
+      {
+        optional: ["pool:session-start/pit-speed-intro", "{{sessionStart.speedNumber}}", "{{sessionStart.speedUnit}}"],
+      },
+      {
+        optional: [
+          "pool:session-start/track-temp-intro",
+          "{{sessionStart.trackTempNumber}}",
+          "{{sessionStart.degreesUnit}}",
+        ],
+      },
+      {
+        optional: [
+          "pool:session-start/air-temp-intro",
+          "{{sessionStart.airTempNumber}}",
+          "{{sessionStart.degreesUnit}}",
+        ],
+      },
+      "pool:session-start/wetness-intro",
+      "{{sessionStart.wetness}}",
+      { if: "setupWarning.qualifyingMismatch", then: [{ optional: ["pool:setup-warning/qualifying"] }] },
+    ]);
+  });
+
+  it("references only vocabulary the session-start family registers, and no case, frame, fragment or alias", () => {
+    const refs = collectScriptReferences(SESSION_START_SCRIPT);
+    const vocabulary = getScenarioEngine().vocabulary();
+
+    expect(refs.vars).toEqual([
+      "sessionStart.airTempNumber",
+      "sessionStart.degreesUnit",
+      "sessionStart.greeting",
+      "sessionStart.sessionLine",
+      "sessionStart.speedNumber",
+      "sessionStart.speedUnit",
+      "sessionStart.trackTempNumber",
+      "sessionStart.wetness",
+    ]);
+    expect(refs.conds).toEqual(["setupWarning.qualifyingMismatch"]);
+    expect(refs.cases).toEqual([]);
+    expect(refs.frames).toEqual([]);
+    expect(refs.includes).toEqual([]);
+    expect(Object.keys(SESSION_START_SCRIPT.pools ?? {})).toEqual([]);
+
+    for (const v of refs.vars) expect(vocabulary.vars.map((x) => x.name)).toContain(v);
+
+    for (const c of refs.conds) expect(vocabulary.conds.map((x) => x.name)).toContain(c);
+  });
+
+  it("addresses exactly the published clip sources — the slashed form throughout — and every one has a clip in the bundled voice", () => {
+    const sources = [
+      "session-start/air-temp-intro",
+      "session-start/pit-speed-intro",
+      "session-start/track-temp-intro",
+      "session-start/wetness-intro",
+      "setup-warning/qualifying",
+    ];
+
+    expect([...collectScriptReferences(SESSION_START_SCRIPT).pools].sort()).toEqual(sources);
+    expect(SESSION_START_CLIP_SOURCES.map(({ group, base }) => `${group}/${base}`).sort()).toEqual(sources);
+
+    for (const { group, base } of SESSION_START_CLIP_SOURCES) {
+      const pattern = poolMemberPattern(group, base);
+
+      expect(
+        MANIFEST.clips.some((clip) => pattern.exec(clip)?.[1] === BUNDLED_VOICE),
+        `no voice/${BUNDLED_VOICE}/${group}/${base}(-NN).mp3 in manifest.json`,
+      ).toBe(true);
+      expect(
+        manifest.clips.some((clip) => pattern.exec(clip)?.[1] === VOICE),
+        `fixture: ${group}/${base}`,
+      ).toBe(true);
+    }
+  });
+
+  it("compiles for every test voice with nothing skipped — no unknown pool, var, condition or fragment", () => {
+    const sessionStartWarnings = mockLogger.warn.mock.calls
+      .map(([message]) => String(message))
+      .filter((message) => message.includes("session-start"));
+
+    expect(sessionStartWarnings).toEqual([]);
   });
 });

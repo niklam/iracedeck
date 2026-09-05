@@ -2,6 +2,7 @@ import {
   type CalloutScript,
   CASE_DEFAULT_BRANCH,
   CONNECTOR_POOL,
+  type FragmentDefinition,
   NO_FRAME,
   parseCondReference,
   parseStringStep,
@@ -36,10 +37,29 @@ export type ScriptReferences = {
   conds: readonly string[];
   /** Each case with the branch keys the script maps, `"default"` excluded; keys merge across uses. */
   cases: readonly { name: string; keys: readonly string[] }[];
-  /** Included scenario ids without their `@`. */
+  /** Included fragment names without their `@`, from entries and from fragments alike. */
   includes: readonly string[];
   /** Every `frame` override an entry names. `"none"` is the reserved word for unframed, not a reference, so it is left out; defaults are the engine's. */
   frames: readonly string[];
+  /**
+   * The fragment names the script DEFINES (issue #1065) — not references, but
+   * what `includes` must be checked against: an include resolves only within
+   * the same script, so `includes ⊆ fragments` is the whole rule, and a
+   * consumer can state it without walking the grammar.
+   */
+  fragments: readonly string[];
+  /**
+   * The defined fragments nothing LIVE includes: not an entry that is not
+   * `skip: true`, not a frame, and not another fragment that is itself
+   * included by one of those (transitively — `old` including `helper`, with
+   * nothing including `old`, leaves both here). The compiler converts a
+   * fragment only when something includes it, so what one of these
+   * references is resolved by no entry the engine compiles; a consumer
+   * that counts a script's references against its clips walks the live
+   * fragments only, and a consumer that wants every fragment used holds
+   * this to `[]`. `includes` still lists every include, from these too.
+   */
+  unincludedFragments: readonly string[];
 };
 
 class Collector {
@@ -92,15 +112,92 @@ class Collector {
   }
 }
 
+/**
+ * Every literal clip a step list plays — a bare path string or a `{ clip }`
+ * object — through every `optional` / `then` / `else` / `of` branch, in
+ * order, duplicates kept. An include is NOT followed: a fragment is walked as
+ * a source of its own, once, by whoever holds the script, and the compiler
+ * inlines it into every entry that includes it. `collectScriptReferences`
+ * deliberately leaves clips out (they are not references by NAME), so the
+ * completeness and coverage checks share this walk instead of each keeping a
+ * copy that a new step form could leave behind.
+ */
+export function collectLiteralClips(steps: readonly ScriptStep[]): string[] {
+  const out: string[] = [];
+
+  const visit = (step: ScriptStep): void => {
+    if (typeof step === "string") {
+      const form = parseStringStep(step);
+
+      if (form.kind === "clip") out.push(form.path);
+
+      return;
+    }
+
+    if ("clip" in step) out.push(step.clip);
+    else if ("optional" in step) step.optional.forEach(visit);
+    else if ("if" in step) {
+      step.then.forEach(visit);
+      step.else?.forEach(visit);
+    } else if ("case" in step) Object.values(step.of).forEach((branch) => branch.forEach(visit));
+    // var, pool, connector, pause, include, ambient: no literal clip.
+  };
+
+  steps.forEach(visit);
+
+  return out;
+}
+
 function sorted(values: Iterable<string>): string[] {
   return [...values].sort();
 }
 
 /**
+ * The includes one step list makes, in the two spellings, without walking
+ * anything else — the edges of the include graph `liveFragments` follows.
+ */
+function includesOf(steps: readonly ScriptStep[]): string[] {
+  const collector = new Collector();
+  collector.walk(steps);
+
+  return [...collector.includes];
+}
+
+/**
+ * The fragments reachable through includes from the live roots — every
+ * non-skipped entry and every frame — following fragment-to-fragment
+ * includes until nothing new is reached. A name the script does not define
+ * is an unknown include, listed under `includes` and not a fragment; it is
+ * dropped here rather than followed.
+ */
+function liveFragments(script: CalloutScript, fragments: Readonly<Record<string, FragmentDefinition>>): Set<string> {
+  const live = new Set<string>();
+  const pending: string[] = [];
+
+  for (const entry of Object.values(script.scenarios)) {
+    if (entry.skip !== true && entry.sequence) pending.push(...includesOf(entry.sequence));
+  }
+
+  for (const frame of Object.values(script.frames)) pending.push(...includesOf(frame.open), ...includesOf(frame.close));
+
+  while (pending.length > 0) {
+    const name = pending.pop() as string;
+
+    if (live.has(name) || !Object.hasOwn(fragments, name)) continue;
+
+    live.add(name);
+    pending.push(...includesOf(fragments[name].sequence));
+  }
+
+  return live;
+}
+
+/**
  * Walk a parsed script and list everything it references by name — through
- * every `then`/`else`/`optional`/`of` branch, and through the frames' own
- * `open`/`close` sequences. A `skip: true` entry is listed by id only (see
- * {@link ScriptReferences.scenarioIds}).
+ * every `then`/`else`/`optional`/`of` branch, through the frames' own
+ * `open`/`close` sequences, and through every fragment's sequence (a pool
+ * used only inside a fragment still has to exist). A `skip: true` entry is
+ * listed by id only (see {@link ScriptReferences.scenarioIds}).
  */
 export function collectScriptReferences(script: CalloutScript): ScriptReferences {
   const collector = new Collector();
@@ -121,6 +218,12 @@ export function collectScriptReferences(script: CalloutScript): ScriptReferences
     collector.walk(frame.close);
   }
 
+  const fragments = script.fragments ?? {};
+
+  for (const fragment of Object.values(fragments)) collector.walk(fragment.sequence);
+
+  const live = liveFragments(script, fragments);
+
   return {
     scenarioIds: sorted(Object.keys(script.scenarios)),
     pools: sorted(collector.pools),
@@ -129,5 +232,7 @@ export function collectScriptReferences(script: CalloutScript): ScriptReferences
     cases: sorted(collector.cases.keys()).map((name) => ({ name, keys: sorted(collector.cases.get(name) ?? []) })),
     includes: sorted(collector.includes),
     frames: sorted(frames),
+    fragments: sorted(Object.keys(fragments)),
+    unincludedFragments: sorted(Object.keys(fragments).filter((name) => !live.has(name))),
   };
 }

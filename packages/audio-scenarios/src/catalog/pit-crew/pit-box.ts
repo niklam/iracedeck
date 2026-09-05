@@ -1,16 +1,20 @@
 /**
- * Pit-box count-in callouts (issue #600).
+ * Pit-box count-in contracts (issue #600; scripted since #1065).
  *
- * Six scenarios — one per distance mark — fire on `pitBox.countdown` filtered
+ * Six contracts — one per distance mark — fire on `pitBox.countdown` filtered
  * by the payload's `mark`. The translator emits each mark once per pit-road
- * visit as the driver closes on their box (five 120 m → pit-now 20 m), so the
- * scenarios just map mark → clip.
+ * visit as the driver closes on their box (five 120 m → pit-now 20 m). The
+ * code below decides WHEN each mark fires and how it is scheduled; WHAT is
+ * spoken lives in the active voice's `callouts.json` under the same ids
+ * (`scenarios["pit-crew.pit-box-five"]`, …), where the bundled script maps
+ * each mark to its clip as `pool:pit-box/<mark>`. No vocabulary is registered
+ * here — a mark never branches on anything.
  *
  * **Terse delivery.** Unlike the conversational callouts, the count-in has NO
  * radio beep frame — the marks fire ~a second apart and a beep around each
- * number would be noise. Each scenario plays a single clip from its pool.
- * Since issue #1064 the engine applies the frame itself, so it is the
- * scenario's `frame: NO_FRAME` (`"none"`) that enforces this now.
+ * number would be noise. Since issue #1064 the engine applies the frame itself,
+ * so it is the contract's `frame: NO_FRAME` (`"none"`) that enforces this; a
+ * pack cannot put the ticks back without overriding the frame per entry.
  *
  * **Countdown wins the CHATTER band (issue #758, reverses #646).** The
  * count-in carries an explicit weight between `CHATTER` (10) and `NORMAL`
@@ -27,14 +31,11 @@
  * **Family preemption.** All six share `family: "pit-box"` so a faster approach
  * that crosses two marks in quick succession still supersedes the in-flight
  * count-in cleanly — the same mechanism the flag / track-conditions families use.
- *
- * Pool-driven clips (mirrors `flag-alerts.ts` / `track-conditions.ts`) so a
- * future variant pack is a one-line append in `pools.ts`.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { PitBoxMark, SimEventOf } from "@iracedeck/event-bus";
 
-import type { Scenario } from "../../dsl.js";
+import type { ScenarioContract } from "../../dsl.js";
 import { NO_FRAME } from "../../dsl.js";
 
 /**
@@ -54,7 +55,10 @@ export const PIT_BOX_COUNT_IN_WEIGHT = 30;
  */
 export const PIT_BOX_PENDING_HOLD_MS = 2500;
 
-function pitBoxScenario(mark: PitBoxMark): Scenario {
+/** The six marks, in the order the translator emits them on the approach. */
+const PIT_BOX_MARKS: readonly PitBoxMark[] = ["five", "four", "three", "two", "one", "pit-now"];
+
+function pitBoxContract(mark: PitBoxMark): ScenarioContract {
   return {
     id: `pit-crew.pit-box-${mark}`,
     channel: AudioChannel.Voice,
@@ -66,7 +70,6 @@ function pitBoxScenario(mark: PitBoxMark): Scenario {
     pendingHoldMs: PIT_BOX_PENDING_HOLD_MS,
     family: "pit-box",
     frame: NO_FRAME,
-    sequence: [`pool:pit-box-${mark}`],
     when: {
       event: "pitBox.countdown",
       where: (e) => (e as SimEventOf<"pitBox.countdown">).data.mark === mark,
@@ -74,25 +77,19 @@ function pitBoxScenario(mark: PitBoxMark): Scenario {
   };
 }
 
-export const PIT_BOX_ALERTS: readonly Scenario[] = [
-  pitBoxScenario("five"),
-  pitBoxScenario("four"),
-  pitBoxScenario("three"),
-  pitBoxScenario("two"),
-  pitBoxScenario("one"),
-  pitBoxScenario("pit-now"),
-];
+export const PIT_BOX_CONTRACTS: readonly ScenarioContract[] = PIT_BOX_MARKS.map(pitBoxContract);
 
-/** Scenario ids exported for tests so a typo here surfaces as a test failure. */
-export const PIT_BOX_SCENARIO_IDS: readonly string[] = PIT_BOX_ALERTS.map((s) => s.id);
+/** Contract ids exported for tests so a typo here surfaces as a test failure. */
+export const PIT_BOX_SCENARIO_IDS: readonly string[] = PIT_BOX_CONTRACTS.map((c) => c.id);
 
-/** Pool names this catalog draws from — kept here so tests can register them
- *  on the scenario engine without duplicating the list. */
-export const PIT_BOX_POOL_NAMES: readonly string[] = [
-  "pit-box-five",
-  "pit-box-four",
-  "pit-box-three",
-  "pit-box-two",
-  "pit-box-one",
-  "pit-box-pit-now",
-];
+/**
+ * The clip sources the count-in scripts draw from — one `pool:pit-box/<mark>`
+ * per mark. The completeness tests read it: the bundled voice must ship at
+ * least one clip for each, and the bundled script must reference exactly this
+ * set. A `(group, base)` a script addresses is published — renaming a base is
+ * a rename in every pack's script and every pack's clip folder.
+ */
+export const PIT_BOX_CLIP_SOURCES: readonly { group: "pit-box"; base: string }[] = PIT_BOX_MARKS.map((mark) => ({
+  group: "pit-box",
+  base: mark,
+}));

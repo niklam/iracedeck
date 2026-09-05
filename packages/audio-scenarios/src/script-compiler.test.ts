@@ -1,8 +1,8 @@
 import type { CalloutScript, ScriptStep } from "@iracedeck/callout-script";
 import { describe, expect, it, vi } from "vitest";
 
-import { DEFAULT_FRAME, NO_FRAME, type ResolvedStep, resolveStep, type Step } from "./dsl.js";
-import { type CompileDeps, compileVoiceScript } from "./script-compiler.js";
+import { DEFAULT_FRAME, NO_FRAME, type ResolvedStep, resolveStep, type ScenarioContext, type Step } from "./dsl.js";
+import { type CompileDeps, compileVoiceScript, FRAGMENT_EXPANSION_LIMIT } from "./script-compiler.js";
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -33,7 +33,6 @@ function deps(overrides: Partial<CompileDeps> = {}): CompileDeps {
       ["session.type", { resolve: () => "race", keys: new Set(["practice", "qualifying", "race"]) }],
     ]),
     legacyPools: new Set(["connector", "acknowledgment"]),
-    fragments: new Set(["pit-crew.some-fragment"]),
     ...overrides,
   };
 }
@@ -87,7 +86,6 @@ describe("compileVoiceScript — step conversion", () => {
     const scriptSteps: ScriptStep[] = [
       "pool:flag-blue",
       "pause:250",
-      "@pit-crew.some-fragment",
       "{{position.number}}",
       "flags/blue-01.mp3",
       { clip: "flags/blue-02.mp3" },
@@ -95,7 +93,6 @@ describe("compileVoiceScript — step conversion", () => {
       { pool: "flag-blue", noRepeat: false },
       { connector: true },
       { pause: 100 },
-      { include: "pit-crew.some-fragment" },
       { ambient: "seek" },
       { optional: ["{{position.number}}", { pause: 50 }] },
       { if: "session.isRace", then: ["pool:flag-blue"], else: [{ optional: ["flags/blue-01.mp3"] }] },
@@ -103,7 +100,6 @@ describe("compileVoiceScript — step conversion", () => {
     const closureSteps: Step[] = [
       "pool:flag-blue",
       "pause:250",
-      "@pit-crew.some-fragment",
       "{{position.number}}",
       "flags/blue-01.mp3",
       { clip: "flags/blue-02.mp3" },
@@ -111,7 +107,6 @@ describe("compileVoiceScript — step conversion", () => {
       { pool: "flag-blue", noRepeat: false },
       { connector: true },
       { pause: 100 },
-      { include: "pit-crew.some-fragment" },
       { ambient: "seek" },
       { optional: ["{{position.number}}", { pause: 50 }] },
       { if: () => true, then: ["pool:flag-blue"], else: [{ optional: ["flags/blue-01.mp3"] }] },
@@ -180,6 +175,27 @@ describe("compileVoiceScript — step conversion", () => {
     expect(step.predicate({} as never)).toBe(false);
     cond.mockReturnValue(false);
     expect(step.predicate({} as never)).toBe(true);
+  });
+
+  it("hands the fire context to the registered condition, negated or not (issue #1065)", () => {
+    const cond = vi.fn((ctx: ScenarioContext) => ctx.data === "yes");
+    const { scenario } = compileOne(
+      [
+        { if: "session.isRace", then: ["pool:flag-blue"] },
+        { if: "!session.isRace", then: ["pool:flag-blue"] },
+      ],
+      { deps: { conds: new Map([["session.isRace", cond]]) } },
+    );
+    const [plain, negated] = scenario!.resolved;
+
+    if (plain.kind !== "if" || negated.kind !== "if") throw new Error("expected two if steps");
+
+    const ctx = { data: "yes" } as ScenarioContext;
+
+    expect(plain.predicate(ctx)).toBe(true);
+    expect(negated.predicate(ctx)).toBe(false);
+    expect(cond).toHaveBeenNthCalledWith(1, ctx);
+    expect(cond).toHaveBeenNthCalledWith(2, ctx);
   });
 
   it("lets a throwing condition propagate so the interpreter's existing catch logs it and reads false", () => {
@@ -359,6 +375,246 @@ describe("compileVoiceScript — pools", () => {
   });
 });
 
+// ─── Fragments ───────────────────────────────────────────────────────────────
+
+// Pack-defined fragments (issue #1065): an include resolves only within the
+// same script and is INLINED at compile time — the interpreter never sees an
+// include step from a script, so nothing is looked up at fire time.
+describe("compileVoiceScript — fragments", () => {
+  const SHARED = { sequence: ["pool:flag-blue", { pause: 300 }] as ScriptStep[] };
+
+  it("inlines an include, in place, in both spellings", () => {
+    const { scenario, skip } = compileOne(
+      ["flags/blue-01.mp3", "@shared", { include: "shared" }, "flags/blue-02.mp3"],
+      {
+        script: { fragments: { shared: SHARED } },
+      },
+    );
+
+    expect(skip).toBeUndefined();
+    expect(scenario!.resolved).toEqual([
+      { kind: "clip", path: "flags/blue-01.mp3" },
+      { kind: "pool", name: "flag-blue", noRepeat: true },
+      { kind: "pause", ms: 300 },
+      { kind: "pool", name: "flag-blue", noRepeat: true },
+      { kind: "pause", ms: 300 },
+      { kind: "clip", path: "flags/blue-02.mp3" },
+    ]);
+  });
+
+  it("inlines a fragment that includes another fragment, both of them", () => {
+    const { scenario, skip } = compileOne(["@outer"], {
+      script: {
+        fragments: {
+          outer: { sequence: ["flags/blue-01.mp3", "@inner"] },
+          inner: { sequence: [{ pause: 50 }] },
+        },
+      },
+    });
+
+    expect(skip).toBeUndefined();
+    expect(scenario!.resolved).toEqual([
+      { kind: "clip", path: "flags/blue-01.mp3" },
+      { kind: "pause", ms: 50 },
+    ]);
+  });
+
+  it("inlines one fragment into every entry that includes it — the shared readback body", () => {
+    const compiled = compileVoiceScript(
+      script({
+        scenarios: {
+          "pit-crew.flag-blue": { sequence: ["@shared"] },
+          "pit-crew.flag-red": { sequence: ["flags/blue-01.mp3", "@shared"] },
+        },
+        fragments: { shared: SHARED },
+      }),
+      deps({
+        contracts: new Map([
+          ["pit-crew.flag-blue", { frame: DEFAULT_FRAME }],
+          ["pit-crew.flag-red", { frame: DEFAULT_FRAME }],
+        ]),
+      }),
+    );
+    const body = [
+      { kind: "pool", name: "flag-blue", noRepeat: true },
+      { kind: "pause", ms: 300 },
+    ];
+
+    expect(compiled.skipped).toEqual([]);
+    expect(compiled.scenarios.get("pit-crew.flag-blue")!.resolved).toEqual(body);
+    expect(compiled.scenarios.get("pit-crew.flag-red")!.resolved).toEqual([
+      { kind: "clip", path: "flags/blue-01.mp3" },
+      ...body,
+    ]);
+  });
+
+  it("refuses a fragment cycle, naming the chain", () => {
+    const { scenario, skip } = compileOne(["@a"], {
+      script: {
+        fragments: {
+          a: { sequence: ["@b"] },
+          b: { sequence: ["flags/blue-01.mp3", "@a"] },
+        },
+      },
+    });
+
+    expect(scenario).toBeUndefined();
+    expect(skip).toEqual({ id: "pit-crew.flag-blue", reason: "fragment cycle: a → b → a", deliberate: false });
+  });
+
+  it("skips an entry that includes a fragment the script does not define, naming it", () => {
+    const { scenario, skip } = compileOne(["@x"], { script: { fragments: { shared: SHARED } } });
+
+    expect(scenario).toBeUndefined();
+    expect(skip).toEqual({ id: "pit-crew.flag-blue", reason: 'unknown fragment "x"', deliberate: false });
+  });
+
+  // The cycle guard stops a chain that never ends; it says nothing about one
+  // that ends after 2^30 steps. Thirty fragments each including the next
+  // twice is 2 KB of JSON, five levels deep — inside every limit the parser
+  // and the scanner apply — and would compile to a billion steps on the
+  // plugin's main thread. The budget is per entry (and per frame), counted
+  // over every step the conversion produces, fragments inlined or not.
+  it("refuses a fragment expansion past FRAGMENT_EXPANSION_LIMIT steps, promptly, naming the limit", () => {
+    const fragments: Record<string, { sequence: ScriptStep[] }> = {};
+
+    for (let i = 0; i < 30; i++) fragments[`f${i}`] = { sequence: [`@f${i + 1}`, `@f${i + 1}`] };
+
+    fragments.f30 = { sequence: ["flags/blue-01.mp3"] };
+
+    const started = Date.now();
+    const { scenario, skip } = compileOne(["@f0"], { script: { fragments } });
+
+    expect(Date.now() - started).toBeLessThan(1000);
+    expect(scenario).toBeUndefined();
+    expect(skip).toEqual({
+      id: "pit-crew.flag-blue",
+      reason: `fragment expansion exceeds ${FRAGMENT_EXPANSION_LIMIT} steps`,
+      deliberate: false,
+    });
+  });
+
+  it("compiles a large flat entry under the limit — the budget is generous next to any real body", () => {
+    const sequence: ScriptStep[] = Array.from({ length: FRAGMENT_EXPANSION_LIMIT - 1 }, () => "flags/blue-01.mp3");
+    const { scenario, skip } = compileOne(sequence);
+
+    expect(skip).toBeUndefined();
+    expect(scenario!.resolved).toHaveLength(FRAGMENT_EXPANSION_LIMIT - 1);
+  });
+
+  it("resets the budget per entry and per frame, so a script's total never adds up to a refusal", () => {
+    const nearly: ScriptStep[] = Array.from({ length: FRAGMENT_EXPANSION_LIMIT - 1 }, () => "flags/blue-01.mp3");
+    const compiled = compileVoiceScript(
+      script({
+        scenarios: {
+          "pit-crew.flag-blue": { sequence: nearly },
+          "pit-crew.flag-red": { sequence: nearly },
+        },
+        frames: { radio: { open: nearly, close: [] } },
+      }),
+      deps({
+        contracts: new Map([
+          ["pit-crew.flag-blue", { frame: DEFAULT_FRAME }],
+          ["pit-crew.flag-red", { frame: DEFAULT_FRAME }],
+        ]),
+      }),
+    );
+
+    expect(compiled.skipped).toEqual([]);
+    expect(compiled.failedFrames.size).toBe(0);
+    expect(compiled.scenarios.size).toBe(2);
+  });
+
+  it("counts a frame's open and close against ONE budget — the frame is compiled as a unit", () => {
+    const half: ScriptStep[] = Array.from({ length: FRAGMENT_EXPANSION_LIMIT / 2 + 1 }, () => "flags/blue-01.mp3");
+    const compiled = compileVoiceScript(script({ frames: { radio: { open: half, close: half } } }), deps());
+
+    expect(compiled.failedFrames.get("radio")).toBe(`fragment expansion exceeds ${FRAGMENT_EXPANSION_LIMIT} steps`);
+  });
+});
+
+// A fragment is converted when something includes it, so a fragment nothing
+// includes — or that only a `skip: true` entry includes, which the compiler
+// never reads past — was never checked at all: a typo in it produced no
+// diagnostic, while `collectScriptReferences` still counted its pools as
+// referenced. The compiler now checks every defined fragment that no
+// conversion reached, and reports what it found by fragment name.
+describe("compileVoiceScript — fragments nothing includes", () => {
+  it("checks a defined fragment no entry or frame includes, reporting its problem by name", () => {
+    const compiled = compileVoiceScript(
+      script({ fragments: { old: { sequence: ["pool:flag-blue", { if: "cond.nope", then: ["pool:x"] }] } } }),
+      deps(),
+    );
+
+    expect(compiled.fragmentProblems).toEqual(new Map([["old", 'unknown condition "cond.nope"']]));
+    // The entry that never included it is unaffected.
+    expect(compiled.skipped).toEqual([]);
+  });
+
+  it("checks a fragment that only a `skip: true` entry includes — the skip is never read past", () => {
+    const compiled = compileVoiceScript(
+      script({
+        scenarios: { "pit-crew.flag-blue": { skip: true, sequence: ["@old"] } },
+        fragments: { old: { sequence: ["pool:ghost"] } },
+      }),
+      deps(),
+    );
+
+    expect(compiled.fragmentProblems).toEqual(new Map([["old", 'unknown pool "ghost"']]));
+  });
+
+  it("reports nothing for a fragment that is well-formed, and nothing for one an entry already inlined", () => {
+    const compiled = compileVoiceScript(
+      script({
+        scenarios: { "pit-crew.flag-blue": { sequence: ["@used"] } },
+        fragments: {
+          used: { sequence: ["pool:ghost"] },
+          spare: { sequence: ["pool:flag-blue"] },
+        },
+      }),
+      deps(),
+    );
+
+    // `used` is reported through the entry that includes it, not twice.
+    expect(compiled.skipped).toEqual([{ id: "pit-crew.flag-blue", reason: 'unknown pool "ghost"', deliberate: false }]);
+    expect(compiled.fragmentProblems).toEqual(new Map());
+  });
+
+  it("guards the standalone check against a cycle and against the expansion budget", () => {
+    const fragments: Record<string, { sequence: ScriptStep[] }> = {
+      loop: { sequence: ["@loop-b"] },
+      "loop-b": { sequence: ["@loop"] },
+    };
+
+    for (let i = 0; i < 30; i++) fragments[`f${i}`] = { sequence: [`@f${i + 1}`, `@f${i + 1}`] };
+
+    fragments.f30 = { sequence: ["flags/blue-01.mp3"] };
+
+    const compiled = compileVoiceScript(script({ fragments }), deps());
+
+    expect(compiled.fragmentProblems.get("loop")).toBe("fragment cycle: loop → loop-b → loop");
+    expect(compiled.fragmentProblems.get("f0")).toBe(`fragment expansion exceeds ${FRAGMENT_EXPANSION_LIMIT} steps`);
+  });
+
+  it("checks a fragment reached only through another unincluded fragment once, under the root that reached it", () => {
+    const compiled = compileVoiceScript(
+      script({
+        fragments: {
+          old: { sequence: ["@helper"] },
+          helper: { sequence: ["pool:ghost"] },
+        },
+      }),
+      deps(),
+    );
+
+    expect(compiled.fragmentProblems).toEqual(new Map([["old", 'unknown pool "ghost"']]));
+  });
+
+  it("reports an empty map for a script with no fragments", () => {
+    expect(compileVoiceScript(script(), deps()).fragmentProblems).toEqual(new Map());
+  });
+});
+
 // ─── References ──────────────────────────────────────────────────────────────
 
 describe("compileVoiceScript — unknown references", () => {
@@ -368,11 +624,11 @@ describe("compileVoiceScript — unknown references", () => {
     ["cond", { if: "ghost", then: [] }, 'unknown condition "ghost"'],
     ["negated cond", { if: "!ghost", then: [] }, 'unknown condition "ghost"'],
     ["case", { case: "ghost", of: { default: [] } }, 'unknown case "ghost"'],
-    ["include (string form)", "@ghost", 'unknown include "ghost"'],
-    ["include (object form)", { include: "ghost" }, 'unknown include "ghost"'],
+    ["include (string form)", "@ghost", 'unknown fragment "ghost"'],
+    ["include (object form)", { include: "ghost" }, 'unknown fragment "ghost"'],
     ["nested in then", { if: "session.isRace", then: ["{{ghost}}"] }, 'unknown var "ghost"'],
     ["nested in else", { if: "session.isRace", then: [], else: ["pool:ghost"] }, 'unknown pool "ghost"'],
-    ["nested in optional", { optional: ["@ghost"] }, 'unknown include "ghost"'],
+    ["nested in optional", { optional: ["@ghost"] }, 'unknown fragment "ghost"'],
     ["nested in a case branch", { case: "session.type", of: { race: ["{{ghost}}"] } }, 'unknown var "ghost"'],
   ])("skips an entry with an unknown %s, naming the reference", (_label, step, reason) => {
     const { scenario, skip } = compileOne([step]);
@@ -389,12 +645,6 @@ describe("compileVoiceScript — unknown references", () => {
       reason: 'case "session.type": unknown key "hotlap"',
       deliberate: false,
     });
-  });
-
-  it("accepts an include that targets a legacy fragment", () => {
-    const { skip } = compileOne(["@pit-crew.some-fragment"]);
-
-    expect(skip).toBeUndefined();
   });
 
   it("reports only the first problem of an entry", () => {

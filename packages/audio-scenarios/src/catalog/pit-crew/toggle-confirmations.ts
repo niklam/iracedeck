@@ -1,45 +1,49 @@
 /**
- * Toggle-confirmation scenarios — short engineer voice lines played when the
- * driver toggles a pit-service option or an on-board driver-aid (DRS / P2P).
+ * Toggle-confirmation contracts — short engineer voice lines played when the
+ * driver toggles a pit-service option (issues #464, #468; scripted since
+ * #1065).
  *
- * Flow: `pool:pit-action-acknowledgment → <toggle clip(s)>`, wrapped in the
- * active voice's `radio` frame by the engine (issue #1064).
- * The pit-action ack pool (got it / roger that / copy that) preserves the
+ * The code below decides WHICH toggle fired and how the confirmation is
+ * scheduled; WHAT the engineer says lives in the active voice's
+ * `callouts.json` under the same ids (`scenarios["pit-crew.toggle-fuel-on"]`,
+ * …). The bundled script's shape for every one of the twenty-four is
+ * `pool:pit-actions/acknowledgment → pool:pit-actions/<line>`, wrapped in the
+ * voice's `radio` frame by the engine (issue #1064). The pit-action
+ * acknowledgment (got it / roger that / copy that) preserves the
  * walkie-talkie feel where the engineer confirms the request before echoing
- * the state change. It's a separate pool from the generic `acknowledgment`
- * one so the two pools' no-repeat trackers stay independent — see `pools.ts`
- * for the rationale.
+ * the state change. It is a different `(group, base)` from the generic
+ * `acknowledgment/acknowledgment` pool — a deliberate subset (no "Okay." /
+ * "We got that.") tuned for the pit-service confirmation register — so the
+ * two pools' no-repeat trackers are independent by construction: the user
+ * hears variety on a toggle burst even if a generic acknowledgment just
+ * played for an unrelated cue. Under direct `pool:<group>/<base>` addressing
+ * that independence needs no named pool, so the script names none. No
+ * vocabulary is registered here — a confirmation branches on nothing.
  *
- * Registered scenarios:
- *   - `FUEL_TOGGLE_SCENARIOS` — fuel on/off via `pitService.toggled`
- *   - `TIRE_TOGGLE_SCENARIOS` — every meaningful tire-set selection via
+ * Registered contracts:
+ *   - `FUEL_TOGGLE_CONTRACTS` — fuel on/off via `pitService.toggled`
+ *   - `TIRE_TOGGLE_CONTRACTS` — every meaningful tire-set selection via
  *     `tireService.changed`: the 5 standard patterns (all/fronts/rears/
  *     lefts/rights), all 4 single-corner picks, both diagonals, all 4
  *     three-corner combos, and the full-clear ("skip tires") case
- *   - `TIRE_COMPOUND_SCENARIOS` — dry/wet compound switches via
+ *   - `TIRE_COMPOUND_CONTRACTS` — dry/wet compound switches via
  *     `tireService.compoundChanged`
- *   - `WINDSHIELD_TOGGLE_SCENARIOS` — windshield-tearoff on/off via
+ *   - `WINDSHIELD_TOGGLE_CONTRACTS` — windshield-tearoff on/off via
  *     `pitService.toggled`
- *   - `FAST_REPAIR_TOGGLE_SCENARIOS` — fast-repair on/off via
+ *   - `FAST_REPAIR_TOGGLE_CONTRACTS` — fast-repair on/off via
  *     `pitService.toggled`
  *
- * All registered scenarios use the default weight (`WEIGHT.NORMAL`) so
+ * All registered contracts use the default weight (`WEIGHT.NORMAL`) so
  * higher-weight pit-lane callouts still take precedence.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventOf } from "@iracedeck/event-bus";
 
-import type { Scenario } from "../../dsl.js";
-
-// ── Shared sequence wrapper ─────────────────────────────────────────────
-
-function toggleSequence(steps: Scenario["sequence"]): Scenario["sequence"] {
-  return ["pool:pit-action-acknowledgment", ...steps];
-}
+import type { ScenarioContract } from "../../dsl.js";
 
 // ── Fuel toggle (registered) ────────────────────────────────────────────
 
-function fuelScenario(on: boolean): Scenario {
+function fuelContract(on: boolean): ScenarioContract {
   return {
     id: `pit-crew.toggle-fuel-${on ? "on" : "off"}`,
     when: {
@@ -54,50 +58,55 @@ function fuelScenario(on: boolean): Scenario {
     bus: AudioBus.Voice,
     base: "voice/{voice}",
     family: "pit-service.fuel",
-    sequence: toggleSequence([`pool:pit-action-fuel-${on ? "on" : "off"}`]),
   };
 }
 
-export const FUEL_TOGGLE_SCENARIOS: readonly Scenario[] = [fuelScenario(true), fuelScenario(false)];
+export const FUEL_TOGGLE_CONTRACTS: readonly ScenarioContract[] = [fuelContract(true), fuelContract(false)];
 
 // ── Tire toggle (registered) ────────────────────────────────────────────
 
 /**
- * Tire-set patterns. Each scenario filters on the **resulting** tire set
+ * Tire-set patterns. Each contract filters on the **resulting** tire set
  * (`current`) rather than the deltas (`added`/`removed`). This is critical
  * because iRacing's "Left tires" / "Right tires" / "Front tires" / etc.
  * buttons emit events whose deltas look like mid-transition removals
  * (going from all four set to lefts-only emits `removed: [RF, RR]` with
  * `added: []`, which would spuriously match a pure-removal "skipping
- * tires" scenario). Filtering on `current` produces the right callout
+ * tires" contract). Filtering on `current` produces the right callout
  * regardless of how the user got there — including direct side-switches.
  *
  * Coverage is exhaustive across the 16 possible 4-corner combinations:
- *   - empty set → `TIRE_OFF_SCENARIO` ("skip tires")
- *   - 1 corner  → 4 single-corner scenarios (`lf` / `rf` / `lr` / `rr`)
- *   - 2 corners → 6 scenarios: fronts / rears / lefts / rights /
+ *   - empty set → `TIRE_OFF_CONTRACT` ("skip tires")
+ *   - 1 corner  → 4 single-corner contracts (`lf` / `rf` / `lr` / `rr`)
+ *   - 2 corners → 6 contracts: fronts / rears / lefts / rights /
  *                 diagonals (`lf-rr`, `rf-lr`)
- *   - 3 corners → 4 "all except X" scenarios (`skip-lf` / `skip-rf` /
+ *   - 3 corners → 4 "all except X" contracts (`skip-lf` / `skip-rf` /
  *                 `skip-lr` / `skip-rr`)
  *   - 4 corners → `all`
+ *
+ * The names double as the clip bases the bundled script addresses
+ * (`pool:pit-actions/tires-on-<name>`) and match the readback's
+ * `readback.tirePattern` keys one-to-one.
  */
+export type TireSetName =
+  | "all"
+  | "fronts"
+  | "rears"
+  | "lefts"
+  | "rights"
+  | "lf"
+  | "rf"
+  | "lr"
+  | "rr"
+  | "lf-rr"
+  | "rf-lr"
+  | "skip-rr"
+  | "skip-lr"
+  | "skip-rf"
+  | "skip-lf";
+
 type TireSet = {
-  name:
-    | "all"
-    | "fronts"
-    | "rears"
-    | "lefts"
-    | "rights"
-    | "lf"
-    | "rf"
-    | "lr"
-    | "rr"
-    | "lf-rr"
-    | "rf-lr"
-    | "skip-rr"
-    | "skip-lr"
-    | "skip-rf"
-    | "skip-lf";
+  name: TireSetName;
   tires: ReadonlyArray<string>;
 };
 
@@ -123,6 +132,9 @@ const TIRE_SET_PATTERNS: ReadonlyArray<TireSet> = [
   { name: "skip-lf", tires: ["RF", "LR", "RR"] },
 ];
 
+/** The fifteen non-empty set names, in registration order. */
+export const TIRE_SET_NAMES: readonly TireSetName[] = TIRE_SET_PATTERNS.map((p) => p.name);
+
 function setMatches(actual: ReadonlyArray<string>, expected: ReadonlyArray<string>): boolean {
   if (actual.length !== expected.length) return false;
 
@@ -131,7 +143,7 @@ function setMatches(actual: ReadonlyArray<string>, expected: ReadonlyArray<strin
   return true;
 }
 
-function tireSetOnScenario(set: TireSet): Scenario {
+function tireSetOnContract(set: TireSet): ScenarioContract {
   return {
     id: `pit-crew.tire-set-on-${set.name}`,
     when: {
@@ -146,13 +158,10 @@ function tireSetOnScenario(set: TireSet): Scenario {
     bus: AudioBus.Voice,
     base: "voice/{voice}",
     family: "tire-service",
-    sequence: toggleSequence([
-      `pit-actions/tires-on-${set.name}.mp3`,
-    ]),
   };
 }
 
-const TIRE_OFF_SCENARIO: Scenario = {
+const TIRE_OFF_CONTRACT: ScenarioContract = {
   id: "pit-crew.tire-set-off",
   when: {
     event: "tireService.changed",
@@ -162,12 +171,11 @@ const TIRE_OFF_SCENARIO: Scenario = {
   bus: AudioBus.Voice,
   base: "voice/{voice}",
   family: "tire-service",
-  sequence: toggleSequence(["pool:pit-action-tires-off"]),
 };
 
-export const TIRE_TOGGLE_SCENARIOS: readonly Scenario[] = [
-  ...TIRE_SET_PATTERNS.map(tireSetOnScenario),
-  TIRE_OFF_SCENARIO,
+export const TIRE_TOGGLE_CONTRACTS: readonly ScenarioContract[] = [
+  ...TIRE_SET_PATTERNS.map(tireSetOnContract),
+  TIRE_OFF_CONTRACT,
 ];
 
 // ── Tire compound switching (registered) ────────────────────────────────
@@ -179,7 +187,7 @@ export const TIRE_TOGGLE_SCENARIOS: readonly Scenario[] = [
  * `pit.tireCompound(compound)`). Other sims may emit a richer compound
  * roster; for now we cover the iRacing-supported pair.
  *
- * Shares `family: "tire-service"` with the tire-set scenarios so a tire
+ * Shares `family: "tire-service"` with the tire-set contracts so a tire
  * pick immediately after a compound flip preempts cleanly. The translator
  * suppresses the cascading "all four tires" event that iRacing fires
  * alongside a compound flip, so the compound voice line is the single
@@ -187,7 +195,7 @@ export const TIRE_TOGGLE_SCENARIOS: readonly Scenario[] = [
  */
 const TIRE_COMPOUND_LABEL: Record<0 | 1, "dry" | "wet"> = { 0: "dry", 1: "wet" };
 
-function compoundScenario(to: 0 | 1): Scenario {
+function compoundContract(to: 0 | 1): ScenarioContract {
   const name = TIRE_COMPOUND_LABEL[to];
 
   return {
@@ -200,17 +208,14 @@ function compoundScenario(to: 0 | 1): Scenario {
     bus: AudioBus.Voice,
     base: "voice/{voice}",
     family: "tire-service",
-    sequence: toggleSequence([
-      `pit-actions/tires-compound-${name}.mp3`,
-    ]),
   };
 }
 
-export const TIRE_COMPOUND_SCENARIOS: readonly Scenario[] = [compoundScenario(0), compoundScenario(1)];
+export const TIRE_COMPOUND_CONTRACTS: readonly ScenarioContract[] = [compoundContract(0), compoundContract(1)];
 
 // ── Windshield tearoff (registered) ─────────────────────────────────────
 
-function windshieldScenario(on: boolean): Scenario {
+function windshieldContract(on: boolean): ScenarioContract {
   return {
     id: `pit-crew.toggle-windshield-${on ? "on" : "off"}`,
     when: {
@@ -225,15 +230,17 @@ function windshieldScenario(on: boolean): Scenario {
     bus: AudioBus.Voice,
     base: "voice/{voice}",
     family: "pit-service.windshield",
-    sequence: toggleSequence([`pit-actions/windshield-${on ? "on" : "off"}.mp3`]),
   };
 }
 
-export const WINDSHIELD_TOGGLE_SCENARIOS: readonly Scenario[] = [windshieldScenario(true), windshieldScenario(false)];
+export const WINDSHIELD_TOGGLE_CONTRACTS: readonly ScenarioContract[] = [
+  windshieldContract(true),
+  windshieldContract(false),
+];
 
 // ── Fast repair (registered) ────────────────────────────────────────────
 
-function fastRepairScenario(on: boolean): Scenario {
+function fastRepairContract(on: boolean): ScenarioContract {
   return {
     id: `pit-crew.toggle-fast-repair-${on ? "on" : "off"}`,
     when: {
@@ -248,8 +255,47 @@ function fastRepairScenario(on: boolean): Scenario {
     bus: AudioBus.Voice,
     base: "voice/{voice}",
     family: "pit-service.fast-repair",
-    sequence: toggleSequence([`pit-actions/fast-repair-${on ? "on" : "off"}.mp3`]),
   };
 }
 
-export const FAST_REPAIR_TOGGLE_SCENARIOS: readonly Scenario[] = [fastRepairScenario(true), fastRepairScenario(false)];
+export const FAST_REPAIR_TOGGLE_CONTRACTS: readonly ScenarioContract[] = [
+  fastRepairContract(true),
+  fastRepairContract(false),
+];
+
+// ── The whole family ────────────────────────────────────────────────────
+
+/** All twenty-four toggle confirmations, in registration order. */
+export const TOGGLE_CONFIRMATION_CONTRACTS: readonly ScenarioContract[] = [
+  ...FUEL_TOGGLE_CONTRACTS,
+  ...TIRE_TOGGLE_CONTRACTS,
+  ...TIRE_COMPOUND_CONTRACTS,
+  ...WINDSHIELD_TOGGLE_CONTRACTS,
+  ...FAST_REPAIR_TOGGLE_CONTRACTS,
+];
+
+/** Contract ids exported for tests so a typo here surfaces as a test failure. */
+export const TOGGLE_CONFIRMATION_SCENARIO_IDS: readonly string[] = TOGGLE_CONFIRMATION_CONTRACTS.map((c) => c.id);
+
+/**
+ * The clip sources the toggle-confirmation scripts draw from — the shared
+ * acknowledgment plus one line per toggle, every one a
+ * `pool:pit-actions/<base>`. The completeness tests read it: the bundled
+ * voice must ship at least one clip for each, and the bundled script must
+ * reference exactly this set. A `(group, base)` a script addresses is
+ * published — renaming a base is a rename in every pack's script and every
+ * pack's clip folder.
+ */
+export const TOGGLE_CONFIRMATION_CLIP_SOURCES: readonly { group: "pit-actions"; base: string }[] = [
+  "acknowledgment",
+  "fuel-on",
+  "fuel-off",
+  ...TIRE_SET_NAMES.map((name) => `tires-on-${name}`),
+  "tires-off",
+  "tires-compound-dry",
+  "tires-compound-wet",
+  "windshield-on",
+  "windshield-off",
+  "fast-repair-on",
+  "fast-repair-off",
+].map((base) => ({ group: "pit-actions" as const, base }));

@@ -19,9 +19,19 @@
  * Radio-frame clips (`/sfx/IRD-tick-*`) are excluded — the engine wraps
  * every scenario in them (issue #1064), so they aren't part of the outer
  * slot graph.
+ *
+ * Since #1065 the sequences under test are the bundled voice's script
+ * (`voice/default/callouts.json`: the two readback entries and the
+ * `readback-body` fragment they share), compiled against the readback
+ * vocabulary the code registers. The invariant is a property of what the
+ * engineer can be heard to say, so it is checked the same way wherever the
+ * sequence lives — the enumeration fires through the real engine, and the
+ * script is handed to it exactly as the plugins hand it over.
  */
+import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioChannel } from "@iracedeck/audio-service";
+import type { CalloutScript } from "@iracedeck/callout-script";
 import type { IEventBus, PitReadbackSnapshot, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -242,6 +252,14 @@ const manifest: AudioAssetsManifest = {
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
 };
 
+/**
+ * The bundled voice's script, verbatim — the readback entries, their shared
+ * fragment and the `radio` frame — handed to the test voice; its pool steps
+ * address the clip group directly, resolved against the fixture manifest.
+ * The JSON import types `schema` as `number`, hence the cast.
+ */
+const SCRIPT = defaultScript as CalloutScript;
+
 let bus: ReturnType<typeof createMockBus>;
 let audio: FakeAudio;
 let currentSnapshot: PitReadbackSnapshot | null;
@@ -252,11 +270,14 @@ beforeEach(() => {
   bus = createMockBus();
   audio = createFakeAudio();
   currentSnapshot = null;
-  initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
+  const engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
   registerPitCrew(bus, {
     logger: mockLogger as never,
     getReadbackSnapshot: () => currentSnapshot,
   });
+  // After the registration, as the plugins do: a readback contract plays
+  // nothing until the active voice's script says what it reads back.
+  engine.setScripts(new Map([[VOICE, SCRIPT]]));
 });
 
 afterEach(() => {
@@ -390,6 +411,7 @@ describe("pit-readback path-graph invariant", () => {
     }
 
     const reasons: ReadonlyArray<Reason> = ["entry", "exit"];
+    let spokenFires = 0;
 
     for (const reason of reasons) {
       for (const tires of TIRE_PATTERNS) {
@@ -424,6 +446,8 @@ describe("pit-readback path-graph invariant", () => {
                           hasDamage: damage,
                         });
 
+                        if (seq.length > 0) spokenFires++;
+
                         record(seq);
                       }
                     }
@@ -435,6 +459,18 @@ describe("pit-readback path-graph invariant", () => {
         }
       }
     }
+
+    // The vacuity floor: a contract whose voice has no script is SILENT
+    // (issue #1065), and a walk over silence has no edges to violate. Every
+    // enumerated fire speaks (the exit opener is unconditional; an empty
+    // entry still plays the fallback), and every slot must have been seen.
+    expect(spokenFires).toBeGreaterThan(1000);
+    expect([...new Set([...predecessors.keys(), ...successors.keys()])].sort()).toEqual([
+      "extras",
+      "fuel",
+      "opener",
+      "tires-or-compound",
+    ]);
 
     const violations: string[] = [];
 

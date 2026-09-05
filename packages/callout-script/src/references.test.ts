@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { CalloutScript } from "./grammar.js";
-import { collectScriptReferences } from "./references.js";
+import type { CalloutScript, ScriptStep } from "./grammar.js";
+import { collectLiteralClips, collectScriptReferences } from "./references.js";
 
 describe("collectScriptReferences", () => {
   it("collects every referencing form, deduped and sorted", () => {
@@ -46,6 +46,8 @@ describe("collectScriptReferences", () => {
       cases: [{ name: "k", keys: ["x"] }],
       includes: ["frag", "frag2"],
       frames: ["terse"],
+      fragments: [],
+      unincludedFragments: [],
     });
   });
 
@@ -78,6 +80,8 @@ describe("collectScriptReferences", () => {
       ],
       includes: [],
       frames: [],
+      fragments: [],
+      unincludedFragments: [],
     });
   });
 
@@ -103,6 +107,8 @@ describe("collectScriptReferences", () => {
       cases: [],
       includes: [],
       frames: [],
+      fragments: [],
+      unincludedFragments: [],
     });
   });
 
@@ -160,6 +166,94 @@ describe("collectScriptReferences", () => {
     expect(collectScriptReferences(script).frames).toEqual(["radio"]);
   });
 
+  // Pack-defined fragments (issue #1065): what a fragment's sequence names is
+  // a reference like any other — a pool used only inside one still has to
+  // exist — and the names DEFINED are listed so a consumer can check that
+  // every include targets one (`includes ⊆ fragments`).
+  it("walks every fragment's sequence and lists the names the script defines, sorted", () => {
+    const script: CalloutScript = {
+      schema: 1,
+      scenarios: { s: { sequence: ["@readback-body"] } },
+      frames: {},
+      pools: {},
+      fragments: {
+        "readback-body": {
+          comment: "Shared by entry and exit.",
+          sequence: ["pool:readback/fuel-on", "{{readback.tires}}", { if: "!readback.empty", then: ["@sign-off"] }],
+        },
+        "sign-off": { sequence: [{ case: "k", of: { a: [{ connector: true }] } }] },
+      },
+    };
+
+    expect(collectScriptReferences(script)).toEqual({
+      scenarioIds: ["s"],
+      pools: ["connector", "readback/fuel-on"],
+      vars: ["readback.tires"],
+      conds: ["readback.empty"],
+      cases: [{ name: "k", keys: ["a"] }],
+      includes: ["readback-body", "sign-off"],
+      frames: [],
+      fragments: ["readback-body", "sign-off"],
+      unincludedFragments: [],
+    });
+  });
+
+  // The compiler converts a fragment only when something includes it, so a
+  // fragment nothing includes — or that only a `skip: true` entry includes —
+  // is checked by nobody through an entry, and what it references is not a
+  // reference anything the engine compiles will resolve. The set is listed
+  // so a consumer can hold it to `[]`, and can walk the live fragments only.
+  it("lists the fragments no live entry, frame or live fragment includes — a skip: true entry's include does not count", () => {
+    const script: CalloutScript = {
+      schema: 1,
+      scenarios: {
+        s: { sequence: ["@used"] },
+        skipped: { skip: true, sequence: ["@only-skipped"] },
+      },
+      frames: { f: { open: ["@in-frame"], close: [] } },
+      pools: {},
+      fragments: {
+        used: { sequence: ["@through-used"] },
+        "through-used": { sequence: ["pool:a"] },
+        "in-frame": { sequence: ["pool:b"] },
+        "only-skipped": { sequence: ["pool:c"] },
+        dead: { sequence: ["@dead-helper"] },
+        "dead-helper": { sequence: ["pool:d"] },
+      },
+    };
+    const refs = collectScriptReferences(script);
+
+    expect(refs.unincludedFragments).toEqual(["dead", "dead-helper", "only-skipped"]);
+    // `includes` and `fragments` are unchanged by it: every include anywhere, every definition.
+    expect(refs.includes).toEqual(["dead-helper", "in-frame", "through-used", "used"]);
+    expect(refs.fragments).toEqual(["dead", "dead-helper", "in-frame", "only-skipped", "through-used", "used"]);
+  });
+
+  it("does not list a fragment that reaches itself only through a live include as unincluded", () => {
+    const script: CalloutScript = {
+      schema: 1,
+      scenarios: { s: { sequence: ["@a"] } },
+      frames: {},
+      pools: {},
+      fragments: { a: { sequence: ["@b"] }, b: { sequence: ["@a"] } },
+    };
+
+    expect(collectScriptReferences(script).unincludedFragments).toEqual([]);
+  });
+
+  it("lists an include of a fragment the script never defines, so a consumer can see the mismatch", () => {
+    const script: CalloutScript = {
+      schema: 1,
+      scenarios: { s: { sequence: ["@ghost"] } },
+      frames: {},
+      pools: {},
+    };
+    const refs = collectScriptReferences(script);
+
+    expect(refs.includes).toEqual(["ghost"]);
+    expect(refs.fragments).toEqual([]);
+  });
+
   it("returns empty lists for a script with nothing in it", () => {
     expect(collectScriptReferences({ schema: 1, scenarios: {}, frames: {}, pools: {} })).toEqual({
       scenarioIds: [],
@@ -169,6 +263,39 @@ describe("collectScriptReferences", () => {
       cases: [],
       includes: [],
       frames: [],
+      fragments: [],
+      unincludedFragments: [],
     });
+  });
+});
+
+describe("collectLiteralClips", () => {
+  it("lists every literal clip through every branch, in order, and follows no include", () => {
+    const steps: ScriptStep[] = [
+      "a.mp3",
+      { clip: "b.mp3" },
+      "pool:g/x",
+      "{{v}}",
+      "@frag",
+      {
+        optional: [
+          "c.mp3",
+          { if: "cond", then: ["d.mp3"], else: [{ case: "k", of: { one: ["e.mp3"], default: ["f.mp3"] } }] },
+        ],
+      },
+      { pause: 10 },
+      { ambient: "start" },
+      { connector: true },
+    ];
+
+    expect(collectLiteralClips(steps)).toEqual(["a.mp3", "b.mp3", "c.mp3", "d.mp3", "e.mp3", "f.mp3"]);
+  });
+
+  it("keeps duplicates — a clip played twice is two plays to check", () => {
+    expect(collectLiteralClips(["a.mp3", { clip: "a.mp3" }])).toEqual(["a.mp3", "a.mp3"]);
+  });
+
+  it("returns nothing for an empty list", () => {
+    expect(collectLiteralClips([])).toEqual([]);
   });
 });

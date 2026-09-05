@@ -1,41 +1,45 @@
 /**
- * Track-conditions callouts (issue #526).
+ * Track-conditions contracts (issue #526; scripted since #1065).
  *
- * Twelve scenarios — one per (direction, target-state) combination — fire on
+ * Twelve contracts — one per (direction, target-state) combination — fire on
  * `track.wetness.changed` filtered by both the target state and the direction
  * of the transition. The translator already suppresses transitions involving
  * `Unknown` so neither side is ever Unknown by the time the bus dispatches.
+ *
+ * The code below decides WHETHER a transition is worth a line and how it is
+ * scheduled; WHAT is said lives in the active voice's `callouts.json` under
+ * the same ids (`scenarios["pit-crew.track-conditions-worsening-very-wet"]`,
+ * …), paired at `setScripts` time. Each line is a single pool the script
+ * addresses directly as `pool:track-conditions/<direction>-<slug>`; no
+ * vocabulary is needed, since the direction and the target are both decided
+ * by the contract's `where:` before the script is ever read.
  *
  * Direction is read from the event payload as `to > from` (worsening) or
  * `to < from` (drying). Worsening targets cover MostlyDry → ExtremelyWet
  * (six lines); drying targets cover Dry → VeryWet (six lines). Combinations
  * that don't make physical sense (worsening to Dry, drying to ExtremelyWet)
- * are simply not scenarios — the predicate filters them out.
+ * are simply not contracts — the predicate filters them out.
  *
  * **Family preemption.** All twelve share `family: "track-conditions"` so a
  * rapid double-step (worsening → ModeratelyWet → VeryWet) supersedes the
  * in-flight callout cleanly — same mechanism the flag and pit-status families
  * use. Cross-family weight stays at the default (`WEIGHT.NORMAL`) so a meatball
  * flag (`WEIGHT.CRITICAL`) still wins the bus over these.
- *
- * Pool-driven clips (mirrors `flag-alerts.ts` / `pit-status.ts`) so a future
- * variant pack is a one-line append in `pools.ts` instead of a scenario rewrite.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type SimEventOf, TrackWetness } from "@iracedeck/event-bus";
 
-import type { Scenario, Step } from "../../dsl.js";
+import type { ScenarioContract } from "../../dsl.js";
 
 type Direction = "worsening" | "drying";
 
-function trackConditionsScenario(direction: Direction, target: TrackWetness, slug: string, body: Step[]): Scenario {
+function trackConditionsContract(direction: Direction, target: TrackWetness, slug: string): ScenarioContract {
   return {
     id: `pit-crew.track-conditions-${direction}-${slug}`,
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",
     family: "track-conditions",
-    sequence: body,
     when: {
       event: "track.wetness.changed",
       where: (e) => {
@@ -49,58 +53,47 @@ function trackConditionsScenario(direction: Direction, target: TrackWetness, slu
   };
 }
 
-export const TRACK_CONDITIONS_ALERTS: readonly Scenario[] = [
+export const TRACK_CONDITIONS_CONTRACTS: readonly ScenarioContract[] = [
   // Worsening — Dry isn't a worsening target.
-  trackConditionsScenario("worsening", TrackWetness.MostlyDry, "mostly-dry", [
-    "pool:track-conditions-worsening-mostly-dry",
-  ]),
-  trackConditionsScenario("worsening", TrackWetness.VeryLightlyWet, "very-lightly-wet", [
-    "pool:track-conditions-worsening-very-lightly-wet",
-  ]),
-  trackConditionsScenario("worsening", TrackWetness.LightlyWet, "lightly-wet", [
-    "pool:track-conditions-worsening-lightly-wet",
-  ]),
-  trackConditionsScenario("worsening", TrackWetness.ModeratelyWet, "moderately-wet", [
-    "pool:track-conditions-worsening-moderately-wet",
-  ]),
-  trackConditionsScenario("worsening", TrackWetness.VeryWet, "very-wet", [
-    "pool:track-conditions-worsening-very-wet",
-  ]),
-  trackConditionsScenario("worsening", TrackWetness.ExtremelyWet, "extremely-wet", [
-    "pool:track-conditions-worsening-extremely-wet",
-  ]),
+  trackConditionsContract("worsening", TrackWetness.MostlyDry, "mostly-dry"),
+  trackConditionsContract("worsening", TrackWetness.VeryLightlyWet, "very-lightly-wet"),
+  trackConditionsContract("worsening", TrackWetness.LightlyWet, "lightly-wet"),
+  trackConditionsContract("worsening", TrackWetness.ModeratelyWet, "moderately-wet"),
+  trackConditionsContract("worsening", TrackWetness.VeryWet, "very-wet"),
+  trackConditionsContract("worsening", TrackWetness.ExtremelyWet, "extremely-wet"),
 
   // Drying — ExtremelyWet isn't a drying target.
-  trackConditionsScenario("drying", TrackWetness.Dry, "dry", ["pool:track-conditions-drying-dry"]),
-  trackConditionsScenario("drying", TrackWetness.MostlyDry, "mostly-dry", ["pool:track-conditions-drying-mostly-dry"]),
-  trackConditionsScenario("drying", TrackWetness.VeryLightlyWet, "very-lightly-wet", [
-    "pool:track-conditions-drying-very-lightly-wet",
-  ]),
-  trackConditionsScenario("drying", TrackWetness.LightlyWet, "lightly-wet", [
-    "pool:track-conditions-drying-lightly-wet",
-  ]),
-  trackConditionsScenario("drying", TrackWetness.ModeratelyWet, "moderately-wet", [
-    "pool:track-conditions-drying-moderately-wet",
-  ]),
-  trackConditionsScenario("drying", TrackWetness.VeryWet, "very-wet", ["pool:track-conditions-drying-very-wet"]),
+  trackConditionsContract("drying", TrackWetness.Dry, "dry"),
+  trackConditionsContract("drying", TrackWetness.MostlyDry, "mostly-dry"),
+  trackConditionsContract("drying", TrackWetness.VeryLightlyWet, "very-lightly-wet"),
+  trackConditionsContract("drying", TrackWetness.LightlyWet, "lightly-wet"),
+  trackConditionsContract("drying", TrackWetness.ModeratelyWet, "moderately-wet"),
+  trackConditionsContract("drying", TrackWetness.VeryWet, "very-wet"),
 ];
 
-/** Scenario ids exported for tests so a typo here surfaces as a test failure. */
-export const TRACK_CONDITIONS_SCENARIO_IDS: readonly string[] = TRACK_CONDITIONS_ALERTS.map((s) => s.id);
+/** Contract ids exported for tests so a typo here surfaces as a test failure. */
+export const TRACK_CONDITIONS_SCENARIO_IDS: readonly string[] = TRACK_CONDITIONS_CONTRACTS.map((c) => c.id);
 
-/** Pool names this catalog draws from — kept here so tests can register them
- *  on the scenario engine without duplicating the list. */
-export const TRACK_CONDITIONS_POOL_NAMES: readonly string[] = [
-  "track-conditions-worsening-mostly-dry",
-  "track-conditions-worsening-very-lightly-wet",
-  "track-conditions-worsening-lightly-wet",
-  "track-conditions-worsening-moderately-wet",
-  "track-conditions-worsening-very-wet",
-  "track-conditions-worsening-extremely-wet",
-  "track-conditions-drying-dry",
-  "track-conditions-drying-mostly-dry",
-  "track-conditions-drying-very-lightly-wet",
-  "track-conditions-drying-lightly-wet",
-  "track-conditions-drying-moderately-wet",
-  "track-conditions-drying-very-wet",
+/**
+ * The clip sources the track-conditions scripts draw from — every
+ * `pool:track-conditions/<base>` the bundled script may write, as a literal
+ * list, since nothing derives it. The completeness tests read it: the
+ * bundled voice must ship at least one clip for each, and the bundled
+ * script must reference exactly this set. A `(group, base)` a script
+ * addresses is published — renaming a base is a rename in every pack's
+ * script and every pack's clip folder.
+ */
+export const TRACK_CONDITIONS_CLIP_SOURCES: readonly { group: "track-conditions"; base: string }[] = [
+  { group: "track-conditions", base: "worsening-mostly-dry" },
+  { group: "track-conditions", base: "worsening-very-lightly-wet" },
+  { group: "track-conditions", base: "worsening-lightly-wet" },
+  { group: "track-conditions", base: "worsening-moderately-wet" },
+  { group: "track-conditions", base: "worsening-very-wet" },
+  { group: "track-conditions", base: "worsening-extremely-wet" },
+  { group: "track-conditions", base: "drying-dry" },
+  { group: "track-conditions", base: "drying-mostly-dry" },
+  { group: "track-conditions", base: "drying-very-lightly-wet" },
+  { group: "track-conditions", base: "drying-lightly-wet" },
+  { group: "track-conditions", base: "drying-moderately-wet" },
+  { group: "track-conditions", base: "drying-very-wet" },
 ];

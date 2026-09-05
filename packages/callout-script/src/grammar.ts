@@ -40,8 +40,14 @@ export const CASE_DEFAULT_BRANCH = "default";
 
 /**
  * The pool an unqualified `{ connector: true }` step draws from — a filler
- * word between two phrases. A script may define it like any other pool, and
- * the engine falls back to its code-registered pool of that name otherwise.
+ * word between two phrases. Like any other unqualified pool name, it must be
+ * defined under the script's own `pools` — the engine's compiler checks a
+ * slash-less name against the script's `pools` and then against the code
+ * registry, and the catalog registers no code pool since #1065, so for a
+ * pack the registry is empty. A script that uses the step therefore defines
+ * a `connector` alias (`"connector": { "group": "<group>", "base": "<base>" }`)
+ * or addresses the filler's group directly as `pool:<group>/<base>` instead
+ * of using the step. The bundled script does neither: it has no connectors.
  */
 export const CONNECTOR_POOL = "connector";
 
@@ -85,7 +91,7 @@ export type StepObjectKey = (typeof STEP_OBJECT_KEYS)[number];
  *
  * The string forms are exactly the DSL's shorthand (`parseStepShorthand` in
  * `@iracedeck/audio-scenarios`): `"pool:<name>"`, `"pause:<ms>"`,
- * `"@<scenario-id>"`, `"{{<var>}}"`, and otherwise a clip path.
+ * `"@<fragment-name>"`, `"{{<var>}}"`, and otherwise a clip path.
  *
  * The only operator anywhere in the grammar is the `!` that negates an `if`.
  * No `and`, no `or`, no comparisons, no field access — a script that needs a
@@ -127,12 +133,24 @@ export type FrameDefinition = { comment?: string; open: ScriptStep[]; close: Scr
 /** A named pool: an alias for a clip group + base name in the voice's manifest. */
 export type PoolDefinition = { group: string; base: string; comment?: string };
 
-/** The whole of a voice's `callouts.json`. */
+/**
+ * A sub-sequence the script defines once and includes from several entries
+ * (issue #1065) — `"@<name>"` or `{ "include": "<name>" }` inside a sequence.
+ * An include resolves ONLY within the same script, and the engine inlines it
+ * at compile time: nothing is looked up at fire time, and a fragment that
+ * includes itself (through any chain) is refused with the chain named. The
+ * sequence may not be empty — a fragment nobody can hear is a mistake, not
+ * a choice; deliberate silence is spelled on the entry with `skip`.
+ */
+export type FragmentDefinition = { comment?: string; sequence: ScriptStep[] };
+
+/** The whole of a voice's `callouts.json`. `fragments` is optional: absent means the script defines none. */
 export type CalloutScript = {
   schema: typeof CALLOUT_SCRIPT_SCHEMA_VERSION;
   scenarios: Record<string, CalloutScriptEntry>;
   frames: Record<string, FrameDefinition>;
   pools: Record<string, PoolDefinition>;
+  fragments?: Record<string, FragmentDefinition>;
 };
 
 /**
@@ -158,7 +176,7 @@ export const POOL_DEFINITION_NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 /** A scenario id: non-empty, no whitespace. (`pit-crew.flag-blue`.) */
 export const SCENARIO_ID_PATTERN = /^\S+$/;
 
-/** A vocabulary name (var, condition, case) or a frame name: non-empty, no whitespace. */
+/** A vocabulary name (var, condition, case), a frame name or a fragment name: non-empty, no whitespace. */
 export const NAME_PATTERN = /^\S+$/;
 
 /**

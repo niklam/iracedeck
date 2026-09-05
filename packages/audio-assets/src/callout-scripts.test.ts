@@ -23,12 +23,12 @@ import { loadVoiceConfigs, VoiceConfigSchema } from "./generate/config.ts";
 const CONFIGS_DIR = path.join(audioAssetsPath, "configs");
 
 /** A config authoring every callout-script key, in a deliberately non-alphabetical order. */
-const SCRIPTED_KEYS: Pick<CalloutScript, "scenarios" | "frames" | "pools"> = {
+const SCRIPTED_KEYS: Required<Pick<CalloutScript, "scenarios" | "frames" | "pools" | "fragments">> = {
   scenarios: {
     "pit-crew.flag-green": {
       comment: "Green flag — the race is on.",
       test: "Start a race session and take the green.",
-      sequence: ["pool:flag-green", { if: "!race", then: [{ pause: 200 }, "pool:go-go-go"] }],
+      sequence: ["pool:flag-green", { if: "!race", then: ["@go-clause"] }],
     },
     "pit-crew.flag-checkered": { skip: true },
   },
@@ -38,6 +38,9 @@ const SCRIPTED_KEYS: Pick<CalloutScript, "scenarios" | "frames" | "pools"> = {
   pools: {
     "go-go-go": { group: "flags", base: "go" },
     "flag-green": { group: "flags", base: "green", comment: "the green-flag takes" },
+  },
+  fragments: {
+    "go-clause": { comment: "the go-go-go tag, after a beat", sequence: [{ pause: 200 }, "pool:go-go-go"] },
   },
 };
 
@@ -134,14 +137,15 @@ describe("buildCalloutScript", () => {
       scenarios: {},
       frames: {},
       pools: {},
+      fragments: {},
     });
   });
 
-  it("copies the three maps verbatim — nothing else from the config reaches the artifact", () => {
+  it("copies the four maps verbatim — nothing else from the config reaches the artifact", () => {
     const script = buildCalloutScript(voiceConfig(SCRIPTED_KEYS));
 
     expect(script).toEqual({ schema: CALLOUT_SCRIPT_SCHEMA_VERSION, ...SCRIPTED_KEYS });
-    expect(Object.keys(script)).toEqual(["schema", "scenarios", "frames", "pools"]);
+    expect(Object.keys(script)).toEqual(["schema", "scenarios", "frames", "pools", "fragments"]);
   });
 
   it("keeps the author's key order — it is the reading order of the published reference", () => {
@@ -158,6 +162,7 @@ describe("buildCalloutScript", () => {
     expect(script.scenarios).not.toBe(config.scenarios);
     expect(script.frames).not.toBe(config.frames);
     expect(script.pools).not.toBe(config.pools);
+    expect(script.fragments).not.toBe(config.fragments);
   });
 
   it("yields a script parseCalloutScript accepts", () => {
@@ -226,7 +231,13 @@ describe("generateCalloutScripts", () => {
 
     expect(alpha).toBe(serializeCalloutScript({ schema: CALLOUT_SCRIPT_SCHEMA_VERSION, ...SCRIPTED_KEYS }));
     expect(beta).toBe(
-      serializeCalloutScript({ schema: CALLOUT_SCRIPT_SCHEMA_VERSION, scenarios: {}, frames: {}, pools: {} }),
+      serializeCalloutScript({
+        schema: CALLOUT_SCRIPT_SCHEMA_VERSION,
+        scenarios: {},
+        frames: {},
+        pools: {},
+        fragments: {},
+      }),
     );
     expect(log.some((line) => line.includes("alpha"))).toBe(true);
   });

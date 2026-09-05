@@ -1,8 +1,8 @@
 /**
  * Script compiler (issue #1064): turns one voice's `callouts.json` into the
  * `ResolvedStep` trees the interpreter walks, checked against everything the
- * engine registered in code — contracts, vars, conditions, cases, pools and
- * the legacy fragments an include may target.
+ * engine registered in code — contracts, vars, conditions, cases and pools —
+ * and against the script's own fragments, which an include may target.
  *
  * Pure: no engine, no logger, no manifest. It returns diagnostics instead of
  * raising them, so the engine decides what to log and #1066's `lint:pack`
@@ -14,25 +14,58 @@
  * entry are DELIBERATE skips (`deliberate: true`) — the skip is honoured
  * before the contract is even looked up, so a pack may declare silence for
  * an id this build does not script; an entry naming something the engine
- * does not know — a contract, pool, var, condition, case key, include or
+ * does not know — a contract, pool, var, condition, case key, fragment or
  * frame — is skipped with a reason that names the reference, and the engine
  * warns about it once. A frame that fails to compile takes every scenario
  * that uses it down with it, with the frame's own reason, and is reported
  * under `failedFrames` so the engine can name that reason for a legacy
  * scenario too.
+ *
+ * Fragments (issue #1065): a script may define sub-sequences under
+ * `fragments` and include them from its entries and frames. An include
+ * resolves ONLY within the same script — never a code scenario, never
+ * another voice's script — and is INLINED here: the compiled tree carries
+ * the fragment's steps in place, so the interpreter never sees an include
+ * step from a script and nothing is looked up at fire time. A fragment that
+ * reaches itself through any chain is refused with the chain named
+ * (`fragment cycle: a → b → a`); an include of a name the script does not
+ * define is `unknown fragment "x"`.
+ *
+ * Two guards the cycle check does not give. **A budget**: a chain that ends
+ * can still be enormous — thirty fragments each including the next twice is
+ * 2 KB of JSON, five levels deep, and 2^30 steps once inlined — so every
+ * step a conversion produces is counted, per entry and per frame, and past
+ * `FRAGMENT_EXPANSION_LIMIT` the unit is refused with `fragment expansion
+ * exceeds <N> steps`. **A pass over what nothing reached**: a fragment is
+ * converted when something includes it, so one that nothing includes — or
+ * that only a `skip: true` entry includes, which is never read past — would
+ * otherwise never be checked at all. After the entries and frames, every
+ * defined fragment no conversion reached is converted on its own (fresh
+ * budget, the same cycle guard), and its problem, if any, is reported under
+ * `fragmentProblems` by fragment name.
  */
 import {
   type CalloutScript,
   type CalloutScriptEntry,
   CASE_DEFAULT_BRANCH,
   CONNECTOR_POOL,
+  type FragmentDefinition,
   type FrameDefinition,
   NO_FRAME,
   parseCondReference,
   type ScriptStep,
 } from "@iracedeck/callout-script";
 
-import { parseStepShorthand, type ResolvedStep } from "./dsl.js";
+import { parseStepShorthand, type ResolvedStep, type VocabularyResolver } from "./dsl.js";
+
+/**
+ * The most `ResolvedStep`s one entry (or one frame, both halves together)
+ * may compile to, fragments inlined. Generous: the bundled readback body,
+ * the largest in the catalog, is about thirty. What it bounds is not a real
+ * body but a doubling include chain (see the header), which the cycle guard
+ * lets through and which would otherwise run on the plugin's main thread.
+ */
+export const FRAGMENT_EXPANSION_LIMIT = 2000;
 
 /** One voice's script, compiled against the engine's registries. */
 export type CompiledVoiceScript = {
@@ -51,6 +84,13 @@ export type CompiledVoiceScript = {
   pools: ReadonlyMap<string, { group: string; base: string }>;
   /** Every contract this voice does NOT speak, and why. `deliberate` = `skip: true` or no entry at all. */
   skipped: readonly { id: string; reason: string; deliberate: boolean }[];
+  /**
+   * Fragment name → why it did not compile, for every defined fragment that
+   * no entry or frame inlined (so nothing else reported it). A fragment an
+   * entry DID inline is reported through that entry's skip reason instead,
+   * never twice. Empty when every fragment is used and well-formed.
+   */
+  fragmentProblems: ReadonlyMap<string, string>;
 };
 
 /** What the engine holds, as the compiler needs to see it. */
@@ -58,12 +98,11 @@ export type CompileDeps = {
   /** Every contract id the engine knows and its default frame. */
   contracts: ReadonlyMap<string, { frame: string }>;
   vars: ReadonlySet<string>;
-  conds: ReadonlyMap<string, () => boolean>;
-  cases: ReadonlyMap<string, { resolve: () => string | null; keys: ReadonlySet<string> }>;
+  /** Every registered condition; the predicate receives the fire context at expansion time (issue #1065). */
+  conds: ReadonlyMap<string, VocabularyResolver<boolean>>;
+  cases: ReadonlyMap<string, { resolve: VocabularyResolver<string | null>; keys: ReadonlySet<string> }>;
   /** Code-registered pool names, consulted after the script's own. */
   legacyPools: ReadonlySet<string>;
-  /** Legacy `defineScenario` ids an include may target. */
-  fragments: ReadonlySet<string>;
 };
 
 /**
@@ -127,15 +166,47 @@ export function compileVoiceScript(script: CalloutScript, deps: CompileDeps): Co
 
   for (const [name, pool] of Object.entries(script.pools)) pools.set(name, { group: pool.group, base: pool.base });
 
-  return { scenarios, frames: compiledFrames, failedFrames, pools, skipped };
+  return {
+    scenarios,
+    frames: compiledFrames,
+    failedFrames,
+    pools,
+    skipped,
+    fragmentProblems: checkUnreached(converter),
+  };
 }
 
 function compileFrame(converter: StepConverter, frame: FrameDefinition): FrameResult {
+  // One budget for the whole frame: its two halves play around one body.
+  converter.beginUnit();
+
   try {
     return { ok: true, open: converter.convertAll(frame.open), close: converter.convertAll(frame.close) };
   } catch (err) {
     return { ok: false, reason: describe(err) };
   }
+}
+
+/**
+ * Convert every defined fragment that no entry or frame reached, each on its
+ * own budget, and collect what failed. A fragment reached on the way — `old`
+ * including `helper`, neither included by an entry — counts as reached from
+ * then on, so a problem inside `helper` is reported once, under `old`.
+ */
+function checkUnreached(converter: StepConverter): ReadonlyMap<string, string> {
+  const problems = new Map<string, string>();
+
+  for (const [name, fragment] of converter.unreachedFragments()) {
+    converter.beginUnit();
+
+    try {
+      converter.convertFragment(name, fragment);
+    } catch (err) {
+      problems.set(name, describe(err));
+    }
+  }
+
+  return problems;
 }
 
 function compileEntry(
@@ -160,6 +231,8 @@ function compileEntry(
     if (!compiled.ok) return { ok: false, reason: `frame "${frame}": ${compiled.reason}` };
   }
 
+  converter.beginUnit();
+
   try {
     return { ok: true, resolved: converter.convertAll(entry.sequence), frame };
   } catch (err) {
@@ -177,45 +250,110 @@ function describe(err: unknown): string {
 /**
  * Converts `ScriptStep`s to `ResolvedStep`s, checking every reference as it
  * goes. The string forms go through the DSL's own `parseStepShorthand`, so a
- * script and a closure sequence that spell the same thing resolve identically.
+ * script and a closure sequence that spell the same thing resolve identically
+ * — except an include, which a script never hands the interpreter: it is
+ * inlined here (issue #1065), so one `ScriptStep` may become several
+ * `ResolvedStep`s.
  */
 class StepConverter {
+  /**
+   * The fragments being inlined right now, outermost first. A name already
+   * on it is a cycle; naming the chain from that name is what tells the
+   * author where the loop closes.
+   */
+  private readonly inlining: string[] = [];
+  /** Every fragment some conversion inlined, so the unreached ones can be checked afterwards. */
+  private readonly reached = new Set<string>();
+  /** Steps produced since `beginUnit`, checked against `FRAGMENT_EXPANSION_LIMIT` on every one. */
+  private produced = 0;
+
   constructor(
     private readonly script: CalloutScript,
     private readonly deps: CompileDeps,
   ) {}
 
-  convertAll(steps: readonly ScriptStep[]): ResolvedStep[] {
-    return steps.map((step) => this.convert(step));
+  /** Start a fresh expansion budget: once per entry, once per frame, once per standalone fragment. */
+  beginUnit(): void {
+    this.produced = 0;
+    this.inlining.length = 0;
   }
 
-  private convert(step: ScriptStep): ResolvedStep {
-    if (typeof step === "string") return this.check(parseStepShorthand(step));
+  convertAll(steps: readonly ScriptStep[]): ResolvedStep[] {
+    return steps.flatMap((step) => this.convert(step));
+  }
 
-    if ("clip" in step) return { kind: "clip", path: step.clip };
+  /**
+   * Convert a fragment as its own unit — for one that nothing included — with
+   * its name on the inlining stack, so a chain that leads back to it is
+   * reported from it (`old → helper → old`), the way an include would.
+   */
+  convertFragment(name: string, fragment: FragmentDefinition): ResolvedStep[] {
+    this.reached.add(name);
+    this.inlining.push(name);
 
-    if ("var" in step) return this.check({ kind: "var", name: step.var });
+    try {
+      return this.convertAll(fragment.sequence);
+    } finally {
+      this.inlining.pop();
+    }
+  }
 
-    if ("pool" in step) return this.check({ kind: "pool", name: step.pool, noRepeat: step.noRepeat ?? true });
+  /** Every defined fragment no conversion has inlined so far, in definition order. */
+  *unreachedFragments(): Iterable<[string, FragmentDefinition]> {
+    for (const [name, fragment] of Object.entries(this.script.fragments ?? {})) {
+      if (!this.reached.has(name)) yield [name, fragment];
+    }
+  }
 
-    if ("connector" in step) return this.check({ kind: "connector" });
+  private convert(step: ScriptStep): ResolvedStep[] {
+    if (typeof step === "string") {
+      const parsed = parseStepShorthand(step);
 
-    if ("pause" in step) return { kind: "pause", ms: step.pause };
+      return parsed.kind === "include" ? this.inline(parsed.id) : [this.check(parsed)];
+    }
 
-    if ("include" in step) return this.check({ kind: "include", id: step.include });
+    if ("clip" in step) return [this.emit({ kind: "clip", path: step.clip })];
 
-    if ("ambient" in step) return { kind: "ambient", action: step.ambient };
+    if ("var" in step) return [this.check({ kind: "var", name: step.var })];
 
-    if ("optional" in step) return { kind: "optional", steps: this.convertAll(step.optional) };
+    if ("pool" in step) return [this.check({ kind: "pool", name: step.pool, noRepeat: step.noRepeat ?? true })];
 
-    if ("if" in step) return this.convertIf(step.if, step.then, step.else);
+    if ("connector" in step) return [this.check({ kind: "connector" })];
 
-    return this.convertCase(step.case, step.of);
+    if ("pause" in step) return [this.emit({ kind: "pause", ms: step.pause })];
+
+    if ("include" in step) return this.inline(step.include);
+
+    if ("ambient" in step) return [this.emit({ kind: "ambient", action: step.ambient })];
+
+    if ("optional" in step) return [this.emit({ kind: "optional", steps: this.convertAll(step.optional) })];
+
+    if ("if" in step) return [this.convertIf(step.if, step.then, step.else)];
+
+    return [this.convertCase(step.case, step.of)];
+  }
+
+  /**
+   * Every `ResolvedStep` the conversion produces passes through here once —
+   * a leaf, or a container whose contents were counted as they were made —
+   * which is what makes the budget a count of the compiled tree rather than
+   * of the script's lines. An include produces no step of its own; the steps
+   * it splices in are counted where they are produced.
+   */
+  private emit(step: ResolvedStep): ResolvedStep {
+    this.produced += 1;
+
+    if (this.produced > FRAGMENT_EXPANSION_LIMIT) {
+      throw new CompileProblem(`fragment expansion exceeds ${FRAGMENT_EXPANSION_LIMIT} steps`);
+    }
+
+    return step;
   }
 
   /**
    * The shorthand parser and the object forms both produce leaf steps whose
-   * references still need checking; this is the one place they are.
+   * references still need checking; this is the one place they are. An
+   * include never reaches here — `convert` routes it to `inline` first.
    */
   private check(step: ResolvedStep): ResolvedStep {
     switch (step.kind) {
@@ -229,15 +367,37 @@ class StepConverter {
       case "connector":
         this.checkPool(CONNECTOR_POOL);
         break;
-      case "include":
-        if (!this.deps.fragments.has(step.id)) throw new CompileProblem(`unknown include "${step.id}"`);
-
-        break;
       default:
         break;
     }
 
-    return step;
+    return this.emit(step);
+  }
+
+  /**
+   * Splice a fragment's converted steps in place of the include. The fragment
+   * must be one THIS script defines (`Object.hasOwn`, so a prototype property
+   * is not a fragment), and must not already be on the way to being inlined
+   * — that is a cycle, and it would never end.
+   */
+  private inline(name: string): ResolvedStep[] {
+    const fragment = this.fragmentNamed(name);
+
+    if (!fragment) throw new CompileProblem(`unknown fragment "${name}"`);
+
+    const openedAt = this.inlining.indexOf(name);
+
+    if (openedAt !== -1) {
+      throw new CompileProblem(`fragment cycle: ${[...this.inlining.slice(openedAt), name].join(" → ")}`);
+    }
+
+    return this.convertFragment(name, fragment);
+  }
+
+  private fragmentNamed(name: string): FragmentDefinition | undefined {
+    const fragments = this.script.fragments;
+
+    return fragments !== undefined && Object.hasOwn(fragments, name) ? fragments[name] : undefined;
   }
 
   /**
@@ -263,14 +423,16 @@ class StepConverter {
     // Deliberately no try/catch here: a throwing condition propagates to the
     // interpreter's `if` arm, which logs it and reads the predicate as false
     // — negated or not. Catching it here would hide the throw from the log.
-    const predicate = negated ? () => !cond() : () => cond();
+    // The fire context is passed straight through (issue #1065): a condition
+    // may branch on the event that fired the callout.
+    const predicate: VocabularyResolver<boolean> = negated ? (ctx) => !cond(ctx) : (ctx) => cond(ctx);
 
-    return {
+    return this.emit({
       kind: "if",
       predicate,
       then: this.convertAll(thenSteps),
       else: elseSteps ? this.convertAll(elseSteps) : undefined,
-    };
+    });
   }
 
   private convertCase(name: string, of: Record<string, ScriptStep[]>): ResolvedStep {
@@ -292,6 +454,6 @@ class StepConverter {
       branches.set(key, this.convertAll(steps));
     }
 
-    return { kind: "case", name, of: branches, fallback };
+    return this.emit({ kind: "case", name, of: branches, fallback });
   }
 }

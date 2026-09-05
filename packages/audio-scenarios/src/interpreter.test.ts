@@ -2457,17 +2457,11 @@ describe("pack-owned scripts (issue #1064)", () => {
     expect(audio.stopChannel).not.toHaveBeenCalledWith(AudioChannel.Ambient);
   });
 
-  it("(d) an include inside a frame is structure — its fragment's ops are sorted by the switches, not dropped whole", () => {
-    // `@frag` is a legacy fragment carrying the tick AND the ambience bed.
-    // Beeps off must keep the bed and drop the tick; treating the include as
-    // a beep would have dropped both.
-    engine.defineScenario({
-      id: "test.frag",
-      channel: AudioChannel.Voice,
-      bus: AudioBus.Voice,
-      frame: NO_FRAME,
-      sequence: ["sfx/IRD-tick-open.mp3", { ambient: "start" }],
-    });
+  it("(d) an include inside a frame is structure — its fragment's steps are sorted by the switches, not dropped whole", () => {
+    // `@radio-open` is a script fragment (issue #1065) carrying the tick AND
+    // the ambience bed. The compiler inlines it into the frame, so the frame
+    // filter sees the two steps by kind: beeps off must keep the bed and drop
+    // the tick; treating the include as one beep would have dropped both.
     engine.defineContract(contract());
     engine.setScripts(
       new Map([
@@ -2475,7 +2469,8 @@ describe("pack-owned scripts (issue #1064)", () => {
           "default",
           script({
             scenarios: { "test.green": { sequence: ["pool:flag-green"] } },
-            frames: { radio: { open: ["@test.frag"], close: [] } },
+            frames: { radio: { open: ["@radio-open"], close: [] } },
+            fragments: { "radio-open": { sequence: ["sfx/IRD-tick-open.mp3", { ambient: "start" }] } },
           }),
         ],
       ]),
@@ -2903,6 +2898,96 @@ describe("pack-owned scripts (issue #1064)", () => {
     expect(mockLogger.error).toHaveBeenCalledWith(expect.stringContaining("Conditional predicate threw: boom"));
   });
 
+  // The vocabulary resolvers receive the fire context (issue #1065): a
+  // condition, case or var registered by a family may read the EVENT that
+  // fired the callout — readback's opener branches on the event's `reason` —
+  // so the closure the compiler hands the interpreter must pass `ctx` on
+  // rather than calling the resolver bare.
+  it("passes the fire context to a registered condition (issue #1065)", () => {
+    const seen: unknown[] = [];
+    engine.defineCond(
+      "t.sawData",
+      (ctx) => {
+        seen.push(ctx.data);
+
+        return true;
+      },
+      "records the event data it was given",
+    );
+    engine.defineContract(contract({ when: { event: "flag.green.raised" }, frame: NO_FRAME }));
+    engine.setScripts(
+      new Map([
+        [
+          "default",
+          script({
+            scenarios: { "test.green": { sequence: [{ if: "t.sawData", then: ["pool:flag-green"] }] } },
+          }),
+        ],
+      ]),
+    );
+
+    bus.publishEvent("flag.green.raised", { marker: 7 });
+    flushVoiceAndSfx(audio);
+
+    expect(seen).toEqual([{ marker: 7 }]);
+    expect(voicePaths()).toEqual(["voice/default/flags/green-01.mp3"]);
+  });
+
+  it("passes the fire context to a registered case resolver (issue #1065)", () => {
+    engine.defineCase(
+      "t.reason",
+      (ctx) => (ctx.data as { reason: string }).reason,
+      { entry: "the first entry", refire: "a repeated entry" },
+      "the reason carried by the event",
+    );
+    engine.defineContract(contract({ when: { event: "flag.green.raised" }, frame: NO_FRAME }));
+    engine.setScripts(
+      new Map([
+        [
+          "default",
+          script({
+            scenarios: {
+              "test.green": {
+                sequence: [
+                  {
+                    case: "t.reason",
+                    of: { entry: ["pool:flag-green"], refire: ["voice/default/flags/blue-01.mp3"] },
+                  },
+                ],
+              },
+            },
+          }),
+        ],
+      ]),
+    );
+
+    bus.publishEvent("flag.green.raised", { reason: "refire" });
+    flushVoiceAndSfx(audio);
+
+    expect(voicePaths()).toEqual(["voice/default/flags/blue-01.mp3"]);
+  });
+
+  it("passes the fire context to a registered var resolver (issue #1065)", () => {
+    const seen: unknown[] = [];
+    engine.defineVar(
+      "t.clip",
+      (ctx) => {
+        seen.push(ctx.data);
+
+        return "voice/default/flags/blue-01.mp3";
+      },
+      "the clip the event names",
+    );
+    engine.defineContract(contract({ when: { event: "flag.green.raised" }, frame: NO_FRAME }));
+    engine.setScripts(new Map([["default", script({ scenarios: { "test.green": { sequence: ["{{t.clip}}"] } } })]]));
+
+    bus.publishEvent("flag.green.raised", { marker: 9 });
+    flushVoiceAndSfx(audio);
+
+    expect(seen).toEqual([{ marker: 9 }]);
+    expect(voicePaths()).toEqual(["voice/default/flags/blue-01.mp3"]);
+  });
+
   it("(h) compiles whichever comes last — setScripts after defineContract, or defineContract after setScripts", () => {
     engine.defineContract(contract({ id: "test.first", frame: NO_FRAME }));
     engine.setScripts(
@@ -3039,6 +3124,74 @@ describe("pack-owned scripts (issue #1064)", () => {
       'Voice "default": scenario "test.green" skipped — unknown var "ghost"',
       'Voice "laconic": scenario "test.green" skipped — unknown pool "nope"',
     ]);
+  });
+
+  // An imperative engine (the spotter) holds a focus floor for as long as a
+  // condition lasts, and the floor is only worth holding for a call the
+  // active voice will actually make: a pack that omits the spotter lines is
+  // silent for them, and must not mute every other callout as well.
+  it("(l) isScripted says whether the ACTIVE voice's compiled script has a body for the id", () => {
+    engine.defineContract(contract({ frame: NO_FRAME }));
+    engine.defineContract(contract({ id: "test.silent", frame: NO_FRAME }));
+    engine.setScripts(
+      new Map([
+        [
+          "default",
+          script({ scenarios: { "test.green": { sequence: ["pool:flag-green"] }, "test.silent": { skip: true } } }),
+        ],
+        ["laconic", script({ scenarios: {} })],
+      ]),
+    );
+
+    expect(engine.isScripted("test.green")).toBe(true);
+    // `skip: true`, and no entry at all, are both "not scripted".
+    expect(engine.isScripted("test.silent")).toBe(false);
+    expect(engine.isScripted("test.unknown")).toBe(false);
+
+    activeVoice = "laconic";
+    expect(engine.isScripted("test.green")).toBe(false);
+
+    // No script for the voice, and no active voice: false, never a throw.
+    activeVoice = "clips-only";
+    expect(engine.isScripted("test.green")).toBe(false);
+    activeVoice = null;
+    expect(engine.isScripted("test.green")).toBe(false);
+  });
+
+  it("(l) isScripted sees a contract registered after setScripts — the dirty recompile runs first", () => {
+    engine.setScripts(new Map([["default", GREEN_SCRIPT]]));
+    expect(engine.isScripted("test.green")).toBe(false);
+
+    engine.defineContract(contract({ frame: NO_FRAME }));
+    expect(engine.isScripted("test.green")).toBe(true);
+  });
+
+  // A fragment nothing includes is checked on its own by the compiler (it
+  // would otherwise never be checked at all); its problem reaches the log
+  // like an entry's — once per (voice, fragment), deduped across the dirty
+  // recompiles, and said again after the next setScripts.
+  it("(k) warns once per (voice, fragment) about a fragment nothing includes that does not compile, and again after setScripts", () => {
+    engine.defineContract(contract({ frame: NO_FRAME }));
+    const broken = script({
+      scenarios: { "test.green": { sequence: ["pool:flag-green"] } },
+      fragments: { old: { sequence: ["pool:nope"] }, fine: { sequence: ["pool:flag-green"] } },
+    });
+    engine.setScripts(new Map([["default", broken]]));
+
+    const fragmentWarns = () =>
+      mockLogger.warn.mock.calls.map(([msg]) => String(msg)).filter((msg) => msg.includes("fragment"));
+    expect(fragmentWarns()).toEqual(['Voice "default": fragment "old" — unknown pool "nope"']);
+
+    // A registration marks the scripts dirty; the recompile repeats nothing.
+    engine.defineVar("late", () => null);
+    engine.fire("test.green");
+    flushVoiceAndSfx(audio);
+    expect(fragmentWarns()).toHaveLength(1);
+    // The entry itself was never affected.
+    expect(voicePaths()).toEqual(["voice/default/flags/green-01.mp3"]);
+
+    engine.setScripts(new Map([["default", broken]]));
+    expect(fragmentWarns()).toHaveLength(2);
   });
 
   it("frames a legacy scenario from the active voice's script, and plays it unframed when the voice has none", () => {

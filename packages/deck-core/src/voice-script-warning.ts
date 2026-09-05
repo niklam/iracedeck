@@ -57,10 +57,12 @@ export function evaluateVoiceScriptWarning(input: VoiceScriptWarningInput): PiWa
  * again. "Race Engineer Voice" is the label of the dropdown in the settings
  * window, so the sentence names the control rather than describing it.
  *
- * The consequence is stated as "every callout that comes from the script",
- * not "it will stay silent": in 3.2.0 only the flags family is scripted and
- * the rest still speak from code, so a blanket silence claim would be false
- * today — and the phrasing stays true once #1065 scripts the rest.
+ * The consequence is stated as "every callout that comes from the script".
+ * Since #1065 that is every callout the engineer makes — the whole catalog
+ * is scripted, so a scriptless voice is a silent engineer — but the phrasing
+ * was chosen when only the flags family was scripted (#1064) and the rest
+ * still spoke from code, so that it would be true in both states, and it
+ * stays as it is: the message describes the rule, not a count.
  */
 function voiceScriptMissingMessage(voice: string): string {
   return (

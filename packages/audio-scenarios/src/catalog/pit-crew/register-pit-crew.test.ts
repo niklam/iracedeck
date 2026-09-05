@@ -30,7 +30,7 @@ import { NO_FRAME, WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest } from "../../interpreter.js";
 import { _resetAudioScenarios, getScenarioEngine, initializeAudioScenarios } from "../../interpreter.js";
 import { _setFurledRaisedSpoken } from "./flag-alerts.js";
-import { _resetGapCalloutCooldown, _setLastGapEvent } from "./gaps.js";
+import { _resetGapCalloutCooldown } from "./gaps.js";
 import { _resetLastIncidentPoints } from "./incidents.js";
 import {
   _resetOpponentPitPending,
@@ -48,10 +48,9 @@ import {
   registerPitCrew,
   type RollingStartCalloutId,
 } from "./index.js";
-import { NO_LIMITER_POOL_NAMES } from "./no-limiter.js";
-import { LIMITER_MISSING_DELAY_MS, LIMITER_ON_TRACK_DELAY_MS, PIT_LIMITER_POOL_NAMES } from "./pit-limiter.js";
+import { NO_LIMITER_CLIP_SOURCES } from "./no-limiter.js";
+import { LIMITER_MISSING_DELAY_MS, LIMITER_ON_TRACK_DELAY_MS, PIT_LIMITER_CLIP_SOURCES } from "./pit-limiter.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
-import { POOL_REGISTRY } from "./pools.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
 
@@ -221,23 +220,17 @@ const FLAG_CLIP_NAMES = [
   "caution-waving-01",
 ] as const;
 
-// Acknowledgment pool clips referenced from `pools.ts` — must be present
-// so toggle scenarios that reference `pool:pit-action-acknowledgment` and
-// `pool:acknowledgment` pass validation at register time.
+// The pit-action acknowledgment the toggle-confirmation scripts open with
+// (`pool:pit-actions/acknowledgment`, #1065).
 const ACK_POOL_CLIPS = [
-  "voice/luca/acknowledgment/acknowledgment-01.mp3",
-  "voice/luca/acknowledgment/acknowledgment-02.mp3",
-  "voice/luca/acknowledgment/acknowledgment-03.mp3",
-  "voice/luca/acknowledgment/acknowledgment-04.mp3",
-  "voice/luca/acknowledgment/acknowledgment-05.mp3",
   "voice/luca/pit-actions/acknowledgment-01.mp3",
   "voice/luca/pit-actions/acknowledgment-02.mp3",
   "voice/luca/pit-actions/acknowledgment-03.mp3",
 ] as const;
 
-// Toggle-confirmation clips referenced directly from
-// `toggle-confirmations.ts`. Includes fuel/tire-set/compound and the
-// issue-#468 additions (windshield, fast-repair) so all five scenario
+// Toggle-confirmation clips the bundled script addresses as
+// `pool:pit-actions/<base>` (#1065). Includes fuel/tire-set/compound and the
+// issue-#468 additions (windshield, fast-repair) so all five contract
 // families register cleanly when `registerPitCrew(...)` runs.
 const TOGGLE_CLIP_PATHS = [
   "voice/luca/pit-actions/fuel-on-01.mp3",
@@ -894,15 +887,17 @@ describe("radio frame comes from the engine, not the catalog (issue #1064)", () 
     expect(audio._played).toEqual([]);
   });
 
-  it("no registered sequence includes them", () => {
-    const scenarios = defineScenarioSpy.mock.calls.map(([s]) => s);
+  it("no registration includes them — a contract carries no sequence at all, a legacy sequence never names them", () => {
+    const all = registered();
 
-    expect(scenarios.length).toBeGreaterThan(50);
+    expect(all.length).toBeGreaterThan(50);
 
-    for (const s of scenarios) {
+    for (const s of all) {
       // An include is either the `"@id"` string or `{ include: "id" }`; both
-      // survive JSON.stringify (closures do not, but they carry no ids).
-      expect(JSON.stringify(s.sequence)).not.toContain("pit-crew.radio-");
+      // survive JSON.stringify (closures do not, but they carry no ids). A
+      // contract (#1064/#1065) has no `sequence` key, so the check is vacuous
+      // for it — and that absence is itself the point.
+      expect(JSON.stringify("sequence" in s ? s.sequence : null)).not.toContain("pit-crew.radio-");
     }
   });
 
@@ -1785,10 +1780,12 @@ describe("pit-limiter / no-limiter family registration (issue #1051)", () => {
     delayMs?: number;
   };
 
+  // `pool` is the `group/base` the bundled script addresses for the row
+  // (#1065) — the clip a played path is expected to start with.
   const LIMITER_FIRES: readonly Fire[] = [
     {
       id: "pit-crew.limiter-on-track",
-      pool: "pit-limiter-on-track",
+      pool: "pit-limiter/on-track",
       event: "pitLane.exited",
       data: {},
       telemetry: HAS_LIMITER,
@@ -1797,7 +1794,7 @@ describe("pit-limiter / no-limiter family registration (issue #1051)", () => {
     },
     {
       id: "pit-crew.limiter-missing",
-      pool: "pit-limiter-missing",
+      pool: "pit-limiter/missing",
       event: "limiter.missing",
       data: {},
       telemetry: HAS_LIMITER,
@@ -1806,14 +1803,14 @@ describe("pit-limiter / no-limiter family registration (issue #1051)", () => {
     },
     {
       id: "pit-crew.limiter-dropped",
-      pool: "pit-limiter-dropped",
+      pool: "pit-limiter/dropped",
       event: "limiter.dropped",
       data: {},
       telemetry: HAS_LIMITER,
     },
     {
       id: "pit-crew.limiter-speeding",
-      pool: "pit-limiter-speeding",
+      pool: "pit-limiter/speeding",
       event: "limiter.speeding",
       data: {},
       telemetry: HAS_LIMITER,
@@ -1823,28 +1820,23 @@ describe("pit-limiter / no-limiter family registration (issue #1051)", () => {
   const NO_LIMITER_FIRES: readonly Fire[] = [
     {
       id: "pit-crew.no-limiter-speeding",
-      pool: "no-limiter-speeding",
+      pool: "pit-limiter/no-limiter-speeding",
       event: "limiter.speeding",
       data: {},
       telemetry: LACKS_LIMITER,
     },
     {
       id: "pit-crew.no-limiter-entry",
-      pool: "no-limiter-entry",
+      pool: "pit-limiter/entry",
       event: "pitLane.entered",
       data: {},
       telemetry: LACKS_LIMITER,
     },
   ];
 
-  // Derived from the registry rather than written out, so a `(group, base)`
-  // rename in `pools.ts` moves the expectation with it instead of going stale.
+  /** The prefix every member of a `group/base` pool shares for the test voice. */
   function poolClipPrefix(pool: string): string {
-    const source = POOL_REGISTRY[pool];
-
-    if (!source) throw new Error(`POOL_REGISTRY has no entry for pool "${pool}"`);
-
-    return `voice/${VOICE}/${source.group}/${source.base}`;
+    return `voice/${VOICE}/${pool}`;
   }
 
   /** Whether any clip from `pool` reached the Voice channel. */
@@ -1862,10 +1854,10 @@ describe("pit-limiter / no-limiter family registration (issue #1051)", () => {
 
   // Publish, then walk the clock past the row's `triggerDelay` — nothing to
   // walk for the six immediate rows. The leading flush drains whatever fired on
-  // the same event WITHOUT a delay (`pitLane.exited` also triggers the
-  // higher-weight PIT_EXIT), so a delayed fire meets an idle bus instead of
-  // losing a weight contest to a callout that is only still playing because the
-  // test never let it finish.
+  // the same event WITHOUT a delay (an equal-or-higher-weight line — a flag
+  // call, a toggle confirmation, the spotter), so a delayed fire meets an idle
+  // bus instead of losing a weight contest to a callout that is only still
+  // playing because the test never let it finish.
   function fire({ event, data, telemetry, live, delayMs = 0 }: Fire): void {
     mockLatestTelemetry.mockReturnValue(live ?? telemetry);
     bus.publishEvent(event, data as never, telemetry);
@@ -1882,22 +1874,27 @@ describe("pit-limiter / no-limiter family registration (issue #1051)", () => {
     expect(NO_LIMITER_FIRES.map((f) => f.id).sort()).toEqual([...NO_LIMITER_SCENARIO_IDS].sort());
   });
 
-  // The pool names are pinned to an explicit list rather than re-derived by
-  // prefix. Both constants are built as `Object.keys(POOL_REGISTRY).filter(
-  // startsWith(...))`, so a registry rename that outruns the filter yields an
-  // EMPTY array — which every `for (const name of ...)` sweep would pass
-  // vacuously. Comparing against a literal is what makes that a failure.
-  it("the exported pool-name constants still name the pools these scenarios draw from", () => {
-    expect([...PIT_LIMITER_POOL_NAMES].sort()).toEqual(LIMITER_FIRES.map((f) => f.pool).sort());
-    expect([...NO_LIMITER_POOL_NAMES].sort()).toEqual(NO_LIMITER_FIRES.map((f) => f.pool).sort());
+  // The clip sources are pinned against the fire table's literals rather than
+  // re-derived, so a renamed base in either family's `*_CLIP_SOURCES` shows up
+  // here as a mismatch instead of making a `for (const … of …)` sweep pass
+  // vacuously over an emptied list.
+  it("the exported clip sources still name the pools these contracts' scripts draw from", () => {
+    const sources = (list: readonly { group: string; base: string }[]): string[] =>
+      list.map(({ group, base }) => `${group}/${base}`).sort();
+
+    expect(sources(PIT_LIMITER_CLIP_SOURCES)).toEqual(LIMITER_FIRES.map((f) => f.pool).sort());
+    expect(sources(NO_LIMITER_CLIP_SOURCES)).toEqual(NO_LIMITER_FIRES.map((f) => f.pool).sort());
   });
 
-  it("every declared pool name has a registry entry in the shared pit-limiter group", () => {
-    for (const name of [...PIT_LIMITER_POOL_NAMES, ...NO_LIMITER_POOL_NAMES]) {
-      expect(POOL_REGISTRY[name], `POOL_REGISTRY has no entry for "${name}"`).toBeDefined();
+  it("every source sits in the shared pit-limiter group and has a fixture clip for the test voice", () => {
+    for (const { group, base } of [...PIT_LIMITER_CLIP_SOURCES, ...NO_LIMITER_CLIP_SOURCES]) {
       // One group for both families: the split is by remedy, not by location.
-      expect(POOL_REGISTRY[name].group).toBe("pit-limiter");
-      expect(POOL_REGISTRY[name].base.length).toBeGreaterThan(0);
+      expect(group).toBe("pit-limiter");
+      expect(base.length).toBeGreaterThan(0);
+      expect(
+        manifest.clips.some((clip) => clip.startsWith(`voice/${VOICE}/${group}/${base}-`)),
+        `fixture manifest carries no ${group}/${base}`,
+      ).toBe(true);
     }
   });
 
@@ -1971,7 +1968,7 @@ describe("pit-limiter / no-limiter family registration (issue #1051)", () => {
 
     bus.publishEvent("limiter.speeding", {} as never, LACKS_LIMITER);
     flush(audio);
-    expect(voiceClipsPlayed().some((p) => p.startsWith(poolClipPrefix("no-limiter-speeding")))).toBe(true);
+    expect(played("pit-limiter/no-limiter-speeding")).toBe(true);
   });
 
   it("a disabled callout in one family does not gate its sibling in the same family", () => {
@@ -1980,7 +1977,7 @@ describe("pit-limiter / no-limiter family registration (issue #1051)", () => {
     bus.publishEvent("limiter.dropped", {} as never, HAS_LIMITER);
     flush(audio);
 
-    expect(voiceClipsPlayed().some((p) => p.startsWith(poolClipPrefix("pit-limiter-dropped")))).toBe(true);
+    expect(played("pit-limiter/dropped")).toBe(true);
   });
 
   it.each([...LIMITER_FIRES, ...NO_LIMITER_FIRES])("$id is suppressed when the master gate is off", (row) => {
@@ -2024,13 +2021,13 @@ describe("pit-limiter / no-limiter family registration (issue #1051)", () => {
     it("limiter-on-track speaks when the limiter is still engaged as the window closes", () => {
       publishThenSettle("pitLane.exited", STILL_ENGAGED_ON_TRACK, STILL_ENGAGED_ON_TRACK, LIMITER_ON_TRACK_DELAY_MS);
 
-      expect(played("pit-limiter-on-track")).toBe(true);
+      expect(played("pit-limiter/on-track")).toBe(true);
     });
 
     it("limiter-on-track stays silent when the driver switches the limiter off inside the window", () => {
       publishThenSettle("pitLane.exited", STILL_ENGAGED_ON_TRACK, LIMITER_OFF_ON_TRACK, LIMITER_ON_TRACK_DELAY_MS);
 
-      expect(played("pit-limiter-on-track")).toBe(false);
+      expect(played("pit-limiter/on-track")).toBe(false);
     });
 
     it("limiter-missing speaks when the limiter is still not engaged as the window closes", () => {
@@ -2041,7 +2038,7 @@ describe("pit-limiter / no-limiter family registration (issue #1051)", () => {
         LIMITER_MISSING_DELAY_MS,
       );
 
-      expect(played("pit-limiter-missing")).toBe(true);
+      expect(played("pit-limiter/missing")).toBe(true);
     });
 
     it("limiter-missing stays silent when the driver engages the limiter inside the window", () => {
@@ -2052,7 +2049,7 @@ describe("pit-limiter / no-limiter family registration (issue #1051)", () => {
         LIMITER_MISSING_DELAY_MS,
       );
 
-      expect(played("pit-limiter-missing")).toBe(false);
+      expect(played("pit-limiter/missing")).toBe(false);
     });
 
     // The episode ended before the window did. A fire landing here would scold a
@@ -2060,7 +2057,7 @@ describe("pit-limiter / no-limiter family registration (issue #1051)", () => {
     it("limiter-missing stays silent when the car has left pit road inside the window", () => {
       publishThenSettle("limiter.missing", STILL_MISSING_ON_PIT_ROAD, LIMITER_OFF_ON_TRACK, LIMITER_MISSING_DELAY_MS);
 
-      expect(played("pit-limiter-missing")).toBe(false);
+      expect(played("pit-limiter/missing")).toBe(false);
     });
   });
 
@@ -2068,10 +2065,10 @@ describe("pit-limiter / no-limiter family registration (issue #1051)", () => {
   // and the least obvious, because reaching it needs a busy bus AND a change
   // while the fire waits, so nothing arrives here by accident.
   //
-  // `PIT_EXIT` fires on every `pitLane.exited` at the higher WEIGHT.SAFETY and
-  // ungated, so when the limiter's window closes the bus is usually still busy
-  // with a spoken line. `queueable: true` is what stops the callout being
-  // dropped there — but queueing puts back the staleness the delay existed to
+  // An equal-or-higher-weight line (a flag call, a toggle confirmation, the
+  // spotter) is often in flight when the limiter's window closes, so the bus is
+  // usually still busy with a spoken line. `queueable: true` is what stops the
+  // callout being dropped there — but queueing puts back the staleness the delay existed to
   // remove: the fire decision is taken when the timer elapses, the line can then
   // sit behind a longer call, and by the time it speaks the driver may have
   // fixed the limiter. The `if:` gate wrapping the WHOLE framed sequence is what
@@ -2085,7 +2082,8 @@ describe("pit-limiter / no-limiter family registration (issue #1051)", () => {
   // waits, and then expects silence goes red. The positive counterparts are here
   // so the silence cannot instead be queueing broken outright.
   describe("the speak-time gate re-checks again when a queued fire drains", () => {
-    // Stands in for PIT_EXIT: above the limiter callouts' NORMAL, with no
+    // Stands in for an equal-or-higher-weight line (a flag call, a toggle
+    // confirmation, the spotter): above the limiter callouts' NORMAL, with no
     // `interrupt`, so a limiter fire arriving mid-line takes the queue-or-drop
     // path rather than winning the bus — the same path real driving takes.
     // `offTrack.started` has no subscriber in the catalog, so this occupies the
@@ -2150,7 +2148,7 @@ describe("pit-limiter / no-limiter family registration (issue #1051)", () => {
 
       expectQueuedThenDrained("pit-crew.limiter-on-track");
       expect(voiceClipsPlayed()).toContain(OCCUPIER_CLIP);
-      expect(played("pit-limiter-on-track")).toBe(true);
+      expect(played("pit-limiter/on-track")).toBe(true);
     });
 
     it("limiter-on-track stays silent when the driver switches the limiter off while it is queued", () => {
@@ -2160,7 +2158,7 @@ describe("pit-limiter / no-limiter family registration (issue #1051)", () => {
       // dropped, and it leaves no radio click behind either.
       expectQueuedThenDrained("pit-crew.limiter-on-track");
       expect(voiceClipsPlayed()).toContain(OCCUPIER_CLIP);
-      expect(played("pit-limiter-on-track")).toBe(false);
+      expect(played("pit-limiter/on-track")).toBe(false);
     });
 
     it("limiter-missing speaks, late, when the limiter is still not engaged at the drain", () => {
@@ -2168,7 +2166,7 @@ describe("pit-limiter / no-limiter family registration (issue #1051)", () => {
 
       expectQueuedThenDrained("pit-crew.limiter-missing");
       expect(voiceClipsPlayed()).toContain(OCCUPIER_CLIP);
-      expect(played("pit-limiter-missing")).toBe(true);
+      expect(played("pit-limiter/missing")).toBe(true);
     });
 
     it("limiter-missing stays silent when the driver engages the limiter while it is queued", () => {
@@ -2181,7 +2179,7 @@ describe("pit-limiter / no-limiter family registration (issue #1051)", () => {
 
       expectQueuedThenDrained("pit-crew.limiter-missing");
       expect(voiceClipsPlayed()).toContain(OCCUPIER_CLIP);
-      expect(played("pit-limiter-missing")).toBe(false);
+      expect(played("pit-limiter/missing")).toBe(false);
     });
   });
 });
@@ -2278,7 +2276,6 @@ describe("Race Engineer master gate (issue #515)", () => {
 describe("gap callouts fire end-to-end (issue #933)", () => {
   afterEach(() => {
     _resetGapCalloutCooldown();
-    _setLastGapEvent(null);
     // The master-gate test in this block leaves the flag off; restore it so a
     // test added after this describe isn't silenced by the leftover state.
     voiceMasterEnabled = true;
