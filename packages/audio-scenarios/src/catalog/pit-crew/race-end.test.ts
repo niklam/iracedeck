@@ -1,12 +1,12 @@
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioChannel } from "@iracedeck/audio-service";
+import type { CalloutScript } from "@iracedeck/callout-script";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AudioAssetsManifest } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
 import { buildRaceEndScenario, type RaceFinishedSnapshot, registerRaceEndVars } from "./race-end.js";
-import { RADIO_CLOSE, RADIO_OPEN } from "./radio-frame.js";
 
 const mockLogger = {
   trace: vi.fn(),
@@ -145,6 +145,23 @@ const manifest: AudioAssetsManifest = {
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
 };
 
+/**
+ * Each voice's callout script — only its `radio` frame matters here. Since
+ * issue #1064 the ticks come from the engine wrapping every callout in the
+ * frame the active voice's script defines, never from the sequences.
+ */
+const RADIO_SCRIPT: CalloutScript = {
+  schema: 1,
+  scenarios: {},
+  frames: {
+    radio: {
+      open: ["sfx/IRD-tick-open.mp3", { ambient: "start" }, { ambient: "seek" }],
+      close: [{ ambient: "stop" }, "sfx/IRD-tick-close.mp3"],
+    },
+  },
+  pools: {},
+};
+
 const BASE_SNAPSHOT: RaceFinishedSnapshot = {
   position: 5,
   classPosition: undefined,
@@ -183,9 +200,8 @@ beforeEach(() => {
   const engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => activeVoice);
 
   registerRaceEndVars(engine, () => currentSnapshot);
-  engine.defineScenario(RADIO_OPEN);
-  engine.defineScenario(RADIO_CLOSE);
   engine.defineScenario(buildRaceEndScenario(() => currentSnapshot));
+  engine.setScripts(new Map([VOICE, BARE_VOICE, PARTIAL_VOICE].map((v) => [v, RADIO_SCRIPT])));
 });
 
 afterEach(() => {

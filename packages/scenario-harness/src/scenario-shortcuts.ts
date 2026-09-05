@@ -19,7 +19,7 @@ import {
   type StartCountdownSeconds,
   TrackWetness,
 } from "@iracedeck/event-bus";
-import { PitSvStatus } from "@iracedeck/iracing-sdk";
+import { Flags, PitSvStatus } from "@iracedeck/iracing-sdk";
 
 export type ScenarioShortcut = {
   id: string;
@@ -475,8 +475,18 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   flag("Ten to Go", "flag.ten-to-go.raised"),
   flag("Five to Go", "flag.five-to-go.raised"),
   flag("Disqualify", "flag.disqualify.raised"),
-  flag("Furled", "flag.furled.raised"),
-  flag("Furled Cleared", "flag.furled.cleared"),
+  // The furled pair is gated at SPEAK time on the live `SessionFlags` Furled
+  // bit (issue #669): the raise speaks only while the bit is still up, and the
+  // clear only after an announced raise. The event alone leaves the mock's
+  // `SessionFlags` at 0, so each button also patches the bit the gate reads.
+  {
+    ...flag("Furled", "flag.furled.raised"),
+    telemetryPatch: { SessionFlags: Flags.Furled },
+  },
+  {
+    ...flag("Furled Cleared", "flag.furled.cleared"),
+    telemetryPatch: { SessionFlags: 0 },
+  },
   flag("DQ — Scoring Invalid", "flag.dq-scoring-invalid.raised"),
   flag("Yellow Waving", "flag.yellow-waving.raised"),
   flag("Caution Waving", "flag.caution-waving.raised"),

@@ -62,7 +62,7 @@ function pitWindowScenario(direction: "opened" | "closed", to: boolean): Scenari
     interrupt: false,
     queueable: true,
     family: "pit-window",
-    sequence: ["@pit-crew.radio-open", `pool:pit-window-${direction}`, "@pit-crew.radio-close"],
+    sequence: [`pool:pit-window-${direction}`],
     when: { event: "pitsOpen.changed", where: (e) => (e as SimEventOf<"pitsOpen.changed">).data.to === to },
   };
 }

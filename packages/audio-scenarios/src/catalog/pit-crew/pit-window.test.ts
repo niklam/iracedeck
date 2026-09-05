@@ -59,16 +59,16 @@ describe("pit-window scenarios", () => {
     expect(where?.(changed(true))).toBe(false);
   });
 
-  it("wraps each pool in the shared radio frame", () => {
-    expect(scenario("pit-crew.pit-window-opened").sequence).toEqual([
-      "@pit-crew.radio-open",
-      "pool:pit-window-opened",
-      "@pit-crew.radio-close",
-    ]);
-    expect(scenario("pit-crew.pit-window-closed").sequence).toEqual([
-      "@pit-crew.radio-open",
-      "pool:pit-window-closed",
-      "@pit-crew.radio-close",
-    ]);
+  it("plays each pool as its whole body, leaving the radio frame to the engine (issue #1064)", () => {
+    for (const [id, pool] of [
+      ["pit-crew.pit-window-opened", "pool:pit-window-opened"],
+      ["pit-crew.pit-window-closed", "pool:pit-window-closed"],
+    ] as const) {
+      const s = scenario(id);
+
+      expect(s.sequence).toEqual([pool]);
+      // No `frame` → the engine's default (`radio`); the sequence never spells the ticks.
+      expect(s.frame).toBeUndefined();
+    }
   });
 });

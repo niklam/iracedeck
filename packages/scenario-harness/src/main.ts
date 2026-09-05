@@ -9,7 +9,12 @@
  */
 import { processAndCopyAudioAssets, wipeProcessedCache } from "@iracedeck/audio-assets/build";
 import { AudioNative } from "@iracedeck/audio-native";
-import { initializeAudioScenarios } from "@iracedeck/audio-scenarios";
+import {
+  type FrameOptions,
+  getScenarioEngine,
+  initializeAudioScenarios,
+  scanRaceEngineerVoices,
+} from "@iracedeck/audio-scenarios";
 import {
   type CornerNameSnapshot,
   type LapCompletedSnapshot,
@@ -19,9 +24,13 @@ import {
 import { AudioBus, initializeAudio } from "@iracedeck/audio-service";
 import {
   createMemorySettingsStore,
+  frameOptionsFromSettings,
+  getGlobalSettings,
   initGlobalSettings,
   onGlobalSettingsChange,
   resolveActiveRaceEngineerVoice,
+  voiceDisplayLabels,
+  type VoicePackService,
 } from "@iracedeck/deck-core";
 import { initializeEventBus } from "@iracedeck/event-bus";
 import type { SDKController } from "@iracedeck/iracing-sdk";
@@ -42,6 +51,7 @@ import { getHarnessQualifyingInvalidationSnapshot } from "./qualifying-invalidat
 import { getHarnessRaceStartSnapshot } from "./race-start-snapshot.js";
 import { DEFAULT_HOST, DEFAULT_PORT, startServer } from "./server.js";
 import { getHarnessSessionStartSnapshot } from "./session-start-snapshot.js";
+import { loadBundledVoiceScripts, loadInstalledVoiceScripts, reloadVoiceScripts } from "./voice-scripts.js";
 
 /**
  * Resolve the package root from the running module's URL. Works whether
@@ -93,10 +103,25 @@ async function main(): Promise<void> {
   // ── Audio scenarios ──────────────────────────────────────────────────────
   const adapter = new MockPlatformAdapter(logger);
   const manifest = getAudioAssetsManifest();
-  const { raceEngineerVoices } = seedGlobalSettings(adapter);
+  const { raceEngineerVoices: bundledVoices } = seedGlobalSettings(adapter);
+  // A `let`, like the plugins' `raceEngineerVoices`: an installed voice pack
+  // (below) extends the list after the engine is constructed.
+  let raceEngineerVoices: readonly string[] = bundledVoices;
 
-  initializeAudioScenarios(eventBus, audio, manifest, logger.createScope("AudioScenarios"), () =>
-    resolveActiveRaceEngineerVoice(raceEngineerVoices),
+  // The radio frame's two opt-outs (#1064), read live at frame expansion from
+  // the same global-settings cache the plugins read, through the same
+  // deck-core rule the plugins and the Background preview use — the harness
+  // seeds both on, and `/api/settings` writes through `updateGlobalSettings`,
+  // so a patch flipping either key is heard on the next callout.
+  const getFrameOptions = (): FrameOptions => frameOptionsFromSettings(getGlobalSettings());
+
+  initializeAudioScenarios(
+    eventBus,
+    audio,
+    manifest,
+    logger.createScope("AudioScenarios"),
+    () => resolveActiveRaceEngineerVoice(raceEngineerVoices),
+    getFrameOptions,
   );
 
   // Cache the most recent `lap.completed` payload so the lap-time scenario's
@@ -142,6 +167,55 @@ async function main(): Promise<void> {
     // readout clause be auditioned at all (issue #933).
     getLiveGaps: () => getLiveGaps(),
   });
+
+  // ── Callout scripts (#1064) ──────────────────────────────────────────────
+  // AFTER `registerPitCrew`, never before: `setScripts` compiles eagerly
+  // against the contracts registered above, so an earlier call would compile
+  // every entry to "no contract". The bundled script is read from the
+  // audio-assets source tree and a missing or malformed one ends the boot
+  // with the file named — the harness exists to catch exactly that before a
+  // release does.
+  const engine = getScenarioEngine();
+  const bundledScripts = loadBundledVoiceScripts();
+  engine.setScripts(bundledScripts);
+
+  // Installed voice packs, when a packs directory is named: the plugins' own
+  // scanner over the real file system, so a sideloaded or downloaded pack's
+  // clips and script load exactly as they do in a plugin. The scan hands the
+  // engine the merged manifest and the merged script map in the plugins'
+  // order (roots, manifest, scripts), and the voice list grows with it — the
+  // seed below is re-issued so the UI's Voice dropdown offers the pack's
+  // voices too. Without the variable the harness is the bundled voice alone.
+  const voicePacksRoot = process.env.IRACEDECK_VOICE_PACKS_PATH;
+  // Kept for the UI's Reload: with a service the reload is its refresh.
+  let voicePacks: VoicePackService | null = null;
+
+  if (voicePacksRoot !== undefined && voicePacksRoot !== "") {
+    const voicePacksLogger = logger.createScope("VoicePacks");
+    voicePacksLogger.info("Scanning voice packs");
+    voicePacksLogger.debug(`Voice packs root: ${voicePacksRoot}`);
+
+    voicePacks = loadInstalledVoiceScripts({
+      root: voicePacksRoot,
+      pluginAudioDir: audioBasePath,
+      bundledManifest: manifest,
+      bundledVoices,
+      bundledScripts,
+      logger: voicePacksLogger,
+      applyRoots: (roots) => audio.setRoots(roots),
+      applyManifest: (merged) => {
+        raceEngineerVoices = scanRaceEngineerVoices(merged);
+        engine.setManifest(merged);
+      },
+      applyScripts: (scripts) => engine.setScripts(scripts),
+    });
+
+    adapter.setGlobalSettings({
+      ...adapter.readSettings(),
+      _raceEngineerVoices: JSON.stringify(raceEngineerVoices),
+      _voiceLabels: JSON.stringify(voiceDisplayLabels(voicePacks.installed())),
+    });
+  }
 
   // ── deck-core global-settings pipeline ──────────────────────────────────
   // Done AFTER seeding so the listener delivers the seeded values to the
@@ -211,12 +285,21 @@ async function main(): Promise<void> {
       // any clip currently loaded by miniaudio, and overwriting in place
       // is plenty since the only stale state we'd risk is a clip removed
       // from source still lingering in dest, which is fine for a dev tool.
-      refreshAudioAssets: () =>
-        processAndCopyAudioAssets({ destRoot: audioBasePath, logger: (m) => audioLog.info(m), wipe: false }),
+      //
+      // Then the scripts again (#1064): the copy refreshes the processed
+      // root's `callouts.json`, but the engine keeps the map it compiled at
+      // boot until it is handed the new one — and a regenerated script is
+      // exactly what Reload is pressed to audition. Both handlers end in the
+      // same reload: a wipe re-copies the assets too.
+      refreshAudioAssets: async () => {
+        await processAndCopyAudioAssets({ destRoot: audioBasePath, logger: (m) => audioLog.info(m), wipe: false });
+        reloadVoiceScripts({ voicePacks, applyScripts: (scripts) => engine.setScripts(scripts) });
+      },
       wipeAudioCache: async () => {
         await wipeProcessedCache();
         audioLog.info("Wiped ffmpeg cache; full reprocess on next refresh/restart");
         await processAndCopyAudioAssets({ destRoot: audioBasePath, logger: (m) => audioLog.info(m), wipe: false });
+        reloadVoiceScripts({ voicePacks, applyScripts: (scripts) => engine.setScripts(scripts) });
       },
     },
     { host: DEFAULT_HOST, port: DEFAULT_PORT },

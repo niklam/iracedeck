@@ -117,7 +117,7 @@ describe("race-engineer partials", () => {
   };
   const withRequire = { require: dataRequire };
 
-  it("race-engineer-settings emits the live toggles, startup policies, voice, name, device and volumes", () => {
+  it("race-engineer-settings emits the live toggles, startup policies, voice, name, device, volumes and radio frame", () => {
     const html = render("<%- include('race-engineer-settings') %>", withRequire);
 
     for (const key of [
@@ -128,10 +128,45 @@ describe("race-engineer partials", () => {
       "raceEngineerVoice",
       "driverName",
       "audioOutputDevice",
+      "raceEngineerVolume",
+      "backgroundVolume",
+      "radarVolume",
+      "raceEngineerRadioBeeps",
+      "raceEngineerPitAmbience",
     ]) {
       expect(html, key).toContain(`setting="${key}"`);
     }
     expect(html).not.toContain("<details");
+  });
+
+  // The two halves of the radio frame (issue #1064) are opt-OUTs: both default
+  // on, so each checkbox must carry `default="true"` (the one value that renders
+  // checked — `default="false"` is the trap, see stream-deck-actions.md) and be
+  // `global`, and the pair sits under Background Volume because that slider is
+  // still the level control for both.
+  it("race-engineer-settings puts the radio-frame opt-outs under Background Volume, both global and default on", () => {
+    const html = render("<%- include('race-engineer-settings') %>", withRequire);
+
+    const frameItem = html.match(/<sdpi-item label="Radio Frame">[\s\S]*?<\/sdpi-item>/)?.[0];
+    expect(frameItem).toBeDefined();
+    expect(frameItem).toContain(
+      '<sdpi-checkbox setting="raceEngineerRadioBeeps" label="Radio beeps" global default="true"></sdpi-checkbox>',
+    );
+    expect(frameItem).toContain(
+      '<sdpi-checkbox setting="raceEngineerPitAmbience" label="Pit ambience" global default="true"></sdpi-checkbox>',
+    );
+    expect(html).not.toContain('default="false"');
+
+    const background = html.indexOf('setting="backgroundVolume"');
+    const frame = html.indexOf('<sdpi-item label="Radio Frame">');
+    const radar = html.indexOf('setting="radarVolume"');
+    expect(background).toBeGreaterThan(-1);
+    expect(frame).toBeGreaterThan(background);
+    expect(radar).toBeGreaterThan(frame);
+
+    // The help line names the level control so nobody hunts for a third slider.
+    const afterFrame = html.slice(frame, radar);
+    expect(afterFrame).toMatch(/<div class="ird-supporting-text">\s*Background Volume sets the level of both\.\s*<\/div>/);
   });
 
   it("race-engineer-callouts emits the per-callout opt-ins", () => {

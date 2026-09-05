@@ -245,10 +245,8 @@ export function registerPositionReadoutVars(engine: IScenarioEngine, getLivePosi
  */
 function readoutSequence(): Step[] {
   return [
-    "@pit-crew.radio-open",
     { var: "positionReadout.intro" },
     { var: "positionReadout.number" },
-    "@pit-crew.radio-close",
   ];
 }
 

@@ -7,16 +7,18 @@
  *   - All pools defined in `pools.ts`, registered en masse via
  *     `registerPools(engine)` — manifest-derived registry pools plus the
  *     enumerated acknowledgment pools (issue #664)
- *   - The radio-frame include scenarios (`@pit-crew.radio-open` / `…close`)
  *   - Fuel toggle scenarios (on/off via `pitService.toggled`)
  *   - Tire toggle scenarios (every meaningful tire-set selection, including
  *     singles, diagonals, and three-corner combos, via `tireService.changed`)
  *   - Tire compound scenarios (dry/wet via `tireService.compoundChanged`)
  *   - Windshield-tearoff toggle scenarios (on/off via `pitService.toggled`)
  *   - Fast-repair toggle scenarios (on/off via `pitService.toggled`)
- *   - Flag alert scenarios (every transition the translator publishes:
+ *   - Flag alert contracts (every transition the translator publishes:
  *     yellow scope-aware, yellow.cleared, green, blue, white, red, black,
- *     checkered with session-type branch, debris, meatball)
+ *     checkered, debris, meatball, …) — the first family whose wording lives
+ *     in the voice's script rather than here (issue #1064): the code
+ *     registers the contract and the `session.*` / `flag.*` vocabulary, the
+ *     active voice's `callouts.json` supplies what is said
  *   - Laps-of-fuel-left scenarios (counts 10 → 1 plus the box-this-lap call,
  *     via `fuel.lapsLeft.crossed` — issue #838)
  *
@@ -55,7 +57,7 @@ import type { IEventBus, PitReadbackSnapshot, SessionStartSnapshot } from "@irac
 import type { ILogger } from "@iracedeck/logger";
 import { TrackDirection } from "@iracedeck/sim-events-iracing";
 
-import type { Scenario } from "../../dsl.js";
+import type { ScenarioContract } from "../../dsl.js";
 import { getScenarioEngine, isAudioScenariosInitialized } from "../../interpreter.js";
 import {
   buildCornerNameScenario,
@@ -65,7 +67,7 @@ import {
   SCENARIO_ID_TO_CORNER_NAME_ID,
 } from "./corner-name.js";
 import { DAMAGE_ALERTS } from "./damage-alerts.js";
-import { FLAG_ALERTS } from "./flag-alerts.js";
+import { FLAG_CONTRACTS, registerFlagVocabulary } from "./flag-alerts.js";
 import { FUEL_LAPS_LEFT_ALERTS } from "./fuel-laps-left.js";
 import {
   buildGapThresholdScenario,
@@ -159,7 +161,6 @@ import {
   SCENARIO_ID_TO_RACE_STATUS_ID,
 } from "./race-status.js";
 import { registerRadarEngine } from "./radar-engine.js";
-import { RADIO_CLOSE, RADIO_OPEN } from "./radio-frame.js";
 import { buildPitReadbackScenarios, type PitReadbackCalloutId, SCENARIO_ID_TO_PIT_READBACK_ID } from "./readback.js";
 import { ROLLING_START_ALERTS } from "./rolling-start.js";
 import {
@@ -346,7 +347,7 @@ export {
 
 /**
  * Stable identifier for each user-toggleable flag callout (issue #467).
- * One id per scenario in `FLAG_ALERTS`; the trailing segment of the
+ * One id per contract in `FLAG_CONTRACTS`; the trailing segment of the
  * scenario id minus the `pit-crew.flag-` prefix.
  */
 export type FlagCalloutId =
@@ -1236,14 +1237,23 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
 
   registerPools(engine);
 
-  engine.defineScenario(RADIO_OPEN);
-  engine.defineScenario(RADIO_CLOSE);
+  // The vocabulary the flag scripts name (issue #1064) — the `session.type`
+  // case var, the furled speak-time gates and the `session.is*` conditions.
+  // Registered before any contract so the first `setScripts` compile sees it;
+  // a later registration would only mark the compiled scripts dirty.
+  registerFlagVocabulary(engine);
+
+  // No radio-frame fragments are registered here any more (issue #1064): the
+  // engine wraps every scenario in the frame its `frame` field names — the
+  // active voice's `radio` frame unless the scenario opts out with
+  // `frame: NO_FRAME` — so no sequence in this catalog spells the ticks.
 
   // Master gate is applied as the outermost wrapper so per-callout opt-ins,
   // pit-action cooldowns, and readback predicates only run when the
   // engineer is on at all. Cheap short-circuit on the master saves every
   // inner wrapper from running on every event arrival.
-  const wrapWithMaster = (s: Scenario): Scenario => wrapRaceEngineerMasterGate(s, getRaceEngineerMasterEnabled, logger);
+  const wrapWithMaster = <T extends Gated>(s: T): T =>
+    wrapRaceEngineerMasterGate(s, getRaceEngineerMasterEnabled, logger);
 
   // Each pit-service toggle scenario is wrapped three times. Outermost
   // wrapper applies the master gate (`pitCrewRaceEngineerEnabled`); next
@@ -1251,7 +1261,7 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   // innermost applies the engine-internal cooldown
   // (`isPitActionsAllowed`). Outer-first because the master gate is the
   // cheapest, most-persistent check.
-  const wrapToggle = (s: Scenario): Scenario =>
+  const wrapToggle = <T extends Gated>(s: T): T =>
     wrapWithMaster(
       wrapPitServiceRequestsScenario(
         wrapPitActionScenario(s, getPitActionsAllowed, logger),
@@ -1280,9 +1290,13 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
     engine.defineScenario(wrapToggle(s));
   }
 
-  for (const s of FLAG_ALERTS) {
-    engine.defineScenario(
-      wrapWithMaster(wrapCalloutScenario(s, SCENARIO_ID_TO_FLAG_ID, getFlagCalloutEnabled, "flag callout", logger)),
+  // Contracts, not scenarios (issue #1064): the flag family's wording is the
+  // active voice's business (`scenarios["pit-crew.flag-*"]` in its
+  // `callouts.json`, compiled by `setScripts`); the gates wrap the contract's
+  // `where:` exactly as they wrap a legacy scenario's.
+  for (const c of FLAG_CONTRACTS) {
+    engine.defineContract(
+      wrapWithMaster(wrapCalloutScenario(c, SCENARIO_ID_TO_FLAG_ID, getFlagCalloutEnabled, "flag callout", logger)),
     );
   }
 
@@ -1320,8 +1334,8 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   }
 
   // Start-light family (issue #480). The `start-light-*` pools are already
-  // registered en masse above via `registerPools(engine)` (same as the flag
-  // pools), so no explicit pool loop is needed here — `START_LIGHT_POOL_NAMES`
+  // registered en masse above via `registerPools(engine)` (as the flag pools
+  // were until #1064), so no explicit pool loop is needed here — `START_LIGHT_POOL_NAMES`
   // exists for the catalog tests to register pools in isolation. Two grouped
   // opt-ins (`lights`, `countdown`) gate the five scenarios via
   // `SCENARIO_ID_TO_START_LIGHT_ID`.
@@ -1720,16 +1734,14 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
 }
 
 /**
- * Wrap a scenario's `where:` predicate so the user's plugin-global opt-in
- * is consulted on every event arrival. The wrapper short-circuits BEFORE
- * `attemptFire`, so disabling a callout while its scenario is already
- * playing does NOT cut playback — only future events are suppressed.
- *
- * Generic over the callout id type so flags (issue #467) and pit-readback
- * callouts (issue #476) share one wrapper. Throws if the scenario id is
- * missing from the id mapping — better to fail loudly at startup than
- * silently leak the unmapped scenario past the toggle.
+ * What the gate wrappers below need of their input: an id (for the log line)
+ * and an optional trigger whose `where:` they narrow. Both a legacy
+ * `Scenario` and a `ScenarioContract` (issue #1064) satisfy it, and each
+ * wrapper is generic over it so what goes in comes out with the same type —
+ * a contract never grows a sequence by being gated.
  */
+type Gated = { id: string; when?: ScenarioContract["when"] };
+
 /**
  * Wrap a Race Engineer voice scenario with the plugin-wide master gate
  * (issue #515). Plugins compose the closure from
@@ -1740,12 +1752,12 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
  * cheapest possible early-out, ahead of per-callout opt-ins and
  * pit-action cooldowns.
  *
- * Returns the scenario unchanged when it has no `when:` block (e.g. the
- * `@pit-crew.radio-open` / `…close` include scenarios), since includes
- * only run when triggered by a parent scenario whose master-gate check
- * has already passed.
+ * Returns the scenario unchanged when it has no `when:` block — a fragment
+ * only ever reached through an `@` include (the radio frame was one until
+ * issue #1064 moved it into the engine) runs inside a parent scenario whose
+ * master-gate check has already passed.
  */
-function wrapRaceEngineerMasterGate(s: Scenario, getEnabled: () => boolean, logger: ILogger | undefined): Scenario {
+function wrapRaceEngineerMasterGate<T extends Gated>(s: T, getEnabled: () => boolean, logger: ILogger | undefined): T {
   if (!s.when) return s;
 
   const baseWhere = s.when.where;
@@ -1773,7 +1785,7 @@ function wrapRaceEngineerMasterGate(s: Scenario, getEnabled: () => boolean, logg
  * cooldown window. Same gate-at-event-arrival shape as
  * `wrapCalloutScenario`, but global rather than per-id.
  */
-function wrapPitActionScenario(s: Scenario, getAllowed: () => boolean, logger: ILogger | undefined): Scenario {
+function wrapPitActionScenario<T extends Gated>(s: T, getAllowed: () => boolean, logger: ILogger | undefined): T {
   if (!s.when) return s;
 
   const baseWhere = s.when.where;
@@ -1802,7 +1814,11 @@ function wrapPitActionScenario(s: Scenario, getAllowed: () => boolean, logger: I
  * cutting an in-flight clip — same gate-at-event-arrival shape as the
  * other wrappers.
  */
-function wrapPitServiceRequestsScenario(s: Scenario, getEnabled: () => boolean, logger: ILogger | undefined): Scenario {
+function wrapPitServiceRequestsScenario<T extends Gated>(
+  s: T,
+  getEnabled: () => boolean,
+  logger: ILogger | undefined,
+): T {
   if (!s.when) return s;
 
   const baseWhere = s.when.where;
@@ -1824,13 +1840,24 @@ function wrapPitServiceRequestsScenario(s: Scenario, getEnabled: () => boolean, 
   };
 }
 
-function wrapCalloutScenario<TId extends string>(
-  s: Scenario,
+/**
+ * Wrap a scenario's `where:` predicate so the user's plugin-global opt-in
+ * is consulted on every event arrival. The wrapper short-circuits BEFORE
+ * `attemptFire`, so disabling a callout while its scenario is already
+ * playing does NOT cut playback — only future events are suppressed.
+ *
+ * Generic over the callout id type so flags (issue #467) and pit-readback
+ * callouts (issue #476) share one wrapper. Throws if the scenario id is
+ * missing from the id mapping — better to fail loudly at startup than
+ * silently leak the unmapped scenario past the toggle.
+ */
+function wrapCalloutScenario<T extends Gated, TId extends string>(
+  s: T,
   scenarioIdToCalloutId: Record<string, TId>,
   getCalloutEnabled: (id: TId) => boolean,
   description: string,
   logger: ILogger | undefined,
-): Scenario {
+): T {
   const calloutId = scenarioIdToCalloutId[s.id];
 
   if (!calloutId) {

@@ -10,6 +10,7 @@
     },
     "./manifest.json": "./manifest.json",
     "./catalog/*.json": "./catalog/*.json",
+    "./voice/*/callouts.json": "./voice/*/callouts.json",
     "./presets": "./src/presets.mjs"
   },
   "scripts": {
@@ -17,10 +18,12 @@
     "generate": "tsx src/generate/generate.ts",
     "generate:dry-run": "tsx src/generate/generate.ts --dry-run",
     "generate:manifest": "node scripts/generate-audio-manifest.mjs",
+    "generate:callout-scripts": "tsx scripts/generate-callout-scripts.mjs",
     "pack:voice": "node scripts/pack-voice.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {
+    "@iracedeck/callout-script": "workspace:*",
     "@iracedeck/deck-core": "workspace:*",
     "@types/node": "26.4.0",
     "fflate": "0.8.3",

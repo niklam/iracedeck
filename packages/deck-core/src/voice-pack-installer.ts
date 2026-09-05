@@ -46,6 +46,7 @@
  * banner read, and nothing else. `voice-pack-no-window.test.ts` enforces this
  * structurally over every module of the feature, this one included.
  */
+import { calloutScriptPath } from "@iracedeck/callout-script";
 import type { ILogger } from "@iracedeck/logger";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
@@ -759,9 +760,10 @@ export function createVoicePackInstaller(deps: VoicePackInstallerDeps): VoicePac
   }
 
   /**
-   * Copy a bundled pack's clips into a staging directory, through the same
-   * write port the extractor uses, and give it the manifest the bundle does
-   * not carry.
+   * Copy a bundled pack's clips — and each voice's callout script, where the
+   * bundle has one (#1064) — into a staging directory, through the same write
+   * port the extractor uses, and give it the manifest the bundle does not
+   * carry.
    */
   async function stageFromBundle(pack: BundledVoicePack): Promise<Staged | InstallFailure> {
     const { entry, audioDir } = pack;
@@ -846,6 +848,60 @@ export function createVoicePackInstaller(deps: VoicePackInstallerDeps): VoicePac
       written.push(clip);
 
       if ((index + 1) % SEED_FILES_PER_TURN === 0) await nextTurn();
+    }
+
+    // Each voice's `voice/<id>/callouts.json`, beside its clips, exactly as
+    // the build shipped it (#1064). Read through the scanner's port rather
+    // than the byte reader because only that port tells "no file" from "a
+    // file that could not be opened", and the two mean opposite things here:
+    // no script is a CLIPS-ONLY voice, seeded as such — a valid pack shape,
+    // and what a bundle built before scripts existed looks like; a script
+    // that is there but unreadable must FAIL the seed, because seeding the
+    // clips alone would promote a copy that, once the bundle is dropped, is a
+    // voice with every callout skipped and nothing saying why — and the seed
+    // never runs again into a folder that holds a pack. Failing keeps the
+    // folder empty, so the next start tries again. The text round-trip is
+    // byte-preserving for the UTF-8 the generator writes; nothing is parsed or
+    // re-serialised on the way, and `validateStagedVoicePack` stays
+    // clip-based — whether the copy is a VALID script is the scanner's call,
+    // on the next scan, where a malformed one is reported on the voice.
+    for (const voice of entry.voices) {
+      const scriptPath = calloutScriptPath(voice.id);
+      const segments = scriptPath.split("/");
+      const script = packFs.readTextFile(join(audioDir, ...segments));
+
+      if (!script.ok) {
+        if (script.missing) continue;
+
+        return discardAndFail(
+          "storage",
+          "A bundled voice's callout script could not be read. Reinstall the plugin and try again.",
+          `read ${scriptPath}: ${script.reason}`,
+        );
+      }
+
+      const destination = join(staging.dir, ...segments);
+      const made = archiveFs.ensureDirectory(dirname(destination));
+
+      if (!made.ok) {
+        return discardAndFail(
+          "storage",
+          "The bundled voice could not be copied. Check free disk space and try again.",
+          `mkdir for ${scriptPath}: ${made.reason}`,
+        );
+      }
+
+      const wrote = archiveFs.writeFile(destination, new TextEncoder().encode(script.text));
+
+      if (!wrote.ok) {
+        return discardAndFail(
+          "storage",
+          "The bundled voice could not be copied. Check free disk space and try again.",
+          `write ${scriptPath}: ${wrote.reason}`,
+        );
+      }
+
+      written.push(scriptPath);
     }
 
     return finishStaging(id, staging, written, {

@@ -215,7 +215,7 @@ export function buildGapTrendScenario(
     weight: WEIGHT.CHATTER,
     queueable: true,
     family: "gap",
-    sequence: ["@pit-crew.radio-open", { var: "gap.line" }, gapReadoutClause(), "@pit-crew.radio-close"],
+    sequence: [{ var: "gap.line" }, gapReadoutClause()],
   };
 }
 
@@ -248,7 +248,7 @@ export function buildGapThresholdScenario(
     weight: WEIGHT.NORMAL,
     queueable: true,
     family: "gap",
-    sequence: ["@pit-crew.radio-open", { var: "gap.thresholdLine" }, gapReadoutClause(), "@pit-crew.radio-close"],
+    sequence: [{ var: "gap.thresholdLine" }, gapReadoutClause()],
   };
 }
 
@@ -279,7 +279,9 @@ export const SCENARIO_ID_TO_GAP_ID: Record<(typeof GAP_SCENARIO_IDS)[number], Ga
  * Pool names this family draws from — the builder-family convention every
  * other catalog here follows, so the catalog tests can register them without
  * a hand-maintained list. Derived from `POOL_REGISTRY` by the `gap-` prefix
- * (the `FLAG_POOL_NAMES` shape), so adding or renaming a gap pool there flows
- * through automatically.
+ * (the `START_LIGHT_POOL_NAMES` shape — the flags have no pool names at all
+ * since #1064, their script addressing the clips as `pool:flags/<base>`, and
+ * `FLAG_CLIP_SOURCES` is a literal list of those), so adding or renaming a
+ * gap pool there flows through automatically.
  */
 export const GAP_POOL_NAMES: readonly string[] = Object.keys(POOL_REGISTRY).filter((name) => name.startsWith("gap-"));

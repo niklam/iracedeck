@@ -247,7 +247,6 @@ export function buildSessionStartScenario(
   getSetupWarningMismatch: (kind: "qualifying" | "race") => boolean = () => false,
 ): Scenario {
   const sequence: Step[] = [
-    "@pit-crew.radio-open",
     // Optional (issue #835): driver names are a union across voices, so a
     // voice lacking the picked name clip skips the greeting — a complete
     // sentence either way — instead of aborting the whole brief.
@@ -289,7 +288,6 @@ export function buildSessionStartScenario(
       // a voice without the clip skips it, not the brief.
       then: [{ optional: [`${SETUP_WARNING_GROUP}/qualifying-01.mp3`] }],
     },
-    "@pit-crew.radio-close",
   ];
 
   return sessionStartScenario(getSnapshot, sequence);

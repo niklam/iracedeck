@@ -35,7 +35,7 @@ function trackConditionsScenario(direction: Direction, target: TrackWetness, slu
     bus: AudioBus.Voice,
     base: "voice/{voice}",
     family: "track-conditions",
-    sequence: ["@pit-crew.radio-open", ...body, "@pit-crew.radio-close"],
+    sequence: body,
     when: {
       event: "track.wetness.changed",
       where: (e) => {

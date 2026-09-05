@@ -2,9 +2,9 @@
  * Rolling-start family scenarios (issue #660).
  *
  * A single line spoken once at the start of a rolling-start formation lap, when
- * the field begins to roll behind the pace car. The callout wraps its clip in
- * the shared radio frame (`@pit-crew.radio-open` / `@pit-crew.radio-close`) so
- * the engineer voice matches every other Pit Crew message.
+ * the field begins to roll behind the pace car. The engine wraps the clip in the
+ * active voice's `radio` frame (issue #1064) so the engineer voice matches every
+ * other Pit Crew message.
  *
  * **Pool-driven clips** (mirrors `start-lights.ts`): the scenario draws from a
  * pool defined in `pools.ts` under the `rolling-start-` prefix, so a future
@@ -46,7 +46,7 @@ const ROLLING_START_PACE_CAR: Scenario = {
   base: "voice/{voice}",
   weight: WEIGHT.SAFETY,
   family: "rolling-start",
-  sequence: ["@pit-crew.radio-open", "pool:rolling-start-pace-car", "@pit-crew.radio-close"],
+  sequence: ["pool:rolling-start-pace-car"],
   when: { event: "rollingStart.pace-car-moving.raised", where: liveRaceCar },
 };
 

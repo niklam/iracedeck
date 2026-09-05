@@ -32,13 +32,11 @@ export const WELCOME: Scenario = {
   bus: AudioBus.Voice,
   base: "pit-crew",
   sequence: [
-    "@pit-crew.radio-open",
     {
       if: () => Math.random() < GREETING_PROBABILITY,
       then: ["pool:greeting"],
     },
     "{{name}}",
     "pool:welcome-tip",
-    "@pit-crew.radio-close",
   ],
 };

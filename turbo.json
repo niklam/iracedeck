@@ -20,6 +20,7 @@
       "dependsOn": ["^build"]
     },
     "@iracedeck/audio-assets#build": {
+      "dependsOn": ["@iracedeck/callout-script#build"],
       "inputs": ["voice/**", "src/build/**", "src/presets.mjs"],
       "outputs": [".cache/**"]
     },

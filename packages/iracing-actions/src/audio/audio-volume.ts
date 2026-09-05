@@ -1,6 +1,7 @@
+import type { FrameOptions } from "@iracedeck/audio-scenarios";
 import { isBackgroundTestInFlight, stopRaceEngineerScenarios } from "@iracedeck/audio-scenarios/pit-crew";
 import { AudioBus, AudioChannel, getAudio } from "@iracedeck/audio-service";
-import { getGlobalSettings, updateGlobalSettings } from "@iracedeck/deck-core";
+import { frameOptionsFromSettings, getGlobalSettings, updateGlobalSettings } from "@iracedeck/deck-core";
 
 /**
  * Shared volume + audio-bus helpers for iRaceDeck's own audio (Race Engineer
@@ -69,6 +70,16 @@ export function isRaceEngineerEnabled(): boolean {
 /** Whether the directional Radar ticks are enabled. Renamed from `radarEnabled` (issue #515). */
 export function isRadarEnabled(): boolean {
   return (getGlobalSettings() as Record<string, unknown>).pitCrewRadarEnabled === true;
+}
+
+/**
+ * The radio frame's two opt-outs (issue #1064), read live: Radio beeps and
+ * Pit ambience. Deck-core's `frameOptionsFromSettings` is the ONE rule —
+ * the same one the plugins' `getFrameOptions` hand the engine — so the
+ * Background preview drops exactly what a real callout's frame drops.
+ */
+export function readFrameOptions(): FrameOptions {
+  return frameOptionsFromSettings(getGlobalSettings());
 }
 
 // ─── Volume readers ──────────────────────────────────────────────────────────

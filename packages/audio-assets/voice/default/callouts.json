@@ -1,0 +1,256 @@
+{
+  "schema": 1,
+  "scenarios": {
+    "pit-crew.flag-yellow-local": {
+      "comment": "A local yellow is shown for an incident ahead — one short warning to slow down and mind the stopped cars. A full-course yellow takes the flag-yellow-full line instead.",
+      "test": "Harness → Flags → Yellow (local). In-sim: drive up to a stopped or spun car in a local yellow sector.",
+      "sequence": [
+        "pool:flags/yellow-local"
+      ]
+    },
+    "pit-crew.flag-yellow-full": {
+      "comment": "A full-course yellow is out — tells the driver the pace car is being deployed and to close up safely.",
+      "test": "Harness → Flags → Yellow (full). In-sim: a full-course caution in an oval race (the pace car is deployed).",
+      "sequence": [
+        "pool:flags/yellow-full"
+      ]
+    },
+    "pit-crew.flag-yellow-cleared": {
+      "comment": "The yellow has been withdrawn — a short all-clear, replayed after a busier line finishes rather than dropped.",
+      "test": "Harness → Flags → Yellow Cleared. In-sim: clear the local yellow sector, or the caution ends and racing resumes.",
+      "sequence": [
+        "pool:flags/yellow-cleared"
+      ]
+    },
+    "pit-crew.flag-green": {
+      "comment": "The green flag at the start of a session or a restart. The wording differs per session type (practice, qualifying, race), so it branches on session.type; an unknown session type takes the race line.",
+      "test": "Harness → Flags → Green, after choosing a session preset (practice, qualifying or race). In-sim: the green at the start of any session, or at a race restart.",
+      "sequence": [
+        {
+          "case": "session.type",
+          "of": {
+            "practice": [
+              "pool:flags/green-practice"
+            ],
+            "qualifying": [
+              "pool:flags/green-qualifying"
+            ],
+            "race": [
+              "pool:flags/green-race"
+            ],
+            "default": [
+              "pool:flags/green-race"
+            ]
+          }
+        }
+      ]
+    },
+    "pit-crew.flag-blue": {
+      "comment": "A faster car is about to lap the driver — asks for mirrors and a clean pass.",
+      "test": "Harness → Flags → Blue. In-sim: get shown the blue flag as a lapping car closes in.",
+      "sequence": [
+        "pool:flags/blue"
+      ]
+    },
+    "pit-crew.flag-white": {
+      "comment": "The white flag — the leader's final lap in a race, or the last lap of a practice or qualifying session; the wording follows session.type, and an unknown session type takes the race line.",
+      "test": "Harness → Flags → White, after choosing a session preset. In-sim: the white flag comes out on the leader's final lap (race) or on your own last lap (practice, qualifying).",
+      "sequence": [
+        {
+          "case": "session.type",
+          "of": {
+            "practice": [
+              "pool:flags/white-practice"
+            ],
+            "qualifying": [
+              "pool:flags/white-qualifying"
+            ],
+            "race": [
+              "pool:flags/white-race"
+            ],
+            "default": [
+              "pool:flags/white-race"
+            ]
+          }
+        }
+      ]
+    },
+    "pit-crew.flag-white-last-lap": {
+      "comment": "The driver has crossed the line under the white flag and started their own last lap — give it everything. Race-only; stage two of the white-flag call.",
+      "test": "Harness → Flags → White — Last Lap Started, with the race session preset. In-sim: cross start/finish while the white flag flies in a race.",
+      "sequence": [
+        "pool:flags/white-last-lap"
+      ]
+    },
+    "pit-crew.flag-white-leader": {
+      "comment": "The overall leader has started their final lap while the driver is still some way behind — a heads-up that the race is about to end.",
+      "test": "Harness → Flags → Leader's final lap, with the race session preset. In-sim: in a race, let the leader take the white flag while you are a lap or more down.",
+      "sequence": [
+        "pool:flags/white-leader"
+      ]
+    },
+    "pit-crew.flag-red": {
+      "comment": "The red flag — the session is stopped; tells the driver to slow down and drive carefully back to the pits.",
+      "test": "Harness → Flags → Red. In-sim: a red flag in a hosted or league session.",
+      "sequence": [
+        "pool:flags/red"
+      ]
+    },
+    "pit-crew.flag-black": {
+      "comment": "A black flag has been issued — the driver has a penalty to serve within three laps.",
+      "test": "Harness → Flags → Black. In-sim: speed in the pit lane, or ignore a furled black flag; a race admin can also issue one (!black).",
+      "sequence": [
+        "pool:flags/black"
+      ]
+    },
+    "pit-crew.flag-checkered": {
+      "comment": "The checkered flag — the session is over. The wording follows session.type (the well-done only after a race); an unknown session type takes the race line.",
+      "test": "Harness → Flags → Checkered, after choosing a session preset. In-sim: take the checkered flag at the end of any session.",
+      "sequence": [
+        {
+          "case": "session.type",
+          "of": {
+            "practice": [
+              "pool:flags/checkered-practice"
+            ],
+            "qualifying": [
+              "pool:flags/checkered-qualifying"
+            ],
+            "race": [
+              "pool:flags/checkered-race"
+            ],
+            "default": [
+              "pool:flags/checkered-race"
+            ]
+          }
+        }
+      ]
+    },
+    "pit-crew.flag-debris": {
+      "comment": "A debris flag — something is on the track ahead; asks the driver to be careful.",
+      "test": "Harness → Flags → Debris. In-sim: the debris flag after an incident leaves parts on the track.",
+      "sequence": [
+        "pool:flags/debris"
+      ]
+    },
+    "pit-crew.flag-meatball": {
+      "comment": "The meatball flag — mandatory repairs, the driver must pit. Cuts any other line in flight and is never dropped.",
+      "test": "Harness → Flags → Meatball. In-sim: take enough damage that iRacing orders you in for repairs.",
+      "sequence": [
+        "pool:flags/meatball"
+      ]
+    },
+    "pit-crew.flag-disqualify": {
+      "comment": "The driver has been disqualified — pull off the track.",
+      "test": "Harness → Flags → Disqualify. In-sim: exceed the session's incident limit, or a race admin disqualifies you (!dq).",
+      "sequence": [
+        "pool:flags/disqualify"
+      ]
+    },
+    "pit-crew.flag-furled": {
+      "comment": "The furled black flag — the driver gained time and must give it back. Spoken only while the flag is still shown at speak time, so a warning withdrawn while this waited behind a longer line stays silent.",
+      "test": "Harness → Flags → Furled. In-sim: cut a corner and gain time; the furled flag shows until the time is given back.",
+      "sequence": [
+        {
+          "if": "flag.furledStillShown",
+          "then": [
+            "pool:flags/furled"
+          ]
+        }
+      ]
+    },
+    "pit-crew.flag-furled-cleared": {
+      "comment": "The furled warning has been withdrawn after the driver gave the time back. Only follows a furled line that was actually spoken, and never plays when the warning escalated to a real black flag instead.",
+      "test": "Harness → Flags → Furled, then Harness → Flags → Furled Cleared. In-sim: give the time back after a furled black flag.",
+      "sequence": [
+        {
+          "if": "flag.furledWithdrawn",
+          "then": [
+            "pool:flags/furled-cleared"
+          ]
+        }
+      ]
+    },
+    "pit-crew.flag-dq-scoring-invalid": {
+      "comment": "The driver has been disqualified and their scoring invalidated — DQ, scoring's off.",
+      "test": "Harness → Flags → DQ — Scoring Invalid. In-sim: a disqualification that also invalidates scoring (rare; the harness is the practical route).",
+      "sequence": [
+        "pool:flags/dq-scoring-invalid"
+      ]
+    },
+    "pit-crew.flag-crossed": {
+      "comment": "Crossed flags — the halfway point of the race. Race-only, while the driver is live in the car.",
+      "test": "Harness → Flags → Crossed, with the race session preset and the hot-lap telemetry preset. In-sim: reach the halfway point of an oval race.",
+      "sequence": [
+        "pool:flags/crossed"
+      ]
+    },
+    "pit-crew.flag-one-pace-lap-to-go": {
+      "comment": "One more pace lap before the green on a rolling start — keep the spacing tidy and warm the tyres. Race-only, live in the car.",
+      "test": "Harness → Flags → One Pace Lap to Go, with the race session preset and the hot-lap telemetry preset. In-sim: the second-to-last pace lap of a rolling start.",
+      "sequence": [
+        "pool:flags/one-pace-lap-to-go"
+      ]
+    },
+    "pit-crew.flag-green-held": {
+      "comment": "The pace car is pulling in and the green is imminent — get ready to launch. Rolling starts and restarts only; a standing-start grid is the start lights' business.",
+      "test": "Harness → Flags → Green Held, with the race session preset and the hot-lap telemetry preset. In-sim: the final pace lap of a rolling start or restart, once the pace car peels off.",
+      "sequence": [
+        "pool:flags/green-held"
+      ]
+    },
+    "pit-crew.flag-ten-to-go": {
+      "comment": "Ten laps to go. Race-only, live in the car.",
+      "test": "Harness → Flags → Ten to Go, with the race session preset and the hot-lap telemetry preset. In-sim: ten laps remaining in an oval race.",
+      "sequence": [
+        "pool:flags/ten-to-go"
+      ]
+    },
+    "pit-crew.flag-five-to-go": {
+      "comment": "Five laps to go. Race-only, live in the car.",
+      "test": "Harness → Flags → Five to Go, with the race session preset and the hot-lap telemetry preset. In-sim: five laps remaining in an oval race.",
+      "sequence": [
+        "pool:flags/five-to-go"
+      ]
+    },
+    "pit-crew.flag-yellow-waving": {
+      "comment": "A waving yellow — a fresh incident right ahead, more urgent than the standing yellow. Repeats at most once per 30 seconds while the incident persists.",
+      "test": "Harness → Flags → Yellow Waving. In-sim: approach a sector where a car has just crashed or spun.",
+      "sequence": [
+        "pool:flags/yellow-waving"
+      ]
+    },
+    "pit-crew.flag-caution-waving": {
+      "comment": "The caution is out and waving — slow down and close up safely. Repeats at most once per 30 seconds.",
+      "test": "Harness → Flags → Caution Waving. In-sim: the caution comes out on an oval as the field bunches up.",
+      "sequence": [
+        "pool:flags/caution-waving"
+      ]
+    }
+  },
+  "frames": {
+    "radio": {
+      "comment": "The walkie-talkie frame: an open tick, the pit-lane ambience bed, a close tick.",
+      "open": [
+        {
+          "clip": "sfx/IRD-tick-open.mp3"
+        },
+        {
+          "ambient": "start"
+        },
+        {
+          "ambient": "seek"
+        }
+      ],
+      "close": [
+        {
+          "ambient": "stop"
+        },
+        {
+          "clip": "sfx/IRD-tick-close.mp3"
+        }
+      ]
+    }
+  },
+  "pools": {}
+}

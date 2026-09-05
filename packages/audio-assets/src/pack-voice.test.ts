@@ -1,6 +1,8 @@
+import { CALLOUT_SCRIPT_FILE, type CalloutScript, calloutScriptPath } from "@iracedeck/callout-script";
 import { unzipSync } from "fflate";
 import { createHash } from "node:crypto";
 import {
+  chmodSync,
   copyFileSync,
   existsSync,
   mkdirSync,
@@ -9,12 +11,13 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import url from "node:url";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 // The REAL contracts, from deck-core's source rather than a copy: the packer's
 // output must satisfy the schemas the plugin parses with and lay clips out where
@@ -34,6 +37,34 @@ import {
   serializeSortedJson,
 } from "../scripts/pack-voice.mjs";
 import { VOICE_PACKS } from "./build/voice-packs.mjs";
+
+/**
+ * One deliberate hole in the real file system: a path whose `lstat` reports
+ * ENOENT although the directory listing just named it — the race between
+ * `readdirSync` and the stat that the packer must report in its own words.
+ * Nothing else is mocked; `null` is the file system as it is.
+ */
+const fsHook = vi.hoisted(() => ({ vanishOnStat: null as string | null }));
+
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  // `lstatSync` is a stack of overloads; the wrapper takes the widest shape
+  // and is handed back under the original type, since it forwards verbatim.
+  type Widest = (file: import("node:fs").PathLike, options?: import("node:fs").StatOptions) => unknown;
+  const forward = actual.lstatSync as Widest;
+  const lstatSync = ((file, options) => {
+    if (fsHook.vanishOnStat !== null && String(file) === fsHook.vanishOnStat) {
+      const err = new Error(`ENOENT: no such file or directory, lstat '${String(file)}'`) as NodeJS.ErrnoException;
+      err.code = "ENOENT";
+
+      throw err;
+    }
+
+    return forward(file, options);
+  }) as Widest as typeof actual.lstatSync;
+
+  return { ...actual, lstatSync };
+});
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = path.resolve(__dirname, "..");
@@ -184,6 +215,27 @@ describe("createArchive", () => {
   });
 });
 
+/** A script with one real scenario, so the scanner's parse has something to accept. */
+const SCRIPT: CalloutScript = {
+  schema: 1,
+  scenarios: {
+    "pit-crew.flag-green": {
+      comment: "Green flag.",
+      test: "Take the green.",
+      sequence: ["pool:flag-green", { if: "!race", then: [{ pause: 200 }] }],
+    },
+  },
+  frames: { radio: { open: ["sfx/IRD-tick-open.mp3"], close: ["sfx/IRD-tick-close.mp3"] } },
+  pools: { "flag-green": { group: "flags", base: "green" } },
+};
+
+/** Serialized the way the generator does NOT — sorted keys, no trailing newline — so a re-serialized copy would show. */
+const SCRIPT_TEXT = JSON.stringify(
+  { pools: SCRIPT.pools, frames: SCRIPT.frames, scenarios: SCRIPT.scenarios, schema: SCRIPT.schema },
+  null,
+  4,
+);
+
 /**
  * The end-to-end tests run the REAL pipeline (ffmpeg via ffmpeg-static) on a
  * two-clip synthetic voice rather than on the 12.5 MB bundled one: the pipeline
@@ -222,6 +274,12 @@ describe("packVoice", () => {
       mkdirSync(path.dirname(path.join(srcRoot, to)), { recursive: true });
       copyFileSync(path.join(PACKAGE_ROOT, from), path.join(srcRoot, to));
     }
+
+    // The voice's script, directly under voice/<id>/ where the scanner reads
+    // it (#1064) — and a same-named decoy one level down, which is where the
+    // walk must treat it as just another non-mp3 file.
+    writeFileSync(path.join(srcRoot, "testvoice", CALLOUT_SCRIPT_FILE), SCRIPT_TEXT);
+    writeFileSync(path.join(srcRoot, "testvoice", "numbers", CALLOUT_SCRIPT_FILE), SCRIPT_TEXT);
 
     mkdirSync(configsDir, { recursive: true });
     writeFileSync(path.join(configsDir, "testvoice.voice.json"), JSON.stringify({ label: "Test Voice", groups: {} }));
@@ -293,9 +351,25 @@ describe("packVoice", () => {
       version: "1.2.3",
       author: "iRaceDeck",
       dir: first.stageDir,
-      voices: [{ id: "testvoice", label: "Test Voice" }],
+      voices: [{ id: "testvoice", label: "Test Voice", script: SCRIPT }],
       clips: ["voice/testvoice/numbers/1.mp3", "voice/testvoice/seconds/1.mp3"],
     });
+  });
+
+  it("ships the voice's callouts.json as-is, in the archive and the stage, never in the cache", () => {
+    const entryPath = calloutScriptPath("testvoice");
+    const unpacked = unzipSync(readFileSync(first.archivePath));
+    const source = readFileSync(path.join(srcRoot, "testvoice", CALLOUT_SCRIPT_FILE));
+
+    expect(Object.keys(unpacked)).toContain(entryPath);
+    expect(Buffer.from(unpacked[entryPath]!).equals(source)).toBe(true);
+    expect(readFileSync(path.join(first.stageDir, entryPath)).equals(source)).toBe(true);
+    expect(listFiles(path.join(root, "cache-1")).some((file) => file.endsWith(CALLOUT_SCRIPT_FILE))).toBe(false);
+  });
+
+  it("counts clips, not the script", () => {
+    expect(first.clips).toBe(2);
+    expect(first.scripts).toBe(1);
   });
 
   it("archives exactly the staged tree", () => {
@@ -303,7 +377,14 @@ describe("packVoice", () => {
     const staged = listFiles(first.stageDir);
 
     expect(Object.keys(unpacked).sort()).toEqual(staged);
-    expect(staged).toEqual([MANIFEST_FILE, "voice/testvoice/numbers/1.mp3", "voice/testvoice/seconds/1.mp3"]);
+    // The decoy under numbers/ is not here: only the script directly under
+    // the voice is the voice's script.
+    expect(staged).toEqual([
+      MANIFEST_FILE,
+      calloutScriptPath("testvoice"),
+      "voice/testvoice/numbers/1.mp3",
+      "voice/testvoice/seconds/1.mp3",
+    ]);
 
     for (const file of staged) {
       expect(Buffer.from(unpacked[file]!).equals(readFileSync(path.join(first.stageDir, file)))).toBe(true);
@@ -361,6 +442,176 @@ describe("packVoice", () => {
 
     expect(existsSync(path.join(root, "catalog-3", "testvoice.json"))).toBe(false);
   }, 30_000);
+
+  // A pack must never ship a script the scanner will reject: the scanner
+  // drops such a voice, so the pack would install, claim nothing, and be
+  // silent — with the only trace a line in Installed Voices on the user's
+  // machine. Refused here, naming the file and the first problem, before a
+  // single clip is staged.
+  /**
+   * A one-clip voice under its own root with a script placed by `place`
+   * (default: the text at `voice/testvoice/callouts.json`), and a `packVoice`
+   * call against it. Shared by the refusal cases and the BOM case.
+   */
+  function packWithScript(name: string, text: string, place?: (voiceDir: string) => void) {
+    const caseRoot = path.join(root, name);
+    const voiceDir = path.join(caseRoot, "voice", "testvoice");
+
+    mkdirSync(path.join(voiceDir, "numbers"), { recursive: true });
+    copyFileSync(path.join(srcRoot, "testvoice", "numbers", "1.mp3"), path.join(voiceDir, "numbers", "1.mp3"));
+
+    if (place) place(voiceDir);
+    else writeFileSync(path.join(voiceDir, CALLOUT_SCRIPT_FILE), text);
+
+    const attempt = () =>
+      packVoice({
+        pack,
+        srcRoot: path.join(caseRoot, "voice"),
+        configsDir,
+        outDir: path.join(caseRoot, "out"),
+        catalogDir: path.join(caseRoot, "catalog"),
+        cacheDir: path.join(caseRoot, "cache"),
+      });
+
+    return { attempt, badRoot: caseRoot, voiceDir };
+  }
+
+  it("ships a script with a UTF-8 BOM byte for byte — the packer is no stricter than the scanner about one", async () => {
+    // Windows editors write one; the scanner strips it before parsing, so the
+    // packer validates past it too and ships the file AS-IS, BOM included —
+    // a re-encoded script would be a second copy of the author's file.
+    const bomText = "\ufeff" + SCRIPT_TEXT;
+    const { attempt, voiceDir } = packWithScript("bom", bomText);
+    const result = await attempt();
+    const entryPath = calloutScriptPath("testvoice");
+    const unpacked = unzipSync(readFileSync(result.archivePath));
+    const source = readFileSync(path.join(voiceDir, CALLOUT_SCRIPT_FILE));
+
+    expect(result.scripts).toBe(1);
+    expect(source.subarray(0, 3)).toEqual(Buffer.from([0xef, 0xbb, 0xbf]));
+    expect(Buffer.from(unpacked[entryPath]!).equals(source)).toBe(true);
+    expect(readFileSync(path.join(result.stageDir, entryPath)).equals(source)).toBe(true);
+  }, 60_000);
+
+  describe("refuses a malformed callouts.json rather than packing a voice the scanner will drop", () => {
+    it("one that fails the grammar", async () => {
+      const { attempt, badRoot } = packWithScript(
+        "bad-grammar",
+        JSON.stringify({ schema: 1, scenarios: { "pit-crew.flag-green": { sequnce: [] } }, frames: {}, pools: {} }),
+      );
+
+      await expect(attempt()).rejects.toThrow(
+        /voice\/testvoice\/callouts\.json[\s\S]*scenarios\.pit-crew\.flag-green\.sequnce/,
+      );
+      expect(existsSync(path.join(badRoot, "catalog"))).toBe(false);
+      expect(existsSync(path.join(badRoot, "out", "testvoice-1.2.3.zip"))).toBe(false);
+      // Nothing was staged: the script is checked before the pipeline runs.
+      expect(existsSync(path.join(badRoot, "out", "testvoice", "voice"))).toBe(false);
+    });
+
+    it("one that is not JSON — the grammar's own document problem, through the scanner's text stage", async () => {
+      const { attempt, badRoot } = packWithScript("bad-json", "{ not json");
+
+      await expect(attempt()).rejects.toThrow(
+        /voice\/testvoice\/callouts\.json is not a script the plugin accepts:\s+\(document\): not valid JSON: /,
+      );
+      expect(existsSync(path.join(badRoot, "catalog"))).toBe(false);
+    });
+
+    it("one that is a directory — refused as not a regular file, not as unreadable or invalid JSON", async () => {
+      // The walk stages only what `Dirent.isFile()` says is a file; a folder
+      // of the script's name would be skipped by it, so it is refused here in
+      // the same words a symlink is — and never reported as a syntax error,
+      // which an author would look for and not find.
+      const { attempt, badRoot } = packWithScript("directory", "", (voiceDir) => {
+        mkdirSync(path.join(voiceDir, CALLOUT_SCRIPT_FILE));
+      });
+
+      await expect(attempt()).rejects.toThrow(/voice\/testvoice\/callouts\.json must be a regular file/);
+      await expect(attempt()).rejects.not.toThrow(/not valid JSON/);
+      expect(existsSync(path.join(badRoot, "catalog"))).toBe(false);
+      expect(existsSync(path.join(badRoot, "out", "testvoice", "voice"))).toBe(false);
+    });
+
+    it("one that is a symlink to a valid script — the walk would not stage it and the pack would ship silent", async (ctx) => {
+      // `readFileSync` follows the link, so without the `lstat` check a link
+      // to a perfectly good script validates and is then left out of the
+      // stage. Windows needs a privilege (or Developer Mode) to create a file
+      // symlink; where it is refused, the case is skipped rather than faked.
+      const { attempt, badRoot, voiceDir } = packWithScript("symlink", "", (dir) => {
+        const target = path.join(dir, "..", "real-script.json");
+        writeFileSync(target, SCRIPT_TEXT);
+
+        try {
+          symlinkSync(target, path.join(dir, CALLOUT_SCRIPT_FILE), "file");
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException).code === "EPERM") return;
+
+          throw err;
+        }
+      });
+
+      if (!existsSync(path.join(voiceDir, CALLOUT_SCRIPT_FILE))) {
+        ctx.skip("this platform refused to create a file symlink (EPERM) — no way to exercise the case here");
+      }
+
+      await expect(attempt()).rejects.toThrow(/voice\/testvoice\/callouts\.json must be a regular file/);
+      expect(existsSync(path.join(badRoot, "catalog"))).toBe(false);
+      expect(existsSync(path.join(badRoot, "out", "testvoice", "voice"))).toBe(false);
+    });
+
+    it("one that vanishes between the listing and the stat — the packer's own words, not a raw Node error", async () => {
+      const { attempt, badRoot, voiceDir } = packWithScript("vanishing", SCRIPT_TEXT);
+      fsHook.vanishOnStat = path.join(voiceDir, CALLOUT_SCRIPT_FILE);
+
+      try {
+        await expect(attempt()).rejects.toThrow(
+          /^pack "testvoice": voice\/testvoice\/callouts\.json could not be read: .*ENOENT/,
+        );
+        expect(existsSync(path.join(badRoot, "catalog"))).toBe(false);
+      } finally {
+        fsHook.vanishOnStat = null;
+      }
+    });
+
+    it("one that cannot be read — reported as a read failure, not as invalid JSON", async (ctx) => {
+      // A regular file with no read permission. Only POSIX, and only as a
+      // non-root user, can refuse a read that way: Windows has no chmod-based
+      // denial, and root reads anything. Elsewhere the branch is left to CI.
+      if (process.platform === "win32" || process.getuid?.() === 0) {
+        ctx.skip("a read-denied regular file needs a non-root POSIX user");
+      }
+
+      const { attempt, badRoot } = packWithScript("unreadable", SCRIPT_TEXT, (dir) => {
+        const file = path.join(dir, CALLOUT_SCRIPT_FILE);
+        writeFileSync(file, SCRIPT_TEXT);
+        chmodSync(file, 0o000);
+      });
+
+      try {
+        await expect(attempt()).rejects.toThrow(/voice\/testvoice\/callouts\.json could not be read: .*EACCES/);
+        await expect(attempt()).rejects.not.toThrow(/not valid JSON/);
+        expect(existsSync(path.join(badRoot, "catalog"))).toBe(false);
+      } finally {
+        chmodSync(path.join(badRoot, "voice", "testvoice", CALLOUT_SCRIPT_FILE), 0o644);
+      }
+    });
+
+    it("one whose name is not exactly lowercase — the walk would not stage it and the pack would ship silent", async () => {
+      // On a case-insensitive file system `existsSync("callouts.json")` finds
+      // `Callouts.json`, so the old check validated a file the walk then
+      // skipped. The listing carries the on-disk casing on every platform, so
+      // this is refused everywhere — and the assertion is the message, which
+      // holds whether or not the file system tells the two names apart.
+      const { attempt, badRoot } = packWithScript("wrong-case", "", (voiceDir) => {
+        writeFileSync(path.join(voiceDir, "Callouts.json"), SCRIPT_TEXT);
+      });
+
+      await expect(attempt()).rejects.toThrow(/found "Callouts\.json".*must be named exactly "callouts\.json"/);
+      expect(existsSync(path.join(badRoot, "catalog"))).toBe(false);
+      expect(existsSync(path.join(badRoot, "out", "testvoice", "voice"))).toBe(false);
+    });
+  });
 
   it("refuses a pack whose definition the schemas would refuse", async () => {
     const attempt = (overrides: Record<string, unknown>) =>

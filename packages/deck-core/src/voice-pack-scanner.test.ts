@@ -1,14 +1,23 @@
 import { describe, expect, it } from "vitest";
 
 import { voiceDisplayLabels } from "./voice-labels.js";
-import { scanVoicePacks, type VoicePackFileSystem } from "./voice-pack-scanner.js";
+import { scanVoicePacks, VOICE_SCRIPT_MAX_BYTES, type VoicePackFileSystem } from "./voice-pack-scanner.js";
 
 const ROOT = "/packs";
 
 /** A manifest that exists but cannot be opened — locked, EISDIR, permission denied. */
 const UNREADABLE = Symbol("unreadable");
 
-type FakePack = { manifest?: unknown; clips?: string[]; install?: unknown };
+type FakePack = {
+  manifest?: unknown;
+  clips?: string[];
+  install?: unknown;
+  /**
+   * Any other text file, by POSIX path relative to the pack folder — a voice's
+   * `voice/<id>/callouts.json` (#1064). Absent means not on disk.
+   */
+  files?: Record<string, string | typeof UNREADABLE>;
+};
 
 /** Last path segment, normalised across separators. */
 function folderOf(dir: string): string {
@@ -19,13 +28,22 @@ function fakeFs(tree: Record<string, FakePack>): VoicePackFileSystem {
   return {
     listDirectories: (dir) => (folderOf(dir) === "packs" ? Object.keys(tree) : []),
     readTextFile: (file) => {
+      // Resolved RELATIVE TO THE PACK FOLDER, never by the file's parent
+      // directory alone. The scanner reads three files per pack now — the
+      // manifest and the install record at the root, and each voice's script
+      // under `voice/<id>/` — and keying on the parent would answer a script
+      // read with the manifest wherever a voice id equals its pack id, which
+      // is the common case. A test would then pass against the wrong document.
       const parts = file.replace(/\\/g, "/").split("/");
-      const entry = tree[parts.at(-2) ?? ""];
-      // The scanner reads two files per pack now, so the fake has to tell them
-      // apart. Keying on the folder alone would answer every read with the
-      // manifest, and an `.install.json` test would then assert against the
-      // wrong document while appearing to pass.
-      const wanted = parts.at(-1) === ".install.json" ? entry?.install : entry?.manifest;
+      const rootAt = parts.indexOf("packs");
+      const entry = tree[parts[rootAt + 1] ?? ""];
+      const relative = parts.slice(rootAt + 2).join("/");
+      const wanted =
+        relative === "voice-pack.json"
+          ? entry?.manifest
+          : relative === ".install.json"
+            ? entry?.install
+            : entry?.files?.[relative];
 
       if (!entry || wanted === undefined) return { ok: false, missing: true, reason: "ENOENT" };
 
@@ -382,7 +400,7 @@ describe("scanVoicePacks", () => {
       }),
     });
 
-    expect(result.packs[0].voices).toEqual([{ id: "luca", label: "Luca" }]);
+    expect(result.packs[0].voices).toEqual([{ id: "luca", label: "Luca", script: null }]);
     expect(result.problems).toEqual([
       { pack: "luca", reason: 'voice "luca" is declared more than once; the first wins' },
     ]);
@@ -615,5 +633,273 @@ describe("scanVoicePacks reports where a pack came from (#1100)", () => {
     ["a record naming an unknown source", JSON.stringify({ ...record("catalog"), source: "sideload" })],
   ])("reports sideload for %s", (_label, install) => {
     expect(scan(install).packs[0].provenance).toBe("sideload");
+  });
+});
+
+describe("scanVoicePacks reads a voice's callouts.json beside its clips (#1064)", () => {
+  const SCRIPT_PATH = "voice/luca/callouts.json";
+  const script = {
+    schema: 1,
+    scenarios: { "flag-green": { sequence: ["pool:flag-green"] } },
+    frames: {},
+    pools: {},
+  };
+
+  const scan = (files?: FakePack["files"], overrides: Partial<FakePack> = {}) =>
+    scanVoicePacks({
+      root: ROOT,
+      reservedVoices: [],
+      fs: fakeFs({ luca: { manifest: luca, clips: ["voice/luca/flags/blue-01.mp3"], files, ...overrides } }),
+    });
+
+  it("carries the parsed script on the voice", () => {
+    const result = scan({ [SCRIPT_PATH]: JSON.stringify(script) });
+
+    expect(result.problems).toEqual([]);
+    expect(result.packs[0].voices).toEqual([{ id: "luca", label: "Luca", script }]);
+  });
+
+  it("lists a voice with no script file as clips-only, with no problem", () => {
+    // The spec's "no script file at all → a clips-only voice": valid, and its
+    // callouts are all skipped downstream. Not a problem, because a pack built
+    // for the format before scripts existed is exactly this shape.
+    const result = scan();
+
+    expect(result.problems).toEqual([]);
+    expect(result.packs[0].voices).toEqual([{ id: "luca", label: "Luca", script: null }]);
+    expect(result.packs[0].clips).toEqual(["voice/luca/flags/blue-01.mp3"]);
+  });
+
+  it("strips a UTF-8 BOM before parsing, as the manifest reader does", () => {
+    // `JSON.parse` throws on a BOM and several Windows editors write one. The
+    // manifest reader strips it for the same reason; the script must not be
+    // stricter than the manifest about the same accident.
+    const result = scan({ [SCRIPT_PATH]: String.fromCharCode(0xfeff) + JSON.stringify(script) });
+
+    expect(result.problems).toEqual([]);
+    expect(result.packs[0].voices[0].script).toEqual(script);
+  });
+
+  describe("a malformed script drops THE VOICE, exactly as no usable clips does", () => {
+    it("drops a voice whose script is not valid JSON, naming the file", () => {
+      const result = scan({ [SCRIPT_PATH]: "{nope" });
+
+      expect(result.packs).toEqual([]);
+      expect(result.problems).toHaveLength(1);
+      expect(result.problems[0].pack).toBe("luca");
+      // The grammar's own problem follows — a JSON failure is reported under
+      // the document prefix like any other root problem, with the parser's
+      // message: an author hand-editing the file gets the position, not just
+      // a verdict.
+      expect(result.problems[0].reason).toMatch(/^voice "luca": callouts\.json \(document\): not valid JSON: \S/);
+    });
+
+    it("drops a voice whose script is nested too deeply to read, and never throws", () => {
+      // A thousand nested `optional`s once took the grammar past the call
+      // stack. The scan runs where a throw ends the plugin; a sideloaded pack
+      // can put any document it likes on disk.
+      let step: unknown = "pool:flag-green";
+
+      for (let i = 0; i < 1000; i++) step = { optional: [step] };
+
+      const deep = JSON.stringify({ ...script, scenarios: { "flag-green": { sequence: [step] } } });
+      const result = scanVoicePacks({
+        root: ROOT,
+        reservedVoices: [],
+        fs: fakeFs({
+          deep: {
+            manifest: { ...luca, id: "deep" },
+            clips: ["voice/luca/flags/a.mp3"],
+            files: { [SCRIPT_PATH]: deep },
+          },
+          nina: {
+            manifest: { ...luca, id: "nina", voices: [{ id: "nina", label: "Nina" }] },
+            clips: ["voice/nina/flags/a.mp3"],
+            files: { "voice/nina/callouts.json": JSON.stringify(script) },
+          },
+        }),
+      });
+
+      expect(result.packs.map((p) => p.id)).toEqual(["nina"]);
+      expect(result.problems).toEqual([
+        { pack: "deep", reason: 'voice "luca": callouts.json (document): the script is nested too deeply to read' },
+      ]);
+    });
+
+    it("drops a voice whose script is larger than the cap, before the grammar sees it", () => {
+      // Padding inside a string keeps the document valid JSON: the size
+      // check is what refuses it, not the parser.
+      const padded = JSON.stringify({ ...script, frames: {}, pools: {}, comment: "x".repeat(VOICE_SCRIPT_MAX_BYTES) });
+      const result = scan({ [SCRIPT_PATH]: padded });
+
+      expect(padded.length).toBeGreaterThan(VOICE_SCRIPT_MAX_BYTES);
+      expect(result.packs).toEqual([]);
+      expect(result.problems).toEqual([
+        { pack: "luca", reason: `voice "luca": callouts.json is larger than ${VOICE_SCRIPT_MAX_BYTES} bytes` },
+      ]);
+    });
+
+    it("reads a script exactly at the cap", () => {
+      const room = VOICE_SCRIPT_MAX_BYTES - JSON.stringify({ ...script, comment: "" }).length;
+      const exact = JSON.stringify({ ...script, comment: "x".repeat(room) });
+
+      expect(exact.length).toBe(VOICE_SCRIPT_MAX_BYTES);
+      // `comment` is not a top-level key the grammar knows, so the verdict is
+      // the grammar's — which proves the text reached it.
+      expect(scan({ [SCRIPT_PATH]: exact }).problems).toEqual([
+        { pack: "luca", reason: 'voice "luca": callouts.json comment: unrecognized key' },
+      ]);
+    });
+
+    it("reports a port that throws as this voice's problem rather than ending the scan", () => {
+      const throwing: VoicePackFileSystem = {
+        ...fakeFs({ luca: { manifest: luca, clips: ["voice/luca/flags/blue-01.mp3"] } }),
+        readTextFile(file) {
+          if (file.replace(/\\/g, "/").endsWith(SCRIPT_PATH)) throw new Error("boom");
+
+          return { ok: true, text: JSON.stringify(luca) };
+        },
+      };
+
+      const result = scanVoicePacks({ root: ROOT, reservedVoices: [], fs: throwing });
+
+      expect(result.packs).toEqual([]);
+      expect(result.problems).toEqual([
+        { pack: "luca", reason: 'voice "luca": callouts.json could not be read (boom)' },
+      ]);
+    });
+
+    it("drops a voice whose script fails the schema, naming the path the parser reports", () => {
+      const result = scan({
+        [SCRIPT_PATH]: JSON.stringify({
+          ...script,
+          scenarios: { "flag-green": { sequence: ["pool:flag-green", 42] } },
+        }),
+      });
+
+      expect(result.packs).toEqual([]);
+      expect(result.problems).toEqual([
+        {
+          pack: "luca",
+          reason: expect.stringMatching(/^voice "luca": callouts\.json scenarios\.flag-green\.sequence\[1\]: /),
+        },
+      ]);
+    });
+
+    it("reports the FIRST schema problem only — one line per dropped voice", () => {
+      // Two bad steps produce two parser problems. The Installed Voices list
+      // gets one line per voice; the rest is for the author to find once the
+      // first is fixed, the same way the manifest reader reports.
+      const result = scan({
+        [SCRIPT_PATH]: JSON.stringify({ ...script, scenarios: { "flag-green": { sequence: [42, 43] } } }),
+      });
+
+      expect(result.problems).toHaveLength(1);
+      expect(result.problems[0].reason).toContain("sequence[0]");
+      expect(result.problems[0].reason).not.toContain("sequence[1]");
+    });
+
+    it("drops a voice whose script cannot be READ, distinguishing that from no file", () => {
+      // Locked by a sync client, permission-denied, or a directory of that
+      // name. A voice with a script it cannot open is not a clips-only voice;
+      // listing it as one would silently mute every callout the author wrote.
+      const result = scan({ [SCRIPT_PATH]: UNREADABLE });
+
+      expect(result.packs).toEqual([]);
+      expect(result.problems).toEqual([
+        { pack: "luca", reason: 'voice "luca": callouts.json could not be read (EBUSY)' },
+      ]);
+    });
+
+    it("does not claim the voice, so a later pack that ships it properly still can", () => {
+      const result = scanVoicePacks({
+        root: ROOT,
+        reservedVoices: [],
+        fs: fakeFs({
+          alpha: {
+            manifest: { ...luca, id: "alpha" },
+            clips: ["voice/luca/flags/a.mp3"],
+            files: { [SCRIPT_PATH]: "{nope" },
+          },
+          beta: { manifest: { ...luca, id: "beta" }, clips: ["voice/luca/flags/b.mp3"] },
+        }),
+      });
+
+      expect(result.packs.map((p) => p.id)).toEqual(["beta"]);
+      expect(result.packs[0].voices).toEqual([{ id: "luca", label: "Luca", script: null }]);
+      expect(result.problems.map((p) => p.pack)).toEqual(["alpha"]);
+    });
+
+    it("keeps a pack's other voice, and only that voice's clips", () => {
+      const result = scanVoicePacks({
+        root: ROOT,
+        reservedVoices: [],
+        fs: fakeFs({
+          duo: {
+            manifest: {
+              ...luca,
+              id: "duo",
+              voices: [
+                { id: "luca", label: "Luca" },
+                { id: "nina", label: "Nina" },
+              ],
+            },
+            clips: ["voice/luca/flags/a.mp3", "voice/nina/flags/a.mp3"],
+            files: { [SCRIPT_PATH]: "{nope", "voice/nina/callouts.json": JSON.stringify(script) },
+          },
+        }),
+      });
+
+      expect(result.packs[0].voices).toEqual([{ id: "nina", label: "Nina", script }]);
+      expect(result.packs[0].clips).toEqual(["voice/nina/flags/a.mp3"]);
+      expect(result.problems).toHaveLength(1);
+      expect(result.problems[0].reason).toMatch(/^voice "luca": callouts\.json /);
+    });
+  });
+
+  it("checks clips before the script, so a voice with nothing to play reports that alone", () => {
+    // Ordering, pinned: the clip gate comes first. A voice that fails it is
+    // already dropped, and a second line about its script would tell the
+    // author to fix a file for a voice that has nothing to play anyway.
+    const result = scan({ [SCRIPT_PATH]: "{nope" }, { clips: [] });
+
+    expect(result.packs).toEqual([]);
+    expect(result.problems).toEqual([{ pack: "luca", reason: "no clips found under voice/luca/" }]);
+  });
+
+  it("leaves the bundled seed's listing untouched", () => {
+    // The seeded copy of the bundled pack carries its script too — it rides
+    // the voice tree — but the seed's voices are dropped to the bundle BEFORE
+    // the per-voice loop, so the script is never read and can never surface
+    // as a problem on a row that is listed as providing nothing.
+    const result = scanVoicePacks({
+      root: ROOT,
+      reservedVoices: ["default"],
+      fs: fakeFs({
+        default: {
+          manifest: {
+            schema: 1,
+            id: "default",
+            label: "Default",
+            version: "3.2.0",
+            voices: [{ id: "default", label: "Default" }],
+          },
+          install: {
+            schema: 1,
+            source: "bundled-seed",
+            id: "default",
+            version: "3.2.0",
+            sha256: "d".repeat(64),
+            installedAt: "2026-09-02T00:00:00.000Z",
+          },
+          clips: ["voice/default/flags/blue-01.mp3"],
+          files: { "voice/default/callouts.json": "{nope" },
+        },
+      }),
+    });
+
+    expect(result.problems).toEqual([]);
+    expect(result.packs).toHaveLength(1);
+    expect(result.packs[0]).toMatchObject({ id: "default", voices: [], clips: [], provenance: "bundled-seed" });
   });
 });

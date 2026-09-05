@@ -68,7 +68,7 @@ export const NO_LIMITER_SPEEDING: Scenario = {
   bus: AudioBus.Voice,
   base: "pit-crew",
   family: "limiter",
-  sequence: ["@pit-crew.radio-open", "pool:no-limiter-speeding", "@pit-crew.radio-close"],
+  sequence: ["pool:no-limiter-speeding"],
 };
 
 export const NO_LIMITER_ENTRY: Scenario = {
@@ -91,7 +91,6 @@ export const NO_LIMITER_ENTRY: Scenario = {
   // minutes ago.
   family: "limiter",
   sequence: [
-    "@pit-crew.radio-open",
     "pool:no-limiter-entry",
     {
       optional: [
@@ -100,7 +99,6 @@ export const NO_LIMITER_ENTRY: Scenario = {
         { var: "pitSpeed.limitUnit" },
       ],
     },
-    "@pit-crew.radio-close",
   ],
 };
 

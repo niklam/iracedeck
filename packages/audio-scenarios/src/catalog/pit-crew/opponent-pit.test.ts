@@ -104,26 +104,24 @@ describe("opponent-pit scenarios", () => {
     }
   });
 
-  it("wraps single-pool lines in the shared radio frame", () => {
-    expect(scenario("pit-crew.opponent-pit-leader").sequence).toEqual([
-      "@pit-crew.radio-open",
-      "pool:opponent-pit-leader",
-      "@pit-crew.radio-close",
-    ]);
-    expect(scenario("pit-crew.opponent-pit-others").sequence).toEqual([
-      "@pit-crew.radio-open",
-      "pool:opponent-pit-others",
-      "@pit-crew.radio-close",
-    ]);
+  it("plays single-pool lines as their whole body, leaving the radio frame to the engine (issue #1064)", () => {
+    for (const [id, pool] of [
+      ["pit-crew.opponent-pit-leader", "pool:opponent-pit-leader"],
+      ["pit-crew.opponent-pit-others", "pool:opponent-pit-others"],
+    ] as const) {
+      const s = scenario(id);
+
+      expect(s.sequence).toEqual([pool]);
+      // No `frame` → the engine's default (`radio`); the sequence never spells the ticks.
+      expect(s.frame).toBeUndefined();
+    }
   });
 
   it("composes the nearby line as car-in + number var + is-pitting", () => {
     expect(scenario("pit-crew.opponent-pit-nearby").sequence).toEqual([
-      "@pit-crew.radio-open",
       "pool:opponent-pit-car-in",
       { var: "opponentPit.number" },
       "pool:opponent-pit-is-pitting",
-      "@pit-crew.radio-close",
     ]);
   });
 

@@ -4,9 +4,14 @@
  * Plays a representative `AudioBus.Background` preview so the user can
  * audition their slider value: walkie-talkie tick-open on `AudioChannel.SFX`,
  * pit ambient loop on `AudioChannel.Ambient`, then tick-close after a short
- * window. Mirrors the radio-frame open/close pair that wraps every real
- * pit-crew voice scenario, so the user hears exactly what the bus carries
- * during normal operation (sans voice).
+ * window. This is the BUILT-IN radio frame — the one the bundled voice's
+ * script defines — not necessarily the active voice's: since #1064 a pack
+ * defines its own frame, and a pack that opens with its own beep is not
+ * what this preview plays (a follow-up will have the preview use the active
+ * frame). What it does share with a real callout is the bus, the volume and
+ * the user's two frame switches: with Radio beeps off the ticks are
+ * dropped, with Pit ambience off the loop is, and with both off there is
+ * nothing to preview, so the sequence completes on the spot.
  *
  * Idempotent against double-press — a second call while a sequence is in
  * flight is a no-op. The optional `onComplete` callback fires after the
@@ -16,6 +21,8 @@
  */
 import { AudioChannel, getAudio } from "@iracedeck/audio-service";
 
+import type { FrameOptions } from "../../interpreter.js";
+
 const TICK_OPEN = "sfx/IRD-tick-open.mp3";
 const TICK_CLOSE = "sfx/IRD-tick-close.mp3";
 const AMBIENT_LOOP = "sfx/IRD-ambient-pit.mp3";
@@ -23,22 +30,43 @@ const AMBIENT_LOOP = "sfx/IRD-ambient-pit.mp3";
 /** How long the ambient loop plays between the open and close ticks. */
 const TEST_DURATION_MS = 2500;
 
+/** Both switches on: what the preview played before the switches existed. */
+const EVERYTHING: FrameOptions = { beeps: true, ambience: true };
+
 let testInFlight = false;
 let testTimer: ReturnType<typeof setTimeout> | null = null;
 
-export function playBackgroundTest(onComplete?: () => void): void {
+/**
+ * @param options The user's frame switches (`getFrameOptions` in the
+ *   plugins): `beeps` keeps the ticks, `ambience` keeps the loop — the same
+ *   two things the engine drops from the real frame. Defaults to both on.
+ */
+export function playBackgroundTest(onComplete?: () => void, options: FrameOptions = EVERYTHING): void {
   if (testInFlight) return;
+
+  const { beeps, ambience } = options;
+
+  // Nothing to audition: don't hold the in-flight flag (and the Background
+  // bus bypass with it) for a silent window.
+  if (!beeps && !ambience) {
+    onComplete?.();
+
+    return;
+  }
 
   testInFlight = true;
 
   const audio = getAudio();
 
-  audio.playOnChannel(AudioChannel.SFX, TICK_OPEN);
-  audio.playOnChannel(AudioChannel.Ambient, AMBIENT_LOOP, true);
+  if (beeps) audio.playOnChannel(AudioChannel.SFX, TICK_OPEN);
+
+  if (ambience) audio.playOnChannel(AudioChannel.Ambient, AMBIENT_LOOP, true);
 
   testTimer = setTimeout(() => {
-    audio.stopChannel(AudioChannel.Ambient);
-    audio.playOnChannel(AudioChannel.SFX, TICK_CLOSE);
+    if (ambience) audio.stopChannel(AudioChannel.Ambient);
+
+    if (beeps) audio.playOnChannel(AudioChannel.SFX, TICK_CLOSE);
+
     testInFlight = false;
     testTimer = null;
     onComplete?.();

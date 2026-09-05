@@ -1,7 +1,8 @@
 <%#
   Race Engineer / Pit Crew plugin-wide settings (issue #992 split): the live
   master toggles and their startup policies (issue #1007), voice, driver name,
-  output device, volumes and their Test buttons.
+  output device, volumes and their Test buttons, and the radio-frame opt-outs
+  (issue #1064: Radio beeps, Pit ambience).
   The per-callout opt-ins AND the tuning sliders (gap alert, spotter
   still-there, fuel margin, corner lead) live in race-engineer-callouts.ejs.
   Emits items only — the settings window wraps them in a card. Since #1003 it
@@ -56,6 +57,20 @@
   		'<ird-audio-test preview="background" label="Test"></ird-audio-test>' +
   	'</div>' +
   '</sdpi-item>' +
+  // The two halves of the radio frame (issue #1064), as opt-OUTs: both default
+  // on, so `default="true"` is the one value that renders checked. Placed
+  // directly under Background Volume because that slider stays the level
+  // control for both — the help line says so, so nobody hunts for a third
+  // slider. Two stacked rows (the callouts partial's grid, one column).
+  '<sdpi-item label="Radio Frame">' +
+  	'<div style="display:grid;grid-template-rows:repeat(2,auto);grid-auto-flow:column;gap:4px 12px;width:100%;">' +
+  		'<sdpi-checkbox setting="raceEngineerRadioBeeps" label="Radio beeps" global default="true"></sdpi-checkbox>' +
+  		'<sdpi-checkbox setting="raceEngineerPitAmbience" label="Pit ambience" global default="true"></sdpi-checkbox>' +
+  	'</div>' +
+  '</sdpi-item>' +
+  '<div class="ird-supporting-text">' +
+  	'Background Volume sets the level of both.' +
+  '</div>' +
   '<sdpi-item label="Radar Volume">' +
   	'<div style="display:flex;align-items:center;gap:8px;">' +
   		'<ird-range-input setting="radarVolume" global min="0" max="100" step="1" default="50" style="flex:1;"></ird-range-input>' +

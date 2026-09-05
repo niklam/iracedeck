@@ -15,6 +15,7 @@ import type { ILogger } from "@iracedeck/logger";
 import {
   applyRaceEngineerAudio,
   readBackgroundVolume,
+  readFrameOptions,
   readRaceEngineerVolume,
   setRaceEngineerTestInFlight,
 } from "./audio-volume.js";
@@ -61,13 +62,14 @@ export function runAudioPreview(kind: AudioPreviewKind, logger: ILogger): void {
     }
 
     case "background":
-      logger.info("Playing background test: tick-open + ambient + tick-close");
+      logger.info("Playing background test");
       // isBackgroundTestInFlight (set inside playBackgroundTest) bypasses the
       // Background-mute branch of applyRaceEngineerAudio while the preview is
       // playing, so dragging the slider mid-preview updates the bus volume live
-      // instead of cutting the test off (#471).
+      // instead of cutting the test off (#471). The frame switches are read
+      // live too, so the preview drops what the real frame drops (#1064).
       getAudio().setBusVolume(AudioBus.Background, readBackgroundVolume() / 100);
-      playBackgroundTest(() => applyRaceEngineerAudio());
+      playBackgroundTest(() => applyRaceEngineerAudio(), readFrameOptions());
       break;
   }
 }

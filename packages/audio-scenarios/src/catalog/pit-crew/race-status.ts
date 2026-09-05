@@ -131,7 +131,6 @@ export function buildRaceStatusScenario(
   getLivePosition: LivePositionResolver = () => null,
 ): Scenario {
   const sequence: Step[] = [
-    "@pit-crew.radio-open",
     {
       // Leader detection reads LIVE position (issue #574) so a deferred status
       // update says "still leading" only if we're actually P1 at speak-time.
@@ -139,7 +138,6 @@ export function buildRaceStatusScenario(
       then: [{ var: "raceStatus.stillLeading" }],
       else: [{ var: "raceStatus.intro" }, { var: "raceStatus.number" }],
     },
-    "@pit-crew.radio-close",
   ];
 
   return {

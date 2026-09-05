@@ -326,6 +326,29 @@ export const GlobalSettingsSchema = z
      */
     backgroundVolume: z.coerce.number().min(0).max(100).default(25).catch(25),
     /**
+     * The two halves of the radio frame the engine wraps around a callout
+     * (issue #1064): the walkie-talkie beeps, and the pit-lane ambience bed
+     * the frame starts and stops around the words. `backgroundVolume` used
+     * to govern both together, and that coupling was the real complaint
+     * underneath "the beeps should be optional" — so each half gets its own
+     * switch while the slider stays the level control for both. Read live at
+     * frame expansion through the `getFrameOptions` closure the plugins hand
+     * the scenario engine; with beeps off the engine drops every non-ambient
+     * step of the frame, with ambience off every `ambient` step, so a pack
+     * that frames with its own beep clip is governed by the setting too.
+     * Both default ON, as new Race Engineer functionality always does.
+     */
+    raceEngineerRadioBeeps: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true)
+      .catch(true),
+    raceEngineerPitAmbience: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true)
+      .catch(true),
+    /**
      * Driver name the Race Engineer addresses the user as — the key
      * under `voice/<voice>/names/` (e.g., `"niklas"`, `"oivindl"`).
      * Substituted into welcome / pit-callout flows by referencing
@@ -2265,6 +2288,36 @@ export function getGlobalColors(): {
     graphic1Color: color("colorGraphic1Color"),
     graphic2Color: color("colorGraphic2Color"),
   };
+}
+
+/**
+ * The radio frame's two switches as the scenario engine takes them (issue
+ * #1064): `beeps` keeps the frame's non-ambient steps, `ambience` its
+ * `ambient` ones. Structurally identical to `FrameOptions` in
+ * `@iracedeck/audio-scenarios`, which deck-core must not depend on; a
+ * caller passes the result where that type is expected.
+ */
+export type RadioFrameSwitches = { beeps: boolean; ambience: boolean };
+
+/**
+ * Read the radio frame's two switches off a settings record (issue #1064) —
+ * the ONE rule behind `raceEngineerRadioBeeps` / `raceEngineerPitAmbience`,
+ * for the plugins' `getFrameOptions`, the Background preview and the
+ * scenario harness alike, so a callout's frame and its preview can never
+ * disagree about what the user switched off.
+ *
+ * A switch is off only for an explicit `false` — or the string `"false"`, in
+ * case the record has not been through the schema. Everything else reads as
+ * ON: a missing key (before the store has loaded, the cache holds the schema
+ * default, which is on), and a value the schema would have caught with its
+ * `.catch(true)`. Both switches default on, as new Race Engineer
+ * functionality always does, so a wrong reading must fail towards the frame
+ * playing whole, never towards a silenced half.
+ */
+export function frameOptionsFromSettings(settings: Record<string, unknown>): RadioFrameSwitches {
+  const on = (value: unknown): boolean => value !== false && value !== "false";
+
+  return { beeps: on(settings.raceEngineerRadioBeeps), ambience: on(settings.raceEngineerPitAmbience) };
 }
 
 /**

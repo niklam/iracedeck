@@ -200,6 +200,68 @@ describe("validateScenario", () => {
   });
 });
 
+describe("contracts (issue #1064)", () => {
+  it("applies the scheduling-metadata checks to a contract", () => {
+    engine.defineContract({
+      id: "bad-contract",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      resumable: true,
+      pendingHoldMs: -1,
+      weight: Number.NaN,
+    });
+
+    const joined = errorLogs.join("\n");
+    expect(joined).toContain("resumable requires queueable: true");
+    expect(joined).toContain("pendingHoldMs must be a non-negative number");
+    expect(joined).toContain("weight must be a finite number");
+  });
+
+  it("accepts a contract without any sequence-shaped check — its bodies are compiled per voice", () => {
+    engine.defineContract({
+      id: "good-contract",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      queueable: true,
+      resumable: true,
+      frame: "none",
+    });
+
+    expect(errorLogs).toEqual([]);
+    expect(warnLogs).toEqual([]);
+  });
+
+  it("flags a legacy scenario that includes a contract — a contract has no sequence to splice in", () => {
+    engine.defineContract({ id: "fragment-contract", channel: AudioChannel.Voice, bus: AudioBus.Voice });
+    engine.defineScenario({
+      id: "bad",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      sequence: ["@fragment-contract"],
+    });
+
+    expect(errorLogs.join("\n")).toContain("include target has no sequence (a contract): fragment-contract");
+  });
+
+  it("still validates a legacy scenario's include chain through legacy fragments", () => {
+    engine.defineScenario({
+      id: "fragment",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      sequence: ["pit-crew/greeting/does-not-exist.mp3"],
+    });
+    errorLogs.length = 0;
+    engine.defineScenario({
+      id: "bad",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      sequence: ["@fragment"],
+    });
+
+    expect(errorLogs.join("\n")).toContain("unknown clip: pit-crew/greeting/does-not-exist.mp3");
+  });
+});
+
 describe("voice-templated clip steps (issue #664)", () => {
   // `default` is the reference voice; `titan` deliberately lacks the toggle clip.
   const voicedManifest = {

@@ -38,12 +38,10 @@ export const RACING_TIPS: Scenario = {
   bus: AudioBus.Voice,
   base: "pit-crew",
   sequence: [
-    "@pit-crew.radio-open",
     {
       if: (ctx) => isStartWindow(ctx),
       then: ["pool:welcome-tip"],
       else: ["pool:race-tip"],
     },
-    "@pit-crew.radio-close",
   ],
 };

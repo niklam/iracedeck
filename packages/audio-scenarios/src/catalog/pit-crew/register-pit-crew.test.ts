@@ -17,13 +17,16 @@
  *   - logger.debug is called on each suppressed event (debuggable
  *     "engineer didn't say green!" reports)
  */
+import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
+import type { CalloutScript } from "@iracedeck/callout-script";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { PitSvStatus } from "@iracedeck/iracing-sdk";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from "vitest";
 
-import { WEIGHT } from "../../dsl.js";
+import type { Scenario, ScenarioContract } from "../../dsl.js";
+import { NO_FRAME, WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest } from "../../interpreter.js";
 import { _resetAudioScenarios, getScenarioEngine, initializeAudioScenarios } from "../../interpreter.js";
 import { _setFurledRaisedSpoken } from "./flag-alerts.js";
@@ -438,6 +441,15 @@ const manifest: AudioAssetsManifest = {
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
 };
 
+/**
+ * The voice's callout script: the bundled voice's `callouts.json`, verbatim.
+ * It supplies the `radio` frame the engine wraps every callout in (issue
+ * #1064) AND the flag family's scripts — flags are contracts now, so a fire
+ * of one plays nothing unless the active voice's script says what to say.
+ * The JSON import types `schema` as `number`, hence the cast.
+ */
+const SCRIPT = defaultScript as CalloutScript;
+
 function flush(audio: FakeAudio, iterations = 30): void {
   for (let i = 0; i < iterations; i++) {
     audio._triggerChannelEnd(AudioChannel.Voice);
@@ -447,6 +459,11 @@ function flush(audio: FakeAudio, iterations = 30): void {
 
 let bus: ReturnType<typeof createMockBus>;
 let audio: FakeAudio;
+// Pass-through spies on the engine's two registration entry points, installed
+// before `registerPitCrew` so the #1064 describe block can inspect every
+// scenario and contract the catalog registers.
+let defineScenarioSpy: MockInstance<(s: Scenario) => void>;
+let defineContractSpy: MockInstance<(c: ScenarioContract) => void>;
 
 const ALL_FLAG_IDS: readonly FlagCalloutId[] = [
   "yellow-local",
@@ -537,7 +554,9 @@ beforeEach(() => {
   mockLatestTelemetry.mockReturnValue(null);
   bus = createMockBus();
   audio = createFakeAudio();
-  initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
+  const engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
+  defineScenarioSpy = vi.spyOn(engine, "defineScenario");
+  defineContractSpy = vi.spyOn(engine, "defineContract");
   registerPitCrew(bus, {
     getFlagCalloutEnabled: (id) => enabled.get(id) ?? true,
     logger: mockLogger as never,
@@ -559,6 +578,9 @@ beforeEach(() => {
     getNoLimiterCalloutEnabled: getNoLimiterEnabled,
     getRaceEngineerMasterEnabled: () => voiceMasterEnabled,
   });
+  // After the registration, as the plugins do (issue #1064): the engine
+  // wraps every framed callout in the voice's `radio` frame at fire time.
+  engine.setScripts(new Map([[VOICE, SCRIPT]]));
 });
 
 afterEach(() => {
@@ -836,6 +858,94 @@ describe("registerPitCrew live gating", () => {
     const played = voiceClipsPlayed();
     expect(played).toContain(`voice/${VOICE}/flags/yellow-cleared-01.mp3`);
     expect(played.some((p) => p.includes("meatball"))).toBe(false);
+  });
+});
+
+// The walkie-talkie frame is the engine's since issue #1064: no sequence in the
+// catalog spells the open/close ticks, the two `@pit-crew.radio-open` /
+// `-close` fragments are gone, and a scenario that must NOT be framed says so
+// with `frame: NO_FRAME` instead of by leaving an include out. The spies on
+// `defineScenario` / `defineContract` (installed in the top-level `beforeEach`
+// before `registerPitCrew` runs) see every registration, the spotter engine's
+// included.
+describe("radio frame comes from the engine, not the catalog (issue #1064)", () => {
+  const FRAGMENT_IDS = ["pit-crew.radio-open", "pit-crew.radio-close"] as const;
+
+  /** Every scenario and contract `registerPitCrew` handed the engine. */
+  function registered(): (Scenario | ScenarioContract)[] {
+    return [...defineScenarioSpy.mock.calls.map(([s]) => s), ...defineContractSpy.mock.calls.map(([c]) => c)];
+  }
+
+  it("registers neither radio-frame fragment", () => {
+    const ids = registered().map((s) => s.id);
+
+    // Sanity: the spies saw the catalog at all (a spy installed after the
+    // registration would make every assertion below pass vacuously).
+    expect(ids.length).toBeGreaterThan(50);
+
+    for (const id of FRAGMENT_IDS) {
+      expect(ids).not.toContain(id);
+
+      // The engine agrees: nothing answers to the old ids.
+      getScenarioEngine().fire(id);
+      expect(mockLogger.warn).toHaveBeenCalledWith(`fire: scenario "${id}" not found`);
+    }
+
+    expect(audio._played).toEqual([]);
+  });
+
+  it("no registered sequence includes them", () => {
+    const scenarios = defineScenarioSpy.mock.calls.map(([s]) => s);
+
+    expect(scenarios.length).toBeGreaterThan(50);
+
+    for (const s of scenarios) {
+      // An include is either the `"@id"` string or `{ include: "id" }`; both
+      // survive JSON.stringify (closures do not, but they carry no ids).
+      expect(JSON.stringify(s.sequence)).not.toContain("pit-crew.radio-");
+    }
+  });
+
+  it("only the four terse families opt out of the frame, and only via `frame: NO_FRAME`", () => {
+    const explicit = registered().filter((s) => s.frame !== undefined);
+
+    // Nothing names a frame other than the opt-out: the default (`radio`)
+    // is the engine's, so a sequence never spells it.
+    for (const s of explicit) expect(s.frame).toBe(NO_FRAME);
+
+    expect(explicit.map((s) => s.id).sort()).toEqual(
+      [
+        // Pit-box count-in: marks fire ~1 s apart.
+        ...["five", "four", "three", "two", "one", "pit-now"].map((mark) => `pit-crew.pit-box-${mark}`),
+        // Pit-status repeat nags: a 2 s cadence.
+        ...["too-far-left", "too-far-right", "too-far-forward", "too-far-back", "bad-angle"].map(
+          (id) => `pit-crew.pit-status-${id}-repeat`,
+        ),
+        // Corner names: a 1 s lead.
+        "pit-crew.corner-name-approaching",
+        // Spotter calls (decision D1) and their informational sibling.
+        "pit-crew.spotter-call",
+        "pit-crew.spotter-info",
+      ].sort(),
+    );
+  });
+
+  it("a framed callout plays the open tick first and the close tick last through the real registration", () => {
+    bus.publishEvent("flag.red.raised", {} as never);
+    flush(audio);
+
+    const played = audio._played.map((p) => p.path);
+
+    expect(played[0]).toBe("sfx/IRD-tick-open.mp3");
+    expect(played.at(-1)).toBe("sfx/IRD-tick-close.mp3");
+    expect(voiceClipsPlayed()).toEqual([`voice/${VOICE}/flags/red-01.mp3`]);
+  });
+
+  it("a count-in mark plays no tick at all, though the same voice script defines the frame", () => {
+    bus.publishEvent("pitBox.countdown", { mark: "three" } as never);
+    flush(audio);
+
+    expect(audio._played.map((p) => p.path)).toEqual([`voice/${VOICE}/pit-box/three-01.mp3`]);
   });
 });
 

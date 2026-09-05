@@ -22,6 +22,7 @@
     "build:native": "pnpm --filter @iracedeck/iracing-native build",
     "generate:action-comms": "tsx scripts/generate-action-comms.mjs",
     "generate:action-profiles": "node scripts/generate-action-profiles.mjs",
+    "generate:callout-scripts": "pnpm --filter @iracedeck/audio-assets generate:callout-scripts",
     "generate:changelog-data": "node scripts/generate-changelog-data.mjs",
     "generate:getting-started-data": "node scripts/generate-getting-started-data.mjs",
     "discord:feature-requests": "node scripts/discord/feature-requests.mjs",

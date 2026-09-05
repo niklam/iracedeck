@@ -1,3 +1,9 @@
+import {
+  CALLOUT_SCRIPT_FILE,
+  type CalloutScript,
+  calloutScriptPath,
+  parseCalloutScriptText,
+} from "@iracedeck/callout-script";
 import { join } from "node:path";
 
 import { VOICE_PACK_PROVENANCE_FILE } from "./voice-pack-constants.js";
@@ -39,8 +45,17 @@ export interface VoicePackFileSystem {
 /**
  * A voice a pack provides. `id` is identity and matches the `voice/<id>/…` clip
  * path; `label` is what a user reads and nothing more.
+ *
+ * `script` is the voice's parsed `voice/<id>/callouts.json` (#1064), or `null`
+ * for a clips-only voice — one with no script file at all, which is valid and
+ * whose callouts are simply all skipped. It is never the raw text: a voice
+ * whose file exists but does not parse is not listed at all (see
+ * {@link scanVoicePacks}), so a listed voice's script is always usable or
+ * absent, never broken. Plain data, like the rest of the pack: the settings
+ * window's `_voicePacks` payload must map this OUT rather than publish it — a
+ * script is the engine's input, not something a list row renders.
  */
-export type InstalledVoice = { id: string; label: string };
+export type InstalledVoice = { id: string; label: string; script: CalloutScript | null };
 
 export type InstalledVoicePack = {
   id: string;
@@ -124,6 +139,81 @@ const MANIFEST_FILE = "voice-pack.json";
  * that cannot work is refused with a reason instead of being silently mute.
  */
 const USABLE_CLIP = /^voice\/[^/]+\/[^/]+\/[^/]+\.mp3$/;
+
+/**
+ * The most text a `callouts.json` may hold before it is refused unread
+ * (#1064). The bundled script is under 200 KB and the largest JSON anywhere
+ * in the audio pipeline is 480 KB (the numbers `VOICE_PACK_ARCHIVE_LIMITS`
+ * was calibrated against), so a megabyte is headroom for any pack an author
+ * would write and a bound on what a sideloaded file can make the grammar
+ * validate — the pack folder is user-writable, and the schema walk is not
+ * free. Measured in UTF-16 code units of the decoded text, which never
+ * exceeds the file's byte count, so a file this check refuses is always
+ * larger than the cap in bytes as well.
+ */
+export const VOICE_SCRIPT_MAX_BYTES = 1024 * 1024;
+
+export type VoiceScriptRead = { ok: true; script: CalloutScript | null } | { ok: false; reason: string };
+
+/**
+ * Read one voice's `voice/<id>/callouts.json` (#1064).
+ *
+ * Three outcomes, and the middle one is the point. No file is a CLIPS-ONLY
+ * voice — `script: null`, no problem — because a pack built before scripts
+ * existed is exactly that shape and is still a valid pack. A file that exists
+ * but cannot be opened, is not JSON, or fails the grammar is a problem with
+ * THIS VOICE: the caller drops it, exactly as it drops a voice with no usable
+ * clips. The alternative — listing the voice with `script: null` — would mute
+ * every callout the author wrote and show nothing anywhere saying why.
+ *
+ * The `reason` is a fragment that follows the file name, so the three read
+ * `callouts.json could not be read (EBUSY)`, `callouts.json (document): not
+ * valid JSON: …` and `callouts.json scenarios.flag-green.sequence[1]: …` — the
+ * grammar's problems are already path-prefixed (a JSON failure is its first
+ * one, under the document prefix), so the file name is all that is added.
+ * Only the FIRST grammar problem is reported: one line per dropped voice in
+ * the Installed Voices list, as the manifest reader does for a pack.
+ *
+ * The text goes through `parseCalloutScriptText`, the grammar package's one
+ * text stage — the packer and the harness read through the same function, so
+ * what counts as a readable script is decided once. Two guards are this
+ * reader's own: a file over {@link VOICE_SCRIPT_MAX_BYTES} is refused before
+ * the grammar sees it, and NOTHING here can throw — the scan runs where a
+ * throw ends the plugin, so an error the grammar did not foresee is reported
+ * as this voice's problem, never propagated.
+ *
+ * Exported for the voice-pack service, which reads each BUNDLED voice's script
+ * under the plugin's own audio root through this same function (#1064): one
+ * reader for both roots, so that when the bundle is dropped only the roots
+ * list changes. It is also deck-core's port-based script reader for anything
+ * else that holds a `VoicePackFileSystem`.
+ */
+export function readVoiceScript(fs: VoicePackFileSystem, dir: string, voiceId: string): VoiceScriptRead {
+  try {
+    const read = fs.readTextFile(join(dir, calloutScriptPath(voiceId)));
+
+    if (!read.ok) {
+      return read.missing
+        ? { ok: true, script: null }
+        : { ok: false, reason: `${CALLOUT_SCRIPT_FILE} could not be read (${read.reason})` };
+    }
+
+    if (read.text.length > VOICE_SCRIPT_MAX_BYTES) {
+      return { ok: false, reason: `${CALLOUT_SCRIPT_FILE} is larger than ${VOICE_SCRIPT_MAX_BYTES} bytes` };
+    }
+
+    const parsed = parseCalloutScriptText(read.text);
+
+    if (!parsed.ok) return { ok: false, reason: `${CALLOUT_SCRIPT_FILE} ${parsed.problems[0] ?? "invalid shape"}` };
+
+    return { ok: true, script: parsed.script };
+  } catch (err) {
+    return {
+      ok: false,
+      reason: `${CALLOUT_SCRIPT_FILE} could not be read (${err instanceof Error ? err.message : String(err)})`,
+    };
+  }
+}
 
 /**
  * Read every pack under `root` (issue #1034).
@@ -338,6 +428,7 @@ export function scanVoicePacks({ root, fs, reservedVoices }: ScanVoicePacksOptio
     const voices: InstalledVoice[] = [];
     const clips: string[] = [];
     const unusable: string[] = [];
+    const badScripts: string[] = [];
 
     for (const voice of declared) {
       // The declared `id` drives the prefix, so a declared voice with no
@@ -357,7 +448,20 @@ export function scanVoicePacks({ root, fs, reservedVoices }: ScanVoicePacksOptio
         continue;
       }
 
-      voices.push(voice);
+      // The script is read AFTER the clip gate, so a voice with nothing to play
+      // reports that and nothing else — a second line telling the author to fix
+      // a script for a voice that cannot make a sound would send them to the
+      // wrong file first. A malformed script drops the voice on the same terms
+      // as no usable clips (#1064): it is not listed, contributes no clips, and
+      // claims no id, so a later pack that ships the voice properly still can.
+      const scriptRead = readVoiceScript(fs, dir, voice.id);
+
+      if (!scriptRead.ok) {
+        badScripts.push(`voice "${voice.id}": ${scriptRead.reason}`);
+        continue;
+      }
+
+      voices.push({ id: voice.id, label: voice.label, script: scriptRead.script });
 
       // Appended one at a time rather than spread: `usable` is derived from a
       // directory walk that caps DEPTH but not breadth, and a spread past V8's
@@ -368,6 +472,11 @@ export function scanVoicePacks({ root, fs, reservedVoices }: ScanVoicePacksOptio
     }
 
     if (unusable.length > 0) problems.push({ pack: folder, reason: unusable.join("; ") });
+
+    // One problem PER dropped voice, not one joined line as for the clips: each
+    // reason already names its voice and its file, and a script problem is a
+    // sentence about one document an author will open, not a list of paths.
+    for (const reason of badScripts) problems.push({ pack: folder, reason });
 
     if (voices.length === 0) continue;
 

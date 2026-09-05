@@ -1,12 +1,12 @@
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioChannel } from "@iracedeck/audio-service";
+import type { CalloutScript } from "@iracedeck/callout-script";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
 import { POOL_REGISTRY } from "./pools.js";
-import { RADIO_CLOSE, RADIO_OPEN } from "./radio-frame.js";
 import {
   FAST_REPAIR_TOGGLE_SCENARIOS,
   FUEL_TOGGLE_SCENARIOS,
@@ -160,6 +160,23 @@ const manifest: AudioAssetsManifest = {
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
 };
 
+/**
+ * Each voice's callout script — only its `radio` frame matters here. Since
+ * issue #1064 the ticks come from the engine wrapping every callout in the
+ * frame the active voice's script defines, never from the sequences.
+ */
+const RADIO_SCRIPT: CalloutScript = {
+  schema: 1,
+  scenarios: {},
+  frames: {
+    radio: {
+      open: ["sfx/IRD-tick-open.mp3", { ambient: "start" }, { ambient: "seek" }],
+      close: [{ ambient: "stop" }, "sfx/IRD-tick-close.mp3"],
+    },
+  },
+  pools: {},
+};
+
 function flush(audio: FakeAudio, iterations = 30): void {
   for (let i = 0; i < iterations; i++) {
     audio._triggerChannelEnd(AudioChannel.Voice);
@@ -188,9 +205,6 @@ beforeEach(() => {
     engine.definePoolFromManifest(name, group, base);
   }
 
-  engine.defineScenario(RADIO_OPEN);
-  engine.defineScenario(RADIO_CLOSE);
-
   for (const s of FUEL_TOGGLE_SCENARIOS) engine.defineScenario(s);
 
   for (const s of TIRE_TOGGLE_SCENARIOS) engine.defineScenario(s);
@@ -200,6 +214,8 @@ beforeEach(() => {
   for (const s of WINDSHIELD_TOGGLE_SCENARIOS) engine.defineScenario(s);
 
   for (const s of FAST_REPAIR_TOGGLE_SCENARIOS) engine.defineScenario(s);
+
+  engine.setScripts(new Map(VOICE_KEYS.map((v) => [v, RADIO_SCRIPT])));
 });
 
 afterEach(() => {
@@ -218,6 +234,22 @@ describe("FUEL_TOGGLE_SCENARIOS", () => {
     flush(audio);
 
     expect(voiceClipsPlayed()).toContain("voice/luca/pit-actions/fuel-on-01.mp3");
+  });
+
+  it("speaks the acknowledgment then the toggle line, inside the engine's radio frame (issue #1064)", () => {
+    bus.publishEvent("pitService.toggled", { service: "fuel", on: true } as never);
+    flush(audio);
+
+    const played = audio._played.map((p) => p.path);
+
+    expect(played[0]).toBe("sfx/IRD-tick-open.mp3");
+    expect(played.at(-1)).toBe("sfx/IRD-tick-close.mp3");
+
+    const voice = voiceClipsPlayed();
+
+    expect(voice).toHaveLength(2);
+    expect(voice[0]).toMatch(/^voice\/luca\/pit-actions\/acknowledgment-/);
+    expect(voice[1]).toBe("voice/luca/pit-actions/fuel-on-01.mp3");
   });
 
   it("fires fuel-off when pitService.toggled { fuel, on: false }", () => {

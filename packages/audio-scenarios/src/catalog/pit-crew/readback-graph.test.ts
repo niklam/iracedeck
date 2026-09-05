@@ -16,8 +16,9 @@
  * recorded slot sequences to compute distinct predecessor / successor
  * slot sets.
  *
- * Radio-frame clips (`/sfx/IRD-tick-*`) are excluded — they're shared by
- * every scenario and aren't part of the outer slot graph.
+ * Radio-frame clips (`/sfx/IRD-tick-*`) are excluded — the engine wraps
+ * every scenario in them (issue #1064), so they aren't part of the outer
+ * slot graph.
  */
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioChannel } from "@iracedeck/audio-service";
@@ -323,8 +324,8 @@ function recordSequence(reason: Reason, snapshot: PitReadbackSnapshot): string[]
   bus.publishEvent("pitService.readbackRequested", { reason });
   flush();
 
-  // Filter to readback clips only (drop the radio-frame ticks and any
-  // ambient noise).
+  // Filter to readback clips only (drop the engine's radio-frame ticks and
+  // any ambient noise).
   return audio._played.map((p) => readbackClipsFromPath(p.path)).filter((n): n is string => n !== null);
 }
 

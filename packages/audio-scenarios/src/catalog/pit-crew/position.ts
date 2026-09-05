@@ -314,7 +314,6 @@ export function buildPositionScenario(
   getLivePosition: LivePositionResolver = () => null,
 ): Scenario {
   const sequence: Step[] = [
-    "@pit-crew.radio-open",
     {
       // Invalid-lap branch (issue #572) — QUALIFYING ONLY. iRacing flagged the
       // just-completed qualifying lap as invalid (track-limits cut, pit-lane
@@ -350,7 +349,6 @@ export function buildPositionScenario(
         },
       ],
     },
-    "@pit-crew.radio-close",
   ];
 
   return {

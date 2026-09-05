@@ -12,8 +12,10 @@
  * (`currentSnapshot`) before publishing the event so each fire sees the
  * intended state.
  */
+import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioChannel } from "@iracedeck/audio-service";
+import type { CalloutScript } from "@iracedeck/callout-script";
 import type { IEventBus, PitReadbackSnapshot, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -262,6 +264,15 @@ const manifest: AudioAssetsManifest = {
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
 };
 
+/**
+ * The voice's callout script: the bundled voice's `callouts.json`, verbatim.
+ * It supplies the `radio` frame the engine wraps every callout in (issue
+ * #1064) AND the flag family's scripts — flags are contracts now, so a fire
+ * of one plays nothing unless the active voice's script says what to say.
+ * The JSON import types `schema` as `number`, hence the cast.
+ */
+const SCRIPT = defaultScript as CalloutScript;
+
 let bus: ReturnType<typeof createMockBus>;
 let audio: FakeAudio;
 let flagsEnabled: Map<FlagCalloutId, boolean>;
@@ -312,13 +323,17 @@ beforeEach(() => {
   mockSessionType.mockReturnValue("Race");
   bus = createMockBus();
   audio = createFakeAudio();
-  initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
+  const engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
   registerPitCrew(bus, {
     getFlagCalloutEnabled: (id) => flagsEnabled.get(id) ?? true,
     logger: mockLogger as never,
     getPitReadbackEnabled: (id) => readbackEnabled.get(id) ?? true,
     getReadbackSnapshot: () => currentSnapshot,
   });
+  // After the registration, as the plugins do: the frame is looked up in the
+  // active voice's script at fire time, and the step-by-step tests below
+  // drive the open tick the engine now puts in front of every readback.
+  engine.setScripts(new Map([[VOICE, SCRIPT]]));
 });
 
 afterEach(() => {
@@ -779,7 +794,7 @@ describe("pit readback scenarios", () => {
       currentSnapshot = snap({ fuel: { queued: true }, tires: { lf: true, rf: true, lr: true, rr: true } });
 
       // 2. Fire the readback. It starts playing immediately
-      //    (radio-open → opener → …).
+      //    (the engine's radio-frame open tick → opener → …).
       bus.publishEvent("pitService.readbackRequested", { reason: "entry" });
 
       // 3. Mid-playback, raise a meatball — a CRITICAL + interrupt callout
@@ -833,7 +848,7 @@ describe("count-in priority over the readback (issue #758)", () => {
     });
 
     bus.publishEvent("pitService.readbackRequested", { reason: "entry" });
-    audio._triggerChannelEnd(AudioChannel.SFX); // tick-open done → opener-entry
+    audio._triggerChannelEnd(AudioChannel.SFX); // the frame's open tick done → opener-entry
     audio._triggerChannelEnd(AudioChannel.Voice); // opener done → fuel-on in flight
 
     bus.publishEvent("pitBox.countdown", { mark: "two" }); // cuts fuel-on

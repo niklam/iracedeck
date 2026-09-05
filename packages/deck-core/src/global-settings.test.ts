@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   _resetGlobalSettings,
   deleteGlobalSettings,
+  frameOptionsFromSettings,
   getGlobalSettings,
   getSettingsStoreSource,
   GlobalSettingsSchema,
@@ -1009,6 +1010,93 @@ describe("debugLogging hardening (issue #896 convention)", () => {
   it("falls back to false on an unparseable value rather than aborting the parse", () => {
     const parsed = GlobalSettingsSchema.parse({ debugLogging: 42 }) as Record<string, unknown>;
     expect(parsed.debugLogging).toBe(false);
+  });
+});
+
+// The two halves of the radio frame the engine wraps around a callout (issue
+// #1064): the beeps and the pit-lane ambience bed. Both default ON — new Race
+// Engineer functionality always does — and both follow the string/boolean
+// coercion every PI-written boolean uses, ending in `.catch(true)` per #896 so
+// a bad value can never stall the whole settings parse.
+describe("radio frame settings (issue #1064)", () => {
+  const keys = ["raceEngineerRadioBeeps", "raceEngineerPitAmbience"] as const;
+
+  it("defaults both to true", () => {
+    const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
+
+    for (const key of keys) {
+      expect(parsed[key], key).toBe(true);
+    }
+  });
+
+  it("coerces the PI's string values like the other booleans", () => {
+    for (const key of keys) {
+      const parsedFalse = GlobalSettingsSchema.parse({ [key]: "false" }) as Record<string, unknown>;
+      expect(parsedFalse[key], key).toBe(false);
+      const parsedTrue = GlobalSettingsSchema.parse({ [key]: "true" }) as Record<string, unknown>;
+      expect(parsedTrue[key], key).toBe(true);
+    }
+  });
+
+  it("keeps an explicitly persisted false", () => {
+    for (const key of keys) {
+      const parsed = GlobalSettingsSchema.parse({ [key]: false }) as Record<string, unknown>;
+      expect(parsed[key], key).toBe(false);
+    }
+  });
+
+  it("falls back to true on an unparseable value rather than aborting the parse", () => {
+    for (const key of keys) {
+      const parsed = GlobalSettingsSchema.parse({ [key]: 42, driverName: "kept" }) as Record<string, unknown>;
+      expect(parsed[key], key).toBe(true);
+      expect(parsed.driverName).toBe("kept");
+    }
+  });
+
+  describe("frameOptionsFromSettings — the one rule every frame-switch reader shares", () => {
+    it("reads both switches as on when the keys are missing — the schema default", () => {
+      expect(frameOptionsFromSettings({})).toEqual({ beeps: true, ambience: true });
+    });
+
+    it("turns a switch off for an explicit false, and only that switch", () => {
+      expect(frameOptionsFromSettings({ raceEngineerRadioBeeps: false })).toEqual({ beeps: false, ambience: true });
+      expect(frameOptionsFromSettings({ raceEngineerPitAmbience: false })).toEqual({ beeps: true, ambience: false });
+      expect(frameOptionsFromSettings({ raceEngineerRadioBeeps: false, raceEngineerPitAmbience: false })).toEqual({
+        beeps: false,
+        ambience: false,
+      });
+    });
+
+    it('turns a switch off for the string "false" too, in case the record has not been through the schema', () => {
+      expect(frameOptionsFromSettings({ raceEngineerRadioBeeps: "false", raceEngineerPitAmbience: "true" })).toEqual({
+        beeps: false,
+        ambience: true,
+      });
+    });
+
+    it("reads garbage as on — a wrong reading fails towards the frame playing whole", () => {
+      for (const garbage of [42, null, "yes", "", {}, [], undefined]) {
+        expect(frameOptionsFromSettings({ raceEngineerRadioBeeps: garbage, raceEngineerPitAmbience: garbage })).toEqual(
+          {
+            beeps: true,
+            ambience: true,
+          },
+        );
+      }
+    });
+
+    it("agrees with the schema on every value the schema accepts", () => {
+      for (const value of [true, false, "true", "false"]) {
+        const parsed = GlobalSettingsSchema.parse({
+          raceEngineerRadioBeeps: value,
+          raceEngineerPitAmbience: value,
+        }) as Record<string, unknown>;
+
+        expect(frameOptionsFromSettings({ raceEngineerRadioBeeps: value, raceEngineerPitAmbience: value })).toEqual(
+          frameOptionsFromSettings(parsed),
+        );
+      }
+    });
   });
 });
 

@@ -110,7 +110,7 @@ function incidentScenario(id: string, type: IncidentType, body: Step[]): Scenari
     bus: AudioBus.Voice,
     base: "voice/{voice}",
     family: "incident",
-    sequence: ["@pit-crew.radio-open", ...body, "@pit-crew.radio-close"],
+    sequence: body,
     when: {
       event: "incident.occurred",
       // No session-type gate here. In qualifying sessions, the

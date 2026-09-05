@@ -2,9 +2,9 @@
  * Start-light family scenarios (issues #480 / #673 / #829).
  *
  * Two gantry lines (ready / go) plus a four-mark numeric pre-start
- * countdown. Each callout wraps its clip in the shared radio frame
- * (`@pit-crew.radio-open` / `@pit-crew.radio-close`) so the engineer voice
- * matches every other Pit Crew message.
+ * countdown. Each callout is a single clip; the engine wraps it in the
+ * active voice's `radio` frame (issue #1064) so the engineer voice matches
+ * every other Pit Crew message.
  *
  * **In-car gating differs by half** (issue #829): the gantry lines require
  * the driver live in the car (out of the car at lights-out means the start
@@ -45,14 +45,10 @@ import type { SimEventName, SimEventOf, StartCountdownSeconds } from "@iracedeck
 import { isLiveOnTrack, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { getSessionType } from "@iracedeck/sim-events-iracing";
 
-import type { Scenario, Step } from "../../dsl.js";
+import type { Scenario } from "../../dsl.js";
 import { WEIGHT } from "../../dsl.js";
 import { POOL_REGISTRY } from "./pools.js";
 import { isRaceSession } from "./race-start.js";
-
-function startLightSequence(steps: Step[]): Step[] {
-  return ["@pit-crew.radio-open", ...steps, "@pit-crew.radio-close"];
-}
 
 // Start lights are a race-only concept. The diff already gates on
 // standing-start + the GetInCar/Warmup pre-start window, but iRacing can raise
@@ -75,7 +71,7 @@ const START_READY: Scenario = {
   interrupt: true,
   queueable: true,
   family: "start-light",
-  sequence: startLightSequence(["pool:start-light-ready"]),
+  sequence: ["pool:start-light-ready"],
   when: { event: "startLight.start-ready.raised", where: liveRaceCar },
 };
 
@@ -88,7 +84,7 @@ const START_GO: Scenario = {
   interrupt: true,
   queueable: true,
   family: "start-light",
-  sequence: startLightSequence(["pool:start-light-go"]),
+  sequence: ["pool:start-light-go"],
   when: { event: "startLight.start-go.raised", where: liveRaceCar },
 };
 
@@ -116,7 +112,7 @@ function countdownScenario(seconds: StartCountdownSeconds): Scenario {
     weight: WEIGHT.NORMAL,
     queueable: false,
     family: "start-light",
-    sequence: startLightSequence([`pool:start-light-countdown-${seconds}`]),
+    sequence: [`pool:start-light-countdown-${seconds}`],
     when: {
       event: "startLight.countdown.raised",
       where: (e) =>
