@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import {
   AMBIENT_ACTIONS,
+  CALLOUT_SCRIPT_MAX_DEPTH,
   CALLOUT_SCRIPT_SCHEMA_VERSION,
   type CalloutScript,
   type CalloutScriptEntry,
@@ -324,19 +325,99 @@ function isNewerSchema(json: unknown): boolean {
   return typeof schema === "number" && schema > CALLOUT_SCRIPT_SCHEMA_VERSION;
 }
 
+const TOO_DEEP_MESSAGE = `${ROOT_PREFIX}: the script is nested too deeply to read`;
+
+/**
+ * Whether any array or object in `json` sits deeper than `max` containers
+ * below the document root (the root itself counting as the first).
+ *
+ * An explicit stack, not recursion, and run BEFORE the schema: the step schema
+ * is recursive (`optional`, `then`, `of`, … each nest a step list), and a
+ * document nested a thousand levels deep takes zod past the call stack — a
+ * `RangeError` out of `safeParse`, which is the one thing this parser promises
+ * never to do. A cycle cannot come out of `JSON.parse`, and a hand-built one
+ * is caught by the same limit: each pass round it is a level deeper.
+ */
+function nestedDeeperThan(json: unknown, max: number): boolean {
+  const stack: { value: object; depth: number }[] = [];
+
+  if (json !== null && typeof json === "object") stack.push({ value: json, depth: 1 });
+
+  for (let next = stack.pop(); next !== undefined; next = stack.pop()) {
+    const { value, depth } = next;
+
+    if (depth > max) return true;
+
+    // `Object.values` reads an array's elements and an object's own enumerable
+    // values alike — which is exactly what `JSON.parse` produces.
+    for (const child of Object.values(value)) {
+      if (child !== null && typeof child === "object") stack.push({ value: child, depth: depth + 1 });
+    }
+  }
+
+  return false;
+}
+
 /**
  * Validate an already-parsed `callouts.json`.
  *
  * Never throws. The pack folder is user-writable by design, so a malformed
  * script is a reportable problem with that one voice — the scanner drops the
  * voice and lists the problems — never a plugin-startup failure. The caller
- * owns turning text into JSON (and stripping a BOM first, as the voice-pack
- * manifest reader does); this function owns everything after that.
+ * owns turning text into JSON ({@link parseCalloutScriptText} is the one
+ * text stage every reader shares); this function owns everything after that.
+ *
+ * Two guards keep the promise where the schema alone would not: a document
+ * nested deeper than {@link CALLOUT_SCRIPT_MAX_DEPTH} is refused before the
+ * recursive step schema ever sees it, and anything the validator throws
+ * anyway is reported as a problem rather than propagated.
  */
 export function parseCalloutScript(json: unknown): CalloutScriptParseResult {
-  const parsed = CalloutScriptSchema.safeParse(json);
+  if (nestedDeeperThan(json, CALLOUT_SCRIPT_MAX_DEPTH)) return { ok: false, problems: [TOO_DEEP_MESSAGE] };
+
+  let parsed: ReturnType<typeof CalloutScriptSchema.safeParse>;
+
+  try {
+    parsed = CalloutScriptSchema.safeParse(json);
+  } catch (err) {
+    // The depth walk above should make this unreachable for a stack overflow;
+    // it stays because the promise is "never throws", not "never throws as
+    // far as we can tell". A `RangeError` is the stack; anything else is
+    // reported in its own words.
+    const problem = err instanceof RangeError ? TOO_DEEP_MESSAGE : `${ROOT_PREFIX}: ${describeError(err)}`;
+
+    return { ok: false, problems: [problem] };
+  }
 
   if (parsed.success) return { ok: true, script: parsed.data };
 
   return { ok: false, problems: problemsFor(json, parsed.error.issues) };
+}
+
+/**
+ * Validate the TEXT of a `callouts.json` — the one text stage every reader
+ * goes through (the pack scanner, the packer, the harness), so that what
+ * counts as a readable script is decided in exactly one place.
+ *
+ * A leading UTF-8 BOM is stripped first: `JSON.parse` throws on one, several
+ * Windows editors write one, and hand-editing a pack is an advertised install
+ * path. Text that is not JSON is reported as the document's problem —
+ * `(document): not valid JSON: <message>` — under the same root prefix a
+ * non-object document gets, so a caller need not tell the two stages apart.
+ * Never throws, for the reason {@link parseCalloutScript} gives.
+ */
+export function parseCalloutScriptText(text: string): CalloutScriptParseResult {
+  let json: unknown;
+
+  try {
+    json = JSON.parse(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text);
+  } catch (err) {
+    return { ok: false, problems: [`${ROOT_PREFIX}: not valid JSON: ${describeError(err)}`] };
+  }
+
+  return parseCalloutScript(json);
+}
+
+function describeError(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }

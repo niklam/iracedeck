@@ -4,12 +4,14 @@
  * Plays a representative `AudioBus.Background` preview so the user can
  * audition their slider value: walkie-talkie tick-open on `AudioChannel.SFX`,
  * pit ambient loop on `AudioChannel.Ambient`, then tick-close after a short
- * window. Mirrors the `radio` frame the engine wraps every real pit-crew
- * voice scenario in (issue #1064), so the user hears exactly what the bus
- * carries during normal operation (sans voice) — including the user's two
- * frame switches: with Radio beeps off the ticks are dropped, with Pit
- * ambience off the loop is, and with both off there is nothing to preview,
- * so the sequence completes on the spot.
+ * window. This is the BUILT-IN radio frame — the one the bundled voice's
+ * script defines — not necessarily the active voice's: since #1064 a pack
+ * defines its own frame, and a pack that opens with its own beep is not
+ * what this preview plays (a follow-up will have the preview use the active
+ * frame). What it does share with a real callout is the bus, the volume and
+ * the user's two frame switches: with Radio beeps off the ticks are
+ * dropped, with Pit ambience off the loop is, and with both off there is
+ * nothing to preview, so the sequence completes on the spot.
  *
  * Idempotent against double-press — a second call while a sequence is in
  * flight is a no-op. The optional `onComplete` callback fires after the

@@ -286,6 +286,23 @@ describe("compileVoiceScript — frames", () => {
       { id: "pit-crew.flag-blue", reason: 'frame "radio": unknown pool "beep"', deliberate: false },
     ]);
   });
+
+  it("records why a frame failed to compile, under the name a legacy scenario would ask for", () => {
+    // A frame that failed is neither compiled nor undefined, and the engine
+    // needs to tell the two apart when a legacy scenario names it: "defines
+    // no frame" sends an author to add one, "failed to compile: <reason>"
+    // sends them to fix the one they wrote.
+    const { compiled } = compileOne(["pool:flag-blue"], {
+      script: { frames: { radio: { open: ["{{no.such.var}}"], close: [] }, terse: { open: [], close: [] } } },
+    });
+
+    expect([...compiled.failedFrames]).toEqual([["radio", 'unknown var "no.such.var"']]);
+    expect([...compiled.frames.keys()]).toEqual(["terse"]);
+  });
+
+  it("reports no failed frames when every frame compiled", () => {
+    expect(compileOne(["pool:flag-blue"]).compiled.failedFrames.size).toBe(0);
+  });
 });
 
 // ─── Pools ───────────────────────────────────────────────────────────────────
@@ -407,6 +424,30 @@ describe("compileVoiceScript — skip semantics", () => {
 
     expect(compiled.scenarios.size).toBe(0);
     expect(compiled.skipped).toEqual([{ id: "pit-crew.flag-blue", reason: "skip: true", deliberate: true }]);
+  });
+
+  it("honours `skip: true` before looking for a contract — a skip for an unknown id is deliberate, not a warn", () => {
+    // A pack may declare silence for an id this build has no contract for (a
+    // callout a later release scripts, or an earlier one did). It has said
+    // exactly what it means; "no contract" would warn about a contract it
+    // never asked for. An absent entry stays silent; an unknown id WITH a
+    // sequence is still the mistake the warn exists for.
+    const compiled = compileVoiceScript(
+      script({
+        scenarios: {
+          "pit-crew.flag-blue": { sequence: ["pool:flag-blue"] },
+          "pit-crew.future": { skip: true },
+          "pit-crew.ghost": { sequence: [] },
+        },
+      }),
+      deps(),
+    );
+
+    expect(compiled.scenarios.has("pit-crew.flag-blue")).toBe(true);
+    expect(compiled.skipped).toEqual([
+      { id: "pit-crew.future", reason: "skip: true", deliberate: true },
+      { id: "pit-crew.ghost", reason: "no contract", deliberate: false },
+    ]);
   });
 
   it("records a contract with no entry as a deliberate `no script` skip", () => {

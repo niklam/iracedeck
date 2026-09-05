@@ -24,11 +24,13 @@ import {
 import { AudioBus, initializeAudio } from "@iracedeck/audio-service";
 import {
   createMemorySettingsStore,
+  frameOptionsFromSettings,
   getGlobalSettings,
   initGlobalSettings,
   onGlobalSettingsChange,
   resolveActiveRaceEngineerVoice,
   voiceDisplayLabels,
+  type VoicePackService,
 } from "@iracedeck/deck-core";
 import { initializeEventBus } from "@iracedeck/event-bus";
 import type { SDKController } from "@iracedeck/iracing-sdk";
@@ -49,7 +51,7 @@ import { getHarnessQualifyingInvalidationSnapshot } from "./qualifying-invalidat
 import { getHarnessRaceStartSnapshot } from "./race-start-snapshot.js";
 import { DEFAULT_HOST, DEFAULT_PORT, startServer } from "./server.js";
 import { getHarnessSessionStartSnapshot } from "./session-start-snapshot.js";
-import { loadBundledVoiceScripts, loadInstalledVoiceScripts } from "./voice-scripts.js";
+import { loadBundledVoiceScripts, loadInstalledVoiceScripts, reloadVoiceScripts } from "./voice-scripts.js";
 
 /**
  * Resolve the package root from the running module's URL. Works whether
@@ -107,14 +109,11 @@ async function main(): Promise<void> {
   let raceEngineerVoices: readonly string[] = bundledVoices;
 
   // The radio frame's two opt-outs (#1064), read live at frame expansion from
-  // the same global-settings cache the plugins read — the harness seeds both
-  // on, and `/api/settings` writes through `updateGlobalSettings`, so a patch
-  // flipping either key is heard on the next callout.
-  const getFrameOptions = (): FrameOptions => {
-    const settings = getGlobalSettings();
-
-    return { beeps: settings.raceEngineerRadioBeeps !== false, ambience: settings.raceEngineerPitAmbience !== false };
-  };
+  // the same global-settings cache the plugins read, through the same
+  // deck-core rule the plugins and the Background preview use — the harness
+  // seeds both on, and `/api/settings` writes through `updateGlobalSettings`,
+  // so a patch flipping either key is heard on the next callout.
+  const getFrameOptions = (): FrameOptions => frameOptionsFromSettings(getGlobalSettings());
 
   initializeAudioScenarios(
     eventBus,
@@ -188,13 +187,15 @@ async function main(): Promise<void> {
   // seed below is re-issued so the UI's Voice dropdown offers the pack's
   // voices too. Without the variable the harness is the bundled voice alone.
   const voicePacksRoot = process.env.IRACEDECK_VOICE_PACKS_PATH;
+  // Kept for the UI's Reload: with a service the reload is its refresh.
+  let voicePacks: VoicePackService | null = null;
 
   if (voicePacksRoot !== undefined && voicePacksRoot !== "") {
     const voicePacksLogger = logger.createScope("VoicePacks");
     voicePacksLogger.info("Scanning voice packs");
     voicePacksLogger.debug(`Voice packs root: ${voicePacksRoot}`);
 
-    const voicePacks = loadInstalledVoiceScripts({
+    voicePacks = loadInstalledVoiceScripts({
       root: voicePacksRoot,
       pluginAudioDir: audioBasePath,
       bundledManifest: manifest,
@@ -284,8 +285,15 @@ async function main(): Promise<void> {
       // any clip currently loaded by miniaudio, and overwriting in place
       // is plenty since the only stale state we'd risk is a clip removed
       // from source still lingering in dest, which is fine for a dev tool.
-      refreshAudioAssets: () =>
-        processAndCopyAudioAssets({ destRoot: audioBasePath, logger: (m) => audioLog.info(m), wipe: false }),
+      //
+      // Then the scripts again (#1064): the copy refreshes the processed
+      // root's `callouts.json`, but the engine keeps the map it compiled at
+      // boot until it is handed the new one — and a regenerated script is
+      // exactly what Reload is pressed to audition.
+      refreshAudioAssets: async () => {
+        await processAndCopyAudioAssets({ destRoot: audioBasePath, logger: (m) => audioLog.info(m), wipe: false });
+        reloadVoiceScripts({ voicePacks, applyScripts: (scripts) => engine.setScripts(scripts) });
+      },
       wipeAudioCache: async () => {
         await wipeProcessedCache();
         audioLog.info("Wiped ffmpeg cache; full reprocess on next refresh/restart");

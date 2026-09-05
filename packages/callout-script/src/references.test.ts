@@ -81,6 +81,31 @@ describe("collectScriptReferences", () => {
     });
   });
 
+  // The compiler stops at `skip: true` and compiles nothing else in the entry,
+  // so a consumer checking references against what it holds must see the same
+  // thing: the id, and neither the frame nor a sequence left beside the skip.
+  it("lists a skip: true entry by id only — its frame and any sequence beside the skip are not references", () => {
+    const script: CalloutScript = {
+      schema: 1,
+      scenarios: {
+        spoken: { sequence: ["pool:a"] },
+        skipped: { skip: true, frame: "terse", sequence: ["pool:b", "{{v}}", { if: "c", then: ["@frag"] }] },
+      },
+      frames: {},
+      pools: {},
+    };
+
+    expect(collectScriptReferences(script)).toEqual({
+      scenarioIds: ["skipped", "spoken"],
+      pools: ["a"],
+      vars: [],
+      conds: [],
+      cases: [],
+      includes: [],
+      frames: [],
+    });
+  });
+
   it("merges the keys of a case used more than once", () => {
     const script: CalloutScript = {
       schema: 1,

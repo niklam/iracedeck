@@ -75,12 +75,13 @@ export interface VoicePackService {
    */
   problems(): readonly VoicePackProblem[];
   /**
-   * Voice id → parsed script for the most recent scan — bundled voices first,
-   * then installed voices with one — and the very object `applyScripts` was
-   * handed. Empty before the first refresh. Assigned together with
-   * `installed()` and `problems()`, so a consumer deciding whether the active
-   * voice has a script (the #1064 banner) can never pair a pack list from this
-   * scan with a script map from the last.
+   * Voice id → parsed script for the most recent APPLIED scan — bundled voices
+   * first, then installed voices with one — and the very object `applyScripts`
+   * was handed. Empty before the first refresh. Assigned together with
+   * `installed()` and `problems()`, and only once every `apply*` call has
+   * returned, so a consumer deciding whether the active voice has a script
+   * (the #1064 banner) can never pair a pack list from this scan with a script
+   * map from the last, and never reads a map the engine was not handed.
    */
   scripts(): ReadonlyMap<string, CalloutScript>;
 }
@@ -153,14 +154,6 @@ export function createVoicePackService(deps: VoicePackServiceDeps): VoicePackSer
           for (const voice of pack.voices) if (voice.script !== null) next.set(voice.id, voice.script);
         }
 
-        // One snapshot: the three read-model views describe the SAME scan, so
-        // a consumer reading the active voice off `installed()` and its script
-        // off `scripts()` can never see one from this scan and the other from
-        // the last. A scan that throws above keeps all three.
-        packs = scanned;
-        problems = found;
-        scripts = next;
-
         // Roots BEFORE the manifest. The manifest is what tells the engine a clip
         // exists; a clip must never be advertised before there is a root that can
         // resolve it, or a callout firing in that window would resolve to the
@@ -174,19 +167,31 @@ export function createVoicePackService(deps: VoicePackServiceDeps): VoicePackSer
         // script draws its pool clips from the manifest, so it must not be live
         // before the clips it names are advertised.
         deps.applyScripts(next);
+
+        // One snapshot, taken only now: the three read-model views describe
+        // the SAME scan, so a consumer reading the active voice off
+        // `installed()` and its script off `scripts()` can never see one from
+        // this scan and the other from the last — and they describe a scan
+        // the engine has been HANDED. An `apply*` that throws above leaves all
+        // three at the previous scan, the one the engine still runs on, rather
+        // than reporting scripts it never received.
+        packs = scanned;
+        problems = found;
+        scripts = next;
+
         deps.onPacksChanged();
 
         deps.logger.info("Voice packs scanned");
         deps.logger.debug(
           `Installed: ${scanned.map((pack) => `${pack.id}@${pack.version}`).join(", ") || "(none)"}; ` +
-            `problems: ${problems.map((problem) => `${problem.pack} (${problem.reason})`).join(", ") || "(none)"}; ` +
+            `problems: ${found.map((problem) => `${problem.pack} (${problem.reason})`).join(", ") || "(none)"}; ` +
             `scripts: ${[...next.keys()].join(", ") || "(none)"}`,
         );
 
         // Warn per problem, not just in the debug summary: a sideloaded pack that
         // silently does nothing is the single most likely support question here,
         // and the reason is the answer to it.
-        for (const problem of problems) {
+        for (const problem of found) {
           deps.logger.warn(`Voice pack "${problem.pack}" ignored: ${problem.reason}`);
         }
 

@@ -2311,6 +2311,193 @@ describe("pack-owned scripts (issue #1064)", () => {
     expect(mockLogger.warn).not.toHaveBeenCalled();
   });
 
+  it("(c) expands the frame before the body, so a frame abort commits none of the body's side effects", () => {
+    // The furled-flag shape: a body condition that marks the flag spoken as
+    // it is evaluated. With a broken frame the fire never plays, and the
+    // mark must not be made — or the flag is never spoken by anyone.
+    let spoken = false;
+    engine.defineCond(
+      "flag.stillShown",
+      () => {
+        spoken = true;
+
+        return true;
+      },
+      "marks the flag spoken",
+    );
+    engine.defineContract(contract());
+    engine.setScripts(
+      new Map([
+        [
+          "default",
+          script({
+            scenarios: { "test.green": { sequence: [{ if: "flag.stillShown", then: ["pool:flag-green"] }] } },
+            frames: { radio: { open: ["sfx/missing-beep.mp3"], close: [] } },
+          }),
+        ],
+      ]),
+    );
+
+    engine.fire("test.green");
+    flushVoiceAndSfx(audio);
+
+    expect(audio._played).toEqual([]);
+    expect(spoken).toBe(false);
+  });
+
+  it("(c) a frame that expands cleanly still lets the body's condition run, once", () => {
+    let evaluations = 0;
+    engine.defineCond(
+      "flag.stillShown",
+      () => {
+        evaluations += 1;
+
+        return true;
+      },
+      "counts",
+    );
+    engine.defineContract(contract());
+    engine.setScripts(
+      new Map([
+        [
+          "default",
+          script({ scenarios: { "test.green": { sequence: [{ if: "flag.stillShown", then: ["pool:flag-green"] }] } } }),
+        ],
+      ]),
+    );
+
+    engine.fire("test.green");
+    flushVoiceAndSfx(audio);
+
+    expect(voicePaths()).toEqual(["voice/default/flags/green-01.mp3"]);
+    expect(evaluations).toBe(1);
+  });
+
+  it("(d) a frame step the user switched off is never expanded, so its missing clip cannot abort the callout", () => {
+    // The switches are applied to the frame's STEPS before expansion: with
+    // beeps off the missing beep is dropped unread and the body plays framed
+    // by the ambience alone; with beeps on the same frame aborts the fire.
+    engine.defineContract(contract());
+    engine.setScripts(
+      new Map([
+        [
+          "default",
+          script({
+            scenarios: { "test.green": { sequence: ["pool:flag-green"] } },
+            frames: {
+              radio: { open: ["sfx/missing-beep.mp3", { ambient: "start" }], close: [{ ambient: "stop" }] },
+            },
+          }),
+        ],
+      ]),
+    );
+
+    frameOptions = { beeps: false, ambience: true };
+    engine.fire("test.green");
+    flushVoiceAndSfx(audio);
+
+    expect(audio._played).toEqual([
+      { channel: AudioChannel.Ambient, path: "sfx/IRD-ambient-pit.mp3", loop: true },
+      { channel: AudioChannel.Voice, path: "voice/default/flags/green-01.mp3", loop: false },
+    ]);
+    expect(audio.stopChannel).toHaveBeenCalledWith(AudioChannel.Ambient);
+    expect(mockLogger.warn).not.toHaveBeenCalled();
+
+    audio._played.length = 0;
+    frameOptions = { beeps: true, ambience: true };
+    engine.fire("test.green");
+    flushVoiceAndSfx(audio);
+
+    expect(audio._played).toEqual([]);
+    expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining("sfx/missing-beep.mp3"));
+  });
+
+  it("(d) the switches reach inside a branching frame step — the wrapper stays, its contents are filtered", () => {
+    // An `if` around part of the frame is structure, not sound: with beeps
+    // off the ambience bed inside it is kept, with ambience off the beep
+    // inside it is — the mirror of the case above, with the ambient half
+    // being what survives.
+    engine.defineCond("always", () => true, "always true");
+    engine.defineContract(contract());
+    engine.setScripts(
+      new Map([
+        [
+          "default",
+          script({
+            scenarios: { "test.green": { sequence: ["pool:flag-green"] } },
+            frames: {
+              radio: {
+                open: [{ if: "always", then: ["sfx/IRD-tick-open.mp3", { ambient: "start" }] }],
+                close: [{ if: "always", then: [{ ambient: "stop" }, "sfx/IRD-tick-close.mp3"] }],
+              },
+            },
+          }),
+        ],
+      ]),
+    );
+
+    frameOptions = { beeps: false, ambience: true };
+    engine.fire("test.green");
+    flushVoiceAndSfx(audio);
+
+    expect(playedPaths()).toEqual(["sfx/IRD-ambient-pit.mp3", "voice/default/flags/green-01.mp3"]);
+    expect(audio.stopChannel).toHaveBeenCalledWith(AudioChannel.Ambient);
+
+    audio._played.length = 0;
+    vi.mocked(audio.stopChannel).mockClear();
+    frameOptions = { beeps: true, ambience: false };
+    engine.fire("test.green");
+    flushVoiceAndSfx(audio);
+
+    expect(playedPaths()).toEqual([
+      "sfx/IRD-tick-open.mp3",
+      "voice/default/flags/green-01.mp3",
+      "sfx/IRD-tick-close.mp3",
+    ]);
+    expect(audio.stopChannel).not.toHaveBeenCalledWith(AudioChannel.Ambient);
+  });
+
+  it("(c) every clip a pack's frame plays rides the SFX channel, whatever the clip", () => {
+    // A pack that frames with its own recording — here a voice clip standing
+    // in for a beep — gets the built-in tick's treatment: the Background bus,
+    // the Background volume and the Radio beeps switch, not the Voice bus.
+    engine.defineContract(contract());
+    engine.setScripts(
+      new Map([
+        [
+          "default",
+          script({
+            scenarios: { "test.green": { sequence: ["pool:flag-green"] } },
+            frames: {
+              radio: {
+                open: ["voice/default/flags/blue-01.mp3"],
+                close: [{ clip: "voice/default/flags/blue-01.mp3" }],
+              },
+            },
+          }),
+        ],
+      ]),
+    );
+
+    engine.fire("test.green");
+    flushVoiceAndSfx(audio);
+
+    expect(audio._played).toEqual([
+      { channel: AudioChannel.SFX, path: "voice/default/flags/blue-01.mp3", loop: false },
+      { channel: AudioChannel.Voice, path: "voice/default/flags/green-01.mp3", loop: false },
+      { channel: AudioChannel.SFX, path: "voice/default/flags/blue-01.mp3", loop: false },
+    ]);
+
+    frameOptions = { beeps: false, ambience: true };
+    audio._played.length = 0;
+    engine.fire("test.green");
+    flushVoiceAndSfx(audio);
+
+    expect(audio._played).toEqual([
+      { channel: AudioChannel.Voice, path: "voice/default/flags/green-01.mp3", loop: false },
+    ]);
+  });
+
   it("(d) beeps off drops the frame's non-ambient steps and keeps its ambient ones", () => {
     engine.defineContract(contract());
     engine.setScripts(new Map([["default", GREEN_SCRIPT]]));
@@ -2422,6 +2609,71 @@ describe("pack-owned scripts (issue #1064)", () => {
     flushVoiceAndSfx(audio);
 
     expect(voicePaths()).toEqual(["voice/default/flags/blue-01.mp3"]);
+  });
+
+  it("(e) `noRepeat: false` is honoured in both spellings of a pool name — registered and slashed", () => {
+    // Two variants and a pinned Math.random: a no-repeat pick shifts off the
+    // index it just used, a `noRepeat: false` pick does not. The slashed
+    // `group/base` form routes through the dynamic-ref path, which used to
+    // drop the flag on the floor.
+    _resetAudioScenarios();
+    engine = initializeAudioScenarios(
+      bus,
+      audio,
+      { ...scriptedManifest, clips: [...scriptedManifest.clips, "voice/default/flags/green-02.mp3"] },
+      mockLogger as never,
+      () => activeVoice,
+      () => frameOptions,
+    );
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    engine.defineContract(contract({ id: "test.registered", frame: NO_FRAME }));
+    engine.defineContract(contract({ id: "test.slashed", frame: NO_FRAME }));
+    engine.defineContract(contract({ id: "test.registered-repeat", frame: NO_FRAME }));
+    engine.defineContract(contract({ id: "test.slashed-repeat", frame: NO_FRAME }));
+    engine.setScripts(
+      new Map([
+        [
+          "default",
+          script({
+            scenarios: {
+              "test.registered": { sequence: ["pool:flag-green", { pool: "flag-green" }] },
+              "test.slashed": { sequence: ["pool:flags/green", { pool: "flags/green" }] },
+              "test.registered-repeat": {
+                sequence: [
+                  { pool: "flag-green", noRepeat: false },
+                  { pool: "flag-green", noRepeat: false },
+                ],
+              },
+              "test.slashed-repeat": {
+                sequence: [
+                  { pool: "flags/green", noRepeat: false },
+                  { pool: "flags/green", noRepeat: false },
+                ],
+              },
+            },
+          }),
+        ],
+      ]),
+    );
+
+    const play = (id: string): string[] => {
+      audio._played.length = 0;
+      engine.fire(id);
+      flushVoiceAndSfx(audio);
+
+      return voicePaths();
+    };
+
+    expect(play("test.registered")).toEqual(["voice/default/flags/green-01.mp3", "voice/default/flags/green-02.mp3"]);
+    expect(play("test.slashed")).toEqual(["voice/default/flags/green-01.mp3", "voice/default/flags/green-02.mp3"]);
+    expect(play("test.registered-repeat")).toEqual([
+      "voice/default/flags/green-01.mp3",
+      "voice/default/flags/green-01.mp3",
+    ]);
+    expect(play("test.slashed-repeat")).toEqual([
+      "voice/default/flags/green-01.mp3",
+      "voice/default/flags/green-01.mp3",
+    ]);
   });
 
   it("(e) a required script pool that is empty for the active voice aborts the callout (issue #835)", () => {
@@ -2741,6 +2993,80 @@ describe("pack-owned scripts (issue #1064)", () => {
     expect(frameWarns).toHaveLength(1);
   });
 
+  it("warns about a lacking legacy frame again after setScripts — a new script map is a new state of affairs", () => {
+    engine.defineScenario({
+      id: "test.legacy",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      frame: "terse",
+      sequence: ["voice/{voice}/flags/green-01.mp3"],
+    });
+    const lacking = script();
+    engine.setScripts(new Map([["default", lacking]]));
+
+    engine.fire("test.legacy");
+    engine.fire("test.legacy");
+    flushVoiceAndSfx(audio);
+
+    const legacyWarns = () => mockLogger.warn.mock.calls.filter(([msg]) => String(msg).includes('no frame "terse"'));
+    expect(legacyWarns()).toHaveLength(1);
+
+    // A rescan that hands the engine the same, still-lacking script: the
+    // pack is still broken on this run, so it says so again — once.
+    engine.setScripts(new Map([["default", lacking]]));
+    engine.fire("test.legacy");
+    engine.fire("test.legacy");
+    flushVoiceAndSfx(audio);
+
+    expect(legacyWarns()).toHaveLength(2);
+  });
+
+  it("says a legacy scenario's frame FAILED TO COMPILE, with the reason, rather than that it is undefined", () => {
+    // Two different fixes for the author: "defines no frame" means add one;
+    // "failed to compile: unknown var" means fix the one they wrote.
+    engine.defineScenario({
+      id: "test.legacy",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      sequence: ["voice/{voice}/flags/green-01.mp3"],
+    });
+    engine.setScripts(new Map([["default", script({ frames: { radio: { open: ["{{no.such.var}}"], close: [] } } })]]));
+
+    engine.fire("test.legacy");
+    flushVoiceAndSfx(audio);
+
+    // Unframed, and the only warn names the compile failure and its reason.
+    expect(playedPaths()).toEqual(["voice/default/flags/green-01.mp3"]);
+    const frameWarns = mockLogger.warn.mock.calls.map(([msg]) => String(msg)).filter((msg) => msg.includes('"radio"'));
+    expect(frameWarns).toEqual([
+      'Voice "default" frame "radio" failed to compile: unknown var "no.such.var" — legacy scenarios using it play unframed',
+    ]);
+  });
+
+  it("warns once per (case, key) about an undeclared key, and again after setScripts", () => {
+    let key: string | null = "surprise";
+    engine.defineCase("session.type", () => key, { race: "…" }, "the session type");
+    engine.defineContract(contract({ frame: NO_FRAME }));
+    const cased = script({
+      scenarios: { "test.green": { sequence: [{ case: "session.type", of: { race: ["pool:flag-green"] } }] } },
+    });
+    engine.setScripts(new Map([["default", cased]]));
+
+    engine.fire("test.green");
+    engine.fire("test.green");
+    const caseWarns = () => mockLogger.warn.mock.calls.filter(([msg]) => String(msg).includes("undeclared key"));
+    expect(caseWarns()).toHaveLength(1);
+
+    engine.setScripts(new Map([["default", cased]]));
+    engine.fire("test.green");
+    expect(caseWarns()).toHaveLength(2);
+
+    key = "race";
+    engine.fire("test.green");
+    flushVoiceAndSfx(audio);
+    expect(voicePaths()).toEqual(["voice/default/flags/green-01.mp3"]);
+  });
+
   it("keeps a legacy `frame: NO_FRAME` scenario bare even when the voice defines the radio frame", () => {
     engine.defineScenario({
       id: "test.legacy",
@@ -2757,7 +3083,7 @@ describe("pack-owned scripts (issue #1064)", () => {
     expect(playedPaths()).toEqual(["voice/default/flags/green-01.mp3"]);
   });
 
-  it("resumes a framed scripted callout after an interrupt, re-keying the open tick (issue #758)", () => {
+  it("resumes a framed scripted callout after an interrupt, re-keying with the frame's whole open (issue #758)", () => {
     engine.defineContract(contract({ id: "test.readback", weight: WEIGHT.NORMAL, queueable: true, resumable: true }));
     engine.defineContract(contract({ id: "test.cut", weight: WEIGHT.CRITICAL, interrupt: true }));
     engine.setScripts(
@@ -2791,13 +3117,153 @@ describe("pack-owned scripts (issue #1064)", () => {
       "sfx/IRD-ambient-pit.mp3",
       "voice/default/flags/green-alt-01.mp3",
       "sfx/IRD-tick-close.mp3",
-      // the resume: re-keyed with the open tick, from the interrupted clip, then the frame's close
+      // the resume: re-keyed with the frame's open as delivered before the cut —
+      // the tick AND the ambience bed the cut had stopped — then from the
+      // interrupted clip, then the frame's close
       "sfx/IRD-tick-open.mp3",
+      "sfx/IRD-ambient-pit.mp3",
       "voice/default/flags/green-01.mp3",
       "voice/default/flags/blue-01.mp3",
       "sfx/IRD-tick-close.mp3",
     ]);
     expect(mockLogger.info).toHaveBeenCalledWith('Resuming scenario "test.readback"');
+  });
+
+  it("re-keys an interrupted resumable fire with the pack frame's own open, on the SFX channel", () => {
+    // The frame is known by its tag, not by the built-in tick's path: a pack
+    // that opens with its own beep gets that beep back at the resume, and it
+    // rides the SFX channel like the built-in one.
+    engine.defineContract(contract({ id: "test.readback", weight: WEIGHT.NORMAL, queueable: true, resumable: true }));
+    engine.defineContract(contract({ id: "test.cut", weight: WEIGHT.CRITICAL, interrupt: true, frame: NO_FRAME }));
+    engine.setScripts(
+      new Map([
+        [
+          "default",
+          script({
+            scenarios: {
+              "test.readback": { sequence: ["voice/default/flags/green-01.mp3", "voice/default/flags/blue-01.mp3"] },
+              "test.cut": { sequence: ["voice/default/flags/green-alt-01.mp3"] },
+            },
+            frames: {
+              radio: { open: ["voice/default/flags/blue-01.mp3"], close: ["voice/default/flags/blue-01.mp3"] },
+            },
+          }),
+        ],
+      ]),
+    );
+
+    engine.fire("test.readback"); // the pack's beep (SFX) in flight
+    audio._triggerChannelEnd(AudioChannel.SFX); // green-01 (Voice) in flight
+    engine.fire("test.cut");
+    flushVoiceAndSfx(audio);
+
+    expect(audio._played.map((p) => [p.channel, p.path])).toEqual([
+      [AudioChannel.SFX, "voice/default/flags/blue-01.mp3"],
+      [AudioChannel.Voice, "voice/default/flags/green-01.mp3"],
+      [AudioChannel.Voice, "voice/default/flags/green-alt-01.mp3"],
+      // the resume re-keys with the pack's own beep, still on SFX
+      [AudioChannel.SFX, "voice/default/flags/blue-01.mp3"],
+      [AudioChannel.Voice, "voice/default/flags/green-01.mp3"],
+      [AudioChannel.Voice, "voice/default/flags/blue-01.mp3"],
+      [AudioChannel.SFX, "voice/default/flags/blue-01.mp3"],
+    ]);
+  });
+
+  it("treats the same clips framed and unframed as different expansions — a resume never mistakes one for the other", () => {
+    // Stashed as a framed line (the tick tagged `open`), re-expanded after a
+    // rescan as an unframed line that plays the tick itself: same paths,
+    // same channels, different ops. The freshness rule (#481) must see the
+    // change and replay in full rather than resume the tail.
+    engine.defineContract(contract({ id: "test.readback", weight: WEIGHT.NORMAL, queueable: true, resumable: true }));
+    engine.defineContract(contract({ id: "test.cut", weight: WEIGHT.CRITICAL, interrupt: true, frame: NO_FRAME }));
+    const body = ["voice/default/flags/green-01.mp3", "voice/default/flags/blue-01.mp3"];
+    engine.setScripts(
+      new Map([
+        [
+          "default",
+          script({
+            scenarios: {
+              "test.readback": { sequence: body },
+              "test.cut": { sequence: ["voice/default/flags/green-alt-01.mp3"] },
+            },
+            frames: { radio: { open: ["sfx/IRD-tick-open.mp3"], close: [] } },
+          }),
+        ],
+      ]),
+    );
+
+    engine.fire("test.readback"); // tick (frame) in flight
+    audio._triggerChannelEnd(AudioChannel.SFX); // green-01 in flight
+    engine.fire("test.cut"); // stashes the readback at green-01
+
+    // A rescan while the cut plays: the readback is now unframed and spells the tick itself.
+    engine.setScripts(
+      new Map([
+        [
+          "default",
+          script({
+            scenarios: {
+              "test.readback": { frame: NO_FRAME, sequence: ["sfx/IRD-tick-open.mp3", ...body] },
+              "test.cut": { sequence: ["voice/default/flags/green-alt-01.mp3"] },
+            },
+          }),
+        ],
+      ]),
+    );
+    flushVoiceAndSfx(audio);
+
+    expect(playedPaths()).toEqual([
+      "sfx/IRD-tick-open.mp3",
+      "voice/default/flags/green-01.mp3",
+      "voice/default/flags/green-alt-01.mp3",
+      // full fresh replay, from the top
+      "sfx/IRD-tick-open.mp3",
+      "voice/default/flags/green-01.mp3",
+      "voice/default/flags/blue-01.mp3",
+    ]);
+    expect(mockLogger.info).not.toHaveBeenCalledWith('Resuming scenario "test.readback"');
+  });
+
+  it("a body clip that happens to be the built-in tick is not mistaken for the frame at a resume", () => {
+    // Identification is by tag: an unframed line that PLAYS the tick as an
+    // ordinary clip has opened no frame, so its resume re-keys with nothing.
+    engine.defineContract(
+      contract({ id: "test.line", weight: WEIGHT.NORMAL, queueable: true, resumable: true, frame: NO_FRAME }),
+    );
+    engine.defineContract(contract({ id: "test.cut", weight: WEIGHT.CRITICAL, interrupt: true, frame: NO_FRAME }));
+    engine.setScripts(
+      new Map([
+        [
+          "default",
+          script({
+            scenarios: {
+              "test.line": {
+                sequence: [
+                  "sfx/IRD-tick-open.mp3",
+                  "voice/default/flags/green-01.mp3",
+                  "voice/default/flags/blue-01.mp3",
+                ],
+              },
+              "test.cut": { sequence: ["voice/default/flags/green-alt-01.mp3"] },
+            },
+          }),
+        ],
+      ]),
+    );
+
+    engine.fire("test.line"); // the tick (SFX, by path) in flight
+    audio._triggerChannelEnd(AudioChannel.SFX); // green-01 in flight
+    engine.fire("test.cut");
+    flushVoiceAndSfx(audio);
+
+    expect(playedPaths()).toEqual([
+      "sfx/IRD-tick-open.mp3",
+      "voice/default/flags/green-01.mp3",
+      "voice/default/flags/green-alt-01.mp3",
+      // the resume: straight back to the interrupted clip, no re-key
+      "voice/default/flags/green-01.mp3",
+      "voice/default/flags/blue-01.mp3",
+    ]);
   });
 
   it("a fire that would preempt but has no script for the voice never silences the in-flight line", () => {

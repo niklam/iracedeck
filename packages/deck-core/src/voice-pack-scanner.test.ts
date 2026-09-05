@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { voiceDisplayLabels } from "./voice-labels.js";
-import { scanVoicePacks, type VoicePackFileSystem } from "./voice-pack-scanner.js";
+import { scanVoicePacks, VOICE_SCRIPT_MAX_BYTES, type VoicePackFileSystem } from "./voice-pack-scanner.js";
 
 const ROOT = "/packs";
 
@@ -687,9 +687,86 @@ describe("scanVoicePacks reads a voice's callouts.json beside its clips (#1064)"
       expect(result.packs).toEqual([]);
       expect(result.problems).toHaveLength(1);
       expect(result.problems[0].pack).toBe("luca");
-      // The parser's own message follows, as it does for the manifest: an
-      // author hand-editing the file gets the position, not just a verdict.
-      expect(result.problems[0].reason).toMatch(/^voice "luca": callouts\.json is not valid JSON: \S/);
+      // The grammar's own problem follows — a JSON failure is reported under
+      // the document prefix like any other root problem, with the parser's
+      // message: an author hand-editing the file gets the position, not just
+      // a verdict.
+      expect(result.problems[0].reason).toMatch(/^voice "luca": callouts\.json \(document\): not valid JSON: \S/);
+    });
+
+    it("drops a voice whose script is nested too deeply to read, and never throws", () => {
+      // A thousand nested `optional`s once took the grammar past the call
+      // stack. The scan runs where a throw ends the plugin; a sideloaded pack
+      // can put any document it likes on disk.
+      let step: unknown = "pool:flag-green";
+
+      for (let i = 0; i < 1000; i++) step = { optional: [step] };
+
+      const deep = JSON.stringify({ ...script, scenarios: { "flag-green": { sequence: [step] } } });
+      const result = scanVoicePacks({
+        root: ROOT,
+        reservedVoices: [],
+        fs: fakeFs({
+          deep: {
+            manifest: { ...luca, id: "deep" },
+            clips: ["voice/luca/flags/a.mp3"],
+            files: { [SCRIPT_PATH]: deep },
+          },
+          nina: {
+            manifest: { ...luca, id: "nina", voices: [{ id: "nina", label: "Nina" }] },
+            clips: ["voice/nina/flags/a.mp3"],
+            files: { "voice/nina/callouts.json": JSON.stringify(script) },
+          },
+        }),
+      });
+
+      expect(result.packs.map((p) => p.id)).toEqual(["nina"]);
+      expect(result.problems).toEqual([
+        { pack: "deep", reason: 'voice "luca": callouts.json (document): the script is nested too deeply to read' },
+      ]);
+    });
+
+    it("drops a voice whose script is larger than the cap, before the grammar sees it", () => {
+      // Padding inside a string keeps the document valid JSON: the size
+      // check is what refuses it, not the parser.
+      const padded = JSON.stringify({ ...script, frames: {}, pools: {}, comment: "x".repeat(VOICE_SCRIPT_MAX_BYTES) });
+      const result = scan({ [SCRIPT_PATH]: padded });
+
+      expect(padded.length).toBeGreaterThan(VOICE_SCRIPT_MAX_BYTES);
+      expect(result.packs).toEqual([]);
+      expect(result.problems).toEqual([
+        { pack: "luca", reason: `voice "luca": callouts.json is larger than ${VOICE_SCRIPT_MAX_BYTES} bytes` },
+      ]);
+    });
+
+    it("reads a script exactly at the cap", () => {
+      const room = VOICE_SCRIPT_MAX_BYTES - JSON.stringify({ ...script, comment: "" }).length;
+      const exact = JSON.stringify({ ...script, comment: "x".repeat(room) });
+
+      expect(exact.length).toBe(VOICE_SCRIPT_MAX_BYTES);
+      // `comment` is not a top-level key the grammar knows, so the verdict is
+      // the grammar's — which proves the text reached it.
+      expect(scan({ [SCRIPT_PATH]: exact }).problems).toEqual([
+        { pack: "luca", reason: 'voice "luca": callouts.json comment: unrecognized key' },
+      ]);
+    });
+
+    it("reports a port that throws as this voice's problem rather than ending the scan", () => {
+      const throwing: VoicePackFileSystem = {
+        ...fakeFs({ luca: { manifest: luca, clips: ["voice/luca/flags/blue-01.mp3"] } }),
+        readTextFile(file) {
+          if (file.replace(/\\/g, "/").endsWith(SCRIPT_PATH)) throw new Error("boom");
+
+          return { ok: true, text: JSON.stringify(luca) };
+        },
+      };
+
+      const result = scanVoicePacks({ root: ROOT, reservedVoices: [], fs: throwing });
+
+      expect(result.packs).toEqual([]);
+      expect(result.problems).toEqual([
+        { pack: "luca", reason: 'voice "luca": callouts.json could not be read (boom)' },
+      ]);
     });
 
     it("drops a voice whose script fails the schema, naming the path the parser reports", () => {

@@ -12,6 +12,7 @@
 export {
   AMBIENT_ACTIONS,
   type AmbientAction,
+  CALLOUT_SCRIPT_MAX_DEPTH,
   CALLOUT_SCRIPT_SCHEMA_VERSION,
   type CalloutScript,
   type CalloutScriptEntry,
@@ -44,6 +45,7 @@ export {
   CalloutScriptSchema,
   FrameDefinitionSchema,
   parseCalloutScript,
+  parseCalloutScriptText,
   PoolDefinitionSchema,
   ScriptStepSchema,
 } from "./schema.js";

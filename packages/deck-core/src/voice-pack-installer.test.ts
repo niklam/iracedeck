@@ -1689,7 +1689,7 @@ describe("createVoicePackInstaller — seed by copy", () => {
       });
       expect(disk.files(join(ROOT, "default"))[SCRIPT_PATH]).toBe("{not json");
       expect(scanned(disk, []).problems.map((problem) => problem.reason)).toEqual([
-        expect.stringContaining("callouts.json is not valid JSON"),
+        expect.stringContaining("callouts.json (document): not valid JSON"),
       ]);
     });
   });

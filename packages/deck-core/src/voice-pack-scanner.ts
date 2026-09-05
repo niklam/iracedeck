@@ -2,7 +2,7 @@ import {
   CALLOUT_SCRIPT_FILE,
   type CalloutScript,
   calloutScriptPath,
-  parseCalloutScript,
+  parseCalloutScriptText,
 } from "@iracedeck/callout-script";
 import { join } from "node:path";
 
@@ -140,6 +140,19 @@ const MANIFEST_FILE = "voice-pack.json";
  */
 const USABLE_CLIP = /^voice\/[^/]+\/[^/]+\/[^/]+\.mp3$/;
 
+/**
+ * The most text a `callouts.json` may hold before it is refused unread
+ * (#1064). The bundled script is under 200 KB and the largest JSON anywhere
+ * in the audio pipeline is 480 KB (the numbers `VOICE_PACK_ARCHIVE_LIMITS`
+ * was calibrated against), so a megabyte is headroom for any pack an author
+ * would write and a bound on what a sideloaded file can make the grammar
+ * validate — the pack folder is user-writable, and the schema walk is not
+ * free. Measured in UTF-16 code units of the decoded text, which never
+ * exceeds the file's byte count, so a file this check refuses is always
+ * larger than the cap in bytes as well.
+ */
+export const VOICE_SCRIPT_MAX_BYTES = 1024 * 1024;
+
 export type VoiceScriptRead = { ok: true; script: CalloutScript | null } | { ok: false; reason: string };
 
 /**
@@ -154,46 +167,52 @@ export type VoiceScriptRead = { ok: true; script: CalloutScript | null } | { ok:
  * every callout the author wrote and show nothing anywhere saying why.
  *
  * The `reason` is a fragment that follows the file name, so the three read
- * `callouts.json could not be read (EBUSY)`, `callouts.json is not valid JSON:
- * …` and `callouts.json scenarios.flag-green.sequence[1]: …` — the parser's
- * problems are already path-prefixed, so the file name is all that is added.
+ * `callouts.json could not be read (EBUSY)`, `callouts.json (document): not
+ * valid JSON: …` and `callouts.json scenarios.flag-green.sequence[1]: …` — the
+ * grammar's problems are already path-prefixed (a JSON failure is its first
+ * one, under the document prefix), so the file name is all that is added.
  * Only the FIRST grammar problem is reported: one line per dropped voice in
  * the Installed Voices list, as the manifest reader does for a pack.
+ *
+ * The text goes through `parseCalloutScriptText`, the grammar package's one
+ * text stage — the packer and the harness read through the same function, so
+ * what counts as a readable script is decided once. Two guards are this
+ * reader's own: a file over {@link VOICE_SCRIPT_MAX_BYTES} is refused before
+ * the grammar sees it, and NOTHING here can throw — the scan runs where a
+ * throw ends the plugin, so an error the grammar did not foresee is reported
+ * as this voice's problem, never propagated.
  *
  * Exported for the voice-pack service, which reads each BUNDLED voice's script
  * under the plugin's own audio root through this same function (#1064): one
  * reader for both roots, so that when the bundle is dropped only the roots
- * list changes.
+ * list changes. It is also deck-core's port-based script reader for anything
+ * else that holds a `VoicePackFileSystem`.
  */
 export function readVoiceScript(fs: VoicePackFileSystem, dir: string, voiceId: string): VoiceScriptRead {
-  const read = fs.readTextFile(join(dir, calloutScriptPath(voiceId)));
-
-  if (!read.ok) {
-    return read.missing
-      ? { ok: true, script: null }
-      : { ok: false, reason: `${CALLOUT_SCRIPT_FILE} could not be read (${read.reason})` };
-  }
-
-  let json: unknown;
-
   try {
-    // A leading UTF-8 BOM is stripped before parsing, for the reason the
-    // manifest reader gives: `JSON.parse` throws on one, several Windows
-    // editors write one, and the script must not be stricter than the
-    // manifest about the same accident.
-    json = JSON.parse(read.text.charCodeAt(0) === 0xfeff ? read.text.slice(1) : read.text);
+    const read = fs.readTextFile(join(dir, calloutScriptPath(voiceId)));
+
+    if (!read.ok) {
+      return read.missing
+        ? { ok: true, script: null }
+        : { ok: false, reason: `${CALLOUT_SCRIPT_FILE} could not be read (${read.reason})` };
+    }
+
+    if (read.text.length > VOICE_SCRIPT_MAX_BYTES) {
+      return { ok: false, reason: `${CALLOUT_SCRIPT_FILE} is larger than ${VOICE_SCRIPT_MAX_BYTES} bytes` };
+    }
+
+    const parsed = parseCalloutScriptText(read.text);
+
+    if (!parsed.ok) return { ok: false, reason: `${CALLOUT_SCRIPT_FILE} ${parsed.problems[0] ?? "invalid shape"}` };
+
+    return { ok: true, script: parsed.script };
   } catch (err) {
     return {
       ok: false,
-      reason: `${CALLOUT_SCRIPT_FILE} is not valid JSON: ${err instanceof Error ? err.message : String(err)}`,
+      reason: `${CALLOUT_SCRIPT_FILE} could not be read (${err instanceof Error ? err.message : String(err)})`,
     };
   }
-
-  const parsed = parseCalloutScript(json);
-
-  if (!parsed.ok) return { ok: false, reason: `${CALLOUT_SCRIPT_FILE} ${parsed.problems[0] ?? "invalid shape"}` };
-
-  return { ok: true, script: parsed.script };
 }
 
 /**

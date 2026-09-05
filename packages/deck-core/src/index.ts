@@ -165,6 +165,8 @@ export {
   type SettingsStoreSource,
   hostMirrorPayload,
   DEFAULT_RACE_ENGINEER_VOICE,
+  frameOptionsFromSettings,
+  type RadioFrameSwitches,
   resolveActiveDriverName,
   resolveActiveRaceEngineerVoice,
   sameValue,
@@ -206,13 +208,16 @@ export {
   type VoicePackManifest,
 } from "./voice-pack-manifest.js";
 export {
+  readVoiceScript,
   scanVoicePacks,
+  VOICE_SCRIPT_MAX_BYTES,
   type InstalledVoice,
   type InstalledVoicePack,
   type ScanVoicePacksOptions,
   type ScanVoicePacksResult,
   type VoicePackFileSystem,
   type VoicePackProblem,
+  type VoiceScriptRead,
 } from "./voice-pack-scanner.js";
 // The type behind `InstalledVoice.script` (#1064), re-exported so a consumer
 // that names it — a plugin mapping the `_voicePacks` view model, or handing

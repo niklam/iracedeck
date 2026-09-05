@@ -86,8 +86,12 @@ export function scanDriverNames(manifest: AudioAssetsManifest): string[] {
  * packs (issue #1034).
  *
  * `ambientLoop` and `ticks` always come from the built-in manifest: those assets
- * ship with the plugin, and a pack must never be able to redefine the radio
- * frame every callout is wrapped in.
+ * ship with the plugin. Since #1064 the radio frame itself is PACK-DEFINED —
+ * the active voice's `callouts.json` says what its frames play, and a pack's
+ * own beep rides the SFX channel exactly as the built-in tick does — so the
+ * only thing pinned here is `ambientLoop`, the one asset a frame's `ambient`
+ * steps drive by reference rather than by path; `ticks` stays for the
+ * legacy sequences that spell the built-in tick inline (gone with #1065).
  *
  * The result is de-duplicated and sorted, so an identical set of packs produces
  * an identical manifest whatever order they were scanned in — which is what

@@ -238,6 +238,10 @@ const globalTitleSettings = getGlobalTitleSettings();
 const title = resolveTitleSettings(graphicSvg, globalTitleSettings, settings.titleOverrides, "DEFAULT\nTITLE");
 ```
 
+## Radio Frame switches — `frameOptionsFromSettings()`
+
+The Race Engineer's two frame switches, `raceEngineerRadioBeeps` and `raceEngineerPitAmbience` (#1064), are read through ONE deck-core rule, `frameOptionsFromSettings(settings)` → `{ beeps, ambience }`: off only for an explicit `false` (or the PI's `"false"`), on for a missing key or anything else — both default on, and before the store has loaded the cache holds that default, so a wrong reading must fail towards the frame playing whole. Every reader goes through it — the three plugins' `getFrameOptions` closure handed to the scenario engine, the Background preview's `readFrameOptions` in `iracing-actions`, and the scenario harness — so a callout's frame and its preview can never disagree about what the user switched off. Don't write a fifth `!== false` pair; the return type is the structural `RadioFrameSwitches`, identical to the engine's `FrameOptions`, because deck-core must not depend on `audio-scenarios`.
+
 ## Per-callout opt-in/out — `callout<Polarity><Family><Subject>`
 
 For features that expose N parallel opt-ins for individual callouts the Race Engineer makes (e.g. issue #467: every flag color), use one boolean global-settings key per subject under a uniform naming convention:

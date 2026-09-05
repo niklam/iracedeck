@@ -407,6 +407,45 @@ describe("createVoicePackService hands the engine every voice's callout script (
     expect(logger.error).toHaveBeenCalledTimes(1);
   });
 
+  it("leaves scripts(), installed() and problems() at the previous scan when an apply call throws", () => {
+    // The read model describes a scan the engine has been HANDED. An
+    // `applyManifest` that throws means `applyScripts` never ran, so the map
+    // this scan built is one the engine does not have — reporting it would
+    // let the #1064 banner say the active voice is scripted while the engine
+    // still runs on the previous map.
+    logger.error.mockClear();
+    let refreshes = 0;
+    const { service, applyScripts } = make(
+      LUCA_CLIPS,
+      {
+        reservedVoices: ["default"],
+        applyManifest: () => {
+          if (++refreshes > 1) throw new Error("engine exploded");
+        },
+      },
+      { [BUNDLED_SCRIPT_PATH]: JSON.stringify(bundledScript), [LUCA_SCRIPT_PATH]: JSON.stringify(lucaScript) },
+    );
+    service.refresh();
+    const scripts = service.scripts();
+    const installed = service.installed();
+    const problems = service.problems();
+
+    expect(scripts).toEqual(
+      new Map([
+        ["default", bundledScript],
+        ["luca", lucaScript],
+      ]),
+    );
+
+    service.refresh();
+
+    expect(service.scripts()).toBe(scripts);
+    expect(service.installed()).toBe(installed);
+    expect(service.problems()).toBe(problems);
+    expect(applyScripts).toHaveBeenCalledTimes(1);
+    expect(logger.error).toHaveBeenCalledTimes(1);
+  });
+
   it("hands over an empty map when nothing is bundled and no pack is installed", () => {
     const { service, applyScripts } = make({});
     service.refresh();

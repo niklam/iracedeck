@@ -37,10 +37,10 @@
  * proves it by packing twice and comparing hashes rather than by trusting the
  * reasoning here.
  */
-import { CALLOUT_SCRIPT_FILE, calloutScriptPath, parseCalloutScript } from "@iracedeck/callout-script";
+import { CALLOUT_SCRIPT_FILE, calloutScriptPath, parseCalloutScriptText } from "@iracedeck/callout-script";
 import { zipSync } from "fflate";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import url from "node:url";
 
@@ -179,12 +179,10 @@ function assertPackDefinition(pack) {
  * to validate — so a pack carrying one would install cleanly, claim nothing,
  * and be silent, with the only trace a line in Installed Voices on the user's
  * machine. Checked HERE, before a single clip of the voice is staged, with the
- * grammar's own parser: the very function the scanner runs, so the two cannot
- * disagree about what is acceptable. A voice with no script at all is a
- * clips-only voice, which is valid.
- *
- * A leading BOM is stripped first, as the scanner strips it: the packer must
- * not be stricter than the reader about a file an editor wrote.
+ * grammar's own text stage (`parseCalloutScriptText`): the very function the
+ * scanner runs over the same bytes — BOM strip, JSON, grammar — so the two
+ * cannot disagree about what is acceptable. A voice with no script at all is
+ * a clips-only voice, which is valid.
  *
  * The file is found by its EXACT name in a directory listing, the way the
  * walk (`buildVoiceTreeTasks`) decides what to stage — not with `existsSync`,
@@ -192,6 +190,12 @@ function assertPackDefinition(pack) {
  * validate here, be skipped by the walk, and ship a pack that is silent for
  * no reason anyone can see; so a wrong-cased name is refused outright, naming
  * the one the walk and the scanner look for.
+ *
+ * It must also be a REGULAR FILE, by `lstat` — the walk stages only what
+ * `Dirent.isFile()` says is one, and a symlink, a junction or a directory of
+ * that name is not. `readFileSync` follows a symlink, so without this check a
+ * link to a valid script would validate here and then not be staged: the
+ * same silent pack as the wrong-cased name, by another route.
  *
  * @param {VoicePackDefinition} pack
  * @param {string} voiceId
@@ -212,10 +216,15 @@ function assertCalloutScript(pack, voiceId, srcDir) {
   if (!names.includes(CALLOUT_SCRIPT_FILE)) return;
 
   const file = path.join(srcDir, CALLOUT_SCRIPT_FILE);
+
+  if (!lstatSync(file).isFile()) {
+    throw new Error(`${where} must be a regular file — a symlink, junction or directory of that name is not staged`);
+  }
+
   let text;
 
-  // Read and parse are reported apart, as the scanner reports them: an
-  // EACCES or an EISDIR is not "invalid JSON", and the author fixing it
+  // The read is reported apart from the grammar's verdict, as the scanner
+  // reports it: an EACCES is not "invalid JSON", and the author fixing it
   // should not be sent to look for a syntax error.
   try {
     text = readFileSync(file, "utf-8");
@@ -223,15 +232,9 @@ function assertCalloutScript(pack, voiceId, srcDir) {
     throw new Error(`${where} could not be read: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  let json;
-
-  try {
-    json = JSON.parse(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text);
-  } catch (err) {
-    throw new Error(`${where} is not valid JSON: ${err instanceof Error ? err.message : String(err)}`);
-  }
-
-  const parsed = parseCalloutScript(json);
+  // One text stage, the scanner's: a JSON failure is the grammar's first
+  // problem (`(document): not valid JSON: …`), listed like any other.
+  const parsed = parseCalloutScriptText(text);
 
   if (!parsed.ok) {
     throw new Error(`${where} is not a script the plugin accepts:\n  ${parsed.problems.join("\n  ")}`);

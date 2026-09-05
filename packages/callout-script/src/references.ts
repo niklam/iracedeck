@@ -17,7 +17,13 @@ import {
  * things compare equal however they are laid out.
  */
 export type ScriptReferences = {
-  /** Keys of `scenarios`, `skip: true` entries included. */
+  /**
+   * Keys of `scenarios`, `skip: true` entries included. A `skip: true` entry
+   * contributes its id and NOTHING else — not its `frame`, not anything a
+   * `sequence` beside the skip would name — because the compiler never reads
+   * past the skip, so nothing in such an entry is a reference the engine
+   * will resolve.
+   */
   scenarioIds: readonly string[];
   /**
    * Every pool name any sequence references, string and object forms alike; a
@@ -93,13 +99,18 @@ function sorted(values: Iterable<string>): string[] {
 /**
  * Walk a parsed script and list everything it references by name — through
  * every `then`/`else`/`optional`/`of` branch, and through the frames' own
- * `open`/`close` sequences.
+ * `open`/`close` sequences. A `skip: true` entry is listed by id only (see
+ * {@link ScriptReferences.scenarioIds}).
  */
 export function collectScriptReferences(script: CalloutScript): ScriptReferences {
   const collector = new Collector();
   const frames = new Set<string>();
 
   for (const entry of Object.values(script.scenarios)) {
+    // The compiler's own rule: a skipped entry is a deliberate silence and
+    // nothing in it is compiled, so nothing in it is referenced either.
+    if (entry.skip === true) continue;
+
     if (entry.frame !== undefined && entry.frame !== NO_FRAME) frames.add(entry.frame);
 
     if (entry.sequence) collector.walk(entry.sequence);

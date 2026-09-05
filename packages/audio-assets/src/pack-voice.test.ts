@@ -2,6 +2,7 @@ import { CALLOUT_SCRIPT_FILE, type CalloutScript, calloutScriptPath } from "@ira
 import { unzipSync } from "fflate";
 import { createHash } from "node:crypto";
 import {
+  chmodSync,
   copyFileSync,
   existsSync,
   mkdirSync,
@@ -10,6 +11,7 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -479,24 +481,78 @@ describe("packVoice", () => {
       expect(existsSync(path.join(badRoot, "out", "testvoice", "voice"))).toBe(false);
     });
 
-    it("one that is not JSON", async () => {
+    it("one that is not JSON — the grammar's own document problem, through the scanner's text stage", async () => {
       const { attempt, badRoot } = packWithScript("bad-json", "{ not json");
 
-      await expect(attempt()).rejects.toThrow(/voice\/testvoice\/callouts\.json is not valid JSON/);
+      await expect(attempt()).rejects.toThrow(
+        /voice\/testvoice\/callouts\.json is not a script the plugin accepts:\s+\(document\): not valid JSON: /,
+      );
       expect(existsSync(path.join(badRoot, "catalog"))).toBe(false);
     });
 
-    it("one that cannot be read — reported as a read failure, not as invalid JSON", async () => {
-      // A directory of the script's name: the listing has the exact name, the
-      // read fails with EISDIR, and the message must say so — an author sent
-      // to look for a JSON syntax error in a folder would find none.
-      const { attempt, badRoot } = packWithScript("unreadable", "", (voiceDir) => {
+    it("one that is a directory — refused as not a regular file, not as unreadable or invalid JSON", async () => {
+      // The walk stages only what `Dirent.isFile()` says is a file; a folder
+      // of the script's name would be skipped by it, so it is refused here in
+      // the same words a symlink is — and never reported as a syntax error,
+      // which an author would look for and not find.
+      const { attempt, badRoot } = packWithScript("directory", "", (voiceDir) => {
         mkdirSync(path.join(voiceDir, CALLOUT_SCRIPT_FILE));
       });
 
-      await expect(attempt()).rejects.toThrow(/voice\/testvoice\/callouts\.json could not be read: .*EISDIR/);
-      await expect(attempt()).rejects.not.toThrow(/is not valid JSON/);
+      await expect(attempt()).rejects.toThrow(/voice\/testvoice\/callouts\.json must be a regular file/);
+      await expect(attempt()).rejects.not.toThrow(/not valid JSON/);
       expect(existsSync(path.join(badRoot, "catalog"))).toBe(false);
+      expect(existsSync(path.join(badRoot, "out", "testvoice", "voice"))).toBe(false);
+    });
+
+    it("one that is a symlink to a valid script — the walk would not stage it and the pack would ship silent", async (ctx) => {
+      // `readFileSync` follows the link, so without the `lstat` check a link
+      // to a perfectly good script validates and is then left out of the
+      // stage. Windows needs a privilege (or Developer Mode) to create a file
+      // symlink; where it is refused, the case is skipped rather than faked.
+      const { attempt, badRoot, voiceDir } = packWithScript("symlink", "", (dir) => {
+        const target = path.join(dir, "..", "real-script.json");
+        writeFileSync(target, SCRIPT_TEXT);
+
+        try {
+          symlinkSync(target, path.join(dir, CALLOUT_SCRIPT_FILE), "file");
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException).code === "EPERM") return;
+
+          throw err;
+        }
+      });
+
+      if (!existsSync(path.join(voiceDir, CALLOUT_SCRIPT_FILE))) {
+        ctx.skip("this platform refused to create a file symlink (EPERM) — no way to exercise the case here");
+      }
+
+      await expect(attempt()).rejects.toThrow(/voice\/testvoice\/callouts\.json must be a regular file/);
+      expect(existsSync(path.join(badRoot, "catalog"))).toBe(false);
+      expect(existsSync(path.join(badRoot, "out", "testvoice", "voice"))).toBe(false);
+    });
+
+    it("one that cannot be read — reported as a read failure, not as invalid JSON", async (ctx) => {
+      // A regular file with no read permission. Only POSIX, and only as a
+      // non-root user, can refuse a read that way: Windows has no chmod-based
+      // denial, and root reads anything. Elsewhere the branch is left to CI.
+      if (process.platform === "win32" || process.getuid?.() === 0) {
+        ctx.skip("a read-denied regular file needs a non-root POSIX user");
+      }
+
+      const { attempt, badRoot } = packWithScript("unreadable", SCRIPT_TEXT, (dir) => {
+        const file = path.join(dir, CALLOUT_SCRIPT_FILE);
+        writeFileSync(file, SCRIPT_TEXT);
+        chmodSync(file, 0o000);
+      });
+
+      try {
+        await expect(attempt()).rejects.toThrow(/voice\/testvoice\/callouts\.json could not be read: .*EACCES/);
+        await expect(attempt()).rejects.not.toThrow(/not valid JSON/);
+        expect(existsSync(path.join(badRoot, "catalog"))).toBe(false);
+      } finally {
+        chmodSync(path.join(badRoot, "voice", "testvoice", CALLOUT_SCRIPT_FILE), 0o644);
+      }
     });
 
     it("one whose name is not exactly lowercase — the walk would not stage it and the pack would ship silent", async () => {

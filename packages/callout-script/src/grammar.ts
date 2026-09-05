@@ -45,6 +45,16 @@ export const CASE_DEFAULT_BRANCH = "default";
  */
 export const CONNECTOR_POOL = "connector";
 
+/**
+ * How deeply a script may nest containers — arrays and objects, the document
+ * root counted as the first — before the parser refuses it unread. The bundled
+ * script sits near ten; the limit exists because the step schema is recursive
+ * and a document nested a thousand levels deep exhausts the call stack inside
+ * the validator, which is a throw the parser promises never to make. The
+ * depth is measured with an explicit stack before any schema runs.
+ */
+export const CALLOUT_SCRIPT_MAX_DEPTH = 64;
+
 /** The three things a frame may do to the pit-lane ambience bed. */
 export const AMBIENT_ACTIONS = ["start", "stop", "seek"] as const;
 

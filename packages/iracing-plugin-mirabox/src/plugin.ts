@@ -112,6 +112,7 @@ import {
   findChromiumBrowserOnThisMachine,
   FIRST_RUN_VERSION_KEY,
   focusIRacingIfEnabled,
+  frameOptionsFromSettings,
   getController,
   getGlobalSettings,
   getPluginPlatform,
@@ -652,14 +653,11 @@ const voicePackInstaller = createVoicePackInstaller({
 
 // The radio frame's two opt-outs (#1064), read live at frame expansion so the
 // Radio beeps / Pit ambience checkboxes take effect on the next callout rather
-// than the next restart. `!== false`, as the update-check service reads
-// `updateCheck`: before the store has loaded the cache holds the schema
-// default, which is on.
-const getFrameOptions = (): FrameOptions => {
-  const settings = getGlobalSettings();
-
-  return { beeps: settings.raceEngineerRadioBeeps !== false, ambience: settings.raceEngineerPitAmbience !== false };
-};
+// than the next restart. Deck-core's `frameOptionsFromSettings` is the one
+// rule — the Background preview and the scenario harness read through it too
+// — and reads a missing key as on, since before the store has loaded the
+// cache holds the schema default.
+const getFrameOptions = (): FrameOptions => frameOptionsFromSettings(getGlobalSettings());
 
 // Initialize the scenario engine AFTER audio (so it can drive playback) but
 // BEFORE actions register (so actions see a ready engine when they wire PI

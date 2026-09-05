@@ -30,7 +30,9 @@
  *     line stutter back into its gaps (issue #758).
  *
  * Channel routing for clip steps:
- *   - Paths matching the manifest's walkie-talkie ticks go on the SFX channel.
+ *   - Every clip a FRAME plays goes on the SFX channel, whatever it is (#1064).
+ *   - In a body, paths matching the manifest's walkie-talkie ticks go on the
+ *     SFX channel (legacy sequences carrying the tick inline).
  *   - Everything else goes on the scenario's declared `channel` (typically Voice).
  *   - The Ambient channel is driven exclusively by `{ ambient: "start|stop|seek" }`.
  *
@@ -47,11 +49,14 @@
  *     dirty and the next `prepareOps` recompiles before use.
  *   - Frames: a body that expanded to at least one clip is wrapped in the
  *     frame its script entry (else its contract, else `DEFAULT_FRAME`) names,
- *     as the active voice's script defines it. The user's Radio beeps /
- *     Pit ambience settings arrive through `getFrameOptions` and drop the
- *     frame's non-ambient / ambient ops respectively. A legacy `Scenario` is
- *     framed the same way when its voice has a script, and plays unframed
- *     when it does not (transitional; #1065 removes legacy scenarios).
+ *     as the active voice's script defines it. The frame's ops are tagged
+ *     with their side and its clips ride the SFX channel; the frame expands
+ *     BEFORE the body, so a frame that aborts commits none of the body's
+ *     side effects. The user's Radio beeps / Pit ambience settings arrive
+ *     through `getFrameOptions` and drop the frame's non-ambient / ambient
+ *     STEPS before they expand. A legacy `Scenario` is framed the same way
+ *     when its voice has a script, and plays unframed when it does not
+ *     (transitional; #1065 removes legacy scenarios).
  *   - A pool named by the active voice's script shadows a code-registered
  *     pool of the same name, for that voice only; a slashed pool step
  *     (`group/base`) addresses the voice's clip groups directly.
@@ -303,14 +308,28 @@ type ActiveFire = {
   event: SimEventOf<SimEventName> | null;
 };
 
+/** Which half of the radio frame an op came from (issue #1064). */
+type FrameSide = "open" | "close";
+
 /**
  * Post-expansion execution ops. Each op is either a blocking play (wait for
  * channel-complete) or a fire-and-forget side-effect (ambient, pause).
+ *
+ * `frame` tags an op the frame contributed, by POSITION — `expandFrame` sets
+ * it on everything the frame's `open` / `close` expanded to, and nothing
+ * else carries it. It is what identifies the frame afterwards: the
+ * resume-from-interrupt re-key replays the ops tagged `open`, and two
+ * expansions are equal only if their tags agree. Never by clip path — a
+ * pack's frame plays whatever clips the pack put there, and a body is free
+ * to play the built-in tick as an ordinary clip.
  */
 type ExecOp =
-  | { kind: "play"; channel: AudioChannel; path: string }
-  | { kind: "ambient"; action: "start" | "stop" | "seek" }
-  | { kind: "pause"; ms: number };
+  | { kind: "play"; channel: AudioChannel; path: string; frame?: FrameSide }
+  | { kind: "ambient"; action: "start" | "stop" | "seek"; frame?: FrameSide }
+  | { kind: "pause"; ms: number; frame?: FrameSide };
+
+/** A frame's two halves, expanded and tagged, ready to wrap a body (`applyFrame`). */
+type ExpandedFrame = { open: ExecOp[]; close: ExecOp[] };
 
 /**
  * Internal control-flow signal (issue #835): a REQUIRED clip-producing step
@@ -380,21 +399,25 @@ class ScenarioEngine implements IScenarioEngine {
    */
   private readonly scriptPoolState = new Map<string, Map<string, PoolState>>();
   /**
-   * Non-deliberate skips already warned about since the last `setScripts`,
-   * keyed `voice|id|reason`, so a dirty recompile only warns about what is
-   * new rather than repeating the load's diagnostics on the first fire.
+   * The four once-per warn sets. Every one is cleared by `setScripts`: a new
+   * script map is a new state of affairs — a rescan, a Rescan press, a pack
+   * installed — and a pack that is still broken should say so again on that
+   * run rather than only on the first. Within a script map each warns once.
+   *
+   * Non-deliberate skips already warned about, keyed `voice|id|reason`, so a
+   * dirty recompile only warns about what is new rather than repeating the
+   * load's diagnostics on the first fire.
    */
   private readonly warnedSkips = new Set<string>();
   /** `(case, key)` pairs a resolver returned without declaring — a code bug, warned once each. */
   private readonly warnedCaseKeys = new Set<string>();
-  /** `(voice, frame)` pairs a legacy scenario asked for that the voice's script does not define — warned once each. */
+  /** `(voice, frame)` pairs a legacy scenario asked for that the voice's script does not provide — warned once each. */
   private readonly warnedLegacyFrames = new Set<string>();
   /**
    * `(voice, frame)` pairs whose frame aborted a callout (a step resolving to
-   * nothing, #835) — warned once each, and cleared by `setScripts` so a
-   * reinstalled pack that is still broken says so again. Per-fire detail
-   * stays at debug: a broken frame takes EVERY framed callout of its voice
-   * down, and a warn per fire would be a warn per flag.
+   * nothing, #835) — warned once each. Per-fire detail stays at debug: a
+   * broken frame takes EVERY framed callout of its voice down, and a warn
+   * per fire would be a warn per flag.
    */
   private readonly warnedFrameAborts = new Set<string>();
 
@@ -679,6 +702,8 @@ class ScenarioEngine implements IScenarioEngine {
   setScripts(scripts: ReadonlyMap<string, CalloutScript>): void {
     this.scripts = new Map(scripts);
     this.warnedSkips.clear();
+    this.warnedCaseKeys.clear();
+    this.warnedLegacyFrames.clear();
     this.warnedFrameAborts.clear();
     this.compileScripts();
     this.logger.info("Voice scripts loaded");
@@ -1084,7 +1109,11 @@ class ScenarioEngine implements IScenarioEngine {
    * user's beeps / ambience switches applied by position. An empty body, or
    * one with no clip at all, gets no frame: no callout ever plays bare ticks
    * around nothing. The frame is part of the callout, so a frame step that
-   * resolves to nothing aborts the fire like any other required step.
+   * resolves to nothing aborts the fire like any other required step — and
+   * the frame is expanded BEFORE the body for that reason: a body condition
+   * may commit a side effect as it is evaluated (the furled-flag gate marks
+   * the flag spoken), and a frame that then aborted would have let it commit
+   * for a fire that never plays.
    */
   private prepareOps(entry: CompiledScenario, event: SimEventOf<SimEventName> | null): ExecOp[] | null {
     this.ensureCompiled();
@@ -1121,8 +1150,9 @@ class ScenarioEngine implements IScenarioEngine {
     let expanded: ExecOp[];
 
     try {
-      expanded = this.expandSequence(body, entry.raw.base, entry.raw.channel, ctx, new Set([entry.raw.id]));
-      expanded = this.applyFrame(expanded, frameName, voice, script, entry, ctx);
+      const frame = this.expandFrame(frameName, voice, script, entry, ctx);
+      const bodyOps = this.expandSequence(body, entry.raw.base, entry.raw.channel, ctx, new Set([entry.raw.id]));
+      expanded = applyFrame(bodyOps, frame);
     } catch (err) {
       if (err instanceof ExpansionAbort) {
         this.logger.debug(`Scenario "${entry.raw.id}" skipped — ${err.reason}`);
@@ -1147,53 +1177,75 @@ class ScenarioEngine implements IScenarioEngine {
   }
 
   /**
-   * Wrap an expanded body in its frame, as the active voice's script defines
-   * it (see `prepareOps`). Returns the body untouched when it wants no frame
-   * (`NO_FRAME`), holds no clip, or the voice has no script or no such frame.
-   * A frame step that resolves to nothing throws `ExpansionAbort` like any
-   * other required step, after one warn per `(voice, frame)` — the body's own
-   * abort stays at debug, but a frame failure is a broken pack, not a
-   * per-callout omission, and it silences every callout the frame wraps.
+   * Expand the frame a fire will be wrapped in, as the active voice's script
+   * defines it (see `prepareOps`) — before the body, so a frame that aborts
+   * never lets a body side effect commit. Returns `null` when no frame
+   * applies: the scenario wants none (`NO_FRAME`), the voice has no script,
+   * or its script does not provide the frame (a legacy scenario's, since a
+   * contract's was checked at compile time — warned once per `(voice,
+   * frame)`, saying whether the frame is undefined or failed to compile).
+   *
+   * Two things are decided here and nowhere else (issue #1064):
+   *
+   * - **Every op the frame produces is tagged with its side**, which is how
+   *   the frame is identified afterwards — never by clip path.
+   * - **Every clip the frame plays goes on the SFX channel**, whatever it
+   *   is: a pack's own beep rides the Background bus like the built-in tick,
+   *   under the Background volume and the Radio beeps switch.
+   *
+   * The user's two switches are applied to the frame's STEPS, before any of
+   * them expands, so a step the user switched off can never abort the
+   * callout because its clip is missing. A frame step that resolves to
+   * nothing otherwise throws `ExpansionAbort` like any required step, after
+   * one warn per `(voice, frame)` — the body's own abort stays at debug, but
+   * a frame failure is a broken pack, not a per-callout omission, and it
+   * silences every callout the frame wraps.
    */
-  private applyFrame(
-    expanded: ExecOp[],
+  private expandFrame(
     frameName: string,
     voice: string | null,
     script: CompiledVoiceScript | undefined,
     entry: CompiledScenario,
     ctx: ScenarioContext,
-  ): ExecOp[] {
-    if (frameName === NO_FRAME || !expanded.some((op) => op.kind === "play")) return expanded;
+  ): ExpandedFrame | null {
+    if (frameName === NO_FRAME) return null;
 
     if (voice === null || !script) {
-      this.logger.debug(`Scenario "${entry.raw.id}" plays unframed — no script for voice "${voice ?? "(none)"}"`);
+      this.logger.debug(`Scenario "${entry.raw.id}" gets no frame — no script for voice "${voice ?? "(none)"}"`);
 
-      return expanded;
+      return null;
     }
 
     const frame = script.frames.get(frameName);
 
     if (!frame) {
-      // A contract's frame was checked at compile time, so only a legacy
-      // scenario can get here: the voice has a script, but not this frame.
       const key = `${voice}|${frameName}`;
 
       if (!this.warnedLegacyFrames.has(key)) {
         this.warnedLegacyFrames.add(key);
-        this.logger.warn(`Voice "${voice}" defines no frame "${frameName}" — legacy scenarios using it play unframed`);
+
+        const failure = script.failedFrames.get(frameName);
+        this.logger.warn(
+          failure === undefined
+            ? `Voice "${voice}" defines no frame "${frameName}" — legacy scenarios using it play unframed`
+            : `Voice "${voice}" frame "${frameName}" failed to compile: ${failure} — legacy scenarios using it play unframed`,
+        );
       }
 
-      return expanded;
+      return null;
     }
 
     const options = this.frameOptions();
-    const expandFrame = (steps: ResolvedStep[]) =>
-      this.expandSequence(steps, undefined, entry.raw.channel, ctx, new Set([entry.raw.id])).filter((op) =>
-        op.kind === "ambient" ? options.ambience : options.beeps,
-      );
+    const side = (steps: ResolvedStep[], tag: FrameSide): ExecOp[] =>
+      this.expandSequence(filterFrameSteps(steps, options), undefined, AudioChannel.SFX, ctx, new Set([entry.raw.id]))
+        // A second pass on the ops, for the one step whose ops cannot be
+        // predicted from its kind: an include, whose fragment is only known
+        // once expanded. Every other step was filtered before it expanded.
+        .filter((op) => (op.kind === "ambient" ? options.ambience : options.beeps))
+        .map((op) => ({ ...op, frame: tag }));
 
     try {
-      return [...expandFrame(frame.open), ...expanded, ...expandFrame(frame.close)];
+      return { open: side(frame.open, "open"), close: side(frame.close, "close") };
     } catch (err) {
       if (err instanceof ExpansionAbort) {
         const key = `${voice}|${frameName}`;
@@ -1238,7 +1290,7 @@ class ScenarioEngine implements IScenarioEngine {
     let prerollCount = 0;
 
     if (resume && resume.index > 0 && resume.index < expanded.length && opsEqual(expanded, resume.ops)) {
-      const preroll = this.reopenPreroll(expanded, resume.index);
+      const preroll = this.reopenPreroll(expanded, resume.index, entry.resolvedSequence !== null);
       ops = [...preroll, ...expanded.slice(resume.index)];
       sourceStart = resume.index;
       prerollCount = preroll.length;
@@ -1278,13 +1330,34 @@ class ScenarioEngine implements IScenarioEngine {
   }
 
   /**
-   * When the portion delivered before the cut had opened the walkie-talkie
-   * frame, the resumed tail re-keys with the open tick so it doesn't restart
-   * cold mid-sentence — unless the tail itself begins with the open tick.
+   * When the portion delivered before the cut had opened the radio frame,
+   * the resumed tail re-keys with the frame's open so it doesn't restart
+   * cold mid-sentence.
+   *
+   * The frame is known by its tag (issue #1064): the re-key is exactly the
+   * ops tagged `open` that were delivered before the cut — a pack's own
+   * beep, the ambience bed the cut stopped — as the user's switches left
+   * them, never the built-in tick looked up by path. A tail that resumes
+   * inside the open (a two-beep open cut at its second beep) gets the part
+   * already delivered replayed ahead of it, which completes the open rather
+   * than doubling it.
+   *
+   * One shape is still read by path: a LEGACY scenario whose expansion carries
+   * no tag at all is a sequence playing the built-in tick inline (the catalog
+   * has none since #1064, and #1065 retires the shape), and for that one the
+   * re-key is the manifest's open tick, found by path, unless the tail itself
+   * begins with it. A scripted contract never takes that route — a body of
+   * its playing the tick as an ordinary clip has opened no frame.
    */
-  private reopenPreroll(expanded: ExecOp[], resumeIndex: number): ExecOp[] {
+  private reopenPreroll(expanded: ExecOp[], resumeIndex: number, legacy: boolean): ExecOp[] {
+    const delivered = expanded.slice(0, resumeIndex);
+
+    if (!legacy || expanded.some((op) => op.frame !== undefined)) {
+      return delivered.filter((op) => op.frame === "open");
+    }
+
     const openTick = this.manifest.ticks.open;
-    const frameWasOpened = expanded.slice(0, resumeIndex).some((op) => op.kind === "play" && op.path === openTick);
+    const frameWasOpened = delivered.some((op) => op.kind === "play" && op.path === openTick);
     const first = expanded[resumeIndex];
     const resumesWithTick = first.kind === "play" && first.path === openTick;
 
@@ -1503,7 +1576,7 @@ class ScenarioEngine implements IScenarioEngine {
           // (`group/base`, issue #1064) — the same reference form a var
           // resolver returns. Registered names never carry a slash.
           const pick = step.name.includes("/")
-            ? this.pickFromPoolRef(`pool:${step.name}`)
+            ? this.pickFromPoolRef(`pool:${step.name}`, step.noRepeat)
             : this.pickFromPool(step.name, step.noRepeat);
 
           if (!pick) throw new ExpansionAbort(`pool "${step.name}" resolved to nothing for the active voice`);
@@ -1636,8 +1709,12 @@ class ScenarioEngine implements IScenarioEngine {
    * giving value pools the same no-repeat guard and voice-change reset as
    * registered pools. No reference-voice typo guard: values legitimately
    * differ per voice.
+   *
+   * `noRepeat` defaults on, which is what a var resolver gets; a slashed
+   * pool step passes its own, so `{ "pool": "flags/green", "noRepeat":
+   * false }` means what it says in either spelling of a pool name.
    */
-  private pickFromPoolRef(ref: string): string | null {
+  private pickFromPoolRef(ref: string, noRepeat = true): string | null {
     if (!this.pools.has(ref)) {
       const spec = ref.slice("pool:".length);
       const slash = spec.indexOf("/");
@@ -1651,7 +1728,7 @@ class ScenarioEngine implements IScenarioEngine {
       this.pools.set(ref, this.buildManifestPool(spec.slice(0, slash), spec.slice(slash + 1)));
     }
 
-    return this.pickFromPool(ref, true);
+    return this.pickFromPool(ref, noRepeat);
   }
 
   private pickCaseBranch(step: Extract<ResolvedStep, { kind: "case" }>): ResolvedStep[] {
@@ -1812,7 +1889,71 @@ export function poolMemberPattern(group: string, base: string): RegExp {
   return new RegExp(`^voice/([^/]+)/${escapeRegExp(group)}/${escapeRegExp(base)}(?:-\\d{2})?\\.mp3$`);
 }
 
-/** Element-wise equality of two expanded op lists (plain data, no functions). */
+/**
+ * Wrap an expanded body in its expanded frame — unless there is no frame, or
+ * the body holds no clip: no callout ever plays bare ticks around nothing,
+ * so a body of ambience or pauses alone, or an empty one, stays as it is and
+ * the frame is discarded.
+ */
+function applyFrame(body: ExecOp[], frame: ExpandedFrame | null): ExecOp[] {
+  if (frame === null || !body.some((op) => op.kind === "play")) return body;
+
+  return [...frame.open, ...body, ...frame.close];
+}
+
+/**
+ * The user's two frame switches, applied to a frame's steps BEFORE any of
+ * them expands (issue #1064): `ambient` steps stay iff `ambience`, every
+ * other leaf iff `beeps` — by kind, which is by position in the frame, so a
+ * pack's own beep clip is governed exactly like the built-in tick. A step
+ * the user switched off is never expanded, so a missing clip behind it can
+ * never abort the callout. The branching forms (`optional`, `if`, `case`)
+ * are structure rather than sound and are kept with their contents filtered
+ * — an `if` around the ambience bed still keeps the bed when only beeps are
+ * off.
+ */
+function filterFrameSteps(steps: readonly ResolvedStep[], options: FrameOptions): ResolvedStep[] {
+  const out: ResolvedStep[] = [];
+
+  for (const step of steps) {
+    switch (step.kind) {
+      case "optional":
+        out.push({ ...step, steps: filterFrameSteps(step.steps, options) });
+        break;
+      case "if":
+        out.push({
+          ...step,
+          then: filterFrameSteps(step.then, options),
+          else: step.else ? filterFrameSteps(step.else, options) : undefined,
+        });
+        break;
+      case "case":
+        out.push({
+          ...step,
+          of: new Map([...step.of].map(([key, branch]) => [key, filterFrameSteps(branch, options)])),
+          fallback: filterFrameSteps(step.fallback, options),
+        });
+        break;
+      case "ambient":
+        if (options.ambience) out.push(step);
+
+        break;
+      default:
+        if (options.beeps) out.push(step);
+
+        break;
+    }
+  }
+
+  return out;
+}
+
+/**
+ * Element-wise equality of two expanded op lists (plain data, no functions).
+ * The frame tag is part of an op's identity: the same clip played as a frame
+ * and as body are two different ops, and a resume must not mistake one for
+ * the other.
+ */
 function opsEqual(a: readonly ExecOp[], b: readonly ExecOp[]): boolean {
   if (a.length !== b.length) return false;
 
@@ -1820,7 +1961,7 @@ function opsEqual(a: readonly ExecOp[], b: readonly ExecOp[]): boolean {
     const x = a[i];
     const y = b[i];
 
-    if (x.kind !== y.kind) return false;
+    if (x.kind !== y.kind || x.frame !== y.frame) return false;
 
     if (x.kind === "play" && y.kind === "play" && (x.path !== y.path || x.channel !== y.channel)) return false;
 
@@ -1833,11 +1974,13 @@ function opsEqual(a: readonly ExecOp[], b: readonly ExecOp[]): boolean {
 }
 
 function opLabel(op: ExecOp): string {
-  if (op.kind === "play") return `play[${op.channel}] ${op.path}`;
+  const tag = op.frame === undefined ? "" : `${op.frame}:`;
 
-  if (op.kind === "ambient") return `ambient:${op.action}`;
+  if (op.kind === "play") return `${tag}play[${op.channel}] ${op.path}`;
 
-  return `pause:${op.ms}`;
+  if (op.kind === "ambient") return `${tag}ambient:${op.action}`;
+
+  return `${tag}pause:${op.ms}`;
 }
 
 /**

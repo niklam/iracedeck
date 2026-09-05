@@ -5,9 +5,9 @@ import { silentLogger } from "@iracedeck/logger";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { loadBundledVoiceScripts, loadInstalledVoiceScripts } from "./voice-scripts.js";
+import { loadBundledVoiceScripts, loadInstalledVoiceScripts, reloadVoiceScripts } from "./voice-scripts.js";
 
 const VALID_SCRIPT: CalloutScript = { schema: 1, scenarios: {}, frames: {}, pools: {} };
 
@@ -68,11 +68,13 @@ describe("loadBundledVoiceScripts", () => {
     );
   });
 
-  it("throws, naming the file, when the artifact is not JSON", () => {
+  it("throws, naming the file, when the artifact is not JSON — the grammar's own document problem", () => {
     const file = plantScript(tmp, "luca", "{not json");
 
     expect(() => loadBundledVoiceScripts({ root: tmp, voiceIds: ["luca"] })).toThrow(
-      new RegExp(`Bundled voice "luca": ${escapeRegExp(file)} is not valid JSON:`),
+      new RegExp(
+        `Bundled voice "luca": ${escapeRegExp(file)} is not a valid callout script: ${escapeRegExp("(document): not valid JSON:")}`,
+      ),
     );
   });
 
@@ -214,3 +216,60 @@ describe("loadInstalledVoiceScripts", () => {
 function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
+
+describe("reloadVoiceScripts — the script half of the UI's Reload (#1064)", () => {
+  it("re-reads the bundled scripts and hands the engine the NEW map, not the one compiled at boot", () => {
+    plantScript(tmp, "luca", JSON.stringify(VALID_SCRIPT));
+    const boot = loadBundledVoiceScripts({ root: tmp, voiceIds: ["luca"] });
+
+    // The author regenerates the script between boot and Reload.
+    const regenerated: CalloutScript = { ...VALID_SCRIPT, pools: { greeting: { group: "flags", base: "green" } } };
+    plantScript(tmp, "luca", JSON.stringify(regenerated));
+    const applyScripts = vi.fn();
+
+    reloadVoiceScripts({ voicePacks: null, applyScripts, bundled: { root: tmp, voiceIds: ["luca"] } });
+
+    expect(applyScripts).toHaveBeenCalledTimes(1);
+    expect(applyScripts.mock.calls[0][0]).toEqual(new Map([["luca", regenerated]]));
+    expect(boot.get("luca")).toEqual(VALID_SCRIPT);
+  });
+
+  it("with a packs service, the reload is the service's own refresh — roots, manifest and scripts in order", () => {
+    const packsRoot = join(tmp, "packs");
+    const pluginAudioDir = join(tmp, "audio");
+    plantScript(pluginAudioDir, "default", JSON.stringify(VALID_SCRIPT));
+    const applied: ReadonlyMap<string, CalloutScript>[] = [];
+    const service = loadInstalledVoiceScripts({
+      root: packsRoot,
+      pluginAudioDir,
+      bundledManifest: { clips: [], ambientLoop: "sfx/ambient.mp3", ticks: { open: "o", close: "c" } },
+      bundledVoices: ["default"],
+      bundledScripts: new Map(),
+      logger: silentLogger,
+      applyRoots: () => {},
+      applyManifest: () => {},
+      applyScripts: (scripts) => applied.push(scripts),
+    });
+    const regenerated: CalloutScript = { ...VALID_SCRIPT, pools: { greeting: { group: "flags", base: "green" } } };
+    plantScript(pluginAudioDir, "default", JSON.stringify(regenerated));
+    const applyScripts = vi.fn();
+
+    reloadVoiceScripts({ voicePacks: service, applyScripts });
+
+    // The service applied through ITS deps, twice now (boot + reload), and the
+    // direct path was not taken.
+    expect(applyScripts).not.toHaveBeenCalled();
+    expect(applied).toHaveLength(2);
+    expect(applied[1].get("default")).toEqual(regenerated);
+  });
+
+  it("throws, naming the file, when the regenerated bundled script is broken — never a silent stale map", () => {
+    plantScript(tmp, "luca", "{not json");
+    const applyScripts = vi.fn();
+
+    expect(() =>
+      reloadVoiceScripts({ voicePacks: null, applyScripts, bundled: { root: tmp, voiceIds: ["luca"] } }),
+    ).toThrow(/Bundled voice "luca"/);
+    expect(applyScripts).not.toHaveBeenCalled();
+  });
+});

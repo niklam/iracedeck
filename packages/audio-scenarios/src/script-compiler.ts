@@ -11,11 +11,15 @@
  * entry costs exactly that entry.
  *
  * Skip semantics (spec, *Skip semantics*): an absent entry and a `skip: true`
- * entry are DELIBERATE skips (`deliberate: true`); an entry naming something
- * the engine does not know — a contract, pool, var, condition, case key,
- * include or frame — is skipped with a reason that names the reference, and
- * the engine warns about it once. A frame that fails to compile takes every
- * scenario that uses it down with it, with the frame's own reason.
+ * entry are DELIBERATE skips (`deliberate: true`) — the skip is honoured
+ * before the contract is even looked up, so a pack may declare silence for
+ * an id this build does not script; an entry naming something the engine
+ * does not know — a contract, pool, var, condition, case key, include or
+ * frame — is skipped with a reason that names the reference, and the engine
+ * warns about it once. A frame that fails to compile takes every scenario
+ * that uses it down with it, with the frame's own reason, and is reported
+ * under `failedFrames` so the engine can name that reason for a legacy
+ * scenario too.
  */
 import {
   type CalloutScript,
@@ -36,6 +40,13 @@ export type CompiledVoiceScript = {
   scenarios: ReadonlyMap<string, { resolved: ResolvedStep[]; frame: string }>;
   /** Frame name → its compiled `open` / `close` steps. Only frames that compiled are present. */
   frames: ReadonlyMap<string, { open: ResolvedStep[]; close: ResolvedStep[] }>;
+  /**
+   * Frame name → why it did not compile. Disjoint from `frames`: a name is in
+   * one or the other, or in neither when the script never defined it — which
+   * is what lets the engine tell "defines no frame" from "frame failed to
+   * compile: <reason>" when a legacy scenario asks for one.
+   */
+  failedFrames: ReadonlyMap<string, string>;
   /** Pool name → its manifest `(group, base)` source. Consulted before the code registry for this voice. */
   pools: ReadonlyMap<string, { group: string; base: string }>;
   /** Every contract this voice does NOT speak, and why. `deliberate` = `skip: true` or no entry at all. */
@@ -77,15 +88,20 @@ export function compileVoiceScript(script: CalloutScript, deps: CompileDeps): Co
   for (const [name, frame] of Object.entries(script.frames)) frames.set(name, compileFrame(converter, frame));
 
   for (const [id, entry] of Object.entries(script.scenarios)) {
+    // The skip comes FIRST: `skip: true` is a deliberate silence whatever
+    // the id — a pack declaring it for an id this build has no contract for
+    // (one that a later release scripts, or an earlier one did) has said
+    // exactly what it means, and is not warned about a contract it never
+    // asked for.
+    if (entry.skip === true) {
+      skipped.push({ id, reason: "skip: true", deliberate: true });
+      continue;
+    }
+
     const contract = deps.contracts.get(id);
 
     if (!contract) {
       skipped.push({ id, reason: "no contract", deliberate: false });
-      continue;
-    }
-
-    if (entry.skip === true) {
-      skipped.push({ id, reason: "skip: true", deliberate: true });
       continue;
     }
 
@@ -100,16 +116,18 @@ export function compileVoiceScript(script: CalloutScript, deps: CompileDeps): Co
   }
 
   const compiledFrames = new Map<string, { open: ResolvedStep[]; close: ResolvedStep[] }>();
+  const failedFrames = new Map<string, string>();
 
   for (const [name, result] of frames) {
     if (result.ok) compiledFrames.set(name, { open: result.open, close: result.close });
+    else failedFrames.set(name, result.reason);
   }
 
   const pools = new Map<string, { group: string; base: string }>();
 
   for (const [name, pool] of Object.entries(script.pools)) pools.set(name, { group: pool.group, base: pool.base });
 
-  return { scenarios, frames: compiledFrames, pools, skipped };
+  return { scenarios, frames: compiledFrames, failedFrames, pools, skipped };
 }
 
 function compileFrame(converter: StepConverter, frame: FrameDefinition): FrameResult {

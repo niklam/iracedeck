@@ -21,10 +21,16 @@
  *   system port, so a sideloaded or downloaded pack's clips AND script load
  *   exactly as they do in a plugin — the service applies roots, then the
  *   manifest, then the scripts, in the order the plugins rely on.
+ *
+ * And one re-loader, {@link reloadVoiceScripts}, for the UI's Reload button:
+ * the audio processor copies a regenerated `callouts.json` beside the clips,
+ * but the engine keeps the map it compiled at boot until it is handed the new
+ * one — which is what makes "regenerate, press Reload, audition" work
+ * without a restart.
  */
 import { audioAssetsPath, BUNDLED_VOICE_IDS } from "@iracedeck/audio-assets/build";
 import { type AudioAssetsManifest, mergeManifests } from "@iracedeck/audio-scenarios";
-import { type CalloutScript, calloutScriptPath, parseCalloutScript } from "@iracedeck/callout-script";
+import { type CalloutScript, calloutScriptPath, parseCalloutScriptText } from "@iracedeck/callout-script";
 import { createVoicePackFileSystem, createVoicePackService, type VoicePackService } from "@iracedeck/deck-core";
 import type { ILogger } from "@iracedeck/logger";
 import { readFileSync } from "node:fs";
@@ -59,6 +65,14 @@ export function loadBundledVoiceScripts(
   return scripts;
 }
 
+/**
+ * The harness's reader is a thin wrapper over the grammar's one text stage —
+ * `parseCalloutScriptText`, the very function the plugin's scanner and the
+ * packer run over the same bytes — with the harness's own failure contract
+ * around it: it THROWS, naming the file, where the scanner reports a problem.
+ * A file that is not JSON is the grammar's first problem (`(document): not
+ * valid JSON: …`), listed like any other.
+ */
 function readVoiceScriptOrThrow(file: string, voiceId: string): CalloutScript {
   let text: string;
 
@@ -68,17 +82,7 @@ function readVoiceScriptOrThrow(file: string, voiceId: string): CalloutScript {
     throw new Error(`Bundled voice "${voiceId}" has no readable callout script at ${file}: ${describe(err)}`);
   }
 
-  let json: unknown;
-
-  try {
-    // A leading BOM is stripped exactly as the scanner strips it, so the harness
-    // accepts the same bytes the plugin would.
-    json = JSON.parse(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text);
-  } catch (err) {
-    throw new Error(`Bundled voice "${voiceId}": ${file} is not valid JSON: ${describe(err)}`);
-  }
-
-  const parsed = parseCalloutScript(json);
+  const parsed = parseCalloutScriptText(text);
 
   if (!parsed.ok) {
     throw new Error(`Bundled voice "${voiceId}": ${file} is not a valid callout script: ${parsed.problems.join("; ")}`);
@@ -148,4 +152,36 @@ export function loadInstalledVoiceScripts(deps: LoadInstalledVoiceScriptsDeps): 
   service.refresh();
 
   return service;
+}
+
+export type ReloadVoiceScriptsDeps = {
+  /**
+   * The pack service {@link loadInstalledVoiceScripts} returned, or `null`
+   * when no packs directory was named. With a service the reload is ITS
+   * refresh — it re-reads the bundled scripts from the processed root the
+   * processor just refreshed, plus every installed pack, and applies roots,
+   * manifest and scripts in the plugins' order through its own deps.
+   */
+  voicePacks: VoicePackService | null;
+  /** Without a service: the re-read bundled scripts → the engine. */
+  applyScripts(scripts: ReadonlyMap<string, CalloutScript>): void;
+  /** Where the bundled scripts are re-read from without a service. Default: the workspace package, every bundled voice. */
+  bundled?: LoadBundledVoiceScriptsOptions;
+};
+
+/**
+ * Re-read the callout scripts and hand them to the engine again — the script
+ * half of the UI's Reload (#1064). Throws as {@link loadBundledVoiceScripts}
+ * throws, naming the file: a Reload that finds a broken bundled script fails
+ * the request loudly rather than leaving the engine on the old map in
+ * silence.
+ */
+export function reloadVoiceScripts(deps: ReloadVoiceScriptsDeps): void {
+  if (deps.voicePacks !== null) {
+    deps.voicePacks.refresh();
+
+    return;
+  }
+
+  deps.applyScripts(loadBundledVoiceScripts(deps.bundled));
 }

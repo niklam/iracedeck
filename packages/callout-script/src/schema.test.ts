@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import type { CalloutScript, ScriptStep } from "./grammar.js";
+import { CALLOUT_SCRIPT_MAX_DEPTH, type CalloutScript, type ScriptStep } from "./grammar.js";
 import {
   CalloutScriptEntrySchema,
   CalloutScriptSchema,
   FrameDefinitionSchema,
   parseCalloutScript,
+  parseCalloutScriptText,
   PoolDefinitionSchema,
   ScriptStepSchema,
 } from "./schema.js";
@@ -31,6 +32,31 @@ function problemsOf(json: unknown): readonly string[] {
   if (result.ok) throw new Error("expected the script to be rejected");
 
   return result.problems;
+}
+
+/** `"pool:x"` wrapped in `levels` nested `optional` steps — two containers (the step, its list) per level. */
+function nestedOptionals(levels: number): ScriptStep {
+  let step: ScriptStep = "pool:x";
+
+  for (let i = 0; i < levels; i++) step = { optional: [step] };
+
+  return step;
+}
+
+/**
+ * A valid script whose deepest container sits exactly `depth` containers
+ * below and including the document root. The root, `scenarios`, the entry
+ * and its `sequence` list are four; each `optional` adds two (the step
+ * object and its list), and — when the remainder is odd — one `case` adds
+ * three (the step, its `of`, the branch list).
+ */
+function scriptOfDepth(depth: number): CalloutScript {
+  const remaining = depth - 4;
+  const withCase = remaining % 2 === 1;
+  const inner = nestedOptionals((withCase ? remaining - 3 : remaining) / 2);
+  const step: ScriptStep = withCase ? { case: "k", of: { x: [inner] } } : inner;
+
+  return { ...minimal(), scenarios: { "pit-crew.flag-blue": { sequence: [step] } } };
 }
 
 describe("parseCalloutScript", () => {
@@ -430,6 +456,87 @@ describe("parseCalloutScript", () => {
       expect(() => parseCalloutScript(json)).not.toThrow();
       expect(parseCalloutScript(json).ok).toBe(false);
     }
+  });
+
+  describe("nesting depth", () => {
+    it("accepts a script nested exactly CALLOUT_SCRIPT_MAX_DEPTH containers deep", () => {
+      const script = scriptOfDepth(CALLOUT_SCRIPT_MAX_DEPTH);
+
+      expect(parseCalloutScript(script)).toEqual({ ok: true, script });
+    });
+
+    it("refuses one container deeper, before the schema runs, under the document prefix", () => {
+      expect(problemsOf(scriptOfDepth(CALLOUT_SCRIPT_MAX_DEPTH + 1))).toEqual([
+        "(document): the script is nested too deeply to read",
+      ]);
+    });
+
+    it("never throws on a script nested a thousand levels deep — the recursive step schema would", () => {
+      // Reproduced against the built package before the depth guard existed:
+      // `safeParse` itself threw `RangeError: Maximum call stack size exceeded`
+      // out of `z.lazy`, which is the one thing this parser promises never to
+      // do — and a sideloaded pack can put any document it likes on disk.
+      const script = withSequence([nestedOptionals(1000)]);
+
+      expect(() => parseCalloutScript(script)).not.toThrow();
+      expect(problemsOf(script)).toEqual(["(document): the script is nested too deeply to read"]);
+    });
+
+    it("counts nesting anywhere in the document, not only inside a sequence", () => {
+      let deep: unknown = [];
+
+      for (let i = 0; i < CALLOUT_SCRIPT_MAX_DEPTH; i++) deep = [deep];
+
+      expect(problemsOf({ ...minimal(), extra: deep })).toEqual([
+        "(document): the script is nested too deeply to read",
+      ]);
+    });
+  });
+});
+
+describe("parseCalloutScriptText", () => {
+  it("parses the text of a valid script", () => {
+    expect(parseCalloutScriptText(JSON.stringify(minimal()))).toEqual({ ok: true, script: minimal() });
+  });
+
+  it("strips a leading UTF-8 BOM before parsing", () => {
+    expect(parseCalloutScriptText(`\uFEFF${JSON.stringify(minimal())}`)).toEqual({ ok: true, script: minimal() });
+  });
+
+  it("reports text that is not JSON as the document's problem, with the parser's own message", () => {
+    const result = parseCalloutScriptText("{not json");
+
+    expect(result.ok).toBe(false);
+
+    if (result.ok) return;
+
+    expect(result.problems).toHaveLength(1);
+    expect(result.problems[0]).toMatch(/^\(document\): not valid JSON: \S/);
+  });
+
+  it("reports an empty file the same way", () => {
+    const result = parseCalloutScriptText("");
+
+    expect(result.ok).toBe(false);
+    expect(result.ok ? [] : result.problems).toEqual([expect.stringMatching(/^\(document\): not valid JSON: /)]);
+  });
+
+  it("hands valid JSON on to parseCalloutScript, problems and all", () => {
+    expect(parseCalloutScriptText("null")).toEqual({
+      ok: false,
+      problems: ["(document): the script must be a JSON object, not null"],
+    });
+    expect(parseCalloutScriptText(JSON.stringify({ ...minimal(), extra: 1 }))).toEqual({
+      ok: false,
+      problems: ["extra: unrecognized key"],
+    });
+  });
+
+  it("never throws on a thousand-deep document either", () => {
+    const text = JSON.stringify(withSequence([nestedOptionals(1000)]));
+
+    expect(() => parseCalloutScriptText(text)).not.toThrow();
+    expect(parseCalloutScriptText(text).ok).toBe(false);
   });
 });
 
