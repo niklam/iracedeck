@@ -14,13 +14,16 @@
  * pools as `"pool:<name>"` and `{ pool: "<name>" }` exactly as before.
  *
  * This registry is emptying one family at a time (issue #1064): a family
- * migrated to pack-owned scripts declares its pools in each voice's
- * `callouts.json` instead (`pools` — the same `(group, base)` shape plus a
- * `comment`), authored in `configs/<voice-id>.voice.json`. The engine looks a
+ * migrated to pack-owned scripts addresses its clips from each voice's
+ * `callouts.json` instead — directly, as `pool:<group>/<base>`, or through
+ * a named entry under the script's own `pools` (the same `(group, base)`
+ * shape plus a `comment`) where the name carries a decision the path does
+ * not, the way `pit-action-acknowledgment` below does. The engine looks a
  * pool name up in the active voice's script first and here second, so the
  * two coexist until #1065 moves the rest. The flag family's thirty `flag-*`
- * pools were the first to go; `FLAG_POOL_NAMES` in `flag-alerts.ts` pins
- * their names.
+ * pools were the first to go, and none of them kept a name: every flag
+ * script step is `pool:flags/<base>`, and `FLAG_CLIP_SOURCES` in
+ * `flag-alerts.ts` pins the sources.
  *
  * Selection is RANDOM — every pick is a uniform-random clip from the active
  * voice's members (`Math.random`), never a fixed order. The only constraint

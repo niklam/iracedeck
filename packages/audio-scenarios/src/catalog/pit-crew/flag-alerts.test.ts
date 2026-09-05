@@ -17,11 +17,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ScenarioContract } from "../../dsl.js";
 import { WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
-import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
+import { _resetAudioScenarios, initializeAudioScenarios, poolMemberPattern } from "../../interpreter.js";
 import {
   _setFurledRaisedSpoken,
+  FLAG_CLIP_SOURCES,
   FLAG_CONTRACTS,
-  FLAG_POOL_NAMES,
   FLAG_SCENARIO_IDS,
   registerFlagVocabulary,
   WAVING_FLAG_COOLDOWN_MS,
@@ -206,9 +206,10 @@ const manifest: AudioAssetsManifest = {
 };
 
 /**
- * The bundled voice's script, verbatim — the 24 flag entries, the `radio`
- * frame and the `flag-*` pools — handed to BOTH test voices. The JSON import
- * types `schema` as `number`, hence the cast; the freshness test in
+ * The bundled voice's script, verbatim — the 24 flag entries and the `radio`
+ * frame; its `pools` is empty, every flag step addressing its clips directly
+ * as `pool:flags/<base>` — handed to BOTH test voices. The JSON import types
+ * `schema` as `number`, hence the cast; the freshness test in
  * `@iracedeck/audio-assets` guarantees the file matches its config.
  */
 const SCRIPT = defaultScript as CalloutScript;
@@ -242,8 +243,9 @@ beforeEach(() => {
   engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => activeVoice);
 
   // The production order (`registerPitCrew`): vocabulary, contracts, then the
-  // scripts — no pools are registered in code for this family any more; the
-  // script's `pools` are what the `pool:flag-*` steps resolve through.
+  // scripts — no pools are registered in code for this family any more, and
+  // the script names none either: its `pool:flags/<base>` steps address the
+  // clip group directly, resolved against the manifest at fire time.
   registerFlagVocabulary(engine);
 
   for (const c of FLAG_CONTRACTS) engine.defineContract(c);
@@ -969,59 +971,63 @@ describe("FLAG_CONTRACTS penalty-flag delivery (issue #923)", () => {
   });
 });
 
-describe("FLAG_POOL_NAMES", () => {
-  it("lists every flag pool the bundled script defines for the flag scripts", () => {
-    expect(FLAG_POOL_NAMES).toEqual([
-      "flag-yellow-local",
-      "flag-yellow-full",
-      "flag-yellow-cleared",
-      "flag-blue",
-      "flag-red",
-      "flag-black",
-      "flag-debris",
-      "flag-meatball",
-      "flag-green-practice",
-      "flag-green-qualifying",
-      "flag-green-race",
-      "flag-white-practice",
-      "flag-white-qualifying",
-      "flag-white-race",
-      "flag-white-last-lap",
-      "flag-white-leader",
-      "flag-checkered-practice",
-      "flag-checkered-qualifying",
-      "flag-checkered-race",
-      "flag-disqualify",
-      "flag-furled",
-      "flag-furled-cleared",
-      "flag-dq-scoring-invalid",
-      "flag-crossed",
-      "flag-one-pace-lap-to-go",
-      "flag-green-held",
-      "flag-ten-to-go",
-      "flag-five-to-go",
-      "flag-yellow-waving",
-      "flag-caution-waving",
+describe("FLAG_CLIP_SOURCES", () => {
+  it("lists every flag line, all in the flags clip group", () => {
+    expect(FLAG_CLIP_SOURCES.map((source) => source.base)).toEqual([
+      "yellow-local",
+      "yellow-full",
+      "yellow-cleared",
+      "blue",
+      "red",
+      "black",
+      "debris",
+      "meatball",
+      "green-practice",
+      "green-qualifying",
+      "green-race",
+      "white-practice",
+      "white-qualifying",
+      "white-race",
+      "white-last-lap",
+      "white-leader",
+      "checkered-practice",
+      "checkered-qualifying",
+      "checkered-race",
+      "disqualify",
+      "furled",
+      "furled-cleared",
+      "dq-scoring-invalid",
+      "crossed",
+      "one-pace-lap-to-go",
+      "green-held",
+      "ten-to-go",
+      "five-to-go",
+      "yellow-waving",
+      "caution-waving",
     ]);
+
+    for (const source of FLAG_CLIP_SOURCES) expect(source.group).toBe("flags");
   });
 
-  it("every name is defined by the bundled voice's script, sourced from the flags clip group", () => {
-    for (const name of FLAG_POOL_NAMES) {
-      const pool = SCRIPT.pools[name];
+  it("the fixture manifest carries at least one clip per source for both test voices — the fires above are not vacuous", () => {
+    for (const { group, base } of FLAG_CLIP_SOURCES) {
+      const pattern = poolMemberPattern(group, base);
+      const voices = new Set(manifest.clips.map((clip) => pattern.exec(clip)?.[1]).filter((v) => v !== undefined));
 
-      expect(pool, `bundled script defines no pool "${name}"`).toBeDefined();
-      expect(pool.group).toBe("flags");
-      expect(pool.base.length).toBeGreaterThan(0);
-      expect(pool.comment?.length ?? 0).toBeGreaterThan(0);
+      expect([...voices].sort(), `${group}/${base}`).toEqual([...VOICE_KEYS].sort());
     }
   });
 
-  it("is exactly the set of pools the bundled flag scripts draw from — no stray name either way", () => {
+  it("is exactly the set of clip groups the bundled flag scripts address — every step the slashed form, no stray reference either way", () => {
     // Narrowed to the family's own entries so another family's migration
-    // (#1065) cannot widen the reference set under this assertion.
+    // (#1065) cannot widen the reference set under this assertion. Equality
+    // with the `group/base` spellings is also what pins the decision that
+    // no flag pool carries a name: a named entry under `pools` would show
+    // up here as a reference the sources do not spell.
     const referenced = collectScriptReferences(FLAG_SCRIPT).pools;
+    const sources = FLAG_CLIP_SOURCES.map(({ group, base }) => `${group}/${base}`);
 
-    expect([...referenced].sort()).toEqual([...FLAG_POOL_NAMES].sort());
+    expect([...referenced].sort()).toEqual([...sources].sort());
   });
 });
 
@@ -1210,7 +1216,7 @@ describe("registerFlagVocabulary (issue #1064)", () => {
       scenarios: {
         ...SCRIPT.scenarios,
         "pit-crew.flag-green": {
-          sequence: [{ case: "session.type", of: { race: ["pool:flag-green-race"] } }],
+          sequence: [{ case: "session.type", of: { race: ["pool:flags/green-race"] } }],
         },
       },
     };
@@ -1412,9 +1418,9 @@ describe("furled speak-time validity + cleared pairing (issue #669)", () => {
       bus: AudioBus.Voice,
       base: "voice/{voice}",
       weight: WEIGHT.SAFETY,
-      // A clip path, not `pool:flag-yellow-cleared`: the flag pools live in
-      // the voice's script now, and a legacy scenario is validated against
-      // the code registry only.
+      // A clip path, not `pool:flags/yellow-cleared`: the flags have no code
+      // pool since #1064, and a legacy scenario is validated against the code
+      // registry only — the slashed form is a script spelling.
       sequence: ["flags/yellow-cleared-01.mp3"],
     });
     mockLatestTelemetry.mockReturnValue(FURLED_UP);

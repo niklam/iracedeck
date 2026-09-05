@@ -7,14 +7,20 @@
  * …), paired at `setScripts` time. A voice whose script has no entry for a
  * flag is silent for it — absent means skipped, never an error.
  *
- * **Pool-driven clips.** Every flag line draws from a pool the voice's script
- * defines under `pools` (e.g. `flag-yellow-local`, `flag-blue`) — even the
- * single-clip flags. The interpreter picks from multi-element pools at
- * random (no immediate repeat) and resolves single-element pools
- * deterministically, so adding a variant is a clip-file change, not a code
- * change. The bundled voice's pools are authored in
- * `packages/audio-assets/configs/default.voice.json`; the `flag-*` names
- * are pinned here in {@link FLAG_POOL_NAMES} for the completeness tests.
+ * **Pool-driven clips.** Every flag line is a pool — all the takes sharing
+ * one `(group, base)` in the voice's manifest — and the script addresses
+ * each one directly as `pool:flags/<base>` (`pool:flags/yellow-local`,
+ * `pool:flags/blue`), even the single-clip flags. The interpreter picks
+ * from multi-element pools at random (no immediate repeat) and resolves
+ * single-element pools deterministically, so adding a variant is a
+ * clip-file change, not a code change. No flag pool carries a NAME: a
+ * script's `pools` key is an alias facility, worth using only where the
+ * name decides something the path does not (an alias onto another group,
+ * or a second line that must not share a no-repeat tracker with the first),
+ * and every flag name would merely have restated its path. The thirty
+ * sources are pinned here in {@link FLAG_CLIP_SOURCES} for the completeness
+ * tests; the clips themselves are authored in
+ * `packages/audio-assets/configs/default.voice.json`.
  *
  * **Family preemption.** All non-meatball flag contracts share
  * `family: "flag"` so a newer flag callout supersedes the in-flight one
@@ -479,43 +485,45 @@ export const FLAG_CONTRACTS: readonly ScenarioContract[] = [
 export const FLAG_SCENARIO_IDS: readonly string[] = FLAG_CONTRACTS.map((s) => s.id);
 
 /**
- * The pool names the flag scripts draw from — a literal list, now that the
- * pools themselves live in each voice's script (`pools` in `callouts.json`)
- * rather than in `POOL_REGISTRY`. The bundled voice must define every one
- * of them (the completeness test reads this list), and a rename here is a
- * rename in every pack's script, so treat the names as published.
+ * The clip sources the flag scripts draw from — every `pool:flags/<base>`
+ * the bundled script may write, as a literal list, since nothing derives it
+ * (no registry pool exists for this family). The completeness tests read
+ * it: the bundled voice must ship at least one clip for each, and the
+ * bundled script must reference exactly this set. A `(group, base)` a
+ * script addresses is published — renaming a base is a rename in every
+ * pack's script and every pack's clip folder.
  */
-export const FLAG_POOL_NAMES: readonly string[] = [
-  "flag-yellow-local",
-  "flag-yellow-full",
-  "flag-yellow-cleared",
-  "flag-blue",
-  "flag-red",
-  "flag-black",
-  "flag-debris",
-  "flag-meatball",
-  "flag-green-practice",
-  "flag-green-qualifying",
-  "flag-green-race",
-  "flag-white-practice",
-  "flag-white-qualifying",
-  "flag-white-race",
-  "flag-white-last-lap",
-  "flag-white-leader",
-  "flag-checkered-practice",
-  "flag-checkered-qualifying",
-  "flag-checkered-race",
-  "flag-disqualify",
-  "flag-furled",
-  "flag-furled-cleared",
-  "flag-dq-scoring-invalid",
-  "flag-crossed",
-  "flag-one-pace-lap-to-go",
-  "flag-green-held",
-  "flag-ten-to-go",
-  "flag-five-to-go",
-  "flag-yellow-waving",
-  "flag-caution-waving",
+export const FLAG_CLIP_SOURCES: readonly { group: "flags"; base: string }[] = [
+  { group: "flags", base: "yellow-local" },
+  { group: "flags", base: "yellow-full" },
+  { group: "flags", base: "yellow-cleared" },
+  { group: "flags", base: "blue" },
+  { group: "flags", base: "red" },
+  { group: "flags", base: "black" },
+  { group: "flags", base: "debris" },
+  { group: "flags", base: "meatball" },
+  { group: "flags", base: "green-practice" },
+  { group: "flags", base: "green-qualifying" },
+  { group: "flags", base: "green-race" },
+  { group: "flags", base: "white-practice" },
+  { group: "flags", base: "white-qualifying" },
+  { group: "flags", base: "white-race" },
+  { group: "flags", base: "white-last-lap" },
+  { group: "flags", base: "white-leader" },
+  { group: "flags", base: "checkered-practice" },
+  { group: "flags", base: "checkered-qualifying" },
+  { group: "flags", base: "checkered-race" },
+  { group: "flags", base: "disqualify" },
+  { group: "flags", base: "furled" },
+  { group: "flags", base: "furled-cleared" },
+  { group: "flags", base: "dq-scoring-invalid" },
+  { group: "flags", base: "crossed" },
+  { group: "flags", base: "one-pace-lap-to-go" },
+  { group: "flags", base: "green-held" },
+  { group: "flags", base: "ten-to-go" },
+  { group: "flags", base: "five-to-go" },
+  { group: "flags", base: "yellow-waving" },
+  { group: "flags", base: "caution-waving" },
 ];
 
 // The one classifier behind the whole `session.*` vocabulary — the package's

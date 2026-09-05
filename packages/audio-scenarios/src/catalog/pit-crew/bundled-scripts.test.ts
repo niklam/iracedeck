@@ -10,9 +10,10 @@
  * real `registerPitCrew` registers has an entry (`skip: true` counts — a
  * deliberate declaration rather than an oversight), no entry names an id the
  * code does not declare, every entry carries the `comment` and `test` lines
- * the published reference (#1066) is built from, and everything the script
+ * the published reference (#1066) is built from, everything the script
  * references by name — pool, frame, var, condition, case key, include — is
- * something the code registries or the script itself defines.
+ * something the code registries or the script itself defines, and every pool
+ * it draws from, in either spelling, has a clip for the bundled voice.
  *
  * The contract set is read off a pass-through spy on `engine.defineContract`
  * installed before the real registration runs (the `register-pit-crew.test.ts`
@@ -45,7 +46,7 @@ import {
   type IScenarioEngine,
   poolMemberPattern,
 } from "../../interpreter.js";
-import { FLAG_SCENARIO_IDS } from "./flag-alerts.js";
+import { FLAG_CLIP_SOURCES, FLAG_SCENARIO_IDS } from "./flag-alerts.js";
 import { registerPitCrew } from "./index.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { POOL_REGISTRY } from "./pools.js";
@@ -248,24 +249,58 @@ describe("the bundled script is complete for every contract the catalog register
   });
 });
 
-describe("everything the bundled script references by name is defined (issue #1064)", () => {
-  it("every pool a sequence draws from is defined by the script or by POOL_REGISTRY", () => {
-    const refs = collectScriptReferences(SCRIPT);
-    const unknown = refs.pools.filter(
-      (name) =>
-        // A slashed name addresses a clip group directly (`group/base`) and needs no definition.
-        !name.includes("/") && !Object.hasOwn(SCRIPT.pools, name) && !Object.hasOwn(POOL_REGISTRY, name),
-    );
+/**
+ * Where a pool reference's clips live. A slashed name IS its source
+ * (`group/base`, addressed directly — the normal spelling); a plain name is an
+ * alias the script defines under `pools`, or a code pool in `POOL_REGISTRY`,
+ * and `null` when it is neither — which the definedness test below names.
+ */
+function poolSource(name: string): { group: string; base: string } | null {
+  const slash = name.indexOf("/");
 
-    expect(unknown, "pools referenced but defined nowhere").toEqual([]);
+  if (slash > 0) return { group: name.slice(0, slash), base: name.slice(slash + 1) };
+
+  // `hasOwn`, not a lookup: `pool:constructor` is a well-formed name and must
+  // not resolve to `Object.prototype.constructor` (the compiler refuses it too).
+  if (Object.hasOwn(SCRIPT.pools, name)) return SCRIPT.pools[name];
+
+  if (Object.hasOwn(POOL_REGISTRY, name)) return POOL_REGISTRY[name];
+
+  return null;
+}
+
+describe("everything the bundled script references by name is defined (issue #1064)", () => {
+  it("every named pool a sequence draws from is defined by the script or by POOL_REGISTRY — a slashed name needs neither", () => {
+    // The named form is the alias path: a name earns its place only where it
+    // decides something the path does not (an alias onto another group, or a
+    // second line that must not share a no-repeat tracker with the first),
+    // and then it has to be defined somewhere. The slashed form addresses a
+    // clip group directly and is checked against the manifest below instead.
+    const refs = collectScriptReferences(SCRIPT);
+    const unknown = refs.pools.filter((name) => poolSource(name) === null);
+
+    expect(unknown, "named pools referenced but defined nowhere").toEqual([]);
   });
 
-  it("every script-defined pool resolves to at least one clip of the bundled voice", () => {
-    // An empty pool aborts its callout at fire time, silently (issue #835);
-    // a typo'd base in `pools` would ship a registered, scripted, mute flag.
-    // Membership is the interpreter's own rule (`poolMemberPattern`), so this
-    // test can never accept a clip the engine would not pick.
-    const empty = Object.entries(SCRIPT.pools)
+  it("every pool the script draws from — a slashed reference, or a named pool it defines — resolves to at least one clip of the bundled voice", () => {
+    // An empty pool aborts its callout at fire time, silently (issue #835),
+    // and the compiler never looks at the manifest: a typo'd `pool:flags/redd`
+    // compiles clean and ships a registered, scripted, mute flag. Membership is
+    // the interpreter's own rule (`poolMemberPattern`), so this test can never
+    // accept a clip the engine would not pick. A named pool resolved through
+    // `POOL_REGISTRY` is covered by the registration-time typo guard above.
+    const refs = collectScriptReferences(SCRIPT);
+    const sources = new Map<string, { group: string; base: string }>();
+
+    for (const name of refs.pools) {
+      const source = poolSource(name);
+
+      if (source) sources.set(name, source);
+    }
+
+    for (const [name, { group, base }] of Object.entries(SCRIPT.pools)) sources.set(name, { group, base });
+
+    const empty = [...sources]
       .filter(([, { group, base }]) => {
         const pattern = poolMemberPattern(group, base);
 
@@ -273,6 +308,9 @@ describe("everything the bundled script references by name is defined (issue #10
       })
       .map(([name, { group, base }]) => `${name} → ${group}/${base}`);
 
+    // The vacuity floor: the flags alone address this many clip groups, so a
+    // walk that resolved fewer went blind rather than finding the script clean.
+    expect(sources.size).toBeGreaterThanOrEqual(FLAG_CLIP_SOURCES.length);
     expect(empty, `pools with no voice/${VOICE}/<group>/<base>(-NN).mp3 in manifest.json`).toEqual([]);
   });
 

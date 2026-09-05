@@ -21,20 +21,24 @@ The JSON grammar for Race Engineer voice-pack callout scripts (issue #1064): the
       "comment": "…", "test": "…",        // prose; required in the BUNDLED pack by the completeness test, optional here
       "frame": "terse",                    // optional override of the contract's default; "none" = unframed
       "sequence": [                        // required unless "skip": true
-        "pool:flag-green-race",            // string forms: "pool:<name>" | "pause:<ms>" | "@<scenario-id>" | "{{<var>}}" | a clip path
-        { "clip": "flags/green-1.mp3" }, { "var": "position.number" }, { "pool": "flag-green", "noRepeat": false },
+        "pool:flags/green-race",           // string forms: "pool:<group>/<base>" | "pool:<name>" (a pools alias) | "pause:<ms>" | "@<scenario-id>" | "{{<var>}}" | a clip path
+        { "clip": "flags/green-1.mp3" }, { "var": "position.number" }, { "pool": "flags/green-race", "noRepeat": false },
         { "connector": true }, { "pause": 300 }, { "include": "pit-crew.some-fragment" },
         { "optional": [ "{{lapTime.minute}}" ] }, { "ambient": "start" },
-        { "if": "!session.isRace", "then": [ … ], "else": [ … ] },
+        { "if": "!session.isRace", "then": [ "pool:pit-ack" ], "else": [ … ] },
         { "case": "session.type", "of": { "practice": [ … ], "race": [ … ], "default": [] } }
       ]
     },
     "pit-crew.flag-blue": { "skip": true } // deliberate silence, identical to an absent entry
   },
   "frames": { "terse": { "open": [ "tick-open.mp3" ], "close": [ "tick-close.mp3" ] } },
-  "pools":  { "flag-green-race": { "group": "flags", "base": "green-race", "comment": "…" } }
+  "pools":  {                              // optional, and usually {}: a NAME only where it carries a decision
+    "pit-ack": { "group": "pit-actions", "base": "acknowledgment", "comment": "its own no-repeat tracker, apart from acknowledgment/acknowledgment" }
+  }
 }
 ```
+
+A pool is all the takes of one line — every `voice/<voice>/<group>/<base>-NN.mp3` — and a step addresses it by that path: `pool:<group>/<base>` is the normal spelling, resolved against the manifest at fire time with the same members and no-repeat tracker either way. The `pools` key is an **alias facility**, not a catalogue: give a pool a name only when the name carries a decision — an alias onto a different group, or a second line that must not share a no-repeat tracker with the first — and say why in its `comment`. The bundled script names none; a name that would merely restate the path (`flag-green` → `flags/green`) is not written. An absent `pools` in the authored config extracts to `{}`.
 
 **The only operator is `!`.** No `and`, `or`, comparisons, field access or arithmetic — a script needing `a && b` gets a named condition registered in code. Every future addition to the grammar has to argue against that line explicitly (spec, *The grammar*).
 
@@ -42,7 +46,7 @@ The JSON grammar for Race Engineer voice-pack callout scripts (issue #1064): the
 
 - Every object is strict: an unknown key is a problem. `schema` exists so the format can evolve; it must be the literal `1`, and a higher number is reported as "written for a newer version of iRaceDeck".
 - `sequence` is required unless `skip` is exactly `true`. `skip: false` is not a skip.
-- A pool **reference** (a `pool` step, either form) matches `POOL_NAME_PATTERN` — lowercase kebab-case, optionally ONE slash for direct `group/base` addressing. A pool **definition** name (a key of `pools`) matches `POOL_DEFINITION_NAME_PATTERN` — the same without the slash, because registered names never carry one; that is what keeps the two namespaces from colliding.
+- A pool **reference** (a `pool` step, either form) matches `POOL_NAME_PATTERN` — lowercase kebab-case, optionally ONE slash: `group/base` is the direct addressing that nearly every step uses, the slash-less form names an alias. A pool **definition** name (a key of `pools`) matches `POOL_DEFINITION_NAME_PATTERN` — the same without the slash, because a defined name never carries one; that is what keeps the two namespaces from colliding.
 - A `case`'s `of` needs at least one branch. `"default"` is an ordinary key of `of` to the schema; only `collectScriptReferences` treats it specially (it is not a declared key).
 - `pause` is a non-negative finite number, in both forms. `ambient` is `start` | `stop` | `seek`. `connector` is exactly `true`.
 - An `if` reference is an optional single `!` then a name; `"!!x"` and `"!"` are refused.
@@ -61,7 +65,7 @@ Problems are strings, one per thing to fix, in the form `<path>: <message>` with
 
 ## What `collectScriptReferences` does NOT include
 
-`frames` lists only the `frame` overrides entries name, minus `"none"` — a contract's default frame is the engine's business, and the reserved word is not a reference. `cases[].keys` excludes `"default"` (`CASE_DEFAULT_BRANCH`). `pools` includes slashed `group/base` names as written; a consumer checking pools against a registry has to route those to the manifest instead (the engine's `pickFromPoolRef`). It DOES include `"connector"` (`CONNECTOR_POOL`) whenever a `{ "connector": true }` step appears: the step names no pool in the file, but it draws from that one, and a consumer that never saw it would pass a voice with no connector clip.
+`frames` lists only the `frame` overrides entries name, minus `"none"` — a contract's default frame is the engine's business, and the reserved word is not a reference. `cases[].keys` excludes `"default"` (`CASE_DEFAULT_BRANCH`). `pools` includes slashed `group/base` names as written — the common case, since that is the normal spelling; a consumer checking pools against a registry has to route those to the manifest instead (the engine's `pickFromPoolRef`), which is what the bundled-script completeness test does. It DOES include `"connector"` (`CONNECTOR_POOL`) whenever a `{ "connector": true }` step appears: the step names no pool in the file, but it draws from that one, and a consumer that never saw it would pass a voice with no connector clip.
 
 ## Conventions
 

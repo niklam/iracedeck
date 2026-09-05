@@ -1334,8 +1334,8 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   }
 
   // Start-light family (issue #480). The `start-light-*` pools are already
-  // registered en masse above via `registerPools(engine)` (same as the flag
-  // pools), so no explicit pool loop is needed here — `START_LIGHT_POOL_NAMES`
+  // registered en masse above via `registerPools(engine)` (as the flag pools
+  // were until #1064), so no explicit pool loop is needed here — `START_LIGHT_POOL_NAMES`
   // exists for the catalog tests to register pools in isolation. Two grouped
   // opt-ins (`lights`, `countdown`) gate the five scenarios via
   // `SCENARIO_ID_TO_START_LIGHT_ID`.
