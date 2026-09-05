@@ -88,7 +88,7 @@ One trap with no other home: `gh pr checks` exits non-zero (8) while any check i
 
 ### Merging (11)
 
-Once CodeRabbit has approved and the checks are green, **the agent driving the work merges** — the maintainer is not a second reviewer to wait for. A *review* step never merges; that separation is what `@.claude/rules/build-and-commit.md` protects, and it owns the merge mechanics.
+Once CodeRabbit has approved and the checks are green, **the agent driving the work merges** — the maintainer is not a second reviewer to wait for. A *review* step never merges; that separation is what `@.claude/rules/build-and-commit.md` protects, and it owns the merge mechanics. Merging includes moving the issue's Roadmap card to `Testing` by hand — the board does not do it on merge, whatever its workflow settings suggest (#1065, 2026-09-05); `@.claude/rules/build-and-commit.md` has the command.
 
 **An approval and a green check are both head-specific, and both are re-verified at the moment of merging.** Neither travels with the branch — a push invalidates both, while the PR still displays the old approval beside the new head. Compare the approving review's `commit_id` against the PR's `headRefOid`, and read the check states for that same sha. What a stale read looks like is not an obvious error: it is a *real* approval and a *real* all-green that belong to the previous head. The PR's own `mergeStateStatus` is a cheap cross-check — `BLOCKED` while you believe everything is green means you are reading the wrong head. And `gh pr checks` exits non-zero (8) while anything is still pending, so treat that exit as "not finished", never as "failed".
 
