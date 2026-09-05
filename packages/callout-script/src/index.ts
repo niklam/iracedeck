@@ -40,7 +40,13 @@ export {
   type StringStepForm,
 } from "./grammar.js";
 export { CALLOUT_SCRIPT_FILE, calloutScriptPath } from "./paths.js";
-export { collectLiteralClips, collectScriptReferences, type ScriptReferences } from "./references.js";
+export {
+  collectLiteralClips,
+  collectScriptReferences,
+  collectStepReferences,
+  type ScriptReferences,
+  type StepReferences,
+} from "./references.js";
 export {
   CalloutScriptEntrySchema,
   CalloutScriptSchema,

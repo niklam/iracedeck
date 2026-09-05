@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { CalloutScript, ScriptStep } from "./grammar.js";
-import { collectLiteralClips, collectScriptReferences } from "./references.js";
+import { collectLiteralClips, collectScriptReferences, collectStepReferences } from "./references.js";
 
 describe("collectScriptReferences", () => {
   it("collects every referencing form, deduped and sorted", () => {
@@ -297,5 +297,62 @@ describe("collectLiteralClips", () => {
 
   it("returns nothing for an empty list", () => {
     expect(collectLiteralClips([])).toEqual([]);
+  });
+});
+
+describe("collectStepReferences", () => {
+  it("lists what ONE step list references by name — every form, through every branch, deduped and sorted", () => {
+    const steps: ScriptStep[] = [
+      "pool:b",
+      { pool: "a", noRepeat: false },
+      "pool:flags/blue",
+      "{{w}}",
+      { var: "v" },
+      "{{v}}",
+      { optional: [{ if: "!c", then: ["pool:z"], else: [{ var: "u" }] }] },
+      { case: "k", of: { x: ["@frag"], default: [{ include: "frag2" }] } },
+      { case: "k", of: { y: [] } },
+      { connector: true },
+      "pause:100",
+      { ambient: "start" },
+      "flags/green-1.mp3",
+      { clip: "flags/green-2.mp3" },
+    ];
+
+    expect(collectStepReferences(steps)).toEqual({
+      pools: ["a", "b", "connector", "flags/blue", "z"],
+      vars: ["u", "v", "w"],
+      conds: ["c"],
+      cases: [{ name: "k", keys: ["x", "y"] }],
+      includes: ["frag", "frag2"],
+    });
+  });
+
+  it("does not follow an include — the fragment's own references belong to whoever holds the script", () => {
+    expect(collectStepReferences(["@frag"])).toEqual({
+      pools: [],
+      vars: [],
+      conds: [],
+      cases: [],
+      includes: ["frag"],
+    });
+  });
+
+  it("returns empty lists for an empty step list", () => {
+    expect(collectStepReferences([])).toEqual({ pools: [], vars: [], conds: [], cases: [], includes: [] });
+  });
+
+  it("agrees with collectScriptReferences over a one-entry script", () => {
+    const sequence: ScriptStep[] = ["pool:g/x", "{{v}}", { if: "c", then: [{ case: "k", of: { a: ["@f"] } }] }];
+    const script: CalloutScript = { schema: 1, scenarios: { s: { sequence } }, frames: {}, pools: {} };
+    const whole = collectScriptReferences(script);
+
+    expect(collectStepReferences(sequence)).toEqual({
+      pools: whole.pools,
+      vars: whole.vars,
+      conds: whole.conds,
+      cases: whole.cases,
+      includes: whole.includes,
+    });
   });
 });

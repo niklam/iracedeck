@@ -25,6 +25,7 @@
     "generate:callout-scripts": "pnpm --filter @iracedeck/audio-assets generate:callout-scripts",
     "generate:changelog-data": "node scripts/generate-changelog-data.mjs",
     "generate:getting-started-data": "node scripts/generate-getting-started-data.mjs",
+    "generate:pack-reference": "node scripts/generate-pack-reference.mjs",
     "discord:feature-requests": "node scripts/discord/feature-requests.mjs",
     "build:with-restart": "node scripts/build-with-restart.mjs",
     "build:stream-deck": "pnpm build:ts && pnpm restart:stream-deck",
