@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { CalloutScript } from "./grammar.js";
-import { collectScriptReferences } from "./references.js";
+import type { CalloutScript, ScriptStep } from "./grammar.js";
+import { collectLiteralClips, collectScriptReferences } from "./references.js";
 
 describe("collectScriptReferences", () => {
   it("collects every referencing form, deduped and sorted", () => {
@@ -266,5 +266,36 @@ describe("collectScriptReferences", () => {
       fragments: [],
       unincludedFragments: [],
     });
+  });
+});
+
+describe("collectLiteralClips", () => {
+  it("lists every literal clip through every branch, in order, and follows no include", () => {
+    const steps: ScriptStep[] = [
+      "a.mp3",
+      { clip: "b.mp3" },
+      "pool:g/x",
+      "{{v}}",
+      "@frag",
+      {
+        optional: [
+          "c.mp3",
+          { if: "cond", then: ["d.mp3"], else: [{ case: "k", of: { one: ["e.mp3"], default: ["f.mp3"] } }] },
+        ],
+      },
+      { pause: 10 },
+      { ambient: "start" },
+      { connector: true },
+    ];
+
+    expect(collectLiteralClips(steps)).toEqual(["a.mp3", "b.mp3", "c.mp3", "d.mp3", "e.mp3", "f.mp3"]);
+  });
+
+  it("keeps duplicates — a clip played twice is two plays to check", () => {
+    expect(collectLiteralClips(["a.mp3", { clip: "a.mp3" }])).toEqual(["a.mp3", "a.mp3"]);
+  });
+
+  it("returns nothing for an empty list", () => {
+    expect(collectLiteralClips([])).toEqual([]);
   });
 });

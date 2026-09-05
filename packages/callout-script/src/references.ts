@@ -112,6 +112,42 @@ class Collector {
   }
 }
 
+/**
+ * Every literal clip a step list plays — a bare path string or a `{ clip }`
+ * object — through every `optional` / `then` / `else` / `of` branch, in
+ * order, duplicates kept. An include is NOT followed: a fragment is walked as
+ * a source of its own, once, by whoever holds the script, and the compiler
+ * inlines it into every entry that includes it. `collectScriptReferences`
+ * deliberately leaves clips out (they are not references by NAME), so the
+ * completeness and coverage checks share this walk instead of each keeping a
+ * copy that a new step form could leave behind.
+ */
+export function collectLiteralClips(steps: readonly ScriptStep[]): string[] {
+  const out: string[] = [];
+
+  const visit = (step: ScriptStep): void => {
+    if (typeof step === "string") {
+      const form = parseStringStep(step);
+
+      if (form.kind === "clip") out.push(form.path);
+
+      return;
+    }
+
+    if ("clip" in step) out.push(step.clip);
+    else if ("optional" in step) step.optional.forEach(visit);
+    else if ("if" in step) {
+      step.then.forEach(visit);
+      step.else?.forEach(visit);
+    } else if ("case" in step) Object.values(step.of).forEach((branch) => branch.forEach(visit));
+    // var, pool, connector, pause, include, ambient: no literal clip.
+  };
+
+  steps.forEach(visit);
+
+  return out;
+}
+
 function sorted(values: Iterable<string>): string[] {
   return [...values].sort();
 }

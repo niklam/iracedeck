@@ -60,7 +60,7 @@ const entryName = z
 // valid TTS input ("zero"). Refuses booleans, null, arrays, objects.
 const textual = z.union([z.string(), z.number()]).transform((v) => String(v));
 
-export const VoiceSettingsSchema = z.object({
+export const VoiceSettingsSchema = z.strictObject({
   stability: z.number().min(0).max(1),
   similarity_boost: z.number().min(0).max(1),
   style: z.number().min(0).max(1).default(0),
@@ -81,7 +81,7 @@ export const VoiceSettingsSchema = z.object({
 // the shallow merge). Here every field is plain `.optional()` with no default,
 // so a parsed override contains exactly the keys the user wrote — preserving
 // the voice's base values for everything else.
-export const VoiceSettingsOverrideSchema = z.object({
+export const VoiceSettingsOverrideSchema = z.strictObject({
   stability: z.number().min(0).max(1).optional(),
   similarity_boost: z.number().min(0).max(1).optional(),
   style: z.number().min(0).max(1).optional(),
@@ -90,14 +90,14 @@ export const VoiceSettingsOverrideSchema = z.object({
   language_code: z.string().optional(),
 });
 
-export const PronunciationDictionaryLocatorSchema = z.object({
+export const PronunciationDictionaryLocatorSchema = z.strictObject({
   pronunciation_dictionary_id: z.string().min(1),
   version_id: z.string().min(1),
 });
 
 export const ApplyTextNormalizationSchema = z.enum(["auto", "on", "off"]);
 
-export const EntrySchema = z.object({
+export const EntrySchema = z.strictObject({
   name: entryName,
   text: textual.pipe(z.string().min(1)),
   // Deterministic seed for the ElevenLabs request. Same seed + same voice +

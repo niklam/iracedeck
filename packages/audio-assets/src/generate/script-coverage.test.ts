@@ -57,8 +57,8 @@
  */
 import {
   type CalloutScript,
+  collectLiteralClips,
   collectScriptReferences,
-  parseStringStep,
   type ScriptStep,
 } from "@iracedeck/callout-script";
 import path from "node:path";
@@ -131,38 +131,6 @@ const VOICE_CLIP_PATH = /^voice\/[^/]+\/([^/]+)\/([^/]+)\.mp3$/;
  * escape from a contract's `base`; the engine strips it, and so does this.
  */
 const SHARED_SFX_PREFIX = "sfx/";
-
-/**
- * Every literal clip a step list plays — a bare path string or a `{ clip }`
- * object — through every `optional` / `then` / `else` / `of` branch. A fragment
- * is walked as a source of its own, not through its includes.
- * `collectScriptReferences` deliberately leaves clips out (they are not
- * references by NAME), so the walk lives here.
- */
-function literalClips(steps: readonly ScriptStep[]): string[] {
-  const out: string[] = [];
-
-  const visit = (step: ScriptStep): void => {
-    if (typeof step === "string") {
-      const form = parseStringStep(step);
-
-      if (form.kind === "clip") out.push(form.path);
-
-      return;
-    }
-
-    if ("clip" in step) out.push(step.clip);
-    else if ("optional" in step) step.optional.forEach(visit);
-    else if ("if" in step) {
-      step.then.forEach(visit);
-      step.else?.forEach(visit);
-    } else if ("case" in step) Object.values(step.of).forEach((branch) => branch.forEach(visit));
-  };
-
-  steps.forEach(visit);
-
-  return out;
-}
 
 /** Every step list a script plays: entries (skipped ones excluded), frames, fragments. */
 function stepLists(script: CalloutScript): readonly ScriptStep[][] {
@@ -244,7 +212,7 @@ function coverageOf(config: VoiceConfig): Coverage {
   for (const { group, base } of Object.values(script.pools)) referenced.add(`${group}/${base}`);
 
   for (const steps of stepLists(live)) {
-    for (const clip of literalClips(steps)) {
+    for (const clip of collectLiteralClips(steps)) {
       const path = clip.startsWith("/") ? clip.slice(1) : clip;
 
       if (path.startsWith(SHARED_SFX_PREFIX)) continue;

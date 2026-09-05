@@ -175,6 +175,37 @@ describe("VoiceConfigSchema callout script keys (#1064)", () => {
     );
   });
 
+  // The nested objects are strict for the same reason: a `previous_txt` on an
+  // entry or a `similarity_bost` in the voice settings used to parse clean,
+  // and the author's value never reached the request.
+  it("rejects an unknown key inside an entry and inside the voice settings, naming each", () => {
+    const entry = VoiceConfigSchema.safeParse({
+      id: "voice-id",
+      label: "Test",
+      model_id: "m",
+      voice_settings: { stability: 1, similarity_boost: 1 },
+      groups: { flags: [{ name: "green-01", text: "Green flag.", previous_txt: "…" }] },
+    });
+
+    expect(entry.success).toBe(false);
+    expect(entry.success ? [] : entry.error.issues).toContainEqual(
+      expect.objectContaining({ code: "unrecognized_keys", keys: ["previous_txt"], path: ["groups", "flags", 0] }),
+    );
+
+    const settings = VoiceConfigSchema.safeParse({
+      id: "voice-id",
+      label: "Test",
+      model_id: "m",
+      voice_settings: { stability: 1, similarity_bost: 1 },
+      groups: {},
+    });
+
+    expect(settings.success).toBe(false);
+    expect(settings.success ? [] : settings.error.issues).toContainEqual(
+      expect.objectContaining({ code: "unrecognized_keys", keys: ["similarity_bost"], path: ["voice_settings"] }),
+    );
+  });
+
   it("rejects a scenario entry with no sequence unless it is skipped", () => {
     expect(() => buildVoiceConfig({}, { scenarios: { "pit-crew.flag-green": { comment: "no body" } } })).toThrow();
     expect(() => buildVoiceConfig({}, { scenarios: { "pit-crew.flag-green": { skip: true } } })).not.toThrow();

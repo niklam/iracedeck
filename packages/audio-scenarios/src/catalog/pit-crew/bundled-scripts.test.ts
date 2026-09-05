@@ -33,9 +33,9 @@ import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioChannel } from "@iracedeck/audio-service";
 import {
   type CalloutScript,
+  collectLiteralClips,
   collectScriptReferences,
   NO_FRAME,
-  parseStringStep,
   type ScriptStep,
 } from "@iracedeck/callout-script";
 import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
@@ -146,41 +146,6 @@ function createFakeAudio(): IAudioService {
     getAudioDevices: vi.fn(() => []),
     setAudioDevice: vi.fn(() => true),
   } as unknown as IAudioService;
-}
-
-/**
- * Every literal clip a step list plays — a bare path string or a `{ clip }`
- * object — through every `optional` / `then` / `else` / `of` branch. An
- * include is not followed: the fragments are walked as sources of their own
- * below, once each, and the compiler inlines them into every entry that
- * includes them. `collectScriptReferences` deliberately leaves clips out
- * (they are not references by NAME), so the walk lives here; a new step form
- * that carries steps needs an arm, which the grammar's own checklist already
- * asks for.
- */
-function literalClips(steps: readonly ScriptStep[]): string[] {
-  const out: string[] = [];
-
-  const visit = (step: ScriptStep): void => {
-    if (typeof step === "string") {
-      const form = parseStringStep(step);
-
-      if (form.kind === "clip") out.push(form.path);
-
-      return;
-    }
-
-    if ("clip" in step) out.push(step.clip);
-    else if ("optional" in step) step.optional.forEach(visit);
-    else if ("if" in step) {
-      step.then.forEach(visit);
-      step.else?.forEach(visit);
-    } else if ("case" in step) Object.values(step.of).forEach((branch) => branch.forEach(visit));
-  };
-
-  steps.forEach(visit);
-
-  return out;
 }
 
 let engine: IScenarioEngine;
@@ -369,7 +334,7 @@ describe("everything the bundled script references by name is defined (issue #10
     const missing: string[] = [];
 
     for (const [where, steps] of sources) {
-      for (const path of literalClips(steps)) {
+      for (const path of collectLiteralClips(steps)) {
         const resolved = path.replaceAll("{voice}", VOICE);
         seen.push(resolved);
 
