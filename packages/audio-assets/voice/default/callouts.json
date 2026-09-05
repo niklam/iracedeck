@@ -226,6 +226,49 @@
       "sequence": [
         "pool:flags/caution-waving"
       ]
+    },
+    "pit-crew.pit-readback-entry": {
+      "comment": "Reads back the queued pit service as the car enters the pit lane, and again — without the opener — after the driver changes the queue while still on pit road. A limiter reminder leads on the initial entry when the car has one and it is off; nothing queued collapses the whole recap to the empty-fallback line.",
+      "test": "Harness → Pit Service Readback → Fire Readback, with Reason set to entry (entry-refire for the mid-lane replay) after setting a service snapshot with the Fuel Queued, Tires LF/RF/LR/RR (or the All / Fronts / Rears / Lefts / Rights / None presets), Compound, Fast Repair Queued / Available and Windshield Queued controls; leave Limiter Engaged unchecked for the pre-opener, and set damage on the Engine Warnings panel for the fast-repair slot. In-sim: queue fuel and two tires, then enter the pit lane.",
+      "sequence": [
+        {
+          "if": "readback.limiterReminderDue",
+          "then": [
+            "pool:pit-readback/opener-entry-limiter"
+          ]
+        },
+        {
+          "if": "!readback.hasAnyService",
+          "then": [
+            "pool:pit-readback/empty-fallback"
+          ],
+          "else": [
+            {
+              "if": "readback.isFirstEntry",
+              "then": [
+                "pool:pit-readback/opener-entry"
+              ]
+            },
+            "@readback-body"
+          ]
+        }
+      ]
+    },
+    "pit-crew.pit-readback-exit": {
+      "comment": "Confirms the queued pit service a few seconds after the car leaves the pit lane — the same recap under a \"to confirm\" opener, which stays even when nothing is queued so the empty-fallback line still reads as a confirmation.",
+      "test": "Harness → Pit Service Readback → Fire Readback, with Reason set to exit after setting a service snapshot with the same controls. In-sim: queue a service, drive through the pits and out; the confirmation follows the pit-lane exit.",
+      "sequence": [
+        "pool:pit-readback/opener-exit",
+        {
+          "if": "!readback.hasAnyService",
+          "then": [
+            "pool:pit-readback/empty-fallback"
+          ],
+          "else": [
+            "@readback-body"
+          ]
+        }
+      ]
     }
   },
   "frames": {
@@ -253,5 +296,100 @@
     }
   },
   "pools": {},
-  "fragments": {}
+  "fragments": {
+    "readback-body": {
+      "comment": "The service recap both readbacks share: fuel, tires or compound, a beat, then fast repair and windshield only when there is something to say. Each slot is a whole clause, so a slot that resolves to nothing leaves a shorter recap that is still true.",
+      "sequence": [
+        {
+          "if": "readback.fuelQueued",
+          "then": [
+            "pool:pit-readback/fuel-on"
+          ],
+          "else": [
+            "pool:pit-readback/fuel-off"
+          ]
+        },
+        {
+          "case": "readback.tirePattern",
+          "of": {
+            "compound-dry": [
+              "pool:pit-readback/compound-dry"
+            ],
+            "compound-wet": [
+              "pool:pit-readback/compound-wet"
+            ],
+            "all": [
+              "pool:pit-readback/tires-all"
+            ],
+            "fronts": [
+              "pool:pit-readback/tires-fronts"
+            ],
+            "rears": [
+              "pool:pit-readback/tires-rears"
+            ],
+            "lefts": [
+              "pool:pit-readback/tires-lefts"
+            ],
+            "rights": [
+              "pool:pit-readback/tires-rights"
+            ],
+            "lf-rr": [
+              "pool:pit-readback/tires-lf-rr"
+            ],
+            "rf-lr": [
+              "pool:pit-readback/tires-rf-lr"
+            ],
+            "skip-lf": [
+              "pool:pit-readback/tires-skip-lf"
+            ],
+            "skip-rf": [
+              "pool:pit-readback/tires-skip-rf"
+            ],
+            "skip-lr": [
+              "pool:pit-readback/tires-skip-lr"
+            ],
+            "skip-rr": [
+              "pool:pit-readback/tires-skip-rr"
+            ],
+            "lf": [
+              "pool:pit-readback/tires-lf"
+            ],
+            "rf": [
+              "pool:pit-readback/tires-rf"
+            ],
+            "lr": [
+              "pool:pit-readback/tires-lr"
+            ],
+            "rr": [
+              "pool:pit-readback/tires-rr"
+            ],
+            "none": [
+              "pool:pit-readback/tires-off"
+            ]
+          }
+        },
+        {
+          "pause": 300
+        },
+        {
+          "if": "readback.fastRepairQueued",
+          "then": [
+            "pool:pit-readback/fast-repair-on"
+          ]
+        },
+        {
+          "if": "readback.fastRepairSkipped",
+          "then": [
+            "pool:pit-readback/fast-repair-off"
+          ]
+        },
+        {
+          "if": "readback.windshieldQueued",
+          "then": [
+            "pool:pit-readback/windshield-on"
+          ]
+        }
+      ]
+    }
+  }
 }

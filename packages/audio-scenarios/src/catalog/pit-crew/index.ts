@@ -19,13 +19,19 @@
  *     in the voice's script rather than here (issue #1064): the code
  *     registers the contract and the `session.*` / `flag.*` vocabulary, the
  *     active voice's `callouts.json` supplies what is said
+ *   - Pit-service readback contracts (entry / exit off
+ *     `pitService.readbackRequested`) — scripted the same way since #1065,
+ *     with the `readback.*` vocabulary reading the queued-services snapshot
+ *     at fire time
  *   - Laps-of-fuel-left scenarios (counts 10 → 1 plus the box-this-lap call,
  *     via `fuel.lapsLeft.crossed` — issue #838)
  *
- * Still-dormant voice scenarios: welcome, pit-approach, tips, and the drs/p2p
- * toggles. They are registered one at a time as their `voice/{voice}/…`
- * content is generated and the corresponding pools and scenarios are
- * reintroduced.
+ * Nothing in this directory is dormant. The six never-registered files that
+ * used to be parked here (welcome, racing tips, pit-approach, pit-exit,
+ * stall-departure, service-reminder — no clips, no pools, no test) were
+ * deleted in #1065; git keeps their intent. A callout that does not exist
+ * yet is built as a contract here plus a script entry in the voice's
+ * `callouts.json`, never staged as an unregistered file waiting for content.
  *
  * This list named incident alerts and the limiter family as dormant until
  * #1051; both are registered now (see the `INCIDENT_ALERTS` loop and the two
@@ -46,10 +52,12 @@
  * preemption, and channel playback). Default `() => true` preserves
  * legacy behavior for callers that don't pass the closure (e.g. tests).
  *
- * `getReadbackSnapshot` is consulted at fire time inside every conditional
- * predicate of the pit-readback scenarios (issue #481). Plugins wire it
- * to `getReadbackSnapshot()` from `@iracedeck/sim-events-iracing` so a
- * deferred-replay readback (deferred behind a busier bus, or stashed when
+ * `getReadbackSnapshot` is consulted at fire time inside every `readback.*`
+ * condition and case the pit-readback scripts branch on (issue #481; the
+ * vocabulary is registered by `registerReadbackVocabulary`, since #1065 —
+ * the two readback contracts themselves read nothing but the event). Plugins
+ * wire it to `getReadbackSnapshot()` from `@iracedeck/sim-events-iracing` so
+ * a deferred-replay readback (deferred behind a busier bus, or stashed when
  * an `interrupt` line cuts it) speaks the *current* queued-services state,
  * not the one frozen into the original event payload.
  */
@@ -161,7 +169,12 @@ import {
   SCENARIO_ID_TO_RACE_STATUS_ID,
 } from "./race-status.js";
 import { registerRadarEngine } from "./radar-engine.js";
-import { buildPitReadbackScenarios, type PitReadbackCalloutId, SCENARIO_ID_TO_PIT_READBACK_ID } from "./readback.js";
+import {
+  PIT_READBACK_CONTRACTS,
+  type PitReadbackCalloutId,
+  registerReadbackVocabulary,
+  SCENARIO_ID_TO_PIT_READBACK_ID,
+} from "./readback.js";
 import { ROLLING_START_ALERTS } from "./rolling-start.js";
 import {
   buildSessionStartScenario,
@@ -211,8 +224,9 @@ export {
   SPOTTER_STILL_THERE_MIN_SECONDS,
 } from "./spotter-engine.js";
 export {
-  buildPitReadbackScenarios,
   PIT_READBACK_CALLOUT_SETTING_KEYS,
+  PIT_READBACK_CONTRACTS,
+  PIT_READBACK_SCENARIO_IDS,
   type PitReadbackCalloutId,
   type ReadbackSnapshotResolver,
 } from "./readback.js";
@@ -816,11 +830,11 @@ export type PitCrewDeps = {
   // Pit-readback queued-services snapshot (issue #481). Plugins wire this
   // to `getReadbackSnapshot()` from `@iracedeck/sim-events-iracing`, which
   // builds a snapshot from the latest telemetry tick. Read at fire time
-  // inside every readback predicate so deferred replays speak the
-  // *current* queue rather than a snapshot frozen into the original
-  // event. Default `() => null` collapses every readback to the
-  // empty-fallback clip — a safe stub for tests that don't supply a
-  // resolver.
+  // inside every `readback.*` condition and case the readback scripts
+  // name so deferred replays speak the *current* queue rather than a
+  // snapshot frozen into the original event. Default `() => null`
+  // collapses every readback to the empty-fallback clip — a safe stub for
+  // tests that don't supply a resolver.
   getReadbackSnapshot?: () => PitReadbackSnapshot | null;
   // User opt-in for the damage-alert callout (issue #489). Same
   // gate-at-event-arrival shape as the flag and pit-readback callouts —
@@ -1243,6 +1257,13 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   // a later registration would only mark the compiled scripts dirty.
   registerFlagVocabulary(engine);
 
+  // The vocabulary the readback scripts name (issue #1065) — the seven
+  // `readback.*` slot conditions and the `readback.tirePattern` case, every
+  // one reading the queued-services snapshot through the resolver at
+  // expansion time (issue #481), which is why the resolver is handed here
+  // rather than to the contracts.
+  registerReadbackVocabulary(engine, getReadbackSnapshot);
+
   // No radio-frame fragments are registered here any more (issue #1064): the
   // engine wraps every scenario in the frame its `frame` field names — the
   // active voice's `radio` frame unless the scenario opts out with
@@ -1435,10 +1456,14 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
     );
   }
 
-  for (const s of buildPitReadbackScenarios(getReadbackSnapshot)) {
-    engine.defineScenario(
+  // Contracts (issue #1065): what a readback reads back is the active voice's
+  // business (`scenarios["pit-crew.pit-readback-*"]` plus the `readback-body`
+  // fragment in its `callouts.json`); the snapshot resolver went into the
+  // `readback.*` vocabulary above, so the contracts are constants.
+  for (const c of PIT_READBACK_CONTRACTS) {
+    engine.defineContract(
       wrapWithMaster(
-        wrapCalloutScenario(s, SCENARIO_ID_TO_PIT_READBACK_ID, getPitReadbackEnabled, "pit readback callout", logger),
+        wrapCalloutScenario(c, SCENARIO_ID_TO_PIT_READBACK_ID, getPitReadbackEnabled, "pit readback callout", logger),
       ),
     );
   }

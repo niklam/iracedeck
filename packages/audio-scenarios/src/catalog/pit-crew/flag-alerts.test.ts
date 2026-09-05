@@ -206,18 +206,29 @@ const manifest: AudioAssetsManifest = {
 };
 
 /**
- * The bundled voice's script, verbatim — the 24 flag entries and the `radio`
- * frame; its `pools` is empty, every flag step addressing its clips directly
- * as `pool:flags/<base>` — handed to BOTH test voices. The JSON import types
- * `schema` as `number`, hence the cast; the freshness test in
- * `@iracedeck/audio-assets` guarantees the file matches its config.
+ * The bundled voice's script, verbatim — every scripted family's entries
+ * and the `radio` frame; its `pools` is empty, every flag step addressing
+ * its clips directly as `pool:flags/<base>`. The JSON import types `schema`
+ * as `number`, hence the cast; the freshness test in `@iracedeck/audio-assets`
+ * guarantees the file matches its config. The engine in these tests
+ * registers the flag family ALONE, so it is handed {@link FLAG_SCRIPT},
+ * never this whole file: an entry for a contract this engine does not hold
+ * is a `no contract` warn, and since #1065 the file carries other families.
  */
 const SCRIPT = defaultScript as CalloutScript;
 
-/** The bundled script narrowed to the flag family's own entries. */
+/**
+ * The bundled script narrowed to the flag family's own entries — handed to
+ * BOTH test voices. `fragments` is narrowed too (to none): a fragment
+ * belongs to the entries that include it, no flag entry includes one, and
+ * `collectScriptReferences` walks every fragment it is given, so another
+ * family's fragment would otherwise widen the reference set under the
+ * assertions below.
+ */
 const FLAG_SCRIPT: CalloutScript = {
   ...SCRIPT,
   scenarios: Object.fromEntries(FLAG_SCENARIO_IDS.map((id) => [id, SCRIPT.scenarios[id]])),
+  fragments: {},
 };
 
 function flush(audio: FakeAudio, iterations = 30): void {
@@ -250,7 +261,7 @@ beforeEach(() => {
 
   for (const c of FLAG_CONTRACTS) engine.defineContract(c);
 
-  engine.setScripts(new Map(VOICE_KEYS.map((v) => [v, SCRIPT])));
+  engine.setScripts(new Map(VOICE_KEYS.map((v) => [v, FLAG_SCRIPT])));
 });
 
 afterEach(() => {
@@ -605,7 +616,7 @@ describe("FLAG_CONTRACTS triggers", () => {
 
   it("a voice with no script plays no flag callout at all — no line, no frame (issue #1064)", () => {
     // Only titan is scripted; the active voice (luca) is a clips-only voice.
-    engine.setScripts(new Map([["titan", SCRIPT]]));
+    engine.setScripts(new Map([["titan", FLAG_SCRIPT]]));
     bus.publishEvent("flag.red.raised", {});
     flush(audio);
 
@@ -618,8 +629,8 @@ describe("FLAG_CONTRACTS triggers", () => {
 
   it("a script entry that skips the flag deliberately is silent too, and warns about nothing", () => {
     const skipping: CalloutScript = {
-      ...SCRIPT,
-      scenarios: { ...SCRIPT.scenarios, "pit-crew.flag-red": { skip: true } },
+      ...FLAG_SCRIPT,
+      scenarios: { ...FLAG_SCRIPT.scenarios, "pit-crew.flag-red": { skip: true } },
     };
     engine.setScripts(new Map([["luca", skipping]]));
     bus.publishEvent("flag.red.raised", {});
@@ -1160,9 +1171,9 @@ describe("registerFlagVocabulary (issue #1064)", () => {
   // so prove them through a probe script the way a pack would write one.
   function probe(cond: string): CalloutScript {
     return {
-      ...SCRIPT,
+      ...FLAG_SCRIPT,
       scenarios: {
-        ...SCRIPT.scenarios,
+        ...FLAG_SCRIPT.scenarios,
         "pit-crew.flag-red": { sequence: [{ if: cond, then: ["flags/red-01.mp3"] }] },
       },
     };
@@ -1212,9 +1223,9 @@ describe("registerFlagVocabulary (issue #1064)", () => {
     // the '' case in the session-type describe above still plays it. A script
     // WITHOUT a default is silent there, never wrong.
     const withoutDefault: CalloutScript = {
-      ...SCRIPT,
+      ...FLAG_SCRIPT,
       scenarios: {
-        ...SCRIPT.scenarios,
+        ...FLAG_SCRIPT.scenarios,
         "pit-crew.flag-green": {
           sequence: [{ case: "session.type", of: { race: ["pool:flags/green-race"] } }],
         },
