@@ -16,6 +16,8 @@
  * the runtime guard in the interpreter's expansion code, so broken graphs
  * surface as soon as they're registered rather than only when fired.
  */
+import { CONNECTOR_POOL } from "@iracedeck/callout-script";
+
 import type { ResolvedStep, ScenarioContract } from "./dsl.js";
 import { applyBase } from "./dsl.js";
 import { type AudioAssetsManifest, referenceVoice } from "./manifest.js";
@@ -99,9 +101,9 @@ export function validateScenario(
         }
 
         case "connector": {
-          const pool = pools.get("connector");
+          const pool = pools.get(CONNECTOR_POOL);
 
-          if (!pool) errors.push(`connector pool not defined (expected pool named "connector")`);
+          if (!pool) errors.push(`connector pool not defined (expected pool named "${CONNECTOR_POOL}")`);
 
           break;
         }

@@ -62,7 +62,7 @@ export function runAudioPreview(kind: AudioPreviewKind, logger: ILogger): void {
     }
 
     case "background":
-      logger.info("Playing background test: tick-open + ambient + tick-close");
+      logger.info("Playing background test");
       // isBackgroundTestInFlight (set inside playBackgroundTest) bypasses the
       // Background-mute branch of applyRaceEngineerAudio while the preview is
       // playing, so dragging the slider mid-preview updates the bus volume live

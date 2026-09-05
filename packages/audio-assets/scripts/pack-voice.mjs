@@ -204,7 +204,7 @@ function assertCalloutScript(pack, voiceId, srcDir) {
 
   if (wrongCase !== undefined) {
     throw new Error(
-      `${where}: found "${wrongCase}" — a callout script must be named exactly "${CALLOUT_SCRIPT_FILE}" ` +
+      `${where} found "${wrongCase}" — a callout script must be named exactly "${CALLOUT_SCRIPT_FILE}" ` +
         `(lowercase); the packer stages, and the plugin reads, only that name`,
     );
   }
