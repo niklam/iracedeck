@@ -1,5 +1,6 @@
 import {
   CalloutScriptEntrySchema,
+  FragmentDefinitionSchema,
   FrameDefinitionSchema,
   NO_FRAME,
   POOL_DEFINITION_NAME_PATTERN,
@@ -19,7 +20,7 @@ import type { Manifest } from "./manifest.ts";
 // never purely numeric in practice.
 const kebab = z.string().regex(/^[a-z][a-z0-9-]*$/, "must be lowercase kebab-case (a-z, 0-9, dashes)");
 
-// The keys of the three callout-script maps (#1064). Each is the rule
+// The keys of the four callout-script maps (#1064, #1065). Each is the rule
 // `CalloutScriptSchema` applies to the same map in the extracted
 // `voice/<voice-id>/callouts.json` — or a stricter one — so a config that
 // parses here always yields an artifact `parseCalloutScript` accepts, and an
@@ -33,6 +34,11 @@ const scenarioId = z.string().regex(SCENARIO_ID_PATTERN, "must be a scenario id:
 // grammar's own words, so the config and the artifact report the same mistake
 // the same way.
 const frameName = kebab.refine((name) => name !== NO_FRAME, RESERVED_FRAME_NAME_MESSAGE);
+
+// A fragment name (#1065) is a label like a frame's, so it takes the same
+// kebab-case shape — stricter than the artifact's rule, and it cannot start
+// with the include prefix `@`, which the artifact's rule refuses separately.
+const fragmentName = kebab;
 
 // A DEFINED pool never carries a slash: a slashed reference always means a
 // direct `group/base` of the voice's own clips, which is what keeps the two
@@ -148,17 +154,19 @@ export const VoiceConfigSchema = z.object({
   // The actual content.
   groups: z.record(kebab, z.array(EntrySchema)),
   // The voice's callout script (#1064): what the Race Engineer says for each
-  // scenario the code declares, the frames wrapped around a callout, and the
-  // named pools a sequence draws from. Authored here — one file per voice —
-  // and extracted verbatim by `pnpm generate:callout-scripts` into the
-  // committed `voice/<voice-id>/callouts.json` the plugin and the voice packs
-  // ship; the `groups` above never leave this package. All three are optional
-  // so a clips-only voice stays a valid config: an absent map is an empty map
-  // in the artifact, and a scenario with no entry is a callout that voice
-  // never makes.
+  // scenario the code declares, the frames wrapped around a callout, the
+  // named pools a sequence draws from, and the fragments (#1065) a sequence
+  // may include from within the same script. Authored here — one file per
+  // voice — and extracted verbatim by `pnpm generate:callout-scripts` into
+  // the committed `voice/<voice-id>/callouts.json` the plugin and the voice
+  // packs ship; the `groups` above never leave this package. All four are
+  // optional so a clips-only voice stays a valid config: an absent map is an
+  // empty map in the artifact, and a scenario with no entry is a callout
+  // that voice never makes.
   scenarios: z.record(scenarioId, CalloutScriptEntrySchema).optional(),
   frames: z.record(frameName, FrameDefinitionSchema).optional(),
   pools: z.record(poolDefinitionName, PoolDefinitionSchema).optional(),
+  fragments: z.record(fragmentName, FragmentDefinitionSchema).optional(),
 });
 
 export type VoiceConfig = z.infer<typeof VoiceConfigSchema>;

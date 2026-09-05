@@ -11,7 +11,7 @@
  * deliberate declaration rather than an oversight), no entry names an id the
  * code does not declare, every entry carries the `comment` and `test` lines
  * the published reference (#1066) is built from, everything the script
- * references by name — pool, frame, var, condition, case key, include — is
+ * references by name — pool, frame, var, condition, case key, fragment — is
  * something the code registries or the script itself defines, and every pool
  * it draws from, in either spelling, has a clip for the bundled voice.
  *
@@ -132,10 +132,13 @@ function createFakeAudio(): IAudioService {
 
 /**
  * Every literal clip a step list plays — a bare path string or a `{ clip }`
- * object — through every `optional` / `then` / `else` / `of` branch.
- * `collectScriptReferences` deliberately leaves clips out (they are not
- * references by NAME), so the walk lives here; a new step form that carries
- * steps needs an arm, which the grammar's own checklist already asks for.
+ * object — through every `optional` / `then` / `else` / `of` branch. An
+ * include is not followed: the fragments are walked as sources of their own
+ * below, once each, and the compiler inlines them into every entry that
+ * includes them. `collectScriptReferences` deliberately leaves clips out
+ * (they are not references by NAME), so the walk lives here; a new step form
+ * that carries steps needs an arm, which the grammar's own checklist already
+ * asks for.
  */
 function literalClips(steps: readonly ScriptStep[]): string[] {
   const out: string[] = [];
@@ -167,7 +170,7 @@ let defineContractSpy: MockInstance<(c: ScenarioContract) => void>;
 let defineScenarioSpy: MockInstance<(s: Scenario) => void>;
 /** Every contract the real registration made, by id — the set the script is held complete against. */
 let contracts: Map<string, ScenarioContract>;
-/** Every legacy `Scenario` the real registration made, by id — the include targets, and frame consumers too. */
+/** Every legacy `Scenario` the real registration made, by id — frame consumers, held to the same frame check. */
 let legacyScenarios: Map<string, Scenario>;
 /** What registration itself warned and errored, against the real manifest — kept apart from what `setScripts` says. */
 let registrationWarnings: string[];
@@ -207,8 +210,8 @@ describe("the bundled script is complete for every contract the catalog register
       expect(contracts.has(id), `${id} is not registered as a contract`).toBe(true);
     }
 
-    // And the legacy half is still there: the include-target and frame checks
-    // below iterate it, and an empty map would pass them for nothing.
+    // And the legacy half is still there: the frame check below iterates it,
+    // and an empty map would pass it for nothing.
     expect(legacyScenarios.size).toBeGreaterThan(50);
   });
 
@@ -314,16 +317,21 @@ describe("everything the bundled script references by name is defined (issue #10
     expect(empty, `pools with no voice/${VOICE}/<group>/<base>(-NN).mp3 in manifest.json`).toEqual([]);
   });
 
-  it("every literal clip a frame or a sequence plays is in the bundled manifest", () => {
+  it("every literal clip a frame, a fragment or a sequence plays is in the bundled manifest", () => {
     // A frame's ticks are literal `sfx/…` paths, not pools: a typo there is
     // not caught by the pool checks, and at fire time it aborts EVERY framed
     // callout of the voice (the frame is part of the callout, #835). `sfx/`
     // paths are voice-independent; a `{voice}` placeholder is resolved to the
-    // bundled voice the way `substituteVoice` would.
+    // bundled voice the way `substituteVoice` would. A fragment is inlined
+    // into every entry that includes it, so a typo there aborts each of them.
     const sources: [where: string, steps: readonly ScriptStep[]][] = [
       ...Object.entries(SCRIPT.frames).flatMap(([name, frame]): [string, readonly ScriptStep[]][] => [
         [`frame "${name}" open`, frame.open],
         [`frame "${name}" close`, frame.close],
+      ]),
+      ...Object.entries(SCRIPT.fragments ?? {}).map(([name, fragment]): [string, readonly ScriptStep[]] => [
+        `fragment "${name}"`,
+        fragment.sequence,
       ]),
       ...Object.entries(SCRIPT.scenarios).flatMap(([id, entry]): [string, readonly ScriptStep[]][] =>
         entry.sequence ? [[id, entry.sequence]] : [],
@@ -400,11 +408,15 @@ describe("everything the bundled script references by name is defined (issue #10
     expect(undeclaredKeys, "case keys a script maps that the resolver never declared").toEqual([]);
   });
 
-  it("every include targets a legacy fragment — a contract has no sequence to splice", () => {
+  it("every include names a fragment the script defines — an include resolves only within the same script", () => {
+    // The compiler inlines a fragment at compile time and refuses an unknown
+    // name (issue #1065); `collectScriptReferences` lists both sides, so the
+    // whole rule is `includes ⊆ fragments`.
     const refs = collectScriptReferences(SCRIPT);
-    const unknown = refs.includes.filter((id) => !legacyScenarios.has(id));
+    const defined = new Set(refs.fragments);
+    const unknown = refs.includes.filter((name) => !defined.has(name));
 
-    expect(unknown, "included ids that are not a registered legacy scenario").toEqual([]);
+    expect(unknown, "included names that are not defined under `fragments`").toEqual([]);
   });
 
   it("compiles for the bundled voice with nothing skipped and nothing warned", () => {

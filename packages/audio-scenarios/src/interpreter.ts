@@ -68,7 +68,7 @@ import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import type { ILogger } from "@iracedeck/logger";
 import { silentLogger } from "@iracedeck/logger";
 
-import type { ResolvedStep, Scenario, ScenarioContext, ScenarioContract } from "./dsl.js";
+import type { ResolvedStep, Scenario, ScenarioContext, ScenarioContract, VocabularyResolver } from "./dsl.js";
 import { applyBase, DEFAULT_FRAME, DEFAULT_WEIGHT, NO_FRAME, resolveStep } from "./dsl.js";
 // Manifest types + helpers live in `./manifest.js` to break a circular
 // import with `./validation.js`, which also needs `referenceVoice`.
@@ -138,26 +138,32 @@ export interface IScenarioEngine {
   /**
    * Register a variable a sequence reads with `{{name}}`: a clip path or a
    * `pool:<group>/<base>` reference, or `null` for "nothing to say". The
-   * description feeds the generated reference (#1066).
+   * description feeds the generated reference (#1066). The resolver receives
+   * the `ScenarioContext` of the fire (issue #1065); `event` is `null` for an
+   * imperative fire.
    */
-  defineVar(name: string, resolver: () => string | null, description?: string): void;
+  defineVar(name: string, resolver: VocabularyResolver<string | null>, description?: string): void;
   /**
    * Register a condition a script's `if` names (issue #1064). Scripts can
    * only reference conditions, never compose them — a script needing
-   * `a && b` gets a named condition registered here.
+   * `a && b` gets a named condition registered here. The predicate receives
+   * the `ScenarioContext` of the fire (issue #1065); `event` is `null` for an
+   * imperative fire.
    */
-  defineCond(name: string, predicate: () => boolean, description: string): void;
+  defineCond(name: string, predicate: VocabularyResolver<boolean>, description: string): void;
   /**
    * Register a case var a script's `case` branches on (issue #1064). The key
    * set is DECLARED, not inferred: `keys` maps each key the resolver can
    * return to what it means, which is what lets a pack author write the
    * branch without reading the resolver, and lets the compiler refuse a
    * typo'd key. A resolver returning an undeclared key is a code bug (warned
-   * once) and takes the script's `default` branch.
+   * once) and takes the script's `default` branch. The resolver receives the
+   * `ScenarioContext` of the fire (issue #1065); `event` is `null` for an
+   * imperative fire.
    */
   defineCase(
     name: string,
-    resolver: () => string | null,
+    resolver: VocabularyResolver<string | null>,
     keys: Readonly<Record<string, string>>,
     description: string,
   ): void;
@@ -364,13 +370,13 @@ class ScenarioEngine implements IScenarioEngine {
 
   private readonly scenarios = new Map<string, CompiledScenario>();
   private readonly pools = new Map<string, PoolState>();
-  private readonly vars = new Map<string, () => string | null>();
+  private readonly vars = new Map<string, VocabularyResolver<string | null>>();
   /** Parallel to `vars`: the description each var was registered with (`""` when none). */
   private readonly varDescriptions = new Map<string, string>();
-  private readonly conds = new Map<string, { predicate: () => boolean; description: string }>();
+  private readonly conds = new Map<string, { predicate: VocabularyResolver<boolean>; description: string }>();
   private readonly cases = new Map<
     string,
-    { resolve: () => string | null; keys: Readonly<Record<string, string>>; description: string }
+    { resolve: VocabularyResolver<string | null>; keys: Readonly<Record<string, string>>; description: string }
   >();
   private readonly busState = new Map<AudioBus, BusState>();
   /** Set view of `manifest.clips` for O(1) availability checks at expansion time. */
@@ -388,8 +394,8 @@ class ScenarioEngine implements IScenarioEngine {
   private compiled: ReadonlyMap<string, CompiledVoiceScript> = new Map();
   /**
    * Set by every registration that feeds the compile (contracts, vars,
-   * conditions, cases, pools, legacy fragments); the next `prepareOps`
-   * recompiles before it looks anything up.
+   * conditions, cases, pools); the next `prepareOps` recompiles before it
+   * looks anything up.
    */
   private scriptsDirty = false;
   /**
@@ -664,20 +670,20 @@ class ScenarioEngine implements IScenarioEngine {
     return { kind: "manifest", group, base, byVoice, lastIndex: -1, lastVoice: null };
   }
 
-  defineVar(name: string, resolver: () => string | null, description = ""): void {
+  defineVar(name: string, resolver: VocabularyResolver<string | null>, description = ""): void {
     this.vars.set(name, resolver);
     this.varDescriptions.set(name, description);
     this.scriptsDirty = true;
   }
 
-  defineCond(name: string, predicate: () => boolean, description: string): void {
+  defineCond(name: string, predicate: VocabularyResolver<boolean>, description: string): void {
     this.conds.set(name, { predicate, description });
     this.scriptsDirty = true;
   }
 
   defineCase(
     name: string,
-    resolver: () => string | null,
+    resolver: VocabularyResolver<string | null>,
     keys: Readonly<Record<string, string>>,
     description: string,
   ): void {
@@ -740,18 +746,16 @@ class ScenarioEngine implements IScenarioEngine {
     this.scriptPoolState.clear();
 
     const contracts = new Map<string, { frame: string }>();
-    const fragments = new Set<string>();
 
     for (const [id, entry] of this.scenarios) {
       if (entry.resolvedSequence === null) contracts.set(id, { frame: entry.frame });
-      else fragments.add(id);
     }
 
-    const conds = new Map<string, () => boolean>();
+    const conds = new Map<string, VocabularyResolver<boolean>>();
 
     for (const [name, { predicate }] of this.conds) conds.set(name, predicate);
 
-    const cases = new Map<string, { resolve: () => string | null; keys: ReadonlySet<string> }>();
+    const cases = new Map<string, { resolve: VocabularyResolver<string | null>; keys: ReadonlySet<string> }>();
 
     for (const [name, { resolve, keys }] of this.cases) cases.set(name, { resolve, keys: new Set(Object.keys(keys)) });
 
@@ -762,7 +766,6 @@ class ScenarioEngine implements IScenarioEngine {
       cases,
       // Registered names only: the `pool:` keys are cached dynamic refs, not pools a script may name.
       legacyPools: new Set([...this.pools.keys()].filter((name) => !name.startsWith("pool:"))),
-      fragments,
     };
 
     const compiled = new Map<string, CompiledVoiceScript>();
@@ -1549,7 +1552,7 @@ class ScenarioEngine implements IScenarioEngine {
 
         case "var": {
           const resolver = this.vars.get(step.name);
-          const value = resolver ? resolver() : null;
+          const value = resolver ? resolver(ctx) : null;
           ctx.vars[step.name] = value;
 
           if (!value) throw new ExpansionAbort(`var {{${step.name}}} resolved to nothing`);
@@ -1614,8 +1617,10 @@ class ScenarioEngine implements IScenarioEngine {
 
           if (!target) throw new Error(`include target not found: ${step.id}`);
 
-          // A contract has no sequence of its own to splice in: includes
-          // target legacy fragments only (the compiler enforces the same).
+          // Only a legacy closure sequence ever carries an include here: a
+          // script's includes target the script's own fragments and are
+          // inlined at compile time (issue #1065). A contract has no sequence
+          // of its own to splice in, so a legacy include may not target one.
           if (target.resolvedSequence === null) throw new Error(`include target has no sequence: ${step.id}`);
 
           const nested = this.expandSequence(
@@ -1649,7 +1654,7 @@ class ScenarioEngine implements IScenarioEngine {
           // nothing — the completeness of the mapping is the pack's business.
           // A key the resolver never DECLARED is a code bug: warned once, then
           // treated as unmapped.
-          out.push(...this.expandSequence(this.pickCaseBranch(step), base, defaultChannel, ctx, visitedIncludes));
+          out.push(...this.expandSequence(this.pickCaseBranch(step, ctx), base, defaultChannel, ctx, visitedIncludes));
           break;
         }
 
@@ -1736,7 +1741,7 @@ class ScenarioEngine implements IScenarioEngine {
     return this.pickFromPool(ref, noRepeat);
   }
 
-  private pickCaseBranch(step: Extract<ResolvedStep, { kind: "case" }>): ResolvedStep[] {
+  private pickCaseBranch(step: Extract<ResolvedStep, { kind: "case" }>, ctx: ScenarioContext): ResolvedStep[] {
     const declared = this.cases.get(step.name);
 
     if (!declared) {
@@ -1750,7 +1755,7 @@ class ScenarioEngine implements IScenarioEngine {
     let key: string | null = null;
 
     try {
-      key = declared.resolve();
+      key = declared.resolve(ctx);
     } catch (err) {
       this.logger.error(`case "${step.name}" resolver threw: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -1957,6 +1962,10 @@ function canProducePlay(steps: readonly ResolvedStep[]): boolean {
  * fragment is only known once expanded and the post-expansion op filter in
  * `expandFrame` is what sorts its ops — so an `if` around the ambience bed,
  * or a fragment carrying it, still keeps the bed when only beeps are off.
+ * The include case is reachable only from a legacy closure sequence: a
+ * script's includes are inlined by the compiler (issue #1065), so a frame
+ * from a script arrives here with its fragments already spliced in and
+ * filtered by kind like any other step.
  */
 function filterFrameSteps(steps: readonly ResolvedStep[], options: FrameOptions): ResolvedStep[] {
   const out: ResolvedStep[] = [];

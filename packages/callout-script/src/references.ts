@@ -36,10 +36,17 @@ export type ScriptReferences = {
   conds: readonly string[];
   /** Each case with the branch keys the script maps, `"default"` excluded; keys merge across uses. */
   cases: readonly { name: string; keys: readonly string[] }[];
-  /** Included scenario ids without their `@`. */
+  /** Included fragment names without their `@`, from entries and from fragments alike. */
   includes: readonly string[];
   /** Every `frame` override an entry names. `"none"` is the reserved word for unframed, not a reference, so it is left out; defaults are the engine's. */
   frames: readonly string[];
+  /**
+   * The fragment names the script DEFINES (issue #1065) — not references, but
+   * what `includes` must be checked against: an include resolves only within
+   * the same script, so `includes ⊆ fragments` is the whole rule, and a
+   * consumer can state it without walking the grammar.
+   */
+  fragments: readonly string[];
 };
 
 class Collector {
@@ -98,9 +105,10 @@ function sorted(values: Iterable<string>): string[] {
 
 /**
  * Walk a parsed script and list everything it references by name — through
- * every `then`/`else`/`optional`/`of` branch, and through the frames' own
- * `open`/`close` sequences. A `skip: true` entry is listed by id only (see
- * {@link ScriptReferences.scenarioIds}).
+ * every `then`/`else`/`optional`/`of` branch, through the frames' own
+ * `open`/`close` sequences, and through every fragment's sequence (a pool
+ * used only inside a fragment still has to exist). A `skip: true` entry is
+ * listed by id only (see {@link ScriptReferences.scenarioIds}).
  */
 export function collectScriptReferences(script: CalloutScript): ScriptReferences {
   const collector = new Collector();
@@ -121,6 +129,10 @@ export function collectScriptReferences(script: CalloutScript): ScriptReferences
     collector.walk(frame.close);
   }
 
+  const fragments = script.fragments ?? {};
+
+  for (const fragment of Object.values(fragments)) collector.walk(fragment.sequence);
+
   return {
     scenarioIds: sorted(Object.keys(script.scenarios)),
     pools: sorted(collector.pools),
@@ -129,5 +141,6 @@ export function collectScriptReferences(script: CalloutScript): ScriptReferences
     cases: sorted(collector.cases.keys()).map((name) => ({ name, keys: sorted(collector.cases.get(name) ?? []) })),
     includes: sorted(collector.includes),
     frames: sorted(frames),
+    fragments: sorted(Object.keys(fragments)),
   };
 }

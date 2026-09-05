@@ -1,8 +1,8 @@
 /**
  * Script compiler (issue #1064): turns one voice's `callouts.json` into the
  * `ResolvedStep` trees the interpreter walks, checked against everything the
- * engine registered in code — contracts, vars, conditions, cases, pools and
- * the legacy fragments an include may target.
+ * engine registered in code — contracts, vars, conditions, cases and pools —
+ * and against the script's own fragments, which an include may target.
  *
  * Pure: no engine, no logger, no manifest. It returns diagnostics instead of
  * raising them, so the engine decides what to log and #1066's `lint:pack`
@@ -14,25 +14,36 @@
  * entry are DELIBERATE skips (`deliberate: true`) — the skip is honoured
  * before the contract is even looked up, so a pack may declare silence for
  * an id this build does not script; an entry naming something the engine
- * does not know — a contract, pool, var, condition, case key, include or
+ * does not know — a contract, pool, var, condition, case key, fragment or
  * frame — is skipped with a reason that names the reference, and the engine
  * warns about it once. A frame that fails to compile takes every scenario
  * that uses it down with it, with the frame's own reason, and is reported
  * under `failedFrames` so the engine can name that reason for a legacy
  * scenario too.
+ *
+ * Fragments (issue #1065): a script may define sub-sequences under
+ * `fragments` and include them from its entries and frames. An include
+ * resolves ONLY within the same script — never a code scenario, never
+ * another voice's script — and is INLINED here: the compiled tree carries
+ * the fragment's steps in place, so the interpreter never sees an include
+ * step from a script and nothing is looked up at fire time. A fragment that
+ * reaches itself through any chain is refused with the chain named
+ * (`fragment cycle: a → b → a`); an include of a name the script does not
+ * define is `unknown fragment "x"`.
  */
 import {
   type CalloutScript,
   type CalloutScriptEntry,
   CASE_DEFAULT_BRANCH,
   CONNECTOR_POOL,
+  type FragmentDefinition,
   type FrameDefinition,
   NO_FRAME,
   parseCondReference,
   type ScriptStep,
 } from "@iracedeck/callout-script";
 
-import { parseStepShorthand, type ResolvedStep } from "./dsl.js";
+import { parseStepShorthand, type ResolvedStep, type VocabularyResolver } from "./dsl.js";
 
 /** One voice's script, compiled against the engine's registries. */
 export type CompiledVoiceScript = {
@@ -58,12 +69,11 @@ export type CompileDeps = {
   /** Every contract id the engine knows and its default frame. */
   contracts: ReadonlyMap<string, { frame: string }>;
   vars: ReadonlySet<string>;
-  conds: ReadonlyMap<string, () => boolean>;
-  cases: ReadonlyMap<string, { resolve: () => string | null; keys: ReadonlySet<string> }>;
+  /** Every registered condition; the predicate receives the fire context at expansion time (issue #1065). */
+  conds: ReadonlyMap<string, VocabularyResolver<boolean>>;
+  cases: ReadonlyMap<string, { resolve: VocabularyResolver<string | null>; keys: ReadonlySet<string> }>;
   /** Code-registered pool names, consulted after the script's own. */
   legacyPools: ReadonlySet<string>;
-  /** Legacy `defineScenario` ids an include may target. */
-  fragments: ReadonlySet<string>;
 };
 
 /**
@@ -177,45 +187,60 @@ function describe(err: unknown): string {
 /**
  * Converts `ScriptStep`s to `ResolvedStep`s, checking every reference as it
  * goes. The string forms go through the DSL's own `parseStepShorthand`, so a
- * script and a closure sequence that spell the same thing resolve identically.
+ * script and a closure sequence that spell the same thing resolve identically
+ * — except an include, which a script never hands the interpreter: it is
+ * inlined here (issue #1065), so one `ScriptStep` may become several
+ * `ResolvedStep`s.
  */
 class StepConverter {
+  /**
+   * The fragments being inlined right now, outermost first. A name already
+   * on it is a cycle; naming the chain from that name is what tells the
+   * author where the loop closes.
+   */
+  private readonly inlining: string[] = [];
+
   constructor(
     private readonly script: CalloutScript,
     private readonly deps: CompileDeps,
   ) {}
 
   convertAll(steps: readonly ScriptStep[]): ResolvedStep[] {
-    return steps.map((step) => this.convert(step));
+    return steps.flatMap((step) => this.convert(step));
   }
 
-  private convert(step: ScriptStep): ResolvedStep {
-    if (typeof step === "string") return this.check(parseStepShorthand(step));
+  private convert(step: ScriptStep): ResolvedStep[] {
+    if (typeof step === "string") {
+      const parsed = parseStepShorthand(step);
 
-    if ("clip" in step) return { kind: "clip", path: step.clip };
+      return parsed.kind === "include" ? this.inline(parsed.id) : [this.check(parsed)];
+    }
 
-    if ("var" in step) return this.check({ kind: "var", name: step.var });
+    if ("clip" in step) return [{ kind: "clip", path: step.clip }];
 
-    if ("pool" in step) return this.check({ kind: "pool", name: step.pool, noRepeat: step.noRepeat ?? true });
+    if ("var" in step) return [this.check({ kind: "var", name: step.var })];
 
-    if ("connector" in step) return this.check({ kind: "connector" });
+    if ("pool" in step) return [this.check({ kind: "pool", name: step.pool, noRepeat: step.noRepeat ?? true })];
 
-    if ("pause" in step) return { kind: "pause", ms: step.pause };
+    if ("connector" in step) return [this.check({ kind: "connector" })];
 
-    if ("include" in step) return this.check({ kind: "include", id: step.include });
+    if ("pause" in step) return [{ kind: "pause", ms: step.pause }];
 
-    if ("ambient" in step) return { kind: "ambient", action: step.ambient };
+    if ("include" in step) return this.inline(step.include);
 
-    if ("optional" in step) return { kind: "optional", steps: this.convertAll(step.optional) };
+    if ("ambient" in step) return [{ kind: "ambient", action: step.ambient }];
 
-    if ("if" in step) return this.convertIf(step.if, step.then, step.else);
+    if ("optional" in step) return [{ kind: "optional", steps: this.convertAll(step.optional) }];
 
-    return this.convertCase(step.case, step.of);
+    if ("if" in step) return [this.convertIf(step.if, step.then, step.else)];
+
+    return [this.convertCase(step.case, step.of)];
   }
 
   /**
    * The shorthand parser and the object forms both produce leaf steps whose
-   * references still need checking; this is the one place they are.
+   * references still need checking; this is the one place they are. An
+   * include never reaches here — `convert` routes it to `inline` first.
    */
   private check(step: ResolvedStep): ResolvedStep {
     switch (step.kind) {
@@ -229,15 +254,43 @@ class StepConverter {
       case "connector":
         this.checkPool(CONNECTOR_POOL);
         break;
-      case "include":
-        if (!this.deps.fragments.has(step.id)) throw new CompileProblem(`unknown include "${step.id}"`);
-
-        break;
       default:
         break;
     }
 
     return step;
+  }
+
+  /**
+   * Splice a fragment's converted steps in place of the include. The fragment
+   * must be one THIS script defines (`Object.hasOwn`, so a prototype property
+   * is not a fragment), and must not already be on the way to being inlined
+   * — that is a cycle, and it would never end.
+   */
+  private inline(name: string): ResolvedStep[] {
+    const fragment = this.fragmentNamed(name);
+
+    if (!fragment) throw new CompileProblem(`unknown fragment "${name}"`);
+
+    const openedAt = this.inlining.indexOf(name);
+
+    if (openedAt !== -1) {
+      throw new CompileProblem(`fragment cycle: ${[...this.inlining.slice(openedAt), name].join(" → ")}`);
+    }
+
+    this.inlining.push(name);
+
+    try {
+      return this.convertAll(fragment.sequence);
+    } finally {
+      this.inlining.pop();
+    }
+  }
+
+  private fragmentNamed(name: string): FragmentDefinition | undefined {
+    const fragments = this.script.fragments;
+
+    return fragments !== undefined && Object.hasOwn(fragments, name) ? fragments[name] : undefined;
   }
 
   /**
@@ -263,7 +316,9 @@ class StepConverter {
     // Deliberately no try/catch here: a throwing condition propagates to the
     // interpreter's `if` arm, which logs it and reads the predicate as false
     // — negated or not. Catching it here would hide the throw from the log.
-    const predicate = negated ? () => !cond() : () => cond();
+    // The fire context is passed straight through (issue #1065): a condition
+    // may branch on the event that fired the callout.
+    const predicate: VocabularyResolver<boolean> = negated ? (ctx) => !cond(ctx) : (ctx) => cond(ctx);
 
     return {
       kind: "if",

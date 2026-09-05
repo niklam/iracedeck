@@ -20,6 +20,7 @@ export {
   CASE_DEFAULT_BRANCH,
   COND_REFERENCE_PATTERN,
   CONNECTOR_POOL,
+  type FragmentDefinition,
   type FrameDefinition,
   INCLUDE_STEP_PREFIX,
   NAME_PATTERN,
@@ -43,6 +44,7 @@ export { collectScriptReferences, type ScriptReferences } from "./references.js"
 export {
   CalloutScriptEntrySchema,
   CalloutScriptSchema,
+  FragmentDefinitionSchema,
   FrameDefinitionSchema,
   parseCalloutScript,
   parseCalloutScriptText,

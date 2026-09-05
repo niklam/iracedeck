@@ -227,11 +227,18 @@ const SCRIPT: CalloutScript = {
   },
   frames: { radio: { open: ["sfx/IRD-tick-open.mp3"], close: ["sfx/IRD-tick-close.mp3"] } },
   pools: { "flag-green": { group: "flags", base: "green" } },
+  fragments: {},
 };
 
 /** Serialized the way the generator does NOT — sorted keys, no trailing newline — so a re-serialized copy would show. */
 const SCRIPT_TEXT = JSON.stringify(
-  { pools: SCRIPT.pools, frames: SCRIPT.frames, scenarios: SCRIPT.scenarios, schema: SCRIPT.schema },
+  {
+    fragments: SCRIPT.fragments,
+    pools: SCRIPT.pools,
+    frames: SCRIPT.frames,
+    scenarios: SCRIPT.scenarios,
+    schema: SCRIPT.schema,
+  },
   null,
   4,
 );

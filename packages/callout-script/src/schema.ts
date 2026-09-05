@@ -8,6 +8,7 @@ import {
   type CalloutScriptEntry,
   type CalloutScriptParseResult,
   COND_REFERENCE_PATTERN,
+  type FragmentDefinition,
   type FrameDefinition,
   INCLUDE_STEP_PREFIX,
   NAME_PATTERN,
@@ -52,16 +53,21 @@ const frameDefinitionName = frameName.refine((name) => name !== NO_FRAME, RESERV
 const clipPath = z.string().min(1, "must be a clip path");
 
 /**
- * The one rule about `@`, stated once for both spellings: the string form
- * carries it, the object form does not, and the id itself never starts with
- * one — so `{ "include": "@x" }` and `"@@x"` are the same mistake.
+ * The one rule about `@`, stated once for both spellings and for the name a
+ * fragment is DEFINED under: the string form carries it, the object form
+ * does not, and the name itself never starts with one — so
+ * `{ "include": "@x" }`, `"@@x"` and a fragment named `"@x"` are the same
+ * mistake.
  */
-const INCLUDE_SPELLING_MESSAGE = `an include is spelled "${INCLUDE_STEP_PREFIX}<scenario-id>" (string form) or { "include": "<scenario-id>" } (object form) — the id itself never starts with "${INCLUDE_STEP_PREFIX}"`;
+const INCLUDE_SPELLING_MESSAGE = `an include is spelled "${INCLUDE_STEP_PREFIX}<fragment-name>" (string form) or { "include": "<fragment-name>" } (object form) — the name itself never starts with "${INCLUDE_STEP_PREFIX}"`;
 
-const includeId = z
+const FRAGMENT_NAME_MESSAGE = "must be a fragment name: non-empty, no whitespace";
+
+/** A fragment name, as an include references it and as `fragments` defines it (issue #1065). */
+const fragmentName = z
   .string()
-  .regex(SCENARIO_ID_PATTERN, "must be a scenario id: non-empty, no whitespace")
-  .refine((id) => !id.startsWith(INCLUDE_STEP_PREFIX), INCLUDE_SPELLING_MESSAGE);
+  .regex(NAME_PATTERN, FRAGMENT_NAME_MESSAGE)
+  .refine((name) => !name.startsWith(INCLUDE_STEP_PREFIX), INCLUDE_SPELLING_MESSAGE);
 
 const condReference = z
   .string()
@@ -97,7 +103,7 @@ const STEP_FORMS: Readonly<Record<StepObjectKey, z.ZodType>> = {
   pool: z.strictObject({ pool: poolName, noRepeat: z.boolean().optional() }),
   connector: z.strictObject({ connector: z.literal(true, { error: "must be true" }) }),
   pause: z.strictObject({ pause: pauseMs }),
-  include: z.strictObject({ include: includeId }),
+  include: z.strictObject({ include: fragmentName }),
   optional: z.strictObject({ optional: steps }),
   ambient: z.strictObject({ ambient: ambientAction }),
   if: z.strictObject({ if: condReference, then: steps, else: steps.optional() }),
@@ -121,7 +127,7 @@ function stringStepProblem(step: string): string | null {
         ? null
         : '"pause:" must be followed by a non-negative number of milliseconds';
     case "include":
-      if (!SCENARIO_ID_PATTERN.test(form.id)) return '"@" must be followed by a scenario id: non-empty, no whitespace';
+      if (!NAME_PATTERN.test(form.id)) return `"${INCLUDE_STEP_PREFIX}" ${FRAGMENT_NAME_MESSAGE}`;
 
       return form.id.startsWith(INCLUDE_STEP_PREFIX) ? INCLUDE_SPELLING_MESSAGE : null;
     case "var":
@@ -208,11 +214,30 @@ export const PoolDefinitionSchema: z.ZodType<PoolDefinition> = z.strictObject({
   comment: z.string().optional(),
 });
 
+/**
+ * A fragment's sequence may not be empty: an entry says "nothing" with
+ * `skip`, and a fragment has no such word, so an empty one can only be an
+ * author who forgot to fill it in.
+ */
+const fragmentSteps: z.ZodType<ScriptStep[]> = z.lazy(() =>
+  z
+    .array(ScriptStepSchema)
+    .min(1, 'must have at least one step (deliberate silence is "skip" on the entry, not an empty fragment)'),
+);
+
+export const FragmentDefinitionSchema: z.ZodType<FragmentDefinition> = z.strictObject({
+  comment: z.string().optional(),
+  sequence: fragmentSteps,
+});
+
 export const CalloutScriptSchema: z.ZodType<CalloutScript> = z.strictObject({
   schema: z.literal(CALLOUT_SCRIPT_SCHEMA_VERSION, { error: `must be ${CALLOUT_SCRIPT_SCHEMA_VERSION}` }),
   scenarios: z.record(scenarioId, CalloutScriptEntrySchema),
   frames: z.record(frameDefinitionName, FrameDefinitionSchema),
   pools: z.record(poolDefinitionName, PoolDefinitionSchema),
+  // Optional, so no script written before #1065 has to change: absent means
+  // the script defines no fragment. The generator still always emits the key.
+  fragments: z.record(fragmentName, FragmentDefinitionSchema).optional(),
 });
 
 // ---------------------------------------------------------------------------

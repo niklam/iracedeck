@@ -1,11 +1,12 @@
 /**
  * The callout-script artifact (#1064): how a voice's `scenarios` / `frames` /
- * `pools`, authored in `configs/<voice-id>.voice.json`, become the committed
+ * `pools` / `fragments` (the last since #1065), authored in
+ * `configs/<voice-id>.voice.json`, become the committed
  * `voice/<voice-id>/callouts.json` the plugin and the voice packs ship.
  *
  * The authored file is generator-only — it carries the ElevenLabs voice id, the
  * TTS settings and the whole `groups` block of lines, none of which may reach
- * a user — so `scripts/generate-callout-scripts.mjs` extracts just the three
+ * a user — so `scripts/generate-callout-scripts.mjs` extracts just the four
  * runtime maps, under a `schema` header, into an artifact that lives INSIDE the
  * voice tree. That placement is what lets it ride every path a voice already
  * travels (the plugin build's copy, the packer, the installer's seed, the
@@ -45,7 +46,7 @@ export function calloutScriptArtifactPath(voiceId, root = audioAssetsPath) {
 /**
  * Extract the script from a parsed voice config.
  *
- * The three maps are copied as they are — key order included. Their key order
+ * The four maps are copied as they are — key order included. Their key order
  * is the author's, and it is load-bearing: the published callout reference
  * (#1066) reads the artifact in that order, so nothing here sorts. (Within an
  * entry, the keys already sit in the schema's order — `comment`, `test`,
@@ -63,6 +64,9 @@ export function buildCalloutScript(voiceConfig) {
     scenarios: { ...(voiceConfig.scenarios ?? {}) },
     frames: { ...(voiceConfig.frames ?? {}) },
     pools: { ...(voiceConfig.pools ?? {}) },
+    // Optional in the grammar, always present in the artifact: the generator
+    // writes the whole shape so an author reading the file sees every key.
+    fragments: { ...(voiceConfig.fragments ?? {}) },
   };
 }
 

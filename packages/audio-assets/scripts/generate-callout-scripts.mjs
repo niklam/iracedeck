@@ -4,9 +4,9 @@
  * `configs/` (#1064).
  *
  * Each `configs/<voice-id>.voice.json` may carry a callout script under its
- * `scenarios`, `frames` and `pools` keys. That file never ships — it holds the
- * ElevenLabs voice id, the TTS settings and every line of text — so this
- * script extracts just those three maps, under a `schema` header, into the
+ * `scenarios`, `frames`, `pools` and `fragments` keys. That file never ships —
+ * it holds the ElevenLabs voice id, the TTS settings and every line of text —
+ * so this script extracts just those four maps, under a `schema` header, into the
  * committed artifact inside the voice tree that the plugin build copies, the
  * voice-pack packer stages and the scanner reads. A voice that authors none of
  * the keys gets an artifact with empty maps: a valid, clips-only voice.
@@ -95,7 +95,7 @@ export function generateCalloutScripts({
     log(`Generated ${file}`);
     log(
       `  scenarios: ${Object.keys(script.scenarios).length}, frames: ${Object.keys(script.frames).length}, ` +
-        `pools: ${Object.keys(script.pools).length}`,
+        `pools: ${Object.keys(script.pools).length}, fragments: ${Object.keys(script.fragments ?? {}).length}`,
     );
   }
 

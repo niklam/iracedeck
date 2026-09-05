@@ -46,6 +46,7 @@ describe("collectScriptReferences", () => {
       cases: [{ name: "k", keys: ["x"] }],
       includes: ["frag", "frag2"],
       frames: ["terse"],
+      fragments: [],
     });
   });
 
@@ -78,6 +79,7 @@ describe("collectScriptReferences", () => {
       ],
       includes: [],
       frames: [],
+      fragments: [],
     });
   });
 
@@ -103,6 +105,7 @@ describe("collectScriptReferences", () => {
       cases: [],
       includes: [],
       frames: [],
+      fragments: [],
     });
   });
 
@@ -160,6 +163,50 @@ describe("collectScriptReferences", () => {
     expect(collectScriptReferences(script).frames).toEqual(["radio"]);
   });
 
+  // Pack-defined fragments (issue #1065): what a fragment's sequence names is
+  // a reference like any other — a pool used only inside one still has to
+  // exist — and the names DEFINED are listed so a consumer can check that
+  // every include targets one (`includes ⊆ fragments`).
+  it("walks every fragment's sequence and lists the names the script defines, sorted", () => {
+    const script: CalloutScript = {
+      schema: 1,
+      scenarios: { s: { sequence: ["@readback-body"] } },
+      frames: {},
+      pools: {},
+      fragments: {
+        "readback-body": {
+          comment: "Shared by entry and exit.",
+          sequence: ["pool:readback/fuel-on", "{{readback.tires}}", { if: "!readback.empty", then: ["@sign-off"] }],
+        },
+        "sign-off": { sequence: [{ case: "k", of: { a: [{ connector: true }] } }] },
+      },
+    };
+
+    expect(collectScriptReferences(script)).toEqual({
+      scenarioIds: ["s"],
+      pools: ["connector", "readback/fuel-on"],
+      vars: ["readback.tires"],
+      conds: ["readback.empty"],
+      cases: [{ name: "k", keys: ["a"] }],
+      includes: ["readback-body", "sign-off"],
+      frames: [],
+      fragments: ["readback-body", "sign-off"],
+    });
+  });
+
+  it("lists an include of a fragment the script never defines, so a consumer can see the mismatch", () => {
+    const script: CalloutScript = {
+      schema: 1,
+      scenarios: { s: { sequence: ["@ghost"] } },
+      frames: {},
+      pools: {},
+    };
+    const refs = collectScriptReferences(script);
+
+    expect(refs.includes).toEqual(["ghost"]);
+    expect(refs.fragments).toEqual([]);
+  });
+
   it("returns empty lists for a script with nothing in it", () => {
     expect(collectScriptReferences({ schema: 1, scenarios: {}, frames: {}, pools: {} })).toEqual({
       scenarioIds: [],
@@ -169,6 +216,7 @@ describe("collectScriptReferences", () => {
       cases: [],
       includes: [],
       frames: [],
+      fragments: [],
     });
   });
 });
