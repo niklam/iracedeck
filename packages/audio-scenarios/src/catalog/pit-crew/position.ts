@@ -389,6 +389,8 @@ export function buildPositionContract(
 ): ScenarioContract {
   return {
     id: "pit-crew.position-change",
+    description:
+      "You complete a lap in qualifying or a race in a different position from the lap before, or your first timed lap of the session; a held place counts only on a qualifying lap that is not your best.",
     when: {
       event: "lap.completed",
       where: (ev) => {

@@ -103,8 +103,29 @@ export function registerOpponentPitVocabulary(
   );
 }
 
+type OpponentPitSubject = "leader" | "ahead" | "behind" | "nearby" | "others";
+
+/**
+ * Each contract's `description` (#1066): the sim moment, in the terms of the
+ * translator's window (the leader plus same-lap, same-class cars within two
+ * places; race only, between the green and the checkered), so a pack author
+ * learns why a stop by a car three places up never speaks.
+ */
+const OPPONENT_PIT_DESCRIPTIONS: Record<OpponentPitSubject, string> = {
+  leader:
+    "The race leader, or your class leader in a multi-class race, heads into the pits during a race, between the green and the checkered flag.",
+  ahead:
+    "The car one place ahead of you in your class, on the same lap, heads into the pits during a race, between the green and the checkered flag.",
+  behind:
+    "The car one place behind you in your class, on the same lap, heads into the pits during a race, between the green and the checkered flag.",
+  nearby:
+    "A car two places ahead of or behind you in your class, on the same lap, heads into the pits during a race, between the green and the checkered flag.",
+  others:
+    "A third car around you heads into the pits within twelve seconds of the first two in a race, and further stops stay uncalled until the burst has passed.",
+};
+
 function opponentPitContract(
-  subject: "leader" | "ahead" | "behind" | "nearby" | "others",
+  subject: OpponentPitSubject,
   where?: (e: SimEventOf<"opponentPit.entered">) => boolean,
 ): ScenarioContract {
   return {
@@ -115,6 +136,7 @@ function opponentPitContract(
     weight: OPPONENT_PIT_WEIGHT,
     interrupt: false,
     queueable: true,
+    description: OPPONENT_PIT_DESCRIPTIONS[subject],
     when: {
       event: "opponentPit.entered",
       where: (e) => {

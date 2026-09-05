@@ -143,6 +143,8 @@ const SPOTTER_CALL_CONTRACT: ScenarioContract = {
   family: "spotter",
   focusOwner: SPOTTER_FOCUS_OWNER,
   frame: NO_FRAME,
+  description:
+    "The cars alongside you change — one arrives, a second joins it, one of two drops away, or they swap sides — in any session but Lone Qualify, while you are not on pit road.",
 };
 
 /**
@@ -169,6 +171,8 @@ const SPOTTER_INFO_CONTRACT: ScenarioContract = {
   family: "spotter-info",
   focusOwner: SPOTTER_FOCUS_OWNER,
   frame: NO_FRAME,
+  description:
+    "The last car alongside has genuinely separated after the radar reads clear, or a car is still alongside when the reminder interval (three seconds by default) comes round again.",
 };
 
 /**
